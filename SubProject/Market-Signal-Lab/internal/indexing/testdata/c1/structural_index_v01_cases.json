@@ -1,0 +1,605 @@
+{
+  "schemaVersion": "msl-c1-structural-index-golden/1",
+  "referenceSha": "cf4716afd94b45583a36aa43cc3b1e3333d45f33",
+  "weightCases": [
+    {
+      "name": "global_feasible_45_percent_cap",
+      "volumes": {
+        "a": 80,
+        "b": 15,
+        "c": 5
+      },
+      "configuredCap": 0.45,
+      "expected": {
+        "weights": {
+          "a": 0.45,
+          "b": 0.4125,
+          "c": 0.1375
+        },
+        "configuredCap": 0.45,
+        "effectiveCap": 0.45,
+        "fallbackRules": null
+      }
+    },
+    {
+      "name": "lower_single_peer_relaxes_50_percent_cap",
+      "volumes": {
+        "only": 100
+      },
+      "configuredCap": 0.5,
+      "expected": {
+        "weights": {
+          "only": 1
+        },
+        "configuredCap": 0.5,
+        "effectiveCap": 1,
+        "fallbackRules": [
+          "cap_relaxed_for_small_peer_set"
+        ]
+      }
+    },
+    {
+      "name": "zero_and_negative_mass_filtered",
+      "volumes": {
+        "negative": -10,
+        "zero": 0
+      },
+      "configuredCap": 0.5,
+      "expected": {
+        "weights": {},
+        "configuredCap": 0.5,
+        "effectiveCap": 0.5,
+        "fallbackRules": null
+      }
+    },
+    {
+      "name": "two_equal_peers_50_percent_cap",
+      "volumes": {
+        "a": 10,
+        "b": 10
+      },
+      "configuredCap": 0.5,
+      "expected": {
+        "weights": {
+          "a": 0.5,
+          "b": 0.5
+        },
+        "configuredCap": 0.5,
+        "effectiveCap": 0.5,
+        "fallbackRules": null
+      }
+    }
+  ],
+  "directionCases": [
+    {
+      "name": "one_run_composition_only",
+      "input": {
+        "ComparableRuns": 1,
+        "CurrentVolume": 60,
+        "PriorVolume": 50,
+        "CurrentEqual": 60,
+        "PriorEqual": 50,
+        "BaseConfidence": 90
+      },
+      "expected": {
+        "Stage": "composition",
+        "Direction": "",
+        "TrendScore": null,
+        "Confidence": 55,
+        "ReasonCodes": [
+          "current_composition_only"
+        ]
+      }
+    },
+    {
+      "name": "two_runs_movement_cap",
+      "input": {
+        "ComparableRuns": 2,
+        "CurrentVolume": 60,
+        "PriorVolume": 50,
+        "CurrentEqual": 60,
+        "PriorEqual": 50,
+        "BaseConfidence": 90
+      },
+      "expected": {
+        "Stage": "movement",
+        "Direction": "rising",
+        "TrendScore": 60,
+        "Confidence": 65,
+        "ReasonCodes": [
+          "movement_indication_only"
+        ]
+      }
+    },
+    {
+      "name": "three_runs_preliminary_cap",
+      "input": {
+        "ComparableRuns": 3,
+        "CurrentVolume": 40,
+        "PriorVolume": 50,
+        "CurrentEqual": 40,
+        "PriorEqual": 50,
+        "BaseConfidence": 95
+      },
+      "expected": {
+        "Stage": "preliminary",
+        "Direction": "falling",
+        "TrendScore": 40,
+        "Confidence": 80,
+        "ReasonCodes": [
+          "preliminary_trend"
+        ]
+      }
+    },
+    {
+      "name": "six_runs_established",
+      "input": {
+        "ComparableRuns": 6,
+        "CurrentVolume": 65,
+        "PriorVolume": 50,
+        "CurrentEqual": 52,
+        "PriorEqual": 50,
+        "BaseConfidence": 88
+      },
+      "expected": {
+        "Stage": "established",
+        "Direction": "concentrated_rising",
+        "TrendScore": 58.5,
+        "Confidence": 88,
+        "ReasonCodes": null
+      }
+    }
+  ],
+  "cases": [
+    {
+      "name": "global_three_site_weight_cap",
+      "input": {
+        "RunID": "c1-global",
+        "PriorRunID": "",
+        "GeneratedAt": "2026-08-18T00:00:00Z",
+        "Segments": [
+          {
+            "Level": "site",
+            "EntityID": "elements-a",
+            "ParentID": "",
+            "Label": "A",
+            "Volume": 80,
+            "Composition": 82,
+            "Coverage": 95,
+            "Confidence": 90,
+            "Quality": {
+              "id": "",
+              "runId": "",
+              "entityType": "",
+              "entityId": "",
+              "score": 90,
+              "grade": "A",
+              "components": {
+                "stratumCompletion": 0,
+                "sampleSize": 0,
+                "sampleBalance": 0,
+                "uniqueProduct": 0,
+                "taxonomy": 0,
+                "authorCoverage": 0,
+                "sourceReliability": 0,
+                "historyDepth": 0,
+                "surfaceDiversity": 0
+              },
+              "modelVersion": "",
+              "generatedAt": ""
+            },
+            "Eligible": true
+          },
+          {
+            "Level": "site",
+            "EntityID": "elements-b",
+            "ParentID": "",
+            "Label": "B",
+            "Volume": 15,
+            "Composition": 55,
+            "Coverage": 85,
+            "Confidence": 80,
+            "Quality": {
+              "id": "",
+              "runId": "",
+              "entityType": "",
+              "entityId": "",
+              "score": 78,
+              "grade": "B",
+              "components": {
+                "stratumCompletion": 0,
+                "sampleSize": 0,
+                "sampleBalance": 0,
+                "uniqueProduct": 0,
+                "taxonomy": 0,
+                "authorCoverage": 0,
+                "sourceReliability": 0,
+                "historyDepth": 0,
+                "surfaceDiversity": 0
+              },
+              "modelVersion": "",
+              "generatedAt": ""
+            },
+            "Eligible": true
+          },
+          {
+            "Level": "site",
+            "EntityID": "elements-c",
+            "ParentID": "",
+            "Label": "C",
+            "Volume": 5,
+            "Composition": 25,
+            "Coverage": 75,
+            "Confidence": 70,
+            "Quality": {
+              "id": "",
+              "runId": "",
+              "entityType": "",
+              "entityId": "",
+              "score": 62,
+              "grade": "C",
+              "components": {
+                "stratumCompletion": 0,
+                "sampleSize": 0,
+                "sampleBalance": 0,
+                "uniqueProduct": 0,
+                "taxonomy": 0,
+                "authorCoverage": 0,
+                "sourceReliability": 0,
+                "historyDepth": 0,
+                "surfaceDiversity": 0
+              },
+              "modelVersion": "",
+              "generatedAt": ""
+            },
+            "Eligible": true
+          }
+        ]
+      },
+      "expected": [
+        {
+          "level": "global",
+          "entityId": "global",
+          "parentId": "",
+          "compositionIndex": 54,
+          "volumeWeightedValue": 63,
+          "equalSectorValue": 54,
+          "divergenceValue": 9,
+          "divergenceState": "moderate",
+          "directionStage": "composition",
+          "coverage": 85,
+          "confidence": 80,
+          "dataQualityScore": 76.7,
+          "dataQualityGrade": "B",
+          "sampleSize": 100,
+          "modelVersion": "volume-weighted-market-index-v0.1",
+          "weightSetVersion": "index-weighting-v0.1"
+        },
+        {
+          "level": "site",
+          "entityId": "elements-a",
+          "parentId": "",
+          "compositionIndex": 82,
+          "volumeWeightedValue": 82,
+          "equalSectorValue": 82,
+          "divergenceValue": 0,
+          "divergenceState": "aligned",
+          "directionStage": "composition",
+          "coverage": 95,
+          "confidence": 90,
+          "dataQualityScore": 90,
+          "dataQualityGrade": "A",
+          "sampleSize": 80,
+          "modelVersion": "volume-weighted-market-index-v0.1",
+          "weightSetVersion": "index-weighting-v0.1"
+        },
+        {
+          "level": "site",
+          "entityId": "elements-b",
+          "parentId": "",
+          "compositionIndex": 55,
+          "volumeWeightedValue": 55,
+          "equalSectorValue": 55,
+          "divergenceValue": 0,
+          "divergenceState": "aligned",
+          "directionStage": "composition",
+          "coverage": 85,
+          "confidence": 80,
+          "dataQualityScore": 78,
+          "dataQualityGrade": "B",
+          "sampleSize": 15,
+          "modelVersion": "volume-weighted-market-index-v0.1",
+          "weightSetVersion": "index-weighting-v0.1"
+        },
+        {
+          "level": "site",
+          "entityId": "elements-c",
+          "parentId": "",
+          "compositionIndex": 25,
+          "volumeWeightedValue": 25,
+          "equalSectorValue": 25,
+          "divergenceValue": 0,
+          "divergenceState": "aligned",
+          "directionStage": "composition",
+          "coverage": 75,
+          "confidence": 70,
+          "dataQualityScore": 62,
+          "dataQualityGrade": "C",
+          "sampleSize": 5,
+          "modelVersion": "volume-weighted-market-index-v0.1",
+          "weightSetVersion": "index-weighting-v0.1"
+        }
+      ],
+      "weightResults": {
+        "global|global": {
+          "weights": {
+            "elements-a": 0.45,
+            "elements-b": 0.4125,
+            "elements-c": 0.1375
+          },
+          "configuredCap": 0.45,
+          "effectiveCap": 0.45,
+          "fallbackRules": null
+        }
+      }
+    },
+    {
+      "name": "lower_single_child_cap_relaxation",
+      "input": {
+        "RunID": "c1-lower",
+        "PriorRunID": "",
+        "GeneratedAt": "2026-08-18T00:00:00Z",
+        "Segments": [
+          {
+            "Level": "catalog",
+            "EntityID": "sports",
+            "ParentID": "presentation",
+            "Label": "Sports",
+            "Volume": 100,
+            "Composition": 70,
+            "Coverage": 90,
+            "Confidence": 85,
+            "Quality": {
+              "id": "",
+              "runId": "",
+              "entityType": "",
+              "entityId": "",
+              "score": 88,
+              "grade": "A",
+              "components": {
+                "stratumCompletion": 0,
+                "sampleSize": 0,
+                "sampleBalance": 0,
+                "uniqueProduct": 0,
+                "taxonomy": 0,
+                "authorCoverage": 0,
+                "sourceReliability": 0,
+                "historyDepth": 0,
+                "surfaceDiversity": 0
+              },
+              "modelVersion": "",
+              "generatedAt": ""
+            },
+            "Eligible": true
+          }
+        ]
+      },
+      "expected": [
+        {
+          "level": "catalog",
+          "entityId": "sports",
+          "parentId": "presentation",
+          "compositionIndex": 70,
+          "volumeWeightedValue": 70,
+          "equalSectorValue": 70,
+          "divergenceValue": 0,
+          "divergenceState": "aligned",
+          "directionStage": "composition",
+          "coverage": 90,
+          "confidence": 85,
+          "dataQualityScore": 88,
+          "dataQualityGrade": "A",
+          "sampleSize": 100,
+          "modelVersion": "volume-weighted-market-index-v0.1",
+          "weightSetVersion": "index-weighting-v0.1"
+        },
+        {
+          "level": "content_type",
+          "entityId": "presentation",
+          "parentId": "",
+          "compositionIndex": 70,
+          "volumeWeightedValue": 70,
+          "equalSectorValue": 70,
+          "divergenceValue": 0,
+          "divergenceState": "aligned",
+          "directionStage": "composition",
+          "coverage": 90,
+          "confidence": 85,
+          "dataQualityScore": 88,
+          "dataQualityGrade": "A",
+          "sampleSize": 100,
+          "modelVersion": "volume-weighted-market-index-v0.1",
+          "weightSetVersion": "index-weighting-v0.1"
+        },
+        {
+          "level": "global",
+          "entityId": "global",
+          "parentId": "",
+          "compositionIndex": 0,
+          "volumeWeightedValue": 0,
+          "equalSectorValue": 0,
+          "divergenceValue": 0,
+          "divergenceState": "aligned",
+          "directionStage": "composition",
+          "coverage": 0,
+          "confidence": 0,
+          "dataQualityScore": 0,
+          "dataQualityGrade": "D",
+          "sampleSize": 0,
+          "modelVersion": "volume-weighted-market-index-v0.1",
+          "weightSetVersion": "index-weighting-v0.1"
+        }
+      ],
+      "weightResults": {
+        "content_type|presentation": {
+          "weights": {
+            "sports": 1
+          },
+          "configuredCap": 0.5,
+          "effectiveCap": 1,
+          "fallbackRules": [
+            "cap_relaxed_for_small_peer_set"
+          ]
+        },
+        "global|global": {
+          "weights": {},
+          "configuredCap": 0.45,
+          "effectiveCap": 0.45,
+          "fallbackRules": null
+        }
+      }
+    },
+    {
+      "name": "grade_d_segment_ineligible_for_aggregate",
+      "input": {
+        "RunID": "c1-grade-d",
+        "PriorRunID": "",
+        "GeneratedAt": "2026-08-18T00:00:00Z",
+        "Segments": [
+          {
+            "Level": "site",
+            "EntityID": "eligible",
+            "ParentID": "",
+            "Label": "Eligible",
+            "Volume": 40,
+            "Composition": 60,
+            "Coverage": 90,
+            "Confidence": 85,
+            "Quality": {
+              "id": "",
+              "runId": "",
+              "entityType": "",
+              "entityId": "",
+              "score": 90,
+              "grade": "A",
+              "components": {
+                "stratumCompletion": 0,
+                "sampleSize": 0,
+                "sampleBalance": 0,
+                "uniqueProduct": 0,
+                "taxonomy": 0,
+                "authorCoverage": 0,
+                "sourceReliability": 0,
+                "historyDepth": 0,
+                "surfaceDiversity": 0
+              },
+              "modelVersion": "",
+              "generatedAt": ""
+            },
+            "Eligible": true
+          },
+          {
+            "Level": "site",
+            "EntityID": "grade-d",
+            "ParentID": "",
+            "Label": "Grade D",
+            "Volume": 60,
+            "Composition": 95,
+            "Coverage": 20,
+            "Confidence": 30,
+            "Quality": {
+              "id": "",
+              "runId": "",
+              "entityType": "",
+              "entityId": "",
+              "score": 30,
+              "grade": "D",
+              "components": {
+                "stratumCompletion": 0,
+                "sampleSize": 0,
+                "sampleBalance": 0,
+                "uniqueProduct": 0,
+                "taxonomy": 0,
+                "authorCoverage": 0,
+                "sourceReliability": 0,
+                "historyDepth": 0,
+                "surfaceDiversity": 0
+              },
+              "modelVersion": "",
+              "generatedAt": ""
+            },
+            "Eligible": false
+          }
+        ]
+      },
+      "expected": [
+        {
+          "level": "global",
+          "entityId": "global",
+          "parentId": "",
+          "compositionIndex": 60,
+          "volumeWeightedValue": 60,
+          "equalSectorValue": 60,
+          "divergenceValue": 0,
+          "divergenceState": "aligned",
+          "directionStage": "composition",
+          "coverage": 90,
+          "confidence": 85,
+          "dataQualityScore": 90,
+          "dataQualityGrade": "A",
+          "sampleSize": 40,
+          "modelVersion": "volume-weighted-market-index-v0.1",
+          "weightSetVersion": "index-weighting-v0.1"
+        },
+        {
+          "level": "site",
+          "entityId": "eligible",
+          "parentId": "",
+          "compositionIndex": 60,
+          "volumeWeightedValue": 60,
+          "equalSectorValue": 60,
+          "divergenceValue": 0,
+          "divergenceState": "aligned",
+          "directionStage": "composition",
+          "coverage": 90,
+          "confidence": 85,
+          "dataQualityScore": 90,
+          "dataQualityGrade": "A",
+          "sampleSize": 40,
+          "modelVersion": "volume-weighted-market-index-v0.1",
+          "weightSetVersion": "index-weighting-v0.1"
+        },
+        {
+          "level": "site",
+          "entityId": "grade-d",
+          "parentId": "",
+          "compositionIndex": 95,
+          "volumeWeightedValue": 95,
+          "equalSectorValue": 95,
+          "divergenceValue": 0,
+          "divergenceState": "aligned",
+          "directionStage": "composition",
+          "coverage": 20,
+          "confidence": 30,
+          "dataQualityScore": 30,
+          "dataQualityGrade": "D",
+          "sampleSize": 60,
+          "modelVersion": "volume-weighted-market-index-v0.1",
+          "weightSetVersion": "index-weighting-v0.1"
+        }
+      ],
+      "weightResults": {
+        "global|global": {
+          "weights": {
+            "eligible": 1
+          },
+          "configuredCap": 0.45,
+          "effectiveCap": 1,
+          "fallbackRules": [
+            "cap_relaxed_for_small_peer_set"
+          ]
+        }
+      }
+    }
+  ]
+}

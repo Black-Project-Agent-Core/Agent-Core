@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Market Signal Lab Visible Ranking Capture",
+  "version": "0.3.0.652",
+  "description": "Capture only visible Envato ranking cards after an explicit user action and preview them in Market Signal Lab.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": [
+    "https://elements.envato.com/*",
+    "https://app.envato.com/*",
+    "https://*.envato.com/*",
+    "https://*.themeforest.net/*",
+    "https://*.codecanyon.net/*",
+    "https://*.graphicriver.net/*",
+    "https://*.videohive.net/*",
+    "https://*.audiojungle.net/*",
+    "https://*.photodune.net/*",
+    "https://*.3docean.net/*",
+    "http://127.0.0.1/*"
+  ],
+  "action": {"default_popup": "popup.html"},
+  "background": {"service_worker": "service-worker.js"}
+}
