@@ -1,0 +1,14 @@
+{
+  "name": "market-signal-lab-frontend-tooling",
+  "private": true,
+  "packageManager": "bun@1.4.0",
+  "scripts": {
+    "typecheck": "tsc -p frontend/tsconfig.json --noEmit",
+    "build:frontend": "tsc -p frontend/tsconfig.json",
+    "test:frontend": "bun test frontend/tests",
+    "verify:frontend-generated": "bun run build:frontend && git diff --exit-code -- internal/web/assets/js/analytics_engine.js"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

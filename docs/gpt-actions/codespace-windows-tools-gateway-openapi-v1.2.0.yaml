@@ -1,0 +1,1594 @@
+openapi: 3.1.0
+info:
+  title: Codespace Supervisor Action Bridge
+  version: 3.3.0
+  description: ChatGPT Action bridge for one explicitly configured GitHub Codespace workspace, with verified Windows execution and a reviewed multi-tool gateway.
+servers:
+- url: https://cautious-space-succotash-r7p4gjxw6qj5hpv59-8787.app.github.dev
+security:
+- bearerAuth: []
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Verify bridge, workspace, branch, and mode.
+      x-openai-isConsequential: false
+      responses:
+        '200':
+          description: Bridge state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /workspace/tree:
+    get:
+      operationId: listWorkspace
+      summary: List a bounded project tree.
+      x-openai-isConsequential: false
+      parameters:
+      - name: path
+        in: query
+        required: false
+        schema:
+          type: string
+          default: .
+      - name: depth
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 4
+          default: 2
+      responses:
+        '200':
+          description: Tree
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceTreeResponse'
+  /workspace/file:
+    get:
+      operationId: readWorkspaceFile
+      summary: Read a UTF-8 project file and return its SHA-256.
+      x-openai-isConsequential: false
+      parameters:
+      - name: path
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: File content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadFileResponse'
+    put:
+      operationId: writeWorkspaceFile
+      summary: Write a project file; existing files require expectedSha256.
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteFileRequest'
+      responses:
+        '200':
+          description: File written
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteFileResponse'
+  /workspace/command:
+    post:
+      operationId: runWorkspaceCommand
+      summary: Run a short allow-listed command in the workspace.
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommandRequest'
+      responses:
+        '200':
+          description: Command result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandResult'
+  /terminal/status:
+    get:
+      operationId: getSupervisorTerminalStatus
+      summary: Check whether the visible GPT Supervisor terminal task is connected.
+      description: Use this before visible-terminal execution. The terminal is a VS Code automatic task backed by a private supervisor queue; it is not a public shell endpoint.
+      x-openai-isConsequential: false
+      responses:
+        '200':
+          description: Visible terminal bridge status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisibleTerminalStatus'
+  /terminal/invocations:
+    post:
+      operationId: invokeSupervisorTerminal
+      summary: Run one validated command through the visible GPT Supervisor terminal.
+      description: Prefer this when the user wants to observe coding commands live in Codespaces. The server validates cwd/executable and branch policy before queueing; the terminal runner executes argv with shell=false and a sanitized environment.
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisibleTerminalRequest'
+      responses:
+        '202':
+          description: Terminal invocation queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisibleTerminalInvocation'
+  /terminal/invocations/{invocationId}:
+    get:
+      operationId: getSupervisorTerminalInvocation
+      summary: Poll a visible terminal invocation and its bounded output.
+      x-openai-isConsequential: false
+      parameters:
+      - name: invocationId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Visible terminal invocation state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisibleTerminalInvocation'
+  /git/status:
+    get:
+      operationId: gitStatus
+      summary: Get branch and working-tree status.
+      x-openai-isConsequential: false
+      responses:
+        '200':
+          description: Git status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitStatusResponse'
+  /git/diff:
+    get:
+      operationId: gitDiff
+      summary: Read staged or unstaged Git diff.
+      x-openai-isConsequential: false
+      parameters:
+      - name: staged
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: Git diff
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitDiffResponse'
+  /git/branch:
+    post:
+      operationId: createTaskBranch
+      summary: Create and switch to a new task branch.
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BranchRequest'
+      responses:
+        '201':
+          description: Branch created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchResponse'
+  /git/commit:
+    post:
+      operationId: gitCommit
+      summary: Commit only explicitly approved paths.
+      x-openai-isConsequential: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommitRequest'
+      responses:
+        '201':
+          description: Commit created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommitResponse'
+  /jobs/command:
+    post:
+      operationId: startCommandJob
+      summary: Start one long deterministic command and return a jobId.
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommandJobRequest'
+      responses:
+        '202':
+          description: Job started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandJobResponse'
+  /jobs/command/{jobId}:
+    get:
+      operationId: getCommandJob
+      summary: Poll command-job status and bounded logs.
+      x-openai-isConsequential: false
+      parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Job state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandJobResponse'
+  /jobs/command/{jobId}/cancel:
+    post:
+      operationId: cancelCommandJob
+      summary: Cancel a running command job.
+      x-openai-isConsequential: true
+      parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Cancellation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelCommandJobResponse'
+  /privacy:
+    get:
+      operationId: getPrivacyPolicy
+      summary: Privacy policy.
+      security: []
+      x-openai-isConsequential: false
+      responses:
+        '200':
+          description: Privacy policy
+          content:
+            text/html:
+              schema:
+                type: string
+  /windows/status:
+    get:
+      operationId: windowsStatus
+      summary: Check Windows Relay and Desktop Commander connectivity
+      responses:
+        '200':
+          description: Windows connection status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WindowsStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /windows/capabilities:
+    get:
+      operationId: getWindowsCapabilities
+      summary: Get the effective server-side Windows tool policy
+      responses:
+        '200':
+          description: Effective Windows capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Capabilities'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/WindowsUnavailable'
+  /windows/pairing:
+    post:
+      operationId: createWindowsPairing
+      summary: Create a short-lived one-time pairing code
+      description: 'Creates a temporary code that the user enters locally into the Windows
+
+        Relay installer. The long-term device credential is returned only to
+
+        the Windows Relay and is never exposed through this GPT Action.
+
+        '
+      responses:
+        '201':
+          description: Pairing code created
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - pairingId
+                - code
+                - expiresAt
+                properties:
+                  pairingId:
+                    type: string
+                  code:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  instructions:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /windows/sessions:
+    post:
+      operationId: createWindowsSession
+      summary: Create a scoped Windows work session
+      description: Create one reusable session for the explicitly approved task scope. Reuse that session across ordinary non-destructive audit, repair, dependency recovery, retry, and verification steps instead of creating a new approval boundary per command.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WindowsSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/WindowsUnavailable'
+  /windows/sessions/{sessionId}:
+    get:
+      operationId: getWindowsSession
+      summary: Get Windows session state
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{8,128}$
+      responses:
+        '200':
+          description: Session state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WindowsSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /windows/sessions/{sessionId}/tool:
+    post:
+      operationId: invokeWindowsTool
+      summary: Execute one deterministic tool operation on Windows
+      description: 'The GPT chooses one operation inside an existing scoped session. The Codespace validates policy, the Windows Relay executes it, and the result returns to the GPT. Reuse the approved session for ordinary non-destructive recovery and verification steps; do not treat each invocation as a new approval boundary. Root, tool, executable, destructive-action, and security policy checks remain authoritative. No LLM or autonomous AI loop exists in the gateway or relay.'
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{8,128}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolInvocationRequest'
+      responses:
+        '200':
+          description: Tool completed synchronously
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolInvocation'
+        '202':
+          description: Tool accepted and still running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolInvocation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/WindowsUnavailable'
+  /windows/sessions/{sessionId}/invocations/{invocationId}:
+    get:
+      operationId: getWindowsInvocation
+      summary: Get a Windows invocation result
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{8,128}$
+      - name: invocationId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{8,128}$
+      responses:
+        '200':
+          description: Invocation state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolInvocation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /windows/sessions/{sessionId}/events:
+    get:
+      operationId: getWindowsEvents
+      summary: Observe the auditable Windows event stream
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{8,128}$
+      - name: afterSequence
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+      responses:
+        '200':
+          description: Session events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /windows/sessions/{sessionId}/complete:
+    post:
+      operationId: completeWindowsSession
+      summary: Mark a Windows work session completed
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{8,128}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - summary
+              properties:
+                summary:
+                  type: string
+                  minLength: 1
+                  maxLength: 5000
+      responses:
+        '200':
+          description: Session completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WindowsSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Session still has active work or is already cancelled
+  /windows/sessions/{sessionId}/cancel:
+    post:
+      operationId: cancelWindowsSession
+      summary: Cancel active work associated with a Windows session
+      parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{8,128}$
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '200':
+          description: Session cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WindowsSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /tools-gateway/status:
+    get:
+      operationId: getToolsGatewayStatus
+      summary: Check the Codespace Tools Gateway and registered tool availability.
+      x-openai-isConsequential: false
+      responses:
+        '200':
+          description: Tools Gateway status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolsGatewayStatus'
+  /tools-gateway/tools:
+    get:
+      operationId: listToolsGatewayTools
+      summary: List tools, skills, plugin sources, and MCP adapters registered in the Tools Gateway.
+      x-openai-isConsequential: false
+      responses:
+        '200':
+          description: Registered gateway tools
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - tools
+                properties:
+                  tools:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GatewayTool'
+  /tools-gateway/invoke:
+    post:
+      operationId: invokeToolsGatewayTool
+      summary: Invoke one reviewed operation exposed by the Codespace Tools Gateway.
+      description: Invokes one registered tool through a deterministic adapter. No raw shell passthrough and no second reasoning agent are exposed. The Custom GPT should use listToolsGatewayTools for capability discovery and route tasks to named specialized tools such as Serena for semantic code intelligence, ast-grep for structural search, Semgrep for static analysis, Repomix for repository context compression, Context7 for version-specific documentation, Playwright/Chrome DevTools for local browser validation, MCP Language Server for definitions/diagnostics/references, and Task Master/Beads for task/dependency state.
+      x-openai-isConsequential: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GatewayInvokeRequest'
+      responses:
+        '200':
+          description: Gateway tool result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayInvokeResponse'
+        '400':
+          description: Invalid tool or operation request
+        '403':
+          description: Operation blocked by gateway policy
+        '404':
+          description: Gateway tool not found
+        '503':
+          description: Registered tool currently unavailable
+        '504':
+          description: Gateway tool or MCP adapter timed out
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+      - ok
+      - workspace
+      - branch
+      - trustedBinaries
+      - protectedBranches
+      - mode
+      properties:
+        ok:
+          type: boolean
+        workspace:
+          type: string
+        branch:
+          type: string
+        trustedBinaries:
+          type: array
+          items:
+            type: string
+        protectedBranches:
+          type: array
+          items:
+            type: string
+        mode:
+          type: string
+        autonomy:
+          type: object
+          properties:
+            interactiveReasoningLoop:
+              type: boolean
+            longCommandJobs:
+              type: boolean
+            persistentReasoningAfterChatTurn:
+              type: boolean
+    FileEntry:
+      type: object
+      required:
+      - name
+      - path
+      - type
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        type:
+          type: string
+          enum:
+          - file
+          - directory
+    WorkspaceTreeResponse:
+      type: object
+      required:
+      - path
+      - entries
+      - truncated
+      properties:
+        path:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileEntry'
+        truncated:
+          type: boolean
+    ReadFileResponse:
+      type: object
+      required:
+      - path
+      - content
+      - sha256
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+        sha256:
+          type: string
+    WriteFileRequest:
+      type: object
+      required:
+      - path
+      - content
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+        expectedSha256:
+          type: string
+    WriteFileResponse:
+      type: object
+      required:
+      - path
+      - sha256
+      properties:
+        path:
+          type: string
+        sha256:
+          type: string
+    CommandRequest:
+      type: object
+      required:
+      - argv
+      properties:
+        argv:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        cwd:
+          type: string
+          default: .
+        timeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 30
+          default: 20
+    CommandResult:
+      type: object
+      required:
+      - exitCode
+      - stdout
+      - stderr
+      - timedOut
+      - truncated
+      properties:
+        exitCode:
+          type: integer
+        stdout:
+          type: string
+        stderr:
+          type: string
+        timedOut:
+          type: boolean
+        truncated:
+          type: boolean
+    VisibleTerminalStatus:
+      type: object
+      required:
+      - available
+      - terminalName
+      - transport
+      - note
+      properties:
+        available:
+          type: boolean
+        terminalName:
+          type: string
+        transport:
+          type: string
+        heartbeatAgeSeconds:
+          type: number
+        activeInvocationId:
+          type: string
+        note:
+          type: string
+    VisibleTerminalRequest:
+      type: object
+      required:
+      - argv
+      properties:
+        argv:
+          type: array
+          minItems: 1
+          maxItems: 128
+          items:
+            type: string
+        cwd:
+          type: string
+          default: .
+        timeoutSeconds:
+          type: integer
+          minimum: 1
+          maximum: 600
+          default: 120
+    VisibleTerminalInvocation:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+        terminalName:
+          type: string
+        argv:
+          type: array
+          items:
+            type: string
+        displayArgv:
+          type: array
+          items:
+            type: string
+        cwd:
+          type: string
+        timeoutSeconds:
+          type: integer
+        createdAt:
+          type: integer
+        startedAt:
+          type: integer
+        completedAt:
+          type: integer
+        exitCode:
+          type: integer
+        output:
+          type: string
+        timedOut:
+          type: boolean
+        truncated:
+          type: boolean
+        error:
+          type: string
+    GitStatusResponse:
+      type: object
+      required:
+      - branch
+      - clean
+      - changes
+      - raw
+      - truncated
+      properties:
+        branch:
+          type: string
+        clean:
+          type: boolean
+        changes:
+          type: array
+          items:
+            type: string
+        raw:
+          type: string
+        truncated:
+          type: boolean
+    GitDiffResponse:
+      type: object
+      required:
+      - diff
+      - stderr
+      - truncated
+      properties:
+        diff:
+          type: string
+        stderr:
+          type: string
+        truncated:
+          type: boolean
+    BranchRequest:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        startPoint:
+          type: string
+    BranchResponse:
+      type: object
+      required:
+      - branch
+      - stdout
+      - stderr
+      properties:
+        branch:
+          type: string
+        stdout:
+          type: string
+        stderr:
+          type: string
+    CommitRequest:
+      type: object
+      required:
+      - message
+      - paths
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 300
+        paths:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: string
+    CommitResponse:
+      type: object
+      required:
+      - commitSha
+      - message
+      - stdout
+      properties:
+        commitSha:
+          type: string
+        message:
+          type: string
+        stdout:
+          type: string
+    CommandJobRequest:
+      type: object
+      required:
+      - argv
+      properties:
+        argv:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        cwd:
+          type: string
+          default: .
+        maxMinutes:
+          type: integer
+          minimum: 1
+          maximum: 120
+          default: 30
+    CommandJobResponse:
+      type: object
+      required:
+      - id
+      - status
+      - argv
+      - cwd
+      - createdAt
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+        argv:
+          type: array
+          items:
+            type: string
+        cwd:
+          type: string
+        createdAt:
+          type: integer
+        completedAt:
+          type: integer
+        exitCode:
+          type: integer
+        stdout:
+          type: string
+        stderr:
+          type: string
+        truncated:
+          type: boolean
+        error:
+          type: string
+    CancelCommandJobResponse:
+      type: object
+      required:
+      - id
+      - status
+      - cancelled
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        cancelled:
+          type: boolean
+    WindowsStatus:
+      type: object
+      required:
+      - relayConnected
+      - desktopCommanderAvailable
+      - paired
+      - activeSessionCount
+      properties:
+        relayConnected:
+          type: boolean
+        desktopCommanderAvailable:
+          type: boolean
+        paired:
+          type: boolean
+        machineId:
+          type: string
+        machineName:
+          type: string
+        platform:
+          type: string
+        connectedAt:
+          type: string
+          format: date-time
+        lastHeartbeat:
+          type: string
+          format: date-time
+        relayVersion:
+          type: string
+        desktopCommanderVersion:
+          type: string
+        activeSessionCount:
+          type: integer
+          minimum: 0
+    Capabilities:
+      type: object
+      required:
+      - tools
+      - allowedRoots
+      - allowedExecutables
+      properties:
+        tools:
+          type: array
+          items:
+            type: string
+            enum:
+            - listDirectory
+            - readFile
+            - writeFile
+            - createDirectory
+            - copyPath
+            - movePath
+            - deletePath
+            - searchFiles
+            - runCommand
+            - listProcesses
+        allowedRoots:
+          type: array
+          items:
+            type: string
+        allowedExecutables:
+          type: array
+          items:
+            type: string
+        desktopControl:
+          type: boolean
+        shell:
+          type: boolean
+        filesystemRead:
+          type: boolean
+        filesystemWrite:
+          type: boolean
+        destructiveDelete:
+          type: boolean
+        maximumCommandSeconds:
+          type: integer
+        maximumOutputBytes:
+          type: integer
+        policyName:
+          type: string
+        desktopCommanderAvailable:
+          type: boolean
+        desktopCommanderTools:
+          type: array
+          items:
+            type: string
+    CreateSessionRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - brief
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        brief:
+          type: string
+          minLength: 1
+          maxLength: 30000
+        successCriteria:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            maxLength: 3000
+        requestedRoots:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 1024
+        constraints:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            maxLength: 3000
+        policyProfile:
+          type: string
+          maxLength: 100
+          default: default
+    WindowsSession:
+      type: object
+      required:
+      - sessionId
+      - status
+      - createdAt
+      properties:
+        sessionId:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum:
+          - active
+          - waiting
+          - completed
+          - failed
+          - cancelled
+        brief:
+          type: string
+        effectiveRoots:
+          type: array
+          items:
+            type: string
+        policyProfile:
+          type: string
+        currentActivity:
+          type: string
+        activeInvocationId:
+          type:
+          - string
+          - 'null'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        resultSummary:
+          type:
+          - string
+          - 'null'
+    ToolInvocationRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - tool
+      - arguments
+      - reason
+      properties:
+        tool:
+          type: string
+          enum:
+          - listDirectory
+          - readFile
+          - writeFile
+          - createDirectory
+          - copyPath
+          - movePath
+          - deletePath
+          - searchFiles
+          - runCommand
+          - listProcesses
+        arguments:
+          type: object
+          description: Tool-specific arguments. Only fields relevant to the selected tool should be supplied.
+          additionalProperties: true
+          properties:
+            path:
+              type: string
+              maxLength: 2048
+            sourcePath:
+              type: string
+              maxLength: 2048
+            destinationPath:
+              type: string
+              maxLength: 2048
+            content:
+              type: string
+            query:
+              type: string
+              maxLength: 4000
+            pattern:
+              type: string
+              maxLength: 4000
+            depth:
+              type: integer
+              minimum: 1
+              maximum: 20
+              default: 2
+            argv:
+              type: array
+              minItems: 1
+              maxItems: 128
+              items:
+                type: string
+            cwd:
+              type: string
+              maxLength: 2048
+            timeoutSeconds:
+              type: integer
+              minimum: 1
+              maximum: 600
+              default: 30
+            maxResults:
+              type: integer
+              minimum: 1
+              maximum: 1000
+              default: 100
+            recursive:
+              type: boolean
+              default: false
+            encoding:
+              type: string
+              default: utf-8
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 3000
+        expectedOutcome:
+          type: string
+          maxLength: 3000
+    ToolInvocation:
+      type: object
+      required:
+      - invocationId
+      - tool
+      - status
+      properties:
+        invocationId:
+          type: string
+        tool:
+          type: string
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+          - denied
+          - cancelled
+        startedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        completedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        exitCode:
+          type:
+          - integer
+          - 'null'
+        stdout:
+          type: string
+        stderr:
+          type: string
+        result:
+          type:
+          - object
+          - 'null'
+          additionalProperties: true
+        truncated:
+          type: boolean
+        error:
+          anyOf:
+          - $ref: '#/components/schemas/Error'
+          - type: 'null'
+    Event:
+      type: object
+      required:
+      - sequence
+      - timestamp
+      - type
+      - message
+      properties:
+        sequence:
+          type: integer
+          minimum: 1
+        timestamp:
+          type: string
+          format: date-time
+        type:
+          type: string
+          enum:
+          - session_created
+          - tool_requested
+          - tool_started
+          - tool_completed
+          - tool_failed
+          - tool_denied
+          - session_completed
+          - session_cancelled
+        message:
+          type: string
+        tool:
+          type: string
+        invocationId:
+          type: string
+    EventsResponse:
+      type: object
+      required:
+      - sessionId
+      - events
+      - lastSequence
+      - hasMore
+      properties:
+        sessionId:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+        lastSequence:
+          type: integer
+          minimum: 0
+        hasMore:
+          type: boolean
+    Error:
+      type: object
+      properties:
+        detail:
+          oneOf:
+          - type: string
+          - type: object
+            additionalProperties: true
+        code:
+          type: string
+        message:
+          type: string
+      additionalProperties: true
+    ToolsGatewayStatus:
+      type: object
+      required:
+      - ok
+      - gatewayVersion
+      - transport
+      - basePath
+      - registeredToolCount
+      - rawShellPassthrough
+      - secondReasoningAgent
+      properties:
+        ok:
+          type: boolean
+        gatewayVersion:
+          type: string
+        transport:
+          type: string
+        basePath:
+          type: string
+        toolRoot:
+          type: string
+        registry:
+          type: string
+        registeredToolCount:
+          type: integer
+          minimum: 0
+        availabilityCounts:
+          type: object
+          additionalProperties:
+            type: integer
+        rawShellPassthrough:
+          type: boolean
+        secondReasoningAgent:
+          type: boolean
+    GatewayTool:
+      type: object
+      required:
+      - toolId
+      - name
+      - kind
+      - availability
+      - executionMode
+      - operations
+      properties:
+        toolId:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+        availability:
+          type: string
+          enum:
+          - available
+          - degraded
+          - metadata-only
+          - unavailable
+        executionMode:
+          type: string
+        operations:
+          type: array
+          items:
+            type: string
+        policy:
+          type: string
+        description:
+          type: string
+        source:
+          type:
+          - string
+          - 'null'
+        commit:
+          type:
+          - string
+          - 'null'
+        version:
+          type:
+          - string
+          - 'null'
+        registryStatus:
+          type:
+          - string
+          - 'null'
+        notes:
+          type:
+          - string
+          - 'null'
+        availabilityNote:
+          type:
+          - string
+          - 'null'
+    GatewayInvokeRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - toolId
+      - operation
+      properties:
+        toolId:
+          type: string
+          enum:
+          - agent-skill-eval
+          - agentfinder-catalog
+          - agentmemory
+          - anthropic-skills
+          - ast-grep
+          - ast-grep-skill
+          - beads
+          - chrome-devtools-mcp
+          - claude-mem
+          - code-intelligence
+          - context7
+          - docker-mcp-gateway
+          - github-mcp
+          - graphiti
+          - j-space
+          - mcp-everything
+          - mcp-fetch
+          - mcp-filesystem
+          - mcp-git
+          - mcp-language-server
+          - mcp-memory
+          - mcp-registry
+          - mcp-sequential-thinking
+          - mcp-time
+          - openhands-agent-canvas
+          - playwright-mcp
+          - plugin-catalogue
+          - repomix
+          - semgrep
+          - serena
+          - skills-cli
+          - spec-kit
+          - superpowers
+          - task-master
+          - vercel-skills
+          description: Registered gateway tool identifier. Use listToolsGatewayTools to discover current availability and exposed operations. Prefer specialized engineering capabilities (for example Serena, ast-grep, Semgrep, Repomix, Context7, Playwright/Chrome DevTools, Task Master, and MCP Language Server) when they match the task instead of treating the gateway as one generic tool.
+        operation:
+          type: string
+          maxLength: 120
+          description: Operation exposed by the selected tool. Consult listToolsGatewayTools when unsure.
+        query:
+          type: string
+          maxLength: 12000
+          description: Search/documentation query for tools such as Context7, claude-mem, code-intelligence, or catalogue search.
+        libraryName:
+          type: string
+          maxLength: 1000
+          description: Context7 library name used with resolve-library.
+        libraryId:
+          type: string
+          maxLength: 1000
+          description: Context7 canonical library identifier used with query-docs.
+        mcpTool:
+          type: string
+          maxLength: 200
+          description: Reviewed MCP tool name used when operation=call.
+        path:
+          type: string
+          maxLength: 4096
+          description: Workspace-relative or registered-source-relative path, depending on the selected operation.
+        text:
+          type: string
+          maxLength: 30000
+          description: Optional textual input for future reviewed adapters.
+        inputJson:
+          type: string
+          maxLength: 30000
+          description: 'JSON object encoded as a string for tool-specific inputs. Examples: J-Space note fields or MCP tool arguments. This string form is intentional for GPT Builder compatibility.'
+        maxChars:
+          type: integer
+          minimum: 500
+          maximum: 40000
+          default: 12000
+          description: Maximum bounded result size requested from the gateway.
+    GatewayInvokeResponse:
+      type: object
+      required:
+      - toolId
+      - operation
+      - durationMs
+      - result
+      properties:
+        toolId:
+          type: string
+        operation:
+          type: string
+        durationMs:
+          type: integer
+          minimum: 0
+        result:
+          description: Adapter-specific bounded result.
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid BRIDGE_TOKEN
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Operation is outside the server-side policy
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    WindowsUnavailable:
+      description: Windows Relay is unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

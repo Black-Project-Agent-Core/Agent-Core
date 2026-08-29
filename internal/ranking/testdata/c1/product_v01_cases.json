@@ -1,0 +1,1026 @@
+{
+  "schemaVersion": "msl-c1-product-golden/1",
+  "referenceSha": "cf4716afd94b45583a36aa43cc3b1e3333d45f33",
+  "primitives": {
+    "signedDelta": [
+      {
+        "name": "zero_to_zero",
+        "current": 0,
+        "previous": 0,
+        "expected": 0
+      },
+      {
+        "name": "zero_baseline_to_positive",
+        "current": 5,
+        "previous": 0,
+        "expected": 100
+      },
+      {
+        "name": "positive_increase",
+        "current": 15,
+        "previous": 10,
+        "expected": 50
+      },
+      {
+        "name": "positive_decrease",
+        "current": 5,
+        "previous": 10,
+        "expected": -50
+      },
+      {
+        "name": "positive_clamp_200",
+        "current": 40,
+        "previous": 10,
+        "expected": 200
+      },
+      {
+        "name": "negative_clamp_minus_200",
+        "current": -10,
+        "previous": 10,
+        "expected": -200
+      },
+      {
+        "name": "round1_boundary",
+        "current": 1.2345,
+        "previous": 1,
+        "expected": 23.4
+      }
+    ],
+    "percentiles": [
+      {
+        "name": "empty",
+        "values": {},
+        "expected": {}
+      },
+      {
+        "name": "single_peer",
+        "values": {
+          "a": 10
+        },
+        "expected": {
+          "a": 50
+        }
+      },
+      {
+        "name": "two_peers",
+        "values": {
+          "a": 10,
+          "b": 20
+        },
+        "expected": {
+          "a": 0,
+          "b": 100
+        }
+      },
+      {
+        "name": "ties_average_position",
+        "values": {
+          "a": 10,
+          "b": 10,
+          "c": 30
+        },
+        "expected": {
+          "a": 25,
+          "b": 25,
+          "c": 100
+        }
+      },
+      {
+        "name": "deterministic_key_tie_order",
+        "values": {
+          "a": 5,
+          "m": 9,
+          "z": 5
+        },
+        "expected": {
+          "a": 25,
+          "m": 100,
+          "z": 25
+        }
+      }
+    ],
+    "hhi": [
+      {
+        "name": "empty",
+        "counts": {},
+        "expected": 0
+      },
+      {
+        "name": "non_positive_only",
+        "counts": {
+          "a": 0,
+          "b": -2
+        },
+        "expected": 0
+      },
+      {
+        "name": "single_author",
+        "counts": {
+          "a": 10
+        },
+        "expected": 100
+      },
+      {
+        "name": "equal_authors",
+        "counts": {
+          "a": 5,
+          "b": 5
+        },
+        "expected": 50
+      },
+      {
+        "name": "uneven_authors",
+        "counts": {
+          "a": 7,
+          "b": 2,
+          "c": 1
+        },
+        "expected": 54
+      }
+    ],
+    "weighted": [
+      {
+        "name": "all_features",
+        "modelName": "product-exposure",
+        "modelVersion": "product-exposure-v0.1",
+        "features": {
+          "cross_query": 75,
+          "freshness": 60,
+          "median_position": 80,
+          "rank_velocity": 90,
+          "surface_strength": 50
+        },
+        "expectedScore": 75,
+        "expectedMissing": [],
+        "expectedPresentWeight": 1
+      },
+      {
+        "name": "missing_rank_velocity",
+        "modelName": "product-exposure",
+        "modelVersion": "product-exposure-v0.1",
+        "features": {
+          "cross_query": 75,
+          "freshness": 60,
+          "median_position": 80,
+          "rank_velocity": null,
+          "surface_strength": 50
+        },
+        "expectedScore": 71.3,
+        "expectedMissing": [
+          "rank_velocity"
+        ],
+        "expectedPresentWeight": 0.8
+      },
+      {
+        "name": "multiple_missing",
+        "modelName": "product-exposure",
+        "modelVersion": "product-exposure-v0.1",
+        "features": {
+          "cross_query": null,
+          "freshness": 60,
+          "median_position": 80,
+          "rank_velocity": null,
+          "surface_strength": 50
+        },
+        "expectedScore": 70,
+        "expectedMissing": [
+          "cross_query",
+          "rank_velocity"
+        ],
+        "expectedPresentWeight": 0.6
+      }
+    ],
+    "direction": [
+      {
+        "name": "boundary_24_9",
+        "value": 24.9,
+        "expected": "strong_falling"
+      },
+      {
+        "name": "boundary_25",
+        "value": 25,
+        "expected": "falling"
+      },
+      {
+        "name": "boundary_39_9",
+        "value": 39.9,
+        "expected": "falling"
+      },
+      {
+        "name": "boundary_4",
+        "value": 40,
+        "expected": "neutral"
+      },
+      {
+        "name": "boundary_59_9",
+        "value": 59.9,
+        "expected": "neutral"
+      },
+      {
+        "name": "boundary_6",
+        "value": 60,
+        "expected": "rising"
+      },
+      {
+        "name": "boundary_74_9",
+        "value": 74.9,
+        "expected": "rising"
+      },
+      {
+        "name": "boundary_75",
+        "value": 75,
+        "expected": "strong_rising"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "peer_ranking",
+      "input": {
+        "Dataset": {
+          "Catalogs": [
+            {
+              "id": "presentation",
+              "platform": "Envato Elements",
+              "contentType": "Presentation",
+              "name": "",
+              "canonicalKey": "",
+              "level": "content_type",
+              "firstSeenAt": "",
+              "lastSeenAt": ""
+            },
+            {
+              "id": "sports",
+              "platform": "Envato Elements",
+              "contentType": "Presentation",
+              "parentId": "presentation",
+              "name": "",
+              "canonicalKey": "",
+              "level": "catalog",
+              "firstSeenAt": "",
+              "lastSeenAt": ""
+            }
+          ],
+          "Products": [
+            {
+              "id": "laggard",
+              "sourceType": "",
+              "externalItemId": "",
+              "canonicalCatalogId": "sports",
+              "firstSeenAt": "2026-06-01T00:00:00Z",
+              "lastSeenAt": "",
+              "status": ""
+            },
+            {
+              "id": "leader",
+              "sourceType": "",
+              "externalItemId": "",
+              "canonicalCatalogId": "sports",
+              "firstSeenAt": "2026-06-01T00:00:00Z",
+              "lastSeenAt": "",
+              "status": ""
+            },
+            {
+              "id": "middle",
+              "sourceType": "",
+              "externalItemId": "",
+              "canonicalCatalogId": "sports",
+              "firstSeenAt": "2026-06-01T00:00:00Z",
+              "lastSeenAt": "",
+              "status": ""
+            }
+          ],
+          "Authors": null,
+          "Queries": [
+            {
+              "id": "q1",
+              "name": "",
+              "platform": "",
+              "sourceType": "",
+              "queryText": "",
+              "catalogScopeId": "sports",
+              "purpose": "",
+              "createdAt": "",
+              "enabled": true
+            },
+            {
+              "id": "q2",
+              "name": "",
+              "platform": "",
+              "sourceType": "",
+              "queryText": "",
+              "catalogScopeId": "sports",
+              "purpose": "",
+              "createdAt": "",
+              "enabled": true
+            }
+          ],
+          "Sessions": [
+            {
+              "id": "now",
+              "startedAt": "2026-07-16T00:00:00Z",
+              "completedAt": "2026-08-15T00:00:00Z",
+              "sourceType": "",
+              "scope": "sports",
+              "requestBudget": 0,
+              "requestsUsed": 0,
+              "queryIds": [
+                "q1",
+                "q2"
+              ],
+              "completedQueryIds": null,
+              "queriesPlanned": 0,
+              "queriesCompleted": 0,
+              "status": "completed",
+              "coverageEstimate": 100
+            },
+            {
+              "id": "prev",
+              "startedAt": "2026-06-20T00:00:00Z",
+              "completedAt": "2026-07-15T00:00:00Z",
+              "sourceType": "",
+              "scope": "sports",
+              "requestBudget": 0,
+              "requestsUsed": 0,
+              "queryIds": [
+                "q1",
+                "q2"
+              ],
+              "completedQueryIds": null,
+              "queriesPlanned": 0,
+              "queriesCompleted": 0,
+              "status": "completed",
+              "coverageEstimate": 100
+            }
+          ],
+          "Observations": [
+            {
+              "id": "laggard-c1",
+              "sessionId": "",
+              "productId": "laggard",
+              "queryId": "q1",
+              "catalogId": "sports",
+              "surfaceType": "search",
+              "position": 20,
+              "page": 0,
+              "observedAt": "2026-08-01T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "laggard-c2",
+              "sessionId": "",
+              "productId": "laggard",
+              "queryId": "q2",
+              "catalogId": "sports",
+              "surfaceType": "popular",
+              "position": 22,
+              "page": 0,
+              "observedAt": "2026-08-10T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "laggard-p1",
+              "sessionId": "",
+              "productId": "laggard",
+              "queryId": "q1",
+              "catalogId": "sports",
+              "surfaceType": "search",
+              "position": 5,
+              "page": 0,
+              "observedAt": "2026-07-01T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "laggard-p2",
+              "sessionId": "",
+              "productId": "laggard",
+              "queryId": "q2",
+              "catalogId": "sports",
+              "surfaceType": "search",
+              "position": 6,
+              "page": 0,
+              "observedAt": "2026-07-10T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "leader-c1",
+              "sessionId": "",
+              "productId": "leader",
+              "queryId": "q1",
+              "catalogId": "sports",
+              "surfaceType": "search",
+              "position": 5,
+              "page": 0,
+              "observedAt": "2026-08-01T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "leader-c2",
+              "sessionId": "",
+              "productId": "leader",
+              "queryId": "q2",
+              "catalogId": "sports",
+              "surfaceType": "popular",
+              "position": 4,
+              "page": 0,
+              "observedAt": "2026-08-10T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "leader-p1",
+              "sessionId": "",
+              "productId": "leader",
+              "queryId": "q1",
+              "catalogId": "sports",
+              "surfaceType": "search",
+              "position": 25,
+              "page": 0,
+              "observedAt": "2026-07-01T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "leader-p2",
+              "sessionId": "",
+              "productId": "leader",
+              "queryId": "q2",
+              "catalogId": "sports",
+              "surfaceType": "search",
+              "position": 20,
+              "page": 0,
+              "observedAt": "2026-07-10T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "middle-c1",
+              "sessionId": "",
+              "productId": "middle",
+              "queryId": "q1",
+              "catalogId": "sports",
+              "surfaceType": "search",
+              "position": 10,
+              "page": 0,
+              "observedAt": "2026-08-01T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "middle-c2",
+              "sessionId": "",
+              "productId": "middle",
+              "queryId": "q2",
+              "catalogId": "sports",
+              "surfaceType": "popular",
+              "position": 11,
+              "page": 0,
+              "observedAt": "2026-08-10T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "middle-p1",
+              "sessionId": "",
+              "productId": "middle",
+              "queryId": "q1",
+              "catalogId": "sports",
+              "surfaceType": "search",
+              "position": 10,
+              "page": 0,
+              "observedAt": "2026-07-01T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "middle-p2",
+              "sessionId": "",
+              "productId": "middle",
+              "queryId": "q2",
+              "catalogId": "sports",
+              "surfaceType": "search",
+              "position": 10,
+              "page": 0,
+              "observedAt": "2026-07-10T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            }
+          ],
+          "Segmentations": null
+        },
+        "Window": {
+          "days": 30,
+          "currentStart": "2026-07-16T00:00:00Z",
+          "currentEnd": "2026-08-15T00:00:00Z",
+          "previousStart": "2026-06-16T00:00:00Z",
+          "previousEnd": "2026-07-16T00:00:00Z"
+        },
+        "CatalogScopeID": "",
+        "MarketMapRunID": ""
+      },
+      "expected": [
+        {
+          "productId": "laggard",
+          "catalogId": "sports",
+          "currentObservationCount": 2,
+          "previousObservationCount": 2,
+          "queryAppearances": 2,
+          "applicableQueries": 2,
+          "surfaceAppearances": 2,
+          "medianPosition": 21,
+          "previousMedianPosition": 5.5,
+          "rankVelocity": -15.5,
+          "rankVelocityScore": 0,
+          "exposureScore": 51.4,
+          "freshnessScore": 25,
+          "crossQueryStrength": 100,
+          "relativeStrength": 0,
+          "opportunityScore": 34.3,
+          "direction": "strong_falling",
+          "comparableHistory": true,
+          "confidence": 83,
+          "coverage": 100,
+          "missing": null,
+          "modelVersion": "product-snapshot-v0.2",
+          "modelRefs": {
+            "confidence": "ranking-confidence-v0.1",
+            "direction": "direction-v0.1",
+            "product-exposure": "product-exposure-v0.1",
+            "product-opportunity": "product-opportunity-v0.1",
+            "relative-strength": "relative-strength-v0.1"
+          }
+        },
+        {
+          "productId": "leader",
+          "catalogId": "sports",
+          "currentObservationCount": 2,
+          "previousObservationCount": 2,
+          "queryAppearances": 2,
+          "applicableQueries": 2,
+          "surfaceAppearances": 2,
+          "medianPosition": 4.5,
+          "previousMedianPosition": 22.5,
+          "rankVelocity": 18,
+          "rankVelocityScore": 100,
+          "exposureScore": 83,
+          "freshnessScore": 25,
+          "crossQueryStrength": 100,
+          "relativeStrength": 100,
+          "opportunityScore": 82,
+          "direction": "strong_rising",
+          "comparableHistory": true,
+          "confidence": 83,
+          "coverage": 100,
+          "missing": null,
+          "modelVersion": "product-snapshot-v0.2",
+          "modelRefs": {
+            "confidence": "ranking-confidence-v0.1",
+            "direction": "direction-v0.1",
+            "product-exposure": "product-exposure-v0.1",
+            "product-opportunity": "product-opportunity-v0.1",
+            "relative-strength": "relative-strength-v0.1"
+          }
+        },
+        {
+          "productId": "middle",
+          "catalogId": "sports",
+          "currentObservationCount": 2,
+          "previousObservationCount": 2,
+          "queryAppearances": 2,
+          "applicableQueries": 2,
+          "surfaceAppearances": 2,
+          "medianPosition": 10.5,
+          "previousMedianPosition": 10,
+          "rankVelocity": -0.5,
+          "rankVelocityScore": 47.5,
+          "exposureScore": 68.3,
+          "freshnessScore": 25,
+          "crossQueryStrength": 100,
+          "relativeStrength": 50,
+          "opportunityScore": 58.3,
+          "direction": "neutral",
+          "comparableHistory": true,
+          "confidence": 83,
+          "coverage": 100,
+          "missing": null,
+          "modelVersion": "product-snapshot-v0.2",
+          "modelRefs": {
+            "confidence": "ranking-confidence-v0.1",
+            "direction": "direction-v0.1",
+            "product-exposure": "product-exposure-v0.1",
+            "product-opportunity": "product-opportunity-v0.1",
+            "relative-strength": "relative-strength-v0.1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "coverage_freshness_reliability_and_fallback",
+      "input": {
+        "Dataset": {
+          "Catalogs": [
+            {
+              "id": "high",
+              "platform": "Envato Elements",
+              "contentType": "Presentation",
+              "parentId": "presentation",
+              "name": "",
+              "canonicalKey": "",
+              "level": "catalog",
+              "firstSeenAt": "",
+              "lastSeenAt": ""
+            },
+            {
+              "id": "low",
+              "platform": "Envato Elements",
+              "contentType": "Presentation",
+              "parentId": "presentation",
+              "name": "",
+              "canonicalKey": "",
+              "level": "catalog",
+              "firstSeenAt": "",
+              "lastSeenAt": ""
+            },
+            {
+              "id": "mid",
+              "platform": "Envato Elements",
+              "contentType": "Presentation",
+              "parentId": "presentation",
+              "name": "",
+              "canonicalKey": "",
+              "level": "catalog",
+              "firstSeenAt": "",
+              "lastSeenAt": ""
+            },
+            {
+              "id": "presentation",
+              "platform": "Envato Elements",
+              "contentType": "Presentation",
+              "name": "",
+              "canonicalKey": "",
+              "level": "content_type",
+              "firstSeenAt": "",
+              "lastSeenAt": ""
+            }
+          ],
+          "Products": [
+            {
+              "id": "high-old",
+              "sourceType": "",
+              "externalItemId": "",
+              "canonicalCatalogId": "high",
+              "firstSeenAt": "2026-05-01T00:00:00Z",
+              "lastSeenAt": "",
+              "status": ""
+            },
+            {
+              "id": "low-current",
+              "sourceType": "",
+              "externalItemId": "",
+              "canonicalCatalogId": "low",
+              "firstSeenAt": "2026-08-01T00:00:00Z",
+              "lastSeenAt": "",
+              "status": ""
+            },
+            {
+              "id": "mid-previous",
+              "sourceType": "",
+              "externalItemId": "",
+              "canonicalCatalogId": "mid",
+              "firstSeenAt": "2026-07-01T00:00:00Z",
+              "lastSeenAt": "",
+              "status": ""
+            }
+          ],
+          "Authors": null,
+          "Queries": [
+            {
+              "id": "q-high",
+              "name": "",
+              "platform": "",
+              "sourceType": "",
+              "queryText": "",
+              "catalogScopeId": "high",
+              "purpose": "",
+              "createdAt": "",
+              "enabled": true
+            },
+            {
+              "id": "q-low",
+              "name": "",
+              "platform": "",
+              "sourceType": "",
+              "queryText": "",
+              "catalogScopeId": "low",
+              "purpose": "",
+              "createdAt": "",
+              "enabled": true
+            },
+            {
+              "id": "q-mid",
+              "name": "",
+              "platform": "",
+              "sourceType": "",
+              "queryText": "",
+              "catalogScopeId": "mid",
+              "purpose": "",
+              "createdAt": "",
+              "enabled": true
+            }
+          ],
+          "Sessions": [
+            {
+              "id": "high-now-a",
+              "startedAt": "2026-07-20T00:00:00Z",
+              "completedAt": "2026-08-10T00:00:00Z",
+              "sourceType": "",
+              "scope": "high",
+              "requestBudget": 0,
+              "requestsUsed": 0,
+              "queryIds": [
+                "q-high"
+              ],
+              "completedQueryIds": null,
+              "queriesPlanned": 0,
+              "queriesCompleted": 0,
+              "status": "completed",
+              "coverageEstimate": 80
+            },
+            {
+              "id": "high-now-b",
+              "startedAt": "2026-07-25T00:00:00Z",
+              "completedAt": "2026-08-12T00:00:00Z",
+              "sourceType": "",
+              "scope": "high",
+              "requestBudget": 0,
+              "requestsUsed": 0,
+              "queryIds": [
+                "q-high"
+              ],
+              "completedQueryIds": null,
+              "queriesPlanned": 0,
+              "queriesCompleted": 0,
+              "status": "completed",
+              "coverageEstimate": 100
+            },
+            {
+              "id": "low-now",
+              "startedAt": "2026-07-20T00:00:00Z",
+              "completedAt": "2026-08-10T00:00:00Z",
+              "sourceType": "",
+              "scope": "low",
+              "requestBudget": 0,
+              "requestsUsed": 0,
+              "queryIds": [
+                "q-low"
+              ],
+              "completedQueryIds": null,
+              "queriesPlanned": 0,
+              "queriesCompleted": 0,
+              "status": "completed",
+              "coverageEstimate": 20
+            },
+            {
+              "id": "mid-now",
+              "startedAt": "2026-07-20T00:00:00Z",
+              "completedAt": "2026-08-10T00:00:00Z",
+              "sourceType": "",
+              "scope": "mid",
+              "requestBudget": 0,
+              "requestsUsed": 0,
+              "queryIds": [
+                "q-mid"
+              ],
+              "completedQueryIds": null,
+              "queriesPlanned": 0,
+              "queriesCompleted": 0,
+              "status": "completed",
+              "coverageEstimate": 40
+            }
+          ],
+          "Observations": [
+            {
+              "id": "high-c1",
+              "sessionId": "",
+              "productId": "high-old",
+              "queryId": "q-high",
+              "catalogId": "high",
+              "surfaceType": "search",
+              "position": 8,
+              "page": 0,
+              "observedAt": "2026-08-01T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 1.2
+            },
+            {
+              "id": "high-c2",
+              "sessionId": "",
+              "productId": "high-old",
+              "queryId": "q-high",
+              "catalogId": "high",
+              "surfaceType": "popular",
+              "position": 6,
+              "page": 0,
+              "observedAt": "2026-08-05T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": -0.2
+            },
+            {
+              "id": "high-p1",
+              "sessionId": "",
+              "productId": "high-old",
+              "queryId": "q-high",
+              "catalogId": "high",
+              "surfaceType": "search",
+              "position": 20,
+              "page": 0,
+              "observedAt": "2026-07-01T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "high-p2",
+              "sessionId": "",
+              "productId": "high-old",
+              "queryId": "q-high",
+              "catalogId": "high",
+              "surfaceType": "search",
+              "position": 18,
+              "page": 0,
+              "observedAt": "2026-07-05T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "low-c1",
+              "sessionId": "",
+              "productId": "low-current",
+              "queryId": "q-low",
+              "catalogId": "low",
+              "surfaceType": "search",
+              "position": 3,
+              "page": 0,
+              "observedAt": "2026-08-03T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.8
+            },
+            {
+              "id": "low-invalid",
+              "sessionId": "",
+              "productId": "low-current",
+              "queryId": "q-low",
+              "catalogId": "low",
+              "surfaceType": "popular",
+              "position": 0,
+              "page": 0,
+              "observedAt": "2026-08-04T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 1
+            },
+            {
+              "id": "mid-c1",
+              "sessionId": "",
+              "productId": "mid-previous",
+              "queryId": "q-mid",
+              "catalogId": "mid",
+              "surfaceType": "search",
+              "position": 12,
+              "page": 0,
+              "observedAt": "2026-08-02T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            },
+            {
+              "id": "mid-p1",
+              "sessionId": "",
+              "productId": "mid-previous",
+              "queryId": "q-mid",
+              "catalogId": "mid",
+              "surfaceType": "search",
+              "position": 12,
+              "page": 0,
+              "observedAt": "2026-07-01T00:00:00Z",
+              "sourceType": "",
+              "observationReliability": 0.9
+            }
+          ],
+          "Segmentations": null
+        },
+        "Window": {
+          "days": 30,
+          "currentStart": "2026-07-16T00:00:00Z",
+          "currentEnd": "2026-08-15T00:00:00Z",
+          "previousStart": "2026-06-16T00:00:00Z",
+          "previousEnd": "2026-07-16T00:00:00Z"
+        },
+        "CatalogScopeID": "",
+        "MarketMapRunID": "c1-fixture-run"
+      },
+      "expected": [
+        {
+          "productId": "high-old",
+          "catalogId": "high",
+          "currentObservationCount": 2,
+          "previousObservationCount": 2,
+          "queryAppearances": 1,
+          "applicableQueries": 1,
+          "surfaceAppearances": 2,
+          "medianPosition": 7,
+          "previousMedianPosition": 19,
+          "rankVelocity": 12,
+          "rankVelocityScore": 100,
+          "exposureScore": 81.2,
+          "freshnessScore": 25,
+          "crossQueryStrength": 100,
+          "relativeStrength": 50,
+          "opportunityScore": 68.7,
+          "direction": "strong_rising",
+          "comparableHistory": true,
+          "confidence": 73.5,
+          "coverage": 90,
+          "missing": [
+            "segmentation_fallback"
+          ],
+          "modelVersion": "product-snapshot-v0.2",
+          "modelRefs": {
+            "confidence": "ranking-confidence-v0.1",
+            "direction": "direction-v0.1",
+            "product-exposure": "product-exposure-v0.1",
+            "product-opportunity": "product-opportunity-v0.1",
+            "relative-strength": "relative-strength-v0.1"
+          }
+        },
+        {
+          "productId": "low-current",
+          "catalogId": "low",
+          "currentObservationCount": 1,
+          "previousObservationCount": 0,
+          "queryAppearances": 1,
+          "applicableQueries": 1,
+          "surfaceAppearances": 1,
+          "medianPosition": 3,
+          "rankVelocity": 0,
+          "exposureScore": 89.9,
+          "freshnessScore": 100,
+          "crossQueryStrength": 100,
+          "relativeStrength": 50,
+          "opportunityScore": 81.6,
+          "direction": "neutral",
+          "comparableHistory": false,
+          "confidence": 50,
+          "coverage": 20,
+          "missing": [
+            "rank_velocity",
+            "segmentation_fallback"
+          ],
+          "modelVersion": "product-snapshot-v0.2",
+          "modelRefs": {
+            "confidence": "ranking-confidence-v0.1",
+            "direction": "direction-v0.1",
+            "product-exposure": "product-exposure-v0.1",
+            "product-opportunity": "product-opportunity-v0.1",
+            "relative-strength": "relative-strength-v0.1"
+          }
+        },
+        {
+          "productId": "mid-previous",
+          "catalogId": "mid",
+          "currentObservationCount": 1,
+          "previousObservationCount": 1,
+          "queryAppearances": 1,
+          "applicableQueries": 1,
+          "surfaceAppearances": 1,
+          "medianPosition": 12,
+          "previousMedianPosition": 12,
+          "rankVelocity": 0,
+          "rankVelocityScore": 50,
+          "exposureScore": 69.6,
+          "freshnessScore": 60,
+          "crossQueryStrength": 100,
+          "relativeStrength": 50,
+          "opportunityScore": 64.3,
+          "direction": "neutral",
+          "comparableHistory": true,
+          "confidence": 65,
+          "coverage": 40,
+          "missing": [
+            "segmentation_fallback"
+          ],
+          "modelVersion": "product-snapshot-v0.2",
+          "modelRefs": {
+            "confidence": "ranking-confidence-v0.1",
+            "direction": "direction-v0.1",
+            "product-exposure": "product-exposure-v0.1",
+            "product-opportunity": "product-opportunity-v0.1",
+            "relative-strength": "relative-strength-v0.1"
+          }
+        }
+      ]
+    }
+  ]
+}

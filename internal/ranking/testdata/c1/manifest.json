@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "msl-c1-ranking-golden/1",
+  "referenceSha": "cf4716afd94b45583a36aa43cc3b1e3333d45f33",
+  "modelVersions": [
+    "catalog-opportunity-v0.1",
+    "catalog-trend-v0.1",
+    "data-quality-v0.1",
+    "direction-stage-v0.1",
+    "direction-v0.1",
+    "equal-sector-market-index-v0.1",
+    "index-divergence-v0.1",
+    "product-exposure-v0.1",
+    "product-opportunity-v0.1",
+    "sampling-schema-v0.1",
+    "score-provenance-v0.1",
+    "taxonomy-segmentation-v0.1",
+    "volume-weighted-market-index-v0.1"
+  ],
+  "fixtureFiles": [
+    "internal/indexing/testdata/c1/structural_index_v01_cases.json",
+    "internal/ranking/testdata/c1/catalog_v01_cases.json",
+    "internal/ranking/testdata/c1/product_v01_cases.json"
+  ]
+}
