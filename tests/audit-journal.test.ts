@@ -24,12 +24,14 @@ describe('asynchronous bounded audit journal', () => {
     let release!: () => void;
     const blocked = new Promise<void>((resolve) => { release = resolve; });
     let writes = 0;
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
     const journal = new AuditJournal(root, {
-      appendLine: async () => { writes += 1; await blocked; },
+      appendLine: async () => { writes += 1; markStarted(); await blocked; },
     });
 
     expect(journal.enqueue({ category: 'http', event: 'request.completed', data: { status: 200 } })).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await started;
     expect(writes).toBe(1);
     expect(journal.status().written).toBe(0);
     const draining = journal.drain();
