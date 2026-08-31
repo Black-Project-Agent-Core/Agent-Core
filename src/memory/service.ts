@@ -25,6 +25,7 @@ import {
   type MemoryRemoteStateInput,
   type MemoryWriteDecisionInput,
 } from './cognition-ledger.js';
+import { MemoryDurabilityBoundary } from './durability-boundary.js';
 import { MemoryLifecycle } from './lifecycle.js';
 import { MemoryLinker } from './linker.js';
 import { MemoryRemoteCrypto } from './remote-crypto.js';
@@ -44,6 +45,8 @@ import {
 } from './store.js';
 import type {
   MemoryCommitRequest,
+  MemoryDurabilityBoundaryReason,
+  MemoryDurabilityBoundaryResult,
   MemoryCommitResult,
   MemoryPreflightRequest,
   MemoryPostflightApplyResult,
@@ -71,6 +74,7 @@ interface MemoryComponents {
   cognition: MemoryCognitionLedger;
   cognitionController: MemoryCognitionController;
   rememberMore: MemoryRememberMore;
+  durabilityBoundary: MemoryDurabilityBoundary;
   remoteSync?: MemoryRemoteSynchronizer;
   continuity: ContinuityStore;
   continuitySnapshot: ContinuitySnapshotBuilder;
@@ -365,6 +369,17 @@ export class MemoryService {
     if (!this.config.enabled) return null;
     const components = await this.requireComponents();
     return components.cognition.getRemoteState(scope);
+  }
+
+  async syncDurableBoundary(
+    scope: MemoryScope,
+    reason: MemoryDurabilityBoundaryReason,
+  ): Promise<MemoryDurabilityBoundaryResult> {
+    if (!this.config.remote.enabled) {
+      return { required: false, state: 'NOT_REQUIRED', reason };
+    }
+    const components = await this.requireComponents();
+    return components.durabilityBoundary.sync(scope, reason);
   }
 
   async syncRemoteGeneration(input: {
@@ -772,9 +787,10 @@ export class MemoryService {
     const remoteSync = this.remoteTransport
       ? new MemoryRemoteSynchronizer(this.remoteTransport, cognition, { maxRetryAttempts: this.config.remote.maxRetryAttempts })
       : undefined;
+    const durabilityBoundary = new MemoryDurabilityBoundary(client, cognition, remoteSync, this.config.remote);
     const continuity = new ContinuityStore(client);
     const continuitySnapshot = new ContinuitySnapshotBuilder(client);
-    const components = { client, store, retriever, lifecycle, linker, preflight, cognition, cognitionController, rememberMore, remoteSync, continuity, continuitySnapshot };
+    const components = { client, store, retriever, lifecycle, linker, preflight, cognition, cognitionController, rememberMore, durabilityBoundary, remoteSync, continuity, continuitySnapshot };
     try {
       const opened = await store.open({ dbPath: this.config.dbPath, busyTimeoutMs: this.config.busyTimeoutMs });
       this.lastIntegrityCheckAt = opened.integrityCheckedAt;

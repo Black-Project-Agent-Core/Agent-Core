@@ -101,6 +101,14 @@ export const MEMORY_HYDRATION_STATES = [
   'REMOTE_REPLAY_FAILED',
 ] as const;
 
+export const MEMORY_DURABILITY_BOUNDARY_REASONS = [
+  'continuity_checkpoint',
+  'continuity_terminal',
+  'execution_failure',
+  'execution_artifact',
+  'execution_process_checkpoint',
+] as const;
+
 export const MEMORY_REMEMBER_MORE_REASONS = [
   'causal_history',
   'revision_history',
@@ -146,6 +154,7 @@ export type MemoryEdgeEventType = (typeof MEMORY_EDGE_EVENT_TYPES)[number];
 export type MemoryWriteReasonCode = (typeof MEMORY_WRITE_REASON_CODES)[number];
 export type MemoryRemoteDurabilityState = (typeof MEMORY_REMOTE_DURABILITY_STATES)[number];
 export type MemoryHydrationState = (typeof MEMORY_HYDRATION_STATES)[number];
+export type MemoryDurabilityBoundaryReason = (typeof MEMORY_DURABILITY_BOUNDARY_REASONS)[number];
 export type MemoryRememberMoreReason = (typeof MEMORY_REMEMBER_MORE_REASONS)[number];
 export type MemoryEnforcement = (typeof MEMORY_ENFORCEMENTS)[number];
 
@@ -284,6 +293,21 @@ export interface MemoryRemoteStateRecord {
   lastErrorCode?: string;
   updatedAt: number;
 }
+
+export type MemoryDurabilityBoundaryResult =
+  | {
+      required: false;
+      state: 'NOT_REQUIRED';
+      reason: MemoryDurabilityBoundaryReason;
+    }
+  | {
+      required: true;
+      state: 'REMOTE_SYNCED';
+      reason: MemoryDurabilityBoundaryReason;
+      generationId: string;
+      remoteHead: string;
+      logicalStateHash: string;
+    };
 
 export interface MemoryPostflightRelationProposal {
   targetMemoryId: MemoryId;
