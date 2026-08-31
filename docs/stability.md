@@ -181,6 +181,24 @@ Raw-log retention is explicit and backup-gated. Planning is dry-run only and pro
 
 The detailed operator procedure is maintained in `docs/deterministic-execution-fabric.md`.
 
+The pre-integration Wave C gate on 2026-08-31 produced:
+
+```text
+focused Wave C acceptance          17 files / 113 tests PASS
+full regression                    118 files / 572 tests PASS
+intentional skips                  38 tests
+npm run verify:release             PASS
+live temporary lifecycle canary    PASS
+orphan descendant after cancel     0
+output quota canary                4096 / 4096 bytes then failed as required
+backup/restore lifecycle           PASS
+retention dry-run/action parity    4 / 4 deleted; 0 skipped
+package/dependency changes         none
+external AI model/API dependency  0
+```
+
+Post-integration public-runtime/source equality remains a separate final gate before Wave C is declared certified complete.
+
 ## Last core certification
 
 The final continuity/execution core certification was completed on 2026-08-26 after the execution WAL durability fix and staged default-enabled rollout.

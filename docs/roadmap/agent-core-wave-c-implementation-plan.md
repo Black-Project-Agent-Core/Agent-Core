@@ -1,6 +1,6 @@
 # Agent Core Wave C — Execution & Recovery Hardening Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Strengthen Agent Core's local execution containment and durability with a structured policy engine, process-tree governance, factual resource limits/fallbacks, verified execution recovery bundles, stopped-runtime restore, and backup-gated raw-log retention.
 
@@ -38,13 +38,13 @@
 - Keeps compatibility export `assertCommandAllowed(command)` from `process-manager.ts`.
 - Decision contains no raw command text: only `code`, `allowed`, `riskClass`, `executable`, `interpreterClass`, and sorted `characteristics`.
 
-- [ ] **Step 1: Write failing policy tests** for blocked direct commands, blocked nested `cmd /c`/PowerShell commands, allowed bounded commands, open-world/network classification, and deterministic replay equality.
-- [ ] **Step 2: Run focused tests and record RED.**
-- [ ] **Step 3: Implement `command-policy.ts`** with the current blocklist unchanged and deterministic classification.
-- [ ] **Step 4: Delegate `assertCommandAllowed()` to the policy engine** so existing operational callers keep the same public function.
-- [ ] **Step 5: Make DAG validation preserve the existing `EXECUTION_COMMAND_BLOCKED` public error while carrying the policy reason code in error details.**
-- [ ] **Step 6: Run focused tests and record GREEN.**
-- [ ] **Step 7: Commit** `feat: add structured execution policy engine`.
+- [x] **Step 1: Write failing policy tests** for blocked direct commands, blocked nested `cmd /c`/PowerShell commands, allowed bounded commands, open-world/network classification, and deterministic replay equality.
+- [x] **Step 2: Run focused tests and record RED.**
+- [x] **Step 3: Implement `command-policy.ts`** with the current blocklist unchanged and deterministic classification.
+- [x] **Step 4: Delegate `assertCommandAllowed()` to the policy engine** so existing operational callers keep the same public function.
+- [x] **Step 5: Make DAG validation preserve the existing `EXECUTION_COMMAND_BLOCKED` public error while carrying the policy reason code in error details.**
+- [x] **Step 6: Run focused tests and record GREEN.**
+- [x] **Step 7: Commit** `feat: add structured execution policy engine`.
 
 ### Task C2: Shared process-tree governance and factual resource caps
 
@@ -67,13 +67,13 @@
 - `ExecutionConfig.maxOutputBytes` is configured by `AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES`, default 64 MiB, hard maximum 1 GiB.
 - Runner result markers may include bounded `governance` metadata; old markers remain readable.
 
-- [ ] **Step 1: Write failing tests** proving descendant termination on POSIX, deterministic capability reporting, config parsing, and runner output-limit failure.
-- [ ] **Step 2: Run focused tests and record RED.**
-- [ ] **Step 3: Implement shared spawn/terminate adapter** and replace duplicated process spawn/tree termination code.
-- [ ] **Step 4: Add output-byte quota to the execution runner.** Persist at most the configured total stdout+stderr bytes, terminate the process tree on first overrun, and mark the attempt `failed` with `EXECUTION_OUTPUT_LIMIT_EXCEEDED` evidence.
-- [ ] **Step 5: Add bounded governance metadata** to the result marker without changing execution schema version.
-- [ ] **Step 6: Run focused tests plus cancellation regression and record GREEN.**
-- [ ] **Step 7: Commit** `feat: enforce execution process governance`.
+- [x] **Step 1: Write failing tests** proving descendant termination on POSIX, deterministic capability reporting, config parsing, and runner output-limit failure.
+- [x] **Step 2: Run focused tests and record RED.**
+- [x] **Step 3: Implement shared spawn/terminate adapter** and replace duplicated process spawn/tree termination code.
+- [x] **Step 4: Add output-byte quota to the execution runner.** Persist at most the configured total stdout+stderr bytes, terminate the process tree on first overrun, and mark the attempt `failed` with `EXECUTION_OUTPUT_LIMIT_EXCEEDED` evidence.
+- [x] **Step 5: Add bounded governance metadata** to the result marker without changing execution schema version.
+- [x] **Step 6: Run focused tests plus cancellation regression and record GREEN.**
+- [x] **Step 7: Commit** `feat: enforce execution process governance`.
 
 ### Task C3: Execution runtime lease for safe restore boundary
 
@@ -90,12 +90,12 @@
 - `assertExecutionRuntimeStopped(dbPath)` is the restore gate.
 - Release removes only a lease whose token still matches the owner.
 
-- [ ] **Step 1: Write failing tests** for live-owner rejection, stale reclaim, foreign-token-safe release, and service lifecycle cleanup.
-- [ ] **Step 2: Run focused tests and record RED.**
-- [ ] **Step 3: Implement the lease** with exclusive file creation and bounded stale recovery.
-- [ ] **Step 4: Acquire before `ExecutionStore.open()` and release on open failure/close.**
-- [ ] **Step 5: Run focused lifecycle/recovery tests and record GREEN.**
-- [ ] **Step 6: Commit** `feat: guard execution runtime ownership`.
+- [x] **Step 1: Write failing tests** for live-owner rejection, stale reclaim, foreign-token-safe release, and service lifecycle cleanup.
+- [x] **Step 2: Run focused tests and record RED.**
+- [x] **Step 3: Implement the lease** with exclusive file creation and bounded stale recovery.
+- [x] **Step 4: Acquire before `ExecutionStore.open()` and release on open failure/close.**
+- [x] **Step 5: Run focused lifecycle/recovery tests and record GREEN.**
+- [x] **Step 6: Commit** `feat: guard execution runtime ownership`.
 
 ### Task C4: Verified Execution Recovery Bundle and stopped restore
 
@@ -111,13 +111,13 @@
 - `restoreExecutionRecoveryBundle(options)` requires `assertExecutionRuntimeStopped(dbPath)`, verifies the source bundle before mutation, creates a pre-restore rollback bundle, stages DB/evidence, swaps them, removes stale WAL/SHM, and rolls back the live files if replacement fails.
 - Bundle manifest includes format/version, source Agent Core version, execution schema version, createdAt/reason, DB integrity/hash/size, and complete evidence file manifest.
 
-- [ ] **Step 1: Write failing tests** for consistent bundle creation, corrupt hash rejection, corrupt SQLite rejection, active-runtime restore rejection, successful restore, and pre-restore rollback evidence.
-- [ ] **Step 2: Run focused tests and record RED.**
-- [ ] **Step 3: Implement bundle creation/verification.**
-- [ ] **Step 4: Implement stopped-runtime restore with staging + rollback.**
-- [ ] **Step 5: Reopen an `ExecutionService` after restore and prove missing evidence never becomes success.**
-- [ ] **Step 6: Run focused tests and record GREEN.**
-- [ ] **Step 7: Commit** `feat: add execution recovery bundles`.
+- [x] **Step 1: Write failing tests** for consistent bundle creation, corrupt hash rejection, corrupt SQLite rejection, active-runtime restore rejection, successful restore, and pre-restore rollback evidence.
+- [x] **Step 2: Run focused tests and record RED.**
+- [x] **Step 3: Implement bundle creation/verification.**
+- [x] **Step 4: Implement stopped-runtime restore with staging + rollback.**
+- [x] **Step 5: Reopen an `ExecutionService` after restore and prove missing evidence never becomes success.**
+- [x] **Step 6: Run focused tests and record GREEN.**
+- [x] **Step 7: Commit** `feat: add execution recovery bundles`.
 
 ### Task C5: Backup-gated raw-log retention with dry-run/action parity
 
@@ -133,12 +133,12 @@
 - `applyExecutionRetention(plan, verifiedBundle)` requires a verified recovery bundle created no earlier than the plan, revalidates every candidate unchanged, deletes exactly the candidate list (no re-query expansion), and appends one JSONL audit record per decision/action.
 - Changed/missing candidates are skipped with explicit reason codes, never replaced by newly discovered files.
 
-- [ ] **Step 1: Write failing tests** for terminal-only selection, result-marker preservation, active/missing-marker exclusion, backup prerequisite, exact dry-run/action parity, changed-file skip, and audit records.
-- [ ] **Step 2: Run focused tests and record RED.**
-- [ ] **Step 3: Implement deterministic planner.**
-- [ ] **Step 4: Implement verified-bundle-gated apply path and audit journal.**
-- [ ] **Step 5: Run focused tests and record GREEN.**
-- [ ] **Step 6: Commit** `feat: add safe execution log retention`.
+- [x] **Step 1: Write failing tests** for terminal-only selection, result-marker preservation, active/missing-marker exclusion, backup prerequisite, exact dry-run/action parity, changed-file skip, and audit records.
+- [x] **Step 2: Run focused tests and record RED.**
+- [x] **Step 3: Implement deterministic planner.**
+- [x] **Step 4: Implement verified-bundle-gated apply path and audit journal.**
+- [x] **Step 5: Run focused tests and record GREEN.**
+- [x] **Step 6: Commit** `feat: add safe execution log retention`.
 
 ### Task C6: Operator CLI and documentation
 
@@ -158,12 +158,12 @@
 - Restore remains stopped-runtime only; retention apply remains backup-gated.
 - No MCP destructive restore/purge tool is added.
 
-- [ ] **Step 1: Write failing CLI tests** for backup, stopped restore gate, dry-run plan, and apply argument validation.
-- [ ] **Step 2: Run focused tests and record RED.**
-- [ ] **Step 3: Wire CLI commands to the Wave C services** while preserving all existing CLI commands.
-- [ ] **Step 4: Update execution/stability/roadmap docs** with exact operator contract and factual resource capability matrix.
-- [ ] **Step 5: Run CLI/docs regression and record GREEN.**
-- [ ] **Step 6: Commit** `docs: document wave c execution recovery contract`.
+- [x] **Step 1: Write failing CLI tests** for backup, stopped restore gate, dry-run plan, and apply argument validation.
+- [x] **Step 2: Run focused tests and record RED.**
+- [x] **Step 3: Wire CLI commands to the Wave C services** while preserving all existing CLI commands.
+- [x] **Step 4: Update execution/stability/roadmap docs** with exact operator contract and factual resource capability matrix.
+- [x] **Step 5: Run CLI/docs regression and record GREEN.**
+- [x] **Step 6: Commit** `docs: document wave c execution recovery contract`.
 
 ### Task C7: Adversarial acceptance, full certification, live canary, integration
 
@@ -172,12 +172,12 @@
 - Modify: `docs/roadmap/agent-core-balanced-evolution.md`
 - Modify: `docs/stability.md`
 
-- [ ] **Step 1: Run focused Wave C acceptance** covering policy, governance, runner, cancellation, runtime lease, backup/restore, retention, CLI, and existing execution recovery tests.
-- [ ] **Step 2: Run `npm run build` and `git diff --check`.**
-- [ ] **Step 3: Run `npm run verify` and `npm run verify:release`.**
-- [ ] **Step 4: Live temporary-instance canary**: run a child+grandchild and prove cancel leaves no descendants; run output-limit overrun and prove bounded logs + failed marker; create recovery bundle; plan/apply raw-log retention; restore bundle while stopped; reopen and verify integrity/evidence truth.
-- [ ] **Step 5: Compatibility canary** against existing Codespace/MCP behavior; Wave A/B gates must remain green.
-- [ ] **Step 6: Record exact counts/evidence and commit** `docs: certify wave c execution recovery hardening`.
+- [x] **Step 1: Run focused Wave C acceptance** covering policy, governance, runner, cancellation, runtime lease, backup/restore, retention, CLI, and existing execution recovery tests.
+- [x] **Step 2: Run `npm run build` and `git diff --check`.**
+- [x] **Step 3: Run `npm run verify` and `npm run verify:release`.**
+- [x] **Step 4: Live temporary-instance canary**: run a child+grandchild and prove cancel leaves no descendants; run output-limit overrun and prove bounded logs + failed marker; create recovery bundle; plan/apply raw-log retention; restore bundle while stopped; reopen and verify integrity/evidence truth.
+- [x] **Step 5: Compatibility canary** against existing Codespace/MCP behavior; Wave A/B gates must remain green.
+- [x] **Step 6: Record exact counts/evidence and commit** `docs: certify wave c execution recovery hardening`.
 - [ ] **Step 7: Fast-forward `main`, re-run merged-state verification if topology changed, push, fetch/read remote HEAD, and require exact equality.**
 - [ ] **Step 8: Restart real Agent Core only if the live runtime source commit must change; verify health, public MCP legacy+modern compatibility, and sourceCommit equality.**
 
@@ -199,3 +199,62 @@ external AI model/API dependency added     = 0
 Wave A/B compatibility                     PASS
 full regression                            PASS
 ```
+
+## Pre-Integration Certification Evidence — 2026-08-31
+
+Wave C was implemented and certified locally in isolated branch `wave-c/execution-recovery` on top of `2eb23cc` before any main-branch mutation.
+
+```text
+focused Wave C acceptance             17 files / 113 tests PASS
+TypeScript build                      PASS
+git diff --check                      PASS
+npm run verify:release                PASS
+full repository regression            118 files / 572 tests PASS
+intentional platform/perf skips       38 tests
+release consistency                   ok=true / version 0.5.4
+document links                        33 markdown / 16 relative links PASS
+package/dependency diff               NONE
+external AI model/API dependency      0
+```
+
+Adversarial/live temporary execution canary:
+
+```text
+managed grandchild alive before cancel      true
+managed grandchild alive after cancel       false
+cancelled tree run state                    cancelled
+configured output limit                     4096 bytes
+persisted flood output                      4096 bytes
+output-overrun run state                    failed
+output-overrun code                         EXECUTION_OUTPUT_LIMIT_EXCEEDED
+hard wall-clock cap                         true
+hard output-byte cap                        true
+hard CPU-time cap                           false / explicitly unsupported
+hard memory cap                             false / explicitly unsupported
+retention dry-run candidates                4
+retention apply deleted                     4
+retention apply skipped                     0
+raw result markers preserved                true
+recovery bundle evidence files              6
+recovery bundle SQLite integrity            ok
+restore rollback snapshot created           true
+restored service reopened healthy           true
+restored SQLite integrity                   ok
+```
+
+Focused recovery tests additionally forced a failure after database replacement and proved automatic restoration of the pre-restore DB/evidence snapshot. Recovery tests proved a persisted running attempt with no valid terminal result marker becomes `interrupted`, never success.
+
+Pre-integration real public-runtime compatibility baseline (still source `2eb23cc`):
+
+```text
+GET /health                         200
+GET /health/metrics remote          403
+POST /mcp without token             401
+POST /mcp with evil Origin          403
+legacy MCP                          2025-11-25 / 55 tools PASS
+modern MCP                          2026-07-28 / 55 tools PASS
+representative modern status        PASS
+temporary public canary key         revoked PASS
+```
+
+Final merged-main/sourceCommit/public-runtime evidence is intentionally not claimed here; it belongs to the post-integration gate.

@@ -898,6 +898,19 @@ raw result markers deleted by retention    = 0
 external AI model/API dependency           = 0
 ```
 
+Pre-integration evidence:
+
+```text
+focused Wave C acceptance                 17 files / 113 tests PASS
+full repository regression                118 files / 572 tests PASS; 38 intentional skips
+live process-tree cancel                  orphan descendant = 0
+live output quota                         4096-byte limit enforced exactly
+live backup/retention/restore lifecycle   PASS
+restore rollback injection                PASS
+package/dependency diff                   none
+external AI model/API dependency          0
+```
+
 Final certification/integration evidence is recorded by the Wave C implementation plan after merged-main and public-runtime verification.
 
 ---
