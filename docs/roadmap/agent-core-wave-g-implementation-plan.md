@@ -36,7 +36,7 @@
 - [x] **Step 2: Create isolated worktree `.worktrees/wave-g-core-recertification` on branch `wave-g/core-recertification` from current `origin/main`.**
 - [x] **Step 3: Run `npm ci` and fresh `npm run verify:release`.** Required baseline: zero failures.
 - [x] **Step 4: Run current `npm run verify:stable-parity`.** Required baseline: published stable `v0.5.4` with all required assets.
-- [ ] **Step 5: Run `git diff --check`, brand scan, doc-link checker; commit design/plan and push/read back branch equality.**
+- [x] **Step 5: Run `git diff --check`, brand scan, doc-link checker; commit design/plan and push/read back branch equality.**
 
 ### Task G1: Deterministic core-certification contract
 
@@ -49,11 +49,11 @@
 - Produces `CORE_CERTIFICATION_SCHEMA`, `CORE_CERTIFICATION_MATRIX`, `REQUIRED_PACKAGE_SCRIPTS`, dependency/source policy constants, and a CLI contract report.
 - Consumes the exact 18 IDs/evidence paths from the Wave G design.
 
-- [ ] **Step 1: Write failing tests** that require exactly 18 unique matrix IDs, exact roadmap labels, tracked evidence paths, the no-external-model policy scopes, safe bounded checker JSON, and no secret values.
-- [ ] **Step 2: Run `npx vitest run tests/core-certification-contract.test.ts` and require RED because the contract/checker do not exist.**
-- [ ] **Step 3: Implement the data-only contract and deterministic checker.** The checker must run `git diff --check`, validate evidence paths/scripts, scan root + Codespace plugin dependency names, scan tracked core source/scripts for forbidden external model endpoint/API-key markers, and emit zero violations on the current repository.
-- [ ] **Step 4: Re-run the focused test and checker; require GREEN and `matrixCount=18`, `dependencyViolations=0`, `sourceMarkerViolations=0`.**
-- [ ] **Step 5: Run build, brand, doc-link, and dependency diff against Wave G base; require no dependency-list change.**
+- [x] **Step 1: Write failing tests** that require exactly 18 unique matrix IDs, exact roadmap labels, tracked evidence paths, the no-external-model policy scopes, safe bounded checker JSON, and no secret values.
+- [x] **Step 2: Run `npx vitest run tests/core-certification-contract.test.ts` and require RED because the contract/checker do not exist.**
+- [x] **Step 3: Implement the data-only contract and deterministic checker.** The checker must run `git diff --check`, validate evidence paths/scripts, scan root + Codespace plugin dependency names, scan tracked core source/scripts for forbidden external model endpoint/API-key markers, and emit zero violations on the current repository.
+- [x] **Step 4: Re-run the focused test and checker; require GREEN and `matrixCount=18`, `dependencyViolations=0`, `sourceMarkerViolations=0`.**
+- [x] **Step 5: Run build, brand, doc-link, and dependency diff against Wave G base; require no dependency-list change.**
 - [ ] **Step 6: Commit `test: define core certification contract`, push branch, fetch, and require local/remote SHA equality.**
 
 ### Task G2: Canonical `certify:core` orchestrator
