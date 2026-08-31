@@ -34,7 +34,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
   const oauthStore = new FileOAuthStore(config.dataDir);
   const httpSecurity = new HttpSecurityPolicy(config.httpSecurity);
   const oauthService = new OAuthService(keyStore, oauthStore, httpSecurity);
-  const auditLogger = new FileAuditLogger(config.logDir);
+  const auditLogger = new FileAuditLogger(config.logDir, config.observability.audit);
   const runtime = createRuntimeServices(
     config.allowedRoots,
     config.capabilityDir,

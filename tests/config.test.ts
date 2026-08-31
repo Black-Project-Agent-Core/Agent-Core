@@ -19,6 +19,14 @@ describe('loadConfig', () => {
       allowedOrigins: [],
     });
     expect(config.mcp).toEqual({ protocolMode: 'dual' });
+    expect(config.observability).toEqual({
+      audit: {
+        queueCapacity: 4096,
+        maxFileBytes: 16 * 1024 * 1024,
+        maxRotatedFiles: 16,
+        retentionMs: 30 * 24 * 60 * 60 * 1000,
+      },
+    });
     expect(config.execution).toEqual({
       enabled: true,
       dbPath: path.join(baseDir, 'runtime', 'execution', 'agent-core-execution.sqlite'),
@@ -52,6 +60,10 @@ describe('loadConfig', () => {
       AGENT_CORE_TRUST_PROXY: 'true',
       AGENT_CORE_MCP_ALLOWED_ORIGINS: 'https://app.example.test;LOCALHOST;https://app.example.test:8443',
       AGENT_CORE_MCP_PROTOCOL_MODE: 'legacy',
+      AGENT_CORE_AUDIT_QUEUE_CAPACITY: '2048',
+      AGENT_CORE_AUDIT_MAX_FILE_BYTES: '1048576',
+      AGENT_CORE_AUDIT_MAX_ROTATED_FILES: '8',
+      AGENT_CORE_AUDIT_RETENTION_MS: '1234567',
       AGENT_CORE_EXECUTION_ENABLED: 'true',
       AGENT_CORE_EXECUTION_DB_PATH: 'F:\\Exec\\execution.sqlite',
       AGENT_CORE_EXECUTION_LOG_ROOT: 'F:\\Exec\\runs',
@@ -84,6 +96,14 @@ describe('loadConfig', () => {
       allowedOrigins: ['app.example.test', 'localhost'],
     });
     expect(config.mcp).toEqual({ protocolMode: 'legacy' });
+    expect(config.observability).toEqual({
+      audit: {
+        queueCapacity: 2048,
+        maxFileBytes: 1_048_576,
+        maxRotatedFiles: 8,
+        retentionMs: 1_234_567,
+      },
+    });
     expect(config.execution).toEqual({
       enabled: true,
       dbPath: path.resolve('F:\\Exec\\execution.sqlite'),

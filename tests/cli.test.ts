@@ -188,3 +188,24 @@ describe('Agent Core execution recovery CLI', () => {
     expect(harness.stderr.at(-1)).toContain('Usage:');
   });
 });
+
+describe('Agent Core audit verification CLI', () => {
+  it('verifies a local audit chain read-only and reports tamper failure nonzero', async () => {
+    const harness = await cliHarness();
+    const { AuditJournal } = await import('../src/observability/audit-journal.js');
+    const journal = new AuditJournal(path.join(harness.root, 'logs'));
+    journal.enqueue({ category: 'fixture', event: 'cli-verify', data: { ok: true } });
+    await journal.drain();
+
+    harness.stdout.length = 0;
+    expect(await harness.execute(['audit-verify', journal.auditRoot])).toBe(0);
+    expect(JSON.parse(harness.stdout.at(-1)!)).toMatchObject({ ok: true, records: 1 });
+
+    const { readFile, writeFile } = await import('node:fs/promises');
+    const text = await readFile(journal.filePath, 'utf8');
+    await writeFile(journal.filePath, text.replace('"ok":true', '"ok":false'), 'utf8');
+    harness.stdout.length = 0;
+    expect(await harness.execute(['audit-verify', journal.auditRoot])).toBe(1);
+    expect(JSON.parse(harness.stdout.at(-1)!)).toMatchObject({ ok: false, code: 'AUDIT_RECORD_HASH_MISMATCH' });
+  });
+});

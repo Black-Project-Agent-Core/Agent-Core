@@ -6,6 +6,7 @@ import { createExecutionRecoveryBundle, restoreExecutionRecoveryBundle } from '.
 import { applyExecutionRetention, planExecutionRetention } from './execution/retention.js';
 import { SERVER_VERSION } from './mcp/server.js';
 import { FileOAuthStore } from './oauth/store.js';
+import { verifyAuditJournal } from './observability/audit-journal.js';
 
 export interface CliOptions {
   dataDir?: string;
@@ -25,6 +26,7 @@ const USAGE = [
   '  agent-core execution-restore <bundle-path>',
   '  agent-core execution-retention-plan [older-than-days]',
   '  agent-core execution-retention-apply <plan-path> <bundle-path>',
+  '  agent-core audit-verify [audit-root]',
 ].join('\n');
 
 export async function runCli(args: string[], options: CliOptions = {}): Promise<number> {
@@ -113,6 +115,12 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
         });
         stdout(JSON.stringify(result, null, 2));
         return 0;
+      }
+      case 'audit-verify': {
+        const auditRoot = value ? path.resolve(value) : path.join(config.logDir, 'audit');
+        const result = await verifyAuditJournal(auditRoot);
+        stdout(JSON.stringify(result, null, 2));
+        return result.ok ? 0 : 1;
       }
       case 'execution-retention-apply': {
         if (!value || !secondValue) return usageError(stderr);

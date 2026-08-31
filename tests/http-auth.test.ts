@@ -11,6 +11,13 @@ import { FileAuditLogger } from '../src/logging/audit-log.js';
 
 const tempDirs: string[] = [];
 const servers: Server[] = [];
+const auditLoggers: FileAuditLogger[] = [];
+
+function makeAuditLogger(root: string): FileAuditLogger {
+  const logger = new FileAuditLogger(path.join(root, 'logs'));
+  auditLoggers.push(logger);
+  return logger;
+}
 
 async function tempRoot(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'agent-core-http-'));
@@ -27,6 +34,7 @@ async function listen(server: Server): Promise<string> {
 
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
+  await Promise.all(auditLoggers.splice(0).map((logger) => logger.close()));
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -35,7 +43,7 @@ describe('HTTP authentication', () => {
     const root = await tempRoot();
     const handler = createHttpHandler({
       keyStore: new FileKeyStore(path.join(root, 'data')),
-      auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+      auditLogger: makeAuditLogger(root),
       mcpHandler: async () => { throw new Error('MCP hook must not run'); },
     });
     const baseUrl = await listen(createServer(handler));
@@ -53,7 +61,7 @@ describe('HTTP authentication', () => {
     const root = await tempRoot();
     const handler = createHttpHandler({
       keyStore: new FileKeyStore(path.join(root, 'data')),
-      auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+      auditLogger: makeAuditLogger(root),
       mcpHandler: async () => { throw new Error('MCP hook must not run'); },
     });
     const baseUrl = await listen(createServer(handler));
@@ -66,7 +74,7 @@ describe('HTTP authentication', () => {
   it('passes a verified key to the MCP hook and never logs the raw token', async () => {
     const root = await tempRoot();
     const keyStore = new FileKeyStore(path.join(root, 'data'));
-    const auditLogger = new FileAuditLogger(path.join(root, 'logs'));
+    const auditLogger = makeAuditLogger(root);
     const created = await keyStore.create('chatgpt');
     let receivedKeyId: string | null = null;
 
@@ -100,7 +108,7 @@ describe('HTTP authentication', () => {
     let dispatched = false;
     const handler = createHttpHandler({
       keyStore: new FileKeyStore(path.join(root, 'data')),
-      auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+      auditLogger: makeAuditLogger(root),
       security: new HttpSecurityPolicy({
         publicBaseUrl: 'https://agent-core.example.test',
         trustProxy: false,
@@ -123,7 +131,7 @@ describe('HTTP authentication', () => {
     const root = await tempRoot();
     const handler = createHttpHandler({
       keyStore: new FileKeyStore(path.join(root, 'data')),
-      auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+      auditLogger: makeAuditLogger(root),
       security: new HttpSecurityPolicy({
         publicBaseUrl: null,
         trustProxy: false,

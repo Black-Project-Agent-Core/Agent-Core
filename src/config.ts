@@ -41,6 +41,17 @@ export interface ExecutionConfig {
   busyTimeoutMs: number;
 }
 
+export interface AuditObservabilityConfig {
+  queueCapacity: number;
+  maxFileBytes: number;
+  maxRotatedFiles: number;
+  retentionMs: number;
+}
+
+export interface ObservabilityConfig {
+  audit: AuditObservabilityConfig;
+}
+
 export interface GitHubConfig {
   enabled: boolean;
   apiBaseUrl: string;
@@ -72,6 +83,7 @@ export interface AppConfig {
   allowedRoots: string[];
   httpSecurity: HttpSecurityConfig;
   mcp: McpConfig;
+  observability: ObservabilityConfig;
   memory: MemoryConfig;
   execution: ExecutionConfig;
   github: GitHubConfig;
@@ -227,6 +239,15 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     protocolMode: parseMcpProtocolMode(env.AGENT_CORE_MCP_PROTOCOL_MODE),
   };
 
+  const observability: ObservabilityConfig = {
+    audit: {
+      queueCapacity: parseBoundedPositiveInteger(env.AGENT_CORE_AUDIT_QUEUE_CAPACITY, 4096, 'AGENT_CORE_AUDIT_QUEUE_CAPACITY', 65_536),
+      maxFileBytes: parseBoundedPositiveInteger(env.AGENT_CORE_AUDIT_MAX_FILE_BYTES, 16 * 1024 * 1024, 'AGENT_CORE_AUDIT_MAX_FILE_BYTES', 1024 * 1024 * 1024),
+      maxRotatedFiles: parseBoundedPositiveInteger(env.AGENT_CORE_AUDIT_MAX_ROTATED_FILES, 16, 'AGENT_CORE_AUDIT_MAX_ROTATED_FILES', 1024),
+      retentionMs: parsePositiveInteger(env.AGENT_CORE_AUDIT_RETENTION_MS, 30 * 24 * 60 * 60 * 1000, 'AGENT_CORE_AUDIT_RETENTION_MS'),
+    },
+  };
+
   const execution: ExecutionConfig = {
     // Production default is enabled after the staged Task 22 live canary; operators can still disable it explicitly.
     enabled: parseBoolean(env.AGENT_CORE_EXECUTION_ENABLED, true),
@@ -258,6 +279,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     allowedRoots: parseRoots(env.AGENT_CORE_ALLOWED_ROOTS, baseDir),
     httpSecurity,
     mcp,
+    observability,
     memory,
     execution,
     github,
