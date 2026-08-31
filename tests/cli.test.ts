@@ -1,8 +1,12 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
+import { loadConfig } from '../src/config.js';
+import { ExecutionService } from '../src/execution/service.js';
+import { WorkspacePolicy } from '../src/runtime/workspace.js';
+import { printCommand } from './helpers/platform-command.js';
 import { runCli } from '../src/cli.js';
 
 const roots: string[] = [];
@@ -11,14 +15,16 @@ async function cliHarness() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-cli-'));
   roots.push(root);
   const dataDir = path.join(root, 'data');
+  const config = loadConfig({}, root);
   const stdout: string[] = [];
   const stderr: string[] = [];
   const execute = (args: string[]) => runCli(args, {
     dataDir,
+    config,
     stdout: (line) => stdout.push(line),
     stderr: (line) => stderr.push(line),
   });
-  return { dataDir, stdout, stderr, execute };
+  return { root, dataDir, config, stdout, stderr, execute };
 }
 
 afterEach(async () => {
@@ -115,5 +121,70 @@ describe('Agent Core OAuth reset CLI', () => {
     expect(await activeStore.getClient(legacyClient.client_id)).not.toBeNull();
     expect(await activeStore.verifyAccessToken(tokens.accessToken)).toBeNull();
     expect((await keyStore.verify(key.key))?.id).toBe(key.metadata.id);
+  });
+});
+
+
+describe('Agent Core execution recovery CLI', () => {
+  async function seedExecution(harness: Awaited<ReturnType<typeof cliHarness>>) {
+    const work = path.join(harness.root, 'work');
+    await mkdir(work, { recursive: true });
+    const service = new ExecutionService(harness.config.execution, new WorkspacePolicy([harness.root]));
+    const scope = { principalId: 'principal-cli-execution', projectId: harness.root };
+    await service.open();
+    const run = await service.create(scope, {
+      objective: 'cli recovery fixture',
+      nodes: [{ id: 'A', purpose: 'cli', command: printCommand('cli-output\n'), cwd: work }],
+    });
+    await service.start(scope, run.runId);
+    const deadline = Date.now() + 5_000;
+    let status = await service.status(scope, run.runId);
+    while (status?.state === 'running' && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      status = await service.status(scope, run.runId);
+    }
+    expect(status?.state).toBe('completed');
+    await service.close();
+    return { work, scope, runId: run.runId };
+  }
+
+  it('creates a verified execution recovery bundle from the stopped runtime', async () => {
+    const harness = await cliHarness();
+    await seedExecution(harness);
+    expect(await harness.execute(['execution-backup', 'cli-test'])).toBe(0);
+    const output = JSON.parse(harness.stdout.at(-1)!) as any;
+    expect(output.manifest).toMatchObject({
+      format: 'agent-core-execution-recovery-bundle',
+      version: 1,
+      reason: 'cli-test',
+    });
+    expect(output.bundlePath).toContain('recovery-bundles');
+  });
+
+  it('refuses execution restore through CLI while the runtime lease is live', async () => {
+    const harness = await cliHarness();
+    await seedExecution(harness);
+    expect(await harness.execute(['execution-backup', 'restore-source'])).toBe(0);
+    const backup = JSON.parse(harness.stdout.at(-1)!) as { bundlePath: string };
+
+    const live = new ExecutionService(harness.config.execution, new WorkspacePolicy([harness.root]));
+    await live.open();
+    harness.stdout.length = 0;
+    expect(await harness.execute(['execution-restore', backup.bundlePath])).toBe(1);
+    expect(harness.stderr.at(-1)).toContain('Execution runtime is active');
+    await live.close();
+  });
+
+  it('writes a dry-run retention plan and validates apply arguments before mutation', async () => {
+    const harness = await cliHarness();
+    await seedExecution(harness);
+    expect(await harness.execute(['execution-retention-plan', '0'])).toBe(0);
+    const planned = JSON.parse(harness.stdout.at(-1)!) as any;
+    expect(planned.plan).toMatchObject({ format: 'agent-core-execution-retention-plan', version: 1, dryRun: true });
+    expect(planned.plan.candidates.length).toBeGreaterThan(0);
+
+    harness.stderr.length = 0;
+    expect(await harness.execute(['execution-retention-apply', planned.planPath])).toBe(2);
+    expect(harness.stderr.at(-1)).toContain('Usage:');
   });
 });
