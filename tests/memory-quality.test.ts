@@ -126,8 +126,11 @@ describe('deterministic memory quality evaluator', () => {
     expect(second.failures.map(({ caseId, metric }) => ({ caseId, metric })))
       .toEqual(first.failures.map(({ caseId, metric }) => ({ caseId, metric })));
     expect(first.metrics.deterministicReplayEquality).toBe(1);
-    expect(first.failures).toEqual(expect.arrayContaining([
-      expect.objectContaining({ caseId: 'm07-stale-decision-resists-noise', metric: 'mrr' }),
-    ]));
+    expect(first.metrics.mrr).toBeGreaterThanOrEqual(0.9);
+    expect(first.metrics.noiseDisplacementRate).toBe(0);
+    expect(first.failures.some((failure) => (
+      failure.caseId === 'm07-stale-decision-resists-noise'
+      && (failure.metric === 'mrr' || failure.metric === 'noise_displacement')
+    ))).toBe(false);
   });
 });

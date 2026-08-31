@@ -103,6 +103,14 @@ function compareHardFirst(left: MemorySearchHit, right: MemorySearchHit): number
   const leftHard = left.kind === 'guardrail' && left.state === 'active' && left.enforcement === 'hard';
   const rightHard = right.kind === 'guardrail' && right.state === 'active' && right.enforcement === 'hard';
   if (leftHard !== rightHard) return leftHard ? -1 : 1;
+
+  const leftPinnedDecision = left.kind === 'decision' && left.state === 'active' && left.pinned;
+  const rightPinnedDecision = right.kind === 'decision' && right.state === 'active' && right.pinned;
+  const leftUnpinnedObservation = left.kind === 'observation' && !left.pinned;
+  const rightUnpinnedObservation = right.kind === 'observation' && !right.pinned;
+  if (leftPinnedDecision && rightUnpinnedObservation) return -1;
+  if (rightPinnedDecision && leftUnpinnedObservation) return 1;
+
   const scoreDelta = right.whyMatched.finalScore - left.whyMatched.finalScore;
   if (scoreDelta !== 0) return scoreDelta;
   return left.memoryId.localeCompare(right.memoryId);
