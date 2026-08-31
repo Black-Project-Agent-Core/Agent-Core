@@ -6,6 +6,7 @@ import {
   Plus,
 } from 'lucide-react';
 import type { LocalSession } from '../app/workspace-state';
+import { BrandMark } from './BrandMark';
 
 export type SidebarProps = {
   sessions: LocalSession[];
@@ -32,7 +33,7 @@ export function Sidebar({
     >
       <div className="sidebar-brand-row">
         <div className="sidebar-brand-text" aria-label="Agent Code brand">
-          <span className="sidebar-brand-symbol" aria-hidden="true">›_</span>
+          <BrandMark variant="app" className="sidebar-brand-mark" />
           <span className="sidebar-label">Agent Code</span>
         </div>
         <button

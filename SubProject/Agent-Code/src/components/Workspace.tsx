@@ -1,5 +1,6 @@
 import type { LocalSession } from '../app/workspace-state';
 import { Composer } from './Composer';
+import { BrandMark } from './BrandMark';
 
 export type WorkspaceProps = {
   session: LocalSession;
@@ -11,7 +12,7 @@ export function Workspace({ session, onSubmit }: WorkspaceProps) {
     <section className="workspace" aria-label="Coding workspace">
       <div className="workspace-content">
         <div className="welcome-state">
-          <div className="welcome-symbol" aria-hidden="true">AC</div>
+          <BrandMark variant="monogram" className="welcome-brand-mark" />
           <h1>What are we building?</h1>
         </div>
 

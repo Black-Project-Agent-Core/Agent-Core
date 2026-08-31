@@ -478,7 +478,7 @@ git commit -m "feat(agent-code): build focused console shell"
 - Consumes: the three user-approved PNG assets supplied in the conversation: AC/code monogram → `agent-code-monogram.png`; command-prompt `>_` icon → `agent-code-app-icon.png`; orbit/ribbon A → `agent-code-emblem.png`.
 - Produces: `BrandMark({ variant, className? })`, where `variant` is `'app' | 'monogram' | 'emblem'`.
 
-- [ ] **Step 1: Add a failing branding hierarchy test**
+- [x] **Step 1: Add a failing branding hierarchy test**
 
 ```tsx
 it('uses the prompt mark in the sidebar and the monogram in the welcome state', () => {
@@ -489,7 +489,7 @@ it('uses the prompt mark in the sidebar and the monogram in the welcome state', 
 });
 ```
 
-- [ ] **Step 2: Run test to verify RED**
+- [x] **Step 2: Run test to verify RED**
 
 ```bash
 npm test -- src/components/AgentCodeApp.test.tsx
@@ -497,7 +497,7 @@ npm test -- src/components/AgentCodeApp.test.tsx
 
 Expected: FAIL because branding assets/component are absent.
 
-- [ ] **Step 3: Transfer the approved assets and implement `BrandMark`**
+- [x] **Step 3: Transfer the approved assets and implement `BrandMark`**
 
 Map the user-approved raster sources exactly as defined in **Interfaces**. Preserve alpha; do not bake a black rectangle behind the artwork. Implement:
 
@@ -516,7 +516,7 @@ export function BrandMark({ variant, className }: BrandMarkProps) {
 
 Use the app mark at 24×24 in the sidebar brand row and the monogram at 52×52 in the welcome state. Do not render the emblem in the permanent workspace.
 
-- [ ] **Step 4: Run branding/component/build gates**
+- [x] **Step 4: Run branding/component/build gates**
 
 ```bash
 npm test -- src/components/AgentCodeApp.test.tsx
@@ -525,7 +525,7 @@ npm run build
 
 Expected: PASS and imported image assets emitted by Vite.
 
-- [ ] **Step 5: Commit branding**
+- [x] **Step 5: Commit branding**
 
 ```bash
 git add SubProject/Agent-Code/src/assets SubProject/Agent-Code/src/components

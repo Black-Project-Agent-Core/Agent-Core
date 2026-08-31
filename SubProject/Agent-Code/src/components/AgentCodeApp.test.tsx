@@ -17,4 +17,11 @@ describe('AgentCodeApp', () => {
     expect(screen.getByPlaceholderText('Describe a task or ask a question')).toBeInTheDocument();
     expect(screen.queryByText(/sessions|tokens|streak|statistics/i)).not.toBeInTheDocument();
   });
+  it('uses the prompt mark in the sidebar and the monogram in the welcome state', () => {
+    render(<AgentCodeApp />);
+    expect(screen.getByRole('img', { name: 'Agent Code app icon' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Agent Code monogram' })).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Agent Code premium emblem' })).not.toBeInTheDocument();
+  });
+
 });
