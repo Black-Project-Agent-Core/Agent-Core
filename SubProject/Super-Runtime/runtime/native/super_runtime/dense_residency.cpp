@@ -193,12 +193,21 @@ DenseResidencyResult DenseResidencyPolicy::prepare(std::uint64_t layer_index) {
         loaded_now.push_back(layer_index);
     }
 
+    const auto & current = plan_.layers[static_cast<std::size_t>(layer_index)];
+    if (residency_.acquire_lease(current.offset, current.length, active_lease_) != FileResidencyResult::Ok) {
+        for (auto it = loaded_now.rbegin(); it != loaded_now.rend(); ++it) {
+            (void)release_layer(*it);
+        }
+        return DenseResidencyResult::ResidencyError;
+    }
+
     if (plan_.ring_slots == 2 && plan_.layers.size() > 1) {
         const std::uint64_t next = (layer_index + 1) % static_cast<std::uint64_t>(plan_.layers.size());
         if (next >= plan_.pinned_prefix_count && next != layer_index &&
             !resident_[static_cast<std::size_t>(next)]) {
             const auto result = ensure_resident(next);
             if (result != DenseResidencyResult::Ok) {
+                active_lease_.reset();
                 for (auto it = loaded_now.rbegin(); it != loaded_now.rend(); ++it) {
                     (void)release_layer(*it);
                 }
@@ -226,6 +235,8 @@ DenseResidencyResult DenseResidencyPolicy::complete(std::uint64_t layer_index) {
         return DenseResidencyResult::OutOfOrder;
     }
 
+    active_lease_.reset();
+
     if (layer_index >= plan_.pinned_prefix_count) {
         const auto result = release_layer(layer_index);
         if (result != DenseResidencyResult::Ok) {
@@ -245,6 +256,8 @@ DenseResidencyResult DenseResidencyPolicy::stop() {
     if (active_layer_ != no_active_layer) {
         return DenseResidencyResult::Busy;
     }
+
+    active_lease_.reset();
 
     DenseResidencyResult overall = DenseResidencyResult::Ok;
     for (std::uint64_t layer = 0; layer < plan_.layers.size(); ++layer) {

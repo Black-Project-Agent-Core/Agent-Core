@@ -73,6 +73,7 @@ private:
     FileResidency & residency_;
     DenseResidencyPlan plan_;
     std::vector<std::uint8_t> resident_;
+    FileResidencyLease active_lease_;
     bool started_ = false;
     std::uint64_t expected_layer_ = 0;
     std::uint64_t active_layer_ = no_active_layer;

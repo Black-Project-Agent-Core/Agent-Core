@@ -25,6 +25,50 @@ namespace {
 
 } // namespace
 
+FileResidencyLease::FileResidencyLease(
+        FileResidency * owner,
+        std::uint64_t offset,
+        std::uint64_t length) noexcept
+    : owner_(owner), offset_(offset), length_(length) {
+}
+
+FileResidencyLease::~FileResidencyLease() noexcept {
+    reset();
+}
+
+FileResidencyLease::FileResidencyLease(FileResidencyLease && other) noexcept
+    : owner_(other.owner_), offset_(other.offset_), length_(other.length_) {
+    other.owner_ = nullptr;
+    other.offset_ = 0;
+    other.length_ = 0;
+}
+
+FileResidencyLease & FileResidencyLease::operator=(FileResidencyLease && other) noexcept {
+    if (this != &other) {
+        reset();
+        owner_ = other.owner_;
+        offset_ = other.offset_;
+        length_ = other.length_;
+        other.owner_ = nullptr;
+        other.offset_ = 0;
+        other.length_ = 0;
+    }
+    return *this;
+}
+
+bool FileResidencyLease::active() const noexcept {
+    return owner_ != nullptr;
+}
+
+void FileResidencyLease::reset() noexcept {
+    if (owner_ != nullptr) {
+        owner_->release_lease(offset_, length_);
+        owner_ = nullptr;
+        offset_ = 0;
+        length_ = 0;
+    }
+}
+
 FileResidency::FileResidency(const std::string & path, MemoryLedger & ledger)
     : ledger_(ledger) {
 #if defined(__linux__)
@@ -71,6 +115,7 @@ FileResidency::FileResidency(const std::string & path, MemoryLedger & ledger)
             throw std::overflow_error("file-backed residency page count exceeds addressable vector size");
         }
         intentional_pages_.assign(static_cast<std::size_t>(page_count), 0);
+        lease_counts_.assign(static_cast<std::size_t>(page_count), 0);
     } catch (...) {
         if (mapping_ != nullptr) {
             ::munmap(mapping_, static_cast<std::size_t>(size_bytes_));
@@ -96,6 +141,7 @@ FileResidency::~FileResidency() noexcept {
             intentional_resident_bytes_ = 0;
         }
         intentional_pages_.clear();
+        lease_counts_.clear();
     }
 
     if (mapping_ != nullptr) {
@@ -203,6 +249,43 @@ FileResidencyResult FileResidency::prefetch(std::uint64_t offset, std::uint64_t 
 #endif
 }
 
+FileResidencyResult FileResidency::acquire_lease(
+        std::uint64_t offset,
+        std::uint64_t length,
+        FileResidencyLease & lease) {
+#if defined(__linux__)
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (lease.active() || !valid_range(offset, length)) {
+        return FileResidencyResult::InvalidRange;
+    }
+
+    const auto first_page = static_cast<std::size_t>(offset / page_size_);
+    const auto page_count = static_cast<std::size_t>(length / page_size_);
+    for (std::size_t i = 0; i < page_count; ++i) {
+        const auto page = first_page + i;
+        if (intentional_pages_[page] == 0) {
+            return FileResidencyResult::NotResident;
+        }
+        if (lease_counts_[page] == std::numeric_limits<std::uint32_t>::max()) {
+            return FileResidencyResult::SystemError;
+        }
+    }
+
+    for (std::size_t i = 0; i < page_count; ++i) {
+        lease_counts_[first_page + i] += 1;
+    }
+    lease.owner_ = this;
+    lease.offset_ = offset;
+    lease.length_ = length;
+    return FileResidencyResult::Ok;
+#else
+    (void) offset;
+    (void) length;
+    (void) lease;
+    return FileResidencyResult::SystemError;
+#endif
+}
+
 FileResidencyResult FileResidency::release(std::uint64_t offset, std::uint64_t length) {
 #if defined(__linux__)
     std::lock_guard<std::mutex> lock(mutex_);
@@ -210,13 +293,18 @@ FileResidencyResult FileResidency::release(std::uint64_t offset, std::uint64_t l
         return FileResidencyResult::InvalidRange;
     }
 
+    const auto first_page = static_cast<std::size_t>(offset / page_size_);
+    const auto page_count = static_cast<std::size_t>(length / page_size_);
+    for (std::size_t i = 0; i < page_count; ++i) {
+        if (lease_counts_[first_page + i] != 0) {
+            return FileResidencyResult::InUse;
+        }
+    }
+
     auto * const range = static_cast<std::uint8_t *>(mapping_) + offset;
     if (::madvise(range, static_cast<std::size_t>(length), MADV_DONTNEED) != 0) {
         return FileResidencyResult::SystemError;
     }
-
-    const auto first_page = static_cast<std::size_t>(offset / page_size_);
-    const auto page_count = static_cast<std::size_t>(length / page_size_);
 
     std::uint64_t released_bytes = 0;
     for (std::size_t i = 0; i < page_count; ++i) {
@@ -242,6 +330,27 @@ FileResidencyResult FileResidency::release(std::uint64_t offset, std::uint64_t l
     (void) offset;
     (void) length;
     return FileResidencyResult::SystemError;
+#endif
+}
+
+void FileResidency::release_lease(std::uint64_t offset, std::uint64_t length) noexcept {
+#if defined(__linux__)
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!valid_range(offset, length)) {
+        return;
+    }
+
+    const auto first_page = static_cast<std::size_t>(offset / page_size_);
+    const auto page_count = static_cast<std::size_t>(length / page_size_);
+    for (std::size_t i = 0; i < page_count; ++i) {
+        auto & count = lease_counts_[first_page + i];
+        if (count != 0) {
+            count -= 1;
+        }
+    }
+#else
+    (void) offset;
+    (void) length;
 #endif
 }
 

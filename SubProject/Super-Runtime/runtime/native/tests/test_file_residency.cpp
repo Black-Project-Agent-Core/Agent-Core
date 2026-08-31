@@ -10,6 +10,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <fcntl.h>
@@ -20,6 +21,7 @@
 namespace {
 
 using super_runtime::FileResidency;
+using super_runtime::FileResidencyLease;
 using super_runtime::FileResidencyResult;
 using super_runtime::MemoryCategory;
 using super_runtime::MemoryLedger;
@@ -215,6 +217,54 @@ int main() {
             require(ledger.owned_bytes() == page_size * 2, "destructor fixture must own bytes before teardown");
         }
         require(ledger.owned_bytes() == 0, "FileResidency destructor must release ledger ownership");
+    }
+
+    {
+        MemoryLedger ledger(page_size * 2);
+        FileResidency mapping(fixture.path(), ledger);
+        require(mapping.prefetch(0, page_size * 2) == FileResidencyResult::Ok,
+                "lease fixture must prefetch two pages");
+
+        FileResidencyLease lease;
+        require(mapping.acquire_lease(0, page_size, lease) == FileResidencyResult::Ok,
+                "READY page must be leasable");
+        require(lease.active(), "acquired lease must report active");
+
+        FileResidencyLease overlapping;
+        require(mapping.acquire_lease(0, page_size, overlapping) == FileResidencyResult::Ok,
+                "the same READY page must support overlapping lease ownership");
+        require(mapping.release(0, page_size * 2) == FileResidencyResult::InUse,
+                "a wider release containing any leased page must fail atomically");
+        require(ledger.owned_bytes() == page_size * 2,
+                "failed overlapping-range reclaim must not change ownership");
+
+        FileResidencyLease moved = std::move(overlapping);
+        require(!overlapping.active() && moved.active(),
+                "moving a lease must transfer the only active token ownership");
+        lease.reset();
+        require(mapping.release(0, page_size) == FileResidencyResult::InUse,
+                "reclaim must remain blocked until the final overlapping lease is released");
+        require(ledger.owned_bytes() == page_size * 2,
+                "failed leased-page reclaim must not change ownership");
+
+        moved.reset();
+
+        require(mapping.release(page_size, page_size) == FileResidencyResult::Ok,
+                "unleased neighboring page must remain independently reclaimable");
+        require(ledger.owned_bytes() == page_size,
+                "unleased neighboring release must update ownership normally");
+
+        FileResidencyLease nonresident;
+        require(mapping.acquire_lease(page_size, page_size, nonresident) == FileResidencyResult::NotResident,
+                "nonresident page must not publish a lease");
+        require(!nonresident.active(), "failed nonresident lease must remain inactive");
+
+        lease.reset();
+        require(!lease.active(), "reset lease must become inactive");
+        require(mapping.release(0, page_size) == FileResidencyResult::Ok,
+                "page must become reclaimable after lease release");
+        require(ledger.owned_bytes() == 0,
+                "lease fixture must release all ownership");
     }
 
     {

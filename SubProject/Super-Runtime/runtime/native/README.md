@@ -1,8 +1,8 @@
 # Super-Runtime Native Substrate Boundary
 
-Status: Task 1 substrate boundary + Task 2 memory ledger + Task 3 Linux file-residency primitive
+Status: Tasks 1-8 implemented; Milestone-1 lease hardening under stability audit
 
-This directory is the first production code boundary of Super-Runtime. It now contains the Task 1 native substrate boundary, the Task 2 deterministic `MemoryLedger`, and the Task 3 stable-address file-backed residency primitive for Linux. It deliberately contains **no dense/MoE policy, residency lease scheduler, API, GPU, or downstream AI-tool integration logic yet**.
+This directory is the native production core of the first Super-Runtime milestone. It now contains the pinned GGML/llama substrate boundary, deterministic memory ledger, stable-address file residency with RAII range leases, generic MoE range planning, fixed-order dense residency, global budget planning, and the unified `RuntimeEntry` lifecycle. HTTP/provider APIs, GPU runtime policy, downstream AI-tool integration, Windows residency, and broad real-model product hardening remain deferred.
 
 ## Purpose
 
@@ -20,7 +20,11 @@ SubProject/Super-Runtime/CMakeLists.txt
                super-runtime-native-smoke
                super-runtime-core
                  ├── MemoryLedger
-                 └── FileResidency (Linux backend in Task 3)
+                 ├── FileResidency + FileResidencyLease
+                 ├── MoeResidency planner
+                 ├── DenseResidencyPolicy
+                 ├── RuntimeBudgetPlan
+                 └── RuntimeEntry
 ```
 
 ## Pinned upstream baseline
@@ -159,17 +163,23 @@ prefetch(page-aligned range)
   -> synchronously touch pages so the requested range is materialized
   -> publish intentional residency only after the operation succeeds
 
+acquire_lease(READY aligned range)
+  -> move-only RAII lease token
+  -> per-page lease counts
+  -> release/reclaim returns InUse while any covered page is leased
+
 release(page-aligned range)
+  -> first reject leased ranges before any VM or ledger mutation
   -> MADV_DONTNEED reusable pages
   -> do not munmap the reusable mapping
   -> release intentional ResidentWeights ownership
 ```
 
-The Linux test uses a deterministic temporary file and verifies stable base address, correct bytes after refault, invalid-range refusal, budget refusal without ledger mutation, idempotent range accounting, and destructor cleanup. It also records `/proc/self/status` RSS as observational evidence. RSS changes are **not** a functional pass criterion because kernel reclaim timing is not a portable deterministic contract.
+The Linux test uses a deterministic temporary file and verifies stable base address, correct bytes after refault, invalid-range refusal, budget refusal without ledger mutation, idempotent range accounting, RAII lease acquisition, `InUse` reclaim refusal while leased, nonresident lease refusal, and destructor cleanup. It also records `/proc/self/status` RSS as observational evidence. RSS changes are **not** a functional pass criterion because kernel reclaim timing is not a portable deterministic contract.
 
 The public C++ class does not expose POSIX calls. Non-Linux builds currently report the backend as unsupported; a Windows implementation remains deferred behind the same semantic abstraction.
 
-Task 3 deliberately does **not** implement leases, `READY` scheduler publication, dense graph-order policy, MoE selected-expert policy, or GPU staging. Those remain later checkpoints.
+Task 3 originally stopped at backing/residency semantics. The Milestone-1 stability audit later added the generic `FileResidencyLease` primitive so a READY range can be protected against reclaim while compute owns it. Dense policy now consumes that primitive. Lease lifetime is subordinate to the issuing `FileResidency`: a token must not outlive its owner mapping. `RuntimeEntry` guarantees the required destruction order by resetting `DenseResidencyPolicy` and its lease before destroying `FileResidency`, then releasing the ledger last. A full MoE scheduler hook, shared/cross-process lease lifetime, and GPU staging remain later work.
 
 Focused native test:
 
@@ -234,7 +244,7 @@ complete(layer)
   -> preserve pinned prefix and any valid next-layer look-ahead
 ```
 
-The policy therefore makes the one-slot safety rule executable: the next layer cannot replace/reuse current residency before explicit completion. This is a scoped dense safe-point contract, not yet a universal lease subsystem.
+The policy makes the one-slot safety rule executable and now acquires a `FileResidencyLease` for the active current range. External reclaim of that range returns `InUse` until `complete(layer)` releases the lease at the safe point. The next layer therefore cannot replace/reuse or externally reclaim current residency while compute owns it.
 
 The focused GGML fixture uses four one-page `32 x 32` F32 dense matrices. With a three-page budget, the planner pins one layer and uses a two-slot ring; measured runtime-owned resident bytes peak at exactly `12,288` bytes and output matches the fully resident GGML baseline with `max_abs_diff = 0`. With a one-page budget, the policy switches to synchronous one-slot mode, peaks at exactly `4,096` bytes, rejects advance while the current layer is active, and again preserves `max_abs_diff = 0`.
 
@@ -246,7 +256,7 @@ cmake --build .build/dense-residency --target super-runtime-test-dense-residency
 (cd .build/dense-residency && ctest --output-on-failure -R '^super-runtime-dense-residency$')
 ```
 
-Task 5 proves deterministic fixed-order residency and safe one/two-slot budget behavior. It does **not** prove asynchronous I/O overlap, optimal real-model grouping, a universal lease engine, or the global worker-budget planner.
+Task 5 plus Milestone-1 lease hardening prove deterministic fixed-order residency, safe one/two-slot budget behavior, and active-range reclaim protection through the generic RAII lease primitive. They do **not** prove asynchronous I/O overlap, optimal real-model grouping, or a production MoE scheduler hook.
 
 ## Task 6 — global runtime budget planner
 
@@ -270,7 +280,7 @@ Passing Task 1 through Task 6 means only:
 
 > Super-Runtime has a reproducible native CPU substrate, deterministic memory ownership accounting, stable file residency, generic sparse-MoE and dense residency policy fixtures with exact GGML CPU parity, and a deterministic global host/device admission plan.
 
-It does **not** mean the Super-Runtime inference runtime is complete. Task 7 now supplies a separately documented hard memory-ceiling acceptance harness under `benchmarks/`; it has demonstrated real delegated cgroup-v2 enforcement and fail-closed unsupported behavior. The next checkpoint is Task 8: the unified native runtime entrypoint.
+Task 7 supplies the separately documented hard memory-ceiling harness under `benchmarks/`, and Task 8 now supplies the unified native runtime entrypoint. The current activity is Milestone-1 stability audit/hardening; no new feature checkpoint is active until that audit closes.
 
 ## Task 8 — unified native runtime entrypoint
 

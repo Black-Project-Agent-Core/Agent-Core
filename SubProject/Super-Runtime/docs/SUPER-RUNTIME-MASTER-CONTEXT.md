@@ -90,13 +90,14 @@ Task 5 fixed-order dense residency policy              COMPLETE
 Task 6 global runtime budget planner                   COMPLETE
 Task 7 hard memory-ceiling harness                     COMPLETE
 Task 8 minimal native runtime entrypoint               COMPLETE
+Generic FileResidency RAII lease primitive             COMPLETE
 Milestone-1 stability audit                            PENDING
-MoE READY/lease scheduler integration                  NOT STARTED
+MoE production scheduler-hook integration              DEFERRED AFTER M1
 ```
 
 Therefore:
 
-> **Super-Runtime still does not yet exist as a runnable inference runtime product.**
+> **Super-Runtime now exists as a first runnable Milestone-1 native core candidate, but it is not yet labeled Stable until the canonical stability audit closes.**
 
 Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds deterministic memory accounting. Task 3 adds stable-address Linux file residency. Task 4 adds generic MoE selected-ID range planning with exact CPU `MUL_MAT_ID` parity. Task 5 adds deterministic dense residency with safe one/two-slot behavior. Task 6 adds deterministic global admission planning. Task 7 adds real external cgroup-v2 hard-cap evidence. Task 8 now adds the first unified runtime lifecycle: deterministic fixture metadata is loaded, the global plan is admitted, actual fixed ownership is reserved in one `MemoryLedger`, file-backed dense weights are managed by `DenseResidencyPolicy`, GGML CPU executes each prepared layer, telemetry tracks readiness/peak ownership/completed layers/output, cancellation is honored only at safe layer boundaries, and unload releases all runtime ownership. The independent manual oracle differs from the GGML runtime by only `2.91038e-11` in the fresh fixture, well inside the `1e-6` correctness gate. The runtime-entry acceptance binary also passes under a real 128 MiB cgroup ceiling with swap disabled and byte-identical stdout parity.
 
@@ -104,7 +105,7 @@ Phase 0 learning and Tasks 1 through 8 are complete. Milestone-1 stability remai
 
 The project frontier remains:
 
-> **build the first real, runnable native Super-Runtime core one verified checkpoint at a time.**
+> **close the Milestone-1 stability audit on the runnable native core without opening post-Milestone product scope.**
 
 ## Immediate next action — exactly one task
 
@@ -750,8 +751,14 @@ prefetch(aligned range)
   -> Linux WILLNEED advice + synchronous page materialization
   -> publish intentional residency only after success
 
+acquire_lease(READY aligned range)
+  -> increment per-page lease ownership
+  -> return move-only RAII token
+  -> covered pages cannot be reclaimed while token is active
+
 release(aligned range)
-  -> MADV_DONTNEED on reusable mapping
+  -> fail with InUse if any covered page is leased
+  -> otherwise MADV_DONTNEED on reusable mapping
   -> never munmap the reusable range
   -> return intentional ResidentWeights bytes to MemoryLedger
 
@@ -763,7 +770,7 @@ demand refault after release
 
 The current backend implementation is Linux-specific behind a platform-neutral C++ class. Non-Linux residency backends remain deferred.
 
-Task 3 does **not** implement `READY`/lease ownership, dense ordering, MoE routing, asynchronous I/O, or a production scheduler hook. It supplies the physical file-backed primitive those later policies can drive.
+Task 3 originally supplied the physical backing primitive. Milestone-1 stability hardening later added `FileResidencyLease`: leases may only be acquired for intentional/READY pages, are move-only RAII tokens, and make overlapping reclaim fail with `InUse` before any VM or ledger mutation. Dense policy now consumes this generic lease primitive. Production MoE scheduler-hook integration and asynchronous I/O remain deferred.
 
 The bounded 16 MiB Linux fixture produced fresh observational RSS evidence in this Codespace: process RSS rose by roughly the mapped working-set size after explicit materialization and returned near baseline after `MADV_DONTNEED`. The exact RSS delta is not a correctness contract; stable address, byte correctness, ledger accounting, and range validation are the functional gates.
 
@@ -837,7 +844,7 @@ complete(layer)
     -> fixed-order cursor advances
 ```
 
-A second `prepare()` while a layer is active returns `Busy`. This directly encodes the K3-derived one-slot safety rule: the runtime may not advance/reuse dynamic residency until the current operation has reached a safe completion point. This is a dense-policy ownership guard, not yet the universal lease subsystem required by the final runtime.
+A second `prepare()` while a layer is active returns `Busy`. In addition, `prepare()` acquires a `FileResidencyLease` for the current READY range before look-ahead/compute. Direct external reclaim of the active range returns `InUse`; `complete()` releases the lease only at the matching safe point before dynamic eviction. This closes the Milestone-1 early-reclaim invariant with an executable generic lease primitive.
 
 The focused production fixture uses four page-sized `32 x 32` F32 GGML matrices:
 
@@ -1617,7 +1624,7 @@ Milestone 1 is accepted only if fresh executable evidence demonstrates all appli
 [x] dense residency path executes correctly
 [x] MoE selected-range residency path executes correctly
 [x] required ranges are READY before dereference
-[ ] leased ranges cannot be reclaimed early
+[x] leased ranges cannot be reclaimed early
 [x] output matches the correctness oracle
 [x] measured RSS/residency telemetry is reported
 [x] cleanup/unload releases runtime ownership cleanly
@@ -1747,12 +1754,13 @@ Current authority:
 - records the exact pinned llama.cpp/GGML production revision;
 - defines the CPU-only native build and smoke target;
 - defines the upstream patch/provenance policy for the native substrate;
-- documents the Task 2 `MemoryLedger`, its accounting-only semantics, and focused CTest path;
-- documents the Task 3 Linux `FileResidency` primitive, stable-address/release semantics, and focused CTest path;
+- documents the Task 2 `MemoryLedger`;
+- documents Task 3 Linux `FileResidency` plus Milestone-1 RAII lease hardening;
 - documents the Task 4 generic MoE selected-range planner and exact `MUL_MAT_ID` parity fixture;
-- documents the Task 5 deterministic dense pinned-prefix/ring policy, one-slot safety rule, and exact GGML dense parity fixture;
+- documents the Task 5 deterministic dense policy and active-range lease/reclaim protection;
+- documents Task 6 global admission planning and Task 8 `RuntimeEntry` lifecycle;
 - documents Codespace native build tooling and the `tests/contracts/native-substrate.sh` verification path;
-- does **not** imply that model loading, a universal residency lease engine, global runtime admission, or a runnable inference lifecycle already exists.
+- keeps HTTP/API, GPU policy, Windows residency, downstream integrations, and broad real-model hardening explicitly outside Milestone 1.
 
 If this document conflicts with general project direction, this master context still wins.
 
@@ -2054,7 +2062,7 @@ Current meaning:
 
 Use this statement when a short explanation of Super-Runtime is needed:
 
-> **Super-Runtime is a not-yet-runnable CPU-first local inference runtime whose first production foundations now exist: a pinned llama.cpp/GGML CPU substrate boundary, a deterministic `MemoryLedger`, a Linux stable-address file-backed residency primitive, and a generic MoE selected-expert range planner with exact GGML CPU parity in the tested fixture. Its defining goal is to make model weights and architecture-correct state operate under an explicit global resource envelope. It reuses llama.cpp/GGML for model graphs, GGUF/tensors, kernels, and architecture-specific state, while Super-Runtime owns memory admission, file-backed weight residency, access-topology scheduling, storage I/O policy, leases, telemetry, and hard-cap validation. K3-in-C is the primary reference for proven low-memory execution patterns, not a neural architecture to copy. Phase 0 learning is complete; the active frontier remains building the first runnable native runtime core. Downstream AI-tool integration is deferred until that runtime actually exists.**
+> **Super-Runtime now has a first runnable CPU-first native core implementation for Milestone 1: pinned llama.cpp/GGML CPU substrate, deterministic global memory accounting/admission, Linux stable-address file residency with RAII reclaim protection, generic sparse-MoE range planning, deterministic dense residency, real cgroup-v2 hard-cap acceptance, and a unified `RuntimeEntry` fixture lifecycle with correctness/cleanup telemetry. Its defining goal remains to run architecture-correct model execution under an explicit global resource envelope while reusing llama.cpp/GGML for model graphs, GGUF/tensors, kernels, and architecture-specific state. K3-in-C remains the primary low-memory design reference, not a neural architecture to copy. Stability is still pending the final Milestone-1 audit; downstream AI-tool integration remains deferred until that audit closes.**
 
 ---
 

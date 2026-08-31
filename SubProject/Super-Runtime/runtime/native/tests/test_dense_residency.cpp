@@ -342,10 +342,12 @@ int main() {
 
         require(policy.prepare(0) == DenseResidencyResult::Ok,
                 "one-slot policy must materialize the first layer synchronously");
+        require(residency.release(0, page) == FileResidencyResult::InUse,
+                "active current layer must hold a lease that blocks external reclaim");
         require(policy.prepare(1) == DenseResidencyResult::Busy,
                 "one-slot policy must reject overwrite/advance while current layer is active");
         require(ledger.owned_bytes() == page,
-                "busy rejection must keep only the active current layer resident");
+                "busy/reclaim rejection must keep only the active current layer resident");
         peak_owned = std::max(peak_owned, ledger.owned_bytes());
 
         const auto * first_weights = reinterpret_cast<const float *>(residency.data());

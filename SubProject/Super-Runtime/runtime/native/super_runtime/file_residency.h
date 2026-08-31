@@ -13,7 +13,34 @@ enum class FileResidencyResult : std::uint8_t {
     Ok = 0,
     InvalidRange,
     BudgetExceeded,
+    NotResident,
+    InUse,
     SystemError,
+};
+
+class FileResidency;
+
+class FileResidencyLease {
+public:
+    FileResidencyLease() noexcept = default;
+    ~FileResidencyLease() noexcept;
+
+    FileResidencyLease(const FileResidencyLease &) = delete;
+    FileResidencyLease & operator=(const FileResidencyLease &) = delete;
+    FileResidencyLease(FileResidencyLease && other) noexcept;
+    FileResidencyLease & operator=(FileResidencyLease && other) noexcept;
+
+    [[nodiscard]] bool active() const noexcept;
+    void reset() noexcept;
+
+private:
+    friend class FileResidency;
+
+    FileResidencyLease(FileResidency * owner, std::uint64_t offset, std::uint64_t length) noexcept;
+
+    FileResidency * owner_ = nullptr;
+    std::uint64_t offset_ = 0;
+    std::uint64_t length_ = 0;
 };
 
 class FileResidency {
@@ -32,10 +59,17 @@ public:
     [[nodiscard]] std::uint64_t intentional_resident_bytes() const;
 
     [[nodiscard]] FileResidencyResult prefetch(std::uint64_t offset, std::uint64_t length);
+    [[nodiscard]] FileResidencyResult acquire_lease(
+        std::uint64_t offset,
+        std::uint64_t length,
+        FileResidencyLease & lease);
     [[nodiscard]] FileResidencyResult release(std::uint64_t offset, std::uint64_t length);
 
 private:
+    friend class FileResidencyLease;
+
     [[nodiscard]] bool valid_range(std::uint64_t offset, std::uint64_t length) const noexcept;
+    void release_lease(std::uint64_t offset, std::uint64_t length) noexcept;
 
     MemoryLedger & ledger_;
     int fd_ = -1;
@@ -45,6 +79,7 @@ private:
 
     mutable std::mutex mutex_;
     std::vector<std::uint8_t> intentional_pages_;
+    std::vector<std::uint32_t> lease_counts_;
     std::uint64_t intentional_resident_bytes_ = 0;
 };
 
