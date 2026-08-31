@@ -1,8 +1,8 @@
 # Super-Runtime Native Substrate Boundary
 
-Status: Task 1 production boundary
+Status: Task 1 substrate boundary + Task 2 memory-ledger foundation
 
-This directory is the first production code boundary of Super-Runtime. It deliberately contains **no residency, memory-ledger, model-policy, API, GPU, or downstream AI-tool integration logic yet**.
+This directory is the first production code boundary of Super-Runtime. It now contains the Task 1 native substrate boundary and the Task 2 deterministic `MemoryLedger`. It deliberately contains **no file-residency, model-policy, API, GPU, or downstream AI-tool integration logic yet**.
 
 ## Purpose
 
@@ -18,6 +18,8 @@ SubProject/Super-Runtime/CMakeLists.txt
         |
         +--> runtime/native/
                super-runtime-native-smoke
+               super-runtime-core
+                 └── MemoryLedger
 ```
 
 ## Pinned upstream baseline
@@ -100,10 +102,49 @@ bash tests/contracts/native-substrate.sh
 
 The contract validates the revision pin, configures a CPU-only build, builds only `super-runtime-native-smoke`, runs it, and requires the expected revision/backend identity.
 
-## Scope boundary after Task 1
+## Task 2 — deterministic MemoryLedger
 
-Passing this contract means only:
+`super-runtime-core` now owns the first resource-governance primitive:
 
-> Super-Runtime has a real, reproducible production native boundary linked to the pinned llama.cpp/GGML CPU substrate.
+```text
+MemoryLedger
+  hard budget
+  owned total
+  per-category totals
+  atomic reserve/refuse
+  atomic release/refuse
+  mutex-protected concurrent accounting
+```
 
-It does **not** mean the Super-Runtime runtime itself is complete. The next checkpoint after Task 1 is the deterministic `MemoryLedger`; it must not be implemented as part of this task.
+The frozen Task-2 categories are:
+
+```text
+ResidentWeights
+ContextState
+ComputeScratch
+Staging
+AcceleratorMemory
+RuntimeOverhead
+```
+
+The ledger deliberately tracks **runtime-owned accounting**, not process RSS or OS residency. It performs no mmap, file I/O, eviction, prefetch, page-cache inspection, or model-specific policy. Those belong to later checkpoints.
+
+Reservation semantics are fail-closed: a reservation that would exceed the hard budget or overflow integer accounting returns `false` and does not mutate totals. Release beyond category ownership also returns `false` without mutation.
+
+Focused native test:
+
+```bash
+cmake -G Ninja -S . -B .build/memory-ledger -DCMAKE_BUILD_TYPE=Release
+cmake --build .build/memory-ledger --target super-runtime-test-memory-ledger --parallel "$(nproc)"
+(cd .build/memory-ledger && ctest --output-on-failure -R '^super-runtime-memory-ledger$')
+```
+
+The test covers accepted reservations, hard-budget refusal, release and underflow refusal, category totals, uint64 overflow refusal, the invariant `owned <= budget`, and concurrent accounting.
+
+## Scope boundary after Task 2
+
+Passing Task 1 + Task 2 means only:
+
+> Super-Runtime has a reproducible native CPU substrate boundary and a deterministic thread-safe memory ownership ledger.
+
+It does **not** mean the Super-Runtime inference runtime is complete. The next checkpoint is Task 3: the stable-address file-backed residency primitive.

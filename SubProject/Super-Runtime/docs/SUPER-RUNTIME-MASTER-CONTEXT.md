@@ -48,7 +48,12 @@ SubProject/Super-Runtime/
 │       ├── CMakeLists.txt
 │       ├── LLAMA_CPP_REVISION
 │       ├── README.md
-│       └── smoke.cpp
+│       ├── smoke.cpp
+│       ├── super_runtime/
+│       │   ├── memory_ledger.h
+│       │   └── memory_ledger.cpp
+│       └── tests/
+│           └── test_memory_ledger.cpp
 ├── tests/
 │   └── contracts/
 │       └── native-substrate.sh
@@ -59,7 +64,7 @@ Current implementation status:
 
 ```text
 Task 1 native llama.cpp/GGML CPU substrate boundary   COMPLETE
-Task 2 deterministic MemoryLedger                     NOT STARTED
+Task 2 deterministic MemoryLedger                     COMPLETE
 file residency                                        NOT STARTED
 dense production residency                            NOT STARTED
 MoE production residency                              NOT STARTED
@@ -71,9 +76,9 @@ Therefore:
 
 > **Super-Runtime still does not yet exist as a runnable inference runtime product.**
 
-Task 1 establishes only the first real production foundation: a reproducible native build that validates the pinned llama.cpp revision, links llama.cpp/GGML, initializes a real GGML CPU backend, and shuts down cleanly. It does not load a model or implement the Super-Runtime memory/residency mechanisms yet.
+Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds the first Super-Runtime-owned resource primitive: a deterministic thread-safe `MemoryLedger` with hard-budget admission, per-category accounting, atomic refusal, release safety, and overflow protection. Neither checkpoint loads a model or implements physical file residency yet.
 
-Phase 0 learning is complete, and the first implementation checkpoint is complete.
+Phase 0 learning is complete, and the first two implementation checkpoints are complete.
 
 The project frontier remains:
 
@@ -81,18 +86,23 @@ The project frontier remains:
 
 ## Immediate next action — exactly one task
 
-The next eligible implementation checkpoint is **Task 2 only: add deterministic `MemoryLedger` contracts and implementation**.
+The next eligible implementation checkpoint is **Task 3 only: build the stable-address file-backed residency primitive**.
 
-Do not begin file residency, dense policy, MoE policy, API work, GPU work, or downstream integration in parallel with Task 2. Task 2 becomes active only after the Task 1 commit is present and remotely verified on canonical `Agent-Core/main`.
+Do not begin dense policy, MoE policy, API work, GPU work, or downstream integration in parallel with Task 3. Task 3 becomes active only after the Task 2 commit is present and remotely verified on canonical `Agent-Core/main`.
 
-Task 1 verification contract:
+Task 1 + Task 2 verification boundary:
 
 ```text
 bash tests/contracts/native-substrate.sh
   -> pinned llama.cpp revision validated
-  -> CPU-only CMake build succeeds
-  -> super-runtime-native-smoke runs
   -> real GGML CPU backend initializes
+  -> PASS
+
+ctest -R super-runtime-memory-ledger
+  -> hard-budget accounting
+  -> category accounting
+  -> overflow/underflow refusal
+  -> concurrent accounting
   -> PASS
 ```
 
@@ -786,6 +796,31 @@ The historical approximately `8 GiB` worker target is an engineering target used
 It is **not** a universal promise.
 
 A model/context configuration may require more memory or may be infeasible under that envelope.
+
+---
+
+## Task 2 implementation checkpoint — MemoryLedger
+
+The conceptual global budget now has its first production primitive under `runtime/native/super_runtime/memory_ledger.*`.
+
+Frozen Task-2 semantics:
+
+```text
+reserve(category, bytes)
+  accepted only if owned + bytes <= hard budget
+  overflow/refusal is atomic
+
+release(category, bytes)
+  accepted only if that category owns enough bytes
+  underflow/refusal is atomic
+
+owned_bytes == sum(category ownership)
+owned_bytes <= budget_bytes after every accepted mutation
+```
+
+Task 2 is intentionally **accounting only**. It does not claim that ledger bytes equal measured RSS, file-backed resident pages, page cache, or GPU allocations. Later subsystems must reconcile their owned allocations with this ledger and separately report measured memory.
+
+The implementation is mutex-protected and its focused test exercises concurrent reservation/release accounting.
 
 ---
 
@@ -1541,8 +1576,9 @@ Current authority:
 - records the exact pinned llama.cpp/GGML production revision;
 - defines the CPU-only native build and smoke target;
 - defines the upstream patch/provenance policy for the native substrate;
+- documents the Task 2 `MemoryLedger`, its accounting-only semantics, and focused CTest path;
 - documents Codespace native build tooling and the `tests/contracts/native-substrate.sh` verification path;
-- does **not** expand the project beyond Task 1 or imply that model loading, memory governance, or residency already exists.
+- does **not** imply that model loading or physical residency already exists.
 
 If this document conflicts with general project direction, this master context still wins.
 
