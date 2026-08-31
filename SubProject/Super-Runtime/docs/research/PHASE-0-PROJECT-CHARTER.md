@@ -1,6 +1,6 @@
 # Super-Runtime — Phase 0 Project Charter
 
-Status: architecture discovery / research only
+Status: Phase 0 research complete; architecture direction frozen for first implementation
 
 ## Product identity
 
