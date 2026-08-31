@@ -63,17 +63,30 @@ function marker(runId: string, nodeId: string, attemptId: string, attemptNo: num
 class ControlledRunner implements ExecutionRunnerLike {
   readonly starts: Array<{ runId: string; nodeId: string; attemptId: string; attemptNo: number }> = [];
   terminateCalls = 0;
+  active = 0;
+  maxActive = 0;
   private pending = new Map<string, { resolve(value: ExecutionResultMarker): void }>();
 
   async start(runId: string, node: ValidatedExecutionNode, attemptId: string, attemptNo: number): Promise<ExecutionRunHandle> {
     this.starts.push({ runId, nodeId: node.id, attemptId, attemptNo });
+    this.active += 1;
+    this.maxActive = Math.max(this.maxActive, this.active);
+    let settled = false;
     let resolve!: (value: ExecutionResultMarker) => void;
     const completion = new Promise<ExecutionResultMarker>((res) => { resolve = res; });
-    this.pending.set(`${runId}/${node.id}/${attemptNo}`, { resolve });
+    const key = `${runId}/${node.id}/${attemptNo}`;
+    const settle = (value: ExecutionResultMarker) => {
+      if (settled) return;
+      settled = true;
+      this.active = Math.max(0, this.active - 1);
+      this.pending.delete(key);
+      resolve(value);
+    };
+    this.pending.set(key, { resolve: settle });
     return {
       pid: 20_000 + this.starts.length,
       completion,
-      terminate: () => { this.terminateCalls += 1; resolve(marker(runId, node.id, attemptId, attemptNo)); },
+      terminate: () => { this.terminateCalls += 1; settle(marker(runId, node.id, attemptId, attemptNo)); },
     };
   }
 
@@ -83,7 +96,6 @@ class ControlledRunner implements ExecutionRunnerLike {
     if (!pending) throw new Error(`missing pending ${key}`);
     const started = this.starts.find((item) => item.runId === runId && item.nodeId === nodeId && item.attemptNo === attemptNo)!;
     pending.resolve(marker(runId, nodeId, started.attemptId, attemptNo));
-    this.pending.delete(key);
   }
 
   nodeIds(): string[] { return this.starts.map((item) => item.nodeId); }
@@ -99,7 +111,7 @@ async function eventually(assertion: () => void | Promise<void>, timeoutMs = 2_0
   throw last;
 }
 
-async function fixture() {
+async function fixture(sequence?: ResourceSnapshot[]) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-wave-f-governance-'));
   roots.push(root);
   const work = path.join(root, 'work');
@@ -113,7 +125,7 @@ async function fixture() {
   };
   const runner = new ControlledRunner();
   const metrics = new RuntimeMetricRegistry();
-  const provider = new SequenceProvider([
+  const provider = new SequenceProvider(sequence ?? [
     snapshot('warning', 1),
     snapshot('critical', 2),
     snapshot('critical', 2),
@@ -168,6 +180,54 @@ describe('Wave F scheduler resource governance', () => {
       await runtime.execution.close().catch(() => undefined);
       await runtime.memory.close().catch(() => undefined);
       await runtime.telemetry.close().catch(() => undefined);
+    }
+  });
+
+  it('stress-transitions pressure across a 20-node run without exceeding operator max or terminating running nodes', async () => {
+    const sequence = [
+      snapshot('warning', 10),
+      snapshot('critical', 11),
+      snapshot('critical', 12),
+      snapshot('warning', 13),
+      ...Array.from({ length: 40 }, (_, index) => snapshot('normal', 20 + index)),
+    ];
+    const f = await fixture(sequence);
+    try {
+      const ids = Array.from({ length: 20 }, (_, index) => String.fromCharCode(65 + index));
+      const created = await f.service.create(f.scope, {
+        objective: 'resource pressure stress transition',
+        maxConcurrency: 4,
+        nodes: ids.map((id) => ({ id, purpose: id, command: `echo ${id}`, cwd: f.work })),
+      });
+      await f.service.start(f.scope, created.runId);
+      expect(f.runner.active).toBe(2);
+      expect(f.runner.maxActive).toBeLessThanOrEqual(4);
+
+      for (let iteration = 0; iteration < 60; iteration += 1) {
+        let state = await f.service.status(f.scope, created.runId);
+        await eventually(async () => {
+          state = await f.service.status(f.scope, created.runId);
+          const runningNow = state?.nodes.filter((node) => node.state === 'running') ?? [];
+          expect(state?.state === 'completed' || runningNow.length > 0).toBe(true);
+        });
+        if (state?.state === 'completed') break;
+        const running = state?.nodes.filter((node) => node.state === 'running').map((node) => node.nodeId) ?? [];
+        expect(running.length).toBeLessThanOrEqual(4);
+        f.runner.complete(created.runId, running[0]!);
+        await eventually(async () => {
+          const next = await f.service.status(f.scope, created.runId);
+          expect(next?.nodes.find((node) => node.nodeId === running[0])?.state).toBe('succeeded');
+        });
+        expect(f.runner.active).toBeLessThanOrEqual(4);
+        expect(f.runner.maxActive).toBeLessThanOrEqual(4);
+        expect(f.runner.terminateCalls).toBe(0);
+      }
+      expect((await f.service.status(f.scope, created.runId))?.state).toBe('completed');
+      expect(f.runner.starts).toHaveLength(20);
+      expect(f.runner.maxActive).toBe(4);
+      expect(f.runner.terminateCalls).toBe(0);
+    } finally {
+      await f.service.close();
     }
   });
 
