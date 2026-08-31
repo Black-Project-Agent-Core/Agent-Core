@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import type { MemoryAnchor } from './anchors.js';
+import { auditedEdgeInsertOperations } from './cognition-ledger.js';
 import type { MemoryRelation, MemoryScope } from './types.js';
 import type { MemoryWorkerSqlOperation } from './db-worker.js';
 import { RELATION_WEIGHTS } from './relation-policy.js';
@@ -167,16 +169,40 @@ export class MemoryLinker {
       for (const relation of relations) {
         // Associative evidence is traversable in both directions. Structured directed
         // supersession/explicit edges are written by their authoritative caller, not inferred here.
-        operations.push(edgeInsert(target.memoryId, candidate.memoryId, relation, evidenceEventId, now));
-        operations.push(edgeInsert(candidate.memoryId, target.memoryId, relation, evidenceEventId, now));
+        operations.push(...auditedEdgeInsertOperations({
+          eventId: randomUUID(),
+          scope,
+          fromMemoryId: target.memoryId,
+          toMemoryId: candidate.memoryId,
+          relation: relation.relation,
+          weight: relation.weight,
+          evidenceEventId: evidenceEventId ?? undefined,
+          reasonCode: 'INFERRED_MEMORY_RELATION',
+          createdAt: now,
+        }));
+        operations.push(...auditedEdgeInsertOperations({
+          eventId: randomUUID(),
+          scope,
+          fromMemoryId: candidate.memoryId,
+          toMemoryId: target.memoryId,
+          relation: relation.relation,
+          weight: relation.weight,
+          evidenceEventId: evidenceEventId ?? undefined,
+          reasonCode: 'INFERRED_MEMORY_RELATION_MIRROR',
+          createdAt: now,
+        }));
       }
     }
 
     let createdEdges = 0;
-    for (let offset = 0; offset < operations.length; offset += 900) {
-      const results = await this.client.transaction(operations.slice(offset, offset + 900));
-      for (const result of results) {
-        if (result && typeof result === 'object' && 'changes' in result) createdEdges += Number((result as { changes: number }).changes);
+    for (let offset = 0; offset < operations.length; offset += 800) {
+      const batch = operations.slice(offset, offset + 800);
+      const results = await this.client.transaction(batch);
+      for (let index = 0; index < results.length; index += 2) {
+        const result = results[index];
+        if (result && typeof result === 'object' && 'changes' in result) {
+          createdEdges += Number((result as { changes: number }).changes);
+        }
       }
     }
     return { createdEdges, candidateCount: candidateRows.length };
@@ -199,22 +225,6 @@ export class MemoryLinker {
     }
     return result;
   }
-}
-
-function edgeInsert(
-  fromMemoryId: string,
-  toMemoryId: string,
-  relation: ProposedMemoryRelation,
-  evidenceEventId: string | null,
-  createdAt: number,
-): MemoryWorkerSqlOperation {
-  return {
-    kind: 'run',
-    sql: `INSERT OR IGNORE INTO memory_edges(
-      from_memory_id, to_memory_id, relation, weight, evidence_event_id, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?)`,
-    params: [fromMemoryId, toMemoryId, relation.relation, relation.weight, evidenceEventId, createdAt],
-  };
 }
 
 function mapLinkerRow(row: LinkerRow, anchors: MemoryAnchor[]): LinkableMemoryRecord {

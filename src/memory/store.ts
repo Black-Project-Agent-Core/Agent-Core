@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { MEMORY_ANCHOR_TYPES, extractMemoryAnchors } from './anchors.js';
 import { createMemoryBackup, type MemoryBackupRecord } from './backup.js';
+import { auditedEdgeInsertOperations } from './cognition-ledger.js';
 import { normalizeCanonicalKey, normalizeMemoryText } from './normalizer.js';
 import { containsRedactionMarker, redactMemoryText } from './redaction.js';
 import { RELATION_WEIGHTS, shouldMirrorMemoryRelation } from './relation-policy.js';
@@ -460,6 +461,14 @@ export class MemoryStore {
     eventType: string;
   }): Promise<MemoryCommitResult> {
     const { request, canonicalKey, normalized, existing } = input;
+    for (const relation of request.explicitRelations ?? []) {
+      if (!await this.findById(request.scope, relation.targetMemoryId)) {
+        throw new MemoryStoreError(
+          'MEMORY_RELATION_TARGET_NOT_FOUND',
+          'Explicit relation target was not found in the authenticated principal/project scope',
+        );
+      }
+    }
     const now = Date.now();
     const eventId = randomUUID();
     const memoryId = existing?.id ?? randomUUID();
@@ -592,21 +601,29 @@ export class MemoryStore {
       if (!Number.isFinite(weight) || weight < 0 || weight > 1) {
         throw new MemoryStoreError('MEMORY_RELATION_WEIGHT_INVALID', 'explicit relation weight must be between 0 and 1');
       }
-      operations.push({
-        kind: 'run',
-        sql: `INSERT OR IGNORE INTO memory_edges(
-          from_memory_id, to_memory_id, relation, weight, evidence_event_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?)`,
-        params: [memoryId, relation.targetMemoryId, relation.relation, weight, eventId, now],
-      });
+      operations.push(...auditedEdgeInsertOperations({
+        eventId: randomUUID(),
+        scope: request.scope,
+        fromMemoryId: memoryId,
+        toMemoryId: relation.targetMemoryId,
+        relation: relation.relation,
+        weight,
+        evidenceEventId: eventId,
+        reasonCode: 'EXPLICIT_MEMORY_RELATION',
+        createdAt: now,
+      }));
       if (shouldMirrorMemoryRelation(relation.relation)) {
-        operations.push({
-          kind: 'run',
-          sql: `INSERT OR IGNORE INTO memory_edges(
-            from_memory_id, to_memory_id, relation, weight, evidence_event_id, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?)`,
-          params: [relation.targetMemoryId, memoryId, relation.relation, weight, eventId, now],
-        });
+        operations.push(...auditedEdgeInsertOperations({
+          eventId: randomUUID(),
+          scope: request.scope,
+          fromMemoryId: relation.targetMemoryId,
+          toMemoryId: memoryId,
+          relation: relation.relation,
+          weight,
+          evidenceEventId: eventId,
+          reasonCode: 'EXPLICIT_MEMORY_RELATION_MIRROR',
+          createdAt: now,
+        }));
       }
     }
 

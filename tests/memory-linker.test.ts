@@ -81,10 +81,18 @@ describe('deterministic evidence graph linker', () => {
     const first = await linker.linkMemory(base, artifactB.memoryId);
     expect(first.createdEdges).toBeGreaterThanOrEqual(4);
     const countAfterFirst = (await client.query<{ count: number }>('SELECT count(*) AS count FROM memory_edges'))[0]!.count;
+    const edgeEventsAfterFirst = (await client.query<{ count: number }>(
+      "SELECT count(*) AS count FROM memory_edge_events WHERE event_type = 'edge.created'",
+    ))[0]!.count;
+    expect(edgeEventsAfterFirst).toBe(countAfterFirst);
     const second = await linker.linkMemory(base, artifactB.memoryId);
     const countAfterSecond = (await client.query<{ count: number }>('SELECT count(*) AS count FROM memory_edges'))[0]!.count;
+    const edgeEventsAfterSecond = (await client.query<{ count: number }>(
+      "SELECT count(*) AS count FROM memory_edge_events WHERE event_type = 'edge.created'",
+    ))[0]!.count;
     expect(second.createdEdges).toBe(0);
     expect(countAfterSecond).toBe(countAfterFirst);
+    expect(edgeEventsAfterSecond).toBe(edgeEventsAfterFirst);
 
     const artifactEdges = await client.query<{ relation: string; weight: number; evidence_event_id: string | null }>(
       `SELECT relation, weight, evidence_event_id FROM memory_edges

@@ -18,6 +18,7 @@ import type {
   MemoryWriteDecisionRecord,
   MemoryWriteReasonCode,
 } from './types.js';
+import type { MemoryWorkerSqlOperation } from './db-worker.js';
 import { MemoryWorkerClient } from './worker-client.js';
 
 export interface MemoryWriteDecisionInput {
@@ -196,6 +197,56 @@ function remoteFromRow(row: Record<string, unknown>): MemoryRemoteStateRecord {
     lastErrorCode: row.last_error_code == null ? undefined : String(row.last_error_code),
     updatedAt: Number(row.updated_at),
   };
+}
+
+export function auditedEdgeInsertOperations(input: {
+  eventId: string;
+  scope: Pick<MemoryScope, 'principalId' | 'projectId'>;
+  fromMemoryId: string;
+  toMemoryId: string;
+  relation: MemoryRelation;
+  weight: number;
+  evidenceEventId?: string;
+  reasonCode: string;
+  createdAt: number;
+}): MemoryWorkerSqlOperation[] {
+  return [
+    {
+      kind: 'run',
+      sql: `INSERT OR IGNORE INTO memory_edges(
+        from_memory_id, to_memory_id, relation, weight, evidence_event_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
+      params: [
+        input.fromMemoryId,
+        input.toMemoryId,
+        input.relation,
+        input.weight,
+        input.evidenceEventId ?? null,
+        input.createdAt,
+      ],
+    },
+    {
+      kind: 'run',
+      sql: `INSERT INTO memory_edge_events(
+        id, principal_id, project_id, event_type, from_memory_id, to_memory_id,
+        relation, old_weight, new_weight, evidence_event_id, reason_code, created_at
+      )
+      SELECT ?, ?, ?, 'edge.created', ?, ?, ?, NULL, ?, ?, ?, ?
+      WHERE changes() = 1`,
+      params: [
+        input.eventId,
+        input.scope.principalId,
+        input.scope.projectId ?? null,
+        input.fromMemoryId,
+        input.toMemoryId,
+        input.relation,
+        input.weight,
+        input.evidenceEventId ?? null,
+        sanitizedString(input.reasonCode),
+        input.createdAt,
+      ],
+    },
+  ];
 }
 
 export class MemoryCognitionLedger {

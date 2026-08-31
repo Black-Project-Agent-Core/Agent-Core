@@ -229,6 +229,26 @@ describe('scoped memory cognition ledger', () => {
     }
   });
 
+  it('keeps edge-event history append-only', async () => {
+    const f = await fixture('edge-events-append-only');
+    try {
+      await f.client.transaction([{
+        kind: 'run',
+        sql: `INSERT INTO memory_edge_events(
+          id, principal_id, project_id, event_type, from_memory_id, to_memory_id,
+          relation, old_weight, new_weight, evidence_event_id, reason_code, created_at
+        ) VALUES (?, ?, ?, 'edge.created', ?, ?, 'branch_of', NULL, 1, NULL, 'TEST', ?)`,
+        params: ['edge-event-1', scopeA.principalId, scopeA.projectId!, 'child', 'parent', 1],
+      }]);
+      await expect(f.client.exec("UPDATE memory_edge_events SET reason_code = 'mutated' WHERE id = 'edge-event-1'"))
+        .rejects.toThrow(/append-only/);
+      await expect(f.client.exec("DELETE FROM memory_edge_events WHERE id = 'edge-event-1'"))
+        .rejects.toThrow(/append-only/);
+    } finally {
+      await f.store.close();
+    }
+  });
+
   it('tracks pending/synced remote truth per scope and rejects invalid enum values', async () => {
     const f = await fixture('remote-state');
     try {

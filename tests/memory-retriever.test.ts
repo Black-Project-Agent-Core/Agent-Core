@@ -81,8 +81,16 @@ describe('deterministic hybrid memory retriever', () => {
       kind: 'decision',
       value: 'Foreign-project TypeScript route proof must never cross project scope.',
       sourceType: 'test',
-      explicitRelations: [{ targetMemoryId: artifact.memoryId, relation: 'explicit_relation' }],
     });
+    // Inject a legacy/corrupt cross-project edge directly to preserve retrieval defense-in-depth coverage.
+    // The authoritative MemoryStore path now correctly rejects creating this edge.
+    await client.transaction([{
+      kind: 'run',
+      sql: `INSERT INTO memory_edges(
+        from_memory_id, to_memory_id, relation, weight, evidence_event_id, created_at
+      ) VALUES (?, ?, 'explicit_relation', 1, NULL, ?)`,
+      params: [foreignProject.memoryId, artifact.memoryId, Date.now()],
+    }]);
 
     const config = loadConfig({}, process.cwd()).memory;
     const retriever = new MemoryRetriever(client, config);

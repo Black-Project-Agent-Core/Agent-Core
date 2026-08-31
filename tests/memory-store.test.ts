@@ -215,6 +215,36 @@ describe('auditable versioned memory store', () => {
       { from_memory_id: conflicting.memoryId, to_memory_id: branch.memoryId, relation: 'contradicts' },
     ]));
 
+    const edgeEvents = await client.query<{ from_memory_id: string; to_memory_id: string; relation: string; event_type: string }>(
+      `SELECT from_memory_id, to_memory_id, relation, event_type FROM memory_edge_events
+       WHERE relation IN ('branch_of', 'contradicts')
+       ORDER BY relation, from_memory_id, to_memory_id`,
+    );
+    expect(edgeEvents.filter((event) => event.relation === 'branch_of')).toEqual([
+      { from_memory_id: branch.memoryId, to_memory_id: parent.memoryId, relation: 'branch_of', event_type: 'edge.created' },
+    ]);
+    expect(edgeEvents.filter((event) => event.relation === 'contradicts')).toHaveLength(2);
+
+    const foreign = await store.commitMemory({
+      scope: { ...scope, projectId: 'other-project' },
+      canonicalKey: 'architecture.foreign',
+      kind: 'decision',
+      value: 'Foreign project memory',
+      sourceType: 'test',
+    });
+    await expect(store.commitMemory({
+      scope,
+      canonicalKey: 'architecture.cross-scope-link',
+      kind: 'decision',
+      value: 'This invalid relation must never persist.',
+      sourceType: 'test',
+      explicitRelations: [{ targetMemoryId: foreign.memoryId, relation: 'branch_of' }],
+    })).rejects.toMatchObject({ code: 'MEMORY_RELATION_TARGET_NOT_FOUND' });
+    expect((await client.query<{ count: number }>(
+      "SELECT count(*) AS count FROM memory_items WHERE principal_id = ? AND project_id = ? AND canonical_key = 'architecture.cross-scope-link'",
+      [scope.principalId, scope.projectId!],
+    ))[0]!.count).toBe(0);
+
     await store.close();
   });
 });
