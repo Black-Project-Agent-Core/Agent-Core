@@ -61,6 +61,6 @@ Pinned runtime references live under `research/references/`. The active referenc
 
 ## Current phase
 
-**Phase 0 learning plus Task 1 through Task 6 implementation checkpoints are complete:** `runtime/native/` now provides the pinned llama.cpp/GGML CPU production substrate boundary, the Super-Runtime-owned `MemoryLedger`, Linux stable-address file residency, generic MoE selected-expert range planning, deterministic fixed-order dense residency, and a global runtime budget planner that reserves mandatory host costs before allocating bounded dense/MoE residency headroom and validates optional device-memory inventory. This is still not yet the complete runnable inference runtime.
+**Phase 0 learning plus Task 1 through Task 7 implementation checkpoints are complete:** the native foundation now includes the pinned llama.cpp/GGML CPU substrate, `MemoryLedger`, Linux stable-address file residency, generic MoE range planning, deterministic dense residency, a global runtime budget planner, and a hard memory-ceiling harness backed by real delegated cgroup-v2 enforcement with swap disabled, OOM classification, peak-memory evidence, and output parity hashing. Super-Runtime still lacks the unified runnable lifecycle entrypoint.
 
-The next eligible checkpoint is **Task 7 only: external hard memory-ceiling acceptance harness**. The harness must fail closed when real enforcement is unavailable; unified runtime entrypoint, API work, GPU work, and consumer integration remain deferred until their turn in the canonical master context.
+The next eligible checkpoint is **Task 8 only: minimal native runtime smoke entrypoint**. API work, GPU work, downstream AI-tool integration, and broader production hardening remain deferred until the first runnable core is audited.

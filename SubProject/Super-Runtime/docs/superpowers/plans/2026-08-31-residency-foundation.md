@@ -219,23 +219,23 @@ Commit message: `feat: add global runtime budget planner`
 - Consumes: a runtime smoke/inference command and requested memory ceiling
 - Produces: machine provenance, exit classification, measured peak RSS, and output-parity evidence across ceilings
 
-- [ ] **Step 1: Write harness self-checks that fail without real enforcement**
+- [x] **Step 1: Write harness self-checks that fail without real enforcement**
 
 On Linux, require working cgroup-v2/systemd or an explicitly implemented alternative. A missing enforcement mechanism must abort the benchmark instead of running unconstrained.
 
-- [ ] **Step 2: Verify RED in the current Codespace environment**
+- [x] **Step 2: Verify RED in the current Codespace environment**
 
 Current research predicts `systemd-run --user` will fail because the user session bus is unavailable; the harness must report this as unsupported rather than fabricate a memory-ceiling result.
 
-- [ ] **Step 3: Implement the supported-host execution path**
+- [x] **Step 3: Implement the supported-host execution path**
 
 Use a real memory ceiling with swap disabled, classify OOM separately from runtime failure, and capture machine/runtime provenance.
 
-- [ ] **Step 4: Run harness self-tests**
+- [x] **Step 4: Run harness self-tests**
 
 Verify unsupported hosts fail closed and a suitable Linux host produces bounded evidence.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit message: `bench: add hard memory ceiling harness`
 

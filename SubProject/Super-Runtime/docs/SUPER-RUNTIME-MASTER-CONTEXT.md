@@ -69,6 +69,10 @@ SubProject/Super-Runtime/
 ├── tests/
 │   └── contracts/
 │       └── native-substrate.sh
+├── benchmarks/
+│   ├── memory-ceiling.sh
+│   ├── test-memory-ceiling.sh
+│   └── README.md
 └── research/references/
 ```
 
@@ -81,18 +85,18 @@ Task 3 stable-address file residency                   COMPLETE
 Task 4 generic MoE selected-ID range planner           COMPLETE
 Task 5 fixed-order dense residency policy              COMPLETE
 Task 6 global runtime budget planner                   COMPLETE
-Task 7 hard memory-ceiling harness                     NOT STARTED
+Task 7 hard memory-ceiling harness                     COMPLETE
+Task 8 minimal native runtime entrypoint               NOT STARTED
 MoE READY/lease scheduler integration                  NOT STARTED
-native runtime entrypoint                             NOT STARTED
 ```
 
 Therefore:
 
 > **Super-Runtime still does not yet exist as a runnable inference runtime product.**
 
-Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds the deterministic thread-safe `MemoryLedger`. Task 3 adds stable-address Linux file residency. Task 4 adds generic MoE selected-ID range planning with exact CPU `MUL_MAT_ID` parity. Task 5 adds deterministic fixed-order dense planning with pinned-prefix, two-slot look-ahead, and one-slot safe fallback. Task 6 now adds deterministic global admission planning: runtime overhead, mandatory weights, context/state, scratch, staging, and safety reserve are admitted before dynamic dense/MoE residency; infeasible host or device requests fail closed; unused ceiling remains explicit rather than being fabricated as ownership. These checkpoints still do not provide external hard-cap enforcement or the unified runtime lifecycle entrypoint.
+Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds deterministic memory accounting. Task 3 adds stable-address Linux file residency. Task 4 adds generic MoE selected-ID range planning with exact CPU `MUL_MAT_ID` parity. Task 5 adds deterministic dense residency with safe one/two-slot behavior. Task 6 adds deterministic global admission planning. Task 7 now adds external acceptance evidence: on a delegated cgroup-v2 host the harness writes a real `memory.max`, forces `memory.swap.max=0`, moves the command into the cgroup before execution, records `memory.peak`, samples process RSS, hashes output, and distinguishes success, parity failure, runtime failure, and cgroup OOM. Unsupported hosts fail closed before user code executes. The remaining Milestone-1 implementation frontier is the unified native runtime lifecycle entrypoint.
 
-Phase 0 learning is complete, and the first six implementation checkpoints are complete.
+Phase 0 learning is complete, and the first seven implementation checkpoints are complete.
 
 The project frontier remains:
 
@@ -100,11 +104,11 @@ The project frontier remains:
 
 ## Immediate next action — exactly one task
 
-The next eligible implementation checkpoint is **Task 7 only: add the external hard memory-ceiling acceptance harness**.
+The next eligible implementation checkpoint is **Task 8 only: add the minimal native runtime smoke entrypoint**.
 
-Do not begin the runtime entrypoint, API work, GPU work, or downstream integration in parallel with Task 7. Task 7 becomes active only after the Task 6 commit is present and remotely verified on canonical `Agent-Core/main`.
+Do not begin API work, GPU work, or downstream integration in parallel with Task 8. Task 8 becomes active only after the Task 7 commit is present and remotely verified on canonical `Agent-Core/main`.
 
-Task 1 + Task 2 + Task 3 + Task 4 + Task 5 + Task 6 verification boundary:
+Task 1 + Task 2 + Task 3 + Task 4 + Task 5 + Task 6 + Task 7 verification boundary:
 
 ```text
 bash tests/contracts/native-substrate.sh
@@ -152,6 +156,15 @@ ctest -R super-runtime-runtime-budget
   -> dense/MoE discretionary share is explicit and inspectable
   -> device request validated against device inventory
   -> overflow/failure publishes no partial plan
+  -> PASS
+
+benchmarks/test-memory-ceiling.sh
+  -> unsupported enforcement fails closed before user command execution
+  -> delegated cgroup-v2 success path enforces memory.max with swap disabled
+  -> stdout SHA-256 parity evidence is recorded
+  -> runtime failure and parity failure are distinct classifications
+  -> deliberate over-allocation produces cgroup OOM classification
+  -> memory.peak remains bounded by the requested ceiling
   -> PASS
 ```
 
@@ -1585,7 +1598,7 @@ Milestone 1 is accepted only if fresh executable evidence demonstrates all appli
 [ ] required ranges are READY before dereference
 [ ] leased ranges cannot be reclaimed early
 [ ] output matches the correctness oracle
-[ ] measured RSS/residency telemetry is reported
+[x] measured RSS/residency telemetry is reported
 [ ] cleanup/unload releases runtime ownership cleanly
 [ ] all tests pass
 [ ] implementation is committed and verified on canonical GitHub

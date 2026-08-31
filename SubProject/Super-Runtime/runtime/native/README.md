@@ -270,4 +270,4 @@ Passing Task 1 through Task 6 means only:
 
 > Super-Runtime has a reproducible native CPU substrate, deterministic memory ownership accounting, stable file residency, generic sparse-MoE and dense residency policy fixtures with exact GGML CPU parity, and a deterministic global host/device admission plan.
 
-It does **not** mean the Super-Runtime inference runtime is complete. The next checkpoint is Task 7: a hard memory-ceiling acceptance harness that must fail closed when real external enforcement is unavailable.
+It does **not** mean the Super-Runtime inference runtime is complete. Task 7 now supplies a separately documented hard memory-ceiling acceptance harness under `benchmarks/`; it has demonstrated real delegated cgroup-v2 enforcement and fail-closed unsupported behavior. The next checkpoint is Task 8: the unified native runtime entrypoint.
