@@ -88,7 +88,7 @@
 - [x] **Step 2: Run supplemental read-only GitHub Fabric acceptance** using Codespace GitHub authentication without printing the token. Record whether all four read-only probes pass; report any credential-scope limitation factually.
 - [x] **Step 3: Run focused trust/isolation matrix** covering OAuth/auth, principal/project isolation, operational audit, dual-era MCP, backup/restore, retention, audit integrity, observability, resource governance, and GitHub regression; require zero failures.
 - [x] **Step 4: Run a temporary feature-build local HTTP/MCP canary** proving health/local+remote metrics classification/no-token/evil-Origin/correlation + 55 tools in both protocol eras.
-- [ ] **Step 5: Update docs with exact feature certification evidence, commit `docs: record wave g feature certification evidence`, push/read back equality.**
+- [x] **Step 5: Update docs with exact feature certification evidence, commit `docs: record wave g feature certification evidence`, push/read back equality.** Commit `a087ce3` published the feature evidence to both the Wave G branch and `main`.
 
 
 **G3 recorded evidence:**
@@ -107,6 +107,8 @@ feature local canary                      PASS; 55 tools both protocol eras
 live GitHub read probes                   3 / 4; package-list 403 due Codespaces token scope
 ```
 
+The G3 line above is historical pre-version evidence. During final v0.6.0 publication, the already-provisioned separate Packages credential was used without printing its value and the same read-only acceptance became **4 / 4 PASS** (identity, repository metadata, `ls-remote`, package list).
+
 ### Task G4: Promote the certified control plane to Agent Core v0.6.0
 
 **Files:**
@@ -121,7 +123,7 @@ live GitHub read probes                   3 / 4; package-list 403 due Codespaces
 - [x] **Step 6: Build stable v0.6.0 artifacts from a clean tracked tree and verify manifest/checksums locally.** Seven allowlisted assets were built; manifest source/tag/version, bytes, SHA-256 checksums, and forbidden-name scan all passed.
 - [x] **Step 7: Reconcile any new `origin/main` commits explicitly, re-run prepublish certification on the final release source, then publish main non-force.** Release source `5c19c053` became published main without force; later concurrent native-substrate main work was kept outside the immutable release tag and separately postpublish-certified.
 - [x] **Step 8: Create/push tag `v0.6.0`, publish version-matched GitHub Release assets and stable GitHub Package/TGZ where authorized, then require `npm run verify:stable-parity` PASS.** Tag points to `5c19c053`; GitHub Release is stable with 7/7 byte-identical assets; registry package `@black-project-agent-core/agent-core-plugin@0.6.0` is byte-identical to the release TGZ; stable parity PASS.
-- [x] **Step 9: Run postpublish `npm run certify:core` and record exact v0.6.0 evidence.** Exact stable source passed 18/18; memory p95 `77.528 ms`, DAG/dispatch/wake `1.288/23.770/7.417 ms`, max concurrency `4/4`, model/API violations `0`.
+- [x] **Step 9: Run postpublish `npm run certify:core` and record exact v0.6.0 evidence.** Exact stable source passed 18/18; memory p95 `80.036 ms`, DAG/dispatch/wake `1.688/23.949/8.756 ms`, max concurrency `4/4`, model/API violations `0`.
 
 ### Task G5: Integrate, source-sync, and architecture-level certification
 
@@ -132,10 +134,10 @@ live GitHub read probes                   3 / 4; package-list 403 due Codespaces
 - Produces final published architecture-level stable claim on one exact main/runtime SHA.
 
 - [x] **Step 1: Fetch `origin/main` immediately before integration.** After `v0.6.0` publication, concurrent `95326ba` was audited. Its core-adjacent change only adds native build prerequisites plus the matching fresh-machine test; no work was discarded or reset.
-- [x] **Step 2: On the exact integration candidate run `npm ci` + fresh `npm run certify:core`; require PASS.** Latest main `95326bac134cd721cf7e23526725babed9e0bc5c` passed 18/18, 137 files / 668 tests PASS / 38 skips; memory p95 `74.110 ms`; DAG/dispatch/wake `1.295/24.238/7.771 ms`.
+- [x] **Step 2: On the exact integration candidate run `npm ci` + fresh `npm run certify:core`; require PASS.** Latest main `95326bac134cd721cf7e23526725babed9e0bc5c` passed 18/18, 137 files / 668 tests PASS / 38 skips; memory p95 `72.949 ms`; DAG/dispatch/wake `1.670/24.927/6.821 ms`.
 - [x] **Step 3: Publish `main` non-force, fetch, and require `HEAD == origin/main`.** Current main publication is `95326bac134cd721cf7e23526725babed9e0bc5c`; local fast-forward/readback matched exactly.
 - [x] **Step 4: Controlled Codespace source-sync/repair; require `HEAD == origin/main == connection.sourceCommit`.** Equality is exact at `95326ba`, connection sourceVersion is `0.6.0`, and unrelated `.vscode/` is preserved.
-- [x] **Step 5: Run final production public/runtime matrix:** public health `200`, remote/local metrics `403/200`, no-token `401`, evil Origin `403`, correlation PASS, memory/execution integrity `ok`, resource `4/4`, maintenance disabled, legacy `2025-11-25/55`, modern `2026-07-28/55`, audit `379` records verify PASS.
+- [x] **Step 5: Run final production public/runtime matrix:** public health `200`, remote/local metrics `403/200`, no-token `401`, evil Origin `403`, correlation PASS, memory/execution integrity `ok`, resource `4/4`, maintenance disabled, legacy `2025-11-25/55`, modern `2026-07-28/55`, audit `389` records verify PASS.
 - [x] **Step 6: If a temporary canary key is created, revoke it and verify revocation.** No temporary key was created; the established runtime connector key was reused without printing its value.
 **G5 production evidence before final docs closeout:**
 
@@ -147,14 +149,17 @@ GitHub Package 0.6.0                       published; TGZ SHA-256/SHA-1 parity P
 latest main/runtime source                 95326bac134cd721cf7e23526725babed9e0bc5c
 latest main core certification             18 / 18 PASS
 latest main regression                     137 files / 668 tests PASS / 38 skips
-latest main memory p95                     74.110 ms / <150 PASS
-latest main DAG / dispatch / wake p95      1.295 / 24.238 / 7.771 ms PASS
+latest main memory p95                     72.949 ms / <150 PASS
+latest main DAG / dispatch / wake p95      1.670 / 24.927 / 6.821 ms PASS
 production public / remote/local metrics   200 / 403 / 200
 production no-token / evil Origin          401 / 403
 production legacy / modern MCP             2025-11-25/55 / 2026-07-28/55 PASS
 production memory / execution integrity    ok / ok
-production audit                           379 records / verify PASS
+production audit                           389 records / verify PASS
 external model dependency/source hits      0 / 0
+remote release asset byte parity            7 / 7 PASS
+registry vs release TGZ byte parity          PASS
+final live GitHub read probes               4 / 4 PASS
 ```
 
 - [ ] **Step 7: Publish final docs-only architecture certification if evidence changes the docs; run fresh `npm run certify:core` on that exact docs SHA before publication/source-sync.**

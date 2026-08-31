@@ -1183,17 +1183,19 @@ Postpublish `npm run certify:core` on exact stable source `5c19c053...` passed:
 core matrix                           18 / 18 PASS
 normal regression                     137 files / 668 tests PASS / 38 skips
 Wave E routing/memory quality gate    PASS
-100k memory preflight p95             77.528 ms / <150 ms PASS
-DAG validation p95                    1.288 ms / <50 ms PASS
-ready dispatch p95                    23.770 ms / <100 ms PASS
-persisted wake p95                    7.417 ms / <250 ms PASS
+100k memory preflight p95             80.036 ms / <150 ms PASS
+DAG validation p95                    1.688 ms / <50 ms PASS
+ready dispatch p95                    23.949 ms / <100 ms PASS
+persisted wake p95                    8.756 ms / <250 ms PASS
 max concurrency                       4 / configured 4 PASS
 stable release parity                 v0.6.0 / 7 assets PASS
 external model dependency violations  0
 external model source-marker hits     0
 ```
 
-The Codespaces token cannot enumerate organization package versions through the GitHub Packages REST endpoint (`403 Resource not accessible by integration`), so that REST probe is not reported as a PASS. Authenticated npm-registry access independently verified the published `0.6.0` package and downloaded a TGZ whose SHA-256 and SHA-1 exactly match the verified GitHub Release TGZ. The earlier generic read-only GitHub acceptance remains factually `3 / 4` through the REST-oriented harness; package publication/parity is proven through the registry path instead of being inferred from the blocked REST call.
+A postpublication run correctly failed once when host load pushed 100k memory p95 to `185.539 ms`. No source/threshold was relaxed. Three immediate 5-sample reruns (`65.423 / 74.259 / 78.252 ms`), a 25-sample p95 of `74.411 ms`, and the next complete postpublish core certification at `80.036 ms` all passed the unchanged `<150 ms` gate.
+
+The initial generic Codespaces integration-token probe was factually `3 / 4` because package enumeration returned `403 Resource not accessible by integration`. Final Wave G certification then used the already-provisioned separate Packages credential and the same read-only harness passed **4 / 4**: identity, private repository metadata, Git `ls-remote`, and npm package listing all passed. Authenticated registry download additionally proved the published `0.6.0` TGZ is byte-identical to the GitHub Release TGZ.
 
 After the immutable release tag was created, `origin/main` advanced with concurrent Super-Runtime native-substrate work. The only Agent Core core-adjacent change adds fresh-Codespace native build prerequisites (`cmake`, `g++`, `ninja-build`, `ccache`) plus its reproducibility test. This descendant was not folded into or moved under the immutable `v0.6.0` tag. Instead, exact latest main was separately recertified:
 
@@ -1202,8 +1204,8 @@ latest main/runtime source             95326bac134cd721cf7e23526725babed9e0bc5c
 version                                0.6.0
 npm ci + npm run certify:core           PASS / 18 of 18
 normal regression                      137 files / 668 tests PASS / 38 skips
-100k memory p95                        74.110 ms / <150 ms PASS
-DAG / dispatch / wake p95              1.295 / 24.238 / 7.771 ms PASS
+100k memory p95                        72.949 ms / <150 ms PASS
+DAG / dispatch / wake p95              1.670 / 24.927 / 6.821 ms PASS
 max concurrency                        4 / configured 4 PASS
 stable v0.6.0 parity                   PASS (tag remains 5c19c053)
 external model dependency/source hits  0 / 0
@@ -1222,7 +1224,7 @@ resource safe / configured max          4 / 4
 maintenance                             disabled; 0 runs; 0 candidates
 legacy MCP                              2025-11-25 / 55 tools PASS
 modern MCP                              2026-07-28 / 55 tools PASS
-live audit                              379 records / verify PASS
+live audit                              389 records / verify PASS
 temporary canary key                    not created; established runtime connector key reused
 unrelated .vscode editor state          preserved
 ```

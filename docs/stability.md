@@ -456,7 +456,7 @@ registry vs release TGZ parity             SHA-256 + SHA-1 exact PASS
 Presentation Bridge source bundle version  0.2.0
 ```
 
-Exact remote release hashes were compared against assets rebuilt locally from `5c19c053`; all seven remote files matched byte-for-byte. The published registry TGZ was then downloaded through authenticated npm registry access and matched the local/GitHub Release TGZ exactly. The GitHub Packages REST endpoint remains `403 Resource not accessible by integration` for the Codespaces integration token, so REST package enumeration is intentionally not used as evidence of package publication.
+Exact remote release assets were downloaded and compared against artifacts rebuilt locally from `5c19c053`; all seven files matched byte-for-byte, and the downloaded `SHA256SUMS.txt` independently verified every checksummed payload. The published registry TGZ was then downloaded through authenticated npm registry access and matched the GitHub Release TGZ exactly (SHA-256 `6a289bc15e0c4d4d75459ec7aee72749f3b213190c218be6a1feb549f767bf89`, SHA-1 `1c94478a9c2f29a61e11ab8f8c27de76acfec857`).
 
 Postpublish core certification at the immutable stable release source:
 
@@ -467,15 +467,19 @@ intentional skips                           38
 Wave E quality gate                         PASS
 routing tier accuracy                       0.975
 memory Recall@K / MRR                       1.000 / 1.000
-100k memory preflight p95                   77.528 ms / <150 ms PASS
-DAG validation p95                          1.288 ms / <50 ms PASS
-ready dispatch p95                          23.770 ms / <100 ms PASS
-persisted wake p95                          7.417 ms / <250 ms PASS
+100k memory preflight p95                   80.036 ms / <150 ms PASS
+DAG validation p95                          1.688 ms / <50 ms PASS
+ready dispatch p95                          23.949 ms / <100 ms PASS
+persisted wake p95                          8.756 ms / <250 ms PASS
 max observed / configured concurrency       4 / 4 PASS
 stable release parity                       v0.6.0 / 7 assets PASS
 external AI/model dependency violations     0
 external model endpoint/key marker hits     0
 ```
+
+One postpublication certification attempt encountered a transient host-load excursion at `185.539 ms` for the 100k memory p95 and correctly failed the `<150 ms` gate. No threshold or runtime source was changed to force a pass. Three immediate 5-sample reruns measured `65.423 / 74.259 / 78.252 ms`, a 25-sample run measured p95 `74.411 ms` (max `77.041 ms`), and the next complete postpublish `certify:core` run passed at `80.036 ms`. The failed excursion remains part of the certification record rather than being hidden.
+
+Final supplemental live GitHub Fabric acceptance passed all four read-only probes using the existing separate repository and Packages credentials without printing either value: identity `GET /user` 200, private repository metadata 200, Git `ls-remote` PASS, and npm package-list 200. The earlier 3/4 probe used the generic Codespaces integration token and correctly exposed its package-scope limitation; final certification used the already-provisioned Packages credential rather than converting that earlier 403 into a false PASS.
 
 After the stable tag was created, concurrent Super-Runtime native-substrate work advanced `main` to `95326bac134cd721cf7e23526725babed9e0bc5c`. Its Agent Core core-adjacent portion only expands fresh-Codespace system prerequisites with `cmake`, `g++`, `ninja-build`, and `ccache`, plus the matching reproducibility test. The immutable `v0.6.0` tag remains at `5c19c053`; latest main was separately required to pass the full postpublish architecture gate.
 
@@ -485,10 +489,10 @@ Latest-main certification at `95326bac134cd721cf7e23526725babed9e0bc5c`:
 npm ci + npm run certify:core               PASS / 18 of 18
 version                                     0.6.0
 normal regression                           137 files / 668 tests PASS / 38 skips
-100k memory preflight p95                   74.110 ms / <150 ms PASS
-DAG validation p95                          1.295 ms / <50 ms PASS
-ready dispatch p95                          24.238 ms / <100 ms PASS
-persisted wake p95                          7.771 ms / <250 ms PASS
+100k memory preflight p95                   72.949 ms / <150 ms PASS
+DAG validation p95                          1.670 ms / <50 ms PASS
+ready dispatch p95                          24.927 ms / <100 ms PASS
+persisted wake p95                          6.821 ms / <250 ms PASS
 max observed / configured concurrency       4 / 4 PASS
 stable release parity                       v0.6.0 PASS
 external model dependency/source violations 0 / 0
@@ -508,7 +512,7 @@ resource governance                            enabled; safe 4 / configured max 
 maintenance                                    disabled; 0 runs; 0 retention candidates
 legacy MCP                                     2025-11-25 / 55 tools PASS
 modern MCP                                     2026-07-28 / 55 tools PASS
-live audit                                     379 records / verify PASS
+live audit                                     389 records / verify PASS
 temporary public canary key                    not created
 ```
 
