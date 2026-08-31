@@ -127,23 +127,23 @@ Commit message: `feat: add file-backed residency primitive`
 - Consumes: GGML `MUL_MAT_ID` semantics, `MemoryLedger`, file residency primitive
 - Produces: a planner that converts selected expert IDs and tensor strides into required byte ranges without model-family-specific routing code
 
-- [ ] **Step 1: Write adversarial failing tests**
+- [x] **Step 1: Write adversarial failing tests**
 
 Construct selected-ID sets with duplicates, unsorted IDs, adjacent experts, sparse experts, and out-of-range IDs. Require deduplicated/coalesced byte ranges and hard rejection of invalid IDs.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Expected: failure because the expert residency planner does not exist.
 
-- [ ] **Step 3: Implement ID-to-range planning independent of Kimi/Qwen/DeepSeek**
+- [x] **Step 3: Implement ID-to-range planning independent of Kimi/Qwen/DeepSeek**
 
 The planner may use tensor shape/stride metadata only; it must not inspect a model-family enum to decide which expert slices to fetch.
 
-- [ ] **Step 4: Run tests and a GGML `MUL_MAT_ID` parity fixture**
+- [x] **Step 4: Run tests and a GGML `MUL_MAT_ID` parity fixture**
 
 Compare output from fully resident expert weights with the residency-driven fixture. Expected: identical output within the substrate's declared numeric contract.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit message: `feat: plan moe expert residency from ggml ids`
 

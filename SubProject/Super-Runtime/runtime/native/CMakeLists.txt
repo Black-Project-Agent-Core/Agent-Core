@@ -3,6 +3,7 @@ add_library(
     STATIC
     super_runtime/memory_ledger.cpp
     super_runtime/file_residency.cpp
+    super_runtime/moe_residency.cpp
 )
 
 target_include_directories(super-runtime-core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -20,6 +21,10 @@ add_executable(super-runtime-test-memory-ledger tests/test_memory_ledger.cpp)
 target_link_libraries(super-runtime-test-memory-ledger PRIVATE super-runtime-core Threads::Threads)
 add_test(NAME super-runtime-memory-ledger COMMAND super-runtime-test-memory-ledger)
 
+add_executable(super-runtime-test-moe-residency tests/test_moe_residency.cpp)
+target_link_libraries(super-runtime-test-moe-residency PRIVATE super-runtime-core ggml)
+add_test(NAME super-runtime-moe-residency COMMAND super-runtime-test-moe-residency)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_executable(super-runtime-test-file-residency tests/test_file_residency.cpp)
     target_link_libraries(super-runtime-test-file-residency PRIVATE super-runtime-core)
@@ -30,10 +35,12 @@ if(MSVC)
     target_compile_options(super-runtime-core PRIVATE /W4)
     target_compile_options(super-runtime-native-smoke PRIVATE /W4)
     target_compile_options(super-runtime-test-memory-ledger PRIVATE /W4)
+    target_compile_options(super-runtime-test-moe-residency PRIVATE /W4)
 else()
     target_compile_options(super-runtime-core PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(super-runtime-native-smoke PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(super-runtime-test-memory-ledger PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(super-runtime-test-moe-residency PRIVATE -Wall -Wextra -Wpedantic)
     if(TARGET super-runtime-test-file-residency)
         target_compile_options(super-runtime-test-file-residency PRIVATE -Wall -Wextra -Wpedantic)
     endif()

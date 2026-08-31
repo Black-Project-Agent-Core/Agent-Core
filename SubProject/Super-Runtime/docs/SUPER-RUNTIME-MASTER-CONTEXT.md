@@ -53,10 +53,13 @@ SubProject/Super-Runtime/
 │       │   ├── memory_ledger.h
 │       │   ├── memory_ledger.cpp
 │       │   ├── file_residency.h
-│       │   └── file_residency.cpp
+│       │   ├── file_residency.cpp
+│       │   ├── moe_residency.h
+│       │   └── moe_residency.cpp
 │       └── tests/
 │           ├── test_memory_ledger.cpp
-│           └── test_file_residency.cpp
+│           ├── test_file_residency.cpp
+│           └── test_moe_residency.cpp
 ├── tests/
 │   └── contracts/
 │       └── native-substrate.sh
@@ -69,8 +72,9 @@ Current implementation status:
 Task 1 native llama.cpp/GGML CPU substrate boundary   COMPLETE
 Task 2 deterministic MemoryLedger                     COMPLETE
 Task 3 stable-address file residency                   COMPLETE
+Task 4 generic MoE selected-ID range planner           COMPLETE
 dense production residency                            NOT STARTED
-MoE production residency                              NOT STARTED
+MoE READY/lease scheduler integration                  NOT STARTED
 benchmarks/ hard-cap harness                          NOT STARTED
 native runtime entrypoint                             NOT STARTED
 ```
@@ -79,9 +83,9 @@ Therefore:
 
 > **Super-Runtime still does not yet exist as a runnable inference runtime product.**
 
-Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds the deterministic thread-safe `MemoryLedger`. Task 3 adds the first physical backing primitive: a Linux file-backed mapping whose virtual address remains stable while page-aligned ranges can be explicitly prefetched/released and charged to `ResidentWeights` in the ledger. These checkpoints still do not load a model or implement dense/MoE scheduler policy.
+Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds the deterministic thread-safe `MemoryLedger`. Task 3 adds the first physical backing primitive: a Linux file-backed mapping whose virtual address remains stable while page-aligned ranges can be explicitly prefetched/released and charged to `ResidentWeights` in the ledger. Task 4 adds a generic MoE planner that honors strided GGML-style selected IDs, validates/deduplicates them, maps them through expert stride metadata, aligns/coalesces residency ranges, and preserves exact CPU `MUL_MAT_ID` output in the tested selected-range fixture. These checkpoints still do not load a model or freeze the production READY/lease scheduler hook.
 
-Phase 0 learning is complete, and the first three implementation checkpoints are complete.
+Phase 0 learning is complete, and the first four implementation checkpoints are complete.
 
 The project frontier remains:
 
@@ -89,11 +93,11 @@ The project frontier remains:
 
 ## Immediate next action — exactly one task
 
-The next eligible implementation checkpoint is **Task 4 only: add generic MoE selected-expert ID-to-range residency planning**.
+The next eligible implementation checkpoint is **Task 5 only: add the fixed-order dense residency policy**.
 
-Do not begin dense production policy, API work, GPU work, or downstream integration in parallel with Task 4. Task 4 becomes active only after the Task 3 commit is present and remotely verified on canonical `Agent-Core/main`.
+Do not begin the global budget planner, hard-cap harness, runtime entrypoint, API work, GPU work, or downstream integration in parallel with Task 5. Task 5 becomes active only after the Task 4 commit is present and remotely verified on canonical `Agent-Core/main`.
 
-Task 1 + Task 2 + Task 3 verification boundary:
+Task 1 + Task 2 + Task 3 + Task 4 verification boundary:
 
 ```text
 bash tests/contracts/native-substrate.sh
@@ -114,6 +118,15 @@ ctest -R super-runtime-file-residency
   -> ResidentWeights ledger integration
   -> deterministic bytes remain correct after refault
   -> bounded RSS evidence recorded without making reclaim timing a correctness gate
+  -> PASS
+
+ctest -R super-runtime-moe-residency
+  -> strided selected-ID semantics honored
+  -> duplicates/unsorted IDs deduplicated
+  -> invalid IDs and overflow fail closed
+  -> aligned/adjacent expert ranges coalesced
+  -> selected union drives FileResidency + MemoryLedger
+  -> real GGML MUL_MAT_ID parity max_abs_diff = 0
   -> PASS
 ```
 
@@ -1419,6 +1432,10 @@ validated deduplicated/coalesced required ranges
 
 It must not inspect a Kimi/Qwen/DeepSeek model-family enum merely to decide which selected expert slices to fetch.
 
+Task 4 production checkpoint now implements this planner under `runtime/native/super_runtime/moe_residency.*`. Its focused test covers unsorted/duplicate/adjacent/sparse IDs, invalid IDs, invalid geometry, arithmetic overflow, GGML-style row stride, range alignment/coalescing, `FileResidency`/`MemoryLedger` integration, and an actual CPU `MUL_MAT_ID` parity fixture. The selected union `{0, 1, 3}` matches the fully resident baseline with `max_abs_diff = 0` while unselected expert `2` is poisoned in the managed copy.
+
+This does **not** yet freeze a production scheduler callback or implement READY/lease lifecycle around the op; those remain later integration work.
+
 ## Task 5 — fixed-order dense residency policy
 
 Target:
@@ -1925,7 +1942,7 @@ Current meaning:
 
 Use this statement when a short explanation of Super-Runtime is needed:
 
-> **Super-Runtime is a not-yet-runnable CPU-first local inference runtime whose first production foundations now exist: a pinned llama.cpp/GGML CPU substrate boundary, a deterministic `MemoryLedger`, and a Linux stable-address file-backed residency primitive. Its defining goal is to make model weights and architecture-correct state operate under an explicit global resource envelope. It reuses llama.cpp/GGML for model graphs, GGUF/tensors, kernels, and architecture-specific state, while Super-Runtime owns memory admission, file-backed weight residency, access-topology scheduling, storage I/O policy, leases, telemetry, and hard-cap validation. K3-in-C is the primary reference for proven low-memory execution patterns, not a neural architecture to copy. Phase 0 learning is complete; the active frontier remains building the first runnable native runtime core. Downstream AI-tool integration is deferred until that runtime actually exists.**
+> **Super-Runtime is a not-yet-runnable CPU-first local inference runtime whose first production foundations now exist: a pinned llama.cpp/GGML CPU substrate boundary, a deterministic `MemoryLedger`, a Linux stable-address file-backed residency primitive, and a generic MoE selected-expert range planner with exact GGML CPU parity in the tested fixture. Its defining goal is to make model weights and architecture-correct state operate under an explicit global resource envelope. It reuses llama.cpp/GGML for model graphs, GGUF/tensors, kernels, and architecture-specific state, while Super-Runtime owns memory admission, file-backed weight residency, access-topology scheduling, storage I/O policy, leases, telemetry, and hard-cap validation. K3-in-C is the primary reference for proven low-memory execution patterns, not a neural architecture to copy. Phase 0 learning is complete; the active frontier remains building the first runnable native runtime core. Downstream AI-tool integration is deferred until that runtime actually exists.**
 
 ---
 

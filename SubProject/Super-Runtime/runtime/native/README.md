@@ -179,10 +179,41 @@ cmake --build .build/file-residency --target super-runtime-test-file-residency -
 (cd .build/file-residency && ctest --output-on-failure -R '^super-runtime-file-residency$')
 ```
 
-## Scope boundary after Task 3
+## Task 4 — generic MoE selected-expert range planning
 
-Passing Task 1 + Task 2 + Task 3 means only:
+`MoeResidency` adds a model-family-independent planner between GGML selector semantics and the file-residency primitive. It consumes a strided logical expert-ID view plus physical expert layout metadata and produces validated, deduplicated, sorted, residency-aligned, coalesced byte ranges.
 
-> Super-Runtime has a reproducible native CPU substrate boundary, a deterministic thread-safe memory ownership ledger, and a Linux stable-address file-backed residency primitive whose intentional resident ranges are budgeted by that ledger.
+Frozen Task-4 behavior:
 
-It does **not** mean the Super-Runtime inference runtime is complete. The next checkpoint is Task 4: generic MoE expert-ID-to-range residency planning.
+```text
+strided selected expert IDs
+  -> honor logical element/token byte strides
+  -> reject negative/out-of-range IDs
+  -> deduplicate selected union across tokens
+  -> derive exact expert offsets from expert stride
+  -> align to residency granularity
+  -> coalesce overlapping/adjacent residency ranges
+  -> publish plan only after complete validation
+```
+
+The planner has no Kimi/Qwen/DeepSeek/model-family switch. It uses only selector/tensor-layout metadata. Invalid IDs, invalid geometry, and arithmetic overflow fail closed with no partial output plan.
+
+The focused GGML fixture constructs a real CPU `GGML_OP_MUL_MAT_ID` graph with four expert matrices. The selected union is `{0, 1, 3}`; expert `2` is deliberately poisoned with `NaN` in the managed copy. The planner drives `FileResidency` for only the selected ranges, charges exactly three expert pages to `ResidentWeights`, and the managed output matches the fully resident baseline with `max_abs_diff = 0`.
+
+Focused native test:
+
+```bash
+cmake -G Ninja -S . -B .build/moe-residency -DCMAKE_BUILD_TYPE=Release
+cmake --build .build/moe-residency --target super-runtime-test-moe-residency --parallel "$(nproc)"
+(cd .build/moe-residency && ctest --output-on-failure -R '^super-runtime-moe-residency$')
+```
+
+Task 4 deliberately does **not** freeze the production GGML scheduler hook and does not yet implement `READY` publication or leases around `MUL_MAT_ID`. The research eval callback remains evidence, not a production API commitment.
+
+## Scope boundary after Task 4
+
+Passing Task 1 through Task 4 means only:
+
+> Super-Runtime has a reproducible native CPU substrate boundary, deterministic memory ownership accounting, Linux stable-address file residency, and generic sparse-MoE selected-range planning with exact GGML CPU parity in the tested fixture.
+
+It does **not** mean the Super-Runtime inference runtime is complete. The next checkpoint is Task 5: fixed-order dense residency policy.
