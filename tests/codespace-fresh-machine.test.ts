@@ -62,7 +62,7 @@ describe('fresh Codespace reproducibility contract', () => {
 
   it('restores known system prerequisites, Node/npm dependencies, build output, credentials, and API-key state', async () => {
     const bootstrap = await read('scripts/codespace/bootstrap.sh');
-    for (const prerequisite of ['curl', 'tmux', 'git', 'gh', 'ripgrep']) expect(bootstrap).toContain(prerequisite);
+    for (const prerequisite of ['curl', 'tmux', 'git', 'gh', 'ripgrep', 'cmake', 'g++', 'ninja-build', 'ccache']) expect(bootstrap).toContain(prerequisite);
     expect(bootstrap).toContain('ensure_node_runtime');
     expect(bootstrap).toContain('npm ci');
     expect(bootstrap).toContain('npm run build');

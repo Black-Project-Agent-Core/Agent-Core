@@ -33,25 +33,25 @@
 - Consumes: pinned llama.cpp research revision from `research/references/llama.cpp`
 - Produces: one documented native-substrate revision and a build/test entry point that later residency work can target
 
-- [ ] **Step 1: Write the failing contract test**
+- [x] **Step 1: Write the failing contract test**
 
 Create `tests/contracts/native-substrate.sh` that exits non-zero unless the production native-substrate location exists, reports a pinned upstream revision, and exposes a build target capable of compiling a CPU-only GGML/llama smoke binary.
 
-- [ ] **Step 2: Run the contract test and verify RED**
+- [x] **Step 2: Run the contract test and verify RED**
 
 Run: `bash tests/contracts/native-substrate.sh`
 Expected: FAIL because the production native substrate has not been established.
 
-- [ ] **Step 3: Establish the minimal production substrate boundary**
+- [x] **Step 3: Establish the minimal production substrate boundary**
 
 Create `runtime/native/README.md` documenting the exact upstream baseline, local patch policy, license/provenance obligations, and the command used to build the CPU smoke target. Do not yet add residency behavior.
 
-- [ ] **Step 4: Build and run the smoke target**
+- [x] **Step 4: Build and run the smoke target**
 
 Run the documented CPU-only configure/build command and `bash tests/contracts/native-substrate.sh`.
 Expected: PASS with the pinned substrate revision reported.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit message: `build: establish native runtime substrate`
 

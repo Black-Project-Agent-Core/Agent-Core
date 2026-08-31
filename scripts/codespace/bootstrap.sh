@@ -43,6 +43,10 @@ command -v tmux >/dev/null 2>&1 || missing_packages+=(tmux)
 command -v git >/dev/null 2>&1 || missing_packages+=(git)
 command -v gh >/dev/null 2>&1 || missing_packages+=(gh)
 command -v rg >/dev/null 2>&1 || missing_packages+=(ripgrep)
+command -v cmake >/dev/null 2>&1 || missing_packages+=(cmake)
+command -v c++ >/dev/null 2>&1 || missing_packages+=(g++)
+command -v ninja >/dev/null 2>&1 || missing_packages+=(ninja-build)
+command -v ccache >/dev/null 2>&1 || missing_packages+=(ccache)
 
 if (( ${#missing_packages[@]} > 0 )); then
   command -v apt-get >/dev/null 2>&1 || {

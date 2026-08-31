@@ -1,0 +1,78 @@
+cmake_minimum_required(VERSION 3.14...3.28)
+
+project(super-runtime LANGUAGES C CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+set(
+    SUPER_RUNTIME_LLAMA_SOURCE
+    "${CMAKE_CURRENT_SOURCE_DIR}/research/references/llama.cpp"
+    CACHE PATH
+    "Path to the pinned llama.cpp source used by the Super-Runtime native substrate"
+)
+
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/runtime/native/LLAMA_CPP_REVISION" SUPER_RUNTIME_LLAMA_CPP_REVISION)
+string(STRIP "${SUPER_RUNTIME_LLAMA_CPP_REVISION}" SUPER_RUNTIME_LLAMA_CPP_REVISION)
+
+string(LENGTH "${SUPER_RUNTIME_LLAMA_CPP_REVISION}" SUPER_RUNTIME_LLAMA_CPP_REVISION_LENGTH)
+if(
+    NOT SUPER_RUNTIME_LLAMA_CPP_REVISION_LENGTH EQUAL 40
+    OR NOT SUPER_RUNTIME_LLAMA_CPP_REVISION MATCHES "^[0-9a-f]+$"
+)
+    message(FATAL_ERROR "runtime/native/LLAMA_CPP_REVISION must contain one full 40-hex commit SHA")
+endif()
+
+if(NOT EXISTS "${SUPER_RUNTIME_LLAMA_SOURCE}/CMakeLists.txt")
+    message(FATAL_ERROR
+        "Pinned llama.cpp source is unavailable at ${SUPER_RUNTIME_LLAMA_SOURCE}. "
+        "Initialize the research/references/llama.cpp submodule or set SUPER_RUNTIME_LLAMA_SOURCE."
+    )
+endif()
+
+find_package(Git REQUIRED)
+execute_process(
+    COMMAND "${GIT_EXECUTABLE}" -C "${SUPER_RUNTIME_LLAMA_SOURCE}" rev-parse HEAD
+    RESULT_VARIABLE SUPER_RUNTIME_LLAMA_GIT_RESULT
+    OUTPUT_VARIABLE SUPER_RUNTIME_LLAMA_ACTUAL_REVISION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+
+if(NOT SUPER_RUNTIME_LLAMA_GIT_RESULT EQUAL 0)
+    message(FATAL_ERROR "Unable to read llama.cpp revision from ${SUPER_RUNTIME_LLAMA_SOURCE}")
+endif()
+
+if(NOT SUPER_RUNTIME_LLAMA_ACTUAL_REVISION STREQUAL SUPER_RUNTIME_LLAMA_CPP_REVISION)
+    message(FATAL_ERROR
+        "llama.cpp revision mismatch: expected ${SUPER_RUNTIME_LLAMA_CPP_REVISION}, "
+        "got ${SUPER_RUNTIME_LLAMA_ACTUAL_REVISION}"
+    )
+endif()
+
+# Task 1 freezes a CPU-only production substrate boundary. Optional accelerator
+# backends are deliberately disabled until the native CPU runtime exists.
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_APP OFF CACHE BOOL "" FORCE)
+set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GGML_CUDA OFF CACHE BOOL "" FORCE)
+set(GGML_HIP OFF CACHE BOOL "" FORCE)
+set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
+set(GGML_METAL OFF CACHE BOOL "" FORCE)
+set(GGML_SYCL OFF CACHE BOOL "" FORCE)
+set(GGML_OPENCL OFF CACHE BOOL "" FORCE)
+
+add_subdirectory(
+    "${SUPER_RUNTIME_LLAMA_SOURCE}"
+    "${CMAKE_BINARY_DIR}/_deps/llama.cpp"
+    EXCLUDE_FROM_ALL
+)
+
+add_subdirectory(runtime/native)

@@ -61,6 +61,6 @@ Pinned runtime references live under `research/references/`. The active referenc
 
 ## Current phase
 
-**Phase 0 learning is complete.** The evidence and frozen decisions are recorded in `docs/research/PHASE-0-LEARNING-COMPLETE.md`. The next task is no longer more architecture archaeology; it is to build the first runnable native Super-Runtime core around the pinned llama.cpp/GGML CPU substrate, memory ledger, stable file-backed residency, dense graph-order policy, and sparse `MUL_MAT_ID` policy.
+**Phase 0 learning is complete. Task 1 implementation is complete:** `runtime/native/` now provides the pinned llama.cpp/GGML CPU production substrate boundary and `tests/contracts/native-substrate.sh` proves the real CPU smoke target. This is a foundation checkpoint, not yet a complete inference runtime.
 
-Consumer-framework integration remains deferred until Super-Runtime itself exists and passes its runtime correctness, memory-budget, and residency/I/O gates.
+The next eligible checkpoint is **Task 2 only: deterministic `MemoryLedger`**. File residency, dense/MoE production policies, API work, GPU work, and consumer integration remain deferred until their turn in the canonical master context.

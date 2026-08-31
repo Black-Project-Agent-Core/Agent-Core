@@ -40,49 +40,65 @@ As of this master-context checkpoint:
 
 ```text
 SubProject/Super-Runtime/
+├── CMakeLists.txt
 ├── README.md
 ├── docs/
+├── runtime/
+│   └── native/
+│       ├── CMakeLists.txt
+│       ├── LLAMA_CPP_REVISION
+│       ├── README.md
+│       └── smoke.cpp
+├── tests/
+│   └── contracts/
+│       └── native-substrate.sh
 └── research/references/
 ```
 
-The following implementation trees do **not** yet exist:
+Current implementation status:
 
 ```text
-runtime/       ABSENT
-tests/         ABSENT
-benchmarks/    ABSENT
+Task 1 native llama.cpp/GGML CPU substrate boundary   COMPLETE
+Task 2 deterministic MemoryLedger                     NOT STARTED
+file residency                                        NOT STARTED
+dense production residency                            NOT STARTED
+MoE production residency                              NOT STARTED
+benchmarks/ hard-cap harness                          NOT STARTED
+native runtime entrypoint                             NOT STARTED
 ```
 
 Therefore:
 
-> **Super-Runtime does not yet exist as a runnable runtime product.**
+> **Super-Runtime still does not yet exist as a runnable inference runtime product.**
 
-What exists today is:
+Task 1 establishes only the first real production foundation: a reproducible native build that validates the pinned llama.cpp revision, links llama.cpp/GGML, initializes a real GGML CPU backend, and shuts down cleanly. It does not load a model or implement the Super-Runtime memory/residency mechanisms yet.
 
-- a frozen product direction;
-- source archaeology;
-- architectural extraction;
-- exact reference provenance;
-- memory/state/binding analysis;
-- synthetic executable feasibility proofs;
-- an approved foundation specification;
-- a task-by-task implementation plan.
+Phase 0 learning is complete, and the first implementation checkpoint is complete.
 
-Phase 0 learning is complete.
+The project frontier remains:
 
-The project frontier is no longer broad research. The project frontier is now:
-
-> **build the first real, runnable native Super-Runtime core.**
+> **build the first real, runnable native Super-Runtime core one verified checkpoint at a time.**
 
 ## Immediate next action — exactly one task
 
-The next implementation checkpoint is **Task 1 only: establish the production native llama.cpp/GGML CPU substrate boundary**.
+The next eligible implementation checkpoint is **Task 2 only: add deterministic `MemoryLedger` contracts and implementation**.
 
-Do not begin `MemoryLedger`, file residency, dense policy, MoE policy, API work, GPU work, or downstream integration in parallel with Task 1. Task 1 must be implemented, tested, committed, pushed, and remotely verified before Task 2 becomes active.
+Do not begin file residency, dense policy, MoE policy, API work, GPU work, or downstream integration in parallel with Task 2. Task 2 becomes active only after the Task 1 commit is present and remotely verified on canonical `Agent-Core/main`.
+
+Task 1 verification contract:
+
+```text
+bash tests/contracts/native-substrate.sh
+  -> pinned llama.cpp revision validated
+  -> CPU-only CMake build succeeds
+  -> super-runtime-native-smoke runs
+  -> real GGML CPU backend initializes
+  -> PASS
+```
 
 The project advances one verified checkpoint at a time.
 
-No document, synthetic probe, architecture diagram, or research result should be described as if the runtime itself already exists.
+No document, synthetic probe, architecture diagram, substrate smoke target, or research result should be described as if the runtime itself already exists.
 
 ---
 
@@ -1515,6 +1531,20 @@ Current meaning:
 - K3-in-C + llama.cpp/GGML are the active reference/substrate boundary;
 - Phase 0 is complete;
 - next action is implementation.
+
+## `runtime/native/README.md`
+
+Role: authoritative Task-1 production substrate boundary documentation.
+
+Current authority:
+
+- records the exact pinned llama.cpp/GGML production revision;
+- defines the CPU-only native build and smoke target;
+- defines the upstream patch/provenance policy for the native substrate;
+- documents Codespace native build tooling and the `tests/contracts/native-substrate.sh` verification path;
+- does **not** expand the project beyond Task 1 or imply that model loading, memory governance, or residency already exists.
+
+If this document conflicts with general project direction, this master context still wins.
 
 ## `docs/research/PHASE-0-PROJECT-CHARTER.md`
 
