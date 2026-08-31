@@ -1197,15 +1197,15 @@ A postpublication run correctly failed once when host load pushed 100k memory p9
 
 The initial generic Codespaces integration-token probe was factually `3 / 4` because package enumeration returned `403 Resource not accessible by integration`. Final Wave G certification then used the already-provisioned separate Packages credential and the same read-only harness passed **4 / 4**: identity, private repository metadata, Git `ls-remote`, and npm package listing all passed. Authenticated registry download additionally proved the published `0.6.0` TGZ is byte-identical to the GitHub Release TGZ.
 
-After the immutable release tag was created, `origin/main` advanced with concurrent Super-Runtime native-substrate work. The only Agent Core core-adjacent change adds fresh-Codespace native build prerequisites (`cmake`, `g++`, `ninja-build`, `ccache`) plus its reproducibility test. This descendant was not folded into or moved under the immutable `v0.6.0` tag. Instead, exact latest main was separately recertified:
+After the immutable release tag was created, `origin/main` advanced through concurrent Super-Runtime native-substrate (`95326ba`) and memory-ledger (`9565e88`) work. Neither history was discarded or moved under the immutable `v0.6.0` tag. Wave G reconciled both with the certification documentation in merge candidate `e15ec90e0ca2cfd0a4f1077040a0107030d77baf`, which was then separately recertified before publication:
 
 ```text
-latest main/runtime source             95326bac134cd721cf7e23526725babed9e0bc5c
+final merge/runtime source             e15ec90e0ca2cfd0a4f1077040a0107030d77baf
 version                                0.6.0
 npm ci + npm run certify:core           PASS / 18 of 18
 normal regression                      137 files / 668 tests PASS / 38 skips
-100k memory p95                        72.949 ms / <150 ms PASS
-DAG / dispatch / wake p95              1.670 / 24.927 / 6.821 ms PASS
+100k memory p95                        64.095 ms / <150 ms PASS
+DAG / dispatch / wake p95              1.277 / 23.691 / 5.911 ms PASS
 max concurrency                        4 / configured 4 PASS
 stable v0.6.0 parity                   PASS (tag remains 5c19c053)
 external model dependency/source hits  0 / 0
@@ -1214,7 +1214,7 @@ external model dependency/source hits  0 / 0
 Controlled Codespace runtime activation then proved exact latest-main equality and live behavior:
 
 ```text
-HEAD == origin/main == sourceCommit     95326bac134cd721cf7e23526725babed9e0bc5c PASS
+HEAD == origin/main == sourceCommit     e15ec90e0ca2cfd0a4f1077040a0107030d77baf PASS
 connection sourceVersion                0.6.0
 public health / remote/local metrics    200 / 403 / 200
 MCP no-token / evil Origin              401 / 403
@@ -1224,7 +1224,7 @@ resource safe / configured max          4 / 4
 maintenance                             disabled; 0 runs; 0 candidates
 legacy MCP                              2025-11-25 / 55 tools PASS
 modern MCP                              2026-07-28 / 55 tools PASS
-live audit                              389 records / verify PASS
+live audit                              433 records / verify PASS
 temporary canary key                    not created; established runtime connector key reused
 unrelated .vscode editor state          preserved
 ```

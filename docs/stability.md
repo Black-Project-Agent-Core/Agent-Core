@@ -481,18 +481,18 @@ One postpublication certification attempt encountered a transient host-load excu
 
 Final supplemental live GitHub Fabric acceptance passed all four read-only probes using the existing separate repository and Packages credentials without printing either value: identity `GET /user` 200, private repository metadata 200, Git `ls-remote` PASS, and npm package-list 200. The earlier 3/4 probe used the generic Codespaces integration token and correctly exposed its package-scope limitation; final certification used the already-provisioned Packages credential rather than converting that earlier 403 into a false PASS.
 
-After the stable tag was created, concurrent Super-Runtime native-substrate work advanced `main` to `95326bac134cd721cf7e23526725babed9e0bc5c`. Its Agent Core core-adjacent portion only expands fresh-Codespace system prerequisites with `cmake`, `g++`, `ninja-build`, and `ccache`, plus the matching reproducibility test. The immutable `v0.6.0` tag remains at `5c19c053`; latest main was separately required to pass the full postpublish architecture gate.
+After the stable tag was created, concurrent Super-Runtime work advanced `main` first through the native-substrate commit `95326bac134cd721cf7e23526725babed9e0bc5c` and then the memory-ledger commit `9565e889e6588c6156ac9122aafae4b93c4bc8af`. Wave G preserved both histories and reconciled them with the certification docs in merge candidate `e15ec90e0ca2cfd0a4f1077040a0107030d77baf`; the immutable `v0.6.0` tag remains at `5c19c053`. The final merge candidate was separately required to pass the complete postpublish architecture gate before publication.
 
-Latest-main certification at `95326bac134cd721cf7e23526725babed9e0bc5c`:
+Final merge-candidate certification at `e15ec90e0ca2cfd0a4f1077040a0107030d77baf`:
 
 ```text
 npm ci + npm run certify:core               PASS / 18 of 18
 version                                     0.6.0
 normal regression                           137 files / 668 tests PASS / 38 skips
-100k memory preflight p95                   72.949 ms / <150 ms PASS
-DAG validation p95                          1.670 ms / <50 ms PASS
-ready dispatch p95                          24.927 ms / <100 ms PASS
-persisted wake p95                          6.821 ms / <250 ms PASS
+100k memory preflight p95                   64.095 ms / <150 ms PASS
+DAG validation p95                          1.277 ms / <50 ms PASS
+ready dispatch p95                          23.691 ms / <100 ms PASS
+persisted wake p95                          5.911 ms / <250 ms PASS
 max observed / configured concurrency       4 / 4 PASS
 stable release parity                       v0.6.0 PASS
 external model dependency/source violations 0 / 0
@@ -501,7 +501,7 @@ external model dependency/source violations 0 / 0
 Controlled runtime source-sync used only the fail-closed `sync-source.sh` fast-forward path and preserved unrelated untracked `.vscode/`. The final v0.6.0 production runtime canary on the same latest-main SHA produced:
 
 ```text
-HEAD == origin/main == connection.sourceCommit  PASS at 95326bac134cd721cf7e23526725babed9e0bc5c
+HEAD == origin/main == connection.sourceCommit  PASS at e15ec90e0ca2cfd0a4f1077040a0107030d77baf
 connection sourceVersion                       0.6.0
 public health / remote metrics / local metrics 200 / 403 / 200
 MCP no-token / evil Origin                     401 / 403
@@ -512,7 +512,7 @@ resource governance                            enabled; safe 4 / configured max 
 maintenance                                    disabled; 0 runs; 0 retention candidates
 legacy MCP                                     2025-11-25 / 55 tools PASS
 modern MCP                                     2026-07-28 / 55 tools PASS
-live audit                                     389 records / verify PASS
+live audit                                     433 records / verify PASS
 temporary public canary key                    not created
 ```
 

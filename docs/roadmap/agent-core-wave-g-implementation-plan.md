@@ -133,11 +133,11 @@ The G3 line above is historical pre-version evidence. During final v0.6.0 public
 **Interfaces:**
 - Produces final published architecture-level stable claim on one exact main/runtime SHA.
 
-- [x] **Step 1: Fetch `origin/main` immediately before integration.** After `v0.6.0` publication, concurrent `95326ba` was audited. Its core-adjacent change only adds native build prerequisites plus the matching fresh-machine test; no work was discarded or reset.
-- [x] **Step 2: On the exact integration candidate run `npm ci` + fresh `npm run certify:core`; require PASS.** Latest main `95326bac134cd721cf7e23526725babed9e0bc5c` passed 18/18, 137 files / 668 tests PASS / 38 skips; memory p95 `72.949 ms`; DAG/dispatch/wake `1.670/24.927/6.821 ms`.
-- [x] **Step 3: Publish `main` non-force, fetch, and require `HEAD == origin/main`.** Current main publication is `95326bac134cd721cf7e23526725babed9e0bc5c`; local fast-forward/readback matched exactly.
-- [x] **Step 4: Controlled Codespace source-sync/repair; require `HEAD == origin/main == connection.sourceCommit`.** Equality is exact at `95326ba`, connection sourceVersion is `0.6.0`, and unrelated `.vscode/` is preserved.
-- [x] **Step 5: Run final production public/runtime matrix:** public health `200`, remote/local metrics `403/200`, no-token `401`, evil Origin `403`, correlation PASS, memory/execution integrity `ok`, resource `4/4`, maintenance disabled, legacy `2025-11-25/55`, modern `2026-07-28/55`, audit `389` records verify PASS.
+- [x] **Step 1: Fetch `origin/main` immediately before integration.** After `v0.6.0` publication, concurrent native-substrate `95326ba` and memory-ledger `9565e88` histories were audited and preserved; no work was discarded or reset.
+- [x] **Step 2: On the exact integration candidate run `npm ci` + fresh `npm run certify:core`; require PASS.** Merge candidate `e15ec90e0ca2cfd0a4f1077040a0107030d77baf` passed 18/18, 137 files / 668 tests PASS / 38 skips; memory p95 `64.095 ms`; DAG/dispatch/wake `1.277/23.691/5.911 ms`.
+- [x] **Step 3: Publish `main` non-force, fetch, and require `HEAD == origin/main`.** Merge candidate `e15ec90e0ca2cfd0a4f1077040a0107030d77baf` was published non-force and remote readback matched exactly.
+- [x] **Step 4: Controlled Codespace source-sync/repair; require `HEAD == origin/main == connection.sourceCommit`.** Equality is exact at `e15ec90e`, connection sourceVersion is `0.6.0`, runtime health is `200`, and unrelated `.vscode/` is preserved.
+- [x] **Step 5: Run final production public/runtime matrix:** public health `200`, remote/local metrics `403/200`, no-token `401`, evil Origin `403`, correlation PASS, memory/execution integrity `ok`, resource `4/4`, maintenance disabled, legacy `2025-11-25/55`, modern `2026-07-28/55`, audit `433` records verify PASS.
 - [x] **Step 6: If a temporary canary key is created, revoke it and verify revocation.** No temporary key was created; the established runtime connector key was reused without printing its value.
 **G5 production evidence before final docs closeout:**
 
@@ -146,16 +146,16 @@ stable release source                     5c19c0535042174a0f9d9a8ff7dd5eeb5c23b0
 stable tag / version                       v0.6.0 / 0.6.0
 GitHub Release assets                      7 / 7 byte parity PASS
 GitHub Package 0.6.0                       published; TGZ SHA-256/SHA-1 parity PASS
-latest main/runtime source                 95326bac134cd721cf7e23526725babed9e0bc5c
-latest main core certification             18 / 18 PASS
-latest main regression                     137 files / 668 tests PASS / 38 skips
-latest main memory p95                     72.949 ms / <150 PASS
-latest main DAG / dispatch / wake p95      1.670 / 24.927 / 6.821 ms PASS
+final merge/runtime source                 e15ec90e0ca2cfd0a4f1077040a0107030d77baf
+final merge-candidate certification         18 / 18 PASS
+final merge-candidate regression            137 files / 668 tests PASS / 38 skips
+final merge-candidate memory p95            64.095 ms / <150 PASS
+final merge-candidate DAG/dispatch/wake     1.277 / 23.691 / 5.911 ms PASS
 production public / remote/local metrics   200 / 403 / 200
 production no-token / evil Origin          401 / 403
 production legacy / modern MCP             2025-11-25/55 / 2026-07-28/55 PASS
 production memory / execution integrity    ok / ok
-production audit                           389 records / verify PASS
+production audit                           433 records / verify PASS
 external model dependency/source hits      0 / 0
 remote release asset byte parity            7 / 7 PASS
 registry vs release TGZ byte parity          PASS
