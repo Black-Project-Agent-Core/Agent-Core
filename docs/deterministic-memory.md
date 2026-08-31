@@ -208,3 +208,5 @@ result                    PASS
 ```
 
 `npm run quality:gate` is part of `npm run verify:release`; a release cannot pass while a certified routing/memory threshold fails.
+
+Production Wave E certification on 2026-08-31 retained every strict memory gate: Recall@K `1.000`, MRR `1.000`, hard-guardrail/current-revision/prior-failure/graph/conflict/artifact-procedure correctness `1.000`, noise displacement `0`, project/principal contamination `0`, character-budget correctness `1.000`, and deterministic replay `1.000`. No memory score weight changed. The 100k-item preflight p95 was `85.299 ms` against the `<150 ms` gate.

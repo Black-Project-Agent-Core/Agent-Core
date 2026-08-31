@@ -347,6 +347,38 @@ no-token / evil Origin                401 / 403
 
 This evidence certifies the Wave E feature branch before integration. Production certification is recorded only after fast-forward integration, merged-main verification, publication readback, controlled runtime source-sync, and public canary equality.
 
+
+Post-integration Wave E certification on the real Codespace runtime:
+
+```text
+source commit / origin main                c547c937e66c3e51b5b5cbf4d7f4723f6752ee53
+connection.sourceCommit                    c547c937e66c3e51b5b5cbf4d7f4723f6752ee53
+source equality                            PASS
+merged-main npm ci + verify:release        PASS
+full regression                            130 files / 627 tests PASS; 38 intentional skips
+quality:gate                               PASS
+routing tier accuracy                      0.975
+false high-impact / overpermission          0 / 0
+false read-only / unnecessary skill load   0 / 0
+relevant skill precision@2                 1.000
+memory Recall@K / MRR                      1.000 / 1.000
+noise displacement                         0
+project/principal contamination            0 / 0
+100k memory preflight p95                  85.299 ms (<150 ms PASS)
+public health / remote metrics             200 / 403
+public MCP no-token / evil Origin          401 / 403
+legacy MCP                                 2025-11-25 / 55 tools PASS
+modern MCP                                 2026-07-28 / 55 tools PASS
+request correlation headers                PASS
+live audit chain                           116 records / verify PASS
+temporary public canary key                revoked PASS
+package/dependency changes                 none
+memory score-weight changes                none
+external AI model/API dependency           0
+```
+
+One full-suite run exposed a timing-only test flake in the Wave D audit-journal test. The production journal was unchanged; `c547c93` replaced a fixed 10 ms sleep with deterministic append-start synchronization. The focused test then passed and was repeated 10/10 before the fresh merged-main release gate above passed.
+
 ## Last core certification
 
 The final continuity/execution core certification was completed on 2026-08-26 after the execution WAL durability fix and staged default-enabled rollout.

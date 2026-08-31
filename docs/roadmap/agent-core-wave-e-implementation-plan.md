@@ -207,10 +207,10 @@ current quality:gate exit = 0
 - [x] **Step 4: Run final feature-branch `npm run verify:release`** and record file/test/skip counts.
 - [x] **Step 5: Confirm the 55-tool surface in both MCP eras** and Wave A public trust-boundary behavior on a temporary/local canary.
 - [x] **Step 6: Update docs with exact baseline → final metrics**, any routing/memory changes, performance result, and explicit `external AI model/API dependency = 0`.
-- [ ] **Step 7: Commit** `docs: record wave e local certification evidence`.
-- [ ] **Step 8: Before integration fetch `origin/main`** and require the feature merge-base remains the Wave E base or reconcile any concurrent main changes explicitly.
-- [ ] **Step 9: Fast-forward main only when topology is compatible; run fresh merged-main `npm ci` + `npm run verify:release`; push non-force and require local/remote equality.**
-- [ ] **Step 10: Controlled runtime source-sync** and require `HEAD == origin/main == connection.sourceCommit`; public health/security + legacy/modern 55-tool canary.
+- [x] **Step 7: Commit** `docs: record wave e local certification evidence` (`93b3477`).
+- [x] **Step 8: Before integration fetch `origin/main`** and require the feature merge-base remains the Wave E base or reconcile any concurrent main changes explicitly. `origin/main` remained exactly at Wave E base `7f6968b`; no remote-only commit existed.
+- [x] **Step 9: Fast-forward main only when topology is compatible; run fresh merged-main `npm ci` + `npm run verify:release`; push non-force and require local/remote equality.** Final merged-main verification passed at `c547c93`; non-force publication readback proved `HEAD == origin/main`.
+- [x] **Step 10: Controlled runtime source-sync** and require `HEAD == origin/main == connection.sourceCommit`; public health/security + legacy/modern 55-tool canary. Codespace bootstrap/source-sync and public canary passed at `c547c93`.
 - [ ] **Step 11: Commit/push final docs-only certification if needed, source-sync again, then remove only the Wave E worktree/local branch after exact equality is proven.**
 
 ## Wave E Pre-Integration Certification Evidence — 2026-08-31
@@ -239,6 +239,40 @@ external AI model/API dependency         0
 ```
 
 The first temporary canary attempts exposed harness-only issues (relative `/tmp` imports, then a direct-loopback metrics request). The final canary used absolute worktree imports and explicit trusted-proxy mode with a forwarded non-loopback client, which is the factual Wave A remote-metrics classification path. No production code was changed for those harness corrections.
+
+## Wave E Post-Integration Runtime Certification — 2026-08-31
+
+```text
+merged-main source                         c547c937e66c3e51b5b5cbf4d7f4723f6752ee53
+HEAD == origin/main                        PASS
+connection.sourceCommit                    c547c937e66c3e51b5b5cbf4d7f4723f6752ee53
+HEAD == origin/main == sourceCommit         PASS
+fresh merged-main npm ci                   PASS
+fresh merged-main verify:release           PASS
+full regression                            130 files / 627 tests PASS
+intentional skips                          38
+quality:gate                               PASS
+routing tier accuracy                      0.975
+false high-impact / overpermission          0 / 0
+false read-only / unnecessary skill load   0 / 0
+relevant skill precision@2                 1.000
+memory Recall@K / MRR                      1.000 / 1.000
+noise displacement                         0
+project/principal contamination            0 / 0
+100k memory preflight p95                  85.299 ms (<150 ms PASS)
+public health / remote metrics             200 / 403
+public MCP no-token / evil Origin          401 / 403
+public legacy MCP                          2025-11-25 / 55 tools PASS
+public modern MCP                          2026-07-28 / 55 tools PASS
+public request correlation headers         PASS
+live audit verify                          116 records / PASS
+temporary public canary key                revoked PASS
+root dependency changes vs Wave D          none
+memory score-weight changes                none
+external AI model/API dependency           0
+```
+
+The merged-main run initially exposed one pre-existing Wave D test-only timing flake: the audit-journal test assumed asynchronous filesystem initialization reached `appendLine` within 10 ms under full-suite load. Production audit code was not changed. Commit `c547c93` replaced the fixed sleep with an explicit append-start synchronization signal; the focused test passed 5/5 and the suite repeated 10/10 before the fresh merged-main release gate passed.
 
 ## Wave E Exit Matrix
 

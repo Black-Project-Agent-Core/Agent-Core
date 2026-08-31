@@ -1015,7 +1015,7 @@ The final certification commit is docs-only; runtime source metadata is synchron
 
 **Goal:** improve decision quality using deterministic local evaluation.
 
-**Implementation status:** feature-branch certification PASS on 2026-08-31; production integration/runtime certification pending the final Wave E publication steps.
+**Implementation status:** production integration/runtime certification PASS on 2026-08-31 at `c547c93`; only final docs-only closeout/source-sync housekeeping remains.
 
 Delivered scope:
 
@@ -1045,6 +1045,17 @@ current-revision correctness          1.0000 -> 1.0000
 routing/retrieval deterministic replay PASS
 100k memory preflight p95             85.299 ms / <150 ms PASS
 external AI model/API dependency      0
+```
+
+Production publication/runtime evidence:
+
+```text
+HEAD == origin/main == sourceCommit     c547c937e66c3e51b5b5cbf4d7f4723f6752ee53 PASS
+merged-main verify:release              130 files / 627 tests PASS; 38 skips
+public trust boundary                   health 200 / metrics 403 / no-token 401 / evil Origin 403
+legacy / modern MCP                     2025-11-25/55 / 2026-07-28/55 PASS
+live audit                              116 records / verify PASS
+temporary public key                    revoked PASS
 ```
 
 ---
