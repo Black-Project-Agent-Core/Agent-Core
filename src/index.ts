@@ -33,7 +33,6 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
   const keyStore = new FileKeyStore(config.dataDir);
   const oauthStore = new FileOAuthStore(config.dataDir);
   const httpSecurity = new HttpSecurityPolicy(config.httpSecurity);
-  const oauthService = new OAuthService(keyStore, oauthStore, httpSecurity);
   const auditLogger = new FileAuditLogger(config.logDir, config.observability.audit);
   const runtime = createRuntimeServices(
     config.allowedRoots,
@@ -43,6 +42,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     config.execution,
     config.github,
   );
+  const oauthService = new OAuthService(keyStore, oauthStore, httpSecurity, runtime.metrics);
   // Warm independent persistence subsystems without coupling listener availability to either one.
   await Promise.allSettled([
     runtime.memory.status(),
@@ -54,6 +54,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     security: httpSecurity,
     auditLogger,
     healthMetricsProvider: async () => runtime.healthMetrics.getMetrics(),
+    metrics: runtime.metrics,
     healthProvider: async () => {
       const [memory, execution] = await Promise.all([
         runtime.memory.status(),

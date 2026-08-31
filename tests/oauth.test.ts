@@ -14,10 +14,12 @@ import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { FileOAuthStore } from '../src/oauth/store.js';
 import { OAuthService } from '../src/oauth/service.js';
 import { createRuntimeServices } from '../src/runtime/services.js';
+import { RuntimeMetricRegistry } from '../src/runtime/metric-window.js';
 
 const roots: string[] = [];
 const servers: Server[] = [];
 const runtimes: Array<ReturnType<typeof createRuntimeServices>> = [];
+const auditLoggers: FileAuditLogger[] = [];
 
 function pkce(verifier: string): string {
   return createHash('sha256').update(verifier).digest('base64url');
@@ -33,19 +35,23 @@ async function setup(httpSecurity?: {
   const dataDir = path.join(root, 'data');
   const keyStore = new FileKeyStore(dataDir);
   const oauthStore = new FileOAuthStore(dataDir);
+  const metrics = new RuntimeMetricRegistry();
   const oauthService = new OAuthService(keyStore, oauthStore, new HttpSecurityPolicy(httpSecurity ?? {
     publicBaseUrl: null,
     trustProxy: true,
     allowedOrigins: [],
-  }));
+  }), metrics);
   const baseMemory = loadConfig({}, root).memory;
   const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, { ...baseMemory, enabled: false });
   runtimes.push(runtime);
+  const auditLogger = new FileAuditLogger(path.join(root, 'logs'), { metrics });
+  auditLoggers.push(auditLogger);
   const app = createHttpHandler({
     keyStore,
     oauthService,
-    auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+    auditLogger,
     mcpHandler: createMcpHttpHandler(runtime),
+    metrics,
   });
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -56,6 +62,7 @@ async function setup(httpSecurity?: {
     keyStore,
     oauthStore,
     externalBase: 'https://agent-core-tunnel.example',
+    metrics,
   };
 }
 
@@ -88,6 +95,7 @@ afterEach(async () => {
     await runtime.execution.close().catch(() => undefined);
     await runtime.memory.close().catch(() => undefined);
   }));
+  await Promise.all(auditLoggers.splice(0).map((logger) => logger.close().catch(() => undefined)));
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -118,6 +126,19 @@ describe('Agent Core OAuth bridge', () => {
       grant_types_supported: ['authorization_code', 'refresh_token'],
       scopes_supported: ['mcp:tools', 'offline_access'],
     });
+  });
+
+  it('records bounded OAuth duration/failure counters without credential labels', async () => {
+    const { baseUrl, metrics } = await setup();
+    const invalid = await fetch(`${baseUrl}/oauth/register`, {
+      method: 'POST',
+      headers: { ...forwarded, 'content-type': 'application/json' },
+      body: JSON.stringify({ redirect_uris: ['file:///unsafe'] }),
+    });
+    expect(invalid.status).toBe(400);
+    expect(metrics.metric('oauth.handle.duration_ms').count).toBe(1);
+    expect(metrics.counter('oauth.failures.count')).toBe(1);
+    expect(metrics.metricNames().some((name) => name.includes('client'))).toBe(false);
   });
 
   it('ignores spoofed forwarded identity when trusted-proxy mode is disabled', async () => {

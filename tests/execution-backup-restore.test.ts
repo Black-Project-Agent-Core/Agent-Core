@@ -13,6 +13,7 @@ import {
 import { ExecutionService } from '../src/execution/service.js';
 import type { ExecutionScope } from '../src/execution/types.js';
 import { WorkspacePolicy } from '../src/runtime/workspace.js';
+import { RuntimeMetricRegistry } from '../src/runtime/metric-window.js';
 import { printCommand } from './helpers/platform-command.js';
 
 const roots: string[] = [];
@@ -86,6 +87,21 @@ describe('Execution Recovery Bundle', () => {
     });
     expect(created.manifest.evidence.files.some((file) => file.path.includes(runId) && file.path.endsWith('.result.json'))).toBe(true);
     await expect(verifyExecutionRecoveryBundle(created.bundlePath)).resolves.toMatchObject({ ok: true });
+  });
+
+  it('records bounded backup and restore operation durations when a metric sink is supplied', async () => {
+    const f = await fixture('metrics');
+    await seedCompletedRun(f, 'metrics-source');
+    const metrics = new RuntimeMetricRegistry();
+    const created = await createExecutionRecoveryBundle({
+      dbPath: f.config.dbPath, logRoot: f.config.logRoot, destinationRoot: f.bundleRoot, sourceVersion: '0.5.4', metrics,
+    });
+    expect(metrics.metric('execution.backup.duration_ms').count).toBe(1);
+    await restoreExecutionRecoveryBundle({
+      bundlePath: created.bundlePath, dbPath: f.config.dbPath, logRoot: f.config.logRoot,
+      rollbackRoot: path.join(f.root, 'rollback-metrics'), metrics,
+    });
+    expect(metrics.metric('execution.restore.duration_ms').count).toBe(1);
   });
 
   it('rejects a bundle when a hashed evidence file changes after creation', async () => {

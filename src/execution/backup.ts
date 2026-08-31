@@ -17,6 +17,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { EXECUTION_SCHEMA_VERSION } from './schema.js';
 import { ExecutionRuntimeLease } from './runtime-lease.js';
 import { ExecutionWorkerClient } from './worker-client.js';
+import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 
 const FORMAT = 'agent-core-execution-recovery-bundle' as const;
 const VERSION = 1 as const;
@@ -61,6 +62,7 @@ export interface CreateExecutionRecoveryBundleOptions {
   sourceVersion: string;
   reason?: string;
   busyTimeoutMs?: number;
+  metrics?: RuntimeMetricRegistry;
 }
 
 export interface RestoreExecutionRecoveryBundleOptions {
@@ -68,6 +70,7 @@ export interface RestoreExecutionRecoveryBundleOptions {
   dbPath: string;
   logRoot: string;
   rollbackRoot: string;
+  metrics?: RuntimeMetricRegistry;
   hooks?: {
     afterDatabaseReplace?: () => void | Promise<void>;
   };
@@ -199,7 +202,7 @@ function bundleName(prefix: string): string {
   return `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}`;
 }
 
-export async function createExecutionRecoveryBundle(
+async function createExecutionRecoveryBundleImpl(
   options: CreateExecutionRecoveryBundleOptions,
 ): Promise<{ bundlePath: string; manifest: ExecutionRecoveryBundleManifest }> {
   const dbPath = path.resolve(options.dbPath);
@@ -264,6 +267,20 @@ export async function createExecutionRecoveryBundle(
   } finally {
     await worker?.close().catch(() => undefined);
     await lease.release().catch(() => undefined);
+  }
+}
+
+export async function createExecutionRecoveryBundle(
+  options: CreateExecutionRecoveryBundleOptions,
+): Promise<{ bundlePath: string; manifest: ExecutionRecoveryBundleManifest }> {
+  const startedAt = performance.now();
+  try {
+    return await createExecutionRecoveryBundleImpl(options);
+  } catch (error) {
+    options.metrics?.failure('execution.backup.duration_ms', error instanceof ExecutionRecoveryBundleError ? error.code : error instanceof Error ? error.name : 'EXECUTION_BACKUP_ERROR');
+    throw error;
+  } finally {
+    options.metrics?.observe('execution.backup.duration_ms', Math.max(0, performance.now() - startedAt));
   }
 }
 
@@ -363,7 +380,7 @@ async function stageVerifiedEvidence(bundlePath: string, manifest: ExecutionReco
   }
 }
 
-export async function restoreExecutionRecoveryBundle(
+async function restoreExecutionRecoveryBundleImpl(
   options: RestoreExecutionRecoveryBundleOptions,
 ): Promise<{ restored: true; rollbackPath: string; manifest: ExecutionRecoveryBundleManifest }> {
   const dbPath = path.resolve(options.dbPath);
@@ -399,5 +416,19 @@ export async function restoreExecutionRecoveryBundle(
     await rm(stagedDb, { force: true }).catch(() => undefined);
     await rm(stagedEvidence, { recursive: true, force: true }).catch(() => undefined);
     await lease.release().catch(() => undefined);
+  }
+}
+
+export async function restoreExecutionRecoveryBundle(
+  options: RestoreExecutionRecoveryBundleOptions,
+): Promise<{ restored: true; rollbackPath: string; manifest: ExecutionRecoveryBundleManifest }> {
+  const startedAt = performance.now();
+  try {
+    return await restoreExecutionRecoveryBundleImpl(options);
+  } catch (error) {
+    options.metrics?.failure('execution.restore.duration_ms', error instanceof ExecutionRecoveryBundleError ? error.code : error instanceof Error ? error.name : 'EXECUTION_RESTORE_ERROR');
+    throw error;
+  } finally {
+    options.metrics?.observe('execution.restore.duration_ms', Math.max(0, performance.now() - startedAt));
   }
 }

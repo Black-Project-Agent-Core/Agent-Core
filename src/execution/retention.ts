@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs';
 import { appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { verifyExecutionRecoveryBundle } from './backup.js';
+import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 import { ExecutionRuntimeLease } from './runtime-lease.js';
 
 const FORMAT = 'agent-core-execution-retention-plan' as const;
@@ -119,11 +120,12 @@ async function candidateForRaw(
   }
 }
 
-export async function planExecutionRetention(options: {
+async function planExecutionRetentionImpl(options: {
   logRoot: string;
   planRoot: string;
   olderThanMs: number;
   now?: number;
+  metrics?: RuntimeMetricRegistry;
 }): Promise<{ planPath: string; plan: ExecutionRetentionPlan }> {
   if (!Number.isSafeInteger(options.olderThanMs) || options.olderThanMs < 0) {
     fail('EXECUTION_RETENTION_AGE_INVALID', 'olderThanMs must be a non-negative integer');
@@ -168,6 +170,21 @@ export async function planExecutionRetention(options: {
   const planPath = path.join(planRoot, `execution-retention-${plan.createdAt.replace(/[:.]/g, '-')}-${plan.planId.slice(0, 12)}.json`);
   await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
   return { planPath, plan };
+}
+
+
+export async function planExecutionRetention(
+  options: Parameters<typeof planExecutionRetentionImpl>[0],
+): ReturnType<typeof planExecutionRetentionImpl> {
+  const startedAt = performance.now();
+  try {
+    return await planExecutionRetentionImpl(options);
+  } catch (error) {
+    options.metrics?.failure('execution.retention.duration_ms', error instanceof ExecutionRetentionError ? error.code : error instanceof Error ? error.name : 'EXECUTION_RETENTION_ERROR');
+    throw error;
+  } finally {
+    options.metrics?.observe('execution.retention.duration_ms', Math.max(0, performance.now() - startedAt));
+  }
 }
 
 function validCandidate(value: unknown): value is ExecutionRetentionCandidate {
@@ -221,11 +238,12 @@ async function appendAudit(auditPath: string, record: Record<string, unknown>): 
   await appendFile(auditPath, `${JSON.stringify(record)}\n`, 'utf8');
 }
 
-export async function applyExecutionRetention(options: {
+async function applyExecutionRetentionImpl(options: {
   planPath: string;
   bundlePath: string;
   dbPath: string;
   logRoot: string;
+  metrics?: RuntimeMetricRegistry;
 }): Promise<{
   planId: string;
   deleted: Array<{ path: string; bytes: number }>;
@@ -286,4 +304,18 @@ export async function applyExecutionRetention(options: {
     bytesDeleted: deleted.reduce((sum, item) => sum + item.bytes, 0),
     auditPath,
   };
+}
+
+export async function applyExecutionRetention(
+  options: Parameters<typeof applyExecutionRetentionImpl>[0],
+): ReturnType<typeof applyExecutionRetentionImpl> {
+  const startedAt = performance.now();
+  try {
+    return await applyExecutionRetentionImpl(options);
+  } catch (error) {
+    options.metrics?.failure('execution.retention.duration_ms', error instanceof ExecutionRetentionError ? error.code : error instanceof Error ? error.name : 'EXECUTION_RETENTION_ERROR');
+    throw error;
+  } finally {
+    options.metrics?.observe('execution.retention.duration_ms', Math.max(0, performance.now() - startedAt));
+  }
 }

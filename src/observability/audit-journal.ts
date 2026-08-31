@@ -3,6 +3,7 @@ import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } fro
 import path from 'node:path';
 import { redactMemoryText } from '../memory/redaction.js';
 import { correlationFields } from './correlation.js';
+import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 
 export type AuditJson = null | boolean | number | string | AuditJson[] | { [key: string]: AuditJson };
 
@@ -53,6 +54,7 @@ export interface AuditJournalOptions {
   retentionMs?: number;
   now?: () => number;
   appendLine?: (filePath: string, line: string) => Promise<void>;
+  metrics?: RuntimeMetricRegistry;
 }
 
 export type AuditVerificationResult = {
@@ -305,6 +307,7 @@ export class AuditJournal {
   private readonly retentionMs: number;
   private readonly now: () => number;
   private readonly appendLine: (filePath: string, line: string) => Promise<void>;
+  private metrics?: RuntimeMetricRegistry;
   private drainPromise: Promise<void> | undefined;
   private inFlight = 0;
   private closed = false;
@@ -329,15 +332,21 @@ export class AuditJournal {
     this.maxRotatedFiles = Math.max(1, Math.min(options.maxRotatedFiles ?? DEFAULT_MAX_ROTATED_FILES, 1024));
     this.retentionMs = Math.max(1, options.retentionMs ?? DEFAULT_RETENTION_MS);
     this.now = options.now ?? Date.now;
+    this.metrics = options.metrics;
     this.appendLine = options.appendLine ?? (async (filePath, line) => {
       await mkdir(path.dirname(filePath), { recursive: true });
       await appendFile(filePath, line, 'utf8');
     });
   }
 
+  attachMetrics(metrics: RuntimeMetricRegistry): void {
+    this.metrics = metrics;
+  }
+
   enqueue(input: AuditJournalInput): boolean {
     if (this.closed || this.queue.length + this.inFlight >= this.queueCapacity) {
       this.dropped += 1;
+      this.metrics?.increment('audit.dropped.count');
       return false;
     }
     const category = boundedString(input.category.normalize('NFKC')).slice(0, 160) || 'unknown';
@@ -415,7 +424,9 @@ export class AuditJournal {
   private async drainLoop(): Promise<void> {
     try { await this.initialize(); }
     catch (error) {
-      this.writeErrors += this.queue.length;
+      const failures = this.queue.length;
+      this.writeErrors += failures;
+      this.metrics?.increment('audit.write_errors.count', failures);
       this.lastWriteErrorCode = errorCode(error);
       this.queue.splice(0);
       return;
@@ -444,16 +455,19 @@ export class AuditJournal {
         this.sequence = sequence;
         this.headHash = record.hash;
         this.written += 1;
+        this.metrics?.increment('audit.written.count');
         this.currentFileBytes += lineBytes;
         try {
           await atomicJson(this.headPath, { schemaVersion: 1, sequence: this.sequence, hash: this.headHash, updatedAt: new Date(this.now()).toISOString() });
           this.lastWriteErrorCode = undefined;
         } catch (error) {
           this.writeErrors += 1;
+          this.metrics?.increment('audit.write_errors.count');
           this.lastWriteErrorCode = errorCode(error);
         }
       } catch (error) {
         this.writeErrors += 1;
+        this.metrics?.increment('audit.write_errors.count');
         this.lastWriteErrorCode = errorCode(error);
       } finally {
         this.inFlight = 0;
@@ -469,6 +483,7 @@ export class AuditJournal {
     this.currentFileBytes = 0;
     this.activeFirstSequence = undefined;
     this.rotatedFiles += 1;
+    this.metrics?.increment('audit.rotation.count');
     await this.enforceRetention();
   }
 

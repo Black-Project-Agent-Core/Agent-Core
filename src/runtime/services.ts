@@ -50,6 +50,10 @@ export function createRuntimeServices(
   const resolvedExecutionConfig = executionConfig ?? defaults.execution;
   const resolvedGitHubConfig = githubConfig ?? defaults.github;
   const metrics = new RuntimeMetricRegistry();
+  if (routingAuditLogger && 'attachMetrics' in routingAuditLogger
+    && typeof (routingAuditLogger as RoutingAuditLogger & { attachMetrics?: unknown }).attachMetrics === 'function') {
+    (routingAuditLogger as RoutingAuditLogger & { attachMetrics(metrics: RuntimeMetricRegistry): void }).attachMetrics(metrics);
+  }
   const runtimeAudit = routingAuditLogger && 'logRuntime' in routingAuditLogger
     && typeof (routingAuditLogger as RoutingAuditLogger & Partial<RuntimeAuditLogger>).logRuntime === 'function'
     ? routingAuditLogger as RoutingAuditLogger & RuntimeAuditLogger

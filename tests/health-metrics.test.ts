@@ -45,6 +45,19 @@ describe('bounded runtime observability', () => {
     });
   });
 
+  it('exposes only a bounded sorted registry inventory and counter snapshot', () => {
+    const metrics = new RuntimeMetricRegistry({ sampleCapacity: 3 });
+    for (let index = 0; index < 300; index += 1) metrics.increment(`counter.${String(index).padStart(3, '0')}`);
+    metrics.observe('duration.safe', 12);
+    const names = metrics.metricNames();
+    expect(names).toEqual([...names].sort());
+    expect(names).toHaveLength(256);
+    const counters = metrics.counterSnapshot();
+    expect(Object.keys(counters)).toEqual([...Object.keys(counters)].sort());
+    expect(Object.keys(counters)).toHaveLength(256);
+    expect(JSON.stringify(counters)).not.toContain('principal');
+  });
+
   it('tracks route lifecycle counters without exposing route contents', () => {
     let now = Date.parse('2026-08-27T00:00:00.000Z');
     const metrics = new RuntimeMetricRegistry({ now: () => now });
@@ -165,6 +178,71 @@ describe('bounded runtime observability', () => {
     }
   }, 10_000);
 
+  it('reports bounded audit and observability health without full hashes or request identifiers', async () => {
+    const metrics = new RuntimeMetricRegistry({ now: () => 55_000 });
+    metrics.increment('http.requests.count', 7);
+    metrics.increment('http.failures.count', 2);
+    metrics.increment('auth.failures.count', 1);
+    metrics.increment('tool.calls.count', 4);
+    metrics.increment('tool.failures.count', 1);
+    metrics.observe('http.request.duration_ms', 10);
+    metrics.observe('tool.duration_ms', 20);
+    const fullHash = 'a'.repeat(64);
+    const runtime = {
+      metrics,
+      audit: { status: () => ({ queueDepth: 2, queueCapacity: 4096, written: 11, dropped: 1, writeErrors: 0, sequence: 11, headHash: fullHash, currentFileBytes: 1234, rotatedFiles: 2 }) },
+      memory: { config: { enabled: true }, currentState: 'healthy', status: async () => ({ enabled: true, healthy: true, counts: { active_items: 1, db_bytes: 10 }, integrity: 'ok' }) },
+      execution: { config: { enabled: true }, currentState: 'healthy', health: async () => ({ enabled: true, healthy: true, activeRuns: 0, queuedSync: 0, integrity: 'ok' }), store: { systemCounts: async () => ({ activeRuns: 0, queuedSync: 0, queuedNodes: 0, runningNodes: 0 }) } },
+      github: { config: { enabled: false }, status: async () => ({ githubTokenConfigured: false }), apiRequest: async () => ({ status: 200 }) },
+      routes: { metrics: () => ({ totalRoutes: 0, activeContexts: 0, rejectedRoutes: 0, expiredContexts: 0 }) },
+      capabilities: { coverage: () => ({ nativeReady: 0 }) },
+    } as any;
+    const snapshot = await new RuntimeHealthMetrics(runtime, { now: () => 55_000 }).getMetrics() as any;
+    expect(snapshot.audit).toMatchObject({ queueDepth: 2, queueCapacity: 4096, written: 11, dropped: 1, rotatedFiles: 2, headHashPrefix: 'aaaaaaaaaaaaaaaa' });
+    expect(snapshot.observability).toMatchObject({
+      http: { requests: 7, failures: 2, duration: { count: 1, p50Ms: 10 } },
+      auth: { failures: 1 },
+      tools: { calls: 4, failures: 1, duration: { count: 1, p50Ms: 20 } },
+    });
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toContain(fullHash);
+    expect(serialized).not.toContain('requestId');
+    expect(serialized).not.toContain('trace_id');
+  });
+
+  it('counts HTTP/auth failures and route-validation latency without cardinality labels', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-observability-http-metrics-'));
+    const metrics = new RuntimeMetricRegistry();
+    const keyStore = new FileKeyStore(path.join(root, 'data'));
+    const logger = new FileAuditLogger(path.join(root, 'logs'), { metrics });
+    const routes = new RouteContextStore({ metrics });
+    const route = routes.create('principal-a', routePlan());
+    expect(() => routes.validate(route.routeContextId, 'principal-b', 'read_file')).toThrow();
+    const server = createServer(createHttpHandler({
+      keyStore,
+      auditLogger: logger,
+      metrics,
+      mcpHandler: async () => { throw new Error('must not dispatch'); },
+    }));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const response = await fetch(`${baseUrl}/mcp`, { method: 'POST' });
+      expect(response.status).toBe(401);
+      await logger.drain();
+      expect(metrics.counter('http.requests.count')).toBe(1);
+      expect(metrics.counter('http.failures.count')).toBe(1);
+      expect(metrics.counter('auth.failures.count')).toBe(1);
+      expect(metrics.counter('audit.written.count')).toBe(1);
+      expect(metrics.metric('http.request.duration_ms').count).toBe(1);
+      expect(metrics.metric('routing.validation.duration_ms').count).toBe(1);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await logger.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('serves detailed metrics separately from lightweight readiness without exposing credential paths', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-health-http-'));
     const config = loadConfig({}, root);
@@ -206,9 +284,10 @@ describe('bounded runtime observability', () => {
       allowedOrigins: [],
     });
     security.isLoopbackRequest = () => false;
+    const auditLogger = new FileAuditLogger(path.join(root, 'logs'));
     const server = createServer(createHttpHandler({
       keyStore,
-      auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+      auditLogger,
       security,
       healthMetricsProvider: async () => {
         providerCalls += 1;
@@ -225,6 +304,7 @@ describe('bounded runtime observability', () => {
       expect(providerCalls).toBe(0);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
+      await auditLogger.close();
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -241,9 +321,10 @@ describe('bounded runtime observability', () => {
     await runtime.execution.open();
     const keyStore = new FileKeyStore(path.join(root, 'data'));
     const principal = await keyStore.create('health-metrics-principal');
+    const auditLogger = new FileAuditLogger(path.join(root, 'logs'));
     const server = createServer(createHttpHandler({
       keyStore,
-      auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+      auditLogger,
       mcpHandler: createMcpHttpHandler(runtime),
     }));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -269,6 +350,7 @@ describe('bounded runtime observability', () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await runtime.execution.close().catch(() => undefined);
       await runtime.memory.close().catch(() => undefined);
+      await auditLogger.close();
       await rm(root, { recursive: true, force: true });
     }
   });

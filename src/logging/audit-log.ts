@@ -1,6 +1,7 @@
 import type { RouteMode, RouteTier } from '../capabilities/route-types.js';
 import type { CapabilityRisk } from '../capabilities/types.js';
 import { AuditJournal, type AuditJournalOptions, type AuditJournalStatus } from '../observability/audit-journal.js';
+import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 
 export interface AuditEvent {
   timestamp: string;
@@ -37,6 +38,7 @@ export interface RoutingAuditLogger {
 
 export interface RuntimeAuditLogger {
   logRuntime(category: string, event: string, data?: Record<string, unknown>): void;
+  status?(): AuditJournalStatus;
 }
 
 export const NOOP_ROUTING_AUDIT_LOGGER: RoutingAuditLogger = {
@@ -68,6 +70,10 @@ export class FileAuditLogger implements AuditLogger, RoutingAuditLogger, Runtime
 
   logRuntime(category: string, event: string, data: Record<string, unknown> = {}): void {
     this.journal.enqueue({ category, event, data });
+  }
+
+  attachMetrics(metrics: RuntimeMetricRegistry): void {
+    this.journal.attachMetrics(metrics);
   }
 
   drain(): Promise<void> {

@@ -70,6 +70,21 @@ export class RuntimeMetricRegistry {
     return this.counters.get(name) ?? 0;
   }
 
+  metricNames(limit = 256): string[] {
+    const bounded = Math.max(1, Math.min(Math.trunc(limit), 4096));
+    return [...new Set([...this.states.keys(), ...this.counters.keys()])]
+      .sort((left, right) => left.localeCompare(right))
+      .slice(0, bounded);
+  }
+
+  counterSnapshot(limit = 256): Record<string, number> {
+    const bounded = Math.max(1, Math.min(Math.trunc(limit), 4096));
+    const entries = [...this.counters.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .slice(0, bounded);
+    return Object.fromEntries(entries);
+  }
+
   metric(name: string): RuntimeMetricSnapshot {
     const state = this.states.get(name) ?? { count: 0, samples: [] };
     return {

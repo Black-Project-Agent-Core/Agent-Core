@@ -19,6 +19,7 @@ type HealthRuntime = {
   github: { config: { enabled: boolean }; status(): Promise<any>; apiRequest(input: any): Promise<any> };
   routes: { metrics(): any };
   capabilities: { coverage(): any };
+  audit?: { status?(): { queueDepth: number; queueCapacity: number; written: number; dropped: number; writeErrors: number; sequence: number; headHash: string | null; currentFileBytes: number; rotatedFiles: number; lastWriteErrorCode?: string } };
 };
 
 export interface RuntimeHealthSnapshot extends Record<string, unknown> {
@@ -27,6 +28,8 @@ export interface RuntimeHealthSnapshot extends Record<string, unknown> {
   execution: Record<string, unknown>;
   github: Record<string, unknown>;
   routing: Record<string, unknown>;
+  audit: Record<string, unknown>;
+  observability: Record<string, unknown>;
   overallHealth: OverallHealth;
 }
 
@@ -62,9 +65,35 @@ export class RuntimeHealthMetrics {
       this.githubMetrics(),
     ]);
     const routing = this.runtime.routes.metrics();
+    const auditStatus = this.runtime.audit?.status?.();
+    const audit = auditStatus ? {
+      enabled: true,
+      queueDepth: auditStatus.queueDepth,
+      queueCapacity: auditStatus.queueCapacity,
+      written: auditStatus.written,
+      dropped: auditStatus.dropped,
+      writeErrors: auditStatus.writeErrors,
+      sequence: auditStatus.sequence,
+      headHashPrefix: auditStatus.headHash ? auditStatus.headHash.slice(0, 16) : null,
+      currentFileBytes: auditStatus.currentFileBytes,
+      rotatedFiles: auditStatus.rotatedFiles,
+      ...(auditStatus.lastWriteErrorCode ? { lastWriteErrorCode: auditStatus.lastWriteErrorCode } : {}),
+    } : {
+      enabled: false,
+      queueDepth: 0,
+      queueCapacity: 0,
+      written: 0,
+      dropped: 0,
+      writeErrors: 0,
+      sequence: 0,
+      headHashPrefix: null,
+      currentFileBytes: 0,
+      rotatedFiles: 0,
+    };
     const memoryCritical = Boolean(this.runtime.memory.config.enabled && !memory.healthy);
     const executionCritical = Boolean(this.runtime.execution.config.enabled && !execution.healthy);
-    const optionalDegraded = this.runtime.github.config.enabled && (github.apiHealth !== 'green' || github.credentialStatus !== 'valid');
+    const optionalDegraded = (this.runtime.github.config.enabled && (github.apiHealth !== 'green' || github.credentialStatus !== 'valid'))
+      || (Boolean(audit.enabled) && (Number(audit.writeErrors) > 0 || Number(audit.dropped) > 0));
     const overallHealth: OverallHealth = memoryCritical || executionCritical ? 'critical' : optionalDegraded ? 'degraded' : 'healthy';
     return {
       timestamp: this.now(),
@@ -94,7 +123,41 @@ export class RuntimeHealthMetrics {
       github,
       routing: {
         ...routing,
+        validation: metricView(this.runtime.metrics.metric('routing.validation.duration_ms')),
         capabilityStage: 'v5-local-continuity-execution-fabric',
+      },
+      audit,
+      observability: {
+        http: {
+          requests: this.runtime.metrics.counter('http.requests.count'),
+          failures: this.runtime.metrics.counter('http.failures.count'),
+          duration: metricView(this.runtime.metrics.metric('http.request.duration_ms')),
+        },
+        auth: { failures: this.runtime.metrics.counter('auth.failures.count') },
+        oauth: {
+          failures: this.runtime.metrics.counter('oauth.failures.count'),
+          duration: metricView(this.runtime.metrics.metric('oauth.handle.duration_ms')),
+        },
+        tools: {
+          calls: this.runtime.metrics.counter('tool.calls.count'),
+          failures: this.runtime.metrics.counter('tool.failures.count'),
+          duration: metricView(this.runtime.metrics.metric('tool.duration_ms')),
+        },
+        maintenance: {
+          backup: metricView(this.runtime.metrics.metric('execution.backup.duration_ms')),
+          restore: metricView(this.runtime.metrics.metric('execution.restore.duration_ms')),
+          retention: metricView(this.runtime.metrics.metric('execution.retention.duration_ms')),
+        },
+        audit: {
+          written: this.runtime.metrics.counter('audit.written.count'),
+          dropped: this.runtime.metrics.counter('audit.dropped.count'),
+          writeErrors: this.runtime.metrics.counter('audit.write_errors.count'),
+          rotations: this.runtime.metrics.counter('audit.rotation.count'),
+        },
+        telemetry: {
+          exportFailures: this.runtime.metrics.counter('telemetry.export_failures.count'),
+          export: metricView(this.runtime.metrics.metric('telemetry.export.duration_ms')),
+        },
       },
       overallHealth,
     };

@@ -12,6 +12,7 @@ import {
 } from '../src/execution/retention.js';
 import type { ExecutionScope } from '../src/execution/types.js';
 import { WorkspacePolicy } from '../src/runtime/workspace.js';
+import { RuntimeMetricRegistry } from '../src/runtime/metric-window.js';
 import { printCommand, sleepCommand } from './helpers/platform-command.js';
 
 const roots: string[] = [];
@@ -101,6 +102,16 @@ describe('backup-gated execution raw-log retention', () => {
     expect(planned.plan.candidates.some((item) => item.path.includes(active.runId))).toBe(false);
     expect(await exists(done.paths.resultPath)).toBe(true);
     await live.close();
+  });
+
+  it('records bounded retention duration for plan and apply when a metric sink is supplied', async () => {
+    const f = await fixture('metrics');
+    await completedRun(f, 'metrics');
+    const metrics = new RuntimeMetricRegistry();
+    const planned = await planExecutionRetention({ logRoot: f.config.logRoot, planRoot: f.planRoot, olderThanMs: 0, now: Date.now() + 1000, metrics });
+    const verifiedBundle = await createExecutionRecoveryBundle({ dbPath: f.config.dbPath, logRoot: f.config.logRoot, destinationRoot: f.bundleRoot, sourceVersion: '0.5.4' });
+    await applyExecutionRetention({ planPath: planned.planPath, bundlePath: verifiedBundle.bundlePath, dbPath: f.config.dbPath, logRoot: f.config.logRoot, metrics });
+    expect(metrics.metric('execution.retention.duration_ms').count).toBe(2);
   });
 
   it('rejects apply when the recovery bundle predates the immutable retention plan', async () => {

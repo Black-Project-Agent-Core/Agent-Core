@@ -3,6 +3,7 @@ import type { FileKeyStore } from '../auth/key-store.js';
 import type { VerifiedKey } from '../auth/key-types.js';
 import type { HttpSecurityPolicy } from '../http/security-policy.js';
 import { ACCESS_TOKEN_PREFIX, FileOAuthStore } from './store.js';
+import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 
 const MCP_SCOPE = 'mcp:tools';
 const OFFLINE_SCOPE = 'offline_access';
@@ -65,6 +66,7 @@ export class OAuthService {
     private readonly keyStore: FileKeyStore,
     readonly store: FileOAuthStore,
     private readonly security: HttpSecurityPolicy,
+    private readonly metrics?: RuntimeMetricRegistry,
   ) {}
 
   challenge(request: IncomingMessage): string {
@@ -85,6 +87,11 @@ export class OAuthService {
   async handle(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     const url = new URL(request.url ?? '/', 'http://localhost');
     const route = url.pathname;
+    const observable = route.startsWith('/oauth/') || route.startsWith('/.well-known/oauth');
+    if (!observable) return false;
+    const startedAt = performance.now();
+    let failureRecorded = false;
+    try {
 
     if (request.method === 'GET' && (
       route === '/.well-known/oauth-protected-resource' ||
@@ -157,6 +164,15 @@ export class OAuthService {
     }
 
     return false;
+    } catch (error) {
+      failureRecorded = true;
+      this.metrics?.increment('oauth.failures.count');
+      this.metrics?.failure('oauth.handle.duration_ms', error instanceof Error ? error.name : 'OAUTH_ERROR');
+      throw error;
+    } finally {
+      this.metrics?.observe('oauth.handle.duration_ms', Math.max(0, performance.now() - startedAt));
+      if (!failureRecorded && response.statusCode >= 400) this.metrics?.increment('oauth.failures.count');
+    }
   }
 
   private async validateAuthorization(params: URLSearchParams, request: IncomingMessage): Promise<{

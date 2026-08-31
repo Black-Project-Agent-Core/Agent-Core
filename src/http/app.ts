@@ -6,6 +6,7 @@ import type { OAuthService } from '../oauth/service.js';
 import { authenticateRequest } from './auth.js';
 import { HttpSecurityPolicy } from './security-policy.js';
 import { createRequestCorrelation, formatTraceparent, runWithCorrelation } from '../observability/correlation.js';
+import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 
 export type McpHttpHandler = (
   request: IncomingMessage,
@@ -21,6 +22,7 @@ export interface HttpHandlerOptions {
   security?: HttpSecurityPolicy;
   healthProvider?: () => Promise<Record<string, unknown>>;
   healthMetricsProvider?: () => Promise<Record<string, unknown>>;
+  metrics?: RuntimeMetricRegistry;
 }
 
 function sendJson(
@@ -93,6 +95,7 @@ async function handleRequest(
       }
       key = await authenticateRequest(request, options.keyStore, options.oauthService);
       if (!key) {
+        options.metrics?.increment('auth.failures.count');
         const headers: Record<string, string> = {};
         if (options.oauthService) {
           headers['www-authenticate'] = options.oauthService.challenge(request);
@@ -109,6 +112,10 @@ async function handleRequest(
     if (!response.headersSent) sendJson(response, 500, { error: 'internal_error' });
     else if (!response.writableEnded) response.end();
   } finally {
+    const durationMs = Math.max(0, Date.now() - startedAt);
+    options.metrics?.increment('http.requests.count');
+    options.metrics?.observe('http.request.duration_ms', durationMs);
+    if (response.statusCode >= 400) options.metrics?.increment('http.failures.count');
     try {
       void options.auditLogger.log({
         timestamp: new Date().toISOString(),
@@ -116,7 +123,7 @@ async function handleRequest(
         method: request.method ?? 'UNKNOWN',
         route,
         status: response.statusCode,
-        durationMs: Date.now() - startedAt,
+        durationMs,
         keyId: key?.id ?? null,
         keyName: key?.name ?? null,
       });

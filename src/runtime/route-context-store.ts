@@ -206,6 +206,7 @@ export class RouteContextStore {
     principalId: string,
     toolName: string,
   ): RouteContext {
+    const validationStarted = performance.now();
     try {
       const context = this.requireOwned(routeContextId, principalId);
       const memory = context.memorySnapshot;
@@ -245,6 +246,8 @@ export class RouteContextStore {
     } catch (error) {
       this.auditRejected(routeContextId, principalId, toolName, error);
       throw error;
+    } finally {
+      this.runtimeMetrics?.observe('routing.validation.duration_ms', Math.max(0, performance.now() - validationStarted));
     }
   }
 
