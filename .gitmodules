@@ -1,0 +1,20 @@
+[submodule "SubProject/Super-Runtime/research/references/kimi-k3-in-c"]
+	path = SubProject/Super-Runtime/research/references/kimi-k3-in-c
+	url = https://github.com/FareedKhan-dev/kimi-k3-in-c.git
+	shallow = true
+[submodule "SubProject/Super-Runtime/research/references/llama.cpp"]
+	path = SubProject/Super-Runtime/research/references/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp.git
+	shallow = true
+[submodule "SubProject/Super-Runtime/research/references/hermes-agent"]
+	path = SubProject/Super-Runtime/research/references/hermes-agent
+	url = https://github.com/NousResearch/hermes-agent.git
+	shallow = true
+[submodule "SubProject/Super-Runtime/research/references/odysseus"]
+	path = SubProject/Super-Runtime/research/references/odysseus
+	url = https://github.com/odysseus-dev/odysseus.git
+	shallow = true
+[submodule "SubProject/Super-Runtime/research/references/openclaw"]
+	path = SubProject/Super-Runtime/research/references/openclaw
+	url = https://github.com/openclaw/openclaw.git
+	shallow = true
