@@ -178,8 +178,8 @@
 - [x] **Step 4: Live temporary-instance canary**: run a child+grandchild and prove cancel leaves no descendants; run output-limit overrun and prove bounded logs + failed marker; create recovery bundle; plan/apply raw-log retention; restore bundle while stopped; reopen and verify integrity/evidence truth.
 - [x] **Step 5: Compatibility canary** against existing Codespace/MCP behavior; Wave A/B gates must remain green.
 - [x] **Step 6: Record exact counts/evidence and commit** `docs: certify wave c execution recovery hardening`.
-- [ ] **Step 7: Fast-forward `main`, re-run merged-state verification if topology changed, push, fetch/read remote HEAD, and require exact equality.**
-- [ ] **Step 8: Restart real Agent Core only if the live runtime source commit must change; verify health, public MCP legacy+modern compatibility, and sourceCommit equality.**
+- [x] **Step 7: Fast-forward `main`, re-run merged-state verification if topology changed, push, fetch/read remote HEAD, and require exact equality.**
+- [x] **Step 8: Restart real Agent Core only if the live runtime source commit must change; verify health, public MCP legacy+modern compatibility, and sourceCommit equality.**
 
 ## Wave C Exit Matrix
 
@@ -258,3 +258,30 @@ temporary public canary key         revoked PASS
 ```
 
 Final merged-main/sourceCommit/public-runtime evidence is intentionally not claimed here; it belongs to the post-integration gate.
+
+## Main / Public Runtime Integration Evidence — 2026-08-31
+
+```text
+main fast-forward                         2eb23cc -> 4d9ee20
+fresh merged-main npm ci                  PASS / 0 vulnerabilities
+merged-main npm run verify:release        PASS
+merged-main regression                    118 files / 572 tests PASS; 38 skips
+merged-main release consistency           PASS
+merged-main document links                33 markdown / 16 relative links PASS
+origin/main push read-back                4d9ee20 == local == remote
+real Codespace sourceCommit               4d9ee20 / verified=true
+real Codespace execution health           healthy / integrity ok / schema 4
+public GET /health                        200
+public GET /health/metrics                403
+public POST /mcp without token            401
+public POST /mcp evil Origin              403
+public legacy MCP                         2025-11-25 / 55 tools PASS
+public modern MCP                         2026-07-28 / 55 tools PASS
+public modern agent_core_status           execution healthy PASS
+live execution runtime lease              present / PID owner match PASS
+live operator execution-backup            rejected while runtime active PASS
+temporary public canary key               revoked PASS
+external AI model/API dependency added    0
+```
+
+The final documentation-only certification commit follows this evidence. Because that commit changes repository HEAD, the Codespace runtime must be source-synchronized once more after the commit is pushed; final chat completion requires `connection.json.sourceCommit == origin/main` again.

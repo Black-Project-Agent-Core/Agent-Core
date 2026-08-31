@@ -197,7 +197,22 @@ package/dependency changes         none
 external AI model/API dependency  0
 ```
 
-Post-integration public-runtime/source equality remains a separate final gate before Wave C is declared certified complete.
+Post-integration public runtime was then restarted on the integrated source and verified:
+
+```text
+merged-main npm ci + verify:release   PASS
+origin/main equality                  PASS at 4d9ee20 integration source
+Codespace execution health           healthy / integrity ok / schema 4
+public health / remote metrics        200 / 403
+public MCP no-token / evil Origin     401 / 403
+public legacy MCP                     2025-11-25 / 55 tools PASS
+public modern MCP                     2026-07-28 / 55 tools PASS
+live execution lease                  PID owner match PASS
+live execution-backup while active    rejected PASS
+temporary public canary key           revoked PASS
+```
+
+This certifies the Wave C code boundary. A final docs-only certification commit is source-synchronized after publication so runtime metadata remains equal to final `origin/main`.
 
 ## Last core certification
 

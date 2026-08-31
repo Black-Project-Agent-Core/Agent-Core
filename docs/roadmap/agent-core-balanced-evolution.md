@@ -911,7 +911,22 @@ package/dependency diff                   none
 external AI model/API dependency          0
 ```
 
-Final certification/integration evidence is recorded by the Wave C implementation plan after merged-main and public-runtime verification.
+Final integration evidence:
+
+```text
+merged-main regression                       118 files / 572 tests PASS; 38 skips
+merged-main release/document gates            PASS
+origin/main integration source                4d9ee20 exact equality PASS
+real Codespace execution                      healthy / integrity ok / schema 4
+public Wave A security gates                  PASS
+public legacy MCP                             2025-11-25 / 55 PASS
+public modern MCP                             2026-07-28 / 55 PASS
+live execution runtime lease                  PASS
+live backup blocked while runtime active      PASS
+external AI model/API dependency added        0
+```
+
+Wave C is certified. The implementation plan contains the complete pre-integration, live lifecycle, merged-main, and public-runtime evidence.
 
 ---
 
