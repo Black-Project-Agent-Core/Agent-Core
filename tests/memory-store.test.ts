@@ -103,4 +103,54 @@ describe('auditable versioned memory store', () => {
     expect(eventCount).toBeGreaterThanOrEqual(5);
     await store.close();
   });
+
+  it('keeps directed semantic relations one-way while logical conflicts stay symmetric', async () => {
+    const client = new MemoryWorkerClient();
+    const store = new MemoryStore(client);
+    await store.open({ dbPath: dbPath('relation-direction') });
+    const scope = { ...scopeA, projectId: 'relation-project' };
+
+    const parent = await store.commitMemory({
+      scope,
+      canonicalKey: 'architecture.parent',
+      kind: 'decision',
+      value: 'Parent architecture decision',
+      sourceType: 'test',
+    });
+    const conflicting = await store.commitMemory({
+      scope,
+      canonicalKey: 'architecture.conflicting',
+      kind: 'decision',
+      value: 'Conflicting architecture decision',
+      sourceType: 'test',
+    });
+    const branch = await store.commitMemory({
+      scope,
+      canonicalKey: 'architecture.branch',
+      kind: 'decision',
+      value: 'Branch architecture decision',
+      sourceType: 'test',
+      explicitRelations: [
+        { targetMemoryId: parent.memoryId, relation: 'branch_of' },
+        { targetMemoryId: conflicting.memoryId, relation: 'contradicts' },
+      ],
+    });
+
+    const branchEdges = await client.query<{ from_memory_id: string; to_memory_id: string; relation: string }>(
+      `SELECT from_memory_id, to_memory_id, relation FROM memory_edges
+       WHERE relation IN ('branch_of', 'contradicts')
+       ORDER BY relation, from_memory_id, to_memory_id`,
+    );
+    expect(branchEdges.filter((edge) => edge.relation === 'branch_of')).toEqual([
+      { from_memory_id: branch.memoryId, to_memory_id: parent.memoryId, relation: 'branch_of' },
+    ]);
+    const conflictEdges = branchEdges.filter((edge) => edge.relation === 'contradicts');
+    expect(conflictEdges).toHaveLength(2);
+    expect(conflictEdges).toEqual(expect.arrayContaining([
+      { from_memory_id: branch.memoryId, to_memory_id: conflicting.memoryId, relation: 'contradicts' },
+      { from_memory_id: conflicting.memoryId, to_memory_id: branch.memoryId, relation: 'contradicts' },
+    ]));
+
+    await store.close();
+  });
 });

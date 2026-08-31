@@ -93,7 +93,7 @@ class SwitchableMemoryWriter implements ExecutionMemoryWriter {
     return {
       enabled: true,
       healthy: this.healthy,
-      schemaVersion: 2,
+      schemaVersion: 3,
       dbPath: 'acceptance-memory.sqlite',
       counts: {},
       integrity: this.healthy ? 'ok' : 'degraded:acceptance',

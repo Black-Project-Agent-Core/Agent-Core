@@ -1,3 +1,5 @@
+import type { MemoryAnchorType } from './anchors.js';
+
 export const MEMORY_KINDS = [
   'fact',
   'preference',
@@ -33,6 +35,70 @@ export const MEMORY_RELATIONS = [
   'cooccurs_in_event',
   'token_overlap',
   'temporal_neighbor',
+  'continues',
+  'branch_of',
+  'derived_from',
+  'learned_from',
+  'caused_by',
+  'failed_because',
+  'resolved_by',
+  'validated_by',
+  'blocked_by',
+  'depends_on',
+  'produced',
+  'contradicts',
+  'same_task_family',
+] as const;
+
+export const MEMORY_PERSISTENCE_DECISIONS = [
+  'NO_DURABLE_MEMORY',
+  'REVISE_EXISTING',
+  'LINK_EXISTING',
+  'WRITE_BRANCH',
+  'WRITE_NEW_ROOT',
+  'OPEN_CONFLICT',
+] as const;
+
+export const MEMORY_EDGE_EVENT_TYPES = ['edge.created', 'edge.reweighted', 'edge.retracted'] as const;
+
+export const MEMORY_WRITE_REASON_CODES = [
+  'DUPLICATE_CANONICAL',
+  'DUPLICATE_VALUE',
+  'SAME_BELIEF_NEW_EVIDENCE',
+  'BELIEF_CHANGED',
+  'PROCEDURE_CHANGED',
+  'CURRENT_STATE_CHANGED',
+  'DISTINCT_BRANCH',
+  'FRESH_DURABLE_CONTEXT',
+  'FAILURE_OBSERVED',
+  'SOLUTION_VERIFIED',
+  'CONFLICT_DETECTED',
+  'RELATED_EXISTING_ONLY',
+  'TRANSIENT_OPERATION',
+  'INSUFFICIENT_EVIDENCE',
+  'NO_FUTURE_RELEVANCE',
+  'USER_EXPLICITLY_REQUESTED_MEMORY',
+  'GUARDRAIL_CREATED',
+  'GUARDRAIL_CHANGED',
+  'ARTIFACT_VERIFIED',
+] as const;
+
+export const MEMORY_REMOTE_DURABILITY_STATES = [
+  'LOCAL_COMMITTED',
+  'REMOTE_PENDING',
+  'REMOTE_SYNCED',
+  'REMOTE_CONFLICT',
+  'REMOTE_UNAVAILABLE',
+] as const;
+
+export const MEMORY_HYDRATION_STATES = [
+  'REMOTE_EMPTY_CONFIRMED',
+  'REMOTE_HYDRATED',
+  'REMOTE_UNAVAILABLE',
+  'REMOTE_AUTH_FAILED',
+  'REMOTE_DECRYPT_FAILED',
+  'REMOTE_INTEGRITY_FAILED',
+  'REMOTE_REPLAY_FAILED',
 ] as const;
 
 export const MEMORY_ENFORCEMENTS = ['none', 'soft', 'hard'] as const;
@@ -53,6 +119,11 @@ export const MUTABLE_MEMORY_KINDS = [
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 export type MemoryState = (typeof MEMORY_STATES)[number];
 export type MemoryRelation = (typeof MEMORY_RELATIONS)[number];
+export type MemoryPersistenceDecisionType = (typeof MEMORY_PERSISTENCE_DECISIONS)[number];
+export type MemoryEdgeEventType = (typeof MEMORY_EDGE_EVENT_TYPES)[number];
+export type MemoryWriteReasonCode = (typeof MEMORY_WRITE_REASON_CODES)[number];
+export type MemoryRemoteDurabilityState = (typeof MEMORY_REMOTE_DURABILITY_STATES)[number];
+export type MemoryHydrationState = (typeof MEMORY_HYDRATION_STATES)[number];
 export type MemoryEnforcement = (typeof MEMORY_ENFORCEMENTS)[number];
 
 export type MemoryId = string;
@@ -65,6 +136,11 @@ export interface MemoryScope {
   projectId?: string;
   threadId?: string;
   resourceId?: string;
+}
+
+export interface MemoryExplicitAnchor {
+  type: MemoryAnchorType;
+  value: string;
 }
 
 export interface MemoryExplicitRelation {
@@ -84,6 +160,7 @@ export interface MemoryCommitRequest {
   sourceType?: string;
   sourceRef?: string;
   metadata?: Record<string, unknown>;
+  explicitAnchors?: MemoryExplicitAnchor[];
   explicitRelations?: MemoryExplicitRelation[];
   revisionAuthority?: 'structured_state';
 }
@@ -95,6 +172,80 @@ export interface MemoryCommitResult {
   revisionNo: number;
   deduplicated: boolean;
   state: MemoryState;
+}
+
+export interface MemoryWriteDecisionRecord {
+  id: string;
+  principalId: string;
+  projectId?: string;
+  routeContextId: string;
+  continuityTaskId?: string;
+  contextId?: string;
+  decisionType: MemoryPersistenceDecisionType;
+  candidateCanonicalKey?: string;
+  candidateHash: string;
+  targetMemoryId?: MemoryId;
+  existingMemoryIds: MemoryId[];
+  reasonCodes: MemoryWriteReasonCode[];
+  evidenceRefs: string[];
+  relationPlan: Array<Record<string, unknown>>;
+  rootReason?: string;
+  createdAt: number;
+  appliedAt?: number;
+  applyResult?: Record<string, unknown>;
+}
+
+export interface MemoryRecallExpansionRecord {
+  id: string;
+  principalId: string;
+  projectId?: string;
+  contextId: string;
+  sourceMemoryId: MemoryId;
+  targetMemoryId: MemoryId;
+  depth: number;
+  relationPath: MemoryRelation[];
+  reasonCode: string;
+  score: number;
+  createdAt: number;
+}
+
+export interface MemoryNodeMetadataRecord {
+  memoryId: MemoryId;
+  title?: string;
+  rootReason?: string;
+  noveltyClass?: string;
+  createdFromDecisionId?: string;
+  branchParentMemoryId?: MemoryId;
+  semanticProfile?: Record<string, unknown>;
+  semanticProfileHash?: string;
+  updatedAt: number;
+}
+
+export interface MemoryEdgeEventRecord {
+  id: string;
+  principalId: string;
+  projectId?: string;
+  eventType: MemoryEdgeEventType;
+  fromMemoryId: MemoryId;
+  toMemoryId: MemoryId;
+  relation: MemoryRelation;
+  oldWeight?: number;
+  newWeight?: number;
+  evidenceEventId?: MemoryEventId;
+  reasonCode: string;
+  createdAt: number;
+}
+
+export interface MemoryRemoteStateRecord {
+  principalId: string;
+  projectId?: string;
+  durabilityState: MemoryRemoteDurabilityState;
+  hydrationState?: MemoryHydrationState;
+  remoteGeneration?: string;
+  remoteHead?: string;
+  logicalStateHash?: string;
+  lastErrorCode?: string;
+  updatedAt: number;
 }
 
 export interface MemoryReviseRequest {

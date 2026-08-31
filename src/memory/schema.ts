@@ -1,8 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
 
-export const MEMORY_SCHEMA_VERSION = 2;
+export const MEMORY_SCHEMA_VERSION = 3;
 export const INITIAL_MEMORY_MIGRATION = '001_initial_memory';
 export const CONTINUITY_MEMORY_MIGRATION = '002_continuity_ledger';
+export const MEMORY_COGNITION_MIGRATION = '003_memory_cognition_ledgers';
 
 export const MEMORY_SCHEMA_V1_SQL = `
 CREATE TABLE IF NOT EXISTS memory_schema_migrations (
@@ -247,6 +248,113 @@ CREATE INDEX IF NOT EXISTS idx_continuity_frontier_source_task
   ON continuity_frontier(source_task_id, status, priority DESC, id);
 `;
 
+export const MEMORY_COGNITION_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS memory_write_decisions (
+  id TEXT PRIMARY KEY,
+  principal_id TEXT NOT NULL,
+  project_id TEXT,
+  route_context_id TEXT NOT NULL,
+  continuity_task_id TEXT,
+  context_id TEXT,
+  decision_type TEXT NOT NULL CHECK (decision_type IN (
+    'NO_DURABLE_MEMORY','REVISE_EXISTING','LINK_EXISTING',
+    'WRITE_BRANCH','WRITE_NEW_ROOT','OPEN_CONFLICT'
+  )),
+  candidate_canonical_key TEXT,
+  candidate_hash TEXT NOT NULL,
+  target_memory_id TEXT,
+  existing_memory_ids_json TEXT NOT NULL DEFAULT '[]',
+  reason_codes_json TEXT NOT NULL DEFAULT '[]',
+  evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+  relation_plan_json TEXT NOT NULL DEFAULT '[]',
+  root_reason TEXT,
+  created_at INTEGER NOT NULL,
+  applied_at INTEGER,
+  apply_result_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS memory_recall_expansions (
+  id TEXT PRIMARY KEY,
+  principal_id TEXT NOT NULL,
+  project_id TEXT,
+  context_id TEXT NOT NULL,
+  source_memory_id TEXT NOT NULL,
+  target_memory_id TEXT NOT NULL,
+  depth INTEGER NOT NULL CHECK (depth >= 1),
+  relation_path_json TEXT NOT NULL,
+  reason_code TEXT NOT NULL,
+  score REAL NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memory_edge_events (
+  id TEXT PRIMARY KEY,
+  principal_id TEXT NOT NULL,
+  project_id TEXT,
+  event_type TEXT NOT NULL CHECK (event_type IN ('edge.created','edge.reweighted','edge.retracted')),
+  from_memory_id TEXT NOT NULL,
+  to_memory_id TEXT NOT NULL,
+  relation TEXT NOT NULL,
+  old_weight REAL,
+  new_weight REAL,
+  evidence_event_id TEXT,
+  reason_code TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  CHECK (from_memory_id <> to_memory_id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_node_metadata (
+  memory_id TEXT PRIMARY KEY REFERENCES memory_items(id) ON DELETE CASCADE,
+  title TEXT,
+  root_reason TEXT,
+  novelty_class TEXT,
+  created_from_decision_id TEXT,
+  branch_parent_memory_id TEXT REFERENCES memory_items(id),
+  semantic_profile_json TEXT,
+  semantic_profile_hash TEXT,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memory_remote_state (
+  principal_id TEXT NOT NULL,
+  project_id TEXT NOT NULL DEFAULT '',
+  durability_state TEXT NOT NULL CHECK (durability_state IN (
+    'LOCAL_COMMITTED','REMOTE_PENDING','REMOTE_SYNCED','REMOTE_CONFLICT','REMOTE_UNAVAILABLE'
+  )),
+  hydration_state TEXT CHECK (hydration_state IS NULL OR hydration_state IN (
+    'REMOTE_EMPTY_CONFIRMED','REMOTE_HYDRATED','REMOTE_UNAVAILABLE','REMOTE_AUTH_FAILED',
+    'REMOTE_DECRYPT_FAILED','REMOTE_INTEGRITY_FAILED','REMOTE_REPLAY_FAILED'
+  )),
+  remote_generation TEXT,
+  remote_head TEXT,
+  logical_state_hash TEXT,
+  last_error_code TEXT,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY(principal_id, project_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_write_decisions_scope_created
+  ON memory_write_decisions(principal_id, IFNULL(project_id, ''), created_at DESC, id);
+CREATE INDEX IF NOT EXISTS idx_memory_recall_expansions_scope_context
+  ON memory_recall_expansions(principal_id, IFNULL(project_id, ''), context_id, created_at ASC, id);
+CREATE INDEX IF NOT EXISTS idx_memory_edge_events_scope_created
+  ON memory_edge_events(principal_id, IFNULL(project_id, ''), created_at ASC, id);
+CREATE INDEX IF NOT EXISTS idx_memory_edge_events_from
+  ON memory_edge_events(from_memory_id, created_at ASC, id);
+
+CREATE TRIGGER IF NOT EXISTS trg_memory_edge_events_append_only_update
+BEFORE UPDATE ON memory_edge_events
+BEGIN
+  SELECT RAISE(ABORT, 'memory_edge_events is append-only');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_memory_edge_events_append_only_delete
+BEFORE DELETE ON memory_edge_events
+BEGIN
+  SELECT RAISE(ABORT, 'memory_edge_events is append-only');
+END;
+`;
+
 export interface MemoryMigration {
   version: number;
   name: string;
@@ -256,9 +364,10 @@ export interface MemoryMigration {
 export const MEMORY_MIGRATIONS: readonly MemoryMigration[] = [
   { version: 1, name: INITIAL_MEMORY_MIGRATION, sql: MEMORY_SCHEMA_V1_SQL },
   { version: 2, name: CONTINUITY_MEMORY_MIGRATION, sql: CONTINUITY_SCHEMA_SQL },
+  { version: 3, name: MEMORY_COGNITION_MIGRATION, sql: MEMORY_COGNITION_SCHEMA_SQL },
 ] as const;
 
-export const MEMORY_SCHEMA_SQL = `${MEMORY_SCHEMA_V1_SQL}\n${CONTINUITY_SCHEMA_SQL}`;
+export const MEMORY_SCHEMA_SQL = `${MEMORY_SCHEMA_V1_SQL}\n${CONTINUITY_SCHEMA_SQL}\n${MEMORY_COGNITION_SCHEMA_SQL}`;
 
 export function initializeMemorySchema(db: DatabaseSync): void {
   db.exec('PRAGMA foreign_keys = ON');

@@ -4,6 +4,7 @@ import { extractMemoryAnchors } from './anchors.js';
 import { createMemoryBackup, type MemoryBackupRecord } from './backup.js';
 import { normalizeCanonicalKey, normalizeMemoryText } from './normalizer.js';
 import { redactMemoryText } from './redaction.js';
+import { RELATION_WEIGHTS, shouldMirrorMemoryRelation } from './relation-policy.js';
 import {
   MEMORY_MIGRATIONS,
   MEMORY_FTS_REBUILD_SQL,
@@ -16,7 +17,6 @@ import type {
   MemoryCommitResult,
   MemoryEnforcement,
   MemoryKind,
-  MemoryRelation,
   MemoryReviseRequest,
   MemoryReviseResult,
   MemoryScope,
@@ -111,18 +111,6 @@ type ExistingMemoryRow = {
   updated_at: number;
   revision_no: number;
   value_hash: string;
-};
-
-const FIXED_RELATION_WEIGHT: Record<MemoryRelation, number> = {
-  same_key: 1,
-  supersedes: 1,
-  explicit_relation: 1,
-  same_anchor: 0.95,
-  same_artifact: 0.90,
-  same_route_or_task: 0.80,
-  cooccurs_in_event: 0.60,
-  token_overlap: 0.20,
-  temporal_neighbor: 0.15,
 };
 
 function scopeProject(scope: MemoryScope): string {
@@ -571,7 +559,7 @@ export class MemoryStore {
     }
 
     for (const relation of request.explicitRelations ?? []) {
-      const weight = relation.weight ?? FIXED_RELATION_WEIGHT[relation.relation];
+      const weight = relation.weight ?? RELATION_WEIGHTS[relation.relation];
       if (!Number.isFinite(weight) || weight < 0 || weight > 1) {
         throw new MemoryStoreError('MEMORY_RELATION_WEIGHT_INVALID', 'explicit relation weight must be between 0 and 1');
       }
@@ -582,10 +570,7 @@ export class MemoryStore {
         ) VALUES (?, ?, ?, ?, ?, ?)`,
         params: [memoryId, relation.targetMemoryId, relation.relation, weight, eventId, now],
       });
-      // The master contract defines only `supersedes` as directed (old -> new).
-      // Explicit associative relations must be traversable in both directions so
-      // weighted PPR can propagate from either side of a known relationship.
-      if (relation.relation !== 'supersedes') {
+      if (shouldMirrorMemoryRelation(relation.relation)) {
         operations.push({
           kind: 'run',
           sql: `INSERT OR IGNORE INTO memory_edges(

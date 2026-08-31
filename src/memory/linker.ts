@@ -1,19 +1,10 @@
 import type { MemoryAnchor } from './anchors.js';
 import type { MemoryRelation, MemoryScope } from './types.js';
 import type { MemoryWorkerSqlOperation } from './db-worker.js';
+import { RELATION_WEIGHTS } from './relation-policy.js';
 import { MemoryWorkerClient } from './worker-client.js';
 
-export const RELATION_WEIGHTS: Record<MemoryRelation, number> = {
-  same_key: 1.00,
-  supersedes: 1.00,
-  explicit_relation: 1.00,
-  same_anchor: 0.95,
-  same_artifact: 0.90,
-  same_route_or_task: 0.80,
-  cooccurs_in_event: 0.60,
-  token_overlap: 0.20,
-  temporal_neighbor: 0.15,
-};
+export { RELATION_WEIGHTS };
 
 export interface LinkableMemoryRecord {
   memoryId: string;
@@ -78,20 +69,20 @@ export function derivePairRelations(
 ): ProposedMemoryRelation[] {
   const relations = new Map<MemoryRelation, number>();
   for (const relation of options.structuredRelations ?? []) {
-    if (relation === 'supersedes' || relation === 'explicit_relation') relations.set(relation, 1);
+    if (relation === 'supersedes' || relation === 'explicit_relation') relations.set(relation, RELATION_WEIGHTS[relation]);
   }
 
-  if (left.canonicalKey === right.canonicalKey) relations.set('same_key', 1);
-  if (sharedAnchor(left, right)) relations.set('same_anchor', 0.95);
-  if (sharedAnchor(left, right, new Set(['windows_path', 'unix_path']))) relations.set('same_artifact', 0.90);
-  if (sharedAnchor(left, right, new Set(['route_id', 'run_id']))) relations.set('same_route_or_task', 0.80);
-  if (left.sourceEventId && left.sourceEventId === right.sourceEventId) relations.set('cooccurs_in_event', 0.60);
+  if (left.canonicalKey === right.canonicalKey) relations.set('same_key', RELATION_WEIGHTS.same_key);
+  if (sharedAnchor(left, right)) relations.set('same_anchor', RELATION_WEIGHTS.same_anchor);
+  if (sharedAnchor(left, right, new Set(['windows_path', 'unix_path']))) relations.set('same_artifact', RELATION_WEIGHTS.same_artifact);
+  if (sharedAnchor(left, right, new Set(['route_id', 'run_id']))) relations.set('same_route_or_task', RELATION_WEIGHTS.same_route_or_task);
+  if (left.sourceEventId && left.sourceEventId === right.sourceEventId) relations.set('cooccurs_in_event', RELATION_WEIGHTS.cooccurs_in_event);
 
   const jaccard = jaccardTokenOverlap(left.valueText, right.valueText);
   if (jaccard >= options.tokenOverlapJaccardThreshold) {
     const span = Math.max(1e-9, 1 - options.tokenOverlapJaccardThreshold);
     const normalized = Math.min(1, Math.max(0, (jaccard - options.tokenOverlapJaccardThreshold) / span));
-    relations.set('token_overlap', 0.20 + (0.35 * normalized));
+    relations.set('token_overlap', RELATION_WEIGHTS.token_overlap + (0.35 * normalized));
   }
 
   const sameThread = Boolean(left.threadId && left.threadId === right.threadId);
@@ -99,7 +90,7 @@ export function derivePairRelations(
   const distance = Math.abs(left.createdAt - right.createdAt);
   if ((sameThread || sameResource) && distance <= options.temporalNeighborWindowMs) {
     const freshness = 1 - Math.min(1, distance / Math.max(1, options.temporalNeighborWindowMs));
-    relations.set('temporal_neighbor', 0.15 + (0.15 * freshness));
+    relations.set('temporal_neighbor', RELATION_WEIGHTS.temporal_neighbor + (0.15 * freshness));
   }
 
   return RELATION_ORDER
