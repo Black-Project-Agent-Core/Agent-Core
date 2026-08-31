@@ -413,7 +413,7 @@ legacy / modern MCP                          2025-11-25/55 / 2026-07-28/55 PASS
 
 `LocalMaintenanceCoordinator` has no import/invocation path for retention apply, recovery restore, credential revocation/rotation, or filesystem deletion. Its scheduled work is limited to memory/execution integrity-status reads and `planExecutionRetention` dry-run planning. The existing execution runtime lease is unchanged.
 
-The feature evidence above was subsequently integrated with two concurrent Super-Runtime main histories without conflict. Technical production source `3f27cedbf35826cd45ad172ebd250e68f335437d` passed fresh `verify:release`, was published to `main` non-force, source-synced into the Codespace runtime, and passed production health/audit/public/MCP certification. Final docs-publication/source-sync housekeeping is tracked separately before the roadmap marks Wave F complete.
+The feature evidence above was subsequently integrated with two concurrent Super-Runtime main histories without conflict. Technical production source `3f27cedbf35826cd45ad172ebd250e68f335437d` passed fresh `verify:release`, was published to `main` non-force, source-synced into the Codespace runtime, and passed production health/audit/public/MCP certification. Certification docs `042d8bc1a8969c8378042d02738e3cb57e92afc6` then passed fresh `verify:release`, were published to both `main` and the Wave F audit branch, and were source-synced with exact `HEAD == origin/main == connection.sourceCommit` equality. Wave F is therefore certified complete; final local-worktree deletion is housekeeping only and does not alter production behavior.
 
 
 Production technical runtime evidence:

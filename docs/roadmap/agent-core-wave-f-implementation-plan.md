@@ -164,7 +164,7 @@
 - [x] **Step 8: Fetch `origin/main`; reconcile concurrent main changes explicitly and never reset unrelated local work.** `origin/main` first advanced from the Wave F base to `40b5ae256778c7df3159c7400aa483fcb6a42f5a` with nine Super-Runtime/research commits. Path-overlap audit found zero Wave F-authored overlap; merge `4fe71d581bb22bc43a766ed1f60f8e43d92d7663` preserved both histories without conflict and fresh `npm ci` + `npm run verify:release` passed. Immediately before publication `origin/main` advanced again to `a4869112ad39739a42a61e6d58a790bcc4e0b627` with a Super-Runtime Phase-0 research commit; merge-tree again showed no conflict and merge `3f27cedbf35826cd45ad172ebd250e68f335437d` preserved both histories.
 - [x] **Step 9: Fast-forward/integrate only if topology is compatible; fresh merged-main `npm ci` + `npm run verify:release`; non-force push; local/remote equality.** Exact production candidate `3f27cedbf35826cd45ad172ebd250e68f335437d` passed fresh `npm run verify:release` with 136 files / 663 tests PASS / 38 skips and Wave E quality gate PASS. `origin/main` was still its ancestor immediately before publication; non-force `HEAD:main` advanced `a486911` to `3f27ced`, and fetch/readback proved remote equality.
 - [x] **Step 10: Controlled Codespace source-sync and require `HEAD == origin/main == connection.sourceCommit`; final health/audit/public/MCP canary.** Direct bounded `sync-source.sh` fast-forwarded the tracked-clean local main from `a486911` to `3f27ced` while preserving unrelated untracked `.vscode/`; lifecycle repair then activated the synchronized build. Final equality proved `HEAD == origin/main == connection.sourceCommit == 3f27ced`, health/memory/execution integrity were `ok`, public health/remote-metrics/no-token/evil-Origin were `200/403/401/403`, resource governance was present and bounded at `4/4`, maintenance remained disabled by default, legacy/modern MCP were `2025-11-25/55` and `2026-07-28/55`, and live audit verification passed with 216 records.
-- [ ] **Step 11: Publish final docs-only certification if needed, source-sync to its SHA, remove only Wave F local worktree/branch after equality; retain remote Wave F branch for audit.**
+- [x] **Step 11: Publish final docs-only certification if needed, source-sync to its SHA, remove only Wave F local worktree/branch after equality; retain remote Wave F branch for audit.** Production certification docs `042d8bc1a8969c8378042d02738e3cb57e92afc6` were published to both `main` and the Wave F audit branch, fresh `verify:release` passed at that exact SHA, and controlled source-sync proved `HEAD == origin/main == connection.sourceCommit == 042d8bc1` with healthy memory/execution. This closeout commit records completion; after its publication/readback and source-sync, only the local Wave F worktree/branch is removed while the remote audit branch is retained.
 
 
 ## Wave F Pre-Integration Certification Evidence — 2026-08-31
@@ -253,3 +253,21 @@ Wave E quality gate                                  PASS
 full release regression                              PASS
 external AI model/API dependency                     0
 ```
+
+
+## Wave F Publication Closeout
+
+```text
+production certification docs              042d8bc1a8969c8378042d02738e3cb57e92afc6
+certification-doc verify:release            136 files / 663 tests PASS / 38 skips
+certification-doc Wave E quality:gate       PASS
+certification-doc main publication          PASS
+certification-doc feature publication       PASS
+certification-doc source sync               PASS
+HEAD == origin/main == sourceCommit         042d8bc1a8969c8378042d02738e3cb57e92afc6
+runtime health / memory / execution         ok / ok / ok
+unrelated untracked .vscode                 preserved
+remote Wave F audit branch                  retained
+```
+
+The final closeout commit contains certification metadata only; no Wave F production source, dependency, protocol, runtime-lease, or maintenance behavior changes are introduced by publication housekeeping.

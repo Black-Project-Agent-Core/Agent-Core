@@ -1064,7 +1064,7 @@ temporary public key                    revoked PASS
 
 **Goal:** let Agent Core adapt local execution load to local factual conditions.
 
-**Implementation status:** production technical certification PASS on 2026-08-31 at `3f27cedbf35826cd45ad172ebd250e68f335437d`; final docs-publication/source-sync housekeeping remains pending before Wave F is declared complete.
+**Implementation status:** **CERTIFIED COMPLETE** on 2026-08-31. Production behavior was certified at `3f27cedbf35826cd45ad172ebd250e68f335437d`; certification docs `042d8bc1a8969c8378042d02738e3cb57e92afc6` were published and source-synced with exact runtime equality before final local-worktree cleanup.
 
 Delivered scope:
 
@@ -1120,6 +1120,7 @@ no destructive scheduled maintenance call path          PASS
 no cloud model/API dependency                            PASS
 factual execution semantics unchanged                    PASS
 production publication/runtime equality                  PASS
+certification docs publication/source-sync               PASS
 ```
 
 ---
