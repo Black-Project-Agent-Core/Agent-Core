@@ -6,6 +6,7 @@ import { auditedEdgeInsertOperations } from './cognition-ledger.js';
 import { normalizeCanonicalKey, normalizeMemoryText } from './normalizer.js';
 import { containsRedactionMarker, redactMemoryText } from './redaction.js';
 import { RELATION_WEIGHTS, shouldMirrorMemoryRelation } from './relation-policy.js';
+import type { MemoryLogicalStateProjection } from './logical-state-hash.js';
 import {
   MEMORY_MIGRATIONS,
   MEMORY_FTS_REBUILD_SQL,
@@ -230,6 +231,55 @@ function eventInsertOperation(
   };
 }
 
+const MAX_LOGICAL_REPLAY_ROWS = 1_500_000;
+
+function replayRows(value: unknown[], label: string): Array<Record<string, unknown>> {
+  return value.map((row) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', `${label} contains a non-object row`);
+    }
+    return row as Record<string, unknown>;
+  });
+}
+
+function replayString(row: Record<string, unknown>, key: string, nullable = false): string | null {
+  const value = row[key];
+  if (value == null && nullable) return null;
+  if (typeof value !== 'string') throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', `${key} must be a string`);
+  return value;
+}
+
+function replayNumber(row: Record<string, unknown>, key: string, nullable = false): number | null {
+  const value = row[key];
+  if (value == null && nullable) return null;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', `${key} must be a finite number`);
+  }
+  return value;
+}
+
+function replayJson(value: unknown): string | null {
+  if (value == null) return null;
+  return stableJson(value);
+}
+
+function replayProject(value: unknown): string {
+  return value == null ? '' : String(value);
+}
+
+function assertReplayScope(row: Record<string, unknown>, principalId: string, projectId: string): void {
+  if (row.principal_id !== principalId || replayProject(row.project_id) !== projectId) {
+    throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_SCOPE_MISMATCH', 'Logical replay row escaped the authenticated scope');
+  }
+}
+
+async function runReplayOperations(client: MemoryWorkerClient, operations: MemoryWorkerSqlOperation[]): Promise<void> {
+  for (let offset = 0; offset < operations.length; offset += 900) {
+    const chunk = operations.slice(offset, offset + 900);
+    if (chunk.length) await client.transaction(chunk);
+  }
+}
+
 export class MemoryStore {
   private opened = false;
   private closed = false;
@@ -423,6 +473,258 @@ export class MemoryStore {
       [scope.principalId, scopeProject(scope), memoryId],
     );
     return rows.map(mapRevision);
+  }
+
+  async materializeLogicalProjection(projection: MemoryLogicalStateProjection): Promise<void> {
+    this.assertReady();
+    if (projection.formatVersion !== 1 || !projection.scope?.principalId || typeof projection.scope.projectId !== 'string') {
+      throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Logical replay projection format/scope is invalid');
+    }
+    const principalId = projection.scope.principalId;
+    const projectId = projection.scope.projectId;
+    const tables = {
+      events: replayRows(projection.events, 'events'),
+      items: replayRows(projection.items, 'items'),
+      revisions: replayRows(projection.revisions, 'revisions'),
+      anchors: replayRows(projection.anchors, 'anchors'),
+      edges: replayRows(projection.edges, 'edges'),
+      conflicts: replayRows(projection.conflicts, 'conflicts'),
+      nodeMetadata: replayRows(projection.nodeMetadata, 'nodeMetadata'),
+      writeDecisions: replayRows(projection.writeDecisions, 'writeDecisions'),
+      edgeEvents: replayRows(projection.edgeEvents, 'edgeEvents'),
+      continuityTasks: replayRows(projection.continuityTasks, 'continuityTasks'),
+      continuityDependencies: replayRows(projection.continuityDependencies, 'continuityDependencies'),
+      continuityCheckpoints: replayRows(projection.continuityCheckpoints, 'continuityCheckpoints'),
+      continuityFrontier: replayRows(projection.continuityFrontier, 'continuityFrontier'),
+    };
+    const totalRows = Object.values(tables).reduce((sum, rows) => sum + rows.length, 0);
+    if (totalRows > MAX_LOGICAL_REPLAY_ROWS) {
+      throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_TOO_LARGE', 'Logical replay exceeds the bounded row count');
+    }
+    for (const rows of [
+      tables.events, tables.items, tables.writeDecisions, tables.edgeEvents,
+      tables.continuityTasks, tables.continuityCheckpoints, tables.continuityFrontier,
+    ]) {
+      for (const row of rows) assertReplayScope(row, principalId, projectId);
+    }
+
+    const existing = await this.client.query<{ count: number }>(
+      `SELECT (
+        (SELECT count(*) FROM memory_events WHERE principal_id = ? AND IFNULL(project_id, '') = ?) +
+        (SELECT count(*) FROM memory_items WHERE principal_id = ? AND IFNULL(project_id, '') = ?) +
+        (SELECT count(*) FROM memory_write_decisions WHERE principal_id = ? AND IFNULL(project_id, '') = ?) +
+        (SELECT count(*) FROM continuity_tasks WHERE principal_id = ? AND IFNULL(project_id, '') = ?)
+      ) AS count`,
+      [principalId, projectId, principalId, projectId, principalId, projectId, principalId, projectId],
+    );
+    if (Number(existing[0]?.count ?? 0) !== 0) {
+      throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_DESTINATION_NOT_EMPTY', 'Logical replay requires an empty destination scope');
+    }
+
+    const itemIds = new Set(tables.items.map((row) => replayString(row, 'id')!));
+    const eventIds = new Set(tables.events.map((row) => replayString(row, 'id')!));
+    const revisionIds = new Set(tables.revisions.map((row) => replayString(row, 'id')!));
+    const decisionIds = new Set(tables.writeDecisions.map((row) => replayString(row, 'id')!));
+    const taskIds = new Set(tables.continuityTasks.map((row) => replayString(row, 'id')!));
+    const revisionById = new Map(tables.revisions.map((row) => [replayString(row, 'id')!, row]));
+
+    for (const row of tables.items) {
+      const currentRevisionId = replayString(row, 'current_revision_id');
+      if (!revisionIds.has(currentRevisionId!)) throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Memory item current revision is missing');
+      const revision = revisionById.get(currentRevisionId!);
+      if (!revision || replayString(revision, 'memory_id') !== replayString(row, 'id')) {
+        throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Memory item current revision belongs to another node');
+      }
+    }
+    for (const row of tables.revisions) {
+      const memoryId = replayString(row, 'memory_id')!;
+      if (!itemIds.has(memoryId)) throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Revision references a missing memory item');
+      const sourceEventId = replayString(row, 'source_event_id', true);
+      if (sourceEventId && !eventIds.has(sourceEventId)) throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Revision references a missing event');
+      const supersedes = replayString(row, 'supersedes_revision_id', true);
+      if (supersedes) {
+        const prior = revisionById.get(supersedes);
+        if (!prior || replayString(prior, 'memory_id') !== memoryId || Number(prior.revision_no) >= Number(row.revision_no)) {
+          throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Revision supersession chain is invalid');
+        }
+      }
+    }
+    for (const row of tables.anchors) if (!itemIds.has(replayString(row, 'memory_id')!)) {
+      throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Anchor references a missing memory item');
+    }
+    for (const row of tables.edges) {
+      if (!itemIds.has(replayString(row, 'from_memory_id')!) || !itemIds.has(replayString(row, 'to_memory_id')!)) {
+        throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Edge references a missing memory item');
+      }
+      const evidence = replayString(row, 'evidence_event_id', true);
+      if (evidence && !eventIds.has(evidence)) throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Edge references a missing event');
+    }
+    for (const row of tables.conflicts) {
+      if (!itemIds.has(replayString(row, 'left_memory_id')!) || !itemIds.has(replayString(row, 'right_memory_id')!)) {
+        throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Conflict references a missing memory item');
+      }
+    }
+    for (const row of tables.nodeMetadata) {
+      if (!itemIds.has(replayString(row, 'memory_id')!)) throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Node metadata references a missing memory item');
+      const parent = replayString(row, 'branch_parent_memory_id', true);
+      if (parent && !itemIds.has(parent)) throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Node metadata branch parent is missing');
+      const decision = replayString(row, 'created_from_decision_id', true);
+      if (decision && !decisionIds.has(decision)) throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Node metadata write decision is missing');
+    }
+    for (const row of tables.edgeEvents) {
+      if (!itemIds.has(replayString(row, 'from_memory_id')!) || !itemIds.has(replayString(row, 'to_memory_id')!)) {
+        throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Edge event references a missing memory item');
+      }
+    }
+    for (const row of tables.continuityTasks) {
+      const parent = replayString(row, 'parent_task_id', true);
+      if (parent && !taskIds.has(parent)) throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Continuity parent task is missing');
+    }
+    for (const row of tables.continuityDependencies) {
+      if (!taskIds.has(replayString(row, 'task_id')!) || !taskIds.has(replayString(row, 'depends_on_task_id')!)) {
+        throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Continuity dependency references a missing task');
+      }
+    }
+    for (const row of tables.continuityCheckpoints) if (!taskIds.has(replayString(row, 'task_id')!)) {
+      throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Continuity checkpoint references a missing task');
+    }
+    for (const row of tables.continuityFrontier) if (!taskIds.has(replayString(row, 'source_task_id')!)) {
+      throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Continuity frontier references a missing task');
+    }
+
+    await runReplayOperations(this.client, tables.events.map((row) => ({
+      kind: 'run' as const,
+      sql: `INSERT INTO memory_events(id, principal_id, project_id, thread_id, resource_id, event_type, source_type, source_ref, raw_text, redacted_text, metadata_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+      params: [
+        replayString(row, 'id')!, principalId, projectId || null,
+        replayString(row, 'thread_id', true), replayString(row, 'resource_id', true),
+        replayString(row, 'event_type')!, replayString(row, 'source_type')!, replayString(row, 'source_ref', true),
+        replayString(row, 'redacted_text')!, replayJson(row.metadata_json)!, replayNumber(row, 'created_at')!,
+      ],
+    })));
+    await runReplayOperations(this.client, tables.items.map((row) => ({
+      kind: 'run' as const,
+      sql: `INSERT INTO memory_items(id, principal_id, project_id, canonical_key, kind, state, importance, pinned, enforcement,
+             current_revision_id, created_at, updated_at, last_accessed_at, access_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0)`,
+      params: [
+        replayString(row, 'id')!, principalId, projectId || null, replayString(row, 'canonical_key')!, replayString(row, 'kind')!,
+        replayString(row, 'state')!, replayNumber(row, 'importance')!, replayNumber(row, 'pinned')!, replayString(row, 'enforcement')!,
+        replayNumber(row, 'created_at')!, replayNumber(row, 'updated_at')!, replayNumber(row, 'updated_at')!,
+      ],
+    })));
+    const orderedRevisions = [...tables.revisions].sort((left, right) =>
+      String(left.memory_id).localeCompare(String(right.memory_id)) || Number(left.revision_no) - Number(right.revision_no));
+    await runReplayOperations(this.client, orderedRevisions.map((row) => ({
+      kind: 'run' as const,
+      sql: `INSERT INTO memory_revisions(id, memory_id, revision_no, value_text, value_json, value_hash, source_event_id,
+             valid_from, valid_to, supersedes_revision_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        replayString(row, 'id')!, replayString(row, 'memory_id')!, replayNumber(row, 'revision_no')!, replayString(row, 'value_text')!,
+        replayJson(row.value_json), replayString(row, 'value_hash')!, replayString(row, 'source_event_id', true), replayNumber(row, 'valid_from')!,
+        replayNumber(row, 'valid_to', true), replayString(row, 'supersedes_revision_id', true), replayNumber(row, 'created_at')!,
+      ],
+    })));
+    await runReplayOperations(this.client, tables.items.map((row) => ({
+      kind: 'run' as const,
+      sql: 'UPDATE memory_items SET current_revision_id = ? WHERE id = ? AND principal_id = ? AND IFNULL(project_id, \'\') = ?',
+      params: [replayString(row, 'current_revision_id')!, replayString(row, 'id')!, principalId, projectId],
+    })));
+    await runReplayOperations(this.client, tables.anchors.map((row) => ({
+      kind: 'run' as const,
+      sql: 'INSERT INTO memory_anchors(memory_id, anchor, anchor_type, created_at) VALUES (?, ?, ?, ?)',
+      params: [replayString(row, 'memory_id')!, replayString(row, 'anchor')!, replayString(row, 'anchor_type')!, replayNumber(row, 'created_at')!],
+    })));
+    await runReplayOperations(this.client, tables.edges.map((row) => ({
+      kind: 'run' as const,
+      sql: 'INSERT INTO memory_edges(from_memory_id, to_memory_id, relation, weight, evidence_event_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      params: [replayString(row, 'from_memory_id')!, replayString(row, 'to_memory_id')!, replayString(row, 'relation')!, replayNumber(row, 'weight')!, replayString(row, 'evidence_event_id', true), replayNumber(row, 'created_at')!],
+    })));
+    await runReplayOperations(this.client, tables.conflicts.map((row) => ({
+      kind: 'run' as const,
+      sql: 'INSERT INTO memory_conflicts(id, left_memory_id, right_memory_id, conflict_type, status, evidence_json, created_at, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      params: [replayString(row, 'id')!, replayString(row, 'left_memory_id')!, replayString(row, 'right_memory_id')!, replayString(row, 'conflict_type')!, replayString(row, 'status')!, replayJson(row.evidence_json)!, replayNumber(row, 'created_at')!, replayNumber(row, 'resolved_at', true)],
+    })));
+    await runReplayOperations(this.client, tables.writeDecisions.map((row) => ({
+      kind: 'run' as const,
+      sql: `INSERT INTO memory_write_decisions(id, principal_id, project_id, route_context_id, continuity_task_id, context_id,
+             decision_type, candidate_canonical_key, candidate_hash, target_memory_id, existing_memory_ids_json, reason_codes_json,
+             evidence_refs_json, relation_plan_json, root_reason, created_at, applied_at, apply_result_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        replayString(row, 'id')!, principalId, projectId || null, replayString(row, 'route_context_id')!,
+        replayString(row, 'continuity_task_id', true), replayString(row, 'context_id', true), replayString(row, 'decision_type')!,
+        replayString(row, 'candidate_canonical_key', true), replayString(row, 'candidate_hash')!, replayString(row, 'target_memory_id', true),
+        replayJson(row.existing_memory_ids_json)!, replayJson(row.reason_codes_json)!, replayJson(row.evidence_refs_json)!,
+        replayJson(row.relation_plan_json)!, replayString(row, 'root_reason', true), replayNumber(row, 'created_at')!,
+        replayNumber(row, 'applied_at', true), replayJson(row.apply_result_json),
+      ],
+    })));
+    await runReplayOperations(this.client, tables.nodeMetadata.map((row) => ({
+      kind: 'run' as const,
+      sql: `INSERT INTO memory_node_metadata(memory_id, title, root_reason, novelty_class, created_from_decision_id,
+             branch_parent_memory_id, semantic_profile_json, semantic_profile_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        replayString(row, 'memory_id')!, replayString(row, 'title', true), replayString(row, 'root_reason', true), replayString(row, 'novelty_class', true),
+        replayString(row, 'created_from_decision_id', true), replayString(row, 'branch_parent_memory_id', true), replayJson(row.semantic_profile_json),
+        replayString(row, 'semantic_profile_hash', true), replayNumber(row, 'updated_at')!,
+      ],
+    })));
+    await runReplayOperations(this.client, tables.edgeEvents.map((row) => ({
+      kind: 'run' as const,
+      sql: `INSERT INTO memory_edge_events(id, principal_id, project_id, event_type, from_memory_id, to_memory_id, relation,
+             old_weight, new_weight, evidence_event_id, reason_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        replayString(row, 'id')!, principalId, projectId || null, replayString(row, 'event_type')!, replayString(row, 'from_memory_id')!,
+        replayString(row, 'to_memory_id')!, replayString(row, 'relation')!, replayNumber(row, 'old_weight', true), replayNumber(row, 'new_weight', true),
+        replayString(row, 'evidence_event_id', true), replayString(row, 'reason_code')!, replayNumber(row, 'created_at')!,
+      ],
+    })));
+    await runReplayOperations(this.client, tables.continuityTasks.map((row) => ({
+      kind: 'run' as const,
+      sql: `INSERT INTO continuity_tasks(id, principal_id, project_id, parent_task_id, title, objective, acceptance_json,
+             constraints_json, status, priority, blocker_json, last_checkpoint_id, created_at, updated_at, completed_at)
+            VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        replayString(row, 'id')!, principalId, projectId || null, replayString(row, 'title')!, replayString(row, 'objective', true),
+        replayJson(row.acceptance_json)!, replayJson(row.constraints_json)!, replayString(row, 'status')!, replayNumber(row, 'priority')!,
+        replayJson(row.blocker_json)!, replayString(row, 'last_checkpoint_id', true), replayNumber(row, 'created_at')!,
+        replayNumber(row, 'updated_at')!, replayNumber(row, 'completed_at', true),
+      ],
+    })));
+    await runReplayOperations(this.client, tables.continuityTasks
+      .filter((row) => row.parent_task_id != null)
+      .map((row) => ({
+        kind: 'run' as const,
+        sql: 'UPDATE continuity_tasks SET parent_task_id = ? WHERE id = ? AND principal_id = ? AND IFNULL(project_id, \'\') = ?',
+        params: [replayString(row, 'parent_task_id')!, replayString(row, 'id')!, principalId, projectId],
+      })));
+    await runReplayOperations(this.client, tables.continuityDependencies.map((row) => ({
+      kind: 'run' as const,
+      sql: 'INSERT INTO continuity_task_dependencies(task_id, depends_on_task_id, dependency_type, created_at) VALUES (?, ?, ?, ?)',
+      params: [replayString(row, 'task_id')!, replayString(row, 'depends_on_task_id')!, replayString(row, 'dependency_type')!, replayNumber(row, 'created_at')!],
+    })));
+    await runReplayOperations(this.client, tables.continuityCheckpoints.map((row) => ({
+      kind: 'run' as const,
+      sql: `INSERT INTO continuity_checkpoints(id, principal_id, project_id, task_id, route_context_id, phase, summary_json,
+             evidence_json, state_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        replayString(row, 'id')!, principalId, projectId || null, replayString(row, 'task_id')!, replayString(row, 'route_context_id')!,
+        replayString(row, 'phase')!, replayJson(row.summary_json)!, replayJson(row.evidence_json)!, replayString(row, 'state_hash')!, replayNumber(row, 'created_at')!,
+      ],
+    })));
+    await runReplayOperations(this.client, tables.continuityFrontier.map((row) => ({
+      kind: 'run' as const,
+      sql: `INSERT INTO continuity_frontier(id, principal_id, project_id, source_task_id, title, rationale, status,
+             dependency_task_ids_json, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        replayString(row, 'id')!, principalId, projectId || null, replayString(row, 'source_task_id')!, replayString(row, 'title')!,
+        replayString(row, 'rationale')!, replayString(row, 'status')!, replayJson(row.dependency_task_ids_json)!, replayNumber(row, 'priority')!,
+        replayNumber(row, 'created_at')!, replayNumber(row, 'updated_at')!,
+      ],
+    })));
+    await this.client.transaction([{ kind: 'exec', sql: MEMORY_FTS_REBUILD_SQL }]);
   }
 
   async tombstoneMemory(scope: MemoryScope, memoryId: string, reason: string): Promise<void> {

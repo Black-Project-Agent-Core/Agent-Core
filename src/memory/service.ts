@@ -26,6 +26,8 @@ import {
 } from './cognition-ledger.js';
 import { MemoryLifecycle } from './lifecycle.js';
 import { MemoryLinker } from './linker.js';
+import { MemoryRemoteCrypto } from './remote-crypto.js';
+import { MemoryRemoteHydrator } from './remote-hydrator.js';
 import { MemoryPreflightEngine, createDisabledPreflightResult } from './preflight.js';
 import { MemoryRetriever } from './retriever.js';
 import { MemoryRemoteSynchronizer } from './remote-sync.js';
@@ -159,6 +161,15 @@ export class MemoryService {
 
   get currentState(): MemoryServiceState {
     return this.state;
+  }
+
+  async hydrateRemote(scope: MemoryScope, destinationDbPath = this.config.dbPath) {
+    if (this.state !== 'idle') throw new Error('MEMORY_REMOTE_HYDRATION_REQUIRES_IDLE_SERVICE');
+    if (!this.remoteTransport || !this.config.remote.enabled || !this.config.remote.keyFile) {
+      throw new Error('MEMORY_REMOTE_DISABLED');
+    }
+    const crypto = await MemoryRemoteCrypto.fromKeyFile(this.config.remote.keyFile);
+    return new MemoryRemoteHydrator(this.remoteTransport, crypto).hydrate(scope, destinationDbPath);
   }
 
   async beginContinuityTurn(
