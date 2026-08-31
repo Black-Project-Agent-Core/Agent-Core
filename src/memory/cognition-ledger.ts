@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { redactMemoryText } from './redaction.js';
+import { normalizeMemorySemanticProfile } from './semantic-profile.js';
 import {
   MEMORY_HYDRATION_STATES,
   MEMORY_PERSISTENCE_DECISIONS,
@@ -15,6 +16,7 @@ import type {
   MemoryRemoteDurabilityState,
   MemoryRemoteStateRecord,
   MemoryScope,
+  MemorySemanticProfile,
   MemoryWriteDecisionRecord,
   MemoryWriteReasonCode,
 } from './types.js';
@@ -58,7 +60,7 @@ export interface MemoryNodeMetadataInput {
   noveltyClass?: string;
   createdFromDecisionId?: string;
   branchParentMemoryId?: string;
-  semanticProfile?: Record<string, unknown>;
+  semanticProfile?: MemorySemanticProfile;
   updatedAt?: number;
 }
 
@@ -388,13 +390,11 @@ export class MemoryCognitionLedger {
     if (input.createdFromDecisionId && !await this.getWriteDecision(input.scope, input.createdFromDecisionId)) {
       throw new Error('MEMORY_NODE_METADATA_DECISION_NOT_FOUND');
     }
-    const semanticProfile = input.semanticProfile
-      ? sanitizeStructured(input.semanticProfile) as Record<string, unknown>
+    const normalizedSemanticProfile = input.semanticProfile
+      ? normalizeMemorySemanticProfile(input.semanticProfile)
       : undefined;
-    const semanticProfileJson = semanticProfile ? stableJson(semanticProfile) : null;
-    const semanticProfileHash = semanticProfileJson
-      ? createHash('sha256').update(semanticProfileJson, 'utf8').digest('hex')
-      : null;
+    const semanticProfileJson = normalizedSemanticProfile?.canonicalJson ?? null;
+    const semanticProfileHash = normalizedSemanticProfile?.hash ?? null;
     const updatedAt = input.updatedAt ?? Date.now();
     await this.client.transaction([{
       kind: 'run',
@@ -437,6 +437,25 @@ export class MemoryCognitionLedger {
       [memoryId, scope.principalId, project(scope)],
     );
     return rows[0] ? metadataFromRow(rows[0]) : null;
+  }
+
+  async findNodeMetadataBySemanticProfileHash(
+    scope: MemoryScope,
+    semanticProfileHash: string,
+  ): Promise<MemoryNodeMetadataRecord[]> {
+    assertScope(scope);
+    if (!/^[0-9a-f]{64}$/.test(semanticProfileHash)) throw new Error('MEMORY_SEMANTIC_PROFILE_HASH_INVALID');
+    const rows = await this.client.query<Record<string, unknown>>(
+      `SELECT metadata.*
+         FROM memory_node_metadata AS metadata
+         JOIN memory_items AS item ON item.id = metadata.memory_id
+        WHERE metadata.semantic_profile_hash = ?
+          AND item.principal_id = ? AND IFNULL(item.project_id, '') = ?
+          AND item.state <> 'tombstoned'
+        ORDER BY metadata.memory_id COLLATE BINARY`,
+      [semanticProfileHash, scope.principalId, project(scope)],
+    );
+    return rows.map(metadataFromRow);
   }
 
   async setRemoteState(input: MemoryRemoteStateInput): Promise<MemoryRemoteStateRecord> {

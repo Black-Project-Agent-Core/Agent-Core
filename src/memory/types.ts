@@ -161,6 +161,20 @@ export interface MemoryScope {
   resourceId?: string;
 }
 
+export interface MemorySemanticProfile {
+  title?: string;
+  summary?: string;
+  intent?: string;
+  concepts?: string[];
+  entities?: string[];
+  constraints?: string[];
+  artifacts?: string[];
+  outcome?: string;
+  failureMode?: string;
+  solution?: string;
+  futureRelevance?: string[];
+}
+
 export interface MemoryExplicitAnchor {
   type: MemoryAnchorType;
   value: string;

@@ -163,7 +163,7 @@ describe('scoped memory cognition ledger', () => {
         rootReason: 'FRESH_DURABLE_CONTEXT',
         noveltyClass: 'branch',
         branchParentMemoryId: parent.memoryId,
-        semanticProfile: { domain: 'memory', credential: 'Bearer secret-token' },
+        semanticProfile: { intent: 'memory cognition', constraints: ['Bearer secret-token'] },
       });
       expect(metadata).toMatchObject({
         memoryId: child.memoryId,
@@ -171,7 +171,7 @@ describe('scoped memory cognition ledger', () => {
         rootReason: 'FRESH_DURABLE_CONTEXT',
         noveltyClass: 'branch',
         branchParentMemoryId: parent.memoryId,
-        semanticProfile: { credential: '[REDACTED:SECRET]', domain: 'memory' },
+        semanticProfile: { constraints: ['[REDACTED:BEARER]'], intent: 'memory cognition' },
       });
       expect(metadata.semanticProfileHash).toMatch(/^[0-9a-f]{64}$/);
       expect(await f.ledger.getNodeMetadata(scopeA, child.memoryId)).toEqual(metadata);
@@ -226,6 +226,52 @@ describe('scoped memory cognition ledger', () => {
       expect(status.counts).toMatchObject({ write_decisions: 1, recall_expansions: 1, edge_events: 0 });
     } finally {
       await service.close();
+    }
+  });
+
+  it('persists bounded semantic profiles and finds exact profile identities only inside scope', async () => {
+    const f = await fixture('semantic-profile-index');
+    try {
+      const first = await f.store.commitMemory({
+        scope: scopeA,
+        canonicalKey: 'profile.first',
+        kind: 'decision',
+        value: 'Preserve source-native geometry.',
+        sourceType: 'test',
+      });
+      const second = await f.store.commitMemory({
+        scope: scopeA,
+        canonicalKey: 'profile.second',
+        kind: 'procedure',
+        value: 'Use the same bounded profile identity.',
+        sourceType: 'test',
+      });
+      const foreign = await f.store.commitMemory({
+        scope: scopeOtherProject,
+        canonicalKey: 'profile.foreign',
+        kind: 'decision',
+        value: 'Foreign profile identity.',
+        sourceType: 'test',
+      });
+      const profile = {
+        title: 'PPT Geometry Fidelity',
+        concepts: ['PPTX', 'geometry'],
+        constraints: ['token=secret-value'],
+        futureRelevance: ['pptx conversion'],
+      };
+      const firstMetadata = await f.ledger.upsertNodeMetadata({ scope: scopeA, memoryId: first.memoryId, semanticProfile: profile });
+      const secondMetadata = await f.ledger.upsertNodeMetadata({ scope: scopeA, memoryId: second.memoryId, semanticProfile: profile });
+      await f.ledger.upsertNodeMetadata({ scope: scopeOtherProject, memoryId: foreign.memoryId, semanticProfile: profile });
+
+      expect(firstMetadata.semanticProfile).toMatchObject({ constraints: ['[REDACTED:TOKEN]'] });
+      expect(firstMetadata.semanticProfileHash).toBe(secondMetadata.semanticProfileHash);
+      const matches = await f.ledger.findNodeMetadataBySemanticProfileHash(scopeA, firstMetadata.semanticProfileHash!);
+      expect(matches.map((row) => row.memoryId)).toEqual([first.memoryId, second.memoryId].sort());
+      expect(await f.ledger.findNodeMetadataBySemanticProfileHash(scopeB, firstMetadata.semanticProfileHash!)).toEqual([]);
+      expect(await f.ledger.findNodeMetadataBySemanticProfileHash(scopeOtherProject, firstMetadata.semanticProfileHash!))
+        .toHaveLength(1);
+    } finally {
+      await f.store.close();
     }
   });
 
