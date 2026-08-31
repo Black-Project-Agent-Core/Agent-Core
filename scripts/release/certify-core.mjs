@@ -1,0 +1,150 @@
+import { execFileSync, spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { CORE_CERTIFICATION_MATRIX } from './core-certification-contract.mjs';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+
+export const CORE_CERTIFICATION_GATES = Object.freeze([
+  Object.freeze({ id: 'contract', command: process.execPath, args: Object.freeze(['scripts/release/check-core-certification.mjs']), json: true }),
+  Object.freeze({ id: 'release_verification', command: npmExecutable, args: Object.freeze(['run', 'verify:release']), json: false }),
+  Object.freeze({
+    id: 'memory_100k',
+    command: process.execPath,
+    args: Object.freeze(['scripts/benchmark-memory.mjs', '--count=100000', '--samples=5', '--warmup=2', '--target-p95-ms=150']),
+    json: true,
+  }),
+  Object.freeze({
+    id: 'execution_performance',
+    command: process.execPath,
+    args: Object.freeze(['scripts/benchmark-execution.mjs', '--samples=20', '--warmup=3']),
+    json: true,
+  }),
+  Object.freeze({ id: 'stable_release_parity', command: process.execPath, args: Object.freeze(['scripts/release/check-stable-parity.mjs']), json: true }),
+]);
+
+function git(args, stdio = ['ignore', 'pipe', 'pipe']) {
+  return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio }).trim();
+}
+
+function trackedTreeIsClean() {
+  const unstaged = spawnSync('git', ['-C', root, 'diff', '--quiet'], { stdio: 'ignore' });
+  const staged = spawnSync('git', ['-C', root, 'diff', '--cached', '--quiet'], { stdio: 'ignore' });
+  return unstaged.status === 0 && staged.status === 0;
+}
+
+function safePlan() {
+  return {
+    schema: 'agent-core-core-certification-plan/1',
+    matrixCount: CORE_CERTIFICATION_MATRIX.length,
+    gates: CORE_CERTIFICATION_GATES.map((gate) => ({
+      id: gate.id,
+      command: gate.command === process.execPath ? 'node' : 'npm',
+      args: [...gate.args],
+    })),
+  };
+}
+
+function parseGateJson(gate, stdout) {
+  try {
+    return JSON.parse(stdout.trim());
+  } catch {
+    throw new Error(`CORE_CERTIFICATION_GATE_JSON_INVALID:${gate.id}`);
+  }
+}
+
+function runGate(gate) {
+  process.stderr.write(`[core-certification] ${gate.id}: start\n`);
+  const started = Date.now();
+  const result = spawnSync(gate.command, [...gate.args], {
+    cwd: root,
+    env: process.env,
+    encoding: 'utf8',
+    maxBuffer: 128 * 1024 * 1024,
+  });
+  if (result.stdout) process.stderr.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`CORE_CERTIFICATION_GATE_FAILED:${gate.id}:${result.status ?? 'unknown'}`);
+  process.stderr.write(`[core-certification] ${gate.id}: pass (${Date.now() - started} ms)\n`);
+  return gate.json ? parseGateJson(gate, result.stdout) : null;
+}
+
+function assertReportShape(contract, memory, execution, parity) {
+  if (!contract?.ok || contract.matrixCount !== 18) throw new Error('CORE_CERTIFICATION_CONTRACT_NOT_READY');
+  const memoryGate = memory?.gateSummary?.memoryRecall100k;
+  if (!memoryGate?.passed) throw new Error('CORE_CERTIFICATION_MEMORY_GATE_NOT_PASSED');
+  if (!execution?.success || !execution?.dagValidation?.passed || !execution?.readyDispatch?.passed || !execution?.wakeDelivery?.passed || !execution?.concurrencyPassed) {
+    throw new Error('CORE_CERTIFICATION_EXECUTION_GATE_NOT_PASSED');
+  }
+  if (!parity?.ok) throw new Error('CORE_CERTIFICATION_STABLE_PARITY_NOT_PASSED');
+}
+
+async function main() {
+  if (process.argv.includes('--plan')) {
+    process.stdout.write(`${JSON.stringify(safePlan(), null, 2)}\n`);
+    return;
+  }
+  if (process.argv.length > 2) throw new Error('CORE_CERTIFICATION_ARGUMENT_INVALID');
+  if (!trackedTreeIsClean()) throw new Error('CORE_CERTIFICATION_TRACKED_TREE_DIRTY');
+
+  const sourceCommit = git(['rev-parse', 'HEAD']);
+  const reports = new Map();
+  for (const gate of CORE_CERTIFICATION_GATES) reports.set(gate.id, runGate(gate));
+  const finalCommit = git(['rev-parse', 'HEAD']);
+  if (finalCommit !== sourceCommit) throw new Error('CORE_CERTIFICATION_SOURCE_CHANGED_DURING_RUN');
+
+  const contract = reports.get('contract');
+  const memory = reports.get('memory_100k');
+  const execution = reports.get('execution_performance');
+  const parity = reports.get('stable_release_parity');
+  assertReportShape(contract, memory, execution, parity);
+
+  const report = {
+    schema: 'agent-core-core-certification/1',
+    sourceCommit,
+    version: String(packageJson.version),
+    matrixCount: CORE_CERTIFICATION_MATRIX.length,
+    matrix: contract.matrix.map((entry) => ({ id: entry.id, label: entry.label, status: 'pass' })),
+    releaseVerification: 'pass',
+    qualityGate: 'pass',
+    memoryRecall100k: {
+      observedP95Ms: memory.gateSummary.memoryRecall100k.observedP95Ms,
+      targetP95Ms: memory.gateSummary.memoryRecall100k.targetP95Ms,
+      passed: memory.gateSummary.memoryRecall100k.passed,
+    },
+    executionPerformance: {
+      dagP95Ms: execution.dagValidation.p95Ms,
+      dagTargetP95Ms: execution.dagValidation.targetP95Ms,
+      dispatchP95Ms: execution.readyDispatch.p95Ms,
+      dispatchTargetP95Ms: execution.readyDispatch.targetP95Ms,
+      wakeP95Ms: execution.wakeDelivery.p95Ms,
+      wakeTargetP95Ms: execution.wakeDelivery.targetP95Ms,
+      maxObservedConcurrency: execution.maxObservedConcurrency,
+      configuredMaxConcurrency: execution.maxConcurrency,
+      passed: execution.success,
+    },
+    stableRelease: {
+      version: parity.version,
+      tag: parity.tag,
+      tagCommit: parity.tagCommit,
+      requiredAssetCount: Array.isArray(parity.requiredAssets) ? parity.requiredAssets.length : 0,
+      passed: parity.ok,
+    },
+    noExternalAiModelApiDependency: {
+      dependencyViolations: contract.dependencyViolations.length,
+      sourceMarkerViolations: contract.sourceMarkerViolations.length,
+      passed: contract.dependencyViolations.length === 0 && contract.sourceMarkerViolations.length === 0,
+    },
+    ok: true,
+  };
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+}
+
+main().catch((error) => {
+  process.stderr.write(`[core-certification] failed: ${error instanceof Error ? error.message : String(error)}\n`);
+  process.exitCode = 1;
+});

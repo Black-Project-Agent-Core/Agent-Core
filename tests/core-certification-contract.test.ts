@@ -56,6 +56,7 @@ describe('Wave G core certification contract', () => {
       'benchmark:memory',
       'benchmark:execution',
       'verify:stable-parity',
+      'certify:core',
     ]);
   });
 
@@ -83,6 +84,42 @@ describe('Wave G core certification contract', () => {
     expect(serialized).not.toMatch(/ghp_[A-Za-z0-9]+/);
     expect(serialized).not.toContain('Bearer ');
     expect(serialized).not.toContain('/workspaces/.agent-core-codespace/secrets/');
+  });
+
+  it('exposes one canonical certify:core command with the exact fail-fast gate order', () => {
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+    expect(pkg.scripts?.['certify:core']).toBe('node scripts/release/certify-core.mjs');
+
+    const result = spawnSync(process.execPath, ['scripts/release/certify-core.mjs', '--plan'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    const plan = JSON.parse(result.stdout);
+    expect(plan).toMatchObject({
+      schema: 'agent-core-core-certification-plan/1',
+      matrixCount: 18,
+    });
+    expect(plan.gates.map((gate: any) => gate.id)).toEqual([
+      'contract',
+      'release_verification',
+      'memory_100k',
+      'execution_performance',
+      'stable_release_parity',
+    ]);
+    expect(plan.gates.find((gate: any) => gate.id === 'memory_100k')?.args).toEqual([
+      'scripts/benchmark-memory.mjs',
+      '--count=100000',
+      '--samples=5',
+      '--warmup=2',
+      '--target-p95-ms=150',
+    ]);
+    expect(plan.gates.find((gate: any) => gate.id === 'execution_performance')?.args).toEqual([
+      'scripts/benchmark-execution.mjs',
+      '--samples=20',
+      '--warmup=3',
+    ]);
   });
 
   it('keeps the core certification policy data-only and independent of model SDK dependencies', () => {

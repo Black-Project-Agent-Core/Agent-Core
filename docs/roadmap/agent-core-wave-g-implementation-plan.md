@@ -54,7 +54,7 @@
 - [x] **Step 3: Implement the data-only contract and deterministic checker.** The checker must run `git diff --check`, validate evidence paths/scripts, scan root + Codespace plugin dependency names, scan tracked core source/scripts for forbidden external model endpoint/API-key markers, and emit zero violations on the current repository.
 - [x] **Step 4: Re-run the focused test and checker; require GREEN and `matrixCount=18`, `dependencyViolations=0`, `sourceMarkerViolations=0`.**
 - [x] **Step 5: Run build, brand, doc-link, and dependency diff against Wave G base; require no dependency-list change.**
-- [ ] **Step 6: Commit `test: define core certification contract`, push branch, fetch, and require local/remote SHA equality.**
+- [x] **Step 6: Commit `test: define core certification contract`, push branch, fetch, and require local/remote SHA equality.**
 
 ### Task G2: Canonical `certify:core` orchestrator
 
@@ -67,10 +67,10 @@
 - Produces package command `npm run certify:core` and final schema `agent-core-core-certification/1`.
 - Consumes the checker from G1 plus existing `verify:release`, memory benchmark, execution benchmark, and stable-parity checker.
 
-- [ ] **Step 1: Extend the contract test and require RED** for missing `certify:core` script/orchestrator and missing exact gate order.
-- [ ] **Step 2: Implement the orchestrator** with fail-fast subprocess execution and bounded stdout/stderr handling. It must run contract check -> `verify:release` -> 100k memory benchmark (5 samples, 2 warmups, 150 ms target) -> execution benchmark (20 samples, 3 warmups) -> stable parity.
-- [ ] **Step 3: Parse benchmark/stable-parity JSON and emit one final report** containing source/version, 18-area matrix count, release pass, exact performance facts, stable tag/commit, no-external-model violation counts, and `ok=true` only after all gates pass.
-- [ ] **Step 4: Re-run focused contract tests and a lightweight orchestrator argument/contract test; require GREEN.**
+- [x] **Step 1: Extend the contract test and require RED** for missing `certify:core` script/orchestrator and missing exact gate order.
+- [x] **Step 2: Implement the orchestrator** with fail-fast subprocess execution and bounded stdout/stderr handling. It must run contract check -> `verify:release` -> 100k memory benchmark (5 samples, 2 warmups, 150 ms target) -> execution benchmark (20 samples, 3 warmups) -> stable parity.
+- [x] **Step 3: Parse benchmark/stable-parity JSON and emit one final report** containing source/version, 18-area matrix count, release pass, exact performance facts, stable tag/commit, no-external-model violation counts, and `ok=true` only after all gates pass.
+- [x] **Step 4: Re-run focused contract tests and a lightweight orchestrator argument/contract test; require GREEN.**
 - [ ] **Step 5: Commit `feat: add core certification command`, push branch, fetch, and require local/remote SHA equality.**
 
 ### Task G3: Execute the complete Wave G matrix

@@ -98,6 +98,7 @@ export const REQUIRED_PACKAGE_SCRIPTS = Object.freeze([
   'benchmark:memory',
   'benchmark:execution',
   'verify:stable-parity',
+  'certify:core',
 ]);
 
 export const CORE_SOURCE_PREFIXES = Object.freeze([
