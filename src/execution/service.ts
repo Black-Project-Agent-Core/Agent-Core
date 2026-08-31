@@ -15,6 +15,7 @@ import {
 } from './memory-search.js';
 import { ExecutionOutputParserService, EXECUTION_OUTPUT_PARSER_VERSION, type ExecutionOutputParserLike } from './output-parser.js';
 import { ExecutionRecovery } from './recovery.js';
+import { ExecutionRuntimeLease } from './runtime-lease.js';
 import { ExecutionCommandRunner } from './runner.js';
 import { ExecutionScheduler, type ExecutionRunnerLike } from './scheduler.js';
 import {
@@ -117,6 +118,7 @@ export class ExecutionService {
   private closed = false;
   private state: ExecutionServiceState;
   private degradedReason?: string;
+  private runtimeLease?: ExecutionRuntimeLease;
 
   constructor(
     readonly config: ExecutionConfig,
@@ -158,8 +160,12 @@ export class ExecutionService {
       throw new Error('EXECUTION_DISABLED');
     }
     if (this.state === 'degraded') throw new Error(`EXECUTION_DEGRADED:${this.degradedReason ?? 'unknown'}`);
+    let acquiredLease: ExecutionRuntimeLease | undefined;
     try {
+      acquiredLease = await ExecutionRuntimeLease.acquire(this.config.dbPath);
       await this.store.open({ dbPath: this.config.dbPath, busyTimeoutMs: this.config.busyTimeoutMs });
+      this.runtimeLease = acquiredLease;
+      acquiredLease = undefined;
       const recovery = new ExecutionRecovery(this.store, this.logs);
       await recovery.reconcile();
       try {
@@ -176,6 +182,9 @@ export class ExecutionService {
       this.state = 'degraded';
       this.degradedReason = error instanceof Error ? error.message : String(error);
       try { await this.store.close(); } catch {}
+      await acquiredLease?.release().catch(() => undefined);
+      await this.runtimeLease?.release().catch(() => undefined);
+      this.runtimeLease = undefined;
       throw error;
     }
   }
@@ -580,6 +589,8 @@ export class ExecutionService {
     this.unsubscribeBridge?.();
     this.unsubscribeBridge = undefined;
     try { await this.store.close(); } catch {}
+    await this.runtimeLease?.release().catch(() => undefined);
+    this.runtimeLease = undefined;
     this.opened = false;
     this.state = 'closed';
   }
