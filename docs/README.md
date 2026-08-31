@@ -19,6 +19,5 @@ The current documentation tree is intentionally compact. Historical implementati
 
 ## Roadmap
 
-- [`roadmap/self-fork-integration.md`](roadmap/self-fork-integration.md) — planning-only design for same-model cognitive branching integrated with the existing execution and continuity fabrics.
 
 Roadmap documents are not statements that a feature is already implemented. The live MCP capability surface remains the factual source for currently available behavior.
