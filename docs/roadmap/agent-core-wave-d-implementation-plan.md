@@ -230,7 +230,7 @@
 - [x] **Step 6: Record exact local evidence and commit** `docs: record wave d local certification evidence`.
 - [x] **Step 7: Fast-forward `main` only if origin topology remains compatible; run fresh merged-main `npm ci` + `npm run verify:release`; push non-force and require local/remote equality.**
 - [x] **Step 8: Controlled real runtime restart; require `connection.sourceCommit == HEAD == origin/main`; public health/security + legacy/modern canary; verify live audit chain and collector-absent behavior.**
-- [ ] **Step 9: Commit/push final docs-only certification if needed, source-sync runtime, then remove only the Wave D worktree/local branch after exact equality is proven.**
+- [x] **Step 9: Commit/push final docs-only certification if needed, source-sync runtime, then remove only the Wave D worktree/local branch after exact equality is proven.**
 
 ## Wave D Exit Matrix
 
@@ -303,7 +303,7 @@ modern MCP                           2026-07-28 / 55 tools PASS
 temporary baseline key               revoked PASS
 ```
 
-Final Wave D certification remains pending merged-main verification, push/readback, controlled runtime source-sync, and post-integration public/audit/collector-absent verification.
+This pre-integration record is superseded by the integrated and final publication evidence below.
 
 ## Wave D Integrated Runtime Certification — 2026-08-31
 
@@ -356,4 +356,37 @@ telemetry queue / dropped / failures     0 / 0 / 0
 overall health with collector absent     healthy
 ```
 
-The remaining unchecked Step 9 is intentionally publication housekeeping: this final certification text itself creates a docs-only SHA. After that SHA is pushed, the runtime is source-synchronized once more and only the Wave D worktree/local branch is removed. No additional runtime behavior change is introduced by that housekeeping step.
+Step 9 publication housekeeping is complete. The docs-only certification SHA `4255d89d37d112c1494fa74d20d6f71373e0e802` was published and source-synchronized, the Wave D worktree/local branch was removed after equality was proven, and a fresh merged-main verification was run afterward. No runtime behavior change was introduced by the docs-only closeout.
+
+## Wave D Final Publication Closeout — 2026-08-31
+
+Fresh verification after the final docs-only certification and worktree cleanup:
+
+```text
+final certified source before this checklist closeout  4255d89d37d112c1494fa74d20d6f71373e0e802
+HEAD == origin/main == connection.sourceCommit          PASS
+npm ci                                                  PASS; 0 vulnerabilities
+npm run verify:release                                  PASS
+full regression                                         123 files / 605 tests PASS
+intentional platform/performance skips                  38 tests
+release metadata consistency                            PASS
+markdown link verification                              34 files / 16 links PASS
+git diff --check                                        PASS
+public /health                                           200
+public /health/metrics                                   403
+public /mcp without token                                401
+public untrusted Origin                                  403
+legacy MCP                                               2025-11-25 / 55 tools PASS
+modern MCP                                               2026-07-28 / 55 tools PASS
+public request correlation                               request ID present / inbound trace preserved
+live audit verifier                                      PASS; 57 records / 1 current file
+live audit queue dropped / write errors                  0 / 0
+real OTLP endpoint configured                            no
+overall health with collector absent                     healthy
+temporary public canary key                              revoked PASS
+Wave D worktree/local branch                             removed
+package/dependency changes from Wave C                   none
+external AI model/API dependency                         0
+```
+
+This closes Wave D. The checklist-closeout commit that contains this note is documentation-only and must itself be source-synchronized so the final `HEAD`, `origin/main`, and Codespace `connection.sourceCommit` remain identical.
