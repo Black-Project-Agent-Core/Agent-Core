@@ -3283,3 +3283,144 @@ Phase 2 — mandatory Private Memory Remote durability + fresh-Codespace hydrati
 ```
 
 The implementation plan should use TDD, isolated worktrees, additive migrations, fresh performance baselines, and per-phase GitHub audit checkpoints. No LangChain/LangGraph dependency or external AI model/API should be introduced unless a later evidence-backed design change explicitly authorizes it.
+
+
+---
+
+# 58. Phase 1 Implementation Evidence — 2026-09-01
+
+The design sections above remain the approved architectural specification. This section records factual implementation evidence after Phase 1 was executed on the isolated implementation branch.
+
+## Certified implementation identity
+
+```text
+branch:
+feature/cross-session-memory-nervous-system
+
+certified implementation SHA:
+aa8ca5aacc06828999096da224d89ed8824a7bdf
+```
+
+That SHA was pushed to GitHub and matched `origin/feature/cross-session-memory-nervous-system` before certification evidence was recorded.
+
+## Implemented Phase 1 boundaries
+
+Phase 1 is additive. It does not enable Private Memory Remote transport, hard memory lifecycle enforcement, `remember_more`, or the Memory Observatory.
+
+Implemented and verified:
+
+```text
+DMF schema version                         3
+migration                                 003_memory_cognition_ledgers
+memory_write_decisions                    present
+memory_recall_expansions                  present
+memory_edge_events                        present / append-only
+memory_node_metadata                      present
+memory_remote_state                       present / local truth only
+relation policy                           centralized / typed directionality
+explicit context anchors                  present / bounded / redacted
+cognition ledger                          principal + project scoped
+active-edge audit                         atomic with projection creation
+cross-scope explicit relation target      rejected before persistence
+```
+
+The expanded relation vocabulary preserves legacy relations and adds typed evolution, causal, dependency, conflict, and task-family relations. Directed semantic relations are no longer mirrored by a generic rule; symmetric relations such as `contradicts` and associative relations use controlled mirroring through the relation policy.
+
+`NO_DURABLE_MEMORY` is now persistable as a cognition decision without creating a semantic `memory_items` node. This preserves the central design rule that meaningful work must make a memory decision, not that every interaction must create a memory.
+
+The `memory_remote_state` table is only the local durability/hydration truth foundation for Phase 2. No claim of cross-Codespace durability is made by Phase 1.
+
+## Fresh verification evidence
+
+Focused Phase 1 subsystem suite:
+
+```text
+33 test files PASS
+129 tests PASS
+1 intentional skip
+0 failures
+```
+
+The model-facing memory MCP surface remains unchanged:
+
+```text
+memory tools: 8
+```
+
+Deterministic quality gate:
+
+```text
+Memory Recall@K                     1.0
+Memory MRR                          1.0
+Hard guardrail recall               1.0
+Current revision correctness        1.0
+Prior failure recall                1.0
+Graph target recall                 1.0
+Conflict visibility                 1.0
+Artifact/procedure recall           1.0
+Noise displacement                  0
+Cross-project contamination         0
+Cross-principal contamination       0
+Character-budget correctness        1.0
+Deterministic replay equality       1.0
+
+Routing tier accuracy               0.975
+Unsafe overpermission rate          0
+False high-impact rate              0
+Relevant skill precision@2          1.0
+Routing deterministic replay        1.0
+```
+
+100k-memory performance gate:
+
+```text
+active memories                     100001
+SQLite integrity                    ok
+samples                             25
+warmups                             5
+preflight p95                       109.87 ms
+target                              <150 ms
+result                              PASS
+```
+
+Full release verification was run as one controlled Codespace-owned process and reached terminal exit code `0`:
+
+```text
+npm run verify:release              PASS
+brand scan                          PASS
+TypeScript build                    PASS
+Codespace build                     PASS
+full test files                     139 PASS / 2 skipped
+full tests                          681 PASS / 38 intentional skips
+failures                            0
+quality:gate                        PASS
+release consistency                 PASS
+Agent Core version                  0.6.0
+server version                      0.6.0
+document links                      44 markdown / 17 relative links PASS
+```
+
+The first bounded foreground attempt timed out at the connector layer and left duplicate verification processes. Those partial runs were not treated as certification evidence. Only the later single Codespace-owned process with observed terminal exit code `0` is authoritative for the full release gate.
+
+Dependency/model guardrails were also rechecked from the Phase 1 base commit `482489d799ed696b752875a1753cbdc6527e5115`:
+
+```text
+package.json / package-lock.json change       none
+new OpenAI source/dependency integration      none
+new Anthropic source/dependency integration   none
+new Gemini source/dependency integration      none
+new LangChain dependency/integration          none
+new LangGraph dependency/integration          none
+```
+
+## Phase boundary
+
+Phase 1 is therefore **CERTIFIED COMPLETE** on the implementation branch.
+
+The next phase remains:
+
+```text
+Phase 2 — Private Memory Remote Durability + Fresh-Codespace Hydration
+```
+
+Phase 2 must establish application-level encryption, logical-state hashing, non-force concurrent-writer synchronization, truthful remote state/readback, fail-closed fresh hydration, and local-delete → fresh-hydrate equality before Agent Core may claim certified cross-Codespace memory durability.
