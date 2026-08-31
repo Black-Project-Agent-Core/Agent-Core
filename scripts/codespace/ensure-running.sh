@@ -32,6 +32,7 @@ needs_bootstrap=0
 command -v curl >/dev/null 2>&1 || needs_bootstrap=1
 command -v tmux >/dev/null 2>&1 || needs_bootstrap=1
 command -v gh >/dev/null 2>&1 || needs_bootstrap=1
+command -v rg >/dev/null 2>&1 || needs_bootstrap=1
 node_version_compatible || needs_bootstrap=1
 [[ -f node_modules/@modelcontextprotocol/server/package.json ]] || needs_bootstrap=1
 [[ -f node_modules/@modelcontextprotocol/node/package.json ]] || needs_bootstrap=1

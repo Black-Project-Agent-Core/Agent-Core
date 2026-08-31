@@ -42,6 +42,7 @@ command -v curl >/dev/null 2>&1 || missing_packages+=(curl)
 command -v tmux >/dev/null 2>&1 || missing_packages+=(tmux)
 command -v git >/dev/null 2>&1 || missing_packages+=(git)
 command -v gh >/dev/null 2>&1 || missing_packages+=(gh)
+command -v rg >/dev/null 2>&1 || missing_packages+=(ripgrep)
 
 if (( ${#missing_packages[@]} > 0 )); then
   command -v apt-get >/dev/null 2>&1 || {

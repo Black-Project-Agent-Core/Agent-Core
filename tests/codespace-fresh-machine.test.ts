@@ -62,13 +62,14 @@ describe('fresh Codespace reproducibility contract', () => {
 
   it('restores known system prerequisites, Node/npm dependencies, build output, credentials, and API-key state', async () => {
     const bootstrap = await read('scripts/codespace/bootstrap.sh');
-    for (const prerequisite of ['curl', 'tmux', 'git', 'gh']) expect(bootstrap).toContain(prerequisite);
+    for (const prerequisite of ['curl', 'tmux', 'git', 'gh', 'ripgrep']) expect(bootstrap).toContain(prerequisite);
     expect(bootstrap).toContain('ensure_node_runtime');
     expect(bootstrap).toContain('npm ci');
     expect(bootstrap).toContain('npm run build');
     expect(bootstrap).toContain('gh auth token');
     expect(bootstrap).toContain('agent-core-chatgpt-key.txt');
     expect(bootstrap).toContain('ensure-running.sh');
+    expect(await read('scripts/codespace/ensure-running.sh')).toContain('command -v rg');
     expect(bootstrap).not.toMatch(/cat\s+.*agent-core-chatgpt-key\.txt/);
   });
 
