@@ -436,51 +436,85 @@ unrelated .vscode editor state          preserved
 
 One temporary-key public canary produced a non-reproducing 401 only on its modern request. The key was immediately revoked and verified revoked. Modern discovery/tools then returned 200 both loopback and public using the established runtime connector key, and the final comprehensive public canary passed both protocol eras. No source change was made from that isolated observation.
 
-## Wave G pre-integration core re-certification
+## Wave G core re-certification and v0.6.0 production evidence
 
-Wave G adds no new runtime subsystem. It closes the release-process gap by making the complete 18-area architecture matrix a repository-owned contract and by providing one canonical local certification authority: `npm run certify:core`. The command is local Codespace execution authority; GitHub Actions/CI remains outside the release authority.
+Wave G adds no new reasoning/runtime subsystem. It closes the release-process gap by making the complete 18-area architecture matrix a repository-owned contract and by providing canonical local certification authority through `npm run certify:core:prepublish` and postpublication `npm run certify:core`. GitHub Actions/CI remains outside Agent Core release authority.
 
-First committed Wave G technical certification source:
+The immutable stable release source is `5c19c0535042174a0f9d9a8ff7dd5eeb5c23b087`. The release identity and distribution evidence are:
 
 ```text
-source SHA                                  4b8dd5a18e68eaf1890c0dea7e4778bb909616a4
+Agent Core version                         0.6.0
+stable tag                                 v0.6.0
+stable tag commit                          5c19c0535042174a0f9d9a8ff7dd5eeb5c23b087
+GitHub Release                             published stable / non-draft / non-prerelease
+required release assets                    7 / 7
+local vs GitHub Release byte parity        7 / 7 PASS
+GitHub Package                             @black-project-agent-core/agent-core-plugin@0.6.0
+package TGZ SHA-256                        6a289bc15e0c4d4d75459ec7aee72749f3b213190c218be6a1feb549f767bf89
+package TGZ SHA-1                          1c94478a9c2f29a61e11ab8f8c27de76acfec857
+registry vs release TGZ parity             SHA-256 + SHA-1 exact PASS
+Presentation Bridge source bundle version  0.2.0
+```
+
+Exact remote release hashes were compared against assets rebuilt locally from `5c19c053`; all seven remote files matched byte-for-byte. The published registry TGZ was then downloaded through authenticated npm registry access and matched the local/GitHub Release TGZ exactly. The GitHub Packages REST endpoint remains `403 Resource not accessible by integration` for the Codespaces integration token, so REST package enumeration is intentionally not used as evidence of package publication.
+
+Postpublish core certification at the immutable stable release source:
+
+```text
 core matrix                                 18 / 18 PASS
-full normal regression                      137 files / 668 tests PASS
+normal regression                           137 files / 668 tests PASS
 intentional skips                           38
 Wave E quality gate                         PASS
 routing tier accuracy                       0.975
 memory Recall@K / MRR                       1.000 / 1.000
-100k memory preflight p95                   65.897 ms / <150 ms PASS
-100k memory integrity                       ok
-DAG validation p95                          1.372 ms / <50 ms PASS
-ready dispatch p95                          27.118 ms / <100 ms PASS
-persisted wake p95                          5.374 ms / <250 ms PASS
+100k memory preflight p95                   77.528 ms / <150 ms PASS
+DAG validation p95                          1.288 ms / <50 ms PASS
+ready dispatch p95                          23.770 ms / <100 ms PASS
+persisted wake p95                          7.417 ms / <250 ms PASS
 max observed / configured concurrency       4 / 4 PASS
-stable release parity                       v0.5.4 PASS
-stable tag commit                           6d78fb0a682d682fd428fd5c58a19d5d207cb3ba
-required stable assets                      7 / 7
+stable release parity                       v0.6.0 / 7 assets PASS
 external AI/model dependency violations     0
 external model endpoint/key marker hits     0
 ```
 
-The focused cross-wave trust/isolation matrix also passed `18` test files / `127` tests with zero failures. It covered authentication/OAuth, HTTP trust boundaries, dual-era MCP, principal/project isolation, operational audit isolation, DMF quality, continuity, execution recovery, resource governance, backup/restore, retention, audit integrity, observability, GitHub MCP regression, and secret leakage.
+After the stable tag was created, concurrent Super-Runtime native-substrate work advanced `main` to `95326bac134cd721cf7e23526725babed9e0bc5c`. Its Agent Core core-adjacent portion only expands fresh-Codespace system prerequisites with `cmake`, `g++`, `ninja-build`, and `ccache`, plus the matching reproducibility test. The immutable `v0.6.0` tag remains at `5c19c053`; latest main was separately required to pass the full postpublish architecture gate.
 
-Feature-build local HTTP/MCP canary at the same technical source:
+Latest-main certification at `95326bac134cd721cf7e23526725babed9e0bc5c`:
 
 ```text
-health / local metrics / remote metrics    200 / 200 / 403
-MCP no-token / evil Origin                 401 / 403
-correlation headers                        PASS
-memory / execution health                  healthy / healthy
-resource safe / configured max             4 / 4
-maintenance                                disabled; 0 runs; 0 candidates
-legacy MCP                                 2025-11-25 / 55 tools PASS
-modern MCP                                 2026-07-28 / 55 tools PASS
+npm ci + npm run certify:core               PASS / 18 of 18
+version                                     0.6.0
+normal regression                           137 files / 668 tests PASS / 38 skips
+100k memory preflight p95                   74.110 ms / <150 ms PASS
+DAG validation p95                          1.295 ms / <50 ms PASS
+ready dispatch p95                          24.238 ms / <100 ms PASS
+persisted wake p95                          7.771 ms / <250 ms PASS
+max observed / configured concurrency       4 / 4 PASS
+stable release parity                       v0.6.0 PASS
+external model dependency/source violations 0 / 0
 ```
 
-Supplemental real GitHub Fabric acceptance used only read operations and a temporary token file whose value was never printed. Identity (`GET /user`), private repository metadata, and Git `ls-remote` passed. NPM package listing returned `403 GITHUB_API_FORBIDDEN` / `Resource not accessible by integration` because the Codespaces `GITHUB_TOKEN` does not expose package-list scope and no separate packages token is configured in the Codespace runtime. Therefore the supplemental live probe is recorded factually as **3 / 4 read probes PASS**, not as a full live GitHub acceptance. This credential-scope limitation does not replace or invalidate the passing repository GitHub regression suite and stable-release parity gate.
+Controlled runtime source-sync used only the fail-closed `sync-source.sh` fast-forward path and preserved unrelated untracked `.vscode/`. The final v0.6.0 production runtime canary on the same latest-main SHA produced:
 
-Wave G is not architecture-certified yet at this checkpoint. Final status still requires publication to `main`, exact runtime source-sync equality, production public/MCP/audit canaries, and final certification on the exact published source.
+```text
+HEAD == origin/main == connection.sourceCommit  PASS at 95326bac134cd721cf7e23526725babed9e0bc5c
+connection sourceVersion                       0.6.0
+public health / remote metrics / local metrics 200 / 403 / 200
+MCP no-token / evil Origin                     401 / 403
+correlation headers                            PASS
+memory health / integrity                      healthy / ok
+execution health / integrity                   healthy / ok
+resource governance                            enabled; safe 4 / configured max 4
+maintenance                                    disabled; 0 runs; 0 retention candidates
+legacy MCP                                     2025-11-25 / 55 tools PASS
+modern MCP                                     2026-07-28 / 55 tools PASS
+live audit                                     379 records / verify PASS
+temporary public canary key                    not created
+```
+
+A timed-out lifecycle wrapper temporarily left bootstrap/restart flags in the tool environment earlier in Wave G. Prerequisite inspection showed the repository and dependency tree were healthy; the flags were removed only from the repair invocation, after which connection metadata and runtime health proved the synchronized source. No source/history reset, force push, Mac runtime, or semantic bypass was used.
+
+The architecture-level stable claim is ready for final closeout after the documentation SHA carrying this evidence itself passes `npm run certify:core`, is published/source-synced, and local Wave G branch/worktree housekeeping is recorded.
 
 ## Last core certification
 

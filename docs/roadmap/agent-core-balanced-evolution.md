@@ -1129,14 +1129,14 @@ certification docs publication/source-sync               PASS
 
 **Goal:** certify the evolved Agent Core as one coherent stable control plane.
 
-**Implementation status:** **PRE-INTEGRATION CERTIFIED; production publication pending**. Wave G adds no runtime subsystem. It defines one repository-owned 18-area certification contract plus canonical `npm run certify:core`; the architecture-level stable claim remains withheld until the exact published `main` source is source-synced and passes the final production runtime/public/audit matrix.
+**Implementation status:** **PRODUCTION CERTIFIED; final local housekeeping/documentation closeout pending**. Wave G adds no new reasoning/runtime subsystem. It establishes one repository-owned 18-area certification contract, separates prepublish from postpublish release gates, promotes the consolidated control plane to Agent Core `v0.6.0`, and proves the latest published `main` and live Codespace runtime against the same architecture matrix. The final user-visible architecture-level claim is withheld only until the Wave G local worktree/branch cleanup is recorded and the resulting docs-only closeout SHA is itself certified, published, and source-synced.
 
 Final matrix:
 
 ```text
 Authentication / OAuth                 PASS
 MCP legacy compatibility               PASS
-MCP modern compatibility               PASS when enabled
+MCP modern compatibility               PASS
 Principal isolation                    PASS
 Project isolation                      PASS
 Operational audit isolation            PASS
@@ -1154,25 +1154,80 @@ Performance                            PASS
 No external AI model/API dependency    PASS
 ```
 
-First committed canonical certification at `4b8dd5a18e68eaf1890c0dea7e4778bb909616a4` produced:
+Wave G introduced two local certification modes:
 
 ```text
-npm run certify:core                    PASS / 18 of 18
-full normal regression                  137 files / 668 tests PASS / 38 skips
-100k memory preflight p95               65.897 ms / <150 ms PASS
-DAG / dispatch / wake p95               1.372 / 27.118 / 5.374 ms PASS
-max execution concurrency               4 / configured 4 PASS
-stable release                          v0.5.4 / 7 required assets PASS
-external AI/model dependency violations 0
-external model source-marker hits       0
-focused cross-wave matrix               18 files / 127 tests PASS
-feature local trust boundary            200 health; 200 local metrics; 403 remote metrics; 401 no-token; 403 evil Origin
-legacy / modern MCP                     2025-11-25/55 / 2026-07-28/55 PASS
+npm run certify:core:prepublish   source/release-candidate certification before a version-matched stable tag exists
+npm run certify:core              postpublish certification including exact stable tag/release parity
 ```
 
-Supplemental real GitHub read-only acceptance was **3 / 4**: identity, repository metadata, and `ls-remote` passed; package listing returned `403 Resource not accessible by integration` because the Codespaces `GITHUB_TOKEN` lacks package-list scope and no separate packages token is configured. This limitation is recorded rather than converted into a false PASS; normal GitHub regression and stable-release parity remain passing.
+The first committed pre-version certification at `4b8dd5a18e68eaf1890c0dea7e4778bb909616a4` proved the 18-area architecture matrix before the final version promotion. The final immutable stable-release source became:
 
-Only after Wave G production publication/source-sync/runtime certification should a new architecture-level stable claim be made.
+```text
+stable release source                 5c19c0535042174a0f9d9a8ff7dd5eeb5c23b087
+version                               0.6.0
+tag                                   v0.6.0
+tag commit                            5c19c0535042174a0f9d9a8ff7dd5eeb5c23b087
+GitHub Release                        Agent Core v0.6.0 - Stable
+required GitHub Release assets        7 / 7
+release asset byte parity             7 / 7 local == remote
+GitHub Package                        @black-project-agent-core/agent-core-plugin@0.6.0
+package TGZ SHA-256                   6a289bc15e0c4d4d75459ec7aee72749f3b213190c218be6a1feb549f767bf89
+registry/release TGZ byte parity       PASS (SHA-256 + SHA-1 exact)
+Presentation Bridge bundled source     0.2.0 (independent stable version preserved)
+```
+
+Postpublish `npm run certify:core` on exact stable source `5c19c053...` passed:
+
+```text
+core matrix                           18 / 18 PASS
+normal regression                     137 files / 668 tests PASS / 38 skips
+Wave E routing/memory quality gate    PASS
+100k memory preflight p95             77.528 ms / <150 ms PASS
+DAG validation p95                    1.288 ms / <50 ms PASS
+ready dispatch p95                    23.770 ms / <100 ms PASS
+persisted wake p95                    7.417 ms / <250 ms PASS
+max concurrency                       4 / configured 4 PASS
+stable release parity                 v0.6.0 / 7 assets PASS
+external model dependency violations  0
+external model source-marker hits     0
+```
+
+The Codespaces token cannot enumerate organization package versions through the GitHub Packages REST endpoint (`403 Resource not accessible by integration`), so that REST probe is not reported as a PASS. Authenticated npm-registry access independently verified the published `0.6.0` package and downloaded a TGZ whose SHA-256 and SHA-1 exactly match the verified GitHub Release TGZ. The earlier generic read-only GitHub acceptance remains factually `3 / 4` through the REST-oriented harness; package publication/parity is proven through the registry path instead of being inferred from the blocked REST call.
+
+After the immutable release tag was created, `origin/main` advanced with concurrent Super-Runtime native-substrate work. The only Agent Core core-adjacent change adds fresh-Codespace native build prerequisites (`cmake`, `g++`, `ninja-build`, `ccache`) plus its reproducibility test. This descendant was not folded into or moved under the immutable `v0.6.0` tag. Instead, exact latest main was separately recertified:
+
+```text
+latest main/runtime source             95326bac134cd721cf7e23526725babed9e0bc5c
+version                                0.6.0
+npm ci + npm run certify:core           PASS / 18 of 18
+normal regression                      137 files / 668 tests PASS / 38 skips
+100k memory p95                        74.110 ms / <150 ms PASS
+DAG / dispatch / wake p95              1.295 / 24.238 / 7.771 ms PASS
+max concurrency                        4 / configured 4 PASS
+stable v0.6.0 parity                   PASS (tag remains 5c19c053)
+external model dependency/source hits  0 / 0
+```
+
+Controlled Codespace runtime activation then proved exact latest-main equality and live behavior:
+
+```text
+HEAD == origin/main == sourceCommit     95326bac134cd721cf7e23526725babed9e0bc5c PASS
+connection sourceVersion                0.6.0
+public health / remote/local metrics    200 / 403 / 200
+MCP no-token / evil Origin              401 / 403
+correlation headers                     PASS
+memory / execution integrity            ok / ok
+resource safe / configured max          4 / 4
+maintenance                             disabled; 0 runs; 0 candidates
+legacy MCP                              2025-11-25 / 55 tools PASS
+modern MCP                              2026-07-28 / 55 tools PASS
+live audit                              379 records / verify PASS
+temporary canary key                    not created; established runtime connector key reused
+unrelated .vscode editor state          preserved
+```
+
+No Mac Agent Core runtime, cloud model, external model API, model worker, embedding/reranking service, or AI judge was used to establish Wave G certification.
 
 ---
 
