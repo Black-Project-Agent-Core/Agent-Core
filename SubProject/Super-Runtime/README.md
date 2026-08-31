@@ -1,5 +1,7 @@
 # Super-Runtime
 
+> **READ FIRST — CANONICAL CONTEXT:** [`docs/SUPER-RUNTIME-MASTER-CONTEXT.md`](docs/SUPER-RUNTIME-MASTER-CONTEXT.md) is the authoritative source of truth for Super-Runtime. Read it before research, planning, or implementation. If an older document conflicts with it, the master context wins.
+
 > **Canonical location:** this project is maintained inside the Agent-Core monorepo at `SubProject/Super-Runtime/`. The former standalone Super-Runtime repository is only the migration source and is no longer the canonical workspace after this import.
 
 Super-Runtime is a CPU-first local inference runtime. Its active purpose is to build a model-flexible execution engine that can operate under constrained RAM using explicit memory governance, NVMe-backed residency, architecture-correct state, and optional accelerators. Future AI tools may consume the runtime later, but their internal architecture is not part of the current build scope.
