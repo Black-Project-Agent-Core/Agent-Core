@@ -3424,3 +3424,238 @@ Phase 2 — Private Memory Remote Durability + Fresh-Codespace Hydration
 ```
 
 Phase 2 must establish application-level encryption, logical-state hashing, non-force concurrent-writer synchronization, truthful remote state/readback, fail-closed fresh hydration, and local-delete → fresh-hydrate equality before Agent Core may claim certified cross-Codespace memory durability.
+
+---
+
+# 59. Phase 2 Implementation Evidence — 2026-09-01
+
+The architecture sections above remain the approved specification. This section records factual evidence after the Private Memory Remote durability foundation and fresh-Codespace hydration boundary were implemented and certified.
+
+## Certified implementation identity
+
+```text
+branch:
+feature/cross-session-memory-nervous-system
+
+Phase 2 base:
+cccbd03cc97452664501e54f4fdbc510ec8240f0
+
+certified implementation candidate:
+57c975eb8d89605c45b7390014401b30a17813e1
+```
+
+The implementation candidate was pushed to GitHub and exactly matched `origin/feature/cross-session-memory-nervous-system` before the final certification gates were run.
+
+## Implemented Phase 2 durability substrate
+
+```text
+Memory Remote default                         disabled
+Memory Remote config                          explicit owner/repo/branch/key/work root
+application encryption                        AES-256-GCM
+Memory Remote encryption key                  independent 32-byte/64-hex contract
+GitHub-token-shaped encryption key            rejected
+logical-state projection                      deterministic / scoped
+logical-state hash                            SHA-256 / volatile access state excluded
+remote scope path                              opaque SHA-256 principal+project identity
+remote object/manifest IDs                    content/metadata verified
+remote semantic payload                       encrypted before Git persistence
+live SQLite file as remote authority           no
+network Git credential path                   existing Native GitHub Fabric only
+force push                                     prohibited / force:false
+REMOTE_PENDING                                 persisted before remote proof
+REMOTE_SYNCED                                  only after push + fetch + readback verification
+remote failure interpreted as empty            never
+fresh materialization                          temporary SQLite + integrity_check + hash equality
+fresh install                                  atomic destination replacement
+failed hydration destination mutation          none
+concurrent same-logical-state writers           immutable-object union + new generation
+concurrent different-logical-state writers      explicit conflict / no transport auto-resolution
+Codespace startup with remote enabled           hydration gate before runtime supervisor
+```
+
+The Memory Remote is not a second semantic database. DMF SQLite remains the active semantic authority after successful local materialization; Git-backed remote state is an encrypted logical durability journal/checkpoint transport.
+
+## Deletion/recreation proof
+
+The acceptance scenario created a Codespace-A-like workspace containing:
+
+```text
+root memory + revision history
+branch memory
+failure memory
+solution memory
+validation memory
+branch/evolution relations
+failure -> solution relation
+solution -> validation relation
+open conflict history
+write-decision metadata
+node metadata
+terminal continuity checkpoint
+```
+
+It then:
+
+```text
+projected the authenticated logical state
+computed its logical-state hash
+encrypted the recovery checkpoint
+non-force synchronized + readback-verified the remote generation
+scanned all remote fixture bytes for known semantic plaintext and scope identifiers
+closed the local services
+deleted all Codespace-A local state
+created an unrelated Codespace-B-like workspace
+hydrated into a fresh SQLite database
+recomputed the logical-state projection/hash
+compared restored projection == original projection
+compared restored hash == original hash
+```
+
+Result:
+
+```text
+logical projection equality                    PASS
+logical hash equality                          PASS
+remote semantic sentinel leakage               0
+remote principal ID plaintext leakage           0
+remote project ID plaintext leakage             0
+SQLite integrity after hydration                PASS
+```
+
+The deletion/recreation scenario was repeated from fresh temporary directories before final certification and remained deterministic.
+
+## Concurrent writer proof
+
+Two independent writer clones were started from the same remote generation. Writer A advanced the remote while Writer B was preparing a push. Writer B received the synthetic non-fast-forward path, fetched remote truth, and reconciled only at the transport level.
+
+For equal logical-state hashes:
+
+```text
+force pushes                                    0
+writer A immutable object retained              true
+writer B immutable object retained              true
+new generation predecessor                      writer A generation
+generation chain                                valid
+```
+
+For different logical-state hashes:
+
+```text
+Git transport semantic auto-resolution          0
+result                                           MEMORY_REMOTE_CONFLICT
+```
+
+This preserves the architecture rule that Git transport may reconcile immutable durability objects, but semantic contradictions belong to the memory conflict layer.
+
+## Codespace hydration gate proof
+
+When Memory Remote is enabled, bootstrap/repair now enforce:
+
+```text
+source checkout/build
+-> restore/locate dedicated Memory Remote key
+-> invoke bounded memory-hydrate CLI
+-> REMOTE_HYDRATED or REMOTE_EMPTY_CONFIRMED
+-> write verified scope-bound hydration marker
+-> runtime supervisor startup
+```
+
+Explicit failure states do not become empty authority. An existing local SQLite memory DB with no matching verified hydration marker is rejected rather than silently trusted. The Codespaces encryption secret is independent from GitHub and ChatGPT/API credentials; when supplied as `AGENT_CORE_MEMORY_REMOTE_KEY_HEX`, it is written to a local mode-600 key file and removed from the environment before the Node hydration process.
+
+## Fresh certification gates
+
+Focused memory/continuity/execution-memory/Codespace suite:
+
+```text
+65 test files PASS
+281 tests PASS
+1 intentional skip
+0 failures
+```
+
+The model-facing memory MCP surface remains unchanged:
+
+```text
+memory tools: 8
+```
+
+Deterministic quality gate:
+
+```text
+Memory Recall@K                     1.0
+Memory MRR                          1.0
+Hard guardrail recall               1.0
+Current revision correctness        1.0
+Prior failure recall                1.0
+Graph target recall                 1.0
+Conflict visibility                 1.0
+Artifact/procedure recall           1.0
+Noise displacement                  0
+Cross-project contamination         0
+Cross-principal contamination       0
+Character-budget correctness        1.0
+Deterministic replay equality       1.0
+Routing tier accuracy               0.975
+Unsafe overpermission rate          0
+False high-impact rate              0
+Routing deterministic replay        1.0
+```
+
+100k-memory performance gate:
+
+```text
+active memories                     100001
+SQLite integrity                    ok
+samples                             25
+warmups                             5
+preflight p95                       59.275 ms
+target                              <150 ms
+result                              PASS
+```
+
+Full release verification used one controlled Codespace-owned process and reached terminal exit code `0`:
+
+```text
+npm run verify:release              PASS
+brand scan                          PASS
+TypeScript build                    PASS
+Codespace build                     PASS
+full test files                     148 PASS / 2 skipped
+full tests                          724 PASS / 38 intentional skips
+failures                            0
+quality:gate                        PASS
+release consistency                 PASS
+Agent Core version                  0.6.0
+server version                      0.6.0
+document links                      44 markdown / 17 relative links PASS
+```
+
+A final focused security rerun covered encryption, concurrent writers, and permanent deletion recovery:
+
+```text
+3 test files PASS
+9 tests PASS
+remote known-plaintext leakage      0
+force-push implementation           none
+```
+
+Dependency/model guardrails from the Phase 2 base were unchanged:
+
+```text
+package.json / package-lock.json change       none
+new OpenAI source/dependency integration      none
+new Anthropic source/dependency integration   none
+new Gemini source/dependency integration      none
+new LangChain dependency/integration          none
+new LangGraph dependency/integration          none
+```
+
+## Phase boundary
+
+Phase 2 is therefore **CERTIFIED COMPLETE** for the Private Memory Remote durability substrate and fresh-Codespace hydration boundary.
+
+This is deliberately narrower than claiming universal write-through adoption. Normal semantic, continuity, and execution mutation paths are still adopted into mandatory cognition/remote-durability boundaries in the later program phases. The next implementation phase is:
+
+```text
+Phase 3 — bounded remember_more
+```

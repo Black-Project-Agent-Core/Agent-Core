@@ -475,3 +475,64 @@ Failure states such as remote unavailable/auth/decrypt/integrity/replay failure 
 - [ ] Record only fresh evidence, commit `docs: certify memory nervous system phase 2`, push/readback exact SHA.
 
 **Phase 2 completion rule:** cross-Codespace durability is not certified until the deletion/recreation acceptance test, remote readback verification, concurrent-writer non-force test, and fresh full release gate all pass on the exact remote-visible SHA.
+
+---
+
+# Phase 2 Certification Evidence — 2026-09-01
+
+The implementation tasks above were executed with RED -> GREEN -> regression/build -> GitHub push/readback checkpoints. Final implementation candidate:
+
+```text
+57c975eb8d89605c45b7390014401b30a17813e1
+```
+
+Remote-visible checkpoints:
+
+```text
+63bbb1e  remote configuration
+f2de223  authenticated encryption
+c65d48c  canonical logical-state hash
+37abe5e  immutable remote journal format
+2c8c498  Native GitHub Fabric remote transport
+a00f116  write-through sync + readback truth
+189994a  deterministic fresh-workspace hydration
+62526bd  permanent local-deletion recovery acceptance
+edaa5c1  bounded concurrent-writer reconciliation
+57c975e  Codespace hydration startup gate
+```
+
+Fresh Phase 2 gates:
+
+```text
+focused test files                         65 PASS
+focused tests                              281 PASS / 1 skip
+quality gate                               PASS
+100k memory preflight p95                  59.275 ms < 150 ms
+verify:release terminal exit               0
+full test files                            148 PASS / 2 skipped
+full tests                                 724 PASS / 38 skipped
+release consistency                        PASS
+doc links                                  44 markdown / 17 relative links PASS
+package dependency changes                 none
+external AI/model/API integration          none
+```
+
+Durability acceptance:
+
+```text
+remote application encryption              PASS
+known plaintext remote leakage             0
+principal/project plaintext leakage        0
+failed readback -> REMOTE_SYNCED            0
+force push                                 0
+concurrent A+B immutable preservation       PASS
+different logical-state hash merge          rejected as conflict
+local delete -> fresh hydrate projection    exact equality
+local delete -> fresh hydrate hash          exact equality
+remote unavailable -> empty authority       0
+fresh startup unverified local DB trust     0
+```
+
+The Codespace bootstrap key contract uses a dedicated Memory Remote encryption secret, independent of GitHub and Agent Core/ChatGPT credentials. The remote remains disabled by default and requires explicit remote/scope configuration.
+
+**Certification boundary:** Phase 2 certifies the remote durability primitives, synchronization/readback protocol, encrypted deletion recovery, concurrent transport behavior, and fresh-Codespace hydration gate. It does not yet claim universal automatic remote synchronization for every normal memory/continuity/execution mutation; that lifecycle adoption remains assigned to later program phases.

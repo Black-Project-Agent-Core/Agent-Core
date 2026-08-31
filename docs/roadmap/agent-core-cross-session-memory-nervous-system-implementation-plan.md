@@ -136,6 +136,115 @@ This certification completes only Phase 1. Private Memory Remote transport, encr
 
 **Exit gate:** destroying all local memory state and hydrating a fresh workspace reproduces the certified logical state hash exactly; no plaintext semantic payload exists in the remote fixture; a failed readback never becomes `REMOTE_SYNCED`.
 
+### Phase 2 certification — 2026-09-01
+
+**Status:** `CERTIFIED COMPLETE` for the Phase 2 durability foundation and fresh-Codespace hydration boundary.
+
+Certified implementation candidate:
+
+```text
+branch                              feature/cross-session-memory-nervous-system
+implementation SHA                  57c975eb8d89605c45b7390014401b30a17813e1
+remote-visible candidate            yes / exact SHA equality
+Phase 2 base                        cccbd03cc97452664501e54f4fdbc510ec8240f0
+```
+
+Remote-visible Phase 2 checkpoints:
+
+```text
+63bbb1e  feat: add private memory remote configuration
+f2de223  feat: encrypt private memory remote payloads
+c65d48c  feat: hash canonical memory logical state
+37abe5e  feat: define private memory remote journal format
+2c8c498  feat: add private memory remote git transport
+a00f116  feat: verify private memory remote synchronization
+189994a  feat: hydrate memory from private remote
+62526bd  test: prove permanent memory deletion recovery
+edaa5c1  feat: reconcile private memory remote writers
+57c975e  feat: gate codespace startup on memory hydration
+```
+
+Fresh certification evidence on that exact candidate:
+
+```text
+focused Phase 2 + Codespace files           65 PASS
+focused tests                               281 PASS / 1 intentional skip
+focused failures                            0
+model-facing memory MCP tools               8 (unchanged)
+full verify:release exit                    0
+full test files                             148 PASS / 2 skipped
+full tests                                  724 PASS / 38 intentional skips
+full failures                               0
+brand/build/Codespace build                 PASS
+quality:gate                                PASS
+release consistency                         PASS
+document links                              44 markdown / 17 relative links PASS
+```
+
+Quality/performance remained inside the existing certified contract:
+
+```text
+Memory Recall@K                             1.0
+Memory MRR                                  1.0
+Hard guardrail recall                       1.0
+Current revision correctness                1.0
+Prior failure recall                        1.0
+Graph target recall                         1.0
+Conflict visibility                         1.0
+Artifact/procedure recall                   1.0
+Noise displacement                          0
+Cross-project contamination                 0
+Cross-principal contamination               0
+Character-budget correctness                1.0
+Deterministic replay equality               1.0
+100k preflight p95                          59.275 ms
+100k target                                 <150 ms
+```
+
+Durability/security certification:
+
+```text
+AES-256-GCM application encryption          PASS
+independent Memory Remote key contract      PASS
+GitHub credential used as encryption key    rejected
+opaque principal/project scope path         PASS
+immutable object/manifest verification      PASS
+REMOTE_PENDING before remote proof          PASS
+REMOTE_SYNCED only after readback            PASS
+failed readback -> REMOTE_SYNCED             0
+non-force push implementation               force: false
+concurrent A+B object preservation           PASS
+semantic-hash conflict auto-resolution       0
+local-delete -> fresh-hydrate projection     exact equality
+local-delete -> fresh-hydrate logical hash   exact equality
+remote semantic plaintext sentinel leakage   0
+remote principal/project plaintext leakage   0
+remote unavailable interpreted as empty      0
+fresh Codespace uncertified local DB trust   0
+fresh bootstrap auth/integrity failure       fail closed / exit category 55
+```
+
+The deletion/recreation acceptance scenario materialized revision history, branch/failure/solution/validation nodes, typed causal/evolution edges, a conflict, write-decision metadata, and a terminal continuity checkpoint; it then removed the Codespace-A local state and reproduced the same logical projection/hash in an unrelated Codespace-B-like workspace. The scenario passed repeatedly from fresh temporary workspaces before certification.
+
+The concurrent-writer acceptance path proves bounded non-fast-forward reconciliation without force push. Immutable objects from both writers are retained when their logical-state hash agrees; differing logical-state hashes remain a memory-layer conflict and are never silently resolved by Git transport.
+
+Codespace bootstrap now runs a Memory Remote hydration gate before runtime startup when the feature is explicitly enabled. A dedicated `AGENT_CORE_MEMORY_REMOTE_KEY_HEX` may materialize the local encryption-key file and is unset before the Node hydration process. The verified hydration marker contains no key material and binds the configured remote/scope identity. Memory Remote remains disabled by default.
+
+Dependency/model guardrails from the Phase 2 base remain unchanged:
+
+```text
+package.json / package-lock.json change       none
+new OpenAI source/dependency integration      none
+new Anthropic source/dependency integration   none
+new Gemini source/dependency integration      none
+new LangChain dependency/integration          none
+new LangGraph dependency/integration          none
+```
+
+Concurrent `origin/main` drift observed during certification consisted only of Super Runtime paths under `SubProject/Super-Runtime`; it did not overlap the Phase 2 memory/config/Codespace implementation and was intentionally not merged into this isolated certification candidate.
+
+**Phase boundary:** this certification proves the Private Memory Remote durability substrate, truthful synchronization/readback, deterministic encrypted recovery, concurrent transport reconciliation, and fresh-Codespace startup gate. It does **not** claim that every normal semantic/continuity/execution mutation is already automatically write-through synchronized. Program Phases 4–7 still adopt the cognition/write-decision authority and remote durability boundary into selected normal mutation/terminal lifecycle flows. The next implementation phase is Phase 3 bounded `remember_more`.
+
 ## Phase 3 — Bounded `remember_more`
 
 **Purpose:** Recover only the minimum historical context necessary to explain a recalled current memory.
