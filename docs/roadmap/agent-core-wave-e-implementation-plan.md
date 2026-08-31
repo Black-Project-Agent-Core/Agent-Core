@@ -80,14 +80,14 @@
 - `npm run quality:report`
 - `npm run quality:gate`
 
-- [ ] **Step 1: Write RED tests** proving threshold pass/fail logic, zero-tolerance metrics, stable scorecard ordering/serialization, and nonzero gate exit behavior.
-- [ ] **Step 2: Run** `npx vitest run tests/quality-gate.test.ts --reporter=verbose` and confirm RED.
-- [ ] **Step 3: Implement thresholds exactly from the Wave E design.** Gate failures must list metric name, observed value, threshold, and failing case IDs.
-- [ ] **Step 4: Implement script** that loads both corpora, runs both evaluators, prints stable JSON, and supports `--gate`. Report mode exits 0 even if thresholds fail; gate mode exits 1 for quality failure and 2 for evaluator/schema error.
-- [ ] **Step 5: Add package scripts** `quality:report` and `quality:gate`. Do not add `quality:gate` to release verification yet.
-- [ ] **Step 6: Run the first pre-tuning report twice** and require byte-equivalent metric/case ordering except source timestamp fields, or remove nondeterministic timestamp fields from the scorecard.
-- [ ] **Step 7: Record exact pre-tuning routing/memory metrics** in this implementation plan under `Wave E Pre-Tuning Baseline` before any router/retriever/scoring production code is changed.
-- [ ] **Step 8: Commit** `test: establish wave e quality baseline`.
+- [x] **Step 1: Write RED tests** proving threshold pass/fail logic, zero-tolerance metrics, stable scorecard ordering/serialization, and nonzero gate exit behavior.
+- [x] **Step 2: Run** `npx vitest run tests/quality-gate.test.ts --reporter=verbose` and confirm RED.
+- [x] **Step 3: Implement thresholds exactly from the Wave E design.** Gate failures must list metric name, observed value, threshold, and failing case IDs.
+- [x] **Step 4: Implement script** that loads both corpora, runs both evaluators, prints stable JSON, and supports `--gate`. Report mode exits 0 even if thresholds fail; gate mode exits 1 for quality failure and 2 for evaluator/schema error.
+- [x] **Step 5: Add package scripts** `quality:report` and `quality:gate`. Do not add `quality:gate` to release verification yet.
+- [x] **Step 6: Run the first pre-tuning report twice** and require byte-equivalent metric/case ordering except source timestamp fields, or remove nondeterministic timestamp fields from the scorecard.
+- [x] **Step 7: Record exact pre-tuning routing/memory metrics** in this implementation plan under `Wave E Pre-Tuning Baseline` before any router/retriever/scoring production code is changed.
+- [x] **Step 8: Commit** `test: establish wave e quality baseline`.
 
 ### Task E4: Evidence-backed routing tuning
 
@@ -188,4 +188,70 @@ external AI model/API dependency       = 0
 
 ## Wave E Pre-Tuning Baseline
 
-`BASELINE_STATE=NOT_CAPTURED`. This is an explicit execution gate: no routing or memory production heuristic/weight tuning is permitted until Task E3 replaces this state with the measured baseline scorecard.
+`BASELINE_STATE=CAPTURED` at evaluator source commit `3aa052c46fceefc740723a4978a3fa3d16a9ffe5` before any routing/memory production heuristic or weight tuning.
+
+Stable report evidence:
+
+```text
+routing cases                       40
+memory cases                        12
+report byte stability               PASS
+report SHA-256                       a60d5a0cf26da54d0057bbc5720af4838d079cb4542011879dbebc812432106d
+pre-tuning quality:gate exit         1 (expected failure)
+```
+
+Routing baseline:
+
+```text
+tier accuracy                        0.925
+risk correctness                     0.95
+domain correctness                   1.00
+false high-impact rate               0.05714285714285714
+unsafe overpermission rate           0.225
+false read-only classification       0.47368421052631576
+relevant skill precision@2           0.50
+unnecessary skill-load rate          0.08333333333333333
+required skill-load correctness      1.00
+verification correctness             1.00
+deterministic replay equality        1.00
+```
+
+Routing gate failures requiring evidence-backed tuning:
+
+```text
+false high-impact                    r12-remove-whitespace, r27-remove-doc-wording
+unsafe overpermission                r13-r20 read-only domain/structured cases + r38-database-review
+false read-only classification       same 9 read-only domain/structured cases
+precision@2                          18 corpus cases with an irrelevant second-ranked capability
+unnecessary skill load               r19-project-review, r31-registry-admin
+tier accuracy                        r12-remove-whitespace, r19-project-review, r27-remove-doc-wording
+```
+
+Memory baseline:
+
+```text
+Recall@K                             1.00
+MRR                                  0.8541666666666666
+hard-guardrail recall                1.00
+current-revision correctness         1.00
+prior-failure recall                 1.00
+graph-target recall                  1.00
+conflict visibility                  1.00
+artifact/procedure recall            1.00
+noise displacement rate              0.25
+cross-project contamination          0
+cross-principal contamination        0
+character-budget correctness         1.00
+deterministic replay equality        1.00
+```
+
+Memory gate failures requiring evidence-backed tuning:
+
+```text
+MRR                                  m06-artifact-procedure-recall,
+                                     m07-stale-decision-resists-noise,
+                                     m12-deterministic-release-recall
+noise displacement                   m07-stale-decision-resists-noise
+```
+
+All memory safety/isolation/current-truth gates already pass. Wave E therefore forbids weakening guardrail, revision, graph, conflict, artifact/procedure, scope isolation, character-budget, or determinism behavior while tuning MRR/noise resistance.
