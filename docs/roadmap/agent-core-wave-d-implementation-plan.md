@@ -228,8 +228,8 @@
 - [x] **Step 4: Live temporary-instance canary**: send a correlated MCP route+execution request, drain journal, verify request->route->run/attempt lineage, rotate/verify chain, tamper copied segment and prove verifier rejects it, run fake local OTLP collector, stop collector and prove Agent Core still operates.
 - [x] **Step 5: Public Codespace compatibility baseline** on pre-integration source: Wave A gates + legacy/modern 55-tool paths.
 - [x] **Step 6: Record exact local evidence and commit** `docs: record wave d local certification evidence`.
-- [ ] **Step 7: Fast-forward `main` only if origin topology remains compatible; run fresh merged-main `npm ci` + `npm run verify:release`; push non-force and require local/remote equality.**
-- [ ] **Step 8: Controlled real runtime restart; require `connection.sourceCommit == HEAD == origin/main`; public health/security + legacy/modern canary; verify live audit chain and collector-absent behavior.**
+- [x] **Step 7: Fast-forward `main` only if origin topology remains compatible; run fresh merged-main `npm ci` + `npm run verify:release`; push non-force and require local/remote equality.**
+- [x] **Step 8: Controlled real runtime restart; require `connection.sourceCommit == HEAD == origin/main`; public health/security + legacy/modern canary; verify live audit chain and collector-absent behavior.**
 - [ ] **Step 9: Commit/push final docs-only certification if needed, source-sync runtime, then remove only the Wave D worktree/local branch after exact equality is proven.**
 
 ## Wave D Exit Matrix
@@ -304,3 +304,56 @@ temporary baseline key               revoked PASS
 ```
 
 Final Wave D certification remains pending merged-main verification, push/readback, controlled runtime source-sync, and post-integration public/audit/collector-absent verification.
+
+## Wave D Integrated Runtime Certification — 2026-08-31
+
+Wave D was fast-forwarded from the Wave C base with no concurrent remote movement. The integrated code source was `cc8f5715d43f2bfebbf28880a13caf98bae468e7`.
+
+Merged-main publication gate:
+
+```text
+npm ci                                  PASS; 0 vulnerabilities
+npm run verify:release                  PASS
+full regression                         123 files / 605 tests PASS
+intentional platform/performance skips  38 tests
+release metadata consistency            PASS
+markdown link verification              34 files / 16 links PASS
+git diff --check                        PASS
+non-force push/readback                 PASS
+local main == origin/main               cc8f5715d43f2bfebbf28880a13caf98bae468e7
+```
+
+Controlled real Codespace runtime source-sync then proved:
+
+```text
+connection.sourceCommit                 cc8f5715d43f2bfebbf28880a13caf98bae468e7
+HEAD == origin/main == sourceCommit      PASS
+execution health/integrity               healthy / ok / schema 4
+public /health                           200
+public /health/metrics                   403
+public /mcp without token                401
+public untrusted Origin                  403
+public correlated MCP initialize         200
+x-agent-core-request-id                  present
+returned traceparent                     present; inbound trace ID preserved
+legacy MCP                               2025-11-25 / 55 tools PASS
+modern MCP                               2026-07-28 / 55 tools PASS
+modern execution health                  true
+temporary public canary key              revoked PASS
+```
+
+Live observability state on the real deployment:
+
+```text
+audit verifier                           PASS
+live audit records                       31
+live audit files                         1 current segment
+live audit anchor sequence               0
+audit queue depth / dropped / errors     0 / 0 / 0
+OTLP configured on real runtime          no
+telemetry enabled                        false
+telemetry queue / dropped / failures     0 / 0 / 0
+overall health with collector absent     healthy
+```
+
+The remaining unchecked Step 9 is intentionally publication housekeeping: this final certification text itself creates a docs-only SHA. After that SHA is pushed, the runtime is source-synchronized once more and only the Wave D worktree/local branch is removed. No additional runtime behavior change is introduced by that housekeeping step.

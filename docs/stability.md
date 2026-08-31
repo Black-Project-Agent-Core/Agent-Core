@@ -266,7 +266,26 @@ external AI model/API dependency      0
 pre-integration public baseline       Wave A gates + legacy/modern 55 tools PASS
 ```
 
-Final merged-main/public-runtime certification is recorded after Wave D integration.
+Post-integration Wave D certification on the real Codespace runtime:
+
+```text
+merged-main npm ci + verify:release      PASS
+full regression                          123 files / 605 tests PASS; 38 intentional skips
+origin/main publication/readback         PASS at cc8f571
+connection.sourceCommit equality         PASS at cc8f571
+public health / remote metrics           200 / 403
+public MCP no-token / evil Origin        401 / 403
+public correlated MCP response           request ID + traceparent PASS
+legacy MCP                               2025-11-25 / 55 tools PASS
+modern MCP                               2026-07-28 / 55 tools PASS
+live audit verify                        31 records / PASS
+live audit dropped / write errors        0 / 0
+real telemetry configuration             disabled; no collector required
+overall health with collector absent     healthy
+temporary public canary key              revoked PASS
+```
+
+This certifies the Wave D runtime-code boundary. The final docs-only certification SHA is source-synchronized after publication so `HEAD`, `origin/main`, and Codespace `sourceCommit` remain identical.
 
 ## Last core certification
 

@@ -988,7 +988,26 @@ focused acceptance                          23 files / 159 tests PASS
 full regression                             123 files / 605 tests PASS; 38 intentional skips
 ```
 
-Final integration/public-runtime evidence is recorded only after merged-main verification and source synchronization.
+Final integration/public-runtime certification:
+
+```text
+merged-main npm ci + verify:release       PASS
+full regression                           123 files / 605 tests PASS; 38 intentional skips
+non-force origin/main publication         PASS at cc8f571
+real sourceCommit equality                PASS at cc8f571
+public health / remote metrics            200 / 403
+public MCP no-token / evil Origin         401 / 403
+public correlation response headers       PASS; trace ID preserved
+legacy MCP                                2025-11-25 / 55 tools PASS
+modern MCP                                2026-07-28 / 55 tools PASS
+live audit verification                   PASS; 31 records
+live audit queue dropped/write errors     0 / 0
+real OTLP configuration                   disabled (collector absent)
+collector-absent overall health           healthy
+final temporary public key                revoked PASS
+```
+
+The final certification commit is docs-only; runtime source metadata is synchronized to that publication SHA afterward.
 
 ---
 
