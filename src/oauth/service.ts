@@ -1,20 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { FileKeyStore } from '../auth/key-store.js';
 import type { VerifiedKey } from '../auth/key-types.js';
+import type { HttpSecurityPolicy } from '../http/security-policy.js';
 import { ACCESS_TOKEN_PREFIX, FileOAuthStore } from './store.js';
 
 const MCP_SCOPE = 'mcp:tools';
 const OFFLINE_SCOPE = 'offline_access';
-
-function headerValue(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-export function externalBaseUrl(request: IncomingMessage): string {
-  const proto = headerValue(request.headers['x-forwarded-proto']) ?? 'http';
-  const host = headerValue(request.headers['x-forwarded-host']) ?? request.headers.host ?? '127.0.0.1';
-  return `${proto.split(',')[0]!.trim()}://${host.split(',')[0]!.trim()}`;
-}
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, {
@@ -73,16 +64,18 @@ export class OAuthService {
   constructor(
     private readonly keyStore: FileKeyStore,
     readonly store: FileOAuthStore,
+    private readonly security: HttpSecurityPolicy,
   ) {}
 
   challenge(request: IncomingMessage): string {
-    const metadata = `${externalBaseUrl(request)}/.well-known/oauth-protected-resource/mcp`;
+    const metadata = `${this.security.externalBaseUrl(request)}/.well-known/oauth-protected-resource/mcp`;
     return `Bearer resource_metadata="${metadata}", scope="${MCP_SCOPE}"`;
   }
-  async authenticateAccessToken(token: string): Promise<VerifiedKey | null> {
+  async authenticateAccessToken(token: string, request: IncomingMessage): Promise<VerifiedKey | null> {
     if (!token.startsWith(ACCESS_TOKEN_PREFIX)) return null;
     const principal = await this.store.verifyAccessToken(token);
     if (!principal || !principal.scopes.includes(MCP_SCOPE)) return null;
+    if (principal.resource !== this.security.protectedResource(request)) return null;
     const metadata = (await this.keyStore.list()).find((item) => item.id === principal.keyId);
     if (!metadata || metadata.revokedAt) return null;
     if (metadata.expiresAt && Date.parse(metadata.expiresAt) <= Date.now()) return null;
@@ -97,7 +90,7 @@ export class OAuthService {
       route === '/.well-known/oauth-protected-resource' ||
       route === '/.well-known/oauth-protected-resource/mcp'
     )) {
-      const base = externalBaseUrl(request);
+      const base = this.security.externalBaseUrl(request);
       sendJson(response, 200, {
         resource: `${base}/mcp`,
         authorization_servers: [base],
@@ -108,7 +101,7 @@ export class OAuthService {
     }
 
     if (request.method === 'GET' && route === '/.well-known/oauth-authorization-server') {
-      const base = externalBaseUrl(request);
+      const base = this.security.externalBaseUrl(request);
       sendJson(response, 200, {
         issuer: base,
         authorization_endpoint: `${base}/oauth/authorize`,
@@ -149,7 +142,7 @@ export class OAuthService {
     }
 
     if (request.method === 'GET' && route === '/oauth/authorize') {
-      await this.renderAuthorizationForm(url, response);
+      await this.renderAuthorizationForm(request, url, response);
       return true;
     }
 
@@ -166,7 +159,7 @@ export class OAuthService {
     return false;
   }
 
-  private async validateAuthorization(params: URLSearchParams): Promise<{
+  private async validateAuthorization(params: URLSearchParams, request: IncomingMessage): Promise<{
     clientId: string;
     redirectUri: string;
     state: string;
@@ -183,7 +176,7 @@ export class OAuthService {
     const client = await this.store.getClient(clientId);
     if (!client || !client.redirectUris.includes(redirectUri)) return null;
     if (responseType !== 'code' || challengeMethod !== 'S256' || !codeChallenge) return null;
-    if (!resource) return null;
+    if (!resource || resource !== this.security.protectedResource(request)) return null;
     const scopes = parseScope(params.get('scope'));
     if (!scopes.includes(MCP_SCOPE)) return null;
     return {
@@ -196,8 +189,8 @@ export class OAuthService {
     };
   }
 
-  private async renderAuthorizationForm(url: URL, response: ServerResponse): Promise<void> {
-    const validated = await this.validateAuthorization(url.searchParams);
+  private async renderAuthorizationForm(request: IncomingMessage, url: URL, response: ServerResponse): Promise<void> {
+    const validated = await this.validateAuthorization(url.searchParams, request);
     if (!validated) {
       authorizationError(response, 400, 'Invalid OAuth authorization request.');
       return;
@@ -224,7 +217,7 @@ ${hidden('scope', validated.scopes.join(' '))}
 
   private async approveAuthorization(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const params = new URLSearchParams(await readBody(request));
-    const validated = await this.validateAuthorization(params);
+    const validated = await this.validateAuthorization(params, request);
     if (!validated) {
       authorizationError(response, 400, 'Invalid OAuth authorization request.');
       return;

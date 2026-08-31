@@ -19,5 +19,5 @@ export async function authenticateRequest(
   if (!token) return null;
   const key = await keyStore.verify(token);
   if (key) return { ...key, authentication: 'bearer-api-key' };
-  return oauthService?.authenticateAccessToken(token) ?? null;
+  return oauthService?.authenticateAccessToken(token, request) ?? null;
 }

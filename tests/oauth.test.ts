@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
 import { loadConfig } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
+import { HttpSecurityPolicy } from '../src/http/security-policy.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { FileOAuthStore } from '../src/oauth/store.js';
@@ -28,7 +29,11 @@ async function setup() {
   const dataDir = path.join(root, 'data');
   const keyStore = new FileKeyStore(dataDir);
   const oauthStore = new FileOAuthStore(dataDir);
-  const oauthService = new OAuthService(keyStore, oauthStore);
+  const oauthService = new OAuthService(keyStore, oauthStore, new HttpSecurityPolicy({
+    publicBaseUrl: null,
+    trustProxy: true,
+    allowedOrigins: [],
+  }));
   const baseMemory = loadConfig({}, root).memory;
   const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, { ...baseMemory, enabled: false });
   runtimes.push(runtime);
@@ -235,6 +240,58 @@ describe('Agent Core OAuth bridge', () => {
     expect(stored).not.toContain(client.client_secret);
     expect(stored).not.toContain(tokens.access_token);
     expect(stored).not.toContain(tokens.refresh_token);
+  });
+
+  it('rejects an access token issued for a different MCP protected resource', async () => {
+    const { baseUrl, keyStore, oauthStore, externalBase } = await setup();
+    const key = await keyStore.create('cross-resource-key');
+    const client = await oauthStore.registerClient({
+      clientName: 'Cross Resource Client',
+      redirectUris: ['https://chatgpt.com/connector/oauth/cross-resource'],
+      grantTypes: ['authorization_code', 'refresh_token'],
+      responseTypes: ['code'],
+      tokenEndpointAuthMethod: 'client_secret_post',
+    });
+    const tokens = await oauthStore.issueTokens({
+      clientId: client.client_id,
+      resource: 'https://different-agent-core.example/mcp',
+      scopes: ['mcp:tools'],
+      keyId: key.metadata.id,
+      keyName: key.metadata.name,
+    });
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: 'POST',
+      headers: {
+        ...forwarded,
+        authorization: `Bearer ${tokens.accessToken}`,
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 99, method: 'tools/list', params: {} }),
+    });
+    expect(response.status).toBe(401);
+    expect(response.headers.get('www-authenticate')).toContain(`${externalBase}/.well-known/oauth-protected-resource/mcp`);
+  });
+
+  it('rejects OAuth authorization for a resource other than the canonical MCP resource', async () => {
+    const { baseUrl } = await setup();
+    const client = await registerClient(baseUrl);
+    const verifier = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~wrong-resource';
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: client.client_id,
+      redirect_uri: client.redirect_uris[0] as string,
+      state: 'wrong-resource',
+      code_challenge: pkce(verifier),
+      code_challenge_method: 'S256',
+      resource: 'https://different-agent-core.example/mcp',
+      scope: 'mcp:tools',
+    });
+
+    const response = await fetch(`${baseUrl}/oauth/authorize?${params}`, { headers: forwarded });
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain('Invalid OAuth authorization request');
   });
 
   it('returns an OAuth discovery challenge for invalid MCP tokens', async () => {

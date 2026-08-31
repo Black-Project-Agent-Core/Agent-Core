@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { FileKeyStore } from './auth/key-store.js';
 import { loadConfig, type AppConfig } from './config.js';
 import { createHttpHandler } from './http/app.js';
+import { HttpSecurityPolicy } from './http/security-policy.js';
 import { FileAuditLogger } from './logging/audit-log.js';
 import { createMcpHttpHandler } from './mcp/handler.js';
 import { SERVER_VERSION } from './mcp/server.js';
@@ -31,7 +32,8 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
 
   const keyStore = new FileKeyStore(config.dataDir);
   const oauthStore = new FileOAuthStore(config.dataDir);
-  const oauthService = new OAuthService(keyStore, oauthStore);
+  const httpSecurity = new HttpSecurityPolicy(config.httpSecurity);
+  const oauthService = new OAuthService(keyStore, oauthStore, httpSecurity);
   const auditLogger = new FileAuditLogger(config.logDir);
   const runtime = createRuntimeServices(
     config.allowedRoots,
