@@ -249,6 +249,8 @@ Concurrent `origin/main` drift observed during certification consisted only of S
 
 **Purpose:** Recover only the minimum historical context necessary to explain a recalled current memory.
 
+**Executable plan:** `docs/roadmap/agent-core-memory-nervous-system-phase-3-implementation-plan.md`
+
 **Deliverables:**
 
 - `src/memory/remember-more.ts` with bounded graph/history traversal;
