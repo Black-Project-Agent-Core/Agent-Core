@@ -101,6 +101,28 @@ export const MEMORY_HYDRATION_STATES = [
   'REMOTE_REPLAY_FAILED',
 ] as const;
 
+export const MEMORY_REMEMBER_MORE_REASONS = [
+  'causal_history',
+  'revision_history',
+  'failure_history',
+  'branch_history',
+  'conflict_history',
+  'user_requested',
+] as const;
+
+export const MEMORY_REMEMBER_MORE_DEFAULTS = {
+  maxHops: 2,
+  maxItems: 4,
+  characterBudget: 6000,
+} as const;
+
+export const MEMORY_REMEMBER_MORE_LIMITS = {
+  seedMemoryIds: 16,
+  maxHops: 4,
+  maxItems: 16,
+  characterBudget: 20_000,
+} as const;
+
 export const MEMORY_ENFORCEMENTS = ['none', 'soft', 'hard'] as const;
 
 export const MUTABLE_MEMORY_KINDS = [
@@ -124,6 +146,7 @@ export type MemoryEdgeEventType = (typeof MEMORY_EDGE_EVENT_TYPES)[number];
 export type MemoryWriteReasonCode = (typeof MEMORY_WRITE_REASON_CODES)[number];
 export type MemoryRemoteDurabilityState = (typeof MEMORY_REMOTE_DURABILITY_STATES)[number];
 export type MemoryHydrationState = (typeof MEMORY_HYDRATION_STATES)[number];
+export type MemoryRememberMoreReason = (typeof MEMORY_REMEMBER_MORE_REASONS)[number];
 export type MemoryEnforcement = (typeof MEMORY_ENFORCEMENTS)[number];
 
 export type MemoryId = string;
@@ -259,6 +282,44 @@ export interface MemoryReviseRequest {
 
 export interface MemoryReviseResult extends MemoryCommitResult {
   supersededRevisionId?: MemoryRevisionId;
+}
+
+export interface MemoryRememberMoreRequest {
+  scope: MemoryScope;
+  contextId: MemoryContextId;
+  seedMemoryIds: MemoryId[];
+  reason: MemoryRememberMoreReason;
+  maxHops?: number;
+  maxItems?: number;
+  characterBudget?: number;
+}
+
+export interface MemoryRememberMoreEntry {
+  memoryId: MemoryId;
+  revisionId: MemoryRevisionId;
+  revisionNo: number;
+  canonicalKey: string;
+  kind: MemoryKind;
+  state: MemoryState;
+  valueText: string;
+  sourceSeedMemoryId: MemoryId;
+  depth: number;
+  relationPath: MemoryRelation[];
+  memoryPath: MemoryId[];
+  reasonCode: string;
+  score: number;
+  historicalRevision: boolean;
+  characterCount: number;
+}
+
+export interface MemoryRememberMoreResult {
+  contextId: MemoryContextId;
+  reason: MemoryRememberMoreReason;
+  seedMemoryIds: MemoryId[];
+  expansions: MemoryRememberMoreEntry[];
+  characterBudgetConsumed: number;
+  truncated: boolean;
+  snapshotHash: string;
 }
 
 export interface MemorySearchRequest {
