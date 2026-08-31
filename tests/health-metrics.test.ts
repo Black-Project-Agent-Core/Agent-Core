@@ -12,6 +12,7 @@ import { printCommand } from './helpers/platform-command.js';
 import { FileKeyStore } from '../src/auth/key-store.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createHttpHandler } from '../src/http/app.js';
+import { HttpSecurityPolicy } from '../src/http/security-policy.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -195,6 +196,38 @@ describe('bounded runtime observability', () => {
     }
   });
 
+  it('rejects non-loopback detailed metrics before invoking the provider', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-health-remote-'));
+    const keyStore = new FileKeyStore(path.join(root, 'data'));
+    let providerCalls = 0;
+    const security = new HttpSecurityPolicy({
+      publicBaseUrl: null,
+      trustProxy: false,
+      allowedOrigins: [],
+    });
+    security.isLoopbackRequest = () => false;
+    const server = createServer(createHttpHandler({
+      keyStore,
+      auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+      security,
+      healthMetricsProvider: async () => {
+        providerCalls += 1;
+        return { overallHealth: 'healthy' };
+      },
+      mcpHandler: async () => { throw new Error('MCP hook must not run'); },
+    }));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const response = await fetch(`${baseUrl}/health/metrics`);
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: 'metrics_local_only' });
+      expect(providerCalls).toBe(0);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 
   it('registers a read-only agent_core_health_metrics MCP surface backed by the same provider', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-health-mcp-'));

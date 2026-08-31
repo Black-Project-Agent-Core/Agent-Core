@@ -61,6 +61,10 @@ async function handleRequest(
 
   try {
     if (request.method === 'GET' && route === '/health/metrics') {
+      if (!security.isLoopbackRequest(request)) {
+        sendJson(response, 403, { error: 'metrics_local_only' });
+        return;
+      }
       const metrics = options.healthMetricsProvider ? await options.healthMetricsProvider() : { overallHealth: 'degraded' };
       sendJson(response, 200, metrics);
       return;
