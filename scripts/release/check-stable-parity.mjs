@@ -12,8 +12,16 @@ const tag = `v${version}`;
 const expected = releaseAssetNames(version, String(presentationPkg.version ?? '').trim());
 const requiredNames = [expected.freshZip, expected.runtimeZip, expected.pluginZip, expected.presentationBridgeZip, expected.npmTarball, expected.manifest, expected.checksums];
 
+function run(executable, args) {
+  return execFileSync(executable, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+}
+
 function gh(args) {
-  return execFileSync('gh', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  return run('gh', args);
+}
+
+function git(args) {
+  return run('git', args);
 }
 
 let release;
@@ -33,8 +41,14 @@ if (missing.length) {
   process.stderr.write(`stable parity failed: ${tag} is missing required version-matched assets: ${missing.join(', ')}\n`);
   process.exit(1);
 }
-const tagCommit = gh(['rev-parse', `${tag}^{commit}`]);
-const remoteTagCommit = gh(['ls-remote', 'origin', `refs/tags/${tag}^{}`]).split(/\s+/)[0] || gh(['ls-remote', 'origin', `refs/tags/${tag}`]).split(/\s+/)[0];
+const tagCommit = git(['rev-parse', `${tag}^{commit}`]);
+const remoteTagLines = git(['ls-remote', 'origin', `refs/tags/${tag}`, `refs/tags/${tag}^{}`])
+  .split(/\r?\n/)
+  .filter(Boolean);
+const remoteTagCommit = (remoteTagLines.find((line) => line.endsWith(`refs/tags/${tag}^{}`))
+  ?? remoteTagLines.find((line) => line.endsWith(`refs/tags/${tag}`))
+  ?? '')
+  .split(/\s+/)[0];
 if (remoteTagCommit && remoteTagCommit !== tagCommit) {
   process.stderr.write(`stable parity failed: local/remote ${tag} commit mismatch.\n`);
   process.exit(1);

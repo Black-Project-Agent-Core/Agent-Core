@@ -4,6 +4,10 @@ All notable stable Agent Core changes are recorded here. The project follows sem
 
 ## Unreleased
 
+### Fixed
+
+- Stable release parity verification now invokes Git tag/source checks through `git` instead of accidentally routing them through the GitHub CLI, so the permanent package-vs-Release asset gate can run after publication.
+
 ## [0.5.4] - 2026-08-30 — Stable
 
 ### Added

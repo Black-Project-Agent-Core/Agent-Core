@@ -97,6 +97,8 @@ describe('stable release package contract', () => {
     expect(parity).toContain('expected.pluginZip');
     expect(parity).toContain('expected.npmTarball');
     expect(parity).toContain('gh([\'release\', \'view\', tag');
+    expect(parity).toContain("git(['rev-parse', `${tag}^{commit}`])");
+    expect(parity).toContain("git(['ls-remote', 'origin'");
     expect(readme).toContain('npm run verify:stable-parity');
     expect(readme).toContain('Never update only GitHub Packages/TGZ while leaving the Stable Release ZIP on an older version.');
   });
