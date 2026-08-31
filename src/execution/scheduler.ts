@@ -2,10 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { ExecutionLogStore, type ExecutionResultMarker } from './log-store.js';
 import type { ExecutionRunHandle, ExecutionRunOptions } from './runner.js';
 import type { ExecutionScope, ExecutionRunState } from './types.js';
-import { ExecutionStore, ExecutionStoreError, type ExecutionNodeRecord } from './store.js';
+import { ExecutionStore, ExecutionStoreError, type ExecutionNodeRecord, type ExecutionRunRecord } from './store.js';
 import type { ValidatedExecutionNode } from './dag.js';
 import type { ExecutionEventJournal, ExecutionEventType } from './wake.js';
 import { currentCorrelation, runWithCorrelation, type CorrelationContext } from '../observability/correlation.js';
+import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
+import type { ResourceGovernanceDecision } from './resource-governor.js';
+import type { ResourceGovernor } from './resource-governor.js';
 
 export interface ExecutionRunnerLike {
   start(
@@ -26,6 +29,8 @@ export interface ExecutionSchedulerOptions {
   logRoot: string;
   journal?: ExecutionEventJournal;
   onAttemptCompleted?: (scope: ExecutionScope, marker: ExecutionResultMarker) => Promise<void>;
+  resourceGovernor?: ResourceGovernor;
+  metrics?: RuntimeMetricRegistry;
 }
 
 interface ActiveExecution {
@@ -70,6 +75,9 @@ export class ExecutionScheduler {
   private readonly paths: ExecutionLogStore;
   private readonly journal?: ExecutionEventJournal;
   private readonly onAttemptCompleted?: (scope: ExecutionScope, marker: ExecutionResultMarker) => Promise<void>;
+  private readonly resourceGovernor?: ResourceGovernor;
+  private readonly metrics?: RuntimeMetricRegistry;
+  private readonly resourceSignatures = new Map<string, string>();
   private closing = false;
 
   constructor(
@@ -80,6 +88,8 @@ export class ExecutionScheduler {
     this.paths = new ExecutionLogStore(options.logRoot);
     this.journal = options.journal;
     this.onAttemptCompleted = options.onAttemptCompleted;
+    this.resourceGovernor = options.resourceGovernor;
+    this.metrics = options.metrics;
   }
 
   async startRun(scope: ExecutionScope, runId: string): Promise<ExecutionSchedulerStatus> {
@@ -185,6 +195,7 @@ export class ExecutionScheduler {
     for (const execution of active) execution.handle.terminate('interrupted');
     await Promise.allSettled(active.map((execution) => execution.settled));
     await Promise.allSettled([...this.locks.values()]);
+    this.resourceSignatures.clear();
   }
 
   private async reconcileAndDispatch(scope: ExecutionScope, runId: string): Promise<void> {
@@ -199,7 +210,8 @@ export class ExecutionScheduler {
     }
 
     const runningCount = nodes.filter((node) => node.state === 'running').length;
-    let slots = Math.max(0, run.maxConcurrency - runningCount);
+    const dispatchCeiling = await this.resourceDispatchCeiling(scope, run);
+    let slots = Math.max(0, dispatchCeiling - runningCount);
     if (slots > 0) {
       const byId = new Map(nodes.map((node) => [node.nodeId, node]));
       const ready = nodes
@@ -217,6 +229,50 @@ export class ExecutionScheduler {
     run = (await this.store.getRun(scope, runId))!;
     nodes = await this.store.getNodes(scope, runId);
     if (run.state === 'running') await this.updateRunTerminalState(scope, runId, nodes);
+  }
+
+  private async resourceDispatchCeiling(scope: ExecutionScope, run: ExecutionRunRecord): Promise<number> {
+    if (!this.resourceGovernor) return run.maxConcurrency;
+    const decision = await this.resourceGovernor.decide(run.maxConcurrency);
+    const safeConcurrency = Math.max(1, Math.min(run.maxConcurrency, decision.safeConcurrency));
+    this.metrics?.observe('execution.resource.safe_concurrency', safeConcurrency);
+    await this.recordResourceTransition(scope, run.runId, decision);
+    return safeConcurrency;
+  }
+
+  private async recordResourceTransition(
+    scope: ExecutionScope,
+    runId: string,
+    decision: ResourceGovernanceDecision,
+  ): Promise<void> {
+    const pressured = decision.severity !== 'none';
+    const previous = this.resourceSignatures.get(runId);
+    if (pressured) {
+      const signature = `${decision.safeConcurrency}|${decision.severity}|${decision.reasonCodes.join(',')}`;
+      if (previous === signature) return;
+      this.resourceSignatures.set(runId, signature);
+      this.metrics?.increment('execution.resource_throttle.count');
+      await this.emit(scope, runId, 'run.resource_throttled', {
+        payload: {
+          requestedMaxConcurrency: decision.requestedMaxConcurrency,
+          safeConcurrency: decision.safeConcurrency,
+          severity: decision.severity,
+          reasonCodes: [...decision.reasonCodes],
+        },
+      });
+      return;
+    }
+    if (!previous) return;
+    this.resourceSignatures.delete(runId);
+    this.metrics?.increment('execution.resource_recovery.count');
+    await this.emit(scope, runId, 'run.resource_recovered', {
+      payload: {
+        requestedMaxConcurrency: decision.requestedMaxConcurrency,
+        safeConcurrency: decision.safeConcurrency,
+        severity: 'none',
+        reasonCodes: [],
+      },
+    });
   }
 
   private async launchNode(scope: ExecutionScope, runId: string, node: ExecutionNodeRecord): Promise<void> {
@@ -349,6 +405,7 @@ export class ExecutionScheduler {
     await this.store.setRunState(scope, runId, nextState);
     const eventType = runTerminalEvent(nextState);
     if (eventType) await this.emit(scope, runId, eventType, { payload: { previousState: current.state } });
+    if (eventType) this.resourceSignatures.delete(runId);
   }
 
   private async emit(

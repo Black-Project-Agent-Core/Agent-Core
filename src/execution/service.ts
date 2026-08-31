@@ -16,6 +16,7 @@ import {
 } from './memory-search.js';
 import { ExecutionOutputParserService, EXECUTION_OUTPUT_PARSER_VERSION, type ExecutionOutputParserLike } from './output-parser.js';
 import { ExecutionRecovery } from './recovery.js';
+import type { ResourceGovernor } from './resource-governor.js';
 import { ExecutionRuntimeLease } from './runtime-lease.js';
 import { ExecutionCommandRunner } from './runner.js';
 import { ExecutionScheduler, type ExecutionRunnerLike } from './scheduler.js';
@@ -87,6 +88,7 @@ export interface ExecutionServiceDependencies {
   metrics?: RuntimeMetricRegistry;
   outputParser?: ExecutionOutputParserLike;
   artifactManager?: ExecutionArtifactManager;
+  resourceGovernor?: ResourceGovernor;
 }
 
 export type ExecutionServiceState = 'disabled' | 'idle' | 'healthy' | 'degraded' | 'closing' | 'closed';
@@ -146,6 +148,8 @@ export class ExecutionService {
       logRoot: config.logRoot,
       journal: this.journal,
       onAttemptCompleted: (scope, marker) => this.captureDerivedEvidence(scope, marker),
+      resourceGovernor: dependencies.resourceGovernor,
+      metrics: this.metrics,
     });
   }
 

@@ -5,7 +5,7 @@ import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 import { correlationFields } from '../observability/correlation.js';
 
 export const EXECUTION_EVENT_TYPES = [
-  'run.created', 'run.started', 'node.queued', 'node.ready', 'node.started',
+  'run.created', 'run.started', 'run.resource_throttled', 'run.resource_recovered', 'node.queued', 'node.ready', 'node.started',
   'node.output_available', 'node.succeeded', 'node.failed', 'node.blocked',
   'node.interrupted', 'node.retry_started', 'node.cancelled', 'run.completed',
   'run.failed', 'run.blocked', 'run.interrupted', 'run.cancelled',

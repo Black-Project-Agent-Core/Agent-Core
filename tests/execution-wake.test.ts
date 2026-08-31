@@ -110,7 +110,7 @@ afterEach(async () => {
 describe('persisted execution event journal and event-driven wake', () => {
   it('defines the complete event vocabulary and persists monotonic run.created/node.queued events before wait can observe them', async () => {
     expect(EXECUTION_EVENT_TYPES).toEqual([
-      'run.created', 'run.started', 'node.queued', 'node.ready', 'node.started',
+      'run.created', 'run.started', 'run.resource_throttled', 'run.resource_recovered', 'node.queued', 'node.ready', 'node.started',
       'node.output_available', 'node.succeeded', 'node.failed', 'node.blocked',
       'node.interrupted', 'node.retry_started', 'node.cancelled', 'run.completed',
       'run.failed', 'run.blocked', 'run.interrupted', 'run.cancelled',

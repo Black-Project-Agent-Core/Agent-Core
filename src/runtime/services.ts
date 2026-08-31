@@ -5,6 +5,7 @@ import { loadConfig, type ExecutionConfig, type GitHubConfig, type MemoryConfig,
 import { ExecutionLogStore } from '../execution/log-store.js';
 import { ExecutionMemoryBridge } from '../execution/memory-bridge.js';
 import { ExecutionMemoryPreSearch } from '../execution/memory-search.js';
+import { ResourceGovernor } from '../execution/resource-governor.js';
 import { ExecutionService } from '../execution/service.js';
 import { ExecutionStore } from '../execution/store.js';
 import { GitHubService, type GitHubServiceDependencies } from '../github/service.js';
@@ -18,6 +19,7 @@ import { SearchService } from './search.js';
 import { WorkspacePolicy } from './workspace.js';
 import { RuntimeMetricRegistry } from './metric-window.js';
 import { RuntimeHealthMetrics } from './health-metrics.js';
+import { NodeResourceSnapshotProvider } from './resource-snapshot.js';
 
 export interface RuntimeServices {
   workspace: WorkspacePolicy;
@@ -34,6 +36,7 @@ export interface RuntimeServices {
   audit: RuntimeAuditLogger;
   telemetry: TelemetryService;
   healthMetrics: RuntimeHealthMetrics;
+  resourceGovernor: ResourceGovernor;
 }
 
 export function createRuntimeServices(
@@ -71,11 +74,29 @@ export function createRuntimeServices(
     memory,
     new ExecutionLogStore(resolvedExecutionConfig.logRoot),
   );
-  const execution = new ExecutionService(resolvedExecutionConfig, workspace, {
+  let execution!: ExecutionService;
+  const resourceProvider = new NodeResourceSnapshotProvider({
+    storagePath: path.dirname(resolvedExecutionConfig.dbPath),
+    auditStatus: () => runtimeAudit.status?.() ?? null,
+    telemetryStatus: () => {
+      const status = telemetry.status();
+      return status.enabled ? status : null;
+    },
+    executionCounts: () => executionStore.systemCounts(),
+    workerHealth: async () => execution?.currentState === 'healthy',
+  });
+  const resourceGovernor = new ResourceGovernor({
+    operatorMaxConcurrency: resolvedExecutionConfig.maxConcurrency,
+    config: resolvedExecutionConfig.resourceGovernance,
+    provider: resourceProvider,
+    metrics,
+  });
+  execution = new ExecutionService(resolvedExecutionConfig, workspace, {
     store: executionStore,
     memoryBridge: executionBridge,
     memorySearch: new ExecutionMemoryPreSearch(memory),
     metrics,
+    resourceGovernor,
   });
   const runtime = {
     workspace,
@@ -91,6 +112,7 @@ export function createRuntimeServices(
     metrics,
     audit: runtimeAudit,
     telemetry,
+    resourceGovernor,
   } as Omit<RuntimeServices, 'healthMetrics'> & { healthMetrics?: RuntimeHealthMetrics };
   runtime.healthMetrics = new RuntimeHealthMetrics(runtime as RuntimeServices);
   return runtime as RuntimeServices;

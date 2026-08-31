@@ -42,6 +42,7 @@ async function fixture(label: string) {
       maxConcurrency: 4,
       maxNodes: 128,
       waitMaxMs: 60_000,
+      resourceGovernance: { ...defaults.execution.resourceGovernance, enabled: false },
     },
   );
   await runtime.execution.open();

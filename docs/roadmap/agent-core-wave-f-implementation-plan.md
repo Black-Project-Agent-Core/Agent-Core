@@ -90,12 +90,12 @@
 - Adds execution events `run.resource_throttled` and `run.resource_recovered`.
 - Scheduler uses `ResourceGovernor` only to calculate slots for new launches.
 
-- [ ] **Step 1: Write failing scheduler tests** with injected warning/critical/recovery snapshots. Prove max running nodes never exceeds the safe ceiling for newly launched work, existing running nodes are not terminated, reason transitions are persisted, and repeated identical pressure does not spam transition events.
-- [ ] **Step 2: Run focused scheduler/governance tests and require RED.**
-- [ ] **Step 3: Implement minimal scheduler integration and transition de-duplication.**
-- [ ] **Step 4: Instrument bounded safe-concurrency/throttle/recovery/snapshot-duration metrics.**
-- [ ] **Step 5: Re-run scheduler, execution wake, execution MCP, execution performance, and acceptance tests; require GREEN.**
-- [ ] **Step 6: Commit `feat: govern execution dispatch under local pressure` and push/read back SHA equality.**
+- [x] **Step 1: Write failing scheduler tests** with injected warning/critical/recovery snapshots. Prove max running nodes never exceeds the safe ceiling for newly launched work, existing running nodes are not terminated, reason transitions are persisted, and repeated identical pressure does not spam transition events.
+- [x] **Step 2: Run focused scheduler/governance tests and require RED.**
+- [x] **Step 3: Implement minimal scheduler integration and transition de-duplication.**
+- [x] **Step 4: Instrument bounded safe-concurrency/throttle/recovery/snapshot-duration metrics.**
+- [x] **Step 5: Re-run scheduler, execution wake, execution MCP, execution performance, and acceptance tests; require GREEN.**
+- [x] **Step 6: Commit `feat: govern execution dispatch under local pressure` and push/read back SHA equality.**
 
 ### Task F4: Bounded resource health and evidence-based diagnosis
 
