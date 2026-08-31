@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, RequestListener, ServerResponse } from 'node:http';
 import type { FileKeyStore } from '../auth/key-store.js';
 import type { VerifiedKey } from '../auth/key-types.js';
@@ -6,6 +5,7 @@ import type { AuditLogger } from '../logging/audit-log.js';
 import type { OAuthService } from '../oauth/service.js';
 import { authenticateRequest } from './auth.js';
 import { HttpSecurityPolicy } from './security-policy.js';
+import { createRequestCorrelation, formatTraceparent, runWithCorrelation } from '../observability/correlation.js';
 
 export type McpHttpHandler = (
   request: IncomingMessage,
@@ -44,7 +44,12 @@ const DEFAULT_HTTP_SECURITY = new HttpSecurityPolicy({
 
 export function createHttpHandler(options: HttpHandlerOptions): RequestListener {
   return (request, response) => {
-    void handleRequest(request, response, options);
+    const correlation = createRequestCorrelation(request.headers as Record<string, unknown>);
+    response.setHeader('x-agent-core-request-id', correlation.requestId);
+    response.setHeader('traceparent', formatTraceparent(correlation));
+    runWithCorrelation(correlation, () => {
+      void handleRequest(request, response, options, correlation.requestId);
+    });
   };
 }
 
@@ -52,9 +57,9 @@ async function handleRequest(
   request: IncomingMessage,
   response: ServerResponse,
   options: HttpHandlerOptions,
+  requestId: string,
 ): Promise<void> {
   const startedAt = Date.now();
-  const requestId = randomUUID();
   const route = new URL(request.url ?? '/', 'http://localhost').pathname;
   const security = options.security ?? DEFAULT_HTTP_SECURITY;
   let key: VerifiedKey | null = null;
