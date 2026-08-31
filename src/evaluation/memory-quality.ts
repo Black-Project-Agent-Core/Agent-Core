@@ -469,13 +469,14 @@ async function evaluateCase(
     if (counters.relevantFound !== counters.relevantExpected) {
       addFailure(failures, item.id, 'recall_at_k', { relevantRefs, observed: hitRefs });
     }
-    if (item.primaryRelevantRef) {
+    if (relevantRefs.length > 0) {
       counters.mrrCases = 1;
-      const rank = hitRefs.indexOf(item.primaryRelevantRef);
+      const ranks = relevantRefs.map((ref) => hitRefs.indexOf(ref)).filter((rank) => rank >= 0);
+      const rank = ranks.length > 0 ? Math.min(...ranks) : -1;
       counters.reciprocalRank = rank >= 0 ? 1 / (rank + 1) : 0;
       if (rank !== 0) {
         addFailure(failures, item.id, 'mrr', {
-          primaryRelevantRef: item.primaryRelevantRef,
+          relevantRefs,
           observedRank: rank < 0 ? null : rank + 1,
           reciprocalRank: counters.reciprocalRank,
           observed: hitRefs,

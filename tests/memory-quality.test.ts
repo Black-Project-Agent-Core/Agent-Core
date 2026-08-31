@@ -85,6 +85,24 @@ describe('deterministic memory quality evaluator', () => {
     expect(result.metrics.noiseDisplacementRate).toBe(0);
   });
 
+  it('computes MRR from the first relevant hit instead of the noise-resistance primary ref', async () => {
+    const result = await evaluateMemoryQuality([{
+      id: 'mrr-first-relevant',
+      scope: { principalId: 'p1', projectId: 'project-a' },
+      setup: [
+        { op: 'commit', ref: 'artifact', canonicalKey: 'artifact.release.manifest', kind: 'artifact', value: 'Release artifact manifest SHA256 verification.', importance: 0.9 },
+        { op: 'commit', ref: 'procedure', canonicalKey: 'procedure.release.verify', kind: 'procedure', value: 'Release procedure verifies artifact manifest SHA256.', importance: 0.8 },
+      ],
+      query: 'release artifact manifest SHA256 verification',
+      relevantRefs: ['artifact', 'procedure'],
+      primaryRelevantRef: 'procedure',
+    }]);
+
+    expect(result.metrics.recallAtK).toBe(1);
+    expect(result.metrics.mrr).toBe(1);
+    expect(result.failures.some((failure) => failure.metric === 'mrr')).toBe(false);
+  });
+
   it('rejects malformed cases and unknown fixture references', async () => {
     await expect(evaluateMemoryQuality([{ id: 'bad' }] as unknown as MemoryQualityCase[]))
       .rejects.toThrow('MEMORY_QUALITY_CASE_INVALID');
