@@ -96,12 +96,18 @@ function sanitizeStructured(value: unknown, keyName = ''): unknown {
   const secretKey = /^(?:authorization|api[_-]?key|client[_-]?secret|access[_-]?key|password|passwd|pwd|token|refresh[_-]?token|access[_-]?token|credential)$/i;
   if (secretKey.test(keyName)) return '[REDACTED:SECRET]';
   if (typeof value === 'string') return redactMemoryText(value).text;
-  if (Array.isArray(value)) return value.map((item) => sanitizeStructured(item));
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      const sanitized = sanitizeStructured(item);
+      return sanitized === undefined ? null : sanitized;
+    });
+  }
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, item]) => [key, sanitizeStructured(item, key)]),
+        .map(([key, item]) => [key, sanitizeStructured(item, key)] as const)
+        .filter(([, item]) => item !== undefined),
     );
   }
   return value;

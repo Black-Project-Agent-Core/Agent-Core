@@ -275,6 +275,46 @@ describe('scoped memory cognition ledger', () => {
     }
   });
 
+  it('serializes applied decision results with JSON-safe undefined handling', async () => {
+    const f = await fixture('applied-undefined');
+    try {
+      const decision = await f.ledger.recordWriteDecision({
+        scope: scopeA,
+        routeContextId: 'route-applied-undefined',
+        decisionType: 'NO_DURABLE_MEMORY',
+        candidateHash: 'candidate-applied-undefined',
+        existingMemoryIds: [],
+        reasonCodes: ['TRANSIENT_OPERATION'],
+        evidenceRefs: [],
+        relationPlan: [],
+      });
+
+      const applied = await f.ledger.markWriteDecisionApplied(scopeA, decision.id, {
+        status: 'applied',
+        semanticMutation: false,
+        memoryId: undefined,
+        revisionId: undefined,
+        evidence: ['kept', undefined],
+        createdEdges: 0,
+      });
+
+      expect(applied.applyResult).toEqual({
+        createdEdges: 0,
+        evidence: ['kept', null],
+        semanticMutation: false,
+        status: 'applied',
+      });
+      const raw = (await f.client.query<{ apply_result_json: string }>(
+        'SELECT apply_result_json FROM memory_write_decisions WHERE id = ?',
+        [decision.id],
+      ))[0]!.apply_result_json;
+      expect(() => JSON.parse(raw)).not.toThrow();
+      expect(raw).not.toContain('undefined');
+    } finally {
+      await f.store.close();
+    }
+  });
+
   it('keeps edge-event history append-only', async () => {
     const f = await fixture('edge-events-append-only');
     try {

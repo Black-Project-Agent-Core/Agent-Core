@@ -253,7 +253,7 @@ export interface MemoryNodeMetadataRecord {
   noveltyClass?: string;
   createdFromDecisionId?: string;
   branchParentMemoryId?: MemoryId;
-  semanticProfile?: Record<string, unknown>;
+  semanticProfile?: MemorySemanticProfile;
   semanticProfileHash?: string;
   updatedAt: number;
 }

@@ -2,13 +2,16 @@ import { createHash } from 'node:crypto';
 import type { MemoryCognitionLedger } from './cognition-ledger.js';
 import type { MemoryLifecycle } from './lifecycle.js';
 import type { MemoryLinker } from './linker.js';
-import { normalizeCanonicalKey } from './normalizer.js';
+import { normalizeCanonicalKey, normalizeMemoryText } from './normalizer.js';
 import { normalizeMemorySemanticProfile } from './semantic-profile.js';
+import { redactMemoryText } from './redaction.js';
+import { shouldMirrorMemoryRelation } from './relation-policy.js';
 import { normalizeMemoryValue, type MemoryStore, type StoredMemoryRecord } from './store.js';
 import {
   MUTABLE_MEMORY_KINDS,
   type MemoryId,
   type MemoryPersistenceDecisionType,
+  type MemoryPostflightApplyResult,
   type MemoryPostflightEvaluation,
   type MemoryPostflightRelationProposal,
   type MemoryPostflightRequest,
@@ -67,6 +70,189 @@ export class MemoryCognitionController {
     readonly lifecycle: MemoryLifecycle,
     readonly cognition: MemoryCognitionLedger,
   ) {}
+
+  async apply(request: MemoryPostflightRequest): Promise<MemoryPostflightApplyResult> {
+    const evaluation = await this.evaluate(request);
+    const candidate = request.candidate;
+    let memoryId = evaluation.targetMemoryId;
+    let revisionId: string | undefined;
+    let conflictId: string | undefined;
+    let createdEdges = 0;
+    let semanticMutation = false;
+
+    if (evaluation.decision === 'REVISE_EXISTING') {
+      if (!candidate || !evaluation.targetMemoryId) throw new Error('MEMORY_POSTFLIGHT_APPLY_INVALID');
+      const revised = await this.store.reviseMemory({
+        scope: request.scope,
+        memoryId: evaluation.targetMemoryId,
+        value: candidate.value,
+        sourceType: candidate.sourceType ?? 'memory_postflight',
+        sourceRef: candidate.sourceRef ?? evaluation.decisionRecord.id,
+        metadata: {
+          ...(candidate.metadata ?? {}),
+          memoryPostflightDecisionId: evaluation.decisionRecord.id,
+        },
+      });
+      memoryId = revised.memoryId;
+      revisionId = revised.revisionId;
+      semanticMutation = true;
+      await this.upsertDecisionMetadata(request.scope, revised.memoryId, candidate, evaluation.decisionRecord.id, {});
+    } else if (evaluation.decision === 'LINK_EXISTING') {
+      const sourceMemoryId = request.targetMemoryId ?? evaluation.targetMemoryId;
+      if (!sourceMemoryId) throw new Error('MEMORY_POSTFLIGHT_APPLY_INVALID');
+      memoryId = sourceMemoryId;
+      for (const relation of this.uniqueRelationProposals(request.proposedRelations ?? [])) {
+        const result = await this.store.addExplicitRelation({
+          scope: request.scope,
+          fromMemoryId: sourceMemoryId,
+          toMemoryId: relation.targetMemoryId,
+          relation: relation.relation,
+          reasonCode: 'POSTFLIGHT_LINK_EXISTING',
+        });
+        createdEdges += result.createdEdges;
+      }
+      semanticMutation = createdEdges > 0;
+    } else if (evaluation.decision === 'WRITE_BRANCH') {
+      if (!candidate || !request.branchParentMemoryId) throw new Error('MEMORY_POSTFLIGHT_APPLY_INVALID');
+      validatePostflightRelationPlan({
+        decision: 'WRITE_BRANCH',
+        candidatePresent: true,
+        branchParentMemoryId: request.branchParentMemoryId,
+        proposedRelations: request.proposedRelations ?? [],
+      });
+      const relations = this.uniqueRelationProposals(request.proposedRelations ?? []);
+      const committed = await this.store.commitMemory({
+        scope: request.scope,
+        canonicalKey: candidate.canonicalKey,
+        kind: candidate.kind,
+        value: candidate.value,
+        importance: candidate.importance,
+        pinned: candidate.pinned,
+        enforcement: candidate.enforcement,
+        sourceType: candidate.sourceType ?? 'memory_postflight',
+        sourceRef: candidate.sourceRef ?? evaluation.decisionRecord.id,
+        metadata: {
+          ...(candidate.metadata ?? {}),
+          memoryPostflightDecisionId: evaluation.decisionRecord.id,
+        },
+        explicitRelations: relations.map((relation) => ({
+          targetMemoryId: relation.targetMemoryId,
+          relation: relation.relation,
+        })),
+      });
+      memoryId = committed.memoryId;
+      revisionId = committed.revisionId;
+      createdEdges = this.expectedExplicitEdgeCount(relations);
+      semanticMutation = true;
+      await this.upsertDecisionMetadata(request.scope, committed.memoryId, candidate, evaluation.decisionRecord.id, {
+        noveltyClass: 'branch',
+        branchParentMemoryId: request.branchParentMemoryId,
+      });
+    } else if (evaluation.decision === 'WRITE_NEW_ROOT') {
+      if (!candidate || !evaluation.decisionRecord.rootReason || !evaluation.reasonCodes.includes('FRESH_DURABLE_CONTEXT')) {
+        throw new Error('MEMORY_POSTFLIGHT_APPLY_INVALID');
+      }
+      const committed = await this.store.commitMemory({
+        scope: request.scope,
+        canonicalKey: candidate.canonicalKey,
+        kind: candidate.kind,
+        value: candidate.value,
+        importance: candidate.importance,
+        pinned: candidate.pinned,
+        enforcement: candidate.enforcement,
+        sourceType: candidate.sourceType ?? 'memory_postflight',
+        sourceRef: candidate.sourceRef ?? evaluation.decisionRecord.id,
+        metadata: {
+          ...(candidate.metadata ?? {}),
+          memoryPostflightDecisionId: evaluation.decisionRecord.id,
+        },
+      });
+      memoryId = committed.memoryId;
+      revisionId = committed.revisionId;
+      semanticMutation = true;
+      await this.upsertDecisionMetadata(request.scope, committed.memoryId, candidate, evaluation.decisionRecord.id, {
+        noveltyClass: 'root',
+        rootReason: evaluation.decisionRecord.rootReason,
+      });
+    } else if (evaluation.decision === 'OPEN_CONFLICT') {
+      if (!candidate || !request.conflictWithMemoryId || !request.conflictType?.trim()) {
+        throw new Error('MEMORY_POSTFLIGHT_APPLY_INVALID');
+      }
+      validatePostflightRelationPlan({
+        decision: 'OPEN_CONFLICT',
+        candidatePresent: true,
+        conflictWithMemoryId: request.conflictWithMemoryId,
+        proposedRelations: request.proposedRelations ?? [],
+      });
+      const relations = this.uniqueRelationProposals(request.proposedRelations ?? []);
+      const committed = await this.store.commitMemory({
+        scope: request.scope,
+        canonicalKey: candidate.canonicalKey,
+        kind: candidate.kind,
+        value: candidate.value,
+        importance: candidate.importance,
+        pinned: candidate.pinned,
+        enforcement: candidate.enforcement,
+        sourceType: candidate.sourceType ?? 'memory_postflight',
+        sourceRef: candidate.sourceRef ?? evaluation.decisionRecord.id,
+        metadata: {
+          ...(candidate.metadata ?? {}),
+          memoryPostflightDecisionId: evaluation.decisionRecord.id,
+        },
+        explicitRelations: relations.map((relation) => ({
+          targetMemoryId: relation.targetMemoryId,
+          relation: relation.relation,
+        })),
+      });
+      memoryId = committed.memoryId;
+      revisionId = committed.revisionId;
+      createdEdges = this.expectedExplicitEdgeCount(relations);
+      await this.upsertDecisionMetadata(request.scope, committed.memoryId, candidate, evaluation.decisionRecord.id, {
+        noveltyClass: 'conflict',
+      });
+      const safeConflictType = normalizeMemoryText(redactMemoryText(request.conflictType).text).canonical;
+      const conflict = await this.lifecycle.openConflict(
+        request.scope,
+        request.conflictWithMemoryId,
+        committed.memoryId,
+        safeConflictType,
+        {
+          decisionId: evaluation.decisionRecord.id,
+          evidenceRefs: evaluation.decisionRecord.evidenceRefs,
+          reasonCodes: evaluation.decisionRecord.reasonCodes,
+        },
+      );
+      conflictId = conflict.conflictId;
+      semanticMutation = true;
+    }
+
+    const appliedRecord = await this.cognition.markWriteDecisionApplied(request.scope, evaluation.decisionRecord.id, {
+      status: 'applied',
+      decision: evaluation.decision,
+      semanticMutation,
+      memoryId,
+      revisionId,
+      conflictId,
+      createdEdges,
+    });
+
+    return {
+      decisionRecord: appliedRecord,
+      decision: evaluation.decision,
+      targetMemoryId: evaluation.targetMemoryId,
+      existingMemoryIds: evaluation.existingMemoryIds,
+      reasonCodes: evaluation.reasonCodes,
+      candidateHash: evaluation.candidateHash,
+      semanticProfileHash: evaluation.semanticProfileHash,
+      advisory: false,
+      applied: true,
+      semanticMutation,
+      memoryId,
+      revisionId,
+      conflictId,
+      createdEdges,
+    };
+  }
 
   async evaluate(request: MemoryPostflightRequest): Promise<MemoryPostflightEvaluation> {
     if (!request.scope.principalId?.trim()) throw new Error('MEMORY_SCOPE_REQUIRED');
@@ -224,6 +410,50 @@ export class MemoryCognitionController {
       semanticProfileHash,
       advisory: true,
     };
+  }
+
+  private uniqueRelationProposals(relations: readonly MemoryPostflightRelationProposal[]): MemoryPostflightRelationProposal[] {
+    const seen = new Set<string>();
+    const result: MemoryPostflightRelationProposal[] = [];
+    for (const relation of [...relations].sort((left, right) => {
+      const leftKey = `${left.relation}\0${left.targetMemoryId}`;
+      const rightKey = `${right.relation}\0${right.targetMemoryId}`;
+      return binaryCompare(leftKey, rightKey);
+    })) {
+      const key = `${relation.relation}\0${relation.targetMemoryId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push({
+        targetMemoryId: relation.targetMemoryId,
+        relation: relation.relation,
+        evidenceRefs: uniqueSorted(relation.evidenceRefs.filter((value) => value.trim().length > 0)),
+      });
+    }
+    return result;
+  }
+
+  private expectedExplicitEdgeCount(relations: readonly MemoryPostflightRelationProposal[]): number {
+    return relations.reduce((sum, relation) => sum + (shouldMirrorMemoryRelation(relation.relation) ? 2 : 1), 0);
+  }
+
+  private async upsertDecisionMetadata(
+    scope: MemoryScope,
+    memoryId: MemoryId,
+    candidate: NonNullable<MemoryPostflightRequest['candidate']>,
+    decisionId: string,
+    overrides: { noveltyClass?: string; rootReason?: string; branchParentMemoryId?: string },
+  ): Promise<void> {
+    const current = await this.cognition.getNodeMetadata(scope, memoryId);
+    await this.cognition.upsertNodeMetadata({
+      scope,
+      memoryId,
+      title: candidate.title ?? current?.title,
+      rootReason: overrides.rootReason ?? current?.rootReason,
+      noveltyClass: overrides.noveltyClass ?? current?.noveltyClass,
+      createdFromDecisionId: decisionId,
+      branchParentMemoryId: overrides.branchParentMemoryId ?? current?.branchParentMemoryId,
+      semanticProfile: candidate.semanticProfile ?? current?.semanticProfile,
+    });
   }
 
   private relationPlanValid(input: {

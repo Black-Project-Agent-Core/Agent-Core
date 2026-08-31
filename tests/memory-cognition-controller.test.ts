@@ -282,4 +282,188 @@ describe('advisory memory cognition controller', () => {
       await f.store.close();
     }
   });
+  it('explicitly applies all six validated decisions with auditable node, revision, relation, metadata, and conflict effects', async () => {
+    const f = await fixture('apply-six');
+    try {
+      const mutable = await f.store.commitMemory({
+        scope,
+        canonicalKey: 'apply.mutable',
+        kind: 'decision',
+        value: 'Initial mutable decision.',
+        sourceType: 'test',
+      });
+      const linkTarget = await f.store.commitMemory({
+        scope,
+        canonicalKey: 'apply.link-target',
+        kind: 'procedure',
+        value: 'Supporting procedure.',
+        sourceType: 'test',
+      });
+      const branchParent = await f.store.commitMemory({
+        scope,
+        canonicalKey: 'apply.branch-parent',
+        kind: 'decision',
+        value: 'Parent architecture.',
+        sourceType: 'test',
+      });
+      const conflictTarget = await f.store.commitMemory({
+        scope,
+        canonicalKey: 'apply.conflict-target',
+        kind: 'decision',
+        value: 'Guardrails disabled by default.',
+        sourceType: 'test',
+      });
+      const baseline = await semanticCounts(f.client);
+
+      const noWrite = await f.controller.apply(request({
+        candidate: { canonicalKey: 'apply.transient', kind: 'observation', value: 'Transient status.' },
+        reasonCodes: ['TRANSIENT_OPERATION'],
+      }));
+      expect(noWrite).toMatchObject({ decision: 'NO_DURABLE_MEMORY', advisory: false, applied: true, semanticMutation: false, createdEdges: 0 });
+      expect(noWrite.decisionRecord.appliedAt).toEqual(expect.any(Number));
+      expect(await semanticCounts(f.client)).toEqual(baseline);
+
+      const revise = await f.controller.apply(request({
+        candidate: { canonicalKey: 'apply.mutable', kind: 'decision', value: 'Updated mutable decision.', semanticProfile: { title: 'Updated Decision' } },
+        reasonCodes: ['BELIEF_CHANGED'],
+        evidenceRefs: ['user:revision'],
+      }));
+      expect(revise).toMatchObject({ decision: 'REVISE_EXISTING', memoryId: mutable.memoryId, advisory: false, applied: true, semanticMutation: true });
+      expect(revise.revisionId).toBeTruthy();
+      expect((await f.store.getMemory(scope, mutable.memoryId))?.revisionNo).toBe(2);
+      expect((await f.cognition.getNodeMetadata(scope, mutable.memoryId))?.createdFromDecisionId).toBe(revise.decisionRecord.id);
+
+      const link = await f.controller.apply(request({
+        candidate: { canonicalKey: 'apply.mutable', kind: 'decision', value: 'Updated mutable decision.' },
+        targetMemoryId: mutable.memoryId,
+        reasonCodes: ['SAME_BELIEF_NEW_EVIDENCE'],
+        evidenceRefs: ['validation:link-evidence'],
+        proposedRelations: [{ targetMemoryId: linkTarget.memoryId, relation: 'depends_on', evidenceRefs: ['validation:link-evidence'] }],
+      }));
+      expect(link).toMatchObject({ decision: 'LINK_EXISTING', memoryId: mutable.memoryId, semanticMutation: true, createdEdges: 1, applied: true });
+      expect((await f.client.query<{ count: number }>(
+        "SELECT count(*) AS count FROM memory_edges WHERE from_memory_id = ? AND to_memory_id = ? AND relation = 'depends_on'",
+        [mutable.memoryId, linkTarget.memoryId],
+      ))[0]!.count).toBe(1);
+
+      const branch = await f.controller.apply(request({
+        candidate: {
+          canonicalKey: 'apply.branch-child',
+          kind: 'decision',
+          value: 'Independent typography branch.',
+          title: 'Typography Branch',
+          semanticProfile: { title: 'Typography Fidelity', futureRelevance: ['pptx conversion'] },
+        },
+        branchParentMemoryId: branchParent.memoryId,
+        reasonCodes: ['DISTINCT_BRANCH'],
+        evidenceRefs: ['task:branch'],
+        proposedRelations: [{ targetMemoryId: branchParent.memoryId, relation: 'branch_of', evidenceRefs: ['task:branch'] }],
+      }));
+      expect(branch).toMatchObject({ decision: 'WRITE_BRANCH', semanticMutation: true, applied: true, createdEdges: 1 });
+      expect(branch.memoryId).toBeTruthy();
+      expect(await f.cognition.getNodeMetadata(scope, branch.memoryId!)).toMatchObject({
+        title: 'Typography Branch',
+        noveltyClass: 'branch',
+        branchParentMemoryId: branchParent.memoryId,
+        createdFromDecisionId: branch.decisionRecord.id,
+      });
+
+      const root = await f.controller.apply(request({
+        candidate: {
+          canonicalKey: 'apply.fresh-root',
+          kind: 'project_state',
+          value: 'Fresh durable root context.',
+          title: 'Fresh Root',
+          semanticProfile: { title: 'Fresh Root', futureRelevance: ['future work'] },
+        },
+        rootReason: 'No existing semantic parent exists for this durable context.',
+        reasonCodes: ['FRESH_DURABLE_CONTEXT'],
+        evidenceRefs: ['user:new-root'],
+      }));
+      expect(root).toMatchObject({ decision: 'WRITE_NEW_ROOT', semanticMutation: true, applied: true, createdEdges: 0 });
+      expect(await f.cognition.getNodeMetadata(scope, root.memoryId!)).toMatchObject({
+        title: 'Fresh Root',
+        noveltyClass: 'root',
+        rootReason: 'No existing semantic parent exists for this durable context.',
+        createdFromDecisionId: root.decisionRecord.id,
+      });
+
+      const conflict = await f.controller.apply(request({
+        candidate: {
+          canonicalKey: 'apply.conflict-candidate',
+          kind: 'decision',
+          value: 'Guardrails enabled for Project X.',
+          semanticProfile: { title: 'Project X Guardrail Policy' },
+        },
+        conflictWithMemoryId: conflictTarget.memoryId,
+        conflictType: 'authority_ambiguous',
+        reasonCodes: ['CONFLICT_DETECTED'],
+        evidenceRefs: ['user:project-x'],
+        proposedRelations: [{ targetMemoryId: conflictTarget.memoryId, relation: 'contradicts', evidenceRefs: ['user:project-x'] }],
+      }));
+      expect(conflict).toMatchObject({ decision: 'OPEN_CONFLICT', semanticMutation: true, applied: true, createdEdges: 2 });
+      expect(conflict.conflictId).toBeTruthy();
+      expect((await f.store.getMemory(scope, conflictTarget.memoryId))?.state).toBe('conflicted');
+      expect((await f.store.getMemory(scope, conflict.memoryId!))?.state).toBe('conflicted');
+      expect((await f.lifecycle.listOpenConflicts(scope)).some((row) => row.conflictId === conflict.conflictId)).toBe(true);
+      expect((await f.client.query<{ count: number }>(
+        "SELECT count(*) AS count FROM memory_edges WHERE relation = 'contradicts' AND (from_memory_id = ? OR to_memory_id = ?)",
+        [conflict.memoryId!, conflict.memoryId!],
+      ))[0]!.count).toBe(2);
+    } finally {
+      await f.store.close();
+    }
+  });
+
+  it('fails closed on foreign endpoints and converts unjustified branch/failure writes to applied no-write outcomes', async () => {
+    const f = await fixture('apply-failures');
+    try {
+      const parent = await f.store.commitMemory({ scope, canonicalKey: 'failure.parent', kind: 'decision', value: 'Parent.', sourceType: 'test' });
+      const failure = await f.store.commitMemory({ scope, canonicalKey: 'failure.immutable', kind: 'failure', value: 'Original failure.', sourceType: 'test' });
+      const foreignScope = { principalId: scope.principalId, projectId: 'foreign-project' };
+      const foreign = await f.store.commitMemory({ scope: foreignScope, canonicalKey: 'failure.foreign', kind: 'decision', value: 'Foreign.', sourceType: 'test' });
+      const baseline = await semanticCounts(f.client);
+
+      await expect(f.controller.apply(request({
+        candidate: { canonicalKey: 'failure.cross-scope-branch', kind: 'decision', value: 'Must not persist.' },
+        branchParentMemoryId: foreign.memoryId,
+        reasonCodes: ['DISTINCT_BRANCH'],
+        evidenceRefs: ['task:foreign'],
+        proposedRelations: [{ targetMemoryId: foreign.memoryId, relation: 'branch_of', evidenceRefs: ['task:foreign'] }],
+      }))).rejects.toThrow('MEMORY_POSTFLIGHT_RELATED_NOT_FOUND');
+      expect(await semanticCounts(f.client)).toEqual(baseline);
+
+      const weak = await f.controller.apply(request({
+        candidate: { canonicalKey: 'failure.weak-branch', kind: 'decision', value: 'Weak relation cannot justify a node.' },
+        branchParentMemoryId: parent.memoryId,
+        reasonCodes: ['DISTINCT_BRANCH'],
+        evidenceRefs: ['task:weak'],
+        proposedRelations: [{ targetMemoryId: parent.memoryId, relation: 'same_anchor', evidenceRefs: ['task:weak'] }],
+      }));
+      expect(weak).toMatchObject({ decision: 'NO_DURABLE_MEMORY', semanticMutation: false, applied: true });
+      expect(await f.store.getMemoryByCanonicalKey(scope, 'failure.weak-branch')).toBeNull();
+
+      const immutable = await f.controller.apply(request({
+        candidate: { canonicalKey: 'failure.immutable', kind: 'failure', value: 'Attempt to rewrite failure.' },
+        reasonCodes: ['FAILURE_OBSERVED'],
+        evidenceRefs: ['run:new'],
+      }));
+      expect(immutable).toMatchObject({ decision: 'NO_DURABLE_MEMORY', semanticMutation: false, applied: true, memoryId: failure.memoryId });
+      expect(await f.store.listRevisions(scope, failure.memoryId)).toHaveLength(1);
+      expect((await f.store.getMemory(scope, failure.memoryId))?.valueText).toBe('Original failure.');
+
+      await expect(f.controller.apply(request({
+        candidate: { canonicalKey: 'failure.invalid-conflict', kind: 'decision', value: 'Must not persist.' },
+        conflictWithMemoryId: foreign.memoryId,
+        conflictType: 'foreign',
+        reasonCodes: ['CONFLICT_DETECTED'],
+        evidenceRefs: ['task:foreign-conflict'],
+        proposedRelations: [{ targetMemoryId: foreign.memoryId, relation: 'contradicts', evidenceRefs: ['task:foreign-conflict'] }],
+      }))).rejects.toThrow('MEMORY_POSTFLIGHT_RELATED_NOT_FOUND');
+      expect(await f.store.getMemoryByCanonicalKey(scope, 'failure.invalid-conflict')).toBeNull();
+    } finally {
+      await f.store.close();
+    }
+  });
+
 });
