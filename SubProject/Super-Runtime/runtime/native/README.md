@@ -271,3 +271,54 @@ Passing Task 1 through Task 6 means only:
 > Super-Runtime has a reproducible native CPU substrate, deterministic memory ownership accounting, stable file residency, generic sparse-MoE and dense residency policy fixtures with exact GGML CPU parity, and a deterministic global host/device admission plan.
 
 It does **not** mean the Super-Runtime inference runtime is complete. Task 7 now supplies a separately documented hard memory-ceiling acceptance harness under `benchmarks/`; it has demonstrated real delegated cgroup-v2 enforcement and fail-closed unsupported behavior. The next checkpoint is Task 8: the unified native runtime entrypoint.
+
+## Task 8 — unified native runtime entrypoint
+
+`RuntimeEntry` is the first coarse lifecycle boundary that composes the previously separate primitives into one execution path:
+
+```text
+load fixture metadata
+  -> validate exact file/layer geometry
+  -> Loaded
+
+admit RuntimeBudgetRequest
+  -> global RuntimeBudgetPlan
+  -> one MemoryLedger(host ceiling)
+  -> reserve actual fixed runtime/context/scratch/staging ownership
+  -> FileResidency
+  -> DenseResidencyPlan
+  -> GGML CPU backend
+  -> Admitted
+
+execute(input)
+  -> Running
+  -> DenseResidencyPolicy::start
+  -> prepare current/next as allowed
+  -> readiness gate counted before dereference
+  -> GGML CPU dense matmul
+  -> complete at safe layer boundary
+  -> cancellation checked between completed layers
+  -> stop residency policy
+  -> Completed or Cancelled
+
+unload
+  -> release residency/backend/ledger ownership
+  -> current_owned_bytes = 0
+  -> Unloaded
+```
+
+The entrypoint deliberately exposes only coarse lifecycle/request/telemetry operations. It does not expose HTTP/provider/tool-call protocols, does not request GPU memory, and does not bypass `MemoryLedger`.
+
+The Task-8 deterministic fixture contains four one-page `32 x 32` F32 dense matrices. Its expected output is computed by an independent manual matrix-vector oracle. Fresh evidence reports `runtime-vs-oracle max_abs_diff = 2.91038e-11`, below the `1e-6` correctness gate. The test also proves failed context-heavy admission publishes no ownership, cancellation after one completed layer releases all intentional file residency, and final `unload()` returns ledger ownership to zero.
+
+Focused native test:
+
+```bash
+cmake -G Ninja -S . -B .build/runtime-entry -DCMAKE_BUILD_TYPE=Release
+cmake --build .build/runtime-entry --target super-runtime-test-runtime-entry --parallel "$(nproc)"
+(cd .build/runtime-entry && ctest --output-on-failure -R '^super-runtime-runtime-entry$')
+```
+
+The same runtime-entry test has also passed through `benchmarks/memory-ceiling.sh` under a real 128 MiB delegated cgroup-v2 ceiling with `memory.swap.max=0` and byte-identical stdout SHA-256 parity against a fresh direct baseline.
+
+Task 8 establishes an executable first runtime lifecycle, but **stability is an audit result, not a task-completion synonym**. The Milestone-1 Definition of Done remains authoritative; any unchecked invariant must be closed before a stable label is accepted.

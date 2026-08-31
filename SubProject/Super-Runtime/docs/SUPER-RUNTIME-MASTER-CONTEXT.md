@@ -59,13 +59,16 @@ SubProject/Super-Runtime/
 │       │   ├── dense_residency.h
 │       │   ├── dense_residency.cpp
 │       │   ├── runtime_budget.h
-│       │   └── runtime_budget.cpp
+│       │   ├── runtime_budget.cpp
+│       │   ├── runtime_entry.h
+│       │   └── runtime_entry.cpp
 │       └── tests/
 │           ├── test_memory_ledger.cpp
 │           ├── test_file_residency.cpp
 │           ├── test_moe_residency.cpp
 │           ├── test_dense_residency.cpp
-│           └── test_runtime_budget.cpp
+│           ├── test_runtime_budget.cpp
+│           └── test_runtime_entry.cpp
 ├── tests/
 │   └── contracts/
 │       └── native-substrate.sh
@@ -86,7 +89,8 @@ Task 4 generic MoE selected-ID range planner           COMPLETE
 Task 5 fixed-order dense residency policy              COMPLETE
 Task 6 global runtime budget planner                   COMPLETE
 Task 7 hard memory-ceiling harness                     COMPLETE
-Task 8 minimal native runtime entrypoint               NOT STARTED
+Task 8 minimal native runtime entrypoint               COMPLETE
+Milestone-1 stability audit                            PENDING
 MoE READY/lease scheduler integration                  NOT STARTED
 ```
 
@@ -94,9 +98,9 @@ Therefore:
 
 > **Super-Runtime still does not yet exist as a runnable inference runtime product.**
 
-Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds deterministic memory accounting. Task 3 adds stable-address Linux file residency. Task 4 adds generic MoE selected-ID range planning with exact CPU `MUL_MAT_ID` parity. Task 5 adds deterministic dense residency with safe one/two-slot behavior. Task 6 adds deterministic global admission planning. Task 7 now adds external acceptance evidence: on a delegated cgroup-v2 host the harness writes a real `memory.max`, forces `memory.swap.max=0`, moves the command into the cgroup before execution, records `memory.peak`, samples process RSS, hashes output, and distinguishes success, parity failure, runtime failure, and cgroup OOM. Unsupported hosts fail closed before user code executes. The remaining Milestone-1 implementation frontier is the unified native runtime lifecycle entrypoint.
+Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds deterministic memory accounting. Task 3 adds stable-address Linux file residency. Task 4 adds generic MoE selected-ID range planning with exact CPU `MUL_MAT_ID` parity. Task 5 adds deterministic dense residency with safe one/two-slot behavior. Task 6 adds deterministic global admission planning. Task 7 adds real external cgroup-v2 hard-cap evidence. Task 8 now adds the first unified runtime lifecycle: deterministic fixture metadata is loaded, the global plan is admitted, actual fixed ownership is reserved in one `MemoryLedger`, file-backed dense weights are managed by `DenseResidencyPolicy`, GGML CPU executes each prepared layer, telemetry tracks readiness/peak ownership/completed layers/output, cancellation is honored only at safe layer boundaries, and unload releases all runtime ownership. The independent manual oracle differs from the GGML runtime by only `2.91038e-11` in the fresh fixture, well inside the `1e-6` correctness gate. The runtime-entry acceptance binary also passes under a real 128 MiB cgroup ceiling with swap disabled and byte-identical stdout parity.
 
-Phase 0 learning is complete, and the first seven implementation checkpoints are complete.
+Phase 0 learning and Tasks 1 through 8 are complete. Milestone-1 stability remains **pending audit**, not automatically granted by Task 8 completion.
 
 The project frontier remains:
 
@@ -104,11 +108,11 @@ The project frontier remains:
 
 ## Immediate next action — exactly one task
 
-The next eligible implementation checkpoint is **Task 8 only: add the minimal native runtime smoke entrypoint**.
+The only active action after Task 8 is **Milestone-1 stability audit and required corrective hardening**.
 
-Do not begin API work, GPU work, or downstream integration in parallel with Task 8. Task 8 becomes active only after the Task 7 commit is present and remotely verified on canonical `Agent-Core/main`.
+Do not begin API work, GPU work, downstream integration, or a new product feature until the audit proves every Milestone-1 Definition-of-Done item. If the audit finds a missing correctness primitive, close that gap with focused tests before labeling the core stable.
 
-Task 1 + Task 2 + Task 3 + Task 4 + Task 5 + Task 6 + Task 7 verification boundary:
+Task 1 through Task 8 verification boundary:
 
 ```text
 bash tests/contracts/native-substrate.sh
@@ -165,6 +169,23 @@ benchmarks/test-memory-ceiling.sh
   -> runtime failure and parity failure are distinct classifications
   -> deliberate over-allocation produces cgroup OOM classification
   -> memory.peak remains bounded by the requested ceiling
+  -> PASS
+
+ctest -R super-runtime-runtime-entry
+  -> load deterministic file-backed dense fixture
+  -> reject infeasible admission before ownership publication
+  -> reserve actual fixed costs in one MemoryLedger
+  -> prepare every dense range before GGML dereference
+  -> exact lifecycle telemetry and bounded peak ownership
+  -> independent manual-oracle max_abs_diff <= 1e-6
+  -> coarse cancellation releases residency at a safe layer boundary
+  -> unload returns MemoryLedger ownership to zero
+  -> PASS
+
+memory-ceiling.sh around super-runtime-test-runtime-entry
+  -> real 128 MiB cgroup-v2 ceiling
+  -> swap disabled
+  -> direct-baseline stdout SHA-256 parity PASS
   -> PASS
 ```
 
@@ -1589,17 +1610,17 @@ Milestone 1 is accepted only if fresh executable evidence demonstrates all appli
 ```text
 [x] native Super-Runtime source exists
 [x] controlled/pinned GGML CPU substrate builds
-[ ] a deterministic fixture/model loads through the runtime path
+[x] a deterministic fixture/model loads through the runtime path
 [x] memory ledger is active
 [x] infeasible ledger reservations are refused
 [x] stable file-backed residency primitive is active
 [x] dense residency path executes correctly
 [x] MoE selected-range residency path executes correctly
-[ ] required ranges are READY before dereference
+[x] required ranges are READY before dereference
 [ ] leased ranges cannot be reclaimed early
-[ ] output matches the correctness oracle
+[x] output matches the correctness oracle
 [x] measured RSS/residency telemetry is reported
-[ ] cleanup/unload releases runtime ownership cleanly
+[x] cleanup/unload releases runtime ownership cleanly
 [ ] all tests pass
 [ ] implementation is committed and verified on canonical GitHub
 ```

@@ -250,22 +250,22 @@ Commit message: `bench: add hard memory ceiling harness`
 - Consumes: native model lifecycle, budget planner, residency engine, and inference boundary
 - Produces: one minimal test/CLI-callable runtime entrypoint that exercises load -> admit -> execute -> report -> unload without any downstream AI-tool dependency
 
-- [ ] **Step 1: Write a failing end-to-end native smoke test**
+- [x] **Step 1: Write a failing end-to-end native smoke test**
 
 Use a small deterministic fixture and require lifecycle transitions, budget admission, inference execution, telemetry retrieval, cancellation-safe cleanup, and unload. No HTTP/provider/tool-call protocol belongs in this task.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Expected: compilation/test failure because the unified native entrypoint does not exist.
 
-- [ ] **Step 3: Implement the minimum runtime entrypoint**
+- [x] **Step 3: Implement the minimum runtime entrypoint**
 
 Keep tensor execution, memory policy, and residency in the native worker. The entrypoint must expose only coarse lifecycle/request/telemetry operations and must not bypass the memory ledger.
 
-- [ ] **Step 4: Run the complete native runtime suite**
+- [x] **Step 4: Run the complete native runtime suite**
 
 Verify the smoke fixture plus memory-ledger, file-residency, MoE, dense, budget, and substrate tests. Downstream consumer integrations remain explicitly deferred.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit message: `feat: add native runtime smoke entrypoint`
