@@ -8,7 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
 
-export const CORE_CERTIFICATION_GATES = Object.freeze([
+export const CORE_CERTIFICATION_BASE_GATES = Object.freeze([
   Object.freeze({ id: 'contract', command: process.execPath, args: Object.freeze(['scripts/release/check-core-certification.mjs']), json: true }),
   Object.freeze({ id: 'release_verification', command: npmExecutable, args: Object.freeze(['run', 'verify:release']), json: false }),
   Object.freeze({
@@ -23,8 +23,10 @@ export const CORE_CERTIFICATION_GATES = Object.freeze([
     args: Object.freeze(['scripts/benchmark-execution.mjs', '--samples=20', '--warmup=3']),
     json: true,
   }),
-  Object.freeze({ id: 'stable_release_parity', command: process.execPath, args: Object.freeze(['scripts/release/check-stable-parity.mjs']), json: true }),
 ]);
+
+export const CORE_CERTIFICATION_STABLE_PARITY_GATE = Object.freeze({ id: 'stable_release_parity', command: process.execPath, args: Object.freeze(['scripts/release/check-stable-parity.mjs']), json: true });
+export const CORE_CERTIFICATION_GATES = Object.freeze([...CORE_CERTIFICATION_BASE_GATES, CORE_CERTIFICATION_STABLE_PARITY_GATE]);
 
 function git(args, stdio = ['ignore', 'pipe', 'pipe']) {
   return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio }).trim();
@@ -36,11 +38,16 @@ function trackedTreeIsClean() {
   return unstaged.status === 0 && staged.status === 0;
 }
 
-function safePlan() {
+function selectedGates(prepublish) {
+  return prepublish ? CORE_CERTIFICATION_BASE_GATES : CORE_CERTIFICATION_GATES;
+}
+
+function safePlan(prepublish) {
   return {
     schema: 'agent-core-core-certification-plan/1',
+    mode: prepublish ? 'prepublish' : 'postpublish',
     matrixCount: CORE_CERTIFICATION_MATRIX.length,
-    gates: CORE_CERTIFICATION_GATES.map((gate) => ({
+    gates: selectedGates(prepublish).map((gate) => ({
       id: gate.id,
       command: gate.command === process.execPath ? 'node' : 'npm',
       args: [...gate.args],
@@ -73,27 +80,30 @@ function runGate(gate) {
   return gate.json ? parseGateJson(gate, result.stdout) : null;
 }
 
-function assertReportShape(contract, memory, execution, parity) {
+function assertReportShape(contract, memory, execution, parity, prepublish) {
   if (!contract?.ok || contract.matrixCount !== 18) throw new Error('CORE_CERTIFICATION_CONTRACT_NOT_READY');
   const memoryGate = memory?.gateSummary?.memoryRecall100k;
   if (!memoryGate?.passed) throw new Error('CORE_CERTIFICATION_MEMORY_GATE_NOT_PASSED');
   if (!execution?.success || !execution?.dagValidation?.passed || !execution?.readyDispatch?.passed || !execution?.wakeDelivery?.passed || !execution?.concurrencyPassed) {
     throw new Error('CORE_CERTIFICATION_EXECUTION_GATE_NOT_PASSED');
   }
-  if (!parity?.ok) throw new Error('CORE_CERTIFICATION_STABLE_PARITY_NOT_PASSED');
+  if (!prepublish && !parity?.ok) throw new Error('CORE_CERTIFICATION_STABLE_PARITY_NOT_PASSED');
 }
 
 async function main() {
-  if (process.argv.includes('--plan')) {
-    process.stdout.write(`${JSON.stringify(safePlan(), null, 2)}\n`);
+  const args = process.argv.slice(2);
+  const allowed = new Set(['--plan', '--prepublish']);
+  if (args.some((value) => !allowed.has(value)) || new Set(args).size !== args.length) throw new Error('CORE_CERTIFICATION_ARGUMENT_INVALID');
+  const prepublish = args.includes('--prepublish');
+  if (args.includes('--plan')) {
+    process.stdout.write(`${JSON.stringify(safePlan(prepublish), null, 2)}\n`);
     return;
   }
-  if (process.argv.length > 2) throw new Error('CORE_CERTIFICATION_ARGUMENT_INVALID');
   if (!trackedTreeIsClean()) throw new Error('CORE_CERTIFICATION_TRACKED_TREE_DIRTY');
 
   const sourceCommit = git(['rev-parse', 'HEAD']);
   const reports = new Map();
-  for (const gate of CORE_CERTIFICATION_GATES) reports.set(gate.id, runGate(gate));
+  for (const gate of selectedGates(prepublish)) reports.set(gate.id, runGate(gate));
   const finalCommit = git(['rev-parse', 'HEAD']);
   if (finalCommit !== sourceCommit) throw new Error('CORE_CERTIFICATION_SOURCE_CHANGED_DURING_RUN');
 
@@ -101,10 +111,11 @@ async function main() {
   const memory = reports.get('memory_100k');
   const execution = reports.get('execution_performance');
   const parity = reports.get('stable_release_parity');
-  assertReportShape(contract, memory, execution, parity);
+  assertReportShape(contract, memory, execution, parity, prepublish);
 
   const report = {
     schema: 'agent-core-core-certification/1',
+    mode: prepublish ? 'prepublish' : 'postpublish',
     sourceCommit,
     version: String(packageJson.version),
     matrixCount: CORE_CERTIFICATION_MATRIX.length,
@@ -127,7 +138,11 @@ async function main() {
       configuredMaxConcurrency: execution.maxConcurrency,
       passed: execution.success,
     },
-    stableRelease: {
+    stableRelease: prepublish ? {
+      checked: false,
+      passed: null,
+    } : {
+      checked: true,
       version: parity.version,
       tag: parity.tag,
       tagCommit: parity.tagCommit,

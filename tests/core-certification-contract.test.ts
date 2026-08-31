@@ -56,6 +56,7 @@ describe('Wave G core certification contract', () => {
       'benchmark:memory',
       'benchmark:execution',
       'verify:stable-parity',
+      'certify:core:prepublish',
       'certify:core',
     ]);
   });
@@ -88,7 +89,27 @@ describe('Wave G core certification contract', () => {
 
   it('exposes one canonical certify:core command with the exact fail-fast gate order', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+    expect(pkg.scripts?.['certify:core:prepublish']).toBe('node scripts/release/certify-core.mjs --prepublish');
     expect(pkg.scripts?.['certify:core']).toBe('node scripts/release/certify-core.mjs');
+
+    const prepublish = spawnSync(process.execPath, ['scripts/release/certify-core.mjs', '--prepublish', '--plan'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+    expect(prepublish.status).toBe(0);
+    expect(prepublish.stderr).toBe('');
+    const prepublishPlan = JSON.parse(prepublish.stdout);
+    expect(prepublishPlan).toMatchObject({
+      schema: 'agent-core-core-certification-plan/1',
+      mode: 'prepublish',
+      matrixCount: 18,
+    });
+    expect(prepublishPlan.gates.map((gate: any) => gate.id)).toEqual([
+      'contract',
+      'release_verification',
+      'memory_100k',
+      'execution_performance',
+    ]);
 
     const result = spawnSync(process.execPath, ['scripts/release/certify-core.mjs', '--plan'], {
       cwd: process.cwd(),
@@ -99,6 +120,7 @@ describe('Wave G core certification contract', () => {
     const plan = JSON.parse(result.stdout);
     expect(plan).toMatchObject({
       schema: 'agent-core-core-certification-plan/1',
+      mode: 'postpublish',
       matrixCount: 18,
     });
     expect(plan.gates.map((gate: any) => gate.id)).toEqual([
