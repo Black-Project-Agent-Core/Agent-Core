@@ -7,6 +7,7 @@ import { assertDestructiveConfirmation } from '../github/safety.js';
 import { OperationalMemoryAudit } from '../memory/operational-audit.js';
 import { AgentCoreRouteError, type RouteContext } from '../runtime/route-context-store.js';
 import type { RuntimeServices } from '../runtime/services.js';
+import { resolveAuditProjectId } from './project-scope.js';
 import { routeErrorResult, validateOperationalRoute } from './route-guard.js';
 
 const ROUTE_REQUIRED_DESCRIPTION = 'Obtain routeContextId from capability_route before using this tool.';
@@ -98,7 +99,7 @@ async function githubRouteGuarded<T>(
       );
     }
   } catch (error) {
-    await audit.rejected(routeContextId, toolName, auditInput, error);
+    await audit.rejected(resolveAuditProjectId(runtime, key, routeContextId), routeContextId, toolName, auditInput, error);
     return routeErrorResult(error) ?? errorResult(error);
   }
 

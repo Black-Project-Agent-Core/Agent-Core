@@ -3,7 +3,7 @@ import * as z from 'zod/v4';
 import type { VerifiedKey } from '../auth/key-types.js';
 import { OperationalMemoryAudit } from '../memory/operational-audit.js';
 import type { RuntimeServices } from '../runtime/services.js';
-import { resolvedProjectScope, resolveRouteExistingPath, resolveRouteTargetPath } from './project-scope.js';
+import { resolveAuditProjectId, resolvedProjectScope, resolveRouteExistingPath, resolveRouteTargetPath } from './project-scope.js';
 import { routeErrorResult, validateOperationalRoute } from './route-guard.js';
 
 function textResult(value: unknown) {
@@ -33,7 +33,7 @@ async function routeGuarded<T>(
   try {
     route = validateOperationalRoute(runtime, key, routeContextId, toolName);
   } catch (error) {
-    await audit.rejected(routeContextId, toolName, auditInput, error);
+    await audit.rejected(resolveAuditProjectId(runtime, key, routeContextId), routeContextId, toolName, auditInput, error);
     return routeErrorResult(error) ?? errorResult(error);
   }
 
@@ -279,6 +279,7 @@ export function registerOperationalTools(
           cwd: resolvedCwd,
           owner: processOwner(key, projectId, routeContextId),
           onTerminal: (snapshot) => audit.lifecycle(
+            projectId,
             routeContextId,
             'start_process',
             'terminal',
@@ -297,13 +298,19 @@ export function registerOperationalTools(
     inputSchema: { sessionId: z.string().min(1), routeContextId: z.string().uuid().optional() },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, async ({ sessionId, routeContextId }) => {
-    const project = resolvedProjectScope(runtime, key, routeContextId);
-    const owner = processOwner(key, project.projectId);
     const audit = new OperationalMemoryAudit(runtime, key);
     try {
-      const context = runtime.processes.sessionContext(sessionId, owner);
+      const context = routeContextId
+        ? runtime.processes.sessionContext(
+          sessionId,
+          processOwner(key, resolvedProjectScope(runtime, key, routeContextId).projectId),
+        )
+        : runtime.processes.sessionContextForPrincipal(sessionId, key.id);
+      const projectId = context.projectId ?? runtime.workspace.resolveProjectRoot();
+      const owner = processOwner(key, projectId);
       const result = runtime.processes.read(sessionId, owner);
       await audit.lifecycle(
+        projectId,
         context.originRouteContextId ?? sessionId,
         'read_process_output',
         'observed',
@@ -322,16 +329,21 @@ export function registerOperationalTools(
     inputSchema: { sessionId: z.string().min(1), routeContextId: z.string().uuid().optional() },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   }, async ({ sessionId, routeContextId }) => {
-    const project = resolvedProjectScope(runtime, key, routeContextId);
-    const owner = processOwner(key, project.projectId);
     const audit = new OperationalMemoryAudit(runtime, key);
     try {
-      const context = runtime.processes.sessionContext(sessionId, owner);
+      const context = routeContextId
+        ? runtime.processes.sessionContext(
+          sessionId,
+          processOwner(key, resolvedProjectScope(runtime, key, routeContextId).projectId),
+        )
+        : runtime.processes.sessionContextForPrincipal(sessionId, key.id);
+      const projectId = context.projectId ?? runtime.workspace.resolveProjectRoot();
+      const owner = processOwner(key, projectId);
       const before = runtime.processes.read(sessionId, owner);
       const sourceRef = context.originRouteContextId ?? sessionId;
-      await audit.lifecycle(sourceRef, 'stop_process', 'stop_requested', { sessionId }, before);
+      await audit.lifecycle(projectId, sourceRef, 'stop_process', 'stop_requested', { sessionId }, before);
       const result = await runtime.processes.stop(sessionId, owner);
-      await audit.lifecycle(sourceRef, 'stop_process', 'stop_succeeded', { sessionId }, result);
+      await audit.lifecycle(projectId, sourceRef, 'stop_process', 'stop_succeeded', { sessionId }, result);
       return textResult(result);
     } catch (error) {
       return errorResult(error);

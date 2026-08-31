@@ -18,6 +18,20 @@ export function resolvedRouteProject(
   return { route, projectId };
 }
 
+
+export function resolveAuditProjectId(
+  runtime: RuntimeServices,
+  key: VerifiedKey,
+  routeContextId: string,
+): string {
+  try {
+    const route = runtime.routes.getOwned(routeContextId, key.id);
+    return route.projectId ?? runtime.workspace.resolveProjectRoot();
+  } catch {
+    return runtime.workspace.resolveProjectRoot();
+  }
+}
+
 export function resolvedProjectScope(
   runtime: RuntimeServices,
   key: VerifiedKey,

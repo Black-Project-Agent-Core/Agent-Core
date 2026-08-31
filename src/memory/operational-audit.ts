@@ -123,7 +123,7 @@ export class OperationalMemoryAudit {
 
   async intended(route: RouteContext, toolName: string, input: Record<string, unknown>): Promise<void> {
     const summary = summarizeOperationalInput(toolName, input);
-    await this.safeRecord('memory.operation_intended', route.routeContextId, toolName, {
+    await this.safeRecord(this.projectId(route), 'memory.operation_intended', route.routeContextId, toolName, {
       input: summary,
       affectedPaths: pathList(input),
       verification: verification(route),
@@ -136,7 +136,7 @@ export class OperationalMemoryAudit {
     input: Record<string, unknown>,
     result: unknown,
   ): Promise<void> {
-    await this.safeRecord('memory.operation_succeeded', route.routeContextId, toolName, {
+    await this.safeRecord(this.projectId(route), 'memory.operation_succeeded', route.routeContextId, toolName, {
       input: summarizeOperationalInput(toolName, input),
       result: summarizeOperationalResult(result),
       affectedPaths: pathList(input),
@@ -153,16 +153,18 @@ export class OperationalMemoryAudit {
     const errorValue = errorSummary(error);
     const inputSummary = summarizeOperationalInput(toolName, input);
     const affectedPaths = pathList(input);
-    await this.safeRecord('memory.operation_failed', route.routeContextId, toolName, {
+    const projectId = this.projectId(route);
+    await this.safeRecord(projectId, 'memory.operation_failed', route.routeContextId, toolName, {
       input: inputSummary,
       error: errorValue,
       affectedPaths,
       verification: verification(route),
     });
-    await this.safeFailureMemory(route.routeContextId, toolName, inputSummary, affectedPaths, errorValue);
+    await this.safeFailureMemory(projectId, route.routeContextId, toolName, inputSummary, affectedPaths, errorValue);
   }
 
   async rejected(
+    projectId: string,
     routeContextId: string,
     toolName: string,
     input: Record<string, unknown>,
@@ -171,37 +173,43 @@ export class OperationalMemoryAudit {
     const errorValue = errorSummary(error);
     const inputSummary = summarizeOperationalInput(toolName, input);
     const affectedPaths = pathList(input);
-    await this.safeRecord('memory.operation_rejected', routeContextId, toolName, {
+    await this.safeRecord(projectId, 'memory.operation_rejected', routeContextId, toolName, {
       input: inputSummary,
       error: errorValue,
       affectedPaths,
       verification: verification(undefined),
     });
-    await this.safeFailureMemory(routeContextId, toolName, inputSummary, affectedPaths, errorValue);
+    await this.safeFailureMemory(projectId, routeContextId, toolName, inputSummary, affectedPaths, errorValue);
   }
 
   async lifecycle(
+    projectId: string,
     routeContextId: string,
     toolName: string,
     phase: 'observed' | 'stop_requested' | 'stop_succeeded' | 'terminal',
     input: Record<string, unknown>,
     result?: unknown,
   ): Promise<void> {
-    await this.safeRecord(`memory.operation_${phase}`, routeContextId, toolName, {
+    await this.safeRecord(projectId, `memory.operation_${phase}`, routeContextId, toolName, {
       input: summarizeOperationalInput(toolName, input),
       ...(result === undefined ? {} : { result: summarizeOperationalResult(result) }),
       affectedPaths: pathList(input),
       verification: verification(undefined),
     });
   }
-  private scope() {
+  private projectId(route: RouteContext): string {
+    return route.projectId ?? this.runtime.workspace.resolveProjectRoot();
+  }
+
+  private scope(projectId: string) {
     return {
       principalId: this.key.id,
-      projectId: this.runtime.workspace.roots[0],
+      projectId,
     };
   }
 
   private async safeRecord(
+    projectId: string,
     eventType: string,
     routeContextId: string,
     toolName: string,
@@ -209,7 +217,7 @@ export class OperationalMemoryAudit {
   ): Promise<void> {
     try {
       await this.runtime.memory.recordEvent({
-        scope: this.scope(),
+        scope: this.scope(projectId),
         eventType,
         sourceType: 'operational_audit',
         sourceRef: routeContextId,
@@ -222,6 +230,7 @@ export class OperationalMemoryAudit {
   }
 
   private async safeFailureMemory(
+    projectId: string,
     routeContextId: string,
     toolName: string,
     input: Record<string, unknown>,
@@ -232,7 +241,7 @@ export class OperationalMemoryAudit {
       const signature = stableJson({ toolName, input, affectedPaths });
       const signatureHash = createHash('sha256').update(signature, 'utf8').digest('hex').slice(0, 24);
       await this.runtime.memory.commit({
-        scope: this.scope(),
+        scope: this.scope(projectId),
         canonicalKey: `failure.operation.${toolName}.${signatureHash}`,
         kind: 'failure',
         value: {

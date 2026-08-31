@@ -1,4 +1,4 @@
-import { access, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -70,11 +70,45 @@ async function fixture(enforceHardGuardrails = false) {
 function readEvents(dbPath: string) {
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
-    return db.prepare(`SELECT event_type, source_type, source_ref, raw_text, redacted_text, metadata_json
+    return db.prepare(`SELECT principal_id, project_id, event_type, source_type, source_ref, raw_text, redacted_text, metadata_json
       FROM memory_events ORDER BY created_at, rowid`).all() as Array<Record<string, unknown>>;
   } finally {
     db.close();
   }
+}
+
+async function multiProjectFixture() {
+  const container = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-op-audit-multi-'));
+  roots.push(container);
+  const projectA = path.join(container, 'project-a');
+  const projectB = path.join(container, 'project-b');
+  await Promise.all([mkdir(projectA), mkdir(projectB)]);
+  const dbPath = path.join(container, 'runtime', 'memory', 'audit.sqlite');
+  const defaults = loadConfig({}, projectA);
+  const runtime = createRuntimeServices([projectA, projectB], path.join(container, 'capabilities'), undefined, {
+    ...defaults.memory,
+    enabled: true,
+    dbPath,
+  });
+  runtimes.push(runtime);
+  const keyStore = new FileKeyStore(path.join(container, 'data'));
+  const principal = await keyStore.create('operational-audit-multi-project');
+  const server = createServer(createHttpHandler({
+    keyStore,
+    auditLogger: new FileAuditLogger(path.join(container, 'logs')),
+    mcpHandler: createMcpHttpHandler(runtime),
+  }));
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  servers.push(server);
+  return {
+    container,
+    projectA,
+    projectB,
+    dbPath,
+    runtime,
+    principal,
+    baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+  };
 }
 
 afterEach(async () => {
@@ -87,6 +121,44 @@ afterEach(async () => {
 });
 
 describe('automatic operational evidence capture', () => {
+
+  it('binds operational events and failure memory to the routed project instead of workspace root zero', async () => {
+    const f = await multiProjectFixture();
+    const missing = path.join(f.projectB, 'missing-project-b-proof.txt');
+    const route = body(await call(f.baseUrl, f.principal.key, 'capability_route', {
+      task: `Read the missing Project B file ${missing}`,
+      context: `Operate only inside ${f.projectB}.`,
+      projectRoot: f.projectB,
+    }));
+    expect(route.projectId).toBe(f.projectB);
+
+    const failedRead = await call(f.baseUrl, f.principal.key, 'read_file', {
+      path: missing,
+      routeContextId: route.routeContextId,
+    });
+    expect(failedRead.result.isError).toBe(true);
+
+    const projectBFailures = await f.runtime.memory.search({
+      scope: { principalId: f.principal.metadata.id, projectId: f.projectB },
+      query: `read_file ${missing}`,
+      limit: 10,
+    });
+    const projectAFailures = await f.runtime.memory.search({
+      scope: { principalId: f.principal.metadata.id, projectId: f.projectA },
+      query: `read_file ${missing}`,
+      limit: 10,
+    });
+    expect(projectBFailures.hits.some((hit) => hit.kind === 'failure' && hit.valueText.includes('read_file'))).toBe(true);
+    expect(projectAFailures.hits.some((hit) => hit.kind === 'failure' && hit.valueText.includes('read_file'))).toBe(false);
+
+    await f.runtime.execution.close();
+    await f.runtime.memory.close();
+    const events = readEvents(f.dbPath).filter((event) => String(event.event_type).startsWith('memory.operation_'));
+    expect(events.length).toBeGreaterThanOrEqual(2);
+    expect(events.every((event) => event.principal_id === f.principal.metadata.id)).toBe(true);
+    expect(events.every((event) => event.project_id === f.projectB)).toBe(true);
+    expect(events.some((event) => event.project_id === f.projectA)).toBe(false);
+  });
   it('records routed intent/success with bounded redacted metadata while preserving the MCP result', async () => {
     const f = await fixture(false);
     const route = body(await call(f.baseUrl, f.principal.key, 'capability_route', {

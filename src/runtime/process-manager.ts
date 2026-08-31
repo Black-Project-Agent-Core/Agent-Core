@@ -240,6 +240,15 @@ export class ProcessManager {
     return { ...session.owner };
   }
 
+  sessionContextForPrincipal(sessionId: string, principalId: string): ProcessSessionOwner {
+    const normalizedPrincipalId = principalId.trim();
+    const session = this.sessions.get(sessionId);
+    if (!session || !normalizedPrincipalId || !session.owner || session.owner.principalId !== normalizedPrincipalId) {
+      throw new ProcessSessionError('PROCESS_SESSION_NOT_FOUND', 'Process session was not found');
+    }
+    return { ...session.owner };
+  }
+
   read(sessionId: string, owner?: ProcessSessionOwner): { sessionId: string; stdout: string; stderr: string; running: boolean; exitCode: number | null; outputTruncated: boolean } {
     const session = this.requireSession(sessionId, owner);
     return {

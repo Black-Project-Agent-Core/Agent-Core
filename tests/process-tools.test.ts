@@ -71,6 +71,19 @@ describe('ProcessManager', () => {
     expect(stopped.stopped).toBe(true);
   });
 
+  it('resolves stored process project identity for the owning principal without trusting a replacement route', async () => {
+    const { root, manager } = await setup();
+    const storedOwner = { principalId: 'principal-a', projectId: `${root}-project-b`, originRouteContextId: 'route-expired' };
+    const started = await manager.start(sleepCommand(5000, 'stored-owner-ready\n'), {
+      cwd: root,
+      owner: storedOwner,
+    });
+
+    expect(manager.sessionContextForPrincipal(started.sessionId, 'principal-a')).toEqual(storedOwner);
+    expect(() => manager.sessionContextForPrincipal(started.sessionId, 'principal-b')).toThrow(/not found/i);
+    await manager.stop(started.sessionId);
+  });
+
   it('binds background sessions to principal/project/origin route and hides them from a different owner', async () => {
     const { root, manager } = await setup();
     const ownerA = { principalId: 'principal-a', projectId: root, originRouteContextId: 'route-a' };
