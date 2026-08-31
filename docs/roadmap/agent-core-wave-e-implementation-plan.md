@@ -188,7 +188,7 @@ external AI model/API dependency       = 0
 
 ## Wave E Pre-Tuning Baseline
 
-`BASELINE_STATE=CAPTURED` at evaluator source commit `3aa052c46fceefc740723a4978a3fa3d16a9ffe5` before any routing/memory production heuristic or weight tuning.
+`BASELINE_STATE=CAPTURED` at corrected evaluator/corpus source commit `6db063667f1f73d606442705143a78e1f09c9c64` before any routing/memory production heuristic or weight tuning. This supersedes the earlier `3aa052c` measurement because MRR was corrected to use first-relevant rank and r20 relevance was corrected from test automation to backend debugging; no production router/retriever/scoring code had changed between those measurements.
 
 Stable report evidence:
 
@@ -196,7 +196,7 @@ Stable report evidence:
 routing cases                       40
 memory cases                        12
 report byte stability               PASS
-report SHA-256                       a60d5a0cf26da54d0057bbc5720af4838d079cb4542011879dbebc812432106d
+report SHA-256                       fa0eed97d6a363d15b1e02c87775e80322c1af60aa298a39ad2e8d14b847b68c
 pre-tuning quality:gate exit         1 (expected failure)
 ```
 
@@ -209,7 +209,7 @@ domain correctness                   1.00
 false high-impact rate               0.05714285714285714
 unsafe overpermission rate           0.225
 false read-only classification       0.47368421052631576
-relevant skill precision@2           0.50
+relevant skill precision@2           0.5277777777777778
 unnecessary skill-load rate          0.08333333333333333
 required skill-load correctness      1.00
 verification correctness             1.00
@@ -222,7 +222,7 @@ Routing gate failures requiring evidence-backed tuning:
 false high-impact                    r12-remove-whitespace, r27-remove-doc-wording
 unsafe overpermission                r13-r20 read-only domain/structured cases + r38-database-review
 false read-only classification       same 9 read-only domain/structured cases
-precision@2                          18 corpus cases with an irrelevant second-ranked capability
+precision@2                          17 corpus cases with an irrelevant second-ranked capability
 unnecessary skill load               r19-project-review, r31-registry-admin
 tier accuracy                        r12-remove-whitespace, r19-project-review, r27-remove-doc-wording
 ```
@@ -231,7 +231,7 @@ Memory baseline:
 
 ```text
 Recall@K                             1.00
-MRR                                  0.8541666666666666
+MRR                                  0.9375
 hard-guardrail recall                1.00
 current-revision correctness         1.00
 prior-failure recall                 1.00
@@ -248,10 +248,9 @@ deterministic replay equality        1.00
 Memory gate failures requiring evidence-backed tuning:
 
 ```text
-MRR                                  m06-artifact-procedure-recall,
-                                     m07-stale-decision-resists-noise,
-                                     m12-deterministic-release-recall
 noise displacement                   m07-stale-decision-resists-noise
 ```
+
+MRR is now above the certified threshold after correcting the evaluator definition; it is not a tuning target.
 
 All memory safety/isolation/current-truth gates already pass. Wave E therefore forbids weakening guardrail, revision, graph, conflict, artifact/procedure, scope isolation, character-budget, or determinism behavior while tuning MRR/noise resistance.
