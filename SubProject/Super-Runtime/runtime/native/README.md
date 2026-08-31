@@ -1,6 +1,6 @@
 # Super-Runtime Native Substrate Boundary
 
-Status: Tasks 1-8 implemented; Milestone-1 lease hardening under stability audit
+Status: **Super-Runtime v0.1.0 — Milestone 1 Stable Core**
 
 This directory is the native production core of the first Super-Runtime milestone. It now contains the pinned GGML/llama substrate boundary, deterministic memory ledger, stable-address file residency with RAII range leases, generic MoE range planning, fixed-order dense residency, global budget planning, and the unified `RuntimeEntry` lifecycle. HTTP/provider APIs, GPU runtime policy, downstream AI-tool integration, Windows residency, and broad real-model product hardening remain deferred.
 
@@ -280,7 +280,7 @@ Passing Task 1 through Task 6 means only:
 
 > Super-Runtime has a reproducible native CPU substrate, deterministic memory ownership accounting, stable file residency, generic sparse-MoE and dense residency policy fixtures with exact GGML CPU parity, and a deterministic global host/device admission plan.
 
-Task 7 supplies the separately documented hard memory-ceiling harness under `benchmarks/`, and Task 8 now supplies the unified native runtime entrypoint. The current activity is Milestone-1 stability audit/hardening; no new feature checkpoint is active until that audit closes.
+Task 7 supplies the separately documented hard memory-ceiling harness under `benchmarks/`, Task 8 supplies the unified native runtime entrypoint, and the final stability audit adds generic RAII lease/reclaim protection. Milestone 1 is closed as v0.1.0 Stable Core; no post-Milestone feature is active without explicit instruction.
 
 ## Task 8 — unified native runtime entrypoint
 
@@ -331,4 +331,4 @@ cmake --build .build/runtime-entry --target super-runtime-test-runtime-entry --p
 
 The same runtime-entry test has also passed through `benchmarks/memory-ceiling.sh` under a real 128 MiB delegated cgroup-v2 ceiling with `memory.swap.max=0` and byte-identical stdout SHA-256 parity against a fresh direct baseline.
 
-Task 8 establishes an executable first runtime lifecycle, but **stability is an audit result, not a task-completion synonym**. The Milestone-1 Definition of Done remains authoritative; any unchecked invariant must be closed before a stable label is accepted.
+Task 8 establishes the executable first runtime lifecycle. The subsequent Milestone-1 stability audit found and closed the missing generic active-range lease/reclaim invariant, then re-ran native, sanitizer, hard-cap, parent-repository test, and build gates. Version `0.1.0` is the first Stable core within the scope defined by `../../docs/STABILITY-AUDIT-MILESTONE-1.md`.

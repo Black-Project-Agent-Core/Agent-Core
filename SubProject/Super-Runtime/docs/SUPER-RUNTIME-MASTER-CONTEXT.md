@@ -1,7 +1,7 @@
 # Super-Runtime Master Context
 
 Status: **CANONICAL SOURCE OF TRUTH**
-Date: 2026-08-31
+Date: 2026-09-01
 Canonical repository: `Black-Project-Agent-Core/Agent-Core`
 Canonical path: `SubProject/Super-Runtime/`
 
@@ -27,10 +27,10 @@ Its purposes are:
 4. distinguish proven results from goals, hypotheses, and deferred work;
 5. define the ownership boundary between K3-in-C, llama.cpp/GGML, and Super-Runtime;
 6. prevent downstream AI-tool integration from entering the runtime-core build prematurely;
-7. define the only active implementation frontier;
+7. define the active implementation frontier when one exists, or explicitly state when a stable milestone is closed;
 8. provide an evidence index so older documents remain auditable without becoming competing sources of direction.
 
-This file is a **consolidation of existing approved/researched material**. It does not declare the runtime implemented when it is not.
+This file is a **consolidation of approved research plus verified implementation state**. Stable claims in this file are limited to the executable evidence and explicit scope recorded here; deferred capabilities are never implied by the Stable label.
 
 ---
 
@@ -42,7 +42,10 @@ As of this master-context checkpoint:
 SubProject/Super-Runtime/
 ├── CMakeLists.txt
 ├── README.md
+├── VERSION
 ├── docs/
+│   ├── SUPER-RUNTIME-MASTER-CONTEXT.md
+│   └── STABILITY-AUDIT-MILESTONE-1.md
 ├── runtime/
 │   └── native/
 │       ├── CMakeLists.txt
@@ -91,27 +94,24 @@ Task 6 global runtime budget planner                   COMPLETE
 Task 7 hard memory-ceiling harness                     COMPLETE
 Task 8 minimal native runtime entrypoint               COMPLETE
 Generic FileResidency RAII lease primitive             COMPLETE
-Milestone-1 stability audit                            PENDING
+Milestone-1 stability audit                            COMPLETE — STABLE
+Stable version                                           0.1.0
 MoE production scheduler-hook integration              DEFERRED AFTER M1
 ```
 
 Therefore:
 
-> **Super-Runtime now exists as a first runnable Milestone-1 native core candidate, but it is not yet labeled Stable until the canonical stability audit closes.**
+> **Super-Runtime now exists as a first runnable Milestone-1 native core and the canonical Milestone-1 stability audit is closed: Stable for the Milestone-1 scope defined in this document.**
 
 Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds deterministic memory accounting. Task 3 adds stable-address Linux file residency. Task 4 adds generic MoE selected-ID range planning with exact CPU `MUL_MAT_ID` parity. Task 5 adds deterministic dense residency with safe one/two-slot behavior. Task 6 adds deterministic global admission planning. Task 7 adds real external cgroup-v2 hard-cap evidence. Task 8 now adds the first unified runtime lifecycle: deterministic fixture metadata is loaded, the global plan is admitted, actual fixed ownership is reserved in one `MemoryLedger`, file-backed dense weights are managed by `DenseResidencyPolicy`, GGML CPU executes each prepared layer, telemetry tracks readiness/peak ownership/completed layers/output, cancellation is honored only at safe layer boundaries, and unload releases all runtime ownership. The independent manual oracle differs from the GGML runtime by only `2.91038e-11` in the fresh fixture, well inside the `1e-6` correctness gate. The runtime-entry acceptance binary also passes under a real 128 MiB cgroup ceiling with swap disabled and byte-identical stdout parity.
 
-Phase 0 learning and Tasks 1 through 8 are complete. Milestone-1 stability remains **pending audit**, not automatically granted by Task 8 completion.
+Phase 0 learning, Tasks 1 through 8, and the Milestone-1 stability audit are complete. The audit found and closed one missing correctness primitive: active residency needed an explicit lease that blocks reclaim until the compute safe point. That invariant is now implemented and regression-tested.
 
-The project frontier remains:
-
-> **close the Milestone-1 stability audit on the runnable native core without opening post-Milestone product scope.**
+The project frontier is now intentionally **post-Milestone-1 and not yet opened by this document**. No API work, GPU work, downstream AI-tool integration, or broader product feature is implicitly authorized by the Stable label.
 
 ## Immediate next action — exactly one task
 
-The only active action after Task 8 is **Milestone-1 stability audit and required corrective hardening**.
-
-Do not begin API work, GPU work, downstream integration, or a new product feature until the audit proves every Milestone-1 Definition-of-Done item. If the audit finds a missing correctness primitive, close that gap with focused tests before labeling the core stable.
+There is no active implementation task after Milestone 1 in this master context. The next milestone must be selected explicitly before implementation begins. Until then, preserve the Stable Milestone-1 baseline and do not reopen Phase-0 archaeology unless implementation evidence contradicts a frozen assumption.
 
 Task 1 through Task 8 verification boundary:
 
@@ -1365,9 +1365,9 @@ Linux Phase-0 probes established feasibility using file-backed mappings and Linu
 
 This is the first prototype platform for residency semantics because it provided measurable tooling in the Codespace research environment.
 
-The current Codespace does **not** provide a trustworthy external hard cgroup memory ceiling suitable for final hard-cap claims.
+The earlier Phase-0 Codespace environment did not provide a trustworthy external hard cgroup memory ceiling, so no hard-cap claim was made at that stage. Task 7 later established a delegated cgroup-v2 acceptance path, and the final Milestone-1 audit reconfirmed the runtime-entry fixture under a real `134217728`-byte ceiling with `memory.swap.max=0`, successful process exit, and byte-identical stdout parity.
 
-Do not fake hard-cap acceptance with `ulimit -v`, because large stable virtual mappings can legitimately exceed the desired physical RSS target.
+Do not substitute `ulimit -v` for this acceptance path, because large stable virtual mappings can legitimately exceed the desired physical RSS target while remaining within the intended physical-memory envelope.
 
 ## Windows
 
@@ -1551,7 +1551,7 @@ It must not inspect a Kimi/Qwen/DeepSeek model-family enum merely to decide whic
 
 Task 4 production checkpoint now implements this planner under `runtime/native/super_runtime/moe_residency.*`. Its focused test covers unsorted/duplicate/adjacent/sparse IDs, invalid IDs, invalid geometry, arithmetic overflow, GGML-style row stride, range alignment/coalescing, `FileResidency`/`MemoryLedger` integration, and an actual CPU `MUL_MAT_ID` parity fixture. The selected union `{0, 1, 3}` matches the fully resident baseline with `max_abs_diff = 0` while unselected expert `2` is poisoned in the managed copy.
 
-This does **not** yet freeze a production scheduler callback or implement READY/lease lifecycle around the op; those remain later integration work.
+Task 4 does **not** freeze a production scheduler callback or bind the generic lease directly around a live MoE scheduler hook; that MoE integration remains later work. The generic READY/lease lifecycle itself is now implemented in `FileResidency`, and the dense runtime path consumes it to prevent reclaim while compute owns the active range.
 
 ## Task 5 — fixed-order dense residency policy
 
@@ -1628,15 +1628,30 @@ Milestone 1 is accepted only if fresh executable evidence demonstrates all appli
 [x] output matches the correctness oracle
 [x] measured RSS/residency telemetry is reported
 [x] cleanup/unload releases runtime ownership cleanly
-[ ] all tests pass
-[ ] implementation is committed and verified on canonical GitHub
+[x] all configured non-skipped tests pass
+[x] implementation is committed and verified on canonical GitHub
 ```
 
-Only after those conditions are satisfied should the project say:
+Those conditions are now satisfied for the Milestone-1 scope, so the project may say:
 
-> **Super-Runtime exists as a first runnable core.**
+> **Super-Runtime exists as a first runnable core and Milestone 1 is Stable.**
 
-Production quality, broad model compatibility, Windows, GPU, APIs, and AI-tool replacement remain later milestones.
+`Stable` here is a milestone-scoped engineering status, not a claim of production 1.0 readiness, broad model compatibility, Windows support, GPU support, API compatibility, or downstream AI-tool replacement. Those remain later milestones.
+
+## 34.1 Milestone-1 stability audit closure evidence
+
+The final stability audit closed only after the active-range reclaim gap was hardened with move-only RAII leases and the corrected implementation was pushed to canonical `origin/main`. Fresh evidence included:
+
+- clean Release configure/build plus the complete native CTest suite: `6/6` PASS;
+- the native smoke entrypoint with the exact pinned llama.cpp revision and CPU backend;
+- 100 consecutive executions each of file residency, dense residency, MoE residency, runtime budget, and runtime entry acceptance binaries;
+- ASan+UBSan executions for FileResidency, DenseResidencyPolicy, MoE residency, RuntimeBudgetPlan, and RuntimeEntry with no sanitizer failure;
+- `benchmarks/test-memory-ceiling.sh` PASS, including fail-closed unsupported-host, runtime-failure, parity-failure, and deliberate OOM classifications;
+- runtime-entry acceptance under a delegated cgroup-v2 `134217728`-byte ceiling with `memory.swap.max=0` and byte-identical stdout parity;
+- runtime-entry vs independent manual oracle `max_abs_diff = 2.91038e-11`, below the `1e-6` gate;
+- root Agent-Core `npm test`: `137` test files PASS, `2` skipped, `668` tests PASS, `38` skipped;
+- root Agent-Core `npm run build` PASS;
+- `git diff --check` clean before release documentation integration.
 
 ---
 
@@ -1742,8 +1757,26 @@ Current meaning:
 - canonical location is the Agent-Core monorepo subproject;
 - CPU-first local inference runtime;
 - K3-in-C + llama.cpp/GGML are the active reference/substrate boundary;
-- Phase 0 is complete;
-- next action is implementation.
+- Phase 0 and Milestone 1 are complete;
+- v0.1.0 is the first Stable core;
+- no post-Milestone task is active without explicit instruction.
+
+## `VERSION`
+
+Role: canonical Super-Runtime semantic version marker.
+
+Current value: `0.1.0`.
+
+## `docs/STABILITY-AUDIT-MILESTONE-1.md`
+
+Role: authoritative release audit for the first Stable core.
+
+Current authority:
+
+- records the audited implementation SHA and pinned llama.cpp/GGML revision;
+- maps every Milestone-1 Definition-of-Done gate to executable evidence;
+- records the lease/reclaim gap discovered and fixed by the final audit;
+- defines exactly what v0.1.0 Stable does and does not claim.
 
 ## `runtime/native/README.md`
 
@@ -2062,7 +2095,7 @@ Current meaning:
 
 Use this statement when a short explanation of Super-Runtime is needed:
 
-> **Super-Runtime now has a first runnable CPU-first native core implementation for Milestone 1: pinned llama.cpp/GGML CPU substrate, deterministic global memory accounting/admission, Linux stable-address file residency with RAII reclaim protection, generic sparse-MoE range planning, deterministic dense residency, real cgroup-v2 hard-cap acceptance, and a unified `RuntimeEntry` fixture lifecycle with correctness/cleanup telemetry. Its defining goal remains to run architecture-correct model execution under an explicit global resource envelope while reusing llama.cpp/GGML for model graphs, GGUF/tensors, kernels, and architecture-specific state. K3-in-C remains the primary low-memory design reference, not a neural architecture to copy. Stability is still pending the final Milestone-1 audit; downstream AI-tool integration remains deferred until that audit closes.**
+> **Super-Runtime has a Stable Milestone-1 CPU-first native core: pinned llama.cpp/GGML CPU substrate, deterministic global memory accounting/admission, Linux stable-address file residency with RAII reclaim protection, generic sparse-MoE range planning, deterministic dense residency, real cgroup-v2 hard-cap acceptance, and a unified `RuntimeEntry` fixture lifecycle with correctness/cleanup telemetry. Its defining goal remains to run architecture-correct model execution under an explicit global resource envelope while reusing llama.cpp/GGML for model graphs, GGUF/tensors, kernels, and architecture-specific state. K3-in-C remains the primary low-memory design reference, not a neural architecture to copy. The Stable label is limited to the Milestone-1 scope; downstream AI-tool integration, production MoE scheduler hooks, Windows residency, GPU policy, broad model compatibility, and API/product layers remain deferred until explicitly selected as later milestones.**
 
 ---
 
