@@ -57,12 +57,15 @@ SubProject/Super-Runtime/
 │       │   ├── moe_residency.h
 │       │   ├── moe_residency.cpp
 │       │   ├── dense_residency.h
-│       │   └── dense_residency.cpp
+│       │   ├── dense_residency.cpp
+│       │   ├── runtime_budget.h
+│       │   └── runtime_budget.cpp
 │       └── tests/
 │           ├── test_memory_ledger.cpp
 │           ├── test_file_residency.cpp
 │           ├── test_moe_residency.cpp
-│           └── test_dense_residency.cpp
+│           ├── test_dense_residency.cpp
+│           └── test_runtime_budget.cpp
 ├── tests/
 │   └── contracts/
 │       └── native-substrate.sh
@@ -77,9 +80,9 @@ Task 2 deterministic MemoryLedger                     COMPLETE
 Task 3 stable-address file residency                   COMPLETE
 Task 4 generic MoE selected-ID range planner           COMPLETE
 Task 5 fixed-order dense residency policy              COMPLETE
-Task 6 global runtime budget planner                   NOT STARTED
+Task 6 global runtime budget planner                   COMPLETE
+Task 7 hard memory-ceiling harness                     NOT STARTED
 MoE READY/lease scheduler integration                  NOT STARTED
-benchmarks/ hard-cap harness                          NOT STARTED
 native runtime entrypoint                             NOT STARTED
 ```
 
@@ -87,9 +90,9 @@ Therefore:
 
 > **Super-Runtime still does not yet exist as a runnable inference runtime product.**
 
-Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds the deterministic thread-safe `MemoryLedger`. Task 3 adds the first physical backing primitive: a Linux file-backed mapping whose virtual address remains stable while page-aligned ranges can be explicitly prefetched/released and charged to `ResidentWeights` in the ledger. Task 4 adds a generic MoE planner that honors strided GGML-style selected IDs, validates/deduplicates them, maps them through expert stride metadata, aligns/coalesces residency ranges, and preserves exact CPU `MUL_MAT_ID` output in the tested selected-range fixture. Task 5 adds deterministic fixed-order dense planning: all-pinned when possible, otherwise pinned-prefix plus two-slot look-ahead, with a one-slot synchronous fallback that refuses advancement before the current layer reaches an explicit completion safe point. The tested dense GGML paths preserve exact output while staying inside their configured resident-weight budgets. These checkpoints still do not load a model or provide the global runtime budget planner.
+Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds the deterministic thread-safe `MemoryLedger`. Task 3 adds stable-address Linux file residency. Task 4 adds generic MoE selected-ID range planning with exact CPU `MUL_MAT_ID` parity. Task 5 adds deterministic fixed-order dense planning with pinned-prefix, two-slot look-ahead, and one-slot safe fallback. Task 6 now adds deterministic global admission planning: runtime overhead, mandatory weights, context/state, scratch, staging, and safety reserve are admitted before dynamic dense/MoE residency; infeasible host or device requests fail closed; unused ceiling remains explicit rather than being fabricated as ownership. These checkpoints still do not provide external hard-cap enforcement or the unified runtime lifecycle entrypoint.
 
-Phase 0 learning is complete, and the first five implementation checkpoints are complete.
+Phase 0 learning is complete, and the first six implementation checkpoints are complete.
 
 The project frontier remains:
 
@@ -97,11 +100,11 @@ The project frontier remains:
 
 ## Immediate next action — exactly one task
 
-The next eligible implementation checkpoint is **Task 6 only: add the global runtime budget planner**.
+The next eligible implementation checkpoint is **Task 7 only: add the external hard memory-ceiling acceptance harness**.
 
-Do not begin the hard-cap harness, runtime entrypoint, API work, GPU work, or downstream integration in parallel with Task 6. Task 6 becomes active only after the Task 5 commit is present and remotely verified on canonical `Agent-Core/main`.
+Do not begin the runtime entrypoint, API work, GPU work, or downstream integration in parallel with Task 7. Task 7 becomes active only after the Task 6 commit is present and remotely verified on canonical `Agent-Core/main`.
 
-Task 1 + Task 2 + Task 3 + Task 4 + Task 5 verification boundary:
+Task 1 + Task 2 + Task 3 + Task 4 + Task 5 + Task 6 verification boundary:
 
 ```text
 bash tests/contracts/native-substrate.sh
@@ -140,6 +143,15 @@ ctest -R super-runtime-dense-residency
   -> active current layer blocks premature advance
   -> MemoryLedger resident ownership never exceeds the plan budget
   -> fully resident vs managed GGML dense parity max_abs_diff = 0
+  -> PASS
+
+ctest -R super-runtime-runtime-budget
+  -> mandatory host costs admitted before dynamic weights
+  -> context can make an otherwise small-weight request infeasible
+  -> dynamic minima admitted before preferred cache headroom
+  -> dense/MoE discretionary share is explicit and inspectable
+  -> device request validated against device inventory
+  -> overflow/failure publishes no partial plan
   -> PASS
 ```
 

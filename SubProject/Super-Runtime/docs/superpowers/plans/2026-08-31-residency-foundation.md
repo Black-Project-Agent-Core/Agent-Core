@@ -189,23 +189,23 @@ Commit message: `feat: add fixed-order dense residency policy`
 - Consumes: model memory breakdown, context-memory estimate, compute/scratch estimate, device inventory, configured memory ceiling
 - Produces: an explicit allocation plan for fixed costs, context/state, dense residency, MoE residency, staging, and safety reserve
 
-- [ ] **Step 1: Write failing tests for feasible and infeasible plans**
+- [x] **Step 1: Write failing tests for feasible and infeasible plans**
 
 Include a case where weights fit but context state makes the request infeasible. The planner must refuse rather than silently exceed budget.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Expected: failure because the planner does not exist.
 
-- [ ] **Step 3: Implement deterministic planning**
+- [x] **Step 3: Implement deterministic planning**
 
 Prioritize mandatory state/fixed costs before discretionary weight caches. Keep dense-vs-MoE allocation policy explicit and inspectable.
 
-- [ ] **Step 4: Run all native tests**
+- [x] **Step 4: Run all native tests**
 
 Expected: all prior tests plus budget planner PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit message: `feat: add global runtime budget planner`
 

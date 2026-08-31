@@ -248,10 +248,26 @@ cmake --build .build/dense-residency --target super-runtime-test-dense-residency
 
 Task 5 proves deterministic fixed-order residency and safe one/two-slot budget behavior. It does **not** prove asynchronous I/O overlap, optimal real-model grouping, a universal lease engine, or the global worker-budget planner.
 
-## Scope boundary after Task 5
+## Task 6 — global runtime budget planner
 
-Passing Task 1 through Task 5 means only:
+`RuntimeBudgetPlan` turns the resource-envelope model into deterministic admission output. Mandatory host costs are reconciled first: runtime overhead, mandatory weights, context/state, compute scratch, staging, and safety reserve. Only the remaining host ceiling is available to dynamic dense/MoE residency. Dynamic minima are mandatory; discretionary headroom uses an explicit `dense_share_percent` and never exceeds preferred targets. Optional device-memory requests are validated against separately reported device inventory.
 
-> Super-Runtime has a reproducible native CPU substrate boundary, deterministic memory ownership accounting, Linux stable-address file residency, generic sparse-MoE selected-range planning, and deterministic dense graph-order residency with exact GGML CPU parity in the tested fixtures.
+The planner fails closed on invalid inputs, arithmetic overflow, mandatory host oversubscription, dynamic-minimum oversubscription, or device oversubscription. A failed request publishes a zero/empty plan. Unused host ceiling stays visible as `unallocated_host_bytes`; it is not counted as runtime ownership.
 
-It does **not** mean the Super-Runtime inference runtime is complete. The next checkpoint is Task 6: the global runtime budget planner.
+Focused native test:
+
+```bash
+cmake -G Ninja -S . -B .build/runtime-budget -DCMAKE_BUILD_TYPE=Release
+cmake --build .build/runtime-budget --target super-runtime-test-runtime-budget --parallel "$(nproc)"
+(cd .build/runtime-budget && ctest --output-on-failure -R '^super-runtime-runtime-budget$')
+```
+
+The fixture includes the required case where dynamic weights are zero/small but context state makes admission infeasible. Task 6 is a deterministic planner; it is **not** evidence that the operating system enforced the planned ceiling.
+
+## Scope boundary after Task 6
+
+Passing Task 1 through Task 6 means only:
+
+> Super-Runtime has a reproducible native CPU substrate, deterministic memory ownership accounting, stable file residency, generic sparse-MoE and dense residency policy fixtures with exact GGML CPU parity, and a deterministic global host/device admission plan.
+
+It does **not** mean the Super-Runtime inference runtime is complete. The next checkpoint is Task 7: a hard memory-ceiling acceptance harness that must fail closed when real external enforcement is unavailable.
