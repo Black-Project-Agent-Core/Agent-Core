@@ -934,25 +934,61 @@ Wave C is certified. The implementation plan contains the complete pre-integrati
 
 **Goal:** make Agent Core behavior diagnosable end-to-end without leaking secrets.
 
-Scope:
+Implemented scope:
 
-- asynchronous audit journal;
-- correlation IDs;
-- rotation/retention;
-- tamper-evident chain;
-- expanded bounded health metrics;
-- optional local OpenTelemetry traces/metrics export.
+- W3C-compatible request trace boundary with cryptographically random local request/span identifiers and `AsyncLocalStorage` propagation;
+- one central MCP instrumentation wrapper for all existing 55 tools without schema changes;
+- request -> route -> tool -> execution run/node/attempt correlation, including durable execution result markers and operational-memory metadata;
+- asynchronous bounded local audit journal; request/routing paths enqueue and do not synchronously append to disk;
+- recursive bounded audit sanitization/redaction with no Authorization/Cookie/raw execution-log capture;
+- monotonic sequence + SHA-256 `previousHash` chain;
+- whole-record audit rotation, atomic retained-chain anchor, and read-only tamper verifier (`agent-core audit-verify`);
+- bounded local HTTP/auth/OAuth/routing/tool/maintenance/audit/telemetry metrics;
+- detailed local health exposes aggregate audit/observability state only, with a short audit-head prefix and no raw request/trace/project/path IDs;
+- optional OTLP/HTTP JSON traces+metrics exporter, disabled by default and restricted to credential-free loopback endpoints;
+- OTLP trace queue is bounded, exported attributes/metric names are fixed/allowlisted, and collector failure never affects Agent Core operation;
+- OpenTelemetry Logs are deliberately not used; local audit JSONL remains authoritative;
+- no new package dependency, telemetry API key, SaaS backend, external AI model, or model API key.
 
-Exit gates:
+Configuration added:
 
 ```text
-raw credentials in telemetry/audit    = 0
-request-to-evidence correlation        complete
-request-path synchronous log stalls    removed
-rotation integrity                     PASS
-tamper verification                    PASS
-collector absent                       Agent Core remains fully functional
+AGENT_CORE_AUDIT_QUEUE_CAPACITY
+AGENT_CORE_AUDIT_MAX_FILE_BYTES
+AGENT_CORE_AUDIT_MAX_ROTATED_FILES
+AGENT_CORE_AUDIT_RETENTION_MS
+
+AGENT_CORE_OTLP_ENDPOINT                 unset = disabled; loopback http/https only
+AGENT_CORE_OTLP_TIMEOUT_MS
+AGENT_CORE_OTLP_MAX_QUEUE
+AGENT_CORE_OTLP_EXPORT_INTERVAL_MS
 ```
+
+Exit gates at the pre-integration source:
+
+```text
+raw credentials in telemetry/audit          = 0
+raw execution-log content in telemetry      = 0
+request-to-route correlation                PASS
+route-to-tool correlation                   PASS
+tool-to-run/node/attempt correlation        PASS
+request-path synchronous audit append       = 0
+audit queue                                 bounded
+audit rotation integrity                    PASS
+audit retention-anchor integrity            PASS
+audit tamper mutation/sequence deletion     PASS
+local detailed metrics                      bounded/authoritative
+OTLP endpoint                               loopback-only
+OTLP traces/metrics                         PASS with local collector
+collector absent/unreachable                Agent Core remains healthy
+new telemetry credential surface            = 0
+external AI model/API dependency            = 0
+Wave A/B/C compatibility                    PASS
+focused acceptance                          23 files / 159 tests PASS
+full regression                             123 files / 605 tests PASS; 38 intentional skips
+```
+
+Final integration/public-runtime evidence is recorded only after merged-main verification and source synchronization.
 
 ---
 

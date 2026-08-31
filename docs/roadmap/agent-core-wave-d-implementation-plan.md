@@ -50,12 +50,12 @@
 - `correlationFields()` returns JSON-safe top-level audit fields using OpenTelemetry-compatible names `trace_id`, `span_id`, `trace_flags` plus Agent Core identifiers.
 - HTTP responses expose `x-agent-core-request-id` and the local `traceparent`; no secret-bearing inbound headers are reflected.
 
-- [ ] **Step 1: Write failing tests** for valid traceparent propagation, invalid traceparent replacement, nested context immutability, concurrent request isolation, and response correlation headers.
-- [ ] **Step 2: Run focused tests and record RED.**
-- [ ] **Step 3: Implement correlation module** with cryptographically random non-zero IDs and strict header validation.
-- [ ] **Step 4: Wrap every HTTP request in `runWithCorrelation`.** Add response identifiers before route handling.
-- [ ] **Step 5: Run correlation + HTTP security/auth regression and record GREEN.**
-- [ ] **Step 6: Commit** `feat: add request correlation context`.
+- [x] **Step 1: Write failing tests** for valid traceparent propagation, invalid traceparent replacement, nested context immutability, concurrent request isolation, and response correlation headers.
+- [x] **Step 2: Run focused tests and record RED.**
+- [x] **Step 3: Implement correlation module** with cryptographically random non-zero IDs and strict header validation.
+- [x] **Step 4: Wrap every HTTP request in `runWithCorrelation`.** Add response identifiers before route handling.
+- [x] **Step 5: Run correlation + HTTP security/auth regression and record GREEN.**
+- [x] **Step 6: Commit** `feat: add request correlation context`.
 
 ### Task D2: Asynchronous bounded tamper-evident audit journal
 
@@ -80,13 +80,13 @@
 - HTTP `finally` must enqueue audit and return without awaiting disk persistence.
 - Journal payload sanitizer recursively bounds depth/keys/string length, redacts known secret shapes, and never stores Authorization/Cookie/raw body material.
 
-- [ ] **Step 1: Write failing tests** proving enqueue returns before delayed file I/O, queue bounds/dropped counter, deterministic hash chain, correlation enrichment, and raw credential redaction.
-- [ ] **Step 2: Run focused tests and record RED.**
-- [ ] **Step 3: Implement async journal** using `fs/promises` and a single serialized drain worker.
-- [ ] **Step 4: Convert compatibility logger and HTTP audit path** to enqueue-only behavior; expose `drain/close/status` for lifecycle/tests.
-- [ ] **Step 5: Wire service shutdown** to drain/close audit after listener close and after execution/memory shutdown evidence has been queued.
-- [ ] **Step 6: Run audit/auth/routing/secret-leak regressions and record GREEN.**
-- [ ] **Step 7: Commit** `feat: add asynchronous audit journal`.
+- [x] **Step 1: Write failing tests** proving enqueue returns before delayed file I/O, queue bounds/dropped counter, deterministic hash chain, correlation enrichment, and raw credential redaction.
+- [x] **Step 2: Run focused tests and record RED.**
+- [x] **Step 3: Implement async journal** using `fs/promises` and a single serialized drain worker.
+- [x] **Step 4: Convert compatibility logger and HTTP audit path** to enqueue-only behavior; expose `drain/close/status` for lifecycle/tests.
+- [x] **Step 5: Wire service shutdown** to drain/close audit after listener close and after execution/memory shutdown evidence has been queued.
+- [x] **Step 6: Run audit/auth/routing/secret-leak regressions and record GREEN.**
+- [x] **Step 7: Commit** `feat: add asynchronous audit journal`.
 
 ### Task D3: Rotation, retention, chain verification, and operator verifier
 
@@ -107,13 +107,13 @@
 - `verifyAuditJournal(root)` reads anchor + rotated + current files in sequence order and validates JSON shape, strict sequence continuity, previousHash linkage, record hashes, and head state. Returns `{ok, firstSequence,lastSequence,records,files,headHash,anchorSequence}` or a stable failure code.
 - CLI: `agent-core audit-verify [audit-root]` is read-only and never repairs/touches evidence.
 
-- [ ] **Step 1: Write failing tests** for multi-rotation integrity, retention-anchor advancement, retained-chain verification, byte/sequence naming, tamper mutation, deleted-middle-record detection, and CLI verification.
-- [ ] **Step 2: Run focused tests and record RED.**
-- [ ] **Step 3: Implement rotation + retention** with atomic head/anchor files and no partial-segment deletion.
-- [ ] **Step 4: Implement verifier** independent of the live writer.
-- [ ] **Step 5: Add config and read-only CLI verifier.**
-- [ ] **Step 6: Run rotation/config/CLI regressions and record GREEN.**
-- [ ] **Step 7: Commit** `feat: rotate and verify audit journal`.
+- [x] **Step 1: Write failing tests** for multi-rotation integrity, retention-anchor advancement, retained-chain verification, byte/sequence naming, tamper mutation, deleted-middle-record detection, and CLI verification.
+- [x] **Step 2: Run focused tests and record RED.**
+- [x] **Step 3: Implement rotation + retention** with atomic head/anchor files and no partial-segment deletion.
+- [x] **Step 4: Implement verifier** independent of the live writer.
+- [x] **Step 5: Add config and read-only CLI verifier.**
+- [x] **Step 6: Run rotation/config/CLI regressions and record GREEN.**
+- [x] **Step 7: Commit** `feat: rotate and verify audit journal`.
 
 ### Task D4: End-to-end tool/execution correlation
 
@@ -140,13 +140,13 @@
 - `ExecutionCommandRunner.start` snapshots active correlation plus `runId/nodeId/attemptId`; terminal result markers gain optional `correlation` evidence. Old markers remain valid.
 - Execution events merge safe correlation identifiers into payload under `correlation`, preserving persisted event truth and wake semantics.
 
-- [ ] **Step 1: Write failing integration test** performing capability route -> execution create/start -> terminal evidence and asserting the same trace/request lineage appears in HTTP audit, route audit, operational memory/event metadata, execution events, and result marker.
-- [ ] **Step 2: Run focused tests and record RED.**
-- [ ] **Step 3: Add server-wide tool wrapper** and route/operational correlation enrichment.
-- [ ] **Step 4: Persist execution correlation** in run metadata/events/result markers without schema migration.
-- [ ] **Step 5: Verify absent correlation remains backward-compatible for direct unit calls outside HTTP.**
-- [ ] **Step 6: Run MCP/execution/memory regression and record GREEN.**
-- [ ] **Step 7: Commit** `feat: correlate requests with execution evidence`.
+- [x] **Step 1: Write failing integration test** performing capability route -> execution create/start -> terminal evidence and asserting the same trace/request lineage appears in HTTP audit, route audit, operational memory/event metadata, execution events, and result marker.
+- [x] **Step 2: Run focused tests and record RED.**
+- [x] **Step 3: Add server-wide tool wrapper** and route/operational correlation enrichment.
+- [x] **Step 4: Persist execution correlation** in run metadata/events/result markers without schema migration.
+- [x] **Step 5: Verify absent correlation remains backward-compatible for direct unit calls outside HTTP.**
+- [x] **Step 6: Run MCP/execution/memory regression and record GREEN.**
+- [x] **Step 7: Commit** `feat: correlate requests with execution evidence`.
 
 ### Task D5: Expanded bounded local metrics and audit health
 
@@ -176,12 +176,12 @@
   - `telemetry.export.duration_ms`, `telemetry.export_failures.count` (Task D6)
 - Detailed health snapshot adds bounded `audit` and `observability` sections; no credential paths, raw IDs beyond counts/head hash prefix where needed for diagnosis.
 
-- [ ] **Step 1: Write failing tests** for new metric counters/durations and bounded health output.
-- [ ] **Step 2: Run focused tests and record RED.**
-- [ ] **Step 3: Instrument HTTP/OAuth/auth/routing/tool/backup/restore/retention paths.**
-- [ ] **Step 4: Add audit status and metric views to local detailed health.**
-- [ ] **Step 5: Run focused metrics/security regressions and record GREEN.**
-- [ ] **Step 6: Commit** `feat: expand bounded observability metrics`.
+- [x] **Step 1: Write failing tests** for new metric counters/durations and bounded health output.
+- [x] **Step 2: Run focused tests and record RED.**
+- [x] **Step 3: Instrument HTTP/OAuth/auth/routing/tool/backup/restore/retention paths.**
+- [x] **Step 4: Add audit status and metric views to local detailed health.**
+- [x] **Step 5: Run focused metrics/security regressions and record GREEN.**
+- [x] **Step 6: Commit** `feat: expand bounded observability metrics`.
 
 ### Task D6: Optional loopback-only OTLP/HTTP JSON traces and metrics exporter
 
@@ -206,13 +206,13 @@
 - Export failure/timeouts update local metrics/status and drop/retry only within bounded queue rules; never throw into request/tool paths.
 - `TelemetryService.close()` performs a bounded best-effort final flush; collector absence remains operationally irrelevant.
 
-- [ ] **Step 1: Write failing local fake-collector tests** for exact `/v1/traces` + `/v1/metrics`, JSON content type, valid 32/16 hex IDs, safe attributes, collector unavailable behavior, and queue bounds.
-- [ ] **Step 2: Run focused tests and record RED.**
-- [ ] **Step 3: Implement config + exporter** with no new dependency and no remote endpoint support.
-- [ ] **Step 4: Implement `TelemetryService`** fed by HTTP/tool instrumentation and periodic authoritative local metric snapshots.
-- [ ] **Step 5: Wire lifecycle and detailed health status.**
-- [ ] **Step 6: Run exporter/config/HTTP/MCP regression and record GREEN.**
-- [ ] **Step 7: Commit** `feat: add optional local otlp export`.
+- [x] **Step 1: Write failing local fake-collector tests** for exact `/v1/traces` + `/v1/metrics`, JSON content type, valid 32/16 hex IDs, safe attributes, collector unavailable behavior, and queue bounds.
+- [x] **Step 2: Run focused tests and record RED.**
+- [x] **Step 3: Implement config + exporter** with no new dependency and no remote endpoint support.
+- [x] **Step 4: Implement `TelemetryService`** fed by HTTP/tool instrumentation and periodic authoritative local metric snapshots.
+- [x] **Step 5: Wire lifecycle and detailed health status.**
+- [x] **Step 6: Run exporter/config/HTTP/MCP regression and record GREEN.**
+- [x] **Step 7: Commit** `feat: add optional local otlp export`.
 
 ### Task D7: Adversarial acceptance, documentation, full certification, and integration
 
@@ -222,12 +222,12 @@
 - Modify: `docs/roadmap/agent-core-wave-d-implementation-plan.md`
 - Modify: `docs/README.md` only if a dedicated observability operator document is added.
 
-- [ ] **Step 1: Run focused Wave D acceptance** covering correlation isolation, async audit queue, secret redaction, hash-chain verification, rotation/retention, tamper detection, tool/execution correlation, metrics, OTLP loopback export, collector absence, and Wave A-C security/compatibility regressions.
-- [ ] **Step 2: Run `npm run build`, `git diff --check`, package dependency diff, brand scan and doc-link check.**
-- [ ] **Step 3: Run `npm run verify:release`.**
-- [ ] **Step 4: Live temporary-instance canary**: send a correlated MCP route+execution request, drain journal, verify request->route->run/attempt lineage, rotate/verify chain, tamper copied segment and prove verifier rejects it, run fake local OTLP collector, stop collector and prove Agent Core still operates.
-- [ ] **Step 5: Public Codespace compatibility baseline** on pre-integration source: Wave A gates + legacy/modern 55-tool paths.
-- [ ] **Step 6: Record exact local evidence and commit** `docs: record wave d local certification evidence`.
+- [x] **Step 1: Run focused Wave D acceptance** covering correlation isolation, async audit queue, secret redaction, hash-chain verification, rotation/retention, tamper detection, tool/execution correlation, metrics, OTLP loopback export, collector absence, and Wave A-C security/compatibility regressions.
+- [x] **Step 2: Run `npm run build`, `git diff --check`, package dependency diff, brand scan and doc-link check.**
+- [x] **Step 3: Run `npm run verify:release`.**
+- [x] **Step 4: Live temporary-instance canary**: send a correlated MCP route+execution request, drain journal, verify request->route->run/attempt lineage, rotate/verify chain, tamper copied segment and prove verifier rejects it, run fake local OTLP collector, stop collector and prove Agent Core still operates.
+- [x] **Step 5: Public Codespace compatibility baseline** on pre-integration source: Wave A gates + legacy/modern 55-tool paths.
+- [x] **Step 6: Record exact local evidence and commit** `docs: record wave d local certification evidence`.
 - [ ] **Step 7: Fast-forward `main` only if origin topology remains compatible; run fresh merged-main `npm ci` + `npm run verify:release`; push non-force and require local/remote equality.**
 - [ ] **Step 8: Controlled real runtime restart; require `connection.sourceCommit == HEAD == origin/main`; public health/security + legacy/modern canary; verify live audit chain and collector-absent behavior.**
 - [ ] **Step 9: Commit/push final docs-only certification if needed, source-sync runtime, then remove only the Wave D worktree/local branch after exact equality is proven.**
@@ -255,3 +255,52 @@ external AI model/API dependency            = 0
 Wave A/B/C compatibility                    PASS
 full regression                             PASS
 ```
+
+## Wave D Pre-Integration Certification Evidence — 2026-08-31
+
+```text
+focused adversarial acceptance (serial)  23 files / 159 tests PASS
+full npm run verify:release               123 files / 605 tests PASS
+intentional platform/perf skips          38 tests
+brand scan                               PASS
+TypeScript build                          PASS
+Codespace compatibility build             PASS
+release metadata consistency              PASS
+markdown link verification                34 files / 16 links PASS
+package/dependency changes                none
+external AI model/API dependency          0
+```
+
+Live temporary-instance evidence:
+
+```text
+request trace -> execution_create request        PASS
+same trace -> execution_start request             PASS
+creator/start request IDs remain distinct         PASS
+run metadata creator correlation                  PASS
+node.started / node.succeeded correlation         PASS
+terminal result-marker run/node/attempt lineage   PASS
+audit chain verification                          PASS; 19 records
+audit rotation                                     PASS; 18 immutable segments
+raw command sentinel in audit                      0
+tampered copied audit chain                        rejected PASS
+OTLP /v1/traces + /v1/metrics                      PASS
+HTTP + execution_create + execution_start spans   PASS
+collector removed                                  export failure isolated PASS
+health after collector removal                     HTTP 200 / overall healthy
+OTLP endpoint leaked by health                     0
+```
+
+Pre-integration public Codespace baseline remains the Wave C certified source `eaa50d8d50831fb8ba7126429477ca0d4273b085`:
+
+```text
+public /health                       200
+public /health/metrics               403
+public /mcp without token            401
+public untrusted Origin              403
+legacy MCP                           2025-11-25 / 55 tools PASS
+modern MCP                           2026-07-28 / 55 tools PASS
+temporary baseline key               revoked PASS
+```
+
+Final Wave D certification remains pending merged-main verification, push/readback, controlled runtime source-sync, and post-integration public/audit/collector-absent verification.

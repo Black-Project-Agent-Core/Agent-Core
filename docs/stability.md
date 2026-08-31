@@ -214,6 +214,60 @@ temporary public canary key           revoked PASS
 
 This certifies the Wave C code boundary. A final docs-only certification commit is source-synchronized after publication so runtime metadata remains equal to final `origin/main`.
 
+## Wave D audit & observability contract
+
+Wave D adds a local-first observability fabric without changing the 55-tool MCP surface or making telemetry a runtime dependency.
+
+Correlation contract:
+
+```text
+HTTP request                      unique requestId + W3C-compatible trace/span context
+MCP tool                          nested tool correlation, same request trace
+capability route                  routeContextId linked to active request trace
+execution_create                 durable creator correlation in run metadata
+execution_start / attempt        factual start-request correlation
+execution event/result marker    trace + request + route + tool + run/node/attempt lineage
+```
+
+Audit contract:
+
+```text
+request/routing audit write path     bounded enqueue; no synchronous appendFileSync
+authoritative storage                local JSONL
+queue                                bounded; drop/error counters are explicit
+record integrity                     sequence + SHA-256 previousHash chain
+rotation                             whole-record immutable segments
+retention                            whole segments only after atomic anchor advancement
+verification                         read-only `agent-core audit-verify [audit-root]`
+tamper claim                         tamper-evident, not tamper-proof against full local replacement
+raw credentials/raw execution logs   excluded
+```
+
+Detailed observability metrics remain local-authoritative and low-cardinality. `/health/metrics` keeps the Wave A loopback-only HTTP policy; the authenticated `agent_core_health_metrics` MCP tool remains the remote diagnostic path. Audit health exposes counts, queue state, rotation count, and only a 16-character head-hash prefix.
+
+Optional OTLP export is disabled unless `AGENT_CORE_OTLP_ENDPOINT` is set. The endpoint must be credential-free `http:`/`https:` on `localhost`, `127/8`, or `::1`; query/fragment/userinfo and any remote hostname are rejected. No telemetry API-key/header configuration exists. Only traces and metrics are exported using OTLP/HTTP JSON; local audit remains authoritative.
+
+Collector availability is non-authoritative: timeout/refusal increments local telemetry failure metrics and keeps a bounded retry queue, but does not downgrade Agent Core `overallHealth` or change HTTP/MCP/tool/execution results.
+
+Pre-integration certification evidence on 2026-08-31:
+
+```text
+focused adversarial acceptance       23 files / 159 tests PASS
+full npm run verify:release           123 files / 605 tests PASS
+intentional skips                     38 tests
+live correlated execution lineage     PASS
+live audit chain                      19 records / 18 rotated segments / verify PASS
+live copied-audit tamper              rejected PASS
+raw command sentinel in audit         0
+local OTLP trace/metric export         PASS
+collector removed                     HTTP 200 / overall healthy / export isolated
+package/dependency changes            none
+external AI model/API dependency      0
+pre-integration public baseline       Wave A gates + legacy/modern 55 tools PASS
+```
+
+Final merged-main/public-runtime certification is recorded after Wave D integration.
+
 ## Last core certification
 
 The final continuity/execution core certification was completed on 2026-08-26 after the execution WAL durability fix and staged default-enabled rollout.
