@@ -226,7 +226,7 @@ git commit -m "feat(agent-code): scaffold desktop ui foundation"
 - Consumes: no runtime/backend dependency.
 - Produces: `WorkspaceState`, `WorkspaceAction`, `createInitialWorkspaceState()`, and `workspaceReducer(state, action)` used by the application shell.
 
-- [ ] **Step 1: Write reducer tests first**
+- [x] **Step 1: Write reducer tests first**
 
 Create `src/app/workspace-state.test.ts`:
 
@@ -264,7 +264,7 @@ describe('workspaceReducer', () => {
 });
 ```
 
-- [ ] **Step 2: Run reducer tests to verify RED**
+- [x] **Step 2: Run reducer tests to verify RED**
 
 Run:
 
@@ -274,7 +274,7 @@ npm test -- src/app/workspace-state.test.ts
 
 Expected: FAIL because `workspace-state.ts` does not exist.
 
-- [ ] **Step 3: Implement the reducer and exact data model**
+- [x] **Step 3: Implement the reducer and exact data model**
 
 Create `src/app/workspace-state.ts` with these public types:
 
@@ -309,7 +309,7 @@ export type WorkspaceAction =
 
 `createInitialWorkspaceState()` must seed exactly `session-1` (`General coding session`) and `session-2` (`Design system review`), select `session-1`, and initialize counters at 3 and 1. `submit-message` trims text and updates only the active session; unknown session selection returns the existing state unchanged.
 
-- [ ] **Step 4: Run reducer tests**
+- [x] **Step 4: Run reducer tests**
 
 ```bash
 npm test -- src/app/workspace-state.test.ts
@@ -317,7 +317,7 @@ npm test -- src/app/workspace-state.test.ts
 
 Expected: 4 tests PASS.
 
-- [ ] **Step 5: Commit deterministic local state**
+- [x] **Step 5: Commit deterministic local state**
 
 ```bash
 git add SubProject/Agent-Code/src/app/workspace-state.ts SubProject/Agent-Code/src/app/workspace-state.test.ts
