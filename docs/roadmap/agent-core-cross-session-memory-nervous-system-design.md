@@ -3,19 +3,19 @@
 **Status:** DESIGN SPECIFICATION — APPROVED BRAINSTORMING CAPTURE; NOT IMPLEMENTED  
 **Design base:** `origin/main` at `6cb89e4a6c6b3d79767ce9bd6369f9945cff8590`  
 **Target platform:** Agent Core local-first control plane in Codespace  
-**Primary objective:** evolve the existing Deterministic Memory Fabric (DMF) into a persistent, bounded, evidence-aware cross-session memory graph that can recall, expand, revise, branch, link, and explain relevant prior context without changing the underlying OpenAI model or exposing private chain-of-thought.
+**Primary objective:** evolve the existing Deterministic Memory Fabric (DMF) into a persistent, bounded, evidence-aware cross-session and cross-Codespace memory graph that can recall, expand, revise, branch, link, explain, and remotely recover relevant prior context without changing the underlying OpenAI model or exposing private chain-of-thought.
 
 ---
 
 # 1. Executive Summary
 
-This design captures the agreed brainstorming direction for a local cross-session memory system that behaves less like a flat note database and more like a persistent network of evolving memories.
+This design captures the agreed brainstorming direction for a local-first cross-session memory system that behaves less like a flat note database and more like a persistent network of evolving memories. Because GitHub Codespaces is an ephemeral execution environment, local-first does **not** mean local-only: the target Codespace profile requires a separate remote durable memory authority so deleting or replacing a Codespace cannot reset the user's memory graph to zero.
 
 The goal is **not** to make the OpenAI model itself biologically human, alter hidden reasoning, replace personalization, or add another cloud AI layer. The goal is to improve the **external continuity context** supplied to the model when Agent Core/Codespace is used.
 
 The target system should be able to:
 
-- remember relevant work across separate ChatGPT sessions;
+- remember relevant work across separate ChatGPT sessions and replacement Codespace instances;
 - search only bounded relevant memory instead of loading all history;
 - automatically recall current memories before meaningful work;
 - request deeper historical context through a bounded `remember_more` operation;
@@ -28,7 +28,9 @@ The target system should be able to:
 - preserve revision history and conflicts instead of silently overwriting old beliefs;
 - maintain principal/project isolation;
 - remain deterministic at the storage, graph, policy, and retrieval layers;
-- remain local-first and avoid external model/API dependencies;
+- remain local-first for execution and recall while durably synchronizing encrypted memory state to a user-controlled remote store;
+- survive permanent Codespace deletion by restoring the same verified logical memory state into a fresh Codespace;
+- avoid external AI/model/API dependencies;
 - expose a read-only visual graph so the user can inspect what was recalled, expanded, revised, linked, or rejected in real time.
 
 The central architectural shift is:
@@ -1699,38 +1701,94 @@ The exact classifier must be deterministic and tool/event-based where possible.
 
 # 31. Session “Sync” Semantics
 
-In this design, **sync** means local reconciliation of session/task evidence into durable DMF state.
+For the Codespace target, **sync has two distinct meanings and both are required**.
 
-It does not mean uploading memory to a cloud provider.
+## 31.1 Local materialization
 
-Postflight synchronization pipeline:
+During an active task, Agent Core writes the authoritative working transaction into the local SQLite DMF so recall, graph traversal, continuity, and execution can remain low-latency and deterministic.
 
 ```text
-Codespace / execution / continuity evidence
-                │
-                ▼
-        structured bounded evidence
-                │
-                ▼
-         Memory write candidate
-                │
-                ▼
-        Existing-memory search
-                │
-                ▼
-         Persistence decision
-                │
-                ▼
-       revise/link/branch/root/no-write
-                │
-                ▼
-              DMF
+verified task evidence
+        │
+        ▼
+Memory write decision
+        │
+        ▼
+local SQLite transaction
+        │
+        ▼
+LOCAL_COMMITTED
 ```
 
-Raw stdout/stderr remains local execution evidence and is not copied wholesale into memory.
+The local SQLite database is the active materialized/indexed working state. In a Codespace it must be treated as **disposable infrastructure**, not the only durable copy.
+
+## 31.2 Remote durability sync
+
+Any postflight that changes durable semantic memory, records a terminal continuity checkpoint, resolves a conflict, or changes a durable graph relation must also produce a remote synchronization envelope.
+
+```text
+LOCAL_COMMITTED
+      │
+      ▼
+create bounded encrypted remote envelope
+      │
+      ▼
+push to private Memory Remote
+      │
+      ▼
+fetch/read back remote head + payload hash
+      │
+      ▼
+REMOTE_SYNCED
+```
+
+A meaningful terminal task is **not durably closed** until required remote synchronization is confirmed.
+
+This means the lifecycle state vocabulary includes at least:
+
+```text
+LOCAL_COMMITTED
+REMOTE_PENDING
+REMOTE_SYNCED
+REMOTE_CONFLICT
+REMOTE_UNAVAILABLE
+```
+
+`NO_DURABLE_MEMORY` does not necessarily mean "no remote write." If a meaningful task was completed, its terminal continuity checkpoint and postflight decision still need remote durability so the next Codespace knows that the task completed and intentionally produced no semantic memory node.
+
+## 31.3 Sync granularity
+
+The default requirement is **write-through at meaningful durable boundaries**, not delayed best-effort batching. A single task may generate multiple local memory mutations, but they should be grouped into one bounded atomic remote checkpoint when possible.
+
+Required remote durability boundaries include:
+
+```text
+new durable memory node
+new durable revision
+new/corrected durable edge
+conflict open/resolve
+accepted guardrail/decision change
+verified failure/solution learning
+terminal task checkpoint
+explicit durable project-state change
+```
+
+Important in-progress checkpoints may also be synchronized to reduce loss after an abrupt Codespace deletion, but they must remain distinguishable from terminal task completion.
+
+## 31.4 What remote sync must not do
+
+Remote sync must **not**:
+
+- push the runtime SQLite database into the Agent Core source repository;
+- copy raw stdout/stderr wholesale;
+- store plaintext secret-bearing event content;
+- make network availability part of normal recall latency after hydration;
+- turn GitHub into a second reasoning authority;
+- mark a task durably complete when remote readback failed.
+
+Raw execution evidence stays under the existing evidence hierarchy. The remote memory representation contains only bounded redacted/encrypted memory, continuity, relation, conflict, and provenance records required to rebuild the logical memory state.
 
 ---
-
 # 32. Authority Hierarchy
 
 The memory system must never allow a low-authority recollection to overwrite stronger evidence.
@@ -1764,6 +1822,19 @@ ARTIFACT/CACHE SUGGESTION
 >
 WORKFLOW ADVICE
 ```
+
+Durability authority is separate from semantic/evidence authority:
+
+```text
+ACTIVE CODESPACE WORKING STATE
+  local SQLite may contain the newest transaction
+  status may be REMOTE_PENDING
+
+CROSS-CODESPACE DURABLE STATE
+  latest remote generation whose objects/hash were pushed and read back successfully
+```
+
+If local state is newer than the last confirmed remote generation, the local state is truthful for the active Codespace but **not yet certified durable across Codespace deletion**. A fresh Codespace restores only the latest confirmed remote generation and must never invent the pending local tail.
 
 ---
 
@@ -2406,24 +2477,267 @@ This is the mechanism that makes “forced memory behavior” enforceable locall
 
 ---
 
-# 46. Cross-Session Persistence Boundary
+# 46. Cross-Session and Cross-Codespace Durability Boundary
 
-Cross-session memory persists as long as the local Agent Core memory database persists.
+GitHub Codespaces must be treated as an **ephemeral compute host**. GitHub documents that work stored only in a Codespace is deleted when that Codespace is deleted, and inactive Codespaces may be deleted automatically according to retention policy. Therefore local SQLite persistence alone is insufficient for this project's cross-session goal. The platform basis for this requirement is GitHub's own Codespaces lifecycle documentation: `https://docs.github.com/en/codespaces/about-codespaces/understanding-the-codespace-lifecycle` and automatic-deletion documentation: `https://docs.github.com/en/codespaces/setting-your-user-preferences/configuring-automatic-deletion-of-your-codespaces`.
 
-Current Codespace runtime memory may live outside tracked source under the Codespace runtime path.
+The target architecture changes the durability model from:
 
-Important boundary:
+```text
+Codespace SQLite = only durable memory
+```
 
-> Local cross-session persistence does not automatically survive permanent deletion of the entire Codespace/runtime storage.
+to:
 
-Therefore a later operator feature may add encrypted/user-controlled backup/export for disaster recovery.
+```text
+                    ┌──────────────────────────────┐
+                    │ Agent-Core source repository │
+                    │ main = code/docs/tests       │
+                    └──────────────┬───────────────┘
+                                   │ bootstrap code
+                                   ▼
+┌─────────────────────────────────────────────────────────┐
+│                    Codespace instance                   │
+│                                                         │
+│  local SQLite DMF                                       │
+│  - fast working state                                   │
+│  - indexes / FTS / graph materialization                │
+│  - disposable and rebuildable                           │
+└──────────────────────┬──────────────────────────────────┘
+                       │ write-through durable sync
+                       ▼
+             ┌───────────────────────────┐
+             │ Private Memory Remote     │
+             │ durable cross-instance    │
+             │ journal/checkpoints       │
+             └───────────────────────────┘
+```
 
-Default implementation must not silently commit private memory databases into Git.
+## 46.1 Fundamental durability invariant
 
-GitHub synchronization of raw memory is **not** part of this design.
+For the Codespace profile:
+
+> **A local memory mutation is not considered remotely durable until its corresponding Memory Remote transaction has been pushed and read back successfully.**
+
+And:
+
+> **A fresh Codespace must never treat a new empty SQLite database as authoritative merely because local runtime storage is empty.**
+
+If a configured Memory Remote already contains state for the authenticated principal/project, the new Codespace must hydrate that state before meaningful memory-dependent mutation is allowed.
+
+## 46.2 Recommended Memory Remote
+
+The preferred initial backend is a **dedicated private GitHub repository** separate from the Agent Core source repository. The exact repository name is configuration, not an architectural constant. Its default branch may be `main`, but that branch contains memory durability records only—not Agent Core source code.
+
+This is deliberately different from committing memory to `Black-Project-Agent-Core/Agent-Core` `main`.
+
+```text
+Agent-Core/main
+  source code
+  docs
+  tests
+  migrations
+
+Private Memory Remote/main
+  encrypted memory events
+  encrypted continuity checkpoints
+  encrypted graph/conflict mutations
+  remote manifests / logical state hashes
+  optional compacted recovery checkpoints
+```
+
+The Memory Remote must remain private and should use application-level encryption even though the GitHub repository itself is private. The encryption key must be independent from GitHub/OAuth/API credentials and must never be committed to either repository.
+
+## 46.3 Remote representation
+
+Do not use the raw live SQLite file as the primary Git object. SQLite is optimized for local transactional access, not concurrent Git synchronization.
+
+The remote representation should be **logical, append-oriented, bounded, and rebuildable**. One possible layout is:
+
+```text
+format.json
+scopes/
+  <opaque-scope-id>/
+    events/
+      <event-id>.json.enc
+    checkpoints/
+      <checkpoint-id>.json.enc
+    manifests/
+      <generation-id>.json
+```
+
+Exact filenames are implementation details. Required properties are:
+
+- immutable event identity;
+- stable payload hash;
+- encrypted payload content;
+- opaque scope naming that does not expose project/user text unnecessarily;
+- enough provenance to replay deterministically;
+- explicit remote generation/head identity;
+- deterministic logical-state hash after replay.
+
+Optional compacted recovery checkpoints may accelerate hydration, but the system must retain enough event/provenance information to explain how the current state was reached.
+
+## 46.4 Write-through postflight protocol
+
+For every required durable boundary:
+
+```text
+1. validate scope + memory context lease
+2. apply local SQLite transaction
+3. produce remote event/checkpoint envelope
+4. encrypt envelope
+5. fetch current Memory Remote head
+6. add immutable remote object(s)
+7. commit without force
+8. push
+9. fetch/read back remote head
+10. verify expected object/hash exists remotely
+11. mark local durability state REMOTE_SYNCED
+12. only then mark terminal postflight DURABLY_CLOSED
+```
+
+If steps 5-10 fail, local memory remains truthful but the durable state is:
+
+```text
+REMOTE_PENDING
+or
+REMOTE_UNAVAILABLE
+```
+
+The system must not claim cross-Codespace durability until synchronization succeeds.
+
+## 46.5 Fresh Codespace hydration protocol
+
+A replacement Codespace starts with no trusted runtime memory. Bootstrap must therefore perform:
+
+```text
+new Codespace
+    │
+    ▼
+clone/fetch Agent Core source
+    │
+    ▼
+resolve authenticated principal + project scope
+    │
+    ▼
+connect to configured Private Memory Remote
+    │
+    ▼
+verify remote format + remote head
+    │
+    ▼
+decrypt latest compatible recovery checkpoint (if any)
+    │
+    ▼
+replay immutable remote tail deterministically
+    │
+    ▼
+materialize fresh local SQLite DMF
+    │
+    ▼
+SQLite integrity check
+    │
+    ▼
+logical-state hash == remote expected hash ?
+   / \
+ no   yes
+ │     │
+ ▼     ▼
+FAIL   HYDRATED
+CLOSED │
+       ▼
+Memory preflight/actionable work allowed
+```
+
+A new empty remote and a failed remote restore are different states and must never be conflated. Suggested states:
+
+```text
+REMOTE_EMPTY_CONFIRMED
+REMOTE_HYDRATED
+REMOTE_UNAVAILABLE
+REMOTE_AUTH_FAILED
+REMOTE_DECRYPT_FAILED
+REMOTE_INTEGRITY_FAILED
+REMOTE_REPLAY_FAILED
+```
+
+Only `REMOTE_EMPTY_CONFIRMED` permits creation of the first durable root for a genuinely new scope.
+
+## 46.6 Codespace deletion recovery guarantee
+
+The certification suite must simulate the actual failure the user cares about:
+
+```text
+Codespace A / local runtime
+  contains memories A1-A5
+  remote durability confirmed
+        │
+        ▼
+DESTROY ALL LOCAL MEMORY/RUNTIME STATE
+        │
+        ▼
+fresh empty Codespace-like workspace
+        │
+        ▼
+hydrate from Memory Remote
+        │
+        ▼
+logical memories A1-A5 restored
+revision chains identical
+graph relations identical
+continuity terminal checkpoints identical
+conflicts/provenance identical
+state hash identical
+```
+
+This deletion/recreation test is a release gate for declaring the feature cross-Codespace durable.
+
+## 46.7 Concurrent writers
+
+The design must not assume only one Codespace will ever write. Remote updates therefore use non-force optimistic synchronization:
+
+```text
+fetch remote head
+↓
+prepare immutable event additions
+↓
+attempt push
+↓
+remote advanced?
+  ├─ no  → readback + synced
+  └─ yes → fetch, deterministically reconcile immutable event set, retry
+```
+
+No writer may silently overwrite another writer's remote memory commit. Conflicting semantic mutations are still resolved by the memory conflict/write-decision layer; Git transport reconciliation must not pretend semantic conflicts are automatically solved.
+
+## 46.8 Network outage behavior
+
+If an already-hydrated Codespace temporarily loses GitHub connectivity, Agent Core may continue local work if policy allows, but every new durable mutation remains explicitly `REMOTE_PENDING`. A terminal task must not be reported as **durably synchronized across Codespaces** until remote readback succeeds.
+
+A completely fresh Codespace that has never hydrated its configured remote must fail closed for memory-authoritative mutation rather than silently start from zero.
+
+## 46.9 Relationship to GitHub `main`
+
+The user intuition is correct that memory must reach a durable system outside the Codespace. The architectural correction is only **where**:
+
+```text
+WRONG
+Agent-Core source main
+  + source commits
+  + constantly changing runtime SQLite
+
+RIGHT
+Agent-Core source main
+  = software evolution
+
+Private Memory Remote main
+  = encrypted durable memory/continuity evolution
+```
+
+A source-code Git commit may still be referenced by a memory as evidence (`sourceCommit`, artifact hash, release tag), but Git source history and memory history remain separate lifecycles.
 
 ---
-
 # 47. Polyglot Architecture Decision
 
 Polyglot is acceptable only when each language has a measurable responsibility.
@@ -2515,6 +2829,11 @@ src/memory/remember-more.ts              NEW
 src/memory/write-policy.ts               NEW
 src/memory/relation-policy.ts            NEW
 src/memory/activity.ts                   NEW
+src/memory/remote-sync.ts                NEW
+src/memory/remote-journal.ts             NEW
+src/memory/remote-crypto.ts              NEW
+src/memory/remote-hydrator.ts            NEW
+src/memory/logical-state-hash.ts         NEW
 src/memory/schema.ts                     MODIFY v3
 src/memory/types.ts                      MODIFY
 src/memory/preflight.ts                  MODIFY
@@ -2525,7 +2844,8 @@ src/memory/store.ts                      MODIFY persistence APIs
 src/mcp/memory-tools.ts                  ADD remember_more / possible postflight
 src/mcp/memory-injection.ts              MODIFY bounded projection if required
 src/continuity/promoter.ts               ROUTE through write decision policy
-plugin/codespace/...                     LATER enforcement adapter
+src/github/...                           REUSE Native GitHub Fabric transport for Memory Remote
+plugin/codespace/...                     LATER hydration + enforcement adapter
 ```
 
 Visualization should live in a clearly separate UI boundary rather than inside memory storage classes.
@@ -2534,7 +2854,7 @@ Visualization should live in a clearly separate UI boundary rather than inside m
 
 # 50. Migration Strategy
 
-The migration must preserve current v0.6.0 stable behavior until each stage is separately proven.
+The migration must preserve current v0.6.0 stable behavior until each stage is separately proven. Cross-Codespace durability is a first-class phase, not deferred polish.
 
 ## Phase 0 — Design and corpus
 
@@ -2544,6 +2864,7 @@ Deliver:
 
 - this architecture spec;
 - certified scenario corpus for revise/branch/root/no-write/remember_more;
+- deletion/recreation durability scenarios;
 - schema migration design;
 - baseline performance measurements.
 
@@ -2556,19 +2877,35 @@ memory_write_decisions
 memory_recall_expansions
 memory_edge_events
 memory_node_metadata
+remote_sync_state / remote generation metadata
 new anchor types
 new relation vocabulary
 ```
 
-No hard enforcement yet.
+No hard behavioral enforcement yet.
 
-## Phase 2 — `remember_more`
+## Phase 2 — Remote Memory Durability Foundation
+
+Implement before claiming cross-Codespace continuity:
+
+- dedicated private Memory Remote configuration;
+- application-level encrypted remote envelopes;
+- immutable event/checkpoint representation;
+- non-force push/readback protocol;
+- local `REMOTE_PENDING` / `REMOTE_SYNCED` state;
+- fresh-Codespace hydration;
+- deterministic replay and logical-state hash;
+- deletion/recreation recovery test.
+
+At the end of Phase 2, existing DMF state must be able to survive destruction of all local Codespace memory storage.
+
+## Phase 3 — `remember_more`
 
 Implement bounded historical expansion and explainability.
 
 Keep initial recall behavior compatible.
 
-## Phase 3 — Write Decision Controller
+## Phase 4 — Write Decision Controller
 
 Implement:
 
@@ -2583,31 +2920,38 @@ OPEN_CONFLICT
 
 Initially run in audit/advisory mode against existing promotion paths.
 
-Compare decisions with current writes before enforcing.
+Compare decisions with current writes before enforcing. Required durable decisions must feed the Phase 2 remote sync protocol.
 
-## Phase 4 — Continuity/Execution adoption
+## Phase 5 — Continuity/Execution adoption
 
-Route Continuity promotion and execution memory promotion through the new write-decision policy.
+Route Continuity promotion and execution memory promotion through the new write-decision policy. Terminal continuity checkpoints become remote-durability boundaries.
 
 Prove no regression in current continuity/execution acceptance suites.
 
-## Phase 5 — Agent Core hard lifecycle
+## Phase 6 — Agent Core hard lifecycle
 
 Require preflight/postflight for selected Agent Core actionable flows.
 
+A required postflight cannot reach `DURABLY_CLOSED` while its remote sync state is pending/unverified.
+
 Roll out with feature flags and fail-safe rollback.
 
-## Phase 6 — Codespace enforcement adapter
+## Phase 7 — Codespace hydration + enforcement adapter
 
-Introduce Memory Context Lease and pending-postflight behavior for Codespace mutation classes.
+Introduce:
 
-Start advisory, then hard-enforce after acceptance.
+- automatic Memory Remote hydration before memory-authoritative work;
+- Memory Context Lease;
+- pending-postflight behavior for Codespace mutation classes;
+- fresh-Codespace fail-closed behavior when remote state cannot be hydrated.
 
-## Phase 7 — Memory Observatory
+Start enforcement changes in advisory mode where compatible, but remote hydration correctness itself must not silently fall back to an empty database.
 
-Build graph/timeline/recall/live activity UI using read-only projections.
+## Phase 8 — Memory Observatory
 
-## Phase 8 — Scale and quality certification
+Build graph/timeline/recall/live activity UI using read-only projections. Add remote durability state (`REMOTE_PENDING`, `REMOTE_SYNCED`, hydration generation) as observable metadata without giving the UI mutation authority.
+
+## Phase 9 — Scale, disaster-recovery, and quality certification
 
 Certify:
 
@@ -2617,11 +2961,14 @@ Certify:
 - node-creation correctness;
 - zero cross-scope contamination;
 - restart/rebuild recovery;
+- complete Codespace deletion/recreation recovery;
+- remote event replay equality;
+- concurrent remote-writer reconciliation;
+- remote-outage truthful behavior;
 - Codespace hard-enforcement recovery;
 - visualization independence.
 
 ---
-
 # 51. Rollback Strategy
 
 Every phase needs a rollback path.
@@ -2634,6 +2981,9 @@ Principles:
 - `remember_more` can be disabled independently;
 - write-decision enforcement can fall back to audit-only mode;
 - Codespace lease enforcement can fall back to advisory mode;
+- remote sync enforcement may fall back to `REMOTE_PENDING` operation only for an already-hydrated local state, never to fabricated `REMOTE_EMPTY_CONFIRMED`;
+- hydration failure must preserve the local pre-hydration state and remote data;
+- remote reconciliation uses non-force Git operations;
 - Memory Observatory can be stopped without affecting DMF;
 - stable release tags remain immutable.
 
@@ -2729,6 +3079,54 @@ Expected:
 - active edge projection changes;
 - no history erasure.
 
+## 52.11 Codespace permanently deleted after confirmed remote sync
+
+Expected:
+
+- destroy all local runtime memory;
+- fresh workspace hydrates remote state;
+- logical state hash equality is exact;
+- current revisions, edges, conflicts, continuity checkpoints, and provenance are preserved.
+
+## 52.12 Codespace disappears while remote sync is pending
+
+Expected:
+
+- system never claimed `DURABLY_CLOSED`;
+- remote store remains at last confirmed generation;
+- fresh Codespace restores the last confirmed generation truthfully;
+- any lost local-only tail is reported as not remotely durable rather than invented as restored.
+
+## 52.13 Fresh Codespace cannot reach Memory Remote
+
+Expected:
+
+```text
+REMOTE_UNAVAILABLE
+HYDRATION_REQUIRED
+```
+
+It must not silently create a new empty authoritative memory database for an existing configured scope.
+
+## 52.14 Remote authentication/decryption/integrity failure
+
+Expected:
+
+- fail closed for hydration;
+- no plaintext secret logging;
+- no overwrite of remote state;
+- operator-visible reason code;
+- source-code/runtime tools that do not depend on authoritative memory may remain diagnosable according to policy.
+
+## 52.15 Two Codespaces push durable memory concurrently
+
+Expected:
+
+- no force push;
+- immutable event sets are fetched and reconciled;
+- both transport commits remain represented;
+- semantic contradiction becomes a memory conflict, not a silent Git winner.
+
 ---
 
 # 53. Acceptance Gates
@@ -2752,6 +3150,13 @@ open conflict visibility                            PASS
 failure/solution chain preservation                 PASS
 NO_DURABLE_MEMORY persistence decision              PASS
 pending postflight recovery                         PASS
+remote write-through readback                        PASS
+terminal durable task with unsynced remote state     0
+local-delete → fresh-hydrate state equality           1.0
+remote replay deterministic equality                  1.0
+remote confirmed-empty vs restore-failure ambiguity   0
+remote plaintext memory/secret leakage                0
+remote non-force concurrent-writer reconciliation     PASS
 cross-project contamination                         0
 cross-principal contamination                       0
 deterministic replay equality                       1.0
@@ -2769,6 +3174,8 @@ valid lease mutation                    allowed
 expired lease                            rejected predictably
 pending previous postflight              blocks/reconciles next mutation
 memory degraded                          truthful degraded behavior
+fresh Codespace + remote unavailable      no silent empty authority
+confirmed remote state                    auto-hydrated before authoritative mutation
 unrelated .vscode/user state             preserved
 ```
 
@@ -2845,7 +3252,11 @@ Agent Core Local Memory Cognition Protocol
 Deterministic Memory Fabric / Continuity / Evidence
    │
    ▼
-SQLite local authority
+SQLite local materialized working state
+   │
+   ├─ write-through durability → Private Memory Remote
+   │                              │
+   │                              └─ survives Codespace deletion
    │
    └─ read-only Memory Observatory
 ```
@@ -2867,7 +3278,8 @@ This document intentionally stops before implementation.
 After the user reviews and approves this architecture specification, the next artifact should be a detailed implementation plan that decomposes the work into separately certifiable phases, beginning with:
 
 ```text
-Phase 1 — schema v3 + write-decision/recall-expansion audit ledgers
+Phase 1 — schema v3 + write-decision/recall-expansion/remote-sync audit ledgers
+Phase 2 — mandatory Private Memory Remote durability + fresh-Codespace hydration
 ```
 
 The implementation plan should use TDD, isolated worktrees, additive migrations, fresh performance baselines, and per-phase GitHub audit checkpoints. No LangChain/LangGraph dependency or external AI model/API should be introduced unless a later evidence-backed design change explicitly authorizes it.
