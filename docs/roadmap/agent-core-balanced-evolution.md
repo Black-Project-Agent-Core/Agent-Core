@@ -1129,6 +1129,8 @@ certification docs publication/source-sync               PASS
 
 **Goal:** certify the evolved Agent Core as one coherent stable control plane.
 
+**Implementation status:** **PRE-INTEGRATION CERTIFIED; production publication pending**. Wave G adds no runtime subsystem. It defines one repository-owned 18-area certification contract plus canonical `npm run certify:core`; the architecture-level stable claim remains withheld until the exact published `main` source is source-synced and passes the final production runtime/public/audit matrix.
+
 Final matrix:
 
 ```text
@@ -1152,7 +1154,25 @@ Performance                            PASS
 No external AI model/API dependency    PASS
 ```
 
-Only after Wave G should a new architecture-level stable claim be made.
+First committed canonical certification at `4b8dd5a18e68eaf1890c0dea7e4778bb909616a4` produced:
+
+```text
+npm run certify:core                    PASS / 18 of 18
+full normal regression                  137 files / 668 tests PASS / 38 skips
+100k memory preflight p95               65.897 ms / <150 ms PASS
+DAG / dispatch / wake p95               1.372 / 27.118 / 5.374 ms PASS
+max execution concurrency               4 / configured 4 PASS
+stable release                          v0.5.4 / 7 required assets PASS
+external AI/model dependency violations 0
+external model source-marker hits       0
+focused cross-wave matrix               18 files / 127 tests PASS
+feature local trust boundary            200 health; 200 local metrics; 403 remote metrics; 401 no-token; 403 evil Origin
+legacy / modern MCP                     2025-11-25/55 / 2026-07-28/55 PASS
+```
+
+Supplemental real GitHub read-only acceptance was **3 / 4**: identity, repository metadata, and `ls-remote` passed; package listing returned `403 Resource not accessible by integration` because the Codespaces `GITHUB_TOKEN` lacks package-list scope and no separate packages token is configured. This limitation is recorded rather than converted into a false PASS; normal GitHub regression and stable-release parity remain passing.
+
+Only after Wave G production publication/source-sync/runtime certification should a new architecture-level stable claim be made.
 
 ---
 

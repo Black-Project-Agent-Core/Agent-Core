@@ -436,6 +436,52 @@ unrelated .vscode editor state          preserved
 
 One temporary-key public canary produced a non-reproducing 401 only on its modern request. The key was immediately revoked and verified revoked. Modern discovery/tools then returned 200 both loopback and public using the established runtime connector key, and the final comprehensive public canary passed both protocol eras. No source change was made from that isolated observation.
 
+## Wave G pre-integration core re-certification
+
+Wave G adds no new runtime subsystem. It closes the release-process gap by making the complete 18-area architecture matrix a repository-owned contract and by providing one canonical local certification authority: `npm run certify:core`. The command is local Codespace execution authority; GitHub Actions/CI remains outside the release authority.
+
+First committed Wave G technical certification source:
+
+```text
+source SHA                                  4b8dd5a18e68eaf1890c0dea7e4778bb909616a4
+core matrix                                 18 / 18 PASS
+full normal regression                      137 files / 668 tests PASS
+intentional skips                           38
+Wave E quality gate                         PASS
+routing tier accuracy                       0.975
+memory Recall@K / MRR                       1.000 / 1.000
+100k memory preflight p95                   65.897 ms / <150 ms PASS
+100k memory integrity                       ok
+DAG validation p95                          1.372 ms / <50 ms PASS
+ready dispatch p95                          27.118 ms / <100 ms PASS
+persisted wake p95                          5.374 ms / <250 ms PASS
+max observed / configured concurrency       4 / 4 PASS
+stable release parity                       v0.5.4 PASS
+stable tag commit                           6d78fb0a682d682fd428fd5c58a19d5d207cb3ba
+required stable assets                      7 / 7
+external AI/model dependency violations     0
+external model endpoint/key marker hits     0
+```
+
+The focused cross-wave trust/isolation matrix also passed `18` test files / `127` tests with zero failures. It covered authentication/OAuth, HTTP trust boundaries, dual-era MCP, principal/project isolation, operational audit isolation, DMF quality, continuity, execution recovery, resource governance, backup/restore, retention, audit integrity, observability, GitHub MCP regression, and secret leakage.
+
+Feature-build local HTTP/MCP canary at the same technical source:
+
+```text
+health / local metrics / remote metrics    200 / 200 / 403
+MCP no-token / evil Origin                 401 / 403
+correlation headers                        PASS
+memory / execution health                  healthy / healthy
+resource safe / configured max             4 / 4
+maintenance                                disabled; 0 runs; 0 candidates
+legacy MCP                                 2025-11-25 / 55 tools PASS
+modern MCP                                 2026-07-28 / 55 tools PASS
+```
+
+Supplemental real GitHub Fabric acceptance used only read operations and a temporary token file whose value was never printed. Identity (`GET /user`), private repository metadata, and Git `ls-remote` passed. NPM package listing returned `403 GITHUB_API_FORBIDDEN` / `Resource not accessible by integration` because the Codespaces `GITHUB_TOKEN` does not expose package-list scope and no separate packages token is configured in the Codespace runtime. Therefore the supplemental live probe is recorded factually as **3 / 4 read probes PASS**, not as a full live GitHub acceptance. This credential-scope limitation does not replace or invalidate the passing repository GitHub regression suite and stable-release parity gate.
+
+Wave G is not architecture-certified yet at this checkpoint. Final status still requires publication to `main`, exact runtime source-sync equality, production public/MCP/audit canaries, and final certification on the exact published source.
+
 ## Last core certification
 
 The final continuity/execution core certification was completed on 2026-08-26 after the execution WAL durability fix and staged default-enabled rollout.

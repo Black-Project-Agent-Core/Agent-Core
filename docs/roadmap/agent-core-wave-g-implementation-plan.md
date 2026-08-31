@@ -71,7 +71,7 @@
 - [x] **Step 2: Implement the orchestrator** with fail-fast subprocess execution and bounded stdout/stderr handling. It must run contract check -> `verify:release` -> 100k memory benchmark (5 samples, 2 warmups, 150 ms target) -> execution benchmark (20 samples, 3 warmups) -> stable parity.
 - [x] **Step 3: Parse benchmark/stable-parity JSON and emit one final report** containing source/version, 18-area matrix count, release pass, exact performance facts, stable tag/commit, no-external-model violation counts, and `ok=true` only after all gates pass.
 - [x] **Step 4: Re-run focused contract tests and a lightweight orchestrator argument/contract test; require GREEN.**
-- [ ] **Step 5: Commit `feat: add core certification command`, push branch, fetch, and require local/remote SHA equality.**
+- [x] **Step 5: Commit `feat: add core certification command`, push branch, fetch, and require local/remote SHA equality.** `4b8dd5a18e68eaf1890c0dea7e4778bb909616a4` was pushed and read back exactly.
 
 ### Task G3: Execute the complete Wave G matrix
 
@@ -83,11 +83,28 @@
 **Interfaces:**
 - Produces exact pre-integration Wave G certification evidence.
 
-- [ ] **Step 1: Run fresh `npm run certify:core` at a committed feature SHA.** Record exact 100k memory p95, DAG/dispatch/wake p95, max concurrency, stable-release tag/commit, test totals, quality metrics, and zero external-model violations.
-- [ ] **Step 2: Run supplemental read-only GitHub Fabric acceptance** using Codespace GitHub authentication without printing the token. Record whether all four read-only probes pass; report any credential-scope limitation factually.
-- [ ] **Step 3: Run focused trust/isolation matrix** covering OAuth/auth, principal/project isolation, operational audit, dual-era MCP, backup/restore, retention, audit integrity, observability, resource governance, and GitHub regression; require zero failures.
-- [ ] **Step 4: Run a temporary feature-build local HTTP/MCP canary** proving health/local+remote metrics classification/no-token/evil-Origin/correlation + 55 tools in both protocol eras.
+- [x] **Step 1: Run fresh `npm run certify:core` at a committed feature SHA.** Record exact 100k memory p95, DAG/dispatch/wake p95, max concurrency, stable-release tag/commit, test totals, quality metrics, and zero external-model violations.
+- [x] **Step 2: Run supplemental read-only GitHub Fabric acceptance** using Codespace GitHub authentication without printing the token. Record whether all four read-only probes pass; report any credential-scope limitation factually.
+- [x] **Step 3: Run focused trust/isolation matrix** covering OAuth/auth, principal/project isolation, operational audit, dual-era MCP, backup/restore, retention, audit integrity, observability, resource governance, and GitHub regression; require zero failures.
+- [x] **Step 4: Run a temporary feature-build local HTTP/MCP canary** proving health/local+remote metrics classification/no-token/evil-Origin/correlation + 55 tools in both protocol eras.
 - [ ] **Step 5: Update docs with exact feature certification evidence, commit `docs: record wave g feature certification evidence`, push/read back equality.**
+
+
+**G3 recorded evidence:**
+
+```text
+technical feature source                  4b8dd5a18e68eaf1890c0dea7e4778bb909616a4
+canonical core matrix                     18 / 18 PASS
+normal regression                         137 files / 668 tests PASS / 38 skips
+100k memory p95                           65.897 ms / <150 ms PASS
+DAG / dispatch / wake p95                 1.372 / 27.118 / 5.374 ms PASS
+max concurrency                           4 / 4 PASS
+stable v0.5.4 assets                      7 / 7 PASS
+model/API dependency/source violations    0 / 0
+focused cross-wave matrix                 18 files / 127 tests PASS
+feature local canary                      PASS; 55 tools both protocol eras
+live GitHub read probes                   3 / 4; package-list 403 due Codespaces token scope
+```
 
 ### Task G4: Integrate, publish, source-sync, and architecture-level certification
 
