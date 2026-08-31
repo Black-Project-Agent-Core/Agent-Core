@@ -9,7 +9,8 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test:tauri-contract": "node scripts/check-tauri-contract.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",

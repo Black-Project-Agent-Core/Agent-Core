@@ -649,7 +649,7 @@ git commit -m "feat(agent-code): add local console interactions"
 - Consumes: built Vite frontend and primary app-icon PNG.
 - Produces: a Tauri 2 desktop shell with native window lifecycle only; no commands exposed to React.
 
-- [ ] **Step 1: Add a static Tauri contract test script before config exists**
+- [x] **Step 1: Add a static Tauri contract test script before config exists**
 
 Add `scripts/check-tauri-contract.mjs` and package script `test:tauri-contract` that loads `src-tauri/tauri.conf.json` and asserts:
 
@@ -666,7 +666,7 @@ assert.equal(config.app.windows[0].decorations, true);
 assert.equal(config.build.frontendDist, '../dist');
 ```
 
-- [ ] **Step 2: Run contract test to verify RED**
+- [x] **Step 2: Run contract test to verify RED**
 
 ```bash
 npm run test:tauri-contract
@@ -674,7 +674,7 @@ npm run test:tauri-contract
 
 Expected: FAIL because `src-tauri/tauri.conf.json` does not exist.
 
-- [ ] **Step 3: Create the minimal native crate and exact Tauri config**
+- [x] **Step 3: Create the minimal native crate and exact Tauri config**
 
 Create `src-tauri/Cargo.toml`:
 
@@ -757,7 +757,7 @@ Create `src-tauri/tauri.conf.json` with:
 }
 ```
 
-- [ ] **Step 4: Generate native icon variants from the approved app mark**
+- [x] **Step 4: Generate native icon variants from the approved app mark**
 
 Run from `SubProject/Agent-Code`:
 
@@ -767,7 +767,7 @@ npx tauri icon src/assets/branding/agent-code-app-icon.png --output src-tauri/ic
 
 Verify `src-tauri/icons/icon.ico` exists and the generated PNG sizes are non-zero.
 
-- [ ] **Step 5: Add a project-local Codespace bootstrap for missing Rust**
+- [x] **Step 5: Add a project-local Codespace bootstrap for missing Rust**
 
 Create `scripts/codespace-bootstrap.sh`:
 
@@ -785,7 +785,7 @@ npm ci
 
 This records the setup path rather than relying on a one-off manual Rust install.
 
-- [ ] **Step 6: Run Tauri contract and native metadata checks**
+- [x] **Step 6: Run Tauri contract and native metadata checks**
 
 Run:
 
@@ -799,7 +799,7 @@ npx tauri info
 
 Expected: contract PASS; Cargo metadata PASS; Tauri sees the frontend and Rust toolchain. A Windows `.exe` bundle is not claimed from the Linux Codespace; actual Windows packaging remains a later Windows-host verification step.
 
-- [ ] **Step 7: Commit the desktop shell**
+- [x] **Step 7: Commit the desktop shell**
 
 ```bash
 git add SubProject/Agent-Code/src-tauri SubProject/Agent-Code/scripts SubProject/Agent-Code/package.json SubProject/Agent-Code/package-lock.json SubProject/Agent-Code/README.md
