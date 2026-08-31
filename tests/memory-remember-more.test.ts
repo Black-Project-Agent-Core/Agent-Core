@@ -3,8 +3,10 @@ import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { loadConfig } from '../src/config.js';
 import { MemoryCognitionLedger } from '../src/memory/cognition-ledger.js';
 import { MemoryRememberMore } from '../src/memory/remember-more.js';
+import { MemoryService } from '../src/memory/service.js';
 import { MemoryStore } from '../src/memory/store.js';
 import {
   MEMORY_REMEMBER_MORE_DEFAULTS,
@@ -463,6 +465,103 @@ describe('bounded remember_more historical expansion', () => {
     expect(second).toEqual(first);
     expect(reversed).toEqual(first);
     await store.close();
+  });
+
+
+  it('audits only returned packed expansions with scoped source, path, reason, depth, and score', async () => {
+    const { client, store, cognition, rememberMore } = await fixture('audit');
+    const scope = { principalId: 'principal-a', projectId: 'project-a' };
+    const parent = await store.commitMemory({ scope, canonicalKey: 'audit.parent', kind: 'decision', value: 'Historical branch parent.', sourceType: 'test' });
+    const dependency = await store.commitMemory({ scope, canonicalKey: 'audit.dependency', kind: 'procedure', value: 'Lower priority dependency.', sourceType: 'test' });
+    const first = await store.commitMemory({ scope, canonicalKey: 'audit.seed', kind: 'decision', value: 'Old seed revision.', sourceType: 'test' });
+    await store.reviseMemory({ scope, memoryId: first.memoryId, value: 'Current seed revision.', sourceType: 'test' });
+    await insertEdge(client, first.memoryId, parent.memoryId, 'branch_of');
+    await insertEdge(client, first.memoryId, dependency.memoryId, 'depends_on');
+    const contextId = randomUUID();
+    await authorizeSeed(client, scope, contextId, first.memoryId);
+
+    const result = await rememberMore.expand({
+      scope,
+      contextId,
+      seedMemoryIds: [first.memoryId],
+      reason: 'user_requested',
+      maxHops: 1,
+      maxItems: 2,
+      characterBudget: 20_000,
+    });
+    expect(result.expansions).toHaveLength(2);
+    expect(result.expansions.map((entry) => entry.memoryId)).toEqual([first.memoryId, parent.memoryId]);
+    expect(result.expansions.some((entry) => entry.memoryId === dependency.memoryId)).toBe(false);
+
+    const audit = await cognition.listRecallExpansions(scope, contextId);
+    expect(audit).toHaveLength(2);
+    for (const expansion of result.expansions) {
+      expect(audit).toContainEqual(expect.objectContaining({
+        principalId: scope.principalId,
+        projectId: scope.projectId,
+        contextId,
+        sourceMemoryId: expansion.sourceSeedMemoryId,
+        targetMemoryId: expansion.memoryId,
+        depth: expansion.depth,
+        relationPath: expansion.relationPath,
+        reasonCode: `user_requested:${expansion.reasonCode}`,
+        score: expansion.score,
+      }));
+    }
+    expect(audit.some((row) => row.targetMemoryId === dependency.memoryId)).toBe(false);
+    expect(audit.find((row) => row.targetMemoryId === first.memoryId)).toMatchObject({
+      sourceMemoryId: first.memoryId,
+      targetMemoryId: first.memoryId,
+      relationPath: ['supersedes'],
+    });
+    await store.close();
+  });
+
+  it('composes bounded remember_more through MemoryService without changing current-first preflight recall', async () => {
+    const root = mkdtempSync(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-remember-more-service-'));
+    const base = loadConfig({}, root).memory;
+    const service = new MemoryService({ ...base, enabled: true, dbPath: path.join(root, 'runtime', 'memory', 'service.sqlite') });
+    const scope = { principalId: 'service-principal', projectId: 'service-project' };
+    try {
+      const first = await service.commit({
+        scope,
+        canonicalKey: 'decision.remember-more.service',
+        kind: 'decision',
+        value: 'The service originally used legacy geometry scaling.',
+        sourceType: 'test',
+      });
+      const current = await service.revise({
+        scope,
+        memoryId: first.memoryId,
+        value: 'The service now preserves source-native geometry.',
+        sourceType: 'test',
+      });
+      const preflight = await service.preflight({
+        scope,
+        routeContextId: randomUUID(),
+        task: 'preserve source-native geometry decision remember more service',
+        expiresAt: Date.now() + 60_000,
+      });
+      expect(preflight.recalled.find((hit) => hit.memoryId === first.memoryId)?.revisionId).toBe(current.revisionId);
+
+      const result = await service.rememberMore({
+        scope,
+        contextId: preflight.contextId,
+        seedMemoryIds: [first.memoryId],
+        reason: 'revision_history',
+      });
+      expect(result.expansions).toHaveLength(1);
+      expect(result.expansions[0]).toMatchObject({
+        memoryId: first.memoryId,
+        revisionId: first.revisionId,
+        revisionNo: 1,
+        historicalRevision: true,
+      });
+      expect((await service.getMemory(scope, first.memoryId))?.revisionId).toBe(current.revisionId);
+      expect(await service.listRecallExpansions(scope, preflight.contextId)).toHaveLength(1);
+    } finally {
+      await service.close();
+    }
   });
 
 });

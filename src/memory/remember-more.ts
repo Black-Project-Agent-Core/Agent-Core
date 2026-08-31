@@ -416,10 +416,23 @@ export class MemoryRememberMore {
       characterBudgetConsumed,
       truncated,
     };
-    return {
+    const result: MemoryRememberMoreResult = {
       ...resultWithoutHash,
       snapshotHash: snapshotHash(resultWithoutHash),
     };
+    for (const expansion of result.expansions) {
+      await this.cognition.recordRecallExpansion({
+        scope: normalized.scope,
+        contextId: normalized.contextId,
+        sourceMemoryId: expansion.sourceSeedMemoryId,
+        targetMemoryId: expansion.memoryId,
+        depth: expansion.depth,
+        relationPath: expansion.relationPath,
+        reasonCode: `${normalized.reason}:${expansion.reasonCode}`,
+        score: expansion.score,
+      });
+    }
+    return result;
   }
 
   private async authorizedSeeds(normalized: NormalizedRequest, now: number): Promise<AuthorizedSeedRow[]> {

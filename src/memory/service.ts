@@ -30,6 +30,7 @@ import { MemoryRemoteCrypto } from './remote-crypto.js';
 import { MemoryRemoteHydrator } from './remote-hydrator.js';
 import { MemoryPreflightEngine, createDisabledPreflightResult } from './preflight.js';
 import { MemoryRetriever } from './retriever.js';
+import { MemoryRememberMore } from './remember-more.js';
 import { MemoryRemoteSynchronizer } from './remote-sync.js';
 import type { MemoryRemoteTransport } from './remote-transport.js';
 import type { MemoryRemoteEnvelope, MemoryRemoteManifest } from './remote-types.js';
@@ -45,6 +46,8 @@ import type {
   MemoryCommitResult,
   MemoryPreflightRequest,
   MemoryPreflightResult,
+  MemoryRememberMoreRequest,
+  MemoryRememberMoreResult,
   MemoryReviseRequest,
   MemoryReviseResult,
   MemoryScope,
@@ -62,6 +65,7 @@ interface MemoryComponents {
   linker: MemoryLinker;
   preflight: MemoryPreflightEngine;
   cognition: MemoryCognitionLedger;
+  rememberMore: MemoryRememberMore;
   remoteSync?: MemoryRemoteSynchronizer;
   continuity: ContinuityStore;
   continuitySnapshot: ContinuitySnapshotBuilder;
@@ -292,6 +296,11 @@ export class MemoryService {
     } finally {
       this.metrics?.observe('memory.preflight.duration_ms', Math.max(0, performance.now() - started));
     }
+  }
+
+  async rememberMore(request: MemoryRememberMoreRequest): Promise<MemoryRememberMoreResult> {
+    const components = await this.requireComponents();
+    return components.rememberMore.expand(request);
   }
 
   async recordWriteDecision(input: MemoryWriteDecisionInput) {
@@ -743,12 +752,13 @@ export class MemoryService {
     });
     const preflight = new MemoryPreflightEngine(client, retriever, lifecycle);
     const cognition = new MemoryCognitionLedger(client);
+    const rememberMore = new MemoryRememberMore(client, cognition);
     const remoteSync = this.remoteTransport
       ? new MemoryRemoteSynchronizer(this.remoteTransport, cognition, { maxRetryAttempts: this.config.remote.maxRetryAttempts })
       : undefined;
     const continuity = new ContinuityStore(client);
     const continuitySnapshot = new ContinuitySnapshotBuilder(client);
-    const components = { client, store, retriever, lifecycle, linker, preflight, cognition, remoteSync, continuity, continuitySnapshot };
+    const components = { client, store, retriever, lifecycle, linker, preflight, cognition, rememberMore, remoteSync, continuity, continuitySnapshot };
     try {
       const opened = await store.open({ dbPath: this.config.dbPath, busyTimeoutMs: this.config.busyTimeoutMs });
       this.lastIntegrityCheckAt = opened.integrityCheckedAt;
