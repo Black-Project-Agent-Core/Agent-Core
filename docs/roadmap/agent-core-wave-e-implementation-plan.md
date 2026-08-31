@@ -211,7 +211,7 @@ current quality:gate exit = 0
 - [x] **Step 8: Before integration fetch `origin/main`** and require the feature merge-base remains the Wave E base or reconcile any concurrent main changes explicitly. `origin/main` remained exactly at Wave E base `7f6968b`; no remote-only commit existed.
 - [x] **Step 9: Fast-forward main only when topology is compatible; run fresh merged-main `npm ci` + `npm run verify:release`; push non-force and require local/remote equality.** Final merged-main verification passed at `c547c93`; non-force publication readback proved `HEAD == origin/main`.
 - [x] **Step 10: Controlled runtime source-sync** and require `HEAD == origin/main == connection.sourceCommit`; public health/security + legacy/modern 55-tool canary. Codespace bootstrap/source-sync and public canary passed at `c547c93`.
-- [ ] **Step 11: Commit/push final docs-only certification if needed, source-sync again, then remove only the Wave E worktree/local branch after exact equality is proven.**
+- [x] **Step 11: Commit/push final docs-only certification if needed, source-sync again, then remove only the Wave E worktree/local branch after exact equality is proven.** This closeout commit is published first; runtime/source equality is rechecked before removing only the Wave E local worktree/branch. The remote Wave E branch is retained for audit history.
 
 ## Wave E Pre-Integration Certification Evidence — 2026-08-31
 
@@ -273,6 +273,19 @@ external AI model/API dependency           0
 ```
 
 The merged-main run initially exposed one pre-existing Wave D test-only timing flake: the audit-journal test assumed asynchronous filesystem initialization reached `appendLine` within 10 ms under full-suite load. Production audit code was not changed. Commit `c547c93` replaced the fixed sleep with an explicit append-start synchronization signal; the focused test passed 5/5 and the suite repeated 10/10 before the fresh merged-main release gate passed.
+
+Publication housekeeping evidence before final worktree cleanup:
+
+```text
+certification docs publication             0fc0f6d22eb21306863d30dd7cfb7621524a2c86
+HEAD == origin/main == sourceCommit         PASS
+runtime health                              ok
+memory integrity                            ok
+execution integrity                         ok
+Wave E worktree                             clean
+main worktree                               clean
+remote Wave E audit branch                  retained
+```
 
 ## Wave E Exit Matrix
 
