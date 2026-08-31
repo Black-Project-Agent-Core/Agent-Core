@@ -28,7 +28,9 @@ import { MemoryLifecycle } from './lifecycle.js';
 import { MemoryLinker } from './linker.js';
 import { MemoryPreflightEngine, createDisabledPreflightResult } from './preflight.js';
 import { MemoryRetriever } from './retriever.js';
+import { MemoryRemoteSynchronizer } from './remote-sync.js';
 import type { MemoryRemoteTransport } from './remote-transport.js';
+import type { MemoryRemoteEnvelope, MemoryRemoteManifest } from './remote-types.js';
 import { MEMORY_SCHEMA_VERSION } from './schema.js';
 import {
   MemoryStore,
@@ -58,6 +60,7 @@ interface MemoryComponents {
   linker: MemoryLinker;
   preflight: MemoryPreflightEngine;
   cognition: MemoryCognitionLedger;
+  remoteSync?: MemoryRemoteSynchronizer;
   continuity: ContinuityStore;
   continuitySnapshot: ContinuitySnapshotBuilder;
 }
@@ -327,6 +330,16 @@ export class MemoryService {
     if (!this.config.enabled) return null;
     const components = await this.requireComponents();
     return components.cognition.getRemoteState(scope);
+  }
+
+  async syncRemoteGeneration(input: {
+    scope: MemoryScope;
+    object: MemoryRemoteEnvelope;
+    manifest: MemoryRemoteManifest;
+  }) {
+    const components = await this.requireComponents();
+    if (!components.remoteSync) throw new Error('MEMORY_REMOTE_DISABLED');
+    return components.remoteSync.sync(input);
   }
 
   async openConflict(
@@ -719,9 +732,12 @@ export class MemoryService {
     });
     const preflight = new MemoryPreflightEngine(client, retriever, lifecycle);
     const cognition = new MemoryCognitionLedger(client);
+    const remoteSync = this.remoteTransport
+      ? new MemoryRemoteSynchronizer(this.remoteTransport, cognition, { maxRetryAttempts: this.config.remote.maxRetryAttempts })
+      : undefined;
     const continuity = new ContinuityStore(client);
     const continuitySnapshot = new ContinuitySnapshotBuilder(client);
-    const components = { client, store, retriever, lifecycle, linker, preflight, cognition, continuity, continuitySnapshot };
+    const components = { client, store, retriever, lifecycle, linker, preflight, cognition, remoteSync, continuity, continuitySnapshot };
     try {
       const opened = await store.open({ dbPath: this.config.dbPath, busyTimeoutMs: this.config.busyTimeoutMs });
       this.lastIntegrityCheckAt = opened.integrityCheckedAt;
