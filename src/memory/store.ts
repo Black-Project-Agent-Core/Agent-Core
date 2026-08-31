@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
-import { extractMemoryAnchors } from './anchors.js';
+import { MEMORY_ANCHOR_TYPES, extractMemoryAnchors } from './anchors.js';
 import { createMemoryBackup, type MemoryBackupRecord } from './backup.js';
 import { normalizeCanonicalKey, normalizeMemoryText } from './normalizer.js';
-import { redactMemoryText } from './redaction.js';
+import { containsRedactionMarker, redactMemoryText } from './redaction.js';
 import { RELATION_WEIGHTS, shouldMirrorMemoryRelation } from './relation-policy.js';
 import {
   MEMORY_MIGRATIONS,
@@ -119,6 +119,29 @@ function scopeProject(scope: MemoryScope): string {
 
 function assertScope(scope: MemoryScope): void {
   if (!scope.principalId?.trim()) throw new MemoryStoreError('MEMORY_SCOPE_REQUIRED', 'principalId is required');
+}
+
+const MEMORY_ANCHOR_TYPE_SET = new Set<string>(MEMORY_ANCHOR_TYPES);
+
+function validatedExplicitAnchors(request: MemoryCommitRequest): Array<{ type: string; value: string }> {
+  return (request.explicitAnchors ?? []).map((anchor) => {
+    const type = String(anchor.type ?? '');
+    const value = String(anchor.value ?? '').trim();
+    const redacted = value ? redactMemoryText(value).text : '';
+    if (
+      !MEMORY_ANCHOR_TYPE_SET.has(type)
+      || !value
+      || containsRedactionMarker(value)
+      || /REDACTED/i.test(value)
+      || redacted !== value
+    ) {
+      throw new MemoryStoreError(
+        'MEMORY_EXPLICIT_ANCHOR_INVALID',
+        'explicit anchors require a valid type and a non-secret value',
+      );
+    }
+    return { type, value };
+  });
 }
 
 function sanitizeStructured(value: unknown, keyName = ''): unknown {
@@ -544,13 +567,19 @@ export class MemoryStore {
     });
     operations.push({ kind: 'run', sql: 'DELETE FROM memory_anchors WHERE memory_id = ?', params: [memoryId] });
 
-    const anchors = extractMemoryAnchors(`${canonicalKey} ${normalized.valueText}`).slice(0, 128);
-    operations.push({
-      kind: 'run',
-      sql: 'INSERT OR IGNORE INTO memory_anchors(memory_id, anchor, anchor_type, created_at) VALUES (?, ?, ?, ?)',
-      params: [memoryId, canonicalKey, 'canonical_key', now],
-    });
-    for (const anchor of anchors) {
+    const anchorMap = new Map<string, { type: string; value: string }>();
+    const addAnchor = (type: string, value: string): void => {
+      if (anchorMap.size >= 128) return;
+      anchorMap.set(`${type}\0${value}`, { type, value });
+    };
+    addAnchor('canonical_key', canonicalKey);
+    for (const anchor of extractMemoryAnchors(`${canonicalKey} ${normalized.valueText}`)) {
+      addAnchor(anchor.type, anchor.value);
+    }
+    for (const anchor of validatedExplicitAnchors(request)) {
+      addAnchor(anchor.type, anchor.value);
+    }
+    for (const anchor of anchorMap.values()) {
       operations.push({
         kind: 'run',
         sql: 'INSERT OR IGNORE INTO memory_anchors(memory_id, anchor, anchor_type, created_at) VALUES (?, ?, ?, ?)',

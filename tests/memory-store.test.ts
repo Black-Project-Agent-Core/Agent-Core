@@ -2,6 +2,8 @@ import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { loadConfig } from '../src/config.js';
+import { MemoryRetriever } from '../src/memory/retriever.js';
 import { MemoryStore, MemoryStoreError } from '../src/memory/store.js';
 import { MemoryWorkerClient } from '../src/memory/worker-client.js';
 
@@ -101,6 +103,68 @@ describe('auditable versioned memory store', () => {
 
     const eventCount = (await client.query<{ count: number }>('SELECT count(*) AS count FROM memory_events'))[0]!.count;
     expect(eventCount).toBeGreaterThanOrEqual(5);
+    await store.close();
+  });
+
+  it('persists explicit contextual anchors deterministically and exposes them through exact retrieval', async () => {
+    const client = new MemoryWorkerClient();
+    const store = new MemoryStore(client);
+    await store.open({ dbPath: dbPath('explicit-anchors') });
+    const scope = { ...scopeA, projectId: 'anchor-project' };
+    const commit = '482489d799ed696b752875a1753cbdc6527e5115';
+
+    const memory = await store.commitMemory({
+      scope,
+      canonicalKey: 'memory.explicit.anchor.fixture',
+      kind: 'artifact',
+      value: 'Verified cross-session memory artifact.',
+      sourceType: 'test',
+      explicitAnchors: [
+        { type: 'continuity_task_id', value: 'task-123' },
+        { type: 'continuity_task_id', value: 'task-123' },
+        { type: 'continuity_checkpoint_id', value: 'checkpoint-456' },
+        { type: 'git_commit', value: commit },
+        { type: 'branch_name', value: 'feature/memory-nervous-system' },
+        { type: 'artifact_hash', value: 'a'.repeat(64) },
+      ],
+    });
+
+    const explicitRows = await client.query<{ anchor: string; anchor_type: string }>(
+      `SELECT anchor, anchor_type FROM memory_anchors
+       WHERE memory_id = ? AND anchor_type IN (
+         'continuity_task_id','continuity_checkpoint_id','git_commit','branch_name','artifact_hash'
+       ) ORDER BY anchor_type, anchor`,
+      [memory.memoryId],
+    );
+    expect(explicitRows).toEqual([
+      { anchor: 'a'.repeat(64), anchor_type: 'artifact_hash' },
+      { anchor: 'feature/memory-nervous-system', anchor_type: 'branch_name' },
+      { anchor: 'checkpoint-456', anchor_type: 'continuity_checkpoint_id' },
+      { anchor: 'task-123', anchor_type: 'continuity_task_id' },
+      { anchor: commit, anchor_type: 'git_commit' },
+    ]);
+
+    const retriever = new MemoryRetriever(client, loadConfig({}, process.cwd()).memory);
+    const recalled = await retriever.search({
+      scope,
+      query: 'continuity_task_id:task-123',
+      limit: 5,
+    });
+    expect(recalled.hits[0]?.memoryId).toBe(memory.memoryId);
+    expect(recalled.hits[0]?.whyMatched.exact).toBe(1);
+    expect(recalled.hits[0]?.whyMatched.matchedAnchors).toContain('task-123');
+
+    for (const invalidValue of ['   ', '[REDACTED:SECRET]']) {
+      await expect(store.commitMemory({
+        scope,
+        canonicalKey: `memory.invalid.anchor.${invalidValue.trim() || 'blank'}`,
+        kind: 'fact',
+        value: 'This write must fail before persistence.',
+        sourceType: 'test',
+        explicitAnchors: [{ type: 'continuity_task_id', value: invalidValue }],
+      })).rejects.toMatchObject({ code: 'MEMORY_EXPLICIT_ANCHOR_INVALID' });
+    }
+
     await store.close();
   });
 

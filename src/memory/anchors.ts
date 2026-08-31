@@ -1,16 +1,24 @@
 import { containsRedactionMarker } from './redaction.js';
 
-export type MemoryAnchorType =
-  | 'windows_path'
-  | 'unix_path'
-  | 'uuid'
-  | 'capability_id'
-  | 'tool_id'
-  | 'url'
-  | 'key_value'
-  | 'route_id'
-  | 'process_id'
-  | 'run_id';
+export const MEMORY_ANCHOR_TYPES = [
+  'windows_path',
+  'unix_path',
+  'uuid',
+  'capability_id',
+  'tool_id',
+  'url',
+  'key_value',
+  'route_id',
+  'process_id',
+  'run_id',
+  'continuity_task_id',
+  'continuity_checkpoint_id',
+  'artifact_hash',
+  'git_commit',
+  'branch_name',
+] as const;
+
+export type MemoryAnchorType = (typeof MEMORY_ANCHOR_TYPES)[number];
 
 export interface MemoryAnchor {
   type: MemoryAnchorType;
@@ -44,6 +52,11 @@ export function extractMemoryAnchors(input: string): MemoryAnchor[] {
   eachMatch(text, /\bproc_[a-z0-9-]{4,}\b/gi, (match) => pushAnchor(anchors, 'process_id', match[0]));
   eachMatch(text, /\brun_[a-z0-9-]{4,}\b/gi, (match) => pushAnchor(anchors, 'run_id', match[0]));
   eachMatch(text, /\broute_[a-z0-9-]{4,}\b/gi, (match) => pushAnchor(anchors, 'route_id', match[0]));
+  eachMatch(text, /\bcontinuity_task_id:([A-Za-z0-9._-]{1,200})\b/g, (match) => pushAnchor(anchors, 'continuity_task_id', match[1]!));
+  eachMatch(text, /\bcontinuity_checkpoint_id:([A-Za-z0-9._-]{1,200})\b/g, (match) => pushAnchor(anchors, 'continuity_checkpoint_id', match[1]!));
+  eachMatch(text, /\bartifact_hash:([0-9a-f]{64})\b/gi, (match) => pushAnchor(anchors, 'artifact_hash', match[1]!.toLowerCase()));
+  eachMatch(text, /\bgit_commit:([0-9a-f]{7,64})\b/gi, (match) => pushAnchor(anchors, 'git_commit', match[1]!.toLowerCase()));
+  eachMatch(text, /\bbranch_name:([A-Za-z0-9._/-]{1,200})/g, (match) => pushAnchor(anchors, 'branch_name', match[1]!));
   eachMatch(text, /\bhttps?:\/\/[^\s<>"']+/gi, (match) => pushAnchor(anchors, 'url', match[0]));
   eachMatch(text, /\bagent_core_[a-z][a-z0-9_]*\b/g, (match) => pushAnchor(anchors, 'tool_id', match[0]));
 
