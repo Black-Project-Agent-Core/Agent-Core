@@ -305,6 +305,8 @@ The engine accepts only seed memories proven by the supplied live authenticated 
 
 **Purpose:** Force a postflight memory decision without forcing memory pollution.
 
+**Executable plan:** `docs/roadmap/agent-core-memory-nervous-system-phase-4-implementation-plan.md`
+
 **Deliverables:**
 
 - `MemoryCognitionController`;
