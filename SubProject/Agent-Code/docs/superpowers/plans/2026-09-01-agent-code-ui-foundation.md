@@ -343,7 +343,7 @@ git commit -m "feat(agent-code): add local workspace state"
 - Consumes: `WorkspaceState` and callback props only; no Tauri API calls.
 - Produces: semantic shell regions with stable labels used by interaction and visual tests.
 
-- [ ] **Step 1: Extend component test with shell hierarchy expectations**
+- [x] **Step 1: Extend component test with shell hierarchy expectations**
 
 Add to `AgentCodeApp.test.tsx`:
 
@@ -359,7 +359,7 @@ it('renders the focused console hierarchy without dashboard cards', () => {
 });
 ```
 
-- [ ] **Step 2: Run the shell test to verify RED**
+- [x] **Step 2: Run the shell test to verify RED**
 
 ```bash
 npm test -- src/components/AgentCodeApp.test.tsx
@@ -367,7 +367,7 @@ npm test -- src/components/AgentCodeApp.test.tsx
 
 Expected: FAIL on missing New/session/sidebar/workspace elements.
 
-- [ ] **Step 3: Implement semantic layout components**
+- [x] **Step 3: Implement semantic layout components**
 
 Create components with these boundaries:
 
@@ -409,7 +409,7 @@ export type WorkspaceProps = {
 
 Use Lucide icons (`Plus`, `PanelLeftClose`, `PanelLeftOpen`, `ArrowUp`, `Folder`, `MessageSquare`) only as subtle functional glyphs.
 
-- [ ] **Step 4: Implement exact CSS token baseline**
+- [x] **Step 4: Implement exact CSS token baseline**
 
 Create `tokens.css` with these first-release values:
 
@@ -443,7 +443,7 @@ Create `tokens.css` with these first-release values:
 
 `app.css` must use CSS Grid for `AppShell`, animate only sidebar width/opacity/transform, prevent horizontal overflow, and keep the composer centered with `width: min(760px, calc(100% - 48px))`.
 
-- [ ] **Step 5: Run component/build gates**
+- [x] **Step 5: Run component/build gates**
 
 ```bash
 npm test -- src/components/AgentCodeApp.test.tsx
@@ -453,7 +453,7 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit the Focused Console shell**
+- [x] **Step 6: Commit the Focused Console shell**
 
 ```bash
 git add SubProject/Agent-Code/src
