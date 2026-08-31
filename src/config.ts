@@ -56,6 +56,12 @@ export interface HttpSecurityConfig {
   allowedOrigins: string[];
 }
 
+export type McpProtocolMode = 'dual' | 'legacy';
+
+export interface McpConfig {
+  protocolMode: McpProtocolMode;
+}
+
 export interface AppConfig {
   host: string;
   port: number;
@@ -64,6 +70,7 @@ export interface AppConfig {
   capabilityDir: string;
   allowedRoots: string[];
   httpSecurity: HttpSecurityConfig;
+  mcp: McpConfig;
   memory: MemoryConfig;
   execution: ExecutionConfig;
   github: GitHubConfig;
@@ -86,6 +93,12 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
   if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
   throw new Error(`Invalid boolean value: ${value}`);
+}
+
+function parseMcpProtocolMode(value: string | undefined): McpProtocolMode {
+  const normalized = value?.trim().toLowerCase() || 'dual';
+  if (normalized === 'dual' || normalized === 'legacy') return normalized;
+  throw new Error('AGENT_CORE_MCP_PROTOCOL_MODE must be dual or legacy');
 }
 
 function parsePositiveInteger(value: string | undefined, fallback: number, name: string): number {
@@ -203,6 +216,10 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     allowedOrigins: parseAllowedOrigins(env.AGENT_CORE_MCP_ALLOWED_ORIGINS),
   };
 
+  const mcp: McpConfig = {
+    protocolMode: parseMcpProtocolMode(env.AGENT_CORE_MCP_PROTOCOL_MODE),
+  };
+
   const execution: ExecutionConfig = {
     // Production default is enabled after the staged Task 22 live canary; operators can still disable it explicitly.
     enabled: parseBoolean(env.AGENT_CORE_EXECUTION_ENABLED, true),
@@ -232,6 +249,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     capabilityDir: path.resolve(env.AGENT_CORE_CAPABILITY_DIR?.trim() || path.join(baseDir, 'capabilities')),
     allowedRoots: parseRoots(env.AGENT_CORE_ALLOWED_ROOTS, baseDir),
     httpSecurity,
+    mcp,
     memory,
     execution,
     github,

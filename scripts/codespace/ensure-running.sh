@@ -33,7 +33,8 @@ command -v curl >/dev/null 2>&1 || needs_bootstrap=1
 command -v tmux >/dev/null 2>&1 || needs_bootstrap=1
 command -v gh >/dev/null 2>&1 || needs_bootstrap=1
 node_version_compatible || needs_bootstrap=1
-[[ -f node_modules/@modelcontextprotocol/sdk/package.json ]] || needs_bootstrap=1
+[[ -f node_modules/@modelcontextprotocol/server/package.json ]] || needs_bootstrap=1
+[[ -f node_modules/@modelcontextprotocol/node/package.json ]] || needs_bootstrap=1
 
 if (( needs_bootstrap == 1 )); then
   if [[ "${AGENT_CORE_BOOTSTRAP_ACTIVE:-0}" == "1" ]]; then

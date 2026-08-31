@@ -113,7 +113,7 @@ command -v npm >/dev/null 2>&1 || {
   exit 30
 }
 
-if [[ ! -f node_modules/@modelcontextprotocol/sdk/package.json ]]; then
+if [[ ! -f node_modules/@modelcontextprotocol/server/package.json || ! -f node_modules/@modelcontextprotocol/node/package.json ]]; then
   log_info 'npm dependency marker missing; restoring lockfile dependencies.'
   npm ci || exit 40
 elif ! npm ls --depth=0 >/dev/null 2>&1; then

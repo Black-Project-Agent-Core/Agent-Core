@@ -77,7 +77,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
         execution,
       };
     },
-    mcpHandler: createMcpHttpHandler(runtime),
+    mcpHandler: createMcpHttpHandler(runtime, { protocolMode: config.mcp.protocolMode }),
   }));
 
   try {

@@ -18,6 +18,7 @@ describe('loadConfig', () => {
       trustProxy: false,
       allowedOrigins: [],
     });
+    expect(config.mcp).toEqual({ protocolMode: 'dual' });
     expect(config.execution).toEqual({
       enabled: true,
       dbPath: path.join(baseDir, 'runtime', 'execution', 'agent-core-execution.sqlite'),
@@ -49,6 +50,7 @@ describe('loadConfig', () => {
       AGENT_CORE_PUBLIC_BASE_URL: 'https://agent-core.example.test/',
       AGENT_CORE_TRUST_PROXY: 'true',
       AGENT_CORE_MCP_ALLOWED_ORIGINS: 'https://app.example.test;LOCALHOST;https://app.example.test:8443',
+      AGENT_CORE_MCP_PROTOCOL_MODE: 'legacy',
       AGENT_CORE_EXECUTION_ENABLED: 'true',
       AGENT_CORE_EXECUTION_DB_PATH: 'F:\\Exec\\execution.sqlite',
       AGENT_CORE_EXECUTION_LOG_ROOT: 'F:\\Exec\\runs',
@@ -79,6 +81,7 @@ describe('loadConfig', () => {
       trustProxy: true,
       allowedOrigins: ['app.example.test', 'localhost'],
     });
+    expect(config.mcp).toEqual({ protocolMode: 'legacy' });
     expect(config.execution).toEqual({
       enabled: true,
       dbPath: path.resolve('F:\\Exec\\execution.sqlite'),
@@ -109,6 +112,11 @@ describe('loadConfig', () => {
       .toThrow('AGENT_CORE_PUBLIC_BASE_URL must be an origin without a path');
     expect(() => loadConfig({ AGENT_CORE_MCP_ALLOWED_ORIGINS: 'https://app.example.test/path' }, 'F:\\Ignored'))
       .toThrow('AGENT_CORE_MCP_ALLOWED_ORIGINS contains an invalid origin');
+  });
+
+  it('rejects unsupported MCP protocol modes', () => {
+    expect(() => loadConfig({ AGENT_CORE_MCP_PROTOCOL_MODE: 'modern-only' }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_MCP_PROTOCOL_MODE must be dual or legacy');
   });
 
   it('rejects non-http github api base urls', () => {
