@@ -77,6 +77,14 @@ function confidence(topScore: number): number {
   if (topScore <= 0) return 0.35;
   return Math.round(Math.min(1, 0.4 + topScore / 100) * 1000) / 1000;
 }
+
+function strongRecommendations(recommendations: CapabilitySummary[]): CapabilitySummary[] {
+  const topScore = recommendations[0]?.score ?? 0;
+  if (topScore < 8) return [];
+  const threshold = Math.max(8, topScore * 0.30);
+  return recommendations.filter((capability) => (capability.score ?? 0) >= threshold).slice(0, 5);
+}
+
 function classifyTier(task: string, topScore: number): RouteTier {
   const highImpact = HIGH_IMPACT_SIGNAL.test(task);
   if (highImpact) return 'high_impact';
@@ -153,7 +161,7 @@ export class CapabilityRouter {
   constructor(private readonly registry: CapabilityRegistry) {}
 
   route(task: string, context = ''): RoutePlan {
-    const recommendations = this.registry.recommend(task, context, 8);
+    const recommendations = strongRecommendations(this.registry.recommend(task, context, 8));
     const topScore = recommendations[0]?.score ?? 0;
     const tier = classifyTier(task, topScore);
     const requiredSkillLoads = tier === 'atomic' ? [] : requiredSkills(recommendations);

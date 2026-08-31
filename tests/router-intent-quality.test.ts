@@ -53,4 +53,13 @@ describe('router intent quality', () => {
     const route = router.route('Change admin registry setting');
     expect(route).toMatchObject({ tier: 'high_impact', risk: 'high', requiredSkillLoads: [] });
   });
+
+  it('keeps only strong route recommendations instead of weak lexical secondary guidance', async () => {
+    const router = await routerFixture();
+    const docs = router.route('Review API documentation README wording for clarity');
+    expect(docs.recommendedCapabilities.map((item) => item.id)).toEqual(['docs-helper']);
+
+    const debug = router.route('Debug backend crash by inspecting runtime failure logs without changing files');
+    expect(debug.recommendedCapabilities.map((item) => item.id)).toEqual(['backend-debug-reference']);
+  });
 });
