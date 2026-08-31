@@ -1,7 +1,7 @@
 # Agent Core Balanced Evolution — Evidence-Backed Upgrade Proposal
 
 **Date:** 2026-08-31
-**Status:** APPROVED ROADMAP — WAVES A-B CERTIFIED COMPLETE; WAVES C-G NOT IMPLEMENTED
+**Status:** WAVES A-G CERTIFIED COMPLETE — AGENT CORE v0.6.0 ARCHITECTURE-LEVEL STABLE
 **Scope:** Agent Core core only. Codespace is not an upgrade target in this proposal.
 **Strategy:** Hybrid compatibility — backward-compatible by default; a major change is allowed only when benefit is evidence-backed and a migration/rollback path exists.
 
@@ -1129,7 +1129,7 @@ certification docs publication/source-sync               PASS
 
 **Goal:** certify the evolved Agent Core as one coherent stable control plane.
 
-**Implementation status:** **PRODUCTION CERTIFIED; final local housekeeping/documentation closeout pending**. Wave G adds no new reasoning/runtime subsystem. It establishes one repository-owned 18-area certification contract, separates prepublish from postpublish release gates, promotes the consolidated control plane to Agent Core `v0.6.0`, and proves the latest published `main` and live Codespace runtime against the same architecture matrix. The final user-visible architecture-level claim is withheld only until the Wave G local worktree/branch cleanup is recorded and the resulting docs-only closeout SHA is itself certified, published, and source-synced.
+**Implementation status:** **CERTIFIED COMPLETE** on 2026-08-31. Wave G adds no new reasoning/runtime subsystem. It establishes one repository-owned 18-area certification contract, separates prepublish from postpublish release gates, promotes the consolidated control plane to Agent Core `v0.6.0`, preserves concurrent Super-Runtime histories, and proves the published control-plane source/runtime against the same architecture matrix. Stable release `v0.6.0` remains immutable at `5c19c0535042174a0f9d9a8ff7dd5eeb5c23b087`; final technical docs/runtime evidence was published and source-synced at `e3dd69b03a17b8449bad60a5e32a4cae01893ffb` before local Wave G cleanup. This closeout commit records that completed housekeeping and is publishable only after it independently passes `npm run certify:core`.
 
 Final matrix:
 
@@ -1224,12 +1224,29 @@ resource safe / configured max          4 / 4
 maintenance                             disabled; 0 runs; 0 candidates
 legacy MCP                              2025-11-25 / 55 tools PASS
 modern MCP                              2026-07-28 / 55 tools PASS
-live audit                              433 records / verify PASS
+live audit                              455 records / verify PASS
 temporary canary key                    not created; established runtime connector key reused
 unrelated .vscode editor state          preserved
 ```
 
 No Mac Agent Core runtime, cloud model, external model API, model worker, embedding/reranking service, or AI judge was used to establish Wave G certification.
+
+Final docs-evidence certification at `e3dd69b03a17b8449bad60a5e32a4cae01893ffb` then passed the unchanged postpublish gate before local Wave G cleanup:
+
+```text
+core matrix                           18 / 18 PASS
+normal regression                     137 files PASS / 38 skips
+100k memory preflight p95             67.336 ms / <150 ms PASS
+DAG / dispatch / wake p95             1.269 / 23.692 / 6.758 ms PASS
+max concurrency                       4 / configured 4 PASS
+stable v0.6.0 parity                   7 / 7 assets PASS
+external model dependency/source hits  0 / 0
+production canary                      200 health; 403/200 remote/local metrics; 401 no-token; 403 evil Origin
+legacy / modern MCP                    2025-11-25/55 / 2026-07-28/55 PASS
+live audit                             455 records / verify PASS
+```
+
+The local Wave G worktree and local branch were then removed after ancestor/readback checks. Remote `origin/wave-g/core-recertification` remains retained at `e3dd69b...` for audit. Wave B and Super-Runtime worktrees, plus unrelated untracked `.vscode/`, were not removed or reset.
 
 ---
 

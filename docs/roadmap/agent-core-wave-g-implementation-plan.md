@@ -155,14 +155,14 @@ production public / remote/local metrics   200 / 403 / 200
 production no-token / evil Origin          401 / 403
 production legacy / modern MCP             2025-11-25/55 / 2026-07-28/55 PASS
 production memory / execution integrity    ok / ok
-production audit                           433 records / verify PASS
+production audit                           455 records / verify PASS
 external model dependency/source hits      0 / 0
 remote release asset byte parity            7 / 7 PASS
 registry vs release TGZ byte parity          PASS
 final live GitHub read probes               4 / 4 PASS
 ```
 
-- [ ] **Step 7: Publish final docs-only architecture certification if evidence changes the docs; run fresh `npm run certify:core` on that exact docs SHA before publication/source-sync.**
-- [ ] **Step 8: Require final `main == origin/main == connection.sourceCommit` equality and clean tracked status.**
-- [ ] **Step 9: Remove only local Wave G worktree and local Wave G branch; retain remote `wave-g/core-recertification` for audit.**
-- [ ] **Step 10: Only now state the architecture-level Agent Core control plane as certified stable and mark Wave G complete.**
+- [x] **Step 7: Publish final docs-only architecture certification if evidence changes the docs; run fresh `npm run certify:core` on that exact docs SHA before publication/source-sync.** Evidence commit `e3dd69b03a17b8449bad60a5e32a4cae01893ffb` passed fresh 18/18 `certify:core`, was published to `main`, source-synced, and passed the final public/MCP/audit canary.
+- [x] **Step 8: Require final `main == origin/main == connection.sourceCommit` equality and clean tracked status.** Equality was exact at `e3dd69b...`; tracked state was clean and unrelated untracked `.vscode/` remained preserved.
+- [x] **Step 9: Remove only local Wave G worktree and local Wave G branch; retain remote `wave-g/core-recertification` for audit.** Local worktree/branch were removed after ancestor checks; remote audit branch remains at `e3dd69b...`. Wave B and Super-Runtime worktrees were not touched.
+- [x] **Step 10: Only now state the architecture-level Agent Core control plane as certified stable and mark Wave G complete.** This closeout commit records that state and must itself pass `npm run certify:core` before publication, so an unverified completion claim cannot enter `main`.

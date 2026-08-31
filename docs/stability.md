@@ -512,13 +512,30 @@ resource governance                            enabled; safe 4 / configured max 
 maintenance                                    disabled; 0 runs; 0 retention candidates
 legacy MCP                                     2025-11-25 / 55 tools PASS
 modern MCP                                     2026-07-28 / 55 tools PASS
-live audit                                     433 records / verify PASS
+live audit                                     455 records / verify PASS
 temporary public canary key                    not created
 ```
 
 A timed-out lifecycle wrapper temporarily left bootstrap/restart flags in the tool environment earlier in Wave G. Prerequisite inspection showed the repository and dependency tree were healthy; the flags were removed only from the repair invocation, after which connection metadata and runtime health proved the synchronized source. No source/history reset, force push, Mac runtime, or semantic bypass was used.
 
-The architecture-level stable claim is ready for final closeout after the documentation SHA carrying this evidence itself passes `npm run certify:core`, is published/source-synced, and local Wave G branch/worktree housekeeping is recorded.
+The documentation/evidence SHA `e3dd69b03a17b8449bad60a5e32a4cae01893ffb` subsequently passed fresh postpublish `npm run certify:core`, was published/source-synced with exact runtime equality, and passed the same public/MCP canary with live audit verification at 455 records. The local Wave G worktree and branch were then removed after ancestor checks while the remote audit branch was retained. This closeout commit records the completed housekeeping; it is permitted to publish only after it independently passes the unchanged `certify:core` gate.
+
+Closeout certification on `e3dd69b...` produced:
+
+```text
+18-area core matrix                          PASS
+full normal test files                      137 PASS / 2 skipped files
+intentional skipped tests                   38
+100k memory p95                             67.336 ms / <150 ms PASS
+DAG / dispatch / wake p95                   1.269 / 23.692 / 6.758 ms PASS
+max observed / configured concurrency       4 / 4 PASS
+stable release parity                       v0.6.0 / 7 assets PASS
+external AI/model dependency/source hits    0 / 0
+HEAD == origin/main == connection source    e3dd69b... PASS
+final public trust boundary                 200 / 403 / 200 / 401 / 403 PASS
+legacy / modern MCP                         2025-11-25/55 / 2026-07-28/55 PASS
+live audit                                  455 records / verify PASS
+```
 
 ## Last core certification
 
