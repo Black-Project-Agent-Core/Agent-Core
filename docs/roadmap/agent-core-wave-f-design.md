@@ -55,9 +55,10 @@ export interface ResourceSnapshot {
   backlog: {
     auditQueueRatio: number | null;
     telemetryQueueRatio: number | null;
-    queuedMemorySync: number;
+    queuedMemorySync: number | null;
+    queuedMemorySyncAvailable: boolean;
   };
-  worker: { healthy: boolean };
+  worker: { healthy: boolean | null; available: boolean };
 }
 
 export interface ResourceSnapshotProvider {
@@ -71,8 +72,8 @@ Production facts:
 - Memory: `1 - freeMemory / totalMemory` when total memory is valid.
 - Storage: `statfs` free/total blocks for the execution persistence root; failure produces unknown rather than invented pressure.
 - Audit/telemetry backlog: queue depth divided by queue capacity when the corresponding bounded queue is enabled.
-- Execution evidence/memory-sync backlog: factual `queuedSync` count from `ExecutionStore.systemCounts()`.
-- Worker health: local execution service/store health only; no remote probe.
+- Execution evidence/memory-sync backlog: factual `queuedSync` count from `ExecutionStore.systemCounts()`; probe failure is `null/available=false`, never fabricated zero.
+- Worker health: local execution service/store health only; probe failure is `healthy=null/available=false`, no remote probe.
 
 Snapshot capture is injectable in tests. Host timing is never used to prove policy correctness.
 

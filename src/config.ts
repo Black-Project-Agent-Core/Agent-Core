@@ -30,6 +30,23 @@ export interface MemoryConfig {
   scoreWeights: MemoryScoreWeights;
 }
 
+export interface ExecutionResourceGovernanceConfig {
+  enabled: boolean;
+  minimumConcurrency: number;
+  cpuWarningRatio: number;
+  cpuCriticalRatio: number;
+  memoryWarningRatio: number;
+  memoryCriticalRatio: number;
+  storageWarningFreeRatio: number;
+  storageCriticalFreeRatio: number;
+  auditWarningRatio: number;
+  auditCriticalRatio: number;
+  telemetryWarningRatio: number;
+  telemetryCriticalRatio: number;
+  queuedSyncWarning: number;
+  queuedSyncCritical: number;
+}
+
 export interface ExecutionConfig {
   enabled: boolean;
   dbPath: string;
@@ -39,6 +56,7 @@ export interface ExecutionConfig {
   maxOutputBytes: number;
   waitMaxMs: number;
   busyTimeoutMs: number;
+  resourceGovernance: ExecutionResourceGovernanceConfig;
 }
 
 export interface AuditObservabilityConfig {
@@ -140,6 +158,13 @@ function parseUnitInterval(value: string | undefined, fallback: number, name: st
   if (value === undefined || value.trim() === '') return fallback;
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 1) throw new Error(`${name} must be between 0 and 1`);
+  return parsed;
+}
+
+function parsePositiveNumber(value: string | undefined, fallback: number, name: string): number {
+  if (value === undefined || value.trim() === '') return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`${name} must be positive`);
   return parsed;
 }
 
@@ -291,16 +316,44 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     },
   };
 
+  const maxConcurrency = parsePositiveInteger(env.AGENT_CORE_EXECUTION_MAX_CONCURRENCY, 4, 'AGENT_CORE_EXECUTION_MAX_CONCURRENCY');
+  const resourceGovernance: ExecutionResourceGovernanceConfig = {
+    enabled: parseBoolean(env.AGENT_CORE_EXECUTION_RESOURCE_GOVERNANCE_ENABLED, true),
+    minimumConcurrency: parsePositiveInteger(env.AGENT_CORE_EXECUTION_RESOURCE_MIN_CONCURRENCY, 1, 'AGENT_CORE_EXECUTION_RESOURCE_MIN_CONCURRENCY'),
+    cpuWarningRatio: parsePositiveNumber(env.AGENT_CORE_EXECUTION_CPU_WARNING_RATIO, 0.90, 'AGENT_CORE_EXECUTION_CPU_WARNING_RATIO'),
+    cpuCriticalRatio: parsePositiveNumber(env.AGENT_CORE_EXECUTION_CPU_CRITICAL_RATIO, 1.25, 'AGENT_CORE_EXECUTION_CPU_CRITICAL_RATIO'),
+    memoryWarningRatio: parseUnitInterval(env.AGENT_CORE_EXECUTION_MEMORY_WARNING_RATIO, 0.85, 'AGENT_CORE_EXECUTION_MEMORY_WARNING_RATIO'),
+    memoryCriticalRatio: parseUnitInterval(env.AGENT_CORE_EXECUTION_MEMORY_CRITICAL_RATIO, 0.95, 'AGENT_CORE_EXECUTION_MEMORY_CRITICAL_RATIO'),
+    storageWarningFreeRatio: parseUnitInterval(env.AGENT_CORE_EXECUTION_STORAGE_WARNING_FREE_RATIO, 0.15, 'AGENT_CORE_EXECUTION_STORAGE_WARNING_FREE_RATIO'),
+    storageCriticalFreeRatio: parseUnitInterval(env.AGENT_CORE_EXECUTION_STORAGE_CRITICAL_FREE_RATIO, 0.05, 'AGENT_CORE_EXECUTION_STORAGE_CRITICAL_FREE_RATIO'),
+    auditWarningRatio: parseUnitInterval(env.AGENT_CORE_EXECUTION_AUDIT_WARNING_RATIO, 0.75, 'AGENT_CORE_EXECUTION_AUDIT_WARNING_RATIO'),
+    auditCriticalRatio: parseUnitInterval(env.AGENT_CORE_EXECUTION_AUDIT_CRITICAL_RATIO, 0.90, 'AGENT_CORE_EXECUTION_AUDIT_CRITICAL_RATIO'),
+    telemetryWarningRatio: parseUnitInterval(env.AGENT_CORE_EXECUTION_TELEMETRY_WARNING_RATIO, 0.75, 'AGENT_CORE_EXECUTION_TELEMETRY_WARNING_RATIO'),
+    telemetryCriticalRatio: parseUnitInterval(env.AGENT_CORE_EXECUTION_TELEMETRY_CRITICAL_RATIO, 0.90, 'AGENT_CORE_EXECUTION_TELEMETRY_CRITICAL_RATIO'),
+    queuedSyncWarning: parsePositiveInteger(env.AGENT_CORE_EXECUTION_QUEUED_SYNC_WARNING, 32, 'AGENT_CORE_EXECUTION_QUEUED_SYNC_WARNING'),
+    queuedSyncCritical: parsePositiveInteger(env.AGENT_CORE_EXECUTION_QUEUED_SYNC_CRITICAL, 128, 'AGENT_CORE_EXECUTION_QUEUED_SYNC_CRITICAL'),
+  };
+  if (resourceGovernance.minimumConcurrency > maxConcurrency) {
+    throw new Error('AGENT_CORE_EXECUTION_RESOURCE_MIN_CONCURRENCY must not exceed AGENT_CORE_EXECUTION_MAX_CONCURRENCY');
+  }
+  if (resourceGovernance.cpuWarningRatio >= resourceGovernance.cpuCriticalRatio) throw new Error('cpu warning ratio must be lower than critical ratio');
+  if (resourceGovernance.memoryWarningRatio >= resourceGovernance.memoryCriticalRatio) throw new Error('memory warning ratio must be lower than critical ratio');
+  if (resourceGovernance.storageWarningFreeRatio <= resourceGovernance.storageCriticalFreeRatio) throw new Error('storage warning free ratio must be higher than critical free ratio');
+  if (resourceGovernance.auditWarningRatio >= resourceGovernance.auditCriticalRatio) throw new Error('audit warning ratio must be lower than critical ratio');
+  if (resourceGovernance.telemetryWarningRatio >= resourceGovernance.telemetryCriticalRatio) throw new Error('telemetry warning ratio must be lower than critical ratio');
+  if (resourceGovernance.queuedSyncWarning >= resourceGovernance.queuedSyncCritical) throw new Error('queued sync warning must be lower than critical threshold');
+
   const execution: ExecutionConfig = {
     // Production default is enabled after the staged Task 22 live canary; operators can still disable it explicitly.
     enabled: parseBoolean(env.AGENT_CORE_EXECUTION_ENABLED, true),
     dbPath: path.resolve(env.AGENT_CORE_EXECUTION_DB_PATH?.trim() || path.join(baseDir, 'runtime', 'execution', 'agent-core-execution.sqlite')),
     logRoot: path.resolve(env.AGENT_CORE_EXECUTION_LOG_ROOT?.trim() || path.join(baseDir, 'runtime', 'execution', 'runs')),
-    maxConcurrency: parsePositiveInteger(env.AGENT_CORE_EXECUTION_MAX_CONCURRENCY, 4, 'AGENT_CORE_EXECUTION_MAX_CONCURRENCY'),
+    maxConcurrency,
     maxNodes: parsePositiveInteger(env.AGENT_CORE_EXECUTION_MAX_NODES, 128, 'AGENT_CORE_EXECUTION_MAX_NODES'),
     maxOutputBytes: parseBoundedPositiveInteger(env.AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES, 64 * 1024 * 1024, 'AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES', 1024 * 1024 * 1024),
     waitMaxMs: parsePositiveInteger(env.AGENT_CORE_EXECUTION_WAIT_MAX_MS, 60_000, 'AGENT_CORE_EXECUTION_WAIT_MAX_MS'),
     busyTimeoutMs: parsePositiveInteger(env.AGENT_CORE_EXECUTION_BUSY_TIMEOUT_MS, 5_000, 'AGENT_CORE_EXECUTION_BUSY_TIMEOUT_MS'),
+    resourceGovernance,
   };
 
   const github: GitHubConfig = {

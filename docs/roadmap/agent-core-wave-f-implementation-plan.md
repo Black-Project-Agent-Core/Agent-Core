@@ -53,12 +53,12 @@
 **Interfaces:**
 - Produces: `ResourceSnapshot`, `ResourceSnapshotProvider`, `NodeResourceSnapshotProvider`, and `ExecutionConfig.resourceGovernance`.
 
-- [ ] **Step 1: Write failing snapshot tests** proving normalized CPU/memory/storage/backlog values, unavailable signals on probe failure, no secret/path leakage, and stable timestamp injection.
-- [ ] **Step 2: Run `npx vitest run tests/resource-snapshot.test.ts tests/config.test.ts` and require RED from missing Wave F interfaces.**
-- [ ] **Step 3: Implement minimal snapshot provider and config parsing** with the exact defaults from the design spec and warning/critical ordering validation.
-- [ ] **Step 4: Re-run focused tests and require GREEN.**
-- [ ] **Step 5: Run `npm run build` and `git diff --check`.**
-- [ ] **Step 6: Commit `feat: add local resource snapshots` and push/read back SHA equality.**
+- [x] **Step 1: Write failing snapshot tests** proving normalized CPU/memory/storage/backlog values, unavailable signals on probe failure, no secret/path leakage, and stable timestamp injection.
+- [x] **Step 2: Run `npx vitest run tests/resource-snapshot.test.ts tests/config.test.ts` and require RED from missing Wave F interfaces.**
+- [x] **Step 3: Implement minimal snapshot provider and config parsing** with the exact defaults from the design spec and warning/critical ordering validation.
+- [x] **Step 4: Re-run focused tests and require GREEN.**
+- [x] **Step 5: Run `npm run build` and `git diff --check`.**
+- [x] **Step 6: Commit `feat: add local resource snapshots` and push/read back SHA equality.**
 
 ### Task F2: Pure adaptive concurrency governor
 

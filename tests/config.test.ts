@@ -43,6 +43,22 @@ describe('loadConfig', () => {
       maxOutputBytes: 64 * 1024 * 1024,
       waitMaxMs: 60_000,
       busyTimeoutMs: 5_000,
+      resourceGovernance: {
+        enabled: true,
+        minimumConcurrency: 1,
+        cpuWarningRatio: 0.90,
+        cpuCriticalRatio: 1.25,
+        memoryWarningRatio: 0.85,
+        memoryCriticalRatio: 0.95,
+        storageWarningFreeRatio: 0.15,
+        storageCriticalFreeRatio: 0.05,
+        auditWarningRatio: 0.75,
+        auditCriticalRatio: 0.90,
+        telemetryWarningRatio: 0.75,
+        telemetryCriticalRatio: 0.90,
+        queuedSyncWarning: 32,
+        queuedSyncCritical: 128,
+      },
     });
     expect(config.github).toEqual({
       enabled: true,
@@ -83,6 +99,20 @@ describe('loadConfig', () => {
       AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES: '2097152',
       AGENT_CORE_EXECUTION_WAIT_MAX_MS: '45000',
       AGENT_CORE_EXECUTION_BUSY_TIMEOUT_MS: '7000',
+      AGENT_CORE_EXECUTION_RESOURCE_GOVERNANCE_ENABLED: 'true',
+      AGENT_CORE_EXECUTION_RESOURCE_MIN_CONCURRENCY: '2',
+      AGENT_CORE_EXECUTION_CPU_WARNING_RATIO: '0.8',
+      AGENT_CORE_EXECUTION_CPU_CRITICAL_RATIO: '1.1',
+      AGENT_CORE_EXECUTION_MEMORY_WARNING_RATIO: '0.7',
+      AGENT_CORE_EXECUTION_MEMORY_CRITICAL_RATIO: '0.9',
+      AGENT_CORE_EXECUTION_STORAGE_WARNING_FREE_RATIO: '0.2',
+      AGENT_CORE_EXECUTION_STORAGE_CRITICAL_FREE_RATIO: '0.1',
+      AGENT_CORE_EXECUTION_AUDIT_WARNING_RATIO: '0.6',
+      AGENT_CORE_EXECUTION_AUDIT_CRITICAL_RATIO: '0.8',
+      AGENT_CORE_EXECUTION_TELEMETRY_WARNING_RATIO: '0.5',
+      AGENT_CORE_EXECUTION_TELEMETRY_CRITICAL_RATIO: '0.7',
+      AGENT_CORE_EXECUTION_QUEUED_SYNC_WARNING: '16',
+      AGENT_CORE_EXECUTION_QUEUED_SYNC_CRITICAL: '64',
       AGENT_CORE_GITHUB_ENABLED: 'false',
       AGENT_CORE_GITHUB_API_BASE_URL: 'https://github.example.test/api/v3/',
       AGENT_CORE_GITHUB_API_VERSION: '2026-03-10',
@@ -131,6 +161,22 @@ describe('loadConfig', () => {
       maxOutputBytes: 2 * 1024 * 1024,
       waitMaxMs: 45_000,
       busyTimeoutMs: 7_000,
+      resourceGovernance: {
+        enabled: true,
+        minimumConcurrency: 2,
+        cpuWarningRatio: 0.8,
+        cpuCriticalRatio: 1.1,
+        memoryWarningRatio: 0.7,
+        memoryCriticalRatio: 0.9,
+        storageWarningFreeRatio: 0.2,
+        storageCriticalFreeRatio: 0.1,
+        auditWarningRatio: 0.6,
+        auditCriticalRatio: 0.8,
+        telemetryWarningRatio: 0.5,
+        telemetryCriticalRatio: 0.7,
+        queuedSyncWarning: 16,
+        queuedSyncCritical: 64,
+      },
     });
     expect(config.github).toEqual({
       enabled: false,
@@ -169,6 +215,29 @@ describe('loadConfig', () => {
       .toThrow('AGENT_CORE_OTLP_ENDPOINT must not include query or fragment');
     expect(() => loadConfig({ AGENT_CORE_OTLP_ENDPOINT: 'file:///tmp/otel' }, 'F:\\Ignored'))
       .toThrow('AGENT_CORE_OTLP_ENDPOINT must use http or https');
+  });
+
+
+  it('rejects invalid resource governance thresholds and minimum concurrency above operator maximum', () => {
+    expect(() => loadConfig({
+      AGENT_CORE_EXECUTION_MAX_CONCURRENCY: '4',
+      AGENT_CORE_EXECUTION_RESOURCE_MIN_CONCURRENCY: '5',
+    }, 'F:\\Ignored')).toThrow('AGENT_CORE_EXECUTION_RESOURCE_MIN_CONCURRENCY must not exceed AGENT_CORE_EXECUTION_MAX_CONCURRENCY');
+
+    expect(() => loadConfig({
+      AGENT_CORE_EXECUTION_MEMORY_WARNING_RATIO: '0.95',
+      AGENT_CORE_EXECUTION_MEMORY_CRITICAL_RATIO: '0.90',
+    }, 'F:\\Ignored')).toThrow('memory warning ratio must be lower than critical ratio');
+
+    expect(() => loadConfig({
+      AGENT_CORE_EXECUTION_STORAGE_WARNING_FREE_RATIO: '0.05',
+      AGENT_CORE_EXECUTION_STORAGE_CRITICAL_FREE_RATIO: '0.10',
+    }, 'F:\\Ignored')).toThrow('storage warning free ratio must be higher than critical free ratio');
+
+    expect(() => loadConfig({
+      AGENT_CORE_EXECUTION_QUEUED_SYNC_WARNING: '128',
+      AGENT_CORE_EXECUTION_QUEUED_SYNC_CRITICAL: '64',
+    }, 'F:\\Ignored')).toThrow('queued sync warning must be lower than critical threshold');
   });
 
   it('rejects execution output byte limits above the hard one-gibibyte ceiling', () => {
