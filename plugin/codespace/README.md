@@ -2,11 +2,11 @@
 
 `codespace` is the zero-touch ChatGPT ↔ GitHub Codespaces bridge in this repository.
 
-## Fresh Codespaces without collaborator access
+## Fresh Codespaces across authorized GitHub accounts and machines
 
-The bridge uses a GitHub **user-level Codespaces secret** named `CONTROL_PLANE_API_KEY` for first boot. This secret belongs to the GitHub account that creates the Codespace, so the account does not need collaborator access to the parent repository.
+The bridge uses a GitHub **repository-level Codespaces secret** named `CONTROL_PLANE_API_KEY` for first boot. This secret belongs to the repository, so every GitHub account authorized to create a Codespace for this repository receives the same runtime credential automatically.
 
-Run the installer once for each GitHub account/repository pair:
+Run the installer once for the repository (repository-admin permission is required):
 
 ```bash
 bash plugin/codespace/scripts/install-account-codespaces-secret.sh
@@ -16,11 +16,11 @@ The installer:
 
 - reads the existing runtime credential from `secrets/github/CONTROL_PLANE_API_KEY` unless `--key-file` is supplied;
 - resolves the current `origin` repository automatically, or accepts `--repo OWNER/REPO`;
-- stores the value as a GitHub user-level Codespaces secret restricted to that repository;
+- stores the value as a repository-level Codespaces secret;
 - sends the value through stdin so it is not placed in argv, shell history, or process listings;
 - never prints the credential value.
 
-After this one-time account bootstrap, every newly created Codespace for the selected repository receives `CONTROL_PLANE_API_KEY` automatically. `plugin/codespace/scripts/ensure-running.sh` persists it into ignored workspace state with mode `0600`, reconstructs the fixed tunnel identity from tracked configuration, restores plugin dependencies/build output when needed, and verifies local plus remote readiness.
+After this one-time repository bootstrap, every newly created Codespace for the selected repository receives `CONTROL_PLANE_API_KEY` automatically. `plugin/codespace/scripts/ensure-running.sh` persists it into ignored workspace state with mode `0600`, reconstructs the fixed tunnel identity from tracked configuration, restores plugin dependencies/build output when needed, and verifies local plus remote readiness.
 
 ## Automatic runtime architecture
 
@@ -61,10 +61,10 @@ Repair never resets, cleans, stashes, restores, or rewrites project work. Creden
 
 ## Normal use
 
-No tunnel, export, stop, reconnect, or repair command is expected after account bootstrap. Create, restart, rebuild, or resume the Codespace, then use the `codespace` connector from ChatGPT. When a transient connector failure occurs, ChatGPT may retry while the watchdog repairs the route automatically; the user-facing action remains simply:
+No tunnel, export, stop, reconnect, or repair command is expected after repository bootstrap. Create, restart, rebuild, or resume the Codespace, then use the `codespace` connector from ChatGPT. When a transient connector failure occurs, ChatGPT may retry while the watchdog repairs the route automatically; the user-facing action remains simply:
 
 ```text
 test koneksi
 ```
 
-The fixed tunnel identity is tracked in `plugin/codespace/config/tunnel.defaults.json`. Runtime state, generated profiles, binaries, logs, node modules, compiled output, and credentials remain untracked.
+The fixed tunnel identity is tracked in `plugin/codespace/config/tunnel.defaults.json` and is authoritative; stale `CODESPACE_TUNNEL_ID` or `CONTROL_PLANE_TUNNEL_ID` environment values are ignored and cleared before tunnel-client diagnostics/runtime startup. Runtime state, generated profiles, binaries, logs, node modules, compiled output, and credentials remain untracked.

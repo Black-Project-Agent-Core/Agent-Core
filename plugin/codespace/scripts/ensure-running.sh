@@ -74,18 +74,6 @@ else
 fi
 unset CONTROL_PLANE_API_KEY
 
-CANONICAL_TUNNEL_ID=""
-if [[ -f "$ROOT/runtime/tunnel.json" ]]; then
-  CANONICAL_TUNNEL_ID="$(node -e '
-const fs = require("node:fs");
-const file = process.argv[1];
-try {
-  const value = JSON.parse(fs.readFileSync(file, "utf8"));
-  if (typeof value.tunnelId === "string") process.stdout.write(value.tunnelId);
-} catch {}
-' "$ROOT/runtime/tunnel.json")"
-fi
-
 TRACKED_TUNNEL_ID="$(node -e '
 const fs = require("node:fs");
 const file = process.argv[1];
@@ -95,38 +83,33 @@ try {
 } catch {}
 ' "$ROOT/config/tunnel.defaults.json")"
 
-# The codespace bridge owns a fixed, tracked non-secret tunnel identity. An
-# explicit codespace override wins, then the tracked default rebuilds runtime
-# state from scratch. Existing runtime state and the legacy Agent Core variable
-# remain migration fallbacks only.
-TUNNEL_SOURCE=""
-TUNNEL_ID="${CODESPACE_TUNNEL_ID:-}"
-if [[ -n "$TUNNEL_ID" ]]; then
-  TUNNEL_SOURCE="env:CODESPACE_TUNNEL_ID"
-elif [[ -n "$TRACKED_TUNNEL_ID" ]]; then
-  TUNNEL_ID="$TRACKED_TUNNEL_ID"
-  TUNNEL_SOURCE="config/tunnel.defaults.json"
-elif [[ -n "$CANONICAL_TUNNEL_ID" ]]; then
-  TUNNEL_ID="$CANONICAL_TUNNEL_ID"
-  TUNNEL_SOURCE="runtime/tunnel.json (migration fallback)"
-elif [[ -n "${CONTROL_PLANE_TUNNEL_ID:-}" ]]; then
-  TUNNEL_ID="$CONTROL_PLANE_TUNNEL_ID"
-  TUNNEL_SOURCE="env:CONTROL_PLANE_TUNNEL_ID (legacy fallback)"
-fi
-
+# The bridge tunnel identity is repository-owned, non-secret configuration.
+# Never let account/machine-scoped environment variables override it: a stale
+# CONTROL_PLANE_TUNNEL_ID caused a previous split-brain where connect used the
+# tracked tunnel while doctor/runtime inherited a deleted tunnel from the shell.
+TUNNEL_ID="$TRACKED_TUNNEL_ID"
+TUNNEL_SOURCE="config/tunnel.defaults.json"
 if [[ -z "$TUNNEL_ID" ]]; then
-  printf '%s\n' "Run plugin/codespace/scripts/configure-tunnel.sh with the tunnel ID shown in OpenAI Platform Tunnels." >&2
+  printf '%s\n' "[codespace] ERROR: tracked tunnel identity is unavailable in config/tunnel.defaults.json." >&2
   exit 1
 fi
-
 if [[ ! "$TUNNEL_ID" =~ ^tunnel_[A-Za-z0-9_-]+$ ]]; then
-  printf '%s\n' "[codespace] ERROR: invalid tunnel ID format." >&2
+  printf '%s\n' "[codespace] ERROR: invalid tracked tunnel ID format." >&2
   exit 1
 fi
 
-if [[ "$CANONICAL_TUNNEL_ID" != "$TUNNEL_ID" ]]; then
-  bash "$ROOT/scripts/configure-tunnel.sh" "$TUNNEL_ID"
-  CANONICAL_TUNNEL_ID="$TUNNEL_ID"
+for stale_name in CODESPACE_TUNNEL_ID CONTROL_PLANE_TUNNEL_ID; do
+  stale_value="${!stale_name:-}"
+  if [[ -n "$stale_value" && "$stale_value" != "$TUNNEL_ID" ]]; then
+    printf '%s\n' "[codespace] NOTICE: ignoring stale $stale_name; tracked tunnel identity is authoritative."
+  fi
+done
+unset CODESPACE_TUNNEL_ID CONTROL_PLANE_TUNNEL_ID
+
+# Reconstruct ignored runtime state deterministically on every machine.
+# The managed connector command below regenerates the native profile from these explicit values.
+if [[ ! -f "$ROOT/runtime/tunnel.json" ]] || ! grep -Fq "$TUNNEL_ID" "$ROOT/runtime/tunnel.json" 2>/dev/null; then
+  bash "$ROOT/scripts/configure-tunnel.sh" "$TUNNEL_ID" >/dev/null
 fi
 
 printf '%s\n' "[codespace] tunnel source=$TUNNEL_SOURCE tunnel_id=$TUNNEL_ID"

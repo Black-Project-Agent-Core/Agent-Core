@@ -70,9 +70,8 @@ const required = [
   '--runtime-api-key "$RUNTIME_API_KEY_REF"',
   'TRACKED_TUNNEL_ID',
   'config/tunnel.defaults.json',
-  'TUNNEL_ID="${CODESPACE_TUNNEL_ID:-}"',
   'TUNNEL_SOURCE="config/tunnel.defaults.json"',
-  'env:CONTROL_PLANE_TUNNEL_ID (legacy fallback)',
+  'unset CODESPACE_TUNNEL_ID CONTROL_PLANE_TUNNEL_ID',
   'flock -w 120 9',
   'exec 9>&-',
   'runtimes stop "$ALIAS"',
@@ -103,14 +102,12 @@ for (const needle of required) {
   }
 }
 
-const trackedFallback = startup.indexOf('elif [[ -n "$TRACKED_TUNNEL_ID" ]]');
-const canonicalFallback = startup.indexOf('elif [[ -n "$CANONICAL_TUNNEL_ID" ]]');
-const legacyFallback = startup.indexOf('elif [[ -n "${CONTROL_PLANE_TUNNEL_ID:-}" ]]');
-if (
-  trackedFallback < 0 || canonicalFallback < 0 || legacyFallback < 0 ||
-  !(trackedFallback < canonicalFallback && canonicalFallback < legacyFallback)
-) {
-  console.error('[codespace] RED: tracked tunnel default must precede runtime and legacy fallbacks.');
+if (startup.includes('env:CONTROL_PLANE_TUNNEL_ID (legacy fallback)') || startup.includes('TUNNEL_ID="${CODESPACE_TUNNEL_ID:-}"')) {
+  console.error('[codespace] RED: account/machine tunnel environment must never override tracked tunnel identity.');
+  process.exit(1);
+}
+if (!startup.includes('TUNNEL_ID="$TRACKED_TUNNEL_ID"') || !startup.includes('unset CODESPACE_TUNNEL_ID CONTROL_PLANE_TUNNEL_ID')) {
+  console.error('[codespace] RED: tracked tunnel identity must be authoritative and stale tunnel env must be cleared.');
   process.exit(1);
 }
 

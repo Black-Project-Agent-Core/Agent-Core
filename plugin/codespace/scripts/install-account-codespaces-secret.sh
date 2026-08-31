@@ -62,10 +62,9 @@ fi
 # gh encrypts the secret locally before upload. Reading from stdin keeps the
 # runtime credential out of argv, shell history, and process listings.
 gh secret set CONTROL_PLANE_API_KEY \
-  --user \
   --app codespaces \
-  --repos "$REPO_SLUG" \
+  --repo "$REPO_SLUG" \
   < "$KEY_FILE"
 
-printf '%s\n' "[codespace] Account-level Codespaces credential installed for $REPO_SLUG."
-printf '%s\n' '[codespace] Future Codespaces for this repository will receive it automatically.'
+printf '%s\n' "[codespace] Repository-level Codespaces credential installed for $REPO_SLUG."
+printf '%s\n' '[codespace] Any authorized account creating a Codespace for this repository will receive it automatically.'

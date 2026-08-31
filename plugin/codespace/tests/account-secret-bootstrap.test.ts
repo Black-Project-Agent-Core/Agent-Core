@@ -6,16 +6,17 @@ import { fileURLToPath } from 'node:url';
 const pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scriptPath = path.join(pluginRoot, 'scripts', 'install-account-codespaces-secret.sh');
 
-describe('account-level Codespaces secret bootstrap', () => {
-  it('ships a permanent installer that scopes the user secret to the current repository without printing its value', () => {
+describe('repository-level Codespaces secret bootstrap', () => {
+  it('ships a permanent installer that scopes the repository secret to the current repository without printing its value', () => {
     expect(existsSync(scriptPath)).toBe(true);
     if (!existsSync(scriptPath)) return;
 
     const script = readFileSync(scriptPath, 'utf8');
     expect(script).toContain('gh secret set');
-    expect(script).toContain('--user');
     expect(script).toContain('--app codespaces');
-    expect(script).toContain('--repos');
+    expect(script).toContain('--repo');
+    expect(script).not.toContain('--user');
+    expect(script).not.toContain('--repos');
     expect(script).toContain('< "$KEY_FILE"');
     expect(script).not.toContain('cat "$KEY_FILE"');
     expect(script).not.toContain('echo "$CONTROL_PLANE_API_KEY"');

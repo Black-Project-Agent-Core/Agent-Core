@@ -19,6 +19,10 @@ describe('codespace restart self-recovery contract', () => {
     expect(startup).toContain('TRACKED_TUNNEL_ID');
     expect(startup).toContain('config/tunnel.defaults.json');
     expect(startup).toContain('TUNNEL_SOURCE="config/tunnel.defaults.json"');
+    expect(startup).toContain('TUNNEL_ID="$TRACKED_TUNNEL_ID"');
+    expect(startup).toContain('unset CODESPACE_TUNNEL_ID CONTROL_PLANE_TUNNEL_ID');
+    expect(startup).not.toContain('env:CONTROL_PLANE_TUNNEL_ID (legacy fallback)');
+    expect(startup).not.toContain('TUNNEL_ID="${CODESPACE_TUNNEL_ID:-}"');
   });
 
   it('keeps stdio, HTTP MCP, and watchdog children isolated from the control-plane credential', () => {
