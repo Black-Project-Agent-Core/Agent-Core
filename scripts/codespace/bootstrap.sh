@@ -162,6 +162,11 @@ if [[ -n "${AGENT_CORE_GITHUB_PACKAGES_TOKEN:-}" ]]; then
   log_info 'GitHub Packages credential restored from explicit Codespaces secret.'
 fi
 
+if ! bash "$SCRIPT_DIR/memory-hydration-gate.sh"; then
+  log_error 'Memory Remote hydration gate failed during bootstrap.'
+  exit 55
+fi
+
 key_file="$AGENT_CORE_CODESPACE_HOME/secrets/agent-core-chatgpt-key.txt"
 if [[ ! -s "$key_file" ]]; then
   tmp_json="$AGENT_CORE_CODESPACE_HOME/secrets/key-create.$$.json"

@@ -11,6 +11,7 @@ const requiredTrackedFiles = [
   'scripts/codespace/bootstrap.sh',
   'scripts/codespace/common.sh',
   'scripts/codespace/sync-source.sh',
+  'scripts/codespace/memory-hydration-gate.sh',
   'scripts/codespace/start-agent-core.sh',
   'scripts/codespace/ensure-running.sh',
   'scripts/codespace/show-connection.sh',

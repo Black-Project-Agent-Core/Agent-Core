@@ -92,6 +92,11 @@ if (( build_required == 1 )); then
   restart_required=1
 fi
 
+if ! bash "$SCRIPT_DIR/memory-hydration-gate.sh"; then
+  log_error 'Memory Remote hydration gate failed before runtime startup.'
+  exit 55
+fi
+
 start_service_supervisor() {
   tmux new-session -d -s "$service_session" "bash \"$SCRIPT_DIR/start-agent-core.sh\""
 }
