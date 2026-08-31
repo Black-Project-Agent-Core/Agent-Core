@@ -1,8 +1,8 @@
 # Agent Core Balanced Evolution — Evidence-Backed Upgrade Proposal
 
-**Date:** 2026-08-31  
-**Status:** APPROVED DESIGN PROPOSAL — NOT YET IMPLEMENTED  
-**Scope:** Agent Core core only. Codespace is not an upgrade target in this proposal.  
+**Date:** 2026-08-31
+**Status:** APPROVED DESIGN PROPOSAL — NOT YET IMPLEMENTED
+**Scope:** Agent Core core only. Codespace is not an upgrade target in this proposal.
 **Strategy:** Hybrid compatibility — backward-compatible by default; a major change is allowed only when benefit is evidence-backed and a migration/rollback path exists.
 
 ## 1. Purpose
@@ -137,7 +137,7 @@ This section contains findings derived directly from the tracked Agent Core sour
 
 ## P0-A — Multi-project operational audit scope can fall back to workspace root zero
 
-**Evidence class:** Verified gap  
+**Evidence class:** Verified gap
 **Priority:** P0 correctness / isolation
 
 `OperationalMemoryAudit.scope()` currently resolves project scope with:
@@ -180,7 +180,7 @@ for every routed operation.
 
 ## P0-B — OAuth access-token authentication does not bind the incoming MCP request to the token resource
 
-**Evidence class:** Verified gap  
+**Evidence class:** Verified gap
 **Priority:** P0 authorization correctness
 
 The OAuth store persists a `resource` field in authorization codes, access tokens and refresh tokens. Code and refresh-token exchange compare the supplied resource to the stored record.
@@ -215,7 +215,7 @@ This change should remain compatible with the existing correct ChatGPT OAuth flo
 
 ## P0-C — MCP HTTP layer has no explicit Origin validation policy
 
-**Evidence class:** Verified gap against current MCP security requirements  
+**Evidence class:** Verified gap against current MCP security requirements
 **Priority:** P0 transport security
 
 The current `/mcp` handler authenticates the bearer token and processes POST requests, but tracked source contains no explicit validation of the HTTP `Origin` header for MCP requests.
@@ -241,7 +241,7 @@ The implementation must use the current MCP security specification as authority 
 
 ## P0-D — `/health/metrics` is anonymously reachable before authentication
 
-**Evidence class:** Verified gap  
+**Evidence class:** Verified gap
 **Priority:** P0 operational information exposure
 
 `GET /health/metrics` is handled before MCP authentication in `src/http/app.ts`.
@@ -273,7 +273,7 @@ Recommended default: B when possible, because `agent_core_health_metrics` alread
 
 ## P0-E — External origin construction trusts forwarded host/proto without an explicit trusted-proxy contract
 
-**Evidence class:** Verified hardening gap  
+**Evidence class:** Verified hardening gap
 **Priority:** P0/P1 depending on deployment boundary
 
 `externalBaseUrl()` currently prefers:
@@ -308,7 +308,7 @@ This is a core HTTP/OAuth hardening task, not a Codespace feature.
 
 ## P1-A — MCP v2 / protocol 2026-07-28 dual-era modernization
 
-**Evidence class:** Modernization opportunity  
+**Evidence class:** Modernization opportunity
 **Priority:** P1 protocol evolution
 
 Current package dependency:
@@ -363,7 +363,7 @@ Required rule:
 
 ## P1-B — Structured Execution Policy Engine
 
-**Evidence class:** Modernization/hardening opportunity  
+**Evidence class:** Modernization/hardening opportunity
 **Priority:** P1 execution safety
 
 Current command policy is shared correctly by operational commands and execution DAG validation through `assertCommandAllowed()`. This is a strength.
@@ -422,7 +422,7 @@ No cloud execution service is introduced.
 
 ## P1-C — Execution Backup, Restore and Evidence Lifecycle
 
-**Evidence class:** Verified operational gap + modernization opportunity  
+**Evidence class:** Verified operational gap + modernization opportunity
 **Priority:** P1 durability
 
 DMF has a first-class backup/restore implementation with integrity validation and pre-restore rollback protection.
@@ -482,7 +482,7 @@ Add a local retention subsystem with:
 
 ## P1-D — Audit & Observability Fabric
 
-**Evidence class:** Modernization opportunity  
+**Evidence class:** Modernization opportunity
 **Priority:** P1 operability/security
 
 Current HTTP/routing audit uses JSONL and `appendFileSync()`. Runtime health metrics already provide a bounded in-memory metric registry.
@@ -538,7 +538,7 @@ This satisfies the no-external-AI-model invariant because OpenTelemetry is telem
 
 ## P1-E — Routing Quality Evaluation, not only deterministic routing
 
-**Evidence class:** Verified evaluation gap  
+**Evidence class:** Verified evaluation gap
 **Priority:** P1 intelligence quality
 
 Current capability routing is deterministic and understandable, but primary classification still depends on regex task signals and substring-weighted capability search.
@@ -585,7 +585,7 @@ No cloud embedding/model/reranker is required or allowed by this proposal.
 
 ## P1-F — Memory Recall Quality Gate
 
-**Evidence class:** Verified evaluation gap  
+**Evidence class:** Verified evaluation gap
 **Priority:** P1 intelligence quality
 
 DMF already has meaningful scenario tests and a 100k-item latency benchmark. The performance benchmark primarily answers:
@@ -1035,29 +1035,29 @@ These references inform modernization opportunities. They do not override verifi
 
 ### Model Context Protocol
 
-- MCP 2026-07-28 release overview:  
+- MCP 2026-07-28 release overview:
   https://blog.modelcontextprotocol.io/posts/2026-07-28/
-- MCP TypeScript SDK v2:  
+- MCP TypeScript SDK v2:
   https://ts.sdk.modelcontextprotocol.io/v2/
-- Protocol eras / legacy + modern support:  
+- Protocol eras / legacy + modern support:
   https://ts.sdk.modelcontextprotocol.io/v2/protocol-versions
-- v1 -> v2 migration:  
+- v1 -> v2 migration:
   https://ts.sdk.modelcontextprotocol.io/v2/migration/upgrade-to-v2
-- 2026-07-28 support/migration details:  
+- 2026-07-28 support/migration details:
   https://ts.sdk.modelcontextprotocol.io/v2/migration/support-2026-07-28
 
 ### OpenTelemetry
 
-- OpenTelemetry JavaScript status:  
+- OpenTelemetry JavaScript status:
   https://opentelemetry.io/docs/languages/js/
 
 At proposal time, JavaScript traces and metrics are documented as stable; logs are still development status. Therefore any Agent Core OpenTelemetry integration should initially target traces/metrics only and remain optional/local-first.
 
 ### Windows process containment
 
-- Microsoft Windows Job Objects:  
+- Microsoft Windows Job Objects:
   https://learn.microsoft.com/windows/win32/procthread/job-objects
-- Job Object basic limit information:  
+- Job Object basic limit information:
   https://learn.microsoft.com/windows/win32/api/winnt/ns-winnt-jobobject_basic_limit_information
 
 These are candidates for a Windows platform adapter behind Agent Core's own resource-governance interface, not a cross-platform API contract by themselves.
