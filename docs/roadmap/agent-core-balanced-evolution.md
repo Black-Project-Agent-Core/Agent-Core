@@ -856,14 +856,30 @@ main/public runtime integration  PASS
 
 **Goal:** strengthen local execution containment and durability.
 
-Scope:
+Implemented scope:
 
-- structured Execution Policy Engine;
-- compatibility shell policy;
-- process-tree/resource-governance adapters;
-- execution backup bundle;
-- verified restore;
-- raw evidence retention and safe purge workflow.
+- shared structured Execution Policy Engine while retaining the shell-compatible command surface;
+- structured policy decisions omit raw command text and preserve the existing public blocked-command behavior;
+- shared process-tree governance: Windows `taskkill /T`, POSIX dedicated process groups;
+- factual hard wall-clock and combined stdout/stderr caps;
+- CPU-time and memory hard caps explicitly remain unsupported in the current pure-Node adapter rather than being simulated;
+- `AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES`, default 64 MiB with a hard 1 GiB configuration ceiling;
+- execution runtime lease preventing concurrent destructive recovery/retention maintenance;
+- verified Execution Recovery Bundle containing worker-generated SQLite backup plus complete evidence-tree hashes;
+- stopped-runtime restore with pre-restore DB/WAL/SHM/evidence rollback snapshot and automatic rollback on replacement failure;
+- immutable dry-run raw-log retention plans, verified-backup prerequisite, exact candidate revalidation, result-marker preservation, and JSONL action audit;
+- operator CLI for backup, restore, retention plan, and retention apply;
+- no model-facing/MCP restore or physical-purge tool;
+- no external AI model/API dependency.
+
+Operator commands:
+
+```text
+agent-core execution-backup [reason]
+agent-core execution-restore <bundle-path>
+agent-core execution-retention-plan [older-than-days]
+agent-core execution-retention-apply <plan-path> <bundle-path>
+```
 
 Exit gates:
 
@@ -871,12 +887,18 @@ Exit gates:
 blocked/high-risk policy regressions       PASS
 project/workspace escape                   = 0
 orphan child processes after cancel        = 0 in certified scenarios
-resource cap enforcement/fallback          factual
+wall-clock/output resource caps            enforced
+CPU-time hard cap                          explicitly unsupported
+memory hard cap                            explicitly unsupported
 backup integrity                           PASS
 restore rollback                           PASS
 missing evidence never becomes success     PASS
 retention dry-run/action parity             PASS
+raw result markers deleted by retention    = 0
+external AI model/API dependency           = 0
 ```
+
+Final certification/integration evidence is recorded by the Wave C implementation plan after merged-main and public-runtime verification.
 
 ---
 

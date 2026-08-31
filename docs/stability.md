@@ -145,6 +145,42 @@ external AI model/API dependency  0
 
 This certifies Wave B as the default dual-era Agent Core core behavior. The tested configuration-only rollback remains `AGENT_CORE_MCP_PROTOCOL_MODE=legacy`; Wave A trust boundaries remain non-optional in both modes.
 
+## Wave C execution & recovery contract
+
+Wave C hardens the existing deterministic execution surface without adding a second execution engine or changing the 55-tool MCP surface.
+
+Execution containment contract:
+
+```text
+command policy decision          structured/deterministic; raw command omitted from decision
+shell-compatible command API     preserved
+blocked nested interpreters      rejected before persistence/dispatch
+process-tree termination         Windows taskkill /T; POSIX process group
+wall-clock cap                   enforced
+combined stdout/stderr cap       enforced; default 64 MiB, hard config ceiling 1 GiB
+CPU-time hard cap                unsupported in current pure-Node adapter
+memory hard cap                  unsupported in current pure-Node adapter
+```
+
+The output budget is configured with `AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES`. Exceeding it terminates the owned process tree and produces a factual failed result with `EXECUTION_OUTPUT_LIMIT_EXCEEDED`; Agent Core does not classify a quota-truncated attempt as success.
+
+Execution recovery is an operator-only stopped-runtime workflow:
+
+```text
+agent-core execution-backup [reason]
+agent-core execution-restore <bundle-path>
+agent-core execution-retention-plan [older-than-days]
+agent-core execution-retention-apply <plan-path> <bundle-path>
+```
+
+`ExecutionService` owns an exclusive runtime lease beside the execution DB. Backup, restore, and retention apply acquire that same lease, so destructive maintenance fails closed while a live runtime owns the database.
+
+A recovery bundle contains a worker-generated/checkpointed SQLite backup plus the complete execution evidence tree. The manifest records source/schema versions, SHA-256 and byte size for the DB and every evidence file, SQLite integrity, creation time, and reason. Restore verifies the whole bundle before mutation, keeps a pre-restore DB/WAL/SHM/evidence rollback snapshot, stages replacements, and automatically restores prior live state if a replacement step fails.
+
+Raw-log retention is explicit and backup-gated. Planning is dry-run only and produces an immutable SHA-256 plan. Apply requires a verified bundle created no earlier than that plan, revalidates the exact candidates, never expands the deletion set, preserves `.result.json` terminal evidence, and writes one JSONL audit decision for every candidate. No MCP restore or physical-purge tool is added.
+
+The detailed operator procedure is maintained in `docs/deterministic-execution-fabric.md`.
+
 ## Last core certification
 
 The final continuity/execution core certification was completed on 2026-08-26 after the execution WAL durability fix and staged default-enabled rollout.

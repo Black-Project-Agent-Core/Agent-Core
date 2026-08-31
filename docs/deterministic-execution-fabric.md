@@ -188,51 +188,81 @@ Raw execution stdout/stderr is authenticated local evidence, not sanitized memor
 - keep secrets in environment/file references rather than inline command text where possible;
 - DMF search/export must remain free of plaintext secrets from raw logs.
 
-There is currently **no automatic raw-log retention/purge policy** in the execution fabric. Retention is operator-managed. Delete old run evidence only when it is no longer needed for audit/recovery and after preserving any required backup/evidence.
+Wave C adds an **operator-controlled raw-log retention workflow**. It is intentionally not automatic and is not exposed as a destructive MCP tool.
 
-## Operator backup
+Only terminal attempt `.stdout.log` and `.stderr.log` files are eligible. Result markers, the execution database, artifact-index records, and declared artifacts are never deleted by the retention subsystem. A dry-run plan is immutable and content-addressed; apply revalidates the exact planned files and never expands the deletion set by re-querying the filesystem.
 
-The execution database does not currently expose a model-facing backup/restore tool like DMF. Back it up as an operator action while Agent Core is cleanly stopped.
+## Execution process governance
 
-Recommended procedure:
+Execution and background-process commands now share one process-governance adapter.
 
-1. Exit Agent Core through the verified tray path so execution processes are reconciled and SQLite WAL is checkpointed.
-2. Confirm no Agent Core execution worker remains active.
-3. Copy `runtime\execution\agent-core-execution.sqlite` to an operator-controlled backup path on F:.
-4. If recovery/audit of command output matters, copy the corresponding `runtime\execution\runs\` directory with the database backup.
-5. Validate the copied SQLite file with `PRAGMA quick_check` before relying on it.
-
-Example validation from the Agent Core root:
-
-```powershell
-$env:EXECUTION_BACKUP_PATH = 'F:\path\to\agent-core-execution.backup.sqlite'
-@'
-import { DatabaseSync } from 'node:sqlite';
-const db = new DatabaseSync(process.env.EXECUTION_BACKUP_PATH, { readOnly: true });
-try {
-  console.log(db.prepare('PRAGMA quick_check').all());
-} finally {
-  db.close();
-}
-'@ | node --input-type=module
+```text
+process-tree termination   Windows: taskkill /T; POSIX: dedicated process group
+wall-clock limit           enforced
+combined stdout/stderr cap enforced
+CPU-time hard cap          unsupported in the current pure-Node adapter
+memory hard cap            unsupported in the current pure-Node adapter
 ```
 
-Do not copy over a live execution database while Agent Core is running.
+`AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES` controls the combined stdout/stderr persistence budget for one execution attempt. The default is 64 MiB and the hard configuration ceiling is 1 GiB. When the budget is exceeded, Agent Core terminates the managed process tree and records a failed result with `EXECUTION_OUTPUT_LIMIT_EXCEEDED`; it does not silently truncate a successful run.
 
-## Operator recovery / restore
+CPU-time and memory hard caps are deliberately reported as unsupported rather than simulated. Adding those caps requires a factual OS-native isolation primitive; the current runtime does not claim one.
 
-For an execution DB backup restore:
+## Execution Recovery Bundle
 
-1. Cleanly stop Agent Core.
-2. Preserve the current execution DB and any required run logs before replacement.
-3. Validate the selected backup with `PRAGMA quick_check`.
-4. Replace the stopped execution database with the validated backup.
-5. Restore matching run-evidence directories when they are part of the recovery set.
-6. Start Agent Core.
-7. Verify `agent_core_status` / `/health` reports execution healthy with integrity `ok`.
-8. Inspect interrupted/active runs; let normal startup recovery reconcile any persisted running attempts using terminal result markers.
+Execution recovery is a stopped-runtime, local operator workflow. The authoritative commands are:
 
-A restored DB without matching raw log/result files may leave evidence incomplete. Agent Core must not fabricate terminal success in that condition.
+```text
+agent-core execution-backup [reason]
+agent-core execution-restore <bundle-path>
+```
+
+`execution-backup` acquires the execution runtime lease, opens the execution database through the existing execution worker, verifies SQLite integrity, checkpoints WAL, creates a SQLite backup through the worker, copies the complete execution evidence tree, computes SHA-256 plus byte size for the database and every evidence file, writes `manifest.json` last, and atomically publishes the completed bundle under the execution `recovery-bundles` directory.
+
+A recovery-bundle manifest records:
+
+```text
+bundle format/version
+Agent Core source version
+execution schema version
+creation timestamp and bounded reason
+database SHA-256 / size / integrity
+every evidence file path / SHA-256 / size
+total evidence bytes
+```
+
+Verification fails closed on an unsafe/duplicate manifest path, missing or additional evidence file, size/hash mismatch, SQLite integrity failure, or schema incompatibility.
+
+Restore is intentionally stopped-runtime only. `ExecutionService` owns `<execution-db>.runtime.json` while open; recovery operations must acquire the same exclusive lease. A live owner therefore blocks restore rather than relying on an advisory instruction.
+
+Before replacing live state, restore:
+
+1. verifies the requested recovery bundle completely;
+2. creates a raw pre-restore rollback snapshot of the current DB/WAL/SHM and evidence tree;
+3. stages the verified database and evidence;
+4. swaps the database, removes stale WAL/SHM, then swaps evidence;
+5. rechecks SQLite integrity;
+6. restores the pre-restore snapshot automatically if a failure occurs after replacement has begun.
+
+After restore, normal `ExecutionService.open()` recovery remains authoritative: a valid terminal result marker can complete a persisted attempt; missing or identity-mismatched terminal evidence becomes `interrupted`, never success.
+
+## Backup-gated raw-log retention
+
+Retention has two explicit operator phases:
+
+```text
+agent-core execution-retention-plan [older-than-days]
+agent-core execution-backup retention-before-apply
+agent-core execution-retention-apply <plan-path> <bundle-path>
+```
+
+The plan phase is dry-run only. It scans terminal result markers and records only matching raw stdout/stderr files whose terminal timestamp is old enough. Each candidate records path, byte size, modification time, and the SHA-256 of its result marker; the whole plan receives a deterministic SHA-256 `planId`.
+
+Apply requires a verified recovery bundle whose creation time is not older than the plan. It acquires the execution runtime lease, then processes exactly the immutable candidate list. A file is deleted only if its size/mtime are unchanged and its result marker still exists with the same SHA-256. Missing/changed candidates or markers are skipped with explicit reason codes. New files discovered after planning are never added to the action set.
+
+Every candidate decision is appended to `execution-retention-audit.jsonl` as either `deleted` or `skipped`. Result markers are preserved, so subsequent recovery/status inspection retains terminal truth even after raw stdout/stderr has been intentionally purged.
+
+These recovery and retention operations are intentionally CLI/operator surfaces. Agent Core does **not** expose an MCP tool that can restore the execution database or physically purge raw evidence.
 
 ## Disable execution for diagnostics
 
