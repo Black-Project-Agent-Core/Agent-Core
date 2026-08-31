@@ -75,6 +75,36 @@ export class HttpSecurityPolicy {
     return `${this.externalBaseUrl(request)}/mcp`;
   }
 
+  validateMcpOrigin(request: IncomingMessage):
+    | { ok: true }
+    | { ok: false; code: 'invalid_origin' | 'origin_not_allowed' } {
+    const header = request.headers.origin;
+    if (header === undefined) return { ok: true };
+    if (Array.isArray(header) || !header.trim() || header.includes(',')) {
+      return { ok: false, code: 'invalid_origin' };
+    }
+    const raw = header.trim();
+    if (raw.toLowerCase() === 'null') return { ok: false, code: 'invalid_origin' };
+
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      return { ok: false, code: 'invalid_origin' };
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { ok: false, code: 'invalid_origin' };
+    }
+    if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+      return { ok: false, code: 'invalid_origin' };
+    }
+
+    const hostname = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    return this.allowedOriginHostnames().includes(hostname)
+      ? { ok: true }
+      : { ok: false, code: 'origin_not_allowed' };
+  }
+
   isLoopbackRequest(request: IncomingMessage): boolean {
     const remoteAddress = normalizedRemoteAddress(request.socket?.remoteAddress);
     if (!remoteAddress) return false;

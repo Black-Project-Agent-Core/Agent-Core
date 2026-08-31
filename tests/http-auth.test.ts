@@ -6,6 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
 import { createHttpHandler } from '../src/http/app.js';
+import { HttpSecurityPolicy } from '../src/http/security-policy.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 
 const tempDirs: string[] = [];
@@ -91,5 +92,50 @@ describe('HTTP authentication', () => {
     expect(audit).toContain(created.metadata.id);
     expect(audit).toContain('chatgpt');
     expect(audit).not.toContain(created.key);
+  });
+
+  it('rejects an untrusted browser Origin before authentication or MCP dispatch', async () => {
+    const root = await tempRoot();
+    let dispatched = false;
+    const handler = createHttpHandler({
+      keyStore: new FileKeyStore(path.join(root, 'data')),
+      auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+      security: new HttpSecurityPolicy({
+        publicBaseUrl: 'https://agent-core.example.test',
+        trustProxy: false,
+        allowedOrigins: [],
+      }),
+      mcpHandler: async () => { dispatched = true; },
+    });
+    const baseUrl = await listen(createServer(handler));
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: 'POST',
+      headers: { Origin: 'https://evil.example' },
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'forbidden_origin' });
+    expect(dispatched).toBe(false);
+  });
+
+  it('allows localhost browser Origin to reach the normal authentication flow', async () => {
+    const root = await tempRoot();
+    const handler = createHttpHandler({
+      keyStore: new FileKeyStore(path.join(root, 'data')),
+      auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+      security: new HttpSecurityPolicy({
+        publicBaseUrl: null,
+        trustProxy: false,
+        allowedOrigins: [],
+      }),
+      mcpHandler: async () => { throw new Error('MCP hook must not run without authentication'); },
+    });
+    const baseUrl = await listen(createServer(handler));
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: 'POST',
+      headers: { Origin: 'http://localhost:43123' },
+    });
+    expect(response.status).toBe(401);
   });
 });

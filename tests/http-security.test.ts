@@ -75,4 +75,19 @@ describe('HTTP trust boundary policy', () => {
     const req = { headers: {}, socket: {} } as unknown as IncomingMessage;
     expect(policy().isLoopbackRequest(req)).toBe(false);
   });
+
+  it.each([
+    [undefined, { ok: true }],
+    ['null', { ok: false, code: 'invalid_origin' }],
+    ['not-a-url', { ok: false, code: 'invalid_origin' }],
+    ['https://evil.example', { ok: false, code: 'origin_not_allowed' }],
+    ['https://user@localhost', { ok: false, code: 'invalid_origin' }],
+    ['file://localhost', { ok: false, code: 'invalid_origin' }],
+    ['http://localhost:43123', { ok: true }],
+    ['https://agent-core.example.test', { ok: true }],
+  ])('validates MCP Origin %s deterministically', (origin, expected) => {
+    const security = policy({ publicBaseUrl: 'https://agent-core.example.test' });
+    const headers = origin === undefined ? {} : { origin };
+    expect(security.validateMcpOrigin(request(headers))).toEqual(expected);
+  });
 });

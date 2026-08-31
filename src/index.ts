@@ -51,6 +51,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
   const server = createServer(createHttpHandler({
     keyStore,
     oauthService,
+    security: httpSecurity,
     auditLogger,
     healthMetricsProvider: async () => runtime.healthMetrics.getMetrics(),
     healthProvider: async () => {

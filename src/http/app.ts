@@ -5,6 +5,7 @@ import type { VerifiedKey } from '../auth/key-types.js';
 import type { AuditLogger } from '../logging/audit-log.js';
 import type { OAuthService } from '../oauth/service.js';
 import { authenticateRequest } from './auth.js';
+import { HttpSecurityPolicy } from './security-policy.js';
 
 export type McpHttpHandler = (
   request: IncomingMessage,
@@ -17,6 +18,7 @@ export interface HttpHandlerOptions {
   auditLogger: AuditLogger;
   mcpHandler: McpHttpHandler;
   oauthService?: OAuthService;
+  security?: HttpSecurityPolicy;
   healthProvider?: () => Promise<Record<string, unknown>>;
   healthMetricsProvider?: () => Promise<Record<string, unknown>>;
 }
@@ -34,6 +36,12 @@ function sendJson(
   response.end(JSON.stringify(body));
 }
 
+const DEFAULT_HTTP_SECURITY = new HttpSecurityPolicy({
+  publicBaseUrl: null,
+  trustProxy: false,
+  allowedOrigins: [],
+});
+
 export function createHttpHandler(options: HttpHandlerOptions): RequestListener {
   return (request, response) => {
     void handleRequest(request, response, options);
@@ -48,6 +56,7 @@ async function handleRequest(
   const startedAt = Date.now();
   const requestId = randomUUID();
   const route = new URL(request.url ?? '/', 'http://localhost').pathname;
+  const security = options.security ?? DEFAULT_HTTP_SECURITY;
   let key: VerifiedKey | null = null;
 
   try {
@@ -68,6 +77,11 @@ async function handleRequest(
     }
 
     if (route === '/mcp') {
+      const origin = security.validateMcpOrigin(request);
+      if (!origin.ok) {
+        sendJson(response, 403, { error: 'forbidden_origin' });
+        return;
+      }
       key = await authenticateRequest(request, options.keyStore, options.oauthService);
       if (!key) {
         const headers: Record<string, string> = {};
