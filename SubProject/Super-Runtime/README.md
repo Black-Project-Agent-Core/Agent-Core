@@ -59,4 +59,6 @@ Pinned runtime references live under `research/references/`. The active referenc
 
 ## Current phase
 
-The project is focused on the runtime core. The next implementation frontier is the storage/residency seam: preserve llama.cpp/GGML model support while adding a deterministic global memory governor and storage-aware weight residency without making streaming a per-model feature. Consumer-framework integration is deferred until the runtime core passes correctness, memory-budget, and residency/I/O gates.
+**Phase 0 learning is complete.** The evidence and frozen decisions are recorded in `docs/research/PHASE-0-LEARNING-COMPLETE.md`. The next task is no longer more architecture archaeology; it is to build the first runnable native Super-Runtime core around the pinned llama.cpp/GGML CPU substrate, memory ledger, stable file-backed residency, dense graph-order policy, and sparse `MUL_MAT_ID` policy.
+
+Consumer-framework integration remains deferred until Super-Runtime itself exists and passes its runtime correctness, memory-budget, and residency/I/O gates.
