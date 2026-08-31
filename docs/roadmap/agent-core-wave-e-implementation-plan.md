@@ -41,7 +41,7 @@
 - [x] **Step 3: Add a fixed evaluation registry fixture** with native frontend/docs/release skills, a reference-only backend debugging capability, and at least one lexical distractor. The fixture must contain no network/runtime dependency.
 - [x] **Step 4: Add an initial routing corpus** of at least 32 cases spanning atomic read/mutation, structured read/mutation, domain-complex tasks, high-impact tasks, GitHub read/mutation, misleading lexical overlap, safe uses of generic `remove/review/build/get/check`, context-only strong skill matches, and ambiguous guidance.
 - [x] **Step 5: Implement evaluator types/schema validation and metrics** using the real `CapabilityRegistry` + `CapabilityRouter`. For each case run the router twice and compare stable route projections.
-- [x] **Step 6: GREEN verification:** run routing-quality plus existing router/registy tests and `npm run build`.
+- [x] **Step 6: GREEN verification:** run routing-quality plus existing router/registy tests and `npm run build`.**
 - [x] **Step 7: Commit** `feat: add deterministic routing quality corpus`.
 
 ### Task E2: Memory quality corpus and real-service evaluator
@@ -102,7 +102,7 @@
 - [x] **Step 3: Implement the smallest deterministic fix.** Preferred candidate order: intent-specific allowed tools for non-atomic read-only routes; higher precision high-impact matching; token-boundary capability scoring; skill threshold adjustment. Do not combine unrelated changes in one commit.
 - [x] **Step 4: Run focused GREEN tests** after each change plus the entire routing corpus.
 - [x] **Step 5: Compare new scorecard to pre-tuning baseline** and require target metric improvement with zero regression in any certified routing metric.
-- [x] **Step 6: Run router/MCP route enforcement/project-scope regressions and `npm run build`.
+- [x] **Step 6: Run router/MCP route enforcement/project-scope regressions and `npm run build`.**
 - [x] **Step 7: Commit each independently reviewable tuning change** with a message describing the measured gap, then update the plan with before/after metrics.
 
 ### Task E5: Evidence-backed memory tuning
@@ -131,7 +131,7 @@
 - [x] **Step 1: Write RED contract test** proving `verify:release` includes Wave E quality gate after normal build/test prerequisites.
 - [x] **Step 2: Add `quality:gate` to the release verification path** in a position where compiled evaluator code exists and before release metadata certification completes.
 - [x] **Step 3: Run `npm run quality:gate` and focused release-contract tests.** Require all Wave E thresholds PASS.
-- [x] **Step 4: Run `npm run verify:release` once on the feature branch and confirm no tool-surface/dependency regression.
+- [x] **Step 4: Run `npm run verify:release` once on the feature branch and confirm no tool-surface/dependency regression.**
 - [x] **Step 5: Commit** `test: enforce routing and memory quality gate`.
 
 ## Wave E Tuning Evidence — 2026-08-31
@@ -201,17 +201,44 @@ current quality:gate exit = 0
 - Modify: `docs/roadmap/agent-core-balanced-evolution.md`
 - Modify: `docs/roadmap/agent-core-wave-e-implementation-plan.md`
 
-- [ ] **Step 1: Run focused adversarial Wave E acceptance**: routing corpus, memory corpus, isolation cases, hard guardrail, current revision, deterministic replay, MCP route enforcement, Wave D audit/security regressions.
-- [ ] **Step 2: Run the 100k memory benchmark** after build with at least 5 measured samples and 2 warmups; require preflight p95 `< 150 ms` and record the exact observed value.
-- [ ] **Step 3: Run** `git diff --check`, `npm run check:brand`, dependency diff against `7f6968b`, and doc-link verification.
-- [ ] **Step 4: Run final feature-branch `npm run verify:release`** and record file/test/skip counts.
-- [ ] **Step 5: Confirm the 55-tool surface in both MCP eras** and Wave A public trust-boundary behavior on a temporary/local canary.
-- [ ] **Step 6: Update docs with exact baseline → final metrics**, any routing/memory changes, performance result, and explicit `external AI model/API dependency = 0`.
+- [x] **Step 1: Run focused adversarial Wave E acceptance**: routing corpus, memory corpus, isolation cases, hard guardrail, current revision, deterministic replay, MCP route enforcement, Wave D audit/security regressions.
+- [x] **Step 2: Run the 100k memory benchmark** after build with at least 5 measured samples and 2 warmups; require preflight p95 `< 150 ms` and record the exact observed value.
+- [x] **Step 3: Run** `git diff --check`, `npm run check:brand`, dependency diff against `7f6968b`, and doc-link verification.
+- [x] **Step 4: Run final feature-branch `npm run verify:release`** and record file/test/skip counts.
+- [x] **Step 5: Confirm the 55-tool surface in both MCP eras** and Wave A public trust-boundary behavior on a temporary/local canary.
+- [x] **Step 6: Update docs with exact baseline → final metrics**, any routing/memory changes, performance result, and explicit `external AI model/API dependency = 0`.
 - [ ] **Step 7: Commit** `docs: record wave e local certification evidence`.
 - [ ] **Step 8: Before integration fetch `origin/main`** and require the feature merge-base remains the Wave E base or reconcile any concurrent main changes explicitly.
-- [ ] **Step 9: Fast-forward main only when topology is compatible; run fresh merged-main `npm ci` + `npm run verify:release`; push non-force and require local/remote equality.
+- [ ] **Step 9: Fast-forward main only when topology is compatible; run fresh merged-main `npm ci` + `npm run verify:release`; push non-force and require local/remote equality.**
 - [ ] **Step 10: Controlled runtime source-sync** and require `HEAD == origin/main == connection.sourceCommit`; public health/security + legacy/modern 55-tool canary.
-- [ ] **Step 11: Commit/push final docs-only certification if needed, source-sync again, then remove only the Wave E worktree/local branch after exact equality is proven.
+- [ ] **Step 11: Commit/push final docs-only certification if needed, source-sync again, then remove only the Wave E worktree/local branch after exact equality is proven.**
+
+## Wave E Pre-Integration Certification Evidence — 2026-08-31
+
+```text
+feature branch source                    fdeb511d3d077e258a5edf8fa0c9b781fa560b90
+focused adversarial acceptance           20 files / 118 tests PASS
+100k memory benchmark                    5 samples / 2 warmups
+100k preflight p95                       85.299 ms
+100k target                              <150 ms PASS
+100k SQLite integrity                    ok
+git diff --check                         PASS
+brand scan                               PASS
+doc links                                36 markdown / 16 links PASS
+root dependency diff vs Wave D           NONE
+lock/plugin dependency-file diff         NONE
+full verify:release                      PASS
+full regression                          130 files / 627 tests PASS
+intentional skips                        38
+quality:gate                             PASS
+legacy MCP temporary canary              2025-11-25 / 55 PASS
+modern MCP temporary canary              2026-07-28 / 55 PASS
+health / remote metrics                  200 / 403
+no-token / evil Origin                   401 / 403
+external AI model/API dependency         0
+```
+
+The first temporary canary attempts exposed harness-only issues (relative `/tmp` imports, then a direct-loopback metrics request). The final canary used absolute worktree imports and explicit trusted-proxy mode with a forwarded non-loopback client, which is the factual Wave A remote-metrics classification path. No production code was changed for those harness corrections.
 
 ## Wave E Exit Matrix
 

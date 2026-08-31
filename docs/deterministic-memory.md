@@ -169,3 +169,42 @@ A process exit or execution terminal state is not equivalent to semantic task co
 Continuity snapshots are bounded and deterministically ordered. Current active/deferred/blocked/frontier state is queried separately from semantic chatter so old or unrelated conversation cannot displace factual project continuation merely because it is recent.
 
 See `docs/local-agent-continuity.md` for the route/checkpoint/resume contract and `docs/deterministic-execution-fabric.md` for the separate high-frequency execution database.
+
+## Wave E deterministic recall quality gate
+
+Wave E turns memory quality into a repo-owned deterministic certification surface rather than relying only on selected scenarios or latency measurements. The corpus in `tests/fixtures/quality/memory-corpus.json` runs against the real `MemoryService` and SQLite/FTS/graph/revision pipeline. No embedding API, cloud reranker, AI judge, or external model participates in scoring.
+
+The certified pre-integration quality metrics on 2026-08-31 are:
+
+```text
+metric                             pre-tuning   final
+Recall@K                           1.0000       1.0000
+MRR                                0.9375       1.0000
+hard-guardrail recall              1.0000       1.0000
+current-revision correctness       1.0000       1.0000
+prior-failure recall               1.0000       1.0000
+graph-target recall                1.0000       1.0000
+conflict visibility                1.0000       1.0000
+artifact/procedure recall          1.0000       1.0000
+noise displacement rate            0.2500       0
+cross-project contamination        0            0
+cross-principal contamination      0            0
+character-budget correctness       1.0000       1.0000
+deterministic replay equality      1.0000       1.0000
+```
+
+The only production memory tuning required by the corpus was to keep an active pinned decision ahead of fresh low-importance observation chatter. `MemoryConfig.scoreWeights` did **not** change; `src/config.ts` and `src/memory/scoring.ts` remain unchanged from the Wave D base for score configuration. The fix is therefore narrower than global weight tuning.
+
+The post-tuning 100,000-item scale gate used 5 measured samples after 2 warmups and reported:
+
+```text
+SQLite integrity          ok
+preflight p50             65.423 ms
+preflight mean            67.812 ms
+preflight p95             85.299 ms
+preflight max             85.299 ms
+certified target          < 150 ms
+result                    PASS
+```
+
+`npm run quality:gate` is part of `npm run verify:release`; a release cannot pass while a certified routing/memory threshold fails.

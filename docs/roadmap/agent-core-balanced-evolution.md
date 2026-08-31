@@ -1015,24 +1015,36 @@ The final certification commit is docs-only; runtime source metadata is synchron
 
 **Goal:** improve decision quality using deterministic local evaluation.
 
-Scope:
+**Implementation status:** feature-branch certification PASS on 2026-08-31; production integration/runtime certification pending the final Wave E publication steps.
 
-- routing golden corpus;
-- memory recall quality corpus;
-- quantitative gates;
-- only then evidence-backed tuning of deterministic heuristics/weights.
+Delivered scope:
 
-Exit gates include:
+- 40-case repo-owned routing golden corpus;
+- 12-case real-`MemoryService` recall quality corpus;
+- stable offline scorecard and `quality:report` / `quality:gate`;
+- `quality:gate` promoted into `verify:release`;
+- evidence-backed routing tuning only after a committed pre-tuning baseline;
+- one narrow memory ordering fix, with no score-weight change.
+
+Pre-tuning → certified feature-branch results:
 
 ```text
-cross-project memory contamination     = 0
-cross-principal memory contamination   = 0
-hard-guardrail recall                  = 100%
-current-revision correctness           = 100%
-unsafe route overpermission            below certified threshold
-routing/retrieval determinism          PASS
-performance gates                      no regression
-external AI model/API dependency       = 0
+routing tier accuracy                 0.9250 -> 0.9750
+false high-impact rate                0.0571 -> 0
+unsafe route overpermission           0.2250 -> 0
+false read-only classification        0.4737 -> 0
+relevant skill precision@2            0.5278 -> 1.0000
+unnecessary skill-load rate           0.0833 -> 0
+memory Recall@K                       1.0000 -> 1.0000
+memory MRR                            0.9375 -> 1.0000
+noise displacement rate               0.2500 -> 0
+cross-project contamination           0 -> 0
+cross-principal contamination         0 -> 0
+hard-guardrail recall                 1.0000 -> 1.0000
+current-revision correctness          1.0000 -> 1.0000
+routing/retrieval deterministic replay PASS
+100k memory preflight p95             85.299 ms / <150 ms PASS
+external AI model/API dependency      0
 ```
 
 ---

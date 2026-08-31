@@ -287,6 +287,66 @@ temporary public canary key              revoked PASS
 
 This certifies the Wave D runtime-code boundary. The final docs-only certification SHA is source-synchronized after publication so `HEAD`, `origin/main`, and Codespace `sourceCommit` remain identical.
 
+## Wave E routing & memory quality contract
+
+Wave E adds offline, deterministic quality certification before routing or recall heuristics may be tuned. The repo owns both corpora and the evaluator; `quality:gate` now runs inside `verify:release`. Evaluation uses only local deterministic code and temporary local SQLite databases.
+
+Pre-tuning → final routing metrics:
+
+```text
+tier accuracy                     0.9250 -> 0.9750
+false high-impact rate            0.0571 -> 0
+unsafe route overpermission       0.2250 -> 0
+false read-only classification    0.4737 -> 0
+relevant skill precision@2        0.5278 -> 1.0000
+unnecessary skill-load rate       0.0833 -> 0
+verification correctness          1.0000 -> 1.0000
+routing deterministic replay      1.0000 -> 1.0000
+```
+
+Pre-tuning → final memory metrics:
+
+```text
+Recall@K                          1.0000 -> 1.0000
+MRR                               0.9375 -> 1.0000
+hard-guardrail recall             1.0000 -> 1.0000
+current-revision correctness      1.0000 -> 1.0000
+prior-failure recall              1.0000 -> 1.0000
+graph-target recall               1.0000 -> 1.0000
+conflict visibility               1.0000 -> 1.0000
+artifact/procedure recall         1.0000 -> 1.0000
+noise displacement rate           0.2500 -> 0
+cross-project contamination       0 -> 0
+cross-principal contamination     0 -> 0
+character-budget correctness      1.0000 -> 1.0000
+memory deterministic replay       1.0000 -> 1.0000
+```
+
+Evidence-backed production changes were intentionally narrow: token-boundary/semantic capability scoring, least-privilege read-only route permissions, weak route-recommendation filtering with compatibility corrections, and pinned-decision ordering against low-importance chatter. Memory score weights were not changed.
+
+Wave E pre-integration certification evidence on 2026-08-31:
+
+```text
+focused adversarial acceptance       20 files / 118 tests PASS
+100k memory preflight                 p95 85.299 ms / target <150 ms PASS
+SQLite integrity                      ok
+full npm run verify:release           PASS
+full regression                       130 files / 627 tests PASS
+intentional skips                     38 tests
+quality:gate                          PASS
+routing corpus                        40 cases
+memory corpus                         12 cases
+package dependency changes            none
+external AI model/API dependency      0
+temporary local trust-boundary canary PASS
+legacy MCP                            2025-11-25 / 55 tools PASS
+modern MCP                            2026-07-28 / 55 tools PASS
+remote metrics classification         403 through trusted proxy
+no-token / evil Origin                401 / 403
+```
+
+This evidence certifies the Wave E feature branch before integration. Production certification is recorded only after fast-forward integration, merged-main verification, publication readback, controlled runtime source-sync, and public canary equality.
+
 ## Last core certification
 
 The final continuity/execution core certification was completed on 2026-08-26 after the execution WAL durability fix and staged default-enabled rollout.
