@@ -21,6 +21,7 @@ All notable stable Agent Core changes are recorded here. The project follows sem
 ### Fixed
 
 - Stable release parity verification invokes Git tag/source checks through `git` instead of accidentally routing them through the GitHub CLI.
+- Stable release packaging no longer requires the removed self-fork diagram directory; `dist` is declared as the sole generated runtime input and release tests now require every other runtime package input to have tracked source.
 - Routing least-privilege classification, capability ranking noise, deterministic memory chatter displacement, audit-journal test synchronization, and Wave A trust-boundary defects are covered by permanent regression/certification gates.
 
 ### Security

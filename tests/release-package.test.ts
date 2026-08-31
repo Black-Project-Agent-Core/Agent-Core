@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -47,7 +48,7 @@ describe('stable release package contract', () => {
   });
 
   it('keeps canonical Codespaces and Windows cutover documentation in the runtime package without secret-bearing roots', async () => {
-    const { RUNTIME_RELEASE_ITEMS } = await loadContract();
+    const { RUNTIME_RELEASE_ITEMS, GENERATED_RUNTIME_RELEASE_ITEMS } = await loadContract();
     expect(RUNTIME_RELEASE_ITEMS).toContain('.devcontainer/devcontainer.json');
     expect(RUNTIME_RELEASE_ITEMS).toContain('plugin/codespace/scripts');
     expect(RUNTIME_RELEASE_ITEMS).toContain('plugin/codespace/src');
@@ -57,6 +58,16 @@ describe('stable release package contract', () => {
     expect(RUNTIME_RELEASE_ITEMS).not.toContain('runtime');
     expect(RUNTIME_RELEASE_ITEMS).not.toContain('capabilities');
     expect(RUNTIME_RELEASE_ITEMS).not.toContain('node_modules');
+    expect(GENERATED_RUNTIME_RELEASE_ITEMS).toEqual(['dist']);
+    const tracked = new Set(execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean));
+    for (const item of RUNTIME_RELEASE_ITEMS) {
+      if (GENERATED_RUNTIME_RELEASE_ITEMS.includes(item)) continue;
+      const normalized = item.replace(/\/$/, '');
+      expect(
+        [...tracked].some((file) => file === normalized || file.startsWith(`${normalized}/`)),
+        `release source must be tracked: ${item}`,
+      ).toBe(true);
+    }
   });
 
   it('keeps the nested Codespaces package scripts portable across Windows and Linux npm shells', async () => {

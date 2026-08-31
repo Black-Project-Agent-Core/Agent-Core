@@ -1,6 +1,8 @@
 export const RELEASE_FORMAT = 'agent-core-stable-release-v3';
 export const PRESENTATION_BRIDGE_ROOT = 'SubProject/Presentation-Bridge/';
 
+export const GENERATED_RUNTIME_RELEASE_ITEMS = Object.freeze(['dist']);
+
 export const RUNTIME_RELEASE_ITEMS = Object.freeze([
   '.env.example',
   '.devcontainer/devcontainer.json',
@@ -34,7 +36,6 @@ export const RUNTIME_RELEASE_ITEMS = Object.freeze([
   'docs/stability.md',
   'docs/windows-installation-cutover.md',
   'docs/roadmap',
-  'docs/diagrams',
   'tunnel-client/agent-core.example.yaml',
 ]);
 
