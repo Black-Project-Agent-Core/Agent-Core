@@ -4,11 +4,9 @@ Status: architecture discovery / research only
 
 ## Product identity
 
-Super-Runtime is the product. It is not an OpenClaw fork, Hermes fork, Odysseus fork, llama.cpp fork, or Kimi K3 port.
+Super-Runtime is the product. It is not a downstream AI-tool fork, a Kimi K3 port, or a thin llama.cpp launcher.
 
-Its purpose is to become a polyglot, model-flexible runtime designed for AI-agent workloads, especially coding agents. Other AI tools may connect to Super-Runtime later as consumers through stable provider/runtime contracts.
-
-Examples of future consumers include OpenClaw, Hermes, Odysseus, and other agent systems. Their internal architecture must not dictate the Super-Runtime core.
+Its purpose is to become a CPU-first, polyglot, model-flexible local inference runtime with explicit control over memory, storage residency, context/state, and optional accelerators. AI tools may connect later, but consumer-framework architecture is deliberately outside the current research and implementation scope.
 
 ## Primary goals
 
@@ -16,7 +14,7 @@ Examples of future consumers include OpenClaw, Hermes, Odysseus, and other agent
 2. GPU acceleration is optional, never a hard dependency of the runtime design.
 3. Model flexibility through explicit architecture/model adapters rather than pretending all model graphs are interchangeable.
 4. Polyglot architecture with narrow, stable boundaries between languages.
-5. Strong support for AI-agent behavior, including coding-agent workloads, tool-call protocols, structured output, long-running loops, cancellation, metrics, and state.
+5. Robust long-running inference operation, including cancellation, telemetry, deterministic state handling, and bounded context/runtime memory.
 6. Treat RAM as a bounded resource and storage as a potential extended model-memory layer.
 7. Research a target model-runtime resident-memory budget around 8 GB. This is a runtime target, not a promise that a complete workstation needs only 8 GB total RAM.
 8. Treat context/KV/state memory as a first-class problem, not only model-weight residency.
@@ -29,9 +27,8 @@ Phase 0 must not:
 - download the 1.56 TB Kimi K3 checkpoint;
 - make Qwen/Llama/DeepSeek pretend to be Kimi K3 by reusing the K3 graph;
 - copy K3-specific KDA, Gated MLA, Stable LatentMoE, tokenizer, tensor names, or config schema into a supposedly universal core;
-- build an OpenClaw/Hermes/Odysseus-specific runtime;
+- clone, study, or build around downstream AI-tool internals before the runtime core is proven;
 - declare "8 GB RAM achieved" without measured peak RSS and a memory ledger;
-- treat "model can generate text" as equivalent to "model is agent-compatible";
 - begin production runtime implementation before the architecture discovery gates are answered.
 
 ## Architectural boundary to preserve
@@ -39,10 +36,9 @@ Phase 0 must not:
 Conceptual relationship:
 
 ```text
-AI Agent / AI Tool
-(OpenClaw, Hermes, Odysseus, future systems)
+Future AI-tool integration layer (deferred)
                   |
-                  | stable local provider/runtime contract
+                  | narrow runtime contract
                   v
             Super-Runtime
                   |
@@ -55,7 +51,7 @@ AI Agent / AI Tool
                            GPU optional
 ```
 
-The consumers above Super-Runtime are replaceable. The model families below Super-Runtime are also replaceable. Super-Runtime owns the runtime contract between them.
+The integration layer above Super-Runtime is replaceable and deferred. The model families below Super-Runtime are also replaceable. The current project frontier is the runtime itself.
 
 ## Polyglot rule
 
@@ -65,23 +61,14 @@ The intended principle is:
 
 - native data-plane code for performance-critical inference, memory, I/O, tensor execution, and device work;
 - a higher-level control plane may use a different systems language if it improves lifecycle, scheduling, safety, observability, and integration;
-- agent/provider adapters may use the language most natural for the consumer ecosystem;
+- future integration adapters may use a separate language without entering the native inference hot path;
 - Python is acceptable for conversion, research, fixtures, benchmark analysis, and development tooling, but should not bounce through the production per-layer/per-token hot path.
 
 The exact language split is a Phase 0 research decision, not yet frozen.
 
-## AI-agent compatibility is multidimensional
+## Consumer integration is deferred
 
-A loaded model is not automatically an AI-agent model. Super-Runtime must eventually distinguish at least:
-
-- inference compatibility;
-- tokenizer/chat-template compatibility;
-- reasoning-mode compatibility where applicable;
-- structured-output compatibility;
-- tool/function-call compatibility;
-- long-loop/cancellation compatibility;
-- state/context compatibility;
-- coding-agent suitability.
+Consumer protocol details, tool-call behavior, and framework-specific compatibility are not Phase 0 prerequisites. They are validated only after the runtime core can load supported models, execute correctly, stay within its memory ledger, and prove its residency/I/O mechanisms.
 
 ## Memory research contract
 
@@ -109,19 +96,19 @@ Before a production implementation plan, research must answer:
 4. Which existing native compute/model ecosystem should be reused rather than reimplemented?
 5. How should hard/soft RAM budgeting work across weights, KV/state, scratch, and device buffers?
 6. What is the policy difference for dense versus MoE models?
-7. How can agent context/KV/state remain bounded on repository-scale coding tasks?
+7. How can long-context KV/recurrent/state memory remain bounded under the same global budget?
 8. What is the CPU-first scheduling policy and what belongs in optional GPU offload?
-9. What provider protocol should AI tools use to connect without coupling Super-Runtime to one agent framework?
-10. What benchmark gates prove correctness, memory-budget compliance, tool-call fitness, and coding-agent usefulness?
+9. What benchmark gates prove numerical correctness, memory-budget compliance, storage/residency correctness, and useful CPU-first throughput?
 
 ## Research reference policy
 
 External projects used for architecture study must remain clearly separated from Super-Runtime production source and pinned to known revisions where practical.
 
-The first reference is:
+The active runtime references are:
 
 ```text
 research/references/kimi-k3-in-c
+research/references/llama.cpp
 ```
 
-It exists to be repeatedly inspected and tested locally. It is reference material, not the Super-Runtime implementation base by default.
+K3-in-C is the primary low-memory/runtime-behavior reference. llama.cpp/GGML is the approved production compute/model substrate. Downstream AI-tool repositories are intentionally excluded from this phase.

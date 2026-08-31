@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Super-Runtime is the product; OpenClaw, Hermes, and Odysseus are consumers/references.
+- Super-Runtime runtime core is the only active implementation target; downstream AI-tool repositories are out of scope until a later integration phase.
 - llama.cpp/GGML is the approved production compute/model substrate.
 - CPU execution is mandatory; GPU acceleration is optional.
 - No model-family-specific streaming architecture unless the generic substrate cannot express a required semantic.
@@ -239,32 +239,33 @@ Verify unsupported hosts fail closed and a suitable Linux host produces bounded 
 
 Commit message: `bench: add hard memory ceiling harness`
 
-### Task 8: Add the first agent-facing compatibility smoke surface
+### Task 8: Add a minimal native runtime smoke entrypoint
 
 **Files:**
-- Create: `runtime/service/` with the chosen control-plane scaffold
-- Create: `tests/contracts/openai-compat-smoke.*`
+- Create: `runtime/native/super_runtime/runtime_entry.h`
+- Create: `runtime/native/super_runtime/runtime_entry.cpp`
+- Create: `runtime/native/tests/test_runtime_entry.cpp`
 
 **Interfaces:**
-- Consumes: native runtime model lifecycle/inference boundary
-- Produces: health/model discovery and one streamed chat-completions-compatible request path sufficient for OpenClaw/Hermes/Odysseus smoke integration
+- Consumes: native model lifecycle, budget planner, residency engine, and inference boundary
+- Produces: one minimal test/CLI-callable runtime entrypoint that exercises load -> admit -> execute -> report -> unload without any downstream AI-tool dependency
 
-- [ ] **Step 1: Write failing HTTP contract tests**
+- [ ] **Step 1: Write a failing end-to-end native smoke test**
 
-Require health, `GET /v1/models`, and a deterministic streamed inference fixture. Include one structured tool-call fixture if the underlying smoke model/template supports it.
+Use a small deterministic fixture and require lifecycle transitions, budget admission, inference execution, telemetry retrieval, cancellation-safe cleanup, and unload. No HTTP/provider/tool-call protocol belongs in this task.
 
 - [ ] **Step 2: Run and verify RED**
 
-Expected: connection/route failure because no service exists.
+Expected: compilation/test failure because the unified native entrypoint does not exist.
 
-- [ ] **Step 3: Implement the minimum service boundary**
+- [ ] **Step 3: Implement the minimum runtime entrypoint**
 
-Do not move tensor execution into the service language. The service invokes the native worker boundary and exposes runtime-owned telemetry separately from OpenAI compatibility payloads.
+Keep tensor execution, memory policy, and residency in the native worker. The entrypoint must expose only coarse lifecycle/request/telemetry operations and must not bypass the memory ledger.
 
-- [ ] **Step 4: Run consumer smoke tests**
+- [ ] **Step 4: Run the complete native runtime suite**
 
-Point small isolated configurations from the pinned OpenClaw/Hermes/Odysseus references at the endpoint and verify request/stream/tool-call compatibility without making those frameworks runtime dependencies.
+Verify the smoke fixture plus memory-ledger, file-residency, MoE, dense, budget, and substrate tests. Downstream consumer integrations remain explicitly deferred.
 
 - [ ] **Step 5: Commit**
 
-Commit message: `feat: add agent compatibility smoke service`
+Commit message: `feat: add native runtime smoke entrypoint`

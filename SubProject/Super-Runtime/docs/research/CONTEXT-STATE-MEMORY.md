@@ -232,7 +232,7 @@ Super-Runtime should reuse a polymorphic model-memory interface from the multi-a
 3. account state against the worker hard target;
 4. coordinate state allocation with weight residency;
 5. persist/rehydrate inactive session state;
-6. report effective capacity to the AI-agent consumer.
+6. report effective capacity to the caller/control plane.
 
 The product goal is not "largest possible context". It is:
 

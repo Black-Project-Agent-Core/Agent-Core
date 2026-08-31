@@ -283,7 +283,7 @@ GPU acceleration should improve execution without becoming a compatibility requi
 Candidate boundary:
 
 ```text
-OpenClaw / Hermes / Odysseus / future consumers
+Future consumer adapters (deferred)
                |
                v
 OpenAI-compatible/provider gateway
@@ -423,6 +423,6 @@ The unexplored value remains resource-aware execution across those capabilities.
 
 **Inference** — Super-Runtime is best defined as:
 
-> a model-agnostic resource operating layer for local inference, built around a mature multi-architecture compute substrate, that makes weight/state residency, storage I/O, device placement, and process memory explicit schedulable resources while exposing a stable AI-agent-compatible provider surface.
+> a model-agnostic resource operating layer for local inference, built around a mature multi-architecture compute substrate, that makes weight/state residency, storage I/O, device placement, and process memory explicit schedulable resources behind a narrow native runtime boundary.
 
 This is narrower and stronger than "another inference engine" and broader than "a K3 fork".

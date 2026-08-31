@@ -5,9 +5,9 @@ Date: 2026-08-31
 
 ## 1. Product definition
 
-Super-Runtime is a standalone local inference/runtime product designed for AI-agent workloads. It is not an OpenClaw fork, Hermes fork, Odysseus fork, Kimi K3 fork, or a thin llama.cpp launcher.
+Super-Runtime is a standalone CPU-first local inference/runtime product. It is not a downstream AI-tool fork, a Kimi K3 port, or a thin llama.cpp launcher.
 
-OpenClaw, Hermes, Odysseus, and future agent systems connect to Super-Runtime as consumers through compatibility APIs or dedicated integrations.
+Downstream AI-tool integrations are a later phase. Their repositories and internal architecture are not prerequisites for designing or implementing the runtime core.
 
 ## 2. Approved compute substrate
 
@@ -25,15 +25,15 @@ Super-Runtime owns the mechanisms that turn a general compute substrate into a r
 4. CPU-first execution. The runtime must function without a GPU.
 5. Optional GPU acceleration selected from measured device capabilities and the active budget.
 6. Context-aware operation for long-running agent sessions, including bounded working context and architecture-correct KV/recurrent-state handling.
-7. Agent-facing compatibility through OpenAI-style model discovery/chat/tool-call streaming where practical, plus native runtime controls for budgets, devices, telemetry, and lifecycle.
+7. A narrow native runtime/control surface for budgets, devices, telemetry, lifecycle, and test harnesses; downstream compatibility adapters are deferred.
 8. Measurement-first correctness: a low-memory mode is accepted only when output parity/correctness gates and measured memory ceilings prove it.
 
 ## 4. Core architecture
 
 ```text
 +-----------------------------------------------------------+
-|                    Agent consumers                        |
-| OpenClaw | Hermes | Odysseus | IDE agents | future tools  |
+|            Future integration adapters (deferred)         |
+|      downstream AI tools must not shape runtime internals  |
 +-------------------------------+---------------------------+
                                 |
                     Compatibility / Native API
@@ -62,7 +62,7 @@ Super-Runtime owns the mechanisms that turn a general compute substrate into a r
 
 Model families are supported through the model/graph substrate and architecture-specific metadata, not by forcing checkpoints through a Kimi-specific graph.
 
-The runtime must permit model families such as Llama, Qwen, DeepSeek, Kimi, and future GGML-supported architectures without requiring the agent-facing layer to change.
+The runtime must permit model families such as Llama, Qwen, DeepSeek, Kimi, and future GGML-supported architectures without requiring the runtime core to be redesigned.
 
 Architecture-specific state representation remains architecture-specific. A global memory governor manages those implementations through common accounting/policy interfaces instead of pretending every model has identical KV or recurrent state.
 
@@ -110,11 +110,11 @@ A higher-level control plane may use Rust where ownership, service lifecycle, te
 
 Python is allowed for conversion, fixture generation, benchmark analysis, and development tooling, not the token-generation hot path.
 
-## 9. Agent compatibility
+## 9. External integration boundary
 
-The minimum external compatibility target is an OpenAI-compatible local-provider surface sufficient for agent frameworks to discover a model and perform streamed inference with structured tool calls where the selected model/template supports them.
+External consumer compatibility is intentionally deferred until the runtime core is proven. The core must expose a narrow, stable native control/runtime boundary so later adapters can be added without changing storage, scheduling, model, or memory-governance internals.
 
-Native runtime APIs may expose functionality that does not belong in an OpenAI compatibility layer, including:
+The native runtime surface may expose:
 
 - memory budget and residency policy;
 - device selection/offload policy;
@@ -136,7 +136,7 @@ Performance claims require reproducible machine provenance and repeated measurem
 
 Research repositories remain isolated in `research/references/` and pinned to exact commits.
 
-K3's Apache-2.0 implementation can inform or supply compatible adaptations when provenance and notices are preserved. llama.cpp/GGML is MIT licensed and approved as the production substrate. OpenClaw and Hermes are consumer/reference material. Odysseus is AGPL-3.0 and remains behavioral/API research material by default unless a later licensing decision explicitly allows code reuse.
+K3's Apache-2.0 implementation is the primary low-memory/runtime-behavior reference and may inform compatible adaptations when provenance and notices are preserved. llama.cpp/GGML is MIT licensed and approved as the production compute/model substrate. Downstream AI-tool repositories are not part of the current reference set.
 
 ## 12. Immediate implementation frontier
 
@@ -148,4 +148,4 @@ The prototype must prove these properties on small fixtures/models:
 2. a deterministic memory ledger predicts and reports owned memory;
 3. MoE selected-expert IDs can drive bounded expert staging or residency;
 4. dense/fixed-order weights can be prefetched/evicted without per-model graph rewrites;
-5. a baseline agent-compatible API can call the runtime without knowing its storage policy.
+5. a minimal native test/control entrypoint can drive the runtime without bypassing its storage policy.
