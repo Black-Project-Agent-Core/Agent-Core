@@ -18,7 +18,7 @@
     "quality:report": "npm run build && node scripts/evaluate-quality.mjs",
     "quality:gate": "npm run build && node scripts/evaluate-quality.mjs --gate",
     "verify": "npm run check:brand && npm run build && npm run build:codespace && npm test",
-    "verify:release": "npm run verify && node scripts/release/check-release.mjs && node scripts/release/check-doc-links.mjs",
+    "verify:release": "npm run verify && npm run quality:gate && node scripts/release/check-release.mjs && node scripts/release/check-doc-links.mjs",
     "package:release": "node scripts/release/build-release.mjs",
     "codespace:bootstrap": "bash scripts/codespace/bootstrap.sh --phase manual",
     "codespace:repair": "bash scripts/codespace/ensure-running.sh --repair --phase manual",
