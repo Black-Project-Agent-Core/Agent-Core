@@ -17,6 +17,7 @@ import {
   readLatestMemoryBackup,
   type MemoryBackupRecord,
 } from './backup.js';
+import { MemoryCognitionController } from './cognition-controller.js';
 import {
   MemoryCognitionLedger,
   type MemoryNodeMetadataInput,
@@ -45,6 +46,9 @@ import type {
   MemoryCommitRequest,
   MemoryCommitResult,
   MemoryPreflightRequest,
+  MemoryPostflightApplyResult,
+  MemoryPostflightEvaluation,
+  MemoryPostflightRequest,
   MemoryPreflightResult,
   MemoryRememberMoreRequest,
   MemoryRememberMoreResult,
@@ -65,6 +69,7 @@ interface MemoryComponents {
   linker: MemoryLinker;
   preflight: MemoryPreflightEngine;
   cognition: MemoryCognitionLedger;
+  cognitionController: MemoryCognitionController;
   rememberMore: MemoryRememberMore;
   remoteSync?: MemoryRemoteSynchronizer;
   continuity: ContinuityStore;
@@ -301,6 +306,16 @@ export class MemoryService {
   async rememberMore(request: MemoryRememberMoreRequest): Promise<MemoryRememberMoreResult> {
     const components = await this.requireComponents();
     return components.rememberMore.expand(request);
+  }
+
+  async evaluatePostflight(request: MemoryPostflightRequest): Promise<MemoryPostflightEvaluation> {
+    const components = await this.requireComponents();
+    return components.cognitionController.evaluate(request);
+  }
+
+  async applyPostflight(request: MemoryPostflightRequest): Promise<MemoryPostflightApplyResult> {
+    const components = await this.requireComponents();
+    return components.cognitionController.apply(request);
   }
 
   async recordWriteDecision(input: MemoryWriteDecisionInput) {
@@ -752,13 +767,14 @@ export class MemoryService {
     });
     const preflight = new MemoryPreflightEngine(client, retriever, lifecycle);
     const cognition = new MemoryCognitionLedger(client);
+    const cognitionController = new MemoryCognitionController(store, linker, lifecycle, cognition);
     const rememberMore = new MemoryRememberMore(client, cognition);
     const remoteSync = this.remoteTransport
       ? new MemoryRemoteSynchronizer(this.remoteTransport, cognition, { maxRetryAttempts: this.config.remote.maxRetryAttempts })
       : undefined;
     const continuity = new ContinuityStore(client);
     const continuitySnapshot = new ContinuitySnapshotBuilder(client);
-    const components = { client, store, retriever, lifecycle, linker, preflight, cognition, rememberMore, remoteSync, continuity, continuitySnapshot };
+    const components = { client, store, retriever, lifecycle, linker, preflight, cognition, cognitionController, rememberMore, remoteSync, continuity, continuitySnapshot };
     try {
       const opened = await store.open({ dbPath: this.config.dbPath, busyTimeoutMs: this.config.busyTimeoutMs });
       this.lastIntegrityCheckAt = opened.integrityCheckedAt;

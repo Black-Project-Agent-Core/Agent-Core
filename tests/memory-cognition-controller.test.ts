@@ -7,6 +7,7 @@ import { MemoryCognitionController } from '../src/memory/cognition-controller.js
 import { MemoryCognitionLedger } from '../src/memory/cognition-ledger.js';
 import { MemoryLifecycle } from '../src/memory/lifecycle.js';
 import { MemoryLinker } from '../src/memory/linker.js';
+import { MemoryService } from '../src/memory/service.js';
 import { MemoryStore } from '../src/memory/store.js';
 import type { MemoryPostflightRequest, MemoryScope } from '../src/memory/types.js';
 import { MemoryWorkerClient } from '../src/memory/worker-client.js';
@@ -463,6 +464,62 @@ describe('advisory memory cognition controller', () => {
       expect(await f.store.getMemoryByCanonicalKey(scope, 'failure.invalid-conflict')).toBeNull();
     } finally {
       await f.store.close();
+    }
+  });
+
+  it('composes advisory/apply postflight through MemoryService without auto-adopting ordinary commit or preflight', async () => {
+    const root = tempRoot('service-composition');
+    const base = loadConfig({}, root).memory;
+    const service = new MemoryService({ ...base, enabled: true, dbPath: path.join(root, 'service.sqlite') });
+    try {
+      const existing = await service.commit({
+        scope,
+        canonicalKey: 'service.postflight.existing',
+        kind: 'decision',
+        value: 'Existing service decision.',
+        sourceType: 'test',
+      });
+      const preflight = await service.preflight({
+        scope,
+        routeContextId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        task: 'Inspect the existing service decision without automatic postflight.',
+        expiresAt: Date.now() + 60_000,
+      });
+      expect(preflight.recalled.some((hit) => hit.memoryId === existing.memoryId)).toBe(true);
+      expect((await service.status(scope)).counts.write_decisions ?? 0).toBe(0);
+
+      const advisory = await service.evaluatePostflight({
+        scope,
+        routeContextId: 'route-service-advisory',
+        candidate: {
+          canonicalKey: 'service.postflight.existing',
+          kind: 'decision',
+          value: 'Existing service decision.',
+        },
+        reasonCodes: ['SAME_BELIEF_NEW_EVIDENCE'],
+        evidenceRefs: ['validation:service'],
+      });
+      expect(advisory).toMatchObject({ decision: 'LINK_EXISTING', advisory: true, targetMemoryId: existing.memoryId });
+      expect((await service.status(scope)).counts.write_decisions).toBe(1);
+
+      const applied = await service.applyPostflight({
+        scope,
+        routeContextId: 'route-service-apply',
+        candidate: {
+          canonicalKey: 'service.postflight.root',
+          kind: 'project_state',
+          value: 'Explicitly applied new root through the controller.',
+          semanticProfile: { title: 'Service Root', futureRelevance: ['service composition'] },
+        },
+        rootReason: 'This explicit service test has no existing semantic parent.',
+        reasonCodes: ['FRESH_DURABLE_CONTEXT'],
+        evidenceRefs: ['user:service-root'],
+      });
+      expect(applied).toMatchObject({ decision: 'WRITE_NEW_ROOT', advisory: false, applied: true, semanticMutation: true });
+      expect(await service.getMemory(scope, applied.memoryId!)).toMatchObject({ canonicalKey: 'service.postflight.root' });
+      expect((await service.status(scope)).counts.write_decisions).toBe(2);
+    } finally {
+      await service.close();
     }
   });
 
