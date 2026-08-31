@@ -19,5 +19,6 @@ The current documentation tree is intentionally compact. Historical implementati
 
 ## Roadmap
 
+- [`roadmap/agent-core-balanced-evolution.md`](roadmap/agent-core-balanced-evolution.md) — evidence-backed proposal for the next Agent Core core upgrades, prioritized around correctness, security, MCP modernization, execution durability, observability, routing/memory quality, and local resource governance. It explicitly forbids external AI-model/API dependencies and excludes Codespace feature work.
 
 Roadmap documents are not statements that a feature is already implemented. The live MCP capability surface remains the factual source for currently available behavior.
