@@ -549,7 +549,7 @@ git commit -m "feat(agent-code): integrate product branding"
 - Consumes: `workspaceReducer`, reducer actions, shell components.
 - Produces: complete M1 UI behavior without any AI/backend response path.
 
-- [ ] **Step 1: Add interaction tests before wiring state**
+- [x] **Step 1: Add interaction tests before wiring state**
 
 Add these tests:
 
@@ -591,7 +591,7 @@ it('collapses and expands the sidebar without removing accessible navigation', a
 });
 ```
 
-- [ ] **Step 2: Run interaction suite to verify RED**
+- [x] **Step 2: Run interaction suite to verify RED**
 
 ```bash
 npm test -- src/components/AgentCodeApp.test.tsx
@@ -599,7 +599,7 @@ npm test -- src/components/AgentCodeApp.test.tsx
 
 Expected: FAIL on unimplemented reducer wiring/accessibility states.
 
-- [ ] **Step 3: Wire reducer actions and composer keyboard behavior**
+- [x] **Step 3: Wire reducer actions and composer keyboard behavior**
 
 `AgentCodeApp` must use:
 
@@ -609,11 +609,11 @@ const [state, dispatch] = useReducer(workspaceReducer, undefined, createInitialW
 
 `Composer` owns only transient textarea text. Enter submits unless Shift is held; Shift+Enter inserts a newline. `Submit prompt` is disabled for `value.trim().length === 0`. On valid submit it calls `onSubmit(value)`, then clears local input. No timer, mock assistant object, fake response, or backend call is allowed.
 
-- [ ] **Step 4: Add selected/hover/focus visual states**
+- [x] **Step 4: Add selected/hover/focus visual states**
 
 Use `aria-current="page"` for the selected session, `:focus-visible` with a 2 px low-glow accent outline, and a subtle `--bg-hover` selected surface. Collapsed sidebar keeps icons and accessible names while visually hiding labels with CSS rather than removing navigation semantics.
 
-- [ ] **Step 5: Run all frontend tests and build**
+- [x] **Step 5: Run all frontend tests and build**
 
 ```bash
 npm test
@@ -623,7 +623,7 @@ npm run build
 
 Expected: reducer + UI tests PASS; build PASS.
 
-- [ ] **Step 6: Commit complete local interactions**
+- [x] **Step 6: Commit complete local interactions**
 
 ```bash
 git add SubProject/Agent-Code/src
