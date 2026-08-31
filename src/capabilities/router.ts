@@ -80,8 +80,8 @@ function confidence(topScore: number): number {
 
 function strongRecommendations(recommendations: CapabilitySummary[]): CapabilitySummary[] {
   const topScore = recommendations[0]?.score ?? 0;
-  if (topScore < 8) return [];
-  const threshold = Math.max(8, topScore * 0.30);
+  if (topScore < 6) return [];
+  const threshold = Math.max(6, topScore * 0.30);
   return recommendations.filter((capability) => (capability.score ?? 0) >= threshold).slice(0, 5);
 }
 
