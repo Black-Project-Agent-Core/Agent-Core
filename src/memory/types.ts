@@ -291,6 +291,61 @@ export interface MemoryPostflightRelationProposal {
   evidenceRefs: string[];
 }
 
+export interface MemoryPostflightCandidate {
+  canonicalKey: string;
+  kind: MemoryKind;
+  value: MemoryCommitRequest['value'];
+  importance?: number;
+  pinned?: boolean;
+  enforcement?: MemoryEnforcement;
+  sourceType?: string;
+  sourceRef?: string;
+  metadata?: Record<string, unknown>;
+  title?: string;
+  semanticProfile?: MemorySemanticProfile;
+}
+
+export interface MemoryPostflightRequest {
+  scope: MemoryScope;
+  routeContextId: string;
+  continuityTaskId?: string;
+  contextId?: string;
+  candidate?: MemoryPostflightCandidate;
+  reasonCodes: MemoryWriteReasonCode[];
+  evidenceRefs: string[];
+  relatedMemoryIds?: MemoryId[];
+  targetMemoryId?: MemoryId;
+  branchParentMemoryId?: MemoryId;
+  conflictWithMemoryId?: MemoryId;
+  conflictType?: string;
+  rootReason?: string;
+  proposedRelations?: MemoryPostflightRelationProposal[];
+}
+
+export interface MemoryPostflightDecisionBase {
+  decisionRecord: MemoryWriteDecisionRecord;
+  decision: MemoryPersistenceDecisionType;
+  targetMemoryId?: MemoryId;
+  existingMemoryIds: MemoryId[];
+  reasonCodes: MemoryWriteReasonCode[];
+  candidateHash: string;
+  semanticProfileHash?: string;
+}
+
+export interface MemoryPostflightEvaluation extends MemoryPostflightDecisionBase {
+  advisory: true;
+}
+
+export interface MemoryPostflightApplyResult extends MemoryPostflightDecisionBase {
+  advisory: false;
+  applied: boolean;
+  semanticMutation: boolean;
+  memoryId?: MemoryId;
+  revisionId?: MemoryRevisionId;
+  conflictId?: string;
+  createdEdges: number;
+}
+
 export interface MemoryReviseRequest {
   scope: MemoryScope;
   memoryId: MemoryId;

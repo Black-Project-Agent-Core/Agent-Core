@@ -129,7 +129,7 @@ export interface MemoryPostflightRequest {
   proposedRelations?: MemoryPostflightRelationProposal[];
 }
 
-export interface MemoryPostflightEvaluation {
+export interface MemoryPostflightDecisionBase {
   decisionRecord: MemoryWriteDecisionRecord;
   decision: MemoryPersistenceDecisionType;
   targetMemoryId?: MemoryId;
@@ -137,10 +137,13 @@ export interface MemoryPostflightEvaluation {
   reasonCodes: MemoryWriteReasonCode[];
   candidateHash: string;
   semanticProfileHash?: string;
+}
+
+export interface MemoryPostflightEvaluation extends MemoryPostflightDecisionBase {
   advisory: true;
 }
 
-export interface MemoryPostflightApplyResult extends MemoryPostflightEvaluation {
+export interface MemoryPostflightApplyResult extends MemoryPostflightDecisionBase {
   advisory: false;
   applied: boolean;
   semanticMutation: boolean;

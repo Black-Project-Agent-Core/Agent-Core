@@ -173,7 +173,7 @@ function stableJson(value: unknown): string {
     .join(',')}}`;
 }
 
-function normalizeValue(value: MemoryCommitRequest['value']): { valueText: string; valueJson?: string; valueHash: string } {
+export function normalizeMemoryValue(value: MemoryCommitRequest['value']): { valueText: string; valueJson?: string; valueHash: string } {
   const sanitized = sanitizeStructured(value);
   let valueText: string;
   let valueJson: string | undefined;
@@ -389,7 +389,7 @@ export class MemoryStore {
       throw new MemoryStoreError('MEMORY_IMPORTANCE_INVALID', 'importance must be between 0 and 1');
     }
 
-    const normalized = normalizeValue(request.value);
+    const normalized = normalizeMemoryValue(request.value);
     const existing = await this.findByCanonicalKey(request.scope, canonicalKey);
     if (existing && existing.kind !== request.kind) {
       throw new MemoryStoreError('MEMORY_KIND_MISMATCH', 'canonicalKey already exists with a different memory kind');
@@ -418,7 +418,7 @@ export class MemoryStore {
     if (!MUTABLE_MEMORY_KINDS.includes(current.kind as (typeof MUTABLE_MEMORY_KINDS)[number])) {
       throw new MemoryStoreError('MEMORY_KIND_IMMUTABLE', `Memory kind "${current.kind}" cannot be revised in place`);
     }
-    const normalized = normalizeValue(request.value);
+    const normalized = normalizeMemoryValue(request.value);
     const result = await this.writeRevision({
       request: {
         scope: request.scope,
