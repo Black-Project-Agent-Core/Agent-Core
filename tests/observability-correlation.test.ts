@@ -18,6 +18,7 @@ import {
 
 const servers: Server[] = [];
 const roots: string[] = [];
+const auditLoggers: FileAuditLogger[] = [];
 
 async function listen(server: Server): Promise<string> {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -34,6 +35,7 @@ async function root() {
 
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
+  await Promise.all(auditLoggers.splice(0).map((logger) => logger.close().catch(() => undefined)));
   await Promise.all(roots.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -120,9 +122,11 @@ describe('request correlation context', () => {
     const dir = await root();
     const inbound = '00-11111111111111111111111111111111-2222222222222222-01';
     let observed: ReturnType<typeof currentCorrelation> = null;
+    const auditLogger = new FileAuditLogger(path.join(dir, 'logs'));
+    auditLoggers.push(auditLogger);
     const handler = createHttpHandler({
       keyStore: new FileKeyStore(path.join(dir, 'data')),
-      auditLogger: new FileAuditLogger(path.join(dir, 'logs')),
+      auditLogger,
       mcpHandler: async (_request, response) => {
         observed = currentCorrelation();
         response.writeHead(401, { 'content-type': 'application/json' });

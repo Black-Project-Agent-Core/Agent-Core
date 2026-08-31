@@ -15,6 +15,13 @@ import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { createRuntimeServices } from '../src/runtime/services.js';
 import { sleepCommand } from './helpers/platform-command.js';
 
+const auditLoggers: FileAuditLogger[] = [];
+function createAuditLogger(logDir: string): FileAuditLogger {
+  const logger = new FileAuditLogger(logDir);
+  auditLoggers.push(logger);
+  return logger;
+}
+
 const roots: string[] = [];
 const servers: Server[] = [];
 const UNKNOWN_ROUTE = '00000000-0000-4000-8000-000000000001';
@@ -64,7 +71,7 @@ async function setup() {
   const runtime = createRuntimeServices([root], capabilityDir, undefined, { ...baseMemory, enabled: false });
   const app = createHttpHandler({
     keyStore,
-    auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+    auditLogger: createAuditLogger(path.join(root, 'logs')),
     mcpHandler: createMcpHttpHandler(runtime),
   });
   const server = createServer(app);
@@ -98,6 +105,7 @@ function routeErrorCode(result: Record<string, any>) {
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
+  await Promise.all(auditLoggers.splice(0).map((logger) => logger.close().catch(() => undefined)));
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })));
 });
 

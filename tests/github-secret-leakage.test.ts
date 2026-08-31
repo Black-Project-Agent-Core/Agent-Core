@@ -19,6 +19,13 @@ import { WorkspacePolicy } from '../src/runtime/workspace.js';
 
 const GH = 'SENTINEL_GH_TOKEN_DO_NOT_LEAK_8675309';
 const PACKAGES = 'SENTINEL_PACKAGES_TOKEN_DO_NOT_LEAK_424242';
+const auditLoggers: FileAuditLogger[] = [];
+function createAuditLogger(logDir: string): FileAuditLogger {
+  const logger = new FileAuditLogger(logDir);
+  auditLoggers.push(logger);
+  return logger;
+}
+
 const roots: string[] = [];
 const servers: Server[] = [];
 const runtimes: RuntimeServices[] = [];
@@ -68,6 +75,7 @@ afterEach(async () => {
     await runtime.execution.close().catch(() => undefined);
     await runtime.memory.close().catch(() => undefined);
   }));
+  await Promise.all(auditLoggers.splice(0).map((logger) => logger.close().catch(() => undefined)));
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -96,7 +104,7 @@ describe('Native GitHub Fabric secret boundaries', () => {
     };
     const neverRunner = async (_request: SpawnRequest) => ok();
 
-    const logger = new FileAuditLogger(path.join(root, 'logs'));
+    const logger = createAuditLogger(path.join(root, 'logs'));
     const runtime = createRuntimeServices(
       [root],
       path.join(root, 'capabilities'),

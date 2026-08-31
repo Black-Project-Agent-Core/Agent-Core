@@ -15,6 +15,13 @@ import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { AgentCoreRouteError, RouteContextStore } from '../src/runtime/route-context-store.js';
 import { createRuntimeServices } from '../src/runtime/services.js';
 
+const auditLoggers: FileAuditLogger[] = [];
+function createAuditLogger(logDir: string): FileAuditLogger {
+  const logger = new FileAuditLogger(logDir);
+  auditLoggers.push(logger);
+  return logger;
+}
+
 const roots: string[] = [];
 const servers: Server[] = [];
 const runtimes: Array<ReturnType<typeof createRuntimeServices>> = [];
@@ -89,6 +96,7 @@ afterEach(async () => {
     await runtime.execution.close().catch(() => undefined);
     await runtime.memory.close().catch(() => undefined);
   }));
+  await Promise.all(auditLoggers.splice(0).map((logger) => logger.close().catch(() => undefined)));
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -177,7 +185,7 @@ describe('memory-aware route context', () => {
     });
     const app = createHttpHandler({
       keyStore,
-      auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+      auditLogger: createAuditLogger(path.join(root, 'logs')),
       mcpHandler: createMcpHttpHandler(runtime),
     });
     const server = createServer(app);
@@ -228,7 +236,7 @@ describe('memory-aware route context', () => {
 
     const app = createHttpHandler({
       keyStore,
-      auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+      auditLogger: createAuditLogger(path.join(root, 'logs')),
       mcpHandler: createMcpHttpHandler(runtime),
     });
     const server = createServer(app);
@@ -333,7 +341,7 @@ describe('memory-aware route context', () => {
     const principal = await keyStore.create('empty-memory-principal');
     const app = createHttpHandler({
       keyStore,
-      auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+      auditLogger: createAuditLogger(path.join(root, 'logs')),
       mcpHandler: createMcpHttpHandler(runtime),
     });
     const server = createServer(app);
@@ -365,7 +373,7 @@ describe('memory-aware route context', () => {
     const principal = await keyStore.create('disabled-memory-principal');
     const app = createHttpHandler({
       keyStore,
-      auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+      auditLogger: createAuditLogger(path.join(root, 'logs')),
       mcpHandler: createMcpHttpHandler(runtime),
     });
     const server = createServer(app);

@@ -7,6 +7,13 @@ import { writeRegistryGeneration } from '../src/capabilities/registry-writer.js'
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createRuntimeServices } from '../src/runtime/services.js';
 
+const auditLoggers: FileAuditLogger[] = [];
+function createAuditLogger(logDir: string): FileAuditLogger {
+  const logger = new FileAuditLogger(logDir);
+  auditLoggers.push(logger);
+  return logger;
+}
+
 const roots: string[] = [];
 const SENTINEL_TASK = 'SENTINEL_USER_TASK_8d14';
 const SENTINEL_SECRET = 'SENTINEL_API_SECRET_5f27';
@@ -42,7 +49,7 @@ async function setup() {
   await writeRegistryGeneration(capabilityDir, [frontendCapability()], {
     catalogSha: 'fixture-sha', generatedAt: '2026-08-23T00:00:00.000Z',
   });
-  const logger = new FileAuditLogger(path.join(root, 'logs'));
+  const logger = createAuditLogger(path.join(root, 'logs'));
   return {
     root,
     logger,
@@ -50,6 +57,7 @@ async function setup() {
   };
 }
 afterEach(async () => {
+  await Promise.all(auditLoggers.splice(0).map((logger) => logger.close().catch(() => undefined)));
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 

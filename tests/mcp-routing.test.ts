@@ -13,6 +13,13 @@ import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { createRuntimeServices } from '../src/runtime/services.js';
 
+const auditLoggers: FileAuditLogger[] = [];
+function createAuditLogger(logDir: string): FileAuditLogger {
+  const logger = new FileAuditLogger(logDir);
+  auditLoggers.push(logger);
+  return logger;
+}
+
 const roots: string[] = [];
 const servers: Server[] = [];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -78,7 +85,7 @@ async function setup() {
   const runtime = createRuntimeServices([root], capabilityDir, undefined, { ...baseMemory, enabled: false });
   const app = createHttpHandler({
     keyStore,
-    auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+    auditLogger: createAuditLogger(path.join(root, 'logs')),
     mcpHandler: createMcpHttpHandler(runtime),
   });
   const server = createServer(app);
@@ -133,6 +140,7 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => {
     server.close(() => resolve());
   })));
+  await Promise.all(auditLoggers.splice(0).map((logger) => logger.close().catch(() => undefined)));
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 describe('Agent Core MCP automatic capability routing', () => {

@@ -14,6 +14,13 @@ import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
 import type { MemoryScope } from '../src/memory/types.js';
 
+const auditLoggers: FileAuditLogger[] = [];
+function createAuditLogger(logDir: string): FileAuditLogger {
+  const logger = new FileAuditLogger(logDir);
+  auditLoggers.push(logger);
+  return logger;
+}
+
 const roots: string[] = [];
 const servers: Server[] = [];
 const runtimes: RuntimeServices[] = [];
@@ -39,7 +46,7 @@ async function fixture(label: string) {
   const principalB = await keyStore.create(`continuity-acceptance-b-${label}`);
   const app = createHttpHandler({
     keyStore,
-    auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+    auditLogger: createAuditLogger(path.join(root, 'logs')),
     mcpHandler: createMcpHttpHandler(runtime),
   });
   const server = createServer(app);
@@ -98,6 +105,7 @@ afterEach(async () => {
     try { await runtime.execution.close(); } catch {}
     try { await runtime.memory.close(); } catch {}
   }));
+  await Promise.all(auditLoggers.splice(0).map((logger) => logger.close().catch(() => undefined)));
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
