@@ -99,7 +99,7 @@ SubProject/Agent-Code/
 - Consumes: approved design spec only.
 - Produces: `AgentCodeApp(): JSX.Element`, `npm test`, `npm run typecheck`, and `npm run build` as the stable frontend gates later tasks extend.
 
-- [ ] **Step 1: Write the package/toolchain files and a failing app smoke test**
+- [x] **Step 1: Write the package/toolchain files and a failing app smoke test**
 
 Create `package.json` with these exact scripts/dependencies:
 
@@ -156,7 +156,7 @@ describe('AgentCodeApp', () => {
 
 Configure Vitest in `vite.config.ts` with `environment: 'jsdom'` and `setupFiles: './src/test/setup.ts'`.
 
-- [ ] **Step 2: Install packages and run the smoke test to verify RED**
+- [x] **Step 2: Install packages and run the smoke test to verify RED**
 
 Run:
 
@@ -168,7 +168,7 @@ npm test -- src/components/AgentCodeApp.test.tsx
 
 Expected: FAIL because `../app/AgentCodeApp` does not exist.
 
-- [ ] **Step 3: Add the minimal React entry and shell component**
+- [x] **Step 3: Add the minimal React entry and shell component**
 
 Create `src/app/AgentCodeApp.tsx`:
 
@@ -194,7 +194,7 @@ createRoot(document.getElementById('root')!).render(
 
 Add `index.html` with a single `<div id="root"></div>`, TypeScript project references, and a `.gitignore` covering `node_modules/`, `dist/`, `src-tauri/target/`, and Playwright output.
 
-- [ ] **Step 4: Run initial frontend gates**
+- [x] **Step 4: Run initial frontend gates**
 
 Run:
 
@@ -206,7 +206,7 @@ npm run build
 
 Expected: test PASS; TypeScript PASS; Vite production build PASS.
 
-- [ ] **Step 5: Commit the scaffold**
+- [x] **Step 5: Commit the scaffold**
 
 ```bash
 git add SubProject/Agent-Code
