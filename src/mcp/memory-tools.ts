@@ -5,6 +5,9 @@ import {
   MEMORY_ENFORCEMENTS,
   MEMORY_KINDS,
   MEMORY_RELATIONS,
+  MEMORY_REMEMBER_MORE_DEFAULTS,
+  MEMORY_REMEMBER_MORE_LIMITS,
+  MEMORY_REMEMBER_MORE_REASONS,
   type MemoryCommitRequest,
   type MemoryScope,
 } from '../memory/types.js';
@@ -20,6 +23,7 @@ export const MEMORY_TOOL_NAMES = [
   'memory_forget',
   'memory_explain',
   'memory_export',
+  'memory_remember_more',
 ] as const;
 
 function textResult(value: unknown) {
@@ -67,6 +71,7 @@ const forgetAnnotations = {
 const memoryKind = z.enum(MEMORY_KINDS);
 const memoryEnforcement = z.enum(MEMORY_ENFORCEMENTS);
 const memoryRelation = z.enum(MEMORY_RELATIONS);
+const memoryRememberMoreReason = z.enum(MEMORY_REMEMBER_MORE_REASONS);
 const jsonValue = z.union([
   z.string().max(50_000),
   z.number(),
@@ -118,6 +123,29 @@ export function registerMemoryTools(server: McpServer, runtime: RuntimeServices,
     query,
     includeHistory,
     limit,
+    characterBudget,
+  })));
+
+  server.registerTool('memory_remember_more', {
+    title: 'Memory Remember More',
+    description: 'Expand bounded historical context only from memories already recalled into the authenticated memory context.',
+    inputSchema: {
+      contextId: z.string().uuid(),
+      seedMemoryIds: z.array(z.string().uuid()).min(1).max(MEMORY_REMEMBER_MORE_LIMITS.seedMemoryIds),
+      reason: memoryRememberMoreReason,
+      maxHops: z.number().int().min(1).max(MEMORY_REMEMBER_MORE_LIMITS.maxHops).default(MEMORY_REMEMBER_MORE_DEFAULTS.maxHops),
+      maxItems: z.number().int().min(1).max(MEMORY_REMEMBER_MORE_LIMITS.maxItems).default(MEMORY_REMEMBER_MORE_DEFAULTS.maxItems),
+      characterBudget: z.number().int().min(1).max(MEMORY_REMEMBER_MORE_LIMITS.characterBudget).default(MEMORY_REMEMBER_MORE_DEFAULTS.characterBudget),
+      ...optionalScope,
+    },
+    annotations: readOnlyAnnotations,
+  }, async ({ contextId, seedMemoryIds, reason, maxHops, maxItems, characterBudget, routeContextId, threadId, resourceId }) => guarded(() => runtime.memory.rememberMore({
+    scope: scope(runtime, key, { routeContextId, threadId, resourceId }),
+    contextId,
+    seedMemoryIds,
+    reason,
+    maxHops,
+    maxItems,
     characterBudget,
   })));
 

@@ -9,7 +9,9 @@ import { loadConfig } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
+import { MEMORY_TOOL_NAMES } from '../src/mcp/memory-tools.js';
 import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
+import { MEMORY_REMEMBER_MORE_DEFAULTS, MEMORY_REMEMBER_MORE_LIMITS } from '../src/memory/types.js';
 
 const auditLoggers: FileAuditLogger[] = [];
 function createAuditLogger(logDir: string): FileAuditLogger {
@@ -23,7 +25,7 @@ const servers: Server[] = [];
 const runtimes: RuntimeServices[] = [];
 const MEMORY_TOOLS = [
   'memory_status', 'memory_search', 'memory_get', 'memory_commit',
-  'memory_revise', 'memory_forget', 'memory_explain', 'memory_export',
+  'memory_revise', 'memory_forget', 'memory_explain', 'memory_export', 'memory_remember_more',
 ] as const;
 
 async function fixture() {
@@ -89,17 +91,20 @@ afterEach(async () => {
 });
 
 describe('deterministic memory MCP surface', () => {
-  it('registers exactly eight focused memory tools with bounded schemas and correct annotations', async () => {
+  it('registers exactly nine focused memory tools with bounded schemas and correct annotations', async () => {
     const f = await fixture();
     const listed = await request(f.baseUrl, f.principalA.key, {
       jsonrpc: '2.0', id: 84, method: 'tools/list', params: {},
     });
     const tools = listed.result.tools as Array<Record<string, any>>;
     const names = tools.map((tool) => tool.name);
-    expect(names).toHaveLength(55);
+    expect(names).toHaveLength(56);
     for (const name of MEMORY_TOOLS) expect(names).toContain(name);
 
-    for (const name of ['memory_status', 'memory_search', 'memory_get', 'memory_explain', 'memory_export']) {
+    expect(MEMORY_TOOL_NAMES).toHaveLength(9);
+    expect(MEMORY_TOOL_NAMES).toContain('memory_remember_more');
+
+    for (const name of ['memory_status', 'memory_search', 'memory_get', 'memory_explain', 'memory_export', 'memory_remember_more']) {
       expect(tools.find((tool) => tool.name === name)?.annotations).toMatchObject({
         readOnlyHint: true, destructiveHint: false, openWorldHint: false,
       });
@@ -115,6 +120,59 @@ describe('deterministic memory MCP surface', () => {
     expect(tools.find((tool) => tool.name === 'memory_forget')?.inputSchema?.properties).not.toHaveProperty('purge');
     expect(tools.find((tool) => tool.name === 'memory_export')?.inputSchema?.properties?.limit?.maximum).toBeLessThanOrEqual(1000);
     expect(tools.find((tool) => tool.name === 'memory_search')?.inputSchema?.properties?.limit?.maximum).toBeLessThanOrEqual(100);
+    const rememberMore = tools.find((tool) => tool.name === 'memory_remember_more');
+    expect(rememberMore?.inputSchema?.properties?.seedMemoryIds?.maxItems).toBe(MEMORY_REMEMBER_MORE_LIMITS.seedMemoryIds);
+    expect(rememberMore?.inputSchema?.properties?.maxHops).toMatchObject({
+      maximum: MEMORY_REMEMBER_MORE_LIMITS.maxHops, default: MEMORY_REMEMBER_MORE_DEFAULTS.maxHops,
+    });
+    expect(rememberMore?.inputSchema?.properties?.maxItems).toMatchObject({
+      maximum: MEMORY_REMEMBER_MORE_LIMITS.maxItems, default: MEMORY_REMEMBER_MORE_DEFAULTS.maxItems,
+    });
+    expect(rememberMore?.inputSchema?.properties?.characterBudget).toMatchObject({
+      maximum: MEMORY_REMEMBER_MORE_LIMITS.characterBudget, default: MEMORY_REMEMBER_MORE_DEFAULTS.characterBudget,
+    });
+  });
+
+  it('expands an authenticated recalled solution into its prior failure through memory_remember_more', async () => {
+    const f = await fixture();
+    const scope = { principalId: f.principalA.metadata.id, projectId: f.root };
+    const solution = await f.runtime.memory.commit({
+      scope,
+      canonicalKey: 'solution.renderer.authenticated',
+      kind: 'solution',
+      value: 'Use source-native renderer geometry for the authenticated workflow.',
+      sourceType: 'test',
+    });
+    const failure = await f.runtime.memory.commit({
+      scope,
+      canonicalKey: 'failure.renderer.authenticated',
+      kind: 'failure',
+      value: 'Legacy post-render scaling distorted the authenticated workflow.',
+      sourceType: 'test',
+      explicitRelations: [{ targetMemoryId: solution.memoryId, relation: 'resolved_by' }],
+    });
+    const preflight = await f.runtime.memory.preflight({
+      scope,
+      routeContextId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      task: 'source-native renderer geometry authenticated workflow solution',
+      expiresAt: Date.now() + 60_000,
+    });
+    expect(preflight.recalled.map((hit) => hit.memoryId)).toContain(solution.memoryId);
+
+    const expanded = body(await call(f.baseUrl, f.principalA.key, 'memory_remember_more', {
+      contextId: preflight.contextId,
+      seedMemoryIds: [solution.memoryId],
+      reason: 'failure_history',
+    }));
+    expect(expanded.seedMemoryIds).toEqual([solution.memoryId]);
+    expect(expanded.expansions).toEqual(expect.arrayContaining([expect.objectContaining({
+      memoryId: failure.memoryId,
+      sourceSeedMemoryId: solution.memoryId,
+      depth: 1,
+      relationPath: ['resolved_by'],
+      reasonCode: 'resolved_by',
+      historicalRevision: false,
+    })]));
   });
 
   it('binds writes/reads to the authenticated principal and preserves provenance, revision history, explainability, export, and soft tombstone behavior', async () => {
