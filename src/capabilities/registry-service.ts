@@ -54,10 +54,22 @@ function emptyCoverage(): CoverageReport {
   };
 }
 
+const GENERIC_ACTION_TOKENS = new Set([
+  'read', 'show', 'inspect', 'list', 'search', 'find', 'get', 'check', 'view',
+  'create', 'write', 'edit', 'change', 'update', 'move', 'rename', 'append', 'replace',
+  'delete', 'remove', 'refactor', 'fix', 'build', 'implement', 'review',
+  'analyze', 'analyse', 'optimize', 'optimise', 'verify', 'summarize', 'summarise',
+  'and', 'then', 'after', 'before',
+]);
+
 function tokenize(value: string): string[] {
   return (value.toLowerCase().match(/[\p{L}\p{N}+#.]+/gu) ?? [])
     .map((token) => token.trim())
     .filter(Boolean);
+}
+
+function queryTokens(value: string): string[] {
+  return tokenize(value).filter((token) => !GENERIC_ACTION_TOKENS.has(token));
 }
 
 function summary(record: CapabilityRecord, score?: number): CapabilitySummary {
@@ -79,8 +91,9 @@ function summary(record: CapabilityRecord, score?: number): CapabilitySummary {
 }
 
 function scoreRecord(record: CapabilityRecord, query: string): number {
-  const queryTokens = tokenize(query);
-  if (!queryTokens.length) return 1;
+  const tokens = queryTokens(query);
+  const exactNameMatch = record.name.toLowerCase() === query.trim().toLowerCase();
+  if (!tokens.length && !exactNameMatch) return 0;
   const weighted = [
     [record.name, 8],
     [record.aliases.join(' '), 6],
@@ -90,14 +103,15 @@ function scoreRecord(record: CapabilityRecord, query: string): number {
     [record.triggers.join(' '), 3],
     [record.compatibility.join(' '), 1],
   ] as const;
+  const weightedTokens = weighted.map(([value, weight]) => ({ tokens: new Set(tokenize(value)), weight }));
   let score = 0;
-  for (const token of queryTokens) {
-    for (const [value, weight] of weighted) {
-      if (value.toLowerCase().includes(token)) score += weight;
+  for (const token of tokens) {
+    for (const field of weightedTokens) {
+      if (field.tokens.has(token)) score += field.weight;
     }
   }
-  if (record.name.toLowerCase() === query.trim().toLowerCase()) score += 25;
-  if (record.state === 'native_ready') score += 1;
+  if (exactNameMatch) score += 25;
+  if (score > 0 && record.state === 'native_ready') score += 1;
   return score;
 }
 
