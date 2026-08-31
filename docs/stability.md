@@ -379,6 +379,42 @@ external AI model/API dependency           0
 
 One full-suite run exposed a timing-only test flake in the Wave D audit-journal test. The production journal was unchanged; `c547c93` replaced a fixed 10 ms sleep with deterministic append-start synchronization. The focused test then passed and was repeated 10/10 before the fresh merged-main release gate above passed.
 
+
+## Wave F adaptive resource governance pre-integration certification
+
+Wave F remains a local deterministic control-plane feature. Resource pressure can reduce only the number of **new** execution nodes dispatched; it never changes process/result truth, terminates already-running work, raises concurrency above the run/operator maximum, or invokes an external AI/model/API.
+
+Feature certification at `0a242b8424081248fb94e28cf7e289fd37aca55c`:
+
+```text
+adversarial resource policy matrix         15 tests PASS
+scheduler governance acceptance/stress     3 tests PASS
+20-node pressure stress max concurrency     4 / 4
+pressure-triggered terminate calls          0
+unknown resource facts                      no throttle / hard max preserved
+throttle/recovery reason events             PASS
+scheduled maintenance default               disabled
+scheduled destructive call paths            0
+execution runtime lease changes              none
+DAG validation p95                           1.473 ms / <50 ms PASS
+ready dispatch p95                           32.894 ms / <100 ms PASS
+persisted wake p95                           7.467 ms / <250 ms PASS
+full npm run verify:release                  PASS
+full regression                              136 files / 663 tests PASS
+intentional skips                            38
+Wave E quality:gate                          PASS
+package/dependency changes                   none
+external AI model/API dependency             0
+feature trust-boundary canary                PASS
+health / remote metrics                      200 / 403
+no-token / evil Origin                       401 / 403
+legacy / modern MCP                          2025-11-25/55 / 2026-07-28/55 PASS
+```
+
+`LocalMaintenanceCoordinator` has no import/invocation path for retention apply, recovery restore, credential revocation/rotation, or filesystem deletion. Its scheduled work is limited to memory/execution integrity-status reads and `planExecutionRetention` dry-run planning. The existing execution runtime lease is unchanged.
+
+Feature-branch evidence is not production certification. Wave F becomes production-certified only after merged-main verification, non-force publication readback, controlled Codespace source-sync, source SHA equality, live audit verification, and public runtime canary.
+
 ## Last core certification
 
 The final continuity/execution core certification was completed on 2026-08-26 after the execution WAL durability fix and staged default-enabled rollout.

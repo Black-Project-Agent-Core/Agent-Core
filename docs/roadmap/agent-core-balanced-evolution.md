@@ -1064,21 +1064,45 @@ temporary public key                    revoked PASS
 
 **Goal:** let Agent Core adapt local execution load to local factual conditions.
 
-Scope:
+**Implementation status:** feature-branch certification PASS on 2026-08-31 at `0a242b8424081248fb94e28cf7e289fd37aca55c`; merged-main publication/runtime certification remains pending.
 
-- adaptive concurrency below operator maximum;
-- resource-pressure metrics;
-- evidence-based diagnosis recommendations;
-- optional scheduled local maintenance.
+Delivered scope:
+
+- injectable bounded local resource snapshots for CPU, memory, storage, audit/telemetry backlog, execution-sync backlog, and worker health;
+- deterministic `ResourceGovernor` that can only reduce new-dispatch concurrency below the run/operator maximum;
+- persisted bounded `run.resource_throttled` / `run.resource_recovered` reason evidence without terminating already-running work;
+- resource pressure and safe-concurrency metrics on the existing health surface;
+- pure evidence-based operator diagnosis with reason codes/evidence refs and no remediation side effects;
+- optional local maintenance, disabled by default, limited structurally to integrity/status checks plus execution-retention dry-run planning;
+- no new MCP tool: legacy and modern eras remain at 55 tools.
+
+Feature certification evidence:
+
+```text
+resource matrix / scheduler acceptance     15 / 3 tests PASS
+20-node pressure stress max concurrency    4 / 4
+pressure-triggered termination             0
+execution dispatch p95                     32.894 ms (<100 ms PASS)
+execution DAG / wake p95                   1.473 / 7.467 ms PASS
+full verify:release                        136 files / 663 tests PASS; 38 skips
+Wave E quality gate                        PASS
+legacy / modern MCP                        2025-11-25/55 / 2026-07-28/55 PASS
+trust boundary                             health 200 / metrics 403 / no-token 401 / evil Origin 403
+runtime lease diff                         none
+scheduled destructive maintenance paths   0
+package/dependency changes                 none
+external AI model/API dependency           0
+```
 
 Exit gates:
 
 ```text
-operator max concurrency never exceeded
-resource throttling has explicit reason codes
-no destructive maintenance without policy/confirmation
-no cloud model/API dependency
-factual execution semantics unchanged
+operator max concurrency never exceeded                PASS
+resource throttling has explicit reason codes           PASS
+no destructive scheduled maintenance call path          PASS
+no cloud model/API dependency                            PASS
+factual execution semantics unchanged                    PASS
+production publication/runtime equality                  PENDING
 ```
 
 ---

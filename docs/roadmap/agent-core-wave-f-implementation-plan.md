@@ -40,7 +40,7 @@
 - [x] **Step 3: Run fresh `npm run verify:release`.** First run exposed one non-reproducible retention timeout.
 - [x] **Step 4: Re-run `tests/execution-retention.test.ts` five times.** Result 5/5 PASS.
 - [x] **Step 5: Re-run full `npm run verify:release`.** Result 130 files / 627 tests PASS / 38 skips and quality gate PASS.
-- [ ] **Step 6: Commit and push design/plan checkpoint.**
+- [x] **Step 6: Commit and push design/plan checkpoint.**
 
 ### Task F1: Resource snapshot contract and configuration
 
@@ -154,17 +154,59 @@
 **Interfaces:**
 - Produces final Wave F certification evidence and integration checklist.
 
-- [ ] **Step 1: Run deterministic adversarial resource matrix** covering all single and combined warning/critical reasons and unknown-signal cases.
-- [ ] **Step 2: Run execution stress with injected pressure transitions** and prove operator max is never exceeded and no already-running node is pressure-terminated.
-- [ ] **Step 3: Run performance gate** and require dispatch p95 remains below existing 100 ms target under no-pressure baseline; record exact value.
-- [ ] **Step 4: Run `git diff --check`, brand scan, doc-link check, dependency diff against `047c62f`, and verify external AI/model/API dependency remains zero.**
-- [ ] **Step 5: Run fresh feature-branch `npm run verify:release` and record exact files/tests/skips.**
-- [ ] **Step 6: Run local/public trust-boundary and dual-era MCP canaries; require same tool count in legacy/modern and Wave A security behavior.**
-- [ ] **Step 7: Update docs with exact Wave F metrics/evidence, commit, push feature branch, and require SHA equality.**
+- [x] **Step 1: Run deterministic adversarial resource matrix** covering all single and combined warning/critical reasons and unknown-signal cases.
+- [x] **Step 2: Run execution stress with injected pressure transitions** and prove operator max is never exceeded and no already-running node is pressure-terminated.
+- [x] **Step 3: Run performance gate** and require dispatch p95 remains below existing 100 ms target under no-pressure baseline; record exact value.
+- [x] **Step 4: Run `git diff --check`, brand scan, doc-link check, dependency diff against `047c62f`, and verify external AI/model/API dependency remains zero.**
+- [x] **Step 5: Run fresh feature-branch `npm run verify:release` and record exact files/tests/skips.**
+- [x] **Step 6: Run local/public trust-boundary and dual-era MCP canaries; require same tool count in legacy/modern and Wave A security behavior.**
+- [x] **Step 7: Update docs with exact Wave F metrics/evidence, commit, push feature branch, and require SHA equality.**
 - [ ] **Step 8: Fetch `origin/main`; reconcile concurrent main changes explicitly and never reset unrelated local work.**
 - [ ] **Step 9: Fast-forward/integrate only if topology is compatible; fresh merged-main `npm ci` + `npm run verify:release`; non-force push; local/remote equality.**
 - [ ] **Step 10: Controlled Codespace source-sync and require `HEAD == origin/main == connection.sourceCommit`; final health/audit/public/MCP canary.**
 - [ ] **Step 11: Publish final docs-only certification if needed, source-sync to its SHA, remove only Wave F local worktree/branch after equality; retain remote Wave F branch for audit.**
+
+
+## Wave F Pre-Integration Certification Evidence — 2026-08-31
+
+Committed certification source:
+
+```text
+feature source SHA                         0a242b8424081248fb94e28cf7e289fd37aca55c
+feature branch / remote equality           PASS
+adversarial resource matrix                15 tests PASS
+scheduler governance acceptance/stress     3 tests PASS
+stress DAG                                 20 independent nodes
+max observed concurrency                   4 / 4
+pressure-triggered terminate calls         0
+warning safe ceiling                       ceil(requested/2), bounded by configured minimum
+critical safe ceiling                      configured minimum, never above run/operator max
+unknown signal behavior                    fail-open within hard max
+scheduled destructive call paths           0
+runtime lease diff vs Wave F base           NONE
+execution DAG p95                          1.473 ms / <50 ms PASS
+execution dispatch p95                     32.894 ms / <100 ms PASS
+execution wake p95                         7.467 ms / <250 ms PASS
+benchmark max concurrency                  4 / 4
+fresh verify:release                       PASS
+full regression                            136 files / 663 tests PASS
+intentional skips                          38
+Wave E quality:gate                        PASS
+routing tier accuracy                      0.975
+memory Recall@K / MRR                      1.000 / 1.000
+root/plugin dependency files changed       NONE
+external AI model/API dependencies         0
+feature local trust-boundary canary        PASS
+health / remote metrics                    200 / 403
+MCP no-token / evil Origin                 401 / 403
+correlation headers                        PASS
+resource-governance health surface         PASS
+maintenance default disabled               PASS
+legacy MCP                                 2025-11-25 / 55 tools PASS
+modern MCP                                 2026-07-28 / 55 tools PASS
+```
+
+The first feature canary deliberately constructed a runtime with execution disabled and exposed the pre-existing `ExecutionStore.systemCounts()` health limitation for an unopened disabled execution store. That harness configuration does not match the production default and no Wave F production patch was made for it. The corrected feature canary used the production-default execution-enabled/open lifecycle and passed every trust-boundary, Wave F health-surface, and dual-era MCP assertion above.
 
 ## Wave F Exit Matrix
 
