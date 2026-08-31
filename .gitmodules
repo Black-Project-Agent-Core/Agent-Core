@@ -1,0 +1,20 @@
+[submodule "research/references/kimi-k3-in-c"]
+	path = research/references/kimi-k3-in-c
+	url = https://github.com/FareedKhan-dev/kimi-k3-in-c.git
+	shallow = true
+[submodule "research/references/llama.cpp"]
+	path = research/references/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp.git
+	shallow = true
+[submodule "research/references/hermes-agent"]
+	path = research/references/hermes-agent
+	url = https://github.com/NousResearch/hermes-agent.git
+	shallow = true
+[submodule "research/references/odysseus"]
+	path = research/references/odysseus
+	url = https://github.com/odysseus-dev/odysseus.git
+	shallow = true
+[submodule "research/references/openclaw"]
+	path = research/references/openclaw
+	url = https://github.com/openclaw/openclaw.git
+	shallow = true
