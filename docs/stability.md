@@ -112,26 +112,38 @@ CIMD activation                     deferred until host interoperability and saf
 speculative auth endpoints          none
 ```
 
-### Wave B local pre-integration evidence
+### Wave B certification evidence
 
-The isolated Wave B branch passed the following gates before main/public-runtime integration:
+Wave B passed isolated, merged-main, and real public-runtime gates on 2026-08-31:
 
 ```text
-focused Wave B acceptance         15 files / 110 tests PASS
-npm run verify                    PASS
-full regression                  113 files / 542 tests PASS
-intentional platform/perf skips  38 tests
-legacy tool surface              55 / 55 PASS
-modern tool surface              55 / 55 PASS
-modern 2026-07-28 discover       PASS
-legacy-only rollback             PASS
-Codespace v1 compatibility       PASS
-live dist/index.js dual canary   PASS
-live dist/index.js rollback      PASS
-external AI model/API dependency 0
+focused Wave B acceptance          15 files / 110 tests PASS
+npm run verify                     PASS
+full regression                   113 files / 542 tests PASS
+intentional platform/perf skips   38 tests
+legacy tool surface               55 / 55 PASS
+modern tool surface               55 / 55 PASS
+modern 2026-07-28 discover        PASS
+legacy-only rollback              PASS
+Codespace v1 compatibility        PASS
+live dist/index.js dual canary    PASS
+live dist/index.js rollback       PASS
+fresh npm ci on merged main       PASS; 0 vulnerabilities
+merged-main npm run verify        PASS
+origin/main exact equality        PASS
+real Codespace sourceCommit       2408d41 verified
+public /health                    200
+public /health/metrics            403
+public /mcp no token              401
+public untrusted Origin           403
+public official client legacy     legacy / 55 PASS
+public official client modern     modern / 2026-07-28 / 55 PASS
+public OAuth issuer/resource      PASS
+temporary public canary key       revoked PASS
+external AI model/API dependency  0
 ```
 
-Final Wave B certification requires fast-forward integration into `main`, exact remote equality, restart of the real Codespace runtime on the integrated source commit, and public readiness/security/legacy compatibility canaries. Until those integration gates pass, this section records local certification rather than a final public-runtime claim.
+This certifies Wave B as the default dual-era Agent Core core behavior. The tested configuration-only rollback remains `AGENT_CORE_MCP_PROTOCOL_MODE=legacy`; Wave A trust boundaries remain non-optional in both modes.
 
 ## Last core certification
 

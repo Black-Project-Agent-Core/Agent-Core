@@ -1,7 +1,7 @@
 # Agent Core Wave B — MCP Dual-Era Modernization Implementation Plan
 
 **Date:** 2026-08-31
-**Status:** IMPLEMENTED + LOCALLY CERTIFIED — MAIN/PUBLIC-RUNTIME INTEGRATION PENDING
+**Status:** CERTIFIED COMPLETE — INTEGRATED TO MAIN + PUBLIC RUNTIME VERIFIED
 **Scope:** Agent Core core MCP protocol/SDK layer. Codespace is compatibility-only, not an upgrade target.
 **Base:** Wave A certified commit `f688789`.
 **Strategy:** Migrate the Agent Core core from the monolithic MCP TypeScript SDK v1 to the stable v2 server/node packages while preserving 2025-era stateless MCP behavior and adding the 2026-07-28 stateless protocol era on the same authenticated `/mcp` endpoint.
@@ -306,7 +306,7 @@ After fresh evidence exists:
 
 ## 5. Local Pre-Integration Certification Evidence — 2026-08-31
 
-Wave B implementation is complete in isolated branch `wave-b/mcp-dual-era`. Main/public-runtime integration remains the only outstanding gate at this point.
+Wave B implementation was completed in isolated branch `wave-b/mcp-dual-era`, then fast-forwarded into `main` after local certification. The real Codespace Agent Core runtime was restarted on the integrated source and verified through the public endpoint before Wave B was marked complete.
 
 ```text
 baseline before Wave B               111 files / 527 tests PASS; 38 skips
@@ -353,7 +353,31 @@ Implementation commits before certification evidence:
 ```text
 c4842ca feat: serve legacy and modern mcp eras
 5bca363 fix: bind oauth authorization response issuer
+2408d41 docs: record wave b local certification evidence
 ```
+
+### Final main/public-runtime integration evidence
+
+```text
+main fast-forward base                    f688789 -> 2408d41
+fresh npm ci on merged main              PASS; 0 vulnerabilities
+merged-main npm run verify               113 files / 542 tests PASS; 38 skips
+origin/main push/read-back               2408d41 == local == remote
+real Codespace connection sourceCommit   2408d41; verified=true
+real Codespace health                    200 / healthy
+public /health/metrics                    403
+public /mcp without token                401
+public /mcp untrusted Origin              403
+public official v2 Client default        legacy / 55 tools
+public official v2 Client auto           modern / 2026-07-28 / 55 tools
+public representative modern tool call   PASS
+public OAuth protected resource          canonical <public-base>/mcp PASS
+public OAuth issuer                      canonical public base PASS
+temporary public canary API key          revoked after probe PASS
+external AI model/API dependency added   0
+```
+
+All Wave B exit gates are therefore certified. Wave C remains unimplemented.
 
 ## 6. Explicit Non-Goals
 

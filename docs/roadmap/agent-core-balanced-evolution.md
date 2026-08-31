@@ -1,7 +1,7 @@
 # Agent Core Balanced Evolution — Evidence-Backed Upgrade Proposal
 
 **Date:** 2026-08-31
-**Status:** APPROVED ROADMAP — WAVE A CERTIFIED COMPLETE; WAVE B LOCALLY CERTIFIED / MAIN INTEGRATION PENDING; WAVES C-G NOT IMPLEMENTED
+**Status:** APPROVED ROADMAP — WAVES A-B CERTIFIED COMPLETE; WAVES C-G NOT IMPLEMENTED
 **Scope:** Agent Core core only. Codespace is not an upgrade target in this proposal.
 **Strategy:** Hybrid compatibility — backward-compatible by default; a major change is allowed only when benefit is evidence-backed and a migration/rollback path exists.
 
@@ -814,24 +814,32 @@ Implemented scope:
 - authorization responses now emit RFC 9207 `iss` equal to the canonical Agent Core issuer;
 - CIMD activation is deferred because required host interoperability and a safe metadata-fetch trust policy are not yet factual; no placeholder endpoint or speculative fetch surface was added.
 
-Local pre-integration evidence:
+Certification evidence:
 
 ```text
-focused Wave B acceptance         15 files / 110 tests PASS
-full repository regression        113 files / 542 tests PASS; 38 intentional skips
-legacy tool surface               55 / 55 PASS
-modern tool surface               55 / 55 PASS
-modern server/discover            PASS
-modern validation ladder          PASS
-OAuth/security gates              PASS
-RFC 9207 issuer response          PASS
-Codespace v1 compatibility        PASS
-live dual dist/index.js canary    PASS
-live legacy rollback canary       PASS
-external AI model/API dependency  0
+focused Wave B acceptance          15 files / 110 tests PASS
+full repository regression         113 files / 542 tests PASS; 38 intentional skips
+legacy tool surface                55 / 55 PASS
+modern tool surface                55 / 55 PASS
+modern server/discover             PASS
+modern validation ladder           PASS
+OAuth/security gates               PASS
+RFC 9207 issuer response           PASS
+Codespace v1 compatibility         PASS
+live dual dist/index.js canary     PASS
+live legacy rollback canary        PASS
+merged-main npm ci + verify        PASS
+origin/main exact equality         PASS
+real Codespace sourceCommit        2408d41 verified
+public legacy connector canary     legacy / 55 PASS
+public modern protocol canary      modern / 2026-07-28 / 55 PASS
+public OAuth issuer/resource       PASS
+public Wave A security gates       PASS
+public temporary canary key revoke PASS
+external AI model/API dependency   0
 ```
 
-Exit gates before final main/public-runtime integration:
+Exit gates:
 
 ```text
 legacy connector behavior        PASS
@@ -839,7 +847,7 @@ modern protocol acceptance       PASS
 same Agent Core tool semantics   PASS
 OAuth/security gates             PASS
 rollback to legacy-only mode     PASS
-main/public runtime integration  PENDING
+main/public runtime integration  PASS
 ```
 
 ---
