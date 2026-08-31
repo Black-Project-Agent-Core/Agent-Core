@@ -68,8 +68,22 @@ function tokenize(value: string): string[] {
     .filter(Boolean);
 }
 
+function tokenVariants(token: string): string[] {
+  const variants = [token];
+  if (token.length > 5 && token.endsWith('er')) {
+    let stem = token.slice(0, -2);
+    if (stem.length > 2 && stem.at(-1) === stem.at(-2)) stem = stem.slice(0, -1);
+    if (stem.length >= 3) variants.push(stem);
+  }
+  return variants;
+}
+
 function queryTokens(value: string): string[] {
   return tokenize(value).filter((token) => !GENERIC_ACTION_TOKENS.has(token));
+}
+
+function searchableTokens(value: string): Set<string> {
+  return new Set(tokenize(value).flatMap(tokenVariants));
 }
 
 function summary(record: CapabilityRecord, score?: number): CapabilitySummary {
@@ -103,7 +117,7 @@ function scoreRecord(record: CapabilityRecord, query: string): number {
     [record.triggers.join(' '), 3],
     [record.compatibility.join(' '), 1],
   ] as const;
-  const weightedTokens = weighted.map(([value, weight]) => ({ tokens: new Set(tokenize(value)), weight }));
+  const weightedTokens = weighted.map(([value, weight]) => ({ tokens: searchableTokens(value), weight }));
   let score = 0;
   for (const token of tokens) {
     for (const field of weightedTokens) {
