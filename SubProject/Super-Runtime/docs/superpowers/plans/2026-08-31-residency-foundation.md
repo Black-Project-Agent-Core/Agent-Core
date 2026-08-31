@@ -65,23 +65,23 @@ Commit message: `build: establish native runtime substrate`
 **Interfaces:**
 - Produces: `MemoryLedger`, with explicit categories for resident weights, context state, compute scratch, staging, accelerator memory, and runtime overhead
 
-- [ ] **Step 1: Write failing ledger tests**
+- [x] **Step 1: Write failing ledger tests**
 
 Tests must cover reservation success, reservation refusal above a hard limit, release, category totals, integer-overflow rejection, and invariant `owned <= budget` after every accepted mutation.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Expected: compilation/test failure because `MemoryLedger` does not exist.
 
-- [ ] **Step 3: Implement the smallest thread-safe ledger satisfying the tests**
+- [x] **Step 3: Implement the smallest thread-safe ledger satisfying the tests**
 
 No cache policy or OS memory calls belong in this task.
 
-- [ ] **Step 4: Run focused and native baseline tests**
+- [x] **Step 4: Run focused and native baseline tests**
 
 Expected: ledger tests PASS and the unmodified substrate smoke tests remain PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit message: `feat: add runtime memory ledger`
 
