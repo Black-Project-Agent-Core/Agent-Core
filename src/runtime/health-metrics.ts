@@ -1,4 +1,6 @@
 import type { RuntimeMetricRegistry, RuntimeMetricSnapshot } from './metric-window.js';
+import type { ResourceGovernanceDecision } from '../execution/resource-governor.js';
+import { diagnoseRuntime, type RuntimeDiagnosisRecommendation } from './diagnosis.js';
 
 export type OverallHealth = 'healthy' | 'degraded' | 'critical';
 export type ApiHealth = 'green' | 'yellow' | 'red';
@@ -11,9 +13,17 @@ export interface RuntimeHealthMetricsOptions {
 
 type HealthRuntime = {
   metrics: RuntimeMetricRegistry;
-  memory: { config: { enabled: boolean }; currentState: string; status(scope?: unknown): Promise<any> };
+  resourceGovernor?: { decide(requestedMaxConcurrency: number): Promise<ResourceGovernanceDecision> };
+  memory: {
+    config: { enabled: boolean };
+    currentState: string;
+    status(scope?: unknown): Promise<any>;
+    getContinuitySnapshot?(scope: unknown): Promise<any>;
+  };
   execution: {
-    config: { enabled: boolean }; currentState: string; health(scope?: unknown): Promise<any>;
+    config: { enabled: boolean; maxConcurrency?: number; resourceGovernance?: { enabled: boolean } };
+    currentState: string;
+    health(scope?: unknown): Promise<any>;
     store: { systemCounts(): Promise<any> };
   };
   github: { config: { enabled: boolean }; status(): Promise<any>; apiRequest(input: any): Promise<any> };
@@ -58,7 +68,7 @@ export class RuntimeHealthMetrics {
     this.githubProbeTtlMs = Math.max(100, options.githubProbeTtlMs ?? 60_000);
   }
 
-  async getMetrics(): Promise<RuntimeHealthSnapshot> {
+  async getMetrics(scope?: unknown): Promise<RuntimeHealthSnapshot> {
     const [memory, execution, executionCounts, github] = await Promise.all([
       this.runtime.memory.status(),
       this.runtime.execution.health(),
@@ -66,6 +76,19 @@ export class RuntimeHealthMetrics {
       this.githubMetrics(),
     ]);
     const routing = this.runtime.routes.metrics();
+    let resourceDecision: ResourceGovernanceDecision | null = null;
+    const configuredMaxConcurrency = Number(this.runtime.execution.config.maxConcurrency ?? 1);
+    if (this.runtime.resourceGovernor && Number.isInteger(configuredMaxConcurrency) && configuredMaxConcurrency > 0) {
+      try { resourceDecision = await this.runtime.resourceGovernor.decide(configuredMaxConcurrency); }
+      catch { resourceDecision = null; }
+    }
+    let continuityBlockedTasks = 0;
+    if (scope && memory.healthy && this.runtime.memory.getContinuitySnapshot) {
+      try {
+        const continuity = await this.runtime.memory.getContinuitySnapshot(scope);
+        continuityBlockedTasks = Array.isArray(continuity?.blockedTasks) ? continuity.blockedTasks.length : 0;
+      } catch { continuityBlockedTasks = 0; }
+    }
     const auditStatus = this.runtime.audit?.status?.();
     const audit = auditStatus ? {
       enabled: true,
@@ -91,11 +114,31 @@ export class RuntimeHealthMetrics {
       currentFileBytes: 0,
       rotatedFiles: 0,
     };
+    const telemetryStatus = this.runtime.telemetry?.status() ?? { enabled: false, queueDepth: 0, queueCapacity: 0, dropped: 0 };
     const memoryCritical = Boolean(this.runtime.memory.config.enabled && !memory.healthy);
     const executionCritical = Boolean(this.runtime.execution.config.enabled && !execution.healthy);
     const optionalDegraded = (this.runtime.github.config.enabled && (github.apiHealth !== 'green' || github.credentialStatus !== 'valid'))
       || (Boolean(audit.enabled) && (Number(audit.writeErrors) > 0 || Number(audit.dropped) > 0));
     const overallHealth: OverallHealth = memoryCritical || executionCritical ? 'critical' : optionalDegraded ? 'degraded' : 'healthy';
+    const memoryPreflight = metricView(this.runtime.metrics.metric('memory.preflight.duration_ms'));
+    const executionDispatch = metricView(this.runtime.metrics.metric('execution.dispatch.duration_ms'));
+    const diagnosis: RuntimeDiagnosisRecommendation[] = diagnoseRuntime({
+      resourceDecision,
+      github: {
+        enabled: Boolean(github.enabled),
+        apiHealth: String(github.apiHealth ?? 'green'),
+        credentialStatus: String(github.credentialStatus ?? 'unknown'),
+      },
+      audit: { dropped: Number(audit.dropped), writeErrors: Number(audit.writeErrors) },
+      telemetry: {
+        enabled: Boolean(telemetryStatus.enabled),
+        dropped: Number(telemetryStatus.dropped ?? 0),
+        ...(telemetryStatus.lastFailureCode ? { lastFailureCode: String(telemetryStatus.lastFailureCode) } : {}),
+      },
+      memoryPreflightP95Ms: memoryPreflight.p95Ms,
+      executionDispatchP95Ms: executionDispatch.p95Ms,
+      continuityBlockedTasks,
+    });
     return {
       timestamp: this.now(),
       memory: {
@@ -105,7 +148,7 @@ export class RuntimeHealthMetrics {
         dbSize: Number(memory.counts?.db_bytes ?? 0),
         itemCount: Number(memory.counts?.active_items ?? 0),
         query: metricView(this.runtime.metrics.metric('memory.search.duration_ms')),
-        preflight: metricView(this.runtime.metrics.metric('memory.preflight.duration_ms')),
+        preflight: memoryPreflight,
         integrity: String(memory.integrity ?? 'unknown'),
       },
       execution: {
@@ -117,10 +160,16 @@ export class RuntimeHealthMetrics {
         runningNodes: Number(executionCounts.runningNodes ?? 0),
         queuedMemorySync: Number(execution.queuedSync ?? executionCounts.queuedSync ?? 0),
         dag: metricView(this.runtime.metrics.metric('execution.dag_validation.duration_ms')),
-        dispatch: metricView(this.runtime.metrics.metric('execution.dispatch.duration_ms')),
+        dispatch: executionDispatch,
         wake: metricView(this.runtime.metrics.metric('execution.wake_delivery.duration_ms')),
         integrity: String(execution.integrity ?? 'unknown'),
       },
+      resourceGovernance: {
+        enabled: Boolean(this.runtime.execution.config.resourceGovernance?.enabled),
+        configuredMaxConcurrency,
+        decision: resourceDecision,
+      },
+      diagnosis,
       github,
       routing: {
         ...routing,
@@ -156,7 +205,7 @@ export class RuntimeHealthMetrics {
           rotations: this.runtime.metrics.counter('audit.rotation.count'),
         },
         telemetry: {
-          ...(this.runtime.telemetry?.status() ?? { enabled: false, queueDepth: 0, queueCapacity: 0, dropped: 0 }),
+          ...telemetryStatus,
           exportFailures: this.runtime.metrics.counter('telemetry.export_failures.count'),
           export: metricView(this.runtime.metrics.metric('telemetry.export.duration_ms')),
         },

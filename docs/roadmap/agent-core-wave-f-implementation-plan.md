@@ -113,13 +113,13 @@
 - Produces `RuntimeDiagnosisRecommendation[]`.
 - Extends existing health output with `resourceGovernance` and `diagnosis`; does not add a tool. Task F5 subsequently adds `maintenance` to the same surface.
 
-- [ ] **Step 1: Write failing diagnosis tests** for active pressure, GitHub credential degradation, audit/telemetry degradation, memory p95 >150 ms, dispatch p95 >100 ms, continuity blockers when an authenticated scope is provided, and no recommendation when evidence is absent.
-- [ ] **Step 2: Write failing health/MCP tests** proving bounded resource/diagnosis fields, absence of raw paths/credentials/request IDs/full hashes, and unchanged tool count in both MCP eras.
-- [ ] **Step 3: Run focused tests and require RED.**
-- [ ] **Step 4: Implement pure diagnosis classifier and optional scoped enrichment in `RuntimeHealthMetrics.getMetrics(scope?)`.**
-- [ ] **Step 5: Update capabilities stage/features without changing tool count.**
-- [ ] **Step 6: Run focused observability + MCP dual-era regressions and require GREEN.**
-- [ ] **Step 7: Commit `feat: add evidence based runtime diagnosis` and push/read back SHA equality.**
+- [x] **Step 1: Write failing diagnosis tests** for active pressure, GitHub credential degradation, audit/telemetry degradation, memory p95 >150 ms, dispatch p95 >100 ms, continuity blockers when an authenticated scope is provided, and no recommendation when evidence is absent.
+- [x] **Step 2: Write failing health/MCP tests** proving bounded resource/diagnosis fields, absence of raw paths/credentials/request IDs/full hashes, and unchanged tool count in both MCP eras.
+- [x] **Step 3: Run focused tests and require RED.**
+- [x] **Step 4: Implement pure diagnosis classifier and optional scoped enrichment in `RuntimeHealthMetrics.getMetrics(scope?)`.**
+- [x] **Step 5: Update capabilities stage/features without changing tool count.**
+- [x] **Step 6: Run focused observability + MCP dual-era regressions and require GREEN.**
+- [x] **Step 7: Commit `feat: add evidence based runtime diagnosis` and push/read back SHA equality.**
 
 ### Task F5: Optional live-safe scheduled maintenance
 
@@ -139,7 +139,7 @@
 
 - [ ] **Step 1: Write failing tests** proving disabled-by-default behavior, one bounded timer when enabled, deterministic due-time injection, integrity + dry-run plan results, failure reason recording, and close cancels future scheduling.
 - [ ] **Step 2: Add a contract test that source for the coordinator contains no invocation/import of `applyExecutionRetention`, restore, key revocation, backup deletion/rotation, or helper deletion paths.**
-- [ ] **Step 3: Run focused tests and require RED.**
+- [x] **Step 3: Run focused tests and require RED.**
 - [ ] **Step 4: Implement minimal coordinator/config/lifecycle wiring and audit status.**
 - [ ] **Step 5: Add `maintenance` status to the existing health metrics surface, then re-run maintenance, retention, runtime-lease, config, and health tests; require GREEN.**
 - [ ] **Step 6: Commit `feat: add safe scheduled local maintenance` and push/read back SHA equality.**

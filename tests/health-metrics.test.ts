@@ -243,6 +243,63 @@ describe('bounded runtime observability', () => {
     }
   });
 
+  it('reports bounded resource governance and scoped diagnosis without leaking principal or task contents', async () => {
+    const metrics = new RuntimeMetricRegistry();
+    metrics.observe('memory.preflight.duration_ms', 151);
+    metrics.observe('execution.dispatch.duration_ms', 101);
+    const decision = {
+      capturedAt: 10,
+      requestedMaxConcurrency: 4,
+      safeConcurrency: 2,
+      throttled: true,
+      severity: 'warning' as const,
+      reasonCodes: ['local_memory_pressure'] as const,
+      snapshot: {
+        capturedAt: 10,
+        cpu: { normalizedLoad: 0.2, available: true },
+        memory: { usedRatio: 0.9, available: true },
+        storage: { freeRatio: 0.5, available: true },
+        backlog: { auditQueueRatio: null, telemetryQueueRatio: null, queuedMemorySync: null, queuedMemorySyncAvailable: false },
+        worker: { healthy: true, available: true },
+      },
+    };
+    const runtime = {
+      metrics,
+      resourceGovernor: { decide: async () => structuredClone(decision) },
+      memory: {
+        config: { enabled: true }, currentState: 'healthy',
+        status: async () => ({ enabled: true, healthy: true, counts: { active_items: 1, db_bytes: 10 }, integrity: 'ok' }),
+        getContinuitySnapshot: async () => ({ blockedTasks: [{ title: 'SECRET TASK CONTENT' }] }),
+      },
+      execution: {
+        config: { enabled: true, maxConcurrency: 4, resourceGovernance: { enabled: true } }, currentState: 'healthy',
+        health: async () => ({ enabled: true, healthy: true, activeRuns: 0, queuedSync: 0, integrity: 'ok' }),
+        store: { systemCounts: async () => ({ activeRuns: 0, queuedSync: 0, queuedNodes: 0, runningNodes: 0 }) },
+      },
+      github: { config: { enabled: false }, status: async () => ({ githubTokenConfigured: false }), apiRequest: async () => ({ status: 200 }) },
+      routes: { metrics: () => ({ totalRoutes: 0, activeContexts: 0, rejectedRoutes: 0, expiredContexts: 0 }) },
+      capabilities: { coverage: () => ({ nativeReady: 0 }) },
+      audit: { status: () => ({ queueDepth: 0, queueCapacity: 100, written: 0, dropped: 0, writeErrors: 0, sequence: 0, headHash: null, currentFileBytes: 0, rotatedFiles: 0 }) },
+      telemetry: { status: () => ({ enabled: false, queueDepth: 0, queueCapacity: 0, dropped: 0 }) },
+    } as any;
+    const snapshot = await new RuntimeHealthMetrics(runtime).getMetrics({ principalId: 'SECRET_PRINCIPAL', projectId: 'SECRET_PROJECT' } as any) as any;
+    expect(snapshot.resourceGovernance).toMatchObject({
+      enabled: true,
+      configuredMaxConcurrency: 4,
+      decision: { safeConcurrency: 2, severity: 'warning', reasonCodes: ['local_memory_pressure'] },
+    });
+    expect(snapshot.diagnosis.map((item: any) => item.code)).toEqual([
+      'resource_pressure_active',
+      'memory_latency_regression',
+      'execution_dispatch_latency_regression',
+      'continuity_blockers_present',
+    ]);
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toContain('SECRET_PRINCIPAL');
+    expect(serialized).not.toContain('SECRET_PROJECT');
+    expect(serialized).not.toContain('SECRET TASK CONTENT');
+  });
+
   it('serves detailed metrics separately from lightweight readiness without exposing credential paths', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-health-http-'));
     const config = loadConfig({}, root);

@@ -135,11 +135,12 @@ describe('Agent Core MCP integration', () => {
     });
     const capabilities = await call(baseUrl, created.key, 'agent_core_capabilities');
     expect(capabilities.json.result.structuredContent).toMatchObject({
-      stage: 'v5-local-continuity-execution-fabric',
+      stage: 'v6-local-resource-governance',
       enabled: expect.arrayContaining([
         'routing.capability_route', 'routing.principal_bound_context',
         'routing.execution_gate', 'execution.deterministic_fabric',
         'execution.event_driven_wake', 'execution.evidence_bridge',
+        'execution.adaptive_resource_governance', 'runtime.evidence_based_diagnosis',
         'github.native_fabric', 'tool.github_status', 'tool.github_api',
         'tool.capability_route', 'tool.write_file',
       ]),

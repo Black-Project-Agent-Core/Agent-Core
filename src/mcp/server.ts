@@ -128,7 +128,7 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, async () => {
     const structuredContent = {
-      stage: 'v5-local-continuity-execution-fabric',
+      stage: 'v6-local-resource-governance',
       enabled: [
         'mcp.streamable_http', 'auth.api_key', 'auth.oauth2',
         'oauth.dynamic_client_registration', 'oauth.authorization_code_pkce',
@@ -142,6 +142,8 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
         'execution.deterministic_fabric',
         'execution.event_driven_wake',
         'execution.evidence_bridge',
+        'execution.adaptive_resource_governance',
+        'runtime.evidence_based_diagnosis',
         'observability.audit_journal',
         ...(runtime.telemetry.status().enabled ? ['observability.otlp_loopback_export'] : []),
         'github.native_fabric',
@@ -161,7 +163,7 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
     };
   });
 
-  registerHealthMetricsTools(server, runtime);
+  registerHealthMetricsTools(server, runtime, key);
   registerOperationalTools(server, runtime, key);
   registerGitHubTools(server, runtime, key);
   registerCapabilityTools(server, runtime, key);
