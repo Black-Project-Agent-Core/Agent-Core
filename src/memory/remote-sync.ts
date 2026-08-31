@@ -1,5 +1,6 @@
 import type { MemoryCognitionLedger } from './cognition-ledger.js';
 import {
+  createMemoryRemoteManifest,
   decodeMemoryRemoteEnvelope,
   decodeMemoryRemoteManifest,
   encodeMemoryRemoteEnvelope,
@@ -156,27 +157,73 @@ export class MemoryRemoteSynchronizer {
     });
 
     let attempt = 0;
+    let activeManifest = validated.manifest;
     while (true) {
       try {
-        return await this.syncAttempt(input.scope, validated.scopeId, validated.object, validated.manifest);
+        return await this.syncAttempt(input.scope, validated.scopeId, validated.object, activeManifest);
       } catch (error) {
         if (nonFastForward(error) && attempt < this.maxRetryAttempts) {
           attempt += 1;
           try {
-            await this.transport.fetch();
-            await this.transport.resetToRemoteHead();
+            activeManifest = await this.reconcileAfterNonFastForward(validated.scopeId, activeManifest);
           } catch (recoveryError) {
-            const classified = unavailable(recoveryError);
-            await this.recordFailure(input.scope, validated.manifest, classified);
+            const classified = recoveryError instanceof MemoryRemoteSyncError ? recoveryError : unavailable(recoveryError);
+            await this.recordFailure(input.scope, activeManifest, classified);
             throw classified;
           }
           continue;
         }
         const classified = error instanceof MemoryRemoteSyncError ? error : unavailable(error);
-        await this.recordFailure(input.scope, validated.manifest, classified);
+        await this.recordFailure(input.scope, activeManifest, classified);
         throw classified;
       }
     }
+  }
+
+  private async reconcileAfterNonFastForward(
+    scopeId: string,
+    localManifest: MemoryRemoteManifest,
+  ): Promise<MemoryRemoteManifest> {
+    await this.transport.fetch();
+    await this.transport.resetToRemoteHead();
+
+    const formatBytes = await this.transport.readFile(MEMORY_REMOTE_FORMAT_PATH);
+    if (!formatBytes) throw readbackMissing('Memory Remote format.json is missing during writer reconciliation');
+    validateMemoryRemoteFormat(formatBytes);
+
+    const remoteGeneration = decodeLogicalHead(await this.transport.readFile(memoryRemoteHeadPath(scopeId)));
+    if (!remoteGeneration) {
+      throw conflict('Memory Remote logical HEAD disappeared during writer reconciliation');
+    }
+    const remoteManifestBytes = await this.transport.readFile(memoryRemoteGenerationPath(scopeId, remoteGeneration));
+    if (!remoteManifestBytes) throw readbackMissing('Concurrent writer generation manifest is missing');
+    const remoteManifest = decodeMemoryRemoteManifest(remoteManifestBytes);
+    if (remoteManifest.scopeId !== scopeId || remoteManifest.generationId !== remoteGeneration) {
+      throw new MemoryRemoteSyncError(
+        'MEMORY_REMOTE_INTEGRITY_FAILED',
+        'Concurrent writer generation manifest failed scope/generation verification',
+        'REMOTE_UNAVAILABLE',
+      );
+    }
+    if (remoteManifest.logicalStateHash !== localManifest.logicalStateHash) {
+      throw conflict('Concurrent writers produced different logical-state hashes; semantic reconciliation is required');
+    }
+
+    const createdAt = Math.max(remoteManifest.createdAt, localManifest.createdAt) + 1;
+    if (!Number.isSafeInteger(createdAt)) {
+      throw new MemoryRemoteSyncError(
+        'MEMORY_REMOTE_GENERATION_INVALID',
+        'Reconciled generation timestamp exceeds the safe integer bound',
+        'REMOTE_UNAVAILABLE',
+      );
+    }
+    return createMemoryRemoteManifest({
+      scopeId,
+      previousGeneration: remoteGeneration,
+      objectIds: [...remoteManifest.objectIds, ...localManifest.objectIds],
+      logicalStateHash: localManifest.logicalStateHash,
+      createdAt,
+    });
   }
 
   private async syncAttempt(
