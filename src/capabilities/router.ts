@@ -3,9 +3,10 @@ import type { RouteMode, RoutePlan, RouteTier, RouteVerification } from './route
 import type { CapabilityRisk } from './types.js';
 
 const STRUCTURED_SIGNAL = /\b(and|then|after|before|review|refactor|debug|test|design|build|implement|analy[sz]e|optimi[sz]e)\b/i;
-const HIGH_IMPACT_SIGNAL = /\b(production|deploy|credential|secret|system|admin|registry|delete|remove|shutdown|format)\b/i;
-const READ_ONLY_SIGNAL = /\b(read|show|inspect|list|search|find|get|check|view)\b/i;
+const HIGH_IMPACT_SIGNAL = /\b(production|deploy|credential|secret|system|admin|registry|delete|shutdown|format)\b/i;
+const READ_ONLY_SIGNAL = /\b(read|show|inspect|list|search|find|get|check|view|review|analy[sz]e|debug|investigate)\b/i;
 const MUTATION_SIGNAL = /\b(create|write|edit|change|update|move|rename|append|replace|delete|remove|refactor|fix|build|implement|deploy)\b/i;
+const EXPLICIT_NO_MUTATION_SIGNAL = /\bwithout\s+(?:changing|editing|writing|modifying)(?:\s+(?:any\s+)?files?)?\b/i;
 const GITHUB_SIGNAL = /\bgithub\b/i;
 
 const ROUTE_REQUIRED_TOOLS = [
@@ -110,18 +111,21 @@ function withGitHubTools(task: string, tools: readonly string[]): string[] {
   return GITHUB_SIGNAL.test(task) ? [...tools, ...GITHUB_ROUTE_TOOLS] : [...tools];
 }
 
+function isReadOnlyIntent(task: string): boolean {
+  if (EXPLICIT_NO_MUTATION_SIGNAL.test(task)) return true;
+  return READ_ONLY_SIGNAL.test(task) && !MUTATION_SIGNAL.test(task);
+}
+
 function allowedTools(task: string, tier: RouteTier): string[] {
+  if (isReadOnlyIntent(task)) return withGitHubTools(task, ATOMIC_READ_TOOLS);
   if (tier !== 'atomic') return withGitHubTools(task, ROUTE_REQUIRED_TOOLS);
-  const isReadOnly = READ_ONLY_SIGNAL.test(task) && !MUTATION_SIGNAL.test(task);
-  if (isReadOnly) return withGitHubTools(task, ATOMIC_READ_TOOLS);
   if (MUTATION_SIGNAL.test(task)) return withGitHubTools(task, ATOMIC_MUTATION_TOOLS);
   return withGitHubTools(task, ROUTE_REQUIRED_TOOLS);
 }
 
 function verificationFor(task: string, tier: RouteTier): RouteVerification {
   if (tier === 'atomic') {
-    const isReadOnly = READ_ONLY_SIGNAL.test(task) && !MUTATION_SIGNAL.test(task);
-    if (isReadOnly) return { required: false, suggestedTools: [] };
+    if (isReadOnlyIntent(task)) return { required: false, suggestedTools: [] };
     return { required: true, suggestedTools: ['read_file', 'get_file_info'] };
   }
   return {

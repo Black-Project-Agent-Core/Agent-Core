@@ -120,20 +120,15 @@ describe('deterministic routing quality evaluator', () => {
     const result = await evaluateRoutingQuality(corpus, records);
 
     expect(result.metrics.caseCount).toBe(4);
-    expect(result.metrics.tierAccuracy).toBe(0.75);
-    expect(result.metrics.falseHighImpactRate).toBe(0.25);
-    expect(result.metrics.unsafeOverpermissionRate).toBe(0.25);
-    expect(result.metrics.falseReadOnlyClassificationRate).toBe(0.5);
+    expect(result.metrics.tierAccuracy).toBe(1);
+    expect(result.metrics.falseHighImpactRate).toBe(0);
+    expect(result.metrics.unsafeOverpermissionRate).toBe(0);
+    expect(result.metrics.falseReadOnlyClassificationRate).toBe(0);
     expect(result.metrics.relevantSkillPrecisionAt2).toBe(1);
     expect(result.metrics.unnecessarySkillLoadRate).toBe(0);
     expect(result.metrics.verificationCorrectness).toBe(1);
     expect(result.metrics.deterministicReplayEquality).toBe(1);
-
-    expect(result.failures.map((failure) => failure.caseId)).toContain('safe-remove-text');
-    expect(result.failures).toEqual(expect.arrayContaining([
-      expect.objectContaining({ caseId: 'frontend-review-readonly', metric: 'unsafe_overpermission' }),
-      expect.objectContaining({ caseId: 'frontend-review-readonly', metric: 'false_read_only_classification' }),
-    ]));
+    expect(result.failures).toEqual([]);
   });
 
   it('rejects malformed corpus entries instead of silently skipping them', async () => {
