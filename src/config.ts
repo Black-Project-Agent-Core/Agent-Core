@@ -50,6 +50,12 @@ export interface GitHubConfig {
   gitTimeoutMs: number;
 }
 
+export interface HttpSecurityConfig {
+  publicBaseUrl: string | null;
+  trustProxy: boolean;
+  allowedOrigins: string[];
+}
+
 export interface AppConfig {
   host: string;
   port: number;
@@ -57,6 +63,7 @@ export interface AppConfig {
   logDir: string;
   capabilityDir: string;
   allowedRoots: string[];
+  httpSecurity: HttpSecurityConfig;
   memory: MemoryConfig;
   execution: ExecutionConfig;
   github: GitHubConfig;
@@ -93,6 +100,49 @@ function parseUnitInterval(value: string | undefined, fallback: number, name: st
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 1) throw new Error(`${name} must be between 0 and 1`);
   return parsed;
+}
+
+function parsePublicBaseUrl(value: string | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error('AGENT_CORE_PUBLIC_BASE_URL must be a valid URL');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('AGENT_CORE_PUBLIC_BASE_URL must use http or https');
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('AGENT_CORE_PUBLIC_BASE_URL must not include credentials');
+  }
+  if (parsed.pathname !== '/' || parsed.search || parsed.hash) {
+    throw new Error('AGENT_CORE_PUBLIC_BASE_URL must be an origin without a path, query, or fragment');
+  }
+  return parsed.origin;
+}
+
+function normalizeAllowedOriginHostname(value: string): string {
+  const raw = value.trim();
+  if (!raw) throw new Error('AGENT_CORE_MCP_ALLOWED_ORIGINS contains an invalid origin');
+  try {
+    const parsed = raw.includes('://') ? new URL(raw) : new URL(`http://${raw}`);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('scheme');
+    if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) throw new Error('shape');
+    return parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  } catch {
+    throw new Error('AGENT_CORE_MCP_ALLOWED_ORIGINS contains an invalid origin');
+  }
+}
+
+function parseAllowedOrigins(value: string | undefined): string[] {
+  if (!value?.trim()) return [];
+  const normalized = value.split(';')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map(normalizeAllowedOriginHostname);
+  return [...new Set(normalized)];
 }
 
 function parseGitHubApiBaseUrl(value: string | undefined): string {
@@ -147,6 +197,12 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     throw new Error('AGENT_CORE_MEMORY_PPR_EPSILON must be positive');
   }
 
+  const httpSecurity: HttpSecurityConfig = {
+    publicBaseUrl: parsePublicBaseUrl(env.AGENT_CORE_PUBLIC_BASE_URL),
+    trustProxy: parseBoolean(env.AGENT_CORE_TRUST_PROXY, false),
+    allowedOrigins: parseAllowedOrigins(env.AGENT_CORE_MCP_ALLOWED_ORIGINS),
+  };
+
   const execution: ExecutionConfig = {
     // Production default is enabled after the staged Task 22 live canary; operators can still disable it explicitly.
     enabled: parseBoolean(env.AGENT_CORE_EXECUTION_ENABLED, true),
@@ -175,6 +231,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     logDir: path.resolve(env.AGENT_CORE_LOG_DIR?.trim() || path.join(baseDir, 'logs')),
     capabilityDir: path.resolve(env.AGENT_CORE_CAPABILITY_DIR?.trim() || path.join(baseDir, 'capabilities')),
     allowedRoots: parseRoots(env.AGENT_CORE_ALLOWED_ROOTS, baseDir),
+    httpSecurity,
     memory,
     execution,
     github,

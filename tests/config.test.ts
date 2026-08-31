@@ -13,6 +13,11 @@ describe('loadConfig', () => {
     expect(config.logDir).toBe(path.resolve(baseDir, 'logs'));
     expect(config.capabilityDir).toBe(path.resolve(baseDir, 'capabilities'));
     expect(config.allowedRoots).toEqual([baseDir]);
+    expect(config.httpSecurity).toEqual({
+      publicBaseUrl: null,
+      trustProxy: false,
+      allowedOrigins: [],
+    });
     expect(config.execution).toEqual({
       enabled: true,
       dbPath: path.join(baseDir, 'runtime', 'execution', 'agent-core-execution.sqlite'),
@@ -41,6 +46,9 @@ describe('loadConfig', () => {
       AGENT_CORE_LOG_DIR: 'F:\\CustomLogs',
       AGENT_CORE_CAPABILITY_DIR: 'F:\\AgentCoreCapabilities',
       AGENT_CORE_ALLOWED_ROOTS: 'F:\\Projects;F:\\Design',
+      AGENT_CORE_PUBLIC_BASE_URL: 'https://agent-core.example.test/',
+      AGENT_CORE_TRUST_PROXY: 'true',
+      AGENT_CORE_MCP_ALLOWED_ORIGINS: 'https://app.example.test;LOCALHOST;https://app.example.test:8443',
       AGENT_CORE_EXECUTION_ENABLED: 'true',
       AGENT_CORE_EXECUTION_DB_PATH: 'F:\\Exec\\execution.sqlite',
       AGENT_CORE_EXECUTION_LOG_ROOT: 'F:\\Exec\\runs',
@@ -66,6 +74,11 @@ describe('loadConfig', () => {
       path.resolve('F:\\Projects'),
       path.resolve('F:\\Design'),
     ]);
+    expect(config.httpSecurity).toEqual({
+      publicBaseUrl: 'https://agent-core.example.test',
+      trustProxy: true,
+      allowedOrigins: ['app.example.test', 'localhost'],
+    });
     expect(config.execution).toEqual({
       enabled: true,
       dbPath: path.resolve('F:\\Exec\\execution.sqlite'),
@@ -84,6 +97,18 @@ describe('loadConfig', () => {
       requestTimeoutMs: 11_111,
       gitTimeoutMs: 22_222,
     });
+  });
+
+
+  it('rejects unsafe public base URLs and malformed allowed origins', () => {
+    expect(() => loadConfig({ AGENT_CORE_PUBLIC_BASE_URL: 'ftp://agent-core.example.test' }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_PUBLIC_BASE_URL must use http or https');
+    expect(() => loadConfig({ AGENT_CORE_PUBLIC_BASE_URL: 'https://user@agent-core.example.test' }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_PUBLIC_BASE_URL must not include credentials');
+    expect(() => loadConfig({ AGENT_CORE_PUBLIC_BASE_URL: 'https://agent-core.example.test/base' }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_PUBLIC_BASE_URL must be an origin without a path');
+    expect(() => loadConfig({ AGENT_CORE_MCP_ALLOWED_ORIGINS: 'https://app.example.test/path' }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_MCP_ALLOWED_ORIGINS contains an invalid origin');
   });
 
   it('rejects non-http github api base urls', () => {
