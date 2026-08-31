@@ -70,11 +70,11 @@
 - Consumes: `ResourceSnapshotProvider`, `ExecutionConfig.resourceGovernance`.
 - Produces: `ResourceGovernor.decide(requestedMaxConcurrency)` and `ResourceGovernanceDecision`.
 
-- [ ] **Step 1: Write failing policy tests** for no pressure, warning halving, critical minimum, stable multi-reason order, unknown signals, disabled policy, and hard operator/run maximum invariants.
-- [ ] **Step 2: Run the new test and require RED.**
-- [ ] **Step 3: Implement the minimal pure policy and provider-failure fail-open behavior.**
-- [ ] **Step 4: Re-run tests and require GREEN; replay each deterministic table twice and require byte-equivalent decisions apart from an injected identical timestamp.**
-- [ ] **Step 5: Commit `feat: add deterministic resource governor` and push/read back SHA equality.**
+- [x] **Step 1: Write failing policy tests** for no pressure, warning halving, critical minimum, stable multi-reason order, unknown signals, disabled policy, and hard operator/run maximum invariants.
+- [x] **Step 2: Run the new test and require RED.**
+- [x] **Step 3: Implement the minimal pure policy and provider-failure fail-open behavior.**
+- [x] **Step 4: Re-run tests and require GREEN; replay each deterministic table twice and require byte-equivalent decisions apart from an injected identical timestamp.**
+- [x] **Step 5: Commit `feat: add deterministic resource governor` and push/read back SHA equality.**
 
 ### Task F3: Scheduler dispatch integration and durable reason evidence
 
