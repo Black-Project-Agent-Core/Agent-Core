@@ -55,11 +55,14 @@ SubProject/Super-Runtime/
 │       │   ├── file_residency.h
 │       │   ├── file_residency.cpp
 │       │   ├── moe_residency.h
-│       │   └── moe_residency.cpp
+│       │   ├── moe_residency.cpp
+│       │   ├── dense_residency.h
+│       │   └── dense_residency.cpp
 │       └── tests/
 │           ├── test_memory_ledger.cpp
 │           ├── test_file_residency.cpp
-│           └── test_moe_residency.cpp
+│           ├── test_moe_residency.cpp
+│           └── test_dense_residency.cpp
 ├── tests/
 │   └── contracts/
 │       └── native-substrate.sh
@@ -73,7 +76,8 @@ Task 1 native llama.cpp/GGML CPU substrate boundary   COMPLETE
 Task 2 deterministic MemoryLedger                     COMPLETE
 Task 3 stable-address file residency                   COMPLETE
 Task 4 generic MoE selected-ID range planner           COMPLETE
-dense production residency                            NOT STARTED
+Task 5 fixed-order dense residency policy              COMPLETE
+Task 6 global runtime budget planner                   NOT STARTED
 MoE READY/lease scheduler integration                  NOT STARTED
 benchmarks/ hard-cap harness                          NOT STARTED
 native runtime entrypoint                             NOT STARTED
@@ -83,9 +87,9 @@ Therefore:
 
 > **Super-Runtime still does not yet exist as a runnable inference runtime product.**
 
-Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds the deterministic thread-safe `MemoryLedger`. Task 3 adds the first physical backing primitive: a Linux file-backed mapping whose virtual address remains stable while page-aligned ranges can be explicitly prefetched/released and charged to `ResidentWeights` in the ledger. Task 4 adds a generic MoE planner that honors strided GGML-style selected IDs, validates/deduplicates them, maps them through expert stride metadata, aligns/coalesces residency ranges, and preserves exact CPU `MUL_MAT_ID` output in the tested selected-range fixture. These checkpoints still do not load a model or freeze the production READY/lease scheduler hook.
+Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds the deterministic thread-safe `MemoryLedger`. Task 3 adds the first physical backing primitive: a Linux file-backed mapping whose virtual address remains stable while page-aligned ranges can be explicitly prefetched/released and charged to `ResidentWeights` in the ledger. Task 4 adds a generic MoE planner that honors strided GGML-style selected IDs, validates/deduplicates them, maps them through expert stride metadata, aligns/coalesces residency ranges, and preserves exact CPU `MUL_MAT_ID` output in the tested selected-range fixture. Task 5 adds deterministic fixed-order dense planning: all-pinned when possible, otherwise pinned-prefix plus two-slot look-ahead, with a one-slot synchronous fallback that refuses advancement before the current layer reaches an explicit completion safe point. The tested dense GGML paths preserve exact output while staying inside their configured resident-weight budgets. These checkpoints still do not load a model or provide the global runtime budget planner.
 
-Phase 0 learning is complete, and the first four implementation checkpoints are complete.
+Phase 0 learning is complete, and the first five implementation checkpoints are complete.
 
 The project frontier remains:
 
@@ -93,11 +97,11 @@ The project frontier remains:
 
 ## Immediate next action — exactly one task
 
-The next eligible implementation checkpoint is **Task 5 only: add the fixed-order dense residency policy**.
+The next eligible implementation checkpoint is **Task 6 only: add the global runtime budget planner**.
 
-Do not begin the global budget planner, hard-cap harness, runtime entrypoint, API work, GPU work, or downstream integration in parallel with Task 5. Task 5 becomes active only after the Task 4 commit is present and remotely verified on canonical `Agent-Core/main`.
+Do not begin the hard-cap harness, runtime entrypoint, API work, GPU work, or downstream integration in parallel with Task 6. Task 6 becomes active only after the Task 5 commit is present and remotely verified on canonical `Agent-Core/main`.
 
-Task 1 + Task 2 + Task 3 + Task 4 verification boundary:
+Task 1 + Task 2 + Task 3 + Task 4 + Task 5 verification boundary:
 
 ```text
 bash tests/contracts/native-substrate.sh
@@ -127,6 +131,15 @@ ctest -R super-runtime-moe-residency
   -> aligned/adjacent expert ranges coalesced
   -> selected union drives FileResidency + MemoryLedger
   -> real GGML MUL_MAT_ID parity max_abs_diff = 0
+  -> PASS
+
+ctest -R super-runtime-dense-residency
+  -> deterministic pinned-prefix count/hit ratio
+  -> two-slot look-ahead selected when budget permits
+  -> one-slot synchronous fallback when it does not
+  -> active current layer blocks premature advance
+  -> MemoryLedger resident ownership never exceeds the plan budget
+  -> fully resident vs managed GGML dense parity max_abs_diff = 0
   -> PASS
 ```
 
@@ -747,6 +760,57 @@ The exact grouping unit is still implementation/performance work. It may eventua
 - another metadata-derived reusable unit.
 
 The semantic graph-order policy is already proven feasible.
+
+## Task 5 implementation checkpoint — DenseResidencyPolicy
+
+Task 5 turns the fixed-order policy into production-owned native code under `runtime/native/super_runtime/dense_residency.*`.
+
+The planner consumes only ordered layer byte ranges, residency alignment, and a byte budget. It applies this deterministic preference order:
+
+```text
+1. all-pinned when the complete dense walk fits
+2. otherwise maximize pinned prefix while retaining a two-slot dynamic ring
+3. otherwise maximize pinned prefix under a one-slot synchronous ring
+4. otherwise refuse the plan
+```
+
+No LRU state exists in this policy.
+
+Runtime sequencing uses an explicit safe-point contract:
+
+```text
+prepare(layer)
+    -> current must match fixed graph order
+    -> current range resident
+    -> next dynamic range resident when two-slot mode permits
+    -> current becomes active
+
+complete(layer)
+    -> only the matching active layer may complete
+    -> current dynamic range becomes releasable
+    -> fixed-order cursor advances
+```
+
+A second `prepare()` while a layer is active returns `Busy`. This directly encodes the K3-derived one-slot safety rule: the runtime may not advance/reuse dynamic residency until the current operation has reached a safe completion point. This is a dense-policy ownership guard, not yet the universal lease subsystem required by the final runtime.
+
+The focused production fixture uses four page-sized `32 x 32` F32 GGML matrices:
+
+```text
+three-page budget:
+  pinned prefix = 1 layer
+  ring slots = 2
+  peak ResidentWeights ownership = 12,288 bytes
+  max_abs_diff vs fully resident GGML = 0
+
+one-page budget:
+  pinned prefix = 0
+  ring slots = 1
+  peak ResidentWeights ownership = 4,096 bytes
+  premature next-layer prepare = Busy
+  max_abs_diff vs fully resident GGML = 0
+```
+
+The fixture proves deterministic budget-bounded dense residency and correctness for this native CPU path. It does not prove asynchronous storage overlap, optimal grouping for real GGUF models, or global worker-budget admission.
 
 ---
 
@@ -1504,8 +1568,8 @@ Milestone 1 is accepted only if fresh executable evidence demonstrates all appli
 [x] memory ledger is active
 [x] infeasible ledger reservations are refused
 [x] stable file-backed residency primitive is active
-[ ] dense residency path executes correctly
-[ ] MoE selected-range residency path executes correctly
+[x] dense residency path executes correctly
+[x] MoE selected-range residency path executes correctly
 [ ] required ranges are READY before dereference
 [ ] leased ranges cannot be reclaimed early
 [ ] output matches the correctness oracle
@@ -1639,8 +1703,10 @@ Current authority:
 - defines the upstream patch/provenance policy for the native substrate;
 - documents the Task 2 `MemoryLedger`, its accounting-only semantics, and focused CTest path;
 - documents the Task 3 Linux `FileResidency` primitive, stable-address/release semantics, and focused CTest path;
+- documents the Task 4 generic MoE selected-range planner and exact `MUL_MAT_ID` parity fixture;
+- documents the Task 5 deterministic dense pinned-prefix/ring policy, one-slot safety rule, and exact GGML dense parity fixture;
 - documents Codespace native build tooling and the `tests/contracts/native-substrate.sh` verification path;
-- does **not** imply that model loading, residency leases, dense/MoE scheduling, or a runnable inference lifecycle already exists.
+- does **not** imply that model loading, a universal residency lease engine, global runtime admission, or a runnable inference lifecycle already exists.
 
 If this document conflicts with general project direction, this master context still wins.
 

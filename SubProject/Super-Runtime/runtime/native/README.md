@@ -210,10 +210,48 @@ cmake --build .build/moe-residency --target super-runtime-test-moe-residency --p
 
 Task 4 deliberately does **not** freeze the production GGML scheduler hook and does not yet implement `READY` publication or leases around `MUL_MAT_ID`. The research eval callback remains evidence, not a production API commitment.
 
-## Scope boundary after Task 4
+## Task 5 — fixed-order dense residency policy
 
-Passing Task 1 through Task 4 means only:
+`DenseResidencyPolicy` adds deterministic `SEQUENTIAL_CYCLIC` planning above `FileResidency`. It does not use LRU. The planner first keeps the entire walk pinned when the full weight set fits; otherwise it prefers a two-slot dynamic ring and maximizes a pinned prefix under that constraint, then falls back to a one-slot synchronous ring when two slots cannot fit.
 
-> Super-Runtime has a reproducible native CPU substrate boundary, deterministic memory ownership accounting, Linux stable-address file residency, and generic sparse-MoE selected-range planning with exact GGML CPU parity in the tested fixture.
+Runtime sequencing is explicit:
 
-It does **not** mean the Super-Runtime inference runtime is complete. The next checkpoint is Task 5: fixed-order dense residency policy.
+```text
+start
+  -> materialize pinned prefix
+
+prepare(layer)
+  -> require fixed graph order
+  -> reject a second prepare while current is active
+  -> materialize current dynamic range
+  -> materialize next dynamic range when two-slot look-ahead is enabled
+
+compute
+
+complete(layer)
+  -> safe point
+  -> release current dynamic range
+  -> preserve pinned prefix and any valid next-layer look-ahead
+```
+
+The policy therefore makes the one-slot safety rule executable: the next layer cannot replace/reuse current residency before explicit completion. This is a scoped dense safe-point contract, not yet a universal lease subsystem.
+
+The focused GGML fixture uses four one-page `32 x 32` F32 dense matrices. With a three-page budget, the planner pins one layer and uses a two-slot ring; measured runtime-owned resident bytes peak at exactly `12,288` bytes and output matches the fully resident GGML baseline with `max_abs_diff = 0`. With a one-page budget, the policy switches to synchronous one-slot mode, peaks at exactly `4,096` bytes, rejects advance while the current layer is active, and again preserves `max_abs_diff = 0`.
+
+Focused native test:
+
+```bash
+cmake -G Ninja -S . -B .build/dense-residency -DCMAKE_BUILD_TYPE=Release
+cmake --build .build/dense-residency --target super-runtime-test-dense-residency --parallel "$(nproc)"
+(cd .build/dense-residency && ctest --output-on-failure -R '^super-runtime-dense-residency$')
+```
+
+Task 5 proves deterministic fixed-order residency and safe one/two-slot budget behavior. It does **not** prove asynchronous I/O overlap, optimal real-model grouping, a universal lease engine, or the global worker-budget planner.
+
+## Scope boundary after Task 5
+
+Passing Task 1 through Task 5 means only:
+
+> Super-Runtime has a reproducible native CPU substrate boundary, deterministic memory ownership accounting, Linux stable-address file residency, generic sparse-MoE selected-range planning, and deterministic dense graph-order residency with exact GGML CPU parity in the tested fixtures.
+
+It does **not** mean the Super-Runtime inference runtime is complete. The next checkpoint is Task 6: the global runtime budget planner.

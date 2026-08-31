@@ -158,23 +158,23 @@ Commit message: `feat: plan moe expert residency from ggml ids`
 - Consumes: ordered tensor/layer access trace and the file residency primitive
 - Produces: deterministic pinned-prefix plus bounded-ring policy for cyclic fixed-order walks
 
-- [ ] **Step 1: Write failing policy tests**
+- [x] **Step 1: Write failing policy tests**
 
 Use a synthetic ordered layer trace. Require deterministic pin count, no budget overshoot, one-slot synchronous safety, two-slot look-ahead eligibility, and a predictable hit ratio for the pinned prefix.
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Expected: failure because the dense policy does not exist.
 
-- [ ] **Step 3: Implement the minimal policy**
+- [x] **Step 3: Implement the minimal policy**
 
 Do not introduce ordinary LRU for the fixed cyclic layer walk.
 
-- [ ] **Step 4: Run parity and budget tests**
+- [x] **Step 4: Run parity and budget tests**
 
 Verify the same synthetic computation with resident and residency-managed layer weights, plus memory-ledger invariants.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit message: `feat: add fixed-order dense residency policy`
 

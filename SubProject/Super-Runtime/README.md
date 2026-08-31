@@ -61,6 +61,6 @@ Pinned runtime references live under `research/references/`. The active referenc
 
 ## Current phase
 
-**Phase 0 learning plus Task 1 through Task 4 implementation checkpoints are complete:** `runtime/native/` now provides the pinned llama.cpp/GGML CPU production substrate boundary, the Super-Runtime-owned `MemoryLedger`, a Linux stable-address file-backed residency primitive, and a model-family-independent MoE selected-expert ID-to-range planner proven against a real GGML `MUL_MAT_ID` parity fixture. This is still a foundation checkpoint, not yet a complete inference runtime.
+**Phase 0 learning plus Task 1 through Task 5 implementation checkpoints are complete:** `runtime/native/` now provides the pinned llama.cpp/GGML CPU production substrate boundary, the Super-Runtime-owned `MemoryLedger`, a Linux stable-address file-backed residency primitive, a model-family-independent MoE selected-expert range planner, and a deterministic fixed-order dense residency policy with pinned-prefix, two-slot look-ahead, and one-slot synchronous fallback semantics. Both MoE and dense fixtures preserve exact GGML CPU output in their tested paths. This is still a foundation checkpoint, not yet a complete inference runtime.
 
-The next eligible checkpoint is **Task 5 only: fixed-order dense residency policy**. MoE READY/lease scheduler integration, global budget planning, API work, GPU work, and consumer integration remain deferred until their turn in the canonical master context.
+The next eligible checkpoint is **Task 6 only: global runtime budget planner**. Hard-cap acceptance, unified runtime entrypoint, API work, GPU work, and consumer integration remain deferred until their turn in the canonical master context.
