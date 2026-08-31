@@ -6,6 +6,8 @@ Wave G is the final consolidation wave from `docs/roadmap/agent-core-balanced-ev
 Its job is **not** to add another runtime subsystem. Its job is to prove that the evolved
 Agent Core behaves as one coherent stable local control plane after Waves A–F.
 
+The operator-approved stable release target for this final wave is **Agent Core v0.6.0**. Presentation Bridge keeps its independent version.
+
 Wave G may change runtime behavior only if certification exposes a concrete defect. A
 refactor without an operational defect is out of scope.
 
@@ -118,20 +120,21 @@ actual test/benchmark commands.
 
 ## Canonical technical command
 
-Create `scripts/release/certify-core.mjs` and package script:
+Create `scripts/release/certify-core.mjs` and package scripts:
 
 ```text
-npm run certify:core
+npm run certify:core:prepublish   # source gate before v0.6.0 exists remotely
+npm run certify:core              # postpublish gate including stable v0.6.0 parity
 ```
 
-The orchestrator runs, in fail-fast order:
+The prepublish orchestrator runs gates 1-4 below. The postpublish orchestrator runs all five:
 
 ```text
 1. node scripts/release/check-core-certification.mjs
 2. npm run verify:release
 3. node scripts/benchmark-memory.mjs --count=100000 --samples=5 --warmup=2 --target-p95-ms=150
 4. node scripts/benchmark-execution.mjs --samples=20 --warmup=3
-5. node scripts/release/check-stable-parity.mjs
+5. node scripts/release/check-stable-parity.mjs   # postpublish only
 ```
 
 `verify:release` already runs build, plugin build, full normal tests, Wave E quality gate,

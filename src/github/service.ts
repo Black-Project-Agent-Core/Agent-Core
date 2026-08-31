@@ -240,7 +240,7 @@ export class GitHubService {
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github+json',
           'X-GitHub-Api-Version': this.config.apiVersion,
-          'User-Agent': 'Agent-Core/0.5.4',
+          'User-Agent': 'Agent-Core/0.6.0',
           'Content-Type': input.contentType?.trim() || 'application/octet-stream',
           'Content-Length': String(bytes.length),
         },

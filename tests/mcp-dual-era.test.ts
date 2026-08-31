@@ -153,7 +153,7 @@ describe('Agent Core MCP dual-era transport', () => {
       expect(status.structuredContent).toMatchObject({
         service: 'agent-core',
         serverName: 'agent-core',
-        version: '0.5.4',
+        version: '0.6.0',
         authentication: 'bearer-api-key',
         key: { id: created.metadata.id, name: 'dual-era-dual' },
       });
@@ -183,7 +183,7 @@ describe('Agent Core MCP dual-era transport', () => {
     expect(discover.json?.result?.capabilities?.tools).toBeDefined();
     expect(discover.json?.result?._meta?.['io.modelcontextprotocol/serverInfo']).toMatchObject({
       name: 'agent-core',
-      version: '0.5.4',
+      version: '0.6.0',
     });
   });
 

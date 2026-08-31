@@ -70,7 +70,7 @@ describe('unified Agent Core deterministic memory lifecycle', () => {
     expect(await health.json()).toMatchObject({
       status: 'ok',
       service: 'agent-core',
-      version: '0.5.4',
+      version: '0.6.0',
       memory: { enabled: true, healthy: true, state: 'healthy', integrity: 'ok' },
     });
 

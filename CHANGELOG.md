@@ -4,9 +4,35 @@ All notable stable Agent Core changes are recorded here. The project follows sem
 
 ## Unreleased
 
+## [0.6.0] - 2026-08-31 — Stable
+
+### Added
+
+- Wave A-F hardening is consolidated into the stable control plane: repaired trust boundaries, dual-era MCP support, deterministic execution policy/recovery, tamper-evident observability, deterministic routing/memory quality gates, adaptive local resource governance, bounded evidence-based diagnosis, and optional safe local maintenance.
+- Wave G adds a repository-owned 18-area core certification contract plus `npm run certify:core:prepublish` and post-publication `npm run certify:core` gates so architecture-level stability claims require the same repeatable local evidence.
+- Core certification now binds normal regression, Wave E routing/memory quality, 100k deterministic-memory performance, deterministic execution performance, stable-release parity, release metadata, and no-external-AI/model/API policy checks.
+
+### Changed
+
+- Agent Core server/runtime identity and Native GitHub Fabric User-Agent advance from 0.5.4 to 0.6.0.
+- Core certification has an explicit release lifecycle: prepublication proves the source before a tag exists; postpublication additionally requires the exact version-matched GitHub stable release assets and tag parity.
+- Adaptive resource governance may only reduce new execution dispatch within the operator hard maximum; it never terminates already-running work or alters factual execution-result semantics.
+
 ### Fixed
 
-- Stable release parity verification now invokes Git tag/source checks through `git` instead of accidentally routing them through the GitHub CLI, so the permanent package-vs-Release asset gate can run after publication.
+- Stable release parity verification invokes Git tag/source checks through `git` instead of accidentally routing them through the GitHub CLI.
+- Routing least-privilege classification, capability ranking noise, deterministic memory chatter displacement, audit-journal test synchronization, and Wave A trust-boundary defects are covered by permanent regression/certification gates.
+
+### Security
+
+- No OpenAI, Anthropic, Gemini, cloud embedding/reranking, external AI judge, hidden model-worker, or model API dependency is added by the A-G evolution.
+- Detailed HTTP metrics remain loopback-only, MCP browser Origin is validated, OAuth tokens remain resource-bound, principal/project isolation remains fail-closed, and release artifacts remain allowlist-built without secrets/runtime evidence.
+- Scheduled maintenance remains disabled by default and has no destructive retention-apply, restore, credential-revocation, or file-deletion call path.
+
+### Stability evidence
+
+- Pre-version Wave G certification established the complete 18/18 core matrix, 137 test files / 668 tests passing with 38 intentional skips, 100k memory p95 well below the 150 ms gate, execution DAG/dispatch/wake p95 below 50/100/250 ms gates, 55 tools in both MCP protocol eras, and zero external model/API dependency/source violations.
+- Final v0.6.0 publication evidence is recorded in `docs/stability.md` and the Wave G roadmap after tag/release publication, stable parity, production source-sync, public trust-boundary canary, and live audit verification complete.
 
 ## [0.5.4] - 2026-08-30 — Stable
 

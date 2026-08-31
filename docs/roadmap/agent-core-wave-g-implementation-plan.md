@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Create and execute one repository-owned core certification authority that proves the complete Waves A–F Agent Core control plane as one coherent stable architecture.
+**Goal:** Create and execute one repository-owned core certification authority, publish Agent Core v0.6.0, and prove the complete Waves A–F control plane as one coherent stable architecture.
 
 **Architecture:** Wave G adds no runtime subsystem. A data-only certification contract maps the exact 18 roadmap matrix areas to evidence; a deterministic checker validates that contract and the no-external-model policy; a local orchestrator then runs release verification, 100k memory performance, execution performance, and stable-release parity before emitting one bounded certification report. Live Codespace runtime/public checks remain the post-publication environment gate.
 
@@ -16,6 +16,7 @@
 - No external AI model/API, model worker, embedding/reranking service, cloud AI judge, or hidden multi-agent dependency.
 - No new MCP tool; existing 55-tool surface remains unchanged.
 - No core behavior change unless a fresh certification failure proves a concrete defect.
+- Stable release target is Agent Core `0.6.0`; Presentation Bridge version remains independent.
 - Local Agent Core certification, not GitHub Actions/CI, is release authority.
 - Non-force publication plus fetch/readback equality only.
 - Preserve concurrent main work and unrelated `.vscode/` state.
@@ -106,7 +107,23 @@ feature local canary                      PASS; 55 tools both protocol eras
 live GitHub read probes                   3 / 4; package-list 403 due Codespaces token scope
 ```
 
-### Task G4: Integrate, publish, source-sync, and architecture-level certification
+### Task G4: Promote the certified control plane to Agent Core v0.6.0
+
+**Files:**
+- Modify: `package.json`, `package-lock.json`, `src/mcp/server.ts`, GitHub User-Agent identity, current-version tests, `CHANGELOG.md`, Wave G docs.
+- Build/publish: version-matched stable release assets produced by `scripts/release/build-release.mjs`.
+
+- [x] **Step 1: Add prepublish/postpublish certification modes with TDD.** Default `certify:core` retains stable parity; `certify:core:prepublish` omits only the not-yet-existing remote release parity gate.
+- [x] **Step 2: Bump package/lock to `0.6.0` and observe release-check RED while server identity remains `0.5.4`.**
+- [ ] **Step 3: Update all current-version identities, changelog, and release docs; require focused version/release tests GREEN.**
+- [ ] **Step 4: Commit/push v0.6.0 release candidate and require feature-branch readback equality.**
+- [ ] **Step 5: Run fresh `npm run certify:core:prepublish` on the exact committed release-candidate SHA.**
+- [ ] **Step 6: Build stable v0.6.0 artifacts from a clean tracked tree and verify manifest/checksums locally.**
+- [ ] **Step 7: Reconcile any new `origin/main` commits explicitly, re-run prepublish certification on the final release source, then publish main non-force.**
+- [ ] **Step 8: Create/push tag `v0.6.0`, publish version-matched GitHub Release assets and stable GitHub Package/TGZ where authorized, then require `npm run verify:stable-parity` PASS.**
+- [ ] **Step 9: Run postpublish `npm run certify:core` and record exact v0.6.0 evidence.**
+
+### Task G5: Integrate, source-sync, and architecture-level certification
 
 **Files:**
 - Modify as needed only for final certification docs: `docs/stability.md`, `docs/roadmap/agent-core-balanced-evolution.md`, `docs/roadmap/agent-core-wave-g-implementation-plan.md`

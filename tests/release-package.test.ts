@@ -11,12 +11,12 @@ async function loadContract(): Promise<any> {
 describe('stable release package contract', () => {
   it('names the Agent Core, plugin, Presentation Bridge, manifest, and checksum assets deterministically', async () => {
     const { releaseAssetNames } = await loadContract();
-    expect(releaseAssetNames('0.5.4', '0.2.0')).toEqual({
-      freshZip: 'agent-core-fresh-v0.5.4-stable.zip',
-      runtimeZip: 'agent-core-windows-v0.5.4-stable.zip',
-      pluginZip: 'agent-core-plugin-v0.5.4-stable.zip',
+    expect(releaseAssetNames('0.6.0', '0.2.0')).toEqual({
+      freshZip: 'agent-core-fresh-v0.6.0-stable.zip',
+      runtimeZip: 'agent-core-windows-v0.6.0-stable.zip',
+      pluginZip: 'agent-core-plugin-v0.6.0-stable.zip',
       presentationBridgeZip: 'presentation-bridge-v0.2.0-source.zip',
-      npmTarball: 'black-project-agent-core-agent-core-plugin-0.5.4.tgz',
+      npmTarball: 'black-project-agent-core-agent-core-plugin-0.6.0.tgz',
       manifest: 'release-manifest.json',
       checksums: 'SHA256SUMS.txt',
     });
