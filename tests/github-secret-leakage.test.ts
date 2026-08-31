@@ -154,6 +154,7 @@ describe('Native GitHub Fabric secret boundaries', () => {
     expect(memoryText).not.toContain(GH);
     expect(memoryText).not.toContain(PACKAGES);
 
+    await logger.drain();
     const auditText = await readFile(logger.filePath, 'utf8');
     expect(auditText).not.toContain(GH);
     expect(auditText).not.toContain(PACKAGES);

@@ -88,6 +88,7 @@ describe('HTTP authentication', () => {
     expect(response.status).toBe(200);
     expect(receivedKeyId).toBe(created.metadata.id);
 
+    await auditLogger.drain();
     const audit = await readFile(auditLogger.filePath, 'utf8');
     expect(audit).toContain(created.metadata.id);
     expect(audit).toContain('chatgpt');

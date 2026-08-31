@@ -1,7 +1,6 @@
-import { appendFileSync, mkdirSync } from 'node:fs';
-import path from 'node:path';
 import type { RouteMode, RouteTier } from '../capabilities/route-types.js';
 import type { CapabilityRisk } from '../capabilities/types.js';
+import { AuditJournal, type AuditJournalOptions, type AuditJournalStatus } from '../observability/audit-journal.js';
 
 export interface AuditEvent {
   timestamp: string;
@@ -27,6 +26,7 @@ export interface RoutingAuditEvent {
   errorCode?: string;
   timestamp: string;
 }
+
 export interface AuditLogger {
   log(event: AuditEvent): Promise<void>;
 }
@@ -40,22 +40,33 @@ export const NOOP_ROUTING_AUDIT_LOGGER: RoutingAuditLogger = {
 };
 
 export class FileAuditLogger implements AuditLogger, RoutingAuditLogger {
+  readonly journal: AuditJournal;
   readonly filePath: string;
 
-  constructor(private readonly logDir: string) {
-    this.filePath = path.join(logDir, 'audit.jsonl');
+  constructor(logDir: string, options: AuditJournalOptions = {}) {
+    this.journal = new AuditJournal(logDir, options);
+    this.filePath = this.journal.filePath;
   }
 
   async log(event: AuditEvent): Promise<void> {
-    this.append(event);
+    const { timestamp, ...data } = event;
+    this.journal.enqueue({ category: 'http', event: 'request.completed', timestamp, data });
   }
 
   logRouting(event: RoutingAuditEvent): void {
-    this.append(event);
+    const { event: name, timestamp, ...data } = event;
+    this.journal.enqueue({ category: 'routing', event: name, timestamp, data });
   }
 
-  private append(event: AuditEvent | RoutingAuditEvent): void {
-    mkdirSync(this.logDir, { recursive: true });
-    appendFileSync(this.filePath, `${JSON.stringify(event)}\n`, 'utf8');
+  drain(): Promise<void> {
+    return this.journal.drain();
+  }
+
+  close(): Promise<void> {
+    return this.journal.close();
+  }
+
+  status(): AuditJournalStatus {
+    return this.journal.status();
   }
 }

@@ -73,6 +73,7 @@ describe('Agent Core routing audit', () => {
       'unknown_tool',
     )).toThrow();
 
+    await logger.drain();
     const auditText = await readFile(logger.filePath, 'utf8');
     const events = auditText.trim().split(/\r?\n/).map((line) => JSON.parse(line));
     expect(events.map((event) => event.event)).toEqual([
@@ -82,17 +83,19 @@ describe('Agent Core routing audit', () => {
       'route.rejected',
     ]);
     expect(events[0]).toMatchObject({
-      routeContextId: route.routeContextId,
-      principalId: 'principal-a',
-      tier: 'domain_complex',
-      mode: 'skill_guided',
-      risk: 'low',
-      capabilityIds: ['frontend-quality'],
-      skillIds: ['frontend-quality'],
+      category: 'routing',
+      data: {
+        routeContextId: route.routeContextId,
+        principalId: 'principal-a',
+        tier: 'domain_complex',
+        mode: 'skill_guided',
+        risk: 'low',
+        capabilityIds: ['frontend-quality'],
+        skillIds: ['frontend-quality'],
+      },
     });
     expect(events[3]).toMatchObject({
-      toolName: 'unknown_tool',
-      errorCode: 'ROUTE_TOOL_NOT_ALLOWED',
+      data: { toolName: 'unknown_tool', errorCode: 'ROUTE_TOOL_NOT_ALLOWED' },
     });
 
     for (const sentinel of [

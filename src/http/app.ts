@@ -110,7 +110,7 @@ async function handleRequest(
     else if (!response.writableEnded) response.end();
   } finally {
     try {
-      await options.auditLogger.log({
+      void options.auditLogger.log({
         timestamp: new Date().toISOString(),
         requestId,
         method: request.method ?? 'UNKNOWN',

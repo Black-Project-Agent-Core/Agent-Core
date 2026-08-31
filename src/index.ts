@@ -95,7 +95,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
       server.listen(config.port, config.host);
     });
   } catch (error) {
-    await Promise.allSettled([runtime.execution.close(), runtime.memory.close()]);
+    await Promise.allSettled([runtime.execution.close(), runtime.memory.close(), auditLogger.close()]);
     throw error;
   }
 
@@ -110,6 +110,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
       await closeServer(server);
       await runtime.execution.close();
       await runtime.memory.close();
+      await auditLogger.close();
     },
   };
 }
