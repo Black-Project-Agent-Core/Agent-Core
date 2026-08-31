@@ -108,5 +108,8 @@ describe('deterministic memory quality evaluator', () => {
     expect(second.failures.map(({ caseId, metric }) => ({ caseId, metric })))
       .toEqual(first.failures.map(({ caseId, metric }) => ({ caseId, metric })));
     expect(first.metrics.deterministicReplayEquality).toBe(1);
+    expect(first.failures).toEqual(expect.arrayContaining([
+      expect.objectContaining({ caseId: 'm07-stale-decision-resists-noise', metric: 'mrr' }),
+    ]));
   });
 });

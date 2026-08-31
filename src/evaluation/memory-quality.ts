@@ -473,7 +473,14 @@ async function evaluateCase(
       counters.mrrCases = 1;
       const rank = hitRefs.indexOf(item.primaryRelevantRef);
       counters.reciprocalRank = rank >= 0 ? 1 / (rank + 1) : 0;
-      if (rank < 0) addFailure(failures, item.id, 'mrr', { primaryRelevantRef: item.primaryRelevantRef, observed: hitRefs });
+      if (rank !== 0) {
+        addFailure(failures, item.id, 'mrr', {
+          primaryRelevantRef: item.primaryRelevantRef,
+          observedRank: rank < 0 ? null : rank + 1,
+          reciprocalRank: counters.reciprocalRank,
+          observed: hitRefs,
+        });
+      }
     }
 
     const expectedHard = item.hardGuardrailRefs ?? [];
