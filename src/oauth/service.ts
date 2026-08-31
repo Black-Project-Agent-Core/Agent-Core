@@ -240,6 +240,7 @@ ${hidden('scope', validated.scopes.join(' '))}
     const redirect = new URL(validated.redirectUri);
     redirect.searchParams.set('code', code);
     if (validated.state) redirect.searchParams.set('state', validated.state);
+    redirect.searchParams.set('iss', this.security.externalBaseUrl(request));
     response.writeHead(302, {
       location: redirect.toString(),
       'cache-control': 'no-store',

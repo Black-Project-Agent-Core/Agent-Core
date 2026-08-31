@@ -197,6 +197,7 @@ describe('Agent Core OAuth bridge', () => {
     const callback = new URL(approved.headers.get('location')!);
     expect(callback.origin + callback.pathname).toBe(redirectUri);
     expect(callback.searchParams.get('state')).toBe('state-123');
+    expect(callback.searchParams.get('iss')).toBe(externalBase);
     const code = callback.searchParams.get('code');
     expect(code).toMatch(/^agent_core_code_/);
     const tokenResponse = await fetch(`${baseUrl}/oauth/token`, {
