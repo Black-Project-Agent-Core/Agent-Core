@@ -28,6 +28,7 @@ import { MemoryLifecycle } from './lifecycle.js';
 import { MemoryLinker } from './linker.js';
 import { MemoryPreflightEngine, createDisabledPreflightResult } from './preflight.js';
 import { MemoryRetriever } from './retriever.js';
+import type { MemoryRemoteTransport } from './remote-transport.js';
 import { MEMORY_SCHEMA_VERSION } from './schema.js';
 import {
   MemoryStore,
@@ -129,6 +130,10 @@ function scopeProject(scope: MemoryScope): string {
 
 export type MemoryServiceState = 'disabled' | 'idle' | 'healthy' | 'degraded' | 'closed';
 
+export interface MemoryServiceDependencies {
+  remoteTransport?: MemoryRemoteTransport;
+}
+
 export class MemoryService {
   private components: MemoryComponents | undefined;
   private opening: Promise<MemoryComponents> | undefined;
@@ -138,7 +143,14 @@ export class MemoryService {
   private lastSuccessfulIntegrityCheckAt: number | undefined;
   private lastBackup: MemoryBackupRecord | undefined;
 
-  constructor(readonly config: MemoryConfig, private readonly metrics?: RuntimeMetricRegistry) {
+  readonly remoteTransport: MemoryRemoteTransport | undefined;
+
+  constructor(
+    readonly config: MemoryConfig,
+    private readonly metrics?: RuntimeMetricRegistry,
+    dependencies: MemoryServiceDependencies = {},
+  ) {
+    this.remoteTransport = dependencies.remoteTransport;
     this.state = config.enabled ? 'idle' : 'disabled';
   }
 
