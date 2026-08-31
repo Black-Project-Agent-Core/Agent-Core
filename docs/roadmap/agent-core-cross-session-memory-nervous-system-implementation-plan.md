@@ -368,6 +368,8 @@ Two Phase-2 remote-recovery fixtures were migrated from the pre-Phase-4 free-for
 
 **Purpose:** Route existing promotion paths through the cognition/write-decision authority and remote durability boundary.
 
+**Executable plan:** `docs/roadmap/agent-core-memory-nervous-system-phase-5-implementation-plan.md`
+
 **Deliverables:**
 
 - Continuity promoter uses structured postflight decisions rather than direct semantic commits;
