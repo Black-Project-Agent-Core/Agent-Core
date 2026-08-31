@@ -10,3 +10,4 @@ source "$HOME/.cargo/env"
 rustup toolchain install stable --profile minimal
 rustup default stable
 npm ci
+npx playwright install chromium

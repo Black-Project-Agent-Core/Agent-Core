@@ -822,7 +822,7 @@ git commit -m "feat(agent-code): add tauri desktop shell"
 - Consumes: final local Vite UI.
 - Produces: screenshot evidence at 1280×800, 1440×900, and 980×680 plus final build/test gate.
 
-- [ ] **Step 1: Add Playwright dependency/script and the failing visual test**
+- [x] **Step 1: Add Playwright dependency/script and the failing visual test**
 
 Add devDependency `@playwright/test` at the current resolved npm version and scripts:
 
@@ -859,7 +859,7 @@ for (const viewport of viewports) {
 }
 ```
 
-- [ ] **Step 2: Run visual test before baselines to verify RED**
+- [x] **Step 2: Run visual test before baselines to verify RED**
 
 ```bash
 npm run build
@@ -868,7 +868,7 @@ npm run test:visual
 
 Expected: FAIL because approved screenshot baselines do not exist yet.
 
-- [ ] **Step 3: Configure Playwright preview server and install Chromium reproducibly**
+- [x] **Step 3: Configure Playwright preview server and install Chromium reproducibly**
 
 Create `playwright.config.ts` with `webServer.command = 'npm run preview'`, `webServer.url = 'http://127.0.0.1:4173'`, `use.baseURL` matching that URL, and Chromium only. Extend `scripts/codespace-bootstrap.sh` with:
 
@@ -882,11 +882,11 @@ Then generate first baselines:
 npm run test:visual -- --update-snapshots
 ```
 
-- [ ] **Step 4: Manually inspect the three generated screenshots against the approved direction**
+- [x] **Step 4: Manually inspect the three generated screenshots against the approved direction**
 
 Reject the baseline and adjust CSS if any of these are true: horizontal overflow; sidebar hierarchy is cramped; composer is not the dominant control; greeting/monogram is oversized; app mark appears blurry/boxed; workspace contains dashboard-like clutter; minimum viewport hides submit/navigation controls. After any CSS change, rerun unit tests and regenerate only changed snapshots.
 
-- [ ] **Step 5: Run the complete Agent Code release gate**
+- [x] **Step 5: Run the complete Agent Code release gate**
 
 Run:
 
@@ -912,7 +912,7 @@ Also assert scope isolation:
 
 Expected: exit 0 because no forbidden backend/runtime integration exists in Milestone 1.
 
-- [ ] **Step 6: Verify Super-Runtime is untouched by this implementation range**
+- [x] **Step 6: Verify Super-Runtime is untouched by this implementation range**
 
 Use the design commit as the diff base and run:
 
@@ -922,7 +922,7 @@ git diff --name-only be6b525..HEAD -- SubProject/Super-Runtime
 
 Expected: no output.
 
-- [ ] **Step 7: Finalize README and commit Milestone-1 UI foundation**
+- [x] **Step 7: Finalize README and commit Milestone-1 UI foundation**
 
 README must document: product purpose; `npm run dev`; `npm test`; `npm run build`; `npm run test:visual`; project-local Codespace bootstrap; Tauri shell scope; Linux Codespace cannot truthfully certify a Windows `.exe`; and explicit statement that Super-Runtime/AI integration is absent by design in Milestone 1.
 
@@ -945,7 +945,7 @@ React/Vitest unit suite                        PASS
 TypeScript                                    PASS
 Vite production build                         PASS
 Tauri static contract                         PASS
-Cargo metadata / Tauri environment             PASS
+Cargo metadata / Rust-Tauri source environment PASS
 Playwright 1280x800                            PASS
 Playwright 1440x900                            PASS
 Playwright 980x680                             PASS
@@ -961,4 +961,4 @@ Forbidden backend/runtime integration scan      CLEAN
 git diff --check                               PASS
 ```
 
-A Windows-native `.exe` packaging run is intentionally not fabricated from Linux Codespace. The Milestone-1 source/configuration is Windows-oriented and Tauri-ready; actual Windows package execution can be certified later when a Windows build host/Agent Core endpoint is available.
+A Windows-native `.exe` packaging run is intentionally not fabricated from Linux Codespace. The Milestone-1 source/configuration is Windows-oriented and Tauri-ready. This Ubuntu 20.04 Codespace verifies Cargo metadata and the Rust/Tauri source/configuration boundary, but it does not have WebKitGTK 4.1 graphical prerequisites and is not used as a Linux desktop certification host. Actual Windows package execution remains a separate later certification when a Windows build host/Agent Core endpoint is available.

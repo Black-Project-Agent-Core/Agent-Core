@@ -11,6 +11,8 @@ npm run dev
 npm test
 npm run typecheck
 npm run build
+npm run test:tauri-contract
+npm run test:visual
 ```
 
 The Vite development server listens on port `1420` because that is the URL configured for the Tauri development shell.
@@ -24,7 +26,7 @@ bash scripts/codespace-bootstrap.sh
 source "$HOME/.cargo/env"
 ```
 
-The bootstrap installs the stable Rust toolchain through `rustup` when necessary and then restores npm dependencies using the committed lockfile. Later visual-certification work extends the same script with the browser dependency required by the acceptance suite.
+The bootstrap installs the stable Rust toolchain through `rustup` when necessary, restores npm dependencies using the committed lockfile, and installs the pinned Playwright Chromium build used by the visual acceptance suite.
 
 ## Tauri desktop shell
 
@@ -42,7 +44,9 @@ The command-prompt Agent Code mark is used as the native application icon. The A
 
 ## Platform verification boundary
 
-The Codespace is Linux. It can verify the React/Vite build, Tauri configuration, Cargo metadata, Rust/Tauri environment, generated Windows icon assets, and later browser-based visual acceptance. It **cannot truthfully certify a Windows `.exe` bundle or native Windows launch**. That packaging/runtime check belongs on a Windows build host when one is available.
+The Codespace is Ubuntu 20.04 Linux. It verifies the React/Vite build, Tauri configuration, Cargo metadata, Rust toolchain, generated Windows icon assets, and browser-based visual acceptance at 1280×800, 1440×900, and 980×680. Tauri reports that this host lacks WebKitGTK 4.1/rsvg graphical prerequisites; Ubuntu 20.04 does not provide the required WebKitGTK 4.1 development package in its configured repositories. Those Linux graphical libraries are not installed because Agent Code Milestone 1 targets Windows and does not claim a native Linux desktop build.
+
+The Codespace therefore **cannot truthfully certify a Windows `.exe` bundle or native Windows launch**. That packaging/runtime check belongs on a Windows build host when one is available.
 
 ## Milestone 1 non-goals
 
