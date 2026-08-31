@@ -380,7 +380,7 @@ external AI model/API dependency           0
 One full-suite run exposed a timing-only test flake in the Wave D audit-journal test. The production journal was unchanged; `c547c93` replaced a fixed 10 ms sleep with deterministic append-start synchronization. The focused test then passed and was repeated 10/10 before the fresh merged-main release gate above passed.
 
 
-## Wave F adaptive resource governance pre-integration certification
+## Wave F adaptive resource governance production technical certification
 
 Wave F remains a local deterministic control-plane feature. Resource pressure can reduce only the number of **new** execution nodes dispatched; it never changes process/result truth, terminates already-running work, raises concurrency above the run/operator maximum, or invokes an external AI/model/API.
 
@@ -413,7 +413,28 @@ legacy / modern MCP                          2025-11-25/55 / 2026-07-28/55 PASS
 
 `LocalMaintenanceCoordinator` has no import/invocation path for retention apply, recovery restore, credential revocation/rotation, or filesystem deletion. Its scheduled work is limited to memory/execution integrity-status reads and `planExecutionRetention` dry-run planning. The existing execution runtime lease is unchanged.
 
-Feature-branch evidence is not production certification. Wave F becomes production-certified only after merged-main verification, non-force publication readback, controlled Codespace source-sync, source SHA equality, live audit verification, and public runtime canary.
+The feature evidence above was subsequently integrated with two concurrent Super-Runtime main histories without conflict. Technical production source `3f27cedbf35826cd45ad172ebd250e68f335437d` passed fresh `verify:release`, was published to `main` non-force, source-synced into the Codespace runtime, and passed production health/audit/public/MCP certification. Final docs-publication/source-sync housekeeping is tracked separately before the roadmap marks Wave F complete.
+
+
+Production technical runtime evidence:
+
+```text
+technical production source             3f27cedbf35826cd45ad172ebd250e68f335437d
+HEAD == origin/main == sourceCommit     PASS
+health / memory / execution             ok / ok / ok
+public health / remote metrics          200 / 403
+MCP no-token / evil Origin              401 / 403
+correlation headers                     PASS
+resource governance                     enabled; safe 4 / operator max 4
+maintenance                             disabled by default; 0 runs; 0 candidates
+legacy MCP                              2025-11-25 / 55 tools PASS
+modern MCP                              2026-07-28 / 55 tools PASS
+live audit                              216 records / verify PASS
+temporary canary key                    revoked PASS
+unrelated .vscode editor state          preserved
+```
+
+One temporary-key public canary produced a non-reproducing 401 only on its modern request. The key was immediately revoked and verified revoked. Modern discovery/tools then returned 200 both loopback and public using the established runtime connector key, and the final comprehensive public canary passed both protocol eras. No source change was made from that isolated observation.
 
 ## Last core certification
 

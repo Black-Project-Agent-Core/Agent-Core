@@ -161,9 +161,9 @@
 - [x] **Step 5: Run fresh feature-branch `npm run verify:release` and record exact files/tests/skips.**
 - [x] **Step 6: Run local/public trust-boundary and dual-era MCP canaries; require same tool count in legacy/modern and Wave A security behavior.**
 - [x] **Step 7: Update docs with exact Wave F metrics/evidence, commit, push feature branch, and require SHA equality.**
-- [x] **Step 8: Fetch `origin/main`; reconcile concurrent main changes explicitly and never reset unrelated local work.** `origin/main` advanced from the Wave F base to `40b5ae256778c7df3159c7400aa483fcb6a42f5a` with nine Super-Runtime/research commits. Path-overlap audit found zero overlap with Wave F; merge `4fe71d581bb22bc43a766ed1f60f8e43d92d7663` preserved both histories without conflict, then fresh `npm ci` + `npm run verify:release` passed at that merged tree.
-- [ ] **Step 9: Fast-forward/integrate only if topology is compatible; fresh merged-main `npm ci` + `npm run verify:release`; non-force push; local/remote equality.**
-- [ ] **Step 10: Controlled Codespace source-sync and require `HEAD == origin/main == connection.sourceCommit`; final health/audit/public/MCP canary.**
+- [x] **Step 8: Fetch `origin/main`; reconcile concurrent main changes explicitly and never reset unrelated local work.** `origin/main` first advanced from the Wave F base to `40b5ae256778c7df3159c7400aa483fcb6a42f5a` with nine Super-Runtime/research commits. Path-overlap audit found zero Wave F-authored overlap; merge `4fe71d581bb22bc43a766ed1f60f8e43d92d7663` preserved both histories without conflict and fresh `npm ci` + `npm run verify:release` passed. Immediately before publication `origin/main` advanced again to `a4869112ad39739a42a61e6d58a790bcc4e0b627` with a Super-Runtime Phase-0 research commit; merge-tree again showed no conflict and merge `3f27cedbf35826cd45ad172ebd250e68f335437d` preserved both histories.
+- [x] **Step 9: Fast-forward/integrate only if topology is compatible; fresh merged-main `npm ci` + `npm run verify:release`; non-force push; local/remote equality.** Exact production candidate `3f27cedbf35826cd45ad172ebd250e68f335437d` passed fresh `npm run verify:release` with 136 files / 663 tests PASS / 38 skips and Wave E quality gate PASS. `origin/main` was still its ancestor immediately before publication; non-force `HEAD:main` advanced `a486911` to `3f27ced`, and fetch/readback proved remote equality.
+- [x] **Step 10: Controlled Codespace source-sync and require `HEAD == origin/main == connection.sourceCommit`; final health/audit/public/MCP canary.** Direct bounded `sync-source.sh` fast-forwarded the tracked-clean local main from `a486911` to `3f27ced` while preserving unrelated untracked `.vscode/`; lifecycle repair then activated the synchronized build. Final equality proved `HEAD == origin/main == connection.sourceCommit == 3f27ced`, health/memory/execution integrity were `ok`, public health/remote-metrics/no-token/evil-Origin were `200/403/401/403`, resource governance was present and bounded at `4/4`, maintenance remained disabled by default, legacy/modern MCP were `2025-11-25/55` and `2026-07-28/55`, and live audit verification passed with 216 records.
 - [ ] **Step 11: Publish final docs-only certification if needed, source-sync to its SHA, remove only Wave F local worktree/branch after equality; retain remote Wave F branch for audit.**
 
 
@@ -206,32 +206,46 @@ legacy MCP                                 2025-11-25 / 55 tools PASS
 modern MCP                                 2026-07-28 / 55 tools PASS
 ```
 
-Concurrent-main reconciliation evidence:
+Concurrent-main reconciliation and production technical evidence:
 
 ```text
-remote main before reconciliation            40b5ae256778c7df3159c7400aa483fcb6a42f5a
-Wave F feature before reconciliation         cbd106216903aef343fc1cae9e54a3bb324b5398
-common Wave F base                           047c62f112982ec0f33cd36b5cd133e39906015e
-changed-path overlap                         0
-merge conflict count                         0
-reconciled merge SHA                         4fe71d581bb22bc43a766ed1f60f8e43d92d7663
-merged-tree npm ci                           PASS / 0 vulnerabilities
-merged-tree verify:release                   136 files / 663 tests PASS / 38 skips
-merged-tree Wave E quality:gate              PASS
+Wave F common base                           047c62f112982ec0f33cd36b5cd133e39906015e
+first concurrent origin/main                 40b5ae256778c7df3159c7400aa483fcb6a42f5a
+Wave F feature before first reconciliation   cbd106216903aef343fc1cae9e54a3bb324b5398
+first merge                                  4fe71d581bb22bc43a766ed1f60f8e43d92d7663
+first merge conflicts                        0
+second concurrent origin/main                a4869112ad39739a42a61e6d58a790bcc4e0b627
+second merge / technical production source   3f27cedbf35826cd45ad172ebd250e68f335437d
+second merge conflicts                       0
+exact production verify:release              136 files / 663 tests PASS / 38 skips
+production Wave E quality:gate               PASS
+non-force main publication/readback          PASS
+HEAD == origin/main == sourceCommit          3f27cedbf35826cd45ad172ebd250e68f335437d PASS
+runtime health / memory / execution           ok / ok / ok
+public health / remote metrics               200 / 403
+MCP no-token / evil Origin                   401 / 403
+resource safe / operator max                 4 / 4
+maintenance enabled                          false
+legacy / modern MCP                          2025-11-25/55 / 2026-07-28/55 PASS
+live audit                                   216 records / verify PASS
+temporary production-canary key              revoked PASS
+unrelated untracked .vscode                  preserved
 ```
 
 The first feature canary deliberately constructed a runtime with execution disabled and exposed the pre-existing `ExecutionStore.systemCounts()` health limitation for an unopened disabled execution store. That harness configuration does not match the production default and no Wave F production patch was made for it. The corrected feature canary used the production-default execution-enabled/open lifecycle and passed every trust-boundary, Wave F health-surface, and dual-era MCP assertion above.
 
+The first production public canary used a newly created temporary Agent Core key. The trust boundary, Wave F health surface and legacy MCP passed, while that single temporary-key modern request returned 401. Because the canary shell exited before its planned cleanup, the key was immediately located by metadata, revoked without printing the secret, and read back as `revoked=true`; audit verification passed afterward. The same modern request was then probed with the established runtime connector key and returned 200 on both loopback and the public Codespaces URL, while omission of the required `Mcp-Method` header returned the expected 400. The final comprehensive production canary passed both MCP eras at 55 tools. No protocol/source patch was justified by the non-reproducing temporary-key observation.
+
 ## Wave F Exit Matrix
 
 ```text
-operator max concurrency never exceeded              REQUIRED
-resource throttling reason codes persisted           REQUIRED
-running nodes preserved under pressure               REQUIRED
-unknown snapshot signals fail open within hard max   REQUIRED
-resource metrics bounded and identifier-free         REQUIRED
-diagnosis factual / recommendation-only              REQUIRED
-maintenance disabled by default                      REQUIRED
+operator max concurrency never exceeded              PASS
+resource throttling reason codes persisted           PASS
+running nodes preserved under pressure               PASS
+unknown snapshot signals fail open within hard max   PASS
+resource metrics bounded and identifier-free         PASS
+diagnosis factual / recommendation-only              PASS
+maintenance disabled by default                      PASS
 scheduled destructive maintenance call paths         0
 runtime lease semantics                              unchanged
 legacy/modern MCP tool count                         unchanged

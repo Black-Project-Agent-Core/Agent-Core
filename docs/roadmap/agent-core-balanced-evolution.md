@@ -1064,7 +1064,7 @@ temporary public key                    revoked PASS
 
 **Goal:** let Agent Core adapt local execution load to local factual conditions.
 
-**Implementation status:** feature-branch certification PASS on 2026-08-31 at `0a242b8424081248fb94e28cf7e289fd37aca55c`; merged-main publication/runtime certification remains pending.
+**Implementation status:** production technical certification PASS on 2026-08-31 at `3f27cedbf35826cd45ad172ebd250e68f335437d`; final docs-publication/source-sync housekeeping remains pending before Wave F is declared complete.
 
 Delivered scope:
 
@@ -1094,6 +1094,23 @@ package/dependency changes                 none
 external AI model/API dependency           0
 ```
 
+
+Production technical publication evidence:
+
+```text
+technical production source                  3f27cedbf35826cd45ad172ebd250e68f335437d
+concurrent-main histories preserved          PASS (two non-rebase merges, zero conflicts)
+exact production verify:release              136 files / 663 tests PASS / 38 skips
+HEAD == origin/main == sourceCommit          PASS
+runtime health / memory / execution          ok / ok / ok
+resource safe / operator max                 4 / 4
+maintenance default                          disabled
+public trust boundary                        health 200 / metrics 403 / no-token 401 / evil Origin 403
+legacy / modern MCP                          2025-11-25/55 / 2026-07-28/55 PASS
+live audit                                   216 records / verify PASS
+external AI model/API dependency             0
+```
+
 Exit gates:
 
 ```text
@@ -1102,7 +1119,7 @@ resource throttling has explicit reason codes           PASS
 no destructive scheduled maintenance call path          PASS
 no cloud model/API dependency                            PASS
 factual execution semantics unchanged                    PASS
-production publication/runtime equality                  PENDING
+production publication/runtime equality                  PASS
 ```
 
 ---
