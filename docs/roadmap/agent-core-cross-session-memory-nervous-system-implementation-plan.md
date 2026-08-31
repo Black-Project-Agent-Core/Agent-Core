@@ -262,6 +262,45 @@ Concurrent `origin/main` drift observed during certification consisted only of S
 
 **Certification cases:** solution→prior-failure, revision predecessor, branch parent, conflict history, explicit user expansion, strict max-hops/item/character bounds, project/principal isolation, deterministic replay.
 
+### Phase 3 certification — 2026-09-01
+
+**Status:** **CERTIFIED COMPLETE** for bounded, seed-authorized historical expansion and its read-only MCP surface.
+
+**Certified implementation SHA:** `627a3b57481489fc2725986f59cf58d246d917a3`
+
+**Remote audit branch:** `origin/feature/cross-session-memory-nervous-system`
+
+Fresh Phase 3 evidence on that exact implementation SHA:
+
+```text
+focused Phase 3 test files                     5 PASS
+focused Phase 3 tests                          30 PASS
+focused failures                               0
+memory_remember_more authenticated call        PASS
+model-facing memory MCP tools                  9
+full Agent Core MCP tools                      56
+full memory/continuity/execution-memory/MCP     49 test files PASS
+full subsystem tests                           202 PASS / 1 intentional skip
+subsystem failures                             0
+quality:gate                                   PASS
+Memory Recall@K / MRR                          1.0 / 1.0
+Cross-project contamination                    0
+Cross-principal contamination                  0
+Deterministic replay equality                  1.0
+100k preflight p95                             53.211 ms < 150 ms
+verify:release exit                            0
+full test files                                149 PASS / 2 skipped
+full tests                                     734 PASS / 38 intentional skips
+release failures                               0
+document links                                 45 markdown / 17 relative links PASS
+package.json / package-lock.json change        none
+new external AI/model/API integration          none
+```
+
+The engine accepts only seed memories proven by the supplied live authenticated `memory_contexts` + `memory_access_log` context. Revision predecessors, causal failure/solution/validation chains, branch parents, conflicts, and dependencies are traversed under fixed hard ceilings; weak associative relations never recurse. Only packed results are appended to `memory_recall_expansions`, and generated audit IDs/timestamps do not participate in the deterministic result snapshot hash. Default search/preflight remains current-revision-first.
+
+**Phase boundary:** Phase 3 adds historical explanation only. It does not add automatic expansion triggers, write-decision authority, new semantic-write policy, or universal remote write-through. Those remain Phase 4+ work.
+
 ## Phase 4 — Memory Cognition / Write Decision Controller
 
 **Purpose:** Force a postflight memory decision without forcing memory pollution.

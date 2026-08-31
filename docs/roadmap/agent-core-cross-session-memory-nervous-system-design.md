@@ -3659,3 +3659,143 @@ This is deliberately narrower than claiming universal write-through adoption. No
 ```text
 Phase 3 — bounded remember_more
 ```
+
+
+---
+
+# 61. Phase 3 Certification — Bounded `remember_more`
+
+## Certified implementation candidate
+
+```text
+branch                              feature/cross-session-memory-nervous-system
+implementation SHA                  627a3b57481489fc2725986f59cf58d246d917a3
+remote-visible candidate            yes / exact SHA equality
+Phase 3 base                        f9120a654277efc7571d18757edef05e4c7f4e75
+```
+
+## Implemented historical-expansion contract
+
+```text
+default maxHops                     2
+default maxItems                    4
+default characterBudget             6000
+hard seedMemoryIds ceiling          16
+hard maxHops ceiling                4
+hard maxItems ceiling               16
+hard characterBudget ceiling        20000
+seed authority                      live context + prior recall required
+arbitrary memory browsing           rejected
+principal/project isolation         mandatory at seed and target loads
+tombstoned expansion targets        excluded
+weak associative recursive history  excluded by relation policy
+conflict source                     edges + memory_conflicts
+branch source                       graph + node-metadata fallback
+result ordering                     deterministic fixed priority
+result snapshot                     SHA-256 stable JSON
+returned expansion audit            memory_recall_expansions
+default search/preflight behavior   current-revision-first unchanged
+```
+
+Priority remains revision predecessor, failure/cause, solution, validation, branch/derived, conflict, dependency/blocker, then other explicitly recursive history relations. The implementation also bounds internal frontier/edge/conflict expansion so request ceilings cannot become an unbounded graph walk.
+
+## MCP contract
+
+Exactly one model-facing tool was added:
+
+```text
+memory_remember_more
+readOnlyHint                         true
+destructiveHint                      false
+idempotentHint                       true
+openWorldHint                        false
+memory tool count                    9
+full Agent Core tool count           56
+```
+
+An authenticated MCP acceptance path proved that a solution already recalled in a valid memory context can expand to its historical failure while an arbitrary/unrecalled seed cannot be used as a history browser.
+
+## Fresh certification gates
+
+Focused Phase 3 suite:
+
+```text
+5 test files PASS
+30 tests PASS
+0 failures
+```
+
+Broad memory/continuity/execution-memory/MCP regression:
+
+```text
+49 test files PASS
+202 tests PASS
+1 intentional skip
+0 failures
+```
+
+Deterministic quality gate:
+
+```text
+Memory Recall@K                     1.0
+Memory MRR                          1.0
+Hard guardrail recall               1.0
+Current revision correctness        1.0
+Prior failure recall                1.0
+Graph target recall                 1.0
+Conflict visibility                 1.0
+Artifact/procedure recall           1.0
+Noise displacement                  0
+Cross-project contamination         0
+Cross-principal contamination       0
+Character-budget correctness        1.0
+Deterministic replay equality       1.0
+Routing tier accuracy               0.975
+Unsafe overpermission rate          0
+False high-impact rate              0
+Routing deterministic replay        1.0
+```
+
+100k-memory performance gate:
+
+```text
+active memories                     100001
+SQLite integrity                    ok
+samples                             25
+warmups                             5
+preflight p95                       53.211 ms
+target                              <150 ms
+result                              PASS
+```
+
+Full release verification on the implementation candidate reached terminal exit code `0`:
+
+```text
+npm run verify:release              PASS
+brand scan                          PASS
+TypeScript build                    PASS
+Codespace build                     PASS
+full test files                     149 PASS / 2 skipped
+full tests                          734 PASS / 38 intentional skips
+failures                            0
+quality:gate                        PASS
+release consistency                 PASS
+Agent Core version                  0.6.0
+server version                      0.6.0
+document links                      45 markdown / 17 relative links PASS
+```
+
+Dependency/model guardrails from the Phase 2 certification base remain unchanged:
+
+```text
+package.json / package-lock.json change       none
+new OpenAI source/dependency integration      none
+new Anthropic source/dependency integration   none
+new Gemini source/dependency integration      none
+new LangChain dependency/integration          none
+new LangGraph dependency/integration          none
+```
+
+## Phase boundary
+
+Phase 3 is therefore **CERTIFIED COMPLETE** for bounded historical expansion, authenticated seed authority, deterministic packing, expansion auditing, and the read-only MCP interface. It deliberately does not implement the Phase 4 write-decision controller, automatic expansion policy, or universal remote write-through adoption.
