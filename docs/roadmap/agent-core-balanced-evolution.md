@@ -1,7 +1,7 @@
 # Agent Core Balanced Evolution — Evidence-Backed Upgrade Proposal
 
 **Date:** 2026-08-31
-**Status:** APPROVED ROADMAP — WAVE A IMPLEMENTED, FULL A6/A7 CERTIFICATION PENDING; WAVES B-G NOT IMPLEMENTED
+**Status:** APPROVED ROADMAP — WAVE A CERTIFIED COMPLETE; WAVES B-G NOT IMPLEMENTED
 **Scope:** Agent Core core only. Codespace is not an upgrade target in this proposal.
 **Strategy:** Hybrid compatibility — backward-compatible by default; a major change is allowed only when benefit is evidence-backed and a migration/rollback path exists.
 
@@ -774,9 +774,11 @@ A2 OAuth protected-resource binding       implemented + focused tests pass
 A3 MCP Origin validation                  implemented + focused tests pass
 A4 loopback-only detailed HTTP metrics    implemented + focused tests pass
 A5 canonical origin / trusted proxy       implemented + focused tests pass
-focused HTTP/OAuth/security matrix         42 / 42 tests pass
-full repository regression                 pending A7
-live local compatibility canary            pending A7
+focused final Wave A acceptance            7 files / 58 tests PASS
+full repository regression                 111 files / 527 tests PASS; 38 intentional skips
+release verification                       PASS
+live local compatibility canary            PASS
+external AI model/API dependency added     0
 ```
 
 Exit gates:

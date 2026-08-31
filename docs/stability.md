@@ -48,6 +48,25 @@ AGENT_CORE_MCP_ALLOWED_ORIGINS=<origin;origin;...>  optional browser-origin host
 
 Rollback is configuration-local: remove `AGENT_CORE_PUBLIC_BASE_URL` when canonical identity is not desired, keep `AGENT_CORE_TRUST_PROXY=false` for direct deployments, and use the authenticated MCP metrics tool instead of exposing detailed HTTP metrics remotely. The security fixes for cross-resource OAuth replay, browser-Origin rejection, and project audit isolation are not intended to have permissive fallback modes.
 
+### Wave A certification evidence
+
+Wave A was certified locally on 2026-08-31. Final evidence from the post-hardening source state:
+
+```text
+focused trust-boundary acceptance  7 files / 58 tests PASS
+npm run verify                     PASS
+full regression                    111 files / 527 tests PASS
+intentional platform/perf skips    38 tests
+npm run verify:release             PASS
+release metadata consistency       PASS
+document links                     PASS
+live temporary-instance canary     PASS
+package/dependency changes          none
+external AI model/API dependency   0
+```
+
+The live canary used temporary storage and a temporary loopback port with GitHub disabled; it did not consume production secrets. It proved local readiness and detailed metrics, non-browser MCP compatibility, browser-Origin rejection, and canonical OAuth issuer/resource agreement.
+
 ## Last core certification
 
 The final continuity/execution core certification was completed on 2026-08-26 after the execution WAL durability fix and staged default-enabled rollout.
