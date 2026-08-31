@@ -35,6 +35,8 @@ export AGENT_CORE_EXECUTION_DB_PATH="$AGENT_CORE_CODESPACE_HOME/execution/agent-
 export AGENT_CORE_EXECUTION_LOG_ROOT="$AGENT_CORE_CODESPACE_HOME/execution/runs"
 export AGENT_CORE_GITHUB_TOKEN_FILE="$AGENT_CORE_REPO_ROOT/secrets/github/gh-token.txt"
 export AGENT_CORE_GITHUB_PACKAGES_TOKEN_FILE="$AGENT_CORE_REPO_ROOT/secrets/github/packages-token.txt"
+# GitHub Codespaces is a known reverse-proxy boundary; core defaults remain fail-closed.
+export AGENT_CORE_TRUST_PROXY=true
 
 echo $$ > "$AGENT_CORE_CODESPACE_HOME/agent-core.pid"
 exec "$NODE_BIN" dist/index.js >> "$AGENT_CORE_CODESPACE_HOME/logs/agent-core.log" 2>&1

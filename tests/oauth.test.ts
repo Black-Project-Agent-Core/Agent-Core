@@ -23,13 +23,17 @@ function pkce(verifier: string): string {
   return createHash('sha256').update(verifier).digest('base64url');
 }
 
-async function setup() {
+async function setup(httpSecurity?: {
+  publicBaseUrl: string | null;
+  trustProxy: boolean;
+  allowedOrigins: string[];
+}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-oauth-'));
   roots.push(root);
   const dataDir = path.join(root, 'data');
   const keyStore = new FileKeyStore(dataDir);
   const oauthStore = new FileOAuthStore(dataDir);
-  const oauthService = new OAuthService(keyStore, oauthStore, new HttpSecurityPolicy({
+  const oauthService = new OAuthService(keyStore, oauthStore, new HttpSecurityPolicy(httpSecurity ?? {
     publicBaseUrl: null,
     trustProxy: true,
     allowedOrigins: [],
@@ -114,6 +118,38 @@ describe('Agent Core OAuth bridge', () => {
       grant_types_supported: ['authorization_code', 'refresh_token'],
       scopes_supported: ['mcp:tools', 'offline_access'],
     });
+  });
+
+  it('ignores spoofed forwarded identity when trusted-proxy mode is disabled', async () => {
+    const { baseUrl } = await setup({ publicBaseUrl: null, trustProxy: false, allowedOrigins: [] });
+    const protectedResource = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`, {
+      headers: {
+        'x-forwarded-proto': 'https',
+        'x-forwarded-host': 'spoofed.example.test',
+      },
+    });
+    expect(protectedResource.status).toBe(200);
+    expect(await protectedResource.json()).toMatchObject({
+      resource: `${baseUrl}/mcp`,
+      authorization_servers: [baseUrl],
+    });
+  });
+
+  it('keeps issuer and protected resource canonical when publicBaseUrl is configured', async () => {
+    const canonical = 'https://canonical-agent-core.example';
+    const { baseUrl } = await setup({ publicBaseUrl: canonical, trustProxy: true, allowedOrigins: [] });
+    const headers = {
+      host: new URL(baseUrl).host,
+      'x-forwarded-proto': 'http',
+      'x-forwarded-host': 'spoofed.example.test',
+    };
+    const protectedResource = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`, { headers });
+    const metadata = await fetch(`${baseUrl}/.well-known/oauth-authorization-server`, { headers });
+    expect(await protectedResource.json()).toMatchObject({
+      resource: `${canonical}/mcp`,
+      authorization_servers: [canonical],
+    });
+    expect(await metadata.json()).toMatchObject({ issuer: canonical });
   });
 
   it('registers a confidential OAuth client without storing its raw secret', async () => {

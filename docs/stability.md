@@ -18,6 +18,36 @@ The current stable baseline covers:
 - Windows launcher/tray graceful shutdown and restart;
 - legacy operational-tool regression safety.
 
+## Wave A trust-boundary contract
+
+Wave A narrows Agent Core HTTP/OAuth and operational-audit trust boundaries without adding any external AI model, agent provider, or model API key.
+
+The contract is:
+
+```text
+operational audit projectId = routed/stored operation projectId
+OAuth access-token resource = canonical <base>/mcp resource
+missing MCP Origin          = allowed for non-browser clients
+invalid/untrusted Origin    = HTTP 403 before authentication/dispatch
+GET /health                 = anonymous lightweight readiness
+GET /health/metrics         = loopback-only detailed diagnostics
+agent_core_health_metrics   = authenticated remote-capable detailed diagnostics
+X-Forwarded-* trust         = disabled by default
+canonical public identity   = AGENT_CORE_PUBLIC_BASE_URL when configured
+```
+
+HTTP trust configuration:
+
+```text
+AGENT_CORE_PUBLIC_BASE_URL=<http-or-https-origin>   optional canonical issuer/resource origin
+AGENT_CORE_TRUST_PROXY=true|false                   default false
+AGENT_CORE_MCP_ALLOWED_ORIGINS=<origin;origin;...>  optional browser-origin hostname allowlist
+```
+
+`AGENT_CORE_PUBLIC_BASE_URL` is authoritative when set. Otherwise forwarded host/protocol are used only when `AGENT_CORE_TRUST_PROXY=true`; direct requests cannot manufacture a public OAuth identity merely by sending `X-Forwarded-*` headers. The known GitHub Codespaces reverse-proxy integration opts into trusted-proxy mode explicitly in its startup script; the Agent Core core default remains false.
+
+Rollback is configuration-local: remove `AGENT_CORE_PUBLIC_BASE_URL` when canonical identity is not desired, keep `AGENT_CORE_TRUST_PROXY=false` for direct deployments, and use the authenticated MCP metrics tool instead of exposing detailed HTTP metrics remotely. The security fixes for cross-resource OAuth replay, browser-Origin rejection, and project audit isolation are not intended to have permissive fallback modes.
+
 ## Last core certification
 
 The final continuity/execution core certification was completed on 2026-08-26 after the execution WAL durability fix and staged default-enabled rollout.
