@@ -97,13 +97,13 @@
 - Modify: `tests/routing-quality.test.ts`
 - Modify: existing routing regression tests only to preserve intended certified behavior, never to weaken corpus expectations.
 
-- [ ] **Step 1: Identify failing routing metrics/case IDs from the committed baseline.** If all routing gates already pass, record `ROUTING_TUNING=NOT_REQUIRED` and skip Steps 2-6.
-- [ ] **Step 2: Add focused RED regression tests** for each proven failure before changing production logic.
-- [ ] **Step 3: Implement the smallest deterministic fix.** Preferred candidate order: intent-specific allowed tools for non-atomic read-only routes; higher precision high-impact matching; token-boundary capability scoring; skill threshold adjustment. Do not combine unrelated changes in one commit.
-- [ ] **Step 4: Run focused GREEN tests** after each change plus the entire routing corpus.
-- [ ] **Step 5: Compare new scorecard to pre-tuning baseline** and require target metric improvement with zero regression in any certified routing metric.
-- [ ] **Step 6: Run router/MCP route enforcement/project-scope regressions and `npm run build`.
-- [ ] **Step 7: Commit each independently reviewable tuning change** with a message describing the measured gap, then update the plan with before/after metrics.
+- [x] **Step 1: Identify failing routing metrics/case IDs from the committed baseline.** If all routing gates already pass, record `ROUTING_TUNING=NOT_REQUIRED` and skip Steps 2-6.
+- [x] **Step 2: Add focused RED regression tests** for each proven failure before changing production logic.
+- [x] **Step 3: Implement the smallest deterministic fix.** Preferred candidate order: intent-specific allowed tools for non-atomic read-only routes; higher precision high-impact matching; token-boundary capability scoring; skill threshold adjustment. Do not combine unrelated changes in one commit.
+- [x] **Step 4: Run focused GREEN tests** after each change plus the entire routing corpus.
+- [x] **Step 5: Compare new scorecard to pre-tuning baseline** and require target metric improvement with zero regression in any certified routing metric.
+- [x] **Step 6: Run router/MCP route enforcement/project-scope regressions and `npm run build`.
+- [x] **Step 7: Commit each independently reviewable tuning change** with a message describing the measured gap, then update the plan with before/after metrics.
 
 ### Task E5: Evidence-backed memory tuning
 
@@ -113,13 +113,13 @@
 - Modify: `tests/memory-quality.test.ts`
 - Modify existing memory tests only to add regressions, never to loosen isolation/guardrail/current-revision expectations.
 
-- [ ] **Step 1: Identify failing memory metrics/case IDs from the committed baseline.** If all memory gates pass, record `MEMORY_TUNING=NOT_REQUIRED` and skip Steps 2-6.
-- [ ] **Step 2: Add RED regression tests** for the proven gap.
-- [ ] **Step 3: Implement the smallest deterministic change.** Do not adjust `scoreWeights` unless the corpus proves a ranking deficiency that cannot be fixed by a narrower retrieval/packing correction.
-- [ ] **Step 4: Run focused GREEN tests**, the full memory corpus, memory-awareness, memory-retriever, memory-routing, isolation tests, and memory-performance.
-- [ ] **Step 5: Compare scorecard to baseline** and require all zero-tolerance metrics remain perfect.
-- [ ] **Step 6: If weights change, document exact old/new values and the cases/metrics that justify them.** Otherwise explicitly document no weight change.
-- [ ] **Step 7: Commit** only after measurable improvement/preservation is proven.
+- [x] **Step 1: Identify failing memory metrics/case IDs from the committed baseline.** If all memory gates pass, record `MEMORY_TUNING=NOT_REQUIRED` and skip Steps 2-6.
+- [x] **Step 2: Add RED regression tests** for the proven gap.
+- [x] **Step 3: Implement the smallest deterministic change.** Do not adjust `scoreWeights` unless the corpus proves a ranking deficiency that cannot be fixed by a narrower retrieval/packing correction.
+- [x] **Step 4: Run focused GREEN tests**, the full memory corpus, memory-awareness, memory-retriever, memory-routing, isolation tests, and memory-performance.
+- [x] **Step 5: Compare scorecard to baseline** and require all zero-tolerance metrics remain perfect.
+- [x] **Step 6: If weights change, document exact old/new values and the cases/metrics that justify them.** Otherwise explicitly document no weight change.
+- [x] **Step 7: Commit** only after measurable improvement/preservation is proven.
 
 ### Task E6: Promote quality evaluation to a release gate
 
@@ -128,11 +128,70 @@
 - Modify if needed: release verification script chain
 - Modify: `tests/release-package.test.ts` or a focused release-contract test if the repository has a suitable assertion surface.
 
-- [ ] **Step 1: Write RED contract test** proving `verify:release` includes Wave E quality gate after normal build/test prerequisites.
-- [ ] **Step 2: Add `quality:gate` to the release verification path** in a position where compiled evaluator code exists and before release metadata certification completes.
-- [ ] **Step 3: Run `npm run quality:gate` and focused release-contract tests.** Require all Wave E thresholds PASS.
-- [ ] **Step 4: Run `npm run verify:release` once on the feature branch and confirm no tool-surface/dependency regression.
-- [ ] **Step 5: Commit** `test: enforce routing and memory quality gate`.
+- [x] **Step 1: Write RED contract test** proving `verify:release` includes Wave E quality gate after normal build/test prerequisites.
+- [x] **Step 2: Add `quality:gate` to the release verification path** in a position where compiled evaluator code exists and before release metadata certification completes.
+- [x] **Step 3: Run `npm run quality:gate` and focused release-contract tests.** Require all Wave E thresholds PASS.
+- [x] **Step 4: Run `npm run verify:release` once on the feature branch and confirm no tool-surface/dependency regression.
+- [x] **Step 5: Commit** `test: enforce routing and memory quality gate`.
+
+## Wave E Tuning Evidence — 2026-08-31
+
+Routing baseline → current gate metrics:
+
+```text
+tier accuracy                     0.9250 -> 0.9750
+false high-impact rate            0.0571 -> 0
+unsafe overpermission             0.2250 -> 0
+false read-only classification    0.4737 -> 0
+relevant skill precision@2        0.5278 -> 1.0000
+unnecessary skill-load rate       0.0833 -> 0
+verification correctness          1.0000 -> 1.0000
+routing determinism               1.0000 -> 1.0000
+```
+
+Routing tuning commits:
+
+```text
+6da4085  fix: reduce capability ranking noise
+22c7bb9  fix: enforce least privilege routing intent
+559981e  fix: filter weak route recommendations
+c11de06  fix: preserve memory-guided route candidates
+1674a05  fix: preserve debugger capability matching
+```
+
+Memory baseline → current gate metrics:
+
+```text
+Recall@K                          1.0000 -> 1.0000
+MRR                               0.9375 -> 1.0000
+hard-guardrail recall             1.0000 -> 1.0000
+current-revision correctness      1.0000 -> 1.0000
+prior-failure recall              1.0000 -> 1.0000
+graph-target recall               1.0000 -> 1.0000
+conflict visibility               1.0000 -> 1.0000
+artifact/procedure recall         1.0000 -> 1.0000
+noise displacement rate           0.2500 -> 0
+cross-project contamination       0 -> 0
+cross-principal contamination     0 -> 0
+character-budget correctness      1.0000 -> 1.0000
+memory determinism                1.0000 -> 1.0000
+```
+
+Memory tuning commit:
+
+```text
+3342f7f  fix: prioritize pinned decisions over chatter
+```
+
+No memory score weight changed. `src/config.ts` and `src/memory/scoring.ts` are byte-identical to the Wave D base for the scoring configuration. The measured failure was fixed with a narrower deterministic ordering rule for active pinned decisions instead of global weight tuning.
+
+Release-gate promotion:
+
+```text
+4d7ce96  test: enforce routing and memory quality gate
+verify:release = npm run verify -> npm run quality:gate -> release metadata/link checks
+current quality:gate exit = 0
+```
 
 ### Task E7: Performance, adversarial acceptance, documentation, and integration
 
