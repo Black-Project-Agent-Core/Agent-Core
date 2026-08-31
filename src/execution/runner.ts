@@ -5,6 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import { evaluateExecutionIntent } from '../runtime/command-policy.js';
 import { processGovernanceCapabilities, spawnManagedCommand, terminateManagedProcessTree } from '../runtime/process-governance.js';
 import type { WorkspacePolicy } from '../runtime/workspace.js';
+import { correlationFields, currentCorrelation } from '../observability/correlation.js';
 import type { ValidatedExecutionNode } from './dag.js';
 import { verifyExecutionArtifacts, type ExecutionEvidenceManifest } from './evidence.js';
 import type { ExecutionLogStore, ExecutionResultMarker, ExecutionResultState } from './log-store.js';
@@ -121,6 +122,18 @@ export class ExecutionCommandRunner {
   ): Promise<ExecutionRunHandle> {
     const paths = await this.logs.prepareAttempt(runId, node.id, attemptNo);
     const startedAt = Date.now();
+    const activeCorrelation = currentCorrelation();
+    const correlation: import('./log-store.js').ExecutionResultCorrelation | undefined = activeCorrelation ? {
+      requestId: activeCorrelation.requestId,
+      trace_id: activeCorrelation.traceId,
+      span_id: activeCorrelation.spanId,
+      trace_flags: activeCorrelation.traceFlags,
+      ...(activeCorrelation.routeContextId ? { routeContextId: activeCorrelation.routeContextId } : {}),
+      ...(activeCorrelation.toolName ? { toolName: activeCorrelation.toolName } : {}),
+      runId,
+      nodeId: node.id,
+      attemptId,
+    } : undefined;
     const stdoutEvidence: StreamEvidence = { bytes: 0, hash: createHash('sha256') };
     const stderrEvidence: StreamEvidence = { bytes: 0, hash: createHash('sha256') };
     const pendingOutputNotifications = new Set<Promise<void>>();
@@ -219,6 +232,7 @@ export class ExecutionCommandRunner {
         stdoutSha256: stdoutEvidence.hash.digest('hex'),
         stderrSha256: stderrEvidence.hash.digest('hex'),
         governance,
+        ...(correlation ? { correlation } : {}),
       };
       let marker: ExecutionResultMarker;
       if (node.expectedArtifacts.length > 0) {

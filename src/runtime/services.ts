@@ -8,7 +8,7 @@ import { ExecutionMemoryPreSearch } from '../execution/memory-search.js';
 import { ExecutionService } from '../execution/service.js';
 import { ExecutionStore } from '../execution/store.js';
 import { GitHubService, type GitHubServiceDependencies } from '../github/service.js';
-import type { RoutingAuditLogger } from '../logging/audit-log.js';
+import { NOOP_RUNTIME_AUDIT_LOGGER, type RoutingAuditLogger, type RuntimeAuditLogger } from '../logging/audit-log.js';
 import { MemoryService } from '../memory/service.js';
 import { FileSystemService } from './filesystem.js';
 import { ProcessManager } from './process-manager.js';
@@ -30,6 +30,7 @@ export interface RuntimeServices {
   execution: ExecutionService;
   github: GitHubService;
   metrics: RuntimeMetricRegistry;
+  audit: RuntimeAuditLogger;
   healthMetrics: RuntimeHealthMetrics;
 }
 
@@ -49,6 +50,10 @@ export function createRuntimeServices(
   const resolvedExecutionConfig = executionConfig ?? defaults.execution;
   const resolvedGitHubConfig = githubConfig ?? defaults.github;
   const metrics = new RuntimeMetricRegistry();
+  const runtimeAudit = routingAuditLogger && 'logRuntime' in routingAuditLogger
+    && typeof (routingAuditLogger as RoutingAuditLogger & Partial<RuntimeAuditLogger>).logRuntime === 'function'
+    ? routingAuditLogger as RoutingAuditLogger & RuntimeAuditLogger
+    : NOOP_RUNTIME_AUDIT_LOGGER;
   const memory = new MemoryService(resolvedMemoryConfig, metrics);
   const executionStore = new ExecutionStore();
   const executionBridge = new ExecutionMemoryBridge(
@@ -74,6 +79,7 @@ export function createRuntimeServices(
     execution,
     github: new GitHubService(resolvedGitHubConfig, workspace, { ...githubDependencies, metrics }),
     metrics,
+    audit: runtimeAudit,
   } as Omit<RuntimeServices, 'healthMetrics'> & { healthMetrics?: RuntimeHealthMetrics };
   runtime.healthMetrics = new RuntimeHealthMetrics(runtime as RuntimeServices);
   return runtime as RuntimeServices;

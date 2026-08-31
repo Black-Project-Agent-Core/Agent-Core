@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -17,13 +17,14 @@ const roots: string[] = [];
 const servers: Server[] = [];
 const runtimes: RuntimeServices[] = [];
 
-async function call(baseUrl: string, key: string, name: string, args: Record<string, unknown>) {
+async function call(baseUrl: string, key: string, name: string, args: Record<string, unknown>, traceparent?: string) {
   const response = await fetch(`${baseUrl}/mcp`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
+      ...(traceparent ? { traceparent } : {}),
     },
     body: JSON.stringify({ jsonrpc: '2.0', id: 72, method: 'tools/call', params: { name, arguments: args } }),
   });
@@ -317,4 +318,32 @@ describe('automatic operational evidence capture', () => {
     expect(terminalMetadata.result.stdoutBytes).toBeGreaterThan(0);
     expect(terminalMetadata.input.sessionId).toBe(sessionId);
   }, 15_000);
+  it('adds active request correlation to structured operational memory metadata without changing redacted evidence', async () => {
+    const f = await fixture();
+    const target = path.join(f.root, 'correlated.txt');
+    await writeFile(target, 'safe-content', 'utf8');
+    const traceId = 'cccccccccccccccccccccccccccccccc';
+    const traceparent = `00-${traceId}-dddddddddddddddd-01`;
+    const route = body(await call(f.baseUrl, f.principal.key, 'capability_route', {
+      task: `Read ${target}`,
+      context: `Workspace root is ${f.root}`,
+    }, traceparent));
+    const result = await call(f.baseUrl, f.principal.key, 'read_file', {
+      path: target,
+      routeContextId: route.routeContextId,
+    }, traceparent);
+    expect(result.result.isError).not.toBe(true);
+
+    const events = readEvents(f.dbPath)
+      .filter((event) => event.event_type === 'memory.operation_succeeded');
+    expect(events.length).toBeGreaterThan(0);
+    const metadata = JSON.parse(String(events.at(-1)!.metadata_json));
+    expect(metadata.correlation).toMatchObject({
+      trace_id: traceId,
+      toolName: 'read_file',
+      routeContextId: route.routeContextId,
+    });
+    expect(String(events.at(-1)!.raw_text)).not.toContain('safe-content');
+  });
+
 });

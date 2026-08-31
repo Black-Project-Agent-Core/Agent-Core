@@ -3,6 +3,7 @@ import type { VerifiedKey } from '../auth/key-types.js';
 import type { RouteContext } from '../runtime/route-context-store.js';
 import type { RuntimeServices } from '../runtime/services.js';
 import { redactMemoryText } from './redaction.js';
+import { correlationFields } from '../observability/correlation.js';
 
 const MAX_PREVIEW_CHARS = 1000;
 const MAX_PATHS = 50;
@@ -222,7 +223,7 @@ export class OperationalMemoryAudit {
         sourceType: 'operational_audit',
         sourceRef: routeContextId,
         text: `${toolName} ${eventType.replace('memory.operation_', '')}`,
-        metadata: { routeContextId, toolName, ...metadata },
+        metadata: { routeContextId, toolName, correlation: correlationFields(), ...metadata },
       });
     } catch {
       // Operational audit is deliberately best-effort and must never mutate tool behavior.
@@ -250,6 +251,7 @@ export class OperationalMemoryAudit {
           error,
           affectedPaths,
           input,
+          correlation: correlationFields(),
         },
         importance: 0.85,
         sourceType: 'operational_audit',

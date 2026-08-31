@@ -35,11 +35,19 @@ export interface RoutingAuditLogger {
   logRouting(event: RoutingAuditEvent): void;
 }
 
+export interface RuntimeAuditLogger {
+  logRuntime(category: string, event: string, data?: Record<string, unknown>): void;
+}
+
 export const NOOP_ROUTING_AUDIT_LOGGER: RoutingAuditLogger = {
   logRouting: () => {},
 };
 
-export class FileAuditLogger implements AuditLogger, RoutingAuditLogger {
+export const NOOP_RUNTIME_AUDIT_LOGGER: RuntimeAuditLogger = {
+  logRuntime: () => {},
+};
+
+export class FileAuditLogger implements AuditLogger, RoutingAuditLogger, RuntimeAuditLogger {
   readonly journal: AuditJournal;
   readonly filePath: string;
 
@@ -56,6 +64,10 @@ export class FileAuditLogger implements AuditLogger, RoutingAuditLogger {
   logRouting(event: RoutingAuditEvent): void {
     const { event: name, timestamp, ...data } = event;
     this.journal.enqueue({ category: 'routing', event: name, timestamp, data });
+  }
+
+  logRuntime(category: string, event: string, data: Record<string, unknown> = {}): void {
+    this.journal.enqueue({ category, event, data });
   }
 
   drain(): Promise<void> {

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { correlationFields } from '../observability/correlation.js';
 import type { ExecutionConfig } from '../config.js';
 import type { ExecutionContinuitySummary } from '../continuity/snapshot.js';
 import type { WorkspacePolicy } from '../runtime/workspace.js';
@@ -254,12 +255,20 @@ export class ExecutionService {
     }
     const memoryPreSearch = await this.preSearch(scope, input.objective, graph.nodes);
     this.assertMemoryPreSearchAllowed(memoryPreSearch);
+    const createdBy = correlationFields();
+    const existingObservability = input.metadata?.observability && typeof input.metadata.observability === 'object'
+      && !Array.isArray(input.metadata.observability)
+      ? input.metadata.observability as Record<string, unknown>
+      : {};
+    const metadata = Object.keys(createdBy).length > 0
+      ? { ...(input.metadata ?? {}), observability: { ...existingObservability, createdBy } }
+      : input.metadata;
     const run = await this.store.createRun(scope, {
       objective: input.objective,
       continuityTaskId: input.continuityTaskId ?? randomUUID(),
       originRouteContextId: input.originRouteContextId,
       maxConcurrency: requestedConcurrency,
-      metadata: input.metadata,
+      metadata,
     });
     try {
       await this.store.persistGraph(scope, run.runId, graph.nodes);

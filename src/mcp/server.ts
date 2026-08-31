@@ -9,6 +9,7 @@ import { GITHUB_TOOL_NAMES, registerGitHubTools } from './github-tools.js';
 import { MEMORY_TOOL_NAMES, registerMemoryTools } from './memory-tools.js';
 import { HEALTH_METRICS_TOOL_NAMES, registerHealthMetricsTools } from './health-metrics.js';
 import { OPERATIONAL_TOOL_NAMES, registerOperationalTools } from './tools.js';
+import { instrumentToolRegistrations } from '../observability/tool-instrumentation.js';
 
 export const SERVER_NAME = 'agent-core';
 export const SERVER_VERSION = '0.5.4';
@@ -19,6 +20,7 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
     title: 'Agent Core',
     version: SERVER_VERSION,
   });
+  instrumentToolRegistrations(server, runtime);
 
   server.registerTool('agent_core_status', {
     title: 'Agent Core Status',

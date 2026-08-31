@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { ExecutionScope } from './types.js';
 import type { ExecutionStore } from './store.js';
 import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
+import { correlationFields } from '../observability/correlation.js';
 
 export const EXECUTION_EVENT_TYPES = [
   'run.created', 'run.started', 'node.queued', 'node.ready', 'node.started',
@@ -139,16 +140,20 @@ export class ExecutionEventJournal {
     options: { nodeId?: string; attemptId?: string; payload?: Record<string, unknown> } = {},
   ): Promise<ExecutionEventRecord | null> {
     if (!EVENT_TYPE_SET.has(eventType)) throw new Error(`EXECUTION_EVENT_TYPE_INVALID:${eventType}`);
+    const correlation = correlationFields();
+    const enrichedOptions = Object.keys(correlation).length > 0
+      ? { ...options, payload: { ...(options.payload ?? {}), correlation } }
+      : options;
     if (eventType === 'node.output_available') {
-      if (!options.nodeId) throw new Error('EXECUTION_OUTPUT_NODE_REQUIRED');
-      const key = `${runId}/${options.nodeId}`;
+      if (!enrichedOptions.nodeId) throw new Error('EXECUTION_OUTPUT_NODE_REQUIRED');
+      const key = `${runId}/${enrichedOptions.nodeId}`;
       const now = this.now();
       const previous = this.lastOutputEventAt.get(key);
       if (previous !== undefined && now - previous < this.outputCoalesceMs) return null;
       // Reserve the coalescing slot before the async DB write so concurrent chunks do not fan out.
       this.lastOutputEventAt.set(key, now);
       try {
-        const event = await this.store.appendEvent(scope, runId, eventType, options);
+        const event = await this.store.appendEvent(scope, runId, eventType, enrichedOptions);
         this.wake.publish(event); // persistence has completed before any signal is emitted
         this.notify(scope, event);
         return event;
@@ -158,7 +163,7 @@ export class ExecutionEventJournal {
       }
     }
 
-    const event = await this.store.appendEvent(scope, runId, eventType, options);
+    const event = await this.store.appendEvent(scope, runId, eventType, enrichedOptions);
     this.wake.publish(event); // persist-before-signal invariant
         this.notify(scope, event);
     return event;

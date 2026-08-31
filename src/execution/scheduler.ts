@@ -5,6 +5,7 @@ import type { ExecutionScope, ExecutionRunState } from './types.js';
 import { ExecutionStore, ExecutionStoreError, type ExecutionNodeRecord } from './store.js';
 import type { ValidatedExecutionNode } from './dag.js';
 import type { ExecutionEventJournal, ExecutionEventType } from './wake.js';
+import { currentCorrelation, runWithCorrelation, type CorrelationContext } from '../observability/correlation.js';
 
 export interface ExecutionRunnerLike {
   start(
@@ -221,42 +222,58 @@ export class ExecutionScheduler {
   private async launchNode(scope: ExecutionScope, runId: string, node: ExecutionNodeRecord): Promise<void> {
     const attemptNo = node.attemptCount + 1;
     const attemptId = randomUUID();
+    const parentCorrelation = currentCorrelation();
+    const nodeCorrelation: CorrelationContext | null = parentCorrelation ? {
+      ...parentCorrelation,
+      runId,
+      nodeId: node.nodeId,
+    } : null;
+    const attemptCorrelation: CorrelationContext | null = nodeCorrelation ? {
+      ...nodeCorrelation,
+      attemptId,
+    } : null;
+    const withNodeCorrelation = <T>(operation: () => T): T => nodeCorrelation
+      ? runWithCorrelation(nodeCorrelation, operation)
+      : operation();
+    const withAttemptCorrelation = <T>(operation: () => T): T => attemptCorrelation
+      ? runWithCorrelation(attemptCorrelation, operation)
+      : operation();
     const paths = this.paths.paths(runId, node.nodeId, attemptNo);
-    await this.emit(scope, runId, 'node.ready', {
+    await withNodeCorrelation(() => this.emit(scope, runId, 'node.ready', {
       nodeId: node.nodeId,
       payload: { attemptNo, dependsOn: node.dependsOn },
-    });
+    }));
     await this.store.createAttempt(scope, runId, node.nodeId, attemptId, attemptNo, paths);
 
     let handle: ExecutionRunHandle;
     try {
-      handle = await this.runner.start(runId, asValidated(node), attemptId, attemptNo, {
-        onOutputAvailable: (payload) => this.emit(scope, runId, 'node.output_available', {
+      handle = await withAttemptCorrelation(() => this.runner.start(runId, asValidated(node), attemptId, attemptNo, {
+        onOutputAvailable: (payload) => withAttemptCorrelation(() => this.emit(scope, runId, 'node.output_available', {
           nodeId: node.nodeId,
           attemptId,
           payload: { ...payload },
-        }).then(() => undefined),
-      });
+        })).then(() => undefined),
+      }));
       await this.store.setAttemptPid(scope, runId, attemptId, handle.pid);
-      await this.emit(scope, runId, 'node.started', {
+      await withAttemptCorrelation(() => this.emit(scope, runId, 'node.started', {
         nodeId: node.nodeId,
         attemptId,
         payload: { attemptNo, pid: handle.pid },
-      });
+      }));
     } catch (error) {
       const failure = error instanceof Error ? error : new Error(String(error));
       await this.store.failAttemptStart(scope, runId, node.nodeId, attemptId, failure);
-      await this.emit(scope, runId, 'node.failed', {
+      await withAttemptCorrelation(() => this.emit(scope, runId, 'node.failed', {
         nodeId: node.nodeId,
         attemptId,
         payload: { attemptNo, startFailure: failure.message },
-      });
+      }));
       return;
     }
 
     const key = this.key(runId, node.nodeId);
     const settled = handle.completion.then(
-      (marker) => this.withRunLock(runId, async () => {
+      (marker) => withAttemptCorrelation(() => this.withRunLock(runId, async () => {
         this.active.delete(key);
         await this.store.completeAttempt(scope, marker);
         if (this.onAttemptCompleted) {
@@ -274,8 +291,8 @@ export class ExecutionScheduler {
           },
         });
         await this.reconcileAndDispatch(scope, runId);
-      }),
-      (error) => this.withRunLock(runId, async () => {
+      })),
+      (error) => withAttemptCorrelation(() => this.withRunLock(runId, async () => {
         this.active.delete(key);
         const failure = error instanceof Error ? error : new Error(String(error));
         await this.store.failAttemptStart(scope, runId, node.nodeId, attemptId, failure);
@@ -285,7 +302,7 @@ export class ExecutionScheduler {
           payload: { attemptNo, completionFailure: failure.message },
         });
         await this.reconcileAndDispatch(scope, runId);
-      }),
+      })),
     );
     this.active.set(key, { handle, settled });
     void settled.catch(() => undefined);

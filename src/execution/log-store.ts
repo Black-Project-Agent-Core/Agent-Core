@@ -35,6 +35,18 @@ export interface ExecutionGovernanceEvidence {
   outputByteLimit: number;
 }
 
+export interface ExecutionResultCorrelation {
+  requestId: string;
+  trace_id: string;
+  span_id: string;
+  trace_flags: string;
+  routeContextId?: string;
+  toolName?: string;
+  runId?: string;
+  nodeId?: string;
+  attemptId?: string;
+}
+
 export interface ExecutionResultMarkerBase {
   runId: string;
   nodeId: string;
