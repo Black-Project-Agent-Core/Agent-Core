@@ -1,7 +1,7 @@
 # Agent Core Balanced Evolution — Evidence-Backed Upgrade Proposal
 
 **Date:** 2026-08-31
-**Status:** APPROVED ROADMAP — WAVE A CERTIFIED COMPLETE; WAVES B-G NOT IMPLEMENTED
+**Status:** APPROVED ROADMAP — WAVE A CERTIFIED COMPLETE; WAVE B LOCALLY CERTIFIED / MAIN INTEGRATION PENDING; WAVES C-G NOT IMPLEMENTED
 **Scope:** Agent Core core only. Codespace is not an upgrade target in this proposal.
 **Strategy:** Hybrid compatibility — backward-compatible by default; a major change is allowed only when benefit is evidence-backed and a migration/rollback path exists.
 
@@ -799,24 +799,47 @@ full regression                         = PASS
 
 **Goal:** move Agent Core onto SDK v2 while preserving legacy interoperability.
 
-Scope:
+Implemented scope:
 
-- v1 -> v2 SDK migration;
-- legacy MCP era remains supported;
-- modern 2026-07-28 server path;
-- `server/discover`;
-- modern request envelope/header validation;
-- dual-era conformance/acceptance tests;
-- DCR remains compatibility-only while modern auth metadata path is evaluated.
+- root/core migrated from monolithic MCP SDK v1 to `@modelcontextprotocol/server` 2.0.0 + `@modelcontextprotocol/node` 2.0.0;
+- official `@modelcontextprotocol/client` 2.0.0 is dev-only for interoperability tests;
+- existing Codespace plugin remains on MCP SDK v1.30.0 as a factual legacy compatibility canary;
+- legacy 2025-era stateless MCP remains supported with the prior JSON response behavior;
+- modern 2026-07-28 `server/discover`, envelope/header validation and tool traffic are served through the official v2 handler;
+- default `AGENT_CORE_MCP_PROTOCOL_MODE=dual` serves both eras;
+- `AGENT_CORE_MCP_PROTOCOL_MODE=legacy` is a tested runtime rollback that rejects/pushes auto-negotiating clients back from modern while retaining legacy service;
+- the same 55 Agent Core tools and representative structured results are exposed in both eras;
+- Wave A Origin/auth/resource boundaries remain ahead of protocol dispatch;
+- DCR remains compatibility-only;
+- authorization responses now emit RFC 9207 `iss` equal to the canonical Agent Core issuer;
+- CIMD activation is deferred because required host interoperability and a safe metadata-fetch trust policy are not yet factual; no placeholder endpoint or speculative fetch surface was added.
 
-Exit gates:
+Local pre-integration evidence:
+
+```text
+focused Wave B acceptance         15 files / 110 tests PASS
+full repository regression        113 files / 542 tests PASS; 38 intentional skips
+legacy tool surface               55 / 55 PASS
+modern tool surface               55 / 55 PASS
+modern server/discover            PASS
+modern validation ladder          PASS
+OAuth/security gates              PASS
+RFC 9207 issuer response          PASS
+Codespace v1 compatibility        PASS
+live dual dist/index.js canary    PASS
+live legacy rollback canary       PASS
+external AI model/API dependency  0
+```
+
+Exit gates before final main/public-runtime integration:
 
 ```text
 legacy connector behavior        PASS
 modern protocol acceptance       PASS
 same Agent Core tool semantics   PASS
 OAuth/security gates             PASS
-rollback to legacy-only mode     verified
+rollback to legacy-only mode     PASS
+main/public runtime integration  PENDING
 ```
 
 ---

@@ -67,6 +67,72 @@ external AI model/API dependency   0
 
 The live canary used temporary storage and a temporary loopback port with GitHub disabled; it did not consume production secrets. It proved local readiness and detailed metrics, non-browser MCP compatibility, browser-Origin rejection, and canonical OAuth issuer/resource agreement.
 
+## Wave B MCP dual-era contract
+
+Wave B migrates the Agent Core core MCP layer onto the stable split MCP SDK v2 packages while deliberately preserving the existing legacy connector path.
+
+Core dependency contract:
+
+```text
+@modelcontextprotocol/server   2.0.0
+@modelcontextprotocol/node     2.0.0
+@modelcontextprotocol/client   2.0.0 dev-only interoperability test client
+@modelcontextprotocol/sdk      absent from root core
+plugin/codespace MCP SDK       1.30.0 preserved as legacy compatibility surface
+```
+
+Protocol serving contract:
+
+```text
+AGENT_CORE_MCP_PROTOCOL_MODE=dual     default
+AGENT_CORE_MCP_PROTOCOL_MODE=legacy   runtime rollback
+
+dual mode:
+  legacy 2025-era stateless MCP       supported
+  modern 2026-07-28 MCP               supported
+  server/discover                     supported
+  modern per-request envelope         validated by official SDK v2
+  Mcp-Method / Mcp-Name               validated by official SDK v2
+
+legacy mode:
+  legacy 2025-era stateless MCP       supported
+  modern 2026-07-28 negotiation       rejected / auto clients may fall back to legacy
+```
+
+Agent Core intentionally retains buffered JSON responses for the certified legacy stateless path by using the official v2 `WebStandardStreamableHTTPServerTransport` with `enableJsonResponse=true`. Modern traffic remains on the official v2 `createMcpHandler` validation/serving path. Agent Core does not implement its own modern protocol parser or `server/discover` semantics.
+
+Wave A remains authoritative ahead of either protocol era: untrusted browser `Origin` is rejected before authentication/dispatch, bearer authentication remains Agent Core-owned, OAuth access tokens remain protected-resource-bound, and detailed HTTP metrics remain loopback-only.
+
+OAuth compatibility policy for Wave B:
+
+```text
+DCR                                 preserved for existing connector compatibility
+authorization-code response iss     emitted and bound to canonical Agent Core issuer (RFC 9207)
+CIMD activation                     deferred until host interoperability and safe metadata-fetch trust policy are proven
+speculative auth endpoints          none
+```
+
+### Wave B local pre-integration evidence
+
+The isolated Wave B branch passed the following gates before main/public-runtime integration:
+
+```text
+focused Wave B acceptance         15 files / 110 tests PASS
+npm run verify                    PASS
+full regression                  113 files / 542 tests PASS
+intentional platform/perf skips  38 tests
+legacy tool surface              55 / 55 PASS
+modern tool surface              55 / 55 PASS
+modern 2026-07-28 discover       PASS
+legacy-only rollback             PASS
+Codespace v1 compatibility       PASS
+live dist/index.js dual canary   PASS
+live dist/index.js rollback      PASS
+external AI model/API dependency 0
+```
+
+Final Wave B certification requires fast-forward integration into `main`, exact remote equality, restart of the real Codespace runtime on the integrated source commit, and public readiness/security/legacy compatibility canaries. Until those integration gates pass, this section records local certification rather than a final public-runtime claim.
+
 ## Last core certification
 
 The final continuity/execution core certification was completed on 2026-08-26 after the execution WAL durability fix and staged default-enabled rollout.

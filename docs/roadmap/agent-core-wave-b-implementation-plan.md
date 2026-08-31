@@ -1,7 +1,7 @@
 # Agent Core Wave B — MCP Dual-Era Modernization Implementation Plan
 
 **Date:** 2026-08-31
-**Status:** APPROVED FOR IMPLEMENTATION — IN PROGRESS
+**Status:** IMPLEMENTED + LOCALLY CERTIFIED — MAIN/PUBLIC-RUNTIME INTEGRATION PENDING
 **Scope:** Agent Core core MCP protocol/SDK layer. Codespace is compatibility-only, not an upgrade target.
 **Base:** Wave A certified commit `f688789`.
 **Strategy:** Migrate the Agent Core core from the monolithic MCP TypeScript SDK v1 to the stable v2 server/node packages while preserving 2025-era stateless MCP behavior and adding the 2026-07-28 stateless protocol era on the same authenticated `/mcp` endpoint.
@@ -85,7 +85,7 @@ The authenticated `VerifiedKey` continues to come from Agent Core's HTTP authent
 - [x] Run fresh baseline after `npm ci` + Codespace plugin build.
 - [x] Record baseline: 111 passed test files / 527 passed tests / 38 intentional skips.
 - [x] Verify official v2 package/API contract before source edits.
-- [ ] Commit this implementation plan.
+- [x] Commit this implementation plan (`54629b4`).
 
 Acceptance:
 
@@ -304,7 +304,58 @@ After fresh evidence exists:
 8. Run public readiness/security compatibility canary.
 9. Only then mark Wave B certified complete.
 
-## 5. Explicit Non-Goals
+## 5. Local Pre-Integration Certification Evidence — 2026-08-31
+
+Wave B implementation is complete in isolated branch `wave-b/mcp-dual-era`. Main/public-runtime integration remains the only outstanding gate at this point.
+
+```text
+baseline before Wave B               111 files / 527 tests PASS; 38 skips
+focused Wave B acceptance             15 files / 110 tests PASS
+full repository regression            113 files / 542 tests PASS; 38 skips
+TypeScript build                       PASS
+Codespace plugin build                 PASS
+root MCP SDK                           @modelcontextprotocol/server 2.0.0
+                                       @modelcontextprotocol/node 2.0.0
+root modern test client                @modelcontextprotocol/client 2.0.0 (dev-only)
+root monolithic MCP SDK dependency     0
+Codespace plugin legacy SDK            @modelcontextprotocol/sdk 1.30.0 preserved
+legacy tool surface                    55 / 55 PASS
+modern tool surface                    55 / 55 PASS
+modern server/discover                 PASS
+modern envelope/header validation      PASS
+Wave A auth/Origin/resource gates      PASS
+RFC 9207 authorization-response iss    PASS; equals canonical Agent Core issuer
+DCR compatibility                      preserved
+CIMD activation                        deferred; host interoperability/trust policy not yet proven
+legacy-only runtime rollback           PASS
+external AI model/API dependency added 0
+```
+
+Live temporary `dist/index.js` canaries used temporary data/log/key files only and did not print or consume production secrets:
+
+```text
+mode=dual
+  GET /health                       200
+  official v2 Client default        legacy / 55 tools
+  official v2 Client auto           modern / 2026-07-28 / 55 tools
+  representative modern tool call   PASS
+  untrusted Origin                  403
+
+mode=legacy
+  GET /health                       200
+  official v2 Client default        legacy / 55 tools
+  pinned 2026-07-28 client          rejected
+  untrusted Origin                  403
+```
+
+Implementation commits before certification evidence:
+
+```text
+c4842ca feat: serve legacy and modern mcp eras
+5bca363 fix: bind oauth authorization response issuer
+```
+
+## 6. Explicit Non-Goals
 
 Wave B does not authorize:
 
@@ -321,7 +372,7 @@ migration of the Codespace plugin merely for protocol freshness
 breaking legacy connector behavior to force 2026-07-28 adoption
 ```
 
-## 6. Rollback Contract
+## 7. Rollback Contract
 
 Two rollback levels must remain factual:
 
