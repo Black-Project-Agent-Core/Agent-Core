@@ -1,14 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { assertExecutionIntentAllowed } from './command-policy.js';
 import { resolveShellInvocation } from './platform-shell.js';
 import type { WorkspacePolicy } from './workspace.js';
-
-const BLOCKED = new Set([
-  'mkfs', 'format', 'mount', 'umount', 'fdisk', 'dd', 'parted', 'diskpart',
-  'sudo', 'su', 'passwd', 'adduser', 'useradd', 'usermod', 'groupadd', 'chsh', 'visudo',
-  'shutdown', 'reboot', 'halt', 'poweroff', 'init', 'iptables', 'firewall', 'netsh',
-  'sfc', 'bcdedit', 'reg', 'net', 'sc', 'runas', 'cipher', 'takeown',
-]);
 
 const MAX_OUTPUT_BYTES = 256 * 1024;
 
@@ -72,20 +66,8 @@ export class ProcessSessionError extends Error {
   }
 }
 
-function commandName(segment: string): string {
-  return (segment.trim().replace(/^&\s*/, '').match(/^([A-Za-z0-9_.-]+)/)?.[1] ?? '').replace(/\.exe$/i, '').toLowerCase();
-}
-
 function assertCommandAllowed(command: string): void {
-  const segments = command.split(/(?:;|&&|\|\|?|\r?\n)+/);
-  for (const segment of segments) {
-    const executable = commandName(segment);
-    if (BLOCKED.has(executable)) throw new Error(`Blocked command: ${executable}`);
-    const nested = segment.match(/(?:cmd(?:\.exe)?\s+\/c|powershell(?:\.exe)?[^\r\n]*?-command|start-process)\s+["']?([A-Za-z0-9_.-]+)/i)?.[1];
-    if (nested && BLOCKED.has(nested.replace(/\.exe$/i, '').toLowerCase())) {
-      throw new Error(`Blocked command: ${nested}`);
-    }
-  }
+  assertExecutionIntentAllowed({ command, source: 'operational' });
 }
 
 function appendBounded(current: string, chunk: Buffer, state: { truncated: boolean }): string {

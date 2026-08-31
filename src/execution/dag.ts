@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { assertCommandAllowed } from '../runtime/process-manager.js';
+import { ExecutionPolicyError, assertExecutionIntentAllowed } from '../runtime/command-policy.js';
 import type { WorkspacePolicy } from '../runtime/workspace.js';
 import type { ExecutionNodeState } from './types.js';
 
@@ -48,7 +48,11 @@ export interface ExecutionDag {
 }
 
 export class ExecutionDagError extends Error {
-  constructor(public readonly code: string, message: string) {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly details?: Record<string, unknown>,
+  ) {
     super(message);
     this.name = 'ExecutionDagError';
   }
@@ -62,8 +66,8 @@ const NODE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SECRET_ASSIGNMENT_RE = /\b(api[_-]?key|client[_-]?secret|access[_-]?key|password|passwd|pwd|token|refresh[_-]?token|access[_-]?token)\s*[:=]\s*([^\s;,]+)/gi;
 const BEARER_RE = /\b(?:authorization\s*:\s*)?bearer\s+([^\s,;]+)/gi;
 
-function fail(code: string, message: string): never {
-  throw new ExecutionDagError(code, message);
+function fail(code: string, message: string, details?: Record<string, unknown>): never {
+  throw new ExecutionDagError(code, message, details);
 }
 
 function normalizeRequired(value: unknown, field: string, code: string, max: number): string {
@@ -197,9 +201,13 @@ export async function validateExecutionDag(
       fail('EXECUTION_INLINE_SECRET', `Node ${id} contains obvious inline secret material; use an environment or file reference`);
     }
     try {
-      assertCommandAllowed(command);
+      assertExecutionIntentAllowed({ command, source: 'execution' });
     } catch (error) {
-      fail('EXECUTION_COMMAND_BLOCKED', error instanceof Error ? error.message : String(error));
+      fail(
+        'EXECUTION_COMMAND_BLOCKED',
+        error instanceof Error ? error.message : String(error),
+        error instanceof ExecutionPolicyError ? { policyCode: error.code } : undefined,
+      );
     }
     if (!options.workspace.isAllowed(cwdInput)) {
       fail('EXECUTION_CWD_OUTSIDE_ROOT', `Node ${id} cwd is outside allowed roots`);

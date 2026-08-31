@@ -63,6 +63,13 @@ describe('deterministic execution DAG validation', () => {
     await expectDagCode(validateExecutionDag([
       node('A', f.work, { command: 'shutdown /s /t 0' }),
     ], { workspace: f.workspace }), 'EXECUTION_COMMAND_BLOCKED');
+
+    await expect(validateExecutionDag([
+      node('B', f.work, { command: 'cmd /c diskpart' }),
+    ], { workspace: f.workspace })).rejects.toMatchObject({
+      code: 'EXECUTION_COMMAND_BLOCKED',
+      details: { policyCode: 'EXECUTION_POLICY_BLOCKED_NESTED_COMMAND' },
+    });
   });
 
   it('rejects obvious inline secret literals while allowing environment/file references', async () => {
