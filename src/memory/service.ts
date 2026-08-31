@@ -17,6 +17,13 @@ import {
   readLatestMemoryBackup,
   type MemoryBackupRecord,
 } from './backup.js';
+import {
+  MemoryCognitionLedger,
+  type MemoryNodeMetadataInput,
+  type MemoryRecallExpansionInput,
+  type MemoryRemoteStateInput,
+  type MemoryWriteDecisionInput,
+} from './cognition-ledger.js';
 import { MemoryLifecycle } from './lifecycle.js';
 import { MemoryLinker } from './linker.js';
 import { MemoryPreflightEngine, createDisabledPreflightResult } from './preflight.js';
@@ -49,6 +56,7 @@ interface MemoryComponents {
   lifecycle: MemoryLifecycle;
   linker: MemoryLinker;
   preflight: MemoryPreflightEngine;
+  cognition: MemoryCognitionLedger;
   continuity: ContinuityStore;
   continuitySnapshot: ContinuitySnapshotBuilder;
 }
@@ -258,6 +266,55 @@ export class MemoryService {
     } finally {
       this.metrics?.observe('memory.preflight.duration_ms', Math.max(0, performance.now() - started));
     }
+  }
+
+  async recordWriteDecision(input: MemoryWriteDecisionInput) {
+    const components = await this.requireComponents();
+    return components.cognition.recordWriteDecision(input);
+  }
+
+  async markWriteDecisionApplied(scope: MemoryScope, decisionId: string, result: Record<string, unknown>) {
+    const components = await this.requireComponents();
+    return components.cognition.markWriteDecisionApplied(scope, decisionId, result);
+  }
+
+  async getWriteDecision(scope: MemoryScope, decisionId: string) {
+    if (!this.config.enabled) return null;
+    const components = await this.requireComponents();
+    return components.cognition.getWriteDecision(scope, decisionId);
+  }
+
+  async recordRecallExpansion(input: MemoryRecallExpansionInput) {
+    const components = await this.requireComponents();
+    return components.cognition.recordRecallExpansion(input);
+  }
+
+  async listRecallExpansions(scope: MemoryScope, contextId: string) {
+    if (!this.config.enabled) return [];
+    const components = await this.requireComponents();
+    return components.cognition.listRecallExpansions(scope, contextId);
+  }
+
+  async upsertNodeMetadata(input: MemoryNodeMetadataInput) {
+    const components = await this.requireComponents();
+    return components.cognition.upsertNodeMetadata(input);
+  }
+
+  async getNodeMetadata(scope: MemoryScope, memoryId: string) {
+    if (!this.config.enabled) return null;
+    const components = await this.requireComponents();
+    return components.cognition.getNodeMetadata(scope, memoryId);
+  }
+
+  async setRemoteState(input: MemoryRemoteStateInput) {
+    const components = await this.requireComponents();
+    return components.cognition.setRemoteState(input);
+  }
+
+  async getRemoteState(scope: MemoryScope) {
+    if (!this.config.enabled) return null;
+    const components = await this.requireComponents();
+    return components.cognition.getRemoteState(scope);
   }
 
   async openConflict(
@@ -509,8 +566,14 @@ export class MemoryService {
             (SELECT count(*) FROM memory_edges AS edge JOIN memory_items AS item ON item.id = edge.from_memory_id WHERE item.principal_id = ? AND IFNULL(item.project_id, '') = ?) AS edges,
             (SELECT count(*) FROM memory_conflicts AS conflict JOIN memory_items AS item ON item.id = conflict.left_memory_id WHERE item.principal_id = ? AND IFNULL(item.project_id, '') = ? AND conflict.status = 'open') AS open_conflicts,
             (SELECT count(*) FROM memory_items WHERE principal_id = ? AND IFNULL(project_id, '') = ? AND state = 'tombstoned') AS tombstones,
-            (SELECT count(*) FROM memory_fts WHERE principal_id = ? AND IFNULL(project_id, '') = ?) AS fts_rows`,
+            (SELECT count(*) FROM memory_fts WHERE principal_id = ? AND IFNULL(project_id, '') = ?) AS fts_rows,
+            (SELECT count(*) FROM memory_write_decisions WHERE principal_id = ? AND IFNULL(project_id, '') = ?) AS write_decisions,
+            (SELECT count(*) FROM memory_recall_expansions WHERE principal_id = ? AND IFNULL(project_id, '') = ?) AS recall_expansions,
+            (SELECT count(*) FROM memory_edge_events WHERE principal_id = ? AND IFNULL(project_id, '') = ?) AS edge_events`,
           [
+            scope.principalId, project,
+            scope.principalId, project,
+            scope.principalId, project,
             scope.principalId, project,
             scope.principalId, project,
             scope.principalId, project,
@@ -526,7 +589,10 @@ export class MemoryService {
           (SELECT count(*) FROM memory_edges) AS edges,
           (SELECT count(*) FROM memory_conflicts WHERE status = 'open') AS open_conflicts,
           (SELECT count(*) FROM memory_items WHERE state = 'tombstoned') AS tombstones,
-          (SELECT count(*) FROM memory_fts) AS fts_rows`);
+          (SELECT count(*) FROM memory_fts) AS fts_rows,
+          (SELECT count(*) FROM memory_write_decisions) AS write_decisions,
+          (SELECT count(*) FROM memory_recall_expansions) AS recall_expansions,
+          (SELECT count(*) FROM memory_edge_events) AS edge_events`);
       }
       const integrity = await components.client.integrity();
       const checkedAt = Date.now();
@@ -640,9 +706,10 @@ export class MemoryService {
       candidateCap: Math.min(512, this.config.seedCap),
     });
     const preflight = new MemoryPreflightEngine(client, retriever, lifecycle);
+    const cognition = new MemoryCognitionLedger(client);
     const continuity = new ContinuityStore(client);
     const continuitySnapshot = new ContinuitySnapshotBuilder(client);
-    const components = { client, store, retriever, lifecycle, linker, preflight, continuity, continuitySnapshot };
+    const components = { client, store, retriever, lifecycle, linker, preflight, cognition, continuity, continuitySnapshot };
     try {
       const opened = await store.open({ dbPath: this.config.dbPath, busyTimeoutMs: this.config.busyTimeoutMs });
       this.lastIntegrityCheckAt = opened.integrityCheckedAt;
