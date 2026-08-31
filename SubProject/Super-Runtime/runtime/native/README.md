@@ -1,8 +1,8 @@
 # Super-Runtime Native Substrate Boundary
 
-Status: Task 1 substrate boundary + Task 2 memory-ledger foundation
+Status: Task 1 substrate boundary + Task 2 memory ledger + Task 3 Linux file-residency primitive
 
-This directory is the first production code boundary of Super-Runtime. It now contains the Task 1 native substrate boundary and the Task 2 deterministic `MemoryLedger`. It deliberately contains **no file-residency, model-policy, API, GPU, or downstream AI-tool integration logic yet**.
+This directory is the first production code boundary of Super-Runtime. It now contains the Task 1 native substrate boundary, the Task 2 deterministic `MemoryLedger`, and the Task 3 stable-address file-backed residency primitive for Linux. It deliberately contains **no dense/MoE policy, residency lease scheduler, API, GPU, or downstream AI-tool integration logic yet**.
 
 ## Purpose
 
@@ -19,7 +19,8 @@ SubProject/Super-Runtime/CMakeLists.txt
         +--> runtime/native/
                super-runtime-native-smoke
                super-runtime-core
-                 └── MemoryLedger
+                 ├── MemoryLedger
+                 └── FileResidency (Linux backend in Task 3)
 ```
 
 ## Pinned upstream baseline
@@ -141,10 +142,47 @@ cmake --build .build/memory-ledger --target super-runtime-test-memory-ledger --p
 
 The test covers accepted reservations, hard-budget refusal, release and underflow refusal, category totals, uint64 overflow refusal, the invariant `owned <= budget`, and concurrent accounting.
 
-## Scope boundary after Task 2
+## Task 3 — stable-address file-backed residency primitive
 
-Passing Task 1 + Task 2 means only:
+`FileResidency` is the first production bridge between `MemoryLedger` accounting and physical file-backed memory behavior.
 
-> Super-Runtime has a reproducible native CPU substrate boundary and a deterministic thread-safe memory ownership ledger.
+Frozen Task-3 semantics:
 
-It does **not** mean the Super-Runtime inference runtime is complete. The next checkpoint is Task 3: the stable-address file-backed residency primitive.
+```text
+construct mapping
+  -> stable virtual base address
+  -> virtual mapping alone does not charge ResidentWeights
+
+prefetch(page-aligned range)
+  -> reserve newly intentional bytes in MemoryLedger
+  -> Linux POSIX_FADV_WILLNEED / MADV_WILLNEED advice
+  -> synchronously touch pages so the requested range is materialized
+  -> publish intentional residency only after the operation succeeds
+
+release(page-aligned range)
+  -> MADV_DONTNEED reusable pages
+  -> do not munmap the reusable mapping
+  -> release intentional ResidentWeights ownership
+```
+
+The Linux test uses a deterministic temporary file and verifies stable base address, correct bytes after refault, invalid-range refusal, budget refusal without ledger mutation, idempotent range accounting, and destructor cleanup. It also records `/proc/self/status` RSS as observational evidence. RSS changes are **not** a functional pass criterion because kernel reclaim timing is not a portable deterministic contract.
+
+The public C++ class does not expose POSIX calls. Non-Linux builds currently report the backend as unsupported; a Windows implementation remains deferred behind the same semantic abstraction.
+
+Task 3 deliberately does **not** implement leases, `READY` scheduler publication, dense graph-order policy, MoE selected-expert policy, or GPU staging. Those remain later checkpoints.
+
+Focused native test:
+
+```bash
+cmake -G Ninja -S . -B .build/file-residency -DCMAKE_BUILD_TYPE=Release
+cmake --build .build/file-residency --target super-runtime-test-file-residency --parallel "$(nproc)"
+(cd .build/file-residency && ctest --output-on-failure -R '^super-runtime-file-residency$')
+```
+
+## Scope boundary after Task 3
+
+Passing Task 1 + Task 2 + Task 3 means only:
+
+> Super-Runtime has a reproducible native CPU substrate boundary, a deterministic thread-safe memory ownership ledger, and a Linux stable-address file-backed residency primitive whose intentional resident ranges are budgeted by that ledger.
+
+It does **not** mean the Super-Runtime inference runtime is complete. The next checkpoint is Task 4: generic MoE expert-ID-to-range residency planning.

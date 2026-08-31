@@ -51,9 +51,12 @@ SubProject/Super-Runtime/
 │       ├── smoke.cpp
 │       ├── super_runtime/
 │       │   ├── memory_ledger.h
-│       │   └── memory_ledger.cpp
+│       │   ├── memory_ledger.cpp
+│       │   ├── file_residency.h
+│       │   └── file_residency.cpp
 │       └── tests/
-│           └── test_memory_ledger.cpp
+│           ├── test_memory_ledger.cpp
+│           └── test_file_residency.cpp
 ├── tests/
 │   └── contracts/
 │       └── native-substrate.sh
@@ -65,7 +68,7 @@ Current implementation status:
 ```text
 Task 1 native llama.cpp/GGML CPU substrate boundary   COMPLETE
 Task 2 deterministic MemoryLedger                     COMPLETE
-file residency                                        NOT STARTED
+Task 3 stable-address file residency                   COMPLETE
 dense production residency                            NOT STARTED
 MoE production residency                              NOT STARTED
 benchmarks/ hard-cap harness                          NOT STARTED
@@ -76,9 +79,9 @@ Therefore:
 
 > **Super-Runtime still does not yet exist as a runnable inference runtime product.**
 
-Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds the first Super-Runtime-owned resource primitive: a deterministic thread-safe `MemoryLedger` with hard-budget admission, per-category accounting, atomic refusal, release safety, and overflow protection. Neither checkpoint loads a model or implements physical file residency yet.
+Task 1 establishes the reproducible native llama.cpp/GGML CPU boundary. Task 2 adds the deterministic thread-safe `MemoryLedger`. Task 3 adds the first physical backing primitive: a Linux file-backed mapping whose virtual address remains stable while page-aligned ranges can be explicitly prefetched/released and charged to `ResidentWeights` in the ledger. These checkpoints still do not load a model or implement dense/MoE scheduler policy.
 
-Phase 0 learning is complete, and the first two implementation checkpoints are complete.
+Phase 0 learning is complete, and the first three implementation checkpoints are complete.
 
 The project frontier remains:
 
@@ -86,11 +89,11 @@ The project frontier remains:
 
 ## Immediate next action — exactly one task
 
-The next eligible implementation checkpoint is **Task 3 only: build the stable-address file-backed residency primitive**.
+The next eligible implementation checkpoint is **Task 4 only: add generic MoE selected-expert ID-to-range residency planning**.
 
-Do not begin dense policy, MoE policy, API work, GPU work, or downstream integration in parallel with Task 3. Task 3 becomes active only after the Task 2 commit is present and remotely verified on canonical `Agent-Core/main`.
+Do not begin dense production policy, API work, GPU work, or downstream integration in parallel with Task 4. Task 4 becomes active only after the Task 3 commit is present and remotely verified on canonical `Agent-Core/main`.
 
-Task 1 + Task 2 verification boundary:
+Task 1 + Task 2 + Task 3 verification boundary:
 
 ```text
 bash tests/contracts/native-substrate.sh
@@ -103,6 +106,14 @@ ctest -R super-runtime-memory-ledger
   -> category accounting
   -> overflow/underflow refusal
   -> concurrent accounting
+  -> PASS
+
+ctest -R super-runtime-file-residency
+  -> stable virtual base address
+  -> page-aligned prefetch/release
+  -> ResidentWeights ledger integration
+  -> deterministic bytes remain correct after refault
+  -> bounded RSS evidence recorded without making reclaim timing a correctness gate
   -> PASS
 ```
 
@@ -650,6 +661,39 @@ Page faults alone are not the intended production scheduler.
 The runtime needs explicit READY/prefetch semantics before compute whenever predictable scheduling is possible.
 
 Linux mechanisms used in research include `mmap`, `madvise`, and `posix_fadvise`. These are implementation evidence, **not the public cross-platform contract**.
+
+## Task 3 implementation checkpoint — FileResidency
+
+The first production stable-address backing primitive now exists under `runtime/native/super_runtime/file_residency.*`.
+
+Frozen Task-3 behavior:
+
+```text
+file mapping created
+  -> virtual address remains stable for object lifetime
+  -> mapping alone charges 0 ResidentWeights bytes
+
+prefetch(aligned range)
+  -> reserve newly intentional bytes in MemoryLedger
+  -> Linux WILLNEED advice + synchronous page materialization
+  -> publish intentional residency only after success
+
+release(aligned range)
+  -> MADV_DONTNEED on reusable mapping
+  -> never munmap the reusable range
+  -> return intentional ResidentWeights bytes to MemoryLedger
+
+demand refault after release
+  -> bytes remain correct
+  -> same virtual address
+  -> not counted as intentional runtime residency
+```
+
+The current backend implementation is Linux-specific behind a platform-neutral C++ class. Non-Linux residency backends remain deferred.
+
+Task 3 does **not** implement `READY`/lease ownership, dense ordering, MoE routing, asynchronous I/O, or a production scheduler hook. It supplies the physical file-backed primitive those later policies can drive.
+
+The bounded 16 MiB Linux fixture produced fresh observational RSS evidence in this Codespace: process RSS rose by roughly the mapped working-set size after explicit materialization and returned near baseline after `MADV_DONTNEED`. The exact RSS delta is not a correctness contract; stable address, byte correctness, ledger accounting, and range validation are the functional gates.
 
 ---
 
@@ -1437,12 +1481,12 @@ No provider/API/AI-tool protocol belongs in this task.
 Milestone 1 is accepted only if fresh executable evidence demonstrates all applicable items:
 
 ```text
-[ ] native Super-Runtime source exists
-[ ] controlled/pinned GGML CPU substrate builds
+[x] native Super-Runtime source exists
+[x] controlled/pinned GGML CPU substrate builds
 [ ] a deterministic fixture/model loads through the runtime path
-[ ] memory ledger is active
-[ ] infeasible budget requests are refused
-[ ] stable file-backed residency primitive is active
+[x] memory ledger is active
+[x] infeasible ledger reservations are refused
+[x] stable file-backed residency primitive is active
 [ ] dense residency path executes correctly
 [ ] MoE selected-range residency path executes correctly
 [ ] required ranges are READY before dereference
@@ -1577,8 +1621,9 @@ Current authority:
 - defines the CPU-only native build and smoke target;
 - defines the upstream patch/provenance policy for the native substrate;
 - documents the Task 2 `MemoryLedger`, its accounting-only semantics, and focused CTest path;
+- documents the Task 3 Linux `FileResidency` primitive, stable-address/release semantics, and focused CTest path;
 - documents Codespace native build tooling and the `tests/contracts/native-substrate.sh` verification path;
-- does **not** imply that model loading or physical residency already exists.
+- does **not** imply that model loading, residency leases, dense/MoE scheduling, or a runnable inference lifecycle already exists.
 
 If this document conflicts with general project direction, this master context still wins.
 
@@ -1880,7 +1925,7 @@ Current meaning:
 
 Use this statement when a short explanation of Super-Runtime is needed:
 
-> **Super-Runtime is a not-yet-implemented CPU-first local inference runtime whose defining goal is to make model weights and architecture-correct state operate under an explicit global resource envelope. It reuses llama.cpp/GGML for model graphs, GGUF/tensors, kernels, and architecture-specific state, while Super-Runtime owns memory admission, file-backed weight residency, access-topology scheduling, storage I/O policy, leases, telemetry, and hard-cap validation. K3-in-C is the primary reference for proven low-memory execution patterns, not a neural architecture to copy. Phase 0 learning is complete; the only active frontier is building the first runnable native runtime core. Downstream AI-tool integration is deferred until that runtime actually exists.**
+> **Super-Runtime is a not-yet-runnable CPU-first local inference runtime whose first production foundations now exist: a pinned llama.cpp/GGML CPU substrate boundary, a deterministic `MemoryLedger`, and a Linux stable-address file-backed residency primitive. Its defining goal is to make model weights and architecture-correct state operate under an explicit global resource envelope. It reuses llama.cpp/GGML for model graphs, GGUF/tensors, kernels, and architecture-specific state, while Super-Runtime owns memory admission, file-backed weight residency, access-topology scheduling, storage I/O policy, leases, telemetry, and hard-cap validation. K3-in-C is the primary reference for proven low-memory execution patterns, not a neural architecture to copy. Phase 0 learning is complete; the active frontier remains building the first runnable native runtime core. Downstream AI-tool integration is deferred until that runtime actually exists.**
 
 ---
 

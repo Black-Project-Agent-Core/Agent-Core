@@ -96,23 +96,23 @@ Commit message: `feat: add runtime memory ledger`
 - Consumes: `MemoryLedger`
 - Produces: a file-backed range object whose virtual address remains stable while resident-page policy can request prefetch/release for aligned byte ranges
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Use a temporary file with deterministic bytes. Verify that the mapped base address remains unchanged across prefetch/release cycles, bytes are correct after refault, invalid ranges fail, and ledger ownership cannot exceed its configured budget.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Expected: failure because the residency object does not exist.
 
-- [ ] **Step 3: Implement Linux prototype semantics**
+- [x] **Step 3: Implement Linux prototype semantics**
 
 Use file-backed mapping and page-aligned advisory residency operations. Do not use `munmap` for reusable eviction ranges. Keep platform-specific calls behind the residency abstraction.
 
-- [ ] **Step 4: Run tests and capture RSS evidence**
+- [x] **Step 4: Run tests and capture RSS evidence**
 
 Run the unit test plus a bounded fixture that touches/releases pages and records `/proc/self/status` or equivalent RSS evidence. Treat RSS drops as observational evidence; functional correctness must not depend on exact kernel reclaim timing.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit message: `feat: add file-backed residency primitive`
 
