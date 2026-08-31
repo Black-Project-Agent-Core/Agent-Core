@@ -1,0 +1,562 @@
+[
+  {
+    "id": "m01-old-hard-guardrail-vs-fresh-noise",
+    "scope": {
+      "principalId": "quality-p1",
+      "projectId": "project-a"
+    },
+    "setup": [
+      {
+        "op": "commit",
+        "ref": "guard",
+        "canonicalKey": "guardrail.storage.drive",
+        "kind": "guardrail",
+        "value": "Workspace build output must stay on drive F.",
+        "importance": 1,
+        "pinned": true,
+        "enforcement": "hard"
+      },
+      {
+        "op": "age",
+        "ref": "guard",
+        "ageMs": 15552000000
+      },
+      {
+        "op": "commit",
+        "ref": "noise1",
+        "canonicalKey": "observation.storage.chatter.1",
+        "kind": "observation",
+        "value": "Workspace build output drive F chatter about preview timing.",
+        "importance": 0.4
+      },
+      {
+        "op": "commit",
+        "ref": "noise2",
+        "canonicalKey": "observation.storage.chatter.2",
+        "kind": "observation",
+        "value": "Workspace build output drive F chatter about packaging notes.",
+        "importance": 0.4
+      },
+      {
+        "op": "commit",
+        "ref": "noise3",
+        "canonicalKey": "observation.storage.chatter.3",
+        "kind": "observation",
+        "value": "Workspace build output drive F chatter about thumbnail generation.",
+        "importance": 0.4
+      }
+    ],
+    "query": "workspace build output drive F",
+    "limit": 10,
+    "relevantRefs": [
+      "guard"
+    ],
+    "primaryRelevantRef": "guard",
+    "hardGuardrailRefs": [
+      "guard"
+    ],
+    "noiseRefs": [
+      "noise1",
+      "noise2",
+      "noise3"
+    ]
+  },
+  {
+    "id": "m02-current-decision-revision",
+    "scope": {
+      "principalId": "quality-p1",
+      "projectId": "project-a"
+    },
+    "setup": [
+      {
+        "op": "commit",
+        "ref": "decision",
+        "canonicalKey": "decision.renderer.engine",
+        "kind": "decision",
+        "value": "Rendering engine decision uses renderer A.",
+        "importance": 0.9
+      },
+      {
+        "op": "revise",
+        "ref": "decision",
+        "value": "Rendering engine decision uses renderer B."
+      }
+    ],
+    "query": "decision.renderer.engine",
+    "limit": 5,
+    "relevantRefs": [
+      "decision"
+    ],
+    "primaryRelevantRef": "decision",
+    "currentRevision": [
+      {
+        "ref": "decision",
+        "valueIncludes": "renderer B",
+        "valueExcludes": "renderer A"
+      }
+    ]
+  },
+  {
+    "id": "m03-prior-failure-preflight",
+    "scope": {
+      "principalId": "quality-p1",
+      "projectId": "project-a"
+    },
+    "setup": [
+      {
+        "op": "commit",
+        "ref": "failure",
+        "canonicalKey": "failure.write_file.release_bundle",
+        "kind": "failure",
+        "value": "write_file release-bundle.zip failed because access denied while writing release artifact.",
+        "importance": 0.85
+      },
+      {
+        "op": "commit",
+        "ref": "procedure",
+        "canonicalKey": "procedure.release.bundle",
+        "kind": "procedure",
+        "value": "Release bundle artifact should be written and verified after creation.",
+        "importance": 0.7
+      }
+    ],
+    "query": "write_file release bundle artifact",
+    "limit": 10,
+    "relevantRefs": [
+      "failure"
+    ],
+    "primaryRelevantRef": "failure",
+    "priorFailureRefs": [
+      "failure"
+    ]
+  },
+  {
+    "id": "m04-multihop-graph-guardrail",
+    "scope": {
+      "principalId": "quality-p1",
+      "projectId": "project-a"
+    },
+    "setup": [
+      {
+        "op": "commit",
+        "ref": "project",
+        "canonicalKey": "project.chain.root",
+        "kind": "project_state",
+        "value": "Primary project root context marker for chain recall."
+      },
+      {
+        "op": "commit",
+        "ref": "artifact",
+        "canonicalKey": "artifact.chain.bundle",
+        "kind": "artifact",
+        "value": "Artifact manifest in the chain.",
+        "relations": [
+          {
+            "targetRef": "project",
+            "relation": "explicit_relation"
+          }
+        ]
+      },
+      {
+        "op": "commit",
+        "ref": "decision",
+        "canonicalKey": "decision.chain.compiler",
+        "kind": "decision",
+        "value": "Compiler decision in the chain.",
+        "relations": [
+          {
+            "targetRef": "artifact",
+            "relation": "explicit_relation"
+          }
+        ]
+      },
+      {
+        "op": "commit",
+        "ref": "constraint",
+        "canonicalKey": "guardrail.chain.tool",
+        "kind": "guardrail",
+        "value": "Tool constraint: never invoke destructive_write_tool.",
+        "importance": 1,
+        "pinned": true,
+        "enforcement": "hard",
+        "relations": [
+          {
+            "targetRef": "decision",
+            "relation": "explicit_relation"
+          }
+        ]
+      }
+    ],
+    "query": "Primary project root context marker",
+    "limit": 10,
+    "relevantRefs": [
+      "project",
+      "constraint"
+    ],
+    "primaryRelevantRef": "constraint",
+    "hardGuardrailRefs": [
+      "constraint"
+    ],
+    "graphTargetRefs": [
+      "constraint"
+    ]
+  },
+  {
+    "id": "m05-conflict-visibility",
+    "scope": {
+      "principalId": "quality-p1",
+      "projectId": "project-a"
+    },
+    "setup": [
+      {
+        "op": "commit",
+        "ref": "left",
+        "canonicalKey": "observation.deploy.behavior.one",
+        "kind": "observation",
+        "value": "Deployment behavior evidence says artifact was rebuilt."
+      },
+      {
+        "op": "commit",
+        "ref": "right",
+        "canonicalKey": "observation.deploy.behavior.two",
+        "kind": "observation",
+        "value": "Deployment behavior evidence says artifact was not rebuilt."
+      },
+      {
+        "op": "conflict",
+        "leftRef": "left",
+        "rightRef": "right",
+        "conflictType": "ambiguous_freeform"
+      }
+    ],
+    "query": "deployment behavior artifact rebuilt",
+    "limit": 10,
+    "relevantRefs": [
+      "left",
+      "right"
+    ],
+    "primaryRelevantRef": "left",
+    "conflictPairs": [
+      {
+        "leftRef": "left",
+        "rightRef": "right"
+      }
+    ]
+  },
+  {
+    "id": "m06-artifact-procedure-recall",
+    "scope": {
+      "principalId": "quality-p1",
+      "projectId": "project-a"
+    },
+    "setup": [
+      {
+        "op": "commit",
+        "ref": "artifact",
+        "canonicalKey": "artifact.release.manifest",
+        "kind": "artifact",
+        "value": "Release artifact manifest contains SHA256 verification metadata.",
+        "importance": 0.8
+      },
+      {
+        "op": "commit",
+        "ref": "procedure",
+        "canonicalKey": "procedure.release.verify",
+        "kind": "procedure",
+        "value": "Release artifact procedure verifies SHA256 manifest before publish.",
+        "importance": 0.85
+      },
+      {
+        "op": "commit",
+        "ref": "noise",
+        "canonicalKey": "observation.release.note",
+        "kind": "observation",
+        "value": "Release planning note about meeting schedule.",
+        "importance": 0.3
+      }
+    ],
+    "query": "release artifact SHA256 manifest verification",
+    "limit": 10,
+    "relevantRefs": [
+      "artifact",
+      "procedure"
+    ],
+    "primaryRelevantRef": "procedure",
+    "artifactProcedureRefs": [
+      "artifact",
+      "procedure"
+    ],
+    "noiseRefs": [
+      "noise"
+    ]
+  },
+  {
+    "id": "m07-stale-decision-resists-noise",
+    "scope": {
+      "principalId": "quality-p1",
+      "projectId": "project-a"
+    },
+    "setup": [
+      {
+        "op": "commit",
+        "ref": "decision",
+        "canonicalKey": "decision.package.format",
+        "kind": "decision",
+        "value": "Package format decision requires ZIP64 for large release bundles.",
+        "importance": 1,
+        "pinned": true
+      },
+      {
+        "op": "age",
+        "ref": "decision",
+        "ageMs": 10368000000
+      },
+      {
+        "op": "commit",
+        "ref": "noise1",
+        "canonicalKey": "observation.package.note.1",
+        "kind": "observation",
+        "value": "Package format ZIP64 release bundle chatter one.",
+        "importance": 0.3
+      },
+      {
+        "op": "commit",
+        "ref": "noise2",
+        "canonicalKey": "observation.package.note.2",
+        "kind": "observation",
+        "value": "Package format ZIP64 release bundle chatter two.",
+        "importance": 0.3
+      },
+      {
+        "op": "commit",
+        "ref": "noise3",
+        "canonicalKey": "observation.package.note.3",
+        "kind": "observation",
+        "value": "Package format ZIP64 release bundle chatter three.",
+        "importance": 0.3
+      }
+    ],
+    "query": "package format ZIP64 release bundle",
+    "limit": 10,
+    "relevantRefs": [
+      "decision"
+    ],
+    "primaryRelevantRef": "decision",
+    "noiseRefs": [
+      "noise1",
+      "noise2",
+      "noise3"
+    ]
+  },
+  {
+    "id": "m08-cross-project-isolation",
+    "scope": {
+      "principalId": "quality-p1",
+      "projectId": "project-a"
+    },
+    "setup": [
+      {
+        "op": "commit",
+        "ref": "projectA",
+        "canonicalKey": "guardrail.deployment.region",
+        "kind": "guardrail",
+        "value": "Deployment region for project A is Jakarta.",
+        "importance": 0.9
+      },
+      {
+        "op": "commit",
+        "ref": "projectB",
+        "scope": {
+          "principalId": "quality-p1",
+          "projectId": "project-b"
+        },
+        "canonicalKey": "guardrail.deployment.region",
+        "kind": "guardrail",
+        "value": "Deployment region for project B is Singapore.",
+        "importance": 0.9
+      }
+    ],
+    "query": "deployment region",
+    "limit": 10,
+    "relevantRefs": [
+      "projectA"
+    ],
+    "primaryRelevantRef": "projectA",
+    "isolationProbes": [
+      {
+        "type": "project",
+        "scope": {
+          "principalId": "quality-p1",
+          "projectId": "project-a"
+        },
+        "query": "deployment region",
+        "mustExcludeRefs": [
+          "projectB"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "m09-cross-principal-isolation",
+    "scope": {
+      "principalId": "quality-p1",
+      "projectId": "project-a"
+    },
+    "setup": [
+      {
+        "op": "commit",
+        "ref": "principalA",
+        "canonicalKey": "fact.owner.region",
+        "kind": "fact",
+        "value": "Owner region for principal A is Jakarta."
+      },
+      {
+        "op": "commit",
+        "ref": "principalB",
+        "scope": {
+          "principalId": "quality-p2",
+          "projectId": "project-a"
+        },
+        "canonicalKey": "fact.owner.region",
+        "kind": "fact",
+        "value": "Owner region for principal B is Singapore."
+      }
+    ],
+    "query": "owner region",
+    "limit": 10,
+    "relevantRefs": [
+      "principalA"
+    ],
+    "primaryRelevantRef": "principalA",
+    "isolationProbes": [
+      {
+        "type": "principal",
+        "scope": {
+          "principalId": "quality-p1",
+          "projectId": "project-a"
+        },
+        "query": "owner region",
+        "mustExcludeRefs": [
+          "principalB"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "m10-character-budget-normal-hits",
+    "scope": {
+      "principalId": "quality-p1",
+      "projectId": "project-a"
+    },
+    "setup": [
+      {
+        "op": "commit",
+        "ref": "primary",
+        "canonicalKey": "fact.budget.compact",
+        "kind": "fact",
+        "value": "compact budget primary",
+        "importance": 0.9
+      },
+      {
+        "op": "commit",
+        "ref": "secondary",
+        "canonicalKey": "observation.budget.compact",
+        "kind": "observation",
+        "value": "compact budget secondary item with extra text",
+        "importance": 0.5
+      }
+    ],
+    "query": "fact.budget.compact",
+    "limit": 10,
+    "characterBudget": 30,
+    "relevantRefs": [
+      "primary"
+    ],
+    "primaryRelevantRef": "primary"
+  },
+  {
+    "id": "m11-hard-guardrail-budget-priority",
+    "scope": {
+      "principalId": "quality-p1",
+      "projectId": "project-a"
+    },
+    "setup": [
+      {
+        "op": "commit",
+        "ref": "guard",
+        "canonicalKey": "guardrail.budget.destructive",
+        "kind": "guardrail",
+        "value": "Hard guardrail with deliberately long text: never run destructive deployment operations without explicit verification evidence.",
+        "importance": 1,
+        "pinned": true,
+        "enforcement": "hard"
+      },
+      {
+        "op": "commit",
+        "ref": "normal",
+        "canonicalKey": "observation.budget.destructive",
+        "kind": "observation",
+        "value": "ordinary destructive deployment observation text that is also deliberately long",
+        "importance": 0.4
+      }
+    ],
+    "query": "destructive deployment operations verification",
+    "limit": 10,
+    "characterBudget": 20,
+    "relevantRefs": [
+      "guard"
+    ],
+    "primaryRelevantRef": "guard",
+    "hardGuardrailRefs": [
+      "guard"
+    ],
+    "noiseRefs": [
+      "normal"
+    ]
+  },
+  {
+    "id": "m12-deterministic-release-recall",
+    "scope": {
+      "principalId": "quality-p1",
+      "projectId": "project-a"
+    },
+    "setup": [
+      {
+        "op": "commit",
+        "ref": "procedure",
+        "canonicalKey": "procedure.deterministic.release",
+        "kind": "procedure",
+        "value": "Deterministic release procedure generates artifact bundle then verifies hashes.",
+        "importance": 0.8
+      },
+      {
+        "op": "commit",
+        "ref": "decision",
+        "canonicalKey": "decision.deterministic.release",
+        "kind": "decision",
+        "value": "Deterministic release decision requires verification after bundle generation.",
+        "importance": 0.85
+      },
+      {
+        "op": "commit",
+        "ref": "artifact",
+        "canonicalKey": "artifact.deterministic.release",
+        "kind": "artifact",
+        "value": "Deterministic release artifact bundle verification record.",
+        "importance": 0.75
+      }
+    ],
+    "query": "deterministic release artifact bundle verification",
+    "limit": 10,
+    "relevantRefs": [
+      "procedure",
+      "decision",
+      "artifact"
+    ],
+    "primaryRelevantRef": "decision",
+    "artifactProcedureRefs": [
+      "procedure",
+      "artifact"
+    ]
+  }
+]

@@ -57,13 +57,13 @@
 - `evaluateMemoryQuality(corpus, options?)`
 - temporary real `MemoryService` fixture runner with cleanup
 
-- [ ] **Step 1: Write RED tests** for Recall@K, MRR, hard-guardrail recall, current revision correctness, prior failure recall, graph target recall, conflict visibility, artifact/procedure recall, noise displacement, project/principal contamination, character-budget behavior, and deterministic replay.
-- [ ] **Step 2: Run** `npx vitest run tests/memory-quality.test.ts --reporter=verbose` and confirm RED because the evaluator/fixture are missing.
-- [ ] **Step 3: Add declarative memory corpus** with at least 12 cases covering every design requirement. Fixture operations support commit, revise, explicit relation, conflict creation, query/preflight, alternate project/principal probes, aging, and character budget.
-- [ ] **Step 4: Implement the evaluator** using temporary roots and the real `MemoryService`; never fabricate search hits or scores. Close services and remove temp roots in `finally`.
-- [ ] **Step 5: Validate strict security metrics** so one contamination or hard-guardrail miss is visible as an explicit case failure, not hidden in an aggregate average.
-- [ ] **Step 6: GREEN verification:** run memory-quality plus `memory-awareness`, `memory-retriever`, `memory-routing`, `project-scope-routing`, and `memory-performance` tests.
-- [ ] **Step 7: Commit** `feat: add deterministic memory quality corpus`.
+- [x] **Step 1: Write RED tests** for Recall@K, MRR, hard-guardrail recall, current revision correctness, prior failure recall, graph target recall, conflict visibility, artifact/procedure recall, noise displacement, project/principal contamination, character-budget behavior, and deterministic replay.
+- [x] **Step 2: Run** `npx vitest run tests/memory-quality.test.ts --reporter=verbose` and confirm RED because the evaluator/fixture are missing.
+- [x] **Step 3: Add declarative memory corpus** with at least 12 cases covering every design requirement. Fixture operations support commit, revise, explicit relation, conflict creation, query/preflight, alternate project/principal probes, aging, and character budget.
+- [x] **Step 4: Implement the evaluator** using temporary roots and the real `MemoryService`; never fabricate search hits or scores. Close services and remove temp roots in `finally`.
+- [x] **Step 5: Validate strict security metrics** so one contamination or hard-guardrail miss is visible as an explicit case failure, not hidden in an aggregate average.
+- [x] **Step 6: GREEN verification:** run memory-quality plus `memory-awareness`, `memory-retriever`, `memory-routing`, `project-scope-routing`, and `memory-performance` tests.
+- [x] **Step 7: Commit** `feat: add deterministic memory quality corpus`.
 
 ### Task E3: Unified report/gate and pre-tuning baseline
 
