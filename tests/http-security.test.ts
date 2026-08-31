@@ -76,6 +76,31 @@ describe('HTTP trust boundary policy', () => {
     expect(policy().isLoopbackRequest(req)).toBe(false);
   });
 
+  it('uses forwarded client address for loopback classification only in trusted-proxy mode', () => {
+    const remoteThroughLoopbackProxy = request({
+      'x-forwarded-for': '203.0.113.25',
+      'x-forwarded-proto': 'https',
+      'x-forwarded-host': 'agent-core.example.test',
+    }, '127.0.0.1');
+    expect(policy({ trustProxy: false }).isLoopbackRequest(remoteThroughLoopbackProxy)).toBe(true);
+    expect(policy({ trustProxy: true }).isLoopbackRequest(remoteThroughLoopbackProxy)).toBe(false);
+
+    const localThroughTrustedProxy = request({
+      'x-forwarded-for': '127.0.0.1',
+      'x-forwarded-proto': 'https',
+      'x-forwarded-host': 'agent-core.example.test',
+    }, '127.0.0.1');
+    expect(policy({ trustProxy: true }).isLoopbackRequest(localThroughTrustedProxy)).toBe(true);
+  });
+
+  it('fails closed for proxied metrics identity when trusted proxy headers exist without client address', () => {
+    const proxied = request({
+      'x-forwarded-proto': 'https',
+      'x-forwarded-host': 'agent-core.example.test',
+    }, '127.0.0.1');
+    expect(policy({ trustProxy: true }).isLoopbackRequest(proxied)).toBe(false);
+  });
+
   it.each([
     [undefined, { ok: true }],
     ['null', { ok: false, code: 'invalid_origin' }],

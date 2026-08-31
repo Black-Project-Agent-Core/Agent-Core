@@ -106,7 +106,19 @@ export class HttpSecurityPolicy {
   }
 
   isLoopbackRequest(request: IncomingMessage): boolean {
-    const remoteAddress = normalizedRemoteAddress(request.socket?.remoteAddress);
+    let address = request.socket?.remoteAddress;
+    if (this.config.trustProxy) {
+      const forwardedFor = firstHeaderValue(request.headers['x-forwarded-for']);
+      const hasProxyIdentity = Boolean(
+        forwardedFor
+        || firstHeaderValue(request.headers['x-forwarded-proto'])
+        || firstHeaderValue(request.headers['x-forwarded-host']),
+      );
+      if (forwardedFor) address = forwardedFor;
+      else if (hasProxyIdentity) return false;
+    }
+
+    const remoteAddress = normalizedRemoteAddress(address);
     if (!remoteAddress) return false;
     if (remoteAddress === '::1' || remoteAddress === '0:0:0:0:0:0:0:1') return true;
     return remoteAddress.startsWith('127.');
