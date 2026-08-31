@@ -21,6 +21,8 @@ All notable stable Agent Core changes are recorded here. The project follows sem
 
 ### Changed
 
+- Stable release ownership now targets `Black-Project-Agent-Core/Agent-Core` and `@black-project-agent-core/agent-core-plugin`; release packaging additionally emits a dedicated fresh-install ZIP containing the tracked Codespaces bootstrap/bridge contract.
+- Stable publication now has an explicit remote parity gate: a package version cannot be declared complete while the GitHub Release ZIP assets remain on an older version.
 - `capability_route` now injects a bounded deterministic projection of recalled non-guardrail memory into capability ranking and reports `memoryInjection` evidence, closing the gap between available DMF infrastructure and autonomous routing adoption.
 - Execution-derived intelligence now documents and enforces the authority order `PROCESS TRUTH > VERIFIED ARTIFACT TRUTH > PARSED STRUCTURED INTERPRETATION > ARTIFACT/CACHE SUGGESTION > WORKFLOW ADVICE`; cache awareness never skips current command execution.
 - Windows owned-process stop now terminates the spawned process tree so a stopped background command cannot leave descendants holding the routed working directory.
@@ -29,6 +31,8 @@ All notable stable Agent Core changes are recorded here. The project follows sem
 
 ### Fixed
 
+- Fixed-tunnel Codespaces recovery now treats the tracked tunnel ID as authoritative, ignores stale account/machine tunnel environment overrides, and uses a repository-level Codespaces runtime credential so an authorized fresh Codespace can attach without per-account tunnel setup.
+- Root Agent Core brand and documentation-link verification now stop at independent `SubProject/` boundaries so legitimate subproject vocabulary or internal docs cannot block an Agent Core stable release.
 - Codespaces readiness now accepts the actual `server_url` runtime target contract while continuing to require the exact loopback MCP URL.
 - Lifecycle startup no longer treats local process health as sufficient: it verifies protocol availability, remote tunnel identity, registration freshness, and watchdog supervision before reporting ready.
 - File-backed runtime credentials and tracked tunnel defaults survive environment loss, process replacement, Codespace restart, and full container rebuild without requiring manual key or tunnel export.

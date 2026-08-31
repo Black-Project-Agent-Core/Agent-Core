@@ -24,7 +24,7 @@ The same verified URL is stored in:
 /workspaces/.agent-core-codespace/mcp-url.txt
 ```
 
-This is the URL to copy into the ChatGPT custom plugin named `Agent Core Codespace`.
+This URL is diagnostic metadata for the Agent Core public endpoint. The `codespace` ChatGPT connector uses the fixed Secure MCP Tunnel and does not depend on the disposable Codespace hostname.
 
 ## Manual repair
 
@@ -54,19 +54,15 @@ When Codespaces exposes `GITHUB_TOKEN` or `gh auth token`, bootstrap writes that
 
 An optional dedicated GitHub Packages credential can be supplied through `AGENT_CORE_GITHUB_PACKAGES_TOKEN`.
 
-## URL policy
+## Fixed-tunnel connector policy
 
-The automation reports a verified URL but never edits ChatGPT custom plugin settings.
+The disposable GitHub hostname may change whenever a Codespace is deleted and recreated. ChatGPT connectivity therefore does **not** use that hostname as connector identity. The repository tracks one non-secret tunnel ID in `plugin/codespace/config/tunnel.defaults.json`; lifecycle startup reconstructs the managed profile from that tracked identity and the repository-level `CONTROL_PLANE_API_KEY` Codespaces secret.
 
-For the current Codespace the direct endpoint follows the GitHub forwarded-port address. As long as the same Codespace identity remains, the plugin URL remains unchanged across disconnect/reconnect, stop/start, and rebuild.
+Stale `CONTROL_PLANE_TUNNEL_ID` or `CODESPACE_TUNNEL_ID` values from another account, shell, or machine are ignored and cleared before tunnel-client startup. A fresh Codespace should require no tunnel export or manual profile repair. The acceptance flow is simply:
 
-If a Codespace is completely deleted and recreated with a different hostname, run:
-
-```bash
-npm run codespace:connection
+```text
+create/resume Codespace -> wait for lifecycle -> @Codespace test koneksi
 ```
-
-and replace the plugin URL manually once.
 
 ## Optional stable front door
 

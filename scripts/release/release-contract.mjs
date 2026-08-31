@@ -1,8 +1,9 @@
-export const RELEASE_FORMAT = 'agent-core-stable-release-v2';
+export const RELEASE_FORMAT = 'agent-core-stable-release-v3';
 export const PRESENTATION_BRIDGE_ROOT = 'SubProject/Presentation-Bridge/';
 
 export const RUNTIME_RELEASE_ITEMS = Object.freeze([
   '.env.example',
+  '.devcontainer/devcontainer.json',
   'README.md',
   'CHANGELOG.md',
   'SECURITY.md',
@@ -15,6 +16,14 @@ export const RUNTIME_RELEASE_ITEMS = Object.freeze([
   'scripts',
   'plugin/agent-core/README.md',
   'plugin/agent-core/skills',
+  'plugin/codespace/README.md',
+  'plugin/codespace/package.json',
+  'plugin/codespace/package-lock.json',
+  'plugin/codespace/tsconfig.json',
+  'plugin/codespace/config',
+  'plugin/codespace/scripts',
+  'plugin/codespace/src',
+  'plugin/codespace/tests',
   'docs/README.md',
   'docs/deterministic-memory.md',
   'docs/local-agent-continuity.md',
@@ -52,10 +61,11 @@ export function isPresentationBridgeSourcePath(value) {
 
 export function releaseAssetNames(version, presentationBridgeVersion) {
   return {
+    freshZip: `agent-core-fresh-v${version}-stable.zip`,
     runtimeZip: `agent-core-windows-v${version}-stable.zip`,
     pluginZip: `agent-core-plugin-v${version}-stable.zip`,
     presentationBridgeZip: `presentation-bridge-v${presentationBridgeVersion}-source.zip`,
-    npmTarball: `rendevouz999-agent-core-plugin-${version}.tgz`,
+    npmTarball: `black-project-agent-core-agent-core-plugin-${version}.tgz`,
     manifest: 'release-manifest.json',
     checksums: 'SHA256SUMS.txt',
   };

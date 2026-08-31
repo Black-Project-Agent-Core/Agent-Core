@@ -6,7 +6,10 @@ import { fileURLToPath } from 'node:url';
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDir, '..', '..');
 const tracked = execFileSync('git', ['-C', root, 'ls-files', '-z', '*.md'], { encoding: 'utf8' })
-  .split('\0').filter(Boolean);
+  .split('\0').filter(Boolean)
+  // Independent SubProjects own their documentation/link validation lifecycle.
+  // Root Agent Core stable verification must not fail on a subproject's internal docs.
+  .filter((file) => !file.replaceAll('\\', '/').startsWith('SubProject/'));
 const failures = [];
 let checked = 0;
 

@@ -12,10 +12,11 @@ describe('stable release package contract', () => {
   it('names the Agent Core, plugin, Presentation Bridge, manifest, and checksum assets deterministically', async () => {
     const { releaseAssetNames } = await loadContract();
     expect(releaseAssetNames('0.5.4', '0.2.0')).toEqual({
+      freshZip: 'agent-core-fresh-v0.5.4-stable.zip',
       runtimeZip: 'agent-core-windows-v0.5.4-stable.zip',
       pluginZip: 'agent-core-plugin-v0.5.4-stable.zip',
       presentationBridgeZip: 'presentation-bridge-v0.2.0-source.zip',
-      npmTarball: 'rendevouz999-agent-core-plugin-0.5.4.tgz',
+      npmTarball: 'black-project-agent-core-agent-core-plugin-0.5.4.tgz',
       manifest: 'release-manifest.json',
       checksums: 'SHA256SUMS.txt',
     });
@@ -47,6 +48,9 @@ describe('stable release package contract', () => {
 
   it('keeps canonical Codespaces and Windows cutover documentation in the runtime package without secret-bearing roots', async () => {
     const { RUNTIME_RELEASE_ITEMS } = await loadContract();
+    expect(RUNTIME_RELEASE_ITEMS).toContain('.devcontainer/devcontainer.json');
+    expect(RUNTIME_RELEASE_ITEMS).toContain('plugin/codespace/scripts');
+    expect(RUNTIME_RELEASE_ITEMS).toContain('plugin/codespace/src');
     expect(RUNTIME_RELEASE_ITEMS).toContain('docs/codespaces.md');
     expect(RUNTIME_RELEASE_ITEMS).toContain('docs/windows-installation-cutover.md');
     expect(RUNTIME_RELEASE_ITEMS).not.toContain('secrets');
@@ -76,20 +80,35 @@ describe('stable release package contract', () => {
     expect(pkg.scripts?.verify).toContain('npm run build:codespace');
     expect(pkg.scripts?.verify?.indexOf('npm run build:codespace')).toBeLessThan(pkg.scripts?.verify?.indexOf('npm test') ?? -1);
     expect(nodeBuilder).toContain('presentationBridgeSourcePackage');
+    expect(nodeBuilder).toContain('freshPackage');
     expect(nodeBuilder).toContain('releaseAssetNames');
     expect(nodeBuilder).not.toContain('gh-token.txt');
     expect(nodeBuilder).not.toContain('packages-token.txt');
     expect(powershellWrapper).toContain('build-release.mjs');
   });
 
+  it('keeps stable package and GitHub Release ZIP publication under a mandatory remote parity gate', async () => {
+    const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')) as { scripts?: Record<string, string> };
+    const parity = await readFile(path.join(root, 'scripts', 'release', 'check-stable-parity.mjs'), 'utf8');
+    const readme = await readFile(path.join(root, 'README.md'), 'utf8');
+    expect(pkg.scripts?.['verify:stable-parity']).toBe('node scripts/release/check-stable-parity.mjs');
+    expect(parity).toContain('expected.freshZip');
+    expect(parity).toContain('expected.runtimeZip');
+    expect(parity).toContain('expected.pluginZip');
+    expect(parity).toContain('expected.npmTarball');
+    expect(parity).toContain('gh([\'release\', \'view\', tag');
+    expect(readme).toContain('npm run verify:stable-parity');
+    expect(readme).toContain('Never update only GitHub Packages/TGZ while leaving the Stable Release ZIP on an older version.');
+  });
+
   it('documents clone, zero-touch Codespaces, Presentation Bridge, Releases, and authenticated GitHub Packages usage', async () => {
     const readme = await readFile(path.join(root, 'README.md'), 'utf8');
-    expect(readme).toContain('git clone https://github.com/rendevouz999/Agent-Core.git');
+    expect(readme).toContain('git clone https://github.com/Black-Project-Agent-Core/Agent-Core.git');
     expect(readme).toContain('test koneksi');
     expect(readme).toContain('## GitHub Codespaces');
     expect(readme).toContain('## Presentation Bridge');
     expect(readme).toContain('presentation-bridge-v0.2.0-source.zip');
-    expect(readme).toContain('@rendevouz999/agent-core-plugin');
+    expect(readme).toContain('@black-project-agent-core/agent-core-plugin');
     expect(readme).toContain('https://npm.pkg.github.com');
     expect(readme).toContain('## Releases and packages');
   });

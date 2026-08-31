@@ -33,6 +33,9 @@ function trackedFiles() {
     .split('\0').filter(Boolean)
     .filter((file) => !migrationHistory.has(file.replaceAll('\\', '/')))
     .filter((file) => !file.replaceAll('\\', '/').startsWith('capabilities/sources/'))
+    // Agent Core brand ownership stops at independent SubProject boundaries.
+    // Their product/vendor vocabulary must not block a root Agent Core release.
+    .filter((file) => !file.replaceAll('\\', '/').startsWith('SubProject/'))
     .map((file) => path.join(repoRoot, file));
 }
 

@@ -25,7 +25,8 @@
     "codespace:gateway:deploy": "bash scripts/codespace/deploy-stable-gateway.sh",
     "codespace:anchor:set": "bash scripts/codespace/set-anchor-backend.sh",
     "codespace:anchor:discover": "bash scripts/codespace/discover-anchor-backend.sh",
-    "build:codespace": "npm --prefix plugin/codespace ci && npm --prefix plugin/codespace run build"
+    "build:codespace": "npm --prefix plugin/codespace ci && npm --prefix plugin/codespace run build",
+    "verify:stable-parity": "node scripts/release/check-stable-parity.mjs"
   },
   "engines": {
     "node": ">=24.15.0"
@@ -41,6 +42,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rendevouz999/Agent-Core.git"
+    "url": "git+https://github.com/Black-Project-Agent-Core/Agent-Core.git"
   }
 }

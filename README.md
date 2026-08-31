@@ -1,7 +1,7 @@
 # Agent Core
 
-[![Latest release](https://img.shields.io/github/v/release/rendevouz999/Agent-Core?display_name=tag&sort=semver)](https://github.com/rendevouz999/Agent-Core/releases/latest)
-[![GitHub package](https://img.shields.io/badge/GitHub%20Packages-agent--core--plugin-24292f?logo=github)](https://github.com/users/rendevouz999/packages/npm/package/agent-core-plugin)
+[![Latest release](https://img.shields.io/github/v/release/Black-Project-Agent-Core/Agent-Core?display_name=tag&sort=semver)](https://github.com/Black-Project-Agent-Core/Agent-Core/releases/latest)
+[![GitHub package](https://img.shields.io/badge/GitHub%20Packages-agent--core--plugin-24292f?logo=github)](https://github.com/orgs/Black-Project-Agent-Core/packages/npm/package/agent-core-plugin)
 
 Agent Core is a **local-first, authenticated MCP control plane** that gives ChatGPT a bounded execution authority instead of an unverified shell. It combines durable memory, cross-session continuity, dependency-aware execution, evidence-backed completion, GitHub operations, and self-healing desktop or Codespaces lifecycles.
 
@@ -54,12 +54,12 @@ routing                  Continuity      Fabric          Fabric
 ## Clone the canonical repository
 
 ```bash
-git clone https://github.com/rendevouz999/Agent-Core.git
+git clone https://github.com/Black-Project-Agent-Core/Agent-Core.git
 cd Agent-Core
 git switch main
 ```
 
-Use `rendevouz999/Agent-Core` as the canonical source. Forks may be useful as temporary development remotes, but stable source, releases, packages, and Codespaces lifecycle updates are published from the canonical repository.
+Use `Black-Project-Agent-Core/Agent-Core` as the canonical source. Forks may be useful as temporary development remotes, but stable source, releases, packages, and Codespaces lifecycle updates are published from the canonical repository.
 
 ## Windows quick start
 
@@ -214,10 +214,11 @@ GitHub Actions is intentionally disabled for this repository. Accepted local ver
 A stable release contains:
 
 ```text
+agent-core-fresh-vX.Y.Z-stable.zip
 agent-core-windows-vX.Y.Z-stable.zip
 agent-core-plugin-vX.Y.Z-stable.zip
 presentation-bridge-v0.2.0-source.zip
-rendevouz999-agent-core-plugin-X.Y.Z.tgz
+black-project-agent-core-agent-core-plugin-X.Y.Z.tgz
 release-manifest.json
 SHA256SUMS.txt
 ```
@@ -227,16 +228,18 @@ The ZIP and TGZ files are built from an exact clean source commit. Runtime state
 The npm-compatible plugin is published to GitHub Packages as:
 
 ```text
-@rendevouz999/agent-core-plugin
+@black-project-agent-core/agent-core-plugin
 ```
 
 Authenticated installation:
 
 ```bash
 export NODE_AUTH_TOKEN="<GitHub token with read:packages>"
-npm install @rendevouz999/agent-core-plugin --registry=https://npm.pkg.github.com
+npm install @black-project-agent-core/agent-core-plugin --registry=https://npm.pkg.github.com
 ```
 
 Do not commit `NODE_AUTH_TOKEN` or a generated `.npmrc`. Stable package publication uses a dedicated file-backed Packages credential and the `stable` dist-tag.
+
+**Stable release parity rule:** package publication and GitHub Release assets are one atomic release contract. A version is not complete until the matching `agent-core-fresh-vX.Y.Z-stable.zip`, Windows ZIP, plugin ZIP/TGZ, manifest, and checksums are present on GitHub Release. After publication run `npm run verify:stable-parity`; this gate must pass before reporting the release complete. Never update only GitHub Packages/TGZ while leaving the Stable Release ZIP on an older version.
 
 Release history and behavior changes are recorded in [`CHANGELOG.md`](CHANGELOG.md). Canonical operational documents begin at [`docs/README.md`](docs/README.md); GitHub credential and publication behavior is documented in [`docs/github.md`](docs/github.md).

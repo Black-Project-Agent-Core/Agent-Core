@@ -48,6 +48,7 @@ await rm(releaseRoot, { recursive: true, force: true });
 await mkdir(assetsDir, { recursive: true });
 
 const runtimeEntries = await collectRuntimeEntries();
+await writeStoredZip(path.join(assetsDir, names.freshZip), runtimeEntries, archiveDate);
 await writeStoredZip(path.join(assetsDir, names.runtimeZip), runtimeEntries, archiveDate);
 
 await buildPluginStage();
@@ -68,6 +69,7 @@ if (npmOutput !== names.npmTarball) {
 }
 
 const primaryAssets = [
+  names.freshZip,
   names.runtimeZip,
   names.pluginZip,
   names.presentationBridgeZip,
@@ -87,11 +89,12 @@ const manifest = {
   channel: 'stable',
   sourceCommit,
   generatedAt: new Date().toISOString(),
+  freshPackage: names.freshZip,
   runtimePackage: names.runtimeZip,
   pluginPackage: names.pluginZip,
   presentationBridgeVersion,
   presentationBridgeSourcePackage: names.presentationBridgeZip,
-  githubPackage: '@rendevouz999/agent-core-plugin',
+  githubPackage: '@black-project-agent-core/agent-core-plugin',
   packageDistTag: 'stable',
   exclusions: RELEASE_EXCLUSIONS,
   assets: manifestAssets,
@@ -240,7 +243,7 @@ async function buildPluginStage() {
     },
   };
   const npmPackage = {
-    name: '@rendevouz999/agent-core-plugin',
+    name: '@black-project-agent-core/agent-core-plugin',
     version,
     description: 'Stable Agent Core routing and Native GitHub Fabric plugin source for the Agent Core MCP app.',
     private: false,
@@ -248,7 +251,7 @@ async function buildPluginStage() {
     files: ['README.md', 'CHANGELOG.md', 'agent-core-package.json', 'skills/**'],
     repository: {
       type: 'git',
-      url: 'git+https://github.com/rendevouz999/Agent-Core.git',
+      url: 'git+https://github.com/Black-Project-Agent-Core/Agent-Core.git',
     },
     publishConfig: {
       registry: 'https://npm.pkg.github.com',
