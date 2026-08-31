@@ -137,12 +137,12 @@
 - Produces `LocalMaintenanceCoordinator` and `LocalMaintenanceStatus`.
 - Allowed scheduled calls: memory status/integrity, execution health/integrity, `planExecutionRetention` only.
 
-- [ ] **Step 1: Write failing tests** proving disabled-by-default behavior, one bounded timer when enabled, deterministic due-time injection, integrity + dry-run plan results, failure reason recording, and close cancels future scheduling.
-- [ ] **Step 2: Add a contract test that source for the coordinator contains no invocation/import of `applyExecutionRetention`, restore, key revocation, backup deletion/rotation, or helper deletion paths.**
+- [x] **Step 1: Write failing tests** proving disabled-by-default behavior, one bounded timer when enabled, deterministic due-time injection, integrity + dry-run plan results, failure reason recording, and close cancels future scheduling.
+- [x] **Step 2: Add a contract test that source for the coordinator contains no invocation/import of `applyExecutionRetention`, restore, key revocation, backup deletion/rotation, or helper deletion paths.**
 - [x] **Step 3: Run focused tests and require RED.**
-- [ ] **Step 4: Implement minimal coordinator/config/lifecycle wiring and audit status.**
-- [ ] **Step 5: Add `maintenance` status to the existing health metrics surface, then re-run maintenance, retention, runtime-lease, config, and health tests; require GREEN.**
-- [ ] **Step 6: Commit `feat: add safe scheduled local maintenance` and push/read back SHA equality.**
+- [x] **Step 4: Implement minimal coordinator/config/lifecycle wiring and audit status.**
+- [x] **Step 5: Add `maintenance` status to the existing health metrics surface, then re-run maintenance, retention, runtime-lease, config, and health tests; require GREEN.**
+- [x] **Step 6: Commit `feat: add safe scheduled local maintenance` and push/read back SHA equality.**
 
 ### Task F6: Wave F adversarial/performance certification
 

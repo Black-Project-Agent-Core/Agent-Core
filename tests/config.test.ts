@@ -60,6 +60,12 @@ describe('loadConfig', () => {
         queuedSyncCritical: 128,
       },
     });
+    expect(config.maintenance).toEqual({
+      enabled: false,
+      intervalMs: 6 * 60 * 60 * 1000,
+      retentionOlderThanMs: 30 * 24 * 60 * 60 * 1000,
+      retentionPlanRoot: path.join(baseDir, 'runtime', 'execution', 'retention'),
+    });
     expect(config.github).toEqual({
       enabled: true,
       apiBaseUrl: 'https://api.github.com',
@@ -113,6 +119,10 @@ describe('loadConfig', () => {
       AGENT_CORE_EXECUTION_TELEMETRY_CRITICAL_RATIO: '0.7',
       AGENT_CORE_EXECUTION_QUEUED_SYNC_WARNING: '16',
       AGENT_CORE_EXECUTION_QUEUED_SYNC_CRITICAL: '64',
+      AGENT_CORE_MAINTENANCE_ENABLED: 'true',
+      AGENT_CORE_MAINTENANCE_INTERVAL_MS: '3600000',
+      AGENT_CORE_MAINTENANCE_RETENTION_OLDER_THAN_MS: '86400000',
+      AGENT_CORE_MAINTENANCE_RETENTION_PLAN_ROOT: 'F:\\Maintenance\\retention',
       AGENT_CORE_GITHUB_ENABLED: 'false',
       AGENT_CORE_GITHUB_API_BASE_URL: 'https://github.example.test/api/v3/',
       AGENT_CORE_GITHUB_API_VERSION: '2026-03-10',
@@ -177,6 +187,12 @@ describe('loadConfig', () => {
         queuedSyncWarning: 16,
         queuedSyncCritical: 64,
       },
+    });
+    expect(config.maintenance).toEqual({
+      enabled: true,
+      intervalMs: 3_600_000,
+      retentionOlderThanMs: 86_400_000,
+      retentionPlanRoot: path.resolve('F:\\Maintenance\\retention'),
     });
     expect(config.github).toEqual({
       enabled: false,

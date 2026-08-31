@@ -15,6 +15,7 @@ export function registerHealthMetricsTools(server: McpServer, runtime: RuntimeSe
       execution: z.record(z.string(), z.unknown()),
       resourceGovernance: z.record(z.string(), z.unknown()),
       diagnosis: z.array(z.record(z.string(), z.unknown())),
+      maintenance: z.record(z.string(), z.unknown()),
       github: z.record(z.string(), z.unknown()),
       routing: z.record(z.string(), z.unknown()),
       overallHealth: z.enum(['healthy', 'degraded', 'critical']),

@@ -281,6 +281,7 @@ describe('bounded runtime observability', () => {
       capabilities: { coverage: () => ({ nativeReady: 0 }) },
       audit: { status: () => ({ queueDepth: 0, queueCapacity: 100, written: 0, dropped: 0, writeErrors: 0, sequence: 0, headHash: null, currentFileBytes: 0, rotatedFiles: 0 }) },
       telemetry: { status: () => ({ enabled: false, queueDepth: 0, queueCapacity: 0, dropped: 0 }) },
+      maintenance: { status: () => ({ enabled: true, running: false, runCount: 2, retentionCandidates: 2, failureCodes: [], nextRunAt: 50, overdue: true }) },
     } as any;
     const snapshot = await new RuntimeHealthMetrics(runtime).getMetrics({ principalId: 'SECRET_PRINCIPAL', projectId: 'SECRET_PROJECT' } as any) as any;
     expect(snapshot.resourceGovernance).toMatchObject({
@@ -293,7 +294,10 @@ describe('bounded runtime observability', () => {
       'memory_latency_regression',
       'execution_dispatch_latency_regression',
       'continuity_blockers_present',
+      'retention_candidates_present',
+      'maintenance_overdue',
     ]);
+    expect(snapshot.maintenance).toMatchObject({ enabled: true, retentionCandidates: 2, overdue: true });
     const serialized = JSON.stringify(snapshot);
     expect(serialized).not.toContain('SECRET_PRINCIPAL');
     expect(serialized).not.toContain('SECRET_PROJECT');
@@ -311,6 +315,7 @@ describe('bounded runtime observability', () => {
     config.memory = { ...config.memory, dbPath: path.join(root, 'runtime', 'memory.sqlite') };
     config.execution = { ...config.execution, dbPath: path.join(root, 'runtime', 'execution.sqlite'), logRoot: path.join(root, 'runtime', 'runs') };
     config.github = { ...config.github, enabled: false };
+    config.maintenance = { ...config.maintenance, enabled: true, intervalMs: 60 * 60 * 1000 };
     const service = await startAgentCoreService(config);
     try {
       const readiness = await (await fetch(`http://${service.host}:${service.port}/health`)).json() as any;
@@ -320,7 +325,13 @@ describe('bounded runtime observability', () => {
       const response = await fetch(`http://${service.host}:${service.port}/health/metrics`);
       expect(response.status).toBe(200);
       const metrics = await response.json() as any;
-      expect(metrics).toMatchObject({ overallHealth: 'healthy', memory: { healthy: true }, execution: { healthy: true } });
+      expect(metrics).toMatchObject({
+        overallHealth: 'healthy',
+        memory: { healthy: true },
+        execution: { healthy: true },
+        maintenance: { enabled: true, running: false, runCount: 0, retentionCandidates: 0, overdue: false },
+      });
+      expect(metrics.maintenance.nextRunAt).toEqual(expect.any(Number));
       const serialized = JSON.stringify(metrics);
       expect(serialized).not.toContain('secrets/github');
       expect(serialized).not.toContain('gh-token');

@@ -79,6 +79,13 @@ export interface ObservabilityConfig {
   otlp: OtlpObservabilityConfig;
 }
 
+export interface MaintenanceConfig {
+  enabled: boolean;
+  intervalMs: number;
+  retentionOlderThanMs: number;
+  retentionPlanRoot: string;
+}
+
 export interface GitHubConfig {
   enabled: boolean;
   apiBaseUrl: string;
@@ -113,6 +120,7 @@ export interface AppConfig {
   observability: ObservabilityConfig;
   memory: MemoryConfig;
   execution: ExecutionConfig;
+  maintenance: MaintenanceConfig;
   github: GitHubConfig;
 }
 
@@ -356,6 +364,13 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     resourceGovernance,
   };
 
+  const maintenance: MaintenanceConfig = {
+    enabled: parseBoolean(env.AGENT_CORE_MAINTENANCE_ENABLED, false),
+    intervalMs: parsePositiveInteger(env.AGENT_CORE_MAINTENANCE_INTERVAL_MS, 6 * 60 * 60 * 1000, 'AGENT_CORE_MAINTENANCE_INTERVAL_MS'),
+    retentionOlderThanMs: parsePositiveInteger(env.AGENT_CORE_MAINTENANCE_RETENTION_OLDER_THAN_MS, 30 * 24 * 60 * 60 * 1000, 'AGENT_CORE_MAINTENANCE_RETENTION_OLDER_THAN_MS'),
+    retentionPlanRoot: path.resolve(env.AGENT_CORE_MAINTENANCE_RETENTION_PLAN_ROOT?.trim() || path.join(baseDir, 'runtime', 'execution', 'retention')),
+  };
+
   const github: GitHubConfig = {
     enabled: parseBoolean(env.AGENT_CORE_GITHUB_ENABLED, true),
     apiBaseUrl: parseGitHubApiBaseUrl(env.AGENT_CORE_GITHUB_API_BASE_URL),
@@ -378,6 +393,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     observability,
     memory,
     execution,
+    maintenance,
     github,
   };
 }

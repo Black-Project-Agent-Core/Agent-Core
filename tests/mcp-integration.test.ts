@@ -141,6 +141,7 @@ describe('Agent Core MCP integration', () => {
         'routing.execution_gate', 'execution.deterministic_fabric',
         'execution.event_driven_wake', 'execution.evidence_bridge',
         'execution.adaptive_resource_governance', 'runtime.evidence_based_diagnosis',
+        'maintenance.local_safe_schedule',
         'github.native_fabric', 'tool.github_status', 'tool.github_api',
         'tool.capability_route', 'tool.write_file',
       ]),

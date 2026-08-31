@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { CapabilityRegistry } from '../capabilities/registry-service.js';
 import { CapabilityRouter } from '../capabilities/router.js';
-import { loadConfig, type ExecutionConfig, type GitHubConfig, type MemoryConfig, type ObservabilityConfig } from '../config.js';
+import { loadConfig, type ExecutionConfig, type GitHubConfig, type MaintenanceConfig, type MemoryConfig, type ObservabilityConfig } from '../config.js';
 import { ExecutionLogStore } from '../execution/log-store.js';
 import { ExecutionMemoryBridge } from '../execution/memory-bridge.js';
 import { ExecutionMemoryPreSearch } from '../execution/memory-search.js';
@@ -20,6 +20,7 @@ import { WorkspacePolicy } from './workspace.js';
 import { RuntimeMetricRegistry } from './metric-window.js';
 import { RuntimeHealthMetrics } from './health-metrics.js';
 import { NodeResourceSnapshotProvider } from './resource-snapshot.js';
+import { LocalMaintenanceCoordinator } from './maintenance.js';
 
 export interface RuntimeServices {
   workspace: WorkspacePolicy;
@@ -37,6 +38,7 @@ export interface RuntimeServices {
   telemetry: TelemetryService;
   healthMetrics: RuntimeHealthMetrics;
   resourceGovernor: ResourceGovernor;
+  maintenance: LocalMaintenanceCoordinator;
 }
 
 export function createRuntimeServices(
@@ -49,6 +51,7 @@ export function createRuntimeServices(
   githubDependencies?: GitHubServiceDependencies,
   observabilityConfig?: ObservabilityConfig,
   serviceVersion = 'unknown',
+  maintenanceConfig?: MaintenanceConfig,
 ): RuntimeServices {
   const workspace = new WorkspacePolicy(allowedRoots);
   const capabilities = CapabilityRegistry.open(capabilityDir);
@@ -57,6 +60,7 @@ export function createRuntimeServices(
   const resolvedExecutionConfig = executionConfig ?? defaults.execution;
   const resolvedGitHubConfig = githubConfig ?? defaults.github;
   const resolvedObservabilityConfig = observabilityConfig ?? defaults.observability;
+  const resolvedMaintenanceConfig = maintenanceConfig ?? defaults.maintenance;
   const metrics = new RuntimeMetricRegistry();
   if (routingAuditLogger && 'attachMetrics' in routingAuditLogger
     && typeof (routingAuditLogger as RoutingAuditLogger & { attachMetrics?: unknown }).attachMetrics === 'function') {
@@ -98,6 +102,13 @@ export function createRuntimeServices(
     metrics,
     resourceGovernor,
   });
+  const maintenance = new LocalMaintenanceCoordinator(resolvedMaintenanceConfig, {
+    logRoot: resolvedExecutionConfig.logRoot,
+    memoryStatus: () => memory.status(),
+    executionHealth: () => execution.health(),
+    audit: runtimeAudit,
+    metrics,
+  });
   const runtime = {
     workspace,
     filesystem: new FileSystemService(workspace),
@@ -113,6 +124,7 @@ export function createRuntimeServices(
     audit: runtimeAudit,
     telemetry,
     resourceGovernor,
+    maintenance,
   } as Omit<RuntimeServices, 'healthMetrics'> & { healthMetrics?: RuntimeHealthMetrics };
   runtime.healthMetrics = new RuntimeHealthMetrics(runtime as RuntimeServices);
   return runtime as RuntimeServices;

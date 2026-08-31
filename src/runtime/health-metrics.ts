@@ -1,6 +1,7 @@
 import type { RuntimeMetricRegistry, RuntimeMetricSnapshot } from './metric-window.js';
 import type { ResourceGovernanceDecision } from '../execution/resource-governor.js';
 import { diagnoseRuntime, type RuntimeDiagnosisRecommendation } from './diagnosis.js';
+import type { LocalMaintenanceStatus } from './maintenance.js';
 
 export type OverallHealth = 'healthy' | 'degraded' | 'critical';
 export type ApiHealth = 'green' | 'yellow' | 'red';
@@ -31,6 +32,7 @@ type HealthRuntime = {
   capabilities: { coverage(): any };
   audit?: { status?(): { queueDepth: number; queueCapacity: number; written: number; dropped: number; writeErrors: number; sequence: number; headHash: string | null; currentFileBytes: number; rotatedFiles: number; lastWriteErrorCode?: string } };
   telemetry?: { status(): { enabled: boolean; queueDepth: number; queueCapacity: number; dropped: number; lastExportAt?: number; lastFailureCode?: string } };
+  maintenance?: { status(): LocalMaintenanceStatus };
 };
 
 export interface RuntimeHealthSnapshot extends Record<string, unknown> {
@@ -115,6 +117,15 @@ export class RuntimeHealthMetrics {
       rotatedFiles: 0,
     };
     const telemetryStatus = this.runtime.telemetry?.status() ?? { enabled: false, queueDepth: 0, queueCapacity: 0, dropped: 0 };
+    const maintenance = this.runtime.maintenance?.status() ?? {
+      enabled: false,
+      running: false,
+      runCount: 0,
+      retentionCandidates: 0,
+      failureCodes: [],
+      nextRunAt: null,
+      overdue: false,
+    };
     const memoryCritical = Boolean(this.runtime.memory.config.enabled && !memory.healthy);
     const executionCritical = Boolean(this.runtime.execution.config.enabled && !execution.healthy);
     const optionalDegraded = (this.runtime.github.config.enabled && (github.apiHealth !== 'green' || github.credentialStatus !== 'valid'))
@@ -138,6 +149,8 @@ export class RuntimeHealthMetrics {
       memoryPreflightP95Ms: memoryPreflight.p95Ms,
       executionDispatchP95Ms: executionDispatch.p95Ms,
       continuityBlockedTasks,
+      retentionCandidates: Number(maintenance.retentionCandidates ?? 0),
+      maintenanceOverdue: maintenance.overdue === true,
     });
     return {
       timestamp: this.now(),
@@ -170,11 +183,12 @@ export class RuntimeHealthMetrics {
         decision: resourceDecision,
       },
       diagnosis,
+      maintenance,
       github,
       routing: {
         ...routing,
         validation: metricView(this.runtime.metrics.metric('routing.validation.duration_ms')),
-        capabilityStage: 'v5-local-continuity-execution-fabric',
+        capabilityStage: 'v6-local-resource-governance',
       },
       audit,
       observability: {

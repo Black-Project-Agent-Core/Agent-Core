@@ -144,6 +144,7 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
         'execution.evidence_bridge',
         'execution.adaptive_resource_governance',
         'runtime.evidence_based_diagnosis',
+        'maintenance.local_safe_schedule',
         'observability.audit_journal',
         ...(runtime.telemetry.status().enabled ? ['observability.otlp_loopback_export'] : []),
         'github.native_fabric',

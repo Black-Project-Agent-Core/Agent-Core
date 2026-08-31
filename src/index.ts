@@ -45,6 +45,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     undefined,
     config.observability,
     SERVER_VERSION,
+    config.maintenance,
   );
   const oauthService = new OAuthService(keyStore, oauthStore, httpSecurity, runtime.metrics);
   // Warm independent persistence subsystems without coupling listener availability to either one.
@@ -52,6 +53,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     runtime.memory.status(),
     config.execution.enabled ? runtime.execution.open() : Promise.resolve(),
   ]);
+  runtime.maintenance.start();
   const server = createServer(createHttpHandler({
     keyStore,
     oauthService,
@@ -101,6 +103,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
       server.listen(config.port, config.host);
     });
   } catch (error) {
+    runtime.maintenance.close();
     await Promise.allSettled([runtime.telemetry.close(), runtime.execution.close(), runtime.memory.close(), auditLogger.close()]);
     throw error;
   }
@@ -115,6 +118,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     telemetry: runtime.telemetry,
     close: async () => {
       await closeServer(server);
+      runtime.maintenance.close();
       await runtime.telemetry.close();
       await runtime.execution.close();
       await runtime.memory.close();
