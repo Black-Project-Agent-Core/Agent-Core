@@ -1,0 +1,376 @@
+[
+  {
+    "id": "frontend-quality",
+    "name": "frontend-quality",
+    "displayName": "Frontend Quality",
+    "aliases": [
+      "frontend design",
+      "ui quality"
+    ],
+    "type": "skill",
+    "category": "frontend",
+    "categoryTitle": "Frontend",
+    "declaredPurpose": "Improve frontend dashboard visual hierarchy spacing layout accessibility and presentation quality",
+    "functionalSummary": "Refactor and review frontend UI hierarchy, responsive layout, spacing and component presentation",
+    "source": {
+      "url": "https://example.invalid/frontend-quality",
+      "repo": "agent-core/quality-fixture",
+      "path": "SKILL.md",
+      "sha": "fixture"
+    },
+    "compatibility": [
+      "chatgpt"
+    ],
+    "language": [
+      "en"
+    ],
+    "triggers": [
+      "frontend",
+      "dashboard",
+      "layout",
+      "spacing",
+      "hierarchy",
+      "responsive",
+      "accessibility",
+      "refactor",
+      "review"
+    ],
+    "invocation": "auto_candidate",
+    "inputsContext": [
+      "task_context"
+    ],
+    "outputsArtifacts": [],
+    "requiredTools": [],
+    "dependencies": [],
+    "sideEffects": [],
+    "risk": "low",
+    "license": {
+      "status": "verified",
+      "id": "MIT"
+    },
+    "state": "native_ready",
+    "nativeEligible": true,
+    "normalizedPath": "normalized/skills/frontend-quality/SKILL.md",
+    "equivalenceGroup": null,
+    "catalogSha": "wave-e-routing-quality-v1",
+    "catalogFile": "wave-e-routing-quality.json",
+    "catalogRow": 1
+  },
+  {
+    "id": "backend-debug-reference",
+    "name": "backend-debug-reference",
+    "displayName": "Backend Debug Reference",
+    "aliases": [],
+    "type": "skill",
+    "category": "debugging",
+    "categoryTitle": "Debugging",
+    "declaredPurpose": "Debug backend crashes runtime failures stack traces and service errors",
+    "functionalSummary": "Diagnose backend crash and runtime failure evidence with structured debugging",
+    "source": {
+      "url": "https://example.invalid/backend-debug-reference",
+      "repo": "agent-core/quality-fixture",
+      "path": "SKILL.md",
+      "sha": "fixture"
+    },
+    "compatibility": [
+      "chatgpt"
+    ],
+    "language": [
+      "en"
+    ],
+    "triggers": [
+      "backend",
+      "debug",
+      "crash",
+      "runtime",
+      "failure",
+      "stack",
+      "trace",
+      "investigate"
+    ],
+    "invocation": "reference_only",
+    "inputsContext": [
+      "task_context"
+    ],
+    "outputsArtifacts": [],
+    "requiredTools": [],
+    "dependencies": [],
+    "sideEffects": [],
+    "risk": "medium",
+    "license": {
+      "status": "verified",
+      "id": "MIT"
+    },
+    "state": "reference_only",
+    "nativeEligible": false,
+    "normalizedPath": null,
+    "equivalenceGroup": null,
+    "catalogSha": "wave-e-routing-quality-v1",
+    "catalogFile": "wave-e-routing-quality.json",
+    "catalogRow": 1
+  },
+  {
+    "id": "docs-helper",
+    "name": "docs-helper",
+    "displayName": "Docs Helper",
+    "aliases": [],
+    "type": "skill",
+    "category": "documentation",
+    "categoryTitle": "Documentation",
+    "declaredPurpose": "Write and review API documentation README changelog and release notes",
+    "functionalSummary": "Improve technical documentation wording, API references, README files and changelogs",
+    "source": {
+      "url": "https://example.invalid/docs-helper",
+      "repo": "agent-core/quality-fixture",
+      "path": "SKILL.md",
+      "sha": "fixture"
+    },
+    "compatibility": [
+      "chatgpt"
+    ],
+    "language": [
+      "en"
+    ],
+    "triggers": [
+      "docs",
+      "documentation",
+      "readme",
+      "changelog",
+      "api",
+      "reference",
+      "wording",
+      "release notes"
+    ],
+    "invocation": "auto_candidate",
+    "inputsContext": [
+      "task_context"
+    ],
+    "outputsArtifacts": [],
+    "requiredTools": [],
+    "dependencies": [],
+    "sideEffects": [],
+    "risk": "low",
+    "license": {
+      "status": "verified",
+      "id": "MIT"
+    },
+    "state": "native_ready",
+    "nativeEligible": true,
+    "normalizedPath": "normalized/skills/docs-helper/SKILL.md",
+    "equivalenceGroup": null,
+    "catalogSha": "wave-e-routing-quality-v1",
+    "catalogFile": "wave-e-routing-quality.json",
+    "catalogRow": 1
+  },
+  {
+    "id": "release-engineering",
+    "name": "release-engineering",
+    "displayName": "Release Engineering",
+    "aliases": [],
+    "type": "skill",
+    "category": "release",
+    "categoryTitle": "Release",
+    "declaredPurpose": "Build verify package publish and deploy release artifacts safely",
+    "functionalSummary": "Guide release packaging artifact verification publishing deployment and rollback",
+    "source": {
+      "url": "https://example.invalid/release-engineering",
+      "repo": "agent-core/quality-fixture",
+      "path": "SKILL.md",
+      "sha": "fixture"
+    },
+    "compatibility": [
+      "chatgpt"
+    ],
+    "language": [
+      "en"
+    ],
+    "triggers": [
+      "release",
+      "package",
+      "artifact",
+      "publish",
+      "deploy",
+      "rollback",
+      "build",
+      "verify"
+    ],
+    "invocation": "auto_candidate",
+    "inputsContext": [
+      "task_context"
+    ],
+    "outputsArtifacts": [],
+    "requiredTools": [],
+    "dependencies": [],
+    "sideEffects": [],
+    "risk": "medium",
+    "license": {
+      "status": "verified",
+      "id": "MIT"
+    },
+    "state": "native_ready",
+    "nativeEligible": true,
+    "normalizedPath": "normalized/skills/release-engineering/SKILL.md",
+    "equivalenceGroup": null,
+    "catalogSha": "wave-e-routing-quality-v1",
+    "catalogFile": "wave-e-routing-quality.json",
+    "catalogRow": 1
+  },
+  {
+    "id": "database-quality",
+    "name": "database-quality",
+    "displayName": "Database Quality",
+    "aliases": [],
+    "type": "skill",
+    "category": "database",
+    "categoryTitle": "Database",
+    "declaredPurpose": "Analyze database SQL schema migration query performance and indexing",
+    "functionalSummary": "Review and optimize database queries, migrations, schema changes and indexes",
+    "source": {
+      "url": "https://example.invalid/database-quality",
+      "repo": "agent-core/quality-fixture",
+      "path": "SKILL.md",
+      "sha": "fixture"
+    },
+    "compatibility": [
+      "chatgpt"
+    ],
+    "language": [
+      "en"
+    ],
+    "triggers": [
+      "database",
+      "sql",
+      "query",
+      "migration",
+      "schema",
+      "index",
+      "performance",
+      "optimize"
+    ],
+    "invocation": "auto_candidate",
+    "inputsContext": [
+      "task_context"
+    ],
+    "outputsArtifacts": [],
+    "requiredTools": [],
+    "dependencies": [],
+    "sideEffects": [],
+    "risk": "medium",
+    "license": {
+      "status": "verified",
+      "id": "MIT"
+    },
+    "state": "native_ready",
+    "nativeEligible": true,
+    "normalizedPath": "normalized/skills/database-quality/SKILL.md",
+    "equivalenceGroup": null,
+    "catalogSha": "wave-e-routing-quality-v1",
+    "catalogFile": "wave-e-routing-quality.json",
+    "catalogRow": 1
+  },
+  {
+    "id": "test-automation",
+    "name": "test-automation",
+    "displayName": "Test Automation",
+    "aliases": [],
+    "type": "skill",
+    "category": "testing",
+    "categoryTitle": "Testing",
+    "declaredPurpose": "Implement and review deterministic tests regression coverage and verification",
+    "functionalSummary": "Improve test automation, regression suites, Vitest coverage and verification",
+    "source": {
+      "url": "https://example.invalid/test-automation",
+      "repo": "agent-core/quality-fixture",
+      "path": "SKILL.md",
+      "sha": "fixture"
+    },
+    "compatibility": [
+      "chatgpt"
+    ],
+    "language": [
+      "en"
+    ],
+    "triggers": [
+      "test",
+      "testing",
+      "vitest",
+      "regression",
+      "coverage",
+      "verify",
+      "automation",
+      "quality"
+    ],
+    "invocation": "auto_candidate",
+    "inputsContext": [
+      "task_context"
+    ],
+    "outputsArtifacts": [],
+    "requiredTools": [],
+    "dependencies": [],
+    "sideEffects": [],
+    "risk": "low",
+    "license": {
+      "status": "verified",
+      "id": "MIT"
+    },
+    "state": "native_ready",
+    "nativeEligible": true,
+    "normalizedPath": "normalized/skills/test-automation/SKILL.md",
+    "equivalenceGroup": null,
+    "catalogSha": "wave-e-routing-quality-v1",
+    "catalogFile": "wave-e-routing-quality.json",
+    "catalogRow": 1
+  },
+  {
+    "id": "budget-analysis",
+    "name": "budget-analysis",
+    "displayName": "Budget Analysis",
+    "aliases": [],
+    "type": "skill",
+    "category": "finance",
+    "categoryTitle": "Finance",
+    "declaredPurpose": "Analyze budget reporting forecasts and financial variance",
+    "functionalSummary": "Review budget reports, forecast variance and spending summaries",
+    "source": {
+      "url": "https://example.invalid/budget-analysis",
+      "repo": "agent-core/quality-fixture",
+      "path": "SKILL.md",
+      "sha": "fixture"
+    },
+    "compatibility": [
+      "chatgpt"
+    ],
+    "language": [
+      "en"
+    ],
+    "triggers": [
+      "budget",
+      "finance",
+      "forecast",
+      "variance",
+      "report",
+      "review",
+      "spending"
+    ],
+    "invocation": "auto_candidate",
+    "inputsContext": [
+      "task_context"
+    ],
+    "outputsArtifacts": [],
+    "requiredTools": [],
+    "dependencies": [],
+    "sideEffects": [],
+    "risk": "low",
+    "license": {
+      "status": "verified",
+      "id": "MIT"
+    },
+    "state": "native_ready",
+    "nativeEligible": true,
+    "normalizedPath": "normalized/skills/budget-analysis/SKILL.md",
+    "equivalenceGroup": null,
+    "catalogSha": "wave-e-routing-quality-v1",
+    "catalogFile": "wave-e-routing-quality.json",
+    "catalogRow": 1
+  }
+]

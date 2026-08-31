@@ -36,13 +36,13 @@
 - `evaluateRoutingQuality(corpus, capabilityRecords, options?)`
 - stable per-case results and deterministic replay comparison
 
-- [ ] **Step 1: Write RED tests** that load a minimal corpus and assert exact metric calculations for tier accuracy, false-high-impact, unsafe overpermission, false-read-only, precision@2, unnecessary skill-load, verification correctness, and replay equality. Include malformed corpus cases that must throw.
-- [ ] **Step 2: Run** `npx vitest run tests/routing-quality.test.ts --reporter=verbose` and confirm RED because evaluator/fixtures do not exist.
-- [ ] **Step 3: Add a fixed evaluation registry fixture** with native frontend/docs/release skills, a reference-only backend debugging capability, and at least one lexical distractor. The fixture must contain no network/runtime dependency.
-- [ ] **Step 4: Add an initial routing corpus** of at least 32 cases spanning atomic read/mutation, structured read/mutation, domain-complex tasks, high-impact tasks, GitHub read/mutation, misleading lexical overlap, safe uses of generic `remove/review/build/get/check`, context-only strong skill matches, and ambiguous guidance.
-- [ ] **Step 5: Implement evaluator types/schema validation and metrics** using the real `CapabilityRegistry` + `CapabilityRouter`. For each case run the router twice and compare stable route projections.
-- [ ] **Step 6: GREEN verification:** run routing-quality plus existing router/registy tests and `npm run build`.
-- [ ] **Step 7: Commit** `feat: add deterministic routing quality corpus`.
+- [x] **Step 1: Write RED tests** that load a minimal corpus and assert exact metric calculations for tier accuracy, false-high-impact, unsafe overpermission, false-read-only, precision@2, unnecessary skill-load, verification correctness, and replay equality. Include malformed corpus cases that must throw.
+- [x] **Step 2: Run** `npx vitest run tests/routing-quality.test.ts --reporter=verbose` and confirm RED because evaluator/fixtures do not exist.
+- [x] **Step 3: Add a fixed evaluation registry fixture** with native frontend/docs/release skills, a reference-only backend debugging capability, and at least one lexical distractor. The fixture must contain no network/runtime dependency.
+- [x] **Step 4: Add an initial routing corpus** of at least 32 cases spanning atomic read/mutation, structured read/mutation, domain-complex tasks, high-impact tasks, GitHub read/mutation, misleading lexical overlap, safe uses of generic `remove/review/build/get/check`, context-only strong skill matches, and ambiguous guidance.
+- [x] **Step 5: Implement evaluator types/schema validation and metrics** using the real `CapabilityRegistry` + `CapabilityRouter`. For each case run the router twice and compare stable route projections.
+- [x] **Step 6: GREEN verification:** run routing-quality plus existing router/registy tests and `npm run build`.
+- [x] **Step 7: Commit** `feat: add deterministic routing quality corpus`.
 
 ### Task E2: Memory quality corpus and real-service evaluator
 
