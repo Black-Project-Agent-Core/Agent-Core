@@ -1,7 +1,7 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { assertExecutionIntentAllowed } from './command-policy.js';
-import { resolveShellInvocation } from './platform-shell.js';
+import { spawnManagedCommand, terminateManagedProcessTree } from './process-governance.js';
 import type { WorkspacePolicy } from './workspace.js';
 
 const MAX_OUTPUT_BYTES = 256 * 1024;
@@ -77,39 +77,6 @@ function appendBounded(current: string, chunk: Buffer, state: { truncated: boole
   return combined.subarray(combined.length - MAX_OUTPUT_BYTES).toString('utf8');
 }
 
-function spawnCommand(command: string, cwd: string): ChildProcessWithoutNullStreams {
-  const invocation = resolveShellInvocation(command);
-  return spawn(invocation.executable, invocation.args, {
-    cwd,
-    windowsHide: invocation.windowsHide,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
-}
-
-async function terminateOwnedProcessTree(child: ChildProcessWithoutNullStreams, force = false): Promise<void> {
-  if (process.platform === 'win32' && child.pid) {
-    await new Promise<void>((resolve) => {
-      const killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', ...(force ? ['/F'] : [])], {
-        windowsHide: true,
-        stdio: 'ignore',
-      });
-      let settled = false;
-      const done = () => {
-        if (settled) return;
-        settled = true;
-        resolve();
-      };
-      killer.once('error', () => {
-        try { child.kill(force ? 'SIGKILL' : undefined); } catch { /* best effort fallback */ }
-        done();
-      });
-      killer.once('close', done);
-    });
-    return;
-  }
-  child.kill(force ? 'SIGKILL' : undefined);
-}
-
 function normalizeOwner(owner: ProcessSessionOwner | undefined): ProcessSessionOwner | undefined {
   if (!owner) return undefined;
   const principalId = owner.principalId?.trim();
@@ -131,7 +98,7 @@ export class ProcessManager {
   async execute(command: string, options: ExecuteOptions): Promise<ProcessResult> {
     assertCommandAllowed(command);
     const cwd = await this.workspace.resolveExisting(options.cwd);
-    const child = spawnCommand(command, cwd);
+    const child = spawnManagedCommand(command, cwd);
     let stdout = '';
     let stderr = '';
     const outputState = { truncated: false };
@@ -143,7 +110,7 @@ export class ProcessManager {
     const timeoutMs = Math.max(1, Math.min(options.timeoutMs ?? 30_000, 10 * 60_000));
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill();
+      void terminateManagedProcessTree(child);
     }, timeoutMs);
 
     return await new Promise<ProcessResult>((resolve, reject) => {
@@ -159,7 +126,7 @@ export class ProcessManager {
     assertCommandAllowed(command);
     const cwd = await this.workspace.resolveExisting(options.cwd);
     const owner = normalizeOwner(options.owner);
-    const child = spawnCommand(command, cwd);
+    const child = spawnManagedCommand(command, cwd);
     const sessionId = `proc_${randomUUID()}`;
     const session: Session = {
       sessionId,
@@ -262,10 +229,10 @@ export class ProcessManager {
     const session = this.requireSession(sessionId, owner);
     if (session.exited) return { sessionId, stopped: true };
 
-    await terminateOwnedProcessTree(session.child);
+    await terminateManagedProcessTree(session.child);
     await this.waitForExit(session, 750);
     if (!session.exited) {
-      await terminateOwnedProcessTree(session.child, true);
+      await terminateManagedProcessTree(session.child, true);
       await this.waitForExit(session, 750);
     }
     if (session.terminalEvidence) await session.terminalEvidence;

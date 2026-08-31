@@ -36,6 +36,7 @@ export interface ExecutionConfig {
   logRoot: string;
   maxConcurrency: number;
   maxNodes: number;
+  maxOutputBytes: number;
   waitMaxMs: number;
   busyTimeoutMs: number;
 }
@@ -105,6 +106,12 @@ function parsePositiveInteger(value: string | undefined, fallback: number, name:
   if (value === undefined || value.trim() === '') return fallback;
   const parsed = Number.parseInt(value, 10);
   if (!Number.isSafeInteger(parsed) || parsed < 1) throw new Error(`${name} must be a positive integer`);
+  return parsed;
+}
+
+function parseBoundedPositiveInteger(value: string | undefined, fallback: number, name: string, max: number): number {
+  const parsed = parsePositiveInteger(value, fallback, name);
+  if (parsed > max) throw new Error(`${name} must be between 1 and ${max}`);
   return parsed;
 }
 
@@ -227,6 +234,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     logRoot: path.resolve(env.AGENT_CORE_EXECUTION_LOG_ROOT?.trim() || path.join(baseDir, 'runtime', 'execution', 'runs')),
     maxConcurrency: parsePositiveInteger(env.AGENT_CORE_EXECUTION_MAX_CONCURRENCY, 4, 'AGENT_CORE_EXECUTION_MAX_CONCURRENCY'),
     maxNodes: parsePositiveInteger(env.AGENT_CORE_EXECUTION_MAX_NODES, 128, 'AGENT_CORE_EXECUTION_MAX_NODES'),
+    maxOutputBytes: parseBoundedPositiveInteger(env.AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES, 64 * 1024 * 1024, 'AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES', 1024 * 1024 * 1024),
     waitMaxMs: parsePositiveInteger(env.AGENT_CORE_EXECUTION_WAIT_MAX_MS, 60_000, 'AGENT_CORE_EXECUTION_WAIT_MAX_MS'),
     busyTimeoutMs: parsePositiveInteger(env.AGENT_CORE_EXECUTION_BUSY_TIMEOUT_MS, 5_000, 'AGENT_CORE_EXECUTION_BUSY_TIMEOUT_MS'),
   };

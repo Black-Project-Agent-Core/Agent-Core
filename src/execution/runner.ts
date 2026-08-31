@@ -1,9 +1,9 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash, type Hash } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { resolveShellInvocation } from '../runtime/platform-shell.js';
+import { evaluateExecutionIntent } from '../runtime/command-policy.js';
+import { processGovernanceCapabilities, spawnManagedCommand, terminateManagedProcessTree } from '../runtime/process-governance.js';
 import type { WorkspacePolicy } from '../runtime/workspace.js';
 import type { ValidatedExecutionNode } from './dag.js';
 import { verifyExecutionArtifacts, type ExecutionEvidenceManifest } from './evidence.js';
@@ -26,24 +26,45 @@ export interface ExecutionRunOptions {
   onOutputAvailable?(event: ExecutionOutputAvailable): void | Promise<void>;
 }
 
+export interface ExecutionCommandRunnerOptions {
+  maxOutputBytes?: number;
+}
+
 interface StreamEvidence {
   bytes: number;
   hash: Hash;
 }
 
+interface SharedOutputBudget {
+  limit: number;
+  used: number;
+  exceeded: boolean;
+}
+
 function createEvidenceTransform(
   evidence: StreamEvidence,
   stream: 'stdout' | 'stderr',
+  budget: SharedOutputBudget,
+  onExceeded: () => void,
   notify?: (event: ExecutionOutputAvailable) => void,
 ): Transform {
   return new Transform({
     transform(chunk: Buffer | string, _encoding, callback) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      const offset = evidence.bytes;
-      evidence.bytes += buffer.length;
-      evidence.hash.update(buffer);
-      notify?.({ stream, offset, nextOffset: evidence.bytes, chunkBytes: buffer.length });
-      callback(null, buffer);
+      const remaining = Math.max(0, budget.limit - budget.used);
+      const accepted = buffer.length <= remaining ? buffer : buffer.subarray(0, remaining);
+      if (accepted.length > 0) {
+        const offset = evidence.bytes;
+        evidence.bytes += accepted.length;
+        budget.used += accepted.length;
+        evidence.hash.update(accepted);
+        notify?.({ stream, offset, nextOffset: evidence.bytes, chunkBytes: accepted.length });
+      }
+      if (buffer.length > accepted.length && !budget.exceeded) {
+        budget.exceeded = true;
+        onExceeded();
+      }
+      callback(null, accepted.length > 0 ? accepted : undefined);
     },
   });
 }
@@ -63,31 +84,33 @@ async function verifyDeclaredEvidence(
   }
 }
 
-function spawnCommand(command: string, cwd: string): ChildProcessWithoutNullStreams {
-  const invocation = resolveShellInvocation(command);
-  return spawn(invocation.executable, invocation.args, {
-    cwd,
-    windowsHide: invocation.windowsHide,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
-}
-
 function terminalState(
   requested: 'interrupted' | 'cancelled' | undefined,
   timedOut: boolean,
+  outputLimitExceeded: boolean,
   exitCode: number | null,
   error: Error | undefined,
 ): ExecutionResultState {
   if (requested) return requested;
+  if (outputLimitExceeded) return 'failed';
   if (timedOut || error || exitCode !== 0) return 'failed';
   return 'succeeded';
 }
 
 export class ExecutionCommandRunner {
+  readonly maxOutputBytes: number;
+
   constructor(
     readonly logs: ExecutionLogStore,
     readonly workspace: WorkspacePolicy,
-  ) {}
+    options: ExecutionCommandRunnerOptions = {},
+  ) {
+    const maxOutputBytes = options.maxOutputBytes ?? 64 * 1024 * 1024;
+    if (!Number.isSafeInteger(maxOutputBytes) || maxOutputBytes < 1 || maxOutputBytes > 1024 * 1024 * 1024) {
+      throw new Error('maxOutputBytes must be an integer between 1 and 1073741824');
+    }
+    this.maxOutputBytes = maxOutputBytes;
+  }
 
   async start(
     runId: string,
@@ -101,6 +124,8 @@ export class ExecutionCommandRunner {
     const stdoutEvidence: StreamEvidence = { bytes: 0, hash: createHash('sha256') };
     const stderrEvidence: StreamEvidence = { bytes: 0, hash: createHash('sha256') };
     const pendingOutputNotifications = new Set<Promise<void>>();
+    const outputBudget: SharedOutputBudget = { limit: this.maxOutputBytes, used: 0, exceeded: false };
+    let outputLimitExceeded = false;
     const notifyOutput = (event: ExecutionOutputAvailable) => {
       if (!options.onOutputAvailable) return;
       let work: Promise<void>;
@@ -112,17 +137,23 @@ export class ExecutionCommandRunner {
       pendingOutputNotifications.add(work);
       void work.finally(() => pendingOutputNotifications.delete(work));
     };
-    const child = spawnCommand(node.command, node.cwd);
+    const child = spawnManagedCommand(node.command, node.cwd);
     child.stdin.end();
+
+    const onOutputExceeded = () => {
+      if (outputLimitExceeded) return;
+      outputLimitExceeded = true;
+      void terminateManagedProcessTree(child);
+    };
 
     const stdoutPipeline = pipeline(
       child.stdout,
-      createEvidenceTransform(stdoutEvidence, 'stdout', notifyOutput),
+      createEvidenceTransform(stdoutEvidence, 'stdout', outputBudget, onOutputExceeded, notifyOutput),
       createWriteStream(paths.stdoutPath, { flags: 'a' }),
     );
     const stderrPipeline = pipeline(
       child.stderr,
-      createEvidenceTransform(stderrEvidence, 'stderr', notifyOutput),
+      createEvidenceTransform(stderrEvidence, 'stderr', outputBudget, onOutputExceeded, notifyOutput),
       createWriteStream(paths.stderrPath, { flags: 'a' }),
     );
 
@@ -139,7 +170,7 @@ export class ExecutionCommandRunner {
     const timer = setTimeout(() => {
       if (completed) return;
       timedOut = true;
-      child.kill();
+      void terminateManagedProcessTree(child);
     }, node.timeoutMs);
 
     const completion = (async (): Promise<ExecutionResultMarker> => {
@@ -157,7 +188,23 @@ export class ExecutionCommandRunner {
           : new Error(String(pipelineFailure.reason));
       }
       const finishedAt = Date.now();
-      const processState = terminalState(requestedState, timedOut, terminal.exitCode, processError);
+      const processState = terminalState(requestedState, timedOut, outputLimitExceeded, terminal.exitCode, processError);
+      const processErrorText = outputLimitExceeded
+        ? `EXECUTION_OUTPUT_LIMIT_EXCEEDED: Process output exceeded configured limit of ${this.maxOutputBytes} bytes`
+        : timedOut
+          ? `Execution timed out after ${node.timeoutMs} ms`
+          : processError?.message;
+      const policy = evaluateExecutionIntent({ command: node.command, source: 'execution' });
+      const governance = {
+        policyCode: policy.code,
+        riskClass: policy.riskClass,
+        executable: policy.executable,
+        interpreterClass: policy.interpreterClass,
+        characteristics: policy.characteristics,
+        ...processGovernanceCapabilities(),
+        wallClockLimitMs: node.timeoutMs,
+        outputByteLimit: this.maxOutputBytes,
+      };
       const common = {
         runId,
         nodeId: node.id,
@@ -171,10 +218,8 @@ export class ExecutionCommandRunner {
         stderrBytes: stderrEvidence.bytes,
         stdoutSha256: stdoutEvidence.hash.digest('hex'),
         stderrSha256: stderrEvidence.hash.digest('hex'),
+        governance,
       };
-      const processErrorText = timedOut
-        ? `Execution timed out after ${node.timeoutMs} ms`
-        : processError?.message;
       let marker: ExecutionResultMarker;
       if (node.expectedArtifacts.length > 0) {
         const evidence = await verifyDeclaredEvidence(this.workspace, node);
@@ -212,7 +257,7 @@ export class ExecutionCommandRunner {
       terminate: (state = 'cancelled') => {
         if (completed || requestedState) return;
         requestedState = state;
-        child.kill();
+        void terminateManagedProcessTree(child);
       },
     };
   }

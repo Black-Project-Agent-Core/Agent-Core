@@ -138,7 +138,7 @@ export class ExecutionService {
         this.memoryBridge!.dispatch(scope, event);
       });
     }
-    const runner = dependencies.runner ?? new ExecutionCommandRunner(this.logs, workspace);
+    const runner = dependencies.runner ?? new ExecutionCommandRunner(this.logs, workspace, { maxOutputBytes: config.maxOutputBytes });
     this.scheduler = new ExecutionScheduler(this.store, runner, {
       logRoot: config.logRoot,
       journal: this.journal,

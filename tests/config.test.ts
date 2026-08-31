@@ -25,6 +25,7 @@ describe('loadConfig', () => {
       logRoot: path.join(baseDir, 'runtime', 'execution', 'runs'),
       maxConcurrency: 4,
       maxNodes: 128,
+      maxOutputBytes: 64 * 1024 * 1024,
       waitMaxMs: 60_000,
       busyTimeoutMs: 5_000,
     });
@@ -56,6 +57,7 @@ describe('loadConfig', () => {
       AGENT_CORE_EXECUTION_LOG_ROOT: 'F:\\Exec\\runs',
       AGENT_CORE_EXECUTION_MAX_CONCURRENCY: '8',
       AGENT_CORE_EXECUTION_MAX_NODES: '64',
+      AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES: '2097152',
       AGENT_CORE_EXECUTION_WAIT_MAX_MS: '45000',
       AGENT_CORE_EXECUTION_BUSY_TIMEOUT_MS: '7000',
       AGENT_CORE_GITHUB_ENABLED: 'false',
@@ -88,6 +90,7 @@ describe('loadConfig', () => {
       logRoot: path.resolve('F:\\Exec\\runs'),
       maxConcurrency: 8,
       maxNodes: 64,
+      maxOutputBytes: 2 * 1024 * 1024,
       waitMaxMs: 45_000,
       busyTimeoutMs: 7_000,
     });
@@ -117,6 +120,11 @@ describe('loadConfig', () => {
   it('rejects unsupported MCP protocol modes', () => {
     expect(() => loadConfig({ AGENT_CORE_MCP_PROTOCOL_MODE: 'modern-only' }, 'F:\\Ignored'))
       .toThrow('AGENT_CORE_MCP_PROTOCOL_MODE must be dual or legacy');
+  });
+
+  it('rejects execution output byte limits above the hard one-gibibyte ceiling', () => {
+    expect(() => loadConfig({ AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES: String(1024 * 1024 * 1024 + 1) }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES must be between 1 and 1073741824');
   });
 
   it('rejects non-http github api base urls', () => {

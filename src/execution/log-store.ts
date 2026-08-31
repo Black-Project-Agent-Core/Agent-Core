@@ -20,6 +20,21 @@ export interface ExecutionLogReadResult {
 
 export type ExecutionResultState = 'succeeded' | 'failed' | 'interrupted' | 'cancelled';
 
+export interface ExecutionGovernanceEvidence {
+  policyCode: string;
+  riskClass: string;
+  executable: string;
+  interpreterClass: string;
+  characteristics: string[];
+  processTreeTermination: 'windows_taskkill_tree' | 'posix_process_group';
+  hardWallClockLimit: true;
+  hardOutputByteLimit: true;
+  hardCpuTimeLimit: false;
+  hardMemoryLimit: false;
+  wallClockLimitMs: number;
+  outputByteLimit: number;
+}
+
 export interface ExecutionResultMarkerBase {
   runId: string;
   nodeId: string;
@@ -35,6 +50,7 @@ export interface ExecutionResultMarkerBase {
   stdoutSha256: string;
   stderrSha256: string;
   error?: string;
+  governance?: ExecutionGovernanceEvidence;
 }
 
 export interface ExecutionResultMarkerV1 extends ExecutionResultMarkerBase {

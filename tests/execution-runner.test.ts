@@ -180,6 +180,30 @@ describe('durable execution log store and command runner', () => {
     expect(await f.logs.readResult('run-interrupt', 'A', 1)).toEqual(result);
   });
 
+  it('terminates output floods at the configured byte quota and records factual governance evidence', async () => {
+    const f = await fixture('output-limit');
+    const runner = new ExecutionCommandRunner(f.logs, f.workspace, { maxOutputBytes: 1024 });
+    const node = await validatedNode(
+      f.workspace,
+      f.work,
+      nodeShellCommand(`process.stdout.write(Buffer.alloc(64 * 1024, 'x')); setInterval(() => {}, 1000);`),
+    );
+    const result = await runner.run('run-output-limit', node, 'attempt-output-limit', 1) as any;
+    expect(result.state).toBe('failed');
+    expect(result.error).toContain('EXECUTION_OUTPUT_LIMIT_EXCEEDED');
+    expect(result.stdoutBytes + result.stderrBytes).toBeLessThanOrEqual(1024);
+    expect(result.governance).toMatchObject({
+      hardOutputByteLimit: true,
+      outputByteLimit: 1024,
+      hardCpuTimeLimit: false,
+      hardMemoryLimit: false,
+    });
+    const paths = f.logs.paths('run-output-limit', 'A', 1);
+    const stdout = await readFile(paths.stdoutPath);
+    const stderr = await readFile(paths.stderrPath);
+    expect(stdout.length + stderr.length).toBeLessThanOrEqual(1024);
+  });
+
   it('refuses to overwrite an existing attempt evidence directory', async () => {
     const f = await fixture('immutable');
     const node = await validatedNode(f.workspace, f.work, printCommand('once\n'));
