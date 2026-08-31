@@ -3799,3 +3799,220 @@ new LangGraph dependency/integration          none
 ## Phase boundary
 
 Phase 3 is therefore **CERTIFIED COMPLETE** for bounded historical expansion, authenticated seed authority, deterministic packing, expansion auditing, and the read-only MCP interface. It deliberately does not implement the Phase 4 write-decision controller, automatic expansion policy, or universal remote write-through adoption.
+
+
+---
+
+# 62. Phase 4 Certification — Memory Cognition / Write Decision Controller
+
+## Certified implementation candidate
+
+```text
+branch                              feature/cross-session-memory-nervous-system
+implementation SHA                  a17007ecf7bc6c55d3dda6132bedc5aeb38885fe
+remote-visible candidate            yes / exact SHA equality
+Phase 4 base                        d8e2e020da6866a74ae94e312ebb9a3ca133e93e
+```
+
+## Implemented cognition contract
+
+Phase 4 adds a deterministic controller over the existing schema-v3 cognition ledger rather than another storage authority.
+
+```text
+MemoryCognitionController.evaluate     advisory / decision audit only
+MemoryCognitionController.apply        explicit policy-controlled mutation
+MemoryService.evaluatePostflight       internal service wrapper
+MemoryService.applyPostflight          internal service wrapper
+new schema migration                   none
+new MCP tool                           none
+existing promotion auto-adoption       none
+```
+
+The persistence vocabulary remains exactly:
+
+```text
+NO_DURABLE_MEMORY
+REVISE_EXISTING
+LINK_EXISTING
+WRITE_BRANCH
+WRITE_NEW_ROOT
+OPEN_CONFLICT
+```
+
+Every successful controller evaluation records one `memory_write_decisions` row. Advisory evaluation does not create or revise a semantic node, add an edge, or open a conflict. Normal Store commits/revisions, preflight, Continuity promotion, and Execution memory promotion do not invoke the controller automatically in Phase 4.
+
+## Bounded semantic-profile contract
+
+New writes to node metadata use an approved structured profile vocabulary:
+
+```text
+title
+summary
+intent
+concepts[]
+entities[]
+constraints[]
+artifacts[]
+outcome
+failureMode
+solution
+futureRelevance[]
+```
+
+Bounds and identity rules:
+
+```text
+scalar string ceiling                 2000 characters
+array item ceiling                    500 characters
+array item count                      32
+canonical profile JSON                <=16000 UTF-8 bytes
+unknown keys                          rejected
+empty values                          removed
+array values                          redacted + deduplicated + binary sorted
+profile identity                      SHA-256(canonical redacted JSON)
+exact profile identity cross-scope    never matched
+```
+
+The profile is a structured description/identity signal, not an external semantic judge and not an embedding. Existing already-persisted logical metadata can still replay through the remote logical-state materializer without being reinterpreted by the new-write validator.
+
+## Node-creation and relation policy
+
+New non-root nodes may be justified only by strong semantic relations already recognized by the central relation policy:
+
+```text
+continues
+branch_of
+derived_from
+learned_from
+caused_by
+failed_because
+resolved_by
+validated_by
+blocked_by
+depends_on
+produced
+contradicts
+```
+
+Weak associative relations cannot justify a new branch/conflict node by themselves:
+
+```text
+same_key
+explicit_relation
+same_anchor
+same_artifact
+same_route_or_task
+cooccurs_in_event
+token_overlap
+temporal_neighbor
+same_task_family
+```
+
+`WRITE_BRANCH` requires an evidence-backed `branch_of` or `derived_from` relation to a same-scope parent. `WRITE_NEW_ROOT` requires `FRESH_DURABLE_CONTEXT`, evidence, and a non-empty `rootReason`, with no exact canonical/profile identity already present. `OPEN_CONFLICT` requires evidence-backed `contradicts`; both nodes remain and a `memory_conflicts` record is opened. Failures remain immutable episodic nodes and are never revised in place.
+
+The new Store explicit-relation writer reuses the existing central relation direction/mirroring policy and append-style edge audit. It rejects foreign/tombstoned endpoints before mutation.
+
+## Explicit application semantics
+
+```text
+NO_DURABLE_MEMORY    mark decision applied; semantic mutation false
+REVISE_EXISTING      same memory ID; next revision; decision-linked metadata
+LINK_EXISTING        existing nodes only; optional validated explicit edge(s)
+WRITE_BRANCH         new child + strong child->parent relation + branch metadata
+WRITE_NEW_ROOT       new root + rootReason + root metadata
+OPEN_CONFLICT        preserve both nodes + contradicts edges + open conflict row
+```
+
+A decision is marked applied only after required mutation completes successfully. Applied-result structured JSON now handles `undefined` deterministically using JSON semantics: undefined object properties are omitted and undefined array entries become `null`.
+
+## Fresh certification gates
+
+Focused Phase 4 suite:
+
+```text
+7 test files PASS
+29 tests PASS
+0 failures
+```
+
+Broad memory/continuity/execution-memory/MCP regression:
+
+```text
+52 test files PASS
+218 tests PASS
+1 intentional skip
+0 failures
+memory MCP tools                     9
+full Agent Core MCP tools            56
+memory_postflight MCP tool           absent
+```
+
+Deterministic quality gate:
+
+```text
+Memory Recall@K                     1.0
+Memory MRR                          1.0
+Hard guardrail recall               1.0
+Current revision correctness        1.0
+Prior failure recall                1.0
+Graph target recall                 1.0
+Conflict visibility                 1.0
+Artifact/procedure recall           1.0
+Noise displacement                  0
+Cross-project contamination         0
+Cross-principal contamination       0
+Character-budget correctness        1.0
+Deterministic replay equality       1.0
+Routing tier accuracy               0.975
+Unsafe overpermission rate          0
+False high-impact rate              0
+Routing deterministic replay        1.0
+```
+
+100k-memory performance gate:
+
+```text
+active memories                     100001
+SQLite integrity                    ok
+samples                             25
+warmups                             5
+preflight p95                       60.67 ms
+target                              <150 ms
+result                              PASS
+```
+
+Full release verification on the implementation candidate reached terminal exit code `0`:
+
+```text
+npm run verify:release              PASS
+brand scan                          PASS
+TypeScript build                    PASS
+Codespace build                     PASS
+full test files                     152 PASS / 2 skipped
+full tests                          750 PASS / 38 intentional skips
+failures                            0
+quality:gate                        PASS
+release consistency                 PASS
+Agent Core version                  0.6.0
+server version                      0.6.0
+document links                      46 markdown / 17 relative links PASS
+```
+
+Dependency/model guardrails from the Phase 3 final certification remain unchanged:
+
+```text
+package.json / package-lock.json change       none
+new OpenAI source/dependency integration      none
+new Anthropic source/dependency integration   none
+new Gemini source/dependency integration      none
+new LangChain dependency/integration          none
+new LangGraph dependency/integration          none
+```
+
+## Compatibility finding during certification
+
+The broad regression found two Phase-2 test fixtures still creating free-form semantic profiles using keys that predated the Phase-4 approved profile vocabulary. Those fixture calls were migrated to approved fields and the original remote hydration/deletion-recovery scenarios passed again. No production remote hydration, crypto, logical-state hashing, or replay behavior was loosened to accommodate legacy write inputs.
+
+## Phase boundary
+
+Phase 4 is **CERTIFIED COMPLETE** for deterministic advisory write decisions, explicit decision application, bounded semantic-profile identity, branch/root/conflict creation gates, and zero automatic adoption into existing promotion paths. Phase 5 remains responsible for routing Continuity/Execution promotion through the controller and enforcing the remote durability boundary for those flows.

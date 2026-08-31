@@ -167,7 +167,7 @@ array duplicates                        removed + binary sorted
 all persisted strings                   redacted before hashing
 ```
 
-- [ ] **Step 1: Write RED semantic-profile tests**
+- [x] **Step 1: Write RED semantic-profile tests**
 
 Test that key order and duplicate array order produce the same canonical JSON/hash, secrets are redacted before hashing, unknown keys/oversized strings/arrays/JSON are rejected, and empty fields disappear.
 
@@ -187,7 +187,7 @@ expect(a.profile.constraints).toEqual(['[REDACTED:BEARER]']);
 expect(a.hash).toBe(b.hash);
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 npx vitest run tests/memory-semantic-profile.test.ts
@@ -195,11 +195,11 @@ npx vitest run tests/memory-semantic-profile.test.ts
 
 Expected: FAIL because profile contracts/normalizer do not exist.
 
-- [ ] **Step 3: Implement contracts and normalizer**
+- [x] **Step 3: Implement contracts and normalizer**
 
 Use existing `redactMemoryText()`, UTF-8 byte length, recursive stable JSON key ordering, binary-sorted de-duplicated string arrays, and SHA-256. Do not infer profile fields from free-form text in Phase 4.
 
-- [ ] **Step 4: Make node metadata use the bounded profile normalizer**
+- [x] **Step 4: Make node metadata use the bounded profile normalizer**
 
 `MemoryCognitionLedger.upsertNodeMetadata()` must call `normalizeMemorySemanticProfile()` for `semanticProfile` instead of arbitrary recursive structured JSON, and persist exactly that canonical JSON/hash.
 
@@ -214,7 +214,7 @@ async findNodeMetadataBySemanticProfileHash(
 
 The query joins `memory_node_metadata` to `memory_items`, enforces principal/project scope, excludes tombstoned nodes, and orders by `memory_id COLLATE BINARY`.
 
-- [ ] **Step 5: Run GREEN/regressions**
+- [x] **Step 5: Run GREEN/regressions**
 
 ```bash
 npx vitest run tests/memory-semantic-profile.test.ts tests/memory-cognition-ledger.test.ts
@@ -222,7 +222,7 @@ npm run build
 git diff --check
 ```
 
-- [ ] **Step 6: Commit + push/readback**
+- [x] **Step 6: Commit + push/readback**
 
 ```bash
 git add src/memory/types.ts src/memory/semantic-profile.ts src/memory/cognition-ledger.ts tests/memory-semantic-profile.test.ts tests/memory-cognition-ledger.test.ts
@@ -291,11 +291,11 @@ relation direction uses relation-policy; symmetric relations mirror exactly once
 cross-scope endpoints rejected before mutation
 ```
 
-- [ ] **Step 1: Write RED policy/relation tests**
+- [x] **Step 1: Write RED policy/relation tests**
 
 Cover weak-edge rejection for node creation, valid branch/conflict plans, exact directionality, symmetric mirror behavior, idempotent rerun, audited edge events, and cross-project/principal target rejection.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 npx vitest run tests/memory-write-policy.test.ts tests/memory-store.test.ts
@@ -303,15 +303,15 @@ npx vitest run tests/memory-write-policy.test.ts tests/memory-store.test.ts
 
 Expected: FAIL because write-policy and `addExplicitRelation()` do not exist.
 
-- [ ] **Step 3: Implement pure relation/node gate policy**
+- [x] **Step 3: Implement pure relation/node gate policy**
 
 Use `memoryRelationPolicy()` as the only directionality source. Do not duplicate a second relation policy table.
 
-- [ ] **Step 4: Expose exact canonical lookup and implement scoped Store relation writer**
+- [x] **Step 4: Expose exact canonical lookup and implement scoped Store relation writer**
 
 Expose `getMemoryByCanonicalKey()` as a narrow public wrapper over the existing normalized/scoped canonical lookup; it returns the current stored record only and performs no mutation. Before relation writing, load both endpoints inside the authenticated principal/project scope and reject tombstoned/missing endpoints. Use `auditedEdgeInsertOperations()` and `shouldMirrorMemoryRelation()` so graph projection and edge-event audit remain atomic and consistent with existing explicit commit relations.
 
-- [ ] **Step 5: Run GREEN/regressions**
+- [x] **Step 5: Run GREEN/regressions**
 
 ```bash
 npx vitest run tests/memory-write-policy.test.ts tests/memory-store.test.ts tests/memory-relation-policy.test.ts tests/memory-cognition-ledger.test.ts
@@ -319,7 +319,7 @@ npm run build
 git diff --check
 ```
 
-- [ ] **Step 6: Commit + push/readback**
+- [x] **Step 6: Commit + push/readback**
 
 ```bash
 git add src/memory/write-policy.ts src/memory/store.ts tests/memory-write-policy.test.ts tests/memory-store.test.ts
@@ -401,7 +401,7 @@ SHA-256(stable redacted canonical JSON of canonicalKey + kind + value + semantic
 
 It must not include timestamps, route IDs, decision IDs, evidence ordering, or audit-generated values.
 
-- [ ] **Step 1: Write RED advisory classification tests**
+- [x] **Step 1: Write RED advisory classification tests**
 
 Required cases:
 
@@ -420,7 +420,7 @@ unjustified requested branch/root                    rejected/no-write
 
 For every case, assert exactly one new `memory_write_decisions` row and zero semantic mutation during `evaluate()`.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 npx vitest run tests/memory-cognition-controller.test.ts
@@ -428,15 +428,15 @@ npx vitest run tests/memory-cognition-controller.test.ts
 
 Expected: FAIL because the controller does not exist.
 
-- [ ] **Step 3: Implement candidate hashing, scoped fact loading, and classifier**
+- [x] **Step 3: Implement candidate hashing, scoped fact loading, and classifier**
 
 Use Store/CognitionLedger APIs for authority. The controller must not execute raw SQL and must not call external services.
 
-- [ ] **Step 4: Persist every evaluation**
+- [x] **Step 4: Persist every evaluation**
 
 Call `MemoryCognitionLedger.recordWriteDecision()` only after the deterministic decision has been derived. Persist sorted/deduplicated existing IDs, evidence refs, reason codes, relation plan, target, candidate hash, and root reason. Do not mark it applied in advisory mode.
 
-- [ ] **Step 5: Run GREEN/regressions**
+- [x] **Step 5: Run GREEN/regressions**
 
 ```bash
 npx vitest run tests/memory-cognition-controller.test.ts tests/memory-cognition-ledger.test.ts tests/memory-store.test.ts
@@ -444,7 +444,7 @@ npm run build
 git diff --check
 ```
 
-- [ ] **Step 6: Commit + push/readback**
+- [x] **Step 6: Commit + push/readback**
 
 ```bash
 git add src/memory/cognition-controller.ts src/memory/types.ts tests/memory-cognition-controller.test.ts
@@ -520,11 +520,11 @@ await cognition.markWriteDecisionApplied(scope, decisionId, {
 
 If application fails, the decision row remains unapplied (`applied_at IS NULL`) and no fabricated success is recorded.
 
-- [ ] **Step 1: Write RED apply tests for all six decisions**
+- [x] **Step 1: Write RED apply tests for all six decisions**
 
 Assert exact node/revision/edge/conflict counts, root/branch metadata, decision linkage, failure immutability, symmetric conflict edge, and no semantic mutation for no-write.
 
-- [ ] **Step 2: Write RED failure-atomicity tests**
+- [x] **Step 2: Write RED failure-atomicity tests**
 
 Examples:
 
@@ -535,17 +535,17 @@ REVISE_EXISTING immutable failure     apply rejects; original failure unchanged
 invalid conflict target               apply rejects; no candidate node survives
 ```
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 npx vitest run tests/memory-cognition-controller.test.ts
 ```
 
-- [ ] **Step 4: Implement apply orchestration**
+- [x] **Step 4: Implement apply orchestration**
 
 Evaluate and persist the decision first. Revalidate scope-sensitive endpoints immediately before mutation. Use existing authoritative Store/Lifecycle/Ledger APIs. Do not catch and convert mutation failures into applied results.
 
-- [ ] **Step 5: Run GREEN/regressions**
+- [x] **Step 5: Run GREEN/regressions**
 
 ```bash
 npx vitest run tests/memory-cognition-controller.test.ts tests/memory-store.test.ts tests/memory-lifecycle.test.ts tests/memory-relation-policy.test.ts
@@ -553,7 +553,7 @@ npm run build
 git diff --check
 ```
 
-- [ ] **Step 6: Commit + push/readback**
+- [x] **Step 6: Commit + push/readback**
 
 ```bash
 git add src/memory/cognition-controller.ts src/memory/types.ts tests/memory-cognition-controller.test.ts
@@ -594,11 +594,11 @@ async applyPostflight(
 ): Promise<MemoryPostflightApplyResult>;
 ```
 
-- [ ] **Step 1: Write RED service-composition tests**
+- [x] **Step 1: Write RED service-composition tests**
 
 Prove a normal `MemoryService.commit()` still behaves exactly as before, no controller decision is generated merely by existing commit/revise/preflight/continuity/execution flows, and explicit `evaluatePostflight()` / `applyPostflight()` reach the controller.
 
-- [ ] **Step 2: Write MCP surface non-change test**
+- [x] **Step 2: Write MCP surface non-change test**
 
 Keep assertions:
 
@@ -608,17 +608,17 @@ full Agent Core MCP tools exactly 56
 no memory_postflight tool in Phase 4
 ```
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 npx vitest run tests/memory-cognition-controller.test.ts tests/memory-unified-lifecycle.test.ts tests/mcp-memory.test.ts tests/mcp-integration.test.ts
 ```
 
-- [ ] **Step 4: Compose controller and add narrow service wrappers**
+- [x] **Step 4: Compose controller and add narrow service wrappers**
 
 Instantiate the controller from the same Store/Linker/Lifecycle/CognitionLedger instances. Do not modify ContinuityPromoter, ExecutionMemoryBridge, route orchestration, or MCP registration.
 
-- [ ] **Step 5: Run GREEN/regressions**
+- [x] **Step 5: Run GREEN/regressions**
 
 ```bash
 npx vitest run \
@@ -629,7 +629,7 @@ npm run build
 git diff --check
 ```
 
-- [ ] **Step 6: Commit + push/readback**
+- [x] **Step 6: Commit + push/readback**
 
 ```bash
 git add src/memory/service.ts tests/memory-cognition-controller.test.ts tests/memory-unified-lifecycle.test.ts tests/mcp-memory.test.ts tests/mcp-integration.test.ts
@@ -648,7 +648,7 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/feature/cross-session-mem
 - Mark factual Phase 4 completion in `docs/roadmap/agent-core-cross-session-memory-nervous-system-implementation-plan.md` only after every gate passes.
 - Mark this executable plan complete only after exact remote-visible certification SHA verification.
 
-- [ ] **Step 1: Run focused Phase 4 suite**
+- [x] **Step 1: Run focused Phase 4 suite**
 
 ```bash
 npx vitest run \
@@ -676,7 +676,7 @@ advisory semantic mutations                           0
 principal/project contamination                       0
 ```
 
-- [ ] **Step 2: Run broad memory/continuity/execution-memory/MCP regression**
+- [x] **Step 2: Run broad memory/continuity/execution-memory/MCP regression**
 
 ```bash
 npx vitest run \
@@ -687,7 +687,7 @@ npx vitest run \
 
 Expected: zero failures; memory MCP tools remain exactly 9; total MCP tools remain exactly 56.
 
-- [ ] **Step 3: Run deterministic quality and performance gates**
+- [x] **Step 3: Run deterministic quality and performance gates**
 
 ```bash
 npm run quality:gate
@@ -696,7 +696,7 @@ npm run benchmark:memory
 
 Required: current Wave E thresholds remain green, cross-project/principal contamination remains `0`, deterministic replay remains `1`, and 100k preflight p95 remains `<150 ms`.
 
-- [ ] **Step 4: Run full release verification and dependency guardrail**
+- [x] **Step 4: Run full release verification and dependency guardrail**
 
 ```bash
 npm run verify:release
@@ -707,7 +707,7 @@ git diff d8e2e020da6866a74ae94e312ebb9a3ca133e93e -- src package.json package-lo
 
 Required: zero root dependency change and zero new external AI/model/API integration.
 
-- [ ] **Step 5: Record fresh evidence and publish exact certification SHA**
+- [x] **Step 5: Record fresh evidence and publish exact certification SHA**
 
 ```bash
 git add docs/roadmap/agent-core-cross-session-memory-nervous-system-design.md docs/roadmap/agent-core-cross-session-memory-nervous-system-implementation-plan.md docs/roadmap/agent-core-memory-nervous-system-phase-4-implementation-plan.md
@@ -720,3 +720,69 @@ npm run verify:release
 ```
 
 **Phase 4 completion rule:** Phase 4 is certified only when the controller deterministically records exactly one postflight decision, advisory evaluation causes zero semantic mutation, explicit application enforces revise/branch/root/conflict invariants, unjustified new-node acceptance is exactly zero, existing promotion paths remain unchanged, MCP counts remain 9/56, and the exact final documentation SHA is remote-visible with the full release gate green. Phase 5 adoption of Continuity/Execution promotion remains out of scope.
+
+
+---
+
+## Certification Record — 2026-09-01
+
+**Status:** **CERTIFIED COMPLETE**
+
+**Certified implementation SHA:** `a17007ecf7bc6c55d3dda6132bedc5aeb38885fe`
+
+**Remote branch:** `origin/feature/cross-session-memory-nervous-system`
+
+Task checkpoints:
+
+```text
+62f5360  docs: plan memory cognition controller phase
+531ae06  feat: bound memory semantic profiles
+692d61c  feat: enforce memory write relation policy
+26d5bfd  feat: evaluate memory postflight decisions
+840c03f  feat: apply validated memory postflight decisions
+b6a74bc  feat: compose memory cognition controller
+a17007e  test: align remote fixtures with bounded semantic profiles
+```
+
+Certified Phase 4 contract:
+
+```text
+six decisions                           exact approved vocabulary
+semantic profile                        bounded / redacted / deterministic SHA-256
+exact canonical duplicate               no new node
+exact semantic-profile duplicate        no new node
+same belief + new evidence              LINK_EXISTING
+mutable changed canonical               REVISE_EXISTING
+failure changed canonical               never revised
+strong child-parent relation            required for WRITE_BRANCH
+weak-only child-parent relation          rejected/no-write
+fresh root reason                        FRESH_DURABLE_CONTEXT required
+ambiguous contradiction                  OPEN_CONFLICT / both nodes preserved
+advisory evaluation semantic mutation    0
+normal preflight/commit auto-adoption     0
+new Phase-4 MCP tools                    0
+memory MCP tools                         9
+full Agent Core MCP tools                56
+```
+
+Fresh certification evidence on `a17007ecf7bc6c55d3dda6132bedc5aeb38885fe`:
+
+```text
+focused Phase 4                         7 files / 29 PASS / 0 fail
+broad subsystem regression             52 files / 218 PASS / 1 skip / 0 fail
+quality gate                            PASS
+Recall@K / MRR                          1.0 / 1.0
+cross-project contamination            0
+cross-principal contamination          0
+deterministic replay                   1.0
+100k preflight p95                     60.67 ms (<150 ms)
+verify:release                          PASS / exit 0
+full release tests                     152 files / 750 PASS / 38 skips
+doc links                              46 markdown / 17 links PASS
+root dependency diff vs Phase 3        none
+external AI/model/API diff             none
+```
+
+During broad regression, two old Phase-2 test fixtures were found to still call `upsertNodeMetadata()` with the former free-form semantic-profile shape. They were migrated to the approved Phase-4 profile vocabulary; the remote hydration/replay implementation itself was not loosened or rewritten. The deletion/recreation and hydration tests then passed again.
+
+The certification documentation commit must be pushed/read back by exact SHA and `npm run verify:release` must pass again on that exact final documentation SHA before Phase 4 is reported externally as complete. Phase 5 Continuity/Execution adoption remains out of scope.

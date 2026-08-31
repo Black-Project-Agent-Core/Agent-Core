@@ -319,6 +319,51 @@ The engine accepts only seed memories proven by the supplied live authenticated 
 
 **Certification cases:** duplicate rejection, same-belief/new-evidence, revise-vs-branch, fresh root justification, unrelated candidate no-write, ambiguous contradiction opens conflict, unjustified new-node acceptance exactly zero.
 
+### Phase 4 certification — 2026-09-01
+
+**Status:** **CERTIFIED COMPLETE** for the advisory Memory Cognition / Write Decision Controller and its explicit apply path.
+
+**Certified implementation SHA:** `a17007ecf7bc6c55d3dda6132bedc5aeb38885fe`
+
+**Remote audit branch:** `origin/feature/cross-session-memory-nervous-system`
+
+Fresh Phase 4 evidence on that exact implementation SHA:
+
+```text
+focused Phase 4 test files                     7 PASS
+focused Phase 4 tests                          29 PASS
+focused failures                               0
+broad memory/continuity/execution-memory/MCP    52 test files PASS
+broad subsystem tests                          218 PASS / 1 intentional skip
+subsystem failures                             0
+model-facing memory MCP tools                  9 (unchanged)
+full Agent Core MCP tools                      56 (unchanged)
+memory_postflight MCP tool                     absent
+advisory semantic mutations                    0
+unjustified new-node acceptance                0
+failure revision acceptance                    0
+weak-only non-root creation acceptance         0
+quality:gate                                   PASS
+Memory Recall@K / MRR                          1.0 / 1.0
+Cross-project contamination                    0
+Cross-principal contamination                  0
+Deterministic replay equality                  1.0
+100k preflight p95                             60.67 ms < 150 ms
+verify:release exit                            0
+full test files                                152 PASS / 2 skipped
+full tests                                     750 PASS / 38 intentional skips
+release failures                               0
+document links                                 46 markdown / 17 relative links PASS
+package.json / package-lock.json change        none
+new external AI/model/API integration          none
+```
+
+The controller uses exact canonical identity, the existing Store value normalization/hash, bounded redacted semantic profiles, same-scope relation targets, and explicit evidence/reason gates. `evaluatePostflight()` always remains advisory: it records a write decision but does not create semantic nodes/revisions/edges/conflicts. `applyPostflight()` is explicit and is the only new Phase-4 mutation entry point. Existing normal commit/revise/preflight, Continuity promotion, Execution memory promotion, routing, and MCP registration are intentionally not adopted into automatic postflight yet.
+
+Two Phase-2 remote-recovery fixtures were migrated from the pre-Phase-4 free-form semantic-profile shape to the approved bounded profile vocabulary. The remote replay/materialization path itself remains unchanged and still replays already-persisted logical metadata without reinterpreting it.
+
+**Phase boundary:** Phase 4 proves deterministic decision classification and explicit policy-controlled application only. Phase 5 is still responsible for routing existing Continuity/Execution promotion through this controller and the remote durability boundary.
+
 ## Phase 5 — Continuity and Execution Adoption
 
 **Purpose:** Route existing promotion paths through the cognition/write-decision authority and remote durability boundary.
