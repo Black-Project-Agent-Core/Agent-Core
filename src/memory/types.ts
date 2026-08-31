@@ -285,6 +285,12 @@ export interface MemoryRemoteStateRecord {
   updatedAt: number;
 }
 
+export interface MemoryPostflightRelationProposal {
+  targetMemoryId: MemoryId;
+  relation: MemoryRelation;
+  evidenceRefs: string[];
+}
+
 export interface MemoryReviseRequest {
   scope: MemoryScope;
   memoryId: MemoryId;

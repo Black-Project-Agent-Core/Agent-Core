@@ -247,4 +247,105 @@ describe('auditable versioned memory store', () => {
 
     await store.close();
   });
+  it('exposes exact scoped canonical lookup and writes explicit relations with audited directionality', async () => {
+    const client = new MemoryWorkerClient();
+    const store = new MemoryStore(client);
+    await store.open({ dbPath: dbPath('explicit-relation-writer') });
+    const scope = { ...scopeA, projectId: 'writer-project' };
+    const otherProjectScope = { ...scopeA, projectId: 'writer-project-other' };
+
+    const parent = await store.commitMemory({
+      scope,
+      canonicalKey: 'writer.parent',
+      kind: 'decision',
+      value: 'Parent decision.',
+      sourceType: 'test',
+    });
+    const child = await store.commitMemory({
+      scope,
+      canonicalKey: 'writer.child',
+      kind: 'decision',
+      value: 'Child decision.',
+      sourceType: 'test',
+    });
+    const conflicting = await store.commitMemory({
+      scope,
+      canonicalKey: 'writer.conflicting',
+      kind: 'decision',
+      value: 'Conflicting decision.',
+      sourceType: 'test',
+    });
+    const foreign = await store.commitMemory({
+      scope: otherProjectScope,
+      canonicalKey: 'writer.foreign',
+      kind: 'decision',
+      value: 'Foreign decision.',
+      sourceType: 'test',
+    });
+
+    expect(await store.getMemoryByCanonicalKey(scope, '  WRITER.PARENT  ')).toMatchObject({ memoryId: parent.memoryId });
+    expect(await store.getMemoryByCanonicalKey(scopeB, 'writer.parent')).toBeNull();
+
+    expect(await store.addExplicitRelation({
+      scope,
+      fromMemoryId: child.memoryId,
+      toMemoryId: parent.memoryId,
+      relation: 'branch_of',
+      reasonCode: 'POSTFLIGHT_BRANCH',
+    })).toEqual({ createdEdges: 1 });
+    expect(await store.addExplicitRelation({
+      scope,
+      fromMemoryId: child.memoryId,
+      toMemoryId: parent.memoryId,
+      relation: 'branch_of',
+      reasonCode: 'POSTFLIGHT_BRANCH',
+    })).toEqual({ createdEdges: 0 });
+
+    expect(await store.addExplicitRelation({
+      scope,
+      fromMemoryId: child.memoryId,
+      toMemoryId: conflicting.memoryId,
+      relation: 'contradicts',
+      reasonCode: 'POSTFLIGHT_CONFLICT',
+    })).toEqual({ createdEdges: 2 });
+
+    const edges = await client.query<{ from_memory_id: string; to_memory_id: string; relation: string }>(
+      `SELECT from_memory_id, to_memory_id, relation FROM memory_edges
+       WHERE from_memory_id IN (?, ?) OR to_memory_id IN (?, ?)
+       ORDER BY relation, from_memory_id, to_memory_id`,
+      [child.memoryId, conflicting.memoryId, child.memoryId, conflicting.memoryId],
+    );
+    expect(edges.filter((edge) => edge.relation === 'branch_of')).toEqual([
+      { from_memory_id: child.memoryId, to_memory_id: parent.memoryId, relation: 'branch_of' },
+    ]);
+    expect(edges.filter((edge) => edge.relation === 'contradicts')).toHaveLength(2);
+
+    const audit = await client.query<{ relation: string; reason_code: string }>(
+      `SELECT relation, reason_code FROM memory_edge_events
+       WHERE relation IN ('branch_of', 'contradicts') AND principal_id = ? AND project_id = ?
+       ORDER BY relation, from_memory_id, to_memory_id`,
+      [scope.principalId, scope.projectId!],
+    );
+    expect(audit.filter((row) => row.relation === 'branch_of')).toHaveLength(1);
+    expect(audit.filter((row) => row.relation === 'contradicts')).toHaveLength(2);
+    expect(audit.every((row) => row.reason_code.startsWith('POSTFLIGHT_'))).toBe(true);
+
+    await expect(store.addExplicitRelation({
+      scope,
+      fromMemoryId: child.memoryId,
+      toMemoryId: foreign.memoryId,
+      relation: 'branch_of',
+      reasonCode: 'POSTFLIGHT_INVALID',
+    })).rejects.toMatchObject({ code: 'MEMORY_RELATION_TARGET_NOT_FOUND' });
+    await expect(store.addExplicitRelation({
+      scope,
+      fromMemoryId: foreign.memoryId,
+      toMemoryId: parent.memoryId,
+      relation: 'branch_of',
+      reasonCode: 'POSTFLIGHT_INVALID',
+    })).rejects.toMatchObject({ code: 'MEMORY_RELATION_SOURCE_NOT_FOUND' });
+
+    await store.close();
+  });
+
 });

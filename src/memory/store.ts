@@ -19,6 +19,9 @@ import type {
   MemoryCommitResult,
   MemoryEnforcement,
   MemoryKind,
+  MemoryEventId,
+  MemoryId,
+  MemoryRelation,
   MemoryReviseRequest,
   MemoryReviseResult,
   MemoryScope,
@@ -457,6 +460,76 @@ export class MemoryStore {
     );
     const row = rows[0];
     return row ? mapStoredMemory(row) : null;
+  }
+
+  async getMemoryByCanonicalKey(scope: MemoryScope, canonicalKey: string): Promise<StoredMemoryRecord | null> {
+    this.assertReady();
+    assertScope(scope);
+    const normalizedKey = normalizeCanonicalKey(canonicalKey ?? '');
+    if (!normalizedKey) return null;
+    const existing = await this.findByCanonicalKey(scope, normalizedKey);
+    return existing ? this.getMemory(scope, existing.id) : null;
+  }
+
+  async addExplicitRelation(input: {
+    scope: MemoryScope;
+    fromMemoryId: MemoryId;
+    toMemoryId: MemoryId;
+    relation: MemoryRelation;
+    weight?: number;
+    evidenceEventId?: MemoryEventId;
+    reasonCode: string;
+  }): Promise<{ createdEdges: number }> {
+    this.assertReady();
+    assertScope(input.scope);
+    if (!input.fromMemoryId || !input.toMemoryId || input.fromMemoryId === input.toMemoryId) {
+      throw new MemoryStoreError('MEMORY_RELATION_INVALID', 'Explicit relation requires two distinct memory IDs');
+    }
+    if (!input.reasonCode?.trim()) throw new MemoryStoreError('MEMORY_RELATION_REASON_REQUIRED', 'Explicit relation reasonCode is required');
+    const source = await this.findById(input.scope, input.fromMemoryId);
+    if (!source || source.state === 'tombstoned') {
+      throw new MemoryStoreError('MEMORY_RELATION_SOURCE_NOT_FOUND', 'Explicit relation source was not found in authenticated scope');
+    }
+    const target = await this.findById(input.scope, input.toMemoryId);
+    if (!target || target.state === 'tombstoned') {
+      throw new MemoryStoreError('MEMORY_RELATION_TARGET_NOT_FOUND', 'Explicit relation target was not found in authenticated scope');
+    }
+    const weight = input.weight ?? RELATION_WEIGHTS[input.relation];
+    if (!Number.isFinite(weight) || weight < 0 || weight > 1) {
+      throw new MemoryStoreError('MEMORY_RELATION_WEIGHT_INVALID', 'explicit relation weight must be between 0 and 1');
+    }
+    const now = Date.now();
+    const operations = auditedEdgeInsertOperations({
+      eventId: randomUUID(),
+      scope: input.scope,
+      fromMemoryId: input.fromMemoryId,
+      toMemoryId: input.toMemoryId,
+      relation: input.relation,
+      weight,
+      evidenceEventId: input.evidenceEventId,
+      reasonCode: input.reasonCode,
+      createdAt: now,
+    });
+    if (shouldMirrorMemoryRelation(input.relation)) {
+      operations.push(...auditedEdgeInsertOperations({
+        eventId: randomUUID(),
+        scope: input.scope,
+        fromMemoryId: input.toMemoryId,
+        toMemoryId: input.fromMemoryId,
+        relation: input.relation,
+        weight,
+        evidenceEventId: input.evidenceEventId,
+        reasonCode: `${input.reasonCode}_MIRROR`,
+        createdAt: now,
+      }));
+    }
+    const results = await this.client.transaction(operations);
+    let createdEdges = 0;
+    for (let index = 0; index < results.length; index += 2) {
+      const result = results[index];
+      if (result && typeof result === 'object' && 'changes' in result) createdEdges += Number((result as { changes: number }).changes);
+    }
+    return { createdEdges };
   }
 
   async listRevisions(scope: MemoryScope, memoryId: string): Promise<StoredMemoryRevision[]> {
