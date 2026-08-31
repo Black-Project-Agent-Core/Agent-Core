@@ -107,7 +107,7 @@ async function sourceProjection(root: string, scope: MemoryScope): Promise<Memor
     title: 'Hydrated Child',
     createdFromDecisionId: decision.id,
     branchParentMemoryId: parent.memoryId,
-    semanticProfile: { domain: 'memory-remote' },
+    semanticProfile: { intent: 'memory remote hydration', concepts: ['memory-remote'] },
     updatedAt: 1_788_220_000_001,
   });
   return projectMemoryLogicalState(client, scope);

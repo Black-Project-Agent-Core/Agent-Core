@@ -188,7 +188,7 @@ describe('permanent Codespace deletion -> fresh Memory Remote hydration', () => 
       title: 'Deletion Recovery Branch',
       createdFromDecisionId: writeDecision.id,
       branchParentMemoryId: rootMemory.memoryId,
-      semanticProfile: { family: 'deletion-recovery', validated: true },
+      semanticProfile: { intent: 'deletion recovery', outcome: 'validated' },
     });
     await serviceA.close();
     services.splice(services.indexOf(serviceA), 1);
