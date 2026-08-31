@@ -9,6 +9,17 @@ export interface MemoryScoreWeights {
   recency: number;
 }
 
+export interface MemoryRemoteConfig {
+  enabled: boolean;
+  owner: string | null;
+  repo: string | null;
+  branch: string;
+  keyFile: string | null;
+  workRoot: string;
+  syncTimeoutMs: number;
+  maxRetryAttempts: number;
+}
+
 export interface MemoryConfig {
   enabled: boolean;
   enforceHardGuardrails: boolean;
@@ -28,6 +39,7 @@ export interface MemoryConfig {
   archiveObservationAfterMs: number;
   tombstoneRetentionMs: number;
   scoreWeights: MemoryScoreWeights;
+  remote: MemoryRemoteConfig;
 }
 
 export interface ExecutionResourceGovernanceConfig {
@@ -245,6 +257,43 @@ function parseOtlpEndpoint(value: string | undefined): string | null {
   return `${parsed.origin}${pathname}`;
 }
 
+function parseMemoryRemoteOwner(value: string | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  if (raw.length > 39 || !/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(raw)) {
+    throw new Error('AGENT_CORE_MEMORY_REMOTE_OWNER must be a safe GitHub owner identifier');
+  }
+  return raw;
+}
+
+function parseMemoryRemoteRepo(value: string | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  if (raw.length > 100 || raw === '.' || raw === '..' || !/^[A-Za-z0-9._-]+$/.test(raw)) {
+    throw new Error('AGENT_CORE_MEMORY_REMOTE_REPO must be a safe GitHub repository identifier');
+  }
+  return raw;
+}
+
+function parseMemoryRemoteBranch(value: string | undefined): string {
+  const raw = value?.trim() || 'main';
+  if (
+    raw.length > 200
+    || !/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(raw)
+    || raw.startsWith('refs/')
+    || raw.startsWith('/')
+    || raw.endsWith('/')
+    || raw.endsWith('.')
+    || raw.endsWith('.lock')
+    || raw.includes('..')
+    || raw.includes('//')
+    || raw.includes('@{')
+  ) {
+    throw new Error('AGENT_CORE_MEMORY_REMOTE_BRANCH must be a bounded safe branch name');
+  }
+  return raw;
+}
+
 function parseGitHubApiBaseUrl(value: string | undefined): string {
   const raw = value?.trim() || 'https://api.github.com';
   let parsed: URL;
@@ -264,6 +313,40 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('AGENT_CORE_PORT must be an integer between 1 and 65535');
   }
+
+  const memoryRemoteEnabled = parseBoolean(env.AGENT_CORE_MEMORY_REMOTE_ENABLED, false);
+  const memoryRemoteOwner = parseMemoryRemoteOwner(env.AGENT_CORE_MEMORY_REMOTE_OWNER);
+  const memoryRemoteRepo = parseMemoryRemoteRepo(env.AGENT_CORE_MEMORY_REMOTE_REPO);
+  const memoryRemoteKeyRaw = env.AGENT_CORE_MEMORY_REMOTE_KEY_FILE?.trim() || null;
+  if (memoryRemoteEnabled && !memoryRemoteOwner) {
+    throw new Error('AGENT_CORE_MEMORY_REMOTE_OWNER is required when memory remote is enabled');
+  }
+  if (memoryRemoteEnabled && !memoryRemoteRepo) {
+    throw new Error('AGENT_CORE_MEMORY_REMOTE_REPO is required when memory remote is enabled');
+  }
+  if (memoryRemoteEnabled && !memoryRemoteKeyRaw) {
+    throw new Error('AGENT_CORE_MEMORY_REMOTE_KEY_FILE is required when memory remote is enabled');
+  }
+  const memoryRemote: MemoryRemoteConfig = {
+    enabled: memoryRemoteEnabled,
+    owner: memoryRemoteOwner,
+    repo: memoryRemoteRepo,
+    branch: parseMemoryRemoteBranch(env.AGENT_CORE_MEMORY_REMOTE_BRANCH),
+    keyFile: memoryRemoteKeyRaw ? path.resolve(memoryRemoteKeyRaw) : null,
+    workRoot: path.resolve(env.AGENT_CORE_MEMORY_REMOTE_WORK_ROOT?.trim() || path.join(baseDir, 'runtime', 'memory', 'remote')),
+    syncTimeoutMs: parseBoundedPositiveInteger(
+      env.AGENT_CORE_MEMORY_REMOTE_SYNC_TIMEOUT_MS,
+      120_000,
+      'AGENT_CORE_MEMORY_REMOTE_SYNC_TIMEOUT_MS',
+      600_000,
+    ),
+    maxRetryAttempts: parseBoundedPositiveInteger(
+      env.AGENT_CORE_MEMORY_REMOTE_MAX_RETRIES,
+      3,
+      'AGENT_CORE_MEMORY_REMOTE_MAX_RETRIES',
+      16,
+    ),
+  };
 
   const memory: MemoryConfig = {
     enabled: parseBoolean(env.AGENT_CORE_MEMORY_ENABLED, true),
@@ -291,6 +374,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
       importance: 0.07,
       recency: 0.05,
     },
+    remote: memoryRemote,
   };
 
   if (!Number.isFinite(memory.pprEpsilon) || memory.pprEpsilon <= 0) {
