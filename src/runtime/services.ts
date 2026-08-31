@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { CapabilityRegistry } from '../capabilities/registry-service.js';
 import { CapabilityRouter } from '../capabilities/router.js';
-import { loadConfig, type ExecutionConfig, type GitHubConfig, type MemoryConfig } from '../config.js';
+import { loadConfig, type ExecutionConfig, type GitHubConfig, type MemoryConfig, type ObservabilityConfig } from '../config.js';
 import { ExecutionLogStore } from '../execution/log-store.js';
 import { ExecutionMemoryBridge } from '../execution/memory-bridge.js';
 import { ExecutionMemoryPreSearch } from '../execution/memory-search.js';
@@ -10,6 +10,7 @@ import { ExecutionStore } from '../execution/store.js';
 import { GitHubService, type GitHubServiceDependencies } from '../github/service.js';
 import { NOOP_RUNTIME_AUDIT_LOGGER, type RoutingAuditLogger, type RuntimeAuditLogger } from '../logging/audit-log.js';
 import { MemoryService } from '../memory/service.js';
+import { TelemetryService } from '../observability/telemetry.js';
 import { FileSystemService } from './filesystem.js';
 import { ProcessManager } from './process-manager.js';
 import { RouteContextStore } from './route-context-store.js';
@@ -31,6 +32,7 @@ export interface RuntimeServices {
   github: GitHubService;
   metrics: RuntimeMetricRegistry;
   audit: RuntimeAuditLogger;
+  telemetry: TelemetryService;
   healthMetrics: RuntimeHealthMetrics;
 }
 
@@ -42,6 +44,8 @@ export function createRuntimeServices(
   executionConfig?: ExecutionConfig,
   githubConfig?: GitHubConfig,
   githubDependencies?: GitHubServiceDependencies,
+  observabilityConfig?: ObservabilityConfig,
+  serviceVersion = 'unknown',
 ): RuntimeServices {
   const workspace = new WorkspacePolicy(allowedRoots);
   const capabilities = CapabilityRegistry.open(capabilityDir);
@@ -49,6 +53,7 @@ export function createRuntimeServices(
   const resolvedMemoryConfig = memoryConfig ?? defaults.memory;
   const resolvedExecutionConfig = executionConfig ?? defaults.execution;
   const resolvedGitHubConfig = githubConfig ?? defaults.github;
+  const resolvedObservabilityConfig = observabilityConfig ?? defaults.observability;
   const metrics = new RuntimeMetricRegistry();
   if (routingAuditLogger && 'attachMetrics' in routingAuditLogger
     && typeof (routingAuditLogger as RoutingAuditLogger & { attachMetrics?: unknown }).attachMetrics === 'function') {
@@ -58,6 +63,7 @@ export function createRuntimeServices(
     && typeof (routingAuditLogger as RoutingAuditLogger & Partial<RuntimeAuditLogger>).logRuntime === 'function'
     ? routingAuditLogger as RoutingAuditLogger & RuntimeAuditLogger
     : NOOP_RUNTIME_AUDIT_LOGGER;
+  const telemetry = new TelemetryService(metrics, resolvedObservabilityConfig.otlp, { serviceVersion });
   const memory = new MemoryService(resolvedMemoryConfig, metrics);
   const executionStore = new ExecutionStore();
   const executionBridge = new ExecutionMemoryBridge(
@@ -84,6 +90,7 @@ export function createRuntimeServices(
     github: new GitHubService(resolvedGitHubConfig, workspace, { ...githubDependencies, metrics }),
     metrics,
     audit: runtimeAudit,
+    telemetry,
   } as Omit<RuntimeServices, 'healthMetrics'> & { healthMetrics?: RuntimeHealthMetrics };
   runtime.healthMetrics = new RuntimeHealthMetrics(runtime as RuntimeServices);
   return runtime as RuntimeServices;

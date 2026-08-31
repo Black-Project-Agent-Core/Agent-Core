@@ -20,6 +20,7 @@ export function instrumentToolRegistrations(server: McpServer, runtime: RuntimeS
     return original(name, config, async (...args: any[]) => {
       const routeContextId = routeContextIdFromArgs(args);
       const startedAt = performance.now();
+      const startedAtMs = Date.now();
       runtime.metrics.increment('tool.calls.count');
       return withCorrelation({ toolName: name, ...(routeContextId ? { routeContextId } : {}) }, async () => {
         try {
@@ -33,6 +34,10 @@ export function instrumentToolRegistrations(server: McpServer, runtime: RuntimeS
             status: failed ? 'error' : 'ok',
             durationMs,
           });
+          runtime.telemetry.recordToolSpan(name, startedAtMs, Date.now(), {
+            'mcp.tool.name': name,
+            'agent_core.status': failed ? 'error' : 'ok',
+          });
           return result;
         } catch (error) {
           const durationMs = Math.max(0, performance.now() - startedAt);
@@ -43,6 +48,11 @@ export function instrumentToolRegistrations(server: McpServer, runtime: RuntimeS
             status: 'error',
             durationMs,
             errorCode: error instanceof Error ? error.name : 'ERROR',
+          });
+          runtime.telemetry.recordToolSpan(name, startedAtMs, Date.now(), {
+            'mcp.tool.name': name,
+            'agent_core.status': 'error',
+            'error.type': error instanceof Error ? error.name : 'ERROR',
           });
           throw error;
         }

@@ -20,6 +20,7 @@ export interface AgentCoreService {
   port: number;
   memory: RuntimeServices['memory'];
   execution: RuntimeServices['execution'];
+  telemetry: RuntimeServices['telemetry'];
   close(): Promise<void>;
 }
 
@@ -41,6 +42,9 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     config.memory,
     config.execution,
     config.github,
+    undefined,
+    config.observability,
+    SERVER_VERSION,
   );
   const oauthService = new OAuthService(keyStore, oauthStore, httpSecurity, runtime.metrics);
   // Warm independent persistence subsystems without coupling listener availability to either one.
@@ -55,6 +59,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     auditLogger,
     healthMetricsProvider: async () => runtime.healthMetrics.getMetrics(),
     metrics: runtime.metrics,
+    telemetry: runtime.telemetry,
     healthProvider: async () => {
       const [memory, execution] = await Promise.all([
         runtime.memory.status(),
@@ -96,7 +101,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
       server.listen(config.port, config.host);
     });
   } catch (error) {
-    await Promise.allSettled([runtime.execution.close(), runtime.memory.close(), auditLogger.close()]);
+    await Promise.allSettled([runtime.telemetry.close(), runtime.execution.close(), runtime.memory.close(), auditLogger.close()]);
     throw error;
   }
 
@@ -107,8 +112,10 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     port: address.port,
     memory: runtime.memory,
     execution: runtime.execution,
+    telemetry: runtime.telemetry,
     close: async () => {
       await closeServer(server);
+      await runtime.telemetry.close();
       await runtime.execution.close();
       await runtime.memory.close();
       await auditLogger.close();

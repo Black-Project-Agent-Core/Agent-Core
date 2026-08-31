@@ -17,6 +17,7 @@ type ProtocolMode = 'dual' | 'legacy';
 const roots: string[] = [];
 const servers: Server[] = [];
 const runtimes: RuntimeServices[] = [];
+const auditLoggers: FileAuditLogger[] = [];
 
 async function setup(protocolMode: ProtocolMode = 'dual') {
   const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-dual-era-'));
@@ -29,9 +30,11 @@ async function setup(protocolMode: ProtocolMode = 'dual') {
     enabled: false,
   });
   runtimes.push(runtime);
+  const auditLogger = new FileAuditLogger(path.join(root, 'logs'));
+  auditLoggers.push(auditLogger);
   const app = createHttpHandler({
     keyStore,
-    auditLogger: new FileAuditLogger(path.join(root, 'logs')),
+    auditLogger,
     mcpHandler: createMcpHttpHandler(runtime, { protocolMode }),
   });
   const server = createServer(app);
@@ -111,9 +114,11 @@ async function legacyList(baseUrl: string, key: string) {
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   await Promise.all(runtimes.splice(0).map(async (runtime) => {
+    await runtime.telemetry.close().catch(() => undefined);
     await runtime.execution.close().catch(() => undefined);
     await runtime.memory.close().catch(() => undefined);
   }));
+  await Promise.all(auditLoggers.splice(0).map((logger) => logger.close().catch(() => undefined)));
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 

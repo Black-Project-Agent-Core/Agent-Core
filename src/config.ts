@@ -48,8 +48,17 @@ export interface AuditObservabilityConfig {
   retentionMs: number;
 }
 
+export interface OtlpObservabilityConfig {
+  enabled: boolean;
+  endpoint: string | null;
+  timeoutMs: number;
+  maxQueue: number;
+  exportIntervalMs: number;
+}
+
 export interface ObservabilityConfig {
   audit: AuditObservabilityConfig;
+  otlp: OtlpObservabilityConfig;
 }
 
 export interface GitHubConfig {
@@ -177,6 +186,32 @@ function parseAllowedOrigins(value: string | undefined): string[] {
   return [...new Set(normalized)];
 }
 
+function loopbackHostname(hostname: string): boolean {
+  const normalized = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (normalized === 'localhost' || normalized === '::1') return true;
+  if (!/^127(?:\.\d{1,3}){3}$/.test(normalized)) return false;
+  return normalized.split('.').every((part) => {
+    const value = Number(part);
+    return Number.isInteger(value) && value >= 0 && value <= 255;
+  });
+}
+
+function parseOtlpEndpoint(value: string | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  let parsed: URL;
+  try { parsed = new URL(raw); }
+  catch { throw new Error('AGENT_CORE_OTLP_ENDPOINT must be a valid URL'); }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('AGENT_CORE_OTLP_ENDPOINT must use http or https');
+  }
+  if (parsed.username || parsed.password) throw new Error('AGENT_CORE_OTLP_ENDPOINT must not include credentials');
+  if (parsed.search || parsed.hash) throw new Error('AGENT_CORE_OTLP_ENDPOINT must not include query or fragment');
+  if (!loopbackHostname(parsed.hostname)) throw new Error('AGENT_CORE_OTLP_ENDPOINT must use a loopback hostname');
+  const pathname = parsed.pathname === '/' ? '' : parsed.pathname.replace(/\/+$/g, '');
+  return `${parsed.origin}${pathname}`;
+}
+
 function parseGitHubApiBaseUrl(value: string | undefined): string {
   const raw = value?.trim() || 'https://api.github.com';
   let parsed: URL;
@@ -239,12 +274,20 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     protocolMode: parseMcpProtocolMode(env.AGENT_CORE_MCP_PROTOCOL_MODE),
   };
 
+  const otlpEndpoint = parseOtlpEndpoint(env.AGENT_CORE_OTLP_ENDPOINT);
   const observability: ObservabilityConfig = {
     audit: {
       queueCapacity: parseBoundedPositiveInteger(env.AGENT_CORE_AUDIT_QUEUE_CAPACITY, 4096, 'AGENT_CORE_AUDIT_QUEUE_CAPACITY', 65_536),
       maxFileBytes: parseBoundedPositiveInteger(env.AGENT_CORE_AUDIT_MAX_FILE_BYTES, 16 * 1024 * 1024, 'AGENT_CORE_AUDIT_MAX_FILE_BYTES', 1024 * 1024 * 1024),
       maxRotatedFiles: parseBoundedPositiveInteger(env.AGENT_CORE_AUDIT_MAX_ROTATED_FILES, 16, 'AGENT_CORE_AUDIT_MAX_ROTATED_FILES', 1024),
       retentionMs: parsePositiveInteger(env.AGENT_CORE_AUDIT_RETENTION_MS, 30 * 24 * 60 * 60 * 1000, 'AGENT_CORE_AUDIT_RETENTION_MS'),
+    },
+    otlp: {
+      enabled: otlpEndpoint !== null,
+      endpoint: otlpEndpoint,
+      timeoutMs: parseBoundedPositiveInteger(env.AGENT_CORE_OTLP_TIMEOUT_MS, 2000, 'AGENT_CORE_OTLP_TIMEOUT_MS', 60_000),
+      maxQueue: parseBoundedPositiveInteger(env.AGENT_CORE_OTLP_MAX_QUEUE, 1024, 'AGENT_CORE_OTLP_MAX_QUEUE', 65_536),
+      exportIntervalMs: parseBoundedPositiveInteger(env.AGENT_CORE_OTLP_EXPORT_INTERVAL_MS, 5000, 'AGENT_CORE_OTLP_EXPORT_INTERVAL_MS', 60 * 60 * 1000),
     },
   };
 

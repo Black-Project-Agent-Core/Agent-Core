@@ -20,6 +20,7 @@ type HealthRuntime = {
   routes: { metrics(): any };
   capabilities: { coverage(): any };
   audit?: { status?(): { queueDepth: number; queueCapacity: number; written: number; dropped: number; writeErrors: number; sequence: number; headHash: string | null; currentFileBytes: number; rotatedFiles: number; lastWriteErrorCode?: string } };
+  telemetry?: { status(): { enabled: boolean; queueDepth: number; queueCapacity: number; dropped: number; lastExportAt?: number; lastFailureCode?: string } };
 };
 
 export interface RuntimeHealthSnapshot extends Record<string, unknown> {
@@ -155,6 +156,7 @@ export class RuntimeHealthMetrics {
           rotations: this.runtime.metrics.counter('audit.rotation.count'),
         },
         telemetry: {
+          ...(this.runtime.telemetry?.status() ?? { enabled: false, queueDepth: 0, queueCapacity: 0, dropped: 0 }),
           exportFailures: this.runtime.metrics.counter('telemetry.export_failures.count'),
           export: metricView(this.runtime.metrics.metric('telemetry.export.duration_ms')),
         },

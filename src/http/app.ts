@@ -7,6 +7,7 @@ import { authenticateRequest } from './auth.js';
 import { HttpSecurityPolicy } from './security-policy.js';
 import { createRequestCorrelation, formatTraceparent, runWithCorrelation } from '../observability/correlation.js';
 import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
+import type { TelemetryService } from '../observability/telemetry.js';
 
 export type McpHttpHandler = (
   request: IncomingMessage,
@@ -23,6 +24,7 @@ export interface HttpHandlerOptions {
   healthProvider?: () => Promise<Record<string, unknown>>;
   healthMetricsProvider?: () => Promise<Record<string, unknown>>;
   metrics?: RuntimeMetricRegistry;
+  telemetry?: TelemetryService;
 }
 
 function sendJson(
@@ -43,6 +45,17 @@ const DEFAULT_HTTP_SECURITY = new HttpSecurityPolicy({
   trustProxy: false,
   allowedOrigins: [],
 });
+
+const OBSERVABLE_ROUTES = new Set([
+  '/health', '/health/metrics', '/mcp',
+  '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp',
+  '/.well-known/oauth-authorization-server',
+  '/oauth/register', '/oauth/authorize', '/oauth/token',
+]);
+
+function telemetryRoute(route: string): string {
+  return OBSERVABLE_ROUTES.has(route) ? route : '/other';
+}
 
 export function createHttpHandler(options: HttpHandlerOptions): RequestListener {
   return (request, response) => {
@@ -116,6 +129,12 @@ async function handleRequest(
     options.metrics?.increment('http.requests.count');
     options.metrics?.observe('http.request.duration_ms', durationMs);
     if (response.statusCode >= 400) options.metrics?.increment('http.failures.count');
+    options.telemetry?.recordHttpSpan(startedAt, Date.now(), {
+      'http.request.method': request.method ?? 'UNKNOWN',
+      'http.route': telemetryRoute(route),
+      'http.response.status_code': response.statusCode,
+      'agent_core.status': response.statusCode >= 400 ? 'error' : 'ok',
+    });
     try {
       void options.auditLogger.log({
         timestamp: new Date().toISOString(),

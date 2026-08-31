@@ -26,6 +26,13 @@ describe('loadConfig', () => {
         maxRotatedFiles: 16,
         retentionMs: 30 * 24 * 60 * 60 * 1000,
       },
+      otlp: {
+        enabled: false,
+        endpoint: null,
+        timeoutMs: 2000,
+        maxQueue: 1024,
+        exportIntervalMs: 5000,
+      },
     });
     expect(config.execution).toEqual({
       enabled: true,
@@ -64,6 +71,10 @@ describe('loadConfig', () => {
       AGENT_CORE_AUDIT_MAX_FILE_BYTES: '1048576',
       AGENT_CORE_AUDIT_MAX_ROTATED_FILES: '8',
       AGENT_CORE_AUDIT_RETENTION_MS: '1234567',
+      AGENT_CORE_OTLP_ENDPOINT: 'http://127.0.0.1:4318/otel',
+      AGENT_CORE_OTLP_TIMEOUT_MS: '1500',
+      AGENT_CORE_OTLP_MAX_QUEUE: '512',
+      AGENT_CORE_OTLP_EXPORT_INTERVAL_MS: '2500',
       AGENT_CORE_EXECUTION_ENABLED: 'true',
       AGENT_CORE_EXECUTION_DB_PATH: 'F:\\Exec\\execution.sqlite',
       AGENT_CORE_EXECUTION_LOG_ROOT: 'F:\\Exec\\runs',
@@ -103,6 +114,13 @@ describe('loadConfig', () => {
         maxRotatedFiles: 8,
         retentionMs: 1_234_567,
       },
+      otlp: {
+        enabled: true,
+        endpoint: 'http://127.0.0.1:4318/otel',
+        timeoutMs: 1500,
+        maxQueue: 512,
+        exportIntervalMs: 2500,
+      },
     });
     expect(config.execution).toEqual({
       enabled: true,
@@ -140,6 +158,17 @@ describe('loadConfig', () => {
   it('rejects unsupported MCP protocol modes', () => {
     expect(() => loadConfig({ AGENT_CORE_MCP_PROTOCOL_MODE: 'modern-only' }, 'F:\\Ignored'))
       .toThrow('AGENT_CORE_MCP_PROTOCOL_MODE must be dual or legacy');
+  });
+
+  it('restricts OTLP export to credential-free loopback endpoints', () => {
+    expect(() => loadConfig({ AGENT_CORE_OTLP_ENDPOINT: 'https://collector.example.test:4318' }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_OTLP_ENDPOINT must use a loopback hostname');
+    expect(() => loadConfig({ AGENT_CORE_OTLP_ENDPOINT: 'http://user:pass@127.0.0.1:4318' }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_OTLP_ENDPOINT must not include credentials');
+    expect(() => loadConfig({ AGENT_CORE_OTLP_ENDPOINT: 'http://127.0.0.1:4318?token=secret' }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_OTLP_ENDPOINT must not include query or fragment');
+    expect(() => loadConfig({ AGENT_CORE_OTLP_ENDPOINT: 'file:///tmp/otel' }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_OTLP_ENDPOINT must use http or https');
   });
 
   it('rejects execution output byte limits above the hard one-gibibyte ceiling', () => {
