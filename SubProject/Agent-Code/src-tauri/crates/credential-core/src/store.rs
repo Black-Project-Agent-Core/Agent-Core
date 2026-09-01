@@ -164,6 +164,10 @@ impl VaultStore {
             return Err(StoreError::UnsupportedSchema(version));
         }
 
+        connection
+            .pragma_update(None, "journal_mode", "WAL")
+            .map_err(StoreError::Sqlite)?;
+
         let mut store = Self { path, connection };
         if version == 0 {
             store.migrate_v1()?;
@@ -380,6 +384,13 @@ impl VaultStore {
             )
             .map_err(StoreError::Sqlite)?;
         transaction.commit().map_err(StoreError::Sqlite)
+    }
+
+    #[cfg(test)]
+    fn journal_mode_for_test(&self) -> Result<String, StoreError> {
+        self.connection
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .map_err(StoreError::Sqlite)
     }
 
     #[cfg(test)]
@@ -618,6 +629,14 @@ mod tests {
         assert_eq!(store.user_version_for_test().unwrap(), 1);
         assert_eq!(store.protected_blob_type_for_test(&KeyId("key-1".to_owned())).unwrap(), "blob");
         assert_eq!(store.list_keys().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn vault_uses_wal_journal_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.db");
+        let store = VaultStore::open(&path).unwrap();
+        assert_eq!(store.journal_mode_for_test().unwrap(), "wal");
     }
 
     #[test]
