@@ -28,6 +28,20 @@ describe('codespace automatic watchdog lifecycle contract', () => {
     expect(startup).toContain('CODESPACE_WATCHDOG_ACTIVE');
   });
 
+  it('retries transient initial tunnel registration before giving up', () => {
+    expect(startup).toContain('CODESPACE_CONNECT_MAX_ATTEMPTS');
+    expect(startup).toContain('connect_attempt');
+    expect(startup).toContain('managed runtime connect attempt');
+    expect(startup).toContain('connect_rc');
+  });
+
+  it('retries transient doctor failures before watchdog startup without weakening diagnostics', () => {
+    expect(startup).toContain('CODESPACE_DOCTOR_MAX_ATTEMPTS');
+    expect(startup).toContain('doctor_attempt');
+    expect(startup).toContain('doctor failed on attempt');
+    expect(startup).toContain('doctor_rc');
+  });
+
   it('preflights and starts an owned watchdog tmux session before declaring READY', () => {
     const preflightIndex = startup.indexOf('start-watchdog.sh" --once');
     const startIndex = startup.lastIndexOf('start-watchdog.sh');

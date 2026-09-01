@@ -208,31 +208,50 @@ else
   esac
 fi
 
-connect_rc=0
-(
-  # Keep the lifecycle lock in the parent shell, but never leak its descriptor
-  # into tunnel-client's long-lived managed runtime or MCP descendants.
-  exec 9>&-
+CODESPACE_CONNECT_MAX_ATTEMPTS="${CODESPACE_CONNECT_MAX_ATTEMPTS:-5}"
+if [[ ! "$CODESPACE_CONNECT_MAX_ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+  printf '%s\n' "[codespace] ERROR: CODESPACE_CONNECT_MAX_ATTEMPTS must be a positive integer." >&2
+  exit 1
+fi
 
-  # tunnel-client v0.0.13 prefers tmux when it is installed. The Codespaces
-  # universal image currently ships tmux 3.0a, whose `source-file -` behavior
-  # is incompatible with that managed launch path. Make tmux unavailable only
-  # to this connect subprocess so tunnel-client uses its own managed process
-  # fallback. The loopback MCP server is supervised independently.
-  source "$ROOT/scripts/runtime-environment.sh"
-  codespace_prepare_process_runtime "$ROOT"
+connect_rc=1
+for ((connect_attempt = 1; connect_attempt <= CODESPACE_CONNECT_MAX_ATTEMPTS; connect_attempt++)); do
+  connect_rc=0
+  (
+    # Keep the lifecycle lock in the parent shell, but never leak its descriptor
+    # into tunnel-client's long-lived managed runtime or MCP descendants.
+    exec 9>&-
 
-  "$BIN" runtimes connect \
-    --alias "$ALIAS" \
-    --tunnel-id "$TUNNEL_ID" \
-    --profile "$PROFILE_NAME" \
-    --profile-dir "$PROFILE_DIR" \
-    --runtime-api-key "$RUNTIME_API_KEY_REF" \
-    --mcp-server-url "$MCP_SERVER_URL"
-) >/dev/null || connect_rc=$?
+    # tunnel-client v0.0.13 prefers tmux when it is installed. The Codespaces
+    # universal image currently ships tmux 3.0a, whose `source-file -` behavior
+    # is incompatible with that managed launch path. Make tmux unavailable only
+    # to this connect subprocess so tunnel-client uses its own managed process
+    # fallback. The loopback MCP server is supervised independently.
+    source "$ROOT/scripts/runtime-environment.sh"
+    codespace_prepare_process_runtime "$ROOT"
+
+    "$BIN" runtimes connect \
+      --alias "$ALIAS" \
+      --tunnel-id "$TUNNEL_ID" \
+      --profile "$PROFILE_NAME" \
+      --profile-dir "$PROFILE_DIR" \
+      --runtime-api-key "$RUNTIME_API_KEY_REF" \
+      --mcp-server-url "$MCP_SERVER_URL"
+  ) >/dev/null || connect_rc=$?
+
+  if [[ "$connect_rc" -eq 0 || "$connect_rc" -eq 2 ]]; then
+    break
+  fi
+  printf '%s\n' "[codespace] NOTICE: managed runtime connect attempt $connect_attempt/$CODESPACE_CONNECT_MAX_ATTEMPTS failed (rc=$connect_rc); retrying bounded recovery." >&2
+  if (( connect_attempt < CODESPACE_CONNECT_MAX_ATTEMPTS )); then
+    retry_delay=$connect_attempt
+    (( retry_delay > 5 )) && retry_delay=5
+    sleep "$retry_delay"
+  fi
+done
 
 if [[ "$connect_rc" -ne 0 && "$connect_rc" -ne 2 ]]; then
-  printf '%s\n' "[codespace] ERROR: managed runtime connect failed." >&2
+  printf '%s\n' "[codespace] ERROR: managed runtime connect failed after $CODESPACE_CONNECT_MAX_ATTEMPTS attempts." >&2
   exit "$connect_rc"
 fi
 
@@ -298,10 +317,26 @@ fi
 timeout 15 node "$ROOT/dist/http-probe.js" "$MCP_SERVER_URL" >/dev/null
 
 # Run diagnostics only after connect + status + MCP protocol reconciliation.
-"$BIN" doctor \
-  --profile "$PROFILE_NAME" \
-  --profile-dir "$PROFILE_DIR" \
-  --explain
+CODESPACE_DOCTOR_MAX_ATTEMPTS="${CODESPACE_DOCTOR_MAX_ATTEMPTS:-3}"
+if [[ ! "$CODESPACE_DOCTOR_MAX_ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+  printf '%s\n' "[codespace] ERROR: CODESPACE_DOCTOR_MAX_ATTEMPTS must be a positive integer." >&2
+  exit 1
+fi
+doctor_rc=1
+for ((doctor_attempt = 1; doctor_attempt <= CODESPACE_DOCTOR_MAX_ATTEMPTS; doctor_attempt++)); do
+  doctor_rc=0
+  "$BIN" doctor \
+    --profile "$PROFILE_NAME" \
+    --profile-dir "$PROFILE_DIR" \
+    --explain || doctor_rc=$?
+  [[ "$doctor_rc" -eq 0 ]] && break
+  printf '%s\n' "[codespace] NOTICE: doctor failed on attempt $doctor_attempt/$CODESPACE_DOCTOR_MAX_ATTEMPTS (rc=$doctor_rc); retrying." >&2
+  (( doctor_attempt < CODESPACE_DOCTOR_MAX_ATTEMPTS )) && sleep "$doctor_attempt"
+done
+if [[ "$doctor_rc" -ne 0 ]]; then
+  printf '%s\n' "[codespace] ERROR: doctor failed after $CODESPACE_DOCTOR_MAX_ATTEMPTS attempts." >&2
+  exit "$doctor_rc"
+fi
 
 if [[ "${CODESPACE_WATCHDOG_ACTIVE:-0}" != "1" ]]; then
   command -v tmux >/dev/null 2>&1 || {
