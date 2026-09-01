@@ -7,6 +7,7 @@ import { ExecutionStoreError } from '../execution/store.js';
 import type { RuntimeServices } from '../runtime/services.js';
 import { resolvedProjectScope, resolveRouteExistingPath, resolveRouteTargetPath } from './project-scope.js';
 import { WorkflowAdvisor, type WorkflowGuidance } from './workflow-advisor.js';
+import { completeMemoryLifecycleOperation, validateMemoryLifecycleBeforeOperation } from './memory-lifecycle-guard.js';
 
 export const EXECUTION_TOOL_NAMES = [
   'execution_create',
@@ -68,7 +69,10 @@ async function mutationGuarded<T>(
 ) {
   try {
     const route = runtime.routes.validate(routeContextId, key.id, toolName);
-    return textResult(await operation(route));
+    const lifecycleDecision = await validateMemoryLifecycleBeforeOperation(runtime, key, route, toolName);
+    const result = await operation(route);
+    await completeMemoryLifecycleOperation(runtime, key, route, toolName, lifecycleDecision);
+    return textResult(result);
   } catch (error) {
     return errorResult(error);
   }
