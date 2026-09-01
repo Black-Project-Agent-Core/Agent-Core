@@ -652,6 +652,7 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/feature/agent-code-key-va
   - `VaultStore::update_key_state(...)`
   - `VaultStore::delete_key(&KeyId)`
   - `VaultStore::load_protected_blob(&KeyId)`
+  - `VaultStore::reserve_next_slot_index(now_ms)` for monotonic, never-recycled slots
   - `VaultStore::load_rotation_cursor()` / `save_rotation_cursor(slot)`
 
 - [x] **Step 1: Write a RED schema/storage test**
@@ -789,7 +790,7 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/feature/agent-code-key-va
   - `delete_key(key_id, now_ms)`
   - internal secret resolution only inside manager-owned operations
 
-- [ ] **Step 1: Write RED CRUD/security tests**
+- [x] **Step 1: Write RED CRUD/security tests**
 
 Required tests:
 
@@ -806,7 +807,7 @@ restart -> metadata/state restored
 
 Add a compile-time/API test ensuring there is no method named `get_plaintext`, `reveal`, or `export_secret` in the public surface; enforce this again later with the source gate.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml manager::tests -- --nocapture
@@ -814,7 +815,7 @@ cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml manager::
 
 Expected: FAIL because `CredentialManager` does not exist.
 
-- [ ] **Step 3: Add opaque ID dependency**
+- [x] **Step 3: Add opaque ID dependency**
 
 Add to `crates/credential-core/Cargo.toml`:
 
@@ -822,7 +823,7 @@ Add to `crates/credential-core/Cargo.toml`:
 uuid = { version = "1.18.1", features = ["v4", "serde"] }
 ```
 
-- [ ] **Step 4: Implement manager state and duplicate comparison**
+- [x] **Step 4: Implement manager state and duplicate comparison**
 
 Use one manager-owned synchronized state boundary:
 
@@ -855,7 +856,7 @@ if duplicate -> reject
 
 Do not persist a plaintext-derived fingerprint.
 
-- [ ] **Step 5: Bound labels and IDs**
+- [x] **Step 5: Bound labels and IDs**
 
 Rules:
 
@@ -867,20 +868,20 @@ slot_index -> monotonically increasing, never recycled inside one DB lifetime
 masked_suffix -> generated from secret before secret drops
 ```
 
-- [ ] **Step 6: Add database-byte canary test**
+- [x] **Step 6: Add database-byte canary test**
 
 After adding `sk-or-v1-UNIQUE_DB_CANARY_123456789`, read the SQLite file bytes and assert the full canary byte sequence does not occur.
 
 This test uses the test-only protector that transforms the bytes before storage.
 
-- [ ] **Step 7: Run focused/core tests**
+- [x] **Step 7: Run focused/core tests**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml manager::tests -- --nocapture
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml
 ```
 
-- [ ] **Step 9: Commit/push/readback**
+- [x] **Step 9: Commit/push/readback**
 
 ```bash
 git add SubProject/Agent-Code/src-tauri/crates/credential-core
