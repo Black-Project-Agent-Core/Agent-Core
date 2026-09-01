@@ -520,6 +520,8 @@ dependency/model integration changes                   none
 
 **Phase boundary:** Phase 7 adds no Observatory/write-path UI and does not alter OpenAI/ChatGPT internals. Phase 8 remains read-only visualization.
 
+Documentation candidate `aa94e487ff44d4632a80115dcc8ba2216b7c60eb` subsequently passed full exact-SHA release/plugin/performance verification. The final bookkeeping SHA is revalidated before Phase 7 is declared complete externally.
+
 ## Phase 8 — Read-Only Memory Observatory
 
 **Purpose:** Visualize memory graph, recall, history, conflicts, write decisions, and remote durability without becoming part of the write path.

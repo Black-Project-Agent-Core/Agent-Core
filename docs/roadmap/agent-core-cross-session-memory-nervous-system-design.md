@@ -4464,4 +4464,4 @@ tunnel identity defaults                     unchanged
 
 ## Finalization boundary
 
-The implementation candidate satisfies the Phase-7 architecture and runtime gates. The certification is finalized only after these documentation records are committed/pushed and the full release, standalone plugin, 100k-memory, lease micro-benchmark, dependency/model, and exact local/remote/clean-worktree checks are rerun on the final documentation SHA.
+The implementation candidate satisfies the Phase-7 architecture and runtime gates. Documentation candidate `aa94e487ff44d4632a80115dcc8ba2216b7c60eb` was committed/pushed and then passed full release, standalone plugin, 100k-memory, lease micro-benchmark, exact local/remote equality, and clean-worktree verification. The final bookkeeping commit is revalidated before the external Phase-7 completion claim.

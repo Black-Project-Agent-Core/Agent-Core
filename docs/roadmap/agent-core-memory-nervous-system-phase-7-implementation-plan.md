@@ -34,7 +34,7 @@
 - [x] Task 1 — Agent Core Opaque Memory Context Lease Authority
 - [x] Task 2 — Codespace Bridge Lease Adapter
 - [x] Task 3 — Codespace Startup/Hydration Coupling and Fail-Closed Recovery
-- [ ] Task 4 — Phase 7 Regression and Certification (final documentation SHA verification pending)
+- [x] Task 4 — Phase 7 Regression and Certification
 
 ## Task 1 — Agent Core Opaque Memory Context Lease Authority
 
@@ -208,8 +208,6 @@ Use a common adapter wrapper rather than four duplicated policies. Keep existing
 
 - [x] Complete
 
-- [x] Complete
-
 Run standalone plugin build/tests plus root integration guards. Commit/push/readback.
 
 ---
@@ -270,8 +268,6 @@ Specify and prove:
 - fresh Codespace hydrate reconstructs lifecycle truth but no old service-lifetime lease authority; new preflight is required for mutation.
 
 ### Step 5: Verify/checkpoint
-
-- [x] Complete
 
 - [x] Complete
 
@@ -347,7 +343,7 @@ Run:
 
 ### Step 5: Exact-SHA certification
 
-- [ ] Final documentation SHA verification pending
+- [x] Exact documentation-candidate SHA verification completed
 
 On the implementation candidate:
 - push/readback exact branch SHA;
@@ -489,4 +485,21 @@ tunnel identity defaults                                unchanged
 `.vscode/` diff                                          none
 ```
 
-**Candidate status:** all implementation and certification gates are green. Final Phase-7 certification remains contingent on committing these documentation records, pushing/readback, and rerunning release/plugin/performance gates on the exact final documentation SHA.
+**Documentation-candidate verification:** `aa94e487ff44d4632a80115dcc8ba2216b7c60eb` passed full `verify:release`, standalone Codespace verification, 100k memory benchmark, and lease micro-benchmark with exact local/remote equality and a clean worktree. The bookkeeping commit that marks this plan complete is intentionally reverified before the external completion claim.
+
+
+### Documentation-candidate exact-SHA evidence — `aa94e487ff44d4632a80115dcc8ba2216b7c60eb`
+
+```text
+npm run verify:release                    PASS / exit 0
+full root test files                      163 PASS / 2 skipped
+full root tests                           812 PASS / 38 intentional skips
+quality:gate                              PASS
+standalone Codespace                      17 files / 63 PASS
+100k preflight p95                        68.237 ms < 150 ms
+lease before+after p95                    3.495 ms < 50 ms
+local SHA == remote SHA                   PASS
+worktree clean                            PASS
+```
+
+All Task/Step completion markers are now closed. No production behavior changes are included in the bookkeeping change that follows this evidence.
