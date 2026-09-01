@@ -490,6 +490,36 @@ Executable plan: [`agent-core-memory-nervous-system-phase-7-implementation-plan.
 - fresh-Codespace fail-closed behavior for configured existing remote state;
 - `.vscode/` and unrelated user state preserved.
 
+### Phase 7 certification candidate — 2026-09-01
+
+Implementation candidate: `592b79efb5738532ca5dcdd7fe3a87c70a72a673`. Candidate gates are green; final documentation-SHA recertification is pending.
+
+```text
+opaque service-lifetime Memory Context Lease          PASS
+loopback Agent Core lease authority                   PASS
+shared Phase-6 meaningful-work classifier             PASS
+bridge mutation preflight/postflight                  PASS
+mutationCommitted truth on after failure              PASS
+disabled/advisory/enforce rollback modes              PASS
+existing Phase-2 hydration gate reused                PASS
+second hydration implementation                       0
+cross-Codespace A -> B lease/hydration acceptance     PASS
+old service-lifetime lease after recreation            rejected
+root credentials in bridge/shell                      0
+Agent Core / memory / Codespace MCP counts             56 / 9 / 12
+focused Phase-7 root tests                             52 PASS
+standalone Codespace tests                             63 PASS
+full root tests                                        812 PASS / 38 skips
+quality:gate                                           PASS
+100k preflight p95                                     67.75 ms < 150 ms
+lease before+after p95                                 3.735 ms < 50 ms
+disaster/cross-Codespace tests                         27 PASS
+dependency/model integration changes                   none
+`.vscode/` mutation                                     0
+```
+
+**Phase boundary:** Phase 7 adds no Observatory/write-path UI and does not alter OpenAI/ChatGPT internals. Phase 8 remains read-only visualization.
+
 ## Phase 8 — Read-Only Memory Observatory
 
 **Purpose:** Visualize memory graph, recall, history, conflicts, write decisions, and remote durability without becoming part of the write path.

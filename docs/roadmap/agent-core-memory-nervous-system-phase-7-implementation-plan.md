@@ -29,6 +29,13 @@
 
 ---
 
+## Completion ledger — candidate certification
+
+- [x] Task 1 — Agent Core Opaque Memory Context Lease Authority
+- [x] Task 2 — Codespace Bridge Lease Adapter
+- [x] Task 3 — Codespace Startup/Hydration Coupling and Fail-Closed Recovery
+- [ ] Task 4 — Phase 7 Regression and Certification (final documentation SHA verification pending)
+
 ## Task 1 — Agent Core Opaque Memory Context Lease Authority
 
 **Files:**
@@ -45,6 +52,8 @@
 
 ### Step 1: RED — lease cryptographic contract
 
+- [x] Complete
+
 Specify:
 - a persisted `OPEN`/`POSTFLIGHT_PENDING` lifecycle can receive a bounded opaque lease;
 - lease expiry is `min(route/lifecycle expiry, configured/requested cap)` and cannot be extended by the caller;
@@ -55,6 +64,8 @@ Specify:
 - issuing/validating a lease does not change logical-state hash or remote projection.
 
 ### Step 2: GREEN — stateless opaque authority
+
+- [x] Complete
 
 Implement a service-lifetime AES-256-GCM authority with a random 32-byte key generated in-process. The encrypted payload is bounded and versioned, for example:
 
@@ -80,6 +91,8 @@ No new schema table and no new logical projection field are required.
 
 ### Step 3: RED — loopback control endpoint
 
+- [x] Complete
+
 Add failing tests proving:
 - direct loopback request reaches the endpoint;
 - public/proxy-forwarded request is 403 before lease processing;
@@ -92,6 +105,8 @@ Add failing tests proving:
 - token is not echoed in any response.
 
 ### Step 4: GREEN — internal endpoint
+
+- [x] Complete
 
 Add `/internal/memory-context-lease` to the existing Agent Core HTTP server. It is not OAuth/MCP and does not accept Agent Core API credentials as authority. It must pass `HttpSecurityPolicy.isLoopbackRequest()` before reading the request body.
 
@@ -114,6 +129,8 @@ Agent Core:
 
 ### Step 5: Capability route issuance
 
+- [x] Complete
+
 When Phase-6 preflight/lifecycle is healthy and mode is not `disabled`, return:
 
 ```text
@@ -124,6 +141,8 @@ memoryContextLeaseExpiresAt: <ISO timestamp>
 Do not return a lease for an ambiguous/degraded/missing/closed lifecycle. Existing `memoryContextId` remains for Agent Core internal orchestration compatibility.
 
 ### Step 6: Verify/checkpoint
+
+- [x] Complete
 
 Run focused crypto, routing, HTTP security, lifecycle, logical-hash, and build tests. Commit/push/readback only after GREEN.
 
@@ -143,6 +162,8 @@ Run focused crypto, routing, HTTP security, lifecycle, logical-hash, and build t
 
 ### Step 1: RED — bridge adapter behavior
 
+- [x] Complete
+
 Specify for `write_file`, `edit_file`, `execute_command`, and `start_process`:
 - optional `memoryContextLease` accepted, max bounded length;
 - token is stripped before underlying workspace/shell/process call;
@@ -156,6 +177,8 @@ Specify for `write_file`, `edit_file`, `execute_command`, and `start_process`:
 
 ### Step 2: GREEN — thin loopback client
 
+- [x] Complete
+
 Implement one client that knows only:
 - configured lifecycle mode;
 - loopback Agent Core lease endpoint URL;
@@ -167,6 +190,8 @@ The client validates endpoint URL is `http://127.0.0.1:<port>/internal/memory-co
 
 ### Step 3: RED — post-mutation truth
 
+- [x] Complete
+
 Specify:
 - before permitted + underlying mutation failed => do not call `after` and do not fabricate pending work;
 - mutation succeeded + enforce `after` failed => MCP error `MEMORY_POSTFLIGHT_REQUIRED`, `mutationCommitted:true`;
@@ -175,9 +200,15 @@ Specify:
 
 ### Step 4: GREEN — wrap potentially meaningful tools
 
+- [x] Complete
+
 Use a common adapter wrapper rather than four duplicated policies. Keep existing tool names/annotations. Add only optional `memoryContextLease` to the four potentially meaningful mutation schemas.
 
 ### Step 5: Verify/checkpoint
+
+- [x] Complete
+
+- [x] Complete
 
 Run standalone plugin build/tests plus root integration guards. Commit/push/readback.
 
@@ -197,6 +228,8 @@ Run standalone plugin build/tests plus root integration guards. Commit/push/read
 
 ### Step 1: RED — existing hydration authority remains first
 
+- [x] Complete
+
 Tests must prove:
 - plugin startup references the root Phase-2 `memory-hydration-gate.sh`; there is no second hydration implementation;
 - when Memory Remote is enabled and gate fails, mutation-ready bridge startup fails before local MCP/tunnel readiness is declared;
@@ -207,9 +240,13 @@ Tests must prove:
 
 ### Step 2: GREEN — reuse hydration gate
 
+- [x] Complete
+
 At Codespace bridge lifecycle startup, run the existing root hydration gate before starting/re-registering the mutation-capable loopback MCP server whenever Phase-7 lifecycle adapter is active. Do not duplicate its marker logic, key restoration, remote query, or SQLite installation.
 
 ### Step 3: Endpoint/runtime coupling
+
+- [x] Complete
 
 Resolve Agent Core lease endpoint from the same local Agent Core service-port authority already used by Codespace startup (`agent_core_service_port`). Export only the non-secret loopback URL + lifecycle mode to the plugin process. Continue explicitly unsetting root credentials.
 
@@ -222,6 +259,8 @@ Advisory mode may expose read-only/mutation bridge availability with explicit de
 
 ### Step 4: Recovery/session-loss tests
 
+- [x] Complete
+
 Specify and prove:
 - old lease after Agent Core restart is rejected;
 - fresh `capability_route` produces a new valid lease;
@@ -232,6 +271,10 @@ Specify and prove:
 
 ### Step 5: Verify/checkpoint
 
+- [x] Complete
+
+- [x] Complete
+
 Run hydration, plugin lifecycle, restart, secret-sanitization, and build suites. Commit/push/readback.
 
 ---
@@ -239,6 +282,8 @@ Run hydration, plugin lifecycle, restart, secret-sanitization, and build suites.
 ## Task 4 — Phase 7 Regression and Certification
 
 ### Step 1: Focused Phase-7 suite
+
+- [x] Complete
 
 Require zero failures for:
 - opaque lease crypto/tamper/expiry/restart;
@@ -253,6 +298,8 @@ Require zero failures for:
 
 ### Step 2: Broad regressions
 
+- [x] Complete
+
 Run root memory + continuity + MCP + execution + HTTP/security suites and full standalone `plugin/codespace` verification. Verify:
 - Agent Core MCP tool count unchanged;
 - Codespace tool names/count unchanged;
@@ -261,6 +308,8 @@ Run root memory + continuity + MCP + execution + HTTP/security suites and full s
 - `.vscode/` and unrelated repository state are untouched.
 
 ### Step 3: Cross-Codespace disaster proof
+
+- [x] Complete
 
 Create acceptance evidence:
 
@@ -284,6 +333,8 @@ Also prove hydration failure leaves the existing destination unchanged and no br
 
 ### Step 4: Quality/performance/dependency gates
 
+- [x] Complete
+
 Run:
 - `npm run verify:release`
 - standalone Codespace plugin verification
@@ -295,6 +346,8 @@ Run:
 - docs link checker
 
 ### Step 5: Exact-SHA certification
+
+- [ ] Final documentation SHA verification pending
 
 On the implementation candidate:
 - push/readback exact branch SHA;
@@ -338,3 +391,102 @@ standalone Codespace plugin verification                     PASS
 local branch SHA == remote branch SHA                        PASS
 worktree clean                                               PASS
 ```
+
+
+---
+
+## Phase 7 Candidate Certification Record — 2026-09-01
+
+**Implementation candidate SHA:** `592b79efb5738532ca5dcdd7fe3a87c70a72a673`
+**Branch:** `feature/cross-session-memory-nervous-system`
+**Candidate local == remote:** PASS
+
+### Architecture and authority gates
+
+```text
+Agent Core semantic/lifecycle authority only                  PASS
+opaque lease implementation                                  AES-256-GCM / process-lifetime key
+lease identity plaintext leakage                             0
+tampered/expired/old-service lease accepted                  0
+public/proxy internal endpoint access                        0
+bridge semantic DB / SQLite authority                        0
+bridge root credential propagation                           0
+shared Phase-6 meaningful-work classifier                    PASS
+stop_process recovery exemption                              PASS
+second hydration implementation                              0
+existing Phase-2 hydration gate reused                       PASS
+fresh hydration failure -> mutation-ready bridge             0
+`.vscode/` mutation                                           0
+direct Continuity/Execution semantic commit bypass           0
+new external AI/model/API dependency                         0
+```
+
+The bridge transports only the opaque `memoryContextLease`; it does not decode principal/project/objective/context identity. The internal authority endpoint is exact loopback-only and returns bounded decisions rather than decoded lease identity. A mutation that commits locally but loses postflight authority returns `MEMORY_POSTFLIGHT_REQUIRED` with factual `mutationCommitted: true`.
+
+### Startup and hydration proof
+
+`plugin/codespace/scripts/memory-lifecycle-preflight.sh` calls the existing root `scripts/codespace/memory-hydration-gate.sh`. The plugin contains no independent `memory-hydrate` or `remote-hydration.json` implementation. In active lifecycle mode the Phase-2 gate runs before the mutation-capable bridge is considered ready. Enforce-mode hydration failure propagates exit `55`; an unreachable lease authority propagates exit `56`. Disabled and advisory rollback modes remain available.
+
+After the root hydration gate has consumed required credentials, bridge lifecycle startup scrubs GitHub, Memory Remote, Cloudflare, control-plane, and lease-secret environment classes from the bridge process, tunnel/watchdog children, MCP runtime, and command shells.
+
+### Cross-Codespace disaster acceptance
+
+The tracked acceptance flow proves:
+
+```text
+Codespace A
+  Phase-2 hydrate -> REMOTE_EMPTY_CONFIRMED
+  preflight + Continuity turn/lifecycle binding
+  opaque lease before/after meaningful work -> POSTFLIGHT_PENDING
+  real terminal Continuity checkpoint + promotion + turn close
+  lifecycle CLOSED
+  encrypted continuity_terminal boundary -> REMOTE_SYNCED
+  local durable receipt attached without hash drift
+  lease token absent from remote bytes
+  service authority closed + local DB deleted
+
+Codespace B
+  fresh Phase-2 hydrate -> REMOTE_HYDRATED exact generation/hash
+  CLOSED lifecycle + completed Continuity task/checkpoint recovered
+  exact remote receipt reconciled locally
+  Codespace-A service-lifetime lease rejected
+  meaningful mutation without new lease rejected
+  fresh preflight -> fresh lease
+  successful meaningful work -> POSTFLIGHT_PENDING
+```
+
+A separate acceptance case proves remote-auth hydration failure leaves an existing local destination byte-for-byte unchanged.
+
+### Candidate verification evidence
+
+```text
+focused Phase-7 root files                              8 PASS
+focused Phase-7 root tests                              52 PASS
+standalone Codespace test files                         17 PASS
+standalone Codespace tests                              63 PASS
+Agent Core MCP tools                                    56 (unchanged)
+memory MCP tools                                        9 (unchanged)
+Codespace MCP tools                                     12 (unchanged)
+full root test files                                    163 PASS / 2 skipped
+full root tests                                         812 PASS / 38 intentional skips
+full release failures                                   0
+npm run verify:release                                  PASS / exit 0
+quality:gate                                            PASS
+release consistency                                     PASS
+document links                                          49 markdown / 19 relative links PASS
+Memory Recall@K / MRR                                   1.0 / 1.0
+cross-project / cross-principal contamination           0 / 0
+deterministic memory replay                             1.0
+100k active memories                                    100001
+100k preflight p95                                      67.75 ms < 150 ms
+lease loopback before+after samples/warmups              100 / 10
+lease loopback p95                                      3.735 ms < 50 ms
+disaster/cross-Codespace files                          6 PASS
+disaster/cross-Codespace tests                          27 PASS
+package/package-lock dependency diff from Phase 6       none
+external AI/model/API integration diff                  none
+tunnel identity defaults                                unchanged
+`.vscode/` diff                                          none
+```
+
+**Candidate status:** all implementation and certification gates are green. Final Phase-7 certification remains contingent on committing these documentation records, pushing/readback, and rerunning release/plugin/performance gates on the exact final documentation SHA.

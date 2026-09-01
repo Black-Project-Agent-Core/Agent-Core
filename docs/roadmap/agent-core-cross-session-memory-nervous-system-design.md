@@ -4364,3 +4364,104 @@ new LangChain/LangGraph integration            none
 ## Phase boundary
 
 Phase 6 is **CERTIFIED COMPLETE** for the Agent Core side of hard preflight/postflight lifecycle enforcement. It does not make the direct ChatGPT→Codespace bridge a semantic memory authority. Phase 7 extends this already-certified lifecycle through an opaque Memory Context Lease adapter and reuses the existing Phase-2 Codespace hydration gate rather than creating a second hydration system.
+
+
+---
+
+# 65. Phase 7 Certification — Codespace Hydration + Memory Context Lease Enforcement
+
+## Certified implementation candidate
+
+```text
+branch                              feature/cross-session-memory-nervous-system
+implementation candidate SHA        592b79efb5738532ca5dcdd7fe3a87c70a72a673
+remote-visible candidate            yes / exact SHA equality
+Phase 7 base                        bdf3501 (Phase 6 certification docs)
+```
+
+## Authority topology
+
+Phase 7 extends Phase-6 hard lifecycle enforcement through an opaque capability rather than duplicating memory semantics in the bridge.
+
+```text
+capability_route / Phase-6 preflight
+        │
+        ▼
+Agent Core process-lifetime AES-256-GCM lease authority
+        │ opaque token only
+        ▼
+Codespace bridge
+        │ loopback before/after request
+        ▼
+/internal/memory-context-lease
+        │
+        ├─ shared Phase-6 meaningful-work classifier
+        ├─ persisted lifecycle revalidation
+        └─ successful meaningful after -> POSTFLIGHT_PENDING
+```
+
+The lease cryptographic key exists only in the Agent Core process. Restart invalidates prior tokens by construction. Tokens are bound to principal, project/workspace root, context, route, objective hash, issued time, and expiry, but those fields are encrypted and are never decoded by the bridge. Issuance/validation does not alter logical memory identity.
+
+## Bridge mutation truth
+
+The existing Codespace MCP surface remains exactly twelve tools. Only four potentially meaningful schemas gain the optional opaque lease input: `write_file`, `edit_file`, `execute_command`, and `start_process`. `stop_process` remains lease-exempt for recovery.
+
+```text
+disabled mode                       adapter bypass / prior behavior
+advisory mode                       mutation allowed + bounded advisory truth
+enforce missing/invalid lease       MEMORY_PREFLIGHT_REQUIRED before mutation
+read-only execute_command           allowed only when Agent Core classifier says required:false
+meaningful mutation success         after call -> POSTFLIGHT_PENDING
+underlying mutation failure         no fabricated after/pending
+mutation committed + after failure  MEMORY_POSTFLIGHT_REQUIRED + mutationCommitted:true
+```
+
+The bridge strips the opaque token before filesystem/process calls. It does not place the token in child environments, process-session metadata, logs, status files, error details, or successful responses.
+
+## Hydration/startup coupling
+
+Phase 7 deliberately did not implement a second recovery system. `plugin/codespace/scripts/memory-lifecycle-preflight.sh` invokes the certified Phase-2 `scripts/codespace/memory-hydration-gate.sh`.
+
+```text
+second plugin hydration implementation     0
+plugin memory-hydrate implementation       0
+plugin remote-hydration.json authority     0
+root Phase-2 hydration gate reused          yes
+active-mode hydration failure               bridge mutation-ready = false
+enforce hydration failure exit              55
+enforce lease-authority failure exit        56
+```
+
+The lease endpoint is derived from the existing `agent_core_service_port` authority and stays exact loopback. The lifecycle mode is propagated from the managed Agent Core configuration to the bridge. After hydration, root credential classes are scrubbed from the bridge lifecycle parent and its MCP/tunnel/watchdog/shell descendants.
+
+## Cross-Codespace proof
+
+The Phase-7 acceptance test uses real logical projection encryption/decryption, real hydration/materialization, real lifecycle authority, real internal HTTP lease handling, and the real bridge lease client while replacing only external Git transport with deterministic in-memory transport.
+
+It demonstrates initial remote-empty confirmation in Codespace A, a real Continuity terminal checkpoint and encrypted `REMOTE_SYNCED` closure, local DB destruction, exact Codespace-B hydrate, preservation of the completed task/checkpoint and lifecycle `CLOSED`, intentional rejection of the old process-lifetime lease, fresh-preflight/fresh-lease success, and unchanged local destination on remote-auth hydration failure.
+
+## Candidate certification gates
+
+```text
+focused Phase-7 root                         8 files / 52 PASS
+standalone Codespace                         17 files / 63 PASS
+full release                                 163 files PASS / 2 skipped
+full tests                                   812 PASS / 38 intentional skips
+failures                                     0
+quality gate                                 PASS
+Agent Core / memory / Codespace tools        56 / 9 / 12
+100k preflight p95                           67.75 ms (<150 ms)
+lease loopback before+after p95              3.735 ms (<50 ms)
+disaster/cross-Codespace                     6 files / 27 PASS
+dependency manifest changes                  none
+external AI/model/API integration            none
+direct Continuity/Execution commit bypass    0
+second hydration implementation              0
+root credential leakage to bridge/shell      0
+`.vscode/` changes                            0
+tunnel identity defaults                     unchanged
+```
+
+## Finalization boundary
+
+The implementation candidate satisfies the Phase-7 architecture and runtime gates. The certification is finalized only after these documentation records are committed/pushed and the full release, standalone plugin, 100k-memory, lease micro-benchmark, dependency/model, and exact local/remote/clean-worktree checks are rerun on the final documentation SHA.
