@@ -129,7 +129,11 @@ The intelligent selector is deliberately standalone at this stage. It can make a
 
 ## Phase 3 — Credential Event System
 
-Status: **DONE — AWAITING PUBLICATION READBACK**
+Status: **REMOTE VERIFIED**
+
+Implementation checkpoint: `763f8e6553875120da69f25678e1a4251441e1e2`
+
+Publication readback: local SHA == `origin/feature/vault-intelligence-layer` == implementation checkpoint.
 
 Implemented event vocabulary and semantics:
 
