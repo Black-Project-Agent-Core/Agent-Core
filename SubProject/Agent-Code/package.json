@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:credential-core": "cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml -- --nocapture",
     "test:credential-security": "node scripts/check-credential-security.mjs && npm run test:credential-core",
+    "test:vault-baseline": "npm run test:credential-security && npm run test:tauri-contract && vitest run src/features/vault/CredentialVaultPanel.test.tsx src/components/AgentCodeApp.test.tsx",
     "tauri": "tauri",
     "build:windows:x64": "bash scripts/build-windows-x64.sh",
     "test:tauri-contract": "node scripts/check-tauri-contract.mjs",
