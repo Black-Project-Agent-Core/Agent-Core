@@ -1,5 +1,6 @@
 use std::collections::{BTreeSet};
 
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
@@ -40,7 +41,7 @@ pub enum OutcomeSignal {
     Unknown,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RotationSnapshot {
     pub cursor_slot: i64,
     pub active_lease_count: usize,

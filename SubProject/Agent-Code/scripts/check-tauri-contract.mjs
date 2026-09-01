@@ -8,6 +8,8 @@ const bootstrapUrl = new URL('./codespace-bootstrap.sh', import.meta.url);
 const windowsBuildUrl = new URL('./build-windows-x64.sh', import.meta.url);
 const makensisWrapperUrl = new URL('./toolchain/makensis', import.meta.url);
 const buildRsUrl = new URL('../src-tauri/build.rs', import.meta.url);
+const credentialCommandsUrl = new URL('../src-tauri/src/credential/commands.rs', import.meta.url);
+const tauriMainUrl = new URL('../src-tauri/src/main.rs', import.meta.url);
 
 const config = JSON.parse(await readFile(configUrl, 'utf8'));
 const windowsConfig = JSON.parse(await readFile(windowsConfigUrl, 'utf8'));
@@ -16,6 +18,8 @@ const bootstrap = await readFile(bootstrapUrl, 'utf8');
 const windowsBuild = await readFile(windowsBuildUrl, 'utf8');
 const makensisWrapper = await readFile(makensisWrapperUrl, 'utf8');
 const buildRs = await readFile(buildRsUrl, 'utf8');
+const credentialCommands = await readFile(credentialCommandsUrl, 'utf8');
+const tauriMain = await readFile(tauriMainUrl, 'utf8');
 const [window] = config.app.windows;
 
 assert.equal(config.productName, 'Agent Code');
@@ -66,5 +70,34 @@ assert.match(bootstrap, /NSIS_VERSION=3\.08/);
 assert.match(bootstrap, /nsis-3\/nsis-3\.zip/);
 assert.match(bootstrap, /1bb9fc85ee5b220d3869325dbb9d191dfe6537070f641c30fbb275c97051fd0c/);
 assert.match(bootstrap, /ln -sf/);
+
+
+const allowedVaultCommands = [
+  'vault_add_openrouter_key',
+  'vault_list_openrouter_keys',
+  'vault_set_enabled',
+  'vault_delete_key',
+  'vault_run_native_self_test',
+  'rotation_get_snapshot',
+  'rotation_run_synthetic_self_test',
+];
+for (const command of allowedVaultCommands) {
+  assert.match(credentialCommands, new RegExp(`fn\\s+${command}\\b`));
+  assert.match(tauriMain, new RegExp(`credential::commands::${command}\\b`));
+}
+for (const forbidden of [
+  'get_plaintext',
+  'reveal_secret',
+  'reveal_key',
+  'export_secret',
+  'export_plaintext',
+]) {
+  assert.doesNotMatch(credentialCommands, new RegExp(forbidden, 'i'));
+  assert.doesNotMatch(tauriMain, new RegExp(forbidden, 'i'));
+}
+assert.match(tauriMain, /CredentialAppState::open/);
+assert.match(tauriMain, /app_local_data_dir\(\)/);
+assert.match(tauriMain, /app\.manage\(state\)/);
+assert.match(tauriMain, /tauri::generate_handler!\[/);
 
 console.log('tauri-contract: PASS');
