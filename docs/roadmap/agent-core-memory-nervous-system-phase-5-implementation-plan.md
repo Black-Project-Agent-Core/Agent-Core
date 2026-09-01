@@ -123,7 +123,7 @@ remote enabled
   -> return REMOTE_SYNCED only from verified synchronizer result
 ```
 
-- [ ] **Step 1: Write RED disabled/first-generation tests**
+- [x] **Step 1: Write RED disabled/first-generation tests**
 
 Create a real MemoryService fixture with Remote disabled and assert `syncDurableBoundary()` returns exactly `required:false/state:NOT_REQUIRED` without touching `memory_remote_state`.
 
@@ -139,7 +139,7 @@ remote state durability                 REMOTE_SYNCED
 remote state generation                 result.generationId
 ```
 
-- [ ] **Step 2: Write RED predecessor and failure-truth tests**
+- [x] **Step 2: Write RED predecessor and failure-truth tests**
 
 After a first successful generation, mutate local semantic state and sync again. Assert the second envelope/manifest predecessor is the first generation and hydration of the latest generation reproduces the new projection exactly.
 
@@ -152,7 +152,7 @@ remote state is never REMOTE_SYNCED for the failed new hash
 remote state is REMOTE_UNAVAILABLE / REMOTE_CONFLICT as classified by synchronizer
 ```
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 npx vitest run tests/memory-durability-boundary.test.ts tests/memory-remote-sync.test.ts
@@ -160,7 +160,7 @@ npx vitest run tests/memory-durability-boundary.test.ts tests/memory-remote-sync
 
 Expected: FAIL because `MemoryDurabilityBoundary` / `syncDurableBoundary()` do not exist.
 
-- [ ] **Step 4: Implement minimal durability boundary**
+- [x] **Step 4: Implement minimal durability boundary**
 
 Use only existing Phase 2 primitives:
 
@@ -191,7 +191,7 @@ return remoteSync.sync({ scope, object, manifest });
 
 Cache only the parsed `MemoryRemoteCrypto` promise if useful; do not cache logical projection, predecessor, or manifest identity.
 
-- [ ] **Step 5: Run GREEN + remote recovery regressions**
+- [x] **Step 5: Run GREEN + remote recovery regressions**
 
 ```bash
 npx vitest run \
@@ -202,7 +202,7 @@ npm run build
 git diff --check
 ```
 
-- [ ] **Step 6: Commit + push/readback**
+- [x] **Step 6: Commit + push/readback**
 
 ```bash
 git add src/memory/durability-boundary.ts src/memory/types.ts src/memory/service.ts tests/memory-durability-boundary.test.ts
@@ -280,7 +280,7 @@ If a checkpoint has zero decisions/artifacts/outcomes/constraints and is not a f
 
 This must persist one applied `NO_DURABLE_MEMORY` write decision and create zero semantic nodes.
 
-- [ ] **Step 1: Write RED controller-adoption tests**
+- [x] **Step 1: Write RED controller-adoption tests**
 
 Update continuity checkpoint acceptance coverage to prove:
 
@@ -296,7 +296,7 @@ all promoted memories                     metadata.created_from_decision_id pres
 
 Also assert direct `MemoryService.commit()` count does not explain these new decision rows—the promoter itself must invoke postflight.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 npx vitest run tests/continuity-checkpoint.test.ts
@@ -304,11 +304,11 @@ npx vitest run tests/continuity-checkpoint.test.ts
 
 Expected: FAIL because `ContinuityPromoter` still calls direct `commit()`.
 
-- [ ] **Step 3: Implement postflight-backed ContinuityPromoter**
+- [x] **Step 3: Implement postflight-backed ContinuityPromoter**
 
 Do not change `ContinuityStore.checkpoint()` semantics in this task. Preserve existing canonical keys/value shapes and counters so continuity snapshots and current tests remain compatible.
 
-- [ ] **Step 4: Run GREEN + continuity regressions**
+- [x] **Step 4: Run GREEN + continuity regressions**
 
 ```bash
 npx vitest run \
@@ -319,7 +319,7 @@ npm run build
 git diff --check
 ```
 
-- [ ] **Step 5: Commit + push/readback**
+- [x] **Step 5: Commit + push/readback**
 
 ```bash
 git add src/continuity/promoter.ts tests/continuity-checkpoint.test.ts tests/memory-cognition-controller.test.ts
@@ -369,7 +369,7 @@ remoteDurability:
 
 If required remote sync fails, the tool rejects and must not return a success object that implies cross-Codespace durability. Local state remains factual and scoped `memory_remote_state` exposes the pending/conflict/unavailable state. Phase 6 will add explicit pending-postflight reconciliation; do not add that state machine here.
 
-- [ ] **Step 1: Write RED remote-enabled continuity tests**
+- [x] **Step 1: Write RED remote-enabled continuity tests**
 
 Using a real runtime MemoryService with fake verified Remote transport:
 
@@ -390,17 +390,17 @@ no successful MCP return is produced
 
 Remote-disabled fixture must continue returning success with `remoteDurability.required=false/state=NOT_REQUIRED`.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 npx vitest run tests/continuity-checkpoint.test.ts tests/memory-durability-boundary.test.ts
 ```
 
-- [ ] **Step 3: Wire grouped durability boundary**
+- [x] **Step 3: Wire grouped durability boundary**
 
 Call `syncDurableBoundary()` exactly once per successful `continuity_checkpoint` invocation after local finalization. Do not synchronize separately per promoted decision/artifact/outcome/constraint.
 
-- [ ] **Step 4: Run GREEN + continuity/execution completion regressions**
+- [x] **Step 4: Run GREEN + continuity/execution completion regressions**
 
 ```bash
 npx vitest run \
@@ -411,7 +411,7 @@ npm run build
 git diff --check
 ```
 
-- [ ] **Step 5: Commit + push/readback**
+- [x] **Step 5: Commit + push/readback**
 
 ```bash
 git add src/mcp/continuity-tools.ts tests/continuity-checkpoint.test.ts tests/memory-durability-boundary.test.ts
@@ -470,7 +470,7 @@ process_checkpoint
 
 A required Remote failure occurs after local postflight may already have created/deduplicated the memory. `handlePersistedEvent()` must treat the promotion as incomplete, enqueue the existing immutable execution promotion payload, and report it as queued. Replay re-applies idempotently through the controller and retries the remote durability checkpoint; it must not create duplicate failure/artifact nodes.
 
-- [ ] **Step 1: Write RED controller-adoption tests**
+- [x] **Step 1: Write RED controller-adoption tests**
 
 Prove real execution promotion produces `memory_write_decisions` with:
 
@@ -482,7 +482,7 @@ terminal run      process-checkpoint postflight decision
 
 Assert promoted semantic nodes have `memory_node_metadata.created_from_decision_id` and failure revision count remains `1` across replay.
 
-- [ ] **Step 2: Write RED remote queue truth tests**
+- [x] **Step 2: Write RED remote queue truth tests**
 
 With Remote enabled and forced readback failure:
 
@@ -504,7 +504,7 @@ remote state REMOTE_SYNCED
 hydrated logical projection equals source projection
 ```
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 npx vitest run tests/execution-memory-bridge.test.ts tests/execution-memory-search.test.ts
@@ -512,13 +512,13 @@ npx vitest run tests/execution-memory-bridge.test.ts tests/execution-memory-sear
 
 Expected: FAIL because bridge still directly commits and does not require remote durability.
 
-- [ ] **Step 4: Implement postflight + durability execution path**
+- [x] **Step 4: Implement postflight + durability execution path**
 
 Preserve all existing evidence selection/redaction logic in `buildPromotions()`. Change only the final semantic application path and durability completion semantics.
 
 Do not add automatic “solution” inference from successful execution. Phase 5 preserves evidence hierarchy; it does not invent a solution node from process success.
 
-- [ ] **Step 5: Run GREEN + execution regressions**
+- [x] **Step 5: Run GREEN + execution regressions**
 
 ```bash
 npx vitest run \
@@ -529,7 +529,7 @@ npm run build
 git diff --check
 ```
 
-- [ ] **Step 6: Verify MCP surface unchanged**
+- [x] **Step 6: Verify MCP surface unchanged**
 
 ```bash
 npx vitest run tests/mcp-memory.test.ts tests/mcp-integration.test.ts tests/mcp-routing.test.ts tests/mcp-dual-era.test.ts
@@ -543,7 +543,7 @@ full MCP tools      56 exactly
 memory_postflight   absent
 ```
 
-- [ ] **Step 7: Commit + push/readback**
+- [x] **Step 7: Commit + push/readback**
 
 ```bash
 git add src/execution/memory-bridge.ts tests/execution-memory-bridge.test.ts
@@ -562,7 +562,7 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/feature/cross-session-mem
 - Mark factual Phase 5 completion in `docs/roadmap/agent-core-cross-session-memory-nervous-system-implementation-plan.md` only after every gate passes.
 - Mark this executable plan complete only after exact remote-visible certification SHA verification.
 
-- [ ] **Step 1: Run focused Phase 5 suite**
+- [x] **Step 1: Run focused Phase 5 suite**
 
 ```bash
 npx vitest run \
@@ -588,7 +588,7 @@ Execution remote failure queued                      PASS
 Queue recovery without duplicate failure node       PASS
 ```
 
-- [ ] **Step 2: Run broad memory/continuity/execution/MCP regression**
+- [x] **Step 2: Run broad memory/continuity/execution/MCP regression**
 
 ```bash
 npx vitest run \
@@ -600,7 +600,7 @@ npx vitest run \
 
 Expected: zero failures; memory tools exactly 9; full MCP tools exactly 56.
 
-- [ ] **Step 3: Re-run disaster-recovery truth**
+- [x] **Step 3: Re-run disaster-recovery truth**
 
 ```bash
 npx vitest run \
@@ -611,7 +611,7 @@ npx vitest run \
 
 Required: latest Phase 5-generated logical checkpoints still hydrate exactly, no plaintext semantic/scope leakage, and non-force writer semantics remain unchanged.
 
-- [ ] **Step 4: Run deterministic quality and performance gates**
+- [x] **Step 4: Run deterministic quality and performance gates**
 
 ```bash
 npm run quality:gate
@@ -620,7 +620,7 @@ npm run benchmark:memory
 
 Required: current Wave E thresholds remain green, cross-project/principal contamination remains `0`, deterministic replay remains `1`, and 100k preflight p95 remains `<150 ms`.
 
-- [ ] **Step 5: Run full release + dependency/model guardrails**
+- [x] **Step 5: Run full release + dependency/model guardrails**
 
 ```bash
 npm run verify:release
@@ -631,7 +631,7 @@ git diff a25b44c98f02256a603bde85e9507a74cf02ab74 -- src package.json package-lo
 
 Required: zero root dependency change and zero new external AI/model/API integration.
 
-- [ ] **Step 6: Record evidence and publish exact certification SHA**
+- [x] **Step 6: Record evidence and publish exact certification SHA**
 
 ```bash
 git add docs/roadmap/agent-core-cross-session-memory-nervous-system-design.md docs/roadmap/agent-core-cross-session-memory-nervous-system-implementation-plan.md docs/roadmap/agent-core-memory-nervous-system-phase-5-implementation-plan.md
@@ -644,3 +644,50 @@ npm run verify:release
 ```
 
 **Phase 5 completion rule:** Phase 5 is certified only when Continuity and Execution promotions no longer bypass the cognition controller, meaningful no-write checkpoint outcomes remain auditable, required Memory Remote boundaries produce encrypted logical checkpoints and return success only after verified readback, execution remote failures fall back to durable replay without duplicate semantic nodes, current MCP surface remains 9/56, and the exact final documentation SHA is remote-visible with the full release gate green. Phase 6 pending-postflight/context-lease hard enforcement remains out of scope.
+
+---
+
+## Certification Record — 2026-09-01
+
+**Status:** **CERTIFIED COMPLETE**
+
+**Certified implementation SHA:** `d0e55585c6b7e08865ee7e40dea1fa7e517df6d9`
+
+**Remote branch:** `origin/feature/cross-session-memory-nervous-system`
+
+Task checkpoints:
+
+```text
+8394dd5  docs: plan continuity execution memory adoption
+5630477  feat: add memory durability boundaries
+7487db2  feat: route continuity promotion through cognition
+0de2910  feat: make continuity checkpoints remotely durable
+d0e5558  feat: make execution memory promotion durable
+```
+
+Certification evidence collected on `d0e55585c6b7e08865ee7e40dea1fa7e517df6d9`:
+
+```text
+focused Phase 5                       6 files / 46 PASS / 0 fail
+broad subsystem regression            74 files / 341 PASS / 5 skips / 0 fail
+disaster recovery                     3 files / 9 PASS / 0 fail
+direct semantic commit bypass         0 across ContinuityPromoter + ExecutionMemoryBridge
+memory tools                          9 exactly
+full MCP tools                        56 exactly
+memory_postflight tool                absent
+quality gate                          PASS
+Recall@K / MRR                        1.0 / 1.0
+cross-project contamination           0
+cross-principal contamination         0
+deterministic replay                  1.0
+100k preflight p95                    59.887 ms (<150 ms)
+verify:release                        PASS / exit 0
+full release tests                    153 files / 757 PASS / 38 skips
+doc links                             47 markdown / 17 links PASS
+root dependency diff vs Phase 4       none
+external AI/model/API diff            none
+```
+
+Important lifecycle boundary: Phase 5 makes cross-Codespace durability truthful but does not introduce Phase-6 `POSTFLIGHT_PENDING` / `DURABLY_CLOSED` state. A required remote failure can occur after factual local checkpoint/turn finalization; the operation reports failure and remote/queue state remains recoverable rather than claiming durability. Phase 6 owns explicit pending-postflight reconciliation and mutation-lease enforcement.
+
+The certification documentation commit must be pushed/read back by exact SHA and `npm run verify:release` rerun on that exact final documentation SHA before Phase 5 is reported externally as complete.

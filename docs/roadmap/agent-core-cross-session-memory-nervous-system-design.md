@@ -4016,3 +4016,144 @@ The broad regression found two Phase-2 test fixtures still creating free-form se
 ## Phase boundary
 
 Phase 4 is **CERTIFIED COMPLETE** for deterministic advisory write decisions, explicit decision application, bounded semantic-profile identity, branch/root/conflict creation gates, and zero automatic adoption into existing promotion paths. Phase 5 remains responsible for routing Continuity/Execution promotion through the controller and enforcing the remote durability boundary for those flows.
+
+---
+
+# 63. Phase 5 Certification — Continuity and Execution Adoption
+
+## Certified implementation candidate
+
+```text
+branch                              feature/cross-session-memory-nervous-system
+implementation SHA                  d0e55585c6b7e08865ee7e40dea1fa7e517df6d9
+remote-visible candidate            yes / exact SHA equality
+Phase 5 base                        a25b44c98f02256a603bde85e9507a74cf02ab74
+```
+
+## Production durability boundary
+
+Phase 5 introduces one production `MemoryDurabilityBoundary` over the already-certified Phase-2 remote protocol. It does not create a second semantic store.
+
+```text
+remote disabled                     NOT_REQUIRED / no fabricated remote state
+remote enabled                      scoped logical projection -> encrypted recovery checkpoint
+plaintext authority                 serializeMemoryLogicalState(scope projection)
+logical identity                    hashMemoryLogicalState(scope projection)
+predecessor                         memory_remote_state.remote_generation only
+remote object kind                  recovery-checkpoint
+manifest object count               1 per grouped boundary
+push                                non-force through existing MemoryRemoteSynchronizer
+success                             REMOTE_SYNCED only after fetch/readback verification
+failure                             local truth preserved; no false REMOTE_SYNCED
+```
+
+The latest generated checkpoint was proven decryptable to the exact serialized local logical projection and a second generation was proven to reference the first generation as predecessor. Hydrating the latest generation reproduced the exact logical projection.
+
+## Continuity adoption
+
+`ContinuityPromoter` no longer has a direct semantic `commit()` path. Its durable facts are expressed as Phase-4 postflight candidates with bounded evidence and root reasons.
+
+```text
+continuity decision                 cognition postflight
+verified artifact                   cognition postflight
+verified outcome/project state      cognition postflight
+constraint/guardrail                cognition postflight
+failed checkpoint                   cognition postflight; failure remains immutable
+no structured durable fact          applied NO_DURABLE_MEMORY decision
+```
+
+Every accepted promoted node carries `memory_node_metadata.created_from_decision_id`. Repeating changed evidence for the same failure canonical identity creates an applied no-write decision and leaves the failure revision count at one.
+
+The MCP `task_checkpoint` sequence is now:
+
+```text
+validate route/execution evidence
+-> local continuity checkpoint
+-> cognition-backed promotion
+-> local turn close/interruption when requested
+-> one grouped MemoryDurabilityBoundary sync
+-> successful response only after required remote readback
+```
+
+The grouped remote logical state therefore covers the continuity checkpoint, task/frontier updates, write-decision audit, accepted semantic memory mutations, and local turn-finalization evidence that existed before the boundary call.
+
+## Execution adoption
+
+`ExecutionMemoryBridge` also has no remaining direct semantic `commit()` path.
+
+```text
+node.failed                         FAILURE_OBSERVED postflight -> execution_failure boundary
+verified artifact evidence          ARTIFACT_VERIFIED postflight -> execution_artifact boundary
+terminal execution checkpoint       postflight -> execution_process_checkpoint boundary
+raw stdout/stderr                    never semantic payload
+unverified required artifact         never promoted as verified success
+```
+
+If local postflight succeeds but required durability fails, the event is not counted as promoted. The existing execution memory-sync queue receives the bounded immutable promotion payload. Replay applies the same candidate again through the controller and retries the durability boundary. Tests prove queue recovery retains one semantic identity rather than creating a second failure node.
+
+## Remote and lifecycle truth
+
+Phase 5 intentionally distinguishes local factual completion from certified cross-Codespace durability.
+
+```text
+local checkpoint/promotion may already exist       true
+required remote readback failed                     MCP success false
+execution promotion durability failed               queued for replay
+false REMOTE_SYNCED                                  0
+rollback/delete factual local terminal evidence     no
+POSTFLIGHT_PENDING/DURABLY_CLOSED state machine     not Phase 5
+```
+
+That last boundary is deliberate. Phase 6 adds explicit pending-postflight reconciliation and hard memory lifecycle enforcement. Phase 5 does not silently invent those states.
+
+## Fresh certification gates
+
+```text
+focused Phase 5                     6 files / 46 PASS
+broad memory/continuity/execution   74 files / 341 PASS / 5 intentional skips
+disaster recovery                   3 files / 9 PASS
+direct semantic commit bypass       0
+memory MCP tools                    9
+full Agent Core MCP tools           56
+memory_postflight MCP tool          absent
+```
+
+Deterministic quality/performance remained inside the certified contract:
+
+```text
+Memory Recall@K                     1.0
+Memory MRR                          1.0
+Cross-project contamination         0
+Cross-principal contamination       0
+Deterministic replay equality       1.0
+100k preflight p95                  59.887 ms
+100k target                         <150 ms
+```
+
+Full implementation-candidate release gate:
+
+```text
+npm run verify:release              PASS / exit 0
+brand / TypeScript / Codespace      PASS
+full test files                     153 PASS / 2 skipped
+full tests                          757 PASS / 38 intentional skips
+release failures                    0
+quality:gate                        PASS
+release consistency                 PASS
+document links                      47 markdown / 17 relative links PASS
+```
+
+Dependency/model guardrails from the Phase-4 final certification remain unchanged:
+
+```text
+package.json / package-lock.json change       none
+new OpenAI source/dependency integration      none
+new Anthropic source/dependency integration   none
+new Gemini source/dependency integration      none
+new LangChain dependency/integration          none
+new LangGraph dependency/integration          none
+```
+
+## Phase boundary
+
+Phase 5 is **CERTIFIED COMPLETE** for routing Continuity and Execution durable promotion through the cognition/write-decision authority and for making their required Memory Remote checkpoints truthful. Phase 6 remains responsible for hard preflight/postflight lifecycle state, pending-postflight reconciliation, and mutation-lease enforcement.

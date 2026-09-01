@@ -379,6 +379,51 @@ Two Phase-2 remote-recovery fixtures were migrated from the pre-Phase-4 free-for
 
 **Exit gate:** existing continuity/execution acceptance suites remain green, failure memories remain immutable episodic history, and remote durability state is truthful.
 
+### Phase 5 certification — 2026-09-01
+
+**Status:** **CERTIFIED COMPLETE** for Continuity/Execution cognition adoption and truthful Memory Remote durability boundaries.
+
+**Certified implementation SHA:** `d0e55585c6b7e08865ee7e40dea1fa7e517df6d9`
+
+**Remote audit branch:** `origin/feature/cross-session-memory-nervous-system`
+
+Fresh Phase 5 evidence on that exact implementation SHA:
+
+```text
+focused Phase 5 test files                     6 PASS
+focused Phase 5 tests                          46 PASS
+focused failures                               0
+direct Continuity semantic commit bypass       0
+direct Execution semantic commit bypass        0
+broad memory/continuity/execution/MCP files     74 PASS
+broad subsystem tests                          341 PASS / 5 intentional skips
+broad failures                                 0
+disaster-recovery files                        3 PASS
+disaster-recovery tests                        9 PASS
+model-facing memory MCP tools                  9 (unchanged)
+full Agent Core MCP tools                      56 (unchanged)
+memory_postflight MCP tool                     absent
+quality:gate                                   PASS
+Memory Recall@K / MRR                          1.0 / 1.0
+Cross-project contamination                    0
+Cross-principal contamination                  0
+Deterministic replay equality                  1.0
+100k preflight p95                             59.887 ms < 150 ms
+verify:release exit                            0
+full test files                                153 PASS / 2 skipped
+full tests                                     757 PASS / 38 intentional skips
+release failures                               0
+document links                                 47 markdown / 17 relative links PASS
+package.json / package-lock.json change        none
+new external AI/model/API integration          none
+```
+
+Continuity promotion now persists Phase-4 write decisions for decisions, artifacts, outcomes, constraints, failures, and intentional no-write checkpoints. Repeated changed failure evidence cannot revise the immutable failure node. A successful `task_checkpoint` response includes its remote-durability result and, when Memory Remote is enabled, is emitted only after the grouped logical checkpoint has passed non-force push plus fetch/readback verification.
+
+Execution failure/artifact/process-checkpoint promotion now uses the same cognition controller. A durability failure after local postflight does not count as promoted/synced: the existing durable execution-memory queue retains the bounded promotion payload, replay re-applies it semantically idempotently, and remote durability is retried without creating a second semantic identity.
+
+**Phase boundary:** Phase 5 does not add the Phase-6 memory-context lifecycle state machine. If required remote durability fails after a local terminal checkpoint, local checkpoint/task/turn evidence remains factual and the MCP call fails rather than claiming cross-Codespace durability. Explicit `POSTFLIGHT_PENDING` reconciliation, `DURABLY_CLOSED`, and mutation-lease enforcement remain Phase 6 work.
+
 ## Phase 6 — Agent Core Hard Memory Lifecycle
 
 **Purpose:** Enforce preflight/postflight on selected Agent Core actionable flows with staged rollback.
