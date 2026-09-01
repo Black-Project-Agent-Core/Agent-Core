@@ -1,5 +1,6 @@
 import {
   Folder,
+  KeyRound,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -15,6 +16,8 @@ export type SidebarProps = {
   onNewSession(): void;
   onSelectSession(sessionId: string): void;
   onToggleCollapse(): void;
+  onOpenVault(): void;
+  vaultActive: boolean;
 };
 
 export function Sidebar({
@@ -24,6 +27,8 @@ export function Sidebar({
   onNewSession,
   onSelectSession,
   onToggleCollapse,
+  onOpenVault,
+  vaultActive,
 }: SidebarProps) {
   return (
     <nav
@@ -56,6 +61,20 @@ export function Sidebar({
         <button type="button" className="sidebar-row project-row" aria-label="Agent Code project">
           <Folder size={15} strokeWidth={1.7} />
           <span className="sidebar-label">Agent Code</span>
+        </button>
+      </div>
+
+      <div className="sidebar-section">
+        <p className="sidebar-section-label sidebar-label">LOCAL</p>
+        <button
+          type="button"
+          className="sidebar-row vault-row"
+          aria-label="API Keys"
+          aria-current={vaultActive ? 'page' : undefined}
+          onClick={onOpenVault}
+        >
+          <KeyRound size={15} strokeWidth={1.7} />
+          <span className="sidebar-label">API Keys</span>
         </button>
       </div>
 

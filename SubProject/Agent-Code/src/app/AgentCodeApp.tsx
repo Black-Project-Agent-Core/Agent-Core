@@ -1,11 +1,15 @@
-import { useReducer } from 'react';
+import { useReducer, useState } from 'react';
 import { AppShell } from '../components/AppShell';
 import { Sidebar } from '../components/Sidebar';
 import { Workspace } from '../components/Workspace';
+import { CredentialVaultPanel } from '../features/vault/CredentialVaultPanel';
 import { createInitialWorkspaceState, workspaceReducer } from './workspace-state';
+
+type AppSurface = 'workspace' | 'vault';
 
 export function AgentCodeApp() {
   const [state, dispatch] = useReducer(workspaceReducer, undefined, createInitialWorkspaceState);
+  const [surface, setSurface] = useState<AppSurface>('workspace');
   const activeSession = state.sessions.find((session) => session.id === state.activeSessionId) ?? state.sessions[0];
 
   return (
@@ -19,13 +23,19 @@ export function AgentCodeApp() {
           onNewSession={() => dispatch({ type: 'new-session' })}
           onSelectSession={(sessionId) => dispatch({ type: 'select-session', sessionId })}
           onToggleCollapse={() => dispatch({ type: 'toggle-sidebar' })}
+          onOpenVault={() => setSurface('vault')}
+          vaultActive={surface === 'vault'}
         />
       )}
       workspace={(
-        <Workspace
-          session={activeSession}
-          onSubmit={(text) => dispatch({ type: 'submit-message', text })}
-        />
+        surface === 'vault' ? (
+          <CredentialVaultPanel onClose={() => setSurface('workspace')} />
+        ) : (
+          <Workspace
+            session={activeSession}
+            onSubmit={(text) => dispatch({ type: 'submit-message', text })}
+          />
+        )
       )}
     />
   );

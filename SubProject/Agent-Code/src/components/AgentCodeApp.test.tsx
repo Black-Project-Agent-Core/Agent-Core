@@ -61,4 +61,15 @@ describe('AgentCodeApp', () => {
     expect(screen.getByRole('navigation', { name: 'Agent Code workspace' })).toHaveAttribute('data-collapsed', 'false');
   });
 
+  it('opens the API Keys surface without mutating the active workspace session', async () => {
+    const user = userEvent.setup();
+    render(<AgentCodeApp />);
+    expect(screen.getByRole('button', { name: 'General coding session, selected' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'API Keys' }));
+    expect(await screen.findByRole('heading', { name: 'Credential Vault' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Close credential vault' }));
+    expect(screen.getByRole('button', { name: 'General coding session, selected' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'What are we building?' })).toBeInTheDocument();
+  });
+
 });

@@ -27,3 +27,20 @@ for (const viewport of viewports) {
     });
   });
 }
+
+test('credential vault native-unavailable browser preview', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'API Keys' }).click();
+  await expect(page.getByRole('heading', { name: 'Credential Vault' })).toBeVisible();
+  await expect(page.getByText('Native vault unavailable in browser preview.')).toBeVisible();
+  await expect(page.getByLabel('OpenRouter API key')).toHaveAttribute('type', 'password');
+  await expect(page.getByRole('button', { name: /reveal/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /copy/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /export/i })).toHaveCount(0);
+  await expect(page).toHaveScreenshot('credential-vault-native-unavailable.png', {
+    fullPage: true,
+    animations: 'disabled',
+  });
+});
