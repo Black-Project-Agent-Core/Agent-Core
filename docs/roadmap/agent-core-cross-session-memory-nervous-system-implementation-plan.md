@@ -438,6 +438,42 @@ Executable plan: [`agent-core-memory-nervous-system-phase-6-implementation-plan.
 - audit-only/advisory flag remains available for rollback;
 - degraded memory never fabricates recall or compliance.
 
+### Phase 6 certification — 2026-09-01
+
+**Status:** **CERTIFIED COMPLETE** for Agent Core hard memory lifecycle enforcement.
+
+**Certified implementation SHA:** `e2fa01ef0034ae0da31be05c8d79ecf3b2190d9e`
+
+**Remote audit branch:** `origin/feature/cross-session-memory-nervous-system`
+
+```text
+schema                                v4 / 004_hard_memory_lifecycle
+lifecycle                             OPEN -> POSTFLIGHT_PENDING -> CLOSED
+remote durable public state           DURABLY_CLOSED only after verified readback
+rollout modes                          disabled / advisory / enforce
+legacy logical projection              v1 exact-hash compatibility PASS
+current logical projection             v2 lifecycle round-trip PASS
+prior same-task/objective pending      blocked in enforce mode
+unrelated task                         not globally blocked
+durability-only checkpoint retry       no duplicate decision/checkpoint
+model-facing memory MCP tools          9 (unchanged)
+full Agent Core MCP tools              56 (unchanged)
+memory_postflight MCP tool             absent
+direct semantic commit bypass          0
+full release files                     157 PASS / 2 skipped
+full release tests                     784 PASS / 38 intentional skips
+release failures                       0
+quality:gate                           PASS
+disaster recovery                      4 files / 17 PASS
+100k preflight p95                     64.006 ms < 150 ms
+package/dependency change              none
+new external AI/model/API integration  none
+```
+
+Phase 6 reuses the Phase-2 encrypted remote protocol and keeps local durability receipts outside logical-state identity. When required remote sync fails after factual local postflight, the local checkpoint/turn/write-decision/lifecycle truth remains; the operation does not claim `DURABLY_CLOSED`, and later reconciliation retries only durability.
+
+**Phase boundary:** direct ChatGPT→Codespace mutation enforcement is intentionally Phase 7. Phase 7 must reuse the existing Codespace hydration gate and the Phase-6 lifecycle authority; it must not create a second semantic memory store or give the bridge Agent Core root credentials.
+
 ## Phase 7 — Codespace Hydration + Memory Context Lease Enforcement
 
 **Purpose:** Extend lifecycle enforcement to direct ChatGPT→Codespace operations without making the bridge understand memory semantics.

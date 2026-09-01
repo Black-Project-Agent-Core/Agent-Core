@@ -344,3 +344,66 @@ full release verification                                 PASS
 local branch SHA == remote branch SHA                     PASS
 worktree clean                                            PASS
 ```
+
+
+---
+
+## Phase 6 Certification Record
+
+**Status:** **CERTIFIED COMPLETE**
+
+**Implementation candidate:** `e2fa01ef0034ae0da31be05c8d79ecf3b2190d9e`
+
+**Remote branch:** `origin/feature/cross-session-memory-nervous-system`
+
+Implementation checkpoints:
+
+```text
+plan                                  f1d03698f45e61c65ce8f8a11ef6490169f85120
+Task 1 lifecycle/schema/projection     0a6bce776ee605ef3dbc2217e2589bb3b7c41aa2
+Task 2 mutation guard                  cb669e393ad5dbd4fb7ff0e05bb733ef48e83ee5
+Task 3 reconciliation/durable closure  1f9f438e34c90a1ddca378c4475b1fac02e4dfb8
+recovery certification fixture         e2fa01ef0034ae0da31be05c8d79ecf3b2190d9e
+```
+
+TDD evidence:
+
+```text
+Task 1 initial lifecycle/schema RED           observed as expected
+Task 1 lifecycle/schema GREEN                  PASS
+Task 1 legacy/current projection GREEN         PASS
+Task 1 migration/remote recovery regression    25 PASS
+Task 2 initial mutation-lease RED              observed as expected
+Task 2 focused lifecycle/classifier GREEN       14 PASS
+Task 2 existing route/GitHub/execution          22 PASS
+Task 3 initial reconciliation RED               7 expected failures
+Task 3 lifecycle/checkpoint GREEN               16 PASS
+Task 3 broad relevant regression                18 files / 97 PASS
+real encrypted lifecycle remote round-trip      PASS
+receipt semantic-hash drift regression          RED -> GREEN
+```
+
+Candidate certification:
+
+```text
+npm run verify:release                          PASS / exit 0
+full test files                                 157 PASS / 2 skipped
+full tests                                      784 PASS / 38 intentional skips
+failures                                        0
+quality:gate                                    PASS
+Memory Recall@K / MRR                           1.0 / 1.0
+cross-project contamination                     0
+cross-principal contamination                   0
+deterministic replay equality                   1.0
+disaster recovery                               4 files / 17 PASS
+100k active memories                            100001
+100k preflight p95                              64.006 ms < 150 ms
+model-facing memory MCP tools                   9
+full Agent Core MCP tools                       56
+direct Continuity/Execution commit bypass       0
+package/package-lock dependency diff            none
+new external AI/model/API integration           none
+local implementation SHA == remote branch SHA   PASS
+```
+
+The final documentation commit must be pushed and then receive a fresh exact-SHA `npm run verify:release` before that documentation SHA is recorded as the final Phase-6 certified SHA.

@@ -4157,3 +4157,210 @@ new LangGraph dependency/integration          none
 ## Phase boundary
 
 Phase 5 is **CERTIFIED COMPLETE** for routing Continuity and Execution durable promotion through the cognition/write-decision authority and for making their required Memory Remote checkpoints truthful. Phase 6 remains responsible for hard preflight/postflight lifecycle state, pending-postflight reconciliation, and mutation-lease enforcement.
+
+---
+
+# 64. Phase 6 Certification — Agent Core Hard Memory Lifecycle
+
+## Certified implementation candidate
+
+```text
+branch                              feature/cross-session-memory-nervous-system
+implementation SHA                  e2fa01ef0034ae0da31be05c8d79ecf3b2190d9e
+remote-visible candidate            yes / exact SHA equality
+Phase 6 base                        bc5cba9a8e9af0aa392166c2a9a5dd497091536d
+```
+
+Implementation checkpoints:
+
+```text
+Phase 6 executable plan             f1d03698f45e61c65ce8f8a11ef6490169f85120
+schema v4 + lifecycle ledger        0a6bce776ee605ef3dbc2217e2589bb3b7c41aa2
+Agent Core mutation enforcement     cb669e393ad5dbd4fb7ff0e05bb733ef48e83ee5
+pending-postflight reconciliation   1f9f438e34c90a1ddca378c4475b1fac02e4dfb8
+schema-v4 recovery certification    e2fa01ef0034ae0da31be05c8d79ecf3b2190d9e
+```
+
+## Persisted hard lifecycle authority
+
+Phase 6 adds schema v4 migration `004_hard_memory_lifecycle` and one durable lifecycle ledger. It does not replace the existing ephemeral `memory_contexts` recall snapshot or create a second semantic-memory authority.
+
+```text
+preflight persisted                 OPEN
+successful meaningful work          POSTFLIGHT_PENDING
+local postflight applied             CLOSED
+required remote readback verified    DURABLY_CLOSED (derived public state)
+remote disabled                      CLOSED + NOT_REQUIRED
+remote required but unavailable      CLOSED locally / no durable receipt
+```
+
+The lifecycle row is exact on principal, project, route context, objective hash, expiry, and optional authoritative Continuity task ID. The lifecycle table intentionally has no foreign key to ephemeral `memory_contexts`: verified remote hydration may recover pending/closed lifecycle truth while old recall snapshots remain intentionally non-replayable.
+
+Rollout is controlled by `AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE`:
+
+```text
+disabled                            preserve pre-Phase-6 behavior
+advisory (default)                  record would-block evidence, do not block
+ enforce                             reject invalid/missing lifecycle before mutation
+```
+
+A disabled or degraded MemoryService never fabricates a compliant lease.
+
+## Logical-state projection compatibility
+
+Current encrypted Memory Remote recovery checkpoints use logical-state projection format v2. Format v2 extends the Phase-5 projection with lifecycle semantic fields while excluding local-only durability receipts.
+
+```text
+format v1                           exact Phase-5 table set
+format v2                           v1 + memory context lifecycle semantic state
+local_durable_generation            excluded from projection/hash
+local_durable_hash                  excluded from projection/hash
+legacy v1 read/hydrate              supported
+current v2 read/hydrate             supported
+```
+
+The pinned empty-format-v1 hash remains:
+
+```text
+9dd14a610711605061db5407aed4d135a3ed9ba69b72252c288e9d2cdf068e48
+```
+
+A lifecycle receipt initially changed semantic `updated_at` and therefore changed the logical hash after verified remote sync. A RED regression isolated that drift. The production fix makes receipt attachment local-only: adding `local_durable_generation` / `local_durable_hash` no longer mutates any projected semantic field. The logical hash is therefore stable before and after receipt attachment.
+
+Real remote round-trip evidence proves:
+
+```text
+local lifecycle CLOSED
+-> encrypted v2 recovery checkpoint contains CLOSED
+-> non-force remote sync + exact readback
+-> local-only receipt attachment leaves logical hash unchanged
+-> fresh SQLite hydrate reproduces exact v2 logical hash
+-> hydrated CLOSED initially has no local receipt
+-> exact REMOTE_SYNCED generation/hash reconstructs receipt locally
+```
+
+## Deterministic meaningful-work enforcement
+
+One local pure classifier is shared by Agent Core filesystem/process, Execution, and GitHub mutation wrappers.
+
+Meaningful examples include filesystem writes/edits/moves, execution create/start/add/retry/cancel, mutating GitHub operations, and generic/unknown shell commands. Read/search/status operations remain outside the hard mutation lease. `stop_process` is intentionally a recovery-control exemption so failed enforcement cannot brick operator recovery.
+
+`execute_command` is read-only only for a deliberately narrow no-metacharacter allowlist such as `pwd`, simple `ls`, `git status`, `git rev-parse`, `git branch --show-current`, `git log`, `git show`, and `git diff`. Redirection, chaining, substitution, pipelines, and unknown commands are classified as meaningful.
+
+Enforce-mode ordering is:
+
+```text
+existing RouteContext validation
+-> deterministic meaningful-work classification
+-> exact persisted lifecycle validation
+-> underlying mutation
+-> successful mutation marks POSTFLIGHT_PENDING
+```
+
+An underlying mutation failure never fabricates successful work. If the local mutation already committed but the lifecycle cannot be marked pending, the operation reports `MEMORY_POSTFLIGHT_REQUIRED` with factual `mutationCommitted: true` evidence rather than pretending the postflight obligation disappeared.
+
+## Pending postflight and Continuity reconciliation
+
+`capability_route` now checks prior lifecycle obligations before it treats a new actionable context as compliant.
+
+```text
+same explicit resumeTaskId pending          blocked in enforce mode
+same normalized objective pending           blocked in enforce mode
+unrelated objective/task                    not globally blocked
+advisory prior pending                      surfaced, not enforced
+closed prior context                        does not block
+```
+
+After Continuity begins/resumes, the preflight lifecycle is bound to the authoritative `continuityTaskId`; no second task identity is invented.
+
+`task_checkpoint` now orders local and remote truth as:
+
+```text
+validate checkpoint/execution evidence
+-> persist local Continuity checkpoint
+-> Phase-4 cognition/postflight promotion
+-> close/interrupted local turn as factual truth
+-> prepare lifecycle CLOSED in semantic projection
+-> Memory Remote durability boundary
+-> verified REMOTE_SYNCED: attach local-only generation/hash receipt
+-> return success with lifecycle/durability state
+```
+
+If remote sync fails, the MCP call fails while the factual local checkpoint, promoted memory/write-decision evidence, turn state, and lifecycle `CLOSED` remain intact. A later retry recognizes `CLOSED` without a receipt as durability-only reconciliation. It reuses the authoritative prior checkpoint, does not repeat semantic postflight, and tests prove checkpoint/write-decision counts do not increase.
+
+## Fresh certification gates
+
+Implementation-candidate release verification on exact SHA `e2fa01ef0034ae0da31be05c8d79ecf3b2190d9e`:
+
+```text
+npm run verify:release              PASS / exit 0
+brand scan                          PASS
+TypeScript build                    PASS
+Codespace build                     PASS
+full test files                     157 PASS / 2 skipped
+full tests                          784 PASS / 38 intentional skips
+failures                            0
+quality:gate                        PASS
+release consistency                 PASS
+Agent Core version                  0.6.0
+server version                      0.6.0
+document links                      48 markdown / 18 relative links PASS
+memory MCP tools                    9 (unchanged)
+full Agent Core MCP tools           56 (unchanged)
+memory_postflight MCP tool          absent
+direct Continuity semantic commit   0
+direct Execution semantic commit    0
+```
+
+Deterministic quality/performance:
+
+```text
+Memory Recall@K                     1.0
+Memory MRR                          1.0
+Hard guardrail recall               1.0
+Current revision correctness        1.0
+Prior failure recall                1.0
+Graph target recall                 1.0
+Conflict visibility                 1.0
+Artifact/procedure recall           1.0
+Noise displacement                  0
+Cross-project contamination         0
+Cross-principal contamination       0
+Character-budget correctness        1.0
+Deterministic replay equality       1.0
+Routing tier accuracy               0.975
+Unsafe overpermission rate          0
+False high-impact rate              0
+100k active memories                100001
+100k SQLite integrity               ok
+100k samples / warmups              25 / 5
+100k preflight p95                  64.006 ms
+100k target                         <150 ms
+100k result                         PASS
+```
+
+Disaster-recovery recertification:
+
+```text
+remote hydration                    PASS
+remote deletion recovery            PASS
+concurrent-writer reconciliation    PASS
+schema/recovery backup              PASS
+files                               4 PASS
+tests                               17 PASS
+```
+
+Dependency/model guardrails from Phase 5 remain unchanged:
+
+```text
+package/package-lock dependency diff           none
+new external AI/model/API integration          none
+new OpenAI source/dependency integration       none
+new Anthropic source/dependency integration    none
+new Gemini source/dependency integration       none
+new LangChain/LangGraph integration            none
+```
+
+## Phase boundary
+
+Phase 6 is **CERTIFIED COMPLETE** for the Agent Core side of hard preflight/postflight lifecycle enforcement. It does not make the direct ChatGPT→Codespace bridge a semantic memory authority. Phase 7 extends this already-certified lifecycle through an opaque Memory Context Lease adapter and reuses the existing Phase-2 Codespace hydration gate rather than creating a second hydration system.
