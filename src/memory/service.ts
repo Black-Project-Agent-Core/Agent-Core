@@ -35,6 +35,7 @@ import { hashMemoryLogicalState, projectMemoryLogicalState } from './logical-sta
 import { MemoryRemoteCrypto } from './remote-crypto.js';
 import { MemoryRemoteHydrator } from './remote-hydrator.js';
 import { MemoryPreflightEngine, createDisabledPreflightResult } from './preflight.js';
+import { MemoryObservatoryProjection, type MemoryObservatoryProjectionRequest, type MemoryObservatorySnapshot, type MemoryObservatoryNodeDetail } from './observatory-projection.js';
 import { MemoryRetriever } from './retriever.js';
 import { MemoryRememberMore } from './remember-more.js';
 import { MemoryRemoteSynchronizer } from './remote-sync.js';
@@ -83,6 +84,7 @@ interface MemoryComponents {
   remoteSync?: MemoryRemoteSynchronizer;
   continuity: ContinuityStore;
   continuitySnapshot: ContinuitySnapshotBuilder;
+  observatory: MemoryObservatoryProjection;
 }
 
 export interface MemoryContextRecord {
@@ -728,6 +730,16 @@ export class MemoryService {
     return { memory, revisions, provenance: { events } };
   }
 
+  async observatorySnapshot(request: MemoryObservatoryProjectionRequest): Promise<MemoryObservatorySnapshot> {
+    const components = await this.requireComponents();
+    return components.observatory.snapshot(request);
+  }
+
+  async observatoryNode(scope: MemoryScope, memoryId: string): Promise<MemoryObservatoryNodeDetail | null> {
+    const components = await this.requireComponents();
+    return components.observatory.node(scope, memoryId);
+  }
+
   async explain(scope: MemoryScope, memoryId: string, query?: string): Promise<MemoryExplainView | null> {
     if (!this.config.enabled) return null;
     const components = await this.requireComponents();
@@ -1110,7 +1122,8 @@ export class MemoryService {
     const durabilityBoundary = new MemoryDurabilityBoundary(client, cognition, remoteSync, this.config.remote);
     const continuity = new ContinuityStore(client);
     const continuitySnapshot = new ContinuitySnapshotBuilder(client);
-    const components = { client, store, retriever, lifecycle, linker, preflight, cognition, cognitionController, rememberMore, durabilityBoundary, hardLifecycle, remoteSync, continuity, continuitySnapshot };
+    const observatory = new MemoryObservatoryProjection(client, this.config, continuitySnapshot, () => this.state === 'healthy');
+    const components = { client, store, retriever, lifecycle, linker, preflight, cognition, cognitionController, rememberMore, durabilityBoundary, hardLifecycle, remoteSync, continuity, continuitySnapshot, observatory };
     try {
       const opened = await store.open({ dbPath: this.config.dbPath, busyTimeoutMs: this.config.busyTimeoutMs });
       this.lastIntegrityCheckAt = opened.integrityCheckedAt;
