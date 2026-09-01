@@ -335,3 +335,12 @@ Priority remains:
 - Added bounded Credential Vault activity viewer and Tauri event-list contract.
 - Verified v2→v3 migration preserves keys, profiles, and protected blob bytes/checksum.
 - Full Vault baseline, production build, and secret-boundary scans remained green before publication.
+
+### 2026-09-01 — Phase 5 Shadow Health Monitor
+
+- Certified implementation checkpoint: `3b29c1687dee34e2f8f9eca4b1fcc5f936367d1e`; certification documentation/publication lineage is that checkpoint → `a2fe305955b511ebf476dd3728d5f70543c30d26`, non-force-pushed and fetch/readback-confirmed.
+- Added deterministic bounded scheduling (state-specific intervals, jitter, local cooldown deadline), deterministic 20-key ordering, and a two-probe concurrency ceiling.
+- Monitor startup/owner shutdown, eligibility recheck, and restart duplicate-probe prevention are covered; disabled, invalid, and quarantined credentials are never auto-probed.
+- A 20-key provider-wide transient outage leaves pool lifecycle/eligibility intact; monitoring uses only metadata-only `GET /api/v1/key` and forbids model inference.
+- Fresh named gates passed: credential-core (70 unit, 1 event, 4 intelligence, 5 monitor, 15 usage), `npm run test:vault-baseline`, credential security, Tauri contract, focused Vault/App frontend (14), production build, `git diff --check`, and the 4-file changed-production forbidden-secret-surface scan.
+- Linux Tauri `cargo check` is environment-blocked, not passed: Codespace GLib 2.64.6 is below the desktop dependency requirement (>= 2.70).
