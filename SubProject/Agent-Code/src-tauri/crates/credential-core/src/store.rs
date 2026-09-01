@@ -173,6 +173,7 @@ impl VaultStore {
             store.migrate_v1()?;
         }
         store.verify_integrity(existed)?;
+        store.ensure_slot_state()?;
         Ok(store)
     }
 
@@ -219,8 +220,50 @@ impl VaultStore {
                 INSERT OR IGNORE INTO rotation_state(singleton_id, cursor_slot, updated_at_utc_ms)
                 VALUES(1, -1, 0);
 
+                CREATE TABLE IF NOT EXISTS vault_slot_state (
+                  singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+                  next_slot_index INTEGER NOT NULL CHECK(next_slot_index >= 0)
+                ) STRICT;
+
+                INSERT OR IGNORE INTO vault_slot_state(singleton_id, next_slot_index)
+                VALUES(1, 0);
+
                 PRAGMA user_version = 1;
                 "#,
+            )
+            .map_err(StoreError::Sqlite)?;
+        transaction.commit().map_err(StoreError::Sqlite)
+    }
+
+    fn ensure_slot_state(&mut self) -> Result<(), StoreError> {
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        transaction
+            .execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS vault_slot_state (
+                  singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+                  next_slot_index INTEGER NOT NULL CHECK(next_slot_index >= 0)
+                ) STRICT;
+                "#,
+            )
+            .map_err(StoreError::Sqlite)?;
+        let observed_next: i64 = transaction
+            .query_row(
+                "SELECT COALESCE(MAX(slot_index), -1) + 1 FROM vault_keys",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(StoreError::Sqlite)?;
+        transaction
+            .execute(
+                "INSERT OR IGNORE INTO vault_slot_state(singleton_id, next_slot_index) VALUES(1, ?1)",
+                params![observed_next],
+            )
+            .map_err(StoreError::Sqlite)?;
+        transaction
+            .execute(
+                "UPDATE vault_slot_state SET next_slot_index = MAX(next_slot_index, ?1) WHERE singleton_id = 1",
+                params![observed_next],
             )
             .map_err(StoreError::Sqlite)?;
         transaction.commit().map_err(StoreError::Sqlite)
@@ -363,10 +406,26 @@ impl VaultStore {
         Ok(changed == 1)
     }
 
-    pub fn next_slot_index(&self) -> Result<i64, StoreError> {
-        self.connection
-            .query_row("SELECT COALESCE(MAX(slot_index), -1) + 1 FROM vault_keys", [], |row| row.get(0))
-            .map_err(StoreError::Sqlite)
+    pub fn reserve_next_slot_index(&mut self) -> Result<i64, StoreError> {
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        let slot: i64 = transaction
+            .query_row(
+                "SELECT next_slot_index FROM vault_slot_state WHERE singleton_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(StoreError::Sqlite)?;
+        let next = slot
+            .checked_add(1)
+            .ok_or(StoreError::InvalidStoredValue("next_slot_index"))?;
+        transaction
+            .execute(
+                "UPDATE vault_slot_state SET next_slot_index = ?1 WHERE singleton_id = 1",
+                params![next],
+            )
+            .map_err(StoreError::Sqlite)?;
+        transaction.commit().map_err(StoreError::Sqlite)?;
+        Ok(slot)
     }
 
     pub fn load_rotation_cursor(&self) -> Result<i64, StoreError> {
