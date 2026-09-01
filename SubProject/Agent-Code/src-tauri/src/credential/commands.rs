@@ -260,6 +260,9 @@ fn map_openrouter_error(error: OpenRouterValidationError) -> VaultCommandError {
             VaultCommandError::new("VAULT_CORRUPT")
         }
         OpenRouterValidationError::TimeOverflow => VaultCommandError::new("INTERNAL_ERROR"),
+        OpenRouterValidationError::UsageIntelligenceUnavailable => {
+            VaultCommandError::new("USAGE_INTELLIGENCE_UNAVAILABLE")
+        }
     }
 }
 

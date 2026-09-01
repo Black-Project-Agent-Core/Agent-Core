@@ -8,6 +8,7 @@ mod protector;
 mod secret;
 mod store;
 mod types;
+mod usage;
 
 pub use classifier::{classify_status, ClassifiedOutcome};
 pub use intelligence::{
@@ -24,4 +25,8 @@ pub use store::{NewStoredKey, StoreError, StoredKeyRecord, StoredKeyUpdate, Vaul
 pub use types::{
     AvailabilityState, CredentialEvent, CredentialEventKind, CredentialProfile, CredentialProvider,
     FailureClass, KeyId, KeySummary, LifecycleState, LimitReset,
+};
+pub use usage::{
+    analyze_usage, UsageAnalysis, UsageAnalysisError, UsageObservation, EWMA_ALPHA,
+    MIN_PREDICTION_WARNING_CONFIDENCE, WARNING_EXHAUSTION_HORIZON_MS, WARNING_QUOTA_RATIO,
 };

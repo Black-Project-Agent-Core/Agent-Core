@@ -119,7 +119,11 @@ pub(crate) fn select_candidate(
             false
         };
 
-        if candidate.availability_state != AvailabilityState::Ready && !reconcile_cooldown {
+        if !matches!(
+            candidate.availability_state,
+            AvailabilityState::Ready | AvailabilityState::Warning
+        ) && !reconcile_cooldown
+        {
             continue;
         }
 
@@ -603,6 +607,26 @@ mod tests {
         assert_eq!(lease.key_id, ids[6]);
         assert!(lease.scanned_candidates <= ids.len());
         manager.report_outcome(lease, OutcomeSignal::Success, 1_001).unwrap();
+    }
+
+    #[test]
+    fn warning_key_remains_rotation_eligible() {
+        let (_dir, manager, ids) = manager_with_keys(1);
+        set_state(
+            &manager,
+            &ids[0],
+            LifecycleState::Enabled,
+            AvailabilityState::Warning,
+            None,
+            900,
+        );
+
+        let mut session = RotationSession::new();
+        let lease = manager.acquire(&mut session, 1_000).unwrap();
+        assert_eq!(lease.key_id, ids[0]);
+        manager
+            .report_outcome(lease, OutcomeSignal::Success, 1_001)
+            .unwrap();
     }
 
     #[test]

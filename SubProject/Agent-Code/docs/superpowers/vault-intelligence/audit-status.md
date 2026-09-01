@@ -188,9 +188,51 @@ Fresh Phase 3 verification before publication:
 
 ## Phase 4 — Predictive Usage Intelligence
 
-Status: **PENDING**
+Status: **DONE — AWAITING PUBLICATION READBACK**
 
-Required: usage tracking, consumption analysis, exhaustion prediction, warning state.
+Implemented deterministic usage intelligence:
+
+- Vault schema upgraded additively from v3 to v4
+- bounded `vault_usage_observations` history, maximum 64 normalized samples per credential
+- provider response bodies are never stored; only bounded normalized quota/usage metadata is persisted
+- key deletion cascades its usage observations
+- v1→v4, v2→v4, and v3→v4 migration paths preserve protected key material and previously committed profile/event state
+- deterministic consumption rate from quota deltas and elapsed time
+- deterministic EWMA burn rate with named `EWMA_ALPHA = 0.5`
+- provider quota reset and provider-limit change reset stale burn evidence
+- time-to-exhaustion is `UNKNOWN` when evidence is insufficient instead of inventing a deadline
+- low-quota warning threshold is a named 15% constant
+- prediction-only warning horizon is a named 6-hour constant
+- prediction-only warning requires confidence >= 75, preventing one noisy interval from creating a false warning
+- `AvailabilityState::Warning` is durable, restart-safe, and remains rotation-eligible
+- `CredentialWarning` is emitted only on transition into warning state and is not spammed on repeated warning probes
+- exhausted credentials continue to emit `CredentialExpired`, not predictive warning noise
+- successful OpenRouter probes transaction-couple key state, normalized usage sample, profile update, and emitted events
+- successful probes update health/quota/confidence profile inputs while preserving existing reliability and latency inputs
+- a 20-key mixed-quota pool is covered by deterministic isolation tests
+
+Security / recovery evidence:
+
+- raw successful OpenRouter provider body canary is absent from SQLite/WAL artifacts
+- malformed/transient provider failures create no false usage-health event
+- predictive usage samples, profile values, and warning state survive manager/database restart
+- frontend/Tauri contract recognizes `WARNING` as metadata only; no secret-bearing field/action was added
+
+Fresh pre-publication verification:
+
+- credential-core unit tests: **65 / 65 PASS**
+- event integration tests: **1 / 1 PASS**
+- intelligent scoring integration tests: **4 / 4 PASS**
+- predictive usage integration tests: **15 / 15 PASS**
+- synthetic rotation: **100,013 transitions PASS**
+- `npm run test:vault-baseline`: PASS
+- credential-security scan: PASS
+- Tauri contract: PASS
+- focused Vault/App frontend: **14 / 14 PASS**
+- `npm run build`: PASS
+- `git diff --check`: PASS
+- changed-production forbidden secret-surface scan: PASS
+- full Linux Tauri `cargo check` is environment-blocked by Codespace GLib 2.64.6 while the desktop dependency requires GLib >=2.70; this is not counted as a Phase 4 source regression and Windows-native acceptance remains a Phase 8 gate
 
 ## Phase 5 — Shadow Health Monitor
 

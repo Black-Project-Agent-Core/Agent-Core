@@ -1,5 +1,5 @@
 export type LifecycleState = 'ENABLED' | 'DISABLED' | 'INVALID' | 'QUARANTINED';
-export type AvailabilityState = 'UNVERIFIED' | 'READY' | 'COOLDOWN' | 'EXHAUSTED';
+export type AvailabilityState = 'UNVERIFIED' | 'READY' | 'WARNING' | 'COOLDOWN' | 'EXHAUSTED';
 export type FailureClass =
   | 'AUTH_INVALID'
   | 'PERMISSION_BLOCKED'

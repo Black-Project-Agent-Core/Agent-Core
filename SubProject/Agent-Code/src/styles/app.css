@@ -636,6 +636,7 @@ textarea:focus-visible {
   color: #bb9292;
 }
 
+.vault-badge-warning,
 .vault-badge-cooldown {
   color: #b5a98b;
 }

@@ -58,6 +58,7 @@ pub enum LifecycleState {
 pub enum AvailabilityState {
     Unverified,
     Ready,
+    Warning,
     Cooldown,
     Exhausted,
 }

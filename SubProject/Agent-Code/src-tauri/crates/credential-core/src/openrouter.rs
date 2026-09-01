@@ -10,8 +10,9 @@ use zeroize::Zeroize;
 
 use crate::rotation::apply_failure;
 use crate::{
-    classify_status, AvailabilityState, CredentialEventKind, CredentialManager, FailureClass, KeyId,
-    KeySummary, LifecycleState, LimitReset, ProtectError, SecretBytes, SecretProtector, StoreError,
+    analyze_usage, classify_status, AvailabilityState, CredentialEventKind, CredentialManager, CredentialProfile,
+    CredentialProvider, FailureClass, KeyId, KeySummary, LifecycleState, LimitReset, ProtectError,
+    SecretBytes, SecretProtector, StoreError, UsageObservation,
 };
 
 pub const OPENROUTER_CURRENT_KEY_URL: &str = "https://openrouter.ai/api/v1/key";
@@ -36,6 +37,8 @@ pub enum OpenRouterValidationError {
     StateUnavailable,
     #[error("probe time arithmetic overflowed")]
     TimeOverflow,
+    #[error("credential usage intelligence could not be updated safely")]
+    UsageIntelligenceUnavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -272,7 +275,14 @@ impl<P: SecretProtector> CredentialManager<P> {
                 } else {
                     events.push(CredentialEventKind::CredentialHealthy);
                 }
-                Ok(record.summary())
+                persist_successful_probe_record(
+                    &mut inner,
+                    key_id,
+                    &mut record,
+                    &events,
+                    now_ms,
+                )?;
+                return Ok(record.summary());
             }
             Ok(response) => {
                 let classified = classify_status(response.status, response.retry_after_ms);
@@ -330,6 +340,83 @@ fn persist_probe_record<P: SecretProtector>(
     inner
         .store
         .update_key_state_with_events(key_id, &update, events, now_ms)?;
+    inner.keys.insert(key_id.clone(), record.clone());
+    Ok(())
+}
+
+fn persist_successful_probe_record<P: SecretProtector>(
+    inner: &mut crate::manager::ManagerInner<P>,
+    key_id: &KeyId,
+    record: &mut crate::StoredKeyRecord,
+    base_events: &[CredentialEventKind],
+    now_ms: i64,
+) -> Result<(), OpenRouterValidationError> {
+    let previous_observations = inner.store.list_usage_observations(key_id)?;
+    let was_warning = if previous_observations.is_empty() {
+        false
+    } else {
+        analyze_usage(&previous_observations)
+            .map_err(|_| OpenRouterValidationError::UsageIntelligenceUnavailable)?
+            .warning
+    };
+
+    let mut observation = UsageObservation {
+        key_id: key_id.clone(),
+        observed_at_utc_ms: now_ms,
+        limit_value: record.limit_value,
+        limit_remaining: record.limit_remaining,
+        usage_daily: record.usage_daily,
+        availability_state: record.availability_state,
+    };
+    let mut observations = previous_observations;
+    observations.push(observation.clone());
+    let analysis = analyze_usage(&observations)
+        .map_err(|_| OpenRouterValidationError::UsageIntelligenceUnavailable)?;
+
+    if record.availability_state != AvailabilityState::Exhausted {
+        record.availability_state = if analysis.warning {
+            AvailabilityState::Warning
+        } else {
+            AvailabilityState::Ready
+        };
+        observation.availability_state = record.availability_state;
+    }
+
+    let mut profile = inner.store.load_profile(key_id)?.unwrap_or(CredentialProfile {
+        key_id: key_id.clone(),
+        provider: CredentialProvider::OpenRouter,
+        health_score: 50.0,
+        reliability_score: 50.0,
+        latency_score: 50.0,
+        quota_score: 50.0,
+        confidence_score: 0.0,
+        last_observed_at_utc_ms: None,
+        updated_at_utc_ms: now_ms,
+    });
+    profile.provider = CredentialProvider::OpenRouter;
+    profile.health_score = 100.0;
+    profile.quota_score = analysis.quota_score;
+    profile.confidence_score = analysis.confidence_score;
+    profile.last_observed_at_utc_ms = Some(now_ms);
+    profile.updated_at_utc_ms = now_ms;
+
+    let mut events = base_events.to_vec();
+    if record.availability_state != AvailabilityState::Exhausted
+        && analysis.warning
+        && !was_warning
+    {
+        events.push(CredentialEventKind::CredentialWarning);
+    }
+
+    let update = record.state_update();
+    inner.store.update_key_state_with_usage_intelligence(
+        key_id,
+        &update,
+        &observation,
+        &profile,
+        &events,
+        now_ms,
+    )?;
     inner.keys.insert(key_id.clone(), record.clone());
     Ok(())
 }
@@ -827,6 +914,175 @@ mod tests {
         let events = manager.list_credential_events(10).unwrap();
         assert_eq!(events[0].kind, CredentialEventKind::CredentialCooldown);
         assert_eq!(events[1].kind, CredentialEventKind::CredentialAdded);
+    }
+
+    #[test]
+    fn successful_probes_persist_bounded_usage_update_profile_and_emit_warning_only_on_entry() {
+        let (_dir, manager, key_id) = manager_with_key();
+        {
+            let mut inner = manager.lock_inner().unwrap();
+            inner
+                .store
+                .upsert_profile(&crate::CredentialProfile {
+                    key_id: key_id.clone(),
+                    provider: crate::CredentialProvider::OpenRouter,
+                    health_score: 61.0,
+                    reliability_score: 72.0,
+                    latency_score: 83.0,
+                    quota_score: 50.0,
+                    confidence_score: 10.0,
+                    last_observed_at_utc_ms: None,
+                    updated_at_utc_ms: 500,
+                })
+                .unwrap();
+        }
+
+        let first = FakeTransport::respond(response(
+            200,
+            r#"{"data":{"limit":100.0,"limit_remaining":50.0,"limit_reset":"monthly","usage_daily":50.0}}"#,
+        ));
+        manager
+            .validate_openrouter_key_with(&key_id, &first, 1_000)
+            .unwrap();
+
+        {
+            let inner = manager.lock_inner().unwrap();
+            let observations = inner.store.list_usage_observations(&key_id).unwrap();
+            assert_eq!(observations.len(), 1);
+            let profile = inner.store.load_profile(&key_id).unwrap().unwrap();
+            assert_eq!(profile.health_score, 100.0);
+            assert_eq!(profile.reliability_score, 72.0);
+            assert_eq!(profile.latency_score, 83.0);
+            assert_eq!(profile.quota_score, 50.0);
+            assert_eq!(profile.confidence_score, 25.0);
+            assert_eq!(profile.last_observed_at_utc_ms, Some(1_000));
+        }
+        assert!(!manager
+            .list_credential_events(10)
+            .unwrap()
+            .iter()
+            .any(|event| event.kind == CredentialEventKind::CredentialWarning));
+
+        let second = FakeTransport::respond(response(
+            200,
+            r#"{"data":{"limit":100.0,"limit_remaining":10.0,"limit_reset":"monthly","usage_daily":90.0}}"#,
+        ));
+        let warning_summary = manager
+            .validate_openrouter_key_with(&key_id, &second, 11_000)
+            .unwrap();
+        assert_eq!(warning_summary.availability_state, AvailabilityState::Warning);
+
+        {
+            let inner = manager.lock_inner().unwrap();
+            let observations = inner.store.list_usage_observations(&key_id).unwrap();
+            assert_eq!(observations.len(), 2);
+            let profile = inner.store.load_profile(&key_id).unwrap().unwrap();
+            assert_eq!(profile.health_score, 100.0);
+            assert_eq!(profile.reliability_score, 72.0);
+            assert_eq!(profile.latency_score, 83.0);
+            assert_eq!(profile.quota_score, 10.0);
+            assert_eq!(profile.confidence_score, 50.0);
+            assert_eq!(profile.last_observed_at_utc_ms, Some(11_000));
+        }
+        assert_eq!(
+            manager
+                .list_credential_events(20)
+                .unwrap()
+                .iter()
+                .filter(|event| event.kind == CredentialEventKind::CredentialWarning)
+                .count(),
+            1
+        );
+
+        let third = FakeTransport::respond(response(
+            200,
+            r#"{"data":{"limit":100.0,"limit_remaining":5.0,"limit_reset":"monthly","usage_daily":95.0}}"#,
+        ));
+        manager
+            .validate_openrouter_key_with(&key_id, &third, 21_000)
+            .unwrap();
+
+        assert_eq!(
+            manager
+                .list_credential_events(30)
+                .unwrap()
+                .iter()
+                .filter(|event| event.kind == CredentialEventKind::CredentialWarning)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn predictive_usage_profile_and_warning_state_survive_restart() {
+        let (dir, manager, key_id) = manager_with_key();
+        let first = FakeTransport::respond(response(
+            200,
+            r#"{"data":{"limit":100.0,"limit_remaining":50.0,"limit_reset":"monthly"}}"#,
+        ));
+        manager
+            .validate_openrouter_key_with(&key_id, &first, 1_000)
+            .unwrap();
+        let second = FakeTransport::respond(response(
+            200,
+            r#"{"data":{"limit":100.0,"limit_remaining":10.0,"limit_reset":"monthly"}}"#,
+        ));
+        let warning = manager
+            .validate_openrouter_key_with(&key_id, &second, 11_000)
+            .unwrap();
+        assert_eq!(warning.availability_state, AvailabilityState::Warning);
+        drop(manager);
+
+        let reopened = CredentialManager::open(
+            VaultStore::open(dir.path().join("vault.db")).unwrap(),
+            XorTestProtector(0x52),
+        )
+        .unwrap();
+        let summary = reopened
+            .list_summaries()
+            .unwrap()
+            .into_iter()
+            .find(|summary| summary.key_id == key_id)
+            .unwrap();
+        assert_eq!(summary.availability_state, AvailabilityState::Warning);
+
+        let inner = reopened.lock_inner().unwrap();
+        assert_eq!(inner.store.list_usage_observations(&key_id).unwrap().len(), 2);
+        let profile = inner.store.load_profile(&key_id).unwrap().unwrap();
+        assert_eq!(profile.quota_score, 10.0);
+        assert_eq!(profile.confidence_score, 50.0);
+        assert_eq!(profile.last_observed_at_utc_ms, Some(11_000));
+    }
+
+    #[test]
+    fn predictive_usage_never_persists_raw_successful_provider_body() {
+        let (dir, manager, key_id) = manager_with_key();
+        let canary = "RAW_PROVIDER_BODY_CANARY_MUST_NOT_PERSIST_7c9f";
+        let transport = FakeTransport::respond(response(
+            200,
+            &format!(
+                r#"{{"data":{{"limit":100.0,"limit_remaining":80.0,"limit_reset":"monthly","ignored_private_field":"{canary}"}}}}"#
+            ),
+        ));
+        manager
+            .validate_openrouter_key_with(&key_id, &transport, 1_000)
+            .unwrap();
+        drop(manager);
+
+        for entry in std::fs::read_dir(dir.path()).unwrap() {
+            let entry = entry.unwrap();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !name.starts_with("vault.db") || !entry.file_type().unwrap().is_file() {
+                continue;
+            }
+            let bytes = std::fs::read(entry.path()).unwrap();
+            assert!(
+                !bytes
+                    .windows(canary.len())
+                    .any(|window| window == canary.as_bytes()),
+                "raw provider body leaked into {name}"
+            );
+        }
     }
 
     #[test]

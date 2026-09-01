@@ -6,10 +6,11 @@ use thiserror::Error;
 
 use crate::{
     AvailabilityState, CredentialEvent, CredentialEventKind, CredentialProfile, CredentialProvider,
-    FailureClass, KeyId, KeySummary, LifecycleState, LimitReset, ProtectedBlob,
+    FailureClass, KeyId, KeySummary, LifecycleState, LimitReset, ProtectedBlob, UsageObservation,
 };
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
+const MAX_USAGE_OBSERVATIONS_PER_KEY: i64 = 64;
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -183,6 +184,10 @@ impl VaultStore {
         }
         if version < 3 {
             store.migrate_v3()?;
+            version = 3;
+        }
+        if version < 4 {
+            store.migrate_v4()?;
         }
         store.verify_integrity(existed)?;
         store.ensure_slot_state()?;
@@ -288,6 +293,33 @@ impl VaultStore {
                   ON vault_credential_events(key_id, event_id DESC);
 
                 PRAGMA user_version = 3;
+                "#,
+            )
+            .map_err(StoreError::Sqlite)?;
+        transaction.commit().map_err(StoreError::Sqlite)
+    }
+
+    fn migrate_v4(&mut self) -> Result<(), StoreError> {
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        transaction
+            .execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS vault_usage_observations (
+                  observation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  key_id TEXT NOT NULL,
+                  observed_at_utc_ms INTEGER NOT NULL,
+                  limit_value REAL,
+                  limit_remaining REAL,
+                  usage_daily REAL,
+                  availability_state TEXT NOT NULL,
+                  FOREIGN KEY(key_id) REFERENCES vault_keys(key_id) ON DELETE CASCADE,
+                  UNIQUE(key_id, observed_at_utc_ms)
+                ) STRICT;
+
+                CREATE INDEX IF NOT EXISTS idx_vault_usage_observations_key_time
+                  ON vault_usage_observations(key_id, observed_at_utc_ms DESC, observation_id DESC);
+
+                PRAGMA user_version = 4;
                 "#,
             )
             .map_err(StoreError::Sqlite)?;
@@ -486,6 +518,49 @@ impl VaultStore {
             .map_err(StoreError::Sqlite)
     }
 
+    pub fn append_usage_observation(
+        &mut self,
+        observation: &UsageObservation,
+    ) -> Result<(), StoreError> {
+        crate::analyze_usage(std::slice::from_ref(observation))
+            .map_err(|_| StoreError::InvalidStoredValue("usage_observation"))?;
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        insert_usage_observation_tx(&transaction, observation)?;
+        prune_usage_observations_tx(&transaction, &observation.key_id)?;
+        transaction.commit().map_err(StoreError::Sqlite)
+    }
+
+    pub fn list_usage_observations(
+        &self,
+        key_id: &KeyId,
+    ) -> Result<Vec<UsageObservation>, StoreError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                r#"
+                SELECT key_id, observed_at_utc_ms, limit_value, limit_remaining, usage_daily, availability_state
+                FROM (
+                  SELECT observation_id, key_id, observed_at_utc_ms, limit_value, limit_remaining,
+                         usage_daily, availability_state
+                  FROM vault_usage_observations
+                  WHERE key_id = ?1
+                  ORDER BY observed_at_utc_ms DESC, observation_id DESC
+                  LIMIT ?2
+                )
+                ORDER BY observed_at_utc_ms ASC, observation_id ASC
+                "#,
+            )
+            .map_err(StoreError::Sqlite)?;
+        let rows = statement
+            .query_map(params![key_id.0, MAX_USAGE_OBSERVATIONS_PER_KEY], row_to_usage_observation)
+            .map_err(StoreError::Sqlite)?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.map_err(StoreError::Sqlite)?);
+        }
+        Ok(result)
+    }
+
     pub fn append_event(
         &mut self,
         kind: CredentialEventKind,
@@ -539,6 +614,33 @@ impl VaultStore {
     ) -> Result<(), StoreError> {
         let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
         update_key_state_tx(&transaction, key_id, update)?;
+        for event in events {
+            append_event_tx(&transaction, *event, key_id, now_ms)?;
+        }
+        transaction.commit().map_err(StoreError::Sqlite)
+    }
+
+    pub(crate) fn update_key_state_with_usage_intelligence(
+        &mut self,
+        key_id: &KeyId,
+        update: &StoredKeyUpdate,
+        observation: &UsageObservation,
+        profile: &CredentialProfile,
+        events: &[CredentialEventKind],
+        now_ms: i64,
+    ) -> Result<(), StoreError> {
+        if observation.key_id != *key_id || profile.key_id != *key_id {
+            return Err(StoreError::InvalidStoredValue("usage_key_id"));
+        }
+        crate::analyze_usage(std::slice::from_ref(observation))
+            .map_err(|_| StoreError::InvalidStoredValue("usage_observation"))?;
+        validate_profile(profile)?;
+
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        update_key_state_tx(&transaction, key_id, update)?;
+        insert_usage_observation_tx(&transaction, observation)?;
+        prune_usage_observations_tx(&transaction, key_id)?;
+        upsert_profile_tx(&transaction, profile)?;
         for event in events {
             append_event_tx(&transaction, *event, key_id, now_ms)?;
         }
@@ -694,6 +796,90 @@ impl VaultStore {
     }
 }
 
+fn upsert_profile_tx(
+    transaction: &Transaction<'_>,
+    profile: &CredentialProfile,
+) -> Result<(), StoreError> {
+    transaction
+        .execute(
+            r#"
+            INSERT INTO vault_credential_profiles (
+              key_id, provider, health_score, reliability_score, latency_score,
+              quota_score, confidence_score, last_observed_at_utc_ms, updated_at_utc_ms
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            ON CONFLICT(key_id) DO UPDATE SET
+              provider = excluded.provider,
+              health_score = excluded.health_score,
+              reliability_score = excluded.reliability_score,
+              latency_score = excluded.latency_score,
+              quota_score = excluded.quota_score,
+              confidence_score = excluded.confidence_score,
+              last_observed_at_utc_ms = excluded.last_observed_at_utc_ms,
+              updated_at_utc_ms = excluded.updated_at_utc_ms
+            "#,
+            params![
+                profile.key_id.0,
+                provider_to_text(profile.provider),
+                profile.health_score,
+                profile.reliability_score,
+                profile.latency_score,
+                profile.quota_score,
+                profile.confidence_score,
+                profile.last_observed_at_utc_ms,
+                profile.updated_at_utc_ms,
+            ],
+        )
+        .map_err(StoreError::Sqlite)?;
+    Ok(())
+}
+
+fn prune_usage_observations_tx(
+    transaction: &Transaction<'_>,
+    key_id: &KeyId,
+) -> Result<(), StoreError> {
+    transaction
+        .execute(
+            r#"
+            DELETE FROM vault_usage_observations
+            WHERE key_id = ?1
+              AND observation_id NOT IN (
+                SELECT observation_id
+                FROM vault_usage_observations
+                WHERE key_id = ?1
+                ORDER BY observed_at_utc_ms DESC, observation_id DESC
+                LIMIT ?2
+              )
+            "#,
+            params![key_id.0, MAX_USAGE_OBSERVATIONS_PER_KEY],
+        )
+        .map_err(StoreError::Sqlite)?;
+    Ok(())
+}
+
+fn insert_usage_observation_tx(
+    transaction: &Transaction<'_>,
+    observation: &UsageObservation,
+) -> Result<(), StoreError> {
+    transaction
+        .execute(
+            r#"
+            INSERT INTO vault_usage_observations(
+              key_id, observed_at_utc_ms, limit_value, limit_remaining, usage_daily, availability_state
+            ) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
+            "#,
+            params![
+                observation.key_id.0,
+                observation.observed_at_utc_ms,
+                observation.limit_value,
+                observation.limit_remaining,
+                observation.usage_daily,
+                availability_to_text(observation.availability_state),
+            ],
+        )
+        .map_err(StoreError::Sqlite)?;
+    Ok(())
+}
+
 fn append_event_tx(
     transaction: &Transaction<'_>,
     kind: CredentialEventKind,
@@ -847,6 +1033,17 @@ fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredKeyRecord> {
     })
 }
 
+fn row_to_usage_observation(row: &rusqlite::Row<'_>) -> rusqlite::Result<UsageObservation> {
+    Ok(UsageObservation {
+        key_id: KeyId(row.get(0)?),
+        observed_at_utc_ms: row.get(1)?,
+        limit_value: row.get(2)?,
+        limit_remaining: row.get(3)?,
+        usage_daily: row.get(4)?,
+        availability_state: parse_availability(&row.get::<_, String>(5)?, 5)?,
+    })
+}
+
 fn row_to_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<CredentialEvent> {
     Ok(CredentialEvent {
         event_id: row.get(0)?,
@@ -938,6 +1135,7 @@ fn availability_to_text(value: AvailabilityState) -> &'static str {
     match value {
         AvailabilityState::Unverified => "UNVERIFIED",
         AvailabilityState::Ready => "READY",
+        AvailabilityState::Warning => "WARNING",
         AvailabilityState::Cooldown => "COOLDOWN",
         AvailabilityState::Exhausted => "EXHAUSTED",
     }
@@ -977,6 +1175,7 @@ fn parse_availability(value: &str, column: usize) -> rusqlite::Result<Availabili
     match value {
         "UNVERIFIED" => Ok(AvailabilityState::Unverified),
         "READY" => Ok(AvailabilityState::Ready),
+        "WARNING" => Ok(AvailabilityState::Warning),
         "COOLDOWN" => Ok(AvailabilityState::Cooldown),
         "EXHAUSTED" => Ok(AvailabilityState::Exhausted),
         _ => Err(invalid_text(column, "availability_state")),
@@ -1059,7 +1258,7 @@ mod tests {
         let path = dir.path().join("vault.db");
         let mut store = VaultStore::open(&path).unwrap();
         store.insert_key(sample_key()).unwrap();
-        assert_eq!(store.user_version_for_test().unwrap(), 3);
+        assert_eq!(store.user_version_for_test().unwrap(), 4);
         let profile_table_exists: i64 = store
             .connection
             .query_row(
@@ -1120,7 +1319,7 @@ mod tests {
     }
 
     #[test]
-    fn existing_v1_vault_migrates_through_v3_without_losing_keys() {
+    fn existing_v1_vault_migrates_through_v4_without_losing_keys() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("vault.db");
         {
@@ -1132,13 +1331,13 @@ mod tests {
         }
 
         let store = VaultStore::open(&path).unwrap();
-        assert_eq!(store.user_version_for_test().unwrap(), 3);
+        assert_eq!(store.user_version_for_test().unwrap(), 4);
         assert_eq!(store.list_keys().unwrap().len(), 1);
         assert_eq!(store.load_profile(&KeyId("key-1".to_owned())).unwrap(), None);
     }
 
     #[test]
-    fn existing_v2_vault_migrates_to_v3_without_changing_key_profile_or_protected_blob() {
+    fn existing_v2_vault_migrates_through_v4_without_changing_key_profile_or_protected_blob() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("vault.db");
         let key_id = KeyId("key-1".to_owned());
@@ -1170,13 +1369,61 @@ mod tests {
         }
 
         let store = VaultStore::open(&path).unwrap();
-        assert_eq!(store.user_version_for_test().unwrap(), 3);
+        assert_eq!(store.user_version_for_test().unwrap(), 4);
         assert_eq!(store.list_keys().unwrap().len(), 1);
         assert_eq!(store.load_profile(&key_id).unwrap(), Some(profile));
         let protected_after = store.load_protected_blob(&key_id).unwrap();
         assert_eq!(protected_after.as_bytes(), protected_before.as_bytes());
         assert_eq!(protected_after.checksum(), protected_before.checksum());
         assert!(store.list_events(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn existing_v3_vault_migrates_to_v4_without_changing_phase3_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.db");
+        let key_id = KeyId("key-1".to_owned());
+        let profile = CredentialProfile {
+            key_id: key_id.clone(),
+            provider: CredentialProvider::OpenRouter,
+            health_score: 91.0,
+            reliability_score: 88.0,
+            latency_score: 76.0,
+            quota_score: 64.0,
+            confidence_score: 83.0,
+            last_observed_at_utc_ms: Some(1_000),
+            updated_at_utc_ms: 1_000,
+        };
+        let protected_before;
+        let event_before;
+
+        {
+            let connection = Connection::open(&path).unwrap();
+            let mut old_store = VaultStore {
+                path: path.clone(),
+                connection,
+            };
+            old_store.migrate_v1().unwrap();
+            old_store.insert_key(sample_key()).unwrap();
+            old_store.migrate_v2().unwrap();
+            old_store.upsert_profile(&profile).unwrap();
+            old_store.migrate_v3().unwrap();
+            event_before = old_store
+                .append_event(CredentialEventKind::CredentialHealthy, &key_id, 1_100)
+                .unwrap();
+            assert_eq!(old_store.user_version_for_test().unwrap(), 3);
+            protected_before = old_store.load_protected_blob(&key_id).unwrap();
+        }
+
+        let store = VaultStore::open(&path).unwrap();
+        assert_eq!(store.user_version_for_test().unwrap(), 4);
+        assert_eq!(store.list_keys().unwrap().len(), 1);
+        assert_eq!(store.load_profile(&key_id).unwrap(), Some(profile));
+        assert_eq!(store.list_events(10).unwrap(), vec![event_before]);
+        assert!(store.list_usage_observations(&key_id).unwrap().is_empty());
+        let protected_after = store.load_protected_blob(&key_id).unwrap();
+        assert_eq!(protected_after.as_bytes(), protected_before.as_bytes());
+        assert_eq!(protected_after.checksum(), protected_before.checksum());
     }
 
     #[test]

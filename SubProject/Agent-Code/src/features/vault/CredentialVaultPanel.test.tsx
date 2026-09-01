@@ -57,10 +57,20 @@ const cooldown: KeySummary = {
   cooldown_until_utc_ms: 5000,
 };
 
+const warning: KeySummary = {
+  ...primary,
+  key_id: 'key-warning',
+  slot_index: 3,
+  label: 'Quota warning',
+  masked_suffix: '••••4Warn',
+  lifecycle_state: 'ENABLED',
+  availability_state: 'WARNING',
+};
+
 describe('CredentialVaultPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vaultApi.listKeys.mockResolvedValue([primary, disabled, cooldown]);
+    vaultApi.listKeys.mockResolvedValue([primary, disabled, cooldown, warning]);
     vaultApi.listEvents.mockResolvedValue([
       { event_id: 2, kind: 'CREDENTIAL_SELECTED', key_id: 'key-primary', occurred_at_utc_ms: 2000 },
       { event_id: 1, kind: 'CREDENTIAL_ADDED', key_id: 'key-primary', occurred_at_utc_ms: 1000 },
@@ -124,6 +134,7 @@ describe('CredentialVaultPanel', () => {
     expect(await screen.findByText('DISABLED')).toBeInTheDocument();
     expect(screen.getByText('UNVERIFIED')).toBeInTheDocument();
     expect(screen.getByText('COOLDOWN')).toBeInTheDocument();
+    expect(screen.getByText('WARNING')).toBeInTheDocument();
     expect(screen.getAllByText('ENABLED').length).toBeGreaterThan(0);
   });
   it('validates a selected key without requesting or rendering plaintext', async () => {
