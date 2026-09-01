@@ -1,3 +1,4 @@
+mod openrouter;
 mod synthetic;
 mod rotation;
 mod classifier;
@@ -8,6 +9,7 @@ mod store;
 mod types;
 
 pub use classifier::{classify_status, ClassifiedOutcome};
+pub use openrouter::{OpenRouterProbeClient, OpenRouterValidationError};
 pub use manager::{CredentialManager, ManagerError};
 pub use protector::{ProtectError, ProtectedBlob, SecretProtector};
 pub use rotation::{KeyLease, OutcomeSignal, PoolUnavailable, RotationError, RotationSession, RotationSnapshot};

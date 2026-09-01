@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet};
+use std::collections::BTreeSet;
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -394,7 +394,7 @@ fn apply_outcome(
     Ok(())
 }
 
-fn apply_failure(
+pub(crate) fn apply_failure(
     record: &mut crate::StoredKeyRecord,
     failure_class: FailureClass,
     retry_after_ms: Option<u64>,

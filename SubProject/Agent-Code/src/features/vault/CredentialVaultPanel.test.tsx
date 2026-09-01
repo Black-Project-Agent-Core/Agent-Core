@@ -9,6 +9,7 @@ const vaultApi = vi.hoisted(() => ({
   addKey: vi.fn(),
   setKeyEnabled: vi.fn(),
   deleteKey: vi.fn(),
+  validateKey: vi.fn(),
 }));
 
 vi.mock('./vault-api', () => vaultApi);
@@ -62,6 +63,7 @@ describe('CredentialVaultPanel', () => {
     vaultApi.addKey.mockResolvedValue(primary);
     vaultApi.setKeyEnabled.mockResolvedValue(primary);
     vaultApi.deleteKey.mockResolvedValue(undefined);
+    vaultApi.validateKey.mockResolvedValue({ ...primary, availability_state: 'READY', last_probe_at_utc_ms: 1234 });
   });
 
   it('renders a password-only import surface and never exposes stored plaintext', async () => {
@@ -105,4 +107,15 @@ describe('CredentialVaultPanel', () => {
     expect(screen.getByText('COOLDOWN')).toBeInTheDocument();
     expect(screen.getAllByText('ENABLED').length).toBeGreaterThan(0);
   });
+  it('validates a selected key without requesting or rendering plaintext', async () => {
+    const user = userEvent.setup();
+    render(<CredentialVaultPanel onClose={() => undefined} />);
+    await screen.findByText('••••3Fxa');
+    await user.click(screen.getByRole('button', { name: 'Validate Primary' }));
+    await waitFor(() => expect(vaultApi.validateKey).toHaveBeenCalledWith('key-primary'));
+    expect(screen.queryByRole('button', { name: /reveal/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /copy/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /export/i })).not.toBeInTheDocument();
+  });
+
 });

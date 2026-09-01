@@ -17,3 +17,8 @@ export const deleteKey = (keyId: string) =>
   invoke<boolean>('vault_delete_key', {
     request: { keyId },
   });
+
+export const validateKey = (keyId: string) =>
+  invoke<KeySummary>('vault_validate_key', {
+    request: { keyId },
+  });

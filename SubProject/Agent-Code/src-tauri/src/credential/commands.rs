@@ -1,9 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_code_credential_core::{
-    run_synthetic_rotation_self_test, KeyId, KeySummary, ManagerError, ProtectError,
-    RotationSnapshot, SecretBytes, SecretProtector, SecretValidationError, StoreError,
-    SyntheticRotationReport,
+    run_synthetic_rotation_self_test, KeyId, KeySummary, ManagerError, OpenRouterProbeClient,
+    OpenRouterValidationError, ProtectError, RotationSnapshot, SecretBytes, SecretProtector,
+    SecretValidationError, StoreError, SyntheticRotationReport,
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -30,6 +30,13 @@ pub struct SetEnabledRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteKeyRequest {
+    pub key_id: String,
+}
+
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidateKeyRequest {
     pub key_id: String,
 }
 
@@ -99,6 +106,25 @@ pub fn vault_delete_key(
         .manager
         .delete_key(&KeyId(request.key_id), now_utc_ms()?)
         .map_err(map_manager_error)
+}
+
+
+#[tauri::command]
+pub async fn vault_validate_key(
+    state: State<'_, CredentialAppState>,
+    request: ValidateKeyRequest,
+) -> Result<KeySummary, VaultCommandError> {
+    let manager = std::sync::Arc::clone(&state.manager);
+    let key_id = KeyId(request.key_id);
+    let now_ms = now_utc_ms()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = OpenRouterProbeClient::new().map_err(map_openrouter_error)?;
+        manager
+            .validate_openrouter_key(&key_id, &client, now_ms)
+            .map_err(map_openrouter_error)
+    })
+    .await
+    .map_err(|_| VaultCommandError::new("INTERNAL_ERROR"))?
 }
 
 #[tauri::command]
@@ -205,6 +231,24 @@ fn map_protect_error(error: ProtectError) -> VaultCommandError {
         ProtectError::ProtectFailed | ProtectError::UnprotectFailed | ProtectError::IntegrityFailed => {
             VaultCommandError::new("PROTECTION_FAILED")
         }
+    }
+}
+
+
+fn map_openrouter_error(error: OpenRouterValidationError) -> VaultCommandError {
+    match error {
+        OpenRouterValidationError::KeyNotFound => VaultCommandError::new("KEY_NOT_FOUND"),
+        OpenRouterValidationError::ProtectedCredentialUnavailable => {
+            VaultCommandError::new("PROTECTION_FAILED")
+        }
+        OpenRouterValidationError::ProbeUnavailable => {
+            VaultCommandError::new("PROBE_UNAVAILABLE")
+        }
+        OpenRouterValidationError::ProbeMalformed => VaultCommandError::new("PROBE_MALFORMED"),
+        OpenRouterValidationError::Store(_) | OpenRouterValidationError::StateUnavailable => {
+            VaultCommandError::new("VAULT_CORRUPT")
+        }
+        OpenRouterValidationError::TimeOverflow => VaultCommandError::new("INTERNAL_ERROR"),
     }
 }
 

@@ -22,6 +22,7 @@ fn main() {
             credential::commands::vault_list_openrouter_keys,
             credential::commands::vault_set_enabled,
             credential::commands::vault_delete_key,
+            credential::commands::vault_validate_key,
             credential::commands::vault_run_native_self_test,
             credential::commands::rotation_get_snapshot,
             credential::commands::rotation_run_synthetic_self_test,

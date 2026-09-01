@@ -6,11 +6,13 @@ publish = false
 
 [dependencies]
 rusqlite = { version = "0.37.0", features = ["bundled"] }
+reqwest = { version = "0.12.23", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 sha2 = "0.10.9"
 subtle = "2.6.1"
 thiserror = "2.0.17"
+time = { version = "0.3.44", features = ["parsing", "formatting"] }
 uuid = { version = "1.18.1", features = ["v4", "serde"] }
 zeroize = { version = "1.8.2", features = ["derive"] }
 

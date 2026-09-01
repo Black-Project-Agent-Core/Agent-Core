@@ -77,6 +77,7 @@ const allowedVaultCommands = [
   'vault_list_openrouter_keys',
   'vault_set_enabled',
   'vault_delete_key',
+  'vault_validate_key',
   'vault_run_native_self_test',
   'rotation_get_snapshot',
   'rotation_run_synthetic_self_test',

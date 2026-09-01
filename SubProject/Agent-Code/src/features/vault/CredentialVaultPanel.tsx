@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyRound, LockKeyhole, Trash2, X } from 'lucide-react';
-import { addKey, deleteKey, listKeys, setKeyEnabled } from './vault-api';
+import { addKey, deleteKey, listKeys, setKeyEnabled, validateKey } from './vault-api';
 import type { KeySummary } from './vault-types';
 
 export type CredentialVaultPanelProps = {
@@ -55,6 +55,22 @@ export function CredentialVaultPanel({ onClose }: CredentialVaultPanelProps) {
       await loadKeys();
     } catch {
       setNotice('Key import failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+
+  async function handleValidate(key: KeySummary) {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const updated = await validateKey(key.key_id);
+      setKeys((current) => current.map((item) => (item.key_id === updated.key_id ? updated : item)));
+      setNotice('Key validation completed.');
+    } catch {
+      setNotice('Key validation could not be completed.');
+      await loadKeys();
     } finally {
       setBusy(false);
     }
@@ -159,6 +175,15 @@ export function CredentialVaultPanel({ onClose }: CredentialVaultPanelProps) {
                 </div>
               </div>
               <div className="vault-key-actions">
+                <button
+                  type="button"
+                  className="vault-secondary-button"
+                  onClick={() => void handleValidate(key)}
+                  disabled={busy}
+                  aria-label={`Validate ${key.label}`}
+                >
+                  Validate
+                </button>
                 <button type="button" className="vault-secondary-button" onClick={() => void handleToggle(key)} disabled={busy}>
                   {key.lifecycle_state === 'ENABLED' ? 'Disable' : 'Enable'}
                 </button>
