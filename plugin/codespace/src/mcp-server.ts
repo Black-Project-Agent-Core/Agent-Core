@@ -6,6 +6,7 @@ import * as z from 'zod/v4';
 import { executeCommand } from './commands.js';
 import { BRIDGE_NAME, BRIDGE_VERSION, MAX_COMMAND_OUTPUT_BYTES, RUNTIME_DIR, WORKSPACES_ROOT } from './constants.js';
 import { errorPayload } from './errors.js';
+import { CodespaceMemoryLeaseClient, parseMemoryLeaseRuntimeConfig, type MemoryLeaseDecision } from './memory-lease.js';
 import {
   editTextFile,
   listDirectory,
@@ -38,6 +39,28 @@ async function guarded<T>(operation: () => Promise<T>) {
   }
 }
 
+function attachMemoryLifecycle<T>(
+  value: T,
+  before: MemoryLeaseDecision,
+  after?: MemoryLeaseDecision,
+): T | (T & { memoryLifecycle: Record<string, unknown> }) | { result: T; memoryLifecycle: Record<string, unknown> } {
+  if (before.mode === 'disabled') return value;
+  const final = after ?? before;
+  const memoryLifecycle = {
+    mode: final.mode,
+    required: before.required,
+    beforeValid: before.valid,
+    ...(after ? { afterValid: after.valid } : {}),
+    mutationClass: before.mutationClass,
+    ...(final.advisoryCode ? { advisoryCode: final.advisoryCode } : before.advisoryCode ? { advisoryCode: before.advisoryCode } : {}),
+    ...(final.postflightState ? { postflightState: final.postflightState } : {}),
+  };
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return { ...(value as Record<string, unknown>), memoryLifecycle } as T & { memoryLifecycle: Record<string, unknown> };
+  }
+  return { result: value, memoryLifecycle };
+}
+
 export async function createCodespaceMcpServer(): Promise<McpServer> {
   // Defense in depth: the production launcher already removes these values.
   delete process.env.CONTROL_PLANE_API_KEY;
@@ -50,6 +73,27 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
   const runtimeDir = process.env.NODE_ENV === 'test' ? path.join(root, '.codespace-runtime') : RUNTIME_DIR;
   const processes = new ProcessManager(root, runtimeDir, allowedBase);
   await processes.reconcile();
+  const memoryLeaseClient = new CodespaceMemoryLeaseClient(parseMemoryLeaseRuntimeConfig());
+  const memoryContextLeaseSchema = z.string().min(16).max(4096).optional();
+
+  const guardedMutation = async <T>(
+    toolName: string,
+    memoryContextLease: string | undefined,
+    classifierInput: Record<string, unknown>,
+    operation: () => Promise<T>,
+  ) => guarded(async () => {
+    const request = {
+      toolName,
+      workspaceRoot: root,
+      ...(memoryContextLease ? { lease: memoryContextLease } : {}),
+      input: classifierInput,
+    };
+    const before = await memoryLeaseClient.before(request);
+    const value = await operation();
+    if (!before.required || before.mode === 'disabled') return attachMemoryLifecycle(value, before);
+    const after = await memoryLeaseClient.after(request);
+    return attachMemoryLifecycle(value, before, after);
+  });
 
   const server = new McpServer({
     name: BRIDGE_NAME,
@@ -70,6 +114,7 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
       platform: `${process.platform}/${process.arch}`,
       branch: branchResult.exitCode === 0 ? branchResult.stdout.trim() || undefined : undefined,
       processSessions: processes.list().length,
+      memoryLifecycleMode: memoryLeaseClient.config.mode,
     };
   }));
 
@@ -123,9 +168,13 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
       path: z.string().min(1),
       content: z.string(),
       mode: z.enum(['rewrite', 'append']).default('rewrite'),
+      memoryContextLease: memoryContextLeaseSchema,
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  }, async ({ path: requestedPath, content, mode }) => guarded(
+  }, async ({ path: requestedPath, content, mode, memoryContextLease }) => guardedMutation(
+    'write_file',
+    memoryContextLease,
+    {},
     () => writeTextFile(root, { path: requestedPath, content, mode }, allowedBase),
   ));
 
@@ -137,9 +186,13 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
       oldString: z.string().min(1),
       newString: z.string(),
       expectedReplacements: z.number().int().min(1).max(10000).default(1),
+      memoryContextLease: memoryContextLeaseSchema,
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  }, async ({ path: requestedPath, oldString, newString, expectedReplacements }) => guarded(
+  }, async ({ path: requestedPath, oldString, newString, expectedReplacements, memoryContextLease }) => guardedMutation(
+    'edit_file',
+    memoryContextLease,
+    {},
     () => editTextFile(root, {
       path: requestedPath,
       oldString,
@@ -155,9 +208,13 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
       command: z.string().min(1),
       cwd: z.string().optional(),
       timeoutMs: z.number().int().min(1).max(10 * 60_000).default(30_000),
+      memoryContextLease: memoryContextLeaseSchema,
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
-  }, async ({ command, cwd, timeoutMs }) => guarded(
+  }, async ({ command, cwd, timeoutMs, memoryContextLease }) => guardedMutation(
+    'execute_command',
+    memoryContextLease,
+    { command },
     () => executeCommand(root, { command, cwd, timeoutMs }, allowedBase),
   ));
 
@@ -167,9 +224,15 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
     inputSchema: {
       command: z.string().min(1),
       cwd: z.string().optional(),
+      memoryContextLease: memoryContextLeaseSchema,
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
-  }, async ({ command, cwd }) => guarded(() => processes.start({ command, cwd })));
+  }, async ({ command, cwd, memoryContextLease }) => guardedMutation(
+    'start_process',
+    memoryContextLease,
+    {},
+    () => processes.start({ command, cwd }),
+  ));
 
   server.registerTool('read_process_output', {
     title: 'Read Process Output',
