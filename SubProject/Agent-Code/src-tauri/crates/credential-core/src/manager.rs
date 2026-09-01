@@ -21,6 +21,8 @@ pub enum ManagerError {
     InvalidLabel,
     #[error("credential was not found")]
     KeyNotFound,
+    #[error("credential is currently leased")]
+    KeyBusy,
     #[error("stored credential cannot be trusted")]
     ProtectedRecordUnavailable,
     #[error("credential manager state is unavailable")]
@@ -35,8 +37,9 @@ pub(crate) struct ManagerInner<P: SecretProtector> {
     pub(crate) store: VaultStore,
     pub(crate) protector: P,
     pub(crate) keys: BTreeMap<KeyId, StoredKeyRecord>,
-    #[allow(dead_code)]
     pub(crate) rotation_cursor: i64,
+    pub(crate) in_flight: BTreeMap<KeyId, u32>,
+    pub(crate) active_leases: BTreeMap<Uuid, KeyId>,
 }
 
 impl<P: SecretProtector> CredentialManager<P> {
@@ -44,7 +47,9 @@ impl<P: SecretProtector> CredentialManager<P> {
         let records = store.list_keys()?;
         let rotation_cursor = store.load_rotation_cursor()?;
         let mut keys = BTreeMap::new();
+        let mut in_flight = BTreeMap::new();
         for record in records {
+            in_flight.insert(record.key_id.clone(), 0);
             if keys.insert(record.key_id.clone(), record).is_some() {
                 return Err(ManagerError::ProtectedRecordUnavailable);
             }
@@ -55,6 +60,8 @@ impl<P: SecretProtector> CredentialManager<P> {
                 protector,
                 keys,
                 rotation_cursor,
+                in_flight,
+                active_leases: BTreeMap::new(),
             }),
         })
     }
@@ -116,6 +123,7 @@ impl<P: SecretProtector> CredentialManager<P> {
         inner.store.insert_key(new_key)?;
         let record = inner.store.load_key(&key_id)?;
         let summary = record.summary();
+        inner.in_flight.insert(key_id.clone(), 0);
         inner.keys.insert(key_id, record);
         Ok(summary)
     }
@@ -150,9 +158,13 @@ impl<P: SecretProtector> CredentialManager<P> {
 
     pub fn delete_key(&self, key_id: &KeyId, _now_ms: i64) -> Result<bool, ManagerError> {
         let mut inner = self.lock_inner()?;
+        if inner.in_flight.get(key_id).copied().unwrap_or(0) > 0 {
+            return Err(ManagerError::KeyBusy);
+        }
         let deleted = inner.store.delete_key(key_id)?;
         if deleted {
             inner.keys.remove(key_id);
+            inner.in_flight.remove(key_id);
         }
         Ok(deleted)
     }

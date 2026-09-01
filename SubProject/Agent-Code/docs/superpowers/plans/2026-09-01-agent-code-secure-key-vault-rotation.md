@@ -911,7 +911,7 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/feature/agent-code-key-va
   - `classify_status(status, retry_hint) -> ClassifiedOutcome`
   - `RotationSnapshot`
 
-- [ ] **Step 1: Write the state-machine RED tests first**
+- [x] **Step 1: Write the state-machine RED tests first**
 
 Tests must explicitly prove:
 
@@ -929,7 +929,7 @@ empty/fully ineligible pool returns typed PoolUnavailable
 scan terminates after <= pool length candidates
 ```
 
-- [ ] **Step 2: Write classifier RED tests**
+- [x] **Step 2: Write classifier RED tests**
 
 Exact mapping:
 
@@ -949,13 +949,13 @@ Exact mapping:
 other -> UNKNOWN, rotate=false
 ```
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml rotation::tests classifier::tests -- --nocapture
 ```
 
-- [ ] **Step 4: Implement typed outcomes and no-recursion rotation**
+- [x] **Step 4: Implement typed outcomes and no-recursion rotation**
 
 Use structures equivalent to:
 
@@ -987,7 +987,7 @@ pub enum OutcomeSignal {
 
 No retry method may call itself recursively.
 
-- [ ] **Step 5: Implement state transitions**
+- [x] **Step 5: Implement state transitions**
 
 Rules:
 
@@ -1036,24 +1036,24 @@ fn deterministic_jitter_ms(key_id: &KeyId) -> u64 {
 }
 ```
 
-- [ ] **Step 6: Persist transitions and cursor atomically**
+- [x] **Step 6: Persist transitions and cursor atomically**
 
 While holding the scheduler state lock, update the in-memory state and persist the same semantic transition through a short SQLite transaction. Release the lock before any later network operation.
 
 No database lock/transaction may span an HTTP call.
 
-- [ ] **Step 7: Add restart-equivalence tests**
+- [x] **Step 7: Add restart-equivalence tests**
 
 Execute a sequence containing success, 429, 401, disable, cursor movement; close/reopen the manager; assert the next acquisition and all persisted states match the pre-restart semantic snapshot.
 
-- [ ] **Step 8: Run focused + core regression**
+- [x] **Step 8: Run focused + core regression**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml rotation::tests classifier::tests -- --nocapture
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml
 ```
 
-- [ ] **Step 9: Commit/push/readback**
+- [x] **Step 9: Commit/push/readback**
 
 ```bash
 git add SubProject/Agent-Code/src-tauri/crates/credential-core
