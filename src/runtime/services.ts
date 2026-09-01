@@ -77,11 +77,16 @@ export function createRuntimeServices(
     ? new GitHubMemoryRemoteTransport(github.git, workspace, resolvedMemoryConfig.remote)
     : undefined;
   const memory = new MemoryService(resolvedMemoryConfig, metrics, { remoteTransport: memoryRemoteTransport });
+  const resolvePersistentMemoryScope = (scope: { principalId: string; projectId?: string }) => ({
+    ...scope,
+    principalId: resolvedMemoryConfig.principalId ?? scope.principalId,
+  });
   const executionStore = new ExecutionStore();
   const executionBridge = new ExecutionMemoryBridge(
     executionStore,
     memory,
     new ExecutionLogStore(resolvedExecutionConfig.logRoot),
+    resolvePersistentMemoryScope,
   );
   let execution!: ExecutionService;
   const resourceProvider = new NodeResourceSnapshotProvider({
@@ -103,7 +108,7 @@ export function createRuntimeServices(
   execution = new ExecutionService(resolvedExecutionConfig, workspace, {
     store: executionStore,
     memoryBridge: executionBridge,
-    memorySearch: new ExecutionMemoryPreSearch(memory),
+    memorySearch: new ExecutionMemoryPreSearch(memory, resolvePersistentMemoryScope),
     metrics,
     resourceGovernor,
   });

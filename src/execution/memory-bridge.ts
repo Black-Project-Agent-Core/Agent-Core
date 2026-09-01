@@ -104,6 +104,7 @@ export class ExecutionMemoryBridge {
     readonly store: ExecutionStore,
     readonly memory: ExecutionMemoryWriter,
     readonly logs?: ExecutionLogStore,
+    readonly resolveMemoryScope: (scope: MemoryScope) => MemoryScope = (scope) => scope,
   ) {
     this.promoter = new ContinuityPromoter(memory);
   }
@@ -126,12 +127,13 @@ export class ExecutionMemoryBridge {
   }
 
   async handlePersistedEvent(scope: MemoryScope, event: ExecutionEventRecord): Promise<ExecutionBridgeHandleResult> {
+    const memoryScope = this.resolveMemoryScope(scope);
     const promotions = await this.buildPromotions(scope, event);
     if (promotions.length === 0) return { promoted: 0, queued: 0 };
 
     let healthy = false;
     try {
-      healthy = (await this.memory.status(scope)).healthy;
+      healthy = (await this.memory.status(memoryScope)).healthy;
     } catch {
       healthy = false;
     }
@@ -141,7 +143,7 @@ export class ExecutionMemoryBridge {
     for (const promotion of promotions) {
       if (healthy) {
         try {
-          await this.apply(scope, promotion);
+          await this.apply(memoryScope, promotion);
           promoted += 1;
           continue;
         } catch {
@@ -155,9 +157,10 @@ export class ExecutionMemoryBridge {
   }
 
   async replay(scope: MemoryScope): Promise<ExecutionBridgeReplayResult> {
+    const memoryScope = this.resolveMemoryScope(scope);
     let healthy = false;
     try {
-      healthy = (await this.memory.status(scope)).healthy;
+      healthy = (await this.memory.status(memoryScope)).healthy;
     } catch {
       return { synced: 0, failed: 0 };
     }
@@ -169,7 +172,7 @@ export class ExecutionMemoryBridge {
     for (const item of queued) {
       await this.store.markMemorySyncState(scope, item.queueId, 'syncing');
       try {
-        await this.apply(scope, item.payload as unknown as ExecutionMemoryPromotion);
+        await this.apply(memoryScope, item.payload as unknown as ExecutionMemoryPromotion);
         await this.store.markMemorySyncState(scope, item.queueId, 'synced');
         synced += 1;
       } catch (error) {

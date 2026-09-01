@@ -149,7 +149,12 @@ describe('Execution-to-DMF continuity bridge', () => {
     const writer = new SwitchableMemoryWriter();
     writer.healthy = true;
     const logs = new ExecutionLogStore(config.logRoot);
-    const bridge = new ExecutionMemoryBridge(store, writer, logs);
+    const bridge = new ExecutionMemoryBridge(
+      store,
+      writer,
+      logs,
+      (inputScope) => ({ ...inputScope, principalId: 'principal-stable-memory' }),
+    );
     const service = new ExecutionService(config, new WorkspacePolicy([f.root]), { store, memoryBridge: bridge });
     executions.push(service);
     await service.open();
@@ -180,6 +185,8 @@ describe('Execution-to-DMF continuity bridge', () => {
 
     const promoted = writer.postflights.find((request) => request.candidate?.canonicalKey === `execution.artifact.${created.runId}.A.1`);
     expect(promoted).toBeTruthy();
+    expect(promoted?.scope.principalId).toBe('principal-stable-memory');
+    expect((await service.status(scope, created.runId))?.principalId ?? scope.principalId).toBe(scope.principalId);
     expect(promoted).toMatchObject({
       routeContextId: created.runId,
       continuityTaskId: 'continuity-task-verified-artifact',

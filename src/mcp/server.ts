@@ -72,7 +72,7 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
       projectId: runtime.workspace.roots[0],
     };
     const executionScope = {
-      principalId: persistentPrincipalId(runtime, key),
+      principalId: key.id,
       projectId: runtime.workspace.roots[0],
     };
     const [memoryStatus, executionStatus] = await Promise.all([

@@ -43,12 +43,18 @@ export function resolvedProjectScope(
 ): { principalId: string; projectId: string } {
   if (routeContextId) {
     const { projectId } = resolvedRouteProject(runtime, key, routeContextId);
-    return { principalId: persistentPrincipalId(runtime, key), projectId };
+    return { principalId: key.id, projectId };
   }
-  return {
-    principalId: persistentPrincipalId(runtime, key),
-    projectId: runtime.workspace.resolveProjectRoot(),
-  };
+  return { principalId: key.id, projectId: runtime.workspace.resolveProjectRoot() };
+}
+
+export function resolvedMemoryProjectScope(
+  runtime: RuntimeServices,
+  key: VerifiedKey,
+  routeContextId?: string,
+): { principalId: string; projectId: string } {
+  const project = resolvedProjectScope(runtime, key, routeContextId);
+  return { principalId: persistentPrincipalId(runtime, key), projectId: project.projectId };
 }
 
 function projectMismatch(error: unknown, projectId: string, target: string): never {

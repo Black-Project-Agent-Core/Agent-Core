@@ -2,7 +2,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { VerifiedKey } from '../src/auth/key-types.js';
 import { loadConfig } from '../src/config.js';
-import { resolvedProjectScope } from '../src/mcp/project-scope.js';
+import { resolvedMemoryProjectScope, resolvedProjectScope } from '../src/mcp/project-scope.js';
 import type { RuntimeServices } from '../src/runtime/services.js';
 
 function key(id: string): VerifiedKey {
@@ -37,10 +37,14 @@ describe('stable logical principal for persistent Agent Core state', () => {
     }, projectRoot);
 
     expect(config.memory.principalId).toBe('principal-stable');
+    expect(resolvedMemoryProjectScope(runtimeFor(config.memory, projectRoot), key('key-a')).principalId)
+      .toBe('principal-stable');
+    expect(resolvedMemoryProjectScope(runtimeFor(config.memory, projectRoot), key('key-b')).principalId)
+      .toBe('principal-stable');
     expect(resolvedProjectScope(runtimeFor(config.memory, projectRoot), key('key-a')).principalId)
-      .toBe('principal-stable');
+      .toBe('key-a');
     expect(resolvedProjectScope(runtimeFor(config.memory, projectRoot), key('key-b')).principalId)
-      .toBe('principal-stable');
+      .toBe('key-b');
   });
 
   it('prefers an explicit memory principal and keeps legacy key identity when no override exists', () => {
@@ -54,11 +58,15 @@ describe('stable logical principal for persistent Agent Core state', () => {
       AGENT_CORE_MEMORY_REMOTE_PRINCIPAL_ID: 'principal-remote',
     }, projectRoot);
     expect(explicit.memory.principalId).toBe('principal-explicit');
-    expect(resolvedProjectScope(runtimeFor(explicit.memory, projectRoot), key('key-a')).principalId)
+    expect(resolvedMemoryProjectScope(runtimeFor(explicit.memory, projectRoot), key('key-a')).principalId)
       .toBe('principal-explicit');
+    expect(resolvedProjectScope(runtimeFor(explicit.memory, projectRoot), key('key-a')).principalId)
+      .toBe('key-a');
 
     const legacy = loadConfig({}, projectRoot);
     expect(legacy.memory.principalId).toBeNull();
+    expect(resolvedMemoryProjectScope(runtimeFor(legacy.memory, projectRoot), key('key-legacy')).principalId)
+      .toBe('key-legacy');
     expect(resolvedProjectScope(runtimeFor(legacy.memory, projectRoot), key('key-legacy')).principalId)
       .toBe('key-legacy');
   });

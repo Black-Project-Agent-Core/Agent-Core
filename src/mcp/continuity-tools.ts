@@ -10,7 +10,7 @@ import {
 import { MemoryHardLifecycleError, type MemoryContextLifecycleRecord } from '../memory/hard-lifecycle.js';
 import { AgentCoreRouteError } from '../runtime/route-context-store.js';
 import type { RuntimeServices } from '../runtime/services.js';
-import { resolvedProjectScope } from './project-scope.js';
+import { resolvedMemoryProjectScope } from './project-scope.js';
 
 export const CONTINUITY_TOOL_NAMES = [
   'task_checkpoint',
@@ -66,7 +66,7 @@ const checkpointStatus = z.enum(['running', 'blocked', 'deferred', 'completed', 
 const evidenceType = z.enum(['tool', 'file', 'test', 'log', 'hash', 'health']);
 
 function scope(runtime: RuntimeServices, key: VerifiedKey, routeContextId?: string) {
-  return resolvedProjectScope(runtime, key, routeContextId);
+  return resolvedMemoryProjectScope(runtime, key, routeContextId);
 }
 
 async function requireExecutionCompletionEvidence(

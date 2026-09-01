@@ -12,7 +12,7 @@ import {
   type MemoryScope,
 } from '../memory/types.js';
 import type { RuntimeServices } from '../runtime/services.js';
-import { resolvedProjectScope } from './project-scope.js';
+import { resolvedMemoryProjectScope } from './project-scope.js';
 
 export const MEMORY_TOOL_NAMES = [
   'memory_status',
@@ -91,7 +91,7 @@ function scope(
   key: VerifiedKey,
   value: { routeContextId?: string; threadId?: string; resourceId?: string },
 ): MemoryScope {
-  const project = resolvedProjectScope(runtime, key, value.routeContextId);
+  const project = resolvedMemoryProjectScope(runtime, key, value.routeContextId);
   return {
     ...project,
     ...(value.threadId ? { threadId: value.threadId } : {}),
