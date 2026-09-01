@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet};
 
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -11,7 +11,7 @@ use crate::{
 
 #[derive(Debug, Clone, Default)]
 pub struct RotationSession {
-    attempted: BTreeSet<KeyId>,
+    pub(crate) attempted: BTreeSet<KeyId>,
 }
 
 impl RotationSession {
@@ -45,6 +45,95 @@ pub struct RotationSnapshot {
     pub cursor_slot: i64,
     pub active_lease_count: usize,
     pub keys: Vec<KeySummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RotationCandidate {
+    pub(crate) key_id: KeyId,
+    pub(crate) slot_index: i64,
+    pub(crate) lifecycle_state: LifecycleState,
+    pub(crate) availability_state: AvailabilityState,
+    pub(crate) cooldown_until_utc_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SelectionDecision {
+    pub(crate) key_id: KeyId,
+    pub(crate) slot_index: i64,
+    pub(crate) scanned_candidates: usize,
+    pub(crate) reconcile_cooldown: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SelectionMiss {
+    pub(crate) earliest_retry_at_utc_ms: Option<i64>,
+    pub(crate) scanned_candidates: usize,
+}
+
+pub(crate) fn select_candidate(
+    candidates: &[RotationCandidate],
+    cursor_slot: i64,
+    attempted: &BTreeSet<KeyId>,
+    now_ms: i64,
+) -> Result<SelectionDecision, SelectionMiss> {
+    if candidates.is_empty() {
+        return Err(SelectionMiss {
+            earliest_retry_at_utc_ms: None,
+            scanned_candidates: 0,
+        });
+    }
+
+    let start = candidates
+        .iter()
+        .position(|candidate| candidate.slot_index > cursor_slot)
+        .unwrap_or(0);
+    let mut earliest_retry_at_utc_ms: Option<i64> = None;
+    let mut scanned_candidates = 0usize;
+
+    for offset in 0..candidates.len() {
+        let candidate = &candidates[(start + offset) % candidates.len()];
+        scanned_candidates += 1;
+
+        if attempted.contains(&candidate.key_id) {
+            continue;
+        }
+        if candidate.lifecycle_state != LifecycleState::Enabled {
+            continue;
+        }
+
+        let reconcile_cooldown = if candidate.availability_state == AvailabilityState::Cooldown {
+            match candidate.cooldown_until_utc_ms {
+                Some(deadline) if deadline <= now_ms => true,
+                Some(deadline) => {
+                    earliest_retry_at_utc_ms = Some(
+                        earliest_retry_at_utc_ms
+                            .map(|current| current.min(deadline))
+                            .unwrap_or(deadline),
+                    );
+                    continue;
+                }
+                None => continue,
+            }
+        } else {
+            false
+        };
+
+        if candidate.availability_state != AvailabilityState::Ready && !reconcile_cooldown {
+            continue;
+        }
+
+        return Ok(SelectionDecision {
+            key_id: candidate.key_id.clone(),
+            slot_index: candidate.slot_index,
+            scanned_candidates,
+            reconcile_cooldown,
+        });
+    }
+
+    Err(SelectionMiss {
+        earliest_retry_at_utc_ms,
+        scanned_candidates,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,101 +212,81 @@ impl<P: SecretProtector> CredentialManager<P> {
         let mut inner = self
             .lock_inner()
             .map_err(|_| PoolUnavailable::state_unavailable())?;
-        let mut order = inner
+        let mut candidates = inner
             .keys
             .values()
-            .map(|record| (record.key_id.clone(), record.slot_index))
+            .map(|record| RotationCandidate {
+                key_id: record.key_id.clone(),
+                slot_index: record.slot_index,
+                lifecycle_state: record.lifecycle_state,
+                availability_state: record.availability_state,
+                cooldown_until_utc_ms: record.cooldown_until_utc_ms,
+            })
             .collect::<Vec<_>>();
-        order.sort_by_key(|(_, slot_index)| *slot_index);
+        candidates.sort_by_key(|candidate| candidate.slot_index);
 
-        if order.is_empty() {
-            return Err(PoolUnavailable::no_eligible(None, 0));
+        let decision = select_candidate(
+            &candidates,
+            inner.rotation_cursor,
+            &session.attempted,
+            now_ms,
+        )
+        .map_err(|miss| {
+            PoolUnavailable::no_eligible(miss.earliest_retry_at_utc_ms, miss.scanned_candidates)
+        })?;
+
+        let mut record = inner
+            .keys
+            .get(&decision.key_id)
+            .cloned()
+            .ok_or_else(PoolUnavailable::state_unavailable)?;
+        if decision.reconcile_cooldown {
+            record.availability_state = AvailabilityState::Ready;
+            record.cooldown_until_utc_ms = None;
+            record.updated_at_utc_ms = now_ms;
         }
 
-        let start = order
-            .iter()
-            .position(|(_, slot_index)| *slot_index > inner.rotation_cursor)
+        let current_in_flight = inner
+            .in_flight
+            .get(&decision.key_id)
+            .copied()
             .unwrap_or(0);
-        let mut earliest_retry_at_utc_ms: Option<i64> = None;
-        let mut scanned_candidates = 0usize;
+        let next_in_flight = current_in_flight
+            .checked_add(1)
+            .ok_or_else(PoolUnavailable::state_unavailable)?;
 
-        for offset in 0..order.len() {
-            let (key_id, slot_index) = order[(start + offset) % order.len()].clone();
-            scanned_candidates += 1;
+        let persist_result = if decision.reconcile_cooldown {
+            let update = record.state_update();
+            inner.store.update_key_state_and_cursor(
+                &decision.key_id,
+                &update,
+                decision.slot_index,
+                now_ms,
+            )
+        } else {
+            inner.store.save_rotation_cursor(decision.slot_index, now_ms)
+        };
+        persist_result.map_err(|_| PoolUnavailable::persistence(decision.scanned_candidates))?;
 
-            if session.attempted.contains(&key_id) {
-                continue;
-            }
-
-            let mut record = match inner.keys.get(&key_id).cloned() {
-                Some(record) => record,
-                None => continue,
-            };
-            if record.lifecycle_state != LifecycleState::Enabled {
-                continue;
-            }
-
-            let mut reconciled_cooldown = false;
-            if record.availability_state == AvailabilityState::Cooldown {
-                match record.cooldown_until_utc_ms {
-                    Some(deadline) if deadline <= now_ms => {
-                        record.availability_state = AvailabilityState::Ready;
-                        record.cooldown_until_utc_ms = None;
-                        record.updated_at_utc_ms = now_ms;
-                        reconciled_cooldown = true;
-                    }
-                    Some(deadline) => {
-                        earliest_retry_at_utc_ms = Some(
-                            earliest_retry_at_utc_ms
-                                .map(|current| current.min(deadline))
-                                .unwrap_or(deadline),
-                        );
-                        continue;
-                    }
-                    None => continue,
-                }
-            }
-
-            if record.availability_state != AvailabilityState::Ready {
-                continue;
-            }
-
-            let current_in_flight = inner.in_flight.get(&key_id).copied().unwrap_or(0);
-            let next_in_flight = current_in_flight
-                .checked_add(1)
-                .ok_or_else(|| PoolUnavailable::state_unavailable())?;
-
-            let persist_result = if reconciled_cooldown {
-                let update = record.state_update();
-                inner
-                    .store
-                    .update_key_state_and_cursor(&key_id, &update, slot_index, now_ms)
-            } else {
-                inner.store.save_rotation_cursor(slot_index, now_ms)
-            };
-            persist_result.map_err(|_| PoolUnavailable::persistence(scanned_candidates))?;
-
-            if reconciled_cooldown {
-                inner.keys.insert(key_id.clone(), record);
-            }
-            inner.rotation_cursor = slot_index;
-            let lease_id = Uuid::new_v4();
-            inner.active_leases.insert(lease_id, key_id.clone());
-            inner.in_flight.insert(key_id.clone(), next_in_flight);
-            session.attempted.insert(key_id.clone());
-
-            return Ok(KeyLease {
-                lease_id,
-                key_id,
-                slot_index,
-                scanned_candidates,
-            });
+        if decision.reconcile_cooldown {
+            inner.keys.insert(decision.key_id.clone(), record);
         }
+        inner.rotation_cursor = decision.slot_index;
+        let lease_id = Uuid::new_v4();
+        inner
+            .active_leases
+            .insert(lease_id, decision.key_id.clone());
+        inner
+            .in_flight
+            .insert(decision.key_id.clone(), next_in_flight);
+        session.attempted.insert(decision.key_id.clone());
 
-        Err(PoolUnavailable::no_eligible(
-            earliest_retry_at_utc_ms,
-            scanned_candidates,
-        ))
+        Ok(KeyLease {
+            lease_id,
+            key_id: decision.key_id,
+            slot_index: decision.slot_index,
+            scanned_candidates: decision.scanned_candidates,
+        })
     }
 
     pub fn report_outcome(
@@ -250,7 +319,11 @@ impl<P: SecretProtector> CredentialManager<P> {
             .store
             .update_key_state_and_cursor(&active_key, &update, cursor_slot, now_ms)?;
 
-        let current_in_flight = inner.in_flight.get(&active_key).copied().unwrap_or(0);
+        let current_in_flight = inner
+            .in_flight
+            .get(&active_key)
+            .copied()
+            .unwrap_or(0);
         let next_in_flight = current_in_flight
             .checked_sub(1)
             .ok_or(RotationError::CounterInvalid)?;
@@ -271,7 +344,11 @@ impl<P: SecretProtector> CredentialManager<P> {
 fn snapshot_from_inner<P: SecretProtector>(
     inner: &crate::manager::ManagerInner<P>,
 ) -> RotationSnapshot {
-    let mut keys = inner.keys.values().map(|record| record.summary()).collect::<Vec<_>>();
+    let mut keys = inner
+        .keys
+        .values()
+        .map(|record| record.summary())
+        .collect::<Vec<_>>();
     keys.sort_by_key(|summary| summary.slot_index);
     RotationSnapshot {
         cursor_slot: inner.rotation_cursor,
@@ -295,7 +372,12 @@ fn apply_outcome(
             retry_after_ms,
         } => {
             let classified = classify_status(status, retry_after_ms);
-            apply_failure(record, classified.failure_class, classified.retry_after_ms, now_ms)?;
+            apply_failure(
+                record,
+                classified.failure_class,
+                classified.retry_after_ms,
+                now_ms,
+            )?;
         }
         OutcomeSignal::RequestInvalid => {
             apply_failure(record, FailureClass::RequestInvalid, None, now_ms)?;
