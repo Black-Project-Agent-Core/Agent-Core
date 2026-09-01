@@ -31,7 +31,10 @@
     "codespace:anchor:set": "bash scripts/codespace/set-anchor-backend.sh",
     "codespace:anchor:discover": "bash scripts/codespace/discover-anchor-backend.sh",
     "build:codespace": "npm --prefix plugin/codespace ci && npm --prefix plugin/codespace run build",
-    "verify:stable-parity": "node scripts/release/check-stable-parity.mjs"
+    "verify:stable-parity": "node scripts/release/check-stable-parity.mjs",
+    "build:observatory": "npm --prefix SubProject/Memory-Observatory ci && npm --prefix SubProject/Memory-Observatory run build",
+    "verify:observatory": "npm --prefix SubProject/Memory-Observatory ci && npm --prefix SubProject/Memory-Observatory run verify",
+    "observatory:shadow": "npm --prefix SubProject/Memory-Observatory ci && npm --prefix SubProject/Memory-Observatory run build && npm --prefix SubProject/Memory-Observatory run start"
   },
   "engines": {
     "node": ">=24.15.0"

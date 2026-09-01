@@ -1,0 +1,25 @@
+.observatory-shell { min-height: 100vh; background: var(--canvas); color: var(--text); }
+.observatory-header { height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.observatory-header h1 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
+.status { color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .08em; }
+.status.healthy { color: var(--online); }
+.observatory-scaffold { height: calc(100vh - 48px); display: grid; grid-template-columns: minmax(0, 68fr) minmax(360px, 32fr); }
+.scaffold-panel { min-width: 0; display: flex; flex-direction: column; gap: 7px; padding: 14px; border-right: 1px solid var(--border); background: var(--surface); }
+.scaffold-panel:last-child { border-right: 0; }
+.scaffold-panel strong { font-size: 12px; font-weight: 650; }
+.scaffold-panel span { color: var(--muted); font-size: 11px; }
+.graph-panel, .activity-panel { min-width: 0; min-height: 0; background: var(--surface); }
+.panel-heading { height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 14px; border-bottom: 1px solid var(--border); }
+.panel-heading strong { font-size: 12px; font-weight: 650; }
+.panel-heading span { color: var(--muted); font-size: 10px; }
+.graph-canvas { position: relative; min-height: 420px; background: #f8f9fb; }
+.node-inspector { min-height: 74px; padding: 12px 14px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+.activity-panel { display: grid; grid-template-rows: 42px 38px minmax(0, 1fr); }
+.activity-filters { display: flex; align-items: center; padding: 0 14px; border-bottom: 1px solid var(--border); color: var(--muted); font: 650 9px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .1em; }
+.activity-empty { padding: 18px 14px; color: var(--muted); font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.memory-node-card { display: flex; justify-content: space-between; gap: 12px; }
+@media (max-width: 1024px) { .observatory-scaffold { grid-template-columns: minmax(0, 1fr) 360px; } }
+@media (max-width: 820px) {
+  .observatory-scaffold { height: auto; min-height: calc(100vh - 48px); grid-template-columns: 1fr; }
+  .scaffold-panel { min-height: 320px; border-right: 0; border-bottom: 1px solid var(--border); }
+}

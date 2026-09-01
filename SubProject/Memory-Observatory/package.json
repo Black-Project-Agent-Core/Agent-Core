@@ -1,0 +1,33 @@
+{
+  "name": "memory-observatory",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 3697",
+    "build": "tsc -p tsconfig.server.json && tsc -b tsconfig.app.json && vite build",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc -p tsconfig.server.json --pretty false && tsc -b tsconfig.app.json --pretty false",
+    "verify": "npm run typecheck && npm test && npm run build",
+    "start": "node server-dist/server.js"
+  },
+  "dependencies": {
+    "@xyflow/react": "12.11.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "^24.13.3",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.1.1",
+    "jsdom": "30.0.1",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  }
+}
