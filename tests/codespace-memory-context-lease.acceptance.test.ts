@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -24,10 +24,12 @@ class SnapshotRemoteTransport implements MemoryRemoteTransport {
   remoteGitHead: string | null = null;
   fetchedGitHead: string | null = null;
   localCommit: string | null = null;
+  fetchError: (Error & { code?: string }) | undefined;
   private commitCounter = 0;
 
   async ensureCheckout(): Promise<{ cwd: string }> { return { cwd: '/phase7-snapshot-memory-remote' }; }
   async fetch(): Promise<void> {
+    if (this.fetchError) throw this.fetchError;
     this.localFiles.clear();
     for (const [key, value] of this.remoteFiles) this.localFiles.set(key, Uint8Array.from(value));
     this.fetchedGitHead = this.remoteGitHead;
@@ -55,6 +57,10 @@ class SnapshotRemoteTransport implements MemoryRemoteTransport {
     for (const [key, value] of this.remoteFiles) this.localFiles.set(key, Uint8Array.from(value));
     this.fetchedGitHead = this.remoteGitHead;
   }
+}
+
+function codedError(code: string): Error & { code: string } {
+  return Object.assign(new Error(code), { code });
 }
 
 async function tempRoot(label: string): Promise<string> {
@@ -111,17 +117,30 @@ describe('Phase 7 cross-Codespace Memory Context Lease acceptance', () => {
       projectId: logicalWorkspaceRoot,
     };
 
-    // Codespace A: persisted preflight -> opaque bridge lease -> meaningful mutation completion.
+    // Codespace A: the same Phase-2 hydrator first confirms that the configured remote has no prior scope state.
+    const crypto = await MemoryRemoteCrypto.fromKeyFile(keyPath);
+    await expect(new MemoryRemoteHydrator(transport, crypto).hydrate(scope, dbA)).resolves.toEqual({
+      state: 'REMOTE_EMPTY_CONFIRMED', remoteHead: null,
+    });
+
+    // Then create the same persisted preflight + Continuity binding that capability_route orchestrates,
+    // issue an opaque bridge lease, and complete one meaningful bridge mutation.
     const serviceA = new MemoryService(memoryConfigA, undefined, { remoteTransport: transport });
     services.push(serviceA);
     const routeA = 'phase7-route-codespace-a';
+    const taskA = 'Cross-Codespace durable mutation objective';
+    const contextA = 'Codespace A must close remotely before Codespace B starts.';
     const preflightA = await serviceA.preflight({
       scope,
       routeContextId: routeA,
-      task: 'Cross-Codespace durable mutation objective',
-      context: 'Codespace A must close remotely before Codespace B starts.',
+      task: taskA,
+      context: contextA,
       expiresAt: Date.now() + 10 * 60_000,
     });
+    const continuityA = await serviceA.beginContinuityTurn(
+      scope, routeA, taskA, contextA, { objective: taskA }, Date.now() + 10 * 60_000,
+    );
+    await serviceA.bindLifecycleTask(scope, preflightA.contextId, continuityA.taskId);
     const leaseA = await serviceA.issueContextLease({ scope, contextId: preflightA.contextId, routeContextId: routeA });
     const endpointA = await startLeaseEndpoint(serviceA);
     const bridgeA = client(endpointA);
@@ -136,6 +155,23 @@ describe('Phase 7 cross-Codespace Memory Context Lease acceptance', () => {
       postflightState: 'POSTFLIGHT_PENDING', meaningfulWorkCount: 1,
     });
 
+    // Persist a real terminal Continuity checkpoint before local lifecycle closure and grouped remote durability.
+    const checkpointA = await serviceA.checkpointContinuity(scope, continuityA.taskId, continuityA.turnId, {
+      routeContextId: routeA,
+      status: 'completed',
+      summary: 'Codespace A meaningful mutation completed with bounded evidence.',
+      evidence: [{ type: 'file', ref: 'phase7-cross-codespace-artifact', result: 'verified' }],
+      projectTerminal: true,
+    });
+    await serviceA.promoteContinuityCheckpoint(scope, continuityA.taskId, checkpointA.checkpointId, {
+      routeContextId: routeA,
+      status: 'completed',
+      summary: 'Codespace A meaningful mutation completed with bounded evidence.',
+      evidence: [{ type: 'file', ref: 'phase7-cross-codespace-artifact', result: 'verified' }],
+      projectTerminal: true,
+    });
+    await serviceA.closeContinuityTurn(scope, continuityA.turnId, 'closed');
+
     // Phase-6 terminal postflight semantics: local CLOSED is inside the encrypted logical projection,
     // and only verified remote readback earns the local durability receipt.
     await serviceA.prepareLifecycleClosure({ scope, contextId: preflightA.contextId, routeContextId: routeA });
@@ -149,18 +185,22 @@ describe('Phase 7 cross-Codespace Memory Context Lease acceptance', () => {
       logicalStateHash: remote.logicalStateHash,
     });
     expect(await serviceA.getLifecycleContext(scope, preflightA.contextId)).toMatchObject({
+      continuityTaskId: continuityA.taskId,
       postflightState: 'CLOSED',
       localDurableGeneration: remote.generationId,
       localDurableHash: remote.logicalStateHash,
     });
+    for (const bytes of transport.remoteFiles.values()) {
+      expect(Buffer.from(bytes).includes(Buffer.from(leaseA.token, 'utf8'))).toBe(false);
+    }
 
-    // Destroy Codespace A's local service-lifetime lease authority.
+    // Destroy Codespace A's local service-lifetime lease authority and local memory DB.
     await serviceA.close();
     services.splice(services.indexOf(serviceA), 1);
     await new Promise<void>((resolve) => servers.shift()!.close(() => resolve()));
+    await rm(dbA, { force: true });
 
-    // Codespace B: hydrate the exact encrypted lifecycle state into a fresh local DB.
-    const crypto = await MemoryRemoteCrypto.fromKeyFile(keyPath);
+    // Codespace B: hydrate the exact encrypted lifecycle + Continuity state into a fresh local DB.
     await expect(new MemoryRemoteHydrator(transport, crypto).hydrate(scope, dbB)).resolves.toMatchObject({
       state: 'REMOTE_HYDRATED',
       generationId: remote.generationId,
@@ -173,7 +213,12 @@ describe('Phase 7 cross-Codespace Memory Context Lease acceptance', () => {
     };
     const serviceB = new MemoryService(memoryConfigB, undefined, { remoteTransport: transport });
     services.push(serviceB);
-    expect(await serviceB.getLifecycleContext(scope, preflightA.contextId)).toMatchObject({ postflightState: 'CLOSED' });
+    expect(await serviceB.getLifecycleContext(scope, preflightA.contextId)).toMatchObject({
+      continuityTaskId: continuityA.taskId, postflightState: 'CLOSED',
+    });
+    expect(await serviceB.getContinuityTask(scope, continuityA.taskId)).toMatchObject({
+      taskId: continuityA.taskId, status: 'completed', lastCheckpointId: checkpointA.checkpointId,
+    });
     expect(await serviceB.reconcileLifecycleDurability(scope)).toMatchObject({
       reconciled: 1,
       generationId: remote.generationId,
@@ -211,5 +256,22 @@ describe('Phase 7 cross-Codespace Memory Context Lease acceptance', () => {
     expect(await serviceB.getLifecycleContext(scope, preflightB.contextId)).toMatchObject({
       postflightState: 'POSTFLIGHT_PENDING', meaningfulWorkCount: 1,
     });
+  });
+
+  it('leaves an existing fresh-Codespace destination unchanged when required remote hydration fails', async () => {
+    const root = await tempRoot('hydrate-failure');
+    const destination = path.join(root, 'existing.sqlite');
+    const original = Buffer.from('EXISTING_UNCERTIFIED_LOCAL_BYTES');
+    await writeFile(destination, original);
+    const keyPath = path.join(root, 'memory-remote.key');
+    await writeFile(keyPath, Buffer.alloc(32, 0x45), { mode: 0o600 });
+    const transport = new SnapshotRemoteTransport();
+    transport.fetchError = codedError('GITHUB_GIT_AUTH_FAILED');
+    const crypto = await MemoryRemoteCrypto.fromKeyFile(keyPath);
+
+    await expect(new MemoryRemoteHydrator(transport, crypto).hydrate({
+      principalId: 'phase7-hydration-failure-principal', projectId: '/workspaces/Agent-Core',
+    }, destination)).rejects.toMatchObject({ hydrationState: 'REMOTE_AUTH_FAILED' });
+    expect(await readFile(destination)).toEqual(original);
   });
 });
