@@ -11,6 +11,7 @@ npm run dev
 npm test
 npm run typecheck
 npm run build
+npm run test:credential-security
 npm run test:tauri-contract
 npm run test:visual
 ```
@@ -42,7 +43,7 @@ src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Agent Code_0.1.0_x64
 
 ## Tauri desktop shell
 
-Milestone 1 uses Tauri 2 only for the native application window, application metadata, package configuration, and icons. There are intentionally no Tauri commands exposed to the React frontend.
+Milestone 1 established Tauri 2 as the native desktop boundary. The current credential milestone additionally exposes a narrow allowlisted Tauri command surface for protected OpenRouter credential metadata, validation, deterministic rotation diagnostics, and native self-test operations. No command reveals or exports imported plaintext credentials.
 
 The main window contract is:
 
@@ -53,6 +54,16 @@ The main window contract is:
 - identifier: `com.pitchlook.agentcode`
 
 The command-prompt Agent Code mark is used as the native application icon. The AC monogram is reserved for the welcome state, while the premium orbit/ribbon emblem is stored as secondary brand artwork and is not permanently rendered in the main workspace.
+
+## Credential vault security boundary
+
+Imported OpenRouter keys are protected with Windows current-user DPAPI. The protected value is bound to the Windows user/machine security context and Agent Code intentionally has no reveal, copy-plaintext, or export-plaintext API after import. UI and Tauri responses expose only bounded metadata such as the label, masked suffix, lifecycle state, availability state, and provider validation metadata.
+
+Loss or replacement of the Windows user profile may make existing protected credentials unrecoverable. Keep the original credential or a provider-side recovery path separately rather than treating the Agent Code vault as a credential backup/export system. Provider-side key rotation or revocation remains the recovery mechanism if a local protected record can no longer be decrypted.
+
+The local vault threat boundary does not claim protection against a fully compromised operating system, administrator/root access, arbitrary process-memory inspection, or an attached debugger with sufficient privileges. The security goal is to prevent accidental plaintext persistence/exposure through Agent Code source APIs, serialized metadata, SQLite/WAL content, UI surfaces, logs, and normal application error paths.
+
+`npm run test:credential-security` is the release gate for these secret-boundary invariants. It combines a tracked-source forbidden-surface scan with the credential-core corruption, canary, and persistence test suite.
 
 ## Platform verification boundary
 

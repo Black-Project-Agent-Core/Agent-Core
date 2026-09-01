@@ -100,6 +100,20 @@ describe('CredentialVaultPanel', () => {
     await waitFor(() => expect(vaultApi.addKey).toHaveBeenCalledWith(canary, 'Imported key'));
   });
 
+  it('never renders a secret-bearing native error after an import failure', async () => {
+    const user = userEvent.setup();
+    const canary = 'sk-or-v1-SYNTHETIC_NATIVE_ERROR_CANARY_654321';
+    vaultApi.addKey.mockRejectedValue(new Error(`provider rejected ${canary}`));
+    render(<CredentialVaultPanel onClose={() => undefined} />);
+    await screen.findByText('••••3Fxa');
+    const input = screen.getByLabelText('OpenRouter API key');
+    await user.type(input, canary);
+    await user.click(screen.getByRole('button', { name: 'Import key' }));
+    expect(await screen.findByText('Key import failed.')).toBeInTheDocument();
+    expect(input).toHaveValue('');
+    expect(document.body.textContent).not.toContain(canary);
+  });
+
   it('renders lifecycle and availability badges from metadata', async () => {
     render(<CredentialVaultPanel onClose={() => undefined} />);
     expect(await screen.findByText('DISABLED')).toBeInTheDocument();

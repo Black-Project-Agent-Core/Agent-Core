@@ -9,6 +9,7 @@ const windowsBuildUrl = new URL('./build-windows-x64.sh', import.meta.url);
 const makensisWrapperUrl = new URL('./toolchain/makensis', import.meta.url);
 const buildRsUrl = new URL('../src-tauri/build.rs', import.meta.url);
 const credentialCommandsUrl = new URL('../src-tauri/src/credential/commands.rs', import.meta.url);
+const dpapiUrl = new URL('../src-tauri/src/credential/dpapi.rs', import.meta.url);
 const tauriMainUrl = new URL('../src-tauri/src/main.rs', import.meta.url);
 
 const config = JSON.parse(await readFile(configUrl, 'utf8'));
@@ -19,6 +20,7 @@ const windowsBuild = await readFile(windowsBuildUrl, 'utf8');
 const makensisWrapper = await readFile(makensisWrapperUrl, 'utf8');
 const buildRs = await readFile(buildRsUrl, 'utf8');
 const credentialCommands = await readFile(credentialCommandsUrl, 'utf8');
+const dpapi = await readFile(dpapiUrl, 'utf8');
 const tauriMain = await readFile(tauriMainUrl, 'utf8');
 const [window] = config.app.windows;
 
@@ -100,5 +102,16 @@ assert.match(tauriMain, /CredentialAppState::open/);
 assert.match(tauriMain, /app_local_data_dir\(\)/);
 assert.match(tauriMain, /app\.manage\(state\)/);
 assert.match(tauriMain, /tauri::generate_handler!\[/);
+
+const nativeSelfTestReport = credentialCommands.match(
+  /pub struct NativeVaultSelfTestReport\s*\{([\s\S]*?)\n\}/,
+);
+assert.ok(nativeSelfTestReport, 'NativeVaultSelfTestReport must remain explicit');
+assert.match(nativeSelfTestReport[1], /pub passed:\s*bool/);
+assert.match(nativeSelfTestReport[1], /pub error_class:\s*Option<String>/);
+assert.doesNotMatch(nativeSelfTestReport[1], /secret|credential|protected|plaintext|canary/i);
+assert.match(credentialCommands, /SYNTHETIC_DPAPI_SELFTEST_/);
+assert.match(dpapi, /CRYPTPROTECT_UI_FORBIDDEN/);
+assert.doesNotMatch(dpapi, /CRYPTPROTECT_LOCAL_MACHINE/);
 
 console.log('tauri-contract: PASS');

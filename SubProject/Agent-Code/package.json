@@ -9,6 +9,8 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:credential-core": "cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml -- --nocapture",
+    "test:credential-security": "node scripts/check-credential-security.mjs && npm run test:credential-core",
     "tauri": "tauri",
     "build:windows:x64": "bash scripts/build-windows-x64.sh",
     "test:tauri-contract": "node scripts/check-tauri-contract.mjs",

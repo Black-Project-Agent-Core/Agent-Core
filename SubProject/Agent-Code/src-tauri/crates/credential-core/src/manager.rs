@@ -230,7 +230,7 @@ mod tests {
     use super::*;
     use crate::{
         AvailabilityState, KeyId, LifecycleState, NewStoredKey, ProtectError, ProtectedBlob,
-        SecretBytes, SecretProtector, VaultStore,
+        RotationSession, SecretBytes, SecretProtector, VaultStore,
     };
 
     #[derive(Clone, Copy)]
@@ -255,6 +255,32 @@ mod tests {
                     .collect(),
             )
             .map_err(|_| ProtectError::UnprotectFailed)
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct PanicUnprotectProtector;
+
+    impl SecretProtector for PanicUnprotectProtector {
+        fn protect(&self, _secret: &SecretBytes) -> Result<ProtectedBlob, ProtectError> {
+            Err(ProtectError::ProtectFailed)
+        }
+
+        fn unprotect(&self, _protected: &ProtectedBlob) -> Result<SecretBytes, ProtectError> {
+            panic!("checksum mismatch must fail before unprotect")
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct FailingUnprotectProtector;
+
+    impl SecretProtector for FailingUnprotectProtector {
+        fn protect(&self, secret: &SecretBytes) -> Result<ProtectedBlob, ProtectError> {
+            Ok(ProtectedBlob::new(secret.expose_bytes(|bytes| bytes.to_vec())))
+        }
+
+        fn unprotect(&self, _protected: &ProtectedBlob) -> Result<SecretBytes, ProtectError> {
+            Err(ProtectError::UnprotectFailed)
         }
     }
 
@@ -459,5 +485,137 @@ mod tests {
             110,
         );
         assert!(matches!(result, Err(ManagerError::InvalidLabel)));
+    }
+
+    #[test]
+    fn duplicate_error_display_and_debug_never_echo_plaintext_canary() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = CredentialManager::open(
+            VaultStore::open(dir.path().join("vault.db")).unwrap(),
+            XorTestProtector(0x19),
+        )
+        .unwrap();
+        let canary = "sk-or-v1-SYNTHETIC_MANAGER_ERROR_CANARY_123456";
+        manager
+            .add_openrouter_key(
+                SecretBytes::parse_import(canary.to_owned()).unwrap(),
+                "Original".to_owned(),
+                100,
+            )
+            .unwrap();
+
+        let error = manager
+            .add_openrouter_key(
+                SecretBytes::parse_import(canary.to_owned()).unwrap(),
+                "Duplicate".to_owned(),
+                110,
+            )
+            .unwrap_err();
+        assert!(matches!(error, ManagerError::DuplicateCredential));
+        assert!(!format!("{error}").contains(canary));
+        assert!(!format!("{error:?}").contains(canary));
+    }
+
+    #[test]
+    fn checksum_mismatch_is_quarantined_before_unprotect_and_is_never_selectable() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.db");
+        let key_id = KeyId("tampered-checksum-key".to_owned());
+        let mut store = VaultStore::open(&path).unwrap();
+        let slot_index = store.reserve_next_slot_index().unwrap();
+        store
+            .insert_key(NewStoredKey {
+                key_id: key_id.clone(),
+                slot_index,
+                label: "Tampered checksum".to_owned(),
+                masked_suffix: "••••0001".to_owned(),
+                protected_blob: ProtectedBlob::from_parts(vec![1, 2, 3, 4], [0u8; 32]),
+                lifecycle_state: LifecycleState::Enabled,
+                availability_state: AvailabilityState::Ready,
+                cooldown_until_utc_ms: None,
+                consecutive_failures: 0,
+                last_success_at_utc_ms: None,
+                last_failure_at_utc_ms: None,
+                last_failure_class: None,
+                last_probe_at_utc_ms: None,
+                limit_value: None,
+                limit_remaining: None,
+                limit_reset: None,
+                usage_daily: None,
+                is_free_tier: None,
+                expires_at_utc_ms: None,
+                created_at_utc_ms: 100,
+                updated_at_utc_ms: 100,
+            })
+            .unwrap();
+        drop(store);
+
+        let manager = CredentialManager::open(VaultStore::open(&path).unwrap(), PanicUnprotectProtector)
+            .expect("checksum mismatch must quarantine without calling unprotect");
+        let summary = manager.list_summaries().unwrap().remove(0);
+        assert_eq!(summary.lifecycle_state, LifecycleState::Quarantined);
+        assert_eq!(summary.availability_state, AvailabilityState::Unverified);
+        let unavailable = manager
+            .acquire(&mut RotationSession::new(), 200)
+            .expect_err("quarantined key must not be selected");
+        assert_eq!(unavailable.scanned_candidates(), 1);
+    }
+
+    #[test]
+    fn decryption_failure_returns_safe_error_quarantines_record_and_keeps_manager_alive() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.db");
+        let key_id = KeyId("decrypt-failure-key".to_owned());
+        let mut store = VaultStore::open(&path).unwrap();
+        let slot_index = store.reserve_next_slot_index().unwrap();
+        store
+            .insert_key(NewStoredKey {
+                key_id: key_id.clone(),
+                slot_index,
+                label: "Decrypt failure".to_owned(),
+                masked_suffix: "••••0002".to_owned(),
+                protected_blob: ProtectedBlob::new(vec![9, 8, 7, 6]),
+                lifecycle_state: LifecycleState::Enabled,
+                availability_state: AvailabilityState::Ready,
+                cooldown_until_utc_ms: None,
+                consecutive_failures: 0,
+                last_success_at_utc_ms: None,
+                last_failure_at_utc_ms: None,
+                last_failure_class: None,
+                last_probe_at_utc_ms: None,
+                limit_value: None,
+                limit_remaining: None,
+                limit_reset: None,
+                usage_daily: None,
+                is_free_tier: None,
+                expires_at_utc_ms: None,
+                created_at_utc_ms: 100,
+                updated_at_utc_ms: 100,
+            })
+            .unwrap();
+        drop(store);
+
+        let manager = CredentialManager::open(
+            VaultStore::open(&path).unwrap(),
+            FailingUnprotectProtector,
+        )
+        .unwrap();
+        let canary = "sk-or-v1-SYNTHETIC_DECRYPT_ERROR_CANARY_123456";
+        let error = manager
+            .add_openrouter_key(
+                SecretBytes::parse_import(canary.to_owned()).unwrap(),
+                "New key".to_owned(),
+                200,
+            )
+            .unwrap_err();
+        assert!(matches!(error, ManagerError::ProtectedRecordUnavailable));
+        assert!(!format!("{error}").contains(canary));
+        assert!(!format!("{error:?}").contains(canary));
+
+        let summary = manager.list_summaries().unwrap().remove(0);
+        assert_eq!(summary.key_id, key_id);
+        assert_eq!(summary.lifecycle_state, LifecycleState::Quarantined);
+        assert_eq!(summary.availability_state, AvailabilityState::Unverified);
+        assert_eq!(manager.list_summaries().unwrap().len(), 1);
     }
 }
