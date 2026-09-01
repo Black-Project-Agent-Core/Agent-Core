@@ -8,7 +8,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const SHADOW_PORTS = Object.freeze({ agentCore: 8865, codespaceMcp: 39765, observatory: 3697 });
+const DEFAULT_SHADOW_PORTS = Object.freeze({ agentCore: 8865, codespaceMcp: 39765, observatory: 3697 });
 const LIVE_AGENT_CORE_URL = 'http://127.0.0.1:8765/health';
 const LIVE_CODESPACE_URL = 'http://127.0.0.1:38765/healthz';
 const LIVE_METADATA_PATHS = [
@@ -226,6 +226,13 @@ function authoritativeSnapshotProjection(snapshot) {
 }
 
 export async function runMemoryObservatoryShadowCanary(options = {}) {
+  const shadowPorts = Object.freeze({ ...DEFAULT_SHADOW_PORTS, ...(options.ports ?? {}) });
+  const portValues = Object.values(shadowPorts);
+  if (portValues.some((port) => !Number.isInteger(port) || port < 1 || port > 65535)) {
+    throw new Error('SHADOW_PORT_INVALID');
+  }
+  if (new Set(portValues).size !== portValues.length) throw new Error('SHADOW_PORT_COLLISION');
+
   const repoRoot = path.resolve(options.repoRoot ?? process.cwd());
   const pluginRoot = path.join(repoRoot, 'plugin', 'codespace');
   const observatoryRoot = path.join(repoRoot, 'SubProject', 'Memory-Observatory');
@@ -237,7 +244,7 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
     requireArtifact(pluginEntry, 'SHADOW_CODESPACE_BUILD_REQUIRED'),
     requireArtifact(observatoryEntry, 'SHADOW_OBSERVATORY_BUILD_REQUIRED'),
   ]);
-  await Promise.all(Object.values(SHADOW_PORTS).map(assertPortFree));
+  await Promise.all(Object.values(shadowPorts).map(assertPortFree));
 
   const liveAgentCoreBefore = await safeFetchProjection(LIVE_AGENT_CORE_URL, projectAgentHealth);
   const liveCodespaceBefore = await safeFetchProjection(LIVE_CODESPACE_URL, projectCodespaceHealth);
@@ -281,7 +288,7 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
       cwd: repoRoot,
       env: cleanChildEnv({
         AGENT_CORE_HOST: '127.0.0.1',
-        AGENT_CORE_PORT: String(SHADOW_PORTS.agentCore),
+        AGENT_CORE_PORT: String(shadowPorts.agentCore),
         AGENT_CORE_DATA_DIR: agentCoreDataDir,
         AGENT_CORE_LOG_DIR: path.join(agentCoreRoot, 'logs'),
         AGENT_CORE_CAPABILITY_DIR: path.join(repoRoot, 'capabilities'),
@@ -302,7 +309,7 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
       }),
     });
     children.push(agent);
-    await waitForJson(`http://127.0.0.1:${SHADOW_PORTS.agentCore}/health`, (value) =>
+    await waitForJson(`http://127.0.0.1:${shadowPorts.agentCore}/health`, (value) =>
       value?.status === 'ok' && value?.memory?.healthy === true && value?.execution?.healthy === true);
 
     const codespace = spawnTracked('codespace-mcp-shadow', process.execPath, [pluginEntry], {
@@ -312,33 +319,33 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
         CODESPACE_WORKSPACE_ROOT: workspaceRoot,
         CODESPACE_TEST_ALLOWED_BASE: shadowRoot,
         CODESPACE_MCP_HTTP_HOST: '127.0.0.1',
-        CODESPACE_MCP_HTTP_PORT: String(SHADOW_PORTS.codespaceMcp),
+        CODESPACE_MCP_HTTP_PORT: String(shadowPorts.codespaceMcp),
         CODESPACE_MCP_HTTP_URL_FILE: urlFile,
         CODESPACE_MEMORY_LIFECYCLE_MODE: 'advisory',
-        CODESPACE_AGENT_CORE_MEMORY_LEASE_URL: `http://127.0.0.1:${SHADOW_PORTS.agentCore}/internal/memory-context-lease`,
-        CODESPACE_AGENT_CORE_SHARED_MEMORY_URL: `http://127.0.0.1:${SHADOW_PORTS.agentCore}/internal/codespace-memory`,
+        CODESPACE_AGENT_CORE_MEMORY_LEASE_URL: `http://127.0.0.1:${shadowPorts.agentCore}/internal/memory-context-lease`,
+        CODESPACE_AGENT_CORE_SHARED_MEMORY_URL: `http://127.0.0.1:${shadowPorts.agentCore}/internal/codespace-memory`,
         CODESPACE_MEMORY_LEASE_TIMEOUT_MS: '5000',
         CODESPACE_SHARED_MEMORY_TIMEOUT_MS: '10000',
       }),
     });
     children.push(codespace);
-    await waitForJson(`http://127.0.0.1:${SHADOW_PORTS.codespaceMcp}/healthz`, (value) => value?.status === 'ok');
+    await waitForJson(`http://127.0.0.1:${shadowPorts.codespaceMcp}/healthz`, (value) => value?.status === 'ok');
 
     const observatory = spawnTracked('memory-observatory-shadow', process.execPath, [observatoryEntry], {
       cwd: observatoryRoot,
       env: cleanChildEnv({
         MEMORY_OBSERVATORY_HOST: '127.0.0.1',
-        MEMORY_OBSERVATORY_PORT: String(SHADOW_PORTS.observatory),
-        MEMORY_OBSERVATORY_AGENT_CORE_URL: `http://127.0.0.1:${SHADOW_PORTS.agentCore}`,
+        MEMORY_OBSERVATORY_PORT: String(shadowPorts.observatory),
+        MEMORY_OBSERVATORY_AGENT_CORE_URL: `http://127.0.0.1:${shadowPorts.agentCore}`,
         MEMORY_OBSERVATORY_WORKSPACE_ROOT: workspaceRoot,
       }),
     });
     children.push(observatory);
-    await waitForJson(`http://127.0.0.1:${SHADOW_PORTS.observatory}/api/health`, (value) => value?.status === 'ok' && value?.mode === 'shadow');
+    await waitForJson(`http://127.0.0.1:${shadowPorts.observatory}/api/health`, (value) => value?.status === 'ok' && value?.mode === 'shadow');
 
     const { Client, StreamableHTTPClientTransport } = await loadMcpClient(pluginRoot);
     client = new Client({ name: 'memory-observatory-shadow-canary', version: '1.0.0' });
-    transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${SHADOW_PORTS.codespaceMcp}/mcp`));
+    transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${shadowPorts.codespaceMcp}/mcp`));
     await client.connect(transport);
     const tools = await client.listTools();
     if (tools.tools.length !== 19) throw new Error(`SHADOW_TOOL_COUNT_MISMATCH:${tools.tools.length}`);
@@ -465,7 +472,7 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
       throw new Error(`SHADOW_FINAL_CHECKPOINT_NOT_CLOSED:${safeLog(JSON.stringify(checkpointFinal))}`);
     }
 
-    const authority = await openAgentCoreMcpClient(shadowApiKey, `http://127.0.0.1:${SHADOW_PORTS.agentCore}`);
+    const authority = await openAgentCoreMcpClient(shadowApiKey, `http://127.0.0.1:${shadowPorts.agentCore}`);
     authorityClient = authority.client;
     authorityTransport = authority.transport;
     const promotedIds = [...new Set([...(checkpoint?.promotedMemoryIds ?? []), ...(checkpointFinal?.promotedMemoryIds ?? [])])];
@@ -495,9 +502,9 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
     authorityClient = undefined;
     authorityTransport = undefined;
 
-    const activityUrl = `http://127.0.0.1:${SHADOW_PORTS.observatory}/api/activity?after=0&limit=250`;
+    const activityUrl = `http://127.0.0.1:${shadowPorts.observatory}/api/activity?after=0&limit=250`;
     for (let attempt = 0; attempt < 60; attempt += 1) {
-      graph = await fetchJson(`http://127.0.0.1:${SHADOW_PORTS.observatory}/api/snapshot`);
+      graph = await fetchJson(`http://127.0.0.1:${shadowPorts.observatory}/api/snapshot`);
       activity = await fetchJson(activityUrl);
       const events = new Set((activity?.records ?? []).map((record) => record.event));
       const contextObserved = (activity?.records ?? []).some((record) => record.contextId === openedResume.memoryContextId);
@@ -507,7 +514,7 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
       await sleep(100);
     }
 
-    backendGraph = await fetchJson(`http://127.0.0.1:${SHADOW_PORTS.agentCore}/internal/memory-observatory/snapshot`);
+    backendGraph = await fetchJson(`http://127.0.0.1:${shadowPorts.agentCore}/internal/memory-observatory/snapshot`);
     const events = [...new Set((activity?.records ?? []).map((record) => record.event))].sort();
     const contextObserved = (activity?.records ?? []).some((record) => record.contextId === opened.memoryContextId);
     const taskObserved = (activity?.records ?? []).some((record) => record.continuityTaskId === opened.continuityTaskId);
@@ -531,13 +538,13 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
   const liveAgentCoreAfter = await safeFetchProjection(LIVE_AGENT_CORE_URL, projectAgentHealth);
   const liveCodespaceAfter = await safeFetchProjection(LIVE_CODESPACE_URL, projectCodespaceHealth);
   const metadataAfter = await metadataFingerprint();
-  const shadowPortsReleased = (await Promise.all(Object.values(SHADOW_PORTS).map(isPortFree))).every(Boolean);
+  const shadowPortsReleased = (await Promise.all(Object.values(shadowPorts).map(isPortFree))).every(Boolean);
   const liveUnchanged = stableJson(liveAgentCoreBefore) === stableJson(liveAgentCoreAfter)
     && stableJson(liveCodespaceBefore) === stableJson(liveCodespaceAfter)
     && stableJson(metadataBefore) === stableJson(metadataAfter);
 
   const result = {
-    ports: { ...SHADOW_PORTS },
+    ports: { ...shadowPorts },
     shadow: {
       agentCoreHealthy: Boolean(graph),
       codespaceMcpHealthy: Boolean(opened),
@@ -592,6 +599,12 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
 function cliOptions(argv) {
   let stateRoot;
   let json = false;
+  const ports = {};
+  const portFlags = new Map([
+    ['--agent-core-port', 'agentCore'],
+    ['--codespace-mcp-port', 'codespaceMcp'],
+    ['--observatory-port', 'observatory'],
+  ]);
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--json') { json = true; continue; }
@@ -602,18 +615,26 @@ function cliOptions(argv) {
       index += 1;
       continue;
     }
+    if (portFlags.has(arg)) {
+      const value = Number(argv[index + 1]);
+      if (!Number.isInteger(value) || value < 1 || value > 65535) throw new Error(`SHADOW_CANARY_PORT_INVALID:${arg}`);
+      ports[portFlags.get(arg)] = value;
+      index += 1;
+      continue;
+    }
     throw new Error(`SHADOW_CANARY_ARGUMENT_UNSUPPORTED:${arg}`);
   }
-  return { stateRoot, json };
+  return { stateRoot, json, ports };
 }
 
 function cliReport(result) {
+  const shadowPorts = result.ports;
   return {
     status: 'PASS',
     shadow: {
-      agentCoreUrl: `http://127.0.0.1:${SHADOW_PORTS.agentCore}`,
-      candidateMcpUrl: `http://127.0.0.1:${SHADOW_PORTS.codespaceMcp}/mcp`,
-      observatoryUrl: `http://127.0.0.1:${SHADOW_PORTS.observatory}`,
+      agentCoreUrl: `http://127.0.0.1:${shadowPorts.agentCore}`,
+      candidateMcpUrl: `http://127.0.0.1:${shadowPorts.codespaceMcp}/mcp`,
+      observatoryUrl: `http://127.0.0.1:${shadowPorts.observatory}`,
       githubEnabled: result.shadow.githubEnabled,
       remoteMemoryEnabled: result.shadow.remoteMemoryEnabled,
       separateStateRoots: result.shadow.separateStateRoots,
@@ -654,7 +675,11 @@ if (entry && fileURLToPath(import.meta.url) === entry) {
     process.exitCode = 1;
   }
   if (parsed) {
-    runMemoryObservatoryShadowCanary({ repoRoot: process.cwd(), ...(parsed.stateRoot ? { stateRoot: parsed.stateRoot } : {}) })
+    runMemoryObservatoryShadowCanary({
+      repoRoot: process.cwd(),
+      ...(parsed.stateRoot ? { stateRoot: parsed.stateRoot } : {}),
+      ...(Object.keys(parsed.ports).length > 0 ? { ports: parsed.ports } : {}),
+    })
       .then((result) => {
         const report = cliReport(result);
         process.stdout.write(parsed.json ? `${JSON.stringify(report)}\n` : `${JSON.stringify(report, null, 2)}\n`);

@@ -4,13 +4,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 STATE_DIR="${MEMORY_OBSERVATORY_LIFECYCLE_DIR:-/workspaces/.agent-core-codespace/memory-observatory}"
 PID_FILE="$STATE_DIR/memory-observatory.pid"
+PORT="${MEMORY_OBSERVATORY_PORT:-3697}"
 AGENT_CORE_URL="${MEMORY_OBSERVATORY_AGENT_CORE_URL:-http://127.0.0.1:8865}"
-HEALTH_URL="http://127.0.0.1:3697/api/health"
+HEALTH_URL="http://127.0.0.1:${PORT}/api/health"
 
 safe_ready() {
   printf '%s\n' \
     'Memory Observatory READY' \
-    'Local URL: http://127.0.0.1:3697' \
+    "Local URL: http://127.0.0.1:${PORT}" \
     'Mode: shadow' \
     'Agent Core target: loopback'
 }
@@ -26,6 +27,7 @@ is_loopback_origin() {
   (( port <= 65535 ))
 }
 
+[[ "$PORT" =~ ^[0-9]+$ ]] && (( PORT >= 1 && PORT <= 65535 )) || fail 'PORT_INVALID'
 is_loopback_origin "$AGENT_CORE_URL" || fail 'AGENT_CORE_TARGET_NOT_LOOPBACK'
 [[ -f "$PID_FILE" ]] || fail 'NOT_RUNNING'
 pid="$(tr -d '[:space:]' < "$PID_FILE" 2>/dev/null || true)"

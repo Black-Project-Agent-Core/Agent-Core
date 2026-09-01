@@ -22,8 +22,31 @@ function canConnect(port: number): Promise<boolean> {
   });
 }
 
-async function runCanary(stateRoot: string): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
-  const child = spawn(process.execPath, [canaryScript, '--root', stateRoot, '--json'], {
+async function freeLoopbackPort(): Promise<number> {
+  const server = net.createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('EPHEMERAL_PORT_ALLOCATION_FAILED');
+  const port = address.port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+}
+
+async function runCanary(
+  stateRoot: string,
+  ports: { agentCore: number; codespaceMcp: number; observatory: number },
+): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
+  const child = spawn(process.execPath, [
+    canaryScript,
+    '--root', stateRoot,
+    '--agent-core-port', String(ports.agentCore),
+    '--codespace-mcp-port', String(ports.codespaceMcp),
+    '--observatory-port', String(ports.observatory),
+    '--json',
+  ], {
     cwd: repoRoot,
     env: { ...process.env, NODE_ENV: 'test' },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -41,19 +64,25 @@ async function runCanary(stateRoot: string): Promise<{ exitCode: number | null; 
 describe('isolated Memory Observatory shadow canary', () => {
   it('runs Agent Core + candidate Codespace MCP + Observatory on shadow-only ports, performs a real leased mutation/checkpoint, then leaves live runtime unchanged', async () => {
     const stateRoot = await mkdtemp(path.join(os.tmpdir(), 'agent-core-observatory-shadow-'));
+    const ports = {
+      agentCore: await freeLoopbackPort(),
+      codespaceMcp: await freeLoopbackPort(),
+      observatory: await freeLoopbackPort(),
+    };
+    expect(new Set(Object.values(ports)).size).toBe(3);
     try {
-      for (const port of [8865, 39765, 3697]) expect(await canConnect(port)).toBe(false);
+      for (const port of Object.values(ports)) expect(await canConnect(port)).toBe(false);
 
-      const result = await runCanary(stateRoot);
+      const result = await runCanary(stateRoot, ports);
       expect(result.exitCode, result.stderr || result.stdout).toBe(0);
       const lines = result.stdout.trim().split(/\r?\n/).filter(Boolean);
       const report = JSON.parse(lines.at(-1) ?? '{}') as any;
 
       expect(report.status).toBe('PASS');
       expect(report.shadow).toMatchObject({
-        agentCoreUrl: 'http://127.0.0.1:8865',
-        candidateMcpUrl: 'http://127.0.0.1:39765/mcp',
-        observatoryUrl: 'http://127.0.0.1:3697',
+        agentCoreUrl: `http://127.0.0.1:${ports.agentCore}`,
+        candidateMcpUrl: `http://127.0.0.1:${ports.codespaceMcp}/mcp`,
+        observatoryUrl: `http://127.0.0.1:${ports.observatory}`,
       });
       expect(report.canary.memoryContextOpened).toBe(true);
       expect(report.canary.recallObserved).toBe(true);
@@ -70,7 +99,7 @@ describe('isolated Memory Observatory shadow canary', () => {
       expect(report.live.before).toEqual(report.live.after);
       expect(report.cleanup.shadowPortsClosed).toBe(true);
 
-      for (const port of [8865, 39765, 3697]) expect(await canConnect(port)).toBe(false);
+      for (const port of Object.values(ports)) expect(await canConnect(port)).toBe(false);
     } finally {
       await rm(stateRoot, { recursive: true, force: true });
     }

@@ -8,15 +8,15 @@ STATE_DIR="${MEMORY_OBSERVATORY_LIFECYCLE_DIR:-/workspaces/.agent-core-codespace
 PID_FILE="$STATE_DIR/memory-observatory.pid"
 LOG_FILE="$STATE_DIR/memory-observatory.log"
 HOST="127.0.0.1"
-PORT="3697"
+PORT="${MEMORY_OBSERVATORY_PORT:-3697}"
 AGENT_CORE_URL="${MEMORY_OBSERVATORY_AGENT_CORE_URL:-http://127.0.0.1:8865}"
 WORKSPACE_ROOT="${MEMORY_OBSERVATORY_WORKSPACE_ROOT:-/workspaces/Agent-Core}"
-HEALTH_URL="http://127.0.0.1:3697/api/health"
+HEALTH_URL="http://127.0.0.1:${PORT}/api/health"
 
 safe_ready() {
   printf '%s\n' \
     'Memory Observatory READY' \
-    'Local URL: http://127.0.0.1:3697' \
+    "Local URL: http://127.0.0.1:${PORT}" \
     'Mode: shadow' \
     'Agent Core target: loopback'
 }
@@ -52,6 +52,7 @@ stop_owned_process() {
   kill -KILL "$pid" 2>/dev/null || true
 }
 
+[[ "$PORT" =~ ^[0-9]+$ ]] && (( PORT >= 1 && PORT <= 65535 )) || fail 'PORT_INVALID'
 is_loopback_origin "$AGENT_CORE_URL" || fail 'AGENT_CORE_TARGET_NOT_LOOPBACK'
 [[ -d "$WORKSPACE_ROOT" ]] || fail 'WORKSPACE_ROOT_MISSING'
 mkdir -p "$STATE_DIR"
@@ -70,7 +71,7 @@ if [[ -f "$PID_FILE" ]]; then
 fi
 
 if health_ok; then
-  fail 'PORT_3697_ALREADY_OWNED_BY_ANOTHER_PROCESS'
+  fail "PORT_${PORT}_ALREADY_OWNED_BY_ANOTHER_PROCESS"
 fi
 
 if [[ ! -f "$OBSERVATORY_ROOT/server-dist/server.js" || ! -f "$OBSERVATORY_ROOT/dist/index.html" ]]; then

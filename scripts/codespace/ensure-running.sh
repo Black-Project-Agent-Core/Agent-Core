@@ -289,5 +289,11 @@ if ! CODESPACE_MEMORY_LIFECYCLE_MODE="$memory_lifecycle_mode" \
   exit 94
 fi
 
+if [[ "${AGENT_CORE_MEMORY_OBSERVATORY_AUTO_START:-1}" == "1" ]]; then
+  if ! run_without_codespace_lifecycle_lock bash "$SCRIPT_DIR/ensure-memory-observatory-running.sh"; then
+    log_info 'Memory Observatory auto-start degraded; primary Agent Core and Codespace bridge remain READY.'
+  fi
+fi
+
 log_info 'READY: all required local, forwarding, public-health, OAuth, MCP-auth, codespace-bridge, and configured stable-gateway gates passed.'
 printf 'Agent Core Codespace MCP URL: %s/mcp\n' "$connection_base_url"
