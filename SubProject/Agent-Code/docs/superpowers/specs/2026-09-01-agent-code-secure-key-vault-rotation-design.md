@@ -1,7 +1,7 @@
 # Agent Code Secure API Key Vault & Deterministic Rotation — Design Spec
 
 Date: 2026-09-01
-Status: Proposed / awaiting user review
+Status: Approved for implementation planning
 Scope: Milestone 2A — OpenRouter-only secure credential vault and deterministic key-rotation core
 
 ## 1. Product intent
