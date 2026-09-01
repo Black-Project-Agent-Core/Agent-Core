@@ -124,7 +124,7 @@ The core crate must not depend on Tauri, WebView APIs, Windows GUI APIs, Agent C
   - `LimitReset`
   - `KeySummary`
 
-- [ ] **Step 1: Add the workspace/path dependency and the exact core dependencies**
+- [x] **Step 1: Add the workspace/path dependency and the exact core dependencies**
 
 Update the Tauri package so it is also a workspace root:
 
@@ -157,7 +157,7 @@ zeroize = { version = "1.8.2", features = ["derive"] }
 
 Run `cargo update --manifest-path src-tauri/Cargo.toml` only after the RED test in Step 3 is proven. Commit the resulting `src-tauri/Cargo.lock`; do not generate a second lockfile under the child crate.
 
-- [ ] **Step 2: Write the secret contract test first**
+- [x] **Step 2: Write the secret contract test first**
 
 Create `secret.rs` initially with tests referring to types that do not exist yet:
 
@@ -181,7 +181,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 3: Run the focused Rust test to verify RED**
+- [x] **Step 3: Run the focused Rust test to verify RED**
 
 Run:
 
@@ -191,7 +191,7 @@ cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml secret::t
 
 Expected: FAIL because `SecretBytes` is undefined.
 
-- [ ] **Step 4: Implement `SecretBytes` with zeroization and no Display/Serialize**
+- [x] **Step 4: Implement `SecretBytes` with zeroization and no Display/Serialize**
 
 Implement this contract:
 
@@ -271,7 +271,7 @@ impl fmt::Debug for SecretBytes {
 
 Do **not** implement `Clone`, `Display`, `Serialize`, or `AsRef<str>` for `SecretBytes`.
 
-- [ ] **Step 5: Add exact metadata-only types and serialization tests**
+- [x] **Step 5: Add exact metadata-only types and serialization tests**
 
 Create `types.rs` with:
 
@@ -331,7 +331,7 @@ pub struct KeySummary {
 
 Add a test that serializes `KeySummary` and asserts the synthetic full key string is absent.
 
-- [ ] **Step 6: Export only safe modules from `lib.rs`**
+- [x] **Step 6: Export only safe modules from `lib.rs`**
 
 ```rust
 mod secret;
@@ -343,7 +343,7 @@ pub use types::{
 };
 ```
 
-- [ ] **Step 7: Run focused tests, lockfile update, and compile gate**
+- [x] **Step 7: Run focused tests, lockfile update, and compile gate**
 
 Run:
 
@@ -355,7 +355,7 @@ npm run test:tauri-contract
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit and publish checkpoint**
+- [x] **Step 8: Commit and publish checkpoint**
 
 ```bash
 git add SubProject/Agent-Code/src-tauri/Cargo.toml \

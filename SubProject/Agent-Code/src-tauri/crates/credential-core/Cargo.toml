@@ -1,0 +1,12 @@
+[package]
+name = "agent-code-credential-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+subtle = "2.6.1"
+thiserror = "2.0.17"
+zeroize = { version = "1.8.2", features = ["derive"] }
