@@ -39,6 +39,7 @@ function transportEnvironment(overrides: Record<string, string> = {}): Record<st
     CONTROL_PLANE_API_KEY: 'must-not-reach-shell',
     CODESPACE_MEMORY_LIFECYCLE_MODE: 'disabled',
     CODESPACE_AGENT_CORE_MEMORY_LEASE_URL: '',
+    CODESPACE_AGENT_CORE_SHARED_MEMORY_URL: '',
     ...overrides,
   };
 }
@@ -58,7 +59,7 @@ describe('codespace MCP stdio server', () => {
 
       const tools = await client.listTools();
       const names = tools.tools.map((tool) => tool.name);
-      expect(names).toHaveLength(12);
+      expect(names).toHaveLength(19);
       expect(names).toEqual(expect.arrayContaining([
         'codespace_status',
         'list_directory',
@@ -72,6 +73,13 @@ describe('codespace MCP stdio server', () => {
         'read_process_output',
         'stop_process',
         'list_processes',
+        'memory_status',
+        'memory_open_context',
+        'memory_search',
+        'memory_get',
+        'memory_explain',
+        'memory_remember_more',
+        'memory_checkpoint',
       ]));
 
       const readSeed = await client.callTool({
@@ -111,6 +119,106 @@ describe('codespace MCP stdio server', () => {
       });
       expect(JSON.stringify(credentialProbe)).toContain('unset');
       expect(JSON.stringify(credentialProbe)).not.toContain('must-not-reach-shell');
+    } finally {
+      await client.close().catch(() => undefined);
+    }
+  });
+
+  it('opens shared Agent Core memory context and uses its returned lease for the existing mutation tools', async () => {
+    const validLease = 'mcl1.shared-open-context.ciphertext.auth-tag';
+    const sharedCalls: Array<Record<string, unknown>> = [];
+    const leaseCalls: Array<Record<string, unknown>> = [];
+    const authority = createServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, any>;
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/internal/codespace-memory') {
+        sharedCalls.push(body);
+        if (body.action !== 'open_context') {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ error: 'CODESPACE_SHARED_MEMORY_ACTION_INVALID' }));
+          return;
+        }
+        res.end(JSON.stringify({
+          ok: true,
+          result: {
+            routeContextId: '11111111-1111-4111-8111-111111111111',
+            memoryContextId: '22222222-2222-4222-8222-222222222222',
+            continuityTaskId: '33333333-3333-4333-8333-333333333333',
+            continuityTurnId: '44444444-4444-4444-8444-444444444444',
+            memoryContextLease: validLease,
+            memoryContextLeaseExpiresAt: '2026-09-01T12:00:00.000Z',
+            memorySummary: [{ memoryId: '55555555-5555-4555-8555-555555555555', revisionId: '66666666-6666-4666-8666-666666666666', canonicalKey: 'decision.shared', valueText: 'same Agent Core memory' }],
+            memoryLifecycle: { mode: 'enforce', postflightState: 'OPEN' },
+          },
+        }));
+        return;
+      }
+      if (req.url === '/internal/memory-context-lease') {
+        leaseCalls.push(body);
+        if (body.lease !== validLease) {
+          res.statusCode = 428;
+          res.end(JSON.stringify({ error: { code: 'MEMORY_PREFLIGHT_REQUIRED' } }));
+          return;
+        }
+        res.end(JSON.stringify({
+          ok: true,
+          mode: 'enforce',
+          required: true,
+          valid: true,
+          mutationClass: 'agent_core_mutation',
+          ...(body.action === 'after' ? { postflightState: 'POSTFLIGHT_PENDING' } : {}),
+        }));
+        return;
+      }
+      res.statusCode = 404;
+      res.end(JSON.stringify({ error: 'not_found' }));
+    });
+    await new Promise<void>((resolve) => authority.listen(0, '127.0.0.1', resolve));
+    authorityServers.push(authority);
+    const port = (authority.address() as AddressInfo).port;
+
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [serverEntry],
+      env: transportEnvironment({
+        CODESPACE_MEMORY_LIFECYCLE_MODE: 'enforce',
+        CODESPACE_AGENT_CORE_MEMORY_LEASE_URL: `http://127.0.0.1:${port}/internal/memory-context-lease`,
+        CODESPACE_AGENT_CORE_SHARED_MEMORY_URL: `http://127.0.0.1:${port}/internal/codespace-memory`,
+      }),
+      stderr: 'pipe',
+    });
+    const client = new Client({ name: 'codespace-shared-memory-test', version: '1.0.0' });
+    try {
+      await client.connect(transport);
+      const opened = await client.callTool({
+        name: 'memory_open_context',
+        arguments: { task: 'Continue shared memory integration' },
+      });
+      expect(opened.isError).not.toBe(true);
+      const openedBody = JSON.parse(String((opened.content as any[])[0].text));
+      expect(openedBody.memoryContextLease).toBe(validLease);
+      expect(openedBody.memorySummary[0].canonicalKey).toBe('decision.shared');
+
+      const written = await client.callTool({
+        name: 'write_file',
+        arguments: {
+          path: 'shared-memory-write.txt',
+          content: 'written under shared memory lease',
+          memoryContextLease: openedBody.memoryContextLease,
+        },
+      });
+      expect(written.isError).not.toBe(true);
+      expect(JSON.stringify(written)).toContain('POSTFLIGHT_PENDING');
+      expect(JSON.stringify(written)).not.toContain(validLease);
+      await expect(fs.readFile(path.join(root, 'shared-memory-write.txt'), 'utf8'))
+        .resolves.toBe('written under shared memory lease');
+
+      expect(sharedCalls).toEqual([{ action: 'open_context', workspaceRoot: root, task: 'Continue shared memory integration' }]);
+      expect(leaseCalls.map((call) => call.action)).toEqual(['before', 'after']);
+      expect(leaseCalls.every((call) => call.lease === validLease)).toBe(true);
+      expect(leaseCalls.every((call) => call.workspaceRoot === root)).toBe(true);
     } finally {
       await client.close().catch(() => undefined);
     }

@@ -17,6 +17,8 @@ import {
 } from './filesystem.js';
 import { ProcessManager } from './processes.js';
 import { resolveWorkspaceRoot } from './workspace.js';
+import { CodespaceSharedMemoryClient, parseSharedMemoryRuntimeConfig } from './shared-memory.js';
+import { registerCodespaceSharedMemoryTools } from './shared-memory-tools.js';
 
 function textResult(value: unknown) {
   return {
@@ -73,6 +75,7 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
   const processes = new ProcessManager(root, runtimeDir, allowedBase);
   await processes.reconcile();
   const memoryLeaseClient = new CodespaceMemoryLeaseClient(parseMemoryLeaseRuntimeConfig());
+  const sharedMemoryClient = new CodespaceSharedMemoryClient(parseSharedMemoryRuntimeConfig());
   const memoryContextLeaseSchema = z.string().min(16).max(4096).optional();
 
   const guardedMutation = async <T>(
@@ -114,6 +117,7 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
       branch: branchResult.exitCode === 0 ? branchResult.stdout.trim() || undefined : undefined,
       processSessions: processes.list().length,
       memoryLifecycleMode: memoryLeaseClient.config.mode,
+      sharedMemoryAuthorityConfigured: sharedMemoryClient.config.endpoint !== null,
     };
   }));
 
@@ -162,7 +166,7 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
 
   server.registerTool('write_file', {
     title: 'Write File',
-    description: 'Use to create, replace, or append UTF-8 text in one file inside the active codespace workspace.',
+    description: 'Use to create, replace, or append UTF-8 text in one file inside the active codespace workspace. When memory lifecycle is active, obtain memoryContextLease from memory_open_context first.',
     inputSchema: {
       path: z.string().min(1),
       content: z.string(),
@@ -179,7 +183,7 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
 
   server.registerTool('edit_file', {
     title: 'Edit File',
-    description: 'Use to make an exact text replacement in one workspace file when the expected match count is known.',
+    description: 'Use to make an exact text replacement in one workspace file when the expected match count is known. When memory lifecycle is active, obtain memoryContextLease from memory_open_context first.',
     inputSchema: {
       path: z.string().min(1),
       oldString: z.string().min(1),
@@ -202,7 +206,7 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
 
   server.registerTool('execute_command', {
     title: 'Execute Command',
-    description: 'Use to run one bounded bash command in the active codespace workspace, including builds, tests, Git, and diagnostics.',
+    description: 'Use to run one bounded bash command in the active codespace workspace, including builds, tests, Git, and diagnostics. Meaningful commands require memoryContextLease from memory_open_context when memory lifecycle is active.',
     inputSchema: {
       command: z.string().min(1),
       cwd: z.string().optional(),
@@ -219,7 +223,7 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
 
   server.registerTool('start_process', {
     title: 'Start Process',
-    description: 'Use to start one long-running bash process inside the active codespace workspace and receive an opaque session ID.',
+    description: 'Use to start one long-running bash process inside the active codespace workspace and receive an opaque session ID. When memory lifecycle is active, obtain memoryContextLease from memory_open_context first.',
     inputSchema: {
       command: z.string().min(1),
       cwd: z.string().optional(),
@@ -249,6 +253,8 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
     inputSchema: { sessionId: z.string().min(1) },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   }, async ({ sessionId }) => guarded(() => processes.stop(sessionId)));
+
+  registerCodespaceSharedMemoryTools(server, sharedMemoryClient, root);
 
   server.registerTool('list_processes', {
     title: 'List Processes',
