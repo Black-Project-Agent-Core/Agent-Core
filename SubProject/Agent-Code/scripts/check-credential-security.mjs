@@ -18,6 +18,9 @@ const tracked = execFileSync(
     repoRoot,
     'ls-files',
     '-z',
+    '--cached',
+    '--others',
+    '--exclude-standard',
     '--',
     `${projectPrefix}/src`,
     `${projectPrefix}/src-tauri/src`,
@@ -42,6 +45,7 @@ const forbiddenRules = [
   ],
 ];
 const unsafeProtector = /\b(?:class|struct|type)\s+(?:PlaintextProtector|NoopProtector)\b/;
+const modelInferenceEndpoint = /\/(?:chat\/completions|responses|completions)\b/i;
 
 const findings = [];
 for (const repoRelativePath of tracked) {
@@ -58,6 +62,12 @@ for (const repoRelativePath of tracked) {
   }
   if (unsafeProtector.test(source)) {
     findings.push(`unsafe-protector: ${repoRelativePath}`);
+  }
+  if (
+    repoRelativePath.endsWith('/src-tauri/crates/credential-core/src/monitor.rs') &&
+    modelInferenceEndpoint.test(source)
+  ) {
+    findings.push(`shadow-health-model-inference: ${repoRelativePath}`);
   }
 }
 
@@ -158,6 +168,9 @@ function runDetectorSelfTest() {
   }
   if (!unsafeProtector.test('class NoopProtector {}')) {
     throw new Error('credential-security detector self-test missed NoopProtector');
+  }
+  if (!modelInferenceEndpoint.test('/chat/completions')) {
+    throw new Error('credential-security detector self-test missed health-monitor inference endpoint');
   }
   const stripped = stripRustCfgTestItems('#[cfg(test)]\nmod tests { struct PlaintextProtector; }\nstruct Safe;');
   if (unsafeProtector.test(stripped)) {

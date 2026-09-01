@@ -9,6 +9,7 @@ const windowsBuildUrl = new URL('./build-windows-x64.sh', import.meta.url);
 const makensisWrapperUrl = new URL('./toolchain/makensis', import.meta.url);
 const buildRsUrl = new URL('../src-tauri/build.rs', import.meta.url);
 const credentialCommandsUrl = new URL('../src-tauri/src/credential/commands.rs', import.meta.url);
+const credentialStateUrl = new URL('../src-tauri/src/credential/state.rs', import.meta.url);
 const dpapiUrl = new URL('../src-tauri/src/credential/dpapi.rs', import.meta.url);
 const tauriMainUrl = new URL('../src-tauri/src/main.rs', import.meta.url);
 
@@ -20,6 +21,7 @@ const windowsBuild = await readFile(windowsBuildUrl, 'utf8');
 const makensisWrapper = await readFile(makensisWrapperUrl, 'utf8');
 const buildRs = await readFile(buildRsUrl, 'utf8');
 const credentialCommands = await readFile(credentialCommandsUrl, 'utf8');
+const credentialState = await readFile(credentialStateUrl, 'utf8');
 const dpapi = await readFile(dpapiUrl, 'utf8');
 const tauriMain = await readFile(tauriMainUrl, 'utf8');
 const [window] = config.app.windows;
@@ -99,6 +101,9 @@ for (const forbidden of [
   assert.doesNotMatch(tauriMain, new RegExp(forbidden, 'i'));
 }
 assert.match(tauriMain, /CredentialAppState::open/);
+assert.match(credentialState, /ShadowHealthMonitor/);
+assert.match(credentialState, /ShadowHealthMonitor::start/);
+assert.match(credentialState, /_monitor:\s*ShadowHealthMonitor/);
 assert.match(tauriMain, /app_local_data_dir\(\)/);
 assert.match(tauriMain, /app\.manage\(state\)/);
 assert.match(tauriMain, /tauri::generate_handler!\[/);

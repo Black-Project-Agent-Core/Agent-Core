@@ -795,6 +795,55 @@ mod tests {
     }
 
     #[test]
+    fn twenty_key_provider_outage_does_not_churn_the_pool() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = CredentialManager::open(
+            VaultStore::open(dir.path().join("vault.db")).unwrap(),
+            XorTestProtector(0x52),
+        )
+        .unwrap();
+        let mut key_ids = Vec::new();
+        for index in 0..20 {
+            let summary = manager
+                .add_openrouter_key(
+                    SecretBytes::parse_import(format!(
+                        "sk-or-v1-SHADOW_OUTAGE_KEY_{index:02}_123456789"
+                    ))
+                    .unwrap(),
+                    format!("Outage {index}"),
+                    100 + index,
+                )
+                .unwrap();
+            let healthy = FakeTransport::respond(response(
+                200,
+                r#"{"data":{"limit":100.0,"limit_remaining":80.0,"limit_reset":"monthly"}}"#,
+            ));
+            manager
+                .validate_openrouter_key_with(&summary.key_id, &healthy, 1_000 + index)
+                .unwrap();
+            key_ids.push(summary.key_id);
+        }
+
+        for (index, key_id) in key_ids.iter().enumerate() {
+            let outage = FakeTransport::fail(ProbeTransportError::Timeout);
+            let error = manager
+                .validate_openrouter_key_with(key_id, &outage, 2_000 + index as i64)
+                .unwrap_err();
+            assert!(matches!(error, OpenRouterValidationError::ProbeUnavailable));
+        }
+
+        let summaries = manager.list_summaries().unwrap();
+        assert_eq!(summaries.len(), 20);
+        assert!(summaries.iter().all(|summary| {
+            summary.lifecycle_state == LifecycleState::Enabled
+                && summary.availability_state == AvailabilityState::Ready
+                && summary.cooldown_until_utc_ms.is_none()
+                && summary.last_failure_class == Some(FailureClass::ProviderTransient)
+                && summary.last_probe_at_utc_ms.is_some()
+        }));
+    }
+
+    #[test]
     fn malformed_json_is_typed_and_does_not_leak_provider_body() {
         let (_dir, manager, key_id) = manager_with_key();
         let canary = "sk-or-v1-MALFORMED_PROVIDER_BODY_CANARY";

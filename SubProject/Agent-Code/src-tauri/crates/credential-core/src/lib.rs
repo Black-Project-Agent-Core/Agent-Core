@@ -4,6 +4,7 @@ mod rotation;
 mod classifier;
 mod intelligence;
 mod manager;
+mod monitor;
 mod protector;
 mod secret;
 mod store;
@@ -17,6 +18,12 @@ pub use intelligence::{
 };
 pub use openrouter::{OpenRouterProbeClient, OpenRouterValidationError};
 pub use manager::{CredentialManager, ManagerError};
+pub use monitor::{
+    plan_shadow_health_probes, shadow_health_next_probe_at, ShadowHealthMonitor,
+    ShadowHealthMonitorStartError, ShadowHealthProbePlan, MONITOR_HEALTHY_INTERVAL_MS,
+    MONITOR_INITIAL_DELAY_MS, MONITOR_JITTER_WINDOW_MS, MONITOR_MAX_CONCURRENT_PROBES,
+    MONITOR_WARNING_INTERVAL_MS,
+};
 pub use protector::{ProtectError, ProtectedBlob, SecretProtector};
 pub use rotation::{KeyLease, OutcomeSignal, PoolUnavailable, RotationError, RotationSession, RotationSnapshot};
 pub use synthetic::{run_synthetic_rotation_self_test, SyntheticRotationReport};
