@@ -146,6 +146,17 @@ pub struct VaultStore {
 }
 
 impl VaultStore {
+    pub(crate) fn open_in_memory() -> Result<Self, StoreError> {
+        let connection = Connection::open_in_memory().map_err(StoreError::Sqlite)?;
+        let mut store = Self {
+            path: PathBuf::from(":memory:"),
+            connection,
+        };
+        store.migrate_v1()?;
+        store.verify_integrity(false)?;
+        Ok(store)
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         let path = path.as_ref().to_path_buf();
         let existed = path.exists();

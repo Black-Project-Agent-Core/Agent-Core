@@ -33,6 +33,7 @@
 - Root `.vscode/` remains user-owned/untracked and untouched.
 - Every production behavior change follows RED → GREEN → focused regression → commit → push → remote SHA readback.
 - Never force-push.
+- Execution isolation note: because another session owns `feature/agent-code-key-vault-rotation`, this execution continues on `feature/agent-code-key-vault-rotation-primary` and will reconcile non-force before final integration.
 
 ## Execution Branch Contract
 
@@ -1078,7 +1079,7 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/feature/agent-code-key-va
   - `run_synthetic_rotation_self_test() -> SyntheticRotationReport`
   - deterministic scripted scenario runner used by tests and later Tauri command
 
-- [ ] **Step 1: Write RED scenario tests**
+- [x] **Step 1: Write RED scenario tests**
 
 Script these exact scenarios:
 
@@ -1108,13 +1109,13 @@ all keys unavailable
 returns PoolUnavailable exactly once, no loop
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml synthetic::tests -- --nocapture
 ```
 
-- [ ] **Step 3: Implement synthetic scripts using fake protected secrets only**
+- [x] **Step 3: Implement synthetic scripts using fake protected secrets only**
 
 The report may contain:
 
@@ -1132,7 +1133,7 @@ pub struct SyntheticRotationReport {
 
 It must contain no secret fields and no raw HTTP headers.
 
-- [ ] **Step 4: Add the property-test dependency**
+- [x] **Step 4: Add the property-test dependency**
 
 Add to `crates/credential-core/Cargo.toml` under `[dev-dependencies]`:
 
@@ -1140,7 +1141,7 @@ Add to `crates/credential-core/Cargo.toml` under `[dev-dependencies]`:
 proptest = "1.9.0"
 ```
 
-- [ ] **Step 5: Add proptest state-machine invariants**
+- [x] **Step 5: Add proptest state-machine invariants**
 
 Generate pools of 1..32 keys and event sequences of 1..500 events. For every generated run assert:
 
@@ -1153,7 +1154,7 @@ cursor remains valid for current stable slot set
 same seed/events -> same final snapshot
 ```
 
-- [ ] **Step 6: Add deterministic 100,000-transition stress mode**
+- [x] **Step 6: Add deterministic 100,000-transition stress mode**
 
 Use a fixed PRNG/event seed in the test so the workload is replayable. Measure only in-memory selection separately from DB persistence.
 
@@ -1169,7 +1170,7 @@ deterministic_replay_equal = true
 
 Record p50/p95 selection latency as evidence; target p95 `< 1 ms` on the Codespace/native test host, but do not weaken correctness gates if the virtualized host is noisy. If p95 misses, profile before changing design or threshold.
 
-- [ ] **Step 7: Add concurrency race tests**
+- [x] **Step 7: Add concurrency race tests**
 
 Spawn 8 threads, each repeatedly performing manager operations through the same synchronized instance. Include acquire/report, disable, cooldown reconciliation, and delete of non-leased keys.
 
@@ -1183,14 +1184,14 @@ unique lease IDs
 state snapshot remains parseable/persistable
 ```
 
-- [ ] **Step 8: Run stress/property/core suite**
+- [x] **Step 8: Run stress/property/core suite**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml synthetic::tests -- --nocapture
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml -- --nocapture
 ```
 
-- [ ] **Step 9: Commit/push/readback**
+- [x] **Step 9: Commit/push/readback**
 
 ```bash
 git add SubProject/Agent-Code/src-tauri/crates/credential-core
