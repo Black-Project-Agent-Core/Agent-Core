@@ -426,6 +426,8 @@ Execution failure/artifact/process-checkpoint promotion now uses the same cognit
 
 ## Phase 6 — Agent Core Hard Memory Lifecycle
 
+Executable plan: [`agent-core-memory-nervous-system-phase-6-implementation-plan.md`](./agent-core-memory-nervous-system-phase-6-implementation-plan.md)
+
 **Purpose:** Enforce preflight/postflight on selected Agent Core actionable flows with staged rollback.
 
 **Deliverables:**
