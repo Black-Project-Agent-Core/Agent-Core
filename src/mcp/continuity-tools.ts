@@ -221,6 +221,11 @@ export function registerContinuityTools(server: McpServer, runtime: RuntimeServi
       turnState = 'interrupted';
     }
 
+    const remoteDurability = await runtime.memory.syncDurableBoundary(
+      currentScope,
+      isTerminalContinuityTaskStatus(input.status) ? 'continuity_terminal' : 'continuity_checkpoint',
+    );
+
     const snapshot = await runtime.memory.getContinuitySnapshot(currentScope);
     return {
       ...checkpoint,
@@ -235,6 +240,7 @@ export function registerContinuityTools(server: McpServer, runtime: RuntimeServi
       promotedMemoryIds: promoted.memoryIds,
       continuitySnapshotHash: snapshot.snapshotHash,
       frontier: snapshot.frontier,
+      remoteDurability,
     };
   }));
 

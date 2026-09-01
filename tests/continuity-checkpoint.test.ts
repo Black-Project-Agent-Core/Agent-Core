@@ -179,6 +179,9 @@ describe('continuity checkpoint MCP tools', () => {
     expect(completed.raw.result.isError).not.toBe(true);
     expect(completed.result.taskStatus).toBe('completed');
     expect(completed.result.turnState).toBe('closed');
+    expect(completed.result.remoteDurability).toEqual({
+      required: false, state: 'NOT_REQUIRED', reason: 'continuity_terminal',
+    });
     expect(completed.result.promoted).toMatchObject({
       decisions: 1, artifacts: 1, outcomes: 1, constraints: 1, failures: 0,
     });
@@ -290,6 +293,86 @@ describe('continuity checkpoint MCP tools', () => {
       expect(metadata.created_from_decision_id).toBeTruthy();
     } finally {
       db.close();
+    }
+  });
+
+  it('runs one grouped durability boundary only after terminal checkpoint promotion and local turn close', async () => {
+    const f = await fixture('remote-boundary-order');
+    const routed = await route(f, 'Grouped remote durability boundary');
+    const calls: Array<{ reason: string; turnState: string; decisionCount: number }> = [];
+    const original = f.runtime.memory.syncDurableBoundary.bind(f.runtime.memory);
+    f.runtime.memory.syncDurableBoundary = (async (_scope: any, reason: any) => {
+      const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
+      try {
+        const turn = db.prepare('SELECT state FROM continuity_turns WHERE id = ?').get(routed.continuityTurnId) as any;
+        const decisions = db.prepare(`SELECT count(*) AS count FROM memory_write_decisions
+          WHERE principal_id = ? AND IFNULL(project_id, '') = ?`).get(f.scopeA.principalId, f.root) as any;
+        calls.push({ reason, turnState: turn.state, decisionCount: Number(decisions.count) });
+      } finally {
+        db.close();
+      }
+      return {
+        required: true, state: 'REMOTE_SYNCED', reason,
+        generationId: 'a'.repeat(64), remoteHead: 'b'.repeat(40), logicalStateHash: 'c'.repeat(64),
+      } as any;
+    }) as any;
+    try {
+      const completed = await call(f.baseUrl, f.principalA.key, 'task_checkpoint', {
+        routeContextId: routed.routeContextId,
+        status: 'completed',
+        summary: 'Grouped boundary includes postflight and close evidence.',
+        decisions: [{ key: 'phase5.boundary', value: 'verified', reason: 'remote proof required' }],
+        projectTerminal: true,
+      });
+      expect(completed.raw.result.isError).not.toBe(true);
+      expect(calls).toEqual([{ reason: 'continuity_terminal', turnState: 'closed', decisionCount: 1 }]);
+      expect(completed.result.remoteDurability).toMatchObject({
+        required: true, state: 'REMOTE_SYNCED', reason: 'continuity_terminal',
+        generationId: 'a'.repeat(64),
+      });
+    } finally {
+      f.runtime.memory.syncDurableBoundary = original as any;
+    }
+  });
+
+  it('rejects checkpoint success when the required grouped remote boundary fails while preserving factual local state', async () => {
+    const f = await fixture('remote-boundary-failure');
+    const routed = await route(f, 'Remote boundary failure remains truthful');
+    let observedClosed = false;
+    const original = f.runtime.memory.syncDurableBoundary.bind(f.runtime.memory);
+    f.runtime.memory.syncDurableBoundary = (async () => {
+      const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
+      try {
+        const turn = db.prepare('SELECT state FROM continuity_turns WHERE id = ?').get(routed.continuityTurnId) as any;
+        observedClosed = turn.state === 'closed';
+      } finally {
+        db.close();
+      }
+      throw new Error('MEMORY_REMOTE_UNAVAILABLE: synthetic readback failure');
+    }) as any;
+    try {
+      const failed = await call(f.baseUrl, f.principalA.key, 'task_checkpoint', {
+        routeContextId: routed.routeContextId,
+        status: 'completed',
+        summary: 'Local truth exists but remote durability is unavailable.',
+        projectTerminal: true,
+      });
+      expect(failed.raw.result.isError).toBe(true);
+      expect(String(failed.result.error.message)).toContain('MEMORY_REMOTE_UNAVAILABLE');
+      expect(observedClosed).toBe(true);
+      const task = await f.runtime.memory.getContinuityTask(f.scopeA, routed.continuityTaskId);
+      expect(task?.status).toBe('completed');
+      const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
+      try {
+        const decisions = db.prepare(`SELECT decision_type FROM memory_write_decisions
+          WHERE principal_id = ? AND IFNULL(project_id, '') = ?`).all(f.scopeA.principalId, f.root) as any[];
+        expect(decisions).toHaveLength(1);
+        expect(decisions[0].decision_type).toBe('NO_DURABLE_MEMORY');
+      } finally {
+        db.close();
+      }
+    } finally {
+      f.runtime.memory.syncDurableBoundary = original as any;
     }
   });
 
