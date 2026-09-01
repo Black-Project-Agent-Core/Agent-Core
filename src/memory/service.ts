@@ -278,10 +278,13 @@ export class MemoryService {
 
   async commit(request: MemoryCommitRequest): Promise<MemoryCommitResult> {
     const components = await this.requireComponents();
-    const result = await components.store.commitMemory(request);
+    const stored = await components.store.commitMemory(request);
+    const { createdExplicitEdges, ...result } = stored;
     const linked = await components.linker.linkMemory(request.scope, result.memoryId);
     if (!result.deduplicated) this.emitActivity({ type: 'memory.node_created', memoryIds: [result.memoryId], state: 'completed' });
-    if (linked.createdEdges > 0) this.emitActivity({ type: 'memory.edge_created', memoryIds: [result.memoryId], state: 'completed' });
+    if (createdExplicitEdges + linked.createdEdges > 0) {
+      this.emitActivity({ type: 'memory.edge_created', memoryIds: [result.memoryId], state: 'completed' });
+    }
     return result;
   }
 

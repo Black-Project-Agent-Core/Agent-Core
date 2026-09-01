@@ -188,6 +188,40 @@ describe('memory observatory activity sink', () => {
   });
 
 
+  it('emits edge-created activity when an authoritative commit inserts an explicit typed relation', async () => {
+    const root = await tempRoot('explicit-edge');
+    const config = loadConfig({ AGENT_CORE_MEMORY_DB_PATH: path.join(root, 'memory.sqlite') }, root).memory;
+    const sink = new RecordingSink();
+    const service = new MemoryService(config, undefined, { activitySink: sink });
+    services.push(service);
+    const explicitScope: MemoryScope = { principalId: scope.principalId, projectId: scope.projectId };
+
+    const evidence = await service.commit({
+      scope: explicitScope,
+      canonicalKey: 'artifact.zebra.4481',
+      kind: 'artifact',
+      value: 'Zebra 4481.',
+      sourceType: 'test',
+    });
+    sink.events.length = 0;
+
+    const claim = await service.commit({
+      scope: explicitScope,
+      canonicalKey: 'project-state.quartz.9942',
+      kind: 'project_state',
+      value: 'Quartz 9942.',
+      sourceType: 'test',
+      explicitRelations: [{ targetMemoryId: evidence.memoryId, relation: 'validated_by', weight: 1 }],
+    });
+
+    expect(claim.deduplicated).toBe(false);
+    expect(sink.events).toContainEqual(expect.objectContaining({
+      type: 'memory.edge_created',
+      memoryIds: [claim.memoryId],
+      state: 'completed',
+    }));
+  });
+
   it('does not report a node creation when an authoritative commit is deduplicated', async () => {
     const root = await tempRoot('deduplicated-node');
     const config = loadConfig({ AGENT_CORE_MEMORY_DB_PATH: path.join(root, 'memory.sqlite') }, root).memory;

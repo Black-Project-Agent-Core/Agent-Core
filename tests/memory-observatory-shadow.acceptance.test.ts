@@ -60,6 +60,12 @@ describe('isolated Memory Observatory shadow canary', () => {
       expect(report.canary.mutationFileWritten).toBe(true);
       expect(report.canary.checkpointCompleted).toBe(true);
       expect(report.canary.memoryActivityObserved).toBe(true);
+      expect(report.canary.events).toEqual(expect.arrayContaining([
+        'memory.recalled',
+        'memory.revision_created',
+        'memory.edge_created',
+        'memory.write_decision',
+      ]));
       expect(report.canary.observatorySnapshotMatchesBackend).toBe(true);
       expect(report.live.before).toEqual(report.live.after);
       expect(report.cleanup.shadowPortsClosed).toBe(true);

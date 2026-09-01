@@ -103,6 +103,10 @@ export interface StoredMemoryRevision {
   createdAt: number;
 }
 
+interface MemoryStoreCommitResult extends MemoryCommitResult {
+  createdExplicitEdges: number;
+}
+
 type ExistingMemoryRow = {
   id: string;
   canonical_key: string;
@@ -379,7 +383,7 @@ export class MemoryStore {
     return { eventId, redactedText, createdAt };
   }
 
-  async commitMemory(request: MemoryCommitRequest): Promise<MemoryCommitResult> {
+  async commitMemory(request: MemoryCommitRequest): Promise<MemoryStoreCommitResult> {
     this.assertReady();
     assertScope(request.scope);
     const canonicalKey = normalizeCanonicalKey(request.canonicalKey ?? '');
@@ -419,7 +423,7 @@ export class MemoryStore {
       throw new MemoryStoreError('MEMORY_KIND_IMMUTABLE', `Memory kind "${current.kind}" cannot be revised in place`);
     }
     const normalized = normalizeMemoryValue(request.value);
-    const result = await this.writeRevision({
+    const stored = await this.writeRevision({
       request: {
         scope: request.scope,
         canonicalKey: current.canonical_key,
@@ -437,6 +441,7 @@ export class MemoryStore {
       existing: current,
       eventType: 'memory.revised',
     });
+    const { createdExplicitEdges: _createdExplicitEdges, ...result } = stored;
     return {
       ...result,
       supersededRevisionId: result.revisionId === current.current_revision_id ? undefined : current.current_revision_id,
@@ -865,7 +870,7 @@ export class MemoryStore {
     normalized: { valueText: string; valueJson?: string; valueHash: string };
     existing: ExistingMemoryRow | null;
     eventType: string;
-  }): Promise<MemoryCommitResult> {
+  }): Promise<MemoryStoreCommitResult> {
     const { request, canonicalKey, normalized, existing } = input;
     for (const relation of request.explicitRelations ?? []) {
       if (!await this.findById(request.scope, relation.targetMemoryId)) {
@@ -908,12 +913,14 @@ export class MemoryStore {
         revisionNo: existing.revision_no,
         deduplicated: true,
         state: existing.state,
+        createdExplicitEdges: 0,
       };
     }
 
     const revisionId = randomUUID();
     const revisionNo = (existing?.revision_no ?? 0) + 1;
     const operations: MemoryWorkerSqlOperation[] = [eventInsertOperation(eventId, eventRequest, normalized.valueText, now)];
+    const explicitEdgeOperationIndexes: number[] = [];
 
     if (!existing) {
       operations.push({
@@ -1007,6 +1014,7 @@ export class MemoryStore {
       if (!Number.isFinite(weight) || weight < 0 || weight > 1) {
         throw new MemoryStoreError('MEMORY_RELATION_WEIGHT_INVALID', 'explicit relation weight must be between 0 and 1');
       }
+      explicitEdgeOperationIndexes.push(operations.length);
       operations.push(...auditedEdgeInsertOperations({
         eventId: randomUUID(),
         scope: request.scope,
@@ -1019,6 +1027,7 @@ export class MemoryStore {
         createdAt: now,
       }));
       if (shouldMirrorMemoryRelation(relation.relation)) {
+        explicitEdgeOperationIndexes.push(operations.length);
         operations.push(...auditedEdgeInsertOperations({
           eventId: randomUUID(),
           scope: request.scope,
@@ -1034,7 +1043,13 @@ export class MemoryStore {
     }
 
     operations.push({ kind: 'exec', sql: MEMORY_FTS_REBUILD_SQL });
-    await this.client.transaction(operations);
+    const results = await this.client.transaction(operations);
+    const createdExplicitEdges = explicitEdgeOperationIndexes.reduce((total, index) => {
+      const result = results[index];
+      return total + (result && typeof result === 'object' && 'changes' in result
+        ? Number((result as { changes: number }).changes)
+        : 0);
+    }, 0);
 
     return {
       memoryId,
@@ -1043,6 +1058,7 @@ export class MemoryStore {
       revisionNo,
       deduplicated: false,
       state: 'active',
+      createdExplicitEdges,
     };
   }
 
