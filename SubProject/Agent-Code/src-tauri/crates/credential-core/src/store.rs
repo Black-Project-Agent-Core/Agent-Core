@@ -350,50 +350,25 @@ impl VaultStore {
 
     pub fn update_key_state(&mut self, key_id: &KeyId, update: &StoredKeyUpdate) -> Result<(), StoreError> {
         let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
-        let changed = transaction
+        update_key_state_tx(&transaction, key_id, update)?;
+        transaction.commit().map_err(StoreError::Sqlite)
+    }
+
+    pub fn update_key_state_and_cursor(
+        &mut self,
+        key_id: &KeyId,
+        update: &StoredKeyUpdate,
+        cursor_slot: i64,
+        now_ms: i64,
+    ) -> Result<(), StoreError> {
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        update_key_state_tx(&transaction, key_id, update)?;
+        transaction
             .execute(
-                r#"
-                UPDATE vault_keys SET
-                  lifecycle_state = ?2,
-                  availability_state = ?3,
-                  cooldown_until_utc_ms = ?4,
-                  consecutive_failures = ?5,
-                  last_success_at_utc_ms = ?6,
-                  last_failure_at_utc_ms = ?7,
-                  last_failure_class = ?8,
-                  last_probe_at_utc_ms = ?9,
-                  limit_value = ?10,
-                  limit_remaining = ?11,
-                  limit_reset = ?12,
-                  usage_daily = ?13,
-                  is_free_tier = ?14,
-                  expires_at_utc_ms = ?15,
-                  updated_at_utc_ms = ?16
-                WHERE key_id = ?1
-                "#,
-                params![
-                    key_id.0,
-                    lifecycle_to_text(update.lifecycle_state),
-                    availability_to_text(update.availability_state),
-                    update.cooldown_until_utc_ms,
-                    i64::from(update.consecutive_failures),
-                    update.last_success_at_utc_ms,
-                    update.last_failure_at_utc_ms,
-                    update.last_failure_class.map(failure_to_text),
-                    update.last_probe_at_utc_ms,
-                    update.limit_value,
-                    update.limit_remaining,
-                    update.limit_reset.map(limit_reset_to_text),
-                    update.usage_daily,
-                    update.is_free_tier.map(i64::from),
-                    update.expires_at_utc_ms,
-                    update.updated_at_utc_ms,
-                ],
+                "UPDATE rotation_state SET cursor_slot = ?1, updated_at_utc_ms = ?2 WHERE singleton_id = 1",
+                params![cursor_slot, now_ms],
             )
             .map_err(StoreError::Sqlite)?;
-        if changed != 1 {
-            return Err(StoreError::KeyNotFound);
-        }
         transaction.commit().map_err(StoreError::Sqlite)
     }
 
@@ -469,6 +444,58 @@ impl VaultStore {
             )
             .map_err(StoreError::Sqlite)
     }
+}
+
+fn update_key_state_tx(
+    transaction: &Transaction<'_>,
+    key_id: &KeyId,
+    update: &StoredKeyUpdate,
+) -> Result<(), StoreError> {
+    let changed = transaction
+        .execute(
+            r#"
+            UPDATE vault_keys SET
+              lifecycle_state = ?2,
+              availability_state = ?3,
+              cooldown_until_utc_ms = ?4,
+              consecutive_failures = ?5,
+              last_success_at_utc_ms = ?6,
+              last_failure_at_utc_ms = ?7,
+              last_failure_class = ?8,
+              last_probe_at_utc_ms = ?9,
+              limit_value = ?10,
+              limit_remaining = ?11,
+              limit_reset = ?12,
+              usage_daily = ?13,
+              is_free_tier = ?14,
+              expires_at_utc_ms = ?15,
+              updated_at_utc_ms = ?16
+            WHERE key_id = ?1
+            "#,
+            params![
+                key_id.0,
+                lifecycle_to_text(update.lifecycle_state),
+                availability_to_text(update.availability_state),
+                update.cooldown_until_utc_ms,
+                i64::from(update.consecutive_failures),
+                update.last_success_at_utc_ms,
+                update.last_failure_at_utc_ms,
+                update.last_failure_class.map(failure_to_text),
+                update.last_probe_at_utc_ms,
+                update.limit_value,
+                update.limit_remaining,
+                update.limit_reset.map(limit_reset_to_text),
+                update.usage_daily,
+                update.is_free_tier.map(i64::from),
+                update.expires_at_utc_ms,
+                update.updated_at_utc_ms,
+            ],
+        )
+        .map_err(StoreError::Sqlite)?;
+    if changed != 1 {
+        return Err(StoreError::KeyNotFound);
+    }
+    Ok(())
 }
 
 fn insert_key_tx(transaction: &Transaction<'_>, key: &NewStoredKey) -> Result<(), StoreError> {
