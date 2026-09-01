@@ -11,6 +11,7 @@ import { ExecutionStore } from '../execution/store.js';
 import { GitHubService, type GitHubServiceDependencies } from '../github/service.js';
 import { NOOP_RUNTIME_AUDIT_LOGGER, type RoutingAuditLogger, type RuntimeAuditLogger } from '../logging/audit-log.js';
 import { MemoryService } from '../memory/service.js';
+import type { MemoryActivitySink } from '../memory/activity.js';
 import { GitHubMemoryRemoteTransport } from '../memory/remote-transport.js';
 import { TelemetryService } from '../observability/telemetry.js';
 import { FileSystemService } from './filesystem.js';
@@ -76,7 +77,16 @@ export function createRuntimeServices(
   const memoryRemoteTransport = resolvedMemoryConfig.remote.enabled
     ? new GitHubMemoryRemoteTransport(github.git, workspace, resolvedMemoryConfig.remote)
     : undefined;
-  const memory = new MemoryService(resolvedMemoryConfig, metrics, { remoteTransport: memoryRemoteTransport });
+  const memoryActivitySink: MemoryActivitySink = {
+    emit(event) {
+      const { type, timestamp: _timestamp, ...safeData } = event;
+      runtimeAudit.logRuntime('memory', type, safeData);
+    },
+  };
+  const memory = new MemoryService(resolvedMemoryConfig, metrics, {
+    remoteTransport: memoryRemoteTransport,
+    activitySink: memoryActivitySink,
+  });
   const resolvePersistentMemoryScope = (scope: { principalId: string; projectId?: string }) => ({
     ...scope,
     principalId: resolvedMemoryConfig.principalId ?? scope.principalId,

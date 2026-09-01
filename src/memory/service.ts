@@ -1,5 +1,6 @@
 import { stat } from 'node:fs/promises';
 import type { MemoryConfig } from '../config.js';
+import { NOOP_MEMORY_ACTIVITY_SINK, type MemoryActivityEvent, type MemoryActivitySink } from './activity.js';
 import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 import {
   ContinuityStore,
@@ -154,6 +155,7 @@ export type MemoryServiceState = 'disabled' | 'idle' | 'healthy' | 'degraded' | 
 
 export interface MemoryServiceDependencies {
   remoteTransport?: MemoryRemoteTransport;
+  activitySink?: MemoryActivitySink;
 }
 
 export class MemoryService {
@@ -165,6 +167,7 @@ export class MemoryService {
   private lastSuccessfulIntegrityCheckAt: number | undefined;
   private lastBackup: MemoryBackupRecord | undefined;
   private readonly contextLeaseAuthority = new MemoryContextLeaseAuthority();
+  private readonly activitySink: MemoryActivitySink;
 
   readonly remoteTransport: MemoryRemoteTransport | undefined;
 
@@ -174,6 +177,7 @@ export class MemoryService {
     dependencies: MemoryServiceDependencies = {},
   ) {
     this.remoteTransport = dependencies.remoteTransport;
+    this.activitySink = dependencies.activitySink ?? NOOP_MEMORY_ACTIVITY_SINK;
     this.state = config.enabled ? 'idle' : 'disabled';
   }
 
@@ -182,12 +186,20 @@ export class MemoryService {
   }
 
   async hydrateRemote(scope: MemoryScope, destinationDbPath = this.config.dbPath) {
-    if (this.state !== 'idle') throw new Error('MEMORY_REMOTE_HYDRATION_REQUIRES_IDLE_SERVICE');
-    if (!this.remoteTransport || !this.config.remote.enabled || !this.config.remote.keyFile) {
-      throw new Error('MEMORY_REMOTE_DISABLED');
+    this.emitActivity({ type: 'memory.hydration_started', state: 'started' });
+    try {
+      if (this.state !== 'idle') throw new Error('MEMORY_REMOTE_HYDRATION_REQUIRES_IDLE_SERVICE');
+      if (!this.remoteTransport || !this.config.remote.enabled || !this.config.remote.keyFile) {
+        throw new Error('MEMORY_REMOTE_DISABLED');
+      }
+      const crypto = await MemoryRemoteCrypto.fromKeyFile(this.config.remote.keyFile);
+      const result = await new MemoryRemoteHydrator(this.remoteTransport, crypto).hydrate(scope, destinationDbPath);
+      this.emitActivity({ type: 'memory.hydration_completed', state: 'completed', statusCode: result.state });
+      return result;
+    } catch (error) {
+      this.emitActivity({ type: 'memory.hydration_failed', state: 'failed', statusCode: this.safeErrorCode(error) });
+      throw error;
     }
-    const crypto = await MemoryRemoteCrypto.fromKeyFile(this.config.remote.keyFile);
-    return new MemoryRemoteHydrator(this.remoteTransport, crypto).hydrate(scope, destinationDbPath);
   }
 
   async beginContinuityTurn(
@@ -265,14 +277,18 @@ export class MemoryService {
   async commit(request: MemoryCommitRequest): Promise<MemoryCommitResult> {
     const components = await this.requireComponents();
     const result = await components.store.commitMemory(request);
-    await components.linker.linkMemory(request.scope, result.memoryId);
+    const linked = await components.linker.linkMemory(request.scope, result.memoryId);
+    if (!result.deduplicated) this.emitActivity({ type: 'memory.node_created', memoryIds: [result.memoryId], state: 'completed' });
+    if (linked.createdEdges > 0) this.emitActivity({ type: 'memory.edge_created', memoryIds: [result.memoryId], state: 'completed' });
     return result;
   }
 
   async revise(request: MemoryReviseRequest): Promise<MemoryReviseResult> {
     const components = await this.requireComponents();
     const result = await components.store.reviseMemory(request);
-    await components.linker.linkMemory(request.scope, result.memoryId);
+    const linked = await components.linker.linkMemory(request.scope, result.memoryId);
+    this.emitActivity({ type: 'memory.revision_created', memoryIds: [result.memoryId], state: 'completed' });
+    if (linked.createdEdges > 0) this.emitActivity({ type: 'memory.edge_created', memoryIds: [result.memoryId], state: 'completed' });
     return result;
   }
 
@@ -300,12 +316,30 @@ export class MemoryService {
 
   async preflight(request: MemoryPreflightRequest): Promise<MemoryPreflightResult> {
     const started = performance.now();
+    this.emitActivity({ type: 'memory.preflight_started', state: 'started' });
     try {
-      if (!this.config.enabled) return createDisabledPreflightResult(request);
-      const components = await this.requireComponents();
-      return await components.preflight.run(request);
+      const result = !this.config.enabled
+        ? createDisabledPreflightResult(request)
+        : await (await this.requireComponents()).preflight.run(request);
+      const durationMs = Math.max(0, performance.now() - started);
+      this.emitActivity({ type: 'memory.preflight_completed', contextId: result.contextId, state: 'completed', durationMs });
+      if (result.recalled.length > 0) {
+        this.emitActivity({
+          type: 'memory.recalled',
+          contextId: result.contextId,
+          memoryIds: result.recalled.map((hit) => hit.memoryId),
+          state: 'completed',
+        });
+      }
+      return result;
     } catch (error) {
       this.metrics?.failure('memory.preflight.duration_ms', error instanceof Error ? error.name : 'MEMORY_PREFLIGHT_ERROR');
+      this.emitActivity({
+        type: 'memory.preflight_completed',
+        state: 'failed',
+        statusCode: this.safeErrorCode(error),
+        durationMs: Math.max(0, performance.now() - started),
+      });
       throw error;
     } finally {
       this.metrics?.observe('memory.preflight.duration_ms', Math.max(0, performance.now() - started));
@@ -498,18 +532,80 @@ export class MemoryService {
   }
 
   async rememberMore(request: MemoryRememberMoreRequest): Promise<MemoryRememberMoreResult> {
-    const components = await this.requireComponents();
-    return components.rememberMore.expand(request);
+    const started = performance.now();
+    this.emitActivity({
+      type: 'memory.remember_more_started',
+      contextId: request.contextId,
+      memoryIds: request.seedMemoryIds,
+      state: 'started',
+    });
+    try {
+      const components = await this.requireComponents();
+      const result = await components.rememberMore.expand(request);
+      this.emitActivity({
+        type: 'memory.remember_more_expanded',
+        contextId: request.contextId,
+        memoryIds: result.expansions.map((entry) => entry.memoryId),
+        state: 'completed',
+        durationMs: Math.max(0, performance.now() - started),
+      });
+      return result;
+    } catch (error) {
+      this.emitActivity({
+        type: 'memory.remember_more_expanded',
+        contextId: request.contextId,
+        state: 'failed',
+        statusCode: this.safeErrorCode(error),
+        durationMs: Math.max(0, performance.now() - started),
+      });
+      throw error;
+    }
   }
 
   async evaluatePostflight(request: MemoryPostflightRequest): Promise<MemoryPostflightEvaluation> {
     const components = await this.requireComponents();
-    return components.cognitionController.evaluate(request);
+    const result = await components.cognitionController.evaluate(request);
+    this.emitActivity({
+      type: 'memory.write_decision',
+      contextId: request.contextId,
+      memoryIds: result.targetMemoryId ? [result.targetMemoryId] : undefined,
+      decisionType: result.decision,
+      reasonCodes: result.reasonCodes,
+      state: 'completed',
+    });
+    return result;
   }
 
   async applyPostflight(request: MemoryPostflightRequest): Promise<MemoryPostflightApplyResult> {
     const components = await this.requireComponents();
-    return components.cognitionController.apply(request);
+    const result = await components.cognitionController.apply(request);
+    const memoryIds = result.memoryId ? [result.memoryId] : result.targetMemoryId ? [result.targetMemoryId] : undefined;
+    this.emitActivity({
+      type: 'memory.write_decision',
+      contextId: request.contextId,
+      memoryIds,
+      decisionType: result.decision,
+      reasonCodes: result.reasonCodes,
+      state: 'completed',
+    });
+    if (result.semanticMutation && result.memoryId) {
+      if (result.decision === 'REVISE_EXISTING') {
+        this.emitActivity({ type: 'memory.revision_created', contextId: request.contextId, memoryIds: [result.memoryId], state: 'completed' });
+      } else if (result.decision === 'WRITE_BRANCH' || result.decision === 'WRITE_NEW_ROOT' || result.decision === 'OPEN_CONFLICT') {
+        this.emitActivity({ type: 'memory.node_created', contextId: request.contextId, memoryIds: [result.memoryId], state: 'completed' });
+      }
+      if (result.createdEdges > 0) this.emitActivity({ type: 'memory.edge_created', contextId: request.contextId, memoryIds: [result.memoryId], state: 'completed' });
+      if (result.conflictId) this.emitActivity({ type: 'memory.conflict_opened', contextId: request.contextId, memoryIds: [result.memoryId], state: 'completed' });
+    }
+    this.emitActivity({
+      type: 'memory.postflight_completed',
+      contextId: request.contextId,
+      memoryIds,
+      decisionType: result.decision,
+      reasonCodes: result.reasonCodes,
+      state: 'completed',
+    });
+    return result;
   }
 
   async recordWriteDecision(input: MemoryWriteDecisionInput) {
@@ -568,8 +664,16 @@ export class MemoryService {
     if (!this.config.remote.enabled) {
       return { required: false, state: 'NOT_REQUIRED', reason };
     }
-    const components = await this.requireComponents();
-    return components.durabilityBoundary.sync(scope, reason);
+    this.emitActivity({ type: 'memory.remote_pending', reasonCodes: [reason], state: 'pending' });
+    try {
+      const components = await this.requireComponents();
+      const result = await components.durabilityBoundary.sync(scope, reason);
+      this.emitActivity({ type: 'memory.remote_synced', reasonCodes: [reason], state: 'completed' });
+      return result;
+    } catch (error) {
+      this.emitActivity({ type: 'memory.remote_pending', reasonCodes: [reason], state: 'failed', statusCode: this.safeErrorCode(error) });
+      throw error;
+    }
   }
 
   async syncRemoteGeneration(input: {
@@ -590,7 +694,9 @@ export class MemoryService {
     evidence: Record<string, unknown>,
   ) {
     const components = await this.requireComponents();
-    return components.lifecycle.openConflict(scope, leftMemoryId, rightMemoryId, conflictType, evidence);
+    const result = await components.lifecycle.openConflict(scope, leftMemoryId, rightMemoryId, conflictType, evidence);
+    this.emitActivity({ type: 'memory.conflict_opened', memoryIds: [leftMemoryId, rightMemoryId], state: 'completed' });
+    return result;
   }
 
   async listOpenConflicts(scope: MemoryScope) {
@@ -917,6 +1023,29 @@ export class MemoryService {
     }
     if (this.components) await this.components.store.close();
     this.state = 'closed';
+  }
+
+
+  private emitActivity(event: Omit<MemoryActivityEvent, 'timestamp'> & { timestamp?: string }): void {
+    try {
+      this.activitySink.emit({
+        ...event,
+        timestamp: event.timestamp ?? new Date().toISOString(),
+        ...(event.memoryIds ? { memoryIds: [...new Set(event.memoryIds)].slice(0, 64) } : {}),
+        ...(event.reasonCodes ? { reasonCodes: event.reasonCodes.slice(0, 32) } : {}),
+      });
+    } catch {
+      // Observatory emission is best-effort and must never affect memory authority.
+    }
+  }
+
+  private safeErrorCode(error: unknown): string {
+    if (error && typeof error === 'object' && 'code' in error) {
+      const code = String((error as { code?: unknown }).code ?? '');
+      if (/^[A-Z0-9_:-]{1,96}$/.test(code)) return code;
+    }
+    if (error instanceof Error && /^[A-Za-z0-9_:-]{1,96}$/.test(error.name)) return error.name;
+    return 'MEMORY_OPERATION_FAILED';
   }
 
   private async loadProvenanceEvents(
