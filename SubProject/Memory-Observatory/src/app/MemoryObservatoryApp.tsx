@@ -123,7 +123,7 @@ export function MemoryObservatoryApp() {
           const replay = await observatoryApi.activity(initialAfter, 250);
           if (!active) return;
           dispatchActivity({ type: 'replace', records: replay.records });
-          lastSequenceRef.current = Math.max(initialAfter, replay.latestSequence, ...replay.records.map((record) => record.sequence));
+          lastSequenceRef.current = Math.max(initialAfter, ...replay.records.map((record) => record.sequence));
           for (const record of replay.records) pulseActivity(record);
         } catch {
           lastSequenceRef.current = initialAfter;

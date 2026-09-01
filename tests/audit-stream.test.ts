@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -119,5 +119,33 @@ describe('persisted audit replay and live stream', () => {
     await broadcaster.drain();
     expect(received).toEqual([1]);
     expect(journal.status()).toMatchObject({ written: 1, writeErrors: 0 });
+  });
+
+  it('retries a transient head mismatch while a persisted record is between append and atomic head update', async () => {
+    const root = await tempRoot('concurrent-head');
+    let recordAppended!: () => void;
+    let releaseHead!: () => void;
+    const appended = new Promise<void>((resolve) => { recordAppended = resolve; });
+    const holdHead = new Promise<void>((resolve) => { releaseHead = resolve; });
+    const journal = new AuditJournal(root, {
+      appendLine: async (filePath, line) => {
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await appendFile(filePath, line, 'utf8');
+        recordAppended();
+        await holdHead;
+      },
+    });
+
+    journal.enqueue({ category: 'memory', event: 'concurrent.persist' });
+    await appended;
+    const replayPromise = replayAuditRecords(journal.auditRoot, { afterSequence: 0, limit: 20 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    releaseHead();
+
+    const replay = await replayPromise;
+    expect(replay.ok).toBe(true);
+    if (!replay.ok) throw new Error(replay.code);
+    expect(replay.records.map((record) => record.event)).toEqual(['concurrent.persist']);
+    await journal.drain();
   });
 });

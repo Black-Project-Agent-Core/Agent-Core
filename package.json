@@ -33,7 +33,8 @@
     "build:codespace": "npm --prefix plugin/codespace ci && npm --prefix plugin/codespace run build",
     "verify:stable-parity": "node scripts/release/check-stable-parity.mjs",
     "build:observatory": "npm --prefix SubProject/Memory-Observatory ci && npm --prefix SubProject/Memory-Observatory run build",
-    "verify:observatory": "npm --prefix SubProject/Memory-Observatory ci && npm --prefix SubProject/Memory-Observatory run verify",
+    "verify:observatory:root": "vitest run --no-file-parallelism tests/memory-activity.test.ts tests/memory-observatory-projection.test.ts tests/http-memory-observatory.test.ts tests/memory-observatory-sidecar-contract.test.ts tests/memory-observatory-shadow.acceptance.test.ts tests/memory-observatory-resilience.acceptance.test.ts tests/memory-observatory-benchmark.test.ts tests/memory-observatory-cross-codespace.acceptance.test.ts tests/memory-observatory-memory-correctness.acceptance.test.ts tests/codespace-memory-observatory-lifecycle.test.ts",
+    "verify:observatory": "npm --prefix SubProject/Memory-Observatory ci && npm --prefix SubProject/Memory-Observatory run verify && npm --prefix SubProject/Memory-Observatory run test:e2e && npm run verify:observatory:root",
     "observatory:shadow": "npm --prefix SubProject/Memory-Observatory ci && npm --prefix SubProject/Memory-Observatory run build && npm --prefix SubProject/Memory-Observatory run start"
   },
   "engines": {

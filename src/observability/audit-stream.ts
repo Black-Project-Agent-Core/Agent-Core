@@ -137,7 +137,11 @@ async function readRecords(filePath: string): Promise<AuditJournalRecord[]> {
 export async function replayAuditRecords(auditRoot: string, request: AuditReplayRequest): Promise<AuditReplayResult> {
   const categories = validateRequest(request);
   const root = path.resolve(auditRoot);
-  const verified = await verifyAuditJournal(root);
+  let verified = await verifyAuditJournal(root);
+  for (let attempt = 0; !verified.ok && ['AUDIT_HEAD_MISMATCH', 'AUDIT_SEQUENCE_GAP'].includes(verified.code) && attempt < 10; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    verified = await verifyAuditJournal(root);
+  }
   if (!verified.ok) throw new Error(`AUDIT_REPLAY_JOURNAL_INVALID:${verified.code}`);
 
   const anchor = await readPointer(path.join(root, 'audit-anchor.json'));
