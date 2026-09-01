@@ -156,6 +156,35 @@ afterEach(async () => {
 });
 
 describe('deterministic fresh-workspace Memory Remote hydration', () => {
+
+  it('hydrates a pinned legacy Phase 5 format-v1 checkpoint without changing its logical hash', async () => {
+    const root = await rootFixture('legacy-v1');
+    const scope = { principalId: 'principal-legacy-v1', projectId: 'project-legacy-v1' };
+    const projection: MemoryLogicalStateProjection = {
+      formatVersion: 1,
+      scope: { principalId: scope.principalId, projectId: scope.projectId },
+      events: [], items: [], revisions: [], anchors: [], edges: [], conflicts: [], nodeMetadata: [],
+      writeDecisions: [], edgeEvents: [], continuityTasks: [], continuityDependencies: [],
+      continuityCheckpoints: [], continuityFrontier: [],
+    };
+    const expectedHash = hashMemoryLogicalState(projection);
+    const crypto = await cryptoFixture(root, 'legacy-v1', 0x21);
+    const transport = new SnapshotRemoteTransport();
+    seedProjection(transport, scope, crypto, projection);
+    const destination = path.join(root, 'legacy-restored.sqlite');
+
+    await expect(new MemoryRemoteHydrator(transport, crypto).hydrate(scope, destination))
+      .resolves.toMatchObject({ state: 'REMOTE_HYDRATED', logicalStateHash: expectedHash });
+
+    const restoredClient = new MemoryWorkerClient();
+    const restoredStore = new MemoryStore(restoredClient);
+    stores.push(restoredStore);
+    await restoredStore.open({ dbPath: destination });
+    const legacyView = await projectMemoryLogicalState(restoredClient, scope, { formatVersion: 1 });
+    expect(hashMemoryLogicalState(legacyView)).toBe(expectedHash);
+    expect(legacyView).toEqual(projection);
+  });
+
   it('returns REMOTE_EMPTY_CONFIRMED only after a successful remote fetch with no logical scope HEAD', async () => {
     const root = await rootFixture('empty');
     const scope = { principalId: 'principal-empty', projectId: 'project-empty' };

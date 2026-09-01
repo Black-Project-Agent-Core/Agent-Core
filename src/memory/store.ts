@@ -550,7 +550,7 @@ export class MemoryStore {
 
   async materializeLogicalProjection(projection: MemoryLogicalStateProjection): Promise<void> {
     this.assertReady();
-    if (projection.formatVersion !== 1 || !projection.scope?.principalId || typeof projection.scope.projectId !== 'string') {
+    if ((projection.formatVersion !== 1 && projection.formatVersion !== 2) || !projection.scope?.principalId || typeof projection.scope.projectId !== 'string') {
       throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Logical replay projection format/scope is invalid');
     }
     const principalId = projection.scope.principalId;
@@ -569,6 +569,9 @@ export class MemoryStore {
       continuityDependencies: replayRows(projection.continuityDependencies, 'continuityDependencies'),
       continuityCheckpoints: replayRows(projection.continuityCheckpoints, 'continuityCheckpoints'),
       continuityFrontier: replayRows(projection.continuityFrontier, 'continuityFrontier'),
+      contextLifecycles: projection.formatVersion === 2
+        ? replayRows(projection.contextLifecycles, 'contextLifecycles')
+        : [],
     };
     const totalRows = Object.values(tables).reduce((sum, rows) => sum + rows.length, 0);
     if (totalRows > MAX_LOGICAL_REPLAY_ROWS) {
@@ -576,7 +579,7 @@ export class MemoryStore {
     }
     for (const rows of [
       tables.events, tables.items, tables.writeDecisions, tables.edgeEvents,
-      tables.continuityTasks, tables.continuityCheckpoints, tables.continuityFrontier,
+      tables.continuityTasks, tables.continuityCheckpoints, tables.continuityFrontier, tables.contextLifecycles,
     ]) {
       for (const row of rows) assertReplayScope(row, principalId, projectId);
     }
@@ -586,9 +589,10 @@ export class MemoryStore {
         (SELECT count(*) FROM memory_events WHERE principal_id = ? AND IFNULL(project_id, '') = ?) +
         (SELECT count(*) FROM memory_items WHERE principal_id = ? AND IFNULL(project_id, '') = ?) +
         (SELECT count(*) FROM memory_write_decisions WHERE principal_id = ? AND IFNULL(project_id, '') = ?) +
-        (SELECT count(*) FROM continuity_tasks WHERE principal_id = ? AND IFNULL(project_id, '') = ?)
+        (SELECT count(*) FROM continuity_tasks WHERE principal_id = ? AND IFNULL(project_id, '') = ?) +
+        (SELECT count(*) FROM memory_context_lifecycle WHERE principal_id = ? AND project_id = ?)
       ) AS count`,
-      [principalId, projectId, principalId, projectId, principalId, projectId, principalId, projectId],
+      [principalId, projectId, principalId, projectId, principalId, projectId, principalId, projectId, principalId, projectId],
     );
     if (Number(existing[0]?.count ?? 0) !== 0) {
       throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_DESTINATION_NOT_EMPTY', 'Logical replay requires an empty destination scope');
@@ -663,6 +667,16 @@ export class MemoryStore {
     }
     for (const row of tables.continuityFrontier) if (!taskIds.has(replayString(row, 'source_task_id')!)) {
       throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Continuity frontier references a missing task');
+    }
+    for (const row of tables.contextLifecycles) {
+      const taskId = replayString(row, 'continuity_task_id', true);
+      if (taskId && !taskIds.has(taskId)) {
+        throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Memory context lifecycle references a missing continuity task');
+      }
+      const state = replayString(row, 'postflight_state');
+      if (!['OPEN', 'POSTFLIGHT_PENDING', 'CLOSED'].includes(state!)) {
+        throw new MemoryStoreError('MEMORY_LOGICAL_REPLAY_INVALID', 'Memory context lifecycle state is invalid');
+      }
     }
 
     await runReplayOperations(this.client, tables.events.map((row) => ({
@@ -795,6 +809,23 @@ export class MemoryStore {
         replayString(row, 'id')!, principalId, projectId || null, replayString(row, 'source_task_id')!, replayString(row, 'title')!,
         replayString(row, 'rationale')!, replayString(row, 'status')!, replayJson(row.dependency_task_ids_json)!, replayNumber(row, 'priority')!,
         replayNumber(row, 'created_at')!, replayNumber(row, 'updated_at')!,
+      ],
+    })));
+    await runReplayOperations(this.client, tables.contextLifecycles.map((row) => ({
+      kind: 'run' as const,
+      sql: `INSERT INTO memory_context_lifecycle(
+             context_id, principal_id, project_id, route_context_id, continuity_task_id, objective_hash, postflight_state,
+             meaningful_work_count, first_meaningful_at, last_meaningful_at, last_tool_name, last_reason_code,
+             postflight_applied_at, closed_at, local_durable_generation, local_durable_hash, created_at, updated_at, expires_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)`,
+      params: [
+        replayString(row, 'context_id')!, principalId, projectId, replayString(row, 'route_context_id')!,
+        replayString(row, 'continuity_task_id', true), replayString(row, 'objective_hash')!, replayString(row, 'postflight_state')!,
+        replayNumber(row, 'meaningful_work_count')!, replayNumber(row, 'first_meaningful_at', true),
+        replayNumber(row, 'last_meaningful_at', true), replayString(row, 'last_tool_name', true),
+        replayString(row, 'last_reason_code', true), replayNumber(row, 'postflight_applied_at', true),
+        replayNumber(row, 'closed_at', true), replayNumber(row, 'created_at')!, replayNumber(row, 'updated_at')!,
+        replayNumber(row, 'expires_at')!,
       ],
     })));
     await this.client.transaction([{ kind: 'exec', sql: MEMORY_FTS_REBUILD_SQL }]);

@@ -13,6 +13,7 @@ import {
 } from '../src/memory/types.js';
 import {
   MEMORY_COGNITION_MIGRATION,
+  HARD_MEMORY_LIFECYCLE_MIGRATION,
   MEMORY_SCHEMA_VERSION,
   initializeMemorySchema,
   rebuildMemoryFts,
@@ -67,12 +68,14 @@ describe('deterministic memory schema and public contracts', () => {
 
       expect(Number(db.prepare('PRAGMA foreign_keys').get()!.foreign_keys)).toBe(1);
       expect(Number(db.prepare('PRAGMA user_version').get()!.user_version)).toBe(MEMORY_SCHEMA_VERSION);
-      expect(MEMORY_SCHEMA_VERSION).toBe(3);
+      expect(MEMORY_SCHEMA_VERSION).toBe(4);
       expect(MEMORY_COGNITION_MIGRATION).toBe('003_memory_cognition_ledgers');
+      expect(HARD_MEMORY_LIFECYCLE_MIGRATION).toBe('004_hard_memory_lifecycle');
       expect(db.prepare('SELECT name FROM memory_schema_migrations ORDER BY version').all()).toEqual([
         { name: '001_initial_memory' },
         { name: '002_continuity_ledger' },
         { name: '003_memory_cognition_ledgers' },
+        { name: '004_hard_memory_lifecycle' },
       ]);
 
       const tables = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','view')").all() as Array<{ name: string }>).map((row) => row.name));
@@ -80,7 +83,7 @@ describe('deterministic memory schema and public contracts', () => {
         'memory_events', 'memory_items', 'memory_revisions', 'memory_anchors', 'memory_edges',
         'memory_conflicts', 'memory_contexts', 'memory_access_log', 'memory_fts',
         'memory_write_decisions', 'memory_recall_expansions', 'memory_edge_events',
-        'memory_node_metadata', 'memory_remote_state',
+        'memory_node_metadata', 'memory_remote_state', 'memory_context_lifecycle',
       ]) {
         expect(tables.has(name)).toBe(true);
       }

@@ -42,6 +42,48 @@ async function fixture(label: string) {
 }
 
 describe('memory logical-state projection and hash', () => {
+
+  it('pins legacy v1 hashing while current v2 projection includes lifecycle semantic state only', async () => {
+    const legacy = emptyProjection();
+    expect(hashMemoryLogicalState(legacy)).toBe('9dd14a610711605061db5407aed4d135a3ed9ba69b72252c288e9d2cdf068e48');
+
+    const f = await fixture('lifecycle-v2');
+    try {
+      await f.client.transaction([{
+        kind: 'run',
+        sql: `INSERT INTO memory_context_lifecycle(
+          context_id, principal_id, project_id, route_context_id, continuity_task_id, objective_hash,
+          postflight_state, meaningful_work_count, first_meaningful_at, last_meaningful_at,
+          last_tool_name, last_reason_code, postflight_applied_at, closed_at,
+          local_durable_generation, local_durable_hash, created_at, updated_at, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'CLOSED', 2, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          'context-v2', scope.principalId, scope.projectId, 'route-v2', 'task-v2', 'a'.repeat(64),
+          10, 20, 'write_file', 'filesystem_write', 30, 30,
+          'LOCAL-RECEIPT-MUST-NOT-PROJECT', 'LOCAL-HASH-MUST-NOT-PROJECT', 1, 30, 100,
+        ],
+      }]);
+
+      const current = await projectMemoryLogicalState(f.client, scope);
+      expect(current.formatVersion).toBe(2);
+      expect('contextLifecycles' in current).toBe(true);
+      expect((current as any).contextLifecycles).toEqual([expect.objectContaining({
+        context_id: 'context-v2',
+        postflight_state: 'CLOSED',
+        meaningful_work_count: 2,
+      })]);
+      expect(JSON.stringify(current)).not.toContain('LOCAL-RECEIPT-MUST-NOT-PROJECT');
+      expect(JSON.stringify(current)).not.toContain('LOCAL-HASH-MUST-NOT-PROJECT');
+      expect(hashMemoryLogicalState(current)).not.toBe(hashMemoryLogicalState(legacy));
+
+      const legacyView = await projectMemoryLogicalState(f.client, scope, { formatVersion: 1 });
+      expect(legacyView.formatVersion).toBe(1);
+      expect('contextLifecycles' in legacyView).toBe(false);
+    } finally {
+      await f.store.close();
+    }
+  });
+
   it('is stable across table-row order and object-key order while preserving nested array order', () => {
     const first = emptyProjection();
     first.items = [

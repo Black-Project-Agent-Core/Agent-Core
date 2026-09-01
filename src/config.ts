@@ -20,9 +20,12 @@ export interface MemoryRemoteConfig {
   maxRetryAttempts: number;
 }
 
+export type MemoryHardLifecycleMode = 'disabled' | 'advisory' | 'enforce';
+
 export interface MemoryConfig {
   enabled: boolean;
   enforceHardGuardrails: boolean;
+  hardLifecycleMode: MemoryHardLifecycleMode;
   dbPath: string;
   seedCap: number;
   graphNodeCap: number;
@@ -153,6 +156,12 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
   if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
   throw new Error(`Invalid boolean value: ${value}`);
+}
+
+function parseMemoryHardLifecycleMode(value: string | undefined): MemoryHardLifecycleMode {
+  const normalized = value?.trim().toLowerCase() || 'advisory';
+  if (normalized === 'disabled' || normalized === 'advisory' || normalized === 'enforce') return normalized;
+  throw new Error('AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE must be disabled, advisory, or enforce');
 }
 
 function parseMcpProtocolMode(value: string | undefined): McpProtocolMode {
@@ -351,6 +360,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
   const memory: MemoryConfig = {
     enabled: parseBoolean(env.AGENT_CORE_MEMORY_ENABLED, true),
     enforceHardGuardrails: parseBoolean(env.AGENT_CORE_MEMORY_ENFORCE_HARD_GUARDRAILS, false),
+    hardLifecycleMode: parseMemoryHardLifecycleMode(env.AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE),
     dbPath: path.resolve(env.AGENT_CORE_MEMORY_DB_PATH?.trim() || path.join(baseDir, 'runtime', 'memory', 'agent-core-memory.sqlite')),
     seedCap: parsePositiveInteger(env.AGENT_CORE_MEMORY_SEED_CAP, 64, 'AGENT_CORE_MEMORY_SEED_CAP'),
     graphNodeCap: parsePositiveInteger(env.AGENT_CORE_MEMORY_GRAPH_NODE_CAP, 1000, 'AGENT_CORE_MEMORY_GRAPH_NODE_CAP'),

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { MemoryWorkerSqlOperation } from './db-worker.js';
+import { lifecycleOpenOperation } from './hard-lifecycle.js';
 import type { MemoryLifecycle } from './lifecycle.js';
 import type { MemoryRetriever } from './retriever.js';
 import type {
@@ -133,7 +134,15 @@ export class MemoryPreflightEngine {
         now,
         request.expiresAt,
       ],
-    }];
+    }, lifecycleOpenOperation({
+      scope: request.scope,
+      contextId,
+      routeContextId: request.routeContextId,
+      task: request.task,
+      context: request.context,
+      expiresAt: request.expiresAt,
+      now,
+    })];
 
     recall.hits.forEach((hit, index) => {
       operations.push({

@@ -1,9 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite';
 
-export const MEMORY_SCHEMA_VERSION = 3;
+export const MEMORY_SCHEMA_VERSION = 4;
 export const INITIAL_MEMORY_MIGRATION = '001_initial_memory';
 export const CONTINUITY_MEMORY_MIGRATION = '002_continuity_ledger';
 export const MEMORY_COGNITION_MIGRATION = '003_memory_cognition_ledgers';
+export const HARD_MEMORY_LIFECYCLE_MIGRATION = '004_hard_memory_lifecycle';
 
 export const MEMORY_SCHEMA_V1_SQL = `
 CREATE TABLE IF NOT EXISTS memory_schema_migrations (
@@ -355,6 +356,41 @@ BEGIN
 END;
 `;
 
+
+
+export const HARD_MEMORY_LIFECYCLE_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS memory_context_lifecycle (
+  context_id TEXT PRIMARY KEY,
+  principal_id TEXT NOT NULL,
+  project_id TEXT NOT NULL DEFAULT '',
+  route_context_id TEXT NOT NULL,
+  continuity_task_id TEXT,
+  objective_hash TEXT NOT NULL,
+  postflight_state TEXT NOT NULL CHECK (postflight_state IN ('OPEN','POSTFLIGHT_PENDING','CLOSED')),
+  meaningful_work_count INTEGER NOT NULL DEFAULT 0 CHECK (meaningful_work_count >= 0),
+  first_meaningful_at INTEGER,
+  last_meaningful_at INTEGER,
+  last_tool_name TEXT,
+  last_reason_code TEXT,
+  postflight_applied_at INTEGER,
+  closed_at INTEGER,
+  local_durable_generation TEXT,
+  local_durable_hash TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_context_lifecycle_scope_state
+  ON memory_context_lifecycle(principal_id, project_id, postflight_state, updated_at DESC, context_id);
+CREATE INDEX IF NOT EXISTS idx_memory_context_lifecycle_scope_objective
+  ON memory_context_lifecycle(principal_id, project_id, objective_hash, postflight_state, updated_at DESC, context_id);
+CREATE INDEX IF NOT EXISTS idx_memory_context_lifecycle_scope_task
+  ON memory_context_lifecycle(principal_id, project_id, continuity_task_id, postflight_state, updated_at DESC, context_id);
+CREATE INDEX IF NOT EXISTS idx_memory_context_lifecycle_route
+  ON memory_context_lifecycle(principal_id, project_id, route_context_id, expires_at);
+`;
+
 export interface MemoryMigration {
   version: number;
   name: string;
@@ -365,9 +401,10 @@ export const MEMORY_MIGRATIONS: readonly MemoryMigration[] = [
   { version: 1, name: INITIAL_MEMORY_MIGRATION, sql: MEMORY_SCHEMA_V1_SQL },
   { version: 2, name: CONTINUITY_MEMORY_MIGRATION, sql: CONTINUITY_SCHEMA_SQL },
   { version: 3, name: MEMORY_COGNITION_MIGRATION, sql: MEMORY_COGNITION_SCHEMA_SQL },
+  { version: 4, name: HARD_MEMORY_LIFECYCLE_MIGRATION, sql: HARD_MEMORY_LIFECYCLE_SCHEMA_SQL },
 ] as const;
 
-export const MEMORY_SCHEMA_SQL = `${MEMORY_SCHEMA_V1_SQL}\n${CONTINUITY_SCHEMA_SQL}\n${MEMORY_COGNITION_SCHEMA_SQL}`;
+export const MEMORY_SCHEMA_SQL = `${MEMORY_SCHEMA_V1_SQL}\n${CONTINUITY_SCHEMA_SQL}\n${MEMORY_COGNITION_SCHEMA_SQL}\n${HARD_MEMORY_LIFECYCLE_SCHEMA_SQL}`;
 
 export function initializeMemorySchema(db: DatabaseSync): void {
   db.exec('PRAGMA foreign_keys = ON');

@@ -3,7 +3,7 @@ import type { SqlPrimitive } from './db-worker.js';
 import type { MemoryScope } from './types.js';
 import { MemoryWorkerClient } from './worker-client.js';
 
-export interface MemoryLogicalStateProjection {
+export interface MemoryLogicalStateProjectionV1 {
   formatVersion: 1;
   scope: { principalId: string; projectId: string };
   events: unknown[];
@@ -21,7 +21,14 @@ export interface MemoryLogicalStateProjection {
   continuityFrontier: unknown[];
 }
 
-const TABLE_KEYS = [
+export interface MemoryLogicalStateProjectionV2 extends Omit<MemoryLogicalStateProjectionV1, 'formatVersion'> {
+  formatVersion: 2;
+  contextLifecycles: unknown[];
+}
+
+export type MemoryLogicalStateProjection = MemoryLogicalStateProjectionV1 | MemoryLogicalStateProjectionV2;
+
+const CORE_TABLE_KEYS = [
   'events',
   'items',
   'revisions',
@@ -35,7 +42,7 @@ const TABLE_KEYS = [
   'continuityDependencies',
   'continuityCheckpoints',
   'continuityFrontier',
-] as const satisfies readonly (keyof MemoryLogicalStateProjection)[];
+] as const;
 
 function scopeProject(scope: MemoryScope): string {
   return scope.projectId ?? '';
@@ -83,21 +90,28 @@ function normalizeRows(rows: Array<Record<string, unknown>>): unknown[] {
 }
 
 function canonicalProjection(projection: MemoryLogicalStateProjection): Record<string, unknown> {
-  if (projection.formatVersion !== 1) throw new Error('MEMORY_LOGICAL_STATE_FORMAT_UNSUPPORTED');
+  if (projection.formatVersion !== 1 && projection.formatVersion !== 2) {
+    throw new Error('MEMORY_LOGICAL_STATE_FORMAT_UNSUPPORTED');
+  }
   if (!projection.scope?.principalId || typeof projection.scope.projectId !== 'string') {
     throw new Error('MEMORY_LOGICAL_STATE_SCOPE_REQUIRED');
   }
   const output: Record<string, unknown> = {
-    formatVersion: 1,
+    formatVersion: projection.formatVersion,
     scope: {
       principalId: projection.scope.principalId,
       projectId: projection.scope.projectId,
     },
   };
-  for (const key of TABLE_KEYS) {
+  for (const key of CORE_TABLE_KEYS) {
     const rows = projection[key];
     if (!Array.isArray(rows)) throw new Error(`MEMORY_LOGICAL_STATE_TABLE_INVALID:${String(key)}`);
     output[key] = [...rows].sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right)));
+  }
+  if (projection.formatVersion === 2) {
+    if (!Array.isArray(projection.contextLifecycles)) throw new Error('MEMORY_LOGICAL_STATE_TABLE_INVALID:contextLifecycles');
+    output.contextLifecycles = [...projection.contextLifecycles]
+      .sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right)));
   }
   return output;
 }
@@ -123,8 +137,10 @@ async function queryRows(
 export async function projectMemoryLogicalState(
   client: MemoryWorkerClient,
   scope: MemoryScope,
+  options: { formatVersion?: 1 | 2 } = {},
 ): Promise<MemoryLogicalStateProjection> {
   assertScope(scope);
+  const formatVersion = options.formatVersion ?? 2;
   const principal = scope.principalId;
   const project = scopeProject(scope);
   const scopeParams = [principal, project];
@@ -223,8 +239,24 @@ export async function projectMemoryLogicalState(
       FROM continuity_frontier
      WHERE principal_id = ? AND IFNULL(project_id, '') = ?`, scopeParams);
 
+  if (formatVersion === 1) {
+    return {
+      formatVersion: 1,
+      scope: { principalId: principal, projectId: project },
+      events, items, revisions, anchors, edges, conflicts, nodeMetadata, writeDecisions, edgeEvents,
+      continuityTasks, continuityDependencies, continuityCheckpoints, continuityFrontier,
+    };
+  }
+
+  const contextLifecycles = await queryRows(client, `
+    SELECT context_id, principal_id, project_id, route_context_id, continuity_task_id, objective_hash,
+           postflight_state, meaningful_work_count, first_meaningful_at, last_meaningful_at,
+           last_tool_name, last_reason_code, postflight_applied_at, closed_at, created_at, updated_at, expires_at
+      FROM memory_context_lifecycle
+     WHERE principal_id = ? AND project_id = ?`, scopeParams);
+
   return {
-    formatVersion: 1,
+    formatVersion: 2,
     scope: { principalId: principal, projectId: project },
     events,
     items,
@@ -239,5 +271,6 @@ export async function projectMemoryLogicalState(
     continuityDependencies,
     continuityCheckpoints,
     continuityFrontier,
+    contextLifecycles,
   };
 }

@@ -89,18 +89,22 @@ function parseProjection(bytes: Uint8Array): MemoryLogicalStateProjection {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new MemoryRemoteHydrationError('MEMORY_REMOTE_REPLAY_FAILED', 'Recovery checkpoint projection is not an object', 'REMOTE_REPLAY_FAILED');
   }
-  const projection = value as Partial<MemoryLogicalStateProjection>;
-  const tableKeys: Array<keyof MemoryLogicalStateProjection> = [
+  const projection = value as Partial<MemoryLogicalStateProjection> & { contextLifecycles?: unknown };
+  const tableKeys = [
     'events', 'items', 'revisions', 'anchors', 'edges', 'conflicts', 'nodeMetadata', 'writeDecisions',
     'edgeEvents', 'continuityTasks', 'continuityDependencies', 'continuityCheckpoints', 'continuityFrontier',
-  ];
-  if (projection.formatVersion !== 1 || !projection.scope || typeof projection.scope.principalId !== 'string' || typeof projection.scope.projectId !== 'string') {
+  ] as const;
+  if ((projection.formatVersion !== 1 && projection.formatVersion !== 2)
+    || !projection.scope || typeof projection.scope.principalId !== 'string' || typeof projection.scope.projectId !== 'string') {
     throw new MemoryRemoteHydrationError('MEMORY_REMOTE_REPLAY_FAILED', 'Recovery checkpoint projection scope/format is invalid', 'REMOTE_REPLAY_FAILED');
   }
   for (const key of tableKeys) {
     if (!Array.isArray(projection[key])) {
       throw new MemoryRemoteHydrationError('MEMORY_REMOTE_REPLAY_FAILED', `Recovery checkpoint table ${String(key)} is invalid`, 'REMOTE_REPLAY_FAILED');
     }
+  }
+  if (projection.formatVersion === 2 && !Array.isArray(projection.contextLifecycles)) {
+    throw new MemoryRemoteHydrationError('MEMORY_REMOTE_REPLAY_FAILED', 'Recovery checkpoint table contextLifecycles is invalid', 'REMOTE_REPLAY_FAILED');
   }
   return projection as MemoryLogicalStateProjection;
 }
@@ -267,7 +271,7 @@ export class MemoryRemoteHydrator {
 
       const integrity = await client.integrity();
       if (!integrity.ok) throw integrityError('MEMORY_REMOTE_INTEGRITY_FAILED', `Hydrated SQLite integrity_check failed: ${integrity.result}`);
-      const restoredProjection = await projectMemoryLogicalState(client, scope);
+      const restoredProjection = await projectMemoryLogicalState(client, scope, { formatVersion: projection.formatVersion });
       if (hashMemoryLogicalState(restoredProjection) !== latestManifest.logicalStateHash) {
         throw integrityError('MEMORY_REMOTE_LOGICAL_HASH_MISMATCH', 'Materialized SQLite logical-state hash differs from the remote manifest');
       }
