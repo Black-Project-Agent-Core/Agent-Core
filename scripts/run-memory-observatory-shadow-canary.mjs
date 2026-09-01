@@ -6,7 +6,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SHADOW_PORTS = Object.freeze({ agentCore: 8865, codespaceMcp: 39765, observatory: 3697 });
 const LIVE_AGENT_CORE_URL = 'http://127.0.0.1:8765/health';
@@ -189,6 +189,16 @@ async function loadMcpClient(pluginRoot) {
   return { Client, StreamableHTTPClientTransport };
 }
 
+async function openAgentCoreMcpClient(apiKey, baseUrl) {
+  const { Client, StreamableHTTPClientTransport } = await import('@modelcontextprotocol/client');
+  const client = new Client({ name: 'memory-observatory-shadow-authority-canary', version: '1.0.0' });
+  const transport = new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`), {
+    authProvider: { token: async () => apiKey },
+  });
+  await client.connect(transport);
+  return { client, transport };
+}
+
 async function requireArtifact(target, code) {
   try { await access(target); }
   catch { throw new Error(`${code}:${target}`); }
@@ -244,10 +254,16 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
     mkdir(agentCoreRoot, { recursive: true }),
     mkdir(codespaceRoot, { recursive: true }),
   ]);
+  const agentCoreDataDir = path.join(agentCoreRoot, 'data');
+  const { FileKeyStore } = await import(pathToFileURL(path.join(repoRoot, 'dist', 'auth', 'key-store.js')).href);
+  const shadowKeyStore = new FileKeyStore(agentCoreDataDir);
+  const shadowApiKey = (await shadowKeyStore.create('memory-observatory-shadow-canary')).key;
   const urlFile = path.join(codespaceRoot, 'http-mcp.url');
   const children = [];
   let client;
   let transport;
+  let authorityClient;
+  let authorityTransport;
   let opened;
   let openedResume;
   let checkpoint;
@@ -266,7 +282,7 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
       env: cleanChildEnv({
         AGENT_CORE_HOST: '127.0.0.1',
         AGENT_CORE_PORT: String(SHADOW_PORTS.agentCore),
-        AGENT_CORE_DATA_DIR: path.join(agentCoreRoot, 'data'),
+        AGENT_CORE_DATA_DIR: agentCoreDataDir,
         AGENT_CORE_LOG_DIR: path.join(agentCoreRoot, 'logs'),
         AGENT_CORE_CAPABILITY_DIR: path.join(repoRoot, 'capabilities'),
         AGENT_CORE_ALLOWED_ROOTS: workspaceRoot,
@@ -371,35 +387,123 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
         memoryContextId: opened.memoryContextId,
         continuityTaskId: opened.continuityTaskId,
         continuityTurnId: opened.continuityTurnId,
-        status: 'completed',
-        summary: 'Isolated shadow candidate mutation and memory workflow completed.',
-        evidence: [{ type: 'file', ref: 'shadow-canary.txt', result: 'verified' }],
+        status: 'running',
+        summary: 'Isolated shadow candidate first checkpoint created durable knowledge for later resume.',
+        evidence: [{ type: 'file', ref: 'shadow-canary.txt', result: 'v1 verified' }],
         decisions: [{
           key: 'shadow-canary-mode',
           value: 'isolated candidate verified',
-          reason: 'The candidate MCP mutation, checkpoint, and observer path were verified.',
+          reason: 'The candidate MCP mutation and observer path were verified.',
+        }],
+        artifacts: [{ path: 'shadow-canary.txt', role: 'shadow-canary-evidence' }],
+      },
+    }), 'memory_checkpoint');
+    if (checkpoint?.taskStatus !== 'running' || checkpoint?.memoryLifecycle?.postflightState !== 'CLOSED') {
+      throw new Error(`SHADOW_FIRST_CHECKPOINT_NOT_CLOSED:${safeLog(JSON.stringify(checkpoint))}`);
+    }
+
+    openedResume = parseToolJson(await client.callTool({
+      name: 'memory_open_context',
+      arguments: {
+        task: 'Run isolated Memory Observatory shadow canary',
+        context: 'Resume the same continuity task and revise the durable decision using fresh verified evidence.',
+        continuity: {
+          resumeTaskId: opened.continuityTaskId,
+          objective: 'Prove the shadow candidate path without replacing the live Codespace runtime.',
+        },
+      },
+    }), 'memory_open_context');
+    if (!openedResume?.memoryContextLease || !openedResume?.memoryContextId || openedResume?.continuityTaskId !== opened.continuityTaskId) {
+      throw new Error(`SHADOW_RESUME_CONTEXT_INCOMPLETE:${safeLog(JSON.stringify(openedResume))}`);
+    }
+    resumedRecallCount = Array.isArray(openedResume.memorySummary) ? openedResume.memorySummary.length : 0;
+
+    const resumedSearch = parseToolJson(await client.callTool({
+      name: 'memory_search',
+      arguments: { query: 'shadow canary mode isolated candidate verified', includeHistory: true, limit: 8 },
+    }), 'memory_search');
+    if (Array.isArray(resumedSearch?.hits) && resumedSearch.hits.length > 0) resumedRecallCount = Math.max(resumedRecallCount, resumedSearch.hits.length);
+    recallCompleted = resumedRecallCount > 0;
+
+    const secondMutation = await client.callTool({
+      name: 'write_file',
+      arguments: {
+        path: 'shadow-canary.txt',
+        content: 'shadow candidate mutation verified after resume\\n',
+        memoryContextLease: openedResume.memoryContextLease,
+      },
+    });
+    if (secondMutation?.isError) throw new Error(`SHADOW_RESUME_MUTATION_FAILED:${safeLog(JSON.stringify(secondMutation.content ?? []))}`);
+    const resumedWritten = await readFile(path.join(workspaceRoot, 'shadow-canary.txt'), 'utf8');
+    mutationVerified = resumedWritten === 'shadow candidate mutation verified after resume\\n';
+    if (!mutationVerified) throw new Error('SHADOW_RESUME_MUTATION_VERIFY_FAILED');
+
+    checkpointFinal = parseToolJson(await client.callTool({
+      name: 'memory_checkpoint',
+      arguments: {
+        routeContextId: openedResume.routeContextId,
+        memoryContextId: openedResume.memoryContextId,
+        continuityTaskId: openedResume.continuityTaskId,
+        continuityTurnId: openedResume.continuityTurnId,
+        status: 'completed',
+        summary: 'Resumed shadow candidate revised prior durable knowledge and completed the canary.',
+        evidence: [{ type: 'file', ref: 'shadow-canary.txt', result: 'v2 verified after recall' }],
+        decisions: [{
+          key: 'shadow-canary-mode',
+          value: 'isolated candidate verified with authoritative Observatory readback',
+          reason: 'Fresh evidence after resume strengthened the same durable decision instead of creating a duplicate.',
         }],
         outcomes: [{
           key: 'shadow-canary-outcome',
-          value: 'candidate path works without live replacement',
+          value: 'candidate path works across resume without live replacement',
           evidenceRefs: ['shadow-canary.txt'],
         }],
         projectTerminal: true,
       },
     }), 'memory_checkpoint');
-    if (checkpoint?.taskStatus !== 'completed' || checkpoint?.turnState !== 'closed' || checkpoint?.memoryLifecycle?.postflightState !== 'CLOSED') {
-      throw new Error(`SHADOW_CHECKPOINT_NOT_CLOSED:${safeLog(JSON.stringify(checkpoint))}`);
+    if (checkpointFinal?.taskStatus !== 'completed' || checkpointFinal?.turnState !== 'closed' || checkpointFinal?.memoryLifecycle?.postflightState !== 'CLOSED') {
+      throw new Error(`SHADOW_FINAL_CHECKPOINT_NOT_CLOSED:${safeLog(JSON.stringify(checkpointFinal))}`);
     }
 
+    const authority = await openAgentCoreMcpClient(shadowApiKey, `http://127.0.0.1:${SHADOW_PORTS.agentCore}`);
+    authorityClient = authority.client;
+    authorityTransport = authority.transport;
+    const promotedIds = [...new Set([...(checkpoint?.promotedMemoryIds ?? []), ...(checkpointFinal?.promotedMemoryIds ?? [])])];
+    let artifactMemoryId = null;
+    for (const memoryId of promotedIds) {
+      const detail = parseToolJson(await authorityClient.callTool({ name: 'memory_get', arguments: { memoryId } }), 'memory_get');
+      if (detail?.memory?.kind === 'artifact') { artifactMemoryId = memoryId; break; }
+    }
+    if (!artifactMemoryId) throw new Error(`SHADOW_PROMOTED_ARTIFACT_NOT_FOUND:${promotedIds.join(',')}`);
+    const validationClaim = parseToolJson(await authorityClient.callTool({
+      name: 'memory_commit',
+      arguments: {
+        canonicalKey: 'shadow.canary.validation.claim',
+        kind: 'project_state',
+        value: {
+          status: 'validated',
+          statement: 'The isolated candidate MCP workflow completed and the shadow Observatory readback is authoritative.',
+        },
+        importance: 0.9,
+        sourceType: 'shadow_canary',
+        sourceRef: 'memory-observatory-shadow-canary',
+        explicitRelations: [{ targetMemoryId: artifactMemoryId, relation: 'validated_by', weight: 1 }],
+      },
+    }), 'memory_commit');
+    if (!validationClaim?.memoryId) throw new Error('SHADOW_VALIDATION_CLAIM_NOT_CREATED');
+    await authorityClient.close();
+    authorityClient = undefined;
+    authorityTransport = undefined;
+
     const activityUrl = `http://127.0.0.1:${SHADOW_PORTS.observatory}/api/activity?after=0&limit=250`;
-    for (let attempt = 0; attempt < 40; attempt += 1) {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
       graph = await fetchJson(`http://127.0.0.1:${SHADOW_PORTS.observatory}/api/snapshot`);
       activity = await fetchJson(activityUrl);
       const events = new Set((activity?.records ?? []).map((record) => record.event));
-      const contextObserved = (activity?.records ?? []).some((record) => record.contextId === opened.memoryContextId);
+      const contextObserved = (activity?.records ?? []).some((record) => record.contextId === openedResume.memoryContextId);
       const taskObserved = (activity?.records ?? []).some((record) => record.continuityTaskId === opened.continuityTaskId);
-      if ((graph?.nodes?.length ?? 0) > 0 && contextObserved && taskObserved
-        && events.has('memory.write_decision') && events.has('memory.postflight_completed')) break;
+      if ((graph?.nodes?.length ?? 0) > 0 && (graph?.edges?.length ?? 0) > 0 && contextObserved && taskObserved
+        && events.has('memory.write_decision') && events.has('memory.revision_created') && events.has('memory.edge_created') && events.has('memory.postflight_completed')) break;
       await sleep(100);
     }
 
@@ -417,6 +521,9 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
   } catch (error) {
     failure = error;
   } finally {
+    if (authorityClient) await authorityClient.close().catch(() => undefined);
+    authorityClient = undefined;
+    authorityTransport = undefined;
     if (client) await client.close().catch(() => undefined);
     for (const item of [...children].reverse()) await stopTracked(item);
   }
@@ -446,15 +553,15 @@ export async function runMemoryObservatoryShadowCanary(options = {}) {
       openedContext: Boolean(opened?.memoryContextId),
       recallCompleted,
       mutationVerified,
-      checkpointClosed: checkpoint?.memoryLifecycle?.postflightState === 'CLOSED',
-      checkpointStatus: checkpoint?.taskStatus ?? null,
+      checkpointClosed: checkpointFinal?.memoryLifecycle?.postflightState === 'CLOSED',
+      checkpointStatus: checkpointFinal?.taskStatus ?? null,
       leaseExposedInResult: false,
     },
     observatory: {
       graphNodeCount: graph?.nodes?.length ?? 0,
       graphEdgeCount: graph?.edges?.length ?? 0,
       activityCount: activity?.records?.length ?? 0,
-      contextObserved: Boolean(opened && (activity?.records ?? []).some((record) => record.contextId === opened.memoryContextId)),
+      contextObserved: Boolean((activity?.records ?? []).some((record) => record.contextId === opened?.memoryContextId || record.contextId === openedResume?.memoryContextId)),
       taskObserved: Boolean(opened && (activity?.records ?? []).some((record) => record.continuityTaskId === opened.continuityTaskId)),
       snapshotMatchesBackend: Boolean(graph && backendGraph && stableJson(authoritativeSnapshotProjection(graph)) === stableJson(authoritativeSnapshotProjection(backendGraph))),
       events: [...new Set((activity?.records ?? []).map((record) => record.event))].sort(),
