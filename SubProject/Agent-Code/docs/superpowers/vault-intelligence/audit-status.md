@@ -240,7 +240,36 @@ Fresh pre-publication verification:
 
 ## Phase 5 — Shadow Health Monitor
 
-Status: **PENDING**
+Status: **CERTIFIED — REMOTE VERIFIED**
+
+Implementation checkpoint: `3b29c1687dee34e2f8f9eca4b1fcc5f936367d1e`
+
+Implemented bounded background monitoring:
+
+- `CredentialAppState` owns the monitor; it starts with the Vault and its worker shuts down definitively when the owner is dropped.
+- Only the existing metadata-only OpenRouter validation route is used: `GET /api/v1/key`. Model-inference endpoints remain forbidden.
+- Scheduling is deterministic and state-aware: first unverified probes wait 30 seconds plus bounded deterministic jitter; READY and EXHAUSTED use 15-minute intervals; WARNING uses 5-minute intervals; and COOLDOWN is not probed before its local deadline.
+- Persisted `last_probe_at_utc_ms` prevents an immediate duplicate probe after restart.
+- Due work is deterministically ordered and bounded to two concurrent probes, including a 20-key pool.
+- Disabled, invalid, and quarantined credentials are never auto-probed; eligibility and cooldown are rechecked immediately before transport.
+- A 20-key provider-wide transient outage leaves lifecycle and eligibility intact without synthetic health events or pool churn.
+
+Fresh certification on the implementation checkpoint:
+
+- credential-core: **70 / 70 unit PASS**, events **1 / 1 PASS**, intelligence **4 / 4 PASS**, monitor integration **5 / 5 PASS**, usage **15 / 15 PASS**; synthetic rotation completed **100,013 transitions**.
+- `npm run test:vault-baseline`: PASS.
+- credential-security scan: PASS (**31 production source files scanned**).
+- Tauri contract: PASS.
+- focused Vault/App frontend: **14 / 14 PASS**.
+- `npm run build`: PASS.
+- `git diff --check`: PASS.
+- changed-production forbidden-secret-surface scan: PASS (**4 production files**: credential-core `lib.rs`, `monitor.rs`, `openrouter.rs`, and Tauri credential `state.rs`), using the credential-security forbidden plaintext/UI/browser-storage/unsafe-protector rules plus the monitor inference-endpoint rule.
+
+Security and recovery evidence:
+
+- Monitor tests cover bounded concurrency, deterministic 20-key staggering, provider-outage preservation, restart duplicate-probe prevention, eligibility recheck, and final worker shutdown.
+- Credential-security scanning rejects plaintext-reveal surfaces, machine-scope DPAPI, browser credential storage, unsafe protectors, and model-inference endpoints in the monitor.
+- The full Linux Tauri `cargo check` is **environment-blocked, not passed**: the Codespace provides GLib 2.64.6 while desktop dependencies require GLib >= 2.70. This is unchanged environment tooling, not counted as a Phase 5 source regression; Windows-native acceptance remains a Phase 8 gate.
 
 Allowed provider operation: `GET /api/v1/key` only.
 Model inference requests remain forbidden for health monitoring.
