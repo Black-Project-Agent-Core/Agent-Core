@@ -168,6 +168,21 @@ fi
     plugin/codespace/tests/http-mcp.integration.test.ts
 )
 
+# Phase 7 reuses the root Phase-2 hydration gate before this bridge can expose
+# mutation-ready MCP. Sourcing preserves only the non-secret lifecycle mode and
+# loopback Agent Core lease endpoint for the supervised HTTP MCP child.
+# shellcheck disable=SC1091
+source "$ROOT/scripts/memory-lifecycle-preflight.sh"
+
+# The root hydration gate has already consumed any credentials it requires.
+# Keep the bridge lifecycle parent, tunnel runtime, MCP server, watchdog, and
+# child shells free of GitHub / Memory Remote / Cloudflare secrets.
+unset GITHUB_TOKEN GH_TOKEN
+unset AGENT_CORE_GITHUB_TOKEN_FILE AGENT_CORE_GITHUB_PACKAGES_TOKEN_FILE AGENT_CORE_GITHUB_PACKAGES_TOKEN
+unset AGENT_CORE_MEMORY_REMOTE_KEY_HEX AGENT_CORE_MEMORY_REMOTE_KEY_FILE
+unset CLOUDFLARE_API_TOKEN CLOUDFLARE_WRANGLER_OAUTH_CONFIG_B64
+unset CODESPACE_MEMORY_CONTEXT_LEASE AGENT_CORE_MEMORY_CONTEXT_LEASE
+
 (
   exec 9>&-
   bash "$ROOT/scripts/ensure-http-mcp.sh"

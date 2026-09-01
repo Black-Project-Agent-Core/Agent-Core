@@ -4,7 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod/v4';
 
 import { executeCommand } from './commands.js';
-import { BRIDGE_NAME, BRIDGE_VERSION, MAX_COMMAND_OUTPUT_BYTES, RUNTIME_DIR, WORKSPACES_ROOT } from './constants.js';
+import { BRIDGE_NAME, BRIDGE_VERSION, clearSecretEnvironment, MAX_COMMAND_OUTPUT_BYTES, RUNTIME_DIR, WORKSPACES_ROOT } from './constants.js';
 import { errorPayload } from './errors.js';
 import { CodespaceMemoryLeaseClient, parseMemoryLeaseRuntimeConfig, type MemoryLeaseDecision } from './memory-lease.js';
 import {
@@ -62,9 +62,8 @@ function attachMemoryLifecycle<T>(
 }
 
 export async function createCodespaceMcpServer(): Promise<McpServer> {
-  // Defense in depth: the production launcher already removes these values.
-  delete process.env.CONTROL_PLANE_API_KEY;
-  delete process.env.OPENAI_ADMIN_KEY;
+  // Defense in depth: production launchers scrub the same set before exec.
+  clearSecretEnvironment();
 
   const testAllowedBase =
     process.env.NODE_ENV === 'test' ? process.env.CODESPACE_TEST_ALLOWED_BASE : undefined;

@@ -37,6 +37,8 @@ function transportEnvironment(overrides: Record<string, string> = {}): Record<st
     CODESPACE_WORKSPACE_ROOT: root,
     CODESPACE_TEST_ALLOWED_BASE: base,
     CONTROL_PLANE_API_KEY: 'must-not-reach-shell',
+    CODESPACE_MEMORY_LIFECYCLE_MODE: 'disabled',
+    CODESPACE_AGENT_CORE_MEMORY_LEASE_URL: '',
     ...overrides,
   };
 }

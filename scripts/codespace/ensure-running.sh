@@ -292,8 +292,15 @@ plugin_lifecycle="$AGENT_CORE_REPO_ROOT/plugin/codespace/scripts/ensure-running.
   log_error "Codespace bridge lifecycle is missing: $plugin_lifecycle"
   exit 94
 }
+memory_lifecycle_mode="${AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE:-advisory}"
+case "$memory_lifecycle_mode" in
+  disabled|advisory|enforce) ;;
+  *) log_error 'AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE must be disabled, advisory, or enforce.'; exit 94 ;;
+esac
 log_info "Starting codespace bridge lifecycle for phase $phase."
-if ! bash "$plugin_lifecycle" --phase "$phase"; then
+if ! CODESPACE_MEMORY_LIFECYCLE_MODE="$memory_lifecycle_mode" \
+  AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE="$memory_lifecycle_mode" \
+  bash "$plugin_lifecycle" --phase "$phase"; then
   log_error 'Codespace bridge lifecycle failed.'
   exit 94
 fi

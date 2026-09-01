@@ -29,7 +29,7 @@ describe('codespace managed Streamable HTTP lifecycle contract', () => {
   it('restarts a protocol-healthy server when compiled output is newer than its URL state', () => {
     expect(ensureHttp).toContain('build_is_current');
     expect(ensureHttp).toContain('find "$ROOT/dist" -type f -newer "$URL_FILE"');
-    expect(ensureHttp).toContain('health_ok && url_file_matches && build_is_current && protocol_ok');
+    expect(ensureHttp).toContain('health_ok && url_file_matches && lifecycle_config_matches && build_is_current && protocol_ok');
   });
 
   it('probes the local MCP protocol before reconnecting the managed tunnel', () => {

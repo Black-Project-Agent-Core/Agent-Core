@@ -147,6 +147,17 @@ describe('Codespace Memory Remote hydration gate', () => {
     }
   });
 
+  it('requires the direct Codespace bridge lifecycle to reuse this exact hydration gate before mutation readiness', async () => {
+    const [pluginEnsure, pluginPrepare] = await Promise.all([
+      readFile(path.join(root, 'plugin/codespace/scripts/ensure-running.sh'), 'utf8'),
+      readFile(path.join(root, 'plugin/codespace/scripts/memory-lifecycle-preflight.sh'), 'utf8'),
+    ]);
+    expect(pluginEnsure).toContain('memory-lifecycle-preflight.sh');
+    expect(pluginEnsure.indexOf('memory-lifecycle-preflight.sh')).toBeLessThan(pluginEnsure.indexOf('ensure-http-mcp.sh'));
+    expect(pluginPrepare).toContain('$REPO_ROOT/scripts/codespace/memory-hydration-gate.sh');
+    expect(pluginPrepare).not.toContain('memory-hydrate');
+  });
+
   it('keeps hydration before runtime startup in both bootstrap and repair paths', async () => {
     const [bootstrap, ensure, launcher, common] = await Promise.all([
       readFile(path.join(root, 'scripts/codespace/bootstrap.sh'), 'utf8'),
