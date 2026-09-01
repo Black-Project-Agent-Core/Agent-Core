@@ -168,6 +168,10 @@ describe('MemoryObservatoryApp graph convergence', () => {
     source.emit('activity', { sequence: 11, timestamp: new Date().toISOString(), category: 'memory', event: 'memory.node_created', state: 'completed', memoryIds: ['a3'] }, '11');
     expect(await screen.findByText('A3')).toBeInTheDocument();
     expect(screen.getByText('3 nodes · 0 edges')).toBeInTheDocument();
+    const afterNodeCreateCalls = snapshotCalls;
+    source.emit('activity', { sequence: 11, timestamp: new Date().toISOString(), category: 'memory', event: 'memory.node_created', state: 'completed', memoryIds: ['a3'] }, '11');
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(snapshotCalls).toBe(afterNodeCreateCalls);
 
     currentSnapshot = makeSnapshot([baseNode, a2, a3r2]);
     source.emit('activity', { sequence: 12, timestamp: new Date().toISOString(), category: 'memory', event: 'memory.revision_created', state: 'completed', memoryIds: ['a3'] }, '12');
