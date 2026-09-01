@@ -3,8 +3,15 @@ import { observatoryApi } from './api';
 import { activityReducer, initialActivityState } from './activity-reducer';
 import type { ObservatoryActivity, ObservatoryHealth, ObservatoryNodeDetail, ObservatorySnapshot } from './types';
 import { ActivityTracker } from '../components/ActivityTracker';
+import { ConflictView } from '../components/ConflictView';
+import { FailureSolutionView } from '../components/FailureSolutionView';
 import { MemoryGraph } from '../components/MemoryGraph';
 import { NodeInspector } from '../components/NodeInspector';
+import { RecallView } from '../components/RecallView';
+import { SessionTaskView } from '../components/SessionTaskView';
+import { TimelineView } from '../components/TimelineView';
+
+type ObservatoryLens = 'graph' | 'timeline' | 'recall' | 'failure' | 'conflict' | 'session';
 
 interface ActivityHighlight {
   memoryIds: string[];
@@ -27,6 +34,7 @@ export function MemoryObservatoryApp() {
   const [detail, setDetail] = useState<ObservatoryNodeDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lens, setLens] = useState<ObservatoryLens>('graph');
   const [activity, dispatchActivity] = useReducer(activityReducer, initialActivityState);
   const [highlight, setHighlight] = useState<ActivityHighlight | null>(null);
   const lastSequenceRef = useRef(0);
@@ -158,14 +166,45 @@ export function MemoryObservatoryApp() {
       </header>
       <section className="observatory-workspace" aria-label="Memory Observatory">
         <div className="graph-column">
-          <MemoryGraph
-            snapshot={snapshot}
-            selectedMemoryId={selectedMemoryId}
-            onSelectMemory={selectMemory}
-            highlightedMemoryIds={highlight?.memoryIds}
-            highlightKind={highlight?.kind}
-          />
-          <NodeInspector detail={detail} loading={detailLoading} />
+          <nav className="lens-tabs" aria-label="Memory Observatory views">
+            {[
+              ['graph', 'Graph'],
+              ['timeline', 'Timeline'],
+              ['recall', 'Recall'],
+              ['failure', 'Failure/Solution'],
+              ['conflict', 'Conflict'],
+              ['session', 'Session'],
+            ].map(([value, label]) => (
+              <button
+                type="button"
+                key={value}
+                className={lens === value ? 'lens-tab lens-tab--active' : 'lens-tab'}
+                aria-pressed={lens === value}
+                onClick={() => setLens(value as ObservatoryLens)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="lens-surface">
+            {lens === 'graph' ? (
+              <div className="graph-lens">
+                <MemoryGraph
+                  snapshot={snapshot}
+                  selectedMemoryId={selectedMemoryId}
+                  onSelectMemory={selectMemory}
+                  highlightedMemoryIds={highlight?.memoryIds}
+                  highlightKind={highlight?.kind}
+                />
+                <NodeInspector detail={detail} loading={detailLoading} />
+              </div>
+            ) : null}
+            {lens === 'timeline' ? <TimelineView snapshot={snapshot} detail={detail} records={activity.records} /> : null}
+            {lens === 'recall' ? <RecallView snapshot={snapshot} records={activity.records} /> : null}
+            {lens === 'failure' ? <FailureSolutionView snapshot={snapshot} /> : null}
+            {lens === 'conflict' ? <ConflictView snapshot={snapshot} /> : null}
+            {lens === 'session' ? <SessionTaskView records={activity.records} /> : null}
+          </div>
         </div>
         <ActivityTracker records={activity.records} gap={activity.gap} />
       </section>

@@ -25,6 +25,7 @@ export interface MemoryActivityEvent {
   timestamp: string;
   memoryIds?: string[];
   contextId?: string;
+  continuityTaskId?: string;
   relation?: MemoryRelation;
   decisionType?: MemoryPersistenceDecisionType;
   reasonCodes?: string[];

@@ -150,3 +150,41 @@ describe('authoritative read-only memory observatory projection', () => {
     expect(serialized).not.toMatch(/principalId|lease|apiKey|encryptionKey|keyFile|token/i);
   });
 });
+
+describe('memory observatory analysis projection', () => {
+  it('projects deterministic revision, edge-event, and write-decision timeline entries plus conflict evidence', async () => {
+    const { service, root } = await fixture('analysis-timeline');
+    const scope = { principalId: 'principal-analysis', projectId: root };
+    const failureValue = 'Failure before fix.';
+    const solutionValue = 'Solution revision one.';
+    const failure = await service.commit({ scope, canonicalKey: 'failure.analysis', kind: 'failure', value: failureValue, sourceType: 'test' });
+    const solution = await service.commit({ scope, canonicalKey: 'decision.analysis', kind: 'decision', value: solutionValue, sourceType: 'test' });
+    await service.revise({ scope, memoryId: solution.memoryId, value: 'Solution revision two.', sourceType: 'test' });
+    await linkExisting(service, scope, { memoryId: failure.memoryId, canonicalKey: 'failure.analysis', kind: 'failure', value: failureValue }, solution.memoryId, 'resolved_by');
+    const conflict = await service.openConflict(scope, failure.memoryId, solution.memoryId, 'analysis_conflict', {
+      evidence: 'CONFLICT_EVIDENCE_SENTINEL',
+      authorization: 'Bearer SHOULD_NOT_LEAK',
+      principalId: 'PRINCIPAL_SHOULD_NOT_LEAK',
+      memoryContextLease: 'LEASE_SHOULD_NOT_LEAK',
+      apiKey: 'API_KEY_SHOULD_NOT_LEAK',
+      nested: { token: 'TOKEN_SHOULD_NOT_LEAK', safe: 'nested-safe-evidence' },
+    });
+
+    const snapshot = await service.observatorySnapshot({ scope, maxNodes: 20, maxEdges: 20 });
+    expect(snapshot.timeline).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'revision', memoryIds: [solution.memoryId], revisionNo: 1 }),
+      expect.objectContaining({ kind: 'revision', memoryIds: [solution.memoryId], revisionNo: 2 }),
+      expect.objectContaining({ kind: 'edge_event', memoryIds: [failure.memoryId, solution.memoryId], relation: 'resolved_by' }),
+      expect.objectContaining({ kind: 'write_decision', decisionType: 'LINK_EXISTING' }),
+    ]));
+    expect(snapshot.timeline).toEqual([...snapshot.timeline].sort((left, right) => left.timestamp - right.timestamp || left.timelineId.localeCompare(right.timelineId)));
+    expect(snapshot.conflicts).toContainEqual(expect.objectContaining({
+      conflictId: conflict.conflictId,
+      evidence: expect.objectContaining({ evidence: 'CONFLICT_EVIDENCE_SENTINEL' }),
+    }));
+    const serializedConflicts = JSON.stringify(snapshot.conflicts);
+    expect(serializedConflicts).not.toContain('SHOULD_NOT_LEAK');
+    expect(serializedConflicts).not.toMatch(/authorization|principalId|apiKey|token|lease/i);
+    expect(serializedConflicts).toContain('nested-safe-evidence');
+  });
+});

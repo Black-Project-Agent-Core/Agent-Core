@@ -38,8 +38,28 @@ export interface ObservatoryConflict {
   rightMemoryId: string;
   conflictType: string;
   status: string;
+  evidence: unknown;
   createdAt: number;
   resolvedAt?: number;
+}
+
+export interface ObservatoryTimelineEntry {
+  timelineId: string;
+  timestamp: number;
+  kind: 'revision' | 'edge_event' | 'write_decision';
+  memoryIds: string[];
+  label: string;
+  revisionNo?: number;
+  valuePreview?: string;
+  eventType?: string;
+  relation?: string;
+  evidenceEventId?: string;
+  decisionType?: string;
+  reasonCodes?: string[];
+  evidenceRefs?: string[];
+  contextId?: string;
+  continuityTaskId?: string;
+  routeContextId?: string;
 }
 
 export interface ObservatoryContinuitySummary {
@@ -70,8 +90,9 @@ export interface ObservatorySnapshot {
   nodes: ObservatoryNode[];
   edges: ObservatoryEdge[];
   conflicts: ObservatoryConflict[];
+  timeline: ObservatoryTimelineEntry[];
   continuity: ObservatoryContinuitySummary;
-  truncated: { nodes: boolean; edges: boolean };
+  truncated: { nodes: boolean; edges: boolean; timeline: boolean };
 }
 
 export interface ObservatoryRevision {
@@ -97,6 +118,8 @@ export interface ObservatoryActivity {
   requestId?: string;
   traceId?: string;
   routeContextId?: string;
+  contextId?: string;
+  continuityTaskId?: string;
   toolName?: string;
   runId?: string;
   executionNodeId?: string;

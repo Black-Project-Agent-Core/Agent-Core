@@ -25,6 +25,8 @@ interface SafeActivity {
   requestId?: string;
   traceId?: string;
   routeContextId?: string;
+  contextId?: string;
+  continuityTaskId?: string;
   toolName?: string;
   runId?: string;
   executionNodeId?: string;
@@ -97,12 +99,16 @@ function safeActivity(record: AuditJournalRecord): SafeActivity | null {
   const reasonCodes = stringArray(record.data.reasonCodes, 32, MAX_CODE_CHARS);
   const statusCode = stringValue(record.data.statusCode, MAX_CODE_CHARS);
   const durationMs = numberValue(record.data.durationMs);
+  const contextId = stringValue(record.data.contextId, MAX_ID_CHARS);
+  const continuityTaskId = stringValue(record.data.continuityTaskId, MAX_ID_CHARS);
   if (memoryIds) activity.memoryIds = memoryIds;
   if (relation) activity.relation = relation;
   if (decision && DECISIONS.has(decision)) activity.decisionType = decision;
   if (reasonCodes) activity.reasonCodes = reasonCodes;
   if (statusCode) activity.statusCode = statusCode;
   if (durationMs !== undefined) activity.durationMs = durationMs;
+  if (contextId) activity.contextId = contextId;
+  if (continuityTaskId) activity.continuityTaskId = continuityTaskId;
   return activity;
 }
 

@@ -570,6 +570,7 @@ export class MemoryService {
     this.emitActivity({
       type: 'memory.write_decision',
       contextId: request.contextId,
+      continuityTaskId: request.continuityTaskId,
       memoryIds: result.targetMemoryId ? [result.targetMemoryId] : undefined,
       decisionType: result.decision,
       reasonCodes: result.reasonCodes,
@@ -585,6 +586,7 @@ export class MemoryService {
     this.emitActivity({
       type: 'memory.write_decision',
       contextId: request.contextId,
+      continuityTaskId: request.continuityTaskId,
       memoryIds,
       decisionType: result.decision,
       reasonCodes: result.reasonCodes,
@@ -592,16 +594,17 @@ export class MemoryService {
     });
     if (result.semanticMutation && result.memoryId) {
       if (result.decision === 'REVISE_EXISTING') {
-        this.emitActivity({ type: 'memory.revision_created', contextId: request.contextId, memoryIds: [result.memoryId], state: 'completed' });
+        this.emitActivity({ type: 'memory.revision_created', contextId: request.contextId, continuityTaskId: request.continuityTaskId, memoryIds: [result.memoryId], state: 'completed' });
       } else if (result.decision === 'WRITE_BRANCH' || result.decision === 'WRITE_NEW_ROOT' || result.decision === 'OPEN_CONFLICT') {
-        this.emitActivity({ type: 'memory.node_created', contextId: request.contextId, memoryIds: [result.memoryId], state: 'completed' });
+        this.emitActivity({ type: 'memory.node_created', contextId: request.contextId, continuityTaskId: request.continuityTaskId, memoryIds: [result.memoryId], state: 'completed' });
       }
-      if (result.createdEdges > 0) this.emitActivity({ type: 'memory.edge_created', contextId: request.contextId, memoryIds: [result.memoryId], state: 'completed' });
-      if (result.conflictId) this.emitActivity({ type: 'memory.conflict_opened', contextId: request.contextId, memoryIds: [result.memoryId], state: 'completed' });
+      if (result.createdEdges > 0) this.emitActivity({ type: 'memory.edge_created', contextId: request.contextId, continuityTaskId: request.continuityTaskId, memoryIds: [result.memoryId], state: 'completed' });
+      if (result.conflictId) this.emitActivity({ type: 'memory.conflict_opened', contextId: request.contextId, continuityTaskId: request.continuityTaskId, memoryIds: [result.memoryId], state: 'completed' });
     }
     this.emitActivity({
       type: 'memory.postflight_completed',
       contextId: request.contextId,
+      continuityTaskId: request.continuityTaskId,
       memoryIds,
       decisionType: result.decision,
       reasonCodes: result.reasonCodes,

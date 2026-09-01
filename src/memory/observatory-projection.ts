@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { MemoryConfig } from '../config.js';
 import type { ContinuitySnapshotBuilder } from '../continuity/snapshot.js';
 import { redactMemoryText } from './redaction.js';
-import type { MemoryKind, MemoryRelation, MemoryScope, MemoryState } from './types.js';
+import type { MemoryKind, MemoryPersistenceDecisionType, MemoryRelation, MemoryScope, MemoryState } from './types.js';
 import type { MemoryWorkerClient } from './worker-client.js';
 
 export interface MemoryObservatoryProjectionRequest {
@@ -44,8 +44,28 @@ export interface MemoryObservatoryConflict {
   rightMemoryId: string;
   conflictType: string;
   status: string;
+  evidence: Record<string, unknown>;
   createdAt: number;
   resolvedAt?: number;
+}
+
+export interface MemoryObservatoryTimelineEntry {
+  timelineId: string;
+  timestamp: number;
+  kind: 'revision' | 'edge_event' | 'write_decision';
+  memoryIds: string[];
+  label: string;
+  revisionNo?: number;
+  valuePreview?: string;
+  eventType?: string;
+  relation?: MemoryRelation;
+  evidenceEventId?: string;
+  decisionType?: MemoryPersistenceDecisionType;
+  reasonCodes?: string[];
+  evidenceRefs?: string[];
+  contextId?: string;
+  continuityTaskId?: string;
+  routeContextId?: string;
 }
 
 export interface MemoryObservatoryContinuitySummary {
@@ -76,8 +96,9 @@ export interface MemoryObservatorySnapshot {
   nodes: MemoryObservatoryNode[];
   edges: MemoryObservatoryEdge[];
   conflicts: MemoryObservatoryConflict[];
+  timeline: MemoryObservatoryTimelineEntry[];
   continuity: MemoryObservatoryContinuitySummary;
-  truncated: { nodes: boolean; edges: boolean };
+  truncated: { nodes: boolean; edges: boolean; timeline: boolean };
 }
 
 export interface MemoryObservatoryNodeDetail extends MemoryObservatoryNode {
@@ -118,14 +139,24 @@ type ConflictRow = {
   conflict_type: string;
   status: string;
   created_at: number;
+  evidence_json: string;
   resolved_at: number | null;
 };
+
+type RevisionTimelineRow = { id: string; memory_id: string; revision_no: number; value_text: string; valid_from: number };
+type EdgeTimelineRow = { id: string; event_type: string; from_memory_id: string; to_memory_id: string; relation: string; evidence_event_id: string | null; reason_code: string; created_at: number };
+type DecisionTimelineRow = { id: string; route_context_id: string; continuity_task_id: string | null; context_id: string | null; decision_type: string; target_memory_id: string | null; existing_memory_ids_json: string; reason_codes_json: string; evidence_refs_json: string; created_at: number };
 
 const MAX_NODES = 1_000;
 const MAX_EDGES = 5_000;
 const VALUE_PREVIEW_CHARS = 320;
 const TITLE_CHARS = 180;
 const DETAIL_REVISION_LIMIT = 50;
+const MAX_TIMELINE = 2_000;
+const MAX_STRUCTURED_DEPTH = 4;
+const MAX_STRUCTURED_KEYS = 32;
+const MAX_STRUCTURED_ITEMS = 32;
+const SENSITIVE_KEY = /(?:authorization|cookie|api[_\s-]?key|token|secret|password|credential|principal|lease|encryption[_\s-]?key|key[_\s-]?file|private[_\s-]?key|access[_\s-]?key)/i;
 
 function projectId(scope: MemoryScope): string {
   return scope.projectId ?? '';
@@ -141,6 +172,42 @@ function safeText(value: string, maxChars: number): string {
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
     .trim();
   return redacted.length <= maxChars ? redacted : `${redacted.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
+function safeStructured(value: unknown, depth = 0, key?: string): unknown {
+  if (key && SENSITIVE_KEY.test(key)) return undefined;
+  if (value === null || typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') return safeText(value, VALUE_PREVIEW_CHARS);
+  if (depth >= MAX_STRUCTURED_DEPTH) return '[TRUNCATED]';
+  if (Array.isArray(value)) return value.slice(0, MAX_STRUCTURED_ITEMS).map((item) => safeStructured(item, depth + 1));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+      .filter(([entryKey]) => !SENSITIVE_KEY.test(entryKey))
+      .sort(([left], [right]) => left.localeCompare(right))
+      .slice(0, MAX_STRUCTURED_KEYS)
+      .map(([entryKey, entryValue]) => [entryKey.slice(0, 160), safeStructured(entryValue, depth + 1, entryKey)]));
+  }
+  return null;
+}
+
+function parseSafeObject(raw: string): Record<string, unknown> {
+  try {
+    const safe = safeStructured(JSON.parse(raw));
+    return safe && typeof safe === 'object' && !Array.isArray(safe) ? safe as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseSafeStringArray(raw: string): string[] {
+  try {
+    const value = JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+    return value.slice(0, 64).filter((item): item is string => typeof item === 'string').map((item) => safeText(item, TITLE_CHARS));
+  } catch {
+    return [];
+  }
 }
 
 function safeNode(row: NodeRow): MemoryObservatoryNode {
@@ -186,6 +253,7 @@ function safeConflict(row: ConflictRow): MemoryObservatoryConflict {
     rightMemoryId: row.right_memory_id,
     conflictType: safeText(row.conflict_type, TITLE_CHARS),
     status: safeText(row.status, 64),
+    evidence: parseSafeObject(row.evidence_json),
     createdAt: Number(row.created_at),
     ...(row.resolved_at == null ? {} : { resolvedAt: Number(row.resolved_at) }),
   };
@@ -217,6 +285,7 @@ export class MemoryObservatoryProjection {
     const truncatedEdges = edgeRows.length > request.maxEdges;
     const edges = edgeRows.slice(0, request.maxEdges).map(safeEdge);
     const conflicts = await this.conflictRows(request.scope, nodeIds).then((items) => items.map(safeConflict));
+    const timelineResult = await this.timelineEntries(request.scope, nodeIds);
     const [remoteRows, continuity] = await Promise.all([
       this.client.query<Record<string, unknown>>(
         `SELECT durability_state, hydration_state, remote_generation, logical_state_hash
@@ -248,8 +317,9 @@ export class MemoryObservatoryProjection {
       nodes,
       edges,
       conflicts,
+      timeline: timelineResult.entries,
       continuity: this.safeContinuity(continuity),
-      truncated: { nodes: truncatedNodes, edges: truncatedEdges },
+      truncated: { nodes: truncatedNodes, edges: truncatedEdges, timeline: timelineResult.truncated },
     };
   }
 
@@ -337,7 +407,7 @@ export class MemoryObservatoryProjection {
     const idParams = [...nodeIds, ...nodeIds];
     return this.client.query<ConflictRow>(
       `SELECT conflict.id, conflict.left_memory_id, conflict.right_memory_id,
-              conflict.conflict_type, conflict.status, conflict.created_at, conflict.resolved_at
+              conflict.conflict_type, conflict.status, conflict.evidence_json, conflict.created_at, conflict.resolved_at
          FROM memory_conflicts AS conflict
          JOIN memory_items AS left_item ON left_item.id = conflict.left_memory_id
          JOIN memory_items AS right_item ON right_item.id = conflict.right_memory_id
@@ -347,6 +417,66 @@ export class MemoryObservatoryProjection {
         ORDER BY conflict.created_at DESC, conflict.id COLLATE BINARY ASC`,
       [scope.principalId, projectId(scope), scope.principalId, projectId(scope), ...idParams],
     );
+  }
+
+  private async timelineEntries(scope: MemoryScope, nodeIds: string[]): Promise<{ entries: MemoryObservatoryTimelineEntry[]; truncated: boolean }> {
+    const placeholders = nodeIds.map(() => '?').join(',');
+    const [revisions, edgeEvents, decisions] = await Promise.all([
+      nodeIds.length === 0 ? Promise.resolve([] as RevisionTimelineRow[]) : this.client.query<RevisionTimelineRow>(
+        `SELECT revision.id, revision.memory_id, revision.revision_no, revision.value_text, revision.valid_from
+           FROM memory_revisions AS revision
+           JOIN memory_items AS item ON item.id = revision.memory_id
+          WHERE item.principal_id = ? AND IFNULL(item.project_id, '') = ? AND item.id IN (${placeholders})
+          ORDER BY revision.valid_from ASC, revision.id COLLATE BINARY ASC
+          LIMIT ?`,
+        [scope.principalId, projectId(scope), ...nodeIds, MAX_TIMELINE + 1],
+      ),
+      nodeIds.length === 0 ? Promise.resolve([] as EdgeTimelineRow[]) : this.client.query<EdgeTimelineRow>(
+        `SELECT id, event_type, from_memory_id, to_memory_id, relation, evidence_event_id, reason_code, created_at
+           FROM memory_edge_events
+          WHERE principal_id = ? AND IFNULL(project_id, '') = ?
+            AND from_memory_id IN (${placeholders}) AND to_memory_id IN (${placeholders})
+          ORDER BY created_at ASC, id COLLATE BINARY ASC
+          LIMIT ?`,
+        [scope.principalId, projectId(scope), ...nodeIds, ...nodeIds, MAX_TIMELINE + 1],
+      ),
+      this.client.query<DecisionTimelineRow>(
+        `SELECT id, route_context_id, continuity_task_id, context_id, decision_type, target_memory_id,
+                existing_memory_ids_json, reason_codes_json, evidence_refs_json, created_at
+           FROM memory_write_decisions
+          WHERE principal_id = ? AND IFNULL(project_id, '') = ?
+          ORDER BY created_at ASC, id COLLATE BINARY ASC
+          LIMIT ?`,
+        [scope.principalId, projectId(scope), MAX_TIMELINE + 1],
+      ),
+    ]);
+    const entries: MemoryObservatoryTimelineEntry[] = [
+      ...revisions.map((row) => ({
+        timelineId: `revision:${row.id}`, timestamp: Number(row.valid_from), kind: 'revision' as const,
+        memoryIds: [row.memory_id], label: `revision ${row.revision_no}`, revisionNo: Number(row.revision_no),
+        valuePreview: safeText(row.value_text, VALUE_PREVIEW_CHARS),
+      })),
+      ...edgeEvents.map((row) => ({
+        timelineId: `edge:${row.id}`, timestamp: Number(row.created_at), kind: 'edge_event' as const,
+        memoryIds: [row.from_memory_id, row.to_memory_id], label: safeText(row.event_type, 80),
+        eventType: safeText(row.event_type, 80), relation: row.relation as MemoryRelation,
+        ...(row.evidence_event_id ? { evidenceEventId: row.evidence_event_id } : {}),
+        reasonCodes: [safeText(row.reason_code, TITLE_CHARS)],
+      })),
+      ...decisions.map((row) => {
+        const existing = parseSafeStringArray(row.existing_memory_ids_json);
+        const memoryIds = [...new Set([...(row.target_memory_id ? [row.target_memory_id] : []), ...existing])].slice(0, 64);
+        return {
+          timelineId: `decision:${row.id}`, timestamp: Number(row.created_at), kind: 'write_decision' as const,
+          memoryIds, label: safeText(row.decision_type, 80), decisionType: row.decision_type as MemoryPersistenceDecisionType,
+          reasonCodes: parseSafeStringArray(row.reason_codes_json), evidenceRefs: parseSafeStringArray(row.evidence_refs_json),
+          ...(row.context_id ? { contextId: row.context_id } : {}),
+          ...(row.continuity_task_id ? { continuityTaskId: row.continuity_task_id } : {}),
+          ...(row.route_context_id ? { routeContextId: row.route_context_id } : {}),
+        };
+      }),
+    ].sort((left, right) => left.timestamp - right.timestamp || left.timelineId.localeCompare(right.timelineId));
+    return { entries: entries.slice(0, MAX_TIMELINE), truncated: entries.length > MAX_TIMELINE || revisions.length > MAX_TIMELINE || edgeEvents.length > MAX_TIMELINE || decisions.length > MAX_TIMELINE };
   }
 
   private safeContinuity(snapshot: Awaited<ReturnType<ContinuitySnapshotBuilder['build']>>): MemoryObservatoryContinuitySummary {

@@ -131,6 +131,8 @@ describe('exact-loopback memory observatory HTTP feed', () => {
     audit.logRuntime('memory', 'memory.node_created', {
       memoryIds: [committed.memoryId],
       state: 'completed',
+      contextId: 'context-safe-1',
+      continuityTaskId: 'task-safe-1',
       principalId,
       arbitrarySecret: 'SHOULD_NOT_REACH_BROWSER',
     });
@@ -155,6 +157,8 @@ describe('exact-loopback memory observatory HTTP feed', () => {
       event: 'memory.node_created',
       memoryIds: [committed.memoryId],
       state: 'completed',
+      contextId: 'context-safe-1',
+      continuityTaskId: 'task-safe-1',
     }));
     const serialized = JSON.stringify({ snapshot, activity });
     expect(serialized).not.toContain(principalId);
