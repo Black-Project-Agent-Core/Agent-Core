@@ -5,10 +5,11 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use thiserror::Error;
 
 use crate::{
-    AvailabilityState, FailureClass, KeyId, KeySummary, LifecycleState, LimitReset, ProtectedBlob,
+    AvailabilityState, CredentialProfile, CredentialProvider, FailureClass, KeyId, KeySummary,
+    LifecycleState, LimitReset, ProtectedBlob,
 };
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -156,7 +157,7 @@ impl VaultStore {
         }
 
         let connection = Connection::open(&path).map_err(StoreError::Sqlite)?;
-        let version = connection
+        let mut version = connection
             .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .map_err(|error| if existed { StoreError::CorruptExisting } else { StoreError::Sqlite(error) })?;
 
@@ -167,10 +168,17 @@ impl VaultStore {
         connection
             .pragma_update(None, "journal_mode", "WAL")
             .map_err(StoreError::Sqlite)?;
+        connection
+            .pragma_update(None, "foreign_keys", "ON")
+            .map_err(StoreError::Sqlite)?;
 
         let mut store = Self { path, connection };
         if version == 0 {
             store.migrate_v1()?;
+            version = 1;
+        }
+        if version < 2 {
+            store.migrate_v2()?;
         }
         store.verify_integrity(existed)?;
         store.ensure_slot_state()?;
@@ -229,6 +237,31 @@ impl VaultStore {
                 VALUES(1, 0);
 
                 PRAGMA user_version = 1;
+                "#,
+            )
+            .map_err(StoreError::Sqlite)?;
+        transaction.commit().map_err(StoreError::Sqlite)
+    }
+
+    fn migrate_v2(&mut self) -> Result<(), StoreError> {
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        transaction
+            .execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS vault_credential_profiles (
+                  key_id TEXT PRIMARY KEY NOT NULL,
+                  provider TEXT NOT NULL CHECK(length(provider) BETWEEN 1 AND 64),
+                  health_score REAL NOT NULL CHECK(health_score BETWEEN 0.0 AND 100.0),
+                  reliability_score REAL NOT NULL CHECK(reliability_score BETWEEN 0.0 AND 100.0),
+                  latency_score REAL NOT NULL CHECK(latency_score BETWEEN 0.0 AND 100.0),
+                  quota_score REAL NOT NULL CHECK(quota_score BETWEEN 0.0 AND 100.0),
+                  confidence_score REAL NOT NULL CHECK(confidence_score BETWEEN 0.0 AND 100.0),
+                  last_observed_at_utc_ms INTEGER,
+                  updated_at_utc_ms INTEGER NOT NULL,
+                  FOREIGN KEY(key_id) REFERENCES vault_keys(key_id) ON DELETE CASCADE
+                ) STRICT;
+
+                PRAGMA user_version = 2;
                 "#,
             )
             .map_err(StoreError::Sqlite)?;
@@ -346,6 +379,72 @@ impl VaultStore {
             .try_into()
             .map_err(|_| StoreError::InvalidStoredValue("protected_blob_sha256"))?;
         Ok(ProtectedBlob::from_parts(bytes, checksum))
+    }
+
+    pub fn upsert_profile(&mut self, profile: &CredentialProfile) -> Result<(), StoreError> {
+        validate_profile(profile)?;
+        let key_exists = self
+            .connection
+            .query_row(
+                "SELECT 1 FROM vault_keys WHERE key_id = ?1",
+                params![profile.key_id.0],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(StoreError::Sqlite)?
+            .is_some();
+        if !key_exists {
+            return Err(StoreError::KeyNotFound);
+        }
+
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        transaction
+            .execute(
+                r#"
+                INSERT INTO vault_credential_profiles (
+                  key_id, provider, health_score, reliability_score, latency_score,
+                  quota_score, confidence_score, last_observed_at_utc_ms, updated_at_utc_ms
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                ON CONFLICT(key_id) DO UPDATE SET
+                  provider = excluded.provider,
+                  health_score = excluded.health_score,
+                  reliability_score = excluded.reliability_score,
+                  latency_score = excluded.latency_score,
+                  quota_score = excluded.quota_score,
+                  confidence_score = excluded.confidence_score,
+                  last_observed_at_utc_ms = excluded.last_observed_at_utc_ms,
+                  updated_at_utc_ms = excluded.updated_at_utc_ms
+                "#,
+                params![
+                    profile.key_id.0,
+                    provider_to_text(profile.provider),
+                    profile.health_score,
+                    profile.reliability_score,
+                    profile.latency_score,
+                    profile.quota_score,
+                    profile.confidence_score,
+                    profile.last_observed_at_utc_ms,
+                    profile.updated_at_utc_ms,
+                ],
+            )
+            .map_err(StoreError::Sqlite)?;
+        transaction.commit().map_err(StoreError::Sqlite)
+    }
+
+    pub fn load_profile(&self, key_id: &KeyId) -> Result<Option<CredentialProfile>, StoreError> {
+        self.connection
+            .query_row(
+                r#"
+                SELECT key_id, provider, health_score, reliability_score, latency_score,
+                       quota_score, confidence_score, last_observed_at_utc_ms, updated_at_utc_ms
+                FROM vault_credential_profiles
+                WHERE key_id = ?1
+                "#,
+                params![key_id.0],
+                row_to_profile,
+            )
+            .optional()
+            .map_err(StoreError::Sqlite)
     }
 
     pub fn update_key_state(&mut self, key_id: &KeyId, update: &StoredKeyUpdate) -> Result<(), StoreError> {
@@ -578,6 +677,48 @@ fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredKeyRecord> {
     })
 }
 
+fn row_to_profile(row: &rusqlite::Row<'_>) -> rusqlite::Result<CredentialProfile> {
+    Ok(CredentialProfile {
+        key_id: KeyId(row.get(0)?),
+        provider: parse_provider(&row.get::<_, String>(1)?, 1)?,
+        health_score: row.get(2)?,
+        reliability_score: row.get(3)?,
+        latency_score: row.get(4)?,
+        quota_score: row.get(5)?,
+        confidence_score: row.get(6)?,
+        last_observed_at_utc_ms: row.get(7)?,
+        updated_at_utc_ms: row.get(8)?,
+    })
+}
+
+fn validate_profile(profile: &CredentialProfile) -> Result<(), StoreError> {
+    for (name, score) in [
+        ("health_score", profile.health_score),
+        ("reliability_score", profile.reliability_score),
+        ("latency_score", profile.latency_score),
+        ("quota_score", profile.quota_score),
+        ("confidence_score", profile.confidence_score),
+    ] {
+        if !score.is_finite() || !(0.0..=100.0).contains(&score) {
+            return Err(StoreError::InvalidStoredValue(name));
+        }
+    }
+    Ok(())
+}
+
+fn provider_to_text(value: CredentialProvider) -> &'static str {
+    match value {
+        CredentialProvider::OpenRouter => "OPENROUTER",
+    }
+}
+
+fn parse_provider(value: &str, column: usize) -> rusqlite::Result<CredentialProvider> {
+    match value {
+        "OPENROUTER" => Ok(CredentialProvider::OpenRouter),
+        _ => Err(invalid_text(column, "provider")),
+    }
+}
+
 fn lifecycle_to_text(value: LifecycleState) -> &'static str {
     match value {
         LifecycleState::Enabled => "ENABLED",
@@ -678,7 +819,7 @@ fn invalid_text(column: usize, name: &str) -> rusqlite::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AvailabilityState, KeyId, LifecycleState, ProtectedBlob};
+    use crate::{AvailabilityState, CredentialProfile, CredentialProvider, KeyId, LifecycleState, ProtectedBlob};
 
     fn sample_key() -> NewStoredKey {
         NewStoredKey {
@@ -712,9 +853,97 @@ mod tests {
         let path = dir.path().join("vault.db");
         let mut store = VaultStore::open(&path).unwrap();
         store.insert_key(sample_key()).unwrap();
-        assert_eq!(store.user_version_for_test().unwrap(), 1);
+        assert_eq!(store.user_version_for_test().unwrap(), 2);
+        let profile_table_exists: i64 = store
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'vault_credential_profiles'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(profile_table_exists, 1);
         assert_eq!(store.protected_blob_type_for_test(&KeyId("key-1".to_owned())).unwrap(), "blob");
         assert_eq!(store.list_keys().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn credential_profile_create_update_and_restart_recovery_are_metadata_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.db");
+        let key_id = KeyId("key-1".to_owned());
+        let mut profile = CredentialProfile {
+            key_id: key_id.clone(),
+            provider: CredentialProvider::OpenRouter,
+            health_score: 91.0,
+            reliability_score: 88.0,
+            latency_score: 76.0,
+            quota_score: 64.0,
+            confidence_score: 83.0,
+            last_observed_at_utc_ms: Some(1_000),
+            updated_at_utc_ms: 1_000,
+        };
+
+        {
+            let mut store = VaultStore::open(&path).unwrap();
+            store.insert_key(sample_key()).unwrap();
+            store.upsert_profile(&profile).unwrap();
+            assert_eq!(store.load_profile(&key_id).unwrap(), Some(profile.clone()));
+
+            profile.health_score = 95.0;
+            profile.confidence_score = 97.0;
+            profile.last_observed_at_utc_ms = Some(2_000);
+            profile.updated_at_utc_ms = 2_000;
+            store.upsert_profile(&profile).unwrap();
+            assert_eq!(store.load_profile(&key_id).unwrap(), Some(profile.clone()));
+        }
+
+        let mut reopened = VaultStore::open(&path).unwrap();
+        assert_eq!(reopened.load_profile(&key_id).unwrap(), Some(profile.clone()));
+        assert!(reopened.delete_key(&key_id).unwrap());
+        assert_eq!(reopened.load_profile(&key_id).unwrap(), None);
+    }
+
+    #[test]
+    fn existing_v1_vault_migrates_to_v2_without_losing_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.db");
+        {
+            let connection = Connection::open(&path).unwrap();
+            let mut old_store = VaultStore { path: path.clone(), connection };
+            old_store.migrate_v1().unwrap();
+            old_store.insert_key(sample_key()).unwrap();
+            assert_eq!(old_store.user_version_for_test().unwrap(), 1);
+        }
+
+        let store = VaultStore::open(&path).unwrap();
+        assert_eq!(store.user_version_for_test().unwrap(), 2);
+        assert_eq!(store.list_keys().unwrap().len(), 1);
+        assert_eq!(store.load_profile(&KeyId("key-1".to_owned())).unwrap(), None);
+    }
+
+    #[test]
+    fn credential_profile_rejects_non_finite_or_out_of_range_scores() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.db");
+        let mut store = VaultStore::open(&path).unwrap();
+        store.insert_key(sample_key()).unwrap();
+        let mut profile = CredentialProfile {
+            key_id: KeyId("key-1".to_owned()),
+            provider: CredentialProvider::OpenRouter,
+            health_score: 100.0,
+            reliability_score: 100.0,
+            latency_score: 100.0,
+            quota_score: 100.0,
+            confidence_score: 100.0,
+            last_observed_at_utc_ms: None,
+            updated_at_utc_ms: 100,
+        };
+
+        profile.health_score = 100.1;
+        assert!(matches!(store.upsert_profile(&profile), Err(StoreError::InvalidStoredValue("health_score"))));
+        profile.health_score = f64::NAN;
+        assert!(matches!(store.upsert_profile(&profile), Err(StoreError::InvalidStoredValue("health_score"))));
     }
 
     #[test]

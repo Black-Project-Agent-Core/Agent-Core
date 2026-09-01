@@ -229,8 +229,8 @@ fn quarantine_record<P: SecretProtector>(
 mod tests {
     use super::*;
     use crate::{
-        AvailabilityState, KeyId, LifecycleState, NewStoredKey, ProtectError, ProtectedBlob,
-        RotationSession, SecretBytes, SecretProtector, VaultStore,
+        AvailabilityState, CredentialProfile, CredentialProvider, KeyId, LifecycleState, NewStoredKey,
+        ProtectError, ProtectedBlob, RotationSession, SecretBytes, SecretProtector, VaultStore,
     };
 
     #[derive(Clone, Copy)]
@@ -438,13 +438,30 @@ mod tests {
         )
         .unwrap();
         let canary = "sk-or-v1-UNIQUE_DB_CANARY_123456789";
-        manager
+        let summary = manager
             .add_openrouter_key(
                 SecretBytes::parse_import(canary.to_owned()).unwrap(),
                 "Canary".to_owned(),
                 100,
             )
             .unwrap();
+        {
+            let mut inner = manager.lock_inner().unwrap();
+            inner
+                .store
+                .upsert_profile(&CredentialProfile {
+                    key_id: summary.key_id,
+                    provider: CredentialProvider::OpenRouter,
+                    health_score: 90.0,
+                    reliability_score: 90.0,
+                    latency_score: 80.0,
+                    quota_score: 70.0,
+                    confidence_score: 85.0,
+                    last_observed_at_utc_ms: Some(105),
+                    updated_at_utc_ms: 105,
+                })
+                .unwrap();
+        }
 
         for entry in std::fs::read_dir(dir.path()).unwrap() {
             let entry = entry.unwrap();

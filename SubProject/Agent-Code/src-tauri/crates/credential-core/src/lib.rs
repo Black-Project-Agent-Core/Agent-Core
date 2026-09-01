@@ -16,4 +16,4 @@ pub use rotation::{KeyLease, OutcomeSignal, PoolUnavailable, RotationError, Rota
 pub use synthetic::{run_synthetic_rotation_self_test, SyntheticRotationReport};
 pub use secret::{SecretBytes, SecretValidationError};
 pub use store::{NewStoredKey, StoreError, StoredKeyRecord, StoredKeyUpdate, VaultStore};
-pub use types::{AvailabilityState, FailureClass, KeyId, KeySummary, LifecycleState, LimitReset};
+pub use types::{AvailabilityState, CredentialProfile, CredentialProvider, FailureClass, KeyId, KeySummary, LifecycleState, LimitReset};

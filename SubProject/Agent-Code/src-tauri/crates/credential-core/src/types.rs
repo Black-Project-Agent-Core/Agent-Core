@@ -6,6 +6,25 @@ pub struct KeyId(pub String);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CredentialProvider {
+    OpenRouter,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CredentialProfile {
+    pub key_id: KeyId,
+    pub provider: CredentialProvider,
+    pub health_score: f64,
+    pub reliability_score: f64,
+    pub latency_score: f64,
+    pub quota_score: f64,
+    pub confidence_score: f64,
+    pub last_observed_at_utc_ms: Option<i64>,
+    pub updated_at_utc_ms: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum LifecycleState {
     Enabled,
     Disabled,
@@ -67,6 +86,27 @@ pub struct KeySummary {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credential_profile_serialization_is_metadata_only() {
+        let profile = CredentialProfile {
+            key_id: KeyId("key-1".to_owned()),
+            provider: CredentialProvider::OpenRouter,
+            health_score: 91.0,
+            reliability_score: 88.0,
+            latency_score: 76.0,
+            quota_score: 64.0,
+            confidence_score: 83.0,
+            last_observed_at_utc_ms: Some(1_000),
+            updated_at_utc_ms: 1_000,
+        };
+
+        let serialized = serde_json::to_string(&profile).unwrap();
+        assert!(serialized.contains("OPEN_ROUTER"));
+        assert!(!serialized.contains("secret"));
+        assert!(!serialized.contains("protected_blob"));
+        assert!(!serialized.contains("ciphertext"));
+    }
 
     #[test]
     fn key_summary_serialization_is_metadata_only() {
