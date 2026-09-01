@@ -789,7 +789,7 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/feature/agent-code-key-va
   - `delete_key(key_id, now_ms)`
   - internal secret resolution only inside manager-owned operations
 
-- [ ] **Step 1: Write RED CRUD/security tests**
+- [x] **Step 1: Write RED CRUD/security tests**
 
 Required tests:
 
@@ -806,7 +806,7 @@ restart -> metadata/state restored
 
 Add a compile-time/API test ensuring there is no method named `get_plaintext`, `reveal`, or `export_secret` in the public surface; enforce this again later with the source gate.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml manager::tests -- --nocapture
@@ -814,7 +814,7 @@ cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml manager::
 
 Expected: FAIL because `CredentialManager` does not exist.
 
-- [ ] **Step 3: Add opaque ID dependency**
+- [x] **Step 3: Add opaque ID dependency**
 
 Add to `crates/credential-core/Cargo.toml`:
 
@@ -822,7 +822,7 @@ Add to `crates/credential-core/Cargo.toml`:
 uuid = { version = "1.18.1", features = ["v4", "serde"] }
 ```
 
-- [ ] **Step 4: Implement manager state and duplicate comparison**
+- [x] **Step 4: Implement manager state and duplicate comparison**
 
 Use one manager-owned synchronized state boundary:
 
@@ -855,7 +855,7 @@ if duplicate -> reject
 
 Do not persist a plaintext-derived fingerprint.
 
-- [ ] **Step 5: Bound labels and IDs**
+- [x] **Step 5: Bound labels and IDs**
 
 Rules:
 
@@ -867,20 +867,20 @@ slot_index -> monotonically increasing, never recycled inside one DB lifetime
 masked_suffix -> generated from secret before secret drops
 ```
 
-- [ ] **Step 6: Add database-byte canary test**
+- [x] **Step 6: Add database-byte canary test**
 
 After adding `sk-or-v1-UNIQUE_DB_CANARY_123456789`, read the SQLite file bytes and assert the full canary byte sequence does not occur.
 
 This test uses the test-only protector that transforms the bytes before storage.
 
-- [ ] **Step 7: Run focused/core tests**
+- [x] **Step 7: Run focused/core tests**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml manager::tests -- --nocapture
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml
 ```
 
-- [ ] **Step 9: Commit/push/readback**
+- [x] **Step 9: Commit/push/readback**
 
 ```bash
 git add SubProject/Agent-Code/src-tauri/crates/credential-core
@@ -910,7 +910,7 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/feature/agent-code-key-va
   - `classify_status(status, retry_hint) -> ClassifiedOutcome`
   - `RotationSnapshot`
 
-- [ ] **Step 1: Write the state-machine RED tests first**
+- [x] **Step 1: Write the state-machine RED tests first**
 
 Tests must explicitly prove:
 
@@ -928,7 +928,7 @@ empty/fully ineligible pool returns typed PoolUnavailable
 scan terminates after <= pool length candidates
 ```
 
-- [ ] **Step 2: Write classifier RED tests**
+- [x] **Step 2: Write classifier RED tests**
 
 Exact mapping:
 
@@ -948,13 +948,13 @@ Exact mapping:
 other -> UNKNOWN, rotate=false
 ```
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml rotation::tests classifier::tests -- --nocapture
 ```
 
-- [ ] **Step 4: Implement typed outcomes and no-recursion rotation**
+- [x] **Step 4: Implement typed outcomes and no-recursion rotation**
 
 Use structures equivalent to:
 
@@ -986,7 +986,7 @@ pub enum OutcomeSignal {
 
 No retry method may call itself recursively.
 
-- [ ] **Step 5: Implement state transitions**
+- [x] **Step 5: Implement state transitions**
 
 Rules:
 
@@ -1035,24 +1035,24 @@ fn deterministic_jitter_ms(key_id: &KeyId) -> u64 {
 }
 ```
 
-- [ ] **Step 6: Persist transitions and cursor atomically**
+- [x] **Step 6: Persist transitions and cursor atomically**
 
 While holding the scheduler state lock, update the in-memory state and persist the same semantic transition through a short SQLite transaction. Release the lock before any later network operation.
 
 No database lock/transaction may span an HTTP call.
 
-- [ ] **Step 7: Add restart-equivalence tests**
+- [x] **Step 7: Add restart-equivalence tests**
 
 Execute a sequence containing success, 429, 401, disable, cursor movement; close/reopen the manager; assert the next acquisition and all persisted states match the pre-restart semantic snapshot.
 
-- [ ] **Step 8: Run focused + core regression**
+- [x] **Step 8: Run focused + core regression**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml rotation::tests classifier::tests -- --nocapture
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml
 ```
 
-- [ ] **Step 9: Commit/push/readback**
+- [x] **Step 9: Commit/push/readback**
 
 ```bash
 git add SubProject/Agent-Code/src-tauri/crates/credential-core
@@ -1077,7 +1077,7 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/feature/agent-code-key-va
   - `run_synthetic_rotation_self_test() -> SyntheticRotationReport`
   - deterministic scripted scenario runner used by tests and later Tauri command
 
-- [ ] **Step 1: Write RED scenario tests**
+- [x] **Step 1: Write RED scenario tests**
 
 Script these exact scenarios:
 
@@ -1107,13 +1107,13 @@ all keys unavailable
 returns PoolUnavailable exactly once, no loop
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml synthetic::tests -- --nocapture
 ```
 
-- [ ] **Step 3: Implement synthetic scripts using fake protected secrets only**
+- [x] **Step 3: Implement synthetic scripts using fake protected secrets only**
 
 The report may contain:
 
@@ -1131,7 +1131,7 @@ pub struct SyntheticRotationReport {
 
 It must contain no secret fields and no raw HTTP headers.
 
-- [ ] **Step 4: Add the property-test dependency**
+- [x] **Step 4: Add the property-test dependency**
 
 Add to `crates/credential-core/Cargo.toml` under `[dev-dependencies]`:
 
@@ -1139,7 +1139,7 @@ Add to `crates/credential-core/Cargo.toml` under `[dev-dependencies]`:
 proptest = "1.9.0"
 ```
 
-- [ ] **Step 5: Add proptest state-machine invariants**
+- [x] **Step 5: Add proptest state-machine invariants**
 
 Generate pools of 1..32 keys and event sequences of 1..500 events. For every generated run assert:
 
@@ -1152,7 +1152,7 @@ cursor remains valid for current stable slot set
 same seed/events -> same final snapshot
 ```
 
-- [ ] **Step 6: Add deterministic 100,000-transition stress mode**
+- [x] **Step 6: Add deterministic 100,000-transition stress mode**
 
 Use a fixed PRNG/event seed in the test so the workload is replayable. Measure only in-memory selection separately from DB persistence.
 
@@ -1168,7 +1168,7 @@ deterministic_replay_equal = true
 
 Record p50/p95 selection latency as evidence; target p95 `< 1 ms` on the Codespace/native test host, but do not weaken correctness gates if the virtualized host is noisy. If p95 misses, profile before changing design or threshold.
 
-- [ ] **Step 7: Add concurrency race tests**
+- [x] **Step 7: Add concurrency race tests**
 
 Spawn 8 threads, each repeatedly performing manager operations through the same synchronized instance. Include acquire/report, disable, cooldown reconciliation, and delete of non-leased keys.
 
@@ -1182,14 +1182,14 @@ unique lease IDs
 state snapshot remains parseable/persistable
 ```
 
-- [ ] **Step 8: Run stress/property/core suite**
+- [x] **Step 8: Run stress/property/core suite**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml synthetic::tests -- --nocapture
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml -- --nocapture
 ```
 
-- [ ] **Step 9: Commit/push/readback**
+- [x] **Step 9: Commit/push/readback**
 
 ```bash
 git add SubProject/Agent-Code/src-tauri/crates/credential-core

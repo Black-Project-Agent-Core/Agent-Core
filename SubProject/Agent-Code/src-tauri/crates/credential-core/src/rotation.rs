@@ -18,6 +18,10 @@ impl RotationSession {
     pub fn new() -> Self {
         Self::default()
     }
+
+    pub fn attempted_count(&self) -> usize {
+        self.attempted.len()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
