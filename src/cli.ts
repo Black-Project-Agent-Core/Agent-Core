@@ -3,16 +3,27 @@ import { pathToFileURL } from 'node:url';
 import { FileKeyStore } from './auth/key-store.js';
 import { loadConfig, type AppConfig } from './config.js';
 import { createExecutionRecoveryBundle, restoreExecutionRecoveryBundle } from './execution/backup.js';
+import { GitHubService } from './github/service.js';
+import { MemoryRemoteCrypto } from './memory/remote-crypto.js';
+import { MemoryRemoteHydrator } from './memory/remote-hydrator.js';
+import { GitHubMemoryRemoteTransport } from './memory/remote-transport.js';
+import type { MemoryScope } from './memory/types.js';
 import { applyExecutionRetention, planExecutionRetention } from './execution/retention.js';
 import { SERVER_VERSION } from './mcp/server.js';
 import { FileOAuthStore } from './oauth/store.js';
 import { verifyAuditJournal } from './observability/audit-journal.js';
+import { WorkspacePolicy } from './runtime/workspace.js';
+
+export type MemoryHydrateCliResult =
+  | { state: 'REMOTE_EMPTY_CONFIRMED'; remoteHead: string | null }
+  | { state: 'REMOTE_HYDRATED'; generationId: string; logicalStateHash: string; remoteHead: string };
 
 export interface CliOptions {
   dataDir?: string;
   config?: AppConfig;
   stdout?: (line: string) => void;
   stderr?: (line: string) => void;
+  memoryHydrate?: (scope: MemoryScope, destinationDbPath: string) => Promise<MemoryHydrateCliResult>;
 }
 
 const USAGE = [
@@ -26,8 +37,30 @@ const USAGE = [
   '  agent-core execution-restore <bundle-path>',
   '  agent-core execution-retention-plan [older-than-days]',
   '  agent-core execution-retention-apply <plan-path> <bundle-path>',
+  '  agent-core memory-hydrate <principal-id> <project-id>',
   '  agent-core audit-verify [audit-root]',
 ].join('\n');
+
+function boundedScopeValue(value: string | undefined, label: string, maxChars: number): string {
+  const normalized = value?.normalize('NFKC').trim() ?? '';
+  if (!normalized || normalized.length > maxChars || /[\r\n\0]/.test(normalized)) {
+    throw new Error(`${label} is invalid`);
+  }
+  return normalized;
+}
+
+async function hydrateConfiguredMemoryRemote(
+  config: AppConfig,
+  scope: MemoryScope,
+  destinationDbPath: string,
+): Promise<MemoryHydrateCliResult> {
+  if (!config.memory.remote.enabled || !config.memory.remote.keyFile) throw new Error('MEMORY_REMOTE_DISABLED');
+  const workspace = new WorkspacePolicy(config.allowedRoots);
+  const github = new GitHubService(config.github, workspace);
+  const transport = new GitHubMemoryRemoteTransport(github.git, workspace, config.memory.remote);
+  const crypto = await MemoryRemoteCrypto.fromKeyFile(config.memory.remote.keyFile);
+  return new MemoryRemoteHydrator(transport, crypto).hydrate(scope, destinationDbPath);
+}
 
 export async function runCli(args: string[], options: CliOptions = {}): Promise<number> {
   const stdout = options.stdout ?? ((line: string) => process.stdout.write(`${line}\n`));
@@ -113,6 +146,17 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
           planRoot: path.join(path.dirname(config.execution.dbPath), 'retention'),
           olderThanMs,
         });
+        stdout(JSON.stringify(result, null, 2));
+        return 0;
+      }
+      case 'memory-hydrate': {
+        const principalId = boundedScopeValue(value, 'principal-id', 256);
+        const projectId = boundedScopeValue(secondValue, 'project-id', 4096);
+        if (!config.memory.remote.enabled) throw new Error('MEMORY_REMOTE_DISABLED');
+        const scope: MemoryScope = { principalId, projectId };
+        const hydrate = options.memoryHydrate
+          ?? ((candidateScope: MemoryScope, destinationDbPath: string) => hydrateConfiguredMemoryRemote(config, candidateScope, destinationDbPath));
+        const result = await hydrate(scope, config.memory.dbPath);
         stdout(JSON.stringify(result, null, 2));
         return 0;
       }

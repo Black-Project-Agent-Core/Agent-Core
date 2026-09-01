@@ -102,6 +102,16 @@ describe('capability_route local continuity integration', () => {
     expect(routed.result.continuityTurnId).toMatch(UUID_RE);
     expect(routed.result.continuityTaskId).toMatch(UUID_RE);
     expect(routed.result.continuitySnapshotHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(routed.result.memoryContextLease).toMatch(/^mcl1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+    expect(Date.parse(routed.result.memoryContextLeaseExpiresAt)).toBeLessThanOrEqual(Date.parse(routed.result.expiresAt));
+    await expect(f.runtime.memory.validateContextLease({
+      lease: routed.result.memoryContextLease,
+      workspaceRoot: f.root,
+    })).resolves.toMatchObject({
+      scope: f.scope,
+      contextId: routed.result.memoryContextId,
+      routeContextId: routed.result.routeContextId,
+    });
     expect(routed.result.continuitySnapshot.currentObjective).toBe('Integrate continuity with capability_route');
     expect(routed.result.continuitySnapshot.activeTasks.map((item: any) => item.taskId))
       .toContain(routed.result.continuityTaskId);

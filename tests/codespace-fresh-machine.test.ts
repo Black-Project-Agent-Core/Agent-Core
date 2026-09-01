@@ -11,6 +11,7 @@ const requiredTrackedFiles = [
   'scripts/codespace/bootstrap.sh',
   'scripts/codespace/common.sh',
   'scripts/codespace/sync-source.sh',
+  'scripts/codespace/memory-hydration-gate.sh',
   'scripts/codespace/start-agent-core.sh',
   'scripts/codespace/ensure-running.sh',
   'scripts/codespace/show-connection.sh',
@@ -78,8 +79,11 @@ describe('fresh Codespace reproducibility contract', () => {
     const ensure = await read('scripts/codespace/ensure-running.sh');
     expect(bootstrap.indexOf('sync-source.sh')).toBeLessThan(bootstrap.indexOf("log_info 'Running full Agent Core build.'"));
     expect(ensure.indexOf('sync-source.sh')).toBeLessThan(ensure.indexOf('build_required=0'));
-    expect(ensure).toContain('gh codespace ports visibility "$AGENT_CORE_CODESPACE_PORT:public"');
-    expect(ensure).toContain('Expected unauthenticated /mcp to return 401');
+    const common = await read('scripts/codespace/common.sh');
+    expect(ensure).toContain('ensure_codespace_port_public');
+    expect(common).toContain('gh codespace ports visibility "$AGENT_CORE_CODESPACE_PORT:public"');
+    expect(ensure).toContain('wait_for_public_oauth_issuer');
+    expect(ensure).toContain('wait_for_public_mcp_auth_gate');
     expect(ensure).toContain('write_connection_metadata');
   });
 

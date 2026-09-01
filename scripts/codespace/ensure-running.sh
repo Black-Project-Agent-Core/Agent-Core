@@ -33,6 +33,7 @@ command -v curl >/dev/null 2>&1 || needs_bootstrap=1
 command -v tmux >/dev/null 2>&1 || needs_bootstrap=1
 command -v gh >/dev/null 2>&1 || needs_bootstrap=1
 command -v rg >/dev/null 2>&1 || needs_bootstrap=1
+command -v flock >/dev/null 2>&1 || needs_bootstrap=1
 node_version_compatible || needs_bootstrap=1
 [[ -f node_modules/@modelcontextprotocol/server/package.json ]] || needs_bootstrap=1
 [[ -f node_modules/@modelcontextprotocol/node/package.json ]] || needs_bootstrap=1
@@ -44,6 +45,11 @@ if (( needs_bootstrap == 1 )); then
   fi
   log_info 'Runtime prerequisite or dependency is missing; delegating to full bootstrap.'
   exec bash "$SCRIPT_DIR/bootstrap.sh" --phase start
+fi
+
+if ! acquire_codespace_lifecycle_lock "${AGENT_CORE_CODESPACE_LIFECYCLE_LOCK_TIMEOUT_SECONDS:-180}"; then
+  log_error 'Timed out waiting for another Codespace root lifecycle to finish.'
+  exit 12
 fi
 
 if [[ "${AGENT_CORE_BOOTSTRAP_ACTIVE:-0}" != "1" ]]; then
@@ -92,18 +98,23 @@ if (( build_required == 1 )); then
   restart_required=1
 fi
 
+if ! bash "$SCRIPT_DIR/memory-hydration-gate.sh"; then
+  log_error 'Memory Remote hydration gate failed before runtime startup.'
+  exit 55
+fi
+
 start_service_supervisor() {
-  tmux new-session -d -s "$service_session" "bash \"$SCRIPT_DIR/start-agent-core.sh\""
+  run_without_codespace_lifecycle_lock tmux new-session -d -s "$service_session" "bash \"$SCRIPT_DIR/start-agent-core.sh\""
 }
 
 start_anchor_supervisor() {
   [[ "$role" == "anchor" ]] || return 0
-  tmux new-session -d -s "$proxy_session" "bash \"$SCRIPT_DIR/start-anchor-proxy.sh\""
+  run_without_codespace_lifecycle_lock tmux new-session -d -s "$proxy_session" "bash \"$SCRIPT_DIR/start-anchor-proxy.sh\""
 }
 
 start_anchor_discovery_supervisor() {
   [[ "$role" == "anchor" ]] || return 0
-  tmux new-session -d -s "$anchor_discovery_session" "bash \"$SCRIPT_DIR/watch-anchor-backend.sh\""
+  run_without_codespace_lifecycle_lock tmux new-session -d -s "$anchor_discovery_session" "bash \"$SCRIPT_DIR/watch-anchor-backend.sh\""
 }
 
 # A pre-anchor release may still have the legacy Agent Core supervisor bound
@@ -182,18 +193,13 @@ fi
 
 visibility="$(codespace_port_visibility 2>/dev/null || true)"
 if [[ "$visibility" != "public" ]]; then
-  log_info "Setting forwarded port $AGENT_CORE_CODESPACE_PORT visibility to public."
-  gh codespace ports visibility "$AGENT_CORE_CODESPACE_PORT:public" -c "$CODESPACE_NAME" >/dev/null || exit 81
-  for _ in $(seq 1 20); do
-    visibility="$(codespace_port_visibility 2>/dev/null || true)"
-    [[ "$visibility" == "public" ]] && break
-    sleep 1
-  done
+  log_info "Repairing forwarded port $AGENT_CORE_CODESPACE_PORT visibility until GitHub confirms public state."
 fi
-[[ "$visibility" == "public" ]] || {
-  log_error "Forwarded port $AGENT_CORE_CODESPACE_PORT is not public after repair."
+if ! ensure_codespace_port_public 15 2; then
+  visibility="$(codespace_port_visibility 2>/dev/null || true)"
+  log_error "Forwarded port $AGENT_CORE_CODESPACE_PORT is not public after bounded self-healing (last_visibility=${visibility:-unavailable})."
   exit 81
-}
+fi
 log_info "Forwarded port $AGENT_CORE_CODESPACE_PORT is public."
 
 if [[ "$role" == "anchor" ]]; then
@@ -221,32 +227,15 @@ done
   exit 90
 }
 
-oauth_json="$(curl -fsS "$base_url/.well-known/oauth-authorization-server" 2>/dev/null)" || {
-  log_error 'OAuth metadata endpoint is unavailable.'
+if ! wait_for_public_oauth_issuer "$base_url" 15 1; then
+  log_error "OAuth metadata/issuer gate did not recover at $base_url after bounded retries."
   exit 91
-}
-printf '%s' "$oauth_json" | node -e '
-  let input = "";
-  process.stdin.on("data", chunk => input += chunk);
-  process.stdin.on("end", () => {
-    const expected = process.argv[1];
-    try {
-      const value = JSON.parse(input);
-      process.exit(value.issuer === expected ? 0 : 1);
-    } catch {
-      process.exit(1);
-    }
-  });
-' "$base_url" || {
-  log_error "OAuth issuer does not match verified public base URL: $base_url"
-  exit 91
-}
+fi
 
-mcp_status="$(curl -sS -o /dev/null -w '%{http_code}' "$base_url/mcp" 2>/dev/null || true)"
-[[ "$mcp_status" == "401" ]] || {
-  log_error "Expected unauthenticated /mcp to return 401, got ${mcp_status:-no-response}."
+if ! wait_for_public_mcp_auth_gate "$base_url" 15 1; then
+  log_error "Unauthenticated MCP auth gate did not recover to HTTP 401 at $base_url/mcp after bounded retries."
   exit 92
-}
+fi
 
 connection_base_url="$base_url"
 transport="github-codespaces"
@@ -287,8 +276,15 @@ plugin_lifecycle="$AGENT_CORE_REPO_ROOT/plugin/codespace/scripts/ensure-running.
   log_error "Codespace bridge lifecycle is missing: $plugin_lifecycle"
   exit 94
 }
+memory_lifecycle_mode="${AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE:-advisory}"
+case "$memory_lifecycle_mode" in
+  disabled|advisory|enforce) ;;
+  *) log_error 'AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE must be disabled, advisory, or enforce.'; exit 94 ;;
+esac
 log_info "Starting codespace bridge lifecycle for phase $phase."
-if ! bash "$plugin_lifecycle" --phase "$phase"; then
+if ! CODESPACE_MEMORY_LIFECYCLE_MODE="$memory_lifecycle_mode" \
+  AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE="$memory_lifecycle_mode" \
+  run_without_codespace_lifecycle_lock bash "$plugin_lifecycle" --phase "$phase"; then
   log_error 'Codespace bridge lifecycle failed.'
   exit 94
 fi

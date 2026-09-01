@@ -27,6 +27,29 @@ describe('deterministic memory anchors', () => {
     expect(anchors).toEqual([...anchors].sort((a, b) => `${a.type}\0${a.value}`.localeCompare(`${b.type}\0${b.value}`)));
   });
 
+  it('extracts only explicit contextual identity syntax for cognition anchors', () => {
+    const commit = '482489d799ed696b752875a1753cbdc6527e5115';
+    const artifactHash = 'a'.repeat(64);
+    const unrelatedUuid = '7b3db062-b4b9-476b-902a-5991c17dcecc';
+    const anchors = extractMemoryAnchors([
+      'continuity_task_id:task-123',
+      'continuity_checkpoint_id:checkpoint-456',
+      `git_commit:${commit}`,
+      'branch_name:feature/memory-nervous-system',
+      `artifact_hash:${artifactHash}`,
+      `unrelated uuid ${unrelatedUuid}`,
+    ].join(' '));
+
+    expect(anchors).toEqual(expect.arrayContaining([
+      { type: 'continuity_task_id', value: 'task-123' },
+      { type: 'continuity_checkpoint_id', value: 'checkpoint-456' },
+      { type: 'git_commit', value: commit },
+      { type: 'branch_name', value: 'feature/memory-nervous-system' },
+      { type: 'artifact_hash', value: artifactHash },
+    ]));
+    expect(anchors.some((anchor) => anchor.type === 'continuity_task_id' && anchor.value === unrelatedUuid)).toBe(false);
+  });
+
   it('never turns redacted secret tokens into searchable anchors', () => {
     const redacted = redactMemoryText('api_key=https://secret.example/token/abc123 password: route_steal_this');
     const anchors = extractMemoryAnchors(redacted.text);

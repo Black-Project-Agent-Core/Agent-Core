@@ -1,4 +1,5 @@
 import type { VerifiedKey } from '../auth/key-types.js';
+import { MemoryHardLifecycleError } from '../memory/hard-lifecycle.js';
 import { AgentCoreRouteError } from '../runtime/route-context-store.js';
 import type { RuntimeServices } from '../runtime/services.js';
 
@@ -12,7 +13,7 @@ export function validateOperationalRoute(
 }
 
 export function routeErrorResult(error: unknown) {
-  if (!(error instanceof AgentCoreRouteError)) return null;
+  if (!(error instanceof AgentCoreRouteError) && !(error instanceof MemoryHardLifecycleError)) return null;
   return {
     content: [{
       type: 'text' as const,

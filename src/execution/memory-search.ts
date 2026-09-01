@@ -71,7 +71,10 @@ function elapsed(startedAt: number): number {
 }
 
 export class ExecutionMemoryPreSearch {
-  constructor(readonly memory: ExecutionMemorySearchSource) {}
+  constructor(
+    readonly memory: ExecutionMemorySearchSource,
+    readonly resolveMemoryScope: (scope: MemoryScope) => MemoryScope = (scope) => scope,
+  ) {}
 
   async run(
     scope: MemoryScope,
@@ -96,14 +99,15 @@ export class ExecutionMemoryPreSearch {
       };
     }
 
+    const memoryScope = this.resolveMemoryScope(scope);
     const [searchOutcome, conflictsOutcome] = await Promise.allSettled([
       this.memory.search({
-        scope,
+        scope: memoryScope,
         query,
         limit: Math.min(EXECUTION_RECALL_ITEM_BUDGET, this.memory.config.recallItemBudget),
         characterBudget: Math.min(EXECUTION_RECALL_CHARACTER_BUDGET, this.memory.config.recallCharacterBudget),
       }),
-      this.memory.listOpenConflicts(scope),
+      this.memory.listOpenConflicts(memoryScope),
     ]);
 
     if (searchOutcome.status === 'rejected') {

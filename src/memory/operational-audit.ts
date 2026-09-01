@@ -204,7 +204,7 @@ export class OperationalMemoryAudit {
 
   private scope(projectId: string) {
     return {
-      principalId: this.key.id,
+      principalId: this.runtime.memory.config.principalId ?? this.key.id,
       projectId,
     };
   }

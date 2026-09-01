@@ -2,6 +2,8 @@ import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { loadConfig } from '../src/config.js';
+import { MemoryRetriever } from '../src/memory/retriever.js';
 import { MemoryStore, MemoryStoreError } from '../src/memory/store.js';
 import { MemoryWorkerClient } from '../src/memory/worker-client.js';
 
@@ -103,4 +105,247 @@ describe('auditable versioned memory store', () => {
     expect(eventCount).toBeGreaterThanOrEqual(5);
     await store.close();
   });
+
+  it('persists explicit contextual anchors deterministically and exposes them through exact retrieval', async () => {
+    const client = new MemoryWorkerClient();
+    const store = new MemoryStore(client);
+    await store.open({ dbPath: dbPath('explicit-anchors') });
+    const scope = { ...scopeA, projectId: 'anchor-project' };
+    const commit = '482489d799ed696b752875a1753cbdc6527e5115';
+
+    const memory = await store.commitMemory({
+      scope,
+      canonicalKey: 'memory.explicit.anchor.fixture',
+      kind: 'artifact',
+      value: 'Verified cross-session memory artifact.',
+      sourceType: 'test',
+      explicitAnchors: [
+        { type: 'continuity_task_id', value: 'task-123' },
+        { type: 'continuity_task_id', value: 'task-123' },
+        { type: 'continuity_checkpoint_id', value: 'checkpoint-456' },
+        { type: 'git_commit', value: commit },
+        { type: 'branch_name', value: 'feature/memory-nervous-system' },
+        { type: 'artifact_hash', value: 'a'.repeat(64) },
+      ],
+    });
+
+    const explicitRows = await client.query<{ anchor: string; anchor_type: string }>(
+      `SELECT anchor, anchor_type FROM memory_anchors
+       WHERE memory_id = ? AND anchor_type IN (
+         'continuity_task_id','continuity_checkpoint_id','git_commit','branch_name','artifact_hash'
+       ) ORDER BY anchor_type, anchor`,
+      [memory.memoryId],
+    );
+    expect(explicitRows).toEqual([
+      { anchor: 'a'.repeat(64), anchor_type: 'artifact_hash' },
+      { anchor: 'feature/memory-nervous-system', anchor_type: 'branch_name' },
+      { anchor: 'checkpoint-456', anchor_type: 'continuity_checkpoint_id' },
+      { anchor: 'task-123', anchor_type: 'continuity_task_id' },
+      { anchor: commit, anchor_type: 'git_commit' },
+    ]);
+
+    const retriever = new MemoryRetriever(client, loadConfig({}, process.cwd()).memory);
+    const recalled = await retriever.search({
+      scope,
+      query: 'continuity_task_id:task-123',
+      limit: 5,
+    });
+    expect(recalled.hits[0]?.memoryId).toBe(memory.memoryId);
+    expect(recalled.hits[0]?.whyMatched.exact).toBe(1);
+    expect(recalled.hits[0]?.whyMatched.matchedAnchors).toContain('task-123');
+
+    for (const invalidValue of ['   ', '[REDACTED:SECRET]']) {
+      await expect(store.commitMemory({
+        scope,
+        canonicalKey: `memory.invalid.anchor.${invalidValue.trim() || 'blank'}`,
+        kind: 'fact',
+        value: 'This write must fail before persistence.',
+        sourceType: 'test',
+        explicitAnchors: [{ type: 'continuity_task_id', value: invalidValue }],
+      })).rejects.toMatchObject({ code: 'MEMORY_EXPLICIT_ANCHOR_INVALID' });
+    }
+
+    await store.close();
+  });
+
+  it('keeps directed semantic relations one-way while logical conflicts stay symmetric', async () => {
+    const client = new MemoryWorkerClient();
+    const store = new MemoryStore(client);
+    await store.open({ dbPath: dbPath('relation-direction') });
+    const scope = { ...scopeA, projectId: 'relation-project' };
+
+    const parent = await store.commitMemory({
+      scope,
+      canonicalKey: 'architecture.parent',
+      kind: 'decision',
+      value: 'Parent architecture decision',
+      sourceType: 'test',
+    });
+    const conflicting = await store.commitMemory({
+      scope,
+      canonicalKey: 'architecture.conflicting',
+      kind: 'decision',
+      value: 'Conflicting architecture decision',
+      sourceType: 'test',
+    });
+    const branch = await store.commitMemory({
+      scope,
+      canonicalKey: 'architecture.branch',
+      kind: 'decision',
+      value: 'Branch architecture decision',
+      sourceType: 'test',
+      explicitRelations: [
+        { targetMemoryId: parent.memoryId, relation: 'branch_of' },
+        { targetMemoryId: conflicting.memoryId, relation: 'contradicts' },
+      ],
+    });
+
+    const branchEdges = await client.query<{ from_memory_id: string; to_memory_id: string; relation: string }>(
+      `SELECT from_memory_id, to_memory_id, relation FROM memory_edges
+       WHERE relation IN ('branch_of', 'contradicts')
+       ORDER BY relation, from_memory_id, to_memory_id`,
+    );
+    expect(branchEdges.filter((edge) => edge.relation === 'branch_of')).toEqual([
+      { from_memory_id: branch.memoryId, to_memory_id: parent.memoryId, relation: 'branch_of' },
+    ]);
+    const conflictEdges = branchEdges.filter((edge) => edge.relation === 'contradicts');
+    expect(conflictEdges).toHaveLength(2);
+    expect(conflictEdges).toEqual(expect.arrayContaining([
+      { from_memory_id: branch.memoryId, to_memory_id: conflicting.memoryId, relation: 'contradicts' },
+      { from_memory_id: conflicting.memoryId, to_memory_id: branch.memoryId, relation: 'contradicts' },
+    ]));
+
+    const edgeEvents = await client.query<{ from_memory_id: string; to_memory_id: string; relation: string; event_type: string }>(
+      `SELECT from_memory_id, to_memory_id, relation, event_type FROM memory_edge_events
+       WHERE relation IN ('branch_of', 'contradicts')
+       ORDER BY relation, from_memory_id, to_memory_id`,
+    );
+    expect(edgeEvents.filter((event) => event.relation === 'branch_of')).toEqual([
+      { from_memory_id: branch.memoryId, to_memory_id: parent.memoryId, relation: 'branch_of', event_type: 'edge.created' },
+    ]);
+    expect(edgeEvents.filter((event) => event.relation === 'contradicts')).toHaveLength(2);
+
+    const foreign = await store.commitMemory({
+      scope: { ...scope, projectId: 'other-project' },
+      canonicalKey: 'architecture.foreign',
+      kind: 'decision',
+      value: 'Foreign project memory',
+      sourceType: 'test',
+    });
+    await expect(store.commitMemory({
+      scope,
+      canonicalKey: 'architecture.cross-scope-link',
+      kind: 'decision',
+      value: 'This invalid relation must never persist.',
+      sourceType: 'test',
+      explicitRelations: [{ targetMemoryId: foreign.memoryId, relation: 'branch_of' }],
+    })).rejects.toMatchObject({ code: 'MEMORY_RELATION_TARGET_NOT_FOUND' });
+    expect((await client.query<{ count: number }>(
+      "SELECT count(*) AS count FROM memory_items WHERE principal_id = ? AND project_id = ? AND canonical_key = 'architecture.cross-scope-link'",
+      [scope.principalId, scope.projectId!],
+    ))[0]!.count).toBe(0);
+
+    await store.close();
+  });
+  it('exposes exact scoped canonical lookup and writes explicit relations with audited directionality', async () => {
+    const client = new MemoryWorkerClient();
+    const store = new MemoryStore(client);
+    await store.open({ dbPath: dbPath('explicit-relation-writer') });
+    const scope = { ...scopeA, projectId: 'writer-project' };
+    const otherProjectScope = { ...scopeA, projectId: 'writer-project-other' };
+
+    const parent = await store.commitMemory({
+      scope,
+      canonicalKey: 'writer.parent',
+      kind: 'decision',
+      value: 'Parent decision.',
+      sourceType: 'test',
+    });
+    const child = await store.commitMemory({
+      scope,
+      canonicalKey: 'writer.child',
+      kind: 'decision',
+      value: 'Child decision.',
+      sourceType: 'test',
+    });
+    const conflicting = await store.commitMemory({
+      scope,
+      canonicalKey: 'writer.conflicting',
+      kind: 'decision',
+      value: 'Conflicting decision.',
+      sourceType: 'test',
+    });
+    const foreign = await store.commitMemory({
+      scope: otherProjectScope,
+      canonicalKey: 'writer.foreign',
+      kind: 'decision',
+      value: 'Foreign decision.',
+      sourceType: 'test',
+    });
+
+    expect(await store.getMemoryByCanonicalKey(scope, '  WRITER.PARENT  ')).toMatchObject({ memoryId: parent.memoryId });
+    expect(await store.getMemoryByCanonicalKey(scopeB, 'writer.parent')).toBeNull();
+
+    expect(await store.addExplicitRelation({
+      scope,
+      fromMemoryId: child.memoryId,
+      toMemoryId: parent.memoryId,
+      relation: 'branch_of',
+      reasonCode: 'POSTFLIGHT_BRANCH',
+    })).toEqual({ createdEdges: 1 });
+    expect(await store.addExplicitRelation({
+      scope,
+      fromMemoryId: child.memoryId,
+      toMemoryId: parent.memoryId,
+      relation: 'branch_of',
+      reasonCode: 'POSTFLIGHT_BRANCH',
+    })).toEqual({ createdEdges: 0 });
+
+    expect(await store.addExplicitRelation({
+      scope,
+      fromMemoryId: child.memoryId,
+      toMemoryId: conflicting.memoryId,
+      relation: 'contradicts',
+      reasonCode: 'POSTFLIGHT_CONFLICT',
+    })).toEqual({ createdEdges: 2 });
+
+    const edges = await client.query<{ from_memory_id: string; to_memory_id: string; relation: string }>(
+      `SELECT from_memory_id, to_memory_id, relation FROM memory_edges
+       WHERE from_memory_id IN (?, ?) OR to_memory_id IN (?, ?)
+       ORDER BY relation, from_memory_id, to_memory_id`,
+      [child.memoryId, conflicting.memoryId, child.memoryId, conflicting.memoryId],
+    );
+    expect(edges.filter((edge) => edge.relation === 'branch_of')).toEqual([
+      { from_memory_id: child.memoryId, to_memory_id: parent.memoryId, relation: 'branch_of' },
+    ]);
+    expect(edges.filter((edge) => edge.relation === 'contradicts')).toHaveLength(2);
+
+    const audit = await client.query<{ relation: string; reason_code: string }>(
+      `SELECT relation, reason_code FROM memory_edge_events
+       WHERE relation IN ('branch_of', 'contradicts') AND principal_id = ? AND project_id = ?
+       ORDER BY relation, from_memory_id, to_memory_id`,
+      [scope.principalId, scope.projectId!],
+    );
+    expect(audit.filter((row) => row.relation === 'branch_of')).toHaveLength(1);
+    expect(audit.filter((row) => row.relation === 'contradicts')).toHaveLength(2);
+    expect(audit.every((row) => row.reason_code.startsWith('POSTFLIGHT_'))).toBe(true);
+
+    await expect(store.addExplicitRelation({
+      scope,
+      fromMemoryId: child.memoryId,
+      toMemoryId: foreign.memoryId,
+      relation: 'branch_of',
+      reasonCode: 'POSTFLIGHT_INVALID',
+    })).rejects.toMatchObject({ code: 'MEMORY_RELATION_TARGET_NOT_FOUND' });
+    await expect(store.addExplicitRelation({
+      scope,
+      fromMemoryId: foreign.memoryId,
+      toMemoryId: parent.memoryId,
+      relation: 'branch_of',
+      reasonCode: 'POSTFLIGHT_INVALID',
+    })).rejects.toMatchObject({ code: 'MEMORY_RELATION_SOURCE_NOT_FOUND' });
+
+    await store.close();
+  });
+
 });

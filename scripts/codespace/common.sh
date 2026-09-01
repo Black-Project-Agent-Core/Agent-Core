@@ -16,6 +16,12 @@ AGENT_CORE_CLOUDFLARE_WORKER_NAME="${AGENT_CORE_CLOUDFLARE_WORKER_NAME:-agent-co
 AGENT_CORE_STABLE_GATEWAY_REQUIRED="${AGENT_CORE_STABLE_GATEWAY_REQUIRED:-0}"
 AGENT_CORE_WRANGLER_VERSION="${AGENT_CORE_WRANGLER_VERSION:-4.126.0}"
 AGENT_CORE_WRANGLER_CONFIG_FILE="${AGENT_CORE_WRANGLER_CONFIG_FILE:-${HOME:-/home/codespace}/.config/.wrangler/config/default.toml}"
+AGENT_CORE_CODESPACE_LIFECYCLE_LOCK_FILE="${AGENT_CORE_CODESPACE_LIFECYCLE_LOCK_FILE:-${TMPDIR:-/tmp}/agent-core-codespace-lifecycle.lock}"
+AGENT_CORE_MEMORY_DB_PATH="${AGENT_CORE_MEMORY_DB_PATH:-$AGENT_CORE_CODESPACE_HOME/memory/agent-core-memory.sqlite}"
+AGENT_CORE_MEMORY_REMOTE_KEY_FILE="${AGENT_CORE_MEMORY_REMOTE_KEY_FILE:-$AGENT_CORE_CODESPACE_HOME/secrets/memory-remote.key}"
+AGENT_CORE_MEMORY_REMOTE_WORK_ROOT="${AGENT_CORE_MEMORY_REMOTE_WORK_ROOT:-$AGENT_CORE_REPO_ROOT/runtime/memory/remote}"
+AGENT_CORE_MEMORY_REMOTE_PROJECT_ID="${AGENT_CORE_MEMORY_REMOTE_PROJECT_ID:-$AGENT_CORE_REPO_ROOT}"
+AGENT_CORE_MEMORY_REMOTE_HYDRATION_MARKER="${AGENT_CORE_MEMORY_REMOTE_HYDRATION_MARKER:-$AGENT_CORE_CODESPACE_HOME/memory/remote-hydration.json}"
 
 codespace_anchor_enabled() {
   [[ -n "$AGENT_CORE_ANCHOR_CODESPACE_NAME" ]]
@@ -67,6 +73,30 @@ anchor_discovery_session() {
 
 log_info() { printf '[agent-core-codespace] %s\n' "$*"; }
 log_error() { printf '[agent-core-codespace] ERROR: %s\n' "$*" >&2; }
+
+acquire_codespace_lifecycle_lock() {
+  local timeout="${1:-180}"
+
+  if [[ "${AGENT_CORE_CODESPACE_LIFECYCLE_LOCK_HELD:-0}" == "1" ]]; then
+    return 0
+  fi
+  command -v flock >/dev/null 2>&1 || return 1
+  mkdir -p "$(dirname "$AGENT_CORE_CODESPACE_LIFECYCLE_LOCK_FILE")" || return 1
+  exec 8>"$AGENT_CORE_CODESPACE_LIFECYCLE_LOCK_FILE" || return 1
+  if ! flock -w "$timeout" 8; then
+    exec 8>&-
+    return 1
+  fi
+  export AGENT_CORE_CODESPACE_LIFECYCLE_LOCK_HELD=1
+}
+
+run_without_codespace_lifecycle_lock() {
+  (
+    exec 8>&- || true
+    unset AGENT_CORE_CODESPACE_LIFECYCLE_LOCK_HELD
+    "$@"
+  )
+}
 
 wrangler_oauth_config_available() {
   [[ -s "$AGENT_CORE_WRANGLER_CONFIG_FILE" || -n "${CLOUDFLARE_WRANGLER_OAUTH_CONFIG_B64:-}" ]]
@@ -153,6 +183,56 @@ health_payload_ok() {
       }
     });
   ' "$expected_version"
+}
+
+oauth_issuer_payload_ok() {
+  local expected_issuer="$1"
+  node -e '
+    let input = "";
+    process.stdin.on("data", chunk => input += chunk);
+    process.stdin.on("end", () => {
+      const expected = process.argv[1];
+      try {
+        const value = JSON.parse(input);
+        process.exit(value.issuer === expected ? 0 : 1);
+      } catch {
+        process.exit(1);
+      }
+    });
+  ' "$expected_issuer"
+}
+
+wait_for_public_oauth_issuer() {
+  local base_url="$1"
+  local attempts="${2:-15}"
+  local delay="${3:-1}"
+  local payload=""
+  local attempt
+
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    if payload="$(curl -fsS "$base_url/.well-known/oauth-authorization-server" 2>/dev/null)"; then
+      if printf '%s' "$payload" | oauth_issuer_payload_ok "$base_url"; then
+        return 0
+      fi
+    fi
+    sleep "$delay"
+  done
+  return 1
+}
+
+wait_for_public_mcp_auth_gate() {
+  local base_url="$1"
+  local attempts="${2:-15}"
+  local delay="${3:-1}"
+  local status=""
+  local attempt
+
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    status="$(curl -sS -o /dev/null -w '%{http_code}' "$base_url/mcp" 2>/dev/null || true)"
+    [[ "$status" == "401" ]] && return 0
+    sleep "$delay"
+  done
+  return 1
 }
 
 source_package_version() {
@@ -256,6 +336,24 @@ codespace_port_visibility() {
       }
     });
   ' "$AGENT_CORE_CODESPACE_PORT"
+}
+
+ensure_codespace_port_public() {
+  local attempts="${1:-6}"
+  local delay="${2:-1}"
+  local visibility=""
+  local attempt
+
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    visibility="$(codespace_port_visibility 2>/dev/null || true)"
+    [[ "$visibility" == "public" ]] && return 0
+
+    gh codespace ports visibility "$AGENT_CORE_CODESPACE_PORT:public" -c "$CODESPACE_NAME" >/dev/null 2>&1 || true
+    sleep "$delay"
+  done
+
+  visibility="$(codespace_port_visibility 2>/dev/null || true)"
+  [[ "$visibility" == "public" ]]
 }
 
 public_base_url() {

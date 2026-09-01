@@ -14,7 +14,11 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  delete process.env.CONTROL_PLANE_API_KEY;
+  for (const key of [
+    'CONTROL_PLANE_API_KEY', 'GITHUB_TOKEN', 'GH_TOKEN', 'AGENT_CORE_MEMORY_REMOTE_KEY_HEX',
+    'AGENT_CORE_MEMORY_REMOTE_KEY_FILE', 'AGENT_CORE_GITHUB_TOKEN_FILE', 'AGENT_CORE_GITHUB_PACKAGES_TOKEN_FILE',
+    'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_WRANGLER_OAUTH_CONFIG_B64',
+  ]) delete process.env[key];
   await fs.rm(base, { recursive: true, force: true });
 });
 
@@ -26,6 +30,20 @@ describe('sanitized foreground commands', () => {
       timeoutMs: 5000,
     }, base);
     expect(result.stdout).toBe('unset');
+  });
+
+  it('strips root GitHub, Memory Remote, and Cloudflare credentials from child shells', async () => {
+    const secretKeys = [
+      'GITHUB_TOKEN', 'GH_TOKEN', 'AGENT_CORE_MEMORY_REMOTE_KEY_HEX', 'AGENT_CORE_MEMORY_REMOTE_KEY_FILE',
+      'AGENT_CORE_GITHUB_TOKEN_FILE', 'AGENT_CORE_GITHUB_PACKAGES_TOKEN_FILE', 'CLOUDFLARE_API_TOKEN',
+      'CLOUDFLARE_WRANGLER_OAUTH_CONFIG_B64',
+    ];
+    for (const key of secretKeys) process.env[key] = `secret-${key}`;
+    const result = await executeCommand(root, {
+      command: `env | grep -E '^(${secretKeys.join('|')})=' || true`,
+      timeoutMs: 5000,
+    }, base);
+    expect(result.stdout).toBe('');
   });
 
   it('enforces cwd containment', async () => {

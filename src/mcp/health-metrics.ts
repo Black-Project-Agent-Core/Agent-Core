@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import type { RuntimeServices } from '../runtime/services.js';
 import type { VerifiedKey } from '../auth/key-types.js';
+import { persistentPrincipalId } from './project-scope.js';
 
 export const HEALTH_METRICS_TOOL_NAMES = ['agent_core_health_metrics'] as const;
 
@@ -22,7 +23,7 @@ export function registerHealthMetricsTools(server: McpServer, runtime: RuntimeSe
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async () => {
-    const structuredContent = await runtime.healthMetrics.getMetrics({ principalId: key.id, projectId: runtime.workspace.roots[0] });
+    const structuredContent = await runtime.healthMetrics.getMetrics({ principalId: persistentPrincipalId(runtime, key), projectId: runtime.workspace.roots[0] });
     return {
       content: [{ type: 'text' as const, text: JSON.stringify(structuredContent, null, 2) }],
       structuredContent,

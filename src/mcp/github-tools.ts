@@ -9,6 +9,8 @@ import { AgentCoreRouteError, type RouteContext } from '../runtime/route-context
 import type { RuntimeServices } from '../runtime/services.js';
 import { resolveAuditProjectId } from './project-scope.js';
 import { routeErrorResult, validateOperationalRoute } from './route-guard.js';
+import { classifyMeaningfulWork } from '../memory/meaningful-work.js';
+import { completeMemoryLifecycleOperation, validateMemoryLifecycleBeforeOperation } from './memory-lifecycle-guard.js';
 
 const ROUTE_REQUIRED_DESCRIPTION = 'Obtain routeContextId from capability_route before using this tool.';
 const routedDescription = (description: string) => `${description} ${ROUTE_REQUIRED_DESCRIPTION}`;
@@ -66,19 +68,6 @@ function atomicReadOnly(route: RouteContext): boolean {
   return route.tier === 'atomic' && route.verification.required === false;
 }
 
-function isMutation(toolName: string, input: Record<string, unknown>): boolean {
-  const operation = typeof input.operation === 'string' ? input.operation : '';
-  if (toolName === 'github_repo') return ['create', 'update', 'archive', 'transfer', 'delete'].includes(operation);
-  if (toolName === 'github_git') return ['clone', 'fetch', 'pull', 'push', 'remote_set_url'].includes(operation);
-  if (toolName === 'github_issue') return ['create', 'update', 'close', 'comment'].includes(operation);
-  if (toolName === 'github_pr') return ['create', 'update', 'review', 'merge', 'comment'].includes(operation);
-  if (toolName === 'github_actions') return ['dispatch', 'cancel', 'rerun', 'rerun_failed'].includes(operation);
-  if (toolName === 'github_release') return ['create', 'edit', 'delete', 'upload_asset'].includes(operation);
-  if (toolName === 'github_packages') return ['delete_version', 'restore_version', 'npm_publish', 'npm_install'].includes(operation);
-  if (toolName === 'github_api') return String(input.method ?? 'GET').toUpperCase() !== 'GET';
-  return false;
-}
-
 async function githubRouteGuarded<T>(
   runtime: RuntimeServices,
   key: VerifiedKey,
@@ -90,14 +79,17 @@ async function githubRouteGuarded<T>(
   const audit = new OperationalMemoryAudit(runtime, key);
   const auditInput = safeAuditInput(rawInput);
   let route: RouteContext;
+  let lifecycleDecision;
   try {
     route = validateOperationalRoute(runtime, key, routeContextId, toolName);
-    if (atomicReadOnly(route) && isMutation(toolName, rawInput)) {
+    const classification = classifyMeaningfulWork(toolName, rawInput);
+    if (atomicReadOnly(route) && classification.meaningful) {
       throw new AgentCoreRouteError(
         'ROUTE_TOOL_NOT_ALLOWED',
         `Read-only route cannot perform mutating GitHub operation through ${toolName}`,
       );
     }
+    lifecycleDecision = await validateMemoryLifecycleBeforeOperation(runtime, key, route, toolName, rawInput);
   } catch (error) {
     await audit.rejected(resolveAuditProjectId(runtime, key, routeContextId), routeContextId, toolName, auditInput, error);
     return routeErrorResult(error) ?? errorResult(error);
@@ -106,6 +98,7 @@ async function githubRouteGuarded<T>(
   await audit.intended(route, toolName, auditInput);
   try {
     const result = await operation();
+    await completeMemoryLifecycleOperation(runtime, key, route, toolName, lifecycleDecision);
     await audit.succeeded(route, toolName, auditInput, result);
     return textResult(result);
   } catch (error) {

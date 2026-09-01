@@ -11,6 +11,7 @@ import { ExecutionStore } from '../execution/store.js';
 import { GitHubService, type GitHubServiceDependencies } from '../github/service.js';
 import { NOOP_RUNTIME_AUDIT_LOGGER, type RoutingAuditLogger, type RuntimeAuditLogger } from '../logging/audit-log.js';
 import { MemoryService } from '../memory/service.js';
+import { GitHubMemoryRemoteTransport } from '../memory/remote-transport.js';
 import { TelemetryService } from '../observability/telemetry.js';
 import { FileSystemService } from './filesystem.js';
 import { ProcessManager } from './process-manager.js';
@@ -71,12 +72,21 @@ export function createRuntimeServices(
     ? routingAuditLogger as RoutingAuditLogger & RuntimeAuditLogger
     : NOOP_RUNTIME_AUDIT_LOGGER;
   const telemetry = new TelemetryService(metrics, resolvedObservabilityConfig.otlp, { serviceVersion });
-  const memory = new MemoryService(resolvedMemoryConfig, metrics);
+  const github = new GitHubService(resolvedGitHubConfig, workspace, { ...githubDependencies, metrics });
+  const memoryRemoteTransport = resolvedMemoryConfig.remote.enabled
+    ? new GitHubMemoryRemoteTransport(github.git, workspace, resolvedMemoryConfig.remote)
+    : undefined;
+  const memory = new MemoryService(resolvedMemoryConfig, metrics, { remoteTransport: memoryRemoteTransport });
+  const resolvePersistentMemoryScope = (scope: { principalId: string; projectId?: string }) => ({
+    ...scope,
+    principalId: resolvedMemoryConfig.principalId ?? scope.principalId,
+  });
   const executionStore = new ExecutionStore();
   const executionBridge = new ExecutionMemoryBridge(
     executionStore,
     memory,
     new ExecutionLogStore(resolvedExecutionConfig.logRoot),
+    resolvePersistentMemoryScope,
   );
   let execution!: ExecutionService;
   const resourceProvider = new NodeResourceSnapshotProvider({
@@ -98,7 +108,7 @@ export function createRuntimeServices(
   execution = new ExecutionService(resolvedExecutionConfig, workspace, {
     store: executionStore,
     memoryBridge: executionBridge,
-    memorySearch: new ExecutionMemoryPreSearch(memory),
+    memorySearch: new ExecutionMemoryPreSearch(memory, resolvePersistentMemoryScope),
     metrics,
     resourceGovernor,
   });
@@ -119,7 +129,7 @@ export function createRuntimeServices(
     routes: new RouteContextStore({ ...(routingAuditLogger ? { auditLogger: routingAuditLogger } : {}), metrics }),
     memory,
     execution,
-    github: new GitHubService(resolvedGitHubConfig, workspace, { ...githubDependencies, metrics }),
+    github,
     metrics,
     audit: runtimeAudit,
     telemetry,

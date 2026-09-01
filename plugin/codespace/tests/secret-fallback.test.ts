@@ -29,10 +29,13 @@ describe('codespace restart self-recovery contract', () => {
     const stdioStartup = readFileSync(path.join(pluginRoot, 'scripts', 'start-mcp.sh'), 'utf8');
     const httpStartup = readFileSync(path.join(pluginRoot, 'scripts', 'start-http-mcp.sh'), 'utf8');
     const watchdogStartup = readFileSync(path.join(pluginRoot, 'scripts', 'start-watchdog.sh'), 'utf8');
-    expect(stdioStartup).toContain('unset CONTROL_PLANE_API_KEY');
-    expect(httpStartup).toContain('unset CONTROL_PLANE_API_KEY');
-    expect(httpStartup).toContain('unset OPENAI_ADMIN_KEY');
-    expect(watchdogStartup).toContain('unset CONTROL_PLANE_API_KEY');
-    expect(watchdogStartup).toContain('unset OPENAI_ADMIN_KEY');
+    for (const script of [stdioStartup, httpStartup, watchdogStartup]) {
+      for (const key of [
+        'CONTROL_PLANE_API_KEY', 'OPENAI_ADMIN_KEY', 'GITHUB_TOKEN', 'GH_TOKEN',
+        'AGENT_CORE_GITHUB_TOKEN_FILE', 'AGENT_CORE_GITHUB_PACKAGES_TOKEN_FILE',
+        'AGENT_CORE_MEMORY_REMOTE_KEY_HEX', 'AGENT_CORE_MEMORY_REMOTE_KEY_FILE',
+        'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_WRANGLER_OAUTH_CONFIG_B64',
+      ]) expect(script).toContain(`unset ${key}`);
+    }
   });
 });

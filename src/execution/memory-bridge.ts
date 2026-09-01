@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 import { ContinuityPromoter, type ContinuityMemoryWriter, type ExecutionProcessCheckpointInput } from '../continuity/promoter.js';
 import type { RecordMemoryEventRequest } from '../memory/store.js';
-import type { MemoryCommitRequest, MemoryCommitResult, MemoryScope, MemoryStatus } from '../memory/types.js';
+import type {
+  MemoryDurabilityBoundaryReason, MemoryDurabilityBoundaryResult, MemoryPostflightApplyResult,
+  MemoryPostflightRequest, MemoryScope, MemoryStatus,
+} from '../memory/types.js';
 import type { ExecutionLogStore, ExecutionResultMarker } from './log-store.js';
 import type { ExecutionParsedOutputView, ExecutionStore } from './store.js';
 import type { ExecutionEventRecord } from './wake.js';
@@ -9,6 +12,10 @@ import type { ExecutionEventRecord } from './wake.js';
 export interface ExecutionMemoryWriter extends ContinuityMemoryWriter {
   status(scope?: MemoryScope): Promise<MemoryStatus>;
   recordEvent(request: RecordMemoryEventRequest): Promise<unknown>;
+  syncDurableBoundary(
+    scope: MemoryScope,
+    reason: MemoryDurabilityBoundaryReason,
+  ): Promise<MemoryDurabilityBoundaryResult>;
 }
 
 type FailurePromotion = {
@@ -16,6 +23,7 @@ type FailurePromotion = {
   syncKey: string;
   runId: string;
   eventSequence: number;
+  taskId: string;
   canonicalKey: string;
   value: Record<string, unknown>;
   metadata: Record<string, unknown>;
@@ -26,6 +34,7 @@ type ArtifactPromotion = {
   syncKey: string;
   runId: string;
   eventSequence: number;
+  taskId: string;
   canonicalKey: string;
   value: Record<string, unknown>;
   metadata: Record<string, unknown>;
@@ -95,6 +104,7 @@ export class ExecutionMemoryBridge {
     readonly store: ExecutionStore,
     readonly memory: ExecutionMemoryWriter,
     readonly logs?: ExecutionLogStore,
+    readonly resolveMemoryScope: (scope: MemoryScope) => MemoryScope = (scope) => scope,
   ) {
     this.promoter = new ContinuityPromoter(memory);
   }
@@ -117,12 +127,13 @@ export class ExecutionMemoryBridge {
   }
 
   async handlePersistedEvent(scope: MemoryScope, event: ExecutionEventRecord): Promise<ExecutionBridgeHandleResult> {
+    const memoryScope = this.resolveMemoryScope(scope);
     const promotions = await this.buildPromotions(scope, event);
     if (promotions.length === 0) return { promoted: 0, queued: 0 };
 
     let healthy = false;
     try {
-      healthy = (await this.memory.status(scope)).healthy;
+      healthy = (await this.memory.status(memoryScope)).healthy;
     } catch {
       healthy = false;
     }
@@ -132,7 +143,7 @@ export class ExecutionMemoryBridge {
     for (const promotion of promotions) {
       if (healthy) {
         try {
-          await this.apply(scope, promotion);
+          await this.apply(memoryScope, promotion);
           promoted += 1;
           continue;
         } catch {
@@ -146,9 +157,10 @@ export class ExecutionMemoryBridge {
   }
 
   async replay(scope: MemoryScope): Promise<ExecutionBridgeReplayResult> {
+    const memoryScope = this.resolveMemoryScope(scope);
     let healthy = false;
     try {
-      healthy = (await this.memory.status(scope)).healthy;
+      healthy = (await this.memory.status(memoryScope)).healthy;
     } catch {
       return { synced: 0, failed: 0 };
     }
@@ -160,7 +172,7 @@ export class ExecutionMemoryBridge {
     for (const item of queued) {
       await this.store.markMemorySyncState(scope, item.queueId, 'syncing');
       try {
-        await this.apply(scope, item.payload as unknown as ExecutionMemoryPromotion);
+        await this.apply(memoryScope, item.payload as unknown as ExecutionMemoryPromotion);
         await this.store.markMemorySyncState(scope, item.queueId, 'synced');
         synced += 1;
       } catch (error) {
@@ -244,6 +256,7 @@ export class ExecutionMemoryBridge {
           syncKey: `execution:failure:${event.runId}:${event.nodeId}:${attempt.attemptNo}:${event.sequence}`,
           runId: event.runId,
           eventSequence: event.sequence,
+          taskId,
           canonicalKey: `failure.execution.${commandHash}.${event.runId}.${attempt.attemptNo}`,
           value: { ...evidence, failureType: 'execution_node_failure' },
           metadata: provenanceMetadata,
@@ -254,6 +267,7 @@ export class ExecutionMemoryBridge {
         syncKey: `execution:artifact:${event.runId}:${event.nodeId}:${attempt.attemptNo}:${event.sequence}`,
         runId: event.runId,
         eventSequence: event.sequence,
+        taskId,
         canonicalKey: `execution.artifact.${event.runId}.${event.nodeId}.${attempt.attemptNo}`,
         value: { ...evidence, artifactType: 'execution_result_evidence' },
         metadata: provenanceMetadata,
@@ -282,21 +296,42 @@ export class ExecutionMemoryBridge {
     }];
   }
 
-  private async apply(scope: MemoryScope, promotion: ExecutionMemoryPromotion): Promise<MemoryCommitResult> {
+  private async apply(scope: MemoryScope, promotion: ExecutionMemoryPromotion): Promise<MemoryPostflightApplyResult> {
     if (promotion.type === 'process_checkpoint') {
-      return this.promoter.promoteExecutionProcessCheckpoint(scope, promotion.taskId, promotion.checkpoint);
+      const applied = await this.promoter.promoteExecutionProcessCheckpoint(scope, promotion.taskId, promotion.checkpoint);
+      await this.memory.syncDurableBoundary(scope, 'execution_process_checkpoint');
+      return applied;
     }
-    const request: MemoryCommitRequest = {
+
+    const reason: MemoryDurabilityBoundaryReason = promotion.type === 'failure'
+      ? 'execution_failure'
+      : 'execution_artifact';
+    const resultRef = typeof promotion.metadata.resultRef === 'string' ? promotion.metadata.resultRef : undefined;
+    const nodeId = typeof promotion.metadata.nodeId === 'string' ? promotion.metadata.nodeId : 'unknown-node';
+    const attemptNo = typeof promotion.metadata.attemptNo === 'number' ? promotion.metadata.attemptNo : 0;
+    const rootReason = promotion.type === 'failure'
+      ? `Verified execution failure first materialized for run ${promotion.runId}, node ${nodeId}, attempt ${attemptNo}.`
+      : `Verified execution artifact first materialized for run ${promotion.runId}, node ${nodeId}, attempt ${attemptNo}.`;
+    const request: MemoryPostflightRequest = {
       scope,
-      canonicalKey: promotion.canonicalKey,
-      kind: promotion.type === 'failure' ? 'failure' : 'artifact',
-      value: promotion.value,
-      importance: promotion.type === 'failure' ? 0.9 : 0.78,
-      sourceType: promotion.type === 'failure' ? 'execution_failure' : 'execution_verified_evidence',
-      sourceRef: promotion.runId,
-      metadata: promotion.metadata,
-      revisionAuthority: 'structured_state',
+      routeContextId: promotion.runId,
+      continuityTaskId: promotion.taskId,
+      candidate: {
+        canonicalKey: promotion.canonicalKey,
+        kind: promotion.type === 'failure' ? 'failure' : 'artifact',
+        value: promotion.value,
+        importance: promotion.type === 'failure' ? 0.9 : 0.78,
+        sourceType: promotion.type === 'failure' ? 'execution_failure' : 'execution_verified_evidence',
+        sourceRef: promotion.runId,
+        metadata: promotion.metadata,
+      },
+      reasonCodes: promotion.type === 'failure'
+        ? ['FRESH_DURABLE_CONTEXT', 'FAILURE_OBSERVED']
+        : ['FRESH_DURABLE_CONTEXT', 'ARTIFACT_VERIFIED'],
+      evidenceRefs: [promotion.syncKey, ...(resultRef ? [resultRef] : [])],
+      rootReason: rootReason.slice(0, 2_000),
     };
-    return this.memory.commit(request);
-  }
-}
+    const applied = await this.memory.applyPostflight(request);
+    await this.memory.syncDurableBoundary(scope, reason);
+    return applied;
+  }}

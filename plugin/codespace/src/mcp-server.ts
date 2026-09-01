@@ -4,8 +4,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod/v4';
 
 import { executeCommand } from './commands.js';
-import { BRIDGE_NAME, BRIDGE_VERSION, MAX_COMMAND_OUTPUT_BYTES, RUNTIME_DIR, WORKSPACES_ROOT } from './constants.js';
+import { BRIDGE_NAME, BRIDGE_VERSION, clearSecretEnvironment, MAX_COMMAND_OUTPUT_BYTES, RUNTIME_DIR, WORKSPACES_ROOT } from './constants.js';
 import { errorPayload } from './errors.js';
+import { CodespaceMemoryLeaseClient, parseMemoryLeaseRuntimeConfig, type MemoryLeaseDecision } from './memory-lease.js';
 import {
   editTextFile,
   listDirectory,
@@ -16,6 +17,8 @@ import {
 } from './filesystem.js';
 import { ProcessManager } from './processes.js';
 import { resolveWorkspaceRoot } from './workspace.js';
+import { CodespaceSharedMemoryClient, parseSharedMemoryRuntimeConfig } from './shared-memory.js';
+import { registerCodespaceSharedMemoryTools } from './shared-memory-tools.js';
 
 function textResult(value: unknown) {
   return {
@@ -38,10 +41,31 @@ async function guarded<T>(operation: () => Promise<T>) {
   }
 }
 
+function attachMemoryLifecycle<T>(
+  value: T,
+  before: MemoryLeaseDecision,
+  after?: MemoryLeaseDecision,
+): T | (T & { memoryLifecycle: Record<string, unknown> }) | { result: T; memoryLifecycle: Record<string, unknown> } {
+  if (before.mode === 'disabled') return value;
+  const final = after ?? before;
+  const memoryLifecycle = {
+    mode: final.mode,
+    required: before.required,
+    beforeValid: before.valid,
+    ...(after ? { afterValid: after.valid } : {}),
+    mutationClass: before.mutationClass,
+    ...(final.advisoryCode ? { advisoryCode: final.advisoryCode } : before.advisoryCode ? { advisoryCode: before.advisoryCode } : {}),
+    ...(final.postflightState ? { postflightState: final.postflightState } : {}),
+  };
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return { ...(value as Record<string, unknown>), memoryLifecycle } as T & { memoryLifecycle: Record<string, unknown> };
+  }
+  return { result: value, memoryLifecycle };
+}
+
 export async function createCodespaceMcpServer(): Promise<McpServer> {
-  // Defense in depth: the production launcher already removes these values.
-  delete process.env.CONTROL_PLANE_API_KEY;
-  delete process.env.OPENAI_ADMIN_KEY;
+  // Defense in depth: production launchers scrub the same set before exec.
+  clearSecretEnvironment();
 
   const testAllowedBase =
     process.env.NODE_ENV === 'test' ? process.env.CODESPACE_TEST_ALLOWED_BASE : undefined;
@@ -50,6 +74,28 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
   const runtimeDir = process.env.NODE_ENV === 'test' ? path.join(root, '.codespace-runtime') : RUNTIME_DIR;
   const processes = new ProcessManager(root, runtimeDir, allowedBase);
   await processes.reconcile();
+  const memoryLeaseClient = new CodespaceMemoryLeaseClient(parseMemoryLeaseRuntimeConfig());
+  const sharedMemoryClient = new CodespaceSharedMemoryClient(parseSharedMemoryRuntimeConfig());
+  const memoryContextLeaseSchema = z.string().min(16).max(4096).optional();
+
+  const guardedMutation = async <T>(
+    toolName: string,
+    memoryContextLease: string | undefined,
+    classifierInput: Record<string, unknown>,
+    operation: () => Promise<T>,
+  ) => guarded(async () => {
+    const request = {
+      toolName,
+      workspaceRoot: root,
+      ...(memoryContextLease ? { lease: memoryContextLease } : {}),
+      input: classifierInput,
+    };
+    const before = await memoryLeaseClient.before(request);
+    const value = await operation();
+    if (!before.required || before.mode === 'disabled') return attachMemoryLifecycle(value, before);
+    const after = await memoryLeaseClient.after(request);
+    return attachMemoryLifecycle(value, before, after);
+  });
 
   const server = new McpServer({
     name: BRIDGE_NAME,
@@ -70,6 +116,8 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
       platform: `${process.platform}/${process.arch}`,
       branch: branchResult.exitCode === 0 ? branchResult.stdout.trim() || undefined : undefined,
       processSessions: processes.list().length,
+      memoryLifecycleMode: memoryLeaseClient.config.mode,
+      sharedMemoryAuthorityConfigured: sharedMemoryClient.config.endpoint !== null,
     };
   }));
 
@@ -118,28 +166,36 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
 
   server.registerTool('write_file', {
     title: 'Write File',
-    description: 'Use to create, replace, or append UTF-8 text in one file inside the active codespace workspace.',
+    description: 'Use to create, replace, or append UTF-8 text in one file inside the active codespace workspace. When memory lifecycle is active, obtain memoryContextLease from memory_open_context first.',
     inputSchema: {
       path: z.string().min(1),
       content: z.string(),
       mode: z.enum(['rewrite', 'append']).default('rewrite'),
+      memoryContextLease: memoryContextLeaseSchema,
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  }, async ({ path: requestedPath, content, mode }) => guarded(
+  }, async ({ path: requestedPath, content, mode, memoryContextLease }) => guardedMutation(
+    'write_file',
+    memoryContextLease,
+    {},
     () => writeTextFile(root, { path: requestedPath, content, mode }, allowedBase),
   ));
 
   server.registerTool('edit_file', {
     title: 'Edit File',
-    description: 'Use to make an exact text replacement in one workspace file when the expected match count is known.',
+    description: 'Use to make an exact text replacement in one workspace file when the expected match count is known. When memory lifecycle is active, obtain memoryContextLease from memory_open_context first.',
     inputSchema: {
       path: z.string().min(1),
       oldString: z.string().min(1),
       newString: z.string(),
       expectedReplacements: z.number().int().min(1).max(10000).default(1),
+      memoryContextLease: memoryContextLeaseSchema,
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  }, async ({ path: requestedPath, oldString, newString, expectedReplacements }) => guarded(
+  }, async ({ path: requestedPath, oldString, newString, expectedReplacements, memoryContextLease }) => guardedMutation(
+    'edit_file',
+    memoryContextLease,
+    {},
     () => editTextFile(root, {
       path: requestedPath,
       oldString,
@@ -150,26 +206,36 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
 
   server.registerTool('execute_command', {
     title: 'Execute Command',
-    description: 'Use to run one bounded bash command in the active codespace workspace, including builds, tests, Git, and diagnostics.',
+    description: 'Use to run one bounded bash command in the active codespace workspace, including builds, tests, Git, and diagnostics. Meaningful commands require memoryContextLease from memory_open_context when memory lifecycle is active.',
     inputSchema: {
       command: z.string().min(1),
       cwd: z.string().optional(),
       timeoutMs: z.number().int().min(1).max(10 * 60_000).default(30_000),
+      memoryContextLease: memoryContextLeaseSchema,
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
-  }, async ({ command, cwd, timeoutMs }) => guarded(
+  }, async ({ command, cwd, timeoutMs, memoryContextLease }) => guardedMutation(
+    'execute_command',
+    memoryContextLease,
+    { command },
     () => executeCommand(root, { command, cwd, timeoutMs }, allowedBase),
   ));
 
   server.registerTool('start_process', {
     title: 'Start Process',
-    description: 'Use to start one long-running bash process inside the active codespace workspace and receive an opaque session ID.',
+    description: 'Use to start one long-running bash process inside the active codespace workspace and receive an opaque session ID. When memory lifecycle is active, obtain memoryContextLease from memory_open_context first.',
     inputSchema: {
       command: z.string().min(1),
       cwd: z.string().optional(),
+      memoryContextLease: memoryContextLeaseSchema,
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
-  }, async ({ command, cwd }) => guarded(() => processes.start({ command, cwd })));
+  }, async ({ command, cwd, memoryContextLease }) => guardedMutation(
+    'start_process',
+    memoryContextLease,
+    {},
+    () => processes.start({ command, cwd }),
+  ));
 
   server.registerTool('read_process_output', {
     title: 'Read Process Output',
@@ -187,6 +253,8 @@ export async function createCodespaceMcpServer(): Promise<McpServer> {
     inputSchema: { sessionId: z.string().min(1) },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   }, async ({ sessionId }) => guarded(() => processes.stop(sessionId)));
+
+  registerCodespaceSharedMemoryTools(server, sharedMemoryClient, root);
 
   server.registerTool('list_processes', {
     title: 'List Processes',

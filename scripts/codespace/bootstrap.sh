@@ -47,6 +47,7 @@ command -v cmake >/dev/null 2>&1 || missing_packages+=(cmake)
 command -v c++ >/dev/null 2>&1 || missing_packages+=(g++)
 command -v ninja >/dev/null 2>&1 || missing_packages+=(ninja-build)
 command -v ccache >/dev/null 2>&1 || missing_packages+=(ccache)
+command -v flock >/dev/null 2>&1 || missing_packages+=(util-linux)
 
 if (( ${#missing_packages[@]} > 0 )); then
   command -v apt-get >/dev/null 2>&1 || {
@@ -74,6 +75,11 @@ if (( ${#missing_packages[@]} > 0 )); then
   log_info "Installing known prerequisites from the primary Ubuntu source only: ${missing_packages[*]}"
   sudo apt-get "${apt_source_args[@]}" update >/dev/null || exit 20
   sudo apt-get "${apt_source_args[@]}" install -y "${missing_packages[@]}" >/dev/null || exit 20
+fi
+
+if ! acquire_codespace_lifecycle_lock "${AGENT_CORE_CODESPACE_LIFECYCLE_LOCK_TIMEOUT_SECONDS:-180}"; then
+  log_error 'Timed out waiting for another Codespace root lifecycle to finish.'
+  exit 12
 fi
 
 source_before="$(git rev-parse HEAD 2>/dev/null)" || {
@@ -160,6 +166,11 @@ if [[ -n "${AGENT_CORE_GITHUB_PACKAGES_TOKEN:-}" ]]; then
   printf '%s\n' "$AGENT_CORE_GITHUB_PACKAGES_TOKEN" > "$AGENT_CORE_REPO_ROOT/secrets/github/packages-token.txt"
   chmod 600 "$AGENT_CORE_REPO_ROOT/secrets/github/packages-token.txt"
   log_info 'GitHub Packages credential restored from explicit Codespaces secret.'
+fi
+
+if ! bash "$SCRIPT_DIR/memory-hydration-gate.sh"; then
+  log_error 'Memory Remote hydration gate failed during bootstrap.'
+  exit 55
 fi
 
 key_file="$AGENT_CORE_CODESPACE_HOME/secrets/agent-core-chatgpt-key.txt"

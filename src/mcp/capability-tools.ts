@@ -4,8 +4,10 @@ import type { VerifiedKey } from '../auth/key-types.js';
 import { attachExecutionContinuity, type ContinuitySnapshot } from '../continuity/snapshot.js';
 import type { ContinuityTaskRecord } from '../continuity/store.js';
 import type { ContinuityCapture } from '../continuity/types.js';
+import { MemoryHardLifecycleError, memoryObjectiveHash, type MemoryContextLifecycleRecord } from '../memory/hard-lifecycle.js';
 import type { MemorySearchHit } from '../memory/types.js';
 import type { RuntimeServices } from '../runtime/services.js';
+import { persistentPrincipalId } from './project-scope.js';
 import { injectMemoryIntoRoutingContext } from './memory-injection.js';
 
 function textResult(value: unknown) {
@@ -162,7 +164,7 @@ export function registerCapabilityTools(
     }
     const reservation = runtime.routes.reserve();
     const scope = {
-      principalId: key.id,
+      principalId: persistentPrincipalId(runtime, key),
       projectId,
     };
     let memoryStatus: 'disabled' | 'healthy' | 'degraded' = runtime.memory.config.enabled ? 'healthy' : 'disabled';
@@ -173,6 +175,12 @@ export function registerCapabilityTools(
     let continuityTaskId: string | null = null;
     let continuityResumeCandidates: ReturnType<typeof candidateView>[] = [];
 
+    let lifecycleRecord: MemoryContextLifecycleRecord | null = null;
+    let priorPendingCount = 0;
+    let lifecycleAdvisoryCode: 'MEMORY_POSTFLIGHT_REQUIRED' | undefined;
+    let memoryContextLease: string | null = null;
+    let memoryContextLeaseExpiresAt: string | null = null;
+
     if (runtime.memory.config.enabled) {
       try {
         await runtime.memory.reconcileContinuity(
@@ -182,39 +190,73 @@ export function registerCapabilityTools(
       } catch {
         continuityStatus = 'degraded';
       }
-      const preflightPromise = runtime.memory.preflight({
-        scope,
-        routeContextId: reservation.routeContextId,
-        task,
-        context,
-        routeMetadata: { workspaceRoots: runtime.workspace.roots },
-        expiresAt: Date.parse(reservation.expiresAt),
-      });
-      const snapshotPromise = runtime.memory.getContinuitySnapshot(scope);
-      const [preflightOutcome, snapshotOutcome] = await Promise.allSettled([preflightPromise, snapshotPromise]);
 
-      if (preflightOutcome.status === 'fulfilled') preflight = preflightOutcome.value;
-      else memoryStatus = 'degraded';
-
-      if (snapshotOutcome.status === 'fulfilled') {
-        continuitySnapshot = await attachExecutionSnapshot(runtime, scope, snapshotOutcome.value);
-      } else {
+      try {
+        continuitySnapshot = await attachExecutionSnapshot(
+          runtime,
+          scope,
+          await runtime.memory.getContinuitySnapshot(scope),
+        );
+      } catch {
         continuityStatus = 'degraded';
       }
 
-      if (continuitySnapshot) {
-        const capture: ContinuityCapture = continuity ? { ...continuity } : {};
-        if (!capture.resumeTaskId && isKnownContinuationPhrase(task)) {
-          const candidates = resumableCandidates(continuitySnapshot);
-          if (candidates.length === 1) {
-            capture.resumeTaskId = candidates[0]!.taskId;
-          } else if (candidates.length > 1) {
-            continuityStatus = 'ambiguous';
-            continuityResumeCandidates = candidates.map(candidateView);
+      const capture: ContinuityCapture = continuity ? { ...continuity } : {};
+      if (continuitySnapshot && !capture.resumeTaskId && isKnownContinuationPhrase(task)) {
+        const candidates = resumableCandidates(continuitySnapshot);
+        if (candidates.length === 1) {
+          capture.resumeTaskId = candidates[0]!.taskId;
+        } else if (candidates.length > 1) {
+          continuityStatus = 'ambiguous';
+          continuityResumeCandidates = candidates.map(candidateView);
+        }
+      }
+
+      if (continuityStatus !== 'ambiguous') {
+        try {
+          const reconciliationRequired = await runtime.memory.findLifecycleReconciliationRequired({
+            scope,
+            objectiveHash: memoryObjectiveHash(task, context),
+            ...(capture.resumeTaskId ? { continuityTaskId: capture.resumeTaskId } : {}),
+          });
+          priorPendingCount = reconciliationRequired.length;
+          if (priorPendingCount > 0) {
+            if (runtime.memory.config.hardLifecycleMode === 'enforce') {
+              return errorResult(new MemoryHardLifecycleError(
+                'MEMORY_POSTFLIGHT_REQUIRED',
+                'Previous meaningful work for this objective/task requires postflight reconciliation before a new memory context is opened',
+                { pendingCount: priorPendingCount },
+              ));
+            }
+            if (runtime.memory.config.hardLifecycleMode === 'advisory') {
+              lifecycleAdvisoryCode = 'MEMORY_POSTFLIGHT_REQUIRED';
+            }
+          }
+        } catch (error) {
+          if (error instanceof MemoryHardLifecycleError) return errorResult(error);
+          memoryStatus = 'degraded';
+          if (runtime.memory.config.hardLifecycleMode === 'enforce') {
+            return errorResult(new MemoryHardLifecycleError(
+              'MEMORY_PREFLIGHT_REQUIRED',
+              'Memory lifecycle reconciliation is unavailable; enforce mode cannot open a compliant actionable context',
+            ));
           }
         }
 
-        if (continuityStatus !== 'ambiguous') {
+        try {
+          preflight = await runtime.memory.preflight({
+            scope,
+            routeContextId: reservation.routeContextId,
+            task,
+            context,
+            routeMetadata: { workspaceRoots: runtime.workspace.roots },
+            expiresAt: Date.parse(reservation.expiresAt),
+          });
+        } catch {
+          memoryStatus = 'degraded';
+        }
+
+        if (continuitySnapshot) {
           try {
             const started = await runtime.memory.beginContinuityTurn(
               scope,
@@ -229,19 +271,50 @@ export function registerCapabilityTools(
           } catch {
             continuityStatus = 'degraded';
           }
+        }
 
-          if (continuityTurnId && continuityTaskId) {
-            try {
-              continuitySnapshot = await attachExecutionSnapshot(
-                runtime,
-                scope,
-                await runtime.memory.getContinuitySnapshot(scope),
-              );
-            } catch {
-              continuityStatus = 'degraded';
+        if (preflight && continuityTaskId) {
+          try {
+            lifecycleRecord = await runtime.memory.bindLifecycleTask(scope, preflight.contextId, continuityTaskId);
+          } catch (error) {
+            memoryStatus = 'degraded';
+            if (runtime.memory.config.hardLifecycleMode === 'enforce') {
+              return errorResult(error);
             }
           }
+        } else if (preflight) {
+          lifecycleRecord = await runtime.memory.getLifecycleContext(scope, preflight.contextId).catch(() => null);
         }
+
+        if (continuityTurnId && continuityTaskId) {
+          try {
+            continuitySnapshot = await attachExecutionSnapshot(
+              runtime,
+              scope,
+              await runtime.memory.getContinuitySnapshot(scope),
+            );
+          } catch {
+            continuityStatus = 'degraded';
+          }
+        }
+      } else {
+        // Ambiguous continuation remains non-actionable and does not open a new preflight lifecycle.
+        preflight = null;
+      }
+    }
+
+    if (preflight && lifecycleRecord && runtime.memory.config.hardLifecycleMode !== 'disabled') {
+      try {
+        const issuedLease = await runtime.memory.issueContextLease({
+          scope,
+          contextId: preflight.contextId,
+          routeContextId: reservation.routeContextId,
+        });
+        memoryContextLease = issuedLease.token;
+        memoryContextLeaseExpiresAt = new Date(issuedLease.expiresAt).toISOString();
+      } catch (error) {
+        memoryStatus = 'degraded';
+        if (runtime.memory.config.hardLifecycleMode === 'enforce') return errorResult(error);
       }
     }
 
@@ -309,6 +382,15 @@ export function registerCapabilityTools(
       relatedDecisions: preflight?.relatedDecisions ?? [],
       memoryConfidence: memoryConfidence(memorySummary),
       memorySnapshotHash: preflight?.snapshotHash ?? null,
+      memoryContextLease,
+      memoryContextLeaseExpiresAt,
+      memoryLifecycle: {
+        mode: runtime.memory.config.hardLifecycleMode,
+        postflightState: lifecycleRecord?.postflightState ?? null,
+        priorPending: priorPendingCount > 0,
+        priorPendingCount,
+        ...(lifecycleAdvisoryCode ? { advisoryCode: lifecycleAdvisoryCode } : {}),
+      },
       memoryInjection: {
         applied: memoryInjection.applied,
         memoryIds: memoryInjection.memoryIds,

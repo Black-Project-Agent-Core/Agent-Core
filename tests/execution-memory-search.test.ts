@@ -155,6 +155,31 @@ describe('autonomous execution memory pre-search', () => {
     });
   });
 
+  it('can remap execution ownership scope to a stable logical memory principal', async () => {
+    const seen: string[] = [];
+    const source = {
+      config: {
+        enabled: true,
+        enforceHardGuardrails: false,
+        recallItemBudget: 24,
+        recallCharacterBudget: 12_000,
+      },
+      search: async (request: any) => {
+        seen.push(`search:${request.scope.principalId}`);
+        return { query: request.query, hits: [], graphTruncated: false, snapshotHash: 'a'.repeat(64) };
+      },
+      listOpenConflicts: async (scope: any) => {
+        seen.push(`conflicts:${scope.principalId}`);
+        return [];
+      },
+    };
+    const preSearch = new ExecutionMemoryPreSearch(source, (scope) => ({ ...scope, principalId: 'principal-stable' }));
+    const executionScope = { principalId: 'key-rotated', projectId: '/tmp/project' };
+    await preSearch.run(executionScope, 'Build shared-memory bridge', [{ id: 'A', purpose: 'verify stable memory' }]);
+    expect(seen).toEqual(['search:principal-stable', 'conflicts:principal-stable']);
+    expect(executionScope.principalId).toBe('key-rotated');
+  });
+
   it('fails open with explicit degraded status when memory search is unavailable', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-execution-memory-degraded-'));
     roots.push(root);

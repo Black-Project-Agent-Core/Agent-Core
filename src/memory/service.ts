@@ -17,10 +17,28 @@ import {
   readLatestMemoryBackup,
   type MemoryBackupRecord,
 } from './backup.js';
+import { MemoryCognitionController } from './cognition-controller.js';
+import {
+  MemoryCognitionLedger,
+  type MemoryNodeMetadataInput,
+  type MemoryRecallExpansionInput,
+  type MemoryRemoteStateInput,
+  type MemoryWriteDecisionInput,
+} from './cognition-ledger.js';
+import { MemoryContextLeaseAuthority, type IssuedMemoryContextLease, type ValidatedMemoryContextLease } from './context-lease.js';
+import { MemoryDurabilityBoundary } from './durability-boundary.js';
+import { MemoryHardLifecycle, MemoryHardLifecycleError, type MemoryContextLifecycleRecord } from './hard-lifecycle.js';
 import { MemoryLifecycle } from './lifecycle.js';
 import { MemoryLinker } from './linker.js';
+import { hashMemoryLogicalState, projectMemoryLogicalState } from './logical-state-hash.js';
+import { MemoryRemoteCrypto } from './remote-crypto.js';
+import { MemoryRemoteHydrator } from './remote-hydrator.js';
 import { MemoryPreflightEngine, createDisabledPreflightResult } from './preflight.js';
 import { MemoryRetriever } from './retriever.js';
+import { MemoryRememberMore } from './remember-more.js';
+import { MemoryRemoteSynchronizer } from './remote-sync.js';
+import type { MemoryRemoteTransport } from './remote-transport.js';
+import type { MemoryRemoteEnvelope, MemoryRemoteManifest } from './remote-types.js';
 import { MEMORY_SCHEMA_VERSION } from './schema.js';
 import {
   MemoryStore,
@@ -30,9 +48,16 @@ import {
 } from './store.js';
 import type {
   MemoryCommitRequest,
+  MemoryDurabilityBoundaryReason,
+  MemoryDurabilityBoundaryResult,
   MemoryCommitResult,
   MemoryPreflightRequest,
+  MemoryPostflightApplyResult,
+  MemoryPostflightEvaluation,
+  MemoryPostflightRequest,
   MemoryPreflightResult,
+  MemoryRememberMoreRequest,
+  MemoryRememberMoreResult,
   MemoryReviseRequest,
   MemoryReviseResult,
   MemoryScope,
@@ -49,6 +74,12 @@ interface MemoryComponents {
   lifecycle: MemoryLifecycle;
   linker: MemoryLinker;
   preflight: MemoryPreflightEngine;
+  cognition: MemoryCognitionLedger;
+  cognitionController: MemoryCognitionController;
+  rememberMore: MemoryRememberMore;
+  durabilityBoundary: MemoryDurabilityBoundary;
+  hardLifecycle: MemoryHardLifecycle;
+  remoteSync?: MemoryRemoteSynchronizer;
   continuity: ContinuityStore;
   continuitySnapshot: ContinuitySnapshotBuilder;
 }
@@ -121,6 +152,10 @@ function scopeProject(scope: MemoryScope): string {
 
 export type MemoryServiceState = 'disabled' | 'idle' | 'healthy' | 'degraded' | 'closed';
 
+export interface MemoryServiceDependencies {
+  remoteTransport?: MemoryRemoteTransport;
+}
+
 export class MemoryService {
   private components: MemoryComponents | undefined;
   private opening: Promise<MemoryComponents> | undefined;
@@ -129,13 +164,30 @@ export class MemoryService {
   private lastIntegrityCheckAt: number | undefined;
   private lastSuccessfulIntegrityCheckAt: number | undefined;
   private lastBackup: MemoryBackupRecord | undefined;
+  private readonly contextLeaseAuthority = new MemoryContextLeaseAuthority();
 
-  constructor(readonly config: MemoryConfig, private readonly metrics?: RuntimeMetricRegistry) {
+  readonly remoteTransport: MemoryRemoteTransport | undefined;
+
+  constructor(
+    readonly config: MemoryConfig,
+    private readonly metrics?: RuntimeMetricRegistry,
+    dependencies: MemoryServiceDependencies = {},
+  ) {
+    this.remoteTransport = dependencies.remoteTransport;
     this.state = config.enabled ? 'idle' : 'disabled';
   }
 
   get currentState(): MemoryServiceState {
     return this.state;
+  }
+
+  async hydrateRemote(scope: MemoryScope, destinationDbPath = this.config.dbPath) {
+    if (this.state !== 'idle') throw new Error('MEMORY_REMOTE_HYDRATION_REQUIRES_IDLE_SERVICE');
+    if (!this.remoteTransport || !this.config.remote.enabled || !this.config.remote.keyFile) {
+      throw new Error('MEMORY_REMOTE_DISABLED');
+    }
+    const crypto = await MemoryRemoteCrypto.fromKeyFile(this.config.remote.keyFile);
+    return new MemoryRemoteHydrator(this.remoteTransport, crypto).hydrate(scope, destinationDbPath);
   }
 
   async beginContinuityTurn(
@@ -258,6 +310,276 @@ export class MemoryService {
     } finally {
       this.metrics?.observe('memory.preflight.duration_ms', Math.max(0, performance.now() - started));
     }
+  }
+
+  async issueContextLease(input: {
+    scope: MemoryScope;
+    contextId: string;
+    routeContextId: string;
+    now?: number;
+  }): Promise<IssuedMemoryContextLease> {
+    const now = input.now ?? Date.now();
+    const lifecycle = await this.validateLifecycleContext({
+      scope: input.scope,
+      contextId: input.contextId,
+      routeContextId: input.routeContextId,
+      now,
+    });
+    return this.contextLeaseAuthority.issue(lifecycle, now);
+  }
+
+  async validateContextLease(input: {
+    lease: string;
+    workspaceRoot: string;
+    now?: number;
+  }): Promise<ValidatedMemoryContextLease> {
+    if (!this.config.enabled) {
+      throw new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Memory is disabled; lease authority is unavailable');
+    }
+    const now = input.now ?? Date.now();
+    let decoded: ValidatedMemoryContextLease;
+    try {
+      decoded = this.contextLeaseAuthority.validate(input.lease, now);
+    } catch (error) {
+      if (error instanceof MemoryHardLifecycleError) throw error;
+      throw new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Memory Context Lease validation failed');
+    }
+    if (decoded.scope.projectId !== input.workspaceRoot) {
+      throw new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Memory Context Lease does not authorize this workspace');
+    }
+    const lifecycle = await this.validateLifecycleContext({
+      scope: decoded.scope,
+      contextId: decoded.contextId,
+      routeContextId: decoded.routeContextId,
+      now,
+    });
+    if (lifecycle.objectiveHash !== decoded.objectiveHash || decoded.expiresAt > lifecycle.expiresAt) {
+      throw new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Memory Context Lease no longer matches persisted lifecycle authority');
+    }
+    return decoded;
+  }
+
+  async completeContextLeaseMeaningfulWork(input: {
+    lease: string;
+    workspaceRoot: string;
+    toolName: string;
+    reasonCode: string;
+    now?: number;
+  }): Promise<MemoryContextLifecycleRecord> {
+    const decoded = await this.validateContextLease({ lease: input.lease, workspaceRoot: input.workspaceRoot, now: input.now });
+    return this.markLifecycleMeaningfulWork({
+      scope: decoded.scope,
+      contextId: decoded.contextId,
+      routeContextId: decoded.routeContextId,
+      toolName: input.toolName,
+      reasonCode: input.reasonCode,
+      now: input.now,
+    });
+  }
+
+  async getLifecycleContext(scope: MemoryScope, contextId: string): Promise<MemoryContextLifecycleRecord | null> {
+    if (!this.config.enabled) return null;
+    const components = await this.requireComponents();
+    return components.hardLifecycle.get(scope, contextId);
+  }
+
+  async bindLifecycleTask(scope: MemoryScope, contextId: string, continuityTaskId: string): Promise<MemoryContextLifecycleRecord> {
+    if (!this.config.enabled) {
+      throw new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Memory is disabled; persisted preflight compliance is unavailable');
+    }
+    const components = await this.requireComponents();
+    return components.hardLifecycle.bindContinuityTask(scope, contextId, continuityTaskId);
+  }
+
+  async validateLifecycleContext(input: {
+    scope: MemoryScope;
+    contextId: string;
+    routeContextId: string;
+    now?: number;
+  }): Promise<MemoryContextLifecycleRecord> {
+    if (!this.config.enabled) {
+      throw new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Memory is disabled; persisted preflight compliance is unavailable');
+    }
+    const components = await this.requireComponents();
+    return components.hardLifecycle.validateCurrentContext(input);
+  }
+
+  async markLifecycleMeaningfulWork(input: {
+    scope: MemoryScope;
+    contextId: string;
+    routeContextId: string;
+    toolName: string;
+    reasonCode: string;
+    now?: number;
+  }): Promise<MemoryContextLifecycleRecord> {
+    if (!this.config.enabled) {
+      throw new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Memory is disabled; persisted preflight compliance is unavailable');
+    }
+    const components = await this.requireComponents();
+    return components.hardLifecycle.markMeaningfulWork(input);
+  }
+
+  async reconcileLifecycleDurability(scope: MemoryScope): Promise<{ reconciled: number; generationId?: string; logicalStateHash?: string }> {
+    if (!this.config.enabled || !this.config.remote.enabled) return { reconciled: 0 };
+    const components = await this.requireComponents();
+    const remoteState = await components.cognition.getRemoteState(scope);
+    if (remoteState?.durabilityState !== 'REMOTE_SYNCED'
+      || !remoteState.remoteGeneration
+      || !remoteState.logicalStateHash) {
+      return { reconciled: 0 };
+    }
+    const projection = await projectMemoryLogicalState(components.client, scope);
+    const currentHash = hashMemoryLogicalState(projection);
+    if (currentHash !== remoteState.logicalStateHash) return { reconciled: 0 };
+    const reconciled = await components.hardLifecycle.markClosedDurableForScope({
+      scope,
+      generationId: remoteState.remoteGeneration,
+      logicalStateHash: remoteState.logicalStateHash,
+    });
+    return {
+      reconciled,
+      generationId: remoteState.remoteGeneration,
+      logicalStateHash: remoteState.logicalStateHash,
+    };
+  }
+
+  async findPendingLifecycle(input: {
+    scope: MemoryScope;
+    objectiveHash?: string;
+    continuityTaskId?: string;
+    excludeContextId?: string;
+    includeClosedWithoutDurability?: boolean;
+  }): Promise<MemoryContextLifecycleRecord[]> {
+    if (!this.config.enabled) return [];
+    const components = await this.requireComponents();
+    return components.hardLifecycle.findPendingForObjectiveOrTask(input);
+  }
+
+  async findLifecycleReconciliationRequired(input: {
+    scope: MemoryScope;
+    objectiveHash?: string;
+    continuityTaskId?: string;
+    excludeContextId?: string;
+  }): Promise<MemoryContextLifecycleRecord[]> {
+    if (!this.config.enabled) return [];
+    await this.reconcileLifecycleDurability(input.scope);
+    const components = await this.requireComponents();
+    return components.hardLifecycle.findPendingForObjectiveOrTask({
+      ...input,
+      includeClosedWithoutDurability: this.config.remote.enabled,
+    });
+  }
+
+  async prepareLifecycleClosure(input: {
+    scope: MemoryScope;
+    contextId: string;
+    routeContextId: string;
+    now?: number;
+  }): Promise<MemoryContextLifecycleRecord> {
+    if (!this.config.enabled) {
+      throw new MemoryHardLifecycleError('MEMORY_POSTFLIGHT_REQUIRED', 'Memory is disabled; postflight closure is unavailable');
+    }
+    const components = await this.requireComponents();
+    return components.hardLifecycle.prepareClosure(input);
+  }
+
+  async markLifecycleDurableClosure(input: {
+    scope: MemoryScope;
+    contextId: string;
+    generationId: string;
+    logicalStateHash: string;
+    now?: number;
+  }): Promise<MemoryContextLifecycleRecord> {
+    if (!this.config.enabled) {
+      throw new MemoryHardLifecycleError('MEMORY_POSTFLIGHT_REQUIRED', 'Memory is disabled; durable closure is unavailable');
+    }
+    const components = await this.requireComponents();
+    return components.hardLifecycle.markDurableClosure(input);
+  }
+
+  async rememberMore(request: MemoryRememberMoreRequest): Promise<MemoryRememberMoreResult> {
+    const components = await this.requireComponents();
+    return components.rememberMore.expand(request);
+  }
+
+  async evaluatePostflight(request: MemoryPostflightRequest): Promise<MemoryPostflightEvaluation> {
+    const components = await this.requireComponents();
+    return components.cognitionController.evaluate(request);
+  }
+
+  async applyPostflight(request: MemoryPostflightRequest): Promise<MemoryPostflightApplyResult> {
+    const components = await this.requireComponents();
+    return components.cognitionController.apply(request);
+  }
+
+  async recordWriteDecision(input: MemoryWriteDecisionInput) {
+    const components = await this.requireComponents();
+    return components.cognition.recordWriteDecision(input);
+  }
+
+  async markWriteDecisionApplied(scope: MemoryScope, decisionId: string, result: Record<string, unknown>) {
+    const components = await this.requireComponents();
+    return components.cognition.markWriteDecisionApplied(scope, decisionId, result);
+  }
+
+  async getWriteDecision(scope: MemoryScope, decisionId: string) {
+    if (!this.config.enabled) return null;
+    const components = await this.requireComponents();
+    return components.cognition.getWriteDecision(scope, decisionId);
+  }
+
+  async recordRecallExpansion(input: MemoryRecallExpansionInput) {
+    const components = await this.requireComponents();
+    return components.cognition.recordRecallExpansion(input);
+  }
+
+  async listRecallExpansions(scope: MemoryScope, contextId: string) {
+    if (!this.config.enabled) return [];
+    const components = await this.requireComponents();
+    return components.cognition.listRecallExpansions(scope, contextId);
+  }
+
+  async upsertNodeMetadata(input: MemoryNodeMetadataInput) {
+    const components = await this.requireComponents();
+    return components.cognition.upsertNodeMetadata(input);
+  }
+
+  async getNodeMetadata(scope: MemoryScope, memoryId: string) {
+    if (!this.config.enabled) return null;
+    const components = await this.requireComponents();
+    return components.cognition.getNodeMetadata(scope, memoryId);
+  }
+
+  async setRemoteState(input: MemoryRemoteStateInput) {
+    const components = await this.requireComponents();
+    return components.cognition.setRemoteState(input);
+  }
+
+  async getRemoteState(scope: MemoryScope) {
+    if (!this.config.enabled) return null;
+    const components = await this.requireComponents();
+    return components.cognition.getRemoteState(scope);
+  }
+
+  async syncDurableBoundary(
+    scope: MemoryScope,
+    reason: MemoryDurabilityBoundaryReason,
+  ): Promise<MemoryDurabilityBoundaryResult> {
+    if (!this.config.remote.enabled) {
+      return { required: false, state: 'NOT_REQUIRED', reason };
+    }
+    const components = await this.requireComponents();
+    return components.durabilityBoundary.sync(scope, reason);
+  }
+
+  async syncRemoteGeneration(input: {
+    scope: MemoryScope;
+    object: MemoryRemoteEnvelope;
+    manifest: MemoryRemoteManifest;
+  }) {
+    const components = await this.requireComponents();
+    if (!components.remoteSync) throw new Error('MEMORY_REMOTE_DISABLED');
+    return components.remoteSync.sync(input);
   }
 
   async openConflict(
@@ -509,8 +831,14 @@ export class MemoryService {
             (SELECT count(*) FROM memory_edges AS edge JOIN memory_items AS item ON item.id = edge.from_memory_id WHERE item.principal_id = ? AND IFNULL(item.project_id, '') = ?) AS edges,
             (SELECT count(*) FROM memory_conflicts AS conflict JOIN memory_items AS item ON item.id = conflict.left_memory_id WHERE item.principal_id = ? AND IFNULL(item.project_id, '') = ? AND conflict.status = 'open') AS open_conflicts,
             (SELECT count(*) FROM memory_items WHERE principal_id = ? AND IFNULL(project_id, '') = ? AND state = 'tombstoned') AS tombstones,
-            (SELECT count(*) FROM memory_fts WHERE principal_id = ? AND IFNULL(project_id, '') = ?) AS fts_rows`,
+            (SELECT count(*) FROM memory_fts WHERE principal_id = ? AND IFNULL(project_id, '') = ?) AS fts_rows,
+            (SELECT count(*) FROM memory_write_decisions WHERE principal_id = ? AND IFNULL(project_id, '') = ?) AS write_decisions,
+            (SELECT count(*) FROM memory_recall_expansions WHERE principal_id = ? AND IFNULL(project_id, '') = ?) AS recall_expansions,
+            (SELECT count(*) FROM memory_edge_events WHERE principal_id = ? AND IFNULL(project_id, '') = ?) AS edge_events`,
           [
+            scope.principalId, project,
+            scope.principalId, project,
+            scope.principalId, project,
             scope.principalId, project,
             scope.principalId, project,
             scope.principalId, project,
@@ -526,7 +854,10 @@ export class MemoryService {
           (SELECT count(*) FROM memory_edges) AS edges,
           (SELECT count(*) FROM memory_conflicts WHERE status = 'open') AS open_conflicts,
           (SELECT count(*) FROM memory_items WHERE state = 'tombstoned') AS tombstones,
-          (SELECT count(*) FROM memory_fts) AS fts_rows`);
+          (SELECT count(*) FROM memory_fts) AS fts_rows,
+          (SELECT count(*) FROM memory_write_decisions) AS write_decisions,
+          (SELECT count(*) FROM memory_recall_expansions) AS recall_expansions,
+          (SELECT count(*) FROM memory_edge_events) AS edge_events`);
       }
       const integrity = await components.client.integrity();
       const checkedAt = Date.now();
@@ -640,9 +971,17 @@ export class MemoryService {
       candidateCap: Math.min(512, this.config.seedCap),
     });
     const preflight = new MemoryPreflightEngine(client, retriever, lifecycle);
+    const cognition = new MemoryCognitionLedger(client);
+    const cognitionController = new MemoryCognitionController(store, linker, lifecycle, cognition);
+    const rememberMore = new MemoryRememberMore(client, cognition);
+    const hardLifecycle = new MemoryHardLifecycle(client);
+    const remoteSync = this.remoteTransport
+      ? new MemoryRemoteSynchronizer(this.remoteTransport, cognition, { maxRetryAttempts: this.config.remote.maxRetryAttempts })
+      : undefined;
+    const durabilityBoundary = new MemoryDurabilityBoundary(client, cognition, remoteSync, this.config.remote);
     const continuity = new ContinuityStore(client);
     const continuitySnapshot = new ContinuitySnapshotBuilder(client);
-    const components = { client, store, retriever, lifecycle, linker, preflight, continuity, continuitySnapshot };
+    const components = { client, store, retriever, lifecycle, linker, preflight, cognition, cognitionController, rememberMore, durabilityBoundary, hardLifecycle, remoteSync, continuity, continuitySnapshot };
     try {
       const opened = await store.open({ dbPath: this.config.dbPath, busyTimeoutMs: this.config.busyTimeoutMs });
       this.lastIntegrityCheckAt = opened.integrityCheckedAt;

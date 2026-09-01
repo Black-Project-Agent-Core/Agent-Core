@@ -4,11 +4,20 @@ import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 import {
   MEMORY_ENFORCEMENTS,
+  MEMORY_HYDRATION_STATES,
   MEMORY_KINDS,
+  MEMORY_PERSISTENCE_DECISIONS,
   MEMORY_RELATIONS,
+  MEMORY_REMOTE_DURABILITY_STATES,
   MEMORY_STATES,
 } from '../src/memory/types.js';
-import { MEMORY_SCHEMA_VERSION, initializeMemorySchema, rebuildMemoryFts } from '../src/memory/schema.js';
+import {
+  MEMORY_COGNITION_MIGRATION,
+  HARD_MEMORY_LIFECYCLE_MIGRATION,
+  MEMORY_SCHEMA_VERSION,
+  initializeMemorySchema,
+  rebuildMemoryFts,
+} from '../src/memory/schema.js';
 
 describe('deterministic memory schema and public contracts', () => {
   it('exposes exact minimum kinds, states, relations, enforcement and deterministic defaults', () => {
@@ -20,8 +29,24 @@ describe('deterministic memory schema and public contracts', () => {
     expect(MEMORY_RELATIONS).toEqual([
       'same_key', 'supersedes', 'explicit_relation', 'same_anchor', 'same_artifact',
       'same_route_or_task', 'cooccurs_in_event', 'token_overlap', 'temporal_neighbor',
+      'continues', 'branch_of', 'derived_from', 'learned_from',
+      'caused_by', 'failed_because', 'resolved_by', 'validated_by',
+      'blocked_by', 'depends_on', 'produced', 'contradicts', 'same_task_family',
     ]);
     expect(MEMORY_ENFORCEMENTS).toEqual(['none', 'soft', 'hard']);
+    expect(MEMORY_PERSISTENCE_DECISIONS).toEqual([
+      'NO_DURABLE_MEMORY', 'REVISE_EXISTING', 'LINK_EXISTING',
+      'WRITE_BRANCH', 'WRITE_NEW_ROOT', 'OPEN_CONFLICT',
+    ]);
+    expect(MEMORY_REMOTE_DURABILITY_STATES).toEqual([
+      'LOCAL_COMMITTED', 'REMOTE_PENDING', 'REMOTE_SYNCED',
+      'REMOTE_CONFLICT', 'REMOTE_UNAVAILABLE',
+    ]);
+    expect(MEMORY_HYDRATION_STATES).toEqual([
+      'REMOTE_EMPTY_CONFIRMED', 'REMOTE_HYDRATED', 'REMOTE_UNAVAILABLE',
+      'REMOTE_AUTH_FAILED', 'REMOTE_DECRYPT_FAILED', 'REMOTE_INTEGRITY_FAILED',
+      'REMOTE_REPLAY_FAILED',
+    ]);
 
     const baseDir = path.resolve('F:\\Projects\\Agent-Core');
     const config = loadConfig({}, baseDir);
@@ -43,15 +68,29 @@ describe('deterministic memory schema and public contracts', () => {
 
       expect(Number(db.prepare('PRAGMA foreign_keys').get()!.foreign_keys)).toBe(1);
       expect(Number(db.prepare('PRAGMA user_version').get()!.user_version)).toBe(MEMORY_SCHEMA_VERSION);
+      expect(MEMORY_SCHEMA_VERSION).toBe(4);
+      expect(MEMORY_COGNITION_MIGRATION).toBe('003_memory_cognition_ledgers');
+      expect(HARD_MEMORY_LIFECYCLE_MIGRATION).toBe('004_hard_memory_lifecycle');
       expect(db.prepare('SELECT name FROM memory_schema_migrations ORDER BY version').all()).toEqual([
         { name: '001_initial_memory' },
         { name: '002_continuity_ledger' },
+        { name: '003_memory_cognition_ledgers' },
+        { name: '004_hard_memory_lifecycle' },
       ]);
 
       const tables = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','view')").all() as Array<{ name: string }>).map((row) => row.name));
-      for (const name of ['memory_events', 'memory_items', 'memory_revisions', 'memory_anchors', 'memory_edges', 'memory_conflicts', 'memory_contexts', 'memory_access_log', 'memory_fts']) {
+      for (const name of [
+        'memory_events', 'memory_items', 'memory_revisions', 'memory_anchors', 'memory_edges',
+        'memory_conflicts', 'memory_contexts', 'memory_access_log', 'memory_fts',
+        'memory_write_decisions', 'memory_recall_expansions', 'memory_edge_events',
+        'memory_node_metadata', 'memory_remote_state', 'memory_context_lifecycle',
+      ]) {
         expect(tables.has(name)).toBe(true);
       }
+
+      const triggers = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type='trigger'").all() as Array<{ name: string }>).map((row) => row.name));
+      expect(triggers.has('trg_memory_edge_events_append_only_update')).toBe(true);
+      expect(triggers.has('trg_memory_edge_events_append_only_delete')).toBe(true);
 
       expect(() => db.prepare(`INSERT INTO memory_revisions(
         id, memory_id, revision_no, value_text, value_hash, valid_from, created_at

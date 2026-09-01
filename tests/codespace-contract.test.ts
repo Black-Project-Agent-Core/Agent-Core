@@ -75,13 +75,16 @@ describe('Codespaces deployment contract', () => {
 
   it('does not report READY before local/public/OAuth/MCP gates are verified', async () => {
     const ensure = await read('scripts/codespace/ensure-running.sh');
+    const common = await read('scripts/codespace/common.sh');
     const readyIndex = ensure.indexOf("log_info 'READY:");
     expect(ensure).toContain('wait_for_local_health');
     expect(ensure).toContain('codespace_browse_url');
-    expect(ensure).toContain('gh codespace ports visibility');
-    expect(ensure).toContain('/.well-known/oauth-authorization-server');
-    expect(ensure).toContain('Expected unauthenticated /mcp to return 401');
-    const common = await read('scripts/codespace/common.sh');
+    expect(ensure).toContain('ensure_codespace_port_public');
+    expect(common).toContain('gh codespace ports visibility');
+    expect(ensure).toContain('wait_for_public_oauth_issuer');
+    expect(ensure).toContain('wait_for_public_mcp_auth_gate');
+    expect(common).toContain('/.well-known/oauth-authorization-server');
+    expect(common).toContain('[[ "$status" == "401" ]]');
     expect(ensure).toContain('write_connection_metadata');
     expect(common).toContain('mcp-url.txt');
     expect(readyIndex).toBeGreaterThan(ensure.indexOf('write_connection_metadata'));
@@ -111,6 +114,21 @@ describe('Codespaces deployment contract', () => {
       expect(text).not.toMatch(/cat\s+.*agent-core-chatgpt-key\.txt/);
       expect(text).not.toMatch(/agent_core_live_[A-Za-z0-9_-]{12,}/);
     }
+  });
+
+  it('serializes root bootstrap and repair before either can synchronize or mutate runtime state', async () => {
+    const bootstrap = await read('scripts/codespace/bootstrap.sh');
+    const ensure = await read('scripts/codespace/ensure-running.sh');
+    expect(bootstrap).toContain('acquire_codespace_lifecycle_lock');
+    expect(ensure).toContain('acquire_codespace_lifecycle_lock');
+    expect(bootstrap.indexOf('acquire_codespace_lifecycle_lock')).toBeLessThan(bootstrap.indexOf('sync-source.sh'));
+    expect(ensure.indexOf('acquire_codespace_lifecycle_lock')).toBeLessThan(ensure.indexOf('sync-source.sh'));
+  });
+
+  it('drops the root lifecycle lock before launching detached supervisors or the bridge child', async () => {
+    const ensure = await read('scripts/codespace/ensure-running.sh');
+    expect(ensure).toContain('run_without_codespace_lifecycle_lock tmux new-session');
+    expect(ensure).toContain('run_without_codespace_lifecycle_lock bash "$plugin_lifecycle"');
   });
 
   it('fails closed with bounded lifecycle exit categories', async () => {
