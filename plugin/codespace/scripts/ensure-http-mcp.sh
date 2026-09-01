@@ -11,6 +11,8 @@ LIFECYCLE_FILE="${CODESPACE_MCP_HTTP_LIFECYCLE_FILE:-$ROOT/runtime/state/http-mc
 LIFECYCLE_MODE="${CODESPACE_MEMORY_LIFECYCLE_MODE:-disabled}"
 LEASE_URL="${CODESPACE_AGENT_CORE_MEMORY_LEASE_URL:-}"
 LEASE_TIMEOUT_MS="${CODESPACE_MEMORY_LEASE_TIMEOUT_MS:-2000}"
+SHARED_MEMORY_URL="${CODESPACE_AGENT_CORE_SHARED_MEMORY_URL:-}"
+SHARED_MEMORY_TIMEOUT_MS="${CODESPACE_SHARED_MEMORY_TIMEOUT_MS:-2000}"
 
 if [[ "$HOST" != "127.0.0.1" ]]; then
   printf '%s\n' "[codespace] ERROR: HTTP MCP host must be 127.0.0.1." >&2
@@ -53,13 +55,18 @@ url_file_matches() {
 
 lifecycle_config_matches() {
   [[ -f "$LIFECYCLE_FILE" ]] || return 1
-  node - "$LIFECYCLE_FILE" "$LIFECYCLE_MODE" "$LEASE_URL" "$LEASE_TIMEOUT_MS" <<'NODE'
+  node - "$LIFECYCLE_FILE" "$LIFECYCLE_MODE" "$LEASE_URL" "$LEASE_TIMEOUT_MS" "$SHARED_MEMORY_URL" "$SHARED_MEMORY_TIMEOUT_MS" <<'NODE'
 const fs = require('node:fs');
-const [file, expectedMode, expectedEndpoint, expectedTimeout] = process.argv.slice(2);
+const [file, expectedMode, expectedEndpoint, expectedTimeout, expectedSharedEndpoint, expectedSharedTimeout] = process.argv.slice(2);
 try {
   const value = JSON.parse(fs.readFileSync(file, 'utf8'));
   const endpoint = expectedEndpoint || null;
-  process.exit(value.mode === expectedMode && value.endpoint === endpoint && value.timeoutMs === Number(expectedTimeout) ? 0 : 1);
+  const sharedMemoryEndpoint = expectedSharedEndpoint || null;
+  process.exit(value.mode === expectedMode
+    && value.endpoint === endpoint
+    && value.timeoutMs === Number(expectedTimeout)
+    && value.sharedMemoryEndpoint === sharedMemoryEndpoint
+    && value.sharedMemoryTimeoutMs === Number(expectedSharedTimeout) ? 0 : 1);
 } catch { process.exit(1); }
 NODE
 }
@@ -80,8 +87,8 @@ tmux kill-session -t "$SESSION_NAME" >/dev/null 2>&1 || true
 rm -f "$URL_FILE" "$LIFECYCLE_FILE"
 
 printf -v launch_command \
-  'exec env CODESPACE_MCP_HTTP_HOST=%q CODESPACE_MCP_HTTP_PORT=%q CODESPACE_MCP_HTTP_URL_FILE=%q CODESPACE_MCP_HTTP_LIFECYCLE_FILE=%q CODESPACE_MEMORY_LIFECYCLE_MODE=%q CODESPACE_AGENT_CORE_MEMORY_LEASE_URL=%q CODESPACE_MEMORY_LEASE_TIMEOUT_MS=%q bash %q >>%q 2>&1' \
-  "$HOST" "$PORT" "$URL_FILE" "$LIFECYCLE_FILE" "$LIFECYCLE_MODE" "$LEASE_URL" "$LEASE_TIMEOUT_MS" "$ROOT/scripts/start-http-mcp.sh" "$LOG_FILE"
+  'exec env CODESPACE_MCP_HTTP_HOST=%q CODESPACE_MCP_HTTP_PORT=%q CODESPACE_MCP_HTTP_URL_FILE=%q CODESPACE_MCP_HTTP_LIFECYCLE_FILE=%q CODESPACE_MEMORY_LIFECYCLE_MODE=%q CODESPACE_AGENT_CORE_MEMORY_LEASE_URL=%q CODESPACE_MEMORY_LEASE_TIMEOUT_MS=%q CODESPACE_AGENT_CORE_SHARED_MEMORY_URL=%q CODESPACE_SHARED_MEMORY_TIMEOUT_MS=%q bash %q >>%q 2>&1' \
+  "$HOST" "$PORT" "$URL_FILE" "$LIFECYCLE_FILE" "$LIFECYCLE_MODE" "$LEASE_URL" "$LEASE_TIMEOUT_MS" "$SHARED_MEMORY_URL" "$SHARED_MEMORY_TIMEOUT_MS" "$ROOT/scripts/start-http-mcp.sh" "$LOG_FILE"
 
 tmux new-session -d -s "$SESSION_NAME" -c "$ROOT" "$launch_command"
 

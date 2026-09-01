@@ -19,6 +19,7 @@ describe('Phase 7 Codespace memory lifecycle startup contract', () => {
     expect(lifecyclePreflight).toContain('$REPO_ROOT/scripts/codespace/memory-hydration-gate.sh');
     expect(lifecyclePreflight).toContain('agent_core_service_port');
     expect(lifecyclePreflight).toContain('/internal/memory-context-lease');
+    expect(lifecyclePreflight).toContain('/internal/codespace-memory');
     expect(lifecyclePreflight).not.toContain('memory-hydrate ');
     expect(lifecyclePreflight).not.toContain('remote-hydration.json');
   });
@@ -28,8 +29,10 @@ describe('Phase 7 Codespace memory lifecycle startup contract', () => {
     const startHttp = read(pluginRoot, 'scripts/start-http-mcp.sh');
     expect(ensureHttp).toContain('CODESPACE_MEMORY_LIFECYCLE_MODE');
     expect(ensureHttp).toContain('CODESPACE_AGENT_CORE_MEMORY_LEASE_URL');
+    expect(ensureHttp).toContain('CODESPACE_AGENT_CORE_SHARED_MEMORY_URL');
     expect(startHttp).toContain('CODESPACE_MEMORY_LIFECYCLE_MODE');
     expect(startHttp).toContain('CODESPACE_AGENT_CORE_MEMORY_LEASE_URL');
+    expect(startHttp).toContain('CODESPACE_AGENT_CORE_SHARED_MEMORY_URL');
     expect(startHttp).toContain('unset GITHUB_TOKEN');
     expect(startHttp).toContain('unset AGENT_CORE_MEMORY_REMOTE_KEY_HEX');
     expect(startHttp).toContain('unset AGENT_CORE_MEMORY_REMOTE_KEY_FILE');

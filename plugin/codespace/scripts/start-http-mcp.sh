@@ -29,17 +29,20 @@ export CODESPACE_MCP_HTTP_LIFECYCLE_FILE="${CODESPACE_MCP_HTTP_LIFECYCLE_FILE:-$
 export CODESPACE_MEMORY_LIFECYCLE_MODE="${CODESPACE_MEMORY_LIFECYCLE_MODE:-disabled}"
 export CODESPACE_AGENT_CORE_MEMORY_LEASE_URL="${CODESPACE_AGENT_CORE_MEMORY_LEASE_URL:-}"
 export CODESPACE_MEMORY_LEASE_TIMEOUT_MS="${CODESPACE_MEMORY_LEASE_TIMEOUT_MS:-2000}"
+export CODESPACE_AGENT_CORE_SHARED_MEMORY_URL="${CODESPACE_AGENT_CORE_SHARED_MEMORY_URL:-}"
+export CODESPACE_SHARED_MEMORY_TIMEOUT_MS="${CODESPACE_SHARED_MEMORY_TIMEOUT_MS:-2000}"
 
 umask 077
 mkdir -p "$(dirname "$CODESPACE_MCP_HTTP_LIFECYCLE_FILE")"
-node - "$CODESPACE_MCP_HTTP_LIFECYCLE_FILE" "$CODESPACE_MEMORY_LIFECYCLE_MODE" "$CODESPACE_AGENT_CORE_MEMORY_LEASE_URL" "$CODESPACE_MEMORY_LEASE_TIMEOUT_MS" <<'NODE'
+node - "$CODESPACE_MCP_HTTP_LIFECYCLE_FILE" "$CODESPACE_MEMORY_LIFECYCLE_MODE" "$CODESPACE_AGENT_CORE_MEMORY_LEASE_URL" "$CODESPACE_MEMORY_LEASE_TIMEOUT_MS" "$CODESPACE_AGENT_CORE_SHARED_MEMORY_URL" "$CODESPACE_SHARED_MEMORY_TIMEOUT_MS" <<'NODE'
 const fs = require('node:fs');
 const path = require('node:path');
-const [target, mode, rawEndpoint, timeoutRaw] = process.argv.slice(2);
+const [target, mode, rawEndpoint, timeoutRaw, rawSharedMemoryEndpoint, sharedMemoryTimeoutRaw] = process.argv.slice(2);
 const endpoint = rawEndpoint || null;
+const sharedMemoryEndpoint = rawSharedMemoryEndpoint || null;
 const temporary = `${target}.${process.pid}.tmp`;
 fs.mkdirSync(path.dirname(target), { recursive: true });
-fs.writeFileSync(temporary, `${JSON.stringify({ version: 1, mode, endpoint, timeoutMs: Number(timeoutRaw) })}\n`, { mode: 0o600 });
+fs.writeFileSync(temporary, `${JSON.stringify({ version: 2, mode, endpoint, timeoutMs: Number(timeoutRaw), sharedMemoryEndpoint, sharedMemoryTimeoutMs: Number(sharedMemoryTimeoutRaw) })}\n`, { mode: 0o600 });
 fs.renameSync(temporary, target);
 fs.chmodSync(target, 0o600);
 NODE

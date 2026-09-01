@@ -31,10 +31,13 @@ describe('executable Codespace memory lifecycle startup preflight', () => {
   it('keeps disabled and advisory rollback modes available when Memory Remote is disabled', async () => {
     const disabled = await execFileAsync('bash', [script], { env: env('disabled') });
     expect(disabled.stdout).toContain('adapter disabled');
+    expect(disabled.stdout).not.toContain('MEMORY_CONTEXT_LEASE_ENDPOINT');
+    expect(disabled.stdout).not.toContain('SHARED_MEMORY_AUTHORITY');
 
     const advisory = await execFileAsync('bash', [script], { env: env('advisory') });
     expect(advisory.stdout).toContain('Memory Remote is disabled; hydration gate is not required.');
     expect(advisory.stdout).toContain('adapter configured in advisory mode');
+    expect(advisory.stdout).toContain('SHARED_MEMORY_AUTHORITY_DEGRADED');
   });
 
   it('propagates the existing Phase-2 hydration gate failure before any lease-authority readiness probe', async () => {
@@ -69,24 +72,63 @@ describe('executable Codespace memory lifecycle startup preflight', () => {
     expect(String(failure?.stderr)).toContain('MEMORY_CONTEXT_LEASE_ENDPOINT_UNAVAILABLE');
   });
 
+  it('fails enforce mode when lease authority is healthy but shared-memory status is unavailable', async () => {
+    const server = createServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, any>;
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/internal/memory-context-lease') {
+        res.end(JSON.stringify({ ok: true, mode: 'enforce', required: false, valid: true, mutationClass: 'shell_read_only' }));
+        return;
+      }
+      expect(body.action).toBe('status');
+      res.statusCode = 503;
+      res.end(JSON.stringify({ error: 'CODESPACE_SHARED_MEMORY_PRINCIPAL_REQUIRED' }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    servers.push(server);
+    const port = (server.address() as AddressInfo).port;
+    let failure: any;
+    try {
+      await execFileAsync('bash', [script], { env: env('enforce', port) });
+    } catch (error) { failure = error; }
+    expect(failure?.code).toBe(56);
+    expect(String(failure?.stderr)).toContain('SHARED_MEMORY_AUTHORITY_UNAVAILABLE');
+  });
+
   it('accepts enforce-mode startup only after a real loopback read-only lease-authority exchange', async () => {
     const server = createServer(async (req, res) => {
       const chunks: Buffer[] = [];
       for await (const chunk of req) chunks.push(Buffer.from(chunk));
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, any>;
-      expect(req.url).toBe('/internal/memory-context-lease');
-      expect(body).toMatchObject({
-        action: 'before',
-        toolName: 'execute_command',
-        input: { command: 'pwd' },
-      });
       res.setHeader('content-type', 'application/json');
+      if (req.url === '/internal/memory-context-lease') {
+        expect(body).toMatchObject({
+          action: 'before',
+          toolName: 'execute_command',
+          input: { command: 'pwd' },
+        });
+        res.end(JSON.stringify({
+          ok: true,
+          mode: 'enforce',
+          required: false,
+          valid: true,
+          mutationClass: 'shell_read_only',
+        }));
+        return;
+      }
+      expect(req.url).toBe('/internal/codespace-memory');
+      expect(body).toEqual({ action: 'status', workspaceRoot: path.resolve(pluginRoot, '..', '..') });
       res.end(JSON.stringify({
         ok: true,
-        mode: 'enforce',
-        required: false,
-        valid: true,
-        mutationClass: 'shell_read_only',
+        result: {
+          enabled: true,
+          healthy: true,
+          lifecycleMode: 'enforce',
+          remoteEnabled: false,
+          remoteDurabilityState: 'NOT_REQUIRED',
+        },
       }));
     });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -95,5 +137,6 @@ describe('executable Codespace memory lifecycle startup preflight', () => {
 
     const result = await execFileAsync('bash', [script], { env: env('enforce', port) });
     expect(result.stdout).toContain('adapter prepared in enforce mode via verified local Agent Core authority');
+    expect(result.stdout).toContain('shared-memory authority verified');
   });
 });
