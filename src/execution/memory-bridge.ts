@@ -7,6 +7,7 @@ import type { ExecutionParsedOutputView, ExecutionStore } from './store.js';
 import type { ExecutionEventRecord } from './wake.js';
 
 export interface ExecutionMemoryWriter extends ContinuityMemoryWriter {
+  commit(request: MemoryCommitRequest): Promise<MemoryCommitResult>;
   status(scope?: MemoryScope): Promise<MemoryStatus>;
   recordEvent(request: RecordMemoryEventRequest): Promise<unknown>;
 }
@@ -282,7 +283,7 @@ export class ExecutionMemoryBridge {
     }];
   }
 
-  private async apply(scope: MemoryScope, promotion: ExecutionMemoryPromotion): Promise<MemoryCommitResult> {
+  private async apply(scope: MemoryScope, promotion: ExecutionMemoryPromotion): Promise<unknown> {
     if (promotion.type === 'process_checkpoint') {
       return this.promoter.promoteExecutionProcessCheckpoint(scope, promotion.taskId, promotion.checkpoint);
     }

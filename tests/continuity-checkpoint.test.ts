@@ -206,6 +206,15 @@ describe('continuity checkpoint MCP tools', () => {
         .get(completed.result.checkpointId) as any;
       expect(checkpoint.summary_json).toContain('Later enhancement');
       expect(checkpoint.evidence_json).toContain('tests/example.test.ts');
+      const decisions = db.prepare(`SELECT id, decision_type, target_memory_id, applied_at FROM memory_write_decisions
+        WHERE principal_id = ? AND IFNULL(project_id, '') = ? ORDER BY created_at, id`).all(f.scopeA.principalId, f.root) as any[];
+      expect(decisions).toHaveLength(4);
+      expect(decisions.every((row) => row.applied_at != null)).toBe(true);
+      const metadataDecisionIds = (db.prepare(`SELECT created_from_decision_id FROM memory_node_metadata
+        WHERE memory_id IN (SELECT id FROM memory_items WHERE principal_id = ? AND IFNULL(project_id, '') = ?)
+        ORDER BY memory_id`).all(f.scopeA.principalId, f.root) as Array<{ created_from_decision_id: string | null }>);
+      expect(metadataDecisionIds).toHaveLength(4);
+      expect(metadataDecisionIds.every((row) => typeof row.created_from_decision_id === 'string' && row.created_from_decision_id.length > 0)).toBe(true);
     } finally {
       db.close();
     }
@@ -231,6 +240,54 @@ describe('continuity checkpoint MCP tools', () => {
         WHERE principal_id = ? AND IFNULL(project_id, '') = ?`)
         .get(f.scopeA.principalId, f.root) as any;
       expect(Number(items.count)).toBe(0);
+      const decisions = db.prepare(`SELECT decision_type, applied_at FROM memory_write_decisions
+        WHERE principal_id = ? AND IFNULL(project_id, '') = ?`).all(f.scopeA.principalId, f.root) as any[];
+      expect(decisions).toHaveLength(1);
+      expect(decisions[0]).toMatchObject({ decision_type: 'NO_DURABLE_MEMORY' });
+      expect(decisions[0].applied_at).not.toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('routes repeated failed checkpoint promotion through cognition without revising immutable failure history', async () => {
+    const f = await fixture('failure-immutability');
+    const base = {
+      routeContextId: 'route-failure-immutability',
+      status: 'failed' as const,
+      summary: 'First verified failure.',
+      blockers: [{ code: 'BUILD_FAILED', detail: 'Compiler returned exit 1.' }],
+      evidence: [{ type: 'log' as const, ref: 'build.stderr.log', result: 'exit=1' }],
+      nextCandidates: [{ title: 'Repair compiler failure', rationale: 'Fix before retry.' }],
+    };
+
+    const first = await f.runtime.memory.promoteContinuityCheckpoint(
+      f.scopeA, 'task-failure-immutability', 'checkpoint-failure-1', base,
+    );
+    const second = await f.runtime.memory.promoteContinuityCheckpoint(
+      f.scopeA, 'task-failure-immutability', 'checkpoint-failure-2', {
+        ...base,
+        summary: 'Second observation must not rewrite the first failure.',
+      },
+    );
+    expect(first.failures).toBe(1);
+    expect(second.failures).toBe(1);
+
+    const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
+    try {
+      const failure = db.prepare(`SELECT id, current_revision_id FROM memory_items
+        WHERE principal_id = ? AND IFNULL(project_id, '') = ? AND kind = 'failure'`).get(f.scopeA.principalId, f.root) as any;
+      expect(failure).toBeTruthy();
+      const revisions = db.prepare('SELECT count(*) AS count FROM memory_revisions WHERE memory_id = ?').get(failure.id) as any;
+      expect(Number(revisions.count)).toBe(1);
+      const decisions = db.prepare(`SELECT decision_type, reason_codes_json, applied_at FROM memory_write_decisions
+        WHERE principal_id = ? AND IFNULL(project_id, '') = ? ORDER BY created_at, id`).all(f.scopeA.principalId, f.root) as any[];
+      expect(decisions).toHaveLength(2);
+      expect(decisions[0].decision_type).toBe('WRITE_NEW_ROOT');
+      expect(decisions[1].decision_type).toBe('NO_DURABLE_MEMORY');
+      expect(decisions.every((row) => row.applied_at != null)).toBe(true);
+      const metadata = db.prepare('SELECT created_from_decision_id FROM memory_node_metadata WHERE memory_id = ?').get(failure.id) as any;
+      expect(metadata.created_from_decision_id).toBeTruthy();
     } finally {
       db.close();
     }
