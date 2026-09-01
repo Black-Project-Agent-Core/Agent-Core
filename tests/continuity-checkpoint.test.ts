@@ -182,6 +182,9 @@ describe('continuity checkpoint MCP tools', () => {
     expect(completed.result.remoteDurability).toEqual({
       required: false, state: 'NOT_REQUIRED', reason: 'continuity_terminal',
     });
+    expect(completed.result.memoryLifecycle).toMatchObject({
+      mode: 'advisory', postflightState: 'CLOSED', durabilityState: 'NOT_REQUIRED',
+    });
     expect(completed.result.promoted).toMatchObject({
       decisions: 1, artifacts: 1, outcomes: 1, constraints: 1, failures: 0,
     });
@@ -299,7 +302,7 @@ describe('continuity checkpoint MCP tools', () => {
   it('runs one grouped durability boundary only after terminal checkpoint promotion and local turn close', async () => {
     const f = await fixture('remote-boundary-order');
     const routed = await route(f, 'Grouped remote durability boundary');
-    const calls: Array<{ reason: string; turnState: string; decisionCount: number }> = [];
+    const calls: Array<{ reason: string; turnState: string; decisionCount: number; lifecycleState: string }> = [];
     const original = f.runtime.memory.syncDurableBoundary.bind(f.runtime.memory);
     f.runtime.memory.syncDurableBoundary = (async (_scope: any, reason: any) => {
       const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
@@ -307,7 +310,9 @@ describe('continuity checkpoint MCP tools', () => {
         const turn = db.prepare('SELECT state FROM continuity_turns WHERE id = ?').get(routed.continuityTurnId) as any;
         const decisions = db.prepare(`SELECT count(*) AS count FROM memory_write_decisions
           WHERE principal_id = ? AND IFNULL(project_id, '') = ?`).get(f.scopeA.principalId, f.root) as any;
-        calls.push({ reason, turnState: turn.state, decisionCount: Number(decisions.count) });
+        const lifecycle = db.prepare('SELECT postflight_state FROM memory_context_lifecycle WHERE context_id = ?')
+          .get(routed.memoryContextId) as any;
+        calls.push({ reason, turnState: turn.state, decisionCount: Number(decisions.count), lifecycleState: lifecycle.postflight_state });
       } finally {
         db.close();
       }
@@ -325,10 +330,14 @@ describe('continuity checkpoint MCP tools', () => {
         projectTerminal: true,
       });
       expect(completed.raw.result.isError).not.toBe(true);
-      expect(calls).toEqual([{ reason: 'continuity_terminal', turnState: 'closed', decisionCount: 1 }]);
+      expect(calls).toEqual([{ reason: 'continuity_terminal', turnState: 'closed', decisionCount: 1, lifecycleState: 'CLOSED' }]);
       expect(completed.result.remoteDurability).toMatchObject({
         required: true, state: 'REMOTE_SYNCED', reason: 'continuity_terminal',
         generationId: 'a'.repeat(64),
+      });
+      expect(completed.result.memoryLifecycle).toMatchObject({
+        postflightState: 'CLOSED', durabilityState: 'DURABLY_CLOSED',
+        generationId: 'a'.repeat(64), logicalStateHash: 'c'.repeat(64),
       });
     } finally {
       f.runtime.memory.syncDurableBoundary = original as any;
@@ -360,6 +369,10 @@ describe('continuity checkpoint MCP tools', () => {
       expect(failed.raw.result.isError).toBe(true);
       expect(String(failed.result.error.message)).toContain('MEMORY_REMOTE_UNAVAILABLE');
       expect(observedClosed).toBe(true);
+      const failedLifecycle = await f.runtime.memory.getLifecycleContext(f.scopeA, routed.memoryContextId);
+      expect(failedLifecycle).toMatchObject({ postflightState: 'CLOSED' });
+      expect(failedLifecycle).not.toHaveProperty('localDurableGeneration');
+      expect(failedLifecycle).not.toHaveProperty('localDurableHash');
       const task = await f.runtime.memory.getContinuityTask(f.scopeA, routed.continuityTaskId);
       expect(task?.status).toBe('completed');
       const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });

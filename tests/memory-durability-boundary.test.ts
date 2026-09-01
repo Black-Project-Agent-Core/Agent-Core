@@ -155,6 +155,77 @@ const scope: MemoryScope = {
 };
 
 describe('production memory durability boundary', () => {
+  it('keeps local-only durable closure receipts outside semantic logical-state identity', async () => {
+    const f = await serviceFixture('lifecycle-receipt-hash', true);
+    const routeContextId = 'route-lifecycle-receipt-hash';
+    const preflight = await f.service.preflight({
+      scope, routeContextId, task: 'Close lifecycle before remote receipt', expiresAt: Date.now() + 60_000,
+    });
+    await f.service.prepareLifecycleClosure({ scope, contextId: preflight.contextId, routeContextId });
+    const before = await logicalProjection(f.dbPath, scope);
+    const beforeHash = hashMemoryLogicalState(before.projection);
+
+    await f.service.markLifecycleDurableClosure({
+      scope, contextId: preflight.contextId, generationId: 'a'.repeat(64), logicalStateHash: beforeHash,
+    });
+    const after = await logicalProjection(f.dbPath, scope);
+    expect(after.projection).toEqual(before.projection);
+    expect(hashMemoryLogicalState(after.projection)).toBe(beforeHash);
+    expect(await f.service.getLifecycleContext(scope, preflight.contextId)).toMatchObject({
+      localDurableGeneration: 'a'.repeat(64),
+      localDurableHash: beforeHash,
+    });
+  });
+
+  it('syncs CLOSED lifecycle state into the encrypted checkpoint, hydrates it exactly, and reconstructs a local durability receipt from verified remote state', async () => {
+    const f = await serviceFixture('lifecycle-roundtrip', true);
+    const crypto = await MemoryRemoteCrypto.fromKeyFile(f.keyPath);
+    const routeContextId = 'route-lifecycle-roundtrip';
+    const preflight = await f.service.preflight({
+      scope, routeContextId, task: 'Persist lifecycle closure remotely', expiresAt: Date.now() + 60_000,
+    });
+    await f.service.markLifecycleMeaningfulWork({
+      scope, contextId: preflight.contextId, routeContextId, toolName: 'write_file', reasonCode: 'explicit_mutation_tool',
+    });
+    await f.service.prepareLifecycleClosure({ scope, contextId: preflight.contextId, routeContextId });
+    const beforeSync = await logicalProjection(f.dbPath, scope);
+    const beforeHash = hashMemoryLogicalState(beforeSync.projection);
+
+    const synced = await f.service.syncDurableBoundary(scope, 'continuity_terminal');
+    expect(synced).toMatchObject({ required: true, state: 'REMOTE_SYNCED', logicalStateHash: beforeHash });
+    if (!synced.required) throw new Error('fixture requires remote durability');
+    const checkpoint = await latestRemoteCheckpoint(f.transport, crypto, scope);
+    const remoteProjection = JSON.parse(Buffer.from(checkpoint.plaintext).toString('utf8')) as any;
+    expect(remoteProjection.formatVersion).toBe(2);
+    expect(remoteProjection.contextLifecycles).toEqual([expect.objectContaining({
+      context_id: preflight.contextId, postflight_state: 'CLOSED',
+    })]);
+
+    await f.service.markLifecycleDurableClosure({
+      scope, contextId: preflight.contextId, generationId: synced.generationId, logicalStateHash: synced.logicalStateHash,
+    });
+    const afterReceipt = await logicalProjection(f.dbPath, scope);
+    expect(hashMemoryLogicalState(afterReceipt.projection)).toBe(beforeHash);
+
+    await f.service.close();
+    services.splice(services.indexOf(f.service), 1);
+    const restoredPath = path.join(f.root, 'lifecycle-restored.sqlite');
+    await expect(new MemoryRemoteHydrator(f.transport, crypto).hydrate(scope, restoredPath))
+      .resolves.toMatchObject({ state: 'REMOTE_HYDRATED', generationId: synced.generationId, logicalStateHash: beforeHash });
+
+    const restoredService = new MemoryService({ ...f.config, dbPath: restoredPath }, undefined, { remoteTransport: f.transport });
+    services.push(restoredService);
+    const hydratedBeforeReceipt = await restoredService.getLifecycleContext(scope, preflight.contextId);
+    expect(hydratedBeforeReceipt).toMatchObject({ postflightState: 'CLOSED' });
+    expect(hydratedBeforeReceipt).not.toHaveProperty('localDurableGeneration');
+    expect(await restoredService.reconcileLifecycleDurability(scope)).toEqual({
+      reconciled: 1, generationId: synced.generationId, logicalStateHash: beforeHash,
+    });
+    expect(await restoredService.getLifecycleContext(scope, preflight.contextId)).toMatchObject({
+      postflightState: 'CLOSED', localDurableGeneration: synced.generationId, localDurableHash: beforeHash,
+    });
+  });
+
   it('returns NOT_REQUIRED without fabricating remote state when Memory Remote is disabled', async () => {
     const f = await serviceFixture('disabled', false);
     await f.service.commit({

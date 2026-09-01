@@ -29,6 +29,7 @@ import { MemoryDurabilityBoundary } from './durability-boundary.js';
 import { MemoryHardLifecycle, MemoryHardLifecycleError, type MemoryContextLifecycleRecord } from './hard-lifecycle.js';
 import { MemoryLifecycle } from './lifecycle.js';
 import { MemoryLinker } from './linker.js';
+import { hashMemoryLogicalState, projectMemoryLogicalState } from './logical-state-hash.js';
 import { MemoryRemoteCrypto } from './remote-crypto.js';
 import { MemoryRemoteHydrator } from './remote-hydrator.js';
 import { MemoryPreflightEngine, createDisabledPreflightResult } from './preflight.js';
@@ -351,15 +352,55 @@ export class MemoryService {
     return components.hardLifecycle.markMeaningfulWork(input);
   }
 
+  async reconcileLifecycleDurability(scope: MemoryScope): Promise<{ reconciled: number; generationId?: string; logicalStateHash?: string }> {
+    if (!this.config.enabled || !this.config.remote.enabled) return { reconciled: 0 };
+    const components = await this.requireComponents();
+    const remoteState = await components.cognition.getRemoteState(scope);
+    if (remoteState?.durabilityState !== 'REMOTE_SYNCED'
+      || !remoteState.remoteGeneration
+      || !remoteState.logicalStateHash) {
+      return { reconciled: 0 };
+    }
+    const projection = await projectMemoryLogicalState(components.client, scope);
+    const currentHash = hashMemoryLogicalState(projection);
+    if (currentHash !== remoteState.logicalStateHash) return { reconciled: 0 };
+    const reconciled = await components.hardLifecycle.markClosedDurableForScope({
+      scope,
+      generationId: remoteState.remoteGeneration,
+      logicalStateHash: remoteState.logicalStateHash,
+    });
+    return {
+      reconciled,
+      generationId: remoteState.remoteGeneration,
+      logicalStateHash: remoteState.logicalStateHash,
+    };
+  }
+
   async findPendingLifecycle(input: {
+    scope: MemoryScope;
+    objectiveHash?: string;
+    continuityTaskId?: string;
+    excludeContextId?: string;
+    includeClosedWithoutDurability?: boolean;
+  }): Promise<MemoryContextLifecycleRecord[]> {
+    if (!this.config.enabled) return [];
+    const components = await this.requireComponents();
+    return components.hardLifecycle.findPendingForObjectiveOrTask(input);
+  }
+
+  async findLifecycleReconciliationRequired(input: {
     scope: MemoryScope;
     objectiveHash?: string;
     continuityTaskId?: string;
     excludeContextId?: string;
   }): Promise<MemoryContextLifecycleRecord[]> {
     if (!this.config.enabled) return [];
+    await this.reconcileLifecycleDurability(input.scope);
     const components = await this.requireComponents();
-    return components.hardLifecycle.findPendingForObjectiveOrTask(input);
+    return components.hardLifecycle.findPendingForObjectiveOrTask({
+      ...input,
+      includeClosedWithoutDurability: this.config.remote.enabled,
+    });
   }
 
   async prepareLifecycleClosure(input: {

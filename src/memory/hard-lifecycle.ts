@@ -207,6 +207,7 @@ export class MemoryHardLifecycle {
     objectiveHash?: string;
     continuityTaskId?: string;
     excludeContextId?: string;
+    includeClosedWithoutDurability?: boolean;
   }): Promise<MemoryContextLifecycleRecord[]> {
     if (!input.objectiveHash && !input.continuityTaskId) return [];
     const params: Array<string | number> = [input.scope.principalId, scopeProject(input.scope)];
@@ -219,7 +220,8 @@ export class MemoryHardLifecycle {
       `SELECT ${SELECT_COLUMNS}
          FROM memory_context_lifecycle
         WHERE principal_id = ? AND project_id = ?
-          AND postflight_state = 'POSTFLIGHT_PENDING'
+          AND (postflight_state = 'POSTFLIGHT_PENDING'
+            ${input.includeClosedWithoutDurability ? "OR (postflight_state = 'CLOSED' AND local_durable_generation IS NULL AND local_durable_hash IS NULL)" : ''})
           AND (${selectors.join(' OR ')})
           ${exclude}
         ORDER BY updated_at ASC, context_id COLLATE BINARY ASC
@@ -227,6 +229,22 @@ export class MemoryHardLifecycle {
       params,
     );
     return rows.map(mapRecord);
+  }
+
+  async markClosedDurableForScope(input: {
+    scope: MemoryScope;
+    generationId: string;
+    logicalStateHash: string;
+  }): Promise<number> {
+    const results = await this.client.transaction([{
+      kind: 'run',
+      sql: `UPDATE memory_context_lifecycle
+               SET local_durable_generation = ?, local_durable_hash = ?
+             WHERE principal_id = ? AND project_id = ? AND postflight_state = 'CLOSED'
+               AND local_durable_generation IS NULL AND local_durable_hash IS NULL`,
+      params: [input.generationId, input.logicalStateHash, input.scope.principalId, scopeProject(input.scope)],
+    }]);
+    return Number((results[0] as { changes?: number } | undefined)?.changes ?? 0);
   }
 
   async prepareClosure(input: {
@@ -264,13 +282,12 @@ export class MemoryHardLifecycle {
     if (!current || current.postflightState !== 'CLOSED') {
       throw new MemoryHardLifecycleError('MEMORY_POSTFLIGHT_REQUIRED', 'Local postflight must be closed before durability can be certified');
     }
-    const now = input.now ?? Date.now();
     await this.client.transaction([{
       kind: 'run',
       sql: `UPDATE memory_context_lifecycle
-               SET local_durable_generation = ?, local_durable_hash = ?, updated_at = ?
+               SET local_durable_generation = ?, local_durable_hash = ?
              WHERE context_id = ? AND principal_id = ? AND project_id = ? AND postflight_state = 'CLOSED'`,
-      params: [input.generationId, input.logicalStateHash, now, input.contextId, input.scope.principalId, scopeProject(input.scope)],
+      params: [input.generationId, input.logicalStateHash, input.contextId, input.scope.principalId, scopeProject(input.scope)],
     }]);
     return (await this.get(input.scope, input.contextId))!;
   }
