@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 const pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const startup = readFileSync(path.join(pluginRoot, 'scripts', 'ensure-running.sh'), 'utf8');
+const reconciliation = readFileSync(path.join(pluginRoot, 'scripts', 'runtime-reconciliation.sh'), 'utf8');
 const watchdogStartPath = path.join(pluginRoot, 'scripts', 'start-watchdog.sh');
 const watchdogStart = existsSync(watchdogStartPath)
   ? readFileSync(watchdogStartPath, 'utf8')
@@ -29,17 +30,17 @@ describe('codespace automatic watchdog lifecycle contract', () => {
   });
 
   it('retries transient initial tunnel registration before giving up', () => {
-    expect(startup).toContain('CODESPACE_CONNECT_MAX_ATTEMPTS');
-    expect(startup).toContain('connect_attempt');
-    expect(startup).toContain('managed runtime connect attempt');
-    expect(startup).toContain('connect_rc');
+    expect(reconciliation).toContain('CODESPACE_CONNECT_MAX_ATTEMPTS');
+    expect(reconciliation).toContain('connect_attempt');
+    expect(reconciliation).toContain('managed runtime connect attempt');
+    expect(reconciliation).toContain('connect_rc');
   });
 
   it('retries transient doctor failures before watchdog startup without weakening diagnostics', () => {
-    expect(startup).toContain('CODESPACE_DOCTOR_MAX_ATTEMPTS');
-    expect(startup).toContain('doctor_attempt');
-    expect(startup).toContain('doctor failed on attempt');
-    expect(startup).toContain('doctor_rc');
+    expect(reconciliation).toContain('CODESPACE_DOCTOR_MAX_ATTEMPTS');
+    expect(reconciliation).toContain('doctor_attempt');
+    expect(reconciliation).toContain('doctor failed after');
+    expect(reconciliation).toContain('doctor_rc');
   });
 
   it('preflights and starts an owned watchdog tmux session before declaring READY', () => {

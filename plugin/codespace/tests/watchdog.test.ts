@@ -1,18 +1,26 @@
+import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  computeRepairTimeoutMs,
   evaluateBridgeHealth,
   readNewTunnelLogLines,
   type RuntimeStatus,
   type WatchdogState,
 } from '../src/watchdog.js';
 
+const execFileAsync = promisify(execFile);
+const pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const repairBridge = path.join(pluginRoot, 'scripts', 'repair-bridge.sh');
 const expectedTunnelId = 'tunnel_expected';
 const expectedMcpServerUrl = 'http://127.0.0.1:38765/mcp';
+const expectedRuntimeApiKeyRef = 'file:/workspaces/Agent-Core/secrets/github/CONTROL_PLANE_API_KEY';
 const nowMs = 1_000_000;
 
 const healthyStatus: RuntimeStatus = {
@@ -24,122 +32,157 @@ const healthyStatus: RuntimeStatus = {
   tunnel_id: expectedTunnelId,
   remote_lookup_attempted: true,
   remote_error: '',
-  remote_lookup_auth_ref: 'file:/workspaces/Agent-Core/secrets/github/CONTROL_PLANE_API_KEY',
+  remote_lookup_auth_ref: expectedRuntimeApiKeyRef,
   remote: { id: expectedTunnelId },
-  process: {
-    target_kind: 'server_url',
-    target_value: expectedMcpServerUrl,
-  },
+  process: { target_kind: 'server_url', target_value: expectedMcpServerUrl },
 };
 
-const failureLine = (time: string) => JSON.stringify({
-  time,
+const failureLine = (source: 'client_internal' | 'transport_closed' = 'client_internal') => JSON.stringify({
   level: 'ERROR',
   msg: 'dispatcher received MCP upstream error; posted error response to control plane',
   component: 'dispatcher',
   status_code: 502,
-  failure_source: 'client_internal',
+  failure_source: source,
+  transport_error_kind: source === 'transport_closed' ? 'eof' : undefined,
   upstream_response_received: false,
 });
 
-const successLine = (time: string) => JSON.stringify({
-  time,
+const successLine = () => JSON.stringify({
   level: 'INFO',
   msg: 'dispatcher forwarded command to MCP server',
   component: 'dispatcher',
 });
 
-function evaluate(overrides: Partial<Parameters<typeof evaluateBridgeHealth>[0]> = {}) {
+function evaluate(overrides: Record<string, unknown> = {}) {
   return evaluateBridgeHealth({
     localMcpHealthy: true,
-    runtimeStatus: healthyStatus,
+    runtimeObservation: { state: 'healthy', status: healthyStatus },
     expectedTunnelId,
     expectedMcpServerUrl,
+    expectedRuntimeApiKeyRef,
     newLogLines: [],
     previousFailureStreak: 0,
+    routeGeneration: 0,
     failureThreshold: 3,
     nowMs,
-    lastRepairAt: 0,
-    cooldownMs: 15_000,
+    lastReconnectAt: 0,
+    reconnectCooldownMs: 60_000,
     ...overrides,
-  });
+  } as Parameters<typeof evaluateBridgeHealth>[0]);
 }
 
-describe('codespace watchdog health classifier', () => {
-  it('keeps a fully healthy HTTP MCP runtime running', () => {
-    expect(evaluate()).toEqual({
-      repair: false,
-      reason: 'healthy',
-      failureStreak: 0,
-    });
+describe('codespace watchdog staged action classifier', () => {
+  it('keeps an exactly healthy route running', () => {
+    expect(evaluate()).toMatchObject({ action: 'none', reason: 'healthy', failureStreak: 0 });
   });
 
-  it('repairs immediately when the loopback MCP health endpoint is dead', () => {
+  it('repairs only local MCP when it is unavailable and runtime is healthy', () => {
     expect(evaluate({ localMcpHealthy: false })).toMatchObject({
-      repair: true,
+      action: 'local-mcp',
       reason: 'local_mcp_unhealthy',
     });
   });
 
-  it('repairs a missing, stale, wrongly routed, or remotely unregistered tunnel runtime', () => {
-    expect(evaluate({ runtimeStatus: { ...healthyStatus, process_running: false } }).reason)
-      .toBe('runtime_unhealthy');
-    expect(evaluate({ runtimeStatus: { ...healthyStatus, stale: true } }).reason)
-      .toBe('runtime_unhealthy');
-    expect(evaluate({ runtimeStatus: { ...healthyStatus, tunnel_id: 'tunnel_wrong' } }).reason)
-      .toBe('runtime_unhealthy');
+  it('reconnects only for a proven unhealthy runtime', () => {
     expect(evaluate({
-      runtimeStatus: {
-        ...healthyStatus,
-        process: { target_kind: 'command', target_value: 'bash old-stdio.sh' },
-      },
-    }).reason).toBe('runtime_unhealthy');
-    expect(evaluate({ runtimeStatus: { ...healthyStatus, remote_error: 'lookup failed' } }).reason)
-      .toBe('runtime_unhealthy');
+      runtimeObservation: { state: 'unhealthy', status: { ...healthyStatus, stale: true } },
+    })).toMatchObject({ action: 'tunnel', reason: 'runtime_unhealthy' });
   });
 
-  it('repairs after three consecutive internal 502 responses without an upstream MCP response', () => {
-    const decision = evaluate({
-      newLogLines: [
-        failureLine('2026-08-29T14:17:19.901Z'),
-        failureLine('2026-08-29T14:17:19.902Z'),
-        failureLine('2026-08-29T14:17:19.903Z'),
-      ],
-    });
-    expect(decision).toEqual({
-      repair: true,
-      reason: 'repeated_internal_502',
-      failureStreak: 3,
+  it('does nothing destructive when runtime status is unknown', () => {
+    expect(evaluate({ runtimeObservation: { state: 'unknown' } })).toMatchObject({
+      action: 'none',
+      reason: 'runtime_status_unknown',
     });
   });
 
-  it('does not classify ordinary log noise or a recovered forward as a poisoned route', () => {
-    const decision = evaluate({
-      previousFailureStreak: 1,
-      newLogLines: [
-        failureLine('2026-08-29T14:17:19.901Z'),
-        JSON.stringify({ level: 'ERROR', msg: 'ordinary tool error', status_code: 500 }),
-        successLine('2026-08-29T14:17:20.000Z'),
-        failureLine('2026-08-29T14:17:20.100Z'),
-        failureLine('2026-08-29T14:17:20.200Z'),
-      ],
-    });
-    expect(decision).toEqual({
-      repair: false,
-      reason: 'healthy',
-      failureStreak: 2,
-    });
-  });
+  it.each(['client_internal', 'transport_closed'] as const)(
+    'routes the first threshold burst for %s through local repair only',
+    (source) => {
+      expect(evaluate({ newLogLines: [failureLine(source), failureLine(source), failureLine(source)] }))
+        .toMatchObject({ action: 'local-mcp', reason: 'repeated_route_failure', failureStreak: 3 });
+    },
+  );
 
-  it('uses a cooldown to prevent recursive repair storms', () => {
+  it('routes a second threshold burst in generation 1 through one tunnel reconnect', () => {
     expect(evaluate({
-      localMcpHealthy: false,
-      lastRepairAt: nowMs - 2_000,
-    })).toEqual({
-      repair: false,
-      reason: 'cooldown_active',
-      failureStreak: 0,
+      routeGeneration: 1,
+      newLogLines: [failureLine('transport_closed'), failureLine('transport_closed'), failureLine('transport_closed')],
+    })).toMatchObject({ action: 'tunnel', reason: 'repeated_route_failure' });
+  });
+
+  it('does not repair after one transient EOF below threshold', () => {
+    expect(evaluate({ newLogLines: [failureLine('transport_closed')] }))
+      .toMatchObject({ action: 'none', reason: 'healthy', failureStreak: 1 });
+  });
+
+  it('a successful forward or fresh runtime resets streak and route generation', () => {
+    const fresh = JSON.stringify({ msg: '🟢 tunnel-client started' });
+    expect(evaluate({
+      routeGeneration: 1,
+      previousFailureStreak: 2,
+      newLogLines: [successLine()],
+    })).toMatchObject({ action: 'none', failureStreak: 0, routeGeneration: 0 });
+    expect(evaluate({
+      routeGeneration: 1,
+      previousFailureStreak: 2,
+      newLogLines: [fresh],
+    })).toMatchObject({ action: 'none', failureStreak: 0, routeGeneration: 0 });
+  });
+
+  it('uses a separate reconnect cooldown as a circuit breaker', () => {
+    expect(evaluate({
+      runtimeObservation: { state: 'unhealthy', status: { ...healthyStatus, stale: true } },
+      lastReconnectAt: nowMs - 1_000,
+    })).toMatchObject({ action: 'cooldown', reason: 'reconnect_cooldown' });
+  });
+
+  it('requires the exact credential file reference for runtime health', () => {
+    for (const ref of ['file:/tmp/other', 'env:CONTROL_PLANE_API_KEY', undefined]) {
+      expect(evaluate({
+        runtimeObservation: {
+          state: 'unhealthy',
+          status: { ...healthyStatus, remote_lookup_auth_ref: ref },
+        },
+      })).toMatchObject({ action: 'tunnel', reason: 'runtime_unhealthy' });
+    }
+  });
+});
+
+describe('codespace watchdog repair timeout budget', () => {
+  it('dominates the executable production leaf contract and helper retry budget', async () => {
+    const { stdout } = await execFileAsync('/bin/bash', [repairBridge, '--print-budget-ms'], {
+      cwd: pluginRoot,
+      env: process.env,
+      encoding: 'utf8',
     });
+    const realLeafBudgetMs = Number(stdout.trim());
+    expect(realLeafBudgetMs).toBeGreaterThan(1_200_000);
+
+    const defaults = computeRepairTimeoutMs({});
+    expect(defaults).toBeGreaterThan(realLeafBudgetMs + 165_000);
+
+    const expanded = computeRepairTimeoutMs({
+      CODESPACE_CONNECT_MAX_ATTEMPTS: '10',
+      CODESPACE_CONNECT_TIMEOUT_SECONDS: '20',
+      CODESPACE_CONNECT_RETRY_DELAY_SECONDS: '2',
+    });
+    expect(expanded).toBeGreaterThan(defaults);
+  });
+
+  it('accepts the maximum Node timer delay and rejects the first overflowing millisecond', () => {
+    expect(computeRepairTimeoutMs({
+      CODESPACE_WATCHDOG_REPAIR_TIMEOUT_MS: '2147483647',
+    })).toBe(2_147_483_647);
+    expect(() => computeRepairTimeoutMs({
+      CODESPACE_WATCHDOG_REPAIR_TIMEOUT_MS: '2147483648',
+    })).toThrow(/CODESPACE_WATCHDOG_REPAIR_TIMEOUT_MS.*2147483647/);
+  });
+
+  it('rejects a leaf timeout whose millisecond conversion cannot fit a Node timer', () => {
+    expect(() => computeRepairTimeoutMs({
+      CODESPACE_LOCAL_MCP_ENSURE_TIMEOUT_SECONDS: '2147483.648',
+    })).toThrow(/CODESPACE_LOCAL_MCP_ENSURE_TIMEOUT_SECONDS/);
   });
 });
 
@@ -151,28 +194,19 @@ describe('codespace watchdog tunnel-log cursor', () => {
     directory = undefined;
   });
 
-  it('ignores historical failures on first observation and reads only appended complete records', async () => {
+  it('ignores historical failures and reads only newly appended complete records', async () => {
     directory = await fs.mkdtemp(path.join(os.tmpdir(), 'codespace-watchdog-'));
     const logPath = path.join(directory, 'codespace.log');
-    await fs.writeFile(logPath, `${failureLine('2026-08-29T14:00:00.000Z')}\n`, 'utf8');
+    await fs.writeFile(logPath, `${failureLine()}\n`, 'utf8');
 
     const initial = await readNewTunnelLogLines(logPath, undefined);
     expect(initial.lines).toEqual([]);
-    expect(initial.state.logOffset).toBeGreaterThan(0);
 
-    await fs.appendFile(logPath, [
-      failureLine('2026-08-29T14:17:19.901Z'),
-      failureLine('2026-08-29T14:17:19.902Z'),
-      failureLine('2026-08-29T14:17:19.903Z'),
-      '',
-    ].join('\n'), 'utf8');
-
+    await fs.appendFile(logPath, `${failureLine('transport_closed')}\n`, 'utf8');
     const appended = await readNewTunnelLogLines(logPath, initial.state);
-    expect(appended.lines).toHaveLength(3);
-    expect(appended.state.logOffset).toBeGreaterThan(initial.state.logOffset);
+    expect(appended.lines).toHaveLength(1);
 
     const unchanged = await readNewTunnelLogLines(logPath, appended.state as WatchdogState);
     expect(unchanged.lines).toEqual([]);
-    expect(unchanged.state.logOffset).toBe(appended.state.logOffset);
   });
 });

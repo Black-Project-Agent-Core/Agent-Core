@@ -11,6 +11,7 @@ const readOptional = (relativePath: string) => {
 };
 
 const startup = readOptional('scripts/ensure-running.sh');
+const reconciliation = readOptional('scripts/runtime-reconciliation.sh');
 const ensureHttp = readOptional('scripts/ensure-http-mcp.sh');
 const startHttp = readOptional('scripts/start-http-mcp.sh');
 
@@ -32,22 +33,24 @@ describe('codespace managed Streamable HTTP lifecycle contract', () => {
     expect(ensureHttp).toContain('health_ok && url_file_matches && lifecycle_config_matches && build_is_current && protocol_ok');
   });
 
-  it('probes the local MCP protocol before reconnecting the managed tunnel', () => {
+  it('probes the local MCP protocol before invoking managed runtime reconciliation', () => {
     const ensureIndex = startup.indexOf('ensure-http-mcp.sh');
-    const stopIndex = startup.indexOf('runtimes stop "$ALIAS"');
-    const connectIndex = startup.indexOf('runtimes connect');
+    const reconcileIndex = startup.indexOf('runtime-reconciliation.sh');
+    const stopIndex = reconciliation.indexOf('runtimes stop "$alias_name"');
+    const connectIndex = reconciliation.indexOf('runtimes connect');
     expect(ensureIndex).toBeGreaterThanOrEqual(0);
-    expect(stopIndex).toBeGreaterThan(ensureIndex);
+    expect(reconcileIndex).toBeGreaterThan(ensureIndex);
+    expect(stopIndex).toBeGreaterThanOrEqual(0);
     expect(connectIndex).toBeGreaterThan(stopIndex);
     expect(startup).toContain('MCP_SERVER_URL');
     expect(startup).toContain('dist/http-probe.js');
   });
 
   it('connects tunnel-client to a loopback HTTP MCP URL instead of readiness-blind stdio', () => {
-    expect(startup).toContain('--mcp-server-url "$MCP_SERVER_URL"');
-    expect(startup).not.toContain('--mcp-command "bash $ROOT/scripts/start-mcp.sh"');
-    expect(startup).toContain("payload.process?.target_kind === 'server_url'");
-    expect(startup).toContain('payload.process?.target_value === expectedMcpServerUrl');
+    expect(reconciliation).toContain('--mcp-server-url "$mcp_server_url"');
+    expect(reconciliation).not.toContain('--mcp-command');
+    expect(reconciliation).toContain('payload.process.target_kind === "server_url"');
+    expect(reconciliation).toContain('payload.process.target_value === process.env.EXPECTED_MCP_SERVER_URL');
   });
 
   it('treats all compiled HTTP lifecycle entrypoints as rebuild requirements', () => {

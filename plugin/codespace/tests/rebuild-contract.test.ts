@@ -9,6 +9,7 @@ const packageJson = JSON.parse(readFileSync(path.join(pluginRoot, 'package.json'
   devDependencies?: Record<string, string>;
 };
 const startup = readFileSync(path.join(pluginRoot, 'scripts', 'ensure-running.sh'), 'utf8');
+const reconciliation = readFileSync(path.join(pluginRoot, 'scripts', 'runtime-reconciliation.sh'), 'utf8');
 
 describe('codespace full rebuild contract', () => {
   it('owns the runtime dependencies required by its MCP server and tests', () => {
@@ -19,15 +20,13 @@ describe('codespace full rebuild contract', () => {
     expect(packageJson.devDependencies?.['@types/node']).toBe('24.13.3');
   });
 
-  it('restores its own dependency tree, HTTP entrypoints, and local compiler/test binaries', () => {
+  it('restores build dependencies without making operational startup depend on Vitest', () => {
     expect(startup).toContain('npm ci');
     expect(startup).toContain('$ROOT/node_modules/.bin/tsc');
-    expect(startup).toContain('$ROOT/node_modules/.bin/vitest');
+    expect(startup).not.toContain('$ROOT/node_modules/.bin/vitest');
     expect(startup).toContain('$ROOT/dist/http-server.js');
     expect(startup).toContain('$ROOT/dist/http-probe.js');
     expect(startup).toContain('$ROOT/dist/watchdog.js');
-    expect(startup).not.toContain('npx tsc -p plugin/codespace/tsconfig.json');
-    expect(startup).not.toContain('npx vitest run plugin/codespace/tests/mcp.integration.test.ts');
   });
 
   it('persists an injected lifecycle credential into ignored workspace state for later restarts', () => {
@@ -36,24 +35,15 @@ describe('codespace full rebuild contract', () => {
     expect(startup).toContain('RUNTIME_API_KEY_REF="file:$RUNTIME_API_KEY_FILE"');
   });
 
-  it('serializes lifecycle recovery, refreshes platform registration, and gates the HTTP target plus remote lookup', () => {
+  it('serializes lifecycle recovery and delegates classification to the executable reconciliation seam', () => {
     expect(startup).toContain('flock -w 120 9');
-    expect(startup).toContain('start|attach)');
-    expect(startup).toContain('runtimes stop "$ALIAS"');
-    expect(startup).toContain('--mcp-server-url "$MCP_SERVER_URL"');
-    expect(startup).toContain('remote_lookup_attempted === true');
-    expect(startup).toContain("payload.remote_lookup_auth_ref.startsWith('file:')");
-    expect(startup).toContain('payload.remote?.id === expectedTunnelId');
-    expect(startup).toContain("payload.process?.target_kind === 'server_url'");
-    expect(startup).toContain('payload.process?.target_value === expectedMcpServerUrl');
+    expect(startup).toContain('source "$ROOT/scripts/runtime-reconciliation.sh"');
+    expect(startup).toContain('codespace_runtime_reconcile');
+    expect(reconciliation).toContain('EXPECTED_RUNTIME_API_KEY_REF');
+    expect(reconciliation).toContain('codespace_runtime_close_lifecycle_fd');
   });
 
-  it('closes the lifecycle lock descriptor before launching the long-lived tunnel runtime', () => {
-    const connectBlock = startup.indexOf('connect_rc=0');
-    const closeLock = startup.indexOf('exec 9>&-', connectBlock);
-    const connect = startup.indexOf('runtimes connect', connectBlock);
-    expect(connectBlock).toBeGreaterThanOrEqual(0);
-    expect(closeLock).toBeGreaterThan(connectBlock);
-    expect(closeLock).toBeLessThan(connect);
+  it('preflights watchdog observation without permitting recursive repair', () => {
+    expect(startup).toContain('start-watchdog.sh" --once --check-only');
   });
 });

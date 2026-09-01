@@ -129,7 +129,7 @@ command -v npm >/dev/null 2>&1 || {
 }
 
 needs_dependencies=false
-if [[ ! -x "$ROOT/node_modules/.bin/tsc" || ! -x "$ROOT/node_modules/.bin/vitest" ]]; then
+if [[ ! -x "$ROOT/node_modules/.bin/tsc" ]]; then
   needs_dependencies=true
 elif [[ ! -f "$ROOT/node_modules/@modelcontextprotocol/sdk/package.json" || ! -f "$ROOT/node_modules/zod/package.json" ]]; then
   needs_dependencies=true
@@ -161,13 +161,6 @@ if [[ "$needs_build" == true ]]; then
   )
 fi
 
-(
-  cd "$REPO_ROOT"
-  NODE_ENV=test "$ROOT/node_modules/.bin/vitest" run \
-    plugin/codespace/tests/mcp.integration.test.ts \
-    plugin/codespace/tests/http-mcp.integration.test.ts
-)
-
 # Phase 7 reuses the root Phase-2 hydration gate before this bridge can expose
 # mutation-ready MCP. Sourcing preserves only the non-secret lifecycle mode and
 # loopback Agent Core lease endpoint for the supervised HTTP MCP child.
@@ -195,148 +188,24 @@ if [[ ! "$MCP_SERVER_URL" =~ ^http://127\.0\.0\.1:[0-9]+/mcp$ ]]; then
 fi
 timeout 15 node "$ROOT/dist/http-probe.js" "$MCP_SERVER_URL" >/dev/null
 
-# Keep the currently registered route alive until the replacement MCP target has
-# passed a real protocol exchange. This minimizes connector downtime during a
-# restart, rebuild, or watchdog repair.
+# Runtime reconciliation is isolated behind a production helper so lifecycle
+# phases share one bounded policy and tests can exercise it without the live tunnel.
+reconcile_args=(--phase "$PHASE")
 if [[ "$FORCE_RECONNECT" == true ]]; then
-  "$BIN" runtimes stop "$ALIAS" >/dev/null 2>&1 || true
-else
-  case "$PHASE" in
-    start|attach)
-      "$BIN" runtimes stop "$ALIAS" >/dev/null 2>&1 || true
-      ;;
-  esac
+  reconcile_args+=(--force-reconnect)
 fi
-
-CODESPACE_CONNECT_MAX_ATTEMPTS="${CODESPACE_CONNECT_MAX_ATTEMPTS:-5}"
-if [[ ! "$CODESPACE_CONNECT_MAX_ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
-  printf '%s\n' "[codespace] ERROR: CODESPACE_CONNECT_MAX_ATTEMPTS must be a positive integer." >&2
-  exit 1
-fi
-
-connect_rc=1
-for ((connect_attempt = 1; connect_attempt <= CODESPACE_CONNECT_MAX_ATTEMPTS; connect_attempt++)); do
-  connect_rc=0
-  (
-    # Keep the lifecycle lock in the parent shell, but never leak its descriptor
-    # into tunnel-client's long-lived managed runtime or MCP descendants.
-    exec 9>&-
-
-    # tunnel-client v0.0.13 prefers tmux when it is installed. The Codespaces
-    # universal image currently ships tmux 3.0a, whose `source-file -` behavior
-    # is incompatible with that managed launch path. Make tmux unavailable only
-    # to this connect subprocess so tunnel-client uses its own managed process
-    # fallback. The loopback MCP server is supervised independently.
-    source "$ROOT/scripts/runtime-environment.sh"
-    codespace_prepare_process_runtime "$ROOT"
-
-    "$BIN" runtimes connect \
-      --alias "$ALIAS" \
-      --tunnel-id "$TUNNEL_ID" \
-      --profile "$PROFILE_NAME" \
-      --profile-dir "$PROFILE_DIR" \
-      --runtime-api-key "$RUNTIME_API_KEY_REF" \
-      --mcp-server-url "$MCP_SERVER_URL"
-  ) >/dev/null || connect_rc=$?
-
-  if [[ "$connect_rc" -eq 0 || "$connect_rc" -eq 2 ]]; then
-    break
-  fi
-  printf '%s\n' "[codespace] NOTICE: managed runtime connect attempt $connect_attempt/$CODESPACE_CONNECT_MAX_ATTEMPTS failed (rc=$connect_rc); retrying bounded recovery." >&2
-  if (( connect_attempt < CODESPACE_CONNECT_MAX_ATTEMPTS )); then
-    retry_delay=$connect_attempt
-    (( retry_delay > 5 )) && retry_delay=5
-    sleep "$retry_delay"
-  fi
-done
-
-if [[ "$connect_rc" -ne 0 && "$connect_rc" -ne 2 ]]; then
-  printf '%s\n' "[codespace] ERROR: managed runtime connect failed after $CODESPACE_CONNECT_MAX_ATTEMPTS attempts." >&2
-  exit "$connect_rc"
-fi
-
-status_json=""
-status_gate_passed=false
-for _ in $(seq 1 10); do
-  status_json="$($BIN runtimes status "$ALIAS" --json 2>/dev/null || true)"
-  if EXPECTED_TUNNEL_ID="$TUNNEL_ID" EXPECTED_MCP_SERVER_URL="$MCP_SERVER_URL" STATUS_JSON="$status_json" node <<'NODE'
-try {
-  const payload = JSON.parse(process.env.STATUS_JSON || '{}');
-  const expectedTunnelId = process.env.EXPECTED_TUNNEL_ID;
-  const expectedMcpServerUrl = process.env.EXPECTED_MCP_SERVER_URL;
-  const localReady =
-    payload.process_running === true &&
-    payload.healthy === true &&
-    payload.ready === true &&
-    payload.runtime_state === 'ready' &&
-    payload.stale === false &&
-    payload.tunnel_id === expectedTunnelId;
-  const remoteReady =
-    payload.remote_lookup_attempted === true &&
-    payload.remote_error === '' &&
-    payload.remote?.id === expectedTunnelId &&
-    typeof payload.remote_lookup_auth_ref === 'string' &&
-    payload.remote_lookup_auth_ref.startsWith('file:');
-  const targetReady =
-    payload.process?.target_kind === 'server_url' &&
-    payload.process?.target_value === expectedMcpServerUrl;
-  process.exit(localReady && remoteReady && targetReady ? 0 : 1);
-} catch {
-  process.exit(1);
-}
-NODE
-  then
-    status_gate_passed=true
-    break
-  fi
-  sleep 1
-done
-
-if [[ "$status_gate_passed" != true ]]; then
-  EXPECTED_TUNNEL_ID="$TUNNEL_ID" EXPECTED_MCP_SERVER_URL="$MCP_SERVER_URL" STATUS_JSON="$status_json" node <<'NODE'
-let payload = {};
-try { payload = JSON.parse(process.env.STATUS_JSON || '{}'); } catch {}
-const expectedTunnelId = process.env.EXPECTED_TUNNEL_ID;
-const expectedMcpServerUrl = process.env.EXPECTED_MCP_SERVER_URL;
-console.error(
-  `[codespace] ERROR: managed runtime/platform gate failed (` +
-  `tunnel_id=${payload.tunnel_id ?? '<missing>'} expected_tunnel_id=${expectedTunnelId ?? '<missing>'} ` +
-  `process_running=${payload.process_running === true} healthy=${payload.healthy === true} ` +
-  `ready=${payload.ready === true} runtime_state=${payload.runtime_state ?? '<missing>'} ` +
-  `stale=${payload.stale ?? '<missing>'} remote_lookup_attempted=${payload.remote_lookup_attempted === true} ` +
-  `remote_error=${payload.remote_error || '<none>'} remote_id=${payload.remote?.id ?? '<missing>'} ` +
-  `target_kind=${payload.process?.target_kind ?? '<missing>'} target_value=${payload.process?.target_value ?? '<missing>'} ` +
-  `expected_target=${expectedMcpServerUrl ?? '<missing>'}).`,
-);
-NODE
-  exit 1
-fi
-
-# Re-run a real MCP initialize/list-tools exchange after tunnel registration.
-# Local TCP health alone is never accepted as bridge readiness.
-timeout 15 node "$ROOT/dist/http-probe.js" "$MCP_SERVER_URL" >/dev/null
-
-# Run diagnostics only after connect + status + MCP protocol reconciliation.
-CODESPACE_DOCTOR_MAX_ATTEMPTS="${CODESPACE_DOCTOR_MAX_ATTEMPTS:-3}"
-if [[ ! "$CODESPACE_DOCTOR_MAX_ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
-  printf '%s\n' "[codespace] ERROR: CODESPACE_DOCTOR_MAX_ATTEMPTS must be a positive integer." >&2
-  exit 1
-fi
-doctor_rc=1
-for ((doctor_attempt = 1; doctor_attempt <= CODESPACE_DOCTOR_MAX_ATTEMPTS; doctor_attempt++)); do
-  doctor_rc=0
-  "$BIN" doctor \
-    --profile "$PROFILE_NAME" \
-    --profile-dir "$PROFILE_DIR" \
-    --explain || doctor_rc=$?
-  [[ "$doctor_rc" -eq 0 ]] && break
-  printf '%s\n' "[codespace] NOTICE: doctor failed on attempt $doctor_attempt/$CODESPACE_DOCTOR_MAX_ATTEMPTS (rc=$doctor_rc); retrying." >&2
-  (( doctor_attempt < CODESPACE_DOCTOR_MAX_ATTEMPTS )) && sleep "$doctor_attempt"
-done
-if [[ "$doctor_rc" -ne 0 ]]; then
-  printf '%s\n' "[codespace] ERROR: doctor failed after $CODESPACE_DOCTOR_MAX_ATTEMPTS attempts." >&2
-  exit "$doctor_rc"
-fi
+# shellcheck disable=SC1091
+source "$ROOT/scripts/runtime-reconciliation.sh"
+CODESPACE_TUNNEL_CLIENT_BIN="$BIN" \
+CODESPACE_TUNNEL_ALIAS="$ALIAS" \
+CODESPACE_PROFILE_NAME="$PROFILE_NAME" \
+CODESPACE_PROFILE_DIR="$PROFILE_DIR" \
+CODESPACE_EXPECTED_TUNNEL_ID="$TUNNEL_ID" \
+CODESPACE_MCP_SERVER_URL="$MCP_SERVER_URL" \
+CODESPACE_RUNTIME_API_KEY_FILE="$RUNTIME_API_KEY_FILE" \
+CODESPACE_RUNTIME_API_KEY_REF="$RUNTIME_API_KEY_REF" \
+TUNNEL_CLIENT_STATE_DIR="$STATE_DIR" \
+codespace_runtime_reconcile "${reconcile_args[@]}"
 
 if [[ "${CODESPACE_WATCHDOG_ACTIVE:-0}" != "1" ]]; then
   command -v tmux >/dev/null 2>&1 || {
@@ -351,7 +220,7 @@ if [[ "${CODESPACE_WATCHDOG_ACTIVE:-0}" != "1" ]]; then
     CODESPACE_EXPECTED_TUNNEL_ID="$TUNNEL_ID" \
     CODESPACE_MCP_SERVER_URL="$MCP_SERVER_URL" \
     TUNNEL_CLIENT_STATE_DIR="$STATE_DIR" \
-    bash "$ROOT/scripts/start-watchdog.sh" --once
+    bash "$ROOT/scripts/start-watchdog.sh" --once --check-only
   )
   tmux kill-session -t "$WATCHDOG_SESSION" >/dev/null 2>&1 || true
   printf -v watchdog_command \
