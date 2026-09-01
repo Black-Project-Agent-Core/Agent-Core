@@ -157,13 +157,13 @@ describe('memory persistence, backup, restore, and crash recovery', () => {
     services.push(reopened);
     const status = await reopened.status(f.scope);
     expect(status.healthy).toBe(true);
-    expect(status.schemaVersion).toBe(3);
-    expect(status.lastBackupPath).toContain('pre-migration-v0-to-v3');
+    expect(status.schemaVersion).toBe(4);
+    expect(status.lastBackupPath).toContain('pre-migration-v0-to-v4');
     expect(await exists(status.lastBackupPath!)).toBe(true);
     expect((await reopened.getMemory(f.scope, committed.memoryId))?.valueText).toContain('Persist before migration.');
   });
 
-  it('migrates an existing v1 memory database through schema v3 with backup and data preservation', async () => {
+  it('migrates an existing v1 memory database through schema v4 with backup and data preservation', async () => {
     const f = await fixture();
     const committed = await f.service.commit({
       scope: f.scope,
@@ -182,6 +182,12 @@ describe('memory persistence, backup, restore, and crash recovery', () => {
       DROP TABLE IF EXISTS continuity_checkpoints;
       DROP TABLE IF EXISTS continuity_frontier;
       DROP TABLE IF EXISTS continuity_tasks;
+      DROP TABLE IF EXISTS memory_context_lifecycle;
+      DROP TABLE IF EXISTS memory_node_metadata;
+      DROP TABLE IF EXISTS memory_edge_events;
+      DROP TABLE IF EXISTS memory_recall_expansions;
+      DROP TABLE IF EXISTS memory_write_decisions;
+      DROP TABLE IF EXISTS memory_remote_state;
       DELETE FROM memory_schema_migrations WHERE version >= 2;
       PRAGMA user_version = 1;
     `);
@@ -191,16 +197,16 @@ describe('memory persistence, backup, restore, and crash recovery', () => {
     services.push(reopened);
     const status = await reopened.status(f.scope);
     expect(status.healthy).toBe(true);
-    expect(status.schemaVersion).toBe(3);
+    expect(status.schemaVersion).toBe(4);
     expect(status.integrity).toBe('ok');
-    expect(status.lastBackupPath).toContain('pre-migration-v1-to-v3');
+    expect(status.lastBackupPath).toContain('pre-migration-v1-to-v4');
     expect(await exists(status.lastBackupPath!)).toBe(true);
     expect((await reopened.getMemory(f.scope, committed.memoryId))?.valueText)
       .toContain('Persist this v1 memory through continuity migration.');
 
     const verify = new DatabaseSync(f.dbPath);
     try {
-      expect(Number(verify.prepare('PRAGMA user_version').get()!.user_version)).toBe(3);
+      expect(Number(verify.prepare('PRAGMA user_version').get()!.user_version)).toBe(4);
       const continuityTables = (verify.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'continuity_%' ORDER BY name").all() as Array<{ name: string }>).map((row) => row.name);
       expect(continuityTables).toEqual([
         'continuity_checkpoints',
@@ -209,6 +215,8 @@ describe('memory persistence, backup, restore, and crash recovery', () => {
         'continuity_tasks',
         'continuity_turns',
       ]);
+      expect(Number(verify.prepare("SELECT count(*) AS count FROM sqlite_master WHERE type='table' AND name='memory_context_lifecycle'").get()!.count)).toBe(1);
+      expect(Number(verify.prepare("SELECT count(*) AS count FROM sqlite_master WHERE type='table' AND name='memory_write_decisions'").get()!.count)).toBe(1);
       expect(String(verify.prepare('PRAGMA quick_check').get()!.quick_check)).toBe('ok');
     } finally {
       verify.close();
