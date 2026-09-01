@@ -7,6 +7,7 @@ import { loadConfig, type AppConfig } from './config.js';
 import { createHttpHandler } from './http/app.js';
 import { createCodespaceSharedMemoryHttpHandler } from './http/codespace-memory.js';
 import { createMemoryContextLeaseHttpHandler } from './http/memory-context-lease.js';
+import { createMemoryObservatoryHttpHandler } from './http/memory-observatory.js';
 import { HttpSecurityPolicy } from './http/security-policy.js';
 import { FileAuditLogger } from './logging/audit-log.js';
 import { createMcpHttpHandler } from './mcp/handler.js';
@@ -90,6 +91,12 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     mcpHandler: createMcpHttpHandler(runtime, { protocolMode: config.mcp.protocolMode }),
     memoryContextLeaseHandler: createMemoryContextLeaseHttpHandler(runtime),
     codespaceMemoryHandler: createCodespaceSharedMemoryHttpHandler(runtime),
+    observatoryHandler: createMemoryObservatoryHttpHandler({
+      memory: runtime.memory,
+      workspace: runtime.workspace,
+      auditJournal: auditLogger.journal,
+      config: config.memoryObservatory,
+    }),
   }));
 
   try {

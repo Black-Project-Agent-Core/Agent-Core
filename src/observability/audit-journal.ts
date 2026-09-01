@@ -4,7 +4,7 @@ import path from 'node:path';
 import { redactMemoryText } from '../memory/redaction.js';
 import { correlationFields } from './correlation.js';
 import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
-import type { AuditRecordBroadcaster } from './audit-stream.js';
+import type { AuditRecordBroadcaster, AuditRecordListener, AuditRecordSubscription } from './audit-stream.js';
 
 export type AuditJson = null | boolean | number | string | AuditJson[] | { [key: string]: AuditJson };
 
@@ -363,6 +363,11 @@ export class AuditJournal {
     return true;
   }
 
+  subscribe(listener: AuditRecordListener): AuditRecordSubscription {
+    if (!this.broadcaster) throw new Error('AUDIT_STREAM_UNAVAILABLE');
+    return this.broadcaster.subscribe(listener);
+  }
+
   status(): AuditJournalStatus {
     return {
       queueDepth: this.queue.length + this.inFlight,
@@ -385,6 +390,12 @@ export class AuditJournal {
       if (current) await current;
       else await Promise.resolve();
     }
+  }
+
+  async prepareReplay(): Promise<void> {
+    if (this.closed) throw new Error('AUDIT_JOURNAL_CLOSED');
+    await this.drain();
+    await this.initialize();
   }
 
   async close(): Promise<void> {
@@ -461,10 +472,10 @@ export class AuditJournal {
         this.written += 1;
         this.metrics?.increment('audit.written.count');
         this.currentFileBytes += lineBytes;
-        this.broadcaster?.publish(record);
         try {
           await atomicJson(this.headPath, { schemaVersion: 1, sequence: this.sequence, hash: this.headHash, updatedAt: new Date(this.now()).toISOString() });
           this.lastWriteErrorCode = undefined;
+          this.broadcaster?.publish(record);
         } catch (error) {
           this.writeErrors += 1;
           this.metrics?.increment('audit.write_errors.count');
