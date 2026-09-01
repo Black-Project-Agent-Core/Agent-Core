@@ -8,6 +8,10 @@ export interface ResolvedRouteProject {
   projectId: string;
 }
 
+export function persistentPrincipalId(runtime: RuntimeServices, key: VerifiedKey): string {
+  return runtime.memory.config.principalId ?? key.id;
+}
+
 export function resolvedRouteProject(
   runtime: RuntimeServices,
   key: VerifiedKey,
@@ -39,9 +43,12 @@ export function resolvedProjectScope(
 ): { principalId: string; projectId: string } {
   if (routeContextId) {
     const { projectId } = resolvedRouteProject(runtime, key, routeContextId);
-    return { principalId: key.id, projectId };
+    return { principalId: persistentPrincipalId(runtime, key), projectId };
   }
-  return { principalId: key.id, projectId: runtime.workspace.resolveProjectRoot() };
+  return {
+    principalId: persistentPrincipalId(runtime, key),
+    projectId: runtime.workspace.resolveProjectRoot(),
+  };
 }
 
 function projectMismatch(error: unknown, projectId: string, target: string): never {

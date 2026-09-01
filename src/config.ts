@@ -24,6 +24,7 @@ export type MemoryHardLifecycleMode = 'disabled' | 'advisory' | 'enforce';
 
 export interface MemoryConfig {
   enabled: boolean;
+  principalId: string | null;
   enforceHardGuardrails: boolean;
   hardLifecycleMode: MemoryHardLifecycleMode;
   dbPath: string;
@@ -266,6 +267,15 @@ function parseOtlpEndpoint(value: string | undefined): string | null {
   return `${parsed.origin}${pathname}`;
 }
 
+function parseMemoryPrincipalId(value: string | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  if (raw.length > 512 || /[\u0000-\u001f\u007f]/.test(raw)) {
+    throw new Error('AGENT_CORE_MEMORY_PRINCIPAL_ID must be a bounded printable identifier');
+  }
+  return raw;
+}
+
 function parseMemoryRemoteOwner(value: string | undefined): string | null {
   const raw = value?.trim();
   if (!raw) return null;
@@ -359,6 +369,10 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
 
   const memory: MemoryConfig = {
     enabled: parseBoolean(env.AGENT_CORE_MEMORY_ENABLED, true),
+    principalId: parseMemoryPrincipalId(
+      env.AGENT_CORE_MEMORY_PRINCIPAL_ID
+        ?? (memoryRemoteEnabled ? env.AGENT_CORE_MEMORY_REMOTE_PRINCIPAL_ID : undefined),
+    ),
     enforceHardGuardrails: parseBoolean(env.AGENT_CORE_MEMORY_ENFORCE_HARD_GUARDRAILS, false),
     hardLifecycleMode: parseMemoryHardLifecycleMode(env.AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE),
     dbPath: path.resolve(env.AGENT_CORE_MEMORY_DB_PATH?.trim() || path.join(baseDir, 'runtime', 'memory', 'agent-core-memory.sqlite')),

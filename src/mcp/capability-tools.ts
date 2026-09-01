@@ -7,6 +7,7 @@ import type { ContinuityCapture } from '../continuity/types.js';
 import { MemoryHardLifecycleError, memoryObjectiveHash, type MemoryContextLifecycleRecord } from '../memory/hard-lifecycle.js';
 import type { MemorySearchHit } from '../memory/types.js';
 import type { RuntimeServices } from '../runtime/services.js';
+import { persistentPrincipalId } from './project-scope.js';
 import { injectMemoryIntoRoutingContext } from './memory-injection.js';
 
 function textResult(value: unknown) {
@@ -163,7 +164,7 @@ export function registerCapabilityTools(
     }
     const reservation = runtime.routes.reserve();
     const scope = {
-      principalId: key.id,
+      principalId: persistentPrincipalId(runtime, key),
       projectId,
     };
     let memoryStatus: 'disabled' | 'healthy' | 'degraded' = runtime.memory.config.enabled ? 'healthy' : 'disabled';

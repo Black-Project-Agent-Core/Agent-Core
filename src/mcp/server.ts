@@ -10,6 +10,7 @@ import { MEMORY_TOOL_NAMES, registerMemoryTools } from './memory-tools.js';
 import { HEALTH_METRICS_TOOL_NAMES, registerHealthMetricsTools } from './health-metrics.js';
 import { OPERATIONAL_TOOL_NAMES, registerOperationalTools } from './tools.js';
 import { instrumentToolRegistrations } from '../observability/tool-instrumentation.js';
+import { persistentPrincipalId } from './project-scope.js';
 
 export const SERVER_NAME = 'agent-core';
 export const SERVER_VERSION = '0.6.0';
@@ -66,13 +67,17 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
     },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, async () => {
-    const currentScope = {
-      principalId: key.id,
+    const memoryScope = {
+      principalId: persistentPrincipalId(runtime, key),
+      projectId: runtime.workspace.roots[0],
+    };
+    const executionScope = {
+      principalId: persistentPrincipalId(runtime, key),
       projectId: runtime.workspace.roots[0],
     };
     const [memoryStatus, executionStatus] = await Promise.all([
-      runtime.memory.status(currentScope),
-      runtime.execution.health(currentScope),
+      runtime.memory.status(memoryScope),
+      runtime.execution.health(executionScope),
     ]);
     let continuityCounts: Record<string, number> = {
       activeTasks: 0, recentCompleted: 0, blockedTasks: 0, deferredTasks: 0,
@@ -81,7 +86,7 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
     let snapshotReady = false;
     if (memoryStatus.healthy) {
       try {
-        const snapshot = await runtime.memory.getContinuitySnapshot(currentScope);
+        const snapshot = await runtime.memory.getContinuitySnapshot(memoryScope);
         continuityCounts = {
           activeTasks: snapshot.activeTasks.length,
           recentCompleted: snapshot.recentCompleted.length,

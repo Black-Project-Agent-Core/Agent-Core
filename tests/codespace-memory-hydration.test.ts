@@ -175,6 +175,8 @@ describe('Codespace Memory Remote hydration gate', () => {
     expect(ensureHydration).toBeLessThan(ensure.indexOf('start_service_supervisor'));
     expect(launcher).toContain('AGENT_CORE_MEMORY_REMOTE_KEY_FILE');
     expect(launcher).toContain('AGENT_CORE_MEMORY_REMOTE_WORK_ROOT');
+    expect(launcher).toContain('AGENT_CORE_MEMORY_PRINCIPAL_ID');
+    expect(launcher).toContain('AGENT_CORE_MEMORY_REMOTE_PRINCIPAL_ID');
     expect(common).toContain('AGENT_CORE_MEMORY_REMOTE_HYDRATION_MARKER');
   });
 

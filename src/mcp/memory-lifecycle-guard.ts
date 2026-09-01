@@ -6,6 +6,7 @@ import {
 } from '../memory/meaningful-work.js';
 import type { RouteContext } from '../runtime/route-context-store.js';
 import type { RuntimeServices } from '../runtime/services.js';
+import { persistentPrincipalId } from './project-scope.js';
 
 export interface MemoryLifecycleGuardDecision {
   mode: 'disabled' | 'advisory' | 'enforce';
@@ -18,7 +19,7 @@ export interface MemoryLifecycleGuardDecision {
 
 function scope(runtime: RuntimeServices, key: VerifiedKey, route: RouteContext) {
   return {
-    principalId: key.id,
+    principalId: persistentPrincipalId(runtime, key),
     projectId: route.projectId ?? runtime.workspace.resolveProjectRoot(),
   };
 }
