@@ -8,7 +8,10 @@ import { ExecutionMemoryBridge, type ExecutionMemoryWriter } from '../src/execut
 import { ExecutionService } from '../src/execution/service.js';
 import { ExecutionStore } from '../src/execution/store.js';
 import { MemoryService } from '../src/memory/service.js';
-import type { MemoryCommitRequest, MemoryCommitResult, MemoryScope, MemoryStatus } from '../src/memory/types.js';
+import type {
+  MemoryCommitRequest, MemoryCommitResult, MemoryDurabilityBoundaryReason, MemoryDurabilityBoundaryResult,
+  MemoryPostflightApplyResult, MemoryPostflightRequest, MemoryScope, MemoryStatus,
+} from '../src/memory/types.js';
 import { WorkspacePolicy } from '../src/runtime/workspace.js';
 import { nodeShellCommand } from './helpers/platform-command.js';
 
@@ -29,7 +32,11 @@ async function rootFixture(label: string) {
 class SwitchableMemoryWriter implements ExecutionMemoryWriter {
   healthy = false;
   readonly commits: MemoryCommitRequest[] = [];
+  readonly postflights: MemoryPostflightRequest[] = [];
+  readonly durabilityReasons: MemoryDurabilityBoundaryReason[] = [];
+  readonly semanticIds = new Map<string, string>();
   readonly events: Array<Record<string, unknown>> = [];
+  durabilityError: Error | undefined;
 
   async status(): Promise<MemoryStatus> {
     return {
@@ -53,6 +60,60 @@ class SwitchableMemoryWriter implements ExecutionMemoryWriter {
       deduplicated: false,
       state: 'active',
     };
+  }
+
+  async applyPostflight(request: MemoryPostflightRequest): Promise<MemoryPostflightApplyResult> {
+    if (!this.healthy) throw new Error('MEMORY_DEGRADED:test');
+    this.postflights.push(request);
+    const canonicalKey = request.candidate?.canonicalKey;
+    const priorId = canonicalKey ? this.semanticIds.get(canonicalKey) : undefined;
+    const memoryId = canonicalKey ? (priorId ?? `memory-postflight-${this.semanticIds.size + 1}`) : undefined;
+    if (canonicalKey && !priorId && memoryId) this.semanticIds.set(canonicalKey, memoryId);
+    const decision = request.candidate ? (priorId ? 'NO_DURABLE_MEMORY' : 'WRITE_NEW_ROOT') : 'NO_DURABLE_MEMORY';
+    const id = `decision-${this.postflights.length}`;
+    return {
+      advisory: false,
+      applied: true,
+      semanticMutation: Boolean(request.candidate && !priorId),
+      memoryId,
+      revisionId: request.candidate && !priorId ? `revision-${this.postflights.length}` : undefined,
+      createdEdges: 0,
+      decision,
+      targetMemoryId: priorId,
+      existingMemoryIds: priorId ? [priorId] : [],
+      reasonCodes: request.reasonCodes,
+      candidateHash: 'a'.repeat(64),
+      decisionRecord: {
+        id,
+        principalId: request.scope.principalId,
+        projectId: request.scope.projectId,
+        routeContextId: request.routeContextId,
+        continuityTaskId: request.continuityTaskId,
+        contextId: request.contextId,
+        decisionType: decision,
+        candidateCanonicalKey: canonicalKey,
+        candidateHash: 'a'.repeat(64),
+        targetMemoryId: priorId,
+        existingMemoryIds: priorId ? [priorId] : [],
+        reasonCodes: request.reasonCodes,
+        evidenceRefs: request.evidenceRefs,
+        relationPlan: [],
+        rootReason: decision === 'WRITE_NEW_ROOT' ? request.rootReason : undefined,
+        createdAt: this.postflights.length,
+        appliedAt: this.postflights.length,
+        applyResult: { status: 'applied' },
+      },
+    };
+  }
+
+  async syncDurableBoundary(
+    _scope: MemoryScope,
+    reason: MemoryDurabilityBoundaryReason,
+  ): Promise<MemoryDurabilityBoundaryResult> {
+    if (!this.healthy) throw new Error('MEMORY_DEGRADED:test');
+    this.durabilityReasons.push(reason);
+    if (this.durabilityError) throw this.durabilityError;
+    return { required: false, state: 'NOT_REQUIRED', reason };
   }
 
   async recordEvent(request: any): Promise<unknown> {
@@ -117,37 +178,43 @@ describe('Execution-to-DMF continuity bridge', () => {
     expect(completed.event?.eventType).toBe('run.completed');
     await bridge.drain();
 
-    const promoted = writer.commits.find((request) => request.canonicalKey === `execution.artifact.${created.runId}.A.1`);
+    const promoted = writer.postflights.find((request) => request.candidate?.canonicalKey === `execution.artifact.${created.runId}.A.1`);
     expect(promoted).toBeTruthy();
     expect(promoted).toMatchObject({
-      kind: 'artifact',
-      sourceType: 'execution_verified_evidence',
-      sourceRef: created.runId,
-      metadata: {
-        taskId: 'continuity-task-verified-artifact',
-        runId: created.runId,
-        nodeId: 'A',
-        attemptNo: 1,
-        resultRef: expect.stringMatching(/attempt-001\.result\.json$/),
-      },
-      value: {
-        runId: created.runId,
-        nodeId: 'A',
-        attemptNo: 1,
-        resultVersion: 2,
-        processState: 'succeeded',
-        evidenceState: 'verified',
-        artifacts: [expect.objectContaining({
-          path: artifactPath,
-          kind: 'file',
-          required: true,
-          exists: true,
-          verification: 'verified',
-          size: expect.any(Number),
-          sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
-        })],
+      routeContextId: created.runId,
+      continuityTaskId: 'continuity-task-verified-artifact',
+      reasonCodes: expect.arrayContaining(['FRESH_DURABLE_CONTEXT', 'ARTIFACT_VERIFIED']),
+      candidate: {
+        kind: 'artifact',
+        sourceType: 'execution_verified_evidence',
+        sourceRef: created.runId,
+        metadata: {
+          taskId: 'continuity-task-verified-artifact',
+          runId: created.runId,
+          nodeId: 'A',
+          attemptNo: 1,
+          resultRef: expect.stringMatching(/attempt-001\.result\.json$/),
+        },
+        value: {
+          runId: created.runId,
+          nodeId: 'A',
+          attemptNo: 1,
+          resultVersion: 2,
+          processState: 'succeeded',
+          evidenceState: 'verified',
+          artifacts: [expect.objectContaining({
+            path: artifactPath,
+            kind: 'file',
+            required: true,
+            exists: true,
+            verification: 'verified',
+            size: expect.any(Number),
+            sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+          })],
+        },
       },
     });
+    expect(writer.durabilityReasons).toContain('execution_artifact');
     expect(JSON.stringify(promoted)).not.toContain(rawSentinel);
   }, 10_000);
 
@@ -243,9 +310,9 @@ describe('Execution-to-DMF continuity bridge', () => {
     await service.wait(scope, created.runId, created.lastEventSequence, { eventTypes: ['run.completed'] }, 5_000);
     await bridge.drain();
 
-    const promoted = writer.commits.find((request) => request.canonicalKey === `execution.artifact.${created.runId}.A.1`);
+    const promoted = writer.postflights.find((request) => request.candidate?.canonicalKey === `execution.artifact.${created.runId}.A.1`);
     expect(promoted).toBeTruthy();
-    expect(promoted?.value).toMatchObject({
+    expect(promoted?.candidate?.value).toMatchObject({
       parsedEvidence: {
         parserVersion: '1.0.0',
         testResults: { passed: 8, failed: 0, skipped: 1 },
@@ -295,20 +362,74 @@ describe('Execution-to-DMF continuity bridge', () => {
 
     const queued = await bridge.handlePersistedEvent(scope, event);
     expect(queued).toMatchObject({ queued: 1, promoted: 0 });
-    expect(writer.commits).toHaveLength(0);
+    expect(writer.postflights).toHaveLength(0);
     expect(await store.countMemorySyncQueue(scope)).toBe(1);
 
     writer.healthy = true;
     const replayed = await bridge.replay(scope);
     expect(replayed).toMatchObject({ synced: 1, failed: 0 });
-    expect(writer.commits).toHaveLength(1);
-    expect(writer.commits[0]).toMatchObject({ kind: 'failure', canonicalKey: expect.stringMatching(/^failure\.execution\./) });
-    expect(JSON.stringify(writer.commits[0])).not.toContain('Write-Output');
+    const failurePostflight = writer.postflights.find((request) => request.candidate?.kind === 'failure');
+    expect(failurePostflight).toMatchObject({
+      reasonCodes: expect.arrayContaining(['FRESH_DURABLE_CONTEXT', 'FAILURE_OBSERVED']),
+      candidate: { kind: 'failure', canonicalKey: expect.stringMatching(/^failure\.execution\./) },
+    });
+    expect(writer.durabilityReasons).toContain('execution_failure');
+    expect(JSON.stringify(failurePostflight)).not.toContain('Write-Output');
     expect(await store.countMemorySyncQueue(scope)).toBe(0);
 
     const replayAgain = await bridge.replay(scope);
     expect(replayAgain).toMatchObject({ synced: 0, failed: 0 });
-    expect(writer.commits).toHaveLength(1);
+    expect(writer.postflights.filter((request) => request.candidate?.kind === 'failure')).toHaveLength(1);
+    await store.close();
+  });
+
+  it('queues after local postflight when durability fails, then replays without creating a second semantic identity', async () => {
+    const f = await rootFixture('durability-queue');
+    const executionConfig = { ...loadConfig({}, f.root).execution, enabled: true, dbPath: path.join(f.root, 'runtime', 'execution', 'durability-queue.sqlite') };
+    const store = new ExecutionStore();
+    await store.open({ dbPath: executionConfig.dbPath });
+    const writer = new SwitchableMemoryWriter();
+    writer.healthy = true;
+    writer.durabilityError = new Error('MEMORY_REMOTE_UNAVAILABLE: synthetic');
+    const bridge = new ExecutionMemoryBridge(store, writer);
+    const scope: MemoryScope = { principalId: 'principal-durability-queue', projectId: f.root };
+    const run = await store.createRun(scope, {
+      objective: 'Queue after remote durability failure',
+      continuityTaskId: 'continuity-task-durability-queue',
+      originRouteContextId: 'route-durability-queue',
+      maxConcurrency: 1,
+    });
+    await store.persistGraph(scope, run.runId, [{
+      id: 'A', purpose: 'fail A', command: "exit 9", cwd: f.work,
+      dependsOn: [], timeoutMs: 10_000, continueOnFailure: false,
+    }]);
+    const paths = {
+      directory: path.join(f.root, 'evidence-durability'),
+      stdoutPath: path.join(f.root, 'evidence-durability', 'attempt-001.stdout.log'),
+      stderrPath: path.join(f.root, 'evidence-durability', 'attempt-001.stderr.log'),
+      resultPath: path.join(f.root, 'evidence-durability', 'attempt-001.result.json'),
+    };
+    await store.createAttempt(scope, run.runId, 'A', 'attempt-durability', 1, paths);
+    await store.completeAttempt(scope, {
+      version: 1, runId: run.runId, nodeId: 'A', attemptId: 'attempt-durability', attemptNo: 1,
+      state: 'failed', startedAt: 1, finishedAt: 2, exitCode: 9, signal: null,
+      stdoutBytes: 0, stderrBytes: 0, stdoutSha256: 'a'.repeat(64), stderrSha256: 'b'.repeat(64),
+    });
+    const event = await store.appendEvent(scope, run.runId, 'node.failed', {
+      nodeId: 'A', attemptId: 'attempt-durability', payload: { attemptNo: 1, exitCode: 9 },
+    });
+
+    expect(await bridge.handlePersistedEvent(scope, event)).toEqual({ promoted: 0, queued: 1 });
+    expect(writer.postflights.filter((request) => request.candidate?.kind === 'failure')).toHaveLength(1);
+    expect(writer.semanticIds.size).toBe(1);
+    expect(await store.countMemorySyncQueue(scope)).toBe(1);
+
+    writer.durabilityError = undefined;
+    expect(await bridge.flush(scope)).toEqual({ synced: 1, failed: 0 });
+    expect(writer.postflights.filter((request) => request.candidate?.kind === 'failure')).toHaveLength(2);
+    expect(writer.semanticIds.size).toBe(1);
+    expect(await store.countMemorySyncQueue(scope)).toBe(0);
+    expect(writer.durabilityReasons.filter((reason) => reason === 'execution_failure')).toHaveLength(2);
     await store.close();
   });
 

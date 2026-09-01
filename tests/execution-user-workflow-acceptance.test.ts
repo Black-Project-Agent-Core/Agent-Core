@@ -14,7 +14,10 @@ import { ExecutionStore } from '../src/execution/store.js';
 import type { ValidatedExecutionNode } from '../src/execution/dag.js';
 import type { ExecutionScope } from '../src/execution/types.js';
 import { MemoryService } from '../src/memory/service.js';
-import type { MemoryCommitRequest, MemoryCommitResult, MemoryScope, MemoryStatus } from '../src/memory/types.js';
+import type {
+  MemoryCommitRequest, MemoryCommitResult, MemoryDurabilityBoundaryReason, MemoryDurabilityBoundaryResult,
+  MemoryPostflightApplyResult, MemoryPostflightRequest, MemoryScope, MemoryStatus,
+} from '../src/memory/types.js';
 import { WorkspacePolicy } from '../src/runtime/workspace.js';
 import { printCommand } from './helpers/platform-command.js';
 
@@ -87,6 +90,8 @@ class ControlledRunner implements ExecutionRunnerLike {
 class SwitchableMemoryWriter implements ExecutionMemoryWriter {
   healthy = false;
   readonly commits: MemoryCommitRequest[] = [];
+  readonly postflights: MemoryPostflightRequest[] = [];
+  readonly semanticIds = new Map<string, string>();
   readonly events: Array<Record<string, unknown>> = [];
 
   async status(): Promise<MemoryStatus> {
@@ -111,6 +116,57 @@ class SwitchableMemoryWriter implements ExecutionMemoryWriter {
       deduplicated: false,
       state: 'active',
     };
+  }
+
+  async applyPostflight(request: MemoryPostflightRequest): Promise<MemoryPostflightApplyResult> {
+    if (!this.healthy) throw new Error('MEMORY_DEGRADED:acceptance');
+    this.postflights.push(request);
+    const canonicalKey = request.candidate?.canonicalKey;
+    const priorId = canonicalKey ? this.semanticIds.get(canonicalKey) : undefined;
+    const memoryId = canonicalKey ? (priorId ?? `memory-postflight-${this.semanticIds.size + 1}`) : undefined;
+    if (canonicalKey && !priorId && memoryId) this.semanticIds.set(canonicalKey, memoryId);
+    const decision = request.candidate ? (priorId ? 'NO_DURABLE_MEMORY' : 'WRITE_NEW_ROOT') : 'NO_DURABLE_MEMORY';
+    return {
+      advisory: false,
+      applied: true,
+      semanticMutation: Boolean(request.candidate && !priorId),
+      memoryId,
+      revisionId: request.candidate && !priorId ? `revision-postflight-${this.postflights.length}` : undefined,
+      createdEdges: 0,
+      decision,
+      targetMemoryId: priorId,
+      existingMemoryIds: priorId ? [priorId] : [],
+      reasonCodes: request.reasonCodes,
+      candidateHash: 'a'.repeat(64),
+      decisionRecord: {
+        id: `decision-${this.postflights.length}`,
+        principalId: request.scope.principalId,
+        projectId: request.scope.projectId,
+        routeContextId: request.routeContextId,
+        continuityTaskId: request.continuityTaskId,
+        contextId: request.contextId,
+        decisionType: decision,
+        candidateCanonicalKey: canonicalKey,
+        candidateHash: 'a'.repeat(64),
+        targetMemoryId: priorId,
+        existingMemoryIds: priorId ? [priorId] : [],
+        reasonCodes: request.reasonCodes,
+        evidenceRefs: request.evidenceRefs,
+        relationPlan: [],
+        rootReason: decision === 'WRITE_NEW_ROOT' ? request.rootReason : undefined,
+        createdAt: this.postflights.length,
+        appliedAt: this.postflights.length,
+        applyResult: { status: 'applied' },
+      },
+    };
+  }
+
+  async syncDurableBoundary(
+    _scope: MemoryScope,
+    reason: MemoryDurabilityBoundaryReason,
+  ): Promise<MemoryDurabilityBoundaryResult> {
+    if (!this.healthy) throw new Error('MEMORY_DEGRADED:acceptance');
+    return { required: false, state: 'NOT_REQUIRED', reason };
   }
 
   async recordEvent(request: any): Promise<unknown> {
@@ -434,9 +490,11 @@ describe('Task 19 end-to-end user workflow acceptance A-J', () => {
     writer.healthy = true;
     expect(await bridge.replay(scope)).toMatchObject({ synced: 1, failed: 0 });
     expect(await store.countMemorySyncQueue(scope)).toBe(0);
-    expect(writer.commits).toHaveLength(1);
+    expect(writer.postflights.filter((request) => request.candidate?.kind === 'failure')).toHaveLength(1);
+    expect(writer.semanticIds.size).toBe(1);
     expect(await bridge.replay(scope)).toMatchObject({ synced: 0, failed: 0 });
-    expect(writer.commits).toHaveLength(1);
+    expect(writer.postflights.filter((request) => request.candidate?.kind === 'failure')).toHaveLength(1);
+    expect(writer.semanticIds.size).toBe(1);
     await store.close();
   });
 
