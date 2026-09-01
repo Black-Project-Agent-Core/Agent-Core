@@ -476,6 +476,8 @@ Phase 6 reuses the Phase-2 encrypted remote protocol and keeps local durability 
 
 ## Phase 7 — Codespace Hydration + Memory Context Lease Enforcement
 
+Executable plan: [`agent-core-memory-nervous-system-phase-7-implementation-plan.md`](./agent-core-memory-nervous-system-phase-7-implementation-plan.md)
+
 **Purpose:** Extend lifecycle enforcement to direct ChatGPT→Codespace operations without making the bridge understand memory semantics.
 
 **Deliverables:**
