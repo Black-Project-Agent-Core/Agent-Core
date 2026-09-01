@@ -132,7 +132,7 @@ impl<P: SecretProtector> MonitorProbeRunner for ManagerProbeRunner<P> {
 
     fn probe(&self, key_id: &KeyId, now_utc_ms: i64) -> Result<(), ()> {
         self.manager
-            .validate_openrouter_key(key_id, &self.client, now_utc_ms)
+            .validate_openrouter_key_for_shadow_monitor_with(key_id, &self.client, now_utc_ms)
             .map(|_| ())
             .map_err(|_| ())
     }
@@ -242,6 +242,7 @@ mod tests {
 
     struct FakeRunner {
         summaries: Mutex<Vec<KeySummary>>,
+        cycle_count: AtomicUsize,
         probe_count: AtomicUsize,
         active: AtomicUsize,
         max_active: AtomicUsize,
@@ -253,6 +254,7 @@ mod tests {
         fn new(summaries: Vec<KeySummary>, probe_delay: Duration, fail_probes: bool) -> Self {
             Self {
                 summaries: Mutex::new(summaries),
+                cycle_count: AtomicUsize::new(0),
                 probe_count: AtomicUsize::new(0),
                 active: AtomicUsize::new(0),
                 max_active: AtomicUsize::new(0),
@@ -264,6 +266,7 @@ mod tests {
 
     impl MonitorProbeRunner for FakeRunner {
         fn list_summaries(&self) -> Result<Vec<KeySummary>, ()> {
+            self.cycle_count.fetch_add(1, Ordering::SeqCst);
             Ok(self.summaries.lock().unwrap().clone())
         }
 
@@ -324,6 +327,17 @@ mod tests {
         }
     }
 
+    fn wait_for_cycle_count(runner: &FakeRunner, minimum: usize) {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while runner.cycle_count.load(Ordering::SeqCst) < minimum {
+            assert!(
+                Instant::now() < deadline,
+                "monitor did not run the expected cycle"
+            );
+            thread::sleep(Duration::from_millis(2));
+        }
+    }
+
     #[test]
     fn background_worker_never_exceeds_two_concurrent_probes_and_shutdown_is_final() {
         let runner = Arc::new(FakeRunner::new(
@@ -354,13 +368,14 @@ mod tests {
         wait_for_probe_count(&runner, 1);
         drop(first);
         let after_first = runner.probe_count.load(Ordering::SeqCst);
+        let cycles_before_restart = runner.cycle_count.load(Ordering::SeqCst);
 
         let second = ShadowHealthMonitor::start_with_runner(
             runner.clone(),
             current_time_utc_ms().unwrap(),
             Duration::from_millis(2),
         );
-        thread::sleep(Duration::from_millis(30));
+        wait_for_cycle_count(&runner, cycles_before_restart + 1);
         drop(second);
         assert_eq!(runner.probe_count.load(Ordering::SeqCst), after_first);
     }

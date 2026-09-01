@@ -175,6 +175,26 @@ impl<P: SecretProtector> CredentialManager<P> {
         transport: &T,
         now_ms: i64,
     ) -> Result<KeySummary, OpenRouterValidationError> {
+        self.validate_openrouter_key_with_probe_policy(key_id, transport, now_ms, false)?
+            .ok_or(OpenRouterValidationError::StateUnavailable)
+    }
+
+    pub(crate) fn validate_openrouter_key_for_shadow_monitor_with<T: OpenRouterProbeTransport>(
+        &self,
+        key_id: &KeyId,
+        transport: &T,
+        now_ms: i64,
+    ) -> Result<Option<KeySummary>, OpenRouterValidationError> {
+        self.validate_openrouter_key_with_probe_policy(key_id, transport, now_ms, true)
+    }
+
+    fn validate_openrouter_key_with_probe_policy<T: OpenRouterProbeTransport>(
+        &self,
+        key_id: &KeyId,
+        transport: &T,
+        now_ms: i64,
+        require_shadow_health_eligibility: bool,
+    ) -> Result<Option<KeySummary>, OpenRouterValidationError> {
         let (secret, started_lifecycle) = {
             let mut inner = self
                 .lock_inner()
@@ -184,6 +204,12 @@ impl<P: SecretProtector> CredentialManager<P> {
                 .get(key_id)
                 .cloned()
                 .ok_or(OpenRouterValidationError::KeyNotFound)?;
+
+            if require_shadow_health_eligibility
+                && !is_shadow_health_probe_eligible(&record, now_ms)
+            {
+                return Ok(None);
+            }
 
             if !record.protected_blob.verify_checksum() {
                 record.lifecycle_state = LifecycleState::Quarantined;
@@ -282,7 +308,7 @@ impl<P: SecretProtector> CredentialManager<P> {
                     &events,
                     now_ms,
                 )?;
-                return Ok(record.summary());
+                return Ok(Some(record.summary()));
             }
             Ok(response) => {
                 let classified = classify_status(response.status, response.retry_after_ms);
@@ -325,8 +351,24 @@ impl<P: SecretProtector> CredentialManager<P> {
         };
 
         persist_probe_record(&mut inner, key_id, &record, &events, now_ms)?;
-        result
+        result.map(Some)
     }
+}
+
+fn is_shadow_health_probe_eligible(
+    record: &crate::StoredKeyRecord,
+    now_ms: i64,
+) -> bool {
+    record.lifecycle_state == LifecycleState::Enabled
+        && match record.availability_state {
+            AvailabilityState::Cooldown => record
+                .cooldown_until_utc_ms
+                .is_some_and(|deadline| deadline <= now_ms),
+            AvailabilityState::Unverified
+            | AvailabilityState::Ready
+            | AvailabilityState::Warning
+            | AvailabilityState::Exhausted => true,
+        }
 }
 
 fn persist_probe_record<P: SecretProtector>(
@@ -511,8 +553,9 @@ fn parse_retry_after_ms(value: Option<&HeaderValue>) -> Option<u64> {
 mod tests {
     use super::*;
     use crate::{
-        AvailabilityState, CredentialManager, FailureClass, KeyId, LifecycleState, ProtectError,
-        ProtectedBlob, SecretBytes, SecretProtector, VaultStore,
+        AvailabilityState, CredentialManager, FailureClass, KeyId, LifecycleState,
+        MONITOR_INITIAL_DELAY_MS, MONITOR_JITTER_WINDOW_MS, ProtectError, ProtectedBlob,
+        SecretBytes, SecretProtector, VaultStore,
     };
     use std::sync::Mutex;
 
@@ -791,6 +834,62 @@ mod tests {
                 AvailabilityState::Unverified
             );
             assert_eq!(after_provider.last_probe_at_utc_ms, Some(now_ms));
+        }
+    }
+
+    #[test]
+    fn shadow_monitor_rechecks_lifecycle_and_cooldown_after_planning_before_transport() {
+        let (_dir, manager, key_id) = manager_with_key();
+        let planned = crate::plan_shadow_health_probes(
+            &manager.list_summaries().unwrap(),
+            0,
+            MONITOR_INITIAL_DELAY_MS + MONITOR_JITTER_WINDOW_MS,
+        );
+        assert_eq!(
+            planned.into_iter().map(|plan| plan.key_id).collect::<Vec<_>>(),
+            vec![key_id.clone()]
+        );
+
+        for (lifecycle_state, availability_state, cooldown_until_utc_ms) in [
+            (LifecycleState::Disabled, AvailabilityState::Unverified, None),
+            (LifecycleState::Invalid, AvailabilityState::Unverified, None),
+            (
+                LifecycleState::Quarantined,
+                AvailabilityState::Unverified,
+                None,
+            ),
+            (
+                LifecycleState::Enabled,
+                AvailabilityState::Cooldown,
+                Some(MONITOR_INITIAL_DELAY_MS + MONITOR_JITTER_WINDOW_MS + 1),
+            ),
+        ] {
+            {
+                let mut inner = manager.lock_inner().unwrap();
+                let mut record = inner.keys.get(&key_id).cloned().unwrap();
+                record.lifecycle_state = lifecycle_state;
+                record.availability_state = availability_state;
+                record.cooldown_until_utc_ms = cooldown_until_utc_ms;
+                let update = record.state_update();
+                inner.store.update_key_state(&key_id, &update).unwrap();
+                inner.keys.insert(key_id.clone(), record);
+            }
+
+            let transport = FakeTransport::respond(response(
+                200,
+                r#"{"data":{"limit":100.0,"limit_remaining":80.0,"limit_reset":"monthly"}}"#,
+            ));
+            assert!(
+                manager
+                    .validate_openrouter_key_for_shadow_monitor_with(
+                        &key_id,
+                        &transport,
+                        MONITOR_INITIAL_DELAY_MS + MONITOR_JITTER_WINDOW_MS,
+                    )
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(transport.observed_secret_suffix.lock().unwrap().is_none());
         }
     }
 
