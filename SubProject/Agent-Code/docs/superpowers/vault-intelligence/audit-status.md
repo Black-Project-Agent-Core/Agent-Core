@@ -91,7 +91,7 @@ Fresh Phase 1 verification:
 
 ## Phase 2 — Intelligent Credential Scoring Engine
 
-Status: **PENDING**
+Status: **DONE — STANDALONE**
 
 Locked formula:
 
@@ -101,13 +101,31 @@ Locked formula:
 - Latency: 10%
 - Recent Success: 10%
 
-Required before completion:
+Implemented:
 
-- [ ] Deterministic scoring engine
-- [ ] Decision explanation / reason breakdown
-- [ ] Deterministic fallback mode preserved
-- [ ] Edge-case tests
-- [ ] No change to frozen Vault security boundary
+- [x] Deterministic weighted scoring engine
+- [x] Decision explanation with per-component contribution
+- [x] Deterministic best-candidate ranking
+- [x] Stable slot-index tie-break for equal scores
+- [x] Recent Success derived deterministically from last success/failure timestamps
+- [x] Neutral Recent Success = 50 when no outcome history exists
+- [x] Empty candidate and invalid/non-finite score edge cases rejected
+- [x] Existing `CredentialManager::acquire` round-robin path remains unchanged and available as the frozen deterministic baseline
+- [x] No change to protected-secret or provider-validation boundaries
+
+Fresh Phase 2 verification:
+
+- intelligence focused: **4 / 4 PASS**
+- credential-core unit tests: **49 / 49 PASS**
+- credential-core intelligence integration: **4 / 4 PASS**
+- `npm run test:vault-baseline`: PASS
+- credential-security scan: PASS
+- Tauri contract: PASS
+- focused Vault frontend: **13 / 13 PASS**
+- `npm run build`: PASS
+- `git diff --check`: PASS
+
+The intelligent selector is deliberately standalone at this stage. It can make and explain a credential decision, while the legacy rotation API remains the default path until the later lease/integration phase explicitly adopts intelligence.
 
 ## Phase 3 — Credential Event System
 
@@ -170,4 +188,12 @@ Priority remains:
 
 - Added additive Vault schema v2 and credential intelligence profiles.
 - Verified v1 migration, persistence, restart recovery, score bounds, and secret boundary.
+- Full Vault baseline remained green after the change.
+
+### 2026-09-01 — Phase 2 Intelligent Scoring
+
+- Added deterministic 35/25/20/10/10 scoring with contribution-level explanations.
+- Added deterministic best-candidate ranking and slot-index tie-breaking.
+- Derived Recent Success from existing success/failure history without a new provider call.
+- Preserved the existing round-robin rotation path unchanged as the deterministic baseline.
 - Full Vault baseline remained green after the change.
