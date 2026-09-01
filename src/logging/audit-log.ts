@@ -1,6 +1,7 @@
 import type { RouteMode, RouteTier } from '../capabilities/route-types.js';
 import type { CapabilityRisk } from '../capabilities/types.js';
-import { AuditJournal, type AuditJournalOptions, type AuditJournalStatus } from '../observability/audit-journal.js';
+import { AuditJournal, type AuditJournalOptions, type AuditJournalRecord, type AuditJournalStatus } from '../observability/audit-journal.js';
+import { AuditRecordBroadcaster, replayAuditRecords, type AuditRecordSubscription, type AuditReplayRequest, type AuditReplayResult } from '../observability/audit-stream.js';
 import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 
 export interface AuditEvent {
@@ -52,9 +53,11 @@ export const NOOP_RUNTIME_AUDIT_LOGGER: RuntimeAuditLogger = {
 export class FileAuditLogger implements AuditLogger, RoutingAuditLogger, RuntimeAuditLogger {
   readonly journal: AuditJournal;
   readonly filePath: string;
+  readonly broadcaster: AuditRecordBroadcaster;
 
   constructor(logDir: string, options: AuditJournalOptions = {}) {
-    this.journal = new AuditJournal(logDir, options);
+    this.broadcaster = options.broadcaster ?? new AuditRecordBroadcaster();
+    this.journal = new AuditJournal(logDir, { ...options, broadcaster: this.broadcaster });
     this.filePath = this.journal.filePath;
   }
 
@@ -74,6 +77,14 @@ export class FileAuditLogger implements AuditLogger, RoutingAuditLogger, Runtime
 
   attachMetrics(metrics: RuntimeMetricRegistry): void {
     this.journal.attachMetrics(metrics);
+  }
+
+  replay(request: AuditReplayRequest): Promise<AuditReplayResult> {
+    return replayAuditRecords(this.journal.auditRoot, request);
+  }
+
+  subscribe(listener: (record: AuditJournalRecord) => void | Promise<void>): AuditRecordSubscription {
+    return this.broadcaster.subscribe(listener);
   }
 
   drain(): Promise<void> {

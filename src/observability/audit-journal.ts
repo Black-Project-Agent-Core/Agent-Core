@@ -4,6 +4,7 @@ import path from 'node:path';
 import { redactMemoryText } from '../memory/redaction.js';
 import { correlationFields } from './correlation.js';
 import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
+import type { AuditRecordBroadcaster } from './audit-stream.js';
 
 export type AuditJson = null | boolean | number | string | AuditJson[] | { [key: string]: AuditJson };
 
@@ -55,6 +56,7 @@ export interface AuditJournalOptions {
   now?: () => number;
   appendLine?: (filePath: string, line: string) => Promise<void>;
   metrics?: RuntimeMetricRegistry;
+  broadcaster?: AuditRecordBroadcaster;
 }
 
 export type AuditVerificationResult = {
@@ -307,6 +309,7 @@ export class AuditJournal {
   private readonly retentionMs: number;
   private readonly now: () => number;
   private readonly appendLine: (filePath: string, line: string) => Promise<void>;
+  private readonly broadcaster: AuditRecordBroadcaster | undefined;
   private metrics?: RuntimeMetricRegistry;
   private drainPromise: Promise<void> | undefined;
   private inFlight = 0;
@@ -333,6 +336,7 @@ export class AuditJournal {
     this.retentionMs = Math.max(1, options.retentionMs ?? DEFAULT_RETENTION_MS);
     this.now = options.now ?? Date.now;
     this.metrics = options.metrics;
+    this.broadcaster = options.broadcaster;
     this.appendLine = options.appendLine ?? (async (filePath, line) => {
       await mkdir(path.dirname(filePath), { recursive: true });
       await appendFile(filePath, line, 'utf8');
@@ -457,6 +461,7 @@ export class AuditJournal {
         this.written += 1;
         this.metrics?.increment('audit.written.count');
         this.currentFileBytes += lineBytes;
+        this.broadcaster?.publish(record);
         try {
           await atomicJson(this.headPath, { schemaVersion: 1, sequence: this.sequence, hash: this.headHash, updatedAt: new Date(this.now()).toISOString() });
           this.lastWriteErrorCode = undefined;
