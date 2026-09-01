@@ -17,6 +17,8 @@ export interface MemoryGraphProps {
   snapshot: ObservatorySnapshot | null;
   selectedMemoryId: string | null;
   onSelectMemory(memoryId: string): void;
+  highlightedMemoryIds?: string[];
+  highlightKind?: 'recalled' | 'expanded';
 }
 
 const ASSOCIATIVE = new Set([
@@ -28,7 +30,7 @@ function isSemanticEdge(edge: ObservatoryEdge): boolean {
   return !ASSOCIATIVE.has(edge.relation);
 }
 
-export function MemoryGraph({ snapshot, selectedMemoryId, onSelectMemory }: MemoryGraphProps) {
+export function MemoryGraph({ snapshot, selectedMemoryId, onSelectMemory, highlightedMemoryIds = [], highlightKind }: MemoryGraphProps) {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState('all');
   const [state, setState] = useState('all');
@@ -36,6 +38,7 @@ export function MemoryGraph({ snapshot, selectedMemoryId, onSelectMemory }: Memo
 
   const model = useMemo(() => {
     const allNodes = snapshot?.nodes ?? [];
+    const highlighted = new Set(highlightedMemoryIds);
     const allEdges = snapshot?.edges ?? [];
     const normalizedQuery = query.trim().toLocaleLowerCase();
     const visibleNodes = allNodes.filter((node) => {
@@ -54,7 +57,7 @@ export function MemoryGraph({ snapshot, selectedMemoryId, onSelectMemory }: Memo
       return {
         id: node.memoryId,
         position: { x: position.x, y: position.y },
-        data: { label: <MemoryNodeCard node={node} orphanWarning={orphanWarning} selected={selectedMemoryId === node.memoryId} /> },
+        data: { label: <MemoryNodeCard node={node} orphanWarning={orphanWarning} selected={selectedMemoryId === node.memoryId} activityHighlight={highlighted.has(node.memoryId) ? highlightKind : undefined} /> },
         selected: selectedMemoryId === node.memoryId,
         draggable: false,
         connectable: false,
@@ -69,9 +72,10 @@ export function MemoryGraph({ snapshot, selectedMemoryId, onSelectMemory }: Memo
       markerEnd: { type: MarkerType.ArrowClosed },
       animated: false,
       selectable: false,
+      className: highlighted.has(edge.fromMemoryId) && highlighted.has(edge.toMemoryId) ? `memory-edge--activity-${highlightKind ?? 'recalled'}` : undefined,
     }));
     return { nodes, edges, visibleNodes };
-  }, [snapshot, query, kind, state, selectedMemoryId]);
+  }, [snapshot, query, kind, state, selectedMemoryId, highlightedMemoryIds, highlightKind]);
 
   const kinds = useMemo(() => [...new Set((snapshot?.nodes ?? []).map((node) => node.kind))].sort(), [snapshot]);
   const states = useMemo(() => [...new Set((snapshot?.nodes ?? []).map((node) => node.state))].sort(), [snapshot]);

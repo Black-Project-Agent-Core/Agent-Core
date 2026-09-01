@@ -1,8 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { observatoryApi } from './api';
-import type { ObservatoryHealth, ObservatoryNodeDetail, ObservatorySnapshot } from './types';
+import { activityReducer, initialActivityState } from './activity-reducer';
+import type { ObservatoryActivity, ObservatoryHealth, ObservatoryNodeDetail, ObservatorySnapshot } from './types';
+import { ActivityTracker } from '../components/ActivityTracker';
 import { MemoryGraph } from '../components/MemoryGraph';
 import { NodeInspector } from '../components/NodeInspector';
+
+interface ActivityHighlight {
+  memoryIds: string[];
+  kind: 'recalled' | 'expanded';
+}
+
+function parseSseActivity(event: MessageEvent): ObservatoryActivity | null {
+  try {
+    const value = JSON.parse(String(event.data)) as ObservatoryActivity;
+    return Number.isSafeInteger(value.sequence) && value.sequence >= 1 && typeof value.event === 'string' ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 export function MemoryObservatoryApp() {
   const [health, setHealth] = useState<ObservatoryHealth | null>(null);
@@ -11,20 +27,109 @@ export function MemoryObservatoryApp() {
   const [detail, setDetail] = useState<ObservatoryNodeDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activity, dispatchActivity] = useReducer(activityReducer, initialActivityState);
+  const [highlight, setHighlight] = useState<ActivityHighlight | null>(null);
+  const lastSequenceRef = useRef(0);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pulseActivity = (record: ObservatoryActivity) => {
+    if (!record.memoryIds?.length) return;
+    const kind = record.event === 'memory.remember_more_expanded'
+      ? 'expanded'
+      : record.event === 'memory.recalled'
+        ? 'recalled'
+        : null;
+    if (!kind) return;
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    setHighlight({ memoryIds: [...new Set(record.memoryIds)], kind });
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlight(null);
+      highlightTimerRef.current = null;
+    }, 1_800);
+  };
 
   useEffect(() => {
     let active = true;
-    void Promise.all([observatoryApi.health(), observatoryApi.snapshot()])
-      .then(([healthValue, snapshotValue]) => {
+    let source: EventSource | null = null;
+    let recovering = false;
+
+    const appendReplay = (records: ObservatoryActivity[]) => {
+      for (const record of records) {
+        if (!active) return;
+        dispatchActivity({ type: 'append', record });
+        lastSequenceRef.current = Math.max(lastSequenceRef.current, record.sequence);
+      }
+    };
+
+    const recoverRetained = async () => {
+      if (!active || recovering) return;
+      recovering = true;
+      try {
+        const replay = await observatoryApi.activity(lastSequenceRef.current, 250);
+        if (!active) return;
+        appendReplay(replay.records);
+      } catch {
+        // A failed retained replay is not interpreted as an empty history.
+      } finally {
+        recovering = false;
+      }
+    };
+
+    const resyncAfterGap = async () => {
+      dispatchActivity({ type: 'gap' });
+      await recoverRetained();
+      try {
+        const fresh = await observatoryApi.snapshot();
+        if (active) setSnapshot(fresh);
+      } catch {
+        // Keep the explicit gap visible; never fabricate a snapshot.
+      }
+    };
+
+    const bootstrap = async () => {
+      try {
+        const [healthValue, snapshotValue] = await Promise.all([observatoryApi.health(), observatoryApi.snapshot()]);
         if (!active) return;
         setHealth(healthValue);
         setSnapshot(snapshotValue);
         setError(null);
-      })
-      .catch((reason: unknown) => {
+
+        const initialAfter = Math.max(0, healthValue.auditSequence - 250);
+        try {
+          const replay = await observatoryApi.activity(initialAfter, 250);
+          if (!active) return;
+          dispatchActivity({ type: 'replace', records: replay.records });
+          lastSequenceRef.current = Math.max(initialAfter, replay.latestSequence, ...replay.records.map((record) => record.sequence));
+          for (const record of replay.records) pulseActivity(record);
+        } catch {
+          lastSequenceRef.current = initialAfter;
+        }
+
+        if (!active || typeof EventSource === 'undefined') return;
+        source = new EventSource(`/api/stream?after=${lastSequenceRef.current}`);
+        source.addEventListener('activity', (event) => {
+          const record = parseSseActivity(event as MessageEvent);
+          if (!record || !active || record.sequence <= lastSequenceRef.current) return;
+          lastSequenceRef.current = record.sequence;
+          dispatchActivity({ type: 'append', record });
+          pulseActivity(record);
+        });
+        source.addEventListener('stream.gap', () => { void resyncAfterGap(); });
+        source.onerror = () => { void recoverRetained(); };
+      } catch (reason: unknown) {
         if (active) setError(reason instanceof Error ? reason.message : 'OBSERVATORY_UNAVAILABLE');
-      });
-    return () => { active = false; };
+      }
+    };
+
+    void bootstrap();
+    return () => {
+      active = false;
+      source?.close();
+      if (highlightTimerRef.current) {
+        clearTimeout(highlightTimerRef.current);
+        highlightTimerRef.current = null;
+      }
+    };
   }, []);
 
   const selectMemory = (memoryId: string) => {
@@ -53,13 +158,16 @@ export function MemoryObservatoryApp() {
       </header>
       <section className="observatory-workspace" aria-label="Memory Observatory">
         <div className="graph-column">
-          <MemoryGraph snapshot={snapshot} selectedMemoryId={selectedMemoryId} onSelectMemory={selectMemory} />
+          <MemoryGraph
+            snapshot={snapshot}
+            selectedMemoryId={selectedMemoryId}
+            onSelectMemory={selectMemory}
+            highlightedMemoryIds={highlight?.memoryIds}
+            highlightKind={highlight?.kind}
+          />
           <NodeInspector detail={detail} loading={detailLoading} />
         </div>
-        <aside className="activity-scaffold" aria-label="Live activity scaffold">
-          <div className="panel-heading"><strong>Live Activity</strong><span>Task 8</span></div>
-          <p>Ordered audit activity arrives in Task 8.</p>
-        </aside>
+        <ActivityTracker records={activity.records} gap={activity.gap} />
       </section>
     </main>
   );

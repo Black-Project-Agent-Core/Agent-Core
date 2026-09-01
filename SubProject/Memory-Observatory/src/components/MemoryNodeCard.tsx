@@ -4,11 +4,13 @@ export interface MemoryNodeCardProps {
   node: ObservatoryNode;
   orphanWarning?: boolean;
   selected?: boolean;
+  activityHighlight?: 'recalled' | 'expanded';
 }
 
-export function MemoryNodeCard({ node, orphanWarning = false, selected = false }: MemoryNodeCardProps) {
+export function MemoryNodeCard({ node, orphanWarning = false, selected = false, activityHighlight }: MemoryNodeCardProps) {
+  const activityClass = activityHighlight ? ` memory-node-card--activity-${activityHighlight}` : '';
   return (
-    <article className={`memory-node-card${selected ? ' memory-node-card--selected' : ''}${orphanWarning ? ' memory-node-card--warning' : ''}`}>
+    <article className={`memory-node-card${selected ? ' memory-node-card--selected' : ''}${orphanWarning ? ' memory-node-card--warning' : ''}${activityClass}`}>
       <div className="memory-node-card__badges">
         <span>{node.kind.toUpperCase()}</span>
         <span>{node.state.toUpperCase()}</span>

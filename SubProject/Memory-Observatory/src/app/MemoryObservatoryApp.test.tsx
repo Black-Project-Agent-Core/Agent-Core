@@ -51,3 +51,64 @@ describe('MemoryObservatoryApp graph shell', () => {
     expect(within(inspector).getByText('evidence-9')).toBeInTheDocument();
   });
 });
+
+describe('MemoryObservatoryApp live activity', () => {
+  class FakeEventSource {
+    static instances: FakeEventSource[] = [];
+    readonly url: string;
+    private listeners = new Map<string, Array<(event: MessageEvent) => void>>();
+    onerror: ((event: Event) => void) | null = null;
+    closed = false;
+    constructor(url: string | URL) {
+      this.url = String(url);
+      FakeEventSource.instances.push(this);
+    }
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      const callback = listener as (event: MessageEvent) => void;
+      this.listeners.set(type, [...(this.listeners.get(type) ?? []), callback]);
+    }
+    removeEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      const callback = listener as (event: MessageEvent) => void;
+      this.listeners.set(type, (this.listeners.get(type) ?? []).filter((item) => item !== callback));
+    }
+    emit(type: string, payload: unknown, lastEventId = '') {
+      const event = new MessageEvent(type, { data: JSON.stringify(payload), lastEventId });
+      for (const listener of this.listeners.get(type) ?? []) listener(event);
+    }
+    close() { this.closed = true; }
+  }
+
+  it('loads recent persisted activity, consumes SSE without refresh, and resyncs graph on retained-history gap', async () => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal('EventSource', FakeEventSource as unknown as typeof EventSource);
+    const activityCalls: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/health') return new Response(JSON.stringify({ status: 'ok', mode: 'shadow', auditSequence: 300 }), { status: 200 });
+      if (url === '/api/snapshot') return new Response(JSON.stringify(snapshot), { status: 200 });
+      if (url.startsWith('/api/activity?')) {
+        activityCalls.push(url);
+        return new Response(JSON.stringify({
+          records: [{ sequence: 299, timestamp: '2026-09-01T06:20:00.000Z', category: 'memory', event: 'memory.recalled', state: 'completed', memoryIds: ['solution'] }],
+          earliestSequence: 1,
+          latestSequence: 299,
+        }), { status: 200 });
+      }
+      return new Response('{}', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MemoryObservatoryApp />);
+    expect(await screen.findByText('memory.recalled')).toBeInTheDocument();
+    expect(activityCalls[0]).toContain('after=50');
+    const source = FakeEventSource.instances[0]!;
+    expect(source.url).toContain('/api/stream?after=299');
+
+    source.emit('activity', { sequence: 300, timestamp: '2026-09-01T06:20:01.000Z', category: 'memory', event: 'memory.remember_more_expanded', state: 'completed', memoryIds: ['solution'] }, '300');
+    expect(await screen.findByText('memory.remember_more_expanded')).toBeInTheDocument();
+
+    source.emit('stream.gap', { code: 'AUDIT_HISTORY_GAP', requiresSnapshotResync: true });
+    expect(await screen.findByText('HISTORY GAP — GRAPH RESYNCED')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([value]) => String(value) === '/api/snapshot').length).toBeGreaterThan(1);
+  });
+});
