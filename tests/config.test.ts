@@ -19,6 +19,13 @@ describe('loadConfig', () => {
       allowedOrigins: [],
     });
     expect(config.mcp).toEqual({ protocolMode: 'dual' });
+    expect(config.memoryObservatory).toEqual({
+      enabled: false,
+      mode: 'shadow',
+      maxNodes: 500,
+      maxEdges: 2000,
+      recentActivityLimit: 250,
+    });
     expect(config.observability).toEqual({
       audit: {
         queueCapacity: 4096,
@@ -89,6 +96,11 @@ describe('loadConfig', () => {
       AGENT_CORE_TRUST_PROXY: 'true',
       AGENT_CORE_MCP_ALLOWED_ORIGINS: 'https://app.example.test;LOCALHOST;https://app.example.test:8443',
       AGENT_CORE_MCP_PROTOCOL_MODE: 'legacy',
+      AGENT_CORE_MEMORY_OBSERVATORY_ENABLED: 'true',
+      AGENT_CORE_MEMORY_OBSERVATORY_MODE: 'advisory',
+      AGENT_CORE_MEMORY_OBSERVATORY_MAX_NODES: '750',
+      AGENT_CORE_MEMORY_OBSERVATORY_MAX_EDGES: '4000',
+      AGENT_CORE_MEMORY_OBSERVATORY_RECENT_ACTIVITY_LIMIT: '1500',
       AGENT_CORE_AUDIT_QUEUE_CAPACITY: '2048',
       AGENT_CORE_AUDIT_MAX_FILE_BYTES: '1048576',
       AGENT_CORE_AUDIT_MAX_ROTATED_FILES: '8',
@@ -147,6 +159,13 @@ describe('loadConfig', () => {
       allowedOrigins: ['app.example.test', 'localhost'],
     });
     expect(config.mcp).toEqual({ protocolMode: 'legacy' });
+    expect(config.memoryObservatory).toEqual({
+      enabled: true,
+      mode: 'advisory',
+      maxNodes: 750,
+      maxEdges: 4000,
+      recentActivityLimit: 1500,
+    });
     expect(config.observability).toEqual({
       audit: {
         queueCapacity: 2048,
@@ -220,6 +239,17 @@ describe('loadConfig', () => {
   it('rejects unsupported MCP protocol modes', () => {
     expect(() => loadConfig({ AGENT_CORE_MCP_PROTOCOL_MODE: 'modern-only' }, 'F:\\Ignored'))
       .toThrow('AGENT_CORE_MCP_PROTOCOL_MODE must be dual or legacy');
+  });
+
+  it('rejects unsupported memory observatory modes and values above hard bounds', () => {
+    expect(() => loadConfig({ AGENT_CORE_MEMORY_OBSERVATORY_MODE: 'enforce' }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_MEMORY_OBSERVATORY_MODE must be shadow, advisory, or live');
+    expect(() => loadConfig({ AGENT_CORE_MEMORY_OBSERVATORY_MAX_NODES: '1001' }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_MEMORY_OBSERVATORY_MAX_NODES must be between 1 and 1000');
+    expect(() => loadConfig({ AGENT_CORE_MEMORY_OBSERVATORY_MAX_EDGES: '5001' }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_MEMORY_OBSERVATORY_MAX_EDGES must be between 1 and 5000');
+    expect(() => loadConfig({ AGENT_CORE_MEMORY_OBSERVATORY_RECENT_ACTIVITY_LIMIT: '2001' }, 'F:\\Ignored'))
+      .toThrow('AGENT_CORE_MEMORY_OBSERVATORY_RECENT_ACTIVITY_LIMIT must be between 1 and 2000');
   });
 
   it('restricts OTLP export to credential-free loopback endpoints', () => {

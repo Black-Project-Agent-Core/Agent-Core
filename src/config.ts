@@ -22,6 +22,16 @@ export interface MemoryRemoteConfig {
 
 export type MemoryHardLifecycleMode = 'disabled' | 'advisory' | 'enforce';
 
+export type MemoryObservatoryMode = 'shadow' | 'advisory' | 'live';
+
+export interface MemoryObservatoryConfig {
+  enabled: boolean;
+  mode: MemoryObservatoryMode;
+  maxNodes: number;
+  maxEdges: number;
+  recentActivityLimit: number;
+}
+
 export interface MemoryConfig {
   enabled: boolean;
   principalId: string | null;
@@ -133,6 +143,7 @@ export interface AppConfig {
   allowedRoots: string[];
   httpSecurity: HttpSecurityConfig;
   mcp: McpConfig;
+  memoryObservatory: MemoryObservatoryConfig;
   observability: ObservabilityConfig;
   memory: MemoryConfig;
   execution: ExecutionConfig;
@@ -169,6 +180,12 @@ function parseMcpProtocolMode(value: string | undefined): McpProtocolMode {
   const normalized = value?.trim().toLowerCase() || 'dual';
   if (normalized === 'dual' || normalized === 'legacy') return normalized;
   throw new Error('AGENT_CORE_MCP_PROTOCOL_MODE must be dual or legacy');
+}
+
+function parseMemoryObservatoryMode(value: string | undefined): MemoryObservatoryMode {
+  const normalized = value?.trim().toLowerCase() || 'shadow';
+  if (normalized === 'shadow' || normalized === 'advisory' || normalized === 'live') return normalized;
+  throw new Error('AGENT_CORE_MEMORY_OBSERVATORY_MODE must be shadow, advisory, or live');
 }
 
 function parsePositiveInteger(value: string | undefined, fallback: number, name: string): number {
@@ -415,6 +432,29 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     protocolMode: parseMcpProtocolMode(env.AGENT_CORE_MCP_PROTOCOL_MODE),
   };
 
+  const memoryObservatory: MemoryObservatoryConfig = {
+    enabled: parseBoolean(env.AGENT_CORE_MEMORY_OBSERVATORY_ENABLED, false),
+    mode: parseMemoryObservatoryMode(env.AGENT_CORE_MEMORY_OBSERVATORY_MODE),
+    maxNodes: parseBoundedPositiveInteger(
+      env.AGENT_CORE_MEMORY_OBSERVATORY_MAX_NODES,
+      500,
+      'AGENT_CORE_MEMORY_OBSERVATORY_MAX_NODES',
+      1000,
+    ),
+    maxEdges: parseBoundedPositiveInteger(
+      env.AGENT_CORE_MEMORY_OBSERVATORY_MAX_EDGES,
+      2000,
+      'AGENT_CORE_MEMORY_OBSERVATORY_MAX_EDGES',
+      5000,
+    ),
+    recentActivityLimit: parseBoundedPositiveInteger(
+      env.AGENT_CORE_MEMORY_OBSERVATORY_RECENT_ACTIVITY_LIMIT,
+      250,
+      'AGENT_CORE_MEMORY_OBSERVATORY_RECENT_ACTIVITY_LIMIT',
+      2000,
+    ),
+  };
+
   const otlpEndpoint = parseOtlpEndpoint(env.AGENT_CORE_OTLP_ENDPOINT);
   const observability: ObservabilityConfig = {
     audit: {
@@ -498,6 +538,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     allowedRoots: parseRoots(env.AGENT_CORE_ALLOWED_ROOTS, baseDir),
     httpSecurity,
     mcp,
+    memoryObservatory,
     observability,
     memory,
     execution,
