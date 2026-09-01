@@ -9,6 +9,8 @@ import { createRequestCorrelation, formatTraceparent, runWithCorrelation } from 
 import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 import type { TelemetryService } from '../observability/telemetry.js';
 
+export type MemoryContextLeaseHttpHandler = (request: IncomingMessage, response: ServerResponse) => Promise<void>;
+
 export type McpHttpHandler = (
   request: IncomingMessage,
   response: ServerResponse,
@@ -25,6 +27,7 @@ export interface HttpHandlerOptions {
   healthMetricsProvider?: () => Promise<Record<string, unknown>>;
   metrics?: RuntimeMetricRegistry;
   telemetry?: TelemetryService;
+  memoryContextLeaseHandler?: MemoryContextLeaseHttpHandler;
 }
 
 function sendJson(
@@ -47,7 +50,7 @@ const DEFAULT_HTTP_SECURITY = new HttpSecurityPolicy({
 });
 
 const OBSERVABLE_ROUTES = new Set([
-  '/health', '/health/metrics', '/mcp',
+  '/health', '/health/metrics', '/mcp', '/internal/memory-context-lease',
   '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp',
   '/.well-known/oauth-authorization-server',
   '/oauth/register', '/oauth/authorize', '/oauth/token',
@@ -93,6 +96,19 @@ async function handleRequest(
     if (request.method === 'GET' && route === '/health') {
       const diagnostics = options.healthProvider ? await options.healthProvider() : {};
       sendJson(response, 200, { status: 'ok', service: 'agent-core', ...diagnostics });
+      return;
+    }
+
+    if (route === '/internal/memory-context-lease') {
+      if (!security.isLoopbackRequest(request)) {
+        sendJson(response, 403, { error: 'memory_context_lease_local_only' });
+        return;
+      }
+      if (!options.memoryContextLeaseHandler) {
+        sendJson(response, 404, { error: 'memory_context_lease_unavailable' });
+        return;
+      }
+      await options.memoryContextLeaseHandler(request, response);
       return;
     }
 

@@ -385,6 +385,8 @@ describe('memory-aware route context', () => {
     const route = textBody(routed);
     expect(route).toMatchObject({ tier: 'atomic', mode: 'atomic_direct', memoryStatus: 'disabled' });
     expect(route.memoryContextId).toBeNull();
+    expect(route.memoryContextLease).toBeNull();
+    expect(route.memoryContextLeaseExpiresAt).toBeNull();
     expect(route.memorySummary).toEqual([]);
     expect(route.blockingGuardrails).toEqual([]);
     expect(route.openConflicts).toEqual([]);

@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { FileKeyStore } from './auth/key-store.js';
 import { loadConfig, type AppConfig } from './config.js';
 import { createHttpHandler } from './http/app.js';
+import { createMemoryContextLeaseHttpHandler } from './http/memory-context-lease.js';
 import { HttpSecurityPolicy } from './http/security-policy.js';
 import { FileAuditLogger } from './logging/audit-log.js';
 import { createMcpHttpHandler } from './mcp/handler.js';
@@ -86,6 +87,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
       };
     },
     mcpHandler: createMcpHttpHandler(runtime, { protocolMode: config.mcp.protocolMode }),
+    memoryContextLeaseHandler: createMemoryContextLeaseHttpHandler(runtime),
   }));
 
   try {

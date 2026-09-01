@@ -177,6 +177,8 @@ export function registerCapabilityTools(
     let lifecycleRecord: MemoryContextLifecycleRecord | null = null;
     let priorPendingCount = 0;
     let lifecycleAdvisoryCode: 'MEMORY_POSTFLIGHT_REQUIRED' | undefined;
+    let memoryContextLease: string | null = null;
+    let memoryContextLeaseExpiresAt: string | null = null;
 
     if (runtime.memory.config.enabled) {
       try {
@@ -300,6 +302,21 @@ export function registerCapabilityTools(
       }
     }
 
+    if (preflight && lifecycleRecord && runtime.memory.config.hardLifecycleMode !== 'disabled') {
+      try {
+        const issuedLease = await runtime.memory.issueContextLease({
+          scope,
+          contextId: preflight.contextId,
+          routeContextId: reservation.routeContextId,
+        });
+        memoryContextLease = issuedLease.token;
+        memoryContextLeaseExpiresAt = new Date(issuedLease.expiresAt).toISOString();
+      } catch (error) {
+        memoryStatus = 'degraded';
+        if (runtime.memory.config.hardLifecycleMode === 'enforce') return errorResult(error);
+      }
+    }
+
     const memoryInjection = injectMemoryIntoRoutingContext(context, preflight);
     const plan = runtime.router.route(task, memoryInjection.context);
     if (memoryInjection.applied && !plan.reasonCodes.includes('autonomous_memory_context')) {
@@ -364,6 +381,8 @@ export function registerCapabilityTools(
       relatedDecisions: preflight?.relatedDecisions ?? [],
       memoryConfidence: memoryConfidence(memorySummary),
       memorySnapshotHash: preflight?.snapshotHash ?? null,
+      memoryContextLease,
+      memoryContextLeaseExpiresAt,
       memoryLifecycle: {
         mode: runtime.memory.config.hardLifecycleMode,
         postflightState: lifecycleRecord?.postflightState ?? null,

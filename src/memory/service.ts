@@ -25,6 +25,7 @@ import {
   type MemoryRemoteStateInput,
   type MemoryWriteDecisionInput,
 } from './cognition-ledger.js';
+import { MemoryContextLeaseAuthority, type IssuedMemoryContextLease, type ValidatedMemoryContextLease } from './context-lease.js';
 import { MemoryDurabilityBoundary } from './durability-boundary.js';
 import { MemoryHardLifecycle, MemoryHardLifecycleError, type MemoryContextLifecycleRecord } from './hard-lifecycle.js';
 import { MemoryLifecycle } from './lifecycle.js';
@@ -163,6 +164,7 @@ export class MemoryService {
   private lastIntegrityCheckAt: number | undefined;
   private lastSuccessfulIntegrityCheckAt: number | undefined;
   private lastBackup: MemoryBackupRecord | undefined;
+  private readonly contextLeaseAuthority = new MemoryContextLeaseAuthority();
 
   readonly remoteTransport: MemoryRemoteTransport | undefined;
 
@@ -308,6 +310,71 @@ export class MemoryService {
     } finally {
       this.metrics?.observe('memory.preflight.duration_ms', Math.max(0, performance.now() - started));
     }
+  }
+
+  async issueContextLease(input: {
+    scope: MemoryScope;
+    contextId: string;
+    routeContextId: string;
+    now?: number;
+  }): Promise<IssuedMemoryContextLease> {
+    const now = input.now ?? Date.now();
+    const lifecycle = await this.validateLifecycleContext({
+      scope: input.scope,
+      contextId: input.contextId,
+      routeContextId: input.routeContextId,
+      now,
+    });
+    return this.contextLeaseAuthority.issue(lifecycle, now);
+  }
+
+  async validateContextLease(input: {
+    lease: string;
+    workspaceRoot: string;
+    now?: number;
+  }): Promise<ValidatedMemoryContextLease> {
+    if (!this.config.enabled) {
+      throw new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Memory is disabled; lease authority is unavailable');
+    }
+    const now = input.now ?? Date.now();
+    let decoded: ValidatedMemoryContextLease;
+    try {
+      decoded = this.contextLeaseAuthority.validate(input.lease, now);
+    } catch (error) {
+      if (error instanceof MemoryHardLifecycleError) throw error;
+      throw new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Memory Context Lease validation failed');
+    }
+    if (decoded.scope.projectId !== input.workspaceRoot) {
+      throw new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Memory Context Lease does not authorize this workspace');
+    }
+    const lifecycle = await this.validateLifecycleContext({
+      scope: decoded.scope,
+      contextId: decoded.contextId,
+      routeContextId: decoded.routeContextId,
+      now,
+    });
+    if (lifecycle.objectiveHash !== decoded.objectiveHash || decoded.expiresAt > lifecycle.expiresAt) {
+      throw new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Memory Context Lease no longer matches persisted lifecycle authority');
+    }
+    return decoded;
+  }
+
+  async completeContextLeaseMeaningfulWork(input: {
+    lease: string;
+    workspaceRoot: string;
+    toolName: string;
+    reasonCode: string;
+    now?: number;
+  }): Promise<MemoryContextLifecycleRecord> {
+    const decoded = await this.validateContextLease({ lease: input.lease, workspaceRoot: input.workspaceRoot, now: input.now });
+    return this.markLifecycleMeaningfulWork({
+      scope: decoded.scope,
+      contextId: decoded.contextId,
+      routeContextId: decoded.routeContextId,
+      toolName: input.toolName,
+      reasonCode: input.reasonCode,
+      now: input.now,
+    });
   }
 
   async getLifecycleContext(scope: MemoryScope, contextId: string): Promise<MemoryContextLifecycleRecord | null> {
