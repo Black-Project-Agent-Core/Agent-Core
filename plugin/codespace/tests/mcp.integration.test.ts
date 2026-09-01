@@ -58,6 +58,7 @@ describe('codespace MCP stdio server', () => {
 
       const tools = await client.listTools();
       const names = tools.tools.map((tool) => tool.name);
+      expect(names).toHaveLength(12);
       expect(names).toEqual(expect.arrayContaining([
         'codespace_status',
         'list_directory',
