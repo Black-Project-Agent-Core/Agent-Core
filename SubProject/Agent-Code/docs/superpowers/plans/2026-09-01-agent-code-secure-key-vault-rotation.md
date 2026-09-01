@@ -654,7 +654,7 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/feature/agent-code-key-va
   - `VaultStore::load_protected_blob(&KeyId)`
   - `VaultStore::load_rotation_cursor()` / `save_rotation_cursor(slot)`
 
-- [ ] **Step 1: Write a RED schema/storage test**
+- [x] **Step 1: Write a RED schema/storage test**
 
 The test must open a temp DB, insert a record whose BLOB contains synthetic non-secret bytes, list it, verify `protected_blob` has SQLite `blob` type, and verify `PRAGMA user_version = 1`.
 
@@ -672,7 +672,7 @@ fn corrupt_existing_database_fails_closed_and_is_not_recreated() {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml store::tests -- --nocapture
@@ -680,7 +680,7 @@ cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml store::te
 
 Expected: FAIL because `VaultStore` does not exist.
 
-- [ ] **Step 3: Add SQLite/test dependencies**
+- [x] **Step 3: Add SQLite/test dependencies**
 
 Add to `crates/credential-core/Cargo.toml`:
 
@@ -691,7 +691,7 @@ rusqlite = { version = "0.37.0", features = ["bundled"] }
 tempfile = "3.23.0"
 ```
 
-- [ ] **Step 4: Create the exact schema**
+- [x] **Step 4: Create the exact schema**
 
 Use SQLite `STRICT` tables where supported by the bundled SQLite version.
 
@@ -733,7 +733,7 @@ VALUES(1, -1, 0);
 PRAGMA user_version = 1;
 ```
 
-- [ ] **Step 5: Implement transactions and bounded conversion**
+- [x] **Step 5: Implement transactions and bounded conversion**
 
 All enum text parsing must reject unknown values; never coerce an unknown lifecycle/availability state into `READY`.
 
@@ -746,11 +746,11 @@ valid DB user_version 0 -> migrate transactionally to 1
 valid DB user_version > 1 -> fail with UnsupportedSchema
 ```
 
-- [ ] **Step 6: Add persistence/restart tests**
+- [x] **Step 6: Add persistence/restart tests**
 
 Test that key metadata, cooldown deadline, failure class, and rotation cursor survive close/reopen byte-for-byte at the semantic field level.
 
-- [ ] **Step 7: Run focused + full core tests**
+- [x] **Step 7: Run focused + full core tests**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml store::tests -- --nocapture
@@ -759,7 +759,7 @@ cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit and publish**
+- [x] **Step 8: Commit and publish**
 
 ```bash
 git add SubProject/Agent-Code/src-tauri/crates/credential-core
