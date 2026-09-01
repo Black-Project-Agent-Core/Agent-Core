@@ -112,3 +112,74 @@ describe('MemoryObservatoryApp live activity', () => {
     expect(fetchMock.mock.calls.filter(([value]) => String(value) === '/api/snapshot').length).toBeGreaterThan(1);
   });
 });
+
+describe('MemoryObservatoryApp graph convergence', () => {
+  class ConvergenceEventSource {
+    static instances: ConvergenceEventSource[] = [];
+    readonly url: string;
+    private listeners = new Map<string, Array<(event: MessageEvent) => void>>();
+    constructor(url: string | URL) { this.url = String(url); ConvergenceEventSource.instances.push(this); }
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      const callback = listener as (event: MessageEvent) => void;
+      this.listeners.set(type, [...(this.listeners.get(type) ?? []), callback]);
+    }
+    removeEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+      const callback = listener as (event: MessageEvent) => void;
+      this.listeners.set(type, (this.listeners.get(type) ?? []).filter((item) => item !== callback));
+    }
+    emit(type: string, payload: unknown, lastEventId = '') {
+      const event = new MessageEvent(type, { data: JSON.stringify(payload), lastEventId });
+      for (const listener of this.listeners.get(type) ?? []) listener(event);
+    }
+    close() {}
+    onerror: ((event: Event) => void) | null = null;
+  }
+
+  it('converges node, revision, and edge changes from authoritative snapshots without browser reload', async () => {
+    ConvergenceEventSource.instances = [];
+    vi.stubGlobal('EventSource', ConvergenceEventSource as unknown as typeof EventSource);
+    const baseNode = { memoryId: 'a1', title: 'A1', canonicalKey: 'a1', kind: 'decision', state: 'active', revisionNo: 1, valuePreview: 'A1', importance: 1, pinned: false, createdAt: 1, updatedAt: 1 };
+    const a2 = { ...baseNode, memoryId: 'a2', title: 'A2', canonicalKey: 'a2', createdAt: 2, updatedAt: 2 };
+    const a3r1 = { ...baseNode, memoryId: 'a3', title: 'A3', canonicalKey: 'a3', createdAt: 3, updatedAt: 3 };
+    const a3r2 = { ...a3r1, revisionNo: 2, valuePreview: 'A3 revised', updatedAt: 4 };
+    const makeSnapshot = (nodes: any[], edges: any[] = []) => ({
+      schemaVersion: 1, generatedAt: '2026-09-01T00:00:00.000Z', auditSequence: 10,
+      project: { projectId: '/workspaces/Agent-Core', workspaceLabel: 'Agent-Core' },
+      status: { memoryHealthy: true, lifecycleMode: 'advisory', remoteEnabled: true, remoteDurabilityState: 'REMOTE_SYNCED' },
+      nodes, edges, conflicts: [], timeline: [],
+      continuity: { active: [], completed: [], blocked: [], deferred: [], unfinished: [], frontier: [], interruptedTurnIds: [] },
+      truncated: { nodes: false, edges: false, timeline: false },
+    });
+    let currentSnapshot = makeSnapshot([baseNode, a2]);
+    let snapshotCalls = 0;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/health') return new Response(JSON.stringify({ status: 'ok', mode: 'shadow', auditSequence: 10 }), { status: 200 });
+      if (url === '/api/snapshot') { snapshotCalls += 1; return new Response(JSON.stringify(currentSnapshot), { status: 200 }); }
+      if (url.startsWith('/api/activity?')) return new Response(JSON.stringify({ records: [], earliestSequence: 1, latestSequence: 10 }), { status: 200 });
+      return new Response('{}', { status: 404 });
+    }));
+
+    render(<MemoryObservatoryApp />);
+    expect(await screen.findByText('A2')).toBeInTheDocument();
+    const source = ConvergenceEventSource.instances[0]!;
+
+    currentSnapshot = makeSnapshot([baseNode, a2, a3r1]);
+    source.emit('activity', { sequence: 11, timestamp: new Date().toISOString(), category: 'memory', event: 'memory.node_created', state: 'completed', memoryIds: ['a3'] }, '11');
+    expect(await screen.findByText('A3')).toBeInTheDocument();
+    expect(screen.getByText('3 nodes · 0 edges')).toBeInTheDocument();
+
+    currentSnapshot = makeSnapshot([baseNode, a2, a3r2]);
+    source.emit('activity', { sequence: 12, timestamp: new Date().toISOString(), category: 'memory', event: 'memory.revision_created', state: 'completed', memoryIds: ['a3'] }, '12');
+    const a3Card = (await screen.findByText('A3')).closest('article')!;
+    expect(await within(a3Card).findByText('r2')).toBeInTheDocument();
+    expect(screen.getByText('3 nodes · 0 edges')).toBeInTheDocument();
+
+    currentSnapshot = makeSnapshot([baseNode, a2, a3r2], [{ edgeId: 'e3', fromMemoryId: 'a3', toMemoryId: 'a2', relation: 'validated_by', weight: 1 }]);
+    source.emit('activity', { sequence: 13, timestamp: new Date().toISOString(), category: 'memory', event: 'memory.edge_created', state: 'completed', memoryIds: ['a3', 'a2'], relation: 'validated_by' }, '13');
+    expect((await screen.findAllByText('validated_by')).length).toBeGreaterThan(0);
+    expect(await screen.findByText('3 nodes · 1 edges')).toBeInTheDocument();
+    expect(screen.getByTestId('graph-convergence-latency')).toHaveAttribute('data-samples', '3');
+    expect(snapshotCalls).toBe(4);
+  });
+});

@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { observatoryApi } from './api';
 import { activityReducer, initialActivityState } from './activity-reducer';
+import { createGraphRefreshScheduler, isGraphChangingEvent } from './graph-convergence';
 import type { ObservatoryActivity, ObservatoryHealth, ObservatoryNodeDetail, ObservatorySnapshot } from './types';
 import { ActivityTracker } from '../components/ActivityTracker';
 import { ConflictView } from '../components/ConflictView';
@@ -37,6 +38,7 @@ export function MemoryObservatoryApp() {
   const [lens, setLens] = useState<ObservatoryLens>('graph');
   const [activity, dispatchActivity] = useReducer(activityReducer, initialActivityState);
   const [highlight, setHighlight] = useState<ActivityHighlight | null>(null);
+  const [graphConvergence, setGraphConvergence] = useState({ lastLatencyMs: null as number | null, samples: 0 });
   const lastSequenceRef = useRef(0);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -60,6 +62,20 @@ export function MemoryObservatoryApp() {
     let active = true;
     let source: EventSource | null = null;
     let recovering = false;
+    const graphScheduler = createGraphRefreshScheduler(async (firstEventAt) => {
+      try {
+        const fresh = await observatoryApi.snapshot();
+        if (!active) return;
+        setSnapshot(fresh);
+        const appliedAt = typeof performance !== 'undefined' && typeof performance.now === 'function'
+          ? performance.now()
+          : Date.now();
+        const latency = Math.max(0, appliedAt - firstEventAt);
+        setGraphConvergence((current) => ({ lastLatencyMs: latency, samples: current.samples + 1 }));
+      } catch {
+        // A failed observer refresh does not mutate or replace the last authoritative graph.
+      }
+    }, { debounceMs: 50, maxWaitMs: 250 });
 
     const appendReplay = (records: ObservatoryActivity[]) => {
       for (const record of records) {
@@ -121,6 +137,7 @@ export function MemoryObservatoryApp() {
           lastSequenceRef.current = record.sequence;
           dispatchActivity({ type: 'append', record });
           pulseActivity(record);
+          if (isGraphChangingEvent(record.event)) graphScheduler.schedule();
         });
         source.addEventListener('stream.gap', () => { void resyncAfterGap(); });
         source.onerror = () => { void recoverRetained(); };
@@ -133,6 +150,7 @@ export function MemoryObservatoryApp() {
     return () => {
       active = false;
       source?.close();
+      graphScheduler.dispose();
       if (highlightTimerRef.current) {
         clearTimeout(highlightTimerRef.current);
         highlightTimerRef.current = null;
@@ -195,6 +213,8 @@ export function MemoryObservatoryApp() {
                   onSelectMemory={selectMemory}
                   highlightedMemoryIds={highlight?.memoryIds}
                   highlightKind={highlight?.kind}
+                  convergenceLatencyMs={graphConvergence.lastLatencyMs}
+                  convergenceSamples={graphConvergence.samples}
                 />
                 <NodeInspector detail={detail} loading={detailLoading} />
               </div>

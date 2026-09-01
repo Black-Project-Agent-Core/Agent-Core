@@ -19,6 +19,8 @@ export interface MemoryGraphProps {
   onSelectMemory(memoryId: string): void;
   highlightedMemoryIds?: string[];
   highlightKind?: 'recalled' | 'expanded';
+  convergenceLatencyMs?: number | null;
+  convergenceSamples?: number;
 }
 
 const ASSOCIATIVE = new Set([
@@ -30,7 +32,10 @@ function isSemanticEdge(edge: ObservatoryEdge): boolean {
   return !ASSOCIATIVE.has(edge.relation);
 }
 
-export function MemoryGraph({ snapshot, selectedMemoryId, onSelectMemory, highlightedMemoryIds = [], highlightKind }: MemoryGraphProps) {
+export function MemoryGraph({
+  snapshot, selectedMemoryId, onSelectMemory, highlightedMemoryIds = [], highlightKind,
+  convergenceLatencyMs = null, convergenceSamples = 0,
+}: MemoryGraphProps) {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState('all');
   const [state, setState] = useState('all');
@@ -94,6 +99,16 @@ export function MemoryGraph({ snapshot, selectedMemoryId, onSelectMemory, highli
       <div className="panel-heading graph-heading">
         <div><strong>Memory Graph</strong><span>{snapshot ? `${snapshot.nodes.length} nodes · ${snapshot.edges.length} edges` : 'loading snapshot'}</span></div>
         <div className="graph-actions">
+          {convergenceSamples > 0 ? (
+            <span
+              className="graph-convergence"
+              data-testid="graph-convergence-latency"
+              data-latency-ms={convergenceLatencyMs === null ? '' : convergenceLatencyMs.toFixed(3)}
+              data-samples={convergenceSamples}
+            >
+              converge {convergenceLatencyMs === null ? '—' : `${convergenceLatencyMs.toFixed(1)} ms`}
+            </span>
+          ) : null}
           <button type="button" onClick={zoomCurrent} disabled={!current}>Current</button>
           <button type="button" onClick={() => void flow?.fitView({ padding: 0.15, duration: 200 })} disabled={!model.nodes.length}>Fit</button>
         </div>
