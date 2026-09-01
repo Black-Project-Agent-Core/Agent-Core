@@ -39,9 +39,9 @@ assert.match(windowsBuild, /cargo-xwin/);
 assert.match(windowsBuild, /x86_64-pc-windows-msvc/);
 assert.match(makensisWrapper, /NSISDIR/);
 assert.match(makensisWrapper, /\/usr\/bin\/makensis/);
-assert.match(buildRs, /WindowsAttributes::new/);
-assert.match(buildRs, /app_manifest/);
-assert.doesNotMatch(buildRs, /Microsoft\.Windows\.Common-Controls/);
+assert.match(buildRs, /tauri_build::build\(\)/);
+assert.doesNotMatch(buildRs, /app_manifest/);
+assert.match(windowsBuild, /check-windows-artifact\.sh/);
 for (const required of [
   'nsis',
   'lld',

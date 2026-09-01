@@ -21,4 +21,5 @@ command -v cargo-xwin >/dev/null 2>&1 || {
 TOOLCHAIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/toolchain" && pwd -P)"
 export NSISDIR XWIN_CACHE_DIR
 export PATH="$TOOLCHAIN_DIR:$PATH"
-exec npx tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc "$@"
+npx tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc "$@"
+bash scripts/check-windows-artifact.sh
