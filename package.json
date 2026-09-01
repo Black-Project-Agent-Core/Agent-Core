@@ -14,6 +14,7 @@
     "acceptance:github": "npm run build && node scripts/github-live-acceptance.mjs",
     "check:brand": "node scripts/check-agent-core-brand.mjs",
     "benchmark:memory": "npm run build && node scripts/benchmark-memory.mjs",
+    "benchmark:codespace-memory": "npm run build && npm run build:codespace && node scripts/benchmark-codespace-shared-memory.mjs",
     "benchmark:execution": "npm run build && node scripts/benchmark-execution.mjs",
     "quality:report": "npm run build && node scripts/evaluate-quality.mjs",
     "quality:gate": "npm run build && node scripts/evaluate-quality.mjs --gate",
