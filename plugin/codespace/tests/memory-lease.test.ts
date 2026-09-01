@@ -113,6 +113,17 @@ describe('Codespace opaque Memory Context Lease adapter', () => {
     });
   });
 
+  it('keeps advisory post-mutation authority failure non-blocking and reports the postflight advisory truthfully', async () => {
+    const client = new CodespaceMemoryLeaseClient({
+      mode: 'advisory',
+      endpoint: 'http://127.0.0.1:9/internal/memory-context-lease',
+      timeoutMs: 20,
+    });
+    await expect(client.after({ toolName: 'write_file', workspaceRoot: '/workspaces/repo' })).resolves.toEqual({
+      mode: 'advisory', required: true, valid: false, mutationClass: 'authority_unavailable', advisoryCode: 'MEMORY_POSTFLIGHT_REQUIRED',
+    });
+  });
+
   it('reports post-mutation authority failure truthfully with mutationCommitted and never embeds the lease in the error', async () => {
     const token = 'mcl1.post-mutation-secret.ciphertext.tag';
     const url = await endpoint((_req, res) => {

@@ -152,6 +152,14 @@ describe('loopback Memory Context Lease control endpoint', () => {
     });
     expect(await f.runtime.memory.getLifecycleContext(f.scope, preflight.contextId))
       .toMatchObject({ postflightState: 'POSTFLIGHT_PENDING', meaningfulWorkCount: 1, lastToolName: 'write_file' });
+
+    const secondAfter = await post(f.baseUrl, {
+      action: 'after', toolName: 'edit_file', workspaceRoot: f.root, lease: issued.token, input: {},
+    });
+    expect(secondAfter.status).toBe(200);
+    expect(secondAfter.body).toMatchObject({ valid: true, postflightState: 'POSTFLIGHT_PENDING' });
+    expect(await f.runtime.memory.getLifecycleContext(f.scope, preflight.contextId))
+      .toMatchObject({ postflightState: 'POSTFLIGHT_PENDING', meaningfulWorkCount: 2, lastToolName: 'edit_file' });
   });
 
   it('keeps advisory mode non-blocking without fabricating a valid lease', async () => {
