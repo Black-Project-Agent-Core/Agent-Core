@@ -209,3 +209,76 @@ Required gates:
 - clean worktree
 
 Only after all gates pass may a controlled replacement/cutover of the currently running Codespace plugin be prepared. No merge to `main` is performed without explicit user authorization.
+
+## Certification evidence — candidate ready for controlled cutover
+
+### Implementation checkpoints
+
+- Connection self-healing: `e1a469f4ca40b7266e603bcc249858230954e289`
+  - Problem: GitHub Codespaces could report a successful port-visibility mutation while port `8765` remained private long enough for `ensure-running.sh` to fail.
+  - Fix: bounded re-check/re-issue/re-check until GitHub confirms `public`; root lifecycle serialization prevents `postStart`/`postAttach` races; detached children do not inherit the root flock; OAuth/MCP public gates, tunnel connect, and doctor now use bounded transient recovery.
+- Shared-memory principal alignment: `f3447d3`, `fbd4e98`
+  - Problem: hydration used `AGENT_CORE_MEMORY_REMOTE_PRINCIPAL_ID` while normal MCP memory scope used volatile authenticated `key.id`, so a fresh Codespace key could hydrate one namespace and query another.
+  - Fix: stable logical memory principal is separate from authentication/route/process ownership. Memory/continuity use `MemoryConfig.principalId`; operational authentication remains bound to the real key ID.
+- Shared Agent Core service: `7d379162007956786f5299ff9a9de4a36b7f733b`
+  - Problem: Codespace had lease enforcement but no bounded way to read/continue the same Agent Core memory/continuity state.
+  - Fix: `CodespaceSharedMemoryService` delegates only to existing Agent Core Memory/Continuity/Cognition/Durability primitives; no SQLite or semantic authority is duplicated.
+- Exact-loopback Agent Core endpoint: `ce16c4446d7a85451e19af8be0da03461a67738b`
+  - Adds `/internal/codespace-memory` with bounded strict actions `status`, `open_context`, `search`, `get`, `explain`, `remember_more`, and `checkpoint`.
+  - Forwarded/public access is rejected before body processing; caller cannot select principal or another workspace; outward projections remove logical principal identity.
+- Codespace thin-client + MCP surface: `1981c8c994d34b5a297599bef3aa285c2dd4e4cf`
+  - Adds exactly seven shared-memory tools to the existing 12-tool bridge for an exact 19-tool Codespace surface.
+  - `memory_open_context` returns the opaque lease consumed by existing `write_file`, `edit_file`, `execute_command`, and `start_process`; mutation responses do not echo the lease.
+- Startup authority coupling: `c1df34605ee963cf5d838b5ff353cd2b0e0153c5`
+  - `enforce`: hydration + lease authority + shared-memory authority must all pass before bridge readiness.
+  - `advisory`: authority degradation is explicit but non-blocking.
+  - `disabled`: memory endpoints are not called.
+  - Existing root Phase-2 hydration remains the only hydrator.
+- Cross-session/cross-Codespace certification: `c267e2fd131f955a33b24d7442f982cd6955cd84`
+  - Codespace A durably closes work; fresh Codespace B hydrates the same stable principal/project under a deliberately different auth-key ID; B sees the same memory IDs/revisions and prior continuity; A's old service-lifetime lease is rejected; B obtains a fresh lease and durably closes new work.
+- Reproducible shared-memory benchmark: `50b5ff426e19c31e93cae677d43b7e5106679712`.
+
+### Candidate verification at `50b5ff426e19c31e93cae677d43b7e5106679712`
+
+- `npm run verify:release`: PASS.
+  - 171 test files PASS, 2 skipped.
+  - 842 tests PASS, 38 intentional skips.
+  - brand scan PASS.
+  - root TypeScript build PASS.
+  - Codespace TypeScript build PASS.
+  - quality gate PASS; quality `sourceCommit` exactly `50b5ff426e19c31e93cae677d43b7e5106679712`.
+  - release consistency PASS, Agent Core/server version `0.6.0`.
+  - docs: 50 markdown files / 19 relative links PASS.
+- Exact MCP surfaces:
+  - Agent Core total: 56.
+  - Agent Core memory tools: 9.
+  - Codespace candidate: 19.
+- Standalone Codespace verification before candidate certification: 18 test files / 70 tests PASS.
+- Disaster/recovery gate: 7 files / 28 tests PASS.
+- 100k deterministic-memory benchmark:
+  - active memories: 100001.
+  - integrity: `ok`.
+  - preflight p95: `65.592 ms`.
+  - target: `<150 ms` — PASS.
+- Opaque Memory Context Lease benchmark:
+  - 100 samples / 10 warmup.
+  - before+after p95: `3.518 ms`.
+  - target: `<50 ms` — PASS.
+- Codespace shared-memory loopback benchmark:
+  - 100 samples / 10 warmup.
+  - operation: Codespace thin client -> loopback Agent Core shared-memory search -> SQLite authority.
+  - p95: `2.154 ms`.
+  - target: `<50 ms` — PASS.
+- Non-functional invariants:
+  - plugin SQLite references: 0.
+  - second plugin hydration implementation: 0.
+  - direct SQL in `CodespaceSharedMemoryService`: 0.
+  - `.vscode/` diff from Phase-7 base: none.
+  - tunnel defaults diff from Phase-7 base: none.
+  - root/package lockfile dependency diff from Phase-7 base: none.
+  - external model/provider additions: 0.
+  - branch remains `feature/codespace-memory-self-healing`; `main` is not merged/touched by this candidate.
+
+### Cutover rule
+
+This candidate is eligible only for a separate controlled live replacement after the final documentation SHA itself passes the same release, scale, recovery, invariant, local/remote-SHA, and clean-worktree gates. No automatic merge to `main` is authorized by this certification.
