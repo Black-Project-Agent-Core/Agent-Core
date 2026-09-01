@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+NSIS_VERSION=3.08
+NSISDIR="${AGENT_CODE_NSISDIR:-$HOME/.cache/agent-code/nsis/nsis-${NSIS_VERSION}}"
+
+[[ -f "$NSISDIR/Include/Win/COM.nsh" ]] || {
+  echo "Pinned NSIS support tree is missing at $NSISDIR. Run scripts/codespace-bootstrap.sh first." >&2
+  exit 20
+}
+
+export NSISDIR
+exec /usr/bin/makensis "$@"
