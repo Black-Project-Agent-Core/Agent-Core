@@ -10,6 +10,7 @@ import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 import type { TelemetryService } from '../observability/telemetry.js';
 
 export type MemoryContextLeaseHttpHandler = (request: IncomingMessage, response: ServerResponse) => Promise<void>;
+export type CodespaceMemoryHttpHandler = (request: IncomingMessage, response: ServerResponse) => Promise<void>;
 
 export type McpHttpHandler = (
   request: IncomingMessage,
@@ -28,6 +29,7 @@ export interface HttpHandlerOptions {
   metrics?: RuntimeMetricRegistry;
   telemetry?: TelemetryService;
   memoryContextLeaseHandler?: MemoryContextLeaseHttpHandler;
+  codespaceMemoryHandler?: CodespaceMemoryHttpHandler;
 }
 
 function sendJson(
@@ -50,7 +52,7 @@ const DEFAULT_HTTP_SECURITY = new HttpSecurityPolicy({
 });
 
 const OBSERVABLE_ROUTES = new Set([
-  '/health', '/health/metrics', '/mcp', '/internal/memory-context-lease',
+  '/health', '/health/metrics', '/mcp', '/internal/memory-context-lease', '/internal/codespace-memory',
   '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp',
   '/.well-known/oauth-authorization-server',
   '/oauth/register', '/oauth/authorize', '/oauth/token',
@@ -109,6 +111,19 @@ async function handleRequest(
         return;
       }
       await options.memoryContextLeaseHandler(request, response);
+      return;
+    }
+
+    if (route === '/internal/codespace-memory') {
+      if (!security.isLoopbackRequest(request)) {
+        sendJson(response, 403, { error: 'codespace_memory_local_only' });
+        return;
+      }
+      if (!options.codespaceMemoryHandler) {
+        sendJson(response, 404, { error: 'codespace_memory_unavailable' });
+        return;
+      }
+      await options.codespaceMemoryHandler(request, response);
       return;
     }
 

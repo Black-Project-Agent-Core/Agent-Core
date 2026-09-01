@@ -18,6 +18,17 @@ import type {
 const DEFAULT_CONTEXT_TTL_MS = 15 * 60_000;
 const MAX_CONTEXT_TTL_MS = 60 * 60_000;
 
+function bridgeSafeProjection<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((item) => bridgeSafeProjection(item)) as T;
+  if (!value || typeof value !== 'object') return value;
+  const output: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (key === 'principalId' || key === 'principal_id') continue;
+    output[key] = bridgeSafeProjection(item);
+  }
+  return output as T;
+}
+
 export class CodespaceSharedMemoryError extends Error {
   constructor(public readonly code: string, message: string, public readonly details?: Record<string, unknown>) {
     super(message);
@@ -132,7 +143,7 @@ export class CodespaceSharedMemoryService {
       lifecycleMode: this.memory.config.hardLifecycleMode,
       remoteEnabled: this.memory.config.remote.enabled,
       remoteDurabilityState: remoteState?.durabilityState ?? (this.memory.config.remote.enabled ? 'UNAVAILABLE' : 'NOT_REQUIRED'),
-      continuitySnapshot,
+      continuitySnapshot: bridgeSafeProjection(continuitySnapshot),
     };
   }
 
@@ -212,7 +223,7 @@ export class CodespaceSharedMemoryService {
       priorFailures: preflight.priorFailures,
       relatedDecisions: preflight.relatedDecisions,
       memorySnapshotHash: preflight.snapshotHash,
-      continuitySnapshot,
+      continuitySnapshot: bridgeSafeProjection(continuitySnapshot),
       continuitySnapshotHash: continuitySnapshot.snapshotHash,
       memoryLifecycle: {
         mode: this.memory.config.hardLifecycleMode,
@@ -225,29 +236,29 @@ export class CodespaceSharedMemoryService {
   }
 
   async search(input: CodespaceMemorySearchInput): Promise<MemorySearchResult> {
-    return this.memory.search({
+    return bridgeSafeProjection(await this.memory.search({
       scope: this.scope(input.workspaceRoot),
       query: input.query,
       includeHistory: input.includeHistory,
       limit: input.limit,
       characterBudget: input.characterBudget,
-    });
+    }));
   }
 
   async get(workspaceRoot: string, memoryId: string) {
     const result = await this.memory.getWithProvenance(this.scope(workspaceRoot), memoryId);
     if (!result) throw new CodespaceSharedMemoryError('MEMORY_NOT_FOUND', 'Memory was not found in the shared project scope.');
-    return result;
+    return bridgeSafeProjection(result);
   }
 
   async explain(workspaceRoot: string, memoryId: string, query?: string) {
     const result = await this.memory.explain(this.scope(workspaceRoot), memoryId, query);
     if (!result) throw new CodespaceSharedMemoryError('MEMORY_NOT_FOUND', 'Memory was not found in the shared project scope.');
-    return result;
+    return bridgeSafeProjection(result);
   }
 
   async rememberMore(input: CodespaceMemoryRememberMoreInput) {
-    return this.memory.rememberMore({
+    return bridgeSafeProjection(await this.memory.rememberMore({
       scope: this.scope(input.workspaceRoot),
       contextId: input.contextId,
       seedMemoryIds: input.seedMemoryIds,
@@ -255,7 +266,7 @@ export class CodespaceSharedMemoryService {
       maxHops: input.maxHops,
       maxItems: input.maxItems,
       characterBudget: input.characterBudget,
-    });
+    }));
   }
 
   async checkpoint(input: CodespaceMemoryCheckpointInput) {
@@ -313,7 +324,7 @@ export class CodespaceSharedMemoryService {
         });
       }
       const continuitySnapshot = await this.memory.getContinuitySnapshot(scope);
-      return {
+      return bridgeSafeProjection({
         reconciled: true,
         checkpointId: existingTask.lastCheckpointId,
         taskStatus: existingTask.status,
@@ -324,7 +335,7 @@ export class CodespaceSharedMemoryService {
         continuitySnapshotHash: continuitySnapshot.snapshotHash,
         remoteDurability,
         memoryLifecycle: lifecyclePublicState(this.memory, lifecycle, remoteDurability),
-      };
+      });
     }
 
     const checkpoint = await this.memory.checkpointContinuity(
@@ -369,7 +380,7 @@ export class CodespaceSharedMemoryService {
       });
     }
     const continuitySnapshot = await this.memory.getContinuitySnapshot(scope);
-    return {
+    return bridgeSafeProjection({
       ...checkpoint,
       turnState,
       promoted: {
@@ -384,6 +395,6 @@ export class CodespaceSharedMemoryService {
       continuitySnapshotHash: continuitySnapshot.snapshotHash,
       remoteDurability,
       memoryLifecycle: lifecyclePublicState(this.memory, lifecycle, remoteDurability),
-    };
+    });
   }
 }

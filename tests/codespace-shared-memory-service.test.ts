@@ -183,6 +183,28 @@ describe('Codespace shared memory service', () => {
     });
   });
 
+  it('never exposes the stable logical principal through bridge-safe shared-memory projections', async () => {
+    const f = await fixture('principal-redaction');
+    const seed = await f.memory.commit({
+      scope: { principalId: 'principal-stable', projectId: f.root },
+      canonicalKey: 'decision.principal.redaction',
+      kind: 'decision',
+      value: 'Principal identity must remain internal to Agent Core.',
+      sourceType: 'test',
+    });
+    const opened = await f.service.openContext({
+      workspaceRoot: f.root,
+      task: 'Recall principal redaction decision',
+    });
+    const status = await f.service.status(f.root);
+    const fetched = await f.service.get(f.root, seed.memoryId);
+
+    for (const value of [opened, status, fetched]) {
+      expect(JSON.stringify(value)).not.toContain('\"principalId\"');
+      expect(JSON.stringify(value)).not.toContain('principal-stable');
+    }
+  });
+
   it('requires an explicit stable logical principal for the shared Codespace authority', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-shared-memory-no-principal-'));
     roots.push(root);
