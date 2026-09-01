@@ -5,8 +5,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    AvailabilityState, KeyId, KeySummary, LifecycleState, NewStoredKey, ProtectError,
-    SecretBytes, SecretProtector, StoreError, StoredKeyRecord, VaultStore,
+    AvailabilityState, CredentialEvent, CredentialEventKind, KeyId, KeySummary, LifecycleState,
+    NewStoredKey, ProtectError, SecretBytes, SecretProtector, StoreError, StoredKeyRecord, VaultStore,
 };
 
 #[derive(Debug, Error)]
@@ -129,7 +129,11 @@ impl<P: SecretProtector> CredentialManager<P> {
             updated_at_utc_ms: now_ms,
         };
 
-        inner.store.insert_key(new_key)?;
+        inner.store.insert_key_with_event(
+            new_key,
+            CredentialEventKind::CredentialAdded,
+            now_ms,
+        )?;
         let record = inner.store.load_key(&key_id)?;
         let summary = record.summary();
         inner.in_flight.insert(key_id.clone(), 0);
@@ -142,6 +146,11 @@ impl<P: SecretProtector> CredentialManager<P> {
         let mut records = inner.keys.values().collect::<Vec<_>>();
         records.sort_by_key(|record| record.slot_index);
         Ok(records.into_iter().map(StoredKeyRecord::summary).collect())
+    }
+
+    pub fn list_credential_events(&self, limit: usize) -> Result<Vec<CredentialEvent>, ManagerError> {
+        let inner = self.lock_inner()?;
+        Ok(inner.store.list_events(limit)?)
     }
 
     pub fn set_enabled(
@@ -176,12 +185,16 @@ impl<P: SecretProtector> CredentialManager<P> {
         Ok(summary)
     }
 
-    pub fn delete_key(&self, key_id: &KeyId, _now_ms: i64) -> Result<bool, ManagerError> {
+    pub fn delete_key(&self, key_id: &KeyId, now_ms: i64) -> Result<bool, ManagerError> {
         let mut inner = self.lock_inner()?;
         if inner.in_flight.get(key_id).copied().unwrap_or(0) > 0 {
             return Err(ManagerError::KeyInUse);
         }
-        let deleted = inner.store.delete_key(key_id)?;
+        let deleted = inner.store.delete_key_with_event(
+            key_id,
+            CredentialEventKind::CredentialRemoved,
+            now_ms,
+        )?;
         if deleted {
             inner.keys.remove(key_id);
             inner.in_flight.remove(key_id);
@@ -229,8 +242,9 @@ fn quarantine_record<P: SecretProtector>(
 mod tests {
     use super::*;
     use crate::{
-        AvailabilityState, CredentialProfile, CredentialProvider, KeyId, LifecycleState, NewStoredKey,
-        ProtectError, ProtectedBlob, RotationSession, SecretBytes, SecretProtector, VaultStore,
+        AvailabilityState, CredentialEventKind, CredentialProfile, CredentialProvider, KeyId,
+        LifecycleState, NewStoredKey, ProtectError, ProtectedBlob, RotationSession, SecretBytes,
+        SecretProtector, VaultStore,
     };
 
     #[derive(Clone, Copy)]
@@ -340,6 +354,38 @@ mod tests {
         assert_eq!(summaries[0].key_id, first.key_id);
         assert_eq!(summaries[0].masked_suffix, "••••1234");
         assert_eq!(summaries[0].availability_state, AvailabilityState::Unverified);
+    }
+
+    #[test]
+    fn add_remove_events_are_visible_and_survive_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.db");
+        let manager = CredentialManager::open(VaultStore::open(&path).unwrap(), XorTestProtector(0x41)).unwrap();
+        let summary = manager
+            .add_openrouter_key(
+                SecretBytes::parse_import("sk-or-v1-EVENT_MANAGER_123456789".to_owned()).unwrap(),
+                "Event Key".to_owned(),
+                100,
+            )
+            .unwrap();
+
+        let events = manager.list_credential_events(10).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, CredentialEventKind::CredentialAdded);
+        assert_eq!(events[0].key_id, summary.key_id);
+
+        assert!(manager.delete_key(&summary.key_id, 200).unwrap());
+        let events = manager.list_credential_events(10).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].kind, CredentialEventKind::CredentialRemoved);
+        assert_eq!(events[1].kind, CredentialEventKind::CredentialAdded);
+        drop(manager);
+
+        let reopened = CredentialManager::open(VaultStore::open(&path).unwrap(), XorTestProtector(0x41)).unwrap();
+        let events = reopened.list_credential_events(10).unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].kind, CredentialEventKind::CredentialRemoved);
+        assert_eq!(events[1].kind, CredentialEventKind::CredentialAdded);
     }
 
     #[test]

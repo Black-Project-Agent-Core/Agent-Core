@@ -129,9 +129,58 @@ The intelligent selector is deliberately standalone at this stage. It can make a
 
 ## Phase 3 — Credential Event System
 
-Status: **PENDING**
+Status: **DONE — AWAITING PUBLICATION READBACK**
 
-Required events include credential added/removed/healthy/warning/cooldown/recovered/expired/selected, plus persistence and viewer support.
+Implemented event vocabulary and semantics:
+
+- `CredentialAdded`
+- `CredentialRemoved`
+- `CredentialHealthy`
+- `CredentialCooldown`
+- `CredentialRecovered`
+- `CredentialExpired`
+- `CredentialSelected`
+- `CredentialWarning` remains reserved for Phase 4 predictive-warning transitions rather than being emitted as generic failure noise
+
+Persistence and safety:
+
+- Vault schema upgraded additively from v2 to v3
+- `vault_credential_events` is append-only and metadata-only
+- event reads are bounded to 1..=500 rows
+- add/remove mutations and their events are transaction-coupled
+- rotation state/cursor mutations and their events are transaction-coupled
+- OpenRouter probe state mutations and emitted events are transaction-coupled
+- provider response bodies and Authorization data are never stored in event rows
+- existing v2 key/profile/protected-blob state survives v3 migration unchanged
+
+OpenRouter probe event semantics:
+
+- healthy 200 → `CredentialHealthy`
+- rehabilitation from invalid/quarantined + healthy 200 → `CredentialRecovered` then `CredentialHealthy`
+- exhausted/expired metadata → `CredentialExpired`
+- explicit 429 retry hint → `CredentialCooldown`
+- 429 without retry hint → no invented provider deadline/event
+- provider transient/timeout → no false key-health event
+- malformed/oversized provider response → no event payload/body persistence
+
+Frontend observability:
+
+- bounded metadata-only recent credential activity viewer added to Credential Vault
+- no reveal/copy/export-secret action introduced
+
+Fresh Phase 3 verification before publication:
+
+- credential-core unit tests: **60 / 60 PASS**
+- event integration tests: **1 / 1 PASS**
+- intelligence integration tests: **4 / 4 PASS**
+- synthetic rotation: **100,013 transitions PASS**
+- `npm run test:vault-baseline`: PASS
+- credential-security scan: PASS
+- Tauri contract: PASS
+- focused Vault/App frontend: **14 / 14 PASS**
+- `npm run build`: PASS
+- `git diff --check`: PASS
+- changed-production forbidden secret-surface scan: PASS
 
 ## Phase 4 — Predictive Usage Intelligence
 
@@ -197,3 +246,13 @@ Priority remains:
 - Derived Recent Success from existing success/failure history without a new provider call.
 - Preserved the existing round-robin rotation path unchanged as the deterministic baseline.
 - Full Vault baseline remained green after the change.
+
+### 2026-09-01 — Phase 3 Credential Event System
+
+- Added additive schema v3 event persistence with bounded metadata-only reads.
+- Transaction-coupled add/remove, rotation, and OpenRouter probe state mutations with their audit events.
+- Added `Healthy`, `Recovered`, `Cooldown`, `Expired`, and `Selected` lifecycle observability without exposing secrets/provider bodies.
+- Reserved `CredentialWarning` for Phase 4 predictive intelligence rather than generic key failure noise.
+- Added bounded Credential Vault activity viewer and Tauri event-list contract.
+- Verified v2→v3 migration preserves keys, profiles, and protected blob bytes/checksum.
+- Full Vault baseline, production build, and secret-boundary scans remained green before publication.

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyRound, LockKeyhole, Trash2, X } from 'lucide-react';
-import { addKey, deleteKey, listKeys, setKeyEnabled, validateKey } from './vault-api';
-import type { KeySummary } from './vault-types';
+import { addKey, deleteKey, listEvents, listKeys, setKeyEnabled, validateKey } from './vault-api';
+import type { CredentialEvent, KeySummary } from './vault-types';
 
 export type CredentialVaultPanelProps = {
   onClose(): void;
@@ -13,6 +13,7 @@ export function CredentialVaultPanel({ onClose }: CredentialVaultPanelProps) {
   const secretInputRef = useRef<HTMLInputElement>(null);
   const [label, setLabel] = useState('');
   const [keys, setKeys] = useState<KeySummary[]>([]);
+  const [events, setEvents] = useState<CredentialEvent[]>([]);
   const [loadState, setLoadState] = useState<VaultLoadState>('loading');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -25,14 +26,23 @@ export function CredentialVaultPanel({ onClose }: CredentialVaultPanelProps) {
       return true;
     } catch {
       setKeys([]);
+      setEvents([]);
       setLoadState('native-unavailable');
       return false;
     }
   }, []);
 
+  const loadActivity = useCallback(async () => {
+    try {
+      setEvents(await listEvents(20));
+    } catch {
+      setEvents([]);
+    }
+  }, []);
+
   useEffect(() => {
-    void loadKeys();
-  }, [loadKeys]);
+    void Promise.all([loadKeys(), loadActivity()]);
+  }, [loadActivity, loadKeys]);
 
   async function handleImport(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,7 +62,7 @@ export function CredentialVaultPanel({ onClose }: CredentialVaultPanelProps) {
       await importPromise;
       setLabel('');
       setNotice('Key imported securely.');
-      await loadKeys();
+      await Promise.all([loadKeys(), loadActivity()]);
     } catch {
       setNotice('Key import failed.');
     } finally {
@@ -68,6 +78,7 @@ export function CredentialVaultPanel({ onClose }: CredentialVaultPanelProps) {
       const updated = await validateKey(key.key_id);
       setKeys((current) => current.map((item) => (item.key_id === updated.key_id ? updated : item)));
       setNotice('Key validation completed.');
+      await loadActivity();
     } catch {
       setNotice('Key validation could not be completed.');
       await loadKeys();
@@ -95,6 +106,7 @@ export function CredentialVaultPanel({ onClose }: CredentialVaultPanelProps) {
     try {
       await deleteKey(key.key_id);
       setKeys((current) => current.filter((item) => item.key_id !== key.key_id));
+      await loadActivity();
     } catch {
       setNotice('Key deletion failed.');
     } finally {
@@ -194,6 +206,34 @@ export function CredentialVaultPanel({ onClose }: CredentialVaultPanelProps) {
             </article>
           ))}
         </div>
+      ) : null}
+
+      {loadState === 'ready' ? (
+        <section className="vault-activity" aria-label="Credential activity log">
+          <div className="vault-activity-header">
+            <h2>Credential activity</h2>
+            <span>Latest {events.length} metadata-only events</span>
+          </div>
+          {events.length === 0 ? <p className="vault-activity-empty">No credential activity recorded yet.</p> : null}
+          {events.length > 0 ? (
+            <div className="vault-activity-list">
+              {events.map((event) => {
+                const key = keys.find((item) => item.key_id === event.key_id);
+                return (
+                  <div className="vault-activity-row" key={event.event_id}>
+                    <div>
+                      <strong>{event.kind}</strong>
+                      <span>{key?.label ?? `Credential ${event.key_id.slice(0, 8)}`}</span>
+                    </div>
+                    <time dateTime={new Date(event.occurred_at_utc_ms).toISOString()}>
+                      {new Date(event.occurred_at_utc_ms).toLocaleString()}
+                    </time>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </section>
       ) : null}
     </section>
   );

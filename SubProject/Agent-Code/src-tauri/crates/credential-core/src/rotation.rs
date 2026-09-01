@@ -6,8 +6,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    classify_status, AvailabilityState, CredentialManager, FailureClass, KeyId, KeySummary,
-    LifecycleState, SecretProtector, StoreError,
+    classify_status, AvailabilityState, CredentialEventKind, CredentialManager, FailureClass, KeyId,
+    KeySummary, LifecycleState, SecretProtector, StoreError,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -258,14 +258,23 @@ impl<P: SecretProtector> CredentialManager<P> {
 
         let persist_result = if decision.reconcile_cooldown {
             let update = record.state_update();
-            inner.store.update_key_state_and_cursor(
+            inner.store.update_key_state_and_cursor_with_events(
                 &decision.key_id,
                 &update,
                 decision.slot_index,
                 now_ms,
+                &[
+                    CredentialEventKind::CredentialRecovered,
+                    CredentialEventKind::CredentialSelected,
+                ],
             )
         } else {
-            inner.store.save_rotation_cursor(decision.slot_index, now_ms)
+            inner.store.save_rotation_cursor_with_event(
+                decision.slot_index,
+                &decision.key_id,
+                now_ms,
+                CredentialEventKind::CredentialSelected,
+            )
         };
         persist_result.map_err(|_| PoolUnavailable::persistence(decision.scanned_candidates))?;
 
@@ -316,9 +325,24 @@ impl<P: SecretProtector> CredentialManager<P> {
         apply_outcome(&mut record, outcome, now_ms)?;
         let update = record.state_update();
         let cursor_slot = inner.rotation_cursor;
-        inner
-            .store
-            .update_key_state_and_cursor(&active_key, &update, cursor_slot, now_ms)?;
+        let event = match outcome {
+            OutcomeSignal::Success => Some(CredentialEventKind::CredentialHealthy),
+            _ if record.availability_state == AvailabilityState::Cooldown => {
+                Some(CredentialEventKind::CredentialCooldown)
+            }
+            _ if record.availability_state == AvailabilityState::Exhausted => {
+                Some(CredentialEventKind::CredentialExpired)
+            }
+            _ => None,
+        };
+        let events = event.into_iter().collect::<Vec<_>>();
+        inner.store.update_key_state_and_cursor_with_events(
+            &active_key,
+            &update,
+            cursor_slot,
+            now_ms,
+            &events,
+        )?;
 
         let current_in_flight = inner
             .in_flight
@@ -596,6 +620,91 @@ mod tests {
         let unavailable = manager.acquire(&mut session, 2_500).unwrap_err();
         assert_eq!(unavailable.earliest_retry_at_utc_ms(), Some(5_000));
         assert_eq!(unavailable.scanned_candidates(), 1);
+    }
+
+    #[test]
+    fn selection_cooldown_recovery_and_health_events_follow_rotation_transitions() {
+        let (_dir, manager, ids) = manager_with_keys(1);
+        set_state(
+            &manager,
+            &ids[0],
+            LifecycleState::Enabled,
+            AvailabilityState::Cooldown,
+            Some(900),
+            800,
+        );
+        let mut session = RotationSession::new();
+        let lease = manager.acquire(&mut session, 1_000).unwrap();
+        manager
+            .report_outcome(lease, OutcomeSignal::Success, 1_100)
+            .unwrap();
+
+        let events = manager.list_credential_events(10).unwrap();
+        assert_eq!(events[0].kind, CredentialEventKind::CredentialHealthy);
+        assert_eq!(events[1].kind, CredentialEventKind::CredentialSelected);
+        assert_eq!(events[2].kind, CredentialEventKind::CredentialRecovered);
+        assert_eq!(events[3].kind, CredentialEventKind::CredentialAdded);
+
+        let mut next_session = RotationSession::new();
+        let lease = manager.acquire(&mut next_session, 1_200).unwrap();
+        manager
+            .report_outcome(
+                lease,
+                OutcomeSignal::Http {
+                    status: 429,
+                    retry_after_ms: Some(1_000),
+                },
+                1_300,
+            )
+            .unwrap();
+        let events = manager.list_credential_events(10).unwrap();
+        assert_eq!(events[0].kind, CredentialEventKind::CredentialCooldown);
+        assert_eq!(events[1].kind, CredentialEventKind::CredentialSelected);
+    }
+
+    #[test]
+    fn credit_blocked_outcome_emits_expired_instead_of_predictive_warning() {
+        let (_dir, manager, _ids) = manager_with_keys(1);
+        let mut session = RotationSession::new();
+        let lease = manager.acquire(&mut session, 1_000).unwrap();
+        manager
+            .report_outcome(
+                lease,
+                OutcomeSignal::Http {
+                    status: 402,
+                    retry_after_ms: None,
+                },
+                1_100,
+            )
+            .unwrap();
+
+        let events = manager.list_credential_events(10).unwrap();
+        assert_eq!(events[0].kind, CredentialEventKind::CredentialExpired);
+        assert!(!events
+            .iter()
+            .any(|event| event.kind == CredentialEventKind::CredentialWarning));
+    }
+
+    #[test]
+    fn auth_invalid_outcome_does_not_emit_predictive_warning() {
+        let (_dir, manager, _ids) = manager_with_keys(1);
+        let mut session = RotationSession::new();
+        let lease = manager.acquire(&mut session, 1_000).unwrap();
+        manager
+            .report_outcome(
+                lease,
+                OutcomeSignal::Http {
+                    status: 401,
+                    retry_after_ms: None,
+                },
+                1_100,
+            )
+            .unwrap();
+
+        let events = manager.list_credential_events(10).unwrap();
+        assert!(!events
+            .iter()
+            .any(|event| event.kind == CredentialEventKind::CredentialWarning));
     }
 
     #[test]

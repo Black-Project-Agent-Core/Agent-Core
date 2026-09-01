@@ -20,6 +20,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             credential::commands::vault_add_openrouter_key,
             credential::commands::vault_list_openrouter_keys,
+            credential::commands::vault_list_credential_events,
             credential::commands::vault_set_enabled,
             credential::commands::vault_delete_key,
             credential::commands::vault_validate_key,

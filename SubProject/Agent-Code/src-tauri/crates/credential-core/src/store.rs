@@ -5,11 +5,11 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use thiserror::Error;
 
 use crate::{
-    AvailabilityState, CredentialProfile, CredentialProvider, FailureClass, KeyId, KeySummary,
-    LifecycleState, LimitReset, ProtectedBlob,
+    AvailabilityState, CredentialEvent, CredentialEventKind, CredentialProfile, CredentialProvider,
+    FailureClass, KeyId, KeySummary, LifecycleState, LimitReset, ProtectedBlob,
 };
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -179,6 +179,10 @@ impl VaultStore {
         }
         if version < 2 {
             store.migrate_v2()?;
+            version = 2;
+        }
+        if version < 3 {
+            store.migrate_v3()?;
         }
         store.verify_integrity(existed)?;
         store.ensure_slot_state()?;
@@ -268,6 +272,28 @@ impl VaultStore {
         transaction.commit().map_err(StoreError::Sqlite)
     }
 
+    fn migrate_v3(&mut self) -> Result<(), StoreError> {
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        transaction
+            .execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS vault_credential_events (
+                  event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  event_type TEXT NOT NULL,
+                  key_id TEXT NOT NULL,
+                  occurred_at_utc_ms INTEGER NOT NULL
+                ) STRICT;
+
+                CREATE INDEX IF NOT EXISTS idx_vault_credential_events_key_id_event_id
+                  ON vault_credential_events(key_id, event_id DESC);
+
+                PRAGMA user_version = 3;
+                "#,
+            )
+            .map_err(StoreError::Sqlite)?;
+        transaction.commit().map_err(StoreError::Sqlite)
+    }
+
     fn ensure_slot_state(&mut self) -> Result<(), StoreError> {
         let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
         transaction
@@ -317,6 +343,19 @@ impl VaultStore {
     pub fn insert_key(&mut self, key: NewStoredKey) -> Result<(), StoreError> {
         let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
         insert_key_tx(&transaction, &key)?;
+        transaction.commit().map_err(StoreError::Sqlite)
+    }
+
+    pub(crate) fn insert_key_with_event(
+        &mut self,
+        key: NewStoredKey,
+        kind: CredentialEventKind,
+        occurred_at_utc_ms: i64,
+    ) -> Result<(), StoreError> {
+        let key_id = key.key_id.clone();
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        insert_key_tx(&transaction, &key)?;
+        append_event_tx(&transaction, kind, &key_id, occurred_at_utc_ms)?;
         transaction.commit().map_err(StoreError::Sqlite)
     }
 
@@ -447,9 +486,84 @@ impl VaultStore {
             .map_err(StoreError::Sqlite)
     }
 
+    pub fn append_event(
+        &mut self,
+        kind: CredentialEventKind,
+        key_id: &KeyId,
+        occurred_at_utc_ms: i64,
+    ) -> Result<CredentialEvent, StoreError> {
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        let event = append_event_tx(&transaction, kind, key_id, occurred_at_utc_ms)?;
+        transaction.commit().map_err(StoreError::Sqlite)?;
+        Ok(event)
+    }
+
+    pub fn list_events(&self, limit: usize) -> Result<Vec<CredentialEvent>, StoreError> {
+        if !(1..=500).contains(&limit) {
+            return Err(StoreError::InvalidStoredValue("event_limit"));
+        }
+        let limit = i64::try_from(limit).map_err(|_| StoreError::InvalidStoredValue("event_limit"))?;
+        let mut statement = self
+            .connection
+            .prepare(
+                r#"
+                SELECT event_id, event_type, key_id, occurred_at_utc_ms
+                FROM vault_credential_events
+                ORDER BY event_id DESC
+                LIMIT ?1
+                "#,
+            )
+            .map_err(StoreError::Sqlite)?;
+        let rows = statement
+            .query_map(params![limit], row_to_event)
+            .map_err(StoreError::Sqlite)?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.map_err(StoreError::Sqlite)?);
+        }
+        Ok(result)
+    }
+
     pub fn update_key_state(&mut self, key_id: &KeyId, update: &StoredKeyUpdate) -> Result<(), StoreError> {
         let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
         update_key_state_tx(&transaction, key_id, update)?;
+        transaction.commit().map_err(StoreError::Sqlite)
+    }
+
+    pub(crate) fn update_key_state_with_events(
+        &mut self,
+        key_id: &KeyId,
+        update: &StoredKeyUpdate,
+        events: &[CredentialEventKind],
+        now_ms: i64,
+    ) -> Result<(), StoreError> {
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        update_key_state_tx(&transaction, key_id, update)?;
+        for event in events {
+            append_event_tx(&transaction, *event, key_id, now_ms)?;
+        }
+        transaction.commit().map_err(StoreError::Sqlite)
+    }
+
+    pub(crate) fn update_key_state_and_cursor_with_events(
+        &mut self,
+        key_id: &KeyId,
+        update: &StoredKeyUpdate,
+        cursor_slot: i64,
+        now_ms: i64,
+        events: &[CredentialEventKind],
+    ) -> Result<(), StoreError> {
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        update_key_state_tx(&transaction, key_id, update)?;
+        transaction
+            .execute(
+                "UPDATE rotation_state SET cursor_slot = ?1, updated_at_utc_ms = ?2 WHERE singleton_id = 1",
+                params![cursor_slot, now_ms],
+            )
+            .map_err(StoreError::Sqlite)?;
+        for event in events {
+            append_event_tx(&transaction, *event, key_id, now_ms)?;
+        }
         transaction.commit().map_err(StoreError::Sqlite)
     }
 
@@ -476,6 +590,23 @@ impl VaultStore {
         let changed = transaction
             .execute("DELETE FROM vault_keys WHERE key_id = ?1", params![key_id.0])
             .map_err(StoreError::Sqlite)?;
+        transaction.commit().map_err(StoreError::Sqlite)?;
+        Ok(changed == 1)
+    }
+
+    pub(crate) fn delete_key_with_event(
+        &mut self,
+        key_id: &KeyId,
+        kind: CredentialEventKind,
+        occurred_at_utc_ms: i64,
+    ) -> Result<bool, StoreError> {
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        let changed = transaction
+            .execute("DELETE FROM vault_keys WHERE key_id = ?1", params![key_id.0])
+            .map_err(StoreError::Sqlite)?;
+        if changed == 1 {
+            append_event_tx(&transaction, kind, key_id, occurred_at_utc_ms)?;
+        }
         transaction.commit().map_err(StoreError::Sqlite)?;
         Ok(changed == 1)
     }
@@ -519,6 +650,24 @@ impl VaultStore {
         transaction.commit().map_err(StoreError::Sqlite)
     }
 
+    pub(crate) fn save_rotation_cursor_with_event(
+        &mut self,
+        slot: i64,
+        key_id: &KeyId,
+        now_ms: i64,
+        event: CredentialEventKind,
+    ) -> Result<(), StoreError> {
+        let transaction = self.connection.transaction().map_err(StoreError::Sqlite)?;
+        transaction
+            .execute(
+                "UPDATE rotation_state SET cursor_slot = ?1, updated_at_utc_ms = ?2 WHERE singleton_id = 1",
+                params![slot, now_ms],
+            )
+            .map_err(StoreError::Sqlite)?;
+        append_event_tx(&transaction, event, key_id, now_ms)?;
+        transaction.commit().map_err(StoreError::Sqlite)
+    }
+
     #[cfg(test)]
     fn journal_mode_for_test(&self) -> Result<String, StoreError> {
         self.connection
@@ -543,6 +692,27 @@ impl VaultStore {
             )
             .map_err(StoreError::Sqlite)
     }
+}
+
+fn append_event_tx(
+    transaction: &Transaction<'_>,
+    kind: CredentialEventKind,
+    key_id: &KeyId,
+    occurred_at_utc_ms: i64,
+) -> Result<CredentialEvent, StoreError> {
+    transaction
+        .execute(
+            "INSERT INTO vault_credential_events(event_type, key_id, occurred_at_utc_ms) VALUES(?1, ?2, ?3)",
+            params![event_kind_to_text(kind), key_id.0, occurred_at_utc_ms],
+        )
+        .map_err(StoreError::Sqlite)?;
+    let event_id = transaction.last_insert_rowid();
+    Ok(CredentialEvent {
+        event_id,
+        kind,
+        key_id: key_id.clone(),
+        occurred_at_utc_ms,
+    })
 }
 
 fn update_key_state_tx(
@@ -675,6 +845,42 @@ fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredKeyRecord> {
         created_at_utc_ms: row.get(20)?,
         updated_at_utc_ms: row.get(21)?,
     })
+}
+
+fn row_to_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<CredentialEvent> {
+    Ok(CredentialEvent {
+        event_id: row.get(0)?,
+        kind: parse_event_kind(&row.get::<_, String>(1)?, 1)?,
+        key_id: KeyId(row.get(2)?),
+        occurred_at_utc_ms: row.get(3)?,
+    })
+}
+
+fn event_kind_to_text(value: CredentialEventKind) -> &'static str {
+    match value {
+        CredentialEventKind::CredentialAdded => "CREDENTIAL_ADDED",
+        CredentialEventKind::CredentialRemoved => "CREDENTIAL_REMOVED",
+        CredentialEventKind::CredentialHealthy => "CREDENTIAL_HEALTHY",
+        CredentialEventKind::CredentialWarning => "CREDENTIAL_WARNING",
+        CredentialEventKind::CredentialCooldown => "CREDENTIAL_COOLDOWN",
+        CredentialEventKind::CredentialRecovered => "CREDENTIAL_RECOVERED",
+        CredentialEventKind::CredentialExpired => "CREDENTIAL_EXPIRED",
+        CredentialEventKind::CredentialSelected => "CREDENTIAL_SELECTED",
+    }
+}
+
+fn parse_event_kind(value: &str, column: usize) -> rusqlite::Result<CredentialEventKind> {
+    match value {
+        "CREDENTIAL_ADDED" => Ok(CredentialEventKind::CredentialAdded),
+        "CREDENTIAL_REMOVED" => Ok(CredentialEventKind::CredentialRemoved),
+        "CREDENTIAL_HEALTHY" => Ok(CredentialEventKind::CredentialHealthy),
+        "CREDENTIAL_WARNING" => Ok(CredentialEventKind::CredentialWarning),
+        "CREDENTIAL_COOLDOWN" => Ok(CredentialEventKind::CredentialCooldown),
+        "CREDENTIAL_RECOVERED" => Ok(CredentialEventKind::CredentialRecovered),
+        "CREDENTIAL_EXPIRED" => Ok(CredentialEventKind::CredentialExpired),
+        "CREDENTIAL_SELECTED" => Ok(CredentialEventKind::CredentialSelected),
+        _ => Err(invalid_text(column, "event_type")),
+    }
 }
 
 fn row_to_profile(row: &rusqlite::Row<'_>) -> rusqlite::Result<CredentialProfile> {
@@ -853,7 +1059,7 @@ mod tests {
         let path = dir.path().join("vault.db");
         let mut store = VaultStore::open(&path).unwrap();
         store.insert_key(sample_key()).unwrap();
-        assert_eq!(store.user_version_for_test().unwrap(), 2);
+        assert_eq!(store.user_version_for_test().unwrap(), 3);
         let profile_table_exists: i64 = store
             .connection
             .query_row(
@@ -862,7 +1068,16 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
+        let event_table_exists: i64 = store
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'vault_credential_events'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(profile_table_exists, 1);
+        assert_eq!(event_table_exists, 1);
         assert_eq!(store.protected_blob_type_for_test(&KeyId("key-1".to_owned())).unwrap(), "blob");
         assert_eq!(store.list_keys().unwrap().len(), 1);
     }
@@ -905,7 +1120,7 @@ mod tests {
     }
 
     #[test]
-    fn existing_v1_vault_migrates_to_v2_without_losing_keys() {
+    fn existing_v1_vault_migrates_through_v3_without_losing_keys() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("vault.db");
         {
@@ -917,9 +1132,51 @@ mod tests {
         }
 
         let store = VaultStore::open(&path).unwrap();
-        assert_eq!(store.user_version_for_test().unwrap(), 2);
+        assert_eq!(store.user_version_for_test().unwrap(), 3);
         assert_eq!(store.list_keys().unwrap().len(), 1);
         assert_eq!(store.load_profile(&KeyId("key-1".to_owned())).unwrap(), None);
+    }
+
+    #[test]
+    fn existing_v2_vault_migrates_to_v3_without_changing_key_profile_or_protected_blob() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.db");
+        let key_id = KeyId("key-1".to_owned());
+        let profile = CredentialProfile {
+            key_id: key_id.clone(),
+            provider: CredentialProvider::OpenRouter,
+            health_score: 91.0,
+            reliability_score: 88.0,
+            latency_score: 76.0,
+            quota_score: 64.0,
+            confidence_score: 83.0,
+            last_observed_at_utc_ms: Some(1_000),
+            updated_at_utc_ms: 1_000,
+        };
+        let protected_before;
+
+        {
+            let connection = Connection::open(&path).unwrap();
+            let mut old_store = VaultStore {
+                path: path.clone(),
+                connection,
+            };
+            old_store.migrate_v1().unwrap();
+            old_store.insert_key(sample_key()).unwrap();
+            old_store.migrate_v2().unwrap();
+            old_store.upsert_profile(&profile).unwrap();
+            assert_eq!(old_store.user_version_for_test().unwrap(), 2);
+            protected_before = old_store.load_protected_blob(&key_id).unwrap();
+        }
+
+        let store = VaultStore::open(&path).unwrap();
+        assert_eq!(store.user_version_for_test().unwrap(), 3);
+        assert_eq!(store.list_keys().unwrap().len(), 1);
+        assert_eq!(store.load_profile(&key_id).unwrap(), Some(profile));
+        let protected_after = store.load_protected_blob(&key_id).unwrap();
+        assert_eq!(protected_after.as_bytes(), protected_before.as_bytes());
+        assert_eq!(protected_after.checksum(), protected_before.checksum());
+        assert!(store.list_events(10).unwrap().is_empty());
     }
 
     #[test]

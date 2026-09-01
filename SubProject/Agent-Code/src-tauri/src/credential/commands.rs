@@ -1,9 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_code_credential_core::{
-    run_synthetic_rotation_self_test, KeyId, KeySummary, ManagerError, OpenRouterProbeClient,
-    OpenRouterValidationError, ProtectError, RotationSnapshot, SecretBytes, SecretProtector,
-    SecretValidationError, StoreError, SyntheticRotationReport,
+    run_synthetic_rotation_self_test, CredentialEvent, KeyId, KeySummary, ManagerError,
+    OpenRouterProbeClient, OpenRouterValidationError, ProtectError, RotationSnapshot, SecretBytes,
+    SecretProtector, SecretValidationError, StoreError, SyntheticRotationReport,
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -84,6 +84,17 @@ pub fn vault_list_openrouter_keys(
     state: State<'_, CredentialAppState>,
 ) -> Result<Vec<KeySummary>, VaultCommandError> {
     state.manager.list_summaries().map_err(map_manager_error)
+}
+
+#[tauri::command]
+pub fn vault_list_credential_events(
+    state: State<'_, CredentialAppState>,
+    limit: usize,
+) -> Result<Vec<CredentialEvent>, VaultCommandError> {
+    state
+        .manager
+        .list_credential_events(limit)
+        .map_err(map_manager_error)
 }
 
 #[tauri::command]

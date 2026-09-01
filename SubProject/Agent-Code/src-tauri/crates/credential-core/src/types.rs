@@ -10,6 +10,27 @@ pub enum CredentialProvider {
     OpenRouter,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CredentialEventKind {
+    CredentialAdded,
+    CredentialRemoved,
+    CredentialHealthy,
+    CredentialWarning,
+    CredentialCooldown,
+    CredentialRecovered,
+    CredentialExpired,
+    CredentialSelected,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CredentialEvent {
+    pub event_id: i64,
+    pub kind: CredentialEventKind,
+    pub key_id: KeyId,
+    pub occurred_at_utc_ms: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CredentialProfile {
     pub key_id: KeyId,

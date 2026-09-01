@@ -9,6 +9,23 @@ export type FailureClass =
   | 'PROVIDER_TRANSIENT'
   | 'UNKNOWN';
 
+export type CredentialEventKind =
+  | 'CREDENTIAL_ADDED'
+  | 'CREDENTIAL_REMOVED'
+  | 'CREDENTIAL_HEALTHY'
+  | 'CREDENTIAL_WARNING'
+  | 'CREDENTIAL_COOLDOWN'
+  | 'CREDENTIAL_RECOVERED'
+  | 'CREDENTIAL_EXPIRED'
+  | 'CREDENTIAL_SELECTED';
+
+export type CredentialEvent = {
+  event_id: number;
+  kind: CredentialEventKind;
+  key_id: string;
+  occurred_at_utc_ms: number;
+};
+
 export type KeySummary = {
   key_id: string;
   slot_index: number;

@@ -10,8 +10,8 @@ use zeroize::Zeroize;
 
 use crate::rotation::apply_failure;
 use crate::{
-    classify_status, AvailabilityState, CredentialManager, FailureClass, KeyId, KeySummary,
-    LifecycleState, LimitReset, ProtectError, SecretBytes, SecretProtector, StoreError,
+    classify_status, AvailabilityState, CredentialEventKind, CredentialManager, FailureClass, KeyId,
+    KeySummary, LifecycleState, LimitReset, ProtectError, SecretBytes, SecretProtector, StoreError,
 };
 
 pub const OPENROUTER_CURRENT_KEY_URL: &str = "https://openrouter.ai/api/v1/key";
@@ -238,6 +238,7 @@ impl<P: SecretProtector> CredentialManager<P> {
         record.last_probe_at_utc_ms = Some(now_ms);
         record.updated_at_utc_ms = now_ms;
 
+        let mut events = Vec::new();
         let result = match probe_result {
             Err(ProbeTransportError::Timeout | ProbeTransportError::Network) => {
                 apply_failure(&mut record, FailureClass::ProviderTransient, None, now_ms)
@@ -254,11 +255,23 @@ impl<P: SecretProtector> CredentialManager<P> {
                 let metadata = match parse_metadata(&response.body) {
                     Ok(metadata) => metadata,
                     Err(error) => {
-                        persist_probe_record(&mut inner, key_id, &record)?;
+                        persist_probe_record(&mut inner, key_id, &record, &[], now_ms)?;
                         return Err(error);
                     }
                 };
                 apply_successful_metadata(&mut record, metadata, started_lifecycle, now_ms);
+                if matches!(
+                    started_lifecycle,
+                    LifecycleState::Invalid | LifecycleState::Quarantined
+                ) && record.lifecycle_state == LifecycleState::Enabled
+                {
+                    events.push(CredentialEventKind::CredentialRecovered);
+                }
+                if record.availability_state == AvailabilityState::Exhausted {
+                    events.push(CredentialEventKind::CredentialExpired);
+                } else {
+                    events.push(CredentialEventKind::CredentialHealthy);
+                }
                 Ok(record.summary())
             }
             Ok(response) => {
@@ -282,6 +295,11 @@ impl<P: SecretProtector> CredentialManager<P> {
                                 now_ms,
                             )
                             .map_err(|_| OpenRouterValidationError::TimeOverflow)?;
+                            if record.availability_state == AvailabilityState::Cooldown {
+                                events.push(CredentialEventKind::CredentialCooldown);
+                            } else if record.availability_state == AvailabilityState::Exhausted {
+                                events.push(CredentialEventKind::CredentialExpired);
+                            }
                             Ok(record.summary())
                         }
                         FailureClass::ProviderTransient
@@ -296,7 +314,7 @@ impl<P: SecretProtector> CredentialManager<P> {
             }
         };
 
-        persist_probe_record(&mut inner, key_id, &record)?;
+        persist_probe_record(&mut inner, key_id, &record, &events, now_ms)?;
         result
     }
 }
@@ -305,9 +323,13 @@ fn persist_probe_record<P: SecretProtector>(
     inner: &mut crate::manager::ManagerInner<P>,
     key_id: &KeyId,
     record: &crate::StoredKeyRecord,
+    events: &[CredentialEventKind],
+    now_ms: i64,
 ) -> Result<(), OpenRouterValidationError> {
     let update = record.state_update();
-    inner.store.update_key_state(key_id, &update)?;
+    inner
+        .store
+        .update_key_state_with_events(key_id, &update, events, now_ms)?;
     inner.keys.insert(key_id.clone(), record.clone());
     Ok(())
 }
@@ -725,5 +747,117 @@ mod tests {
             .validate_openrouter_key_with(&key_id, &transport, 10_000)
             .unwrap_err();
         assert!(matches!(error, OpenRouterValidationError::ProbeMalformed));
+    }
+
+    #[test]
+    fn healthy_probe_appends_healthy_event() {
+        let (_dir, manager, key_id) = manager_with_key();
+        let transport = FakeTransport::respond(response(
+            200,
+            r#"{"data":{"limit":100.0,"limit_remaining":80.0,"limit_reset":"monthly"}}"#,
+        ));
+
+        manager
+            .validate_openrouter_key_with(&key_id, &transport, 11_000)
+            .unwrap();
+
+        let events = manager.list_credential_events(10).unwrap();
+        assert_eq!(events[0].kind, CredentialEventKind::CredentialHealthy);
+        assert_eq!(events[1].kind, CredentialEventKind::CredentialAdded);
+    }
+
+    #[test]
+    fn recovered_probe_appends_recovered_before_healthy_event() {
+        let (_dir, manager, key_id) = manager_with_key();
+        {
+            let mut inner = manager.lock_inner().unwrap();
+            let mut record = inner.keys.get(&key_id).cloned().unwrap();
+            record.lifecycle_state = LifecycleState::Invalid;
+            record.availability_state = AvailabilityState::Unverified;
+            record.updated_at_utc_ms = 11_100;
+            let update = record.state_update();
+            inner.store.update_key_state(&key_id, &update).unwrap();
+            inner.keys.insert(key_id.clone(), record);
+        }
+        let transport = FakeTransport::respond(response(
+            200,
+            r#"{"data":{"limit":100.0,"limit_remaining":80.0,"limit_reset":"monthly"}}"#,
+        ));
+
+        manager
+            .validate_openrouter_key_with(&key_id, &transport, 11_200)
+            .unwrap();
+
+        let events = manager.list_credential_events(10).unwrap();
+        assert_eq!(events[0].kind, CredentialEventKind::CredentialHealthy);
+        assert_eq!(events[1].kind, CredentialEventKind::CredentialRecovered);
+        assert_eq!(events[2].kind, CredentialEventKind::CredentialAdded);
+    }
+
+    #[test]
+    fn exhausted_probe_appends_expired_event_instead_of_healthy() {
+        let (_dir, manager, key_id) = manager_with_key();
+        let transport = FakeTransport::respond(response(
+            200,
+            r#"{"data":{"limit":10.0,"limit_remaining":0.0,"limit_reset":"daily"}}"#,
+        ));
+
+        manager
+            .validate_openrouter_key_with(&key_id, &transport, 11_300)
+            .unwrap();
+
+        let events = manager.list_credential_events(10).unwrap();
+        assert_eq!(events[0].kind, CredentialEventKind::CredentialExpired);
+        assert_eq!(events[1].kind, CredentialEventKind::CredentialAdded);
+    }
+
+    #[test]
+    fn explicit_rate_limit_probe_appends_cooldown_event() {
+        let (_dir, manager, key_id) = manager_with_key();
+        let transport = FakeTransport::respond(ProbeHttpResponse {
+            status: 429,
+            retry_after_ms: Some(4_000),
+            body: b"{}".to_vec(),
+        });
+
+        manager
+            .validate_openrouter_key_with(&key_id, &transport, 11_400)
+            .unwrap();
+
+        let events = manager.list_credential_events(10).unwrap();
+        assert_eq!(events[0].kind, CredentialEventKind::CredentialCooldown);
+        assert_eq!(events[1].kind, CredentialEventKind::CredentialAdded);
+    }
+
+    #[test]
+    fn provider_transient_probe_does_not_append_false_key_health_event() {
+        let (_dir, manager, key_id) = manager_with_key();
+        let transport = FakeTransport::fail(ProbeTransportError::Timeout);
+
+        let error = manager
+            .validate_openrouter_key_with(&key_id, &transport, 11_500)
+            .unwrap_err();
+        assert!(matches!(error, OpenRouterValidationError::ProbeUnavailable));
+
+        let events = manager.list_credential_events(10).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, CredentialEventKind::CredentialAdded);
+    }
+
+    #[test]
+    fn malformed_probe_does_not_append_event_or_provider_body() {
+        let (_dir, manager, key_id) = manager_with_key();
+        let canary = "sk-or-v1-EVENT_BODY_CANARY_MUST_NOT_PERSIST";
+        let transport = FakeTransport::respond(response(200, canary));
+
+        let error = manager
+            .validate_openrouter_key_with(&key_id, &transport, 11_600)
+            .unwrap_err();
+        assert!(matches!(error, OpenRouterValidationError::ProbeMalformed));
+
+        let events = manager.list_credential_events(10).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, CredentialEventKind::CredentialAdded);
+        assert!(!serde_json::to_string(&events).unwrap().contains(canary));
     }
 }

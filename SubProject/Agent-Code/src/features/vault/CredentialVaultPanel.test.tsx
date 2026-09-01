@@ -6,6 +6,7 @@ import type { KeySummary } from './vault-types';
 
 const vaultApi = vi.hoisted(() => ({
   listKeys: vi.fn(),
+  listEvents: vi.fn(),
   addKey: vi.fn(),
   setKeyEnabled: vi.fn(),
   deleteKey: vi.fn(),
@@ -60,6 +61,10 @@ describe('CredentialVaultPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vaultApi.listKeys.mockResolvedValue([primary, disabled, cooldown]);
+    vaultApi.listEvents.mockResolvedValue([
+      { event_id: 2, kind: 'CREDENTIAL_SELECTED', key_id: 'key-primary', occurred_at_utc_ms: 2000 },
+      { event_id: 1, kind: 'CREDENTIAL_ADDED', key_id: 'key-primary', occurred_at_utc_ms: 1000 },
+    ]);
     vaultApi.addKey.mockResolvedValue(primary);
     vaultApi.setKeyEnabled.mockResolvedValue(primary);
     vaultApi.deleteKey.mockResolvedValue(undefined);
@@ -130,6 +135,15 @@ describe('CredentialVaultPanel', () => {
     expect(screen.queryByRole('button', { name: /reveal/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /copy/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /export/i })).not.toBeInTheDocument();
+  });
+
+  it('renders a bounded metadata-only credential activity viewer', async () => {
+    render(<CredentialVaultPanel onClose={() => undefined} />);
+    expect(await screen.findByRole('heading', { name: 'Credential activity' })).toBeInTheDocument();
+    expect(await screen.findByText('CREDENTIAL_SELECTED')).toBeInTheDocument();
+    expect(screen.getByText('CREDENTIAL_ADDED')).toBeInTheDocument();
+    expect(vaultApi.listEvents).toHaveBeenCalledWith(20);
+    expect(document.body.textContent).not.toContain('sk-or-v1-');
   });
 
 });
