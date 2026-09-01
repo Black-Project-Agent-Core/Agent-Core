@@ -377,6 +377,7 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/feature/agent-code-key-va
 - Modify: `SubProject/Agent-Code/src-tauri/Cargo.toml`
 - Create: `SubProject/Agent-Code/src-tauri/src/credential/mod.rs`
 - Create: `SubProject/Agent-Code/src-tauri/src/credential/dpapi.rs`
+- Modify: `SubProject/Agent-Code/src-tauri/src/main.rs` to declare `mod credential;` so the Windows adapter is compiled by the target check
 - Test: unit tests in `protector.rs`; Windows behavior later verified by Task 10 native self-test
 
 **Interfaces:**
@@ -387,7 +388,7 @@ test "$(git rev-parse HEAD)" = "$(git rev-parse origin/feature/agent-code-key-va
   - `ProtectedBlob::verify_checksum()`
   - Windows `DpapiProtector`
 
-- [ ] **Step 1: Write RED checksum/protector tests**
+- [x] **Step 1: Write RED checksum/protector tests**
 
 Create tests:
 
@@ -416,7 +417,7 @@ fn test_protector_round_trip_keeps_plaintext_out_of_blob() {
 
 The `XorTestProtector` must live under `#[cfg(test)]`; it must not be exported or compiled as a production fallback.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml protector::tests -- --nocapture
@@ -424,7 +425,7 @@ cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml protector
 
 Expected: FAIL because `ProtectedBlob` and `SecretProtector` do not exist.
 
-- [ ] **Step 3: Implement `ProtectedBlob` and `SecretProtector`**
+- [x] **Step 3: Implement `ProtectedBlob` and `SecretProtector`**
 
 ```rust
 use crate::SecretBytes;
@@ -485,7 +486,7 @@ pub trait SecretProtector: Send + Sync + 'static {
 }
 ```
 
-- [ ] **Step 4: Add the crypto checksum and Windows dependencies**
+- [x] **Step 4: Add the crypto checksum and Windows dependencies**
 
 Add to `crates/credential-core/Cargo.toml`:
 
@@ -506,7 +507,7 @@ windows-sys = { version = "0.61.2", features = [
 
 Do not add a non-Windows DPAPI replacement.
 
-- [ ] **Step 5: Implement Windows `DpapiProtector`**
+- [x] **Step 5: Implement Windows `DpapiProtector`**
 
 Use `CryptProtectData`/`CryptUnprotectData` with `CRYPTPROTECT_UI_FORBIDDEN`, current-user default scope, `DATA_BLOB`, and `LocalFree` for returned buffers. The implementation must copy the DPAPI result into an owned `Vec<u8>` and immediately free the Windows allocation.
 
@@ -603,7 +604,7 @@ impl SecretProtector for DpapiProtector {
 
 This code intentionally passes no optional entropy and no machine-scope flag. Before decrypting, it verifies the application checksum and fails closed on mismatch.
 
-- [ ] **Step 6: Add a compile-time no-fallback guard**
+- [x] **Step 6: Add a compile-time no-fallback guard**
 
 `credential/mod.rs` must only re-export `DpapiProtector` on Windows:
 
@@ -614,7 +615,7 @@ pub mod dpapi;
 
 Do not create a production `PlaintextProtector`, `NoopProtector`, or Linux compatibility protector.
 
-- [ ] **Step 7: Run tests and Windows target check**
+- [x] **Step 7: Run tests and Windows target check**
 
 ```bash
 cargo test --manifest-path src-tauri/crates/credential-core/Cargo.toml
@@ -623,7 +624,7 @@ cargo check --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
 
 If the host check cannot link the Tauri GUI due to Linux WebKit dependencies, keep the core native test and use the existing `npm run build:windows:x64` cross-build as the Windows compile gate; do not install unrelated Linux GUI packages just to make a native Linux Agent Code app.
 
-- [ ] **Step 8: Commit + push + remote equality**
+- [x] **Step 8: Commit + push + remote equality**
 
 ```bash
 git add SubProject/Agent-Code/src-tauri

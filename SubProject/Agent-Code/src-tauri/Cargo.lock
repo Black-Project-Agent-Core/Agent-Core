@@ -15,6 +15,7 @@ dependencies = [
  "agent-code-credential-core",
  "tauri",
  "tauri-build",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -23,6 +24,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2",
  "subtle",
  "thiserror 2.0.20",
  "zeroize",
