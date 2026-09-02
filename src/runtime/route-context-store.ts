@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { RoutePlan } from '../capabilities/route-types.js';
+import type { ImplementationStrategyMode } from '../implementation/strategy.js';
 import type { RuntimeMetricRegistry } from './metric-window.js';
 import {
   NOOP_ROUTING_AUDIT_LOGGER,
@@ -13,7 +14,8 @@ export type AgentCoreRouteErrorCode =
   | 'ROUTE_TOOL_NOT_ALLOWED'
   | 'ROUTE_SKILL_REQUIRED'
   | 'ROUTE_MEMORY_GUARDRAIL_BLOCKED'
-  | 'ROUTE_PROJECT_MISMATCH';
+  | 'ROUTE_PROJECT_MISMATCH'
+  | 'ROUTE_IMPLEMENTATION_STRATEGY_STALE';
 
 export class AgentCoreRouteError extends Error {
   constructor(
@@ -47,10 +49,27 @@ export interface RouteMemorySnapshot {
   enforceHardGuardrails: boolean;
 }
 
+export type RouteImplementationStrategyState =
+  | 'analysis'
+  | 'ready'
+  | 'mutation_started'
+  | 'verification_pending'
+  | 'closed';
+
+export interface RouteImplementationStrategyProjection {
+  strategyId: string;
+  mode: ImplementationStrategyMode;
+  planFingerprint: string;
+  referenceSetFingerprint: string;
+  manifestId?: string;
+  leaseId?: string;
+  state: RouteImplementationStrategyState;
+}
 export interface RouteCreateOptions {
   reservation?: RouteReservation;
   projectId?: string;
   memorySnapshot?: RouteMemorySnapshot;
+  implementationStrategy?: RouteImplementationStrategyProjection;
   continuityTurnId?: string;
   continuityTaskId?: string;
   continuitySnapshotHash?: string;
@@ -64,6 +83,7 @@ export interface RouteContext extends RoutePlan {
   createdAt: string;
   expiresAt: string;
   memorySnapshot?: RouteMemorySnapshot;
+  implementationStrategy?: RouteImplementationStrategyProjection;
   continuityTurnId?: string;
   continuityTaskId?: string;
   continuitySnapshotHash?: string;
@@ -126,6 +146,7 @@ export class RouteContextStore {
       createdAt: reservation.createdAt,
       expiresAt: reservation.expiresAt,
       ...(options.memorySnapshot ? { memorySnapshot: structuredClone(options.memorySnapshot) } : {}),
+      ...(options.implementationStrategy ? { implementationStrategy: structuredClone(options.implementationStrategy) } : {}),
       ...(options.continuityTurnId ? { continuityTurnId: options.continuityTurnId } : {}),
       ...(options.continuityTaskId ? { continuityTaskId: options.continuityTaskId } : {}),
       ...(options.continuitySnapshotHash ? { continuitySnapshotHash: options.continuitySnapshotHash } : {}),
@@ -177,6 +198,28 @@ export class RouteContextStore {
       .sort((left, right) => left.localeCompare(right));
   }
 
+  validateImplementationStrategyFreshness(
+    routeContextId: string,
+    principalId: string,
+    current: { planFingerprint: string; referenceSetFingerprint: string },
+  ): RouteContext {
+    const context = this.requireOwned(routeContextId, principalId);
+    const strategy = context.implementationStrategy;
+    if (!strategy
+      || strategy.planFingerprint !== current.planFingerprint
+      || strategy.referenceSetFingerprint !== current.referenceSetFingerprint) {
+      throw new AgentCoreRouteError(
+        'ROUTE_IMPLEMENTATION_STRATEGY_STALE',
+        'Route implementation strategy no longer matches the current plan/reference identity',
+        {
+          strategyId: strategy?.strategyId ?? null,
+          planFingerprint: strategy?.planFingerprint ?? null,
+          referenceSetFingerprint: strategy?.referenceSetFingerprint ?? null,
+        },
+      );
+    }
+    return structuredClone(context);
+  }
   markSkillLoaded(
     routeContextId: string,
     principalId: string,

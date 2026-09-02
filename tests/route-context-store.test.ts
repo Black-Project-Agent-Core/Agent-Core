@@ -135,3 +135,58 @@ describe('RouteContextStore', () => {
     expect(store.get(oldest.routeContextId)).toBeNull();
   });
 });
+
+
+describe('RouteContextStore implementation strategy projection', () => {
+  const strategy = {
+    strategyId: 'strategy-1',
+    mode: 'FEATURE_GRAFT' as const,
+    planFingerprint: 'a'.repeat(64),
+    referenceSetFingerprint: 'b'.repeat(64),
+    state: 'analysis' as const,
+  };
+
+  it('stores a bounded strategy projection without changing route plan semantics', () => {
+    const store = new RouteContextStore();
+    const context = store.create('key-a', routePlan(), { implementationStrategy: strategy });
+
+    expect(context.implementationStrategy).toEqual(strategy);
+    expect(context.tier).toBe('atomic');
+    expect(context.mode).toBe('atomic_direct');
+    expect(context.allowedTools).toEqual(['read_file', 'write_file']);
+  });
+
+  it('keeps read-only route validation usable while strategy analysis is pending', () => {
+    const store = new RouteContextStore();
+    const context = store.create('key-a', routePlan({ allowedTools: ['read_file'] }), {
+      implementationStrategy: strategy,
+    });
+
+    expect(store.validate(context.routeContextId, 'key-a', 'read_file').implementationStrategy?.state)
+      .toBe('analysis');
+  });
+  it('accepts matching current fingerprints and rejects plan/reference drift', () => {
+    const store = new RouteContextStore();
+    const context = store.create('key-a', routePlan(), { implementationStrategy: strategy });
+
+    expect(store.validateImplementationStrategyFreshness(context.routeContextId, 'key-a', {
+      planFingerprint: strategy.planFingerprint,
+      referenceSetFingerprint: strategy.referenceSetFingerprint,
+    }).routeContextId).toBe(context.routeContextId);
+
+    expectCode(
+      () => store.validateImplementationStrategyFreshness(context.routeContextId, 'key-a', {
+        planFingerprint: 'c'.repeat(64),
+        referenceSetFingerprint: strategy.referenceSetFingerprint,
+      }),
+      'ROUTE_IMPLEMENTATION_STRATEGY_STALE',
+    );
+    expectCode(
+      () => store.validateImplementationStrategyFreshness(context.routeContextId, 'key-a', {
+        planFingerprint: strategy.planFingerprint,
+        referenceSetFingerprint: 'd'.repeat(64),
+      }),
+      'ROUTE_IMPLEMENTATION_STRATEGY_STALE',
+    );
+  });
+});
