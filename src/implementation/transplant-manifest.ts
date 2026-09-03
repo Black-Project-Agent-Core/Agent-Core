@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { AnalysisCompleteness } from './code-intelligence.js';
+import type { AuthorityConflict } from './authority-conflicts.js';
 import type {
   FeatureContract,
   ImplementationStrategyResolution,
@@ -32,7 +33,8 @@ export interface TransplantManifest {
   donorSetHash: string;
   analysisCompleteness: AnalysisCompleteness;
   components: TransplantComponent[];
-  authorityConflicts: unknown[];
+  authorityConflicts: AuthorityConflict[];
+  readiness: 'ready' | 'blocked';
   donorTests: DonorTestMapping[];
   hostVerification: string[];
   createdAt: number;
@@ -58,6 +60,7 @@ export interface BuildTransplantManifestRequest {
   components: TransplantComponent[];
   donorTests: DonorTestMapping[];
   hostVerification: string[];
+  authorityConflicts?: AuthorityConflict[];
   createdAt: number;
 }
 
@@ -147,6 +150,7 @@ export function buildTransplantManifest(
     .map((item) => ({ ...item, referenceId: item.referenceId.trim(), sourcePath: item.sourcePath.trim(), behavior: item.behavior.trim() }))
     .sort((left, right) => stableJson(left).localeCompare(stableJson(right)));
   const hostVerification = [...new Set(request.hostVerification.map((item) => item.trim()).filter(Boolean))].sort();
+  const authorityConflicts = [...(request.authorityConflicts ?? [])].sort((left, right) => left.conflictId.localeCompare(right.conflictId));
   const featureContractHash = sha256(request.feature);
   const donorSetHash = request.strategy.referenceSetFingerprint;
   const identity = {
@@ -157,6 +161,7 @@ export function buildTransplantManifest(
     components,
     donorTests,
     hostVerification,
+    authorityConflicts,
   };
   const manifestId = `manifest:${sha256(identity)}`;
 
@@ -167,9 +172,10 @@ export function buildTransplantManifest(
     donorSetHash,
     analysisCompleteness: request.analysisCompleteness,
     components,
-    authorityConflicts: [],
+    readiness: authorityConflicts.some((item) => item.status === 'blocking') ? 'blocked' : 'ready',
     donorTests,
     hostVerification,
+    authorityConflicts,
     createdAt: request.createdAt,
   };
 }

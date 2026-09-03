@@ -97,3 +97,25 @@ describe('transplant manifest planner', () => {
     );
   });
 });
+
+describe('transplant manifest authority readiness', () => {
+  it('binds authority conflict outcome into readiness and manifest identity', () => {
+    const baseConflict = {
+      conflictId: 'authority:one', referenceId: 'graft', sourcePath: 'src/ai/llm/factory.ts',
+      authorityId: 'routing' as const, targetBinding: 'CapabilityRouter/RouteContextStore',
+    };
+    const blocked = buildTransplantManifest({
+      strategy, feature, analysisCompleteness: 'complete', components, createdAt: 100,
+      donorTests: [], hostVerification: ['focused-tests'],
+      authorityConflicts: [{ ...baseConflict, status: 'blocking' as const, reasonCode: 'DUPLICATE_AUTHORITY_OWNER' as const }],
+    });
+    const ready = buildTransplantManifest({
+      strategy, feature, analysisCompleteness: 'complete', components, createdAt: 100,
+      donorTests: [], hostVerification: ['focused-tests'],
+      authorityConflicts: [{ ...baseConflict, status: 'resolved' as const, reasonCode: 'BOUND_TO_CANONICAL_AUTHORITY' as const }],
+    });
+    expect(blocked.readiness).toBe('blocked');
+    expect(ready.readiness).toBe('ready');
+    expect(blocked.manifestId).not.toBe(ready.manifestId);
+  });
+});
