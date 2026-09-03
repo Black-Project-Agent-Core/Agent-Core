@@ -92,6 +92,16 @@ A full baseline `npm test` was run before Strategy Gate production code was intr
 
 Completion gates therefore use focused and adjacent suites whose baseline behavior is valid on this host, plus repeated real-donor canaries. No existing passing adjacent test was allowed to regress.
 
+## Final Repository-Wide Test Status
+
+A fresh final `npm test` was run on the completed feature branch and remains red at repository scope:
+
+- test files: `19 failed | 160 passed | 2 skipped` (`181` total)
+- tests: `31 failed | 866 passed | 22 skipped` (`919` total)
+- duration: about `260.55s`
+- exit code: `1`
+
+The failing set is outside the new Strategy Gate surfaces and remains concentrated in the pre-existing Windows/Codespace/execution classes observed before implementation: Codespace lifecycle/hydration/public-readiness/port-visibility, execution runner/retention/lifecycle timing, tray/watchdog behavior, and Windows symlink/workspace fixtures. The Strategy Gate focused and adjacent suites are green, but this branch must not be described as repository-wide green until those baseline failures are resolved separately.
 ## Attribution
 
 `THIRD_PARTY_NOTICES.md` records the exact donor lineage and MIT notices used by this graft. Raw donor source bodies and credentials are not stored in Agent Core memory/audit projections by the Strategy Gate.
