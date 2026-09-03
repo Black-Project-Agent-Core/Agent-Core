@@ -1,76 +1,61 @@
-# Agent Core Real Steel Prototype Audit
+﻿# Real Steel Prototype Audit
 
-**Purpose:** Task 0 evidence for `agent-core-real-steel-crafting-engine.md`.
+**Audit base:** `origin/main` / merge-base `6b674c1f95a677dea5cb57263bb5b8b863faff5b`  
+**Audit branch:** `feature/real-steel-crafting-engine`  
+**Plan authority:** `docs/roadmap/agent-core-real-steel-crafting-engine.md`
 
-**Branch:** `feature/real-steel-crafting-engine`
-**Audit HEAD:** `4fd51b34a66d884cd6cd131a872286d04f7ee9f9`
-**Pre-prototype merge base:** `6b674c1f95a677dea5cb57263bb5b8b863faff5b`
+## Baseline evidence
 
-## Baseline Evidence
+- `npm run build` → PASS.
+- Focused prototype suite → 7 files, 45 tests PASS, 0 FAIL.
+- Old strategy-gate roadmap documents are no longer tracked.
+- Runtime production callers of the prototype are limited to route context, runtime composition, MCP tools/guard/error handling.
+- Code-intelligence/fingerprint prototype modules have no production runtime caller outside their own tests/canary.
 
-- Working tree was clean before audit.
-- `npm run build`: PASS, exit 0.
-- Prototype-focused suite: 9 test files PASS, 65 tests PASS, 0 failures.
-- Old strategy-gate roadmap documents are no longer tracked on this branch.
-- Official authority is `docs/roadmap/agent-core-real-steel-crafting-engine.md`.
+## Migration matrix
 
-## Dependency Findings
-
-Production runtime currently depends on the prototype through:
-- `RuntimeServices -> ImplementationStrategyService`.
-- `RouteContextStore -> ImplementationStrategyMode` and strategy projection.
-- `routeGuarded -> implementation-strategy-guard` after memory lifecycle validation.
-- `route-guard -> ImplementationStrategyError` serialization.
-- `config/index -> ImplementationStrategyConfig` and runtime composition.
-
-The donor-specific canary path is isolated:
-- `GitWorkingTreeCodeIntelligenceSource -> GitHubGitService.listWorkingTreeFiles`.
-- `code-intelligence.ts` is otherwise consumed by prototype verification/manifest and tests.
-## Migration Matrix — Prototype Core
-
-| Prototype component | Decision | Factual rationale |
+| Prototype component | Decision | Real Steel destination / reason |
 |---|---|---|
-| `src/implementation/strategy.ts` | `REWRITE` | Stable serialization, SHA-256 identity, immutable reference validation are useful; public vocabulary and mode semantics must become Real Steel. |
-| `src/implementation/transplant-manifest.ts` | `REWRITE` | Decision normalization/hash is useful; current contract depends on donor-analysis abstractions and is narrower than `CraftPlan`. |
-| `src/implementation/authority-conflicts.ts` | `REUSE` | Protected authority data and owner-conflict evaluation already match host-authority invariants; migrate types/path and extend tests. |
-| `src/implementation/meaningful-work.ts` | `REUSE` | Read-only/documentation/source/verification classification is useful input to crafting enforcement; extend with donor-derived mutation intent. |
-| `src/implementation/service.ts` | `REWRITE` | Scoped lease pattern is proven, but lease identity must bind crafting mode, grounding and `craftPlanId`. |
-| `src/implementation/verification.ts` | `REWRITE` | Donor-vs-host verification separation and safe provenance are useful; current provider/manifest types are obsolete for Real Steel. |
-| `src/mcp/implementation-strategy-guard.ts` | `REWRITE` | Memory-first ordering and advisory/enforce behavior are proven; guard must enforce Real Steel mutation-to-craft-plan mapping. |
-| `src/implementation/code-intelligence.ts` | `REMOVE_DEFERRED` | External/general code-intelligence abstraction is not required by Real Steel core correctness. |
-| `src/implementation/git-working-tree-source.ts` | `REMOVE_DEFERRED` | This is reference-specific canary infrastructure, not a generic Real Steel requirement. |
+| `src/implementation/strategy.ts` | REWRITE | Split into `src/crafting/types.ts` + `mode-resolver.ts`; retain deterministic hashing/identity only. |
+| `src/implementation/transplant-manifest.ts` | REWRITE | Become `src/crafting/craft-plan.ts`; preserve deterministic classification normalization. |
+| `src/implementation/authority-conflicts.ts` | REUSE | Migrate policy data/evaluator to `src/crafting/authority-registry.ts` with crafting vocabulary. |
+| `src/implementation/meaningful-work.ts` | REWRITE | Reuse structural mutation classification in Real Steel mutation guard. |
+| `src/implementation/service.ts` | REWRITE | Reuse scoped lease mechanics as `src/crafting/service.ts`. |
+| `src/implementation/verification.ts` | REWRITE | Reuse separated parity/host verification and bounded provenance as crafting verification. |
+| `src/mcp/implementation-strategy-guard.ts` | REWRITE | Become `src/mcp/crafting-guard.ts`; preserve memory-first guard ordering. |
+| `src/implementation/code-intelligence.ts` | REMOVE_DEFERRED | Not part of Real Steel core; external/codebase-intelligence work is deferred. |
+| `src/implementation/git-working-tree-source.ts` | REMOVE_DEFERRED | Reference-specific canary/source-fingerprint machinery, not required by Real Steel core. |
+| `src/config.ts` prototype config | REWRITE | Rename enforcement surface to `AGENT_CORE_CRAFTING_ENFORCEMENT`; default remains disabled during migration. |
+| `src/runtime/services.ts` prototype service wiring | REWRITE | Replace `ImplementationStrategyService` wiring with `CraftingService`. |
+| `src/runtime/route-context-store.ts` projection | REWRITE | Replace implementation-strategy projection with bounded `crafting` projection; retain freshness semantics. |
+| `src/mcp/tools.ts` guard calls | REWRITE | Call Real Steel crafting guard after memory lifecycle and before side effects. |
+| `src/mcp/route-guard.ts` error support | REWRITE | Replace prototype error type with crafting error type. |
+| `src/github/git-service.ts` `listWorkingTreeFiles` addition | REMOVE_DEFERRED | Added only for the prior reference-specific canary; remove once no generic Real Steel caller remains. |
+| `THIRD_PARTY_NOTICES.md` | REMOVE_DEFERRED | Remove if no adapted third-party implementation remains after deferred cleanup. |
+| `tests/implementation-strategy*.test.ts` | REWRITE | Superseded by crafting mode/guard tests. |
+| `tests/transplant-manifest.test.ts` | REWRITE | Superseded by `tests/crafting-plan.test.ts`. |
+| `tests/authority-conflicts.test.ts` | REUSE | Port behavioral cases to crafting compatibility/authority tests. |
+| `tests/implementation-verification.test.ts` | REWRITE | Port useful verification cases to crafting verification tests. |
+| `tests/code-intelligence-provider.test.ts` | REMOVE_DEFERRED | Deferred codebase-intelligence scope. |
+| `tests/git-working-tree-code-intelligence.test.ts` | REMOVE_DEFERRED | Deferred reference-specific canary scope. |
+| `tests/implementation-strategy-real-graft.acceptance.test.ts` | REMOVE_DEFERRED | Replace with tool-neutral dual Real Steel canaries. |
 
-## Migration Matrix — Host Integration
+## Production call-site facts
 
-| Host surface | Decision | Factual rationale |
-|---|---|---|
-| `src/config.ts` | `REWRITE` | Keep disabled/advisory/enforce rollout pattern; rename config and bind Crafting service. |
-| `src/runtime/services.ts` | `REWRITE` | Keep one runtime composition point; replace prototype service with Crafting service. |
-| `src/runtime/route-context-store.ts` | `REWRITE` | Keep scoped projection/freshness pattern; replace strategy/manifest fields with crafting/grounding/craft-plan identity. |
-| `src/mcp/tools.ts` | `REWRITE` | Preserve route -> memory lifecycle -> crafting guard -> mutation order. |
-| `src/mcp/route-guard.ts` | `REWRITE` | Preserve deterministic safe error serialization for new Crafting errors. |
-| `src/index.ts` | `REWRITE` | Runtime config pass-through changes with the Crafting service rename. |
-| `src/github/git-service.ts#listWorkingTreeFiles` | `REMOVE_DEFERRED` | Only current production caller is the deferred working-tree canary source. |
-| `THIRD_PARTY_NOTICES.md` | `REMOVE_DEFERRED` | Remove if no adapted reference-specific source remains after Task 13 cleanup. |
-## Test Migration Decisions
+Current production chain is:
 
-- Prototype strategy/manifest/authority/guard/verification tests are migration fixtures, not final naming authority.
-- `tests/code-intelligence-provider.test.ts`, `tests/git-working-tree-code-intelligence.test.ts`, and `tests/implementation-strategy-real-graft.acceptance.test.ts` are deferred and must disappear from Real Steel core after replacement canaries exist.
-- `tests/github-git.test.ts` additions for `listWorkingTreeFiles` are removed with that deferred path unless another non-deferred production caller exists.
-- Existing route/config/memory-lifecycle tests remain adjacent regression authority throughout migration.
+```text
+src/config.ts
+  → src/runtime/services.ts
+  → src/runtime/route-context-store.ts
+  → src/mcp/tools.ts
+       → memory lifecycle guard
+       → prototype implementation strategy guard
+       → actual operational mutation
+```
 
-## Migration Order
+No deferred code-intelligence module is required by this production chain. This permits the Real Steel migration to proceed without carrying the earlier reference-specific intelligence implementation as a runtime dependency.
 
-1. Introduce new `src/crafting/` contracts beside the prototype.
-2. Move deterministic mode/reference identity first.
-3. Add mandatory source grounding and connected feature anatomy.
-4. Replace manifest with `CraftPlan` and migrate authority evaluation.
-5. Replace route/service/config projection and lease vocabulary.
-6. Replace MCP guard only after new crafting lease tests are green.
-7. Add iterative execution, multi-command DAG, verification and continuity.
-8. Prove both Real Steel canaries.
-9. Remove deferred prototype/canary residue only after caller search proves it unused.
+## Task 0 exit decision
 
-## Task 0 Exit Gate
-
-PASS: old roadmap authority is retired on this branch; every prototype component and host integration has an explicit migration decision; current prototype baseline compiles and its focused tests are green.
+The prototype is not discarded wholesale. Deterministic identity, lease scoping, host-authority protection, memory-first guard ordering, meaningful-work classification, and verification separation are retained as candidate spareparts. All public/core semantics are rewritten around the approved two-mode Real Steel contract. Deferred reference-specific code remains in place only until Task 13 proves it has no runtime import and removes it safely.
