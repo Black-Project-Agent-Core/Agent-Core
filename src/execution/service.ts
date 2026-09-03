@@ -23,6 +23,7 @@ import { ExecutionScheduler, type ExecutionRunnerLike } from './scheduler.js';
 import {
   ExecutionStore,
   ExecutionStoreError,
+  type ExecutionAttemptRecord,
   type ExecutionNodeRecord,
   type ExecutionRunRecord,
 } from './store.js';
@@ -476,6 +477,13 @@ export class ExecutionService {
     const view = await this.status(scope, runId);
     if (!view) throw new ExecutionStoreError('EXECUTION_RUN_NOT_FOUND', 'Execution run was not found in authenticated scope');
     return memoryPreSearch ? { ...view, memoryPreSearch } : view;
+  }
+
+  async attempts(scope: ExecutionScope, runId: string, nodeId?: string): Promise<ExecutionAttemptRecord[]> {
+    this.assertReady();
+    const run = await this.store.getRun(scope, runId);
+    if (!run) throw new ExecutionStoreError('EXECUTION_RUN_NOT_FOUND', 'Execution run was not found in authenticated scope');
+    return this.store.listAttempts(scope, runId, nodeId);
   }
 
   async cancel(scope: ExecutionScope, runId: string, nodeId?: string): Promise<ExecutionRunView> {
