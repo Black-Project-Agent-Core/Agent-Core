@@ -28,6 +28,12 @@ export interface ImplementationStrategyConfig {
   leaseTtlMs: number;
 }
 
+export type CraftingEnforcementMode = 'disabled' | 'advisory' | 'enforce';
+export interface CraftingConfig {
+  enforcement: CraftingEnforcementMode;
+  leaseTtlMs: number;
+}
+
 export interface MemoryConfig {
   enabled: boolean;
   principalId: string | null;
@@ -142,6 +148,7 @@ export interface AppConfig {
   observability: ObservabilityConfig;
   memory: MemoryConfig;
   implementationStrategy: ImplementationStrategyConfig;
+  crafting: CraftingConfig;
   execution: ExecutionConfig;
   maintenance: MaintenanceConfig;
   github: GitHubConfig;
@@ -176,6 +183,12 @@ function parseImplementationStrategyGuardMode(value: string | undefined): Implem
   const normalized = value?.trim().toLowerCase() || 'disabled';
   if (normalized === 'disabled' || normalized === 'advisory' || normalized === 'enforce') return normalized;
   throw new Error('AGENT_CORE_IMPLEMENTATION_STRATEGY_MODE must be disabled, advisory, or enforce');
+}
+
+function parseCraftingEnforcementMode(value: string | undefined): CraftingEnforcementMode {
+  const normalized = value?.trim().toLowerCase() || 'disabled';
+  if (normalized === 'disabled' || normalized === 'advisory' || normalized === 'enforce') return normalized;
+  throw new Error('AGENT_CORE_CRAFTING_ENFORCEMENT must be disabled, advisory, or enforce');
 }
 function parseMcpProtocolMode(value: string | undefined): McpProtocolMode {
   const normalized = value?.trim().toLowerCase() || 'dual';
@@ -436,6 +449,15 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
       24 * 60 * 60_000,
     ),
   };
+  const crafting: CraftingConfig = {
+    enforcement: parseCraftingEnforcementMode(env.AGENT_CORE_CRAFTING_ENFORCEMENT),
+    leaseTtlMs: parseBoundedPositiveInteger(
+      env.AGENT_CORE_CRAFTING_LEASE_TTL_MS,
+      30 * 60_000,
+      'AGENT_CORE_CRAFTING_LEASE_TTL_MS',
+      24 * 60 * 60_000,
+    ),
+  };
   const otlpEndpoint = parseOtlpEndpoint(env.AGENT_CORE_OTLP_ENDPOINT);
   const observability: ObservabilityConfig = {
     audit: {
@@ -522,6 +544,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     observability,
     memory,
     implementationStrategy,
+    crafting,
     execution,
     maintenance,
     github,

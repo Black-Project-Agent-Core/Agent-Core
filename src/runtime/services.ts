@@ -1,8 +1,9 @@
 import path from 'node:path';
 import { CapabilityRegistry } from '../capabilities/registry-service.js';
 import { CapabilityRouter } from '../capabilities/router.js';
-import { loadConfig, type ExecutionConfig, type GitHubConfig, type ImplementationStrategyConfig, type MaintenanceConfig, type MemoryConfig, type ObservabilityConfig } from '../config.js';
+import { loadConfig, type CraftingConfig, type ExecutionConfig, type GitHubConfig, type ImplementationStrategyConfig, type MaintenanceConfig, type MemoryConfig, type ObservabilityConfig } from '../config.js';
 import { ImplementationStrategyService } from '../implementation/service.js';
+import { CraftingService } from '../crafting/service.js';
 import { ExecutionLogStore } from '../execution/log-store.js';
 import { ExecutionMemoryBridge } from '../execution/memory-bridge.js';
 import { ExecutionMemoryPreSearch } from '../execution/memory-search.js';
@@ -34,6 +35,7 @@ export interface RuntimeServices {
   routes: RouteContextStore;
   memory: MemoryService;
   implementationStrategy: ImplementationStrategyService;
+  crafting: CraftingService;
   execution: ExecutionService;
   github: GitHubService;
   metrics: RuntimeMetricRegistry;
@@ -56,6 +58,7 @@ export function createRuntimeServices(
   serviceVersion = 'unknown',
   maintenanceConfig?: MaintenanceConfig,
   implementationStrategyConfig?: ImplementationStrategyConfig,
+  craftingConfig?: CraftingConfig,
 ): RuntimeServices {
   const workspace = new WorkspacePolicy(allowedRoots);
   const capabilities = CapabilityRegistry.open(capabilityDir);
@@ -67,6 +70,8 @@ export function createRuntimeServices(
   const resolvedMaintenanceConfig = maintenanceConfig ?? defaults.maintenance;
   const resolvedImplementationStrategyConfig = implementationStrategyConfig ?? defaults.implementationStrategy;
   const implementationStrategy = new ImplementationStrategyService(resolvedImplementationStrategyConfig);
+  const resolvedCraftingConfig = craftingConfig ?? defaults.crafting;
+  const crafting = new CraftingService(resolvedCraftingConfig);
   const metrics = new RuntimeMetricRegistry();
   if (routingAuditLogger && 'attachMetrics' in routingAuditLogger
     && typeof (routingAuditLogger as RoutingAuditLogger & { attachMetrics?: unknown }).attachMetrics === 'function') {
@@ -134,6 +139,7 @@ export function createRuntimeServices(
     routes: new RouteContextStore({ ...(routingAuditLogger ? { auditLogger: routingAuditLogger } : {}), metrics }),
     memory,
     implementationStrategy,
+    crafting,
     execution,
     github,
     metrics,

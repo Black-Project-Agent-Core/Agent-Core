@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { RoutePlan } from '../capabilities/route-types.js';
+import type { CraftingMode } from '../crafting/types.js';
 import type { ImplementationStrategyMode } from '../implementation/strategy.js';
 import type { RuntimeMetricRegistry } from './metric-window.js';
 import {
@@ -15,7 +16,8 @@ export type AgentCoreRouteErrorCode =
   | 'ROUTE_SKILL_REQUIRED'
   | 'ROUTE_MEMORY_GUARDRAIL_BLOCKED'
   | 'ROUTE_PROJECT_MISMATCH'
-  | 'ROUTE_IMPLEMENTATION_STRATEGY_STALE';
+  | 'ROUTE_IMPLEMENTATION_STRATEGY_STALE'
+  | 'ROUTE_CRAFTING_STALE';
 
 export class AgentCoreRouteError extends Error {
   constructor(
@@ -65,11 +67,32 @@ export interface RouteImplementationStrategyProjection {
   leaseId?: string;
   state: RouteImplementationStrategyState;
 }
+export type RouteCraftingState =
+  | 'analysis'
+  | 'grounded'
+  | 'anatomy_ready'
+  | 'ready'
+  | 'mutation_started'
+  | 'verification_pending'
+  | 'closed';
+
+export interface RouteCraftingProjection {
+  craftingId: string;
+  mode: CraftingMode;
+  featureContractHash: string;
+  referenceSetHash: string;
+  groundingReceiptId?: string;
+  craftPlanId?: string;
+  leaseId?: string;
+  state: RouteCraftingState;
+}
+
 export interface RouteCreateOptions {
   reservation?: RouteReservation;
   projectId?: string;
   memorySnapshot?: RouteMemorySnapshot;
   implementationStrategy?: RouteImplementationStrategyProjection;
+  crafting?: RouteCraftingProjection;
   continuityTurnId?: string;
   continuityTaskId?: string;
   continuitySnapshotHash?: string;
@@ -84,6 +107,7 @@ export interface RouteContext extends RoutePlan {
   expiresAt: string;
   memorySnapshot?: RouteMemorySnapshot;
   implementationStrategy?: RouteImplementationStrategyProjection;
+  crafting?: RouteCraftingProjection;
   continuityTurnId?: string;
   continuityTaskId?: string;
   continuitySnapshotHash?: string;
@@ -147,6 +171,7 @@ export class RouteContextStore {
       expiresAt: reservation.expiresAt,
       ...(options.memorySnapshot ? { memorySnapshot: structuredClone(options.memorySnapshot) } : {}),
       ...(options.implementationStrategy ? { implementationStrategy: structuredClone(options.implementationStrategy) } : {}),
+      ...(options.crafting ? { crafting: structuredClone(options.crafting) } : {}),
       ...(options.continuityTurnId ? { continuityTurnId: options.continuityTurnId } : {}),
       ...(options.continuityTaskId ? { continuityTaskId: options.continuityTaskId } : {}),
       ...(options.continuitySnapshotHash ? { continuitySnapshotHash: options.continuitySnapshotHash } : {}),
@@ -234,6 +259,47 @@ export class RouteContextStore {
           strategyId: strategy?.strategyId ?? null,
           planFingerprint: strategy?.planFingerprint ?? null,
           referenceSetFingerprint: strategy?.referenceSetFingerprint ?? null,
+        },
+      );
+    }
+    return structuredClone(context);
+  }
+  updateCrafting(
+    routeContextId: string,
+    principalId: string,
+    update: { leaseId?: string; state?: RouteCraftingState },
+  ): RouteContext {
+    const context = this.requireOwned(routeContextId, principalId);
+    if (!context.crafting) {
+      throw new AgentCoreRouteError('ROUTE_CRAFTING_STALE', 'Route does not carry Real Steel crafting state');
+    }
+    context.crafting = {
+      ...context.crafting,
+      ...(update.leaseId ? { leaseId: update.leaseId } : {}),
+      ...(update.state ? { state: update.state } : {}),
+    };
+    return structuredClone(context);
+  }
+
+  validateCraftingFreshness(
+    routeContextId: string,
+    principalId: string,
+    current: { featureContractHash: string; referenceSetHash: string; craftPlanId: string },
+  ): RouteContext {
+    const context = this.requireOwned(routeContextId, principalId);
+    const crafting = context.crafting;
+    if (!crafting
+      || crafting.featureContractHash !== current.featureContractHash
+      || crafting.referenceSetHash !== current.referenceSetHash
+      || crafting.craftPlanId !== current.craftPlanId) {
+      throw new AgentCoreRouteError(
+        'ROUTE_CRAFTING_STALE',
+        'Route crafting state no longer matches current feature/reference/craft-plan identity',
+        {
+          craftingId: crafting?.craftingId ?? null,
+          featureContractHash: crafting?.featureContractHash ?? null,
+          referenceSetHash: crafting?.referenceSetHash ?? null,
+          craftPlanId: crafting?.craftPlanId ?? null,
         },
       );
     }
