@@ -15,6 +15,7 @@ describe('loadConfig', () => {
     expect(config.allowedRoots).toEqual([baseDir]);
     expect(config.httpSecurity).toEqual({
       publicBaseUrl: null,
+      protectedResourceUrl: null,
       trustProxy: false,
       allowedOrigins: [],
     });
@@ -86,6 +87,7 @@ describe('loadConfig', () => {
       AGENT_CORE_CAPABILITY_DIR: 'F:\\AgentCoreCapabilities',
       AGENT_CORE_ALLOWED_ROOTS: 'F:\\Projects;F:\\Design',
       AGENT_CORE_PUBLIC_BASE_URL: 'https://agent-core.example.test/',
+      AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL: 'https://resource.example.test/v1/mcp/tunnel_test',
       AGENT_CORE_TRUST_PROXY: 'true',
       AGENT_CORE_MCP_ALLOWED_ORIGINS: 'https://app.example.test;LOCALHOST;https://app.example.test:8443',
       AGENT_CORE_MCP_PROTOCOL_MODE: 'legacy',
@@ -143,6 +145,7 @@ describe('loadConfig', () => {
     ]);
     expect(config.httpSecurity).toEqual({
       publicBaseUrl: 'https://agent-core.example.test',
+      protectedResourceUrl: 'https://resource.example.test/v1/mcp/tunnel_test',
       trustProxy: true,
       allowedOrigins: ['app.example.test', 'localhost'],
     });
@@ -206,6 +209,14 @@ describe('loadConfig', () => {
   });
 
 
+  it('accepts an explicit OAuth protected-resource URI that may differ from the authorization-server origin', () => {
+    const resource = 'https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/tunnel_test123';
+    const config = loadConfig({
+      AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL: resource,
+    }, 'F:\\Ignored');
+
+    expect(config.httpSecurity.protectedResourceUrl).toBe(resource);
+  });
   it('rejects unsafe public base URLs and malformed allowed origins', () => {
     expect(() => loadConfig({ AGENT_CORE_PUBLIC_BASE_URL: 'ftp://agent-core.example.test' }, 'F:\\Ignored'))
       .toThrow('AGENT_CORE_PUBLIC_BASE_URL must use http or https');

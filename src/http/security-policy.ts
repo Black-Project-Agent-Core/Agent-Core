@@ -48,6 +48,7 @@ export class HttpSecurityPolicy {
   constructor(config: HttpSecurityConfig) {
     this.config = {
       publicBaseUrl: config.publicBaseUrl,
+      protectedResourceUrl: config.protectedResourceUrl ?? null,
       trustProxy: config.trustProxy,
       allowedOrigins: [...config.allowedOrigins],
     };
@@ -72,7 +73,7 @@ export class HttpSecurityPolicy {
   }
 
   protectedResource(request: IncomingMessage): string {
-    return `${this.externalBaseUrl(request)}/mcp`;
+    return this.config.protectedResourceUrl ?? `${this.externalBaseUrl(request)}/mcp`;
   }
 
   validateMcpOrigin(request: IncomingMessage):

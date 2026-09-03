@@ -114,6 +114,7 @@ export interface GitHubConfig {
 
 export interface HttpSecurityConfig {
   publicBaseUrl: string | null;
+  protectedResourceUrl?: string | null;
   trustProxy: boolean;
   allowedOrigins: string[];
 }
@@ -217,6 +218,27 @@ function parsePublicBaseUrl(value: string | undefined): string | null {
     throw new Error('AGENT_CORE_PUBLIC_BASE_URL must be an origin without a path, query, or fragment');
   }
   return parsed.origin;
+}
+
+function parseOAuthProtectedResourceUrl(value: string | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error('AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL must be a valid URL');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL must use http or https');
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL must not include credentials');
+  }
+  if (parsed.search || parsed.hash) {
+    throw new Error('AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL must not include query or fragment');
+  }
+  return parsed.toString().replace(/\/$/, parsed.pathname === '/' ? '/' : '');
 }
 
 function normalizeAllowedOriginHostname(value: string): string {
@@ -407,6 +429,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
 
   const httpSecurity: HttpSecurityConfig = {
     publicBaseUrl: parsePublicBaseUrl(env.AGENT_CORE_PUBLIC_BASE_URL),
+    protectedResourceUrl: parseOAuthProtectedResourceUrl(env.AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL),
     trustProxy: parseBoolean(env.AGENT_CORE_TRUST_PROXY, false),
     allowedOrigins: parseAllowedOrigins(env.AGENT_CORE_MCP_ALLOWED_ORIGINS),
   };

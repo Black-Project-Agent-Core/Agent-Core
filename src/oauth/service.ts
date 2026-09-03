@@ -99,7 +99,7 @@ export class OAuthService {
     )) {
       const base = this.security.externalBaseUrl(request);
       sendJson(response, 200, {
-        resource: `${base}/mcp`,
+        resource: this.security.protectedResource(request),
         authorization_servers: [base],
         scopes_supported: [MCP_SCOPE],
         bearer_methods_supported: ['header'],
