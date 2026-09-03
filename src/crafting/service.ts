@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { CraftingConfig } from '../config.js';
+import type { CraftPlan } from './craft-plan.js';
+import type { CompatibilityBinding } from './compatibility-surgery.js';
 import type { RouteCraftingProjection } from '../runtime/route-context-store.js';
 
 export type CraftingErrorCode =
@@ -8,7 +10,13 @@ export type CraftingErrorCode =
   | 'CRAFTING_LEASE_INVALID'
   | 'CRAFTING_STALE'
   | 'CRAFT_PLAN_REQUIRED'
-  | 'SOURCE_GROUNDING_REQUIRED';
+  | 'SOURCE_GROUNDING_REQUIRED'
+  | 'BUILD_FROM_ZERO_DONOR_EVIDENCE_FORBIDDEN'
+  | 'CRAFT_MUTATION_MAPPING_REQUIRED'
+  | 'CLEAN_ROOM_PARALLEL_IMPLEMENTATION'
+  | 'CRAFT_MUTATION_NOT_ALLOWED'
+  | 'CRAFT_MUTATION_PATH_MISMATCH'
+  | 'CRAFT_COMPATIBILITY_MAPPING_REQUIRED';
 
 export class CraftingError extends Error {
   constructor(
@@ -21,6 +29,9 @@ export class CraftingError extends Error {
   }
 }
 
+export interface RegisteredCraftPlan extends CraftPlan {
+  compatibilityBindings?: CompatibilityBinding[];
+}
 export interface CraftingLease {
   leaseId: string;
   principalId: string;
@@ -57,9 +68,27 @@ function scopeEqual(left: string | undefined, right: string | undefined): boolea
 export class CraftingService {
   readonly config: CraftingConfig;
   private readonly leases = new Map<string, CraftingLease>();
+  private readonly craftPlans = new Map<string, RegisteredCraftPlan>();
 
   constructor(config: CraftingConfig, private readonly now: () => number = Date.now) {
     this.config = { ...config };
+  }
+  registerCraftPlan(plan: RegisteredCraftPlan): RegisteredCraftPlan {
+    if (!plan.craftPlanId || !plan.craftingId || plan.status !== 'ready') {
+      throw new CraftingError('CRAFT_PLAN_REQUIRED', 'Only identity-complete ready craft plans may be registered');
+    }
+    const existing = this.craftPlans.get(plan.craftPlanId);
+    if (existing && JSON.stringify(existing) !== JSON.stringify(plan)) {
+      throw new CraftingError('CRAFTING_STALE', `Craft plan identity collision: ${plan.craftPlanId}`);
+    }
+    const clone = structuredClone(plan);
+    this.craftPlans.set(plan.craftPlanId, clone);
+    return structuredClone(clone);
+  }
+
+  getCraftPlan(craftPlanId: string): RegisteredCraftPlan | null {
+    const plan = this.craftPlans.get(craftPlanId);
+    return plan ? structuredClone(plan) : null;
   }
 
   issueLease(request: IssueCraftingLeaseRequest): CraftingLease {

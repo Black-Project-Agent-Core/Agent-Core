@@ -4,6 +4,7 @@ import type { VerifiedKey } from '../auth/key-types.js';
 import { OperationalMemoryAudit } from '../memory/operational-audit.js';
 import type { RuntimeServices } from '../runtime/services.js';
 import { completeMemoryLifecycleOperation, validateMemoryLifecycleBeforeOperation } from './memory-lifecycle-guard.js';
+import { completeCraftingOperation, validateCraftingBeforeOperation } from './crafting-guard.js';
 import { completeImplementationStrategyOperation, validateImplementationStrategyBeforeOperation } from './implementation-strategy-guard.js';
 import { resolveAuditProjectId, resolvedProjectScope, resolveRouteExistingPath, resolveRouteTargetPath } from './project-scope.js';
 import { routeErrorResult, validateOperationalRoute } from './route-guard.js';
@@ -33,10 +34,12 @@ async function routeGuarded<T>(
   const audit = new OperationalMemoryAudit(runtime, key);
   let route;
   let lifecycleDecision;
+  let craftingDecision;
   let strategyDecision;
   try {
     route = validateOperationalRoute(runtime, key, routeContextId, toolName);
     lifecycleDecision = await validateMemoryLifecycleBeforeOperation(runtime, key, route, toolName, auditInput);
+    craftingDecision = await validateCraftingBeforeOperation(runtime, key, route, toolName, auditInput);
     strategyDecision = await validateImplementationStrategyBeforeOperation(runtime, key, route, toolName, auditInput);
   } catch (error) {
     await audit.rejected(resolveAuditProjectId(runtime, key, routeContextId), routeContextId, toolName, auditInput, error);
@@ -47,6 +50,7 @@ async function routeGuarded<T>(
   try {
     const result = await operation(route);
     await completeMemoryLifecycleOperation(runtime, key, route, toolName, lifecycleDecision);
+    await completeCraftingOperation(runtime, key, route, craftingDecision);
     await completeImplementationStrategyOperation(runtime, key, route, strategyDecision);
     await audit.succeeded(route, toolName, auditInput, result);
     return textResult(result);
@@ -55,6 +59,12 @@ async function routeGuarded<T>(
     return routeErrorResult(error) ?? errorResult(error);
   }
 }
+
+const craftingIntentSchema = z.object({
+  origin: z.enum(['host_original', 'donor_derived', 'compatibility', 'verification']),
+  sparepartId: z.string().min(1).max(200).optional(),
+  compatibilityBoundary: z.string().min(1).max(200).optional(),
+}).strict();
 
 const ROUTE_REQUIRED_DESCRIPTION = 'Obtain routeContextId from capability_route before using this tool.';
 const routedDescription = (description: string) => `${description} ${ROUTE_REQUIRED_DESCRIPTION}`;
@@ -149,15 +159,16 @@ export function registerOperationalTools(
       path: z.string(),
       content: z.string(),
       mode: z.enum(['rewrite', 'append']).default('rewrite'),
+      craftingIntent: craftingIntentSchema.optional(),
       routeContextId: z.string().uuid(),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  }, async ({ path, content, mode, routeContextId }) => routeGuarded(
+  }, async ({ path, content, mode, craftingIntent, routeContextId }) => routeGuarded(
     runtime, key, routeContextId, 'write_file',
     async (route) => runtime.filesystem.writeFile(
       await resolveRouteTargetPath(runtime, route, path), content, mode,
     ),
-    { path, mode, contentBytes: Buffer.byteLength(content, 'utf8') },
+    { path, mode, contentBytes: Buffer.byteLength(content, 'utf8'), ...(craftingIntent ? { craftingIntent } : {}) },
   ));
 
   server.registerTool('edit_file', {
@@ -168,10 +179,11 @@ export function registerOperationalTools(
       oldString: z.string().min(1),
       newString: z.string(),
       expectedReplacements: z.number().int().min(1).max(10000).default(1),
+      craftingIntent: craftingIntentSchema.optional(),
       routeContextId: z.string().uuid(),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  }, async ({ path, oldString, newString, expectedReplacements, routeContextId }) => routeGuarded(
+  }, async ({ path, oldString, newString, expectedReplacements, craftingIntent, routeContextId }) => routeGuarded(
     runtime, key, routeContextId, 'edit_file',
     async (route) => runtime.filesystem.editFile(
       await resolveRouteExistingPath(runtime, route, path), oldString, newString, expectedReplacements,
@@ -181,20 +193,21 @@ export function registerOperationalTools(
       expectedReplacements,
       oldStringBytes: Buffer.byteLength(oldString, 'utf8'),
       newStringBytes: Buffer.byteLength(newString, 'utf8'),
+      ...(craftingIntent ? { craftingIntent } : {}),
     },
   ));
 
   server.registerTool('create_directory', {
     title: 'Create Directory',
     description: routedDescription('Create a directory, including missing parent directories, inside an allowed workspace.'),
-    inputSchema: { path: z.string(), routeContextId: z.string().uuid() },
+    inputSchema: { path: z.string(), craftingIntent: craftingIntentSchema.optional(), routeContextId: z.string().uuid() },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  }, async ({ path, routeContextId }) => routeGuarded(
+  }, async ({ path, craftingIntent, routeContextId }) => routeGuarded(
     runtime, key, routeContextId, 'create_directory',
     async (route) => runtime.filesystem.createDirectory(
       await resolveRouteTargetPath(runtime, route, path),
     ),
-    { path },
+    { path, ...(craftingIntent ? { craftingIntent } : {}) },
   ));
 
   server.registerTool('move_file', {
@@ -203,16 +216,17 @@ export function registerOperationalTools(
     inputSchema: {
       source: z.string(),
       destination: z.string(),
+      craftingIntent: craftingIntentSchema.optional(),
       routeContextId: z.string().uuid(),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  }, async ({ source, destination, routeContextId }) => routeGuarded(
+  }, async ({ source, destination, craftingIntent, routeContextId }) => routeGuarded(
     runtime, key, routeContextId, 'move_file',
     async (route) => runtime.filesystem.moveFile(
       await resolveRouteExistingPath(runtime, route, source),
       await resolveRouteTargetPath(runtime, route, destination),
     ),
-    { source, destination },
+    { source, destination, ...(craftingIntent ? { craftingIntent } : {}) },
   ));
 
   server.registerTool('get_file_info', {
@@ -254,17 +268,18 @@ export function registerOperationalTools(
       command: z.string().min(1),
       cwd: z.string().optional(),
       timeoutMs: z.number().int().min(1).max(10 * 60_000).default(30_000),
+      craftingIntent: craftingIntentSchema.optional(),
       routeContextId: z.string().uuid(),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
-  }, async ({ command, cwd, timeoutMs, routeContextId }) => routeGuarded(
+  }, async ({ command, cwd, timeoutMs, craftingIntent, routeContextId }) => routeGuarded(
     runtime, key, routeContextId, 'execute_command',
     async (route) => {
       const projectId = route.projectId ?? runtime.workspace.resolveProjectRoot();
       const resolvedCwd = await resolveRouteExistingPath(runtime, route, cwd ?? projectId);
       return runtime.processes.execute(command, { cwd: resolvedCwd, timeoutMs });
     },
-    { command, ...(cwd ? { cwd } : {}), timeoutMs },
+    { command, ...(cwd ? { cwd } : {}), timeoutMs, ...(craftingIntent ? { craftingIntent } : {}) },
   ));
 
   server.registerTool('start_process', {
@@ -273,10 +288,11 @@ export function registerOperationalTools(
     inputSchema: {
       command: z.string().min(1),
       cwd: z.string().optional(),
+      craftingIntent: craftingIntentSchema.optional(),
       routeContextId: z.string().uuid(),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
-  }, async ({ command, cwd, routeContextId }) => {
+  }, async ({ command, cwd, craftingIntent, routeContextId }) => {
     const audit = new OperationalMemoryAudit(runtime, key);
     return routeGuarded(
       runtime, key, routeContextId, 'start_process',
@@ -296,7 +312,7 @@ export function registerOperationalTools(
           ),
         });
       },
-      { command, ...(cwd ? { cwd } : {}) },
+      { command, ...(cwd ? { cwd } : {}), ...(craftingIntent ? { craftingIntent } : {}) },
     );
   });
 
