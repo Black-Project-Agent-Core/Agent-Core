@@ -29,7 +29,8 @@ export interface CraftingContinuityProjection {
   blockingReason?: string;
 }
 
-const DECISION_KEY = 'real_steel_crafting_state';
+const LEGACY_DECISION_KEY = 'real_steel_crafting_state';
+export const CRAFTING_CONTINUITY_EVIDENCE_REF = 'agent-core:real-steel-crafting-state:v1';
 const VERSION = 1;
 
 function bounded(value: string | undefined, max = 5_000): string | undefined {
@@ -85,14 +86,10 @@ export function buildCraftingCheckpointInput(
     status: options.status ?? (state.verificationStatus === 'verified' ? 'completed' : 'running'),
     summary: `Real Steel crafting checkpoint ${state.craftingId}`,
     evidence: [
+      { type: 'tool', ref: CRAFTING_CONTINUITY_EVIDENCE_REF, result: payload },
       { type: 'hash', ref: `craft-plan:${state.craftPlanId}`, result: state.craftPlanId },
       { type: 'hash', ref: `reference-set:${state.referenceSetHash}`, result: state.referenceSetHash },
     ],
-    decisions: [{
-      key: DECISION_KEY,
-      value: payload,
-      reason: 'Resume Real Steel crafting without re-inventing source-grounded decisions.',
-    }],
     ...(state.blockingReason ? { blockers: [{ code: 'CRAFTING_BLOCKED', detail: state.blockingReason }] } : {}),
     ...(state.verificationStatus === 'verified'
       ? { outcomes: [{ key: 'crafting_verified', value: state.craftPlanId, evidenceRefs: [`craft-plan:${state.craftPlanId}`] }] }
@@ -103,10 +100,12 @@ export function buildCraftingCheckpointInput(
 export function parseCraftingContinuityCheckpoint(
   checkpoint: ContinuityCheckpointRecord,
 ): CraftingContinuityProjection {
-  const record = checkpoint.decisions.find((item) => item.key === DECISION_KEY);
-  if (!record) throw new Error('CRAFTING_CONTINUITY_STATE_MISSING');
+  const evidenceRecord = checkpoint.evidence.find((item) => item.ref === CRAFTING_CONTINUITY_EVIDENCE_REF);
+  const legacyRecord = checkpoint.decisions.find((item) => item.key === LEGACY_DECISION_KEY);
+  const payload = evidenceRecord?.result ?? legacyRecord?.value;
+  if (!payload) throw new Error('CRAFTING_CONTINUITY_STATE_MISSING');
   let parsed: unknown;
-  try { parsed = JSON.parse(record.value); }
+  try { parsed = JSON.parse(payload); }
   catch { throw new Error('CRAFTING_CONTINUITY_STATE_INVALID'); }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('CRAFTING_CONTINUITY_STATE_INVALID');

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { CraftingConfig } from '../config.js';
 import type { CraftPlan } from './craft-plan.js';
 import type { CompatibilityBinding } from './compatibility-surgery.js';
+import type { CraftingModeDecision } from './types.js';
 import type { RouteCraftingProjection } from '../runtime/route-context-store.js';
 
 export type CraftingErrorCode =
@@ -69,9 +70,28 @@ export class CraftingService {
   readonly config: CraftingConfig;
   private readonly leases = new Map<string, CraftingLease>();
   private readonly craftPlans = new Map<string, RegisteredCraftPlan>();
+  private readonly decisions = new Map<string, CraftingModeDecision>();
 
   constructor(config: CraftingConfig, private readonly now: () => number = Date.now) {
     this.config = { ...config };
+  }
+  registerDecision(decision: CraftingModeDecision): CraftingModeDecision {
+    const existing = this.decisions.get(decision.craftingId);
+    if (existing) {
+      const { routeContextId: _existingRoute, ...existingIdentity } = existing;
+      const { routeContextId: _nextRoute, ...nextIdentity } = decision;
+      if (JSON.stringify(existingIdentity) !== JSON.stringify(nextIdentity)) {
+        throw new CraftingError('CRAFTING_STALE', `Crafting decision identity collision: ${decision.craftingId}`);
+      }
+    }
+    const clone = structuredClone(decision);
+    this.decisions.set(decision.craftingId, clone);
+    return structuredClone(clone);
+  }
+
+  getDecision(craftingId: string): CraftingModeDecision | null {
+    const decision = this.decisions.get(craftingId);
+    return decision ? structuredClone(decision) : null;
   }
   registerCraftPlan(plan: RegisteredCraftPlan): RegisteredCraftPlan {
     if (!plan.craftPlanId || !plan.craftingId || plan.status !== 'ready') {

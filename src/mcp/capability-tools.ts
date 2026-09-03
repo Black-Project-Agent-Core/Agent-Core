@@ -1,14 +1,20 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import type { VerifiedKey } from '../auth/key-types.js';
+import { buildCraftPlan } from '../crafting/craft-plan.js';
+import { parseCraftingContinuityCheckpoint, resumeCraftingProjection } from '../crafting/continuity.js';
+import { resolveCraftingMode } from '../crafting/mode-resolver.js';
+import { deriveCraftingFeatureContract } from '../crafting/task-contract.js';
 import { attachExecutionContinuity, type ContinuitySnapshot } from '../continuity/snapshot.js';
 import type { ContinuityTaskRecord } from '../continuity/store.js';
 import type { ContinuityCapture } from '../continuity/types.js';
 import { MemoryHardLifecycleError, memoryObjectiveHash, type MemoryContextLifecycleRecord } from '../memory/hard-lifecycle.js';
 import type { MemorySearchHit } from '../memory/types.js';
+import type { RouteCraftingProjection } from '../runtime/route-context-store.js';
 import type { RuntimeServices } from '../runtime/services.js';
 import { persistentPrincipalId } from './project-scope.js';
 import { injectMemoryIntoRoutingContext } from './memory-injection.js';
+import { craftingRouteSchema } from './crafting-schemas.js';
 
 function textResult(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
@@ -150,9 +156,10 @@ export function registerCapabilityTools(
       context: z.string().max(20_000).optional(),
       projectRoot: z.string().min(1).max(5_000).optional(),
       continuity: continuityCaptureSchema.optional(),
+      crafting: craftingRouteSchema.optional(),
     },
     annotations: routeAnnotations,
-  }, async ({ task, context, projectRoot, continuity }) => {
+  }, async ({ task, context, projectRoot, continuity, crafting }) => {
     let projectId: string;
     try {
       projectId = runtime.workspace.resolveProjectRoot({
@@ -163,6 +170,37 @@ export function registerCapabilityTools(
       return errorResult(error);
     }
     const reservation = runtime.routes.reserve();
+    let craftingDecision: ReturnType<typeof resolveCraftingMode> | null = null;
+    let initialCraftPlan: ReturnType<typeof buildCraftPlan> | null = null;
+    let resumedCrafting: RouteCraftingProjection | null = null;
+    if (crafting) {
+      try {
+        const feature = deriveCraftingFeatureContract({
+          task,
+          context,
+          projectId,
+          declaration: crafting,
+        });
+        craftingDecision = resolveCraftingMode({
+          routeContextId: reservation.routeContextId,
+          projectId,
+          feature,
+          references: crafting.references,
+        });
+        runtime.crafting.registerDecision(craftingDecision);
+        if (craftingDecision.mode === 'BUILD_FROM_ZERO') {
+          initialCraftPlan = buildCraftPlan({
+            decision: craftingDecision,
+            decisions: [],
+            hostVerification: feature.verificationRequirements,
+            donorVerification: [],
+          });
+          runtime.crafting.registerCraftPlan(initialCraftPlan);
+        }
+      } catch (error) {
+        return errorResult(error);
+      }
+    }
     const scope = {
       principalId: persistentPrincipalId(runtime, key),
       projectId,
@@ -213,6 +251,30 @@ export function registerCapabilityTools(
       }
 
       if (continuityStatus !== 'ambiguous') {
+        if (craftingDecision && capture.resumeTaskId) {
+          try {
+            const resumeTask = await runtime.memory.getContinuityTask(scope, capture.resumeTaskId);
+            const checkpointId = resumeTask?.lastCheckpointId;
+            if (checkpointId) {
+              const checkpoint = await runtime.memory.getContinuityCheckpoint(scope, checkpointId);
+              if (checkpoint) {
+                let savedCrafting = null as ReturnType<typeof parseCraftingContinuityCheckpoint> | null;
+                try {
+                  savedCrafting = parseCraftingContinuityCheckpoint(checkpoint);
+                } catch (error) {
+                  if (!(error instanceof Error) || error.message !== 'CRAFTING_CONTINUITY_STATE_MISSING') throw error;
+                }
+                if (savedCrafting) {
+                  const savedPlan = runtime.crafting.getCraftPlan(savedCrafting.craftPlanId);
+                  if (!savedPlan) throw new Error('CRAFTING_CONTINUITY_PLAN_UNAVAILABLE');
+                  resumedCrafting = resumeCraftingProjection(savedCrafting, craftingDecision, savedPlan);
+                }
+              }
+            }
+          } catch (error) {
+            return errorResult(error);
+          }
+        }
         try {
           const reconciliationRequired = await runtime.memory.findLifecycleReconciliationRequired({
             scope,
@@ -323,7 +385,7 @@ export function registerCapabilityTools(
     if (memoryInjection.applied && !plan.reasonCodes.includes('autonomous_memory_context')) {
       plan.reasonCodes = [...plan.reasonCodes, 'autonomous_memory_context'];
     }
-    const route = runtime.routes.create(key.id, plan, {
+    let route = runtime.routes.create(key.id, plan, {
       reservation,
       projectId,
       ...(preflight ? {
@@ -343,7 +405,27 @@ export function registerCapabilityTools(
       ...(continuityTurnId ? { continuityTurnId } : {}),
       ...(continuityTaskId ? { continuityTaskId } : {}),
       ...(continuitySnapshot ? { continuitySnapshotHash: continuitySnapshot.snapshotHash } : {}),
+      ...(resumedCrafting ? { crafting: resumedCrafting } : craftingDecision ? {
+        crafting: {
+          craftingId: craftingDecision.craftingId,
+          mode: craftingDecision.mode,
+          featureContractHash: craftingDecision.featureContractHash,
+          referenceSetHash: craftingDecision.referenceSetHash,
+          ...(initialCraftPlan ? { craftPlanId: initialCraftPlan.craftPlanId } : {}),
+          state: initialCraftPlan ? 'ready' as const : 'analysis' as const,
+        },
+      } : {}),
     });
+    if (route.crafting?.state === 'ready' && route.crafting.craftPlanId) {
+      const lease = runtime.crafting.issueLease({
+        principalId: key.id,
+        projectId,
+        routeContextId: route.routeContextId,
+        crafting: route.crafting,
+        routeExpiresAt: Date.parse(route.expiresAt),
+      });
+      route = runtime.routes.updateCrafting(route.routeContextId, key.id, { leaseId: lease.leaseId });
+    }
 
     const memorySummary = preflight?.recalled ?? [];
     const memoryDirective = {
@@ -373,6 +455,12 @@ export function registerCapabilityTools(
       allowedTools: route.allowedTools,
       verification: route.verification,
       reasonCodes: route.reasonCodes,
+      crafting: route.crafting ?? null,
+      craftingDirective: route.crafting ? {
+        mode: route.crafting.mode,
+        sourceGroundingRequired: route.crafting.mode === 'FEATURE_TRANSPLANTATION' && route.crafting.state === 'analysis',
+        mutationReady: route.crafting.state === 'ready' || route.crafting.state === 'mutation_started' || route.crafting.state === 'verification_pending',
+      } : null,
       memoryStatus,
       memoryContextId: preflight?.contextId ?? null,
       memorySummary,

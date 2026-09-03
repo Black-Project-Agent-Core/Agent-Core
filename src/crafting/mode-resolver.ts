@@ -154,7 +154,9 @@ export function resolveCraftingMode(request: ResolveCraftingModeRequest): Crafti
   if (references.length > 1) reasonCodes.push('MULTIPLE_APPROVED_REFERENCES');
   const featureContractHash = sha256(feature);
   const referenceSetHash = sha256(references);
-  const craftingHash = sha256({ routeContextId, projectId, mode, featureContractHash, referenceSetHash });
+  // Crafting identity represents the durable coding objective, not a single route/session.
+  // Route context is intentionally excluded so resumed sessions can obtain fresh leases.
+  const craftingHash = sha256({ projectId, mode, featureContractHash, referenceSetHash });
   return {
     craftingId: `craft:${craftingHash.slice(0, 32)}`,
     routeContextId,

@@ -98,7 +98,7 @@ describe('deterministic memory MCP surface', () => {
     });
     const tools = listed.result.tools as Array<Record<string, any>>;
     const names = tools.map((tool) => tool.name);
-    expect(names).toHaveLength(56);
+    expect(names).toHaveLength(58);
     for (const name of MEMORY_TOOLS) expect(names).toContain(name);
     expect(names).not.toContain('memory_postflight');
 

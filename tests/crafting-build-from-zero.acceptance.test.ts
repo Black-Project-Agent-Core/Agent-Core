@@ -40,8 +40,7 @@ async function fixture() {
     [root], path.join(root, 'capabilities'), undefined,
     { ...defaults.memory, enabled: false, dbPath: path.join(root, 'memory.sqlite') },
     { ...defaults.execution, enabled: true, dbPath: path.join(root, 'execution.sqlite'), logRoot: path.join(root, 'execution-runs') },
-    defaults.github, undefined, defaults.observability, 'canary', defaults.maintenance,
-    defaults.implementationStrategy, { enforcement: 'enforce', leaseTtlMs: 60_000 },
+    defaults.github, undefined, defaults.observability, 'canary', defaults.maintenance, { enforcement: 'enforce', leaseTtlMs: 60_000 },
   );
   runtimes.push(runtime);
   return { root, runtime };

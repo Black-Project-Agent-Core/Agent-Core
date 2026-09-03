@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { RoutePlan } from '../capabilities/route-types.js';
 import type { CraftingMode } from '../crafting/types.js';
-import type { ImplementationStrategyMode } from '../implementation/strategy.js';
 import type { RuntimeMetricRegistry } from './metric-window.js';
 import {
   NOOP_ROUTING_AUDIT_LOGGER,
@@ -16,7 +15,6 @@ export type AgentCoreRouteErrorCode =
   | 'ROUTE_SKILL_REQUIRED'
   | 'ROUTE_MEMORY_GUARDRAIL_BLOCKED'
   | 'ROUTE_PROJECT_MISMATCH'
-  | 'ROUTE_IMPLEMENTATION_STRATEGY_STALE'
   | 'ROUTE_CRAFTING_STALE';
 
 export class AgentCoreRouteError extends Error {
@@ -51,22 +49,6 @@ export interface RouteMemorySnapshot {
   enforceHardGuardrails: boolean;
 }
 
-export type RouteImplementationStrategyState =
-  | 'analysis'
-  | 'ready'
-  | 'mutation_started'
-  | 'verification_pending'
-  | 'closed';
-
-export interface RouteImplementationStrategyProjection {
-  strategyId: string;
-  mode: ImplementationStrategyMode;
-  planFingerprint: string;
-  referenceSetFingerprint: string;
-  manifestId?: string;
-  leaseId?: string;
-  state: RouteImplementationStrategyState;
-}
 export type RouteCraftingState =
   | 'analysis'
   | 'grounded'
@@ -91,7 +73,6 @@ export interface RouteCreateOptions {
   reservation?: RouteReservation;
   projectId?: string;
   memorySnapshot?: RouteMemorySnapshot;
-  implementationStrategy?: RouteImplementationStrategyProjection;
   crafting?: RouteCraftingProjection;
   continuityTurnId?: string;
   continuityTaskId?: string;
@@ -106,7 +87,6 @@ export interface RouteContext extends RoutePlan {
   createdAt: string;
   expiresAt: string;
   memorySnapshot?: RouteMemorySnapshot;
-  implementationStrategy?: RouteImplementationStrategyProjection;
   crafting?: RouteCraftingProjection;
   continuityTurnId?: string;
   continuityTaskId?: string;
@@ -170,7 +150,6 @@ export class RouteContextStore {
       createdAt: reservation.createdAt,
       expiresAt: reservation.expiresAt,
       ...(options.memorySnapshot ? { memorySnapshot: structuredClone(options.memorySnapshot) } : {}),
-      ...(options.implementationStrategy ? { implementationStrategy: structuredClone(options.implementationStrategy) } : {}),
       ...(options.crafting ? { crafting: structuredClone(options.crafting) } : {}),
       ...(options.continuityTurnId ? { continuityTurnId: options.continuityTurnId } : {}),
       ...(options.continuityTaskId ? { continuityTaskId: options.continuityTaskId } : {}),
@@ -223,51 +202,10 @@ export class RouteContextStore {
       .sort((left, right) => left.localeCompare(right));
   }
 
-  updateImplementationStrategy(
-    routeContextId: string,
-    principalId: string,
-    update: { leaseId?: string; state?: RouteImplementationStrategyState },
-  ): RouteContext {
-    const context = this.requireOwned(routeContextId, principalId);
-    if (!context.implementationStrategy) {
-      throw new AgentCoreRouteError(
-        'ROUTE_IMPLEMENTATION_STRATEGY_STALE',
-        'Route does not carry implementation strategy state',
-      );
-    }
-    context.implementationStrategy = {
-      ...context.implementationStrategy,
-      ...(update.leaseId ? { leaseId: update.leaseId } : {}),
-      ...(update.state ? { state: update.state } : {}),
-    };
-    return structuredClone(context);
-  }
-  validateImplementationStrategyFreshness(
-    routeContextId: string,
-    principalId: string,
-    current: { planFingerprint: string; referenceSetFingerprint: string },
-  ): RouteContext {
-    const context = this.requireOwned(routeContextId, principalId);
-    const strategy = context.implementationStrategy;
-    if (!strategy
-      || strategy.planFingerprint !== current.planFingerprint
-      || strategy.referenceSetFingerprint !== current.referenceSetFingerprint) {
-      throw new AgentCoreRouteError(
-        'ROUTE_IMPLEMENTATION_STRATEGY_STALE',
-        'Route implementation strategy no longer matches the current plan/reference identity',
-        {
-          strategyId: strategy?.strategyId ?? null,
-          planFingerprint: strategy?.planFingerprint ?? null,
-          referenceSetFingerprint: strategy?.referenceSetFingerprint ?? null,
-        },
-      );
-    }
-    return structuredClone(context);
-  }
   updateCrafting(
     routeContextId: string,
     principalId: string,
-    update: { leaseId?: string; state?: RouteCraftingState },
+    update: { leaseId?: string; groundingReceiptId?: string; craftPlanId?: string; state?: RouteCraftingState },
   ): RouteContext {
     const context = this.requireOwned(routeContextId, principalId);
     if (!context.crafting) {
@@ -276,6 +214,8 @@ export class RouteContextStore {
     context.crafting = {
       ...context.crafting,
       ...(update.leaseId ? { leaseId: update.leaseId } : {}),
+      ...(update.groundingReceiptId ? { groundingReceiptId: update.groundingReceiptId } : {}),
+      ...(update.craftPlanId ? { craftPlanId: update.craftPlanId } : {}),
       ...(update.state ? { state: update.state } : {}),
     };
     return structuredClone(context);

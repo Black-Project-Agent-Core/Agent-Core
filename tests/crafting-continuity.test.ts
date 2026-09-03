@@ -162,3 +162,30 @@ describe('Real Steel crafting continuity', () => {
     expect(toMemoryPostflightCandidate({ ...result, status: 'blocked', memoryCandidate: null })).toBeNull();
   });
 });
+
+describe('Real Steel fresh-route continuity lease', () => {
+  it('reuses the durable crafting identity across routes while issuing a new route-scoped lease', () => {
+    const first = resolveCraftingMode({ routeContextId: 'route-a', projectId: '/host', feature, references: [reference] });
+    const second = resolveCraftingMode({ routeContextId: 'route-b', projectId: '/host', feature, references: [reference] });
+    expect(second.craftingId).toBe(first.craftingId);
+
+    const currentPlan: CraftPlan = { ...plan, craftingId: first.craftingId };
+    const service = new CraftingService({ enforcement: 'enforce', leaseTtlMs: 60_000 }, () => 1_000);
+    service.registerDecision(first);
+    service.registerCraftPlan(currentPlan);
+    expect(() => service.registerDecision(second)).not.toThrow();
+
+    const resumed = resumeCraftingProjection(projection, second, currentPlan);
+    expect(resumed.leaseId).toBeUndefined();
+    const lease = service.issueLease({
+      principalId: 'principal-a', projectId: '/host', routeContextId: 'route-b',
+      crafting: resumed, routeExpiresAt: 120_000,
+    });
+    expect(lease.routeContextId).toBe('route-b');
+    expect(lease.craftingId).toBe(first.craftingId);
+    expect(service.validateLease({
+      principalId: 'principal-a', projectId: '/host', routeContextId: 'route-b',
+      crafting: { ...resumed, leaseId: lease.leaseId },
+    }).leaseId).toBe(lease.leaseId);
+  });
+});

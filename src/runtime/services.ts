@@ -1,8 +1,7 @@
 import path from 'node:path';
 import { CapabilityRegistry } from '../capabilities/registry-service.js';
 import { CapabilityRouter } from '../capabilities/router.js';
-import { loadConfig, type CraftingConfig, type ExecutionConfig, type GitHubConfig, type ImplementationStrategyConfig, type MaintenanceConfig, type MemoryConfig, type ObservabilityConfig } from '../config.js';
-import { ImplementationStrategyService } from '../implementation/service.js';
+import { loadConfig, type CraftingConfig, type ExecutionConfig, type GitHubConfig, type MaintenanceConfig, type MemoryConfig, type ObservabilityConfig } from '../config.js';
 import { CraftingService } from '../crafting/service.js';
 import { ExecutionLogStore } from '../execution/log-store.js';
 import { ExecutionMemoryBridge } from '../execution/memory-bridge.js';
@@ -34,7 +33,6 @@ export interface RuntimeServices {
   router: CapabilityRouter;
   routes: RouteContextStore;
   memory: MemoryService;
-  implementationStrategy: ImplementationStrategyService;
   crafting: CraftingService;
   execution: ExecutionService;
   github: GitHubService;
@@ -57,7 +55,6 @@ export function createRuntimeServices(
   observabilityConfig?: ObservabilityConfig,
   serviceVersion = 'unknown',
   maintenanceConfig?: MaintenanceConfig,
-  implementationStrategyConfig?: ImplementationStrategyConfig,
   craftingConfig?: CraftingConfig,
 ): RuntimeServices {
   const workspace = new WorkspacePolicy(allowedRoots);
@@ -68,8 +65,6 @@ export function createRuntimeServices(
   const resolvedGitHubConfig = githubConfig ?? defaults.github;
   const resolvedObservabilityConfig = observabilityConfig ?? defaults.observability;
   const resolvedMaintenanceConfig = maintenanceConfig ?? defaults.maintenance;
-  const resolvedImplementationStrategyConfig = implementationStrategyConfig ?? defaults.implementationStrategy;
-  const implementationStrategy = new ImplementationStrategyService(resolvedImplementationStrategyConfig);
   const resolvedCraftingConfig = craftingConfig ?? defaults.crafting;
   const crafting = new CraftingService(resolvedCraftingConfig);
   const metrics = new RuntimeMetricRegistry();
@@ -138,7 +133,6 @@ export function createRuntimeServices(
     router: new CapabilityRouter(capabilities),
     routes: new RouteContextStore({ ...(routingAuditLogger ? { auditLogger: routingAuditLogger } : {}), metrics }),
     memory,
-    implementationStrategy,
     crafting,
     execution,
     github,

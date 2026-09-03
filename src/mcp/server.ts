@@ -3,6 +3,7 @@ import * as z from 'zod/v4';
 import type { VerifiedKey } from '../auth/key-types.js';
 import type { RuntimeServices } from '../runtime/services.js';
 import { CAPABILITY_TOOL_NAMES, registerCapabilityTools } from './capability-tools.js';
+import { CRAFTING_TOOL_NAMES, registerCraftingTools } from './crafting-tools.js';
 import { CONTINUITY_TOOL_NAMES, registerContinuityTools } from './continuity-tools.js';
 import { EXECUTION_TOOL_NAMES, registerExecutionTools } from './execution-tools.js';
 import { GITHUB_TOOL_NAMES, registerGitHubTools } from './github-tools.js';
@@ -173,6 +174,7 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
   registerOperationalTools(server, runtime, key);
   registerGitHubTools(server, runtime, key);
   registerCapabilityTools(server, runtime, key);
+  registerCraftingTools(server, runtime, key);
   registerMemoryTools(server, runtime, key);
   registerContinuityTools(server, runtime, key);
   registerExecutionTools(server, runtime, key);

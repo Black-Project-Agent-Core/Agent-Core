@@ -86,3 +86,15 @@ describe('Real Steel crafting mode contract', () => {
       .toThrow(CraftingModeResolutionError);
   });
 });
+
+describe('Real Steel cross-route crafting identity', () => {
+  it('keeps craftingId stable across fresh route contexts when project, plan, mode, and references are unchanged', () => {
+    const reference = { ...gitReference };
+    const first = resolveCraftingMode({ routeContextId: 'route-session-a', projectId: '/host', feature, references: [reference] });
+    const second = resolveCraftingMode({ routeContextId: 'route-session-b', projectId: '/host', feature, references: [reference] });
+    expect(second.routeContextId).not.toBe(first.routeContextId);
+    expect(second.craftingId).toBe(first.craftingId);
+    expect(second.featureContractHash).toBe(first.featureContractHash);
+    expect(second.referenceSetHash).toBe(first.referenceSetHash);
+  });
+});

@@ -63,8 +63,7 @@ async function createRuntime(container: string, enforcement: 'advisory' | 'enfor
       dbPath: path.join(container, `execution-${iteration}-${enforcement}.sqlite`),
       logRoot: path.join(container, `execution-runs-${iteration}-${enforcement}`),
     },
-    defaults.github, undefined, defaults.observability, 'canary', defaults.maintenance,
-    defaults.implementationStrategy, { enforcement, leaseTtlMs: 60_000 },
+    defaults.github, undefined, defaults.observability, 'canary', defaults.maintenance, { enforcement, leaseTtlMs: 60_000 },
   );
   runtimes.push(runtime);
   return runtime;

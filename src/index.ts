@@ -48,7 +48,6 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     config.observability,
     SERVER_VERSION,
     config.maintenance,
-    config.implementationStrategy,
     config.crafting,
   );
   const oauthService = new OAuthService(keyStore, oauthStore, httpSecurity, runtime.metrics);

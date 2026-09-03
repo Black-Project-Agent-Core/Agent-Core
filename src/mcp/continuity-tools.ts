@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import type { VerifiedKey } from '../auth/key-types.js';
+import { buildCraftingCheckpointInput, CRAFTING_CONTINUITY_EVIDENCE_REF } from '../crafting/continuity.js';
 import { attachExecutionContinuity } from '../continuity/snapshot.js';
 import {
   isTerminalContinuityTaskStatus,
@@ -240,7 +241,7 @@ export function registerContinuityTools(server: McpServer, runtime: RuntimeServi
     annotations: checkpointAnnotations,
   }, async ({ routeContextId, status, summary, evidence, decisions, artifacts, outcomes, constraints, blockers, deferred, nextCandidates, projectTerminal }) => guarded(async () => {
     const route = requireContinuityRoute(runtime, key, routeContextId);
-    const input = normalizeContinuityCheckpointInput({
+    let input = normalizeContinuityCheckpointInput({
       routeContextId,
       status,
       summary,
@@ -254,6 +255,36 @@ export function registerContinuityTools(server: McpServer, runtime: RuntimeServi
       nextCandidates,
       projectTerminal,
     } as ContinuityCheckpointInput);
+    if (route.crafting?.craftPlanId) {
+      const decision = runtime.crafting.getDecision(route.crafting.craftingId);
+      const plan = runtime.crafting.getCraftPlan(route.crafting.craftPlanId);
+      if (decision && plan && plan.craftPlanId === route.crafting.craftPlanId) {
+        const craftingCheckpoint = buildCraftingCheckpointInput(routeContextId, {
+          craftingId: route.crafting.craftingId,
+          mode: route.crafting.mode,
+          featureContractHash: route.crafting.featureContractHash,
+          referenceSetHash: route.crafting.referenceSetHash,
+          craftPlanId: route.crafting.craftPlanId,
+          ...(route.crafting.groundingReceiptId ? { groundingReceiptId: route.crafting.groundingReceiptId } : {}),
+          references: decision.references.map(({ referenceId, kind, repository, commit, tree, bundleHash }) => ({
+            referenceId,
+            kind,
+            ...(repository ? { repository } : {}),
+            ...(commit ? { commit } : {}),
+            ...(tree ? { tree } : {}),
+            ...(bundleHash ? { bundleHash } : {}),
+          })),
+          verificationStatus: route.crafting.state === 'closed' ? 'verified' : 'pending',
+        }, { status: input.status });
+        input = normalizeContinuityCheckpointInput({
+          ...input,
+          evidence: [
+            ...(input.evidence ?? []).filter((item) => item.ref !== CRAFTING_CONTINUITY_EVIDENCE_REF),
+            ...(craftingCheckpoint.evidence ?? []),
+          ],
+        });
+      }
+    }
     const currentScope = scope(runtime, key, routeContextId);
     const lifecycleContextId = route.memorySnapshot?.memoryContextId;
 

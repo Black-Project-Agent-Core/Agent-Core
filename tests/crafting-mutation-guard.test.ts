@@ -47,7 +47,6 @@ async function setup(
     { ...defaults.memory, enabled: memoryMode !== 'disabled', dbPath: path.join(root, 'memory.sqlite') },
     { ...defaults.execution, enabled: false },
     defaults.github, undefined, defaults.observability, 'test', defaults.maintenance,
-    { mode: 'disabled', leaseTtlMs: 5 * 60_000 },
     { enforcement, leaseTtlMs: 5 * 60_000 },
   );
   runtimes.push(runtime);

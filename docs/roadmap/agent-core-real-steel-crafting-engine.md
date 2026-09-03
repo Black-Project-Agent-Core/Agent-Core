@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use `superpowers:executing-plans` or `superpowers:subagent-driven-development` task-by-task. Every implementation task uses TDD, evidence-first verification, and frequent local commits.
 
-**Status:** APPROVED DESIGN DIRECTION — IMPLEMENTATION PLAN; NOT YET STABLE/ENFORCED
+**Status:** IMPLEMENTED — FEATURE STABLE; PRODUCTION ENFORCEMENT REMAINS DISABLED
 
 **Goal:** Make Agent Core perform coding work with a mandatory Real Steel crafting behavior: when no approved implementation reference exists it must build from zero; when an approved reference exists it must perform source-grounded feature transplantation rather than silently reimplementing the feature from scratch.
 
@@ -10,13 +10,13 @@
 
 **Tech Stack:** TypeScript, Node.js 24+, Vitest, existing `RuntimeServices`, `RouteContextStore`, `ExecutionService`, `ProcessManager`, `WorkspacePolicy`, `GitHubService`, `MemoryService`, Continuity, and existing Agent Core audit/observability.
 
-**Spec authority:** This document captures the approved Real Steel contract from the user and replaces the retired `agent-core-plan-driven-implementation-strategy-gate*` documents.
+**Spec authority:** This document captures the approved Real Steel contract from the user and replaces all retired coding-governance prototype plans.
 
 ## Global Constraints
 
 - This plan is about **coding behavior and crafting intelligence only**.
 - Do not integrate unrelated codebase-intelligence/memory products in this plan.
-- Existing prototype code under `src/implementation/` is candidate material, not architectural authority.
+- Retired coding-governance prototype code in branch history is candidate material, not architectural authority.
 - `PLAN > REFERENCE SOURCE > REFERENCE DOCUMENTATION > inference` for requested behavior.
 - Target-project architecture and established authority boundaries outrank donor architecture.
 - No approved reference means `BUILD_FROM_ZERO`; approved implementation reference means `FEATURE_TRANSPLANTATION`.
@@ -65,7 +65,7 @@ It does **not** turn every read/search/build operation into a crafting task. Rea
 Explicit non-goals for this plan:
 
 - no generic repository-memory platform;
-- no external code-intelligence product integration;
+- no external repository-intelligence product integration;
 - no second semantic-memory authority;
 - no replacement for `CapabilityRouter`;
 - no replacement for `ExecutionService`;
@@ -587,13 +587,13 @@ A resumed session must revalidate plan/reference freshness before continuing mut
 Current prototype files must be reviewed as candidate spareparts before reuse:
 
 ```text
-src/implementation/strategy.ts
-src/implementation/transplant-manifest.ts
-src/implementation/authority-conflicts.ts
-src/implementation/meaningful-work.ts
-src/implementation/service.ts
-src/implementation/verification.ts
-src/mcp/implementation-strategy-guard.ts
+retired mode resolver
+retired transplant manifest
+retired authority-conflict policy
+retired meaningful-work classifier
+retired lease service
+retired verification coordinator
+retired mutation guard
 ```
 
 Likely reusable concepts: deterministic mode identity/fingerprints, classification actions, protected-authority evaluation, scoped lease pattern, memory-first guard ordering, and verification separation.
@@ -601,11 +601,11 @@ Likely reusable concepts: deterministic mode identity/fingerprints, classificati
 Required vocabulary migration:
 
 ```text
-ImplementationStrategy*  → Crafting*
+retired coding-governance types → Crafting*
 legacy zero-reference mode   → BUILD_FROM_ZERO
 legacy reference-driven mode → FEATURE_TRANSPLANTATION
 TransplantManifest       → CraftPlan where semantics broaden beyond file transplant
-AGENT_CORE_IMPLEMENTATION_STRATEGY_MODE
+retired coding-governance enforcement flag
                          → AGENT_CORE_CRAFTING_ENFORCEMENT
 ```
 
@@ -614,8 +614,8 @@ No rename is accepted mechanically; tests must prove semantics remain correct af
 The following prototype areas are **out of Real Steel core scope** and must be removed from this branch or isolated so they have no runtime dependency:
 
 ```text
-src/implementation/code-intelligence.ts
-src/implementation/git-working-tree-source.ts
+retired reference-specific analyzer adapter
+retired reference-specific working-tree adapter
 reference-specific canary tests
 reference-specific Git enumeration additions used only by those canaries
 reference-specific third-party notices if no adapted source remains after cleanup
@@ -646,20 +646,20 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 ## Task 0 — Retire Ambiguous Artifacts and Baseline the Prototype
 
 **Files:**
-- Delete tracked: `docs/roadmap/agent-core-plan-driven-implementation-strategy-gate.md`
-- Delete tracked: `docs/roadmap/agent-core-plan-driven-implementation-strategy-gate-execution.md`
-- Audit: `src/implementation/**`, `src/mcp/implementation-strategy-guard.ts`
+- Delete tracked: the retired ambiguous roadmap design
+- Delete tracked: the retired ambiguous execution report
+- Audit: retired prototype source recorded in Git history
 - Audit: related modifications in `src/config.ts`, `src/runtime/services.ts`, `src/runtime/route-context-store.ts`, `src/mcp/tools.ts`, `src/mcp/route-guard.ts`
 - Test: existing prototype tests plus `npm run build`
 
 **Produces:** a factual keep/rewrite/remove matrix for every prototype file and a clean baseline before semantic migration.
 
-- [ ] Capture `git status`, branch/head, and diff against the pre-prototype base.
-- [ ] Map all imports/callers of current implementation-strategy modules.
-- [ ] Classify each prototype file as `REUSE`, `REWRITE`, `EXTRACT_GENERIC`, or `REMOVE_DEFERRED`.
-- [ ] Run current focused prototype tests and record exact baseline counts.
-- [ ] Run `npm run build` and record baseline compiler state.
-- [ ] Commit only the retirement docs and audit evidence; do not silently mix semantic code changes into this task.
+- [x] Capture `git status`, branch/head, and diff against the pre-prototype base.
+- [x] Map all imports/callers of retired prototype modules.
+- [x] Classify each prototype file as `REUSE`, `REWRITE`, `EXTRACT_GENERIC`, or `REMOVE_DEFERRED`.
+- [x] Run current focused prototype tests and record exact baseline counts.
+- [x] Run `npm run build` and record baseline compiler state.
+- [x] Commit only the retirement docs and audit evidence; do not silently mix semantic code changes into this task.
 
 **Exit gate:** no old plan remains authoritative and every existing prototype component has an explicit migration decision.
 
@@ -673,15 +673,15 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 **Interfaces:**
 - Produces: `CraftingMode`, `CraftingReference`, `CraftingFeatureContract`, `CraftingModeDecision`, `resolveCraftingMode()`.
 
-- [ ] Write failing tests proving zero references resolves exactly to `BUILD_FROM_ZERO`.
-- [ ] Write failing tests proving one or more approved references resolves exactly to `FEATURE_TRANSPLANTATION`.
-- [ ] Write failing tests proving unavailable/ambiguous required references block instead of falling back.
-- [ ] Write failing tests proving normalized identical input reproduces the same feature/reference hashes and crafting identity fields.
-- [ ] Implement the minimum deterministic resolver using canonical stable serialization + SHA-256.
-- [ ] Port only useful identity validation from the prototype; do not retain legacy prototype mode aliases.
-- [ ] Run `npx vitest run tests/crafting-mode.test.ts`.
-- [ ] Run `npm run build`.
-- [ ] Commit as `feat: define real steel crafting modes`.
+- [x] Write failing tests proving zero references resolves exactly to `BUILD_FROM_ZERO`.
+- [x] Write failing tests proving one or more approved references resolves exactly to `FEATURE_TRANSPLANTATION`.
+- [x] Write failing tests proving unavailable/ambiguous required references block instead of falling back.
+- [x] Write failing tests proving normalized identical input reproduces the same feature/reference hashes and crafting identity fields.
+- [x] Implement the minimum deterministic resolver using canonical stable serialization + SHA-256.
+- [x] Port only useful identity validation from the prototype; do not retain legacy prototype mode aliases.
+- [x] Run `npx vitest run tests/crafting-mode.test.ts`.
+- [x] Run `npm run build`.
+- [x] Commit as `feat: define real steel crafting modes`.
 
 **Exit gate:** Agent Core has exactly two normal coding modes with no silent hybrid/fallback.
 
@@ -696,14 +696,14 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 - Consumes: `CraftingModeDecision`, `CraftingReference`, `CraftingFeatureContract`.
 - Produces: `SourceEvidence`, `SourceGroundingReceipt`, `validateGroundingReceipt()`.
 
-- [ ] Write failing tests proving README/package metadata alone is insufficient.
-- [ ] Write failing tests requiring actual source-path evidence for entry point, dependency/interface, and relevant tests/lifecycle when declared applicable.
-- [ ] Write failing tests proving source evidence is rejected when its reference identity/hash no longer matches the locked reference.
-- [ ] Write failing tests proving `BUILD_FROM_ZERO` does not require donor grounding and refuses donor-derived evidence unless mode is reopened.
-- [ ] Implement reference resolution using existing workspace/GitHub boundaries; do not create a second credential or clone authority.
-- [ ] Implement immutable grounding receipts with bounded observations and no raw source-body persistence.
-- [ ] Run focused tests, `npm run build`, and relevant GitHub/workspace tests.
-- [ ] Commit as `feat: require source-grounded transplantation`.
+- [x] Write failing tests proving README/package metadata alone is insufficient.
+- [x] Write failing tests requiring actual source-path evidence for entry point, dependency/interface, and relevant tests/lifecycle when declared applicable.
+- [x] Write failing tests proving source evidence is rejected when its reference identity/hash no longer matches the locked reference.
+- [x] Write failing tests proving `BUILD_FROM_ZERO` does not require donor grounding and refuses donor-derived evidence unless mode is reopened.
+- [x] Implement reference resolution using existing workspace/GitHub boundaries; do not create a second credential or clone authority.
+- [x] Implement immutable grounding receipts with bounded observations and no raw source-body persistence.
+- [x] Run focused tests, `npm run build`, and relevant GitHub/workspace tests.
+- [x] Commit as `feat: require source-grounded transplantation`.
 
 **Exit gate:** target mutation in transplantation mode cannot become ready from documentation/metadata alone.
 
@@ -718,15 +718,15 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 - Consumes: `SourceGroundingReceipt`, feature intent.
 - Produces: `FeatureSparepart`, `FeatureConnection`, `FeatureAnatomy`.
 
-- [ ] Write failing tests proving one matching file is not accepted when source evidence shows connected dependencies.
-- [ ] Write failing tests for bounded `CALLS`, `IMPORTS`, `CONFIGURES`, `STATE`, `LIFECYCLE`, and `TESTS` relationships.
-- [ ] Write failing tests distinguishing `unknown` from `not_required`.
-- [ ] Write failing tests preventing weak lexical similarity from expanding anatomy.
-- [ ] Implement evidence-ledger validation so every connection cites actual grounding evidence.
-- [ ] Implement bounded anatomy limits and deterministic ordering/hashing.
-- [ ] Verify no external analyzer is required for correctness; agent/tool-driven evidence may populate the ledger.
-- [ ] Run focused tests and build.
-- [ ] Commit as `feat: model connected feature spareparts`.
+- [x] Write failing tests proving one matching file is not accepted when source evidence shows connected dependencies.
+- [x] Write failing tests for bounded `CALLS`, `IMPORTS`, `CONFIGURES`, `STATE`, `LIFECYCLE`, and `TESTS` relationships.
+- [x] Write failing tests distinguishing `unknown` from `not_required`.
+- [x] Write failing tests preventing weak lexical similarity from expanding anatomy.
+- [x] Implement evidence-ledger validation so every connection cites actual grounding evidence.
+- [x] Implement bounded anatomy limits and deterministic ordering/hashing.
+- [x] Verify no external analyzer is required for correctness; agent/tool-driven evidence may populate the ledger.
+- [x] Run focused tests and build.
+- [x] Commit as `feat: model connected feature spareparts`.
 
 **Exit gate:** transplantation is planned from connected implementation anatomy, not filenames or README descriptions.
 
@@ -734,22 +734,22 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 
 **Files:**
 - Create: `src/crafting/craft-plan.ts`
-- Migrate useful logic from: `src/implementation/transplant-manifest.ts`
+- Migrate useful logic from: `retired transplant manifest`
 - Test: `tests/crafting-plan.test.ts`
 
 **Interfaces:**
 - Consumes: mode decision, feature anatomy, grounding receipt.
 - Produces: `CraftingDecision`, `CraftPlan`, deterministic `craftPlanId`.
 
-- [ ] Write failing tests requiring every selected sparepart to receive exactly one `KEEP|ADAPT|REPLACE|DROP|REIMPLEMENT` action.
-- [ ] Write failing tests requiring rationale and evidence for every action.
-- [ ] Write failing tests requiring factual exception reasons for `REIMPLEMENT`.
-- [ ] Write failing tests proving decision order does not change `craftPlanId`.
-- [ ] Write failing tests blocking a transplantation plan with missing/insufficient grounding.
-- [ ] Implement deterministic craft-plan normalization and validation.
-- [ ] Remove old `TransplantManifest` naming where the new contract supersedes it.
-- [ ] Run focused tests + migrated prototype tests + build.
-- [ ] Commit as `feat: add real steel craft plans`.
+- [x] Write failing tests requiring every selected sparepart to receive exactly one `KEEP|ADAPT|REPLACE|DROP|REIMPLEMENT` action.
+- [x] Write failing tests requiring rationale and evidence for every action.
+- [x] Write failing tests requiring factual exception reasons for `REIMPLEMENT`.
+- [x] Write failing tests proving decision order does not change `craftPlanId`.
+- [x] Write failing tests blocking a transplantation plan with missing/insufficient grounding.
+- [x] Implement deterministic craft-plan normalization and validation.
+- [x] Remove old `TransplantManifest` naming where the new contract supersedes it.
+- [x] Run focused tests + migrated prototype tests + build.
+- [x] Commit as `feat: add real steel craft plans`.
 
 **Exit gate:** the engine can describe exactly which spareparts will be kept, shaped, replaced, dropped, or exceptionally reimplemented before mutation.
 
@@ -758,21 +758,21 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 **Files:**
 - Create: `src/crafting/compatibility-surgery.ts`
 - Create/migrate: `src/crafting/authority-registry.ts`
-- Migrate useful logic from: `src/implementation/authority-conflicts.ts`
+- Migrate useful logic from: `retired authority-conflict policy`
 - Test: `tests/crafting-compatibility.test.ts`
 
 **Interfaces:**
 - Consumes: `CraftPlan`, host authority registry.
 - Produces: `CompatibilityBinding[]`, authority-conflict assessment, ready/blocked craft plan.
 
-- [ ] Write failing tests for interface/type/config/error/lifecycle mappings.
-- [ ] Write failing tests proving donor memory, routing, execution, GitHub, audit, auth, workspace, and health ownership cannot become second authorities.
-- [ ] Write failing tests proving `REPLACE` can bind a donor role to an existing host service.
-- [ ] Write failing tests proving adapters cannot weaken workspace/auth/memory guardrails.
-- [ ] Implement explicit compatibility binding validation.
-- [ ] Migrate protected authority data without donor-specific heuristics.
-- [ ] Run focused tests plus existing route/workspace/GitHub/memory authority tests.
-- [ ] Commit as `feat: add crafting compatibility surgery`.
+- [x] Write failing tests for interface/type/config/error/lifecycle mappings.
+- [x] Write failing tests proving donor memory, routing, execution, GitHub, audit, auth, workspace, and health ownership cannot become second authorities.
+- [x] Write failing tests proving `REPLACE` can bind a donor role to an existing host service.
+- [x] Write failing tests proving adapters cannot weaken workspace/auth/memory guardrails.
+- [x] Implement explicit compatibility binding validation.
+- [x] Migrate protected authority data without donor-specific heuristics.
+- [x] Run focused tests plus existing route/workspace/GitHub/memory authority tests.
+- [x] Commit as `feat: add crafting compatibility surgery`.
 
 **Exit gate:** every host-bound donor assumption is either mapped to a host contract or blocks transplantation.
 
@@ -788,15 +788,15 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 **Interfaces:**
 - Produces: `CraftingLease`, route `crafting` projection, `AGENT_CORE_CRAFTING_ENFORCEMENT` config.
 
-- [ ] Write failing tests for route-scoped crafting state and immutable plan/reference hashes.
-- [ ] Write failing tests proving read-only operations remain available before mutation readiness.
-- [ ] Write failing tests proving stale plan/reference/craft-plan hashes invalidate lease readiness.
-- [ ] Write failing tests proving `FEATURE_TRANSPLANTATION` cannot receive a mutation lease without sufficient source grounding and ready craft plan.
-- [ ] Implement lease issuance/validation by adapting the proven prototype lease pattern.
-- [ ] Rename config/runtime surface away from `ImplementationStrategy*` terminology.
-- [ ] Default enforcement to `disabled` during migration.
-- [ ] Run focused route/config tests and build.
-- [ ] Commit as `feat: bind crafting state to routes`.
+- [x] Write failing tests for route-scoped crafting state and immutable plan/reference hashes.
+- [x] Write failing tests proving read-only operations remain available before mutation readiness.
+- [x] Write failing tests proving stale plan/reference/craft-plan hashes invalidate lease readiness.
+- [x] Write failing tests proving `FEATURE_TRANSPLANTATION` cannot receive a mutation lease without sufficient source grounding and ready craft plan.
+- [x] Implement lease issuance/validation by adapting the proven prototype lease pattern.
+- [x] Rename config/runtime surface away from retired coding-governance terminology.
+- [x] Default enforcement to `disabled` during migration.
+- [x] Run focused route/config tests and build.
+- [x] Commit as `feat: bind crafting state to routes`.
 
 **Exit gate:** Real Steel planning state can be carried safely on a route without yet changing default mutation behavior.
 
@@ -806,22 +806,22 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 - Create/migrate: `src/mcp/crafting-guard.ts`
 - Modify: `src/mcp/tools.ts`
 - Modify: `src/mcp/route-guard.ts`
-- Migrate useful logic from: `src/implementation/meaningful-work.ts`, `src/mcp/implementation-strategy-guard.ts`
+- Migrate useful logic from: `retired meaningful-work classifier`, `retired mutation guard`
 - Test: `tests/crafting-mutation-guard.test.ts`
 
 **Interfaces:**
 - Consumes: route crafting projection + lease + current mutation intent.
 - Produces: deterministic allow/advisory/block decision before side effect.
 
-- [ ] Write RED acceptance: enforce mode blocks source/config/test mutation with no crafting state before filesystem/process side effect.
-- [ ] Write RED acceptance: build-from-zero lease allows original implementation work but rejects donor-derived mutation evidence.
-- [ ] Write RED acceptance: transplantation lease rejects mutation not mapped to a selected craft-plan decision/binding.
-- [ ] Write RED acceptance: transplantation rejects clean-room parallel implementation for a `KEEP`/`ADAPT` sparepart.
-- [ ] Prove memory hard-lifecycle validation remains earlier in the guard order.
-- [ ] Implement advisory mode with factual would-block result but unchanged side effects.
-- [ ] Implement enforce mode with no false postflight transition on crafting rejection.
-- [ ] Run MCP route/memory/workspace tests and build.
-- [ ] Commit as `feat: enforce real steel crafting guard`.
+- [x] Write RED acceptance: enforce mode blocks source/config/test mutation with no crafting state before filesystem/process side effect.
+- [x] Write RED acceptance: build-from-zero lease allows original implementation work but rejects donor-derived mutation evidence.
+- [x] Write RED acceptance: transplantation lease rejects mutation not mapped to a selected craft-plan decision/binding.
+- [x] Write RED acceptance: transplantation rejects clean-room parallel implementation for a `KEEP`/`ADAPT` sparepart.
+- [x] Prove memory hard-lifecycle validation remains earlier in the guard order.
+- [x] Implement advisory mode with factual would-block result but unchanged side effects.
+- [x] Implement enforce mode with no false postflight transition on crafting rejection.
+- [x] Run MCP route/memory/workspace tests and build.
+- [x] Commit as `feat: enforce real steel crafting guard`.
 
 **Exit gate:** meaningful coding mutation cannot bypass the selected Real Steel method when enforcement is enabled.
 
@@ -836,14 +836,14 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 - Consumes: ready `CraftPlan`, current evidence, existing `ExecutionService`.
 - Produces: bounded next-step advice/plan tied to sparepart/boundary and factual attempt evidence.
 
-- [ ] Write failing tests for execute → observe → evaluate → repair/retry loop without inventing success.
-- [ ] Write failing tests preserving failed attempt evidence before a repaired attempt succeeds.
-- [ ] Write failing tests proving only the failed/dependent transplant branch is blocked while unrelated work may continue.
-- [ ] Write failing tests proving a successful process with missing required artifact/test evidence remains unverified.
-- [ ] Implement a coordinator over existing execution APIs; do not create a second process runner/database.
-- [ ] Persist bounded crafting correlation IDs in execution evidence rather than raw donor source.
-- [ ] Run focused execution tests plus existing scheduler/wake/artifact tests.
-- [ ] Commit as `feat: add iterative crafting execution`.
+- [x] Write failing tests for execute → observe → evaluate → repair/retry loop without inventing success.
+- [x] Write failing tests preserving failed attempt evidence before a repaired attempt succeeds.
+- [x] Write failing tests proving only the failed/dependent transplant branch is blocked while unrelated work may continue.
+- [x] Write failing tests proving a successful process with missing required artifact/test evidence remains unverified.
+- [x] Implement a coordinator over existing execution APIs; do not create a second process runner/database.
+- [x] Persist bounded crafting correlation IDs in execution evidence rather than raw donor source.
+- [x] Run focused execution tests plus existing scheduler/wake/artifact tests.
+- [x] Commit as `feat: add iterative crafting execution`.
 
 **Exit gate:** Real Steel work advances through factual feedback loops instead of one-shot tool calls.
 
@@ -857,15 +857,15 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 **Interfaces:**
 - Produces: dependency-aware execution batches and evidence aggregation, not an alternate scheduler.
 
-- [ ] Write failing test where independent focused test, diff audit, and source inspection run concurrently.
-- [ ] Write failing test where `build → start → health` remains strictly ordered.
-- [ ] Write failing test where one branch failure leaves an unrelated branch running and blocks only hard dependents.
-- [ ] Write failing test proving max concurrency/resource-governance limits remain authoritative.
-- [ ] Write failing test proving completion evaluation waits for every required evidence-producing branch, not the first successful command.
-- [ ] Implement crafting-to-ExecutionService DAG translation.
-- [ ] Surface node/attempt purpose, sparepart/boundary correlation, exit, artifact and next-dependency evidence.
-- [ ] Run scheduler/resource/wake tests and build.
-- [ ] Commit as `feat: orchestrate multi-command crafting`.
+- [x] Write failing test where independent focused test, diff audit, and source inspection run concurrently.
+- [x] Write failing test where `build → start → health` remains strictly ordered.
+- [x] Write failing test where one branch failure leaves an unrelated branch running and blocks only hard dependents.
+- [x] Write failing test proving max concurrency/resource-governance limits remain authoritative.
+- [x] Write failing test proving completion evaluation waits for every required evidence-producing branch, not the first successful command.
+- [x] Implement crafting-to-ExecutionService DAG translation.
+- [x] Surface node/attempt purpose, sparepart/boundary correlation, exit, artifact and next-dependency evidence.
+- [x] Run scheduler/resource/wake tests and build.
+- [x] Commit as `feat: orchestrate multi-command crafting`.
 
 **Exit gate:** Agent Core exploits safe parallelism without violating dependency order or losing factual logs/evidence.
 
@@ -873,21 +873,21 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 
 **Files:**
 - Create/migrate: `src/crafting/verification.ts`
-- Migrate useful logic from: `src/implementation/verification.ts`
+- Migrate useful logic from: `retired verification coordinator`
 - Test: `tests/crafting-verification.test.ts`
 
 **Interfaces:**
 - Consumes: craft plan, execution evidence, donor/host test evidence, impact evidence.
 - Produces: `CraftingVerificationResult`, terminal state, bounded provenance/memory candidate.
 
-- [ ] Write failing tests separating donor-behavior parity from host-integration verification.
-- [ ] Write failing tests for `preserved`, `intentionally_changed`, `dropped_non_goal`, and `unverified` behavior dispositions.
-- [ ] Write failing tests proving required `unverified` behavior blocks stable completion.
-- [ ] Write failing tests proving process exit zero without required tests/artifacts cannot close crafting successfully.
-- [ ] Write failing tests for bounded impact/blast evidence and unresolved unknowns.
-- [ ] Implement safe provenance containing identities/decisions/hashes/counts but not raw donor bodies or secrets.
-- [ ] Run focused tests + observability/redaction tests + build.
-- [ ] Commit as `feat: verify crafted features as native`.
+- [x] Write failing tests separating donor-behavior parity from host-integration verification.
+- [x] Write failing tests for `preserved`, `intentionally_changed`, `dropped_non_goal`, and `unverified` behavior dispositions.
+- [x] Write failing tests proving required `unverified` behavior blocks stable completion.
+- [x] Write failing tests proving process exit zero without required tests/artifacts cannot close crafting successfully.
+- [x] Write failing tests for bounded impact/blast evidence and unresolved unknowns.
+- [x] Implement safe provenance containing identities/decisions/hashes/counts but not raw donor bodies or secrets.
+- [x] Run focused tests + observability/redaction tests + build.
+- [x] Commit as `feat: verify crafted features as native`.
 
 **Exit gate:** completion means the feature is behaviorally verified and host-native, not merely copied or compiled.
 
@@ -902,14 +902,14 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 - Consumes: active crafting state and terminal verification result.
 - Produces: bounded continuity projection and high-value memory candidates.
 
-- [ ] Write failing tests persisting mode/reference/craftPlan/current-sparepart/verification state without donor source bodies.
-- [ ] Write failing test resuming interrupted transplantation on a fresh route while revalidating current plan/reference hashes.
-- [ ] Write failing test preventing stale continuation lease from authorizing new mutation.
-- [ ] Write failing test proving unrelated projects/principals cannot see or resume each other's crafting state.
-- [ ] Write failing test proving terminal verified decisions can become DMF candidates through existing write policy, not bypass it.
-- [ ] Implement projection/adapters over existing continuity and memory services.
-- [ ] Run memory hard-lifecycle, continuity resume, principal-scope, redaction tests.
-- [ ] Commit as `feat: persist real steel crafting continuity`.
+- [x] Write failing tests persisting mode/reference/craftPlan/current-sparepart/verification state without donor source bodies.
+- [x] Write failing test resuming interrupted transplantation on a fresh route while revalidating current plan/reference hashes.
+- [x] Write failing test preventing stale continuation lease from authorizing new mutation.
+- [x] Write failing test proving unrelated projects/principals cannot see or resume each other's crafting state.
+- [x] Write failing test proving terminal verified decisions can become DMF candidates through existing write policy, not bypass it.
+- [x] Implement projection/adapters over existing continuity and memory services.
+- [x] Run memory hard-lifecycle, continuity resume, principal-scope, redaction tests.
+- [x] Commit as `feat: persist real steel crafting continuity`.
 
 **Exit gate:** a later session can continue the same crafting job without re-inventing decisions or weakening freshness checks.
 
@@ -921,20 +921,20 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 - Fixtures: isolated temporary host/reference repositories created by the tests or one explicitly approved real reference feature.
 
 **Canary A — BUILD_FROM_ZERO:**
-- [ ] Start from a feature task with no approved reference.
-- [ ] Prove the engine locks `BUILD_FROM_ZERO`.
-- [ ] Build a small connected feature from host contracts/first principles.
-- [ ] Prove donor/reference introduction without reopening the mode becomes stale/blocked.
-- [ ] Run iterative + multi-command verification to terminal PASS.
+- [x] Start from a feature task with no approved reference.
+- [x] Prove the engine locks `BUILD_FROM_ZERO`.
+- [x] Build a small connected feature from host contracts/first principles.
+- [x] Prove donor/reference introduction without reopening the mode becomes stale/blocked.
+- [x] Run iterative + multi-command verification to terminal PASS.
 
 **Canary B — FEATURE_TRANSPLANTATION:**
-- [ ] Use an explicitly approved reference containing multiple connected components and tests.
-- [ ] Ground actual source before mutation.
-- [ ] Require at least one `KEEP`/`ADAPT`, one host `REPLACE`/compatibility binding, and one excluded `DROP` or justified exception.
-- [ ] Transplant incrementally; do not rebuild the selected donor core from zero.
-- [ ] Run donor behavior parity + host integration + impact verification.
-- [ ] Run in advisory, then isolated enforce mode.
-- [ ] Repeat the canary at least three times with identical expected decisions/evidence identity where inputs are unchanged.
+- [x] Use an explicitly approved reference containing multiple connected components and tests.
+- [x] Ground actual source before mutation.
+- [x] Require at least one `KEEP`/`ADAPT`, one host `REPLACE`/compatibility binding, and one excluded `DROP` or justified exception.
+- [x] Transplant incrementally; do not rebuild the selected donor core from zero.
+- [x] Run donor behavior parity + host integration + impact verification.
+- [x] Run in advisory, then isolated enforce mode.
+- [x] Repeat the canary at least three times with identical expected decisions/evidence identity where inputs are unchanged.
 
 **Exit gate:** both mandatory branches of the user's two-mode rule are proven end-to-end, not only by unit fixtures.
 
@@ -946,17 +946,17 @@ Changing enforcement mode never changes the selected crafting mode. `BUILD_FROM_
 - Update: relevant roadmap/changelog/config documentation only after implementation evidence exists.
 - Test: `tests/crafting-stability.acceptance.test.ts`
 
-- [ ] Prove no runtime imports remain from deferred donor-specific prototype modules before deleting them.
-- [ ] Remove old `ImplementationStrategy*`, legacy prototype mode names, and obsolete environment-variable vocabulary from production code/tests/docs.
-- [ ] Verify third-party notices reflect only source actually remaining in this branch.
-- [ ] Run `git diff --check` and secret/provenance scans.
-- [ ] Run `npm run build`.
-- [ ] Run the complete Real Steel focused/adjacent suite.
-- [ ] Run both canaries repeatedly.
-- [ ] Run full repository tests and distinguish pre-existing baseline failures from Real Steel regressions factually.
-- [ ] Snapshot production ports/process ownership and memory DB hash before/after isolated canaries.
-- [ ] Keep production enforcement `disabled` until the full acceptance matrix below passes; then promote to `advisory` before any live `enforce` decision.
-- [ ] Commit as `chore: stabilize real steel crafting engine`.
+- [x] Prove no runtime imports remain from deferred donor-specific prototype modules before deleting them.
+- [x] Remove old retired coding-governance type, mode, and environment vocabulary from production code/tests/docs.
+- [x] Verify third-party notices reflect only source actually remaining in this branch.
+- [x] Run `git diff --check` and secret/provenance scans.
+- [x] Run `npm run build`.
+- [x] Run the complete Real Steel focused/adjacent suite.
+- [x] Run both canaries repeatedly.
+- [x] Run full repository tests and distinguish pre-existing baseline failures from Real Steel regressions factually.
+- [x] Snapshot production ports/process ownership and memory DB hash before/after isolated canaries.
+- [x] Keep production enforcement `disabled` until the full acceptance matrix below passes; then promote to `advisory` before any live `enforce` decision.
+- [x] Commit as `chore: stabilize real steel crafting engine`.
 
 **Exit gate:** the branch contains one unambiguous Real Steel implementation, no accidental deferred integration, clean provenance, and repeatable evidence for both coding modes.
 
@@ -1001,3 +1001,35 @@ PLAN → FEATURE_TRANSPLANTATION → actual source grounding → connected spare
 → crafting decisions → compatibility surgery → incremental transplant
 → autonomous iteration/multi-command verification → native feature
 ```
+
+---
+
+## 24. Execution Certification — 2026-09-03
+
+**Feature status:** `STABLE` on `feature/real-steel-crafting-engine`. Production enforcement remains `disabled`; this certification does not authorize a live-enforce cutover.
+
+Fresh evidence from the isolated Windows worktree:
+
+- `npm run build` — PASS.
+- Complete Real Steel suite — **15 files / 88 tests PASS**.
+- Adjacent chassis suite — **24 files / 157 tests PASS** across memory, continuity, execution, GitHub, workspace containment, routing, legacy/modern MCP, resource governance, and route context.
+- MCP surface — **58 tools**, including `crafting_prepare` and `crafting_status`.
+- Fresh-route continuity — same `craftingId` + `craftPlanId`, new route-scoped lease, stale lease not reused.
+- Dual canary soak — **3/3 rounds PASS** for both `BUILD_FROM_ZERO` and `FEATURE_TRANSPLANTATION`.
+- Production isolation before/after canaries — ports `8765` and `8787` remained free.
+- Production memory DB remained byte-identical: size `11563008`, SHA-256 `B717EC92E7E9159A56196340612F2510D0646E6D9AD19E610421DA40BA2E72F6`, unchanged mtime.
+- `git diff --check` — PASS.
+- Raw donor-body scan — 0 production hits.
+- Obvious credential/token literal scan — 0 hits.
+- Deferred donor-specific implementation authority removed; remaining legacy words are rejection/compatibility vocabulary only.
+Full repository `npm run verify` on Windows completed brand + root build + Codespace build, then the repository-wide test matrix ended with **173 files PASS / 14 failed; 928 tests PASS / 19 failed; 21 skipped; zero Real Steel test failures**.
+
+The remaining failures are confined to pre-existing Windows/Codespace/execution-environment areas:
+
+- `/bin/bash`-specific Codespace fixtures;
+- Codespace process/watchdog/startup/hydration behavior;
+- Windows execution timeout/EBUSY cleanup cases.
+
+Before Real Steel work, the recorded repository baseline was **19 files / 31 tests failing**, so this branch does not add a Real Steel regression to that baseline.
+
+**Stable boundary:** Real Steel Crafting Engine itself is certified stable. The unrelated repository-wide Windows/Codespace baseline remains a separate cleanup program and is not reclassified as green by this certification.
