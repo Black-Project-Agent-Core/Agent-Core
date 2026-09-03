@@ -63,6 +63,21 @@ export interface ContinuityCheckpointResult {
   snapshotHash: string;
 }
 
+export interface ContinuityCheckpointRecord {
+  checkpointId: string;
+  principalId: string;
+  projectId?: string;
+  taskId: string;
+  routeContextId: string;
+  status: ContinuityCheckpointInput['status'];
+  summary: string;
+  evidence: NonNullable<ContinuityCheckpointInput['evidence']>;
+  decisions: NonNullable<ContinuityCheckpointInput['decisions']>;
+  blockers: NonNullable<ContinuityCheckpointInput['blockers']>;
+  stateHash: string;
+  createdAt: number;
+}
+
 export interface ContinuityReconcileResult {
   interruptedTurnIds: string[];
   interruptedTaskIds: string[];
@@ -166,6 +181,16 @@ function hash(value: unknown): string {
   return createHash('sha256').update(stableJson(value), 'utf8').digest('hex');
 }
 
+function jsonObject(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
 function jsonArray(value: string): unknown[] {
   try {
     const parsed = JSON.parse(value) as unknown;
@@ -566,6 +591,48 @@ export class ContinuityStore {
     await this.client.transaction(operations);
   }
 
+  async getCheckpoint(scope: MemoryScope, checkpointId: string): Promise<ContinuityCheckpointRecord | null> {
+    assertScope(scope);
+    const normalizedId = text(checkpointId, 'checkpointId', 5_000);
+    const rows = await this.client.query<Record<string, unknown>>(
+      `SELECT id, principal_id, project_id, task_id, route_context_id, phase,
+              summary_json, evidence_json, state_hash, created_at
+         FROM continuity_checkpoints
+        WHERE id = ? AND principal_id = ? AND IFNULL(project_id, '') = ?
+        LIMIT 1`,
+      [normalizedId, scope.principalId, scopeProject(scope)],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    const summaryPayload = jsonObject(String(row.summary_json));
+    const evidence = jsonArray(String(row.evidence_json))
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+      .map((item) => ({
+        type: String(item.type) as NonNullable<ContinuityCheckpointInput['evidence']>[number]['type'],
+        ref: String(item.ref),
+        ...(item.result == null ? {} : { result: String(item.result) }),
+      }));
+    const decisions = Array.isArray(summaryPayload.decisions) ? summaryPayload.decisions : [];
+    const blockers = Array.isArray(summaryPayload.blockers) ? summaryPayload.blockers : [];
+    return {
+      checkpointId: String(row.id),
+      principalId: String(row.principal_id),
+      projectId: row.project_id == null ? undefined : String(row.project_id),
+      taskId: String(row.task_id),
+      routeContextId: String(row.route_context_id),
+      status: String(row.phase) as ContinuityCheckpointInput['status'],
+      summary: String(summaryPayload.summary ?? ''),
+      evidence,
+      decisions: decisions.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item))).map((item) => ({
+        key: String(item.key), value: String(item.value), reason: String(item.reason),
+      })),
+      blockers: blockers.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item))).map((item) => ({
+        code: String(item.code), detail: String(item.detail),
+      })),
+      stateHash: String(row.state_hash),
+      createdAt: Number(row.created_at),
+    };
+  }
   async getTask(scope: MemoryScope, taskId: string): Promise<ContinuityTaskRecord | null> {
     assertScope(scope);
     return this.findTask(scope, text(taskId, 'taskId', 5_000));

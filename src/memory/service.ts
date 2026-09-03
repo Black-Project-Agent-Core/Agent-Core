@@ -4,6 +4,7 @@ import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 import {
   ContinuityStore,
   type ContinuityBeginTurnResult,
+  type ContinuityCheckpointRecord,
   type ContinuityCheckpointResult,
   type ContinuityFrontierRecord,
   type ContinuityReconcileResult,
@@ -231,6 +232,11 @@ export class MemoryService {
     await components.continuity.closeTurn(scope, turnId, finalState);
   }
 
+  async getContinuityCheckpoint(scope: MemoryScope, checkpointId: string): Promise<ContinuityCheckpointRecord | null> {
+    if (!this.config.enabled) return null;
+    const components = await this.requireComponents();
+    return components.continuity.getCheckpoint(scope, checkpointId);
+  }
   async getContinuityTask(scope: MemoryScope, taskId: string): Promise<ContinuityTaskRecord | null> {
     if (!this.config.enabled) return null;
     const components = await this.requireComponents();
