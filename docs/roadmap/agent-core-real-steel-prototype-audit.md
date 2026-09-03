@@ -1,7 +1,7 @@
 ﻿# Real Steel Prototype Audit
 
-**Audit base:** `origin/main` / merge-base `6b674c1f95a677dea5cb57263bb5b8b863faff5b`  
-**Audit branch:** `feature/real-steel-crafting-engine`  
+**Audit base:** `origin/main` / merge-base `6b674c1f95a677dea5cb57263bb5b8b863faff5b`
+**Audit branch:** `feature/real-steel-crafting-engine`
 **Plan authority:** `docs/roadmap/agent-core-real-steel-crafting-engine.md`
 
 ## Baseline evidence
