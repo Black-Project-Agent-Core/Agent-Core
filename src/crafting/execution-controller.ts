@@ -25,6 +25,13 @@ export interface CraftingExecutionStep {
   expectedArtifacts?: ExecutionExpectedArtifactSpec[];
 }
 
+export interface CraftingExecutionDagRequest {
+  objective: string;
+  steps: CraftingExecutionStep[];
+  maxConcurrency?: number;
+  continuityTaskId?: string;
+  originRouteContextId?: string;
+}
 export type CraftingExecutionNextAction =
   | { kind: 'REPAIR_RETRY'; nodeIds: string[] }
   | { kind: 'WAIT'; nodeIds: string[] }
@@ -128,6 +135,45 @@ export class CraftingExecutionController {
         ...(step.expectedArtifacts ? { expectedArtifacts: structuredClone(step.expectedArtifacts) } : {}),
       }],
       metadata,
+    });
+    const started = await this.backend.start(scope, created.runId);
+    return this.observeView(scope, started);
+  }
+  async startDag(
+    scope: ExecutionScope,
+    plan: CraftPlan,
+    request: CraftingExecutionDagRequest,
+  ): Promise<CraftingExecutionObservation> {
+    if (plan.status !== 'ready') throw new Error('Crafting execution requires a ready craft plan');
+    if (!request.steps.length) throw new Error('Crafting execution DAG requires at least one step');
+    const stepCorrelations = request.steps.map((step) => ({
+      stepId: step.stepId,
+      ...(step.sparepartId ? { sparepartId: step.sparepartId } : {}),
+      ...(step.compatibilityBoundary ? { compatibilityBoundary: step.compatibilityBoundary } : {}),
+    }));
+    const nodes = request.steps.map((step) => ({
+      id: step.stepId,
+      purpose: step.purpose,
+      command: step.command,
+      cwd: step.cwd,
+      ...(step.dependsOn ? { dependsOn: [...step.dependsOn] } : {}),
+      ...(step.timeoutMs !== undefined ? { timeoutMs: step.timeoutMs } : {}),
+      ...(step.continueOnFailure !== undefined ? { continueOnFailure: step.continueOnFailure } : {}),
+      ...(step.expectedArtifacts ? { expectedArtifacts: structuredClone(step.expectedArtifacts) } : {}),
+    }));
+    const created = await this.backend.create(scope, {
+      objective: request.objective,
+      nodes,
+      ...(request.maxConcurrency !== undefined ? { maxConcurrency: request.maxConcurrency } : {}),
+      ...(request.continuityTaskId ? { continuityTaskId: request.continuityTaskId } : {}),
+      ...(request.originRouteContextId ? { originRouteContextId: request.originRouteContextId } : {}),
+      metadata: {
+        crafting: {
+          craftingId: plan.craftingId,
+          craftPlanId: plan.craftPlanId,
+          steps: stepCorrelations,
+        },
+      },
     });
     const started = await this.backend.start(scope, created.runId);
     return this.observeView(scope, started);
