@@ -25,7 +25,7 @@ Both donor tracked trees remained clean after analysis and verification.
 5. Task 5 — protected authority conflict registry: `75ac071`
 6. Task 6 — scoped implementation strategy lease and mutation guard: `606eab7`
 7. Task 7 — verification, provenance, blast-radius and continuity projection: `7b45472`
-8. Task 8 — real working-tree freshness graft canary: pending final checkpoint in this report
+8. Task 8 — real working-tree freshness graft canary: `8c6a261`
 
 ## Real Canary Transplant
 
