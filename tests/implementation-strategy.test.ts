@@ -58,6 +58,7 @@ function expectResolutionError(run: () => unknown, code: string) {
 describe('implementation strategy resolver', () => {
   it('resolves zero approved references to GREENFIELD with an explicit reason', () => {
     const result = resolveImplementationStrategy(request());
+    expect(result.strategyId).toMatch(/^strategy:[0-9a-f]{32}$/);
     expect(result.mode).toBe('GREENFIELD');
     expect(result.reasonCodes).toEqual(['NO_APPROVED_REFERENCE']);
     expect(result.approvedReferences).toEqual([]);

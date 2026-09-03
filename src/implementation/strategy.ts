@@ -46,6 +46,7 @@ export interface ResolveImplementationStrategyRequest {
 }
 
 export interface ImplementationStrategyResolution {
+  strategyId: string;
   mode: ImplementationStrategyMode;
   planRef: string;
   featureId: string;
@@ -212,6 +213,7 @@ export function resolveImplementationStrategy(
   });
 
   return {
+    strategyId: `strategy:${strategyFingerprint.slice(0, 32)}`,
     mode,
     planRef,
     featureId,
