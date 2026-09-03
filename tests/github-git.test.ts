@@ -183,3 +183,30 @@ describe('GitHubGitService', () => {
     expect(captured?.env?.AGENT_CORE_GITHUB_ASKPASS_TOKEN).toBeUndefined();
   });
 });
+
+
+describe('GitHubGitService local working-tree enumeration', () => {
+  it('enumerates Git-visible files through the existing Git process authority without credentials', async () => {
+    let captured: SpawnRequest | undefined;
+    const { root, service } = await setup(async (request) => {
+      captured = request;
+      return okResult('src/a.ts\0src/b.ts\0untracked.ts\0src/a.ts\0');
+    });
+    await mkdir(path.join(root, 'src'), { recursive: true });
+
+    await expect(service.listWorkingTreeFiles({ cwd: root })).resolves.toEqual([
+      'src/a.ts', 'src/b.ts', 'untracked.ts',
+    ]);
+    expect(captured?.args).toEqual([
+      'ls-files', '--cached', '--others', '--exclude-standard', '-z', '--',
+    ]);
+    expect(captured?.env?.AGENT_CORE_GITHUB_ASKPASS_TOKEN).toBeUndefined();
+  });
+});
+
+it('preserves whitespace inside NUL-delimited Git path records', async () => {
+  const { root, service } = await setup(async () => okResult(' leading.ts\0trailing.ts \0'));
+  await expect(service.listWorkingTreeFiles({ cwd: root })).resolves.toEqual([
+    ' leading.ts', 'trailing.ts ',
+  ]);
+});

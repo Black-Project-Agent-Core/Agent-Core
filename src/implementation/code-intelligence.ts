@@ -128,8 +128,42 @@ export class NativeSearchFallbackProvider implements CodeIntelligenceProvider {
     };
   }
 
-  async blastRadius(_request: BlastRadiusRequest): Promise<BlastRadiusResult> {
-    return { providerId: this.providerId(), completeness: 'insufficient', evidence: [], notes: [GRAPH_REQUIRED_NOTE], affected: [] };
+  async blastRadius(request: BlastRadiusRequest): Promise<BlastRadiusResult> {
+    const pathQueries = (request.changedPaths ?? []).map((value) => {
+      const name = value.replace(/\\/g, '/').split('/').pop() ?? '';
+      return name.replace(/\.[^.]+$/, '');
+    });
+    const queries = [...new Set([...(request.changedSymbols ?? []), ...pathQueries]
+      .map((value) => value.trim()).filter(Boolean))].slice(0, 16);
+    if (queries.length === 0) {
+      return { providerId: this.providerId(), completeness: 'insufficient', evidence: [], notes: [GRAPH_REQUIRED_NOTE], affected: [] };
+    }
+
+    const maxResults = boundedLimit(request.maxResults);
+    const evidence: CodeEvidence[] = [];
+    const seen = new Set<string>();
+    for (const query of queries) {
+      if (evidence.length >= maxResults) break;
+      const matches = await this.source.searchContent({
+        projectRoot: request.projectRoot,
+        query,
+        maxResults: maxResults - evidence.length,
+      });
+      for (const match of matches) {
+        const key = `${match.path}\u0000${match.line ?? ''}\u0000${match.symbol ?? ''}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        evidence.push(match);
+        if (evidence.length >= maxResults) break;
+      }
+    }
+    return {
+      providerId: this.providerId(),
+      completeness: 'partial',
+      evidence,
+      notes: ['Blast candidates come from bounded native text search; dependency graph completeness is not claimed.'],
+      affected: [...evidence],
+    };
   }
 
   async freshness(request: FreshnessRequest): Promise<FreshnessResult> {

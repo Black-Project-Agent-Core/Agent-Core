@@ -72,14 +72,14 @@ describe('CodeIntelligenceProvider contract', () => {
     expect(found.entryPoints.map((item) => item.path)).toEqual(['src/one.ts', 'src/two.ts']);
   });
 
-  it('never fabricates complete call graph or blast-radius evidence from native text search', async () => {
+  it('keeps call graph insufficient while exposing bounded partial blast evidence from native text search', async () => {
     const provider = new NativeSearchFallbackProvider(new FakeNativeSource());
     const inbound = await provider.traceInbound({ projectRoot: '/repo', symbol: 'One', maxDepth: 2, maxResults: 10 });
     const blast = await provider.blastRadius({ projectRoot: '/repo', changedSymbols: ['One'], maxDepth: 2, maxResults: 10 });
     expect(inbound.completeness).toBe('insufficient');
     expect(inbound.edges).toEqual([]);
-    expect(blast.completeness).toBe('insufficient');
-    expect(blast.affected).toEqual([]);
+    expect(blast.completeness).toBe('partial');
+    expect(blast.affected.length).toBeGreaterThan(0);
     expect([...inbound.notes, ...blast.notes].join(' ')).toMatch(/graph/i);
   });
 

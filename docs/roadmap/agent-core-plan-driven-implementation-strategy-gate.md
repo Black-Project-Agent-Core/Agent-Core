@@ -1,6 +1,6 @@
 # Agent Core Plan-Driven Implementation Strategy Gate — Architecture Design
 
-**Status:** DESIGN SPECIFICATION — USER-APPROVED DIRECTION; NOT IMPLEMENTED
+**Status:** IMPLEMENTED AND VERIFIED ON ISOLATED FEATURE BRANCH; LIVE ENFORCEMENT DISABLED
 **Design base:** local `main` / `origin/main` at `6b674c1f95a677dea5cb57263bb5b8b863faff5b`
 **Development identity observed during design:** `0.7.0`
 **Target platform:** Agent Core local-first control plane on Windows and GitHub Codespaces
@@ -1240,12 +1240,12 @@ The feature should be implemented as a staged governance capability, not as one 
 **Files:** create a focused module under `src/implementation/` or equivalent; extend route/runtime types only where required.
 **Tests:** create strategy resolver contract tests.
 
-- [ ] Define `GREENFIELD` and `FEATURE_GRAFT` as the only normal resolved modes.
-- [ ] Define approved reference and feature-contract types.
-- [ ] Resolve `0 references → GREENFIELD`, `>=1 approved reference → FEATURE_GRAFT`.
-- [ ] Reject unavailable/ambiguous explicitly-required references rather than silently falling back.
-- [ ] Add deterministic reason codes and fingerprints.
-- [ ] Prove replay with identical inputs produces identical strategy identity fields except opaque instance/time fields.
+- [x] Define `GREENFIELD` and `FEATURE_GRAFT` as the only normal resolved modes.
+- [x] Define approved reference and feature-contract types.
+- [x] Resolve `0 references → GREENFIELD`, `>=1 approved reference → FEATURE_GRAFT`.
+- [x] Reject unavailable/ambiguous explicitly-required references rather than silently falling back.
+- [x] Add deterministic reason codes and fingerprints.
+- [x] Prove replay with identical inputs produces identical strategy identity fields except opaque instance/time fields.
 
 **Exit gate:** strategy resolution is deterministic and no mutation enforcement exists yet.
 
@@ -1254,10 +1254,10 @@ The feature should be implemented as a staged governance capability, not as one 
 **Files:** `src/runtime/route-context-store.ts`, capability route/runtime composition as required.
 **Tests:** route-context and capability-routing tests.
 
-- [ ] Add bounded strategy projection to route context.
-- [ ] Preserve existing `RoutePlan` tier/mode/risk semantics.
-- [ ] Ensure read-only routes remain usable while strategy analysis is pending.
-- [ ] Add stale-plan/reference fingerprint detection.
+- [x] Add bounded strategy projection to route context.
+- [x] Preserve existing `RoutePlan` tier/mode/risk semantics.
+- [x] Ensure read-only routes remain usable while strategy analysis is pending.
+- [x] Add stale-plan/reference fingerprint detection.
 
 **Exit gate:** one route can carry strategy state without changing existing operational behavior.
 ## Task 3 — Introduce Code Intelligence Provider Interface
@@ -1265,11 +1265,11 @@ The feature should be implemented as a staged governance capability, not as one 
 **Files:** provider-neutral interfaces plus adapters outside core authority paths.
 **Tests:** provider contract fixtures with deterministic fake graphs.
 
-- [ ] Implement architecture/feature/trace/test/blast/freshness contracts.
-- [ ] Add a deterministic fake provider for tests.
-- [ ] Add bounded native fallback behavior.
-- [ ] Distinguish `complete`, `partial`, and `insufficient` analysis evidence.
-- [ ] Do not make Graft or CBM a mandatory core dependency in this task.
+- [x] Implement architecture/feature/trace/test/blast/freshness contracts.
+- [x] Add a deterministic fake provider for tests.
+- [x] Add bounded native fallback behavior.
+- [x] Distinguish `complete`, `partial`, and `insufficient` analysis evidence.
+- [x] Do not make Graft or CBM a mandatory core dependency in this task.
 
 **Exit gate:** donor anatomy can be represented independently of any single external analyzer.
 
@@ -1278,12 +1278,12 @@ The feature should be implemented as a staged governance capability, not as one 
 **Files:** `src/implementation/` planner modules and manifest persistence under ignored runtime state.
 **Tests:** feature-cone, classification, stale-manifest, multi-donor fixtures.
 
-- [ ] Normalize the plan-derived `FeatureContract` before donor graph calls.
-- [ ] Discover entry points, dependency cone, tests, lifecycle, and state/config dependencies.
-- [ ] Require every selected component to receive one classification.
-- [ ] Record `KEEP/ADAPT/REPLACE/DROP/REIMPLEMENT` rationale.
-- [ ] Hash plan + donor set + manifest content.
-- [ ] Reject manifest readiness when required graph evidence is unknown.
+- [x] Normalize the plan-derived `FeatureContract` before donor graph calls.
+- [x] Discover entry points, dependency cone, tests, lifecycle, and state/config dependencies.
+- [x] Require every selected component to receive one classification.
+- [x] Record `KEEP/ADAPT/REPLACE/DROP/REIMPLEMENT` rationale.
+- [x] Hash plan + donor set + manifest content.
+- [x] Reject manifest readiness when required graph evidence is unknown.
 
 **Exit gate:** `FEATURE_GRAFT` can reach `MANIFEST_READY` with no target mutation.
 ## Task 5 — Implement Authority Conflict Registry
@@ -1291,11 +1291,11 @@ The feature should be implemented as a staged governance capability, not as one 
 **Files:** target-authority registry plus manifest conflict evaluation.
 **Tests:** memory/execution/workspace/audit/auth conflict fixtures.
 
-- [ ] Encode current Agent Core authority owners as policy data, not donor-specific heuristics.
-- [ ] Detect donor storage, process, routing, audit, authentication, and lifecycle ownership collisions.
-- [ ] Require conflicts to resolve to `REPLACE`, `ADAPT`, explicit architecture approval, or blocking state.
-- [ ] Prove a donor SQLite memory subsystem cannot become a second semantic-memory authority.
-- [ ] Prove donor process ownership cannot bypass existing ProcessManager/ExecutionService policy.
+- [x] Encode current Agent Core authority owners as policy data, not donor-specific heuristics.
+- [x] Detect donor storage, process, routing, audit, authentication, and lifecycle ownership collisions.
+- [x] Require conflicts to resolve to `REPLACE`, `ADAPT`, explicit architecture approval, or blocking state.
+- [x] Prove a donor SQLite memory subsystem cannot become a second semantic-memory authority.
+- [x] Prove donor process ownership cannot bypass existing ProcessManager/ExecutionService policy.
 
 **Exit gate:** manifest readiness is impossible with unresolved protected-authority conflicts.
 
@@ -1304,12 +1304,12 @@ The feature should be implemented as a staged governance capability, not as one 
 **Files:** routed operational guard path, runtime service composition, config.
 **Tests:** write/edit/process/execution mutation acceptance plus read-only controls.
 
-- [ ] Classify implementation-bearing meaningful work.
-- [ ] Issue scoped strategy leases after required planning state is ready.
-- [ ] Validate lease before source/config/test mutation.
-- [ ] Start in advisory mode; record would-reject events without changing mutations.
-- [ ] Prove existing memory hard-lifecycle semantics remain unchanged.
-- [ ] Prove rejected/stale strategy checks occur before filesystem/process side effects in enforce-mode fixtures.
+- [x] Classify implementation-bearing meaningful work.
+- [x] Issue scoped strategy leases after required planning state is ready.
+- [x] Validate lease before source/config/test mutation.
+- [x] Start in advisory mode; record would-reject events without changing mutations.
+- [x] Prove existing memory hard-lifecycle semantics remain unchanged.
+- [x] Prove rejected/stale strategy checks occur before filesystem/process side effects in enforce-mode fixtures.
 
 **Exit gate:** advisory evidence is complete and existing tool behavior remains backward compatible.
 ## Task 7 — Verification, Blast Radius, Provenance, and Memory Bridge
@@ -1317,13 +1317,13 @@ The feature should be implemented as a staged governance capability, not as one 
 **Files:** verification coordinator, audit projection, bounded memory/continuity integration.
 **Tests:** donor parity, host integration, blast-radius, provenance redaction, continuity resume.
 
-- [ ] Record intended donor behavior and ported verification requirements.
-- [ ] Require target integration verification separately from donor parity.
-- [ ] Query blast radius and record provider/fallback completeness.
-- [ ] Emit bounded strategy/provenance audit events.
-- [ ] Persist only high-value strategy decisions through existing DMF postflight policy.
-- [ ] Add continuity checkpoint projection for active transplant work.
-- [ ] Prove raw donor bodies and credentials do not appear in audit/DMF by default.
+- [x] Record intended donor behavior and ported verification requirements.
+- [x] Require target integration verification separately from donor parity.
+- [x] Query blast radius and record provider/fallback completeness.
+- [x] Emit bounded strategy/provenance audit events.
+- [x] Persist only high-value strategy decisions through existing DMF postflight policy.
+- [x] Add continuity checkpoint projection for active transplant work.
+- [x] Prove raw donor bodies and credentials do not appear in audit/DMF by default.
 
 **Exit gate:** a completed graft is explainable from provenance and evidence without duplicating donor source into memory.
 
@@ -1332,13 +1332,13 @@ The feature should be implemented as a staged governance capability, not as one 
 **Files:** only defects exposed by the canary plus acceptance harness/docs.
 **Test:** one explicitly approved donor feature complex enough to require multiple connected components.
 
-- [ ] Choose a donor feature with entry point, dependencies, tests, host conflicts, and at least one adapter boundary.
-- [ ] Capture RED behavior showing current workflow can bypass transplantation.
-- [ ] Run plan → anatomy → manifest → graft → verification under isolated target/worktree conditions.
-- [ ] Require at least one real `KEEP` or `ADAPT`, one host-boundary mapping, and one blast-radius check.
-- [ ] Run the same strategy in advisory and isolated enforce modes.
-- [ ] Verify no unrelated production process, memory DB, or source tree is mutated.
-- [ ] Only after repeated canary PASS consider live `enforce` rollout.
+- [x] Choose a donor feature with entry point, dependencies, tests, host conflicts, and at least one adapter boundary.
+- [x] Capture RED behavior showing current workflow can bypass transplantation.
+- [x] Run plan → anatomy → manifest → graft → verification under isolated target/worktree conditions.
+- [x] Require at least one real `KEEP` or `ADAPT`, one host-boundary mapping, and one blast-radius check.
+- [x] Run the same strategy in advisory and isolated enforce modes.
+- [x] Verify no unrelated production process, memory DB, or source tree is mutated.
+- [x] Only after repeated canary PASS consider live `enforce` rollout.
 
 **Exit gate:** the gate proves selective transplantation on a non-trivial real feature, not merely synthetic fixtures.
 ---

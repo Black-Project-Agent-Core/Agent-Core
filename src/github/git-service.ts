@@ -133,6 +133,20 @@ export class GitHubGitService {
     return this.runAuthenticated(args, await this.workspace.resolveExisting(this.workspace.roots[0]!));
   }
 
+  async listWorkingTreeFiles(input: { cwd: string }): Promise<string[]> {
+    const cwd = await this.workspace.resolveExisting(input.cwd);
+    const result = await this.runLocal(
+      ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--'],
+      cwd,
+    );
+    if (result.outputTruncated) {
+      throw new GitHubFabricError(
+        'GITHUB_GIT_FAILED',
+        'Git working-tree file enumeration exceeded the bounded process output limit',
+      );
+    }
+    return [...new Set(result.stdout.split('\0').filter((entry) => entry.length > 0))].sort();
+  }
   async remoteGetUrl(input: { cwd: string; remote?: string }): Promise<SpawnResult> {
     const cwd = await this.workspace.resolveExisting(input.cwd);
     return this.runLocal(['remote', 'get-url', input.remote?.trim() || 'origin'], cwd);
