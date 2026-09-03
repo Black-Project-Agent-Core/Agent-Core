@@ -22,6 +22,12 @@ export interface MemoryRemoteConfig {
 
 export type MemoryHardLifecycleMode = 'disabled' | 'advisory' | 'enforce';
 
+export type ImplementationStrategyGuardMode = 'disabled' | 'advisory' | 'enforce';
+export interface ImplementationStrategyConfig {
+  mode: ImplementationStrategyGuardMode;
+  leaseTtlMs: number;
+}
+
 export interface MemoryConfig {
   enabled: boolean;
   principalId: string | null;
@@ -135,6 +141,7 @@ export interface AppConfig {
   mcp: McpConfig;
   observability: ObservabilityConfig;
   memory: MemoryConfig;
+  implementationStrategy: ImplementationStrategyConfig;
   execution: ExecutionConfig;
   maintenance: MaintenanceConfig;
   github: GitHubConfig;
@@ -165,6 +172,11 @@ function parseMemoryHardLifecycleMode(value: string | undefined): MemoryHardLife
   throw new Error('AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE must be disabled, advisory, or enforce');
 }
 
+function parseImplementationStrategyGuardMode(value: string | undefined): ImplementationStrategyGuardMode {
+  const normalized = value?.trim().toLowerCase() || 'disabled';
+  if (normalized === 'disabled' || normalized === 'advisory' || normalized === 'enforce') return normalized;
+  throw new Error('AGENT_CORE_IMPLEMENTATION_STRATEGY_MODE must be disabled, advisory, or enforce');
+}
 function parseMcpProtocolMode(value: string | undefined): McpProtocolMode {
   const normalized = value?.trim().toLowerCase() || 'dual';
   if (normalized === 'dual' || normalized === 'legacy') return normalized;
@@ -415,6 +427,15 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     protocolMode: parseMcpProtocolMode(env.AGENT_CORE_MCP_PROTOCOL_MODE),
   };
 
+  const implementationStrategy: ImplementationStrategyConfig = {
+    mode: parseImplementationStrategyGuardMode(env.AGENT_CORE_IMPLEMENTATION_STRATEGY_MODE),
+    leaseTtlMs: parseBoundedPositiveInteger(
+      env.AGENT_CORE_IMPLEMENTATION_STRATEGY_LEASE_TTL_MS,
+      30 * 60_000,
+      'AGENT_CORE_IMPLEMENTATION_STRATEGY_LEASE_TTL_MS',
+      24 * 60 * 60_000,
+    ),
+  };
   const otlpEndpoint = parseOtlpEndpoint(env.AGENT_CORE_OTLP_ENDPOINT);
   const observability: ObservabilityConfig = {
     audit: {
@@ -500,6 +521,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     mcp,
     observability,
     memory,
+    implementationStrategy,
     execution,
     maintenance,
     github,

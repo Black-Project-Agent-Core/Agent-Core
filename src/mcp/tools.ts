@@ -4,6 +4,7 @@ import type { VerifiedKey } from '../auth/key-types.js';
 import { OperationalMemoryAudit } from '../memory/operational-audit.js';
 import type { RuntimeServices } from '../runtime/services.js';
 import { completeMemoryLifecycleOperation, validateMemoryLifecycleBeforeOperation } from './memory-lifecycle-guard.js';
+import { completeImplementationStrategyOperation, validateImplementationStrategyBeforeOperation } from './implementation-strategy-guard.js';
 import { resolveAuditProjectId, resolvedProjectScope, resolveRouteExistingPath, resolveRouteTargetPath } from './project-scope.js';
 import { routeErrorResult, validateOperationalRoute } from './route-guard.js';
 
@@ -32,9 +33,11 @@ async function routeGuarded<T>(
   const audit = new OperationalMemoryAudit(runtime, key);
   let route;
   let lifecycleDecision;
+  let strategyDecision;
   try {
     route = validateOperationalRoute(runtime, key, routeContextId, toolName);
     lifecycleDecision = await validateMemoryLifecycleBeforeOperation(runtime, key, route, toolName, auditInput);
+    strategyDecision = await validateImplementationStrategyBeforeOperation(runtime, key, route, toolName, auditInput);
   } catch (error) {
     await audit.rejected(resolveAuditProjectId(runtime, key, routeContextId), routeContextId, toolName, auditInput, error);
     return routeErrorResult(error) ?? errorResult(error);
@@ -44,6 +47,7 @@ async function routeGuarded<T>(
   try {
     const result = await operation(route);
     await completeMemoryLifecycleOperation(runtime, key, route, toolName, lifecycleDecision);
+    await completeImplementationStrategyOperation(runtime, key, route, strategyDecision);
     await audit.succeeded(route, toolName, auditInput, result);
     return textResult(result);
   } catch (error) {

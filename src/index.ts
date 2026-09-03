@@ -48,6 +48,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     config.observability,
     SERVER_VERSION,
     config.maintenance,
+    config.implementationStrategy,
   );
   const oauthService = new OAuthService(keyStore, oauthStore, httpSecurity, runtime.metrics);
   // Warm independent persistence subsystems without coupling listener availability to either one.

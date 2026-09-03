@@ -198,6 +198,25 @@ export class RouteContextStore {
       .sort((left, right) => left.localeCompare(right));
   }
 
+  updateImplementationStrategy(
+    routeContextId: string,
+    principalId: string,
+    update: { leaseId?: string; state?: RouteImplementationStrategyState },
+  ): RouteContext {
+    const context = this.requireOwned(routeContextId, principalId);
+    if (!context.implementationStrategy) {
+      throw new AgentCoreRouteError(
+        'ROUTE_IMPLEMENTATION_STRATEGY_STALE',
+        'Route does not carry implementation strategy state',
+      );
+    }
+    context.implementationStrategy = {
+      ...context.implementationStrategy,
+      ...(update.leaseId ? { leaseId: update.leaseId } : {}),
+      ...(update.state ? { state: update.state } : {}),
+    };
+    return structuredClone(context);
+  }
   validateImplementationStrategyFreshness(
     routeContextId: string,
     principalId: string,

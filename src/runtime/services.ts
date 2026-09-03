@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { CapabilityRegistry } from '../capabilities/registry-service.js';
 import { CapabilityRouter } from '../capabilities/router.js';
-import { loadConfig, type ExecutionConfig, type GitHubConfig, type MaintenanceConfig, type MemoryConfig, type ObservabilityConfig } from '../config.js';
+import { loadConfig, type ExecutionConfig, type GitHubConfig, type ImplementationStrategyConfig, type MaintenanceConfig, type MemoryConfig, type ObservabilityConfig } from '../config.js';
+import { ImplementationStrategyService } from '../implementation/service.js';
 import { ExecutionLogStore } from '../execution/log-store.js';
 import { ExecutionMemoryBridge } from '../execution/memory-bridge.js';
 import { ExecutionMemoryPreSearch } from '../execution/memory-search.js';
@@ -32,6 +33,7 @@ export interface RuntimeServices {
   router: CapabilityRouter;
   routes: RouteContextStore;
   memory: MemoryService;
+  implementationStrategy: ImplementationStrategyService;
   execution: ExecutionService;
   github: GitHubService;
   metrics: RuntimeMetricRegistry;
@@ -53,6 +55,7 @@ export function createRuntimeServices(
   observabilityConfig?: ObservabilityConfig,
   serviceVersion = 'unknown',
   maintenanceConfig?: MaintenanceConfig,
+  implementationStrategyConfig?: ImplementationStrategyConfig,
 ): RuntimeServices {
   const workspace = new WorkspacePolicy(allowedRoots);
   const capabilities = CapabilityRegistry.open(capabilityDir);
@@ -62,6 +65,8 @@ export function createRuntimeServices(
   const resolvedGitHubConfig = githubConfig ?? defaults.github;
   const resolvedObservabilityConfig = observabilityConfig ?? defaults.observability;
   const resolvedMaintenanceConfig = maintenanceConfig ?? defaults.maintenance;
+  const resolvedImplementationStrategyConfig = implementationStrategyConfig ?? defaults.implementationStrategy;
+  const implementationStrategy = new ImplementationStrategyService(resolvedImplementationStrategyConfig);
   const metrics = new RuntimeMetricRegistry();
   if (routingAuditLogger && 'attachMetrics' in routingAuditLogger
     && typeof (routingAuditLogger as RoutingAuditLogger & { attachMetrics?: unknown }).attachMetrics === 'function') {
@@ -128,6 +133,7 @@ export function createRuntimeServices(
     router: new CapabilityRouter(capabilities),
     routes: new RouteContextStore({ ...(routingAuditLogger ? { auditLogger: routingAuditLogger } : {}), metrics }),
     memory,
+    implementationStrategy,
     execution,
     github,
     metrics,
