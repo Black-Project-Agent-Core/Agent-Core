@@ -6,6 +6,7 @@
 #include <limits>
 #include <stdexcept>
 #include <system_error>
+#include <utility>
 
 #if defined(__linux__)
 #include <fcntl.h>
@@ -17,6 +18,12 @@
 
 namespace super_runtime {
 
+struct FileResidencyLeaseState {
+    std::mutex mutex;
+    FileResidency * owner = nullptr;
+};
+
+#if defined(__linux__)
 namespace {
 
 [[noreturn]] void throw_system_error(const char * operation) {
@@ -24,21 +31,15 @@ namespace {
 }
 
 } // namespace
-
-FileResidencyLease::FileResidencyLease(
-        FileResidency * owner,
-        std::uint64_t offset,
-        std::uint64_t length) noexcept
-    : owner_(owner), offset_(offset), length_(length) {
-}
+#endif
 
 FileResidencyLease::~FileResidencyLease() noexcept {
     reset();
 }
 
 FileResidencyLease::FileResidencyLease(FileResidencyLease && other) noexcept
-    : owner_(other.owner_), offset_(other.offset_), length_(other.length_) {
-    other.owner_ = nullptr;
+    : owner_state_(std::move(other.owner_state_)), offset_(other.offset_), length_(other.length_) {
+    other.owner_state_.reset();
     other.offset_ = 0;
     other.length_ = 0;
 }
@@ -46,10 +47,10 @@ FileResidencyLease::FileResidencyLease(FileResidencyLease && other) noexcept
 FileResidencyLease & FileResidencyLease::operator=(FileResidencyLease && other) noexcept {
     if (this != &other) {
         reset();
-        owner_ = other.owner_;
+        owner_state_ = std::move(other.owner_state_);
         offset_ = other.offset_;
         length_ = other.length_;
-        other.owner_ = nullptr;
+        other.owner_state_.reset();
         other.offset_ = 0;
         other.length_ = 0;
     }
@@ -57,20 +58,46 @@ FileResidencyLease & FileResidencyLease::operator=(FileResidencyLease && other) 
 }
 
 bool FileResidencyLease::active() const noexcept {
-    return owner_ != nullptr;
+    const auto state = owner_state_.lock();
+    if (!state) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(state->mutex);
+    return state->owner != nullptr;
+}
+
+const void * FileResidencyLease::data() const noexcept {
+    const auto state = owner_state_.lock();
+    if (!state) {
+        return nullptr;
+    }
+    std::lock_guard<std::mutex> lock(state->mutex);
+    if (state->owner == nullptr) {
+        return nullptr;
+    }
+    return state->owner->lease_data(offset_, length_);
+}
+
+std::uint64_t FileResidencyLease::size_bytes() const noexcept {
+    return active() ? length_ : 0;
 }
 
 void FileResidencyLease::reset() noexcept {
-    if (owner_ != nullptr) {
-        owner_->release_lease(offset_, length_);
-        owner_ = nullptr;
-        offset_ = 0;
-        length_ = 0;
+    const auto state = owner_state_.lock();
+    if (state) {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->owner != nullptr) {
+            state->owner->release_lease(offset_, length_);
+        }
     }
+    owner_state_.reset();
+    offset_ = 0;
+    length_ = 0;
 }
 
 FileResidency::FileResidency(const std::string & path, MemoryLedger & ledger)
-    : ledger_(ledger) {
+    : ledger_(ledger), lease_state_(std::make_shared<FileResidencyLeaseState>()) {
+    lease_state_->owner = this;
 #if defined(__linux__)
     fd_ = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
     if (fd_ < 0) {
@@ -132,6 +159,11 @@ FileResidency::FileResidency(const std::string & path, MemoryLedger & ledger)
 }
 
 FileResidency::~FileResidency() noexcept {
+    if (lease_state_) {
+        std::lock_guard<std::mutex> lifetime_lock(lease_state_->mutex);
+        lease_state_->owner = nullptr;
+    }
+
 #if defined(__linux__)
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -153,10 +185,8 @@ FileResidency::~FileResidency() noexcept {
         fd_ = -1;
     }
 #endif
-}
 
-const void * FileResidency::data() const noexcept {
-    return mapping_;
+    lease_state_.reset();
 }
 
 std::uint64_t FileResidency::size_bytes() const noexcept {
@@ -183,6 +213,29 @@ bool FileResidency::valid_range(std::uint64_t offset, std::uint64_t length) cons
         return false;
     }
     return length <= (size_bytes_ - offset);
+}
+
+const void * FileResidency::lease_data(std::uint64_t offset, std::uint64_t length) const noexcept {
+#if defined(__linux__)
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!valid_range(offset, length)) {
+        return nullptr;
+    }
+
+    const auto first_page = static_cast<std::size_t>(offset / page_size_);
+    const auto page_count = static_cast<std::size_t>(length / page_size_);
+    for (std::size_t i = 0; i < page_count; ++i) {
+        if (lease_counts_[first_page + i] == 0) {
+            return nullptr;
+        }
+    }
+
+    return static_cast<const std::uint8_t *>(mapping_) + static_cast<std::size_t>(offset);
+#else
+    (void) offset;
+    (void) length;
+    return nullptr;
+#endif
 }
 
 FileResidencyResult FileResidency::prefetch(std::uint64_t offset, std::uint64_t length) {
@@ -225,7 +278,7 @@ FileResidencyResult FileResidency::prefetch(std::uint64_t offset, std::uint64_t 
         return FileResidencyResult::SystemError;
     }
 
-    auto * const range = static_cast<std::uint8_t *>(mapping_) + offset;
+    auto * const range = static_cast<std::uint8_t *>(mapping_) + static_cast<std::size_t>(offset);
     if (::madvise(range, static_cast<std::size_t>(length), MADV_WILLNEED) != 0) {
         rollback_ledger();
         return FileResidencyResult::SystemError;
@@ -254,8 +307,12 @@ FileResidencyResult FileResidency::acquire_lease(
         std::uint64_t length,
         FileResidencyLease & lease) {
 #if defined(__linux__)
+    if (lease.active()) {
+        return FileResidencyResult::InvalidRange;
+    }
+
     std::lock_guard<std::mutex> lock(mutex_);
-    if (lease.active() || !valid_range(offset, length)) {
+    if (!valid_range(offset, length) || !lease_state_) {
         return FileResidencyResult::InvalidRange;
     }
 
@@ -274,7 +331,7 @@ FileResidencyResult FileResidency::acquire_lease(
     for (std::size_t i = 0; i < page_count; ++i) {
         lease_counts_[first_page + i] += 1;
     }
-    lease.owner_ = this;
+    lease.owner_state_ = lease_state_;
     lease.offset_ = offset;
     lease.length_ = length;
     return FileResidencyResult::Ok;
@@ -301,7 +358,7 @@ FileResidencyResult FileResidency::release(std::uint64_t offset, std::uint64_t l
         }
     }
 
-    auto * const range = static_cast<std::uint8_t *>(mapping_) + offset;
+    auto * const range = static_cast<std::uint8_t *>(mapping_) + static_cast<std::size_t>(offset);
     if (::madvise(range, static_cast<std::size_t>(length), MADV_DONTNEED) != 0) {
         return FileResidencyResult::SystemError;
     }

@@ -21,6 +21,11 @@ type HealthRuntime = {
     status(scope?: unknown): Promise<any>;
     getContinuitySnapshot?(scope: unknown): Promise<any>;
   };
+  operatorDirectives?: {
+    config: { enabled: boolean; schemaVersion: number };
+    currentState: string;
+    status(principalId: string): Promise<any>;
+  };
   execution: {
     config: { enabled: boolean; maxConcurrency?: number; resourceGovernance?: { enabled: boolean } };
     currentState: string;
@@ -38,6 +43,7 @@ type HealthRuntime = {
 export interface RuntimeHealthSnapshot extends Record<string, unknown> {
   timestamp: number;
   memory: Record<string, unknown>;
+  operatorDirectives: Record<string, unknown>;
   execution: Record<string, unknown>;
   github: Record<string, unknown>;
   routing: Record<string, unknown>;
@@ -71,8 +77,14 @@ export class RuntimeHealthMetrics {
   }
 
   async getMetrics(scope?: unknown): Promise<RuntimeHealthSnapshot> {
-    const [memory, execution, executionCounts, github] = await Promise.all([
+    const principalId = scope && typeof scope === 'object' && 'principalId' in scope
+      ? String((scope as { principalId?: unknown }).principalId ?? '')
+      : '';
+    const [memory, operatorDirectives, execution, executionCounts, github] = await Promise.all([
       this.runtime.memory.status(),
+      this.runtime.operatorDirectives
+        ? this.runtime.operatorDirectives.status(principalId)
+        : Promise.resolve({ enabled: false, healthy: false, state: 'disabled', schemaVersion: 1, activeDirectiveCount: 0, integrity: 'disabled' }),
       this.runtime.execution.health(),
       this.runtime.execution.store.systemCounts(),
       this.githubMetrics(),
@@ -129,7 +141,8 @@ export class RuntimeHealthMetrics {
     const memoryCritical = Boolean(this.runtime.memory.config.enabled && !memory.healthy);
     const executionCritical = Boolean(this.runtime.execution.config.enabled && !execution.healthy);
     const optionalDegraded = (this.runtime.github.config.enabled && (github.apiHealth !== 'green' || github.credentialStatus !== 'valid'))
-      || (Boolean(audit.enabled) && (Number(audit.writeErrors) > 0 || Number(audit.dropped) > 0));
+      || (Boolean(audit.enabled) && (Number(audit.writeErrors) > 0 || Number(audit.dropped) > 0))
+      || Boolean(operatorDirectives.enabled && !operatorDirectives.healthy);
     const overallHealth: OverallHealth = memoryCritical || executionCritical ? 'critical' : optionalDegraded ? 'degraded' : 'healthy';
     const memoryPreflight = metricView(this.runtime.metrics.metric('memory.preflight.duration_ms'));
     const executionDispatch = metricView(this.runtime.metrics.metric('execution.dispatch.duration_ms'));
@@ -163,6 +176,14 @@ export class RuntimeHealthMetrics {
         query: metricView(this.runtime.metrics.metric('memory.search.duration_ms')),
         preflight: memoryPreflight,
         integrity: String(memory.integrity ?? 'unknown'),
+      },
+      operatorDirectives: {
+        enabled: Boolean(operatorDirectives.enabled),
+        healthy: Boolean(operatorDirectives.healthy),
+        state: String(operatorDirectives.state ?? 'disabled'),
+        schemaVersion: Number(operatorDirectives.schemaVersion ?? 1),
+        activeDirectiveCount: Number(operatorDirectives.activeDirectiveCount ?? 0),
+        integrity: String(operatorDirectives.integrity ?? 'unknown'),
       },
       execution: {
         enabled: Boolean(execution.enabled),

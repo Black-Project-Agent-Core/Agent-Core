@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AuditJournal, computeAuditRecordHash } from '../src/observability/audit-journal.js';
+import { AuditJournal, computeAuditRecordHash, writeAuditPointer } from '../src/observability/audit-journal.js';
 import { createRequestCorrelation, runWithCorrelation, withCorrelation } from '../src/observability/correlation.js';
 
 const roots: string[] = [];
@@ -128,5 +128,30 @@ describe('asynchronous bounded audit journal', () => {
     expect(record.data.cookie).toBe('[REDACTED]');
     expect(record.data.apiKey).toBe('[REDACTED]');
     expect(record.data.huge.length).toBeLessThanOrEqual(2001);
+  });
+  it('falls back to a verified in-place pointer overwrite when atomic rename is blocked', async () => {
+    const root = await tempRoot();
+    const target = path.join(root, 'audit-head.json');
+    await writeFile(target, '{\"old\":true}\n', 'utf8');
+    let renameAttempts = 0;
+
+    await writeAuditPointer(target, {
+      schemaVersion: 1,
+      sequence: 7,
+      hash: 'a'.repeat(64),
+      updatedAt: '2026-09-03T14:30:00.000Z',
+    }, {
+      createTemp: async (filePath, data) => writeFile(filePath, data, { encoding: 'utf8', flag: 'wx' }),
+      rename: async () => {
+        renameAttempts += 1;
+        throw Object.assign(new Error('replace blocked'), { code: 'EPERM' });
+      },
+      overwrite: async (filePath, data) => writeFile(filePath, data, 'utf8'),
+      remove: async (filePath) => rm(filePath, { force: true }),
+    });
+
+    expect(renameAttempts).toBe(1);
+    expect(JSON.parse(await readFile(target, 'utf8'))).toMatchObject({ sequence: 7, hash: 'a'.repeat(64) });
+    expect((await readdir(root)).filter((name) => name.includes('audit-head.json.tmp-'))).toEqual([]);
   });
 });

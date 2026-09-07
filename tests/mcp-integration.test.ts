@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+﻿import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -10,6 +10,7 @@ import { loadConfig } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
+import { SERVER_VERSION } from '../src/mcp/server.js';
 import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
 
 const auditLoggers: FileAuditLogger[] = [];
@@ -90,7 +91,7 @@ afterEach(async () => {
 });
 
 describe('Agent Core MCP integration', () => {
-  it('initializes v0.6.0 with exactly 56 routing, github, memory, continuity, and execution tools and schemas', async () => {
+  it('initializes the current SERVER_VERSION with exactly 68 routing, github, memory, continuity, and execution tools and schemas', async () => {
     const { baseUrl, created } = await setup();
     const initialize = await mcpRequest(baseUrl, created.key, {
       jsonrpc: '2.0', id: 1, method: 'initialize',
@@ -101,14 +102,14 @@ describe('Agent Core MCP integration', () => {
     });
     expect(initialize.response.status).toBe(200);
     expect(initialize.json.result.serverInfo).toMatchObject({
-      name: 'agent-core', version: '0.6.0',
+      name: 'agent-core', version: SERVER_VERSION,
     });
     const listed = await mcpRequest(baseUrl, created.key, {
       jsonrpc: '2.0', id: 2, method: 'tools/list', params: {},
     });
     const tools = listed.json.result.tools as Array<Record<string, any>>;
     const names = tools.map((tool) => tool.name);
-    expect(names).toHaveLength(56);
+    expect(names).toHaveLength(69);
     for (const name of ['task_checkpoint', 'continuity_status', 'continuity_get_task', 'continuity_frontier']) {
       expect(names).toContain(name);
     }
@@ -129,7 +130,7 @@ describe('Agent Core MCP integration', () => {
     const { baseUrl, created } = await setup();
     const status = await call(baseUrl, created.key, 'agent_core_status');
     expect(status.json.result.structuredContent).toMatchObject({
-      service: 'agent-core', serverName: 'agent-core', version: '0.6.0',
+      service: 'agent-core', serverName: 'agent-core', version: SERVER_VERSION,
       authentication: 'bearer-api-key',
       key: { id: created.metadata.id, name: 'integration-client' },
     });
@@ -174,3 +175,4 @@ describe('Agent Core MCP integration', () => {
     await expect(access(bypassPath)).rejects.toThrow();
   });
 });
+

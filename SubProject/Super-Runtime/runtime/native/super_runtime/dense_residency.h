@@ -19,7 +19,13 @@ enum class DensePlanResult : std::uint8_t {
     Overflow,
 };
 
+enum class DenseTraversal : std::uint8_t {
+    Cyclic = 0,
+    Finite,
+};
+
 struct DenseResidencyPlan {
+
     std::vector<DenseLayerRange> layers;
     std::uint64_t residency_alignment = 0;
     std::uint64_t configured_budget_bytes = 0;
@@ -28,6 +34,7 @@ struct DenseResidencyPlan {
     std::uint64_t pinned_bytes = 0;
     std::uint64_t max_dynamic_layer_bytes = 0;
     std::uint64_t required_budget_bytes = 0;
+    DenseTraversal traversal = DenseTraversal::Cyclic;
 
     [[nodiscard]] double pinned_hit_ratio() const noexcept;
 };
@@ -36,7 +43,9 @@ struct DenseResidencyPlan {
     const std::vector<DenseLayerRange> & layers,
     std::uint64_t residency_alignment,
     std::uint64_t budget_bytes,
-    DenseResidencyPlan & plan);
+    DenseResidencyPlan & plan,
+    DenseTraversal traversal = DenseTraversal::Cyclic);
+
 
 enum class DenseResidencyResult : std::uint8_t {
     Ok = 0,
@@ -63,6 +72,7 @@ public:
 
     [[nodiscard]] const DenseResidencyPlan & plan() const noexcept;
     [[nodiscard]] bool is_intentionally_resident(std::uint64_t layer_index) const noexcept;
+    [[nodiscard]] const void * active_data() const noexcept;
 
 private:
     static constexpr std::uint64_t no_active_layer = ~std::uint64_t{0};

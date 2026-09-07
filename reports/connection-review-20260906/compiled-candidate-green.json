@@ -1,0 +1,26 @@
+{
+  "capturedAt": "2026-09-05T18:58:38.761Z",
+  "modulePath": "E:\\Projects\\Agent-Core\\.worktrees\\connection-review-20260906\\dist\\oauth\\store.js",
+  "usesOnlySyntheticTempData": true,
+  "rounds": [
+    {
+      "round": 1,
+      "tokensIssued": 8,
+      "tokensStillValid": 8,
+      "sameRefreshAccepted": 1
+    },
+    {
+      "round": 2,
+      "tokensIssued": 8,
+      "tokensStillValid": 8,
+      "sameRefreshAccepted": 1
+    },
+    {
+      "round": 3,
+      "tokensIssued": 8,
+      "tokensStillValid": 8,
+      "sameRefreshAccepted": 1
+    }
+  ],
+  "pass": true
+}

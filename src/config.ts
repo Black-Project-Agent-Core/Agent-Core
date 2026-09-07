@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { resolvePersistencePaths } from './runtime/persistence-paths.js';
 
 export interface MemoryScoreWeights {
   lexical: number;
@@ -108,12 +109,29 @@ export interface GitHubConfig {
   apiVersion: string;
   tokenFile: string;
   packagesTokenFile: string;
+  useGhCliCredential: boolean;
+  ghCliPath: string | null;
   requestTimeoutMs: number;
   gitTimeoutMs: number;
 }
 
+export interface LangflowConfig {
+  enabled: boolean;
+  baseUrl: string;
+  apiKeyFile: string | null;
+  requestTimeoutMs: number;
+}
+
+export interface OperatorDirectiveConfig {
+  enabled: boolean;
+  dbPath: string;
+  busyTimeoutMs: number;
+  schemaVersion: 1;
+}
+
 export interface HttpSecurityConfig {
   publicBaseUrl: string | null;
+  protectedResourceUrl?: string | null;
   trustProxy: boolean;
   allowedOrigins: string[];
 }
@@ -138,6 +156,8 @@ export interface AppConfig {
   execution: ExecutionConfig;
   maintenance: MaintenanceConfig;
   github: GitHubConfig;
+  langflow: LangflowConfig;
+  operatorDirectives: OperatorDirectiveConfig;
 }
 
 type Env = Record<string, string | undefined>;
@@ -219,6 +239,27 @@ function parsePublicBaseUrl(value: string | undefined): string | null {
   return parsed.origin;
 }
 
+function parseOAuthProtectedResourceUrl(value: string | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error('AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL must be a valid URL');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL must use http or https');
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL must not include credentials');
+  }
+  if (parsed.search || parsed.hash) {
+    throw new Error('AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL must not include query or fragment');
+  }
+  return parsed.toString().replace(/\/$/, parsed.pathname === '/' ? '/' : '');
+}
+
 function normalizeAllowedOriginHostname(value: string): string {
   const raw = value.trim();
   if (!raw) throw new Error('AGENT_CORE_MCP_ALLOWED_ORIGINS contains an invalid origin');
@@ -265,6 +306,26 @@ function parseOtlpEndpoint(value: string | undefined): string | null {
   if (!loopbackHostname(parsed.hostname)) throw new Error('AGENT_CORE_OTLP_ENDPOINT must use a loopback hostname');
   const pathname = parsed.pathname === '/' ? '' : parsed.pathname.replace(/\/+$/g, '');
   return `${parsed.origin}${pathname}`;
+}
+
+function parseLangflowBaseUrl(value: string | undefined): string {
+  const raw = value?.trim() || 'http://127.0.0.1:7860';
+  let parsed: URL;
+  try { parsed = new URL(raw); }
+  catch { throw new Error('AGENT_CORE_LANGFLOW_BASE_URL must be a valid URL'); }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('AGENT_CORE_LANGFLOW_BASE_URL must use http or https');
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('AGENT_CORE_LANGFLOW_BASE_URL must not include credentials');
+  }
+  if (!loopbackHostname(parsed.hostname)) {
+    throw new Error('AGENT_CORE_LANGFLOW_BASE_URL must use a loopback hostname');
+  }
+  if (parsed.pathname !== '/' || parsed.search || parsed.hash) {
+    throw new Error('AGENT_CORE_LANGFLOW_BASE_URL must be an origin without a path, query, or fragment');
+  }
+  return parsed.origin;
 }
 
 function parseMemoryPrincipalId(value: string | undefined): string | null {
@@ -328,6 +389,7 @@ function parseGitHubApiBaseUrl(value: string | undefined): string {
 }
 
 export function loadConfig(env: Env = process.env, baseDir = process.cwd()): AppConfig {
+  const persistence = resolvePersistencePaths(env, baseDir);
   const port = Number.parseInt(env.AGENT_CORE_PORT ?? '8765', 10);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('AGENT_CORE_PORT must be an integer between 1 and 65535');
@@ -407,6 +469,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
 
   const httpSecurity: HttpSecurityConfig = {
     publicBaseUrl: parsePublicBaseUrl(env.AGENT_CORE_PUBLIC_BASE_URL),
+    protectedResourceUrl: parseOAuthProtectedResourceUrl(env.AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL),
     trustProxy: parseBoolean(env.AGENT_CORE_TRUST_PROXY, false),
     allowedOrigins: parseAllowedOrigins(env.AGENT_CORE_MCP_ALLOWED_ORIGINS),
   };
@@ -485,15 +548,45 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     apiVersion: env.AGENT_CORE_GITHUB_API_VERSION?.trim() || '2026-03-10',
     tokenFile: path.resolve(env.AGENT_CORE_GITHUB_TOKEN_FILE?.trim() || path.join(baseDir, 'secrets', 'github', 'gh-token.txt')),
     packagesTokenFile: path.resolve(env.AGENT_CORE_GITHUB_PACKAGES_TOKEN_FILE?.trim() || path.join(baseDir, 'secrets', 'github', 'packages-token.txt')),
+    useGhCliCredential: parseBoolean(env.AGENT_CORE_GITHUB_USE_GH_CLI, false),
+    ghCliPath: env.AGENT_CORE_GH_EXE?.trim() ? path.resolve(env.AGENT_CORE_GH_EXE.trim()) : null,
     requestTimeoutMs: parsePositiveInteger(env.AGENT_CORE_GITHUB_REQUEST_TIMEOUT_MS, 30_000, 'AGENT_CORE_GITHUB_REQUEST_TIMEOUT_MS'),
     gitTimeoutMs: parsePositiveInteger(env.AGENT_CORE_GITHUB_GIT_TIMEOUT_MS, 120_000, 'AGENT_CORE_GITHUB_GIT_TIMEOUT_MS'),
+  };
+
+  const langflowApiKeyFile = env.AGENT_CORE_LANGFLOW_API_KEY_FILE?.trim() || null;
+  const langflow: LangflowConfig = {
+    enabled: parseBoolean(env.AGENT_CORE_LANGFLOW_ENABLED, true),
+    baseUrl: parseLangflowBaseUrl(env.AGENT_CORE_LANGFLOW_BASE_URL),
+    apiKeyFile: langflowApiKeyFile ? path.resolve(langflowApiKeyFile) : null,
+    requestTimeoutMs: parseBoundedPositiveInteger(
+      env.AGENT_CORE_LANGFLOW_REQUEST_TIMEOUT_MS,
+      30_000,
+      'AGENT_CORE_LANGFLOW_REQUEST_TIMEOUT_MS',
+      600_000,
+    ),
+  };
+
+  const operatorDirectives: OperatorDirectiveConfig = {
+    enabled: parseBoolean(env.AGENT_CORE_OPERATOR_DIRECTIVES_ENABLED, true),
+    dbPath: path.resolve(
+      env.AGENT_CORE_OPERATOR_DIRECTIVES_DB_PATH?.trim()
+        || path.join(baseDir, 'runtime', 'operator-directives', 'operator-directives.sqlite'),
+    ),
+    busyTimeoutMs: parseBoundedPositiveInteger(
+      env.AGENT_CORE_OPERATOR_DIRECTIVES_BUSY_TIMEOUT_MS,
+      5_000,
+      'AGENT_CORE_OPERATOR_DIRECTIVES_BUSY_TIMEOUT_MS',
+      60_000,
+    ),
+    schemaVersion: 1,
   };
 
   return {
     host: env.AGENT_CORE_HOST?.trim() || '127.0.0.1',
     port,
-    dataDir: path.resolve(env.AGENT_CORE_DATA_DIR?.trim() || path.join(baseDir, 'data')),
-    logDir: path.resolve(env.AGENT_CORE_LOG_DIR?.trim() || path.join(baseDir, 'logs')),
+    dataDir: persistence.dataDir,
+    logDir: persistence.logDir,
     capabilityDir: path.resolve(env.AGENT_CORE_CAPABILITY_DIR?.trim() || path.join(baseDir, 'capabilities')),
     allowedRoots: parseRoots(env.AGENT_CORE_ALLOWED_ROOTS, baseDir),
     httpSecurity,
@@ -503,5 +596,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     execution,
     maintenance,
     github,
+    langflow,
+    operatorDirectives,
   };
 }

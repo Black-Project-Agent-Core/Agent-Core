@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http';
+﻿import { createServer, type Server } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,6 +10,7 @@ import { loadConfig } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
+import { SERVER_VERSION } from '../src/mcp/server.js';
 import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
 
 type ProtocolMode = 'dual' | 'legacy';
@@ -130,7 +131,7 @@ describe('Agent Core MCP dual-era transport', () => {
       await client.connect(sdkTransport(baseUrl, created.key));
       expect(client.getProtocolEra()).toBe('legacy');
       expect(client.getNegotiatedProtocolVersion()).toBe('2025-11-25');
-      expect((await client.listTools()).tools).toHaveLength(56);
+      expect((await client.listTools()).tools).toHaveLength(69);
     } finally {
       await client.close().catch(() => undefined);
     }
@@ -147,13 +148,13 @@ describe('Agent Core MCP dual-era transport', () => {
       expect(client.getProtocolEra()).toBe('modern');
       expect(client.getNegotiatedProtocolVersion()).toBe('2026-07-28');
       expect(client.getDiscoverResult()?.supportedVersions).toContain('2026-07-28');
-      expect((await client.listTools()).tools).toHaveLength(56);
+      expect((await client.listTools()).tools).toHaveLength(69);
 
       const status = await client.callTool({ name: 'agent_core_status', arguments: {} });
       expect(status.structuredContent).toMatchObject({
         service: 'agent-core',
         serverName: 'agent-core',
-        version: '0.6.0',
+        version: SERVER_VERSION,
         authentication: 'bearer-api-key',
         key: { id: created.metadata.id, name: 'dual-era-dual' },
       });
@@ -162,11 +163,11 @@ describe('Agent Core MCP dual-era transport', () => {
     }
   });
 
-  it('preserves the legacy 2025-era initialize and 56-tool surface in default dual mode', async () => {
+  it('preserves the legacy 2025-era initialize and 69-tool surface in default dual mode', async () => {
     const { baseUrl, created } = await setup('dual');
     const listed = await legacyList(baseUrl, created.key);
     expect(listed.response.status).toBe(200);
-    expect(listed.json?.result?.tools).toHaveLength(56);
+    expect(listed.json?.result?.tools).toHaveLength(69);
   });
 
   it('serves modern server/discover and advertises the 2026-07-28 protocol in dual mode', async () => {
@@ -183,11 +184,11 @@ describe('Agent Core MCP dual-era transport', () => {
     expect(discover.json?.result?.capabilities?.tools).toBeDefined();
     expect(discover.json?.result?._meta?.['io.modelcontextprotocol/serverInfo']).toMatchObject({
       name: 'agent-core',
-      version: '0.6.0',
+      version: SERVER_VERSION,
     });
   });
 
-  it('serves the same 56 tools to a modern tools/list request', async () => {
+  it('serves the same 68 tools to a modern tools/list request', async () => {
     const { baseUrl, created } = await setup('dual');
     const listed = await postMcp(baseUrl, created.key, {
       jsonrpc: '2.0',
@@ -197,7 +198,7 @@ describe('Agent Core MCP dual-era transport', () => {
     }, modernHeaders('tools/list'));
 
     expect(listed.response.status).toBe(200);
-    expect(listed.json?.result?.tools).toHaveLength(56);
+    expect(listed.json?.result?.tools).toHaveLength(69);
     const names = (listed.json?.result?.tools as Array<{ name: string }>).map((tool) => tool.name);
     expect(names).toContain('agent_core_status');
     expect(names).toContain('capability_route');
@@ -315,7 +316,7 @@ describe('Agent Core MCP dual-era transport', () => {
     try {
       await client.connect(sdkTransport(baseUrl, created.key));
       expect(client.getProtocolEra()).toBe('legacy');
-      expect((await client.listTools()).tools).toHaveLength(56);
+      expect((await client.listTools()).tools).toHaveLength(69);
     } finally {
       await client.close().catch(() => undefined);
     }
@@ -325,7 +326,7 @@ describe('Agent Core MCP dual-era transport', () => {
     const { baseUrl, created } = await setup('legacy');
     const legacy = await legacyList(baseUrl, created.key);
     expect(legacy.response.status).toBe(200);
-    expect(legacy.json?.result?.tools).toHaveLength(56);
+    expect(legacy.json?.result?.tools).toHaveLength(69);
 
     const modern = await postMcp(baseUrl, created.key, {
       jsonrpc: '2.0',
@@ -339,3 +340,4 @@ describe('Agent Core MCP dual-era transport', () => {
     expect(modern.json?.result).toBeUndefined();
   });
 });
+

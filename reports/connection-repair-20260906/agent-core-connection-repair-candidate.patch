@@ -1,0 +1,866 @@
+diff --git a/src/config.ts b/src/config.ts
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -1,4 +1,5 @@
+ import path from 'node:path';
++import { resolvePersistencePaths } from './runtime/persistence-paths.js';
+ 
+ export interface MemoryScoreWeights {
+   lexical: number;
+@@ -388,6 +389,7 @@
+ }
+ 
+ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): AppConfig {
++  const persistence = resolvePersistencePaths(env, baseDir);
+   const port = Number.parseInt(env.AGENT_CORE_PORT ?? '8765', 10);
+   if (!Number.isInteger(port) || port < 1 || port > 65535) {
+     throw new Error('AGENT_CORE_PORT must be an integer between 1 and 65535');
+@@ -583,8 +585,8 @@
+   return {
+     host: env.AGENT_CORE_HOST?.trim() || '127.0.0.1',
+     port,
+-    dataDir: path.resolve(env.AGENT_CORE_DATA_DIR?.trim() || path.join(baseDir, 'data')),
+-    logDir: path.resolve(env.AGENT_CORE_LOG_DIR?.trim() || path.join(baseDir, 'logs')),
++    dataDir: persistence.dataDir,
++    logDir: persistence.logDir,
+     capabilityDir: path.resolve(env.AGENT_CORE_CAPABILITY_DIR?.trim() || path.join(baseDir, 'capabilities')),
+     allowedRoots: parseRoots(env.AGENT_CORE_ALLOWED_ROOTS, baseDir),
+     httpSecurity,
+diff --git a/src/oauth/store.ts b/src/oauth/store.ts
+--- a/src/oauth/store.ts
++++ b/src/oauth/store.ts
+@@ -1,7 +1,8 @@
+-﻿import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
++import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+ import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+ import path from 'node:path';
+-import { persistSerializedFile } from '../runtime/persistent-file.js';
++import { persistOAuthSnapshot } from './atomic-file.js';
++import { withOAuthProcessLock } from './file-lock.js';
+ 
+ const CLIENT_ID_PREFIX = 'agent_core_client_';
+ const CLIENT_SECRET_PREFIX = 'agent_core_secret_';
+@@ -103,6 +104,25 @@
+   return new Date(Date.now() + seconds * 1000).toISOString();
+ }
+ 
++export interface OAuthTokens { accessToken: string; refreshToken: string; expiresIn: number; }
++export interface OAuthExchange { principal: OAuthPrincipal; tokens: OAuthTokens; }
++interface CodeExchangeInput { clientId: string; redirectUri: string; codeVerifier: string; resource: string; }
++interface RefreshExchangeInput { clientId: string; resource: string; }
++
++// One queue per resolved file, shared by all instances in this Node process.
++// The outer queue avoids same-process contention; SQLite coordinates other processes.
++const oauthFileQueues = new Map<string, Promise<void>>();
++function withOAuthFile<T>(filePath: string, operation: () => Promise<T>): Promise<T> {
++  const resolved = path.resolve(filePath);
++  const key = process.platform === 'win32' ? resolved.toLowerCase() : resolved;
++  const previous = oauthFileQueues.get(key) ?? Promise.resolve();
++  const result = previous.then(() => withOAuthProcessLock(resolved, operation));
++  const settled = result.then(() => undefined, () => undefined);
++  oauthFileQueues.set(key, settled);
++  void settled.then(() => { if (oauthFileQueues.get(key) === settled) oauthFileQueues.delete(key); });
++  return result;
++}
++
+ export class FileOAuthStore {
+   readonly filePath: string;
+ 
+@@ -122,11 +142,7 @@
+   }
+ 
+   private async save(file: OAuthFile): Promise<void> {
+-    await mkdir(this.dataDir, { recursive: true });
+-    const temporary = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
+-    const serialized = `${JSON.stringify(file, null, 2)}\n`;
+-    await writeFile(temporary, serialized, { encoding: 'utf8', mode: 0o600 });
+-    await persistSerializedFile(temporary, this.filePath, serialized);
++    await persistOAuthSnapshot(this.filePath, `${JSON.stringify(file, null, 2)}\n`);
+   }
+ 
+   async registerClient(input: {
+@@ -136,60 +152,68 @@
+     responseTypes: string[];
+     tokenEndpointAuthMethod: string;
+   }): Promise<RegisteredClient> {
+-    const secret = freshSecret(CLIENT_SECRET_PREFIX);
+-    const now = new Date();
+-    const record: ClientRecord = {
+-      clientId: `${CLIENT_ID_PREFIX}${randomUUID()}`,
+-      clientName: input.clientName,
+-      redirectUris: [...input.redirectUris],
+-      grantTypes: [...input.grantTypes],
+-      responseTypes: [...input.responseTypes],
+-      tokenEndpointAuthMethod: input.tokenEndpointAuthMethod,
+-      secretHash: hashSecret(secret),
+-      createdAt: now.toISOString(),
+-    };
+-    const file = await this.load();
+-    file.clients.push(record);
+-    await this.save(file);
+-    return {
+-      client_id: record.clientId,
+-      client_secret: secret,
+-      client_name: record.clientName,
+-      redirect_uris: record.redirectUris,
+-      grant_types: record.grantTypes,
+-      response_types: record.responseTypes,
+-      token_endpoint_auth_method: record.tokenEndpointAuthMethod,
+-      client_id_issued_at: Math.floor(now.getTime() / 1000),
+-      client_secret_expires_at: 0,
+-    };
++    return withOAuthFile(this.filePath, async () => {
++      const secret = freshSecret(CLIENT_SECRET_PREFIX);
++      const now = new Date();
++      const record: ClientRecord = {
++        clientId: `${CLIENT_ID_PREFIX}${randomUUID()}`,
++        clientName: input.clientName,
++        redirectUris: [...input.redirectUris],
++        grantTypes: [...input.grantTypes],
++        responseTypes: [...input.responseTypes],
++        tokenEndpointAuthMethod: input.tokenEndpointAuthMethod,
++        secretHash: hashSecret(secret),
++        createdAt: now.toISOString(),
++      };
++      const file = await this.load();
++      file.clients.push(record);
++      await this.save(file);
++      return {
++        client_id: record.clientId,
++        client_secret: secret,
++        client_name: record.clientName,
++        redirect_uris: record.redirectUris,
++        grant_types: record.grantTypes,
++        response_types: record.responseTypes,
++        token_endpoint_auth_method: record.tokenEndpointAuthMethod,
++        client_id_issued_at: Math.floor(now.getTime() / 1000),
++        client_secret_expires_at: 0,
++      };
++    });
+   }
+ 
+   async getClient(clientId: string): Promise<PublicClient | null> {
+-    const file = await this.load();
+-    const client = file.clients.find((item) => item.clientId === clientId);
+-    return client ? { clientId, redirectUris: [...client.redirectUris] } : null;
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const client = file.clients.find((item) => item.clientId === clientId);
++      return client ? { clientId, redirectUris: [...client.redirectUris] } : null;
++    });
+   }
+ 
+   async verifyClient(clientId: string, secret: string): Promise<boolean> {
+-    const file = await this.load();
+-    const client = file.clients.find((item) => item.clientId === clientId);
+-    return client ? safeHashEqual(secret, client.secretHash) : false;
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const client = file.clients.find((item) => item.clientId === clientId);
++      return client ? safeHashEqual(secret, client.secretHash) : false;
++    });
+   }
+ 
+   async issueCode(input: OAuthPrincipal & {
+     redirectUri: string;
+     codeChallenge: string;
+   }): Promise<string> {
+-    const raw = freshSecret(CODE_PREFIX);
+-    const file = await this.load();
+-    file.codes.push({
+-      ...input,
+-      hash: hashSecret(raw),
+-      expiresAt: expiry(300),
+-      usedAt: null,
+-    });
+-    await this.save(file);
+-    return raw;
++    return withOAuthFile(this.filePath, async () => {
++      const raw = freshSecret(CODE_PREFIX);
++      const file = await this.load();
++      file.codes.push({
++        ...input,
++        hash: hashSecret(raw),
++        expiresAt: expiry(300),
++        usedAt: null,
++      });
++      await this.save(file);
++      return raw;
++    });
+   }
+ 
+   async consumeCode(raw: string, input: {
+@@ -198,24 +222,12 @@
+     codeVerifier: string;
+     resource: string;
+   }): Promise<OAuthPrincipal | null> {
+-    if (!raw.startsWith(CODE_PREFIX)) return null;
+-    const file = await this.load();
+-    const record = file.codes.find((item) => safeHashEqual(raw, item.hash));
+-    if (!record || record.usedAt || Date.parse(record.expiresAt) <= Date.now()) return null;
+-    if (record.clientId !== input.clientId || record.redirectUri !== input.redirectUri) return null;
+-    if (record.resource !== input.resource) return null;
+-    const challenge = createHash('sha256').update(input.codeVerifier).digest('base64url');
+-    if (challenge !== record.codeChallenge) return null;
+-
+-    record.usedAt = new Date().toISOString();
+-    await this.save(file);
+-    return {
+-      clientId: record.clientId,
+-      resource: record.resource,
+-      scopes: [...record.scopes],
+-      keyId: record.keyId,
+-      keyName: record.keyName,
+-    };
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const principal = this.consumeCodeRecord(file, raw, input);
++      if (principal) await this.save(file);
++      return principal;
++    });
+   }
+ 
+   async issueTokens(principal: OAuthPrincipal): Promise<{
+@@ -223,105 +235,142 @@
+     refreshToken: string;
+     expiresIn: number;
+   }> {
+-    const accessToken = freshSecret(ACCESS_TOKEN_PREFIX);
+-    const refreshToken = freshSecret(REFRESH_TOKEN_PREFIX);
+-    const expiresIn = 3600;
+-    const file = await this.load();
+-    file.accessTokens.push({
+-      ...principal,
+-      hash: hashSecret(accessToken),
+-      expiresAt: expiry(expiresIn),
+-    });
+-    file.refreshTokens.push({
+-      ...principal,
+-      hash: hashSecret(refreshToken),
+-      expiresAt: expiry(30 * 24 * 3600),
+-      revokedAt: null,
+-    });
+-    await this.save(file);
+-    return { accessToken, refreshToken, expiresIn };
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const tokens = this.mintTokens(file, principal);
++      await this.save(file);
++      return tokens;
++    });
+   }
+ 
+   async verifyAccessToken(raw: string): Promise<OAuthPrincipal | null> {
+-    if (!raw.startsWith(ACCESS_TOKEN_PREFIX)) return null;
+-    const file = await this.load();
+-    const record = file.accessTokens.find((item) => safeHashEqual(raw, item.hash));
+-    if (!record || Date.parse(record.expiresAt) <= Date.now()) return null;
+-    return {
+-      clientId: record.clientId,
+-      resource: record.resource,
+-      scopes: [...record.scopes],
+-      keyId: record.keyId,
+-      keyName: record.keyName,
+-    };
++    return withOAuthFile(this.filePath, async () => {
++      if (!raw.startsWith(ACCESS_TOKEN_PREFIX)) return null;
++      const file = await this.load();
++      const record = file.accessTokens.find((item) => safeHashEqual(raw, item.hash));
++      if (!record || Date.parse(record.expiresAt) <= Date.now()) return null;
++      return {
++        clientId: record.clientId,
++        resource: record.resource,
++        scopes: [...record.scopes],
++        keyId: record.keyId,
++        keyName: record.keyName,
++      };
++    });
+   }
+   async consumeRefreshToken(raw: string, input: {
+     clientId: string;
+     resource: string;
+   }): Promise<OAuthPrincipal | null> {
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const principal = this.consumeRefreshRecord(file, raw, input);
++      if (principal) await this.save(file);
++      return principal;
++    });
++  }
++
++  async resetAuthorizationState(options: OAuthResetOptions = {}): Promise<OAuthResetResult> {
++    return withOAuthFile(this.filePath, async () => {
++      const current = await this.load();
++      let backupPath: string | null = null;
++      try {
++        await mkdir(this.dataDir, { recursive: true });
++        backupPath = path.join(this.dataDir, `oauth.backup-${Date.now()}-${randomUUID()}.json`);
++        await copyFile(this.filePath, backupPath);
++      } catch (error) {
++        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
++        backupPath = null;
++      }
++
++      const clients = new Map(current.clients.map((client) => [client.clientId, client]));
++      let clientsImported = 0;
++      for (const source of options.importClientStores ?? []) {
++        if (path.resolve(source.filePath) === path.resolve(this.filePath)) continue;
++        const sourceFile = await source.load();
++        for (const client of sourceFile.clients) {
++          if (clients.has(client.clientId)) continue;
++          clients.set(client.clientId, {
++            ...client,
++            redirectUris: [...client.redirectUris],
++            grantTypes: [...client.grantTypes],
++            responseTypes: [...client.responseTypes],
++          });
++          clientsImported += 1;
++        }
++      }
++
++      const resetFile: OAuthFile = {
++        version: 1,
++        clients: [...clients.values()],
++        codes: [],
++        accessTokens: [],
++        refreshTokens: [],
++      };
++      await this.save(resetFile);
++      return {
++        backupPath,
++        clientsPreserved: current.clients.length,
++        clientsImported,
++        grantsCleared: true,
++      };
++    });
++  }
++
++  private consumeCodeRecord(file: OAuthFile, raw: string, input: CodeExchangeInput): OAuthPrincipal | null {
++    if (!raw.startsWith(CODE_PREFIX)) return null;
++    const record = file.codes.find((item) => safeHashEqual(raw, item.hash));
++    if (!record || record.usedAt || Date.parse(record.expiresAt) <= Date.now()) return null;
++    if (record.clientId !== input.clientId || record.redirectUri !== input.redirectUri || record.resource !== input.resource) return null;
++    const challenge = createHash('sha256').update(input.codeVerifier).digest('base64url');
++    if (challenge !== record.codeChallenge) return null;
++    record.usedAt = new Date().toISOString();
++    return this.principalOf(record);
++  }
++
++  private consumeRefreshRecord(file: OAuthFile, raw: string, input: RefreshExchangeInput): OAuthPrincipal | null {
+     if (!raw.startsWith(REFRESH_TOKEN_PREFIX)) return null;
+-    const file = await this.load();
+     const record = file.refreshTokens.find((item) => safeHashEqual(raw, item.hash));
+     if (!record || record.revokedAt || Date.parse(record.expiresAt) <= Date.now()) return null;
+     if (record.clientId !== input.clientId || record.resource !== input.resource) return null;
+-
+     record.revokedAt = new Date().toISOString();
+-    await this.save(file);
+-    return {
+-      clientId: record.clientId,
+-      resource: record.resource,
+-      scopes: [...record.scopes],
+-      keyId: record.keyId,
+-      keyName: record.keyName,
+-    };
+-  }
+-
+-  async resetAuthorizationState(options: OAuthResetOptions = {}): Promise<OAuthResetResult> {
+-    const current = await this.load();
+-    let backupPath: string | null = null;
+-    try {
+-      await mkdir(this.dataDir, { recursive: true });
+-      backupPath = path.join(this.dataDir, `oauth.backup-${Date.now()}-${randomUUID()}.json`);
+-      await copyFile(this.filePath, backupPath);
+-    } catch (error) {
+-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+-      backupPath = null;
+-    }
+-
+-    const clients = new Map(current.clients.map((client) => [client.clientId, client]));
+-    let clientsImported = 0;
+-    for (const source of options.importClientStores ?? []) {
+-      if (path.resolve(source.filePath) === path.resolve(this.filePath)) continue;
+-      const sourceFile = await source.load();
+-      for (const client of sourceFile.clients) {
+-        if (clients.has(client.clientId)) continue;
+-        clients.set(client.clientId, {
+-          ...client,
+-          redirectUris: [...client.redirectUris],
+-          grantTypes: [...client.grantTypes],
+-          responseTypes: [...client.responseTypes],
+-        });
+-        clientsImported += 1;
+-      }
+-    }
+-
+-    const resetFile: OAuthFile = {
+-      version: 1,
+-      clients: [...clients.values()],
+-      codes: [],
+-      accessTokens: [],
+-      refreshTokens: [],
+-    };
+-    await writeFile(this.filePath, `${JSON.stringify(resetFile, null, 2)}\n`, {
+-      encoding: 'utf8', mode: 0o600,
+-    });
+-    return {
+-      backupPath,
+-      clientsPreserved: current.clients.length,
+-      clientsImported,
+-      grantsCleared: true,
+-    };
+-  }
+-
+-}
+-
++    return this.principalOf(record);
++  }
++
++  private principalOf(record: OAuthPrincipal): OAuthPrincipal {
++    return {clientId: record.clientId, resource: record.resource, scopes: [...record.scopes], keyId: record.keyId, keyName: record.keyName};
++  }
++
++  private mintTokens(file: OAuthFile, principal: OAuthPrincipal): OAuthTokens {
++    const accessToken = freshSecret(ACCESS_TOKEN_PREFIX);
++    const refreshToken = freshSecret(REFRESH_TOKEN_PREFIX);
++    const expiresIn = 3600;
++    file.accessTokens.push({...this.principalOf(principal), hash: hashSecret(accessToken), expiresAt: expiry(expiresIn)});
++    file.refreshTokens.push({...this.principalOf(principal), hash: hashSecret(refreshToken), expiresAt: expiry(30 * 24 * 3600), revokedAt: null});
++    return {accessToken, refreshToken, expiresIn};
++  }
++
++  /** Consume the grant and publish its replacement in one persisted snapshot. */
++  async exchangeRefreshToken(raw: string, input: RefreshExchangeInput): Promise<OAuthExchange | null> {
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const principal = this.consumeRefreshRecord(file, raw, input);
++      if (!principal) return null;
++      const tokens = this.mintTokens(file, principal);
++      await this.save(file);
++      return {principal, tokens};
++    });
++  }
++
++  async exchangeAuthorizationCode(raw: string, input: CodeExchangeInput): Promise<OAuthExchange | null> {
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const principal = this.consumeCodeRecord(file, raw, input);
++      if (!principal) return null;
++      const tokens = this.mintTokens(file, principal);
++      await this.save(file);
++      return {principal, tokens};
++    });
++  }
++
++}
+diff --git a/src/oauth/service.ts b/src/oauth/service.ts
+--- a/src/oauth/service.ts
++++ b/src/oauth/service.ts
+@@ -2,7 +2,7 @@
+ import type { FileKeyStore } from '../auth/key-store.js';
+ import type { VerifiedKey } from '../auth/key-types.js';
+ import type { HttpSecurityPolicy } from '../http/security-policy.js';
+-import { ACCESS_TOKEN_PREFIX, FileOAuthStore } from './store.js';
++import { ACCESS_TOKEN_PREFIX, FileOAuthStore, type OAuthTokens } from './store.js';
+ import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
+ 
+ const MCP_SCOPE = 'mcp:tools';
+@@ -284,15 +284,15 @@
+       return;
+     }
+     if (grantType === 'refresh_token') {
+-      const principal = await this.store.consumeRefreshToken(
++      const exchange = await this.store.exchangeRefreshToken(
+         params.get('refresh_token') ?? '',
+         { clientId, resource },
+       );
+-      if (!principal) {
++      if (!exchange) {
+         sendJson(response, 400, { error: 'invalid_grant' });
+         return;
+       }
+-      await this.sendTokens(response, principal);
++      await this.sendTokens(response, exchange.principal, exchange.tokens);
+       return;
+     }
+ 
+@@ -305,17 +305,17 @@
+     clientId: string,
+     resource: string,
+   ): Promise<void> {
+-    const principal = await this.store.consumeCode(params.get('code') ?? '', {
++    const exchange = await this.store.exchangeAuthorizationCode(params.get('code') ?? '', {
+       clientId,
+       redirectUri: params.get('redirect_uri') ?? '',
+       codeVerifier: params.get('code_verifier') ?? '',
+       resource,
+     });
+-    if (!principal) {
++    if (!exchange) {
+       sendJson(response, 400, { error: 'invalid_grant' });
+       return;
+     }
+-    await this.sendTokens(response, principal);
++    await this.sendTokens(response, exchange.principal, exchange.tokens);
+   }
+ 
+   private async sendTokens(response: ServerResponse, principal: {
+@@ -324,8 +324,7 @@
+     scopes: string[];
+     keyId: string;
+     keyName: string;
+-  }): Promise<void> {
+-    const tokens = await this.store.issueTokens(principal);
++  }, tokens: OAuthTokens): Promise<void> {
+     sendJson(response, 200, {
+       access_token: tokens.accessToken,
+       token_type: 'Bearer',
+diff --git a/src/oauth/file-lock.ts b/src/oauth/file-lock.ts
+new file mode 100644
+--- /dev/null
++++ b/src/oauth/file-lock.ts
+@@ -0,0 +1,28 @@
++import {mkdir,realpath,open} from 'node:fs/promises';
++import path from 'node:path';
++import {DatabaseSync} from 'node:sqlite';
++import {setTimeout as delay} from 'node:timers/promises';
++
++/** SQLite is only an OS-released mutex here: no tables, tokens or memory data. */
++export async function withOAuthProcessLock<T>(filePath:string, operation:()=>Promise<T>, timeoutMs=5000):Promise<T>{
++  await mkdir(path.dirname(filePath),{recursive:true});
++  const parent=await realpath(path.dirname(filePath));
++  const lockPath=path.join(parent,'.oauth-lock.sqlite');
++  const seed=await open(lockPath,'a',0o600);await seed.close();
++  const db=new DatabaseSync(lockPath,{timeout:0});
++  const deadline=performance.now()+timeoutMs;
++  try{
++    while(true){
++      try{db.exec('BEGIN IMMEDIATE');break;}
++      catch(error){
++        const code=(error as {errcode?:number}).errcode;
++        if(code===undefined||![5,6].includes(code&255))throw error;
++        if(performance.now()>=deadline)throw Object.assign(new Error('OAuth store is busy in another process'),{code:'OAUTH_STORE_BUSY'});
++        await delay(10);
++      }
++    }
++    return await operation();
++  }finally{
++    try{if(db.isTransaction)db.exec('ROLLBACK');}finally{db.close();}
++  }
++}
+diff --git a/src/oauth/atomic-file.ts b/src/oauth/atomic-file.ts
+new file mode 100644
+--- /dev/null
++++ b/src/oauth/atomic-file.ts
+@@ -0,0 +1,16 @@
++import {randomUUID} from 'node:crypto';
++import {mkdir,open,rename,rm} from 'node:fs/promises';
++import path from 'node:path';
++
++/** Never replace a failed atomic rename with an in-place credential overwrite. */
++export async function persistOAuthSnapshot(destination:string,serialized:string):Promise<void>{
++  await mkdir(path.dirname(destination),{recursive:true});
++  const temporary=destination+'.'+process.pid+'.'+randomUUID()+'.tmp';
++  try{
++    const handle=await open(temporary,'wx',0o600);
++    try{await handle.writeFile(serialized,'utf8');await handle.sync();}finally{await handle.close();}
++    await rename(temporary,destination);
++  }finally{
++    await rm(temporary,{force:true}).catch(()=>undefined);
++  }
++}
+diff --git a/src/runtime/persistence-paths.ts b/src/runtime/persistence-paths.ts
+new file mode 100644
+--- /dev/null
++++ b/src/runtime/persistence-paths.ts
+@@ -0,0 +1,30 @@
++import {readFileSync,lstatSync,realpathSync} from 'node:fs';
++import path from 'node:path';
++
++type Environment=Record<string,string|undefined>;
++function failure():Error{return Object.assign(new Error('PERSISTENCE_MANIFEST_INVALID: selected runtime storage is missing, invalid or redirected; refusing to start with an empty identity'),{code:'PERSISTENCE_MANIFEST_INVALID'});}
++function canonical(value:string):string{return process.platform==='win32'?value.toLowerCase():value;}
++
++/** Explicit recovery pointer; no copying, credential reading, or implicit migration. */
++export function resolvePersistencePaths(env:Environment,baseDir:string):{dataDir:string;logDir:string}{
++  const root=path.resolve(baseDir);
++  const defaults={dataDir:path.resolve(env.AGENT_CORE_DATA_DIR?.trim()||path.join(root,'data')),logDir:path.resolve(env.AGENT_CORE_LOG_DIR?.trim()||path.join(root,'logs'))};
++  const manifest=path.join(root,'runtime','persistence.json');
++  let text:string;
++  try{text=readFileSync(manifest,'utf8');}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return defaults;throw failure();}
++  try{
++    if(text.length>4096||lstatSync(manifest).isSymbolicLink())throw failure();
++    const m=JSON.parse(text.replace(/^\uFEFF/,'')) as {schemaVersion?:unknown;generation?:unknown};
++    if(m.schemaVersion!==1||typeof m.generation!=='string'||! /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(m.generation))throw failure();
++    const generation=path.join(root,'runtime','persistence-'+m.generation);
++    const realRuntime=realpathSync(path.join(root,'runtime'));
++    if(canonical(realpathSync(generation))!==canonical(path.join(realRuntime,'persistence-'+m.generation)))throw failure();
++    for(const dir of ['', 'data','logs','logs/audit']){const s=lstatSync(path.join(generation,dir));if(!s.isDirectory()||s.isSymbolicLink())throw failure();}
++    for(const name of ['data/keys.json','data/oauth.json','logs/audit/audit-head.json','logs/audit/audit-anchor.json']){const s=lstatSync(path.join(generation,name));if(!s.isFile()||s.isSymbolicLink())throw failure();}
++    function selected(kind:'data'|'logs',explicit:string|undefined,fallback:string):string{
++      const legacy=[path.join(root,kind),path.join(root,'runtime',kind)].map(canonical);
++      return !explicit?.trim()||legacy.includes(canonical(path.resolve(explicit.trim())))?path.join(generation,kind):fallback;
++    }
++    return {dataDir:selected('data',env.AGENT_CORE_DATA_DIR,defaults.dataDir),logDir:selected('logs',env.AGENT_CORE_LOG_DIR,defaults.logDir)};
++  }catch{throw failure();}
++}
+diff --git a/tests/oauth-concurrency-review.test.ts b/tests/oauth-concurrency-review.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/oauth-concurrency-review.test.ts
+@@ -0,0 +1,50 @@
++import {createHash} from 'node:crypto';
++import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
++import os from 'node:os';
++import path from 'node:path';
++import {afterEach, describe, expect, it} from 'vitest';
++import {FileOAuthStore, type OAuthPrincipal} from '../src/oauth/store.js';
++const dirs:string[]=[];
++async function fixture(){const dir=await mkdtemp(path.join(os.tmpdir(),'agent-core-oauth-review-'));dirs.push(dir);return {dir,store:new FileOAuthStore(dir)};}
++const principal:OAuthPrincipal={clientId:'synthetic-client',resource:'https://review.invalid/mcp',scopes:['mcp:tools'],keyId:'synthetic-key',keyName:'review'};
++const clientInput={clientName:'synthetic-review',redirectUris:['https://review.invalid/callback'],grantTypes:['authorization_code','refresh_token'],responseTypes:['code'],tokenEndpointAuthMethod:'client_secret_post'};
++afterEach(async()=>{for(const dir of dirs.splice(0))await rm(dir,{recursive:true,force:true});});
++describe('OAuth file concurrency regression',()=>{
++ it('retains every successfully issued token across eight concurrent requests',async()=>{
++  const {store}=await fixture();
++  const tokens=await Promise.all(Array.from({length:8},()=>store.issueTokens(principal)));
++  const valid=await Promise.all(tokens.map(t=>store.verifyAccessToken(t.accessToken)));
++  expect(valid.filter(Boolean).length).toBe(8);
++ });
++ it('serializes different store instances pointing at the same file',async()=>{
++  const {store,dir}=await fixture();const other=new FileOAuthStore(path.join(dir,'.'));
++  const registrations=await Promise.all(Array.from({length:8},(_,i)=>(i%2?store:other).registerClient(clientInput)));
++  const valid=await Promise.all(registrations.map(c=>store.verifyClient(c.client_id,c.client_secret)));
++  expect(valid.filter(Boolean).length).toBe(8);
++ });
++ it('permits exactly one simultaneous consumption of the same refresh token',async()=>{
++  const {store}=await fixture();const t=await store.issueTokens(principal);
++  const results=await Promise.all(Array.from({length:2},()=>store.consumeRefreshToken(t.refreshToken,principal)));
++  expect(results.filter(Boolean).length).toBe(1);
++ });
++ it('permits exactly one simultaneous consumption of the same authorization code',async()=>{
++  const {store}=await fixture();const verifier='a'.repeat(64);
++  const redirectUri='https://review.invalid/callback';
++  const code=await store.issueCode({...principal,redirectUri,codeChallenge:createHash('sha256').update(verifier).digest('base64url')});
++  const input={...principal,redirectUri,codeVerifier:verifier};
++  const results=await Promise.all(Array.from({length:2},()=>store.consumeCode(code,input)));
++  expect(results.filter(Boolean).length).toBe(1);
++ });
++ it('continues processing after a failed operation rather than poisoning its queue',async()=>{
++  const {store}=await fixture();await writeFile(store.filePath,'{invalid-json');
++  await expect(store.issueTokens(principal)).rejects.toThrow();
++  await rm(store.filePath);const t=await store.issueTokens(principal);
++  expect(Boolean(await store.verifyAccessToken(t.accessToken))).toBe(true);
++ });
++ it('persists hashes without raw issued tokens and reopens from disk',async()=>{
++  const {store,dir}=await fixture();const t=await store.issueTokens(principal);
++  const raw=await readFile(store.filePath,'utf8');
++  expect(raw.includes(t.accessToken)||raw.includes(t.refreshToken)).toBe(false);
++  expect(Boolean(await new FileOAuthStore(dir).verifyAccessToken(t.accessToken))).toBe(true);
++ });
++});diff --git a/tests/oauth-atomic-exchange-review.test.ts b/tests/oauth-atomic-exchange-review.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/oauth-atomic-exchange-review.test.ts
+@@ -0,0 +1,57 @@
++import {createHash} from 'node:crypto';
++import {createServer,type Server} from 'node:http';
++import type {AddressInfo} from 'node:net';
++import {mkdtemp,rm} from 'node:fs/promises';
++import os from 'node:os';import path from 'node:path';
++import {afterEach,describe,expect,it,vi} from 'vitest';
++import {FileKeyStore} from '../src/auth/key-store.js';
++import {createHttpHandler} from '../src/http/app.js';
++import {HttpSecurityPolicy} from '../src/http/security-policy.js';
++import {OAuthService} from '../src/oauth/service.js';
++import {FileOAuthStore} from '../src/oauth/store.js';
++const roots:string[]=[];const servers:Server[]=[];
++async function setup(){
++ const root=await mkdtemp(path.join(os.tmpdir(),'agent-core-exchange-review-'));roots.push(root);
++ const keyStore=new FileKeyStore(root);const store=new FileOAuthStore(root);
++ const key=await keyStore.create('synthetic-review-key');
++ const client=await store.registerClient({clientName:'synthetic-client',redirectUris:['https://review.invalid/callback'],grantTypes:['authorization_code','refresh_token'],responseTypes:['code'],tokenEndpointAuthMethod:'client_secret_post'});
++ const principal={clientId:client.client_id,resource:'https://review.invalid/mcp',scopes:['mcp:tools'],keyId:key.metadata.id,keyName:'synthetic-review-key'};
++ const oauthService=new OAuthService(keyStore,store,new HttpSecurityPolicy({publicBaseUrl:'https://review.invalid',trustProxy:false,allowedOrigins:[]}));
++ const server=createServer(createHttpHandler({keyStore,oauthService,auditLogger:{log:async()=>{}},mcpHandler:async(_req,res)=>{res.writeHead(200);res.end('{}');}}));
++ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));servers.push(server);
++ const base=`http://127.0.0.1:${(server.address() as AddressInfo).port}`;
++ const exchange=(fields:Record<string,string>)=>fetch(base+'/oauth/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:client.client_id,client_secret:client.client_secret,resource:principal.resource,...fields})});
++ return {store,client,principal,exchange};
++}
++afterEach(async()=>{vi.restoreAllMocks();for(const s of servers.splice(0))await new Promise<void>(resolve=>s.close(()=>resolve()));for(const r of roots.splice(0))await rm(r,{recursive:true,force:true});});
++function failWhenMinting(store:FileOAuthStore,existingTokens:number){
++ // A deterministic I/O failure at the persistence boundary, never real credentials.
++ const target=store as unknown as {save:(file:{accessTokens:unknown[]})=>Promise<void>};
++ const save=target.save.bind(store);
++ return vi.spyOn(target,'save').mockImplementation(async file=>{if(file.accessTokens.length>existingTokens)throw new Error('synthetic write failure');return save(file);});
++}
++describe('Atomic OAuth exchange regression',()=>{
++ it('does not burn the refresh grant when saving its replacement fails',async()=>{
++  const {store,principal,exchange}=await setup();const tokens=await store.issueTokens(principal);
++  const spy=failWhenMinting(store,1);
++  const res=await exchange({grant_type:'refresh_token',refresh_token:tokens.refreshToken});
++  expect(res.status).toBe(500);await res.text();spy.mockRestore();
++  expect(Boolean(await store.consumeRefreshToken(tokens.refreshToken,principal))).toBe(true);
++ });
++ it('does not burn the authorization code when saving issued tokens fails',async()=>{
++  const {store,principal,exchange}=await setup();const verifier='a'.repeat(64);const redirectUri='https://review.invalid/callback';
++  const code=await store.issueCode({...principal,redirectUri,codeChallenge:createHash('sha256').update(verifier).digest('base64url')});
++  const spy=failWhenMinting(store,0);
++  const res=await exchange({grant_type:'authorization_code',code,redirect_uri:redirectUri,code_verifier:verifier});
++  expect(res.status).toBe(500);await res.text();spy.mockRestore();
++  expect(Boolean(await store.consumeCode(code,{...principal,redirectUri,codeVerifier:verifier}))).toBe(true);
++ });
++ it('preserves both independent grants when two clients refresh concurrently',async()=>{
++  const {store,principal,exchange}=await setup();const a=await store.issueTokens(principal);const b=await store.issueTokens(principal);
++  const responses=await Promise.all([a,b].map(t=>exchange({grant_type:'refresh_token',refresh_token:t.refreshToken})));
++  expect(responses.map(r=>r.status)).toEqual([200,200]);
++  const results=await Promise.all(responses.map(r=>r.json()));
++  const valid=await Promise.all(results.map(t=>store.verifyAccessToken(t.access_token)));
++  expect(valid.filter(Boolean).length).toBe(2);
++ });
++});diff --git a/tests/mcp-multiclient-review.test.ts b/tests/mcp-multiclient-review.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/mcp-multiclient-review.test.ts
+@@ -0,0 +1,48 @@
++import {createServer,type Server} from 'node:http';
++import type {AddressInfo} from 'node:net';
++import {mkdtemp,rm} from 'node:fs/promises';
++import os from 'node:os';import path from 'node:path';
++import {afterEach,describe,expect,it} from 'vitest';
++import {Client,StreamableHTTPClientTransport} from '@modelcontextprotocol/client';
++import {FileKeyStore} from '../src/auth/key-store.js';
++import {loadConfig} from '../src/config.js';
++import {createHttpHandler} from '../src/http/app.js';
++import {HttpSecurityPolicy} from '../src/http/security-policy.js';
++import {createMcpHttpHandler} from '../src/mcp/handler.js';
++import {OAuthService} from '../src/oauth/service.js';
++import {FileOAuthStore} from '../src/oauth/store.js';
++import {createRuntimeServices,type RuntimeServices} from '../src/runtime/services.js';
++const roots:string[]=[];const servers:Server[]=[];const runtimes:RuntimeServices[]=[];const clients:Client[]=[];
++afterEach(async()=>{
++ for(const c of clients.splice(0))await c.close().catch(()=>{});
++ for(const s of servers.splice(0))await new Promise<void>(resolve=>s.close(()=>resolve()));
++ for(const r of runtimes.splice(0)){await r.telemetry.close();await r.execution.close();await r.memory.close();await r.operatorDirectives.close();}
++ for(const root of roots.splice(0))await rm(root,{recursive:true,force:true});
++});
++describe('Independent MCP clients using OAuth',()=>{
++ it.each(['legacy','modern'] as const)('keeps %s clients usable after repeated calls, peer close, refresh and new connection',async era=>{
++  const root=await mkdtemp(path.join(os.tmpdir(),'agent-core-multiclient-review-'));roots.push(root);
++  const keys=new FileKeyStore(path.join(root,'data'));const key=await keys.create('synthetic-review');
++  const store=new FileOAuthStore(path.join(root,'data'));
++  const registered=await store.registerClient({clientName:'review',redirectUris:['https://review.invalid/callback'],grantTypes:['authorization_code','refresh_token'],responseTypes:['code'],tokenEndpointAuthMethod:'client_secret_post'});
++  const principal={clientId:registered.client_id,resource:'https://review.invalid/mcp',scopes:['mcp:tools'],keyId:key.metadata.id,keyName:'synthetic-review'};
++  const a=await store.issueTokens(principal);const b=await store.issueTokens(principal);
++  const security=new HttpSecurityPolicy({publicBaseUrl:'https://review.invalid',trustProxy:false,allowedOrigins:[]});
++  const runtime=createRuntimeServices([root],path.join(root,'capabilities'),undefined,{...loadConfig({},root).memory,enabled:false});runtimes.push(runtime);
++  const server=createServer(createHttpHandler({keyStore:keys,oauthService:new OAuthService(keys,store,security),security,auditLogger:{log:async()=>{}},mcpHandler:createMcpHttpHandler(runtime)}));
++  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));servers.push(server);const base=`http://127.0.0.1:${(server.address() as AddressInfo).port}`;
++  async function connect(name:string,token:string){const client=new Client({name,version:'1.0.0'},era==='modern'?{versionNegotiation:{mode:'auto'}}:undefined);clients.push(client);await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp'),{authProvider:{token:async()=>token}}));expect(client.getProtocolEra()).toBe(era);return client;}
++  const ca=await connect('review-client-a',a.accessToken);const cb=await connect('review-client-b',b.accessToken);
++  for(let i=0;i<5;i++){
++   const statuses=await Promise.all([ca,cb].map(c=>c.callTool({name:'agent_core_status',arguments:{}})));
++   expect(statuses.every(s=>s.structuredContent?.authentication==='oauth2')).toBe(true);
++   expect((await cb.listTools()).tools.some(t=>t.name==='agent_core_status')).toBe(true);
++  }
++  await ca.close();expect((await cb.callTool({name:'agent_core_status',arguments:{}})).isError).not.toBe(true);
++  const response=await fetch(base+'/oauth/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',client_id:registered.client_id,client_secret:registered.client_secret,refresh_token:a.refreshToken,resource:principal.resource})});
++  expect(response.status).toBe(200);const refreshed=await response.json();
++  const cc=await connect('review-client-new-session',refreshed.access_token);
++  expect((await cc.callTool({name:'agent_core_status',arguments:{}})).isError).not.toBe(true);
++  expect((await cb.callTool({name:'agent_core_status',arguments:{}})).isError).not.toBe(true);
++ });
++});diff --git a/tests/persist-selection-repair.test.ts b/tests/persist-selection-repair.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/persist-selection-repair.test.ts
+@@ -0,0 +1,18 @@
++import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
++import os from 'node:os';import path from 'node:path';
++import {afterEach,describe,expect,it} from 'vitest';
++import {loadConfig} from '../src/config.js';
++const roots:string[]=[];
++async function fixture(){const root=await mkdtemp(path.join(os.tmpdir(),'agent-core-selection-'));roots.push(root);await mkdir(path.join(root,'runtime'),{recursive:true});return root;}
++async function selected(root:string){const base=path.join(root,'runtime','persistence-test');await mkdir(path.join(base,'data'),{recursive:true});await mkdir(path.join(base,'logs','audit'),{recursive:true});for(const name of ['data/keys.json','data/oauth.json','logs/audit/audit-head.json','logs/audit/audit-anchor.json'])await writeFile(path.join(base,name),'{}');await writeFile(path.join(root,'runtime','persistence.json'),JSON.stringify({schemaVersion:1,generation:'test'}));return base;}
++afterEach(async()=>{for(const r of roots.splice(0))await rm(r,{recursive:true,force:true});});
++describe('Persistence selection after portable migration',()=>{
++ it('preserves legacy defaults without a manifest',async()=>{const root=await fixture();const c=loadConfig({},root);expect(c.dataDir).toBe(path.join(root,'data'));expect(c.logDir).toBe(path.join(root,'logs'));});
++ it('selects a verified generation for direct starts',async()=>{const root=await fixture();const base=await selected(root);const c=loadConfig({},root);expect(c.dataDir).toBe(path.join(base,'data'));expect(c.logDir).toBe(path.join(base,'logs'));});
++ it('redirects legacy launcher environment paths to the active generation',async()=>{const root=await fixture();const base=await selected(root);const c=loadConfig({AGENT_CORE_DATA_DIR:path.join(root,'runtime','data'),AGENT_CORE_LOG_DIR:path.join(root,'runtime','logs')},root);expect(c.dataDir).toBe(path.join(base,'data'));expect(c.logDir).toBe(path.join(base,'logs'));});
++ it('preserves explicit separate shadow directories',async()=>{const root=await fixture();await selected(root);const data=path.join(root,'shadow','data'),logs=path.join(root,'shadow','logs');const c=loadConfig({AGENT_CORE_DATA_DIR:data,AGENT_CORE_LOG_DIR:logs},root);expect(c.dataDir).toBe(data);expect(c.logDir).toBe(logs);});
++ it('fails closed instead of starting empty on malformed selection',async()=>{const root=await fixture();await writeFile(path.join(root,'runtime','persistence.json'),'{invalid');expect(()=>loadConfig({},root)).toThrow(/PERSISTENCE_/);});
++ it('fails closed when a selected generation is absent',async()=>{const root=await fixture();await writeFile(path.join(root,'runtime','persistence.json'),JSON.stringify({schemaVersion:1,generation:'missing'}));expect(()=>loadConfig({},root)).toThrow(/PERSISTENCE_/);});
++ it('rejects escaping generations',async()=>{const root=await fixture();await writeFile(path.join(root,'runtime','persistence.json'),JSON.stringify({schemaVersion:1,generation:'../outside'}));expect(()=>loadConfig({},root)).toThrow(/PERSISTENCE_/);});
++ it('rejects incomplete credential snapshots instead of making a new identity',async()=>{const root=await fixture();const base=await selected(root);await rm(path.join(base,'data','keys.json'));expect(()=>loadConfig({},root)).toThrow(/PERSISTENCE_/);});
++});
+diff --git a/tests/oauth-rename-repair.test.ts b/tests/oauth-rename-repair.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/oauth-rename-repair.test.ts
+@@ -0,0 +1,13 @@
++import {mkdtemp,readFile,rm} from 'node:fs/promises';import os from 'node:os';import path from 'node:path';
++import {afterEach,expect,it,vi} from 'vitest';
++const fault=vi.hoisted(()=>({renameFails:false}));
++vi.mock('node:fs/promises',async original=>{const fs=await original<typeof import('node:fs/promises')>();return {...fs,rename:async(...args:Parameters<typeof fs.rename>)=>{if(fault.renameFails)throw Object.assign(new Error('synthetic blocked replace'),{code:'EPERM'});return fs.rename(...args);}};});
++import {FileOAuthStore} from '../src/oauth/store.js';
++const roots:string[]=[];afterEach(async()=>{fault.renameFails=false;for(const r of roots.splice(0))await rm(r,{recursive:true,force:true});});
++it('rejects a failed rename without in-place overwrite of existing OAuth state',async()=>{
++ const root=await mkdtemp(path.join(os.tmpdir(),'agent-core-atomic-'));roots.push(root);const store=new FileOAuthStore(root);
++ const p={clientId:'synthetic-client',resource:'https://review.invalid/mcp',scopes:['mcp:tools'],keyId:'synthetic-key',keyName:'review'};
++ await store.issueTokens(p);const before=await readFile(store.filePath,'utf8');fault.renameFails=true;
++ let rejected=false;try{await store.issueTokens(p);}catch{rejected=true;}fault.renameFails=false;
++ expect(rejected).toBe(true);expect((await readFile(store.filePath,'utf8'))===before).toBe(true);
++});
+diff --git a/tests/oauth-crossprocess-repair.test.ts b/tests/oauth-crossprocess-repair.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/oauth-crossprocess-repair.test.ts
+@@ -0,0 +1,22 @@
++import {spawn} from 'node:child_process';import {mkdtemp,rm} from 'node:fs/promises';import os from 'node:os';import path from 'node:path';import {pathToFileURL} from 'node:url';
++import {afterEach,expect,it} from 'vitest';import {FileOAuthStore} from '../src/oauth/store.js';
++const roots:string[]=[];afterEach(async()=>{for(const r of roots.splice(0))await rm(r,{recursive:true,force:true});});
++it('retains 32 tokens issued by four independent Node processes',async()=>{
++ const root=await mkdtemp(path.join(os.tmpdir(),'agent-core-process-'));roots.push(root);
++ const url=pathToFileURL(path.join(process.cwd(),'dist','oauth','store.js')).href;
++ const start=Date.now()+700;
++ const code=[
++  'import {FileOAuthStore} from '+JSON.stringify(url)+';',
++  'const store=new FileOAuthStore('+JSON.stringify(root)+');',
++  'await new Promise(r=>setTimeout(r,Math.max(0,'+start+'-Date.now())));',
++  'const p={clientId:"synthetic-client",resource:"https://review.invalid/mcp",scopes:["mcp:tools"],keyId:"synthetic-key",keyName:"review"};',
++  'const tokens=[];let failures=0;for(let i=0;i<8;i++){try{tokens.push((await store.issueTokens(p)).accessToken);}catch{failures++;}}',
++  'process.stdout.write(JSON.stringify({tokens,failures}));'
++ ].join('\n');
++ const results=await Promise.all(Array.from({length:4},()=>new Promise<{tokens:string[],failures:number}>((resolve,reject)=>{
++  const child=spawn(process.execPath,['--input-type=module','-e',code],{stdio:['ignore','pipe','pipe']});let out='';child.stdout.on('data',c=>out+=c);child.stderr.resume();child.once('error',reject);child.once('exit',code=>{if(code!==0)return reject(new Error('synthetic child failed'));try{resolve(JSON.parse(out));}catch{reject(new Error('invalid synthetic child output'));}});
++ })));
++ expect(results.reduce((n,r)=>n+r.failures,0)).toBe(0);
++ const store=new FileOAuthStore(root);const tokens=results.flatMap(r=>r.tokens);const valid=await Promise.all(tokens.map(t=>store.verifyAccessToken(t)));
++ expect(valid.filter(Boolean).length).toBe(32);
++},15000);
+diff --git a/tests/oauth-lock-recovery-repair.test.ts b/tests/oauth-lock-recovery-repair.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/oauth-lock-recovery-repair.test.ts
+@@ -0,0 +1,20 @@
++import {spawn} from 'node:child_process';import {mkdtemp,rm} from 'node:fs/promises';import path from 'node:path';import os from 'node:os';import {pathToFileURL} from 'node:url';import {afterEach,expect,it} from 'vitest';
++import {withOAuthProcessLock} from '../src/oauth/file-lock.js';
++const roots:string[]=[];afterEach(async()=>{for(const r of roots.splice(0))await rm(r,{recursive:true,force:true});});
++it('releases a cross-process lock after owner process termination',async()=>{
++ const root=await mkdtemp(path.join(os.tmpdir(),'agent-core-lock-release-'));roots.push(root);const file=path.join(root,'oauth.json');
++ const url=pathToFileURL(path.join(process.cwd(),'dist','oauth','file-lock.js')).href;
++ const code='import {withOAuthProcessLock} from '+JSON.stringify(url)+'; await withOAuthProcessLock('+JSON.stringify(file)+',async()=>{process.stdout.write("LOCKED\\n");await new Promise(r=>setTimeout(r,60000));});';
++ const child=spawn(process.execPath,['--input-type=module','-e',code],{stdio:['ignore','pipe','pipe']});child.stderr.resume();
++ try{
++  await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('child readiness timeout')),3000);child.stdout.once('data',()=>{clearTimeout(timer);resolve();});child.once('error',reject);});
++  await expect(withOAuthProcessLock(file,async()=>true,50)).rejects.toMatchObject({code:'OAUTH_STORE_BUSY'});
++  const exit=new Promise<void>(resolve=>child.once('exit',()=>resolve()));child.kill();await exit;
++  expect(await withOAuthProcessLock(file,async()=>true)).toBe(true);
++ }finally{if(child.exitCode===null)child.kill();}
++});
++it('releases the lock after a callback failure',async()=>{
++ const root=await mkdtemp(path.join(os.tmpdir(),'agent-core-lock-throw-'));roots.push(root);const file=path.join(root,'oauth.json');
++ await expect(withOAuthProcessLock(file,async()=>{throw new Error('synthetic-operation-error');})).rejects.toThrow('synthetic-operation-error');
++ expect(await withOAuthProcessLock(file,async()=>true)).toBe(true);
++});

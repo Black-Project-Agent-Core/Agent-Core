@@ -69,7 +69,24 @@ MoePlanResult plan_moe_residency(
         return MoePlanResult::InvalidArgument;
     }
 
+    std::uint64_t final_token_offset = 0;
+    std::uint64_t final_slot_offset = 0;
+    std::uint64_t required_data_bytes = 0;
+    if (mul_overflow(ids.token_count - 1, ids.token_stride_bytes, final_token_offset) ||
+        mul_overflow(ids.experts_per_token - 1, ids.expert_stride_bytes, final_slot_offset) ||
+        add_overflow(final_token_offset, final_slot_offset, required_data_bytes) ||
+        add_overflow(required_data_bytes, sizeof(std::int32_t), required_data_bytes)) {
+        return MoePlanResult::Overflow;
+    }
+    if (required_data_bytes > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
+        return MoePlanResult::Overflow;
+    }
+    if (ids.data_bytes < required_data_bytes) {
+        return MoePlanResult::InvalidArgument;
+    }
+
     std::uint64_t tensor_span = 0;
+
     if (mul_overflow(layout.expert_count, layout.expert_stride, tensor_span)) {
         return MoePlanResult::Overflow;
     }

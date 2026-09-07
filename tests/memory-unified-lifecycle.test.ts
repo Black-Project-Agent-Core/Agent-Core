@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
 import { loadConfig, type AppConfig } from '../src/config.js';
 import { startAgentCoreService, type AgentCoreService } from '../src/index.js';
+import { SERVER_VERSION } from '../src/mcp/server.js';
 
 const roots: string[] = [];
 const services: AgentCoreService[] = [];
@@ -70,7 +71,7 @@ describe('unified Agent Core deterministic memory lifecycle', () => {
     expect(await health.json()).toMatchObject({
       status: 'ok',
       service: 'agent-core',
-      version: '0.6.0',
+      version: SERVER_VERSION,
       memory: { enabled: true, healthy: true, state: 'healthy', integrity: 'ok' },
     });
 

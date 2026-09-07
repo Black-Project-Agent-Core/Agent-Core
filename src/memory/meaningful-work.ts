@@ -13,7 +13,7 @@ const EXPLICIT_READ_ONLY = new Set([
   'workspace_info', 'list_directory', 'read_file', 'read_multiple_files', 'get_file_info', 'search_files',
   'read_process_output', 'list_processes',
   'execution_status', 'execution_wait', 'execution_logs', 'execution_artifact_find', 'execution_workflow_advice',
-  'github_status',
+  'github_status', 'langflow_status', 'langflow_projects', 'langflow_flows', 'langflow_components',
 ]);
 
 const GITHUB_MUTATIONS: Record<string, ReadonlySet<string>> = {

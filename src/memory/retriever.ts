@@ -47,6 +47,11 @@ type CandidateRow = {
   access_count: number;
 }
 
+type CanonicalSubjectRow = CandidateRow & {
+  subject_alias: string;
+  subject_facet: string;
+};
+
 type EdgeRow = {
   from_memory_id: string;
   to_memory_id: string;
@@ -73,6 +78,38 @@ function stateAllowed(state: MemoryState, includeHistory: boolean): boolean {
 function lexicalTerms(text: string): string[] {
   return [...new Set(text.match(/[\p{L}\p{N}_-]{2,}/gu) ?? [])]
     .sort((left, right) => left.localeCompare(right));
+}
+
+const CANONICAL_SUBJECT_FACET_PRIORITY = new Map<string, number>([
+  ['identity', 0],
+  ['raison_d_etre', 1],
+  ['purpose', 1],
+  ['primary_reference', 2],
+  ['production_substrate', 3],
+  ['non_goal', 4],
+  ['architecture', 5],
+  ['engineering_target', 6],
+  ['current_scope', 7],
+]);
+
+function normalizedSubjectPhrase(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLocaleLowerCase('en-US')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function subjectAliasMatches(query: string, alias: string): boolean {
+  const normalizedQuery = normalizedSubjectPhrase(query);
+  const normalizedAlias = normalizedSubjectPhrase(alias);
+  if (!normalizedQuery || normalizedAlias.length < 2) return false;
+  return ` ${normalizedQuery} `.includes(` ${normalizedAlias} `);
+}
+
+function canonicalFacetPriority(facet: string): number {
+  return CANONICAL_SUBJECT_FACET_PRIORITY.get(normalizedSubjectPhrase(facet).replaceAll(' ', '_')) ?? 100;
 }
 
 function ftsMatchQuery(terms: readonly string[]): string {
@@ -121,6 +158,101 @@ export class MemoryRetriever {
     readonly client: MemoryWorkerClient,
     readonly config: MemoryConfig,
   ) {}
+
+  async searchCanonicalSubjects(
+    request: Pick<MemorySearchRequest, 'scope' | 'query'>,
+  ): Promise<MemorySearchHit[]> {
+    if (!request.scope.principalId?.trim()) throw new Error('principalId is required');
+    const safeQuery = normalizeMemoryText(redactMemoryText(request.query ?? '').text).canonical;
+    if (!safeQuery) return [];
+
+    const aliases = await this.client.query<{ anchor: string }>(
+      `SELECT DISTINCT alias.anchor AS anchor
+         FROM memory_items AS item
+         JOIN memory_anchors AS alias
+           ON alias.memory_id = item.id AND alias.anchor_type = 'subject_alias'
+         JOIN memory_anchors AS facet
+           ON facet.memory_id = item.id AND facet.anchor_type = 'subject_facet'
+        WHERE item.principal_id = ? AND IFNULL(item.project_id, '') = ?
+          AND item.state = 'active' AND item.pinned = 1 AND item.importance >= 0.95
+          AND item.kind IN ('fact', 'project_state')
+        ORDER BY alias.anchor COLLATE BINARY
+        LIMIT 512`,
+      [request.scope.principalId, scopeProject(request.scope)],
+    );
+    const matchedAliases = aliases
+      .map((row) => row.anchor)
+      .filter((alias) => subjectAliasMatches(safeQuery, alias))
+      .sort((left, right) => left.localeCompare(right));
+    if (matchedAliases.length === 0) return [];
+
+    const aliasPlaceholders = matchedAliases.map(() => '?').join(',');
+    const rows = await this.client.query<CanonicalSubjectRow>(
+      `SELECT item.id AS memory_id, item.principal_id, item.project_id,
+              revision.id AS revision_id, revision.revision_no,
+              item.canonical_key, item.kind, item.state, item.enforcement, item.importance, item.pinned,
+              revision.value_text, revision.source_event_id, item.created_at, item.updated_at,
+              item.last_accessed_at, item.access_count,
+              alias.anchor AS subject_alias, facet.anchor AS subject_facet
+         FROM memory_items AS item
+         JOIN memory_revisions AS revision ON revision.id = item.current_revision_id
+         JOIN memory_anchors AS alias
+           ON alias.memory_id = item.id AND alias.anchor_type = 'subject_alias'
+         JOIN memory_anchors AS facet
+           ON facet.memory_id = item.id AND facet.anchor_type = 'subject_facet'
+        WHERE item.principal_id = ? AND IFNULL(item.project_id, '') = ?
+          AND item.state = 'active' AND item.pinned = 1 AND item.importance >= 0.95
+          AND item.kind IN ('fact', 'project_state')
+          AND alias.anchor IN (${aliasPlaceholders})
+        ORDER BY item.id COLLATE BINARY, alias.anchor COLLATE BINARY, facet.anchor COLLATE BINARY`,
+      [request.scope.principalId, scopeProject(request.scope), ...matchedAliases],
+    );
+
+    const orderedRows = [...rows].sort((left, right) => (
+      canonicalFacetPriority(left.subject_facet) - canonicalFacetPriority(right.subject_facet)
+      || left.subject_facet.localeCompare(right.subject_facet)
+      || left.canonical_key.localeCompare(right.canonical_key)
+      || left.memory_id.localeCompare(right.memory_id)
+      || left.subject_alias.localeCompare(right.subject_alias)
+    ));
+    const uniqueRows = new Map<string, CanonicalSubjectRow>();
+    for (const row of orderedRows) {
+      if (!uniqueRows.has(row.memory_id)) uniqueRows.set(row.memory_id, row);
+    }
+
+    return [...uniqueRows.values()].map((row): MemorySearchHit => {
+      const components: MemoryScoreComponents = {
+        lexical: 1,
+        exact: 1,
+        graph: 0,
+        state: memoryStateScore(row.kind, row.state, row.enforcement),
+        importance: memoryImportanceScore(row.importance, row.pinned === 1),
+        recency: 0,
+      };
+      return {
+        memoryId: row.memory_id,
+        revisionId: row.revision_id,
+        revisionNo: Number(row.revision_no),
+        canonicalKey: row.canonical_key,
+        kind: row.kind,
+        state: row.state,
+        enforcement: row.enforcement,
+        importance: Number(row.importance),
+        pinned: Number(row.pinned) === 1,
+        valueText: row.value_text,
+        sourceEventId: row.source_event_id ?? undefined,
+        createdAt: Number(row.created_at),
+        updatedAt: Number(row.updated_at),
+        whyMatched: {
+          ...components,
+          finalScore: combineMemoryScore(components, this.config.scoreWeights),
+          lexicalTerms: lexicalTerms(normalizedSubjectPhrase(row.subject_alias)),
+          matchedAnchors: [row.subject_alias, row.subject_facet],
+          graphPath: [row.memory_id],
+        },
+      };
+    });
+  }
 
   async search(request: MemorySearchRequest): Promise<MemorySearchResult> {
     if (!request.scope.principalId?.trim()) throw new Error('principalId is required');

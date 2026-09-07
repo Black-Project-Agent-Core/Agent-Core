@@ -3,6 +3,7 @@
 #include "memory_ledger.h"
 
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -19,6 +20,7 @@ enum class FileResidencyResult : std::uint8_t {
 };
 
 class FileResidency;
+struct FileResidencyLeaseState;
 
 class FileResidencyLease {
 public:
@@ -31,14 +33,14 @@ public:
     FileResidencyLease & operator=(FileResidencyLease && other) noexcept;
 
     [[nodiscard]] bool active() const noexcept;
+    [[nodiscard]] const void * data() const noexcept;
+    [[nodiscard]] std::uint64_t size_bytes() const noexcept;
     void reset() noexcept;
 
 private:
     friend class FileResidency;
 
-    FileResidencyLease(FileResidency * owner, std::uint64_t offset, std::uint64_t length) noexcept;
-
-    FileResidency * owner_ = nullptr;
+    std::weak_ptr<FileResidencyLeaseState> owner_state_;
     std::uint64_t offset_ = 0;
     std::uint64_t length_ = 0;
 };
@@ -53,7 +55,6 @@ public:
     FileResidency(FileResidency &&) = delete;
     FileResidency & operator=(FileResidency &&) = delete;
 
-    [[nodiscard]] const void * data() const noexcept;
     [[nodiscard]] std::uint64_t size_bytes() const noexcept;
     [[nodiscard]] std::uint64_t page_size() const noexcept;
     [[nodiscard]] std::uint64_t intentional_resident_bytes() const;
@@ -69,6 +70,7 @@ private:
     friend class FileResidencyLease;
 
     [[nodiscard]] bool valid_range(std::uint64_t offset, std::uint64_t length) const noexcept;
+    [[nodiscard]] const void * lease_data(std::uint64_t offset, std::uint64_t length) const noexcept;
     void release_lease(std::uint64_t offset, std::uint64_t length) noexcept;
 
     MemoryLedger & ledger_;
@@ -81,6 +83,7 @@ private:
     std::vector<std::uint8_t> intentional_pages_;
     std::vector<std::uint32_t> lease_counts_;
     std::uint64_t intentional_resident_bytes_ = 0;
+    std::shared_ptr<FileResidencyLeaseState> lease_state_;
 };
 
 } // namespace super_runtime

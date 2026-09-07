@@ -4,6 +4,14 @@ project(super-runtime LANGUAGES C CXX)
 
 enable_testing()
 
+add_test(
+    NAME super-runtime-pinned-source-cleanliness
+    COMMAND "${CMAKE_COMMAND}"
+        "-DSUPER_RUNTIME_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DSUPER_RUNTIME_FIXTURE_DIR=${CMAKE_CURRENT_BINARY_DIR}/pinned-source-cleanliness-fixture"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/contracts/pinned-source-cleanliness.cmake"
+)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -33,25 +41,12 @@ if(NOT EXISTS "${SUPER_RUNTIME_LLAMA_SOURCE}/CMakeLists.txt")
     )
 endif()
 
-find_package(Git REQUIRED)
-execute_process(
-    COMMAND "${GIT_EXECUTABLE}" -C "${SUPER_RUNTIME_LLAMA_SOURCE}" rev-parse HEAD
-    RESULT_VARIABLE SUPER_RUNTIME_LLAMA_GIT_RESULT
-    OUTPUT_VARIABLE SUPER_RUNTIME_LLAMA_ACTUAL_REVISION
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SuperRuntimePinnedGitSource.cmake")
+super_runtime_verify_pinned_git_source(
+    SOURCE_DIR "${SUPER_RUNTIME_LLAMA_SOURCE}"
+    EXPECTED_REVISION "${SUPER_RUNTIME_LLAMA_CPP_REVISION}"
 )
 
-if(NOT SUPER_RUNTIME_LLAMA_GIT_RESULT EQUAL 0)
-    message(FATAL_ERROR "Unable to read llama.cpp revision from ${SUPER_RUNTIME_LLAMA_SOURCE}")
-endif()
-
-if(NOT SUPER_RUNTIME_LLAMA_ACTUAL_REVISION STREQUAL SUPER_RUNTIME_LLAMA_CPP_REVISION)
-    message(FATAL_ERROR
-        "llama.cpp revision mismatch: expected ${SUPER_RUNTIME_LLAMA_CPP_REVISION}, "
-        "got ${SUPER_RUNTIME_LLAMA_ACTUAL_REVISION}"
-    )
-endif()
 
 # Task 1 freezes a CPU-only production substrate boundary. Optional accelerator
 # backends are deliberately disabled until the native CPU runtime exists.

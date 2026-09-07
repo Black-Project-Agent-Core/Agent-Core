@@ -16,6 +16,19 @@ for (const viewport of viewports) {
     await expect(page.getByRole('button', { name: 'New session' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Collapse sidebar' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Submit prompt' })).toBeVisible();
+    const currentConversation = page.getByRole('button', { name: 'General coding session, selected' });
+    const agentCoreToggle = page.getByRole('button', { name: 'Expand Agent Core controls' });
+    await expect(currentConversation).toBeVisible();
+    await expect(agentCoreToggle).toBeVisible();
+    await page.getByRole('button', { name: 'Collapse recent conversations' }).click();
+    await expect(page.getByRole('button', { name: 'Design system review' })).toHaveCount(0);
+    const currentBox = await currentConversation.boundingBox();
+    const agentCoreBox = await agentCoreToggle.boundingBox();
+    expect(currentBox).not.toBeNull();
+    expect(agentCoreBox).not.toBeNull();
+    expect(agentCoreBox!.y).toBeGreaterThanOrEqual(currentBox!.y + currentBox!.height);
+    expect(agentCoreBox!.y - (currentBox!.y + currentBox!.height)).toBeLessThanOrEqual(18);
+    await page.getByRole('button', { name: 'Expand recent conversations' }).click();
     const widthMetrics = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,

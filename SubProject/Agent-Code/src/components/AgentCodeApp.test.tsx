@@ -61,4 +61,27 @@ describe('AgentCodeApp', () => {
     expect(screen.getByRole('navigation', { name: 'Agent Code workspace' })).toHaveAttribute('data-collapsed', 'false');
   });
 
+  it('collapses recent history while keeping the active conversation visible', async () => {
+    const user = userEvent.setup();
+    render(<AgentCodeApp />);
+
+    expect(screen.getByRole('button', { name: 'General coding session, selected' })).toBeInTheDocument();
+    const designSession = screen.getByRole('button', { name: 'Design system review' });
+    await user.click(designSession);
+    expect(screen.getByRole('button', { name: 'Design system review, selected' })).toBeInTheDocument();
+
+    const recentToggle = screen.getByRole('button', { name: 'Collapse recent conversations' });
+    expect(recentToggle).toHaveAttribute('aria-expanded', 'true');
+    await user.click(recentToggle);
+
+    expect(screen.getByRole('button', { name: 'Design system review, selected' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'General coding session' })).not.toBeInTheDocument();
+
+    const expandRecent = screen.getByRole('button', { name: 'Expand recent conversations' });
+    expect(expandRecent).toHaveAttribute('aria-expanded', 'false');
+    await user.click(expandRecent);
+
+    expect(screen.getByRole('button', { name: 'General coding session' })).toBeInTheDocument();
+  });
+
 });

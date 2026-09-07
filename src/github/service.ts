@@ -10,6 +10,7 @@ import { GitHubGitService } from './git-service.js';
 import { GitHubPackageService } from './package-service.js';
 import type { ProcessRunner } from './process.js';
 import { assertDestructiveConfirmation } from './safety.js';
+import { AGENT_CORE_USER_AGENT } from '../version.js';
 
 function segment(value: string, label: string): string {
   const normalized = value.trim();
@@ -240,7 +241,7 @@ export class GitHubService {
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github+json',
           'X-GitHub-Api-Version': this.config.apiVersion,
-          'User-Agent': 'Agent-Core/0.6.0',
+          'User-Agent': AGENT_CORE_USER_AGENT,
           'Content-Type': input.contentType?.trim() || 'application/octet-stream',
           'Content-Length': String(bytes.length),
         },

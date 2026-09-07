@@ -70,13 +70,13 @@ Requirements:
 - the complete Agent Core folder kept intact
 - a configured Secure MCP Tunnel when remote ChatGPT access is required
 
-For normal operation, launch only:
+For normal Windows operation, launch Agent Code:
 
 ```text
-Start-Agent-Core.bat
+SubProject\Agent-Code\Agent Code Native.exe
 ```
 
-The launcher resolves the current project root, installs missing dependencies, builds the runtime, performs identity-safe service takeover, and starts the tray manager in the background.
+Agent Code remains a separate desktop shell, but its Agent Core panel is now the native launcher/control surface. Starting Agent Code also starts or safely adopts the Agent Core MCP server and tunnel, preserves identity-checked lifecycle ownership, and supervises the bundle with its native watchdog.
 
 Default local endpoints:
 
@@ -86,16 +86,16 @@ Health   http://127.0.0.1:8765/health
 Metrics  http://127.0.0.1:8765/health/metrics
 ```
 
-Tray controls:
+Agent Code controls:
 
 ```text
-Restart:        tray menu -> Restart All
-OAuth re-auth:  tray menu -> Reset OAuth / Re-auth
-Autostart:      tray menu -> Start with Windows: On/Off
-Exit:           tray menu -> Exit Agent Core
+Restart:        Agent Code -> Agent Core -> Restart All
+OAuth re-auth:  Agent Code -> Agent Core -> Reset OAuth / Re-auth
+Autostart:      Agent Code -> Agent Core -> Start with Windows: On/Off
+Exit:           Agent Code -> Agent Core -> Exit Agent Core
 ```
 
-`Exit Agent Core` stops only identity-validated Agent Core and tunnel processes owned by the tray lifecycle. Runtime data, logs, OAuth/key state, capabilities, and secrets remain preserved.
+`Exit Agent Core` stops only identity-validated Agent Core and tunnel processes owned by the Agent Code lifecycle. Runtime data, logs, OAuth/key state, capabilities, and secrets remain preserved.
 
 ## GitHub Codespaces
 
@@ -190,7 +190,7 @@ plugin/codespace/               bounded Codespace MCP bridge and watchdog
 SubProject/Presentation-Bridge/ standalone PPTX conversion project
 docs/                           canonical architecture and operator documentation
 tunnel-client/                  safe tunnel configuration example
-Start-Agent-Core.bat            Windows launcher
+SubProject/Agent-Code/          Agent Code desktop shell + native Agent Core controller
 ```
 
 ## Development and verification

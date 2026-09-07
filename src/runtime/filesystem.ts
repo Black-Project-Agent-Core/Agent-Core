@@ -35,7 +35,15 @@ export class FileSystemService {
         if (entries.length >= maxEntries) return;
         const full = path.join(dir, item.name);
         const type = entryType(item);
-        const metadata = type === 'file' ? await stat(full) : null;
+        let metadata = null;
+        if (type === 'file') {
+          try {
+            metadata = await stat(full);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') continue;
+            throw error;
+          }
+        }
         entries.push({ path: full, name: item.name, type, ...(metadata ? { size: metadata.size } : {}) });
         if (type === 'directory' && level < boundedDepth) await walk(full, level + 1);
       }

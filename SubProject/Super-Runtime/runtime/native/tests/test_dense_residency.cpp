@@ -17,9 +17,11 @@
 #include <string>
 #include <vector>
 
+#if defined(__linux__)
 #include <fcntl.h>
 #include <sys/types.h>
 #include <unistd.h>
+#endif
 
 namespace {
 
@@ -28,7 +30,9 @@ using super_runtime::DensePlanResult;
 using super_runtime::DenseResidencyPlan;
 using super_runtime::DenseResidencyPolicy;
 using super_runtime::DenseResidencyResult;
+using super_runtime::DenseTraversal;
 using super_runtime::FileResidency;
+using super_runtime::FileResidencyLease;
 using super_runtime::FileResidencyResult;
 using super_runtime::MemoryLedger;
 using super_runtime::plan_dense_residency;
@@ -53,6 +57,7 @@ std::vector<DenseLayerRange> make_layers(std::uint64_t count, std::uint64_t byte
     return layers;
 }
 
+#if defined(__linux__)
 class TempWeightFile {
 public:
     explicit TempWeightFile(const std::vector<float> & weights) {
@@ -172,6 +177,7 @@ float max_abs_diff(const std::vector<float> & a, const std::vector<float> & b) {
     }
     return result;
 }
+#endif
 
 } // namespace
 
@@ -213,6 +219,14 @@ int main() {
         require(plan.pinned_hit_ratio() == 1.0, "all-pinned plan must have 100 percent pinned hit ratio");
     }
 
+    {
+        const auto layers = make_layers(3, page);
+        DenseResidencyPlan plan;
+        require(plan_dense_residency(layers, page, page * 2, plan, DenseTraversal::Finite) == DensePlanResult::Ok,
+                "finite traversal must produce a valid two-slot plan");
+        require(plan.traversal == DenseTraversal::Finite,
+                "dense plan must preserve the requested finite traversal semantics");
+    }
     {
         DenseResidencyPlan plan;
         require(plan_dense_residency(make_layers(2, page), page, page - 1, plan)
@@ -271,14 +285,21 @@ int main() {
         FileResidency residency(file.path(), ledger);
         require(residency.prefetch(0, page * layer_count) == FileResidencyResult::Ok,
                 "fully resident dense baseline must materialize all layers");
+        FileResidencyLease baseline_lease;
+        require(residency.acquire_lease(0, page * layer_count, baseline_lease) == FileResidencyResult::Ok,
+                "fully resident dense baseline must lease all layers before dereference");
+        require(baseline_lease.data() != nullptr && baseline_lease.size_bytes() == page * layer_count,
+                "fully resident dense baseline lease must expose the complete range");
         baseline = run_dense_sequence(
             backend,
-            static_cast<const std::uint8_t *>(residency.data()),
+            static_cast<const std::uint8_t *>(baseline_lease.data()),
             layers,
             input,
             k,
             m);
+        baseline_lease.reset();
         require(residency.release(0, page * layer_count) == FileResidencyResult::Ok,
+
                 "fully resident dense baseline must release cleanly");
         require(ledger.owned_bytes() == 0, "baseline must return all resident-weight ownership");
     }
@@ -305,9 +326,10 @@ int main() {
             peak_owned = std::max(peak_owned, ledger.owned_bytes());
             require(ledger.owned_bytes() <= page * 3, "two-slot policy must never overshoot its budget");
 
-            const auto * weights = reinterpret_cast<const float *>(
-                static_cast<const std::uint8_t *>(residency.data()) + layers[layer].offset);
+            const auto * weights = static_cast<const float *>(policy.active_data());
+            require(weights != nullptr, "active dense lease must expose current layer data");
             state = run_dense_layer(backend, weights, layers[layer].length, state, k, m);
+
 
             require(policy.complete(layer) == DenseResidencyResult::Ok,
                     "dense two-slot complete must release the safe current dynamic layer");
@@ -350,7 +372,8 @@ int main() {
                 "busy/reclaim rejection must keep only the active current layer resident");
         peak_owned = std::max(peak_owned, ledger.owned_bytes());
 
-        const auto * first_weights = reinterpret_cast<const float *>(residency.data());
+        const auto * first_weights = static_cast<const float *>(policy.active_data());
+        require(first_weights != nullptr, "active one-slot lease must expose first layer data");
         state = run_dense_layer(backend, first_weights, layers[0].length, state, k, m);
         require(policy.complete(0) == DenseResidencyResult::Ok,
                 "one-slot policy must release current only after explicit safe completion");
@@ -362,9 +385,10 @@ int main() {
             require(ledger.owned_bytes() == page, "one-slot prepare must own exactly one page");
             peak_owned = std::max(peak_owned, ledger.owned_bytes());
 
-            const auto * weights = reinterpret_cast<const float *>(
-                static_cast<const std::uint8_t *>(residency.data()) + layers[layer].offset);
+            const auto * weights = static_cast<const float *>(policy.active_data());
+            require(weights != nullptr, "active dense lease must expose current layer data");
             state = run_dense_layer(backend, weights, layers[layer].length, state, k, m);
+
 
             require(policy.complete(layer) == DenseResidencyResult::Ok,
                     "one-slot completion must release the active layer");
@@ -381,6 +405,59 @@ int main() {
                   << " peak_owned_bytes=" << peak_owned << '\n';
     }
 
+    {
+        const auto finite_layers = make_layers(3, page);
+        DenseResidencyPlan finite_plan;
+        require(plan_dense_residency(
+                    finite_layers, page, page * 2, finite_plan, DenseTraversal::Finite) == DensePlanResult::Ok,
+                "finite two-slot fixture must plan successfully");
+        require(finite_plan.pinned_prefix_count == 0 && finite_plan.ring_slots == 2,
+                "finite two-slot fixture must use only its two dynamic slots");
+
+        MemoryLedger ledger(page * 2);
+        FileResidency residency(file.path(), ledger);
+        DenseResidencyPolicy policy(residency, finite_plan);
+        require(policy.start() == DenseResidencyResult::Ok, "finite two-slot policy must start");
+        require(policy.prepare(0) == DenseResidencyResult::Ok, "finite layer 0 prepare must succeed");
+        require(policy.complete(0) == DenseResidencyResult::Ok, "finite layer 0 complete must succeed");
+        require(policy.prepare(1) == DenseResidencyResult::Ok, "finite layer 1 prepare must succeed");
+        require(policy.complete(1) == DenseResidencyResult::Ok, "finite layer 1 complete must succeed");
+        require(policy.prepare(2) == DenseResidencyResult::Ok, "finite final-layer prepare must succeed");
+        require(ledger.owned_bytes() == page,
+                "finite final-layer prepare must not wrap and prefetch layer 0");
+        require(!policy.is_intentionally_resident(0),
+                "finite traversal must leave layer 0 nonresident at the final layer");
+        require(policy.complete(2) == DenseResidencyResult::Ok, "finite final-layer complete must succeed");
+        require(policy.stop() == DenseResidencyResult::Ok, "finite policy must stop cleanly");
+        require(ledger.owned_bytes() == 0, "finite policy must leave no residency ownership");
+    }
+
+    {
+        const auto recovery_layers = make_layers(2, page);
+        DenseResidencyPlan recovery_plan;
+        require(plan_dense_residency(recovery_layers, page, page, recovery_plan) == DensePlanResult::Ok,
+                "completion-recovery fixture must create a one-slot plan");
+
+        MemoryLedger ledger(page);
+        FileResidency residency(file.path(), ledger);
+        DenseResidencyPolicy policy(residency, recovery_plan);
+        require(policy.start() == DenseResidencyResult::Ok, "completion-recovery policy must start");
+        require(policy.prepare(0) == DenseResidencyResult::Ok, "completion-recovery layer must prepare");
+
+        FileResidencyLease external;
+        require(residency.acquire_lease(0, page, external) == FileResidencyResult::Ok,
+                "external overlapping lease must be acquired for completion failure injection");
+        require(policy.complete(0) == DenseResidencyResult::ResidencyError,
+                "completion must surface reclaim failure caused by the external lease");
+        require(policy.stop() != DenseResidencyResult::Busy,
+                "failed completion must not strand the policy in an active-layer Busy state");
+
+        external.reset();
+        require(policy.stop() == DenseResidencyResult::Ok,
+                "stop must retry and complete cleanup after the external lease is released");
+        require(ledger.owned_bytes() == 0,
+                "completion recovery must return all residency ownership");
+    }
     ggml_backend_free(backend);
 #endif
 

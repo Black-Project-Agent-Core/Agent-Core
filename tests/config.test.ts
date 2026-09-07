@@ -15,6 +15,7 @@ describe('loadConfig', () => {
     expect(config.allowedRoots).toEqual([baseDir]);
     expect(config.httpSecurity).toEqual({
       publicBaseUrl: null,
+      protectedResourceUrl: null,
       trustProxy: false,
       allowedOrigins: [],
     });
@@ -72,6 +73,8 @@ describe('loadConfig', () => {
       apiVersion: '2026-03-10',
       tokenFile: path.join(baseDir, 'secrets', 'github', 'gh-token.txt'),
       packagesTokenFile: path.join(baseDir, 'secrets', 'github', 'packages-token.txt'),
+      useGhCliCredential: false,
+      ghCliPath: null,
       requestTimeoutMs: 30_000,
       gitTimeoutMs: 120_000,
     });
@@ -86,6 +89,7 @@ describe('loadConfig', () => {
       AGENT_CORE_CAPABILITY_DIR: 'F:\\AgentCoreCapabilities',
       AGENT_CORE_ALLOWED_ROOTS: 'F:\\Projects;F:\\Design',
       AGENT_CORE_PUBLIC_BASE_URL: 'https://agent-core.example.test/',
+      AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL: 'https://resource.example.test/v1/mcp/tunnel_test',
       AGENT_CORE_TRUST_PROXY: 'true',
       AGENT_CORE_MCP_ALLOWED_ORIGINS: 'https://app.example.test;LOCALHOST;https://app.example.test:8443',
       AGENT_CORE_MCP_PROTOCOL_MODE: 'legacy',
@@ -128,6 +132,8 @@ describe('loadConfig', () => {
       AGENT_CORE_GITHUB_API_VERSION: '2026-03-10',
       AGENT_CORE_GITHUB_TOKEN_FILE: 'F:\\Secrets\\github.txt',
       AGENT_CORE_GITHUB_PACKAGES_TOKEN_FILE: 'F:\\Secrets\\packages.txt',
+      AGENT_CORE_GITHUB_USE_GH_CLI: 'true',
+      AGENT_CORE_GH_EXE: 'F:\\Tools\\GitHub CLI\\gh.exe',
       AGENT_CORE_GITHUB_REQUEST_TIMEOUT_MS: '11111',
       AGENT_CORE_GITHUB_GIT_TIMEOUT_MS: '22222',
     }, 'F:\\Ignored');
@@ -143,6 +149,7 @@ describe('loadConfig', () => {
     ]);
     expect(config.httpSecurity).toEqual({
       publicBaseUrl: 'https://agent-core.example.test',
+      protectedResourceUrl: 'https://resource.example.test/v1/mcp/tunnel_test',
       trustProxy: true,
       allowedOrigins: ['app.example.test', 'localhost'],
     });
@@ -200,12 +207,22 @@ describe('loadConfig', () => {
       apiVersion: '2026-03-10',
       tokenFile: path.resolve('F:\\Secrets\\github.txt'),
       packagesTokenFile: path.resolve('F:\\Secrets\\packages.txt'),
+      useGhCliCredential: true,
+      ghCliPath: path.resolve('F:\\Tools\\GitHub CLI\\gh.exe'),
       requestTimeoutMs: 11_111,
       gitTimeoutMs: 22_222,
     });
   });
 
 
+  it('accepts an explicit OAuth protected-resource URI that may differ from the authorization-server origin', () => {
+    const resource = 'https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/tunnel_test123';
+    const config = loadConfig({
+      AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL: resource,
+    }, 'F:\\Ignored');
+
+    expect(config.httpSecurity.protectedResourceUrl).toBe(resource);
+  });
   it('rejects unsafe public base URLs and malformed allowed origins', () => {
     expect(() => loadConfig({ AGENT_CORE_PUBLIC_BASE_URL: 'ftp://agent-core.example.test' }, 'F:\\Ignored'))
       .toThrow('AGENT_CORE_PUBLIC_BASE_URL must use http or https');

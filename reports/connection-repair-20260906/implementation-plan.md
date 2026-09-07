@@ -1,0 +1,13 @@
+# Connection repair implementation plan - 2026-09-06
+Approval: user authorized all prior repair recommendations and controlled cutover.
+Target: E:\Projects\Agent-Core. Existing candidate: .worktrees\connection-review-20260906.
+
+Evidence: production OAuth source hashes unchanged from review. Runtime audit has EPERM. Non-mutating native file access checks show DELETE and WRITE_DAC denied (Win32=5), WRITE_DATA allowed, on audit current/head and oauth.json. Current SID differs from migrated file owner SID. Do not take ownership or elevate around denied rights.
+
+1. Retain previous RED/GREEN evidence, rerun candidate 44-test gate. Add RED tests for cross-process OAuth writes and snapshot rename failure before replacing fallback.
+2. Add src/oauth/file-lock.ts using built-in SQLite only as a no-payload inter-process lock, bounded asynchronous BUSY retries and rollback/close release. Keep per-process queue. Atomic OAuth snapshot saves must reject failed rename without overwriting old state.
+3. Add RED tests against loadConfig for runtime/persistence.json selection, malformed/missing generation rejection and preserving explicit shadow paths. Add src/runtime/persistence-paths.ts, consumed by src/config.ts. Manifest selects only existing project-local runtime/persistence-<id> data/logs. Existing environment pointing at old defaults is redirected; unrelated explicit overrides stay explicit. No raw credential reading in selector.
+4. Fix audit permissions without changing legacy ACL: after stopping only owned Agent Core, copy OAuth/key hashes and verified audit chain into freshly created private runtime/persistence-20260906. Byte hashes must match before manifest publication. Preserve all source files; no reset or revocation. Memory/execution DB paths unchanged.
+5. Deploy only selected source/build files with hash-check against baseline and rollback backups, not entire dirty worktree. Add persistence paths to local health diagnostics. Verify existing launcher and direct-start paths use manifest through loadConfig. Native application binaries unchanged.
+6. Restart controlled service, verify grant data equal, audit sequence continues and rotation works, memory/execution health, and repeated tests. Host developer-MCP rejection is a separate boundary; do not bypass it or claim repaired based on local health.
+7. Save Indonesian result, rollback boundaries, regression results and fresh state. Do not commit or push unrelated dirty changes, alter token values, delete audit or create fake restored events for the recording gap.

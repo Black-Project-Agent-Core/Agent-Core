@@ -201,6 +201,80 @@ describe('memory-aware route context', () => {
     expect(route.domain).toBe('frontend');
   });
 
+  it('surfaces canonical project memory through capability_route before ordinary operational recall', async () => {
+    const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-memory-route-canonical-'));
+    roots.push(root);
+    const baseMemory = loadConfig({}, root).memory;
+    const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
+      ...baseMemory,
+      enabled: true,
+      dbPath: path.join(root, 'runtime', 'memory', 'canonical-route.sqlite'),
+      recallItemBudget: 6,
+      recallCharacterBudget: 2_400,
+    });
+    runtimes.push(runtime);
+    const keyStore = new FileKeyStore(path.join(root, 'data'));
+    const principal = await keyStore.create('canonical-route-principal');
+    const scope = { principalId: principal.metadata.id, projectId: root };
+    const canonical = [];
+    for (const [canonicalKey, facet, value] of [
+      ['project.super-runtime.identity', 'identity', 'Super-Runtime is the product and not a Kimi K3 port or thin llama.cpp launcher.'],
+      ['project.super-runtime.raison-detre', 'raison_d_etre', 'Super-Runtime exists to generalize K3-in-C low-memory and out-of-core mechanisms onto the multi-model llama.cpp/GGML substrate.'],
+      ['project.super-runtime.primary-reference', 'primary_reference', 'Primary reference is kimi-k3-in-c revision 117e9d29bde14db9742f54fb66a191fd0bf03903.'],
+      ['project.super-runtime.production-substrate', 'production_substrate', 'Production substrate is llama.cpp/GGML revision daef7b6874397a5a7c3d7e38b55e2ee0adf7da38.'],
+    ] as const) {
+      canonical.push(await runtime.memory.commit({
+        scope,
+        canonicalKey,
+        kind: 'project_state',
+        value,
+        importance: 1,
+        pinned: true,
+        sourceType: 'test',
+        explicitAnchors: [
+          { type: 'subject_alias', value: 'Super-Runtime' },
+          { type: 'subject_facet', value: facet },
+        ],
+      }));
+    }
+    for (let index = 0; index < 12; index += 1) {
+      await runtime.memory.commit({
+        scope,
+        canonicalKey: `operational.super-runtime.route-noise.${index}`,
+        kind: 'decision',
+        value: `Super-Runtime recent hardening test ${index} build verification lifecycle output ${'x'.repeat(200)}.`,
+        importance: 1,
+        pinned: index < 6,
+        sourceType: 'test',
+      });
+    }
+
+    const app = createHttpHandler({
+      keyStore,
+      auditLogger: createAuditLogger(path.join(root, 'logs')),
+      mcpHandler: createMcpHttpHandler(runtime),
+    });
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    servers.push(server);
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+    const routed = await call(baseUrl, principal.key, 'capability_route', {
+      task: 'Apa tujuan Super-Runtime?',
+      projectRoot: root,
+    });
+    const route = textBody(routed);
+    expect(route.canonicalSubjectMemory.map((hit: any) => hit.canonicalKey)).toEqual(expect.arrayContaining([
+      'project.super-runtime.identity',
+      'project.super-runtime.raison-detre',
+      'project.super-runtime.primary-reference',
+      'project.super-runtime.production-substrate',
+    ]));
+    expect(route.memoryInjection.canonicalMemoryIds).toEqual(expect.arrayContaining(canonical.map((item) => item.memoryId)));
+    expect(route.memoryDirective.hasCanonicalSubjectMemory).toBe(true);
+    expect(route.reasonCodes).toContain('canonical_project_memory_context');
+  });
+
   it('routes with memory evidence before execution and blocks a matching hard guardrail when enforcement is enabled', async () => {
     const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-memory-route-'));
     roots.push(root);

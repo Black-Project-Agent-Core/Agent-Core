@@ -1,7 +1,7 @@
-import path from 'node:path';
+﻿import path from 'node:path';
 import { CapabilityRegistry } from '../capabilities/registry-service.js';
 import { CapabilityRouter } from '../capabilities/router.js';
-import { loadConfig, type ExecutionConfig, type GitHubConfig, type MaintenanceConfig, type MemoryConfig, type ObservabilityConfig } from '../config.js';
+import { loadConfig, type ExecutionConfig, type GitHubConfig, type LangflowConfig, type MaintenanceConfig, type MemoryConfig, type ObservabilityConfig, type OperatorDirectiveConfig } from '../config.js';
 import { ExecutionLogStore } from '../execution/log-store.js';
 import { ExecutionMemoryBridge } from '../execution/memory-bridge.js';
 import { ExecutionMemoryPreSearch } from '../execution/memory-search.js';
@@ -9,10 +9,13 @@ import { ResourceGovernor } from '../execution/resource-governor.js';
 import { ExecutionService } from '../execution/service.js';
 import { ExecutionStore } from '../execution/store.js';
 import { GitHubService, type GitHubServiceDependencies } from '../github/service.js';
+import { LangflowService } from '../langflow/service.js';
 import { NOOP_RUNTIME_AUDIT_LOGGER, type RoutingAuditLogger, type RuntimeAuditLogger } from '../logging/audit-log.js';
 import { MemoryService } from '../memory/service.js';
+import { OperatorDirectiveService } from '../operator-directives/service.js';
 import { GitHubMemoryRemoteTransport } from '../memory/remote-transport.js';
 import { TelemetryService } from '../observability/telemetry.js';
+import { SubAgentCoreService } from '../subagentcore/service.js';
 import { FileSystemService } from './filesystem.js';
 import { ProcessManager } from './process-manager.js';
 import { RouteContextStore } from './route-context-store.js';
@@ -34,6 +37,9 @@ export interface RuntimeServices {
   memory: MemoryService;
   execution: ExecutionService;
   github: GitHubService;
+  langflow: LangflowService;
+  subagentcore: SubAgentCoreService;
+  operatorDirectives: OperatorDirectiveService;
   metrics: RuntimeMetricRegistry;
   audit: RuntimeAuditLogger;
   telemetry: TelemetryService;
@@ -53,6 +59,8 @@ export function createRuntimeServices(
   observabilityConfig?: ObservabilityConfig,
   serviceVersion = 'unknown',
   maintenanceConfig?: MaintenanceConfig,
+  langflowConfig?: LangflowConfig,
+  operatorDirectiveConfig?: OperatorDirectiveConfig,
 ): RuntimeServices {
   const workspace = new WorkspacePolicy(allowedRoots);
   const capabilities = CapabilityRegistry.open(capabilityDir);
@@ -62,6 +70,8 @@ export function createRuntimeServices(
   const resolvedGitHubConfig = githubConfig ?? defaults.github;
   const resolvedObservabilityConfig = observabilityConfig ?? defaults.observability;
   const resolvedMaintenanceConfig = maintenanceConfig ?? defaults.maintenance;
+  const resolvedLangflowConfig = langflowConfig ?? defaults.langflow;
+  const resolvedOperatorDirectiveConfig = operatorDirectiveConfig ?? defaults.operatorDirectives;
   const metrics = new RuntimeMetricRegistry();
   if (routingAuditLogger && 'attachMetrics' in routingAuditLogger
     && typeof (routingAuditLogger as RoutingAuditLogger & { attachMetrics?: unknown }).attachMetrics === 'function') {
@@ -73,10 +83,16 @@ export function createRuntimeServices(
     : NOOP_RUNTIME_AUDIT_LOGGER;
   const telemetry = new TelemetryService(metrics, resolvedObservabilityConfig.otlp, { serviceVersion });
   const github = new GitHubService(resolvedGitHubConfig, workspace, { ...githubDependencies, metrics });
+  const langflow = new LangflowService(resolvedLangflowConfig);
+  const operatorDirectives = new OperatorDirectiveService(resolvedOperatorDirectiveConfig);
   const memoryRemoteTransport = resolvedMemoryConfig.remote.enabled
     ? new GitHubMemoryRemoteTransport(github.git, workspace, resolvedMemoryConfig.remote)
     : undefined;
   const memory = new MemoryService(resolvedMemoryConfig, metrics, { remoteTransport: memoryRemoteTransport });
+  const subagentcore = new SubAgentCoreService({
+    memory,
+    projectRoot: allowedRoots[0] ?? process.cwd(),
+  });
   const resolvePersistentMemoryScope = (scope: { principalId: string; projectId?: string }) => ({
     ...scope,
     principalId: resolvedMemoryConfig.principalId ?? scope.principalId,
@@ -130,6 +146,9 @@ export function createRuntimeServices(
     memory,
     execution,
     github,
+    langflow,
+    subagentcore,
+    operatorDirectives,
     metrics,
     audit: runtimeAudit,
     telemetry,

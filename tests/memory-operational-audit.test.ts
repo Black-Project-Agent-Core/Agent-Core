@@ -131,7 +131,7 @@ afterEach(async () => {
 
 describe('automatic operational evidence capture', () => {
 
-  it('binds operational events and failure memory to the routed project instead of workspace root zero', async () => {
+  it('binds operational failure events to the routed project without creating durable failure memory', async () => {
     const f = await multiProjectFixture();
     const missing = path.join(f.projectB, 'missing-project-b-proof.txt');
     const route = body(await call(f.baseUrl, f.principal.key, 'capability_route', {
@@ -157,7 +157,7 @@ describe('automatic operational evidence capture', () => {
       query: `read_file ${missing}`,
       limit: 10,
     });
-    expect(projectBFailures.hits.some((hit) => hit.kind === 'failure' && hit.valueText.includes('read_file'))).toBe(true);
+    expect(projectBFailures.hits.some((hit) => hit.kind === 'failure' && hit.valueText.includes('read_file'))).toBe(false);
     expect(projectAFailures.hits.some((hit) => hit.kind === 'failure' && hit.valueText.includes('read_file'))).toBe(false);
 
     await f.runtime.execution.close();
@@ -205,7 +205,7 @@ describe('automatic operational evidence capture', () => {
     expect(metadata[1]!.result.stdoutBytes).toBeGreaterThan(0);
   });
 
-  it('records execution failures and hard-route rejections as recallable failure evidence without side effects', async () => {
+  it('records transient failures as audit events and postflight no-write decisions without polluting durable memory', async () => {
     const f = await fixture(true);
     const missing = path.join(f.root, 'missing-proof.txt');
     const readRoute = body(await call(f.baseUrl, f.principal.key, 'capability_route', {
@@ -223,7 +223,7 @@ describe('automatic operational evidence capture', () => {
       query: `read_file ${missing}`,
       limit: 10,
     });
-    expect(recalledFailure.hits.some((hit) => hit.kind === 'failure' && hit.valueText.includes('read_file'))).toBe(true);
+    expect(recalledFailure.hits.some((hit) => hit.kind === 'failure' && hit.valueText.includes('read_file'))).toBe(false);
 
     const target = path.join(f.root, 'blocked-proof.txt');
     const guardrail = await f.runtime.memory.commit({
@@ -255,7 +255,10 @@ describe('automatic operational evidence capture', () => {
       query: `write_file ${target} ROUTE_MEMORY_GUARDRAIL_BLOCKED`,
       limit: 10,
     });
-    expect(rejectedFailure.hits.some((hit) => hit.kind === 'failure' && hit.valueText.includes('ROUTE_MEMORY_GUARDRAIL_BLOCKED'))).toBe(true);
+    expect(rejectedFailure.hits.some((hit) => hit.kind === 'failure' && hit.valueText.includes('ROUTE_MEMORY_GUARDRAIL_BLOCKED'))).toBe(false);
+
+    const status = await f.runtime.memory.status();
+    expect(status.counts.write_decisions).toBeGreaterThanOrEqual(2);
 
     await f.runtime.execution.close();
     await f.runtime.memory.close();

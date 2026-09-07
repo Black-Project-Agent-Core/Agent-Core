@@ -33,6 +33,16 @@ const expected = [
 ] as const;
 
 describe('Wave G core certification contract', () => {
+  it('keeps root diff certification bounded away from dirty submodule worktrees', () => {
+    const checker = readFileSync('scripts/release/check-core-certification.mjs', 'utf8');
+    expect(checker).toContain('--ignore-submodules=all');
+  });
+
+  it('treats CRLF carriage returns as line terminators during root whitespace certification', () => {
+    const checker = readFileSync('scripts/release/check-core-certification.mjs', 'utf8');
+    expect(checker).toContain('core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol');
+  });
+
   it('preserves the exact 18-area roadmap matrix with unique IDs and tracked evidence', () => {
     expect(CORE_CERTIFICATION_SCHEMA).toBe('agent-core-core-certification-contract/1');
     expect(CORE_CERTIFICATION_MATRIX.map((entry: any) => [entry.id, entry.label])).toEqual(expected);

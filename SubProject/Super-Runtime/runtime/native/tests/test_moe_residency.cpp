@@ -18,14 +18,17 @@
 #include <string>
 #include <vector>
 
+#if defined(__linux__)
 #include <fcntl.h>
 #include <sys/types.h>
 #include <unistd.h>
+#endif
 
 namespace {
 
 using super_runtime::ByteRange;
 using super_runtime::FileResidency;
+using super_runtime::FileResidencyLease;
 using super_runtime::FileResidencyResult;
 using super_runtime::MemoryCategory;
 using super_runtime::MemoryLedger;
@@ -58,8 +61,17 @@ struct IdFixture {
             token_count,
             sizeof(std::int32_t),
             row_width * sizeof(std::int32_t),
+            storage.size() * sizeof(std::int32_t),
         };
+
     }
+
+    [[nodiscard]] StridedExpertIds view_with_bytes(std::uint64_t data_bytes) const noexcept {
+        auto result = view();
+        result.data_bytes = data_bytes;
+        return result;
+    }
+
 };
 
 IdFixture make_ids(const std::vector<std::array<std::int32_t, 4>> & rows, std::uint64_t used_per_token = 2) {
@@ -79,6 +91,7 @@ void require_range(const ByteRange & range, std::uint64_t offset, std::uint64_t 
     require(range.length == length, label + " length mismatch");
 }
 
+#if defined(__linux__)
 class TempWeightFile {
 public:
     explicit TempWeightFile(const std::vector<float> & weights) {
@@ -175,6 +188,7 @@ std::vector<float> run_mul_mat_id(
     ggml_backend_free(backend);
     return result;
 }
+#endif
 
 } // namespace
 
@@ -254,6 +268,24 @@ int main() {
     }
 
     {
+        const auto ids = make_ids({
+            std::array<std::int32_t, 4>{1, 0, 7, 7},
+            std::array<std::int32_t, 4>{2, 3, 7, 7},
+        });
+        const MoeExpertLayout layout{8, 0, page, page * 8, page};
+        const auto bounded = ids.view();
+        const auto last_reachable_end =
+            (bounded.token_count - 1) * bounded.token_stride_bytes +
+            (bounded.experts_per_token - 1) * bounded.expert_stride_bytes +
+            sizeof(std::int32_t);
+        auto truncated = ids.view_with_bytes(last_reachable_end - 1);
+
+        std::vector<ByteRange> ranges{{123, 456}};
+        require(plan_moe_residency(truncated, layout, ranges) == MoePlanResult::InvalidArgument,
+                "selector backing buffer shorter than the last reachable int32 must fail closed");
+        require(ranges.empty(), "truncated selector input must not publish a partial plan");
+    }
+    {
         const auto ids = make_ids({std::array<std::int32_t, 4>{1, 0, 7, 7}});
         const MoeExpertLayout overflow_layout{
             4,
@@ -299,7 +331,9 @@ int main() {
             static_cast<std::uint64_t>(n_tokens),
             sizeof(std::int32_t),
             static_cast<std::uint64_t>(n_experts * sizeof(std::int32_t)),
+            ids_full.size() * sizeof(std::int32_t),
         };
+
         const MoeExpertLayout layout{
             static_cast<std::uint64_t>(n_experts),
             0,
@@ -322,13 +356,19 @@ int main() {
                 "parity weight file must map the expected expert bytes");
 
         std::vector<float> managed_weights(full_weights.size(), std::numeric_limits<float>::quiet_NaN());
-        const auto * mapped = static_cast<const std::uint8_t *>(residency.data());
         auto * managed_bytes = reinterpret_cast<std::uint8_t *>(managed_weights.data());
         for (const auto & range : ranges) {
             require(residency.prefetch(range.offset, range.length) == FileResidencyResult::Ok,
                     "planned selected range must be admitted by FileResidency");
-            std::memcpy(managed_bytes + range.offset, mapped + range.offset, static_cast<std::size_t>(range.length));
+            FileResidencyLease lease;
+            require(residency.acquire_lease(range.offset, range.length, lease) == FileResidencyResult::Ok,
+                    "planned selected range must be leased before dereference");
+            require(lease.data() != nullptr && lease.size_bytes() == range.length,
+                    "selected expert lease must expose exactly the selected range");
+            std::memcpy(managed_bytes + range.offset, lease.data(), static_cast<std::size_t>(range.length));
+            lease.reset();
         }
+
         require(ledger.category_bytes(MemoryCategory::ResidentWeights) == page * 3,
                 "selected union must charge exactly three resident expert pages");
 

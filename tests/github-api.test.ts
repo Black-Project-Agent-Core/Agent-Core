@@ -6,6 +6,7 @@ import { loadConfig } from '../src/config.js';
 import { GitHubApiService } from '../src/github/api-service.js';
 import { GitHubCredentialProvider } from '../src/github/credentials.js';
 import { RuntimeMetricRegistry } from '../src/runtime/metric-window.js';
+import { AGENT_CORE_VERSION } from '../src/version.js';
 
 const roots: string[] = [];
 const TOKEN = 'SENTINEL_GITHUB_API_TOKEN_DO_NOT_LEAK';
@@ -63,7 +64,7 @@ describe('GitHubApiService', () => {
     expect(headers.get('authorization')).toBe(`Bearer ${TOKEN}`);
     expect(headers.get('accept')).toBe('application/vnd.github+json');
     expect(headers.get('x-github-api-version')).toBe('2026-03-10');
-    expect(headers.get('user-agent')).toBe('Agent-Core/0.6.0');
+    expect(headers.get('user-agent')).toBe(`Agent-Core/${AGENT_CORE_VERSION}`);
     expect(result).toMatchObject({ ok: true, status: 200, method: 'GET', endpoint: '/user' });
     expect(result.data).toEqual({ login: 'safe-user' });
     expect(result.headers.requestId).toBe('REQ-1');
@@ -102,6 +103,35 @@ describe('GitHubApiService', () => {
         .rejects.toMatchObject({ code: 'GITHUB_ENDPOINT_NOT_ALLOWED' });
     }
     expect(called).toBe(false);
+  });
+
+  it('redacts credential-bearing fields and token values from successful GitHub API responses', async () => {
+    const upstreamSecret = 'SENTINEL_TEMP_CLONE_TOKEN_DO_NOT_LEAK';
+    const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
+      name: 'Agent-Core',
+      temp_clone_token: upstreamSecret,
+      nested: {
+        access_token: 'SENTINEL_ACCESS_TOKEN_DO_NOT_LEAK',
+        safe: `visible-but-auth-${TOKEN}`,
+      },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+    const { api } = await setup(fetchImpl);
+    const result = await api.request({ method: 'GET', endpoint: '/repos/a/b' });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(upstreamSecret);
+    expect(serialized).not.toContain('SENTINEL_ACCESS_TOKEN_DO_NOT_LEAK');
+    expect(serialized).not.toContain(TOKEN);
+    expect(result.data).toMatchObject({
+      name: 'Agent-Core',
+      temp_clone_token: '[REDACTED_GITHUB_RESPONSE_FIELD]',
+      nested: {
+        access_token: '[REDACTED_GITHUB_RESPONSE_FIELD]',
+        safe: 'visible-but-auth-[REDACTED_GITHUB_CREDENTIAL]',
+      },
+    });
   });
 
   it('serializes JSON request bodies exactly once', async () => {

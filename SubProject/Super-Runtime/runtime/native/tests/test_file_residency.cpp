@@ -121,10 +121,15 @@ std::uint64_t vm_rss_kib() {
     return 0;
 }
 
-void require_byte(const FileResidency & mapping, std::uint64_t offset) {
-    const auto * bytes = static_cast<const std::uint8_t *>(mapping.data());
-    require(bytes != nullptr, "mapped data pointer must not be null");
-    require(bytes[offset] == TempFile::expected_byte(offset), "mapped byte differs from deterministic fixture");
+void require_byte(
+        const FileResidencyLease & lease,
+        std::uint64_t relative_offset,
+        std::uint64_t absolute_file_offset) {
+    const auto * bytes = static_cast<const std::uint8_t *>(lease.data());
+    require(bytes != nullptr, "leased data pointer must not be null");
+    require(relative_offset < lease.size_bytes(), "leased byte offset must remain within the leased range");
+    require(bytes[relative_offset] == TempFile::expected_byte(absolute_file_offset),
+            "leased byte differs from deterministic fixture");
 }
 
 } // namespace
@@ -142,11 +147,9 @@ int main() {
     {
         MemoryLedger ledger(page_size * 8);
         FileResidency mapping(fixture.path(), ledger);
-        const void * const base = mapping.data();
 
         require(mapping.size_bytes() == file_size, "mapping must expose the complete file size");
         require(mapping.page_size() == page_size, "mapping must expose the operating-system page size");
-        require(base != nullptr, "mapping base address must exist");
         require(ledger.owned_bytes() == 0, "virtual mapping alone must not consume resident-weight ledger bytes");
         require(mapping.intentional_resident_bytes() == 0, "mapping must begin with no intentional residency");
 
@@ -167,32 +170,51 @@ int main() {
                 "valid aligned prefetch must succeed");
         const auto rss_after_prefetch = vm_rss_kib();
 
-        require(mapping.data() == base, "prefetch must not change the mapped base address");
         require(mapping.intentional_resident_bytes() == length, "prefetch must account intentional resident bytes");
         require(ledger.owned_bytes() == length, "prefetch must reserve ledger bytes");
         require(ledger.category_bytes(MemoryCategory::ResidentWeights) == length,
                 "prefetch must charge ResidentWeights");
-        require_byte(mapping, offset);
-        require_byte(mapping, offset + length - 1);
+
+        FileResidencyLease lease;
+        require(mapping.acquire_lease(offset, length, lease) == FileResidencyResult::Ok,
+                "READY range must be leased before dereference");
+        require(lease.active(), "acquired range lease must report active");
+        require(lease.size_bytes() == length, "range lease must expose the exact leased length");
+        const void * const stable_range_address = lease.data();
+        require(stable_range_address != nullptr, "range lease must expose a stable address");
+        require_byte(lease, 0, offset);
+        require_byte(lease, length - 1, offset + length - 1);
 
         require(mapping.prefetch(offset, length) == FileResidencyResult::Ok,
                 "repeated prefetch of the same pages must be idempotent");
         require(ledger.owned_bytes() == length, "idempotent prefetch must not double-charge the ledger");
 
+        lease.reset();
+        require(!lease.active() && lease.data() == nullptr && lease.size_bytes() == 0,
+                "reset lease must revoke public mapped access");
         require(mapping.release(offset, length) == FileResidencyResult::Ok,
-                "valid aligned release must succeed");
+                "valid aligned release must succeed after the lease ends");
         const auto rss_after_release = vm_rss_kib();
-        require(mapping.data() == base, "release must not unmap or change the base address");
         require(mapping.intentional_resident_bytes() == 0, "release must clear intentional residency");
         require(ledger.owned_bytes() == 0, "release must return ledger bytes");
 
-        require_byte(mapping, offset);
-        require(mapping.data() == base, "demand refault must preserve the same virtual address");
-        require(ledger.owned_bytes() == 0,
-                "demand refault is a correctness fallback and must not masquerade as intentional residency");
-
         require(mapping.release(offset, length) == FileResidencyResult::Ok,
                 "repeated release must be idempotent");
+
+        require(mapping.prefetch(offset, length) == FileResidencyResult::Ok,
+                "released range must be materializable again");
+        FileResidencyLease refaulted;
+        require(mapping.acquire_lease(offset, length, refaulted) == FileResidencyResult::Ok,
+                "re-materialized range must be leasable again");
+        require(refaulted.data() == stable_range_address,
+                "release and re-materialization must preserve the stable virtual range address");
+        require_byte(refaulted, 0, offset);
+        require_byte(refaulted, length - 1, offset + length - 1);
+        refaulted.reset();
+        require(mapping.release(offset, length) == FileResidencyResult::Ok,
+                "re-materialized range must release cleanly");
+        require(ledger.owned_bytes() == 0,
+                "re-materialization verification must leave no resident-weight ownership");
 
         std::cout << "rss evidence KiB: before=" << rss_before
                   << " after_prefetch=" << rss_after_prefetch
@@ -229,6 +251,8 @@ int main() {
         require(mapping.acquire_lease(0, page_size, lease) == FileResidencyResult::Ok,
                 "READY page must be leasable");
         require(lease.active(), "acquired lease must report active");
+        require(lease.data() != nullptr && lease.size_bytes() == page_size,
+                "active lease must expose exactly one page");
 
         FileResidencyLease overlapping;
         require(mapping.acquire_lease(0, page_size, overlapping) == FileResidencyResult::Ok,
@@ -239,8 +263,10 @@ int main() {
                 "failed overlapping-range reclaim must not change ownership");
 
         FileResidencyLease moved = std::move(overlapping);
-        require(!overlapping.active() && moved.active(),
+        require(!overlapping.active() && overlapping.data() == nullptr && moved.active(),
                 "moving a lease must transfer the only active token ownership");
+        require(moved.data() != nullptr && moved.size_bytes() == page_size,
+                "moved lease must retain access to the leased page");
         lease.reset();
         require(mapping.release(0, page_size) == FileResidencyResult::InUse,
                 "reclaim must remain blocked until the final overlapping lease is released");
@@ -257,7 +283,8 @@ int main() {
         FileResidencyLease nonresident;
         require(mapping.acquire_lease(page_size, page_size, nonresident) == FileResidencyResult::NotResident,
                 "nonresident page must not publish a lease");
-        require(!nonresident.active(), "failed nonresident lease must remain inactive");
+        require(!nonresident.active() && nonresident.data() == nullptr,
+                "failed nonresident lease must remain inactive and expose no data");
 
         lease.reset();
         require(!lease.active(), "reset lease must become inactive");
@@ -265,6 +292,30 @@ int main() {
                 "page must become reclaimable after lease release");
         require(ledger.owned_bytes() == 0,
                 "lease fixture must release all ownership");
+    }
+
+    {
+        MemoryLedger ledger(page_size * 2);
+        FileResidencyLease surviving;
+        const void * leased_address = nullptr;
+        {
+            FileResidency mapping(fixture.path(), ledger);
+            require(mapping.prefetch(0, page_size) == FileResidencyResult::Ok,
+                    "owner-lifetime fixture must prefetch one page");
+            require(mapping.acquire_lease(0, page_size, surviving) == FileResidencyResult::Ok,
+                    "owner-lifetime fixture must acquire a lease");
+            require(surviving.active(), "lease must be active while its owner exists");
+            leased_address = surviving.data();
+            require(leased_address != nullptr, "active owner-lifetime lease must expose data");
+        }
+        require(ledger.owned_bytes() == 0,
+                "FileResidency destruction must release ownership even when a lease object survives");
+        require(!surviving.active(), "lease must become inactive when its FileResidency owner is destroyed");
+        require(surviving.data() == nullptr && surviving.size_bytes() == 0,
+                "surviving lease must never expose a stale mapping pointer");
+        surviving.reset();
+        require(!surviving.active(), "reset after owner destruction must be harmless");
+        (void) leased_address;
     }
 
     {

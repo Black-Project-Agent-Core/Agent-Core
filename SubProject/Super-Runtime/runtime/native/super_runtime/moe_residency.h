@@ -16,6 +16,7 @@ struct StridedExpertIds {
     std::uint64_t token_count = 0;
     std::uint64_t expert_stride_bytes = 0;
     std::uint64_t token_stride_bytes = 0;
+    std::uint64_t data_bytes = 0;
 };
 
 struct MoeExpertLayout {

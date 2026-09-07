@@ -1,4 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/server';
+﻿import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import type { VerifiedKey } from '../auth/key-types.js';
 import type { RuntimeServices } from '../runtime/services.js';
@@ -6,14 +6,18 @@ import { CAPABILITY_TOOL_NAMES, registerCapabilityTools } from './capability-too
 import { CONTINUITY_TOOL_NAMES, registerContinuityTools } from './continuity-tools.js';
 import { EXECUTION_TOOL_NAMES, registerExecutionTools } from './execution-tools.js';
 import { GITHUB_TOOL_NAMES, registerGitHubTools } from './github-tools.js';
+import { LANGFLOW_TOOL_NAMES, registerLangflowTools } from './langflow-tools.js';
 import { MEMORY_TOOL_NAMES, registerMemoryTools } from './memory-tools.js';
 import { HEALTH_METRICS_TOOL_NAMES, registerHealthMetricsTools } from './health-metrics.js';
+import { OPERATOR_DIRECTIVE_TOOL_NAMES, registerOperatorDirectiveTools } from './operator-directive-tools.js';
 import { OPERATIONAL_TOOL_NAMES, registerOperationalTools } from './tools.js';
+import { SUBAGENTCORE_TOOL_NAMES, registerSubAgentCoreTools } from './subagentcore-tools.js';
 import { instrumentToolRegistrations } from '../observability/tool-instrumentation.js';
 import { persistentPrincipalId } from './project-scope.js';
+import { AGENT_CORE_VERSION } from '../version.js';
 
 export const SERVER_NAME = 'agent-core';
-export const SERVER_VERSION = '0.6.0';
+export const SERVER_VERSION = AGENT_CORE_VERSION;
 
 export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServices): McpServer {
   const server = new McpServer({
@@ -155,11 +159,14 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
         'github.native_fabric',
         ...OPERATIONAL_TOOL_NAMES.map((name) => `tool.${name}`),
         ...GITHUB_TOOL_NAMES.map((name) => `tool.${name}`),
+        ...LANGFLOW_TOOL_NAMES.map((name) => `tool.${name}`),
+        ...OPERATOR_DIRECTIVE_TOOL_NAMES.map((name) => `tool.${name}`),
         ...CAPABILITY_TOOL_NAMES.map((name) => `tool.${name}`),
         ...MEMORY_TOOL_NAMES.map((name) => `tool.${name}`),
         ...CONTINUITY_TOOL_NAMES.map((name) => `tool.${name}`),
         ...EXECUTION_TOOL_NAMES.map((name) => `tool.${name}`),
         ...HEALTH_METRICS_TOOL_NAMES.map((name) => `tool.${name}`),
+        ...SUBAGENTCORE_TOOL_NAMES.map((name) => `tool.${name}`),
       ],
       deferred: ['git.semantic_tools', 'gui.automation', 'registry.system_admin', 'app.adapters'],
     };
@@ -172,6 +179,9 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
   registerHealthMetricsTools(server, runtime, key);
   registerOperationalTools(server, runtime, key);
   registerGitHubTools(server, runtime, key);
+  registerLangflowTools(server, runtime, key);
+  registerSubAgentCoreTools(server, runtime, key);
+  registerOperatorDirectiveTools(server, runtime, key);
   registerCapabilityTools(server, runtime, key);
   registerMemoryTools(server, runtime, key);
   registerContinuityTools(server, runtime, key);

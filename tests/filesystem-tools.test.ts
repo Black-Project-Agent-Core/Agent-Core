@@ -54,6 +54,31 @@ describe('FileSystemService', () => {
     expect(info.size).toBeGreaterThan(0);
   });
 
+  it('tolerates files that disappear while a directory is being listed', async () => {
+    const { root, fs } = await setup();
+    const churnDir = path.join(root, 'churn');
+    await mkdir(churnDir, { recursive: true });
+    let running = true;
+    const churn = (async () => {
+      let index = 0;
+      while (running && index < 5000) {
+        const file = path.join(churnDir, `volatile-${index % 8}.tmp`);
+        await writeFile(file, 'transient').catch(() => undefined);
+        await rm(file, { force: true }).catch(() => undefined);
+        index += 1;
+      }
+    })();
+
+    try {
+      for (let index = 0; index < 100; index++) {
+        await expect(fs.listDirectory(root, 2, 500)).resolves.toMatchObject({ path: root });
+      }
+    } finally {
+      running = false;
+      await churn;
+    }
+  });
+
   it('rejects outside-root access and ambiguous edits', async () => {
     const { root, outside, fs } = await setup();
     await writeFile(path.join(outside, 'secret.txt'), 'hidden');

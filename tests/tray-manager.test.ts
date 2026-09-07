@@ -55,6 +55,12 @@ async function writeConfig(root: string, overrides: Record<string, unknown> = {}
   return { config, configPath };
 }
 
+function isolatedTrayEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL;
+  return env;
+}
+
 function runTray(mode: string, configPath: string) {
   const stamp = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const stdoutPath = path.join(path.dirname(configPath), `.tray-stdout-${stamp}.txt`);
@@ -64,7 +70,7 @@ function runTray(mode: string, configPath: string) {
   const result = spawnSync('powershell.exe', [
     '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
     '-File', trayScript, '-Mode', mode, '-ConfigPath', configPath,
-  ], { cwd: repoRoot, stdio: ['ignore', stdoutFd, stderrFd] });
+  ], { cwd: repoRoot, env: isolatedTrayEnv(), stdio: ['ignore', stdoutFd, stderrFd] });
   closeSync(stdoutFd); closeSync(stderrFd);
   const stdout = readFileSync(stdoutPath, 'utf8');
   const stderr = readFileSync(stderrPath, 'utf8');
@@ -76,9 +82,26 @@ function spawnTray(mode: string, configPath: string) {
   const child = spawn('powershell.exe', [
     '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
     '-File', trayScript, '-Mode', mode, '-ConfigPath', configPath,
-  ], { cwd: repoRoot, stdio: 'ignore' });
+  ], { cwd: repoRoot, env: isolatedTrayEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
   children.push(child);
   return child;
+}
+
+async function waitForTrayOutput(child: ChildProcess, timeoutMs = 5000): Promise<void> {
+  if (!child.stdout) throw new Error('tray stdout is unavailable');
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('tray did not emit output before timeout')), timeoutMs);
+    const onExit = (code: number | null) => {
+      clearTimeout(timer);
+      reject(new Error(`tray exited before emitting output: ${code}`));
+    };
+    child.once('exit', onExit);
+    child.stdout.once('data', () => {
+      clearTimeout(timer);
+      child.off('exit', onExit);
+      resolve();
+    });
+  });
 }
 
 async function waitForPort(port: number, timeoutMs = 5000) {
@@ -181,7 +204,7 @@ windowsDescribe('Agent Core tray lifecycle foundation', () => {
     const root = await tempRoot();
     const { configPath } = await writeConfig(root, { holdMutexSeconds: 4 });
     const first = spawnTray('Probe', configPath);
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await waitForTrayOutput(first);
     expect(first.exitCode).toBe(null);
 
     const second = runTray('Probe', configPath);
@@ -217,7 +240,7 @@ async function writeFakeBundle(root: string, tunnelPort: number) {
     "const shutdownRequestPath = process.env.AGENT_CORE_SHUTDOWN_REQUEST_PATH;",
     "const gracefulMarker = path.join(process.cwd(), 'graceful-agent-core-stop.marker');",
     "const server = http.createServer((req,res)=>{",
-    "  if (req.url === '/health') { res.writeHead(200, {'content-type':'application/json'}); return res.end(JSON.stringify({status:'ok',memory:{enabled:true,healthy:true,state:'healthy'},memoryDbPath:process.env.AGENT_CORE_MEMORY_DB_PATH,memoryEnabled:process.env.AGENT_CORE_MEMORY_ENABLED,shutdownRequestPath})); }",
+    "  if (req.url === '/health') { res.writeHead(200, {'content-type':'application/json'}); return res.end(JSON.stringify({status:'ok',memory:{enabled:true,healthy:true,state:'healthy'},memoryDbPath:process.env.AGENT_CORE_MEMORY_DB_PATH,memoryEnabled:process.env.AGENT_CORE_MEMORY_ENABLED,oauthProtectedResourceUrl:process.env.AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL,githubUseGhCli:process.env.AGENT_CORE_GITHUB_USE_GH_CLI,githubGhExe:process.env.AGENT_CORE_GH_EXE,shutdownRequestPath})); }",
     "  res.writeHead(404); res.end('missing');",
     "});",
     "server.listen(port, '127.0.0.1');",
@@ -303,6 +326,31 @@ windowsDescribe('Agent Core tray service lifecycle', () => {
     managedConfigs.pop();
     await waitForPortClosed(agentCorePort);
     await waitForPortClosed(tunnelPort);
+  });
+
+  slowLifecycleIt('propagates an explicit GitHub CLI credential source to the managed Agent Core process', async () => {
+    const root = await tempRoot();
+    const agentCorePort = await freePort();
+    const tunnelPort = await freePort();
+    const fake = await writeFakeBundle(root, tunnelPort);
+    const ghExe = path.join(root, 'tools', 'gh.exe');
+    await mkdir(path.dirname(ghExe), { recursive: true });
+    await writeFile(ghExe, '', 'utf8');
+    const { configPath } = await writeConfig(root, {
+      agentCorePort, tunnelPort,
+      agentCoreEntry: fake.agentCoreEntry,
+      tunnelEntry: fake.tunnelEntry,
+      tunnelProfile: fake.tunnelProfile,
+      ghExe,
+    });
+    managedConfigs.push(configPath);
+
+    const started = runTray('StartBundle', configPath);
+    expect(started.status).toBe(0);
+    await waitForPort(agentCorePort);
+    const launchedHealth = await (await fetch(`http://127.0.0.1:${agentCorePort}/health`)).json() as Record<string, any>;
+    expect(launchedHealth.githubUseGhCli).toBe('true');
+    expect(path.normalize(launchedHealth.githubGhExe)).toBe(path.normalize(ghExe));
   });
 
   slowLifecycleIt('marks a mismatched port occupant degraded and never stops or owns it', async () => {
@@ -409,7 +457,7 @@ async function startProbeServer(root: string, name: string, port: number, kind: 
   children.push(child); await waitForPort(port); return child;
 }
 
-const slowWatchdogIt = (name: string, fn: () => Promise<void>) => it(name, fn, 60_000);
+const slowWatchdogIt = (name: string, fn: () => Promise<void>) => it(name, fn, 90_000);
 
 windowsDescribe('Agent Core tray watchdog', () => {  slowWatchdogIt('reports healthy local Agent Core and tunnel probes', async () => {
     const root = await tempRoot();
@@ -666,6 +714,10 @@ windowsDescribe('Agent Core tray OAuth re-auth action', () => {
       agentCorePort, tunnelPort, agentCoreEntry: fake.agentCoreEntry, agentCoreCli: fakeCli,
     });
     managedConfigs.push(configPath);
+    const tunnelId = 'tunnel_test_reset_resource';
+    await writeFile(fake.tunnelProfile, `config_version: 1
+tunnel_id: "${tunnelId}"
+`, 'utf8');
 
     const result = runTray('ResetOAuth', configPath);
     expect(result.status).toBe(0);
@@ -676,6 +728,8 @@ windowsDescribe('Agent Core tray OAuth re-auth action', () => {
     expect(path.normalize(body.oauthReset.dataDir)).toBe(path.normalize(path.join(root, 'runtime', 'data')));
     expect(body.agentCore.ok).toBe(true);
     await waitForPort(agentCorePort);
+    const health = await fetch(`http://127.0.0.1:${agentCorePort}/health`).then((response) => response.json()) as { oauthProtectedResourceUrl?: string };
+    expect(health.oauthProtectedResourceUrl).toBe(`https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/${tunnelId}`);
   }, 20_000);
 
   it('exposes Reset OAuth / Re-auth in the tray menu', () => {

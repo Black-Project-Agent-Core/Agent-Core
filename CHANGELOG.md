@@ -4,6 +4,40 @@ All notable stable Agent Core changes are recorded here. The project follows sem
 
 ## Unreleased
 
+Development identity `0.7.0`. No `v0.7.0` tag, GitHub Release, or package exists for these changes and they are not certified stable. The stable v0.6.0 release remains immutable at tag commit `5c19c0535042174a0f9d9a8ff7dd5eeb5c23b087`; everything below is post-v0.6.0 Agent Core evolution on `main`.
+
+### Added
+
+- Private Memory Remote: `AGENT_CORE_MEMORY_REMOTE_*` configuration (owner/repository/branch, file-backed 32-byte key path, work root, remote principal, retry and sync-timeout bounds), AES-256-GCM payload encryption (`agent-core-memory-aes256gcm-v1`), a canonical logical-state hash, a versioned remote journal format, a Git-backed remote transport, post-push synchronization verification, remote hydration into a local DMF (`agent-core memory-hydrate <principal-id> <project-id>`), proven recovery after permanent local deletion, and multi-writer reconciliation.
+- Memory cognition: DMF schema advances from v2 to v4 with typed relation policy and explicit context anchors, a scoped cognition ledger, edge-event audit for graph edge creation, bounded history expansion exposed as the `memory_remember_more` MCP tool, bounded semantic profiles, postflight write-decision evaluation and apply, write relation-policy enforcement, and a composed memory cognition controller.
+- Memory durability boundaries: continuity checkpoints and execution-memory promotion are routed through cognition and made remotely durable.
+- Hard memory lifecycle: a lifecycle ledger, lifecycle validation before MCP mutations, postflight reconciliation, and the `AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE` switch (`disabled`, `advisory`, `enforce`; `advisory` remains the default).
+- Opaque memory context leases: loopback-only `/internal/memory-context-lease` issuance with a bounded TTL, lease enforcement in the Codespace bridge before mutation-ready MCP is exposed, lease coupling to memory hydration, and cross-Codespace lease reuse/recovery coverage.
+- Codespace shared memory: a shared-memory service, the loopback-only `/internal/codespace-memory` endpoint, Codespace plugin exposure (`memory_status`, `memory_open_context`, `memory_search`, `memory_get`, `memory_explain`, `memory_remember_more`, `memory_checkpoint`), a shared-memory startup gate, `npm run benchmark:codespace-memory`, and recovery certification coverage.
+- Codespace memory-hydration startup gate (`scripts/codespace/memory-hydration-gate.sh` plus the plugin memory-lifecycle preflight) so a Codespace serves MCP only after Private Memory Remote hydration is verified or explicitly not required.
+- `tests/version-identity.test.ts` pins package, lockfile, `SERVER_VERSION`, GitHub User-Agent, MCP `initialize`, `/health`, smoke-test, and release-check agreement on one development version.
+
+### Changed
+
+- Agent Core development identity advances from 0.6.0 to 0.7.0 across `package.json`, `package-lock.json`, the MCP `serverInfo`/`agent_core_status`/`/health` version, and the Native GitHub Fabric User-Agent. The version literal now lives only in `src/version.ts`; `SERVER_VERSION` and `Agent-Core/<version>` derive from it.
+- `scripts/release/check-release.mjs` reads the single version source, rejects duplicate version literals under `src/`, and applies the changelog rule by release state: while the local `v<version>` tag is absent a non-empty `## Unreleased` section is required (`changelogSection: "unreleased"`); once the tag exists `## [<version>]` is required (`changelogSection: "released"`).
+- `scripts/smoke-test.mjs` compares MCP `serverInfo.version` against `package.json` at runtime instead of a hardcoded literal.
+- The Codespace self-healing lifecycle is hardened with bounded tunnel connect retries, credential-free bridge child environments after the hydration gate consumes them, and a pinned Codespace tool surface.
+- `.vscode/settings.json` suppresses the VS Code Git repository-size limit warning for this repository.
+- SubProject Super-Runtime and Agent-Code histories advanced independently on `main` during this period; they are not part of the Agent Core release contract and are excluded from these notes.
+
+### Fixed
+
+- Memory and execution principals are separated: persistent memory scope resolves through the configured memory principal (`AGENT_CORE_MEMORY_PRINCIPAL_ID`) while execution scope remains bound to the authenticated key, and shared-memory principal resolution is stable across MCP status, execution pre-search, and memory promotion paths.
+- Memory recovery and remote fixtures are aligned with DMF schema v4 and bounded semantic profiles.
+
+### Security
+
+- Remote memory is encrypted with AES-256-GCM before Git transport; repository configuration stores only the key file path, and no plaintext memory, key material, or token is written to logs, tests, or reports.
+- `/internal/memory-context-lease` and `/internal/codespace-memory` are loopback-only and answer `403` to non-local callers; memory context leases are opaque and bounded (15 minute maximum TTL, 4096 character token cap).
+- Codespace bridge child processes (tunnel runtime, MCP server, watchdog) run without GitHub, Memory Remote, or Cloudflare credentials in their environment.
+- No OpenAI, Anthropic, Gemini, cloud embedding/reranking, external AI judge, or model API dependency is introduced.
+
 ## [0.6.0] - 2026-08-31 — Stable
 
 ### Added

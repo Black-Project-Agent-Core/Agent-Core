@@ -47,10 +47,17 @@ export interface RouteMemorySnapshot {
   enforceHardGuardrails: boolean;
 }
 
+export interface RouteOperatorDirectiveSnapshot {
+  authorityPrincipalId?: string;
+  snapshotHash: string;
+  directiveKeys: string[];
+}
+
 export interface RouteCreateOptions {
   reservation?: RouteReservation;
   projectId?: string;
   memorySnapshot?: RouteMemorySnapshot;
+  operatorDirectiveSnapshot?: RouteOperatorDirectiveSnapshot;
   continuityTurnId?: string;
   continuityTaskId?: string;
   continuitySnapshotHash?: string;
@@ -64,6 +71,7 @@ export interface RouteContext extends RoutePlan {
   createdAt: string;
   expiresAt: string;
   memorySnapshot?: RouteMemorySnapshot;
+  operatorDirectiveSnapshot?: RouteOperatorDirectiveSnapshot;
   continuityTurnId?: string;
   continuityTaskId?: string;
   continuitySnapshotHash?: string;
@@ -126,6 +134,7 @@ export class RouteContextStore {
       createdAt: reservation.createdAt,
       expiresAt: reservation.expiresAt,
       ...(options.memorySnapshot ? { memorySnapshot: structuredClone(options.memorySnapshot) } : {}),
+      ...(options.operatorDirectiveSnapshot ? { operatorDirectiveSnapshot: structuredClone(options.operatorDirectiveSnapshot) } : {}),
       ...(options.continuityTurnId ? { continuityTurnId: options.continuityTurnId } : {}),
       ...(options.continuityTaskId ? { continuityTaskId: options.continuityTaskId } : {}),
       ...(options.continuitySnapshotHash ? { continuitySnapshotHash: options.continuitySnapshotHash } : {}),
@@ -177,6 +186,18 @@ export class RouteContextStore {
       .sort((left, right) => left.localeCompare(right));
   }
 
+  invalidateByDirective(principalId: string, directiveKey: string): number {
+    this.pruneExpired();
+    let invalidated = 0;
+    for (const [routeContextId, context] of this.contexts) {
+      const authorityPrincipalId = context.operatorDirectiveSnapshot?.authorityPrincipalId ?? context.principalId;
+      if (authorityPrincipalId !== principalId) continue;
+      if (!context.operatorDirectiveSnapshot?.directiveKeys.includes(directiveKey)) continue;
+      this.contexts.delete(routeContextId);
+      invalidated += 1;
+    }
+    return invalidated;
+  }
   markSkillLoaded(
     routeContextId: string,
     principalId: string,

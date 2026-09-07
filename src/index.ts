@@ -48,11 +48,14 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     config.observability,
     SERVER_VERSION,
     config.maintenance,
+    config.langflow,
+    config.operatorDirectives,
   );
   const oauthService = new OAuthService(keyStore, oauthStore, httpSecurity, runtime.metrics);
   // Warm independent persistence subsystems without coupling listener availability to either one.
   await Promise.allSettled([
     runtime.memory.status(),
+    runtime.operatorDirectives.status(''),
     config.execution.enabled ? runtime.execution.open() : Promise.resolve(),
   ]);
   runtime.maintenance.start();
@@ -108,7 +111,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     });
   } catch (error) {
     runtime.maintenance.close();
-    await Promise.allSettled([runtime.telemetry.close(), runtime.execution.close(), runtime.memory.close(), auditLogger.close()]);
+    await Promise.allSettled([runtime.telemetry.close(), runtime.execution.close(), runtime.memory.close(), runtime.operatorDirectives.close(), auditLogger.close()]);
     throw error;
   }
 
@@ -126,15 +129,47 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
       await runtime.telemetry.close();
       await runtime.execution.close();
       await runtime.memory.close();
+      await runtime.operatorDirectives.close();
       await auditLogger.close();
     },
+  };
+}
+
+const HTTP_SHUTDOWN_GRACE_MS = 1_000;
+
+export function createEntrypointGracefulClose(
+  closeService: () => Promise<void>,
+  closeWatcher: () => void,
+  requestExit: (code: number) => void,
+): () => Promise<void> {
+  let closing = false;
+  return async () => {
+    if (closing) return;
+    closing = true;
+    try {
+      await closeService();
+      closeWatcher();
+      requestExit(0);
+    } catch (error) {
+      closing = false;
+      throw error;
+    }
   };
 }
 
 async function closeServer(server: Server): Promise<void> {
   if (!server.listening) return;
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    const forceCloseTimer = setTimeout(() => {
+      server.closeAllConnections();
+    }, HTTP_SHUTDOWN_GRACE_MS);
+    forceCloseTimer.unref();
+    server.close((error) => {
+      clearTimeout(forceCloseTimer);
+      if (error) reject(error);
+      else resolve();
+    });
+    server.closeIdleConnections();
   });
 }
 
@@ -143,19 +178,15 @@ if (entry && import.meta.url === pathToFileURL(entry).href) {
   try {
     const service = await startAgentCoreService();
     process.stdout.write(`Agent Core listening on http://${service.host}:${service.port}/mcp\n`);
-    let closing = false;
     let shutdownWatcher: ShutdownRequestWatcher | undefined;
-    const gracefulClose = async () => {
-      if (closing) return;
-      closing = true;
-      try {
-        await service.close();
-        shutdownWatcher?.close();
-      } catch (error) {
-        closing = false;
-        throw error;
-      }
-    };
+    const gracefulClose = createEntrypointGracefulClose(
+      () => service.close(),
+      () => { shutdownWatcher?.close(); },
+      (code) => {
+        const exitTimer = setTimeout(() => process.exit(code), 50);
+        exitTimer.unref();
+      },
+    );
     const reportCloseError = (error: unknown) => {
       process.stderr.write(`Agent Core failed to close cleanly: ${error instanceof Error ? error.message : String(error)}\n`);
       process.exitCode = 1;

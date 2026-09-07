@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http';
+﻿import { createServer, type Server } from 'node:http';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -144,14 +144,15 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 describe('Agent Core MCP automatic capability routing', () => {
-  it('replaces capability_recommend with capability_route while exposing 56 routed, github, memory, continuity, execution, artifact, workflow-advice, and observability tools', async () => {
+  it('replaces capability_recommend with capability_route while exposing the 69-tool routed, github, langflow, operator-directive, memory, continuity, execution, artifact, workflow-advice, and observability surface', async () => {
     const { baseUrl, created } = await setup();
     const tools = await listTools(baseUrl, created.key);
     const names = tools.map((tool) => tool.name);
 
-    expect(names).toHaveLength(56);
+    expect(names).toHaveLength(69);
     expect(names).toEqual(expect.arrayContaining(['task_checkpoint', 'continuity_status', 'continuity_get_task', 'continuity_frontier']));
     expect(names).toContain('capability_route');
+    expect(names).toContain('subagentcore');
     expect(names).not.toContain('capability_recommend');
 
     const routeTool = tools.find((tool) => tool.name === 'capability_route');
@@ -187,3 +188,5 @@ describe('Agent Core MCP automatic capability routing', () => {
       .toContain('frontend-quality');
   });
 });
+
+

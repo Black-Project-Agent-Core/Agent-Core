@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+﻿import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -110,11 +110,11 @@ afterEach(async () => {
 });
 
 describe('continuity checkpoint MCP tools', () => {
-  it('registers four first-class continuity tools inside the 56-tool surface with execution fabric', async () => {
+  it('registers four first-class continuity tools inside the 69-tool surface with execution fabric', async () => {
     const f = await fixture('surface');
     const listed = await listTools(f.baseUrl, f.principalA.key);
     const names = listed.result.tools.map((tool: any) => tool.name);
-    expect(names).toHaveLength(56);
+    expect(names).toHaveLength(69);
     for (const name of ['task_checkpoint', 'continuity_status', 'continuity_get_task', 'continuity_frontier']) {
       expect(names).toContain(name);
     }
@@ -552,3 +552,4 @@ describe('continuity checkpoint MCP tools', () => {
       .toContain(interruptedRoute.continuityTurnId);
   });
 });
+

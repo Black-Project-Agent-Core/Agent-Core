@@ -8,6 +8,7 @@ const READ_ONLY_SIGNAL = /\b(read|show|inspect|list|search|find|get|check|view|r
 const MUTATION_SIGNAL = /\b(create|write|edit|change|update|move|rename|append|replace|delete|remove|refactor|fix|build|implement|deploy)\b/i;
 const EXPLICIT_NO_MUTATION_SIGNAL = /\bwithout\s+(?:changing|editing|writing|modifying)(?:\s+(?:any\s+)?files?)?\b/i;
 const GITHUB_SIGNAL = /\bgithub\b/i;
+const LANGFLOW_SIGNAL = /\blangflow\b/i;
 
 const ROUTE_REQUIRED_TOOLS = [
   'list_directory',
@@ -37,6 +38,16 @@ const GITHUB_ROUTE_TOOLS = [
   'github_release',
   'github_packages',
   'github_api',
+] as const;
+
+const LANGFLOW_READ_TOOLS = ['langflow_projects', 'langflow_flows', 'langflow_components'] as const;
+const LANGFLOW_WRITE_TOOLS = [
+  ...LANGFLOW_READ_TOOLS,
+  'langflow_flow_create',
+  'langflow_flow_update',
+  'langflow_graph_add_node',
+  'langflow_graph_connect',
+  'langflow_run',
 ] as const;
 
 const ATOMIC_READ_TOOLS = [
@@ -119,16 +130,22 @@ function withGitHubTools(task: string, tools: readonly string[]): string[] {
   return GITHUB_SIGNAL.test(task) ? [...tools, ...GITHUB_ROUTE_TOOLS] : [...tools];
 }
 
+function withLangflowTools(task: string, tools: readonly string[]): string[] {
+  if (!LANGFLOW_SIGNAL.test(task)) return [...tools];
+  const langflowTools = isReadOnlyIntent(task) ? LANGFLOW_READ_TOOLS : LANGFLOW_WRITE_TOOLS;
+  return [...new Set([...tools, ...langflowTools])];
+}
+
 function isReadOnlyIntent(task: string): boolean {
   if (EXPLICIT_NO_MUTATION_SIGNAL.test(task)) return true;
   return READ_ONLY_SIGNAL.test(task) && !MUTATION_SIGNAL.test(task);
 }
 
 function allowedTools(task: string, tier: RouteTier): string[] {
-  if (isReadOnlyIntent(task)) return withGitHubTools(task, ATOMIC_READ_TOOLS);
-  if (tier !== 'atomic') return withGitHubTools(task, ROUTE_REQUIRED_TOOLS);
-  if (MUTATION_SIGNAL.test(task)) return withGitHubTools(task, ATOMIC_MUTATION_TOOLS);
-  return withGitHubTools(task, ROUTE_REQUIRED_TOOLS);
+  if (isReadOnlyIntent(task)) return withLangflowTools(task, withGitHubTools(task, ATOMIC_READ_TOOLS));
+  if (tier !== 'atomic') return withLangflowTools(task, withGitHubTools(task, ROUTE_REQUIRED_TOOLS));
+  if (MUTATION_SIGNAL.test(task)) return withLangflowTools(task, withGitHubTools(task, ATOMIC_MUTATION_TOOLS));
+  return withLangflowTools(task, withGitHubTools(task, ROUTE_REQUIRED_TOOLS));
 }
 
 function verificationFor(task: string, tier: RouteTier): RouteVerification {

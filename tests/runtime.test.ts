@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadConfig, type AppConfig } from '../src/config.js';
-import { startAgentCoreService } from '../src/index.js';
+import { createEntrypointGracefulClose, startAgentCoreService } from '../src/index.js';
 import { watchShutdownRequest } from '../src/runtime/shutdown-request.js';
 
 const roots: string[] = [];
@@ -57,6 +57,31 @@ describe('Agent Core runtime', () => {
     await service.close();
     expect(service.server.listening).toBe(false);
     expect(service.memory.currentState).toBe('closed');
+  });
+
+  it('requests entrypoint process exit only after graceful service close completes', async () => {
+    const events: string[] = [];
+    let releaseClose!: () => void;
+    const closeGate = new Promise<void>((resolve) => { releaseClose = resolve; });
+    const gracefulClose = createEntrypointGracefulClose(
+      async () => {
+        events.push('close:start');
+        await closeGate;
+        events.push('close:done');
+      },
+      () => { events.push('watcher:closed'); },
+      (code) => { events.push(`exit:${code}`); },
+    );
+
+    const pending = gracefulClose();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(events).toEqual(['close:start']);
+    releaseClose();
+    await pending;
+    expect(events).toEqual(['close:start', 'close:done', 'watcher:closed', 'exit:0']);
+
+    await gracefulClose();
+    expect(events).toEqual(['close:start', 'close:done', 'watcher:closed', 'exit:0']);
   });
 
   it('consumes a local shutdown request exactly once and invokes the graceful close callback', async () => {

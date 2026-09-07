@@ -241,22 +241,32 @@ export class OperationalMemoryAudit {
     try {
       const signature = stableJson({ toolName, input, affectedPaths });
       const signatureHash = createHash('sha256').update(signature, 'utf8').digest('hex').slice(0, 24);
-      await this.runtime.memory.commit({
+      await this.runtime.memory.applyPostflight({
         scope: this.scope(projectId),
-        canonicalKey: `failure.operation.${toolName}.${signatureHash}`,
-        kind: 'failure',
-        value: {
-          toolName,
-          status: 'failure',
-          error,
-          affectedPaths,
-          input,
-          correlation: correlationFields(),
+        routeContextId,
+        candidate: {
+          canonicalKey: `failure.operation.${toolName}.${signatureHash}`,
+          kind: 'failure',
+          value: {
+            toolName,
+            status: 'failure',
+            error,
+            affectedPaths,
+            input,
+            correlation: correlationFields(),
+          },
+          importance: 0.85,
+          sourceType: 'operational_audit',
+          sourceRef: routeContextId,
+          semanticProfile: {
+            intent: toolName,
+            failureMode: typeof error.code === 'string' ? error.code : 'OPERATION_FAILED',
+            artifacts: affectedPaths,
+            futureRelevance: ['operational failure evidence'],
+          },
         },
-        importance: 0.85,
-        sourceType: 'operational_audit',
-        sourceRef: routeContextId,
-        revisionAuthority: 'structured_state',
+        reasonCodes: ['FAILURE_OBSERVED', 'TRANSIENT_OPERATION'],
+        evidenceRefs: [routeContextId],
       });
     } catch {
       // Failure evidence must never become a second failure path for the operational tool.

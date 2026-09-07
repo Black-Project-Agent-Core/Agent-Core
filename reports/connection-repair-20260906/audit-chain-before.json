@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "auditRoot": "E:\\Projects\\Agent-Core\\runtime\\logs\\audit",
+  "firstSequence": 1,
+  "lastSequence": 28608,
+  "records": 28608,
+  "files": 1,
+  "headHash": "cb2087b1b54ac7b565acdb9ad41280d9a1be7c5cde37f46fdeca5bd59cc357fe",
+  "anchorSequence": 0
+}

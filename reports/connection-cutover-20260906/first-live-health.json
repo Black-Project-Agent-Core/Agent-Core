@@ -1,0 +1,23 @@
+﻿{
+    "at":  "2026-09-05T20:13:12.8642099Z",
+    "nativePid":  21768,
+    "agentCorePid":  20172,
+    "tunnelPid":  7584,
+    "health":  "ok",
+    "version":  "0.7.0",
+    "memoryHealthy":  true,
+    "executionHealthy":  true,
+    "overallHealth":  "healthy",
+    "audit":  {
+                  "enabled":  true,
+                  "queueDepth":  0,
+                  "queueCapacity":  4096,
+                  "written":  8,
+                  "dropped":  0,
+                  "writeErrors":  0,
+                  "sequence":  28616,
+                  "headHashPrefix":  "9106a4b0aaac15df",
+                  "currentFileBytes":  4641,
+                  "rotatedFiles":  1
+              }
+}

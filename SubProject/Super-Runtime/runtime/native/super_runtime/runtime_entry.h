@@ -43,6 +43,8 @@ struct RuntimeTelemetry {
     std::uint64_t mapped_weight_bytes = 0;
     std::uint64_t host_ceiling_bytes = 0;
     std::uint64_t planned_host_bytes = 0;
+    std::uint64_t ggml_metadata_required_bytes = 0;
+    std::uint64_t ggml_compute_required_bytes = 0;
     std::uint64_t peak_owned_bytes = 0;
     std::uint64_t current_owned_bytes = 0;
     std::uint64_t intentional_resident_bytes = 0;

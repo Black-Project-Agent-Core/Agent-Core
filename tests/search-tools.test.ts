@@ -38,6 +38,32 @@ describe('SearchService', () => {
     expect(result.matches[0]).toMatchObject({ line: 1 });
   });
 
+  it('tolerates files that disappear during recursive content search', async () => {
+    const { root, search } = await setup();
+    const churnDir = path.join(root, 'churn');
+    await mkdir(churnDir, { recursive: true });
+    let running = true;
+    const churn = (async () => {
+      let index = 0;
+      while (running && index < 5000) {
+        const file = path.join(churnDir, `volatile-${index % 8}.tmp`);
+        await writeFile(file, 'needle transient').catch(() => undefined);
+        await rm(file, { force: true }).catch(() => undefined);
+        index += 1;
+      }
+    })();
+
+    try {
+      for (let index = 0; index < 100; index++) {
+        await expect(search.search({ path: root, query: 'needle', mode: 'content', maxResults: 100 }))
+          .resolves.toMatchObject({ matches: expect.any(Array) });
+      }
+    } finally {
+      running = false;
+      await churn;
+    }
+  });
+
   it('rejects search roots outside the workspace', async () => {
     const { outside, search } = await setup();
     await expect(search.search({ path: outside, query: 'anything', mode: 'files', maxResults: 10 }))

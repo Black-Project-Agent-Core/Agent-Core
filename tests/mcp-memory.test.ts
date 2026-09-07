@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http';
+﻿import { createServer, type Server } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -98,7 +98,7 @@ describe('deterministic memory MCP surface', () => {
     });
     const tools = listed.result.tools as Array<Record<string, any>>;
     const names = tools.map((tool) => tool.name);
-    expect(names).toHaveLength(56);
+    expect(names).toHaveLength(69);
     for (const name of MEMORY_TOOLS) expect(names).toContain(name);
     expect(names).not.toContain('memory_postflight');
 
@@ -257,6 +257,43 @@ describe('deterministic memory MCP surface', () => {
     expect(searchAfter.hits.map((hit: any) => hit.memoryId)).not.toContain(memoryId);
   });
 
+  it('accepts canonical subject anchors through memory_commit and surfaces them on the next preflight', async () => {
+    const f = await fixture();
+    const listed = await request(f.baseUrl, f.principalA.key, {
+      jsonrpc: '2.0', id: 85, method: 'tools/list', params: {},
+    });
+    const memoryCommit = (listed.result.tools as Array<Record<string, any>>)
+      .find((tool) => tool.name === 'memory_commit');
+    expect(memoryCommit?.inputSchema?.properties?.explicitAnchors?.maxItems).toBeLessThanOrEqual(128);
+
+    const committed = body(await call(f.baseUrl, f.principalA.key, 'memory_commit', {
+      canonicalKey: 'project.super-runtime.mcp-canonical-fixture',
+      kind: 'project_state',
+      value: 'MCP canonical fixture for the Super-Runtime project identity.',
+      importance: 1,
+      pinned: true,
+      sourceType: 'test',
+      explicitAnchors: [
+        { type: 'subject_alias', value: 'Super-Runtime' },
+        { type: 'subject_facet', value: 'identity' },
+      ],
+    }));
+    expect(committed).toMatchObject({ revisionNo: 1, deduplicated: false, state: 'active' });
+
+    const preflight = await f.runtime.memory.preflight({
+      scope: { principalId: f.principalA.metadata.id, projectId: f.root },
+      routeContextId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      task: 'Apa tujuan Super-Runtime?',
+      expiresAt: Date.now() + 60_000,
+    });
+    expect(preflight.canonicalSubjectMemory).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        memoryId: committed.memoryId,
+        canonicalKey: 'project.super-runtime.mcp-canonical-fixture',
+      }),
+    ]));
+  });
+
   it('rejects malformed structured writes before persistence', async () => {
     const f = await fixture();
     const malformedCommit = await call(f.baseUrl, f.principalA.key, 'memory_commit', {
@@ -273,3 +310,4 @@ describe('deterministic memory MCP surface', () => {
     expect(status.counts.active_items ?? 0).toBe(0);
   });
 });
+

@@ -3,6 +3,7 @@ import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 import type { GitHubCredentialProvider } from './credentials.js';
 import { GitHubFabricError, type GitHubErrorCode } from './errors.js';
 import { assertSafeCallerHeaders, resolveGitHubApiEndpoint } from './safety.js';
+import { AGENT_CORE_USER_AGENT } from '../version.js';
 
 export interface GitHubApiRequest {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -58,6 +59,34 @@ async function responseData(response: Response): Promise<unknown> {
   return text;
 }
 
+const REDACTED_RESPONSE_FIELD = '[REDACTED_GITHUB_RESPONSE_FIELD]';
+
+function sensitiveResponseField(name: string): boolean {
+  const normalized = name.normalize('NFKC').toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  return normalized.includes('token')
+    || normalized.includes('secret')
+    || normalized.includes('password')
+    || normalized.includes('credential')
+    || normalized.includes('cookie')
+    || normalized === 'authorization'
+    || normalized.endsWith('_authorization')
+    || normalized === 'private_key'
+    || normalized.endsWith('_private_key');
+}
+
+function sanitizeResponseData(value: unknown, redactString: (value: string) => string): unknown {
+  if (typeof value === 'string') return redactString(value);
+  if (Array.isArray(value)) return value.map((item) => sanitizeResponseData(item, redactString));
+  if (!value || typeof value !== 'object') return value;
+  const output: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    output[key] = sensitiveResponseField(key)
+      ? REDACTED_RESPONSE_FIELD
+      : sanitizeResponseData(item, redactString);
+  }
+  return output;
+}
+
 function safeMessage(data: unknown): string {
   if (data && typeof data === 'object' && 'message' in data) {
     const value = (data as { message?: unknown }).message;
@@ -82,7 +111,7 @@ export class GitHubApiService {
     private readonly credentials: GitHubCredentialProvider,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly metrics?: RuntimeMetricRegistry,
-    private readonly userAgent = 'Agent-Core/0.6.0',
+    private readonly userAgent = AGENT_CORE_USER_AGENT,
   ) {}
 
   async request(input: GitHubApiRequest): Promise<GitHubApiResult> {
@@ -183,7 +212,7 @@ export class GitHubApiService {
         method: input.method,
         endpoint: input.endpoint,
         headers: normalizedHeaders,
-        data,
+        data: sanitizeResponseData(data, (value) => this.credentials.redact(value, [token])),
       };
     } catch (error) {
       const code = error instanceof Error && 'code' in error && typeof (error as { code?: unknown }).code === 'string'

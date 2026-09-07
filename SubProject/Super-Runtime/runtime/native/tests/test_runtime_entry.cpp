@@ -1,4 +1,5 @@
 #include "super_runtime/runtime_entry.h"
+#include "super_runtime/runtime_workspace.h"
 
 #include <algorithm>
 #include <cmath>
@@ -20,6 +21,9 @@ using super_runtime::RuntimeEntry;
 using super_runtime::RuntimeEntryResult;
 using super_runtime::RuntimeFixtureSpec;
 using super_runtime::RuntimeLifecycle;
+using super_runtime::RuntimeWorkspaceRequirements;
+using super_runtime::RuntimeWorkspaceResult;
+using super_runtime::plan_cpu_dense_workspace;
 
 [[noreturn]] void fail(const std::string & message) {
     std::cerr << "runtime-entry test: FAIL: " << message << '\n';
@@ -142,6 +146,13 @@ int main() {
     constexpr std::uint64_t layer_count = 4;
     static_assert(width * width * sizeof(float) == page, "fixture requires one page per dense layer");
 
+    RuntimeWorkspaceRequirements workspace{};
+    require(plan_cpu_dense_workspace(width, workspace) == RuntimeWorkspaceResult::Ok,
+            "runtime fixture GGML workspace must be measurable before admission tests");
+    require(workspace.metadata_bytes > 0 && workspace.metadata_bytes <= page,
+            "width-32 metadata workspace must fit the fixture runtime-overhead page");
+    require(workspace.compute_buffer_bytes > 0 && workspace.compute_buffer_bytes <= page,
+            "width-32 compute workspace must fit the fixture compute-scratch page");
     std::vector<float> weights(static_cast<std::size_t>(layer_count * width * width));
     for (std::uint64_t layer = 0; layer < layer_count; ++layer) {
         for (std::uint64_t row = 0; row < width; ++row) {
@@ -185,6 +196,21 @@ int main() {
         require(runtime.telemetry().current_owned_bytes == 0,
                 "failed admission must publish no memory ownership");
 
+        auto metadata_too_small = feasible_budget(page);
+        metadata_too_small.runtime_overhead_bytes = workspace.metadata_bytes - 1;
+        require(runtime.admit(metadata_too_small) == RuntimeEntryResult::BudgetRejected,
+                "runtime-overhead bucket below measured GGML metadata must fail admission");
+        require(runtime.telemetry().state == RuntimeLifecycle::Loaded &&
+                    runtime.telemetry().current_owned_bytes == 0,
+                "workspace metadata rejection must publish no runtime ownership");
+
+        auto compute_too_small = feasible_budget(page);
+        compute_too_small.compute_scratch_bytes = workspace.compute_buffer_bytes - 1;
+        require(runtime.admit(compute_too_small) == RuntimeEntryResult::BudgetRejected,
+                "compute-scratch bucket below measured GGML compute buffer must fail admission");
+        require(runtime.telemetry().state == RuntimeLifecycle::Loaded &&
+                    runtime.telemetry().current_owned_bytes == 0,
+                "workspace compute rejection must publish no runtime ownership");
         const auto budget = feasible_budget(page);
         require(runtime.admit(budget) == RuntimeEntryResult::Ok,
                 "feasible runtime request must admit");
@@ -197,7 +223,10 @@ int main() {
         require(runtime.telemetry().dense_pinned_prefix_count == 1,
                 "three-page dense residency budget must pin one of four layers");
         require(runtime.telemetry().dense_ring_slots == 2,
-                "three-page dense residency budget must use two-slot look-ahead");
+                "three-page dense residency budget must use two-slot look-ahead");        require(runtime.telemetry().ggml_metadata_required_bytes == workspace.metadata_bytes,
+                "telemetry must report the measured GGML metadata requirement");
+        require(runtime.telemetry().ggml_compute_required_bytes == workspace.compute_buffer_bytes,
+                "telemetry must report the measured GGML compute-buffer requirement");
         require(runtime.telemetry().current_owned_bytes == page * 3,
                 "admission must reserve actual fixed runtime/context/scratch ownership but not safety reserve");
 

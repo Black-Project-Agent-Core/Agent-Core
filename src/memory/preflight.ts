@@ -62,6 +62,7 @@ export function createDisabledPreflightResult(request: MemoryPreflightRequest): 
     queryText,
     snapshotHash: hashText(stableJson({ queryText, recalled: [] })),
     recalled: [],
+    canonicalSubjectMemory: [],
     blocking: { blocked: false, guardrailMemoryIds: [], reasons: [] },
     blockingGuardrails: [],
     openConflicts: [],
@@ -87,6 +88,10 @@ export class MemoryPreflightEngine {
     }
 
     const queryText = buildQueryText(request);
+    const canonicalSubjectMemory = await this.retriever.searchCanonicalSubjects({
+      scope: request.scope,
+      query: queryText,
+    });
     const recall = await this.retriever.search({
       scope: request.scope,
       query: queryText,
@@ -101,11 +106,22 @@ export class MemoryPreflightEngine {
       reasons: blockingGuardrails.map((hit) => `${hit.memoryId}:${hit.revisionId}:${hit.canonicalKey}`),
     };
     const contextId = randomUUID();
+    const snapshotHash = hashText(stableJson({
+      recallSnapshotHash: recall.snapshotHash,
+      canonicalSubjectMemory: canonicalSubjectMemory.map((hit) => ({
+        memoryId: hit.memoryId,
+        revisionId: hit.revisionId,
+        revisionNo: hit.revisionNo,
+        canonicalKey: hit.canonicalKey,
+        matchedAnchors: hit.whyMatched.matchedAnchors,
+      })),
+    }));
     const result: MemoryPreflightResult = {
       contextId,
       queryText,
-      snapshotHash: recall.snapshotHash,
+      snapshotHash,
       recalled: recall.hits,
+      canonicalSubjectMemory,
       blocking,
       blockingGuardrails,
       openConflicts: openConflicts.map(conflictProjection),
@@ -144,7 +160,11 @@ export class MemoryPreflightEngine {
       now,
     })];
 
-    recall.hits.forEach((hit, index) => {
+    const accessHits = [
+      ...canonicalSubjectMemory,
+      ...recall.hits.filter((hit) => !canonicalSubjectMemory.some((canonical) => canonical.memoryId === hit.memoryId)),
+    ];
+    accessHits.forEach((hit, index) => {
       operations.push({
         kind: 'run',
         sql: `INSERT INTO memory_access_log(memory_id, context_id, rank, score, reason_json, accessed_at)

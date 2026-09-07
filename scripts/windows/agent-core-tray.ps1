@@ -9,6 +9,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:ScriptPath = $MyInvocation.MyCommand.Path
 $script:ScriptDir = Split-Path -Parent $script:ScriptPath
+$script:AllowListHelper = Join-Path $script:ScriptDir 'agent-core-allowlist.ps1'
+if (-not (Test-Path -LiteralPath $script:AllowListHelper)) { throw "Required Agent Core allow-list helper not found: $script:AllowListHelper" }
+. $script:AllowListHelper
 
 function Get-CurrentUserSid {
   try {
@@ -42,6 +45,11 @@ function Resolve-AgentCoreNodeExe {
   return Resolve-AgentCoreExecutable 'AGENT_CORE_NODE_EXE' 'node.exe' @((Join-Path $programFiles 'nodejs\node.exe'))
 }
 
+function Resolve-AgentCoreGitHubCliExe {
+  $programFiles = [Environment]::GetFolderPath('ProgramFiles')
+  return Resolve-AgentCoreExecutable 'AGENT_CORE_GH_EXE' 'gh.exe' @((Join-Path $programFiles 'GitHub CLI\gh.exe'))
+}
+
 function Resolve-AgentCoreTunnelExe {
   param([string]$Root)
   $candidates = @(
@@ -56,7 +64,9 @@ function Resolve-AgentCoreTunnelExe {
 function Get-AgentCoreTrayConfig {
   param([string]$OverridePath = '')
   $root = [IO.Path]::GetFullPath((Join-Path $script:ScriptDir '..\..'))
+  $allowListFile = Join-Path $root 'Agent-Core-Allowlist.txt'
   $nodeExe = Resolve-AgentCoreNodeExe
+  $ghExe = Resolve-AgentCoreGitHubCliExe
   $tunnelExe = Resolve-AgentCoreTunnelExe $root
   $defaults = [ordered]@{
     root = $root
@@ -66,8 +76,10 @@ function Get-AgentCoreTrayConfig {
     nodeExe = $nodeExe
     agentCoreEntry = Join-Path $root 'dist\index.js'
     agentCoreCli = Join-Path $root 'dist\cli.js'
+    ghExe = $ghExe
     tunnelExe = $tunnelExe
     tunnelProfile = Join-Path $root 'tunnel-client\agent-core.yaml'
+    allowListFile = $allowListFile
     watchdogIntervalSeconds = 10
     failureThreshold = 3
     restartLimit = 3
@@ -86,7 +98,7 @@ function Get-AgentCoreTrayConfig {
     }
   }
 
-  foreach ($name in @('root','trayRuntimeDir','nodeExe','agentCoreEntry','agentCoreCli','tunnelExe','tunnelProfile')) {
+  foreach ($name in @('root','trayRuntimeDir','nodeExe','agentCoreEntry','agentCoreCli','ghExe','tunnelExe','tunnelProfile','allowListFile')) {
     if ($defaults[$name]) {
       $defaults[$name] = [IO.Path]::GetFullPath([string]$defaults[$name])
     }
@@ -459,6 +471,33 @@ function Get-LegacyAgentCoreDataDir {
   return Join-Path ([string]$Config.root) 'runtime\data-current'
 }
 
+function Resolve-AgentCoreOAuthProtectedResourceUrl {
+  param($Config)
+  $override = [Environment]::GetEnvironmentVariable('AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL', 'Process')
+  if ($override) {
+    try {
+      $uri = [Uri]([string]$override)
+      if (($uri.Scheme -ne 'http') -and ($uri.Scheme -ne 'https')) { throw 'unsupported scheme' }
+      if ($uri.UserInfo -or $uri.Query -or $uri.Fragment) { throw 'credentials/query/fragment not allowed' }
+      return ([string]$override).Trim()
+    } catch {
+      throw 'AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL is invalid.'
+    }
+  }
+
+  if (-not (Test-Path -LiteralPath $Config.tunnelProfile)) { return $null }
+  $line = Get-Content -LiteralPath $Config.tunnelProfile |
+    Where-Object { $_ -match '^\s*tunnel_id\s*:' } |
+    Select-Object -First 1
+  if (-not $line) { return $null }
+
+  $tunnelId = ([string]$line -replace '^\s*tunnel_id\s*:\s*', '').Trim().Trim('"').Trim("'")
+  if ($tunnelId -notmatch '^tunnel_[A-Za-z0-9_-]+$') {
+    throw 'Tunnel profile contains an invalid tunnel_id.'
+  }
+  return "https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/$tunnelId"
+}
+
 function Start-AgentCoreService {
   param($Config)
   $current = Get-ServiceStatus 'agentCore' $Config
@@ -485,18 +524,24 @@ function Start-AgentCoreService {
   $envNames = @(
     'AGENT_CORE_DATA_DIR','AGENT_CORE_LOG_DIR','AGENT_CORE_CAPABILITY_DIR',
     'AGENT_CORE_ALLOWED_ROOTS','AGENT_CORE_HOST','AGENT_CORE_PORT',
-    'AGENT_CORE_MEMORY_ENABLED','AGENT_CORE_MEMORY_DB_PATH','AGENT_CORE_SHUTDOWN_REQUEST_PATH'
+    'AGENT_CORE_MEMORY_ENABLED','AGENT_CORE_MEMORY_DB_PATH','AGENT_CORE_SHUTDOWN_REQUEST_PATH',
+    'AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL','AGENT_CORE_GITHUB_USE_GH_CLI','AGENT_CORE_GH_EXE'
   )
+  $allowedRoots = @(Resolve-AgentCoreAllowedRoots -Root ([string]$Config.root) -AllowListPath ([string]$Config.allowListFile))
+  $oauthProtectedResourceUrl = Resolve-AgentCoreOAuthProtectedResourceUrl $Config
   $newValues = [ordered]@{
     AGENT_CORE_DATA_DIR = Get-AgentCoreDataDir $Config
     AGENT_CORE_LOG_DIR = Join-Path $Config.root 'runtime\logs'
     AGENT_CORE_CAPABILITY_DIR = Join-Path $Config.root 'capabilities'
-    AGENT_CORE_ALLOWED_ROOTS = [string]$Config.root
+    AGENT_CORE_ALLOWED_ROOTS = ($allowedRoots -join ';')
     AGENT_CORE_HOST = '127.0.0.1'
     AGENT_CORE_PORT = [string]$Config.agentCorePort
     AGENT_CORE_MEMORY_ENABLED = 'true'
     AGENT_CORE_MEMORY_DB_PATH = Join-Path $Config.root 'runtime\memory\agent-core-memory.sqlite'
     AGENT_CORE_SHUTDOWN_REQUEST_PATH = Join-Path $Config.trayRuntimeDir 'agent-core.shutdown.request'
+    AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL = $oauthProtectedResourceUrl
+    AGENT_CORE_GITHUB_USE_GH_CLI = if ($Config.ghExe -and (Test-Path -LiteralPath $Config.ghExe)) { 'true' } else { 'false' }
+    AGENT_CORE_GH_EXE = if ($Config.ghExe -and (Test-Path -LiteralPath $Config.ghExe)) { [string]$Config.ghExe } else { '' }
   }
   $oldValues = @{}
   foreach ($name in $envNames) {

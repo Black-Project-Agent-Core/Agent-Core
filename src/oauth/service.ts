@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { FileKeyStore } from '../auth/key-store.js';
 import type { VerifiedKey } from '../auth/key-types.js';
 import type { HttpSecurityPolicy } from '../http/security-policy.js';
-import { ACCESS_TOKEN_PREFIX, FileOAuthStore } from './store.js';
+import { ACCESS_TOKEN_PREFIX, FileOAuthStore, type OAuthTokens } from './store.js';
 import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 
 const MCP_SCOPE = 'mcp:tools';
@@ -99,7 +99,7 @@ export class OAuthService {
     )) {
       const base = this.security.externalBaseUrl(request);
       sendJson(response, 200, {
-        resource: `${base}/mcp`,
+        resource: this.security.protectedResource(request),
         authorization_servers: [base],
         scopes_supported: [MCP_SCOPE],
         bearer_methods_supported: ['header'],
@@ -284,15 +284,15 @@ ${hidden('scope', validated.scopes.join(' '))}
       return;
     }
     if (grantType === 'refresh_token') {
-      const principal = await this.store.consumeRefreshToken(
+      const exchange = await this.store.exchangeRefreshToken(
         params.get('refresh_token') ?? '',
         { clientId, resource },
       );
-      if (!principal) {
+      if (!exchange) {
         sendJson(response, 400, { error: 'invalid_grant' });
         return;
       }
-      await this.sendTokens(response, principal);
+      await this.sendTokens(response, exchange.principal, exchange.tokens);
       return;
     }
 
@@ -305,17 +305,17 @@ ${hidden('scope', validated.scopes.join(' '))}
     clientId: string,
     resource: string,
   ): Promise<void> {
-    const principal = await this.store.consumeCode(params.get('code') ?? '', {
+    const exchange = await this.store.exchangeAuthorizationCode(params.get('code') ?? '', {
       clientId,
       redirectUri: params.get('redirect_uri') ?? '',
       codeVerifier: params.get('code_verifier') ?? '',
       resource,
     });
-    if (!principal) {
+    if (!exchange) {
       sendJson(response, 400, { error: 'invalid_grant' });
       return;
     }
-    await this.sendTokens(response, principal);
+    await this.sendTokens(response, exchange.principal, exchange.tokens);
   }
 
   private async sendTokens(response: ServerResponse, principal: {
@@ -324,8 +324,7 @@ ${hidden('scope', validated.scopes.join(' '))}
     scopes: string[];
     keyId: string;
     keyName: string;
-  }): Promise<void> {
-    const tokens = await this.store.issueTokens(principal);
+  }, tokens: OAuthTokens): Promise<void> {
     sendJson(response, 200, {
       access_token: tokens.accessToken,
       token_type: 'Bearer',

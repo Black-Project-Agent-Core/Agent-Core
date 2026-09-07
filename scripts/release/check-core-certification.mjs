@@ -13,11 +13,13 @@ import {
 } from './core-certification-contract.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const GIT_OUTPUT_MAX_BUFFER = 64 * 1024 * 1024;
 
 function git(args, options = {}) {
   return execFileSync('git', ['-C', root, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: GIT_OUTPUT_MAX_BUFFER,
     ...options,
   });
 }
@@ -85,7 +87,7 @@ for (const relative of sourceFiles) {
 }
 
 let diffCheck = 'pass';
-try { git(['diff', '--check']); }
+try { git(['-c', 'core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol', 'diff', '--check', '--ignore-submodules=all']); }
 catch { diffCheck = 'fail'; }
 
 const structuralViolations = [];

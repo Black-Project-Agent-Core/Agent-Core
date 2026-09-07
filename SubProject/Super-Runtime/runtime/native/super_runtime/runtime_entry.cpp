@@ -3,6 +3,7 @@
 #include "dense_residency.h"
 #include "file_residency.h"
 #include "memory_ledger.h"
+#include "runtime_workspace.h"
 
 #include "ggml-alloc.h"
 #include "ggml-backend.h"
@@ -57,16 +58,21 @@ bool run_dense_layer(
         std::uint64_t weight_bytes,
         const std::vector<float> & input,
         std::uint64_t width,
+        const RuntimeWorkspaceRequirements & workspace,
         std::vector<float> & output) {
-    if (backend == nullptr || weights == nullptr || width == 0 || input.size() != width) {
+    if (backend == nullptr || weights == nullptr || width == 0 || input.size() != width ||
+        workspace.metadata_bytes == 0 || workspace.compute_buffer_bytes == 0 ||
+        workspace.metadata_bytes > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()) ||
+        workspace.compute_buffer_bytes > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
         return false;
     }
 
     ggml_init_params params = {
-        /* .mem_size   = */ 256U * 1024U,
+        /* .mem_size   = */ static_cast<std::size_t>(workspace.metadata_bytes),
         /* .mem_buffer = */ nullptr,
         /* .no_alloc   = */ true,
     };
+
     ggml_context * ctx = ggml_init(params);
     if (ctx == nullptr) {
         return false;
@@ -92,7 +98,7 @@ bool run_dense_layer(
             break;
         }
 
-        ggml_cgraph * graph = ggml_new_graph_custom(ctx, GGML_DEFAULT_GRAPH_SIZE, false);
+        ggml_cgraph * graph = ggml_new_graph_custom(ctx, runtime_dense_graph_size, false);
         if (graph == nullptr) {
             break;
         }
@@ -111,10 +117,19 @@ bool run_dense_layer(
             break;
         }
 
+        const std::size_t predicted_compute_bytes = ggml_backend_alloc_ctx_tensors_from_buft_size(
+            ctx,
+            ggml_backend_cpu_buffer_type());
+        if (predicted_compute_bytes == 0 ||
+            predicted_compute_bytes != static_cast<std::size_t>(workspace.compute_buffer_bytes)) {
+            break;
+        }
+
         compute_buffer = ggml_backend_alloc_ctx_tensors(ctx, backend);
         if (compute_buffer == nullptr) {
             break;
         }
+
 
         ggml_backend_tensor_set(x, input.data(), 0, input.size() * sizeof(float));
         if (ggml_backend_graph_compute(backend, graph) != GGML_STATUS_SUCCESS) {
@@ -144,6 +159,7 @@ public:
     RuntimeFixtureSpec fixture;
     RuntimeBudgetRequest budget_request;
     RuntimeBudgetPlan budget_plan;
+    RuntimeWorkspaceRequirements workspace_requirements;
     RuntimeTelemetry telemetry;
 
     std::uint64_t layer_bytes = 0;
@@ -244,6 +260,7 @@ RuntimeEntryResult RuntimeEntry::load(const RuntimeFixtureSpec & fixture) {
     impl_->file_bytes = actual_bytes;
     impl_->budget_request = {};
     impl_->budget_plan = {};
+    impl_->workspace_requirements = {};
     impl_->telemetry = {};
     impl_->telemetry.state = RuntimeLifecycle::Loaded;
     impl_->telemetry.mapped_weight_bytes = actual_bytes;
@@ -267,7 +284,24 @@ RuntimeEntryResult RuntimeEntry::admit(const RuntimeBudgetRequest & request) {
         return RuntimeEntryResult::BudgetRejected;
     }
 
+    RuntimeWorkspaceRequirements workspace_requirements;
+    const auto workspace_result = plan_cpu_dense_workspace(impl_->fixture.width, workspace_requirements);
+    if (workspace_result == RuntimeWorkspaceResult::InvalidArgument ||
+        workspace_result == RuntimeWorkspaceResult::Overflow) {
+        return RuntimeEntryResult::InvalidArgument;
+    }
+    if (workspace_result != RuntimeWorkspaceResult::Ok) {
+        return RuntimeEntryResult::ComputeError;
+    }
+    if (!runtime_workspace_fits_budget(
+            request.runtime_overhead_bytes,
+            request.compute_scratch_bytes,
+            workspace_requirements)) {
+        return RuntimeEntryResult::BudgetRejected;
+    }
+
     try {
+
         auto ledger = std::make_unique<MemoryLedger>(request.host_ceiling_bytes);
         if (!reserve_fixed_ownership(*ledger, request)) {
             return RuntimeEntryResult::BudgetRejected;
@@ -294,7 +328,9 @@ RuntimeEntryResult RuntimeEntry::admit(const RuntimeBudgetRequest & request) {
             layers,
             residency->page_size(),
             budget_plan.dense_residency_bytes,
-            dense_plan);
+            dense_plan,
+            DenseTraversal::Finite);
+
         if (dense_result == DensePlanResult::BudgetTooSmall) {
             return RuntimeEntryResult::BudgetRejected;
         }
@@ -314,13 +350,18 @@ RuntimeEntryResult RuntimeEntry::admit(const RuntimeBudgetRequest & request) {
 
         impl_->budget_request = request;
         impl_->budget_plan = budget_plan;
+        impl_->workspace_requirements = workspace_requirements;
         impl_->ledger = std::move(ledger);
+
         impl_->residency = std::move(residency);
         impl_->dense_policy = std::move(dense_policy);
         impl_->backend = backend;
 
         impl_->telemetry.host_ceiling_bytes = budget_plan.host_ceiling_bytes;
         impl_->telemetry.planned_host_bytes = budget_plan.host_planned_bytes;
+        impl_->telemetry.ggml_metadata_required_bytes = workspace_requirements.metadata_bytes;
+        impl_->telemetry.ggml_compute_required_bytes = workspace_requirements.compute_buffer_bytes;
+
         impl_->telemetry.dense_pinned_prefix_count = dense_plan.pinned_prefix_count;
         impl_->telemetry.dense_ring_slots = dense_plan.ring_slots;
         impl_->telemetry.completed_layers = 0;
@@ -387,17 +428,25 @@ RuntimeEntryResult RuntimeEntry::execute(
         impl_->update_memory_telemetry();
 
         const auto & layer_range = impl_->dense_policy->plan().layers[static_cast<std::size_t>(layer)];
-        const auto * weights = reinterpret_cast<const float *>(
-            static_cast<const std::uint8_t *>(impl_->residency->data()) + layer_range.offset);
+        const void * const active_data = impl_->dense_policy->active_data();
+        if (active_data == nullptr ||
+            (reinterpret_cast<std::uintptr_t>(active_data) % alignof(float)) != 0) {
+            return impl_->fail_after_prepare(layer, RuntimeEntryResult::ResidencyError);
+        }
+        const auto * weights = static_cast<const float *>(active_data);
+
 
         std::vector<float> output;
+
         if (!run_dense_layer(
                 impl_->backend,
                 weights,
                 layer_range.length,
                 state,
                 impl_->fixture.width,
+                impl_->workspace_requirements,
                 output)) {
+
             return impl_->fail_after_prepare(layer, RuntimeEntryResult::ComputeError);
         }
 

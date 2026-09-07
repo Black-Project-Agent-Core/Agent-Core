@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import {
+  ChevronDown,
   Folder,
   MessageSquare,
   PanelLeftClose,
@@ -6,6 +8,7 @@ import {
   Plus,
 } from 'lucide-react';
 import type { LocalSession } from '../app/workspace-state';
+import { AgentCorePanel } from './AgentCorePanel';
 import { BrandMark } from './BrandMark';
 
 export type SidebarProps = {
@@ -25,6 +28,11 @@ export function Sidebar({
   onSelectSession,
   onToggleCollapse,
 }: SidebarProps) {
+  const [recentsExpanded, setRecentsExpanded] = useState(true);
+  const visibleSessions = recentsExpanded
+    ? sessions
+    : sessions.filter((session) => session.id === activeSessionId);
+
   return (
     <nav
       aria-label="Agent Code workspace"
@@ -60,9 +68,25 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-section sidebar-recents">
-        <p className="sidebar-section-label sidebar-label">RECENT</p>
-        <div className="sidebar-list">
-          {sessions.map((session) => {
+        <button
+          type="button"
+          className="sidebar-section-toggle"
+          aria-expanded={recentsExpanded}
+          aria-controls="recent-session-list"
+          aria-label={recentsExpanded ? 'Collapse recent conversations' : 'Expand recent conversations'}
+          onClick={() => setRecentsExpanded((expanded) => !expanded)}
+        >
+          <span className="sidebar-label">RECENT</span>
+          <ChevronDown
+            aria-hidden="true"
+            className="sidebar-section-chevron"
+            data-expanded={recentsExpanded ? 'true' : 'false'}
+            size={12}
+            strokeWidth={1.8}
+          />
+        </button>
+        <div className="sidebar-list" id="recent-session-list">
+          {visibleSessions.map((session) => {
             const selected = session.id === activeSessionId;
             return (
               <button
@@ -80,6 +104,8 @@ export function Sidebar({
           })}
         </div>
       </div>
+
+      <AgentCorePanel />
     </nav>
   );
 }

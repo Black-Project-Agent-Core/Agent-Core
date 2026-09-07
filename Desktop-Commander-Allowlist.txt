@@ -1,0 +1,16 @@
+# Desktop Commander Agent Core - Folder Allowlist
+# Satu folder per baris. Baris kosong dan baris yang diawali # akan diabaikan.
+# Dua format berikut sama-sama valid:
+# E:\Projects\Agent-Core
+# "E:\Projects\Agent-Core"
+#
+# Tanda kutip direkomendasikan agar mudah dibaca, terutama untuk path dengan spasi.
+
+"E:\"
+"D:\"
+"C:\"
+
+# Contoh tambahan:
+# "E:\Project Dengan Spasi"
+# "D:\Assets"
+# E:\Folder-Tanpa-Spasi

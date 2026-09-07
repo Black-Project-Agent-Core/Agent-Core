@@ -172,11 +172,60 @@ async function pathExists(target: string): Promise<boolean> {
   try { await stat(target); return true; } catch { return false; }
 }
 
-async function atomicJson(filePath: string, value: unknown): Promise<void> {
+export interface AuditPointerWriterOps {
+  createTemp(filePath: string, data: string): Promise<void>;
+  rename(source: string, destination: string): Promise<void>;
+  overwrite(filePath: string, data: string): Promise<void>;
+  remove(filePath: string): Promise<void>;
+}
+
+const DEFAULT_AUDIT_POINTER_WRITER_OPS: AuditPointerWriterOps = {
+  createTemp: async (filePath, data) => writeFile(filePath, data, { encoding: 'utf8', flag: 'wx' }),
+  rename,
+  overwrite: async (filePath, data) => writeFile(filePath, data, 'utf8'),
+  remove: async (filePath) => rm(filePath, { force: true }),
+};
+
+function recoverablePointerReplaceError(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('code' in error)) return false;
+  const code = String((error as { code?: unknown }).code ?? '');
+  return code === 'EPERM' || code === 'EACCES' || code === 'EBUSY';
+}
+
+export async function writeAuditPointer(
+  filePath: string,
+  value: unknown,
+  ops: AuditPointerWriterOps = DEFAULT_AUDIT_POINTER_WRITER_OPS,
+): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
   const temporary = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
-  await writeFile(temporary, `${JSON.stringify(value)}\n`, { encoding: 'utf8', flag: 'wx' });
-  await rename(temporary, filePath);
+  const data = `${JSON.stringify(value)}\n`;
+  await ops.createTemp(temporary, data);
+  let keepTemporary = false;
+  try {
+    try {
+      await ops.rename(temporary, filePath);
+      return;
+    } catch (error) {
+      if (!recoverablePointerReplaceError(error)) throw error;
+    }
+
+    try {
+      await ops.overwrite(filePath, data);
+      if (await readFile(filePath, 'utf8') !== data) {
+        throw Object.assign(new Error('Audit pointer overwrite verification failed'), { code: 'AUDIT_POINTER_WRITE_VERIFY_FAILED' });
+      }
+    } catch (error) {
+      keepTemporary = true;
+      throw error;
+    }
+  } finally {
+    if (!keepTemporary) await ops.remove(temporary).catch(() => undefined);
+  }
+}
+
+async function atomicJson(filePath: string, value: unknown): Promise<void> {
+  await writeAuditPointer(filePath, value);
 }
 
 function validPointer(value: unknown): value is AuditChainPointer {

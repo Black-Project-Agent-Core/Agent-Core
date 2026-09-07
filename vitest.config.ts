@@ -1,15 +1,20 @@
-import { defineConfig } from 'vitest/config';
-
-export default defineConfig({
-  test: {
-    testTimeout: 15_000,
-    exclude: [
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/runtime/**',
-      '**/.worktrees/**',
-      '**/stable-release/**',
-      '**/SubProject/**',
-    ],
-  },
-});
+{
+  "account_hints": "[\"rifqi.syahmi@gmail.com\"]",
+  "account_type": "MSA",
+  "additional_properties": "{\n  \"graph_url\": \"https://graph.microsoft.com\",\n  \"sovereignty2\": \"Global\",\n  \"tr_flow_status\": \"1\",\n  \"wam_account_ids\": \"{\\\"82864fa0-ed49-4711-8395-a0e6003dca1f\\\":\\\"0003000006E05F83\\\"}\"\n}",
+  "age_group": "unknown",
+  "association_status": "",
+  "authority": "https://login.microsoftonline.com/consumers",
+  "display_name": "",
+  "email": "",
+  "first_name": "Rifqi",
+  "home_account_id": "00000000-0000-0000-6c48-365b0aacb8e9.9188040d-6c67-4c5b-b112-36a304b66dad",
+  "id": "6c48365b0aacb8e9",
+  "last_name": "Syahmi",
+  "location": "",
+  "login_name": "rifqi.syahmi@gmail.com",
+  "onprem_sid": "",
+  "password_change_url": "",
+  "phone_number": "",
+  "provider_id": "6c48365b0aacb8e9",
+  "real

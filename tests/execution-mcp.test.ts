@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http';
+﻿import { createServer, type Server } from 'node:http';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -140,7 +140,7 @@ describe('first-class execution MCP surface', () => {
     });
     const tools = listed.result.tools as Array<Record<string, any>>;
     const names = tools.map((tool) => tool.name);
-    expect(names).toHaveLength(56);
+    expect(names).toHaveLength(69);
     const execution = [
       'execution_create', 'execution_start', 'execution_status', 'execution_wait',
       'execution_logs', 'execution_add_nodes', 'execution_retry', 'execution_cancel', 'execution_artifact_find', 'execution_workflow_advice',
@@ -651,3 +651,4 @@ describe('first-class execution MCP surface', () => {
     expect(final.nodes.find((node: any) => node.nodeId === 'B')?.state).toBe('cancelled');
   }, 15_000);
 });
+

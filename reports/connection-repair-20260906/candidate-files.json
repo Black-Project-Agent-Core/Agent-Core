@@ -1,0 +1,67 @@
+[
+  {
+    "path": "src/config.ts",
+    "sha256": "d31867ec43647ec9b9783aa68cb34c3c116d1b87bdc80928995684a1d76c2799",
+    "bytes": 26884
+  },
+  {
+    "path": "src/oauth/store.ts",
+    "sha256": "46e8fb69961c65fac6da974ea7352869d3931152a5b9483928354837c8ca5b59",
+    "bytes": 13409
+  },
+  {
+    "path": "src/oauth/service.ts",
+    "sha256": "384a514b994d6ab6bbbfc74a75e2755b89eed2fbecdcde41c8980fb265a3a2bd",
+    "bytes": 13054
+  },
+  {
+    "path": "src/oauth/file-lock.ts",
+    "sha256": "0552b5790604da74a6ef3c91e08e8f976d24e6317fb25e55330c46c091c81d91",
+    "bytes": 1224
+  },
+  {
+    "path": "src/oauth/atomic-file.ts",
+    "sha256": "fff15658d35c6671fd0a9184d9b8f2c22c9e058725f889b6e9ba52f6ae0f5b4d",
+    "bytes": 713
+  },
+  {
+    "path": "src/runtime/persistence-paths.ts",
+    "sha256": "406d4c7fa1f4caa20936959055d57902751d0d72438c7b5b9124c490972a6db5",
+    "bytes": 2547
+  },
+  {
+    "path": "tests/oauth-concurrency-review.test.ts",
+    "sha256": "133fab90d62e6099fef5b7a3d9645e144da32ea366eb462b142240ecc7b71793",
+    "bytes": 3483
+  },
+  {
+    "path": "tests/oauth-atomic-exchange-review.test.ts",
+    "sha256": "7f8e7425a2aeeed2df795f791d7a722a48e9fe326dfb47c9994495f27680d7a5",
+    "bytes": 4586
+  },
+  {
+    "path": "tests/mcp-multiclient-review.test.ts",
+    "sha256": "41a6c4567b6d84980a61de230c77a867c08b194f065e3470c7c97fda6e968cd2",
+    "bytes": 4462
+  },
+  {
+    "path": "tests/persist-selection-repair.test.ts",
+    "sha256": "7dbf9916fba7b03a97f853a77a99dea23442a533ed149021594f5824f354e405",
+    "bytes": 3255
+  },
+  {
+    "path": "tests/oauth-rename-repair.test.ts",
+    "sha256": "8700903cd5edc2943eb877c96a6dea283df81985ff860ff8778f529c98fc0c1e",
+    "bytes": 1362
+  },
+  {
+    "path": "tests/oauth-crossprocess-repair.test.ts",
+    "sha256": "5dc045ac15de8b74d8e8344dc213a00fe05be5de91eef85e92eb8cf43355050c",
+    "bytes": 2019
+  },
+  {
+    "path": "tests/oauth-lock-recovery-repair.test.ts",
+    "sha256": "7baab716a8f2b2e5b9133d0bfc03d299dda9be9e24094c9e1fd720474b1785cf",
+    "bytes": 2013
+  }
+]

@@ -1,0 +1,60 @@
+AGENT CORE LOW-FRICTION COMPATIBILITY
+Catatan pembuka sesi dan lokasi plan
+6 September 2026, Asia/Jakarta
+
+Ini panduan lokasi dan status, bukan salinan lengkap ketiga dokumen di proyek.
+
+FOLDER YANG SUDAH TERVERIFIKASI
+E:\Projects\Agent-Core\docs\roadmap\agent-core-low-friction-compatibility-2026-09-06\
+
+FILE
+1. design.md: desain A-N, evidence register, batas otoritas dan hubungan plan lama.
+2. implementation-plan.md: 16 task T00-T15, 96 langkah, dependensi, file sasaran,
+   kontrak, RED/GREEN, regression, acceptance, publication dan cutover gates.
+3. session-handoff.md: titik masuk untuk sesi baru dan status yang perlu dicek ulang.
+4. verification.json: bukti pemeriksaan dokumen serta SHA-256.
+
+STATUS PADA VERIFIKASI TERAKHIR
+Dokumen tersimpan dan readback/hash lulus: YA.
+Seluruh usulan A-N dipetakan ke task: YA.
+Commit/push paket baru: BELUM DILAKUKAN.
+Implementasi fitur: BELUM DIMULAI.
+Tes aplikasi/build/benchmark baru: BELUM DIJALANKAN.
+Perubahan izin aktif atau restart live: TIDAK DILAKUKAN.
+
+PROMPT UNTUK MELANJUTKAN
+@Agent Core
+Baca file berikut sebagai titik masuk:
+E:\Projects\Agent-Core\docs\roadmap\agent-core-low-friction-compatibility-2026-09-06\session-handoff.md
+Lalu baca design.md dan implementation-plan.md pada folder yang sama.
+Jangan mengulang brainstorming A-N atau menganggap source sudah diimplementasikan.
+Verifikasi keadaan Git/worktree/source, file hash, dan publication sebelum coding.
+Ketika implementasi diperintahkan, mulai T00 baseline candidate lalu T01 RED.
+Jangan build atau restart dari root live. Pertahankan perubahan pengguna yang sudah ada.
+Modifikasi program DMF/Cross-Session Memory mengikuti lingkungan Codespace yang
+sudah diwajibkan spesifikasinya; jangan memakai instance Mac sebagai fallback.
+Paket ini tidak mengaktifkan mandat baru dan bukan izin cutover live.
+
+URUTAN TASK
+T00 Baseline candidate dan provenance
+T01 Result envelope dan natural task completion
+T02 Bounded authenticated diagnostics
+T03 Operation contracts dan shadow evaluator
+T04 Workflow/policy separation
+T05 Scoped persistent operator mandates
+T06 Context preparation, preview dan recovery
+T07 Operation receipt dan reconciliation
+T08 Resource concurrency dan session isolation
+T09 Recipe/argv/shell adapters dengan containment
+T10 Unified entry points dan legacy compatibility
+T11 Action-scoped memory constraints dan lifecycle
+T12 Bounded session bootstrap
+T13 Friction telemetry dan observer projection
+T14 Contract, multiclient dan performance certification
+T15 Shadow/canary/cutover/soak gates
+
+PLAN LAMA
+Paket ini companion plan, tidak menimpa plan Cross-Session Memory Nervous System
+atau Memory Observatory. Status schema/fase dari handoff lama tetap diperlakukan
+sebagai checkpoint historis. DMF satu otoritas; Observatory observer-only;
+remote durability tidak boleh diklaim tanpa readback.

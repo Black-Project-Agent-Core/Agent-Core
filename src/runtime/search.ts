@@ -15,6 +15,11 @@ export interface SearchMatch {
   preview?: string;
 }
 
+function isTransientEntryError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  return code === 'ENOENT' || code === 'EPERM';
+}
+
 export class SearchService {
   constructor(private readonly workspace: WorkspacePolicy) {}
 
@@ -35,7 +40,13 @@ export class SearchService {
     };
 
     const walk = async (dir: string): Promise<boolean> => {
-      const items = await readdir(dir, { withFileTypes: true });
+      let items;
+      try {
+        items = await readdir(dir, { withFileTypes: true });
+      } catch (error) {
+        if (isTransientEntryError(error) && dir !== root) return true;
+        throw error;
+      }
       items.sort((a, b) => a.name.localeCompare(b.name));
       for (const item of items) {
         if (item.isSymbolicLink()) continue;
@@ -63,9 +74,16 @@ export class SearchService {
     needle: string,
     add: (match: SearchMatch) => boolean,
   ): Promise<boolean> {
-    const info = await stat(file);
-    if (info.size > 2 * 1024 * 1024) return true;
-    const buffer = await readFile(file);
+    let info;
+    let buffer;
+    try {
+      info = await stat(file);
+      if (info.size > 2 * 1024 * 1024) return true;
+      buffer = await readFile(file);
+    } catch (error) {
+      if (isTransientEntryError(error)) return true;
+      throw error;
+    }
     if (buffer.includes(0)) return true;
     const lines = buffer.toString('utf8').split(/\r?\n/);
     for (let index = 0; index < lines.length; index++) {

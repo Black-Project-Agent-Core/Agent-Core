@@ -1,9 +1,12 @@
 import { access, readFile } from 'node:fs/promises';
 import type { GitHubConfig } from '../config.js';
 import { GitHubFabricError } from './errors.js';
+import { runBoundedProcess } from './process.js';
 import type { GitHubCredentialKind, GitHubCredentialStatus } from './types.js';
 
 const REDACTED = '[REDACTED_GITHUB_CREDENTIAL]';
+
+type GitHubCliTokenResolver = (executable: string) => Promise<string | null>;
 
 async function exists(filePath: string): Promise<boolean> {
   try {
@@ -15,7 +18,25 @@ async function exists(filePath: string): Promise<boolean> {
 }
 
 export class GitHubCredentialProvider {
-  constructor(private readonly config: GitHubConfig) {}
+  constructor(
+    private readonly config: GitHubConfig,
+    private readonly cliTokenResolver: GitHubCliTokenResolver = async (executable) => {
+      try {
+        const result = await runBoundedProcess({
+          executable,
+          args: ['auth', 'token', '--hostname', 'github.com'],
+          cwd: process.cwd(),
+          timeoutMs: Math.min(config.requestTimeoutMs, 10_000),
+          env: { ...process.env },
+        });
+        if (result.exitCode !== 0 || result.timedOut || result.outputTruncated) return null;
+        const token = result.stdout.trim();
+        return token || null;
+      } catch {
+        return null;
+      }
+    },
+  ) {}
 
   async status(): Promise<GitHubCredentialStatus> {
     const [githubTokenConfigured, packagesTokenConfigured] = await Promise.all([
@@ -31,6 +52,12 @@ export class GitHubCredentialProvider {
   }
 
   async read(kind: GitHubCredentialKind): Promise<string> {
+    if (kind === 'github' && this.config.useGhCliCredential) {
+      const executable = this.config.ghCliPath?.trim() || (process.platform === 'win32' ? 'gh.exe' : 'gh');
+      const cliToken = await this.cliTokenResolver(executable).catch(() => null);
+      if (cliToken?.trim()) return cliToken.trim();
+    }
+
     const filePath = kind === 'github' ? this.config.tokenFile : this.config.packagesTokenFile;
     let raw: string;
     try {

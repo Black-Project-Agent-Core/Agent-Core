@@ -1,0 +1,68 @@
+{
+  "at": "2026-09-05T20:09:39.813486+00:00",
+  "status": "OFFLINE_PREFLIGHT_PASS",
+  "offline": {
+    "processCount": 0,
+    "listenerCount": 0,
+    "processes": [],
+    "listeners": []
+  },
+  "privateGeneration": {
+    "ownedByCurrentUser": true,
+    "inheritanceProtected": true,
+    "unexpectedAllowCount": 0
+  },
+  "candidateTests": 71,
+  "auditBefore": {
+    "ok": true,
+    "auditRoot": "E:\\Projects\\Agent-Core\\runtime\\logs\\audit",
+    "firstSequence": 1,
+    "lastSequence": 28608,
+    "records": 28608,
+    "files": 1,
+    "headHash": "cb2087b1b54ac7b565acdb9ad41280d9a1be7c5cde37f46fdeca5bd59cc357fe",
+    "anchorSequence": 0
+  },
+  "sourceCount": 6,
+  "testCount": 7,
+  "builtFileCount": 12,
+  "dataFiles": [
+    {
+      "source": "runtime\\data\\keys.json",
+      "destination": "runtime\\persistence-20260906\\data\\keys.json",
+      "bytes": 428,
+      "sha256": "bc752911b279b511c6fd0c52c6099d43a24617c18404148fed928040aeeb4eb4"
+    },
+    {
+      "source": "runtime\\data\\oauth.json",
+      "destination": "runtime\\persistence-20260906\\data\\oauth.json",
+      "bytes": 25557,
+      "sha256": "0ef052cffaa62b6713f95b2b9c6939014a103f23ac80bbccab8a3640e6aa9ffd"
+    },
+    {
+      "source": "runtime\\logs\\audit\\audit-anchor.json",
+      "destination": "runtime\\persistence-20260906\\logs\\audit\\audit-anchor.json",
+      "bytes": 84,
+      "sha256": "348a63e7ce8800e95b5567ae50f211ee05d3f6c2b17d3ca2a6509807c3b9b7bf"
+    },
+    {
+      "source": "runtime\\logs\\audit\\audit-head.json",
+      "destination": "runtime\\persistence-20260906\\logs\\audit\\audit-head.json",
+      "bytes": 150,
+      "sha256": "7c7ddd083ab1eb06f0a379946ffefcc0fdffefdbd4272759ef7063161263528d"
+    },
+    {
+      "source": "runtime\\logs\\audit\\audit.current.jsonl",
+      "destination": "runtime\\persistence-20260906\\logs\\audit\\audit.current.jsonl",
+      "bytes": 16776968,
+      "sha256": "d8a2125bb974a85114576a456f1ffbeec468af2bee0fe16bcb638baed297900c"
+    },
+    {
+      "source": "runtime\\logs\\langflow-adapter-restart.json",
+      "destination": "runtime\\persistence-20260906\\logs\\langflow-adapter-restart.json",
+      "bytes": 33,
+      "sha256": "da8157ecab9957af9552b773e47aa6df13b4205a96df1272d1c66437a89eae04"
+    }
+  ],
+  "productionChanged": false
+}

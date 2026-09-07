@@ -16,6 +16,8 @@ export const MEMORY_ANCHOR_TYPES = [
   'artifact_hash',
   'git_commit',
   'branch_name',
+  'subject_alias',
+  'subject_facet',
 ] as const;
 
 export type MemoryAnchorType = (typeof MEMORY_ANCHOR_TYPES)[number];

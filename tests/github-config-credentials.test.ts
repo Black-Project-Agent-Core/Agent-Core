@@ -7,6 +7,7 @@ import { GitHubCredentialProvider } from '../src/github/credentials.js';
 
 const roots: string[] = [];
 const GH = 'SENTINEL_GH_TOKEN_DO_NOT_LEAK';
+const CLI_GH = 'SENTINEL_GH_CLI_TOKEN_DO_NOT_LEAK';
 const PACKAGES = 'SENTINEL_PACKAGES_TOKEN_DO_NOT_LEAK';
 
 async function tempRoot() {
@@ -45,6 +46,30 @@ describe('GitHubCredentialProvider', () => {
     const provider = new GitHubCredentialProvider(config);
     await expect(provider.read('github')).resolves.toBe(GH);
     await expect(provider.read('packages')).resolves.toBe(PACKAGES);
+  });
+
+  it('prefers an explicitly enabled GitHub CLI credential and falls back to the file token without exposing either secret', async () => {
+    const root = await tempRoot();
+    const config = loadConfig({
+      AGENT_CORE_GITHUB_USE_GH_CLI: 'true',
+      AGENT_CORE_GH_EXE: path.join(root, 'tools', 'gh.exe'),
+    }, root).github;
+    await mkdir(path.dirname(config.tokenFile), { recursive: true });
+    await writeFile(config.tokenFile, GH, 'utf8');
+    await writeFile(config.packagesTokenFile, PACKAGES, 'utf8');
+
+    const cliCalls: string[] = [];
+    const provider = new GitHubCredentialProvider(config, async (executable) => {
+      cliCalls.push(executable);
+      return CLI_GH;
+    });
+    await expect(provider.read('github')).resolves.toBe(CLI_GH);
+    await expect(provider.read('packages')).resolves.toBe(PACKAGES);
+    expect(cliCalls).toEqual([config.ghCliPath]);
+    expect(JSON.stringify(await provider.status())).not.toContain(CLI_GH);
+
+    const fallback = new GitHubCredentialProvider(config, async () => null);
+    await expect(fallback.read('github')).resolves.toBe(GH);
   });
 
   it('returns safe public status with no token-derived metadata', async () => {

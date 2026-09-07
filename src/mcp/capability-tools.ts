@@ -144,7 +144,7 @@ export function registerCapabilityTools(
 ): void {
   server.registerTool('capability_route', {
     title: 'Route Capabilities',
-    description: 'Create a principal-bound Agent Core routing context for an actionable task before task-execution tools are used.',
+    description: 'Create principal-bound Agent Core routing + memory context before answering a project-specific interaction or using task-execution tools. Canonical project memory is injected before ordinary episodic recall when a known subject is referenced.',
     inputSchema: {
       task: z.string().min(1).max(20_000),
       context: z.string().max(20_000).optional(),
@@ -323,6 +323,10 @@ export function registerCapabilityTools(
     if (memoryInjection.applied && !plan.reasonCodes.includes('autonomous_memory_context')) {
       plan.reasonCodes = [...plan.reasonCodes, 'autonomous_memory_context'];
     }
+    if ((preflight?.canonicalSubjectMemory.length ?? 0) > 0 && !plan.reasonCodes.includes('canonical_project_memory_context')) {
+      plan.reasonCodes = [...plan.reasonCodes, 'canonical_project_memory_context'];
+    }
+    const operatorDirectiveSnapshot = await runtime.operatorDirectives.snapshot(persistentPrincipalId(runtime, key));
     const route = runtime.routes.create(key.id, plan, {
       reservation,
       projectId,
@@ -340,17 +344,30 @@ export function registerCapabilityTools(
           enforceHardGuardrails: runtime.memory.config.enforceHardGuardrails,
         },
       } : {}),
+      ...(operatorDirectiveSnapshot.status === 'healthy' && operatorDirectiveSnapshot.snapshotHash && operatorDirectiveSnapshot.directives.length > 0 ? {
+        operatorDirectiveSnapshot: {
+          authorityPrincipalId: persistentPrincipalId(runtime, key),
+          snapshotHash: operatorDirectiveSnapshot.snapshotHash,
+          directiveKeys: operatorDirectiveSnapshot.directives.map((item) => item.directiveKey),
+        },
+      } : {}),
       ...(continuityTurnId ? { continuityTurnId } : {}),
       ...(continuityTaskId ? { continuityTaskId } : {}),
       ...(continuitySnapshot ? { continuitySnapshotHash: continuitySnapshot.snapshotHash } : {}),
     });
 
-    const memorySummary = preflight?.recalled ?? [];
+    const canonicalSubjectMemory = preflight?.canonicalSubjectMemory ?? [];
+    const canonicalSubjectIds = new Set(canonicalSubjectMemory.map((item) => item.memoryId));
+    const memorySummary = [
+      ...canonicalSubjectMemory,
+      ...(preflight?.recalled ?? []).filter((item) => !canonicalSubjectIds.has(item.memoryId)),
+    ];
     const memoryDirective = {
       inspectionRequired: memorySummary.length > 0
         || (preflight?.blockingGuardrails.length ?? 0) > 0
         || (preflight?.priorFailures.length ?? 0) > 0
         || (preflight?.relatedDecisions.length ?? 0) > 0,
+      hasCanonicalSubjectMemory: canonicalSubjectMemory.length > 0,
       hasBlockingGuardrails: (preflight?.blockingGuardrails.length ?? 0) > 0,
       hasPriorFailures: (preflight?.priorFailures.length ?? 0) > 0,
       hasRelatedDecisions: (preflight?.relatedDecisions.length ?? 0) > 0,
@@ -373,9 +390,14 @@ export function registerCapabilityTools(
       allowedTools: route.allowedTools,
       verification: route.verification,
       reasonCodes: route.reasonCodes,
+      operatorDirectiveStatus: operatorDirectiveSnapshot.status,
+      operatorDirectiveSnapshotHash: operatorDirectiveSnapshot.snapshotHash,
+      operatorDirectives: operatorDirectiveSnapshot.directives,
+      operatorPromptContext: operatorDirectiveSnapshot.promptContext,
       memoryStatus,
       memoryContextId: preflight?.contextId ?? null,
       memorySummary,
+      canonicalSubjectMemory,
       blockingGuardrails: preflight?.blockingGuardrails ?? [],
       openConflicts: preflight?.openConflicts ?? [],
       priorFailures: preflight?.priorFailures ?? [],
@@ -394,6 +416,7 @@ export function registerCapabilityTools(
       memoryInjection: {
         applied: memoryInjection.applied,
         memoryIds: memoryInjection.memoryIds,
+        ...(memoryInjection.canonicalMemoryIds ? { canonicalMemoryIds: memoryInjection.canonicalMemoryIds } : {}),
         characterCount: memoryInjection.characterCount,
         omittedCount: memoryInjection.omittedCount,
       },

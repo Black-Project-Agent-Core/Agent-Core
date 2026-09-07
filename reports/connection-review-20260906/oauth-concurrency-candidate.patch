@@ -1,0 +1,633 @@
+diff --git a/src/oauth/store.ts b/src/oauth/store.ts
+index 12b873e..4aff5cf 100644
+--- a/src/oauth/store.ts
++++ b/src/oauth/store.ts
+@@ -1,4 +1,4 @@
+-﻿import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
++import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+ import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+ import path from 'node:path';
+ import { persistSerializedFile } from '../runtime/persistent-file.js';
+@@ -103,6 +103,25 @@ function expiry(seconds: number): string {
+   return new Date(Date.now() + seconds * 1000).toISOString();
+ }
+ 
++export interface OAuthTokens { accessToken: string; refreshToken: string; expiresIn: number; }
++export interface OAuthExchange { principal: OAuthPrincipal; tokens: OAuthTokens; }
++interface CodeExchangeInput { clientId: string; redirectUri: string; codeVerifier: string; resource: string; }
++interface RefreshExchangeInput { clientId: string; resource: string; }
++
++// One queue per resolved file, shared by all instances in this Node process.
++// This is NOT an inter-process lock; offline reset/CLI ownership still applies.
++const oauthFileQueues = new Map<string, Promise<void>>();
++function withOAuthFile<T>(filePath: string, operation: () => Promise<T>): Promise<T> {
++  const resolved = path.resolve(filePath);
++  const key = process.platform === 'win32' ? resolved.toLowerCase() : resolved;
++  const previous = oauthFileQueues.get(key) ?? Promise.resolve();
++  const result = previous.then(operation);
++  const settled = result.then(() => undefined, () => undefined);
++  oauthFileQueues.set(key, settled);
++  void settled.then(() => { if (oauthFileQueues.get(key) === settled) oauthFileQueues.delete(key); });
++  return result;
++}
++
+ export class FileOAuthStore {
+   readonly filePath: string;
+ 
+@@ -136,60 +155,68 @@ export class FileOAuthStore {
+     responseTypes: string[];
+     tokenEndpointAuthMethod: string;
+   }): Promise<RegisteredClient> {
+-    const secret = freshSecret(CLIENT_SECRET_PREFIX);
+-    const now = new Date();
+-    const record: ClientRecord = {
+-      clientId: `${CLIENT_ID_PREFIX}${randomUUID()}`,
+-      clientName: input.clientName,
+-      redirectUris: [...input.redirectUris],
+-      grantTypes: [...input.grantTypes],
+-      responseTypes: [...input.responseTypes],
+-      tokenEndpointAuthMethod: input.tokenEndpointAuthMethod,
+-      secretHash: hashSecret(secret),
+-      createdAt: now.toISOString(),
+-    };
+-    const file = await this.load();
+-    file.clients.push(record);
+-    await this.save(file);
+-    return {
+-      client_id: record.clientId,
+-      client_secret: secret,
+-      client_name: record.clientName,
+-      redirect_uris: record.redirectUris,
+-      grant_types: record.grantTypes,
+-      response_types: record.responseTypes,
+-      token_endpoint_auth_method: record.tokenEndpointAuthMethod,
+-      client_id_issued_at: Math.floor(now.getTime() / 1000),
+-      client_secret_expires_at: 0,
+-    };
++    return withOAuthFile(this.filePath, async () => {
++      const secret = freshSecret(CLIENT_SECRET_PREFIX);
++      const now = new Date();
++      const record: ClientRecord = {
++        clientId: `${CLIENT_ID_PREFIX}${randomUUID()}`,
++        clientName: input.clientName,
++        redirectUris: [...input.redirectUris],
++        grantTypes: [...input.grantTypes],
++        responseTypes: [...input.responseTypes],
++        tokenEndpointAuthMethod: input.tokenEndpointAuthMethod,
++        secretHash: hashSecret(secret),
++        createdAt: now.toISOString(),
++      };
++      const file = await this.load();
++      file.clients.push(record);
++      await this.save(file);
++      return {
++        client_id: record.clientId,
++        client_secret: secret,
++        client_name: record.clientName,
++        redirect_uris: record.redirectUris,
++        grant_types: record.grantTypes,
++        response_types: record.responseTypes,
++        token_endpoint_auth_method: record.tokenEndpointAuthMethod,
++        client_id_issued_at: Math.floor(now.getTime() / 1000),
++        client_secret_expires_at: 0,
++      };
++    });
+   }
+ 
+   async getClient(clientId: string): Promise<PublicClient | null> {
+-    const file = await this.load();
+-    const client = file.clients.find((item) => item.clientId === clientId);
+-    return client ? { clientId, redirectUris: [...client.redirectUris] } : null;
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const client = file.clients.find((item) => item.clientId === clientId);
++      return client ? { clientId, redirectUris: [...client.redirectUris] } : null;
++    });
+   }
+ 
+   async verifyClient(clientId: string, secret: string): Promise<boolean> {
+-    const file = await this.load();
+-    const client = file.clients.find((item) => item.clientId === clientId);
+-    return client ? safeHashEqual(secret, client.secretHash) : false;
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const client = file.clients.find((item) => item.clientId === clientId);
++      return client ? safeHashEqual(secret, client.secretHash) : false;
++    });
+   }
+ 
+   async issueCode(input: OAuthPrincipal & {
+     redirectUri: string;
+     codeChallenge: string;
+   }): Promise<string> {
+-    const raw = freshSecret(CODE_PREFIX);
+-    const file = await this.load();
+-    file.codes.push({
+-      ...input,
+-      hash: hashSecret(raw),
+-      expiresAt: expiry(300),
+-      usedAt: null,
++    return withOAuthFile(this.filePath, async () => {
++      const raw = freshSecret(CODE_PREFIX);
++      const file = await this.load();
++      file.codes.push({
++        ...input,
++        hash: hashSecret(raw),
++        expiresAt: expiry(300),
++        usedAt: null,
++      });
++      await this.save(file);
++      return raw;
+     });
+-    await this.save(file);
+-    return raw;
+   }
+ 
+   async consumeCode(raw: string, input: {
+@@ -198,24 +225,12 @@ export class FileOAuthStore {
+     codeVerifier: string;
+     resource: string;
+   }): Promise<OAuthPrincipal | null> {
+-    if (!raw.startsWith(CODE_PREFIX)) return null;
+-    const file = await this.load();
+-    const record = file.codes.find((item) => safeHashEqual(raw, item.hash));
+-    if (!record || record.usedAt || Date.parse(record.expiresAt) <= Date.now()) return null;
+-    if (record.clientId !== input.clientId || record.redirectUri !== input.redirectUri) return null;
+-    if (record.resource !== input.resource) return null;
+-    const challenge = createHash('sha256').update(input.codeVerifier).digest('base64url');
+-    if (challenge !== record.codeChallenge) return null;
+-
+-    record.usedAt = new Date().toISOString();
+-    await this.save(file);
+-    return {
+-      clientId: record.clientId,
+-      resource: record.resource,
+-      scopes: [...record.scopes],
+-      keyId: record.keyId,
+-      keyName: record.keyName,
+-    };
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const principal = this.consumeCodeRecord(file, raw, input);
++      if (principal) await this.save(file);
++      return principal;
++    });
+   }
+ 
+   async issueTokens(principal: OAuthPrincipal): Promise<{
+@@ -223,105 +238,142 @@ export class FileOAuthStore {
+     refreshToken: string;
+     expiresIn: number;
+   }> {
+-    const accessToken = freshSecret(ACCESS_TOKEN_PREFIX);
+-    const refreshToken = freshSecret(REFRESH_TOKEN_PREFIX);
+-    const expiresIn = 3600;
+-    const file = await this.load();
+-    file.accessTokens.push({
+-      ...principal,
+-      hash: hashSecret(accessToken),
+-      expiresAt: expiry(expiresIn),
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const tokens = this.mintTokens(file, principal);
++      await this.save(file);
++      return tokens;
+     });
+-    file.refreshTokens.push({
+-      ...principal,
+-      hash: hashSecret(refreshToken),
+-      expiresAt: expiry(30 * 24 * 3600),
+-      revokedAt: null,
+-    });
+-    await this.save(file);
+-    return { accessToken, refreshToken, expiresIn };
+   }
+ 
+   async verifyAccessToken(raw: string): Promise<OAuthPrincipal | null> {
+-    if (!raw.startsWith(ACCESS_TOKEN_PREFIX)) return null;
+-    const file = await this.load();
+-    const record = file.accessTokens.find((item) => safeHashEqual(raw, item.hash));
+-    if (!record || Date.parse(record.expiresAt) <= Date.now()) return null;
+-    return {
+-      clientId: record.clientId,
+-      resource: record.resource,
+-      scopes: [...record.scopes],
+-      keyId: record.keyId,
+-      keyName: record.keyName,
+-    };
++    return withOAuthFile(this.filePath, async () => {
++      if (!raw.startsWith(ACCESS_TOKEN_PREFIX)) return null;
++      const file = await this.load();
++      const record = file.accessTokens.find((item) => safeHashEqual(raw, item.hash));
++      if (!record || Date.parse(record.expiresAt) <= Date.now()) return null;
++      return {
++        clientId: record.clientId,
++        resource: record.resource,
++        scopes: [...record.scopes],
++        keyId: record.keyId,
++        keyName: record.keyName,
++      };
++    });
+   }
+   async consumeRefreshToken(raw: string, input: {
+     clientId: string;
+     resource: string;
+   }): Promise<OAuthPrincipal | null> {
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const principal = this.consumeRefreshRecord(file, raw, input);
++      if (principal) await this.save(file);
++      return principal;
++    });
++  }
++
++  async resetAuthorizationState(options: OAuthResetOptions = {}): Promise<OAuthResetResult> {
++    return withOAuthFile(this.filePath, async () => {
++      const current = await this.load();
++      let backupPath: string | null = null;
++      try {
++        await mkdir(this.dataDir, { recursive: true });
++        backupPath = path.join(this.dataDir, `oauth.backup-${Date.now()}-${randomUUID()}.json`);
++        await copyFile(this.filePath, backupPath);
++      } catch (error) {
++        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
++        backupPath = null;
++      }
++
++      const clients = new Map(current.clients.map((client) => [client.clientId, client]));
++      let clientsImported = 0;
++      for (const source of options.importClientStores ?? []) {
++        if (path.resolve(source.filePath) === path.resolve(this.filePath)) continue;
++        const sourceFile = await source.load();
++        for (const client of sourceFile.clients) {
++          if (clients.has(client.clientId)) continue;
++          clients.set(client.clientId, {
++            ...client,
++            redirectUris: [...client.redirectUris],
++            grantTypes: [...client.grantTypes],
++            responseTypes: [...client.responseTypes],
++          });
++          clientsImported += 1;
++        }
++      }
++
++      const resetFile: OAuthFile = {
++        version: 1,
++        clients: [...clients.values()],
++        codes: [],
++        accessTokens: [],
++        refreshTokens: [],
++      };
++      await this.save(resetFile);
++      return {
++        backupPath,
++        clientsPreserved: current.clients.length,
++        clientsImported,
++        grantsCleared: true,
++      };
++    });
++  }
++
++  private consumeCodeRecord(file: OAuthFile, raw: string, input: CodeExchangeInput): OAuthPrincipal | null {
++    if (!raw.startsWith(CODE_PREFIX)) return null;
++    const record = file.codes.find((item) => safeHashEqual(raw, item.hash));
++    if (!record || record.usedAt || Date.parse(record.expiresAt) <= Date.now()) return null;
++    if (record.clientId !== input.clientId || record.redirectUri !== input.redirectUri || record.resource !== input.resource) return null;
++    const challenge = createHash('sha256').update(input.codeVerifier).digest('base64url');
++    if (challenge !== record.codeChallenge) return null;
++    record.usedAt = new Date().toISOString();
++    return this.principalOf(record);
++  }
++
++  private consumeRefreshRecord(file: OAuthFile, raw: string, input: RefreshExchangeInput): OAuthPrincipal | null {
+     if (!raw.startsWith(REFRESH_TOKEN_PREFIX)) return null;
+-    const file = await this.load();
+     const record = file.refreshTokens.find((item) => safeHashEqual(raw, item.hash));
+     if (!record || record.revokedAt || Date.parse(record.expiresAt) <= Date.now()) return null;
+     if (record.clientId !== input.clientId || record.resource !== input.resource) return null;
+-
+     record.revokedAt = new Date().toISOString();
+-    await this.save(file);
+-    return {
+-      clientId: record.clientId,
+-      resource: record.resource,
+-      scopes: [...record.scopes],
+-      keyId: record.keyId,
+-      keyName: record.keyName,
+-    };
++    return this.principalOf(record);
+   }
+ 
+-  async resetAuthorizationState(options: OAuthResetOptions = {}): Promise<OAuthResetResult> {
+-    const current = await this.load();
+-    let backupPath: string | null = null;
+-    try {
+-      await mkdir(this.dataDir, { recursive: true });
+-      backupPath = path.join(this.dataDir, `oauth.backup-${Date.now()}-${randomUUID()}.json`);
+-      await copyFile(this.filePath, backupPath);
+-    } catch (error) {
+-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+-      backupPath = null;
+-    }
++  private principalOf(record: OAuthPrincipal): OAuthPrincipal {
++    return {clientId: record.clientId, resource: record.resource, scopes: [...record.scopes], keyId: record.keyId, keyName: record.keyName};
++  }
+ 
+-    const clients = new Map(current.clients.map((client) => [client.clientId, client]));
+-    let clientsImported = 0;
+-    for (const source of options.importClientStores ?? []) {
+-      if (path.resolve(source.filePath) === path.resolve(this.filePath)) continue;
+-      const sourceFile = await source.load();
+-      for (const client of sourceFile.clients) {
+-        if (clients.has(client.clientId)) continue;
+-        clients.set(client.clientId, {
+-          ...client,
+-          redirectUris: [...client.redirectUris],
+-          grantTypes: [...client.grantTypes],
+-          responseTypes: [...client.responseTypes],
+-        });
+-        clientsImported += 1;
+-      }
+-    }
++  private mintTokens(file: OAuthFile, principal: OAuthPrincipal): OAuthTokens {
++    const accessToken = freshSecret(ACCESS_TOKEN_PREFIX);
++    const refreshToken = freshSecret(REFRESH_TOKEN_PREFIX);
++    const expiresIn = 3600;
++    file.accessTokens.push({...this.principalOf(principal), hash: hashSecret(accessToken), expiresAt: expiry(expiresIn)});
++    file.refreshTokens.push({...this.principalOf(principal), hash: hashSecret(refreshToken), expiresAt: expiry(30 * 24 * 3600), revokedAt: null});
++    return {accessToken, refreshToken, expiresIn};
++  }
+ 
+-    const resetFile: OAuthFile = {
+-      version: 1,
+-      clients: [...clients.values()],
+-      codes: [],
+-      accessTokens: [],
+-      refreshTokens: [],
+-    };
+-    await writeFile(this.filePath, `${JSON.stringify(resetFile, null, 2)}\n`, {
+-      encoding: 'utf8', mode: 0o600,
++  /** Consume the grant and publish its replacement in one persisted snapshot. */
++  async exchangeRefreshToken(raw: string, input: RefreshExchangeInput): Promise<OAuthExchange | null> {
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const principal = this.consumeRefreshRecord(file, raw, input);
++      if (!principal) return null;
++      const tokens = this.mintTokens(file, principal);
++      await this.save(file);
++      return {principal, tokens};
+     });
+-    return {
+-      backupPath,
+-      clientsPreserved: current.clients.length,
+-      clientsImported,
+-      grantsCleared: true,
+-    };
+   }
+ 
+-}
++  async exchangeAuthorizationCode(raw: string, input: CodeExchangeInput): Promise<OAuthExchange | null> {
++    return withOAuthFile(this.filePath, async () => {
++      const file = await this.load();
++      const principal = this.consumeCodeRecord(file, raw, input);
++      if (!principal) return null;
++      const tokens = this.mintTokens(file, principal);
++      await this.save(file);
++      return {principal, tokens};
++    });
++  }
+ 
++}
+diff --git a/src/oauth/service.ts b/src/oauth/service.ts
+index 7a26ac4..5fe9ad0 100644
+--- a/src/oauth/service.ts
++++ b/src/oauth/service.ts
+@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
+ import type { FileKeyStore } from '../auth/key-store.js';
+ import type { VerifiedKey } from '../auth/key-types.js';
+ import type { HttpSecurityPolicy } from '../http/security-policy.js';
+-import { ACCESS_TOKEN_PREFIX, FileOAuthStore } from './store.js';
++import { ACCESS_TOKEN_PREFIX, FileOAuthStore, type OAuthTokens } from './store.js';
+ import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
+ 
+ const MCP_SCOPE = 'mcp:tools';
+@@ -284,15 +284,15 @@ ${hidden('scope', validated.scopes.join(' '))}
+       return;
+     }
+     if (grantType === 'refresh_token') {
+-      const principal = await this.store.consumeRefreshToken(
++      const exchange = await this.store.exchangeRefreshToken(
+         params.get('refresh_token') ?? '',
+         { clientId, resource },
+       );
+-      if (!principal) {
++      if (!exchange) {
+         sendJson(response, 400, { error: 'invalid_grant' });
+         return;
+       }
+-      await this.sendTokens(response, principal);
++      await this.sendTokens(response, exchange.principal, exchange.tokens);
+       return;
+     }
+ 
+@@ -305,17 +305,17 @@ ${hidden('scope', validated.scopes.join(' '))}
+     clientId: string,
+     resource: string,
+   ): Promise<void> {
+-    const principal = await this.store.consumeCode(params.get('code') ?? '', {
++    const exchange = await this.store.exchangeAuthorizationCode(params.get('code') ?? '', {
+       clientId,
+       redirectUri: params.get('redirect_uri') ?? '',
+       codeVerifier: params.get('code_verifier') ?? '',
+       resource,
+     });
+-    if (!principal) {
++    if (!exchange) {
+       sendJson(response, 400, { error: 'invalid_grant' });
+       return;
+     }
+-    await this.sendTokens(response, principal);
++    await this.sendTokens(response, exchange.principal, exchange.tokens);
+   }
+ 
+   private async sendTokens(response: ServerResponse, principal: {
+@@ -324,8 +324,7 @@ ${hidden('scope', validated.scopes.join(' '))}
+     scopes: string[];
+     keyId: string;
+     keyName: string;
+-  }): Promise<void> {
+-    const tokens = await this.store.issueTokens(principal);
++  }, tokens: OAuthTokens): Promise<void> {
+     sendJson(response, 200, {
+       access_token: tokens.accessToken,
+       token_type: 'Bearer',
+diff --git a/tests/oauth-concurrency-review.test.ts b/tests/oauth-concurrency-review.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/oauth-concurrency-review.test.ts
+@@ -0,0 +1,50 @@
++import {createHash} from 'node:crypto';
++import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
++import os from 'node:os';
++import path from 'node:path';
++import {afterEach, describe, expect, it} from 'vitest';
++import {FileOAuthStore, type OAuthPrincipal} from '../src/oauth/store.js';
++const dirs:string[]=[];
++async function fixture(){const dir=await mkdtemp(path.join(os.tmpdir(),'agent-core-oauth-review-'));dirs.push(dir);return {dir,store:new FileOAuthStore(dir)};}
++const principal:OAuthPrincipal={clientId:'synthetic-client',resource:'https://review.invalid/mcp',scopes:['mcp:tools'],keyId:'synthetic-key',keyName:'review'};
++const clientInput={clientName:'synthetic-review',redirectUris:['https://review.invalid/callback'],grantTypes:['authorization_code','refresh_token'],responseTypes:['code'],tokenEndpointAuthMethod:'client_secret_post'};
++afterEach(async()=>{for(const dir of dirs.splice(0))await rm(dir,{recursive:true,force:true});});
++describe('OAuth file concurrency regression',()=>{
++ it('retains every successfully issued token across eight concurrent requests',async()=>{
++  const {store}=await fixture();
++  const tokens=await Promise.all(Array.from({length:8},()=>store.issueTokens(principal)));
++  const valid=await Promise.all(tokens.map(t=>store.verifyAccessToken(t.accessToken)));
++  expect(valid.filter(Boolean).length).toBe(8);
++ });
++ it('serializes different store instances pointing at the same file',async()=>{
++  const {store,dir}=await fixture();const other=new FileOAuthStore(path.join(dir,'.'));
++  const registrations=await Promise.all(Array.from({length:8},(_,i)=>(i%2?store:other).registerClient(clientInput)));
++  const valid=await Promise.all(registrations.map(c=>store.verifyClient(c.client_id,c.client_secret)));
++  expect(valid.filter(Boolean).length).toBe(8);
++ });
++ it('permits exactly one simultaneous consumption of the same refresh token',async()=>{
++  const {store}=await fixture();const t=await store.issueTokens(principal);
++  const results=await Promise.all(Array.from({length:2},()=>store.consumeRefreshToken(t.refreshToken,principal)));
++  expect(results.filter(Boolean).length).toBe(1);
++ });
++ it('permits exactly one simultaneous consumption of the same authorization code',async()=>{
++  const {store}=await fixture();const verifier='a'.repeat(64);
++  const redirectUri='https://review.invalid/callback';
++  const code=await store.issueCode({...principal,redirectUri,codeChallenge:createHash('sha256').update(verifier).digest('base64url')});
++  const input={...principal,redirectUri,codeVerifier:verifier};
++  const results=await Promise.all(Array.from({length:2},()=>store.consumeCode(code,input)));
++  expect(results.filter(Boolean).length).toBe(1);
++ });
++ it('continues processing after a failed operation rather than poisoning its queue',async()=>{
++  const {store}=await fixture();await writeFile(store.filePath,'{invalid-json');
++  await expect(store.issueTokens(principal)).rejects.toThrow();
++  await rm(store.filePath);const t=await store.issueTokens(principal);
++  expect(Boolean(await store.verifyAccessToken(t.accessToken))).toBe(true);
++ });
++ it('persists hashes without raw issued tokens and reopens from disk',async()=>{
++  const {store,dir}=await fixture();const t=await store.issueTokens(principal);
++  const raw=await readFile(store.filePath,'utf8');
++  expect(raw.includes(t.accessToken)||raw.includes(t.refreshToken)).toBe(false);
++  expect(Boolean(await new FileOAuthStore(dir).verifyAccessToken(t.accessToken))).toBe(true);
++ });
++});
+diff --git a/tests/oauth-atomic-exchange-review.test.ts b/tests/oauth-atomic-exchange-review.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/oauth-atomic-exchange-review.test.ts
+@@ -0,0 +1,57 @@
++import {createHash} from 'node:crypto';
++import {createServer,type Server} from 'node:http';
++import type {AddressInfo} from 'node:net';
++import {mkdtemp,rm} from 'node:fs/promises';
++import os from 'node:os';import path from 'node:path';
++import {afterEach,describe,expect,it,vi} from 'vitest';
++import {FileKeyStore} from '../src/auth/key-store.js';
++import {createHttpHandler} from '../src/http/app.js';
++import {HttpSecurityPolicy} from '../src/http/security-policy.js';
++import {OAuthService} from '../src/oauth/service.js';
++import {FileOAuthStore} from '../src/oauth/store.js';
++const roots:string[]=[];const servers:Server[]=[];
++async function setup(){
++ const root=await mkdtemp(path.join(os.tmpdir(),'agent-core-exchange-review-'));roots.push(root);
++ const keyStore=new FileKeyStore(root);const store=new FileOAuthStore(root);
++ const key=await keyStore.create('synthetic-review-key');
++ const client=await store.registerClient({clientName:'synthetic-client',redirectUris:['https://review.invalid/callback'],grantTypes:['authorization_code','refresh_token'],responseTypes:['code'],tokenEndpointAuthMethod:'client_secret_post'});
++ const principal={clientId:client.client_id,resource:'https://review.invalid/mcp',scopes:['mcp:tools'],keyId:key.metadata.id,keyName:'synthetic-review-key'};
++ const oauthService=new OAuthService(keyStore,store,new HttpSecurityPolicy({publicBaseUrl:'https://review.invalid',trustProxy:false,allowedOrigins:[]}));
++ const server=createServer(createHttpHandler({keyStore,oauthService,auditLogger:{log:async()=>{}},mcpHandler:async(_req,res)=>{res.writeHead(200);res.end('{}');}}));
++ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));servers.push(server);
++ const base=`http://127.0.0.1:${(server.address() as AddressInfo).port}`;
++ const exchange=(fields:Record<string,string>)=>fetch(base+'/oauth/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:client.client_id,client_secret:client.client_secret,resource:principal.resource,...fields})});
++ return {store,client,principal,exchange};
++}
++afterEach(async()=>{vi.restoreAllMocks();for(const s of servers.splice(0))await new Promise<void>(resolve=>s.close(()=>resolve()));for(const r of roots.splice(0))await rm(r,{recursive:true,force:true});});
++function failWhenMinting(store:FileOAuthStore,existingTokens:number){
++ // A deterministic I/O failure at the persistence boundary, never real credentials.
++ const target=store as unknown as {save:(file:{accessTokens:unknown[]})=>Promise<void>};
++ const save=target.save.bind(store);
++ return vi.spyOn(target,'save').mockImplementation(async file=>{if(file.accessTokens.length>existingTokens)throw new Error('synthetic write failure');return save(file);});
++}
++describe('Atomic OAuth exchange regression',()=>{
++ it('does not burn the refresh grant when saving its replacement fails',async()=>{
++  const {store,principal,exchange}=await setup();const tokens=await store.issueTokens(principal);
++  const spy=failWhenMinting(store,1);
++  const res=await exchange({grant_type:'refresh_token',refresh_token:tokens.refreshToken});
++  expect(res.status).toBe(500);await res.text();spy.mockRestore();
++  expect(Boolean(await store.consumeRefreshToken(tokens.refreshToken,principal))).toBe(true);
++ });
++ it('does not burn the authorization code when saving issued tokens fails',async()=>{
++  const {store,principal,exchange}=await setup();const verifier='a'.repeat(64);const redirectUri='https://review.invalid/callback';
++  const code=await store.issueCode({...principal,redirectUri,codeChallenge:createHash('sha256').update(verifier).digest('base64url')});
++  const spy=failWhenMinting(store,0);
++  const res=await exchange({grant_type:'authorization_code',code,redirect_uri:redirectUri,code_verifier:verifier});
++  expect(res.status).toBe(500);await res.text();spy.mockRestore();
++  expect(Boolean(await store.consumeCode(code,{...principal,redirectUri,codeVerifier:verifier}))).toBe(true);
++ });
++ it('preserves both independent grants when two clients refresh concurrently',async()=>{
++  const {store,principal,exchange}=await setup();const a=await store.issueTokens(principal);const b=await store.issueTokens(principal);
++  const responses=await Promise.all([a,b].map(t=>exchange({grant_type:'refresh_token',refresh_token:t.refreshToken})));
++  expect(responses.map(r=>r.status)).toEqual([200,200]);
++  const results=await Promise.all(responses.map(r=>r.json()));
++  const valid=await Promise.all(results.map(t=>store.verifyAccessToken(t.access_token)));
++  expect(valid.filter(Boolean).length).toBe(2);
++ });
++});
+diff --git a/tests/mcp-multiclient-review.test.ts b/tests/mcp-multiclient-review.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/mcp-multiclient-review.test.ts
+@@ -0,0 +1,48 @@
++import {createServer,type Server} from 'node:http';
++import type {AddressInfo} from 'node:net';
++import {mkdtemp,rm} from 'node:fs/promises';
++import os from 'node:os';import path from 'node:path';
++import {afterEach,describe,expect,it} from 'vitest';
++import {Client,StreamableHTTPClientTransport} from '@modelcontextprotocol/client';
++import {FileKeyStore} from '../src/auth/key-store.js';
++import {loadConfig} from '../src/config.js';
++import {createHttpHandler} from '../src/http/app.js';
++import {HttpSecurityPolicy} from '../src/http/security-policy.js';
++import {createMcpHttpHandler} from '../src/mcp/handler.js';
++import {OAuthService} from '../src/oauth/service.js';
++import {FileOAuthStore} from '../src/oauth/store.js';
++import {createRuntimeServices,type RuntimeServices} from '../src/runtime/services.js';
++const roots:string[]=[];const servers:Server[]=[];const runtimes:RuntimeServices[]=[];const clients:Client[]=[];
++afterEach(async()=>{
++ for(const c of clients.splice(0))await c.close().catch(()=>{});
++ for(const s of servers.splice(0))await new Promise<void>(resolve=>s.close(()=>resolve()));
++ for(const r of runtimes.splice(0)){await r.telemetry.close();await r.execution.close();await r.memory.close();await r.operatorDirectives.close();}
++ for(const root of roots.splice(0))await rm(root,{recursive:true,force:true});
++});
++describe('Independent MCP clients using OAuth',()=>{
++ it.each(['legacy','modern'] as const)('keeps %s clients usable after repeated calls, peer close, refresh and new connection',async era=>{
++  const root=await mkdtemp(path.join(os.tmpdir(),'agent-core-multiclient-review-'));roots.push(root);
++  const keys=new FileKeyStore(path.join(root,'data'));const key=await keys.create('synthetic-review');
++  const store=new FileOAuthStore(path.join(root,'data'));
++  const registered=await store.registerClient({clientName:'review',redirectUris:['https://review.invalid/callback'],grantTypes:['authorization_code','refresh_token'],responseTypes:['code'],tokenEndpointAuthMethod:'client_secret_post'});
++  const principal={clientId:registered.client_id,resource:'https://review.invalid/mcp',scopes:['mcp:tools'],keyId:key.metadata.id,keyName:'synthetic-review'};
++  const a=await store.issueTokens(principal);const b=await store.issueTokens(principal);
++  const security=new HttpSecurityPolicy({publicBaseUrl:'https://review.invalid',trustProxy:false,allowedOrigins:[]});
++  const runtime=createRuntimeServices([root],path.join(root,'capabilities'),undefined,{...loadConfig({},root).memory,enabled:false});runtimes.push(runtime);
++  const server=createServer(createHttpHandler({keyStore:keys,oauthService:new OAuthService(keys,store,security),security,auditLogger:{log:async()=>{}},mcpHandler:createMcpHttpHandler(runtime)}));
++  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));servers.push(server);const base=`http://127.0.0.1:${(server.address() as AddressInfo).port}`;
++  async function connect(name:string,token:string){const client=new Client({name,version:'1.0.0'},era==='modern'?{versionNegotiation:{mode:'auto'}}:undefined);clients.push(client);await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp'),{authProvider:{token:async()=>token}}));expect(client.getProtocolEra()).toBe(era);return client;}
++  const ca=await connect('review-client-a',a.accessToken);const cb=await connect('review-client-b',b.accessToken);
++  for(let i=0;i<5;i++){
++   const statuses=await Promise.all([ca,cb].map(c=>c.callTool({name:'agent_core_status',arguments:{}})));
++   expect(statuses.every(s=>s.structuredContent?.authentication==='oauth2')).toBe(true);
++   expect((await cb.listTools()).tools.some(t=>t.name==='agent_core_status')).toBe(true);
++  }
++  await ca.close();expect((await cb.callTool({name:'agent_core_status',arguments:{}})).isError).not.toBe(true);
++  const response=await fetch(base+'/oauth/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',client_id:registered.client_id,client_secret:registered.client_secret,refresh_token:a.refreshToken,resource:principal.resource})});
++  expect(response.status).toBe(200);const refreshed=await response.json();
++  const cc=await connect('review-client-new-session',refreshed.access_token);
++  expect((await cc.callTool({name:'agent_core_status',arguments:{}})).isError).not.toBe(true);
++  expect((await cb.callTool({name:'agent_core_status',arguments:{}})).isError).not.toBe(true);
++ });
++});

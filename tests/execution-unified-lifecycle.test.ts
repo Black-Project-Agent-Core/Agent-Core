@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { FileKeyStore } from '../src/auth/key-store.js';
 import { loadConfig, type AppConfig } from '../src/config.js';
 import { startAgentCoreService, type AgentCoreService } from '../src/index.js';
@@ -145,6 +146,32 @@ describe('unified Agent Core continuity + execution lifecycle', () => {
     expect(httpHealth.execution.queuedSync).toBeGreaterThan(0);
   }, 10_000);
 
+  it('bounds graceful close even while an MCP transport remains connected', async () => {
+    const { config } = await fixture('graceful-mcp-drain');
+    const first = await start(config);
+    const keyStore = new FileKeyStore(config.dataDir);
+    const principal = await keyStore.create('graceful-mcp-drain-principal');
+    const client = new Client({ name: 'graceful-mcp-drain-test', version: '1.0.0' });
+    const transport = new StreamableHTTPClientTransport(new URL(`http://${first.host}:${first.port}/mcp`), {
+      authProvider: { token: async () => principal.key },
+    });
+    let closePromise: Promise<void> | undefined;
+    try {
+      await client.connect(transport);
+      expect((await client.listTools()).tools.length).toBeGreaterThan(0);
+      closePromise = first.close();
+      const outcome = await Promise.race([
+        closePromise.then(() => 'closed' as const),
+        new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 2_500)),
+      ]);
+      expect(outcome).toBe('closed');
+    } finally {
+      await client.close().catch(() => undefined);
+      await closePromise?.catch(() => undefined);
+      const index = services.indexOf(first);
+      if (index >= 0) services.splice(index, 1);
+    }
+  }, 10_000);
   it('graceful service close stops new runs, interrupts active nodes, and checkpoints both SQLite WALs', async () => {
     const { root, work, config } = await fixture('graceful-close');
     const first = await start(config);

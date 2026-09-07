@@ -174,6 +174,7 @@ describe('bounded runtime observability', () => {
     } finally {
       await runtime.execution.close().catch(() => undefined);
       await runtime.memory.close().catch(() => undefined);
+      await runtime.operatorDirectives.close().catch(() => undefined);
       await rm(root, { recursive: true, force: true });
     }
   }, 10_000);
@@ -406,6 +407,9 @@ describe('bounded runtime observability', () => {
       const tool = listed.result.tools.find((entry: any) => entry.name === 'agent_core_health_metrics');
       expect(tool).toBeTruthy();
       expect(tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+      expect(tool.outputSchema.properties.operatorDirectives).toBeTruthy();
+      expect(tool.outputSchema.properties.audit).toBeTruthy();
+      expect(tool.outputSchema.properties.observability).toBeTruthy();
 
       const called = await fetch(`${baseUrl}/mcp`, {
         method: 'POST',
@@ -414,10 +418,13 @@ describe('bounded runtime observability', () => {
       }).then((r) => r.json()) as any;
       const body = JSON.parse(called.result.content[0].text);
       expect(body).toMatchObject({ execution: { healthy: true }, github: { enabled: false } });
+      expect(body.operatorDirectives).toMatchObject({ enabled: true, healthy: true, schemaVersion: 1, integrity: 'ok' });
+      expect(JSON.stringify(body.operatorDirectives)).not.toContain('verbatimText');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await runtime.execution.close().catch(() => undefined);
       await runtime.memory.close().catch(() => undefined);
+      await runtime.operatorDirectives.close().catch(() => undefined);
       await auditLogger.close();
       await rm(root, { recursive: true, force: true });
     }

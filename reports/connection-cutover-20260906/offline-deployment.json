@@ -1,0 +1,126 @@
+{
+  "at": "2026-09-05T20:09:44.256607+00:00",
+  "status": "DEPLOYED_OFFLINE_PENDING_NATIVE_RESTART",
+  "sourceFiles": [
+    "src/config.ts",
+    "src/oauth/store.ts",
+    "src/oauth/service.ts",
+    "src/oauth/file-lock.ts",
+    "src/oauth/atomic-file.ts",
+    "src/runtime/persistence-paths.ts"
+  ],
+  "testFiles": [
+    "tests/oauth-concurrency-review.test.ts",
+    "tests/oauth-atomic-exchange-review.test.ts",
+    "tests/mcp-multiclient-review.test.ts",
+    "tests/persist-selection-repair.test.ts",
+    "tests/oauth-rename-repair.test.ts",
+    "tests/oauth-crossprocess-repair.test.ts",
+    "tests/oauth-lock-recovery-repair.test.ts"
+  ],
+  "builtFiles": [
+    "dist/config.js",
+    "dist/config.js.map",
+    "dist/oauth/store.js",
+    "dist/oauth/store.js.map",
+    "dist/oauth/service.js",
+    "dist/oauth/service.js.map",
+    "dist/oauth/file-lock.js",
+    "dist/oauth/file-lock.js.map",
+    "dist/oauth/atomic-file.js",
+    "dist/oauth/atomic-file.js.map",
+    "dist/runtime/persistence-paths.js",
+    "dist/runtime/persistence-paths.js.map"
+  ],
+  "copiedData": [
+    {
+      "source": "runtime\\data\\keys.json",
+      "destination": "runtime\\persistence-20260906\\data\\keys.json",
+      "sha256": "bc752911b279b511c6fd0c52c6099d43a24617c18404148fed928040aeeb4eb4",
+      "identical": true
+    },
+    {
+      "source": "runtime\\data\\oauth.json",
+      "destination": "runtime\\persistence-20260906\\data\\oauth.json",
+      "sha256": "0ef052cffaa62b6713f95b2b9c6939014a103f23ac80bbccab8a3640e6aa9ffd",
+      "identical": true
+    },
+    {
+      "source": "runtime\\logs\\audit\\audit-anchor.json",
+      "destination": "runtime\\persistence-20260906\\logs\\audit\\audit-anchor.json",
+      "sha256": "348a63e7ce8800e95b5567ae50f211ee05d3f6c2b17d3ca2a6509807c3b9b7bf",
+      "identical": true
+    },
+    {
+      "source": "runtime\\logs\\audit\\audit-head.json",
+      "destination": "runtime\\persistence-20260906\\logs\\audit\\audit-head.json",
+      "sha256": "7c7ddd083ab1eb06f0a379946ffefcc0fdffefdbd4272759ef7063161263528d",
+      "identical": true
+    },
+    {
+      "source": "runtime\\logs\\audit\\audit.current.jsonl",
+      "destination": "runtime\\persistence-20260906\\logs\\audit\\audit.current.jsonl",
+      "sha256": "d8a2125bb974a85114576a456f1ffbeec468af2bee0fe16bcb638baed297900c",
+      "identical": true
+    },
+    {
+      "source": "runtime\\logs\\langflow-adapter-restart.json",
+      "destination": "runtime\\persistence-20260906\\logs\\langflow-adapter-restart.json",
+      "sha256": "da8157ecab9957af9552b773e47aa6df13b4205a96df1272d1c66437a89eae04",
+      "identical": true
+    }
+  ],
+  "auditCopied": {
+    "ok": true,
+    "auditRoot": "E:\\Projects\\Agent-Core\\runtime\\persistence-20260906\\logs\\audit",
+    "firstSequence": 1,
+    "lastSequence": 28608,
+    "records": 28608,
+    "files": 1,
+    "headHash": "cb2087b1b54ac7b565acdb9ad41280d9a1be7c5cde37f46fdeca5bd59cc357fe",
+    "anchorSequence": 0
+  },
+  "configurationReadback": {
+    "direct": {
+      "data": "E:\\Projects\\Agent-Core\\runtime\\persistence-20260906\\data",
+      "logs": "E:\\Projects\\Agent-Core\\runtime\\persistence-20260906\\logs"
+    },
+    "launcher": {
+      "data": "E:\\Projects\\Agent-Core\\runtime\\persistence-20260906\\data",
+      "logs": "E:\\Projects\\Agent-Core\\runtime\\persistence-20260906\\logs"
+    }
+  },
+  "originalDataDeleted": false,
+  "oldAclChanged": false,
+  "realGrantsCreatedOrRevoked": false,
+  "nativeBinaryModified": false,
+  "restartPerformed": false,
+  "manifestSha256": "07335024d3207b045ee28981db715dd270300715e4948e5ddff1d3c3422af049",
+  "deployedHashes": {
+    "src/config.ts": "d31867ec43647ec9b9783aa68cb34c3c116d1b87bdc80928995684a1d76c2799",
+    "src/oauth/store.ts": "46e8fb69961c65fac6da974ea7352869d3931152a5b9483928354837c8ca5b59",
+    "src/oauth/service.ts": "384a514b994d6ab6bbbfc74a75e2755b89eed2fbecdcde41c8980fb265a3a2bd",
+    "src/oauth/file-lock.ts": "0552b5790604da74a6ef3c91e08e8f976d24e6317fb25e55330c46c091c81d91",
+    "src/oauth/atomic-file.ts": "fff15658d35c6671fd0a9184d9b8f2c22c9e058725f889b6e9ba52f6ae0f5b4d",
+    "src/runtime/persistence-paths.ts": "406d4c7fa1f4caa20936959055d57902751d0d72438c7b5b9124c490972a6db5",
+    "tests/oauth-concurrency-review.test.ts": "133fab90d62e6099fef5b7a3d9645e144da32ea366eb462b142240ecc7b71793",
+    "tests/oauth-atomic-exchange-review.test.ts": "7f8e7425a2aeeed2df795f791d7a722a48e9fe326dfb47c9994495f27680d7a5",
+    "tests/mcp-multiclient-review.test.ts": "41a6c4567b6d84980a61de230c77a867c08b194f065e3470c7c97fda6e968cd2",
+    "tests/persist-selection-repair.test.ts": "7dbf9916fba7b03a97f853a77a99dea23442a533ed149021594f5824f354e405",
+    "tests/oauth-rename-repair.test.ts": "8700903cd5edc2943eb877c96a6dea283df81985ff860ff8778f529c98fc0c1e",
+    "tests/oauth-crossprocess-repair.test.ts": "5dc045ac15de8b74d8e8344dc213a00fe05be5de91eef85e92eb8cf43355050c",
+    "tests/oauth-lock-recovery-repair.test.ts": "7baab716a8f2b2e5b9133d0bfc03d299dda9be9e24094c9e1fd720474b1785cf",
+    "dist/config.js": "299f2c8d8932aba053d7caed0b35644b00b8d562f1ee62ef4ade8e18cbeaeb60",
+    "dist/config.js.map": "d774e69f22360ca4da27737f028b58f9ce6c0550f64fb42297536b2029a70ed3",
+    "dist/oauth/store.js": "cf0fa17f78de8f303c3378d4bacc8967c568d2400dcb041078725011bd654b80",
+    "dist/oauth/store.js.map": "d89bd7f7020a64f176fbb7907a75506ea93b4a138ce9c776b05612dd032e1b44",
+    "dist/oauth/service.js": "f13b579c50c970c1a08fc949b6801b76280956b765d35de5127f78bedd2dee1d",
+    "dist/oauth/service.js.map": "036f26105dc1150d636dc4d0407562a5f6ab25b3324a86b30b2e5f6c5be4edbb",
+    "dist/oauth/file-lock.js": "a2c798b4b0dce66bb24215d651395eaeceb6c348a2cc53b9bc1c1b1aab217d4d",
+    "dist/oauth/file-lock.js.map": "45eb9a87d4b1bbcf80581895e00e953e07d3116dc2ed53445de7d972e021312c",
+    "dist/oauth/atomic-file.js": "cb5f686a3c0dced14a5d64ffb1ab7ced437215edfbc88c7125c7af3148f9724e",
+    "dist/oauth/atomic-file.js.map": "c30a4871b54b6fbdf826aa30786e531315ebca446fc94ebf489197d6415231a1",
+    "dist/runtime/persistence-paths.js": "8416cc5c2e6744057d0ad8d77240f238b7f89efd7a798879349c4fa71658ea60",
+    "dist/runtime/persistence-paths.js.map": "c61c367d78bb07090782a83dadcfd026dc7aeffbd3df7b253c9212df85fcec6e"
+  }
+}

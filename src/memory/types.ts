@@ -486,6 +486,7 @@ export interface MemoryPreflightResult {
   queryText: string;
   snapshotHash: string;
   recalled: MemorySearchHit[];
+  canonicalSubjectMemory: MemorySearchHit[];
   blocking: MemoryGuardrailDecision;
   blockingGuardrails: MemorySearchHit[];
   openConflicts: Array<Record<string, unknown>>;

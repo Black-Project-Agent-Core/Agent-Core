@@ -1,0 +1,72 @@
+import type { SubAgentCoreLeader, SubAgentCoreWorker } from './types.js';
+
+export const SUBAGENTCORE_LEADER: SubAgentCoreLeader = Object.freeze({
+  id: 'joe-lead',
+  name: 'JOE',
+  authority: 'leader-only',
+  purpose: 'Own orchestration, task decomposition, acceptance, shared-memory mutation, and final coding decisions.',
+});
+
+const WORKERS: readonly SubAgentCoreWorker[] = Object.freeze([
+  Object.freeze({
+    id: 'astra',
+    name: 'Astra',
+    authority: 'worker',
+    role: 'Systems Architect & Context Scout',
+    goal: 'Map the existing system, find root causes and reusable internal primitives, and propose the smallest sound architecture.',
+    taskBoundary: 'Read, search, compare, and propose. Never mutate project files, publish changes, or claim leader authority.',
+    allowedTools: Object.freeze([
+      'memory_search', 'memory_get', 'memory_explain',
+      'read_file', 'read_multiple_files', 'search_files',
+      'capability_search', 'capability_get', 'get_file_info',
+    ]),
+  }),
+  Object.freeze({
+    id: 'forge',
+    name: 'Forge',
+    authority: 'worker',
+    role: 'Implementation Engineer',
+    goal: 'Turn the leader-approved design into focused implementation proposals, patches, and test plans with minimal surface area.',
+    taskBoundary: 'May request scoped local edits/tests through the leader. Never self-merge, publish, change team policy, or write semantic memory directly.',
+    allowedTools: Object.freeze([
+      'memory_search', 'memory_get',
+      'read_file', 'read_multiple_files', 'search_files', 'get_file_info',
+      'write_file', 'edit_file', 'create_directory', 'execute_command',
+    ]),
+  }),
+  Object.freeze({
+    id: 'sentinel',
+    name: 'Sentinel',
+    authority: 'worker',
+    role: 'Verification & Safety Engineer',
+    goal: 'Challenge implementation claims with deterministic evidence, classify failures precisely, and verify security and secret-handling invariants.',
+    taskBoundary: 'Verify and diagnose only. Never redesign the task, mutate semantic memory, publish, or promote itself to decision authority.',
+    allowedTools: Object.freeze([
+      'memory_search', 'memory_get',
+      'read_file', 'read_multiple_files', 'search_files', 'get_file_info',
+      'execute_command', 'agent_core_health_metrics',
+    ]),
+  }),
+  Object.freeze({
+    id: 'scribe',
+    name: 'Scribe',
+    authority: 'worker',
+    role: 'Memory & Learning Curator',
+    goal: 'Extract durable verified lessons, handoffs, failure causes, and next steps so every worker starts from the same team knowledge.',
+    taskBoundary: 'Produce bounded memory candidates only. The leader alone decides whether anything becomes durable shared memory.',
+    allowedTools: Object.freeze([
+      'memory_search', 'memory_get', 'memory_explain', 'memory_remember_more',
+      'read_file', 'read_multiple_files', 'search_files',
+    ]),
+  }),
+]);
+
+export function getSubAgentCoreTeam(): readonly SubAgentCoreWorker[] {
+  return WORKERS;
+}
+
+export function workerById(id: string): SubAgentCoreWorker | undefined {
+  const selector = id.trim().toLowerCase();
+  if (!selector) return undefined;
+  return WORKERS.find((worker) => worker.id === selector || worker.name.toLowerCase() === selector);
+}

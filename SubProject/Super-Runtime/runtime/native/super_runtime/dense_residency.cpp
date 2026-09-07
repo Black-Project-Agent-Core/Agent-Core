@@ -43,10 +43,13 @@ DensePlanResult plan_dense_residency(
         const std::vector<DenseLayerRange> & layers,
         std::uint64_t residency_alignment,
         std::uint64_t budget_bytes,
-        DenseResidencyPlan & plan) {
+        DenseResidencyPlan & plan,
+        DenseTraversal traversal) {
     plan = DenseResidencyPlan{};
 
-    if (layers.empty() || residency_alignment == 0 || budget_bytes == 0) {
+    if (layers.empty() || residency_alignment == 0 || budget_bytes == 0 ||
+        (traversal != DenseTraversal::Cyclic && traversal != DenseTraversal::Finite)) {
+
         return DensePlanResult::InvalidArgument;
     }
 
@@ -94,6 +97,7 @@ DensePlanResult plan_dense_residency(
         plan.pinned_bytes = prefix[static_cast<std::size_t>(pinned_prefix_count)];
         plan.max_dynamic_layer_bytes = max_dynamic_layer_bytes;
         plan.required_budget_bytes = required_budget_bytes;
+        plan.traversal = traversal;
     };
 
     const std::uint64_t total_bytes = prefix.back();
@@ -201,10 +205,13 @@ DenseResidencyResult DenseResidencyPolicy::prepare(std::uint64_t layer_index) {
         return DenseResidencyResult::ResidencyError;
     }
 
-    if (plan_.ring_slots == 2 && plan_.layers.size() > 1) {
-        const std::uint64_t next = (layer_index + 1) % static_cast<std::uint64_t>(plan_.layers.size());
+    const bool has_next = layer_index + 1 < static_cast<std::uint64_t>(plan_.layers.size());
+    const bool may_wrap = plan_.traversal == DenseTraversal::Cyclic;
+    if (plan_.ring_slots == 2 && plan_.layers.size() > 1 && (has_next || may_wrap)) {
+        const std::uint64_t next = has_next ? layer_index + 1 : 0;
         if (next >= plan_.pinned_prefix_count && next != layer_index &&
             !resident_[static_cast<std::size_t>(next)]) {
+
             const auto result = ensure_resident(next);
             if (result != DenseResidencyResult::Ok) {
                 active_lease_.reset();
@@ -236,6 +243,12 @@ DenseResidencyResult DenseResidencyPolicy::complete(std::uint64_t layer_index) {
     }
 
     active_lease_.reset();
+    active_layer_ = no_active_layer;
+    if (plan_.traversal == DenseTraversal::Cyclic) {
+        expected_layer_ = (layer_index + 1) % static_cast<std::uint64_t>(plan_.layers.size());
+    } else {
+        expected_layer_ = layer_index + 1;
+    }
 
     if (layer_index >= plan_.pinned_prefix_count) {
         const auto result = release_layer(layer_index);
@@ -244,9 +257,8 @@ DenseResidencyResult DenseResidencyPolicy::complete(std::uint64_t layer_index) {
         }
     }
 
-    active_layer_ = no_active_layer;
-    expected_layer_ = (layer_index + 1) % static_cast<std::uint64_t>(plan_.layers.size());
     return DenseResidencyResult::Ok;
+
 }
 
 DenseResidencyResult DenseResidencyPolicy::stop() {
@@ -284,6 +296,11 @@ const DenseResidencyPlan & DenseResidencyPolicy::plan() const noexcept {
 bool DenseResidencyPolicy::is_intentionally_resident(std::uint64_t layer_index) const noexcept {
     return layer_index < resident_.size() && resident_[static_cast<std::size_t>(layer_index)] != 0;
 }
+
+const void * DenseResidencyPolicy::active_data() const noexcept {
+    return active_layer_ == no_active_layer ? nullptr : active_lease_.data();
+}
+
 
 DenseResidencyResult DenseResidencyPolicy::ensure_resident(std::uint64_t layer_index) {
     if (layer_index >= plan_.layers.size()) {

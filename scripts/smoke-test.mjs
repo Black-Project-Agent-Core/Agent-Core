@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
+const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+const expectedServerVersion = String(packageJson.version);
 const baseUrl = process.env.AGENT_CORE_SMOKE_URL ?? 'http://127.0.0.1:8765';
 const key = process.env.AGENT_CORE_SMOKE_KEY;
 const expectedKeyId = process.env.AGENT_CORE_SMOKE_KEY_ID;
@@ -65,7 +68,7 @@ assert(unauthorized.response.status === 401, `unauthorized expected 401, got ${u
 const initialized = await postMcp(initializeBody);
 assert(initialized.response.status === 200, `initialize expected 200, got ${initialized.response.status}`);
 assert(initialized.json?.result?.serverInfo?.name === 'agent-core', 'unexpected MCP server identity');
-assert(initialized.json?.result?.serverInfo?.version === '0.6.0', 'unexpected MCP server version');
+assert(initialized.json?.result?.serverInfo?.version === expectedServerVersion, `unexpected MCP server version (expected ${expectedServerVersion})`);
 
 const tools = await postMcp({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
 const listedTools = tools.json?.result?.tools ?? [];

@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import type { VerifiedKey } from '../auth/key-types.js';
+import { MEMORY_ANCHOR_TYPES } from '../memory/anchors.js';
 import {
   MEMORY_ENFORCEMENTS,
   MEMORY_KINDS,
@@ -71,6 +72,7 @@ const forgetAnnotations = {
 const memoryKind = z.enum(MEMORY_KINDS);
 const memoryEnforcement = z.enum(MEMORY_ENFORCEMENTS);
 const memoryRelation = z.enum(MEMORY_RELATIONS);
+const memoryAnchorType = z.enum(MEMORY_ANCHOR_TYPES);
 const memoryRememberMoreReason = z.enum(MEMORY_REMEMBER_MORE_REASONS);
 const jsonValue = z.union([
   z.string().max(50_000),
@@ -176,6 +178,10 @@ export function registerMemoryTools(server: McpServer, runtime: RuntimeServices,
       sourceType: z.string().min(1).max(500).optional(),
       sourceRef: z.string().min(1).max(2000).optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
+      explicitAnchors: z.array(z.object({
+        type: memoryAnchorType,
+        value: z.string().min(1).max(5_000),
+      })).max(128).optional(),
       explicitRelations: z.array(z.object({
         targetMemoryId: z.string().uuid(),
         relation: memoryRelation,
@@ -184,7 +190,7 @@ export function registerMemoryTools(server: McpServer, runtime: RuntimeServices,
       ...optionalScope,
     },
     annotations: writeAnnotations,
-  }, async ({ canonicalKey, kind, value, importance, pinned, enforcement, sourceType, sourceRef, metadata, explicitRelations, routeContextId, threadId, resourceId }) => guarded(() => runtime.memory.commit({
+  }, async ({ canonicalKey, kind, value, importance, pinned, enforcement, sourceType, sourceRef, metadata, explicitAnchors, explicitRelations, routeContextId, threadId, resourceId }) => guarded(() => runtime.memory.commit({
     scope: scope(runtime, key, { routeContextId, threadId, resourceId }),
     canonicalKey,
     kind,
@@ -195,6 +201,7 @@ export function registerMemoryTools(server: McpServer, runtime: RuntimeServices,
     sourceType: sourceType ?? 'primary_ai',
     sourceRef,
     metadata,
+    explicitAnchors,
     explicitRelations,
   })));
 

@@ -27,6 +27,7 @@ function pkce(verifier: string): string {
 
 async function setup(httpSecurity?: {
   publicBaseUrl: string | null;
+  protectedResourceUrl?: string | null;
   trustProxy: boolean;
   allowedOrigins: string[];
 }) {
@@ -36,10 +37,12 @@ async function setup(httpSecurity?: {
   const keyStore = new FileKeyStore(dataDir);
   const oauthStore = new FileOAuthStore(dataDir);
   const metrics = new RuntimeMetricRegistry();
-  const oauthService = new OAuthService(keyStore, oauthStore, new HttpSecurityPolicy(httpSecurity ?? {
+  const oauthService = new OAuthService(keyStore, oauthStore, new HttpSecurityPolicy({
     publicBaseUrl: null,
+    protectedResourceUrl: null,
     trustProxy: true,
     allowedOrigins: [],
+    ...httpSecurity,
   }), metrics);
   const baseMemory = loadConfig({}, root).memory;
   const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, { ...baseMemory, enabled: false });
@@ -171,6 +174,36 @@ describe('Agent Core OAuth bridge', () => {
       authorization_servers: [canonical],
     });
     expect(await metadata.json()).toMatchObject({ issuer: canonical });
+  });
+
+  it('accepts an explicitly configured tunnel protected resource without changing the authorization-server issuer', async () => {
+    const tunnelResource = 'https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/tunnel_test123';
+    const { baseUrl, externalBase } = await setup({
+      publicBaseUrl: null,
+      protectedResourceUrl: tunnelResource,
+      trustProxy: true,
+      allowedOrigins: [],
+    });
+    const protectedResource = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`, { headers: forwarded });
+    expect(await protectedResource.json()).toMatchObject({
+      resource: tunnelResource,
+      authorization_servers: [externalBase],
+    });
+
+    const client = await registerClient(baseUrl);
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: client.client_id,
+      redirect_uri: client.redirect_uris[0] as string,
+      state: 'tunnel-resource',
+      code_challenge: pkce('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~tunnel-resource'),
+      code_challenge_method: 'S256',
+      resource: tunnelResource,
+      scope: 'mcp:tools',
+    });
+    const response = await fetch(`${baseUrl}/oauth/authorize?${params}`, { headers: forwarded });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('Agent Core API key');
   });
 
   it('registers a confidential OAuth client without storing its raw secret', async () => {

@@ -1,0 +1,18 @@
+{
+  "verifiedAt": "2026-09-05T19:57:37.579202+00:00",
+  "candidateTests": {
+    "total": 71,
+    "passed": 71,
+    "failed": 0
+  },
+  "typecheck": "PASS",
+  "candidateBuild": "PASS",
+  "patchDryRun": "PASS (not applied)",
+  "productionDeployed": false,
+  "productionSourceUnchanged": true,
+  "hostDeveloperMcp": "FORBIDDEN",
+  "controlledCutover": "BLOCKED_BY_TOOL_SAFETY_CHECK",
+  "reportSha256": "1376ee23d5b7d728e156bfa7c5760987f12dd7df7572c7b5c88e26c570127a61",
+  "resumeSha256": "3e00fe031021b9926227225823482cd466a5dd211a708c81f0ce8ec0197b343e",
+  "docsRunbookMatchesResume": true
+}

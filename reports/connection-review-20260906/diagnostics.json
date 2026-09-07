@@ -1,0 +1,274 @@
+{
+  "capturedAt": "2026-09-05T18:56:22.040Z",
+  "projectRoot": "E:\\Projects\\Agent-Core",
+  "gitHead": "6b674c1f95a677dea5cb57263bb5b8b863faff5b",
+  "live": {
+    "service": "agent-core",
+    "version": "0.7.0",
+    "status": "ok",
+    "memoryHealthy": true,
+    "executionHealthy": true,
+    "overallHealth": "degraded"
+  },
+  "oauth": {
+    "clients": 1,
+    "accessTokens": 22,
+    "unexpiredAccess": 1,
+    "unexpiredResourceMatches": 1,
+    "resourceIsSecureTunnel": true,
+    "activeRefresh": 5
+  },
+  "audit": {
+    "enabled": true,
+    "queueDepth": 0,
+    "queueCapacity": 4096,
+    "written": 0,
+    "dropped": 0,
+    "writeErrors": 290,
+    "sequence": 28608,
+    "headHashPrefix": "cb2087b1b54ac7b5",
+    "currentFileBytes": 16776968,
+    "rotatedFiles": 0,
+    "lastWriteErrorCode": "EPERM",
+    "firstPersistedAt": "2026-09-04T06:30:23.274Z",
+    "lastPersistedAt": "2026-09-05T17:50:02.873Z",
+    "fileBytes": 16776968,
+    "fileMtime": "2026-09-05T17:50:02.875Z",
+    "parsedRows": 28608,
+    "httpStats": {
+      "/health 200": 21753,
+      "/mcp 401": 44,
+      "/.well-known/oauth-protected-resource/mcp 200": 14,
+      "/.well-known/oauth-authorization-server 200": 14,
+      "/oauth/authorize 200": 5,
+      "/oauth/authorize 302": 5,
+      "/oauth/token 200": 21,
+      "/mcp 200": 2427,
+      "/favicon.ico 404": 6,
+      "/mcp 202": 42,
+      "/ 404": 3,
+      "/mcp 405": 5,
+      "/health/metrics 500": 1,
+      "/health/metrics 200": 3
+    },
+    "recentTokenExchanges": [
+      {
+        "at": "2026-09-04T20:43:56.623Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-04T21:34:03.186Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-04T22:24:24.123Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-04T23:15:10.434Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-05T00:05:24.877Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-05T00:55:29.580Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-05T01:53:14.628Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-05T02:46:08.243Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-05T03:38:27.307Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-05T05:14:30.534Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-05T05:34:28.890Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-05T07:07:01.034Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-05T10:25:00.876Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-05T11:15:06.487Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      },
+      {
+        "at": "2026-09-05T16:41:24.091Z",
+        "method": "POST",
+        "route": "/oauth/token",
+        "status": 200
+      }
+    ],
+    "recentMcpAuthFailures": [
+      {
+        "at": "2026-09-04T23:23:34.313Z",
+        "method": "DELETE",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T00:21:52.751Z",
+        "method": "DELETE",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T00:21:52.751Z",
+        "method": "DELETE",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T05:24:32.931Z",
+        "method": "POST",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T05:24:32.978Z",
+        "method": "POST",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T05:24:32.979Z",
+        "method": "DELETE",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T07:06:55.770Z",
+        "method": "POST",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T07:06:55.771Z",
+        "method": "POST",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T07:06:55.772Z",
+        "method": "DELETE",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T16:39:35.960Z",
+        "method": "POST",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T16:39:35.962Z",
+        "method": "POST",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T16:39:35.963Z",
+        "method": "DELETE",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T16:57:18.259Z",
+        "method": "POST",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T16:57:18.260Z",
+        "method": "POST",
+        "route": "/mcp",
+        "status": 401
+      },
+      {
+        "at": "2026-09-05T16:57:18.262Z",
+        "method": "DELETE",
+        "route": "/mcp",
+        "status": 401
+      }
+    ]
+  },
+  "confirmedRoutingObservation": {
+    "code": "WORKSPACE_PROJECT_AMBIGUOUS",
+    "trigger": "One route request quoted three configured roots while also specifying projectRoot",
+    "workaround": "Retried with only target project path in task/context; succeeded",
+    "isTransportFailure": false
+  },
+  "limitations": [
+    "No independent new ChatGPT chat was created",
+    "Historical log has a persistence gap; its 401s do not identify token failure reasons",
+    "No production source or dist changes; candidate remains isolated",
+    "In-process queue is not a cross-process lock",
+    "Persistence rename fallback still has in-place-write crash risks"
+  ],
+  "discovery": {
+    "connectorExposedTools": 55,
+    "runtimeAdvertisedToolsIncludingTwoBuiltins": 69,
+    "missingFromConnector": [
+      "langflow_status",
+      "langflow_projects",
+      "langflow_flows",
+      "langflow_components",
+      "langflow_flow_create",
+      "langflow_flow_update",
+      "langflow_graph_add_node",
+      "langflow_graph_connect",
+      "langflow_run",
+      "operator_directive_status",
+      "operator_directive_set",
+      "operator_directive_revoke",
+      "memory_remember_more",
+      "subagentcore"
+    ],
+    "subagentcoreDiscoveryProbe": "api_tool.list_resources(Agent_Core, subagentcore) returned no match",
+    "interpretation": "Observed surface mismatch; stale published snapshot or action filtering are hypotheses, not proof that the whole connector disappears after one call."
+  }
+}

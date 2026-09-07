@@ -98,6 +98,29 @@ function terminalState(
   return 'succeeded';
 }
 
+async function terminateWithBoundedEscalation(child: import('node:child_process').ChildProcessWithoutNullStreams): Promise<void> {
+  await terminateManagedProcessTree(child);
+  if (child.exitCode !== null || child.signalCode !== null) return;
+
+  const exited = await new Promise<boolean>((resolve) => {
+    const finish = (value: boolean) => {
+      clearTimeout(timer);
+      child.off('close', onClose);
+      child.off('error', onError);
+      resolve(value);
+    };
+    const onClose = () => finish(true);
+    const onError = () => finish(true);
+    const timer = setTimeout(() => finish(false), 750);
+    child.once('close', onClose);
+    child.once('error', onError);
+  });
+
+  if (!exited && child.exitCode === null && child.signalCode === null) {
+    await terminateManagedProcessTree(child, true);
+  }
+}
+
 export class ExecutionCommandRunner {
   readonly maxOutputBytes: number;
 
@@ -156,7 +179,7 @@ export class ExecutionCommandRunner {
     const onOutputExceeded = () => {
       if (outputLimitExceeded) return;
       outputLimitExceeded = true;
-      void terminateManagedProcessTree(child);
+      void terminateWithBoundedEscalation(child);
     };
 
     const stdoutPipeline = pipeline(
@@ -183,7 +206,7 @@ export class ExecutionCommandRunner {
     const timer = setTimeout(() => {
       if (completed) return;
       timedOut = true;
-      void terminateManagedProcessTree(child);
+      void terminateWithBoundedEscalation(child);
     }, node.timeoutMs);
 
     const completion = (async (): Promise<ExecutionResultMarker> => {
@@ -271,7 +294,7 @@ export class ExecutionCommandRunner {
       terminate: (state = 'cancelled') => {
         if (completed || requestedState) return;
         requestedState = state;
-        void terminateManagedProcessTree(child);
+        void terminateWithBoundedEscalation(child);
       },
     };
   }

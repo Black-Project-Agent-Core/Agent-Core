@@ -1,7 +1,8 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
   [switch]$ContractOnly,
   [switch]$Autostart,
+  [switch]$BootstrapOnly,
   [switch]$SkipBuild
 )
 
@@ -9,11 +10,20 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = [IO.Path]::GetFullPath((Join-Path $scriptDir '..\..'))
+$allowListHelper = Join-Path $scriptDir 'agent-core-allowlist.ps1'
+$bootstrapScript = Join-Path $scriptDir 'agent-core-bootstrap.ps1'
+$allowListFile = Join-Path $root 'Agent-Core-Allowlist.txt'
+if (-not (Test-Path -LiteralPath $allowListHelper)) { throw "Required Agent Core allow-list helper not found: $allowListHelper" }
+. $allowListHelper
 $trayScript = Join-Path $scriptDir 'agent-core-tray.ps1'
 $tunnelProfile = Join-Path $root 'tunnel-client\agent-core.yaml'
 $dataDir = Join-Path $root 'runtime\data'
 $logDir = Join-Path $root 'runtime\logs'
 $capabilityDir = Join-Path $root 'capabilities'
+$launcherRuntimeDir = Join-Path $root 'runtime\launcher'
+$npmCacheDir = Join-Path $launcherRuntimeDir 'npm-cache'
+$tempDir = Join-Path $launcherRuntimeDir 'tmp'
+$packLockPath = Join-Path $root 'runtime\transfer\pack.lock'
 $localAppData = [Environment]::GetEnvironmentVariable('LOCALAPPDATA', 'Process')
 if (-not $localAppData) { $localAppData = [Environment]::GetFolderPath('LocalApplicationData') }
 $locatorRootFile = Join-Path (Join-Path $localAppData 'AgentCore') 'root.txt'
@@ -67,10 +77,15 @@ $tunnelExe = Resolve-TunnelExe
 $contract = [ordered]@{
   root = $root
   trayScript = $trayScript
+  bootstrapScript = $bootstrapScript
   tunnelProfile = $tunnelProfile
   dataDir = $dataDir
   logDir = $logDir
   capabilityDir = $capabilityDir
+  allowListFile = $allowListFile
+  launcherRuntimeDir = $launcherRuntimeDir
+  npmCacheDir = $npmCacheDir
+  tempDir = $tempDir
   nodeExe = $nodeExe
   npmExe = $npmExe
   tunnelExe = $tunnelExe
@@ -80,6 +95,52 @@ if ($ContractOnly) {
   Write-Output ($contract | ConvertTo-Json -Compress)
   exit 0
 }
+
+function Test-AgentCorePackLockActive([string]$Path) {
+  if (-not (Test-Path -LiteralPath $Path)) { return $false }
+  try {
+    $lock = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    if (-not $lock.PSObject.Properties['pid'] -or -not $lock.PSObject.Properties['machine']) { return $true }
+    if ([string]$lock.machine -ne [Environment]::MachineName) {
+      Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+      return $false
+    }
+    $owner = Get-CimInstance Win32_Process -Filter ("ProcessId=" + [int]$lock.pid) -ErrorAction SilentlyContinue
+    if ($owner -and ([string]$owner.CommandLine).IndexOf('agent-core-pack.ps1', [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+    Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    return $false
+  } catch {
+    return $true
+  }
+}
+if (Test-AgentCorePackLockActive $packLockPath) {
+  throw 'Agent Core portable package operation is active. Launcher startup is blocked until packaging finishes.'
+}
+
+if (-not (Test-Path -LiteralPath $bootstrapScript)) { throw "Required Agent Core bootstrap not found: $bootstrapScript" }
+$bootstrapParams = @{ Root = $root }
+if ([Environment]::GetEnvironmentVariable('AGENT_CORE_BOOTSTRAP_NO_DOWNLOAD','Process') -eq '1') { $bootstrapParams.NoDownload = $true }
+$bootstrapLocalAppData = [Environment]::GetEnvironmentVariable('AGENT_CORE_LOCAL_APP_DATA_ROOT','Process')
+if ($bootstrapLocalAppData) { $bootstrapParams.LocalAppDataRoot = $bootstrapLocalAppData }
+$bootstrapRaw = @(& $bootstrapScript @bootstrapParams)
+$bootstrapResult = ($bootstrapRaw -join [Environment]::NewLine) | ConvertFrom-Json
+$nodeExe = [string]$bootstrapResult.nodeExe
+$npmExe = [string]$bootstrapResult.npmExe
+$tunnelExe = [string]$bootstrapResult.tunnelExe
+if ($BootstrapOnly) {
+  Write-Output ($bootstrapResult | ConvertTo-Json -Compress)
+  exit 0
+}
+
+foreach ($launcherDir in @($launcherRuntimeDir, $npmCacheDir, $tempDir)) {
+  if (-not (Test-Path -LiteralPath $launcherDir)) {
+    New-Item -ItemType Directory -Path $launcherDir -Force | Out-Null
+  }
+}
+$env:npm_config_cache = $npmCacheDir
+$env:NPM_CONFIG_CACHE = $npmCacheDir
+$env:TEMP = $tempDir
+$env:TMP = $tempDir
 
 if (Test-Path -LiteralPath $locatorRootFile) {
   [IO.File]::WriteAllText($locatorRootFile, $root, (New-Object Text.UTF8Encoding($false)))
@@ -92,10 +153,11 @@ foreach ($required in @($trayScript, $tunnelProfile)) {
   if (-not (Test-Path -LiteralPath $required)) { throw "Required Agent Core file not found: $required" }
 }
 
-$dependencyMarker = Join-Path $root 'node_modules\@modelcontextprotocol\sdk\package.json'
 Push-Location $root
 try {
-  if (-not (Test-Path -LiteralPath $dependencyMarker)) {
+  & $npmExe ls --depth=0 --silent *> $null
+  $dependenciesHealthy = ($LASTEXITCODE -eq 0)
+  if (-not $dependenciesHealthy) {
     $installVerb = if (Test-Path -LiteralPath (Join-Path $root 'package-lock.json')) { 'ci' } else { 'install' }
     & $npmExe $installVerb
     if ($LASTEXITCODE -ne 0) { throw "Dependency installation failed with exit code $LASTEXITCODE" }
@@ -114,7 +176,8 @@ $env:AGENT_CORE_HOME = $root
 $env:AGENT_CORE_DATA_DIR = $dataDir
 $env:AGENT_CORE_LOG_DIR = $logDir
 $env:AGENT_CORE_CAPABILITY_DIR = $capabilityDir
-$env:AGENT_CORE_ALLOWED_ROOTS = $root
+$allowedRoots = @(Resolve-AgentCoreAllowedRoots -Root $root -AllowListPath $allowListFile)
+$env:AGENT_CORE_ALLOWED_ROOTS = ($allowedRoots -join ';')
 
 & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $trayScript -Mode ControlledTakeover | Out-Null
 $takeoverExit = $LASTEXITCODE
