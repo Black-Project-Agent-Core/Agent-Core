@@ -1,313 +1,66 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import { access, mkdtemp, rm, stat } from 'node:fs/promises';
-import os from 'node:os';
+import { cp, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
-import { loadConfig } from '../src/config.js';
-import { restoreMemoryDatabase } from '../src/memory/backup.js';
 import { MemoryService } from '../src/memory/service.js';
+import { memoryFixture } from './helpers/memory-fixture.js';
 
 const roots: string[] = [];
-const services: MemoryService[] = [];
-const children: ChildProcess[] = [];
+afterEach(async () => { await Promise.all(roots.splice(0).map((r) => rm(r, { recursive: true, force: true }))); });
 
-async function exists(target: string): Promise<boolean> {
-  try { await access(target); return true; } catch { return false; }
+async function fixture(label: string) {
+  const f = await memoryFixture(`recovery-${label}`);
+  roots.push(f.root);
+  return { ...f, scope: { principalId: 'p-recovery', projectId: f.root } };
 }
 
-async function fileSize(target: string): Promise<number> {
-  try { return (await stat(target)).size; } catch { return 0; }
-}
-
-async function fixture() {
-  const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-memory-recovery-'));
-  roots.push(root);
-  const base = loadConfig({}, root).memory;
-  const dbPath = path.join(root, 'runtime', 'memory', 'recovery.sqlite');
-  const config = { ...base, enabled: true, dbPath, busyTimeoutMs: 1000 };
-  const scope = { principalId: 'principal-recovery', projectId: root };
-  const service = new MemoryService(config);
-  services.push(service);
-  return { root, dbPath, config, scope, service };
-}
-
-async function waitForLine(child: ChildProcess, expected: string): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    let stdout = '';
-    const timeout = setTimeout(() => reject(new Error(`Timed out waiting for ${expected}: ${stdout}`)), 5000);
-    child.stdout?.on('data', (chunk) => {
-      stdout += String(chunk);
-      if (stdout.includes(expected)) {
-        clearTimeout(timeout);
-        resolve();
-      }
+describe('file-native memory recovery', () => {
+  it('copies the whole vault into a timestamped backup that restores byte-for-byte while stopped', async () => {
+    const f = await fixture('backup');
+    const committed = await f.service.commit({
+      scope: f.scope, canonicalKey: 'decision.backup.subject', kind: 'decision',
+      value: 'Backups copy the canonical Markdown vault, not a database file.', sourceType: 'test',
     });
-    child.once('error', (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-    child.once('exit', (code) => {
-      if (!stdout.includes(expected)) {
-        clearTimeout(timeout);
-        reject(new Error(`Child exited ${code} before ${expected}: ${stdout}`));
-      }
-    });
-  });
-}
-
-afterEach(async () => {
-  for (const child of children.splice(0)) {
-    if (child.exitCode == null && child.signalCode == null) child.kill('SIGKILL');
-  }
-  await Promise.all(services.splice(0).map(async (service) => {
-    try { await service.close(); } catch {}
-  }));
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
-});
-
-describe('memory persistence, backup, restore, and crash recovery', () => {
-  it('creates a consistent timestamped backup, reports integrity metadata, checkpoints WAL, and restores atomically only while stopped', async () => {
-    const f = await fixture();
-    const original = await f.service.commit({
-      scope: f.scope,
-      canonicalKey: 'recovery.policy',
-      kind: 'guardrail',
-      value: 'Keep recovery artifacts on drive F.',
-      importance: 1,
-      pinned: true,
-      enforcement: 'hard',
-      sourceType: 'test',
-      sourceRef: 'task14-original',
-    });
-
-    const initialStatus = await f.service.status(f.scope);
-    expect(initialStatus.healthy).toBe(true);
-    expect(initialStatus.integrity).toBe('ok');
-    expect(initialStatus.lastIntegrityCheckAt).toEqual(expect.any(Number));
-    expect(initialStatus.lastSuccessfulIntegrityCheckAt).toEqual(expect.any(Number));
-    expect(initialStatus.counts.db_bytes).toBeGreaterThan(0);
-
-    const backup = await f.service.backup('pre-destructive-test');
+    const backup = await f.service.backup('scheduled check');
+    expect(backup.reason).toBe('scheduled check');
     expect(backup.backupPath).toContain(path.join('runtime', 'memory', 'backups'));
-    expect(await exists(backup.backupPath)).toBe(true);
-    expect(await fileSize(backup.backupPath)).toBeGreaterThan(0);
-    const afterBackupStatus = await f.service.status(f.scope);
-    expect(afterBackupStatus.lastBackupPath).toBe(backup.backupPath);
-    expect(afterBackupStatus.lastBackupAt).toBe(backup.createdAt);
+    expect((await readdir(backup.backupPath)).length).toBeGreaterThan(0);
 
-    await f.service.revise({
-      scope: f.scope,
-      memoryId: original.memoryId,
-      value: 'Changed after backup and must disappear after restore.',
-      sourceType: 'test',
-      sourceRef: 'task14-after-backup',
+    await f.service.commit({
+      scope: f.scope, canonicalKey: 'decision.backup.subject', kind: 'decision',
+      value: 'Backups still copy the canonical Markdown vault after a later revision.',
+      sourceType: 'test', revisionAuthority: 'structured_state',
     });
     await f.service.close();
-    services.splice(services.indexOf(f.service), 1);
 
-    expect(await fileSize(`${f.dbPath}-wal`)).toBe(0);
-    expect(await fileSize(`${f.dbPath}-shm`)).toBe(0);
+    await rm(f.config.fileNative.vaultRoot, { recursive: true, force: true });
+    await cp(backup.backupPath, f.config.fileNative.vaultRoot, { recursive: true });
 
-    await expect(restoreMemoryDatabase({
-      dbPath: f.dbPath,
-      backupPath: backup.backupPath,
-      serviceStopped: false,
-      busyTimeoutMs: 1000,
-    })).rejects.toThrow(/stopped/i);
-
-    const restored = await restoreMemoryDatabase({
-      dbPath: f.dbPath,
-      backupPath: backup.backupPath,
-      serviceStopped: true,
-      busyTimeoutMs: 1000,
-    });
-    expect(restored.restored).toBe(true);
-    expect(restored.preRestoreBackupPath).toBeTruthy();
-    expect(await exists(restored.preRestoreBackupPath!)).toBe(true);
-
-    const reopened = new MemoryService(f.config);
-    services.push(reopened);
-    const memory = await reopened.getMemory(f.scope, original.memoryId);
-    expect(memory?.valueText).toContain('Keep recovery artifacts on drive F.');
-    expect(memory?.valueText).not.toContain('Changed after backup');
-    const status = await reopened.status(f.scope);
-    expect(status.healthy).toBe(true);
-    expect(status.integrity).toBe('ok');
-    expect(status.lastBackupPath).toBeTruthy();
+    const restored = new MemoryService(f.config);
+    expect((await restored.getMemory(f.scope, committed.memoryId))?.valueText).toContain('not a database file');
+    expect((await restored.status(f.scope)).healthy).toBe(true);
+    await restored.close();
   });
 
-  it('creates an automatic pre-migration backup when an existing database has an older user_version', async () => {
-    const f = await fixture();
-    const committed = await f.service.commit({
-      scope: f.scope,
-      canonicalKey: 'migration.proof',
-      kind: 'fact',
-      value: 'Persist before migration.',
-      sourceType: 'test',
-    });
+  it('refuses to overwrite an existing backup target instead of silently replacing durable history', async () => {
+    const f = await fixture('collision');
+    await f.service.commit({ scope: f.scope, canonicalKey: 'fact.backup.collision', kind: 'fact', value: 'one', sourceType: 'test' });
+    const first = await f.service.backup('manual');
+    await expect(cp(f.config.fileNative.vaultRoot, first.backupPath, { recursive: true, errorOnExist: true, force: false })).rejects.toThrow();
     await f.service.close();
-    services.splice(services.indexOf(f.service), 1);
-
-    const db = new DatabaseSync(f.dbPath);
-    db.exec('PRAGMA user_version = 0');
-    db.close();
-
-    const reopened = new MemoryService(f.config);
-    services.push(reopened);
-    const status = await reopened.status(f.scope);
-    expect(status.healthy).toBe(true);
-    expect(status.schemaVersion).toBe(4);
-    expect(status.lastBackupPath).toContain('pre-migration-v0-to-v4');
-    expect(await exists(status.lastBackupPath!)).toBe(true);
-    expect((await reopened.getMemory(f.scope, committed.memoryId))?.valueText).toContain('Persist before migration.');
   });
 
-  it('migrates an existing v1 memory database through schema v4 with backup and data preservation', async () => {
-    const f = await fixture();
-    const committed = await f.service.commit({
-      scope: f.scope,
-      canonicalKey: 'continuity.v1.persistence',
-      kind: 'fact',
-      value: 'Persist this v1 memory through continuity migration.',
-      sourceType: 'test',
-    });
-    await f.service.close();
-    services.splice(services.indexOf(f.service), 1);
+  it('reports a degraded, recovery-required vault instead of inventing healthy context', async () => {
+    const f = await fixture('degraded');
+    await f.service.commit({ scope: f.scope, canonicalKey: 'fact.degraded.subject', kind: 'fact', value: 'healthy before corruption', sourceType: 'test' });
+    expect((await f.service.status(f.scope)).healthy).toBe(true);
 
-    const db = new DatabaseSync(f.dbPath);
-    db.exec(`
-      DROP TABLE IF EXISTS continuity_turns;
-      DROP TABLE IF EXISTS continuity_task_dependencies;
-      DROP TABLE IF EXISTS continuity_checkpoints;
-      DROP TABLE IF EXISTS continuity_frontier;
-      DROP TABLE IF EXISTS continuity_tasks;
-      DROP TABLE IF EXISTS memory_context_lifecycle;
-      DROP TABLE IF EXISTS memory_node_metadata;
-      DROP TABLE IF EXISTS memory_edge_events;
-      DROP TABLE IF EXISTS memory_recall_expansions;
-      DROP TABLE IF EXISTS memory_write_decisions;
-      DROP TABLE IF EXISTS memory_remote_state;
-      DELETE FROM memory_schema_migrations WHERE version >= 2;
-      PRAGMA user_version = 1;
-    `);
-    db.close();
-
-    const reopened = new MemoryService(f.config);
-    services.push(reopened);
-    const status = await reopened.status(f.scope);
-    expect(status.healthy).toBe(true);
-    expect(status.schemaVersion).toBe(4);
-    expect(status.integrity).toBe('ok');
-    expect(status.lastBackupPath).toContain('pre-migration-v1-to-v4');
-    expect(await exists(status.lastBackupPath!)).toBe(true);
-    expect((await reopened.getMemory(f.scope, committed.memoryId))?.valueText)
-      .toContain('Persist this v1 memory through continuity migration.');
-
-    const verify = new DatabaseSync(f.dbPath);
-    try {
-      expect(Number(verify.prepare('PRAGMA user_version').get()!.user_version)).toBe(4);
-      const continuityTables = (verify.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'continuity_%' ORDER BY name").all() as Array<{ name: string }>).map((row) => row.name);
-      expect(continuityTables).toEqual([
-        'continuity_checkpoints',
-        'continuity_frontier',
-        'continuity_task_dependencies',
-        'continuity_tasks',
-        'continuity_turns',
-      ]);
-      expect(Number(verify.prepare("SELECT count(*) AS count FROM sqlite_master WHERE type='table' AND name='memory_context_lifecycle'").get()!.count)).toBe(1);
-      expect(Number(verify.prepare("SELECT count(*) AS count FROM sqlite_master WHERE type='table' AND name='memory_write_decisions'").get()!.count)).toBe(1);
-      expect(String(verify.prepare('PRAGMA quick_check').get()!.quick_check)).toBe('ok');
-    } finally {
-      verify.close();
-    }
-  });
-
-  it('recovers committed memory after a writer process is terminated with an uncommitted WAL transaction', async () => {
-    const f = await fixture();
-    const committed = await f.service.commit({
-      scope: f.scope,
-      canonicalKey: 'crash.baseline',
-      kind: 'fact',
-      value: 'Committed before crash.',
-      sourceType: 'test',
-    });
-    await f.service.close();
-    services.splice(services.indexOf(f.service), 1);
-
-    const script = `
-      const { DatabaseSync } = require('node:sqlite');
-      const db = new DatabaseSync(${JSON.stringify(f.dbPath)});
-      db.exec('PRAGMA journal_mode = WAL');
-      db.exec('BEGIN IMMEDIATE');
-      db.prepare(\`INSERT INTO memory_events(id, principal_id, project_id, thread_id, resource_id, event_type, source_type, source_ref, raw_text, redacted_text, metadata_json, created_at) VALUES (?, ?, ?, NULL, NULL, ?, ?, NULL, NULL, ?, '{}', ?)\`)
-        .run('crash-uncommitted-event', 'principal-recovery', ${JSON.stringify(f.root)}, 'crash.test', 'test', 'must rollback', Date.now());
-      process.stdout.write('WRITE_OPEN\\n');
-      setInterval(() => {}, 1000);
-    `;
-    const child = spawn(process.execPath, ['-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
-    children.push(child);
-    await waitForLine(child, 'WRITE_OPEN');
-    child.kill('SIGKILL');
-    await new Promise<void>((resolve) => child.once('exit', () => resolve()));
-    children.splice(children.indexOf(child), 1);
-
-    const reopened = new MemoryService(f.config);
-    services.push(reopened);
-    const status = await reopened.status(f.scope);
-    expect(status.healthy).toBe(true);
-    expect(status.integrity).toBe('ok');
-    expect((await reopened.getMemory(f.scope, committed.memoryId))?.valueText).toContain('Committed before crash.');
-    const exported = await reopened.export(f.scope, 100);
-    expect(exported.events.some((event) => event.eventId === 'crash-uncommitted-event')).toBe(false);
-  });
-
-  it('marks the memory lifecycle degraded when an integrity probe fails after a healthy open', async () => {
-    const f = await fixture();
-    const healthy = await f.service.status(f.scope);
-    expect(healthy.healthy).toBe(true);
-    expect(f.service.currentState).toBe('healthy');
-
-    const components = (f.service as unknown as { components: { client: { integrity: () => Promise<{ ok: boolean; result: string }> } } }).components;
-    components.client.integrity = async () => ({ ok: false, result: 'disk I/O error' });
-
-    const degraded = await f.service.status(f.scope);
-    expect(degraded).toMatchObject({ healthy: false, integrity: 'disk I/O error' });
-    expect(f.service.currentState).toBe('degraded');
-    await expect(f.service.search({ scope: f.scope, query: 'must fail closed' })).rejects.toThrow(/MEMORY_DEGRADED/);
-  });
-
-  it('ignores stale backup metadata when the recorded backup file is missing', async () => {
-    const f = await fixture();
-    const backupDir = path.join(path.dirname(f.dbPath), 'backups');
-    await (await import('node:fs/promises')).mkdir(backupDir, { recursive: true });
-    await (await import('node:fs/promises')).writeFile(
-      path.join(backupDir, 'last-backup.json'),
-      `${JSON.stringify({ backupPath: path.join(backupDir, 'missing.sqlite'), createdAt: Date.now(), reason: 'stale-test' })}\n`,
-      'utf8',
-    );
+    const [family] = (await readdir(f.config.fileNative.vaultRoot)).filter((name) => !name.startsWith('.'));
+    await writeFile(path.join(f.config.fileNative.vaultRoot, family!, 'broken.md'), '---\nschema_version: 1\nfile_id: broken\n---\nnot a canonical memory segment\n');
 
     const status = await f.service.status(f.scope);
-    expect(status.healthy).toBe(true);
-    expect(status.lastBackupPath).toBeUndefined();
-    expect(status.lastBackupAt).toBeUndefined();
-  });
-
-  it('fails memory closed with degraded integrity status for a corrupt database file', async () => {
-    const f = await fixture();
-    await f.service.close();
-    services.splice(services.indexOf(f.service), 1);
-    await rm(path.dirname(f.dbPath), { recursive: true, force: true });
-    const { mkdir, writeFile } = await import('node:fs/promises');
-    await mkdir(path.dirname(f.dbPath), { recursive: true });
-    await writeFile(f.dbPath, 'not-a-sqlite-database', 'utf8');
-
-    const corrupt = new MemoryService(f.config);
-    services.push(corrupt);
-    const status = await corrupt.status(f.scope);
-    expect(status.enabled).toBe(true);
     expect(status.healthy).toBe(false);
-    expect(status.integrity).toMatch(/^degraded:/);
-    await expect(corrupt.search({ scope: f.scope, query: 'anything' })).rejects.toThrow(/degraded|sqlite|database/i);
+    expect(status.integrity).toContain('recovery_required');
+    expect(f.service.currentState).toBe('degraded');
+    await f.service.close();
   });
 });

@@ -1,28 +1,66 @@
-# Agent Core Deterministic Memory Fabric
+# Agent Core File-Native Memory Fabric
 
-Deterministic Memory Fabric (DMF) is an in-process Agent Core subsystem. It uses the existing Agent Core Node.js process plus an internal SQLite worker thread; there is no separate memory server, model, embedding service, or vector database.
+The Memory Fabric is an in-process Agent Core subsystem. It runs inside the existing Agent Core Node.js process; there is no separate memory server, model, embedding service, or vector database.
 
-DMF is enabled by default. Structured hard-guardrail enforcement remains disabled by default and is controlled separately by `AGENT_CORE_MEMORY_ENFORCE_HARD_GUARDRAILS`.
+Normal lifecycle mode is `enforce`. Preflight verifies the vault, Graphify runtime and projection freshness, and Supabase connectivity before issuing actionable memory context. Workspace reads used for analysis require this context too. An explicit diagnostic mode may relax these gates, but does not meet the [stability contract](stability.md). Health and recovery controls remain available while substantive work is blocked.
+
+Memory has three layers and one authority order:
+
+```text
+Obsidian-compatible Markdown vault    canonical local durable memory
+        │
+        ├── Graphify                  derived graph / relation index, rebuildable
+        │
+        ├── Supabase direct memory    searchable scoped projection; required in enforce mode
+        └── Supabase Second Memory    encrypted secondary durability / recovery mirror
+```
+
+The vault is the canonical write authority. Graphify is a projection of it and may be rebuilt or degraded without data loss. Supabase Second Memory mirrors the vault for recovery. The optional [direct Supabase path](supabase-direct-memory.md) also contributes remote recall and reads while preserving local record precedence; it has separate credentials and a searchable SQL projection.
+
+Memory is enabled by default. Structured hard-guardrail enforcement remains disabled by default and is controlled separately by `AGENT_CORE_MEMORY_ENFORCE_HARD_GUARDRAILS`.
 
 ## Runtime locations
 
-With the normal unified launcher, the primary database is:
+Canonical vault root:
 
 ```text
-<Agent-Core-root>\runtime\memory\agent-core-memory.sqlite
+<Agent-Core-root>\runtime\memory\vault
 ```
 
-Automatic/pre-operation backups are kept under:
+Override it with `AGENT_CORE_MEMORY_VAULT_ROOT`. Auxiliary durable state — immutable revision history, provenance events, lifecycle and continuity records, and the local sync ledger — lives under `.agent-core` inside the vault root, in the same file-native form.
+
+Backups are kept under:
 
 ```text
 <Agent-Core-root>\runtime\memory\backups\
 ```
 
-`last-backup.json` in that backup directory records the latest successful backup path, timestamp, and reason. WAL/SHM files are SQLite sidecars and are checkpointed on clean Agent Core shutdown.
+Each backup call returns the directory it created, its creation time, and its reason; the runtime keeps no separate index of them.
+
+The private toolchain (ripgrep, CPython, uv, Graphify) resolves beneath `.tools/` in the project root, so a relocated project folder keeps working without machine-global installs. `AGENT_CORE_MEMORY_RG_PATH`, `AGENT_CORE_MEMORY_PYTHON_PATH`, and `AGENT_CORE_MEMORY_GRAPHIFY_PATH` override discovery when a host needs it.
+
+## Vault format and Obsidian compatibility
+
+Every memory item is a Markdown file with deterministic front matter and a deterministic body encoding. The same logical state always produces the same bytes, so a vault can be diffed, hashed, and version-controlled.
+
+Obsidian can open, read, and inspect the vault directly. Obsidian is an observer, not a second authority: any metadata its plugins add is ignored by Agent Core, and Agent Core never depends on another application's index to serve memory.
+
+## Writes and crash safety
+
+Canonical writes go through a transaction journal and atomic rename:
+
+```text
+write temp file
+flush
+atomic rename into place
+read back and validate
+```
+
+Startup recovers any pending journal entry before serving memory, isolates malformed Markdown files instead of failing the whole vault, and reports graph-only degradation separately from canonical-memory health.
 
 ## Health and diagnostics
 
-Use `agent_core_status` or `memory_status` from the Agent Core MCP surface. The HTTP health endpoint also reports memory diagnostics:
+Use `agent_core_status` or `memory_status` from the MCP surface. The HTTP health endpoint also reports memory diagnostics:
 
 ```text
 GET http://127.0.0.1:8765/health
@@ -30,24 +68,24 @@ GET http://127.0.0.1:8765/health
 
 Important states:
 
-- `healthy`: SQLite opened, migrations/integrity checks succeeded, and DMF is available.
-- `degraded`: DMF failed closed. Agent Core OAuth/MCP can remain available, but memory recall returns no invented evidence.
-- `disabled`: DMF was explicitly disabled.
-- `closed`: Agent Core has closed the in-process memory worker.
+- `healthy`: the vault opened, integrity validation succeeded, and memory is available.
+- `degraded`: memory failed closed. Agent Core OAuth/MCP can remain available, but memory recall returns no invented evidence.
+- `disabled`: memory was explicitly disabled.
+- `closed`: Agent Core has closed the memory subsystem.
 
-A degraded memory database is reported separately by the tray; it is not treated as an unavailable MCP server by itself.
+A degraded graph layer is reported separately from a degraded vault. When Graphify is unavailable, lexical recall over the vault remains available and canonical writes still succeed.
 
-## Clean tray shutdown on Windows
+## Clean shutdown on Windows
 
-Windows PowerShell `Stop-Process` does not deliver Node.js `SIGTERM`/`SIGINT` handlers. The unified tray therefore does not rely on those signals for normal Agent Core restarts or exit.
+Windows `Stop-Process` does not deliver Node.js `SIGTERM`/`SIGINT` handlers, so Agent Core does not rely on those signals for a normal restart or exit.
 
-For an owned Agent Core process, the tray writes a local shutdown request under `runtime\tray\agent-core.shutdown.request`. The Agent Core process watches that file in-process, closes the HTTP listener, checkpoints/closes the SQLite memory worker, consumes the request, and exits. The tray waits for that clean exit before using process termination as a bounded fallback.
+`Agent Code Native.exe` writes a local shutdown request under `runtime\` for the Agent Core process it owns. Agent Core watches that file in-process, closes the HTTP listener, completes or rolls back any open canonical transaction, consumes the request, and exits. Agent Code waits for that clean exit before using process termination as a bounded fallback.
 
-The fallback remains necessary for a hung or legacy process; SQLite WAL/crash recovery is still tested for that case. A normal current-version tray stop should finish without leaving memory `-wal` or `-shm` sidecars.
+Because every canonical write is journalled and atomically renamed, an abrupt termination leaves the vault recoverable rather than partially written.
 
 ## Export memory safely
 
-`memory_export` is a bounded, read-only diagnostic/backup view for the authenticated principal and current project. It exports memory items, revisions, safe redacted event provenance, and conflicts. It does not export the raw `memory_events.raw_text` field.
+`memory_export` is a bounded, read-only diagnostic/backup view for the authenticated principal and current project. It exports memory items, revisions, safe redacted event provenance, and conflicts. It does not export raw captured source text.
 
 For a diagnostic capture, call `memory_export` with a bounded `limit` and save the returned JSON to an operator-controlled file if needed. The model-facing tool does not write an export file automatically.
 
@@ -61,52 +99,47 @@ Physical purge is **not** exposed through the model-facing MCP tool. A relevance
 
 ## Backup behavior
 
-DMF creates a timestamped SQLite backup before a destructive/forward schema migration. The service also has an internal operator backup primitive used by recovery tests and maintenance code.
+A backup is a point-in-time copy of the canonical vault tree plus its auxiliary durable state, taken before a destructive maintenance operation and through the operator backup primitive that recovery tests exercise.
 
-A backup name includes the database base name, UTC timestamp, and reason, for example:
+A backup directory name includes a UTC timestamp and a reason, for example:
 
 ```text
-agent-core-memory.2026-08-25T02-00-00-000Z.pre-migration-v1-to-v2.sqlite
+runtime\memory\backups\vault.2026-09-08T02-00-00-000Z.pre-maintenance
 ```
 
-Backups use SQLite `VACUUM INTO` through the dedicated memory worker so the copied database is consistent. Backup integrity is checked during restore.
+A backup is a plain recursive copy of the vault tree. It is not hashed or manifested, and it refuses to overwrite an existing backup directory. The verified, hash-checked recovery path is Second Memory, below.
 
 ## Recovery and restore
 
-### Normal recovery
+### Local restore
 
-1. Exit Agent Core from the tray (`Exit Agent Core`) so the SQLite worker checkpoints WAL and closes cleanly.
-2. Inspect `runtime\memory\backups\last-backup.json` and select the required backup.
-3. Restore only while Agent Core is stopped.
-4. Restart with `Start-Agent-Core.bat`.
+There is no local restore primitive: a backup directory is restored by copying it back over the vault root by hand.
+
+1. Exit Agent Core through Agent Code (`Exit Agent Core`) so no canonical transaction is open.
+2. List `runtime\memory\backups\` and pick the `vault.<timestamp>.<reason>` directory you want.
+3. Move the current vault root aside - do not delete it until the restore is verified - and copy the chosen backup into its place.
+4. Restart Agent Core from `SubProject\Agent-Code\Agent Code Native.exe`.
 5. Verify `/health`, `agent_core_status`, or `memory_status` reports `healthy` and `integrity: ok`.
 
-The tested restore implementation validates the source backup, creates a pre-restore backup of the current database when possible, removes stale WAL/SHM sidecars, stages the replacement in the same directory, atomically renames it into place, validates the restored DB, and rolls back if validation fails.
+Nothing verifies a local backup for you, so step 3 is the only safeguard. Prefer Second Memory recovery when it is configured: it checks every file against a manifest and revalidates the logical root hash. Never copy files over a live vault while Agent Core is running.
 
-### Operator restore API
+### Recovery from Supabase Second Memory
 
-The restore primitive is intentionally not exposed as an MCP model tool. After `npm run build`, an operator can invoke it from the Agent Core root while Agent Core is stopped. Set the selected backup path first:
+Second Memory holds an AES-256-GCM encrypted copy of every durable vault file plus an encrypted authoritative vault manifest. Recovery on a fresh machine is:
 
-```powershell
-$env:MEMORY_BACKUP_PATH = 'F:\path\to\agent-core-memory.<timestamp>.<reason>.sqlite'
-@'
-import path from 'node:path';
-import { restoreMemoryDatabase } from './dist/memory/backup.js';
-
-const result = await restoreMemoryDatabase({
-  dbPath: path.resolve('runtime', 'memory', 'agent-core-memory.sqlite'),
-  backupPath: process.env.MEMORY_BACKUP_PATH,
-  serviceStopped: true,
-});
-console.log(JSON.stringify(result, null, 2));
-'@ | node --input-type=module
+```text
+fresh local runtime
+  -> hydrate the full file-native vault/state from Supabase Second Memory
+  -> validate the logical root hash against the manifest
+  -> rebuild the Graphify projection
+  -> serve memory
 ```
 
-Do not copy over a live database while Agent Core is running.
+Content is encrypted before transport. Client authentication uses a project-local Ed25519 signing key; Supabase stores only the public key. The public RPC verifies timestamp, replay nonce, and detached signature before touching private tables, and the private schema exposes no table grants to anonymous, authenticated, or public roles.
 
-## Disable DMF for an operator diagnostic
+## Disable memory for an operator diagnostic
 
-DMF can be disabled without removing the database. Exit the tray first, then start Agent Core from a diagnostic shell with memory disabled:
+Memory can be disabled without touching the vault. Exit Agent Code first, then start Agent Core from a diagnostic shell with memory disabled:
 
 ```powershell
 $env:AGENT_CORE_MEMORY_ENABLED = 'false'
@@ -115,26 +148,26 @@ node dist\index.js
 
 `capability_route` and existing operational tools continue to work; memory status is reported as disabled and no memory evidence is fabricated.
 
-To return to normal unified-launcher operation, stop that diagnostic process, clear the temporary override, and use the normal launcher:
+To return to normal operation, stop that diagnostic process, clear the temporary override, and start Agent Code:
 
 ```powershell
 Remove-Item Env:AGENT_CORE_MEMORY_ENABLED -ErrorAction SilentlyContinue
-.\Start-Agent-Core.bat
+& ".\SubProject\Agent-Code\Agent Code Native.exe"
 ```
-
-The normal unified launcher enables DMF and binds the database to `runtime\memory\agent-core-memory.sqlite` inside the current Agent Core root.
 
 ## Secret handling
 
-DMF redacts secret-like keys and text before indexing/persistence used by recall. Memory search/export must not echo plaintext API keys, authorization values, passwords, access/refresh tokens, or similar known secret patterns.
+Memory redacts secret-like keys and text before indexing/persistence used by recall. Memory search/export must not echo plaintext API keys, authorization values, passwords, access/refresh tokens, or similar known secret patterns.
 
-The raw Agent Core API key itself is not required by the memory database. Authentication/key storage remains a separate Agent Core subsystem.
+The raw Agent Core API key itself is not required by memory. Authentication/key storage remains a separate Agent Core subsystem. Graphify subprocesses run with a minimal credential-free environment rather than inheriting the ambient process environment.
 
 ## Deterministic behavior
 
-For identical database state, scope, query, and configuration, recall ordering and snapshot hash are deterministic. Retrieval combines SQLite FTS5/BM25, exact structured anchors, bounded graph expansion, weighted Personalized PageRank, state/importance/recency scoring, and explicit provenance. No hidden AI performs extraction, embeddings, reranking, contradiction resolution, or cleanup.
+For identical vault state, scope, query, configuration, and recency scoring day, recall ordering and snapshot hash are deterministic. Retrieval combines bundled project-local ripgrep lexical recall, exact structured anchors, bounded graph traversal over the Graphify projection, state/importance/recency scoring, and explicit provenance. Graph expansion starts only when lexical candidates exist. No hidden AI performs extraction, embeddings, reranking, contradiction resolution, or cleanup.
 
-When DMF consumes execution-derived evidence, the execution truth hierarchy remains authoritative:
+Relations are written explicitly by the memory layer as part of the canonical file-native state and then projected into Graphify. Relation policy, semantic profiling, and normalization are pure logic over that state; none of them opens a database.
+
+When memory consumes execution-derived evidence, the execution truth hierarchy remains authoritative:
 
 ```text
 PROCESS TRUTH
@@ -148,19 +181,25 @@ ARTIFACT/CACHE SUGGESTION
 WORKFLOW ADVICE
 ```
 
-DMF may persist selected redacted process failures, verified artifact metadata, and bounded parsed facts for later recall, but it must not promote raw stdout/stderr wholesale or allow a derived/cache/advice layer to rewrite higher-authority process or artifact truth. A workflow-advisor suggestion is context, not durable proof of completion. A reusable-artifact match is advisory only and cannot justify skipping a current command.
+Memory may persist selected redacted process failures, verified artifact metadata, and bounded parsed facts for later recall, but it must not promote raw stdout/stderr wholesale or allow a derived/cache/advice layer to rewrite higher-authority process or artifact truth. A workflow-advisor suggestion is context, not durable proof of completion. A reusable-artifact match is advisory only and cannot justify skipping a current command.
+
+## Turn memory lifecycle
+
+`capability_route` performs memory preflight before substantive work. The default lifecycle mode is `enforce`. Before its final answer, the client closes through `memory_turn_finalize` or a successful `task_checkpoint` that records its memory decision and returns a synchronized `CLOSED` lifecycle. A new decision must not be submitted to an already closed lifecycle. Failed closure remains pending and the same closing request can be retried after restart. `NO_DURABLE_MEMORY` requires an explicit persisted reason. Agent Core cannot intercept conversation output or unrelated tools outside its own interfaces. See the [current stability contract](stability.md) for readiness, ownership, recovery, and verification requirements.
+
+Existing relevant files are preferred before new memory files are created. Successor files use explicit same-context continuity chains, while cross-context relationships stay semantic graph edges rather than continuation links.
 
 ## Autonomous memory adoption in routing
 
-`capability_route` no longer treats relevant memory as sideband metadata only. After the normal deterministic preflight, Agent Core builds a bounded routing projection from recalled decisions, prior failures, and other non-guardrail memory and passes that projection into `CapabilityRouter` together with the user's original context.
+`capability_route` does not treat relevant memory as sideband metadata only. After the normal deterministic preflight, Agent Core builds a bounded routing projection from recalled decisions, prior failures, and other non-guardrail memory and passes that projection into `CapabilityRouter` together with the user's original context.
 
 The projection is deterministic, bounded to a small item/character budget, and reported through `memoryInjection` (`applied`, memory IDs, character count, omitted count). It does not expand permissions, project scope, tool availability, or user intent. Active hard guardrails are deliberately excluded from capability-ranking text because their authority is enforced separately by the route context; they are not keyword hints.
 
-This closes the infrastructure/adoption gap: relevant DMF state can now change capability ranking automatically without requiring the model to issue a duplicate `memory_search`. The original `memorySummary`, `memoryDirective`, `blockingGuardrails`, `priorFailures`, and `relatedDecisions` remain available for factual inspection and explanation.
+Relevant memory state can therefore change capability ranking automatically without requiring the model to issue a duplicate `memory_search`. `memorySummary`, `memoryDirective`, `blockingGuardrails`, `priorFailures`, and `relatedDecisions` remain available for factual inspection and explanation.
 
-## Continuity Ledger inside DMF
+## Continuity Ledger
 
-DMF schema v2 also contains the Local Agent Continuity Ledger. Continuity does not create a separate database or network service; task/turn/checkpoint/frontier tables live in `agent-core-memory.sqlite` and share the same principal/project isolation, backup, integrity, worker lifecycle, and recovery boundary described above.
+The Local Agent Continuity Ledger is part of the same file-native memory state. Continuity does not create a separate store or network service; task/turn/checkpoint/frontier records share the memory principal/project isolation, backup, integrity, and recovery boundary described above.
 
 The ledger stores observable task state only: routed turns, task objective/criteria/constraints/status, explicit task dependencies, structured evidence checkpoints, deferred work, and bounded next-work frontier. It does not store private chain-of-thought.
 
@@ -168,45 +207,28 @@ A process exit or execution terminal state is not equivalent to semantic task co
 
 Continuity snapshots are bounded and deterministically ordered. Current active/deferred/blocked/frontier state is queried separately from semantic chatter so old or unrelated conversation cannot displace factual project continuation merely because it is recent.
 
-See `docs/local-agent-continuity.md` for the route/checkpoint/resume contract and `docs/deterministic-execution-fabric.md` for the separate high-frequency execution database.
+See `docs/local-agent-continuity.md` for the route/checkpoint/resume contract and `docs/deterministic-execution-fabric.md` for the separate high-frequency execution state.
 
-## Wave E deterministic recall quality gate
+## Recall quality gate
 
-Wave E turns memory quality into a repo-owned deterministic certification surface rather than relying only on selected scenarios or latency measurements. The corpus in `tests/fixtures/quality/memory-corpus.json` runs against the real `MemoryService` and SQLite/FTS/graph/revision pipeline. No embedding API, cloud reranker, AI judge, or external model participates in scoring.
+Memory quality is a repo-owned deterministic certification surface rather than a set of hand-picked scenarios. The corpus in `tests/fixtures/quality/memory-corpus.json` runs against the real memory service and the production vault/lexical/graph/revision pipeline. No embedding API, cloud reranker, AI judge, or external model participates in scoring.
 
-The certified pre-integration quality metrics on 2026-08-31 are:
-
-```text
-metric                             pre-tuning   final
-Recall@K                           1.0000       1.0000
-MRR                                0.9375       1.0000
-hard-guardrail recall              1.0000       1.0000
-current-revision correctness       1.0000       1.0000
-prior-failure recall               1.0000       1.0000
-graph-target recall                1.0000       1.0000
-conflict visibility                1.0000       1.0000
-artifact/procedure recall          1.0000       1.0000
-noise displacement rate            0.2500       0
-cross-project contamination        0            0
-cross-principal contamination      0            0
-character-budget correctness       1.0000       1.0000
-deterministic replay equality      1.0000       1.0000
-```
-
-The only production memory tuning required by the corpus was to keep an active pinned decision ahead of fresh low-importance observation chatter. `MemoryConfig.scoreWeights` did **not** change; `src/config.ts` and `src/memory/scoring.ts` remain unchanged from the Wave D base for score configuration. The fix is therefore narrower than global weight tuning.
-
-The post-tuning 100,000-item scale gate used 5 measured samples after 2 warmups and reported:
+The gate asserts recall, ranking, and isolation properties together:
 
 ```text
-SQLite integrity          ok
-preflight p50             65.423 ms
-preflight mean            67.812 ms
-preflight p95             85.299 ms
-preflight max             85.299 ms
-certified target          < 150 ms
-result                    PASS
+Recall@K
+MRR
+hard-guardrail recall
+current-revision correctness
+prior-failure recall
+graph-target recall
+conflict visibility
+artifact/procedure recall
+noise displacement rate
+cross-project contamination
+cross-principal contamination
+character-budget correctness
+deterministic replay equality
 ```
 
-`npm run quality:gate` is part of `npm run verify:release`; a release cannot pass while a certified routing/memory threshold fails.
-
-Production Wave E certification on 2026-08-31 retained every strict memory gate: Recall@K `1.000`, MRR `1.000`, hard-guardrail/current-revision/prior-failure/graph/conflict/artifact-procedure correctness `1.000`, noise displacement `0`, project/principal contamination `0`, character-budget correctness `1.000`, and deterministic replay `1.000`. No memory score weight changed. The 100k-item preflight p95 was `85.299 ms` against the `<150 ms` gate.
+`npm run quality:gate` runs inside `npm run verify:release`; a release cannot pass while a certified routing/memory threshold fails. A scale gate additionally measures end-to-end preflight/recall latency against a `< 150 ms` p95 target on a large corpus.

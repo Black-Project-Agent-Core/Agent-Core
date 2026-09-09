@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { ContinuityPromoter, type ContinuityMemoryWriter, type ExecutionProcessCheckpointInput } from '../continuity/promoter.js';
-import type { RecordMemoryEventRequest } from '../memory/store.js';
+import type { RecordMemoryEventRequest } from '../memory/record-types.js';
 import type {
   MemoryDurabilityBoundaryReason, MemoryDurabilityBoundaryResult, MemoryPostflightApplyResult,
   MemoryPostflightRequest, MemoryScope, MemoryStatus,
@@ -187,6 +187,9 @@ export class ExecutionMemoryBridge {
     if (!['node.failed', 'node.succeeded'].includes(event.eventType) && !terminalRunEvent(event.eventType)) return [];
     const run = await this.store.getRun(scope, event.runId);
     if (!run) return [];
+    // Workflow tasks decide semantic storage only after their acceptance checks and task checkpoint.
+    // Execution files and events already preserve these successful attempts durably.
+    if (run.metadata.workflowBinding && (event.eventType === 'node.succeeded' || event.eventType === 'run.completed')) return [];
     const taskId = run.continuityTaskId;
     if (!taskId) return [];
 

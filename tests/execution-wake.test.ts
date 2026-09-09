@@ -63,7 +63,6 @@ async function fixture(label: string, runner = new ControlledRunner()) {
   const config = {
     ...baseConfig,
     enabled: true,
-    dbPath: path.join(root, 'runtime', 'execution', 'wake.sqlite'),
     logRoot: path.join(root, 'runtime', 'execution', 'runs'),
     maxConcurrency: 4,
     waitMaxMs: 1000,
@@ -83,7 +82,6 @@ async function realFixture(label: string) {
   const config = {
     ...baseConfig,
     enabled: true,
-    dbPath: path.join(root, 'runtime', 'execution', 'wake.sqlite'),
     logRoot: path.join(root, 'runtime', 'execution', 'runs'),
     maxConcurrency: 2,
     waitMaxMs: 5_000,
@@ -120,8 +118,8 @@ describe('persisted execution event journal and event-driven wake', () => {
       const created = await f.service.create(f.scope, {
         objective: 'event creation fixture',
         nodes: [
-          { id: 'B', purpose: 'B', command: "Write-Output 'B'", cwd: f.work },
-          { id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work },
+          { id: 'B', purpose: 'B', command: "Write-Output 'B'", cwd: f.work, resources: { reads: [f.work] } },
+          { id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work, resources: { reads: [f.work] } },
         ],
       });
       const events = await f.service.events(f.scope, created.runId, 0);
@@ -146,9 +144,9 @@ describe('persisted execution event journal and event-driven wake', () => {
       const created = await f.service.create(f.scope, {
         objective: 'wake on A completion',
         nodes: [
-          { id: 'C', purpose: 'C', command: "Write-Output 'C'", cwd: f.work, dependsOn: ['A'] },
-          { id: 'B', purpose: 'B', command: "Write-Output 'B'", cwd: f.work },
-          { id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work },
+          { id: 'C', purpose: 'C', command: "Write-Output 'C'", cwd: f.work, resources: { reads: [f.work] }, dependsOn: ['A'] },
+          { id: 'B', purpose: 'B', command: "Write-Output 'B'", cwd: f.work, resources: { reads: [f.work] } },
+          { id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work, resources: { reads: [f.work] } },
         ],
       });
       await f.service.start(f.scope, created.runId);
@@ -185,7 +183,7 @@ describe('persisted execution event journal and event-driven wake', () => {
     try {
       const created = await f.service.create(f.scope, {
         objective: 'timeout fixture',
-        nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work }],
+        nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work, resources: { reads: [f.work] } }],
       });
       const before = await f.service.status(f.scope, created.runId);
       const result = await f.service.wait(f.scope, created.runId, before!.lastEventSequence, undefined, 30);
@@ -204,7 +202,7 @@ describe('persisted execution event journal and event-driven wake', () => {
     try {
       const created = await f.service.create(f.scope, {
         objective: 'output coalescing fixture',
-        nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work }],
+        nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work, resources: { reads: [f.work] } }],
       });
       for (let index = 0; index < 20; index++) {
         await f.service.recordOutputAvailable(f.scope, created.runId, 'A', { chunkIndex: index });
@@ -294,10 +292,12 @@ describe('persisted execution event journal and event-driven wake', () => {
         nodes: [
           {
             id: 'B', purpose: 'slower independent B', command: commandB, cwd: f.work,
+            resources: { writes: [artifactB] },
             expectedArtifacts: [{ path: artifactB, kind: 'file', hash: 'sha256', required: true }],
           },
           {
             id: 'A', purpose: 'faster independent A', command: commandA, cwd: f.work,
+            resources: { writes: [artifactA] },
             expectedArtifacts: [{ path: artifactA, kind: 'file', hash: 'sha256', required: true }],
           },
         ],
@@ -372,14 +372,17 @@ describe('persisted execution event journal and event-driven wake', () => {
     try {
       const created = await f.service.create(f.scope, {
         objective: 'retry event fixture',
-        nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work }],
+        nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work, resources: { reads: [f.work] } }],
       });
       await f.service.start(f.scope, created.runId);
       runner.complete(created.runId, 'A', 1, 'failed');
       await eventually(async () => expect((await f.service.status(f.scope, created.runId))?.state).toBe('failed'));
       await f.service.retry(f.scope, created.runId, 'A');
       runner.complete(created.runId, 'A', 2, 'succeeded');
-      await eventually(async () => expect((await f.service.status(f.scope, created.runId))?.state).toBe('completed'));
+      // Wait on the persisted terminal event, not on run state: the run is materialised before the
+      // event is appended, so polling status can observe 'completed' one event early.
+      const finished = await f.service.wait(f.scope, created.runId, 0, { eventTypes: ['run.completed'] }, 1_000);
+      expect(finished.state.state).toBe('completed');
 
       const events = await f.service.events(f.scope, created.runId, 0);
       expect(events.map((event) => event.sequence)).toEqual(events.map((_, index) => index + 1));

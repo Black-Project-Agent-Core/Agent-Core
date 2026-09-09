@@ -82,7 +82,7 @@ structural_index_v01_cases.json
 SHA256 bb81d1b5df2e62e2566e5a3e2936e660e780cd5f67b4237dae7b8e1b2c8767ea
 ```
 
-## Release artifact evidence available from Codespace
+## Release artifact evidence available from build host
 
 Rust release command:
 
@@ -183,6 +183,6 @@ Completion evidence now covers deterministic Go-v0.1 golden behavior, exact Rust
 
 Native-tested integration source: `50d0c3b3c53fe78d0c379d5809960747ff63eef8`. Automated-tested product source remains `76b09d28d517e7fa61560c17ac18a5a958cb3ba4`; later source in the tested descendant is tooling/workflow/documentation integration rather than a new ranking formula boundary.
 
-Formal product release remains **NOT RELEASED**. The separate Codespace Full Rebuild behavioral-golden acceptance remains an infrastructure follow-up and is not reinterpreted as missing C1 product evidence.
+Formal product release remains **NOT RELEASED**. The separate build host Full Rebuild behavioral-golden acceptance remains an infrastructure follow-up and is not reinterpreted as missing C1 product evidence.
 
 Next phase: C2 semantic correction / defensible naming. C2 must receive its own design/review/TDD plan before changing production semantics; C1 v0.1 fixtures and historical field names remain immutable compatibility evidence.

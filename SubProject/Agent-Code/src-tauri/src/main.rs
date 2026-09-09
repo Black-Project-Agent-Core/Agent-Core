@@ -1,5 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(all(not(debug_assertions), dev))]
+compile_error!(
+    "Release builds must bundle the frontend. Use npm run build:windows:native or cargo build --release --features tauri/custom-protocol."
+);
+
 mod agent_core;
 
 use agent_core::{AgentCoreActionResult, AgentCoreControlStatus, AgentCoreEngine};
@@ -196,4 +201,35 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("failed to run Agent Code");
+}
+
+#[cfg(all(test, not(dev)))]
+mod bundled_frontend_tests {
+    #[test]
+    fn production_context_serves_html_and_its_linked_assets_without_a_dev_server() {
+        let context: tauri::Context<tauri::Wry> = tauri::generate_context!();
+        let index = context
+            .assets()
+            .get(&"/index.html".into())
+            .expect("production context must contain index.html");
+        let html = std::str::from_utf8(&index).expect("frontend HTML must be UTF-8");
+        assert!(html.contains("<div id=\"root\"></div>"));
+        assert!(!tauri::is_dev());
+
+        let mut linked_assets = 0;
+        for attribute in ["src=\"", "href=\""] {
+            for reference in html.split(attribute).skip(1) {
+                let path = reference.split('"').next().expect("asset reference");
+                if path.starts_with("/assets/") {
+                    let asset = context
+                        .assets()
+                        .get(&path.into())
+                        .unwrap_or_else(|| panic!("bundled HTML references missing asset: {path}"));
+                    assert!(!asset.is_empty(), "bundled asset is empty: {path}");
+                    linked_assets += 1;
+                }
+            }
+        }
+        assert!(linked_assets >= 2, "frontend must include its script and stylesheet");
+    }
 }

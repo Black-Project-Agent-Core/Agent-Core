@@ -38,7 +38,7 @@ On a workstation with the local audited capability registry available, run:
 npm run build:plugin
 ```
 
-The builder materializes both tracked core skills plus only third-party capabilities that passed the required source, license, function-analysis and safety gates. Each generated third-party skill carries its audited provenance and license evidence.
+The builder materializes both tracked core skills plus third-party capabilities with verified license evidence, instruction metadata inspection and risk scanning. It rechecks the audited content hash before packaging. These checks do not establish behavioral correctness. Each generated skill carries its audit provenance and license evidence.
 
 Generated output is local and ignored by Git.
 

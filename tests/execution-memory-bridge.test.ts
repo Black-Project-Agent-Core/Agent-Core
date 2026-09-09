@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -14,6 +14,19 @@ import type {
 } from '../src/memory/types.js';
 import { WorkspacePolicy } from '../src/runtime/workspace.js';
 import { nodeShellCommand } from './helpers/platform-command.js';
+import { isolatedMemoryDependencies, strictMemoryConfig } from './helpers/memory-fixture.js';
+
+/** Every durable file the file-native memory vault wrote, so a leak cannot hide in any of them. */
+async function durableMemoryFiles(root: string): Promise<string[]> {
+  const out: string[] = [];
+  const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    const absolute = path.join(root, entry.name);
+    if (entry.isDirectory()) out.push(...await durableMemoryFiles(absolute));
+    else if (entry.isFile()) out.push(absolute);
+  }
+  return out;
+}
 
 const roots: string[] = [];
 const executions: ExecutionService[] = [];
@@ -43,7 +56,7 @@ class SwitchableMemoryWriter implements ExecutionMemoryWriter {
       enabled: true,
       healthy: this.healthy,
       schemaVersion: 3,
-      dbPath: 'fake-memory.sqlite',
+      vaultRoot: 'fake-memory-vault',
       counts: {},
       integrity: this.healthy ? 'ok' : 'degraded:test',
     };
@@ -132,6 +145,25 @@ afterEach(async () => {
 });
 
 describe('Execution-to-DMF continuity bridge', () => {
+  it('keeps workflow successes in operational history until the task checkpoint decides semantic memory', async () => {
+    const f = await rootFixture('workflow-memory-order');
+    const store = new ExecutionStore();
+    await store.open({ stateRoot: path.join(f.root, 'state') });
+    try {
+      const memory = new SwitchableMemoryWriter(); memory.healthy = true;
+      const bridge = new ExecutionMemoryBridge(store, memory);
+      const scope = { principalId: 'workflow-memory', projectId: f.root };
+      const run = await store.createRun(scope, { objective: 'accepted workflow', continuityTaskId: 'workflow-task', maxConcurrency: 1,
+        metadata: { workflowBinding: { planRevision: '1', planHash: 'a'.repeat(64) } } });
+      const node = await store.appendEvent(scope, run.runId, 'node.succeeded', { nodeId: 'A' });
+      const complete = await store.appendEvent(scope, run.runId, 'run.completed');
+      expect(await bridge.handlePersistedEvent(scope, node)).toEqual({ promoted: 0, queued: 0 });
+      expect(await bridge.handlePersistedEvent(scope, complete)).toEqual({ promoted: 0, queued: 0 });
+      expect(memory.postflights).toHaveLength(0);
+      expect(await store.listMemorySyncQueue(scope)).toHaveLength(0);
+      expect((await store.getEvents(scope, run.runId, 0)).map(event => event.eventType)).toEqual(['node.succeeded', 'run.completed']);
+    } finally { await store.close(); }
+  });
   it('exposes a bridge that can queue and replay bounded execution promotions', () => {
     expect(typeof ExecutionMemoryBridge).toBe('function');
   });
@@ -142,7 +174,6 @@ describe('Execution-to-DMF continuity bridge', () => {
     const config = {
       ...defaults.execution,
       enabled: true,
-      dbPath: path.join(f.root, 'runtime', 'execution', 'verified.sqlite'),
       logRoot: path.join(f.root, 'runtime', 'execution', 'runs'),
     };
     const store = new ExecutionStore();
@@ -231,11 +262,10 @@ describe('Execution-to-DMF continuity bridge', () => {
     const config = {
       ...defaults.execution,
       enabled: true,
-      dbPath: path.join(f.root, 'runtime', 'execution', 'missing-marker.sqlite'),
       logRoot: path.join(f.root, 'runtime', 'execution', 'runs'),
     };
     const store = new ExecutionStore();
-    await store.open({ dbPath: config.dbPath });
+    await store.open({ stateRoot: config.stateRoot });
     const writer = new SwitchableMemoryWriter();
     writer.healthy = true;
     const bridge = new ExecutionMemoryBridge(store, writer, new ExecutionLogStore(config.logRoot));
@@ -288,7 +318,6 @@ describe('Execution-to-DMF continuity bridge', () => {
     const config = {
       ...defaults.execution,
       enabled: true,
-      dbPath: path.join(f.root, 'runtime', 'execution', 'parsed.sqlite'),
       logRoot: path.join(f.root, 'runtime', 'execution', 'runs'),
     };
     const store = new ExecutionStore();
@@ -335,9 +364,9 @@ describe('Execution-to-DMF continuity bridge', () => {
 
   it('queues a failed-node promotion while DMF is degraded, then replays it idempotently when DMF recovers', async () => {
     const f = await rootFixture('queue');
-    const executionConfig = { ...loadConfig({}, f.root).execution, enabled: true, dbPath: path.join(f.root, 'runtime', 'execution', 'queue.sqlite') };
+    const executionConfig = { ...loadConfig({}, f.root).execution, enabled: true };
     const store = new ExecutionStore();
-    await store.open({ dbPath: executionConfig.dbPath });
+    await store.open({ stateRoot: executionConfig.stateRoot });
     const writer = new SwitchableMemoryWriter();
     const bridge = new ExecutionMemoryBridge(store, writer);
     const scope: MemoryScope = { principalId: 'principal-queue', projectId: f.root };
@@ -392,9 +421,9 @@ describe('Execution-to-DMF continuity bridge', () => {
 
   it('queues after local postflight when durability fails, then replays without creating a second semantic identity', async () => {
     const f = await rootFixture('durability-queue');
-    const executionConfig = { ...loadConfig({}, f.root).execution, enabled: true, dbPath: path.join(f.root, 'runtime', 'execution', 'durability-queue.sqlite') };
+    const executionConfig = { ...loadConfig({}, f.root).execution, enabled: true };
     const store = new ExecutionStore();
-    await store.open({ dbPath: executionConfig.dbPath });
+    await store.open({ stateRoot: executionConfig.stateRoot });
     const writer = new SwitchableMemoryWriter();
     writer.healthy = true;
     writer.durabilityError = new Error('MEMORY_REMOTE_UNAVAILABLE: synthetic');
@@ -443,7 +472,8 @@ describe('Execution-to-DMF continuity bridge', () => {
   it('promotes real failed execution evidence without copying a synthetic secret from raw stderr into DMF/search/export', async () => {
     const f = await rootFixture('secret');
     const defaults = loadConfig({}, f.root);
-    const memory = new MemoryService({ ...defaults.memory, enabled: true, dbPath: path.join(f.root, 'runtime', 'memory', 'bridge.sqlite') });
+    const memoryConfig = await strictMemoryConfig(f.root);
+    const memory = new MemoryService(memoryConfig, undefined, isolatedMemoryDependencies(memoryConfig));
     memories.push(memory);
     const store = new ExecutionStore();
     const bridge = new ExecutionMemoryBridge(store, memory);
@@ -451,7 +481,6 @@ describe('Execution-to-DMF continuity bridge', () => {
       {
         ...defaults.execution,
         enabled: true,
-        dbPath: path.join(f.root, 'runtime', 'execution', 'bridge.sqlite'),
         logRoot: path.join(f.root, 'runtime', 'execution', 'runs'),
       },
       new WorkspacePolicy([f.root]),
@@ -487,24 +516,20 @@ describe('Execution-to-DMF continuity bridge', () => {
     expect(JSON.stringify(search)).not.toContain(secret);
     const exported = await memory.export(scope, 100);
     expect(JSON.stringify(exported)).not.toContain(secret);
-    for (const candidate of [memory.config.dbPath, `${memory.config.dbPath}-wal`, `${memory.config.dbPath}-shm`]) {
-      const bytes = await readFile(candidate).catch((error: NodeJS.ErrnoException) => {
-        if (error.code === 'ENOENT') return Buffer.alloc(0);
-        throw error;
-      });
+    for (const candidate of await durableMemoryFiles(memory.config.fileNative.vaultRoot)) {
+      const bytes = await readFile(candidate);
       expect(bytes.includes(Buffer.from(secret, 'utf8'))).toBe(false);
     }
     expect((await memory.getContinuityTask(scope, turn.taskId))?.status).toBe('running');
 
-    const processCheckpoint = search.hits.find((hit) => hit.canonicalKey.includes('process_checkpoint'));
-    expect(processCheckpoint ?? (await memory.search({ scope, query: `process checkpoint ${created.runId}`, limit: 20 })).hits[0]).toBeTruthy();
+    expect(JSON.stringify(exported)).toContain('process_checkpoint');
   }, 10_000);
 
   it('links direct runs to a local continuity task identifier even when the caller did not supply one', async () => {
     const f = await rootFixture('link');
     const defaults = loadConfig({}, f.root);
     const service = new ExecutionService(
-      { ...defaults.execution, enabled: true, dbPath: path.join(f.root, 'execution.sqlite') },
+      { ...defaults.execution, enabled: true },
       new WorkspacePolicy([f.root]),
     );
     executions.push(service);

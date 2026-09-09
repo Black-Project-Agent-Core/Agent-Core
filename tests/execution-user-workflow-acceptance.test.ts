@@ -99,7 +99,7 @@ class SwitchableMemoryWriter implements ExecutionMemoryWriter {
       enabled: true,
       healthy: this.healthy,
       schemaVersion: 3,
-      dbPath: 'acceptance-memory.sqlite',
+      vaultRoot: 'acceptance-memory-vault',
       counts: {},
       integrity: this.healthy ? 'ok' : 'degraded:acceptance',
     };
@@ -186,7 +186,6 @@ async function rootFixture(label: string) {
   const executionConfig = {
     ...defaults.execution,
     enabled: true,
-    dbPath: path.join(root, 'runtime', 'execution', 'acceptance.sqlite'),
     logRoot: path.join(root, 'runtime', 'execution', 'runs'),
     maxConcurrency: 4,
     waitMaxMs: 5_000,
@@ -194,7 +193,6 @@ async function rootFixture(label: string) {
   const memoryConfig = {
     ...defaults.memory,
     enabled: true,
-    dbPath: path.join(root, 'runtime', 'memory', 'acceptance.sqlite'),
   };
   const scope = { principalId: 'principal-acceptance', projectId: root } satisfies ExecutionScope;
   return { root, work, defaults, executionConfig, memoryConfig, scope, workspace: new WorkspacePolicy([root]) };
@@ -209,7 +207,8 @@ async function eventually(assertion: () => void | Promise<void>, timeoutMs = 4_0
       return;
     } catch (error) {
       lastError = error;
-      await new Promise((resolve) => setImmediate(resolve));
+      // Give the persisted scheduler and other test workers time to make progress.
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
   }
   throw lastError;
@@ -230,7 +229,7 @@ async function openControlled(label: string, maxConcurrency = 4) {
 
 async function seedMissingMarkerAttempt(f: Awaited<ReturnType<typeof rootFixture>>) {
   const store = new ExecutionStore();
-  await store.open({ dbPath: f.executionConfig.dbPath });
+  await store.open({ stateRoot: f.executionConfig.stateRoot });
   const graph = await validateExecutionDag([{
     id: 'A',
     purpose: 'restart recovery A',
@@ -249,7 +248,7 @@ async function seedMissingMarkerAttempt(f: Awaited<ReturnType<typeof rootFixture
   const paths = await logs.prepareAttempt(run.runId, 'A', 1);
   const attemptId = 'attempt-missing-marker-1';
   await store.createAttempt(f.scope, run.runId, 'A', attemptId, 1, paths);
-  await store.setAttemptPid(f.scope, run.runId, attemptId, 999_999);
+  await store.setAttemptPid(f.scope, run.runId, 'A', 1, 999_999);
   await store.close();
   return { runId: run.runId, attemptId };
 }
@@ -317,7 +316,7 @@ describe('Task 19 end-to-end user workflow acceptance A-J', () => {
       objective: 'active run visible to a fresh same-principal session',
       continuityTaskId: mainTurn.taskId,
       originRouteContextId: 'route-main-agj',
-      nodes: [{ id: 'NEXT', purpose: 'planned follow-up', command: "Write-Output 'next'", cwd: f.work }],
+      nodes: [{ id: 'NEXT', purpose: 'planned follow-up', command: "Write-Output 'next'", cwd: f.work, resources: { reads: [f.work] } }],
     });
 
     const deferredTurn = await memory.beginContinuityTurn(
@@ -360,9 +359,9 @@ describe('Task 19 end-to-end user workflow acceptance A-J', () => {
     const created = await f.service.create(f.scope, {
       objective: 'B C D F integrated acceptance',
       nodes: [
-        { id: 'D', purpose: 'wait for both A and B', command: "Write-Output 'D'", cwd: f.work, dependsOn: ['A', 'B'] },
-        { id: 'B', purpose: 'independent B', command: "Write-Output 'B'", cwd: f.work },
-        { id: 'A', purpose: 'independent A', command: "Write-Output 'A'", cwd: f.work },
+        { id: 'D', purpose: 'wait for both A and B', command: "Write-Output 'D'", cwd: f.work, resources: { reads: [f.work] }, dependsOn: ['A', 'B'] },
+        { id: 'B', purpose: 'independent B', command: "Write-Output 'B'", cwd: f.work, resources: { reads: [f.work] } },
+        { id: 'A', purpose: 'independent A', command: "Write-Output 'A'", cwd: f.work, resources: { reads: [f.work] } },
       ],
     });
     await f.service.start(f.scope, created.runId);
@@ -385,7 +384,7 @@ describe('Task 19 end-to-end user workflow acceptance A-J', () => {
     expect(woke.state.nodes.find((node) => node.nodeId === 'D')?.state).toBe('queued');
 
     await f.service.addNodes(f.scope, created.runId, [
-      { id: 'C', purpose: 'dynamic C after A', command: "Write-Output 'C'", cwd: f.work, dependsOn: ['A'] },
+      { id: 'C', purpose: 'dynamic C after A', command: "Write-Output 'C'", cwd: f.work, resources: { reads: [f.work] }, dependsOn: ['A'] },
     ]);
     await eventually(() => expect(f.runner.startedNodeIds(created.runId)).toEqual(['A', 'B', 'C']));
     let status = await f.service.status(f.scope, created.runId);
@@ -411,9 +410,9 @@ describe('Task 19 end-to-end user workflow acceptance A-J', () => {
     const created = await f.service.create(f.scope, {
       objective: 'failure isolation and retry acceptance',
       nodes: [
-        { id: 'C', purpose: 'dependent C', command: "Write-Output 'C'", cwd: f.work, dependsOn: ['A'] },
-        { id: 'B', purpose: 'independent B', command: "Write-Output 'B'", cwd: f.work },
-        { id: 'A', purpose: 'retryable A', command: "Write-Output 'A'", cwd: f.work },
+        { id: 'C', purpose: 'dependent C', command: "Write-Output 'C'", cwd: f.work, resources: { reads: [f.work] }, dependsOn: ['A'] },
+        { id: 'B', purpose: 'independent B', command: "Write-Output 'B'", cwd: f.work, resources: { reads: [f.work] } },
+        { id: 'A', purpose: 'retryable A', command: "Write-Output 'A'", cwd: f.work, resources: { reads: [f.work] } },
       ],
     });
     await f.service.start(f.scope, created.runId);
@@ -455,7 +454,7 @@ describe('Task 19 end-to-end user workflow acceptance A-J', () => {
   it('Scenario I: degraded DMF queues one deterministic failure promotion and recovery replays it exactly once', async () => {
     const f = await rootFixture('i');
     const store = new ExecutionStore();
-    await store.open({ dbPath: f.executionConfig.dbPath });
+    await store.open({ stateRoot: f.executionConfig.stateRoot });
     const writer = new SwitchableMemoryWriter();
     const bridge = new ExecutionMemoryBridge(store, writer);
     const scope = f.scope satisfies MemoryScope;
@@ -504,10 +503,10 @@ describe('Task 19 end-to-end user workflow acceptance A-J', () => {
       const created = await f.service.create(f.scope, {
         objective: `stress repetition ${index + 1}`,
         nodes: [
-          { id: 'D', purpose: 'D', command: "Write-Output 'D'", cwd: f.work, dependsOn: ['A', 'B'] },
-          { id: 'C', purpose: 'C', command: "Write-Output 'C'", cwd: f.work, dependsOn: ['A'] },
-          { id: 'B', purpose: 'B', command: "Write-Output 'B'", cwd: f.work },
-          { id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work },
+          { id: 'D', purpose: 'D', command: "Write-Output 'D'", cwd: f.work, resources: { reads: [f.work] }, dependsOn: ['A', 'B'] },
+          { id: 'C', purpose: 'C', command: "Write-Output 'C'", cwd: f.work, resources: { reads: [f.work] }, dependsOn: ['A'] },
+          { id: 'B', purpose: 'B', command: "Write-Output 'B'", cwd: f.work, resources: { reads: [f.work] } },
+          { id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work, resources: { reads: [f.work] } },
         ],
       });
       await f.service.start(f.scope, created.runId);
@@ -528,7 +527,10 @@ describe('Task 19 end-to-end user workflow acceptance A-J', () => {
       f.runner.complete(created.runId, 'B', 1, 'succeeded');
       await eventually(() => expect(f.runner.startedNodeIds(created.runId)).toEqual(['A', 'B', 'C', 'D']));
       f.runner.complete(created.runId, 'D', 1, 'succeeded');
-      await eventually(async () => expect((await f.service.status(f.scope, created.runId))?.state).toBe('completed'));
+      // The run is materialised before its terminal event is appended, so wait on the persisted
+      // event rather than polling run state, which can be observed one event early.
+      const finished = await f.service.wait(f.scope, created.runId, 0, { eventTypes: ['run.completed'] }, 1_000);
+      expect(finished.state.state).toBe('completed');
       const events = await f.service.events(f.scope, created.runId, 0);
       expect(events.map((event) => event.sequence)).toEqual(events.map((_, eventIndex) => eventIndex + 1));
       expect(events.at(-1)?.eventType).toBe('run.completed');

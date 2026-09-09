@@ -1,7 +1,7 @@
-import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,rm,symlink} from 'node:fs/promises';
 import os from 'node:os';import path from 'node:path';
 import {afterEach,describe,expect,it} from 'vitest';
-import {loadConfig} from '../src/config.js';
+import {loadConfig,loadRecoveryPaths} from '../src/config.js';
 const roots:string[]=[];
 async function fixture(){const root=await mkdtemp(path.join(os.tmpdir(),'agent-core-selection-'));roots.push(root);await mkdir(path.join(root,'runtime'),{recursive:true});return root;}
 async function selected(root:string){const base=path.join(root,'runtime','persistence-test');await mkdir(path.join(base,'data'),{recursive:true});await mkdir(path.join(base,'logs','audit'),{recursive:true});for(const name of ['data/keys.json','data/oauth.json','logs/audit/audit-head.json','logs/audit/audit-anchor.json'])await writeFile(path.join(base,name),'{}');await writeFile(path.join(root,'runtime','persistence.json'),JSON.stringify({schemaVersion:1,generation:'test'}));return base;}
@@ -15,4 +15,8 @@ describe('Persistence selection after portable migration',()=>{
  it('fails closed when a selected generation is absent',async()=>{const root=await fixture();await writeFile(path.join(root,'runtime','persistence.json'),JSON.stringify({schemaVersion:1,generation:'missing'}));expect(()=>loadConfig({},root)).toThrow(/PERSISTENCE_/);});
  it('rejects escaping generations',async()=>{const root=await fixture();await writeFile(path.join(root,'runtime','persistence.json'),JSON.stringify({schemaVersion:1,generation:'../outside'}));expect(()=>loadConfig({},root)).toThrow(/PERSISTENCE_/);});
  it('rejects incomplete credential snapshots instead of making a new identity',async()=>{const root=await fixture();const base=await selected(root);await rm(path.join(base,'data','keys.json'));expect(()=>loadConfig({},root)).toThrow(/PERSISTENCE_/);});
+ it('keeps identity repair reachable on an incomplete snapshot',async()=>{const root=await fixture();const base=await selected(root);await rm(path.join(base,'data','keys.json'));await rm(path.join(base,'data','oauth.json'));expect(loadRecoveryPaths({AGENT_CORE_HOME:root},root).dataDir).toBe(path.join(base,'data'));});
+ it('still refuses identity repair on a malformed or escaping selection',async()=>{const root=await fixture();await selected(root);await writeFile(path.join(root,'runtime','persistence.json'),JSON.stringify({schemaVersion:1,generation:'../outside'}));expect(()=>loadRecoveryPaths({AGENT_CORE_HOME:root},root)).toThrow(/PERSISTENCE_/);});
+ it('still refuses identity repair when an identity file is redirected',async()=>{const root=await fixture();const base=await selected(root);const outside=path.join(root,'outside-keys.json');await writeFile(outside,'{}');await rm(path.join(base,'data','keys.json'));let linked=true;try{await symlink(outside,path.join(base,'data','keys.json'));}catch{linked=false;}if(!linked)return;expect(()=>loadRecoveryPaths({AGENT_CORE_HOME:root},root)).toThrow(/PERSISTENCE_/);expect(()=>loadConfig({},root)).toThrow(/PERSISTENCE_/);});
+ it('still refuses identity repair when the generation directories are absent',async()=>{const root=await fixture();await writeFile(path.join(root,'runtime','persistence.json'),JSON.stringify({schemaVersion:1,generation:'missing'}));expect(()=>loadRecoveryPaths({AGENT_CORE_HOME:root},root)).toThrow(/PERSISTENCE_/);});
 });

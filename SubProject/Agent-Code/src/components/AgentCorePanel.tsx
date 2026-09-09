@@ -67,10 +67,6 @@ export function AgentCorePanel() {
     }
   };
 
-  const lifecycleBlocked = Boolean(
-    status && (status.legacyControllerDetected || !status.nativeControlEnabled),
-  );
-
   const confirmOAuthReset = () => {
     if (!window.confirm('Reset OAuth sessions and prepare Agent Core for re-authentication? Custom Agent Core API keys are preserved.')) {
       return;
@@ -118,12 +114,6 @@ export function AgentCorePanel() {
             <div className="agent-core-status-line">Tunnel: {status?.tunnel ?? 'Checking'}</div>
           </div>
 
-          {status?.legacyControllerDetected ? (
-            <div className="agent-core-legacy-note" role="status">
-              Legacy tray controller is still running. Native lifecycle actions stay locked for this Agent Code session so the current Agent Core process is not disturbed.
-            </div>
-          ) : null}
-
           <div className="agent-core-control-group">
             <button type="button" className="agent-core-action" onClick={() => void runUtility('agent_core_open_folder', 'Open Agent Core Folder')} disabled={Boolean(busy)}>
               <FolderOpen size={13} />
@@ -137,38 +127,38 @@ export function AgentCorePanel() {
 
           <div className="agent-core-control-group">
             {status?.overall === 'Stopped' || status?.desiredRunning === false ? (
-              <button type="button" className="agent-core-action" onClick={() => void runLifecycle('agent_core_start', 'Start Agent Core')} disabled={Boolean(busy) || lifecycleBlocked}>
+              <button type="button" className="agent-core-action" onClick={() => void runLifecycle('agent_core_start', 'Start Agent Core')} disabled={Boolean(busy)}>
                 <Power size={13} />
                 <span>Start Agent Core</span>
               </button>
             ) : null}
-            <button type="button" className="agent-core-action" onClick={() => void runLifecycle('agent_core_restart_mcp', 'Restart Agent Core')} disabled={Boolean(busy) || lifecycleBlocked}>
+            <button type="button" className="agent-core-action" onClick={() => void runLifecycle('agent_core_restart_mcp', 'Restart Agent Core')} disabled={Boolean(busy)}>
               <RotateCcw size={13} />
               <span>Restart Agent Core</span>
             </button>
-            <button type="button" className="agent-core-action" onClick={() => void runLifecycle('agent_core_restart_tunnel', 'Restart Tunnel')} disabled={Boolean(busy) || lifecycleBlocked}>
+            <button type="button" className="agent-core-action" onClick={() => void runLifecycle('agent_core_restart_tunnel', 'Restart Tunnel')} disabled={Boolean(busy)}>
               <RefreshCw size={13} />
               <span>Restart Tunnel</span>
             </button>
-            <button type="button" className="agent-core-action" onClick={() => void runLifecycle('agent_core_restart_all', 'Restart All')} disabled={Boolean(busy) || lifecycleBlocked}>
+            <button type="button" className="agent-core-action" onClick={() => void runLifecycle('agent_core_restart_all', 'Restart All')} disabled={Boolean(busy)}>
               <RotateCcw size={13} />
               <span>Restart All</span>
             </button>
-            <button type="button" className="agent-core-action" onClick={confirmOAuthReset} disabled={Boolean(busy) || lifecycleBlocked}>
+            <button type="button" className="agent-core-action" onClick={confirmOAuthReset} disabled={Boolean(busy)}>
               <KeyRound size={13} />
               <span>Reset OAuth / Re-auth</span>
             </button>
           </div>
 
           <div className="agent-core-control-group">
-            <button type="button" className="agent-core-action" onClick={() => void runLifecycle('agent_core_toggle_autostart', 'Start with Windows')} disabled={Boolean(busy) || lifecycleBlocked}>
+            <button type="button" className="agent-core-action" onClick={() => void runLifecycle('agent_core_toggle_autostart', 'Start with Windows')} disabled={Boolean(busy)}>
               <Power size={13} />
               <span>Start with Windows: {status?.autostart ? 'On' : 'Off'}</span>
             </button>
           </div>
 
           <div className="agent-core-control-group agent-core-danger-group">
-            <button type="button" className="agent-core-action agent-core-danger" onClick={confirmExit} disabled={Boolean(busy) || lifecycleBlocked}>
+            <button type="button" className="agent-core-action agent-core-danger" onClick={confirmExit} disabled={Boolean(busy)}>
               <Power size={13} />
               <span>Exit Agent Core</span>
             </button>

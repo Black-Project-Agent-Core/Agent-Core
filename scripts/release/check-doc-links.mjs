@@ -5,17 +5,26 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDir, '..', '..');
-const tracked = execFileSync('git', ['-C', root, 'ls-files', '-z', '*.md'], { encoding: 'utf8' })
-  .split('\0').filter(Boolean)
+const candidates = [...new Set(execFileSync('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.md'], { encoding: 'utf8' })
+  .split('\0').filter(Boolean))]
   // Independent SubProjects own their documentation/link validation lifecycle.
   // Root Agent Core stable verification must not fail on a subproject's internal docs.
   .filter((file) => !file.replaceAll('\\', '/').startsWith('SubProject/'));
 const failures = [];
 let checked = 0;
+let markdownFiles = 0;
 
-for (const relativeFile of tracked) {
+for (const relativeFile of candidates) {
   const file = path.join(root, relativeFile);
-  const text = await readFile(file, 'utf8');
+  let text;
+  try {
+    text = await readFile(file, 'utf8');
+  } catch (error) {
+    // Pending deletions remain in the Git index until they are staged.
+    if (error.code === 'ENOENT') continue;
+    throw error;
+  }
+  markdownFiles += 1;
   const regex = /!?(?:\[[^\]]*\])\(([^)]+)\)/g;
   for (const match of text.matchAll(regex)) {
     let target = match[1].trim();
@@ -43,4 +52,4 @@ if (failures.length) {
   process.stderr.write(failures.join('\n') + '\n');
   process.exit(1);
 }
-process.stdout.write(JSON.stringify({ ok: true, markdownFiles: tracked.length, relativeLinksChecked: checked }, null, 2) + '\n');
+process.stdout.write(JSON.stringify({ ok: true, markdownFiles, relativeLinksChecked: checked }, null, 2) + '\n');

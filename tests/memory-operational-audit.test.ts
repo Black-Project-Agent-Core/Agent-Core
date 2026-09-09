@@ -1,17 +1,16 @@
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
+import { access, mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { createServer, type Server } from 'node:http';
-import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
-import { loadConfig } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
+import { canonicalFileNativeProjectId } from '../src/memory/file-native/paths.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
-import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
-import { printCommand, sleepCommand } from './helpers/platform-command.js';
+import type { RuntimeServices } from '../src/runtime/services.js';
+import { MEMORY_STATE, createIsolatedRuntimeServices as createRuntimeServices, memoryConfig, memoryRoot, memoryStateRecords } from './helpers/memory-fixture.js';
+import { nodeShellCommand, printCommand } from './helpers/platform-command.js';
 
 const auditLoggers: FileAuditLogger[] = [];
 function createAuditLogger(logDir: string): FileAuditLogger {
@@ -43,15 +42,13 @@ function body(result: Record<string, any>): Record<string, any> {
 }
 
 async function fixture(enforceHardGuardrails = false) {
-  const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-op-audit-'));
+  const root = await memoryRoot('op-audit');
   roots.push(root);
-  const dbPath = path.join(root, 'runtime', 'memory', 'audit.sqlite');
-  const baseMemory = loadConfig({}, root).memory;
+  const memory = await memoryConfig(root);
   const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
-    ...baseMemory,
+    ...memory,
     enabled: true,
     enforceHardGuardrails,
-    dbPath,
   });
   runtimes.push(runtime);
   const keyStore = new FileKeyStore(path.join(root, 'data'));
@@ -66,7 +63,7 @@ async function fixture(enforceHardGuardrails = false) {
   servers.push(server);
   return {
     root,
-    dbPath,
+    vaultRoot: memory.fileNative.vaultRoot,
     runtime,
     principal,
     otherPrincipal,
@@ -75,28 +72,33 @@ async function fixture(enforceHardGuardrails = false) {
   };
 }
 
-function readEvents(dbPath: string) {
-  const db = new DatabaseSync(dbPath, { readOnly: true });
-  try {
-    return db.prepare(`SELECT principal_id, project_id, event_type, source_type, source_ref, raw_text, redacted_text, metadata_json
-      FROM memory_events ORDER BY created_at, rowid`).all() as Array<Record<string, unknown>>;
-  } finally {
-    db.close();
-  }
+interface OperationalEvent {
+  eventId: string;
+  principalId: string;
+  projectId: string;
+  eventType: string;
+  sourceType: string;
+  sourceRef?: string;
+  redactedText: string;
+  metadata: Record<string, any>;
+  createdAt: number;
+}
+
+/** The vault keeps operational evidence as append-only JSON state records, oldest first. */
+function readEvents(vaultRoot: string): Promise<OperationalEvent[]> {
+  return memoryStateRecords<OperationalEvent>(vaultRoot, MEMORY_STATE.events);
 }
 
 async function multiProjectFixture() {
-  const container = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-op-audit-multi-'));
+  const container = await memoryRoot('op-audit-multi');
   roots.push(container);
   const projectA = path.join(container, 'project-a');
   const projectB = path.join(container, 'project-b');
   await Promise.all([mkdir(projectA), mkdir(projectB)]);
-  const dbPath = path.join(container, 'runtime', 'memory', 'audit.sqlite');
-  const defaults = loadConfig({}, projectA);
+  const memory = await memoryConfig(projectA);
   const runtime = createRuntimeServices([projectA, projectB], path.join(container, 'capabilities'), undefined, {
-    ...defaults.memory,
+    ...memory,
     enabled: true,
-    dbPath,
   });
   runtimes.push(runtime);
   const keyStore = new FileKeyStore(path.join(container, 'data'));
@@ -112,7 +114,8 @@ async function multiProjectFixture() {
     container,
     projectA,
     projectB,
-    dbPath,
+    vaultRoot: memory.fileNative.vaultRoot,
+    memory,
     runtime,
     principal,
     baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
@@ -122,11 +125,14 @@ async function multiProjectFixture() {
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   await Promise.all(runtimes.splice(0).map(async (runtime) => {
+    for (const session of runtime.processes.list()) {
+      if (session.running) await runtime.processes.stop(session.sessionId);
+    }
     await runtime.execution.close().catch(() => undefined);
     await runtime.memory.close().catch(() => undefined);
   }));
   await Promise.all(auditLoggers.splice(0).map((logger) => logger.close().catch(() => undefined)));
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })));
 });
 
 describe('automatic operational evidence capture', () => {
@@ -162,11 +168,13 @@ describe('automatic operational evidence capture', () => {
 
     await f.runtime.execution.close();
     await f.runtime.memory.close();
-    const events = readEvents(f.dbPath).filter((event) => String(event.event_type).startsWith('memory.operation_'));
+    const events = (await readEvents(f.vaultRoot)).filter((event) => event.eventType.startsWith('memory.operation_'));
     expect(events.length).toBeGreaterThanOrEqual(2);
-    expect(events.every((event) => event.principal_id === f.principal.metadata.id)).toBe(true);
-    expect(events.every((event) => event.project_id === f.projectB)).toBe(true);
-    expect(events.some((event) => event.project_id === f.projectA)).toBe(false);
+    expect(events.every((event) => event.principalId === f.principal.metadata.id)).toBe(true);
+    expect(events.every((event) => event.projectId === f.projectB)).toBe(true);
+    expect(events.some((event) => (
+      event.projectId === canonicalFileNativeProjectId(f.memory.fileNative, f.projectA)
+    ))).toBe(false);
   });
   it('records routed intent/success with bounded redacted metadata while preserving the MCP result', async () => {
     const f = await fixture(false);
@@ -189,15 +197,16 @@ describe('automatic operational evidence capture', () => {
 
     await f.runtime.execution.close();
     await f.runtime.memory.close();
-    const events = readEvents(f.dbPath).filter((event) => String(event.event_type).startsWith('memory.operation_'));
-    expect(events.map((event) => event.event_type)).toEqual([
+    const events = (await readEvents(f.vaultRoot)).filter((event) => event.eventType.startsWith('memory.operation_'));
+    expect(events.map((event) => event.eventType)).toEqual([
       'memory.operation_intended',
       'memory.operation_succeeded',
     ]);
     const persisted = JSON.stringify(events);
-    const metadata = events.map((event) => JSON.parse(String(event.metadata_json)) as Record<string, any>);
+    const metadata = events.map((event) => event.metadata);
     expect(persisted).not.toContain(secret);
-    expect(events.every((event) => event.raw_text === null)).toBe(true);
+    // The vault persists redacted evidence only; there is no raw-text field left to leak.
+    expect(events.every((event) => !('rawText' in event))).toBe(true);
     expect(metadata.every((event) => event.toolName === 'execute_command')).toBe(true);
     expect(metadata.some((event) => Array.isArray(event.affectedPaths) && event.affectedPaths.includes(f.root))).toBe(true);
     expect(metadata.some((event) => event.verification?.required === true)).toBe(true);
@@ -258,12 +267,14 @@ describe('automatic operational evidence capture', () => {
     expect(rejectedFailure.hits.some((hit) => hit.kind === 'failure' && hit.valueText.includes('ROUTE_MEMORY_GUARDRAIL_BLOCKED'))).toBe(false);
 
     const status = await f.runtime.memory.status();
-    expect(status.counts.write_decisions).toBeGreaterThanOrEqual(2);
+    expect(status.integrity).toMatch(/^file-native:/);
+    // Postflight no-write decisions are vault JSON state records, not database rows.
+    expect((await memoryStateRecords(f.vaultRoot, MEMORY_STATE.writeDecisions)).length).toBeGreaterThanOrEqual(2);
 
     await f.runtime.execution.close();
     await f.runtime.memory.close();
-    const operationTypes = readEvents(f.dbPath)
-      .map((event) => String(event.event_type))
+    const operationTypes = (await readEvents(f.vaultRoot))
+      .map((event) => event.eventType)
       .filter((eventType) => eventType.startsWith('memory.operation_'));
     expect(operationTypes).toContain('memory.operation_failed');
     expect(operationTypes).toContain('memory.operation_rejected');
@@ -271,7 +282,7 @@ describe('automatic operational evidence capture', () => {
   it('binds background process ownership beyond route TTL semantics and records read/stop/terminal lifecycle evidence', async () => {
     const f = await fixture(false);
     const route = body(await call(f.baseUrl, f.principal.key, 'capability_route', {
-      task: 'Implement and run a long-running background process, then inspect and stop that owned session.',
+      task: 'Run one diagnostic background process for ownership inspection.',
       context: 'Use start_process; later reads and stop must use stored session ownership rather than the original route.',
     }));
     for (const required of route.requiredSkillLoads ?? []) {
@@ -283,7 +294,7 @@ describe('automatic operational evidence capture', () => {
     }
 
     const started = await call(f.baseUrl, f.principal.key, 'start_process', {
-      command: sleepCommand(5000, 'lifecycle-ready\n'),
+      command: nodeShellCommand("process.stdout.write('lifecycle-ready\\n'); setInterval(() => {}, 1000);"),
       cwd: f.root,
       routeContextId: route.routeContextId,
     });
@@ -298,9 +309,11 @@ describe('automatic operational evidence capture', () => {
     const otherList = body(await call(f.baseUrl, f.otherPrincipal.key, 'list_processes', {}));
     expect(otherList.processes.map((item: any) => item.sessionId)).not.toContain(sessionId);
 
-    const ownerRead = await call(f.baseUrl, f.principal.key, 'read_process_output', { sessionId });
-    expect(ownerRead.result.isError).not.toBe(true);
-    expect(body(ownerRead).stdout).toContain('lifecycle-ready');
+    await expect.poll(async () => {
+      const ownerRead = await call(f.baseUrl, f.principal.key, 'read_process_output', { sessionId });
+      expect(ownerRead.result.isError).not.toBe(true);
+      return body(ownerRead).stdout;
+    }, { timeout: 5_000, interval: 50 }).toContain('lifecycle-ready');
     const ownerList = body(await call(f.baseUrl, f.principal.key, 'list_processes', {}));
     expect(ownerList.processes.map((item: any) => item.sessionId)).toContain(sessionId);
 
@@ -310,21 +323,20 @@ describe('automatic operational evidence capture', () => {
 
     await f.runtime.execution.close();
     await f.runtime.memory.close();
-    const lifecycle = readEvents(f.dbPath).filter((event) => [
+    const lifecycle = (await readEvents(f.vaultRoot)).filter((event) => [
       'memory.operation_observed',
       'memory.operation_stop_requested',
       'memory.operation_stop_succeeded',
       'memory.operation_terminal',
-    ].includes(String(event.event_type)));
-    expect(lifecycle.map((event) => event.event_type)).toEqual(expect.arrayContaining([
+    ].includes(event.eventType));
+    expect(lifecycle.map((event) => event.eventType)).toEqual(expect.arrayContaining([
       'memory.operation_observed',
       'memory.operation_stop_requested',
       'memory.operation_stop_succeeded',
       'memory.operation_terminal',
     ]));
-    expect(lifecycle.every((event) => event.source_ref === route.routeContextId)).toBe(true);
-    const terminal = lifecycle.find((event) => event.event_type === 'memory.operation_terminal')!;
-    const terminalMetadata = JSON.parse(String(terminal.metadata_json)) as Record<string, any>;
+    expect(lifecycle.every((event) => event.sourceRef === route.routeContextId)).toBe(true);
+    const terminalMetadata = lifecycle.find((event) => event.eventType === 'memory.operation_terminal')!.metadata;
     expect(terminalMetadata.result.stdout).toBeUndefined();
     expect(terminalMetadata.result.stdoutBytes).toBeGreaterThan(0);
     expect(terminalMetadata.input.sessionId).toBe(sessionId);
@@ -345,16 +357,16 @@ describe('automatic operational evidence capture', () => {
     }, traceparent);
     expect(result.result.isError).not.toBe(true);
 
-    const events = readEvents(f.dbPath)
-      .filter((event) => event.event_type === 'memory.operation_succeeded');
+    const events = (await readEvents(f.vaultRoot))
+      .filter((event) => event.eventType === 'memory.operation_succeeded');
     expect(events.length).toBeGreaterThan(0);
-    const metadata = JSON.parse(String(events.at(-1)!.metadata_json));
+    const metadata = events.at(-1)!.metadata;
     expect(metadata.correlation).toMatchObject({
       trace_id: traceId,
       toolName: 'read_file',
       routeContextId: route.routeContextId,
     });
-    expect(String(events.at(-1)!.raw_text)).not.toContain('safe-content');
+    expect(JSON.stringify(events.at(-1)!)).not.toContain('safe-content');
   });
 
 });

@@ -30,14 +30,22 @@ export interface ExecutionNodeSpec {
   cwd: string;
   dependsOn?: string[];
   timeoutMs?: number;
-  continueOnFailure?: boolean;
   expectedArtifacts?: ExecutionExpectedArtifactSpec[];
+  stepIds?: string[];
+  resources?: ExecutionResourceSpec;
+  inputs?: string[];
+  toolchain?: string[];
+}
+
+export interface ExecutionResourceSpec {
+  reads?: string[];
+  writes?: string[];
+  exclusive?: string[];
 }
 
 export interface ValidatedExecutionNode extends Omit<ExecutionNodeSpec, 'expectedArtifacts'> {
   dependsOn: string[];
   timeoutMs: number;
-  continueOnFailure: boolean;
   expectedArtifacts: ValidatedExecutionArtifact[];
 }
 
@@ -131,6 +139,9 @@ async function normalizeExpectedArtifacts(
       fail('EXECUTION_ARTIFACT_INVALID', `expectedArtifacts[${index}] for ${nodeId} must be an object`);
     }
     const item = raw as Record<string, unknown>;
+    if (Object.keys(item).some((key) => !['path', 'kind', 'hash', 'required', 'artifactType'].includes(key))) {
+      fail('EXECUTION_ARTIFACT_FIELD_UNKNOWN', 'Unknown expected artifact field');
+    }
     const rawPath = normalizeRequired(item.path, `expectedArtifacts[${index}].path`, 'EXECUTION_ARTIFACT_PATH_REQUIRED', 5_000);
     const kind = item.kind === undefined ? 'file' : item.kind;
     if (kind !== 'file' && kind !== 'directory') {
@@ -188,11 +199,17 @@ export async function validateExecutionDag(
   const seenIds = new Set<string>();
   const resolvedCwds = new Map<string, Promise<string>>();
   for (const rawNode of nodes) {
-    if (!rawNode || typeof rawNode !== 'object') fail('EXECUTION_NODE_INVALID', 'Each node must be an object');
+    if (!rawNode || typeof rawNode !== 'object' || Array.isArray(rawNode)) fail('EXECUTION_NODE_INVALID', 'Each node must be an object');
+    if ('continueOnFailure' in rawNode) fail('EXECUTION_NODE_FIELD_REMOVED', 'continueOnFailure is unavailable; declared dependencies require success');
+    if (Object.keys(rawNode).some((key) => !['id', 'purpose', 'command', 'cwd', 'dependsOn', 'timeoutMs', 'expectedArtifacts', 'stepIds', 'resources', 'inputs', 'toolchain'].includes(key))) {
+      fail('EXECUTION_NODE_FIELD_UNKNOWN', 'Unknown execution node field');
+    }
     const id = typeof rawNode.id === 'string' ? rawNode.id.normalize('NFKC').trim() : '';
     if (!NODE_ID_RE.test(id)) fail('EXECUTION_NODE_ID_INVALID', `Invalid execution node ID: ${String(rawNode.id)}`);
-    if (seenIds.has(id)) fail('EXECUTION_NODE_DUPLICATE', `Duplicate execution node ID: ${id}`);
-    seenIds.add(id);
+    // Node state is materialised as one file per node, and a case-insensitive file system would
+    // fold two IDs that differ only in case into a single node.
+    if (seenIds.has(id.toLowerCase())) fail('EXECUTION_NODE_DUPLICATE', `Duplicate execution node ID: ${id}`);
+    seenIds.add(id.toLowerCase());
 
     const purpose = normalizeRequired(rawNode.purpose, 'purpose', 'EXECUTION_PURPOSE_REQUIRED', 5_000);
     const command = normalizeRequired(rawNode.command, 'command', 'EXECUTION_COMMAND_REQUIRED', 20_000);
@@ -229,10 +246,29 @@ export async function validateExecutionDag(
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) {
       fail('EXECUTION_TIMEOUT_INVALID', `Node ${id} timeoutMs must be between 1 and ${MAX_TIMEOUT_MS}`);
     }
-    if (rawNode.continueOnFailure !== undefined && typeof rawNode.continueOnFailure !== 'boolean') {
-      fail('EXECUTION_CONTINUE_ON_FAILURE_INVALID', `Node ${id} continueOnFailure must be boolean`);
-    }
     const expectedArtifacts = await normalizeExpectedArtifacts(rawNode.expectedArtifacts, id, cwd, options.workspace);
+    const paths = async (value: unknown, label: string): Promise<string[] | undefined> => {
+      if (value === undefined) return undefined;
+      if (!Array.isArray(value) || value.length > 128 || value.some((item) => typeof item !== 'string' || !item.trim())) {
+        fail('EXECUTION_PATHS_INVALID', `${label} must contain at most 128 paths`);
+      }
+      return [...new Set(await Promise.all((value as string[]).map((item) => options.workspace.resolveTarget(path.resolve(cwd, item)))))].sort();
+    };
+    const inputs = await paths(rawNode.inputs, 'inputs');
+    const toolchain = await paths(rawNode.toolchain, 'toolchain');
+    let resources: ExecutionResourceSpec | undefined;
+    if (rawNode.resources !== undefined) {
+      const raw = rawNode.resources;
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).some((key) => !['reads', 'writes', 'exclusive'].includes(key))) {
+        fail('EXECUTION_RESOURCES_INVALID', 'resources accepts reads, writes and exclusive only');
+      }
+      const exclusive = raw.exclusive;
+      if (exclusive !== undefined && (!Array.isArray(exclusive) || exclusive.length > 128 || exclusive.some((item) => typeof item !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9:._-]{0,127}$/.test(item)))) {
+        fail('EXECUTION_RESOURCES_INVALID', 'Invalid exclusive resource name');
+      }
+      resources = { reads: await paths(raw.reads, 'resources.reads') ?? [], writes: await paths(raw.writes, 'resources.writes') ?? [], exclusive: [...new Set(exclusive ?? [])].sort() };
+    }
+    const stepIds = normalizeDependencyIds(rawNode.stepIds, id);
     normalized.push({
       id,
       purpose,
@@ -240,8 +276,11 @@ export async function validateExecutionDag(
       cwd,
       dependsOn,
       timeoutMs,
-      continueOnFailure: rawNode.continueOnFailure ?? false,
       expectedArtifacts,
+      stepIds,
+      ...(resources ? { resources } : {}),
+      ...(inputs ? { inputs } : {}),
+      ...(toolchain ? { toolchain } : {}),
     });
   }
 

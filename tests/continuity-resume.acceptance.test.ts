@@ -1,18 +1,21 @@
 import { readFileSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
-import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
-import { loadConfig } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
-import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
+import type { RuntimeServices } from '../src/runtime/services.js';
 import type { MemoryScope } from '../src/memory/types.js';
+import {
+  MEMORY_STATE, createIsolatedRuntimeServices as createRuntimeServices,
+  memoryConfig as fileNativeMemoryConfig, memoryRoot, scopedMemoryStateRecords,
+} from './helpers/memory-fixture.js';
+
+interface TurnRecord { turnId: string; state: string }
 
 const auditLoggers: FileAuditLogger[] = [];
 function createAuditLogger(logDir: string): FileAuditLogger {
@@ -24,6 +27,10 @@ function createAuditLogger(logDir: string): FileAuditLogger {
 const roots: string[] = [];
 const servers: Server[] = [];
 const runtimes: RuntimeServices[] = [];
+const continuityOnlyDecision = {
+  reasonCode: 'TRANSIENT_OPERATION',
+  explanation: 'This synthetic task exercises continuity state without adding reusable project knowledge.',
+};
 
 const scenarioFixture = JSON.parse(readFileSync(
   path.join(import.meta.dirname, 'fixtures', 'continuity', 'resume-scenarios.json'),
@@ -31,14 +38,9 @@ const scenarioFixture = JSON.parse(readFileSync(
 )) as Array<{ id: string; name: string }>;
 
 async function fixture(label: string) {
-  const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), `agent-core-continuity-acceptance-${label}-`));
+  const root = await memoryRoot(`continuity-acceptance-${label}`);
   roots.push(root);
-  const memory = loadConfig({}, root).memory;
-  const memoryConfig = {
-    ...memory,
-    enabled: true,
-    dbPath: path.join(root, 'runtime', 'memory', 'continuity-acceptance.sqlite'),
-  };
+  const memoryConfig = { ...await fileNativeMemoryConfig(root), enabled: true };
   const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, memoryConfig);
   runtimes.push(runtime);
   const keyStore = new FileKeyStore(path.join(root, 'data'));
@@ -119,14 +121,17 @@ describe('cross-session local continuity acceptance', () => {
     const first = await route(f.baseUrl, f.principalA.key, 'Task One', 'Complete Task One');
     await checkpoint(f.baseUrl, f.principalA.key, first.routeContextId, {
       status: 'completed', summary: 'Task One completed.', projectTerminal: true,
+      memoryDecision: continuityOnlyDecision,
     });
     const second = await route(f.baseUrl, f.principalA.key, 'Task Two', 'Complete Task Two');
     await checkpoint(f.baseUrl, f.principalA.key, second.routeContextId, {
       status: 'completed', summary: 'Task Two completed.', projectTerminal: true,
+      memoryDecision: continuityOnlyDecision,
     });
     const third = await route(f.baseUrl, f.principalA.key, 'Task Three', 'Defer Task Three');
     await checkpoint(f.baseUrl, f.principalA.key, third.routeContextId, {
       status: 'deferred', summary: 'Task Three deferred for later.',
+      memoryDecision: continuityOnlyDecision,
     });
 
     const fresh = await route(f.baseUrl, f.principalA.key, 'Inspect current project state', 'Inspect current project state');
@@ -146,6 +151,7 @@ describe('cross-session local continuity acceptance', () => {
     const closed = await checkpoint(f.baseUrl, f.principalA.key, original.routeContextId, {
       status: 'completed',
       summary: 'Frontier source task completed.',
+      memoryDecision: continuityOnlyDecision,
       nextCandidates: [
         { title: 'Third', rationale: 'lower priority', priority: 1 },
         { title: 'First', rationale: 'highest priority', priority: 3 },
@@ -164,6 +170,7 @@ describe('cross-session local continuity acceptance', () => {
     const closed = await checkpoint(f.baseUrl, f.principalA.key, original.routeContextId, {
       status: 'completed',
       summary: 'Persisted before restart.',
+      memoryDecision: continuityOnlyDecision,
       nextCandidates: [
         { title: 'Resume A', rationale: 'first candidate', priority: 2 },
         { title: 'Resume B', rationale: 'second candidate', priority: 1 },
@@ -197,15 +204,9 @@ describe('cross-session local continuity acceptance', () => {
     expect(resumed.result.continuityTaskId).toBe(original.continuityTaskId);
     expect(resumed.result.continuityTurnId).not.toBe(original.continuityTurnId);
 
-    const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
-    try {
-      const oldTurn = db.prepare('SELECT state FROM continuity_turns WHERE id = ?').get(original.continuityTurnId) as any;
-      const newTurn = db.prepare('SELECT state FROM continuity_turns WHERE id = ?').get(resumed.result.continuityTurnId) as any;
-      expect(oldTurn.state).toBe('interrupted');
-      expect(newTurn.state).toBe('open');
-    } finally {
-      db.close();
-    }
+    const turns = await scopedMemoryStateRecords<TurnRecord>(f.memoryConfig.fileNative, MEMORY_STATE.turns, f.scopeA);
+    expect(turns.find((turn) => turn.turnId === original.continuityTurnId)?.state).toBe('interrupted');
+    expect(turns.find((turn) => turn.turnId === resumed.result.continuityTurnId)?.state).toBe('open');
     const snapshot = await f.runtime.memory.getContinuitySnapshot(f.scopeA);
     expect(snapshot.interruptedTurns.map((turn) => turn.turnId)).toContain(original.continuityTurnId);
     expect(snapshot.recentCompleted.map((task) => task.taskId)).not.toContain(original.continuityTaskId);
@@ -262,14 +263,7 @@ describe('cross-session local continuity acceptance', () => {
 
     const snapshot = await f.runtime.memory.getContinuitySnapshot(f.scopeA);
     expect(snapshot.activeTasks.map((task) => task.taskId)).toEqual([original.continuityTaskId]);
-    const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
-    try {
-      const count = db.prepare('SELECT count(*) AS count FROM continuity_tasks WHERE principal_id = ? AND IFNULL(project_id, \'\') = ?')
-        .get(f.principalA.metadata.id, f.root) as { count: number };
-      expect(Number(count.count)).toBe(1);
-    } finally {
-      db.close();
-    }
+    expect(await scopedMemoryStateRecords(f.memoryConfig.fileNative, MEMORY_STATE.tasks, f.scopeA)).toHaveLength(1);
   });
 
   it('reconciles an orphaned open turn to interrupted before building a fresh route snapshot', async () => {

@@ -17,7 +17,7 @@ This marker supersedes older checkpoint wording that says `Phase C1 — PREPARED
 
 ## C1 execution evidence
 
-GitHub Codespaces baseline on branch head `841aa8df70293d4ee4d978e0275f9deff86c35c6`:
+Linux build host baseline on branch head `841aa8df70293d4ee4d978e0275f9deff86c35c6`:
 
 ```text
 go test ./... -count=1
@@ -41,7 +41,7 @@ internal/ranking/testdata/c1/manifest.json: no such file or directory
 
 This is the intended RED reason: the golden manifest/fixtures did not yet exist. No production code was changed to reach RED.
 
-Task 1.2 is now generating deterministic Go-v0.1 oracle fixtures through test-only generators. Fixture outputs are not accepted as GREEN evidence until the generator compiles/runs and both targeted golden and ranking/index regression commands pass in Codespaces.
+Task 1.2 is now generating deterministic Go-v0.1 oracle fixtures through test-only generators. Fixture outputs are not accepted as GREEN evidence until the generator compiles/runs and both targeted golden and ranking/index regression commands pass in build host.
 
 ## Execution order
 

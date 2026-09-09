@@ -1,6 +1,5 @@
 import { createServer, type Server } from 'node:http';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
-import os from 'node:os';
+import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -10,6 +9,7 @@ import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
+import { memoryConfig, memoryRoot } from './helpers/memory-fixture.js';
 
 const auditLoggers: FileAuditLogger[] = [];
 function createAuditLogger(logDir: string): FileAuditLogger {
@@ -23,15 +23,15 @@ const servers: Server[] = [];
 const runtimes: RuntimeServices[] = [];
 
 async function fixture(label: string) {
-  const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), `agent-core-continuity-exec-resume-${label}-`));
+  const root = await memoryRoot(`continuity-exec-resume-${label}`);
   roots.push(root);
   const work = path.join(root, 'work');
   await mkdir(work, { recursive: true });
   const defaults = loadConfig({}, root);
   const runtime = createRuntimeServices(
     [root], path.join(root, 'capabilities'), undefined,
-    { ...defaults.memory, enabled: true, dbPath: path.join(root, 'runtime', 'memory', 'resume.sqlite') },
-    { ...defaults.execution, enabled: true, dbPath: path.join(root, 'runtime', 'execution', 'resume.sqlite'), logRoot: path.join(root, 'runtime', 'execution', 'runs') },
+    { ...await memoryConfig(root), enabled: true },
+    { ...defaults.execution, enabled: true, stateRoot: path.join(root, 'runtime', 'execution', 'state'), logRoot: path.join(root, 'runtime', 'execution', 'runs') },
   );
   await runtime.memory.status({ principalId: 'warmup', projectId: root });
   await runtime.execution.open();
@@ -85,11 +85,11 @@ afterEach(async () => {
 describe('continuity + execution cross-session resume', () => {
   it('fresh same-principal route rehydrates the active run and can inspect the older run without the original route', async () => {
     const f = await fixture('active');
-    const first = await route(f, 'Build two independent commands and preserve continuity');
+    const first = await route(f, 'Print a diagnostic message');
     const created = await call(f.baseUrl, f.principalA.key, 'execution_create', {
       routeContextId: first.routeContextId,
       objective: 'durable active run',
-      nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work }],
+      nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work, inputs: [] }],
     });
     expect(created.raw.result?.isError).not.toBe(true);
     const runId = created.result.runId as string;
@@ -110,7 +110,7 @@ describe('continuity + execution cross-session resume', () => {
     const created = await call(f.baseUrl, f.principalA.key, 'execution_create', {
       routeContextId: first.routeContextId,
       objective: 'principal scoped run',
-      nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work }],
+      nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work, inputs: [] }],
     });
     const runId = created.result.runId as string;
 

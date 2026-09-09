@@ -136,6 +136,5 @@ C3.3 = BLOCKED BY REAL EMPIRICAL EVIDENCE
 
 ## Permanent development execution scope guardrail — verbatim
 
-> aku ingin kamu mencatat sebagai tambahan instruksi verbatim di dokumentasi pengembangan yang terus di catat ulang hanya untuk mengingat jika pengerjaan yang bisa di lakukan di ruang lingkup internal kamu lakukan dan jika pengerjaan yang tidak memungkinkan di ruang lingkup kamu, kamu harus memberitahu aku untuk membantu kamu menjalankan pengerjaan yang bisa di lakukan di ruang lingkup codespaces github, dan seandainya pengerjaannya tidak bisa di ruang lingkup kamu, dan tidak bisa di lakukan di ruang lingkup codespace github maka kamu boleh menggunakan mesin lokal yang aku miliki melalui plugin sebagai alat bantu kamu contohnya desktop commander dan manfaatkan plugin yang ada di ruang lingkup kamu jika memungkinkan atau menyarankan alat plugin yang tersedia berguna untuk membantu kamu dalam pengerjaan kamu dan seandainya plugin yang kamu butuh belum ada di ruang lingkup kamu, maka kamu harus bilang padaku sebagai rekomendasi alat bantu untuk kamu dalam pengerjaan, jika masih ada yang kurang jelas kamu bisa jelaskan pada agar instruksi verbatim semakin jelas dan tidak salah paham atau menjadi sebuah kebuntuan.
 
 Canonical source: `docs/checkpoints/PERMANENT_DEVELOPMENT_EXECUTION_SCOPE_GUARDRAIL.md`.

@@ -17,6 +17,32 @@ const legacy = [
   oldWord,
 ];
 const migrationHistory = new Set();
+// These optional vendor launchers retain the independent product's own name.
+const independentIntegrations = new Set([
+  `Start-Desktop-${oldWord}.bat`,
+  `Apply-Desktop-${oldWord}-Allowlist.ps1`,
+  `Edit-Desktop-${oldWord}-Allowlist.bat`,
+  `Desktop-${oldWord}-Allowlist.txt`,
+]);
+const vendorRuntimePath = `dist/.desktop-${oldWord.toLowerCase()}`;
+
+function ownedText(file, text) {
+  if (file === '.portable-package.json') {
+    try {
+      const metadata = JSON.parse(text);
+      if (Array.isArray(metadata.exclusions)) {
+        metadata.exclusions = metadata.exclusions.filter((entry) => entry !== vendorRuntimePath);
+        return JSON.stringify(metadata);
+      }
+    } catch { /* Invalid metadata remains fully visible to the scanner. */ }
+  }
+  if (file === 'scripts/windows/agent-core-pack.ps1') {
+    // Only the exact external runtime path is exempt; all adjacent owned text stays checked.
+    return text.replaceAll(`'${vendorRuntimePath}'`, "'<vendor-runtime>'")
+      .replaceAll(`"${vendorRuntimePath}"`, '"<vendor-runtime>"');
+  }
+  return text;
+}
 
 async function walk(dir) {
   const files = [];
@@ -52,10 +78,11 @@ const files = (scanRoot ? await walk(scanRoot) : trackedFiles())
 const findings = [];
 for (const file of files) {
   const display = path.relative(base, file).replaceAll('\\', '/');
+  if (independentIntegrations.has(display)) continue;
   for (const token of legacy) if (display.includes(token)) findings.push(`${display}:path:${token}`);
   let text;
   try { text = await readFile(file, 'utf8'); } catch { continue; }
-  text.split(/\r?\n/).forEach((line, index) => {
+  ownedText(display, text).split(/\r?\n/).forEach((line, index) => {
     for (const token of legacy) if (line.includes(token)) findings.push(`${display}:${index + 1}:${token}`);
   });
 }

@@ -1,17 +1,24 @@
-﻿import { mkdtemp, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
-import { DatabaseSync } from 'node:sqlite';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
-import { loadConfig } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
-import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
+import type { RuntimeServices } from '../src/runtime/services.js';
+import type { FileNativeMemoryBackend } from '../src/memory/file-native/backend.js';
+import { FileNativeAuxStore } from '../src/memory/file-native/aux-store.js';
+import {
+  createIsolatedRuntimeServices as createRuntimeServices, MEMORY_STATE, memoryConfig, strictMemoryConfig, isolatedMemoryDependencies, memoryRoot, scopedMemoryStateRecords,
+} from './helpers/memory-fixture.js';
 import { nodeShellCommand, printCommand } from './helpers/platform-command.js';
+
+interface TurnRecord { turnId: string; state: string }
+interface CheckpointRecord { checkpointId: string; input: Record<string, unknown> & { evidence?: unknown[] } }
+interface WriteDecisionRecord { id: string; decisionType: string; targetMemoryId?: string; appliedAt?: number; reasonCodes: string[] }
 
 const auditLoggers: FileAuditLogger[] = [];
 function createAuditLogger(logDir: string): FileAuditLogger {
@@ -24,35 +31,31 @@ const roots: string[] = [];
 const servers: Server[] = [];
 const runtimes: RuntimeServices[] = [];
 
-async function fixture(label: string) {
-  const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), `agent-core-continuity-checkpoint-${label}-`));
+async function fixture(label: string, logicalPrincipal?: string) {
+  const root = await memoryRoot(`continuity-checkpoint-${label}`);
   roots.push(root);
-  const memory = loadConfig({}, root).memory;
-  const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
-    ...memory,
-    enabled: true,
-    dbPath: path.join(root, 'runtime', 'memory', 'checkpoint.sqlite'),
-  });
-  runtimes.push(runtime);
+  const memory = logicalPrincipal
+    ? await strictMemoryConfig(root, { AGENT_CORE_MEMORY_PRINCIPAL_ID: logicalPrincipal })
+    : await memoryConfig(root);
+  const dependencies = isolatedMemoryDependencies(memory);
   const keyStore = new FileKeyStore(path.join(root, 'data'));
   const principalA = await keyStore.create(`checkpoint-a-${label}`);
   const principalB = await keyStore.create(`checkpoint-b-${label}`);
-  const app = createHttpHandler({
-    keyStore,
-    auditLogger: createAuditLogger(path.join(root, 'logs')),
-    mcpHandler: createMcpHttpHandler(runtime),
-  });
-  const server = createServer(app);
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  servers.push(server);
-  return {
-    root,
-    runtime,
-    principalA,
-    principalB,
-    baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
-    scopeA: { principalId: principalA.metadata.id, projectId: root },
+  const start = async () => {
+    const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, memory,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, dependencies);
+    runtimes.push(runtime);
+    const server = createServer(createHttpHandler({ keyStore,
+      auditLogger: createAuditLogger(path.join(root, 'logs')),
+      mcpHandler: createMcpHttpHandler(runtime),
+    }));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    servers.push(server);
+    return { runtime, backend: (runtime.memory as unknown as { fileNative: FileNativeMemoryBackend }).fileNative,
+      baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}` };
   };
+  return { ...await start(), root, memory, dependencies, start, principalA, principalB,
+    scopeA: { principalId: logicalPrincipal ?? principalA.metadata.id, projectId: root } };
 }
 
 async function call(baseUrl: string, key: string, name: string, args: Record<string, unknown> = {}) {
@@ -100,6 +103,7 @@ async function route(f: Awaited<ReturnType<typeof fixture>>, objective: string) 
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   await Promise.all(runtimes.splice(0).map(async (runtime) => {
     await runtime.execution.close().catch(() => undefined);
@@ -110,11 +114,82 @@ afterEach(async () => {
 });
 
 describe('continuity checkpoint MCP tools', () => {
-  it('registers four first-class continuity tools inside the 69-tool surface with execution fabric', async () => {
+  it.each(['restart', 'expired-route'] as const)('recovers only the authenticated checkpoint after %s with a separate logical memory principal', async (recovery) => {
+    const f = await fixture(`scoped-${recovery}`, 'shared-logical-memory');
+    const routed = await route(f, 'Close already verified work after an interruption');
+    const args = { routeContextId: routed.routeContextId, status: 'completed', projectTerminal: true,
+      summary: 'The isolated repair succeeded before the remote interruption.',
+      decisions: [{ key: 'checkpoint-recovery', value: 'Replay the persisted receipt.', reason: 'Previously successful work must not execute again.' }],
+      evidence: [{ type: 'test', ref: 'test:isolated-checkpoint-recovery', result: 'passed' }],
+    };
+    const initialLifecycle = await f.runtime.memory.getLifecycleContext(f.scopeA, routed.memoryContextId);
+    expect(initialLifecycle).toMatchObject({ principalId: 'shared-logical-memory', authorityPrincipalId: f.principalA.metadata.id });
+    f.dependencies.supabaseDirectTransport.offline = true;
+    const failed = await call(f.baseUrl, f.principalA.key, 'task_checkpoint', args);
+    expect(failed.raw.result.isError).toBe(true);
+    expect(failed.result.error.code).toBe('MEMORY_POSTFLIGHT_REQUIRED');
+    const prior = await scopedMemoryStateRecords<WriteDecisionRecord>(f.memory.fileNative, MEMORY_STATE.writeDecisions, f.scopeA);
+    expect(prior).toHaveLength(1);
+    const aux = new FileNativeAuxStore(f.memory.fileNative);
+    const persisted = await aux.get<any>('lifecycles', routed.memoryContextId);
+    await aux.put('lifecycles', routed.memoryContextId, { ...persisted, expiresAt: Date.now() - 1 });
+    let current = { runtime: f.runtime, baseUrl: f.baseUrl };
+    if (recovery === 'restart') {
+      await f.runtime.execution.close(); await f.runtime.memory.close();
+      current = await f.start();
+    } else {
+      vi.spyOn(f.runtime.routes as any, 'now').mockReturnValue(Date.now() + 2 * 60 * 60_000);
+    }
+    const stranger = await call(current.baseUrl, f.principalB.key, 'task_checkpoint', args);
+    expect(stranger.raw.result.isError).toBe(true);
+    expect(stranger.result.error.code).toBe('ROUTE_NOT_FOUND');
+    const strangerFinalize = await call(current.baseUrl, f.principalB.key, 'memory_turn_finalize', {
+      routeContextId: routed.routeContextId, reasonCodes: ['TRANSIENT_OPERATION'], evidenceRefs: [],
+    });
+    expect(strangerFinalize.raw.result.isError).toBe(true);
+    expect(strangerFinalize.result.error.code).toBe('ROUTE_NOT_FOUND');
+    const unknown = await call(current.baseUrl, f.principalA.key, 'task_checkpoint', { ...args, routeContextId: randomUUID() });
+    expect(unknown.result.error.code).toBe('ROUTE_NOT_FOUND');
+    const stillPending = await call(current.baseUrl, f.principalA.key, 'task_checkpoint', args);
+    expect(stillPending.result.error.code).toBe('MEMORY_POSTFLIGHT_REQUIRED');
+    f.dependencies.supabaseDirectTransport.offline = false;
+    const completed = await call(current.baseUrl, f.principalA.key, 'task_checkpoint', args);
+    expect(completed.raw.result.isError).not.toBe(true);
+    expect(completed.result.memoryLifecycle).toMatchObject({ postflightState: 'CLOSED', durabilityState: 'DURABLY_CLOSED' });
+    expect(completed.result.writeDecisionIds).toEqual([prior[0]!.id]);
+    expect(await scopedMemoryStateRecords(f.memory.fileNative, MEMORY_STATE.checkpoints, f.scopeA)).toHaveLength(1);
+    expect(await scopedMemoryStateRecords(f.memory.fileNative, MEMORY_STATE.writeDecisions, f.scopeA)).toHaveLength(1);
+    const repeated = await call(current.baseUrl, f.principalA.key, 'task_checkpoint', args);
+    expect(repeated.result.checkpointId).toBe(completed.result.checkpointId);
+    expect(current.runtime.routes.get(routed.routeContextId)).toBeNull();
+    await expect(current.runtime.memory.validateLifecycleContext({ scope: f.scopeA, contextId: routed.memoryContextId, routeContextId: routed.routeContextId }))
+      .rejects.toMatchObject({ code: 'MEMORY_PREFLIGHT_REQUIRED' });
+  });
+
+  it('checks active execution under the authenticated key when memory has a different logical principal', async () => {
+    const f = await fixture('logical-principal-execution', 'shared-logical-memory');
+    const routed = await route(f, 'Keep active execution distinct from durable memory ownership');
+    const executionScope = { principalId: f.principalA.metadata.id, projectId: f.root };
+    await f.runtime.execution.open();
+    const active = await f.runtime.execution.create(executionScope, { objective: 'Planned work remains active',
+      continuityTaskId: routed.continuityTaskId, originRouteContextId: routed.routeContextId,
+      nodes: [{ id: 'A', purpose: 'pending work', command: printCommand('pending'), cwd: f.root, inputs: [] }],
+    });
+    const denied = await call(f.baseUrl, f.principalA.key, 'task_checkpoint', {
+      routeContextId: routed.routeContextId, status: 'completed', summary: 'Active work cannot be declared complete.',
+      evidence: [{ type: 'tool', ref: `execution:${active.runId}`, result: 'verified' }], projectTerminal: true,
+    });
+    expect(denied.raw.result.isError).toBe(true);
+    expect(denied.result.error.code).toBe('CONTINUITY_EXECUTION_ACTIVE');
+    expect((await f.runtime.memory.getContinuityTask(f.scopeA, routed.continuityTaskId))?.status).toBe('running');
+    expect(await scopedMemoryStateRecords(f.memory.fileNative, MEMORY_STATE.checkpoints, f.scopeA)).toEqual([]);
+  });
+
+  it('registers four first-class continuity tools inside the 72-tool surface with execution fabric', async () => {
     const f = await fixture('surface');
     const listed = await listTools(f.baseUrl, f.principalA.key);
     const names = listed.result.tools.map((tool: any) => tool.name);
-    expect(names).toHaveLength(69);
+    expect(names).toHaveLength(72);
     for (const name of ['task_checkpoint', 'continuity_status', 'continuity_get_task', 'continuity_frontier']) {
       expect(names).toContain(name);
     }
@@ -134,15 +209,10 @@ describe('continuity checkpoint MCP tools', () => {
 
     const task = await f.runtime.memory.getContinuityTask(f.scopeA, routed.continuityTaskId);
     expect(task?.status).toBe('running');
-    const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
-    try {
-      const turn = db.prepare('SELECT state FROM continuity_turns WHERE id = ?').get(routed.continuityTurnId) as any;
-      expect(turn.state).toBe('open');
-      expect(Number((db.prepare('SELECT count(*) AS count FROM continuity_checkpoints').get() as any).count)).toBe(0);
-      expect(Number((db.prepare('SELECT count(*) AS count FROM continuity_frontier').get() as any).count)).toBe(0);
-    } finally {
-      db.close();
-    }
+    const turns = await scopedMemoryStateRecords<TurnRecord>(f.memory.fileNative, MEMORY_STATE.turns, f.scopeA);
+    expect(turns.find((turn) => turn.turnId === routed.continuityTurnId)?.state).toBe('open');
+    expect(await scopedMemoryStateRecords(f.memory.fileNative, MEMORY_STATE.checkpoints, f.scopeA)).toHaveLength(0);
+    expect(await scopedMemoryStateRecords(f.memory.fileNative, MEMORY_STATE.frontier, f.scopeA)).toHaveLength(0);
   });
 
   it('persists terminal evidence/frontier, promotes decision+artifact memories, and closes the turn only after checkpoint success', async () => {
@@ -197,33 +267,24 @@ describe('continuity checkpoint MCP tools', () => {
     expect(getTask.result.taskId).toBe(routed.continuityTaskId);
     expect(getTask.result.status).toBe('completed');
 
-    const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
-    try {
-      const turn = db.prepare('SELECT state FROM continuity_turns WHERE id = ?').get(routed.continuityTurnId) as any;
-      expect(turn.state).toBe('closed');
-      const kinds = (db.prepare(`SELECT kind FROM memory_items
-        WHERE principal_id = ? AND IFNULL(project_id, '') = ?
-        ORDER BY kind`).all(f.scopeA.principalId, f.root) as Array<{ kind: string }>).map((row) => row.kind);
-      expect(kinds).toContain('decision');
-      expect(kinds).toContain('artifact');
-      expect(kinds).toContain('project_state');
-      expect(kinds).toContain('guardrail');
-      const checkpoint = db.prepare('SELECT summary_json, evidence_json FROM continuity_checkpoints WHERE id = ?')
-        .get(completed.result.checkpointId) as any;
-      expect(checkpoint.summary_json).toContain('Later enhancement');
-      expect(checkpoint.evidence_json).toContain('tests/example.test.ts');
-      const decisions = db.prepare(`SELECT id, decision_type, target_memory_id, applied_at FROM memory_write_decisions
-        WHERE principal_id = ? AND IFNULL(project_id, '') = ? ORDER BY created_at, id`).all(f.scopeA.principalId, f.root) as any[];
-      expect(decisions).toHaveLength(4);
-      expect(decisions.every((row) => row.applied_at != null)).toBe(true);
-      const metadataDecisionIds = (db.prepare(`SELECT created_from_decision_id FROM memory_node_metadata
-        WHERE memory_id IN (SELECT id FROM memory_items WHERE principal_id = ? AND IFNULL(project_id, '') = ?)
-        ORDER BY memory_id`).all(f.scopeA.principalId, f.root) as Array<{ created_from_decision_id: string | null }>);
-      expect(metadataDecisionIds).toHaveLength(4);
-      expect(metadataDecisionIds.every((row) => typeof row.created_from_decision_id === 'string' && row.created_from_decision_id.length > 0)).toBe(true);
-    } finally {
-      db.close();
-    }
+    const turns = await scopedMemoryStateRecords<TurnRecord>(f.memory.fileNative, MEMORY_STATE.turns, f.scopeA);
+    expect(turns.find((turn) => turn.turnId === routed.continuityTurnId)?.state).toBe('closed');
+    const exported = await f.runtime.memory.export(f.scopeA, 100);
+    const kinds = exported.items.map((item) => item.kind);
+    expect(kinds).toContain('decision');
+    expect(kinds).toContain('artifact');
+    expect(kinds).toContain('project_state');
+    expect(kinds).toContain('guardrail');
+    const checkpoints = await scopedMemoryStateRecords<CheckpointRecord>(f.memory.fileNative, MEMORY_STATE.checkpoints, f.scopeA);
+    const checkpoint = checkpoints.find((record) => record.checkpointId === completed.result.checkpointId)!;
+    expect(JSON.stringify(checkpoint.input)).toContain('Later enhancement');
+    expect(JSON.stringify(checkpoint.input.evidence)).toContain('tests/example.test.ts');
+    const decisions = await scopedMemoryStateRecords<WriteDecisionRecord>(f.memory.fileNative, MEMORY_STATE.writeDecisions, f.scopeA);
+    expect(decisions).toHaveLength(4);
+    expect(decisions.every((record) => record.appliedAt != null)).toBe(true);
+    const nodeMetadata = await Promise.all(exported.items.map((item) => f.runtime.memory.getNodeMetadata(f.scopeA, item.memoryId)));
+    expect(nodeMetadata).toHaveLength(4);
+    expect(nodeMetadata.every((record) => typeof record?.createdFromDecisionId === 'string' && record.createdFromDecisionId.length > 0)).toBe(true);
   });
 
   it('does not promote generic successful summary prose without explicit structured outcome facts', async () => {
@@ -233,6 +294,7 @@ describe('continuity checkpoint MCP tools', () => {
       routeContextId: routed.routeContextId,
       status: 'completed',
       summary: 'This prose is useful for continuity but is not an explicit durable memory fact.',
+      memoryDecision: { reasonCode: 'TRANSIENT_OPERATION', explanation: 'This checkpoint reports operational progress and adds no reusable project knowledge.' },
       projectTerminal: true,
     });
     expect(completed.raw.result.isError).not.toBe(true);
@@ -240,20 +302,11 @@ describe('continuity checkpoint MCP tools', () => {
       decisions: 0, artifacts: 0, outcomes: 0, constraints: 0, failures: 0,
     });
 
-    const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
-    try {
-      const items = db.prepare(`SELECT count(*) AS count FROM memory_items
-        WHERE principal_id = ? AND IFNULL(project_id, '') = ?`)
-        .get(f.scopeA.principalId, f.root) as any;
-      expect(Number(items.count)).toBe(0);
-      const decisions = db.prepare(`SELECT decision_type, applied_at FROM memory_write_decisions
-        WHERE principal_id = ? AND IFNULL(project_id, '') = ?`).all(f.scopeA.principalId, f.root) as any[];
-      expect(decisions).toHaveLength(1);
-      expect(decisions[0]).toMatchObject({ decision_type: 'NO_DURABLE_MEMORY' });
-      expect(decisions[0].applied_at).not.toBeNull();
-    } finally {
-      db.close();
-    }
+    expect((await f.runtime.memory.export(f.scopeA, 100)).items).toHaveLength(0);
+    const decisions = await scopedMemoryStateRecords<WriteDecisionRecord>(f.memory.fileNative, MEMORY_STATE.writeDecisions, f.scopeA);
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]).toMatchObject({ decisionType: 'NO_DURABLE_MEMORY' });
+    expect(decisions[0]!.appliedAt).toBeTypeOf('number');
   });
 
   it('routes repeated failed checkpoint promotion through cognition without revising immutable failure history', async () => {
@@ -279,43 +332,32 @@ describe('continuity checkpoint MCP tools', () => {
     expect(first.failures).toBe(1);
     expect(second.failures).toBe(1);
 
-    const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
-    try {
-      const failure = db.prepare(`SELECT id, current_revision_id FROM memory_items
-        WHERE principal_id = ? AND IFNULL(project_id, '') = ? AND kind = 'failure'`).get(f.scopeA.principalId, f.root) as any;
-      expect(failure).toBeTruthy();
-      const revisions = db.prepare('SELECT count(*) AS count FROM memory_revisions WHERE memory_id = ?').get(failure.id) as any;
-      expect(Number(revisions.count)).toBe(1);
-      const decisions = db.prepare(`SELECT decision_type, reason_codes_json, applied_at FROM memory_write_decisions
-        WHERE principal_id = ? AND IFNULL(project_id, '') = ? ORDER BY created_at, id`).all(f.scopeA.principalId, f.root) as any[];
-      expect(decisions).toHaveLength(2);
-      expect(decisions[0].decision_type).toBe('WRITE_NEW_ROOT');
-      expect(decisions[1].decision_type).toBe('NO_DURABLE_MEMORY');
-      expect(decisions.every((row) => row.applied_at != null)).toBe(true);
-      const metadata = db.prepare('SELECT created_from_decision_id FROM memory_node_metadata WHERE memory_id = ?').get(failure.id) as any;
-      expect(metadata.created_from_decision_id).toBeTruthy();
-    } finally {
-      db.close();
-    }
+    const failure = (await f.runtime.memory.export(f.scopeA, 100)).items.find((item) => item.kind === 'failure');
+    expect(failure).toBeTruthy();
+    expect(await f.runtime.memory.listRevisions(f.scopeA, failure!.memoryId)).toHaveLength(1);
+    const decisions = await scopedMemoryStateRecords<WriteDecisionRecord>(f.memory.fileNative, MEMORY_STATE.writeDecisions, f.scopeA);
+    expect(decisions).toHaveLength(2);
+    expect(decisions[0]!.decisionType).toBe('WRITE_NEW_ROOT');
+    expect(decisions[1]!.decisionType).toBe('NO_DURABLE_MEMORY');
+    expect(decisions.every((record) => record.appliedAt != null)).toBe(true);
+    expect((await f.runtime.memory.getNodeMetadata(f.scopeA, failure!.memoryId))?.createdFromDecisionId).toBeTruthy();
   });
 
   it('runs one grouped durability boundary only after terminal checkpoint promotion and local turn close', async () => {
     const f = await fixture('remote-boundary-order');
     const routed = await route(f, 'Grouped remote durability boundary');
     const calls: Array<{ reason: string; turnState: string; decisionCount: number; lifecycleState: string }> = [];
-    const original = f.runtime.memory.syncDurableBoundary.bind(f.runtime.memory);
-    f.runtime.memory.syncDurableBoundary = (async (_scope: any, reason: any) => {
-      const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
-      try {
-        const turn = db.prepare('SELECT state FROM continuity_turns WHERE id = ?').get(routed.continuityTurnId) as any;
-        const decisions = db.prepare(`SELECT count(*) AS count FROM memory_write_decisions
-          WHERE principal_id = ? AND IFNULL(project_id, '') = ?`).get(f.scopeA.principalId, f.root) as any;
-        const lifecycle = db.prepare('SELECT postflight_state FROM memory_context_lifecycle WHERE context_id = ?')
-          .get(routed.memoryContextId) as any;
-        calls.push({ reason, turnState: turn.state, decisionCount: Number(decisions.count), lifecycleState: lifecycle.postflight_state });
-      } finally {
-        db.close();
-      }
+    const original = f.backend.syncDurableBoundary.bind(f.runtime.memory);
+    f.backend.syncDurableBoundary = (async (_scope: any, reason: any) => {
+      const turns = await scopedMemoryStateRecords<TurnRecord>(f.memory.fileNative, MEMORY_STATE.turns, f.scopeA);
+      const decisions = await scopedMemoryStateRecords(f.memory.fileNative, MEMORY_STATE.writeDecisions, f.scopeA);
+      const lifecycle = await f.runtime.memory.getLifecycleContext(f.scopeA, routed.memoryContextId);
+      calls.push({
+        reason,
+        turnState: String(turns.find((turn) => turn.turnId === routed.continuityTurnId)?.state),
+        decisionCount: decisions.length,
+        lifecycleState: String(lifecycle?.postflightState),
+      });
       return {
         required: true, state: 'REMOTE_SYNCED', reason,
         generationId: 'a'.repeat(64), remoteHead: 'b'.repeat(40), logicalStateHash: 'c'.repeat(64),
@@ -340,7 +382,7 @@ describe('continuity checkpoint MCP tools', () => {
         generationId: 'a'.repeat(64), logicalStateHash: 'c'.repeat(64),
       });
     } finally {
-      f.runtime.memory.syncDurableBoundary = original as any;
+      f.backend.syncDurableBoundary = original as any;
     }
   });
 
@@ -348,15 +390,10 @@ describe('continuity checkpoint MCP tools', () => {
     const f = await fixture('remote-boundary-failure');
     const routed = await route(f, 'Remote boundary failure remains truthful');
     let observedClosed = false;
-    const original = f.runtime.memory.syncDurableBoundary.bind(f.runtime.memory);
-    f.runtime.memory.syncDurableBoundary = (async () => {
-      const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
-      try {
-        const turn = db.prepare('SELECT state FROM continuity_turns WHERE id = ?').get(routed.continuityTurnId) as any;
-        observedClosed = turn.state === 'closed';
-      } finally {
-        db.close();
-      }
+    const original = f.backend.syncDurableBoundary.bind(f.runtime.memory);
+    f.backend.syncDurableBoundary = (async () => {
+      const turns = await scopedMemoryStateRecords<TurnRecord>(f.memory.fileNative, MEMORY_STATE.turns, f.scopeA);
+      observedClosed = turns.find((turn) => turn.turnId === routed.continuityTurnId)?.state === 'closed';
       throw new Error('MEMORY_REMOTE_UNAVAILABLE: synthetic readback failure');
     }) as any;
     try {
@@ -364,28 +401,23 @@ describe('continuity checkpoint MCP tools', () => {
         routeContextId: routed.routeContextId,
         status: 'completed',
         summary: 'Local truth exists but remote durability is unavailable.',
+      memoryDecision: { reasonCode: 'TRANSIENT_OPERATION', explanation: 'This checkpoint reports operational progress and adds no reusable project knowledge.' },
         projectTerminal: true,
       });
       expect(failed.raw.result.isError).toBe(true);
-      expect(String(failed.result.error.message)).toContain('MEMORY_REMOTE_UNAVAILABLE');
+      expect(failed.result.error.code).toBe('MEMORY_POSTFLIGHT_REQUIRED');
       expect(observedClosed).toBe(true);
       const failedLifecycle = await f.runtime.memory.getLifecycleContext(f.scopeA, routed.memoryContextId);
-      expect(failedLifecycle).toMatchObject({ postflightState: 'CLOSED' });
+      expect(failedLifecycle).toMatchObject({ postflightState: 'POSTFLIGHT_PENDING' });
       expect(failedLifecycle).not.toHaveProperty('localDurableGeneration');
       expect(failedLifecycle).not.toHaveProperty('localDurableHash');
       const task = await f.runtime.memory.getContinuityTask(f.scopeA, routed.continuityTaskId);
       expect(task?.status).toBe('completed');
-      const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
-      try {
-        const decisions = db.prepare(`SELECT decision_type FROM memory_write_decisions
-          WHERE principal_id = ? AND IFNULL(project_id, '') = ?`).all(f.scopeA.principalId, f.root) as any[];
-        expect(decisions).toHaveLength(1);
-        expect(decisions[0].decision_type).toBe('NO_DURABLE_MEMORY');
-      } finally {
-        db.close();
-      }
+      const decisions = await scopedMemoryStateRecords<WriteDecisionRecord>(f.memory.fileNative, MEMORY_STATE.writeDecisions, f.scopeA);
+      expect(decisions).toHaveLength(1);
+      expect(decisions[0]!.decisionType).toBe('NO_DURABLE_MEMORY');
     } finally {
-      f.runtime.memory.syncDurableBoundary = original as any;
+      f.backend.syncDurableBoundary = original as any;
     }
   });
 
@@ -404,6 +436,8 @@ describe('continuity checkpoint MCP tools', () => {
         purpose: 'produce verified artifact',
         command: nodeShellCommand(`require('node:fs').writeFileSync(${JSON.stringify(artifactPath)}, '{"ok":true}')`),
         cwd: f.root,
+        inputs: [],
+        resources: { writes: [artifactPath] },
         expectedArtifacts: [{ path: artifactPath, kind: 'file', hash: 'sha256', required: true }],
       }],
     });
@@ -427,6 +461,7 @@ describe('continuity checkpoint MCP tools', () => {
       routeContextId: routed.routeContextId,
       status: 'completed',
       summary: 'Completion is backed by the exact verified execution run.',
+      memoryDecision: { reasonCode: 'TRANSIENT_OPERATION', explanation: 'This checkpoint reports operational progress and adds no reusable project knowledge.' },
       evidence: [{ type: 'tool', ref: `execution:${verifiedRun.runId}`, result: 'verified' }],
       projectTerminal: true,
     });
@@ -443,7 +478,7 @@ describe('continuity checkpoint MCP tools', () => {
       continuityTaskId: routed.continuityTaskId,
       originRouteContextId: routed.routeContextId,
       nodes: [{
-        id: 'A', purpose: 'omit required artifact', command: printCommand('process-success'), cwd: f.root,
+        id: 'A', purpose: 'omit required artifact', command: printCommand('process-success'), cwd: f.root, inputs: [],
         expectedArtifacts: [{ path: path.join(f.root, 'missing-required.txt'), kind: 'file', required: true }],
       }],
     });
@@ -474,7 +509,7 @@ describe('continuity checkpoint MCP tools', () => {
       objective: 'Still planned',
       continuityTaskId: routed.continuityTaskId,
       originRouteContextId: routed.routeContextId,
-      nodes: [{ id: 'A', purpose: 'planned work', command: printCommand('A'), cwd: f.root }],
+      nodes: [{ id: 'A', purpose: 'planned work', command: printCommand('A'), cwd: f.root, inputs: [] }],
     });
     const denied = await call(f.baseUrl, f.principalA.key, 'task_checkpoint', {
       routeContextId: routed.routeContextId,
@@ -505,15 +540,40 @@ describe('continuity checkpoint MCP tools', () => {
     expect(failed.result.promoted.failures).toBe(1);
     expect(failed.result.turnState).toBe('closed');
 
-    const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
-    try {
-      const failures = db.prepare(`SELECT count(*) AS count FROM memory_items
-        WHERE principal_id = ? AND IFNULL(project_id, '') = ? AND kind = 'failure'`)
-        .get(f.scopeA.principalId, f.root) as any;
-      expect(Number(failures.count)).toBe(1);
-    } finally {
-      db.close();
-    }
+    const failures = (await f.runtime.memory.export(f.scopeA, 100)).items.filter((item) => item.kind === 'failure');
+    expect(failures).toHaveLength(1);
+  });
+
+  it.each(['blocked', 'deferred'] as const)('preserves a %s checkpoint when a fresh route interrupts the prior turn after restart', async (status) => {
+    const f = await fixture(`preserve-${status}`, 'checkpoint-logical-principal');
+    const original = await route(f, `Original ${status} objective`);
+    const blockers = [{ code: 'EXTERNAL_DEPENDENCY', detail: 'Operator action is required before this task can continue.' }];
+    const checkpoint = await call(f.baseUrl, f.principalA.key, 'task_checkpoint', {
+      routeContextId: original.routeContextId,
+      status,
+      summary: 'The current work is safely saved while the objective awaits an external condition.',
+      blockers,
+      memoryDecision: { reasonCode: 'TRANSIENT_OPERATION', explanation: 'This operational waiting state contains no additional reusable knowledge.' },
+    });
+    expect(checkpoint.raw.result.isError).not.toBe(true);
+    expect(checkpoint.result).toMatchObject({ taskStatus: status, turnState: 'open',
+      memoryLifecycle: { postflightState: 'CLOSED', durabilityState: 'DURABLY_CLOSED' } });
+    const savedLifecycle = await f.runtime.memory.getLifecycleContext(f.scopeA, original.memoryContextId);
+
+    await f.runtime.execution.close();
+    await f.runtime.memory.close();
+    const restarted = await f.start();
+    const next = await route({ ...f, ...restarted }, 'Verify a separate saved objective');
+    const category = status === 'blocked' ? 'blockedTasks' : 'deferredTasks';
+    expect(next.continuitySnapshot[category]).toEqual(expect.arrayContaining([
+      expect.objectContaining({ taskId: original.continuityTaskId, status, blockers }),
+    ]));
+    expect(next.continuitySnapshot.unfinishedPlans.map((task: any) => task.taskId)).not.toContain(original.continuityTaskId);
+    expect(next.continuitySnapshot.interruptedTurns).toEqual(expect.arrayContaining([
+      expect.objectContaining({ turnId: original.continuityTurnId, taskId: original.continuityTaskId }),
+    ]));
+    expect(await restarted.runtime.memory.getLifecycleContext(f.scopeA, original.memoryContextId))
+      .toEqual(savedLifecycle);
   });
 
   it('keeps non-terminal turns open, marks an interrupted checkpoint resumable, and blocks cross-principal finalization', async () => {
@@ -523,6 +583,7 @@ describe('continuity checkpoint MCP tools', () => {
       routeContextId: runningRoute.routeContextId,
       status: 'running',
       summary: 'Work is still in progress.',
+      memoryDecision: { reasonCode: 'TRANSIENT_OPERATION', explanation: 'This checkpoint reports operational progress and adds no reusable project knowledge.' },
       evidence: [{ type: 'test', ref: 'partial.test.ts', result: 'PASS' }],
     });
     expect(running.raw.result.isError).not.toBe(true);
@@ -542,6 +603,7 @@ describe('continuity checkpoint MCP tools', () => {
       routeContextId: interruptedRoute.routeContextId,
       status: 'interrupted',
       summary: 'Session is ending before completion.',
+      memoryDecision: { reasonCode: 'TRANSIENT_OPERATION', explanation: 'This checkpoint reports operational progress and adds no reusable project knowledge.' },
     });
     expect(interrupted.raw.result.isError).not.toBe(true);
     expect(interrupted.result.turnState).toBe('interrupted');
@@ -552,4 +614,3 @@ describe('continuity checkpoint MCP tools', () => {
       .toContain(interruptedRoute.continuityTurnId);
   });
 });
-

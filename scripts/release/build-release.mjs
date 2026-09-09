@@ -1,13 +1,15 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { createReadStream } from 'node:fs';
+import { createRequire } from 'node:module';
 import {
   chmod,
-  cp,
   lstat,
   mkdir,
+  mkdtemp,
   readFile,
   readdir,
+  realpath,
   rm,
   writeFile,
 } from 'node:fs/promises';
@@ -15,47 +17,47 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   RELEASE_EXCLUSIONS,
-  RELEASE_FORMAT,
   RUNTIME_RELEASE_ITEMS,
   isPresentationBridgeSourcePath,
   normalizeArchivePath,
   releaseAssetNames,
+  releaseChannelMetadata,
 } from './release-contract.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDir, '..', '..');
+async function main() {
 const args = parseArgs(process.argv.slice(2));
-const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
-const presentationPkg = JSON.parse(await readFile(
-  path.join(root, 'SubProject', 'Presentation-Bridge', 'package.json'),
-  'utf8',
-));
+const releaseChannel = releaseChannelMetadata(args.channel);
+assertCleanTrackedTree(root);
+const sourceSnapshot = await captureReleaseSnapshot(root);
+const pkg = JSON.parse(sourceSnapshot.runtimeEntries.find(entry => entry.name === 'Agent-Core/package.json').data.toString('utf8'));
+const presentationPkg = JSON.parse(sourceSnapshot.presentationEntries.find(entry => entry.name === 'Presentation-Bridge/package.json').data.toString('utf8'));
 const version = stableVersion(pkg.version, 'Agent Core');
 const presentationBridgeVersion = stableVersion(presentationPkg.version, 'Presentation Bridge');
 const tag = `v${version}`;
-const names = releaseAssetNames(version, presentationBridgeVersion);
+const names = releaseAssetNames(version, presentationBridgeVersion, releaseChannel.channel);
 const outputRoot = path.resolve(args.outputRoot || path.join(root, 'release'));
 const releaseRoot = path.join(outputRoot, tag);
 const assetsDir = path.join(releaseRoot, 'assets');
 const stagingDir = path.join(releaseRoot, 'staging');
 const pluginStage = path.join(stagingDir, 'agent-core-plugin');
-const sourceCommit = git(['rev-parse', 'HEAD']);
+const sourceCommit = sourceSnapshot.sourceCommit;
 const commitTimestamp = Number(git(['show', '-s', '--format=%ct', 'HEAD']));
 const archiveDate = Number.isFinite(commitTimestamp) ? new Date(commitTimestamp * 1000) : new Date();
 
-assertCleanTrackedTree();
 await rm(releaseRoot, { recursive: true, force: true });
 await mkdir(assetsDir, { recursive: true });
 
-const runtimeEntries = await collectRuntimeEntries();
+const runtimeEntries = await collectRuntimeEntries(stagingDir, root, sourceSnapshot);
 await writeStoredZip(path.join(assetsDir, names.freshZip), runtimeEntries, archiveDate);
 await writeStoredZip(path.join(assetsDir, names.runtimeZip), runtimeEntries, archiveDate);
 
-await buildPluginStage();
+await buildPluginStage(pluginStage, version, sourceSnapshot.runtimeEntries, releaseChannel.channel);
 const pluginEntries = await collectDirectoryEntries(pluginStage, 'agent-core-plugin');
 await writeStoredZip(path.join(assetsDir, names.pluginZip), pluginEntries, archiveDate);
 
-const presentationEntries = await collectPresentationBridgeEntries();
+const presentationEntries = sourceSnapshot.presentationEntries;
 await writeStoredZip(path.join(assetsDir, names.presentationBridgeZip), presentationEntries, archiveDate);
 
 const npm = npmInvocation();
@@ -83,10 +85,10 @@ for (const name of primaryAssets) {
 }
 
 const manifest = {
-  format: RELEASE_FORMAT,
+  format: releaseChannel.format,
   version,
   tag,
-  channel: 'stable',
+  channel: releaseChannel.channel,
   sourceCommit,
   generatedAt: new Date().toISOString(),
   freshPackage: names.freshZip,
@@ -95,10 +97,11 @@ const manifest = {
   presentationBridgeVersion,
   presentationBridgeSourcePackage: names.presentationBridgeZip,
   githubPackage: '@black-project-agent-core/agent-core-plugin',
-  packageDistTag: 'stable',
+  packageDistTag: releaseChannel.packageDistTag,
   exclusions: RELEASE_EXCLUSIONS,
   assets: manifestAssets,
 };
+await assertReleaseSnapshot(root, sourceSnapshot);
 const manifestPath = path.join(assetsDir, names.manifest);
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
 
@@ -111,11 +114,14 @@ const checksumPath = path.join(assetsDir, names.checksums);
 await writeFile(checksumPath, `${checksumLines.join('\n')}\n`, { encoding: 'ascii', mode: 0o600 });
 await chmod(manifestPath, 0o600).catch(() => undefined);
 await chmod(checksumPath, 0o600).catch(() => undefined);
+await assertReleaseSnapshot(root, sourceSnapshot);
 
 process.stdout.write(`${JSON.stringify({
   ok: true,
   version,
   tag,
+  channel: releaseChannel.channel,
+  packageDistTag: releaseChannel.packageDistTag,
   sourceCommit,
   presentationBridgeVersion,
   releaseRoot,
@@ -128,13 +134,24 @@ process.stdout.write(`${JSON.stringify({
     presentationBridge: presentationEntries.length,
   },
 }, null, 2)}\n`);
+}
 
-function parseArgs(values) {
-  const result = { outputRoot: '' };
+export function parseArgs(values) {
+  const result = { outputRoot: '', channel: 'stable' };
+  let channelProvided = false;
   for (let index = 0; index < values.length; index += 1) {
     const value = values[index];
     if (value === '--output-root') {
       result.outputRoot = values[index + 1] || '';
+      index += 1;
+      continue;
+    }
+    if (value === '--channel') {
+      if (channelProvided) throw new Error('Release channel may only be specified once');
+      channelProvided = true;
+      const channel = values[index + 1];
+      if (channel === undefined) throw new Error('--channel requires stable or prerelease');
+      result.channel = releaseChannelMetadata(channel).channel;
       index += 1;
       continue;
     }
@@ -155,12 +172,12 @@ function git(arguments_) {
   return execFileSync('git', ['-C', root, ...arguments_], { encoding: 'utf8' }).trim();
 }
 
-function assertCleanTrackedTree() {
-  const status = git(['status', '--porcelain=v1', '--untracked-files=no']);
+function assertCleanTrackedTree(projectRoot) {
+  const status = execFileSync('git', ['-C', projectRoot, 'status', '--porcelain=v1', '--untracked-files=no'], { encoding: 'utf8' }).trim();
   if (status) throw new Error(`Release packaging requires a clean tracked tree:\n${status}`);
 }
 
-function npmInvocation() {
+export function npmInvocation() {
   const npmExecPath = process.env.npm_execpath?.trim();
   if (npmExecPath && /npm-cli\.(?:c?js|mjs)$/i.test(npmExecPath)) {
     return { executable: process.execPath, prefix: [npmExecPath] };
@@ -174,60 +191,161 @@ function npmInvocation() {
   return { executable: 'npm', prefix: [] };
 }
 
-async function collectRuntimeEntries() {
-  const entries = [];
-  for (const item of RUNTIME_RELEASE_ITEMS) {
-    const source = path.join(root, item);
+export async function collectRuntimeEntries(stagingDir, projectRoot = root, snapshot) {
+  const sourceSnapshot = snapshot ?? await captureReleaseSnapshot(projectRoot, { includePresentation: false });
+  const entries = [...sourceSnapshot.runtimeEntries];
+  const trackedSources = new Set(entries.map(entry => entry.name.slice('Agent-Core/'.length)));
+  entries.push(...await collectFreshCompilerEntries(projectRoot, stagingDir, trackedSources));
+  await assertReleaseSnapshot(projectRoot, sourceSnapshot);
+  return uniqueSortedEntries(entries);
+}
+
+function sourceEntriesHash(entries) {
+  return createHash('sha256').update(JSON.stringify(entries.map(entry => [entry.name, createHash('sha256').update(entry.data).digest('hex')]).sort((a, b) => a[0].localeCompare(b[0])))).digest('hex');
+}
+
+export async function captureReleaseSnapshot(projectRoot, options = {}) {
+  const runtimeItems = options.runtimeItems ?? RUNTIME_RELEASE_ITEMS.filter(item => item !== 'dist');
+  const includePresentation = options.includePresentation ?? true;
+  const sourceCommit = execFileSync('git', ['-C', projectRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const runtimeEntries = await collectTrackedRuntimeEntries(projectRoot, runtimeItems);
+  const presentationEntries = includePresentation ? await collectPresentationBridgeEntries(projectRoot) : [];
+  return { sourceCommit, runtimeItems, includePresentation, runtimeEntries, presentationEntries,
+    sourceHash: sourceEntriesHash([...runtimeEntries, ...presentationEntries]) };
+}
+
+export async function assertReleaseSnapshot(projectRoot, snapshot) {
+  const current = await captureReleaseSnapshot(projectRoot, snapshot);
+  if (current.sourceCommit !== snapshot.sourceCommit || current.sourceHash !== snapshot.sourceHash) {
+    throw new Error('Release source content or tracked input set changed during packaging');
+  }
+  assertCleanTrackedTree(projectRoot);
+}
+
+/** Only regular tracked source files are eligible. Untracked nested files are never read or archived. */
+export async function collectTrackedRuntimeEntries(projectRoot, items = RUNTIME_RELEASE_ITEMS.filter(item => item !== 'dist'), select = () => true) {
+  const raw = execFileSync('git', ['-C', projectRoot, 'ls-files', '--stage', '-z', '--', ...items], {
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024,
+  });
+  const tracked = raw.split('\0').filter(Boolean).map(line => {
+    const match = /^(\d+) [a-f0-9]+ (\d)\t([\s\S]+)$/.exec(line);
+    if (match && !select(match[3])) return null;
+    if (!match || match[2] !== '0') throw new Error('Release source has unresolved index entries');
+    if (!['100644', '100755'].includes(match[1])) throw new Error('Release source must be a tracked regular file');
+    return safeArchiveEntryName(match[3]);
+  }).filter(Boolean);
+  for (const item of items) {
+    if (!tracked.some(file => file === item || file.startsWith(`${item}/`))) throw new Error(`Release source must be tracked: ${item}`);
+  }
+  const actualRoot = await realpath(projectRoot), entries = [];
+  const comparable = file => process.platform === 'win32' ? file.toLowerCase() : file;
+  for (const relative of tracked) {
+    const source = path.join(actualRoot, relative);
+    if (!(await lstat(source)).isFile() || comparable(await realpath(source)) !== comparable(source)) {
+      throw new Error(`Release packaging refuses nonregular or redirected source: ${relative}`);
+    }
+    entries.push({ name: normalizeArchivePath(path.join('Agent-Core', relative)), data: await readFile(source) });
+  }
+  return uniqueSortedEntries(entries);
+}
+
+/** Build output is acquired from a fresh compiler invocation, never from a live runtime directory. */
+export async function collectFreshCompilerEntries(projectRoot, stagingDir, trackedSources) {
+  await mkdir(stagingDir, { recursive: true });
+  const outputRoot = await realpath(await mkdtemp(path.join(stagingDir, 'compiler-')));
+  const compilerPackage = createRequire(import.meta.url).resolve('typescript/package.json');
+  const compilerMetadata = JSON.parse(await readFile(compilerPackage, 'utf8'));
+  const compiler = path.resolve(path.dirname(compilerPackage), compilerMetadata.bin.tsc);
+  const allowedDependencyRoots = [await realpath(path.dirname(compilerPackage))];
+  const compilerResolver = createRequire(compilerPackage);
+  for (const dependency of Object.keys(compilerMetadata.optionalDependencies ?? {})) {
+    try { allowedDependencyRoots.push(await realpath(path.dirname(compilerResolver.resolve(`${dependency}/package.json`)))); }
+    catch (error) { if (error.code !== 'MODULE_NOT_FOUND') throw error; }
+  }
+  let lock;
+  try { lock = JSON.parse(await readFile(path.join(projectRoot, 'package-lock.json'), 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const dependencyRoot = path.join(await realpath(projectRoot), 'node_modules');
+  for (const packagePath of Object.keys(lock?.packages ?? {})) {
+    if (!packagePath.startsWith('node_modules/') || packagePath.split('/').some(part => part === '..')) continue;
+    const location = path.resolve(projectRoot, packagePath);
     try {
-      entries.push(...await collectPathEntries(source, normalizeArchivePath(path.join('Agent-Core', item))));
-    } catch (error) {
-      if (error?.code === 'ENOENT') throw new Error(`Release source missing: ${item}`);
-      throw error;
+      const resolved = await realpath(location);
+      if (!containedPath(dependencyRoot, resolved)) throw new Error('Release dependency redirects outside its installed dependency root');
+      allowedDependencyRoots.push(resolved);
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+  const output = execFileSync(process.execPath, [compiler, '--project', path.join(projectRoot, 'tsconfig.json'),
+    '--outDir', outputRoot, '--incremental', 'false', '--noEmitOnError', 'true', '--listFiles', '--listEmittedFiles', '--pretty', 'false'], {
+    cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, maxBuffer: 64 * 1024 * 1024,
+  });
+  const actualProject = await realpath(projectRoot);
+  for (const line of output.split(/\r?\n/)) {
+    if (!path.isAbsolute(line)) continue;
+    const actual = await realpath(line);
+    if (allowedDependencyRoots.some(dependency => containedPath(dependency, actual))) continue;
+    const relative = normalizeArchivePath(path.relative(actualProject, actual));
+    if (!containedPath(actualProject, actual) || containedPath(dependencyRoot, actual)) {
+      throw new Error('Release compiler consumed source outside tracked project or locked dependency roots');
+    }
+    if (trackedSources && !trackedSources.has(relative)) {
+      throw new Error(`Release compiler consumed untracked project source: ${relative}`);
     }
   }
-  return uniqueSortedEntries(entries);
-}
-
-async function collectPresentationBridgeEntries() {
-  const tracked = git(['ls-files', '-z', '--', 'SubProject/Presentation-Bridge'])
-    .split('\0')
-    .filter(Boolean)
-    .map(normalizeArchivePath)
-    .filter(isPresentationBridgeSourcePath)
-    .sort();
-  if (tracked.length === 0) throw new Error('No tracked Presentation Bridge source files were found');
+  const emitted = output.split(/\r?\n/).filter(line => line.startsWith('TSFILE: ')).map(line => line.slice('TSFILE: '.length).trim());
+  if (!emitted.length) throw new Error('Release compiler did not report any emitted files');
   const entries = [];
-  for (const trackedPath of tracked) {
-    const relative = trackedPath.slice('SubProject/Presentation-Bridge/'.length);
-    entries.push({
-      name: normalizeArchivePath(path.join('Presentation-Bridge', relative)),
-      data: await readFile(path.join(root, trackedPath)),
-    });
+  for (const file of emitted) {
+    const resolved = await realpath(file), relative = path.relative(outputRoot, resolved);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || !(await lstat(file)).isFile()) {
+      throw new Error('Release compiler emitted outside its isolated output directory');
+    }
+    let data = await readFile(resolved);
+    if (relative.endsWith('.map')) {
+      const map = JSON.parse(data.toString('utf8'));
+      // Relocation changes relative paths from the staging directory to packaged src/.
+      // Preserve explicitly remote source roots; normalize local roots to the final dist location.
+      if (!map.sourceRoot || !/^[a-z][a-z\d+.-]*:\/\//i.test(map.sourceRoot)) {
+        map.sources = map.sources.map(source => normalizeArchivePath(path.relative(
+          path.dirname(path.join(projectRoot, 'dist', relative)), path.resolve(path.dirname(resolved), map.sourceRoot ?? '', source))));
+        map.sourceRoot = '';
+        data = Buffer.from(JSON.stringify(map), 'utf8');
+      }
+    }
+    entries.push({ name: normalizeArchivePath(path.join('Agent-Core', 'dist', relative)), data });
   }
   return uniqueSortedEntries(entries);
 }
 
-async function buildPluginStage() {
+function containedPath(directory, candidate) {
+  const relative = path.relative(directory, candidate);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+export async function collectPresentationBridgeEntries(projectRoot = root) {
+  const entries = await collectTrackedRuntimeEntries(projectRoot, ['SubProject/Presentation-Bridge'], isPresentationBridgeSourcePath);
+  return entries.map(entry => ({ ...entry, name: entry.name.replace('Agent-Core/SubProject/Presentation-Bridge/', 'Presentation-Bridge/') }));
+}
+
+export async function buildPluginStage(pluginStage, version, sourceEntries, channel = 'stable') {
+  const releaseChannel = releaseChannelMetadata(channel);
   await rm(pluginStage, { recursive: true, force: true });
   await mkdir(path.join(pluginStage, 'skills', 'agent-core-capability-router'), { recursive: true });
   await mkdir(path.join(pluginStage, 'skills', 'agent-core-github'), { recursive: true });
-  await Promise.all([
-    cp(path.join(root, 'plugin', 'agent-core', 'README.md'), path.join(pluginStage, 'README.md')),
-    cp(path.join(root, 'CHANGELOG.md'), path.join(pluginStage, 'CHANGELOG.md')),
-    cp(
-      path.join(root, 'plugin', 'agent-core', 'skills', 'agent-core-capability-router', 'SKILL.md'),
-      path.join(pluginStage, 'skills', 'agent-core-capability-router', 'SKILL.md'),
-    ),
-    cp(
-      path.join(root, 'plugin', 'agent-core', 'skills', 'agent-core-github', 'SKILL.md'),
-      path.join(pluginStage, 'skills', 'agent-core-github', 'SKILL.md'),
-    ),
-  ]);
+  for (const [source, destination] of [
+    ['plugin/agent-core/README.md', 'README.md'], ['CHANGELOG.md', 'CHANGELOG.md'],
+    ['plugin/agent-core/skills/agent-core-capability-router/SKILL.md', 'skills/agent-core-capability-router/SKILL.md'],
+    ['plugin/agent-core/skills/agent-core-github/SKILL.md', 'skills/agent-core-github/SKILL.md'],
+  ]) {
+    const entry = sourceEntries.find(item => item.name === `Agent-Core/${source}`);
+    if (!entry) throw new Error(`Required plugin source was not captured: ${source}`);
+    await writeFile(path.join(pluginStage, destination), entry.data);
+  }
   const pluginMetadata = {
     format: 'agent-core-plugin-source-v1',
     name: 'Agent Core',
     version,
-    channel: 'stable',
+    channel: releaseChannel.channel,
     description: 'Tracked Agent Core Capability Router and Native GitHub Fabric skills plus the existing Agent Core MCP app binding.',
     app: {
       name: 'Agent Core',
@@ -245,7 +363,7 @@ async function buildPluginStage() {
   const npmPackage = {
     name: '@black-project-agent-core/agent-core-plugin',
     version,
-    description: 'Stable Agent Core routing and Native GitHub Fabric plugin source for the Agent Core MCP app.',
+    description: `${channel === 'stable' ? 'Stable' : 'Prerelease'} Agent Core routing and Native GitHub Fabric plugin source for the Agent Core MCP app.`,
     private: false,
     license: 'UNLICENSED',
     files: ['README.md', 'CHANGELOG.md', 'agent-core-package.json', 'skills/**'],
@@ -255,6 +373,7 @@ async function buildPluginStage() {
     },
     publishConfig: {
       registry: 'https://npm.pkg.github.com',
+      ...(releaseChannel.channel === 'prerelease' ? { tag: releaseChannel.packageDistTag } : {}),
     },
   };
   await Promise.all([
@@ -330,7 +449,7 @@ function dosDateTime(input) {
   };
 }
 
-async function writeStoredZip(file, entries, timestamp) {
+export async function writeStoredZip(file, entries, timestamp) {
   const locals = [];
   const centrals = [];
   let offset = 0;
@@ -381,3 +500,7 @@ async function writeStoredZip(file, entries, timestamp) {
   eocd.writeUInt32LE(centralOffset, 16);
   await writeFile(file, Buffer.concat([...locals, ...centrals, eocd]));
 }
+
+const entry = process.argv[1];
+const comparable = file => process.platform === 'win32' ? path.resolve(file).toLowerCase() : path.resolve(file);
+if (entry && comparable(entry) === comparable(fileURLToPath(import.meta.url))) await main();

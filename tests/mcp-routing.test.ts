@@ -1,7 +1,8 @@
-﻿import { createServer, type Server } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { instructionProvenance } from './helpers/skill-fixture.js';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
@@ -74,6 +75,7 @@ async function setup() {
   );
   await mkdir(path.dirname(skillPath), { recursive: true });
   await writeFile(skillPath, '# Frontend Quality\n\nUse the audited frontend workflow.\n', 'utf8');
+  await instructionProvenance(capabilityDir, frontendCapability().id, skillPath);
   await writeRegistryGeneration(capabilityDir, [frontendCapability()], {
     catalogSha: 'fixture-sha',
     generatedAt: '2026-08-23T00:00:00.000Z',
@@ -81,7 +83,7 @@ async function setup() {
 
   const keyStore = new FileKeyStore(path.join(root, 'data'));
   const created = await keyStore.create('routing-client');
-  const baseMemory = loadConfig({}, root).memory;
+  const baseMemory = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root).memory;
   const runtime = createRuntimeServices([root], capabilityDir, undefined, { ...baseMemory, enabled: false });
   const app = createHttpHandler({
     keyStore,
@@ -144,15 +146,15 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 describe('Agent Core MCP automatic capability routing', () => {
-  it('replaces capability_recommend with capability_route while exposing the 69-tool routed, github, langflow, operator-directive, memory, continuity, execution, artifact, workflow-advice, and observability surface', async () => {
+  it('replaces capability_recommend with capability_route while exposing the 72-tool routed, github, langflow, operator-directive, memory, continuity, execution, artifact, workflow-advice, and observability surface', async () => {
     const { baseUrl, created } = await setup();
     const tools = await listTools(baseUrl, created.key);
     const names = tools.map((tool) => tool.name);
 
-    expect(names).toHaveLength(69);
+    expect(names).toHaveLength(72);
+    expect(names).toEqual(expect.arrayContaining(['craft_source', 'workflow_plan', 'workflow_status']));
     expect(names).toEqual(expect.arrayContaining(['task_checkpoint', 'continuity_status', 'continuity_get_task', 'continuity_frontier']));
     expect(names).toContain('capability_route');
-    expect(names).toContain('subagentcore');
     expect(names).not.toContain('capability_recommend');
 
     const routeTool = tools.find((tool) => tool.name === 'capability_route');

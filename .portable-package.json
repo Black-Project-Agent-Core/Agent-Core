@@ -1,1 +1,0 @@
-{"schemaVersion":1,"packageType":"agent-core-portable","createdAt":"2026-09-03T23:15:35.1077514Z","entryCount":19637,"exclusions":["node_modules",".worktrees","runtime/tray","runtime/launcher","runtime/tools","runtime/transfer","runtime/logs","runtime/bootstrap/install-state.json",".git/worktrees","dist/.desktop-commander"]}

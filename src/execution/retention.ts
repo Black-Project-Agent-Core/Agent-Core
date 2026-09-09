@@ -241,7 +241,7 @@ async function appendAudit(auditPath: string, record: Record<string, unknown>): 
 async function applyExecutionRetentionImpl(options: {
   planPath: string;
   bundlePath: string;
-  dbPath: string;
+  stateRoot: string;
   logRoot: string;
   metrics?: RuntimeMetricRegistry;
 }): Promise<{
@@ -259,7 +259,7 @@ async function applyExecutionRetentionImpl(options: {
     fail('EXECUTION_RETENTION_BACKUP_TOO_OLD', 'Recovery bundle must be created after the retention plan');
   }
 
-  const lease = await ExecutionRuntimeLease.acquire(options.dbPath);
+  const lease = await ExecutionRuntimeLease.acquire(options.stateRoot);
   const auditPath = path.join(path.dirname(path.resolve(options.planPath)), 'execution-retention-audit.jsonl');
   const deleted: Array<{ path: string; bytes: number }> = [];
   const skipped: Array<{ path: string; reason: string }> = [];

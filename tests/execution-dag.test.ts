@@ -97,7 +97,7 @@ describe('deterministic execution DAG validation', () => {
     const input = [
       node('D', f.work, { dependsOn: ['B', 'A'], timeoutMs: 10_000 }),
       node('B', f.work),
-      node('C', f.work, { dependsOn: ['A', 'A'], continueOnFailure: true }),
+      node('C', f.work, { dependsOn: ['A', 'A'] }),
       node('A', f.work),
     ];
     const first = await validateExecutionDag(input, { workspace: f.workspace });
@@ -109,13 +109,18 @@ describe('deterministic execution DAG validation', () => {
     expect(first.nodeById.get('C')).toMatchObject({
       dependsOn: ['A'],
       timeoutMs: 30_000,
-      continueOnFailure: true,
     });
     expect(first.nodeById.get('D')).toMatchObject({
       dependsOn: ['A', 'B'],
       timeoutMs: 10_000,
-      continueOnFailure: false,
     });
+  });
+
+  it('rejects removed options and unknown fields instead of silently dropping them', async () => {
+    const f = await fixture('strict');
+    await expect(validateExecutionDag([{ ...node('A', f.work), continueOnFailure: false } as any], { workspace: f.workspace })).rejects.toMatchObject({ code: 'EXECUTION_NODE_FIELD_REMOVED' });
+    await expect(validateExecutionDag([{ ...node('A', f.work), typoInputs: [] } as any], { workspace: f.workspace })).rejects.toMatchObject({ code: 'EXECUTION_NODE_FIELD_UNKNOWN' });
+    await expect(validateExecutionDag([{ ...node('A', f.work), resources: { typo: [] } } as any], { workspace: f.workspace })).rejects.toMatchObject({ code: 'EXECUTION_RESOURCES_INVALID' });
   });
 
   it('makes independent A/B ready simultaneously and unlocks C after only A succeeds while D waits for A+B', async () => {

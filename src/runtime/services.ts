@@ -11,11 +11,9 @@ import { ExecutionStore } from '../execution/store.js';
 import { GitHubService, type GitHubServiceDependencies } from '../github/service.js';
 import { LangflowService } from '../langflow/service.js';
 import { NOOP_RUNTIME_AUDIT_LOGGER, type RoutingAuditLogger, type RuntimeAuditLogger } from '../logging/audit-log.js';
-import { MemoryService } from '../memory/service.js';
+import { MemoryService, type MemoryServiceDependencies } from '../memory/service.js';
 import { OperatorDirectiveService } from '../operator-directives/service.js';
-import { GitHubMemoryRemoteTransport } from '../memory/remote-transport.js';
 import { TelemetryService } from '../observability/telemetry.js';
-import { SubAgentCoreService } from '../subagentcore/service.js';
 import { FileSystemService } from './filesystem.js';
 import { ProcessManager } from './process-manager.js';
 import { RouteContextStore } from './route-context-store.js';
@@ -25,8 +23,15 @@ import { RuntimeMetricRegistry } from './metric-window.js';
 import { RuntimeHealthMetrics } from './health-metrics.js';
 import { NodeResourceSnapshotProvider } from './resource-snapshot.js';
 import { LocalMaintenanceCoordinator } from './maintenance.js';
+import { WorkflowService } from '../workflow/service.js';
+import { canonicalFileNativeProjectId } from '../memory/file-native/paths.js';
+import { TaskCheckpointService } from '../memory/task-checkpoint.js';
+import { completionWorkflowScope, verifyWorkflowCompletion } from './workflow-completion.js';
+import { MemoryHardLifecycleError } from '../memory/hard-lifecycle.js';
 
 export interface RuntimeServices {
+  workflow: WorkflowService;
+  checkpoints: TaskCheckpointService;
   workspace: WorkspacePolicy;
   filesystem: FileSystemService;
   search: SearchService;
@@ -38,7 +43,6 @@ export interface RuntimeServices {
   execution: ExecutionService;
   github: GitHubService;
   langflow: LangflowService;
-  subagentcore: SubAgentCoreService;
   operatorDirectives: OperatorDirectiveService;
   metrics: RuntimeMetricRegistry;
   audit: RuntimeAuditLogger;
@@ -61,6 +65,7 @@ export function createRuntimeServices(
   maintenanceConfig?: MaintenanceConfig,
   langflowConfig?: LangflowConfig,
   operatorDirectiveConfig?: OperatorDirectiveConfig,
+  memoryDependencies?: MemoryServiceDependencies,
 ): RuntimeServices {
   const workspace = new WorkspacePolicy(allowedRoots);
   const capabilities = CapabilityRegistry.open(capabilityDir);
@@ -85,14 +90,16 @@ export function createRuntimeServices(
   const github = new GitHubService(resolvedGitHubConfig, workspace, { ...githubDependencies, metrics });
   const langflow = new LangflowService(resolvedLangflowConfig);
   const operatorDirectives = new OperatorDirectiveService(resolvedOperatorDirectiveConfig);
-  const memoryRemoteTransport = resolvedMemoryConfig.remote.enabled
-    ? new GitHubMemoryRemoteTransport(github.git, workspace, resolvedMemoryConfig.remote)
-    : undefined;
-  const memory = new MemoryService(resolvedMemoryConfig, metrics, { remoteTransport: memoryRemoteTransport });
-  const subagentcore = new SubAgentCoreService({
-    memory,
-    projectRoot: allowedRoots[0] ?? process.cwd(),
+  const memory = new MemoryService(resolvedMemoryConfig, metrics, memoryDependencies);
+  const workflow = new WorkflowService({
+    workspace,
+    projectRoot: resolvedMemoryConfig.fileNative.projectRoot,
+    stateRoot: path.join(resolvedMemoryConfig.fileNative.vaultRoot, '.agent-core', 'state'),
+    cacheRoot: path.join(resolvedMemoryConfig.fileNative.projectRoot, 'runtime', 'craft', 'sources'),
+    protectedRoots: [resolvedMemoryConfig.fileNative.memoryRoot, resolvedExecutionConfig.stateRoot, resolvedExecutionConfig.logRoot,
+      resolvedOperatorDirectiveConfig.stateRoot, path.join(resolvedMemoryConfig.fileNative.projectRoot, 'runtime'), path.join(resolvedMemoryConfig.fileNative.projectRoot, '.git')],
   });
+  const routes = new RouteContextStore({ ...(routingAuditLogger ? { auditLogger: routingAuditLogger } : {}), metrics });
   const resolvePersistentMemoryScope = (scope: { principalId: string; projectId?: string }) => ({
     ...scope,
     principalId: resolvedMemoryConfig.principalId ?? scope.principalId,
@@ -106,7 +113,7 @@ export function createRuntimeServices(
   );
   let execution!: ExecutionService;
   const resourceProvider = new NodeResourceSnapshotProvider({
-    storagePath: path.dirname(resolvedExecutionConfig.dbPath),
+    storagePath: path.dirname(resolvedExecutionConfig.stateRoot),
     auditStatus: () => runtimeAudit.status?.() ?? null,
     telemetryStatus: () => {
       const status = telemetry.status();
@@ -122,6 +129,44 @@ export function createRuntimeServices(
     metrics,
   });
   execution = new ExecutionService(resolvedExecutionConfig, workspace, {
+    workflowAfterAttempt: async (scope, run, node) => {
+      if (!run.continuityTaskId) return;
+      const workflowScope = { principalId: resolvedMemoryConfig.principalId ?? scope.principalId,
+        projectId: canonicalFileNativeProjectId(resolvedMemoryConfig.fileNative, scope.projectId ?? workspace.resolveProjectRoot()), taskId: run.continuityTaskId };
+      const contract = await workflow.status(workflowScope);
+      if (!contract?.plan) return;
+      const binding = run.metadata.workflowBinding as { planHash?: string; planRevision?: string } | undefined;
+      const revision = Number(binding?.planRevision);
+      if (binding?.planHash !== contract.plan.hash || revision !== contract.plan.revision) {
+        throw Object.assign(new Error('Completed command belongs to a superseded workflow plan; reconcile before continuing'), { code: 'WORKFLOW_PLAN_STALE' });
+      }
+      const canonical = (p: string) => process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p);
+      const writes = (node.resources?.writes ?? []).map(p => path.resolve(node.cwd, p));
+      const paths = contract.plan.targetBaseline.map(p => p.path).filter(p => writes.some(w => canonical(w) === canonical(p)));
+      if (paths.length) await workflow.recordOperation(workflowScope, { toolName: 'execute_command', paths,
+        command: node.command, stepIds: node.stepIds ?? [], planVersion: revision, viaExecution: true });
+    },
+    workflowGuard: async (request) => {
+      const route = request.originRouteContextId ? routes.getOwned(request.originRouteContextId, request.scope.principalId) : undefined;
+      const taskId = request.continuityTaskId ?? route?.workflow?.taskId ?? route?.continuityTaskId;
+      if (!taskId) throw Object.assign(new Error('Execution requires a persisted workflow task'), { code: 'WORKFLOW_CONTEXT_REQUIRED' });
+      if (!route || (route.workflow?.taskId ?? route.continuityTaskId) !== taskId
+        || canonicalFileNativeProjectId(resolvedMemoryConfig.fileNative, route.projectId ?? workspace.resolveProjectRoot()) !== canonicalFileNativeProjectId(resolvedMemoryConfig.fileNative, request.scope.projectId ?? workspace.resolveProjectRoot())) {
+        throw Object.assign(new Error('Execution must use the current route for its own task and project'), { code: 'WORKFLOW_CONTEXT_REQUIRED' });
+      }
+      if (resolvedMemoryConfig.hardLifecycleMode === 'enforce') {
+        if (!route.memorySnapshot?.memoryContextId) throw new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Execution requires a current recalled memory context');
+        await memory.validateLifecycleContext({
+          scope: { principalId: resolvedMemoryConfig.principalId ?? request.scope.principalId, projectId: route.projectId },
+          contextId: route.memorySnapshot.memoryContextId, routeContextId: route.routeContextId,
+        });
+      }
+      return workflow.assertExecution({
+        principalId: resolvedMemoryConfig.principalId ?? request.scope.principalId,
+        projectId: canonicalFileNativeProjectId(resolvedMemoryConfig.fileNative, request.scope.projectId ?? workspace.resolveProjectRoot()),
+        taskId,
+      }, { ...request, nodes: [...request.nodes] });
+    },
     store: executionStore,
     memoryBridge: executionBridge,
     memorySearch: new ExecutionMemoryPreSearch(memory, resolvePersistentMemoryScope),
@@ -136,25 +181,36 @@ export function createRuntimeServices(
     metrics,
   });
   const runtime = {
+    workflow,
     workspace,
-    filesystem: new FileSystemService(workspace),
+    filesystem: new FileSystemService(workspace, true),
     search: new SearchService(workspace),
-    processes: new ProcessManager(workspace),
+    processes: new ProcessManager(workspace, true),
     capabilities,
     router: new CapabilityRouter(capabilities),
-    routes: new RouteContextStore({ ...(routingAuditLogger ? { auditLogger: routingAuditLogger } : {}), metrics }),
+    routes,
     memory,
     execution,
     github,
     langflow,
-    subagentcore,
     operatorDirectives,
     metrics,
     audit: runtimeAudit,
     telemetry,
     resourceGovernor,
     maintenance,
-  } as Omit<RuntimeServices, 'healthMetrics'> & { healthMetrics?: RuntimeHealthMetrics };
+  } as Omit<RuntimeServices, 'healthMetrics' | 'checkpoints'> & { healthMetrics?: RuntimeHealthMetrics; checkpoints?: TaskCheckpointService };
+  runtime.checkpoints = new TaskCheckpointService(memory, workspace, {
+    acquireCheckpoint: async (scope, input) => {
+      if (input.status !== 'completed') return undefined;
+      const lifecycle = await memory.getLifecycleContext(scope, input.memoryContextId);
+      return execution.acquireWorkspaceClaim({ principalId: lifecycle?.authorityPrincipalId ?? scope.principalId, projectId: input.workspaceRoot }, { reads: [input.workspaceRoot] });
+    },
+    beforeCheckpoint: (scope, input) => verifyWorkflowCompletion(runtime as RuntimeServices, scope, input),
+    beforeDurability: async (scope, input, checkpointId) => {
+      if (input.status === 'completed') await workflow.markClosed(completionWorkflowScope(runtime as RuntimeServices, scope, input), { checkpointId });
+    },
+  });
   runtime.healthMetrics = new RuntimeHealthMetrics(runtime as RuntimeServices);
   return runtime as RuntimeServices;
 }

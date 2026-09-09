@@ -3,9 +3,8 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { pathToFileURL } from 'node:url';
 import { FileKeyStore } from './auth/key-store.js';
-import { loadConfig, type AppConfig } from './config.js';
+import { loadConfig, loadRuntimeConfig, type AppConfig } from './config.js';
 import { createHttpHandler } from './http/app.js';
-import { createCodespaceSharedMemoryHttpHandler } from './http/codespace-memory.js';
 import { createMemoryContextLeaseHttpHandler } from './http/memory-context-lease.js';
 import { HttpSecurityPolicy } from './http/security-policy.js';
 import { FileAuditLogger } from './logging/audit-log.js';
@@ -15,6 +14,7 @@ import { OAuthService } from './oauth/service.js';
 import { FileOAuthStore } from './oauth/store.js';
 import { createRuntimeServices, type RuntimeServices } from './runtime/services.js';
 import { watchShutdownRequest, type ShutdownRequestWatcher } from './runtime/shutdown-request.js';
+import type { MemoryServiceDependencies } from './memory/service.js';
 
 export interface AgentCoreService {
   server: Server;
@@ -26,7 +26,7 @@ export interface AgentCoreService {
   close(): Promise<void>;
 }
 
-export async function startAgentCoreService(config: AppConfig = loadConfig()): Promise<AgentCoreService> {
+export async function startAgentCoreService(config: AppConfig = loadConfig(), dependencies:{memory?:MemoryServiceDependencies}={}): Promise<AgentCoreService> {
   await Promise.all([
     mkdir(config.dataDir, { recursive: true }),
     mkdir(config.logDir, { recursive: true }),
@@ -50,6 +50,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     config.maintenance,
     config.langflow,
     config.operatorDirectives,
+    dependencies.memory,
   );
   const oauthService = new OAuthService(keyStore, oauthStore, httpSecurity, runtime.metrics);
   // Warm independent persistence subsystems without coupling listener availability to either one.
@@ -92,7 +93,6 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     },
     mcpHandler: createMcpHttpHandler(runtime, { protocolMode: config.mcp.protocolMode }),
     memoryContextLeaseHandler: createMemoryContextLeaseHttpHandler(runtime),
-    codespaceMemoryHandler: createCodespaceSharedMemoryHttpHandler(runtime),
   }));
 
   try {
@@ -176,7 +176,7 @@ async function closeServer(server: Server): Promise<void> {
 const entry = process.argv[1];
 if (entry && import.meta.url === pathToFileURL(entry).href) {
   try {
-    const service = await startAgentCoreService();
+    const service = await startAgentCoreService(loadRuntimeConfig());
     process.stdout.write(`Agent Core listening on http://${service.host}:${service.port}/mcp\n`);
     let shutdownWatcher: ShutdownRequestWatcher | undefined;
     const gracefulClose = createEntrypointGracefulClose(

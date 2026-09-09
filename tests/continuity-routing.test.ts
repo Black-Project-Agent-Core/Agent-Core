@@ -1,16 +1,19 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
-import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
-import { loadConfig } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
+import { canonicalFileNativeProjectId } from '../src/memory/file-native/paths.js';
 import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
+import {
+  MEMORY_STATE, memoryConfig, memoryRoot, scopedMemoryStateRecords,
+} from './helpers/memory-fixture.js';
+
+interface TurnRecord { turnId: string; taskId: string; routeContextId: string; state: string }
 
 const auditLoggers: FileAuditLogger[] = [];
 function createAuditLogger(logDir: string): FileAuditLogger {
@@ -25,13 +28,12 @@ const runtimes: RuntimeServices[] = [];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function fixture(label: string) {
-  const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), `agent-core-continuity-route-${label}-`));
+  const root = await memoryRoot(`continuity-route-${label}`);
   roots.push(root);
-  const memory = loadConfig({}, root).memory;
+  const memory = await memoryConfig(root);
   const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
     ...memory,
     enabled: true,
-    dbPath: path.join(root, 'runtime', 'memory', 'continuity-routing.sqlite'),
   });
   runtimes.push(runtime);
   const keyStore = new FileKeyStore(path.join(root, 'data'));
@@ -47,11 +49,11 @@ async function fixture(label: string) {
   const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   return {
     root,
+    memory,
     runtime,
     principal,
     scope: { principalId: principal.metadata.id, projectId: root },
     baseUrl,
-    dbPath: memory.dbPath.replace('agent-core-memory.sqlite', 'continuity-routing.sqlite'),
   };
 }
 
@@ -108,13 +110,23 @@ describe('capability_route local continuity integration', () => {
       lease: routed.result.memoryContextLease,
       workspaceRoot: f.root,
     })).resolves.toMatchObject({
-      scope: f.scope,
+      // The vault stores the Agent Core root under its portable project identity.
+      scope: { principalId: f.scope.principalId, projectId: canonicalFileNativeProjectId(f.memory.fileNative, f.root) },
       contextId: routed.result.memoryContextId,
       routeContextId: routed.result.routeContextId,
     });
     expect(routed.result.continuitySnapshot.currentObjective).toBe('Integrate continuity with capability_route');
     expect(routed.result.continuitySnapshot.activeTasks.map((item: any) => item.taskId))
       .toContain(routed.result.continuityTaskId);
+
+    const workflow = await f.runtime.workflow.status({
+      principalId: f.scope.principalId,
+      projectId: canonicalFileNativeProjectId(f.memory.fileNative, f.root),
+      taskId: routed.result.continuityTaskId,
+    });
+    expect(workflow?.classification?.latest.brief).toContain('[REDACTED:BEARER]');
+    expect(workflow?.classification?.latest.context).toContain('[REDACTED:TOKEN]');
+    expect(JSON.stringify(workflow)).not.toContain(secret);
 
     const storedRoute = f.runtime.routes.get(routed.result.routeContextId)!;
     expect(storedRoute).toMatchObject({
@@ -123,21 +135,26 @@ describe('capability_route local continuity integration', () => {
       continuitySnapshotHash: routed.result.continuitySnapshotHash,
     });
 
-    const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
-    try {
-      const turn = db.prepare(`SELECT route_context_id, task_id, input_text, context_text, state
-        FROM continuity_turns WHERE id = ?`).get(routed.result.continuityTurnId) as Record<string, unknown>;
-      expect(turn.route_context_id).toBe(routed.result.routeContextId);
-      expect(turn.task_id).toBe(routed.result.continuityTaskId);
-      expect(turn.state).toBe('open');
-      expect(String(turn.input_text)).toContain('[REDACTED:BEARER]');
-      expect(String(turn.input_text)).not.toContain(secret);
-      expect(String(turn.context_text)).not.toContain(secret);
-      const allContinuityText = JSON.stringify(db.prepare(`SELECT redacted_text, metadata_json FROM memory_events
-        WHERE source_type = 'continuity_ledger' ORDER BY created_at, id`).all());
-      expect(allContinuityText).not.toContain(secret);
-    } finally {
-      db.close();
+    const turns = await scopedMemoryStateRecords<TurnRecord>(f.memory.fileNative, MEMORY_STATE.turns, f.scope);
+    expect(turns.find((turn) => turn.turnId === routed.result.continuityTurnId)).toMatchObject({
+      routeContextId: routed.result.routeContextId,
+      taskId: routed.result.continuityTaskId,
+      state: 'open',
+    });
+
+    // Routed input is redacted before it reaches the task record the vault does keep.
+    const probe = await f.runtime.memory.beginContinuityTurn(
+      f.scope, 'route-redaction-probe', `Probe run. Authorization: Bearer ${secret}`,
+      undefined, {}, Date.now() + 60_000,
+    );
+    const probeTask = await f.runtime.memory.getContinuityTask(f.scope, probe.taskId);
+    expect(probeTask?.objective).toContain('[REDACTED:BEARER]');
+    expect(probeTask?.objective).not.toContain(secret);
+
+    // No continuity record and no continuity-ledger event may carry the raw credential.
+    for (const category of [MEMORY_STATE.turns, MEMORY_STATE.tasks, MEMORY_STATE.events]) {
+      const records = await scopedMemoryStateRecords(f.memory.fileNative, category, f.scope);
+      expect(JSON.stringify(records)).not.toContain(secret);
     }
   });
 
@@ -159,13 +176,8 @@ describe('capability_route local continuity integration', () => {
 
     const task = await f.runtime.memory.getContinuityTask(f.scope, seeded.taskId);
     expect(task?.status).toBe('running');
-    const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
-    try {
-      expect(Number((db.prepare('SELECT count(*) AS count FROM continuity_tasks').get() as any).count)).toBe(1);
-      expect(Number((db.prepare('SELECT count(*) AS count FROM continuity_turns').get() as any).count)).toBe(2);
-    } finally {
-      db.close();
-    }
+    expect(await scopedMemoryStateRecords(f.memory.fileNative, MEMORY_STATE.tasks, f.scope)).toHaveLength(1);
+    expect(await scopedMemoryStateRecords(f.memory.fileNative, MEMORY_STATE.turns, f.scope)).toHaveLength(2);
   });
 
   it('returns deterministic resume candidates and creates no new task/turn when a continuation phrase is ambiguous', async () => {
@@ -189,13 +201,8 @@ describe('capability_route local continuity integration', () => {
     expect(routed.result.continuityResumeCandidates.map((item: any) => item.taskId).sort())
       .toEqual([first.taskId, second.taskId].sort());
 
-    const db = new DatabaseSync(f.runtime.memory.config.dbPath, { readOnly: true });
-    try {
-      expect(Number((db.prepare('SELECT count(*) AS count FROM continuity_tasks').get() as any).count)).toBe(2);
-      expect(Number((db.prepare('SELECT count(*) AS count FROM continuity_turns').get() as any).count)).toBe(2);
-    } finally {
-      db.close();
-    }
+    expect(await scopedMemoryStateRecords(f.memory.fileNative, MEMORY_STATE.tasks, f.scope)).toHaveLength(2);
+    expect(await scopedMemoryStateRecords(f.memory.fileNative, MEMORY_STATE.turns, f.scope)).toHaveLength(2);
     const storedRoute = f.runtime.routes.get(routed.result.routeContextId)!;
     expect(storedRoute.continuityTaskId).toBeUndefined();
     expect(storedRoute.continuityTurnId).toBeUndefined();

@@ -7,8 +7,9 @@ import { attachExecutionContinuity, type ContinuitySnapshot } from '../src/conti
 import { validateExecutionDag } from '../src/execution/dag.js';
 import { ExecutionLogStore, type ExecutionResultMarker } from '../src/execution/log-store.js';
 import { ExecutionRecovery } from '../src/execution/recovery.js';
+import { beginExecutionProvenance, finishExecutionProvenance } from '../src/execution/provenance.js';
 import { ExecutionService } from '../src/execution/service.js';
-import { ExecutionStore } from '../src/execution/store.js';
+import { executionWorkflowPending, ExecutionStore } from '../src/execution/store.js';
 import type { ExecutionScope } from '../src/execution/types.js';
 import { WorkspacePolicy } from '../src/runtime/workspace.js';
 import { printCommand } from './helpers/platform-command.js';
@@ -29,7 +30,6 @@ async function fixture(label: string) {
   const config = {
     ...baseConfig,
     enabled: true,
-    dbPath: path.join(root, 'runtime', 'execution', 'recovery.sqlite'),
     logRoot: path.join(root, 'runtime', 'execution', 'runs'),
   };
   const scope = { principalId: 'principal-recovery', projectId: root } satisfies ExecutionScope;
@@ -37,15 +37,16 @@ async function fixture(label: string) {
   return { root, work, config, scope, workspace };
 }
 
-async function seedRunningAttempt(f: Awaited<ReturnType<typeof fixture>>, nodeId = 'A') {
+async function seedRunningAttempt(f: Awaited<ReturnType<typeof fixture>>, nodeId = 'A', sourceBound = false) {
   const store = new ExecutionStore();
-  await store.open({ dbPath: f.config.dbPath });
+  await store.open({ stateRoot: f.config.stateRoot });
   const graph = await validateExecutionDag([{
     id: nodeId,
     purpose: `recover ${nodeId}`,
     command: printCommand(`${nodeId}-retry-ok\n`),
     cwd: f.work,
     timeoutMs: 5000,
+    ...(sourceBound ? { inputs: [] } : {}),
   }], { workspace: f.workspace });
   const run = await store.createRun(f.scope, {
     objective: 'recovery fixture',
@@ -58,8 +59,8 @@ async function seedRunningAttempt(f: Awaited<ReturnType<typeof fixture>>, nodeId
   const paths = await logs.prepareAttempt(run.runId, nodeId, 1);
   const attemptId = 'attempt-recovery-1';
   await store.createAttempt(f.scope, run.runId, nodeId, attemptId, 1, paths);
-  await store.setAttemptPid(f.scope, run.runId, attemptId, 999999);
-  return { store, logs, runId: run.runId, nodeId, attemptId, paths };
+  await store.setAttemptPid(f.scope, run.runId, nodeId, 1, 999999);
+  return { store, logs, runId: run.runId, nodeId, attemptId, paths, node: graph.nodes[0]! };
 }
 
 function marker(runId: string, nodeId: string, attemptId: string): ExecutionResultMarker {
@@ -132,6 +133,48 @@ describe('execution restart recovery', () => {
       await service.close();
     }
   }, 10_000);
+
+  it('repairs a run interrupted between committing the final attempt and updating run state', async () => {
+    const f = await fixture('terminal-run-gap');
+    const seeded = await seedRunningAttempt(f);
+    const result = marker(seeded.runId, seeded.nodeId, seeded.attemptId);
+    await seeded.logs.writeResultAtomic(result);
+    await seeded.store.completeAttempt(f.scope, result);
+    expect((await seeded.store.getRun(f.scope, seeded.runId))?.state).toBe('running');
+    await seeded.store.close();
+    const service = new ExecutionService(f.config, f.workspace);
+    await service.open();
+    try { expect((await service.status(f.scope, seeded.runId))?.state).toBe('completed'); }
+    finally { await service.close(); }
+  });
+
+  it.each(['marker_only', 'attempt_committed', 'previously_completed'] as const)(
+    'keeps successful workflow work blocked after restart until its pending receipt is reconciled: %s', async (crashPoint) => {
+      const f = await fixture(`pending-${crashPoint}`);
+      const seeded = await seedRunningAttempt(f, 'A', true);
+      const result = marker(seeded.runId, seeded.nodeId, seeded.attemptId);
+      result.provenance = await finishExecutionProvenance(f.workspace, seeded.node,
+        await beginExecutionProvenance(f.workspace, seeded.node, {
+          runId: seeded.runId, attemptId: seeded.attemptId, attemptNo: 1,
+        }));
+      await seeded.logs.writeResultAtomic(result);
+      if (crashPoint !== 'marker_only') await seeded.store.completeAttempt(f.scope, result, { workflowPending: true });
+      if (crashPoint === 'previously_completed') await seeded.store.setRunState(f.scope, seeded.runId, 'completed');
+      await seeded.store.close();
+
+      let callbacks = 0;
+      const service = new ExecutionService(f.config, f.workspace, { workflowAfterAttempt: async () => { callbacks += 1; } });
+      await service.open();
+      try {
+        const view = await service.status(f.scope, seeded.runId);
+        expect(view?.state).toBe('blocked');
+        expect(view?.nodes[0]).toMatchObject({ state: 'succeeded', attemptCount: 1 });
+        expect(executionWorkflowPending((await service.store.getRun(f.scope, seeded.runId))!))
+          .toEqual([{ nodeId: 'A', attemptId: seeded.attemptId, attemptNo: 1 }]);
+        expect(callbacks).toBe(0);
+        expect((await service.store.listAttempts(f.scope, seeded.runId, 'A'))).toHaveLength(1);
+      } finally { await service.close(); }
+    });
 
   it('returns compact scoped active/interrupted runs and attaches them deterministically to continuity snapshots', async () => {
     const f = await fixture('summary');

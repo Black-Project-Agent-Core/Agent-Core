@@ -6,9 +6,9 @@ The central rule is simple: **parallelize independence, serialize dependency, an
 
 ## Entry point
 
-Actionable work begins with `capability_route`. The route establishes authenticated principal/project identity and returns relevant DMF/continuity state. Before creating new work, inspect that state for an existing active/interrupted task that should be resumed.
+Actionable work begins with `capability_route`. The route establishes authenticated principal/project identity and returns relevant memory/continuity state. Before creating new work, inspect that state for an existing active/interrupted task that should be resumed.
 
-When execution is enabled and the task contains two or more independent command nodes, prefer the deterministic execution fabric instead of manually launching unrelated commands one after another.
+All transplants and staged coding use the deterministic execution fabric. `capability_route` persists the obligation, and `workflow_plan` binds commands and checks before implementation. Independent commands run together; dependent stages still use the same DAG. Atomic edits and bounded diagnosis can remain lightweight. See [source-grounded workflow](source-grounded-workflow.md).
 
 ## Decompose by dependency, not by convenience
 
@@ -86,7 +86,7 @@ Only call `execution_wait` when no useful ready work remains or when a specific 
 
 ## Event-driven wait
 
-`execution_wait` waits for a persisted event after a known sequence number. The runtime uses a persist-before-signal invariant and a bounded race-closing read; it does not busy-poll SQLite.
+`execution_wait` waits for a persisted event after a known sequence number. The runtime uses a persist-before-signal invariant and a bounded race-closing read; it does not busy-poll the event stream.
 
 Typical pattern:
 
@@ -167,7 +167,7 @@ Attempt 2 is created while attempt 1 logs/result evidence remain preserved. No d
 
 Raw stdout/stderr remains in execution evidence files and may contain sensitive data. Read only the bounded portion needed for a decision.
 
-The execution-to-DMF bridge promotes only structured/redacted evidence such as failure signatures, verified artifacts/hashes, and process checkpoints. A successful process does not automatically become a completed semantic task.
+The execution-to-memory bridge promotes only structured/redacted evidence such as failure signatures, verified artifacts/hashes, and process checkpoints. A successful process does not automatically become a completed semantic task.
 
 ## Semantic finalization
 

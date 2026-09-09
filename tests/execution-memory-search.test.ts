@@ -8,7 +8,9 @@ import { ExecutionMemoryPreSearch, buildExecutionMemoryQuery } from '../src/exec
 import { ExecutionService } from '../src/execution/service.js';
 import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
 import { WorkspacePolicy } from '../src/runtime/workspace.js';
+import { memoryConfig } from './helpers/memory-fixture.js';
 import { printCommand } from './helpers/platform-command.js';
+import { canonicalFileNativeProjectId } from '../src/memory/file-native/paths.js';
 
 const roots: string[] = [];
 const runtimes: RuntimeServices[] = [];
@@ -25,15 +27,12 @@ async function fixture(label: string, enforceHardGuardrails = false) {
     path.join(root, 'capabilities'),
     undefined,
     {
-      ...defaults.memory,
-      enabled: true,
+      ...await memoryConfig(root),
       enforceHardGuardrails,
-      dbPath: path.join(root, 'runtime', 'memory', `${label}.sqlite`),
     },
     {
       ...defaults.execution,
       enabled: true,
-      dbPath: path.join(root, 'runtime', 'execution', `${label}.sqlite`),
       logRoot: path.join(root, 'runtime', 'execution', 'runs'),
     },
   );
@@ -132,14 +131,22 @@ describe('autonomous execution memory pre-search', () => {
       sourceType: 'test',
     });
     const commandSentinel = 'RAW-COMMAND-SENTINEL-MUST-NOT-ENTER-MEMORY-QUERY';
+    const reservation = f.runtime.routes.reserve();
+    const task = 'Print a diagnostic message';
+    const workflow = await f.runtime.workflow.bind({ principalId: f.runtime.memory.config.principalId ?? f.scope.principalId,
+      projectId: canonicalFileNativeProjectId(f.runtime.memory.config.fileNative, f.root), taskId: reservation.routeContextId }, { brief: task });
+    const route = f.runtime.routes.create(f.scope.principalId, f.runtime.router.route(task), { reservation, projectId: f.root,
+      workflow: { taskId: workflow.taskId, version: workflow.version, craftRequired: false, dagRequired: false } });
 
     const created = await f.runtime.execution.create(f.scope, {
+      originRouteContextId: route.routeContextId, continuityTaskId: workflow.taskId,
       objective: 'Build the package using the established local clean build path and avoid the stale lock',
       nodes: [{
         id: 'A',
         purpose: 'Build package with the clean local path',
         command: printCommand(commandSentinel),
         cwd: f.work,
+        inputs: [],
       }],
     });
     expect(created.memoryPreSearch).toMatchObject({ status: 'healthy', blocked: false, inspectionRequired: true });
@@ -200,7 +207,6 @@ describe('autonomous execution memory pre-search', () => {
       {
         ...defaults.execution,
         enabled: true,
-        dbPath: path.join(root, 'runtime', 'execution.sqlite'),
         logRoot: path.join(root, 'runtime', 'runs'),
       },
       new WorkspacePolicy([root]),

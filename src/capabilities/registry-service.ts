@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { readAuditedSkill } from './skill-integrity.js';
 import type {
   CapabilityRecord,
   CapabilityRisk,
@@ -207,7 +208,7 @@ export class CapabilityRegistry {
     }
     return {
       capability: summary(record),
-      instructions: readFileSync(fullPath, 'utf8'),
+      instructions: readAuditedSkill(this.capabilityDir, id, fullPath),
     };
   }
 }

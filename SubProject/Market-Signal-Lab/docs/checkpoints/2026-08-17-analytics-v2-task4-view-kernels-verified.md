@@ -1,10 +1,10 @@
 # MSL Analytics v2 Task 4 Verification — Allocation-Light Rust View Kernels
 
-**Date:** 2026-08-17 (UTC+7)  
-**Repository:** `rendevouz999/Market-Signal-Lab`  
-**Implementation branch:** `feature/analytics-v2-ipc`  
-**Task 4 RED contract:** `67b163918c8cc6fb985b0116342f99a81a484bbc`  
-**Task 4 GREEN checkpoint before formatting:** `640e3495d32360eb31677e576d2a4ff75d2bacb7`  
+**Date:** 2026-08-17 (UTC+7)\
+**Repository:** `rendevouz999/Market-Signal-Lab`\
+**Implementation branch:** `feature/analytics-v2-ipc`\
+**Task 4 RED contract:** `67b163918c8cc6fb985b0116342f99a81a484bbc`\
+**Task 4 GREEN checkpoint before formatting:** `640e3495d32360eb31677e576d2a4ff75d2bacb7`\
 **Verified formatted source:** `9f344e73f26c726a00e542ee667f29e5c73e4db7`
 
 ## Result
@@ -22,7 +22,7 @@ cluster_volatility_view
 
 ## TDD evidence
 
-RED was observed in the verified Codespaces toolchain when the four functions were intentionally absent:
+RED was observed in the verified build host toolchain when the four functions were intentionally absent:
 
 ```text
 error[E0432]: unresolved import crate::selection::selection_probability_view
@@ -43,7 +43,7 @@ The failure was specific to the missing Task 4 API surface, not tooling or unrel
 - equivalence tests compare borrowed-view results against established owned-input kernels, including exact `to_bits()` equality for protected floating fields;
 - the v1 binary protocol remained unchanged during Task 4; shared kernel source moved behind the library crate so Task 5 can perform the actual protocol-v2 runtime cutover.
 
-## Verified Codespaces toolchain
+## Verified build host toolchain
 
 ```text
 Go      go1.26.4 linux/amd64
@@ -88,11 +88,10 @@ local HEAD:                         9f344e73f26c726a00e542ee667f29e5c73e4db7
 origin/feature/analytics-v2-ipc:   9f344e73f26c726a00e542ee667f29e5c73e4db7
 ```
 
-The local Codespace still had an untracked `.vscode/` directory; it was not staged or committed and is not part of Task 4 evidence.
+The local build host still had an untracked `.vscode/` directory; it was not staged or committed and is not part of Task 4 evidence.
 
-## Codespaces Git LFS note
+## build host Git LFS note
 
-The first push attempt was blocked because the Codespace lacked `git-lfs`; source/test verification was unaffected. Git LFS 3.7.1 was installed locally, repository hooks were initialized, and the same already-verified commit then pushed successfully. A subsequent branch commit provisions Git LFS persistently through `.devcontainer/devcontainer.json` so future Codespaces do not require this manual repair.
 
 ## Next task
 

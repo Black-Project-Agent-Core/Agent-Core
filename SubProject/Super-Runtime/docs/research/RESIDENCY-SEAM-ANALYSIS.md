@@ -233,11 +233,11 @@ Super-Runtime should adopt this methodology for Linux acceptance testing.
 
 On other operating systems, the enforcement primitive may differ; the runtime's own measured RSS/working-set telemetry remains mandatory.
 
-## Codespace limitation discovered
+## build host limitation discovered
 
-This Codespace uses cgroup v2, but its current root cgroup reports no explicit `memory.max`/`memory.high` ceiling and `systemd-run --scope --user` fails because there is no user session bus.
+This build host uses cgroup v2, but its current root cgroup reports no explicit `memory.max`/`memory.high` ceiling and `systemd-run --scope --user` fails because there is no user session bus.
 
-Therefore the K3 `memory-ladder.sh` hard-cap harness cannot be reused **as-is** inside this Codespace.
+Therefore the K3 `memory-ladder.sh` hard-cap harness cannot be reused **as-is** inside this build host.
 
 Phase 0 source analysis and synthetic correctness tests remain valid here. A later memory-budget acceptance gate will need one of:
 

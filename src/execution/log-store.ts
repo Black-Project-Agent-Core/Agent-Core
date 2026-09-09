@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { access, mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ExecutionEvidenceManifest } from './evidence.js';
+import type { ExecutionProvenance } from './provenance.js';
 
 export interface ExecutionAttemptPaths {
   directory: string;
@@ -63,6 +64,7 @@ export interface ExecutionResultMarkerBase {
   stderrSha256: string;
   error?: string;
   governance?: ExecutionGovernanceEvidence;
+  provenance?: ExecutionProvenance;
 }
 
 export interface ExecutionResultMarkerV1 extends ExecutionResultMarkerBase {
@@ -215,7 +217,15 @@ export class ExecutionLogStore {
       && (parsed.evidenceState === 'verified' || parsed.evidenceState === 'failed')
       && Boolean(parsed.evidence && typeof parsed.evidence === 'object' && Array.isArray(parsed.evidence.artifacts))
     );
-    if (!commonValid || !v2Valid) {
+    const provenance = parsed?.provenance;
+    const hash = (value: unknown) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+    const provenanceValid = !provenance || (provenance.version === 1
+      && provenance.runId === runId && provenance.nodeId === nodeId && provenance.attemptNo === attemptNo && provenance.attemptId === parsed.attemptId
+      && hash(provenance.nodeSpecHash) && hash(provenance.inputManifestHash) && hash(provenance.outputManifestHash) && hash(provenance.toolchainHash)
+      && Array.isArray(provenance.inputPaths) && provenance.inputPaths.every((item) => typeof item === 'string')
+      && Array.isArray(provenance.inputManifest) && Array.isArray(provenance.outputManifest) && Array.isArray(provenance.dependencies)
+      && typeof provenance.sourceBound === 'boolean' && typeof provenance.inputsStableDuringAttempt === 'boolean');
+    if (!commonValid || !v2Valid || !provenanceValid) {
       fail('EXECUTION_RESULT_INVALID', 'Execution result marker does not match the requested attempt');
     }
     return parsed;

@@ -13,9 +13,13 @@ coverage/
 !/tunnel-client/agent-core.example.yaml
 /capabilities/
 /plugin/agent-core/generated/
-/plugin/codespace/runtime/
-/plugin/codespace/dist/
 /Set-Tunnel-Key.bat
 /Set-Tunnel-Key.ps1
 /release/
 /docs/superpowers/
+/.tools/
+
+# Historical incident reports were removed in the file-native cutover; their husks are
+# undeletable without elevation, so keep them unstageable until the elevated sweep runs.
+/reports/
+/docs/roadmap/agent-core-low-friction-compatibility-2026-09-06/

@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -114,6 +115,8 @@ async function main() {
     fail('README.md must stay Agent-Core-version neutral');
   }
 
+  // The raw index: the "is tracked" gates below are about what a clone would receive, so a path
+  // deleted locally but still committed must not slip past them.
   const tracked = execFileSync('git', ['-C', root, 'ls-files', '-z'], { encoding: 'utf8' })
     .split('\0')
     .filter(Boolean)
@@ -122,7 +125,10 @@ async function main() {
   const duplicateVersionLiterals = [];
   for (const file of tracked) {
     if (!file.startsWith('src/') || !file.endsWith('.ts') || file === VERSION_SOURCE_FILE) continue;
-    const text = await readText(file);
+    // Pending deletions still have index content and must participate until the deletion is staged.
+    const text = existsSync(path.join(root, file))
+      ? await readText(file)
+      : execFileSync('git', ['-C', root, 'show', `:${file}`], { encoding: 'utf8' });
     if (VERSION_LITERAL_PATTERNS.some((pattern) => pattern.test(text))) duplicateVersionLiterals.push(file);
   }
   if (duplicateVersionLiterals.length) {

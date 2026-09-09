@@ -28,8 +28,10 @@ export interface SkillAudit {
   dependencies: string[];
   sideEffects: string[];
   risk: CapabilityRisk;
-  functionAnalyzed: boolean;
-  safetyReviewed: boolean;
+  metadataInspected: boolean;
+  riskScanCompleted: boolean;
+  analysisLevel: 'instruction_metadata';
+  behaviorVerified: false;
   eligible: boolean;
   state: CapabilityState;
 }
@@ -186,11 +188,12 @@ export async function auditSkillSource(input: AuditSkillSourceInput): Promise<Sk
   const riskAnalysis = analyzeRisk(analysisText);
   const functionSummary = extractDescription(sourceText);
   const requiredTools = extractRequiredTools(sourceText);
-  const functionAnalyzed = sourceText.trim().length > 0 && functionSummary.length > 0;
-  const safetyReviewed = true;
-  const eligible = license.status === 'verified' && functionAnalyzed && safetyReviewed && riskAnalysis.risk === 'low';
+  const metadataInspected = sourceText.trim().length > 0 && functionSummary.length > 0;
+  const riskScanCompleted = true;
+  // Admission of instruction text does not certify source dissection or behavior.
+  const eligible = license.status === 'verified' && metadataInspected && riskAnalysis.risk === 'low';
 
-  let state: CapabilityState = 'safety_reviewed';
+  let state: CapabilityState = 'risk_scanned';
   if (license.status === 'unknown') state = 'license_unknown';
   else if (license.status === 'incompatible') state = 'reference_only';
   else if (riskAnalysis.risk === 'high') state = 'quarantined';
@@ -211,8 +214,10 @@ export async function auditSkillSource(input: AuditSkillSourceInput): Promise<Sk
     dependencies: riskAnalysis.dependencies,
     sideEffects: riskAnalysis.sideEffects,
     risk: riskAnalysis.risk,
-    functionAnalyzed,
-    safetyReviewed,
+    metadataInspected,
+    riskScanCompleted,
+    analysisLevel: 'instruction_metadata',
+    behaviorVerified: false,
     eligible,
     state,
   };

@@ -6,6 +6,8 @@ import type { RuntimeServices } from '../runtime/services.js';
 import { completeMemoryLifecycleOperation, validateMemoryLifecycleBeforeOperation } from './memory-lifecycle-guard.js';
 import { resolveAuditProjectId, resolvedProjectScope, resolveRouteExistingPath, resolveRouteTargetPath } from './project-scope.js';
 import { routeErrorResult, validateOperationalRoute } from './route-guard.js';
+import { withOperationAuthority } from '../runtime/operation-context.js';
+import { authorizeRouteWorkflow, routeWorkflowScope, workflowOperationInput } from './workflow-guard.js';
 
 function textResult(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
@@ -41,19 +43,41 @@ async function routeGuarded<T>(
   }
 
   await audit.intended(route, toolName, auditInput);
+  let releaseClaim: (() => Promise<void>) | undefined;
   try {
-    const result = await operation(route);
+    const mutation = ['write_file', 'edit_file', 'create_directory', 'move_file'].includes(toolName);
+    if (mutation) {
+      const paths = workflowOperationInput(toolName, auditInput).paths ?? [];
+      const writes = await Promise.all(paths.map(p => resolveRouteTargetPath(runtime, route, p)));
+      releaseClaim = await runtime.execution.acquireWorkspaceClaim({ principalId: key.id, projectId: route.projectId ?? runtime.workspace.resolveProjectRoot() }, { writes });
+    }
+    const result = await withOperationAuthority(
+      (name, input) => authorizeRouteWorkflow(runtime, key, route, name, { ...auditInput, ...input }),
+      () => operation(route),
+    );
+    if (mutation && (route.workflow || route.continuityTaskId)) {
+      const completedInput = { ...auditInput, ...(result && typeof result === 'object' ? result : {}) };
+      try {
+        await runtime.workflow.recordOperation(routeWorkflowScope(runtime, key, route), workflowOperationInput(toolName, completedInput));
+      } catch (error) {
+        throw Object.assign(new Error('File operation completed, but its workflow receipt is pending; inspect the file before retrying'),
+          { code: 'WORKFLOW_OPERATION_RECEIPT_PENDING', details: { mutationCommitted: true, causeCode: error instanceof Error && 'code' in error ? error.code : 'unknown' } });
+      }
+    }
     await completeMemoryLifecycleOperation(runtime, key, route, toolName, lifecycleDecision);
     await audit.succeeded(route, toolName, auditInput, result);
     return textResult(result);
   } catch (error) {
     await audit.failed(route, toolName, auditInput, error);
     return routeErrorResult(error) ?? errorResult(error);
+  } finally {
+    await releaseClaim?.();
   }
 }
 
 const ROUTE_REQUIRED_DESCRIPTION = 'Obtain routeContextId from capability_route before using this tool.';
 const routedDescription = (description: string) => `${description} ${ROUTE_REQUIRED_DESCRIPTION}`;
+const workflowEditSchema = { stepId: z.string().min(1).max(200).optional(), planVersion: z.number().int().positive().optional() };
 
 function processOwner(key: VerifiedKey, projectId: string, originRouteContextId?: string) {
   return {
@@ -145,15 +169,16 @@ export function registerOperationalTools(
       path: z.string(),
       content: z.string(),
       mode: z.enum(['rewrite', 'append']).default('rewrite'),
+      ...workflowEditSchema,
       routeContextId: z.string().uuid(),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  }, async ({ path, content, mode, routeContextId }) => routeGuarded(
+  }, async ({ path, content, mode, routeContextId, stepId, planVersion }) => routeGuarded(
     runtime, key, routeContextId, 'write_file',
     async (route) => runtime.filesystem.writeFile(
       await resolveRouteTargetPath(runtime, route, path), content, mode,
     ),
-    { path, mode, contentBytes: Buffer.byteLength(content, 'utf8') },
+    { path, mode, contentBytes: Buffer.byteLength(content, 'utf8'), stepId, planVersion },
   ));
 
   server.registerTool('edit_file', {
@@ -164,10 +189,11 @@ export function registerOperationalTools(
       oldString: z.string().min(1),
       newString: z.string(),
       expectedReplacements: z.number().int().min(1).max(10000).default(1),
+      ...workflowEditSchema,
       routeContextId: z.string().uuid(),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  }, async ({ path, oldString, newString, expectedReplacements, routeContextId }) => routeGuarded(
+  }, async ({ path, oldString, newString, expectedReplacements, routeContextId, stepId, planVersion }) => routeGuarded(
     runtime, key, routeContextId, 'edit_file',
     async (route) => runtime.filesystem.editFile(
       await resolveRouteExistingPath(runtime, route, path), oldString, newString, expectedReplacements,
@@ -175,6 +201,7 @@ export function registerOperationalTools(
     {
       path,
       expectedReplacements,
+      stepId, planVersion,
       oldStringBytes: Buffer.byteLength(oldString, 'utf8'),
       newStringBytes: Buffer.byteLength(newString, 'utf8'),
     },
@@ -183,14 +210,14 @@ export function registerOperationalTools(
   server.registerTool('create_directory', {
     title: 'Create Directory',
     description: routedDescription('Create a directory, including missing parent directories, inside an allowed workspace.'),
-    inputSchema: { path: z.string(), routeContextId: z.string().uuid() },
+    inputSchema: { path: z.string(), routeContextId: z.string().uuid(), ...workflowEditSchema },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  }, async ({ path, routeContextId }) => routeGuarded(
+  }, async ({ path, routeContextId, stepId, planVersion }) => routeGuarded(
     runtime, key, routeContextId, 'create_directory',
     async (route) => runtime.filesystem.createDirectory(
       await resolveRouteTargetPath(runtime, route, path),
     ),
-    { path },
+    { path, stepId, planVersion },
   ));
 
   server.registerTool('move_file', {
@@ -199,16 +226,17 @@ export function registerOperationalTools(
     inputSchema: {
       source: z.string(),
       destination: z.string(),
+      ...workflowEditSchema,
       routeContextId: z.string().uuid(),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  }, async ({ source, destination, routeContextId }) => routeGuarded(
+  }, async ({ source, destination, routeContextId, stepId, planVersion }) => routeGuarded(
     runtime, key, routeContextId, 'move_file',
     async (route) => runtime.filesystem.moveFile(
       await resolveRouteExistingPath(runtime, route, source),
       await resolveRouteTargetPath(runtime, route, destination),
     ),
-    { source, destination },
+    { source, destination, stepId, planVersion },
   ));
 
   server.registerTool('get_file_info', {

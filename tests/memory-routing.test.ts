@@ -1,19 +1,18 @@
-import { access, mkdtemp, rm } from 'node:fs/promises';
+import { access, rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
 import type { RoutePlan } from '../src/capabilities/route-types.js';
 import { writeRegistryGeneration } from '../src/capabilities/registry-writer.js';
 import type { CapabilityRecord } from '../src/capabilities/types.js';
-import { loadConfig } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { AgentCoreRouteError, RouteContextStore } from '../src/runtime/route-context-store.js';
 import { createRuntimeServices } from '../src/runtime/services.js';
+import { memoryConfig, memoryRoot } from './helpers/memory-fixture.js';
 
 const auditLoggers: FileAuditLogger[] = [];
 function createAuditLogger(logDir: string): FileAuditLogger {
@@ -91,6 +90,7 @@ function textBody(result: Record<string, any>) {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   await Promise.all(runtimes.splice(0).map(async (runtime) => {
     await runtime.execution.close().catch(() => undefined);
@@ -138,7 +138,7 @@ describe('memory-aware route context', () => {
   });
 
   it('injects recalled decisions into real capability ranking instead of leaving memory as sideband metadata', async () => {
-    const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-memory-routing-rank-'));
+    const root = await memoryRoot('memory-routing-rank');
     roots.push(root);
     const capabilityDir = path.join(root, 'capabilities');
     await writeRegistryGeneration(capabilityDir, [
@@ -161,11 +161,9 @@ describe('memory-aware route context', () => {
         normalizedPath: 'normalized/skills/frontend-quality/SKILL.md',
       }),
     ], { catalogSha: 'fixture-sha', generatedAt: '2026-08-27T00:00:00.000Z' });
-    const defaults = loadConfig({}, root);
     const runtime = createRuntimeServices([root], capabilityDir, undefined, {
-      ...defaults.memory,
+      ...await memoryConfig(root),
       enabled: true,
-      dbPath: path.join(root, 'runtime', 'memory', 'ranking.sqlite'),
     });
     runtimes.push(runtime);
     const task = 'Review component';
@@ -202,13 +200,12 @@ describe('memory-aware route context', () => {
   });
 
   it('surfaces canonical project memory through capability_route before ordinary operational recall', async () => {
-    const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-memory-route-canonical-'));
+    const root = await memoryRoot('memory-route-canonical');
     roots.push(root);
-    const baseMemory = loadConfig({}, root).memory;
+    const baseMemory = await memoryConfig(root);
     const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
       ...baseMemory,
       enabled: true,
-      dbPath: path.join(root, 'runtime', 'memory', 'canonical-route.sqlite'),
       recallItemBudget: 6,
       recallCharacterBudget: 2_400,
     });
@@ -276,14 +273,13 @@ describe('memory-aware route context', () => {
   });
 
   it('routes with memory evidence before execution and blocks a matching hard guardrail when enforcement is enabled', async () => {
-    const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-memory-route-'));
+    const root = await memoryRoot('memory-route');
     roots.push(root);
-    const baseMemory = loadConfig({}, root).memory;
+    const baseMemory = await memoryConfig(root);
     const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
       ...baseMemory,
       enabled: true,
       enforceHardGuardrails: true,
-      dbPath: path.join(root, 'runtime', 'memory', 'routing.sqlite'),
     } as any);
     runtimes.push(runtime);
     const keyStore = new FileKeyStore(path.join(root, 'data'));
@@ -367,16 +363,17 @@ describe('memory-aware route context', () => {
   });
 
   it('invalidates persisted memory context at the same TTL as its reserved route', async () => {
-    const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-memory-route-ttl-'));
+    const root = await memoryRoot('memory-route-ttl');
     roots.push(root);
-    const baseMemory = loadConfig({}, root).memory;
+    const baseMemory = await memoryConfig(root);
     const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
       ...baseMemory,
       enabled: true,
-      dbPath: path.join(root, 'runtime', 'memory', 'ttl.sqlite'),
     });
     runtimes.push(runtime);
-    const routeStore = new RouteContextStore({ ttlMs: 500 });
+    let now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const routeStore = new RouteContextStore({ ttlMs: 500, now: () => now });
     const reservation = routeStore.reserve();
     const scope = { principalId: 'principal-ttl', projectId: root };
     const preflight = await runtime.memory.preflight({
@@ -396,19 +393,19 @@ describe('memory-aware route context', () => {
     });
     expect(routeStore.get(reservation.routeContextId)).not.toBeNull();
     expect(await runtime.memory.getContext(scope, preflight.contextId)).not.toBeNull();
-    await new Promise((resolve) => setTimeout(resolve, 550));
+    now += 550;
     expect(routeStore.get(reservation.routeContextId)).toBeNull();
     expect(await runtime.memory.getContext(scope, preflight.contextId)).toBeNull();
+    clock.mockRestore();
   });
 
   it('keeps capability routing unchanged when DMF is enabled but has no relevant memory', async () => {
-    const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-memory-route-empty-'));
+    const root = await memoryRoot('memory-route-empty');
     roots.push(root);
-    const baseMemory = loadConfig({}, root).memory;
+    const baseMemory = await memoryConfig(root);
     const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
       ...baseMemory,
       enabled: true,
-      dbPath: path.join(root, 'runtime', 'memory', 'empty.sqlite'),
     });
     runtimes.push(runtime);
     const keyStore = new FileKeyStore(path.join(root, 'data'));
@@ -435,9 +432,9 @@ describe('memory-aware route context', () => {
   });
 
   it('keeps disabled memory routing behavior unchanged and reports the disabled state explicitly', async () => {
-    const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-memory-route-disabled-'));
+    const root = await memoryRoot('memory-route-disabled');
     roots.push(root);
-    const baseMemory = loadConfig({}, root).memory;
+    const baseMemory = await memoryConfig(root);
     const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
       ...baseMemory,
       enabled: false,

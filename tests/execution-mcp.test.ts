@@ -1,15 +1,16 @@
-﻿import { createServer, type Server } from 'node:http';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
+import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
 import { loadConfig } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
+import { AgentCoreRouteError } from '../src/runtime/route-context-store.js';
 import { nodeShellCommand, printCommand, retryMarkerCommand, sleepCommand } from './helpers/platform-command.js';
 
 const auditLoggers: FileAuditLogger[] = [];
@@ -28,7 +29,7 @@ async function fixture(label: string) {
   roots.push(root);
   const work = path.join(root, 'work');
   await mkdir(work, { recursive: true });
-  const defaults = loadConfig({}, root);
+  const defaults = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root);
   const runtime = createRuntimeServices(
     [root],
     path.join(root, 'capabilities'),
@@ -37,7 +38,6 @@ async function fixture(label: string) {
     {
       ...defaults.execution,
       enabled: true,
-      dbPath: path.join(root, 'runtime', 'execution', 'mcp.sqlite'),
       logRoot: path.join(root, 'runtime', 'execution', 'runs'),
       maxConcurrency: 4,
       maxNodes: 128,
@@ -84,6 +84,9 @@ async function request(baseUrl: string, key: string, body: unknown) {
 }
 
 async function call(baseUrl: string, key: string, name: string, args: Record<string, unknown> = {}) {
+  if (['execution_create', 'execution_add_nodes'].includes(name) && Array.isArray(args.nodes)) args = { ...args, nodes: args.nodes.map(node => ({
+    inputs: [], resources: { reads: [node.cwd], writes: (node.expectedArtifacts ?? []).map((artifact: any) => artifact.path) }, ...node,
+  })) };
   const raw = await request(baseUrl, key, {
     jsonrpc: '2.0', id: 301, method: 'tools/call', params: { name, arguments: args },
   });
@@ -96,10 +99,11 @@ async function call(baseUrl: string, key: string, name: string, args: Record<str
   return { raw, result };
 }
 
-async function route(f: Awaited<ReturnType<typeof fixture>>, key = f.principalA.key) {
+async function route(f: Awaited<ReturnType<typeof fixture>>, key = f.principalA.key, overrides: Record<string, unknown> = {}) {
   const routed = await call(f.baseUrl, key, 'capability_route', {
-    task: 'Implement and run a dependency-aware multi-command execution DAG',
-    context: `Workspace root is ${f.root}`,
+    task: 'Print a bounded diagnostic message for this execution fixture',
+    projectRoot: f.root,
+    ...overrides,
   });
   expect(routed.raw.result?.isError).not.toBe(true);
   for (const required of routed.result.requiredSkillLoads ?? []) {
@@ -113,7 +117,7 @@ async function route(f: Awaited<ReturnType<typeof fixture>>, key = f.principalA.
 }
 
 function expectOk(value: Awaited<ReturnType<typeof call>>) {
-  expect(value.raw.result?.isError).not.toBe(true);
+  expect(value.raw.result?.isError, JSON.stringify(value.result)).not.toBe(true);
   return value.result;
 }
 
@@ -133,26 +137,115 @@ afterEach(async () => {
 });
 
 describe('first-class execution MCP surface', () => {
-  it('registers ten bounded execution tools and route-requires only the five mutation tools', async () => {
+  it('cancels owned work without a memory lease and accepts an expired route without exposing another principal run', async () => {
+    const f = await fixture('recovery-cancel');
+    const routed = await route(f);
+    const run = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', { routeContextId: routed.routeContextId,
+      objective: 'cancel during memory outage', nodes: [{ id: 'wait', purpose: 'wait', command: sleepCommand(30_000), cwd: f.work, inputs: [] }] }));
+    expectOk(await call(f.baseUrl, f.principalA.key, 'execution_start', { routeContextId: routed.routeContextId, runId: run.runId }));
+    f.runtime.memory.config.hardLifecycleMode = 'enforce';
+    await f.runtime.memory.close();
+    expectErrorCode(await call(f.baseUrl, f.principalB.key, 'execution_cancel', { runId: run.runId }), 'EXECUTION_RUN_NOT_FOUND');
+    const cancelled = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_cancel', { runId: run.runId }));
+    expect(cancelled.state).toBe('cancelled');
+    const expired = vi.spyOn(f.runtime.routes, 'getOwned').mockImplementationOnce(() => { throw new AgentCoreRouteError('ROUTE_EXPIRED', 'expired fixture route'); });
+    try {
+      expect(expectOk(await call(f.baseUrl, f.principalA.key, 'execution_cancel', {
+        routeContextId: routed.routeContextId, runId: run.runId, projectRoot: f.root,
+      })).state).toBe('cancelled');
+    } finally { expired.mockRestore(); }
+  }, 10_000);
+  it('resumes pending workflow reconciliation through authenticated execution_start without repeating the successful edit', async () => {
+    const f = await fixture('mcp-pending-workflow');
+    const source = path.join(f.work, 'source.txt'), count = path.join(f.work, 'count.txt'), report = path.join(f.work, 'report.json');
+    await writeFile(source, 'before');
+    const routed = await route(f, f.principalA.key, { task: 'Update source and verify behavior', workflow: 'dag' });
+    const edit = nodeShellCommand(`const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(source)},'after');const p=${JSON.stringify(count)};fs.writeFileSync(p,String(fs.existsSync(p)?Number(fs.readFileSync(p,'utf8'))+1:1));`);
+    const verify = nodeShellCommand(`const fs=require('node:fs');if(fs.readFileSync(${JSON.stringify(source)},'utf8')!=='after')process.exit(9);fs.writeFileSync(${JSON.stringify(report)},JSON.stringify({passed:true}));`);
+    const status = expectOk(await call(f.baseUrl, f.principalA.key, 'workflow_status', { routeContextId: routed.routeContextId }));
+    expectOk(await call(f.baseUrl, f.principalA.key, 'workflow_plan', { routeContextId: routed.routeContextId, plan: {
+      expectedVersion: status.version,
+      steps: [{ id: 'edit', kind: 'command', purpose: 'edit once', command: edit, paths: [source, count] },
+        { id: 'verify', kind: 'verification', purpose: 'check edited source', command: verify, paths: [] }],
+      checks: [{ id: 'acceptance', kind: 'integration', purpose: 'verify actual edited source', stepIds: ['verify'], requirementIds: [], artifactPaths: [report] }],
+    } }));
+    const run = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', { routeContextId: routed.routeContextId,
+      objective: 'edit then verify', nodes: [
+        { id: 'edit', purpose: 'edit once', command: edit, cwd: f.work, stepIds: ['edit'], inputs: [source],
+          resources: { reads: [source], writes: [source, count] }, expectedArtifacts: [{ path: count, hash: 'sha256' }] },
+        { id: 'verify', purpose: 'verify', command: verify, cwd: f.work, stepIds: ['verify'], dependsOn: ['edit'], inputs: [source, count],
+          resources: { reads: [source, count], writes: [report] }, expectedArtifacts: [{ path: report, hash: 'sha256' }] },
+      ] }));
+    const record = vi.spyOn(f.runtime.workflow, 'recordOperation').mockRejectedValueOnce(new Error('temporary workflow store failure'));
+    try {
+      expectOk(await call(f.baseUrl, f.principalA.key, 'execution_start', { routeContextId: routed.routeContextId, runId: run.runId }));
+      const pending = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_wait', { runId: run.runId,
+        afterSequence: run.lastEventSequence, eventTypes: ['run.blocked'], timeoutMs: 5000 }));
+      expect(pending.state.workflowReconciliation).toMatchObject({ pending: true, resumeTool: 'execution_start', rerunsSuccessfulProcesses: false });
+      expectOk(await call(f.baseUrl, f.principalA.key, 'execution_start', { routeContextId: routed.routeContextId, runId: run.runId }));
+      const done = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_wait', { runId: run.runId,
+        afterSequence: pending.lastEventSequence, eventTypes: ['run.completed'], timeoutMs: 5000 }));
+      expect(done.state.state).toBe('completed');
+      expect(done.state.workflowReconciliation).toBeUndefined();
+      expect(done.state.nodes.find((node: any) => node.nodeId === 'edit').attemptCount).toBe(1);
+      expect(await readFile(count, 'utf8')).toBe('1');
+    } finally { record.mockRestore(); }
+  }, 20_000);
+  it('requires accepted steps and DAG coverage for coding, then binds successful checks to current source evidence', async () => {
+    const f = await fixture('accepted-plan');
+    const source = path.join(f.work, 'source.txt'), artifact = path.join(f.work, 'verified.json');
+    await writeFile(source, 'expected behavior');
+    const routed = await route(f, f.principalA.key, { task: 'Build and verify the existing fixture behavior', workflow: 'dag' });
+    const prepare = printCommand('prepare\n');
+    const verify = nodeShellCommand(`const fs=require('node:fs');if(fs.readFileSync(${JSON.stringify(source)},'utf8')!=='expected behavior')process.exit(7);fs.writeFileSync(${JSON.stringify(artifact)},JSON.stringify({passed:true}));`);
+    const before = expectOk(await call(f.baseUrl, f.principalA.key, 'workflow_status', { routeContextId: routed.routeContextId }));
+    expectOk(await call(f.baseUrl, f.principalA.key, 'workflow_plan', { routeContextId: routed.routeContextId, plan: {
+      expectedVersion: before.version,
+      steps: [
+        { id: 'prepare', purpose: 'prepare the check', kind: 'command', command: prepare, paths: [source] },
+        { id: 'verify', purpose: 'check actual source behavior', kind: 'verification', command: verify, paths: [source] },
+      ],
+      checks: [{ id: 'integration', purpose: 'verify source behavior', kind: 'integration', requirementIds: [], stepIds: ['verify'], artifactPaths: [artifact] }],
+    } }));
+    expectErrorCode(await call(f.baseUrl, f.principalA.key, 'execute_command', { routeContextId: routed.routeContextId,
+      command: verify, cwd: f.work, stepIds: ['verify'] }), 'WORKFLOW_DAG_REQUIRED');
+    const nodes = [
+      { id: 'prepare', purpose: 'prepare', command: prepare, cwd: f.work, stepIds: ['prepare'], inputs: [source], resources: { reads: [source], writes: [source] } },
+      { id: 'verify', purpose: 'verify', command: verify, cwd: f.work, stepIds: ['verify'], dependsOn: ['prepare'], inputs: [source],
+        resources: { reads: [source], writes: [source, artifact] }, expectedArtifacts: [{ path: artifact, hash: 'sha256', artifactType: 'test_report' }] },
+    ];
+    expectErrorCode(await call(f.baseUrl, f.principalA.key, 'execution_create', { routeContextId: routed.routeContextId,
+      objective: 'missing verification coverage', nodes: nodes.slice(0, 1) }), 'WORKFLOW_DAG_COVERAGE_REQUIRED');
+    const run = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', { routeContextId: routed.routeContextId,
+      objective: 'run accepted checks', nodes }));
+    expectOk(await call(f.baseUrl, f.principalA.key, 'execution_start', { routeContextId: routed.routeContextId, runId: run.runId }));
+    const done = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_wait', { runId: run.runId,
+      afterSequence: run.lastEventSequence, eventTypes: ['run.completed'], timeoutMs: 10_000 }));
+    expect(done.state.evidence.current).toBe(true);
+    await writeFile(source, 'changed behavior');
+    const stale = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_status', { runId: run.runId }));
+    expect(stale.evidence.current).toBe(false);
+  }, 20_000);
+  it('registers ten bounded execution tools and requires routing for four implementation mutations while cancellation stays available for recovery', async () => {
     const f = await fixture('surface');
     const listed = await request(f.baseUrl, f.principalA.key, {
       jsonrpc: '2.0', id: 302, method: 'tools/list', params: {},
     });
     const tools = listed.result.tools as Array<Record<string, any>>;
     const names = tools.map((tool) => tool.name);
-    expect(names).toHaveLength(69);
+    expect(names).toHaveLength(72);
     const execution = [
       'execution_create', 'execution_start', 'execution_status', 'execution_wait',
       'execution_logs', 'execution_add_nodes', 'execution_retry', 'execution_cancel', 'execution_artifact_find', 'execution_workflow_advice',
     ];
     for (const name of execution) expect(names).toContain(name);
 
-    for (const name of ['execution_create', 'execution_start', 'execution_add_nodes', 'execution_retry', 'execution_cancel']) {
+    for (const name of ['execution_create', 'execution_start', 'execution_add_nodes', 'execution_retry']) {
       const tool = tools.find((entry) => entry.name === name)!;
       expect(tool.inputSchema.required).toContain('routeContextId');
       expect(tool.description).toContain('capability_route');
     }
-    for (const name of ['execution_status', 'execution_wait', 'execution_logs', 'execution_artifact_find', 'execution_workflow_advice']) {
+    for (const name of ['execution_status', 'execution_wait', 'execution_logs', 'execution_artifact_find', 'execution_workflow_advice', 'execution_cancel']) {
       const tool = tools.find((entry) => entry.name === name)!;
       expect(tool.inputSchema?.required ?? []).not.toContain('routeContextId');
     }
@@ -493,7 +586,7 @@ describe('first-class execution MCP surface', () => {
     expect(JSON.stringify(found)).not.toContain('{"safe":true}');
   }, 10_000);
 
-  it('a fresh same-principal route can mutate an older owned run while another principal/project cannot observe it', async () => {
+  it('keeps an owned run bound to its workflow task and hides it from other principals', async () => {
     const f = await fixture('ownership');
     const originalRoute = await route(f);
     const created = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', {
@@ -512,8 +605,11 @@ describe('first-class execution MCP surface', () => {
     expectErrorCode(deniedStart, 'EXECUTION_RUN_NOT_FOUND');
 
     const freshRouteA = await route(f);
+    expectErrorCode(await call(f.baseUrl, f.principalA.key, 'execution_start', {
+      routeContextId: freshRouteA.routeContextId, runId: created.runId,
+    }), 'WORKFLOW_CONTEXT_REQUIRED');
     const started = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_start', {
-      routeContextId: freshRouteA.routeContextId,
+      routeContextId: originalRoute.routeContextId,
       runId: created.runId,
     }));
     expect(['running', 'completed']).toContain(started.state);
@@ -531,7 +627,7 @@ describe('first-class execution MCP surface', () => {
       routeContextId: routed.routeContextId,
       objective: 'dynamic C fixture',
       nodes: [
-        { id: 'B', purpose: 'slow B', command: sleepCommand(3000, '', 'B\n'), cwd: f.work },
+        { id: 'B', purpose: 'slow B', command: sleepCommand(30_000, '', 'B\n'), cwd: f.work, timeoutMs: 40_000 },
         { id: 'A', purpose: 'fast A', command: sleepCommand(100, '', 'A\n'), cwd: f.work },
       ],
     }));
@@ -574,7 +670,7 @@ describe('first-class execution MCP surface', () => {
     expectOk(await call(f.baseUrl, f.principalA.key, 'execution_cancel', {
       routeContextId: routed.routeContextId, runId: created.runId,
     }));
-  }, 15_000);
+  }, 30_000);
 
   it('execution_retry explicitly creates attempt 2 while attempt 1 logs remain readable', async () => {
     const f = await fixture('retry');

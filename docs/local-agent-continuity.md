@@ -1,8 +1,8 @@
 # Local Agent Continuity
 
-Local Agent Continuity is the project/task-state layer built on top of Agent Core's Deterministic Memory Fabric (DMF). It exists so a later Agent Core route can recover the factual state of ongoing work instead of asking the user to reconstruct progress from memory.
+Local Agent Continuity is the project/task-state layer built on top of Agent Core's file-native Memory Fabric. It exists so a later Agent Core route can recover the factual state of ongoing work instead of asking the user to reconstruct progress from memory.
 
-Continuity is not a second memory server. Its ledger tables live inside the same DMF SQLite database and use the same authenticated principal/project scope, SQLite worker lifecycle, backup boundary, and fail-closed health model.
+Continuity is not a second memory server. Its ledger is file-native state held beside the canonical Markdown vault and uses the same authenticated principal/project scope, atomic write boundary, backup boundary, and fail-closed health model.
 
 ## What continuity stores
 
@@ -26,7 +26,7 @@ user request
 capability_route
    |
    +--> authenticated principal/project scope
-   +--> DMF recall
+   +--> memory recall
    +--> bounded continuity snapshot
    |
    v
@@ -70,7 +70,7 @@ For unchanged persisted state, the returned bounded snapshot and snapshot hash a
 
 A fresh authenticated route can resume verified unfinished work. When exactly one resumable active/interrupted task exists and the request is a known continuation phrase, Agent Core may deterministically link the new turn to that task. If multiple candidates make the continuation ambiguous, it returns candidates instead of guessing.
 
-Continuity isolation follows the DMF scope:
+Continuity isolation follows the memory scope:
 
 - one principal cannot read another principal's task state;
 - one project cannot read another project's task state;
@@ -103,11 +103,11 @@ Any model using Agent Core for actionable work should follow this contract:
 
 Continuity is deliberately fail-closed:
 
-- DMF degradation does not erase execution state;
+- memory degradation does not erase execution state;
 - execution degradation does not make OAuth/MCP unavailable;
 - an unfinished turn is surfaced as open/interrupted work, never silently completed;
 - restart recovery never infers task success from a missing PID or missing process;
-- raw stdout/stderr is not copied wholesale into DMF continuity state.
+- raw stdout/stderr is not copied wholesale into continuity state.
 
 ## Platform boundary
 
@@ -117,6 +117,6 @@ The execution wake system can wake an in-process `execution_wait` call from a pe
 
 ## Related documentation
 
-- `docs/deterministic-memory.md` — DMF storage, health, backup, recovery, and deterministic recall.
-- `docs/deterministic-execution-fabric.md` — durable execution database, logs, recovery, security, and operator procedures.
+- `docs/deterministic-memory.md` — vault storage, health, backup, recovery, and deterministic recall.
+- `docs/deterministic-execution-fabric.md` — durable execution state, logs, recovery, security, and operator procedures.
 - `docs/multi-command-wake-workflow.md` — dependency-aware concurrent execution and event-driven wake behavior.

@@ -7,9 +7,6 @@ export type AgentCoreControlStatus = {
   execution: string;
   tunnel: string;
   autostart: boolean;
-  legacyAutostart: boolean;
-  legacyControllerDetected: boolean;
-  nativeControlEnabled: boolean;
   desiredRunning: boolean;
   root: string;
 };

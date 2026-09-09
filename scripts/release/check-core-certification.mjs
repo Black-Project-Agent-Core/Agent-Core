@@ -49,11 +49,10 @@ for (const entry of CORE_CERTIFICATION_MATRIX) {
 }
 
 const pkg = parseJson('package.json');
-const pluginPkg = parseJson('plugin/codespace/package.json');
 const missingPackageScripts = REQUIRED_PACKAGE_SCRIPTS.filter((name) => typeof pkg.scripts?.[name] !== 'string' || !pkg.scripts[name].trim());
 
 const dependencyViolations = [];
-for (const [manifest, manifestPkg] of [['package.json', pkg], ['plugin/codespace/package.json', pluginPkg]]) {
+for (const [manifest, manifestPkg] of [['package.json', pkg]]) {
   const dependencyNames = uniqueSorted([
     ...Object.keys(manifestPkg.dependencies ?? {}),
     ...Object.keys(manifestPkg.devDependencies ?? {}),

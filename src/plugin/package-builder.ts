@@ -1,6 +1,7 @@
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CapabilityRecord } from '../capabilities/types.js';
+import { readAuditedSkill } from '../capabilities/skill-integrity.js';
 
 interface CatalogFile {
   records: CapabilityRecord[];
@@ -14,8 +15,10 @@ interface ProvenanceRecord {
   licensePath: string;
   license: { status: string; id: string | null };
   risk: string;
-  functionAnalyzed: boolean;
-  safetyReviewed: boolean;
+  metadataInspected: boolean;
+  riskScanCompleted: boolean;
+  analysisLevel: string;
+  behaviorVerified: boolean;
 }
 
 export interface BuildAgentCorePluginOptions {
@@ -51,7 +54,10 @@ function assertInside(root: string, candidate: string, label: string): void {
 
 async function loadCatalog(capabilityDir: string): Promise<CatalogFile> {
   const catalogPath = path.join(capabilityDir, 'registry', 'catalog.json');
-  const parsed = JSON.parse(await readFile(catalogPath, 'utf8')) as CatalogFile;
+  let contents: string;
+  try { contents = await readFile(catalogPath, 'utf8'); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { records: [] }; throw error; }
+  const parsed = JSON.parse(contents) as CatalogFile;
   if (!Array.isArray(parsed.records)) throw new Error('Capability catalog is malformed');
   return parsed;
 }
@@ -69,8 +75,8 @@ function validateNativeRecord(record: CapabilityRecord, provenance: ProvenanceRe
     provenance.capabilityId !== record.id ||
     provenance.license.status !== 'verified' ||
     provenance.risk !== 'low' ||
-    !provenance.functionAnalyzed ||
-    !provenance.safetyReviewed
+    !provenance.metadataInspected ||
+    !provenance.riskScanCompleted || provenance.analysisLevel !== 'instruction_metadata' || provenance.behaviorVerified !== false
   ) {
     throw new Error(`Capability ${record.id} failed provenance or safety packaging gates`);
   }
@@ -86,13 +92,14 @@ async function packageSkill(
   const normalizedRoot = path.join(capabilityDir, 'normalized', 'skills');
   const sourceSkill = path.resolve(capabilityDir, record.normalizedPath!);
   assertInside(normalizedRoot, sourceSkill, 'Normalized skill path');
+  const instructions = readAuditedSkill(capabilityDir, record.id, sourceSkill);
   assertInside(capabilityDir, provenance.licensePath, 'License path');
 
   const packageName = safeName(record.name);
   const destination = path.join(outputDir, 'skills', packageName);
   await mkdir(destination, { recursive: true });
   await Promise.all([
-    cp(sourceSkill, path.join(destination, 'SKILL.md')),
+    writeFile(path.join(destination, 'SKILL.md'), instructions, 'utf8'),
     cp(provenance.licensePath, path.join(destination, 'LICENSE')),
     writeFile(
       path.join(destination, 'PROVENANCE.json'),
@@ -115,6 +122,12 @@ export async function buildAgentCorePluginPackage(
 ): Promise<AgentCorePluginBuildResult> {
   const capabilityDir = path.resolve(options.capabilityDir);
   const outputDir = path.resolve(options.outputDir);
+  const sourcePaths = [capabilityDir, options.routerSkillPath, options.githubSkillPath].map(p => path.resolve(p));
+  if (outputDir === path.parse(outputDir).root || sourcePaths.some(p => {
+    const relative = path.relative(outputDir, p);
+    return !relative || (!relative.startsWith('..') && !path.isAbsolute(relative));
+  })) throw new Error('Plugin output must not contain its source or capability directory');
+  const catalog = await loadCatalog(capabilityDir);
   await rm(outputDir, { recursive: true, force: true });
 
   await Promise.all([
@@ -122,7 +135,6 @@ export async function buildAgentCorePluginPackage(
     packageTrackedCoreSkill(outputDir, 'agent-core-github', options.githubSkillPath),
   ]);
 
-  const catalog = await loadCatalog(capabilityDir);
   const nativeRecords = catalog.records.filter((record) =>
     record.type === 'skill' && record.state === 'native_ready' && record.nativeEligible && record.normalizedPath,
   );

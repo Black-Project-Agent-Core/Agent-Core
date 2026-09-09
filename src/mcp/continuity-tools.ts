@@ -7,10 +7,11 @@ import {
   normalizeContinuityCheckpointInput,
   type ContinuityCheckpointInput,
 } from '../continuity/types.js';
-import { MemoryHardLifecycleError, type MemoryContextLifecycleRecord } from '../memory/hard-lifecycle.js';
+import { MemoryHardLifecycleError } from '../memory/hard-lifecycle.js';
+import { canonicalFileNativeProjectId } from '../memory/file-native/paths.js';
 import { AgentCoreRouteError } from '../runtime/route-context-store.js';
 import type { RuntimeServices } from '../runtime/services.js';
-import { resolvedMemoryProjectScope } from './project-scope.js';
+import { persistentPrincipalId, resolvedMemoryProjectScope } from './project-scope.js';
 
 export const CONTINUITY_TOOL_NAMES = [
   'task_checkpoint',
@@ -58,7 +59,7 @@ const readOnlyAnnotations = {
 const checkpointAnnotations = {
   readOnlyHint: false,
   destructiveHint: false,
-  idempotentHint: false,
+  idempotentHint: true,
   openWorldHint: false,
 } as const;
 
@@ -131,66 +132,34 @@ function requireContinuityRoute(runtime: RuntimeServices, key: VerifiedKey, rout
   return route;
 }
 
-function lifecyclePublicState(
-  runtime: RuntimeServices,
-  lifecycle: MemoryContextLifecycleRecord | null,
-  remoteDurability?: { required: boolean; state: string; generationId?: string; logicalStateHash?: string },
-) {
-  if (!lifecycle) {
-    return {
-      mode: runtime.memory.config.hardLifecycleMode,
-      postflightState: null,
-      durabilityState: 'UNAVAILABLE',
-    };
-  }
-  if (remoteDurability?.required && remoteDurability.state === 'REMOTE_SYNCED') {
-    return {
-      mode: runtime.memory.config.hardLifecycleMode,
-      postflightState: lifecycle.postflightState,
-      durabilityState: 'DURABLY_CLOSED',
-      ...(remoteDurability.generationId ? { generationId: remoteDurability.generationId } : {}),
-      ...(remoteDurability.logicalStateHash ? { logicalStateHash: remoteDurability.logicalStateHash } : {}),
-    };
-  }
-  return {
-    mode: runtime.memory.config.hardLifecycleMode,
-    postflightState: lifecycle.postflightState,
-    durabilityState: remoteDurability?.required === false ? 'NOT_REQUIRED' : 'LOCAL_ONLY',
-  };
-}
-
-async function closeLifecycleForCheckpoint(
-  runtime: RuntimeServices,
-  currentScope: ReturnType<typeof scope>,
-  route: ReturnType<typeof requireContinuityRoute>,
-): Promise<MemoryContextLifecycleRecord | null> {
-  if (runtime.memory.config.hardLifecycleMode === 'disabled') return null;
-  const contextId = route.memorySnapshot?.memoryContextId;
-  if (!contextId) {
-    if (runtime.memory.config.hardLifecycleMode === 'enforce') {
-      throw new MemoryHardLifecycleError(
-        'MEMORY_POSTFLIGHT_REQUIRED',
-        'A persisted memory preflight lifecycle is required before checkpoint postflight can close',
-      );
-    }
-    return null;
-  }
+async function resolveCheckpoint(runtime: RuntimeServices, key: VerifiedKey, routeContextId: string) {
   try {
-    return await runtime.memory.prepareLifecycleClosure({
-      scope: currentScope,
-      contextId,
-      routeContextId: route.routeContextId,
-    });
+    const route = requireContinuityRoute(runtime, key, routeContextId);
+    const currentScope = scope(runtime, key, routeContextId);
+    const contextId = route.memorySnapshot?.memoryContextId;
+    if (!contextId) throw new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Checkpoint requires its persisted memory context.');
+    return { currentScope, workspaceRoot: currentScope.projectId, contextId,
+      taskId: route.continuityTaskId!, turnId: route.continuityTurnId! };
   } catch (error) {
-    if (runtime.memory.config.hardLifecycleMode === 'enforce') throw error;
-    return null;
+    if (!(error instanceof AgentCoreRouteError) || !['ROUTE_NOT_FOUND', 'ROUTE_EXPIRED'].includes(error.code)) throw error;
+    const principalId = persistentPrincipalId(runtime, key);
+    const lifecycle = await runtime.memory.findLifecycleByRoute({ principalId, routeContextId, projectIds: runtime.workspace.roots, authorityPrincipalId: key.id });
+    if (!lifecycle?.continuityTaskId) throw error;
+    const workspaceRoot = runtime.workspace.roots.find(root =>
+      canonicalFileNativeProjectId(runtime.memory.config.fileNative, root) === lifecycle.projectId);
+    if (!workspaceRoot) throw error;
+    const currentScope = { principalId, projectId: workspaceRoot };
+    const turn = await runtime.memory.findContinuityTurnForRoute({ scope: currentScope, routeContextId, taskId: lifecycle.continuityTaskId });
+    if (!turn) throw error;
+    // Recover closure identity only; no live route or execution authority is recreated.
+    return { currentScope, workspaceRoot, contextId: lifecycle.contextId, taskId: lifecycle.continuityTaskId, turnId: turn.turnId };
   }
 }
 
 export function registerContinuityTools(server: McpServer, runtime: RuntimeServices, key: VerifiedKey): void {
   server.registerTool('task_checkpoint', {
     title: 'Task Checkpoint',
-    description: 'Persist a route-bound continuity checkpoint with factual evidence and next frontier. Terminal checkpoints close the bound turn only after persistence succeeds.',
+    description: 'Persist an idempotent continuity checkpoint and its memory decision, then synchronize and close. Supply durable knowledge or an explicit memoryDecision for analysis without new knowledge. Retry the identical request with the original routeContextId after failure, expiry, or restart.',
     inputSchema: {
       routeContextId: z.string().uuid(),
       status: checkpointStatus,
@@ -236,122 +205,23 @@ export function registerContinuityTools(server: McpServer, runtime: RuntimeServi
         priority: z.number().finite().optional(),
       })).max(5).optional(),
       projectTerminal: z.boolean().optional(),
+      memoryDecision: z.object({
+        reasonCode: z.enum(['TRANSIENT_OPERATION', 'INSUFFICIENT_EVIDENCE', 'NO_FUTURE_RELEVANCE']),
+        explanation: z.string().min(1).max(2_000),
+      }).optional(),
     },
     annotations: checkpointAnnotations,
-  }, async ({ routeContextId, status, summary, evidence, decisions, artifacts, outcomes, constraints, blockers, deferred, nextCandidates, projectTerminal }) => guarded(async () => {
-    const route = requireContinuityRoute(runtime, key, routeContextId);
-    const input = normalizeContinuityCheckpointInput({
-      routeContextId,
-      status,
-      summary,
-      evidence,
-      decisions,
-      artifacts,
-      outcomes,
-      constraints,
-      blockers,
-      deferred,
-      nextCandidates,
-      projectTerminal,
-    } as ContinuityCheckpointInput);
-    const currentScope = scope(runtime, key, routeContextId);
-    const lifecycleContextId = route.memorySnapshot?.memoryContextId;
-
-    if (runtime.memory.config.hardLifecycleMode !== 'disabled' && lifecycleContextId && runtime.memory.config.remote.enabled) {
-      await runtime.memory.reconcileLifecycleDurability(currentScope);
-      const existingLifecycle = await runtime.memory.getLifecycleContext(currentScope, lifecycleContextId);
-      if (existingLifecycle?.postflightState === 'CLOSED'
-        && !existingLifecycle.localDurableGeneration
-        && !existingLifecycle.localDurableHash) {
-        const existingTask = await runtime.memory.getContinuityTask(currentScope, route.continuityTaskId!);
-        if (!existingTask?.lastCheckpointId || existingTask.status !== input.status) {
-          throw new MemoryHardLifecycleError(
-            'MEMORY_POSTFLIGHT_REQUIRED',
-            'Pending durability reconciliation does not match the authoritative prior checkpoint state',
-          );
-        }
-        const remoteDurability = await runtime.memory.syncDurableBoundary(
-          currentScope,
-          isTerminalContinuityTaskStatus(existingTask.status) ? 'continuity_terminal' : 'continuity_checkpoint',
-        );
-        const durableLifecycle = remoteDurability.required
-          ? await runtime.memory.markLifecycleDurableClosure({
-              scope: currentScope,
-              contextId: lifecycleContextId,
-              generationId: remoteDurability.generationId,
-              logicalStateHash: remoteDurability.logicalStateHash,
-            })
-          : existingLifecycle;
-        const snapshot = await runtime.memory.getContinuitySnapshot(currentScope);
-        return {
-          reconciled: true,
-          checkpointId: existingTask.lastCheckpointId,
-          taskStatus: existingTask.status,
-          turnState: isTerminalContinuityTaskStatus(existingTask.status) ? 'closed' : 'open',
-          promoted: { decisions: 0, artifacts: 0, outcomes: 0, constraints: 0, failures: 0 },
-          promotedMemoryIds: [],
-          continuitySnapshotHash: snapshot.snapshotHash,
-          frontier: snapshot.frontier,
-          remoteDurability,
-          memoryLifecycle: lifecyclePublicState(runtime, durableLifecycle, remoteDurability),
-        };
-      }
-    }
-
-    await requireExecutionCompletionEvidence(runtime, currentScope, route.continuityTaskId!, input);
-    const checkpoint = await runtime.memory.checkpointContinuity(
-      currentScope,
-      route.continuityTaskId!,
-      route.continuityTurnId!,
-      input,
+  }, async ({ routeContextId, memoryDecision, ...fields }) => guarded(async () => {
+    const resolved = await resolveCheckpoint(runtime, key, routeContextId);
+    const input = normalizeContinuityCheckpointInput({ ...fields, routeContextId } as ContinuityCheckpointInput);
+    // Execution ownership is the authenticated key; durable memory may use a separate logical principal.
+    await requireExecutionCompletionEvidence(runtime, { principalId: key.id, projectId: resolved.workspaceRoot }, resolved.taskId, input);
+    const result = await runtime.checkpoints.checkpointForScope(
+      resolved.currentScope,
+      { ...input, workspaceRoot: resolved.workspaceRoot, memoryContextId: resolved.contextId,
+        continuityTaskId: resolved.taskId, continuityTurnId: resolved.turnId, memoryDecision },
     );
-    const promoted = await runtime.memory.promoteContinuityCheckpoint(
-      currentScope,
-      route.continuityTaskId!,
-      checkpoint.checkpointId,
-      input,
-    );
-
-    let turnState: 'open' | 'closed' | 'interrupted' = 'open';
-    if (isTerminalContinuityTaskStatus(input.status)) {
-      await runtime.memory.closeContinuityTurn(currentScope, route.continuityTurnId!, 'closed');
-      turnState = 'closed';
-    } else if (input.status === 'interrupted') {
-      await runtime.memory.closeContinuityTurn(currentScope, route.continuityTurnId!, 'interrupted');
-      turnState = 'interrupted';
-    }
-
-    let lifecycle = await closeLifecycleForCheckpoint(runtime, currentScope, route);
-    const remoteDurability = await runtime.memory.syncDurableBoundary(
-      currentScope,
-      isTerminalContinuityTaskStatus(input.status) ? 'continuity_terminal' : 'continuity_checkpoint',
-    );
-    if (lifecycle && remoteDurability.required) {
-      lifecycle = await runtime.memory.markLifecycleDurableClosure({
-        scope: currentScope,
-        contextId: lifecycle.contextId,
-        generationId: remoteDurability.generationId,
-        logicalStateHash: remoteDurability.logicalStateHash,
-      });
-    }
-
-    const snapshot = await runtime.memory.getContinuitySnapshot(currentScope);
-    return {
-      ...checkpoint,
-      turnState,
-      promoted: {
-        decisions: promoted.decisions,
-        artifacts: promoted.artifacts,
-        outcomes: promoted.outcomes,
-        constraints: promoted.constraints,
-        failures: promoted.failures,
-      },
-      promotedMemoryIds: promoted.memoryIds,
-      continuitySnapshotHash: snapshot.snapshotHash,
-      frontier: snapshot.frontier,
-      remoteDurability,
-      memoryLifecycle: lifecyclePublicState(runtime, lifecycle, remoteDurability),
-    };
+    return { ...result, frontier: result.continuitySnapshot.frontier };
   }));
 
   server.registerTool('continuity_status', {

@@ -6,7 +6,7 @@ const cargoUrl = new URL('../src-tauri/Cargo.toml', import.meta.url);
 const windowLifecycleCapabilityUrl = new URL('../src-tauri/capabilities/window-lifecycle.json', import.meta.url);
 const windowsConfigUrl = new URL('../src-tauri/tauri.windows.conf.json', import.meta.url);
 const packageUrl = new URL('../package.json', import.meta.url);
-const bootstrapUrl = new URL('./codespace-bootstrap.sh', import.meta.url);
+const bootstrapUrl = new URL('./linux-bootstrap.sh', import.meta.url);
 const windowsBuildUrl = new URL('./build-windows-x64.sh', import.meta.url);
 const makensisWrapperUrl = new URL('./toolchain/makensis', import.meta.url);
 const buildRsUrl = new URL('../src-tauri/build.rs', import.meta.url);
@@ -36,11 +36,14 @@ assert.equal(window.minHeight, 620);
 assert.equal(window.resizable, true);
 assert.equal(window.decorations, true);
 assert.equal(config.build.frontendDist, '../dist');
+assert.equal(config.build.devUrl, 'http://localhost:1420');
+assert.equal(config.build.beforeBuildCommand, 'npm run build');
 assert.match(cargoToml, /tauri = \{ version = \"2\.11\.5\", features = \[\"tray-icon\"\] \}/);
 assert.deepEqual(windowLifecycleCapability.windows, ['main']);
 assert.deepEqual(windowLifecycleCapability.permissions, ['core:event:allow-listen', 'core:event:allow-unlisten']);
 
 assert.deepEqual(windowsConfig.bundle.targets, ['nsis']);
+assert.equal(packageJson.scripts['build:windows:native'], 'tauri build');
 assert.equal(packageJson.scripts['build:windows:x64'], 'bash scripts/build-windows-x64.sh');
 assert.match(windowsBuild, /NSISDIR/);
 assert.match(windowsBuild, /TOOLCHAIN_DIR/);
@@ -93,6 +96,7 @@ for (const command of [
   assert.match(tauriMain, new RegExp(command));
 }
 assert.match(tauriMain, /--agent-core-background/);
+assert.match(tauriMain, /#\[cfg\(all\(not\(debug_assertions\), dev\)\)\]\s*compile_error!/);
 assert.match(tauriMain, /request_running_on_app_launch/);
 assert.match(tauriMain, /WindowEvent::CloseRequested/);
 assert.match(tauriMain, /prevent_close\(\)/);
@@ -100,19 +104,25 @@ assert.match(tauriMain, /agent-code:\/\/close-requested/);
 assert.match(tauriMain, /TrayIconBuilder/);
 assert.match(tauriMain, /open-agent-code/);
 assert.match(tauriMain, /close-completely/);
-assert.match(agentCoreController, /legacy_controller_detected_for_root/);
 assert.match(agentCoreController, /CmdletizationQuery_NotFound/);
-assert.match(agentCoreController, /native_control_enabled/);
 assert.match(agentCoreController, /WATCHDOG_INTERVAL_SECONDS/);
 assert.match(agentCoreController, /PREFERRED_NODE_VERSION/);
-assert.match(agentCoreController, /TUNNEL_CLIENT_VERSION/);
+assert.match(agentCoreController, /resolve_tunnel_runtime/);
+assert.match(agentCoreController, /root\.join\("tunnel-client"\)\.join\("tunnel-client\.exe"\)/);
 assert.match(agentCoreController, /reset-oauth/);
 assert.match(agentCoreController, /Agent Code Agent Core Controller/);
 assert.match(agentCoreController, /Register-ScheduledTask/);
 assert.match(agentCoreController, /New-ScheduledTaskPrincipal/);
 assert.match(agentCoreController, /LogonType Interactive/);
 assert.match(agentCoreController, /RunLevel Limited/);
-assert.doesNotMatch(agentCoreController, /Start-Agent-Core\.bat/i);
-assert.doesNotMatch(agentCoreController, /agent-core-launcher\.ps1/i);
+assert.match(agentCoreController, /--agent-core-background/);
+for (const forbidden of [
+  /agent-core-launcher\.ps1/i,
+  /agent-core-tray\.ps1/i,
+  /Agent Core Tray Manager/i,
+  /legacy/i,
+]) {
+  assert.doesNotMatch(agentCoreController, forbidden);
+}
 
 console.log('tauri-contract: PASS');

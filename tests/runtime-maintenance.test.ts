@@ -157,7 +157,7 @@ describe('safe local maintenance coordinator', () => {
     const runtime = createRuntimeServices(
       [root], path.join(root, 'capabilities'), undefined,
       { ...defaults.memory, enabled: false },
-      { ...defaults.execution, enabled: true, dbPath: path.join(root, 'execution.sqlite'), logRoot: path.join(root, 'runs') },
+      { ...defaults.execution, enabled: true, stateRoot: path.join(root, 'execution'), logRoot: path.join(root, 'runs') },
       { ...defaults.github, enabled: false }, undefined, defaults.observability, 'test-version',
       { ...defaults.maintenance, enabled: true, intervalMs: 60_000 },
     );

@@ -1,17 +1,18 @@
-﻿import { createServer, type Server } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SupabaseDirectError } from '../src/memory/file-native/supabase-direct.js';
 import { FileKeyStore } from '../src/auth/key-store.js';
-import { loadConfig } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { MEMORY_TOOL_NAMES } from '../src/mcp/memory-tools.js';
 import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
 import { MEMORY_REMEMBER_MORE_DEFAULTS, MEMORY_REMEMBER_MORE_LIMITS } from '../src/memory/types.js';
+import { memoryConfig } from './helpers/memory-fixture.js';
 
 const auditLoggers: FileAuditLogger[] = [];
 function createAuditLogger(logDir: string): FileAuditLogger {
@@ -31,11 +32,10 @@ const MEMORY_TOOLS = [
 async function fixture() {
   const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-mcp-memory-'));
   roots.push(root);
-  const baseMemory = loadConfig({}, root).memory;
+  const baseMemory = await memoryConfig(root);
   const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
     ...baseMemory,
     enabled: true,
-    dbPath: path.join(root, 'runtime', 'memory', 'mcp-memory.sqlite'),
   });
   runtimes.push(runtime);
   const keyStore = new FileKeyStore(path.join(root, 'data'));
@@ -91,6 +91,24 @@ afterEach(async () => {
 });
 
 describe('deterministic memory MCP surface', () => {
+  it('returns direct recall failure from routing while keeping diagnostic tools available', async () => {
+    const f=await fixture();
+    f.runtime.memory.config.supabaseDirect.enabled=true;
+    const preflight=vi.spyOn(f.runtime.memory,'preflight').mockRejectedValue(new SupabaseDirectError('MEMORY_SUPABASE_NETWORK_ERROR'));
+    const routed=await call(f.baseUrl,f.principalA.key,'capability_route',{task:'Update project billing implementation',projectRoot:f.root});
+    expect(routed.result.isError).toBe(true);
+    expect(body(routed).error.code).toBe('MEMORY_SUPABASE_NETWORK_ERROR');
+    expect(body(routed).routeContextId).toBeUndefined();
+    expect((await call(f.baseUrl,f.principalA.key,'memory_status')).result.isError).not.toBe(true);
+    preflight.mockRestore();
+  });
+  it('accepts deeper query without seeds through the MCP schema', async () => {
+    const f=await fixture(),scope={principalId:f.principalA.metadata.id,projectId:f.root};
+    const saved=await f.runtime.memory.commit({scope,canonicalKey:'decision:ledger',kind:'decision',value:'Ledger reconciliation uses daily checkpoints.'});
+    const pre=await f.runtime.memory.preflight({scope,routeContextId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',task:'Unspecified work',expiresAt:Date.now()+60000});
+    const more=body(await call(f.baseUrl,f.principalA.key,'memory_remember_more',{contextId:pre.contextId,query:'ledger checkpoints',reason:'user_requested'}));
+    expect(more.expansions.some((e:{memoryId:string})=>e.memoryId===saved.memoryId)).toBe(true);
+  });
   it('registers exactly nine focused memory tools with bounded schemas and correct annotations', async () => {
     const f = await fixture();
     const listed = await request(f.baseUrl, f.principalA.key, {
@@ -98,14 +116,18 @@ describe('deterministic memory MCP surface', () => {
     });
     const tools = listed.result.tools as Array<Record<string, any>>;
     const names = tools.map((tool) => tool.name);
-    expect(names).toHaveLength(69);
+    expect(names).toHaveLength(72);
     for (const name of MEMORY_TOOLS) expect(names).toContain(name);
     expect(names).not.toContain('memory_postflight');
 
     expect(MEMORY_TOOL_NAMES).toHaveLength(9);
     expect(MEMORY_TOOL_NAMES).toContain('memory_remember_more');
 
-    for (const name of ['memory_status', 'memory_search', 'memory_get', 'memory_explain', 'memory_export', 'memory_remember_more']) {
+    expect(tools.find((tool) => tool.name === 'memory_status')?.annotations).toMatchObject({
+      readOnlyHint:false, destructiveHint:false, idempotentHint:true, openWorldHint:true,
+    });
+    expect(tools.find((tool) => tool.name === 'memory_status')?.inputSchema?.properties?.sync).toMatchObject({type:'boolean',default:false});
+    for (const name of ['memory_search', 'memory_get', 'memory_explain', 'memory_export', 'memory_remember_more']) {
       expect(tools.find((tool) => tool.name === name)?.annotations).toMatchObject({
         readOnlyHint: true, destructiveHint: false, openWorldHint: false,
       });
@@ -137,20 +159,20 @@ describe('deterministic memory MCP surface', () => {
   it('expands an authenticated recalled solution into its prior failure through memory_remember_more', async () => {
     const f = await fixture();
     const scope = { principalId: f.principalA.metadata.id, projectId: f.root };
-    const solution = await f.runtime.memory.commit({
-      scope,
-      canonicalKey: 'solution.renderer.authenticated',
-      kind: 'solution',
-      value: 'Use source-native renderer geometry for the authenticated workflow.',
-      sourceType: 'test',
-    });
     const failure = await f.runtime.memory.commit({
       scope,
       canonicalKey: 'failure.renderer.authenticated',
       kind: 'failure',
       value: 'Legacy post-render scaling distorted the authenticated workflow.',
       sourceType: 'test',
-      explicitRelations: [{ targetMemoryId: solution.memoryId, relation: 'resolved_by' }],
+    });
+    const solution = await f.runtime.memory.commit({
+      scope,
+      canonicalKey: 'solution.renderer.authenticated',
+      kind: 'procedure',
+      value: 'Use source-native renderer geometry for the authenticated workflow.',
+      sourceType: 'test',
+      explicitRelations: [{ targetMemoryId: failure.memoryId, relation: 'resolved_by' }],
     });
     const preflight = await f.runtime.memory.preflight({
       scope,

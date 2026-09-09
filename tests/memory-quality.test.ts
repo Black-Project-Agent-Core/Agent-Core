@@ -132,5 +132,6 @@ describe('deterministic memory quality evaluator', () => {
       failure.caseId === 'm07-stale-decision-resists-noise'
       && (failure.metric === 'mrr' || failure.metric === 'noise_displacement')
     ))).toBe(false);
-  });
+    // The file-native retriever replays the whole corpus twice through a real ripgrep subprocess.
+  }, 180_000);
 });

@@ -98,7 +98,7 @@ describe('operator directive route snapshots', () => {
 async function setupMcp() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-operator-route-mcp-'));
   roots.push(root);
-  const defaults = loadConfig({}, root);
+  const defaults = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root);
   const runtime = createRuntimeServices(
     [root],
     path.join(root, 'capabilities'),

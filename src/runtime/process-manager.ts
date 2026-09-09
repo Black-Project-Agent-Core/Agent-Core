@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { assertExecutionIntentAllowed } from './command-policy.js';
 import { spawnManagedCommand, terminateManagedProcessTree } from './process-governance.js';
 import type { WorkspacePolicy } from './workspace.js';
+import { authorizeServiceOperation } from './operation-context.js';
 
 const MAX_OUTPUT_BYTES = 256 * 1024;
 
@@ -93,9 +94,10 @@ function sameOwner(actual: ProcessSessionOwner, requested: ProcessSessionOwner):
 export class ProcessManager {
   private readonly sessions = new Map<string, Session>();
 
-  constructor(private readonly workspace: WorkspacePolicy) {}
+  constructor(private readonly workspace: WorkspacePolicy, private readonly requireAuthority = false) {}
 
   async execute(command: string, options: ExecuteOptions): Promise<ProcessResult> {
+    await authorizeServiceOperation('execute_command', { command, cwd: options.cwd }, this.requireAuthority);
     assertCommandAllowed(command);
     const cwd = await this.workspace.resolveExisting(options.cwd);
     const child = spawnManagedCommand(command, cwd);
@@ -123,6 +125,7 @@ export class ProcessManager {
   }
 
   async start(command: string, options: StartOptions): Promise<{ sessionId: string; pid: number | null; cwd: string }> {
+    await authorizeServiceOperation('start_process', { command, cwd: options.cwd }, this.requireAuthority);
     assertCommandAllowed(command);
     const cwd = await this.workspace.resolveExisting(options.cwd);
     const owner = normalizeOwner(options.owner);

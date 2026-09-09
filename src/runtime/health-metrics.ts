@@ -22,7 +22,7 @@ type HealthRuntime = {
     getContinuitySnapshot?(scope: unknown): Promise<any>;
   };
   operatorDirectives?: {
-    config: { enabled: boolean; schemaVersion: number };
+    config: { enabled: boolean; stateVersion: number };
     currentState: string;
     status(principalId: string): Promise<any>;
   };

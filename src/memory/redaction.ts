@@ -11,6 +11,10 @@ type RedactionRule = {
 
 const RULES: RedactionRule[] = [
   {
+    category: 'API_KEY',
+    pattern: /\bsb_secret_[A-Za-z0-9_-]+|\b(?:AGENT_CORE_MEMORY_SUPABASE_SECRET_KEY|SUPABASE_SECRET_KEY|SUPABASE_SERVICE_ROLE_KEY)\s*["']?\s*[:=]\s*["']?[^\s,;"']+/gi,
+  },
+  {
     category: 'BEARER',
     pattern: /\bAuthorization\s*:\s*Bearer\s+[^\s,;]+|\bBearer\s+[A-Za-z0-9._~+\/-]{12,}/gi,
   },

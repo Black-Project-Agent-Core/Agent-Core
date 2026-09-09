@@ -1,6 +1,5 @@
-import { access, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdir, rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -10,6 +9,7 @@ import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
+import { memoryConfig, memoryRoot } from './helpers/memory-fixture.js';
 import { printCommand } from './helpers/platform-command.js';
 
 const auditLoggers: FileAuditLogger[] = [];
@@ -24,7 +24,7 @@ const servers: Server[] = [];
 const runtimes: RuntimeServices[] = [];
 
 async function fixture() {
-  const container = await mkdtemp(path.join(os.tmpdir(), 'agent-core-project-scope-'));
+  const container = await memoryRoot('project-scope');
   tempRoots.push(container);
   const projectA = path.join(container, 'project-a');
   const projectB = path.join(container, 'project-b');
@@ -34,11 +34,11 @@ async function fixture() {
     [projectA, projectB],
     path.join(container, 'capabilities'),
     undefined,
-    { ...defaults.memory, enabled: true, dbPath: path.join(container, 'runtime', 'memory.sqlite') },
+    { ...await memoryConfig(projectA), enabled: true },
     {
       ...defaults.execution,
       enabled: true,
-      dbPath: path.join(container, 'runtime', 'execution.sqlite'),
+      stateRoot: path.join(container, 'runtime', 'execution'),
       logRoot: path.join(container, 'runtime', 'runs'),
     },
   );
@@ -170,6 +170,7 @@ describe('route-bound project identity and cross-project isolation', () => {
         purpose: 'Attempt cross-project evidence declaration',
         command: printCommand('ok\n'),
         cwd: f.projectB,
+        inputs: [],
         expectedArtifacts: [{ path: path.join(f.projectA, 'forbidden.txt'), kind: 'file', required: true }],
       }],
     });
@@ -208,7 +209,7 @@ describe('route-bound project identity and cross-project isolation', () => {
     const created = await call(f.baseUrl, f.principal.key, 'execution_create', {
       routeContextId: routeB.routeContextId,
       objective: 'Project B execution',
-      nodes: [{ id: 'B', purpose: 'B', command: printCommand('B\n'), cwd: f.projectB }],
+      nodes: [{ id: 'B', purpose: 'B', command: printCommand('B\n'), cwd: f.projectB, inputs: [] }],
     });
     expect(created.raw.result?.isError).not.toBe(true);
     expect(await f.runtime.execution.status({ principalId: f.principal.metadata.id, projectId: f.projectB }, created.result.runId))

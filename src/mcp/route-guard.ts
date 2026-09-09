@@ -13,7 +13,9 @@ export function validateOperationalRoute(
 }
 
 export function routeErrorResult(error: unknown) {
-  if (!(error instanceof AgentCoreRouteError) && !(error instanceof MemoryHardLifecycleError)) return null;
+  const workflowError = error instanceof Error && 'code' in error && typeof error.code === 'string' && error.code.startsWith('WORKFLOW_');
+  if (!(error instanceof AgentCoreRouteError) && !(error instanceof MemoryHardLifecycleError) && !workflowError) return null;
+  const details = 'details' in error ? error.details : undefined;
   return {
     content: [{
       type: 'text' as const,
@@ -21,7 +23,7 @@ export function routeErrorResult(error: unknown) {
         error: {
           code: error.code,
           message: error.message,
-          ...(error.details ? { details: error.details } : {}),
+          ...(details ? { details } : {}),
         },
       }, null, 2),
     }],

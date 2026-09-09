@@ -1,10 +1,10 @@
 # MSL Analytics v2 Task 5 — Rust Worker Verified
 
-**Date:** 2026-08-18 (UTC+7)  
-**Repository:** `rendevouz999/Market-Signal-Lab`  
-**Branch:** `feature/analytics-v2-ipc`  
-**Exact verified branch SHA:** `63f70b9a17d0574b403f84430b2934d14e4c0f1f`  
-**Status:** Task 5 COMPLETE / VERIFIED  
+**Date:** 2026-08-18 (UTC+7)\
+**Repository:** `rendevouz999/Market-Signal-Lab`\
+**Branch:** `feature/analytics-v2-ipc`\
+**Exact verified branch SHA:** `63f70b9a17d0574b403f84430b2934d14e4c0f1f`\
+**Status:** Task 5 COMPLETE / VERIFIED\
 **Formal release status:** NOT released. Runtime/application release remains separate.
 
 ## Scope verified
@@ -42,7 +42,7 @@ Verified checkpoint head          63f70b9a17d0574b403f84430b2934d14e4c0f1f
 
 ## Fresh final verification evidence
 
-All commands below were run in GitHub Codespaces after reset to exact head `63f70b9a17d0574b403f84430b2934d14e4c0f1f`.
+All commands below were run in Linux build host after reset to exact head `63f70b9a17d0574b403f84430b2934d14e4c0f1f`.
 
 ### Full Rust tests
 

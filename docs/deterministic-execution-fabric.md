@@ -1,25 +1,23 @@
 # Deterministic Execution Fabric
 
-The Deterministic Execution Fabric is Agent Core's local, durable, dependency-aware command execution layer. It persists run/node/attempt/event state in a separate SQLite database from DMF and writes raw process evidence to local files under the Agent Core root.
+The Deterministic Execution Fabric is Agent Core's local, durable, dependency-aware command execution layer. It persists run/node/attempt/event state as file-native transactional state, separate from the memory vault, and writes raw process evidence to local files under the Agent Core root.
 
 It is designed to make concurrency, dependencies, retries, wake behavior, restart recovery, and evidence factual. The model supplies semantic decomposition and decisions; Agent Core enforces the declared graph and records what actually happened.
 
 ## Rollout state
 
-The execution fabric passed the Tasks 19-21 production gates and the Task 22 Stage A/B live canaries. Stage C makes execution enabled by default for normal Agent Core startup while preserving an explicit diagnostic disable override.
+Execution is enabled by default for normal Agent Core startup, with an explicit diagnostic disable override:
 
 ```text
-AGENT_CORE_EXECUTION_ENABLED=true    # production default after Task 22 Stage B live canary
+AGENT_CORE_EXECUTION_ENABLED=true    # default
 ```
-
-The v5 capability stage means the execution surface and behavior contract are production-ready; it does not bypass the staged live enablement/canary procedure.
 
 ## Runtime locations
 
-Default execution database:
+Default execution state root, overridable with `AGENT_CORE_EXECUTION_STATE_ROOT`:
 
 ```text
-<Agent-Core-root>\runtime\execution\agent-core-execution.sqlite
+<Agent-Core-root>\runtime\execution\state
 ```
 
 Default raw evidence root:
@@ -40,23 +38,38 @@ The terminal result marker is written atomically and records factual run/node/at
 
 ## Persistence model
 
-The execution SQLite database contains durable records for:
+Execution state is file-native. An append-only event stream is the record of truth, and current state files are materialized from it under atomic rename:
 
-- execution runs;
-- nodes;
-- hard dependencies;
-- attempts;
-- monotonic per-run events;
-- execution-to-DMF sync queue entries;
-- schema migration state.
+```text
+runtime\execution\
+  state/
+    runs/<run-id>/run.json
+    runs/<run-id>/nodes/<node-id>.json
+    runs/<run-id>/attempts/<attempt-no>.json
+  events/
+    <run-id>.jsonl
+  leases/
+    runtime.lease.json
+  checkpoints/
+    ...
+```
 
-The execution database is intentionally separate from the DMF database because execution events/log metadata are high-frequency operational state. Only selected verified execution evidence is promoted into DMF.
+Durable records cover execution runs, nodes, hard dependencies, attempts, monotonic per-run events, parsed-output records, the verified artifact index, and the execution-to-memory sync queue.
 
-Execution schema evolution is additive and evidence-focused:
+Every event carries a sequence number, run/node/attempt identity, event type, timestamp, payload hash, and safe payload. Every write that needs multi-file consistency goes through a transaction journal plus atomic rename:
 
-- schema v3 adds `execution_parsed_outputs` for bounded deterministic interpretation of persisted stdout/stderr evidence;
-- schema v4 adds `execution_artifacts` for verified-only artifact indexing, lookup, and advisory reuse discovery;
-- startup recovery also reconciles a missed artifact index from durable verified terminal result markers, so an interrupted observer cannot silently erase reusable evidence metadata.
+```text
+write temp
+flush
+atomic rename
+read back and validate
+```
+
+Concurrency uses an owner-token lease per scope/run rather than one global store lock. Lookups use deterministic file-native indexes/manifests.
+
+Execution state is intentionally separate from the memory vault because execution events and log metadata are high-frequency operational state. Only selected verified execution evidence is promoted into memory.
+
+Parsed outputs give bounded deterministic interpretation of persisted stdout/stderr evidence, and the artifact index supports verified-only lookup and advisory reuse discovery. Startup recovery reconciles a missed artifact index from durable verified terminal result markers, so an interrupted observer cannot silently erase reusable evidence metadata.
 
 ## Structured execution intelligence and truth hierarchy
 
@@ -105,14 +118,14 @@ Mutation tools require a current principal-bound route context. Read operations 
 
 ## Autonomous memory pre-search
 
-Execution now performs a bounded DMF pre-search on every explicit launch path: initial DAG creation, run start, dynamic node addition, and retry. The query is derived only from the execution objective plus deterministic node IDs/purposes. Raw command text, environment values, stdout, and stderr are not copied into the memory query.
+Execution performs a bounded memory pre-search on every explicit launch path: initial DAG creation, run start, dynamic node addition, and retry. The query is derived only from the execution objective plus deterministic node IDs/purposes. Raw command text, environment values, stdout, and stderr are not copied into the memory query.
 
-The pre-search result is returned as `memoryPreSearch` and includes bounded recalled items, prior failures, related decisions, open conflicts, matching hard guardrails, the deterministic snapshot hash, and measured duration. Default execution-specific bounds are 12 recalled items and 6000 characters, further capped by the configured DMF recall budgets.
+The pre-search result is returned as `memoryPreSearch` and includes bounded recalled items, prior failures, related decisions, open conflicts, matching hard guardrails, the deterministic snapshot hash, and measured duration. Default execution-specific bounds are 12 recalled items and 6000 characters, further capped by the configured memory recall budgets.
 
 Failure behavior is deliberate:
 
-- disabled DMF -> `status: disabled`, execution behavior remains unchanged;
-- healthy DMF with no matches -> `status: healthy`, `inspectionRequired: false`;
+- disabled memory -> `status: disabled`, execution behavior remains unchanged;
+- healthy memory with no matches -> `status: healthy`, `inspectionRequired: false`;
 - unavailable/degraded search -> `status: degraded`, execution fails open and records no invented evidence;
 - matching active hard guardrail with `AGENT_CORE_MEMORY_ENFORCE_HARD_GUARDRAILS=true` -> execution fails closed with `EXECUTION_MEMORY_GUARDRAIL_BLOCKED` before a process is launched (and, on create, before a run is persisted).
 
@@ -144,7 +157,7 @@ A process completion never completes the semantic continuity task. It updates ex
 
 Every run has a persisted monotonic event sequence. Events include run creation/start/terminal states and node queued/ready/started/output/terminal/retry/cancel states.
 
-Persist-before-signal is the invariant: the event is committed to SQLite before the in-process wake coordinator emits its signal. `execution_wait` first checks for an unseen persisted event, subscribes, performs one bounded race-closing read, and then waits for either a persisted signal or timeout. It does not busy-poll the database.
+Persist-before-signal is the invariant: the event is durably appended before the in-process wake coordinator emits its signal. `execution_wait` first checks for an unseen persisted event, subscribes, performs one bounded race-closing read, and then waits for either a persisted signal or timeout. It does not busy-poll the event stream.
 
 Rapid output notifications are coalesced so arbitrary stdout chunk rates cannot create an event storm.
 
@@ -152,31 +165,31 @@ See `docs/multi-command-wake-workflow.md` for the agent-facing workflow.
 
 ## Restart recovery
 
-On execution service startup, persisted attempts that still say `running` are reconciled against durable result markers:
+On execution service startup, any unfinished transaction journal is recovered, the event sequence is validated, materialized state is rebuilt when it disagrees with the events, and a stale runtime lease is reclaimed. Persisted attempts that still say `running` are then reconciled against durable result markers:
 
 - if a valid terminal result marker exists, the marker is factual authority;
 - if no terminal result marker exists, the attempt/node becomes `interrupted`;
 - missing PID/process state is never treated as success;
 - interrupted work can be retried explicitly and prior logs remain intact.
 
-On graceful Agent Core shutdown, new runs stop being accepted, active owned nodes are terminated/recorded as interrupted unless terminal evidence already exists, and the execution SQLite worker is checkpointed before close.
+On graceful Agent Core shutdown, new runs stop being accepted, active owned nodes are terminated/recorded as interrupted unless terminal evidence already exists, and every open execution transaction is committed or rolled back before close.
 
-Execution degradation is reported separately. A corrupt/degraded execution DB does not make Agent Core OAuth/MCP unavailable and does not erase DMF continuity memory.
+Execution degradation is reported separately. Corrupt or degraded execution state does not make Agent Core OAuth/MCP unavailable and does not erase continuity memory.
 
-## Execution-to-DMF bridge
+## Execution-to-memory bridge
 
 Promotion policy is deliberately narrow:
 
 ```text
 raw stdout/stderr       -> execution logs only
 command progress        -> execution event journal
-failure signature       -> redacted DMF failure evidence
-verified artifact/hash  -> DMF/checkpoint evidence
+failure signature       -> redacted memory failure evidence
+verified artifact/hash  -> memory/checkpoint evidence
 run terminal state      -> process checkpoint
 semantic task completed -> task_checkpoint only
 ```
 
-If DMF is degraded, eligible promotions enter `execution_memory_sync_queue`. They are replayed idempotently after memory returns healthy. Raw process logs are never promoted wholesale.
+If memory is degraded, eligible promotions enter the execution memory sync queue. They are replayed idempotently after memory returns healthy. Raw process logs are never promoted wholesale.
 
 ## Raw log sensitivity
 
@@ -186,11 +199,11 @@ Raw execution stdout/stderr is authenticated local evidence, not sanitized memor
 - do not publish, attach, or commit raw logs without reviewing them;
 - use bounded `execution_logs` reads instead of dumping entire files into prompts;
 - keep secrets in environment/file references rather than inline command text where possible;
-- DMF search/export must remain free of plaintext secrets from raw logs.
+- memory search/export must remain free of plaintext secrets from raw logs.
 
-Wave C adds an **operator-controlled raw-log retention workflow**. It is intentionally not automatic and is not exposed as a destructive MCP tool.
+Raw-log retention is an **operator-controlled workflow**. It is intentionally not automatic and is not exposed as a destructive MCP tool.
 
-Only terminal attempt `.stdout.log` and `.stderr.log` files are eligible. Result markers, the execution database, artifact-index records, and declared artifacts are never deleted by the retention subsystem. A dry-run plan is immutable and content-addressed; apply revalidates the exact planned files and never expands the deletion set by re-querying the filesystem.
+Only terminal attempt `.stdout.log` and `.stderr.log` files are eligible. Result markers, execution state, artifact-index records, and declared artifacts are never deleted by the retention subsystem. A dry-run plan is immutable and content-addressed; apply revalidates the exact planned files and never expands the deletion set by re-querying the filesystem.
 
 ## Execution process governance
 
@@ -217,31 +230,31 @@ agent-core execution-backup [reason]
 agent-core execution-restore <bundle-path>
 ```
 
-`execution-backup` acquires the execution runtime lease, opens the execution database through the existing execution worker, verifies SQLite integrity, checkpoints WAL, creates a SQLite backup through the worker, copies the complete execution evidence tree, computes SHA-256 plus byte size for the database and every evidence file, writes `manifest.json` last, and atomically publishes the completed bundle under the execution `recovery-bundles` directory.
+`execution-backup` acquires the execution runtime lease, quiesces open execution transactions, validates the event sequence against the materialized state, copies the complete execution state and evidence trees, computes SHA-256 plus byte size for every file, writes `manifest.json` last, and atomically publishes the completed bundle under the execution `recovery-bundles` directory.
 
 A recovery-bundle manifest records:
 
 ```text
 bundle format/version
 Agent Core source version
-execution schema version
+execution state format version
 creation timestamp and bounded reason
-database SHA-256 / size / integrity
-every evidence file path / SHA-256 / size
+logical state root hash
+every state and evidence file path / SHA-256 / size
 total evidence bytes
 ```
 
-Verification fails closed on an unsafe/duplicate manifest path, missing or additional evidence file, size/hash mismatch, SQLite integrity failure, or schema incompatibility.
+Verification fails closed on an unsafe/duplicate manifest path, a missing or additional file, a size/hash mismatch, an event-sequence inconsistency, or an incompatible state format.
 
-Restore is intentionally stopped-runtime only. `ExecutionService` owns `<execution-db>.runtime.json` while open; recovery operations must acquire the same exclusive lease. A live owner therefore blocks restore rather than relying on an advisory instruction.
+Restore is intentionally stopped-runtime only. `ExecutionService` owns `leases/runtime.lease.json` while open; recovery operations must acquire the same exclusive owner-token lease. A live owner therefore blocks restore rather than relying on an advisory instruction.
 
 Before replacing live state, restore:
 
 1. verifies the requested recovery bundle completely;
-2. creates a raw pre-restore rollback snapshot of the current DB/WAL/SHM and evidence tree;
-3. stages the verified database and evidence;
-4. swaps the database, removes stale WAL/SHM, then swaps evidence;
-5. rechecks SQLite integrity;
+2. creates a raw pre-restore rollback snapshot of the current state and evidence trees;
+3. stages the verified state and evidence beside the live roots;
+4. swaps state, then swaps evidence, by atomic rename;
+5. revalidates the logical state root hash and the event sequence;
 6. restores the pre-restore snapshot automatically if a failure occurs after replacement has begun.
 
 After restore, normal `ExecutionService.open()` recovery remains authoritative: a valid terminal result marker can complete a persisted attempt; missing or identity-mismatched terminal evidence becomes `interrupted`, never success.
@@ -266,14 +279,14 @@ These recovery and retention operations are intentionally CLI/operator surfaces.
 
 ## Disable execution for diagnostics
 
-Execution can be disabled without deleting its database or logs. Stop Agent Core, then start a diagnostic process with:
+Execution can be disabled without deleting its state or logs. Stop Agent Core, then start a diagnostic process with:
 
 ```powershell
 $env:AGENT_CORE_EXECUTION_ENABLED = 'false'
 node dist\index.js
 ```
 
-DMF, continuity, authentication, routing, and legacy operational tools can remain available. Execution health reports disabled.
+Memory, continuity, authentication, and routing stay available. Execution health reports disabled.
 
 To remove the temporary override:
 
@@ -281,7 +294,7 @@ To remove the temporary override:
 Remove-Item Env:AGENT_CORE_EXECUTION_ENABLED -ErrorAction SilentlyContinue
 ```
 
-Then start through the normal launcher/configuration. Normal operation now defaults execution on; set `AGENT_CORE_EXECUTION_ENABLED=false` only as an explicit diagnostic or rollback override.
+Then start Agent Core again through `Agent Code Native.exe`. Normal operation defaults execution on; set `AGENT_CORE_EXECUTION_ENABLED=false` only as an explicit diagnostic or rollback override.
 
 ## Runtime observability
 
@@ -295,18 +308,18 @@ The same detailed snapshot is available through the read-only MCP tool `agent_co
 
 ## Performance gates
 
-Task 20 measured the production-ready execution path in isolated benchmark runs:
+The execution path carries explicit local benchmark gates:
 
 ```text
-128-node DAG validation p95   2.742 ms   (< 50 ms)
-ready dispatch p95           34.035 ms  (< 100 ms)
-wake delivery p95             7.323 ms  (< 250 ms)
-max observed concurrency      4 / 4
+128-node DAG validation p95   < 50 ms
+ready dispatch p95            < 100 ms
+wake delivery p95             < 250 ms
+max observed concurrency      equal to the configured bound
 ```
 
-These numbers are evidence for the validated Task 20 worktree and are not a promise that every host/storage configuration will produce identical timings.
+Measured timings describe the host they were measured on; they are not a promise that every host/storage configuration produces identical numbers. Correctness is governed by persisted state and tests, never by timing assumptions.
 
-The improvisation acceptance suite adds explicit local-only gates for the derived-intelligence layers:
+The acceptance suite adds explicit local-only gates for the derived-intelligence layers:
 
 ```text
 health metrics snapshot p95            < 50 ms
@@ -316,4 +329,4 @@ health metrics snapshot p95            < 50 ms
 100000 metric observations             < 500 ms, rolling window = 128
 ```
 
-These gates are enabled with `AGENT_CORE_PERFORMANCE_GATES=1`; they are skipped by the normal regression suite so routine tests remain stable across hosts. They must be exercised locally before declaring the improvisation integration accepted. GitHub Actions/CI is not a substitute for these local gates.
+These gates are enabled with `AGENT_CORE_PERFORMANCE_GATES=1`; they are skipped by the normal regression suite so routine tests remain stable across hosts. They must be exercised locally before an execution change is declared accepted. GitHub Actions/CI is not a substitute for these local gates.

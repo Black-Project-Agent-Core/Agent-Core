@@ -8,13 +8,14 @@ import { EXECUTION_TOOL_NAMES, registerExecutionTools } from './execution-tools.
 import { GITHUB_TOOL_NAMES, registerGitHubTools } from './github-tools.js';
 import { LANGFLOW_TOOL_NAMES, registerLangflowTools } from './langflow-tools.js';
 import { MEMORY_TOOL_NAMES, registerMemoryTools } from './memory-tools.js';
+import { MEMORY_TURN_TOOL_NAMES, registerMemoryTurnTools } from './memory-turn-tools.js';
 import { HEALTH_METRICS_TOOL_NAMES, registerHealthMetricsTools } from './health-metrics.js';
 import { OPERATOR_DIRECTIVE_TOOL_NAMES, registerOperatorDirectiveTools } from './operator-directive-tools.js';
 import { OPERATIONAL_TOOL_NAMES, registerOperationalTools } from './tools.js';
-import { SUBAGENTCORE_TOOL_NAMES, registerSubAgentCoreTools } from './subagentcore-tools.js';
 import { instrumentToolRegistrations } from '../observability/tool-instrumentation.js';
 import { persistentPrincipalId } from './project-scope.js';
 import { AGENT_CORE_VERSION } from '../version.js';
+import { WORKFLOW_TOOL_NAMES, registerWorkflowTools } from './workflow-tools.js';
 
 export const SERVER_NAME = 'agent-core';
 export const SERVER_VERSION = AGENT_CORE_VERSION;
@@ -38,12 +39,13 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
       authentication: z.string(),
       key: z.object({ id: z.string(), name: z.string() }),
       workspaceRoots: z.array(z.string()),
+      workflow: z.object({ policyVersion: z.string(), requiredCraft: z.boolean(), multiStepDag: z.boolean(), additionalInference: z.boolean(), catalogEntries: z.number(), storageReady: z.boolean(), storageErrorCode: z.string().nullable() }),
       memory: z.object({
         enabled: z.boolean(),
         healthy: z.boolean(),
         state: z.string(),
         schemaVersion: z.number(),
-        dbPath: z.string(),
+        vaultRoot: z.string(),
         counts: z.record(z.string(), z.number()),
         integrity: z.string(),
         lastIntegrityCheckAt: z.number().optional(),
@@ -61,8 +63,8 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
         enabled: z.boolean(),
         healthy: z.boolean(),
         state: z.string(),
-        schemaVersion: z.number(),
-        dbPath: z.string(),
+        stateVersion: z.number(),
+        stateRoot: z.string(),
         integrity: z.string(),
         activeRuns: z.number(),
         queuedSync: z.number(),
@@ -83,6 +85,10 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
       runtime.memory.status(memoryScope),
       runtime.execution.health(executionScope),
     ]);
+    let workflowStorageReady = false;
+    let workflowStorageErrorCode: string | null = null;
+    try { await runtime.memory.assertWorkflowReady(memoryScope); workflowStorageReady = true; }
+    catch (error) { workflowStorageErrorCode = error instanceof Error && 'code' in error ? String(error.code) : 'WORKFLOW_STORAGE_UNAVAILABLE'; }
     let continuityCounts: Record<string, number> = {
       activeTasks: 0, recentCompleted: 0, blockedTasks: 0, deferredTasks: 0,
       unfinishedPlans: 0, frontier: 0, interruptedTurns: 0,
@@ -111,6 +117,7 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
       authentication: key.authentication ?? 'bearer-api-key',
       key: { id: key.id, name: key.name },
       workspaceRoots: runtime.workspace.roots,
+      workflow: { policyVersion: 'workflow-v1', requiredCraft: true, multiStepDag: true, additionalInference: false, catalogEntries: runtime.capabilities.coverage().total, storageReady: workflowStorageReady, storageErrorCode: workflowStorageErrorCode },
       memory: { ...memoryStatus, state: runtime.memory.currentState },
       continuity: {
         enabled: memoryStatus.enabled,
@@ -163,10 +170,12 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
         ...OPERATOR_DIRECTIVE_TOOL_NAMES.map((name) => `tool.${name}`),
         ...CAPABILITY_TOOL_NAMES.map((name) => `tool.${name}`),
         ...MEMORY_TOOL_NAMES.map((name) => `tool.${name}`),
+        ...MEMORY_TURN_TOOL_NAMES.map((name) => `tool.${name}`),
         ...CONTINUITY_TOOL_NAMES.map((name) => `tool.${name}`),
         ...EXECUTION_TOOL_NAMES.map((name) => `tool.${name}`),
+        ...WORKFLOW_TOOL_NAMES.map((name) => `tool.${name}`),
+        'workflow.source_grounding', 'workflow.mandatory_craft', 'workflow.required_execution_graph',
         ...HEALTH_METRICS_TOOL_NAMES.map((name) => `tool.${name}`),
-        ...SUBAGENTCORE_TOOL_NAMES.map((name) => `tool.${name}`),
       ],
       deferred: ['git.semantic_tools', 'gui.automation', 'registry.system_admin', 'app.adapters'],
     };
@@ -180,11 +189,12 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
   registerOperationalTools(server, runtime, key);
   registerGitHubTools(server, runtime, key);
   registerLangflowTools(server, runtime, key);
-  registerSubAgentCoreTools(server, runtime, key);
   registerOperatorDirectiveTools(server, runtime, key);
   registerCapabilityTools(server, runtime, key);
   registerMemoryTools(server, runtime, key);
+  registerMemoryTurnTools(server, runtime, key);
   registerContinuityTools(server, runtime, key);
   registerExecutionTools(server, runtime, key);
+  registerWorkflowTools(server, runtime, key);
   return server;
 }

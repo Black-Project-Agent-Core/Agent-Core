@@ -1,17 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { DatabaseSync } from 'node:sqlite';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
+import { rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { FileNativeMemoryBackend } from '../src/memory/file-native/backend.js';
 import { FileKeyStore } from '../src/auth/key-store.js';
 import { loadConfig, type MemoryHardLifecycleMode } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
-import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
+import type { RuntimeServices } from '../src/runtime/services.js';
+import { createIsolatedRuntimeServices as createRuntimeServices, MEMORY_STATE, strictMemoryConfig, memoryRoot, memoryStateRecords } from './helpers/memory-fixture.js';
+
+/** How many records the vault holds in one JSON state category. */
+async function stateCount(vaultRoot: string, category: string): Promise<number> {
+  return (await memoryStateRecords(vaultRoot, category)).length;
+}
 
 const roots: string[] = [];
 const servers: Server[] = [];
@@ -23,13 +28,11 @@ async function fixture(
   mode: MemoryHardLifecycleMode = 'enforce',
   remoteRequired = false,
 ) {
-  const root = await mkdtemp(path.join(os.tmpdir(), `agent-core-hard-lifecycle-recovery-${label}-`));
+  const root = await memoryRoot(`hard-lifecycle-recovery-${label}`);
   roots.push(root);
-  const dbPath = path.join(root, 'memory.sqlite');
   const keyPath = path.join(root, 'memory-remote.key');
   if (remoteRequired) await writeFile(keyPath, Buffer.alloc(32, 0x6b), { mode: 0o600 });
-  const defaults = loadConfig({
-    AGENT_CORE_MEMORY_DB_PATH: dbPath,
+  const remoteEnv = {
     AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: mode,
     ...(remoteRequired ? {
       AGENT_CORE_MEMORY_REMOTE_ENABLED: 'true',
@@ -39,10 +42,12 @@ async function fixture(
       AGENT_CORE_MEMORY_REMOTE_KEY_FILE: keyPath,
       AGENT_CORE_MEMORY_REMOTE_WORK_ROOT: path.join(root, 'remote-work'),
     } : {}),
-  }, root);
+  };
+  const defaults = loadConfig(remoteEnv, root);
+  const memory = await strictMemoryConfig(root, remoteEnv);
   const runtime = createRuntimeServices(
     [root], path.join(root, 'capabilities'), undefined,
-    { ...defaults.memory, enabled: true, dbPath },
+    { ...memory, enabled: true },
     { ...defaults.execution, enabled: false },
     defaults.github,
   );
@@ -59,7 +64,7 @@ async function fixture(
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   servers.push(server);
   return {
-    root, dbPath, runtime, principal,
+    root, vaultRoot: memory.fileNative.vaultRoot, runtime, principal, backend: (runtime.memory as unknown as { fileNative: FileNativeMemoryBackend }).fileNative,
     scope: { principalId: principal.metadata.id, projectId: root },
     baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
   };
@@ -125,12 +130,7 @@ describe('Phase 6 hard-lifecycle reconciliation', () => {
     expect(blocked.raw.result.isError).toBe(true);
     expect(blocked.result.error.code).toBe('MEMORY_POSTFLIGHT_REQUIRED');
 
-    const db = new DatabaseSync(f.dbPath, { readOnly: true });
-    try {
-      expect(Number(db.prepare('SELECT count(*) AS count FROM memory_context_lifecycle').get()!.count)).toBe(1);
-    } finally {
-      db.close();
-    }
+    expect(await stateCount(f.vaultRoot, MEMORY_STATE.lifecycles)).toBe(1);
   });
 
   it('blocks an explicit resume of the same pending Continuity task even when the new task wording changes', async () => {
@@ -152,7 +152,7 @@ describe('Phase 6 hard-lifecycle reconciliation', () => {
     expect(blocked.result.error.code).toBe('MEMORY_POSTFLIGHT_REQUIRED');
   });
 
-  it('does not globally block unrelated work and advisory mode reports rather than enforces prior pending postflight', async () => {
+  it('blocks objective switching until prior postflight closes and preserves explicit diagnostic advisory mode', async () => {
     const enforced = await fixture('unrelated');
     const first = await route(enforced, 'Objective A');
     await enforced.runtime.memory.markLifecycleMeaningfulWork({
@@ -163,8 +163,9 @@ describe('Phase 6 hard-lifecycle reconciliation', () => {
       reasonCode: 'explicit_mutation_tool',
     });
     const unrelated = await route(enforced, 'Objective B');
-    expect(unrelated.raw.result.isError).not.toBe(true);
-    expect(unrelated.result.memoryLifecycle).toMatchObject({ mode: 'enforce', priorPending: false, postflightState: 'OPEN' });
+    expect(unrelated.raw.result.isError).toBe(true);
+    expect(unrelated.result.error.code).toBe('MEMORY_POSTFLIGHT_REQUIRED');
+    expect(unrelated.result.routeContextId).toBeUndefined();
 
     const advisory = await fixture('advisory', 'advisory');
     const advisoryFirst = await route(advisory, 'Advisory objective');
@@ -195,61 +196,44 @@ describe('Phase 6 hard-lifecycle reconciliation', () => {
       reasonCode: 'explicit_mutation_tool',
     });
 
-    const original = f.runtime.memory.syncDurableBoundary.bind(f.runtime.memory);
-    f.runtime.memory.syncDurableBoundary = (async () => {
+    const original = f.backend.syncDurableBoundary.bind(f.backend);
+    f.backend.syncDurableBoundary = (async () => {
       throw new Error('MEMORY_REMOTE_UNAVAILABLE: fixture outage');
     }) as any;
     const checkpointArgs = {
       routeContextId: first.result.routeContextId,
       status: 'completed',
       summary: 'Local postflight is factual before remote receipt.',
+      memoryDecision: { reasonCode: 'TRANSIENT_OPERATION', explanation: 'This is a verification of a transient operation without new durable knowledge.' },
       projectTerminal: true,
     };
     try {
       const failed = await call(f.baseUrl, f.principal.key, 'task_checkpoint', checkpointArgs);
       expect(failed.raw.result.isError).toBe(true);
-      expect(String(failed.result.error.message)).toContain('MEMORY_REMOTE_UNAVAILABLE');
+      expect(failed.result.error.code).toBe('MEMORY_POSTFLIGHT_REQUIRED');
       const failedLifecycle = await f.runtime.memory.getLifecycleContext(f.scope, first.result.memoryContextId);
-      expect(failedLifecycle).toMatchObject({ postflightState: 'CLOSED' });
+      expect(failedLifecycle).toMatchObject({ postflightState: 'POSTFLIGHT_PENDING' });
       expect(failedLifecycle).not.toHaveProperty('localDurableGeneration');
       expect(failedLifecycle).not.toHaveProperty('localDurableHash');
 
-      const db = new DatabaseSync(f.dbPath, { readOnly: true });
-      let decisionsBeforeRetry: number;
-      try {
-        decisionsBeforeRetry = Number(db.prepare('SELECT count(*) AS count FROM memory_write_decisions').get()!.count);
-        expect(decisionsBeforeRetry).toBe(1);
-      } finally {
-        db.close();
-      }
+      const decisionsBeforeRetry = await stateCount(f.vaultRoot, MEMORY_STATE.writeDecisions);
+      expect(decisionsBeforeRetry).toBe(1);
 
-      f.runtime.memory.syncDurableBoundary = (async (_scope: any, reason: any) => ({
-        required: true,
-        state: 'REMOTE_SYNCED',
-        reason,
-        generationId: 'a'.repeat(64),
-        remoteHead: 'b'.repeat(40),
-        logicalStateHash: 'c'.repeat(64),
-      })) as any;
+      f.backend.syncDurableBoundary = original;
       const retried = await call(f.baseUrl, f.principal.key, 'task_checkpoint', checkpointArgs);
       expect(retried.raw.result.isError).not.toBe(true);
-      expect(retried.result.reconciled).toBe(true);
+      expect(retried.result.writeDecisionIds).toHaveLength(1);
       expect(retried.result.memoryLifecycle).toMatchObject({
         postflightState: 'CLOSED', durabilityState: 'DURABLY_CLOSED',
       });
       expect(await f.runtime.memory.getLifecycleContext(f.scope, first.result.memoryContextId)).toMatchObject({
-        localDurableGeneration: 'a'.repeat(64), localDurableHash: 'c'.repeat(64),
+        localDurableGeneration: retried.result.remoteDurability.generationId, localDurableHash: retried.result.remoteDurability.logicalStateHash,
       });
 
-      const verify = new DatabaseSync(f.dbPath, { readOnly: true });
-      try {
-        expect(Number(verify.prepare('SELECT count(*) AS count FROM memory_write_decisions').get()!.count)).toBe(decisionsBeforeRetry);
-        expect(Number(verify.prepare('SELECT count(*) AS count FROM continuity_checkpoints').get()!.count)).toBe(1);
-      } finally {
-        verify.close();
-      }
+      expect(await stateCount(f.vaultRoot, MEMORY_STATE.writeDecisions)).toBe(decisionsBeforeRetry);
+      expect(await stateCount(f.vaultRoot, MEMORY_STATE.checkpoints)).toBe(1);
     } finally {
-      f.runtime.memory.syncDurableBoundary = original as any;
+      f.backend.syncDurableBoundary = original as any;
     }
   });
 });

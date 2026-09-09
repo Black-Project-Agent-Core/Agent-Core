@@ -58,7 +58,7 @@ describe('Wave G core certification contract', () => {
   });
 
   it('defines a bounded core-source and dependency policy instead of a generic repository-wide AI keyword ban', () => {
-    expect(CORE_SOURCE_PREFIXES).toEqual(expect.arrayContaining(['src/', 'scripts/', 'plugin/codespace/src/']));
+    expect(CORE_SOURCE_PREFIXES).toEqual(expect.arrayContaining(['src/', 'scripts/']));
     expect(FORBIDDEN_DEPENDENCY_PATTERNS.length).toBeGreaterThanOrEqual(8);
     expect(FORBIDDEN_SOURCE_MARKERS.length).toBeGreaterThanOrEqual(8);
     expect(REQUIRED_PACKAGE_SCRIPTS).toEqual([
@@ -94,7 +94,7 @@ describe('Wave G core certification contract', () => {
     const serialized = JSON.stringify(report);
     expect(serialized).not.toMatch(/ghp_[A-Za-z0-9]+/);
     expect(serialized).not.toContain('Bearer ');
-    expect(serialized).not.toContain('/workspaces/.agent-core-codespace/secrets/');
+    expect(serialized).not.toContain('/workspaces/.agent-core/secrets/');
   });
 
   it('exposes one canonical certify:core command with the exact fail-fast gate order', () => {
@@ -156,12 +156,9 @@ describe('Wave G core certification contract', () => {
 
   it('keeps the core certification policy data-only and independent of model SDK dependencies', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
-    const plugin = JSON.parse(readFileSync('plugin/codespace/package.json', 'utf8'));
     const names = [
       ...Object.keys(pkg.dependencies ?? {}),
       ...Object.keys(pkg.devDependencies ?? {}),
-      ...Object.keys(plugin.dependencies ?? {}),
-      ...Object.keys(plugin.devDependencies ?? {}),
     ];
     for (const name of names) {
       for (const item of FORBIDDEN_DEPENDENCY_PATTERNS as any[]) {

@@ -37,7 +37,7 @@ async function setup() {
   roots.push(root);
   const keyStore = new FileKeyStore(path.join(root, 'data'));
   const created = await keyStore.create('toolset-client');
-  const baseMemory = loadConfig({}, root).memory;
+  const baseMemory = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root).memory;
   const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, { ...baseMemory, enabled: false });
   const app = createHttpHandler({
     keyStore,
@@ -105,7 +105,7 @@ describe('Agent Core MCP V2 toolset', () => {
     }
   });
 
-  it('performs representative write, read, search, and command calls under one coherent route', async () => {
+  it('applies one workflow plan to edits and discovery and rejects commands that bypass its DAG', async () => {
     const { root, baseUrl, created } = await setup();
     const routed = await call(baseUrl, created.key, 'capability_route', {
       task: 'Create hello.txt, read it, search for needle, and then run a verification command.',
@@ -116,8 +116,16 @@ describe('Agent Core MCP V2 toolset', () => {
     const routeContextId = route.routeContextId as string;
 
     const file = path.join(root, 'hello.txt');
+    const planned = body(await call(baseUrl, created.key, 'workflow_plan', {
+      routeContextId,
+      plan: { expectedVersion: route.workflowContext.version,
+        steps: [{ id: 'text', kind: 'edit', purpose: 'Write the requested text', paths: [file] },
+          { id: 'check', kind: 'verification', purpose: 'Verify the result', paths: [], command: printCommand('mcp-command-ok\n') }],
+        checks: [{ id: 'integration', kind: 'integration', purpose: 'Verify the text through its consumer', requirementIds: [], stepIds: ['check'], artifactPaths: [path.join(root, 'check.json')] }],
+      },
+    }));
     const written = await call(baseUrl, created.key, 'write_file', {
-      path: file, content: 'hello needle', mode: 'rewrite', routeContextId,
+      path: file, content: 'hello needle', mode: 'rewrite', routeContextId, stepId: 'text', planVersion: planned.plan.revision,
     });
     expect(written.json.result.isError).not.toBe(true);
 
@@ -132,7 +140,8 @@ describe('Agent Core MCP V2 toolset', () => {
     const executed = await call(baseUrl, created.key, 'execute_command', {
       command: printCommand('mcp-command-ok\n'), cwd: root, timeoutMs: 5000, routeContextId,
     });
-    expect(executed.json.result.content[0].text).toContain('mcp-command-ok');
+    expect(executed.json.result.isError).toBe(true);
+    expect(body(executed).error.code).toBe('WORKFLOW_DAG_REQUIRED');
 
     const workspace = await call(baseUrl, created.key, 'workspace_info');
     const workspaceBody = body(workspace) as { roots: string[] };

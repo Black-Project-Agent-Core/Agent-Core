@@ -1,13 +1,19 @@
-# Stability Baseline
+# Stability Contract
 
-This document is the maintained release-facing summary of Agent Core's certified core behavior. Historical implementation checkpoints remain available in Git history, but are intentionally not carried in the current repository tree.
+This document defines the behavior and verification required for Agent Core to be considered stable. A healthy process alone does not certify a release: build, regression tests, repository integrity, and live lifecycle checks must also pass. Current verification results must state any failed gate explicitly.
 
-## Certified core
+## Current acceptance boundary
 
-The current stable baseline covers:
+The workflow/durability task completed on 10 September 2026 after a real ChatGPT Web managed DAG passed 60 behavior and 35 integration tests. Independent compilation matched 318 installed compiler files. A cooperative restart preserved the plan, run, and nine checkpoint memories; the host then recalled those memories and completed the task. Readback showed workflow version 30 `CLOSED`, a synchronized closure receipt, 39 active memories, and no pending Supabase items. The completed checkpoint was created after the restart and has not been tested through a second restart.
+
+These are scoped functional results. The prepared release uses the prerelease channel; it does not establish whole-project stable certification. Historical performance failures and the operator checkout's unresolved Git-object recovery are separate limitations. See the self-contained [verification summary](stability-verification-2026-09-09.md) for tested source identity, current-attempt evidence, production/fixture distinctions, and remaining boundaries. Packaging or later publication must supply its own source/asset/registry evidence.
+
+## Required core behavior
+
+Verification covers:
 
 - OAuth/MCP availability and custom Agent Core key authentication;
-- Deterministic Memory Fabric integrity and deterministic recall;
+- file-native memory integrity and deterministic recall;
 - Local Continuity snapshot/rehydration;
 - dependency-correct concurrent command execution;
 - persisted event-driven wake without busy polling;
@@ -15,14 +21,78 @@ The current stable baseline covers:
 - cross-route continuation;
 - restart recovery with no false success;
 - secret-safe execution-to-memory promotion;
-- Windows launcher/tray graceful shutdown and restart;
-- legacy operational-tool regression safety.
+- `Agent Code Native.exe` graceful shutdown and restart on Windows;
+- operational-tool regression safety.
 
-## Wave A trust-boundary contract
+## Memory architecture contract
 
-Wave A narrows Agent Core HTTP/OAuth and operational-audit trust boundaries without adding any external AI model, agent provider, or model API key.
+Semantic memory is file-native. The authority order is:
 
-The contract is:
+```text
+canonical Obsidian-compatible Markdown vault
+> immutable revision/history + auxiliary durable state under .agent-core
+> bundled project-local ripgrep lexical recall
+> deterministic Graphify derived graph (rebuildable, never authority)
+> direct Supabase searchable second memory
+```
+
+Canonical writes are journalled and atomically renamed. Supabase holds a scoped searchable projection through its Data API; it does not replace the local canonical vault. The optional encrypted file mirror is a separate full-vault recovery path.
+
+The client calls `capability_route` before substantive work. Before its final answer it closes through `memory_turn_finalize`, or through `task_checkpoint` when that tool has recorded the memory decision and returned a synchronized `CLOSED` lifecycle. These are alternative entry points to the same postflight contract; a closed lifecycle does not accept a new decision. The default lifecycle mode is `enforce`: workspace analysis and mutations require a valid recalled context, and pending postflight prevents another objective in the same principal/project scope from bypassing closure. Status and recovery controls remain available, including scoped existing execution logs, artifact metadata, and workflow recovery guidance. Artifact reuse checks may verify registered artifact hashes; these diagnostics do not expose file contents, start work, or delete artifacts. Explicit `advisory` and `disabled` modes are diagnostic settings and do not satisfy this stability contract.
+
+```mermaid
+flowchart TD
+  A[User brief] --> B[Resolve authenticated principal and project]
+  B --> C{Earlier postflight pending?}
+  C -->|Yes| R[Recover original finalization]
+  C -->|No| H{Vault, Graphify and Supabase healthy?}
+  H -->|No| D[Health diagnostics and component recovery]
+  D --> H
+  H -->|Yes| M[Recall local vault, graph relations and Supabase]
+  M --> E[Return context and route to the host AI]
+  E --> X[Host evaluates context and requests scoped operations]
+  X --> G{Context valid and current?}
+  G -->|No| H
+  G -->|Yes| W[Perform work and record completed operation]
+  W --> V[Verify result]
+  V --> P[Persist explicit memory decision and reason]
+  P --> S{Required synchronization verified?}
+  R --> P
+  S -->|No| R
+  S -->|Yes| F[Close memory lifecycle]
+```
+
+Recall is supplied to the host AI as structured context. Agent Core can gate its own operations; only host-side evaluation or an end-to-end decision test can establish how that AI used the returned context.
+
+The pending-closure check also runs before substantive operations on an already-open context. Opening two routes in advance does not let one bypass the other's unfinished postflight. Operations sharing the same context may continue, and work authorized before another context became pending can still record its completion. Finalization and recovery remain available to clear the pending state.
+
+`NO_DURABLE_MEMORY` is an explicit persisted decision. A new durable root requires evidence and a reason. Failed synchronization leaves `POSTFLIGHT_PENDING`; retrying the same finalization arguments resumes persistence without repeating successful work. Finalization can recover its scoped persisted authority after route expiry or runtime restart, without granting permission for new execution. The host AI still controls responses and tools outside Agent Core, so plugin installation alone cannot enforce their use.
+
+Private runtime dependencies are project-local and relocatable: ripgrep, uv, CPython, and Graphify all resolve beneath `.tools/`. Runtime startup reads the project-local `.env` with process environment taking precedence, so a controller that starts `dist/index.js` directly cannot silently resolve a different memory root.
+
+Graphify is derived-only and rebuildable from the vault. Strict preflight requires a functioning Python/Graphify runtime and a projection receipt matching canonical content. Missing or stale derived indexes are rebuilt; a failed recall returns an error. A successful empty recall is valid. Completed local work remains recorded if a component fails or the context expires afterwards.
+
+Vault readiness uses a real temporary write/fsync/remove probe. Supabase health receipts are bounded to five seconds; graph runtime checks are bounded to thirty seconds, with projection freshness checked separately. Obsidian readiness means the vault works; its desktop application does not need to be open.
+
+Direct Supabase access uses the server API key from the root `.env` and the scoped `agent_core_memory_call` RPC. Redacted memory content, revisions, and relations are searchable in PostgreSQL. This projection does not provide end-to-end content encryption. See [direct memory setup](supabase-direct-memory.md) for the API contract and the separate optional encrypted file mirror.
+
+Full-vault disaster recovery requires a configured file mirror or a vault backup. Direct remote recall can supply context to an empty local reader. Verified Supabase workflow generations also support explicit restoration of scoped workflow contracts, continuity records, memory decisions, and their referenced semantic memory revisions. Restoration verifies the generation and local staged bytes under an exclusive recovery lease, preserves a rollback copy, and reconstructs expired leases rather than granting new execution authority. This scoped restoration does not restore every auxiliary record, application setting, or historical file in the vault.
+
+## Windows lifecycle contract
+
+```text
+E:\Projects\Agent-Core\SubProject\Agent-Code\Agent Code Native.exe
+```
+
+is the sole Windows lifecycle authority: start, stop, restart, OAuth reset/re-auth, tunnel supervision, watchdog, health probing, and autostart. Task Scheduler only launches this native controller at sign-in; supervision and service lifecycle decisions remain inside the controller. `Exit Agent Core` stops only identity-validated Agent Core and tunnel processes owned by that lifecycle and preserves runtime data, logs, OAuth/key state, capabilities, and secrets.
+
+The controller uses the bundled admin-only tunnel runtime at `tunnel-client/tunnel-client.exe`. An explicit `AGENT_CORE_TUNNEL_EXE` override must name an existing `.exe` file; relative paths resolve from the project root, and invalid overrides fail startup. The controller does not discover or download a replacement tunnel runtime. If the bundle is missing, run [the tunnel build script](../scripts/tunnel/build-admin-client.ps1) and install its verified candidate at the bundled path. The build script produces a candidate without replacing the running service.
+
+The Windows GNU controller build requires the verified Microsoft `WebView2Loader.dll` beside `Agent Code Native.exe`. Keep the loader with the executable during installation or relocation; validate both file hashes before replacing the installed pair.
+
+Process coordination that must survive a crash — the OAuth cross-process lock included — uses atomic lock files with an owner token, stale-owner detection, bounded retry, and a release that verifies ownership before clearing.
+
+## HTTP/OAuth trust-boundary contract
 
 ```text
 operational audit projectId = routed/stored operation projectId
@@ -44,41 +114,18 @@ AGENT_CORE_TRUST_PROXY=true|false                   default false
 AGENT_CORE_MCP_ALLOWED_ORIGINS=<origin;origin;...>  optional browser-origin hostname allowlist
 ```
 
-`AGENT_CORE_PUBLIC_BASE_URL` is authoritative when set. Otherwise forwarded host/protocol are used only when `AGENT_CORE_TRUST_PROXY=true`; direct requests cannot manufacture a public OAuth identity merely by sending `X-Forwarded-*` headers. The known GitHub Codespaces reverse-proxy integration opts into trusted-proxy mode explicitly in its startup script; the Agent Core core default remains false.
+`AGENT_CORE_PUBLIC_BASE_URL` is authoritative when set. Otherwise forwarded host/protocol are used only when `AGENT_CORE_TRUST_PROXY=true`; direct requests cannot manufacture a public OAuth identity merely by sending `X-Forwarded-*` headers. The default remains false.
 
-Rollback is configuration-local: remove `AGENT_CORE_PUBLIC_BASE_URL` when canonical identity is not desired, keep `AGENT_CORE_TRUST_PROXY=false` for direct deployments, and use the authenticated MCP metrics tool instead of exposing detailed HTTP metrics remotely. The security fixes for cross-resource OAuth replay, browser-Origin rejection, and project audit isolation are not intended to have permissive fallback modes.
+Rollback is configuration-local: remove `AGENT_CORE_PUBLIC_BASE_URL` when canonical identity is not desired, keep `AGENT_CORE_TRUST_PROXY=false` for direct deployments, and use the authenticated MCP metrics tool instead of exposing detailed HTTP metrics remotely. The protections against cross-resource OAuth replay, browser-Origin abuse, and project audit leakage have no permissive fallback mode.
 
-### Wave A certification evidence
+## MCP dual-era contract
 
-Wave A was certified locally on 2026-08-31. Final evidence from the post-hardening source state:
-
-```text
-focused trust-boundary acceptance  7 files / 58 tests PASS
-npm run verify                     PASS
-full regression                    111 files / 527 tests PASS
-intentional platform/perf skips    38 tests
-npm run verify:release             PASS
-release metadata consistency       PASS
-document links                     PASS
-live temporary-instance canary     PASS
-package/dependency changes          none
-external AI model/API dependency   0
-```
-
-The live canary used temporary storage and a temporary loopback port with GitHub disabled; it did not consume production secrets. It proved local readiness and detailed metrics, non-browser MCP compatibility, browser-Origin rejection, and canonical OAuth issuer/resource agreement.
-
-## Wave B MCP dual-era contract
-
-Wave B migrates the Agent Core core MCP layer onto the stable split MCP SDK v2 packages while deliberately preserving the existing legacy connector path.
-
-Core dependency contract:
+Agent Core serves both the 2025-era stateless MCP path and the modern 2026-07-28 protocol from the official split SDK v2 packages.
 
 ```text
 @modelcontextprotocol/server   2.0.0
 @modelcontextprotocol/node     2.0.0
 @modelcontextprotocol/client   2.0.0 dev-only interoperability test client
-@modelcontextprotocol/sdk      absent from root core
-plugin/codespace MCP SDK       1.30.0 preserved as legacy compatibility surface
 ```
 
 Protocol serving contract:
@@ -88,68 +135,34 @@ AGENT_CORE_MCP_PROTOCOL_MODE=dual     default
 AGENT_CORE_MCP_PROTOCOL_MODE=legacy   runtime rollback
 
 dual mode:
-  legacy 2025-era stateless MCP       supported
+  2025-era stateless MCP              supported
   modern 2026-07-28 MCP               supported
   server/discover                     supported
-  modern per-request envelope         validated by official SDK v2
-  Mcp-Method / Mcp-Name               validated by official SDK v2
+  modern per-request envelope         validated by the official SDK v2
+  Mcp-Method / Mcp-Name               validated by the official SDK v2
 
 legacy mode:
-  legacy 2025-era stateless MCP       supported
-  modern 2026-07-28 negotiation       rejected / auto clients may fall back to legacy
+  2025-era stateless MCP              supported
+  modern 2026-07-28 negotiation       rejected; auto clients may fall back
 ```
 
-Agent Core intentionally retains buffered JSON responses for the certified legacy stateless path by using the official v2 `WebStandardStreamableHTTPServerTransport` with `enableJsonResponse=true`. Modern traffic remains on the official v2 `createMcpHandler` validation/serving path. Agent Core does not implement its own modern protocol parser or `server/discover` semantics.
+Agent Core keeps buffered JSON responses for the certified stateless path by using the official v2 `WebStandardStreamableHTTPServerTransport` with `enableJsonResponse=true`, and serves modern traffic through the official v2 `createMcpHandler` validation path. Agent Core does not implement its own modern protocol parser or `server/discover` semantics.
 
-Wave A remains authoritative ahead of either protocol era: untrusted browser `Origin` is rejected before authentication/dispatch, bearer authentication remains Agent Core-owned, OAuth access tokens remain protected-resource-bound, and detailed HTTP metrics remain loopback-only.
+The trust boundaries above apply ahead of either protocol era: an untrusted browser `Origin` is rejected before authentication/dispatch, bearer authentication remains Agent Core-owned, OAuth access tokens remain protected-resource-bound, and detailed HTTP metrics remain loopback-only.
 
-OAuth compatibility policy for Wave B:
+OAuth compatibility policy:
 
 ```text
 DCR                                 preserved for existing connector compatibility
-authorization-code response iss     emitted and bound to canonical Agent Core issuer (RFC 9207)
-CIMD activation                     deferred until host interoperability and safe metadata-fetch trust policy are proven
+authorization-code response iss     emitted and bound to the canonical issuer (RFC 9207)
+CIMD activation                     deferred until host interoperability and a safe
+                                    metadata-fetch trust policy are proven
 speculative auth endpoints          none
 ```
 
-### Wave B certification evidence
+## Execution and recovery contract
 
-Wave B passed isolated, merged-main, and real public-runtime gates on 2026-08-31:
-
-```text
-focused Wave B acceptance          15 files / 110 tests PASS
-npm run verify                     PASS
-full regression                   113 files / 542 tests PASS
-intentional platform/perf skips   38 tests
-legacy tool surface               55 / 55 PASS
-modern tool surface               55 / 55 PASS
-modern 2026-07-28 discover        PASS
-legacy-only rollback              PASS
-Codespace v1 compatibility        PASS
-live dist/index.js dual canary    PASS
-live dist/index.js rollback       PASS
-fresh npm ci on merged main       PASS; 0 vulnerabilities
-merged-main npm run verify        PASS
-origin/main exact equality        PASS
-real Codespace sourceCommit       2408d41 verified
-public /health                    200
-public /health/metrics            403
-public /mcp no token              401
-public untrusted Origin           403
-public official client legacy     legacy / 55 PASS
-public official client modern     modern / 2026-07-28 / 55 PASS
-public OAuth issuer/resource      PASS
-temporary public canary key       revoked PASS
-external AI model/API dependency  0
-```
-
-This certifies Wave B as the default dual-era Agent Core core behavior. The tested configuration-only rollback remains `AGENT_CORE_MCP_PROTOCOL_MODE=legacy`; Wave A trust boundaries remain non-optional in both modes.
-
-## Wave C execution & recovery contract
-
-Wave C hardens the existing deterministic execution surface without adding a second execution engine or changing the 55-tool MCP surface.
-
-Execution containment contract:
+Execution containment:
 
 ```text
 command policy decision          structured/deterministic; raw command omitted from decision
@@ -158,11 +171,11 @@ blocked nested interpreters      rejected before persistence/dispatch
 process-tree termination         Windows taskkill /T; POSIX process group
 wall-clock cap                   enforced
 combined stdout/stderr cap       enforced; default 64 MiB, hard config ceiling 1 GiB
-CPU-time hard cap                unsupported in current pure-Node adapter
-memory hard cap                  unsupported in current pure-Node adapter
+CPU-time hard cap                unsupported in the current pure-Node adapter
+memory hard cap                  unsupported in the current pure-Node adapter
 ```
 
-The output budget is configured with `AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES`. Exceeding it terminates the owned process tree and produces a factual failed result with `EXECUTION_OUTPUT_LIMIT_EXCEEDED`; Agent Core does not classify a quota-truncated attempt as success.
+The output budget is configured with `AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES`. Exceeding it terminates the owned process tree and produces a factual failed result with `EXECUTION_OUTPUT_LIMIT_EXCEEDED`; a quota-truncated attempt is never classified as success. CPU-time and memory hard caps are reported as unsupported rather than simulated.
 
 Execution recovery is an operator-only stopped-runtime workflow:
 
@@ -173,63 +186,28 @@ agent-core execution-retention-plan [older-than-days]
 agent-core execution-retention-apply <plan-path> <bundle-path>
 ```
 
-`ExecutionService` owns an exclusive runtime lease beside the execution DB. Backup, restore, and retention apply acquire that same lease, so destructive maintenance fails closed while a live runtime owns the database.
+`ExecutionService` holds an exclusive owner-token runtime lease beside the execution state root. Backup, restore, and retention apply acquire that same lease, so destructive maintenance fails closed while a live runtime owns the state.
 
-A recovery bundle contains a worker-generated/checkpointed SQLite backup plus the complete execution evidence tree. The manifest records source/schema versions, SHA-256 and byte size for the DB and every evidence file, SQLite integrity, creation time, and reason. Restore verifies the whole bundle before mutation, keeps a pre-restore DB/WAL/SHM/evidence rollback snapshot, stages replacements, and automatically restores prior live state if a replacement step fails.
+A recovery bundle contains the complete execution state tree plus the complete evidence tree. Its manifest records source/state-format versions, the logical state root hash, SHA-256 and byte size for every file, creation time, and reason. Restore verifies the whole bundle before mutation, keeps a pre-restore rollback snapshot, stages replacements, and automatically restores prior live state if a replacement step fails.
 
-Raw-log retention is explicit and backup-gated. Planning is dry-run only and produces an immutable SHA-256 plan. Apply requires a verified bundle created no earlier than that plan, revalidates the exact candidates, never expands the deletion set, preserves `.result.json` terminal evidence, and writes one JSONL audit decision for every candidate. No MCP restore or physical-purge tool is added.
+Raw-log retention is explicit and backup-gated. Planning is dry-run only and produces an immutable SHA-256 plan. Apply requires a verified bundle created no earlier than that plan, revalidates the exact candidates, never expands the deletion set, preserves `.result.json` terminal evidence, and writes one JSONL audit decision per candidate. No MCP restore or physical-purge tool exists.
 
 The detailed operator procedure is maintained in `docs/deterministic-execution-fabric.md`.
 
-The pre-integration Wave C gate on 2026-08-31 produced:
+## Audit and observability contract
+
+Correlation:
 
 ```text
-focused Wave C acceptance          17 files / 113 tests PASS
-full regression                    118 files / 572 tests PASS
-intentional skips                  38 tests
-npm run verify:release             PASS
-live temporary lifecycle canary    PASS
-orphan descendant after cancel     0
-output quota canary                4096 / 4096 bytes then failed as required
-backup/restore lifecycle           PASS
-retention dry-run/action parity    4 / 4 deleted; 0 skipped
-package/dependency changes         none
-external AI model/API dependency  0
-```
-
-Post-integration public runtime was then restarted on the integrated source and verified:
-
-```text
-merged-main npm ci + verify:release   PASS
-origin/main equality                  PASS at 4d9ee20 integration source
-Codespace execution health           healthy / integrity ok / schema 4
-public health / remote metrics        200 / 403
-public MCP no-token / evil Origin     401 / 403
-public legacy MCP                     2025-11-25 / 55 tools PASS
-public modern MCP                     2026-07-28 / 55 tools PASS
-live execution lease                  PID owner match PASS
-live execution-backup while active    rejected PASS
-temporary public canary key           revoked PASS
-```
-
-This certifies the Wave C code boundary. A final docs-only certification commit is source-synchronized after publication so runtime metadata remains equal to final `origin/main`.
-
-## Wave D audit & observability contract
-
-Wave D adds a local-first observability fabric without changing the 55-tool MCP surface or making telemetry a runtime dependency.
-
-Correlation contract:
-
-```text
-HTTP request                      unique requestId + W3C-compatible trace/span context
-MCP tool                          nested tool correlation, same request trace
-capability route                  routeContextId linked to active request trace
+HTTP request                     unique requestId + W3C-compatible trace/span context
+MCP tool                         nested tool correlation, same request trace
+capability route                 routeContextId linked to the active request trace
 execution_create                 durable creator correlation in run metadata
 execution_start / attempt        factual start-request correlation
 execution event/result marker    trace + request + route + tool + run/node/attempt lineage
 ```
 
-Audit contract:
+Audit:
 
 ```text
 request/routing audit write path     bounded enqueue; no synchronous appendFileSync
@@ -243,354 +221,62 @@ tamper claim                         tamper-evident, not tamper-proof against fu
 raw credentials/raw execution logs   excluded
 ```
 
-Detailed observability metrics remain local-authoritative and low-cardinality. `/health/metrics` keeps the Wave A loopback-only HTTP policy; the authenticated `agent_core_health_metrics` MCP tool remains the remote diagnostic path. Audit health exposes counts, queue state, rotation count, and only a 16-character head-hash prefix.
+Detailed observability metrics stay local-authoritative and low-cardinality. `/health/metrics` keeps the loopback-only HTTP policy; the authenticated `agent_core_health_metrics` MCP tool is the remote diagnostic path. Audit health exposes counts, queue state, rotation count, and only a 16-character head-hash prefix.
 
-Optional OTLP export is disabled unless `AGENT_CORE_OTLP_ENDPOINT` is set. The endpoint must be credential-free `http:`/`https:` on `localhost`, `127/8`, or `::1`; query/fragment/userinfo and any remote hostname are rejected. No telemetry API-key/header configuration exists. Only traces and metrics are exported using OTLP/HTTP JSON; local audit remains authoritative.
+Optional OTLP export is disabled unless `AGENT_CORE_OTLP_ENDPOINT` is set. The endpoint must be credential-free `http:`/`https:` on `localhost`, `127/8`, or `::1`; query/fragment/userinfo and any remote hostname are rejected. No telemetry API-key/header configuration exists. Only traces and metrics are exported over OTLP/HTTP JSON; the local audit chain remains authoritative.
 
-Collector availability is non-authoritative: timeout/refusal increments local telemetry failure metrics and keeps a bounded retry queue, but does not downgrade Agent Core `overallHealth` or change HTTP/MCP/tool/execution results.
+Collector availability is non-authoritative: a timeout or refusal increments local telemetry failure metrics and keeps a bounded retry queue, but never downgrades `overallHealth` or changes HTTP/MCP/tool/execution results.
 
-Pre-integration certification evidence on 2026-08-31:
+## Resource governance contract
 
-```text
-focused adversarial acceptance       23 files / 159 tests PASS
-full npm run verify:release           123 files / 605 tests PASS
-intentional skips                     38 tests
-live correlated execution lineage     PASS
-live audit chain                      19 records / 18 rotated segments / verify PASS
-live copied-audit tamper              rejected PASS
-raw command sentinel in audit         0
-local OTLP trace/metric export         PASS
-collector removed                     HTTP 200 / overall healthy / export isolated
-package/dependency changes            none
-external AI model/API dependency      0
-pre-integration public baseline       Wave A gates + legacy/modern 55 tools PASS
-```
+Resource pressure is a local deterministic control-plane input. It can reduce only the number of **new** execution nodes dispatched. It never changes process/result truth, terminates already-running work, raises concurrency above the run/operator maximum, or invokes an external model or API.
 
-Post-integration Wave D certification on the real Codespace runtime:
+`LocalMaintenanceCoordinator` has no import or invocation path for retention apply, recovery restore, credential revocation/rotation, or filesystem deletion. Its scheduled work is limited to memory/execution integrity-status reads and dry-run retention planning, and it is disabled by default. The execution runtime lease is unaffected by it.
+
+## Quality gate contract
+
+Routing and recall quality are certified offline before any routing or recall heuristic may be tuned. The repository owns both corpora and the evaluator, and `quality:gate` runs inside `verify:release`. Evaluation uses only local deterministic code against temporary file-native roots — no embedding API, cloud reranker, or AI judge participates.
+
+Routing metrics gated:
 
 ```text
-merged-main npm ci + verify:release      PASS
-full regression                          123 files / 605 tests PASS; 38 intentional skips
-origin/main publication/readback         PASS at cc8f571
-connection.sourceCommit equality         PASS at cc8f571
-public health / remote metrics           200 / 403
-public MCP no-token / evil Origin        401 / 403
-public correlated MCP response           request ID + traceparent PASS
-legacy MCP                               2025-11-25 / 55 tools PASS
-modern MCP                               2026-07-28 / 55 tools PASS
-live audit verify                        31 records / PASS
-live audit dropped / write errors        0 / 0
-real telemetry configuration             disabled; no collector required
-overall health with collector absent     healthy
-temporary public canary key              revoked PASS
+tier accuracy
+false high-impact rate
+unsafe route overpermission
+false read-only classification
+relevant skill precision@2
+unnecessary skill-load rate
+verification correctness
+routing deterministic replay
 ```
 
-This certifies the Wave D runtime-code boundary. The final docs-only certification SHA is source-synchronized after publication so `HEAD`, `origin/main`, and Codespace `sourceCommit` remain identical.
-
-## Wave E routing & memory quality contract
-
-Wave E adds offline, deterministic quality certification before routing or recall heuristics may be tuned. The repo owns both corpora and the evaluator; `quality:gate` now runs inside `verify:release`. Evaluation uses only local deterministic code and temporary local SQLite databases.
-
-Pre-tuning → final routing metrics:
+Memory metrics gated:
 
 ```text
-tier accuracy                     0.9250 -> 0.9750
-false high-impact rate            0.0571 -> 0
-unsafe route overpermission       0.2250 -> 0
-false read-only classification    0.4737 -> 0
-relevant skill precision@2        0.5278 -> 1.0000
-unnecessary skill-load rate       0.0833 -> 0
-verification correctness          1.0000 -> 1.0000
-routing deterministic replay      1.0000 -> 1.0000
+Recall@K
+MRR
+hard-guardrail recall
+current-revision correctness
+prior-failure recall
+graph-target recall
+conflict visibility
+artifact/procedure recall
+noise displacement rate
+cross-project contamination
+cross-principal contamination
+character-budget correctness
+memory deterministic replay
 ```
 
-Pre-tuning → final memory metrics:
-
-```text
-Recall@K                          1.0000 -> 1.0000
-MRR                               0.9375 -> 1.0000
-hard-guardrail recall             1.0000 -> 1.0000
-current-revision correctness      1.0000 -> 1.0000
-prior-failure recall              1.0000 -> 1.0000
-graph-target recall               1.0000 -> 1.0000
-conflict visibility               1.0000 -> 1.0000
-artifact/procedure recall         1.0000 -> 1.0000
-noise displacement rate           0.2500 -> 0
-cross-project contamination       0 -> 0
-cross-principal contamination     0 -> 0
-character-budget correctness      1.0000 -> 1.0000
-memory deterministic replay       1.0000 -> 1.0000
-```
-
-Evidence-backed production changes were intentionally narrow: token-boundary/semantic capability scoring, least-privilege read-only route permissions, weak route-recommendation filtering with compatibility corrections, and pinned-decision ordering against low-importance chatter. Memory score weights were not changed.
-
-Wave E pre-integration certification evidence on 2026-08-31:
-
-```text
-focused adversarial acceptance       20 files / 118 tests PASS
-100k memory preflight                 p95 85.299 ms / target <150 ms PASS
-SQLite integrity                      ok
-full npm run verify:release           PASS
-full regression                       130 files / 627 tests PASS
-intentional skips                     38 tests
-quality:gate                          PASS
-routing corpus                        40 cases
-memory corpus                         12 cases
-package dependency changes            none
-external AI model/API dependency      0
-temporary local trust-boundary canary PASS
-legacy MCP                            2025-11-25 / 55 tools PASS
-modern MCP                            2026-07-28 / 55 tools PASS
-remote metrics classification         403 through trusted proxy
-no-token / evil Origin                401 / 403
-```
-
-This evidence certifies the Wave E feature branch before integration. Production certification is recorded only after fast-forward integration, merged-main verification, publication readback, controlled runtime source-sync, and public canary equality.
-
-
-Post-integration Wave E certification on the real Codespace runtime:
-
-```text
-source commit / origin main                c547c937e66c3e51b5b5cbf4d7f4723f6752ee53
-connection.sourceCommit                    c547c937e66c3e51b5b5cbf4d7f4723f6752ee53
-source equality                            PASS
-merged-main npm ci + verify:release        PASS
-full regression                            130 files / 627 tests PASS; 38 intentional skips
-quality:gate                               PASS
-routing tier accuracy                      0.975
-false high-impact / overpermission          0 / 0
-false read-only / unnecessary skill load   0 / 0
-relevant skill precision@2                 1.000
-memory Recall@K / MRR                      1.000 / 1.000
-noise displacement                         0
-project/principal contamination            0 / 0
-100k memory preflight p95                  85.299 ms (<150 ms PASS)
-public health / remote metrics             200 / 403
-public MCP no-token / evil Origin          401 / 403
-legacy MCP                                 2025-11-25 / 55 tools PASS
-modern MCP                                 2026-07-28 / 55 tools PASS
-request correlation headers                PASS
-live audit chain                           116 records / verify PASS
-temporary public canary key                revoked PASS
-package/dependency changes                 none
-memory score-weight changes                none
-external AI model/API dependency           0
-```
-
-One full-suite run exposed a timing-only test flake in the Wave D audit-journal test. The production journal was unchanged; `c547c93` replaced a fixed 10 ms sleep with deterministic append-start synchronization. The focused test then passed and was repeated 10/10 before the fresh merged-main release gate above passed.
-
-
-## Wave F adaptive resource governance production technical certification
-
-Wave F remains a local deterministic control-plane feature. Resource pressure can reduce only the number of **new** execution nodes dispatched; it never changes process/result truth, terminates already-running work, raises concurrency above the run/operator maximum, or invokes an external AI/model/API.
-
-Feature certification at `0a242b8424081248fb94e28cf7e289fd37aca55c`:
-
-```text
-adversarial resource policy matrix         15 tests PASS
-scheduler governance acceptance/stress     3 tests PASS
-20-node pressure stress max concurrency     4 / 4
-pressure-triggered terminate calls          0
-unknown resource facts                      no throttle / hard max preserved
-throttle/recovery reason events             PASS
-scheduled maintenance default               disabled
-scheduled destructive call paths            0
-execution runtime lease changes              none
-DAG validation p95                           1.473 ms / <50 ms PASS
-ready dispatch p95                           32.894 ms / <100 ms PASS
-persisted wake p95                           7.467 ms / <250 ms PASS
-full npm run verify:release                  PASS
-full regression                              136 files / 663 tests PASS
-intentional skips                            38
-Wave E quality:gate                          PASS
-package/dependency changes                   none
-external AI model/API dependency             0
-feature trust-boundary canary                PASS
-health / remote metrics                      200 / 403
-no-token / evil Origin                       401 / 403
-legacy / modern MCP                          2025-11-25/55 / 2026-07-28/55 PASS
-```
-
-`LocalMaintenanceCoordinator` has no import/invocation path for retention apply, recovery restore, credential revocation/rotation, or filesystem deletion. Its scheduled work is limited to memory/execution integrity-status reads and `planExecutionRetention` dry-run planning. The existing execution runtime lease is unchanged.
-
-The feature evidence above was subsequently integrated with two concurrent Super-Runtime main histories without conflict. Technical production source `3f27cedbf35826cd45ad172ebd250e68f335437d` passed fresh `verify:release`, was published to `main` non-force, source-synced into the Codespace runtime, and passed production health/audit/public/MCP certification. Certification docs `042d8bc1a8969c8378042d02738e3cb57e92afc6` then passed fresh `verify:release`, were published to both `main` and the Wave F audit branch, and were source-synced with exact `HEAD == origin/main == connection.sourceCommit` equality. Wave F is therefore certified complete; final local-worktree deletion is housekeeping only and does not alter production behavior.
-
-
-Production technical runtime evidence:
-
-```text
-technical production source             3f27cedbf35826cd45ad172ebd250e68f335437d
-HEAD == origin/main == sourceCommit     PASS
-health / memory / execution             ok / ok / ok
-public health / remote metrics          200 / 403
-MCP no-token / evil Origin              401 / 403
-correlation headers                     PASS
-resource governance                     enabled; safe 4 / operator max 4
-maintenance                             disabled by default; 0 runs; 0 candidates
-legacy MCP                              2025-11-25 / 55 tools PASS
-modern MCP                              2026-07-28 / 55 tools PASS
-live audit                              216 records / verify PASS
-temporary canary key                    revoked PASS
-unrelated .vscode editor state          preserved
-```
-
-One temporary-key public canary produced a non-reproducing 401 only on its modern request. The key was immediately revoked and verified revoked. Modern discovery/tools then returned 200 both loopback and public using the established runtime connector key, and the final comprehensive public canary passed both protocol eras. No source change was made from that isolated observation.
-
-## Wave G core re-certification and v0.6.0 production evidence
-
-Wave G adds no new reasoning/runtime subsystem. It closes the release-process gap by making the complete 18-area architecture matrix a repository-owned contract and by providing canonical local certification authority through `npm run certify:core:prepublish` and postpublication `npm run certify:core`. GitHub Actions/CI remains outside Agent Core release authority.
-
-The immutable stable release source is `5c19c0535042174a0f9d9a8ff7dd5eeb5c23b087`. The release identity and distribution evidence are:
-
-```text
-Agent Core version                         0.6.0
-stable tag                                 v0.6.0
-stable tag commit                          5c19c0535042174a0f9d9a8ff7dd5eeb5c23b087
-GitHub Release                             published stable / non-draft / non-prerelease
-required release assets                    7 / 7
-local vs GitHub Release byte parity        7 / 7 PASS
-GitHub Package                             @black-project-agent-core/agent-core-plugin@0.6.0
-package TGZ SHA-256                        6a289bc15e0c4d4d75459ec7aee72749f3b213190c218be6a1feb549f767bf89
-package TGZ SHA-1                          1c94478a9c2f29a61e11ab8f8c27de76acfec857
-registry vs release TGZ parity             SHA-256 + SHA-1 exact PASS
-Presentation Bridge source bundle version  0.2.0
-```
-
-Exact remote release assets were downloaded and compared against artifacts rebuilt locally from `5c19c053`; all seven files matched byte-for-byte, and the downloaded `SHA256SUMS.txt` independently verified every checksummed payload. The published registry TGZ was then downloaded through authenticated npm registry access and matched the GitHub Release TGZ exactly (SHA-256 `6a289bc15e0c4d4d75459ec7aee72749f3b213190c218be6a1feb549f767bf89`, SHA-1 `1c94478a9c2f29a61e11ab8f8c27de76acfec857`).
-
-Postpublish core certification at the immutable stable release source:
-
-```text
-core matrix                                 18 / 18 PASS
-normal regression                           137 files / 668 tests PASS
-intentional skips                           38
-Wave E quality gate                         PASS
-routing tier accuracy                       0.975
-memory Recall@K / MRR                       1.000 / 1.000
-100k memory preflight p95                   80.036 ms / <150 ms PASS
-DAG validation p95                          1.688 ms / <50 ms PASS
-ready dispatch p95                          23.949 ms / <100 ms PASS
-persisted wake p95                          8.756 ms / <250 ms PASS
-max observed / configured concurrency       4 / 4 PASS
-stable release parity                       v0.6.0 / 7 assets PASS
-external AI/model dependency violations     0
-external model endpoint/key marker hits     0
-```
-
-One postpublication certification attempt encountered a transient host-load excursion at `185.539 ms` for the 100k memory p95 and correctly failed the `<150 ms` gate. No threshold or runtime source was changed to force a pass. Three immediate 5-sample reruns measured `65.423 / 74.259 / 78.252 ms`, a 25-sample run measured p95 `74.411 ms` (max `77.041 ms`), and the next complete postpublish `certify:core` run passed at `80.036 ms`. The failed excursion remains part of the certification record rather than being hidden.
-
-Final supplemental live GitHub Fabric acceptance passed all four read-only probes using the existing separate repository and Packages credentials without printing either value: identity `GET /user` 200, private repository metadata 200, Git `ls-remote` PASS, and npm package-list 200. The earlier 3/4 probe used the generic Codespaces integration token and correctly exposed its package-scope limitation; final certification used the already-provisioned Packages credential rather than converting that earlier 403 into a false PASS.
-
-After the stable tag was created, concurrent Super-Runtime work advanced `main` first through the native-substrate commit `95326bac134cd721cf7e23526725babed9e0bc5c` and then the memory-ledger commit `9565e889e6588c6156ac9122aafae4b93c4bc8af`. Wave G preserved both histories and reconciled them with the certification docs in merge candidate `e15ec90e0ca2cfd0a4f1077040a0107030d77baf`; the immutable `v0.6.0` tag remains at `5c19c053`. The final merge candidate was separately required to pass the complete postpublish architecture gate before publication.
-
-Final merge-candidate certification at `e15ec90e0ca2cfd0a4f1077040a0107030d77baf`:
-
-```text
-npm ci + npm run certify:core               PASS / 18 of 18
-version                                     0.6.0
-normal regression                           137 files / 668 tests PASS / 38 skips
-100k memory preflight p95                   64.095 ms / <150 ms PASS
-DAG validation p95                          1.277 ms / <50 ms PASS
-ready dispatch p95                          23.691 ms / <100 ms PASS
-persisted wake p95                          5.911 ms / <250 ms PASS
-max observed / configured concurrency       4 / 4 PASS
-stable release parity                       v0.6.0 PASS
-external model dependency/source violations 0 / 0
-```
-
-Controlled runtime source-sync used only the fail-closed `sync-source.sh` fast-forward path and preserved unrelated untracked `.vscode/`. The final v0.6.0 production runtime canary on the same latest-main SHA produced:
-
-```text
-HEAD == origin/main == connection.sourceCommit  PASS at e15ec90e0ca2cfd0a4f1077040a0107030d77baf
-connection sourceVersion                       0.6.0
-public health / remote metrics / local metrics 200 / 403 / 200
-MCP no-token / evil Origin                     401 / 403
-correlation headers                            PASS
-memory health / integrity                      healthy / ok
-execution health / integrity                   healthy / ok
-resource governance                            enabled; safe 4 / configured max 4
-maintenance                                    disabled; 0 runs; 0 retention candidates
-legacy MCP                                     2025-11-25 / 55 tools PASS
-modern MCP                                     2026-07-28 / 55 tools PASS
-live audit                                     455 records / verify PASS
-temporary public canary key                    not created
-```
-
-A timed-out lifecycle wrapper temporarily left bootstrap/restart flags in the tool environment earlier in Wave G. Prerequisite inspection showed the repository and dependency tree were healthy; the flags were removed only from the repair invocation, after which connection metadata and runtime health proved the synchronized source. No source/history reset, force push, Mac runtime, or semantic bypass was used.
-
-The documentation/evidence SHA `e3dd69b03a17b8449bad60a5e32a4cae01893ffb` subsequently passed fresh postpublish `npm run certify:core`, was published/source-synced with exact runtime equality, and passed the same public/MCP canary with live audit verification at 455 records. The local Wave G worktree and branch were then removed after ancestor checks while the remote audit branch was retained. This closeout commit records the completed housekeeping; it is permitted to publish only after it independently passes the unchanged `certify:core` gate.
-
-Closeout certification on `e3dd69b...` produced:
-
-```text
-18-area core matrix                          PASS
-full normal test files                      137 PASS / 2 skipped files
-intentional skipped tests                   38
-100k memory p95                             67.336 ms / <150 ms PASS
-DAG / dispatch / wake p95                   1.269 / 23.692 / 6.758 ms PASS
-max observed / configured concurrency       4 / 4 PASS
-stable release parity                       v0.6.0 / 7 assets PASS
-external AI/model dependency/source hits    0 / 0
-HEAD == origin/main == connection source    e3dd69b... PASS
-final public trust boundary                 200 / 403 / 200 / 401 / 403 PASS
-legacy / modern MCP                         2025-11-25/55 / 2026-07-28/55 PASS
-live audit                                  455 records / verify PASS
-```
-
-## Last core certification
-
-The final continuity/execution core certification was completed on 2026-08-26 after the execution WAL durability fix and staged default-enabled rollout.
-
-### Regression gate
-
-```text
-npm ci          PASS
-npm run build   PASS
-npm test        PASS
-```
-
-Certified regression totals:
-
-- test files: 68 / 68 passed;
-- normal tests: 267 passed;
-- benchmark-only timing tests: 4, executed separately under performance-gate mode;
-- explicit performance-gate tests: 6 / 6 passed.
-
-### Execution performance gate
-
-Certified isolated measurements:
-
-```text
-DAG validation @ 128 nodes p95   1.916 ms   target < 50 ms
-ready dispatch p95               23.586 ms  target < 100 ms
-persisted wake delivery p95      29.667 ms  target < 250 ms
-max observed concurrency          4 / 4
-max event queries per wait        2
-```
-
-The measurements describe the validated environment; correctness is governed by persisted state and tests rather than timing assumptions.
-
-### Memory scale gate
-
-The 100k-item Deterministic Memory Fabric benchmark passed with SQLite integrity `ok` and end-to-end preflight/recall p95 of 67.137 ms against the certified `<150 ms` target.
-
-### Acceptance and recovery
-
-Final acceptance coverage proved:
-
-- dependency-correct parallel scheduling;
-- a dependent node can begin after its actual dependency succeeds while an unrelated slow node keeps running;
-- fresh same-principal routes can continue owned active execution;
-- restart recovery treats a valid terminal result marker as authority;
-- missing terminal evidence becomes `interrupted`, never inferred success;
-- raw stdout/stderr is not promoted wholesale into DMF;
-- synthetic secret evidence does not appear as plaintext in DMF search/export/database paths.
-
-### WAL / graceful exit proof
-
-Execution SQLite automatic WAL checkpointing was replaced with explicit durable boundaries at graph/dynamic-graph/terminal-run transitions. After a real live execution workload, the corrected runtime demonstrated a clean old-process exit during controlled restart and a healthy replacement service.
+A scale gate additionally measures end-to-end preflight/recall p95 against a `< 150 ms` target, and the execution gates measure DAG validation, ready dispatch, and persisted wake delivery against their own targets. A measured excursion is recorded, never hidden and never fixed by moving a threshold.
 
 ## Release gate
+
+### Prerelease channel
+
+A prerelease can distribute verified functional changes while stable certification remains incomplete, provided its release notes state the outstanding gates. It must use GitHub's prerelease flag, the `next` package dist-tag, matching version/source metadata, and verified artifact checksums. It must not advance the stable release or stable package channel. Private runtime state, credentials, local memory, caches, and operational reports remain excluded in either channel. The full project source archive includes active SubProject source; this does not certify every independent native component or bundle all of its upstream references.
+
+### Stable channel
 
 Stable certification is performed locally by the Agent Core execution authority. Every stable release must pass the local gates below before publication. Once those local gates pass and the build is declared stable, that evidence is authoritative and must not be repeated through GitHub Actions or any other CI runner. GitHub Actions is disabled for this repository and is not an allowed verification or publication path.
 
@@ -603,13 +289,20 @@ The local release gates are:
 | Regression | full test suite passes |
 | Brand | tracked-source brand scan passes |
 | Release metadata | package/server/changelog versions consistent; README remains version-neutral |
+| Documentation links | every relative link in tracked Markdown resolves |
 | Security packaging | no secrets/runtime/capability caches in release staging |
 | Plugin package | tracked-core plugin bundle builds successfully |
 | Artifact integrity | SHA-256 checksums generated for published assets |
 | GitHub Release | release is published only after verification succeeds |
 | GitHub Package | plugin package publishes successfully under the stable channel |
 
-If any local gate fails, local publication stops. After the local gates pass, publication proceeds directly from the verified local artifacts through Native GitHub Fabric and GitHub Packages. CI must not rerun those gates or block the release.
+If any stable gate fails, stable publication stops. After those gates pass, publication proceeds directly from the verified local artifacts through authenticated GitHub release tooling and GitHub Packages. CI must not rerun those gates or block the release. A separately labeled prerelease follows the narrower channel contract above and cannot claim the stable gates passed.
+
+Certification checks the source commit and clean tracked state before and after each gate. Untracked source, scripts, tests, or other declared verification inputs must be reviewed and tracked first. A successful command cannot certify edits made during verification under an unchanged HEAD.
+
+Release packages use tracked regular files and fresh compiler output in an isolated staging directory. The builder rejects redirected source paths, undeclared compiler inputs, and changes to the captured source bytes or tracked file set. It does not traverse the live output directory to collect generated assets. Private runtime state and local evidence reports are excluded.
+
+Published parity requires the current HEAD, local tag, remote tag, and manifest source commit to agree. Downloaded assets must match their checksums and a fresh local build of that source. The registry's `stable` package version and integrity must match the verified release tarball. Matching asset names alone does not satisfy this gate.
 
 ## Evidence policy
 
@@ -619,7 +312,7 @@ Agent Core distinguishes semantic conclusions from operational evidence:
 raw stdout/stderr       -> local execution evidence only
 execution events        -> execution journal
 verified artifact/hash  -> structured evidence
-accepted decision       -> DMF / continuity checkpoint
+accepted decision       -> memory / continuity checkpoint
 semantic task completed -> explicit task checkpoint only
 ```
 

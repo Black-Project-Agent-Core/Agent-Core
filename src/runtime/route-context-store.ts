@@ -54,6 +54,7 @@ export interface RouteOperatorDirectiveSnapshot {
 }
 
 export interface RouteCreateOptions {
+  workflow?: { taskId: string; version: number; craftRequired: boolean; dagRequired: boolean };
   reservation?: RouteReservation;
   projectId?: string;
   memorySnapshot?: RouteMemorySnapshot;
@@ -64,6 +65,7 @@ export interface RouteCreateOptions {
 }
 
 export interface RouteContext extends RoutePlan {
+  workflow?: { taskId: string; version: number; craftRequired: boolean; dagRequired: boolean };
   routeContextId: string;
   principalId: string;
   projectId?: string;
@@ -129,6 +131,7 @@ export class RouteContextStore {
       ...structuredClone(plan),
       routeContextId: reservation.routeContextId,
       principalId,
+      ...(options.workflow ? { workflow: structuredClone(options.workflow) } : {}),
       ...(options.projectId ? { projectId: options.projectId } : {}),
       loadedSkillIds: [],
       createdAt: reservation.createdAt,

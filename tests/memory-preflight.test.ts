@@ -1,23 +1,21 @@
-import { mkdtempSync } from 'node:fs';
-import os from 'node:os';
+import { rm } from 'node:fs/promises';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { loadConfig } from '../src/config.js';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createRuntimeServices } from '../src/runtime/services.js';
+import { databaseFilesUnder, memoryConfig, memoryRoot } from './helpers/memory-fixture.js';
 
-function tempDb(): string {
-  const base = process.env.TEMP || process.env.TMP || os.tmpdir();
-  return path.join(mkdtempSync(path.join(base, 'agent-core-preflight-')), 'memory.sqlite');
-}
+const roots: string[] = [];
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 })));
+});
 
 describe('route-time deterministic memory preflight service', () => {
   it('constructs one runtime memory facade and persists evidence, hard guardrails, conflicts, failures, decisions, and snapshot identity', async () => {
-    const root = path.resolve(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-preflight-root');
-    const config = loadConfig({}, root).memory;
+    const root = await memoryRoot('preflight');
+    roots.push(root);
     const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
-      ...config,
+      ...await memoryConfig(root),
       enabled: true,
-      dbPath: tempDb(),
     });
 
     expect(runtime.memory).toBe(runtime.memory);
@@ -105,16 +103,19 @@ describe('route-time deterministic memory preflight service', () => {
     expect(second.recalled.map((item) => item.memoryId)).toEqual(first.recalled.map((item) => item.memoryId));
     expect(second.snapshotHash).toBe(first.snapshotHash);
 
+    // Commits, conflicts, preflight contexts and snapshots all landed as files: no database artifact anywhere.
+    expect(await databaseFilesUnder(root)).toEqual([]);
+
     await runtime.execution.close();
     await runtime.memory.close();
     await runtime.memory.close();
   });
 
   it('keeps the default disabled memory facade inert and explicit instead of fabricating recall', async () => {
-    const root = path.resolve(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-preflight-disabled');
-    const baseMemory = loadConfig({}, root).memory;
+    const root = await memoryRoot('preflight-disabled');
+    roots.push(root);
     const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
-      ...baseMemory,
+      ...await memoryConfig(root),
       enabled: false,
     });
     const status = await runtime.memory.status();

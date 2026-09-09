@@ -1,4 +1,4 @@
-import type { MemoryAnchorType } from './anchors.js';
+﻿import type { MemoryAnchorType } from './anchors.js';
 
 export const MEMORY_KINDS = [
   'fact',
@@ -102,6 +102,7 @@ export const MEMORY_HYDRATION_STATES = [
 ] as const;
 
 export const MEMORY_DURABILITY_BOUNDARY_REASONS = [
+  'turn_finalize',
   'continuity_checkpoint',
   'continuity_terminal',
   'execution_failure',
@@ -212,6 +213,7 @@ export interface MemoryCommitRequest {
 }
 
 export interface MemoryCommitResult {
+  supabaseSync?: MemoryDirectSyncReceipt;
   memoryId: MemoryId;
   revisionId: MemoryRevisionId;
   eventId: MemoryEventId;
@@ -361,6 +363,7 @@ export interface MemoryPostflightEvaluation extends MemoryPostflightDecisionBase
 }
 
 export interface MemoryPostflightApplyResult extends MemoryPostflightDecisionBase {
+  supabaseSync?: MemoryDirectSyncReceipt;
   advisory: false;
   applied: boolean;
   semanticMutation: boolean;
@@ -387,6 +390,7 @@ export interface MemoryRememberMoreRequest {
   scope: MemoryScope;
   contextId: MemoryContextId;
   seedMemoryIds: MemoryId[];
+  query?: string;
   reason: MemoryRememberMoreReason;
   maxHops?: number;
   maxItems?: number;
@@ -443,6 +447,7 @@ export interface MemoryScoreExplanation {
 }
 
 export interface MemorySearchHit {
+  source?: 'vault' | 'supabase';
   memoryId: MemoryId;
   revisionId: MemoryRevisionId;
   revisionNo: number;
@@ -523,14 +528,30 @@ export interface MemoryExplainResult {
 }
 
 export interface MemoryStatus {
+  graphify?: { healthy:boolean; checkedAt:number; errorCode?:string; snapshotHash?:string };
+  supabaseDirect?: MemoryDirectStatus;
   enabled: boolean;
   healthy: boolean;
   schemaVersion: number;
-  dbPath: string;
+  vaultRoot: string;
   counts: Record<string, number>;
   integrity: string;
   lastIntegrityCheckAt?: number;
   lastSuccessfulIntegrityCheckAt?: number;
   lastBackupPath?: string;
   lastBackupAt?: number;
+}
+
+export interface MemoryDirectSyncReceipt {
+  state: 'synced' | 'pending';
+  pendingItems: number;
+  errorCode?: string;
+}
+
+export interface MemoryDirectStatus {
+  enabled: boolean;
+  healthy: boolean;
+  checkedAt: number;
+  pendingItems: number;
+  errorCode?: string;
 }

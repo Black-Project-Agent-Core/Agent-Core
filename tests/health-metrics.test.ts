@@ -8,6 +8,7 @@ import { startAgentCoreService } from '../src/index.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { memoryConfig, strictMemoryConfig, isolatedMemoryDependencies } from './helpers/memory-fixture.js';
 import { printCommand } from './helpers/platform-command.js';
 import { FileKeyStore } from '../src/auth/key-store.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
@@ -17,6 +18,7 @@ import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { RoutePlan } from '../src/capabilities/route-types.js';
+import { canonicalFileNativeProjectId } from '../src/memory/file-native/paths.js';
 
 function routePlan(): RoutePlan {
   return {
@@ -150,8 +152,8 @@ describe('bounded runtime observability', () => {
     const defaults = loadConfig({}, root);
     const runtime = createRuntimeServices(
       [root], path.join(root, 'capabilities'), undefined,
-      { ...defaults.memory, enabled: true, dbPath: path.join(root, 'runtime', 'memory.sqlite') },
-      { ...defaults.execution, enabled: true, dbPath: path.join(root, 'runtime', 'execution.sqlite'), logRoot: path.join(root, 'runtime', 'runs') },
+      await memoryConfig(root),
+      { ...defaults.execution, enabled: true },
       { ...defaults.github, enabled: false },
     );
     try {
@@ -159,9 +161,17 @@ describe('bounded runtime observability', () => {
       await runtime.memory.search({ scope: { principalId: 'metrics-principal', projectId: root }, query: 'no matching memory' });
       expect(runtime.metrics.metric('memory.search.duration_ms').count).toBe(1);
 
+      const reservation = runtime.routes.reserve();
+      const task = 'Print a diagnostic message';
+      const workflow = await runtime.workflow.bind({ principalId: runtime.memory.config.principalId ?? 'metrics-principal',
+        projectId: canonicalFileNativeProjectId(runtime.memory.config.fileNative, root), taskId: reservation.routeContextId }, { brief: task });
+      const route = runtime.routes.create('metrics-principal', runtime.router.route(task), { reservation, projectId: root,
+        workflow: { taskId: workflow.taskId, version: workflow.version, craftRequired: false, dagRequired: false } });
+
       const created = await runtime.execution.create({ principalId: 'metrics-principal', projectId: root }, {
         objective: 'metrics fixture',
-        nodes: [{ id: 'A', purpose: 'A', command: printCommand('ok'), cwd: root }],
+        originRouteContextId: route.routeContextId, continuityTaskId: workflow.taskId,
+        nodes: [{ id: 'A', purpose: 'A', command: printCommand('ok'), cwd: root, inputs: [] }],
       });
       expect(runtime.metrics.metric('execution.dag_validation.duration_ms').count).toBe(1);
       await runtime.execution.start({ principalId: 'metrics-principal', projectId: root }, created.runId);
@@ -308,16 +318,15 @@ describe('bounded runtime observability', () => {
   it('serves detailed metrics separately from lightweight readiness without exposing credential paths', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-health-http-'));
     const config = loadConfig({}, root);
+    config.memory = await strictMemoryConfig(root);
     config.port = 0;
     config.allowedRoots = [root];
     config.dataDir = path.join(root, 'data');
     config.logDir = path.join(root, 'logs');
     config.capabilityDir = path.join(root, 'capabilities');
-    config.memory = { ...config.memory, dbPath: path.join(root, 'runtime', 'memory.sqlite') };
-    config.execution = { ...config.execution, dbPath: path.join(root, 'runtime', 'execution.sqlite'), logRoot: path.join(root, 'runtime', 'runs') };
     config.github = { ...config.github, enabled: false };
     config.maintenance = { ...config.maintenance, enabled: true, intervalMs: 60 * 60 * 1000 };
-    const service = await startAgentCoreService(config);
+    const service = await startAgentCoreService(config,{memory:isolatedMemoryDependencies(config.memory)});
     try {
       const readiness = await (await fetch(`http://${service.host}:${service.port}/health`)).json() as any;
       expect(readiness.status).toBe('ok');
@@ -384,7 +393,7 @@ describe('bounded runtime observability', () => {
     const runtime = createRuntimeServices(
       [root], path.join(root, 'capabilities'), undefined,
       { ...defaults.memory, enabled: false },
-      { ...defaults.execution, enabled: true, dbPath: path.join(root, 'execution.sqlite'), logRoot: path.join(root, 'runs') },
+      { ...defaults.execution, enabled: true },
       { ...defaults.github, enabled: false },
     );
     await runtime.execution.open();

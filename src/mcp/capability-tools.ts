@@ -6,9 +6,11 @@ import type { ContinuityTaskRecord } from '../continuity/store.js';
 import type { ContinuityCapture } from '../continuity/types.js';
 import { MemoryHardLifecycleError, memoryObjectiveHash, type MemoryContextLifecycleRecord } from '../memory/hard-lifecycle.js';
 import type { MemorySearchHit } from '../memory/types.js';
+import { redactMemoryText } from '../memory/redaction.js';
 import type { RuntimeServices } from '../runtime/services.js';
 import { persistentPrincipalId } from './project-scope.js';
 import { injectMemoryIntoRoutingContext } from './memory-injection.js';
+import { workflowScope } from './workflow-guard.js';
 
 function textResult(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
@@ -62,6 +64,7 @@ const capabilityType = z.enum([
 const capabilityRisk = z.enum(['low', 'medium', 'high', 'unknown']);
 const capabilityState = z.enum([
   'cataloged', 'source_resolved', 'license_verified', 'function_analyzed',
+  'metadata_inspected', 'risk_scanned',
   'safety_reviewed', 'normalized', 'native_ready', 'reference_only',
   'quarantined', 'unresolved', 'license_unknown', 'source_removed',
 ]);
@@ -150,9 +153,14 @@ export function registerCapabilityTools(
       context: z.string().max(20_000).optional(),
       projectRoot: z.string().min(1).max(5_000).optional(),
       continuity: continuityCaptureSchema.optional(),
+      workflow: z.enum(['auto', 'direct', 'dag']).optional(),
+      craft: z.strictObject({
+        requirements: z.array(z.strictObject({ id: z.string().min(1).max(200), description: z.string().min(1).max(20_000) })).min(1).max(100),
+        donors: z.array(z.strictObject({ id: z.string().min(1).max(200), source: z.string().min(1).max(5_000), ref: z.string().min(1).max(5_000).optional() })).min(1).max(20),
+      }).optional(),
     },
     annotations: routeAnnotations,
-  }, async ({ task, context, projectRoot, continuity }) => {
+  }, async ({ task, context, projectRoot, continuity, workflow, craft }) => {
     let projectId: string;
     try {
       projectId = runtime.workspace.resolveProjectRoot({
@@ -180,6 +188,10 @@ export function registerCapabilityTools(
     let lifecycleAdvisoryCode: 'MEMORY_POSTFLIGHT_REQUIRED' | undefined;
     let memoryContextLease: string | null = null;
     let memoryContextLeaseExpiresAt: string | null = null;
+
+    if (!runtime.memory.config.enabled && runtime.memory.config.hardLifecycleMode === 'enforce') {
+      return errorResult(new MemoryHardLifecycleError('MEMORY_PREFLIGHT_REQUIRED', 'Memory is disabled; enable and recover memory before opening an actionable route'));
+    }
 
     if (runtime.memory.config.enabled) {
       try {
@@ -216,15 +228,17 @@ export function registerCapabilityTools(
         try {
           const reconciliationRequired = await runtime.memory.findLifecycleReconciliationRequired({
             scope,
-            objectiveHash: memoryObjectiveHash(task, context),
-            ...(capture.resumeTaskId ? { continuityTaskId: capture.resumeTaskId } : {}),
+            ...(runtime.memory.config.hardLifecycleMode === 'enforce' ? {} : {
+              objectiveHash: memoryObjectiveHash(task, context),
+              ...(capture.resumeTaskId ? { continuityTaskId: capture.resumeTaskId } : {}),
+            }),
           });
           priorPendingCount = reconciliationRequired.length;
           if (priorPendingCount > 0) {
             if (runtime.memory.config.hardLifecycleMode === 'enforce') {
               return errorResult(new MemoryHardLifecycleError(
                 'MEMORY_POSTFLIGHT_REQUIRED',
-                'Previous meaningful work for this objective/task requires postflight reconciliation before a new memory context is opened',
+                'Previous meaningful work in this project requires postflight reconciliation before a new memory context is opened',
                 { pendingCount: priorPendingCount },
               ));
             }
@@ -249,10 +263,11 @@ export function registerCapabilityTools(
             routeContextId: reservation.routeContextId,
             task,
             context,
-            routeMetadata: { workspaceRoots: runtime.workspace.roots },
+            routeMetadata: { workspaceRoots: runtime.workspace.roots, authorityPrincipalId: key.id },
             expiresAt: Date.parse(reservation.expiresAt),
           });
-        } catch {
+        } catch (error) {
+          if (runtime.memory.config.hardLifecycleMode === 'enforce' || runtime.memory.config.supabaseDirect?.enabled) return errorResult(error);
           memoryStatus = 'degraded';
         }
 
@@ -319,7 +334,40 @@ export function registerCapabilityTools(
     }
 
     const memoryInjection = injectMemoryIntoRoutingContext(context, preflight);
+    if (continuityStatus !== 'ambiguous' && runtime.memory.config.hardLifecycleMode === 'enforce'
+      && (!preflight || !continuityTaskId || !continuityTurnId || !lifecycleRecord)) {
+      return errorResult(Object.assign(new Error('A persisted task, turn, and recalled lifecycle are required before routing work'), { code: 'MEMORY_PREFLIGHT_REQUIRED' }));
+    }
     const plan = runtime.router.route(task, memoryInjection.context);
+    let workflowContext = null;
+    if (continuityStatus !== 'ambiguous') {
+      try {
+        workflowContext = await runtime.workflow.bind(
+          workflowScope(runtime, persistentPrincipalId(runtime, key), projectId, continuityTaskId ?? reservation.routeContextId),
+          { brief: redactMemoryText(task).text,
+            context: context === undefined ? undefined : redactMemoryText(context).text,
+            workflow, craft },
+        );
+        if (runtime.memory.config.enabled && runtime.memory.config.hardLifecycleMode === 'enforce') await runtime.memory.assertWorkflowReady(scope);
+      } catch (error) { return errorResult(error); }
+    }
+    if (workflowContext?.dagRequired) {
+      // A persisted DAG obligation also applies to inspection/resume wording.
+      // Grant entry to the guarded executor; its accepted-plan, lifecycle and
+      // provenance checks still authorize each operation. Keep direct file and
+      // shell permissions, skill requirements and memory guardrails unchanged.
+      plan.allowedTools = [...new Set([...plan.allowedTools,
+        'execution_create', 'execution_start', 'execution_add_nodes', 'execution_retry', 'execution_cancel'])];
+      plan.reasonCodes.push('required_workflow_dag');
+      plan.verification = { required: true, suggestedTools: [...new Set([
+        ...plan.verification.suggestedTools, 'execution_status', 'execution_artifact_find',
+      ])] };
+      if (plan.tier === 'atomic') {
+        plan.tier = 'structured';
+        plan.reasonCodes = plan.reasonCodes.filter(reason => reason !== 'atomic_direct');
+      }
+      if (plan.mode === 'atomic_direct') plan.mode = 'capability_guided';
+    }
     if (memoryInjection.applied && !plan.reasonCodes.includes('autonomous_memory_context')) {
       plan.reasonCodes = [...plan.reasonCodes, 'autonomous_memory_context'];
     }
@@ -330,6 +378,8 @@ export function registerCapabilityTools(
     const route = runtime.routes.create(key.id, plan, {
       reservation,
       projectId,
+      ...(workflowContext ? { workflow: { taskId: workflowContext.taskId, version: workflowContext.version,
+        craftRequired: workflowContext.craftRequired, dagRequired: workflowContext.dagRequired } } : {}),
       ...(preflight ? {
         memorySnapshot: {
           memoryContextId: preflight.contextId,
@@ -379,6 +429,7 @@ export function registerCapabilityTools(
     };
     return textResult({
       routeContextId: route.routeContextId,
+      workflowContext,
       projectId,
       tier: route.tier,
       mode: route.mode,

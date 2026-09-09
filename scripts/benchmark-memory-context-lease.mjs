@@ -1,4 +1,4 @@
-import { createServer } from 'node:http';
+﻿import { createServer } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -54,7 +54,6 @@ let server;
 
 try {
   const config = loadConfig({
-    AGENT_CORE_MEMORY_DB_PATH: path.join(root, 'memory.sqlite'),
     AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'enforce',
     AGENT_CORE_MEMORY_REMOTE_ENABLED: 'false',
   }, root).memory;

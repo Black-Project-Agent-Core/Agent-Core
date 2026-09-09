@@ -5,17 +5,17 @@ describe('deterministic meaningful-work classifier', () => {
   it('classifies explicit workspace and execution mutations as meaningful', () => {
     for (const toolName of [
       'write_file', 'edit_file', 'create_directory', 'move_file', 'start_process',
-      'execution_create', 'execution_start', 'execution_add_nodes', 'execution_retry', 'execution_cancel',
+      'execution_create', 'execution_start', 'execution_add_nodes', 'execution_retry',
     ]) {
       expect(classifyMeaningfulWork(toolName, {})).toMatchObject({ meaningful: true });
     }
   });
 
-  it('keeps direct recovery and ordinary read-only tools outside hard lifecycle mutation enforcement', () => {
+  it('keeps health and recovery available while substantive work is blocked', () => {
     for (const toolName of [
-      'workspace_info', 'list_directory', 'read_file', 'read_multiple_files', 'get_file_info',
-      'search_files', 'read_process_output', 'list_processes', 'stop_process',
-      'execution_status', 'execution_wait', 'execution_logs', 'execution_artifact_find', 'execution_workflow_advice',
+      'workspace_info', 'read_process_output', 'list_processes', 'stop_process',
+      'execution_status', 'execution_wait', 'execution_logs', 'memory_status', 'agent_core_status',
+      'execution_workflow_advice', 'execution_artifact_find', 'execution_cancel',
     ]) {
       expect(classifyMeaningfulWork(toolName, {})).toMatchObject({ meaningful: false });
     }
@@ -25,7 +25,13 @@ describe('deterministic meaningful-work classifier', () => {
     });
   });
 
-  it('allows only a deliberately small shell read-only allowlist and treats metacharacters or unknown commands as meaningful', () => {
+  it('requires recall for analysis even when no workspace file is changed',()=>{
+    for(const name of ['read_file','read_multiple_files','list_directory','get_file_info','search_files']){
+      expect(classifyMeaningfulWork(name)).toMatchObject({meaningful:true,mutationClass:'read_only'});
+    }
+  });
+
+  it('distinguishes read-only shell analysis from mutations while requiring recall for both', () => {
     for (const command of [
       'pwd',
       'ls',
@@ -33,18 +39,18 @@ describe('deterministic meaningful-work classifier', () => {
       'git status --short',
       'git rev-parse HEAD',
       'git branch --show-current',
-      'git log --oneline -8',
-      'git show --stat HEAD',
-      'git diff --check',
     ]) {
       expect(classifyMeaningfulWork('execute_command', { command })).toMatchObject({
-        meaningful: false,
+        meaningful: true,
         mutationClass: 'shell_read_only',
       });
     }
 
     for (const command of [
       'touch created.txt',
+      'git diff --output=changed.txt',
+      'git log --output=changed.txt',
+      'git show --output=changed.txt',
       'git commit -m test',
       'git push origin main',
       'npm test',
@@ -62,11 +68,11 @@ describe('deterministic meaningful-work classifier', () => {
   });
 
   it('reuses exact GitHub operation semantics instead of treating all mixed read/write GitHub tools as mutations', () => {
-    expect(classifyMeaningfulWork('github_repo', { operation: 'get' }).meaningful).toBe(false);
+    expect(classifyMeaningfulWork('github_repo', { operation: 'get' })).toMatchObject({meaningful:true,mutationClass:'github_read_only'});
     expect(classifyMeaningfulWork('github_repo', { operation: 'create' }).meaningful).toBe(true);
-    expect(classifyMeaningfulWork('github_git', { operation: 'ls_remote' }).meaningful).toBe(false);
+    expect(classifyMeaningfulWork('github_git', { operation: 'ls_remote' })).toMatchObject({meaningful:true,mutationClass:'github_read_only'});
     expect(classifyMeaningfulWork('github_git', { operation: 'push' }).meaningful).toBe(true);
-    expect(classifyMeaningfulWork('github_api', { method: 'GET' }).meaningful).toBe(false);
+    expect(classifyMeaningfulWork('github_api', { method: 'GET' })).toMatchObject({meaningful:true,mutationClass:'github_read_only'});
     expect(classifyMeaningfulWork('github_api', { method: 'PATCH' }).meaningful).toBe(true);
   });
 

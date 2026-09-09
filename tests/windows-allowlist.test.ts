@@ -1,4 +1,4 @@
-﻿import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -7,8 +7,7 @@ import { describe, expect, it } from 'vitest';
 const repoRoot = path.resolve(import.meta.dirname, '..');
 const windowsDir = path.join(repoRoot, 'scripts', 'windows');
 const helperPath = path.join(windowsDir, 'agent-core-allowlist.ps1');
-const launcherPath = path.join(windowsDir, 'agent-core-launcher.ps1');
-const trayPath = path.join(windowsDir, 'agent-core-tray.ps1');
+const nativeControllerPath = path.join(repoRoot, 'SubProject', 'Agent-Code', 'src-tauri', 'src', 'agent_core.rs');
 const windowsIt = process.platform === 'win32' ? it : it.skip;
 
 function psLiteral(value: string) {
@@ -16,7 +15,7 @@ function psLiteral(value: string) {
 }
 
 describe('Agent Core Windows filesystem allow-list', () => {
-  windowsIt('keeps Agent Core root implicit while ignoring comments, relative entries, and case-insensitive duplicates', () => {
+  windowsIt('keeps Agent Core root implicit while ignoring comments, relative entries, separators, and case-insensitive duplicates', () => {
     const temp = mkdtempSync(path.join(os.tmpdir(), 'agent-core-allowlist-'));
     try {
       const allowList = path.join(temp, 'allow.txt');
@@ -26,6 +25,7 @@ describe('Agent Core Windows filesystem allow-list', () => {
         'C:\\',
         'c:\\',
         'relative\\folder',
+        'D:\\one;D:\\two',
         'F:\\',
       ].join('\r\n'), 'utf8');
 
@@ -35,7 +35,7 @@ describe('Agent Core Windows filesystem allow-list', () => {
         `$roots = @(Resolve-AgentCoreAllowedRoots -Root ${psLiteral(repoRoot)} -AllowListPath ${psLiteral(allowList)})`,
         '$roots | ConvertTo-Json -Compress',
       ].join('; ');
-      const result = spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], {
+      const result = spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command], {
         encoding: 'utf8',
       });
 
@@ -52,15 +52,23 @@ describe('Agent Core Windows filesystem allow-list', () => {
     }
   });
 
-  it('wires launcher and tray to the same editable allow-list resolver', () => {
-    const launcher = readFileSync(launcherPath, 'utf8');
-    const tray = readFileSync(trayPath, 'utf8');
-    for (const source of [launcher, tray]) {
-      expect(source).toContain('agent-core-allowlist.ps1');
-      expect(source).toContain('Agent-Core-Allowlist.txt');
-      expect(source).toContain('Resolve-AgentCoreAllowedRoots');
+  it('lets the Agent Code native controller own allow-list injection with no launcher or tray script left to wire', () => {
+    const controller = readFileSync(nativeControllerPath, 'utf8');
+    expect(controller).toContain('Agent-Core-Allowlist.txt');
+    expect(controller).toContain('fn resolve_allowed_roots');
+    expect(controller).toContain('AGENT_CORE_ALLOWED_ROOTS');
+    expect(controller).not.toMatch(/agent-core-launcher\.ps1|agent-core-tray\.ps1/i);
+
+    for (const removed of [
+      'agent-core-launcher.ps1',
+      'agent-core-tray.ps1',
+      'launch-agent-core-hidden.vbs',
+      'install-agent-core-autostart.ps1',
+      'uninstall-agent-core-autostart.ps1',
+      'Install-Agent-Core-Tray.bat',
+      'Uninstall-Agent-Core-Tray.bat',
+    ]) {
+      expect(existsSync(path.join(windowsDir, removed)), `${removed} must not exist`).toBe(false);
     }
-    expect(launcher).not.toMatch(/AGENT_CORE_ALLOWED_ROOTS\s*=\s*\$root\b/);
-    expect(tray).not.toMatch(/AGENT_CORE_ALLOWED_ROOTS\s*=\s*\[string\]\$Config\.root\b/);
   });
 });

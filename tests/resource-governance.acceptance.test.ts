@@ -120,7 +120,7 @@ async function fixture(sequence?: ResourceSnapshot[]) {
     ...loadConfig({}, root).execution,
     enabled: true,
     maxConcurrency: 4,
-    dbPath: path.join(root, 'runtime', 'execution.sqlite'),
+    stateRoot: path.join(root, 'runtime', 'execution'),
     logRoot: path.join(root, 'runtime', 'runs'),
   };
   const runner = new ControlledRunner();
@@ -165,7 +165,7 @@ describe('Wave F scheduler resource governance', () => {
         ...defaults.execution,
         enabled: true,
         maxConcurrency: 3,
-        dbPath: path.join(root, 'runtime', 'execution.sqlite'),
+        stateRoot: path.join(root, 'runtime', 'execution'),
         logRoot: path.join(root, 'runtime', 'runs'),
       },
       { ...defaults.github, enabled: false },
@@ -197,7 +197,7 @@ describe('Wave F scheduler resource governance', () => {
       const created = await f.service.create(f.scope, {
         objective: 'resource pressure stress transition',
         maxConcurrency: 4,
-        nodes: ids.map((id) => ({ id, purpose: id, command: `echo ${id}`, cwd: f.work })),
+        nodes: ids.map((id) => ({ id, purpose: id, command: `echo ${id}`, cwd: f.work, resources: { reads: [f.work] } })),
       });
       await f.service.start(f.scope, created.runId);
       expect(f.runner.active).toBe(2);
@@ -237,7 +237,7 @@ describe('Wave F scheduler resource governance', () => {
       const created = await f.service.create(f.scope, {
         objective: 'resource transition acceptance',
         maxConcurrency: 4,
-        nodes: ['A', 'B', 'C', 'D', 'E', 'F'].map((id) => ({ id, purpose: id, command: `echo ${id}`, cwd: f.work })),
+        nodes: ['A', 'B', 'C', 'D', 'E', 'F'].map((id) => ({ id, purpose: id, command: `echo ${id}`, cwd: f.work, resources: { reads: [f.work] } })),
       });
 
       await f.service.start(f.scope, created.runId);

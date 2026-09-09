@@ -43,7 +43,6 @@ Read in this order before changing production code:
 6. `docs/checkpoints/2026-08-18-phase-c-resumed.md`
 7. `docs/qa/phase-c1-rust-ranking-parity-qa.md`
 8. `docs/superpowers/plans/2026-08-18-msl-phase-c1-rust-ranking-parity-plan.md`
-9. `docs/checkpoints/CODESPACE_SUPERVISOR_WINDOWS_F_ROOT_STABLE_RECOVERY_2026-08-21.md`
 10. `docs/qa/phase-p-mapping-performance-qa.md`
 11. `docs/qa/windows-installer-lifecycle-qa.md`
 12. `docs/checkpoints/2026-08-18-secure-envato-credential-runtime-verified.md`
@@ -109,7 +108,7 @@ Important source-integrity observation from the 2026-08-21 audit:
 git diff --name-only 76b09d28..8791159
 ```
 
-shows only `.devcontainer`, `.github/workflows`, `.vscode`, GPT-action docs, checkpoint docs, and the C1 QA document. **No production Go/Rust MSL product source changed after `76b09d2` in the currently checked-out descendant.**
+shows only workflow configuration and documentation changes. **No production Go/Rust MSL product source changed after `76b09d2` in the currently checked-out descendant.**
 
 Therefore the tested C1 product implementation remains the numerical/product source boundary, while later commits are tooling, recovery, workflow, and documentation changes.
 
@@ -206,7 +205,6 @@ However, this does **not** prove C1 native acceptance and does **not** prove ful
 Canonical tooling recovery document:
 
 ```text
-docs/checkpoints/CODESPACE_SUPERVISOR_WINDOWS_F_ROOT_STABLE_RECOVERY_2026-08-21.md
 ```
 
 Its promotion status remains:
@@ -246,10 +244,7 @@ These commits were **not on `origin/task/windows-relay-ampersand-path-fix-202608
 Current supervisor regression verification executed during this checkpoint audit:
 
 ```text
-PYTHONPATH=.devcontainer/codespace-supervisor \
-  /home/vscode/.codespace-supervisor/.venv/bin/python \
   -m unittest discover \
-  -s .devcontainer/codespace-supervisor/tests \
   -p 'test_*.py'
 
 19 tests
@@ -366,7 +361,6 @@ MSL is trend-direction inference + product insight. It is not market-entry timin
 
 ## 14. Permanent development execution scope guardrail — verbatim
 
-> aku ingin kamu mencatat sebagai tambahan instruksi verbatim di dokumentasi pengembangan yang terus di catat ulang hanya untuk mengingat jika pengerjaan yang bisa di lakukan di ruang lingkup internal kamu lakukan dan jika pengerjaan yang tidak memungkinkan di ruang lingkup kamu, kamu harus memberitahu aku untuk membantu kamu menjalankan pengerjaan yang bisa di lakukan di ruang lingkup codespaces github, dan seandainya pengerjaannya tidak bisa di ruang lingkup kamu, dan tidak bisa di lakukan di ruang lingkup codespace github maka kamu boleh menggunakan mesin lokal yang aku miliki melalui plugin sebagai alat bantu kamu contohnya desktop commander dan manfaatkan plugin yang ada di ruang lingkup kamu jika memungkinkan atau menyarankan alat plugin yang tersedia berguna untuk membantu kamu dalam pengerjaan kamu dan seandainya plugin yang kamu butuh belum ada di ruang lingkup kamu, maka kamu harus bilang padaku sebagai rekomendasi alat bantu untuk kamu dalam pengerjaan, jika masih ada yang kurang jelas kamu bisa jelaskan pada agar instruksi verbatim semakin jelas dan tidak salah paham atau menjadi sebuah kebuntuan.
 
 Canonical source: `docs/checkpoints/PERMANENT_DEVELOPMENT_EXECUTION_SCOPE_GUARDRAIL.md`.
 
@@ -390,7 +384,6 @@ At the start of a future session:
 ## 16. Do-not-do list for continuation
 
 - Do not use the 2026-08-18 `C1 FROZEN` text as current status.
-- Do not claim C1 complete from automated Linux/Codespaces tests alone.
 - Do not claim GitHub Actions Windows source failure when the runner never started.
 - Do not move Windows project work back to C: to bypass the F: policy.
 - Do not expose bridge tokens, long-term Windows device credentials, Envato API tokens, cookies, browser sessions, or Authorization headers.
@@ -404,7 +397,7 @@ At the start of a future session:
 The next product-development gate is:
 
 ```text
-stabilize/verify the current Codespace -> Windows F: execution path
+stabilize/verify the current build host -> Windows F: execution path
         -> complete zero-touch Full Rebuild acceptance if still pending
         -> build exact C1 native Windows candidate
         -> run positive installed-app acceptance

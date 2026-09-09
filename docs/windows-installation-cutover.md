@@ -1,8 +1,5 @@
 # Windows Installation Cutover
 
-Date: 2026-08-27
-Status: Applied and verified on the live Windows installation
-
 ## Objective
 
 Relocate the authoritative Windows Agent Core installation from a long-lived working
@@ -29,7 +26,7 @@ Two files, and only these two, determine whether an existing client keeps workin
 | `runtime/data/keys.json` | `src/auth/key-store.ts` | API key identity (`id`, `name`, scrypt `salt` + `hash`) |
 | `runtime/data/oauth.json` | `src/oauth/store.ts` | Registered OAuth clients, authorization codes, access and refresh tokens |
 
-Both resolve from `AGENT_CORE_DATA_DIR`, which the tray sets to `<root>\runtime\data`.
+Both resolve from `AGENT_CORE_DATA_DIR`, which defaults to `<root>\runtime\data`.
 
 Copying a plaintext key file is **not** sufficient. `secrets/agent-core-chatgpt-key.txt`
 is an operator convenience copy; no runtime code path reads it. Verification happens
@@ -71,9 +68,9 @@ only that *some* key verified; the audit record proves *which*.
 
 ### 2. A required secret file was deleted as an apparent duplicate
 
-**Symptom.** The Agent Core process started and served `/health`, but the tray bundle
-never completed and the tunnel port stayed closed, so the connector could not reach the
-runtime at all.
+**Symptom.** The Agent Core process started and served `/health`, but the bundle never
+completed and the tunnel port stayed closed, so the connector could not reach the runtime
+at all.
 
 ```text
 parse config file agent-core.yaml: invalid control_plane.api_key reference
@@ -89,9 +86,9 @@ The system cannot find the file specified.
 | current (canonical) | `file:secrets/control-plane-api-key-restored.txt` |
 
 The `-restored` name is the canonical contract. It is baked into the tracked template
-`tunnel-client/agent-core.example.yaml` and asserted by `tests/unified-launcher.test.ts`,
-which requires every tunnel profile to reference that exact relative path and to contain
-no absolute path.
+`tunnel-client/agent-core.example.yaml` and asserted by the tracked Windows lifecycle
+tests, which require every tunnel profile to reference that exact relative path and to
+contain no absolute path.
 
 During cleanup the `-restored` file was deleted because its contents were byte-identical
 to the file carried over from the previous installation, making it look like a stray
@@ -108,8 +105,7 @@ api_key: "file:secrets/control-plane-api-key-restored.txt"
 ```
 
 **Verification.** `GET http://127.0.0.1:8787/readyz` returns `200`, the operator profile
-matches `agent-core.example.yaml`, and `npx vitest run tests/unified-launcher.test.ts`
-passes.
+matches `agent-core.example.yaml`, and the Windows lifecycle test suite passes.
 
 **Lessons.**
 
@@ -130,12 +126,12 @@ passes.
 **Symptom.** After a cutover attempt the runtime resolved back to the old installation.
 
 **Root cause.** `%LOCALAPPDATA%\AgentCore\root.txt` records the active installation root.
-`scripts/windows/agent-core-launcher.ps1` rewrites it, but only when startup goes through
-the launcher. Driving the tray directly with `-Mode StartBundle` bypasses that write, so
-the locator kept naming the old root and any launcher-based path returned to it.
+`Agent Code Native.exe` rewrites it when it starts the bundle. Starting `dist/index.js`
+directly from a diagnostic shell bypasses that write, so the locator kept naming the old
+root and any lifecycle-driven path returned to it.
 
-**Fix.** Either start the new installation through `Start-Agent-Core.bat`, or write the
-locator explicitly when starting the tray directly:
+**Fix.** Start the new installation through `SubProject\Agent-Code\Agent Code Native.exe`.
+If a diagnostic start left the locator stale, write it explicitly:
 
 ```powershell
 [IO.File]::WriteAllText("$env:LOCALAPPDATA\AgentCore\root.txt", '<new root>',
@@ -145,21 +141,7 @@ locator explicitly when starting the tray directly:
 **Verification.** `Get-Content "$env:LOCALAPPDATA\AgentCore\root.txt"` names the new root,
 and the processes listening on the Agent Core and tunnel ports both originate from it.
 
-### 4. Leaked test processes and temporary directories
-
-**Symptom.** Thirteen orphaned `node.exe` processes running `fake-tunnel.mjs` from
-`%TEMP%\agent-core-tray-*`, left behind by tray test fixtures.
-
-**Impact.** No functional impact on the runtime, but they obscure process inspection
-during a cutover, when identifying which process owns a port matters.
-
-**Fix.** Terminate processes whose command line contains `fake-`, then remove the
-matching `%TEMP%\agent-core-tray-*` directories.
-
-**Verification.** No `node.exe` process has `fake-` in its command line and no
-`agent-core-tray-*` directory remains under `%TEMP%`.
-
-### 5. Stale cutover marker asserting success
+### 4. Stale cutover marker asserting success
 
 **Symptom.** `runtime/cutover-result.json` recorded `"ok": true` with a `0.5.3` health
 payload, while the runtime actually serving the connector was still the old version.
@@ -210,24 +192,24 @@ ignored paths, copying them keeps the tracked tree identical to canonical.
 5. Back up the target `runtime/data`, then copy `keys.json` and `oauth.json` verbatim.
 6. Confirm the tunnel profile matches `tunnel-client/agent-core.example.yaml` and that
    every secret file it references exists.
-7. Start the new bundle and tray, then point the machine locator at the new root.
+7. Start the new installation through `Agent Code Native.exe` and confirm the machine
+   locator names the new root.
 8. Verify health version, tunnel readiness, and the audit record's `keyId` / `keyName`.
 9. Only then remove the old installation.
 
 Keep the previous installation until the connector has been exercised end to end. Until
 that point it remains the only proven rollback path.
 
-## Verification evidence
+## Verification gates
 
-Recorded on the live installation after the fixes above were applied.
+A cutover is accepted only when every gate below holds on the new installation.
 
-| Gate | Result |
+| Gate | Requirement |
 | --- | --- |
 | `npm run verify` (brand scan, TypeScript build, full suite) | exit `0` |
-| Test suite | 96 files passed, 1 skipped; 461 tests passed, 20 skipped, 0 failed |
-| `scripts/release/check-doc-links.mjs` | `ok: true`, 28 markdown files, 23 relative links |
+| `scripts/release/check-doc-links.mjs` | `ok: true` |
 | `scripts/check-agent-core-brand.mjs` | clean |
-| `GET /health` | `status: ok`, `version: 0.5.3`, memory / continuity / execution healthy |
+| `GET /health` | `status: ok`, expected version, memory / continuity / execution healthy |
 | `GET /readyz` (tunnel) | `200` |
 | `POST /mcp` without credentials | `401` |
 | `POST /mcp` with the pre-existing key | `200` |
@@ -235,7 +217,7 @@ Recorded on the live installation after the fixes above were applied.
 | Tracked tree vs canonical `main` | identical, `0` modified files, `0/0` ahead/behind |
 | References to the previous installation root inside the new tree | none |
 
-The full suite is the gate that caught the incorrect fix in issue 2. A tunnel that
-starts, a health endpoint that answers, and a connector that authenticates were all true
-while `tests/unified-launcher.test.ts` was still failing. Live behaviour and the test
-suite answer different questions; a cutover needs both.
+The full suite is the gate that catches the class of mistake in issue 2. A tunnel that
+starts, a health endpoint that answers, and a connector that authenticates can all be
+true while a tracked configuration contract is broken. Live behaviour and the test suite
+answer different questions; a cutover needs both.

@@ -1,26 +1,30 @@
 # Agent Core Documentation
 
-The current documentation tree is intentionally compact. Historical implementation plans, per-task checkpoints, and temporary architecture exports are preserved by Git history rather than kept in the active repository surface.
+The current documentation tree describes the architecture Agent Core runs today. Audit snapshots explicitly identify their observation date and point to the current contract and verification results.
 
 ## Runtime architecture
 
-- [`deterministic-memory.md`](deterministic-memory.md) — DMF storage, retrieval, redaction, backup, recovery and integrity.
+- [`source-grounded-workflow.md`](source-grounded-workflow.md) — task-bound source receipts, required craft plans, guarded mutations, current execution evidence and durable closure.
+
+- [`supabase-direct-memory.md`](supabase-direct-memory.md) — direct Supabase API setup, scoped recall/read/write, deeper context search, and retry diagnostics.
+- [`deterministic-memory.md`](deterministic-memory.md) — file-native Markdown vault storage, Graphify relation index, Supabase Second Memory, retrieval, redaction, backup, recovery and integrity.
 - [`local-agent-continuity.md`](local-agent-continuity.md) — durable task/checkpoint/frontier state across routes and sessions.
 - [`deterministic-execution-fabric.md`](deterministic-execution-fabric.md) — DAG execution, logs, events, retries, recovery and operational boundaries.
 - [`multi-command-wake-workflow.md`](multi-command-wake-workflow.md) — agent-facing dependency-aware asynchronous execution behavior.
 - [`github.md`](github.md) — Native GitHub Fabric credentials, REST/Git/Packages transports, destructive gates, rotation, and live read-only acceptance.
-- [`codespaces.md`](codespaces.md) — self-healing GitHub Codespaces lifecycle, Linux command execution, port/OAuth verification, and the ChatGPT MCP URL workflow.
 
 ## Stability and operations
 
+Runtime packages include the documents listed below. Source, test, and local report links inside dated audits are references to development evidence; they may require the development checkout. Private reports and runtime history are not bundled.
+
+- [`stability-verification-2026-09-09.md`](stability-verification-2026-09-09.md) — deployed runtime, live memory evidence, verified fixes, and remaining certification gates.
+- [`memory-lifecycle-audit-2026-09-09.md`](memory-lifecycle-audit-2026-09-09.md) — baseline memory observations before lifecycle corrections; it is not the current runtime status.
+- [`memory-lifecycle-remediation-plan.md`](memory-lifecycle-remediation-plan.md) — baseline acceptance requirements; current implementation and outstanding work are recorded in the verification report.
 - [`stability.md`](stability.md) — maintained stability baseline and release gates.
 - [`windows-installation-cutover.md`](windows-installation-cutover.md) — moving a Windows installation to a fresh canonical clone while preserving connector authentication identity.
+- [`agent-core-connection-troubleshooting.md`](agent-core-connection-troubleshooting.md) — layered connection diagnosis before declaring the runtime unreachable.
 - [`../SECURITY.md`](../SECURITY.md) — repository/runtime security model and secret boundaries.
 
 ## Roadmap
 
-- [`roadmap/agent-core-balanced-evolution.md`](roadmap/agent-core-balanced-evolution.md) — certified A-G evolution history and the architectural constraints carried forward from those waves.
-- [`roadmap/agent-core-cross-session-memory-nervous-system-design.md`](roadmap/agent-core-cross-session-memory-nervous-system-design.md) — implementation-oriented design for evolving DMF into a bounded local-first cross-session and cross-Codespace memory graph with mandatory Private Memory Remote durability, fresh-Codespace hydration, mandatory memory decisions, `remember_more`, revision/branch/root governance, causal failure-solution history, Codespace enforcement, and a read-only Memory Observatory. This document is a design specification, not an implemented capability claim.
-- [`roadmap/agent-core-v0.7-stabilization-shared-memory-release-implementation-plan.md`](roadmap/agent-core-v0.7-stabilization-shared-memory-release-implementation-plan.md) — 31-task stabilization-first implementation plan for v0.7.0: exact release identity, Windows lifecycle repair, persistent memory posture, Private Memory Remote, stable cross-host memory identity, PC/Codespace continuity, enforced lifecycle canaries, zero-touch Codespace recovery, exact-SHA certification, and post-stable Observatory design refresh.
-
-Roadmap/design documents are not statements that a feature is already implemented unless the document explicitly records a completed certification. The live MCP capability surface remains the factual source for currently available behavior.
+`roadmap/` holds forward-looking design and study documents only. A roadmap document is not a statement that a feature is implemented. The live MCP capability surface remains the factual source for currently available behavior.

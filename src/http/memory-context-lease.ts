@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { MemoryHardLifecycleError } from '../memory/hard-lifecycle.js';
 import { classifyMeaningfulWork } from '../memory/meaningful-work.js';
 import type { RuntimeServices } from '../runtime/services.js';
+import { workflowOperationInput, workflowScope } from '../mcp/workflow-guard.js';
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_LEASE_CHARS = 4096;
@@ -96,26 +97,34 @@ export function createMemoryContextLeaseHttpHandler(runtime: RuntimeServices) {
       required: classification.meaningful && mode !== 'disabled',
       mutationClass: classification.mutationClass,
     };
-    if (!classification.meaningful || mode === 'disabled') {
+    if (!classification.meaningful) {
       sendJson(response, 200, { ...base, valid: true });
       return;
     }
 
     const failureCode = action === 'after' ? 'MEMORY_POSTFLIGHT_REQUIRED' : 'MEMORY_PREFLIGHT_REQUIRED';
     if (!lease) {
-      if (mode === 'advisory') {
-        sendJson(response, 200, { ...base, valid: false, advisoryCode: failureCode });
-      } else {
-        sendJson(response, 428, lifecycleFailureBody(failureCode, action === 'after'
+      sendJson(response, 428, lifecycleFailureBody(failureCode, action === 'after'
           ? 'Meaningful workspace work completed but its memory postflight could not be recorded'
           : 'A valid Memory Context Lease is required before meaningful workspace work'));
-      }
       return;
     }
 
     try {
       if (action === 'before') {
-        await runtime.memory.validateContextLease({ lease, workspaceRoot });
+        const authority = await runtime.memory.validateContextLease({ lease, workspaceRoot });
+        const lifecycle = await runtime.memory.getLifecycleContext(authority.scope, authority.contextId);
+        const scope = workflowScope(runtime, authority.scope.principalId, workspaceRoot,
+          lifecycle?.continuityTaskId ?? authority.routeContextId);
+        const operation = workflowOperationInput(toolName, input);
+        // A caller-supplied tool name is not execution authority. This endpoint
+        // observes adapter work; it cannot own process evidence or resource claims.
+        operation.viaExecution = false;
+        const workflow = await runtime.workflow.status(scope);
+        if (workflow?.planRequired && !['read_only','github_read_only','shell_read_only'].includes(classification.mutationClass)) {
+          throw Object.assign(new Error('Use the routed Agent-Core operation so planned work is executed and recorded under server authority'), { code: 'WORKFLOW_MANAGED_OPERATION_REQUIRED' });
+        }
+        await runtime.workflow.authorize(scope, operation);
         sendJson(response, 200, { ...base, valid: true });
         return;
       }
@@ -127,8 +136,8 @@ export function createMemoryContextLeaseHttpHandler(runtime: RuntimeServices) {
       });
       sendJson(response, 200, { ...base, valid: true, postflightState: lifecycle.postflightState });
     } catch (error) {
-      if (mode === 'advisory') {
-        sendJson(response, 200, { ...base, valid: false, advisoryCode: failureCode });
+      if (error instanceof Error && 'code' in error && String(error.code).startsWith('WORKFLOW_')) {
+        sendJson(response, 428, { error: { code: error.code, message: error.message } });
         return;
       }
       const message = action === 'after'

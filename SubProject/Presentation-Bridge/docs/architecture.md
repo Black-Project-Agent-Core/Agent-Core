@@ -32,4 +32,4 @@ The IR is an evidence layer, not a replacement presentation format. The converte
 
 ## Persistence
 
-V1 deliberately uses job folders instead of a database. SQLite is deferred until resumable queues/history/multi-worker scheduling materially require it.
+V1 stores durable job state in job folders. Recovery and history use the persisted job manifests.

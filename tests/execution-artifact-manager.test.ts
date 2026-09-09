@@ -19,7 +19,6 @@ async function fixture(label: string) {
   const config = {
     ...loadConfig({}, root).execution,
     enabled: true,
-    dbPath: path.join(root, 'runtime', 'execution.sqlite'),
     logRoot: path.join(root, 'runtime', 'runs'),
   };
   const workspace = new WorkspacePolicy([root]);
@@ -64,7 +63,7 @@ describe('verified execution artifact manager', () => {
 
     await f.service.close();
     const reopenedStore = new ExecutionStore();
-    await reopenedStore.open({ dbPath: f.config.dbPath });
+    await reopenedStore.open({ stateRoot: f.config.stateRoot });
     try {
       const reopened = new ExecutionArtifactManager(reopenedStore, f.workspace, new ExecutionLogStore(f.config.logRoot));
       expect(await reopened.findByHash(f.scope, evidence.sha256)).toHaveLength(2);

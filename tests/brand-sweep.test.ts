@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -46,5 +46,40 @@ describe('Agent Core brand scanner', () => {
     }), 'utf8');
     const run = spawnSync(process.execPath, [script, '--scan-path', root], { encoding: 'utf8' });
     expect(run.status).toBe(0);
+  });
+
+  it('allows only the named independent vendor integration files', async () => {
+    const root = await fixture('Agent Core source remains clean.');
+    const vendor = ['Desktop', ['Com', 'mander'].join('')].join(' ');
+    const stem = vendor.replace(' ', '-');
+    for (const file of [`Start-${stem}.bat`, `Apply-${stem}-Allowlist.ps1`, `Edit-${stem}-Allowlist.bat`, `${stem}-Allowlist.txt`]) {
+      await writeFile(path.join(root, file), `Launch ${vendor}`, 'utf8');
+    }
+    const accepted = spawnSync(process.execPath, [script, '--scan-path', root], { encoding: 'utf8' });
+    expect(accepted.status).toBe(0);
+    await writeFile(path.join(root, 'owned-launcher.bat'), `Agent Core identity is ${vendor}`, 'utf8');
+    const rejected = spawnSync(process.execPath, [script, '--scan-path', root], { encoding: 'utf8' });
+    expect(rejected.status).toBe(1);
+    expect(rejected.stderr).toContain('owned-launcher.bat');
+  });
+
+  it('allows an external runtime packaging path without hiding adjacent owned branding', async () => {
+    const root = await fixture('Agent Core source remains clean.');
+    const word = ['Com', 'mander'].join('');
+    const vendorPath = `dist/.desktop-${word.toLowerCase()}`;
+    const directory = path.join(root, 'scripts', 'windows');
+    await mkdir(directory, { recursive: true });
+    const pack = path.join(directory, 'agent-core-pack.ps1');
+    const metadata = path.join(root, '.portable-package.json');
+    await writeFile(pack, `$exclusions = @('${vendorPath}')`, 'utf8');
+    await writeFile(metadata, JSON.stringify({ packageType: 'agent-core-portable', exclusions: [vendorPath] }), 'utf8');
+    const accepted = spawnSync(process.execPath, [script, '--scan-path', root], { encoding: 'utf8' });
+    expect(accepted.status).toBe(0);
+    await writeFile(pack, `$exclusions = @('${vendorPath}'); Write-Host 'Desktop ${word}'`, 'utf8');
+    await writeFile(metadata, JSON.stringify({ packageType: `Desktop ${word}`, exclusions: [vendorPath] }), 'utf8');
+    const rejected = spawnSync(process.execPath, [script, '--scan-path', root], { encoding: 'utf8' });
+    expect(rejected.status).toBe(1);
+    expect(rejected.stderr).toContain('scripts/windows/agent-core-pack.ps1');
+    expect(rejected.stderr).toContain('.portable-package.json');
   });
 });

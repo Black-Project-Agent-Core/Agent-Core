@@ -2,19 +2,18 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { loadConfig } from '../src/config.js';
 import { injectMemoryIntoRoutingContext } from '../src/mcp/memory-injection.js';
 import { createRuntimeServices } from '../src/runtime/services.js';
+import { memoryConfig } from './helpers/memory-fixture.js';
 
 const roots: string[] = [];
 const runtimes: Array<ReturnType<typeof createRuntimeServices>> = [];
 
-async function makeRuntime(root: string, dbPath: string) {
-  const memory = loadConfig({}, root).memory;
+async function makeRuntime(root: string) {
+  const memory = await memoryConfig(root);
   const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
     ...memory,
     enabled: true,
-    dbPath,
     recallItemBudget: 6,
     recallCharacterBudget: 2_400,
   });
@@ -102,10 +101,9 @@ describe('canonical project memory', () => {
   it('reserves foundational Super-Runtime facets ahead of newer operational recall and keeps them after restart', async () => {
     const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-canonical-memory-'));
     roots.push(root);
-    const dbPath = path.join(root, 'runtime', 'memory', 'canonical.sqlite');
     const scope = { principalId: 'principal-canonical', projectId: root };
 
-    const runtime = await makeRuntime(root, dbPath);
+    const runtime = await makeRuntime(root);
     const canonical = await seedCanonicalSuperRuntime(runtime, scope);
     await floodOperationalMemory(runtime, scope);
 
@@ -145,7 +143,7 @@ describe('canonical project memory', () => {
     await runtime.memory.close();
     runtimes.splice(runtimes.indexOf(runtime), 1);
 
-    const restarted = await makeRuntime(root, dbPath);
+    const restarted = await makeRuntime(root);
     const afterRestart = await restarted.memory.preflight({
       scope,
       routeContextId: '33333333-3333-4333-8333-333333333333',
@@ -164,8 +162,7 @@ describe('canonical project memory', () => {
   it('keeps canonical subject memory principal/project scoped and ignores operational kinds', async () => {
     const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-canonical-scope-'));
     roots.push(root);
-    const dbPath = path.join(root, 'runtime', 'memory', 'canonical.sqlite');
-    const runtime = await makeRuntime(root, dbPath);
+    const runtime = await makeRuntime(root);
     const scopeA = { principalId: 'principal-a', projectId: `${root}-project-a` };
     const scopeB = { principalId: 'principal-a', projectId: `${root}-project-b` };
 
@@ -208,9 +205,8 @@ describe('canonical project memory', () => {
   it('does not treat a subject alias as a substring match', async () => {
     const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-canonical-boundary-'));
     roots.push(root);
-    const dbPath = path.join(root, 'runtime', 'memory', 'canonical.sqlite');
     const scope = { principalId: 'principal-boundary', projectId: root };
-    const runtime = await makeRuntime(root, dbPath);
+    const runtime = await makeRuntime(root);
 
     await runtime.memory.commit({
       scope,

@@ -2,6 +2,7 @@ import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { instructionProvenance } from './helpers/skill-fixture.js';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
@@ -60,6 +61,7 @@ async function setup() {
   const skillPath = path.join(capabilityDir, 'normalized', 'skills', 'cap_native', 'SKILL.md');
   await mkdir(path.dirname(skillPath), { recursive: true });
   await writeFile(skillPath, '# Native Frontend\n\nUse audited guidance.\n', 'utf8');
+  await instructionProvenance(capabilityDir, 'cap_native', skillPath);
   await writeRegistryGeneration(capabilityDir, [nativeCapability()], {
     catalogSha: 'fixture-sha', generatedAt: '2026-08-23T00:00:00.000Z',
   });
@@ -67,7 +69,7 @@ async function setup() {
   const keyStore = new FileKeyStore(path.join(root, 'data'));
   const principalA = await keyStore.create('principal-a');
   const principalB = await keyStore.create('principal-b');
-  const baseMemory = loadConfig({}, root).memory;
+  const baseMemory = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root).memory;
   const runtime = createRuntimeServices([root], capabilityDir, undefined, { ...baseMemory, enabled: false });
   const app = createHttpHandler({
     keyStore,
@@ -187,13 +189,10 @@ describe('Agent Core route enforcement', () => {
 
   it('keeps stop_process available as a direct recovery tool without route context', async () => {
     const { root, runtime, principalA, baseUrl } = await setup();
-    const started = await runtime.processes.start(
-      sleepCommand(30_000, 'route-recovery-ready\n'),
-      {
-        cwd: root,
-        owner: { principalId: principalA.metadata.id, projectId: root },
-      },
-    );
+    const routed = textBody(await call(baseUrl, principalA.key, 'capability_route', { task: 'Run one bounded diagnostic process', projectRoot: root }));
+    const started = textBody(await call(baseUrl, principalA.key, 'start_process', {
+      command: sleepCommand(30_000, 'route-recovery-ready\n'), cwd: root, routeContextId: routed.routeContextId,
+    }));
 
     const stopped = await call(baseUrl, principalA.key, 'stop_process', {
       sessionId: started.sessionId,

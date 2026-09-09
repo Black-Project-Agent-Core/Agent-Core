@@ -9,6 +9,9 @@ import { currentCorrelation, runWithCorrelation, type CorrelationContext } from 
 import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 import type { ResourceGovernanceDecision } from './resource-governor.js';
 import type { ResourceGovernor } from './resource-governor.js';
+import type { WorkspacePolicy } from '../runtime/workspace.js';
+import { ExecutionResourceClaims, hasExecutionResourceClaims } from './resource-claims.js';
+import { executionIdentityHash, executionInputPaths, type DependencyIdentity, type ExecutionWorkflowBinding } from './provenance.js';
 
 export interface ExecutionRunnerLike {
   start(
@@ -31,6 +34,10 @@ export interface ExecutionSchedulerOptions {
   onAttemptCompleted?: (scope: ExecutionScope, marker: ExecutionResultMarker) => Promise<void>;
   resourceGovernor?: ResourceGovernor;
   metrics?: RuntimeMetricRegistry;
+  workspace?: WorkspacePolicy;
+  resourceClaims?: ExecutionResourceClaims;
+  beforeDispatch?: (scope: ExecutionScope, run: ExecutionRunRecord, node: ExecutionNodeRecord) => Promise<void>;
+  requiresWorkflowAfterAttempt?: boolean;
 }
 
 interface ActiveExecution {
@@ -40,7 +47,7 @@ interface ActiveExecution {
 
 const FAILED_DEPENDENCY_STATES = new Set(['failed', 'blocked', 'interrupted', 'cancelled']);
 
-function asValidated(node: ExecutionNodeRecord): ValidatedExecutionNode {
+export function executionNodeSpec(node: ExecutionNodeRecord): ValidatedExecutionNode {
   return {
     id: node.nodeId,
     purpose: node.purpose,
@@ -48,8 +55,11 @@ function asValidated(node: ExecutionNodeRecord): ValidatedExecutionNode {
     cwd: node.cwd,
     dependsOn: [...node.dependsOn],
     timeoutMs: node.timeoutMs,
-    continueOnFailure: node.continueOnFailure,
     expectedArtifacts: node.expectedArtifacts.map((artifact) => ({ ...artifact })),
+    stepIds: node.stepIds ?? [],
+    ...(node.resources ? { resources: node.resources } : {}),
+    ...(node.inputs ? { inputs: node.inputs } : {}),
+    ...(node.toolchain ? { toolchain: node.toolchain } : {}),
   };
 }
 
@@ -79,6 +89,11 @@ export class ExecutionScheduler {
   private readonly metrics?: RuntimeMetricRegistry;
   private readonly resourceSignatures = new Map<string, string>();
   private closing = false;
+  readonly resourceClaims: ExecutionResourceClaims;
+  private readonly workspace?: WorkspacePolicy;
+  private readonly beforeDispatch?: ExecutionSchedulerOptions['beforeDispatch'];
+  private readonly runScopes = new Map<string, ExecutionScope>();
+  private readonly requiresWorkflowAfterAttempt: boolean;
 
   constructor(
     readonly store: ExecutionStore,
@@ -90,9 +105,14 @@ export class ExecutionScheduler {
     this.onAttemptCompleted = options.onAttemptCompleted;
     this.resourceGovernor = options.resourceGovernor;
     this.metrics = options.metrics;
+    this.workspace = options.workspace;
+    this.resourceClaims = options.resourceClaims ?? new ExecutionResourceClaims();
+    this.beforeDispatch = options.beforeDispatch;
+    this.requiresWorkflowAfterAttempt = Boolean(options.requiresWorkflowAfterAttempt);
   }
 
   async startRun(scope: ExecutionScope, runId: string): Promise<ExecutionSchedulerStatus> {
+    this.runScopes.set(runId, scope);
     return this.withRunLock(runId, async () => {
       if (this.closing) throw new Error('EXECUTION_SCHEDULER_CLOSING');
       const run = await this.store.getRun(scope, runId);
@@ -109,6 +129,7 @@ export class ExecutionScheduler {
   }
 
   async retryNode(scope: ExecutionScope, runId: string, nodeId: string): Promise<ExecutionSchedulerStatus> {
+    this.runScopes.set(runId, scope);
     return this.withRunLock(runId, async () => {
       if (this.closing) throw new Error('EXECUTION_SCHEDULER_CLOSING');
       if (this.active.has(this.key(runId, nodeId))) {
@@ -195,7 +216,20 @@ export class ExecutionScheduler {
     for (const execution of active) execution.handle.terminate('interrupted');
     await Promise.allSettled(active.map((execution) => execution.settled));
     await Promise.allSettled([...this.locks.values()]);
+    for (const [runId, scope] of [...this.runScopes]) {
+      await this.withRunLock(runId, async () => {
+        const run = await this.store.getRun(scope, runId);
+        if (run?.state !== 'running') return;
+        for (const node of await this.store.getNodes(scope, runId)) {
+          if (node.state !== 'queued' && node.state !== 'ready') continue;
+          await this.store.setNodeState(scope, runId, node.nodeId, 'interrupted', { reason: 'runtime_closed_before_dispatch' });
+          await this.emit(scope, runId, 'node.interrupted', { nodeId: node.nodeId, payload: { reason: 'runtime_closed_before_dispatch' } });
+        }
+        await this.updateRunTerminalState(scope, runId, await this.store.getNodes(scope, runId));
+      });
+    }
     this.resourceSignatures.clear();
+    this.runScopes.clear();
   }
 
   private async reconcileAndDispatch(scope: ExecutionScope, runId: string): Promise<void> {
@@ -204,7 +238,8 @@ export class ExecutionScheduler {
     if (!run) throw new ExecutionStoreError('EXECUTION_RUN_NOT_FOUND', 'Execution run disappeared from authenticated scope');
     let nodes = await this.store.getNodes(scope, runId);
 
-    if (run.state !== 'running') {
+    if (run.state !== 'running') return;
+    if (this.closing) {
       await this.updateRunTerminalState(scope, runId, nodes);
       return;
     }
@@ -220,8 +255,21 @@ export class ExecutionScheduler {
         .sort((left, right) => left.nodeId.localeCompare(right.nodeId));
       for (const node of ready) {
         if (slots <= 0) break;
-        await this.launchNode(scope, runId, node);
-        slots -= 1;
+        try {
+          const key = this.key(runId, node.nodeId);
+          const resources = hasExecutionResourceClaims(node.resources) ? { ...node.resources, writes: [...(node.resources?.writes ?? []), ...node.expectedArtifacts.map((item) => item.path)] } : undefined;
+          const claims = this.workspace ? await this.resourceClaims.resolve(this.workspace, node.cwd, resources, executionInputPaths(this.workspace, executionNodeSpec(node))) : [];
+          if (!this.resourceClaims.acquire(key, claims)) continue;
+          try {
+            await this.beforeDispatch?.(scope, run, node);
+            await this.launchNode(scope, runId, node);
+          }
+          catch (error) { this.releaseClaims(key, runId); throw error; }
+          slots -= 1;
+        } catch (error) {
+          await this.store.setNodeState(scope, runId, node.nodeId, 'blocked', { reason: 'dispatch_guard', message: error instanceof Error ? error.message : String(error) });
+          await this.emit(scope, runId, 'node.blocked', { nodeId: node.nodeId, payload: { reason: 'dispatch_guard' } });
+        }
       }
     }
 
@@ -301,22 +349,31 @@ export class ExecutionScheduler {
     }));
     await this.store.createAttempt(scope, runId, node.nodeId, attemptId, attemptNo, paths);
 
-    let handle: ExecutionRunHandle;
+    let handle: ExecutionRunHandle | undefined;
     try {
-      handle = await withAttemptCorrelation(() => this.runner.start(runId, asValidated(node), attemptId, attemptNo, {
+      const run = (await this.store.getRun(scope, runId))!;
+      const dependencies = await this.dependencyIdentities(scope, runId, node.dependsOn);
+      handle = await withAttemptCorrelation(() => this.runner.start(runId, executionNodeSpec(node), attemptId, attemptNo, {
+        dependencies,
+        workflowBinding: run.metadata.workflowBinding as ExecutionWorkflowBinding | undefined,
         onOutputAvailable: (payload) => withAttemptCorrelation(() => this.emit(scope, runId, 'node.output_available', {
           nodeId: node.nodeId,
           attemptId,
           payload: { ...payload },
         })).then(() => undefined),
       }));
-      await this.store.setAttemptPid(scope, runId, attemptId, handle.pid);
+      await this.store.setAttemptPid(scope, runId, node.nodeId, attemptNo, handle.pid);
+      const pid = handle.pid;
       await withAttemptCorrelation(() => this.emit(scope, runId, 'node.started', {
         nodeId: node.nodeId,
         attemptId,
-        payload: { attemptNo, pid: handle.pid },
+        payload: { attemptNo, pid },
       }));
     } catch (error) {
+      if (handle) {
+        handle.terminate('interrupted');
+        await handle.completion.catch(() => undefined);
+      }
       const failure = error instanceof Error ? error : new Error(String(error));
       await this.store.failAttemptStart(scope, runId, node.nodeId, attemptId, failure);
       await withAttemptCorrelation(() => this.emit(scope, runId, 'node.failed', {
@@ -324,6 +381,7 @@ export class ExecutionScheduler {
         attemptId,
         payload: { attemptNo, startFailure: failure.message },
       }));
+      this.releaseClaims(this.key(runId, node.nodeId), runId);
       return;
     }
 
@@ -331,7 +389,7 @@ export class ExecutionScheduler {
     const settled = handle.completion.then(
       (marker) => withAttemptCorrelation(() => this.withRunLock(runId, async () => {
         this.active.delete(key);
-        await this.store.completeAttempt(scope, marker);
+        await this.store.completeAttempt(scope, marker, { workflowPending: this.requiresWorkflowAfterAttempt });
         if (this.onAttemptCompleted) {
           try { await this.onAttemptCompleted(scope, marker); } catch { /* derived observers never override process truth */ }
         }
@@ -346,6 +404,7 @@ export class ExecutionScheduler {
             stderrBytes: marker.stderrBytes,
           },
         });
+        this.releaseClaims(key, runId);
         await this.reconcileAndDispatch(scope, runId);
       })),
       (error) => withAttemptCorrelation(() => this.withRunLock(runId, async () => {
@@ -357,11 +416,37 @@ export class ExecutionScheduler {
           attemptId,
           payload: { attemptNo, completionFailure: failure.message },
         });
+        this.releaseClaims(key, runId);
         await this.reconcileAndDispatch(scope, runId);
       })),
     );
     this.active.set(key, { handle, settled });
-    void settled.catch(() => undefined);
+    void settled.catch(() => { this.active.delete(key); this.releaseClaims(key, runId); });
+  }
+
+  async dependencyIdentities(scope: ExecutionScope, runId: string, ids: readonly string[]): Promise<DependencyIdentity[]> {
+    const result: DependencyIdentity[] = [];
+    for (const nodeId of [...ids].sort()) {
+      const node = await this.store.getNode(scope, runId, nodeId);
+      if (!node || node.state !== 'succeeded') throw new ExecutionStoreError('EXECUTION_DEPENDENCY_NOT_SUCCEEDED', `Dependency ${nodeId} has no current successful attempt`);
+      const attempt = (await this.store.listAttempts(scope, runId, nodeId)).find((item) => item.attemptNo === node.attemptCount);
+      if (!attempt) throw new ExecutionStoreError('EXECUTION_DEPENDENCY_EVIDENCE_MISSING', `Dependency ${nodeId} lacks attempt evidence`);
+      const marker = await this.paths.readResult(runId, nodeId, attempt.attemptNo);
+      if (!marker && node.inputs !== undefined) throw new ExecutionStoreError('EXECUTION_DEPENDENCY_EVIDENCE_MISSING', 'Source-bound dependency lacks its durable result marker');
+      if (marker && marker.attemptId !== attempt.attemptId) throw new ExecutionStoreError('EXECUTION_RESULT_IDENTITY_MISMATCH', 'Dependency marker identity mismatch');
+      // Test runners may persist only the store result; production runners always write a marker.
+      result.push({ nodeId, attemptId: attempt.attemptId, attemptNo: attempt.attemptNo, resultHash: executionIdentityHash(marker ?? attempt) });
+    }
+    return result;
+  }
+
+  releaseClaims(key: string, completedRunId?: string): void {
+    this.resourceClaims.release(key);
+    if (this.closing) return;
+    for (const [runId, scope] of this.runScopes) {
+      if (runId === completedRunId) continue;
+      queueMicrotask(() => { void this.withRunLock(runId, () => this.reconcileAndDispatch(scope, runId)).catch(() => undefined); });
+    }
   }
 
   private async propagateBlocked(scope: ExecutionScope, runId: string): Promise<void> {
@@ -405,7 +490,10 @@ export class ExecutionScheduler {
     await this.store.setRunState(scope, runId, nextState);
     const eventType = runTerminalEvent(nextState);
     if (eventType) await this.emit(scope, runId, eventType, { payload: { previousState: current.state } });
-    if (eventType) this.resourceSignatures.delete(runId);
+    if (eventType) {
+      this.resourceSignatures.delete(runId);
+      this.runScopes.delete(runId);
+    }
   }
 
   private async emit(
@@ -432,7 +520,7 @@ export class ExecutionScheduler {
     return `${runId}/${nodeId}`;
   }
 
-  private async withRunLock<T>(runId: string, operation: () => Promise<T>): Promise<T> {
+  async withRunLock<T>(runId: string, operation: () => Promise<T>): Promise<T> {
     const previous = this.locks.get(runId) ?? Promise.resolve();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });

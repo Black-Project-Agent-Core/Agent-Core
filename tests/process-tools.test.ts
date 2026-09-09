@@ -7,11 +7,12 @@ import { WorkspacePolicy } from '../src/runtime/workspace.js';
 import { printCommand, sleepCommand } from './helpers/platform-command.js';
 
 const roots: string[] = [];
+const managers: ProcessManager[] = [];
 
 async function waitForStdout(
   manager: ProcessManager,
   sessionId: string,
-  owner: ProcessSessionOwner,
+  owner: ProcessSessionOwner | undefined,
   needle: string,
   timeoutMs = 5_000,
 ) {
@@ -29,11 +30,18 @@ async function setup() {
   roots.push(root);
   const outside = await mkdtemp(path.join(os.tmpdir(), 'agent-core-proc-out-'));
   roots.push(outside);
-  return { root, outside, manager: new ProcessManager(new WorkspacePolicy([root])) };
+  const manager = new ProcessManager(new WorkspacePolicy([root]));
+  managers.push(manager);
+  return { root, outside, manager };
 }
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  for (const manager of managers.splice(0)) {
+    for (const session of manager.list()) {
+      if (session.running) await manager.stop(session.sessionId);
+    }
+  }
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })));
 });
 
 describe('ProcessManager', () => {
@@ -61,9 +69,7 @@ describe('ProcessManager', () => {
     const { root, manager } = await setup();
     const started = await manager.start(sleepCommand(5000, 'session-ready\n'), { cwd: root });
     expect(started.sessionId).toMatch(/^proc_/);
-    await new Promise((resolve) => setTimeout(resolve, 200));
-
-    const read = manager.read(started.sessionId);
+    const read = await waitForStdout(manager, started.sessionId, undefined, 'session-ready');
     expect(read.stdout).toContain('session-ready');
     expect(manager.list().some((item) => item.sessionId === started.sessionId)).toBe(true);
 

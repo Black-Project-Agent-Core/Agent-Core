@@ -4,20 +4,16 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
-import { ContinuitySnapshotBuilder } from '../src/continuity/snapshot.js';
 import { validateExecutionDag, type ValidatedExecutionNode } from '../src/execution/dag.js';
 import type { ExecutionResultMarker } from '../src/execution/log-store.js';
 import type { ExecutionRunHandle } from '../src/execution/runner.js';
 import type { ExecutionRunnerLike } from '../src/execution/scheduler.js';
 import { ExecutionService } from '../src/execution/service.js';
 import type { ExecutionScope } from '../src/execution/types.js';
-import { MemoryStore } from '../src/memory/store.js';
-import { MemoryWorkerClient } from '../src/memory/worker-client.js';
 import { WorkspacePolicy } from '../src/runtime/workspace.js';
 
 const roots: string[] = [];
 const services: ExecutionService[] = [];
-const memoryStores: MemoryStore[] = [];
 
 function percentile(values: number[], fraction: number): number {
   const ordered = [...values].sort((left, right) => left - right);
@@ -116,7 +112,6 @@ async function executionFixture(label: string, runner = new ControlledRunner(), 
   const service = new ExecutionService({
     ...base,
     enabled: true,
-    dbPath: path.join(root, 'runtime', 'execution', `${label}.sqlite`),
     logRoot: path.join(root, 'runtime', 'execution', 'runs'),
     maxConcurrency,
     maxNodes: 128,
@@ -131,46 +126,6 @@ async function executionFixture(label: string, runner = new ControlledRunner(), 
     runner,
     scope: { principalId: 'perf-principal', projectId: root } satisfies ExecutionScope,
   };
-}
-
-async function seedContinuityTasks(client: MemoryWorkerClient, principalId: string, projectId: string, count: number): Promise<void> {
-  const batchSize = 250;
-  const baseTime = 2_100_000_000_000;
-  for (let offset = 0; offset < count; offset += batchSize) {
-    const operations: any[] = [];
-    const end = Math.min(count, offset + batchSize);
-    for (let index = offset; index < end; index += 1) {
-      const id = `task-${String(index).padStart(6, '0')}`;
-      const status = index < 10 ? 'running'
-        : index < 20 ? 'blocked'
-          : index < 30 ? 'deferred'
-            : index < 40 ? 'planned'
-              : 'completed';
-      const createdAt = baseTime + index;
-      const completedAt = status === 'completed' ? createdAt + 100 : null;
-      operations.push({
-        kind: 'run',
-        sql: `INSERT INTO continuity_tasks(
-          id, principal_id, project_id, parent_task_id, title, objective, acceptance_json,
-          constraints_json, status, priority, blocker_json, last_checkpoint_id,
-          created_at, updated_at, completed_at
-        ) VALUES (?, ?, ?, NULL, ?, ?, '[]', '[]', ?, ?, '[]', NULL, ?, ?, ?)`,
-        params: [
-          id,
-          principalId,
-          projectId,
-          `Synthetic task ${index}`,
-          `Objective ${index}`,
-          status,
-          index % 7,
-          createdAt,
-          createdAt,
-          completedAt,
-        ],
-      });
-    }
-    await client.transaction(operations);
-  }
 }
 
 async function eventually(assertion: () => void | Promise<void>, timeoutMs = 2_000): Promise<void> {
@@ -190,33 +145,12 @@ async function eventually(assertion: () => void | Promise<void>, timeoutMs = 2_0
 
 afterEach(async () => {
   await Promise.all(services.splice(0).map((service) => service.close().catch(() => undefined)));
-  await Promise.all(memoryStores.splice(0).map((store) => store.close().catch(() => undefined)));
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 const performanceGate = process.env.AGENT_CORE_PERFORMANCE_GATES === '1' ? it : it.skip;
 
 describe('Task 20 performance, isolation, and determinism gates', () => {
-  performanceGate('builds an identical continuity snapshot at 10k tasks with p95 below 50 ms', async () => {
-    const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-continuity-perf-'));
-    roots.push(root);
-    const client = new MemoryWorkerClient();
-    const store = new MemoryStore(client);
-    memoryStores.push(store);
-    await store.open({ dbPath: path.join(root, 'memory.sqlite') });
-    const scope = { principalId: 'continuity-perf-principal', projectId: 'continuity-perf-project' };
-    await seedContinuityTasks(client, scope.principalId, scope.projectId, 10_000);
-    const builder = new ContinuitySnapshotBuilder(client);
-
-    const first = await builder.build(scope);
-    const second = await builder.build(scope);
-    expect(second.snapshotHash).toBe(first.snapshotHash);
-    expect(second).toEqual(first);
-
-    const measured = await timings(async () => { void await builder.build(scope); }, 20, 3);
-    expect(percentile(measured, 0.95)).toBeLessThan(50);
-  }, 30_000);
-
   performanceGate('validates a 128-node DAG deterministically with p95 below 50 ms', async () => {
     const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-dag-perf-'));
     roots.push(root);
@@ -252,6 +186,8 @@ describe('Task 20 performance, isolation, and determinism gates', () => {
           purpose: `node ${index}`,
           command: `Write-Output '${index}'`,
           cwd: f.work,
+          // This controlled runner never writes workspace files; declare independent shared reads.
+          resources: { reads: [f.work] },
         })),
       });
       const startedAt = performance.now();
@@ -273,7 +209,7 @@ describe('Task 20 performance, isolation, and determinism gates', () => {
       const f = await executionFixture(`wake-${sample}`);
       const created = await f.service.create(f.scope, {
         objective: `wake sample ${sample}`,
-        nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work }],
+        nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work, resources: { reads: [f.work] } }],
       });
       const originalGetEvents = f.service.store.getEvents.bind(f.service.store);
       let reads = 0;
@@ -308,9 +244,9 @@ describe('Task 20 performance, isolation, and determinism gates', () => {
     const created = await f.service.create(f.scope, {
       objective: 'concurrent terminal events must not double-dispatch C',
       nodes: [
-        { id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work },
-        { id: 'B', purpose: 'B', command: "Write-Output 'B'", cwd: f.work },
-        { id: 'C', purpose: 'C', command: "Write-Output 'C'", cwd: f.work, dependsOn: ['A', 'B'] },
+        { id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work, resources: { reads: [f.work] } },
+        { id: 'B', purpose: 'B', command: "Write-Output 'B'", cwd: f.work, resources: { reads: [f.work] } },
+        { id: 'C', purpose: 'C', command: "Write-Output 'C'", cwd: f.work, resources: { reads: [f.work] }, dependsOn: ['A', 'B'] },
       ],
     });
     await f.service.start(f.scope, created.runId);

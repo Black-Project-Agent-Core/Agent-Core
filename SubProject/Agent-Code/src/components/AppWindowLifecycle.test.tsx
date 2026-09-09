@@ -20,8 +20,6 @@ const runningStatus = {
   execution: 'Healthy',
   tunnel: 'Running',
   projectRoot: 'E:\\Projects\\Agent-Core',
-  nativeControlEnabled: true,
-  legacyControllerDetected: false,
   autostartEnabled: true,
 };
 

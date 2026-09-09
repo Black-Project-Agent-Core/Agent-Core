@@ -1,11 +1,13 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { WorkspacePolicy } from '../runtime/workspace.js';
 import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 import type { ExecutionArtifactType } from './dag.js';
 import type { ExecutionLogStore } from './log-store.js';
-import { stableExecutionJson, type ExecutionStore } from './store.js';
+import { executionNodeSpec } from './scheduler.js';
+import { executionApplicability, executionIdentityHash, type ExecutionApplicability, type ExecutionWorkflowBinding } from './provenance.js';
+import type { ExecutionArtifactRecord, ExecutionArtifactQuery, ExecutionStore } from './store.js';
 import type { ExecutionScope } from './types.js';
 
 export interface IndexedExecutionArtifact {
@@ -29,6 +31,7 @@ export interface ArtifactReuseResult {
   stillExists?: boolean;
   stillVerified?: boolean;
   artifact?: IndexedExecutionArtifact;
+  applicability?: ExecutionApplicability;
 }
 
 export interface PurgeSuggestion extends IndexedExecutionArtifact {
@@ -36,36 +39,10 @@ export interface PurgeSuggestion extends IndexedExecutionArtifact {
   safeToReview: true;
 }
 
-type ArtifactRow = {
-  artifact_id: string;
-  run_id: string;
-  node_id: string;
-  attempt_no: number;
-  path: string;
-  artifact_type: ExecutionArtifactType;
-  verification: 'verified';
-  sha256: string | null;
-  size: number | null;
-  modified_at: number | null;
-  source_result_ref: string;
-  created_at: number;
-};
-
-function mapArtifact(row: ArtifactRow): IndexedExecutionArtifact {
-  return {
-    artifactId: row.artifact_id,
-    runId: row.run_id,
-    nodeId: row.node_id,
-    attemptNo: Number(row.attempt_no),
-    path: row.path,
-    artifactType: row.artifact_type,
-    verification: 'verified',
-    ...(row.sha256 ? { sha256: row.sha256 } : {}),
-    ...(row.size == null ? {} : { size: Number(row.size) }),
-    ...(row.modified_at == null ? {} : { modifiedAt: Number(row.modified_at) }),
-    sourceResultRef: row.source_result_ref,
-    createdAt: Number(row.created_at),
-  };
+function mapArtifact(record: ExecutionArtifactRecord): IndexedExecutionArtifact {
+  const { metadata, ...rest } = record;
+  void metadata;
+  return rest;
 }
 
 async function sha256(filePath: string): Promise<string> {
@@ -85,35 +62,25 @@ export class ExecutionArtifactManager {
   async indexAttempt(scope: ExecutionScope, runId: string, nodeId: string, attemptNo: number): Promise<IndexedExecutionArtifact[]> {
     const started = performance.now();
     try {
-      await this.store.getRun(scope, runId).then((run) => {
-        if (!run) throw new Error('EXECUTION_RUN_NOT_FOUND');
-      });
+      const run = await this.store.getRun(scope, runId);
+      if (!run) throw new Error('EXECUTION_RUN_NOT_FOUND');
       const existing = await this.findByRun(scope, runId, nodeId, attemptNo);
       if (existing.length > 0) return existing;
       if (!this.logs) return [];
       const marker = await this.logs.readResult(runId, nodeId, attemptNo);
       if (!marker || marker.version !== 2 || marker.evidenceState !== 'verified' || marker.evidence.verification !== 'verified') return [];
       const attempt = (await this.store.listAttempts(scope, runId, nodeId)).find((item) => item.attemptNo === attemptNo);
-      if (!attempt) return [];
-      const now = Date.now();
-      const operations = marker.evidence.artifacts
+      if (!attempt || marker.attemptId !== attempt.attemptId || marker.state !== 'succeeded' || attempt.state !== 'succeeded') return [];
+      await this.store.recordArtifacts(scope, runId, nodeId, attemptNo, attempt.resultPath, marker.evidence.artifacts
         .filter((artifact) => artifact.verification === 'verified' && artifact.exists)
-        .sort((left, right) => left.path.localeCompare(right.path))
         .map((artifact) => ({
-          kind: 'run' as const,
-          sql: `INSERT OR IGNORE INTO execution_artifacts(
-            artifact_id,run_id,node_id,attempt_no,path,artifact_type,verification,sha256,size,modified_at,
-            source_result_ref,metadata_json,created_at
-          ) VALUES (?,?,?,?,?,?, 'verified',?,?,?,?,?,?)`,
-          params: [
-            randomUUID(), runId, nodeId, attemptNo, artifact.path, artifact.artifactType ?? 'other',
-            artifact.sha256 ?? null, artifact.size ?? null, artifact.modifiedAt ?? null,
-            attempt.resultPath,
-            stableExecutionJson({ required: artifact.required, actualKind: artifact.actualKind ?? null }),
-            now,
-          ],
-        }));
-      if (operations.length > 0) await this.store.client.transaction(operations);
+          path: artifact.path,
+          artifactType: artifact.artifactType ?? 'other',
+          ...(artifact.sha256 ? { sha256: artifact.sha256 } : {}),
+          ...(artifact.size === undefined ? {} : { size: artifact.size }),
+          ...(artifact.modifiedAt === undefined ? {} : { modifiedAt: artifact.modifiedAt }),
+          metadata: { required: artifact.required, actualKind: artifact.actualKind ?? null },
+        })));
       return this.findByRun(scope, runId, nodeId, attemptNo);
     } catch (error) {
       this.metrics?.failure('execution.artifact_index.duration_ms', error instanceof Error ? error.name : 'EXECUTION_ARTIFACT_INDEX_FAILED');
@@ -128,15 +95,13 @@ export class ExecutionArtifactManager {
     let indexed = 0;
     let failed = 0;
     for (const candidate of candidates) {
+      const scope: ExecutionScope = {
+        principalId: candidate.principalId,
+        ...(candidate.projectId ? { projectId: candidate.projectId } : {}),
+      };
       try {
-        const before = await this.findByRun(
-          { principalId: candidate.principalId, ...(candidate.projectId ? { projectId: candidate.projectId } : {}) },
-          candidate.runId, candidate.nodeId, candidate.attemptNo,
-        );
-        const after = await this.indexAttempt(
-          { principalId: candidate.principalId, ...(candidate.projectId ? { projectId: candidate.projectId } : {}) },
-          candidate.runId, candidate.nodeId, candidate.attemptNo,
-        );
+        const before = await this.findByRun(scope, candidate.runId, candidate.nodeId, candidate.attemptNo);
+        const after = await this.indexAttempt(scope, candidate.runId, candidate.nodeId, candidate.attemptNo);
         if (before.length === 0 && after.length > 0) indexed += 1;
       } catch {
         failed += 1;
@@ -148,20 +113,20 @@ export class ExecutionArtifactManager {
   async findByHash(scope: ExecutionScope, hash: string): Promise<IndexedExecutionArtifact[]> {
     const normalized = hash.toLowerCase().trim();
     if (!/^[a-f0-9]{64}$/.test(normalized)) return [];
-    return this.query(scope, 'artifact.sha256 = ?', [normalized]);
+    return this.query(scope, { sha256: normalized });
   }
 
   async findByType(scope: ExecutionScope, artifactType: ExecutionArtifactType): Promise<IndexedExecutionArtifact[]> {
     if (!['build', 'test_report', 'log', 'data', 'other'].includes(artifactType)) return [];
-    return this.query(scope, 'artifact.artifact_type = ?', [artifactType]);
+    return this.query(scope, { artifactType });
   }
 
   async findByRun(scope: ExecutionScope, runId: string, nodeId?: string, attemptNo?: number): Promise<IndexedExecutionArtifact[]> {
-    const clauses = ['artifact.run_id = ?'];
-    const params: Array<string | number> = [runId];
-    if (nodeId) { clauses.push('artifact.node_id = ?'); params.push(nodeId); }
-    if (attemptNo !== undefined) { clauses.push('artifact.attempt_no = ?'); params.push(attemptNo); }
-    return this.query(scope, clauses.join(' AND '), params);
+    return this.query(scope, {
+      runId,
+      ...(nodeId ? { nodeId } : {}),
+      ...(attemptNo === undefined ? {} : { attemptNo }),
+    });
   }
 
   async findReusable(
@@ -177,7 +142,27 @@ export class ExecutionArtifactManager {
         const info = await stat(resolved);
         if (!info.isFile()) continue;
         if (await sha256(resolved) !== candidate.sha256) continue;
-        return { found: true, advisoryOnly: true, stillExists: true, stillVerified: true, artifact: candidate };
+        let applicability: ExecutionApplicability = 'legacy_unbound';
+        if (this.logs) {
+          const run = await this.store.getRun(scope, candidate.runId);
+          const node = await this.store.getNode(scope, candidate.runId, candidate.nodeId);
+          const attempt = (await this.store.listAttempts(scope, candidate.runId, candidate.nodeId)).find((item) => item.attemptNo === candidate.attemptNo);
+          const marker = await this.logs.readResult(candidate.runId, candidate.nodeId, candidate.attemptNo);
+          if (!run || !node || !attempt || !marker || marker.attemptId !== attempt.attemptId || node.attemptCount !== candidate.attemptNo) continue;
+          const dependencies = [];
+          for (const nodeId of node.dependsOn) {
+            const dependency = await this.store.getNode(scope, run.runId, nodeId);
+            if (!dependency || dependency.state !== 'succeeded') throw new Error('EXECUTION_DEPENDENCY_NOT_SUCCEEDED');
+            const result = await this.logs.readResult(run.runId, nodeId, dependency.attemptCount);
+            if (!result) throw new Error('EXECUTION_DEPENDENCY_EVIDENCE_MISSING');
+            dependencies.push({ nodeId, attemptNo: result.attemptNo, attemptId: result.attemptId, resultHash: executionIdentityHash(result) });
+          }
+          applicability = await executionApplicability(this.workspace, executionNodeSpec(node), marker.provenance,
+            { runId: candidate.runId, attemptId: attempt.attemptId, attemptNo: attempt.attemptNo }, dependencies,
+            run.metadata.workflowBinding as ExecutionWorkflowBinding | undefined);
+          if (applicability !== 'current' && applicability !== 'legacy_unbound') continue;
+        }
+        return { found: true, advisoryOnly: true, stillExists: true, stillVerified: true, artifact: candidate, applicability };
       } catch {
         continue;
       }
@@ -188,38 +173,20 @@ export class ExecutionArtifactManager {
   async suggestPurge(scope: ExecutionScope, options: { olderThanMs?: number; limit?: number } = {}): Promise<PurgeSuggestion[]> {
     const olderThanMs = Math.max(0, options.olderThanMs ?? 30 * 24 * 60 * 60 * 1000);
     const limit = Math.max(1, Math.min(options.limit ?? 100, 500));
-    const cutoff = Date.now() - olderThanMs;
-    const rows = await this.store.client.query<ArtifactRow>(
-      `SELECT artifact.artifact_id, artifact.run_id, artifact.node_id, artifact.attempt_no, artifact.path,
-              artifact.artifact_type, artifact.verification, artifact.sha256, artifact.size, artifact.modified_at,
-              artifact.source_result_ref, artifact.created_at
-         FROM execution_artifacts AS artifact
-         JOIN execution_runs AS run ON run.id = artifact.run_id
-        WHERE run.principal_id = ? AND IFNULL(run.project_id, '') = ?
-          AND run.state IN ('completed','failed','blocked','interrupted','cancelled')
-          AND artifact.created_at <= ?
-        ORDER BY artifact.created_at ASC, artifact.artifact_id ASC
-        LIMIT ?`,
-      [scope.principalId, scope.projectId ?? '', cutoff, limit],
-    );
-    return rows.map((row) => ({ ...mapArtifact(row), reason: `terminal artifact older than or equal to ${olderThanMs} ms; review only`, safeToReview: true }));
+    const artifacts = await this.query(scope, {
+      terminalRunsOnly: true,
+      createdAtMax: Date.now() - olderThanMs,
+      order: 'oldest',
+      limit,
+    });
+    return artifacts.map((artifact) => ({
+      ...artifact,
+      reason: `terminal artifact older than or equal to ${olderThanMs} ms; review only`,
+      safeToReview: true,
+    }));
   }
 
-  private async query(
-    scope: ExecutionScope,
-    where: string,
-    params: Array<string | number>,
-  ): Promise<IndexedExecutionArtifact[]> {
-    const rows = await this.store.client.query<ArtifactRow>(
-      `SELECT artifact.artifact_id, artifact.run_id, artifact.node_id, artifact.attempt_no, artifact.path,
-              artifact.artifact_type, artifact.verification, artifact.sha256, artifact.size, artifact.modified_at,
-              artifact.source_result_ref, artifact.created_at
-         FROM execution_artifacts AS artifact
-         JOIN execution_runs AS run ON run.id = artifact.run_id
-        WHERE run.principal_id = ? AND IFNULL(run.project_id, '') = ? AND ${where}
-        ORDER BY artifact.created_at DESC, artifact.artifact_id ASC`,
-      [scope.principalId, scope.projectId ?? '', ...params],
-    );
-    return rows.map(mapArtifact);
+  private async query(scope: ExecutionScope, filter: ExecutionArtifactQuery): Promise<IndexedExecutionArtifact[]> {
+    return (await this.store.listArtifacts(scope, filter)).map(mapArtifact);
   }
 }

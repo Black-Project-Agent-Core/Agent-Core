@@ -154,7 +154,7 @@ export class OperatorDirectiveService {
     if (!this.config.enabled) {
       return { status: 'disabled', snapshotHash: null, directives: [], promptContext: '' };
     }
-    if ((this.state === 'idle' || this.state === 'healthy') && !await this.databaseExists()) {
+    if ((this.state === 'idle' || this.state === 'healthy') && !await this.stateRootExists()) {
       this.state = 'healthy';
       this.degradedReason = undefined;
       return { status: 'healthy', snapshotHash: authoritySnapshotHash([]), directives: [], promptContext: '' };
@@ -187,7 +187,7 @@ export class OperatorDirectiveService {
         enabled: false,
         healthy: false,
         state: 'disabled',
-        schemaVersion: this.config.schemaVersion,
+        schemaVersion: this.config.stateVersion,
         activeDirectiveCount: 0,
         integrity: 'disabled',
       };
@@ -197,7 +197,7 @@ export class OperatorDirectiveService {
       enabled: true,
       healthy: snapshot.status === 'healthy',
       state: this.state,
-      schemaVersion: this.config.schemaVersion,
+      schemaVersion: this.config.stateVersion,
       activeDirectiveCount: snapshot.directives.length,
       integrity: snapshot.status === 'healthy' ? 'ok' : `degraded:${this.degradedReason ?? 'unknown'}`,
     };
@@ -209,9 +209,9 @@ export class OperatorDirectiveService {
     this.state = 'closed';
   }
 
-  private async databaseExists(): Promise<boolean> {
+  private async stateRootExists(): Promise<boolean> {
     try {
-      const info = await stat(this.config.dbPath);
+      const info = await stat(this.config.stateRoot);
       return info.isFile() || info.isDirectory();
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;

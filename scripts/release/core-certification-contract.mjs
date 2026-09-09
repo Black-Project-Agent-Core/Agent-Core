@@ -89,7 +89,7 @@ export const CORE_CERTIFICATION_MATRIX = Object.freeze([
   Object.freeze({
     id: 'no_external_ai_model_api_dependency',
     label: 'No external AI model/API dependency',
-    evidence: Object.freeze(['package.json', 'plugin/codespace/package.json']),
+    evidence: Object.freeze(['package.json']),
   }),
 ]);
 
@@ -105,8 +105,6 @@ export const REQUIRED_PACKAGE_SCRIPTS = Object.freeze([
 export const CORE_SOURCE_PREFIXES = Object.freeze([
   'src/',
   'scripts/',
-  'plugin/codespace/src/',
-  'plugin/codespace/scripts/',
 ]);
 
 export const CORE_SOURCE_EXCLUDES = Object.freeze([

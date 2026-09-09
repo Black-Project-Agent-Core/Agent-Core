@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
@@ -45,12 +46,13 @@ async function readRepoJson(relative: string): Promise<Record<string, any>> {
   return JSON.parse(await readRepoText(relative)) as Record<string, any>;
 }
 
-// Tracked plus untracked (non-ignored) files so a freshly added source file is scanned before it is committed.
+// Every source file on disk, so a freshly added one is scanned before it is committed and a
+// still-indexed deletion is not scanned at all.
 function sourceFiles(prefix: string): string[] {
-  return execFileSync('git', ['-C', repoRoot, 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', prefix], { encoding: 'utf8' })
-    .split('\0')
-    .filter(Boolean)
-    .map((file) => file.replaceAll('\\', '/'));
+  return readdirSync(path.join(repoRoot, prefix), { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.relative(repoRoot, path.join(entry.parentPath, entry.name)).replaceAll('\\', '/'))
+    .sort();
 }
 
 function localTagExists(version: string): boolean {

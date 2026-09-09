@@ -5,7 +5,7 @@ Pinned revision: `117e9d29bde14db9742f54fb66a191fd0bf03903`
 
 This document records source-derived findings from the pinned K3 reference. It intentionally separates reusable runtime principles from Kimi-specific neural architecture.
 
-## Baseline validation in this Codespace
+## Baseline validation in this build host
 
 Command:
 

@@ -27,9 +27,7 @@ const RESTART_WINDOW_MS: u64 = 300_000;
 const BOOTSTRAP_SCHEMA_VERSION: u32 = 1;
 const MINIMUM_NODE_VERSION: (u32, u32, u32) = (24, 15, 0);
 const PREFERRED_NODE_VERSION: &str = "24.16.0";
-const TUNNEL_CLIENT_VERSION: &str = "0.0.13";
 const NATIVE_AUTOSTART_TASK: &str = "Agent Code Agent Core Controller";
-const LEGACY_AUTOSTART_TASK: &str = "Agent Core Tray Manager";
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -37,7 +35,6 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 #[derive(Clone)]
 pub struct AgentCoreEngine {
     root: PathBuf,
-    native_control_enabled: bool,
     lifecycle_mutex: Arc<Mutex<()>>,
 }
 
@@ -50,9 +47,6 @@ pub struct AgentCoreControlStatus {
     pub execution: String,
     pub tunnel: String,
     pub autostart: bool,
-    pub legacy_autostart: bool,
-    pub legacy_controller_detected: bool,
-    pub native_control_enabled: bool,
     pub desired_running: bool,
     pub root: String,
 }
@@ -162,24 +156,14 @@ impl ServiceRole {
 
 impl AgentCoreEngine {
     pub fn discover() -> Result<Self, String> {
-        let root = discover_agent_core_root()?;
-        let legacy = legacy_controller_detected_for_root(&root).unwrap_or(true);
-        let engine = Self {
-            root,
-            native_control_enabled: !legacy,
+        Ok(Self {
+            root: discover_agent_core_root()?,
             lifecycle_mutex: Arc::new(Mutex::new(())),
-        };
-        if engine.native_control_enabled {
-            let _ = engine.migrate_legacy_autostart();
-        }
-        Ok(engine)
+        })
     }
 
     pub fn request_running_on_app_launch(&self) -> Result<(), String> {
-        if self.native_control_enabled {
-            self.set_desired_running(true)?;
-        }
-        Ok(())
+        self.with_lifecycle_lock(|| self.set_desired_running(true))
     }
 
     pub fn status(&self) -> Result<AgentCoreControlStatus, String> {
@@ -210,9 +194,6 @@ impl AgentCoreEngine {
             execution: agent.execution,
             tunnel: tunnel_status,
             autostart: task_exists(NATIVE_AUTOSTART_TASK),
-            legacy_autostart: task_exists(LEGACY_AUTOSTART_TASK),
-            legacy_controller_detected: legacy_controller_detected_for_root(&self.root).unwrap_or(true),
-            native_control_enabled: self.native_control_enabled,
             desired_running: state.desired_running,
             root: self.root.to_string_lossy().to_string(),
         })
@@ -236,7 +217,6 @@ impl AgentCoreEngine {
     }
 
     pub fn start_bundle(&self) -> Result<AgentCoreActionResult, String> {
-        self.ensure_native_control()?;
         self.with_lifecycle_lock(|| {
             self.set_desired_running(true)?;
             let tools = self.prepare_runtime()?;
@@ -247,7 +227,6 @@ impl AgentCoreEngine {
     }
 
     pub fn restart_agent_core(&self) -> Result<AgentCoreActionResult, String> {
-        self.ensure_native_control()?;
         self.with_lifecycle_lock(|| {
             self.set_desired_running(true)?;
             let tools = self.ensure_runtime_tools()?;
@@ -259,7 +238,6 @@ impl AgentCoreEngine {
     }
 
     pub fn restart_tunnel(&self) -> Result<AgentCoreActionResult, String> {
-        self.ensure_native_control()?;
         self.with_lifecycle_lock(|| {
             self.set_desired_running(true)?;
             let tools = self.ensure_runtime_tools()?;
@@ -271,7 +249,6 @@ impl AgentCoreEngine {
     }
 
     pub fn restart_all(&self) -> Result<AgentCoreActionResult, String> {
-        self.ensure_native_control()?;
         self.with_lifecycle_lock(|| {
             self.set_desired_running(true)?;
             let tools = self.prepare_runtime()?;
@@ -286,7 +263,6 @@ impl AgentCoreEngine {
     }
 
     pub fn reset_oauth(&self) -> Result<AgentCoreActionResult, String> {
-        self.ensure_native_control()?;
         self.with_lifecycle_lock(|| {
             self.set_desired_running(true)?;
             let tools = self.ensure_runtime_tools()?;
@@ -302,12 +278,12 @@ impl AgentCoreEngine {
             }
 
             let data_dir = self.root.join("runtime").join("data");
-            let legacy_data_dir = self.root.join("runtime").join("data-current");
+            let import_data_dir = self.root.join("runtime").join("data-current");
             let mut command = hidden_command(&tools.node);
             command
                 .arg(&cli)
                 .arg("reset-oauth")
-                .arg(&legacy_data_dir)
+                .arg(&import_data_dir)
                 .current_dir(&self.root)
                 .env("AGENT_CORE_DATA_DIR", &data_dir);
             let output = command
@@ -315,10 +291,23 @@ impl AgentCoreEngine {
                 .map_err(|error| format!("Failed to run Agent Core OAuth reset: {error}"))?;
             if !output.status.success() {
                 let _ = self.start_service(ServiceRole::AgentCore, &tools);
-                return Err(format!(
-                    "Agent Core OAuth reset failed with exit code {}",
-                    output.status.code().unwrap_or(-1)
-                ));
+                let detail: String = String::from_utf8_lossy(&output.stderr)
+                    .trim()
+                    .chars()
+                    .take(500)
+                    .collect();
+                return Err(if detail.is_empty() {
+                    format!(
+                        "Agent Core OAuth reset failed with exit code {}",
+                        output.status.code().unwrap_or(-1)
+                    )
+                } else {
+                    format!(
+                        "Agent Core OAuth reset failed with exit code {}: {}",
+                        output.status.code().unwrap_or(-1),
+                        detail
+                    )
+                });
             }
 
             self.start_service(ServiceRole::AgentCore, &tools)?;
@@ -327,7 +316,6 @@ impl AgentCoreEngine {
     }
 
     pub fn exit_agent_core(&self) -> Result<AgentCoreActionResult, String> {
-        self.ensure_native_control()?;
         self.with_lifecycle_lock(|| {
             let tools = self.ensure_runtime_tools()?;
             self.adopt_existing_if_safe(ServiceRole::AgentCore, &tools)?;
@@ -339,28 +327,13 @@ impl AgentCoreEngine {
         })
     }
 
-    fn migrate_legacy_autostart(&self) -> Result<(), String> {
-        if !task_exists(LEGACY_AUTOSTART_TASK) {
-            return Ok(());
-        }
-        if !task_exists(NATIVE_AUTOSTART_TASK) {
-            let executable = preferred_agent_code_executable()?;
-            create_agent_code_autostart_task(&executable)?;
-        }
-        delete_task(LEGACY_AUTOSTART_TASK);
-        Ok(())
-    }
-
     pub fn toggle_autostart(&self) -> Result<AgentCoreActionResult, String> {
-        self.ensure_native_control()?;
         let enabled = task_exists(NATIVE_AUTOSTART_TASK);
         if enabled {
             delete_task(NATIVE_AUTOSTART_TASK);
-            delete_task(LEGACY_AUTOSTART_TASK);
         } else {
             let executable = preferred_agent_code_executable()?;
             create_agent_code_autostart_task(&executable)?;
-            delete_task(LEGACY_AUTOSTART_TASK);
         }
         self.action_result(if enabled {
             "Start with Windows disabled"
@@ -371,10 +344,6 @@ impl AgentCoreEngine {
 
     pub fn spawn_watchdog(self: Arc<Self>) {
         thread::spawn(move || {
-            if !self.native_control_enabled {
-                return;
-            }
-
             let runtime = self.controller_runtime_dir();
             if fs::create_dir_all(&runtime).is_err() {
                 return;
@@ -392,16 +361,11 @@ impl AgentCoreEngine {
                 return;
             }
 
-            if self.read_state().desired_running {
-                let _ = self.start_bundle();
-            }
+            let _ = self.start_desired_bundle();
 
             loop {
                 thread::sleep(Duration::from_secs(WATCHDOG_INTERVAL_SECONDS));
-                if !self.native_control_enabled || !self.read_state().desired_running {
-                    continue;
-                }
-                if legacy_controller_detected_for_root(&self.root).unwrap_or(true) {
+                if !self.read_state().desired_running {
                     continue;
                 }
                 let _ = self.watchdog_tick();
@@ -409,8 +373,23 @@ impl AgentCoreEngine {
         });
     }
 
+    fn start_desired_bundle(&self) -> Result<(), String> {
+        self.with_lifecycle_lock(|| {
+            if !self.read_state().desired_running {
+                return Ok(());
+            }
+            let tools = self.prepare_runtime()?;
+            self.start_service(ServiceRole::AgentCore, &tools)?;
+            self.start_service(ServiceRole::Tunnel, &tools)?;
+            Ok(())
+        })
+    }
+
     fn watchdog_tick(&self) -> Result<(), String> {
         self.with_lifecycle_lock(|| {
+            if !self.read_state().desired_running {
+                return Ok(());
+            }
             let tools = self.ensure_runtime_tools()?;
             for role in [ServiceRole::AgentCore, ServiceRole::Tunnel] {
                 self.watchdog_service_tick(role, &tools)?;
@@ -486,30 +465,6 @@ impl AgentCoreEngine {
         })
     }
 
-    fn ensure_native_control(&self) -> Result<(), String> {
-        if !self.native_control_enabled {
-            return Err(
-                "Legacy Agent Core tray controller was active when Agent Code started. The native controller is in safe passive mode for this run. Leave the current Agent Core running; after retiring the legacy tray, relaunch Agent Code to activate native control."
-                    .to_string(),
-            );
-        }
-        match legacy_controller_detected_for_root(&self.root) {
-            Ok(false) => {}
-            Ok(true) => {
-                return Err(
-                    "Legacy Agent Core tray controller is currently active. Native lifecycle mutations are blocked to prevent two controllers from racing."
-                        .to_string(),
-                );
-            }
-            Err(error) => {
-                return Err(format!(
-                    "Could not prove that the legacy Agent Core tray controller is absent. Native lifecycle mutations remain blocked: {error}"
-                ));
-            }
-        }
-        Ok(())
-    }
-
     fn with_lifecycle_lock<T>(&self, operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
         let _guard = self
             .lifecycle_mutex
@@ -545,7 +500,7 @@ impl AgentCoreEngine {
     fn prepare_runtime(&self) -> Result<RuntimeTools, String> {
         if pack_lock_active(&self.root)? {
             return Err(
-                "Agent Core portable package operation is active. Native launcher startup is blocked until packaging finishes."
+                "Agent Core portable package operation is active. Runtime preparation is blocked until packaging finishes."
                     .to_string(),
             );
         }
@@ -624,7 +579,7 @@ impl AgentCoreEngine {
         let node = ensure_node_runtime(&self.root)?;
         let npm = resolve_npm_for_node(&node)
             .ok_or_else(|| format!("npm.cmd was not found beside {}", node.display()))?;
-        let tunnel = ensure_tunnel_runtime(&self.root)?;
+        let tunnel = resolve_existing_tunnel(&self.root)?;
         let gh = resolve_gh_executable();
         Ok(RuntimeTools {
             node,
@@ -702,10 +657,6 @@ impl AgentCoreEngine {
             .env("AGENT_CORE_HOST", "127.0.0.1")
             .env("AGENT_CORE_PORT", AGENT_CORE_PORT.to_string())
             .env("AGENT_CORE_MEMORY_ENABLED", "true")
-            .env(
-                "AGENT_CORE_MEMORY_DB_PATH",
-                self.root.join("runtime").join("memory").join("agent-core-memory.sqlite"),
-            )
             .env("AGENT_CORE_SHUTDOWN_REQUEST_PATH", &shutdown_request)
             .env("AGENT_CORE_GITHUB_USE_GH_CLI", if gh_enabled { "true" } else { "false" });
 
@@ -733,7 +684,8 @@ impl AgentCoreEngine {
         let stdout = open_log_file(&tray_runtime.join("tunnel.stdout.log"))?;
         let stderr = open_log_file(&tray_runtime.join("tunnel.stderr.log"))?;
 
-        hidden_command(&tools.tunnel)
+        let mut command = hidden_command(&tools.tunnel);
+        command
             .arg("run")
             .arg("--profile-file")
             .arg(&profile)
@@ -870,8 +822,7 @@ impl AgentCoreEngine {
             .ok_or_else(|| "Compatible Node.js runtime is not currently available".to_string())?;
         let npm = resolve_npm_for_node(&node)
             .ok_or_else(|| "npm.cmd is not currently available".to_string())?;
-        let tunnel = resolve_existing_tunnel(&self.root)
-            .ok_or_else(|| "Tunnel client is not currently available".to_string())?;
+        let tunnel = resolve_existing_tunnel(&self.root)?;
         Ok(RuntimeTools {
             node,
             npm,
@@ -954,16 +905,6 @@ impl AgentCoreEngine {
         }).unwrap_or(false);
 
         if relocated {
-            let tray_runtime = self.root.join("runtime").join("tray");
-            for file in [
-                "state.json",
-                "exit.request",
-                "agent-core.shutdown.request",
-                "multiroot-restart-result.json",
-            ] {
-                let _ = fs::remove_file(tray_runtime.join(file));
-            }
-            let _ = fs::remove_dir_all(self.root.join("runtime").join("launcher").join("tmp"));
             let _ = fs::remove_file(self.state_path());
         }
 
@@ -1225,13 +1166,6 @@ fn node_architecture() -> &'static str {
     }
 }
 
-fn tunnel_architecture() -> &'static str {
-    match env::consts::ARCH {
-        "aarch64" => "arm64",
-        _ => "amd64",
-    }
-}
-
 fn install_portable_node(root: &Path) -> Result<PathBuf, String> {
     let folder = format!("node-v{PREFERRED_NODE_VERSION}-win-{}", node_architecture());
     let destination = root.join("runtime").join("tools").join(&folder);
@@ -1258,71 +1192,33 @@ fn install_portable_node(root: &Path) -> Result<PathBuf, String> {
     Ok(executable)
 }
 
-fn resolve_existing_tunnel(root: &Path) -> Option<PathBuf> {
-    if let Ok(value) = env::var("AGENT_CORE_TUNNEL_EXE") {
-        let candidate = PathBuf::from(value);
-        if candidate.exists() {
-            return Some(candidate);
+fn resolve_existing_tunnel(root: &Path) -> Result<PathBuf, String> {
+    resolve_tunnel_runtime(root, env::var_os("AGENT_CORE_TUNNEL_EXE").as_deref())
+}
+
+fn resolve_tunnel_runtime(root: &Path, explicit_override: Option<&OsStr>) -> Result<PathBuf, String> {
+    let candidate = if let Some(value) = explicit_override {
+        let configured = PathBuf::from(value);
+        let candidate = if configured.is_absolute() { configured } else { root.join(configured) };
+        if value.is_empty() || !is_tunnel_executable(&candidate) {
+            return Err("AGENT_CORE_TUNNEL_EXE must identify an existing .exe file; relative paths are resolved from the Agent Core root".to_string());
         }
-    }
-    let bundled = root.join("tunnel-client").join("tunnel-client.exe");
-    if bundled.exists() {
-        return Some(bundled);
-    }
-    let legacy_local = root.join("tools").join("tunnel-client").join("tunnel-client.exe");
-    if legacy_local.exists() {
-        return Some(legacy_local);
-    }
-    let local = root
-        .join("runtime")
-        .join("tools")
-        .join(format!(
-            "tunnel-client-v{TUNNEL_CLIENT_VERSION}-windows-{}",
-            tunnel_architecture()
-        ))
-        .join("tunnel-client.exe");
-    if local.exists() {
-        return Some(local);
-    }
-    find_in_path("tunnel-client.exe")
+        candidate
+    } else {
+        let bundled = root.join("tunnel-client").join("tunnel-client.exe");
+        if !is_tunnel_executable(&bundled) {
+            return Err("Bundled admin tunnel runtime is missing at tunnel-client/tunnel-client.exe. Rebuild with scripts/tunnel/build-admin-client.ps1, then install its verified candidate at that path, or set AGENT_CORE_TUNNEL_EXE explicitly.".to_string());
+        }
+        bundled
+    };
+    Ok(candidate)
 }
 
-fn ensure_tunnel_runtime(root: &Path) -> Result<PathBuf, String> {
-    if let Some(path) = resolve_existing_tunnel(root) {
-        return Ok(path);
-    }
-    install_portable_tunnel(root)
-}
-
-fn install_portable_tunnel(root: &Path) -> Result<PathBuf, String> {
-    let asset = format!(
-        "tunnel-client-v{TUNNEL_CLIENT_VERSION}-windows-{}",
-        tunnel_architecture()
-    );
-    let destination = root.join("runtime").join("tools").join(&asset);
-    let executable = destination.join("tunnel-client.exe");
-    if executable.exists() {
-        return Ok(executable);
-    }
-    if env::var("AGENT_CORE_BOOTSTRAP_NO_DOWNLOAD").ok().as_deref() == Some("1") {
-        return Err("tunnel-client is unavailable and Agent Core bootstrap downloads are disabled".to_string());
-    }
-    let archive = format!("{asset}.zip");
-    let base = format!(
-        "https://github.com/openai/tunnel-client/releases/download/v{TUNNEL_CLIENT_VERSION}"
-    );
-    install_verified_zip(
-        root,
-        &format!("{base}/{archive}"),
-        &format!("{base}/SHA256SUMS.txt"),
-        &archive,
-        &destination,
-        Path::new("tunnel-client.exe"),
-    )?;
-    if !executable.exists() {
-        return Err("Downloaded tunnel-client archive is unusable".to_string());
-    }
-    Ok(executable)
+fn is_tunnel_executable(path: &Path) -> bool {
+    path.is_file()
+        && path.extension().and_then(OsStr::to_str)
+            .map(|extension| extension.eq_ignore_ascii_case("exe"))
+            .unwrap_or(false)
 }
 
 fn install_verified_zip(
@@ -1657,23 +1553,6 @@ fn powershell_process_query(script: &str) -> Result<Option<ProcessInfo>, String>
         .map_err(|error| format!("Failed to parse Windows process query: {error}"))
 }
 
-fn legacy_controller_detected_for_root(root: &Path) -> Result<bool, String> {
-    let tray = root
-        .join("scripts")
-        .join("windows")
-        .join("agent-core-tray.ps1")
-        .to_string_lossy()
-        .replace('\'', "''");
-    let script = format!(
-        "$needle='{tray}'; $p=Get-CimInstance Win32_Process -Filter \"Name='powershell.exe'\" -ErrorAction SilentlyContinue | Where-Object {{$_.CommandLine -and $_.CommandLine.IndexOf($needle,[StringComparison]::OrdinalIgnoreCase) -ge 0 -and $_.CommandLine -match '-Mode\\s+Tray'}} | Select-Object -First 1; if($p){{'true'}}else{{'false'}}"
-    );
-    let output = hidden_command("powershell.exe")
-        .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", &script])
-        .output()
-        .map_err(|error| format!("Failed to detect legacy Agent Core tray controller: {error}"))?;
-    Ok(String::from_utf8_lossy(&output.stdout).trim().eq_ignore_ascii_case("true"))
-}
-
 fn is_agent_core_identity(process: &ProcessInfo, node: &Path, root: &Path) -> bool {
     if !same_path_str(&process.executable_path, node) {
         return false;
@@ -1823,10 +1702,134 @@ mod tests {
     use super::*;
 
     #[test]
+    fn queued_watchdog_respects_stop_after_acquiring_lifecycle_lock() {
+        let root = env::temp_dir().join(format!("agent-code-watchdog-stop-{}", now_millis()));
+        let engine = Arc::new(AgentCoreEngine {
+            root: root.clone(),
+            lifecycle_mutex: Arc::new(Mutex::new(())),
+        });
+        engine.set_desired_running(true).expect("seed desired running");
+        let guard = engine.lifecycle_mutex.lock().expect("hold lifecycle mutation");
+        let queued_engine = Arc::clone(&engine);
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let queued = thread::spawn(move || {
+            ready_tx.send(()).expect("announce queued watchdog");
+            queued_engine.watchdog_tick()
+        });
+        ready_rx.recv().expect("watchdog scheduled");
+        engine.set_desired_running(false).expect("stop while watchdog waits");
+        drop(guard);
+        queued.join().expect("watchdog thread").expect("stopped watchdog is a no-op");
+        engine.start_desired_bundle().expect("startup respects stopped state");
+        assert!(!engine.read_state().desired_running);
+        assert!(engine.read_state().services.is_empty());
+        assert!(!root.join("node_modules").exists());
+        fs::remove_dir_all(&root).expect("remove isolated watchdog fixture");
+    }
+
+    #[test]
     fn parses_node_version_tuple() {
         assert_eq!(version_tuple("24.16.0"), Some((24, 16, 0)));
         assert_eq!(version_tuple("24.15.0-rc.1"), Some((24, 15, 0)));
         assert!(version_tuple("bad").is_none());
+    }
+
+    #[test]
+    fn missing_bundled_tunnel_does_not_use_cached_runtime_or_download() {
+        let root = env::temp_dir().join(format!("agent-code-tunnel-missing-{}", now_millis()));
+        for relative in [
+            "tools/tunnel-client/tunnel-client.exe",
+            "runtime/tools/tunnel-client-v0.0.13-windows-amd64/tunnel-client.exe",
+        ] {
+            let file = root.join(relative);
+            fs::create_dir_all(file.parent().unwrap()).expect("create unrelated runtime directory");
+            fs::write(file, b"unselected runtime").expect("seed unrelated runtime");
+        }
+        let error = resolve_tunnel_runtime(&root, None).expect_err("require the bundled runtime");
+        assert!(error.contains("scripts/tunnel/build-admin-client.ps1"));
+        assert!(!root.join("runtime/bootstrap").exists(), "resolution must not begin a download");
+        assert!(!root.join("tunnel-client/tunnel-client.exe").exists());
+        fs::remove_dir_all(root).expect("remove isolated tunnel fixture");
+    }
+
+    #[test]
+    fn tunnel_runtime_requires_bundle_or_valid_explicit_override() {
+        let root = env::temp_dir().join(format!("agent-code-tunnel-override-{}", now_millis()));
+        let bundled = root.join("tunnel-client/tunnel-client.exe");
+        fs::create_dir_all(bundled.parent().unwrap()).expect("create bundle directory");
+        fs::write(&bundled, b"bundled runtime").expect("seed bundle");
+        assert_eq!(resolve_tunnel_runtime(&root, None).unwrap(), bundled);
+
+        let configured = root.join("operator-runtime.EXE");
+        fs::write(&configured, b"operator runtime").expect("seed explicit override");
+        assert_eq!(resolve_tunnel_runtime(&root, Some(configured.as_os_str())).unwrap(), configured);
+        assert_eq!(resolve_tunnel_runtime(&root, Some(OsStr::new("operator-runtime.EXE"))).unwrap(), configured);
+        for invalid in [OsStr::new(""), OsStr::new("missing.exe"), OsStr::new("tunnel-client")] {
+            let error = resolve_tunnel_runtime(&root, Some(invalid)).expect_err("invalid override must fail explicitly");
+            assert!(error.contains("AGENT_CORE_TUNNEL_EXE"));
+        }
+        fs::remove_dir_all(root).expect("remove isolated tunnel fixture");
+    }
+
+    #[test]
+    fn relocated_root_preserves_durable_files_and_rebinds_native_state() {
+        let root = env::temp_dir().join(format!("agent code relocation {}", now_millis()));
+        let engine = AgentCoreEngine {
+            root: root.clone(),
+            lifecycle_mutex: Arc::new(Mutex::new(())),
+        };
+        // Stale lifecycle state carried over from the previous root: must be discarded.
+        engine.set_desired_running(false).expect("seed native controller state");
+        assert!(engine.state_path().exists());
+        // Durable state: must survive the move byte-for-byte.
+        let durable = [
+            "runtime/data/identity.txt",
+            "runtime/memory/vault/note.md",
+            "runtime/execution/state/run.json",
+            "secrets/key.txt",
+        ];
+        for relative in durable {
+            let file = root.join(relative);
+            fs::create_dir_all(file.parent().unwrap()).expect("create durable directory");
+            fs::write(file, b"preserve exactly").expect("seed durable file");
+        }
+        let bootstrap = root.join("runtime").join("bootstrap").join("install-state.json");
+        fs::create_dir_all(bootstrap.parent().unwrap()).expect("create bootstrap directory");
+        let foreign = NativeBootstrapState {
+            schema_version: BOOTSTRAP_SCHEMA_VERSION,
+            root: root.join("previous-root").to_string_lossy().into_owned(),
+            machine: "previous-machine".to_string(),
+            user_sid: "previous-user".to_string(),
+            architecture: node_architecture().to_string(),
+            node_version: "unknown".to_string(),
+            updated_at: now_iso_like(),
+        };
+        fs::write(&bootstrap, serde_json::to_vec(&foreign).unwrap())
+            .expect("seed foreign bootstrap state");
+
+        let result = engine.reconcile_bootstrap_state(&root.join("missing-node.exe"));
+
+        let stale_state_exists = engine.state_path().exists();
+        let survivors: Vec<(&str, Option<Vec<u8>>)> = durable
+            .iter()
+            .map(|relative| (*relative, fs::read(root.join(relative)).ok()))
+            .collect();
+        let rebound = fs::read(&bootstrap)
+            .ok()
+            .and_then(|text| serde_json::from_slice::<NativeBootstrapState>(&text).ok());
+        let _ = fs::remove_dir_all(&root);
+
+        result.expect("rebind relocated root");
+        assert!(!stale_state_exists, "stale controller state must be discarded on relocation");
+        for (relative, content) in survivors {
+            assert_eq!(
+                content,
+                Some(b"preserve exactly".to_vec()),
+                "{relative} must survive relocation intact"
+            );
+        }
+        let rebound = rebound.expect("bootstrap state must be rewritten");
+        assert!(same_path_str(&rebound.root, &root));
     }
 
     #[test]
@@ -1849,7 +1852,6 @@ mod tests {
         let root = env::temp_dir().join(format!("agent code launch rearm {}", now_millis()));
         let engine = AgentCoreEngine {
             root: root.clone(),
-            native_control_enabled: true,
             lifecycle_mutex: Arc::new(Mutex::new(())),
         };
         engine.set_desired_running(false).expect("seed stopped state");
@@ -1864,25 +1866,6 @@ mod tests {
         assert!(state.services.is_empty());
     }
 
-    #[test]
-    fn passive_controller_does_not_rearm_desired_running_on_app_launch() {
-        let root = env::temp_dir().join(format!("agent code passive launch {}", now_millis()));
-        let engine = AgentCoreEngine {
-            root: root.clone(),
-            native_control_enabled: false,
-            lifecycle_mutex: Arc::new(Mutex::new(())),
-        };
-        engine.set_desired_running(false).expect("seed stopped state");
-
-        engine
-            .request_running_on_app_launch()
-            .expect("passive launch remains non-mutating");
-
-        let state = engine.read_state();
-        let _ = fs::remove_dir_all(&root);
-        assert!(!state.desired_running);
-        assert!(state.services.is_empty());
-    }
     #[test]
     fn run_program_executes_cmd_from_path_with_spaces() {
         let dir = env::temp_dir().join(format!("agent code cmd test {}", now_millis()));

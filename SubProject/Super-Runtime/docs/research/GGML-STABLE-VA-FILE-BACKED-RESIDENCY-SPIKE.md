@@ -7,7 +7,7 @@ Canonical substrate under test:
 - repository: `https://github.com/ggml-org/llama.cpp.git`
 - revision: `daef7b6874397a5a7c3d7e38b55e2ee0adf7da38`
 - backend: GGML CPU
-- platform for this experiment: Linux Codespace
+- platform for this experiment: Linux host
 
 The throwaway probe source lived only under `/tmp`. This document records the experiment and architectural conclusions; the spike program is not part of Super-Runtime production source.
 

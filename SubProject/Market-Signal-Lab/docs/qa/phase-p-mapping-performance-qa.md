@@ -324,7 +324,7 @@ merge commit = 8049f1b66c578d54acb892f796effec6a1cf57b3
 
 The test-debt repair changed only test files. A repository compare from native-performance source `e3d8874...` to merged head `8049f1b6...` shows only the three closeout documents plus six Go test files; no production Go or Rust source changed after native performance verification.
 
-Fresh GitHub Codespaces verification on merged Phase P head `8049f1b66c578d54acb892f796effec6a1cf57b3`:
+Fresh Linux build host verification on merged Phase P head `8049f1b66c578d54acb892f796effec6a1cf57b3`:
 
 ```text
 go version go1.26.4 linux/amd64
@@ -363,7 +363,7 @@ This closes the previously documented full-Go compile/runtime test debt. No prod
 
 ## Phase P closeout state
 
-Phase P has met its measured performance objective for the tested Quick Market Autopilot path and the integrated branch is repository-wide green under the recorded Codespaces verification.
+Phase P has met its measured performance objective for the tested Quick Market Autopilot path and the integrated branch is repository-wide green under the recorded build host verification.
 
 Current status:
 

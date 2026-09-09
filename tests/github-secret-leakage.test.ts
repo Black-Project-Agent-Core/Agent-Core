@@ -45,7 +45,7 @@ async function tempRoot(prefix = 'agent-core-github-leak-') {
 }
 
 async function writeSentinelCredentials(root: string) {
-  const config = loadConfig({}, root).github;
+  const config = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root).github;
   await mkdir(path.dirname(config.tokenFile), { recursive: true });
   await writeFile(config.tokenFile, GH, 'utf8');
   await writeFile(config.packagesTokenFile, PACKAGES, 'utf8');
@@ -82,7 +82,7 @@ afterEach(async () => {
 describe('Native GitHub Fabric secret boundaries', () => {
   it('redacts both credentials from MCP errors, deterministic memory, and audit logs', async () => {
     const root = await tempRoot();
-    const defaults = loadConfig({}, root);
+    const defaults = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root);
     const githubConfig = {
       ...defaults.github,
       apiBaseUrl: 'http://127.0.0.1:9',
@@ -109,7 +109,7 @@ describe('Native GitHub Fabric secret boundaries', () => {
       [root],
       path.join(root, 'capabilities'),
       logger,
-      { ...defaults.memory, enabled: true, dbPath: path.join(root, 'runtime', 'memory', 'github-leak.sqlite') },
+      { ...defaults.memory, enabled: true },
       { ...defaults.execution, enabled: false },
       githubConfig,
       { fetchImpl: fakeFetch, processRunner: neverRunner },

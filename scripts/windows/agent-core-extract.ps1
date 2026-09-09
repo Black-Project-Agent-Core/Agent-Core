@@ -3,7 +3,6 @@ param(
   [string]$ArchivePath = '',
   [string]$Destination = '',
   [string]$SearchDirectory = '',
-  [switch]$NoLaunch,
   [switch]$ContractOnly
 )
 
@@ -12,6 +11,8 @@ $ErrorActionPreference = 'Stop'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $SearchDirectory) { $SearchDirectory = $scriptDir }
 $SearchDirectory = [IO.Path]::GetFullPath($SearchDirectory)
+$controllerRelative = 'SubProject\Agent-Code\Agent Code Native.exe'
+$controllerEntry = 'Agent-Core/SubProject/Agent-Code/Agent Code Native.exe'
 
 function Write-JsonResult($Value) {
   Write-Output ($Value | ConvertTo-Json -Depth 8 -Compress)
@@ -20,7 +21,8 @@ function Write-JsonResult($Value) {
 if ($ContractOnly) {
   Write-JsonResult ([ordered]@{
     archivePattern = 'Agent-Core-Portable-*.zip'; checksumRequired = $true
-    archiveRoot = 'Agent-Core'; autoLaunch = $true; refusesExistingNonEmptyDestination = $true
+    archiveRoot = 'Agent-Core'; controller = $controllerRelative
+    startsController = $false; refusesExistingNonEmptyDestination = $true
   })
   exit 0
 }
@@ -40,7 +42,10 @@ $checksumLine = (Get-Content -LiteralPath $checksumPath -TotalCount 1).Trim()
 $match = [regex]::Match($checksumLine, '^(?<hash>[0-9a-fA-F]{64})\s+')
 if (-not $match.Success) { throw "Invalid checksum file: $checksumPath" }
 $expectedHash = $match.Groups['hash'].Value.ToLowerInvariant()
-$actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $ArchivePath).Hash.ToLowerInvariant()
+$hashStream = [IO.File]::OpenRead($ArchivePath)
+$hasher = [Security.Cryptography.SHA256]::Create()
+try { $actualHash = [BitConverter]::ToString($hasher.ComputeHash($hashStream)).Replace('-','').ToLowerInvariant() }
+finally { $hashStream.Dispose(); $hasher.Dispose() }
 if ($expectedHash -ne $actualHash) { throw 'Archive SHA-256 verification failed. Extraction was aborted.' }
 
 if (-not $Destination) {
@@ -56,15 +61,13 @@ $parent = Split-Path -Parent $Destination
 New-Item -ItemType Directory -Path $parent -Force | Out-Null
 $tempRoot = $null
 $packageRoot = $null
-$launchStatus = 'not_requested'
 
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $stream = [IO.File]::OpenRead($ArchivePath)
 $zip = New-Object IO.Compression.ZipArchive($stream, [IO.Compression.ZipArchiveMode]::Read, $false)
 try {
-  $hasLauncher = $false
-  $hasBootstrap = $false
+  $hasController = $false
   foreach ($entry in $zip.Entries) {
     $name = ([string]$entry.FullName).Replace('\','/')
     if (-not $name.StartsWith('Agent-Core/', [StringComparison]::OrdinalIgnoreCase)) {
@@ -73,10 +76,9 @@ try {
     if ($name.StartsWith('/') -or $name.Contains(':')) { throw "Unsafe absolute package entry: $name" }
     $segments = @($name.Split('/') | Where-Object { $_ -ne '' })
     if ($segments -contains '..' -or $segments -contains '.') { throw "Unsafe traversal package entry: $name" }
-    if ($name -eq 'Agent-Core/Start-Agent-Core.bat') { $hasLauncher = $true }
-    if ($name -eq 'Agent-Core/scripts/windows/agent-core-bootstrap.ps1') { $hasBootstrap = $true }
+    if ($name -eq $controllerEntry) { $hasController = $true }
   }
-  if (-not $hasLauncher -or -not $hasBootstrap) { throw 'Archive is not a valid portable Agent Core package.' }
+  if (-not $hasController) { throw 'Archive is not a valid portable Agent Core package.' }
 } finally {
   $zip.Dispose()
   $stream.Dispose()
@@ -100,9 +102,9 @@ try {
     }
     $targetDir = Split-Path -Parent $target
     if (-not (Test-Path -LiteralPath $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
-    $input = $entry.Open()
+    $source = $entry.Open()
     $output = [IO.File]::Open($target, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
-    try { $input.CopyTo($output) } finally { $output.Dispose(); $input.Dispose() }
+    try { $source.CopyTo($output) } finally { $output.Dispose(); $source.Dispose() }
   }
 } finally {
   $zip.Dispose()
@@ -110,7 +112,7 @@ try {
 }
 
 if (-not (Test-Path -LiteralPath $packageRoot)) { throw 'Extracted package root is missing.' }
-foreach ($rel in @('runtime\tray','runtime\launcher','runtime\tools','runtime\transfer')) {
+foreach ($rel in @('runtime\tray','runtime\launcher','runtime\tools','runtime\transfer','runtime\agent-code-controller')) {
   Remove-Item -LiteralPath (Join-Path $packageRoot $rel) -Recurse -Force -ErrorAction SilentlyContinue
 }
 Remove-Item -LiteralPath (Join-Path $packageRoot 'runtime\bootstrap\install-state.json') -Force -ErrorAction SilentlyContinue
@@ -118,21 +120,12 @@ if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination
 Move-Item -LiteralPath $packageRoot -Destination $Destination
 Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 
-if (-not $NoLaunch) {
-  $launcher = Join-Path $Destination 'scripts\windows\agent-core-launcher.ps1'
-  if (-not (Test-Path -LiteralPath $launcher)) { throw "Extracted Agent Core launcher is missing: $launcher" }
-  Push-Location $Destination
-  try {
-    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File $launcher
-    $launchExit = $LASTEXITCODE
-  } finally {
-    Pop-Location
-  }
-  if ($launchExit -ne 0) { throw "Agent Core launcher failed after extraction with exit code $launchExit." }
-  $launchStatus = 'started'
+$controllerPath = Join-Path $Destination $controllerRelative
+if (-not (Test-Path -LiteralPath $controllerPath)) {
+  throw "Extracted Agent Core lifecycle controller is missing: $controllerPath"
 }
 
 Write-JsonResult ([ordered]@{
   status = 'extracted'; archivePath = $ArchivePath; checksumVerified = $true
-  destination = $Destination; launched = $launchStatus
+  destination = $Destination; controller = $controllerPath; started = $false
 })

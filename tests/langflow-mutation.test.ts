@@ -85,7 +85,7 @@ async function setupMcpMutationRuntime() {
   const root = await tempRoot('agent-core-langflow-mutation-mcp-');
   const keyStore = new FileKeyStore(path.join(root, 'data'));
   const created = await keyStore.create('langflow-mutation-client');
-  const defaults = loadConfig({}, root);
+  const defaults = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root);
   const runtime = createRuntimeServices(
     [root],
     path.join(root, 'capabilities'),
@@ -93,12 +93,6 @@ async function setupMcpMutationRuntime() {
     { ...defaults.memory, enabled: false },
     { ...defaults.execution, enabled: false },
     defaults.github,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    defaults.maintenance,
-    defaults.langflow,
   );
   runtimes.push(runtime);
 

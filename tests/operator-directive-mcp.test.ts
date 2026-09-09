@@ -1,4 +1,4 @@
-﻿import { createServer, type Server } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -31,7 +31,7 @@ afterEach(async () => {
 async function setup(persistentPrincipalId: string | null = 'persistent-operator') {
   const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-operator-mcp-'));
   roots.push(root);
-  const defaults = loadConfig({}, root);
+  const defaults = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root);
   const runtime = createRuntimeServices(
     [root],
     path.join(root, 'capabilities'),
@@ -96,7 +96,7 @@ describe('operator directive MCP tools', () => {
   it('registers bounded status/set/revoke tools and expands the stable surface to 68', async () => {
     const { baseUrl, keyA } = await setup();
     const tools = await listTools(baseUrl, keyA.key);
-    expect(tools).toHaveLength(69);
+    expect(tools).toHaveLength(72);
     const status = tools.find((tool) => tool.name === 'operator_directive_status');
     const set = tools.find((tool) => tool.name === 'operator_directive_set');
     const revoke = tools.find((tool) => tool.name === 'operator_directive_revoke');

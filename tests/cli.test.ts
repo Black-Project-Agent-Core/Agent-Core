@@ -7,15 +7,16 @@ import { loadConfig } from '../src/config.js';
 import { ExecutionService } from '../src/execution/service.js';
 import { WorkspacePolicy } from '../src/runtime/workspace.js';
 import { printCommand } from './helpers/platform-command.js';
-import { runCli } from '../src/cli.js';
+import { runCli, type CliOptions } from '../src/cli.js';
+import type { MemoryScope } from '../src/memory/types.js';
 
 const roots: string[] = [];
 
-async function cliHarness() {
+async function cliHarness(env: Record<string, string> = {}, extra: Partial<CliOptions> = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-cli-'));
   roots.push(root);
   const dataDir = path.join(root, 'data');
-  const config = loadConfig({}, root);
+  const config = loadConfig(env, root);
   const stdout: string[] = [];
   const stderr: string[] = [];
   const execute = (args: string[]) => runCli(args, {
@@ -23,6 +24,7 @@ async function cliHarness() {
     config,
     stdout: (line) => stdout.push(line),
     stderr: (line) => stderr.push(line),
+    ...extra,
   });
   return { root, dataDir, config, stdout, stderr, execute };
 }
@@ -122,6 +124,29 @@ describe('Agent Core OAuth reset CLI', () => {
     expect(await activeStore.verifyAccessToken(tokens.accessToken)).toBeNull();
     expect((await keyStore.verify(key.key))?.id).toBe(key.metadata.id);
   });
+
+  it('repairs identity without demanding a loadable runtime config', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-cli-repair-'));
+    roots.push(root);
+    const dataDir = path.join(root, 'data');
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    // No `config`: a broken runtime config must not block rebuilding the credential snapshot.
+    const execute = (args: string[]) => runCli(args, {
+      dataDir,
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+    });
+
+    expect(await execute(['reset-oauth'])).toBe(0);
+    expect(JSON.parse(stdout.at(-1)!)).toMatchObject({ clientsPreserved: 0, grantsCleared: true });
+
+    stdout.length = 0;
+    expect(await execute(['create-key', 'recovered'])).toBe(0);
+    const created = JSON.parse(stdout.at(-1)!) as { key: string };
+    expect((await new FileKeyStore(dataDir).verify(created.key))?.name).toBe('recovered');
+    expect(stderr).toEqual([]);
+  });
 });
 
 
@@ -155,7 +180,7 @@ describe('Agent Core execution recovery CLI', () => {
     const output = JSON.parse(harness.stdout.at(-1)!) as any;
     expect(output.manifest).toMatchObject({
       format: 'agent-core-execution-recovery-bundle',
-      version: 1,
+      version: 2,
       reason: 'cli-test',
     });
     expect(output.bundlePath).toContain('recovery-bundles');
@@ -186,6 +211,37 @@ describe('Agent Core execution recovery CLI', () => {
     harness.stderr.length = 0;
     expect(await harness.execute(['execution-retention-apply', planned.planPath])).toBe(2);
     expect(harness.stderr.at(-1)).toContain('Usage:');
+  });
+});
+
+describe('Agent Core memory hydrate CLI', () => {
+  const remoteEnv = {
+    AGENT_CORE_MEMORY_REMOTE_ENABLED: 'true',
+    AGENT_CORE_MEMORY_REMOTE_OWNER: 'agent-core',
+    AGENT_CORE_MEMORY_REMOTE_REPO: 'agent-core-memory',
+    AGENT_CORE_MEMORY_REMOTE_KEY_FILE: 'runtime/memory/remote-key.pem',
+  };
+
+  it('hydrates the file-native vault root and refuses when no memory remote is configured', async () => {
+    const hydrateCalls: Array<[MemoryScope, string]> = [];
+    const remote = await cliHarness(remoteEnv, {
+      memoryHydrate: async (scope, vaultRoot) => {
+        hydrateCalls.push([scope, vaultRoot]);
+        return { state: 'REMOTE_EMPTY_CONFIRMED', remoteHead: null };
+      },
+    });
+    expect(await remote.execute(['memory-hydrate', 'principal-hydrate', remote.root])).toBe(0);
+    expect(hydrateCalls).toEqual([[
+      { principalId: 'principal-hydrate', projectId: remote.root },
+      remote.config.memory.fileNative.vaultRoot,
+    ]]);
+    expect(JSON.parse(remote.stdout.at(-1)!)).toMatchObject({ state: 'REMOTE_EMPTY_CONFIRMED' });
+
+    const offline = await cliHarness({}, {
+      memoryHydrate: async () => { throw new Error('hydration must not run without a configured remote'); },
+    });
+    expect(await offline.execute(['memory-hydrate', 'principal-hydrate', offline.root])).toBe(1);
+    expect(offline.stderr.at(-1)).toBe('MEMORY_REMOTE_DISABLED');
   });
 });
 

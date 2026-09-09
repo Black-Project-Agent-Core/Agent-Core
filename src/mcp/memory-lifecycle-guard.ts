@@ -7,6 +7,7 @@ import {
 import type { RouteContext } from '../runtime/route-context-store.js';
 import type { RuntimeServices } from '../runtime/services.js';
 import { persistentPrincipalId } from './project-scope.js';
+import { authorizeRouteWorkflow } from './workflow-guard.js';
 
 export interface MemoryLifecycleGuardDecision {
   mode: 'disabled' | 'advisory' | 'enforce';
@@ -78,11 +79,13 @@ export async function validateMemoryLifecycleBeforeOperation(
     return { mode, required: false, valid: true, classification };
   }
   if (mode === 'disabled') {
+    await authorizeRouteWorkflow(runtime, key, route, toolName, input);
     return { mode, required: false, valid: true, classification };
   }
 
   const contextId = route.memorySnapshot?.memoryContextId;
   let complianceFailure: unknown;
+  let contextValid = false;
   if (!contextId) {
     complianceFailure = complianceError('A persisted memory preflight context is required before meaningful work');
   } else {
@@ -92,13 +95,18 @@ export async function validateMemoryLifecycleBeforeOperation(
         contextId,
         routeContextId: route.routeContextId,
       });
-      return { mode, required: true, valid: true, classification, contextId };
+      contextValid = true;
     } catch (error) {
       complianceFailure = error;
+    }
+    if (contextValid) {
+      await authorizeRouteWorkflow(runtime, key, route, toolName, input);
+      return { mode, required: true, valid: true, classification, contextId };
     }
   }
 
   if (mode === 'advisory') {
+    await authorizeRouteWorkflow(runtime, key, route, toolName, input);
     await bestEffortAdvisoryAudit(runtime, key, route, toolName, classification, complianceFailure);
     return {
       mode,

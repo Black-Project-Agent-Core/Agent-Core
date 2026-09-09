@@ -24,7 +24,6 @@ describe('execution declared-artifact durability across service restart', () => 
     const config = {
       ...defaults,
       enabled: true,
-      dbPath: path.join(root, 'runtime', 'execution', 'restart-artifact.sqlite'),
       logRoot: path.join(root, 'runtime', 'execution', 'runs'),
     };
     const workspace = new WorkspacePolicy([root]);

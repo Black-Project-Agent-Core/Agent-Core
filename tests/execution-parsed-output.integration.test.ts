@@ -24,7 +24,6 @@ async function fixture(label: string, outputParserOverride?: any) {
   const config = {
     ...base,
     enabled: true,
-    dbPath: path.join(root, 'runtime', 'execution.sqlite'),
     logRoot: path.join(root, 'runtime', 'runs'),
   };
   const workspace = new WorkspacePolicy([root]);

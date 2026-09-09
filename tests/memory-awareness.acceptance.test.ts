@@ -1,12 +1,12 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadConfig, type AppConfig, type MemoryConfig } from '../src/config.js';
+import { backdateVaultEntry, memoryConfig as fileNativeMemoryConfig } from './helpers/memory-fixture.js';
 import { startAgentCoreService, type AgentCoreService } from '../src/index.js';
 import { MemoryService } from '../src/memory/service.js';
-import { MemoryStoreError } from '../src/memory/store.js';
+import { GraphifyAdapter } from '../src/memory/file-native/graphify-adapter.js';
 
 interface AwarenessScenarios {
   scenarioA: { query: string; oldAgeMs: number };
@@ -34,11 +34,9 @@ async function tempRoot(): Promise<string> {
   return root;
 }
 
-function memoryConfig(root: string, overrides: Partial<MemoryConfig> = {}): MemoryConfig {
+async function memoryConfig(root: string, overrides: Partial<MemoryConfig> = {}): Promise<MemoryConfig> {
   return {
-    ...loadConfig({}, root).memory,
-    enabled: true,
-    dbPath: path.join(root, 'runtime', 'memory', 'awareness.sqlite'),
+    ...await fileNativeMemoryConfig(root),
     graphMaxHops: 4,
     recallItemBudget: 32,
     recallCharacterBudget: 20_000,
@@ -47,8 +45,8 @@ function memoryConfig(root: string, overrides: Partial<MemoryConfig> = {}): Memo
   };
 }
 
-function memoryService(config: MemoryConfig): MemoryService {
-  const service = new MemoryService(config);
+function memoryService(config: MemoryConfig, graphify?:GraphifyAdapter): MemoryService {
+  const service = new MemoryService(config,undefined,graphify?{graphify}:{});
   memoryServices.push(service);
   return service;
 }
@@ -64,24 +62,13 @@ async function delay(ms = 5): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function ageMemory(dbPath: string, memoryId: string, updatedAt: number): void {
-  const db = new DatabaseSync(dbPath);
-  try {
-    db.exec('PRAGMA busy_timeout = 1000');
-    db.prepare('UPDATE memory_items SET updated_at = ?, last_accessed_at = ?, access_count = 0 WHERE id = ?')
-      .run(updatedAt, updatedAt, memoryId);
-  } finally {
-    db.close();
-  }
-}
-
-function appConfig(root: string): AppConfig {
+async function appConfig(root: string): Promise<AppConfig> {
   const base = loadConfig({}, root);
   return {
     ...base,
     host: '127.0.0.1',
     port: 0,
-    memory: memoryConfig(root),
+    memory: await memoryConfig(root),
   };
 }
 
@@ -98,7 +85,7 @@ afterEach(async () => {
 describe('deterministic long-term memory awareness acceptance', () => {
   it('Scenario A: an old pinned hard project guardrail outranks fresh related chatter', async () => {
     const root = await tempRoot();
-    const config = memoryConfig(root);
+    const config = await memoryConfig(root);
     const projectScope = scope(root);
     const service = memoryService(config);
 
@@ -127,7 +114,7 @@ describe('deterministic long-term memory awareness acceptance', () => {
     }
 
     await service.close();
-    ageMemory(config.dbPath, guardrail.memoryId, Date.now() - scenarios.scenarioA.oldAgeMs);
+    await backdateVaultEntry(config.fileNative.vaultRoot, guardrail.memoryId, Date.now() - scenarios.scenarioA.oldAgeMs);
     const reopened = memoryService(config);
     const recalled = await reopened.search({ scope: projectScope, query: scenarios.scenarioA.query, limit: 10 });
 
@@ -138,7 +125,7 @@ describe('deterministic long-term memory awareness acceptance', () => {
 
   it('Scenario B: a changed decision recalls only the newest active revision while preserving history', async () => {
     const root = await tempRoot();
-    const service = memoryService(memoryConfig(root));
+    const service = memoryService(await memoryConfig(root));
     const projectScope = scope(root);
     const decision = await service.commit({
       scope: projectScope,
@@ -170,7 +157,7 @@ describe('deterministic long-term memory awareness acceptance', () => {
 
   it('Scenario C: a failure from an earlier run is recalled before repeating the same action', async () => {
     const root = await tempRoot();
-    const service = memoryService(memoryConfig(root));
+    const service = memoryService(await memoryConfig(root));
     const projectScope = scope(root);
     const failure = await service.commit({
       scope: projectScope,
@@ -194,7 +181,9 @@ describe('deterministic long-term memory awareness acceptance', () => {
 
   it('Scenario D: graph recall follows project → artifact → decision → tool constraint across multiple hops', async () => {
     const root = await tempRoot();
-    const service = memoryService(memoryConfig(root, { graphMaxHops: 4, temporalNeighborWindowMs: 1 }));
+    const config=await memoryConfig(root,{graphMaxHops:4,temporalNeighborWindowMs:1});
+    const graphify=new GraphifyAdapter(config.fileNative,{pythonPath:path.resolve('.tools','python',process.platform==='win32'?'python.exe':'bin/python3'),bridgePath:path.resolve('scripts','memory','graphify-bridge.py'),maxHops:config.graphMaxHops,nodeCap:config.graphNodeCap,edgeCap:config.graphEdgeCap});
+    const service = memoryService(config,graphify);
     const projectScope = scope(root);
 
     const project = await service.commit({
@@ -236,6 +225,7 @@ describe('deterministic long-term memory awareness acceptance', () => {
     });
 
     const recalled = await service.search({ scope: projectScope, query: scenarios.scenarioD.query, limit: 10 });
+    expect(await graphify.health()).toMatchObject({healthy:true});
     const hit = recalled.hits.find((item) => item.memoryId === constraint.memoryId);
     expect(hit).toBeTruthy();
     expect(hit?.whyMatched.graph).toBeGreaterThan(0);
@@ -249,7 +239,7 @@ describe('deterministic long-term memory awareness acceptance', () => {
 
   it('Scenario E: unrelated projects under the same principal never cross-contaminate recall', async () => {
     const root = await tempRoot();
-    const service = memoryService(memoryConfig(root));
+    const service = memoryService(await memoryConfig(root));
     const projectA = scope(root, 'project-a');
     const projectB = scope(root, 'project-b');
     const memoryA = await service.commit({
@@ -277,7 +267,7 @@ describe('deterministic long-term memory awareness acceptance', () => {
 
   it('Scenario F: ambiguous free-form contradiction is surfaced as conflict and neither branch is overwritten', async () => {
     const root = await tempRoot();
-    const service = memoryService(memoryConfig(root));
+    const service = memoryService(await memoryConfig(root));
     const projectScope = scope(root);
     const left = await service.commit({
       scope: projectScope,
@@ -317,7 +307,7 @@ describe('deterministic long-term memory awareness acceptance', () => {
 
   it('Scenario G: repeating the same route query produces identical ordered recall and snapshot hash', async () => {
     const root = await tempRoot();
-    const service = memoryService(memoryConfig(root));
+    const service = memoryService(await memoryConfig(root));
     const projectScope = scope(root);
     await service.commit({
       scope: projectScope,
@@ -354,9 +344,9 @@ describe('deterministic long-term memory awareness acceptance', () => {
     expect(second.snapshotHash).toBe(first.snapshotHash);
   });
 
-  it('Scenario H: restarting Agent Core rehydrates the same DB and returns the same recall result IDs', async () => {
+  it('Scenario H: restarting Agent Core rehydrates the same vault and returns the same recall result IDs', async () => {
     const root = await tempRoot();
-    const config = appConfig(root);
+    const config = await appConfig(root);
     const projectScope = scope(root);
     const firstAgent = await startAgentCoreService(config);
     agentServices.push(firstAgent);
@@ -391,7 +381,7 @@ describe('deterministic long-term memory awareness acceptance', () => {
 
   it('also refuses silent overwrite when a structured mutable key changes without revision authority', async () => {
     const root = await tempRoot();
-    const service = memoryService(memoryConfig(root));
+    const service = memoryService(await memoryConfig(root));
     const projectScope = scope(root);
     await service.commit({
       scope: projectScope,
@@ -406,6 +396,6 @@ describe('deterministic long-term memory awareness acceptance', () => {
       kind: 'decision',
       value: 'Decision version two.',
       sourceType: 'acceptance',
-    })).rejects.toEqual(expect.objectContaining<Partial<MemoryStoreError>>({ code: 'MEMORY_REVISION_REQUIRED' }));
+    })).rejects.toEqual(expect.objectContaining({ message: expect.stringContaining('MEMORY_REVISION_REQUIRED') }));
   });
 });

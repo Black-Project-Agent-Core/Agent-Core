@@ -83,7 +83,8 @@ async function githubRouteGuarded<T>(
   try {
     route = validateOperationalRoute(runtime, key, routeContextId, toolName);
     const classification = classifyMeaningfulWork(toolName, rawInput);
-    if (atomicReadOnly(route) && classification.meaningful) {
+    // Read-only analysis still requires memory preflight, but is not a mutation.
+    if (atomicReadOnly(route) && classification.mutationClass !== 'github_read_only') {
       throw new AgentCoreRouteError(
         'ROUTE_TOOL_NOT_ALLOWED',
         `Read-only route cannot perform mutating GitHub operation through ${toolName}`,

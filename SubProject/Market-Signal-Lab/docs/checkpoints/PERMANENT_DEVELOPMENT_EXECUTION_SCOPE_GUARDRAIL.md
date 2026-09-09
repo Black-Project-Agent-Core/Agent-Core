@@ -17,13 +17,12 @@ If an older/frozen document contains a legacy name such as `Opportunity`, `Oppor
 
 ## User instruction — verbatim
 
-> aku ingin kamu mencatat sebagai tambahan instruksi verbatim di dokumentasi pengembangan yang terus di catat ulang hanya untuk mengingat jika pengerjaan yang bisa di lakukan di ruang lingkup internal kamu lakukan dan jika pengerjaan yang tidak memungkinkan di ruang lingkup kamu, kamu harus memberitahu aku untuk membantu kamu menjalankan pengerjaan yang bisa di lakukan di ruang lingkup codespaces github, dan seandainya pengerjaannya tidak bisa di ruang lingkup kamu, dan tidak bisa di lakukan di ruang lingkup codespace github maka kamu boleh menggunakan mesin lokal yang aku miliki melalui plugin sebagai alat bantu kamu contohnya desktop commander dan manfaatkan plugin yang ada di ruang lingkup kamu jika memungkinkan atau menyarankan alat plugin yang tersedia berguna untuk membantu kamu dalam pengerjaan kamu dan seandainya plugin yang kamu butuh belum ada di ruang lingkup kamu, maka kamu harus bilang padaku sebagai rekomendasi alat bantu untuk kamu dalam pengerjaan, jika masih ada yang kurang jelas kamu bisa jelaskan pada agar instruksi verbatim semakin jelas dan tidak salah paham atau menjadi sebuah kebuntuan.
 
 ## Operational interpretation — non-verbatim
 
 1. Prefer work that can be completed directly inside the assistant's currently available internal scope/tools.
-2. If a required step cannot be performed there but can reasonably be performed in GitHub Codespaces, tell the user exactly what assistance/action is needed from them for the Codespaces step instead of silently stalling.
-3. If the step cannot reasonably be completed internally or in GitHub Codespaces, the authorized fallback is the user's local machine through an available plugin/tool such as Desktop Commander.
+2. If a required step cannot be performed there but can reasonably be performed in Linux build host, tell the user exactly what assistance/action is needed from them for the build host step instead of silently stalling.
+3. If the step cannot reasonably be completed internally or in Linux build host, the authorized fallback is the user's local machine through an available plugin/tool such as Desktop Commander.
 4. Use already-available relevant plugins when they materially help the task and remain inside project/security guardrails.
 5. If a materially useful plugin/tool is not available in the current scope, tell the user and recommend the specific class of tool/plugin needed rather than pretending the capability exists.
 6. When ambiguity in this instruction could create a dead end, explain the ambiguity and the proposed interpretation explicitly.

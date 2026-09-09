@@ -24,7 +24,7 @@ async function fixture() {
   roots.push(root);
   const work = path.join(root, 'work');
   await mkdir(work, { recursive: true });
-  const defaults = loadConfig({}, root);
+  const defaults = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root);
   const logger = new FileAuditLogger(path.join(root, 'logs'), defaults.observability.audit);
   loggers.push(logger);
   const runtime = createRuntimeServices(
@@ -35,7 +35,7 @@ async function fixture() {
     {
       ...defaults.execution,
       enabled: true,
-      dbPath: path.join(root, 'runtime', 'execution', 'lineage.sqlite'),
+      stateRoot: path.join(root, 'runtime', 'execution', 'lineage'),
       logRoot: path.join(root, 'runtime', 'execution', 'runs'),
     },
   );
@@ -76,7 +76,7 @@ async function call(baseUrl: string, key: string, name: string, args: Record<str
 
 async function route(f: Awaited<ReturnType<typeof fixture>>) {
   const routed = await call(f.baseUrl, f.principal.key, 'capability_route', {
-    task: 'Implement and run a dependency-aware multi-command execution DAG',
+    task: 'Print a diagnostic message',
     context: `Workspace root is ${f.root}`,
   });
   expect(routed.raw.result?.isError).not.toBe(true);
@@ -120,7 +120,7 @@ describe('end-to-end request -> route -> tool -> execution evidence correlation'
     const created = await call(f.baseUrl, f.principal.key, 'execution_create', {
       routeContextId: routed.result.routeContextId,
       objective: 'correlated execution fixture',
-      nodes: [{ id: 'A', purpose: 'correlate', command: printCommand(secretSentinel), cwd: f.work }],
+      nodes: [{ id: 'A', purpose: 'correlate', command: printCommand(secretSentinel), cwd: f.work, inputs: [] }],
     });
     expect(created.raw.result?.isError).not.toBe(true);
     const runId = created.result.runId as string;

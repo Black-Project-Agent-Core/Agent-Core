@@ -271,7 +271,7 @@ Minimum gates:
 - separate I/O wait/materialization time from kernel compute time;
 - do not claim synchronous research callbacks are production performance.
 
-The current Codespace does not provide a trustworthy hard cgroup memory ceiling, so hard-cap acceptance must run on a suitable supported host later rather than be faked with `ulimit -v`.
+The current build host does not provide a trustworthy hard cgroup memory ceiling, so hard-cap acceptance must run on a suitable supported host later rather than be faked with `ulimit -v`.
 
 ---
 

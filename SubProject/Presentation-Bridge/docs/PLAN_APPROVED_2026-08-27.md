@@ -116,7 +116,7 @@ It must not depend on:
 - n8n;
 - NeuraCore;
 - any previous converter;
-- another project's SQLite database;
+- another project's persistent state;
 - another project's secrets;
 - another project's runtime folders;
 - another project's launcher;
@@ -951,16 +951,7 @@ runtime/
         └── job.json
 ```
 
-A SQLite job database may be introduced only when required for:
-
-- resumable queues;
-- crash recovery;
-- multi-worker scheduling;
-- history search;
-- retention policy;
-- web service operation.
-
-Avoid infrastructure that the V1 CLI/kernel does not need.
+Job manifests are the durable source for recovery, history and retention. Any derived index must remain rebuildable from those manifests.
 
 ---
 

@@ -9,6 +9,7 @@
 "E:\"
 "D:\"
 "C:\"
+"F:\"
 
 # Contoh tambahan:
 # "E:\Project Dengan Spasi"

@@ -1,6 +1,7 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { readAuditedSkill } from '../src/capabilities/skill-integrity.js';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { auditSkillSource } from '../src/capabilities/source-audit.js';
@@ -33,8 +34,10 @@ describe('capability source audit', () => {
     });
 
     expect(audit.license).toMatchObject({ status: 'verified', id: 'MIT' });
-    expect(audit.functionAnalyzed).toBe(true);
-    expect(audit.safetyReviewed).toBe(true);
+    expect(audit.metadataInspected).toBe(true);
+    expect(audit.riskScanCompleted).toBe(true);
+    expect(audit.analysisLevel).toBe('instruction_metadata');
+    expect(audit.behaviorVerified).toBe(false);
     expect(audit.risk).toBe('low');
     expect(audit.requiredTools).toEqual(expect.arrayContaining(['read_file', 'search_files', 'edit_file', 'execute_command']));
     expect(audit.eligible).toBe(true);
@@ -106,9 +109,12 @@ describe('capability source audit', () => {
     expect(normalized.state).toBe('native_ready');
     const normalizedText = await readFile(normalized.skillPath, 'utf8');
     expect(normalizedText).toBe(audit.sourceText);
+    expect(readAuditedSkill(capabilityDir, 'cap_safe', normalized.skillPath)).toBe(audit.sourceText);
     await expect(stat(normalized.metadataPath)).resolves.toBeTruthy();
     await expect(stat(normalized.provenancePath)).resolves.toBeTruthy();
     const provenance = JSON.parse(await readFile(normalized.provenancePath, 'utf8')) as Record<string, unknown>;
     expect(provenance).toMatchObject({ capabilityId: 'cap_safe', sourceCommitSha: 'fixture-safe-sha' });
+    await writeFile(normalized.skillPath, '# Changed instruction after audit');
+    expect(() => readAuditedSkill(capabilityDir, 'cap_safe', normalized.skillPath)).toThrow(/changed/);
   });
 });

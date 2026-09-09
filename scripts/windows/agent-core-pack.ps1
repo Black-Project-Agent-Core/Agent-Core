@@ -2,8 +2,6 @@
 param(
   [string]$Root = '',
   [string]$OutputDirectory = '',
-  [switch]$NoRestart,
-  [switch]$SkipProcessStop,
   [switch]$ContractOnly
 )
 
@@ -13,10 +11,11 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $Root) { $Root = [IO.Path]::GetFullPath((Join-Path $scriptDir '..\..')) }
 $Root = [IO.Path]::GetFullPath($Root).TrimEnd('\')
 $archiveRoot = 'Agent-Core'
+$controllerRelative = 'SubProject\Agent-Code\Agent Code Native.exe'
 $exclusions = @(
   'node_modules', '.worktrees', 'runtime/tray', 'runtime/launcher', 'runtime/tools',
-  'runtime/transfer', 'runtime/logs', 'runtime/bootstrap/install-state.json',
-  '.git/worktrees', 'dist/.desktop-commander'
+  'runtime/transfer', 'runtime/logs', 'runtime/agent-code-controller',
+  'runtime/bootstrap/install-state.json', '.git/worktrees', 'dist/.desktop-commander'
 )
 $transferRuntime = Join-Path $Root 'runtime\transfer'
 $packLockPath = Join-Path $transferRuntime 'pack.lock'
@@ -39,7 +38,7 @@ function Test-Excluded([string]$RelativePath) {
   if (-not $rel) { return $false }
   $segments = @($rel.Split('/'))
   if ($segments -contains 'node_modules' -or $segments -contains '.worktrees') { return $true }
-  foreach ($prefix in @('runtime/tray','runtime/launcher','runtime/tools','runtime/transfer','runtime/logs','.git/worktrees','dist/.desktop-commander')) {
+  foreach ($prefix in @('runtime/tray','runtime/launcher','runtime/tools','runtime/transfer','runtime/logs','runtime/agent-code-controller','.git/worktrees','dist/.desktop-commander')) {
     if ($rel -eq $prefix -or $rel.StartsWith($prefix + '/', [StringComparison]::OrdinalIgnoreCase)) { return $true }
   }
   if ($rel -eq 'runtime/bootstrap/install-state.json' -or $rel -eq '.git/index.lock') { return $true }
@@ -54,28 +53,27 @@ function Get-PackFiles {
     foreach ($item in @(Get-ChildItem -LiteralPath $dir -Force -ErrorAction Stop)) {
       $relative = Get-RelativePathInsideRoot $item.FullName
       if (Test-Excluded $relative) { continue }
+      if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
       if ($item.PSIsContainer) {
-        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
         $queue.Enqueue($item.FullName)
         continue
       }
-      if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
       Write-Output $item.FullName
     }
   }
 }
 
 function Get-RootOwnedProcesses {
-  $trayPath = [IO.Path]::GetFullPath((Join-Path $Root 'scripts\windows\agent-core-tray.ps1'))
   $agentEntry = [IO.Path]::GetFullPath((Join-Path $Root 'dist\index.js'))
   $tunnelProfile = [IO.Path]::GetFullPath((Join-Path $Root 'tunnel-client\agent-core.yaml'))
+  $controller = [IO.Path]::GetFullPath((Join-Path $Root $controllerRelative))
   $results = @()
   foreach ($process in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
     $cmd = [string]$process.CommandLine
     if (-not $cmd) { continue }
     $role = $null
-    if ($cmd.IndexOf($trayPath, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and $cmd -match 'agent-core-tray\.ps1') {
-      $role = 'tray'
+    if ($cmd.IndexOf($controller, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+      $role = 'agentCode'
     } elseif ($cmd.IndexOf($agentEntry, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
       $role = 'agentCore'
     } elseif ($cmd.IndexOf($tunnelProfile, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and $cmd -match 'tunnel-client') {
@@ -86,53 +84,6 @@ function Get-RootOwnedProcesses {
     }
   }
   return @($results)
-}
-
-function Stop-AgentCoreForPack {
-  $owned = @(Get-RootOwnedProcesses)
-  if ($owned.Count -eq 0) { return [pscustomobject]@{ detected = 0; forced = 0 } }
-  $trayRuntime = Join-Path $Root 'runtime\tray'
-  New-Item -ItemType Directory -Path $trayRuntime -Force | Out-Null
-  $exitRequest = Join-Path $trayRuntime 'exit.request'
-  $trayCount = @($owned | Where-Object role -eq 'tray').Count
-  $graceSeconds = 25
-  if ($trayCount -gt 0) {
-    [IO.File]::WriteAllText($exitRequest, "exit`n", (New-Object Text.UTF8Encoding($false)))
-  } else {
-    $trayScript = Join-Path $Root 'scripts\windows\agent-core-tray.ps1'
-    if (Test-Path -LiteralPath $trayScript) {
-      try {
-        & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $trayScript -Mode StopBundle *> $null
-      } catch {}
-      $graceSeconds = 8
-    } else {
-      $graceSeconds = 1
-    }
-  }
-  $deadline = [DateTime]::UtcNow.AddSeconds($graceSeconds)
-  do {
-    Start-Sleep -Milliseconds 250
-    $remaining = @(Get-RootOwnedProcesses)
-    if ($remaining.Count -eq 0) { break }
-  } while ([DateTime]::UtcNow -lt $deadline)
-
-  $forced = 0
-  $remaining = @(Get-RootOwnedProcesses)
-  foreach ($process in $remaining) {
-    Stop-Process -Id ([int]$process.pid) -ErrorAction SilentlyContinue
-  }
-  if ($remaining.Count -gt 0) { Start-Sleep -Seconds 2 }
-  foreach ($process in @(Get-RootOwnedProcesses)) {
-    Stop-Process -Id ([int]$process.pid) -Force -ErrorAction SilentlyContinue
-    $forced += 1
-  }
-  Start-Sleep -Milliseconds 300
-  $stillRunning = @(Get-RootOwnedProcesses)
-  if ($stillRunning.Count -gt 0) {
-    throw ('Agent Core processes could not be stopped safely: ' + (($stillRunning | ForEach-Object { "$($_.role):$($_.pid)" }) -join ', '))
-  }
-  Remove-Item -LiteralPath $exitRequest -Force -ErrorAction SilentlyContinue
-  return [pscustomobject]@{ detected = $owned.Count; forced = $forced }
 }
 
 function Test-ExistingPackLock {
@@ -152,27 +103,34 @@ function Test-ExistingPackLock {
 
 if ($ContractOnly) {
   Write-JsonResult ([ordered]@{
-    root = $Root; archiveRoot = $archiveRoot; restartAfterPack = $true; checksumSidecar = $true
+    root = $Root; archiveRoot = $archiveRoot; checksumSidecar = $true
+    controller = $controllerRelative; requiresStoppedRuntime = $true
     exclusions = $exclusions; packLockPath = $packLockPath
   })
   exit 0
 }
 
 if (-not (Test-Path -LiteralPath $Root)) { throw "Agent Core root not found: $Root" }
+$controllerPath = Join-Path $Root $controllerRelative
+if (-not (Test-Path -LiteralPath $controllerPath)) {
+  throw "Agent Core lifecycle controller is missing, so the package would not be startable: $controllerPath"
+}
 if (Test-ExistingPackLock) { throw "Another Agent Core portable package operation is active: $packLockPath" }
+
+$running = @(Get-RootOwnedProcesses)
+if ($running.Count -gt 0) {
+  $detail = ($running | ForEach-Object { "$($_.role):$($_.pid)" }) -join ', '
+  throw "Agent Core is still running for this root ($detail). Stop it from Agent Code (Agent Core -> Exit Agent Core), close Agent Code, then pack again."
+}
+
 New-Item -ItemType Directory -Path $transferRuntime -Force | Out-Null
 $lockBody = [ordered]@{ schemaVersion = 1; active = $true; pid = $PID; machine = [Environment]::MachineName; startedAt = [DateTime]::UtcNow.ToString('o') }
 [IO.File]::WriteAllText($packLockPath, ($lockBody | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding($false)))
-$restartRequested = -not $NoRestart
 $archivePath = $null
 $checksumPath = $null
 $transferDirectory = $null
-$stopResult = [pscustomobject]@{ detected = 0; forced = 0 }
 $packSucceeded = $false
-$restartStatus = 'not_requested'
 try {
-  if (-not $SkipProcessStop) { $stopResult = Stop-AgentCoreForPack }
-
   $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
   if ($OutputDirectory) {
     $transferDirectory = [IO.Path]::GetFullPath($OutputDirectory)
@@ -205,7 +163,7 @@ try {
     try {
       $manifest = [ordered]@{
         schemaVersion = 1; packageType = 'agent-core-portable'; createdAt = [DateTime]::UtcNow.ToString('o')
-        entryCount = $entryCount; exclusions = $exclusions
+        entryCount = $entryCount; controller = $controllerRelative; exclusions = $exclusions
       }
       $writer.Write(($manifest | ConvertTo-Json -Depth 5 -Compress))
     } finally { $writer.Dispose() }
@@ -214,7 +172,10 @@ try {
     $stream.Dispose()
   }
 
-  $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archivePath).Hash.ToLowerInvariant()
+  $hashStream = [IO.File]::OpenRead($archivePath)
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try { $hash = [BitConverter]::ToString($hasher.ComputeHash($hashStream)).Replace('-','').ToLowerInvariant() }
+  finally { $hashStream.Dispose(); $hasher.Dispose() }
   $checksumPath = $archivePath + '.sha256'
   [IO.File]::WriteAllText($checksumPath, "$hash  $([IO.Path]::GetFileName($archivePath))`n", (New-Object Text.UTF8Encoding($false)))
 
@@ -228,28 +189,10 @@ try {
   $packSucceeded = $true
 } finally {
   Remove-Item -LiteralPath $packLockPath -Force -ErrorAction SilentlyContinue
-  if ($restartRequested) {
-    $launcher = Join-Path $Root 'scripts\windows\agent-core-launcher.ps1'
-    if (Test-Path -LiteralPath $launcher) {
-      try {
-        & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File $launcher -SkipBuild
-        $restartExit = $LASTEXITCODE
-        $restartStatus = if ($restartExit -eq 0) { 'started' } else { "failed:$restartExit" }
-      } catch {
-        $restartStatus = 'failed:exception'
-      }
-    } else {
-      $restartStatus = 'failed:launcher_missing'
-    }
-  }
 }
 
 if (-not $packSucceeded) { throw 'Agent Core portable package was not created.' }
-if ($restartRequested -and $restartStatus -ne 'started') {
-  Write-Warning "Archive is valid, but Agent Core restart did not complete: $restartStatus"
-}
 Write-JsonResult ([ordered]@{
   status = 'packed'; archivePath = $archivePath; checksumPath = $checksumPath
-  transferDirectory = $transferDirectory; stoppedProcesses = $stopResult.detected
-  forcedProcesses = $stopResult.forced; restarted = $restartStatus
+  transferDirectory = $transferDirectory; controller = $controllerRelative
 })

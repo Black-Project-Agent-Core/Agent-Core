@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { instructionProvenance } from './helpers/skill-fixture.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CapabilityRecord } from '../src/capabilities/types.js';
 import { writeRegistryGeneration } from '../src/capabilities/registry-writer.js';
@@ -46,6 +47,7 @@ async function setup() {
   );
   await mkdir(path.dirname(skillPath), { recursive: true });
   await writeFile(skillPath, `# Frontend\n\n${SENTINEL_SKILL_BODY}\n`, 'utf8');
+  await instructionProvenance(capabilityDir, frontendCapability().id, skillPath);
   await writeRegistryGeneration(capabilityDir, [frontendCapability()], {
     catalogSha: 'fixture-sha', generatedAt: '2026-08-23T00:00:00.000Z',
   });

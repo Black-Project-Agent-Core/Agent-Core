@@ -1,42 +1,52 @@
 # Changelog
 
-All notable stable Agent Core changes are recorded here. The project follows semantic versioning for release tags and package artifacts.
+Notable Agent Core changes are recorded here. Release tags and package artifacts follow semantic versioning; prereleases do not imply stable certification.
 
 ## Unreleased
 
-Development identity `0.7.0`. No `v0.7.0` tag, GitHub Release, or package exists for these changes and they are not certified stable. The stable v0.6.0 release remains immutable at tag commit `5c19c0535042174a0f9d9a8ff7dd5eeb5c23b087`; everything below is post-v0.6.0 Agent Core evolution on `main`.
+Preparation and publication checks for the prerelease below remain separate from stable certification. See the versioned section for its implementation and verification scope.
+
+## [0.7.0] - 2026-09-10 — Prerelease
+
+This version is prepared for the GitHub prerelease channel and the GitHub Packages `next` dist-tag. It does not replace v0.6.0 as the stable release. Publication, downloadable asset parity, and registry readback must be verified separately from the functional task results below.
 
 ### Added
 
-- Private Memory Remote: `AGENT_CORE_MEMORY_REMOTE_*` configuration (owner/repository/branch, file-backed 32-byte key path, work root, remote principal, retry and sync-timeout bounds), AES-256-GCM payload encryption (`agent-core-memory-aes256gcm-v1`), a canonical logical-state hash, a versioned remote journal format, a Git-backed remote transport, post-push synchronization verification, remote hydration into a local DMF (`agent-core memory-hydrate <principal-id> <project-id>`), proven recovery after permanent local deletion, and multi-writer reconciliation.
-- Memory cognition: DMF schema advances from v2 to v4 with typed relation policy and explicit context anchors, a scoped cognition ledger, edge-event audit for graph edge creation, bounded history expansion exposed as the `memory_remember_more` MCP tool, bounded semantic profiles, postflight write-decision evaluation and apply, write relation-policy enforcement, and a composed memory cognition controller.
-- Memory durability boundaries: continuity checkpoints and execution-memory promotion are routed through cognition and made remotely durable.
-- Hard memory lifecycle: a lifecycle ledger, lifecycle validation before MCP mutations, postflight reconciliation, and the `AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE` switch (`disabled`, `advisory`, `enforce`; `advisory` remains the default).
-- Opaque memory context leases: loopback-only `/internal/memory-context-lease` issuance with a bounded TTL, lease enforcement in the Codespace bridge before mutation-ready MCP is exposed, lease coupling to memory hydration, and cross-Codespace lease reuse/recovery coverage.
-- Codespace shared memory: a shared-memory service, the loopback-only `/internal/codespace-memory` endpoint, Codespace plugin exposure (`memory_status`, `memory_open_context`, `memory_search`, `memory_get`, `memory_explain`, `memory_remember_more`, `memory_checkpoint`), a shared-memory startup gate, `npm run benchmark:codespace-memory`, and recovery certification coverage.
-- Codespace memory-hydration startup gate (`scripts/codespace/memory-hydration-gate.sh` plus the plugin memory-lifecycle preflight) so a Codespace serves MCP only after Private Memory Remote hydration is verified or explicitly not required.
-- `tests/version-identity.test.ts` pins package, lockfile, `SERVER_VERSION`, GitHub User-Agent, MCP `initialize`, `/health`, smoke-test, and release-check agreement on one development version.
+- Source-grounded workflow tools `craft_source`, `workflow_plan`, and `workflow_status` bind a continuity task to current source receipts, an accepted plan revision/hash, managed execution, and evidence-backed completion. Explicit donor-feature requests require donor grounding; verification of an existing implementation preserves its applicable plan/DAG obligations without inventing a donor task.
+- Current-attempt execution provenance binds input manifests, source bytes, artifacts, and plan identity. Stale inputs or outputs prevent old results from being accepted as current proof.
+- An Obsidian-compatible Markdown vault provides canonical semantic memory, immutable revision history, transaction recovery, scoped recall, and a deterministic Graphify projection. Direct Supabase access provides searchable second memory through the scoped Data API/RPC contract.
+- Scoped Supabase workflow generations persist continuity, workflow contracts, write decisions, and referenced memory revisions. Verified recovery validates generation hashes and staged local bytes before restoration.
+- Durable task checkpoints record decisions, artifacts, outcomes, blockers, and next candidates. `memory_remember_more` supports bounded expansion when the first recall is insufficient.
 
 ### Changed
 
-- Agent Core development identity advances from 0.6.0 to 0.7.0 across `package.json`, `package-lock.json`, the MCP `serverInfo`/`agent_core_status`/`/health` version, and the Native GitHub Fabric User-Agent. The version literal now lives only in `src/version.ts`; `SERVER_VERSION` and `Agent-Core/<version>` derive from it.
-- `scripts/release/check-release.mjs` reads the single version source, rejects duplicate version literals under `src/`, and applies the changelog rule by release state: while the local `v<version>` tag is absent a non-empty `## Unreleased` section is required (`changelogSection: "unreleased"`); once the tag exists `## [<version>]` is required (`changelogSection: "released"`).
-- `scripts/smoke-test.mjs` compares MCP `serverInfo.version` against `package.json` at runtime instead of a hardcoded literal.
-- The Codespace self-healing lifecycle is hardened with bounded tunnel connect retries, credential-free bridge child environments after the hydration gate consumes them, and a pinned Codespace tool surface.
-- `.vscode/settings.json` suppresses the VS Code Git repository-size limit warning for this repository.
-- SubProject Super-Runtime and Agent-Code histories advanced independently on `main` during this period; they are not part of the Agent Core release contract and are excluded from these notes.
+- Memory lifecycle defaults to `enforce`. Substantive operations require valid scoped preflight; unhealthy required components, expired authority, or pending postflight prevent new work. Diagnostics and recovery remain available. An empty successful recall is distinct from a failed recall.
+- Finalization and task checkpoints share the postflight contract. Failed required synchronization leaves closure pending; retry resumes persistence without repeating successful execution. A completed workflow requires current verified evidence and durable closure.
+- The host AI performs interpretation and code adaptation. Agent Core supplies deterministic routing, source validation, planning, execution, and memory persistence without another inference provider or model API key.
+- Runtime identity is centralized in `src/version.ts`; package, MCP, health, and GitHub User-Agent identity use the same version.
+- Release preparation includes active source, tests, scripts, plugin code, and SubProject source. The full project source ZIP is separate from runtime/plugin distributions; independently maintained native subprojects retain their own verification boundaries.
 
 ### Fixed
 
-- Memory and execution principals are separated: persistent memory scope resolves through the configured memory principal (`AGENT_CORE_MEMORY_PRINCIPAL_ID`) while execution scope remains bound to the authenticated key, and shared-memory principal resolution is stable across MCP status, execution pre-search, and memory promotion paths.
-- Memory recovery and remote fixtures are aligned with DMF schema v4 and bounded semantic profiles.
+- Routes now expose managed execution controls when the persisted workflow requires a DAG, including inspection/resume routes. Normal read-only routes retain their restrictions, and principal, preflight, expiry, accepted-plan, and command-binding checks still apply.
+- File-native state validation rejects malformed or missing scoped lifecycle/continuity records. Parsed vault caches are bound to bytes actually read, and revision/history reads preserve corruption and filesystem-link checks.
+- Execution state transactions preserve durable journal ordering, serialize conflicting targets, and report per-attempt process truth. Lease recovery and portability diagnostics name Windows ownership/permission failures.
+- The native Windows controller owns service/tunnel supervision, cooperative shutdown, restart, autostart, and OAuth recovery. Shell selection, failed-start diagnostics, and identity-checked process ownership are handled explicitly.
+- Runtime startup resolves the project-local `.env` before services are created. Direct Supabase credentials remain server-side; release artifacts exclude operator environment files and live state.
 
 ### Security
 
-- Remote memory is encrypted with AES-256-GCM before Git transport; repository configuration stores only the key file path, and no plaintext memory, key material, or token is written to logs, tests, or reports.
-- `/internal/memory-context-lease` and `/internal/codespace-memory` are loopback-only and answer `403` to non-local callers; memory context leases are opaque and bounded (15 minute maximum TTL, 4096 character token cap).
-- Codespace bridge child processes (tunnel runtime, MCP server, watchdog) run without GitHub, Memory Remote, or Cloudflare credentials in their environment.
-- No OpenAI, Anthropic, Gemini, cloud embedding/reranking, external AI judge, or model API dependency is introduced.
+- Direct Supabase searchable content is redacted and scoped; it is not end-to-end encrypted. The optional encrypted full-vault mirror is a separate recovery transport with a separate contract.
+- Graphify runs with a minimal credential-free environment. Filesystem roots, route ownership, OAuth resources, local diagnostics, and artifact evidence remain guarded.
+- No additional inference service, cloud embedding/reranking provider, or model API key is required.
+
+### Verification scope
+
+- Publication checkout verification: 1,092 functional tests passed and 11 were skipped across the 184-file suite after missing private-tool prerequisites were provisioned and failed cases were rerun selectively. The routing corpus (40 cases) and memory corpus (12 cases) passed the unchanged quality gate. No speed benchmark or full stable certification was run.
+- The deployed workflow task completed after a real ChatGPT Web managed DAG: **60 behavior tests and 35 integration tests passed**, with both attempts and report hashes still current after a cooperative restart.
+- Independent compilation matched **318 deployed compiler files**. Nine memories from the preceding checkpoint were read after restart; the subsequent completed checkpoint recorded synchronized durable closure and **39 active memories** with no pending Supabase items at readback.
+- The completed checkpoint was created after that restart and was not subjected to a second restart. Supabase fault tests used isolated fixtures; production synchronization was evidenced separately by actual checkpoint operations.
+- Whole-project stable certification is not claimed. Earlier performance gate failures remain recorded and further benchmarks are deferred. The operator's original checkout also retains a separately reported Git-object recovery limitation; preparing a release from a verified isolated source snapshot does not repair that history.
 
 ## [0.6.0] - 2026-08-31 — Stable
 
@@ -80,51 +90,44 @@ Development identity `0.7.0`. No `v0.7.0` tag, GitHub Release, or package exists
 - Execution schema v4 verified-artifact index with hash/type/run lookup, startup reconciliation, advisory-only reuse discovery, and review-only purge suggestions.
 - Read-only `execution_workflow_advice` with optional route-valid `proposedNext` guidance and principal/project isolation.
 - Local improvisation performance gates for health metrics, bounded parsing, 1000-row artifact lookup, 128-node advisor analysis, and 100000 bounded metric observations.
-- Self-healing Codespaces bridge with a loopback Streamable HTTP MCP server, real protocol probes, remote registration verification, file-backed credential recovery, fixed tunnel identity, and watchdog repair for local MCP failure, stale runtime state, or repeated internal 502 responses.
 - Presentation Bridge v0.2 with a shared one-screen Electron/hosted interface, real progress and cancellation, Google Slides workflows, local or remote Keynote worker support, encrypted desktop worker settings, recent jobs, setup dialogs, compatibility reporting, and restrictive CSP.
 - Cross-platform stable release construction through Node.js, including a credential-free `presentation-bridge-v0.2.0-source.zip` alongside the Agent Core runtime/plugin ZIPs and npm package.
 
 ### Changed
 
-- Stable release ownership now targets `Black-Project-Agent-Core/Agent-Core` and `@black-project-agent-core/agent-core-plugin`; release packaging additionally emits a dedicated fresh-install ZIP containing the tracked Codespaces bootstrap/bridge contract.
+- Stable release ownership targets `Black-Project-Agent-Core/Agent-Core` and `@black-project-agent-core/agent-core-plugin`.
 - Stable publication now has an explicit remote parity gate: a package version cannot be declared complete while the GitHub Release ZIP assets remain on an older version.
-- `capability_route` now injects a bounded deterministic projection of recalled non-guardrail memory into capability ranking and reports `memoryInjection` evidence, closing the gap between available DMF infrastructure and autonomous routing adoption.
+- `capability_route` now injects a bounded deterministic projection of recalled non-guardrail memory into capability ranking and reports `memoryInjection` evidence, closing the gap between available memory infrastructure and autonomous routing adoption.
 - Execution-derived intelligence now documents and enforces the authority order `PROCESS TRUTH > VERIFIED ARTIFACT TRUTH > PARSED STRUCTURED INTERPRETATION > ARTIFACT/CACHE SUGGESTION > WORKFLOW ADVICE`; cache awareness never skips current command execution.
 - Windows owned-process stop now terminates the spawned process tree so a stopped background command cannot leave descendants holding the routed working directory.
-- The repository README now documents the canonical clone path, Windows and Codespaces operation, Presentation Bridge, release assets, and authenticated GitHub Packages installation.
-- Stable release packaging now includes canonical Codespaces and Windows cutover documentation, deterministic source ZIP paths, an expanded manifest, and SHA-256 coverage for every distributable asset.
+- The repository README now documents the canonical clone path, Windows operation, Presentation Bridge, release assets, and authenticated GitHub Packages installation.
+- Stable release packaging now includes canonical Windows cutover documentation, deterministic source ZIP paths, an expanded manifest, and SHA-256 coverage for every distributable asset.
 
 ### Fixed
 
-- Fixed-tunnel Codespaces recovery now treats the tracked tunnel ID as authoritative, ignores stale account/machine tunnel environment overrides, and uses a repository-level Codespaces runtime credential so an authorized fresh Codespace can attach without per-account tunnel setup.
 - Root Agent Core brand and documentation-link verification now stop at independent `SubProject/` boundaries so legitimate subproject vocabulary or internal docs cannot block an Agent Core stable release.
-- Codespaces readiness now accepts the actual `server_url` runtime target contract while continuing to require the exact loopback MCP URL.
 - Lifecycle startup no longer treats local process health as sufficient: it verifies protocol availability, remote tunnel identity, registration freshness, and watchdog supervision before reporting ready.
-- File-backed runtime credentials and tracked tunnel defaults survive environment loss, process replacement, Codespace restart, and full container rebuild without requiring manual key or tunnel export.
-- Nested Codespaces package scripts now rely on the npm-provided local binary path instead of POSIX-only `./node_modules/.bin` commands, allowing the complete root release gate to run on Windows and Linux.
 
 ### Documentation
 
-- Recorded the Windows installation cutover procedure and the defects found while moving the authoritative installation to a fresh canonical clone: empty `runtime/data` authentication stores on a clone, deletion of an ignored-path secret file required by the tracked tunnel template and launcher tests, a machine-level root locator left pointing at the previous installation, leaked tray-test processes, and a stale cutover marker asserting a success that had rolled back.
+- Recorded the Windows installation cutover procedure and the defects found while moving the authoritative installation to a fresh canonical clone: empty `runtime/data` authentication stores on a clone, deletion of an ignored-path secret file required by the tracked tunnel template and lifecycle tests, a machine-level root locator left pointing at the previous installation, and a stale cutover marker asserting a success that had rolled back.
 
 ### Security
 
-- Release ZIP/TGZ construction remains allowlist-based and excludes secrets, runtime databases, logs, local capabilities, raw execution evidence, Presentation Bridge jobs, generated corpus files, caches, and credential-bearing configuration.
+- Release ZIP/TGZ construction remains allowlist-based and excludes secrets, runtime state, logs, local capabilities, raw execution evidence, Presentation Bridge jobs, generated corpus files, caches, and credential-bearing configuration.
 - GitHub REST/Git and Packages credentials remain separate, file-backed, lazily read, redacted, and absent from command arguments and release artifacts.
 - Presentation Bridge preserves truthful target availability; live Google OAuth and native macOS Keynote output remain external acceptance gates rather than simulated success.
 
 ### Stability evidence
 
-- Codespaces fault injection proved automatic recovery after terminating the loopback MCP process and tunnel runtime; cold runtime reconstruction and a full Codespace rebuild restored the bridge and ChatGPT command path without user-entered recovery commands.
 - Presentation Bridge verification passed its complete automated suite, doctor/isolation gates, Linux Electron smoke, restrictive-CSP contracts, rendered desktop/mobile interaction QA, and production dependency audit.
-- `npm run verify:release`: 110 test files passed, 496 tests passed, 38 platform/performance tests skipped, release consistency passed, and 44 Markdown files with 17 relative links passed documentation validation. The Codespaces plugin additionally passed 14 files / 46 tests, while Presentation Bridge passed 45/45 tests, doctor/isolation, Linux Electron smoke, and a zero-vulnerability production audit.
+- `npm run verify:release`: 110 test files passed, 496 tests passed, 38 platform/performance tests skipped, release consistency passed, and 44 Markdown files with 17 relative links passed documentation validation. Presentation Bridge passed 45/45 tests, doctor/isolation, Linux Electron smoke, and a zero-vulnerability production audit.
 - Stable publication remains local-direct with GitHub Actions/CI disabled; the exact source SHA, asset sizes, and SHA-256 digests are independently verified again after the merge and by remote read-back.
 
 ## [0.5.3] - 2026-08-27 — Stable
 
 ### Fixed
 
-- Codespace startup/recovery now synchronizes a tracked-clean `main` checkout to canonical `origin/main` with bounded non-interactive fetch and `--ff-only` semantics before dependency, build, service, and READY gates.
 - Lifecycle recovery now fails closed instead of mutating source when the checkout has tracked local changes, is not on `main`, is ahead of `origin/main`, or has diverged history.
 - Bootstrap re-executes itself from the synchronized checkout when source changes so stale shell code cannot continue after a fast-forward.
 - A fresh or rebuilt distribution now forces the tmux supervisor to reload after a build, preventing a healthy old Node process from surviving behind new source/dist files.
@@ -133,7 +136,6 @@ Development identity `0.7.0`. No `v0.7.0` tag, GitHub Release, or package exists
 ### Added
 
 - `/health` exposes the Agent Core server version for source/process freshness verification.
-- Verified Codespace `connection.json` now records `sourceCommit`, `sourceVersion`, `sourceRemote`, and `sourceBranch`, allowing READY metadata to be audited directly against Git.
 - Real temporary-Git integration coverage for clean fast-forward, dirty/ahead/diverged/non-main fail-closed behavior, untracked editor-state preservation, version mismatch rejection, and connection metadata provenance.
 
 ### Stability evidence
@@ -151,12 +153,11 @@ Development identity `0.7.0`. No `v0.7.0` tag, GitHub Release, or package exists
 - Execution evidence schema v2 with optional declared artifacts, workspace-bounded verification, required-evidence gating, factual file metadata, and SHA-256 verification.
 - Coalesced `node.output_available` wake events and staged multi-command wake/re-wait behavior for concurrent execution without log polling or event flooding.
 - Deterministic merged execution evidence views and restart acceptance proving declared-artifact contracts survive service close/reopen and remain verifiable.
-- Codespace self-healing runtime lifecycle and portable Git askpass handling for native Linux operation while preserving Windows behavior.
 
 ### Changed
 
 - Semantic task completion for execution-backed continuity tasks now requires explicit verified execution evidence; successful process exit alone cannot finalize the task.
-- Execution-to-DMF promotion now carries verified artifact manifests with exact attempt provenance while continuing to exclude raw stdout/stderr.
+- Execution-to-memory promotion now carries verified artifact manifests with exact attempt provenance while continuing to exclude raw stdout/stderr.
 - Agent Core routing skill guidance now makes project resolution, deterministic memory/continuity inspection, multi-command execution, wake/re-wait, and evidence verification explicit operational contracts.
 - Stable plugin package parity is checked byte-for-byte against the tracked router skill before release.
 
@@ -170,7 +171,7 @@ Development identity `0.7.0`. No `v0.7.0` tag, GitHub Release, or package exists
 ### Stability evidence
 
 - Final stable hardening acceptance completed all 27 planned tasks and was integrated into `main` with no GitHub Actions/CI.
-- Live Codespace cutover migrated Execution Fabric schema v1 to v2 with an automatic pre-migration backup and `integrity=ok`.
+- Execution Fabric startup migrated Execution Fabric schema v1 to v2 with an automatic pre-migration backup and `integrity=ok`.
 - Live schema-v2 declared-artifact run completed with `evidenceState=verified` and an independently matching SHA-256.
 - `npm run verify:release`: 81 test files passed, 351 tests passed, 32 platform/performance tests skipped by the normal suite, with zero failures; release metadata and documentation link checks also passed.
 
@@ -201,21 +202,21 @@ Development identity `0.7.0`. No `v0.7.0` tag, GitHub Release, or package exists
 
 ### Added
 
-- Deterministic Memory Fabric backed by local SQLite with provenance, deterministic retrieval, redaction, backup/recovery and integrity checks.
+- File-Native Memory Fabric with provenance, deterministic retrieval, redaction, backup/recovery and integrity checks.
 - Local Continuity Ledger for task state, checkpoints, blockers, deferred work and bounded next-work frontiers across routes/sessions.
 - Deterministic Execution Fabric with persisted DAGs, hard dependencies, bounded concurrency, explicit retry/cancel, factual attempt logs and result markers.
-- Persisted event journal and event-driven wake behavior with persist-before-signal semantics and no busy database polling.
+- Persisted event journal and event-driven wake behavior with persist-before-signal semantics and no busy polling.
 - Cross-route execution continuation and restart reconciliation that marks missing-result work interrupted rather than inventing success.
-- Execution-to-DMF bridge that promotes structured/redacted evidence while keeping raw stdout/stderr out of semantic memory.
+- Execution-to-memory bridge that promotes structured/redacted evidence while keeping raw stdout/stderr out of semantic memory.
 - Automatic capability routing with principal-bound route contexts and audited native-ready skill loading.
-- Unified Windows launcher/tray lifecycle with watchdog recovery, tunnel supervision, OAuth reset/re-auth and optional autostart.
+- Windows lifecycle supervision with watchdog recovery, tunnel supervision, OAuth reset/re-auth and optional autostart.
 - Portable root resolution so the complete Agent Core folder can be relocated without hard-coding a project drive/path.
 - Stable release automation, reproducible plugin/runtime bundles, SHA-256 manifests and GitHub Packages publication under the `stable` channel.
 
 ### Changed
 
 - Execution is enabled by default after staged acceptance, performance and recovery gates.
-- SQLite execution WAL handling now uses explicit durable checkpoint boundaries to keep shutdown/restart behavior bounded after real workloads.
+- Execution persistence uses explicit durable commit boundaries at graph, dynamic-graph and terminal-run transitions to keep shutdown/restart behavior bounded after real workloads.
 - Documentation is consolidated around canonical architecture/operator guides; historical implementation scratch plans and per-task checkpoints are retained in Git history instead of the current tree.
 - Repository presentation, plugin documentation and release metadata are normalized for a cleaner private-repository surface.
 
@@ -223,7 +224,7 @@ Development identity `0.7.0`. No `v0.7.0` tag, GitHub Release, or package exists
 
 - Custom Agent Core API-key and OAuth behavior remain isolated from source/package artifacts.
 - Capability/tool scope is constrained by authenticated principal/project routing and allowed workspace roots.
-- Raw execution logs remain local sensitive evidence; only structured/redacted evidence may enter DMF.
+- Raw execution logs remain local sensitive evidence; only structured/redacted evidence may enter durable memory.
 - Control-plane and runtime secrets are excluded from Git and release packages.
 
 ### Stability evidence
@@ -234,7 +235,7 @@ The stable runtime baseline passed:
 - full regression: 68/68 test files, 267 normal tests passed, with 4 benchmark-only timing tests exercised separately;
 - explicit execution performance gates: 6/6 passed;
 - deterministic execution benchmark gates for 128-node DAG validation, bounded dispatch and persisted wake delivery;
-- Deterministic Memory Fabric 100k-item benchmark with end-to-end recall below the certified p95 target;
+- File-Native Memory Fabric 100k-item benchmark with end-to-end recall below the certified p95 target;
 - acceptance/recovery/secret-isolation gates, including cross-route continuation and no-false-success restart recovery;
 - live dependency/wake canaries and post-workload graceful restart proof.
 

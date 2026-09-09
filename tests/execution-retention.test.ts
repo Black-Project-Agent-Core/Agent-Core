@@ -28,7 +28,6 @@ async function fixture(label: string) {
   await mkdir(work, { recursive: true });
   const config = {
     ...loadConfig({}, root).execution,
-    dbPath: path.join(root, 'runtime', 'execution', 'execution.sqlite'),
     logRoot: path.join(root, 'runtime', 'execution', 'runs'),
   };
   return {
@@ -63,7 +62,7 @@ async function completedRun(f: Awaited<ReturnType<typeof fixture>>, label: strin
 
 async function bundle(f: Awaited<ReturnType<typeof fixture>>) {
   return createExecutionRecoveryBundle({
-    dbPath: f.config.dbPath,
+    stateRoot: f.config.stateRoot,
     logRoot: f.config.logRoot,
     destinationRoot: f.bundleRoot,
     sourceVersion: '0.5.4',
@@ -109,8 +108,8 @@ describe('backup-gated execution raw-log retention', () => {
     await completedRun(f, 'metrics');
     const metrics = new RuntimeMetricRegistry();
     const planned = await planExecutionRetention({ logRoot: f.config.logRoot, planRoot: f.planRoot, olderThanMs: 0, now: Date.now() + 1000, metrics });
-    const verifiedBundle = await createExecutionRecoveryBundle({ dbPath: f.config.dbPath, logRoot: f.config.logRoot, destinationRoot: f.bundleRoot, sourceVersion: '0.5.4' });
-    await applyExecutionRetention({ planPath: planned.planPath, bundlePath: verifiedBundle.bundlePath, dbPath: f.config.dbPath, logRoot: f.config.logRoot, metrics });
+    const verifiedBundle = await createExecutionRecoveryBundle({ stateRoot: f.config.stateRoot, logRoot: f.config.logRoot, destinationRoot: f.bundleRoot, sourceVersion: '0.5.4' });
+    await applyExecutionRetention({ planPath: planned.planPath, bundlePath: verifiedBundle.bundlePath, stateRoot: f.config.stateRoot, logRoot: f.config.logRoot, metrics });
     expect(metrics.metric('execution.retention.duration_ms').count).toBe(2);
   });
 
@@ -123,7 +122,7 @@ describe('backup-gated execution raw-log retention', () => {
     await expect(applyExecutionRetention({
       planPath: planned.planPath,
       bundlePath: oldBundle.bundlePath,
-      dbPath: f.config.dbPath,
+      stateRoot: f.config.stateRoot,
       logRoot: f.config.logRoot,
     })).rejects.toMatchObject<Partial<ExecutionRetentionError>>({ code: 'EXECUTION_RETENTION_BACKUP_TOO_OLD' });
   });
@@ -136,7 +135,7 @@ describe('backup-gated execution raw-log retention', () => {
     const applied = await applyExecutionRetention({
       planPath: planned.planPath,
       bundlePath: verifiedBundle.bundlePath,
-      dbPath: f.config.dbPath,
+      stateRoot: f.config.stateRoot,
       logRoot: f.config.logRoot,
     });
 
@@ -159,7 +158,7 @@ describe('backup-gated execution raw-log retention', () => {
     const applied = await applyExecutionRetention({
       planPath: planned.planPath,
       bundlePath: verifiedBundle.bundlePath,
-      dbPath: f.config.dbPath,
+      stateRoot: f.config.stateRoot,
       logRoot: f.config.logRoot,
     });
 

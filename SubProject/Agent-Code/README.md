@@ -1,6 +1,6 @@
 # Agent Code
 
-Agent Code is a Windows-oriented desktop coding-agent shell. The application keeps the premium **Focused Console** interface and deterministic local workspace/session state, while its Tauri boundary now also owns the native Agent Core launcher/control surface.
+Agent Code is a Windows-oriented desktop coding-agent shell. The application keeps the premium **Focused Console** interface and deterministic local workspace/session state, and its Tauri boundary is the single Windows lifecycle authority for Agent Core.
 
 Real coding-agent execution, editor/file-agent actions, model execution, conversation persistence, and synthetic AI responses are still outside this milestone. The native backend added here is deliberately scoped to Agent Core bootstrap, lifecycle, health, watchdog, OAuth reset, tunnel control, and Windows autostart.
 
@@ -17,15 +17,31 @@ npm run test:visual
 
 The Vite development server listens on port `1420` because that is the URL configured for the Tauri development shell.
 
+## Native Windows build
+
+With the Windows Rust toolchain and linker available in the terminal, build the application through the Tauri CLI:
+
+```powershell
+npm run build:windows:native
+```
+
+The CLI first builds the frontend, then embeds its HTML, JavaScript, and styles in `src-tauri/target/release/agent-code.exe`. The packaged application opens without a Vite server. Add `-- --no-bundle` to build the executable without an installer. Release compilation rejects a development frontend configuration.
+
+Verify the packaged frontend assets with:
+
+```powershell
+cargo test --manifest-path src-tauri/Cargo.toml --release --features tauri/custom-protocol
+```
+
 ## Native Agent Core controller
 
-The sidebar contains an expandable **Agent Core** control surface that replaces the old launcher/tray workflow as the long-term runtime controller. Agent Code does **not** invoke `Start-Agent-Core.bat`.
+`Agent Code Native.exe` is the only Windows lifecycle controller for Agent Core. There is no script, scheduled task, or background process outside it that may start, stop, or restart the runtime. The sidebar contains an expandable **Agent Core** control surface for that controller.
 
 The Tauri/Rust backend provides:
 
 - Agent Core MCP, Memory, Execution, and Tunnel status
 - native bootstrap checks for Node.js, npm, and tunnel-client
-- checksum-verified portable Node.js/tunnel-client fallback installation
+- checksum-verified portable Node.js fallback installation and project-bundled tunnel-client validation
 - Agent Core dependency restore and production build when startup repair is required
 - MCP server and tunnel process startup with canonical environment configuration
 - safe process/port identity checks before adoption or termination
@@ -36,7 +52,7 @@ The Tauri/Rust backend provides:
 - Open Agent Core Folder and Open Tunnel Admin UI utilities
 - Exit Agent Core, which stops the MCP/tunnel bundle while Agent Code remains open
 
-During migration, the old PowerShell launcher/tray files remain available as fallback artifacts. If Agent Code detects an already-running legacy `agent-core-tray.ps1 -Mode Tray` controller at startup, that Agent Code process enters **safe passive mode**: it may display status and open utility locations, but native lifecycle mutations are locked so the healthy existing Agent Core instance is not disturbed. Relaunch Agent Code after the legacy tray has been retired to activate the native controller.
+Lifecycle mutations are serialized by an owner lock under `runtime/agent-code-controller/`, and Agent Code adopts an already-running child process only when its executable and command line prove it belongs to this project root. Windows autostart is a single scheduled task, `Agent Code Agent Core Controller`, which runs `Agent Code Native.exe --agent-core-background` at logon.
 
 ## Window close and tray behavior
 
@@ -52,12 +68,12 @@ Native controller state is stored under:
 runtime/agent-code-controller/
 ```
 
-## Codespace bootstrap
+## Linux build prerequisites
 
-A fresh Linux Codespace can install the project-local native prerequisites with:
+A fresh Ubuntu build host can install the project-local native prerequisites with:
 
 ```bash
-bash scripts/codespace-bootstrap.sh
+bash scripts/linux-bootstrap.sh
 source "$HOME/.cargo/env"
 ```
 
@@ -87,11 +103,11 @@ The main window contract is:
 
 The command-prompt Agent Code mark is used as the native application icon. The AC monogram is reserved for the welcome state, while the premium orbit/ribbon emblem is stored as secondary brand artwork and is not permanently rendered in the main workspace.
 
-The React frontend communicates with the native Agent Core controller only through explicitly registered Tauri commands. The launcher migration does not turn the React UI into an unrestricted shell/process bridge.
+The React frontend communicates with the native Agent Core controller only through explicitly registered Tauri commands. Owning the lifecycle does not turn the React UI into an unrestricted shell/process bridge.
 
 ## Platform verification boundary
 
-The Codespace is Ubuntu 20.04 Linux. It verifies the React/Vite build, Tauri configuration, Cargo metadata, Rust toolchain, generated Windows icon assets, browser-based visual acceptance at 1280×800, 1440×900, and 980×680, and a cross-compiled Windows x64 Tauri artifact. The Windows application is verified as PE32+ / `IMAGE_FILE_MACHINE_AMD64`, and Tauri completes the NSIS bundle as a Windows installer.
+The cross-build host uses Ubuntu 20.04 Linux. It verifies the React/Vite build, Tauri configuration, Cargo metadata, Rust toolchain, generated Windows icon assets, browser-based visual acceptance at 1280×800, 1440×900, and 980×680, and a cross-compiled Windows x64 Tauri artifact. The Windows application is verified as PE32+ / `IMAGE_FILE_MACHINE_AMD64`, and Tauri completes the NSIS bundle as a Windows installer.
 
 Cross-platform Tauri compilation is still experimental and the Linux host cannot execute the resulting desktop application natively. The installer is also unsigned because standard Windows code signing is not configured. Native Windows launch/install behavior therefore remains a separate acceptance gate that must be exercised on an actual Windows machine.
 
@@ -112,4 +128,4 @@ This milestone does not contain:
 - plugin/extension system
 - production conversation persistence
 
-The Agent Core controller is a narrow native subsystem intended to replace the external BAT/tray launch path without broadening the application into an unrestricted command runner.
+The Agent Core controller is a narrow native subsystem that owns the Windows lifecycle without broadening the application into an unrestricted command runner.

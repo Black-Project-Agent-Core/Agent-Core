@@ -5,8 +5,9 @@ import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadConfig, type AppConfig } from '../src/config.js';
-import { createEntrypointGracefulClose, startAgentCoreService } from '../src/index.js';
+import { createEntrypointGracefulClose, startAgentCoreService as startService } from '../src/index.js';
 import { watchShutdownRequest } from '../src/runtime/shutdown-request.js';
+import { strictMemoryConfig, isolatedMemoryDependencies } from './helpers/memory-fixture.js';
 
 const roots: string[] = [];
 const blockers: Server[] = [];
@@ -16,6 +17,7 @@ async function config(port = 0): Promise<AppConfig> {
   roots.push(root);
   return {
     ...loadConfig({}, root),
+    memory: await strictMemoryConfig(root),
     host: '127.0.0.1',
     port,
     dataDir: path.join(root, 'data'),
@@ -24,6 +26,8 @@ async function config(port = 0): Promise<AppConfig> {
     allowedRoots: [root],
   };
 }
+
+const startAgentCoreService=(config:AppConfig)=>startService(config,{memory:isolatedMemoryDependencies(config.memory)});
 
 afterEach(async () => {
   await Promise.all(blockers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
@@ -43,11 +47,7 @@ describe('Agent Core runtime', () => {
 
   it('closes an initialized memory facade idempotently with the Agent Core service', async () => {
     const runtimeConfig = await config();
-    runtimeConfig.memory = {
-      ...runtimeConfig.memory,
-      enabled: true,
-      dbPath: path.join(path.dirname(runtimeConfig.dataDir), 'runtime', 'memory', 'runtime-test.sqlite'),
-    };
+    runtimeConfig.memory = { ...runtimeConfig.memory, enabled: true };
     const service = await startAgentCoreService(runtimeConfig);
     const before = await service.memory.status();
     expect(before.enabled).toBe(true);

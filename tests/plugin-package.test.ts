@@ -1,6 +1,7 @@
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CapabilityRecord } from '../src/capabilities/types.js';
 import { writeRegistryGeneration } from '../src/capabilities/registry-writer.js';
@@ -51,7 +52,8 @@ async function setupPackageFixture() {
     sourceCommitSha: 'source-sha',
     licensePath: path.join(cacheRepo, 'LICENSE'),
     license: { status: 'verified', id: 'Apache-2.0' },
-    risk: 'low', functionAnalyzed: true, safetyReviewed: true,
+    risk: 'low', metadataInspected: true, riskScanCompleted: true, analysisLevel: 'instruction_metadata', behaviorVerified: false,
+    sourceContentSha256: createHash('sha256').update(await readFile(path.join(nativeDir, 'SKILL.md'))).digest('hex'),
   }), 'utf8');
   await writeRegistryGeneration(capabilityDir, [
     record('cap_native', 'native-skill', 'native_ready', true, 'normalized/skills/cap_native/SKILL.md'),

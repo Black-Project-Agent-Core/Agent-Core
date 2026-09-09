@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
+    "build:windows:native": "tauri build",
     "build:windows:x64": "bash scripts/build-windows-x64.sh",
     "test:tauri-contract": "node scripts/check-tauri-contract.mjs",
     "test:visual": "playwright test",

@@ -37,13 +37,13 @@ describe('loadConfig', () => {
     });
     expect(config.execution).toEqual({
       enabled: true,
-      dbPath: path.join(baseDir, 'runtime', 'execution', 'agent-core-execution.sqlite'),
+      stateRoot: path.join(baseDir, 'runtime', 'execution', 'state'),
       logRoot: path.join(baseDir, 'runtime', 'execution', 'runs'),
       maxConcurrency: 4,
       maxNodes: 128,
       maxOutputBytes: 64 * 1024 * 1024,
       waitMaxMs: 60_000,
-      busyTimeoutMs: 5_000,
+      lockTimeoutMs: 5_000,
       resourceGovernance: {
         enabled: true,
         minimumConcurrency: 1,
@@ -78,6 +78,18 @@ describe('loadConfig', () => {
       requestTimeoutMs: 30_000,
       gitTimeoutMs: 120_000,
     });
+    expect(config.operatorDirectives).toEqual({
+      enabled: true,
+      stateRoot: path.join(baseDir, 'runtime', 'operator-directives', 'state'),
+      lockTimeoutMs: 5_000,
+      stateVersion: 1,
+    });
+    expect(config.memory.fileNative.memoryRoot).toBe(path.join(baseDir, 'runtime', 'memory'));
+    expect(config.memory.fileNative.vaultRoot).toBe(path.join(baseDir, 'runtime', 'memory', 'vault'));
+    expect(config.memory.fileNative.ripgrepRoot).toBe(path.join(baseDir, '.tools', 'ripgrep'));
+    expect(Object.keys(config.memory)).not.toContain('backend');
+    expect(Object.keys(config.memory)).not.toContain('dbPath');
+    expect(Object.keys(config.memory)).not.toContain('busyTimeoutMs');
   });
 
   it('accepts explicit environment overrides including execution and github settings', () => {
@@ -102,13 +114,13 @@ describe('loadConfig', () => {
       AGENT_CORE_OTLP_MAX_QUEUE: '512',
       AGENT_CORE_OTLP_EXPORT_INTERVAL_MS: '2500',
       AGENT_CORE_EXECUTION_ENABLED: 'true',
-      AGENT_CORE_EXECUTION_DB_PATH: 'F:\\Exec\\execution.sqlite',
+      AGENT_CORE_EXECUTION_STATE_ROOT: 'F:\\Exec\\state',
       AGENT_CORE_EXECUTION_LOG_ROOT: 'F:\\Exec\\runs',
       AGENT_CORE_EXECUTION_MAX_CONCURRENCY: '8',
       AGENT_CORE_EXECUTION_MAX_NODES: '64',
       AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES: '2097152',
       AGENT_CORE_EXECUTION_WAIT_MAX_MS: '45000',
-      AGENT_CORE_EXECUTION_BUSY_TIMEOUT_MS: '7000',
+      AGENT_CORE_EXECUTION_LOCK_TIMEOUT_MS: '7000',
       AGENT_CORE_EXECUTION_RESOURCE_GOVERNANCE_ENABLED: 'true',
       AGENT_CORE_EXECUTION_RESOURCE_MIN_CONCURRENCY: '2',
       AGENT_CORE_EXECUTION_CPU_WARNING_RATIO: '0.8',
@@ -136,6 +148,8 @@ describe('loadConfig', () => {
       AGENT_CORE_GH_EXE: 'F:\\Tools\\GitHub CLI\\gh.exe',
       AGENT_CORE_GITHUB_REQUEST_TIMEOUT_MS: '11111',
       AGENT_CORE_GITHUB_GIT_TIMEOUT_MS: '22222',
+      AGENT_CORE_OPERATOR_DIRECTIVES_STATE_ROOT: 'F:\\Directives\\state',
+      AGENT_CORE_OPERATOR_DIRECTIVES_LOCK_TIMEOUT_MS: '9000',
     }, 'F:\\Ignored');
 
     expect(config.host).toBe('0.0.0.0');
@@ -171,13 +185,13 @@ describe('loadConfig', () => {
     });
     expect(config.execution).toEqual({
       enabled: true,
-      dbPath: path.resolve('F:\\Exec\\execution.sqlite'),
+      stateRoot: path.resolve('F:\\Exec\\state'),
       logRoot: path.resolve('F:\\Exec\\runs'),
       maxConcurrency: 8,
       maxNodes: 64,
       maxOutputBytes: 2 * 1024 * 1024,
       waitMaxMs: 45_000,
-      busyTimeoutMs: 7_000,
+      lockTimeoutMs: 7_000,
       resourceGovernance: {
         enabled: true,
         minimumConcurrency: 2,
@@ -212,6 +226,29 @@ describe('loadConfig', () => {
       requestTimeoutMs: 11_111,
       gitTimeoutMs: 22_222,
     });
+    expect(config.operatorDirectives).toEqual({
+      enabled: true,
+      stateRoot: path.resolve('F:\\Directives\\state'),
+      lockTimeoutMs: 9_000,
+      stateVersion: 1,
+    });
+  });
+
+  it('ignores retired storage variables instead of silently steering persistence with them', () => {
+    const baseDir = path.resolve('F:\\Projects\\Agent-Core');
+    const retired = loadConfig({
+      AGENT_CORE_MEMORY_BACKEND: 'vault',
+      AGENT_CORE_MEMORY_DB_PATH: 'F:\\Retired\\memory.db',
+      AGENT_CORE_MEMORY_BUSY_TIMEOUT_MS: '9999',
+      AGENT_CORE_EXECUTION_DB_PATH: 'F:\\Retired\\execution.db',
+      AGENT_CORE_EXECUTION_BUSY_TIMEOUT_MS: '9999',
+      AGENT_CORE_OPERATOR_DIRECTIVES_DB_PATH: 'F:\\Retired\\directives.db',
+      AGENT_CORE_OPERATOR_DIRECTIVES_BUSY_TIMEOUT_MS: '9999',
+    }, baseDir);
+
+    expect(retired).toEqual(loadConfig({}, baseDir));
+    expect(retired.execution.stateRoot).toBe(path.join(baseDir, 'runtime', 'execution', 'state'));
+    expect(retired.operatorDirectives.stateRoot).toBe(path.join(baseDir, 'runtime', 'operator-directives', 'state'));
   });
 
 

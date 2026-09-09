@@ -98,35 +98,23 @@ describe('Agent Core improvisation performance gates', () => {
     roots.push(root);
     const store = new ExecutionStore();
     stores.push(store);
-    await store.open({ dbPath: path.join(root, 'execution.sqlite') });
+    await store.open({ stateRoot: path.join(root, 'execution') });
     const scope = { principalId: 'artifact-perf-principal', projectId: root };
     const now = Date.now();
 
+    // 1000 index rows spread over 10 runs; each run records its 100 artifacts in one append.
     for (let offset = 0; offset < 1000; offset += 100) {
-      const operations: Array<{ kind: 'run'; sql: string; params: unknown[] }> = [];
-      for (let index = offset; index < offset + 100; index += 1) {
-        const runId = `run-${String(index).padStart(4, '0')}`;
-        const hash = index.toString(16).padStart(64, '0');
-        operations.push({
-          kind: 'run',
-          sql: `INSERT INTO execution_runs(id,principal_id,project_id,state,objective,max_concurrency,metadata_json,created_at,finished_at,updated_at)
-                VALUES (?,?,?,'completed',?,1,'{}',?,?,?)`,
-          params: [runId, scope.principalId, scope.projectId, `artifact perf ${index}`, now + index, now + index, now + index],
-        });
-        operations.push({
-          kind: 'run',
-          sql: `INSERT INTO execution_nodes(run_id,node_id,purpose,command_text,cwd,state,timeout_ms,continue_on_failure,expected_artifacts_json,attempt_count,created_at,updated_at,finished_at)
-                VALUES (?,'A','artifact perf','noop',?,'succeeded',1000,0,'[]',1,?,?,?)`,
-          params: [runId, root, now + index, now + index, now + index],
-        });
-        operations.push({
-          kind: 'run',
-          sql: `INSERT INTO execution_artifacts(artifact_id,run_id,node_id,attempt_no,path,artifact_type,verification,sha256,size,modified_at,source_result_ref,metadata_json,created_at)
-                VALUES (?,?,'A',1,?,'build','verified',?,1,?,'result.json','{}',?)`,
-          params: [`artifact-${String(index).padStart(4, '0')}`, runId, path.join(root, `artifact-${index}.bin`), hash, now + index, now + index],
-        });
-      }
-      await store.client.transaction(operations);
+      const run = await store.createRun(scope, { objective: `artifact perf ${offset}`, maxConcurrency: 1 });
+      await store.recordArtifacts(scope, run.runId, 'A', 1, 'result.json', Array.from({ length: 100 }, (_, item) => {
+        const index = offset + item;
+        return {
+          path: path.join(root, `artifact-${index}.bin`),
+          artifactType: 'build' as const,
+          sha256: index.toString(16).padStart(64, '0'),
+          size: 1,
+          modifiedAt: now + index,
+        };
+      }));
     }
 
     const artifacts = new ExecutionArtifactManager(store, new WorkspacePolicy([root]));

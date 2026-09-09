@@ -9,6 +9,7 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 import type { WorkspacePolicy } from './workspace.js';
+import { authorizeServiceOperation } from './operation-context.js';
 
 export type FileEntryType = 'file' | 'directory' | 'symlink' | 'other';
 export interface FileEntry { path: string; name: string; type: FileEntryType; size?: number }
@@ -22,7 +23,7 @@ function entryType(dirent: import('node:fs').Dirent): FileEntryType {
 }
 
 export class FileSystemService {
-  constructor(private readonly workspace: WorkspacePolicy) {}
+  constructor(private readonly workspace: WorkspacePolicy, private readonly requireAuthority = false) {}
 
   async listDirectory(target: string, depth = 1, maxEntries = 500): Promise<{ path: string; entries: FileEntry[]; truncated: boolean }> {
     const root = await this.workspace.resolveExisting(target);
@@ -75,6 +76,7 @@ export class FileSystemService {
   }
 
   async writeFile(target: string, content: string, mode: 'rewrite' | 'append' = 'rewrite'): Promise<{ path: string; bytesWritten: number; mode: string }> {
+    await authorizeServiceOperation('write_file', { path: target }, this.requireAuthority);
     const file = await this.workspace.resolveTarget(target);
     await mkdir(path.dirname(file), { recursive: true });
     if (mode === 'append') await appendFile(file, content, 'utf8');
@@ -83,6 +85,7 @@ export class FileSystemService {
   }
 
   async editFile(target: string, oldString: string, newString: string, expectedReplacements = 1): Promise<{ path: string; replacements: number }> {
+    await authorizeServiceOperation('edit_file', { path: target }, this.requireAuthority);
     if (!oldString) throw new Error('oldString must not be empty');
     const file = await this.workspace.resolveExisting(target);
     const content = await fsReadFile(file, 'utf8');
@@ -95,12 +98,14 @@ export class FileSystemService {
   }
 
   async createDirectory(target: string): Promise<{ path: string; created: true }> {
+    await authorizeServiceOperation('create_directory', { path: target }, this.requireAuthority);
     const dir = await this.workspace.resolveTarget(target);
     await mkdir(dir, { recursive: true });
     return { path: dir, created: true };
   }
 
   async moveFile(source: string, destination: string): Promise<{ source: string; destination: string }> {
+    await authorizeServiceOperation('move_file', { source, destination }, this.requireAuthority);
     const from = await this.workspace.resolveExisting(source);
     const to = await this.workspace.resolveTarget(destination);
     await mkdir(path.dirname(to), { recursive: true });

@@ -1,10 +1,10 @@
 # MSL Analytics v2 Task 7 — Verified Usable Development Baseline
 
-**Date:** 2026-08-18 (UTC+7)  
-**Repository:** `rendevouz999/Market-Signal-Lab`  
-**Branch:** `feature/analytics-v2-ipc`  
-**Exact verified source SHA:** `e451846f0a0540b1fb75dca8d18c2239ae7449b6`  
-**Status:** Task 7 COMPLETE / VERIFIED for the usable development baseline  
+**Date:** 2026-08-18 (UTC+7)\
+**Repository:** `rendevouz999/Market-Signal-Lab`\
+**Branch:** `feature/analytics-v2-ipc`\
+**Exact verified source SHA:** `e451846f0a0540b1fb75dca8d18c2239ae7449b6`\
+**Status:** Task 7 COMPLETE / VERIFIED for the usable development baseline\
 **Formal release status:** NOT released. Tasks 8–12 remain deferred hardening/release work.
 
 ## Permanent project guardrail — verbatim
@@ -48,7 +48,7 @@ The usable analytics-v2 baseline now has:
 
 ## Regression evidence discovered during native/full-checkout verification
 
-Codespaces Gate A exposed pre-existing corruption in `internal/analyticsengine/schema_v2_test.go` originating from the earlier Task 2 schema commit. This was genuine regression evidence, so the completed-task no-repeat rule allowed a focused repair.
+build host Gate A exposed pre-existing corruption in `internal/analyticsengine/schema_v2_test.go` originating from the earlier Task 2 schema commit. This was genuine regression evidence, so the completed-task no-repeat rule allowed a focused repair.
 
 The repair commit is:
 
@@ -66,7 +66,7 @@ Only test fixture syntax/identifiers/golden literals were repaired:
 
 No production encoder, decoder, analytical formula, Rust kernel, or Task 1–5 protocol semantics were changed by this repair.
 
-## Fresh Codespaces evidence on exact source SHA
+## Fresh build host evidence on exact source SHA
 
 Toolchains:
 
@@ -122,7 +122,7 @@ Result:
 Finished `release` profile [optimized]
 ```
 
-Codespaces worker path:
+build host worker path:
 
 ```text
 /workspaces/Market-Signal-Lab/engines/rust/target/release/msl-analytics-rust

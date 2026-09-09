@@ -1,0 +1,26 @@
+﻿import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import os from 'node:os'; import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { MemoryRemoteCrypto } from '../src/memory/remote-crypto.js';
+import { SupabaseSecondMemory, type FileSecondMemoryHead, type FileSecondMemoryTransport, type FileSecondMemoryVersion } from '../src/memory/file-native/supabase-second-memory.js';
+import { resolveFileNativeMemoryPaths } from '../src/memory/file-native/paths.js';
+
+const scope={principalId:'p1',projectId:'project'};
+class FakeTransport implements FileSecondMemoryTransport {
+  heads=new Map<string,FileSecondMemoryHead>(); versions=new Map<string,FileSecondMemoryVersion>(); tombstones:any[]=[]; appendCalls=0; failNext=false;
+  key(fileId:string){return `${scope.principalId}\0${scope.projectId}\0canonical\0${fileId}`;}
+  async appendVersion(input:any){this.appendCalls++;if(this.failNext){this.failNext=false;throw new Error('offline');}const key=this.key(input.fileId);const prior=this.heads.get(key);if(prior?.currentVersionId===input.version.versionId)return{applied:false,currentVersionId:prior.currentVersionId};this.versions.set(input.version.versionId,input.version);const head:FileSecondMemoryHead={principalId:input.principalId,projectId:input.projectId,mirrorId:input.mirrorId,fileId:input.fileId,relativePath:input.relativePath,currentVersionId:input.version.versionId,state:'active',contentHash:input.version.contentHash,updatedAt:input.updatedAt};this.heads.set(key,head);return{applied:true,currentVersionId:head.currentVersionId};}
+  async tombstone(input:any){const key=this.key(input.fileId);const head=this.heads.get(key);if(!head)throw new Error('missing');this.tombstones.push({...input,priorVersionId:head.currentVersionId});this.heads.set(key,{...head,state:'tombstoned',priorVersionId:head.currentVersionId,updatedAt:input.deletedAt});}
+  async getHead(input:any){return this.heads.get(this.key(input.fileId))??null;}
+  async getVersion(input:any){return this.versions.get(input.versionId)??null;}
+  async upsertSyncState(_input:any){}
+}
+async function fixture(){const root=await mkdtemp(path.join(os.tmpdir(),'ac-second-memory-'));const paths=resolveFileNativeMemoryPaths(root);const keyFile=path.join(root,'aes.key');await writeFile(keyFile,Buffer.alloc(32,7));const crypto=await MemoryRemoteCrypto.fromKeyFile(keyFile);const transport=new FakeTransport();return{root,paths,crypto,transport,second:new SupabaseSecondMemory(paths,crypto,transport,{mirrorId:'canonical',retentionMs:30*86400000})};}
+
+describe('Supabase file-version second memory',()=>{
+ it('appends encrypted versions and makes identical retry idempotent',async()=>{const f=await fixture();const bytes=Buffer.from('canonical markdown');const a=await f.second.syncFile({scope,fileId:'mf_a',relativePath:'Coding/a.md',bytes,updatedAt:10});const b=await f.second.syncFile({scope,fileId:'mf_a',relativePath:'Coding/a.md',bytes,updatedAt:11});expect(a.versionId).toBe(b.versionId);expect(f.transport.versions.size).toBe(1);expect(f.transport.heads.size).toBe(1);expect(f.transport.appendCalls).toBe(2);expect(JSON.stringify([...f.transport.versions.values()])).not.toContain('canonical markdown');});
+ it('queues an unavailable append and retryPending drains it idempotently',async()=>{const f=await fixture();f.transport.failNext=true;await expect(f.second.syncFile({scope,fileId:'mf_a',relativePath:'Coding/a.md',bytes:Buffer.from('v1'),updatedAt:10})).rejects.toThrow('offline');expect((await f.second.pending()).length).toBe(1);expect((await f.second.retryPending()).synced).toBe(1);expect((await f.second.pending()).length).toBe(0);expect(f.transport.versions.size).toBe(1);});
+ it('retains the prior version when a local deletion becomes a tombstone',async()=>{const f=await fixture();const synced=await f.second.syncFile({scope,fileId:'mf_a',relativePath:'Coding/a.md',bytes:Buffer.from('v1'),updatedAt:10});await f.second.tombstoneFile({scope,fileId:'mf_a',relativePath:'Coding/a.md',reason:'accidental',deletedAt:20});expect(f.transport.tombstones[0].priorVersionId).toBe(synced.versionId);expect(f.transport.heads.values().next().value.state).toBe('tombstoned');});
+ it('restores a tombstoned file byte-for-byte from the retained prior encrypted version',async()=>{const f=await fixture();const bytes=Buffer.from('---\nschema_version: 1\n---\nbody\n');await f.second.syncFile({scope,fileId:'mf_a',relativePath:'Coding/a.md',bytes,updatedAt:10});await f.second.tombstoneFile({scope,fileId:'mf_a',relativePath:'Coding/a.md',reason:'deleted',deletedAt:20});const restored=await f.second.restoreFile({scope,fileId:'mf_a'});expect(restored.relativePath).toBe('Coding/a.md');expect(await readFile(path.join(f.paths.vaultRoot,'Coding','a.md'))).toEqual(bytes);});
+ it('rejects a stale/mismatched version instead of restoring unverified bytes',async()=>{const f=await fixture();await f.second.syncFile({scope,fileId:'mf_a',relativePath:'Coding/a.md',bytes:Buffer.from('v1'),updatedAt:10});const head=f.transport.heads.values().next().value as FileSecondMemoryHead;f.transport.heads.set(f.transport.key('mf_a'),{...head,currentVersionId:'stale-version'});await expect(f.second.restoreFile({scope,fileId:'mf_a'})).rejects.toThrow('MEMORY_SECOND_VERSION_MISSING');});
+});

@@ -62,7 +62,7 @@ async function setupAgentCoreWithFakeLangflow() {
   const root = await tempRoot('agent-core-langflow-mcp-');
   const keyStore = new FileKeyStore(path.join(root, 'data'));
   const created = await keyStore.create('langflow-mcp-client');
-  const defaults = loadConfig({}, root);
+  const defaults = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root);
   const runtime = createRuntimeServices(
     [root],
     path.join(root, 'capabilities'),
@@ -118,7 +118,7 @@ afterEach(async () => {
 describe('Langflow configuration', () => {
   it('defaults to an enabled credential-free loopback Langflow endpoint', () => {
     const root = path.resolve('F:\\Projects\\Agent-Core');
-    const config = loadConfig({}, root) as any;
+    const config = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root) as any;
     expect(config.langflow).toEqual({
       enabled: true,
       baseUrl: 'http://127.0.0.1:7860',

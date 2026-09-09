@@ -9,6 +9,7 @@ import { correlationFields, currentCorrelation } from '../observability/correlat
 import type { ValidatedExecutionNode } from './dag.js';
 import { verifyExecutionArtifacts, type ExecutionEvidenceManifest } from './evidence.js';
 import type { ExecutionLogStore, ExecutionResultMarker, ExecutionResultState } from './log-store.js';
+import { beginExecutionProvenance, finishExecutionProvenance, type DependencyIdentity, type ExecutionWorkflowBinding } from './provenance.js';
 
 export interface ExecutionRunHandle {
   pid: number | null;
@@ -25,6 +26,8 @@ export interface ExecutionOutputAvailable {
 
 export interface ExecutionRunOptions {
   onOutputAvailable?(event: ExecutionOutputAvailable): void | Promise<void>;
+  dependencies?: DependencyIdentity[];
+  workflowBinding?: ExecutionWorkflowBinding;
 }
 
 export interface ExecutionCommandRunnerOptions {
@@ -144,6 +147,8 @@ export class ExecutionCommandRunner {
     options: ExecutionRunOptions = {},
   ): Promise<ExecutionRunHandle> {
     const paths = await this.logs.prepareAttempt(runId, node.id, attemptNo);
+    const provenance = await beginExecutionProvenance(this.workspace, node, { runId, attemptId, attemptNo,
+      dependencies: options.dependencies, workflowBinding: options.workflowBinding });
     const startedAt = Date.now();
     const activeCorrelation = currentCorrelation();
     const correlation: import('./log-store.js').ExecutionResultCorrelation | undefined = activeCorrelation ? {
@@ -283,6 +288,17 @@ export class ExecutionCommandRunner {
           state: processState,
           ...(processErrorText ? { error: processErrorText } : {}),
         };
+      }
+      try {
+        marker.provenance = await finishExecutionProvenance(this.workspace, node, provenance);
+        if (!marker.provenance.inputsStableDuringAttempt && marker.state === 'succeeded') {
+          marker.state = 'failed';
+          marker.error = 'EXECUTION_INPUTS_CHANGED_DURING_ATTEMPT';
+        }
+      } catch {
+        marker.provenance = { ...provenance, inputsStableDuringAttempt: false };
+        if (marker.state === 'succeeded') marker.state = 'failed';
+        marker.error = 'EXECUTION_PROVENANCE_VERIFICATION_FAILED';
       }
       await this.logs.writeResultAtomic(marker);
       return marker;

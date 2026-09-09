@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { instructionProvenance } from './helpers/skill-fixture.js';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
@@ -41,6 +42,7 @@ async function setup() {
   const nativePath = path.join(capabilityDir, 'normalized', 'skills', 'cap_native', 'SKILL.md');
   await mkdir(path.dirname(nativePath), { recursive: true });
   await writeFile(nativePath, '# Native Skill\n\nUse evidence, patch minimally, verify tests.\n', 'utf8');
+  await instructionProvenance(capabilityDir, 'cap_native', nativePath);
   await writeRegistryGeneration(capabilityDir, [
     capability('cap_native', 'native-debugger', 'native_ready', true, 'normalized/skills/cap_native/SKILL.md'),
     capability('cap_cataloged', 'catalog-only', 'cataloged', false, null),
@@ -48,7 +50,7 @@ async function setup() {
 
   const keyStore = new FileKeyStore(path.join(root, 'data'));
   const created = await keyStore.create('capability-client');
-  const baseMemory = loadConfig({}, root).memory;
+  const baseMemory = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root).memory;
   const runtime = createRuntimeServices([root], capabilityDir, undefined, { ...baseMemory, enabled: false });
   const app = createHttpHandler({
     keyStore,

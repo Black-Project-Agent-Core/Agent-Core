@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { resolvePersistencePaths } from './runtime/persistence-paths.js';
+import { parseEnv } from 'node:util';
+import { resolvePersistencePaths, resolveRecoveryPersistencePaths } from './runtime/persistence-paths.js';
+import { resolveFileNativeMemoryPaths, resolvePathInsideProject, type FileNativeMemoryPaths } from './memory/file-native/paths.js';
 
 export interface MemoryScoreWeights {
   lexical: number;
@@ -21,14 +24,39 @@ export interface MemoryRemoteConfig {
   maxRetryAttempts: number;
 }
 
+
+export interface MemorySupabaseSecondConfig {
+  enabled: boolean;
+  url: string | null;
+  publishableKey: string | null;
+  mirrorId: string;
+  signingKeyFile: string | null;
+  encryptionKeyFile: string | null;
+  timeoutMs: number;
+  retentionMs: number;
+}
+
+export interface MemorySupabaseDirectConfig {
+  enabled: boolean;
+  url: string | null;
+  secretKey: string | null;
+  timeoutMs: number;
+}
+
 export type MemoryHardLifecycleMode = 'disabled' | 'advisory' | 'enforce';
+
+export interface MemoryFileNativeConfig extends FileNativeMemoryPaths {
+  rgPath: string | null;
+  pythonPath: string | null;
+  graphifyPath: string | null;
+}
 
 export interface MemoryConfig {
   enabled: boolean;
   principalId: string | null;
   enforceHardGuardrails: boolean;
   hardLifecycleMode: MemoryHardLifecycleMode;
-  dbPath: string;
+  fileNative: MemoryFileNativeConfig;
   seedCap: number;
   graphNodeCap: number;
   graphEdgeCap: number;
@@ -38,13 +66,14 @@ export interface MemoryConfig {
   pprMaxIterations: number;
   recallItemBudget: number;
   recallCharacterBudget: number;
-  busyTimeoutMs: number;
   tokenOverlapJaccardThreshold: number;
   temporalNeighborWindowMs: number;
   archiveObservationAfterMs: number;
   tombstoneRetentionMs: number;
   scoreWeights: MemoryScoreWeights;
   remote: MemoryRemoteConfig;
+  supabaseSecond: MemorySupabaseSecondConfig;
+  supabaseDirect: MemorySupabaseDirectConfig;
 }
 
 export interface ExecutionResourceGovernanceConfig {
@@ -66,13 +95,13 @@ export interface ExecutionResourceGovernanceConfig {
 
 export interface ExecutionConfig {
   enabled: boolean;
-  dbPath: string;
+  stateRoot: string;
   logRoot: string;
   maxConcurrency: number;
   maxNodes: number;
   maxOutputBytes: number;
   waitMaxMs: number;
-  busyTimeoutMs: number;
+  lockTimeoutMs: number;
   resourceGovernance: ExecutionResourceGovernanceConfig;
 }
 
@@ -124,9 +153,9 @@ export interface LangflowConfig {
 
 export interface OperatorDirectiveConfig {
   enabled: boolean;
-  dbPath: string;
-  busyTimeoutMs: number;
-  schemaVersion: 1;
+  stateRoot: string;
+  lockTimeoutMs: number;
+  stateVersion: 1;
 }
 
 export interface HttpSecurityConfig {
@@ -162,6 +191,39 @@ export interface AppConfig {
 
 type Env = Record<string, string | undefined>;
 
+export function resolveRuntimeProjectRoot(env: Env = process.env, cwd = process.cwd()): string {
+  const configured = env.AGENT_CORE_HOME?.trim();
+  return path.resolve(configured || cwd);
+}
+
+function readProjectEnv(projectRoot: string): Env {
+  const envPath = path.join(projectRoot, '.env');
+  let text: string;
+  try { text = readFileSync(envPath, 'utf8'); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {}; throw error; }
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const candidate = line.startsWith('export ') ? line.slice(7).trim() : line;
+    if (/^AGENT_CORE_[A-Za-z0-9_]*$/.test(candidate)) throw new Error(`AGENT_CORE_ENV_INVALID:${envPath}`);
+  }
+  return parseEnv(text) as Env;
+}
+
+export function loadRuntimeConfig(env: Env = process.env, cwd = process.cwd()): AppConfig {
+  const projectRoot = resolveRuntimeProjectRoot(env, cwd);
+  return loadConfig({ ...readProjectEnv(projectRoot), ...env }, projectRoot);
+}
+
+/**
+ * Storage selection for identity repair commands. Keeps every manifest and redirection
+ * check, but does not require the credential snapshot the repair itself has to rebuild.
+ */
+export function loadRecoveryPaths(env: Env = process.env, cwd = process.cwd()): { dataDir: string; logDir: string } {
+  const projectRoot = resolveRuntimeProjectRoot(env, cwd);
+  return resolveRecoveryPersistencePaths({ ...readProjectEnv(projectRoot), ...env }, projectRoot);
+}
+
 function parseRoots(value: string | undefined, baseDir: string): string[] {
   if (!value?.trim()) return [path.resolve(baseDir)];
   const roots = value.split(';')
@@ -179,8 +241,9 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   throw new Error(`Invalid boolean value: ${value}`);
 }
 
+
 function parseMemoryHardLifecycleMode(value: string | undefined): MemoryHardLifecycleMode {
-  const normalized = value?.trim().toLowerCase() || 'advisory';
+  const normalized = value?.trim().toLowerCase() || 'enforce';
   if (normalized === 'disabled' || normalized === 'advisory' || normalized === 'enforce') return normalized;
   throw new Error('AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE must be disabled, advisory, or enforce');
 }
@@ -388,6 +451,23 @@ function parseGitHubApiBaseUrl(value: string | undefined): string {
   return raw.replace(/\/+$/g, '');
 }
 
+
+function parseMemorySupabaseSecondUrl(value: string | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  let parsed: URL;
+  try { parsed = new URL(raw); } catch { throw new Error('AGENT_CORE_MEMORY_SUPABASE_URL must be a valid URL'); }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+    throw new Error('AGENT_CORE_MEMORY_SUPABASE_URL must be an https origin without path/query/fragment');
+  }
+  return parsed.origin;
+}
+function parseMemorySupabaseMirrorId(value: string | undefined): string {
+  const raw = value?.trim() || 'canonical';
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(raw)) throw new Error('AGENT_CORE_MEMORY_SUPABASE_MIRROR_ID must be a bounded safe identifier');
+  return raw;
+}
+
 export function loadConfig(env: Env = process.env, baseDir = process.cwd()): AppConfig {
   const persistence = resolvePersistencePaths(env, baseDir);
   const port = Number.parseInt(env.AGENT_CORE_PORT ?? '8765', 10);
@@ -429,6 +509,54 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     ),
   };
 
+  const memorySupabaseSecondEnabled = parseBoolean(env.AGENT_CORE_MEMORY_SUPABASE_SECOND_ENABLED, false);
+  const memorySupabaseSecondUrl = parseMemorySupabaseSecondUrl(env.AGENT_CORE_MEMORY_SUPABASE_URL ?? env.SUPABASE_URL);
+  const memorySupabaseSecondPublishableKey = (env.AGENT_CORE_MEMORY_SUPABASE_PUBLISHABLE_KEY ?? env.SUPABASE_ANON_KEY)?.trim() || null;
+  const memorySupabaseSigningRaw = env.AGENT_CORE_MEMORY_SUPABASE_SIGNING_KEY_FILE?.trim() || null;
+  const memorySupabaseEncryptionRaw = env.AGENT_CORE_MEMORY_SUPABASE_ENCRYPTION_KEY_FILE?.trim() || null;
+  if (memorySupabaseSecondEnabled && !memorySupabaseSecondUrl) throw new Error('AGENT_CORE_MEMORY_SUPABASE_URL is required when Supabase second memory is enabled');
+  if (memorySupabaseSecondEnabled && !memorySupabaseSecondPublishableKey) throw new Error('AGENT_CORE_MEMORY_SUPABASE_PUBLISHABLE_KEY is required when Supabase second memory is enabled');
+  if (memorySupabaseSecondEnabled && !memorySupabaseSigningRaw) throw new Error('AGENT_CORE_MEMORY_SUPABASE_SIGNING_KEY_FILE is required when Supabase second memory is enabled');
+  if (memorySupabaseSecondEnabled && !memorySupabaseEncryptionRaw) throw new Error('AGENT_CORE_MEMORY_SUPABASE_ENCRYPTION_KEY_FILE is required when Supabase second memory is enabled');
+  const memorySupabaseSecond: MemorySupabaseSecondConfig = {
+    enabled: memorySupabaseSecondEnabled,
+    url: memorySupabaseSecondUrl,
+    publishableKey: memorySupabaseSecondPublishableKey,
+    mirrorId: parseMemorySupabaseMirrorId(env.AGENT_CORE_MEMORY_SUPABASE_MIRROR_ID),
+    signingKeyFile: memorySupabaseSigningRaw ? resolvePathInsideProject(baseDir, memorySupabaseSigningRaw, 'AGENT_CORE_MEMORY_SUPABASE_SIGNING_KEY_FILE') : null,
+    encryptionKeyFile: memorySupabaseEncryptionRaw ? resolvePathInsideProject(baseDir, memorySupabaseEncryptionRaw, 'AGENT_CORE_MEMORY_SUPABASE_ENCRYPTION_KEY_FILE') : null,
+    timeoutMs: parseBoundedPositiveInteger(env.AGENT_CORE_MEMORY_SUPABASE_TIMEOUT_MS, 15_000, 'AGENT_CORE_MEMORY_SUPABASE_TIMEOUT_MS', 600_000),
+    retentionMs: parseBoundedPositiveInteger(env.AGENT_CORE_MEMORY_SUPABASE_RETENTION_MS, 30 * 24 * 60 * 60 * 1000, 'AGENT_CORE_MEMORY_SUPABASE_RETENTION_MS', 3650 * 24 * 60 * 60 * 1000),
+  };
+
+  const defaultFileNativePaths = resolveFileNativeMemoryPaths(baseDir);
+  const directEnabled = parseBoolean(env.AGENT_CORE_MEMORY_SUPABASE_DIRECT_ENABLED, false);
+  const directKey = (env.AGENT_CORE_MEMORY_SUPABASE_SECRET_KEY ?? env.SUPABASE_SECRET_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY)?.trim() || null;
+  if (directEnabled && !memorySupabaseSecondUrl) throw new Error('AGENT_CORE_MEMORY_SUPABASE_URL is required when direct Supabase memory is enabled');
+  if (directEnabled && !directKey) throw new Error('AGENT_CORE_MEMORY_SUPABASE_SECRET_KEY is required when direct Supabase memory is enabled');
+  if (directEnabled && directKey && !directKey.startsWith('sb_secret_')) {
+    let role: unknown;
+    try { role = JSON.parse(Buffer.from(directKey.split('.')[1] ?? '', 'base64url').toString()).role; } catch { /* reject without exposing credentials */ }
+    if (role !== 'service_role') throw new Error('Direct Supabase memory requires a server secret key or legacy service_role key');
+  }
+  const supabaseDirect: MemorySupabaseDirectConfig = {
+    enabled: directEnabled, url: memorySupabaseSecondUrl, secretKey: directKey,
+    timeoutMs: memorySupabaseSecond.timeoutMs,
+  };
+  const vaultRoot = env.AGENT_CORE_MEMORY_VAULT_ROOT?.trim()
+    ? resolvePathInsideProject(baseDir, env.AGENT_CORE_MEMORY_VAULT_ROOT.trim(), 'AGENT_CORE_MEMORY_VAULT_ROOT')
+    : defaultFileNativePaths.vaultRoot;
+  const fileNative: MemoryFileNativeConfig = {
+    ...defaultFileNativePaths,
+    vaultRoot,
+    rgPath: env.AGENT_CORE_MEMORY_RG_PATH?.trim()
+      ? resolvePathInsideProject(baseDir, env.AGENT_CORE_MEMORY_RG_PATH.trim(), 'AGENT_CORE_MEMORY_RG_PATH') : null,
+    pythonPath: env.AGENT_CORE_MEMORY_PYTHON_PATH?.trim()
+      ? resolvePathInsideProject(baseDir, env.AGENT_CORE_MEMORY_PYTHON_PATH.trim(), 'AGENT_CORE_MEMORY_PYTHON_PATH') : null,
+    graphifyPath: env.AGENT_CORE_MEMORY_GRAPHIFY_PATH?.trim()
+      ? resolvePathInsideProject(baseDir, env.AGENT_CORE_MEMORY_GRAPHIFY_PATH.trim(), 'AGENT_CORE_MEMORY_GRAPHIFY_PATH') : null,
+  };
+
   const memory: MemoryConfig = {
     enabled: parseBoolean(env.AGENT_CORE_MEMORY_ENABLED, true),
     principalId: parseMemoryPrincipalId(
@@ -437,7 +565,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     ),
     enforceHardGuardrails: parseBoolean(env.AGENT_CORE_MEMORY_ENFORCE_HARD_GUARDRAILS, false),
     hardLifecycleMode: parseMemoryHardLifecycleMode(env.AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE),
-    dbPath: path.resolve(env.AGENT_CORE_MEMORY_DB_PATH?.trim() || path.join(baseDir, 'runtime', 'memory', 'agent-core-memory.sqlite')),
+    fileNative,
     seedCap: parsePositiveInteger(env.AGENT_CORE_MEMORY_SEED_CAP, 64, 'AGENT_CORE_MEMORY_SEED_CAP'),
     graphNodeCap: parsePositiveInteger(env.AGENT_CORE_MEMORY_GRAPH_NODE_CAP, 1000, 'AGENT_CORE_MEMORY_GRAPH_NODE_CAP'),
     graphEdgeCap: parsePositiveInteger(env.AGENT_CORE_MEMORY_GRAPH_EDGE_CAP, 10_000, 'AGENT_CORE_MEMORY_GRAPH_EDGE_CAP'),
@@ -447,7 +575,6 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
     pprMaxIterations: parsePositiveInteger(env.AGENT_CORE_MEMORY_PPR_MAX_ITERATIONS, 20, 'AGENT_CORE_MEMORY_PPR_MAX_ITERATIONS'),
     recallItemBudget: parsePositiveInteger(env.AGENT_CORE_MEMORY_RECALL_ITEM_BUDGET, 24, 'AGENT_CORE_MEMORY_RECALL_ITEM_BUDGET'),
     recallCharacterBudget: parsePositiveInteger(env.AGENT_CORE_MEMORY_RECALL_CHARACTER_BUDGET, 12_000, 'AGENT_CORE_MEMORY_RECALL_CHARACTER_BUDGET'),
-    busyTimeoutMs: parsePositiveInteger(env.AGENT_CORE_MEMORY_BUSY_TIMEOUT_MS, 5000, 'AGENT_CORE_MEMORY_BUSY_TIMEOUT_MS'),
     tokenOverlapJaccardThreshold: parseUnitInterval(env.AGENT_CORE_MEMORY_TOKEN_JACCARD, 0.35, 'AGENT_CORE_MEMORY_TOKEN_JACCARD'),
     temporalNeighborWindowMs: parsePositiveInteger(env.AGENT_CORE_MEMORY_TEMPORAL_WINDOW_MS, 30 * 60 * 1000, 'AGENT_CORE_MEMORY_TEMPORAL_WINDOW_MS'),
     archiveObservationAfterMs: parsePositiveInteger(env.AGENT_CORE_MEMORY_ARCHIVE_OBSERVATION_MS, 90 * 24 * 60 * 60 * 1000, 'AGENT_CORE_MEMORY_ARCHIVE_OBSERVATION_MS'),
@@ -456,11 +583,13 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
       lexical: 0.40,
       exact: 0.20,
       graph: 0.20,
-      state: 0.08,
-      importance: 0.07,
+      state: 0.05,
+      importance: 0.10,
       recency: 0.05,
     },
     remote: memoryRemote,
+    supabaseSecond: memorySupabaseSecond,
+    supabaseDirect,
   };
 
   if (!Number.isFinite(memory.pprEpsilon) || memory.pprEpsilon <= 0) {
@@ -525,13 +654,13 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
   const execution: ExecutionConfig = {
     // Production default is enabled after the staged Task 22 live canary; operators can still disable it explicitly.
     enabled: parseBoolean(env.AGENT_CORE_EXECUTION_ENABLED, true),
-    dbPath: path.resolve(env.AGENT_CORE_EXECUTION_DB_PATH?.trim() || path.join(baseDir, 'runtime', 'execution', 'agent-core-execution.sqlite')),
+    stateRoot: path.resolve(env.AGENT_CORE_EXECUTION_STATE_ROOT?.trim() || path.join(baseDir, 'runtime', 'execution', 'state')),
     logRoot: path.resolve(env.AGENT_CORE_EXECUTION_LOG_ROOT?.trim() || path.join(baseDir, 'runtime', 'execution', 'runs')),
     maxConcurrency,
     maxNodes: parsePositiveInteger(env.AGENT_CORE_EXECUTION_MAX_NODES, 128, 'AGENT_CORE_EXECUTION_MAX_NODES'),
     maxOutputBytes: parseBoundedPositiveInteger(env.AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES, 64 * 1024 * 1024, 'AGENT_CORE_EXECUTION_MAX_OUTPUT_BYTES', 1024 * 1024 * 1024),
     waitMaxMs: parsePositiveInteger(env.AGENT_CORE_EXECUTION_WAIT_MAX_MS, 60_000, 'AGENT_CORE_EXECUTION_WAIT_MAX_MS'),
-    busyTimeoutMs: parsePositiveInteger(env.AGENT_CORE_EXECUTION_BUSY_TIMEOUT_MS, 5_000, 'AGENT_CORE_EXECUTION_BUSY_TIMEOUT_MS'),
+    lockTimeoutMs: parsePositiveInteger(env.AGENT_CORE_EXECUTION_LOCK_TIMEOUT_MS, 5_000, 'AGENT_CORE_EXECUTION_LOCK_TIMEOUT_MS'),
     resourceGovernance,
   };
 
@@ -569,17 +698,17 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
 
   const operatorDirectives: OperatorDirectiveConfig = {
     enabled: parseBoolean(env.AGENT_CORE_OPERATOR_DIRECTIVES_ENABLED, true),
-    dbPath: path.resolve(
-      env.AGENT_CORE_OPERATOR_DIRECTIVES_DB_PATH?.trim()
-        || path.join(baseDir, 'runtime', 'operator-directives', 'operator-directives.sqlite'),
+    stateRoot: path.resolve(
+      env.AGENT_CORE_OPERATOR_DIRECTIVES_STATE_ROOT?.trim()
+        || path.join(baseDir, 'runtime', 'operator-directives', 'state'),
     ),
-    busyTimeoutMs: parseBoundedPositiveInteger(
-      env.AGENT_CORE_OPERATOR_DIRECTIVES_BUSY_TIMEOUT_MS,
+    lockTimeoutMs: parseBoundedPositiveInteger(
+      env.AGENT_CORE_OPERATOR_DIRECTIVES_LOCK_TIMEOUT_MS,
       5_000,
-      'AGENT_CORE_OPERATOR_DIRECTIVES_BUSY_TIMEOUT_MS',
+      'AGENT_CORE_OPERATOR_DIRECTIVES_LOCK_TIMEOUT_MS',
       60_000,
     ),
-    schemaVersion: 1,
+    stateVersion: 1,
   };
 
   return {

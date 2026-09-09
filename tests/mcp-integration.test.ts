@@ -1,4 +1,4 @@
-﻿import { randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -36,7 +36,7 @@ async function setup() {
   roots.push(root);
   const keyStore = new FileKeyStore(path.join(root, 'data'));
   const created = await keyStore.create('integration-client');
-  const baseMemory = loadConfig({}, root).memory;
+  const baseMemory = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root).memory;
   const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
     ...baseMemory,
     enabled: false,
@@ -91,7 +91,7 @@ afterEach(async () => {
 });
 
 describe('Agent Core MCP integration', () => {
-  it('initializes the current SERVER_VERSION with exactly 68 routing, github, memory, continuity, and execution tools and schemas', async () => {
+  it('initializes the current SERVER_VERSION with the routing, memory, workflow, and execution tool schemas', async () => {
     const { baseUrl, created } = await setup();
     const initialize = await mcpRequest(baseUrl, created.key, {
       jsonrpc: '2.0', id: 1, method: 'initialize',
@@ -109,7 +109,8 @@ describe('Agent Core MCP integration', () => {
     });
     const tools = listed.json.result.tools as Array<Record<string, any>>;
     const names = tools.map((tool) => tool.name);
-    expect(names).toHaveLength(69);
+    expect(names).toHaveLength(72);
+    expect(names).toEqual(expect.arrayContaining(['craft_source', 'workflow_plan', 'workflow_status']));
     for (const name of ['task_checkpoint', 'continuity_status', 'continuity_get_task', 'continuity_frontier']) {
       expect(names).toContain(name);
     }
@@ -152,7 +153,7 @@ describe('Agent Core MCP integration', () => {
   it('routes an atomic proof flow and rejects a bypass with no filesystem side effect', async () => {
     const { root, baseUrl, created } = await setup();
     const routed = await call(baseUrl, created.key, 'capability_route', {
-      task: 'Create a small proof file', context: `Workspace root is ${root}`,
+      task: 'Change one label in a small proof file', context: `Workspace root is ${root}`,
     });
     const route = parsed(routed);
     expect(route).toMatchObject({ mode: 'atomic_direct', requiredSkillLoads: [] });

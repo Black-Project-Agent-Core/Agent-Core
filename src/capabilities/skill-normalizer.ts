@@ -20,8 +20,8 @@ function assertEligible(audit: SkillAudit): void {
   if (audit.license.status !== 'verified') {
     throw new Error(`Skill license is not verified: ${audit.license.status}`);
   }
-  if (!audit.functionAnalyzed) throw new Error('Skill function analysis is incomplete');
-  if (!audit.safetyReviewed) throw new Error('Skill safety review is incomplete');
+  if (!audit.metadataInspected) throw new Error('Skill instruction metadata inspection is incomplete');
+  if (!audit.riskScanCompleted) throw new Error('Skill heuristic risk scan is incomplete');
   if (audit.risk === 'high' || audit.risk === 'unknown') {
     throw new Error(`Skill risk is not eligible for native loading: ${audit.risk}`);
   }
@@ -57,6 +57,8 @@ export async function normalizeAuditedSkill(
     risk: audit.risk,
     license: audit.license,
     state: 'native_ready',
+    analysisLevel: audit.analysisLevel,
+    behaviorVerified: audit.behaviorVerified,
   };
   const provenance = {
     capabilityId: audit.capabilityId,
@@ -69,8 +71,10 @@ export async function normalizeAuditedSkill(
     license: audit.license,
     auditedAt: new Date().toISOString(),
     risk: audit.risk,
-    functionAnalyzed: audit.functionAnalyzed,
-    safetyReviewed: audit.safetyReviewed,
+    metadataInspected: audit.metadataInspected,
+    riskScanCompleted: audit.riskScanCompleted,
+    analysisLevel: audit.analysisLevel,
+    behaviorVerified: audit.behaviorVerified,
   };
 
   await Promise.all([

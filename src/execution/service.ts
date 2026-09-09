@@ -4,7 +4,7 @@ import type { ExecutionConfig } from '../config.js';
 import type { ExecutionContinuitySummary } from '../continuity/snapshot.js';
 import type { WorkspacePolicy } from '../runtime/workspace.js';
 import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
-import { validateExecutionDag, type ExecutionNodeSpec } from './dag.js';
+import { validateExecutionDag, type ExecutionNodeSpec, type ExecutionResourceSpec } from './dag.js';
 import { ExecutionArtifactManager } from './artifact-manager.js';
 import type { ExecutionArtifactEvidence } from './evidence.js';
 import { ExecutionLogStore, type ExecutionResultMarker } from './log-store.js';
@@ -19,14 +19,17 @@ import { ExecutionRecovery } from './recovery.js';
 import type { ResourceGovernor } from './resource-governor.js';
 import { ExecutionRuntimeLease } from './runtime-lease.js';
 import { ExecutionCommandRunner } from './runner.js';
-import { ExecutionScheduler, type ExecutionRunnerLike } from './scheduler.js';
+import { ExecutionScheduler, executionNodeSpec, type ExecutionRunnerLike } from './scheduler.js';
+import { executionApplicability, executionIdentityHash, executionInputPaths, type ExecutionApplicability, type ExecutionWorkflowBinding } from './provenance.js';
+import { hasExecutionResourceClaims, type ExecutionClaim } from './resource-claims.js';
 import {
   ExecutionStore,
   ExecutionStoreError,
+  executionWorkflowPending,
   type ExecutionNodeRecord,
   type ExecutionRunRecord,
 } from './store.js';
-import type { ExecutionScope } from './types.js';
+import { EXECUTION_STATE_VERSION, type ExecutionScope } from './types.js';
 import {
   ExecutionEventJournal,
   ExecutionWakeCoordinator,
@@ -57,13 +60,28 @@ export interface ExecutionNodeEvidenceSummary {
   stdoutSha256: string | null;
   stderrSha256: string | null;
   artifacts: ExecutionArtifactEvidence[];
+  applicability?: ExecutionApplicability;
   parsedOutput?: import('./store.js').ExecutionParsedOutputView | { available: false; status: 'unavailable'; parserVersion: string };
 }
 
 export interface ExecutionRunEvidenceSummary {
   verification: ExecutionEvidenceSummaryState;
   nodes: ExecutionNodeEvidenceSummary[];
+  current: boolean;
 }
+
+export interface ExecutionWorkflowGuardRequest {
+  operation: 'create' | 'start' | 'add_nodes' | 'retry' | 'dispatch' | 'reconcile';
+  scope: ExecutionScope;
+  runId?: string;
+  objective: string;
+  nodes: readonly ExecutionNodeSpec[];
+  continuityTaskId?: string;
+  originRouteContextId?: string;
+}
+export type ExecutionWorkflowGuard = (request: ExecutionWorkflowGuardRequest) => Promise<ExecutionWorkflowBinding | void>;
+export interface ExecutionOperationContext { originRouteContextId?: string }
+export type { ExecutionWorkflowBinding } from './provenance.js';
 
 export interface ExecutionRunView extends ExecutionRunRecord {
   nodes: ExecutionNodeRecord[];
@@ -89,6 +107,8 @@ export interface ExecutionServiceDependencies {
   outputParser?: ExecutionOutputParserLike;
   artifactManager?: ExecutionArtifactManager;
   resourceGovernor?: ResourceGovernor;
+  workflowGuard?: ExecutionWorkflowGuard;
+  workflowAfterAttempt?: (scope: ExecutionScope, run: ExecutionRunRecord, node: ExecutionNodeRecord, marker: ExecutionResultMarker) => Promise<void>;
 }
 
 export type ExecutionServiceState = 'disabled' | 'idle' | 'healthy' | 'degraded' | 'closing' | 'closed';
@@ -97,8 +117,8 @@ export interface ExecutionHealth {
   enabled: boolean;
   healthy: boolean;
   state: ExecutionServiceState;
-  schemaVersion: number;
-  dbPath: string;
+  stateVersion: number;
+  stateRoot: string;
   integrity: string;
   activeRuns: number;
   queuedSync: number;
@@ -116,6 +136,8 @@ export class ExecutionService {
   readonly metrics?: RuntimeMetricRegistry;
   readonly outputParser: ExecutionOutputParserLike;
   readonly artifacts: ExecutionArtifactManager;
+  readonly workflowGuard?: ExecutionWorkflowGuard;
+  private readonly workflowAfterAttempt?: ExecutionServiceDependencies['workflowAfterAttempt'];
   private unsubscribeBridge?: () => void;
   private opened = false;
   private closed = false;
@@ -138,6 +160,8 @@ export class ExecutionService {
     this.journal = dependencies.journal ?? new ExecutionEventJournal(this.store, this.wake);
     this.memoryBridge = dependencies.memoryBridge;
     this.memorySearch = dependencies.memorySearch;
+    this.workflowGuard = dependencies.workflowGuard;
+    this.workflowAfterAttempt = dependencies.workflowAfterAttempt;
     if (this.memoryBridge) {
       this.unsubscribeBridge = this.journal.subscribe((scope, event) => {
         this.memoryBridge!.dispatch(scope, event);
@@ -146,10 +170,39 @@ export class ExecutionService {
     const runner = dependencies.runner ?? new ExecutionCommandRunner(this.logs, workspace, { maxOutputBytes: config.maxOutputBytes });
     this.scheduler = new ExecutionScheduler(this.store, runner, {
       logRoot: config.logRoot,
+      requiresWorkflowAfterAttempt: Boolean(dependencies.workflowAfterAttempt),
       journal: this.journal,
-      onAttemptCompleted: (scope, marker) => this.captureDerivedEvidence(scope, marker),
+      onAttemptCompleted: async (scope, marker) => {
+        if (dependencies.workflowAfterAttempt && marker.state === 'succeeded' && marker.provenance?.sourceBound && marker.provenance.inputsStableDuringAttempt) {
+          const run = (await this.store.getRun(scope, marker.runId))!;
+          const node = (await this.store.getNode(scope, marker.runId, marker.nodeId))!;
+          try {
+            await dependencies.workflowAfterAttempt(scope, run, node, marker);
+            await this.store.settleWorkflowAttempt(scope, marker);
+          }
+          catch (error) {
+            await this.store.settleWorkflowAttempt(scope, marker, error instanceof Error ? error.message : String(error));
+            await this.journal.record(scope, marker.runId, 'node.output_available', { nodeId: marker.nodeId, attemptId: marker.attemptId,
+              payload: { workflowPending: true, reason: error instanceof Error ? error.message : String(error) } });
+            await this.store.setRunState(scope, marker.runId, 'blocked');
+            await this.journal.record(scope, marker.runId, 'run.blocked', { payload: { reason: 'workflow_post_attempt_pending' } });
+          }
+        }
+        await this.captureDerivedEvidence(scope, marker);
+      },
       resourceGovernor: dependencies.resourceGovernor,
       metrics: this.metrics,
+      workspace,
+      beforeDispatch: async (scope, run, node) => {
+        await this.guardWorkflow('dispatch', scope, run, [executionNodeSpec(node)]);
+        if (this.workflowGuard && node.dependsOn.length > 0) {
+          const view = await this.status(scope, run.runId);
+          for (const dependency of node.dependsOn) {
+            const evidence = view?.evidence.nodes.find((item) => item.nodeId === dependency);
+            if (!evidence || evidence.applicability !== 'current') throw new ExecutionStoreError('EXECUTION_DEPENDENCY_EVIDENCE_STALE', `Dependency ${dependency} does not have current source-bound evidence`);
+          }
+        }
+      },
     });
   }
 
@@ -167,11 +220,11 @@ export class ExecutionService {
     if (this.state === 'degraded') throw new Error(`EXECUTION_DEGRADED:${this.degradedReason ?? 'unknown'}`);
     let acquiredLease: ExecutionRuntimeLease | undefined;
     try {
-      acquiredLease = await ExecutionRuntimeLease.acquire(this.config.dbPath);
-      await this.store.open({ dbPath: this.config.dbPath, busyTimeoutMs: this.config.busyTimeoutMs });
+      acquiredLease = await ExecutionRuntimeLease.acquire(this.config.stateRoot);
+      await this.store.open({ stateRoot: this.config.stateRoot, lockTimeoutMs: this.config.lockTimeoutMs });
       this.runtimeLease = acquiredLease;
       acquiredLease = undefined;
-      const recovery = new ExecutionRecovery(this.store, this.logs);
+      const recovery = new ExecutionRecovery(this.store, this.logs, Boolean(this.workflowAfterAttempt));
       await recovery.reconcile();
       try {
         const reconciled = await this.artifacts.reconcile();
@@ -196,13 +249,13 @@ export class ExecutionService {
 
   async health(scope?: ExecutionScope): Promise<ExecutionHealth> {
     if (!this.config.enabled || this.state === 'disabled') {
-      return { enabled: false, healthy: false, state: 'disabled', schemaVersion: 1, dbPath: this.config.dbPath, integrity: 'disabled', activeRuns: 0, queuedSync: 0 };
+      return { enabled: false, healthy: false, state: 'disabled', stateVersion: EXECUTION_STATE_VERSION, stateRoot: this.config.stateRoot, integrity: 'disabled', activeRuns: 0, queuedSync: 0 };
     }
     if (this.state === 'idle') {
       try { await this.open(); } catch {}
     }
     if (this.state !== 'healthy') {
-      return { enabled: true, healthy: false, state: this.state, schemaVersion: 1, dbPath: this.config.dbPath, integrity: `degraded:${this.degradedReason ?? this.state}`, activeRuns: 0, queuedSync: 0 };
+      return { enabled: true, healthy: false, state: this.state, stateVersion: EXECUTION_STATE_VERSION, stateRoot: this.config.stateRoot, integrity: `degraded:${this.degradedReason ?? this.state}`, activeRuns: 0, queuedSync: 0 };
     }
     try {
       const status = await this.store.status();
@@ -224,8 +277,8 @@ export class ExecutionService {
         enabled: true,
         healthy: status.healthy,
         state: status.healthy ? 'healthy' : 'degraded',
-        schemaVersion: status.schemaVersion,
-        dbPath: status.dbPath,
+        stateVersion: status.stateVersion,
+        stateRoot: status.stateRoot,
         integrity: status.integrity,
         activeRuns,
         queuedSync,
@@ -234,7 +287,7 @@ export class ExecutionService {
     } catch (error) {
       this.state = 'degraded';
       this.degradedReason = error instanceof Error ? error.message : String(error);
-      return { enabled: true, healthy: false, state: 'degraded', schemaVersion: 1, dbPath: this.config.dbPath, integrity: `degraded:${this.degradedReason}`, activeRuns: 0, queuedSync: 0 };
+      return { enabled: true, healthy: false, state: 'degraded', stateVersion: EXECUTION_STATE_VERSION, stateRoot: this.config.stateRoot, integrity: `degraded:${this.degradedReason}`, activeRuns: 0, queuedSync: 0 };
     }
   }
 
@@ -259,14 +312,23 @@ export class ExecutionService {
     }
     const memoryPreSearch = await this.preSearch(scope, input.objective, graph.nodes);
     this.assertMemoryPreSearchAllowed(memoryPreSearch);
+    const workflowBinding = await this.workflowGuard?.({ operation: 'create', scope, objective: input.objective, nodes: graph.nodes,
+      continuityTaskId: input.continuityTaskId, originRouteContextId: input.originRouteContextId });
+    if (this.workflowGuard && graph.nodes.some(node => node.inputs === undefined)) {
+      throw new ExecutionStoreError('EXECUTION_INPUTS_REQUIRED', 'Each new execution node must declare its source inputs; use an explicit empty array only for commands with no source inputs');
+    }
     const createdBy = correlationFields();
     const existingObservability = input.metadata?.observability && typeof input.metadata.observability === 'object'
       && !Array.isArray(input.metadata.observability)
       ? input.metadata.observability as Record<string, unknown>
       : {};
-    const metadata = Object.keys(createdBy).length > 0
+    const rawMetadata = Object.keys(createdBy).length > 0
       ? { ...(input.metadata ?? {}), observability: { ...existingObservability, createdBy } }
       : input.metadata;
+    const metadata: Record<string, unknown> = { ...(rawMetadata ?? {}) };
+    delete metadata.workflowBinding;
+    delete metadata.workflowPendingAttempts;
+    if (workflowBinding) metadata.workflowBinding = workflowBinding;
     const run = await this.store.createRun(scope, {
       objective: input.objective,
       continuityTaskId: input.continuityTaskId ?? randomUUID(),
@@ -293,17 +355,23 @@ export class ExecutionService {
     return memoryPreSearch ? { ...view, memoryPreSearch } : view;
   }
 
-  async start(scope: ExecutionScope, runId: string): Promise<ExecutionRunView> {
+  async start(scope: ExecutionScope, runId: string, context: ExecutionOperationContext = {}): Promise<ExecutionRunView> {
     this.assertReady();
+    await this.reconcileWorkflowAttempts(scope, runId, context);
     const run = await this.store.getRun(scope, runId);
     if (!run) throw new ExecutionStoreError('EXECUTION_RUN_NOT_FOUND', 'Execution run was not found in authenticated scope');
     const nodes = await this.store.getNodes(scope, runId);
+    await this.guardWorkflow('start', scope, { ...run, ...(context.originRouteContextId ? context : {}) }, nodes.map(executionNodeSpec));
     const memoryPreSearch = await this.preSearch(
       scope,
       run.objective,
       nodes.map((node) => ({ id: node.nodeId, purpose: node.purpose })),
     );
     this.assertMemoryPreSearchAllowed(memoryPreSearch);
+    if (run.state === 'completed') {
+      const completed = (await this.status(scope, runId))!;
+      return memoryPreSearch ? { ...completed, memoryPreSearch } : completed;
+    }
     const dispatchStarted = performance.now();
     try {
       await this.scheduler.startRun(scope, runId);
@@ -323,6 +391,8 @@ export class ExecutionService {
     const run = await this.store.getRun(scope, runId);
     if (!run) return null;
     const nodes = await this.store.getNodes(scope, runId);
+    // One status snapshot can share executable reads; never cache evidence across operations.
+    const toolchainHashes = new Map<string, Promise<string>>();
     const attempts = await this.store.listAttempts(scope, runId);
     const latestAttempt = new Map<string, (typeof attempts)[number]>();
     for (const attempt of attempts) latestAttempt.set(attempt.nodeId, attempt);
@@ -349,6 +419,11 @@ export class ExecutionService {
       const parsedOutput = await this.store.getParsedOutput(scope, runId, node.nodeId, attempt.attemptNo)
         ?? { available: false as const, status: 'unavailable' as const, parserVersion: EXECUTION_OUTPUT_PARSER_VERSION };
       const marker = await this.logs.readResult(runId, node.nodeId, attempt.attemptNo);
+      if (marker && (marker.attemptId !== attempt.attemptId || node.attemptCount !== attempt.attemptNo)) {
+        evidenceNodes.push({ nodeId: node.nodeId, attemptNo: attempt.attemptNo, resultVersion: marker.version, processState: attempt.state,
+          evidenceState: 'failed', stdoutBytes: 0, stderrBytes: 0, stdoutSha256: null, stderrSha256: null, artifacts: [], applicability: 'identity_mismatch' });
+        continue;
+      }
       if (!marker) {
         const terminal = ['succeeded', 'failed', 'interrupted', 'cancelled'].includes(attempt.state);
         evidenceNodes.push({
@@ -367,6 +442,12 @@ export class ExecutionService {
         continue;
       }
 
+      let applicability: ExecutionApplicability = 'legacy_unbound';
+      try {
+        const dependencies = await this.scheduler.dependencyIdentities(scope, runId, node.dependsOn);
+        applicability = await executionApplicability(this.workspace, executionNodeSpec(node), marker.provenance,
+          { runId, attemptId: attempt.attemptId, attemptNo: attempt.attemptNo }, dependencies, run.metadata.workflowBinding as ExecutionWorkflowBinding | undefined, toolchainHashes);
+      } catch { applicability = 'identity_mismatch'; }
       if (marker.version === 2) {
         evidenceNodes.push({
           nodeId: node.nodeId,
@@ -380,6 +461,7 @@ export class ExecutionService {
           stderrSha256: marker.stderrSha256,
           artifacts: marker.evidence.artifacts.map((artifact) => ({ ...artifact })),
           parsedOutput,
+          applicability,
         });
       } else {
         evidenceNodes.push({
@@ -394,6 +476,7 @@ export class ExecutionService {
           stderrSha256: marker.stderrSha256,
           artifacts: [],
           parsedOutput,
+          applicability,
         });
       }
     }
@@ -403,10 +486,10 @@ export class ExecutionService {
       : evidenceNodes.some((item) => item.evidenceState === 'pending')
         ? 'pending'
         : 'verified';
-    return { ...run, nodes, evidence: { verification, nodes: evidenceNodes } };
+    return { ...run, nodes, evidence: { verification, nodes: evidenceNodes, current: evidenceNodes.length > 0 && evidenceNodes.every((item) => item.applicability === 'current') } };
   }
 
-  async addNodes(scope: ExecutionScope, runId: string, nodes: ExecutionNodeSpec[]): Promise<ExecutionRunView> {
+  async addNodes(scope: ExecutionScope, runId: string, nodes: ExecutionNodeSpec[], context: ExecutionOperationContext = {}): Promise<ExecutionRunView> {
     this.assertReady();
     const current = await this.status(scope, runId);
     if (!current) throw new ExecutionStoreError('EXECUTION_RUN_NOT_FOUND', 'Execution run was not found in authenticated scope');
@@ -414,16 +497,7 @@ export class ExecutionService {
       throw new ExecutionStoreError('EXECUTION_RUN_NOT_EXTENSIBLE', `Nodes can only be added while run is planned or running, not ${current.state}`);
     }
 
-    const existingSpecs: ExecutionNodeSpec[] = current.nodes.map((node) => ({
-      id: node.nodeId,
-      purpose: node.purpose,
-      command: node.command,
-      cwd: node.cwd,
-      dependsOn: [...node.dependsOn],
-      timeoutMs: node.timeoutMs,
-      continueOnFailure: node.continueOnFailure,
-      expectedArtifacts: node.expectedArtifacts.map((artifact) => ({ ...artifact })),
-    }));
+    const existingSpecs: ExecutionNodeSpec[] = current.nodes.map(executionNodeSpec);
     const validationStarted = performance.now();
     let graph;
     try {
@@ -444,6 +518,10 @@ export class ExecutionService {
     }
     const memoryPreSearch = await this.preSearch(scope, current.objective, validatedNew);
     this.assertMemoryPreSearchAllowed(memoryPreSearch);
+    await this.guardWorkflow('add_nodes', scope, { ...current, ...(context.originRouteContextId ? context : {}) }, graph.nodes);
+    if (this.workflowGuard && nodes.some(node => node.inputs === undefined)) {
+      throw new ExecutionStoreError('EXECUTION_INPUTS_REQUIRED', 'Each new execution node must declare its source inputs');
+    }
 
     await this.store.appendGraphNodes(scope, runId, validatedNew);
     for (const node of validatedNew) {
@@ -462,12 +540,13 @@ export class ExecutionService {
     return memoryPreSearch ? { ...view, memoryPreSearch } : view;
   }
 
-  async retry(scope: ExecutionScope, runId: string, nodeId: string): Promise<ExecutionRunView> {
+  async retry(scope: ExecutionScope, runId: string, nodeId: string, context: ExecutionOperationContext = {}): Promise<ExecutionRunView> {
     this.assertReady();
     const run = await this.store.getRun(scope, runId);
     const node = await this.store.getNode(scope, runId, nodeId);
     if (!run) throw new ExecutionStoreError('EXECUTION_RUN_NOT_FOUND', 'Execution run was not found in authenticated scope');
     if (!node) throw new ExecutionStoreError('EXECUTION_NODE_NOT_FOUND', 'Execution node was not found');
+    await this.guardWorkflow('retry', scope, { ...run, ...(context.originRouteContextId ? context : {}) }, [executionNodeSpec(node)]);
     const memoryPreSearch = await this.preSearch(scope, run.objective, [{ id: node.nodeId, purpose: node.purpose }]);
     this.assertMemoryPreSearchAllowed(memoryPreSearch);
     const dispatchStarted = performance.now();
@@ -625,6 +704,76 @@ export class ExecutionService {
     } catch (error) {
       this.metrics?.failure('execution.artifact_index.duration_ms', error instanceof Error ? error.name : 'EXECUTION_ARTIFACT_INDEX_FAILED');
     }
+  }
+
+  private async guardWorkflow(operation: Exclude<ExecutionWorkflowGuardRequest['operation'], 'create'>, scope: ExecutionScope,
+    run: ExecutionRunRecord, nodes: readonly ExecutionNodeSpec[]): Promise<void> {
+    const binding = await this.workflowGuard?.({ operation, scope, runId: run.runId, objective: run.objective, nodes,
+      continuityTaskId: run.continuityTaskId, originRouteContextId: run.originRouteContextId });
+    const existing = run.metadata.workflowBinding;
+    if (binding && existing && executionIdentityHash(existing) !== executionIdentityHash(binding)) {
+      throw new ExecutionStoreError('EXECUTION_WORKFLOW_BINDING_CHANGED', 'Execution run belongs to a different workflow plan revision');
+    }
+    if (operation !== 'dispatch') await this.store.bindWorkflow(scope, run.runId, binding || undefined, run.originRouteContextId);
+  }
+
+  private async reconcileWorkflowAttempts(scope: ExecutionScope, runId: string, context: ExecutionOperationContext): Promise<void> {
+    await this.scheduler.withRunLock(runId, async () => {
+      const stored = await this.store.getRun(scope, runId);
+      if (!stored) throw new ExecutionStoreError('EXECUTION_RUN_NOT_FOUND', 'Execution run was not found in authenticated scope');
+      const pending = executionWorkflowPending(stored);
+      if (!pending.length) return;
+      if (!this.workflowAfterAttempt || !this.workflowGuard) throw new ExecutionStoreError('EXECUTION_WORKFLOW_RECONCILE_UNAVAILABLE', 'Pending workflow requires its authenticated reconciliation callbacks');
+      if (['cancelled', 'failed', 'interrupted'].includes(stored.state)) throw new ExecutionStoreError('EXECUTION_RUN_NOT_STARTABLE', 'This stopped run cannot reconcile through start');
+      const run = { ...stored, ...(context.originRouteContextId ? context : {}) };
+      const successful: ExecutionResultMarker[] = [];
+      const entries: Array<{ node: ExecutionNodeRecord; marker: ExecutionResultMarker }> = [];
+      const claims: ExecutionClaim[] = [];
+      for (const pendingAttempt of pending) {
+        const node = await this.store.getNode(scope, runId, pendingAttempt.nodeId);
+        const marker = await this.logs.readResult(runId, pendingAttempt.nodeId, pendingAttempt.attemptNo);
+        if (!node || node.state !== 'succeeded' || node.attemptCount !== pendingAttempt.attemptNo || !marker
+          || marker.state !== 'succeeded' || marker.attemptId !== pendingAttempt.attemptId) {
+          throw new ExecutionStoreError('EXECUTION_RESULT_IDENTITY_MISMATCH', 'Pending workflow evidence is not the current successful attempt');
+        }
+        const spec = executionNodeSpec(node);
+        const resources = hasExecutionResourceClaims(node.resources) ? { ...node.resources, writes: [...(node.resources?.writes ?? []), ...node.expectedArtifacts.map(a => a.path)] } : undefined;
+        claims.push(...await this.scheduler.resourceClaims.resolve(this.workspace, node.cwd, resources, executionInputPaths(this.workspace, spec)));
+        entries.push({ node, marker });
+      }
+      const owner = `workflow-reconcile/${randomUUID()}`;
+      if (!this.scheduler.resourceClaims.acquire(owner, claims)) throw new ExecutionStoreError('EXECUTION_RESOURCE_BUSY', 'A running operation conflicts with workflow reconciliation');
+      try {
+        for (const { node, marker } of entries) {
+          const spec = executionNodeSpec(node);
+          await this.guardWorkflow('reconcile', scope, run, [spec]);
+          const dependencies = await this.scheduler.dependencyIdentities(scope, runId, node.dependsOn);
+          const applicability = await executionApplicability(this.workspace, spec, marker.provenance,
+            { runId, attemptId: marker.attemptId, attemptNo: marker.attemptNo }, dependencies, run.metadata.workflowBinding as ExecutionWorkflowBinding | undefined);
+          if (applicability !== 'current') throw new ExecutionStoreError('EXECUTION_WORKFLOW_EVIDENCE_STALE', 'Pending workflow callback requires unchanged source-bound successful evidence');
+          await this.workflowAfterAttempt(scope, run, node, marker);
+          successful.push(marker);
+        }
+        const nodes = await this.store.getNodes(scope, runId);
+        await this.guardWorkflow('start', scope, run, nodes.map(executionNodeSpec));
+        for (const [index, marker] of successful.entries()) await this.store.settleWorkflowAttempt(scope, marker, undefined,
+          index === successful.length - 1 ? nodes.every(node => node.state === 'succeeded') ? 'completed' : 'running' : undefined);
+      } finally { this.scheduler.releaseClaims(owner, runId); }
+    });
+  }
+
+  async acquireWorkspaceClaim(scope: ExecutionScope, resources: ExecutionResourceSpec): Promise<() => Promise<void>> {
+    if (!scope.principalId.trim()) throw new ExecutionStoreError('EXECUTION_SCOPE_REQUIRED', 'A principal is required for a workspace claim');
+    const cwd = this.workspace.resolveProjectRoot({ candidatePaths: scope.projectId ? [scope.projectId] : [] });
+    const claims = await this.scheduler.resourceClaims.resolve(this.workspace, cwd, resources);
+    const owner = `workspace/${randomUUID()}`;
+    if (!this.scheduler.resourceClaims.acquire(owner, claims)) throw new ExecutionStoreError('EXECUTION_RESOURCE_BUSY', 'A running operation holds an overlapping workspace resource claim');
+    let released = false;
+    return async () => {
+      if (released) return;
+      released = true;
+      this.scheduler.releaseClaims(owner);
+    };
   }
 
   private async preSearch(

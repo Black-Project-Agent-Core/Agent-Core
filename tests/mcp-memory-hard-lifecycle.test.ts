@@ -1,9 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { DatabaseSync } from 'node:sqlite';
-import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
@@ -12,7 +10,12 @@ import { loadConfig, type MemoryHardLifecycleMode } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
-import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
+import type { RuntimeServices } from '../src/runtime/services.js';
+import { workflowScope } from '../src/mcp/workflow-guard.js';
+import {
+  createIsolatedRuntimeServices as createRuntimeServices,
+  MEMORY_STATE, strictMemoryConfig, memoryRoot, memoryStateRecords, patchMemoryStateRecord,
+} from './helpers/memory-fixture.js';
 
 const roots: string[] = [];
 const servers: Server[] = [];
@@ -28,14 +31,15 @@ function plan(allowedTools: string[]): RoutePlan {
 }
 
 async function setup(mode: MemoryHardLifecycleMode, memoryEnabled = true, executionEnabled = false) {
-  const root = await mkdtemp(path.join(os.tmpdir(), `agent-core-mcp-hard-lifecycle-${mode}-`));
+  const root = await memoryRoot(`mcp-hard-lifecycle-${mode}`);
   roots.push(root);
   const keyStore = new FileKeyStore(path.join(root, 'data'));
   const principal = await keyStore.create(`principal-${mode}`);
   const defaults = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: mode }, root);
+  const memory = await strictMemoryConfig(root, { AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: mode });
   const runtime = createRuntimeServices(
     [root], path.join(root, 'capabilities'), undefined,
-    { ...defaults.memory, enabled: memoryEnabled, dbPath: path.join(root, 'memory.sqlite') },
+    { ...memory, enabled: memoryEnabled },
     { ...defaults.execution, enabled: executionEnabled },
     defaults.github,
   );
@@ -51,6 +55,7 @@ async function setup(mode: MemoryHardLifecycleMode, memoryEnabled = true, execut
   servers.push(server);
   return {
     root,
+    vaultRoot: memory.fileNative.vaultRoot,
     runtime,
     principal,
     baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
@@ -103,9 +108,13 @@ async function createRoute(
       enforceHardGuardrails: false,
     };
   }
+  const turn=runtime.memory.config.enabled?await runtime.memory.beginContinuityTurn({principalId,projectId:root},reservation.routeContextId,'Perform one atomic fixture operation',undefined,{},Date.parse(reservation.expiresAt)):undefined;
+  if(turn&&memorySnapshot)await runtime.memory.bindLifecycleTask({principalId,projectId:root},memorySnapshot.memoryContextId,turn.taskId);
+  const workflow = await runtime.workflow.bind(workflowScope(runtime, principalId, root, turn?.taskId??reservation.routeContextId), { brief: 'Perform one atomic fixture operation' });
   return runtime.routes.create(principalId, plan(allowedTools), {
     reservation,
     projectId: root,
+    workflow: { taskId: workflow.taskId, version: workflow.version, craftRequired: workflow.craftRequired, dagRequired: workflow.dagRequired },
     ...(memorySnapshot ? { memorySnapshot } : {}),
   });
 }
@@ -163,13 +172,10 @@ describe('Agent Core hard memory lifecycle mutation guard', () => {
     const route = await createRoute(f.runtime, f.principal.metadata.id, f.root, ['write_file'], {
       preflight: true,
     });
-    const db = new DatabaseSync(path.join(f.root, 'memory.sqlite'));
-    try {
-      db.prepare('UPDATE memory_context_lifecycle SET expires_at = ? WHERE context_id = ?')
-        .run(Date.now() - 1, route.memorySnapshot!.memoryContextId);
-    } finally {
-      db.close();
-    }
+    // The lifecycle record is a JSON file in the vault; expiring it means rewriting that file.
+    await patchMemoryStateRecord(f.vaultRoot, MEMORY_STATE.lifecycles, route.memorySnapshot!.memoryContextId, {
+      expiresAt: Date.now() - 1,
+    });
     const result = await call(f.baseUrl, f.principal.key, 'write_file', {
       path: path.join(f.root, 'expired.txt'), content: 'blocked', routeContextId: route.routeContextId,
     });
@@ -200,12 +206,8 @@ describe('Agent Core hard memory lifecycle mutation guard', () => {
     });
     expect(advisoryResult.result.isError).not.toBe(true);
     await expect(access(advisoryTarget)).resolves.toBeUndefined();
-    const advisoryDb = new DatabaseSync(path.join(advisory.root, 'memory.sqlite'));
-    try {
-      expect(Number(advisoryDb.prepare("SELECT count(*) AS count FROM memory_events WHERE event_type = 'memory.lifecycle_advisory'").get()!.count)).toBe(1);
-    } finally {
-      advisoryDb.close();
-    }
+    const advisoryEvents = await memoryStateRecords<{ eventType: string; createdAt?: number }>(advisory.vaultRoot, MEMORY_STATE.events);
+    expect(advisoryEvents.filter((event) => event.eventType === 'memory.lifecycle_advisory')).toHaveLength(1);
 
     const disabled = await setup('disabled', false);
     const disabledRoute = await createRoute(disabled.runtime, disabled.principal.metadata.id, disabled.root, ['write_file']);
@@ -246,7 +248,7 @@ describe('Agent Core hard memory lifecycle mutation guard', () => {
     expect(createSpy).not.toHaveBeenCalled();
   });
 
-  it('applies the same preflight enforcement to GitHub mutations while leaving mixed-tool reads ungated', async () => {
+  it('requires preflight for GitHub mutations and substantive reads', async () => {
     const f = await setup('enforce');
     const mutationRoute = await createRoute(f.runtime, f.principal.metadata.id, f.root, ['github_repo']);
     const repoSpy = vi.spyOn(f.runtime.github, 'repo');
@@ -262,10 +264,11 @@ describe('Agent Core hard memory lifecycle mutation guard', () => {
       operation: 'get', owner: 'octo', repo: 'demo', routeContextId: readRoute.routeContextId,
     });
     expect(read.result.isError).toBe(true);
-    expect(errorCode(read)).toBe('GITHUB_CREDENTIAL_MISSING');
+    expect(errorCode(read)).toBe('MEMORY_PREFLIGHT_REQUIRED');
+    expect(repoSpy).not.toHaveBeenCalled();
   });
 
-  it('read-only operations are not lease-gated in enforce mode', async () => {
+  it('requires preflight before reading workspace content in enforce mode', async () => {
     const f = await setup('enforce');
     const target = path.join(f.root, 'readable.txt');
     await writeFile(target, 'read-only remains available', 'utf8');
@@ -273,7 +276,15 @@ describe('Agent Core hard memory lifecycle mutation guard', () => {
     const result = await call(f.baseUrl, f.principal.key, 'read_file', {
       path: target, routeContextId: route.routeContextId,
     });
-    expect(result.result.isError).not.toBe(true);
-    expect(JSON.stringify(result)).toContain('read-only remains available');
+    expect(result.result.isError).toBe(true);
+    expect(errorCode(result)).toBe('MEMORY_PREFLIGHT_REQUIRED');
+    expect(JSON.stringify(result)).not.toContain('read-only remains available');
+    const recalledRoute = await createRoute(f.runtime, f.principal.metadata.id, f.root, ['read_file'], { preflight: true });
+    const permitted = await call(f.baseUrl, f.principal.key, 'read_file', { path: target, routeContextId: recalledRoute.routeContextId });
+    expect(permitted.result.isError).not.toBe(true);
+    expect(JSON.stringify(permitted)).toContain('read-only remains available');
+    expect(await f.runtime.memory.getLifecycleContext(
+      { principalId: f.principal.metadata.id, projectId: f.root }, recalledRoute.memorySnapshot!.memoryContextId,
+    )).toMatchObject({ postflightState: 'POSTFLIGHT_PENDING', meaningfulWorkCount: 1 });
   });
 });

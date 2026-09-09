@@ -1,6 +1,6 @@
 import type { ExecutionLogStore } from './log-store.js';
 import type { ExecutionRunState, ExecutionScope } from './types.js';
-import type { ExecutionStore, ExecutionRecoverableAttempt } from './store.js';
+import { executionWorkflowPending, type ExecutionStore, type ExecutionRecoverableAttempt } from './store.js';
 
 export interface ExecutionRecoveryResult {
   recoveredTerminal: number;
@@ -23,20 +23,26 @@ function stateFromNodes(states: string[]): ExecutionRunState {
 }
 
 export class ExecutionRecovery {
-  constructor(readonly store: ExecutionStore, readonly logs: ExecutionLogStore) {}
+  constructor(readonly store: ExecutionStore, readonly logs: ExecutionLogStore, readonly workflowPending = false) {}
 
   async reconcile(): Promise<ExecutionRecoveryResult> {
     const recoverable = await this.store.listRecoverableAttempts();
     const touched = new Map<string, ExecutionScope>();
+    for (const run of await this.store.listRunsForRecovery()) touched.set(run.runId, {
+      principalId: run.principalId, ...(run.projectId ? { projectId: run.projectId } : {}),
+    });
     let recoveredTerminal = 0;
     let interrupted = 0;
 
     for (const attempt of recoverable) {
       const scope = scopeOf(attempt);
       touched.set(attempt.runId, scope);
-      const result = await this.logs.readResult(attempt.runId, attempt.nodeId, attempt.attemptNo);
-      if (result && result.attemptId === attempt.attemptId) {
-        await this.store.completeAttempt(scope, result);
+      let result;
+      try { result = await this.logs.readResult(attempt.runId, attempt.nodeId, attempt.attemptNo); }
+      catch { result = null; }
+      const current = await this.store.getNode(scope, attempt.runId, attempt.nodeId);
+      if (result && result.attemptId === attempt.attemptId && current?.attemptCount === attempt.attemptNo) {
+        await this.store.completeAttempt(scope, result, { workflowPending: this.workflowPending });
         recoveredTerminal += 1;
         await this.store.appendEvent(scope, attempt.runId,
           result.state === 'succeeded' ? 'node.succeeded'
@@ -62,7 +68,9 @@ export class ExecutionRecovery {
       const run = await this.store.getRun(scope, runId);
       if (!run) continue;
       const nodes = await this.store.getNodes(scope, runId);
-      const next = stateFromNodes(nodes.map((node) => node.state));
+      // A successful process is not a settled workflow receipt. Recovery must
+      // preserve this boundary until execution_start replays the exact callback.
+      const next = executionWorkflowPending(run).length > 0 ? 'blocked' : stateFromNodes(nodes.map((node) => node.state));
       if (run.state !== next) {
         await this.store.setRunState(scope, runId, next);
         const terminalEvent = next === 'completed' ? 'run.completed'

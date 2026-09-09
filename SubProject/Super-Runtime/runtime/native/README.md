@@ -93,9 +93,9 @@ backend: CPU
 
 The smoke target initializes llama.cpp, creates a real GGML CPU backend, verifies that it is a CPU backend, reports the pinned revision, and shuts both layers down cleanly. It does not load a model yet; model lifecycle belongs to a later verified checkpoint.
 
-### Codespace build tooling
+### Local build tooling
 
-Agent-Core Codespace bootstrap now restores `cmake`, `g++`, `ninja-build`, and `ccache` when they are missing. Ninja is the preferred generator for native development and llama.cpp/GGML automatically uses ccache when available, reducing repeated rebuild cost. The CMake project itself remains generator-agnostic.
+Install `cmake`, `g++`, and `ninja-build` in the local Linux development environment before configuring the native targets. `ccache` is optional and llama.cpp/GGML uses it when available. Ninja is the preferred generator for native development; the CMake project itself remains generator-agnostic.
 
 ## Contract test
 

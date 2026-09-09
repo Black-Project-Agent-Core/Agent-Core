@@ -28,7 +28,7 @@ async function setup() {
   roots.push(root);
   const keyStore = new FileKeyStore(path.join(root, 'data'));
   const created = await keyStore.create('github-mcp-client');
-  const defaults = loadConfig({}, root);
+  const defaults = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root);
   const runtime = createRuntimeServices(
     [root],
     path.join(root, 'capabilities'),

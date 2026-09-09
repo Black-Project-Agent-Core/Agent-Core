@@ -7,7 +7,7 @@ Branch: `feature/analytics-v2-ipc`
 
 Pre-fix head: `975c5f3d0fc820f3f4e3402e1727c6dde4aa70e9`
 
-Fresh Codespaces evidence supplied by the user:
+Fresh build host evidence supplied by the user:
 
 - `cargo test --manifest-path ./engines/rust/Cargo.toml` -> PASS, 0 failed.
 - `cargo fmt --manifest-path ./engines/rust/Cargo.toml -- --check` -> FAIL, formatting-only diffs across Task 5 Rust source/tests.
@@ -28,7 +28,7 @@ The function already returns `1` before that expression when `operation_count < 
 
 ## Fixes written to remote
 
-All rustfmt diffs reported by the user's Codespaces run were applied to the affected Task 5 Rust source/tests. The Clippy expression was changed to `.clamp(1, 4)` without changing thresholds or analytical behavior.
+All rustfmt diffs reported by the user's build host run were applied to the affected Task 5 Rust source/tests. The Clippy expression was changed to `.clamp(1, 4)` without changing thresholds or analytical behavior.
 
 Current fix head before this checkpoint document: `392aeacbce3d88ed0eb19d46706b8c4d444c3945`.
 

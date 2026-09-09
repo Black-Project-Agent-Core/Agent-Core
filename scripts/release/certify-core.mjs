@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CORE_CERTIFICATION_MATRIX } from './core-certification-contract.mjs';
+import { npmInvocation } from './build-release.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -63,14 +64,16 @@ function parseGateJson(gate, stdout) {
   }
 }
 
-function runGate(gate) {
+export function runGate(gate, { cwd = root } = {}) {
   process.stderr.write(`[core-certification] ${gate.id}: start\n`);
   const started = Date.now();
-  const result = spawnSync(gate.command, [...gate.args], {
-    cwd: root,
+  const invocation = gate.command === npmExecutable ? npmInvocation() : { executable: gate.command, prefix: [] };
+  const result = spawnSync(invocation.executable, [...invocation.prefix, ...gate.args], {
+    cwd,
     env: process.env,
     encoding: 'utf8',
     maxBuffer: 128 * 1024 * 1024,
+    windowsHide: true,
   });
   if (result.stdout) process.stderr.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
@@ -78,6 +81,27 @@ function runGate(gate) {
   if (result.status !== 0) throw new Error(`CORE_CERTIFICATION_GATE_FAILED:${gate.id}:${result.status ?? 'unknown'}`);
   process.stderr.write(`[core-certification] ${gate.id}: pass (${Date.now() - started} ms)\n`);
   return gate.json ? parseGateJson(gate, result.stdout) : null;
+}
+
+export function assertCertificationSource(projectRoot, expectedCommit) {
+  const options = { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] };
+  const actual = execFileSync('git', ['rev-parse', 'HEAD'], options).trim();
+  if (actual !== expectedCommit) throw new Error('CORE_CERTIFICATION_SOURCE_CHANGED_DURING_RUN');
+  for (const args of [['diff', '--quiet'], ['diff', '--cached', '--quiet']]) {
+    if (spawnSync('git', args, { cwd: projectRoot, stdio: 'ignore' }).status !== 0) {
+      throw new Error('CORE_CERTIFICATION_TRACKED_TREE_DIRTY');
+    }
+  }
+  const untrackedInputs = execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z', '--',
+    'src', 'scripts', 'tests', 'docs', 'supabase', 'plugin', 'package.json', 'package-lock.json', 'tsconfig.json', 'vitest.config.ts'], options);
+  if (untrackedInputs) throw new Error('CORE_CERTIFICATION_UNTRACKED_INPUTS');
+}
+
+export function runCertifiedGate(gate, sourceCommit, projectRoot = root) {
+  assertCertificationSource(projectRoot, sourceCommit);
+  const result = runGate(gate, { cwd: projectRoot });
+  assertCertificationSource(projectRoot, sourceCommit);
+  return result;
 }
 
 function assertReportShape(contract, memory, execution, parity, prepublish) {
@@ -103,9 +127,10 @@ async function main() {
 
   const sourceCommit = git(['rev-parse', 'HEAD']);
   const reports = new Map();
-  for (const gate of selectedGates(prepublish)) reports.set(gate.id, runGate(gate));
+  for (const gate of selectedGates(prepublish)) reports.set(gate.id, runCertifiedGate(gate, sourceCommit));
   const finalCommit = git(['rev-parse', 'HEAD']);
   if (finalCommit !== sourceCommit) throw new Error('CORE_CERTIFICATION_SOURCE_CHANGED_DURING_RUN');
+  assertCertificationSource(root, sourceCommit);
 
   const contract = reports.get('contract');
   const memory = reports.get('memory_100k');
@@ -159,7 +184,9 @@ async function main() {
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
 
-main().catch((error) => {
+const entry = process.argv[1];
+const comparable = file => process.platform === 'win32' ? path.resolve(file).toLowerCase() : path.resolve(file);
+if (entry && comparable(entry) === comparable(fileURLToPath(import.meta.url))) main().catch((error) => {
   process.stderr.write(`[core-certification] failed: ${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
 });

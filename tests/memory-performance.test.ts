@@ -1,42 +1,44 @@
-import { describe, expect, it } from 'vitest';
+import { rm } from 'node:fs/promises';
+import { afterEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
-import { runPersonalizedPageRank } from '../src/memory/ppr.js';
+import { memoryFixture } from './helpers/memory-fixture.js';
+
+const roots: string[] = [];
+afterEach(async () => { await Promise.all(roots.splice(0).map((r) => rm(r, { recursive: true, force: true }))); });
 
 describe('deterministic memory performance boundaries', () => {
-  it('keeps the production graph and PPR defaults bounded exactly as the master contract requires', () => {
+  it('keeps the production graph and recall defaults bounded exactly as the master contract requires', () => {
     const config = loadConfig({}, process.cwd()).memory;
     expect(config.graphNodeCap).toBe(1000);
     expect(config.graphEdgeCap).toBe(10_000);
     expect(config.graphMaxHops).toBe(2);
-    expect(config.pprDamping).toBe(0.85);
-    expect(config.pprEpsilon).toBe(1e-6);
-    expect(config.pprMaxIterations).toBe(20);
+    expect(config.recallItemBudget).toBeGreaterThan(0);
+    expect(config.recallCharacterBudget).toBeGreaterThan(0);
   });
 
-  it('hard-caps a synthetic PPR graph without changing deterministic ordering', () => {
-    const config = loadConfig({}, process.cwd()).memory;
-    const nodes = Array.from({ length: 1_250 }, (_, index) => `node-${String(index).padStart(4, '0')}`);
-    const edges = nodes.slice(1).flatMap((node) => [
-      { from: nodes[0]!, to: node, weight: 1 },
-      { from: node, to: nodes[0]!, weight: 1 },
-    ]);
-    const input = {
-      nodes,
-      edges,
-      personalization: new Map([[nodes[0]!, 1]]),
-      damping: config.pprDamping,
-      epsilon: config.pprEpsilon,
-      maxIterations: config.pprMaxIterations,
-      maxNodes: config.graphNodeCap,
-      maxEdges: config.graphEdgeCap,
-    };
-    const first = runPersonalizedPageRank(input);
-    const second = runPersonalizedPageRank(input);
+  it('caps a large vault recall at the item and character budget without changing deterministic ordering', async () => {
+    const f = await memoryFixture('performance', { AGENT_CORE_MEMORY_RECALL_ITEM_BUDGET: '8', AGENT_CORE_MEMORY_RECALL_CHARACTER_BUDGET: '2000' });
+    roots.push(f.root);
+    const scope = { principalId: 'p-perf', projectId: f.root };
+    for (let index = 0; index < 40; index += 1) {
+      await f.service.commit({
+        scope,
+        canonicalKey: `perf.node.${String(index).padStart(4, '0')}`,
+        kind: 'fact',
+        value: `deterministic recall boundary sample ${String(index).padStart(4, '0')} ${'detail '.repeat(20)}`,
+        sourceType: 'test',
+        metadata: { contextFamily: 'general', topicKey: 'performance' },
+      });
+    }
 
-    expect(first.graphTruncated).toBe(true);
-    expect(first.nodeIds.length).toBeLessThanOrEqual(config.graphNodeCap);
-    expect(first.iterations).toBeLessThanOrEqual(config.pprMaxIterations);
-    expect(first.ranking.map((item) => item.memoryId)).toEqual(second.ranking.map((item) => item.memoryId));
-    expect(first.ranking.map((item) => item.score)).toEqual(second.ranking.map((item) => item.score));
-  });
+    const first = await f.service.search({ scope, query: 'deterministic recall boundary sample' });
+    const second = await f.service.search({ scope, query: 'deterministic recall boundary sample' });
+
+    expect(first.hits.length).toBeLessThanOrEqual(f.config.recallItemBudget);
+    expect(first.hits.reduce((sum, hit) => sum + hit.valueText.length, 0)).toBeLessThanOrEqual(f.config.recallCharacterBudget);
+    expect(first.hits.map((hit) => hit.memoryId)).toEqual(second.hits.map((hit) => hit.memoryId));
+    expect(first.hits.map((hit) => hit.whyMatched.finalScore)).toEqual(second.hits.map((hit) => hit.whyMatched.finalScore));
+    expect(first.snapshotHash).toBe(second.snapshotHash);
+    await f.service.close();
+  }, 120_000);
 });

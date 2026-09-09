@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { instructionProvenance } from './helpers/skill-fixture.js';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCatalog } from '../src/capabilities/catalog-parser.js';
@@ -67,6 +68,7 @@ describe('CapabilityRegistry', () => {
     const fullPath = path.join(capabilityDir, relative);
     await mkdir(path.dirname(fullPath), { recursive: true });
     await writeFile(fullPath, '# Build Fix\n\nFollow the audited workflow.\n', 'utf8');
+    await instructionProvenance(capabilityDir, skill.id, fullPath);
     records[index] = {
       ...skill,
       state: 'native_ready',

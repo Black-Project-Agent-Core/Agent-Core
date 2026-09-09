@@ -2,10 +2,12 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../dist/config.js';
 import { validateExecutionDag } from '../dist/execution/dag.js';
 import { ExecutionService } from '../dist/execution/service.js';
 import { WorkspacePolicy } from '../dist/runtime/workspace.js';
+import { RuntimeMetricRegistry } from '../dist/runtime/metric-window.js';
 
 const DEFAULT_SAMPLES = 20;
 const DEFAULT_WARMUP = 3;
@@ -15,7 +17,7 @@ const DEFAULT_WAKE_TARGET_MS = 250;
 const NODE_COUNT = 128;
 const MAX_CONCURRENCY = 4;
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const result = {
     samples: DEFAULT_SAMPLES,
     warmup: DEFAULT_WARMUP,
@@ -91,7 +93,7 @@ function marker(runId, nodeId, attemptId, attemptNo, state = 'succeeded') {
   };
 }
 
-class ControlledRunner {
+export class ControlledRunner {
   starts = [];
   pending = new Map();
   active = 0;
@@ -120,7 +122,20 @@ class ControlledRunner {
   }
 }
 
+export function independentBenchmarkNodes(work, count = NODE_COUNT) {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `N${String(index).padStart(3, '0')}`,
+    purpose: `benchmark node ${index}`,
+    command: `Write-Output '${index}'`,
+    cwd: work,
+    // The controlled output probe cannot write workspace files. Declare shared reads so the
+    // scheduler need not take its safe default exclusive claim for an unclassified command.
+    resources: { reads: [work] },
+  }));
+}
+
 async function main() {
+  const startedAt = new Date().toISOString();
   const options = parseArgs(process.argv.slice(2));
   const root = await mkdtemp(path.join(process.env.TEMP || process.env.TMP || os.tmpdir(), 'agent-core-execution-benchmark-'));
   const work = path.join(root, 'work');
@@ -128,15 +143,16 @@ async function main() {
   const workspace = new WorkspacePolicy([root]);
   const base = loadConfig({}, root).execution;
   const runner = new ControlledRunner();
+  const metrics = new RuntimeMetricRegistry();
   const service = new ExecutionService({
     ...base,
     enabled: true,
-    dbPath: path.join(root, 'runtime', 'execution', 'benchmark.sqlite'),
+    stateRoot: path.join(root, 'runtime', 'execution', 'state'),
     logRoot: path.join(root, 'runtime', 'execution', 'runs'),
     maxConcurrency: MAX_CONCURRENCY,
     maxNodes: NODE_COUNT,
     waitMaxMs: 60_000,
-  }, workspace, { runner });
+  }, workspace, { runner, metrics });
   let keep = options.keep;
 
   try {
@@ -149,12 +165,7 @@ async function main() {
       cwd: work,
       ...(index === 0 ? {} : { dependsOn: [`N${String(index - 1).padStart(3, '0')}`] }),
     }));
-    const independentNodes = Array.from({ length: NODE_COUNT }, (_, index) => ({
-      id: `N${String(index).padStart(3, '0')}`,
-      purpose: `benchmark node ${index}`,
-      command: `Write-Output '${index}'`,
-      cwd: work,
-    }));
+    const independentNodes = independentBenchmarkNodes(work);
 
     let firstOrder;
     const dag = await timeSamples(async () => {
@@ -172,6 +183,8 @@ async function main() {
       }));
     }
     const dispatchValues = [];
+    const schedulerValues = [];
+    const surroundingValues = [];
     for (let index = 0; index < dispatchRuns.length; index += 1) {
       const created = dispatchRuns[index];
       const beforeStarts = runner.starts.length;
@@ -181,7 +194,13 @@ async function main() {
       const launched = runner.starts.slice(beforeStarts).filter((item) => item.runId === created.runId);
       if (launched.length !== MAX_CONCURRENCY) throw new Error(`Expected ${MAX_CONCURRENCY} initial launches, received ${launched.length}`);
       if (runner.active > MAX_CONCURRENCY || runner.maxActive > MAX_CONCURRENCY) throw new Error('Configured max concurrency was exceeded');
-      if (index >= options.warmup) dispatchValues.push(elapsed);
+      const schedulerMs = metrics.metric('execution.dispatch.duration_ms').last;
+      if (schedulerMs === null) throw new Error('Scheduler dispatch metric was not recorded');
+      if (index >= options.warmup) {
+        dispatchValues.push(elapsed);
+        schedulerValues.push(schedulerMs);
+        surroundingValues.push(Math.max(0, elapsed - schedulerMs));
+      }
       await service.cancel(scope, created.runId);
     }
     const dispatch = summarize(dispatchValues);
@@ -215,7 +234,8 @@ async function main() {
 
     const result = {
       benchmark: 'agent-core-deterministic-execution',
-      startedAt: new Date().toISOString(),
+      measurement: 'real scheduler, resource claims, durable dispatch and event wake with a controlled no-process runner; process completion evidence is not measured',
+      startedAt,
       node: process.version,
       platform: `${process.platform}-${process.arch}`,
       root: options.keep ? root : undefined,
@@ -224,6 +244,11 @@ async function main() {
       maxConcurrency: MAX_CONCURRENCY,
       dagValidation: { ...dag, targetP95Ms: options.dagTargetMs, passed: dag.p95Ms < options.dagTargetMs },
       readyDispatch: { ...dispatch, targetP95Ms: options.dispatchTargetMs, passed: dispatch.p95Ms < options.dispatchTargetMs },
+      dispatchDiagnostics: {
+        note: 'Diagnostic phases only; the unchanged 100 ms gate measures the entire ExecutionService.start call.',
+        scheduler: summarize(schedulerValues),
+        surroundingValidationAndStatus: summarize(surroundingValues),
+      },
       wakeDelivery: { ...wake, targetP95Ms: options.wakeTargetMs, passed: wake.p95Ms < options.wakeTargetMs, maxEventQueriesPerWait: 2 },
       maxObservedConcurrency: runner.maxActive,
       concurrencyPassed: runner.maxActive <= MAX_CONCURRENCY,
@@ -247,4 +272,4 @@ async function main() {
   }
 }
 
-await main();
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

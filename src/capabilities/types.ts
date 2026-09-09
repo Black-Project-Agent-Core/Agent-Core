@@ -12,6 +12,8 @@ export type CapabilityState =
   | 'cataloged'
   | 'source_resolved'
   | 'license_verified'
+  | 'metadata_inspected'
+  | 'risk_scanned'
   | 'function_analyzed'
   | 'safety_reviewed'
   | 'normalized'

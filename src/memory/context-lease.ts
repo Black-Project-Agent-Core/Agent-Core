@@ -63,13 +63,13 @@ function boundedText(value: unknown, max: number): string {
   return value;
 }
 
-function parsePayload(value: unknown, now: number): LeasePayload {
+function parsePayload(value: unknown, now: number, allowExpired = false): LeasePayload {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail();
   const row = value as Record<string, unknown>;
   if (row.version !== 1) fail();
   const issuedAt = Number(row.issuedAt);
   const expiresAt = Number(row.expiresAt);
-  if (!Number.isSafeInteger(issuedAt) || !Number.isSafeInteger(expiresAt) || issuedAt < 0 || expiresAt <= issuedAt || expiresAt <= now) fail();
+  if (!Number.isSafeInteger(issuedAt) || !Number.isSafeInteger(expiresAt) || issuedAt < 0 || expiresAt <= issuedAt || (!allowExpired && expiresAt <= now)) fail();
   const objectiveHash = boundedText(row.objectiveHash, 64);
   if (!/^[a-f0-9]{64}$/.test(objectiveHash)) fail();
   return {
@@ -118,6 +118,15 @@ export class MemoryContextLeaseAuthority {
   }
 
   validate(token: string, now = Date.now()): ValidatedMemoryContextLease {
+    return this.decode(token, now, false);
+  }
+
+  // Completion records work already performed. It never authorizes another operation.
+  validateCompletion(token: string, now = Date.now()): ValidatedMemoryContextLease {
+    return this.decode(token, now, true);
+  }
+
+  private decode(token: string, now: number, allowExpired: boolean): ValidatedMemoryContextLease {
     if (typeof token !== 'string' || token.length < 16 || token.length > MEMORY_CONTEXT_LEASE_MAX_TOKEN_CHARS) fail();
     const parts = token.split('.');
     if (parts.length !== 4 || parts[0] !== TOKEN_PREFIX) fail();
@@ -139,7 +148,7 @@ export class MemoryContextLeaseAuthority {
     } catch {
       fail();
     }
-    const payload = parsePayload(parsed, now);
+    const payload = parsePayload(parsed, now, allowExpired);
     return {
       scope: { principalId: payload.principalId, projectId: payload.projectId },
       contextId: payload.contextId,

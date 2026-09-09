@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentCorePanel } from './AgentCorePanel';
@@ -16,12 +16,11 @@ const runningStatus = {
   execution: 'Healthy',
   tunnel: 'Running',
   autostart: false,
-  legacyAutostart: false,
-  legacyControllerDetected: false,
-  nativeControlEnabled: true,
   desiredRunning: true,
   root: 'D:\\Games-kuyhAa\\Agent-Core',
 };
+
+const stoppedStatus = { ...runningStatus, overall: 'Stopped', mcpServer: 'Stopped', tunnel: 'Stopped', desiredRunning: false };
 
 describe('AgentCorePanel', () => {
   beforeEach(() => {
@@ -57,30 +56,31 @@ describe('AgentCorePanel', () => {
     expect(screen.getByRole('button', { name: 'Exit Agent Core' })).toBeEnabled();
   });
 
-  it('keeps lifecycle mutations locked while the legacy tray controller is still active', async () => {
-    invokeMock.mockImplementation((command: string) => {
-      if (command === 'agent_core_control_status') {
-        return Promise.resolve({
-          ...runningStatus,
-          legacyControllerDetected: true,
-          nativeControlEnabled: false,
-        });
-      }
-      return Promise.resolve();
-    });
-
+  it('wires every lifecycle button to its own native Tauri command', async () => {
+    // Stopped keeps the conditional Start button rendered for the whole loop.
+    invokeMock.mockImplementation((command: string) =>
+      Promise.resolve(command === 'agent_core_control_status' ? stoppedStatus : { ok: true, message: 'done', status: stoppedStatus }));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const user = userEvent.setup();
     render(<AgentCorePanel />);
     await user.click(screen.getByRole('button', { name: 'Expand Agent Core controls' }));
+    await screen.findByRole('button', { name: 'Start Agent Core' });
 
-    expect(await screen.findByText(/Legacy tray controller is still running/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Restart Agent Core' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Restart Tunnel' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Restart All' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Reset OAuth / Re-auth' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Start with Windows: Off' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Exit Agent Core' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Open Agent Core Folder' })).toBeEnabled();
+    for (const [name, command] of [
+      ['Start Agent Core', 'agent_core_start'],
+      ['Restart Agent Core', 'agent_core_restart_mcp'],
+      ['Restart Tunnel', 'agent_core_restart_tunnel'],
+      ['Restart All', 'agent_core_restart_all'],
+      ['Reset OAuth / Re-auth', 'agent_core_reset_oauth'],
+      ['Start with Windows: Off', 'agent_core_toggle_autostart'],
+      ['Exit Agent Core', 'agent_core_exit'],
+    ] as const) {
+      invokeMock.mockClear();
+      const button = screen.getByRole('button', { name });
+      await waitFor(() => expect(button).toBeEnabled());
+      await user.click(button);
+      expect(invokeMock, `${name} must invoke ${command}`).toHaveBeenCalledWith(command);
+    }
   });
 
   it('uses native Tauri commands instead of a BAT launcher for utilities', async () => {

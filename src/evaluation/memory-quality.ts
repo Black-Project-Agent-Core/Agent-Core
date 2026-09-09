@@ -1,9 +1,11 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import { loadConfig } from '../config.js';
+import { parseVaultSegment, serializeVaultSegment } from '../memory/file-native/vault-codec.js';
 import { MemoryService } from '../memory/service.js';
+import { GraphifyAdapter } from '../memory/file-native/graphify-adapter.js';
+import { fileURLToPath } from 'node:url';
 import type {
   MemoryEnforcement,
   MemoryKind,
@@ -323,6 +325,33 @@ function emptyCounters(): MemoryQualityCounters {
   };
 }
 
+const RG_BINARY = process.platform === 'win32' ? 'rg.exe' : 'rg';
+
+/**
+ * The file-native retriever only trusts a project-local ripgrep, so each evaluation root gets its own copy.
+ */
+async function provisionRipgrep(ripgrepRoot: string): Promise<void> {
+  await mkdir(ripgrepRoot, { recursive: true });
+  await copyFile(path.resolve('.tools', 'ripgrep', RG_BINARY), path.join(ripgrepRoot, RG_BINARY));
+}
+
+/** Age a memory by rewriting its canonical vault segment; there is no store behind the files. */
+async function backdateVaultEntry(vaultRoot: string, memoryId: string, agedAt: number): Promise<void> {
+  for (const file of await readdir(vaultRoot, { recursive: true, withFileTypes: true })) {
+    if (!file.isFile() || !file.name.endsWith('.md')) continue;
+    const absolute = path.join(file.parentPath, file.name);
+    const relative = path.relative(vaultRoot, absolute).split(path.sep).join('/');
+    let segment;
+    try { segment = parseVaultSegment(await readFile(absolute, 'utf8'), relative); } catch { continue; }
+    const entry = segment.entries.find((candidate) => candidate.memoryId === memoryId);
+    if (!entry) continue;
+    entry.updatedAt = agedAt;
+    await writeFile(absolute, serializeVaultSegment(segment), 'utf8');
+    return;
+  }
+  throw new Error(`MEMORY_QUALITY_AGE_TARGET_MISSING:${memoryId}`);
+}
+
 async function evaluateCase(
   item: MemoryQualityCase,
   root: string,
@@ -331,15 +360,19 @@ async function evaluateCase(
   counters: MemoryQualityCounters;
 }> {
   const config = {
-    ...loadConfig({}, root).memory,
+    // Corpus roots deliberately evaluate local retrieval in isolation; production
+    // lifecycle and remote availability contracts run in their dedicated suites.
+    ...loadConfig({AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE:'advisory'}, root).memory,
     enabled: true,
-    dbPath: path.join(root, 'memory.sqlite'),
     graphMaxHops: 4,
     recallItemBudget: 32,
     recallCharacterBudget: 20_000,
     temporalNeighborWindowMs: 1,
   };
-  let service = new MemoryService(config);
+  await provisionRipgrep(config.fileNative.ripgrepRoot);
+  const sourceRoot=fileURLToPath(new URL('../../',import.meta.url));
+  const graphify=new GraphifyAdapter(config.fileNative,{pythonPath:path.join(sourceRoot,'.tools','python',process.platform==='win32'?'python.exe':'bin/python3'),bridgePath:path.join(sourceRoot,'scripts','memory','graphify-bridge.py'),maxHops:config.graphMaxHops,nodeCap:config.graphNodeCap,edgeCap:config.graphEdgeCap});
+  let service = new MemoryService(config,undefined,{graphify});
   const refs = new Map<string, RefRecord>();
   const failures: MemoryQualityFailure[] = [];
   const counters = emptyCounters();
@@ -391,15 +424,8 @@ async function evaluateCase(
       } else if (op.op === 'age') {
         const target = refs.get(op.ref)!;
         await service.close();
-        const db = new DatabaseSync(config.dbPath);
-        try {
-          const agedAt = Date.now() - op.ageMs;
-          db.prepare('UPDATE memory_items SET updated_at = ?, last_accessed_at = ?, access_count = 0 WHERE id = ?')
-            .run(agedAt, agedAt, target.memoryId);
-        } finally {
-          db.close();
-        }
-        service = new MemoryService(config);
+        await backdateVaultEntry(config.fileNative.vaultRoot, target.memoryId, Date.now() - op.ageMs);
+        service = new MemoryService(config,undefined,{graphify});
       }
     }
 

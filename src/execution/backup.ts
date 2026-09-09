@@ -13,14 +13,14 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
-import { EXECUTION_SCHEMA_VERSION } from './schema.js';
 import { ExecutionRuntimeLease } from './runtime-lease.js';
-import { ExecutionWorkerClient } from './worker-client.js';
+import { EXECUTION_STATE_VERSION } from './types.js';
 import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
 
 const FORMAT = 'agent-core-execution-recovery-bundle' as const;
-const VERSION = 1 as const;
+const VERSION = 2 as const;
+/** Owner-token locks and the runtime lease describe the live process, never the recovered state. */
+const VOLATILE_ROOTS = ['leases', path.join('journal', 'locks')];
 
 export interface ExecutionRecoveryBundleFile {
   path: string;
@@ -28,24 +28,21 @@ export interface ExecutionRecoveryBundleFile {
   sha256: string;
 }
 
+export interface ExecutionRecoveryBundleTree {
+  root: string;
+  totalBytes: number;
+  files: ExecutionRecoveryBundleFile[];
+}
+
 export interface ExecutionRecoveryBundleManifest {
   format: typeof FORMAT;
   version: typeof VERSION;
   sourceVersion: string;
-  executionSchemaVersion: number;
+  executionStateVersion: number;
   createdAt: string;
   reason: string | null;
-  database: {
-    path: 'execution.sqlite';
-    size: number;
-    sha256: string;
-    integrity: 'ok';
-  };
-  evidence: {
-    root: 'evidence';
-    totalBytes: number;
-    files: ExecutionRecoveryBundleFile[];
-  };
+  state: ExecutionRecoveryBundleTree & { root: 'state' };
+  evidence: ExecutionRecoveryBundleTree & { root: 'evidence' };
 }
 
 export class ExecutionRecoveryBundleError extends Error {
@@ -56,23 +53,22 @@ export class ExecutionRecoveryBundleError extends Error {
 }
 
 export interface CreateExecutionRecoveryBundleOptions {
-  dbPath: string;
+  stateRoot: string;
   logRoot: string;
   destinationRoot: string;
   sourceVersion: string;
   reason?: string;
-  busyTimeoutMs?: number;
   metrics?: RuntimeMetricRegistry;
 }
 
 export interface RestoreExecutionRecoveryBundleOptions {
   bundlePath: string;
-  dbPath: string;
+  stateRoot: string;
   logRoot: string;
   rollbackRoot: string;
   metrics?: RuntimeMetricRegistry;
   hooks?: {
-    afterDatabaseReplace?: () => void | Promise<void>;
+    afterStateReplace?: () => void | Promise<void>;
   };
 }
 
@@ -109,7 +105,7 @@ async function sha256File(target: string): Promise<string> {
   });
 }
 
-async function listRegularFiles(root: string): Promise<string[]> {
+async function listRegularFiles(root: string, skip: readonly string[] = []): Promise<string[]> {
   if (!await pathExists(root)) return [];
   const output: string[] = [];
   async function walk(current: string, relative: string): Promise<void> {
@@ -118,16 +114,17 @@ async function listRegularFiles(root: string): Promise<string[]> {
     for (const entry of entries) {
       const absolute = path.join(current, entry.name);
       const childRelative = relative ? path.join(relative, entry.name) : entry.name;
+      if (skip.includes(childRelative)) continue;
       if (entry.isDirectory()) {
         await walk(absolute, childRelative);
         continue;
       }
       if (!entry.isFile()) {
-        fail('EXECUTION_BACKUP_EVIDENCE_UNSAFE', `Execution evidence contains a non-regular entry: ${portableRelative(childRelative)}`);
+        fail('EXECUTION_BACKUP_TREE_UNSAFE', `Execution recovery tree contains a non-regular entry: ${portableRelative(childRelative)}`);
       }
       const info = await lstat(absolute);
       if (!info.isFile()) {
-        fail('EXECUTION_BACKUP_EVIDENCE_UNSAFE', `Execution evidence contains a non-regular entry: ${portableRelative(childRelative)}`);
+        fail('EXECUTION_BACKUP_TREE_UNSAFE', `Execution recovery tree contains a non-regular entry: ${portableRelative(childRelative)}`);
       }
       output.push(portableRelative(childRelative));
     }
@@ -141,8 +138,12 @@ function localFromPortable(root: string, relative: string): string {
   return path.join(root, ...relative.split('/'));
 }
 
-async function copyEvidenceTree(sourceRoot: string, destinationRoot: string): Promise<ExecutionRecoveryBundleFile[]> {
-  const files = await listRegularFiles(sourceRoot);
+async function copyTree(
+  sourceRoot: string,
+  destinationRoot: string,
+  skip: readonly string[] = [],
+): Promise<ExecutionRecoveryBundleFile[]> {
+  const files = await listRegularFiles(sourceRoot, skip);
   const manifest: ExecutionRecoveryBundleFile[] = [];
   await mkdir(destinationRoot, { recursive: true });
   for (const relative of files) {
@@ -156,28 +157,41 @@ async function copyEvidenceTree(sourceRoot: string, destinationRoot: string): Pr
   return manifest;
 }
 
-function readSQLiteFacts(dbPath: string): { integrity: 'ok'; schemaVersion: number } {
-  let database: DatabaseSync | undefined;
+/**
+ * A state tree only counts as recoverable execution state when its layout marker is present and
+ * readable at a version this runtime understands, and its run manifest still parses.
+ */
+async function readStateFacts(stateRoot: string): Promise<{ executionStateVersion: number }> {
+  const marker = path.join(stateRoot, 'state.json');
+  let parsed: unknown;
   try {
-    database = new DatabaseSync(dbPath, { readOnly: true });
-    const integrityRow = database.prepare('PRAGMA integrity_check').get() as Record<string, unknown> | undefined;
-    const integrity = String(integrityRow?.integrity_check ?? 'unknown');
-    if (integrity !== 'ok') fail('EXECUTION_BACKUP_SQLITE_INTEGRITY_FAILED', `Execution backup SQLite integrity failed: ${integrity}`);
-    const versionRow = database.prepare('PRAGMA user_version').get() as Record<string, unknown> | undefined;
-    const schemaVersion = Number(versionRow?.user_version ?? -1);
-    if (!Number.isInteger(schemaVersion) || schemaVersion < 0 || schemaVersion > EXECUTION_SCHEMA_VERSION) {
-      fail('EXECUTION_BACKUP_SCHEMA_UNSUPPORTED', `Execution backup schema ${schemaVersion} is not supported by runtime schema ${EXECUTION_SCHEMA_VERSION}`);
-    }
-    return { integrity: 'ok', schemaVersion };
+    parsed = JSON.parse(await readFile(marker, 'utf8')) as unknown;
   } catch (error) {
-    if (error instanceof ExecutionRecoveryBundleError) throw error;
-    throw new ExecutionRecoveryBundleError(
-      'EXECUTION_BACKUP_SQLITE_INTEGRITY_FAILED',
-      `Execution backup SQLite could not be verified: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  } finally {
-    try { database?.close(); } catch { /* no-op */ }
+    fail('EXECUTION_BACKUP_STATE_INTEGRITY_FAILED', `Execution state marker could not be read: ${error instanceof Error ? error.message : String(error)}`);
   }
+  const version = Number((parsed as { stateVersion?: unknown } | null)?.stateVersion);
+  if (!Number.isInteger(version) || version < 1 || version > EXECUTION_STATE_VERSION) {
+    fail('EXECUTION_BACKUP_STATE_UNSUPPORTED', `Execution state version ${version} is not supported by runtime version ${EXECUTION_STATE_VERSION}`);
+  }
+  const manifestPath = path.join(stateRoot, 'index', 'runs.jsonl');
+  if (await pathExists(manifestPath)) {
+    const body = await readFile(manifestPath, 'utf8');
+    for (const line of body.split('\n')) {
+      if (!line.trim()) continue;
+      try { JSON.parse(line); } catch {
+        fail('EXECUTION_BACKUP_STATE_INTEGRITY_FAILED', 'Execution run manifest is corrupt');
+      }
+    }
+  }
+  return { executionStateVersion: version };
+}
+
+function validTree(value: unknown, root: string): value is ExecutionRecoveryBundleTree {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const tree = value as Partial<ExecutionRecoveryBundleTree>;
+  return tree.root === root
+    && Number.isSafeInteger(tree.totalBytes) && Number(tree.totalBytes) >= 0
+    && Array.isArray(tree.files);
 }
 
 function validManifest(value: unknown): value is ExecutionRecoveryBundleManifest {
@@ -186,16 +200,11 @@ function validManifest(value: unknown): value is ExecutionRecoveryBundleManifest
   return manifest.format === FORMAT
     && manifest.version === VERSION
     && typeof manifest.sourceVersion === 'string' && manifest.sourceVersion.length > 0
-    && Number.isInteger(manifest.executionSchemaVersion)
+    && Number.isInteger(manifest.executionStateVersion)
     && typeof manifest.createdAt === 'string' && Number.isFinite(Date.parse(manifest.createdAt))
     && (manifest.reason === null || typeof manifest.reason === 'string')
-    && Boolean(manifest.database && manifest.database.path === 'execution.sqlite'
-      && Number.isSafeInteger(manifest.database.size) && manifest.database.size >= 0
-      && typeof manifest.database.sha256 === 'string' && /^[a-f0-9]{64}$/.test(manifest.database.sha256)
-      && manifest.database.integrity === 'ok')
-    && Boolean(manifest.evidence && manifest.evidence.root === 'evidence'
-      && Number.isSafeInteger(manifest.evidence.totalBytes) && manifest.evidence.totalBytes >= 0
-      && Array.isArray(manifest.evidence.files));
+    && validTree(manifest.state, 'state')
+    && validTree(manifest.evidence, 'evidence');
 }
 
 function bundleName(prefix: string): string {
@@ -205,51 +214,34 @@ function bundleName(prefix: string): string {
 async function createExecutionRecoveryBundleImpl(
   options: CreateExecutionRecoveryBundleOptions,
 ): Promise<{ bundlePath: string; manifest: ExecutionRecoveryBundleManifest }> {
-  const dbPath = path.resolve(options.dbPath);
+  const stateRoot = path.resolve(options.stateRoot);
   const logRoot = path.resolve(options.logRoot);
   const destinationRoot = path.resolve(options.destinationRoot);
-  if (!await pathExists(dbPath)) fail('EXECUTION_BACKUP_DB_NOT_FOUND', `Execution database does not exist: ${dbPath}`);
+  if (!await pathExists(stateRoot)) fail('EXECUTION_BACKUP_STATE_NOT_FOUND', `Execution state root does not exist: ${stateRoot}`);
 
-  const lease = await ExecutionRuntimeLease.acquire(dbPath);
+  const lease = await ExecutionRuntimeLease.acquire(stateRoot);
   const temporary = path.join(destinationRoot, `.${bundleName('execution-recovery')}.tmp`);
   const finalPath = path.join(destinationRoot, bundleName('execution-recovery'));
-  const backupDb = path.join(temporary, 'execution.sqlite');
-  const evidenceRoot = path.join(temporary, 'evidence');
-  let worker: ExecutionWorkerClient | undefined;
   try {
     await mkdir(temporary, { recursive: true });
-    worker = new ExecutionWorkerClient();
-    await worker.open({ dbPath, busyTimeoutMs: options.busyTimeoutMs });
-    const integrity = await worker.integrity();
-    if (!integrity.ok) fail('EXECUTION_BACKUP_SQLITE_INTEGRITY_FAILED', `Execution SQLite integrity failed before backup: ${integrity.result}`);
-    const versionRows = await worker.query<{ user_version: number }>('PRAGMA user_version');
-    const executionSchemaVersion = Number(versionRows[0]?.user_version ?? -1);
-    if (!Number.isInteger(executionSchemaVersion) || executionSchemaVersion < 0 || executionSchemaVersion > EXECUTION_SCHEMA_VERSION) {
-      fail('EXECUTION_BACKUP_SCHEMA_UNSUPPORTED', `Execution schema ${executionSchemaVersion} is not supported`);
+    const { executionStateVersion } = await readStateFacts(stateRoot);
+    const stateFiles = await copyTree(stateRoot, path.join(temporary, 'state'), VOLATILE_ROOTS);
+    const evidenceFiles = await copyTree(logRoot, path.join(temporary, 'evidence'));
+    const staged = await readStateFacts(path.join(temporary, 'state'));
+    if (staged.executionStateVersion !== executionStateVersion) {
+      fail('EXECUTION_BACKUP_STATE_MISMATCH', 'Execution state version changed during snapshot');
     }
-    await worker.checkpoint();
-    await worker.backup(backupDb);
-    await worker.close();
-    worker = undefined;
-
-    const databaseFacts = readSQLiteFacts(backupDb);
-    if (databaseFacts.schemaVersion !== executionSchemaVersion) {
-      fail('EXECUTION_BACKUP_SCHEMA_MISMATCH', 'Execution backup schema changed during snapshot');
-    }
-    const evidenceFiles = await copyEvidenceTree(logRoot, evidenceRoot);
-    const dbInfo = await stat(backupDb);
     const manifest: ExecutionRecoveryBundleManifest = {
       format: FORMAT,
       version: VERSION,
       sourceVersion: options.sourceVersion,
-      executionSchemaVersion,
+      executionStateVersion,
       createdAt: new Date().toISOString(),
       reason: options.reason?.normalize('NFKC').trim().slice(0, 500) || null,
-      database: {
-        path: 'execution.sqlite',
-        size: dbInfo.size,
-        sha256: await sha256File(backupDb),
-        integrity: 'ok',
+      state: {
+        root: 'state',
+        totalBytes: stateFiles.reduce((sum, file) => sum + file.size, 0),
+        files: stateFiles,
       },
       evidence: {
         root: 'evidence',
@@ -265,7 +257,6 @@ async function createExecutionRecoveryBundleImpl(
     await rm(temporary, { recursive: true, force: true }).catch(() => undefined);
     throw error;
   } finally {
-    await worker?.close().catch(() => undefined);
     await lease.release().catch(() => undefined);
   }
 }
@@ -284,6 +275,29 @@ export async function createExecutionRecoveryBundle(
   }
 }
 
+async function verifyTree(bundlePath: string, tree: ExecutionRecoveryBundleTree, mismatchCode: string): Promise<void> {
+  const root = localFromPortable(bundlePath, tree.root);
+  const expected = tree.files.map((file) => safeManifestRelative(file.path));
+  if (new Set(expected).size !== expected.length) fail('EXECUTION_BACKUP_MANIFEST_INVALID', `Recovery bundle ${tree.root} manifest contains duplicate paths`);
+  const actual = await listRegularFiles(root);
+  if (JSON.stringify(actual) !== JSON.stringify([...expected].sort((left, right) => left.localeCompare(right)))) {
+    fail(mismatchCode, `Execution recovery ${tree.root} file set does not match its manifest`);
+  }
+  let totalBytes = 0;
+  for (const file of tree.files) {
+    if (!Number.isSafeInteger(file.size) || file.size < 0 || typeof file.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(file.sha256)) {
+      fail('EXECUTION_BACKUP_MANIFEST_INVALID', `Execution recovery ${tree.root} file manifest is invalid`);
+    }
+    const target = localFromPortable(root, file.path);
+    const info = await stat(target).catch(() => null);
+    if (!info?.isFile() || info.size !== file.size || await sha256File(target) !== file.sha256) {
+      fail('EXECUTION_BACKUP_HASH_MISMATCH', `Execution recovery ${tree.root} hash/size mismatch: ${file.path}`);
+    }
+    totalBytes += file.size;
+  }
+  if (totalBytes !== tree.totalBytes) fail('EXECUTION_BACKUP_MANIFEST_INVALID', `Execution recovery ${tree.root} byte total does not match its manifest`);
+}
+
 export async function verifyExecutionRecoveryBundle(
   bundlePath: string,
 ): Promise<{ ok: true; bundlePath: string; manifest: ExecutionRecoveryBundleManifest }> {
@@ -298,81 +312,41 @@ export async function verifyExecutionRecoveryBundle(
     fail('EXECUTION_BACKUP_MANIFEST_INVALID', `Execution recovery bundle manifest could not be read: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  safeManifestRelative(manifest.database.path);
-  const dbFile = localFromPortable(resolved, manifest.database.path);
-  const dbInfo = await stat(dbFile).catch(() => null);
-  if (!dbInfo?.isFile() || dbInfo.size !== manifest.database.size || await sha256File(dbFile) !== manifest.database.sha256) {
-    fail('EXECUTION_BACKUP_HASH_MISMATCH', 'Execution recovery database hash/size does not match its manifest');
-  }
+  await verifyTree(resolved, manifest.state, 'EXECUTION_BACKUP_STATE_MISMATCH');
+  await verifyTree(resolved, manifest.evidence, 'EXECUTION_BACKUP_EVIDENCE_MISMATCH');
 
-  const evidenceRoot = localFromPortable(resolved, manifest.evidence.root);
-  const expectedPaths = manifest.evidence.files.map((file) => safeManifestRelative(file.path));
-  if (new Set(expectedPaths).size !== expectedPaths.length) fail('EXECUTION_BACKUP_MANIFEST_INVALID', 'Execution recovery evidence manifest contains duplicate paths');
-  const actualPaths = await listRegularFiles(evidenceRoot);
-  if (JSON.stringify(actualPaths) !== JSON.stringify([...expectedPaths].sort((a, b) => a.localeCompare(b)))) {
-    fail('EXECUTION_BACKUP_EVIDENCE_MISMATCH', 'Execution recovery evidence file set does not match its manifest');
-  }
-  let totalBytes = 0;
-  for (const file of manifest.evidence.files) {
-    if (!Number.isSafeInteger(file.size) || file.size < 0 || typeof file.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(file.sha256)) {
-      fail('EXECUTION_BACKUP_MANIFEST_INVALID', 'Execution recovery evidence file manifest is invalid');
-    }
-    const target = localFromPortable(evidenceRoot, file.path);
-    const info = await stat(target).catch(() => null);
-    if (!info?.isFile() || info.size !== file.size || await sha256File(target) !== file.sha256) {
-      fail('EXECUTION_BACKUP_HASH_MISMATCH', `Execution recovery evidence hash/size mismatch: ${file.path}`);
-    }
-    totalBytes += file.size;
-  }
-  if (totalBytes !== manifest.evidence.totalBytes) fail('EXECUTION_BACKUP_MANIFEST_INVALID', 'Execution recovery evidence byte total does not match its manifest');
-
-  const facts = readSQLiteFacts(dbFile);
-  if (facts.schemaVersion !== manifest.executionSchemaVersion) {
-    fail('EXECUTION_BACKUP_SCHEMA_MISMATCH', 'Execution recovery database schema does not match its manifest');
+  const facts = await readStateFacts(path.join(resolved, manifest.state.root));
+  if (facts.executionStateVersion !== manifest.executionStateVersion) {
+    fail('EXECUTION_BACKUP_STATE_MISMATCH', 'Execution recovery state version does not match its manifest');
   }
   return { ok: true, bundlePath: resolved, manifest };
 }
 
-async function copyRawFileIfPresent(source: string, destination: string): Promise<boolean> {
-  if (!await pathExists(source)) return false;
-  await mkdir(path.dirname(destination), { recursive: true });
-  await copyFile(source, destination);
-  return true;
-}
-
-async function createRawRollbackSnapshot(dbPath: string, logRoot: string, rollbackRoot: string): Promise<string> {
+async function createRawRollbackSnapshot(stateRoot: string, logRoot: string, rollbackRoot: string): Promise<string> {
   const rollbackPath = path.join(path.resolve(rollbackRoot), bundleName('pre-restore-rollback'));
   await mkdir(rollbackPath, { recursive: true });
-  const files: string[] = [];
-  for (const suffix of ['', '-wal', '-shm']) {
-    const source = `${dbPath}${suffix}`;
-    const name = `execution.sqlite${suffix}`;
-    if (await copyRawFileIfPresent(source, path.join(rollbackPath, name))) files.push(name);
-  }
-  await copyEvidenceTree(logRoot, path.join(rollbackPath, 'evidence'));
+  const state = await copyTree(stateRoot, path.join(rollbackPath, 'state'), VOLATILE_ROOTS);
+  await copyTree(logRoot, path.join(rollbackPath, 'evidence'));
   await writeFile(path.join(rollbackPath, 'rollback.json'), `${JSON.stringify({
     format: 'agent-core-execution-pre-restore-rollback',
-    version: 1,
+    version: 2,
     createdAt: new Date().toISOString(),
-    files,
+    stateFiles: state.length,
   }, null, 2)}\n`, 'utf8');
   return rollbackPath;
 }
 
-async function restoreRawRollbackSnapshot(rollbackPath: string, dbPath: string, logRoot: string): Promise<void> {
-  for (const suffix of ['', '-wal', '-shm']) await rm(`${dbPath}${suffix}`, { force: true });
-  for (const suffix of ['', '-wal', '-shm']) {
-    const source = path.join(rollbackPath, `execution.sqlite${suffix}`);
-    if (await pathExists(source)) await copyRawFileIfPresent(source, `${dbPath}${suffix}`);
-  }
+async function restoreRawRollbackSnapshot(rollbackPath: string, stateRoot: string, logRoot: string): Promise<void> {
+  await rm(stateRoot, { recursive: true, force: true });
+  await copyTree(path.join(rollbackPath, 'state'), stateRoot);
   await rm(logRoot, { recursive: true, force: true });
-  await copyEvidenceTree(path.join(rollbackPath, 'evidence'), logRoot);
+  await copyTree(path.join(rollbackPath, 'evidence'), logRoot);
 }
 
-async function stageVerifiedEvidence(bundlePath: string, manifest: ExecutionRecoveryBundleManifest, stageRoot: string): Promise<void> {
+async function stageVerifiedTree(bundlePath: string, tree: ExecutionRecoveryBundleTree, stageRoot: string): Promise<void> {
   await mkdir(stageRoot, { recursive: true });
-  const sourceRoot = path.join(bundlePath, manifest.evidence.root);
-  for (const file of manifest.evidence.files) {
+  const sourceRoot = path.join(bundlePath, tree.root);
+  for (const file of tree.files) {
     const source = localFromPortable(sourceRoot, file.path);
     const destination = localFromPortable(stageRoot, file.path);
     await mkdir(path.dirname(destination), { recursive: true });
@@ -383,39 +357,41 @@ async function stageVerifiedEvidence(bundlePath: string, manifest: ExecutionReco
 async function restoreExecutionRecoveryBundleImpl(
   options: RestoreExecutionRecoveryBundleOptions,
 ): Promise<{ restored: true; rollbackPath: string; manifest: ExecutionRecoveryBundleManifest }> {
-  const dbPath = path.resolve(options.dbPath);
+  const stateRoot = path.resolve(options.stateRoot);
   const logRoot = path.resolve(options.logRoot);
-  const lease = await ExecutionRuntimeLease.acquire(dbPath);
+  const lease = await ExecutionRuntimeLease.acquire(stateRoot);
   const stageToken = randomUUID();
-  const stagedDb = `${dbPath}.restore-${stageToken}`;
+  const stagedState = `${stateRoot}.restore-${stageToken}`;
   const stagedEvidence = `${logRoot}.restore-${stageToken}`;
   let rollbackPath = '';
+  let leaseReleased = false;
   try {
     const verified = await verifyExecutionRecoveryBundle(options.bundlePath);
-    rollbackPath = await createRawRollbackSnapshot(dbPath, logRoot, options.rollbackRoot);
-    await mkdir(path.dirname(stagedDb), { recursive: true });
-    await copyFile(path.join(verified.bundlePath, verified.manifest.database.path), stagedDb);
-    await stageVerifiedEvidence(verified.bundlePath, verified.manifest, stagedEvidence);
-    readSQLiteFacts(stagedDb);
+    rollbackPath = await createRawRollbackSnapshot(stateRoot, logRoot, options.rollbackRoot);
+    await stageVerifiedTree(verified.bundlePath, verified.manifest.state, stagedState);
+    await stageVerifiedTree(verified.bundlePath, verified.manifest.evidence, stagedEvidence);
+    await readStateFacts(stagedState);
 
     try {
-      await rm(dbPath, { force: true });
-      await rename(stagedDb, dbPath);
-      await rm(`${dbPath}-wal`, { force: true });
-      await rm(`${dbPath}-shm`, { force: true });
-      await options.hooks?.afterDatabaseReplace?.();
+      // The runtime lease lives inside the state root, so it is released before the swap and the
+      // restored tree never inherits a lease record belonging to this process.
+      await lease.release();
+      leaseReleased = true;
+      await rm(stateRoot, { recursive: true, force: true });
+      await rename(stagedState, stateRoot);
+      await options.hooks?.afterStateReplace?.();
       await rm(logRoot, { recursive: true, force: true });
       await rename(stagedEvidence, logRoot);
-      readSQLiteFacts(dbPath);
+      await readStateFacts(stateRoot);
     } catch (error) {
-      await restoreRawRollbackSnapshot(rollbackPath, dbPath, logRoot);
+      await restoreRawRollbackSnapshot(rollbackPath, stateRoot, logRoot);
       throw error;
     }
     return { restored: true, rollbackPath, manifest: verified.manifest };
   } finally {
-    await rm(stagedDb, { force: true }).catch(() => undefined);
+    await rm(stagedState, { recursive: true, force: true }).catch(() => undefined);
     await rm(stagedEvidence, { recursive: true, force: true }).catch(() => undefined);
-    await lease.release().catch(() => undefined);
+    if (!leaseReleased) await lease.release().catch(() => undefined);
   }
 }
 

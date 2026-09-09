@@ -1,21 +1,17 @@
-import { randomUUID } from 'node:crypto';
-import { access } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { ExecutionWorkerSqlOperation } from './db-worker.js';
-import type { ValidatedExecutionArtifact, ValidatedExecutionNode } from './dag.js';
+import type { ExecutionArtifactType, ExecutionResourceSpec, ValidatedExecutionArtifact, ValidatedExecutionNode } from './dag.js';
 import type { ExecutionAttemptPaths, ExecutionResultMarker } from './log-store.js';
 import type { ParsedExecutionOutput } from './output-parser.js';
 import {
-  ARTIFACT_INDEX_EXECUTION_MIGRATION,
-  EVIDENCE_EXECUTION_MIGRATION,
-  EXECUTION_SCHEMA_SQL,
-  EXECUTION_SCHEMA_VERSION,
-  INITIAL_EXECUTION_MIGRATION,
-  PARSED_OUTPUT_EXECUTION_MIGRATION,
-} from './schema.js';
-import type { ExecutionAttemptState, ExecutionNodeState, ExecutionRunState, ExecutionScope } from './types.js';
+  EXECUTION_STATE_VERSION,
+  type ExecutionAttemptState,
+  type ExecutionNodeState,
+  type ExecutionRunState,
+  type ExecutionScope,
+} from './types.js';
 import type { ExecutionEventFilter, ExecutionEventRecord, ExecutionEventType } from './wake.js';
-import { ExecutionWorkerClient } from './worker-client.js';
 
 export class ExecutionStoreError extends Error {
   constructor(
@@ -29,12 +25,12 @@ export class ExecutionStoreError extends Error {
 }
 
 export interface ExecutionStoreOpenResult {
-  priorUserVersion?: number;
-  schemaVersion: number;
-  quickCheck: string;
-  integrity: string;
-  integrityCheckedAt: number;
-  migrationBackupPath?: string;
+  stateRoot: string;
+  stateVersion: number;
+  priorStateVersion?: number;
+  journalsRecovered: number;
+  runsRepaired: string[];
+  openedAt: number;
 }
 
 export interface ExecutionRunRecord {
@@ -54,6 +50,18 @@ export interface ExecutionRunRecord {
   updatedAt: number;
 }
 
+export interface ExecutionWorkflowPendingAttempt { nodeId: string; attemptId: string; attemptNo: number; error?: string }
+
+export function executionWorkflowPending(run: ExecutionRunRecord): ExecutionWorkflowPendingAttempt[] {
+  const value = run.metadata.workflowPendingAttempts;
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some(item => !item || typeof item.nodeId !== 'string' || typeof item.attemptId !== 'string'
+    || !Number.isSafeInteger(item.attemptNo) || item.attemptNo < 1 || (item.error !== undefined && typeof item.error !== 'string'))) {
+    fail('EXECUTION_WORKFLOW_PENDING_INVALID', 'Pending workflow attempt metadata is invalid');
+  }
+  return value as ExecutionWorkflowPendingAttempt[];
+}
+
 export interface ExecutionNodeRecord {
   runId: string;
   nodeId: string;
@@ -62,8 +70,11 @@ export interface ExecutionNodeRecord {
   cwd: string;
   state: ExecutionNodeState;
   timeoutMs: number;
-  continueOnFailure: boolean;
   expectedArtifacts: ValidatedExecutionArtifact[];
+  stepIds?: string[];
+  resources?: ExecutionResourceSpec;
+  inputs?: string[];
+  toolchain?: string[];
   attemptCount: number;
   lastError?: Record<string, unknown>;
   dependsOn: string[];
@@ -94,6 +105,21 @@ export interface ExecutionAttemptRecord {
   error?: Record<string, unknown>;
 }
 
+interface StoredParsedOutput {
+  parserVersion: string;
+  status: 'available' | 'degraded';
+  sourceStdoutSha256?: string;
+  sourceStderrSha256?: string;
+  parsed?: ParsedExecutionOutput;
+  confidence?: number;
+  failureCode?: string;
+  createdAt: number;
+}
+
+interface StoredAttempt extends ExecutionAttemptRecord {
+  parsedOutputs?: StoredParsedOutput[];
+}
+
 export type ExecutionParsedOutputView = {
   available: true;
   status: 'available';
@@ -118,9 +144,9 @@ export interface CreateExecutionRunInput {
 
 export interface ExecutionStoreStatus {
   healthy: boolean;
-  schemaVersion: number;
+  stateVersion: number;
   integrity: string;
-  dbPath: string;
+  stateRoot: string;
   lastIntegrityCheckAt?: number;
 }
 
@@ -131,64 +157,97 @@ export interface ExecutionRecoverableAttempt extends ExecutionAttemptRecord {
   nodeState: ExecutionNodeState;
 }
 
-type RunRow = {
-  id: string;
-  principal_id: string;
-  project_id: string | null;
-  continuity_task_id: string | null;
-  origin_route_context_id: string | null;
+export interface ExecutionArtifactRecord {
+  artifactId: string;
+  runId: string;
+  nodeId: string;
+  attemptNo: number;
+  path: string;
+  artifactType: ExecutionArtifactType;
+  verification: 'verified';
+  sha256?: string;
+  size?: number;
+  modifiedAt?: number;
+  sourceResultRef: string;
+  metadata: Record<string, unknown>;
+  createdAt: number;
+}
+
+export interface NewExecutionArtifact {
+  path: string;
+  artifactType: ExecutionArtifactType;
+  sha256?: string;
+  size?: number;
+  modifiedAt?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ExecutionArtifactQuery {
+  runId?: string;
+  nodeId?: string;
+  attemptNo?: number;
+  sha256?: string;
+  artifactType?: ExecutionArtifactType;
+  terminalRunsOnly?: boolean;
+  createdAtMax?: number;
+  order?: 'newest' | 'oldest';
+  limit?: number;
+}
+
+export interface ExecutionMemorySyncRecord {
+  queueId: string;
+  runId: string;
+  eventSequence?: number;
+  syncKey: string;
+  payload: Record<string, unknown>;
+  state: 'queued' | 'syncing' | 'failed';
+  attempts: number;
+  lastError?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface StoredSyncEntry extends Omit<ExecutionMemorySyncRecord, 'state'> {
+  state: 'queued' | 'syncing' | 'synced' | 'failed';
+}
+
+/** Scope + state facts kept in the deterministic run manifest so lookups never scan every run body. */
+interface RunIndexEntry {
+  runId: string;
+  principalId: string;
+  projectId: string;
   state: ExecutionRunState;
-  objective: string;
-  max_concurrency: number;
-  last_event_sequence: number;
-  metadata_json: string;
-  created_at: number;
-  started_at: number | null;
-  finished_at: number | null;
-  updated_at: number;
-};
+  continuityTaskId?: string;
+  createdAt: number;
+}
 
-type NodeRow = {
-  run_id: string;
-  node_id: string;
-  purpose: string;
-  command_text: string;
-  cwd: string;
-  state: ExecutionNodeState;
-  timeout_ms: number;
-  continue_on_failure: number;
-  expected_artifacts_json: string;
-  attempt_count: number;
-  last_error_json: string | null;
-  created_at: number;
-  updated_at: number;
-  started_at: number | null;
-  finished_at: number | null;
-};
+interface StoredEvent extends ExecutionEventRecord {
+  globalSequence: number;
+  payloadHash: string;
+}
 
-type AttemptRow = {
-  id: string;
-  run_id: string;
-  node_id: string;
-  attempt_no: number;
-  state: ExecutionAttemptState;
-  process_pid: number | null;
-  stdout_path: string;
-  stderr_path: string;
-  result_path: string;
-  started_at: number;
-  finished_at: number | null;
-  exit_code: number | null;
-  signal: string | null;
-  stdout_bytes: number;
-  stderr_bytes: number;
-  stdout_sha256: string | null;
-  stderr_sha256: string | null;
-  error_json: string | null;
-};
+interface LockRecord {
+  pid: number;
+  token: string;
+  acquiredAt: number;
+}
 
-function fail(code: string, message: string): never {
-  throw new ExecutionStoreError(code, message);
+interface Transaction {
+  writes?: Array<{ path: string; content: string }>;
+  /** Line appends. `guardSequence` makes an event append idempotent across journal replay. */
+  appends?: Array<{ path: string; line: string; guardSequence?: number }>;
+  removes?: string[];
+}
+
+const RUN_TERMINAL = new Set<ExecutionRunState>(['completed', 'failed', 'blocked', 'interrupted', 'cancelled']);
+const NODE_TERMINAL = new Set<ExecutionNodeState>(['succeeded', 'failed', 'blocked', 'interrupted', 'cancelled']);
+const SYNC_PENDING = new Set(['queued', 'syncing', 'failed']);
+const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const GLOBAL_SEQUENCE_BLOCK = 64;
+const TRANSACTION_WRITE_CONCURRENCY = 4;
+
+function fail(code: string, message: string, details?: Record<string, unknown>): never {
+  throw new ExecutionStoreError(code, message, details);
 }
 
 function scopeProject(scope: ExecutionScope): string {
@@ -221,240 +280,251 @@ export function stableExecutionJson(value: unknown): string {
     .join(',')}}`;
 }
 
-function parseObject(value: string | null): Record<string, unknown> | undefined {
-  if (!value) return undefined;
+function sha256Hex(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+/**
+ * Every identifier that becomes a path segment is checked here, so no caller-supplied run or node
+ * ID can escape the state root. The DAG validator already rejects IDs that differ only in case.
+ */
+function safeSegment(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !SAFE_SEGMENT.test(value)) {
+    fail(`EXECUTION_${field.toUpperCase()}_INVALID`, `${field} is not a safe execution state segment`);
+  }
+  return value;
+}
+
+/** Lock names are derived, never stored, so they are simply flattened into a safe file name. */
+function lockName(value: string): string {
+  return SAFE_SEGMENT.test(value) ? value : `${value.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 96)}~${sha256Hex(value).slice(0, 12)}`;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
+}
+
+function pidAlive(pid: number): boolean {
   try {
-    const parsed = JSON.parse(value) as unknown;
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : undefined;
-  } catch {
-    return undefined;
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
   }
 }
 
-function parseMetadata(value: string): Record<string, unknown> {
-  return parseObject(value) ?? {};
+function isMissing(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException)?.code === 'ENOENT';
 }
 
-function parseArtifacts(value: string): ValidatedExecutionArtifact[] {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is ValidatedExecutionArtifact => Boolean(
-      item
-      && typeof item === 'object'
-      && !Array.isArray(item)
-      && typeof (item as Record<string, unknown>).path === 'string'
-      && ['file', 'directory'].includes(String((item as Record<string, unknown>).kind))
-      && typeof (item as Record<string, unknown>).required === 'boolean'
-      && ((item as Record<string, unknown>).hash === undefined || (item as Record<string, unknown>).hash === 'sha256')
-      && ((item as Record<string, unknown>).artifactType === undefined || ['build','test_report','log','data','other'].includes(String((item as Record<string, unknown>).artifactType))),
-    )).map((item) => ({ ...item, artifactType: item.artifactType ?? 'other' }));
-  } catch {
-    return [];
+const RENAME_CONTENDED = new Set(['EPERM', 'EACCES', 'EBUSY']);
+
+/**
+ * Windows fails a replacing rename with a sharing violation while any reader still holds the
+ * destination open - and this state root is read concurrently by design. The rename stays the
+ * atomic commit point; it is simply retried until the reader's handle closes.
+ */
+async function renameOver(temporary: string, target: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(temporary, target);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt >= 12 || !code || !RENAME_CONTENDED.has(code)) throw error;
+      await delay(2 + attempt * 3);
+    }
   }
 }
 
-function mapRun(row: RunRow): ExecutionRunRecord {
+async function openWithParent(target: string, flags: 'wx' | 'a'): Promise<Awaited<ReturnType<typeof open>>> {
+  try {
+    return await open(target, flags);
+  } catch (error) {
+    if (!isMissing(error)) throw error;
+    // Existing run directories need no extra filesystem roundtrip. A missing parent is
+    // recreated on demand; permission, collision and retry errors still reach the caller.
+    await mkdir(path.dirname(target), { recursive: true });
+    return open(target, flags);
+  }
+}
+
+async function writeAtomic(target: string, content: string, sync = false): Promise<void> {
+  const temporary = `${target}.tmp-${process.pid}-${randomUUID().slice(0, 8)}`;
+  const handle = await openWithParent(temporary, 'wx');
+  try {
+    await handle.writeFile(content, 'utf8');
+    if (sync) await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try {
+    await renameOver(temporary, target);
+  } catch (error) {
+    await rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function appendLine(target: string, line: string): Promise<void> {
+  const handle = await openWithParent(target, 'a');
+  try {
+    await handle.writeFile(`${line}\n`, 'utf8');
+  } finally {
+    await handle.close();
+  }
+}
+
+async function readJson<T>(target: string): Promise<T | null> {
+  let body: string;
+  try {
+    body = await readFile(target, 'utf8');
+  } catch (error) {
+    if (isMissing(error)) return null;
+    throw error;
+  }
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    fail('EXECUTION_STATE_CORRUPT', `Execution state file is not valid JSON: ${target}`, { path: target });
+  }
+}
+
+/**
+ * Read an append-only log. A single unparseable trailing line is a torn append from a crash and is
+ * dropped; anything unparseable earlier in the file is real corruption and must never pass silently.
+ */
+async function readLines<T>(target: string): Promise<T[]> {
+  let body: string;
+  try {
+    body = await readFile(target, 'utf8');
+  } catch (error) {
+    if (isMissing(error)) return [];
+    throw error;
+  }
+  const lines = body.split('\n');
+  const out: T[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!.trim();
+    if (!line) continue;
+    try {
+      out.push(JSON.parse(line) as T);
+    } catch {
+      const trailing = lines.slice(index + 1).every((rest) => !rest.trim());
+      if (!trailing) fail('EXECUTION_STATE_CORRUPT', `Execution append log is corrupt at line ${index + 1}: ${target}`, { path: target, line: index + 1 });
+    }
+  }
+  return out;
+}
+
+async function listDir(target: string): Promise<string[]> {
+  try {
+    return (await readdir(target)).sort((left, right) => left.localeCompare(right));
+  } catch (error) {
+    if (isMissing(error)) return [];
+    throw error;
+  }
+}
+
+function eventRecord(stored: StoredEvent): ExecutionEventRecord {
   return {
-    runId: row.id,
-    principalId: row.principal_id,
-    projectId: row.project_id ?? undefined,
-    continuityTaskId: row.continuity_task_id ?? undefined,
-    originRouteContextId: row.origin_route_context_id ?? undefined,
-    state: row.state,
-    objective: row.objective,
-    maxConcurrency: Number(row.max_concurrency),
-    lastEventSequence: Number(row.last_event_sequence),
-    metadata: parseMetadata(row.metadata_json),
-    createdAt: Number(row.created_at),
-    startedAt: row.started_at == null ? undefined : Number(row.started_at),
-    finishedAt: row.finished_at == null ? undefined : Number(row.finished_at),
-    updatedAt: Number(row.updated_at),
+    runId: stored.runId,
+    sequence: stored.sequence,
+    eventType: stored.eventType,
+    ...(stored.nodeId ? { nodeId: stored.nodeId } : {}),
+    ...(stored.attemptId ? { attemptId: stored.attemptId } : {}),
+    payload: stored.payload ?? {},
+    createdAt: stored.createdAt,
   };
 }
 
-function mapNode(row: NodeRow, dependsOn: string[]): ExecutionNodeRecord {
-  return {
-    runId: row.run_id,
-    nodeId: row.node_id,
-    purpose: row.purpose,
-    command: row.command_text,
-    cwd: row.cwd,
-    state: row.state,
-    timeoutMs: Number(row.timeout_ms),
-    continueOnFailure: Number(row.continue_on_failure) === 1,
-    expectedArtifacts: parseArtifacts(row.expected_artifacts_json),
-    attemptCount: Number(row.attempt_count),
-    lastError: parseObject(row.last_error_json),
-    dependsOn,
-    createdAt: Number(row.created_at),
-    updatedAt: Number(row.updated_at),
-    startedAt: row.started_at == null ? undefined : Number(row.started_at),
-    finishedAt: row.finished_at == null ? undefined : Number(row.finished_at),
-  };
-}
-
-function mapAttempt(row: AttemptRow): ExecutionAttemptRecord {
-  return {
-    attemptId: row.id,
-    runId: row.run_id,
-    nodeId: row.node_id,
-    attemptNo: Number(row.attempt_no),
-    state: row.state,
-    processPid: row.process_pid == null ? undefined : Number(row.process_pid),
-    stdoutPath: row.stdout_path,
-    stderrPath: row.stderr_path,
-    resultPath: row.result_path,
-    startedAt: Number(row.started_at),
-    finishedAt: row.finished_at == null ? undefined : Number(row.finished_at),
-    exitCode: row.exit_code == null ? undefined : Number(row.exit_code),
-    signal: row.signal ?? undefined,
-    stdoutBytes: Number(row.stdout_bytes),
-    stderrBytes: Number(row.stderr_bytes),
-    stdoutSha256: row.stdout_sha256 ?? undefined,
-    stderrSha256: row.stderr_sha256 ?? undefined,
-    error: parseObject(row.error_json),
-  };
-}
-
-const RUN_TERMINAL = new Set<ExecutionRunState>(['completed', 'failed', 'blocked', 'interrupted', 'cancelled']);
-
-async function databaseFileExists(dbPath: string): Promise<boolean> {
-  if (dbPath === ':memory:') return false;
-  try { await access(dbPath); return true; } catch { return false; }
-}
-
-function migrationBackupPath(dbPath: string, fromVersion: number, toVersion: number): string {
-  const resolved = path.resolve(dbPath);
-  const ext = path.extname(resolved) || '.sqlite';
-  const base = path.basename(resolved, path.extname(resolved));
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  return path.join(
-    path.dirname(resolved),
-    'backups',
-    `${base}.${stamp}.pre-migration-v${fromVersion}-to-v${toVersion}${ext}`,
-  );
+function artifactKey(artifact: { nodeId: string; attemptNo: number; path: string }): string {
+  return `${artifact.nodeId}\u0000${artifact.attemptNo}\u0000${artifact.path}`;
 }
 
 export class ExecutionStore {
   private opened = false;
   private closed = false;
-  private dbPath = '';
+  private root = '';
+  private lockTimeoutMs = 5_000;
   private lastIntegrity = 'unknown';
+  private globalSequence = 0;
+  private globalSequenceCeiling = 0;
   private lastIntegrityCheckAt: number | undefined;
+  /** In-process serialisation per lock name so co-operating callers never poll the on-disk lock. */
+  private readonly chains = new Map<string, Promise<unknown>>();
 
-  constructor(readonly client: ExecutionWorkerClient = new ExecutionWorkerClient()) {}
+  get stateRoot(): string {
+    return this.root;
+  }
 
-  async open(options: { dbPath: string; busyTimeoutMs?: number }): Promise<ExecutionStoreOpenResult> {
+  async open(options: { stateRoot: string; lockTimeoutMs?: number }): Promise<ExecutionStoreOpenResult> {
     if (this.closed) fail('EXECUTION_STORE_CLOSED', 'Execution store is closed');
-    if (this.opened) {
-      const integrity = await this.client.integrity();
-      this.lastIntegrity = integrity.result;
-      this.lastIntegrityCheckAt = Date.now();
-      return {
-        schemaVersion: EXECUTION_SCHEMA_VERSION,
-        quickCheck: 'ok',
-        integrity: integrity.result,
-        integrityCheckedAt: this.lastIntegrityCheckAt,
-      };
+    if (!options?.stateRoot?.trim()) fail('EXECUTION_STATE_ROOT_REQUIRED', 'Execution state root is required');
+    const root = path.resolve(options.stateRoot);
+    if (this.opened && root !== this.root) fail('EXECUTION_STATE_ROOT_CONFLICT', 'Execution store is already open on a different state root');
+    this.root = root;
+    if (typeof options.lockTimeoutMs === 'number' && Number.isFinite(options.lockTimeoutMs) && options.lockTimeoutMs > 0) {
+      this.lockTimeoutMs = Math.min(60_000, Math.max(250, Math.trunc(options.lockTimeoutMs)));
     }
-    if (!options?.dbPath?.trim()) fail('EXECUTION_DB_PATH_REQUIRED', 'Execution database path is required');
-    const existedBeforeOpen = await databaseFileExists(options.dbPath);
-    const opened = await this.client.open(options);
-    const versionRows = await this.client.query<{ user_version: number }>('PRAGMA user_version');
-    const priorVersion = Number(versionRows[0]?.user_version ?? 0);
-    if (!Number.isInteger(priorVersion) || priorVersion < 0) fail('EXECUTION_SCHEMA_VERSION_INVALID', 'Execution user_version is invalid');
-    if (priorVersion > EXECUTION_SCHEMA_VERSION) {
-      fail('EXECUTION_SCHEMA_NEWER_THAN_RUNTIME', `Execution schema ${priorVersion} is newer than runtime ${EXECUTION_SCHEMA_VERSION}`);
+    for (const directory of ['state/runs', 'state/sync', 'events', 'artifacts', 'leases', 'checkpoints', 'journal/locks', 'index']) {
+      await mkdir(path.join(root, ...directory.split('/')), { recursive: true });
     }
 
-    let backupPath: string | undefined;
-    if (existedBeforeOpen && priorVersion < EXECUTION_SCHEMA_VERSION) {
-      backupPath = migrationBackupPath(options.dbPath, priorVersion, EXECUTION_SCHEMA_VERSION);
-      await this.client.backup(backupPath);
+    const markerPath = path.join(root, 'state.json');
+    const marker = await readJson<{ stateVersion: number }>(markerPath);
+    const priorStateVersion = marker?.stateVersion;
+    if (priorStateVersion !== undefined && (!Number.isInteger(priorStateVersion) || priorStateVersion > EXECUTION_STATE_VERSION)) {
+      fail('EXECUTION_STATE_VERSION_UNSUPPORTED', `Execution state version ${priorStateVersion} is newer than runtime version ${EXECUTION_STATE_VERSION}`);
+    }
+    if (priorStateVersion !== EXECUTION_STATE_VERSION) {
+      await writeAtomic(markerPath, `${JSON.stringify({ stateVersion: EXECUTION_STATE_VERSION, createdAt: Date.now() }, null, 2)}\n`, true);
     }
 
-    await this.client.exec(EXECUTION_SCHEMA_SQL);
-    const nodeColumns = await this.client.query<{ name: string }>('PRAGMA table_info(execution_nodes)');
-    const migrationOperations: ExecutionWorkerSqlOperation[] = [];
-    if (!nodeColumns.some((column) => column.name === 'expected_artifacts_json')) {
-      migrationOperations.push({
-        kind: 'exec',
-        sql: "ALTER TABLE execution_nodes ADD COLUMN expected_artifacts_json TEXT NOT NULL DEFAULT '[]'",
-      });
-    }
-    migrationOperations.push(
-      {
-        kind: 'run',
-        sql: 'INSERT OR IGNORE INTO execution_schema_migrations(version, name, applied_at) VALUES (?, ?, ?)',
-        params: [1, INITIAL_EXECUTION_MIGRATION, Date.now()],
-      },
-      {
-        kind: 'run',
-        sql: 'INSERT OR IGNORE INTO execution_schema_migrations(version, name, applied_at) VALUES (?, ?, ?)',
-        params: [2, EVIDENCE_EXECUTION_MIGRATION, Date.now()],
-      },
-      {
-        kind: 'run',
-        sql: 'INSERT OR IGNORE INTO execution_schema_migrations(version, name, applied_at) VALUES (?, ?, ?)',
-        params: [3, PARSED_OUTPUT_EXECUTION_MIGRATION, Date.now()],
-      },
-      {
-        kind: 'run',
-        sql: 'INSERT OR IGNORE INTO execution_schema_migrations(version, name, applied_at) VALUES (?, ?, ?)',
-        params: [4, ARTIFACT_INDEX_EXECUTION_MIGRATION, Date.now()],
-      },
-      { kind: 'exec', sql: `PRAGMA user_version = ${EXECUTION_SCHEMA_VERSION}` },
-    );
-    await this.client.transaction(migrationOperations);
-    const integrity = await this.client.integrity();
-    this.dbPath = options.dbPath;
-    this.lastIntegrity = integrity.result;
-    this.lastIntegrityCheckAt = Date.now();
-    if (!integrity.ok) fail('EXECUTION_INTEGRITY_FAILED', `Execution SQLite integrity failed: ${integrity.result}`);
+    const journalsRecovered = await this.replayJournals();
+    await this.rebuildRunIndex();
+    const runsRepaired = await this.repairRuns();
     this.opened = true;
+    this.lastIntegrity = 'ok';
+    this.lastIntegrityCheckAt = Date.now();
     return {
-      priorUserVersion: priorVersion,
-      schemaVersion: EXECUTION_SCHEMA_VERSION,
-      quickCheck: opened.quickCheck,
-      integrity: integrity.result,
-      integrityCheckedAt: this.lastIntegrityCheckAt,
-      ...(backupPath ? { migrationBackupPath: backupPath } : {}),
+      stateRoot: root,
+      stateVersion: EXECUTION_STATE_VERSION,
+      ...(priorStateVersion === undefined ? {} : { priorStateVersion }),
+      journalsRecovered,
+      runsRepaired,
+      openedAt: this.lastIntegrityCheckAt,
     };
   }
 
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
-    try {
-      if (this.opened) await this.client.checkpoint();
-    } finally {
-      await this.client.close();
-    }
+    this.opened = false;
+    await Promise.all([...this.chains.values()].map((chain) => chain.catch(() => undefined)));
+    this.chains.clear();
   }
 
   async status(): Promise<ExecutionStoreStatus> {
     this.assertReady();
+    this.lastIntegrityCheckAt = Date.now();
     try {
-      const integrity = await this.client.integrity();
-      this.lastIntegrity = integrity.result;
-      this.lastIntegrityCheckAt = Date.now();
+      const pending = (await listDir(this.path('journal'))).filter((name) => name.endsWith('.json'));
+      this.lastIntegrity = pending.length === 0 ? 'ok' : `pending_transactions:${pending.length}`;
       return {
-        healthy: integrity.ok,
-        schemaVersion: EXECUTION_SCHEMA_VERSION,
-        integrity: integrity.result,
-        dbPath: this.dbPath,
+        healthy: pending.length === 0,
+        stateVersion: EXECUTION_STATE_VERSION,
+        integrity: this.lastIntegrity,
+        stateRoot: this.root,
         lastIntegrityCheckAt: this.lastIntegrityCheckAt,
       };
     } catch (error) {
-      this.lastIntegrityCheckAt = Date.now();
+      this.lastIntegrity = `degraded:${error instanceof Error ? error.message : String(error)}`;
       return {
         healthy: false,
-        schemaVersion: EXECUTION_SCHEMA_VERSION,
-        integrity: `degraded:${error instanceof Error ? error.message : String(error)}`,
-        dbPath: this.dbPath,
+        stateVersion: EXECUTION_STATE_VERSION,
+        integrity: this.lastIntegrity,
+        stateRoot: this.root,
         lastIntegrityCheckAt: this.lastIntegrityCheckAt,
       };
     }
@@ -462,17 +532,20 @@ export class ExecutionStore {
 
   async systemCounts(): Promise<{ activeRuns: number; queuedSync: number; queuedNodes: number; runningNodes: number }> {
     this.assertReady();
-    const rows = await this.client.query<Record<string, unknown>>(`SELECT
-      (SELECT count(*) FROM execution_runs WHERE state IN ('planned','running')) AS active_runs,
-      (SELECT count(*) FROM execution_memory_sync_queue WHERE state IN ('queued','syncing','failed')) AS queued_sync,
-      (SELECT count(*) FROM execution_nodes WHERE state IN ('queued','ready')) AS queued_nodes,
-      (SELECT count(*) FROM execution_nodes WHERE state = 'running') AS running_nodes`);
-    return {
-      activeRuns: Number(rows[0]?.active_runs ?? 0),
-      queuedSync: Number(rows[0]?.queued_sync ?? 0),
-      queuedNodes: Number(rows[0]?.queued_nodes ?? 0),
-      runningNodes: Number(rows[0]?.running_nodes ?? 0),
-    };
+    const index = await this.readRunIndex();
+    let activeRuns = 0;
+    let queuedNodes = 0;
+    let runningNodes = 0;
+    for (const entry of index.values()) {
+      if (entry.state !== 'planned' && entry.state !== 'running') continue;
+      activeRuns += 1;
+      for (const node of await this.readNodes(entry.runId)) {
+        if (node.state === 'queued' || node.state === 'ready') queuedNodes += 1;
+        else if (node.state === 'running') runningNodes += 1;
+      }
+    }
+    const queuedSync = (await this.readSyncEntries()).filter((entry) => SYNC_PENDING.has(entry.state)).length;
+    return { activeRuns, queuedSync, queuedNodes, runningNodes };
   }
 
   async createRun(scope: ExecutionScope, input: CreateExecutionRunInput): Promise<ExecutionRunRecord> {
@@ -488,60 +561,34 @@ export class ExecutionStore {
     if (metadataJson.length > 20_000) fail('EXECUTION_METADATA_TOO_LARGE', 'metadata exceeds 20000 characters');
     const runId = randomUUID();
     const now = Date.now();
-    await this.client.transaction([{
-      kind: 'run',
-      sql: `INSERT INTO execution_runs(
-        id, principal_id, project_id, continuity_task_id, origin_route_context_id,
-        state, objective, max_concurrency, last_event_sequence, metadata_json,
-        created_at, started_at, finished_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'planned', ?, ?, 0, ?, ?, NULL, NULL, ?)`,
-      params: [
-        runId,
-        scope.principalId,
-        scope.projectId ?? null,
-        continuityTaskId ?? null,
-        originRouteContextId ?? null,
-        objective,
-        input.maxConcurrency,
-        metadataJson,
-        now,
-        now,
-      ],
-    }]);
-    return (await this.getRun(scope, runId))!;
+    const run: ExecutionRunRecord = {
+      runId,
+      principalId: scope.principalId,
+      ...(scope.projectId ? { projectId: scope.projectId } : {}),
+      ...(continuityTaskId ? { continuityTaskId } : {}),
+      ...(originRouteContextId ? { originRouteContextId } : {}),
+      state: 'planned',
+      objective,
+      maxConcurrency: input.maxConcurrency,
+      lastEventSequence: 0,
+      metadata: JSON.parse(metadataJson) as Record<string, unknown>,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.withLock(`run-${runId}`, async () => {
+      await this.commit({
+        writes: [{ path: this.runPath(runId), content: this.json(run) }],
+        appends: [{ path: this.path('index', 'runs.jsonl'), line: JSON.stringify(this.indexEntry(run)) }],
+      });
+    });
+    return run;
   }
 
   async persistGraph(scope: ExecutionScope, runId: string, nodes: ValidatedExecutionNode[]): Promise<void> {
     this.assertReady();
     const run = await this.requireRun(scope, runId);
     if (run.state !== 'planned') fail('EXECUTION_RUN_NOT_PLANNED', 'Graph can only be persisted while the run is planned');
-    const now = Date.now();
-    const operations: ExecutionWorkerSqlOperation[] = [];
-    for (const node of nodes) {
-      operations.push({
-        kind: 'run',
-        sql: `INSERT INTO execution_nodes(
-          run_id,node_id,purpose,command_text,cwd,state,timeout_ms,continue_on_failure,expected_artifacts_json,
-          attempt_count,last_error_json,created_at,updated_at,started_at,finished_at
-        ) VALUES (?,?,?,?,?,'queued',?,?,?,0,NULL,?,?,NULL,NULL)`,
-        params: [
-          runId, node.id, node.purpose, node.command, node.cwd, node.timeoutMs,
-          node.continueOnFailure ? 1 : 0, stableExecutionJson(node.expectedArtifacts ?? []), now, now,
-        ],
-      });
-    }
-    for (const node of nodes) {
-      for (const dependencyId of node.dependsOn) {
-        operations.push({
-          kind: 'run',
-          sql: `INSERT INTO execution_dependencies(run_id,node_id,depends_on_node_id,dependency_type,created_at)
-                VALUES (?,?,?,'hard',?)`,
-          params: [runId, node.id, dependencyId, now],
-        });
-      }
-    }
-    await this.client.transaction(operations);
-    await this.client.checkpoint();
+    await this.writeNodes(run, nodes);
   }
 
   async appendGraphNodes(scope: ExecutionScope, runId: string, nodes: ValidatedExecutionNode[]): Promise<void> {
@@ -551,49 +598,19 @@ export class ExecutionStore {
       fail('EXECUTION_RUN_NOT_EXTENSIBLE', `Nodes can only be added while run is planned or running, not ${run.state}`);
     }
     if (nodes.length < 1) fail('EXECUTION_NODES_REQUIRED', 'At least one execution node is required');
-    const now = Date.now();
-    const operations: ExecutionWorkerSqlOperation[] = [];
-    for (const node of nodes) {
-      operations.push({
-        kind: 'run',
-        sql: `INSERT INTO execution_nodes(
-          run_id,node_id,purpose,command_text,cwd,state,timeout_ms,continue_on_failure,expected_artifacts_json,
-          attempt_count,last_error_json,created_at,updated_at,started_at,finished_at
-        ) VALUES (?,?,?,?,?,'queued',?,?,?,0,NULL,?,?,NULL,NULL)`,
-        params: [
-          runId, node.id, node.purpose, node.command, node.cwd, node.timeoutMs,
-          node.continueOnFailure ? 1 : 0, stableExecutionJson(node.expectedArtifacts ?? []), now, now,
-        ],
-      });
-    }
-    for (const node of nodes) {
-      for (const dependencyId of node.dependsOn) {
-        operations.push({
-          kind: 'run',
-          sql: `INSERT INTO execution_dependencies(run_id,node_id,depends_on_node_id,dependency_type,created_at)
-                VALUES (?,?,?,'hard',?)`,
-          params: [runId, node.id, dependencyId, now],
-        });
-      }
-    }
-    await this.client.transaction(operations);
-    await this.client.checkpoint();
+    await this.writeNodes(run, nodes);
   }
 
   async getRun(scope: ExecutionScope, runId: string): Promise<ExecutionRunRecord | null> {
     this.assertReady();
     assertScope(scope);
     const normalizedRunId = boundedText(runId, 'runId', 5_000);
-    const rows = await this.client.query<RunRow>(
-      `SELECT id, principal_id, project_id, continuity_task_id, origin_route_context_id, state,
-              objective, max_concurrency, last_event_sequence, metadata_json, created_at,
-              started_at, finished_at, updated_at
-         FROM execution_runs
-        WHERE id = ? AND principal_id = ? AND IFNULL(project_id, '') = ?
-        LIMIT 1`,
-      [normalizedRunId, scope.principalId, scopeProject(scope)],
-    );
-    return rows[0] ? mapRun(rows[0]) : null;
+    // An ID that could never name a state directory simply does not exist, exactly as before.
+    if (!SAFE_SEGMENT.test(normalizedRunId)) return null;
+    const run = await this.readRun(normalizedRunId);
+    if (!run) return null;
+    if (run.principalId !== scope.principalId || (run.projectId ?? '') !== scopeProject(scope)) return null;
+    return run;
   }
 
   async listRuns(scope: ExecutionScope, limit = 100): Promise<ExecutionRunRecord[]> {
@@ -602,40 +619,21 @@ export class ExecutionStore {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
       fail('EXECUTION_LIMIT_INVALID', 'limit must be an integer between 1 and 1000');
     }
-    const rows = await this.client.query<RunRow>(
-      `SELECT id, principal_id, project_id, continuity_task_id, origin_route_context_id, state,
-              objective, max_concurrency, last_event_sequence, metadata_json, created_at,
-              started_at, finished_at, updated_at
-         FROM execution_runs
-        WHERE principal_id = ? AND IFNULL(project_id, '') = ?
-        ORDER BY updated_at DESC, id COLLATE BINARY ASC
-        LIMIT ?`,
-      [scope.principalId, scopeProject(scope), limit],
-    );
-    return rows.map(mapRun);
+    const project = scopeProject(scope);
+    const runs: ExecutionRunRecord[] = [];
+    for (const entry of (await this.readRunIndex()).values()) {
+      if (entry.principalId !== scope.principalId || entry.projectId !== project) continue;
+      const run = await this.readRun(entry.runId);
+      if (run) runs.push(run);
+    }
+    runs.sort((left, right) => right.updatedAt - left.updatedAt || left.runId.localeCompare(right.runId));
+    return runs.slice(0, limit);
   }
 
   async getNodes(scope: ExecutionScope, runId: string): Promise<ExecutionNodeRecord[]> {
     this.assertReady();
     await this.requireRun(scope, runId);
-    const rows = await this.client.query<NodeRow>(
-      `SELECT run_id,node_id,purpose,command_text,cwd,state,timeout_ms,continue_on_failure,expected_artifacts_json,
-              attempt_count,last_error_json,created_at,updated_at,started_at,finished_at
-         FROM execution_nodes WHERE run_id = ? ORDER BY node_id COLLATE BINARY`,
-      [runId],
-    );
-    const deps = await this.client.query<{ node_id: string; depends_on_node_id: string }>(
-      `SELECT node_id,depends_on_node_id FROM execution_dependencies
-        WHERE run_id = ? ORDER BY node_id COLLATE BINARY, depends_on_node_id COLLATE BINARY`,
-      [runId],
-    );
-    const byNode = new Map<string, string[]>();
-    for (const dep of deps) {
-      const list = byNode.get(dep.node_id) ?? [];
-      list.push(dep.depends_on_node_id);
-      byNode.set(dep.node_id, list);
-    }
-    return rows.map((row) => mapNode(row, byNode.get(row.node_id) ?? []));
+    return this.readNodes(runId);
   }
 
   async getNode(scope: ExecutionScope, runId: string, nodeId: string): Promise<ExecutionNodeRecord | null> {
@@ -643,21 +641,40 @@ export class ExecutionStore {
     return nodes.find((node) => node.nodeId === nodeId) ?? null;
   }
 
+  async bindWorkflow(scope: ExecutionScope, runId: string, binding?: import('./provenance.js').ExecutionWorkflowBinding, originRouteContextId?: string): Promise<void> {
+    await this.requireRun(scope, runId);
+    await this.withLock(`run-${runId}`, async () => {
+      const run = await this.readRun(runId);
+      if (!run) fail('EXECUTION_RUN_NOT_FOUND', 'Execution run was not found');
+      await this.commit({ writes: [{ path: this.runPath(runId), content: this.json({ ...run,
+        ...(originRouteContextId ? { originRouteContextId } : {}),
+        metadata: { ...run.metadata, ...(binding ? { workflowBinding: binding } : {}) } }) }] });
+    });
+  }
+
   async setRunState(scope: ExecutionScope, runId: string, state: ExecutionRunState): Promise<void> {
-    const run = await this.requireRun(scope, runId);
-    if (run.state === state) return;
-    const now = Date.now();
-    const terminal = RUN_TERMINAL.has(state);
-    await this.client.transaction([{
-      kind: 'run',
-      sql: `UPDATE execution_runs
-               SET state = ?,
-                   started_at = CASE WHEN ? = 'running' THEN COALESCE(started_at, ?) ELSE started_at END,
-                   finished_at = ?, updated_at = ?
-             WHERE id = ? AND principal_id = ? AND IFNULL(project_id, '') = ?`,
-      params: [state, state, now, terminal ? now : null, now, runId, scope.principalId, scopeProject(scope)],
-    }]);
-    if (terminal) await this.client.checkpoint();
+    const existing = await this.requireRun(scope, runId);
+    if (existing.state === state) return;
+    await this.withLock(`run-${runId}`, async () => {
+      const run = await this.readRun(runId);
+      if (!run) fail('EXECUTION_RUN_NOT_FOUND', 'Execution run was not found in authenticated scope');
+      const now = Date.now();
+      const terminal = RUN_TERMINAL.has(state);
+      const next: ExecutionRunRecord = {
+        ...run,
+        state,
+        ...(state === 'running' && run.startedAt === undefined ? { startedAt: now } : {}),
+        updatedAt: now,
+      };
+      if (terminal) next.finishedAt = now;
+      else delete next.finishedAt;
+      const transaction: Transaction = {
+        writes: [{ path: this.runPath(runId), content: this.json(next) }],
+        appends: [{ path: this.path('index', 'runs.jsonl'), line: JSON.stringify(this.indexEntry(next)) }],
+      };
+      if (terminal) transaction.writes!.push(await this.checkpointWrite(next));
+      await this.commit(transaction);
+    });
   }
 
   async setNodeState(
@@ -668,17 +685,23 @@ export class ExecutionStore {
     lastError?: Record<string, unknown>,
   ): Promise<void> {
     await this.requireRun(scope, runId);
-    const now = Date.now();
-    const terminal = ['succeeded', 'failed', 'blocked', 'interrupted', 'cancelled'].includes(state);
-    await this.client.transaction([{
-      kind: 'run',
-      sql: `UPDATE execution_nodes
-               SET state = ?, last_error_json = ?, updated_at = ?,
-                   started_at = CASE WHEN ? = 'running' THEN COALESCE(started_at, ?) ELSE started_at END,
-                   finished_at = ?
-             WHERE run_id = ? AND node_id = ?`,
-      params: [state, lastError ? stableExecutionJson(lastError) : null, now, state, now, terminal ? now : null, runId, nodeId],
-    }]);
+    await this.withLock(`run-${runId}`, async () => {
+      const node = await this.readNode(runId, nodeId);
+      if (!node) return;
+      const now = Date.now();
+      const next: ExecutionNodeRecord = {
+        ...node,
+        state,
+        updatedAt: now,
+        ...(state === 'running' && node.startedAt === undefined ? { startedAt: now } : {}),
+      };
+      if (lastError) next.lastError = lastError;
+      else delete next.lastError;
+      if (NODE_TERMINAL.has(state)) next.finishedAt = now;
+      else delete next.finishedAt;
+      const mutation = this.nodeMutation(next);
+      await this.commit({ writes: [mutation.write], appends: [mutation.append] });
+    });
   }
 
   async createAttempt(
@@ -690,73 +713,115 @@ export class ExecutionStore {
     paths: ExecutionAttemptPaths,
   ): Promise<void> {
     await this.requireRun(scope, runId);
-    const node = await this.getNode(scope, runId, nodeId);
-    if (!node) fail('EXECUTION_NODE_NOT_FOUND', 'Execution node was not found');
-    if (attemptNo !== node.attemptCount + 1) fail('EXECUTION_ATTEMPT_SEQUENCE_INVALID', 'attemptNo must increment exactly by one');
-    const now = Date.now();
-    await this.client.transaction([
-      {
-        kind: 'run',
-        sql: `INSERT INTO execution_attempts(
-          id,run_id,node_id,attempt_no,state,process_pid,stdout_path,stderr_path,result_path,
-          started_at,finished_at,exit_code,signal,stdout_bytes,stderr_bytes,stdout_sha256,stderr_sha256,error_json
-        ) VALUES (?,?,?,?,'running',NULL,?,?,?, ?,NULL,NULL,NULL,0,0,NULL,NULL,NULL)`,
-        params: [attemptId, runId, nodeId, attemptNo, paths.stdoutPath, paths.stderrPath, paths.resultPath, now],
-      },
-      {
-        kind: 'run',
-        sql: `UPDATE execution_nodes
-                 SET state='running', attempt_count=?, updated_at=?, started_at=COALESCE(started_at,?), finished_at=NULL, last_error_json=NULL
-               WHERE run_id=? AND node_id=?`,
-        params: [attemptNo, now, now, runId, nodeId],
-      },
-    ]);
+    await this.withLock(`run-${runId}`, async () => {
+      const node = await this.readNode(runId, nodeId);
+      if (!node) fail('EXECUTION_NODE_NOT_FOUND', 'Execution node was not found');
+      if (attemptNo !== node.attemptCount + 1) fail('EXECUTION_ATTEMPT_SEQUENCE_INVALID', 'attemptNo must increment exactly by one');
+      const now = Date.now();
+      const attempt: StoredAttempt = {
+        attemptId,
+        runId,
+        nodeId,
+        attemptNo,
+        state: 'running',
+        stdoutPath: paths.stdoutPath,
+        stderrPath: paths.stderrPath,
+        resultPath: paths.resultPath,
+        startedAt: now,
+        stdoutBytes: 0,
+        stderrBytes: 0,
+      };
+      const nextNode: ExecutionNodeRecord = {
+        ...node,
+        state: 'running',
+        attemptCount: attemptNo,
+        updatedAt: now,
+        ...(node.startedAt === undefined ? { startedAt: now } : {}),
+      };
+      delete nextNode.finishedAt;
+      delete nextNode.lastError;
+      const mutation = this.nodeMutation(nextNode);
+      await this.commit({
+        writes: [{ path: this.attemptPath(runId, nodeId, attemptNo), content: this.json(attempt) }, mutation.write],
+        appends: [mutation.append],
+      });
+    });
   }
 
-  async setAttemptPid(scope: ExecutionScope, runId: string, attemptId: string, pid: number | null): Promise<void> {
+  async setAttemptPid(
+    scope: ExecutionScope,
+    runId: string,
+    nodeId: string,
+    attemptNo: number,
+    pid: number | null,
+  ): Promise<void> {
     await this.requireRun(scope, runId);
-    await this.client.transaction([{
-      kind: 'run',
-      sql: 'UPDATE execution_attempts SET process_pid = ? WHERE id = ? AND run_id = ?',
-      params: [pid, attemptId, runId],
-    }]);
+    await this.withLock(`run-${runId}`, async () => {
+      const attempt = await this.readAttempt(runId, nodeId, attemptNo);
+      if (!attempt) return;
+      const next: StoredAttempt = { ...attempt };
+      if (pid === null) delete next.processPid;
+      else next.processPid = pid;
+      await this.commit({ writes: [{ path: this.attemptPath(runId, nodeId, attemptNo), content: this.json(next) }] });
+    });
   }
 
-  async completeAttempt(scope: ExecutionScope, marker: ExecutionResultMarker): Promise<void> {
+  async completeAttempt(scope: ExecutionScope, marker: ExecutionResultMarker, options: { workflowPending?: boolean } = {}): Promise<void> {
     await this.requireRun(scope, marker.runId);
-    const nodeState: ExecutionNodeState = marker.state === 'succeeded'
-      ? 'succeeded'
-      : marker.state === 'failed'
-        ? 'failed'
-        : marker.state;
+    const nodeState: ExecutionNodeState = marker.state;
     const error = marker.error
       ? { message: marker.error }
       : marker.state === 'failed'
         ? { exitCode: marker.exitCode, signal: marker.signal }
         : undefined;
-    const now = marker.finishedAt;
-    await this.client.transaction([
-      {
-        kind: 'run',
-        sql: `UPDATE execution_attempts
-                 SET state=?, finished_at=?, exit_code=?, signal=?, stdout_bytes=?, stderr_bytes=?,
-                     stdout_sha256=?, stderr_sha256=?, error_json=?
-               WHERE id=? AND run_id=? AND node_id=? AND attempt_no=?`,
-        params: [
-          marker.state, marker.finishedAt, marker.exitCode, marker.signal,
-          marker.stdoutBytes, marker.stderrBytes, marker.stdoutSha256, marker.stderrSha256,
-          error ? stableExecutionJson(error) : null,
-          marker.attemptId, marker.runId, marker.nodeId, marker.attemptNo,
-        ],
-      },
-      {
-        kind: 'run',
-        sql: `UPDATE execution_nodes
-                 SET state=?, last_error_json=?, finished_at=?, updated_at=?
-               WHERE run_id=? AND node_id=?`,
-        params: [nodeState, error ? stableExecutionJson(error) : null, now, now, marker.runId, marker.nodeId],
-      },
-    ]);
+    await this.withLock(`run-${marker.runId}`, async () => {
+      const attempt = await this.readAttempt(marker.runId, marker.nodeId, marker.attemptNo);
+      const node = await this.readNode(marker.runId, marker.nodeId);
+      if (!attempt || !node || attempt.attemptId !== marker.attemptId || node.attemptCount !== marker.attemptNo) {
+        fail('EXECUTION_RESULT_IDENTITY_MISMATCH', 'Result does not belong to the current node attempt');
+      }
+      if (attempt.state !== 'running' && (attempt.state !== marker.state
+        || (attempt.stdoutSha256 !== undefined && attempt.stdoutSha256 !== marker.stdoutSha256)
+        || (attempt.stderrSha256 !== undefined && attempt.stderrSha256 !== marker.stderrSha256))) {
+        fail('EXECUTION_RESULT_CONFLICT', 'Terminal attempt evidence cannot be replaced with conflicting results');
+      }
+      const writes: Array<{ path: string; content: string }> = [];
+      if (options.workflowPending && marker.state === 'succeeded' && marker.provenance?.sourceBound && marker.provenance.inputsStableDuringAttempt) {
+        const run = (await this.readRun(marker.runId))!;
+        const pending = executionWorkflowPending(run).filter(item => item.nodeId !== marker.nodeId);
+        pending.push({ nodeId: marker.nodeId, attemptId: marker.attemptId, attemptNo: marker.attemptNo });
+        writes.push({ path: this.runPath(marker.runId), content: this.json({ ...run, metadata: { ...run.metadata, workflowPendingAttempts: pending } }) });
+      }
+      if (attempt && attempt.attemptId === marker.attemptId) {
+        const next: StoredAttempt = {
+          ...attempt,
+          state: marker.state,
+          finishedAt: marker.finishedAt,
+          stdoutBytes: marker.stdoutBytes,
+          stderrBytes: marker.stderrBytes,
+          stdoutSha256: marker.stdoutSha256,
+          stderrSha256: marker.stderrSha256,
+        };
+        if (marker.exitCode === null) delete next.exitCode; else next.exitCode = marker.exitCode;
+        if (marker.signal === null) delete next.signal; else next.signal = marker.signal;
+        if (error) next.error = error; else delete next.error;
+        writes.push({ path: this.attemptPath(marker.runId, marker.nodeId, marker.attemptNo), content: this.json(next) });
+      }
+      const appends: Array<{ path: string; line: string }> = [];
+      if (node) {
+        const nextNode: ExecutionNodeRecord = {
+          ...node,
+          state: nodeState,
+          finishedAt: marker.finishedAt,
+          updatedAt: marker.finishedAt,
+        };
+        if (error) nextNode.lastError = error; else delete nextNode.lastError;
+        const mutation = this.nodeMutation(nextNode);
+        writes.push(mutation.write);
+        appends.push(mutation.append);
+      }
+      if (writes.length > 0) await this.commit({ writes, appends });
+    });
   }
 
   async failAttemptStart(
@@ -767,33 +832,36 @@ export class ExecutionStore {
     error: Error,
   ): Promise<void> {
     await this.requireRun(scope, runId);
-    const now = Date.now();
     const payload = { message: error.message, name: error.name };
-    await this.client.transaction([
-      {
-        kind: 'run',
-        sql: `UPDATE execution_attempts SET state='failed', finished_at=?, error_json=? WHERE id=? AND run_id=?`,
-        params: [now, stableExecutionJson(payload), attemptId, runId],
-      },
-      {
-        kind: 'run',
-        sql: `UPDATE execution_nodes SET state='failed', finished_at=?, updated_at=?, last_error_json=? WHERE run_id=? AND node_id=?`,
-        params: [now, now, stableExecutionJson(payload), runId, nodeId],
-      },
-    ]);
+    await this.withLock(`run-${runId}`, async () => {
+      const now = Date.now();
+      const writes: Array<{ path: string; content: string }> = [];
+      const located = await this.findAttemptById(runId, attemptId);
+      if (!located || located.attempt.nodeId !== nodeId) fail('EXECUTION_RESULT_IDENTITY_MISMATCH', 'Failure does not match an existing node attempt');
+      if (located.attempt.state !== 'running') return;
+      if (located) {
+        writes.push({
+          path: located.path,
+          content: this.json({ ...located.attempt, state: 'failed' as const, finishedAt: now, error: payload }),
+        });
+      }
+      const appends: Array<{ path: string; line: string }> = [];
+      const node = await this.readNode(runId, nodeId);
+      if (node && node.attemptCount === located.attempt.attemptNo) {
+        const mutation = this.nodeMutation({ ...node, state: 'failed', finishedAt: now, updatedAt: now, lastError: payload });
+        writes.push(mutation.write);
+        appends.push(mutation.append);
+      }
+      if (writes.length > 0) await this.commit({ writes, appends });
+    });
   }
 
   async listAttempts(scope: ExecutionScope, runId: string, nodeId?: string): Promise<ExecutionAttemptRecord[]> {
     await this.requireRun(scope, runId);
-    const rows = await this.client.query<AttemptRow>(
-      `SELECT id,run_id,node_id,attempt_no,state,process_pid,stdout_path,stderr_path,result_path,
-              started_at,finished_at,exit_code,signal,stdout_bytes,stderr_bytes,stdout_sha256,stderr_sha256,error_json
-         FROM execution_attempts
-        WHERE run_id = ? ${nodeId ? 'AND node_id = ?' : ''}
-        ORDER BY node_id COLLATE BINARY, attempt_no`,
-      nodeId ? [runId, nodeId] : [runId],
-    );
-    return rows.map(mapAttempt);
+    const attempts = await this.readAttempts(runId);
+    return attempts
+      .filter((attempt) => !nodeId || attempt.nodeId === nodeId)
+      .map(({ parsedOutputs, ...record }) => { void parsedOutputs; return record; });
   }
 
   async persistParsedOutput(
@@ -801,27 +869,21 @@ export class ExecutionStore {
     marker: ExecutionResultMarker,
     parsed: ParsedExecutionOutput,
   ): Promise<void> {
-    const run = await this.requireRun(scope, marker.runId);
-    void run;
-    const attempts = await this.listAttempts(scope, marker.runId, marker.nodeId);
-    const attempt = attempts.find((item) => item.attemptId === marker.attemptId && item.attemptNo === marker.attemptNo);
-    if (!attempt) fail('EXECUTION_ATTEMPT_NOT_FOUND', 'Execution attempt was not found for parsed output');
+    await this.requireRun(scope, marker.runId);
     if (parsed.nodeId !== marker.nodeId || parsed.attemptNo !== marker.attemptNo) {
       fail('EXECUTION_PARSED_OUTPUT_IDENTITY_MISMATCH', 'Parsed output identity does not match terminal attempt');
     }
     const parsedJson = stableExecutionJson(parsed);
     if (parsedJson.length > 100_000) fail('EXECUTION_PARSED_OUTPUT_TOO_LARGE', 'Parsed execution output exceeds 100000 characters');
-    await this.client.transaction([{
-      kind: 'run',
-      sql: `INSERT OR IGNORE INTO execution_parsed_outputs(
-        attempt_id,run_id,node_id,attempt_no,parser_version,status,source_stdout_sha256,source_stderr_sha256,
-        parsed_json,confidence,failure_code,created_at
-      ) VALUES (?,?,?,?,?,'available',?,?,?,?,NULL,?)`,
-      params: [
-        marker.attemptId, marker.runId, marker.nodeId, marker.attemptNo, parsed.parserVersion,
-        parsed.source.stdoutSha256, parsed.source.stderrSha256, parsedJson, parsed.confidence, Date.now(),
-      ],
-    }]);
+    await this.storeParsedOutput(marker, {
+      parserVersion: parsed.parserVersion,
+      status: 'available',
+      sourceStdoutSha256: parsed.source.stdoutSha256,
+      sourceStderrSha256: parsed.source.stderrSha256,
+      parsed,
+      confidence: parsed.confidence,
+      createdAt: Date.now(),
+    });
   }
 
   async persistParsedOutputFailure(
@@ -834,17 +896,14 @@ export class ExecutionStore {
     const safeVersion = boundedText(parserVersion || 'unknown', 'parserVersion', 128);
     const safeCode = boundedText(failureCode || 'EXECUTION_OUTPUT_PARSE_FAILED', 'failureCode', 256)
       .replace(/[^A-Za-z0-9_.:-]/g, '_');
-    await this.client.transaction([{
-      kind: 'run',
-      sql: `INSERT OR IGNORE INTO execution_parsed_outputs(
-        attempt_id,run_id,node_id,attempt_no,parser_version,status,source_stdout_sha256,source_stderr_sha256,
-        parsed_json,confidence,failure_code,created_at
-      ) VALUES (?,?,?,?,?,'degraded',?,?,NULL,NULL,?,?)`,
-      params: [
-        marker.attemptId, marker.runId, marker.nodeId, marker.attemptNo, safeVersion,
-        marker.stdoutSha256, marker.stderrSha256, safeCode, Date.now(),
-      ],
-    }]);
+    await this.storeParsedOutput(marker, {
+      parserVersion: safeVersion,
+      status: 'degraded',
+      sourceStdoutSha256: marker.stdoutSha256,
+      sourceStderrSha256: marker.stderrSha256,
+      failureCode: safeCode,
+      createdAt: Date.now(),
+    });
   }
 
   async getParsedOutput(
@@ -854,33 +913,29 @@ export class ExecutionStore {
     attemptNo: number,
   ): Promise<ExecutionParsedOutputView | null> {
     await this.requireRun(scope, runId);
-    const rows = await this.client.query<Record<string, unknown>>(
-      `SELECT parsed.parser_version, parsed.status, parsed.source_stdout_sha256, parsed.source_stderr_sha256,
-              parsed.parsed_json, parsed.confidence, parsed.failure_code
-         FROM execution_parsed_outputs AS parsed
-         JOIN execution_attempts AS attempt ON attempt.id = parsed.attempt_id
-         JOIN execution_runs AS run ON run.id = parsed.run_id
-        WHERE parsed.run_id = ? AND parsed.node_id = ? AND parsed.attempt_no = ?
-          AND run.principal_id = ? AND IFNULL(run.project_id, '') = ?
-        ORDER BY parsed.created_at DESC, parsed.parser_version DESC
-        LIMIT 1`,
-      [runId, nodeId, attemptNo, scope.principalId, scopeProject(scope)],
-    );
-    const row = rows[0];
-    if (!row) return null;
-    const parserVersion = String(row.parser_version);
-    if (String(row.status) === 'degraded') {
-      return { available: false, status: 'degraded', parserVersion, failureCode: String(row.failure_code ?? 'EXECUTION_OUTPUT_PARSE_FAILED') };
+    const attempt = await this.readAttempt(runId, nodeId, attemptNo);
+    const stored = [...(attempt?.parsedOutputs ?? [])]
+      .sort((left, right) => right.createdAt - left.createdAt || right.parserVersion.localeCompare(left.parserVersion))[0];
+    if (!stored) return null;
+    if (stored.status === 'degraded') {
+      return {
+        available: false,
+        status: 'degraded',
+        parserVersion: stored.parserVersion,
+        failureCode: stored.failureCode ?? 'EXECUTION_OUTPUT_PARSE_FAILED',
+      };
     }
-    const parsed = parseObject(row.parsed_json == null ? null : String(row.parsed_json)) as unknown as ParsedExecutionOutput | undefined;
-    if (!parsed) return null;
+    if (!stored.parsed) return null;
     return {
       available: true,
       status: 'available',
-      parserVersion,
-      confidence: Number(row.confidence ?? parsed.confidence),
-      source: { stdoutSha256: String(row.source_stdout_sha256 ?? parsed.source.stdoutSha256), stderrSha256: String(row.source_stderr_sha256 ?? parsed.source.stderrSha256) },
-      structured: parsed.structured ?? {},
+      parserVersion: stored.parserVersion,
+      confidence: stored.confidence ?? stored.parsed.confidence,
+      source: {
+        stdoutSha256: stored.sourceStdoutSha256 ?? stored.parsed.source.stdoutSha256,
+        stderrSha256: stored.sourceStderrSha256 ?? stored.parsed.source.stderrSha256,
+      },
+      structured: stored.parsed.structured ?? {},
     };
   }
 
@@ -895,67 +950,112 @@ export class ExecutionStore {
     if (!Number.isInteger(limit) || limit < 1 || limit > 5000) {
       fail('EXECUTION_ARTIFACT_RECONCILE_LIMIT_INVALID', 'artifact reconcile limit must be between 1 and 5000');
     }
-    const rows = await this.client.query<Record<string, unknown>>(
-      `SELECT run.principal_id, run.project_id, attempt.run_id, attempt.node_id, attempt.attempt_no
-         FROM execution_attempts AS attempt
-         JOIN execution_runs AS run ON run.id = attempt.run_id
-         JOIN execution_nodes AS node ON node.run_id = attempt.run_id AND node.node_id = attempt.node_id
-         LEFT JOIN execution_artifacts AS artifact
-           ON artifact.run_id = attempt.run_id AND artifact.node_id = attempt.node_id AND artifact.attempt_no = attempt.attempt_no
-        WHERE attempt.state = 'succeeded'
-          AND node.expected_artifacts_json <> '[]'
-          AND artifact.artifact_id IS NULL
-        ORDER BY attempt.run_id COLLATE BINARY, attempt.node_id COLLATE BINARY, attempt.attempt_no
-        LIMIT ?`,
-      [limit],
-    );
-    return rows.map((row) => ({
-      principalId: String(row.principal_id),
-      ...(row.project_id == null ? {} : { projectId: String(row.project_id) }),
-      runId: String(row.run_id),
-      nodeId: String(row.node_id),
-      attemptNo: Number(row.attempt_no),
-    }));
+    const out: Array<{ principalId: string; projectId?: string; runId: string; nodeId: string; attemptNo: number }> = [];
+    for (const entry of [...(await this.readRunIndex()).values()].sort((left, right) => left.runId.localeCompare(right.runId))) {
+      const nodes = new Map((await this.readNodes(entry.runId)).map((node) => [node.nodeId, node]));
+      const indexed = new Set((await this.readRunArtifacts(entry.runId)).map(artifactKey));
+      for (const attempt of await this.readAttempts(entry.runId)) {
+        if (attempt.state !== 'succeeded') continue;
+        const node = nodes.get(attempt.nodeId);
+        if (!node || node.expectedArtifacts.length === 0) continue;
+        if ([...indexed].some((key) => key.startsWith(`${attempt.nodeId}\u0000${attempt.attemptNo}\u0000`))) continue;
+        out.push({
+          principalId: entry.principalId,
+          ...(entry.projectId ? { projectId: entry.projectId } : {}),
+          runId: entry.runId,
+          nodeId: attempt.nodeId,
+          attemptNo: attempt.attemptNo,
+        });
+        if (out.length >= limit) return out;
+      }
+    }
+    return out;
+  }
+
+  async listRunsForRecovery(): Promise<ExecutionRunRecord[]> {
+    this.assertReady();
+    const runs: ExecutionRunRecord[] = [];
+    for (const entry of (await this.readRunIndex()).values()) {
+      if (entry.state !== 'running' && entry.state !== 'completed') continue;
+      const run = await this.readRun(entry.runId);
+      if (run?.state === 'running' || (run?.state === 'completed' && executionWorkflowPending(run).length > 0)) runs.push(run);
+    }
+    return runs.sort((a, b) => a.runId.localeCompare(b.runId));
+  }
+
+  async settleWorkflowAttempt(scope: ExecutionScope, marker: ExecutionResultMarker, error?: string, resumeState?: 'running' | 'completed'): Promise<void> {
+    await this.requireRun(scope, marker.runId);
+    await this.withLock(`run-${marker.runId}`, async () => {
+      const run = (await this.readRun(marker.runId))!;
+      const node = await this.readNode(marker.runId, marker.nodeId);
+      const attempt = await this.readAttempt(marker.runId, marker.nodeId, marker.attemptNo);
+      if (!node || node.attemptCount !== marker.attemptNo || attempt?.attemptId !== marker.attemptId || attempt.state !== 'succeeded') {
+        fail('EXECUTION_RESULT_IDENTITY_MISMATCH', 'Pending workflow callback does not belong to the current successful attempt');
+      }
+      const pending = executionWorkflowPending(run).filter(item => item.nodeId !== marker.nodeId);
+      if (error !== undefined) pending.push({ nodeId: marker.nodeId, attemptId: marker.attemptId, attemptNo: marker.attemptNo, error: error.slice(0, 2000) });
+      const metadata = { ...run.metadata };
+      if (pending.length) metadata.workflowPendingAttempts = pending;
+      else delete metadata.workflowPendingAttempts;
+      const next = { ...run, metadata };
+      if (resumeState) {
+        next.state = resumeState;
+        next.updatedAt = Date.now();
+        if (resumeState === 'completed') next.finishedAt = next.updatedAt;
+        else delete next.finishedAt;
+      }
+      await this.commit({ writes: [{ path: this.runPath(marker.runId), content: this.json(next) }],
+        ...(resumeState ? { appends: [{ path: this.path('index', 'runs.jsonl'), line: JSON.stringify(this.indexEntry(next)) }] } : {}) });
+    });
   }
 
   async listRecoverableAttempts(): Promise<ExecutionRecoverableAttempt[]> {
     this.assertReady();
-    const rows = await this.client.query<Record<string, unknown>>(
-      `SELECT attempt.id, attempt.run_id, attempt.node_id, attempt.attempt_no, attempt.state,
-              attempt.process_pid, attempt.stdout_path, attempt.stderr_path, attempt.result_path,
-              attempt.started_at, attempt.finished_at, attempt.exit_code, attempt.signal,
-              attempt.stdout_bytes, attempt.stderr_bytes, attempt.stdout_sha256, attempt.stderr_sha256,
-              attempt.error_json, run.principal_id, run.project_id, run.state AS run_state, node.state AS node_state
-         FROM execution_attempts AS attempt
-         JOIN execution_runs AS run ON run.id = attempt.run_id
-         JOIN execution_nodes AS node ON node.run_id = attempt.run_id AND node.node_id = attempt.node_id
-        WHERE attempt.state = 'running'
-        ORDER BY run.id COLLATE BINARY, node.node_id COLLATE BINARY, attempt.attempt_no`,
-    );
-    return rows.map((row) => ({
-      attemptId: String(row.id), runId: String(row.run_id), nodeId: String(row.node_id),
-      attemptNo: Number(row.attempt_no), state: String(row.state) as ExecutionAttemptState,
-      processPid: row.process_pid == null ? undefined : Number(row.process_pid),
-      stdoutPath: String(row.stdout_path), stderrPath: String(row.stderr_path), resultPath: String(row.result_path),
-      startedAt: Number(row.started_at), finishedAt: row.finished_at == null ? undefined : Number(row.finished_at),
-      exitCode: row.exit_code == null ? undefined : Number(row.exit_code), signal: row.signal == null ? undefined : String(row.signal),
-      stdoutBytes: Number(row.stdout_bytes), stderrBytes: Number(row.stderr_bytes),
-      stdoutSha256: row.stdout_sha256 == null ? undefined : String(row.stdout_sha256),
-      stderrSha256: row.stderr_sha256 == null ? undefined : String(row.stderr_sha256),
-      error: parseObject(row.error_json == null ? null : String(row.error_json)),
-      principalId: String(row.principal_id), projectId: row.project_id == null ? undefined : String(row.project_id),
-      runState: String(row.run_state) as ExecutionRunState, nodeState: String(row.node_state) as ExecutionNodeState,
-    }));
+    const out: ExecutionRecoverableAttempt[] = [];
+    for (const entry of [...(await this.readRunIndex()).values()].sort((left, right) => left.runId.localeCompare(right.runId))) {
+      const run = await this.readRun(entry.runId);
+      if (!run) continue;
+      const nodes = new Map((await this.readNodes(entry.runId)).map((node) => [node.nodeId, node]));
+      for (const attempt of await this.readAttempts(entry.runId)) {
+        if (attempt.state !== 'running') continue;
+        const node = nodes.get(attempt.nodeId);
+        if (!node) continue;
+        const { parsedOutputs, ...record } = attempt;
+        void parsedOutputs;
+        out.push({
+          ...record,
+          principalId: run.principalId,
+          ...(run.projectId ? { projectId: run.projectId } : {}),
+          runState: run.state,
+          nodeState: node.state,
+        });
+      }
+    }
+    return out;
   }
 
   async markAttemptInterrupted(scope: ExecutionScope, runId: string, nodeId: string, attemptId: string, reason: string): Promise<void> {
     await this.requireRun(scope, runId);
-    const now = Date.now();
-    const errorJson = stableExecutionJson({ reason: reason.slice(0, 2_000), recovery: true });
-    await this.client.transaction([
-      { kind: 'run', sql: `UPDATE execution_attempts SET state='interrupted', finished_at=?, error_json=? WHERE id=? AND run_id=? AND node_id=? AND state='running'`, params: [now, errorJson, attemptId, runId, nodeId] },
-      { kind: 'run', sql: `UPDATE execution_nodes SET state='interrupted', finished_at=?, updated_at=?, last_error_json=? WHERE run_id=? AND node_id=? AND state='running'`, params: [now, now, errorJson, runId, nodeId] },
-    ]);
+    const payload = { reason: reason.slice(0, 2_000), recovery: true };
+    await this.withLock(`run-${runId}`, async () => {
+      const now = Date.now();
+      const writes: Array<{ path: string; content: string }> = [];
+      const located = await this.findAttemptById(runId, attemptId);
+      if (located && located.attempt.nodeId === nodeId && located.attempt.state === 'running') {
+        writes.push({
+          path: located.path,
+          content: this.json({ ...located.attempt, state: 'interrupted' as const, finishedAt: now, error: payload }),
+        });
+      }
+      const appends: Array<{ path: string; line: string }> = [];
+      const node = await this.readNode(runId, nodeId);
+      if (node && node.state === 'running' && located?.attempt.nodeId === nodeId && node.attemptCount === located.attempt.attemptNo) {
+        const mutation = this.nodeMutation({ ...node, state: 'interrupted', finishedAt: now, updatedAt: now, lastError: payload });
+        writes.push(mutation.write);
+        appends.push(mutation.append);
+      }
+      if (writes.length > 0) await this.commit({ writes, appends });
+    });
   }
 
   async appendEvent(
@@ -965,53 +1065,30 @@ export class ExecutionStore {
     options: { nodeId?: string; attemptId?: string; payload?: Record<string, unknown> } = {},
   ): Promise<ExecutionEventRecord> {
     await this.requireRun(scope, runId);
-    const createdAt = Date.now();
     const payloadJson = stableExecutionJson(options.payload ?? {});
     if (payloadJson.length > 20_000) fail('EXECUTION_EVENT_PAYLOAD_TOO_LARGE', 'Execution event payload exceeds 20000 characters');
-    const results = await this.client.transaction([
-      {
-        kind: 'query',
-        mode: 'get',
-        sql: `UPDATE execution_runs
-                 SET last_event_sequence = last_event_sequence + 1, updated_at = ?
-               WHERE id = ? AND principal_id = ? AND IFNULL(project_id, '') = ?
-               RETURNING last_event_sequence`,
-        params: [createdAt, runId, scope.principalId, scopeProject(scope)],
-      },
-      {
-        kind: 'run',
-        sql: `INSERT INTO execution_events(run_id, sequence, event_type, node_id, attempt_id, payload_json, created_at)
-              SELECT id, last_event_sequence, ?, ?, ?, ?, ?
-                FROM execution_runs
-               WHERE id = ? AND principal_id = ? AND IFNULL(project_id, '') = ?`,
-        params: [
-          eventType, options.nodeId ?? null, options.attemptId ?? null, payloadJson, createdAt,
-          runId, scope.principalId, scopeProject(scope),
-        ],
-      },
-      {
-        kind: 'query',
-        mode: 'get',
-        sql: `SELECT event.run_id, event.sequence, event.event_type, event.node_id, event.attempt_id,
-                     event.payload_json, event.created_at
-                FROM execution_events AS event
-                JOIN execution_runs AS run ON run.id = event.run_id
-               WHERE event.run_id = ? AND event.sequence = run.last_event_sequence
-                 AND run.principal_id = ? AND IFNULL(run.project_id, '') = ?`,
-        params: [runId, scope.principalId, scopeProject(scope)],
-      },
-    ]);
-    const row = results[2] as Record<string, unknown> | undefined;
-    if (!row) fail('EXECUTION_EVENT_PERSIST_FAILED', 'Execution event transaction did not return a persisted event');
-    return {
-      runId: String(row.run_id),
-      sequence: Number(row.sequence),
-      eventType: String(row.event_type) as ExecutionEventType,
-      nodeId: row.node_id == null ? undefined : String(row.node_id),
-      attemptId: row.attempt_id == null ? undefined : String(row.attempt_id),
-      payload: parseObject(String(row.payload_json)) ?? {},
-      createdAt: Number(row.created_at),
-    };
+    return this.withLock(`run-${runId}`, async () => {
+      const run = await this.readRun(runId);
+      if (!run) fail('EXECUTION_EVENT_PERSIST_FAILED', 'Execution run vanished before its event could be persisted');
+      const createdAt = Date.now();
+      const sequence = run.lastEventSequence + 1;
+      const stored: StoredEvent = {
+        runId,
+        sequence,
+        globalSequence: await this.nextGlobalSequence(),
+        eventType,
+        ...(options.nodeId ? { nodeId: options.nodeId } : {}),
+        ...(options.attemptId ? { attemptId: options.attemptId } : {}),
+        payload: JSON.parse(payloadJson) as Record<string, unknown>,
+        payloadHash: sha256Hex(payloadJson),
+        createdAt,
+      };
+      // Append first, materialise second: a crash between the two leaves the log ahead of run.json,
+      // which is exactly the drift repairRuns() heals on the next open. No journal is needed.
+      await appendLine(this.eventsPath(runId), JSON.stringify(stored));
+      await writeAtomic(this.runPath(runId), this.json({ ...run, lastEventSequence: sequence, updatedAt: createdAt }));
+      return eventRecord(stored);
+    });
   }
 
   async getEvents(
@@ -1028,38 +1105,90 @@ export class ExecutionStore {
     if (!Number.isInteger(limit) || limit < 1 || limit > 5000) {
       fail('EXECUTION_EVENT_LIMIT_INVALID', 'event limit must be between 1 and 5000');
     }
-    const eventTypes = [...new Set(filters?.eventTypes ?? [])];
-    const nodeIds = [...new Set(filters?.nodeIds ?? [])];
-    const params: Array<string | number | null> = [runId, scope.principalId, scopeProject(scope), afterSequence];
-    let where = `event.run_id = ? AND run.principal_id = ? AND IFNULL(run.project_id, '') = ? AND event.sequence > ?`;
-    if (eventTypes.length > 0) {
-      where += ` AND event.event_type IN (${eventTypes.map(() => '?').join(',')})`;
-      params.push(...eventTypes);
+    const eventTypes = new Set(filters?.eventTypes ?? []);
+    const nodeIds = new Set(filters?.nodeIds ?? []);
+    const out: ExecutionEventRecord[] = [];
+    for (const stored of await readLines<StoredEvent>(this.eventsPath(runId))) {
+      if (stored.sequence <= afterSequence) continue;
+      if (eventTypes.size > 0 && !eventTypes.has(stored.eventType)) continue;
+      if (nodeIds.size > 0 && (!stored.nodeId || !nodeIds.has(stored.nodeId))) continue;
+      out.push(eventRecord(stored));
+      if (out.length >= limit) break;
     }
-    if (nodeIds.length > 0) {
-      where += ` AND event.node_id IN (${nodeIds.map(() => '?').join(',')})`;
-      params.push(...nodeIds);
+    return out;
+  }
+
+  async recordArtifacts(
+    scope: ExecutionScope,
+    runId: string,
+    nodeId: string,
+    attemptNo: number,
+    sourceResultRef: string,
+    artifacts: NewExecutionArtifact[],
+  ): Promise<ExecutionArtifactRecord[]> {
+    await this.requireRun(scope, runId);
+    if (artifacts.length === 0) return [];
+    return this.withLock(`run-${runId}`, async () => {
+      const existing = await this.readRunArtifacts(runId);
+      const known = new Set(existing.map(artifactKey));
+      const now = Date.now();
+      const fresh: ExecutionArtifactRecord[] = [];
+      for (const artifact of [...artifacts].sort((left, right) => left.path.localeCompare(right.path))) {
+        const key = artifactKey({ nodeId, attemptNo, path: artifact.path });
+        if (known.has(key)) continue;
+        known.add(key);
+        fresh.push({
+          artifactId: randomUUID(),
+          runId,
+          nodeId,
+          attemptNo,
+          path: artifact.path,
+          artifactType: artifact.artifactType,
+          verification: 'verified',
+          ...(artifact.sha256 ? { sha256: artifact.sha256 } : {}),
+          ...(artifact.size === undefined ? {} : { size: artifact.size }),
+          ...(artifact.modifiedAt === undefined ? {} : { modifiedAt: artifact.modifiedAt }),
+          sourceResultRef,
+          metadata: artifact.metadata ?? {},
+          createdAt: now,
+        });
+      }
+      if (fresh.length === 0) return [];
+      await this.commit({
+        appends: fresh.flatMap((record) => [
+          { path: this.artifactsPath(runId), line: JSON.stringify(record) },
+          { path: this.path('index', 'artifacts.jsonl'), line: JSON.stringify(record) },
+        ]),
+      });
+      return fresh;
+    });
+  }
+
+  async listArtifacts(scope: ExecutionScope, query: ExecutionArtifactQuery = {}): Promise<ExecutionArtifactRecord[]> {
+    this.assertReady();
+    assertScope(scope);
+    const project = scopeProject(scope);
+    const index = await this.readRunIndex();
+    const source = query.runId
+      ? await this.readRunArtifacts(query.runId)
+      : await this.readArtifactIndex();
+    const matched: ExecutionArtifactRecord[] = [];
+    for (const artifact of source) {
+      if (query.runId && artifact.runId !== query.runId) continue;
+      if (query.nodeId && artifact.nodeId !== query.nodeId) continue;
+      if (query.attemptNo !== undefined && artifact.attemptNo !== query.attemptNo) continue;
+      if (query.sha256 && artifact.sha256 !== query.sha256) continue;
+      if (query.artifactType && artifact.artifactType !== query.artifactType) continue;
+      if (query.createdAtMax !== undefined && artifact.createdAt > query.createdAtMax) continue;
+      const entry = index.get(artifact.runId);
+      if (!entry || entry.principalId !== scope.principalId || entry.projectId !== project) continue;
+      if (query.terminalRunsOnly && !RUN_TERMINAL.has(entry.state)) continue;
+      matched.push(artifact);
     }
-    params.push(limit);
-    const rows = await this.client.query<Record<string, unknown>>(
-      `SELECT event.run_id, event.sequence, event.event_type, event.node_id, event.attempt_id,
-              event.payload_json, event.created_at
-         FROM execution_events AS event
-         JOIN execution_runs AS run ON run.id = event.run_id
-        WHERE ${where}
-        ORDER BY event.sequence ASC
-        LIMIT ?`,
-      params,
-    );
-    return rows.map((row) => ({
-      runId: String(row.run_id),
-      sequence: Number(row.sequence),
-      eventType: String(row.event_type) as ExecutionEventType,
-      nodeId: row.node_id == null ? undefined : String(row.node_id),
-      attemptId: row.attempt_id == null ? undefined : String(row.attempt_id),
-      payload: parseObject(String(row.payload_json)) ?? {},
-      createdAt: Number(row.created_at),
-    }));
+    const oldestFirst = query.order === 'oldest';
+    matched.sort((left, right) => (oldestFirst ? left.createdAt - right.createdAt : right.createdAt - left.createdAt)
+      || left.artifactId.localeCompare(right.artifactId));
+    return query.limit === undefined ? matched : matched.slice(0, query.limit);
   }
 
   async enqueueMemorySync(
@@ -1073,72 +1202,40 @@ export class ExecutionStore {
     const normalizedKey = boundedText(syncKey, 'syncKey', 5_000);
     const payloadJson = stableExecutionJson(payload);
     if (payloadJson.length > 50_000) fail('EXECUTION_SYNC_PAYLOAD_TOO_LARGE', 'Execution memory sync payload exceeds 50000 characters');
-    const now = Date.now();
-    await this.client.transaction([{
-      kind: 'run',
-      sql: `INSERT INTO execution_memory_sync_queue(
-              id, run_id, event_sequence, sync_key, payload_json, state, attempts, last_error, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, 'queued', 0, NULL, ?, ?)
-            ON CONFLICT(sync_key) DO NOTHING`,
-      params: [randomUUID(), runId, eventSequence ?? null, normalizedKey, payloadJson, now, now],
-    }]);
+    const target = this.syncPath(normalizedKey);
+    await this.withLock('sync', async () => {
+      if (await readJson<StoredSyncEntry>(target)) return;
+      const now = Date.now();
+      const entry: StoredSyncEntry = {
+        queueId: randomUUID(),
+        runId,
+        ...(eventSequence === undefined ? {} : { eventSequence }),
+        syncKey: normalizedKey,
+        payload: JSON.parse(payloadJson) as Record<string, unknown>,
+        state: 'queued',
+        attempts: 0,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await this.commit({ writes: [{ path: target, content: this.json(entry) }] });
+    });
   }
 
-  async listMemorySyncQueue(
-    scope: ExecutionScope,
-    limit = 100,
-  ): Promise<Array<{
-    queueId: string;
-    runId: string;
-    eventSequence?: number;
-    syncKey: string;
-    payload: Record<string, unknown>;
-    state: 'queued' | 'syncing' | 'failed';
-    attempts: number;
-    lastError?: string;
-    createdAt: number;
-    updatedAt: number;
-  }>> {
+  async listMemorySyncQueue(scope: ExecutionScope, limit = 100): Promise<ExecutionMemorySyncRecord[]> {
+    this.assertReady();
     assertScope(scope);
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
       fail('EXECUTION_SYNC_LIMIT_INVALID', 'sync queue limit must be between 1 and 1000');
     }
-    const rows = await this.client.query<Record<string, unknown>>(
-      `SELECT queue.id, queue.run_id, queue.event_sequence, queue.sync_key, queue.payload_json,
-              queue.state, queue.attempts, queue.last_error, queue.created_at, queue.updated_at
-         FROM execution_memory_sync_queue AS queue
-         JOIN execution_runs AS run ON run.id = queue.run_id
-        WHERE run.principal_id = ? AND IFNULL(run.project_id, '') = ?
-          AND queue.state IN ('queued','syncing','failed')
-        ORDER BY queue.created_at ASC, queue.id COLLATE BINARY ASC
-        LIMIT ?`,
-      [scope.principalId, scopeProject(scope), limit],
-    );
-    return rows.map((row) => ({
-      queueId: String(row.id),
-      runId: String(row.run_id),
-      eventSequence: row.event_sequence == null ? undefined : Number(row.event_sequence),
-      syncKey: String(row.sync_key),
-      payload: parseObject(String(row.payload_json)) ?? {},
-      state: String(row.state) as 'queued' | 'syncing' | 'failed',
-      attempts: Number(row.attempts),
-      lastError: row.last_error == null ? undefined : String(row.last_error),
-      createdAt: Number(row.created_at),
-      updatedAt: Number(row.updated_at),
-    }));
+    return (await this.scopedSyncEntries(scope))
+      .sort((left, right) => left.createdAt - right.createdAt || left.queueId.localeCompare(right.queueId))
+      .slice(0, limit) as ExecutionMemorySyncRecord[];
   }
 
   async countMemorySyncQueue(scope: ExecutionScope): Promise<number> {
+    this.assertReady();
     assertScope(scope);
-    const rows = await this.client.query<{ count: number }>(
-      `SELECT count(*) AS count
-         FROM execution_memory_sync_queue AS queue
-         JOIN execution_runs AS run ON run.id = queue.run_id
-        WHERE run.principal_id = ? AND IFNULL(run.project_id, '') = ?
-          AND queue.state IN ('queued','syncing','failed')`,
-      [scope.principalId, scopeProject(scope)],
-    );
-    return Number(rows[0]?.count ?? 0);
+    return (await this.scopedSyncEntries(scope)).length;
   }
 
   async markMemorySyncState(
@@ -1147,51 +1244,336 @@ export class ExecutionStore {
     state: 'syncing' | 'synced' | 'failed',
     error?: string,
   ): Promise<void> {
+    this.assertReady();
     assertScope(scope);
-    const now = Date.now();
-    await this.client.transaction([{
-      kind: 'run',
-      sql: `UPDATE execution_memory_sync_queue
-               SET state = ?, attempts = attempts + 1, last_error = ?, updated_at = ?
-             WHERE id = ? AND run_id IN (
-               SELECT id FROM execution_runs WHERE principal_id = ? AND IFNULL(project_id, '') = ?
-             )`,
-      params: [state, error ? error.slice(0, 2_000) : null, now, queueId, scope.principalId, scopeProject(scope)],
-    }]);
+    const project = scopeProject(scope);
+    const index = await this.readRunIndex();
+    await this.withLock('sync', async () => {
+      for (const name of await listDir(this.path('state', 'sync'))) {
+        const target = path.join(this.path('state', 'sync'), name);
+        const entry = await readJson<StoredSyncEntry>(target);
+        if (!entry || entry.queueId !== queueId) continue;
+        const run = index.get(entry.runId);
+        if (!run || run.principalId !== scope.principalId || run.projectId !== project) return;
+        const next: StoredSyncEntry = { ...entry, state, attempts: entry.attempts + 1, updatedAt: Date.now() };
+        if (error) next.lastError = error.slice(0, 2_000);
+        else delete next.lastError;
+        await this.commit({ writes: [{ path: target, content: this.json(next) }] });
+        return;
+      }
+    });
   }
 
   async resetNodeForRetry(scope: ExecutionScope, runId: string, nodeId: string): Promise<void> {
-    const run = await this.requireRun(scope, runId);
-    const node = await this.getNode(scope, runId, nodeId);
-    if (!node) fail('EXECUTION_NODE_NOT_FOUND', 'Execution node was not found');
-    if (!['failed', 'interrupted', 'cancelled'].includes(node.state)) {
-      fail('EXECUTION_RETRY_NOT_ALLOWED', `Node ${nodeId} is not retryable from state ${node.state}`);
-    }
+    await this.requireRun(scope, runId);
+    await this.withLock(`run-${runId}`, async () => {
+      const run = await this.readRun(runId);
+      const node = await this.readNode(runId, nodeId);
+      if (!run) fail('EXECUTION_RUN_NOT_FOUND', 'Execution run was not found in authenticated scope');
+      if (!node) fail('EXECUTION_NODE_NOT_FOUND', 'Execution node was not found');
+      if (!['failed', 'interrupted', 'cancelled'].includes(node.state) && !(node.state === 'blocked' && node.lastError?.reason === 'dispatch_guard')) {
+        fail('EXECUTION_RETRY_NOT_ALLOWED', `Node ${nodeId} is not retryable from state ${node.state}`);
+      }
+      const now = Date.now();
+      const requeue = (target: ExecutionNodeRecord) => {
+        const next: ExecutionNodeRecord = { ...target, state: 'queued', updatedAt: now };
+        delete next.lastError;
+        delete next.finishedAt;
+        return this.nodeMutation(next);
+      };
+      const mutations = [requeue(node)];
+      for (const blocked of await this.readNodes(runId)) {
+        if (blocked.state === 'blocked' && blocked.nodeId !== nodeId) mutations.push(requeue(blocked));
+      }
+      const nextRun: ExecutionRunRecord = { ...run, state: 'running', updatedAt: now };
+      delete nextRun.finishedAt;
+      await this.commit({
+        writes: [...mutations.map((mutation) => mutation.write), { path: this.runPath(runId), content: this.json(nextRun) }],
+        appends: [
+          ...mutations.map((mutation) => mutation.append),
+          { path: this.path('index', 'runs.jsonl'), line: JSON.stringify(this.indexEntry(nextRun)) },
+        ],
+      });
+    });
+  }
+
+  // --- internals -------------------------------------------------------------------------------
+
+  private path(...segments: string[]): string {
+    return path.join(this.root, ...segments);
+  }
+
+  private runDir(runId: string): string {
+    return this.path('state', 'runs', safeSegment(runId, 'runId'));
+  }
+
+  private runPath(runId: string): string {
+    return path.join(this.runDir(runId), 'run.json');
+  }
+
+  private nodePath(runId: string, nodeId: string): string {
+    return path.join(this.runDir(runId), 'nodes', `${safeSegment(nodeId, 'nodeId')}.json`);
+  }
+
+  private nodeIndexPath(runId: string): string {
+    return path.join(this.runDir(runId), 'nodes.index.jsonl');
+  }
+
+  /**
+   * One node file per node stays the observable materialised state; the per-run append-only node
+   * manifest written in the same transaction is what makes reading a whole graph a single read.
+   */
+  private nodeMutation(node: ExecutionNodeRecord): { write: { path: string; content: string }; append: { path: string; line: string } } {
+    return {
+      write: { path: this.nodePath(node.runId, node.nodeId), content: this.json(node) },
+      append: { path: this.nodeIndexPath(node.runId), line: JSON.stringify(node) },
+    };
+  }
+
+  private attemptPath(runId: string, nodeId: string, attemptNo: number): string {
+    return path.join(this.runDir(runId), 'attempts', safeSegment(nodeId, 'nodeId'), `${String(attemptNo).padStart(3, '0')}.json`);
+  }
+
+  private eventsPath(runId: string): string {
+    return this.path('events', `${safeSegment(runId, 'runId')}.jsonl`);
+  }
+
+  private artifactsPath(runId: string): string {
+    return this.path('artifacts', `${safeSegment(runId, 'runId')}.jsonl`);
+  }
+
+  private syncPath(syncKey: string): string {
+    return this.path('state', 'sync', `${sha256Hex(syncKey)}.json`);
+  }
+
+  private json(value: unknown): string {
+    return `${JSON.stringify(value, null, 2)}\n`;
+  }
+
+  private indexEntry(run: ExecutionRunRecord): RunIndexEntry {
+    return {
+      runId: run.runId,
+      principalId: run.principalId,
+      projectId: run.projectId ?? '',
+      state: run.state,
+      ...(run.continuityTaskId ? { continuityTaskId: run.continuityTaskId } : {}),
+      createdAt: run.createdAt,
+    };
+  }
+
+  private async checkpointWrite(run: ExecutionRunRecord): Promise<{ path: string; content: string }> {
+    const nodes = await this.readNodes(run.runId);
+    const body = {
+      runId: run.runId,
+      state: run.state,
+      lastEventSequence: run.lastEventSequence,
+      nodes: nodes.map((node) => ({ nodeId: node.nodeId, state: node.state, attemptCount: node.attemptCount })),
+      checkpointedAt: Date.now(),
+    };
+    return {
+      path: this.path('checkpoints', `${safeSegment(run.runId, 'runId')}.json`),
+      content: this.json({ ...body, contentHash: sha256Hex(stableExecutionJson({ ...body, checkpointedAt: 0 })) }),
+    };
+  }
+
+  private async writeNodes(run: ExecutionRunRecord, nodes: ValidatedExecutionNode[]): Promise<void> {
     const now = Date.now();
-    await this.client.transaction([
-      {
-        kind: 'run',
-        sql: `UPDATE execution_nodes SET state='queued', last_error_json=NULL, finished_at=NULL, updated_at=?
-               WHERE run_id=? AND node_id=?`,
-        params: [now, runId, nodeId],
-      },
-      {
-        kind: 'run',
-        sql: `UPDATE execution_nodes SET state='queued', last_error_json=NULL, finished_at=NULL, updated_at=?
-               WHERE run_id=? AND state='blocked'`,
-        params: [now, runId],
-      },
-      {
-        kind: 'run',
-        sql: `UPDATE execution_runs SET state='running', finished_at=NULL, updated_at=?
-               WHERE id=? AND principal_id=? AND IFNULL(project_id,'')=?`,
-        params: [now, runId, scope.principalId, scopeProject(scope)],
-      },
-    ]);
-    void run;
+    await this.withLock(`run-${run.runId}`, async () => {
+      const mutations = nodes.map((node) => this.nodeMutation({
+        runId: run.runId,
+        nodeId: node.id,
+        purpose: node.purpose,
+        command: node.command,
+        cwd: node.cwd,
+        state: 'queued',
+        timeoutMs: node.timeoutMs,
+        expectedArtifacts: node.expectedArtifacts ?? [],
+        stepIds: node.stepIds ?? [],
+        ...(node.resources ? { resources: node.resources } : {}),
+        ...(node.inputs ? { inputs: node.inputs } : {}),
+        ...(node.toolchain ? { toolchain: node.toolchain } : {}),
+        attemptCount: 0,
+        dependsOn: [...node.dependsOn].sort((left, right) => left.localeCompare(right)),
+        createdAt: now,
+        updatedAt: now,
+      }));
+      const current = (await this.readRun(run.runId)) ?? run;
+      await this.commit({
+        writes: [...mutations.map((mutation) => mutation.write), await this.checkpointWrite(current)],
+        appends: mutations.map((mutation) => mutation.append),
+      });
+    });
+  }
+
+  private async storeParsedOutput(marker: ExecutionResultMarker, entry: StoredParsedOutput): Promise<void> {
+    await this.withLock(`run-${marker.runId}`, async () => {
+      const attempt = await this.readAttempt(marker.runId, marker.nodeId, marker.attemptNo);
+      if (!attempt || attempt.attemptId !== marker.attemptId) {
+        fail('EXECUTION_ATTEMPT_NOT_FOUND', 'Execution attempt was not found for parsed output');
+      }
+      const parsedOutputs = attempt.parsedOutputs ?? [];
+      if (parsedOutputs.some((item) => item.parserVersion === entry.parserVersion)) return;
+      await this.commit({
+        writes: [{
+          path: this.attemptPath(marker.runId, marker.nodeId, marker.attemptNo),
+          content: this.json({ ...attempt, parsedOutputs: [...parsedOutputs, entry] }),
+        }],
+      });
+    });
+  }
+
+  private async scopedSyncEntries(scope: ExecutionScope): Promise<StoredSyncEntry[]> {
+    const project = scopeProject(scope);
+    const index = await this.readRunIndex();
+    return (await this.readSyncEntries()).filter((entry) => {
+      if (!SYNC_PENDING.has(entry.state)) return false;
+      const run = index.get(entry.runId);
+      return Boolean(run && run.principalId === scope.principalId && run.projectId === project);
+    });
+  }
+
+  private async readSyncEntries(): Promise<StoredSyncEntry[]> {
+    const directory = this.path('state', 'sync');
+    const out: StoredSyncEntry[] = [];
+    for (const name of await listDir(directory)) {
+      if (!name.endsWith('.json')) continue;
+      const entry = await readJson<StoredSyncEntry>(path.join(directory, name));
+      if (entry) out.push(entry);
+    }
+    return out;
+  }
+
+  private async readRun(runId: string): Promise<ExecutionRunRecord | null> {
+    return readJson<ExecutionRunRecord>(this.runPath(runId));
+  }
+
+  private async readNodes(runId: string): Promise<ExecutionNodeRecord[]> {
+    const lines = await readLines<ExecutionNodeRecord>(this.nodeIndexPath(runId));
+    if (lines.length === 0) return this.rebuildNodeIndex(runId);
+    const byId = new Map<string, ExecutionNodeRecord>();
+    for (const node of lines) byId.set(node.nodeId, this.normalizeNode(node));
+    const nodes = [...byId.values()].sort((left, right) => left.nodeId.localeCompare(right.nodeId));
+    if (lines.length > byId.size * 8 + 32) {
+      await writeAtomic(this.nodeIndexPath(runId), `${nodes.map((node) => JSON.stringify(node)).join('\n')}\n`).catch(() => undefined);
+    }
+    return nodes;
+  }
+
+  private async readNodeFiles(runId: string): Promise<ExecutionNodeRecord[]> {
+    const directory = path.join(this.runDir(runId), 'nodes');
+    const out: ExecutionNodeRecord[] = [];
+    for (const name of await listDir(directory)) {
+      if (!name.endsWith('.json')) continue;
+      const node = await readJson<ExecutionNodeRecord>(path.join(directory, name));
+      if (node) out.push(this.normalizeNode(node));
+    }
+    return out.sort((left, right) => left.nodeId.localeCompare(right.nodeId));
+  }
+
+  private async rebuildNodeIndex(runId: string): Promise<ExecutionNodeRecord[]> {
+    const nodes = await this.readNodeFiles(runId);
+    if (nodes.length > 0) {
+      await writeAtomic(this.nodeIndexPath(runId), `${nodes.map((node) => JSON.stringify(node)).join('\n')}\n`).catch(() => undefined);
+    }
+    return nodes;
+  }
+
+  private async readNode(runId: string, nodeId: string): Promise<ExecutionNodeRecord | null> {
+    const node = await readJson<ExecutionNodeRecord>(this.nodePath(runId, nodeId));
+    return node ? this.normalizeNode(node) : null;
+  }
+
+  /** Additive reader migration keeps historical files and markers intact. */
+  private normalizeNode(raw: ExecutionNodeRecord): ExecutionNodeRecord {
+    const { continueOnFailure: _legacy, ...node } = raw as ExecutionNodeRecord & { continueOnFailure?: boolean };
+    void _legacy;
+    return { ...node, expectedArtifacts: node.expectedArtifacts ?? [], stepIds: node.stepIds ?? [] };
+  }
+
+  private async readAttempt(runId: string, nodeId: string, attemptNo: number): Promise<StoredAttempt | null> {
+    return readJson<StoredAttempt>(this.attemptPath(runId, nodeId, attemptNo));
+  }
+
+  private async readAttempts(runId: string): Promise<StoredAttempt[]> {
+    const root = path.join(this.runDir(runId), 'attempts');
+    const out: StoredAttempt[] = [];
+    for (const nodeDirectory of await listDir(root)) {
+      for (const name of await listDir(path.join(root, nodeDirectory))) {
+        if (!name.endsWith('.json')) continue;
+        const attempt = await readJson<StoredAttempt>(path.join(root, nodeDirectory, name));
+        if (attempt) out.push(attempt);
+      }
+    }
+    return out.sort((left, right) => left.nodeId.localeCompare(right.nodeId) || left.attemptNo - right.attemptNo);
+  }
+
+  private async findAttemptById(runId: string, attemptId: string): Promise<{ attempt: StoredAttempt; path: string } | null> {
+    for (const attempt of await this.readAttempts(runId)) {
+      if (attempt.attemptId === attemptId) {
+        return { attempt, path: this.attemptPath(runId, attempt.nodeId, attempt.attemptNo) };
+      }
+    }
+    return null;
+  }
+
+  /** First write wins per (run, node, attempt, path) - the append log keeps the original entry. */
+  private async readRunArtifacts(runId: string): Promise<ExecutionArtifactRecord[]> {
+    const seen = new Set<string>();
+    const out: ExecutionArtifactRecord[] = [];
+    for (const artifact of await readLines<ExecutionArtifactRecord>(this.artifactsPath(runId))) {
+      const key = artifactKey(artifact);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(artifact);
+    }
+    return out;
+  }
+
+  private async readArtifactIndex(): Promise<ExecutionArtifactRecord[]> {
+    const seen = new Set<string>();
+    const out: ExecutionArtifactRecord[] = [];
+    for (const artifact of await readLines<ExecutionArtifactRecord>(this.path('index', 'artifacts.jsonl'))) {
+      const key = `${artifact.runId}\u0000${artifactKey(artifact)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(artifact);
+    }
+    return out;
+  }
+
+  /** Last line wins, so the manifest stays append-only while still reporting current run facts. */
+  private async readRunIndex(): Promise<Map<string, RunIndexEntry>> {
+    const index = new Map<string, RunIndexEntry>();
+    for (const entry of await readLines<RunIndexEntry>(this.path('index', 'runs.jsonl'))) {
+      index.set(entry.runId, entry);
+    }
+    return index;
+  }
+
+  /**
+   * Global sequence numbers are handed out from a reserved block, so the shared counter is touched
+   * once per block instead of once per event. A crash abandons the rest of the block: the sequence
+   * stays strictly increasing, which is all any reader relies on.
+   */
+  private async nextGlobalSequence(): Promise<number> {
+    if (this.globalSequence < this.globalSequenceCeiling) {
+      this.globalSequence += 1;
+      return this.globalSequence;
+    }
+    return this.withLock('sequence', async () => {
+      const target = this.path('index', 'sequence.json');
+      const current = await readJson<{ globalSequence: number }>(target);
+      const base = Number.isSafeInteger(current?.globalSequence) ? Number(current!.globalSequence) : 0;
+      const reserved = Math.max(base, this.globalSequenceCeiling) + GLOBAL_SEQUENCE_BLOCK;
+      await writeAtomic(target, this.json({ globalSequence: reserved }));
+      this.globalSequence = reserved - GLOBAL_SEQUENCE_BLOCK + 1;
+      this.globalSequenceCeiling = reserved;
+      return this.globalSequence;
+    });
   }
 
   private async requireRun(scope: ExecutionScope, runId: string): Promise<ExecutionRunRecord> {
+    this.assertReady();
     assertScope(scope);
     const run = await this.getRun(scope, runId);
     if (!run) fail('EXECUTION_RUN_NOT_FOUND', 'Execution run was not found in authenticated scope');
@@ -1200,5 +1582,170 @@ export class ExecutionStore {
 
   private assertReady(): void {
     if (!this.opened || this.closed) fail('EXECUTION_STORE_NOT_OPEN', 'Execution store is not open');
+  }
+
+  // --- transaction journal ---------------------------------------------------------------------
+
+  /**
+   * A single atomic rename is already all-or-nothing, so only genuinely multi-file transactions pay
+   * for a journal entry.
+   */
+  private async commit(transaction: Transaction): Promise<void> {
+    const parts = (transaction.writes?.length ?? 0) + (transaction.appends?.length ?? 0) + (transaction.removes?.length ?? 0);
+    if (parts <= 1) {
+      await this.applyTransaction(transaction, false);
+      return;
+    }
+    const id = randomUUID();
+    const journalPath = this.path('journal', `${id}.json`);
+    await writeAtomic(journalPath, `${JSON.stringify({ id, createdAt: Date.now(), ...transaction })}\n`, true);
+    await this.applyTransaction(transaction, false);
+    await rm(journalPath, { force: true });
+  }
+
+  private async applyTransaction(transaction: Transaction, replay: boolean): Promise<void> {
+    const writes = transaction.writes ?? [];
+    const targets = writes.map(write => {
+      const target = path.resolve(write.path);
+      return process.platform === 'win32' ? target.toLowerCase() : target;
+    });
+    if (new Set(targets).size !== writes.length) {
+      // Historical transactions can replace one target more than once. Their
+      // original write order determines the final value and must stay serial.
+      for (const write of writes) await writeAtomic(write.path, write.content);
+    } else {
+      for (let offset = 0; offset < writes.length; offset += TRANSACTION_WRITE_CONCURRENCY) {
+        // commit() has already synced the recovery journal. Drain every started
+        // write before throwing, so no write outlives the transaction's lock.
+        const settled = await Promise.allSettled(writes.slice(offset, offset + TRANSACTION_WRITE_CONCURRENCY)
+          .map(write => writeAtomic(write.path, write.content)));
+        const failed = settled.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+        if (failed) throw failed.reason;
+      }
+    }
+    for (const append of transaction.appends ?? []) {
+      // Appends are not idempotent, so a replay re-checks the log before re-adding a line. Event
+      // sequences are strictly increasing; the other logs are de-duplicated by their readers.
+      if (replay && append.guardSequence !== undefined) {
+        const existing = await readLines<{ sequence?: number }>(append.path);
+        const last = existing[existing.length - 1];
+        if (last && Number(last.sequence) >= append.guardSequence) continue;
+      }
+      await appendLine(append.path, append.line);
+    }
+    for (const target of transaction.removes ?? []) await rm(target, { force: true });
+  }
+
+  private async replayJournals(): Promise<number> {
+    const directory = this.path('journal');
+    let recovered = 0;
+    for (const name of await listDir(directory)) {
+      if (!name.endsWith('.json')) continue;
+      const journalPath = path.join(directory, name);
+      let transaction: Transaction | null;
+      try {
+        transaction = await readJson<Transaction>(journalPath);
+      } catch (error) {
+        fail(
+          'EXECUTION_STATE_JOURNAL_CORRUPT',
+          `Execution transaction journal is unreadable: ${journalPath}`,
+          { path: journalPath, cause: error instanceof Error ? error.message : String(error) },
+        );
+      }
+      if (!transaction) continue;
+      await this.applyTransaction(transaction, true);
+      await rm(journalPath, { force: true });
+      recovered += 1;
+    }
+    return recovered;
+  }
+
+  /** The run manifest is derived state: rebuild it whenever it no longer covers the run bodies. */
+  private async rebuildRunIndex(): Promise<void> {
+    const stored = await listDir(this.path('state', 'runs'));
+    if (stored.length === 0) return;
+    if ((await this.readRunIndex()).size >= stored.length) return;
+    const lines: string[] = [];
+    for (const name of stored) {
+      const run = await readJson<ExecutionRunRecord>(path.join(this.path('state', 'runs'), name, 'run.json'));
+      if (run) lines.push(JSON.stringify(this.indexEntry(run)));
+    }
+    await writeAtomic(this.path('index', 'runs.jsonl'), lines.length === 0 ? '' : `${lines.join('\n')}\n`, true);
+  }
+
+  /**
+   * Materialised run state is derived from the event log, so an interrupted commit can leave
+   * run.json behind its own events. Heal it truthfully rather than reporting a stale sequence.
+   */
+  private async repairRuns(): Promise<string[]> {
+    const repaired: string[] = [];
+    const index = await this.readRunIndex();
+    if (index.size === 0) return repaired;
+    for (const entry of index.values()) {
+      const run = await this.readRun(entry.runId);
+      if (!run) continue;
+      const events = await readLines<StoredEvent>(this.eventsPath(entry.runId));
+      const lastSequence = events.length === 0 ? 0 : Number(events[events.length - 1]!.sequence);
+      if (!Number.isSafeInteger(lastSequence) || lastSequence <= run.lastEventSequence) continue;
+      await writeAtomic(this.runPath(entry.runId), this.json({ ...run, lastEventSequence: lastSequence, updatedAt: Date.now() }));
+      repaired.push(entry.runId);
+    }
+    return repaired;
+  }
+
+  // --- owner-token locking ---------------------------------------------------------------------
+
+  private withLock<T>(name: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.chains.get(name) ?? Promise.resolve();
+    const next = previous.then(() => this.withFileLock(name, task), () => this.withFileLock(name, task));
+    const settled = next.then(() => undefined, () => undefined);
+    this.chains.set(name, settled);
+    void settled.then(() => { if (this.chains.get(name) === settled) this.chains.delete(name); });
+    return next;
+  }
+
+  private async withFileLock<T>(name: string, task: () => Promise<T>): Promise<T> {
+    const lockPath = this.path('journal', 'locks', `${lockName(name)}.lock`);
+    const token = randomUUID();
+    const deadline = Date.now() + this.lockTimeoutMs;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await writeFile(lockPath, JSON.stringify({ pid: process.pid, token, acquiredAt: Date.now() } satisfies LockRecord), { encoding: 'utf8', flag: 'wx' });
+        break;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+        if (await this.clearStaleLock(lockPath)) continue;
+        if (Date.now() >= deadline) {
+          fail('EXECUTION_STATE_LOCK_TIMEOUT', `Execution state lock '${name}' is held by another owner`, { lock: name });
+        }
+        await delay(Math.min(25, 2 + attempt));
+      }
+    }
+    try {
+      return await task();
+    } finally {
+      const holder = await readJson<LockRecord>(lockPath).catch(() => null);
+      if (!holder || holder.token === token) await rm(lockPath, { force: true }).catch(() => undefined);
+    }
+  }
+
+  private async clearStaleLock(lockPath: string): Promise<boolean> {
+    let record: LockRecord | null = null;
+    try {
+      record = JSON.parse(await readFile(lockPath, 'utf8')) as LockRecord;
+    } catch (error) {
+      if (isMissing(error)) return true;
+      // A lock file that is present but not yet readable belongs to an owner mid-acquire; only an
+      // old unreadable file is genuinely abandoned.
+      const info = await stat(lockPath).catch(() => null);
+      if (info && Date.now() - info.mtimeMs < 1_000) return false;
+    }
+    const stale = !record
+      || !Number.isSafeInteger(record.pid)
+      || !pidAlive(record.pid)
+      || Date.now() - Number(record.acquiredAt) > this.lockTimeoutMs * 4;
+    if (!stale) return false;
+    await rm(lockPath, { force: true }).catch(() => undefined);
+    return true;
   }
 }

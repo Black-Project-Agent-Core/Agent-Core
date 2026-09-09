@@ -30,7 +30,7 @@ The harness:
 
 If any enforcement prerequisite is unavailable, the harness exits `77` with `classification=unsupported` and does **not** execute the user command.
 
-`systemd-run --user` is not required. The current Codespace lacks a user systemd bus, but it exposes a delegated cgroup-v2 hierarchy that is sufficient for real enforcement.
+`systemd-run --user` is not required. The current build host lacks a user systemd bus, but it exposes a delegated cgroup-v2 hierarchy that is sufficient for real enforcement.
 
 ## Usage
 
@@ -116,7 +116,7 @@ The self-test covers:
 - parity failure classification;
 - deliberate OOM classification under a real cgroup ceiling.
 
-## Fresh Task-7 Codespace evidence
+## Fresh Task-7 build host evidence
 
 On the Task-7 implementation host (`Linux 6.8.0-1052-azure`, AMD EPYC 7763), a success fixture under a 96 MiB ceiling produced:
 

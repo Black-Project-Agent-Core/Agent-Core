@@ -110,7 +110,7 @@ interface CodeExchangeInput { clientId: string; redirectUri: string; codeVerifie
 interface RefreshExchangeInput { clientId: string; resource: string; }
 
 // One queue per resolved file, shared by all instances in this Node process.
-// The outer queue avoids same-process contention; SQLite coordinates other processes.
+// The outer queue avoids same-process contention; the atomic lock file coordinates other processes.
 const oauthFileQueues = new Map<string, Promise<void>>();
 function withOAuthFile<T>(filePath: string, operation: () => Promise<T>): Promise<T> {
   const resolved = path.resolve(filePath);

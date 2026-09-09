@@ -1,23 +1,25 @@
-import { mkdtempSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 import { memoryObjectiveHash } from '../src/memory/hard-lifecycle.js';
-import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
+import type { RuntimeServices } from '../src/runtime/services.js';
+import { createIsolatedRuntimeServices as createRuntimeServices, strictMemoryConfig, memoryRoot } from './helpers/memory-fixture.js';
 
+const roots: string[] = [];
 const runtimes: RuntimeServices[] = [];
 
-function fixture(label: string, mode: 'disabled' | 'advisory' | 'enforce' = 'advisory') {
-  const root = mkdtempSync(path.join(os.tmpdir(), `agent-core-hard-lifecycle-${label}-`));
-  const config = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: mode }, root);
+async function fixture(label: string, mode: 'disabled' | 'advisory' | 'enforce' = 'advisory') {
+  const root = await memoryRoot(`hard-lifecycle-${label}`);
+  roots.push(root);
+  const memory = await strictMemoryConfig(root, { AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: mode });
   const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
-    ...config.memory,
+    ...memory,
     enabled: true,
-    dbPath: path.join(root, 'memory.sqlite'),
   });
   runtimes.push(runtime);
-  return { root, runtime, config };
+  return { root, runtime, memory };
 }
 
 afterEach(async () => {
@@ -25,12 +27,13 @@ afterEach(async () => {
     await runtime.execution.close().catch(() => undefined);
     await runtime.memory.close().catch(() => undefined);
   }));
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 })));
 });
 
 describe('Phase 6 hard memory lifecycle', () => {
-  it('parses a staged hard-lifecycle mode with advisory default and rejects unknown values', () => {
+  it('parses a staged hard-lifecycle mode with enforce default and rejects unknown values', () => {
     const root = path.join(os.tmpdir(), 'agent-core-hard-lifecycle-config');
-    expect(loadConfig({}, root).memory.hardLifecycleMode).toBe('advisory');
+    expect(loadConfig({}, root).memory.hardLifecycleMode).toBe('enforce');
     expect(loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'disabled' }, root).memory.hardLifecycleMode).toBe('disabled');
     expect(loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'enforce' }, root).memory.hardLifecycleMode).toBe('enforce');
     expect(() => loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'sometimes' }, root))
@@ -38,7 +41,7 @@ describe('Phase 6 hard memory lifecycle', () => {
   });
 
   it('persists one exact OPEN lifecycle row atomically with enabled preflight', async () => {
-    const { runtime } = fixture('open');
+    const { runtime } = await fixture('open');
     const scope = { principalId: 'principal-a', projectId: 'project-a' };
     const task = 'Implement Phase 6 lifecycle';
     const context = 'Preserve exact route and project authority';
@@ -75,7 +78,7 @@ describe('Phase 6 hard memory lifecycle', () => {
   });
 
   it('binds the authoritative continuity task and validates exact principal/project/context/route/expiry', async () => {
-    const { runtime } = fixture('validate', 'enforce');
+    const { runtime } = await fixture('validate', 'enforce');
     const scope = { principalId: 'principal-a', projectId: 'project-a' };
     const preflight = await runtime.memory.preflight({
       scope,
@@ -110,10 +113,10 @@ describe('Phase 6 hard memory lifecycle', () => {
   });
 
   it('does not let a disabled memory facade fabricate a persisted preflight lifecycle', async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), 'agent-core-hard-lifecycle-disabled-memory-'));
-    const config = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'enforce' }, root);
+    const root = await memoryRoot('hard-lifecycle-disabled-memory');
+    roots.push(root);
     const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, {
-      ...config.memory,
+      ...await strictMemoryConfig(root, { AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'enforce' }),
       enabled: false,
     });
     runtimes.push(runtime);

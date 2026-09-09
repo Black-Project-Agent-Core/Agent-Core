@@ -3,7 +3,7 @@ import path from 'node:path';
 import * as z from 'zod/v4';
 import type { VerifiedKey } from '../auth/key-types.js';
 import type { ExecutionRunView } from '../execution/service.js';
-import { ExecutionStoreError } from '../execution/store.js';
+import { ExecutionStoreError, executionWorkflowPending } from '../execution/store.js';
 import type { RuntimeServices } from '../runtime/services.js';
 import { resolvedProjectScope, resolveRouteExistingPath, resolveRouteTargetPath } from './project-scope.js';
 import { WorkflowAdvisor, type WorkflowGuidance } from './workflow-advisor.js';
@@ -88,6 +88,10 @@ async function routeBoundNode(
   node: z.infer<typeof nodeSchema>,
 ) {
   const cwd = await resolveRouteExistingPath(runtime, route, node.cwd);
+  const paths = async (items?: string[]) => items ? Promise.all(items.map((item) => resolveRouteTargetPath(runtime, route, path.resolve(cwd, item)))) : undefined;
+  const inputs = await paths(node.inputs);
+  const toolchain = await paths(node.toolchain);
+  const resources = node.resources ? { reads: await paths(node.resources.reads), writes: await paths(node.resources.writes), exclusive: node.resources.exclusive } : undefined;
   const expectedArtifacts = node.expectedArtifacts
     ? await Promise.all(node.expectedArtifacts.map(async (artifact) => ({
       ...artifact,
@@ -98,7 +102,8 @@ async function routeBoundNode(
       ),
     })))
     : undefined;
-  return { ...node, cwd, ...(expectedArtifacts ? { expectedArtifacts } : {}) };
+  return { ...node, cwd, ...(expectedArtifacts ? { expectedArtifacts } : {}), ...(inputs ? { inputs } : {}),
+    ...(toolchain ? { toolchain } : {}), ...(resources ? { resources } : {}) };
 }
 
 function requireOwnedView(view: ExecutionRunView | null): ExecutionRunView {
@@ -107,6 +112,7 @@ function requireOwnedView(view: ExecutionRunView | null): ExecutionRunView {
 }
 
 function compact(view: ExecutionRunView) {
+  const workflowPending = executionWorkflowPending(view);
   const byId = new Map(view.nodes.map((node) => [node.nodeId, node]));
   const readyNodeIds = view.nodes
     .filter((node) => (node.state === 'queued' || node.state === 'ready')
@@ -137,6 +143,13 @@ function compact(view: ExecutionRunView) {
     finishedAt: view.finishedAt ?? null,
     updatedAt: view.updatedAt,
     evidence: view.evidence,
+    ...(workflowPending.length ? { workflowReconciliation: {
+      pending: true,
+      attempts: workflowPending.map(({ nodeId, attemptId, attemptNo }) => ({ nodeId, attemptId, attemptNo })),
+      resumeTool: 'execution_start',
+      requiresCurrentRoute: true,
+      rerunsSuccessfulProcesses: false,
+    } } : {}),
     ...(view.memoryPreSearch ? { memoryPreSearch: view.memoryPreSearch } : {}),
     nodes: view.nodes.map((node) => ({
       nodeId: node.nodeId,
@@ -145,7 +158,9 @@ function compact(view: ExecutionRunView) {
       dependsOn: node.dependsOn,
       attemptCount: node.attemptCount,
       timeoutMs: node.timeoutMs,
-      continueOnFailure: node.continueOnFailure,
+      stepIds: node.stepIds ?? [],
+      ...(node.resources ? { resources: node.resources } : {}),
+      ...(node.inputs ? { inputs: node.inputs } : {}),
       lastError: node.lastError ?? null,
       startedAt: node.startedAt ?? null,
       finishedAt: node.finishedAt ?? null,
@@ -212,15 +227,22 @@ const nodeSchema = z.object({
   cwd: z.string().min(1).max(5_000),
   dependsOn: z.array(z.string().min(1).max(128)).max(128).optional(),
   timeoutMs: z.number().int().min(1).max(10 * 60_000).optional(),
-  continueOnFailure: z.boolean().optional(),
+  stepIds: z.array(z.string().min(1).max(128)).max(128).optional(),
+  inputs: z.array(z.string().min(1).max(5_000)).max(128).optional(),
+  toolchain: z.array(z.string().min(1).max(5_000)).max(128).optional(),
+  resources: z.object({
+    reads: z.array(z.string().min(1).max(5_000)).max(128).optional(),
+    writes: z.array(z.string().min(1).max(5_000)).max(128).optional(),
+    exclusive: z.array(z.string().min(1).max(128)).max(128).optional(),
+  }).strict().optional(),
   expectedArtifacts: z.array(z.object({
     path: z.string().min(1).max(5_000),
     kind: z.enum(['file', 'directory']).optional(),
     hash: z.literal('sha256').optional(),
     required: z.boolean().optional(),
     artifactType: z.enum(['build', 'test_report', 'log', 'data', 'other']).optional(),
-  })).max(32).optional(),
-});
+  }).strict()).max(32).optional(),
+}).strict();
 
 const eventType = z.enum([
   'run.created', 'run.started', 'node.queued', 'node.ready', 'node.started',
@@ -256,7 +278,7 @@ export function registerExecutionTools(
         maxConcurrency,
         metadata,
         originRouteContextId: routeContextId,
-        ...(route.continuityTaskId ? { continuityTaskId: route.continuityTaskId } : {}),
+        ...((route.continuityTaskId ?? route.workflow?.taskId) ? { continuityTaskId: route.continuityTaskId ?? route.workflow?.taskId } : {}),
       }));
     },
   ));
@@ -271,7 +293,7 @@ export function registerExecutionTools(
     annotations: mutationAnnotations,
   }, async ({ routeContextId, runId }) => mutationGuarded(
     runtime, key, routeContextId, 'execution_start',
-    async () => compact(await runtime.execution.start(scope(runtime, key, routeContextId), runId)),
+    async () => compact(await runtime.execution.start(scope(runtime, key, routeContextId), runId, { originRouteContextId: routeContextId })),
   ));
 
   server.registerTool('execution_status', {
@@ -392,7 +414,7 @@ export function registerExecutionTools(
     async (route) => {
       const scopedNodes = await Promise.all(nodes.map((node) => routeBoundNode(runtime, route, node)));
       return compact(await runtime.execution.addNodes(
-        scope(runtime, key, routeContextId), runId, scopedNodes,
+        scope(runtime, key, routeContextId), runId, scopedNodes, { originRouteContextId: routeContextId },
       ));
     },
   ));
@@ -408,20 +430,30 @@ export function registerExecutionTools(
     annotations: mutationAnnotations,
   }, async ({ routeContextId, runId, nodeId }) => mutationGuarded(
     runtime, key, routeContextId, 'execution_retry',
-    async () => compact(await runtime.execution.retry(scope(runtime, key, routeContextId), runId, nodeId)),
+    async () => compact(await runtime.execution.retry(scope(runtime, key, routeContextId), runId, nodeId, { originRouteContextId: routeContextId })),
   ));
 
   server.registerTool('execution_cancel', {
     title: 'Execution Cancel',
-    description: routedDescription('Cancel an owned execution run or one owned execution node without inferring success.'),
+    description: 'Cancel an authenticated owned execution run or node. Recovery remains available without a route or memory lease. Specify projectRoot when multiple workspace projects are configured.',
     inputSchema: {
-      routeContextId: z.string().uuid(),
+      routeContextId: z.string().uuid().optional(),
+      projectRoot: z.string().min(1).max(5_000).optional(),
       runId: z.string().uuid(),
       nodeId: z.string().min(1).max(128).optional(),
     },
     annotations: mutationAnnotations,
-  }, async ({ routeContextId, runId, nodeId }) => mutationGuarded(
-    runtime, key, routeContextId, 'execution_cancel',
-    async () => compact(await runtime.execution.cancel(scope(runtime, key, routeContextId), runId, nodeId)),
-  ));
+  }, async ({ routeContextId, projectRoot, runId, nodeId }) => guarded(async () => {
+    let resolvedScope: ReturnType<typeof scope> | undefined;
+    if (routeContextId) {
+      try { resolvedScope = scope(runtime, key, routeContextId); }
+      catch (error) {
+        const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+        if (code !== 'ROUTE_EXPIRED' && code !== 'ROUTE_NOT_FOUND') throw error;
+      }
+    }
+    const projectId = runtime.workspace.resolveProjectRoot({ explicitRoot: projectRoot ?? resolvedScope?.projectId });
+    if (resolvedScope && resolvedScope.projectId !== projectId) throw new ExecutionStoreError('EXECUTION_RUN_NOT_FOUND', 'Recovery project does not match the authenticated route');
+    return compact(await runtime.execution.cancel({ principalId: key.id, projectId }, runId, nodeId));
+  }));
 }

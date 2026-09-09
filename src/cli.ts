@@ -1,29 +1,29 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { FileKeyStore } from './auth/key-store.js';
-import { loadConfig, type AppConfig } from './config.js';
+import { loadRecoveryPaths, loadRuntimeConfig, type AppConfig } from './config.js';
 import { createExecutionRecoveryBundle, restoreExecutionRecoveryBundle } from './execution/backup.js';
-import { GitHubService } from './github/service.js';
-import { MemoryRemoteCrypto } from './memory/remote-crypto.js';
-import { MemoryRemoteHydrator } from './memory/remote-hydrator.js';
-import { GitHubMemoryRemoteTransport } from './memory/remote-transport.js';
+import { MemoryService } from './memory/service.js';
 import type { MemoryScope } from './memory/types.js';
 import { applyExecutionRetention, planExecutionRetention } from './execution/retention.js';
 import { SERVER_VERSION } from './mcp/server.js';
 import { FileOAuthStore } from './oauth/store.js';
 import { verifyAuditJournal } from './observability/audit-journal.js';
-import { WorkspacePolicy } from './runtime/workspace.js';
+import { readFile } from 'node:fs/promises';
+import { recoverWorkflowClassification } from './runtime/workflow-classification-recovery.js';
 
 export type MemoryHydrateCliResult =
   | { state: 'REMOTE_EMPTY_CONFIRMED'; remoteHead: string | null }
-  | { state: 'REMOTE_HYDRATED'; generationId: string; logicalStateHash: string; remoteHead: string };
+  | { state: 'REMOTE_HYDRATED'; generationId: string; logicalStateHash: string; remoteHead: string }
+  | { state: 'SECOND_MEMORY_HYDRATED'; logicalStateHash: string; fileCount: number; manifestVersionId: string }
+  | { state: 'WORKFLOW_MEMORY_HYDRATED'; generationId:string; logicalStateHash:string; recordCount:number; memoryCount:number; rollbackPath:string };
 
 export interface CliOptions {
   dataDir?: string;
   config?: AppConfig;
   stdout?: (line: string) => void;
   stderr?: (line: string) => void;
-  memoryHydrate?: (scope: MemoryScope, destinationDbPath: string) => Promise<MemoryHydrateCliResult>;
+  memoryHydrate?: (scope: MemoryScope, vaultRoot: string) => Promise<MemoryHydrateCliResult>;
 }
 
 const USAGE = [
@@ -38,6 +38,7 @@ const USAGE = [
   '  agent-core execution-retention-plan [older-than-days]',
   '  agent-core execution-retention-apply <plan-path> <bundle-path>',
   '  agent-core memory-hydrate <principal-id> <project-id>',
+  '  agent-core workflow-classification-recover <request.json> [--apply]',
   '  agent-core audit-verify [audit-root]',
 ].join('\n');
 
@@ -52,39 +53,41 @@ function boundedScopeValue(value: string | undefined, label: string, maxChars: n
 async function hydrateConfiguredMemoryRemote(
   config: AppConfig,
   scope: MemoryScope,
-  destinationDbPath: string,
 ): Promise<MemoryHydrateCliResult> {
-  if (!config.memory.remote.enabled || !config.memory.remote.keyFile) throw new Error('MEMORY_REMOTE_DISABLED');
-  const workspace = new WorkspacePolicy(config.allowedRoots);
-  const github = new GitHubService(config.github, workspace);
-  const transport = new GitHubMemoryRemoteTransport(github.git, workspace, config.memory.remote);
-  const crypto = await MemoryRemoteCrypto.fromKeyFile(config.memory.remote.keyFile);
-  return new MemoryRemoteHydrator(transport, crypto).hydrate(scope, destinationDbPath);
+  const service = new MemoryService(config.memory);
+  try {
+    return await service.hydrateRemote(scope) as MemoryHydrateCliResult;
+  } finally {
+    await service.close();
+  }
 }
 
 export async function runCli(args: string[], options: CliOptions = {}): Promise<number> {
   const stdout = options.stdout ?? ((line: string) => process.stdout.write(`${line}\n`));
   const stderr = options.stderr ?? ((line: string) => process.stderr.write(`${line}\n`));
-  const config = options.config ?? loadConfig();
-  const dataDir = options.dataDir ?? config.dataDir;
-  const store = new FileKeyStore(dataDir);
+  // Identity repair must stay reachable when the credential snapshot is the thing that broke,
+  // so the full runtime config is only demanded by commands that actually need it.
+  let loaded = options.config ?? null;
+  const config = (): AppConfig => (loaded ??= loadRuntimeConfig());
+  const identityDataDir = (): string => options.dataDir ?? loaded?.dataDir ?? loadRecoveryPaths().dataDir;
+  const store = (): FileKeyStore => new FileKeyStore(identityDataDir());
   const [command, value, secondValue] = args;
 
   try {
     switch (command) {
       case 'create-key': {
         if (!value) return usageError(stderr);
-        const created = await store.create(value);
+        const created = await store().create(value);
         stdout(JSON.stringify(created, null, 2));
         return 0;
       }
       case 'list-keys': {
-        stdout(JSON.stringify(await store.list(), null, 2));
+        stdout(JSON.stringify(await store().list(), null, 2));
         return 0;
       }
       case 'revoke-key': {
         if (!value) return usageError(stderr);
-        const revoked = await store.revoke(value);
+        const revoked = await store().revoke(value);
         if (!revoked) {
           stderr(`Key not found: ${value}`);
           return 1;
@@ -94,12 +97,12 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       }
       case 'rotate-key': {
         if (!value) return usageError(stderr);
-        const rotated = await store.rotate(value);
+        const rotated = await store().rotate(value);
         stdout(JSON.stringify(rotated, null, 2));
         return 0;
       }
       case 'reset-oauth': {
-        const oauthStore = new FileOAuthStore(dataDir);
+        const oauthStore = new FileOAuthStore(identityDataDir());
         const importClientStores = value
           ? [new FileOAuthStore(path.resolve(value))]
           : [];
@@ -109,12 +112,11 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       }
       case 'execution-backup': {
         const result = await createExecutionRecoveryBundle({
-          dbPath: config.execution.dbPath,
-          logRoot: config.execution.logRoot,
-          destinationRoot: path.join(path.dirname(config.execution.dbPath), 'recovery-bundles'),
+          stateRoot: config().execution.stateRoot,
+          logRoot: config().execution.logRoot,
+          destinationRoot: path.join(path.dirname(config().execution.stateRoot), 'recovery-bundles'),
           sourceVersion: SERVER_VERSION,
           reason: value || 'operator-cli',
-          busyTimeoutMs: config.execution.busyTimeoutMs,
         });
         stdout(JSON.stringify(result, null, 2));
         return 0;
@@ -123,9 +125,9 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
         if (!value) return usageError(stderr);
         const result = await restoreExecutionRecoveryBundle({
           bundlePath: path.resolve(value),
-          dbPath: config.execution.dbPath,
-          logRoot: config.execution.logRoot,
-          rollbackRoot: path.join(path.dirname(config.execution.dbPath), 'recovery-rollbacks'),
+          stateRoot: config().execution.stateRoot,
+          logRoot: config().execution.logRoot,
+          rollbackRoot: path.join(path.dirname(config().execution.stateRoot), 'recovery-rollbacks'),
         });
         stdout(JSON.stringify(result, null, 2));
         return 0;
@@ -142,8 +144,8 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
           return 2;
         }
         const result = await planExecutionRetention({
-          logRoot: config.execution.logRoot,
-          planRoot: path.join(path.dirname(config.execution.dbPath), 'retention'),
+          logRoot: config().execution.logRoot,
+          planRoot: path.join(path.dirname(config().execution.stateRoot), 'retention'),
           olderThanMs,
         });
         stdout(JSON.stringify(result, null, 2));
@@ -152,27 +154,36 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       case 'memory-hydrate': {
         const principalId = boundedScopeValue(value, 'principal-id', 256);
         const projectId = boundedScopeValue(secondValue, 'project-id', 4096);
-        if (!config.memory.remote.enabled) throw new Error('MEMORY_REMOTE_DISABLED');
+        if (!config().memory.remote.enabled && !config().memory.supabaseSecond.enabled && !config().memory.supabaseDirect.enabled) throw new Error('MEMORY_REMOTE_DISABLED');
         const scope: MemoryScope = { principalId, projectId };
         const hydrate = options.memoryHydrate
-          ?? ((candidateScope: MemoryScope, destinationDbPath: string) => hydrateConfiguredMemoryRemote(config, candidateScope, destinationDbPath));
-        const result = await hydrate(scope, config.memory.dbPath);
+          ?? ((candidateScope: MemoryScope) => hydrateConfiguredMemoryRemote(config(), candidateScope));
+        const result = await hydrate(scope, config().memory.fileNative.vaultRoot);
         stdout(JSON.stringify(result, null, 2));
         return 0;
       }
       case 'audit-verify': {
-        const auditRoot = value ? path.resolve(value) : path.join(config.logDir, 'audit');
+        const auditRoot = value ? path.resolve(value) : path.join(config().logDir, 'audit');
         const result = await verifyAuditJournal(auditRoot);
         stdout(JSON.stringify(result, null, 2));
         return result.ok ? 0 : 1;
+      }
+      case 'workflow-classification-recover': {
+        if (!value || (secondValue !== undefined && secondValue !== '--apply') || args.length > 3) return usageError(stderr);
+        let request: unknown;
+        try { request = JSON.parse(await readFile(path.resolve(value), 'utf8')); }
+        catch { throw new Error('WORKFLOW_RECOVERY_REQUEST_INVALID'); }
+        const result = await recoverWorkflowClassification(config(), request, { apply: secondValue === '--apply' });
+        stdout(JSON.stringify(result, null, 2));
+        return 0;
       }
       case 'execution-retention-apply': {
         if (!value || !secondValue) return usageError(stderr);
         const result = await applyExecutionRetention({
           planPath: path.resolve(value),
           bundlePath: path.resolve(secondValue),
-          dbPath: config.execution.dbPath,
-          logRoot: config.execution.logRoot,
+          stateRoot: config().execution.stateRoot,
+          logRoot: config().execution.logRoot,
         });
         stdout(JSON.stringify(result, null, 2));
         return 0;

@@ -11,7 +11,7 @@ These repositories are runtime/substrate references. Downstream AI-tool reposito
 
 1. Keep reference code isolated under `research/references/`.
 2. Pin exact revisions so architectural claims can be reproduced.
-3. Prefer shallow submodule checkout to avoid downloading irrelevant history after a fresh Codespace clone.
+3. Prefer shallow submodule checkout to avoid downloading irrelevant history after a fresh build host clone.
 4. Do not copy code from a reference into production merely because it is locally available.
 5. Any production reuse must preserve its applicable license/notice obligations.
 6. Source provenance must remain explicit if an algorithm or implementation is adapted rather than independently reimplemented from a documented concept.

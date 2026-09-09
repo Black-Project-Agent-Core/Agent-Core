@@ -772,7 +772,7 @@ The current backend implementation is Linux-specific behind a platform-neutral C
 
 Task 3 originally supplied the physical backing primitive. Milestone-1 stability hardening later added `FileResidencyLease`: leases may only be acquired for intentional/READY pages, are move-only RAII tokens, and make overlapping reclaim fail with `InUse` before any VM or ledger mutation. Dense policy now consumes this generic lease primitive. Production MoE scheduler-hook integration and asynchronous I/O remain deferred.
 
-The bounded 16 MiB Linux fixture produced fresh observational RSS evidence in this Codespace: process RSS rose by roughly the mapped working-set size after explicit materialization and returned near baseline after `MADV_DONTNEED`. The exact RSS delta is not a correctness contract; stable address, byte correctness, ledger accounting, and range validation are the functional gates.
+The bounded 16 MiB Linux fixture produced fresh observational RSS evidence in this build host: process RSS rose by roughly the mapped working-set size after explicit materialization and returned near baseline after `MADV_DONTNEED`. The exact RSS delta is not a correctness contract; stable address, byte correctness, ledger accounting, and range validation are the functional gates.
 
 ---
 
@@ -1266,7 +1266,7 @@ It does not prove asynchronous performance, real-model grouping, Windows behavio
 - a production-quality Super-Runtime executable;
 - real model loading through a Super-Runtime-owned lifecycle;
 - hard approximately 8 GiB worker compliance for specific real models;
-- hard external memory-cap enforcement in the current Codespace;
+- hard external memory-cap enforcement in the current build host;
 - production scheduler-hook API shape;
 - asynchronous I/O overlap with useful compute;
 - real-model optimal grouping/prefetch depth;
@@ -1363,9 +1363,9 @@ A summarized chart without sufficient provenance must not become architectural e
 
 Linux Phase-0 probes established feasibility using file-backed mappings and Linux VM/page-cache mechanisms.
 
-This is the first prototype platform for residency semantics because it provided measurable tooling in the Codespace research environment.
+This is the first prototype platform for residency semantics because it provided measurable tooling in the build host research environment.
 
-The earlier Phase-0 Codespace environment did not provide a trustworthy external hard cgroup memory ceiling, so no hard-cap claim was made at that stage. Task 7 later established a delegated cgroup-v2 acceptance path, and the final Milestone-1 audit reconfirmed the runtime-entry fixture under a real `134217728`-byte ceiling with `memory.swap.max=0`, successful process exit, and byte-identical stdout parity.
+The earlier Phase-0 build host environment did not provide a trustworthy external hard cgroup memory ceiling, so no hard-cap claim was made at that stage. Task 7 later established a delegated cgroup-v2 acceptance path, and the final Milestone-1 audit reconfirmed the runtime-entry fixture under a real `134217728`-byte ceiling with `memory.swap.max=0`, successful process exit, and byte-identical stdout parity.
 
 Do not substitute `ulimit -v` for this acceptance path, because large stable virtual mappings can legitimately exceed the desired physical RSS target while remaining within the intended physical-memory envelope.
 
@@ -1792,7 +1792,7 @@ Current authority:
 - documents the Task 4 generic MoE selected-range planner and exact `MUL_MAT_ID` parity fixture;
 - documents the Task 5 deterministic dense policy and active-range lease/reclaim protection;
 - documents Task 6 global admission planning and Task 8 `RuntimeEntry` lifecycle;
-- documents Codespace native build tooling and the `tests/contracts/native-substrate.sh` verification path;
+- documents build host native build tooling and the `tests/contracts/native-substrate.sh` verification path;
 - keeps HTTP/API, GPU policy, Windows residency, downstream integrations, and broad real-model hardening explicitly outside Milestone 1.
 
 If this document conflicts with general project direction, this master context still wins.

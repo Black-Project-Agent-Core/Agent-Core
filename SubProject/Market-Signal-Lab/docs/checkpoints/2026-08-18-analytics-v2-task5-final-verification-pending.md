@@ -1,12 +1,12 @@
 # MSL Analytics v2 Task 5 — Final Verification Pending
 
-**Date:** 2026-08-18 (UTC+7)  
-**Branch:** `feature/analytics-v2-ipc`  
+**Date:** 2026-08-18 (UTC+7)\
+**Branch:** `feature/analytics-v2-ipc`\
 **Pre-checkpoint source head:** `ea0fadd6ffb6c952dbe8263362e1bda08530199e`
 
 ## Status
 
-Task 5 implementation substeps 5A–5H are functionally verified in Codespaces. Task 5 is **not COMPLETE yet** because the final same-head verification matrix has not been run.
+Task 5 implementation substeps 5A–5H are functionally verified in build host. Task 5 is **not COMPLETE yet** because the final same-head verification matrix has not been run.
 
 ### Latest verified gate — corrupted/truncated stream
 
