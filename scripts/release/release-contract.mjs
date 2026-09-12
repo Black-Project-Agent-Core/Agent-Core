@@ -29,6 +29,8 @@ export const RUNTIME_RELEASE_ITEMS = Object.freeze([
   'plugin/agent-core/README.md',
   'plugin/agent-core/skills',
   'docs/README.md',
+  'docs/AGENT-CORE-CAPABILITIES.md',
+  'docs/engineering-workflow.md',
   'docs/deterministic-memory.md',
   'docs/local-agent-continuity.md',
   'docs/deterministic-execution-fabric.md',
@@ -44,6 +46,7 @@ export const RUNTIME_RELEASE_ITEMS = Object.freeze([
   'docs/agent-core-connection-troubleshooting.md',
   'docs/windows-installation-cutover.md',
   'docs/roadmap',
+  'docs/roadmap/rtk-integration-assessment.md',
   'tunnel-client/agent-core.example.yaml',
 ]);
 

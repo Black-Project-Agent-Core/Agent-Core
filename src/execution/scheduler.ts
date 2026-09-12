@@ -258,7 +258,8 @@ export class ExecutionScheduler {
         try {
           const key = this.key(runId, node.nodeId);
           const resources = hasExecutionResourceClaims(node.resources) ? { ...node.resources, writes: [...(node.resources?.writes ?? []), ...node.expectedArtifacts.map((item) => item.path)] } : undefined;
-          const claims = this.workspace ? await this.resourceClaims.resolve(this.workspace, node.cwd, resources, executionInputPaths(this.workspace, executionNodeSpec(node))) : [];
+          const claims = this.workspace ? await this.resourceClaims.resolve(this.workspace, node.cwd, resources,
+            executionInputPaths(this.workspace, executionNodeSpec(node), run.projectId), run.projectId) : [];
           if (!this.resourceClaims.acquire(key, claims)) continue;
           try {
             await this.beforeDispatch?.(scope, run, node);
@@ -355,6 +356,7 @@ export class ExecutionScheduler {
       const dependencies = await this.dependencyIdentities(scope, runId, node.dependsOn);
       handle = await withAttemptCorrelation(() => this.runner.start(runId, executionNodeSpec(node), attemptId, attemptNo, {
         dependencies,
+        projectRoot: run.projectId,
         workflowBinding: run.metadata.workflowBinding as ExecutionWorkflowBinding | undefined,
         onOutputAvailable: (payload) => withAttemptCorrelation(() => this.emit(scope, runId, 'node.output_available', {
           nodeId: node.nodeId,

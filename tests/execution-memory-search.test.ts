@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -11,6 +11,7 @@ import { WorkspacePolicy } from '../src/runtime/workspace.js';
 import { memoryConfig } from './helpers/memory-fixture.js';
 import { printCommand } from './helpers/platform-command.js';
 import { canonicalFileNativeProjectId } from '../src/memory/file-native/paths.js';
+import { prepareExecutionPlan } from './helpers/engineering.js';
 
 const roots: string[] = [];
 const runtimes: RuntimeServices[] = [];
@@ -21,6 +22,7 @@ async function fixture(label: string, enforceHardGuardrails = false) {
   roots.push(root);
   const work = path.join(root, 'work');
   await mkdir(work, { recursive: true });
+  await writeFile(path.join(work,'fixture.mjs'),'export const diagnostic = true;\n');
   const defaults = loadConfig({}, root);
   const runtime = createRuntimeServices(
     [root],
@@ -141,13 +143,13 @@ describe('autonomous execution memory pre-search', () => {
     const created = await f.runtime.execution.create(f.scope, {
       originRouteContextId: route.routeContextId, continuityTaskId: workflow.taskId,
       objective: 'Build the package using the established local clean build path and avoid the stale lock',
-      nodes: [{
+      nodes: await prepareExecutionPlan(f.runtime.workflow,workflow,[{
         id: 'A',
         purpose: 'Build package with the clean local path',
         command: printCommand(commandSentinel),
         cwd: f.work,
         inputs: [],
-      }],
+      }]),
     });
     expect(created.memoryPreSearch).toMatchObject({ status: 'healthy', blocked: false, inspectionRequired: true });
     expect(created.memoryPreSearch?.priorFailures.map((hit) => hit.memoryId)).toContain(priorFailure.memoryId);

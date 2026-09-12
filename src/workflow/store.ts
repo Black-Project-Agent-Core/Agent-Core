@@ -46,6 +46,7 @@ export class WorkflowStore {
       const { stateHash: _, ...body } = normalized;
       normalized.stateHash = workflowHash(JSON.stringify(body));
       const text = JSON.stringify(normalized, null, 2) + '\n';
+      if (Buffer.byteLength(text, 'utf8') > 2 * 1024 * 1024) throw new WorkflowError('WORKFLOW_STATE_LIMIT', 'Workflow evidence exceeds the durable record limit; narrow the analysis scope without claiming omitted coverage');
       await atomicReplaceValidated(key, text, candidate => { validateWorkflowRecord(JSON.parse(candidate)); });
       return structuredClone(normalized);
     }));

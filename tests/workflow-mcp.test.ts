@@ -12,13 +12,16 @@ import { FileAuditLogger } from '../src/logging/audit-log.js';
 import type { RuntimeServices } from '../src/runtime/services.js';
 import { createIsolatedRuntimeServices, isolatedMemoryDependencies, strictMemoryConfig } from './helpers/memory-fixture.js';
 import { nodeShellCommand } from './helpers/platform-command.js';
+import { assessPlan, acceptCurrentReview } from './helpers/engineering.js';
+import { workflowScope } from '../src/mcp/workflow-guard.js';
+import type { WorkflowPlanInput } from '../src/workflow/types.js';
 
 const initialCode='export async function retry<T>(action: () => Promise<T>, attempts: number): Promise<T> { return action(); }\n';
 const nativeCode='export async function retry<T>(action: () => Promise<T>, attempts: number): Promise<T> { for (let attempt = 0; ; attempt++) { try { return await action(); } catch (error) { if (attempt + 1 >= attempts) throw error; } } }\n';
 const fixtures:Array<{root:string;runtime:RuntimeServices;server:Server;audit:FileAuditLogger}>=[];
 async function fixture(sharedMemoryPrincipal=true){
   const root=await mkdtemp(path.join(tmpdir(),'ac-workflow-mcp-')), donor=path.join(root,'referensi','retry'),target=path.join(root,'src','retry.ts');
-  await mkdir(donor,{recursive:true});await mkdir(path.dirname(target),{recursive:true});
+  await mkdir(donor,{recursive:true});await mkdir(path.dirname(target),{recursive:true});await mkdir(path.join(root,'reports'),{recursive:true});
   await writeFile(path.join(donor,'retry.py'),'def retry(action, attempts):\n    for attempt in range(attempts):\n        try: return action()\n        except Exception:\n            if attempt + 1 == attempts: raise\n');
   await writeFile(path.join(donor,'README.md'),'# Retry\nRetries a callback up to a bound.\n');await writeFile(target,initialCode);
   const memory=await strictMemoryConfig(root,{AGENT_CORE_MEMORY_PRINCIPAL_ID:sharedMemoryPrincipal?'workflow-test-principal':undefined}),dependencies=isolatedMemoryDependencies(memory);
@@ -39,11 +42,12 @@ async function fixture(sharedMemoryPrincipal=true){
 }
 function ok(result:{error:boolean;value:any;raw:any}){expect(result.error,JSON.stringify(result.value)).toBe(false);return result.value;}
 function code(result:{error:boolean;value:any},expected:string){expect(result.error,JSON.stringify(result.value)).toBe(true);expect(result.value.error?.code??result.value.error).toEqual(expected);}
+function fixtureScope(f:Awaited<ReturnType<typeof fixture>>,route:any,principalId=f.principal.metadata.id){return workflowScope(f.runtime,f.runtime.memory.config.principalId??principalId,f.root,route.continuityTaskId);}
 async function routed(f:Awaited<ReturnType<typeof fixture>>){
   return ok(await f.call('capability_route',{task:'Implement retry from donor Python code and integrate a native TypeScript endpoint',projectRoot:f.root,workflow:'direct',craft:{requirements:[{id:'bounded-retry',description:'Retry callback up to the limit and propagate final failure'}],donors:[{id:'retry-donor',source:f.donor}]}}));
 }
 function checks(f:Awaited<ReturnType<typeof fixture>>){
-  const unitReport=path.join(f.root,'unit.json'),integrationReport=path.join(f.root,'integration.json');
+  const unitReport=path.join(f.root,'reports','unit.json'),integrationReport=path.join(f.root,'reports','integration.json');
   const unitCommand=nodeShellCommand(`(async()=>{const assert=require('node:assert/strict');const fs=require('node:fs');const {retry}=await import(require('node:url').pathToFileURL(${JSON.stringify(f.target)}).href);let calls=0;assert.equal(await retry(async()=>{if(++calls<3)throw Error('transient');return 'OK';},3),'OK');assert.equal(calls,3);let failures=0;await assert.rejects(retry(async()=>{failures++;throw Error('final');},2),/final/);assert.equal(failures,2);fs.writeFileSync(${JSON.stringify(unitReport)},JSON.stringify({passed:true,calls,failures}));})().catch(e=>{console.error(e);process.exitCode=1;});`);
   const integrationCommand=nodeShellCommand(`(async()=>{const assert=require('node:assert/strict');const fs=require('node:fs');const {retry}=await import(require('node:url').pathToFileURL(${JSON.stringify(f.target)}).href);const server=require('node:http').createServer(async(req,res)=>{let attempts=0;try{const value=await retry(async()=>{if(++attempts<2)throw Error('transient');return 'READY';},2);res.end(value);}catch(e){res.statusCode=500;res.end(String(e));}});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const endpoint='http://127.0.0.1:'+server.address().port;try{const response=await fetch(endpoint);assert.equal(response.status,200);assert.equal(await response.text(),'READY');}finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}assert.equal(server.listening,false);await assert.rejects(fetch(endpoint));fs.writeFileSync(${JSON.stringify(integrationReport)},JSON.stringify({passed:true,endpoint:'loopback',serverStopped:true}));})().catch(e=>{console.error(e);process.exitCode=1;});`);
   return{unitReport,integrationReport,unitCommand,integrationCommand};
@@ -55,6 +59,7 @@ async function planned(f:Awaited<ReturnType<typeof fixture>>,route:any,donorFile
   const c=checks(f),record=status.contract??status;
   const mutationCommand=commandImplementation?nodeShellCommand(`require('node:fs').writeFileSync(${JSON.stringify(f.target)},${JSON.stringify(nativeCode)});`):undefined;
   const input={expectedVersion:record.version,steps:[{id:'adapt-retry',purpose:'Adapt donor retry loop into native target',kind:commandImplementation?'command':'edit',paths:[f.target],...(mutationCommand?{command:mutationCommand}:{})},{id:'unit',purpose:'Verify bound and final error',kind:'verification',command:c.unitCommand,paths:[]},{id:'integration',purpose:'Verify through running HTTP entrypoint',kind:'verification',command:c.integrationCommand,paths:[]}],mappings:[{requirementId:'bounded-retry',donorId:'retry-donor',donorReceiptIds:[donor.receipt.id],targetReceiptIds:[target.receipt.id],mechanism:'Bounded retry loop with final error propagation',inputs:'Async callback and maximum attempts',outputs:'Successful callback value or final error',dependencies:'Existing native async callback seam',failureBehavior:'Stop and propagate last failure at attempt limit',reuse:'Keep the TypeScript module and callable interface',adaptation:'Translate synchronous Python loop into native async TypeScript loop',rejected:'No Python runtime or external retry package',targetPaths:[f.target],stepIds:['adapt-retry'],license:{mode:'adapt_mechanism',receiptIds:[]}}],checks:[{id:'retry-behavior',purpose:'Bounded attempts and final error',kind:'behavior',requirementIds:['bounded-retry'],stepIds:['unit'],artifactPaths:[c.unitReport]},{id:'http-integration',purpose:'Public target entrypoint with real loopback server',kind:'integration',requirementIds:['bounded-retry'],stepIds:['integration'],artifactPaths:[c.integrationReport]}]};
+  await assessPlan(f.runtime.workflow,fixtureScope(f,route),input as WorkflowPlanInput);
   return{...c,input,mutationCommand,source:donor,accept:await f.call('workflow_plan',{routeContextId:route.routeContextId,plan:input})};
 }
 async function execute(f:Awaited<ReturnType<typeof fixture>>,route:any,p:Awaited<ReturnType<typeof planned>>){
@@ -71,7 +76,17 @@ async function execute(f:Awaited<ReturnType<typeof fixture>>,route:any,p:Awaited
     ok(await f.call('execution_wait',{routeContextId:route.routeContextId,runId:created.runId,afterSequence:status.lastEventSequence,timeoutMs:1500}));
   }
   expect(status.state,JSON.stringify(status)).toBe('completed');expect(status.evidence.verification).toBe('verified');
+  await acceptCurrentReview(f.runtime.workflow,fixtureScope(f,route));
   return{created,status};
+}
+async function plannedComment(f:Awaited<ReturnType<typeof fixture>>,route:any,principal:Awaited<ReturnType<FileKeyStore['create']>>){
+  const record=(await f.runtime.workflow.status(fixtureScope(f,route,principal.metadata.id)))!;
+  const plan:WorkflowPlanInput={expectedVersion:record.version,mappings:[],steps:[
+    {id:'edit-comment',purpose:'Apply the scoped comment edit',kind:'edit',paths:[f.target]},
+    {id:'check-comment',purpose:'Verify that the comment edit preserves parsing',kind:'verification',paths:[],command:nodeShellCommand('process.stdout.write("comment fixture verification")')},
+  ],checks:[{id:'comment-integration',purpose:'Validate the existing callable comment seam',kind:'integration',requirementIds:[],stepIds:['check-comment'],artifactPaths:[path.join(f.root,'reports',`comment-${principal.metadata.id}.json`)]}]};
+  await assessPlan(f.runtime.workflow,fixtureScope(f,route,principal.metadata.id),plan);
+  return ok(await f.call('workflow_plan',{routeContextId:route.routeContextId,plan},principal.key)).plan.revision as number;
 }
 function completion(route:any,runId:string){return{routeContextId:route.routeContextId,status:'completed',summary:'Native retry implementation and real HTTP entrypoint verified',evidence:[{type:'tool',ref:`execution:${runId}`,result:'Current bounded retry and loopback server checks passed'}],decisions:[{key:'native-retry-contract',value:'The native TypeScript retry loop preserves bounded attempts and propagates final failure without a Python runtime dependency.',reason:'Derived from actual Python source and verified by native behavior and loopback endpoint checks.'}],projectTerminal:true};}
 afterEach(async()=>{for(const f of fixtures.splice(0)){f.server.closeAllConnections();await new Promise<void>(resolve=>f.server.close(()=>resolve()));await f.runtime.execution.close();await f.runtime.memory.close();await f.audit.close();await rm(f.root,{recursive:true,force:true});}});
@@ -91,7 +106,10 @@ describe('workflow through authenticated MCP and real execution',()=>{
     expect(await readFile(f.target,'utf8')).toBe(nativeCode);
     ok(await f.call('craft_source',{routeContextId:route.routeContextId,role:'target',operation:'read',path:f.target}));
     const before=ok(await f.call('workflow_status',{routeContextId:route.routeContextId}));
-    const accepted=ok(await f.call('workflow_plan',{routeContextId:route.routeContextId,plan:{expectedVersion:before.version,mappings:[],steps:[{id:'unit',purpose:'Verify existing retry behavior',kind:'verification',command:c.unitCommand,paths:[]},{id:'integration',purpose:'Verify existing HTTP integration',kind:'verification',command:c.integrationCommand,paths:[]}],checks:[{id:'unit',purpose:'Bounded retries and final failure',kind:'behavior',requirementIds:[],stepIds:['unit'],artifactPaths:[c.unitReport]},{id:'integration',purpose:'Live existing HTTP entrypoint',kind:'integration',requirementIds:[],stepIds:['integration'],artifactPaths:[c.integrationReport]}]}}));
+    const plan:WorkflowPlanInput={expectedVersion:before.version,mappings:[],steps:[{id:'unit',purpose:'Verify existing retry behavior',kind:'verification',command:c.unitCommand,paths:[]},{id:'integration',purpose:'Verify existing HTTP integration',kind:'verification',command:c.integrationCommand,paths:[]}],checks:[{id:'unit',purpose:'Bounded retries and final failure',kind:'behavior',requirementIds:[],stepIds:['unit'],artifactPaths:[c.unitReport]},{id:'integration',purpose:'Live existing HTTP entrypoint',kind:'integration',requirementIds:[],stepIds:['integration'],artifactPaths:[c.integrationReport]}]};
+    code(await f.call('workflow_plan',{routeContextId:route.routeContextId,plan}),'ENGINEERING_ASSESSMENT_REQUIRED');
+    await assessPlan(f.runtime.workflow,fixtureScope(f,route),plan);
+    const accepted=ok(await f.call('workflow_plan',{routeContextId:route.routeContextId,plan}));
     code(await f.call('execution_create',{...request,nodes:[{...nodes[0],command:nodeShellCommand('process.stdout.write("unplanned")')},nodes[1]]}),'WORKFLOW_COMMAND_NOT_PLANNED');
     const beforeResume=ok(await f.call('execution_create',request));
     ok(await f.call('execution_cancel',{routeContextId:route.routeContextId,runId:beforeResume.runId}));
@@ -114,6 +132,7 @@ describe('workflow through authenticated MCP and real execution',()=>{
       ok(await f.call('execution_wait',{routeContextId:resumed.routeContextId,runId:created.runId,afterSequence:status.lastEventSequence,timeoutMs:1500}));
     }
     expect(status.state,JSON.stringify(status)).toBe('completed');expect(status.evidence.verification).toBe('verified');
+    await acceptCurrentReview(f.runtime.workflow,fixtureScope(f,resumed));
     const closed=ok(await f.call('task_checkpoint',{routeContextId:resumed.routeContextId,status:'completed',projectTerminal:true,summary:'Existing behavior and HTTP integration verified through the resumed task DAG',evidence:[{type:'tool',ref:`execution:${created.runId}`}],decisions:[{key:'existing-implementation-verified',value:'Existing retry behavior and the HTTP entrypoint passed the current managed verification attempt.',reason:'Both actual processes completed with verified current input and report evidence.'}]}));
     expect(closed.memoryLifecycle).toMatchObject({postflightState:'CLOSED',durabilityState:'DURABLY_CLOSED'});
     expect(ok(await f.call('workflow_status',{taskId:route.continuityTaskId,projectRoot:f.root}))).toMatchObject({phase:'CLOSED',completed:true});
@@ -130,7 +149,8 @@ describe('workflow through authenticated MCP and real execution',()=>{
     const other=await f.keyStore.create('independent-comment-editor');
     const otherRoute=ok(await f.call('capability_route',{task:'Fix one comment typo',projectRoot:f.root,workflow:'direct'},other.key));
     expect(otherRoute.continuityTaskId).not.toBe(route.continuityTaskId);
-    const rewrite=()=>f.call('write_file',{routeContextId:otherRoute.routeContextId,path:f.target,content:nativeCode},other.key);
+    const otherRevision=await plannedComment(f,otherRoute,other);
+    const rewrite=()=>f.call('write_file',{routeContextId:otherRoute.routeContextId,path:f.target,content:nativeCode,stepId:'edit-comment',planVersion:otherRevision},other.key);
     ok(await rewrite());
 
     const original=f.runtime.memory.applyPostflight.bind(f.runtime.memory);
@@ -154,9 +174,10 @@ describe('workflow through authenticated MCP and real execution',()=>{
     // Failure must release the same claim even though the checkpoint is resumable.
     const fresh=await f.keyStore.create('fresh-comment-editor');
     const freshRoute=ok(await f.call('capability_route',{task:'Fix one comment typo',projectRoot:f.root,workflow:'direct'},fresh.key));
-    ok(await f.call('write_file',{routeContextId:freshRoute.routeContextId,path:f.target,content:nativeCode+'// corrected comment\n'},fresh.key));
+    const freshRevision=await plannedComment(f,freshRoute,fresh);
+    ok(await f.call('write_file',{routeContextId:freshRoute.routeContextId,path:f.target,content:nativeCode+'// corrected comment\n',stepId:'edit-comment',planVersion:freshRevision},fresh.key));
     expect(await readFile(f.target,'utf8')).toBe(nativeCode+'// corrected comment\n');
-    ok(await f.call('write_file',{routeContextId:freshRoute.routeContextId,path:f.target,content:nativeCode},fresh.key));
+    ok(await f.call('write_file',{routeContextId:freshRoute.routeContextId,path:f.target,content:nativeCode,stepId:'edit-comment',planVersion:freshRevision},fresh.key));
     const closed=ok(await f.call('task_checkpoint',completion(route,run.created.runId)));
     expect(closed.memoryLifecycle).toMatchObject({postflightState:'CLOSED',durabilityState:'DURABLY_CLOSED'});
     const releaseAfterSuccess=await f.runtime.execution.acquireWorkspaceClaim({principalId:other.metadata.id,projectId:f.root},{writes:[f.target]});
@@ -220,9 +241,10 @@ describe('workflow through authenticated MCP and real execution',()=>{
   },30_000);
   it('closes planned directory creation and move only with runtime directory and source-absence evidence',async()=>{
     const f=await fixture(),route=await routed(f),p=await planned(f,route),prior=ok(p.accept);
-    const directory=path.join(f.root,'native'),destination=path.join(directory,'retry.ts'),report=path.join(f.root,'move-report.json');
+    const directory=path.join(f.root,'native'),destination=path.join(directory,'retry.ts'),report=path.join(f.root,'reports','move-report.json');
     const command=nodeShellCommand(`(async()=>{const fs=require('node:fs'),assert=require('node:assert/strict');assert.equal(fs.existsSync(${JSON.stringify(f.target)}),false);assert.equal(fs.statSync(${JSON.stringify(directory)}).isDirectory(),true);const {retry}=await import(require('node:url').pathToFileURL(${JSON.stringify(destination)}).href);let count=0;assert.equal(await retry(async()=>{if(++count<2)throw Error('transient');return 'READY';},2),'READY');assert.equal(count,2);fs.writeFileSync(${JSON.stringify(report)},JSON.stringify({passed:true,sourceAbsent:true,directoryPresent:true}));})().catch(e=>{console.error(e);process.exitCode=1;});`);
     const plan={...p.input,expectedVersion:prior.version,steps:[{id:'mkdir',purpose:'Create native module directory',kind:'edit',paths:[directory]},{id:'move',purpose:'Move implementation into native directory',kind:'edit',paths:[f.target,destination]},{id:'adapt-retry',purpose:'Adapt the moved implementation',kind:'edit',paths:[destination]},{id:'verify-move',purpose:'Verify moved native public function and expected source absence',kind:'verification',command,paths:[]}],mappings:p.input.mappings.map(mapping=>({...mapping,targetPaths:[f.target,destination],stepIds:['mkdir','move','adapt-retry']})),checks:[{id:'moved-behavior',purpose:'Retry preserved after relocation',kind:'behavior',requirementIds:['bounded-retry'],stepIds:['verify-move'],artifactPaths:[report]},{id:'moved-integration',purpose:'Moved native module loads through real target entrypoint',kind:'integration',requirementIds:['bounded-retry'],stepIds:['verify-move'],artifactPaths:[report]}]};
+    await assessPlan(f.runtime.workflow,fixtureScope(f,route),plan as WorkflowPlanInput);
     const accepted=ok(await f.call('workflow_plan',{routeContextId:route.routeContextId,plan})),revision=accepted.plan.revision;
     ok(await f.call('create_directory',{routeContextId:route.routeContextId,path:directory,stepId:'mkdir',planVersion:revision}));
     ok(await f.call('move_file',{routeContextId:route.routeContextId,source:f.target,destination,stepId:'move',planVersion:revision}));
@@ -231,6 +253,7 @@ describe('workflow through authenticated MCP and real execution',()=>{
     ok(await f.call('execution_start',{routeContextId:route.routeContextId,runId:created.runId}));
     let status:any;for(let count=0;count<10;count++){status=ok(await f.call('execution_status',{routeContextId:route.routeContextId,runId:created.runId}));if(status.state!=='running')break;ok(await f.call('execution_wait',{routeContextId:route.routeContextId,runId:created.runId,afterSequence:status.lastEventSequence,timeoutMs:1500}));}
     expect(status.state,JSON.stringify(status)).toBe('completed');
+    await acceptCurrentReview(f.runtime.workflow,fixtureScope(f,route));
     const closed=ok(await f.call('task_checkpoint',{...completion(route,created.runId),summary:'Native retry relocation, directory creation, and expected source absence verified'}));expect(closed.memoryLifecycle.postflightState).toBe('CLOSED');
     const workflow=ok(await f.call('workflow_status',{routeContextId:route.routeContextId}));
     expect(workflow.verification.outputStates).toEqual(expect.arrayContaining([{path:f.target,kind:'missing',hash:null},{path:directory,kind:'directory',hash:null}]));

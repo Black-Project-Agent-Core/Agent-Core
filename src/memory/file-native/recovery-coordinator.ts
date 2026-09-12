@@ -10,6 +10,7 @@ import { FileNativeAuxStore } from './aux-store.js';
 import { FileNativeMemoryRepository, segmentInScope } from './vault-repository.js';
 import { parseVaultSegment, serializeVaultSegment } from './vault-codec.js';
 import { makeWorkflowProjectionRecord, makeWorkflowProjectionSnapshot, readWorkflowProjection, validateWorkflowProjectionDocument, workflowCanonicalJson, workflowHash } from './workflow-projection.js';
+import { hydrateEngineeringSourceBlobs } from './workflow-source-projection.js';
 
 const ticketSchema=z.strictObject({pid:z.number().int().positive(),token:z.string().uuid(),mode:z.enum(['reader','recovery']),number:z.number().int().nonnegative()});
 type Ticket=z.infer<typeof ticketSchema>;
@@ -159,6 +160,8 @@ export async function restoreWorkflowBackup(paths:FileNativeMemoryPaths,backup:W
     if(!await exists(paths.vaultRoot)){await validateStage(paths,backup,journal.stage);await rename(journal.stage,paths.vaultRoot);}
     await validateStage(paths,backup,paths.vaultRoot);journal.state='published';await writeJournal(paths,journal);
   }
-  await validateStage(paths,backup,paths.vaultRoot);await rm(journalPath(paths),{force:true});
+  await validateStage(paths,backup,paths.vaultRoot);
+  await hydrateEngineeringSourceBlobs(paths,backup.snapshot.records.map(record=>record.document));
+  await rm(journalPath(paths),{force:true});
   return{recordCount:backup.snapshot.records.length,memoryCount:backup.memoryDocuments.length,rollbackPath:journal.rollback};
 }

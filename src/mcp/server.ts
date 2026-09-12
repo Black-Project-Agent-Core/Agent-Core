@@ -39,7 +39,7 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
       authentication: z.string(),
       key: z.object({ id: z.string(), name: z.string() }),
       workspaceRoots: z.array(z.string()),
-      workflow: z.object({ policyVersion: z.string(), requiredCraft: z.boolean(), multiStepDag: z.boolean(), additionalInference: z.boolean(), catalogEntries: z.number(), storageReady: z.boolean(), storageErrorCode: z.string().nullable() }),
+      workflow: z.object({ policyVersion: z.string(), engineeringPolicy: z.string(), engineeringRequiredForCoding: z.boolean(), requiredCraft: z.boolean(), multiStepDag: z.boolean(), additionalInference: z.boolean(), catalogEntries: z.number(), storageReady: z.boolean(), storageErrorCode: z.string().nullable() }),
       memory: z.object({
         enabled: z.boolean(),
         healthy: z.boolean(),
@@ -117,7 +117,7 @@ export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServi
       authentication: key.authentication ?? 'bearer-api-key',
       key: { id: key.id, name: key.name },
       workspaceRoots: runtime.workspace.roots,
-      workflow: { policyVersion: 'workflow-v1', requiredCraft: true, multiStepDag: true, additionalInference: false, catalogEntries: runtime.capabilities.coverage().total, storageReady: workflowStorageReady, storageErrorCode: workflowStorageErrorCode },
+      workflow: { policyVersion: 'workflow-v1', engineeringPolicy: 'engineering-v1', engineeringRequiredForCoding: true, requiredCraft: true, multiStepDag: true, additionalInference: false, catalogEntries: runtime.capabilities.coverage().total, storageReady: workflowStorageReady, storageErrorCode: workflowStorageErrorCode },
       memory: { ...memoryStatus, state: runtime.memory.currentState },
       continuity: {
         enabled: memoryStatus.enabled,

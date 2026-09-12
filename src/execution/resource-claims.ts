@@ -27,18 +27,31 @@ export async function canonicalExecutionPath(target: string): Promise<string> {
 
 function overlaps(left: ExecutionClaim, right: ExecutionClaim): boolean {
   if (left.kind !== right.kind || (left.mode === 'read' && right.mode === 'read')) return false;
-  return left.key === right.key || (left.kind === 'path'
-    && (left.key.startsWith(`${right.key}${path.sep}`) || right.key.startsWith(`${left.key}${path.sep}`)));
+  if (left.key === right.key) return true;
+  if (left.kind !== 'path') return false;
+  const contains = (root: string, target: string) => {
+    const relative = path.relative(root, target);
+    return relative === '' || relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+  };
+  return contains(left.key, right.key) || contains(right.key, left.key);
 }
 
 /** One runtime owns this registry: claims coordinate all its runs, independent of principal. */
 export class ExecutionResourceClaims {
   private readonly owners = new Map<string, ExecutionClaim[]>();
 
-  async resolve(workspace: WorkspacePolicy, cwd: string, resources?: ExecutionResourceSpec, inputs: string[] = []): Promise<ExecutionClaim[]> {
+  async resolve(workspace: WorkspacePolicy, cwd: string, resources?: ExecutionResourceSpec, inputs: string[] = [], projectRoot?: string): Promise<ExecutionClaim[]> {
+    if (projectRoot !== undefined) await workspace.resolveExistingInProject(projectRoot, cwd);
     const declared = hasExecutionResourceClaims(resources);
     const reads = [...(resources?.reads ?? []), ...inputs];
-    const writes = declared ? resources?.writes ?? [] : [workspace.resolveProjectRoot({ candidatePaths: [cwd] })];
+    const writes = declared ? resources?.writes ?? [] : [projectRoot === undefined
+      ? workspace.resolveProjectRoot({ candidatePaths: [cwd] })
+      : workspace.resolveProjectRoot({ explicitRoot: projectRoot })];
+    if (projectRoot !== undefined) {
+      for (const target of [...(resources?.reads ?? []), ...writes]) {
+        await workspace.resolveTargetInProject(projectRoot, path.resolve(cwd, target));
+      }
+    }
     const claims: ExecutionClaim[] = [];
     for (const [mode, targets] of [['read', reads], ['write', writes]] as const) {
       for (const target of targets) {

@@ -1,4 +1,6 @@
 import * as z from 'zod/v4';
+import { engineeringAssessmentSchema, engineeringStateSchema } from './engineering-policy.js';
+import type { WorkflowExecutionTrust, WorkflowOperationReceipt } from './operation-ledger.js';
 
 export const WORKFLOW_POLICY_VERSION = 'workflow-v1';
 export class WorkflowError extends Error {
@@ -42,6 +44,7 @@ export const workflowPlanInputSchema = z.strictObject({
   steps: z.array(workflowStepSchema).min(1).max(100),
   mappings: z.array(workflowMappingSchema).max(100).default([]),
   checks: z.array(workflowCheckSchema).min(1).max(100),
+  assessment: engineeringAssessmentSchema.optional(),
 });
 export type WorkflowStep = z.infer<typeof workflowStepSchema>;
 export type WorkflowMapping = z.infer<typeof workflowMappingSchema>;
@@ -90,6 +93,12 @@ export const workflowRecordSchema = z.strictObject({
     steps: z.array(workflowStepSchema).min(1).max(100), mappings: z.array(workflowMappingSchema).max(100),
     checks: z.array(workflowCheckSchema).min(1).max(100),
     targetBaseline: z.array(z.strictObject({ path: text, hash: hash.nullable(), expectedKind: pathKind.optional(), operationRecorded: z.boolean().optional() })).max(300),
+    operationReceipts: z.array(z.strictObject({
+      runId: id, nodeId: id, attemptId: id, attemptNo: z.number().int().positive(),
+      planRevision: z.number().int().positive(), planHash: hash, inputManifestHash: hash,
+      outputManifestHash: hash,
+      outputStates: z.array(pathStateSchema).max(300), recordedAt: z.number(),
+    })).max(500).optional(),
   }).optional(),
   verification: z.strictObject({ checkedAt: z.number(), planHash: hash, runIds: z.array(id).max(100), outputHashes: z.array(z.strictObject({ path: text, hash })).max(300), outputStates: z.array(pathStateSchema).max(300).optional() }).optional(),
   closure: z.strictObject({ checkpointId: id }).optional(),
@@ -99,20 +108,24 @@ export const workflowRecordSchema = z.strictObject({
     beforeVersion: z.literal(2), beforeStateHash: hash, beforeContentHash: hash, predecessorContentHash: hash,
     auditHeadHash: hash, executionInventoryHash: hash, backupHash: hash,
   }).optional(),
+  engineering: engineeringStateSchema.optional(),
 });
 export type WorkflowRecord = z.infer<typeof workflowRecordSchema>;
 export interface WorkflowSourceInput {
-  operation: 'list' | 'read'; role: 'donor' | 'target'; donorId?: string; path?: string;
+  operation: 'list' | 'read' | 'discover' | 'impact' | 'review'; role: 'donor' | 'target'; donorId?: string; path?: string;
   startLine?: number; lineCount?: number; maxBytes?: number; expectedVersion?: number;
+  query?: string; targetPaths?: string[];
 }
 export interface WorkflowAuthorizeInput {
-  toolName: string; path?: string; paths?: string[]; command?: string;
+  toolName: string; path?: string; paths?: string[]; command?: string; operation?: string;
   stepId?: string; stepIds?: string[]; planVersion?: number; viaExecution?: boolean;
+  operationReceipt?: WorkflowOperationReceipt; executionTrust?: WorkflowExecutionTrust;
 }
 export interface WorkflowExecutionRequest {
   operation: string; runId?: string; objective?: string; continuityTaskId?: string;
   nodes?: Array<{ id?: string; nodeId?: string; purpose?: string; command?: string; cwd?: string; stepIds?: string[]; resources?: unknown; inputs?: unknown }>;
   planVersion?: number;
+  executionTrust?: WorkflowExecutionTrust;
 }
 export interface WorkflowExecutionBinding { policyVersion: string; planRevision: string; planHash: string; requiredStepIds: string[] }
 /** Only the runtime integration may construct this evidence from its execution store. Never expose as user-asserted proof. */

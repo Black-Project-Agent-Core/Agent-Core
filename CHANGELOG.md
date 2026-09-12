@@ -4,7 +4,10 @@ Notable Agent Core changes are recorded here. Release tags and package artifacts
 
 ## Unreleased
 
-Preparation and publication checks for the prerelease below remain separate from stable certification. See the versioned section for its implementation and verification scope.
+- Default `engineering-v1` coding assessment discovers existing/native/installed facilities, traces scoped TS/JS callers using the pinned local compiler, requires evidence-backed reuse and scope decisions, and checks final complexity findings before closure.
+- Concurrent command reconciliation records captured output manifests per actual attempt. Pending sibling changes remain unacknowledged until their own receipts arrive; unexpected source/dependency changes block acceptance.
+- Target baseline source blobs join the existing Vault/Supabase workflow projection and recovery path. Historical workflow hashes remain compatible, and active historical coding tasks explicitly require new assessment before further mutation.
+- Expanded `craft_source` and `workflow_plan` operations expose discovery, impact and final review through the existing MCP tools. Publication and ChatGPT Web schema verification remain separate deployment gates.
 
 ## [0.7.0] - 2026-09-10 — Prerelease
 

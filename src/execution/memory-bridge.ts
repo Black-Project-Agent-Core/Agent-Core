@@ -79,8 +79,6 @@ function parsedEvidenceProjection(parsed: ExecutionParsedOutputView | null): Rec
     .sort(([left], [right]) => left.localeCompare(right))
     .slice(0, 32);
   const projection: Record<string, unknown> = {
-    parserVersion: parsed.parserVersion,
-    confidence: parsed.confidence,
     ...(structured.testResults ? { testResults: { ...structured.testResults } } : {}),
     ...(structured.buildStatus ? { buildStatus: structured.buildStatus } : {}),
     ...(structured.deploymentStatus ? { deploymentStatus: structured.deploymentStatus } : {}),
@@ -89,7 +87,17 @@ function parsedEvidenceProjection(parsed: ExecutionParsedOutputView | null): Rec
     ...(structured.securityIssueCount !== undefined ? { securityIssueCount: structured.securityIssueCount } : {}),
     ...(errorPatterns?.length ? { errorPatterns } : {}),
   };
-  return Object.keys(projection).length > 2 ? projection : undefined;
+  // Projection excerpts remain a transient display surface, not promoted knowledge.
+  if (!Object.keys(projection).length) return undefined;
+  return {
+    parserVersion: parsed.parserVersion,
+    confidence: parsed.confidence,
+    source: { ...parsed.source },
+    coverageStatus: parsed.coverageStatus ?? 'legacy_unknown',
+    ...(parsed.coverage ? { coverage: parsed.coverage } : {}),
+    ...(parsed.binding ? { binding: { ...parsed.binding } } : {}),
+    ...projection,
+  };
 }
 
 function terminalRunEvent(eventType: string): boolean {

@@ -192,9 +192,21 @@ export class FileNativeMemoryBackend {
   }
   async getContext(scope:MemoryScope,id:string):Promise<FileNativeMemoryContextRecord|null>{const r=await this.aux.get<FileNativeMemoryContextRecord>(C.contexts,id);return r&&scopeMatches(this.paths,r,scope)&&r.expiresAt>Date.now()?r:null;}
   async getLifecycleContext(scope:MemoryScope,id:string):Promise<MemoryContextLifecycleRecord|null>{const r=await this.aux.get<MemoryContextLifecycleRecord>(C.lifecycles,id);return r&&scopeMatches(this.paths,r,scope)?r:null;}
-  async findLifecycleByRoute(input:{principalId:string;routeContextId:string;projectIds:readonly string[];authorityPrincipalId?:string}):Promise<MemoryContextLifecycleRecord|null>{
+  async findLifecycleByRoute(input:{principalId:string;routeContextId:string;projectIds:readonly string[];authorityPrincipalId?:string;includeDescendantProjects?:boolean}):Promise<MemoryContextLifecycleRecord|null>{
     const allowedProjects=new Set(input.projectIds.map(projectId=>project(this.paths,{principalId:input.principalId,projectId})));
-    const matches=(await this.aux.list<MemoryContextLifecycleRecord>(C.lifecycles)).filter(r=>r.principalId===input.principalId&&r.routeContextId===input.routeContextId&&allowedProjects.has(r.projectId)&&(!input.authorityPrincipalId||(r.authorityPrincipalId??r.principalId)===input.authorityPrincipalId));
+    const allowedProject=(projectId:string)=>{
+      if(allowedProjects.has(projectId))return true;
+      // Recovery may find a persisted child filesystem scope inside an allowed root.
+      // Logical IDs remain exact matches, and this never creates route authority.
+      if(!input.includeDescendantProjects||projectId.includes('://')||!path.isAbsolute(projectId))return false;
+      return input.projectIds.some(root=>{
+        if(root.includes('://')||!path.isAbsolute(root))return false;
+        const canonical=(value:string)=>process.platform==='win32'?path.resolve(value).toLowerCase():path.resolve(value);
+        const relative=path.relative(canonical(root),canonical(projectId));
+        return relative===''||relative!=='..'&&!relative.startsWith(`..${path.sep}`)&&!path.isAbsolute(relative);
+      });
+    };
+    const matches=(await this.aux.list<MemoryContextLifecycleRecord>(C.lifecycles)).filter(r=>r.principalId===input.principalId&&r.routeContextId===input.routeContextId&&allowedProject(r.projectId)&&(!input.authorityPrincipalId||(r.authorityPrincipalId??r.principalId)===input.authorityPrincipalId));
     if(matches.length>1)throw new MemoryHardLifecycleError('MEMORY_LIFECYCLE_CONFLICT','Persisted route has ambiguous lifecycle authority');
     return matches[0]??null;
   }

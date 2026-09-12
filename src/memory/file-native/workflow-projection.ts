@@ -4,11 +4,14 @@ import path from 'node:path';
 import * as z from 'zod/v4';
 import { CONTINUITY_TASK_STATUSES, CONTINUITY_TURN_STATES, FRONTIER_STATUSES, normalizeContinuityCheckpointInput } from '../../continuity/types.js';
 import { validateWorkflowRecord, workflowScopeId } from '../../workflow/store.js';
+import type { WorkflowRecord } from '../../workflow/types.js';
 import { sanitizeStructured } from '../record-types.js';
 import { MEMORY_PERSISTENCE_DECISIONS, MEMORY_WRITE_REASON_CODES, type MemoryScope } from '../types.js';
 import { canonicalFileNativeProjectId, type FileNativeMemoryPaths } from './paths.js';
+import { engineeringSourceRecordId, engineeringSourceReferences, isEngineeringSourceBlob, readEngineeringSourceBlob,
+  validateEngineeringSourceBlob } from './workflow-source-projection.js';
 
-/** This allowlist deliberately excludes context leases, sync receipts and source caches. */
+/** Leases and unrelated source caches are excluded; engineering contracts carry only their referenced immutable blobs. */
 export const WORKFLOW_PROJECTION_CATEGORIES = [
   'continuity-tasks', 'continuity-turns', 'continuity-checkpoints', 'continuity-frontier',
   'write-decisions', 'lifecycles', 'workflow-contracts',
@@ -105,7 +108,8 @@ export interface WorkflowProjectionSnapshot {
 /** Validate before projecting: malformed state must never be silently omitted from a generation. */
 export function validateWorkflowProjectionDocument(category: WorkflowProjectionCategory, raw: unknown): Record<string, unknown> {
   try {
-    if (category === 'workflow-contracts') return validateWorkflowRecord(raw) as unknown as Record<string, unknown>;
+    if (category === 'workflow-contracts') return (isEngineeringSourceBlob(raw)
+      ? validateEngineeringSourceBlob(raw) : validateWorkflowRecord(raw)) as unknown as Record<string, unknown>;
     const record = schemas[category].parse(raw) as Record<string, unknown>;
     if (category === 'continuity-checkpoints') {
       normalizeContinuityCheckpointInput(record.input as Parameters<typeof normalizeContinuityCheckpointInput>[0]);
@@ -136,9 +140,17 @@ export function makeWorkflowProjectionRecord(category: WorkflowProjectionCategor
   const valid = validateWorkflowProjectionDocument(category, raw);
   if (valid.principalId !== scope.principalId || String(valid.projectId ?? '') !== scope.projectId) return fail('WORKFLOW_PROJECTION_SCOPE_MISMATCH');
   if (!id.safeParse(recordId).success || (category !== 'workflow-contracts' && valid[identityFields[category]] !== recordId)) return fail('WORKFLOW_PROJECTION_ID_MISMATCH');
-  if (category === 'workflow-contracts' && recordId !== workflowScopeId({ ...scope, taskId: String(valid.taskId) })) return fail('WORKFLOW_PROJECTION_ID_MISMATCH');
+  if (category === 'workflow-contracts') {
+    const expected = isEngineeringSourceBlob(valid) ? engineeringSourceRecordId(valid, valid.sourceHash)
+      : workflowScopeId({ ...scope, taskId: String(valid.taskId) });
+    if (recordId !== expected) return fail('WORKFLOW_PROJECTION_ID_MISMATCH');
+  }
   const document = logicalDocument(category, valid);
-  const sanitized = sanitizeStructured(document);
+  // Source bytes have already passed their dedicated credential proof and hash validation.
+  // Preserve only that validated content; metadata retains the normal redaction boundary.
+  const sanitized = isEngineeringSourceBlob(document)
+    ? { ...sanitizeStructured(Object.fromEntries(Object.entries(document).filter(([key]) => key !== 'content'))) as Record<string, unknown>, content: document.content }
+    : sanitizeStructured(document);
   if (category === 'workflow-contracts' && workflowCanonicalJson(document) !== workflowCanonicalJson(sanitized)) {
     // Do not corrupt an integrity checked contract while hiding a leaked secret. Repair the source record instead.
     return fail('WORKFLOW_PROJECTION_SECRET_DETECTED');
@@ -166,6 +178,16 @@ export function makeWorkflowProjectionSnapshot(scope: { principalId: string; pro
 export function validateWorkflowProjectionReferences(records: WorkflowProjectionRecord[]): void {
   const tasks = new Set(records.filter(r => r.category === 'continuity-tasks').map(r => r.document.taskId));
   const checkpoints = new Set(records.filter(r => r.category === 'continuity-checkpoints').map(r => r.document.checkpointId));
+  const contracts = records.filter(record => record.category === 'workflow-contracts' && !isEngineeringSourceBlob(record.document));
+  const requiredSources = new Map(contracts.flatMap(record => engineeringSourceReferences(record.document as unknown as WorkflowRecord)
+    .map(reference => [engineeringSourceRecordId(record.document as unknown as WorkflowRecord, reference.sourceHash), reference] as const)));
+  const sources = new Map(records.filter(record => record.category === 'workflow-contracts' && isEngineeringSourceBlob(record.document))
+    .map(record => [record.recordId, validateEngineeringSourceBlob(record.document)]));
+  for (const [recordId, reference] of requiredSources) {
+    const source = sources.get(recordId);
+    if (!source || source.sourceHash !== reference.sourceHash || source.bytes !== reference.bytes) return fail('WORKFLOW_SOURCE_PROJECTION_MISSING');
+  }
+  for (const recordId of sources.keys()) if (!requiredSources.has(recordId)) return fail('WORKFLOW_SOURCE_PROJECTION_ORPHAN');
   for (const record of records) {
     const doc = record.document;
     const taskId = ['continuity-turns', 'continuity-checkpoints', 'workflow-contracts'].includes(record.category) ? doc.taskId
@@ -203,8 +225,20 @@ async function readProjectionRecords(paths: FileNativeMemoryPaths, scope: Memory
 }
 export async function readWorkflowProjection(paths:FileNativeMemoryPaths,scope:MemoryScope):Promise<WorkflowProjectionSnapshot>{
   const {normalized,records}=await readProjectionRecords(paths,scope,WORKFLOW_PROJECTION_CATEGORIES);
+  const known = new Set(records.map(record => record.recordId));
+  for (const record of [...records]) {
+    if (record.category !== 'workflow-contracts' || isEngineeringSourceBlob(record.document)) continue;
+    const contract = record.document as unknown as WorkflowRecord;
+    for (const reference of engineeringSourceReferences(contract)) {
+      const recordId = engineeringSourceRecordId(contract, reference.sourceHash);
+      if (known.has(recordId)) continue;
+      const blob = await readEngineeringSourceBlob(paths, contract, reference);
+      records.push(makeWorkflowProjectionRecord('workflow-contracts', recordId, blob, normalized)); known.add(recordId);
+      if (records.length > WORKFLOW_PROJECTION_LIMITS.records) return fail('WORKFLOW_PROJECTION_RECORD_LIMIT');
+    }
+  }
   return makeWorkflowProjectionSnapshot(normalized,records);
 }
 export async function hasWorkflowProjectionContract(paths:FileNativeMemoryPaths,scope:MemoryScope):Promise<boolean>{
-  return(await readProjectionRecords(paths,scope,['workflow-contracts'])).records.length>0;
+  return(await readProjectionRecords(paths,scope,['workflow-contracts'])).records.some(record=>!isEngineeringSourceBlob(record.document));
 }

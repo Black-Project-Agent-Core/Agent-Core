@@ -28,6 +28,7 @@ export interface ExecutionRunOptions {
   onOutputAvailable?(event: ExecutionOutputAvailable): void | Promise<void>;
   dependencies?: DependencyIdentity[];
   workflowBinding?: ExecutionWorkflowBinding;
+  projectRoot?: string;
 }
 
 export interface ExecutionCommandRunnerOptions {
@@ -148,7 +149,7 @@ export class ExecutionCommandRunner {
   ): Promise<ExecutionRunHandle> {
     const paths = await this.logs.prepareAttempt(runId, node.id, attemptNo);
     const provenance = await beginExecutionProvenance(this.workspace, node, { runId, attemptId, attemptNo,
-      dependencies: options.dependencies, workflowBinding: options.workflowBinding });
+      dependencies: options.dependencies, workflowBinding: options.workflowBinding }, options.projectRoot);
     const startedAt = Date.now();
     const activeCorrelation = currentCorrelation();
     const correlation: import('./log-store.js').ExecutionResultCorrelation | undefined = activeCorrelation ? {

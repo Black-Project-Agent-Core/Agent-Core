@@ -9,6 +9,8 @@ The model remains responsible for interpretation and judgment. Agent Core suppli
 
 ## Core capabilities
 
+Start with the [maintained capability inventory](docs/AGENT-CORE-CAPABILITIES.md) (Indonesian) for each built-in capability's purpose, default activation, source evidence, limitations, and change record. Use it when comparing, adding, or reducing capabilities.
+
 | Layer | Responsibility |
 |---|---|
 | MCP gateway | Streamable HTTP MCP endpoint, OAuth, custom Agent Core API keys, and bounded tool discovery |
@@ -16,6 +18,7 @@ The model remains responsible for interpretation and judgment. Agent Core suppli
 | Capability routing | Principal/project routing, deferred capability search, and audited skill loading |
 | File-Native Memory Fabric | Obsidian-compatible Markdown vault with provenance, retrieval, revision, redaction, backup, and integrity checks |
 | Source-grounded workflow | Current source receipts, accepted plan identity, required craft/DAG obligations, and verified completion |
+| Engineering policy | Mandatory existing/native facility discovery, caller impact, bounded changes, and evidenced complexity review for coding tasks |
 | Second memory | Scoped direct Supabase recall, reads/writes, and durable workflow generations; Graphify supplies a derived local graph |
 | Local Continuity | Durable task, checkpoint, blocker, decision, and next-frontier state across sessions |
 | Execution Fabric | Persisted DAG execution, bounded concurrency, retries, cancellation, logs, restart recovery, and verified artifacts |

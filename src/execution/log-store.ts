@@ -1,8 +1,9 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { access, mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ExecutionEvidenceManifest } from './evidence.js';
-import type { ExecutionProvenance } from './provenance.js';
+import { executionIdentityHash, type ExecutionProvenance } from './provenance.js';
+import type { OutputTextSegment } from './output-projection.js';
 
 export interface ExecutionAttemptPaths {
   directory: string;
@@ -17,6 +18,19 @@ export interface ExecutionLogReadResult {
   nextOffset: number;
   totalBytes: number;
   eof: boolean;
+}
+
+export interface ExecutionLogAnalysisCoverage {
+  strategy: 'full' | 'head_tail';
+  totalBytes: number;
+  examinedBytes: number;
+  omittedBytes: number;
+  ranges: Array<{ start: number; end: number }>;
+}
+
+export interface ExecutionLogAnalysis {
+  coverage: ExecutionLogAnalysisCoverage;
+  segments: OutputTextSegment[];
 }
 
 export type ExecutionResultState = 'succeeded' | 'failed' | 'interrupted' | 'cancelled';
@@ -194,6 +208,84 @@ export class ExecutionLogStore {
     }
   }
 
+  /** Hash the original bytes while retaining bounded, complete-line analysis windows. */
+  async readAnalysis(
+    marker: ExecutionResultMarker,
+    stream: 'stdout' | 'stderr',
+    budget = 128 * 1024,
+  ): Promise<ExecutionLogAnalysis> {
+    if (stream !== 'stdout' && stream !== 'stderr') fail('EXECUTION_LOG_STREAM_INVALID', 'Invalid analysis stream');
+    if (!Number.isSafeInteger(budget) || budget < 2 || budget > MAX_LOG_READ_BYTES) {
+      fail('EXECUTION_LOG_READ_LIMIT_INVALID', 'Analysis window must be between 2 and 1048576 bytes');
+    }
+    const totalBytes = stream === 'stdout' ? marker.stdoutBytes : marker.stderrBytes;
+    const expectedHash = stream === 'stdout' ? marker.stdoutSha256 : marker.stderrSha256;
+    if (!Number.isSafeInteger(totalBytes) || totalBytes < 0 || totalBytes > 1024 * 1024 * 1024
+      || !/^[a-f0-9]{64}$/.test(expectedHash)) {
+      fail('EXECUTION_LOG_ANALYSIS_MARKER_INVALID', 'Invalid terminal output byte count or hash');
+    }
+    const paths = this.paths(marker.runId, marker.nodeId, marker.attemptNo);
+    const target = stream === 'stdout' ? paths.stdoutPath : paths.stderrPath;
+    const handle = await open(target, 'r');
+    try {
+      const before = await handle.stat();
+      if (!before.isFile() || before.size !== totalBytes) {
+        fail('EXECUTION_LOG_INTEGRITY_MISMATCH', 'Raw output size differs from the terminal marker');
+      }
+      const strategy = totalBytes <= budget ? 'full' : 'head_tail';
+      const headSize = Math.floor(budget / 2);
+      const windows = (strategy === 'full'
+        ? [{ start: 0, end: totalBytes }]
+        : [{ start: 0, end: headSize }, { start: totalBytes - (budget - headSize), end: totalBytes }])
+        .map(range => ({ ...range, bytes: Buffer.alloc(range.end - range.start), startsAtLine: range.start === 0 }));
+      const hash = createHash('sha256');
+      const chunk = Buffer.alloc(64 * 1024);
+      let offset = 0;
+      while (offset < totalBytes) {
+        const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, totalBytes - offset), offset);
+        if (!bytesRead) fail('EXECUTION_LOG_INTEGRITY_MISMATCH', 'Raw output ended before its terminal byte count');
+        hash.update(chunk.subarray(0, bytesRead));
+        for (const window of windows) {
+          if (window.start > offset && window.start - 1 < offset + bytesRead) {
+            window.startsAtLine = chunk[window.start - 1 - offset] === 10;
+          }
+          const start = Math.max(offset, window.start), end = Math.min(offset + bytesRead, window.end);
+          if (start < end) chunk.copy(window.bytes, start - window.start, start - offset, end - offset);
+        }
+        offset += bytesRead;
+      }
+      const [after, currentPath] = await Promise.all([handle.stat(), stat(target)]);
+      if (hash.digest('hex') !== expectedHash || after.size !== totalBytes
+        || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs
+        || currentPath.ino !== after.ino || currentPath.dev !== after.dev || currentPath.size !== totalBytes) {
+        fail('EXECUTION_LOG_INTEGRITY_MISMATCH', 'Raw output no longer matches its terminal marker');
+      }
+      const segments: OutputTextSegment[] = [];
+      for (const window of windows) {
+        let start = 0, end = window.bytes.length;
+        // A cut line is not a valid diagnostic or test-summary observation.
+        if (!window.startsAtLine) {
+          const newline = window.bytes.indexOf(10);
+          start = newline < 0 ? end : newline + 1;
+        }
+        if (window.end < totalBytes) {
+          const newline = window.bytes.lastIndexOf(10);
+          end = newline < 0 ? 0 : newline + 1;
+        }
+        if (start >= end) continue;
+        let text: string;
+        try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(window.bytes.subarray(start, end)); }
+        catch { fail('EXECUTION_LOG_ENCODING_UNSUPPORTED', 'Output analysis requires valid UTF-8; original bytes remain available'); }
+        segments.push({ stream, start: window.start + start, end: window.start + end, text });
+      }
+      const ranges = segments.map(({ start, end }) => ({ start, end }));
+      const examinedBytes = ranges.reduce((sum, range) => sum + range.end - range.start, 0);
+      return { segments, coverage: { strategy, totalBytes, examinedBytes, omittedBytes: totalBytes - examinedBytes, ranges } };
+    } finally {
+      await handle.close();
+    }
+  }
+
   async readResult(runId: string, nodeId: string, attemptNo: number): Promise<ExecutionResultMarker | null> {
     const paths = this.paths(runId, nodeId, attemptNo);
     let body: string;
@@ -219,13 +311,18 @@ export class ExecutionLogStore {
     );
     const provenance = parsed?.provenance;
     const hash = (value: unknown) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+    const writesValid = !provenance || (provenance.writeManifest === undefined && provenance.writeManifestHash === undefined)
+      || (Array.isArray(provenance.writeManifest) && hash(provenance.writeManifestHash)
+        && provenance.writeManifest.every(entry => entry && typeof entry.path === 'string'
+          && ['file', 'directory', 'missing'].includes(entry.kind) && (entry.kind !== 'file' || hash(entry.sha256)))
+        && executionIdentityHash(provenance.writeManifest) === provenance.writeManifestHash);
     const provenanceValid = !provenance || (provenance.version === 1
       && provenance.runId === runId && provenance.nodeId === nodeId && provenance.attemptNo === attemptNo && provenance.attemptId === parsed.attemptId
       && hash(provenance.nodeSpecHash) && hash(provenance.inputManifestHash) && hash(provenance.outputManifestHash) && hash(provenance.toolchainHash)
       && Array.isArray(provenance.inputPaths) && provenance.inputPaths.every((item) => typeof item === 'string')
       && Array.isArray(provenance.inputManifest) && Array.isArray(provenance.outputManifest) && Array.isArray(provenance.dependencies)
       && typeof provenance.sourceBound === 'boolean' && typeof provenance.inputsStableDuringAttempt === 'boolean');
-    if (!commonValid || !v2Valid || !provenanceValid) {
+    if (!commonValid || !v2Valid || !provenanceValid || !writesValid) {
       fail('EXECUTION_RESULT_INVALID', 'Execution result marker does not match the requested attempt');
     }
     return parsed;

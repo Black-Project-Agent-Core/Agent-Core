@@ -214,6 +214,49 @@ describe('task checkpoint closure', () => {
     expect(decisions[0]).toMatchObject({ decisionType: 'NO_DURABLE_MEMORY', reasonCodes: ['NO_FUTURE_RELEVANCE'], contextId: opened.memoryContextId, coveredMeaningfulWorkCount: 0 });
   });
 
+  it('distinguishes invalid no-memory requests without mutation and accepts interrupted evidence plus blockers', async () => {
+    const f = await fixture('interrupted-decision-diagnostics');
+    const opened = await f.openContext({ workspaceRoot: f.root, task: 'Inspect the scope of an interrupted operational attempt' });
+    const memoryDecision = { reasonCode: 'TRANSIENT_OPERATION' as const, explanation: '  No source, plan, execution, or new reusable knowledge was produced.  ' };
+    const input: TaskCheckpointInput = {
+      workspaceRoot: f.root, routeContextId: opened.routeContextId, memoryContextId: opened.memoryContextId,
+      continuityTaskId: opened.continuityTaskId, continuityTurnId: opened.continuityTurnId,
+      status: 'interrupted', summary: 'The requested scope did not match; only preflight was performed.',
+      evidence: [{ type: 'tool', ref: 'route:scope-inspection', result: 'Scope mismatch; implementation did not begin.' }],
+      blockers: [{ code: 'PROJECT_SCOPE_MISMATCH', detail: 'The route must retain the requested project scope.' }],
+      memoryDecision,
+    };
+    const categories = ['continuity-tasks', 'continuity-turns', 'lifecycles', 'continuity-checkpoints', 'write-decisions'];
+    const before = await Promise.all(categories.map((category) => f.aux.list(category)));
+    const privateValue = 'private diagnostic fixture content';
+    const invalid: Array<{ patch: Partial<TaskCheckpointInput>; message: string }> = [
+      { patch: { memoryDecision: undefined }, message: 'No durable knowledge or memoryDecision was received.' },
+      { patch: { decisions: [{ key: 'private', value: privateValue, reason: privateValue }] }, message: 'durable knowledge from decisions.' },
+      { patch: { artifacts: [{ path: privateValue, role: privateValue }] }, message: 'durable knowledge from artifacts.' },
+      { patch: { status: 'completed', projectTerminal: true, outcomes: [{ key: 'private', value: privateValue, evidenceRefs: ['route:scope-inspection'] }] }, message: 'durable knowledge from outcomes.' },
+      { patch: { constraints: [{ key: 'private', value: privateValue, reason: privateValue, enforcement: 'hard' }] }, message: 'durable knowledge from constraints.' },
+      { patch: { status: 'failed', projectTerminal: true }, message: 'durable knowledge from status=failed.' },
+      { patch: { memoryDecision: { ...memoryDecision, reasonCode: privateValue as typeof memoryDecision.reasonCode } }, message: 'memoryDecision.reasonCode must be' },
+      { patch: { memoryDecision: { ...memoryDecision, explanation: '\u3000\u00a0\t' } }, message: 'must not be blank after Unicode normalization and trimming.' },
+      { patch: { memoryDecision: { ...memoryDecision, explanation: '\ufb03'.repeat(667) } }, message: 'must not exceed 2000 characters after Unicode normalization and trimming.' },
+    ];
+    for (const { patch, message } of invalid) {
+      const error = await f.service.checkpointForScope(f.scope, { ...input, ...patch }).then(() => undefined, (failure: Error) => failure);
+      expect(error).toMatchObject({ code: 'TASK_MEMORY_DECISION_REQUIRED' });
+      expect(error?.message).toContain(message);
+      expect(error?.message).not.toContain(privateValue);
+      expect(await Promise.all(categories.map((category) => f.aux.list(category)))).toEqual(before);
+    }
+    const closed = await f.service.checkpointForScope(f.scope, input);
+    expect(closed).toMatchObject({ taskStatus: 'interrupted', turnState: 'interrupted', noDurableMemoryDecisions: 1,
+      memoryLifecycle: { postflightState: 'CLOSED', durabilityState: 'DURABLY_CLOSED' }, remoteDurability: { state: 'REMOTE_SYNCED' } });
+    const checkpoints = await f.aux.list<any>('continuity-checkpoints');
+    expect(checkpoints).toHaveLength(1);
+    expect(checkpoints[0]).toMatchObject({ memoryDecision: { ...memoryDecision, explanation: memoryDecision.explanation.trim() },
+      input: { status: 'interrupted', evidence: input.evidence, blockers: input.blockers } });
+    expect(await f.aux.list('write-decisions')).toHaveLength(1);
+  });
+
   it.each(['direct', 'file-mirror'] as const)('keeps closure pending when %s fails while synchronizing the final receipt', async (failure) => {
     const f = await fixture(`last-receipt-${failure}`, { remote: failure === 'file-mirror' });
     const opened = await f.openContext({ workspaceRoot: f.root, task: 'Verify an existing transport receipt' });

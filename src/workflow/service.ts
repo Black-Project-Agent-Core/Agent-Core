@@ -6,6 +6,9 @@ import { WorkflowSources, snapshotMatchesDonor } from './source.js';
 import { WorkflowStore, workflowHash } from './store.js';
 import { executionContentManifest } from '../execution/provenance.js';
 import { classificationProvenance, classifyWorkflowInput } from './classification.js';
+import { EngineeringEnforcement } from './engineering-enforcement.js';
+import { ENGINEERING_POLICY_VERSION, isEngineeringPath, type EngineeringReviewInput } from './engineering-policy.js';
+import { assertWorkflowBaselinesCurrent, reconcileWorkflowOperation, type WorkflowActiveWriter } from './operation-ledger.js';
 import { sanitizeStructured, stableJson } from '../memory/record-types.js';
 import { WORKFLOW_POLICY_VERSION, WorkflowError, workflowPlanInputSchema, type WorkflowAuthorizeInput, type WorkflowBindInput, type WorkflowExecutionBinding, type WorkflowExecutionRequest, type WorkflowPlanInput, type WorkflowReceipt, type WorkflowRecord, type WorkflowRunEvidence, type WorkflowScope, type WorkflowSourceInput, type WorkflowStep, type WorkflowMapping, type WorkflowCheck, type WorkflowPathState } from './types.js';
 export * from './types.js';
@@ -19,16 +22,45 @@ function requireRecord(record: WorkflowRecord | null): WorkflowRecord { if (!rec
 function unique(values: readonly string[], label: string): void { if (new Set(values).size !== values.length) fail('WORKFLOW_PLAN_INVALID', `${label} must be unique`); }
 function inside(root: string, value: string): boolean { const rel = path.relative(root, value); return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel)); }
 function canonical(value: string): string { const resolved = path.resolve(value); return process.platform === 'win32' ? resolved.toLowerCase() : resolved; }
+function codingPolicyRequired(classification: ReturnType<typeof classifyWorkflowInput>, text: string): boolean {
+  const documentOnlyAtomic=classification.reasons.includes('ATOMIC_EDIT_REQUEST') && /\.(?:md|mdx|txt|rst|adoc)\b/i.test(text)
+    && !/\.(?:[cm]?[jt]sx?|py|go|rs|java|json|yaml|yml|toml|ps1|sh)\b/i.test(text);
+  return classification.result.craftRequired || !documentOnlyAtomic && classification.reasons.some(reason=>['IMPLEMENTATION_REQUEST','ATOMIC_EDIT_REQUEST'].includes(reason));
+}
+function engineeringCommandRequired(command: string): boolean {
+  const normalized = command.normalize('NFKC').trim().replace(/\s+/g, ' ');
+  if (!normalized) return false;
+  return /\b(?:rewrite|refactor|codegen|compile|bundle|migrat(?:e|ion)|scaffold|generate[-_ ]?(?:code|source|schema)|apply[-_ ]?patch)\b/i.test(normalized)
+    || /\b(?:Set-Content|Add-Content|Out-File)\b/i.test(normalized)
+    || /\bgit\s+(?:apply|am)\b/i.test(normalized)
+    || /(?:^|\s)(?:patch|sed\s+-i|perl\s+-pi)(?:\s|$)/i.test(normalized)
+    || /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:build|compile|bundle|codegen|migrate)\b/i.test(normalized)
+    || /\b(?:cargo|go|dotnet|mvn|gradle|cmake)\s+(?:build|compile|generate)\b/i.test(normalized);
+}
+function directOperationalCommand(command: string): boolean {
+  return Boolean(command.trim()) && !engineeringCommandRequired(command);
+}
+function directOperationalOperation(input: WorkflowAuthorizeInput): boolean {
+  if (input.toolName === 'github_git' && ['clone','fetch','pull'].includes(input.operation ?? '')) return true;
+  if (input.toolName === 'create_directory' || input.toolName === 'move_file') return true;
+  const declaredEngineeringTarget = [input.path, ...(input.paths ?? [])]
+    .filter((value): value is string => typeof value === 'string').some(isEngineeringPath);
+  return COMMAND_TOOLS.has(input.toolName) && !declaredEngineeringTarget
+    && typeof input.command === 'string' && directOperationalCommand(input.command);
+}
 export interface WorkflowServiceOptions { workspace: WorkspacePolicy; stateRoot: string; cacheRoot: string; projectRoot?: string; protectedRoots?: string[]; now?: () => number }
 
 export class WorkflowService {
   readonly store: WorkflowStore;
   private readonly sources: WorkflowSources;
   private readonly now: () => number;
+  private readonly engineering: EngineeringEnforcement;
   constructor(private readonly options: WorkflowServiceOptions) {
     this.store = new WorkflowStore(options.stateRoot, path.join(options.cacheRoot, 'locks'));
     this.sources = new WorkflowSources(options.workspace, path.resolve(options.cacheRoot));
     this.now = options.now ?? Date.now;
+    this.engineering = new EngineeringEnforcement({ workspace: options.workspace, store: this.store, sources: this.sources, cacheRoot: options.cacheRoot,
+      protectedRoots: [options.stateRoot, options.cacheRoot, ...(options.protectedRoots ?? [])], now: this.now });
   }
   async bind(scope: WorkflowScope, input: WorkflowBindInput): Promise<WorkflowRecord> {
     if (!input.brief?.trim() || input.brief.length > 20_000) fail('WORKFLOW_BRIEF_INVALID', 'A nonempty brief of at most 20,000 characters is required');
@@ -37,9 +69,10 @@ export class WorkflowService {
       fail('WORKFLOW_INPUT_SENSITIVE', 'Remove credential values from the workflow brief, context, and structured source request');
     }
     const policyText = [input.brief, input.context].filter(Boolean).join('\n');
-    const targetRoot = this.options.workspace.resolveProjectRoot({ explicitRoot: scope.projectId === 'agent-core://self' ? this.options.projectRoot ?? this.options.workspace.roots[0] : scope.projectId });
+    const targetRoot = await this.options.workspace.validateProjectRoot(this.options.workspace.resolveProjectRoot({ explicitRoot: scope.projectId === 'agent-core://self' ? this.options.projectRoot ?? this.options.workspace.roots[0] : scope.projectId }));
     const classification = classifyWorkflowInput(input, this.now());
     const { craftRequired, dagRequired, planRequired } = classification.result;
+    const engineeringRequired = codingPolicyRequired(classification,policyText);
     if (input.craft) { unique(input.craft.donors.map(d => d.id), 'Donor IDs'); unique(input.craft.requirements.map(r => r.id), 'Requirement IDs'); }
     return this.store.update(scope, undefined, current => {
       if (current) {
@@ -50,26 +83,43 @@ export class WorkflowService {
         if (changedCraft) { current.requirements = input.craft!.requirements; current.donors = input.craft!.donors; current.phase = 'DISCOVERY'; delete current.plan; delete current.verification; }
         if (input.context !== undefined && input.context !== current.context) { current.context = input.context; current.briefHash = workflowHash([current.brief,input.context].filter(Boolean).join('\n')); current.phase = 'DISCOVERY'; delete current.plan; delete current.verification; }
         current.craftRequired ||= craftRequired; current.dagRequired ||= dagRequired; current.planRequired ||= planRequired;
+        if (engineeringRequired && !current.engineering) current.engineering = { policyVersion: ENGINEERING_POLICY_VERSION, required: true, reason: classification.reasons.join(', '), activatedAt: this.now(), evidence: [] };
+        if (current.engineering) current.planRequired = true;
         current.updatedAt = this.now(); return current;
       }
       return {
         schemaVersion: 1, ...scope, version: 1, stateHash: zeroHash, targetRoot,
         brief: input.brief, ...(input.context !== undefined ? {context:input.context}:{}), briefHash: workflowHash(policyText), createdAt: this.now(), updatedAt: this.now(),
-        phase: 'DISCOVERY', planRequired, craftRequired, dagRequired, blockers: [],
+        phase: 'DISCOVERY', planRequired: planRequired || engineeringRequired, craftRequired, dagRequired, blockers: [],
         requirements: input.craft?.requirements ?? [], donors: input.craft?.donors ?? [], snapshots: [], receipts: [],
         classification: classificationProvenance(undefined, null, classification),
+        ...(engineeringRequired ? { engineering: { policyVersion: ENGINEERING_POLICY_VERSION, required: true as const, reason: classification.reasons.join(', '), activatedAt: this.now(), evidence: [] } } : {}),
       };
     });
   }
   async status(scope: WorkflowScope): Promise<(WorkflowRecord & { observedBlockers: Array<{code:string;detail:string}> }) | null> {
     const record = await this.store.read(scope); if (!record) return null;
     const observedBlockers:Array<{code:string;detail:string}>=[];
+    if (!record.engineering && record.phase !== 'CLOSED' && (record.craftRequired || record.plan?.steps.some(step => step.paths.some(isEngineeringPath) || Boolean(step.command)) || codingPolicyRequired(classifyWorkflowInput({brief:record.brief,context:record.context},this.now()), record.brief+' '+(record.context??'')))) {
+      observedBlockers.push({code:'ENGINEERING_UPGRADE_REQUIRED',detail:'This active historical task needs engineering-v1 assessment before its next coding mutation. Completed historical operations may still be reconciled.'});
+    }
+    if (record.engineering && record.phase !== 'CLOSED') {
+      if (!record.engineering.assessment || record.engineering.assessment.planHash !== record.plan?.hash) observedBlockers.push({code:'ENGINEERING_ASSESSMENT_REQUIRED',detail:'Collect discovery and impact evidence, read selected sources, then submit a plan with reuse and scope decisions.'});
+      else {
+        try {
+          const inventory=await this.engineering.assertCurrent(record);
+          if(record.engineering.review && record.engineering.review.inventoryHash!==inventory.coverage.inventoryHash) observedBlockers.push({code:'ENGINEERING_REVIEW_STALE',detail:'Final inventory changed; collect and accept a new complexity review.'});
+        } catch (error) { observedBlockers.push({code:error instanceof WorkflowError ? error.code : 'ENGINEERING_EVIDENCE_UNAVAILABLE', detail:error instanceof Error ? error.message : 'Engineering evidence cannot be verified'}); }
+        if (!record.engineering.review || record.engineering.review.planHash !== record.plan?.hash) observedBlockers.push({code:'ENGINEERING_REVIEW_REQUIRED',detail:'Collect a final complexity review and resolve its findings before completion.'});
+      }
+    }
     if (record.plan && !['VERIFIED','CLOSURE_PENDING','CLOSED'].includes(record.phase)) {
       const stale = await this.staleSources(record); if (stale.length) observedBlockers.push({ code: 'WORKFLOW_SOURCE_STALE', detail: `Source evidence changed or cache unavailable: ${stale.join(', ')}` });
     }
     return { ...record, observedBlockers };
   }
   async source(scope: WorkflowScope, input: WorkflowSourceInput) {
+    if (['discover', 'impact', 'review'].includes(input.operation)) return this.engineering.capture(scope, input);
     const current = requireRecord(await this.store.read(scope));
     if (current.phase === 'CLOSED') fail('WORKFLOW_CLOSED', 'Closed workflows cannot add source receipts');
     const captured = await this.sources.capture(current, input);
@@ -99,6 +149,12 @@ export class WorkflowService {
     const parsed = workflowPlanInputSchema.safeParse(input);
     if (!parsed.success) fail('WORKFLOW_PLAN_INVALID', 'Plan does not satisfy the workflow schema');
     const plan = parsed.data;
+    const existing = requireRecord(await this.store.read(scope));
+    const codingPaths = await Promise.all(plan.steps.flatMap(step => step.paths).map(p => this.couldMutateSource(existing,p)));
+    if (!existing.engineering && (plan.steps.some(step => Boolean(step.command)) || codingPaths.some(Boolean))) {
+      await this.engineering.activate(scope, 'Coding operations in the submitted plan require engineering assessment');
+      fail('ENGINEERING_ASSESSMENT_REQUIRED', 'This active workflow now requires engineering-v1 evidence; inspect its new version and collect assessment evidence before submitting');
+    }
     return this.store.update(scope, plan.expectedVersion, async current => {
       const record = requireRecord(current); if (record.phase === 'CLOSED') fail('WORKFLOW_CLOSED', 'Closed workflow cannot accept a new plan');
       unique(plan.steps.map(s => s.id), 'Step IDs'); unique(plan.checks.map(c => c.id), 'Check IDs');
@@ -113,6 +169,7 @@ export class WorkflowService {
       for (const check of plan.checks) {
         if (!check.stepIds.every(id => steps.get(id)?.kind === 'verification')) fail('WORKFLOW_PLAN_INVALID', 'Checks must reference verification steps in the plan');
         check.artifactPaths = await Promise.all(check.artifactPaths.map(p => this.targetPath(record, p)));
+        for (const artifact of check.artifactPaths) if (await this.couldMutateSource(record,artifact) && !paths.has(artifact)) fail('WORKFLOW_ARTIFACT_SOURCE_CONFLICT', 'A source-writing check must declare that source as a planned step target; use a generated report directory for verification artifacts', {path:artifact});
       }
       if (!plan.checks.some(c => c.kind === 'integration')) fail('WORKFLOW_INTEGRATION_REQUIRED', 'A runnable target integration check is required');
       for (const mapping of plan.mappings) {
@@ -121,19 +178,41 @@ export class WorkflowService {
         for (const p of [...mapping.targetPaths, ...(mapping.integrationSeamPaths ?? [])]) paths.add(p);
       }
       if (record.craftRequired) await this.validateMappings(record, plan.mappings, plan.checks, steps);
+      if (plan.assessment) for (const target of plan.assessment.targets) target.path = await this.targetPath(record, target.path);
+      const assessment = record.engineering ? await this.engineering.validateAssessment(record, plan) : undefined;
       const targetBaseline = await Promise.all([...paths].sort().map(async p => { const state = await this.pathState(p); return {path:p,hash:state.hash,expectedKind:state.kind}; }));
       record.plan = { revision: (record.plan?.revision ?? 0) + 1, hash: workflowHash(JSON.stringify(plan)), acceptedAt: this.now(), steps: plan.steps, mappings: plan.mappings, checks: plan.checks, targetBaseline };
+      record.planRequired = true;
+      if (assessment && record.engineering) {
+        record.engineering.assessment = { ...assessment, planHash: record.plan.hash, planRevision: record.plan.revision };
+        delete record.engineering.review; delete record.engineering.outputs; delete record.engineering.facilitiesHash;
+        delete record.engineering.acknowledgedFacilities;
+      }
       record.phase = 'READY_TO_IMPLEMENT'; record.blockers = []; delete record.verification; record.updatedAt = this.now();
       return record;
     });
   }
+  async submitReview(scope: WorkflowScope, input: EngineeringReviewInput): Promise<WorkflowRecord> {
+    return this.engineering.acceptReview(scope, input);
+  }
   async authorize(scope: WorkflowScope, input: WorkflowAuthorizeInput): Promise<WorkflowRecord | null> {
-    const record = await this.store.read(scope);
+    let record = await this.store.read(scope);
     if (!record) fail('WORKFLOW_NOT_FOUND', 'Workflow binding is required before an operational tool');
     if (READ_TOOLS.has(input.toolName)) return record;
     if (record.phase === 'CLOSED' || record.phase === 'CLOSURE_PENDING') fail('WORKFLOW_CLOSED', 'Workflow closure grants no implementation permission');
-    if (!record.planRequired) { for (const p of [...(input.path ? [input.path] : []), ...(input.paths ?? [])]) await this.targetPath(record, p); return record; }
+    const mutationTargets = [...(input.path ? [input.path] : []), ...(input.paths ?? [])];
+    const possibleCodeTargets = await Promise.all(mutationTargets.map(p => this.couldMutateSource(record!,p)));
+    const directOperational = !record.engineering && !record.craftRequired && !record.dagRequired && directOperationalOperation(input);
+    if (!record.engineering && !EXECUTION_TOOLS.has(input.toolName) && !directOperational && (COMMAND_TOOLS.has(input.toolName) || possibleCodeTargets.some(Boolean))) {
+      record = await this.engineering.activate(scope, 'Actual source mutation or general command requires engineering assessment');
+    }
+    if (directOperational) {
+      for (const p of mutationTargets) await this.operationalTargetPath(record, p);
+      return record;
+    }
+    if (!record.planRequired) { for (const p of mutationTargets) await this.targetPath(record, p); return record; }
     await this.assertPlanCurrent(record, input.planVersion);
+    if (record.engineering) await this.engineering.assertCurrent(record);
     if (record.dagRequired && COMMAND_TOOLS.has(input.toolName) && !input.viaExecution) fail('WORKFLOW_DAG_REQUIRED', 'Run this task through its declared execution DAG');
     const selected = this.selectedSteps(record, input.stepIds ?? (input.stepId ? [input.stepId] : []));
     if (!selected.length && !EXECUTION_TOOLS.has(input.toolName)) fail('WORKFLOW_STEP_REQUIRED', 'Supply the accepted plan step for this operation');
@@ -158,19 +237,52 @@ export class WorkflowService {
       const paths = await Promise.all([...(input.path ? [input.path] : []), ...(input.paths ?? [])].map(p => this.targetPath(record, p)));
       const changed = new Set(paths.map(canonical));
       if (!steps.length || paths.some(p => !steps.some(s => s.paths.some(v => canonical(v) === canonical(p))))) fail('WORKFLOW_PATH_NOT_PLANNED', 'Completed mutation is outside its accepted step');
-      for (const baseline of record.plan.targetBaseline) {
+      const currentStates = await Promise.all(record.plan.targetBaseline.map(baseline => this.pathState(baseline.path)));
+      if (input.operationReceipt) {
+        const receipt = input.operationReceipt;
+        if (receipt.planHash !== record.plan.hash || receipt.planRevision !== record.plan.revision) fail('WORKFLOW_PLAN_STALE', 'Attempt receipt belongs to a different plan');
+        if (receipt.outputStates.length !== changed.size || receipt.outputStates.some(state => !changed.has(canonical(state.path)))) fail('WORKFLOW_OPERATION_RECEIPT_INVALID', 'Attempt output paths differ from the selected operation');
+        const result = reconcileWorkflowOperation({baselines:record.plan.targetBaseline, receipts:record.plan.operationReceipts ?? [], operation:receipt, currentStates, activeWriters:input.executionTrust?.activeWriters});
+        if (result.duplicate) return record;
+        record.plan.targetBaseline = result.baselines; record.plan.operationReceipts = result.receipts;
+      } else for (const baseline of record.plan.targetBaseline) {
         const state = await this.pathState(baseline.path);
         if (changed.has(canonical(baseline.path))) { baseline.hash = state.hash; baseline.expectedKind = state.kind; baseline.operationRecorded = true; }
         else if (state.hash !== baseline.hash || (baseline.expectedKind && state.kind !== baseline.expectedKind)) fail('WORKFLOW_TARGET_STALE', 'An unrelated target changed during the operation', { path:baseline.path });
       }
+      await this.engineering.recordOutputs(record, paths, input.executionTrust?.activeWriters);
       record.phase = 'IMPLEMENTING'; delete record.verification; record.updatedAt = this.now(); return record;
     });
   }
+  /** A successful command with no declared source outputs must still leave the captured source intact. */
+  async assertCommandOutputsUnchanged(scope: WorkflowScope, activeWriters?: WorkflowActiveWriter[]): Promise<void> {
+    const record=requireRecord(await this.store.read(scope));
+    if(record.engineering)await this.engineering.assertCurrent(record,activeWriters);
+  }
   async assertExecution(scope: WorkflowScope, input: WorkflowExecutionRequest): Promise<WorkflowExecutionBinding> {
-    const record = requireRecord(await this.store.read(scope));
-    if (!record.planRequired) return { policyVersion: WORKFLOW_POLICY_VERSION, planRevision: '0', planHash: workflowHash(record.brief), requiredStepIds: [] };
-    await this.assertPlanCurrent(record, input.planVersion, input.operation !== 'reconcile');
+    let record = requireRecord(await this.store.read(scope));
     const nodes = input.nodes ?? [];
+    const reconciliation = input.operation === 'reconcile';
+    if (record.planRequired && !record.plan) fail('WORKFLOW_PLAN_REQUIRED', 'Read relevant source and submit a plan before creating or dispatching execution');
+    const declaredCodingWrites = await Promise.all(nodes.flatMap(node => {
+      const resources=node.resources as {writes?:string[]} | undefined;
+      return (resources?.writes ?? []).map(p => this.couldMutateSource(record,path.resolve(node.cwd ?? record.targetRoot,p)));
+    }));
+    // A verification label does not prove an arbitrary shell command is read-only.
+    // Capture the same before/after source authority for every managed command.
+    if (!reconciliation && !record.engineering && (declaredCodingWrites.some(Boolean) || nodes.length > 0)) {
+      record = await this.engineering.activate(scope, 'Managed commands require engineering assessment regardless of their declared step kind');
+    }
+    if (!record.planRequired) return { policyVersion: WORKFLOW_POLICY_VERSION, planRevision: '0', planHash: workflowHash(record.brief), requiredStepIds: [] };
+    if (!record.plan) fail('WORKFLOW_PLAN_REQUIRED', 'Read relevant source and submit a plan before creating or dispatching execution');
+    const selectedPaths = nodes.flatMap(node => {
+      const resources = node.resources as {reads?:string[]} | undefined;
+      const inputs = Array.isArray(node.inputs) ? node.inputs.filter((value):value is string => typeof value === 'string') : [];
+      return [...this.selectedSteps(record,node.stepIds ?? []).flatMap(step => step.paths), ...(resources?.reads ?? []), ...inputs].map(value => path.resolve(node.cwd ?? record.targetRoot,value));
+    });
+    await Promise.all(selectedPaths.map(value => this.options.workspace.resolveTargetInProject(record.targetRoot, value)));
+    await this.assertPlanCurrent(record, input.planVersion, !reconciliation, input.executionTrust?.activeWriters, selectedPaths);
+    if (record.engineering && !reconciliation) await this.engineering.assertCurrent(record, input.executionTrust?.activeWriters);
     for (const node of nodes) {
       const steps = this.selectedSteps(record, node.stepIds ?? []);
       if (!steps.length) fail('WORKFLOW_STEP_REQUIRED', 'Each execution node must bind an accepted workflow step');
@@ -201,6 +313,7 @@ export class WorkflowService {
     const plan = record.plan!;
     const verified = input.runs.filter(run => run.taskId === scope.taskId && run.planHash === plan.hash && run.state === 'completed' && run.verification === 'verified');
     if (input.runs.some(run => ['planned','running'].includes(run.state))) fail('WORKFLOW_EXECUTION_ACTIVE', 'Cannot complete workflow while execution is active');
+    await this.engineering.assertReviewed(record);
     const targetStates: WorkflowPathState[] = [];
     for (const baseline of plan.targetBaseline) {
       const state = await this.pathState(baseline.path), expectedKind = baseline.expectedKind ?? 'file';
@@ -236,6 +349,7 @@ export class WorkflowService {
   async markClosed(scope: WorkflowScope, input: { checkpointId: string; synchronized?: boolean }): Promise<WorkflowRecord> {
     const existing = requireRecord(await this.store.read(scope));
     if (existing.closure?.checkpointId === input.checkpointId) return existing;
+    await this.engineering.assertReviewed(existing);
     return this.store.update(scope, existing.version, r => {
       const record = requireRecord(r);
       if (record.closure || (record.planRequired && record.phase !== 'VERIFIED')) fail('WORKFLOW_VERIFICATION_REQUIRED', 'Verified work is required before recording logical completion');
@@ -298,20 +412,34 @@ export class WorkflowService {
     }
     return stale;
   }
-  private async assertPlanCurrent(record: WorkflowRecord, revision?: number, checkBaseline = true): Promise<void> {
+  private async assertPlanCurrent(record: WorkflowRecord, revision?: number, checkBaseline = true, activeWriters: readonly WorkflowActiveWriter[] = [], selectedPaths: string[] = []): Promise<void> {
     if (!record.plan) fail('WORKFLOW_PLAN_REQUIRED', 'Read the relevant sources and submit an integration plan before implementation');
     if (record.phase === 'CLOSED' || record.phase === 'CLOSURE_PENDING') fail('WORKFLOW_CLOSED', 'Closed workflow does not authorize execution');
     if (revision !== undefined && record.plan.revision !== revision) fail('WORKFLOW_PLAN_STALE', 'Operation references a superseded plan revision');
     const stale = await this.staleSources(record); if (stale.length) fail('WORKFLOW_SOURCE_STALE', 'Donor evidence is no longer current', { paths:stale });
-    if (checkBaseline) for (const baseline of record.plan.targetBaseline) { const state = await this.pathState(baseline.path); if (state.hash !== baseline.hash || (baseline.expectedKind && state.kind !== baseline.expectedKind)) fail('WORKFLOW_TARGET_STALE', 'Target changed outside its accepted operation', {path:baseline.path}); }
+    if (checkBaseline) assertWorkflowBaselinesCurrent({ baselines:record.plan.targetBaseline,
+      currentStates:await Promise.all(record.plan.targetBaseline.map(baseline => this.pathState(baseline.path))),
+      planRevision:record.plan.revision, planHash:record.plan.hash, activeWriters, selectedPaths });
   }
-  private async targetPath(record: WorkflowRecord, value: string): Promise<string> {
+  private async targetPath(record: WorkflowRecord, value: string, protectReference = true): Promise<string> {
     const resolved = path.isAbsolute(value) ? path.resolve(value) : path.resolve(record.targetRoot, value);
     const checked = await this.options.workspace.resolveTargetInProject(record.targetRoot, resolved);
     const stateParent = path.dirname(path.resolve(this.options.stateRoot));
     const authorityRoot = path.basename(stateParent) === '.agent-core' ? stateParent : this.options.stateRoot;
-    for (const root of [path.join(record.targetRoot,'referensi'), authorityRoot, this.options.cacheRoot, ...(this.options.protectedRoots ?? [])]) if (inside(canonical(root), canonical(resolved)) || inside(canonical(root), canonical(checked))) fail('WORKFLOW_TARGET_PROTECTED', 'Workflow mutation cannot target reference or authority storage');
+    for (const root of [...(protectReference ? [path.join(record.targetRoot,'referensi')] : []), authorityRoot, this.options.cacheRoot, ...(this.options.protectedRoots ?? [])]) if (inside(canonical(root), canonical(resolved)) || inside(canonical(root), canonical(checked))) fail('WORKFLOW_TARGET_PROTECTED', 'Workflow mutation cannot target reference or authority storage');
     return checked;
+  }
+  /** Direct operational work (clone, download, mkdir, move) may land in referensi; authority and cache storage stay protected. */
+  private operationalTargetPath(record: WorkflowRecord, value: string): Promise<string> {
+    return this.targetPath(record, value, false);
+  }
+  private async couldMutateSource(record: WorkflowRecord, value: string): Promise<boolean> {
+    const target = path.resolve(record.targetRoot,value);
+    // Declared generated artifacts outside source discovery do not become implementation targets.
+    if (['reports','dist','coverage','release','releases'].some(folder => inside(path.join(record.targetRoot,folder),target))) return false;
+    if (isEngineeringPath(target)) return true;
+    try { if ((await stat(target)).isDirectory()) return true; } catch(error) { if((error as NodeJS.ErrnoException).code!=='ENOENT') throw error; }
+    return !/\.(?:md|mdx|txt|rst|adoc|png|jpe?g|gif|webp|svg|pdf|zip)$/i.test(target);
   }
   private async fileHash(file: string): Promise<string | null> {
     try { await realpath(file); return workflowHash(await readFile(file)); }

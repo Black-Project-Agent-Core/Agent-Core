@@ -14,6 +14,7 @@ import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { createRuntimeServices } from '../src/runtime/services.js';
+import { withOperationAuthority } from '../src/runtime/operation-context.js';
 import { sleepCommand } from './helpers/platform-command.js';
 
 const auditLoggers: FileAuditLogger[] = [];
@@ -188,16 +189,33 @@ describe('Agent Core route enforcement', () => {
   });
 
   it('keeps stop_process available as a direct recovery tool without route context', async () => {
-    const { root, runtime, principalA, baseUrl } = await setup();
+    const { root, runtime, principalA, principalB, baseUrl } = await setup();
     const routed = textBody(await call(baseUrl, principalA.key, 'capability_route', { task: 'Run one bounded diagnostic process', projectRoot: root }));
-    const started = textBody(await call(baseUrl, principalA.key, 'start_process', {
-      command: sleepCommand(30_000, 'route-recovery-ready\n'), cwd: root, routeContextId: routed.routeContextId,
-    }));
-
-    const stopped = await call(baseUrl, principalA.key, 'stop_process', {
-      sessionId: started.sessionId,
+    const command = sleepCommand(30_000, 'route-recovery-ready\n');
+    const startResult = await call(baseUrl, principalA.key, 'start_process', {
+      command, cwd: root, routeContextId: routed.routeContextId,
     });
-    expect(stopped.result.isError).not.toBe(true);
-    expect(textBody(stopped)).toMatchObject({ stopped: true });
+    expect(startResult.result?.isError, JSON.stringify(startResult)).toBe(true);
+    expect(routeErrorCode(startResult)).toBe('WORKFLOW_PLAN_REQUIRED');
+
+    // Arrange a previously authorized owned session; recovery must remain usable while new starts are gated.
+    const owner = { principalId: principalA.metadata.id, projectId: root, originRouteContextId: UNKNOWN_ROUTE };
+    const started = await withOperationAuthority(async (toolName, input) => {
+      expect(toolName).toBe('start_process');
+      expect(input).toEqual({ command, cwd: root });
+    }, () => runtime.processes.start(command, { cwd: root, owner }));
+    try {
+      const denied = await call(baseUrl, principalB.key, 'stop_process', { sessionId: started.sessionId });
+      expect(denied.result?.isError, JSON.stringify(denied)).toBe(true);
+      expect(textBody(denied), JSON.stringify(denied)).toEqual({ error: 'Process session was not found' });
+      expect(runtime.processes.read(started.sessionId, owner).running).toBe(true);
+
+      const stopped = await call(baseUrl, principalA.key, 'stop_process', { sessionId: started.sessionId });
+      expect(stopped.result?.isError, JSON.stringify(stopped)).not.toBe(true);
+      expect(textBody(stopped)).toMatchObject({ sessionId: started.sessionId, stopped: true });
+      expect(runtime.processes.read(started.sessionId, owner).running).toBe(false);
+    } finally {
+      await runtime.processes.stop(started.sessionId, owner);
+    }
   });
 });

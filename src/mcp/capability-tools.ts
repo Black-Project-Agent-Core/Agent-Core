@@ -163,10 +163,10 @@ export function registerCapabilityTools(
   }, async ({ task, context, projectRoot, continuity, workflow, craft }) => {
     let projectId: string;
     try {
-      projectId = runtime.workspace.resolveProjectRoot({
+      projectId = await runtime.workspace.validateProjectRoot(runtime.workspace.resolveProjectRoot({
         explicitRoot: projectRoot,
         texts: [task, context],
-      });
+      }));
     } catch (error) {
       return errorResult(error);
     }
@@ -350,6 +350,12 @@ export function registerCapabilityTools(
         );
         if (runtime.memory.config.enabled && runtime.memory.config.hardLifecycleMode === 'enforce') await runtime.memory.assertWorkflowReady(scope);
       } catch (error) { return errorResult(error); }
+    }
+    if (workflowContext?.engineering) {
+      plan.allowedTools = [...new Set([...plan.allowedTools, 'craft_source', 'workflow_plan', 'workflow_status'])];
+      plan.reasonCodes.push('required_engineering_assessment');
+      if (plan.tier === 'atomic') { plan.tier = 'structured'; plan.reasonCodes = plan.reasonCodes.filter(reason => reason !== 'atomic_direct'); }
+      if (plan.mode === 'atomic_direct') plan.mode = 'capability_guided';
     }
     if (workflowContext?.dagRequired) {
       // A persisted DAG obligation also applies to inspection/resume wording.

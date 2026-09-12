@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -16,6 +16,7 @@ import { TaskCheckpointService, type TaskCheckpointInput } from '../src/memory/t
 import { WorkspacePolicy } from '../src/runtime/workspace.js';
 import { memoryConfig } from './helpers/memory-fixture.js';
 import { acquireMemoryRecoveryLease, assertNoMemoryRecoveryPending, restoreWorkflowBackup } from '../src/memory/file-native/recovery-coordinator.js';
+import { isEngineeringSourceBlob } from '../src/memory/file-native/workflow-source-projection.js';
 
 const db = new PGlite(), roots: string[] = [];
 const services:MemoryService[]=[];
@@ -63,6 +64,24 @@ async function bindWorkflow(f:Awaited<ReturnType<typeof fixture>>,taskId:string)
   return store.update(scope,undefined,()=>({schemaVersion:1,...scope,version:1,stateHash:'0'.repeat(64),targetRoot:f.root,
     brief:'Inspect the parser',briefHash:workflowHash('Inspect the parser'),phase:'DISCOVERY',planRequired:false,craftRequired:false,dagRequired:false,
     blockers:[],requirements:[],donors:[],snapshots:[],receipts:[],createdAt:1000,updatedAt:1000}));
+}
+async function bindEngineeringSources(f:Awaited<ReturnType<typeof fixture>>,content='export const original = () => 1;\n'){
+  const saved=await task(f);await bindWorkflow(f,saved.taskId);
+  const sourceHash=createHash('sha256').update(content).digest('hex'),bytes=Buffer.byteLength(content),source=path.join(f.root,'src','original.ts');
+  const coverage={complete:true,truncated:false,exclusions:[],gaps:[],inventoryHash:workflowHash([source,sourceHash])};
+  const facilities={nodeVersion:process.version,platform:process.platform,builtins:[],dependencies:[]};
+  const inventory={root:f.root,entries:[{path:source,hash:sourceHash,bytes}],coverage,facilities};
+  const store=new WorkflowStore(f.aux.root,path.join(f.root,'runtime','craft','locks'));
+  const record=await store.update({...f.scope,taskId:saved.taskId},undefined,current=>{
+    current!.engineering={policyVersion:'engineering-v1',required:true,reason:'Retain source evidence across recovery',activatedAt:1100,evidence:[
+      {id:'discovery',kind:'discovery',issuedAt:1100,data:{inventory,query:'original',matches:[],coverage,facilities}},
+      {id:'impact',kind:'impact',issuedAt:1101,data:{inventory,targets:[source],symbols:[],callers:[],coverage,analysisLevel:'semantic_tsjs',limitations:[]}},
+      {id:'review',kind:'review',issuedAt:1102,data:{inventory,planHash:workflowHash('plan'),planRevision:1,impactReceiptId:'impact',changedPaths:[],impactPaths:[],findings:[],truncated:false}},
+    ]};return current!;
+  });
+  const cache=path.join(f.root,'runtime','craft','sources','blobs',`${sourceHash}.txt`);
+  await mkdir(path.dirname(cache),{recursive:true});await writeFile(cache,content);
+  return{saved,record,content,sourceHash,cache};
 }
 async function lifecycleFixture(rpc=transport()){
   const f=await fixture(rpc);f.scope.projectId='agent-core://self';
@@ -167,6 +186,49 @@ describe('Supabase workflow generations', () => {
     expect(sync.recordCount).toBe(2);
     expect(backup?.snapshot.records.some(r => r.category === 'workflow-contracts')).toBe(true);
     expect(JSON.stringify(backup)).not.toContain('raw donor implementation');
+  });
+  it('persists referenced engineering baseline bytes once and restores their cache without changing contract hashes',async()=>{
+    const f=await fixture(),source=await bindEngineeringSources(f);
+    const before=await f.direct.workflowSnapshot(f.scope);
+    const blobs=before.records.filter(record=>isEngineeringSourceBlob(record.document));
+    expect(blobs).toHaveLength(1);expect(blobs[0]!.document.content).toBe(source.content);
+    const contract=before.records.find(record=>record.category==='workflow-contracts'&&!isEngineeringSourceBlob(record.document))!;
+    expect(contract.document.stateHash).toBe(source.record.stateHash);
+    await f.direct.syncWorkflow(f.scope);const backup=(await f.direct.readWorkflowBackup(f.scope))!;
+    const fresh=await fixture(f.rpc);fresh.scope=f.scope;
+    const lease=await acquireMemoryRecoveryLease(fresh.paths,'recovery');
+    try{await restoreWorkflowBackup(fresh.paths,backup);}finally{await lease.release();}
+    expect(await readFile(path.join(fresh.root,'runtime','craft','sources','blobs',`${source.sourceHash}.txt`),'utf8')).toBe(source.content);
+    const after=await fresh.direct.workflowSnapshot(f.scope);
+    expect(after.logicalStateHash).toBe(before.logicalStateHash);
+    expect(after.records.find(record=>record.recordId===contract.recordId)?.document).toEqual(contract.document);
+    await expect(assertNoMemoryRecoveryPending(fresh.paths)).resolves.toBeUndefined();
+  });
+  it('fails closed for missing or corrupted referenced engineering source bytes',async()=>{
+    const f=await fixture(),source=await bindEngineeringSources(f);
+    await rm(source.cache);
+    await expect(f.direct.workflowSnapshot(f.scope)).rejects.toThrow('WORKFLOW_SOURCE_PROJECTION_MISSING');
+    await writeFile(source.cache,'different bytes');
+    await expect(f.direct.workflowSnapshot(f.scope)).rejects.toThrow('WORKFLOW_SOURCE_PROJECTION_HASH_INVALID');
+  });
+  it('enforces the serialized two MiB projection limit instead of truncating captured source',async()=>{
+    const f=await fixture();await bindEngineeringSources(f,'\t'.repeat(1_100_000));
+    await expect(f.direct.workflowSnapshot(f.scope)).rejects.toThrow('WORKFLOW_PROJECTION_RECORD_TOO_LARGE');
+  });
+  it('leaves recovery pending when the immutable destination cache conflicts, then resumes without creating evidence',async()=>{
+    const f=await fixture(),source=await bindEngineeringSources(f);await f.direct.syncWorkflow(f.scope);
+    const backup=(await f.direct.readWorkflowBackup(f.scope))!,fresh=await fixture(f.rpc);fresh.scope=f.scope;
+    const cache=path.join(fresh.root,'runtime','craft','sources','blobs',`${source.sourceHash}.txt`);
+    await mkdir(path.dirname(cache),{recursive:true});await writeFile(cache,'corrupt pre-existing cache');
+    const lease=await acquireMemoryRecoveryLease(fresh.paths,'recovery');
+    try{
+      await expect(restoreWorkflowBackup(fresh.paths,backup)).rejects.toThrow('MEMORY_RECOVERY_SOURCE_CONFLICT');
+      await expect(assertNoMemoryRecoveryPending(fresh.paths)).rejects.toThrow('MEMORY_RECOVERY_PENDING');
+      await rm(cache);await restoreWorkflowBackup(fresh.paths,backup);
+    }finally{await lease.release();}
+    expect(await readFile(cache,'utf8')).toBe(source.content);
+    expect((await fresh.direct.workflowSnapshot(f.scope)).logicalStateHash).toBe(backup.generation.logicalStateHash);
+    await expect(assertNoMemoryRecoveryPending(fresh.paths)).resolves.toBeUndefined();
   });
   it('rejects forged hashes, omitted records and cross-scope responses', async () => {
     const f = await fixture(); await task(f);

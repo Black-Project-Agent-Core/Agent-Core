@@ -108,6 +108,7 @@ export interface ExecutionAttemptRecord {
 interface StoredParsedOutput {
   parserVersion: string;
   status: 'available' | 'degraded';
+  markerBinding?: { runId: string; attemptId: string; planHash?: string; planRevision?: string };
   sourceStdoutSha256?: string;
   sourceStderrSha256?: string;
   parsed?: ParsedExecutionOutput;
@@ -127,6 +128,11 @@ export type ExecutionParsedOutputView = {
   confidence: number;
   source: { stdoutSha256: string; stderrSha256: string };
   structured: ParsedExecutionOutput['structured'];
+  coverageStatus: 'complete' | 'partial' | 'legacy_unknown';
+  coverage?: ParsedExecutionOutput['coverage'];
+  projection?: ParsedExecutionOutput['projection'];
+  binding?: ParsedExecutionOutput['binding'];
+  rawAccess?: ParsedExecutionOutput['rawAccess'];
 } | {
   available: false;
   status: 'degraded';
@@ -873,6 +879,17 @@ export class ExecutionStore {
     if (parsed.nodeId !== marker.nodeId || parsed.attemptNo !== marker.attemptNo) {
       fail('EXECUTION_PARSED_OUTPUT_IDENTITY_MISMATCH', 'Parsed output identity does not match terminal attempt');
     }
+    if (parsed.source.stdoutSha256 !== marker.stdoutSha256 || parsed.source.stderrSha256 !== marker.stderrSha256
+      || parsed.raw.stdoutBytes !== marker.stdoutBytes || parsed.raw.stderrBytes !== marker.stderrBytes
+      || parsed.exitCode !== marker.exitCode) {
+      fail('EXECUTION_PARSED_OUTPUT_SOURCE_MISMATCH', 'Parsed output does not describe the exact terminal source');
+    }
+    const binding = { runId: marker.runId, attemptId: marker.attemptId,
+      ...(marker.provenance?.workflowBinding?.planHash ? { planHash: marker.provenance.workflowBinding.planHash } : {}),
+      ...(marker.provenance?.workflowBinding?.planRevision ? { planRevision: marker.provenance.workflowBinding.planRevision } : {}),
+    };
+    const contractFailure = this.parsedOutputContractFailure(parsed, binding);
+    if (contractFailure) fail(contractFailure, 'Parsed evidence metadata does not match its source coverage or attempt binding');
     const parsedJson = stableExecutionJson(parsed);
     if (parsedJson.length > 100_000) fail('EXECUTION_PARSED_OUTPUT_TOO_LARGE', 'Parsed execution output exceeds 100000 characters');
     await this.storeParsedOutput(marker, {
@@ -914,9 +931,18 @@ export class ExecutionStore {
   ): Promise<ExecutionParsedOutputView | null> {
     await this.requireRun(scope, runId);
     const attempt = await this.readAttempt(runId, nodeId, attemptNo);
-    const stored = [...(attempt?.parsedOutputs ?? [])]
+    const latestByVersion = new Map<string, StoredParsedOutput>();
+    for (const item of attempt?.parsedOutputs ?? []) latestByVersion.set(item.parserVersion, item);
+    // A repaired observation supersedes older metadata from the same parser,
+    // even when a persisted timestamp is corrupt or the system clock moved back.
+    const stored = [...latestByVersion.values()].reverse()
       .sort((left, right) => right.createdAt - left.createdAt || right.parserVersion.localeCompare(left.parserVersion))[0];
     if (!stored) return null;
+    if (attempt!.runId !== runId || attempt!.nodeId !== nodeId || attempt!.attemptNo !== attemptNo) {
+      return { available: false, status: 'degraded', parserVersion: stored.parserVersion, failureCode: 'EXECUTION_PARSED_OUTPUT_IDENTITY_MISMATCH' };
+    }
+    const invalid = this.parsedOutputReadFailure(attempt!, stored);
+    if (invalid) return { available: false, status: 'degraded', parserVersion: stored.parserVersion, failureCode: invalid };
     if (stored.status === 'degraded') {
       return {
         available: false,
@@ -936,6 +962,11 @@ export class ExecutionStore {
         stderrSha256: stored.sourceStderrSha256 ?? stored.parsed.source.stderrSha256,
       },
       structured: stored.parsed.structured ?? {},
+      coverageStatus: stored.parsed.coverage?.state ?? 'legacy_unknown',
+      ...(stored.parsed.coverage ? { coverage: stored.parsed.coverage } : {}),
+      ...(stored.parsed.projection ? { projection: stored.parsed.projection } : {}),
+      ...(stored.parsed.binding ? { binding: stored.parsed.binding } : {}),
+      ...(stored.parsed.rawAccess ? { rawAccess: stored.parsed.rawAccess } : {}),
     };
   }
 
@@ -1411,8 +1442,35 @@ export class ExecutionStore {
       if (!attempt || attempt.attemptId !== marker.attemptId) {
         fail('EXECUTION_ATTEMPT_NOT_FOUND', 'Execution attempt was not found for parsed output');
       }
+      if (attempt.runId !== marker.runId || attempt.nodeId !== marker.nodeId || attempt.attemptNo !== marker.attemptNo
+        || attempt.state === 'running' || attempt.state !== marker.state
+        || attempt.stdoutSha256 !== marker.stdoutSha256 || attempt.stderrSha256 !== marker.stderrSha256
+        || attempt.stdoutBytes !== marker.stdoutBytes || attempt.stderrBytes !== marker.stderrBytes
+        || (attempt.exitCode ?? null) !== marker.exitCode) {
+        fail('EXECUTION_PARSED_OUTPUT_SOURCE_MISMATCH', 'Parsed evidence requires the matching persisted terminal attempt');
+      }
+      if (marker.provenance && (marker.provenance.runId !== marker.runId || marker.provenance.nodeId !== marker.nodeId
+        || marker.provenance.attemptId !== marker.attemptId || marker.provenance.attemptNo !== marker.attemptNo)) {
+        fail('EXECUTION_PARSED_OUTPUT_IDENTITY_MISMATCH', 'Terminal provenance belongs to another attempt');
+      }
+      entry = { ...entry, markerBinding: { runId: marker.runId, attemptId: marker.attemptId,
+        ...(marker.provenance?.workflowBinding?.planHash ? { planHash: marker.provenance.workflowBinding.planHash } : {}),
+        ...(marker.provenance?.workflowBinding?.planRevision ? { planRevision: marker.provenance.workflowBinding.planRevision } : {}),
+      } };
       const parsedOutputs = attempt.parsedOutputs ?? [];
-      if (parsedOutputs.some((item) => item.parserVersion === entry.parserVersion)) return;
+      const prior = [...parsedOutputs].reverse().find(item => item.parserVersion === entry.parserVersion);
+      // Invalid derived metadata cannot block recapture from the validated terminal source.
+      // Append the repaired observation and retain the invalid record as history.
+      if (prior && !this.parsedOutputReadFailure(attempt, prior)) {
+        if (prior.status === 'available') {
+          if (entry.status === 'degraded') return; // A later observer failure cannot erase a valid projection.
+          if (stableExecutionJson(prior.parsed) !== stableExecutionJson(entry.parsed)) {
+            fail('EXECUTION_PARSED_OUTPUT_CONFLICT', 'A successful parser version already has different derived evidence');
+          }
+          return;
+        }
+        if (entry.status === 'degraded' && prior.failureCode === entry.failureCode) return;
+      }
       await this.commit({
         writes: [{
           path: this.attemptPath(marker.runId, marker.nodeId, marker.attemptNo),
@@ -1420,6 +1478,61 @@ export class ExecutionStore {
         }],
       });
     });
+  }
+
+  private parsedOutputReadFailure(attempt: StoredAttempt, stored: StoredParsedOutput): string | undefined {
+    if (attempt.state === 'running' || !attempt.stdoutSha256 || !attempt.stderrSha256
+      || (stored.sourceStdoutSha256 ?? stored.parsed?.source?.stdoutSha256) !== attempt.stdoutSha256
+      || (stored.sourceStderrSha256 ?? stored.parsed?.source?.stderrSha256) !== attempt.stderrSha256) {
+      return 'EXECUTION_PARSED_OUTPUT_SOURCE_MISMATCH';
+    }
+    if (stored.markerBinding && (stored.markerBinding.runId !== attempt.runId || stored.markerBinding.attemptId !== attempt.attemptId)) {
+      return 'EXECUTION_PARSED_OUTPUT_IDENTITY_MISMATCH';
+    }
+    const parsed = stored.parsed;
+    if (stored.status !== 'available') return undefined;
+    if (!parsed) return 'EXECUTION_PARSED_OUTPUT_INVALID';
+    if (parsed.nodeId !== attempt.nodeId || parsed.attemptNo !== attempt.attemptNo || parsed.parserVersion !== stored.parserVersion) return 'EXECUTION_PARSED_OUTPUT_IDENTITY_MISMATCH';
+    if (parsed.source?.stdoutSha256 !== attempt.stdoutSha256 || parsed.source?.stderrSha256 !== attempt.stderrSha256
+      || parsed.raw?.stdoutBytes !== attempt.stdoutBytes || parsed.raw?.stderrBytes !== attempt.stderrBytes
+      || parsed.exitCode !== (attempt.exitCode ?? null)) return 'EXECUTION_PARSED_OUTPUT_SOURCE_MISMATCH';
+    if (parsed.binding && !stored.markerBinding) return 'EXECUTION_PARSED_OUTPUT_IDENTITY_MISMATCH';
+    return this.parsedOutputContractFailure(parsed, stored.markerBinding ?? { runId: attempt.runId, attemptId: attempt.attemptId });
+  }
+
+  private parsedOutputContractFailure(parsed: ParsedExecutionOutput, binding: NonNullable<StoredParsedOutput['markerBinding']>): string | undefined {
+    if (parsed.binding && (parsed.binding.runId !== binding.runId || parsed.binding.attemptId !== binding.attemptId
+      || parsed.binding.planHash !== binding.planHash || parsed.binding.planRevision !== binding.planRevision)) {
+      return 'EXECUTION_PARSED_OUTPUT_IDENTITY_MISMATCH';
+    }
+    const rawAccess = parsed.rawAccess;
+    if (rawAccess && (rawAccess.tool !== 'execution_logs' || rawAccess.requiresRouteContext !== true
+      || rawAccess.runId !== binding.runId || rawAccess.nodeId !== parsed.nodeId
+      || rawAccess.attemptId !== binding.attemptId || rawAccess.attemptNo !== parsed.attemptNo)) {
+      return 'EXECUTION_PARSED_OUTPUT_IDENTITY_MISMATCH';
+    }
+    const coverage = parsed.coverage;
+    if (!coverage) return undefined;
+    if (coverage.version !== 1 || coverage.integrity !== 'verified' || !['complete', 'partial'].includes(coverage.state)) {
+      return 'EXECUTION_PARSED_OUTPUT_COVERAGE_INVALID';
+    }
+    let complete = true;
+    for (const stream of ['stdout', 'stderr'] as const) {
+      const item = coverage.streams?.[stream], total = parsed.raw[stream === 'stdout' ? 'stdoutBytes' : 'stderrBytes'];
+      if (!item || !['full', 'head_tail'].includes(item.strategy) || item.totalBytes !== total
+        || ![item.totalBytes, item.examinedBytes, item.omittedBytes].every(value => Number.isSafeInteger(value) && value >= 0)
+        || item.examinedBytes + item.omittedBytes !== total || !Array.isArray(item.ranges)
+        || item.ranges.length > (item.strategy === 'full' ? 1 : 2)) return 'EXECUTION_PARSED_OUTPUT_COVERAGE_INVALID';
+      let cursor = 0, examined = 0;
+      for (const range of item.ranges) {
+        if (!range || !Number.isSafeInteger(range.start) || !Number.isSafeInteger(range.end)
+          || range.start < cursor || range.end < range.start || range.end > total) return 'EXECUTION_PARSED_OUTPUT_COVERAGE_INVALID';
+        cursor = range.end; examined += range.end - range.start;
+      }
+      if (examined !== item.examinedBytes || item.strategy === 'full' && item.omittedBytes !== 0) return 'EXECUTION_PARSED_OUTPUT_COVERAGE_INVALID';
+      complete &&= item.omittedBytes === 0;
+    }
+    return (coverage.state === 'complete') !== complete ? 'EXECUTION_PARSED_OUTPUT_COVERAGE_INVALID' : undefined;
   }
 
   private async scopedSyncEntries(scope: ExecutionScope): Promise<StoredSyncEntry[]> {

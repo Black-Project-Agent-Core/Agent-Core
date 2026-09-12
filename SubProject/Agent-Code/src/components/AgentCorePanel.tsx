@@ -20,14 +20,15 @@ export function AgentCorePanel() {
   const [status, setStatus] = useState<AgentCoreControlStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string>('');
-  const [error, setError] = useState<string>('');
+  const [actionError, setActionError] = useState<string>('');
+  const [statusError, setStatusError] = useState<string>('');
 
   const refresh = useCallback(async () => {
     try {
       setStatus(await getAgentCoreStatus());
-      setError('');
+      setStatusError('');
     } catch (reason) {
-      setError(String(reason));
+      setStatusError(String(reason));
     }
   }, []);
 
@@ -41,13 +42,14 @@ export function AgentCorePanel() {
   const runLifecycle = async (command: string, label: string) => {
     setBusy(label);
     setMessage('');
-    setError('');
+    setActionError('');
     try {
       const result = await runAgentCoreAction(command);
       setStatus(result.status);
+      setStatusError('');
       setMessage(result.message);
     } catch (reason) {
-      setError(String(reason));
+      setActionError(String(reason));
       await refresh();
     } finally {
       setBusy(null);
@@ -57,11 +59,11 @@ export function AgentCorePanel() {
   const runUtility = async (command: string, label: string) => {
     setBusy(label);
     setMessage('');
-    setError('');
+    setActionError('');
     try {
       await runAgentCoreUtility(command);
     } catch (reason) {
-      setError(String(reason));
+      setActionError(String(reason));
     } finally {
       setBusy(null);
     }
@@ -80,6 +82,8 @@ export function AgentCorePanel() {
     }
     void runLifecycle('agent_core_exit', 'Exit Agent Core');
   };
+
+  const unknownStatus = statusError ? 'Unavailable' : 'Checking';
 
   return (
     <section className="agent-core-panel" aria-label="Agent Core controls">
@@ -106,12 +110,12 @@ export function AgentCorePanel() {
           <div className="agent-core-status-block" aria-label="Agent Core runtime status">
             <div className="agent-core-status-line agent-core-status-primary">
               <span>Agent Core</span>
-              <span>— {status?.overall ?? 'Checking'}</span>
+              <span>— {status?.overall ?? unknownStatus}</span>
             </div>
             <div className="agent-core-status-line">
-              MCP Server: {status?.mcpServer ?? 'Checking'} | Memory: {status?.memory ?? 'Checking'} | Execution: {status?.execution ?? 'Checking'}
+              MCP Server: {status?.mcpServer ?? unknownStatus} | Memory: {status?.memory ?? unknownStatus} | Execution: {status?.execution ?? unknownStatus}
             </div>
-            <div className="agent-core-status-line">Tunnel: {status?.tunnel ?? 'Checking'}</div>
+            <div className="agent-core-status-line">Tunnel: {status?.tunnel ?? unknownStatus}</div>
           </div>
 
           <div className="agent-core-control-group">
@@ -166,7 +170,8 @@ export function AgentCorePanel() {
 
           {busy ? <div className="agent-core-feedback">Working: {busy}…</div> : null}
           {message ? <div className="agent-core-feedback" role="status">{message}</div> : null}
-          {error ? <div className="agent-core-feedback agent-core-error" role="alert">{error}</div> : null}
+          {actionError ? <div className="agent-core-feedback agent-core-error" role="alert">{actionError}</div> : null}
+          {statusError ? <div className="agent-core-feedback agent-core-error" role="alert">{statusError}</div> : null}
         </div>
       ) : null}
     </section>

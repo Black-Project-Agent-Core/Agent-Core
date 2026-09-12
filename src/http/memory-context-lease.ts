@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { MemoryHardLifecycleError } from '../memory/hard-lifecycle.js';
-import { classifyMeaningfulWork } from '../memory/meaningful-work.js';
 import type { RuntimeServices } from '../runtime/services.js';
-import { workflowOperationInput, workflowScope } from '../mcp/workflow-guard.js';
+import { classifyWorkflowOperation, workflowOperationInput, workflowScope } from '../mcp/workflow-guard.js';
+import { isEngineeringPath } from '../workflow/engineering-policy.js';
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_LEASE_CHARS = 4096;
@@ -90,7 +90,7 @@ export function createMemoryContextLeaseHttpHandler(runtime: RuntimeServices) {
       return;
     }
 
-    const classification = classifyMeaningfulWork(toolName, input);
+    const classification = classifyWorkflowOperation(toolName, input);
     const base = {
       ok: true,
       mode,
@@ -121,7 +121,11 @@ export function createMemoryContextLeaseHttpHandler(runtime: RuntimeServices) {
         // observes adapter work; it cannot own process evidence or resource claims.
         operation.viaExecution = false;
         const workflow = await runtime.workflow.status(scope);
-        if (workflow?.planRequired && !['read_only','github_read_only','shell_read_only'].includes(classification.mutationClass)) {
+        const mutating = !['read_only','github_read_only','shell_read_only'].includes(classification.mutationClass);
+        const engineeringMutation = mutating && ((operation.paths ?? []).some(isEngineeringPath)
+          || classification.mutationClass === 'shell_mutation_or_unknown');
+        if (mutating && (workflow?.planRequired || workflow?.engineering?.required || engineeringMutation)
+          || toolName === 'workflow_plan' || toolName === 'craft_source') {
           throw Object.assign(new Error('Use the routed Agent-Core operation so planned work is executed and recorded under server authority'), { code: 'WORKFLOW_MANAGED_OPERATION_REQUIRED' });
         }
         await runtime.workflow.authorize(scope, operation);

@@ -10,6 +10,7 @@ import { EXECUTION_STATE_VERSION } from '../src/execution/types.js';
 import { startAgentCoreService, type AgentCoreService } from '../src/index.js';
 import { printCommand, sleepCommand } from './helpers/platform-command.js';
 import { isolatedMemoryDependencies, strictMemoryConfig } from './helpers/memory-fixture.js';
+import { engineeringTransport, prepareExecutionPlan } from './helpers/engineering.js';
 
 const roots: string[] = [];
 const services: AgentCoreService[] = [];
@@ -19,6 +20,7 @@ async function fixture(label: string): Promise<{ root: string; work: string; con
   roots.push(root);
   const work = path.join(root, 'work');
   await mkdir(work, { recursive: true });
+  await writeFile(path.join(work,'fixture.mjs'),'export const diagnostic = true;\n');
   const config = loadConfig({}, root);
   config.memory = await strictMemoryConfig(root);
   config.host = '127.0.0.1';
@@ -189,12 +191,19 @@ describe('unified Agent Core continuity + execution lifecycle', () => {
     const routedResult = await mcpCall(first, principal.key, 'capability_route', { task: 'Print a delayed diagnostic message', projectRoot: root });
     expect(routedResult.result.isError).not.toBe(true);
     const routed = JSON.parse(routedResult.result.content[0].text);
+    const transport=engineeringTransport(async(name,args)=>{
+      const raw=await mcpCall(first,principal.key,name,args);
+      const result=JSON.parse(raw.result?.content?.[0]?.text??'{}');
+      if(raw.result?.isError)throw Object.assign(new Error(result.error?.message),{code:result.error?.code});
+      return result;
+    },routed.routeContextId);
+    const workflow=(await transport.status({} as any))!;
     const scope = { principalId: principal.metadata.id, projectId: root };
     const run = await first.execution.create(scope, {
       objective: 'long run interrupted by graceful service close',
       originRouteContextId: routed.routeContextId,
       continuityTaskId: routed.continuity?.taskId ?? routed.workflowContext.taskId,
-      nodes: [{ id: 'A', purpose: 'sleep', command: sleepCommand(30_000, 'started\n'), cwd: work, inputs: [] }],
+      nodes: await prepareExecutionPlan(transport,workflow,[{ id: 'A', purpose: 'sleep', command: sleepCommand(30_000, 'started\n'), cwd: work, inputs: [] }]),
     });
     await first.execution.start(scope, run.runId);
     expect((await first.execution.status(scope, run.runId))?.nodes[0]?.state).toBe('running');

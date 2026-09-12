@@ -64,14 +64,25 @@ struct ProcessInfo {
     #[serde(rename = "ProcessId")]
     process_id: u32,
     #[serde(rename = "ExecutablePath", default)]
-    executable_path: String,
+    executable_path: Option<String>,
     #[serde(rename = "CommandLine", default)]
-    command_line: String,
+    command_line: Option<String>,
+}
+
+impl ProcessInfo {
+    // CIM can withhold these fields for processes running with another access token.
+    // The PID still exists; unavailable metadata must never authorize lifecycle actions.
+    fn identity_fields(&self) -> Option<(&str, &str)> {
+        let executable = self.executable_path.as_deref().filter(|value| !value.trim().is_empty())?;
+        let command = self.command_line.as_deref().filter(|value| !value.trim().is_empty())?;
+        Some((executable, command))
+    }
 }
 
 #[derive(Debug, Clone)]
 struct ServiceProbe {
     pid: Option<u32>,
+    identity_available: bool,
     identity_match: bool,
     healthy: bool,
     memory: String,
@@ -400,6 +411,9 @@ impl AgentCoreEngine {
 
     fn watchdog_service_tick(&self, role: ServiceRole, tools: &RuntimeTools) -> Result<(), String> {
         let probe = self.probe(role)?;
+        if probe.pid.is_some() && !probe.identity_available {
+            return Err(process_identity_unavailable(role));
+        }
         let mut state = self.read_state();
 
         if probe.identity_match && probe.healthy {
@@ -438,7 +452,7 @@ impl AgentCoreEngine {
         self.write_state(&state)?;
 
         if probe.pid.is_some() && probe.identity_match {
-            let _ = self.stop_service(role, tools);
+            self.stop_service(role, tools)?;
         } else if probe.pid.is_some() && !probe.identity_match {
             return Ok(());
         } else {
@@ -592,6 +606,9 @@ impl AgentCoreEngine {
     fn start_service(&self, role: ServiceRole, tools: &RuntimeTools) -> Result<(), String> {
         let current = self.probe(role)?;
         if current.pid.is_some() {
+            if !current.identity_available {
+                return Err(process_identity_unavailable(role));
+            }
             if current.identity_match && current.healthy {
                 self.set_service_state(role, current.pid.unwrap_or(0), "adopted")?;
                 return Ok(());
@@ -719,6 +736,9 @@ impl AgentCoreEngine {
             None => return Ok(()),
         };
 
+        if probe.pid.is_some() && !probe.identity_available {
+            return Err(process_identity_unavailable(role));
+        }
         if probe.pid != Some(entry.pid) || !probe.identity_match {
             self.clear_service_state(role)?;
             return Err(format!(
@@ -743,16 +763,37 @@ impl AgentCoreEngine {
             let _ = fs::remove_file(&shutdown_request);
         }
 
-        if !graceful && process_info_by_pid(entry.pid)?.is_some() {
+        if !graceful && self.confirm_owned_process(entry.pid, role, tools)? {
             let _ = taskkill(entry.pid, false);
             if !wait_process_exit(entry.pid, Duration::from_secs(3)) {
-                taskkill(entry.pid, true)?;
-                let _ = wait_process_exit(entry.pid, Duration::from_secs(2));
+                if self.confirm_owned_process(entry.pid, role, tools)? {
+                    taskkill(entry.pid, true)?;
+                }
+                if !wait_process_exit(entry.pid, Duration::from_secs(2)) {
+                    return Err(format!("{} process exit could not be confirmed; ownership was preserved", role.key()));
+                }
             }
         }
 
         self.clear_service_state(role)?;
         Ok(())
+    }
+
+    fn confirm_owned_process(&self, pid: u32, role: ServiceRole, tools: &RuntimeTools) -> Result<bool, String> {
+        let Some(process) = process_info_by_pid(pid)? else {
+            return Ok(false);
+        };
+        if process.identity_fields().is_none() {
+            return Err(process_identity_unavailable(role));
+        }
+        let matches = match role {
+            ServiceRole::AgentCore => is_agent_core_identity(&process, &tools.node, &self.root),
+            ServiceRole::Tunnel => is_tunnel_identity(&process, &tools.tunnel, &self.root),
+        };
+        if !matches {
+            return Err(format!("Refused to stop {} because the recorded process identity no longer matches", role.key()));
+        }
+        Ok(true)
     }
 
     fn probe(&self, role: ServiceRole) -> Result<ServiceProbe, String> {
@@ -767,6 +808,7 @@ impl AgentCoreEngine {
                 };
                 Ok(ServiceProbe {
                     pid: port_owner_process(role.port())?.map(|process| process.process_id),
+                    identity_available: false,
                     identity_match: false,
                     healthy: health.0,
                     memory: health.1,
@@ -777,10 +819,17 @@ impl AgentCoreEngine {
     }
 
     fn probe_with_tools(&self, role: ServiceRole, tools: &RuntimeTools) -> Result<ServiceProbe, String> {
-        let owner = port_owner_process(role.port())?;
+        let owner = match port_owner_process(role.port())? {
+            Some(owner) => Some(owner),
+            None => match self.read_state().services.get(role.key()) {
+                Some(entry) if entry.pid != 0 => process_info_by_pid(entry.pid)?,
+                _ => None,
+            },
+        };
         if owner.is_none() {
             return Ok(ServiceProbe {
                 pid: None,
+                identity_available: false,
                 identity_match: false,
                 healthy: false,
                 memory: if matches!(role, ServiceRole::AgentCore) {
@@ -810,6 +859,7 @@ impl AgentCoreEngine {
         };
         Ok(ServiceProbe {
             pid: Some(owner.process_id),
+            identity_available: owner.identity_fields().is_some(),
             identity_match,
             healthy,
             memory,
@@ -936,13 +986,22 @@ impl AgentCoreEngine {
 }
 
 fn display_service_status(probe: &ServiceProbe, faulted: bool) -> String {
-    if faulted {
+    if probe.pid.is_some() && !probe.identity_available {
+        "Identity unavailable".to_string()
+    } else if faulted {
         "Faulted".to_string()
     } else if probe.pid.is_some() && probe.identity_match && probe.healthy {
         "Running".to_string()
     } else {
         "Degraded".to_string()
     }
+}
+
+fn process_identity_unavailable(role: ServiceRole) -> String {
+    format!(
+        "Windows did not provide process identity on port {}. Close the other Agent Code instance and reopen Agent Code with the same Windows permissions as its services. No process was taken over or stopped.",
+        role.port()
+    )
 }
 
 fn new_service_state(role: ServiceRole, pid: u32, origin: &str) -> NativeServiceState {
@@ -1524,14 +1583,14 @@ fn tunnel_health() -> bool {
 
 fn port_owner_process(port: u16) -> Result<Option<ProcessInfo>, String> {
     let script = format!(
-        "$ErrorActionPreference='Stop'; try {{$c=Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction Stop | Select-Object -First 1}} catch {{if($_.FullyQualifiedErrorId -like 'CmdletizationQuery_NotFound*'){{exit 0}} else {{throw}}}}; if($c){{$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$c.OwningProcess) -ErrorAction Stop; if($p){{$p | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress}}}}"
+        "$ErrorActionPreference='Stop'; try {{$c=Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction Stop | Select-Object -First 1}} catch {{if($_.FullyQualifiedErrorId -like 'CmdletizationQuery_NotFound*'){{exit 0}} else {{throw}}}}; if($c){{$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$c.OwningProcess) -ErrorAction Stop; if($p){{$p | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress}} else {{[pscustomobject]@{{ProcessId=[int]$c.OwningProcess;ExecutablePath=$null;CommandLine=$null}} | ConvertTo-Json -Compress}}}}"
     );
     powershell_process_query(&script)
 }
 
 fn process_info_by_pid(pid: u32) -> Result<Option<ProcessInfo>, String> {
     let script = format!(
-        "$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}' -ErrorAction SilentlyContinue; if($p){{$p | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress}}"
+        "$ErrorActionPreference='Stop'; $p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}' -ErrorAction Stop; if($p){{$p | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress}}"
     );
     powershell_process_query(&script)
 }
@@ -1544,7 +1603,11 @@ fn powershell_process_query(script: &str) -> Result<Option<ProcessInfo>, String>
     if !output.status.success() {
         return Err("Windows process query failed".to_string());
     }
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    parse_process_query_output(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn parse_process_query_output(output: &str) -> Result<Option<ProcessInfo>, String> {
+    let text = output.trim();
     if text.is_empty() {
         return Ok(None);
     }
@@ -1554,17 +1617,21 @@ fn powershell_process_query(script: &str) -> Result<Option<ProcessInfo>, String>
 }
 
 fn is_agent_core_identity(process: &ProcessInfo, node: &Path, root: &Path) -> bool {
-    if !same_path_str(&process.executable_path, node) {
+    let Some((executable, command_line)) = process.identity_fields() else {
+        return false;
+    };
+    if !same_path_str(executable, node) {
         return false;
     }
     let absolute = root.join("dist").join("index.js").to_string_lossy().to_string();
-    contains_path_token(&process.command_line, &absolute)
-        || process.command_line.to_ascii_lowercase().contains("dist\\index.js")
-        || process.command_line.to_ascii_lowercase().contains("dist/index.js")
+    contains_path_token(command_line, &absolute)
 }
 
 fn is_tunnel_identity(process: &ProcessInfo, tunnel: &Path, root: &Path) -> bool {
-    if !same_path_str(&process.executable_path, tunnel) {
+    let Some((executable, command_line)) = process.identity_fields() else {
+        return false;
+    };
+    if !same_path_str(executable, tunnel) {
         return false;
     }
     let profile = root
@@ -1572,8 +1639,8 @@ fn is_tunnel_identity(process: &ProcessInfo, tunnel: &Path, root: &Path) -> bool
         .join("agent-core.yaml")
         .to_string_lossy()
         .to_string();
-    process.command_line.to_ascii_lowercase().contains("--profile-file")
-        && contains_path_token(&process.command_line, &profile)
+    command_line.to_ascii_lowercase().contains("--profile-file")
+        && contains_path_token(command_line, &profile)
 }
 
 fn same_path_str(left: &str, right: &Path) -> bool {
@@ -1581,7 +1648,14 @@ fn same_path_str(left: &str, right: &Path) -> bool {
 }
 
 fn contains_path_token(command_line: &str, path: &str) -> bool {
-    normalize_path_string(command_line).contains(&normalize_path_string(path))
+    let command = command_line.replace('/', "\\").to_ascii_lowercase();
+    let target = normalize_path_string(path);
+    command.match_indices(&target).any(|(start, matched)| {
+        let before = command[..start].chars().next_back();
+        let after = command[start + matched.len()..].chars().next();
+        before.map_or(true, |ch| ch == '"' || ch.is_whitespace())
+            && after.map_or(true, |ch| ch == '"' || ch.is_whitespace())
+    })
 }
 
 fn normalize_path_string(value: &str) -> String {
@@ -1595,7 +1669,7 @@ fn normalize_path_string(value: &str) -> String {
 fn wait_process_exit(pid: u32, timeout: Duration) -> bool {
     let deadline = SystemTime::now() + timeout;
     loop {
-        if process_info_by_pid(pid).ok().flatten().is_none() {
+        if matches!(process_info_by_pid(pid), Ok(None)) {
             return true;
         }
         if SystemTime::now() >= deadline {
@@ -1647,11 +1721,11 @@ fn pack_lock_active(root: &Path) -> Result<bool, String> {
         return Ok(true);
     }
     if let Some(process) = process_info_by_pid(pid)? {
-        if process
-            .command_line
-            .to_ascii_lowercase()
-            .contains("agent-core-pack.ps1")
-        {
+        // Keep the lock when CIM cannot establish what the live process is running.
+        let Some(command_line) = process.command_line.as_deref().filter(|value| !value.trim().is_empty()) else {
+            return Ok(true);
+        };
+        if command_line.to_ascii_lowercase().contains("agent-core-pack.ps1") {
             return Ok(true);
         }
     }
@@ -1700,6 +1774,89 @@ fn create_agent_code_autostart_task(executable: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nullable_process_metadata_preserves_pid_without_granting_identity() {
+        for fields in [
+            r#""ExecutablePath":null,"CommandLine":null"#,
+            r#""ExecutablePath":"node.exe","CommandLine":null"#,
+            r#""ExecutablePath":null,"CommandLine":"dist/index.js""#,
+            r#""ExecutablePath":"","CommandLine":" ""#,
+            r#""ExecutablePath":" ","CommandLine":"dist/index.js""#,
+        ] {
+            let payload = format!(r#"{{"ProcessId":42,{fields}}}"#);
+            let process = parse_process_query_output(&payload).unwrap().unwrap();
+            assert_eq!(process.process_id, 42);
+            assert!(process.identity_fields().is_none());
+            assert!(!is_agent_core_identity(&process, Path::new("node.exe"), Path::new("project")));
+            assert!(!is_tunnel_identity(&process, Path::new("node.exe"), Path::new("project")));
+        }
+        let omitted = parse_process_query_output(r#"{"ProcessId":42}"#).unwrap().unwrap();
+        assert!(omitted.identity_fields().is_none());
+    }
+
+    #[test]
+    fn process_query_distinguishes_missing_process_from_invalid_response() {
+        assert!(parse_process_query_output(" \r\n").unwrap().is_none());
+        for payload in [
+            "null", "{}", "[]", "not json",
+            r#"{"ProcessId":null}"#,
+            r#"{"ProcessId":"42"}"#,
+            r#"{"ProcessId":42,"ExecutablePath":123}"#,
+            r#"{"ProcessId":42,"CommandLine":false}"#,
+        ] {
+            assert!(parse_process_query_output(payload).is_err(), "invalid response: {payload}");
+        }
+    }
+
+    #[test]
+    fn process_identity_requires_current_project_entry_and_complete_path_token() {
+        let root = Path::new(r"E:\Projects\Agent-Core");
+        let node = Path::new(r"C:\Program Files\nodejs\node.exe");
+        let mut process = ProcessInfo {
+            process_id: 42,
+            executable_path: Some(node.to_string_lossy().to_string()),
+            command_line: Some(format!(r#""{}" "{}""#, node.display(), root.join("dist").join("index.js").display())),
+        };
+        assert!(is_agent_core_identity(&process, node, root));
+        for command in [
+            r"node E:\Projects\Other\dist\index.js",
+            r"node dist/index.js",
+            r"node E:\Projects\Agent-Core\dist\index.js.backup",
+            r"node prefixE:\Projects\Agent-Core\dist\index.js",
+        ] {
+            process.command_line = Some(command.to_string());
+            assert!(!is_agent_core_identity(&process, node, root), "foreign entry: {command}");
+        }
+        let tunnel = root.join("tunnel-client").join("tunnel-client.exe");
+        process.executable_path = Some(tunnel.to_string_lossy().to_string());
+        process.command_line = Some(format!(r#""{}" run --profile-file "{}""#, tunnel.display(), root.join("tunnel-client").join("agent-core.yaml").display()));
+        assert!(is_tunnel_identity(&process, &tunnel, root));
+        process.command_line = Some(process.command_line.unwrap().replace("agent-core.yaml\"", "agent-core.yaml.other\""));
+        assert!(!is_tunnel_identity(&process, &tunnel, root));
+    }
+
+    #[test]
+    fn unknown_process_identity_does_not_hide_independent_health_results() {
+        let probe = ServiceProbe {
+            pid: Some(42), identity_available: false, identity_match: false,
+            healthy: true, memory: "Healthy".to_string(), execution: "Healthy".to_string(),
+        };
+        assert_eq!(display_service_status(&probe, false), "Identity unavailable");
+        assert_eq!(probe.memory, "Healthy");
+        assert_eq!(probe.execution, "Healthy");
+        assert!(!probe.identity_match);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_query_accepts_cim_null_fields_and_preserves_query_failure() {
+        let process = powershell_process_query("[pscustomobject]@{ProcessId=42;ExecutablePath=$null;CommandLine=$null} | ConvertTo-Json -Compress")
+            .expect("CIM nulls are valid metadata").expect("PID is still present");
+        assert_eq!(process.process_id, 42);
+        assert!(process.identity_fields().is_none());
+        assert!(powershell_process_query("$ErrorActionPreference='Stop'; throw 'fixture query failure'").is_err());
+    }
 
     #[test]
     fn queued_watchdog_respects_stop_after_acquiring_lifecycle_lock() {

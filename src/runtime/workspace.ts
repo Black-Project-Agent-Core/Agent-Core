@@ -9,7 +9,8 @@ function canonical(value: string): string {
 function inside(root: string, candidate: string): boolean {
   const base = canonical(root);
   const target = canonical(candidate);
-  return target === base || target.startsWith(`${base}${path.sep}`);
+  const relative = path.relative(base, target);
+  return relative === '' || relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
 function textCanonical(value: string): string {
@@ -68,14 +69,15 @@ export class WorkspacePolicy {
     const evidence = new Set<string>();
 
     if (input.explicitRoot?.trim()) {
-      const match = this.projectForPath(input.explicitRoot);
-      if (!match) {
+      if (!path.isAbsolute(input.explicitRoot)) {
         throw new WorkspaceProjectError(
           'WORKSPACE_PROJECT_NOT_ALLOWED',
-          `Explicit project root is outside configured workspace roots: ${input.explicitRoot}`,
+          `Explicit project root must be an absolute path: ${input.explicitRoot}`,
         );
       }
-      evidence.add(match);
+      // Allowed roots set the outer access boundary. An explicit project narrows it;
+      // incidental paths in the brief must not widen that scope to its ancestor.
+      return this.requireProjectRoot(input.explicitRoot);
     }
 
     for (const candidate of input.candidatePaths ?? []) {
@@ -107,6 +109,22 @@ export class WorkspacePolicy {
     );
   }
 
+  async validateProjectRoot(projectRoot: string): Promise<string> {
+    const project = this.requireProjectRoot(projectRoot);
+    const owner = this.projectForPath(project)!;
+    try {
+      const [realProject, realOwner, info] = await Promise.all([realpath(project), realpath(owner), stat(project)]);
+      if (!info.isDirectory() || !inside(realOwner, realProject)) {
+        throw new WorkspaceProjectError('WORKSPACE_PROJECT_NOT_ALLOWED', `Project must be a directory inside its configured workspace root: ${projectRoot}`);
+      }
+      // Keep the configured root spelling, and normalize child aliases/case from disk.
+      return path.join(owner, path.relative(realOwner, realProject));
+    } catch (error) {
+      if (error instanceof WorkspaceProjectError) throw error;
+      throw new WorkspaceProjectError('WORKSPACE_PROJECT_NOT_ALLOWED', `Project directory is unavailable: ${projectRoot}`);
+    }
+  }
+
   async resolveExistingInProject(projectRoot: string, target: string): Promise<string> {
     const project = this.requireProjectRoot(projectRoot);
     const resolved = this.assertLexicalInProject(project, target);
@@ -132,13 +150,13 @@ export class WorkspacePolicy {
   private requireProjectRoot(projectRoot: string): string {
     const resolved = path.resolve(projectRoot);
     const exact = this.roots.find((root) => canonical(root) === canonical(resolved));
-    if (!exact) {
+    if (!this.projectForPath(resolved)) {
       throw new WorkspaceProjectError(
         'WORKSPACE_PROJECT_NOT_ALLOWED',
-        `Project root is not one of the configured workspace roots: ${projectRoot}`,
+        `Project root is outside configured workspace roots: ${projectRoot}`,
       );
     }
-    return exact;
+    return exact ?? resolved;
   }
 
   private assertLexical(target: string): string {
@@ -169,11 +187,13 @@ export class WorkspacePolicy {
   }
 
   private async assertRealWithin(projectRoot: string, target: string): Promise<void> {
-    const [realTarget, realProject] = await Promise.all([
+    const owner = this.projectForPath(projectRoot)!;
+    const [realTarget, realProject, realOwner] = await Promise.all([
       realpath(target),
-      realpath(projectRoot).catch(() => path.resolve(projectRoot)),
+      realpath(projectRoot),
+      realpath(owner),
     ]);
-    if (!inside(realProject, realTarget)) {
+    if (!inside(realOwner, realProject) || !inside(realProject, realTarget)) {
       throw new WorkspaceProjectError(
         'WORKSPACE_PROJECT_MISMATCH',
         `Resolved path is outside routed project ${projectRoot}: ${target}`,

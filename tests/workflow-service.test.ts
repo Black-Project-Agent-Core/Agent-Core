@@ -7,6 +7,7 @@ import { workflowHash, workflowScopeId } from '../src/workflow/store.js';
 import { WorkspacePolicy } from '../src/runtime/workspace.js';
 import { spawnSync } from 'node:child_process';
 import { snapshotMatchesDonor } from '../src/workflow/source.js';
+import { assessPlan, acceptCurrentReview } from './helpers/engineering.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive:true,force:true }); });
@@ -28,7 +29,7 @@ async function planFixture(f:Awaited<ReturnType<typeof setup>>, donorFile='worke
   const donor = await f.service.source(f.scope,{operation:'read',role:'donor',donorId:'donor',path:donorFile});
   const target = await f.service.source(f.scope,{operation:'read',role:'target',path:f.target});
   const current = (await f.service.status(f.scope))!;
-  const report = path.join(f.root,'result.json');
+  const report = path.join(f.root,'reports','result.json'); await mkdir(path.dirname(report),{recursive:true});
   const input:WorkflowPlanInput={expectedVersion:current.version,steps:[
     {id:'edit',purpose:'Adapt native retry seam',kind:'edit',paths:[f.target]},
     {id:'check',purpose:'Test behavior through target entrypoint',kind:'verification',command:'node tests/check.mjs',paths:[]},
@@ -36,6 +37,7 @@ async function planFixture(f:Awaited<ReturnType<typeof setup>>, donorFile='worke
     {id:'behavior',purpose:'Retry calls bounded',kind:'behavior',requirementIds:['retry'],stepIds:['check'],artifactPaths:[report]},
     {id:'integration',purpose:'Target public entrypoint works',kind:'integration',requirementIds:['retry'],stepIds:['check'],artifactPaths:[report]},
   ]};
+  await assessPlan(f.service,f.scope,input);
   return {input,report,donor,target};
 }
 describe('workflow contracts',()=>{
@@ -74,6 +76,7 @@ describe('workflow contracts',()=>{
     await expect(f.service.submitPlan(f.scope,p.input)).rejects.toMatchObject({code:'WORKFLOW_SOURCE_STALE'});
     const current=await f.service.source(f.scope,{operation:'read',role:'donor',donorId:'donor',path:'worker.py'});
     p.input.mappings![0]!.donorReceiptIds=[current.receipt!.id];p.input.expectedVersion=current.version;
+    await assessPlan(f.service,f.scope,p.input);
     await expect(f.service.submitPlan(f.scope,p.input)).resolves.toMatchObject({phase:'READY_TO_IMPLEMENT'});
     const restarted=(await new WorkflowService(f.options).status(f.scope))!;
     expect(restarted.receipts.some(r=>r.id===p.donor.receipt!.id)).toBe(true);
@@ -100,6 +103,7 @@ describe('workflow contracts',()=>{
     await expect(f.service.submitPlan(f.scope,p.input)).rejects.toMatchObject({code:'WORKFLOW_TARGET_EVIDENCE_REQUIRED'});
     const read=await f.service.source(f.scope,{operation:'read',role:'target',path:other});
     p.input.mappings![0]!.targetReceiptIds=[read.receipt!.id];p.input.expectedVersion=read.version;
+    await assessPlan(f.service,f.scope,p.input);
     await expect(f.service.submitPlan(f.scope,p.input)).resolves.toMatchObject({phase:'READY_TO_IMPLEMENT'});
   });
   it('requires an explicit existing integration seam for new-only targets and includes it in tested inputs',async()=>{
@@ -109,6 +113,7 @@ describe('workflow contracts',()=>{
     p.input.mappings![0]!.integrationSeamPaths=[path.join(f.root,'src','missing-seam.ts')];
     await expect(f.service.submitPlan(f.scope,p.input)).rejects.toMatchObject({code:'WORKFLOW_TARGET_EVIDENCE_REQUIRED'});
     p.input.mappings![0]!.integrationSeamPaths=[f.target];
+    await assessPlan(f.service,f.scope,p.input);
     const accepted=await f.service.submitPlan(f.scope,p.input);
     expect(accepted.plan!.targetBaseline.map(entry=>entry.path.toLowerCase())).toEqual(expect.arrayContaining([created.toLowerCase(),f.target.toLowerCase()]));
     await writeFile(f.target,'export const run = () => 3;\n');
@@ -150,10 +155,10 @@ describe('workflow contracts',()=>{
     await expect(f.service.assertExecution(f.scope,{operation:'execution_create',nodes:[{...node,resources:{writes:[f.target,p.report]}}]})).rejects.toMatchObject({code:'WORKFLOW_PATH_NOT_PLANNED'});
     await expect(f.service.assertExecution(f.scope,{operation:'execution_create',nodes:[{...node,resources:{writes:[p.report],exclusive:['fixture-server']}}]})).resolves.toMatchObject({planRevision:'1'});
   });
-  it('protects explicitly configured authority roots even for lightweight operations',async()=>{
-    const f=await setup(),service=new WorkflowService({...f.options,protectedRoots:[path.join(f.root,'execution-state')]}),scope={...f.scope,taskId:'atomic-authority'};
-    await service.bind(scope,{brief:'Fix a typo',workflow:'direct'});
-    await expect(service.authorize(scope,{toolName:'write_file',path:path.join(f.root,'execution-state','result.json')})).rejects.toMatchObject({code:'WORKFLOW_TARGET_PROTECTED'});
+  it('protects explicitly configured authority roots even after a legitimate plan is accepted',async()=>{
+    const f=await setup(),p=await planFixture(f);await f.service.submitPlan(f.scope,p.input);
+    const service=new WorkflowService({...f.options,protectedRoots:[path.join(f.root,'execution-state')]});
+    await expect(service.authorize(f.scope,{toolName:'write_file',path:path.join(f.root,'execution-state','result.json'),stepId:'edit',planVersion:1})).rejects.toMatchObject({code:'WORKFLOW_TARGET_PROTECTED'});
   });
   it('records its own successful edits without accepting unrelated source changes',async()=>{
     const f=await setup(),p=await planFixture(f);await f.service.submitPlan(f.scope,p.input);
@@ -211,10 +216,10 @@ describe('workflow contracts',()=>{
     await expect(f.service.recordOperation(f.scope,{toolName:'execute_command',command:'node old.mjs',paths:[f.target],stepId:'edit',planVersion:1,viaExecution:true})).rejects.toMatchObject({code:'WORKFLOW_PLAN_STALE'});
     await expect(f.service.recordOperation(f.scope,{toolName:'execute_command',command:'node old.mjs',paths:[f.target],stepId:'edit',planVersion:2,viaExecution:true})).rejects.toMatchObject({code:'WORKFLOW_COMMAND_NOT_PLANNED'});
   });
-  it('keeps atomic typo fixes light, while relative donor review-then-implement remains mandatory',async()=>{
+  it('keeps typo fixes outside donor/DAG requirements while retaining engineering assessment',async()=>{
     const f=await setup();
     const atomic=await f.service.bind({...f.scope,taskId:'atomic'},{brief:'Fix typo in src/title.ts',workflow:'direct'});
-    expect(atomic.planRequired).toBe(false);expect(atomic.craftRequired).toBe(false);
+    expect(atomic.planRequired).toBe(true);expect(atomic.engineering?.required).toBe(true);expect(atomic.craftRequired).toBe(false);expect(atomic.dagRequired).toBe(false);
     const craft=await f.service.bind({...f.scope,taskId:'relative'},{brief:'Review donor referensi/retry then implement feature',workflow:'direct'});
     expect(craft.planRequired).toBe(true);expect(craft.craftRequired).toBe(true);expect(craft.dagRequired).toBe(true);
     const source=await f.service.source(f.scope,{operation:'read',role:'donor',donorId:'donor',path:'worker.py'});
@@ -253,7 +258,9 @@ describe('workflow contracts',()=>{
     await f.service.assertExecution(f.scope,{operation:'execution_start',nodes:[{command:'node tests/check.mjs',stepIds:['check'],resources:{writes:[p.report]}}]});
     await writeFile(p.report,'{"passed":true}\n');
     const run:WorkflowRunEvidence={runId:'run-1',taskId:f.scope.taskId,state:'completed',verification:'verified',planHash:plan.plan!.hash,nodes:[{stepIds:['check'],state:'succeeded',verification:'verified',artifacts:[{path:p.report,sha256:workflowHash(await readFile(p.report)),verification:'verified'}],inputHashes:[{path:f.target,hash:workflowHash(await readFile(f.target))}]}]};
+    const edit={toolName:'edit_file',path:f.target,stepId:'edit',planVersion:1};await f.service.authorize(f.scope,edit);
     await writeFile(f.target,'export const run = () => 3;\n');
+    await f.service.recordOperation(f.scope,edit);await acceptCurrentReview(f.service,f.scope);
     await expect(f.service.prepareCompletion(f.scope,{runs:[run]})).rejects.toMatchObject({code:'WORKFLOW_VERIFICATION_REQUIRED'});
     run.nodes[0]!.inputHashes![0]!.hash=workflowHash(await readFile(f.target));
     const verified=await f.service.prepareCompletion(f.scope,{runs:[run]});expect(verified!.phase).toBe('VERIFIED');
@@ -262,11 +269,11 @@ describe('workflow contracts',()=>{
     await expect(f.service.authorize(f.scope,{toolName:'edit_file',path:f.target,stepId:'edit'})).rejects.toMatchObject({code:'WORKFLOW_CLOSED'});
   });
   it('rejects an unexpected missing target and unperformed planned absences',async()=>{
-    const f=await setup(),p=await planFixture(f);await f.service.submitPlan(f.scope,p.input);
+    const f=await setup(),p=await planFixture(f);await f.service.submitPlan(f.scope,p.input);await acceptCurrentReview(f.service,f.scope);
     await rm(f.target);
-    await expect(f.service.prepareCompletion(f.scope,{runs:[]})).rejects.toMatchObject({code:'WORKFLOW_TARGET_MISSING'});
+    await expect(f.service.prepareCompletion(f.scope,{runs:[]})).rejects.toMatchObject({code:'ENGINEERING_UNPLANNED_CHANGE'});
     const untouched=await setup(),q=await planFixture(untouched),missing=path.join(untouched.root,'never-created.ts');
-    q.input.steps.push({id:'new-file',purpose:'Create required implementation file',kind:'edit',paths:[missing]});q.input.mappings![0]!.stepIds.push('new-file');q.input.mappings![0]!.targetPaths.push(missing);await untouched.service.submitPlan(untouched.scope,q.input);
+    q.input.steps.push({id:'new-file',purpose:'Create required implementation file',kind:'edit',paths:[missing]});q.input.mappings![0]!.stepIds.push('new-file');q.input.mappings![0]!.targetPaths.push(missing);await assessPlan(untouched.service,untouched.scope,q.input);await untouched.service.submitPlan(untouched.scope,q.input);await acceptCurrentReview(untouched.service,untouched.scope);
     await expect(untouched.service.prepareCompletion(untouched.scope,{runs:[]})).rejects.toMatchObject({code:'WORKFLOW_TARGET_OPERATION_REQUIRED'});
   });
   it('does not mint proof for truncated content or source path escapes',async()=>{

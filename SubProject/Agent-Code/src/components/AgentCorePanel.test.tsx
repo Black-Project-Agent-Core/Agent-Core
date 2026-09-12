@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentCorePanel } from './AgentCorePanel';
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
@@ -23,6 +23,8 @@ const runningStatus = {
 const stoppedStatus = { ...runningStatus, overall: 'Stopped', mcpServer: 'Stopped', tunnel: 'Stopped', desiredRunning: false };
 
 describe('AgentCorePanel', () => {
+  afterEach(() => vi.useRealTimers());
+
   beforeEach(() => {
     invokeMock.mockReset();
     invokeMock.mockImplementation((command: string) => {
@@ -91,5 +93,52 @@ describe('AgentCorePanel', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open Agent Core Folder' }));
     expect(invokeMock).toHaveBeenCalledWith('agent_core_open_folder');
+  });
+
+  it('retains a restart permission error while immediate and periodic refreshes update health', async () => {
+    vi.useFakeTimers();
+    const permissionError = 'Refused to restart Agent Core because Windows process identity is unavailable. Run Agent Code with the same permissions as the runtime.';
+    let statusQueries = 0;
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'agent_core_control_status') {
+        statusQueries += 1;
+        return Promise.resolve(statusQueries === 2
+          ? { ...runningStatus, overall: 'Degraded', mcpServer: 'Identity unavailable', memory: 'Unavailable' }
+          : runningStatus);
+      }
+      return Promise.reject(permissionError);
+    });
+    render(<AgentCorePanel />);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Expand Agent Core controls' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Restart All' })));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(permissionError);
+    expect(screen.getByLabelText('Agent Core runtime status')).toHaveTextContent('MCP Server: Identity unavailable | Memory: Unavailable');
+    expect(screen.getByRole('button', { name: 'Restart All' })).toBeEnabled();
+
+    await act(async () => vi.advanceTimersByTimeAsync(6000));
+
+    expect(screen.getByLabelText('Agent Core runtime status')).toHaveTextContent('MCP Server: Running | Memory: Healthy');
+    expect(screen.getByRole('alert')).toHaveTextContent(permissionError);
+    expect(statusQueries).toBe(3);
+  });
+
+  it('shows unavailable after an initial status failure and recovers on the next refresh', async () => {
+    vi.useFakeTimers();
+    invokeMock.mockRejectedValueOnce('Windows process query failed');
+    render(<AgentCorePanel />);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Expand Agent Core controls' })));
+
+    const runtimeStatus = screen.getByLabelText('Agent Core runtime status');
+    expect(runtimeStatus).toHaveTextContent('— Unavailable');
+    expect(runtimeStatus).toHaveTextContent('MCP Server: Unavailable | Memory: Unavailable | Execution: Unavailable');
+    expect(runtimeStatus).toHaveTextContent('Tunnel: Unavailable');
+    expect(runtimeStatus).not.toHaveTextContent('Checking');
+    expect(screen.getByRole('alert')).toHaveTextContent('Windows process query failed');
+
+    await act(async () => vi.advanceTimersByTimeAsync(6000));
+
+    expect(runtimeStatus).toHaveTextContent('— Running');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

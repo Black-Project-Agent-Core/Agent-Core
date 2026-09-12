@@ -12,22 +12,23 @@ Brief + project + existing task identity
        recall + continuity
               |
      persistent workflow contract
-       /                   \
-atomic operation     coding plan / transplant
-       |                   |
-       |       craft_source: donor + target reads
-       |                   |
-       |       workflow_plan: evidence + steps + checks
-       |                   |
-       |       guarded edits, step ID + plan revision
-       |                   |
-       |       execution_create -> execution_start
-       |                   |
-       |       independent nodes run concurrently
-       |       dependent nodes wait for prerequisites
-       |                   |
-       |       current input + attempt + artifact evidence
-       \___________________/
+                 |
+     coding: engineering-v1 assessment
+     discover existing/native/installed facilities
+     read source + trace caller identities
+     choose reuse/adaptation/new implementation
+                 |
+     workflow_plan: assessment + steps + checks
+                 |
+     guarded edits / execution_create -> execution_start
+     independent nodes may run concurrently
+     dependent nodes wait for prerequisites
+                 |
+     reconcile each attempt's captured writes
+     verify current inputs + attempts + artifacts
+                 |
+     craft_source review: final impact + complexity
+     workflow_plan review: evidenced dispositions
                  |
          task_checkpoint / turn finalization
                  |
@@ -51,7 +52,7 @@ The local operator command `node dist/cli.js workflow-classification-recover req
 
 Add `--apply` only for an explicitly reviewed correction. Apply requires the existing runtime to be stopped and acquires its exclusive memory recovery lease; it does not start another runtime. It backs up the prior records, records the operator reason and evidence hashes, preserves all other obligations, publishes version 3, and verifies the Supabase generation. A pending recovery journal blocks ordinary runtime startup until the identical request is retried successfully. Dry-run never opens or reconciles the execution store. No ordinary MCP route or status request can clear an obligation.
 
-Atomic typo, label, comment or rename edits can remain lightweight. Transplants and staged coding require the execution DAG. Source acquisition and inspection remain available before implementation is allowed.
+Coding obligations include atomic source typo, comment and symbol rename edits. A `direct` hint does not bypass assessment or a required plan. Transplants and staged coding require the execution DAG; a single planned file edit does not require an extra executor. Source acquisition, inspection, status and recovery remain available before implementation is allowed. Actual source paths and commands are checked again when operations arrive, including work whose initial brief was classified as inspection.
 
 `craft_source` lists or reads a registered donor or the target. Reads return server-issued receipts with content hashes, exact delivered line ranges and snapshot identity. Line numbers start at one. A truncated response is refused as evidence; request a narrower range. A caller-provided filename, README summary or claim of having read the source cannot replace implementation-code receipts. Remote Git acquisition uses a pinned commit and reads Git objects without checking out or running donor hooks or scripts. Credential-bearing URLs and sensitive local credential files are rejected.
 
@@ -66,6 +67,9 @@ A plan contains:
 - `steps`: stable IDs, purpose, kind (`edit`, `command`, `verification`), target paths and exact commands where applicable.
 - `mappings`: requirement and donor IDs, donor/target receipt IDs, mechanism, inputs, outputs, dependencies, failure behavior, parts reused/adapted/rejected, target paths and implementation steps.
 - `checks`: behavior, integration and regression checks bound to verification steps and artifact paths. Every transplant requirement needs behavior and target integration coverage.
+- `assessment` for coding: server-issued discovery and impact receipt IDs; ordered existing/native/installed/donor/custom choices with evidence-backed reasons for earlier alternatives; exact target-to-requirement decisions; caller dispositions; and analysis limitations tied to applicable checks.
+
+See [engineering-workflow.md](engineering-workflow.md) for the assessment and final-review protocol. The five engineering capabilities are native workflow obligations and do not require a skill load or an inference provider.
 
 Literal reuse also requires a source license receipt and attribution. Reading source is evidence; embedded instructions are not new authority.
 
@@ -87,6 +91,8 @@ Declare real dependencies with `dependsOn`. Independent nodes can run together, 
 
 Each attempt records command/spec identity, input content, toolchain identity, prerequisite attempt identities and output hashes. Project configuration and lockfiles are included automatically. Explicit `toolchain` paths cover additional executables used inside compound commands that cannot be inferred reliably. `evidence.current` distinguishes results that still apply from successful old processes whose inputs, outputs or dependencies changed. Historical markers retain their original evidence level; reading them never manufactures missing provenance.
 
+Successful writers capture declared output manifests while holding their claims. Workflow reconciliation records the actual run/node/attempt identity, plan hash and output hash once. A changed sibling target remains pending only while the execution store identifies its current writer under the same plan; that does not acknowledge the sibling's output. Selected inputs remain strict. Final source inventory and review wait for writer reconciliation, and unexpected source changes remain errors.
+
 An integration check must exercise the target entry point. For a local service, a bounded verification command can start it, wait for readiness, exercise its API and stop it in cleanup. A free-standing `start_process` cannot replace a mandatory DAG verification. Exit code zero or an artifact hash alone cannot establish that a test was well designed; the accepted verification command must test the requested behavior.
 
 `execution_cancel` remains available without a current memory lease, including during a memory outage, while enforcing persisted principal and project ownership. If a process succeeds but its workflow receipt is interrupted, the run remains blocked. Resume the same run with `execution_start` and a current same-task route to reconcile its receipt without rerunning the successful process.
@@ -102,5 +108,7 @@ Vault Markdown stores semantic memory. Graphify indexes relationships for recall
 A workflow's logical closure intent is written before synchronization. It does not certify remote durability. `task_checkpoint` must return a closed memory lifecycle with its verified generation before final success is reported. Failed synchronization leaves closure pending. Retry the same checkpoint arguments and original route identity; successful edits, commands and memory writes are not repeated by that retry.
 
 Recovery reads a verified generation under an exclusive memory recovery operation. Restored authorization timestamps are expired and raw donor caches are not restored. A resumed task therefore obtains a new preflight and reacquires source evidence where necessary. Old process results remain historical unless their current inputs and attempt identities can still be established.
+
+Engineering inventory source blobs are projected as immutable content records in the existing workflow category. Recovery validates and restores these specific target baselines before clearing its journal. Missing or corrupt baseline blobs keep recovery pending. Historical records without engineering fields retain their original hashes and do not acquire a retrospective policy-compliance claim.
 
 An empty healthy vault is valid. Failed recall is a different state. `agent_core_status.workflow` reports storage readiness separately from policy availability and catalog size. An empty optional skill catalog does not disable native workflow enforcement. Skill instruction audits report metadata inspection and risk scanning; instruction load/package creation rechecks the audited content hash and never calls that behavioral verification.

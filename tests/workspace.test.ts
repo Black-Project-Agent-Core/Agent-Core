@@ -76,6 +76,65 @@ describe('WorkspacePolicy', () => {
     expect(() => policy.resolveProjectRoot({ candidatePaths: [projectA, projectB] })).toThrow(/WORKSPACE_PROJECT_AMBIGUOUS/);
   });
 
+  it('keeps an explicit nested project narrower than configured roots and incidental brief paths', async () => {
+    const root = await tempRoot('agent-core-nested-scope-');
+    const project = path.join(root, 'reports', 'fixture');
+    const other = await tempRoot('agent-core-other-project-');
+    await mkdir(project, { recursive: true });
+    const policy = new WorkspacePolicy([root, other]);
+    expect(policy.resolveProjectRoot({ explicitRoot: project, texts: [`Inspect ${project}; donor context mentions ${other}`] })).toBe(project);
+    expect(policy.resolveProjectRoot({ candidatePaths: [path.join(project, 'src', 'code.ts')] })).toBe(root);
+    await expect(policy.validateProjectRoot(project)).resolves.toBe(project);
+    expect(() => policy.resolveProjectRoot({ explicitRoot: 'reports/fixture' })).toThrow(/WORKSPACE_PROJECT_NOT_ALLOWED/);
+  });
+
+  it('rejects parent, sibling and junction access from a nested project', async () => {
+    const root = await tempRoot('agent-core-nested-boundary-');
+    const project = path.join(root, 'fixture'), sibling = path.join(root, 'sibling');
+    await Promise.all([mkdir(project), mkdir(sibling)]);
+    await writeFile(path.join(root, 'parent.txt'), 'parent');
+    await writeFile(path.join(sibling, 'other.txt'), 'sibling');
+    await writeFile(path.join(project, 'source.ts'), 'export const result = 1;');
+    await symlink(sibling, path.join(project, 'link'), process.platform === 'win32' ? 'junction' : 'dir');
+    const policy = new WorkspacePolicy([root]);
+    await expect(policy.resolveExistingInProject(project, path.join(project, 'source.ts'))).resolves.toBe(path.join(project, 'source.ts'));
+    await expect(policy.resolveTargetInProject(project, path.join(project, 'new', 'code.ts'))).resolves.toBe(path.join(project, 'new', 'code.ts'));
+    await expect(policy.resolveExistingInProject(project, path.join(root, 'parent.txt'))).rejects.toThrow(/WORKSPACE_PROJECT_MISMATCH/);
+    await expect(policy.resolveTargetInProject(project, path.join(sibling, 'new.ts'))).rejects.toThrow(/WORKSPACE_PROJECT_MISMATCH/);
+    await expect(policy.resolveExistingInProject(project, path.join(project, 'link', 'other.txt'))).rejects.toThrow(/WORKSPACE_PROJECT_MISMATCH/);
+  });
+
+  it('rejects missing, file and escaped project roots before trusting the selected directory', async () => {
+    const root = await tempRoot('agent-core-project-validation-');
+    const outside = await tempRoot('agent-core-project-escape-');
+    await writeFile(path.join(root, 'file.txt'), 'file');
+    const alias = path.join(root, 'escape');
+    await symlink(outside, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const policy = new WorkspacePolicy([root, outside]);
+    for (const candidate of [path.join(root, 'missing'), path.join(root, 'file.txt'), alias]) {
+      await expect(policy.validateProjectRoot(candidate)).rejects.toThrow(/WORKSPACE_PROJECT_NOT_ALLOWED/);
+    }
+    await expect(policy.resolveExistingInProject(alias, alias)).rejects.toThrow(/WORKSPACE_PROJECT_MISMATCH/);
+  });
+
+  it('normalizes the existing project identity without widening a nested alias', async () => {
+    const root = await tempRoot('agent-core-project-alias-'), project = path.join(root, 'Fixture');
+    await mkdir(project);
+    const alias = path.join(root, 'alias');
+    await symlink(project, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const policy = new WorkspacePolicy([root]);
+    await expect(policy.validateProjectRoot(alias)).resolves.toBe(project);
+    if (process.platform === 'win32') await expect(policy.validateProjectRoot(project.toUpperCase())).resolves.toBe(project);
+  });
+
+  it('supports a filesystem root as an outer boundary without widening explicit child projects', async () => {
+    const project = await tempRoot('agent-core-drive-root-');
+    const policy = new WorkspacePolicy([path.parse(project).root]);
+    expect(policy.isAllowed(project)).toBe(true);
+    expect(policy.resolveProjectRoot({ explicitRoot: project })).toBe(project);
+    await expect(policy.validateProjectRoot(project)).resolves.toBe(project);
+  });
+
   it('enforces the routed project boundary even when another allowed root is globally accessible', async () => {
     const container = await tempRoot('agent-core-project-boundary-');
     const projectA = path.join(container, 'project-a');

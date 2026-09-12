@@ -30,7 +30,7 @@ async function resolveFinalization(runtime:RuntimeServices,key:VerifiedKey,route
     // Recover only finalization authority. This does not recreate a route, lease,
     // capability grant, or permission to perform new substantive work.
     const principalId=persistentPrincipalId(runtime,key);
-    const lifecycle=await runtime.memory.findLifecycleByRoute({principalId,routeContextId,projectIds:runtime.workspace.roots,authorityPrincipalId:key.id});
+    const lifecycle=await runtime.memory.findLifecycleByRoute({principalId,routeContextId,projectIds:runtime.workspace.roots,authorityPrincipalId:key.id,includeDescendantProjects:true});
     if(!lifecycle)throw error;
     return{scope:{principalId,projectId:lifecycle.projectId},contextId:lifecycle.contextId,continuityTaskId:lifecycle.continuityTaskId};
   }

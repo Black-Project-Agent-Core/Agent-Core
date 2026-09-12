@@ -1,7 +1,7 @@
 # Agent Core × Ponytail Autonomous Craft Improvement Study Plan
 
 Date: 2026-09-07
-Status: RESEARCH / DESIGN INPUT ONLY — NO IMPLEMENTATION AUTHORIZED
+Status: Historical research baseline. The implemented coding contract is documented in [engineering-workflow.md](../engineering-workflow.md); this dated study does not describe current runtime availability.
 
 ## Goal
 

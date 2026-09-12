@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
 import { loadConfig } from '../src/config.js';
+import { validateExecutionDag } from '../src/execution/dag.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
@@ -206,22 +207,39 @@ describe('route-bound project identity and cross-project isolation', () => {
     });
     expect(recallA.result.hits.map((hit: any) => hit.canonicalKey)).not.toContain('project-b.fact');
 
-    const created = await call(f.baseUrl, f.principal.key, 'execution_create', {
+    const createAttempt = await call(f.baseUrl, f.principal.key, 'execution_create', {
       routeContextId: routeB.routeContextId,
       objective: 'Project B execution',
       nodes: [{ id: 'B', purpose: 'B', command: printCommand('B\n'), cwd: f.projectB, inputs: [] }],
     });
-    expect(created.raw.result?.isError).not.toBe(true);
-    expect(await f.runtime.execution.status({ principalId: f.principal.metadata.id, projectId: f.projectB }, created.result.runId))
+    expect(createAttempt.raw.result?.isError, JSON.stringify(createAttempt.raw)).toBe(true);
+    expect(createAttempt.result.error?.code).toBe('WORKFLOW_PLAN_REQUIRED');
+
+    // Seed an existing owned run through the fixture store: this assertion targets routed reads, not plan acceptance.
+    const executionScope = { principalId: f.principal.metadata.id, projectId: routeB.projectId };
+    const graph = await validateExecutionDag([
+      { id: 'B', purpose: 'B', command: printCommand('B\n'), cwd: f.projectB, inputs: [] },
+    ], { workspace: f.runtime.workspace });
+    const created = await f.runtime.execution.store.createRun(executionScope, {
+      objective: 'Existing Project B execution', maxConcurrency: 1, originRouteContextId: routeB.routeContextId,
+    });
+    await f.runtime.execution.store.persistGraph(executionScope, created.runId, graph.nodes);
+    expect(await f.runtime.execution.status({ principalId: f.principal.metadata.id, projectId: f.projectB }, created.runId))
       .not.toBeNull();
-    expect(await f.runtime.execution.status({ principalId: f.principal.metadata.id, projectId: f.projectA }, created.result.runId))
+    expect(await f.runtime.execution.status({ principalId: f.principal.metadata.id, projectId: f.projectA }, created.runId))
       .toBeNull();
+
+    const ownedProjectRead = await call(f.baseUrl, f.principal.key, 'execution_status', {
+      routeContextId: routeB.routeContextId, runId: created.runId,
+    });
+    expect(ownedProjectRead.raw.result?.isError, JSON.stringify(ownedProjectRead.raw)).not.toBe(true);
+    expect(ownedProjectRead.result.runId).toBe(created.runId);
 
     const wrongProjectRead = await call(f.baseUrl, f.principal.key, 'execution_status', {
       routeContextId: routeA.routeContextId,
-      runId: created.result.runId,
+      runId: created.runId,
     });
-    expect(wrongProjectRead.raw.result?.isError).toBe(true);
+    expect(wrongProjectRead.raw.result?.isError, JSON.stringify(wrongProjectRead.raw)).toBe(true);
     expect(wrongProjectRead.result.error?.code).toBe('EXECUTION_RUN_NOT_FOUND');
   });
 });

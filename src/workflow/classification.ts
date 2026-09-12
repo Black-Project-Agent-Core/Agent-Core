@@ -2,7 +2,7 @@ import type { WorkflowBindInput, WorkflowClassificationEvent, WorkflowClassifica
 import { workflowHash } from './store.js';
 
 export const WORKFLOW_CLASSIFICATION_VERSION = 'workflow-intent-v2';
-const ACTION = '(?:build|implement|develop|create|refactor|fix|debug|integrate|transplant|adapt|reuse|port|write|code|buat|membuat|bikin|tambah|menambahkan|ubah|bangun|membangun|perbaiki|integrasikan|adaptasi|ambil|mengambil|terapkan|craft|steal)';
+const ACTION = '(?:build|implement|develop|create|refactor|rename|fix|debug|integrate|transplant|adapt|reuse|port|write|code|buat|membuat|bikin|tambah|menambahkan|ubah|bangun|membangun|perbaiki|integrasikan|adaptasi|ambil|mengambil|terapkan|craft|steal)';
 const LEAD = '(?:(?:please|tolong|silakan|silahkan|now|sekarang|then|lalu|kemudian|and|dan|also|juga)\\s+)*(?:(?:can|could|would|will)\\s+you\\s+|(?:i|we)\\s+(?:want|need|would like)\\s+(?:you\\s+)?to\\s+|(?:aku|saya|kami)\\s+(?:ingin|mau|minta|perlu)\\s+(?:(?:kamu|anda)\\s+)?(?:untuk\\s+)?|you\\s+(?:must|should|need to)\\s+)?';
 const directive = new RegExp('^\\s*' + LEAD + '(' + ACTION + ')\\b', 'i');
 const nextAction = new RegExp('\\b(?:then|lalu|kemudian|and then|dan kemudian)\\s+(?=' + LEAD + ACTION + '\\b)|\\b(?:and|dan)\\s+(?=' + LEAD + ACTION.replace('|code', '').replace('|craft', '') + '\\b)', 'i');
@@ -48,6 +48,13 @@ function externalObject(part: string): boolean {
   return /^(?:create|open|update|delete|configure|buat|membuat|buka|ubah|hapus)\s+(?:(?:a|an|the|new|sebuah|baru)\s+)*(?:(?:github|gitlab)\s+)?(?:issue|pull\s+request|pr|release)\b/i.test(part.replace(new RegExp('^\\s*' + LEAD, 'i'), ''))
     || /\blangflow\s+(?:flow|nodes?)\b/i.test(part);
 }
+function operationalObject(part: string): boolean {
+  const value = withoutReferences(part).replace(new RegExp('^\\s*' + LEAD, 'i'), '').trim();
+  if (/^(?:create|buat|membuat|bikin)\s+(?:(?:a|an|the|new|sebuah|baru)\s+)*(?:folder|directory|direktori)\b/i.test(value)) return true;
+  if (/^(?:ambil|mengambil)\b[\s\S]*\b(?:github|repo|repository|repositori|file|asset|reference|referensi)\b/i.test(value)) return true;
+  if (/^(?:create|buat|membuat|bikin)\b[\s\S]*\b(?:local\s+copy|clone|download)\b[\s\S]*\b(?:github|repo|repository|repositori|file|asset|reference|referensi)\b/i.test(value)) return true;
+  return false;
+}
 
 export function classifyWorkflowInput(input: WorkflowBindInput, now: number): WorkflowClassificationEvent {
   const inspected = (['brief', 'context'] as const).flatMap(field => units(input[field] ?? '').map(text => ({ field, text, active: activeParts(text) })));
@@ -56,8 +63,15 @@ export function classifyWorkflowInput(input: WorkflowBindInput, now: number): Wo
     || /^(?:review|inspect|audit|periksa|tinjau)\b/i.test(unit.text) && nextAction.test(unit.text)
       && linkedSource(unit.text.split(nextAction)[0]!) && unit.active.some(hasFeature));
   const craftRequired = Boolean(input.craft) || craftUnits.length > 0;
-  const coding = active.some(unit => unit.active.some(part => !externalObject(part)
-    || /\b(?:implement|develop|refactor|transplant|integrasikan|bangun|membangun|perbaiki)\b|\b(?:write|create|build|buat)\s+(?:(?:a|an|the|new|native)\s+)*(?:code|source|typescript|javascript|python|module|function|class|package)\b/i.test(part)));
+  const coding = active.some(unit => unit.active.some(part => {
+    if (externalObject(part) || operationalObject(part)) return false;
+    const text = withoutReferences(part);
+    return /\b(?:implement|develop|refactor|debug|transplant|integrate|integrasikan)\b/i.test(text)
+      || /\b(?:fix|perbaiki|ubah|rename)\b[\s\S]*\b(?:bug|code|source|typescript|javascript|python|module|function|class|package|tool|service|app|application|api|endpoint|schema|database|parser)\b/i.test(text)
+      || /\b(?:fix|perbaiki|ubah|rename)\b[\s\S]*\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|kts|c|h|cc|cpp|hpp|cs|swift|rb|php|lua|sh|bash|ps1|sql|html|css|scss|vue|svelte|zig)\b/i.test(part)
+      || /\b(?:build|bangun|membangun)\s+(?:something|anything|sesuatu)\b/i.test(text)
+      || /\b(?:write|create|build|buat|bangun|membangun)\s+(?:(?:a|an|the|new|native|baru|sebuah)\s+)*(?:code|source|typescript|javascript|python|module|function|class|package|tool|service|app|application|api|endpoint|schema|database|cli)\b/i.test(text);
+  }));
   const dagRequired = input.workflow === 'dag' || craftRequired || coding && (active.length > 1 || active.some(unit => multiStage.test(unit.text)));
   const atomic = !dagRequired && active.length === 1 && active[0]!.active.length === 1
     && /\b(?:typo|spelling|ejaan|whitespace|salah ketik|label|comment|komentar|rename)\b/i.test(active[0]!.text);

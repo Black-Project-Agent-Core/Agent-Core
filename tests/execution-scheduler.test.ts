@@ -188,6 +188,55 @@ describe('concurrent dependency-aware execution scheduler', () => {
       expect(f.service.scheduler.resourceClaims.size).toBe(0);
     } finally { await f.service.close(); }
   });
+
+  it('coordinates nested projects independently while keeping parent and relative workspace claims consistent', async () => {
+    const runner = new ControlledRunner();
+    const f = await fixture('nested-claims', runner);
+    const sibling = path.join(f.root, 'sibling');
+    await mkdir(sibling);
+    const scopeA = { ...f.scope, projectId: f.work };
+    const scopeB = { principalId: 'principal-b', projectId: sibling };
+    try {
+      const runA = await f.service.create(scopeA, { objective: 'nested A', nodes: [{ id: 'A', purpose: 'A', command: 'Write-Output A', cwd: f.work, inputs: [] }] });
+      const runB = await f.service.create(scopeB, { objective: 'nested B', nodes: [{ id: 'B', purpose: 'B', command: 'Write-Output B', cwd: sibling, inputs: [] }] });
+      await f.service.start(scopeA, runA.runId);
+      await f.service.start(scopeB, runB.runId);
+      expect(runner.startedNodeIds()).toEqual(['A', 'B']);
+      await expect(f.service.acquireWorkspaceClaim(scopeA, { writes: ['inside-a.txt'] }))
+        .rejects.toMatchObject({ code: 'EXECUTION_RESOURCE_BUSY' });
+      await expect(f.service.acquireWorkspaceClaim(f.scope, { writes: [f.root] }))
+        .rejects.toMatchObject({ code: 'EXECUTION_RESOURCE_BUSY' });
+      const releaseParentManifest = await f.service.acquireWorkspaceClaim(f.scope, { writes: ['package.json'] });
+      await releaseParentManifest();
+      await f.service.cancel(scopeA, runA.runId);
+      await f.service.cancel(scopeB, runB.runId);
+      expect(f.service.scheduler.resourceClaims.size).toBe(0);
+    } finally { await f.service.close(); }
+  });
+
+  it('retains nested project scope through native execution evidence and later status verification', async () => {
+    const f = await fixture('nested-evidence');
+    const scope = { ...f.scope, projectId: f.work };
+    try {
+      const created = await f.service.create(scope, { objective: 'nested evidence', nodes: [{ id: 'A', purpose: 'check fixture',
+        command: nodeShellCommand('process.stdout.write("verified")'), cwd: f.work, inputs: [] }] });
+      await f.service.start(scope, created.runId);
+      await f.service.wait(scope, created.runId, created.lastEventSequence, { eventTypes: ['run.completed'] }, 5000);
+      let current = await f.service.status(scope, created.runId);
+      expect(current?.state).toBe('completed');
+      expect(current?.evidence.nodes[0]?.applicability).toBe('current');
+      const result = await f.service.logs.readResult(created.runId, 'A', 1);
+      expect(result?.provenance?.inputPaths).toContain(path.join(f.work, 'package.json'));
+      expect(result?.provenance?.inputPaths).not.toContain(path.join(f.root, 'package.json'));
+      await writeFile(path.join(f.root, 'package.json'), '{"name":"parent-changed"}');
+      current = await f.service.status(scope, created.runId);
+      expect(current?.evidence.nodes[0]?.applicability).toBe('current');
+      await writeFile(path.join(f.work, 'package.json'), '{"name":"fixture-changed"}');
+      current = await f.service.status(scope, created.runId);
+      expect(current?.evidence.nodes[0]?.applicability).toBe('inputs_changed');
+    } finally { await f.service.close(); }
+  }, 15_000);
+
   it('launches independent A/B concurrently and starts C after A succeeds while B is still running; D waits for A+B', async () => {
     const runner = new ControlledRunner();
     const f = await fixture('unlock', runner, 4);

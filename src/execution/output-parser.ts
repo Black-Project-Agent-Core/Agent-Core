@@ -1,10 +1,34 @@
 import { safeDerivedText } from '../runtime/safe-derived-text.js';
 import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
-import type { ExecutionLogStore, ExecutionResultMarker } from './log-store.js';
+import type { ExecutionLogAnalysisCoverage, ExecutionLogStore, ExecutionResultMarker } from './log-store.js';
 import type { ExecutionStore } from './store.js';
 import type { ExecutionScope } from './types.js';
+import { projectExecutionOutput, type ExecutionOutputProjection, type OutputTextSegment } from './output-projection.js';
 
-export const EXECUTION_OUTPUT_PARSER_VERSION = '1.0.0';
+export const EXECUTION_OUTPUT_PARSER_VERSION = '2.0.0';
+
+export interface ExecutionOutputCoverage {
+  version: 1;
+  state: 'complete' | 'partial';
+  integrity: 'verified';
+  streams: { stdout: ExecutionLogAnalysisCoverage; stderr: ExecutionLogAnalysisCoverage };
+}
+
+export interface ExecutionOutputBinding {
+  runId: string;
+  attemptId: string;
+  planHash?: string;
+  planRevision?: string;
+}
+
+export interface ExecutionOutputRawAccess {
+  tool: 'execution_logs';
+  runId: string;
+  nodeId: string;
+  attemptId: string;
+  attemptNo: number;
+  requiresRouteContext: true;
+}
 
 export interface ParsedExecutionTestResults {
   passed: number;
@@ -38,6 +62,10 @@ export interface ParsedExecutionOutput {
     securityIssueCount?: number;
   };
   confidence: number;
+  binding?: ExecutionOutputBinding;
+  coverage?: ExecutionOutputCoverage;
+  projection?: ExecutionOutputProjection;
+  rawAccess?: ExecutionOutputRawAccess;
 }
 
 export interface ParseExecutionOutputInput {
@@ -50,19 +78,10 @@ export interface ParseExecutionOutputInput {
   stderrSha256: string;
   stdoutBytes?: number;
   stderrBytes?: number;
-}
-
-function parseTestSummary(text: string): ParsedExecutionTestResults | undefined {
-  const vitestLine = text.match(/(?:^|\n)\s*Tests\s+([^\n]+)/i)?.[1];
-  if (vitestLine) {
-    const passed = Number(vitestLine.match(/(\d+)\s+passed\b/i)?.[1] ?? 0);
-    const failed = Number(vitestLine.match(/(\d+)\s+failed\b/i)?.[1] ?? 0);
-    const skipped = Number(vitestLine.match(/(\d+)\s+skipped\b/i)?.[1] ?? 0);
-    if (passed || failed || skipped) return { passed, failed, skipped };
-  }
-  const jest = text.match(/Tests:\s*(?:(\d+)\s+failed,?\s*)?(?:(\d+)\s+skipped,?\s*)?(?:(\d+)\s+passed,?\s*)?(\d+)\s+total/i);
-  if (jest) return { failed: Number(jest[1] ?? 0), skipped: Number(jest[2] ?? 0), passed: Number(jest[3] ?? 0) };
-  return undefined;
+  segments?: readonly OutputTextSegment[];
+  coverage?: ExecutionOutputCoverage;
+  binding?: ExecutionOutputBinding;
+  rawAccess?: ExecutionOutputRawAccess;
 }
 
 function parseBuildStatus(text: string, exitCode: number | null): 'success' | 'failure' | 'partial' | undefined {
@@ -124,10 +143,21 @@ export function parseExecutionOutput(input: ParseExecutionOutputInput): ParsedEx
   const stderr = input.stderr ?? '';
   const text = `${stdout}\n${stderr}`;
   const structured: ParsedExecutionOutput['structured'] = {};
-  const tests = parseTestSummary(text);
+  const segments = input.segments ?? [
+    { stream: 'stdout' as const, start: 0, end: Buffer.byteLength(stdout), text: stdout },
+    { stream: 'stderr' as const, start: 0, end: Buffer.byteLength(stderr), text: stderr },
+  ];
+  const projection = projectExecutionOutput({ segments, exitCode: input.exitCode,
+    complete: input.coverage ? input.coverage.state === 'complete'
+      : (input.stdoutBytes === undefined || input.stdoutBytes === Buffer.byteLength(stdout))
+        && (input.stderrBytes === undefined || input.stderrBytes === Buffer.byteLength(stderr)),
+    totalBytes: (input.stdoutBytes ?? Buffer.byteLength(stdout)) + (input.stderrBytes ?? Buffer.byteLength(stderr)) });
+  const tests = projection.testResults && {
+    passed: projection.testResults.passed, failed: projection.testResults.failed, skipped: projection.testResults.skipped,
+  };
   if (tests) structured.testResults = tests;
   const build = parseBuildStatus(text, input.exitCode);
-  if (build) structured.buildStatus = build;
+  if (build) structured.buildStatus = build === 'success' && input.coverage?.state === 'partial' ? 'partial' : build;
   const deployment = parseDeployment(text);
   if (deployment) structured.deploymentStatus = deployment;
   const performance = parsePerformance(text);
@@ -147,7 +177,7 @@ export function parseExecutionOutput(input: ParseExecutionOutputInput): ParsedEx
     warnings > 0 ? 0.80 : 0,
     errors ? 0.85 : 0,
   ];
-  const confidence = Math.max(...confidenceSignals);
+  const confidence = Math.min(input.coverage?.state === 'partial' ? 0.5 : 1, Math.max(...confidenceSignals));
   return {
     version: 1,
     parserVersion: EXECUTION_OUTPUT_PARSER_VERSION,
@@ -161,6 +191,10 @@ export function parseExecutionOutput(input: ParseExecutionOutputInput): ParsedEx
     },
     structured,
     confidence,
+    projection,
+    ...(input.binding ? { binding: input.binding } : {}),
+    ...(input.coverage ? { coverage: input.coverage } : {}),
+    ...(input.rawAccess ? { rawAccess: input.rawAccess } : {}),
   };
 }
 
@@ -183,19 +217,29 @@ export class ExecutionOutputParserService implements ExecutionOutputParserLike {
     const started = performance.now();
     try {
       const [stdout, stderr] = await Promise.all([
-        this.logs.readLog(marker.runId, marker.nodeId, marker.attemptNo, 'stdout', 0, this.maxBytesPerStream),
-        this.logs.readLog(marker.runId, marker.nodeId, marker.attemptNo, 'stderr', 0, this.maxBytesPerStream),
+        this.logs.readAnalysis(marker, 'stdout', this.maxBytesPerStream),
+        this.logs.readAnalysis(marker, 'stderr', this.maxBytesPerStream),
       ]);
+      const workflow = marker.provenance?.workflowBinding;
       const parsed = parseExecutionOutput({
         nodeId: marker.nodeId,
         attemptNo: marker.attemptNo,
-        stdout: stdout.data,
-        stderr: stderr.data,
+        stdout: stdout.segments.map(segment => segment.text).join('\n'),
+        stderr: stderr.segments.map(segment => segment.text).join('\n'),
         exitCode: marker.exitCode,
         stdoutSha256: marker.stdoutSha256,
         stderrSha256: marker.stderrSha256,
         stdoutBytes: marker.stdoutBytes,
         stderrBytes: marker.stderrBytes,
+        segments: [...stdout.segments, ...stderr.segments],
+        coverage: { version: 1, integrity: 'verified',
+          state: stdout.coverage.omittedBytes || stderr.coverage.omittedBytes ? 'partial' : 'complete',
+          streams: { stdout: stdout.coverage, stderr: stderr.coverage } },
+        binding: { runId: marker.runId, attemptId: marker.attemptId,
+          ...(workflow?.planHash ? { planHash: workflow.planHash } : {}),
+          ...(workflow?.planRevision ? { planRevision: workflow.planRevision } : {}) },
+        rawAccess: { tool: 'execution_logs', runId: marker.runId, nodeId: marker.nodeId,
+          attemptId: marker.attemptId, attemptNo: marker.attemptNo, requiresRouteContext: true },
       });
       await this.store.persistParsedOutput(scope, marker, parsed);
       return parsed;

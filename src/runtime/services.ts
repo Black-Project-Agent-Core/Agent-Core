@@ -8,6 +8,7 @@ import { ExecutionMemoryPreSearch } from '../execution/memory-search.js';
 import { ResourceGovernor } from '../execution/resource-governor.js';
 import { ExecutionService } from '../execution/service.js';
 import { ExecutionStore } from '../execution/store.js';
+import { executionContentManifest, executionIdentityHash } from '../execution/provenance.js';
 import { GitHubService, type GitHubServiceDependencies } from '../github/service.js';
 import { LangflowService } from '../langflow/service.js';
 import { NOOP_RUNTIME_AUDIT_LOGGER, type RoutingAuditLogger, type RuntimeAuditLogger } from '../logging/audit-log.js';
@@ -129,7 +130,27 @@ export function createRuntimeServices(
     metrics,
   });
   execution = new ExecutionService(resolvedExecutionConfig, workspace, {
-    workflowAfterAttempt: async (scope, run, node) => {
+    workflowAcknowledgedOperation: async (scope, run, node, marker) => {
+      if (!run.continuityTaskId) return false;
+      const contract = await workflow.status({ principalId: resolvedMemoryConfig.principalId ?? scope.principalId,
+        projectId: canonicalFileNativeProjectId(resolvedMemoryConfig.fileNative, scope.projectId ?? workspace.resolveProjectRoot()), taskId: run.continuityTaskId });
+      const plan = contract?.plan, provenance = marker.provenance;
+      const binding = run.metadata.workflowBinding as { planHash?: string; planRevision?: string } | undefined;
+      if (!plan || !provenance?.sourceBound || !provenance.inputsStableDuringAttempt
+        || marker.state !== 'succeeded' || node.state !== 'succeeded' || marker.attemptNo !== node.attemptCount
+        || marker.runId !== run.runId || marker.nodeId !== node.nodeId
+        || provenance.runId !== marker.runId || provenance.nodeId !== marker.nodeId
+        || provenance.attemptId !== marker.attemptId || provenance.attemptNo !== marker.attemptNo
+        || plan.hash !== binding?.planHash || plan.revision !== Number(binding?.planRevision)
+        || executionIdentityHash(provenance.workflowBinding) !== executionIdentityHash(binding)
+        || !node.stepIds?.length || node.stepIds.some(id => plan.steps.find(step => step.id === id)?.kind !== 'command')
+        || plan.checks.some(check => check.stepIds.some(id => node.stepIds!.includes(id)))) return false;
+      return (plan.operationReceipts ?? []).some(receipt => receipt.runId === run.runId && receipt.nodeId === node.nodeId
+        && receipt.attemptId === marker.attemptId && receipt.attemptNo === marker.attemptNo
+        && receipt.planHash === plan.hash && receipt.planRevision === plan.revision
+        && receipt.inputManifestHash === provenance.inputManifestHash && receipt.outputManifestHash === provenance.writeManifestHash);
+    },
+    workflowAfterAttempt: async (scope, run, node, marker) => {
       if (!run.continuityTaskId) return;
       const workflowScope = { principalId: resolvedMemoryConfig.principalId ?? scope.principalId,
         projectId: canonicalFileNativeProjectId(resolvedMemoryConfig.fileNative, scope.projectId ?? workspace.resolveProjectRoot()), taskId: run.continuityTaskId };
@@ -143,8 +164,37 @@ export function createRuntimeServices(
       const canonical = (p: string) => process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p);
       const writes = (node.resources?.writes ?? []).map(p => path.resolve(node.cwd, p));
       const paths = contract.plan.targetBaseline.map(p => p.path).filter(p => writes.some(w => canonical(w) === canonical(p)));
-      if (paths.length) await workflow.recordOperation(workflowScope, { toolName: 'execute_command', paths,
-        command: node.command, stepIds: node.stepIds ?? [], planVersion: revision, viaExecution: true });
+      if (paths.length) {
+        const provenance = marker.provenance;
+        if (marker.runId !== run.runId || marker.nodeId !== node.nodeId || marker.attemptNo !== node.attemptCount
+          || marker.state !== 'succeeded' || !provenance?.sourceBound || !provenance.inputsStableDuringAttempt
+          || provenance.attemptId !== marker.attemptId || provenance.runId !== marker.runId || provenance.nodeId !== marker.nodeId
+          || provenance.attemptNo !== marker.attemptNo
+          || executionIdentityHash(provenance.workflowBinding) !== executionIdentityHash(run.metadata.workflowBinding)) {
+          throw Object.assign(new Error('Workflow acknowledgement requires the current source-bound successful attempt'), { code: 'WORKFLOW_OPERATION_IDENTITY_MISMATCH' });
+        }
+        if (!provenance.writeManifest || !provenance.writeManifestHash
+          || executionIdentityHash(provenance.writeManifest) !== provenance.writeManifestHash) {
+          throw Object.assign(new Error('Successful attempt does not contain captured declared-write evidence'), { code: 'WORKFLOW_OPERATION_OUTPUT_REQUIRED' });
+        }
+        if (executionIdentityHash(await executionContentManifest(workspace, writes)) !== provenance.writeManifestHash) {
+          throw Object.assign(new Error('Declared writes changed after the successful attempt captured its outputs'), { code: 'WORKFLOW_OPERATION_OUTPUT_STALE' });
+        }
+        const outputStates = paths.map(target => {
+          const entry = provenance.writeManifest!.find(item => canonical(item.path) === canonical(target));
+          if (!entry) throw Object.assign(new Error('Attempt write evidence does not cover a planned target'), { code: 'WORKFLOW_OPERATION_OUTPUT_REQUIRED' });
+          return { path: target, kind: entry.kind, hash: entry.sha256 ?? null };
+        });
+        await workflow.recordOperation(workflowScope, { toolName: 'execute_command', paths,
+          command: node.command, stepIds: node.stepIds ?? [], planVersion: revision, viaExecution: true,
+          operationReceipt: { runId: marker.runId, nodeId: marker.nodeId, attemptId: marker.attemptId, attemptNo: marker.attemptNo,
+            planRevision: revision, planHash: contract.plan.hash, inputManifestHash: provenance.inputManifestHash,
+            outputManifestHash: provenance.writeManifestHash, outputStates, recordedAt: marker.finishedAt },
+          executionTrust: await execution.workflowExecutionTrust(scope, run.runId, 'completion', { nodeId: node.nodeId, attemptId: marker.attemptId }) });
+      } else {
+        const trust=await execution.workflowExecutionTrust(scope,run.runId,'completion',{nodeId:node.nodeId,attemptId:marker.attemptId});
+        await workflow.assertCommandOutputsUnchanged(workflowScope,trust.activeWriters);
+      }
     },
     workflowGuard: async (request) => {
       const route = request.originRouteContextId ? routes.getOwned(request.originRouteContextId, request.scope.principalId) : undefined;

@@ -114,18 +114,35 @@ export class TaskCheckpointService {
     const release = await this.hooks.acquireCheckpoint?.(scope, input);
     try {
     await this.hooks.beforeCheckpoint?.(scope, input);
-    const hasKnowledge = [normalized.decisions, normalized.artifacts, normalized.outcomes, normalized.constraints]
-      .some((items) => (items?.length ?? 0) > 0) || normalized.status === 'failed';
+    const knowledgeFields = (['decisions', 'artifacts', 'outcomes', 'constraints'] as const)
+      .filter((field) => (normalized[field]?.length ?? 0) > 0);
+    const hasKnowledge = knowledgeFields.length > 0 || normalized.status === 'failed';
     const memoryDecision = input.memoryDecision ? {
       reasonCode: input.memoryDecision.reasonCode,
       explanation: input.memoryDecision.explanation.normalize('NFKC').trim(),
     } : undefined;
-    if ((!hasKnowledge && !memoryDecision) || (memoryDecision && (
-      hasKnowledge || !['TRANSIENT_OPERATION', 'INSUFFICIENT_EVIDENCE', 'NO_FUTURE_RELEVANCE'].includes(memoryDecision.reasonCode)
-      || !memoryDecision.explanation || memoryDecision.explanation.length > 2_000
-    ))) {
+    if (!hasKnowledge && !memoryDecision) {
       throw new TaskCheckpointError('TASK_MEMORY_DECISION_REQUIRED',
-        'Provide durable decisions, artifacts, outcomes, constraints, or an explicit no-memory reason and explanation.');
+        'No durable knowledge or memoryDecision was received. Provide durable decisions, artifacts, outcomes, constraints, or memoryDecision.reasonCode and memoryDecision.explanation.');
+    }
+    if (memoryDecision) {
+      if (hasKnowledge) {
+        const conflictingFields = [...knowledgeFields, ...(normalized.status === 'failed' ? ['status=failed'] : [])];
+        throw new TaskCheckpointError('TASK_MEMORY_DECISION_REQUIRED',
+          `memoryDecision cannot accompany durable knowledge from ${conflictingFields.join(', ')}. Submit either durable knowledge or an explicit no-memory decision.`);
+      }
+      if (!['TRANSIENT_OPERATION', 'INSUFFICIENT_EVIDENCE', 'NO_FUTURE_RELEVANCE'].includes(memoryDecision.reasonCode)) {
+        throw new TaskCheckpointError('TASK_MEMORY_DECISION_REQUIRED',
+          'memoryDecision.reasonCode must be TRANSIENT_OPERATION, INSUFFICIENT_EVIDENCE, or NO_FUTURE_RELEVANCE.');
+      }
+      if (!memoryDecision.explanation) {
+        throw new TaskCheckpointError('TASK_MEMORY_DECISION_REQUIRED',
+          'memoryDecision.explanation must not be blank after Unicode normalization and trimming.');
+      }
+      if (memoryDecision.explanation.length > 2_000) {
+        throw new TaskCheckpointError('TASK_MEMORY_DECISION_REQUIRED',
+          'memoryDecision.explanation must not exceed 2000 characters after Unicode normalization and trimming.');
+      }
     }
 
     const checkpoint = await this.memory.checkpointContinuity(

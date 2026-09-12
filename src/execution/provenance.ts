@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { readdir, stat, access } from 'node:fs/promises';
 import path from 'node:path';
-import type { WorkspacePolicy } from '../runtime/workspace.js';
+import { WorkspaceProjectError, type WorkspacePolicy } from '../runtime/workspace.js';
 import { resolveShellInvocation } from '../runtime/platform-shell.js';
 import type { ValidatedExecutionNode } from './dag.js';
 import { canonicalExecutionPath } from './resource-claims.js';
@@ -29,6 +29,9 @@ export interface ExecutionProvenance {
   currentInputManifestHash?: string;
   outputManifest: ContentEntry[];
   outputManifestHash: string;
+  /** Declared writes are captured while the attempt still owns its resource claims. */
+  writeManifest?: ContentEntry[];
+  writeManifestHash?: string;
   toolchainHash: string;
   sourceBound: boolean;
   inputsStableDuringAttempt: boolean;
@@ -119,18 +122,24 @@ export function executionNodeSpecHash(node: ValidatedExecutionNode): string {
 }
 
 /** Configuration absence is also evidence: adding a lockfile/config invalidates prior checks. */
-export function executionInputPaths(workspace: WorkspacePolicy, node: ValidatedExecutionNode): string[] {
+export function executionInputPaths(workspace: WorkspacePolicy, node: ValidatedExecutionNode, projectRoot?: string): string[] {
   const manifests = ['package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml',
     'yarn.lock', 'bun.lock', 'bun.lockb', 'tsconfig.json', 'jsconfig.json', '.nvmrc', '.node-version',
     'pyproject.toml', 'requirements.txt', 'uv.lock', 'poetry.lock', 'Pipfile', 'Pipfile.lock',
     'Cargo.toml', 'Cargo.lock', 'go.mod', 'go.sum', 'global.json', 'Directory.Build.props', 'Directory.Packages.props'];
   const automatic: string[] = [];
   if (node.inputs !== undefined) {
-    const root = workspace.resolveProjectRoot({ candidatePaths: [node.cwd] });
+    const root = projectRoot === undefined
+      ? workspace.resolveProjectRoot({ candidatePaths: [node.cwd] })
+      : workspace.resolveProjectRoot({ explicitRoot: projectRoot });
+    const relative = path.relative(root, node.cwd);
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      throw new WorkspaceProjectError('WORKSPACE_PROJECT_MISMATCH', `Execution cwd is outside its project: ${node.cwd}`);
+    }
     let directory = node.cwd;
-    while (directory === root || directory.startsWith(`${root}${path.sep}`)) {
+    for (;;) {
       automatic.push(...manifests.map(name => path.join(directory, name)));
-      if (directory === root) break;
+      if (!path.relative(root, directory)) break;
       directory = path.dirname(directory);
     }
   }
@@ -139,8 +148,16 @@ export function executionInputPaths(workspace: WorkspacePolicy, node: ValidatedE
 
 export async function beginExecutionProvenance(workspace: WorkspacePolicy, node: ValidatedExecutionNode,
   identity: { runId: string; attemptId: string; attemptNo: number; dependencies?: DependencyIdentity[]; workflowBinding?: ExecutionWorkflowBinding },
+  projectRoot?: string,
 ): Promise<ExecutionProvenance> {
-  const inputPaths = executionInputPaths(workspace, node);
+  if (projectRoot !== undefined) {
+    await workspace.resolveExistingInProject(projectRoot, node.cwd);
+    for (const target of [...(node.inputs ?? []), ...(node.resources?.reads ?? []), ...(node.resources?.writes ?? []),
+      ...node.expectedArtifacts.map(artifact => artifact.path)]) {
+      await workspace.resolveTargetInProject(projectRoot, path.resolve(node.cwd, target));
+    }
+  }
+  const inputPaths = executionInputPaths(workspace, node, projectRoot);
   const inputManifest = await executionContentManifest(workspace, inputPaths);
   return { version: 1, runId: identity.runId, nodeId: node.id, attemptId: identity.attemptId, attemptNo: identity.attemptNo,
     nodeSpecHash: executionNodeSpecHash(node), inputPaths, inputManifest, inputManifestHash: executionIdentityHash(inputManifest),
@@ -152,24 +169,29 @@ export async function beginExecutionProvenance(workspace: WorkspacePolicy, node:
 export async function finishExecutionProvenance(workspace: WorkspacePolicy, node: ValidatedExecutionNode, initial: ExecutionProvenance): Promise<ExecutionProvenance> {
   const inputManifest = await executionContentManifest(workspace, initial.inputPaths);
   const outputManifest = await executionContentManifest(workspace, node.expectedArtifacts.map((item) => item.path));
+  const writeManifest = await executionContentManifest(workspace, (node.resources?.writes ?? []).map(value => path.resolve(node.cwd, value)));
   const writes = await Promise.all((node.resources?.writes ?? []).map(canonicalExecutionPath));
   const immutable = (manifest: ContentEntry[]) => manifest.filter((entry) => !writes.some((target) => entry.path === target || entry.path.startsWith(`${target}${path.sep}`)));
   return { ...initial, currentInputManifestHash: executionIdentityHash(inputManifest),
     inputsStableDuringAttempt: executionIdentityHash(immutable(inputManifest)) === executionIdentityHash(immutable(initial.inputManifest))
     && await executionToolchainHash(node) === initial.toolchainHash,
-    outputManifest, outputManifestHash: executionIdentityHash(outputManifest) };
+    outputManifest, outputManifestHash: executionIdentityHash(outputManifest),
+    writeManifest, writeManifestHash: executionIdentityHash(writeManifest) };
 }
 
 export async function executionApplicability(workspace: WorkspacePolicy, node: ValidatedExecutionNode,
   provenance: ExecutionProvenance | undefined, identity: { runId: string; attemptId: string; attemptNo: number },
   dependencies?: DependencyIdentity[], workflowBinding?: ExecutionWorkflowBinding,
   toolchainHashes?: Map<string, Promise<string>>,
+  projectRoot?: string,
 ): Promise<ExecutionApplicability> {
   if (!provenance || !provenance.sourceBound) return 'legacy_unbound';
   if (provenance.runId !== identity.runId || provenance.nodeId !== node.id || provenance.attemptId !== identity.attemptId || provenance.attemptNo !== identity.attemptNo) return 'identity_mismatch';
   if (executionIdentityHash(provenance.inputManifest) !== provenance.inputManifestHash
     || executionIdentityHash(provenance.outputManifest) !== provenance.outputManifestHash
-    || executionIdentityHash(provenance.inputPaths) !== executionIdentityHash(executionInputPaths(workspace, node))) return 'identity_mismatch';
+    || executionIdentityHash(provenance.inputPaths) !== executionIdentityHash(executionInputPaths(workspace, node, projectRoot))) return 'identity_mismatch';
+  if ((provenance.writeManifest !== undefined || provenance.writeManifestHash !== undefined)
+    && (!Array.isArray(provenance.writeManifest) || executionIdentityHash(provenance.writeManifest) !== provenance.writeManifestHash)) return 'identity_mismatch';
   if (!provenance.inputsStableDuringAttempt || provenance.nodeSpecHash !== executionNodeSpecHash(node)
     || (dependencies && executionIdentityHash(dependencies) !== executionIdentityHash(provenance.dependencies))
     || executionIdentityHash(workflowBinding) !== executionIdentityHash(provenance.workflowBinding)) return 'inputs_changed';
@@ -179,6 +201,8 @@ export async function executionApplicability(workspace: WorkspacePolicy, node: V
   } catch { return 'inputs_changed'; }
   try {
     if (executionIdentityHash(await executionContentManifest(workspace, node.expectedArtifacts.map((item) => item.path))) !== provenance.outputManifestHash) return 'outputs_changed';
+    if (provenance.writeManifest !== undefined && executionIdentityHash(await executionContentManifest(workspace,
+      (node.resources?.writes ?? []).map(value => path.resolve(node.cwd, value)))) !== provenance.writeManifestHash) return 'outputs_changed';
   } catch { return 'outputs_changed'; }
   return 'current';
 }

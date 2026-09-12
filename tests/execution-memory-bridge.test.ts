@@ -6,6 +6,7 @@ import { loadConfig } from '../src/config.js';
 import { ExecutionLogStore } from '../src/execution/log-store.js';
 import { ExecutionMemoryBridge, type ExecutionMemoryWriter } from '../src/execution/memory-bridge.js';
 import { ExecutionService } from '../src/execution/service.js';
+import { EXECUTION_OUTPUT_PARSER_VERSION } from '../src/execution/output-parser.js';
 import { ExecutionStore } from '../src/execution/store.js';
 import { MemoryService } from '../src/memory/service.js';
 import type {
@@ -350,7 +351,10 @@ describe('Execution-to-DMF continuity bridge', () => {
     expect(promoted).toBeTruthy();
     expect(promoted?.candidate?.value).toMatchObject({
       parsedEvidence: {
-        parserVersion: '1.0.0',
+        parserVersion: EXECUTION_OUTPUT_PARSER_VERSION,
+        coverageStatus: 'complete',
+        coverage: { integrity: 'verified' },
+        binding: { runId: created.runId },
         testResults: { passed: 8, failed: 0, skipped: 1 },
         performanceMetrics: { wake_ms: 4.25 },
         errorPatterns: [{ type: 'generic', count: 1 }],
@@ -360,6 +364,7 @@ describe('Execution-to-DMF continuity bridge', () => {
     expect(serialized).not.toContain(secret);
     expect(serialized).not.toContain('diagnostic sample');
     expect(serialized).not.toContain('"sample"');
+    expect(serialized).not.toContain('"presentation"');
   }, 10_000);
 
   it('queues a failed-node promotion while DMF is degraded, then replays it idempotently when DMF recovers', async () => {

@@ -8,7 +8,7 @@ import {
   type ContinuityCheckpointInput,
 } from '../continuity/types.js';
 import { MemoryHardLifecycleError } from '../memory/hard-lifecycle.js';
-import { canonicalFileNativeProjectId } from '../memory/file-native/paths.js';
+import { FILE_NATIVE_SELF_PROJECT_ID } from '../memory/file-native/paths.js';
 import { AgentCoreRouteError } from '../runtime/route-context-store.js';
 import type { RuntimeServices } from '../runtime/services.js';
 import { persistentPrincipalId, resolvedMemoryProjectScope } from './project-scope.js';
@@ -143,11 +143,10 @@ async function resolveCheckpoint(runtime: RuntimeServices, key: VerifiedKey, rou
   } catch (error) {
     if (!(error instanceof AgentCoreRouteError) || !['ROUTE_NOT_FOUND', 'ROUTE_EXPIRED'].includes(error.code)) throw error;
     const principalId = persistentPrincipalId(runtime, key);
-    const lifecycle = await runtime.memory.findLifecycleByRoute({ principalId, routeContextId, projectIds: runtime.workspace.roots, authorityPrincipalId: key.id });
+    const lifecycle = await runtime.memory.findLifecycleByRoute({ principalId, routeContextId, projectIds: runtime.workspace.roots, authorityPrincipalId: key.id, includeDescendantProjects: true });
     if (!lifecycle?.continuityTaskId) throw error;
-    const workspaceRoot = runtime.workspace.roots.find(root =>
-      canonicalFileNativeProjectId(runtime.memory.config.fileNative, root) === lifecycle.projectId);
-    if (!workspaceRoot) throw error;
+    const workspaceRoot = runtime.workspace.resolveProjectRoot({ explicitRoot: lifecycle.projectId === FILE_NATIVE_SELF_PROJECT_ID
+      ? runtime.memory.config.fileNative.projectRoot : lifecycle.projectId });
     const currentScope = { principalId, projectId: workspaceRoot };
     const turn = await runtime.memory.findContinuityTurnForRoute({ scope: currentScope, routeContextId, taskId: lifecycle.continuityTaskId });
     if (!turn) throw error;

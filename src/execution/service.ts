@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import { correlationFields } from '../observability/correlation.js';
 import type { ExecutionConfig } from '../config.js';
 import type { ExecutionContinuitySummary } from '../continuity/snapshot.js';
@@ -20,8 +21,8 @@ import type { ResourceGovernor } from './resource-governor.js';
 import { ExecutionRuntimeLease } from './runtime-lease.js';
 import { ExecutionCommandRunner } from './runner.js';
 import { ExecutionScheduler, executionNodeSpec, type ExecutionRunnerLike } from './scheduler.js';
-import { executionApplicability, executionIdentityHash, executionInputPaths, type ExecutionApplicability, type ExecutionWorkflowBinding } from './provenance.js';
-import { hasExecutionResourceClaims, type ExecutionClaim } from './resource-claims.js';
+import { executionApplicability, executionContentManifest, executionIdentityHash, executionInputPaths, executionNodeSpecHash, executionToolchainHash, type ContentEntry, type ExecutionApplicability, type ExecutionWorkflowBinding } from './provenance.js';
+import { canonicalExecutionPath, hasExecutionResourceClaims, type ExecutionClaim } from './resource-claims.js';
 import {
   ExecutionStore,
   ExecutionStoreError,
@@ -30,6 +31,7 @@ import {
   type ExecutionRunRecord,
 } from './store.js';
 import { EXECUTION_STATE_VERSION, type ExecutionScope } from './types.js';
+import type { WorkflowActiveWriter, WorkflowExecutionTrust } from '../workflow/operation-ledger.js';
 import {
   ExecutionEventJournal,
   ExecutionWakeCoordinator,
@@ -61,7 +63,8 @@ export interface ExecutionNodeEvidenceSummary {
   stderrSha256: string | null;
   artifacts: ExecutionArtifactEvidence[];
   applicability?: ExecutionApplicability;
-  parsedOutput?: import('./store.js').ExecutionParsedOutputView | { available: false; status: 'unavailable'; parserVersion: string };
+  parsedOutput?: (import('./store.js').ExecutionParsedOutputView | { available: false; status: 'unavailable'; parserVersion: string })
+    & { rawAccess?: import('./output-parser.js').ExecutionOutputRawAccess; recovery?: 'pending' };
 }
 
 export interface ExecutionRunEvidenceSummary {
@@ -78,6 +81,8 @@ export interface ExecutionWorkflowGuardRequest {
   nodes: readonly ExecutionNodeSpec[];
   continuityTaskId?: string;
   originRouteContextId?: string;
+  /** Runtime-derived authority. This field is never part of the public execution input. */
+  executionTrust?: WorkflowExecutionTrust;
 }
 export type ExecutionWorkflowGuard = (request: ExecutionWorkflowGuardRequest) => Promise<ExecutionWorkflowBinding | void>;
 export interface ExecutionOperationContext { originRouteContextId?: string }
@@ -109,6 +114,8 @@ export interface ExecutionServiceDependencies {
   resourceGovernor?: ResourceGovernor;
   workflowGuard?: ExecutionWorkflowGuard;
   workflowAfterAttempt?: (scope: ExecutionScope, run: ExecutionRunRecord, node: ExecutionNodeRecord, marker: ExecutionResultMarker) => Promise<void>;
+  /** Runtime acknowledgement of an implementation attempt in its current plan ledger. */
+  workflowAcknowledgedOperation?: (scope: ExecutionScope, run: ExecutionRunRecord, node: ExecutionNodeRecord, marker: ExecutionResultMarker) => Promise<boolean>;
 }
 
 export type ExecutionServiceState = 'disabled' | 'idle' | 'healthy' | 'degraded' | 'closing' | 'closed';
@@ -138,12 +145,15 @@ export class ExecutionService {
   readonly artifacts: ExecutionArtifactManager;
   readonly workflowGuard?: ExecutionWorkflowGuard;
   private readonly workflowAfterAttempt?: ExecutionServiceDependencies['workflowAfterAttempt'];
+  private readonly workflowAcknowledgedOperation?: ExecutionServiceDependencies['workflowAcknowledgedOperation'];
   private unsubscribeBridge?: () => void;
   private opened = false;
   private closed = false;
   private state: ExecutionServiceState;
   private degradedReason?: string;
   private runtimeLease?: ExecutionRuntimeLease;
+  private readonly outputRecoveryAttempts = new Set<string>();
+  private readonly outputCollection = new Map<string, Promise<void>>();
 
   constructor(
     readonly config: ExecutionConfig,
@@ -162,6 +172,7 @@ export class ExecutionService {
     this.memorySearch = dependencies.memorySearch;
     this.workflowGuard = dependencies.workflowGuard;
     this.workflowAfterAttempt = dependencies.workflowAfterAttempt;
+    this.workflowAcknowledgedOperation = dependencies.workflowAcknowledgedOperation;
     if (this.memoryBridge) {
       this.unsubscribeBridge = this.journal.subscribe((scope, event) => {
         this.memoryBridge!.dispatch(scope, event);
@@ -199,7 +210,10 @@ export class ExecutionService {
           const view = await this.status(scope, run.runId);
           for (const dependency of node.dependsOn) {
             const evidence = view?.evidence.nodes.find((item) => item.nodeId === dependency);
-            if (!evidence || evidence.applicability !== 'current') throw new ExecutionStoreError('EXECUTION_DEPENDENCY_EVIDENCE_STALE', `Dependency ${dependency} does not have current source-bound evidence`);
+            if (!evidence || (evidence.applicability !== 'current'
+              && (!view || !await this.acknowledgedSupersededDependency(scope, view, node, dependency)))) {
+              throw new ExecutionStoreError('EXECUTION_DEPENDENCY_EVIDENCE_STALE', `Dependency ${dependency} does not have current source-bound evidence`);
+            }
           }
         }
       },
@@ -208,6 +222,69 @@ export class ExecutionService {
 
   get currentState(): ExecutionServiceState {
     return this.state;
+  }
+
+  /** A later prerequisite may replace an acknowledged implementation output, never a verification result. */
+  private async acknowledgedSupersededDependency(scope: ExecutionScope, run: ExecutionRunView,
+    consumer: ExecutionNodeRecord, dependencyId: string): Promise<boolean> {
+    if (!this.workflowAcknowledgedOperation || executionWorkflowPending(run).length) return false;
+    const predecessor = run.nodes.find(node => node.nodeId === dependencyId);
+    const evidence = run.evidence.nodes.find(node => node.nodeId === dependencyId);
+    if (!predecessor || predecessor.state !== 'succeeded'
+      || !['inputs_changed', 'outputs_changed'].includes(evidence?.applicability ?? '')) return false;
+    try {
+      const marker = await this.logs.readResult(run.runId, dependencyId, predecessor.attemptCount);
+      const provenance = marker?.provenance;
+      if (!marker || !provenance?.writeManifest || !await this.workflowAcknowledgedOperation(scope, run, predecessor, marker)) return false;
+      const spec = executionNodeSpec(predecessor);
+      const dependencies = await this.scheduler.dependencyIdentities(scope, run.runId, predecessor.dependsOn);
+      if (provenance.nodeSpecHash !== executionNodeSpecHash(spec)
+        || executionIdentityHash(provenance.dependencies) !== executionIdentityHash(dependencies)
+        || executionIdentityHash(provenance.inputPaths) !== executionIdentityHash(executionInputPaths(this.workspace, spec, run.projectId))
+        || executionIdentityHash(provenance.inputManifest) !== provenance.inputManifestHash
+        || executionIdentityHash(provenance.outputManifest) !== provenance.outputManifestHash
+        || executionIdentityHash(provenance.writeManifest) !== provenance.writeManifestHash
+        || await executionToolchainHash(spec) !== provenance.toolchainHash) return false;
+      const ownWrites = await Promise.all((predecessor.resources?.writes ?? []).map(value => canonicalExecutionPath(path.resolve(predecessor.cwd, value))));
+      if (!ownWrites.length) return false;
+      const covers = (roots: string[], target: string) => roots.some(root => target === root || target.startsWith(`${root}${path.sep}`));
+      const immutable = (entries: ContentEntry[]) => entries.filter(entry => !covers(ownWrites, entry.path));
+      if (executionIdentityHash(immutable(await executionContentManifest(this.workspace, provenance.inputPaths)))
+        !== executionIdentityHash(immutable(provenance.inputManifest))) return false;
+      const ancestors = (node: ExecutionNodeRecord): Set<string> => {
+        const result = new Set<string>(), pending = [...node.dependsOn];
+        while (pending.length) {
+          const id = pending.pop()!;
+          if (result.has(id)) continue;
+          result.add(id);
+          pending.push(...(run.nodes.find(item => item.nodeId === id)?.dependsOn ?? []));
+        }
+        return result;
+      };
+      const prerequisites = ancestors(consumer), successorWrites: string[] = [];
+      for (const successor of run.nodes) {
+        if (!prerequisites.has(successor.nodeId) || !ancestors(successor).has(dependencyId)
+          || successor.state !== 'succeeded'
+          || run.evidence.nodes.find(item => item.nodeId === successor.nodeId)?.applicability !== 'current') continue;
+        const successorMarker = await this.logs.readResult(run.runId, successor.nodeId, successor.attemptCount);
+        if (!successorMarker || !await this.workflowAcknowledgedOperation(scope, run, successor, successorMarker)) continue;
+        successorWrites.push(...await Promise.all((successor.resources?.writes ?? []).map(value => canonicalExecutionPath(path.resolve(successor.cwd, value)))));
+      }
+      if (!successorWrites.length) return false;
+      for (const [before, paths] of [
+        [provenance.writeManifest, (predecessor.resources?.writes ?? []).map(value => path.resolve(predecessor.cwd, value))],
+        [provenance.outputManifest, predecessor.expectedArtifacts.map(item => item.path)],
+      ] as Array<[ContentEntry[], string[]]>) {
+        const after = await executionContentManifest(this.workspace, paths);
+        const previous = new Map(before.map(entry => [entry.path, entry]));
+        const current = new Map(after.map(entry => [entry.path, entry]));
+        for (const target of new Set([...previous.keys(), ...current.keys()])) {
+          if (executionIdentityHash(previous.get(target)) !== executionIdentityHash(current.get(target))
+            && (!covers(ownWrites, target) || !covers(successorWrites, target))) return false;
+        }
+      }
+      return true;
+    } catch { return false; }
   }
 
   async open(): Promise<void> {
@@ -313,7 +390,8 @@ export class ExecutionService {
     const memoryPreSearch = await this.preSearch(scope, input.objective, graph.nodes);
     this.assertMemoryPreSearchAllowed(memoryPreSearch);
     const workflowBinding = await this.workflowGuard?.({ operation: 'create', scope, objective: input.objective, nodes: graph.nodes,
-      continuityTaskId: input.continuityTaskId, originRouteContextId: input.originRouteContextId });
+      continuityTaskId: input.continuityTaskId, originRouteContextId: input.originRouteContextId,
+      executionTrust: { stage: 'create', activeWriters: [] } });
     if (this.workflowGuard && graph.nodes.some(node => node.inputs === undefined)) {
       throw new ExecutionStoreError('EXECUTION_INPUTS_REQUIRED', 'Each new execution node must declare its source inputs; use an explicit empty array only for commands with no source inputs');
     }
@@ -398,6 +476,7 @@ export class ExecutionService {
     for (const attempt of attempts) latestAttempt.set(attempt.nodeId, attempt);
 
     const evidenceNodes: ExecutionNodeEvidenceSummary[] = [];
+    let outputRecoveries = 0;
     for (const node of nodes) {
       const attempt = latestAttempt.get(node.nodeId);
       if (!attempt) {
@@ -416,12 +495,24 @@ export class ExecutionService {
         continue;
       }
 
-      const parsedOutput = await this.store.getParsedOutput(scope, runId, node.nodeId, attempt.attemptNo)
+      let parsedOutput: NonNullable<ExecutionNodeEvidenceSummary['parsedOutput']> = await this.store.getParsedOutput(scope, runId, node.nodeId, attempt.attemptNo)
         ?? { available: false as const, status: 'unavailable' as const, parserVersion: EXECUTION_OUTPUT_PARSER_VERSION };
+      parsedOutput = { ...parsedOutput, rawAccess: { tool: 'execution_logs', runId, nodeId: node.nodeId,
+        attemptId: attempt.attemptId, attemptNo: attempt.attemptNo, requiresRouteContext: true } };
       const marker = await this.logs.readResult(runId, node.nodeId, attempt.attemptNo);
-      if (marker && (marker.attemptId !== attempt.attemptId || node.attemptCount !== attempt.attemptNo)) {
+      const terminalAttempt = ['succeeded', 'failed', 'interrupted', 'cancelled'].includes(attempt.state);
+      if (marker && (marker.attemptId !== attempt.attemptId || node.attemptCount !== attempt.attemptNo
+        || (terminalAttempt && (marker.stdoutSha256 !== attempt.stdoutSha256 || marker.stderrSha256 !== attempt.stderrSha256
+          || marker.stdoutBytes !== attempt.stdoutBytes || marker.stderrBytes !== attempt.stderrBytes
+          || marker.exitCode !== (attempt.exitCode ?? null) || marker.state !== attempt.state))
+        || (parsedOutput.available && parsedOutput.binding && (
+          parsedOutput.binding.runId !== marker.runId || parsedOutput.binding.attemptId !== marker.attemptId
+          || parsedOutput.binding.planHash !== marker.provenance?.workflowBinding?.planHash
+          || parsedOutput.binding.planRevision !== marker.provenance?.workflowBinding?.planRevision)))) {
         evidenceNodes.push({ nodeId: node.nodeId, attemptNo: attempt.attemptNo, resultVersion: marker.version, processState: attempt.state,
-          evidenceState: 'failed', stdoutBytes: 0, stderrBytes: 0, stdoutSha256: null, stderrSha256: null, artifacts: [], applicability: 'identity_mismatch' });
+          evidenceState: 'failed', stdoutBytes: 0, stderrBytes: 0, stdoutSha256: null, stderrSha256: null, artifacts: [], applicability: 'identity_mismatch',
+          parsedOutput: { available: false, status: 'degraded', parserVersion: parsedOutput.parserVersion,
+            failureCode: 'EXECUTION_PARSED_OUTPUT_SOURCE_MISMATCH', rawAccess: parsedOutput.rawAccess } });
         continue;
       }
       if (!marker) {
@@ -442,11 +533,28 @@ export class ExecutionService {
         continue;
       }
 
+      // Recover only selected terminal output, never rescan all history or execute a process.
+      if (!parsedOutput.available && ['succeeded', 'failed', 'interrupted', 'cancelled'].includes(attempt.state)) {
+        const key = this.outputAttemptKey(scope, marker);
+        const inFlight = this.outputCollection.get(key);
+        if (inFlight) await inFlight;
+        else if (!this.outputRecoveryAttempts.has(key)) {
+          if (outputRecoveries < 2 && this.outputRecoveryAttempts.size < 1024) {
+            outputRecoveries += 1;
+            await this.collectOutput(scope, marker);
+          } else parsedOutput = { ...parsedOutput, recovery: 'pending' };
+        }
+        const recovered = await this.store.getParsedOutput(scope, runId, node.nodeId, attempt.attemptNo);
+        if (recovered) parsedOutput = { ...recovered, ...(parsedOutput.recovery ? { recovery: parsedOutput.recovery } : {}) };
+      }
+      parsedOutput = { ...parsedOutput, rawAccess: { tool: 'execution_logs', runId, nodeId: node.nodeId,
+        attemptId: marker.attemptId, attemptNo: marker.attemptNo, requiresRouteContext: true } };
+
       let applicability: ExecutionApplicability = 'legacy_unbound';
       try {
         const dependencies = await this.scheduler.dependencyIdentities(scope, runId, node.dependsOn);
         applicability = await executionApplicability(this.workspace, executionNodeSpec(node), marker.provenance,
-          { runId, attemptId: attempt.attemptId, attemptNo: attempt.attemptNo }, dependencies, run.metadata.workflowBinding as ExecutionWorkflowBinding | undefined, toolchainHashes);
+          { runId, attemptId: attempt.attemptId, attemptNo: attempt.attemptNo }, dependencies, run.metadata.workflowBinding as ExecutionWorkflowBinding | undefined, toolchainHashes, run.projectId);
       } catch { applicability = 'identity_mismatch'; }
       if (marker.version === 2) {
         evidenceNodes.push({
@@ -621,7 +729,9 @@ export class ExecutionService {
     this.assertReady();
     const taskId = continuityTaskId.normalize('NFKC').trim();
     if (!taskId) throw new ExecutionStoreError('EXECUTION_CONTINUITY_TASK_REQUIRED', 'continuityTaskId is required');
-    const runs = (await this.store.listRuns(scope, 1000))
+    const inventory = await this.store.listRuns(scope, 1000);
+    if (inventory.length === 1000) throw new ExecutionStoreError('EXECUTION_WORKFLOW_INVENTORY_LIMIT', 'Task completion cannot use a potentially truncated run inventory');
+    const runs = inventory
       .filter((run) => run.continuityTaskId === taskId)
       .sort((left, right) => left.runId.localeCompare(right.runId));
     const views: ExecutionRunView[] = [];
@@ -688,17 +798,7 @@ export class ExecutionService {
   }
 
   private async captureDerivedEvidence(scope: ExecutionScope, marker: ExecutionResultMarker): Promise<void> {
-    try {
-      await this.outputParser.parseAttempt(scope, marker);
-    } catch (error) {
-      const code = error instanceof Error && 'code' in error && typeof (error as { code?: unknown }).code === 'string'
-        ? String((error as { code: string }).code)
-        : error instanceof Error ? error.name : 'EXECUTION_OUTPUT_PARSE_FAILED';
-      this.metrics?.failure('execution.output_parse.duration_ms', code);
-      await this.store.persistParsedOutputFailure(
-        scope, marker, this.outputParser.parserVersion ?? EXECUTION_OUTPUT_PARSER_VERSION, code,
-      ).catch(() => undefined);
-    }
+    await this.collectOutput(scope, marker);
     try {
       await this.artifacts.indexAttempt(scope, marker.runId, marker.nodeId, marker.attemptNo);
     } catch (error) {
@@ -706,15 +806,86 @@ export class ExecutionService {
     }
   }
 
+  private outputAttemptKey(scope: ExecutionScope, marker: ExecutionResultMarker): string {
+    return JSON.stringify([scope.principalId, scope.projectId, marker.runId, marker.nodeId, marker.attemptId,
+      marker.stdoutSha256, marker.stderrSha256, this.outputParser.parserVersion ?? EXECUTION_OUTPUT_PARSER_VERSION]);
+  }
+
+  private async collectOutput(scope: ExecutionScope, marker: ExecutionResultMarker): Promise<void> {
+    const key = this.outputAttemptKey(scope, marker);
+    const existing = this.outputCollection.get(key);
+    if (existing) return existing;
+    const collect = (async () => {
+      // Failed observations are attempted once per process lifetime; restart permits recovery.
+      if (this.outputRecoveryAttempts.size < 1024) this.outputRecoveryAttempts.add(key);
+      try {
+        const parsed = await this.store.getParsedOutput(scope, marker.runId, marker.nodeId, marker.attemptNo);
+        if (parsed?.available && parsed.parserVersion === (this.outputParser.parserVersion ?? EXECUTION_OUTPUT_PARSER_VERSION)) {
+          this.outputRecoveryAttempts.delete(key);
+          return;
+        }
+        await this.outputParser.parseAttempt(scope, marker);
+        this.outputRecoveryAttempts.delete(key);
+      } catch (error) {
+        const code = error instanceof Error && 'code' in error && typeof (error as { code?: unknown }).code === 'string'
+          ? String((error as { code: string }).code)
+          : error instanceof Error ? error.name : 'EXECUTION_OUTPUT_PARSE_FAILED';
+        this.metrics?.failure('execution.output_parse.duration_ms', code);
+        await this.store.persistParsedOutputFailure(
+          scope, marker, this.outputParser.parserVersion ?? EXECUTION_OUTPUT_PARSER_VERSION, code,
+        ).catch(() => undefined);
+      }
+    })();
+    this.outputCollection.set(key, collect);
+    try { await collect; } finally { this.outputCollection.delete(key); }
+  }
+
   private async guardWorkflow(operation: Exclude<ExecutionWorkflowGuardRequest['operation'], 'create'>, scope: ExecutionScope,
     run: ExecutionRunRecord, nodes: readonly ExecutionNodeSpec[]): Promise<void> {
     const binding = await this.workflowGuard?.({ operation, scope, runId: run.runId, objective: run.objective, nodes,
-      continuityTaskId: run.continuityTaskId, originRouteContextId: run.originRouteContextId });
+      continuityTaskId: run.continuityTaskId, originRouteContextId: run.originRouteContextId,
+      executionTrust: await this.workflowExecutionTrust(scope, run.runId, operation) });
     const existing = run.metadata.workflowBinding;
     if (binding && existing && executionIdentityHash(existing) !== executionIdentityHash(binding)) {
       throw new ExecutionStoreError('EXECUTION_WORKFLOW_BINDING_CHANGED', 'Execution run belongs to a different workflow plan revision');
     }
     if (operation !== 'dispatch') await this.store.bindWorkflow(scope, run.runId, binding || undefined, run.originRouteContextId);
+  }
+
+  /** Read authoritative current attempts, including successful receipts still awaiting reconciliation. */
+  async workflowExecutionTrust(scope: ExecutionScope, runId: string, stage: WorkflowExecutionTrust['stage'],
+    exclude?: { nodeId: string; attemptId: string }): Promise<WorkflowExecutionTrust> {
+    const owner = await this.store.getRun(scope, runId);
+    if (!owner) throw new ExecutionStoreError('EXECUTION_RUN_NOT_FOUND', 'Execution run was not found in authenticated scope');
+    const activeWriters: WorkflowActiveWriter[] = [];
+    if (!owner.continuityTaskId) return { stage, activeWriters };
+    const inventory = await this.store.listRuns(scope, 1000);
+    if (inventory.length === 1000) throw new ExecutionStoreError('EXECUTION_WORKFLOW_INVENTORY_LIMIT', 'Current workflow writer inventory could be truncated');
+    for (const run of inventory.filter(candidate => candidate.continuityTaskId === owner.continuityTaskId)) {
+      const binding = run.metadata.workflowBinding as ExecutionWorkflowBinding | undefined;
+      const planRevision = Number(binding?.planRevision);
+      if (!Number.isSafeInteger(planRevision) || planRevision < 1 || !binding?.planHash) continue;
+      const pending = executionWorkflowPending(run);
+      const nodes = await this.store.getNodes(scope, run.runId);
+      const attempts = await this.store.listAttempts(scope, run.runId);
+      for (const node of nodes) {
+        const attempt = attempts.find(candidate => candidate.nodeId === node.nodeId && candidate.attemptNo === node.attemptCount);
+        if (!attempt || (run.runId === runId && node.nodeId === exclude?.nodeId && attempt.attemptId === exclude.attemptId)) continue;
+        const running = node.state === 'running' && attempt.state === 'running';
+        const awaiting = node.state === 'succeeded' && attempt.state === 'succeeded'
+          && pending.some(item => item.nodeId === node.nodeId && item.attemptId === attempt.attemptId && item.attemptNo === attempt.attemptNo);
+        if (!running && !awaiting) continue;
+        if (awaiting) {
+          const marker = await this.logs.readResult(run.runId, node.nodeId, attempt.attemptNo);
+          if (!marker || marker.attemptId !== attempt.attemptId || marker.state !== 'succeeded'
+            || !marker.provenance?.sourceBound || !marker.provenance.inputsStableDuringAttempt
+            || executionIdentityHash(marker.provenance.workflowBinding) !== executionIdentityHash(binding)) continue;
+        }
+        activeWriters.push({ runId: run.runId, nodeId: node.nodeId, attemptId: attempt.attemptId, attemptNo: attempt.attemptNo,
+          planRevision, planHash: binding.planHash, writes: (node.resources?.writes ?? []).map(value => path.resolve(node.cwd, value)) });
+      }
+    }
+    return { stage, activeWriters };
   }
 
   private async reconcileWorkflowAttempts(scope: ExecutionScope, runId: string, context: ExecutionOperationContext): Promise<void> {
@@ -738,7 +909,8 @@ export class ExecutionService {
         }
         const spec = executionNodeSpec(node);
         const resources = hasExecutionResourceClaims(node.resources) ? { ...node.resources, writes: [...(node.resources?.writes ?? []), ...node.expectedArtifacts.map(a => a.path)] } : undefined;
-        claims.push(...await this.scheduler.resourceClaims.resolve(this.workspace, node.cwd, resources, executionInputPaths(this.workspace, spec)));
+        claims.push(...await this.scheduler.resourceClaims.resolve(this.workspace, node.cwd, resources,
+          executionInputPaths(this.workspace, spec, run.projectId), run.projectId));
         entries.push({ node, marker });
       }
       const owner = `workflow-reconcile/${randomUUID()}`;
@@ -749,7 +921,7 @@ export class ExecutionService {
           await this.guardWorkflow('reconcile', scope, run, [spec]);
           const dependencies = await this.scheduler.dependencyIdentities(scope, runId, node.dependsOn);
           const applicability = await executionApplicability(this.workspace, spec, marker.provenance,
-            { runId, attemptId: marker.attemptId, attemptNo: marker.attemptNo }, dependencies, run.metadata.workflowBinding as ExecutionWorkflowBinding | undefined);
+            { runId, attemptId: marker.attemptId, attemptNo: marker.attemptNo }, dependencies, run.metadata.workflowBinding as ExecutionWorkflowBinding | undefined, undefined, run.projectId);
           if (applicability !== 'current') throw new ExecutionStoreError('EXECUTION_WORKFLOW_EVIDENCE_STALE', 'Pending workflow callback requires unchanged source-bound successful evidence');
           await this.workflowAfterAttempt(scope, run, node, marker);
           successful.push(marker);
@@ -764,8 +936,8 @@ export class ExecutionService {
 
   async acquireWorkspaceClaim(scope: ExecutionScope, resources: ExecutionResourceSpec): Promise<() => Promise<void>> {
     if (!scope.principalId.trim()) throw new ExecutionStoreError('EXECUTION_SCOPE_REQUIRED', 'A principal is required for a workspace claim');
-    const cwd = this.workspace.resolveProjectRoot({ candidatePaths: scope.projectId ? [scope.projectId] : [] });
-    const claims = await this.scheduler.resourceClaims.resolve(this.workspace, cwd, resources);
+    const cwd = this.workspace.resolveProjectRoot({ explicitRoot: scope.projectId });
+    const claims = await this.scheduler.resourceClaims.resolve(this.workspace, cwd, resources, [], cwd);
     const owner = `workspace/${randomUUID()}`;
     if (!this.scheduler.resourceClaims.acquire(owner, claims)) throw new ExecutionStoreError('EXECUTION_RESOURCE_BUSY', 'A running operation holds an overlapping workspace resource claim');
     let released = false;

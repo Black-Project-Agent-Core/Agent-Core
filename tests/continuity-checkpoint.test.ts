@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -11,10 +11,12 @@ import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import type { RuntimeServices } from '../src/runtime/services.js';
 import type { FileNativeMemoryBackend } from '../src/memory/file-native/backend.js';
 import { FileNativeAuxStore } from '../src/memory/file-native/aux-store.js';
+import type { ExecutionNodeSpec } from '../src/execution/dag.js';
 import {
   createIsolatedRuntimeServices as createRuntimeServices, MEMORY_STATE, memoryConfig, strictMemoryConfig, isolatedMemoryDependencies, memoryRoot, scopedMemoryStateRecords,
 } from './helpers/memory-fixture.js';
 import { nodeShellCommand, printCommand } from './helpers/platform-command.js';
+import { acceptCurrentReview, prepareExecutionPlan } from './helpers/engineering.js';
 
 interface TurnRecord { turnId: string; state: string }
 interface CheckpointRecord { checkpointId: string; input: Record<string, unknown> & { evidence?: unknown[] } }
@@ -102,6 +104,14 @@ async function route(f: Awaited<ReturnType<typeof fixture>>, objective: string) 
   return routed.result;
 }
 
+async function checkpointExecutionPlan(f: Awaited<ReturnType<typeof fixture>>, routed: Record<string, any>, nodes: ExecutionNodeSpec[]) {
+  // Real assessment needs a stable source seam; evidence artifacts live outside source inventory.
+  await mkdir(path.join(f.root, 'reports'), { recursive: true });
+  await writeFile(path.join(f.root, 'checkpoint-fixture.mjs'), 'export const checkpointFixture = true;\n');
+  const scope = { principalId: f.scopeA.principalId, projectId: 'agent-core://self', taskId: routed.continuityTaskId };
+  return prepareExecutionPlan(f.runtime.workflow, scope, nodes);
+}
+
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
@@ -173,7 +183,7 @@ describe('continuity checkpoint MCP tools', () => {
     await f.runtime.execution.open();
     const active = await f.runtime.execution.create(executionScope, { objective: 'Planned work remains active',
       continuityTaskId: routed.continuityTaskId, originRouteContextId: routed.routeContextId,
-      nodes: [{ id: 'A', purpose: 'pending work', command: printCommand('pending'), cwd: f.root, inputs: [] }],
+      nodes: await checkpointExecutionPlan(f, routed, [{ id: 'A', purpose: 'pending work', command: printCommand('pending'), cwd: f.root, inputs: [] }]),
     });
     const denied = await call(f.baseUrl, f.principalA.key, 'task_checkpoint', {
       routeContextId: routed.routeContextId, status: 'completed', summary: 'Active work cannot be declared complete.',
@@ -193,6 +203,15 @@ describe('continuity checkpoint MCP tools', () => {
     for (const name of ['task_checkpoint', 'continuity_status', 'continuity_get_task', 'continuity_frontier']) {
       expect(names).toContain(name);
     }
+    const checkpoint = listed.result.tools.find((tool: any) => tool.name === 'task_checkpoint');
+    expect(checkpoint.inputSchema.properties.memoryDecision).toMatchObject({
+      type: 'object',
+      properties: {
+        reasonCode: { type: 'string', enum: ['TRANSIENT_OPERATION', 'INSUFFICIENT_EVIDENCE', 'NO_FUTURE_RELEVANCE'] },
+        explanation: { type: 'string', minLength: 1, maxLength: 2_000 },
+      },
+      required: ['reasonCode', 'explanation'],
+    });
   });
 
   it('rejects terminal checkpoint without required frontier and leaves the task + turn unchanged', async () => {
@@ -426,12 +445,12 @@ describe('continuity checkpoint MCP tools', () => {
     const routed = await route(f, 'Execution-backed completion gate task');
     await f.runtime.execution.open();
 
-    const artifactPath = path.join(f.root, 'verified-output.json');
+    const artifactPath = path.join(f.root, 'reports', 'verified-output.json');
     const verifiedRun = await f.runtime.execution.create(f.scopeA, {
       objective: 'Produce verified completion evidence',
       continuityTaskId: routed.continuityTaskId,
       originRouteContextId: routed.routeContextId,
-      nodes: [{
+      nodes: await checkpointExecutionPlan(f, routed, [{
         id: 'A',
         purpose: 'produce verified artifact',
         command: nodeShellCommand(`require('node:fs').writeFileSync(${JSON.stringify(artifactPath)}, '{"ok":true}')`),
@@ -439,7 +458,7 @@ describe('continuity checkpoint MCP tools', () => {
         inputs: [],
         resources: { writes: [artifactPath] },
         expectedArtifacts: [{ path: artifactPath, kind: 'file', hash: 'sha256', required: true }],
-      }],
+      }]),
     });
     await f.runtime.execution.start(f.scopeA, verifiedRun.runId);
     const verifiedDone = await f.runtime.execution.wait(
@@ -457,6 +476,9 @@ describe('continuity checkpoint MCP tools', () => {
     expect(missingRef.result.error.code).toBe('CONTINUITY_EXECUTION_EVIDENCE_REQUIRED');
     expect((await f.runtime.memory.getContinuityTask(f.scopeA, routed.continuityTaskId))?.status).toBe('running');
 
+    await acceptCurrentReview(f.runtime.workflow, {
+      principalId: f.scopeA.principalId, projectId: 'agent-core://self', taskId: routed.continuityTaskId,
+    });
     const completed = await call(f.baseUrl, f.principalA.key, 'task_checkpoint', {
       routeContextId: routed.routeContextId,
       status: 'completed',
@@ -465,7 +487,7 @@ describe('continuity checkpoint MCP tools', () => {
       evidence: [{ type: 'tool', ref: `execution:${verifiedRun.runId}`, result: 'verified' }],
       projectTerminal: true,
     });
-    expect(completed.raw.result.isError).not.toBe(true);
+    expect(completed.raw.result.isError, JSON.stringify(completed.result)).not.toBe(true);
     expect(completed.result.taskStatus).toBe('completed');
   }, 10_000);
 
@@ -477,10 +499,10 @@ describe('continuity checkpoint MCP tools', () => {
       objective: 'Exit zero but fail required artifact evidence',
       continuityTaskId: routed.continuityTaskId,
       originRouteContextId: routed.routeContextId,
-      nodes: [{
+      nodes: await checkpointExecutionPlan(f, routed, [{
         id: 'A', purpose: 'omit required artifact', command: printCommand('process-success'), cwd: f.root, inputs: [],
-        expectedArtifacts: [{ path: path.join(f.root, 'missing-required.txt'), kind: 'file', required: true }],
-      }],
+        expectedArtifacts: [{ path: path.join(f.root, 'reports', 'missing-required.txt'), kind: 'file', required: true }],
+      }]),
     });
     await f.runtime.execution.start(f.scopeA, failedRun.runId);
     const failedDone = await f.runtime.execution.wait(
@@ -509,7 +531,7 @@ describe('continuity checkpoint MCP tools', () => {
       objective: 'Still planned',
       continuityTaskId: routed.continuityTaskId,
       originRouteContextId: routed.routeContextId,
-      nodes: [{ id: 'A', purpose: 'planned work', command: printCommand('A'), cwd: f.root, inputs: [] }],
+      nodes: await checkpointExecutionPlan(f, routed, [{ id: 'A', purpose: 'planned work', command: printCommand('A'), cwd: f.root, inputs: [] }]),
     });
     const denied = await call(f.baseUrl, f.principalA.key, 'task_checkpoint', {
       routeContextId: routed.routeContextId,

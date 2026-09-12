@@ -24,7 +24,7 @@ export async function verifyWorkflowCompletion(runtime: RuntimeServices, scope: 
   const runs: WorkflowRunEvidence[] = [];
   const verificationSteps = new Set(contract.plan?.checks.flatMap(check => check.stepIds) ?? []);
   for (const run of linked) {
-    if (declared.has(run.runId) && executionWorkflowPending(run).length > 0) {
+    if (executionWorkflowPending(run).length > 0) {
       throw Object.assign(new Error('Reconcile the completed process receipts through execution_start before closing the task'), { code: 'WORKFLOW_OPERATION_RECEIPT_PENDING' });
     }
     const binding = run.metadata.workflowBinding as { planHash?: string } | undefined;

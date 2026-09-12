@@ -15,7 +15,7 @@ export function snapshotMatchesDonor(snapshot: WorkflowSnapshot, donor: Workflow
 function contained(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate); return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
-function sourceClass(file: string): WorkflowSnapshot['contentClass'] {
+export function sourceClass(file: string): WorkflowSnapshot['contentClass'] {
   if (/^(readme|license|copying|changelog)(\.|$)/i.test(path.basename(file)) || /\.(md|mdx|rst|txt|adoc)$/i.test(file)) return 'documentation';
   if (/\.(json|yaml|yml|toml|ini|xml|lock)$/i.test(file)) return 'configuration';
   if (/\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|kts|c|h|cc|cpp|hpp|cs|swift|rb|php|lua|sh|bash|ps1|pl|ex|exs|erl|hs|scala|dart|r|sql|html|css|scss|vue|svelte|zig|nim|jl|clj|f|f90|pas|m|mm|sol)$/i.test(file)) return 'code';
@@ -80,6 +80,12 @@ export class WorkflowSources {
     const delivered = lines.slice(receipt.startLine - 1, receipt.endLine).join('\n');
     if (workflowHash(delivered) !== receipt.deliveredHash) throw new WorkflowError('WORKFLOW_RECEIPT_INVALID', 'Source receipt does not prove the delivered range');
     return delivered;
+  }
+  async cachedContent(hash: string): Promise<string> {
+    if (!/^[a-f0-9]{64}$/.test(hash)) throw new WorkflowError('WORKFLOW_SOURCE_CACHE_CORRUPT', 'Invalid source content identity');
+    const bytes = await readBounded(path.join(this.cacheRoot, 'blobs', `${hash}.txt`));
+    if (workflowHash(bytes) !== hash) throw new WorkflowError('WORKFLOW_SOURCE_CACHE_CORRUPT', 'Source cache does not match its immutable identity');
+    return textBytes(bytes);
   }
   async capture(record: WorkflowRecord, input: WorkflowSourceInput): Promise<{ entries?: string[]; bytes?: Buffer; source: string; path: string; commit?: string; ref?: string; contentClass?: WorkflowSnapshot['contentClass'];language?:string;analysisLevel?:WorkflowSnapshot['analysisLevel'] }> {
     let source: string;

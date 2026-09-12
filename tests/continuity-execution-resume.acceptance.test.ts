@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -10,6 +10,7 @@ import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
 import { memoryConfig, memoryRoot } from './helpers/memory-fixture.js';
+import { engineeringTransport, prepareExecutionPlan } from './helpers/engineering.js';
 
 const auditLoggers: FileAuditLogger[] = [];
 function createAuditLogger(logDir: string): FileAuditLogger {
@@ -27,6 +28,7 @@ async function fixture(label: string) {
   roots.push(root);
   const work = path.join(root, 'work');
   await mkdir(work, { recursive: true });
+  await writeFile(path.join(work,'fixture.mjs'),'export const diagnostic = true;\n');
   const defaults = loadConfig({}, root);
   const runtime = createRuntimeServices(
     [root], path.join(root, 'capabilities'), undefined,
@@ -72,6 +74,16 @@ async function route(f: Awaited<ReturnType<typeof fixture>>, task: string, key =
   return routed.result;
 }
 
+async function plannedNodes(f:Awaited<ReturnType<typeof fixture>>, routed:any) {
+  const transport=engineeringTransport(async(name,args)=>{
+    const result=await call(f.baseUrl,f.principalA.key,name,args);
+    if(result.raw.result?.isError)throw Object.assign(new Error(result.result.error?.message),{code:result.result.error?.code});
+    return result.result;
+  },routed.routeContextId);
+  const record=(await transport.status({} as any))!;
+  return prepareExecutionPlan(transport,record,[{id:'A',purpose:'A',command:"Write-Output 'A'",cwd:f.work,inputs:[]}]);
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   await Promise.all(runtimes.splice(0).map(async (runtime) => {
@@ -89,7 +101,7 @@ describe('continuity + execution cross-session resume', () => {
     const created = await call(f.baseUrl, f.principalA.key, 'execution_create', {
       routeContextId: first.routeContextId,
       objective: 'durable active run',
-      nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work, inputs: [] }],
+      nodes: await plannedNodes(f,first),
     });
     expect(created.raw.result?.isError).not.toBe(true);
     const runId = created.result.runId as string;
@@ -110,9 +122,11 @@ describe('continuity + execution cross-session resume', () => {
     const created = await call(f.baseUrl, f.principalA.key, 'execution_create', {
       routeContextId: first.routeContextId,
       objective: 'principal scoped run',
-      nodes: [{ id: 'A', purpose: 'A', command: "Write-Output 'A'", cwd: f.work, inputs: [] }],
+      nodes: await plannedNodes(f,first),
     });
+    expect(created.raw.result?.isError,JSON.stringify(created.result)).not.toBe(true);
     const runId = created.result.runId as string;
+    expect(runId).toEqual(expect.any(String));
 
     const otherRoute = await route(f, 'Inspect my own execution state', f.principalB.key);
     expect(otherRoute.continuitySnapshot.activeRuns.map((run: any) => run.runId)).not.toContain(runId);

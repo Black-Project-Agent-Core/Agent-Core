@@ -11,7 +11,8 @@ import { FileAuditLogger } from '../src/logging/audit-log.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { createRuntimeServices, type RuntimeServices } from '../src/runtime/services.js';
 import { AgentCoreRouteError } from '../src/runtime/route-context-store.js';
-import { nodeShellCommand, printCommand, retryMarkerCommand, sleepCommand } from './helpers/platform-command.js';
+import { nodeShellCommand, printCommand, sleepCommand } from './helpers/platform-command.js';
+import { engineeringTransport, prepareExecutionPlan, submitAssessedPlan } from './helpers/engineering.js';
 
 const auditLoggers: FileAuditLogger[] = [];
 function createAuditLogger(logDir: string): FileAuditLogger {
@@ -29,6 +30,8 @@ async function fixture(label: string) {
   roots.push(root);
   const work = path.join(root, 'work');
   await mkdir(work, { recursive: true });
+  await mkdir(path.join(root,'reports'),{recursive:true});
+  await writeFile(path.join(work,'fixture.mjs'),'export const diagnostic = true;\n');
   const defaults = loadConfig({ AGENT_CORE_MEMORY_HARD_LIFECYCLE_MODE: 'advisory' }, root);
   const runtime = createRuntimeServices(
     [root],
@@ -126,6 +129,28 @@ function expectErrorCode(value: Awaited<ReturnType<typeof call>>, code: string) 
   expect(value.result.error?.code).toBe(code);
 }
 
+function workflowTransport(f:Awaited<ReturnType<typeof fixture>>,routeContextId:string) {
+  return engineeringTransport(async(name,args)=>{
+    const response=await call(f.baseUrl,f.principalA.key,name,args);
+    if(response.raw.result?.isError)throw Object.assign(new Error(response.result.error?.message),{code:response.result.error?.code});
+    return response.result;
+  },routeContextId);
+}
+
+async function plannedCreate(f:Awaited<ReturnType<typeof fixture>>,args:Record<string,any>) {
+  const transport=workflowTransport(f,args.routeContextId),record=(await transport.status({} as any))!;
+  if(!record.plan) {
+    const extra=args.objective==='dynamic C fixture' ? [{id:'C',purpose:'dynamic C',command:printCommand('C\n'),cwd:f.work}] : [];
+    args={...args,nodes:await prepareExecutionPlan(transport,record,args.nodes,extra)};
+  }
+  return call(f.baseUrl,f.principalA.key,'execution_create',args);
+}
+
+async function submitFixturePlan(f:Awaited<ReturnType<typeof fixture>>,routeContextId:string,plan:any) {
+  const transport=workflowTransport(f,routeContextId),record=(await transport.status({} as any))!;
+  return submitAssessedPlan(transport,record,plan);
+}
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   await Promise.all(runtimes.splice(0).map(async (runtime) => {
@@ -140,7 +165,7 @@ describe('first-class execution MCP surface', () => {
   it('cancels owned work without a memory lease and accepts an expired route without exposing another principal run', async () => {
     const f = await fixture('recovery-cancel');
     const routed = await route(f);
-    const run = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', { routeContextId: routed.routeContextId,
+    const run = expectOk(await plannedCreate(f, { routeContextId: routed.routeContextId,
       objective: 'cancel during memory outage', nodes: [{ id: 'wait', purpose: 'wait', command: sleepCommand(30_000), cwd: f.work, inputs: [] }] }));
     expectOk(await call(f.baseUrl, f.principalA.key, 'execution_start', { routeContextId: routed.routeContextId, runId: run.runId }));
     f.runtime.memory.config.hardLifecycleMode = 'enforce';
@@ -157,19 +182,19 @@ describe('first-class execution MCP surface', () => {
   }, 10_000);
   it('resumes pending workflow reconciliation through authenticated execution_start without repeating the successful edit', async () => {
     const f = await fixture('mcp-pending-workflow');
-    const source = path.join(f.work, 'source.txt'), count = path.join(f.work, 'count.txt'), report = path.join(f.work, 'report.json');
+    const source = path.join(f.work, 'source.mjs'), count = path.join(f.work, 'count.txt'), report = path.join(f.root, 'reports', 'report.json');
     await writeFile(source, 'before');
     const routed = await route(f, f.principalA.key, { task: 'Update source and verify behavior', workflow: 'dag' });
     const edit = nodeShellCommand(`const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(source)},'after');const p=${JSON.stringify(count)};fs.writeFileSync(p,String(fs.existsSync(p)?Number(fs.readFileSync(p,'utf8'))+1:1));`);
     const verify = nodeShellCommand(`const fs=require('node:fs');if(fs.readFileSync(${JSON.stringify(source)},'utf8')!=='after')process.exit(9);fs.writeFileSync(${JSON.stringify(report)},JSON.stringify({passed:true}));`);
     const status = expectOk(await call(f.baseUrl, f.principalA.key, 'workflow_status', { routeContextId: routed.routeContextId }));
-    expectOk(await call(f.baseUrl, f.principalA.key, 'workflow_plan', { routeContextId: routed.routeContextId, plan: {
+    await submitFixturePlan(f,routed.routeContextId,{
       expectedVersion: status.version,
       steps: [{ id: 'edit', kind: 'command', purpose: 'edit once', command: edit, paths: [source, count] },
         { id: 'verify', kind: 'verification', purpose: 'check edited source', command: verify, paths: [] }],
       checks: [{ id: 'acceptance', kind: 'integration', purpose: 'verify actual edited source', stepIds: ['verify'], requirementIds: [], artifactPaths: [report] }],
-    } }));
-    const run = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', { routeContextId: routed.routeContextId,
+    });
+    const run = expectOk(await plannedCreate(f, { routeContextId: routed.routeContextId,
       objective: 'edit then verify', nodes: [
         { id: 'edit', purpose: 'edit once', command: edit, cwd: f.work, stepIds: ['edit'], inputs: [source],
           resources: { reads: [source], writes: [source, count] }, expectedArtifacts: [{ path: count, hash: 'sha256' }] },
@@ -193,20 +218,20 @@ describe('first-class execution MCP surface', () => {
   }, 20_000);
   it('requires accepted steps and DAG coverage for coding, then binds successful checks to current source evidence', async () => {
     const f = await fixture('accepted-plan');
-    const source = path.join(f.work, 'source.txt'), artifact = path.join(f.work, 'verified.json');
-    await writeFile(source, 'expected behavior');
+    const source = path.join(f.work, 'source.mjs'), artifact = path.join(f.root, 'reports', 'verified.json');
+    await writeFile(source, 'export const behavior = "expected";');
     const routed = await route(f, f.principalA.key, { task: 'Build and verify the existing fixture behavior', workflow: 'dag' });
     const prepare = printCommand('prepare\n');
-    const verify = nodeShellCommand(`const fs=require('node:fs');if(fs.readFileSync(${JSON.stringify(source)},'utf8')!=='expected behavior')process.exit(7);fs.writeFileSync(${JSON.stringify(artifact)},JSON.stringify({passed:true}));`);
+    const verify = nodeShellCommand(`const fs=require('node:fs');if(fs.readFileSync(${JSON.stringify(source)},'utf8')!=='export const behavior = "expected";')process.exit(7);fs.writeFileSync(${JSON.stringify(artifact)},JSON.stringify({passed:true}));`);
     const before = expectOk(await call(f.baseUrl, f.principalA.key, 'workflow_status', { routeContextId: routed.routeContextId }));
-    expectOk(await call(f.baseUrl, f.principalA.key, 'workflow_plan', { routeContextId: routed.routeContextId, plan: {
+    await submitFixturePlan(f,routed.routeContextId,{
       expectedVersion: before.version,
       steps: [
         { id: 'prepare', purpose: 'prepare the check', kind: 'command', command: prepare, paths: [source] },
         { id: 'verify', purpose: 'check actual source behavior', kind: 'verification', command: verify, paths: [source] },
       ],
       checks: [{ id: 'integration', purpose: 'verify source behavior', kind: 'integration', requirementIds: [], stepIds: ['verify'], artifactPaths: [artifact] }],
-    } }));
+    });
     expectErrorCode(await call(f.baseUrl, f.principalA.key, 'execute_command', { routeContextId: routed.routeContextId,
       command: verify, cwd: f.work, stepIds: ['verify'] }), 'WORKFLOW_DAG_REQUIRED');
     const nodes = [
@@ -216,7 +241,7 @@ describe('first-class execution MCP surface', () => {
     ];
     expectErrorCode(await call(f.baseUrl, f.principalA.key, 'execution_create', { routeContextId: routed.routeContextId,
       objective: 'missing verification coverage', nodes: nodes.slice(0, 1) }), 'WORKFLOW_DAG_COVERAGE_REQUIRED');
-    const run = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', { routeContextId: routed.routeContextId,
+    const run = expectOk(await plannedCreate(f, { routeContextId: routed.routeContextId,
       objective: 'run accepted checks', nodes }));
     expectOk(await call(f.baseUrl, f.principalA.key, 'execution_start', { routeContextId: routed.routeContextId, runId: run.runId }));
     const done = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_wait', { runId: run.runId,
@@ -256,7 +281,7 @@ describe('first-class execution MCP surface', () => {
   it('execution_create persists a planned DAG without starting a process and rejects a fabricated route', async () => {
     const f = await fixture('create');
     const routed = await route(f);
-    const createdCall = await call(f.baseUrl, f.principalA.key, 'execution_create', {
+    const createdCall = await plannedCreate(f, {
       routeContextId: routed.routeContextId,
       objective: 'Create does not start',
       maxConcurrency: 2,
@@ -291,7 +316,7 @@ describe('first-class execution MCP surface', () => {
   it('execution_start + execution_wait return factual terminal events and execution_logs reads bounded byte-offset output', async () => {
     const f = await fixture('wait-logs');
     const routed = await route(f);
-    const created = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', {
+    const created = expectOk(await plannedCreate(f, {
       routeContextId: routed.routeContextId,
       objective: 'wait and log fixture',
       nodes: [{
@@ -331,11 +356,11 @@ describe('first-class execution MCP surface', () => {
     expect(stderr.data).toContain('ERR-A');
   }, 10_000);
 
-  it('returns bounded merged process + artifact evidence in execution_status without exposing raw log content', async () => {
+  it('returns bounded redacted output presentation alongside factual process and artifact evidence', async () => {
     const f = await fixture('evidence-status');
     const routed = await route(f);
-    const artifactPath = path.join(f.work, 'dist', 'proof.json');
-    const created = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', {
+    const artifactPath = path.join(f.root, 'reports', 'proof.json');
+    const created = expectOk(await plannedCreate(f, {
       routeContextId: routed.routeContextId,
       objective: 'evidence status fixture',
       nodes: [{
@@ -345,7 +370,8 @@ describe('first-class execution MCP surface', () => {
           const fs = require('node:fs');
           fs.mkdirSync(${JSON.stringify(path.dirname(artifactPath))}, { recursive: true });
           fs.writeFileSync(${JSON.stringify(artifactPath)}, '{"proof":"secret-free"}\\n');
-          process.stdout.write('RAW-LOG-MUST-NOT-APPEAR-IN-STATUS');
+          process.stdout.write('api_key=SENTINEL_OUTPUT_PREVIEW_SECRET\\n');
+          for (let index = 0; index < 400; index++) process.stdout.write('PREVIEW-LINE-' + index + ' padded raw content\\n');
         `),
         cwd: f.work,
         expectedArtifacts: [{ path: artifactPath, kind: 'file', hash: 'sha256', required: true }],
@@ -384,21 +410,30 @@ describe('first-class execution MCP surface', () => {
         })],
       }],
     });
-    expect(JSON.stringify(status)).not.toContain('RAW-LOG-MUST-NOT-APPEAR-IN-STATUS');
+    const projection = status.evidence.nodes[0].parsedOutput.projection;
+    expect(projection.presentation).toMatchObject({ mode: 'raw_excerpt', measurement: 'utf8_bytes' });
+    expect(projection.presentation.text).toContain('PREVIEW-LINE-0');
+    expect(projection.presentation.bytes).toBe(Buffer.byteLength(projection.presentation.text));
+    expect(projection.presentation.bytes).toBeLessThanOrEqual(8192);
+    expect(projection.presentation.bytes).toBeLessThan(projection.presentation.sourceBytes);
+    expect(projection.omissions.presentationBytes).toBeGreaterThan(0);
+    expect(JSON.stringify(status)).not.toContain('SENTINEL_OUTPUT_PREVIEW_SECRET');
+    const outsideProjection = JSON.stringify(status, (key, value) => key === 'projection' ? undefined : value);
+    expect(outsideProjection).not.toContain('PREVIEW-LINE-0');
   }, 10_000);
 
   it('keeps merged run evidence deterministic across reversed input order and repeated status reads', async () => {
     const f = await fixture('evidence-determinism');
     const routed = await route(f);
-    const artifactA = path.join(f.work, 'evidence-a.json');
-    const artifactB = path.join(f.work, 'evidence-b.json');
+    const artifactA = path.join(f.root, 'reports', 'evidence-a.json');
+    const artifactB = path.join(f.root, 'reports', 'evidence-b.json');
     const writeArtifact = (target: string, nodeId: string, rawLog: string) => nodeShellCommand(`
       const fs = require('node:fs');
       fs.writeFileSync(${JSON.stringify(target)}, JSON.stringify({ node: ${JSON.stringify(nodeId)}, verified: true }));
       process.stdout.write(${JSON.stringify(rawLog)});
     `);
 
-    const created = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', {
+    const created = expectOk(await plannedCreate(f, {
       routeContextId: routed.routeContextId,
       objective: 'deterministic merged evidence fixture',
       maxConcurrency: 2,
@@ -451,8 +486,11 @@ describe('first-class execution MCP surface', () => {
           sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
         })],
       });
+      expect(node.parsedOutput.projection.presentation.text).toBe(`RAW-${node.nodeId}-SENTINEL`);
+      expect(node.parsedOutput.binding.runId).toBe(created.runId);
+      expect(node.parsedOutput.rawAccess.nodeId).toBe(node.nodeId);
     }
-    const serialized = JSON.stringify(first.evidence);
+    const serialized = JSON.stringify(first.evidence, (key, value) => key === 'projection' ? undefined : value);
     expect(serialized).not.toContain('RAW-A-SENTINEL');
     expect(serialized).not.toContain('RAW-B-SENTINEL');
   }, 10_000);
@@ -460,7 +498,7 @@ describe('first-class execution MCP surface', () => {
   it('execution_workflow_advice is read-only, does not mutate a planned run, and only proposes start with a valid route context', async () => {
     const f = await fixture('workflow-advice');
     const routed = await route(f);
-    const created = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', {
+    const created = expectOk(await plannedCreate(f, {
       routeContextId: routed.routeContextId,
       objective: 'workflow advice planned fixture',
       nodes: [
@@ -493,7 +531,7 @@ describe('first-class execution MCP surface', () => {
   it('keeps workflow advice principal/project scoped before the advisor can inspect a run', async () => {
     const f = await fixture('workflow-advice-scope');
     const routed = await route(f);
-    const created = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', {
+    const created = expectOk(await plannedCreate(f, {
       routeContextId: routed.routeContextId,
       objective: 'workflow advice scope fixture',
       nodes: [{ id: 'A', purpose: 'A', command: printCommand('A\\n'), cwd: f.work }],
@@ -534,7 +572,7 @@ describe('first-class execution MCP surface', () => {
   it('execution_status surfaces the same deterministic workflow advice without recursively mutating execution state', async () => {
     const f = await fixture('status-advice');
     const routed = await route(f);
-    const created = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', {
+    const created = expectOk(await plannedCreate(f, {
       routeContextId: routed.routeContextId,
       objective: 'status advice fixture',
       nodes: [
@@ -562,8 +600,8 @@ describe('first-class execution MCP surface', () => {
   it('execution_artifact_find exposes compact verified artifact metadata without raw content or mutation', async () => {
     const f = await fixture('artifact-find');
     const routed = await route(f);
-    const artifactPath = path.join(f.work, 'artifact-find.json');
-    const created = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', {
+    const artifactPath = path.join(f.root, 'reports', 'artifact-find.json');
+    const created = expectOk(await plannedCreate(f, {
       routeContextId: routed.routeContextId,
       objective: 'artifact lookup fixture',
       nodes: [{
@@ -589,7 +627,7 @@ describe('first-class execution MCP surface', () => {
   it('keeps an owned run bound to its workflow task and hides it from other principals', async () => {
     const f = await fixture('ownership');
     const originalRoute = await route(f);
-    const created = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', {
+    const created = expectOk(await plannedCreate(f, {
       routeContextId: originalRoute.routeContextId,
       objective: 'old owned run',
       nodes: [{ id: 'A', purpose: 'A', command: printCommand('A\n'), cwd: f.work }],
@@ -623,7 +661,7 @@ describe('first-class execution MCP surface', () => {
   it('execution_add_nodes atomically adds dynamic C after A while B runs and rejects a cyclic batch with no partial inserts', async () => {
     const f = await fixture('dynamic');
     const routed = await route(f);
-    const created = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', {
+    const created = expectOk(await plannedCreate(f, {
       routeContextId: routed.routeContextId,
       objective: 'dynamic C fixture',
       nodes: [
@@ -644,7 +682,8 @@ describe('first-class execution MCP surface', () => {
     const added = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_add_nodes', {
       routeContextId: routed.routeContextId,
       runId: created.runId,
-      nodes: [{ id: 'C', purpose: 'dynamic C', command: printCommand('C\n'), cwd: f.work, dependsOn: ['A'] }],
+      nodes: [{ id: 'C', purpose: 'dynamic C', command: printCommand('C\n'), cwd: f.work, dependsOn: ['A'],stepIds:['C'],
+        resources:{reads:[],writes:[path.join(f.root,'reports','diagnostic-C.json')]} }],
     }));
     expect(added.nodes.map((node: any) => node.nodeId)).toEqual(['A', 'B', 'C']);
     const cDone = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_wait', {
@@ -675,9 +714,9 @@ describe('first-class execution MCP surface', () => {
   it('execution_retry explicitly creates attempt 2 while attempt 1 logs remain readable', async () => {
     const f = await fixture('retry');
     const routed = await route(f);
-    const markerPath = path.join(f.work, 'retry.marker');
-    const command = retryMarkerCommand(markerPath);
-    const created = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', {
+    const markerPath = path.join(f.root, 'reports', 'retry.marker');
+    const command = nodeShellCommand(`if(!require('node:fs').existsSync(${JSON.stringify(markerPath)})){console.error('attempt-one');process.exit(1);}console.log('attempt-two');`);
+    const created = expectOk(await plannedCreate(f, {
       routeContextId: routed.routeContextId,
       objective: 'retry fixture',
       nodes: [{ id: 'A', purpose: 'retry A', command, cwd: f.work }],
@@ -690,6 +729,8 @@ describe('first-class execution MCP surface', () => {
       eventTypes: ['node.failed'], nodeIds: ['A'], timeoutMs: 5_000,
     }));
     expect(failed.event?.eventType).toBe('node.failed');
+    // The harness changes an excluded test control after failure; the command never writes unacknowledged source.
+    await writeFile(markerPath,'retry allowed');
 
     expectOk(await call(f.baseUrl, f.principalA.key, 'execution_retry', {
       routeContextId: routed.routeContextId, runId: created.runId, nodeId: 'A',
@@ -715,7 +756,7 @@ describe('first-class execution MCP surface', () => {
   it('execution_cancel can cancel one running node without stopping unrelated work, then cancel the whole run', async () => {
     const f = await fixture('cancel');
     const routed = await route(f);
-    const created = expectOk(await call(f.baseUrl, f.principalA.key, 'execution_create', {
+    const created = expectOk(await plannedCreate(f, {
       routeContextId: routed.routeContextId,
       objective: 'cancel fixture',
       nodes: [
