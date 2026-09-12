@@ -1,8 +1,10 @@
 ﻿param(
-  [Parameter(Mandatory=$false)][string]$Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
+  [Parameter(Mandatory=$false)][string]$Root = '',
   [switch]$VerifyOnly
 )
 $ErrorActionPreference='Stop'
+# Windows PowerShell 5.1 leaves $PSScriptRoot empty while binding parameter defaults; resolve the repo root in the body instead.
+if(-not $Root){$Root=(Resolve-Path (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) '..\..')).Path}
 $Root=[IO.Path]::GetFullPath($Root)
 $Tools=Join-Path $Root '.tools'
 $Required=[ordered]@{
@@ -55,6 +57,6 @@ if($missing -contains 'graphify' -or -not(Test-Path (Join-Path (Split-Path $Requ
 $missing=Get-Missing
 if($missing.Count){Write-Output ('PRIVATE_MISSING '+($missing -join ','));exit 2}
 $lock=[ordered]@{schemaVersion=1;generatedAt=(Get-Date).ToUniversalTime().ToString('o');ripgrep='15.1.0';uv='0.12.10';python='3.12.10';graphify='0.9.55';files=@{}}
-foreach($kv in $Required.GetEnumerator()){$lock.files[$kv.Key]=@{path=[IO.Path]::GetRelativePath($Root,$kv.Value);sha256=(Get-FileHash $kv.Value -Algorithm SHA256).Hash.ToLowerInvariant()}}
+foreach($kv in $Required.GetEnumerator()){$lock.files[$kv.Key]=@{path=$kv.Value.Substring($Root.TrimEnd('\').Length+1);sha256=(Get-FileHash $kv.Value -Algorithm SHA256).Hash.ToLowerInvariant()}}
 $lock|ConvertTo-Json -Depth 5|Set-Content (Join-Path $Tools 'memory-tools-lock.json') -Encoding utf8
 Write-Output ('PRIVATE_READY '+($Required.Values -join ';'))
