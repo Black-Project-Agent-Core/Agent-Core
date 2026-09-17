@@ -2366,3 +2366,10 @@ These Mermaid diagrams are part of the maintained architecture map, not decorati
 - Integrated external tunnel protected-resource behavior into OAuth section 7.3 and removed the duplicate out-of-order OAuth fix section from the document tail.
 - Read-only live snapshot after operator re-auth: bridge `rdc-local`, execution/memory/canonical/index/embedding/intelligence `available`, `issueCount=0`, `noteCount=1`, tunnel readiness true, and active OAuth access/refresh grant state present. No credential/token values were printed.
 - Remaining verification boundary is unchanged: full repository-wide Vitest/xUnit regression has not been run; Phase 11 memory UX remains optional.
+
+### 2026-09-17 — Memory maintenance backlog recorded
+
+- Added root `Maintenance.md` as the explicit open-maintenance backlog for the native memory subsystem audit.
+- The current embedding model remains Cloudflare Workers AI `@cf/google/embeddinggemma-300m` at 768 dimensions; the backlog does not propose replacing it.
+- Recorded 3 HIGH findings, 5 MEDIUM findings, 1 LOW finding, and 1 COVERAGE GAP covering lock correctness, index freshness, live health truth, result budgeting, persisted-vector validation, similarity semantics, relationship evolution, consolidation semantics, MCP link timestamp contract, and missing durability regression coverage.
+- `Maintenance.md` is a findings backlog, not proof that any item is fixed. Each item should only be closed after the corresponding source change and authorized verification evidence exist.
