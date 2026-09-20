@@ -65,6 +65,8 @@ Subsystems are siblings. Memory, Code Intelligence, Learning, Semantic IDE, Game
 
 The stable package intentionally excludes live `.env`, secrets, OAuth/API-key state, user memory notes, tracker logs, browser profiles, backups, Git metadata, and protected reference repositories.
 
+> **v0.12.0 recovery note:** the immutable v0.12.0 ZIP was created before discovery that its bundled `.env.example` had been overwritten by filesystem corruption. Use the release asset `Agent-Core-v0.12.0-env.example` instead. The `main` branch contains the corrected source-grounded template.
+
 ### Build the core from source
 
 Requirements:

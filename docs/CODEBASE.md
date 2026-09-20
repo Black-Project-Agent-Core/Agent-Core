@@ -1897,6 +1897,8 @@ This section classifies non-runtime residue and previously resolved drift. **Not
 
 ### 34.1 `.env.example` synchronized with active architecture
 
+Recovery audit 2026-09-20: the tracked `.env.example` was found to be 6,687 NUL bytes from the earlier filesystem corruption. It was rebuilt source-first from current configuration owners into a 95-line UTF-8 placeholder/default template covering current optional Code Intelligence, Learning, Hermes Partner, Semantic IDE, Game Mode, and bounded file/PDF settings without enabling credential-bearing configuration by default.
+
 The tracked `.env.example` now reflects the active source contract: loopback host/port, `runtime\bridge-auth`, `runtime\memory`, dual MCP mode, public/protected-resource OAuth identity fields, proxy/origin settings, Cloudflare Workers AI embedding configuration, Agent Core internal machine-control config root (`AGENT_CORE_RDC_CONFIG_DIR`), and optional launcher Node override. It contains placeholders/defaults only, not effective runtime secrets.
 
 The real root `.env` remains operator-sensitive and is excluded from normal architecture grounding; effective values may therefore differ from the example without making the example stale.
