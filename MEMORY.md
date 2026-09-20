@@ -8,7 +8,7 @@
 
 ## Current override — 2026-09-20
 
-Recovery audit note: root `.env.example` was detected as 6,687 NUL bytes from prior filesystem corruption and was rebuilt from current source configuration contracts into a 95-line UTF-8 placeholder/default template with no live secrets; credential-bearing and machine-specific optional overrides remain blank/commented.
+Recovery audit note: root `.env.example` was detected as 6,687 NUL bytes from prior filesystem corruption and was rebuilt from current source configuration contracts into a 95-line UTF-8 placeholder/default template with no live secrets; credential-bearing and machine-specific optional overrides remain blank/commented. GitHub Release v0.12.0 remains immutable and Latest; because its bundled `.env.example` predates this repair, the release now carries a corrective `Agent-Core-v0.12.0-env.example` asset and an explicit recovery notice while preserving the original ZIP digest. Repository About/topics/homepage and community files are current; GitHub community profile reports 85% with LICENSE intentionally unset pending an explicit legal license choice.
 
 This section supersedes older tool-count/version/current-task statements retained below as historical implemented-state detail. Agent Core is live on E:\Projects\Agent-Core using dynamic root resolution; the drive letter is not product identity. /health currently reports Core ok, Execution available, Memory/canonical/index/Embedding/Intelligence available with issueCount 0, Phone available, Grafel available/index current with issueCount 0, Semantic IDE available, Learning available with Memory + Grafel Pattern sinks available, and Hermes Partner available.
 
