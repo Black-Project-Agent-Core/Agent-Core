@@ -166,6 +166,7 @@ impl ServiceRole {
 }
 
 impl AgentCoreEngine {
+    pub fn root_path(&self) -> &Path { &self.root }
     pub fn discover() -> Result<Self, String> {
         Ok(Self {
             root: discover_agent_core_root()?,
@@ -181,13 +182,12 @@ impl AgentCoreEngine {
         let agent = self.probe(ServiceRole::AgentCore)?;
         let tunnel = self.probe(ServiceRole::Tunnel)?;
         let state = self.read_state();
-        let faulted = state
-            .services
-            .values()
-            .any(|entry| entry.health_state.eq_ignore_ascii_case("Faulted"));
+        let agent_faulted = service_faulted(&state, ServiceRole::AgentCore);
+        let tunnel_faulted = service_faulted(&state, ServiceRole::Tunnel);
+        let faulted = agent_faulted || tunnel_faulted;
 
-        let mcp_status = display_service_status(&agent, faulted && state.services.get("agentCore").is_some());
-        let tunnel_status = display_service_status(&tunnel, faulted && state.services.get("tunnel").is_some());
+        let mcp_status = display_service_status(&agent, agent_faulted);
+        let tunnel_status = display_service_status(&tunnel, tunnel_faulted);
         let overall = if faulted {
             "Faulted"
         } else if mcp_status == "Running" && tunnel_status == "Running" {
@@ -695,6 +695,20 @@ impl AgentCoreEngine {
         if !profile.exists() {
             return Err(format!("Tunnel profile is missing: {}", profile.display()));
         }
+        // tunnel-client exits at config parse time on a bad profile (wrong channel, log format, missing key file);
+        // without this preflight the only symptom would be a 12s wait ending in "did not become healthy in time".
+        let profile_arg = profile.to_string_lossy().to_string();
+        let doctor = run_program(&tools.tunnel, &["doctor", "--profile-file", &profile_arg], &self.root, &[])?;
+        if !doctor.status.success() {
+            let report = String::from_utf8_lossy(&doctor.stdout);
+            let failures: Vec<&str> = report
+                .lines()
+                .filter(|line| line.contains(" FAIL "))
+                .map(str::trim)
+                .collect();
+            let detail = if failures.is_empty() { report.trim().to_string() } else { failures.join("; ") };
+            return Err(format!("Tunnel profile failed tunnel-client doctor: {detail}"));
+        }
         let tray_runtime = self.root.join("runtime").join("tray");
         fs::create_dir_all(&tray_runtime)
             .map_err(|error| format!("Failed to create tunnel runtime directory: {error}"))?;
@@ -985,6 +999,15 @@ impl AgentCoreEngine {
     }
 }
 
+// Faulted is per service: a tunnel that cannot start must not relabel a healthy MCP server.
+fn service_faulted(state: &NativeControllerState, role: ServiceRole) -> bool {
+    state
+        .services
+        .get(role.key())
+        .map(|entry| entry.health_state.eq_ignore_ascii_case("Faulted"))
+        .unwrap_or(false)
+}
+
 fn display_service_status(probe: &ServiceProbe, faulted: bool) -> String {
     if probe.pid.is_some() && !probe.identity_available {
         "Identity unavailable".to_string()
@@ -1075,7 +1098,8 @@ fn is_agent_core_root(path: &Path) -> bool {
             .join("tunnel-client")
             .join("agent-core.yaml")
             .exists()
-        && path.join("scripts").join("windows").exists()
+        && path.join("src").join("rdc").exists()
+        && path.join("src").join("index.ts").exists()
 }
 
 fn normalize_absolute(path: PathBuf) -> Result<PathBuf, String> {
@@ -1550,9 +1574,27 @@ fn agent_health_details() -> (bool, String, String) {
     let Ok(json) = response.json::<Value>() else {
         return (false, "Unavailable".to_string(), "Unavailable".to_string());
     };
+    agent_health_from_json(&json)
+}
+
+fn agent_health_from_json(json: &Value) -> (bool, String, String) {
     let healthy = json.get("status").and_then(Value::as_str) == Some("ok");
-    let memory = subsystem_health_label(json.get("memory"));
-    let execution = subsystem_health_label(json.get("execution"));
+    let rdc_bridge = json.get("service").and_then(Value::as_str) == Some("agent-core-rdc-bridge")
+        && json
+            .get("toolSurface")
+            .and_then(Value::as_str)
+            .map(|value| value.starts_with("desktop-commander-"))
+            .unwrap_or(false);
+    let memory = if rdc_bridge {
+        "Not Used".to_string()
+    } else {
+        subsystem_health_label(json.get("memory"))
+    };
+    let execution = if healthy && rdc_bridge {
+        "Available".to_string()
+    } else {
+        subsystem_health_label(json.get("execution"))
+    };
     (healthy, memory, execution)
 }
 
@@ -1776,6 +1818,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn rdc_bridge_health_reports_machine_execution_available() {
+        let json = serde_json::json!({
+            "status": "ok",
+            "service": "agent-core-rdc-bridge",
+            "toolSurface": "desktop-commander-0.2.50-local"
+        });
+        let (healthy, memory, execution) = agent_health_from_json(&json);
+        assert!(healthy);
+        assert_eq!(memory, "Not Used");
+        assert_eq!(execution, "Available");
+    }
+
+    #[test]
     fn nullable_process_metadata_preserves_pid_without_granting_identity() {
         for fields in [
             r#""ExecutablePath":null,"CommandLine":null"#,
@@ -1811,29 +1866,31 @@ mod tests {
 
     #[test]
     fn process_identity_requires_current_project_entry_and_complete_path_token() {
-        let root = Path::new(r"E:\Projects\Agent-Core");
-        let node = Path::new(r"C:\Program Files\nodejs\node.exe");
+        let root = std::env::temp_dir().join("agent-core-identity-fixture");
+        let node = root.join("runtime").join("node").join("node.exe");
+        let entry = root.join("dist").join("index.js");
+        let foreign_entry = root.with_file_name("agent-core-foreign-fixture").join("dist").join("index.js");
         let mut process = ProcessInfo {
             process_id: 42,
             executable_path: Some(node.to_string_lossy().to_string()),
-            command_line: Some(format!(r#""{}" "{}""#, node.display(), root.join("dist").join("index.js").display())),
+            command_line: Some(format!(r#""{}" "{}""#, node.display(), entry.display())),
         };
-        assert!(is_agent_core_identity(&process, node, root));
+        assert!(is_agent_core_identity(&process, &node, &root));
         for command in [
-            r"node E:\Projects\Other\dist\index.js",
-            r"node dist/index.js",
-            r"node E:\Projects\Agent-Core\dist\index.js.backup",
-            r"node prefixE:\Projects\Agent-Core\dist\index.js",
+            format!(r#"node "{}""#, foreign_entry.display()),
+            "node dist/index.js".to_string(),
+            format!(r#"node "{}.backup""#, entry.display()),
+            format!(r#"node "prefix{}""#, entry.display()),
         ] {
-            process.command_line = Some(command.to_string());
-            assert!(!is_agent_core_identity(&process, node, root), "foreign entry: {command}");
+            process.command_line = Some(command.clone());
+            assert!(!is_agent_core_identity(&process, &node, &root), "foreign entry: {command}");
         }
         let tunnel = root.join("tunnel-client").join("tunnel-client.exe");
         process.executable_path = Some(tunnel.to_string_lossy().to_string());
         process.command_line = Some(format!(r#""{}" run --profile-file "{}""#, tunnel.display(), root.join("tunnel-client").join("agent-core.yaml").display()));
-        assert!(is_tunnel_identity(&process, &tunnel, root));
+        assert!(is_tunnel_identity(&process, &tunnel, &root));
         process.command_line = Some(process.command_line.unwrap().replace("agent-core.yaml\"", "agent-core.yaml.other\""));
-        assert!(!is_tunnel_identity(&process, &tunnel, root));
+        assert!(!is_tunnel_identity(&process, &tunnel, &root));
     }
 
     #[test]
@@ -1846,6 +1903,22 @@ mod tests {
         assert_eq!(probe.memory, "Healthy");
         assert_eq!(probe.execution, "Healthy");
         assert!(!probe.identity_match);
+    }
+
+    #[test]
+    fn faulted_tunnel_does_not_relabel_a_running_agent_core() {
+        let mut state = NativeControllerState::default();
+        state.services.insert("agentCore".to_string(), new_service_state(ServiceRole::AgentCore, 1, "started"));
+        let mut tunnel = new_service_state(ServiceRole::Tunnel, 0, "watchdog");
+        tunnel.health_state = "Faulted".to_string();
+        state.services.insert("tunnel".to_string(), tunnel);
+        assert!(!service_faulted(&state, ServiceRole::AgentCore));
+        assert!(service_faulted(&state, ServiceRole::Tunnel));
+        let probe = ServiceProbe {
+            pid: Some(42), identity_available: true, identity_match: true,
+            healthy: true, memory: "Healthy".to_string(), execution: "Healthy".to_string(),
+        };
+        assert_eq!(display_service_status(&probe, service_faulted(&state, ServiceRole::AgentCore)), "Running");
     }
 
     #[cfg(windows)]

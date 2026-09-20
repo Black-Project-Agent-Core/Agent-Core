@@ -12,8 +12,8 @@ vi.mock('@tauri-apps/api/core', () => ({
 const runningStatus = {
   overall: 'Running',
   mcpServer: 'Running',
-  memory: 'Healthy',
-  execution: 'Healthy',
+  memory: 'Not Used',
+  execution: 'Available',
   tunnel: 'Running',
   autostart: false,
   desiredRunning: true,
@@ -38,6 +38,15 @@ describe('AgentCorePanel', () => {
     });
   });
 
+  it('opens the native activity monitor without restarting services', async () => {
+    const user = userEvent.setup();
+    render(<AgentCorePanel />);
+    await user.click(screen.getByRole('button', { name: 'Expand Agent Core controls' }));
+    await user.click(screen.getByRole('button', { name: 'Activity Monitor' }));
+    expect(await screen.findByRole('dialog', { name: 'Activity Monitor' })).toBeInTheDocument();
+    expect(invokeMock.mock.calls.some(([name]) => String(name).includes('restart'))).toBe(false);
+  });
+
   it('expands the Agent Core launcher controls in the sidebar', async () => {
     const user = userEvent.setup();
     render(<AgentCorePanel />);
@@ -46,7 +55,7 @@ describe('AgentCorePanel', () => {
     await user.click(screen.getByRole('button', { name: 'Expand Agent Core controls' }));
 
     expect(await screen.findByText('Agent Core', { selector: '.agent-core-status-primary span:first-child' })).toBeInTheDocument();
-    expect(screen.getByText(/MCP Server: Running \| Memory: Healthy \| Execution: Healthy/)).toBeInTheDocument();
+    expect(screen.getByText(/MCP Server: Running \| Memory: Not Used \| Execution: Available/)).toBeInTheDocument();
     expect(screen.getByText('Tunnel: Running')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open Agent Core Folder' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Open Tunnel Admin UI' })).toBeEnabled();
@@ -118,7 +127,7 @@ describe('AgentCorePanel', () => {
 
     await act(async () => vi.advanceTimersByTimeAsync(6000));
 
-    expect(screen.getByLabelText('Agent Core runtime status')).toHaveTextContent('MCP Server: Running | Memory: Healthy');
+    expect(screen.getByLabelText('Agent Core runtime status')).toHaveTextContent('MCP Server: Running | Memory: Not Used');
     expect(screen.getByRole('alert')).toHaveTextContent(permissionError);
     expect(statusQueries).toBe(3);
   });

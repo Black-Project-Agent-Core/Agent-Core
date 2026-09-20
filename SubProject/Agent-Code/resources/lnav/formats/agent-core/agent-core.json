@@ -1,0 +1,77 @@
+{
+  "$schema": "https://lnav.org/schemas/format-v1.schema.json",
+  "agent_core_audit": {
+    "title": "Agent Core Activity Audit",
+    "description": "Locally observed, redacted audit journal. Local transport completion is not client acknowledgement.",
+    "json": true,
+    "file-pattern": "audit[.].*[.]jsonl$",
+    "timestamp-field": "timestamp",
+    "level-field": "/data/severity",
+    "body-field": "event",
+    "opid-field": "requestId",
+    "line-format": [
+      {
+        "field": "__timestamp__"
+      },
+      " ",
+      {
+        "field": "category",
+        "min-width": 10
+      },
+      " ",
+      {
+        "field": "event",
+        "min-width": 24
+      },
+      " ",
+      {
+        "field": "/data/toolName"
+      },
+      " ",
+      {
+        "field": "/data/code"
+      },
+      " request=",
+      {
+        "field": "requestId"
+      },
+      " seq=",
+      {
+        "field": "sequence"
+      }
+    ],
+    "value": {
+      "sequence": {
+        "kind": "integer"
+      },
+      "category": {
+        "kind": "string"
+      },
+      "event": {
+        "kind": "string"
+      },
+      "requestId": {
+        "kind": "string",
+        "identifier": true
+      },
+      "data": {
+        "kind": "json"
+      },
+      "data/toolName": {
+        "kind": "string",
+        "identifier": true
+      },
+      "data/code": {
+        "kind": "string"
+      },
+      "data/severity": {
+        "kind": "string"
+      }
+    },
+    "sample": [
+      {
+        "line": "{\"timestamp\":\"2026-09-14T00:00:00.000Z\",\"sequence\":1,\"category\":\"activity\",\"event\":\"tool.result\",\"requestId\":\"fixture-request\",\"data\":{\"severity\":\"error\",\"toolName\":\"workflow_status\",\"code\":\"ROUTE_NOT_FOUND\"}}"
+      }
+    ]
+  }
+}

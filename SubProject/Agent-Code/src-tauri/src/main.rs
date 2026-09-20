@@ -6,6 +6,8 @@ compile_error!(
 );
 
 mod agent_core;
+mod activity;
+use activity::{ActivityBatch, ActivityMonitor};
 
 use agent_core::{AgentCoreActionResult, AgentCoreControlStatus, AgentCoreEngine};
 use std::sync::Arc;
@@ -84,6 +86,32 @@ fn agent_core_exit(
     engine.exit_agent_core()
 }
 
+#[tauri::command]
+async fn agent_core_activity_read(monitor: State<'_, Arc<ActivityMonitor>>, after_sequence: Option<u64>) -> Result<ActivityBatch, String> {
+    let monitor = Arc::clone(monitor.inner());
+    tauri::async_runtime::spawn_blocking(move || monitor.read(after_sequence.unwrap_or(0))).await.map_err(|e| e.to_string())?
+}
+
+// User-operated capture preference only; no credentials, permissions or service lifecycle are changed.
+#[tauri::command]
+async fn agent_core_activity_set(monitor: State<'_, Arc<ActivityMonitor>>, enabled: bool) -> Result<serde_json::Value, String> {
+    let monitor = Arc::clone(monitor.inner());
+    tauri::async_runtime::spawn_blocking(move || monitor.set_enabled(enabled)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn agent_core_activity_export(monitor: State<'_, Arc<ActivityMonitor>>) -> Result<String, String> {
+    let monitor = Arc::clone(monitor.inner());
+    tauri::async_runtime::spawn_blocking(move || monitor.export()).await.map_err(|e| e.to_string())?
+}
+
+// Explicit viewer button: launch only the installed local lnav binary with fixed audit paths.
+#[tauri::command]
+async fn agent_core_activity_open_lnav(monitor: State<'_, Arc<ActivityMonitor>>) -> Result<(), String> {
+    let monitor = Arc::clone(monitor.inner());
+    tauri::async_runtime::spawn_blocking(move || monitor.open_lnav()).await.map_err(|e| e.to_string())?
+}
+
 fn show_main_window(app: &tauri::AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
@@ -130,11 +158,17 @@ fn main() {
     let background_mode = std::env::args().any(|argument| argument == "--agent-core-background");
     let engine = Arc::new(AgentCoreEngine::discover().expect("failed to locate Agent Core runtime"));
     let watchdog_engine = Arc::clone(&engine);
+    let activity = Arc::new(ActivityMonitor::new(engine.root_path().to_path_buf()));
 
     tauri::Builder::default()
         .manage(engine)
+        .manage(activity)
         .invoke_handler(tauri::generate_handler![
             agent_core_control_status,
+            agent_core_activity_read,
+            agent_core_activity_set,
+            agent_core_activity_export,
+            agent_core_activity_open_lnav,
             agent_core_start,
             agent_core_open_folder,
             agent_core_open_tunnel_admin,

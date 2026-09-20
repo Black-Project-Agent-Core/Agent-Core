@@ -1,200 +1,179 @@
-﻿import { McpServer } from '@modelcontextprotocol/server';
-import * as z from 'zod/v4';
-import type { VerifiedKey } from '../auth/key-types.js';
-import type { RuntimeServices } from '../runtime/services.js';
-import { CAPABILITY_TOOL_NAMES, registerCapabilityTools } from './capability-tools.js';
-import { CONTINUITY_TOOL_NAMES, registerContinuityTools } from './continuity-tools.js';
-import { EXECUTION_TOOL_NAMES, registerExecutionTools } from './execution-tools.js';
-import { GITHUB_TOOL_NAMES, registerGitHubTools } from './github-tools.js';
-import { LANGFLOW_TOOL_NAMES, registerLangflowTools } from './langflow-tools.js';
-import { MEMORY_TOOL_NAMES, registerMemoryTools } from './memory-tools.js';
-import { MEMORY_TURN_TOOL_NAMES, registerMemoryTurnTools } from './memory-turn-tools.js';
-import { HEALTH_METRICS_TOOL_NAMES, registerHealthMetricsTools } from './health-metrics.js';
-import { OPERATOR_DIRECTIVE_TOOL_NAMES, registerOperatorDirectiveTools } from './operator-directive-tools.js';
-import { OPERATIONAL_TOOL_NAMES, registerOperationalTools } from './tools.js';
-import { instrumentToolRegistrations } from '../observability/tool-instrumentation.js';
-import { persistentPrincipalId } from './project-scope.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { AGENT_CORE_VERSION } from '../version.js';
-import { WORKFLOW_TOOL_NAMES, registerWorkflowTools } from './workflow-tools.js';
+import type { CodeIntelligenceService } from '../code-intelligence/service.js';
+import type { LearningService } from '../learning/service.js';
+import type { HermesPartnerService } from '../partner/service.js';
+import type { SemanticIdeService } from '../semantic-ide/service.js';
+import type { MemoryService } from '../memory/service.js';
+import * as handlers from '../rdc/handlers/index.js';
+import { getConfig, setConfigValue } from '../rdc/tools/config.js';
+import { getUsageStats } from '../rdc/tools/usage.js';
+import { giveFeedbackToDesktopCommander } from '../rdc/tools/feedback.js';
+import { getPrompts } from '../rdc/tools/prompts.js';
+import { toolHistory } from '../rdc/utils/toolHistory.js';
+import { usageTracker } from '../rdc/utils/usageTracker.js';
+import { activityTracker } from '../tracker/activity-tracker.js';
+import { loadAgentProtocol } from './agent-protocol.js';
+import { annotateFailureLoopException, appendFailureLoopAdvisory, type FailureLoopAdvisory, type FailureLoopAdvisor } from './failure-loop-advisor.js';
+import { registerCodeIntelligenceTools } from './code-intelligence-tools.js';
+import { registerLearningTools } from './learning-tools.js';
+import { registerMemoryTools } from './memory-tools.js';
+import { registerPartnerTools } from './partner-tools.js';
+import { registerSemanticIdeTools } from './semantic-ide-tools.js';
+import { registerPhoneTools } from './phone-tools.js';
+import { PHONE_SKILL_INSTRUCTIONS } from './phone-protocol.js';
+import type { PhoneController } from '../phone/controller.js';
+import * as schemas from './rdc-schemas.js';
+import { RDC_TOOL_METADATA } from './rdc-tool-metadata.js';
 
 export const SERVER_NAME = 'agent-core';
 export const SERVER_VERSION = AGENT_CORE_VERSION;
 
-export function createAgentCoreMcpServer(key: VerifiedKey, runtime: RuntimeServices): McpServer {
-  const server = new McpServer({
-    name: SERVER_NAME,
-    title: 'Agent Core',
-    version: SERVER_VERSION,
-  });
-  instrumentToolRegistrations(server, runtime);
+export interface AgentCoreMcpRuntime {
+  memoryService?: MemoryService;
+  phoneController?: PhoneController;
+  codeIntelligence?: CodeIntelligenceService;
+  learningService?: LearningService;
+  hermesPartner?: HermesPartnerService;
+  semanticIde?: SemanticIdeService;
+  failureLoopAdvisor?: FailureLoopAdvisor;
+}
 
-  server.registerTool('agent_core_status', {
-    title: 'Agent Core Status',
-    description: 'Report Agent Core MCP identity, runtime, authentication mode, authenticated key identity, and workspace roots.',
-    outputSchema: {
-      service: z.string(),
-      serverName: z.string(),
-      version: z.string(),
-      runtime: z.string(),
-      authentication: z.string(),
-      key: z.object({ id: z.string(), name: z.string() }),
-      workspaceRoots: z.array(z.string()),
-      workflow: z.object({ policyVersion: z.string(), engineeringPolicy: z.string(), engineeringRequiredForCoding: z.boolean(), requiredCraft: z.boolean(), multiStepDag: z.boolean(), additionalInference: z.boolean(), catalogEntries: z.number(), storageReady: z.boolean(), storageErrorCode: z.string().nullable() }),
-      memory: z.object({
-        enabled: z.boolean(),
-        healthy: z.boolean(),
-        state: z.string(),
-        schemaVersion: z.number(),
-        vaultRoot: z.string(),
-        counts: z.record(z.string(), z.number()),
-        integrity: z.string(),
-        lastIntegrityCheckAt: z.number().optional(),
-        lastSuccessfulIntegrityCheckAt: z.number().optional(),
-        lastBackupPath: z.string().optional(),
-        lastBackupAt: z.number().optional(),
-      }),
-      continuity: z.object({
-        enabled: z.boolean(),
-        healthy: z.boolean(),
-        snapshotReady: z.boolean(),
-        counts: z.record(z.string(), z.number()),
-      }),
-      execution: z.object({
-        enabled: z.boolean(),
-        healthy: z.boolean(),
-        state: z.string(),
-        stateVersion: z.number(),
-        stateRoot: z.string(),
-        integrity: z.string(),
-        activeRuns: z.number(),
-        queuedSync: z.number(),
-        lastIntegrityCheckAt: z.number().optional(),
-      }),
+type ToolResult = { content: Array<Record<string, unknown>>; isError?: boolean; [key: string]: unknown };
+type Handler = (args: any) => Promise<ToolResult>;
+
+const advisorByServer = new WeakMap<McpServer, FailureLoopAdvisor>();
+
+function recordFailureLoopAdvisory(toolName: string, advisory: FailureLoopAdvisory): void {
+  activityTracker.record(
+    'REFLEXION',
+    advisory.strength === 'no-progress' ? 'warn' : 'info',
+    advisory.message,
+    'failure-loop-advisory',
+    {
+      tool: toolName,
+      repeatCount: advisory.repeatCount,
+      scope: advisory.scope,
+      failureFamily: advisory.failureFamily,
     },
-    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  }, async () => {
-    const memoryScope = {
-      principalId: persistentPrincipalId(runtime, key),
-      projectId: runtime.workspace.roots[0],
-    };
-    const executionScope = {
-      principalId: key.id,
-      projectId: runtime.workspace.roots[0],
-    };
-    const [memoryStatus, executionStatus] = await Promise.all([
-      runtime.memory.status(memoryScope),
-      runtime.execution.health(executionScope),
-    ]);
-    let workflowStorageReady = false;
-    let workflowStorageErrorCode: string | null = null;
-    try { await runtime.memory.assertWorkflowReady(memoryScope); workflowStorageReady = true; }
-    catch (error) { workflowStorageErrorCode = error instanceof Error && 'code' in error ? String(error.code) : 'WORKFLOW_STORAGE_UNAVAILABLE'; }
-    let continuityCounts: Record<string, number> = {
-      activeTasks: 0, recentCompleted: 0, blockedTasks: 0, deferredTasks: 0,
-      unfinishedPlans: 0, frontier: 0, interruptedTurns: 0,
-    };
-    let snapshotReady = false;
-    if (memoryStatus.healthy) {
-      try {
-        const snapshot = await runtime.memory.getContinuitySnapshot(memoryScope);
-        continuityCounts = {
-          activeTasks: snapshot.activeTasks.length,
-          recentCompleted: snapshot.recentCompleted.length,
-          blockedTasks: snapshot.blockedTasks.length,
-          deferredTasks: snapshot.deferredTasks.length,
-          unfinishedPlans: snapshot.unfinishedPlans.length,
-          frontier: snapshot.frontier.length,
-          interruptedTurns: snapshot.interruptedTurns.length,
-        };
-        snapshotReady = true;
-      } catch {}
+  );
+}
+
+const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: string, schema: any, handler: Handler, _readOnly = false) => {
+  const metadata = RDC_TOOL_METADATA[name];
+  server.registerTool(name, {
+    title: metadata.title,
+    description: metadata.description,
+    inputSchema: schema,
+    annotations: metadata.annotations,
+  }, async (args: any) => {
+    const started = Date.now();
+    const input = args ?? {};
+    const trackCall = input.origin !== 'ui';
+    const advisor = trackCall ? advisorByServer.get(server) : undefined;
+    try {
+      const result = await handler(input);
+      const durationMs = Date.now() - started;
+      let finalResult = result;
+      if (advisor) {
+        if (result.isError) {
+          const advisory = advisor.observeFailure(name, input, result);
+          if (advisory) {
+            finalResult = appendFailureLoopAdvisory(result, advisory) as ToolResult;
+            recordFailureLoopAdvisory(name, advisory);
+          }
+        } else {
+          advisor.observeSuccess(name, input);
+        }
+      }
+      if (trackCall) {
+        try {
+          if (name !== 'get_recent_tool_calls') toolHistory.addCall(name, input, finalResult as any, durationMs);
+        } catch (error) {
+          activityTracker.captureFailure('HISTORY', error, 'tool-history-write-failure', { tool: name });
+        }
+        try {
+          if (finalResult.isError) await usageTracker.trackFailure(name); else await usageTracker.trackSuccess(name);
+        } catch (error) {
+          activityTracker.captureFailure('USAGE', error, 'tool-usage-write-failure', { tool: name });
+        }
+        activityTracker.record(
+          finalResult.isError ? 'OPERATION' : 'MCP',
+          finalResult.isError ? 'info' : 'success',
+          finalResult.isError ? `${name} operation failed` : `${name} completed`,
+          finalResult.isError ? 'handled-tool-failure' : 'tool-call',
+          {
+            tool: name,
+            durationMs,
+            argumentKeys: Object.keys(input),
+            ...(finalResult.isError ? { result: JSON.stringify(finalResult.content) } : {}),
+          },
+        );
+      }
+      return finalResult as any;
+    } catch (error) {
+      let finalError = error;
+      if (advisor) {
+        const advisory = advisor.observeFailure(name, input, error);
+        if (advisory) {
+          recordFailureLoopAdvisory(name, advisory);
+          finalError = annotateFailureLoopException(error, advisory);
+        }
+      }
+      activityTracker.captureFailure('MCP', finalError, 'tool-exception', {
+        tool: name,
+        durationMs: Date.now() - started,
+        argumentKeys: Object.keys(input),
+      });
+      throw finalError;
     }
-    const structuredContent = {
-      service: 'agent-core',
-      serverName: SERVER_NAME,
-      version: SERVER_VERSION,
-      runtime: `node ${process.version}`,
-      authentication: key.authentication ?? 'bearer-api-key',
-      key: { id: key.id, name: key.name },
-      workspaceRoots: runtime.workspace.roots,
-      workflow: { policyVersion: 'workflow-v1', engineeringPolicy: 'engineering-v1', engineeringRequiredForCoding: true, requiredCraft: true, multiStepDag: true, additionalInference: false, catalogEntries: runtime.capabilities.coverage().total, storageReady: workflowStorageReady, storageErrorCode: workflowStorageErrorCode },
-      memory: { ...memoryStatus, state: runtime.memory.currentState },
-      continuity: {
-        enabled: memoryStatus.enabled,
-        healthy: memoryStatus.healthy && snapshotReady,
-        snapshotReady,
-        counts: continuityCounts,
-      },
-      execution: executionStatus,
-    };
-    return {
-      content: [{ type: 'text', text: JSON.stringify(structuredContent, null, 2) }],
-      structuredContent,
-    };
   });
+};
 
-  server.registerTool('agent_core_capabilities', {
-    title: 'Agent Core Capabilities',
-    description: 'Describe Agent Core automatic capability routing, authentication, operational tools, Native GitHub Fabric, deterministic memory, and deferred capability registry.',
-    outputSchema: {
-      stage: z.string(),
-      enabled: z.array(z.string()),
-      deferred: z.array(z.string()),
-    },
-    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  }, async () => {
-    const structuredContent = {
-      stage: 'v6-local-resource-governance',
-      enabled: [
-        'mcp.streamable_http', 'auth.api_key', 'auth.oauth2',
-        'oauth.dynamic_client_registration', 'oauth.authorization_code_pkce',
-        'oauth.refresh_token', 'workspace.boundaries',
-        'capability.registry', 'capability.deferred_loading', 'capability.audit_gate',
-        'routing.capability_route',
-        'routing.principal_bound_context',
-        'routing.execution_gate',
-        'memory.deterministic_fabric',
-        'continuity.local_ledger',
-        'execution.deterministic_fabric',
-        'execution.event_driven_wake',
-        'execution.evidence_bridge',
-        'execution.adaptive_resource_governance',
-        'runtime.evidence_based_diagnosis',
-        'maintenance.local_safe_schedule',
-        'observability.audit_journal',
-        ...(runtime.telemetry.status().enabled ? ['observability.otlp_loopback_export'] : []),
-        'github.native_fabric',
-        ...OPERATIONAL_TOOL_NAMES.map((name) => `tool.${name}`),
-        ...GITHUB_TOOL_NAMES.map((name) => `tool.${name}`),
-        ...LANGFLOW_TOOL_NAMES.map((name) => `tool.${name}`),
-        ...OPERATOR_DIRECTIVE_TOOL_NAMES.map((name) => `tool.${name}`),
-        ...CAPABILITY_TOOL_NAMES.map((name) => `tool.${name}`),
-        ...MEMORY_TOOL_NAMES.map((name) => `tool.${name}`),
-        ...MEMORY_TURN_TOOL_NAMES.map((name) => `tool.${name}`),
-        ...CONTINUITY_TOOL_NAMES.map((name) => `tool.${name}`),
-        ...EXECUTION_TOOL_NAMES.map((name) => `tool.${name}`),
-        ...WORKFLOW_TOOL_NAMES.map((name) => `tool.${name}`),
-        'workflow.source_grounding', 'workflow.mandatory_craft', 'workflow.required_execution_graph',
-        ...HEALTH_METRICS_TOOL_NAMES.map((name) => `tool.${name}`),
-      ],
-      deferred: ['git.semantic_tools', 'gui.automation', 'registry.system_admin', 'app.adapters'],
-    };
-    return {
-      content: [{ type: 'text', text: JSON.stringify(structuredContent, null, 2) }],
-      structuredContent,
-    };
-  });
+export function createAgentCoreMcpServer(_key?: unknown, runtime: AgentCoreMcpRuntime = {}): McpServer {
+  const baseInstructions = loadAgentProtocol();
+  const instructions = runtime.phoneController?.enabled
+    ? `${baseInstructions}\n\n${PHONE_SKILL_INSTRUCTIONS}`
+    : baseInstructions;
+  const server = new McpServer(
+    { name: SERVER_NAME, title: 'Agent Core', version: SERVER_VERSION },
+    { instructions },
+  );
+  if (runtime.failureLoopAdvisor) advisorByServer.set(server, runtime.failureLoopAdvisor);
+  tool(server, 'get_config', 'Get Configuration', schemas.getConfig, async () => getConfig() as any, true);
+  tool(server, 'set_config_value', 'Set Configuration Value', schemas.setConfigValue, setConfigValue as any);
+  tool(server, 'read_file', 'Read File or URL', schemas.readFile, handlers.handleReadFile as any, true);
+  tool(server, 'read_multiple_files', 'Read Multiple Files', schemas.readMultipleFiles, handlers.handleReadMultipleFiles as any, true);
+  tool(server, 'write_file', 'Write File', schemas.writeFile, handlers.handleWriteFile as any);
+  tool(server, 'write_pdf', 'Write/Modify PDF', schemas.writePdf, handlers.handleWritePdf as any);
+  tool(server, 'create_directory', 'Create Directory', schemas.createDirectory, handlers.handleCreateDirectory as any);
+  tool(server, 'list_directory', 'List Directory Contents', schemas.listDirectory, handlers.handleListDirectory as any, true);
+  tool(server, 'move_file', 'Move/Rename File', schemas.moveFile, handlers.handleMoveFile as any);
 
-  registerHealthMetricsTools(server, runtime, key);
-  registerOperationalTools(server, runtime, key);
-  registerGitHubTools(server, runtime, key);
-  registerLangflowTools(server, runtime, key);
-  registerOperatorDirectiveTools(server, runtime, key);
-  registerCapabilityTools(server, runtime, key);
-  registerMemoryTools(server, runtime, key);
-  registerMemoryTurnTools(server, runtime, key);
-  registerContinuityTools(server, runtime, key);
-  registerExecutionTools(server, runtime, key);
-  registerWorkflowTools(server, runtime, key);
+  tool(server, 'start_search', 'Start Search', schemas.startSearch, handlers.handleStartSearch as any, true);
+  tool(server, 'get_more_search_results', 'Get Search Results', schemas.getMoreSearchResults, handlers.handleGetMoreSearchResults as any, true);
+  tool(server, 'stop_search', 'Stop Search', schemas.stopSearch, handlers.handleStopSearch as any);
+  tool(server, 'list_searches', 'List Active Searches', schemas.listSearches, async () => handlers.handleListSearches() as any, true);
+  tool(server, 'get_file_info', 'Get File Information', schemas.getFileInfo, handlers.handleGetFileInfo as any, true);
+  tool(server, 'edit_block', 'Edit Block', schemas.editBlock, handlers.handleEditBlock as any);
+  tool(server, 'start_process', 'Start Terminal Process', schemas.startProcess, handlers.handleStartProcess as any);
+  tool(server, 'read_process_output', 'Read Process Output', schemas.readProcessOutput, handlers.handleReadProcessOutput as any, true);
+  tool(server, 'interact_with_process', 'Interact With Process', schemas.interactWithProcess, handlers.handleInteractWithProcess as any);
+  tool(server, 'force_terminate', 'Force Terminate Session', schemas.forceTerminate, handlers.handleForceTerminate as any);
+  tool(server, 'list_sessions', 'List Sessions', schemas.listSessions, async () => handlers.handleListSessions() as any, true);
+  tool(server, 'list_processes', 'List Processes', schemas.listProcesses, async () => handlers.handleListProcesses() as any, true);
+  tool(server, 'kill_process', 'Kill Process', schemas.killProcess, handlers.handleKillProcess as any);
+
+  tool(server, 'get_usage_stats', 'Get Usage Statistics', schemas.getUsageStats, async () => getUsageStats() as any, true);
+  tool(server, 'get_recent_tool_calls', 'Get Recent Tool Calls', schemas.getRecentToolCalls, handlers.handleGetRecentToolCalls as any, true);
+  tool(server, 'give_feedback_to_desktop_commander', 'Give Feedback', schemas.giveFeedback, giveFeedbackToDesktopCommander as any);
+  tool(server, 'get_prompts', 'Get Prompt', schemas.getPrompts, getPrompts as any, true);
+
+  if (runtime.memoryService) registerMemoryTools(server, runtime.memoryService, runtime.failureLoopAdvisor);
+  if (runtime.learningService) registerLearningTools(server, runtime.learningService, runtime.failureLoopAdvisor);
+  if (runtime.hermesPartner) registerPartnerTools(server, runtime.hermesPartner, runtime.failureLoopAdvisor);
+  if (runtime.semanticIde) registerSemanticIdeTools(server, runtime.semanticIde);
+  if (runtime.phoneController) registerPhoneTools(server, runtime.phoneController);
+  if (runtime.codeIntelligence) registerCodeIntelligenceTools(server, runtime.codeIntelligence);
   return server;
 }

@@ -1,5 +1,7 @@
+import { ActivityMonitor } from './ActivityMonitor';
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Activity,
   ChevronDown,
   ExternalLink,
   FolderOpen,
@@ -17,6 +19,7 @@ import {
 
 export function AgentCorePanel() {
   const [expanded, setExpanded] = useState(false);
+  const [monitorOpen, setMonitorOpen] = useState(false);
   const [status, setStatus] = useState<AgentCoreControlStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string>('');
@@ -84,6 +87,9 @@ export function AgentCorePanel() {
   };
 
   const unknownStatus = statusError ? 'Unavailable' : 'Checking';
+  const executionStatus = status?.mcpServer === 'Running'
+    ? 'Available'
+    : (status?.execution ?? unknownStatus);
 
   return (
     <section className="agent-core-panel" aria-label="Agent Core controls">
@@ -113,12 +119,13 @@ export function AgentCorePanel() {
               <span>— {status?.overall ?? unknownStatus}</span>
             </div>
             <div className="agent-core-status-line">
-              MCP Server: {status?.mcpServer ?? unknownStatus} | Memory: {status?.memory ?? unknownStatus} | Execution: {status?.execution ?? unknownStatus}
+              MCP Server: {status?.mcpServer ?? unknownStatus} | Memory: {status?.memory ?? unknownStatus} | Execution: {executionStatus}
             </div>
             <div className="agent-core-status-line">Tunnel: {status?.tunnel ?? unknownStatus}</div>
           </div>
 
           <div className="agent-core-control-group">
+            <button type="button" className="agent-core-action" onClick={() => setMonitorOpen(true)}><Activity size={13} /><span>Activity Monitor</span></button>
             <button type="button" className="agent-core-action" onClick={() => void runUtility('agent_core_open_folder', 'Open Agent Core Folder')} disabled={Boolean(busy)}>
               <FolderOpen size={13} />
               <span>Open Agent Core Folder</span>
@@ -174,6 +181,7 @@ export function AgentCorePanel() {
           {statusError ? <div className="agent-core-feedback agent-core-error" role="alert">{statusError}</div> : null}
         </div>
       ) : null}
+      {monitorOpen ? <ActivityMonitor onClose={() => setMonitorOpen(false)} /> : null}
     </section>
   );
 }

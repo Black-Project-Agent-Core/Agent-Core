@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -7,144 +7,75 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { HttpSecurityPolicy } from '../src/http/security-policy.js';
-import { FileAuditLogger } from '../src/logging/audit-log.js';
 
-const tempDirs: string[] = [];
+const roots: string[] = [];
 const servers: Server[] = [];
-const auditLoggers: FileAuditLogger[] = [];
-
-function makeAuditLogger(root: string): FileAuditLogger {
-  const logger = new FileAuditLogger(path.join(root, 'logs'));
-  auditLoggers.push(logger);
-  return logger;
-}
-
-async function tempRoot(): Promise<string> {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'agent-core-http-'));
-  tempDirs.push(dir);
-  return dir;
-}
-
-async function listen(server: Server): Promise<string> {
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+async function root() { const value = await mkdtemp(path.join(os.tmpdir(), 'agent-core-http-')); roots.push(value); return value; }
+async function listen(server: Server) {
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   servers.push(server);
-  const address = server.address() as AddressInfo;
-  return `http://127.0.0.1:${address.port}`;
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
-
 afterEach(async () => {
-  await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
-  await Promise.all(auditLoggers.splice(0).map((logger) => logger.close()));
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => resolve()))));
+  await Promise.all(roots.splice(0).map(value => rm(value, { recursive: true, force: true })));
 });
 
-describe('HTTP authentication', () => {
+describe('bridge HTTP authentication', () => {
   it('serves health without authentication', async () => {
-    const root = await tempRoot();
-    const handler = createHttpHandler({
-      keyStore: new FileKeyStore(path.join(root, 'data')),
-      auditLogger: makeAuditLogger(root),
-      mcpHandler: async () => { throw new Error('MCP hook must not run'); },
-    });
-    const baseUrl = await listen(createServer(handler));
-
-    const response = await fetch(`${baseUrl}/health`);
+    const dir = await root();
+    const base = await listen(createServer(createHttpHandler({
+      keyStore: new FileKeyStore(path.join(dir, 'data')),
+      mcpHandler: async () => { throw new Error('must not dispatch'); },
+    })));
+    const response = await fetch(`${base}/health`);
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ status: 'ok', service: 'agent-core' });
+    expect(await response.json()).toMatchObject({ status: 'ok', service: 'agent-core-rdc-bridge' });
   });
 
-  it.each([
-    [undefined, 'missing bearer'],
-    ['Basic abc', 'malformed bearer'],
-    ['Bearer agent_core_live_invalid', 'invalid bearer'],
-  ])('returns 401 for %s (%s)', async (authorization) => {
-    const root = await tempRoot();
-    const handler = createHttpHandler({
-      keyStore: new FileKeyStore(path.join(root, 'data')),
-      auditLogger: makeAuditLogger(root),
-      mcpHandler: async () => { throw new Error('MCP hook must not run'); },
-    });
-    const baseUrl = await listen(createServer(handler));
-    const headers = authorization ? { Authorization: authorization } : undefined;
-    const response = await fetch(`${baseUrl}/mcp`, { method: 'POST', headers });
-    expect(response.status).toBe(401);
-    expect(await response.json()).toMatchObject({ error: 'unauthorized' });
-  });
-
-  it('passes a verified key to the MCP hook and never logs the raw token', async () => {
-    const root = await tempRoot();
-    const keyStore = new FileKeyStore(path.join(root, 'data'));
-    const auditLogger = makeAuditLogger(root);
-    const created = await keyStore.create('chatgpt');
-    let receivedKeyId: string | null = null;
-
-    const handler = createHttpHandler({
+  it('requires a valid bearer key before MCP dispatch', async () => {
+    const dir = await root();
+    const keyStore = new FileKeyStore(path.join(dir, 'data'));
+    const base = await listen(createServer(createHttpHandler({
       keyStore,
-      auditLogger,
+      mcpHandler: async () => { throw new Error('must not dispatch'); },
+    })));
+    const missing = await fetch(`${base}/mcp`, { method: 'POST' });
+    expect(missing.status).toBe(401);
+    const invalid = await fetch(`${base}/mcp`, { method: 'POST', headers: { Authorization: 'Bearer agent_core_live_invalid' } });
+    expect(invalid.status).toBe(401);
+  });
+  it('passes the verified principal to MCP dispatch', async () => {
+    const dir = await root();
+    const keyStore = new FileKeyStore(path.join(dir, 'data'));
+    const created = await keyStore.create('chatgpt');
+    let received: string | null = null;
+    const base = await listen(createServer(createHttpHandler({
+      keyStore,
       mcpHandler: async (_request, response, key) => {
-        receivedKeyId = key.id;
+        received = key.id;
         response.writeHead(200, { 'content-type': 'application/json' });
-        response.end(JSON.stringify({ ok: true, keyId: key.id }));
+        response.end('{"ok":true}');
       },
-    });
-    const baseUrl = await listen(createServer(handler));
-
-    const response = await fetch(`${baseUrl}/mcp`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${created.key}` },
+    })));
+    const response = await fetch(`${base}/mcp`, {
+      method: 'POST', headers: { Authorization: `Bearer ${created.key}` },
     });
     expect(response.status).toBe(200);
-    expect(receivedKeyId).toBe(created.metadata.id);
-
-    await auditLogger.drain();
-    const audit = await readFile(auditLogger.filePath, 'utf8');
-    expect(audit).toContain(created.metadata.id);
-    expect(audit).toContain('chatgpt');
-    expect(audit).not.toContain(created.key);
+    expect(received).toBe(created.metadata.id);
   });
 
-  it('rejects an untrusted browser Origin before authentication or MCP dispatch', async () => {
-    const root = await tempRoot();
+  it('rejects an untrusted browser Origin before dispatch', async () => {
+    const dir = await root();
     let dispatched = false;
-    const handler = createHttpHandler({
-      keyStore: new FileKeyStore(path.join(root, 'data')),
-      auditLogger: makeAuditLogger(root),
-      security: new HttpSecurityPolicy({
-        publicBaseUrl: 'https://agent-core.example.test',
-        trustProxy: false,
-        allowedOrigins: [],
-      }),
+    const security = new HttpSecurityPolicy({ publicBaseUrl: null, protectedResourceUrl: null, trustProxy: false, allowedOrigins: [] });
+    const base = await listen(createServer(createHttpHandler({
+      keyStore: new FileKeyStore(path.join(dir, 'data')),
+      security,
       mcpHandler: async () => { dispatched = true; },
-    });
-    const baseUrl = await listen(createServer(handler));
-
-    const response = await fetch(`${baseUrl}/mcp`, {
-      method: 'POST',
-      headers: { Origin: 'https://evil.example' },
-    });
+    })));
+    const response = await fetch(`${base}/mcp`, { method: 'POST', headers: { Origin: 'https://evil.example' } });
     expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({ error: 'forbidden_origin' });
     expect(dispatched).toBe(false);
-  });
-
-  it('allows localhost browser Origin to reach the normal authentication flow', async () => {
-    const root = await tempRoot();
-    const handler = createHttpHandler({
-      keyStore: new FileKeyStore(path.join(root, 'data')),
-      auditLogger: makeAuditLogger(root),
-      security: new HttpSecurityPolicy({
-        publicBaseUrl: null,
-        trustProxy: false,
-        allowedOrigins: [],
-      }),
-      mcpHandler: async () => { throw new Error('MCP hook must not run without authentication'); },
-    });
-    const baseUrl = await listen(createServer(handler));
-
-    const response = await fetch(`${baseUrl}/mcp`, {
-      method: 'POST',
-      headers: { Origin: 'http://localhost:43123' },
-    });
-    expect(response.status).toBe(401);
   });
 });

@@ -1,0 +1,700 @@
+Ketemu. Aku sudah trace langsung source Hermes. **Tidak ada satu modul literal bernama `Self-Learning Loop`**, tetapi fungsi itu memang ada dan dibangun dari beberapa subsystem yang saling terhubung.
+
+### 1. Self-Learning Loop — mekanisme utamanya
+
+**File paling penting:**
+
+```text
+E:\Projects\hermes-agent\agent\background_review.py
+```
+
+Ini adalah **loop belajar otomatis Hermes yang sebenarnya**. Setelah turn selesai, Hermes dapat membuat fork `AIAgent` terpisah yang membaca snapshot percakapan lalu mengevaluasi:
+
+```text
+Percakapan User
+      ↓
+Hermes mengerjakan task
+      ↓
+Final response dikirim ke user
+      ↓
+Trigger learning tercapai?
+      ↓
+background_review
+      ↓
+Fork AIAgent terpisah
+      ↓
+Analisa conversation:
+ ├─ user mengoreksi AI?
+ ├─ ada workflow baru?
+ ├─ ada workaround/fix?
+ ├─ skill lama salah?
+ ├─ ada preference durable?
+ └─ ada pengetahuan reusable?
+      ↓
+ ┌──────────────┬──────────────┐
+ ▼              ▼
+Memory        Skills
+MEMORY.md     SKILL.md
+USER.md       references/
+              scripts/
+              templates/
+```
+
+Yang menarik: komentarnya sendiri secara eksplisit menyebut ini sebagai **`self-improvement loop`**.
+
+Review fork tersebut memang diarahkan untuk aktif mencari:
+
+```text
+user corrections
+style / tone / verbosity preferences
+workflow corrections
+non-trivial techniques
+fixes
+workarounds
+debugging paths
+outdated skills
+durable memory
+```
+
+Dan hasilnya bisa menulis lewat:
+
+```text
+memory(...)
+skill_manage(...)
+```
+
+Tanpa mengotori percakapan utama atau prompt-cache utama.
+
+---
+
+### 2. Trigger otomatisnya
+
+Memory trigger berada di:
+
+```text
+E:\Projects\hermes-agent\agent\turn_context.py
+```
+
+Function:
+
+```python
+_tick_memory_nudge(...)
+```
+
+Logikanya:
+
+```text
+setiap user turn
+    ↓
+_turns_since_memory += 1
+    ↓
+mencapai nudge_interval?
+    ↓ yes
+background memory review
+```
+
+Default source = **10 turn**.
+
+Dan konfigurasi Hermes milikmu sekarang memang:
+
+```yaml
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+  memory_char_limit: 2200
+  user_char_limit: 1375
+  nudge_interval: 10
+```
+
+Jadi **memory auto-review aktif setiap 10 user turn**.
+
+---
+
+Skill trigger ada di:
+
+```text
+E:\Projects\hermes-agent\agent\turn_finalizer.py
+```
+
+Berbeda dari memory, ini menghitung **tool iterations**:
+
+```text
+_iters_since_skill
+      ↓
+>= _skill_nudge_interval
+      ↓
+background skill review
+```
+
+Konfigurasi aktifmu:
+
+```yaml
+skills:
+  creation_nudge_interval: 15
+```
+
+Artinya sekarang:
+
+```text
+Memory learning → setiap 10 user turns
+Skill learning  → setiap 15 tool iterations
+```
+
+Kalau salah satunya terpenuhi, `turn_finalizer.py` menjalankan:
+
+```python
+agent._spawn_background_review(...)
+```
+
+dan itu masuk ke `background_review.py`.
+
+---
+
+## `/learn` juga bagian sistem belajar, tetapi manual
+
+File:
+
+```text
+E:\Projects\hermes-agent\agent\learn_prompt.py
+```
+
+Ini bukan automatic loop.
+
+`/learn` adalah **explicit learning**:
+
+```text
+/learn workflow yang baru kita lakukan
+           ↓
+Hermes membaca conversation/source
+           ↓
+mencari skill serupa
+           ↓
+ada?
+ ├─ yes → patch/extend skill
+ └─ no  → create skill baru
+           ↓
+SKILL.md
+references/
+scripts/
+templates/
+```
+
+Bahkan tanpa argumen, `/learn` mengartikan request sebagai kira-kira:
+
+```text
+pelajari workflow yang baru saja kita lakukan
+dan ubah menjadi reusable skill
+```
+
+Jadi ada dua jalur:
+
+```text
+AUTOMATIC
+background_review.py
+
+EXPLICIT
+/learn → learn_prompt.py
+```
+
+---
+
+# Curator = evolusi/maintenance hasil belajar
+
+File:
+
+```text
+E:\Projects\hermes-agent\agent\curator.py
+```
+
+Curator bukan capture loop utama.
+
+Tugasnya adalah **merawat hasil belajar setelah skill mulai menumpuk**.
+
+Default source:
+
+| Mekanisme         |         Default |
+| ----------------- | --------------: |
+| Curator enabled   |          `true` |
+| Interval          |          7 hari |
+| Minimum idle      |           2 jam |
+| Mark stale        |         14 hari |
+| Archive           |         30 hari |
+| LLM consolidation | `false` default |
+
+Alurnya:
+
+```text
+Learned Skills
+      ↓
+usage/activity tracking
+      ↓
+Curator
+      ├─ active
+      ├─ stale
+      ├─ reactivate
+      ├─ archive
+      ├─ consolidate
+      └─ patch
+```
+
+Curator tidak langsung delete sembarangan. Skill yang tidak terpakai masuk lifecycle dan **archive bersifat recoverable**.
+
+Curator dipanggil dari beberapa surface:
+
+```text
+cli.py
+hermes_cli\web_server_sessions.py
+gateway\run.py
+```
+
+Jadi bukan sekadar CLI command manual; ada housekeeping otomatis.
+
+---
+
+# Learning Graph
+
+File:
+
+```text
+E:\Projects\hermes-agent\agent\learning_graph.py
+```
+
+Ini **bukan mesin belajar**, melainkan visualisasi hasil belajar.
+
+Ia menggabungkan:
+
+```text
+learned skills
++
+MEMORY.md
++
+USER.md
++
+usage/activity
++
+related_skills
+```
+
+dan menghasilkan graph yang dipakai oleh:
+
+```text
+hermes journey
+hermes learning
+hermes memory-graph
+```
+
+Skill dianggap memiliki learning signal ketika:
+
+```python
+created_by in {"agent", "learn"}
+```
+
+atau:
+
+```python
+use_count > 0
+```
+
+---
+
+# 3. Memory Management Hermes
+
+Core built-in memory berada di dua file utama:
+
+```text
+E:\Projects\hermes-agent\tools\memory_tool.py
+E:\Projects\hermes-agent\tools\memory_tool_store.py
+```
+
+Storage aktual:
+
+```text
+E:\Projects\hermes\memories\MEMORY.md
+E:\Projects\hermes\memories\USER.md
+```
+
+Perannya berbeda:
+
+| Store       | Fungsi                                                   |
+| ----------- | -------------------------------------------------------- |
+| `MEMORY.md` | environment, conventions, durable notes, quirks, lessons |
+| `USER.md`   | identitas/preference/style/profile user                  |
+
+Memory mempunyai operasi:
+
+```text
+add
+replace
+remove
+batch
+```
+
+Batch bersifat **atomic**:
+
+```text
+remove old
++
+replace existing
++
+add new
+        ↓
+satu transaction logis
+        ↓
+final size diperiksa
+        ↓
+baru persist
+```
+
+---
+
+## Memory memiliki hard limit
+
+Konfigurasi aktifmu:
+
+```text
+MEMORY.md = 2200 chars
+USER.md   = 1375 chars
+```
+
+Ini sengaja kecil karena memory built-in dimasukkan ke system prompt setiap session.
+
+Kalau penuh, Hermes diarahkan untuk:
+
+```text
+consolidate
+    ↓
+merge overlapping memories
+    ↓
+remove stale memory
+    ↓
+add new durable information
+```
+
+Bukan terus append tanpa batas.
+
+---
+
+## Memory snapshot dibuat immutable per session
+
+Ini detail arsitektur yang cukup bagus.
+
+Saat session dimulai:
+
+```text
+MEMORY.md / USER.md
+        ↓
+load_from_disk()
+        ↓
+_system_prompt_snapshot
+        ↓
+FROZEN
+```
+
+Kalau background review menulis memory baru di tengah session:
+
+```text
+disk → UPDATED
+current system prompt → TIDAK berubah
+next session → baru melihat memory baru
+```
+
+Tujuannya menjaga **prompt-prefix/cache stability**.
+
+---
+
+## Memory storage punya proteksi yang cukup matang
+
+`memory_tool_store.py` sudah mempunyai:
+
+```text
+Windows file locking → msvcrt
+Unix locking         → fcntl
+
+atomic writes
+duplicate prevention
+character budget
+batch atomicity
+external-edit drift detection
+backup on drift
+threat/injection scanning
+ambiguous-match protection
+consolidation retry limit
+```
+
+Ada juga guard menarik untuk background learning.
+
+Background review boleh otomatis:
+
+```text
+ADD memory
+```
+
+tetapi tidak boleh diam-diam melakukan:
+
+```text
+REPLACE
+REMOVE
+```
+
+Untuk destructive/consolidating memory operation, Hermes melakukan:
+
+```text
+background review
+      ↓
+replace/remove requested
+      ↓
+STAGED
+      ↓
+/memory pending
+      ↓
+user approve / reject
+```
+
+Jadi self-learning tidak diberikan kebebasan penuh untuk menghapus memory lama tanpa review.
+
+---
+
+# External Memory Management
+
+Orchestrator:
+
+```text
+E:\Projects\hermes-agent\agent\memory_manager.py
+```
+
+Interface:
+
+```text
+E:\Projects\hermes-agent\agent\memory_provider.py
+```
+
+`MemoryManager` mengatur lifecycle:
+
+```text
+initialize
+     ↓
+prefetch relevant memory
+     ↓
+inject context
+     ↓
+on_turn_start
+     ↓
+LLM turn
+     ↓
+sync_turn
+     ↓
+queue next prefetch
+     ↓
+on_pre_compress
+     ↓
+on_session_end
+     ↓
+shutdown
+```
+
+Provider external tersedia di:
+
+```text
+E:\Projects\hermes-agent\plugins\memory\
+```
+
+Di sana ada:
+
+```text
+byterover
+hindsight
+holographic
+honcho
+mem0
+openviking
+retaindb
+supermemory
+```
+
+Hermes membatasi **satu external memory provider aktif pada satu waktu**, tetapi built-in `MEMORY.md/USER.md` tetap bisa berjalan bersamanya.
+
+---
+
+## Kondisi Hermes milikmu sekarang
+
+Aku cek `E:\Projects\hermes\config.yaml`.
+
+Saat ini:
+
+```text
+Built-in MEMORY.md       = ON
+Built-in USER.md         = ON
+Memory nudge             = 10 turns
+Skill learning nudge     = 15 tool iterations
+Background review        = default ON
+Curator                  = default ON
+External memory provider = NONE
+```
+
+Jadi secara praktis Hermes-mu sekarang sudah mempunyai loop:
+
+```text
+                    ┌─────────────────────┐
+                    │      USER TASK      │
+                    └──────────┬──────────┘
+                               ▼
+                         HERMES AGENT
+                               │
+                    ┌──────────┴──────────┐
+                    ▼                     ▼
+                execute task         final response
+                                          │
+                                          ▼
+                                  learning counters
+                                   /            \
+                                  /              \
+                         10 user turns       15 tool iters
+                              │                   │
+                              └─────────┬─────────┘
+                                        ▼
+                              BACKGROUND REVIEW
+                                        │
+                           ┌────────────┴───────────┐
+                           ▼                        ▼
+                       MEMORY                    SKILLS
+                    MEMORY.md                  SKILL.md
+                    USER.md                 references/
+                           \                      /
+                            └─────────┬──────────┘
+                                      ▼
+                                   CURATOR
+                                      │
+                          maintain/evolve/archive
+                                      │
+                                      ▼
+                               future sessions
+```
+
+### File paling krusial kalau tujuanmu mau membedah atau mengambil mekanismenya
+
+| Prioritas | File                         | Peran                                        |
+| --------- | ---------------------------- | -------------------------------------------- |
+| **1**     | `agent/background_review.py` | Automatic Self-Learning Loop                 |
+| **2**     | `tools/memory_tool.py`       | Memory management API/policy                 |
+| **3**     | `tools/memory_tool_store.py` | Durable built-in memory engine               |
+| **4**     | `agent/turn_context.py`      | Memory-learning trigger                      |
+| **5**     | `agent/turn_finalizer.py`    | Skill-learning trigger + post-turn execution |
+| **6**     | `agent/memory_manager.py`    | External memory orchestration                |
+| **7**     | `agent/memory_provider.py`   | Memory provider contract                     |
+| **8**     | `agent/learn_prompt.py`      | Explicit `/learn`                            |
+| **9**     | `agent/curator.py`           | Long-term evolution/maintenance              |
+| **10**    | `agent/learning_graph.py`    | Learned-state graph/visualization            |
+
+Jadi kalau yang kamu cari adalah **“otak Hermes yang membuat dia bisa belajar dari pekerjaan yang baru dilakukan tanpa selalu diperintah `/learn`”**, pusatnya adalah:
+
+```text
+background_review.py
+       +
+turn_context.py
+       +
+turn_finalizer.py
+       +
+memory_tool.py
+       +
+skill_manage
+```
+
+Itulah **Self-Learning Loop Hermes yang sebenarnya**. Aku belum mengubah apa pun pada codebase dalam audit ini.
+
+Plan sudah dibuat dan disimpan di:
+
+`E:\Projects\Agent-Core\docs\Hermes-Self-Learning-Memory-Steal-Use-Plan.md`
+
+Statusnya **PLANNED — OPEN**, 606 baris. `docs\CODEBASE.md` juga sudah kusinkronkan agar controller berikutnya tahu bahwa ini **masih plan, belum menjadi runtime aktif**.
+
+Inti rencananya:
+
+* `background_review.py` → **Learning Review Coordinator**
+* `memory_tool.py` → **memory batch + destructive-change safety**
+* `memory_tool_store.py` → **transaction, drift, poisoning/injection protection**
+* `turn_context.py` → **learning checkpoint/trigger engine**
+* `turn_finalizer.py` → **post-task learning yang fail-soft**
+* `memory_manager.py` → **Learning Sink Manager**
+* `memory_provider.py` → **LearningSink contract**
+* `learn_prompt.py` → **explicit learn/distillation protocol**
+* `curator.py` → **proposal-only Learning Curator**
+* `learning_graph.py` → **Learning Journey**
+
+Arsitektur targetnya:
+
+```text
+AI / Controller
+      │
+      ├── normal Agent Core tools
+      │
+      └── learning checkpoint
+                │
+                ▼
+        review diperlukan?
+          │          │
+         no         yes
+          │          ▼
+          │   AI semantic review
+          │          │
+          │    learning(review)
+          │          │
+          │    ┌─────┴─────────┐
+          │    ▼               ▼
+          │ MemoryService   Grafel Patterns
+          │
+          └──────────────→ continue
+```
+
+Keputusan terpenting: **tidak akan ada Python Hermes runtime, hidden second LLM, memory store ketiga, atau gateway/runtime Hermes di Agent Core.** Kita mencuri mekanismenya, lalu native-kan ke TypeScript Agent Core.
+
+Aku juga sengaja mengubah pola `MemoryManager/MemoryProvider` Hermes menjadi:
+
+```text
+LearningSinkManager
+  ├─ MemorySink
+  └─ CodePatternSink
+```
+
+Jadi knowledge generic/operasional masuk MemoryService, sedangkan resep coding spesifik repo masuk Grafel Patterns.
+
+Public surface yang direncanakan juga dibuat kecil:
+
+```text
+learning(action =
+  status |
+  checkpoint |
+  review |
+  curate |
+  journey
+)
+
+memory_batch(...)
+```
+
+Ada **40 acceptance gates** di plan untuk transaction safety, learning triggers, routing, curator, journey, Reflexion regression, dan boundary runtime.
+
+Urutan implementasinya sudah dibagi **Phase 0–9**:
+
+```text
+0. baseline + attribution
+1. memory safety + transaction
+2. learning state + triggers
+3. sink abstraction
+4. review coordinator
+5. explicit learn protocol
+6. curator
+7. learning journey
+8. runtime/MCP wiring
+9. CODEBASE + release metadata
+```
+
+Lisensi Hermes sudah diverifikasi **MIT**, jadi steal/use/modifikasi diperbolehkan dengan attribution/notice yang sesuai jika ada substantial code yang benar-benar disalin.
+
+Git readback untuk scope task ini:
+
+```text
+ M docs/CODEBASE.md
+?? docs/Hermes-Self-Learning-Memory-Steal-Use-Plan.md
+```
+
+Belum ada implementasi source/runtime yang dilakukan, dan belum ada changeset karena saat ini baru planning document. Saat implementasi mulai, plan menetapkan release intent yang paling masuk akal adalah **minor**.

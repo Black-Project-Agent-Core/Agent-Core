@@ -1,0 +1,10 @@
+/DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/
+/SubProject/
+/rdc/
+/.rdc-standalone/
+/launcher-publish/
+/_artifacts/
+/.grafel/
+/.tmp/
+/agent-core.zip
+/.env*

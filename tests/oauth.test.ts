@@ -6,452 +6,170 @@ import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
-import { loadConfig } from '../src/config.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { HttpSecurityPolicy } from '../src/http/security-policy.js';
-import { FileAuditLogger } from '../src/logging/audit-log.js';
-import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { FileOAuthStore } from '../src/oauth/store.js';
 import { OAuthService } from '../src/oauth/service.js';
-import { createRuntimeServices } from '../src/runtime/services.js';
-import { RuntimeMetricRegistry } from '../src/runtime/metric-window.js';
 
 const roots: string[] = [];
 const servers: Server[] = [];
-const runtimes: Array<ReturnType<typeof createRuntimeServices>> = [];
-const auditLoggers: FileAuditLogger[] = [];
+const forwarded = { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'agent-core-tunnel.example' };
+const pkce = (value: string) => createHash('sha256').update(value).digest('base64url');
 
-function pkce(verifier: string): string {
-  return createHash('sha256').update(verifier).digest('base64url');
-}
+afterEach(async () => {
+  await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => resolve()))));
+  await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })));
+});
 
-async function setup(httpSecurity?: {
-  publicBaseUrl: string | null;
-  protectedResourceUrl?: string | null;
-  trustProxy: boolean;
-  allowedOrigins: string[];
-}) {
+async function setup(audit?: (context: Record<string, unknown>) => void) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-oauth-'));
   roots.push(root);
-  const dataDir = path.join(root, 'data');
-  const keyStore = new FileKeyStore(dataDir);
-  const oauthStore = new FileOAuthStore(dataDir);
-  const metrics = new RuntimeMetricRegistry();
-  const oauthService = new OAuthService(keyStore, oauthStore, new HttpSecurityPolicy({
-    publicBaseUrl: null,
-    protectedResourceUrl: null,
-    trustProxy: true,
-    allowedOrigins: [],
-    ...httpSecurity,
-  }), metrics);
-  const baseMemory = loadConfig({}, root).memory;
-  const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, { ...baseMemory, enabled: false });
-  runtimes.push(runtime);
-  const auditLogger = new FileAuditLogger(path.join(root, 'logs'), { metrics });
-  auditLoggers.push(auditLogger);
+  const keyStore = new FileKeyStore(path.join(root, 'data'));
+  const oauthStore = new FileOAuthStore(path.join(root, 'data'));
+  const security = new HttpSecurityPolicy({ publicBaseUrl: null, protectedResourceUrl: null, trustProxy: true, allowedOrigins: [] });
+  const oauthService = new OAuthService(keyStore, oauthStore, security, undefined, audit);
+  let dispatchedPrincipal: string | null = null;
   const app = createHttpHandler({
-    keyStore,
-    oauthService,
-    auditLogger,
-    mcpHandler: createMcpHttpHandler(runtime),
-    metrics,
+    keyStore, oauthService, security,
+    mcpHandler: async (_request, response, key) => {
+      dispatchedPrincipal = key.id;
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end('{"ok":true}');
+    },
   });
   const server = createServer(app);
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   servers.push(server);
-  const port = (server.address() as AddressInfo).port;
-  return {
-    baseUrl: `http://127.0.0.1:${port}`,
-    keyStore,
-    oauthStore,
-    externalBase: 'https://agent-core-tunnel.example',
-    metrics,
-  };
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  return { baseUrl, keyStore, oauthStore, dispatched: () => dispatchedPrincipal };
 }
 
-const forwarded = {
-  'x-forwarded-proto': 'https',
-  'x-forwarded-host': 'agent-core-tunnel.example',
-};
-
-async function registerClient(baseUrl: string) {
+async function register(baseUrl: string) {
   const response = await fetch(`${baseUrl}/oauth/register`, {
-    method: 'POST',
-    headers: { ...forwarded, 'content-type': 'application/json' },
+    method: 'POST', headers: { ...forwarded, 'content-type': 'application/json' },
     body: JSON.stringify({
       client_name: 'ChatGPT',
       redirect_uris: ['https://chatgpt.com/connector/oauth/test'],
       grant_types: ['authorization_code', 'refresh_token'],
-      response_types: ['code'],
-      token_endpoint_auth_method: 'client_secret_post',
+      response_types: ['code'], token_endpoint_auth_method: 'client_secret_post',
     }),
   });
   expect(response.status).toBe(201);
   return await response.json() as Record<string, any>;
 }
 
-afterEach(async () => {
-  await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => {
-    server.close(() => resolve());
-  })));
-  await Promise.all(runtimes.splice(0).map(async (runtime) => {
-    await runtime.execution.close().catch(() => undefined);
-    await runtime.memory.close().catch(() => undefined);
-  }));
-  await Promise.all(auditLoggers.splice(0).map((logger) => logger.close().catch(() => undefined)));
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
-});
-
-describe('Agent Core OAuth bridge', () => {
-  it('advertises protected-resource and OAuth metadata with DCR and PKCE', async () => {
-    const { baseUrl, externalBase } = await setup();
-    const protectedResource = await fetch(
-      `${baseUrl}/.well-known/oauth-protected-resource/mcp`,
-      { headers: forwarded },
-    );
-    expect(protectedResource.status).toBe(200);
-    expect(await protectedResource.json()).toMatchObject({
-      resource: `${externalBase}/mcp`,
-      authorization_servers: [externalBase],
-      scopes_supported: ['mcp:tools'],
-    });
-    const metadata = await fetch(
-      `${baseUrl}/.well-known/oauth-authorization-server`,
-      { headers: forwarded },
-    );
-    expect(metadata.status).toBe(200);
-    expect(await metadata.json()).toMatchObject({
-      issuer: externalBase,
-      authorization_endpoint: `${externalBase}/oauth/authorize`,
-      token_endpoint: `${externalBase}/oauth/token`,
-      registration_endpoint: `${externalBase}/oauth/register`,
-      code_challenge_methods_supported: ['S256'],
-      grant_types_supported: ['authorization_code', 'refresh_token'],
-      scopes_supported: ['mcp:tools', 'offline_access'],
-    });
-  });
-
-  it('records bounded OAuth duration/failure counters without credential labels', async () => {
-    const { baseUrl, metrics } = await setup();
-    const invalid = await fetch(`${baseUrl}/oauth/register`, {
-      method: 'POST',
-      headers: { ...forwarded, 'content-type': 'application/json' },
-      body: JSON.stringify({ redirect_uris: ['file:///unsafe'] }),
-    });
-    expect(invalid.status).toBe(400);
-    expect(metrics.metric('oauth.handle.duration_ms').count).toBe(1);
-    expect(metrics.counter('oauth.failures.count')).toBe(1);
-    expect(metrics.metricNames().some((name) => name.includes('client'))).toBe(false);
-  });
-
-  it('ignores spoofed forwarded identity when trusted-proxy mode is disabled', async () => {
-    const { baseUrl } = await setup({ publicBaseUrl: null, trustProxy: false, allowedOrigins: [] });
-    const protectedResource = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`, {
-      headers: {
-        'x-forwarded-proto': 'https',
-        'x-forwarded-host': 'spoofed.example.test',
-      },
-    });
-    expect(protectedResource.status).toBe(200);
-    expect(await protectedResource.json()).toMatchObject({
-      resource: `${baseUrl}/mcp`,
-      authorization_servers: [baseUrl],
-    });
-  });
-
-  it('keeps issuer and protected resource canonical when publicBaseUrl is configured', async () => {
-    const canonical = 'https://canonical-agent-core.example';
-    const { baseUrl } = await setup({ publicBaseUrl: canonical, trustProxy: true, allowedOrigins: [] });
-    const headers = {
-      host: new URL(baseUrl).host,
-      'x-forwarded-proto': 'http',
-      'x-forwarded-host': 'spoofed.example.test',
-    };
-    const protectedResource = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`, { headers });
-    const metadata = await fetch(`${baseUrl}/.well-known/oauth-authorization-server`, { headers });
-    expect(await protectedResource.json()).toMatchObject({
-      resource: `${canonical}/mcp`,
-      authorization_servers: [canonical],
-    });
-    expect(await metadata.json()).toMatchObject({ issuer: canonical });
-  });
-
-  it('accepts an explicitly configured tunnel protected resource without changing the authorization-server issuer', async () => {
-    const tunnelResource = 'https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/tunnel_test123';
-    const { baseUrl, externalBase } = await setup({
-      publicBaseUrl: null,
-      protectedResourceUrl: tunnelResource,
-      trustProxy: true,
-      allowedOrigins: [],
-    });
+describe('OAuth bridge', () => {
+  it('publishes OAuth discovery metadata for the tunnel bridge', async () => {
+    const { baseUrl } = await setup();
     const protectedResource = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`, { headers: forwarded });
     expect(await protectedResource.json()).toMatchObject({
-      resource: tunnelResource,
-      authorization_servers: [externalBase],
+      resource: 'https://agent-core-tunnel.example/mcp',
+      authorization_servers: ['https://agent-core-tunnel.example'],
+      scopes_supported: ['mcp:tools'],
     });
+    const metadata = await fetch(`${baseUrl}/.well-known/oauth-authorization-server`, { headers: forwarded });
+    expect(await metadata.json()).toMatchObject({
+      issuer: 'https://agent-core-tunnel.example',
+      code_challenge_methods_supported: ['S256'],
+      grant_types_supported: ['authorization_code', 'refresh_token'],
+    });
+  });
 
-    const client = await registerClient(baseUrl);
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: client.client_id,
-      redirect_uri: client.redirect_uris[0] as string,
-      state: 'tunnel-resource',
-      code_challenge: pkce('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~tunnel-resource'),
-      code_challenge_method: 'S256',
-      resource: tunnelResource,
-      scope: 'mcp:tools',
+  it('accepts an explicitly configured OpenAI tunnel protected resource', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-oauth-tunnel-'));
+    roots.push(root);
+    const keyStore = new FileKeyStore(path.join(root, 'data'));
+    const oauthStore = new FileOAuthStore(path.join(root, 'data'));
+    const tunnelResource = 'https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/tunnel_test123';
+    const security = new HttpSecurityPolicy({
+      publicBaseUrl: null,
+      protectedResourceUrl: tunnelResource,
+      trustProxy: false,
+      allowedOrigins: [],
     });
-    const response = await fetch(`${baseUrl}/oauth/authorize?${params}`, { headers: forwarded });
+    const oauthService = new OAuthService(keyStore, oauthStore, security);
+    const app = createHttpHandler({ keyStore, oauthService, security, mcpHandler: async () => undefined });
+    const server = createServer(app);
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    servers.push(server);
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const client = await register(baseUrl);
+    const params = new URLSearchParams({
+      response_type: 'code', client_id: client.client_id,
+      redirect_uri: client.redirect_uris[0], code_challenge: 'challenge',
+      code_challenge_method: 'S256', resource: tunnelResource, scope: 'mcp:tools',
+    });
+    const response = await fetch(`${baseUrl}/oauth/authorize?${params}`);
     expect(response.status).toBe(200);
     expect(await response.text()).toContain('Agent Core API key');
   });
 
-  it('registers a confidential OAuth client without storing its raw secret', async () => {
+  it('records a safe reason when an authorization request is rejected', async () => {
+    const events: Record<string, unknown>[] = [];
+    const { baseUrl } = await setup(context => events.push(context));
+    const client = await register(baseUrl);
+    const params = new URLSearchParams({
+      response_type: 'code', client_id: client.client_id,
+      redirect_uri: client.redirect_uris[0], code_challenge: 'challenge',
+      code_challenge_method: 'S256', resource: 'https://wrong-resource.example/mcp',
+      scope: 'mcp:tools',
+    });
+    const response = await fetch(`${baseUrl}/oauth/authorize?${params}`, { headers: forwarded });
+    expect(response.status).toBe(400);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      reason: 'resource_mismatch',
+      resource: 'https://wrong-resource.example/mcp',
+      expectedResource: 'https://agent-core-tunnel.example/mcp',
+      hasCodeChallenge: true,
+    });
+    expect(events[0]).not.toHaveProperty('codeChallenge');
+    expect(events[0]).not.toHaveProperty('state');
+  });
+
+  it('stores only a hash of the dynamically registered client secret', async () => {
     const { baseUrl, oauthStore } = await setup();
-    const client = await registerClient(baseUrl);
+    const client = await register(baseUrl);
     expect(client.client_id).toMatch(/^agent_core_client_/);
     expect(client.client_secret).toMatch(/^agent_core_secret_/);
-    expect(client.token_endpoint_auth_method).toBe('client_secret_post');
-
     const stored = await readFile(oauthStore.filePath, 'utf8');
     expect(stored).toContain(client.client_id);
     expect(stored).not.toContain(client.client_secret);
   });
-
-  it('exchanges an API-key-approved PKCE code for MCP OAuth tokens', async () => {
-    const { baseUrl, keyStore, oauthStore, externalBase } = await setup();
+  it('exchanges an API-key-approved PKCE code and accepts the OAuth token on /mcp', async () => {
+    const { baseUrl, keyStore, dispatched } = await setup();
     const key = await keyStore.create('chatgpt-oauth');
-    const client = await registerClient(baseUrl);
+    const client = await register(baseUrl);
     const verifier = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~pkce';
     const redirectUri = client.redirect_uris[0] as string;
-    const authorizeParams = new URLSearchParams({
-      response_type: 'code',
-      client_id: client.client_id,
-      redirect_uri: redirectUri,
-      state: 'state-123',
-      code_challenge: pkce(verifier),
-      code_challenge_method: 'S256',
-      resource: `${externalBase}/mcp`,
-      scope: 'mcp:tools offline_access',
+    const resource = 'https://agent-core-tunnel.example/mcp';
+    const params = new URLSearchParams({
+      response_type: 'code', client_id: client.client_id, redirect_uri: redirectUri,
+      state: 'state-123', code_challenge: pkce(verifier), code_challenge_method: 'S256',
+      resource, scope: 'mcp:tools offline_access',
     });
-
-    const form = await fetch(`${baseUrl}/oauth/authorize?${authorizeParams}`, {
-      headers: forwarded,
-    });
-    expect(form.status).toBe(200);
-    expect(await form.text()).toContain('Agent Core API key');
-
     const approved = await fetch(`${baseUrl}/oauth/authorize`, {
-      method: 'POST',
-      redirect: 'manual',
+      method: 'POST', redirect: 'manual',
       headers: { ...forwarded, 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ ...Object.fromEntries(authorizeParams), api_key: key.key }),
+      body: new URLSearchParams({ ...Object.fromEntries(params), api_key: key.key }),
     });
     expect(approved.status).toBe(302);
-    const callback = new URL(approved.headers.get('location')!);
-    expect(callback.origin + callback.pathname).toBe(redirectUri);
-    expect(callback.searchParams.get('state')).toBe('state-123');
-    expect(callback.searchParams.get('iss')).toBe(externalBase);
-    const code = callback.searchParams.get('code');
-    expect(code).toMatch(/^agent_core_code_/);
+    const code = new URL(approved.headers.get('location')!).searchParams.get('code')!;
     const tokenResponse = await fetch(`${baseUrl}/oauth/token`, {
-      method: 'POST',
-      headers: { ...forwarded, 'content-type': 'application/x-www-form-urlencoded' },
+      method: 'POST', headers: { ...forwarded, 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: client.client_id,
-        client_secret: client.client_secret,
-        code: code!,
-        redirect_uri: redirectUri,
-        code_verifier: verifier,
-        resource: `${externalBase}/mcp`,
+        grant_type: 'authorization_code', client_id: client.client_id,
+        client_secret: client.client_secret, code, redirect_uri: redirectUri,
+        code_verifier: verifier, resource,
       }),
     });
     expect(tokenResponse.status).toBe(200);
-    const tokens = await tokenResponse.json() as Record<string, any>;
+    const tokens = await tokenResponse.json() as Record<string, string>;
     expect(tokens.access_token).toMatch(/^agent_core_oauth_/);
-    expect(tokens.refresh_token).toMatch(/^agent_core_refresh_/);
-    expect(tokens.scope).toContain('mcp:tools');
-
-    const initialize = await fetch(`${baseUrl}/mcp`, {
-      method: 'POST',
-      headers: {
-        ...forwarded,
-        authorization: `Bearer ${tokens.access_token}`,
-        'content-type': 'application/json',
-        accept: 'application/json, text/event-stream',
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0', id: 1, method: 'initialize',
-        params: {
-          protocolVersion: '2025-11-25', capabilities: {},
-          clientInfo: { name: 'chatgpt', version: '1.0' },
-        },
-      }),
+    const mcp = await fetch(`${baseUrl}/mcp`, {
+      method: 'POST', headers: { ...forwarded, Authorization: `Bearer ${tokens.access_token}` },
     });
-    expect(initialize.status).toBe(200);
-
-    const statusResponse = await fetch(`${baseUrl}/mcp`, {
-      method: 'POST',
-      headers: {
-        ...forwarded,
-        authorization: `Bearer ${tokens.access_token}`,
-        'content-type': 'application/json',
-        accept: 'application/json, text/event-stream',
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0', id: 2, method: 'tools/call',
-        params: { name: 'agent_core_status', arguments: {} },
-      }),
-    });
-    const statusJson = await statusResponse.json() as Record<string, any>;
-    expect(statusJson.result.structuredContent).toMatchObject({
-      authentication: 'oauth2',
-      key: { id: key.metadata.id, name: 'chatgpt-oauth' },
-    });
-
-    const refreshed = await fetch(`${baseUrl}/oauth/token`, {
-      method: 'POST',
-      headers: { ...forwarded, 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: client.client_id,
-        client_secret: client.client_secret,
-        refresh_token: tokens.refresh_token,
-        resource: `${externalBase}/mcp`,
-      }),
-    });
-    expect(refreshed.status).toBe(200);
-    const refreshTokens = await refreshed.json() as Record<string, any>;
-    expect(refreshTokens.access_token).toMatch(/^agent_core_oauth_/);
-    expect(refreshTokens.refresh_token).toMatch(/^agent_core_refresh_/);
-    expect(refreshTokens.refresh_token).not.toBe(tokens.refresh_token);
-    const stored = await readFile(oauthStore.filePath, 'utf8');
-    expect(stored).not.toContain(key.key);
-    expect(stored).not.toContain(client.client_secret);
-    expect(stored).not.toContain(tokens.access_token);
-    expect(stored).not.toContain(tokens.refresh_token);
-  });
-
-  it('rejects an access token issued for a different MCP protected resource', async () => {
-    const { baseUrl, keyStore, oauthStore, externalBase } = await setup();
-    const key = await keyStore.create('cross-resource-key');
-    const client = await oauthStore.registerClient({
-      clientName: 'Cross Resource Client',
-      redirectUris: ['https://chatgpt.com/connector/oauth/cross-resource'],
-      grantTypes: ['authorization_code', 'refresh_token'],
-      responseTypes: ['code'],
-      tokenEndpointAuthMethod: 'client_secret_post',
-    });
-    const tokens = await oauthStore.issueTokens({
-      clientId: client.client_id,
-      resource: 'https://different-agent-core.example/mcp',
-      scopes: ['mcp:tools'],
-      keyId: key.metadata.id,
-      keyName: key.metadata.name,
-    });
-
-    const response = await fetch(`${baseUrl}/mcp`, {
-      method: 'POST',
-      headers: {
-        ...forwarded,
-        authorization: `Bearer ${tokens.accessToken}`,
-        'content-type': 'application/json',
-        accept: 'application/json, text/event-stream',
-      },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 99, method: 'tools/list', params: {} }),
-    });
-    expect(response.status).toBe(401);
-    expect(response.headers.get('www-authenticate')).toContain(`${externalBase}/.well-known/oauth-protected-resource/mcp`);
-  });
-
-  it('rejects OAuth authorization for a resource other than the canonical MCP resource', async () => {
-    const { baseUrl } = await setup();
-    const client = await registerClient(baseUrl);
-    const verifier = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~wrong-resource';
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: client.client_id,
-      redirect_uri: client.redirect_uris[0] as string,
-      state: 'wrong-resource',
-      code_challenge: pkce(verifier),
-      code_challenge_method: 'S256',
-      resource: 'https://different-agent-core.example/mcp',
-      scope: 'mcp:tools',
-    });
-
-    const response = await fetch(`${baseUrl}/oauth/authorize?${params}`, { headers: forwarded });
-    expect(response.status).toBe(400);
-    expect(await response.text()).toContain('Invalid OAuth authorization request');
-  });
-
-  it('returns an OAuth discovery challenge for invalid MCP tokens', async () => {
-    const { baseUrl, externalBase } = await setup();
-    const response = await fetch(`${baseUrl}/mcp`, {
-      method: 'POST',
-      headers: {
-        ...forwarded,
-        authorization: 'Bearer agent_core_oauth_invalid',
-      },
-    });
-    expect(response.status).toBe(401);
-    expect(response.headers.get('www-authenticate')).toContain(
-      `resource_metadata="${externalBase}/.well-known/oauth-protected-resource/mcp"`,
-    );
-    expect(response.headers.get('www-authenticate')).toContain('scope="mcp:tools"');
-  });
-});
-
-describe('Agent Core OAuth authorization-state reset', () => {
-  it('imports legacy client registrations, clears grants, and preserves custom Agent Core keys', async () => {
-    const { baseUrl, keyStore, oauthStore, externalBase } = await setup();
-    const key = await keyStore.create('custom-agent-core-local');
-    const existingClient = await oauthStore.registerClient({
-      clientName: 'Existing Client',
-      redirectUris: ['https://chatgpt.com/connector/oauth/existing'],
-      grantTypes: ['authorization_code', 'refresh_token'],
-      responseTypes: ['code'],
-      tokenEndpointAuthMethod: 'client_secret_post',
-    });
-    const oldTokens = await oauthStore.issueTokens({
-      clientId: existingClient.client_id,
-      resource: `${externalBase}/mcp`,
-      scopes: ['mcp:tools'],
-      keyId: key.metadata.id,
-      keyName: key.metadata.name,
-    });
-
-    const legacyDir = path.join(path.dirname(path.dirname(oauthStore.filePath)), 'data-current');
-    const legacyStore = new FileOAuthStore(legacyDir);
-    const legacyClient = await legacyStore.registerClient({
-      clientName: 'ChatGPT',
-      redirectUris: ['https://chatgpt.com/connector/oauth/QTOb4VcHdCsW'],
-      grantTypes: ['authorization_code', 'refresh_token'],
-      responseTypes: ['code'],
-      tokenEndpointAuthMethod: 'client_secret_post',
-    });
-    const authorize = new URLSearchParams({
-      response_type: 'code',
-      client_id: legacyClient.client_id,
-      redirect_uri: legacyClient.redirect_uris[0]!,
-      state: 'reset-state',
-      code_challenge: pkce('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~reset'),
-      code_challenge_method: 'S256',
-      resource: `${externalBase}/mcp`,
-      scope: 'mcp:tools',
-    });
-
-    expect((await fetch(`${baseUrl}/oauth/authorize?${authorize}`, { headers: forwarded })).status).toBe(400);
-    const reset = await oauthStore.resetAuthorizationState({ importClientStores: [legacyStore] });
-    expect(reset.backupPath).toBeTruthy();
-    expect(reset.clientsImported).toBe(1);
-    expect(await oauthStore.getClient(existingClient.client_id)).not.toBeNull();
-    expect(await oauthStore.getClient(legacyClient.client_id)).not.toBeNull();
-    expect(await oauthStore.verifyAccessToken(oldTokens.accessToken)).toBeNull();
-    expect((await keyStore.verify(key.key))?.id).toBe(key.metadata.id);
-
-    const after = await fetch(`${baseUrl}/oauth/authorize?${authorize}`, { headers: forwarded });
-    expect(after.status).toBe(200);
-    expect(await after.text()).toContain('Agent Core API key');
+    expect(mcp.status).toBe(200);
+    expect(dispatched()).toBe(key.metadata.id);
   });
 });

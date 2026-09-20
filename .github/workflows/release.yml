@@ -1,4 +1,0 @@
-# GitHub Actions is permanently disabled for this repository.
-# Release automation through CI is forbidden by Agent Core repository policy.
-# Stable releases are built, verified, packaged, published, and checked directly from the local Agent Core authority.
-# This file intentionally defines no workflow.

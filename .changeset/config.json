@@ -1,0 +1,26 @@
+{
+  "changelog": false,
+  "commit": false,
+  "fixed": [],
+  "linked": [],
+  "access": "restricted",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": [],
+  "bumpVersionsWithWorkspaceProtocolOnly": false,
+  "changedFilePatterns": [
+    "src/**",
+    "package.json",
+    "src/ui/**",
+    "src/launcher/**"
+  ],
+  "format": false,
+  "privatePackages": {
+    "version": true,
+    "tag": false
+  },
+  "snapshot": {
+    "useCalculatedVersion": true,
+    "prereleaseTemplate": "{tag}.{datetime}.{commit-short}"
+  }
+}

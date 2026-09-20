@@ -1,17 +1,18 @@
-# Desktop Commander Agent Core - Folder Allowlist
-# Satu folder per baris. Baris kosong dan baris yang diawali # akan diabaikan.
-# Dua format berikut sama-sama valid:
-# E:\Projects\Agent-Core
-# "E:\Projects\Agent-Core"
-#
-# Tanda kutip direkomendasikan agar mudah dibaca, terutama untuk path dengan spasi.
+# External Remote Desktop Commander - dynamic folder allowlist (separate from Agent Core runtime)
+# This file configures only the external RDC operator tool. It is not an Agent Core filesystem policy or Agent Core health/acceptance surface.
+# No fixed drive letters: this external-tool allowlist must survive moves between drives/machines.
+# Supported dynamic tokens:
+#   @PROJECT_ROOT   = current Agent Core project folder
+#   @PROJECT_DRIVE  = drive that currently contains Agent Core
+#   @SYSTEM_DRIVE   = current Windows system drive
+#   @FIXED_DRIVES   = every ready local fixed drive on the current machine
+# Relative paths are resolved from the current Agent Core project root.
 
-"E:\"
-"D:\"
-"C:\"
-"F:\"
+# Preserve broad local-machine access without hardcoding C:/E:/F:.
+@FIXED_DRIVES
 
-# Contoh tambahan:
-# "E:\Project Dengan Spasi"
-# "D:\Assets"
-# E:\Folder-Tanpa-Spasi
+# Examples:
+# @PROJECT_ROOT
+# @PROJECT_DRIVE
+# .
+# "..\Shared Assets"

@@ -1,12 +1,6 @@
-﻿# Agent Core filesystem allow-list
-# One absolute drive or folder per line.
-# Blank lines and lines beginning with # are ignored.
-# E:\Projects\Agent-Core is always allowed automatically.
-# Restart Agent Core from the tray after changing this file.
+# Agent Core filesystem allow-list (legacy/unwired)
+# Current Agent Core runtime filesystem policy is maintained by the internal machine-control config under runtime\rdc (vendored RDC-derived implementation, not external Remote Desktop Commander).
+# This file intentionally contains no machine-specific drive letters.
+# Relative entries, if this file is reactivated in the future, must resolve from project root.
 
-C:\
-F:\
-
-# Examples you may enable later by removing the leading #:
-# E:\Market-Signal-Lab
-# D:\Projects
+.

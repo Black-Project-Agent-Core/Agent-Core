@@ -7,40 +7,54 @@ import {
 } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import type { McpProtocolMode } from '../config.js';
+import type { CodeIntelligenceService } from '../code-intelligence/service.js';
+import type { LearningService } from '../learning/service.js';
+import type { HermesPartnerService } from '../partner/service.js';
+import type { SemanticIdeService } from '../semantic-ide/service.js';
+import type { MemoryService } from '../memory/service.js';
 import type { McpHttpHandler } from '../http/app.js';
-import type { RuntimeServices } from '../runtime/services.js';
+import type { PhoneController } from '../phone/controller.js';
+import { FailureLoopAdvisor } from './failure-loop-advisor.js';
+import { activityTracker } from '../tracker/activity-tracker.js';
 import { createAgentCoreMcpServer } from './server.js';
 
-export interface AgentCoreMcpHttpOptions {
+export interface BridgeMcpHttpOptions {
   protocolMode?: McpProtocolMode;
+  memoryService?: MemoryService;
+  learningService?: LearningService;
+  hermesPartner?: HermesPartnerService;
+  semanticIde?: SemanticIdeService;
+  phoneController?: PhoneController;
+  codeIntelligence?: CodeIntelligenceService;
 }
 
-function sendProtocolError(response: Parameters<McpHttpHandler>[1], status: number, message: string): void {
+function sendProtocolError(
+  response: Parameters<McpHttpHandler>[1],
+  status: number,
+  message: string,
+): void {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
-  response.end(JSON.stringify({
-    jsonrpc: '2.0',
-    error: { code: -32000, message },
-    id: null,
-  }));
+  response.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message }, id: null }));
+}
+export function bindAbortClose(
+  signal: AbortSignal | null | undefined,
+  close: () => void,
+): () => void {
+  if (!signal) return () => {};
+  if (signal.aborted) {
+    close();
+    return () => {};
+  }
+  const onAbort = () => close();
+  signal.addEventListener('abort', onAbort, { once: true });
+  return () => signal.removeEventListener('abort', onAbort);
 }
 
-/**
- * Preserve Agent Core's certified v1 legacy behavior while using the official
- * v2 transport. The upstream v2 stateless fallback intentionally prefers SSE;
- * Agent Core historically opted into buffered JSON responses. The only policy
- * difference here is enableJsonResponse=true; factory/transport lifecycle and
- * request handling remain SDK-owned.
- */
-function legacyJsonStatelessFallback(factory: McpServerFactory) {
+function legacyJsonFallback(factory: McpServerFactory) {
   return async (request: Request, options?: McpHandlerRequestOptions): Promise<Response> => {
     if (request.method.toUpperCase() !== 'POST') {
-      return Response.json({
-        jsonrpc: '2.0',
-        error: { code: -32000, message: 'Method not allowed.' },
-        id: null,
-      }, { status: 405 });
+      return Response.json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed.' }, id: null }, { status: 405 });
     }
-
     const product = await factory({
       era: 'legacy',
       ...(options?.authInfo !== undefined && { authInfo: options.authInfo }),
@@ -50,32 +64,27 @@ function legacyJsonStatelessFallback(factory: McpServerFactory) {
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
     });
-
     let closed = false;
-    const teardown = async () => {
+    const close = async () => {
       if (closed) return;
       closed = true;
       await transport.close().catch(() => undefined);
       await product.close().catch(() => undefined);
     };
-
+    let detachAbort = () => {};
     try {
       await product.connect(transport);
-      request.signal?.addEventListener('abort', () => void teardown(), { once: true });
-      return await transport.handleRequest(request, {
-        ...(options?.authInfo !== undefined && { authInfo: options.authInfo }),
-        ...(options?.parsedBody !== undefined && { parsedBody: options.parsedBody }),
-      });
+      detachAbort = bindAbortClose(request.signal, () => void close());
+      return await transport.handleRequest(request, options);
     } finally {
-      await teardown();
+      detachAbort();
+      await close();
     }
   };
 }
-
 function protocolHandler(factory: McpServerFactory, protocolMode: McpProtocolMode) {
-  const legacy = legacyJsonStatelessFallback(factory);
+  const legacy = legacyJsonFallback(factory);
   const modern = createMcpHandler(factory, { legacy: 'reject', responseMode: 'auto' });
-
   return {
     fetch: async (request: Request, options?: McpHandlerRequestOptions): Promise<Response> => {
       const legacyRequest = await isLegacyRequest(request, options?.parsedBody);
@@ -83,10 +92,7 @@ function protocolHandler(factory: McpServerFactory, protocolMode: McpProtocolMod
       if (protocolMode === 'legacy') {
         return Response.json({
           jsonrpc: '2.0',
-          error: {
-            code: -32000,
-            message: 'Modern MCP protocol is disabled while Agent Core is in legacy-only rollback mode.',
-          },
+          error: { code: -32000, message: 'Modern MCP protocol is disabled.' },
           id: null,
         }, { status: 400 });
       }
@@ -96,25 +102,25 @@ function protocolHandler(factory: McpServerFactory, protocolMode: McpProtocolMod
   };
 }
 
-export function createMcpHttpHandler(
-  runtime: RuntimeServices,
-  options: AgentCoreMcpHttpOptions = {},
-): McpHttpHandler {
+export function createMcpHttpHandler(options: BridgeMcpHttpOptions = {}): McpHttpHandler {
   const protocolMode = options.protocolMode ?? 'dual';
-
+  const failureLoopAdvisor = new FailureLoopAdvisor();
   return async (request, response, key) => {
-    if (request.method !== 'POST') {
-      sendProtocolError(response, 405, 'Method not allowed.');
-      return;
-    }
-
-    const factory: McpServerFactory = () => createAgentCoreMcpServer(key, runtime);
+    if (request.method !== 'POST') return sendProtocolError(response, 405, 'Method not allowed.');
+    const factory: McpServerFactory = () => createAgentCoreMcpServer(key, {
+      memoryService: options.memoryService,
+      learningService: options.learningService,
+      hermesPartner: options.hermesPartner,
+      semanticIde: options.semanticIde,
+      phoneController: options.phoneController,
+      codeIntelligence: options.codeIntelligence,
+      failureLoopAdvisor,
+    });
     const webHandler = protocolHandler(factory, protocolMode);
-    const nodeHandler = toNodeHandler(webHandler);
-
     try {
-      await nodeHandler(request, response);
-    } catch {
+      await toNodeHandler(webHandler)(request, response);
+    } catch (error) {
+      activityTracker.captureFailure('MCP', error, 'transport-failure', { method: request.method ?? '', protocolMode });
       if (!response.headersSent) sendProtocolError(response, 500, 'Internal MCP server error.');
       else if (!response.writableEnded) response.end();
     } finally {

@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { readSensitiveJsonFile } from '../security/sensitive-file.js';
 import { persistOAuthSnapshot } from './atomic-file.js';
 import { withOAuthProcessLock } from './file-lock.js';
 
@@ -26,6 +27,7 @@ interface ClientRecord {
   responseTypes: string[];
   tokenEndpointAuthMethod: string;
   secretHash: string;
+  recoveryPending?: boolean;
   createdAt: string;
 }
 
@@ -70,6 +72,7 @@ export interface RegisteredClient {
 export interface PublicClient {
   clientId: string;
   redirectUris: string[];
+  recoveryPending: boolean;
 }
 
 export interface OAuthResetOptions {
@@ -132,7 +135,7 @@ export class FileOAuthStore {
 
   private async load(): Promise<OAuthFile> {
     try {
-      const parsed = JSON.parse(await readFile(this.filePath, 'utf8')) as OAuthFile;
+      const parsed = await readSensitiveJsonFile<OAuthFile>(this.filePath);
       if (parsed.version !== 1) throw new Error('Unsupported OAuth store format');
       return parsed;
     } catch (error) {
@@ -186,7 +189,7 @@ export class FileOAuthStore {
     return withOAuthFile(this.filePath, async () => {
       const file = await this.load();
       const client = file.clients.find((item) => item.clientId === clientId);
-      return client ? { clientId, redirectUris: [...client.redirectUris] } : null;
+      return client ? { clientId, redirectUris: [...client.redirectUris], recoveryPending: client.recoveryPending === true } : null;
     });
   }
 
@@ -195,6 +198,26 @@ export class FileOAuthStore {
       const file = await this.load();
       const client = file.clients.find((item) => item.clientId === clientId);
       return client ? safeHashEqual(secret, client.secretHash) : false;
+    });
+  }
+
+  async recoverClientRegistration(clientId: string, redirectUri: string): Promise<PublicClient | null> {
+    return withOAuthFile(this.filePath, async () => {
+      const file = await this.load();
+      const existing = file.clients.find((item) => item.clientId === clientId);
+      if (existing) return { clientId, redirectUris: [...existing.redirectUris], recoveryPending: existing.recoveryPending === true };
+      // Automatic recovery is only safe when the client registry was completely lost.
+      // If any client remains, require normal DCR or explicit reset import.
+      if (file.clients.length > 0) return null;
+      const record: ClientRecord = {
+        clientId, clientName: 'Recovered ChatGPT', redirectUris: [redirectUri],
+        grantTypes: ['authorization_code', 'refresh_token'], responseTypes: ['code'],
+        tokenEndpointAuthMethod: 'client_secret_post', secretHash: '', recoveryPending: true,
+        createdAt: new Date().toISOString(),
+      };
+      file.clients.push(record);
+      await this.save(file);
+      return { clientId, redirectUris: [redirectUri], recoveryPending: true };
     });
   }
 
@@ -370,6 +393,21 @@ export class FileOAuthStore {
       const tokens = this.mintTokens(file, principal);
       await this.save(file);
       return {principal, tokens};
+    });
+  }
+
+  async exchangeRecoveredAuthorizationCode(raw: string, input: CodeExchangeInput, clientSecret: string): Promise<OAuthExchange | null> {
+    return withOAuthFile(this.filePath, async () => {
+      const file = await this.load();
+      const client = file.clients.find((item) => item.clientId === input.clientId);
+      if (!client?.recoveryPending || !clientSecret) return null;
+      const principal = this.consumeCodeRecord(file, raw, input);
+      if (!principal) return null;
+      client.secretHash = hashSecret(clientSecret);
+      client.recoveryPending = false;
+      const tokens = this.mintTokens(file, principal);
+      await this.save(file);
+      return { principal, tokens };
     });
   }
 

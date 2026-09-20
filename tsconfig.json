@@ -6,12 +6,22 @@
     "rootDir": "src",
     "outDir": "dist",
     "strict": true,
-    "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "sourceMap": true,
+    "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "src/ui/**",
+    "src/rdc/remote-device/**",
+    "src/rdc/ui/**",
+    "src/rdc/server.ts",
+    "src/rdc/index.ts",
+    "src/rdc/custom-stdio.ts",
+    "node_modules",
+    "dist"
+  ]
 }

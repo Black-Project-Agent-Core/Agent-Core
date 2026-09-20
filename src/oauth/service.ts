@@ -3,7 +3,8 @@ import type { FileKeyStore } from '../auth/key-store.js';
 import type { VerifiedKey } from '../auth/key-types.js';
 import type { HttpSecurityPolicy } from '../http/security-policy.js';
 import { ACCESS_TOKEN_PREFIX, FileOAuthStore, type OAuthTokens } from './store.js';
-import type { RuntimeMetricRegistry } from '../runtime/metric-window.js';
+type MetricSink = { increment(name:string, amount?:number): unknown; failure(name:string, code:string): void; observe(name:string, value:number): void };
+type OAuthAuditSink = (context: Record<string, unknown>) => void;
 
 const MCP_SCOPE = 'mcp:tools';
 const OFFLINE_SCOPE = 'offline_access';
@@ -57,6 +58,16 @@ function validRedirectUri(value: string): boolean {
   }
 }
 
+function recoverableChatGptClient(clientId: string, redirectUri: string): boolean {
+  if (!clientId.startsWith('agent_core_client_')) return false;
+  try {
+    const url = new URL(redirectUri);
+    return url.protocol === 'https:' && url.hostname === 'chatgpt.com' && url.pathname.startsWith('/connector/oauth/');
+  } catch {
+    return false;
+  }
+}
+
 function authorizationError(response: ServerResponse, status: number, message: string): void {
   sendHtml(response, status, `<!doctype html><html><body><h1>Agent Core OAuth</h1><p>${escapeHtml(message)}</p></body></html>`);
 }
@@ -66,7 +77,8 @@ export class OAuthService {
     private readonly keyStore: FileKeyStore,
     readonly store: FileOAuthStore,
     private readonly security: HttpSecurityPolicy,
-    private readonly metrics?: RuntimeMetricRegistry,
+    private readonly metrics?: MetricSink,
+    private readonly auditAuthorizationRejection?: OAuthAuditSink,
   ) {}
 
   challenge(request: IncomingMessage): string {
@@ -189,12 +201,36 @@ export class OAuthService {
     const challengeMethod = params.get('code_challenge_method');
     const codeChallenge = params.get('code_challenge') ?? '';
     const resource = params.get('resource') ?? '';
-    const client = await this.store.getClient(clientId);
-    if (!client || !client.redirectUris.includes(redirectUri)) return null;
-    if (responseType !== 'code' || challengeMethod !== 'S256' || !codeChallenge) return null;
-    if (!resource || resource !== this.security.protectedResource(request)) return null;
+    const expectedResource = this.security.protectedResource(request);
     const scopes = parseScope(params.get('scope'));
-    if (!scopes.includes(MCP_SCOPE)) return null;
+    const reject = (reason: string): null => {
+      let redirectHost: string | null = null;
+      try { redirectHost = redirectUri ? new URL(redirectUri).host : null; } catch { /* diagnostic only */ }
+      this.auditAuthorizationRejection?.({
+        reason,
+        clientId: clientId || null,
+        responseType: responseType ?? null,
+        challengeMethod: challengeMethod ?? null,
+        hasCodeChallenge: Boolean(codeChallenge),
+        redirectHost,
+        resource: resource || null,
+        expectedResource,
+        scopes,
+      });
+      return null;
+    };
+    if (responseType !== 'code') return reject('response_type');
+    if (challengeMethod !== 'S256') return reject('code_challenge_method');
+    if (!codeChallenge) return reject('code_challenge_missing');
+    if (!resource) return reject('resource_missing');
+    if (resource !== expectedResource) return reject('resource_mismatch');
+    if (!scopes.includes(MCP_SCOPE)) return reject('scope_missing_mcp_tools');
+    let client = await this.store.getClient(clientId);
+    if (!client && recoverableChatGptClient(clientId, redirectUri)) {
+      client = await this.store.recoverClientRegistration(clientId, redirectUri);
+    }
+    if (!client) return reject('client_unknown');
+    if (!client.redirectUris.includes(redirectUri)) return reject('redirect_uri_mismatch');
     return {
       clientId,
       redirectUri,
@@ -268,7 +304,8 @@ ${hidden('scope', validated.scopes.join(' '))}
     const params = new URLSearchParams(await readBody(request));
     const clientId = params.get('client_id') ?? '';
     const clientSecret = params.get('client_secret') ?? '';
-    if (!await this.store.verifyClient(clientId, clientSecret)) {
+    const client = await this.store.getClient(clientId);
+    if (!client) {
       sendJson(response, 401, { error: 'invalid_client' });
       return;
     }
@@ -280,7 +317,20 @@ ${hidden('scope', validated.scopes.join(' '))}
     }
 
     if (grantType === 'authorization_code') {
-      await this.exchangeAuthorizationCode(params, response, clientId, resource);
+      if (client.recoveryPending) {
+        const exchange = await this.store.exchangeRecoveredAuthorizationCode(params.get('code') ?? '', {
+          clientId, redirectUri: params.get('redirect_uri') ?? '', codeVerifier: params.get('code_verifier') ?? '', resource,
+        }, clientSecret);
+        if (!exchange) { sendJson(response, 400, { error: 'invalid_grant' }); return; }
+        await this.sendTokens(response, exchange.principal, exchange.tokens);
+      } else {
+        if (!await this.store.verifyClient(clientId, clientSecret)) { sendJson(response, 401, { error: 'invalid_client' }); return; }
+        await this.exchangeAuthorizationCode(params, response, clientId, resource);
+      }
+      return;
+    }
+    if (!await this.store.verifyClient(clientId, clientSecret)) {
+      sendJson(response, 401, { error: 'invalid_client' });
       return;
     }
     if (grantType === 'refresh_token') {

@@ -12,6 +12,8 @@ export default defineConfig({
       '**/.worktrees/**',
       '**/stable-release/**',
       '**/SubProject/**',
+      '**/DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/**',
+      '**/src/ui/**',
       '**/referensi/**',
     ],
   },

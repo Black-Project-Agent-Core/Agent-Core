@@ -1,7 +1,8 @@
 import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { persistSerializedFile } from '../runtime/persistent-file.js';
+import { writeOwnedFileAtomic } from '../persistence/atomic-file.js';
+import { readSensitiveJsonFile } from '../security/sensitive-file.js';
 import type {
   CreatedKey,
   CreateKeyOptions,
@@ -37,8 +38,7 @@ export class FileKeyStore {
 
   private async load(): Promise<StoredKeyFile> {
     try {
-      const raw = await readFile(this.filePath, 'utf8');
-      const parsed = JSON.parse(raw) as StoredKeyFile;
+      const parsed = await readSensitiveJsonFile<StoredKeyFile>(this.filePath);
       if (parsed.version !== 1 || !Array.isArray(parsed.keys)) {
         throw new Error('Unsupported Agent Core key store format');
       }
@@ -53,10 +53,8 @@ export class FileKeyStore {
 
   private async save(file: StoredKeyFile): Promise<void> {
     await mkdir(this.dataDir, { recursive: true });
-    const temporaryPath = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
     const serialized = `${JSON.stringify(file, null, 2)}\n`;
-    await writeFile(temporaryPath, serialized, { encoding: 'utf8', mode: 0o600 });
-    await persistSerializedFile(temporaryPath, this.filePath, serialized);
+    await writeOwnedFileAtomic(this.filePath, serialized, { mode: 0o600 });
   }
 
   async create(name: string, options: CreateKeyOptions = {}): Promise<CreatedKey> {
@@ -86,6 +84,25 @@ export class FileKeyStore {
   async list(): Promise<KeyMetadata[]> {
     const file = await this.load();
     return file.keys.map(toMetadata);
+  }
+
+  async importSecret(name: string, secret: string): Promise<KeyMetadata> {
+    const normalizedName = name.trim();
+    if (!normalizedName) throw new Error('Key name is required');
+    if (!secret.startsWith(KEY_PREFIX)) throw new Error('Invalid Agent Core key format');
+    const existing = await this.verify(secret);
+    if (existing) return existing;
+    const salt = randomBytes(16);
+    const hash = await deriveKey(secret, salt);
+    const file = await this.load();
+    const record: StoredKeyRecord = {
+      id: randomUUID(), name: normalizedName, createdAt: new Date().toISOString(),
+      lastUsedAt: null, expiresAt: null, revokedAt: null,
+      salt: salt.toString('base64'), hash: hash.toString('base64'),
+    };
+    file.keys.push(record);
+    await this.save(file);
+    return toMetadata(record);
   }
 
   async verify(secret: string): Promise<VerifiedKey | null> {
@@ -134,4 +151,3 @@ export class FileKeyStore {
 }
 
 export { KEY_PREFIX };
-
