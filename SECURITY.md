@@ -1,5 +1,15 @@
 # Security
 
+## Supported versions
+
+The current stable line is **0.12.x**. Security fixes are applied to the current local line and shipped through a new stable release when required. Older release assets are retained for recovery/history but should not be treated as the preferred security baseline.
+
+## Reporting a vulnerability
+
+Use the repository **Security** tab / private security advisory flow when available. If that path is unavailable, contact the repository owner through a private channel. Do not place exploit details, credentials, OAuth tokens, API keys, private memory, or sensitive machine data in a normal issue.
+
+Include the affected Agent Core version, subsystem, reproduction conditions, impact, and the smallest sanitized evidence needed to reproduce the problem. Do not test destructive behavior outside systems you are authorized to control.
+
 Agent Core is a local machine bridge, not an autonomous agent framework.
 
 The listener is loopback-bound by default. Remote ChatGPT access uses the existing authenticated MCP tunnel rather than exposing the local port directly.

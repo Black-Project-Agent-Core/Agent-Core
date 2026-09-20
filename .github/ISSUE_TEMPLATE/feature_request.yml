@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose a scoped improvement to the current Agent Core architecture.
+title: "[Feature] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / need
+      description: Describe the concrete workflow or limitation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the desired externally observable behavior without assuming a specific implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and constraints
+      description: Note affected subsystems, portability requirements, security boundaries, or compatibility constraints.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Supporting evidence
+      description: Add logs, source references, or examples with secrets removed.

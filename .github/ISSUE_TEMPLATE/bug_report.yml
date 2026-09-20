@@ -1,0 +1,67 @@
+name: Bug report
+description: Report a reproducible Agent Core defect or recovery problem.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include API keys, OAuth tokens, passwords, private memory, or raw credential files.
+  - type: input
+    id: version
+    attributes:
+      label: Agent Core version
+      placeholder: "0.12.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: subsystem
+    attributes:
+      label: Subsystem
+      options:
+        - Machine control / RDC-derived layer
+        - Memory
+        - Game Mode / phone
+        - Code Intelligence / Grafel
+        - Semantic IDE / LSP
+        - Learning
+        - Hermes Partner
+        - OAuth / authentication
+        - Launcher / UI
+        - Release / recovery
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest reliable sequence that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / evidence
+      description: Include exact errors or sanitized logs. Never include secrets.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "Windows version, Node/.NET version if relevant"
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed credentials, tokens, passwords, private memory, and device identifiers.
+          required: true
+        - label: I confirmed whether this belongs to Agent Core rather than external Remote Desktop Commander.
+          required: true

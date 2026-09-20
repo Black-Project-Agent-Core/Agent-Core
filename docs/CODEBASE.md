@@ -200,6 +200,8 @@ Therefore:
 
 This repository-state mapping records the user-authorized current recovery strategy; it does not authorize unrelated remote publication, deployment, or package-registry operations.
 
+GitHub presentation/community surfaces for the current recovery repository are now maintained in-repo: root `README.md` documents the stable v0.12.0 architecture, 62-tool public surface, install/recovery paths, and Git backup boundary; `CONTRIBUTING.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`, `.github/CODEOWNERS`, issue forms, and the pull-request template define repository collaboration and safety expectations. Root `SECURITY.md` additionally records current supported-version and private vulnerability-reporting guidance. These files are documentation/repository-operability surfaces only and do not change Agent Core runtime behavior.
+
 ### 0.8 Mapping contract
 
 This snapshot is intentionally **not an upgrade queue**. Future upgrade selection belongs to the user. When a later implementation changes the active architecture, update this snapshot to describe the new observed state and keep detailed subsystem sections below synchronized.
