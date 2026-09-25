@@ -1,0 +1,32 @@
+import * as z from 'zod/v4';
+
+export const partner = z.object({
+  action: z.enum([
+    'status',
+    'align',
+    'discuss',
+    'approve_alignment',
+    'delegate',
+    'collect',
+    'steer',
+    'approve',
+    'stop',
+    'close',
+  ]),
+  collaborationId: z.string().min(1).max(200).optional(),
+  runId: z.string().min(1).max(200).optional(),
+  task: z.string().min(1).max(20_000).optional(),
+  workspacePath: z.string().min(1).max(2_000).optional(),
+  leadWorkstream: z.string().min(1).max(20_000).optional(),
+  partnerWorkstream: z.string().min(1).max(20_000).optional(),
+  constraints: z.array(z.string().min(1).max(2_000)).max(32).optional(),
+  allowedPaths: z.array(z.string().min(1).max(2_000)).max(64).optional(),
+  expectedDeliverable: z.string().min(1).max(20_000).optional(),
+  message: z.string().min(1).max(20_000).optional(),
+  note: z.string().max(4_000).optional(),
+  extraInstruction: z.string().max(20_000).optional(),
+  wait: z.boolean().optional(),
+  waitTimeoutMs: z.number().int().min(1_000).max(600_000).optional(),
+  requestId: z.string().min(1).max(512).optional(),
+  choice: z.enum(['once', 'deny']).optional(),
+});

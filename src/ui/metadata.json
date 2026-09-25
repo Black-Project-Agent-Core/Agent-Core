@@ -1,0 +1,6 @@
+{
+  "name": "Agent Core",
+  "description": "Agent Core status monitor displaying connection, memory, tunnel, and execution indicators.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
