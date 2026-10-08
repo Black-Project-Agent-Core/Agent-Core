@@ -1,3 +1,4 @@
+import { validateDiagnosticItems, decodeTsServerDiagnostics } from './diagnostic-payload.js';
 import { mkdir, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -39,6 +40,17 @@ import type {
   SemanticDiagnosticsDelta,
 } from './types.js';
 import { isSemanticallyIgnored } from './workspace-policy.js';
+import { isTextPosition, offsetForPosition } from './text-position.js';
+
+export function isRecoverableSemanticTransportError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('SERVER_EXITED')
+    || message.includes('SERVER_NOT_RUNNING')
+    || message.includes('SERVER_PIPE_ERROR')
+    || message.includes('PROVIDER_FATAL')
+    || message.includes('TCP_CLOSED')
+    || message.includes('TCP_ERROR');
+}
 
 function rangesEqual(left: LspRange, right: LspRange): boolean {
   return left.start.line === right.start.line
@@ -54,22 +66,8 @@ function rangesOverlap(left: LspRange, right: LspRange): boolean {
 }
 
 function strictOffsetAt(text: string, position: LspPosition): number {
-  if (position.line < 0 || position.character < 0) throw new Error('SEMANTIC_PROVIDER_RANGE_INVALID');
-  let offset = 0;
-  let line = 0;
-  while (line < position.line) {
-    const next = text.indexOf('\n', offset);
-    if (next < 0) {
-      if (line + 1 === position.line && position.character === 0) return text.length;
-      throw new Error('SEMANTIC_PROVIDER_RANGE_INVALID');
-    }
-    offset = next + 1;
-    line += 1;
-  }
-  const lineEnd = text.indexOf('\n', offset);
-  const end = lineEnd < 0 ? text.length : lineEnd;
-  if (position.character > end - offset) throw new Error('SEMANTIC_PROVIDER_RANGE_INVALID');
-  return offset + position.character;
+  try { return offsetForPosition(text, position, { allowEndOfFileLine: true }); }
+  catch { throw new Error('SEMANTIC_PROVIDER_RANGE_INVALID'); }
 }
 
 function textForRange(text: string, range: LspRange): string {
@@ -84,10 +82,7 @@ function asRange(value: unknown): LspRange | undefined {
   const record = value as Record<string, unknown>;
   const start = record.start as Record<string, unknown> | undefined;
   const end = record.end as Record<string, unknown> | undefined;
-  if (!start || !end) return undefined;
-  if (typeof start.line !== 'number' || typeof start.character !== 'number') return undefined;
-  if (typeof end.line !== 'number' || typeof end.character !== 'number') return undefined;
-  if (start.line < 0 || start.character < 0 || end.line < 0 || end.character < 0) return undefined;
+  if (!isTextPosition(start) || !isTextPosition(end)) return undefined;
   return {
     start: { line: start.line, character: start.character },
     end: { line: end.line, character: end.character },
@@ -174,30 +169,6 @@ function flattenSymbols(symbols: SemanticSymbol[]): SemanticSymbol[] {
     if (symbol.members) stack.unshift(...symbol.members);
   }
   return result;
-}
-
-function normalizeTsServerDiagnostics(raw: unknown): unknown[] {
-  if (!raw || typeof raw !== 'object') return [];
-  const body = (raw as { body?: unknown }).body;
-  if (!Array.isArray(body)) return [];
-  const severityFor = (category: unknown) => category === 'error' ? 1 : category === 'warning' ? 2 : category === 'suggestion' ? 4 : 3;
-  return body.flatMap(item => {
-    if (!item || typeof item !== 'object') return [];
-    const value = item as Record<string, unknown>;
-    const start = value.start as { line?: number; offset?: number } | undefined;
-    const end = value.end as { line?: number; offset?: number } | undefined;
-    if (!start?.line || !start.offset || !end?.line || !end.offset) return [];
-    return [{
-      range: {
-        start: { line: start.line - 1, character: start.offset - 1 },
-        end: { line: end.line - 1, character: end.offset - 1 },
-      },
-      message: String(value.text ?? ''),
-      code: value.code,
-      severity: severityFor(value.category),
-      source: 'typescript',
-    }];
-  });
 }
 
 interface DroppedLocationSummary {
@@ -289,6 +260,41 @@ async function normalizeLocations(
     });
   }
   return { items: output, dropped };
+}
+
+async function isSafeDependencyDefinition(root: string, candidate: string, ignoredDirectories: readonly string[]): Promise<boolean> {
+  const authorized = await authorizedExistingPath(root, candidate);
+  const relative = path.relative(root, authorized.lexicalPath);
+  const segments = relative.split(/[\\/]+/).map(segment => segment.toLowerCase());
+  if (!segments.includes('node_modules')) return false;
+  const extraIgnored = new Set(ignoredDirectories.map(value => value.toLowerCase()));
+  if (segments.some(segment => segment !== 'node_modules' && extraIgnored.has(segment))) return false;
+  await readFile(authorized.realPath);
+  return true;
+}
+
+async function normalizeDependencyDefinitions(raw: unknown, folders: SemanticWorkspaceFolder[], ignoredDirectories: readonly string[]) {
+  const values = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  const output: Array<{ workspaceFolder: string; relativePath: string; uri: string; range: LspRange; sourceClass: 'dependency'; dependencyFallback: true }> = [];
+  for (const item of values.slice(0, 100)) {
+    if (!item || typeof item !== 'object') continue;
+    const value = item as Record<string, unknown>;
+    const uri = typeof value.uri === 'string' ? value.uri : typeof value.targetUri === 'string' ? value.targetUri : '';
+    const itemRange = asRange(value.range ?? value.targetSelectionRange ?? value.targetRange);
+    if (!uri || !itemRange) continue;
+    let absolute: string;
+    try { absolute = fileURLToPath(uri); } catch { continue; }
+    for (const folder of [...folders].sort((left, right) => comparable(right.root).length - comparable(left.root).length)) {
+      try {
+        if (!await isSafeDependencyDefinition(folder.root, absolute, ignoredDirectories)) continue;
+        const authorized = await authorizedExistingPath(folder.root, absolute);
+        output.push({ workspaceFolder: folder.name, relativePath: path.relative(folder.root, authorized.lexicalPath),
+          uri: canonicalFileUri(pathToFileURL(authorized.lexicalPath).href), range: itemRange, sourceClass: 'dependency', dependencyFallback: true });
+        break;
+      } catch { /* read-only fallback ignores unsafe or unavailable provider locations */ }
+    }
+  }
+  return output;
 }
 
 function bounded<T>(items: T[], maxResults = 50, maxAnswerChars = 24000) {
@@ -396,7 +402,7 @@ async function loadSemanticProviderSet(config: SemanticIdeConfig): Promise<{
   const definitions = mergeProviderDefinitions(discovered.definitions, configDefinitions, fileDefinitions);
   const versions = new Map<string, SemanticProviderVersionInfo>();
   for (const definition of definitions) {
-    const version: SemanticProviderVersionInfo = await probeProviderVersion(definition).catch(error => ({
+    const version: SemanticProviderVersionInfo = await probeProviderVersion(definition, 5_000, config.projectRoot).catch(error => ({
       compatibility: 'unknown',
       issue: error instanceof Error ? error.message : String(error),
     }));
@@ -461,6 +467,7 @@ export class SemanticIdeService {
       capabilities: session.serverCapabilities,
       ...(session.capabilityIssues.length ? { capabilityIssues: session.capabilityIssues } : {}),
       ...(session.freshness ? { freshness: session.freshness } : {}),
+      ...(session.postInitializeEvidence ? { postInitialize: session.postInitializeEvidence } : {}),
     }));
     if (!this.config.enabled) {
       return {
@@ -838,13 +845,7 @@ export class SemanticIdeService {
     try {
       return await operation(session);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const recoverable = message.includes('SERVER_EXITED')
-        || message.includes('SERVER_NOT_RUNNING')
-        || message.includes('PROVIDER_FATAL')
-        || message.includes('TCP_CLOSED')
-        || message.includes('TCP_ERROR');
-      if (!recoverable) throw error;
+      if (!isRecoverableSemanticTransportError(error)) throw error;
 
       await session.close().catch(() => undefined);
       this.sessions.delete(key);
@@ -954,11 +955,14 @@ export class SemanticIdeService {
       let pullAvailable = false;
       try {
         const pulled = await session.request('textDocument/diagnostic', { textDocument: { uri: opened.uri } });
-        const value = pulled as { items?: unknown[] } | null;
-        if (value && Array.isArray(value.items)) {
-          items = value.items;
+        const value = pulled as { items?: unknown } | null;
+        const decoded = validateDiagnosticItems(value?.items);
+        if (decoded.valid) {
+          items = decoded.items;
           freshness = 'pull';
           pullAvailable = true;
+        } else {
+          session.noteDiagnosticPayloadInvalid();
         }
       } catch {}
 
@@ -977,8 +981,13 @@ export class SemanticIdeService {
               command: 'typescript.tsserverRequest',
               arguments: ['semanticDiagnosticsSync', { file: opened.uri }],
             });
-            items = normalizeTsServerDiagnostics(direct);
-            freshness = 'typescript-direct';
+            const decoded = decodeTsServerDiagnostics(direct);
+            if (decoded.valid) {
+              items = decoded.items;
+              freshness = 'typescript-direct';
+            } else {
+              session.noteDiagnosticPayloadInvalid();
+            }
           } catch {}
         }
       }
@@ -1001,8 +1010,12 @@ export class SemanticIdeService {
         const previous = before.get(pair.before) ?? { items: [], freshness: 'stale' };
         const beforeKeys = new Set(previous.items.map(diagnosticIdentity));
         const afterKeys = new Set(after.items.map(diagnosticIdentity));
-        const introduced = after.items.filter(item => !beforeKeys.has(diagnosticIdentity(item))).slice(0, 100);
-        const resolvedCount = previous.items.filter(item => !afterKeys.has(diagnosticIdentity(item))).length;
+        const comparable = previous.freshness !== 'stale' && after.freshness !== 'stale';
+        const introduced = comparable ? after.items.filter(item => !beforeKeys.has(diagnosticIdentity(item))).slice(0, 100) : [];
+        const resolvedCount = comparable ? previous.items.filter(item => !afterKeys.has(diagnosticIdentity(item))).length : 0;
+        if (previous.freshness === 'stale') {
+          issues.push({ relativePath: pair.before, message: 'SEMANTIC_DIAGNOSTICS_BASELINE_STALE' });
+        }
         files.push({
           relativePath: pair.after,
           beforeCount: previous.items.length,
@@ -1299,11 +1312,16 @@ export class SemanticIdeService {
         return session.request('textDocument/definition', params);
       }, input.language);
       const locations = await normalizeLocations(raw, context.folders, hit.session.ignoredDirectories);
+      const dependencyDefinitions = action === 'decl' && hit.session.providerKind === 'typescript' && !locations.items.length
+        ? await normalizeDependencyDefinitions(raw, context.folders, hit.session.ignoredDirectories)
+        : [];
+      const resultItems = dependencyDefinitions.length ? dependencyDefinitions : locations.items;
       return {
         context,
         target: hit.symbol.namePath,
-        results: bounded(locations.items, input.maxResults, input.maxAnswerChars),
-        ...(locations.dropped.total ? { droppedLocations: locations.dropped } : {}),
+        results: bounded(resultItems, input.maxResults, input.maxAnswerChars),
+        ...(dependencyDefinitions.length ? { dependencyFallback: true } : {}),
+        ...(!dependencyDefinitions.length && locations.dropped.total ? { droppedLocations: locations.dropped } : {}),
       };
     }
 

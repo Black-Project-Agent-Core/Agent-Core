@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { createAgentCoreMcpServer } from '../src/mcp/server.js';
 
-const MANIFEST_BYTE_BUDGET = 120_000;
-const APPROX_TOKEN_BUDGET = 30_000;
+// Additive task/checkpoint/receipt bindings; retain a bounded public handshake.
+const MANIFEST_BYTE_BUDGET = 122_000;
+const APPROX_TOKEN_BUDGET = 30_500;
 
 function fullRuntimeStub(): any {
   return {
     memoryService: {},
     learningService: {},
-    hermesPartner: {},
     semanticIde: {},
+    skillsService: {},
     phoneController: { enabled: true },
     codeIntelligence: {},
+    webResearch: {},
   };
 }
 
@@ -55,10 +57,35 @@ function wireManifest(entries: Array<[string, any]>): unknown {
 describe('MCP public manifest contract', () => {
   it('keeps the complete production tool surface deterministic and schema-fingerprintable', () => {
     const entries = registeredTools();
-    expect(entries).toHaveLength(62);
+    expect(entries).toHaveLength(74);
     const fingerprints = entries.map(([name, tool]) => fingerprint(name, tool));
-    expect(new Set(entries.map(([name]) => name)).size).toBe(62);
-    expect(fingerprints).toHaveLength(62);
+    expect(new Set(entries.map(([name]) => name)).size).toBe(74);
+    expect(fingerprints).toHaveLength(74);
+
+    expect(entries.map(([name]) => name)).toEqual(expect.arrayContaining([
+      'memory_feedback',
+      'memory_retirement_review',
+      'memory_page',
+      'memory_retrieval_diagnostics',
+      'memory_export',
+      'memory_import',
+      'web_search',
+      'web_open',
+      'phone_game_inspect',
+      'phone_game_manage',
+    ]));
+
+    const gameInspect = entries.find(([name]) => name === 'phone_game_inspect')?.[1];
+    const gameManage = entries.find(([name]) => name === 'phone_game_manage')?.[1];
+    expect(gameInspect?.annotations?.readOnlyHint).toBe(true);
+    expect(gameManage?.annotations?.readOnlyHint).toBe(false);
+    expect(Object.keys(jsonSchema(gameManage?.inputSchema).properties ?? {}))
+      .toEqual(expect.arrayContaining(['action', 'gameId', 'sessionId', 'steps', 'semanticActionId']));
+
+    const skills = entries.find(([name]) => name === 'skills')?.[1];
+    expect(Object.keys(jsonSchema(skills?.inputSchema).properties ?? {})).toEqual(
+      expect.arrayContaining(['action', 'name', 'sourcePath', 'evidenceRefs', 'candidateDigest', 'expectedActiveDigest', 'sourceChangeConfirmation']),
+    );
 
     const recent = entries.find(([name]) => name === 'get_recent_tool_calls')?.[1];
     const recentProps = Object.keys(jsonSchema(recent?.inputSchema).properties ?? {});
@@ -72,4 +99,15 @@ describe('MCP public manifest contract', () => {
     expect(bytes).toBeLessThanOrEqual(MANIFEST_BYTE_BUDGET);
     expect(approximateTokens).toBeLessThanOrEqual(APPROX_TOKEN_BUDGET);
   });
+});
+
+it('removes transport-only description indentation without dropping tool guidance', async () => {
+  const { RDC_TOOL_METADATA } = await import('../src/mcp/rdc-tool-metadata.js');
+  for (const [name, tool] of registeredTools()) {
+    const metadata = RDC_TOOL_METADATA[name as keyof typeof RDC_TOOL_METADATA];
+    if (!metadata) continue;
+    expect(tool.description).not.toMatch(/^[ \t]{24}/m);
+    const words = (value: string) => value.replace(/\s+/g, ' ').trim();
+    expect(words(tool.description)).toBe(words(metadata.description));
+  }
 });

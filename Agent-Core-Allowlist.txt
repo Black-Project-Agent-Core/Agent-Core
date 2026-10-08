@@ -1,6 +1,0 @@
-# Agent Core filesystem allow-list (legacy/unwired)
-# Current Agent Core runtime filesystem policy is maintained by the internal machine-control config under runtime\rdc (vendored RDC-derived implementation, not external Remote Desktop Commander).
-# This file intentionally contains no machine-specific drive letters.
-# Relative entries, if this file is reactivated in the future, must resolve from project root.
-
-.

@@ -5,6 +5,9 @@ import * as schemas from '../src/mcp/code-intelligence-schemas.js';
 const context = { workspace: 'w', group: 'w', cwd: 'C:\\repo', repo: 'repo' };
 
 function serviceWithRuntime(runtime: any): any {
+  if (!runtime.assertMutationAttested) {
+    runtime.assertMutationAttested = vi.fn(async () => ({ state: 'current' }));
+  }
   const service = new (CodeIntelligenceService as any)({
     enabled: true,
     projectRoot: 'C:\\repo',
@@ -27,6 +30,29 @@ function serviceWithRuntime(runtime: any): any {
 }
 
 describe('Grafel final lifecycle contracts', () => {
+  it('blocks provider mutation on attestation mismatch while allowing unverifiable fail-soft evidence', async () => {
+    const blockedRuntime = {
+      assertMutationAttested: vi.fn(async () => {
+        throw new Error('CODE_INTELLIGENCE_PROVIDER_ATTESTATION_MISMATCH: resident-mismatch');
+      }),
+      requestIndexFor: vi.fn(),
+    };
+    const blocked = serviceWithRuntime(blockedRuntime);
+    await expect(blocked.indexWorkspace({})).rejects.toThrow(/ATTESTATION_MISMATCH/);
+    expect(blockedRuntime.requestIndexFor).not.toHaveBeenCalled();
+
+    const uncertainRuntime = {
+      assertMutationAttested: vi.fn(async () => ({
+        state: 'unverifiable',
+        issue: 'GRAFEL_PROVIDER_RESIDENT_ATTESTATION_UNAVAILABLE',
+      })),
+      requestIndexFor: vi.fn(async () => undefined),
+    };
+    const uncertain = serviceWithRuntime(uncertainRuntime);
+    expect(await uncertain.indexWorkspace({})).toMatchObject({ requested: true, index: 'queued' });
+    expect(uncertainRuntime.requestIndexFor).toHaveBeenCalledWith('C:\\repo', undefined);
+  });
+
   it('protects provider-default refs from unpin and requires exact ref rows', async () => {
     const runtime = {
       refs: vi.fn(async () => [{ group: 'w', repo: 'repo', ref: 'main', pinned: true, pin_reason: 'main' }]),

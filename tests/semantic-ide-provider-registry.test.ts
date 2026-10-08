@@ -1,7 +1,11 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   createProviderAdapter,
   mergeProviderDefinitions,
+  probeProviderVersion,
   selectProviderDefinition,
 } from '../src/semantic-ide/provider-registry.js';
 import type { SemanticLanguageServerDefinition } from '../src/semantic-ide/types.js';
@@ -70,6 +74,57 @@ describe('Semantic IDE provider registry', () => {
 
     const generic = createProviderAdapter(def('generic', '.x', { adapter: 'generic' }));
     expect(generic.normalizeSymbol('Add(int, int) : int', 6).name).toBe('Add(int, int) : int');
+  });
+
+  it('retries one transient read-only provider version probe failure', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-provider-probe-'));
+    try {
+      const script = path.join(root, 'probe.cjs');
+      const state = path.join(root, 'state.txt');
+      await writeFile(script, [
+        "const fs = require('node:fs');",
+        "const state = process.argv[2];",
+        "if (!fs.existsSync(state)) { fs.writeFileSync(state, 'failed-once'); process.exit(7); }",
+        "console.log('Provider 7.6.6');",
+      ].join('\n'));
+      const result = await probeProviderVersion(def('retry', '.x', {
+        versionProbe: {
+          command: process.execPath,
+          args: [script, state],
+          pattern: '(\\d+\\.\\d+\\.\\d+)',
+          minVersion: '7.6.6',
+          maxVersionExclusive: '7.6.7',
+          timeoutMs: 2_000,
+        },
+      }));
+      expect(result).toEqual({ observedVersion: '7.6.6', compatibility: 'compatible' });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('runs provider version probes from the canonical project root instead of process.cwd()', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-provider-cwd-'));
+    try {
+      const script = path.join(root, 'probe-cwd.cjs');
+      await writeFile(script, [
+        "const path = require('node:path');",
+        "if (path.resolve(process.cwd()) !== path.resolve(process.argv[2])) process.exit(9);",
+        "console.log('Provider 7.6.6');",
+      ].join('\n'));
+      const result = await probeProviderVersion(def('cwd', '.x', {
+        versionProbe: {
+          command: process.execPath,
+          args: [script, root],
+          pattern: '(\\d+\\.\\d+\\.\\d+)',
+          minVersion: '7.6.6',
+          maxVersionExclusive: '7.6.7',
+        },
+      }), 5_000, root);
+      expect(result).toEqual({ observedVersion: '7.6.6', compatibility: 'compatible' });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('returns deterministic typed C# workspace/configuration values', () => {

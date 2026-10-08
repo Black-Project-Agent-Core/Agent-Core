@@ -134,8 +134,18 @@ export class WorkspaceResolver {
       if (!workspace) throw new Error(`CODE_WORKSPACE_DEFAULT_NOT_REGISTERED: ${this.config.group}`);
     }
 
-    const cwd = requestedPath ?? this.preferredRepoPath(workspace, input.repoFilter);
+    const repoFilter = input.repoFilter?.length
+      ? [...new Set(input.repoFilter.map(value => {
+        const match = workspace!.repos.find(repo => repo.slug.toLowerCase() === value.trim().toLowerCase());
+        if (!match) throw new Error(`CODE_WORKSPACE_REPO_FILTER_NOT_FOUND: workspace=${workspace!.name} repo=${value}`);
+        return match.slug;
+      }))]
+      : undefined;
+    const cwd = requestedPath ?? this.preferredRepoPath(workspace, repoFilter);
     const repo = this.repoForPath(workspace, cwd)?.slug ?? workspace.repos[0]?.slug;
+    if (requestedPath && repoFilter?.length && (!repo || !repoFilter.includes(repo))) {
+      throw new Error('CODE_WORKSPACE_REPO_FILTER_PATH_MISMATCH');
+    }
     return {
       workspace: workspace.name,
       group: workspace.name,
@@ -143,7 +153,7 @@ export class WorkspaceResolver {
       ...(input.ref?.trim() ? { ref: input.ref.trim() } : {}),
       ...(requestedPath ? { worktreePath: requestedPath } : {}),
       ...(repo ? { repo } : {}),
-      ...(input.repoFilter?.length ? { repoFilter: [...input.repoFilter] } : {}),
+      ...(repoFilter?.length ? { repoFilter } : {}),
     };
   }
 

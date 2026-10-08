@@ -5,8 +5,8 @@ export interface LearningPaths {
   state: string;
 }
 
-export function resolveLearningPaths(baseDir = process.cwd(), stateDir?: string): LearningPaths {
-  const root = path.resolve(stateDir ?? path.join(baseDir, 'runtime', 'learning'));
+export function resolveLearningPaths(stateDir: string): LearningPaths {
+  const root = path.resolve(stateDir);
   return {
     root,
     state: path.join(root, 'state.json'),

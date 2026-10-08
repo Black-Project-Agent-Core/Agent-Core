@@ -7,6 +7,7 @@ interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   timer: NodeJS.Timeout;
+  generation: number;
 }
 
 type NotificationHandler = (method: string, params: unknown) => void;
@@ -36,6 +37,8 @@ export class LspConnection {
   private readonly knownDescendants = new Set<number>();
   private readonly retryOnContentModified = new Set<string>();
   private closing = false;
+  private generation = 0;
+  private terminalFailure?: { generation: number; error: Error };
 
   constructor(
     private readonly command: string | undefined,
@@ -53,6 +56,7 @@ export class LspConnection {
   }
 
   get state(): string {
+    if (this.terminalFailure?.generation === this.generation) return 'failed';
     if (this.transport.kind === 'tcp-external') {
       if (!this.socket) return 'stopped';
       return this.socket.destroyed ? 'exited' : 'running';
@@ -70,6 +74,21 @@ export class LspConnection {
     for (const method of methods) this.retryOnContentModified.add(method);
   }
 
+  private currentTerminalError(): Error | undefined {
+    return this.terminalFailure?.generation === this.generation ? this.terminalFailure.error : undefined;
+  }
+
+  private failGeneration(generation: number, error: Error): void {
+    if (generation !== this.generation || this.closing || this.terminalFailure?.generation === generation) return;
+    this.terminalFailure = { generation, error };
+    for (const [id, pending] of this.pending) {
+      if (pending.generation !== generation) continue;
+      clearTimeout(pending.timer);
+      pending.reject(error);
+      this.pending.delete(id);
+    }
+  }
+
   async refreshOwnedProcessTree(): Promise<number[]> {
     if (this.transport.kind === 'tcp-external') return [];
     const pid = this.process?.pid;
@@ -80,17 +99,30 @@ export class LspConnection {
   }
 
   async start(): Promise<void> {
+    const terminal = this.currentTerminalError();
     if (this.transport.kind === 'tcp-external') {
-      await this.startExternalTcp();
+      if (this.socket && !this.socket.destroyed) {
+        if (terminal) throw terminal;
+        return;
+      }
+    } else if (this.process && this.process.exitCode === null) {
+      if (terminal) throw terminal;
       return;
     }
-    if (this.process && this.process.exitCode === null) return;
-    if (!this.command) throw new Error('SEMANTIC_IDE_SERVER_COMMAND_REQUIRED');
+    if (this.transport.kind === 'stdio-owned' && !this.command) throw new Error('SEMANTIC_IDE_SERVER_COMMAND_REQUIRED');
+
+    const generation = ++this.generation;
+    this.terminalFailure = undefined;
     this.closing = false;
     this.buffer = Buffer.alloc(0);
     this.lastStderr = '';
 
-    const child = spawn(this.command, this.args, {
+    if (this.transport.kind === 'tcp-external') {
+      await this.startExternalTcp(generation);
+      return;
+    }
+
+    const child = spawn(this.command!, this.args, {
       cwd: this.cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
@@ -98,31 +130,26 @@ export class LspConnection {
       detached: process.platform !== 'win32',
     });
     this.process = child;
-    child.stdout.on('data', chunk => this.consume(Buffer.from(chunk)));
+    child.stdout.on('data', chunk => this.consume(Buffer.from(chunk), generation));
     child.stdin.on('error', error => {
+      if (generation !== this.generation) return;
       const message = error instanceof Error ? error.message : String(error);
       this.lastStderr = (this.lastStderr + ` stdin=${message}`).slice(-4000);
-      const pipeError = new Error(`SEMANTIC_IDE_SERVER_PIPE_ERROR: ${message}`);
-      for (const [id, pending] of this.pending) {
-        clearTimeout(pending.timer);
-        pending.reject(pipeError);
-        this.pending.delete(id);
-      }
+      this.failGeneration(generation, new Error(`SEMANTIC_IDE_SERVER_PIPE_ERROR: ${message}`));
     });
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', chunk => {
+      if (generation !== this.generation) return;
       this.lastStderr = (this.lastStderr + String(chunk)).slice(-4000);
     });
     child.once('exit', (code, signal) => {
-      const error = new Error(`SEMANTIC_IDE_SERVER_EXITED: code=${code ?? 'null'} signal=${signal ?? 'null'} ${this.lastStderr}`.trim());
-      for (const [id, pending] of this.pending) {
-        clearTimeout(pending.timer);
-        pending.reject(error);
-        this.pending.delete(id);
+      if (generation !== this.generation) return;
+      if (!this.closing) {
+        this.failGeneration(generation, new Error(
+          `SEMANTIC_IDE_SERVER_EXITED: code=${code ?? 'null'} signal=${signal ?? 'null'} ${this.lastStderr}`.trim(),
+        ));
       }
-      if (this.knownDescendants.size) {
-        void terminateCapturedPids([...this.knownDescendants], true);
-      }
+      if (this.knownDescendants.size) void terminateCapturedPids([...this.knownDescendants], true);
     });
 
     try {
@@ -136,22 +163,18 @@ export class LspConnection {
       const pid = child.pid;
       const descendants = pid ? await snapshotDescendantPids(pid).catch(() => []) : [];
       if (pid) await terminateOwnedProcessTree(pid, descendants, true).catch(() => undefined);
-      this.process = undefined;
+      if (generation === this.generation) this.process = undefined;
       throw error;
     }
   }
 
-  private async startExternalTcp(): Promise<void> {
+  private async startExternalTcp(generation: number): Promise<void> {
     const transport = this.transport;
     if (transport.kind !== 'tcp-external') return;
-    if (this.socket && !this.socket.destroyed) return;
     const host = transport.host.trim().toLowerCase();
     if (!['127.0.0.1', '::1', 'localhost'].includes(host)) {
       throw new Error(`SEMANTIC_TCP_NON_LOOPBACK_REFUSED: ${transport.host}`);
     }
-    this.closing = false;
-    this.buffer = Buffer.alloc(0);
-    this.lastStderr = '';
 
     const deadline = Date.now() + Math.min(this.timeoutMs, transport.connectTimeoutMs ?? this.timeoutMs);
     const retryDelayMs = Math.max(50, Math.min(2000, transport.retryDelayMs ?? 250));
@@ -176,27 +199,22 @@ export class LspConnection {
           candidate.once('error', onError);
           candidate.once('connect', onConnect);
         });
+        if (generation !== this.generation) {
+          socket.destroy();
+          throw new Error('SEMANTIC_IDE_STALE_TRANSPORT_GENERATION');
+        }
         socket.setNoDelay(true);
         this.socket = socket;
-        socket.on('data', chunk => this.consume(Buffer.from(chunk)));
+        socket.on('data', chunk => this.consume(Buffer.from(chunk), generation));
         socket.on('error', error => {
+          if (generation !== this.generation) return;
           const message = error instanceof Error ? error.message : String(error);
           this.lastStderr = (this.lastStderr + ` tcp=${message}`).slice(-4000);
-          const transportError = new Error(`SEMANTIC_IDE_TCP_ERROR: ${message}`);
-          for (const [id, pending] of this.pending) {
-            clearTimeout(pending.timer);
-            pending.reject(transportError);
-            this.pending.delete(id);
-          }
+          this.failGeneration(generation, new Error(`SEMANTIC_IDE_TCP_ERROR: ${message}`));
         });
         socket.once('close', () => {
-          if (this.closing) return;
-          const error = new Error('SEMANTIC_IDE_TCP_CLOSED');
-          for (const [id, pending] of this.pending) {
-            clearTimeout(pending.timer);
-            pending.reject(error);
-            this.pending.delete(id);
-          }
+          if (generation !== this.generation || this.closing) return;
+          this.failGeneration(generation, new Error('SEMANTIC_IDE_TCP_CLOSED'));
         });
         return;
       } catch (error) {
@@ -208,10 +226,13 @@ export class LspConnection {
   }
 
   private async requestOnce(method: string, params: unknown, timeoutMs: number): Promise<unknown> {
+    const terminal = this.currentTerminalError();
+    if (terminal) throw terminal;
     const running = this.transport.kind === 'tcp-external'
       ? Boolean(this.socket && !this.socket.destroyed)
       : Boolean(this.process && this.process.exitCode === null);
     if (!running) throw new Error('SEMANTIC_IDE_SERVER_NOT_RUNNING');
+    const generation = this.generation;
     const id = this.nextId++;
     const payload: Record<string, unknown> = { jsonrpc: '2.0', id, method };
     if (params !== undefined) payload.params = params;
@@ -220,9 +241,9 @@ export class LspConnection {
         this.pending.delete(id);
         reject(new Error(`SEMANTIC_IDE_LSP_TIMEOUT: ${method}`));
       }, timeoutMs);
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, { resolve, reject, timer, generation });
       try {
-        this.write(payload);
+        this.write(payload, generation);
       } catch (error) {
         clearTimeout(timer);
         this.pending.delete(id);
@@ -248,13 +269,14 @@ export class LspConnection {
   }
 
   notify(method: string, params?: unknown): void {
+    if (this.currentTerminalError()) return;
     const running = this.transport.kind === 'tcp-external'
       ? Boolean(this.socket && !this.socket.destroyed)
       : Boolean(this.process && this.process.exitCode === null);
     if (!running) return;
     const payload: Record<string, unknown> = { jsonrpc: '2.0', method };
     if (params !== undefined) payload.params = params;
-    this.write(payload);
+    this.write(payload, this.generation);
   }
 
   async close(): Promise<void> {
@@ -268,11 +290,21 @@ export class LspConnection {
         pending.reject(new Error('SEMANTIC_IDE_TCP_CLOSED'));
         this.pending.delete(id);
       }
+      this.terminalFailure = undefined;
       this.buffer = Buffer.alloc(0);
       return;
     }
     const child = this.process;
-    if (!child) return;
+    if (!child) {
+      for (const [id, pending] of this.pending) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error('SEMANTIC_IDE_SERVER_CLOSED'));
+        this.pending.delete(id);
+      }
+      this.terminalFailure = undefined;
+      this.buffer = Buffer.alloc(0);
+      return;
+    }
     const pid = child.pid;
     const descendants = pid ? await snapshotDescendantPids(pid).catch(() => []) : [];
     for (const childPid of descendants) this.knownDescendants.add(childPid);
@@ -293,11 +325,20 @@ export class LspConnection {
       await terminateCapturedPids([...this.knownDescendants], true).catch(() => undefined);
     }
     this.process = undefined;
+    for (const [id, pending] of this.pending) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error('SEMANTIC_IDE_SERVER_CLOSED'));
+      this.pending.delete(id);
+    }
     this.knownDescendants.clear();
+    this.terminalFailure = undefined;
     this.buffer = Buffer.alloc(0);
   }
 
-  private write(payload: unknown): void {
+  private write(payload: unknown, expectedGeneration = this.generation): void {
+    if (expectedGeneration !== this.generation) return;
+    const terminal = this.currentTerminalError();
+    if (terminal) throw terminal;
     const body = Buffer.from(JSON.stringify(payload), 'utf8');
     const header = Buffer.from(`Content-Length: ${body.byteLength}\r\n\r\n`, 'ascii');
     const message = Buffer.concat([header, body]);
@@ -310,7 +351,8 @@ export class LspConnection {
     this.process.stdin.write(message);
   }
 
-  private consume(chunk: Buffer): void {
+  private consume(chunk: Buffer, generation: number): void {
+    if (generation !== this.generation) return;
     this.buffer = Buffer.concat([this.buffer, chunk]);
     while (this.buffer.length) {
       const headerEnd = this.buffer.indexOf('\r\n\r\n');
@@ -326,12 +368,13 @@ export class LspConnection {
       if (this.buffer.length < bodyStart + length) return;
       const body = this.buffer.subarray(bodyStart, bodyStart + length).toString('utf8');
       this.buffer = this.buffer.subarray(bodyStart + length);
-      try { this.dispatch(JSON.parse(body) as Record<string, unknown>); }
+      try { this.dispatch(JSON.parse(body) as Record<string, unknown>, generation); }
       catch { /* Malformed provider output is fail-soft; pending request timeout preserves truth. */ }
     }
   }
 
-  private dispatch(message: Record<string, unknown>): void {
+  private dispatch(message: Record<string, unknown>, generation: number): void {
+    if (generation !== this.generation) return;
     const rawId = message.id;
     const requestId = typeof rawId === 'number'
       ? rawId
@@ -340,13 +383,13 @@ export class LspConnection {
         : undefined;
 
     if ((typeof rawId === 'number' || typeof rawId === 'string') && typeof message.method === 'string') {
-      void this.replyToServerRequest(rawId, message.method, message.params);
+      void this.replyToServerRequest(rawId, message.method, message.params, generation);
       return;
     }
 
     if (requestId !== undefined) {
       const pending = this.pending.get(requestId);
-      if (!pending) return;
+      if (!pending || pending.generation !== generation) return;
       this.pending.delete(requestId);
       clearTimeout(pending.timer);
       if (message.error && typeof message.error === 'object') {
@@ -363,15 +406,16 @@ export class LspConnection {
     }
   }
 
-  private async replyToServerRequest(id: number | string, method: string, params: unknown): Promise<void> {
+  private async replyToServerRequest(id: number | string, method: string, params: unknown, generation: number): Promise<void> {
     try {
       if (!this.onServerRequest) throw new LspServerRequestError(-32601, `Method not found: ${method}`);
       const result = await this.onServerRequest(method, params);
-      this.write({ jsonrpc: '2.0', id, result });
+      this.write({ jsonrpc: '2.0', id, result }, generation);
     } catch (error) {
+      if (generation !== this.generation) return;
       const code = error instanceof LspServerRequestError ? error.code : -32603;
       const message = error instanceof Error ? error.message : String(error);
-      this.write({ jsonrpc: '2.0', id, error: { code, message } });
+      this.write({ jsonrpc: '2.0', id, error: { code, message } }, generation);
     }
   }
 }

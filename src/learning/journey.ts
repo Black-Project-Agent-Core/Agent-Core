@@ -9,7 +9,7 @@ export class LearningJourneyBuilder {
   ) {}
 
   async build(workspace?: string): Promise<LearningJourney> {
-    const records = await this.memory.list();
+    const records = await this.memory.list(workspace);
     const nodes: LearningJourneyNode[] = records.map((record) => ({
       id: `memory:${record.id}`,
       type: 'memory',

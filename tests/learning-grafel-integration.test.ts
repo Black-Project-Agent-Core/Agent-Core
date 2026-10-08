@@ -36,7 +36,13 @@ describe('Hermes learning Grafel integration', () => {
       callProviderTool: async (name: string, args: any) => {
         calls.push({ name, args });
         if (name === 'grafel_patterns' && args.action === 'query') return okText({ patterns: [] });
-        if (name === 'grafel_inspect') return okText({ id: args.entity_id });
+        if (name === 'grafel_inspect') return okText({
+          id: args.entity_id,
+          name: 'source graph evidence verifier',
+          file: 'src/memory/service.ts',
+          signature: 'verify source graph evidence',
+          summary: 'Inspect source and verify graph evidence before relying on structural findings.',
+        });
         if (name === 'grafel_patterns' && args.action === 'record') return okText({ id: 'pattern-1' });
         throw new Error(`unexpected provider call: ${name}`);
       },
@@ -66,6 +72,29 @@ describe('Hermes learning Grafel integration', () => {
     await expect(sink.capture(candidate({ exemplars: [] })))
       .rejects.toThrow('requires at least one verified Grafel entity exemplar');
     expect(code.callProviderTool).not.toHaveBeenCalled();
+  });
+
+  it('rejects resolvable but textually incoherent exemplars before pattern recording', async () => {
+    const calls: Array<{ name: string; args: any }> = [];
+    const code: any = {
+      enabled: true,
+      capabilities: () => ({ patterns: true }),
+      health: async () => ({ status: 'available', index: 'current' }),
+      callProviderTool: async (name: string, args: any) => {
+        calls.push({ name, args });
+        if (name === 'grafel_inspect') return okText({
+          id: args.entity_id,
+          name: 'invoice payment calculator',
+          file: 'src/billing/tax.ts',
+          summary: 'Compute regional payment totals.',
+        });
+        if (name === 'grafel_patterns' && args.action === 'record') return okText({ id: 'should-not-record' });
+        throw new Error(`unexpected provider call: ${name}`);
+      },
+    };
+    const sink = new CodePatternLearningSink(code);
+    await expect(sink.capture(candidate())).rejects.toThrow(/not coherent|insufficient.*coherence/i);
+    expect(calls.some((call) => call.name === 'grafel_patterns' && call.args.action === 'record')).toBe(false);
   });
 
   it('deduplicates using Grafel trigger + steps and preserves provider error detail', async () => {

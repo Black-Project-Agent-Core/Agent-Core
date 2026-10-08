@@ -12,6 +12,16 @@ import {
 
 const roots: string[] = [];
 
+async function unavailableFileSymlink(error: unknown, target: string, link: string): Promise<boolean> {
+  const code = (error as NodeJS.ErrnoException).code ?? '';
+  if (['EPERM', 'EACCES'].includes(code)) return true;
+  // Independently reproduced on this host: valid regular-file target + absent link
+  // is rejected by Windows itself with EISDIR before application code executes.
+  if (process.platform !== 'win32' || code !== 'EISDIR') return false;
+  return (await lstat(target)).isFile()
+    && await lstat(link).then(() => false, cause => cause.code === 'ENOENT');
+}
+
 async function rootFixture(prefix = 'agent-core-semantic-source-') {
   const root = await mkdtemp(path.join(os.tmpdir(), prefix));
   roots.push(root);
@@ -45,7 +55,7 @@ describe('Semantic IDE source safety and encoding', () => {
     }
   });
 
-  it('writes through an authorized symlink without replacing the link', async () => {
+  it('writes through an authorized symlink without replacing the link', async context => {
     const root = await rootFixture();
     const target = path.join(root, 'target.ts');
     const link = path.join(root, 'link.ts');
@@ -53,7 +63,10 @@ describe('Semantic IDE source safety and encoding', () => {
     try {
       await symlink(target, link, 'file');
     } catch (error) {
-      if (['EPERM', 'EACCES'].includes((error as NodeJS.ErrnoException).code ?? '')) return;
+      if (await unavailableFileSymlink(error, target, link)) {
+        context.skip('Host rejects regular-file symlink creation: ' + (error as NodeJS.ErrnoException).code);
+        return;
+      }
       throw error;
     }
 
@@ -70,7 +83,7 @@ describe('Semantic IDE source safety and encoding', () => {
     expect(await readFile(target, 'utf8')).toBe('const value = 2;\n');
   });
 
-  it('refuses a symlink whose real target escapes the authorized workspace', async () => {
+  it('refuses a symlink whose real target escapes the authorized workspace', async context => {
     const root = await rootFixture();
     const outsideRoot = await rootFixture('agent-core-semantic-source-outside-');
     const outside = path.join(outsideRoot, 'outside.ts');
@@ -79,7 +92,10 @@ describe('Semantic IDE source safety and encoding', () => {
     try {
       await symlink(outside, link, 'file');
     } catch (error) {
-      if (['EPERM', 'EACCES'].includes((error as NodeJS.ErrnoException).code ?? '')) return;
+      if (await unavailableFileSymlink(error, outside, link)) {
+        context.skip('Host rejects regular-file symlink creation: ' + (error as NodeJS.ErrnoException).code);
+        return;
+      }
       throw error;
     }
 

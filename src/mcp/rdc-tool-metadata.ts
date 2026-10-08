@@ -76,9 +76,23 @@ export const RDC_TOOL_METADATA = {
                         Can fetch content from URLs when isUrl parameter is set to true
                         (URLs are always read in full regardless of offset/length).
                         
+                        SEMANTIC DOCUMENT PROJECTION:
+                        - New binary knowledge formats are projected to bounded Markdown automatically:
+                          * PPTX: slide order, grouped text, tables, chart values, notes, alt text, SVG-only pictures
+                          * EPUB: package metadata + spine-order content
+                          * IPYNB: markdown/code/raw cells without executing code or returning notebook outputs
+                          * Outlook MSG: sender/recipient/subject/body with codepage-aware text decoding
+                          * ZIP: bounded recursive member projection with traversal/encryption/symlink/compression-bomb guards
+                        - For formats that already have a strong native/editable reader, pass
+                          options: { projection: "markdown" } to request a semantic Markdown view.
+                          Supported explicit views include HTML/XHTML, RSS/Atom, CSV/legacy charsets,
+                          DOCX, XLS/XLSX/XLSM, and PDF. Use options: { projection: "native" } to force
+                          the existing native reader. Default "auto" preserves existing native behavior
+                          except for the new automatically projected binary knowledge formats above.
+
                         FORMAT HANDLING (by extension):
                         - Text: Uses offset/length for line-based pagination
-                        - Excel (.xlsx, .xls, .xlsm): Returns JSON 2D array
+                        - Excel (.xlsx, .xls, .xlsm): Returns JSON 2D array by default
                           * sheet: "Sheet1" (name) or "0" (index as string, 0-based)
                           * range: ALWAYS use FROM:TO format (e.g., "A1:D100", "C1:C1", "B2:B50")
                           * offset/length work as row pagination (optional fallback)
@@ -277,84 +291,29 @@ export const RDC_TOOL_METADATA = {
                         ${CMD_PREFIX_DESCRIPTION}`,
     annotations: { title: 'Move/Rename File', readOnlyHint: false, destructiveHint: true, openWorldHint: false },
   },
+  file_checkpoint: {
+    title: 'File Checkpoint',
+    description: `
+                        Create and inspect explicit project-local file checkpoints, preview a restore, restore only after
+                        presenting the exact preview digest, or drop a leaf checkpoint. Checkpoints use content-addressed
+                        blobs and preserve branch history without touching Git. Protected reference paths are refused.
+                        Restore never runs commands, restarts services, or mutates Git automatically. Use preview_restore
+                        immediately before restore; stale source state invalidates the preview digest.
+                        ${PATH_GUIDANCE}
+                        ${CMD_PREFIX_DESCRIPTION}`,
+    annotations: { title: 'File Checkpoint', readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  },
   start_search: {
     title: 'Start Search',
     description: `
-                        Start a streaming search that can return results progressively.
-                        
-                        SEARCH STRATEGY GUIDE:
-                        Choose the right search type based on what the user is looking for:
-                        
-                        USE searchType="files" WHEN:
-                        - User asks for specific files: "find package.json", "locate config files"
-                        - Pattern looks like a filename: "*.js", "README.md", "test-*.tsx" 
-                        - User wants to find files by name/extension: "all TypeScript files", "Python scripts"
-                        - Looking for configuration/setup files: ".env", "dockerfile", "tsconfig.json"
-                        
-                        USE searchType="content" WHEN:
-                        - User asks about code/logic: "authentication logic", "error handling", "API calls"
-                        - Looking for functions/variables: "getUserData function", "useState hook"
-                        - Searching for text/comments: "TODO items", "FIXME comments", "documentation"
-                        - Finding patterns in code: "console.log statements", "import statements"
-                        - User describes functionality: "components that handle login", "files with database queries"
-                        
-                        WHEN UNSURE OR USER REQUEST IS AMBIGUOUS:
-                        Run TWO searches in parallel - one for files and one for content:
-                        
-                        Example approach for ambiguous queries like "find authentication stuff":
-                        1. Start file search: searchType="files", pattern="auth"
-                        2. Simultaneously start content search: searchType="content", pattern="authentication"  
-                        3. Present combined results: "Found 3 auth-related files and 8 files containing authentication code"
-                        
-                        SEARCH TYPES:
-                        - searchType="files": Find files by name (pattern matches file names)
-                        - searchType="content": Search inside files for text patterns
-                        
-                        PATTERN MATCHING MODES:
-                        - Default (literalSearch=false): Patterns are treated as regular expressions
-                        - Literal (literalSearch=true): Patterns are treated as exact strings
-                        
-                        WHEN TO USE literalSearch=true:
-                        Use literal search when searching for code patterns with special characters:
-                        - Function calls with parentheses and quotes
-                        - Array access with brackets
-                        - Object methods with dots and parentheses
-                        - File paths with backslashes
-                        - Any pattern containing: . * + ? ^ $ { } [ ] | \\ ( )
-                        
-                        IMPORTANT PARAMETERS:
-                        - pattern: What to search for (file names OR content text)
-                        - literalSearch: Use exact string matching instead of regex (default: false)
-                        - filePattern: Optional filter to limit search to specific file types (e.g., "*.js", "package.json")
-                        - ignoreCase: Case-insensitive search (default: true). Works for both file names and content.
-                        - earlyTermination: Stop search early when exact filename match is found (optional: defaults to true for file searches, false for content searches)
-                        
-                        DECISION EXAMPLES:
-                        - "find package.json" → searchType="files", pattern="package.json" (specific file)
-                        - "find authentication components" → searchType="content", pattern="authentication" (looking for functionality)
-                        - "locate all React components" → searchType="files", pattern="*.tsx" or "*.jsx" (file pattern)
-                        - "find TODO comments" → searchType="content", pattern="TODO" (text in files)
-                        - "show me login files" → AMBIGUOUS → run both: files with "login" AND content with "login"
-                        - "find config" → AMBIGUOUS → run both: config files AND files containing config code
-                        
-                        COMPREHENSIVE SEARCH EXAMPLES:
-                        - Find package.json files: searchType="files", pattern="package.json"
-                        - Find all JS files: searchType="files", pattern="*.js"
-                        - Search for TODO in code: searchType="content", pattern="TODO", filePattern="*.js|*.ts"
-                        - Search for exact code: searchType="content", pattern="toast.error('test')", literalSearch=true
-                        - Ambiguous request "find auth stuff": Run two searches:
-                          1. searchType="files", pattern="auth"
-                          2. searchType="content", pattern="authentication"
-                        
-                        PRO TIP: When user requests are ambiguous about whether they want files or content,
-                        run both searches concurrently and combine results for comprehensive coverage.
-                        
-                        Unlike regular search tools, this starts a background search process and returns
-                        immediately with a session ID. Use get_more_search_results to get results as they
-                        come in, and stop_search to stop the search early if needed.
-                        
-                        Perfect for large directories where you want to see results immediately and
-                        have the option to cancel if the search takes too long or you find what you need.
+                        Start a progressive filesystem search and return a session ID.
+                        Use searchType="files" for names/extensions (for example package.json or *.ts).
+                        Use searchType="content" for text, symbols, logic, TODOs, imports, or code behavior.
+                        For ambiguous requests, run one files search and one content search and combine them.
+                        Patterns are regular expressions by default; use literalSearch=true for exact code,
+                        paths, or patterns containing regex metacharacters. filePattern narrows file types;
+                        ignoreCase defaults true. Use get_more_search_results for pagination/progress and
+                        stop_search when enough evidence has been collected.
                         
                         ${PATH_GUIDANCE}
                         ${CMD_PREFIX_DESCRIPTION}`,
@@ -769,6 +728,18 @@ export const RDC_TOOL_METADATA = {
                         
                         ${CMD_PREFIX_DESCRIPTION}`,
     annotations: { title: 'Give Feedback', readOnlyHint: false, openWorldHint: true },
+  },
+  browser_control: {
+    title: 'Browser Control',
+    description: `Control a browser through Agent Core's observed-action owner.
+open defaults to an isolated Chromium process over loopback CDP. transport="extension" instead requests a one-use pairing code for the Agent Core Browser Bridge extension on an existing user-selected HTTP(S) tab; it launches no browser, creates no profile and preserves the existing login. The user must install the extension and explicitly connect the intended tab. Pairing expires after 5 minutes. Do not persist pairing codes or grant tokens.
+Optional interactionCapabilities enables keyboard, held-key or history (default none).
+observe returns visible text, safe independent controlStates, owned tabs and bounded action IDs. Optional canvas inventory lists up to 8 visible canvases; sample accepts only a previously observed canvasId, never a selector. Canvas defaults 32x16, max128x64 cells/palette16; lossy RGBA evidence, not object recognition or action coordinates. Operator colour labels are declarations.
+act consumes exactly one sessionId/observationId/actionId. Operations include CLICK, TYPE_TEXT, SELECT, SCROLL, WAIT, SWITCH_TAB (isolated only) and opt-in PRESS_KEY/HOLD_KEY/BACK. Key choices are fixed; holds 150/400/800ms, always released best-effort. No modifiers, macros, arbitrary code, selectors, coordinates or external CDP endpoints. Stale document/target/focus fails closed; uncertainty never triggers blind retry. Dialogs are reported, not auto-accepted. Extension v1 observes the connected tab's main document; cross-origin iframe controls are not yet supported.
+Password/file/hidden values remain excluded. Observations max120, consumed actions max60, candidates max250 with explicit omissions. TYPE_TEXT needs supplied text. close releases held input; isolated sessions terminate only their owned process and transient profile, extension sessions detach the debugger while retaining tab/browser. Extension grants live in RAM, expire after 30 minutes or 60 seconds without polling, and fail closed after command timeout. status lists sessions without pairing codes or tokens.
+No hidden model/controller is invoked. AGENT_CORE_BROWSER_EXECUTABLE is an operator-only executable override.
+${CMD_PREFIX_DESCRIPTION}`,
+    annotations: { title: 'Browser Control', readOnlyHint: false, destructiveHint: true, openWorldHint: true },
   },
   get_prompts: {
     title: 'Get Prompts',

@@ -34,7 +34,7 @@ async function fixture(): Promise<{ projectRoot: string; memoryRoot: string; mem
 
   const memoryRoot = path.join(projectRoot, '.memory-test');
   await mkdir(path.join(memoryRoot, 'notes'), { recursive: true });
-  await writeFile(path.join(memoryRoot, '00-agent-core-memory.md'), '# Claude Mem Adoption Test Foundation\n', 'utf8');
+  await writeFile(path.join(memoryRoot, '00-agent-core-memory.md'), '# Agent Core Claude Mem Adoption Test Foundation\n', 'utf8');
   const memory = await MemoryService.initialize(projectRoot, memoryRoot);
   return { projectRoot, memoryRoot, memory };
 }
@@ -166,12 +166,14 @@ describe('Claude Mem native adoption', () => {
     expect(() => schemas.memorySearch.parse({
       query: 'schema search',
       sourceFiles: ['src/alpha.ts'],
+      rankingProfile: 'bm25',
     })).not.toThrow();
     expect(() => schemas.memoryRead.parse({
       id: 'memory-abc',
       revisionLimit: 8,
     })).not.toThrow();
     expect(schemas.memorySearch.parse({ query: 'legacy compatible' }).sourceFiles).toBeUndefined();
+    expect(schemas.memorySearch.parse({ query: 'legacy compatible' }).rankingProfile).toBeUndefined();
     expect(schemas.memoryRead.parse({ id: 'memory-abc' }).revisionLimit).toBeUndefined();
   });
 });

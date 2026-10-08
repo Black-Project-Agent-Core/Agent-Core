@@ -11,9 +11,14 @@ interface LegacyLockOwner {
   acquiredAt: string;
 }
 
-const STALE_MS = 30_000;
-const UPDATE_MS = 5_000;
+const STALE_MS = 120_000;
+const UPDATE_MS = 15_000;
 const RETRY_CAP_MS = 25;
+
+interface MemoryLockLease {
+  release: () => Promise<void>;
+  compromise: () => Error | null;
+}
 
 // proper-lockfile owns cross-process exclusion, but its internal lock table is
 // process-global and is not safe for multiple concurrent contenders for the
@@ -108,18 +113,30 @@ async function prepareLegacyLock(lockPath: string): Promise<void> {
     throw error;
   }
 }
-async function acquire(lockPath: string, timeoutMs: number): Promise<() => Promise<void>> {
+function compromised(error: Error): Error {
+  return Object.assign(new Error('Memory store lock lease was compromised'), {
+    code: 'MEMORY_LOCK_COMPROMISED',
+    cause: error,
+  });
+}
+
+async function acquire(lockPath: string, timeoutMs: number): Promise<MemoryLockLease> {
   const deadline = Date.now() + timeoutMs;
   for (let wait = 1;; wait = Math.min(wait * 2, RETRY_CAP_MS)) {
     await prepareLegacyLock(lockPath);
     try {
-      return await acquireProperLock(`${lockPath}.target`, {
+      let compromiseError: Error | null = null;
+      const release = await acquireProperLock(`${lockPath}.target`, {
         realpath: false,
         lockfilePath: lockPath,
         stale: STALE_MS,
         update: UPDATE_MS,
         retries: 0,
+        onCompromised: (error) => {
+          compromiseError ??= compromised(error);
+        },
       });
+      return { release, compromise: () => compromiseError };
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code ?? '';
       if (!['ELOCKED', 'EEXIST', 'EPERM', 'EACCES', 'EBUSY', 'ENOENT', 'ENOTDIR'].includes(code)) {
@@ -139,12 +156,27 @@ export async function withMemoryProcessLock<T>(
   await mkdir(path.dirname(lockPath), { recursive: true });
   const releaseLocal = await acquireLocalLock(lockPath);
   try {
-    const release = await acquire(lockPath, timeoutMs);
+    const lease = await acquire(lockPath, timeoutMs);
+    let completed = false;
+    let result!: T;
+    let operationError: unknown;
+    let releaseError: unknown;
     try {
-      return await operation();
-    } finally {
-      await release();
+      result = await operation();
+      completed = true;
+    } catch (error) {
+      operationError = error;
     }
+    try {
+      await lease.release();
+    } catch (error) {
+      releaseError = error;
+    }
+    const compromiseError = lease.compromise();
+    if (!completed) throw operationError;
+    if (compromiseError) throw compromiseError;
+    if (releaseError) throw releaseError;
+    return result;
   } finally {
     releaseLocal();
   }

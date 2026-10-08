@@ -53,13 +53,25 @@ function retryableNetworkError(error: unknown): boolean {
   });
 }
 
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+function nonnegativeDelay(raw: string | null): number | null {
+  const value = raw?.trim();
+  if (!value || !/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)) return null;
+  // An overflowing but syntactically valid value remains out-of-budget,
+  // rather than falling back to an earlier retry.
+  return Number(value);
+}
+
 function retryAfterMs(headers: Headers): number | null {
-  const ms = Number.parseInt(headers.get('retry-after-ms') ?? '', 10);
-  if (Number.isFinite(ms) && ms >= 0) return ms;
-  const raw = headers.get('retry-after');
+  const ms = nonnegativeDelay(headers.get('retry-after-ms'));
+  if (ms !== null) return ms;
+  const raw = headers.get('retry-after')?.trim();
   if (!raw) return null;
-  const seconds = Number(raw);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
+  const seconds = nonnegativeDelay(raw);
+  if (seconds !== null) return seconds * 1000;
+  // Prevent Date.parse from reinterpreting rejected numeric hints as dates.
+  if (!/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i.test(raw)) return null;
   const date = Date.parse(raw);
   return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null;
 }
@@ -98,7 +110,7 @@ function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
 
 function boundedDelay(attempt: number, response?: Response): number {
   const providerDelay = response ? retryAfterMs(response.headers) : null;
-  if (providerDelay !== null) return Math.min(providerDelay, 10_000);
+  if (providerDelay !== null) return Math.ceil(providerDelay);
   const cap = Math.min(4_000, 200 * (2 ** Math.max(0, attempt - 1)));
   return Math.floor(Math.random() * Math.max(1, cap));
 }
@@ -135,13 +147,24 @@ function notifyAttempt(policy: OutboundRequestPolicy, event: OutboundAttemptEven
   }
 }
 
+function hasReplayableBody(body: RequestInit['body']): boolean {
+  if (body == null || typeof body === 'string') return true;
+  if (ArrayBuffer.isView(body) || body instanceof ArrayBuffer) return true;
+  if (typeof Blob !== 'undefined' && body instanceof Blob) return true;
+  if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) return true;
+  if (typeof FormData !== 'undefined' && body instanceof FormData) return true;
+  // Streams, iterators and unknown objects get one send. Do not inspect
+  // iterator accessors or buffer an arbitrary body just to enable retries.
+  return false;
+}
+
 export async function fetchWithPolicy(
   input: string | URL,
   init: RequestInit = {},
   policy: OutboundRequestPolicy,
 ): Promise<Response> {
   const requestedAttempts = Math.max(1, Math.min(5, policy.maxAttempts ?? 3));
-  const attempts = policy.safety === 'non-idempotent' ? 1 : requestedAttempts;
+  const attempts = policy.safety === 'non-idempotent' || !hasReplayableBody(init.body) ? 1 : requestedAttempts;
   const timeoutMs = Math.max(1, policy.timeoutMs ?? 30_000);
   const maxTotalDelayMs = Math.max(0, policy.maxTotalDelayMs ?? 10_000);
   let delayed = 0;
@@ -157,7 +180,8 @@ export async function fetchWithPolicy(
       const response = await fetch(input, { ...init, signal });
       const retryable = RETRYABLE_STATUS.has(response.status) && attempt < attempts;
       const delay = retryable ? boundedDelay(attempt, response) : 0;
-      const retry = retryable && delayed + delay <= maxTotalDelayMs;
+      const retry = retryable && Number.isFinite(delay) && delay <= MAX_TIMER_DELAY_MS
+        && delayed + delay <= maxTotalDelayMs;
       const correlationId = responseCorrelationId(response);
       notifyAttempt(policy, {
         attempt,
@@ -181,7 +205,8 @@ export async function fetchWithPolicy(
       const callerAborted = init.signal?.aborted === true;
       const retryable = !callerAborted && attempt < attempts && retryableNetworkError(error);
       const delay = retryable ? boundedDelay(attempt) : 0;
-      const retry = retryable && delayed + delay <= maxTotalDelayMs;
+      const retry = retryable && Number.isFinite(delay) && delay <= MAX_TIMER_DELAY_MS
+        && delayed + delay <= maxTotalDelayMs;
       notifyAttempt(policy, {
         attempt,
         maxAttempts: attempts,

@@ -1,6 +1,8 @@
 import { access, mkdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { scanWorkspaceSources } from './workspace-policy.js';
 import type {
   SemanticIdeConfig,
   SemanticIdeIssue,
@@ -8,6 +10,9 @@ import type {
 } from './types.js';
 import { computeLanguageComposition } from './workspace-policy.js';
 import { buildOwnedChildEnv } from '../security/environment.js';
+import { resolveModuleProjectRoot } from '../portability/paths.js';
+
+const MODULE_PROJECT_ROOT = resolveModuleProjectRoot(import.meta.url);
 
 export interface ProviderCapabilityRequirement {
   capability: string;
@@ -30,6 +35,22 @@ export interface ProviderServerRequestResult {
   result?: unknown;
 }
 
+export interface ProviderPostInitializeEvidence {
+  status: 'complete' | 'partial';
+  complete: boolean;
+  truncated: boolean;
+  ioIssueCount: number;
+  ignoredCount: number;
+  solution: string | null;
+  projectCount: number;
+  projectsOmitted: number;
+}
+
+export interface ProviderPostInitializePlan {
+  notifications: Array<{ method: string; params: unknown }>;
+  evidence: ProviderPostInitializeEvidence;
+}
+
 export interface SemanticProviderAdapter {
   readonly kind: string;
   readonly initialReadiness: 'ready' | 'indexing';
@@ -43,6 +64,7 @@ export interface SemanticProviderAdapter {
   configurationResponse(params: unknown): unknown[];
   handleNotification(method: string, params: unknown, control: ProviderRuntimeControl): void;
   handleServerRequest(method: string, params: unknown, control: ProviderRuntimeControl): ProviderServerRequestResult;
+  postInitialize?(root: string, extraIgnored: readonly string[]): Promise<ProviderPostInitializePlan>;
   normalizeSymbol(name: string, kind: number | string, detail?: string): { name: string; detail?: string };
 }
 
@@ -192,6 +214,41 @@ export function createProviderAdapter(definition: SemanticLanguageServerDefiniti
         { capability: 'implementationProvider', method: 'textDocument/implementation' },
       ],
       ignoredDirectories: ['bin', 'obj', 'packages', '.vs'],
+      async postInitialize(root, extraIgnored) {
+        const scan = await scanWorkspaceSources(root, ['.sln', '.slnx', '.csproj'], extraIgnored, 512, 3000);
+        const byDepthThenPath = (a: { relativePath: string }, b: { relativePath: string }) => {
+          const depth = a.relativePath.split(/[\\/]+/).length - b.relativePath.split(/[\\/]+/).length;
+          return depth || a.relativePath.localeCompare(b.relativePath);
+        };
+        const solutions = scan.files.filter(file => /\.slnx?$/i.test(file.relativePath)).sort(byDepthThenPath);
+        const projects = scan.files.filter(file => /\.csproj$/i.test(file.relativePath)).sort(byDepthThenPath);
+        const solution = solutions[0];
+        const selectedProjects = projects.slice(0, 128);
+        const projectsOmitted = Math.max(0, projects.length - selectedProjects.length);
+        const notifications: Array<{ method: string; params: unknown }> = [];
+        if (solution) notifications.push({
+          method: 'solution/open',
+          params: { solution: pathToFileURL(solution.absolutePath).href },
+        });
+        if (selectedProjects.length) notifications.push({
+          method: 'project/open',
+          params: { projects: selectedProjects.map(file => pathToFileURL(file.absolutePath).href) },
+        });
+        const complete = scan.complete && projectsOmitted === 0;
+        return {
+          notifications,
+          evidence: {
+            status: complete ? 'complete' : 'partial',
+            complete,
+            truncated: scan.truncated || projectsOmitted > 0,
+            ioIssueCount: scan.ioIssueCount,
+            ignoredCount: scan.ignoredCount,
+            solution: solution?.relativePath.replace(/\\/g, '/') ?? null,
+            projectCount: selectedProjects.length,
+            projectsOmitted,
+          },
+        };
+      },
       configurationResponse: csharpConfiguration,
       handleNotification(method, params, control) {
         if (method === 'workspace/projectInitializationComplete') {
@@ -209,9 +266,11 @@ export function createProviderAdapter(definition: SemanticLanguageServerDefiniti
         return { handled: false };
       },
       normalizeSymbol(name, _kind, detail) {
-        if (/\s:\s/.test(name) && !name.includes('(')) {
-          const [base, ...rest] = name.split(/\s:\s/);
-          return { name: base!.trim(), detail: detail ?? `: ${rest.join(' : ').trim()}` };
+        const propertySeparator = name.search(/\s:\s/);
+        if (propertySeparator >= 0 && !name.slice(0, propertySeparator).includes('(')) {
+          const base = name.slice(0, propertySeparator).trim();
+          const type = name.slice(propertySeparator + 3).trim();
+          return { name: base, detail: detail ?? `: ${type}` };
         }
         const paren = name.indexOf('(');
         if (paren > 0) return { name: name.slice(0, paren).trim(), detail: detail ?? name.slice(paren).trim() };
@@ -426,8 +485,8 @@ async function pythonDefinition(config: SemanticIdeConfig): Promise<SemanticLang
     };
   }
 
-  const explicit = process.env.AGENT_CORE_SEMANTIC_IDE_PYTHON_SERVER?.trim();
-  const command = (explicit && await exists(path.resolve(explicit)) ? path.resolve(explicit) : undefined)
+  const explicitPath = config.pythonServerPath;
+  const command = (explicitPath && await exists(explicitPath) ? explicitPath : undefined)
     ?? await findExecutable('pyright-langserver');
   if (!command) return undefined;
   const launch = windowsShim(command, ['--stdio']);
@@ -443,16 +502,14 @@ async function pythonDefinition(config: SemanticIdeConfig): Promise<SemanticLang
 }
 
 async function csharpDefinition(config: SemanticIdeConfig): Promise<SemanticLanguageServerDefinition | undefined> {
-  const explicitServer = process.env.AGENT_CORE_SEMANTIC_IDE_CSHARP_SERVER?.trim();
   const localServer = path.join(config.runtimeDir, 'providers', 'csharp', 'roslyn', 'Microsoft.CodeAnalysis.LanguageServer.dll');
-  const serverPath = (explicitServer && await exists(path.resolve(explicitServer)) ? path.resolve(explicitServer) : undefined)
+  const serverPath = (config.csharpServerPath && await exists(config.csharpServerPath) ? config.csharpServerPath : undefined)
     ?? (await exists(localServer) ? localServer : undefined);
   if (!serverPath) return undefined;
 
-  const explicitDotnet = process.env.AGENT_CORE_SEMANTIC_IDE_DOTNET?.trim();
   const provisionedDotnet = path.join(config.runtimeDir, 'providers', 'csharp', 'dotnet', process.platform === 'win32' ? 'dotnet.exe' : 'dotnet');
   const legacyDotnet = path.join(config.runtimeDir, 'providers', 'dotnet', process.platform === 'win32' ? 'dotnet.exe' : 'dotnet');
-  const dotnet = (explicitDotnet && await exists(path.resolve(explicitDotnet)) ? path.resolve(explicitDotnet) : undefined)
+  const dotnet = (config.dotnetPath && await exists(config.dotnetPath) ? config.dotnetPath : undefined)
     ?? (await exists(provisionedDotnet) ? provisionedDotnet : undefined)
     ?? (await exists(legacyDotnet) ? legacyDotnet : undefined)
     ?? await findExecutable('dotnet');
@@ -480,9 +537,10 @@ async function csharpDefinition(config: SemanticIdeConfig): Promise<SemanticLang
 }
 
 async function powershellDefinition(config: SemanticIdeConfig): Promise<SemanticLanguageServerDefinition | undefined> {
-  const explicit = process.env.AGENT_CORE_SEMANTIC_IDE_POWERSHELL_EDITOR_SERVICES?.trim();
   const local = path.join(config.runtimeDir, 'providers', 'powershell', 'PowerShellEditorServices', 'Start-EditorServices.ps1');
-  const script = (explicit && await exists(path.resolve(explicit)) ? path.resolve(explicit) : undefined)
+  const script = (config.powershellEditorServicesPath && await exists(config.powershellEditorServicesPath)
+    ? config.powershellEditorServicesPath
+    : undefined)
     ?? (await exists(local) ? local : undefined);
   if (!script) return undefined;
   const localPwsh = path.join(config.runtimeDir, 'providers', 'powershell', 'pwsh', process.platform === 'win32' ? 'pwsh.exe' : 'pwsh');
@@ -691,40 +749,47 @@ function compareVersions(left: string, right: string): number | null {
 export async function probeProviderVersion(
   definition: SemanticLanguageServerDefinition,
   defaultTimeoutMs = 5_000,
+  cwd = MODULE_PROJECT_ROOT,
 ): Promise<SemanticProviderVersionInfo> {
   const probe = definition.versionProbe;
   if (!probe) return { compatibility: 'unknown' };
 
   const launch = windowsShim(probe.command, probe.args ?? []);
   const timeoutMs = Math.max(100, Math.min(30_000, probe.timeoutMs ?? defaultTimeoutMs));
-  const result = await new Promise<{ exitCode: number | null; stdout: string; stderr: string }>((resolve, reject) => {
-    const child = spawn(launch.command, launch.args, {
-      cwd: process.cwd(),
-      env: buildOwnedChildEnv(probe.env ?? {}),
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let stdout = '';
-    let stderr = '';
-    child.stdout?.setEncoding('utf8');
-    child.stderr?.setEncoding('utf8');
-    child.stdout?.on('data', chunk => { stdout = (stdout + String(chunk)).slice(-8_000); });
-    child.stderr?.on('data', chunk => { stderr = (stderr + String(chunk)).slice(-8_000); });
-    const timer = setTimeout(() => {
-      try { child.kill(); } catch { /* bounded version probe cleanup */ }
-      reject(new Error('SEMANTIC_PROVIDER_VERSION_PROBE_TIMEOUT'));
-    }, timeoutMs);
-    timer.unref();
-    child.once('error', error => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.once('exit', code => {
-      clearTimeout(timer);
-      resolve({ exitCode: code, stdout, stderr });
-    });
-  }).catch(error => ({ exitCode: null, stdout: '', stderr: error instanceof Error ? error.message : String(error) }));
+  const runAttempt = async (): Promise<{ exitCode: number | null; stdout: string; stderr: string }> =>
+    await new Promise<{ exitCode: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+      const child = spawn(launch.command, launch.args, {
+        cwd,
+        env: buildOwnedChildEnv(probe.env ?? {}),
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout?.setEncoding('utf8');
+      child.stderr?.setEncoding('utf8');
+      child.stdout?.on('data', chunk => { stdout = (stdout + String(chunk)).slice(-8_000); });
+      child.stderr?.on('data', chunk => { stderr = (stderr + String(chunk)).slice(-8_000); });
+      const timer = setTimeout(() => {
+        try { child.kill(); } catch { /* bounded version probe cleanup */ }
+        reject(new Error('SEMANTIC_PROVIDER_VERSION_PROBE_TIMEOUT'));
+      }, timeoutMs);
+      timer.unref();
+      child.once('error', error => {
+        clearTimeout(timer);
+        reject(error);
+      });
+      child.once('exit', code => {
+        clearTimeout(timer);
+        resolve({ exitCode: code, stdout, stderr });
+      });
+    }).catch(error => ({ exitCode: null, stdout: '', stderr: error instanceof Error ? error.message : String(error) }));
 
+  let result = await runAttempt();
+  if (result.exitCode !== 0) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    result = await runAttempt();
+  }
   if (result.exitCode !== 0) {
     return { compatibility: 'unknown', issue: 'SEMANTIC_PROVIDER_VERSION_PROBE_FAILED' };
   }

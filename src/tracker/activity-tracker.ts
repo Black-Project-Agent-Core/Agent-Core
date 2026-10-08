@@ -1,10 +1,18 @@
-import { appendFileSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
-import { StringDecoder } from 'node:string_decoder';
+import { appendFileSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { isSensitiveKey, redactSensitiveString, redactSensitiveValue } from '../security/redaction.js';
+import { resolveModuleProjectRoot } from '../portability/paths.js';
+import { BoundedJsonlEventLog } from '../persistence/bounded-event-log.js';
 
 export type TrackerLevel = 'info' | 'success' | 'warn' | 'error' | 'sys';
+export type TrackerOutcomeProperty = string | number | boolean | null;
+
+export interface TrackerFeatureOutcome {
+  featureId: string;
+  outcome: string;
+  properties?: Record<string, TrackerOutcomeProperty>;
+}
 
 export interface TrackerEvent {
   id: string;
@@ -16,6 +24,7 @@ export interface TrackerEvent {
   source: 'node' | 'launcher';
   kind: string;
   context?: Record<string, unknown>;
+  featureOutcome?: TrackerFeatureOutcome;
   error?: { name: string; message: string; stack?: string };
 }
 
@@ -24,34 +33,14 @@ const MAX_RING_EVENTS = 256;
 const MAX_TEXT = 2_000;
 const MAX_REPORT_AGE_MS = 365 * 24 * 60 * 60 * 1_000;
 const MAX_REPORT_BYTES = 128 * 1024 * 1024;
+const MAX_JOURNAL_BYTES = 128 * 1024 * 1024;
+const MAX_JOURNAL_RECORDS = 200_000;
 const LOCK_STALE_MS = 30_000;
 const LOCK_ATTEMPTS = 40;
 const LOCK_WAIT_MS = 5;
 const LOCK_WAIT_BUFFER = new Int32Array(new SharedArrayBuffer(4));
-function forEachTextLineSync(filePath: string, visit: (line: string) => void): void {
-  const fd = openSync(filePath, 'r');
-  const decoder = new StringDecoder('utf8');
-  const chunk = Buffer.allocUnsafe(64 * 1024);
-  let carry = '';
-  try {
-    while (true) {
-      const read = readSync(fd, chunk, 0, chunk.length, null);
-      if (read <= 0) break;
-      carry += decoder.write(chunk.subarray(0, read));
-      let newline: number;
-      while ((newline = carry.indexOf('\n')) >= 0) {
-        const raw = carry.slice(0, newline);
-        carry = carry.slice(newline + 1);
-        visit(raw.endsWith('\r') ? raw.slice(0, -1) : raw);
-      }
-    }
-    carry += decoder.end();
-    if (carry) visit(carry.endsWith('\r') ? carry.slice(0, -1) : carry);
-  } finally {
-    closeSync(fd);
-  }
-}
-
+const MODULE_PROJECT_ROOT = resolveModuleProjectRoot(import.meta.url);
+const DEFAULT_TRACKER_ROOT = path.join(MODULE_PROJECT_ROOT, 'runtime', 'tracker');
 function truncate(value: unknown): string {
   const raw = value instanceof Error ? value.message : String(value ?? '');
   const text = redactSensitiveString(raw);
@@ -74,6 +63,21 @@ function sanitizeContext(context?: Record<string, unknown>): Record<string, unkn
   }
   return output;
 }
+function sanitizeFeatureOutcome(input: TrackerFeatureOutcome): TrackerFeatureOutcome {
+  const featureId = input.featureId.trim().toLowerCase();
+  const outcome = input.outcome.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9._-]{0,79}$/.test(featureId)) throw new Error('TRACKER_FEATURE_ID_INVALID');
+  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(outcome)) throw new Error('TRACKER_OUTCOME_INVALID');
+  const properties: Record<string, TrackerOutcomeProperty> = {};
+  for (const [key, raw] of Object.entries(input.properties ?? {}).slice(0, 16)) {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(key)) continue;
+    if (typeof raw === 'number' && !Number.isFinite(raw)) continue;
+    if (typeof raw === 'string') properties[key] = truncate(raw).slice(0, 200);
+    else if (typeof raw === 'number' || typeof raw === 'boolean' || raw === null) properties[key] = raw;
+  }
+  return { featureId, outcome, ...(Object.keys(properties).length ? { properties } : {}) };
+}
+
 function normalizeError(error: unknown): TrackerEvent['error'] {
   if (error instanceof Error) {
     return { name: error.name, message: truncate(error.message), stack: error.stack ? truncate(error.stack) : undefined };
@@ -87,16 +91,22 @@ export class ActivityTracker {
   private readonly textLogPath: string;
   private readonly clearMarkerPath: string;
   private readonly reportsDir: string;
+  private readonly journal: BoundedJsonlEventLog;
+  private journalIssue: string | null = null;
   private readonly ring: Array<{ event: TrackerEvent; bytes: number }> = [];
   private ringBytes = 0;
   private processHooksInstalled = false;
 
-  constructor(root = path.join(process.cwd(), 'runtime', 'tracker')) {
+  constructor(root = DEFAULT_TRACKER_ROOT) {
     this.root = root;
     this.journalPath = path.join(root, 'activity.jsonl');
     this.textLogPath = path.join(root, 'activity log.txt');
     this.clearMarkerPath = path.join(root, 'activity.clear');
     this.reportsDir = path.join(root, 'reports');
+    this.journal = new BoundedJsonlEventLog(this.journalPath, {
+      maxBytes: MAX_JOURNAL_BYTES,
+      maxRecords: MAX_JOURNAL_RECORDS,
+    });
     mkdirSync(this.reportsDir, { recursive: true });
     this.recoverJournal();
     this.sanitizeReports();
@@ -125,6 +135,32 @@ export class ActivityTracker {
     this.persist(event);
     return event;
   }
+
+  recordOutcome(
+    module: string,
+    level: TrackerLevel,
+    message: string,
+    featureOutcome: TrackerFeatureOutcome,
+    kind = 'feature-outcome',
+    context?: Record<string, unknown>,
+  ): TrackerEvent {
+    const now = new Date();
+    const event: TrackerEvent = {
+      id: randomUUID().replaceAll('-', ''),
+      timestamp: now.toISOString(),
+      time: now.toTimeString().slice(0, 8),
+      module: module.toUpperCase(),
+      level,
+      message: truncate(message),
+      source: 'node',
+      kind,
+      featureOutcome: sanitizeFeatureOutcome(featureOutcome),
+      ...(sanitizeContext(context) ? { context: sanitizeContext(context) } : {}),
+    };
+    this.persist(event);
+    return event;
+  }
+
   captureFailure(
     module: string,
     error: unknown,
@@ -148,6 +184,64 @@ export class ActivityTracker {
     this.writeFailureSnapshot(event);
     return event;
   }
+  readFeatureOutcomes(options: { maxEvents?: number; maxAgeMs?: number; workspace?: string } = {}): TrackerEvent[] {
+    const maxEvents = Math.max(1, Math.min(2_000, options.maxEvents ?? 512));
+    const maxAgeMs = Math.max(60_000, Math.min(365 * 24 * 60 * 60 * 1000, options.maxAgeMs ?? 90 * 24 * 60 * 60 * 1000));
+    const cutoff = Date.now() - maxAgeMs;
+    const workspace = options.workspace?.trim().toLowerCase();
+    const seen = new Set<string>();
+    try {
+      const events = this.journal.replaySync((line) => JSON.parse(line) as TrackerEvent);
+      const output: TrackerEvent[] = [];
+      for (const event of events) {
+        if (!event.featureOutcome || !event.id || seen.has(event.id)) continue;
+        const timestamp = Date.parse(event.timestamp);
+        if (!Number.isFinite(timestamp) || timestamp < cutoff) continue;
+        if (workspace) {
+          const eventWorkspace = typeof event.context?.workspace === 'string'
+            ? event.context.workspace.trim().toLowerCase()
+            : '';
+          if (eventWorkspace !== workspace) continue;
+        }
+        seen.add(event.id);
+        output.push(event);
+        if (output.length > maxEvents) output.shift();
+      }
+      return output;
+    } catch {
+      return [];
+    }
+  }
+
+  readToolInvocationEvents(options: { maxEvents?: number; maxAgeMs?: number } = {}): TrackerEvent[] {
+    const maxEvents = Math.max(1, Math.min(10_000, options.maxEvents ?? 2_000));
+    const maxAgeMs = Math.max(60_000, Math.min(30 * 24 * 60 * 60 * 1000, options.maxAgeMs ?? 7 * 24 * 60 * 60 * 1000));
+    const cutoff = Date.now() - maxAgeMs;
+    const acceptedKinds = new Set([
+      'tool-invocation-start',
+      'tool-call',
+      'handled-tool-failure',
+      'tool-exception',
+      'tool-invocation-interrupted',
+    ]);
+    try {
+      const events = this.journal.replaySync((line) => JSON.parse(line) as TrackerEvent);
+      return events
+        .filter(event => acceptedKinds.has(event.kind))
+        .filter(event => {
+          const timestamp = Date.parse(event.timestamp);
+          return Number.isFinite(timestamp) && timestamp >= cutoff;
+        })
+        .slice(-maxEvents);
+    } catch {
+      return [];
+    }
+  }
+
+  getJournalIssue(): string | null {
+    return this.journalIssue;
+  }
+
   private withJournalLock(action: () => void): boolean {
     const lockPath = `${this.journalPath}.lock`;
     for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
@@ -177,33 +271,31 @@ export class ActivityTracker {
     if (!existsSync(this.journalPath)) return;
     this.withJournalLock(() => {
       const temporary = path.join(this.root, `.activity.recover-${process.pid}-${randomUUID()}.jsonl`);
-      writeFileSync(temporary, '', 'utf8');
-      let corruptCount = 0;
       let rewriteNeeded = false;
       try {
-        forEachTextLineSync(this.journalPath, (line) => {
-          if (!line) return;
-          try {
-            const parsed = JSON.parse(line) as TrackerEvent;
-            const sanitized = redactSensitiveValue(parsed) as TrackerEvent;
-            const encoded = JSON.stringify(sanitized);
-            appendFileSync(temporary, `${encoded}\n`, 'utf8');
-            if (JSON.stringify(parsed) !== encoded) rewriteNeeded = true;
-          } catch {
-            corruptCount += 1;
-            rewriteNeeded = true;
-          }
+        const records = this.journal.replaySync((line) => {
+          const parsed = JSON.parse(line) as TrackerEvent;
+          const sanitized = redactSensitiveValue(parsed) as TrackerEvent;
+          if (JSON.stringify(parsed) !== JSON.stringify(sanitized)) rewriteNeeded = true;
+          return sanitized;
         });
+        this.journalIssue = null;
         if (!rewriteNeeded) return;
-        if (corruptCount > 0) {
-          const stamp = new Date().toISOString().replaceAll(':', '-');
-          writeFileSync(
-            path.join(this.root, `activity.corrupt.${stamp}.jsonl`),
-            `Recovered ${corruptCount} corrupt line(s); original content omitted for security.\n`,
-            'utf8',
-          );
-        }
+        writeFileSync(
+          temporary,
+          records.length ? records.map((record) => JSON.stringify(record)).join('\n') + '\n' : '',
+          'utf8',
+        );
         copyFileSync(temporary, this.journalPath);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.journalIssue = truncate(message);
+        const stamp = new Date().toISOString().replaceAll(':', '-');
+        writeFileSync(
+          path.join(this.root, `activity.corrupt.${stamp}.jsonl`),
+          'Activity journal replay failed; original journal preserved; corrupt content omitted.\n',
+          'utf8',
+        );
       } finally {
         try { unlinkSync(temporary); } catch { }
       }
@@ -243,15 +335,10 @@ export class ActivityTracker {
       const temporary = path.join(this.root, `.activity-log-${process.pid}-${randomUUID()}.txt`);
       writeFileSync(temporary, '', 'utf8');
       try {
-        if (existsSync(this.journalPath)) {
-          forEachTextLineSync(this.journalPath, (line) => {
-            if (!line) return;
-            try {
-              const event = JSON.parse(line) as TrackerEvent;
-              if (Date.parse(event.timestamp) <= cutoff) return;
-              appendFileSync(temporary, `${this.formatTextEvent(event)}\n`, 'utf8');
-            } catch { }
-          });
+        const events = this.journal.replaySync((line) => JSON.parse(line) as TrackerEvent);
+        for (const event of events) {
+          if (Date.parse(event.timestamp) <= cutoff) continue;
+          appendFileSync(temporary, `${this.formatTextEvent(event)}\n`, 'utf8');
         }
         copyFileSync(temporary, this.textLogPath);
       } finally {
@@ -295,8 +382,9 @@ export class ActivityTracker {
         if (removed) this.ringBytes -= removed.bytes;
       }
       this.withJournalLock(() => {
-        appendFileSync(this.journalPath, `${line}\n`, { encoding: 'utf8', flush: true });
+        this.journal.appendSync([event], { durable: true });
         appendFileSync(this.textLogPath, `${this.formatTextEvent(event)}\n`, { encoding: 'utf8', flush: true });
+        this.journalIssue = null;
       });
     } catch {
       // Tracker failures must never take down Agent Core.
@@ -315,7 +403,7 @@ export class ActivityTracker {
           arch: process.arch,
           node: process.version,
           uptimeSeconds: process.uptime(),
-          cwd: process.cwd(),
+          projectRoot: MODULE_PROJECT_ROOT,
           memory: process.memoryUsage(),
         },
         recentEvents: this.ring.map((item) => item.event),

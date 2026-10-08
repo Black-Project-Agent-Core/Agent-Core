@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "task": "TASK 5 - Canonical Design IR v1",
+  "status": "COMPLETE",
+  "gateP3": "PASS",
+  "irVersion": "1.0.0",
+  "productRoot": "F:\\Content Creator\\Astra Content Factory",
+  "irRoot": "F:\\Content Creator\\Astra Content Factory\\Toolchain\\adapters\\penpot-to-canva\\ir-v1",
+  "agentCoreRole": "engineering-support-and-evidence-only",
+  "artifacts": {
+    "canonicalSchema": "ir-v1/canonical-design-ir-v1.schema.json",
+    "compatibilitySchema": "ir-v1/compatibility-report-v1.schema.json",
+    "types": "ir-v1/types.ts",
+    "coverageMap": "ir-v1/coverage-map-v1.json",
+    "readme": "ir-v1/README.md",
+    "examples": [
+      "ir-v1/examples/text.example.json",
+      "ir-v1/examples/rect.example.json",
+      "ir-v1/examples/shape.example.json",
+      "ir-v1/examples/group.example.json",
+      "ir-v1/examples/image-fill.example.json",
+      "ir-v1/examples/representative-document.example.json",
+      "ir-v1/examples/compatibility-report.example.json"
+    ]
+  },
+  "modelDecisions": {
+    "pageSource": "top-level Penpot Board",
+    "penpotPageRole": "source section/grouping metadata",
+    "elementTypes": [
+      "text",
+      "rect",
+      "shape",
+      "group"
+    ],
+    "imageModel": "image is Fill -> Asset, not standalone tree element",
+    "coordinates": "parent-relative",
+    "order": "zero-based contiguous sibling order; arrays must match order",
+    "ids": "deterministic source-derived IDs; no random extractor IDs",
+    "textOffsets": "UTF-16 code-unit half-open [start,end)",
+    "assetHash": "SHA-256 of raw decoded asset bytes",
+    "compatibility": "unassessed at extraction, then native/emulated/partial/unsupported after target analysis",
+    "semanticRole": "reserved only; no placeholder/Autofill emulation enabled in strict v1",
+    "privateFormatDependencies": 0
+  },
+  "deterministicSerialization": [
+    "UTF-8 without BOM",
+    "LF line endings",
+    "lexicographically sorted object keys",
+    "semantic arrays ordered by explicit order/start/id rules",
+    "finite JSON numbers only",
+    "negative zero normalized to zero",
+    "no insignificant whitespace in canonical bytes",
+    "SHA-256 over canonical UTF-8 JSON bytes"
+  ],
+  "validation": {
+    "status": "PASS",
+    "strictV1MappingCount": 20,
+    "representativeDocumentDigest": "bb831443d6e2ae2f6d05911d3d665c9feef603ac2697d273ea793b30409b152b",
+    "representativePageCount": 2,
+    "representativeAssetCount": 1,
+    "representativeElementFamilies": [
+      "group",
+      "rect",
+      "shape",
+      "text"
+    ],
+    "typescriptCheck": "PASS_EXIT_0",
+    "checks": [
+      "unique canonical IDs",
+      "parentId consistency",
+      "contiguous page/sibling ordering",
+      "UTF-16 rich-text run full coverage and coalescing",
+      "asset reference integrity",
+      "inline asset SHA-256",
+      "finite numeric values",
+      "deterministic serialization idempotence",
+      "all strict-v1 selected semantics have explicit IR fields",
+      "no private Penpot/Canva format dependencies"
+    ]
+  },
+  "irTree": {
+    "files": 12,
+    "sha256Tree": "ddc3e06eb958b08cee635e69214a42b29e2a2a230028520aacbb97a695571192"
+  },
+  "adapterAfterTask5": {
+    "files": 20,
+    "sha256Tree": "b50650c8cbad0d1c4f4630367c51b690cd71e194dc868b6ef77582cbdc2fcb74"
+  },
+  "protectedBoundaries": {
+    "task3ProbeSha256": "de0e0bd374c68b23929794993fbb7855d0e7031b0055a01405439f4bf5c1001e",
+    "task3ProbeMatch": true,
+    "penpotSourceSha256": "5d70ab81d45b97e97a858135f15a5b60a3c438cfabaff668a021de5a48253268",
+    "penpotSourceMatch": true,
+    "penpotMcpRuntimeSha256": "2ad61958540d2df7eed9c372cead55d6a4b34534c4dcdd701e352bc31fed2610",
+    "penpotMcpRuntimeMatch": true,
+    "figExporterSha256": "159208b5a228d91d1f562a6ab32e3c352f4d55d6e18462f520d04932ddce50ef",
+    "figExporterMatch": true
+  },
+  "gateP3Basis": [
+    "representative strict-v1 document contains every strict tree element family plus image asset/fill",
+    "every selected TASK 4 semantic has an explicit IR field",
+    "representative document passes structural and deterministic invariants",
+    "IR does not depend on Penpot binary/private Canva document formats"
+  ],
+  "explicitNonGoals": [
+    "Penpot -> IR extractor implementation",
+    "Canva compiler implementation",
+    "placeholder emulation",
+    "Autofill runtime",
+    "crop/gradient/mask/effects/table/chart/video support"
+  ],
+  "task6Status": "NOT_STARTED"
+}

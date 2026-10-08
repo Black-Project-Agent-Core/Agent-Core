@@ -82,4 +82,33 @@ describe('external MCP acceptance harness', () => {
     expect(result.manifestFingerprint).toMatch(/^[0-9a-f]{64}$/);
     expect(result.evidenceDir).toContain(root);
   });
+
+  it('bounds a non-responsive MCP endpoint and classifies the timeout without hanging cleanup', async () => {
+    const http = createServer(() => {
+      // Intentionally leave the request open until the client lifecycle aborts it.
+    });
+    await new Promise<void>((resolve, reject) => {
+      http.once('error', reject);
+      http.listen(0, '127.0.0.1', () => resolve());
+    });
+    cleanups.push(async () => {
+      http.closeAllConnections();
+      await new Promise<void>(resolve => http.close(() => resolve()));
+    });
+    const address = http.address();
+    if (!address || typeof address === 'string') throw new Error('fixture listen failed');
+    const root = path.resolve('runtime', 'tmp', 'mcp-client-acceptance', `timeout-${randomUUID()}`);
+    await mkdir(root, { recursive: true });
+    cleanups.push(() => rm(root, { recursive: true, force: true }));
+
+    const { runExternalMcpAcceptance } = await import('../scripts/verify/mcp-external-acceptance.mjs');
+    const started = Date.now();
+    await expect(runExternalMcpAcceptance({
+      url: `http://127.0.0.1:${address.port}/mcp`,
+      evidenceRoot: root,
+      requestTimeoutMs: 100,
+      cleanupTimeoutMs: 50,
+    })).rejects.toThrow('verification-timeout');
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
 });

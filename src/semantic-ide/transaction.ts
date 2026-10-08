@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { offsetForPosition, preferredLineEnding } from './text-position.js';
 import { access, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,28 +48,18 @@ function fingerprintBytes(value: Buffer): string {
 }
 
 function normalizeLineEndings(value: string, source: string): string {
-  const eol = source.includes('\r\n') ? '\r\n' : '\n';
+  const eol = preferredLineEnding(source);
   return value.replace(/\r\n|\r|\n/g, eol);
 }
 
 function offsetAt(text: string, position: LspPosition): number {
-  if (position.line < 0 || position.character < 0) throw new Error('SEMANTIC_EDIT_POSITION_INVALID');
-  let offset = 0;
-  let line = 0;
-  while (line < position.line) {
-    const next = text.indexOf('\n', offset);
-    if (next < 0) {
-      if (line + 1 === position.line && position.character === 0) return text.length;
-      throw new Error('SEMANTIC_EDIT_POSITION_OUT_OF_RANGE');
+  try { return offsetForPosition(text, position, { allowEndOfFileLine: true }); }
+  catch (error) {
+    if (error instanceof Error && error.message === 'SEMANTIC_TEXT_POSITION_INVALID') {
+      throw new Error('SEMANTIC_EDIT_POSITION_INVALID');
     }
-    offset = next + 1;
-    line += 1;
+    throw new Error('SEMANTIC_EDIT_POSITION_OUT_OF_RANGE');
   }
-  const lineEnd = text.indexOf('\n', offset);
-  const end = lineEnd < 0 ? text.length : lineEnd;
-  const width = end - offset;
-  if (position.character > width) throw new Error('SEMANTIC_EDIT_POSITION_OUT_OF_RANGE');
-  return offset + position.character;
 }
 
 function applyEdits(text: string, edits: TextEdit[]): string {

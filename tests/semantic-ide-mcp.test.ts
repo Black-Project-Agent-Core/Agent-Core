@@ -9,21 +9,27 @@ function registered(runtime: Record<string, unknown>) {
 describe('Semantic IDE MCP surface', () => {
   it('adds exactly code_symbol and code_refactor to the current production contract', () => {
     const dummy = {};
+    const base = registered({
+      memoryService: dummy,
+      learningService: dummy,
+      phoneController: { enabled: true },
+      codeIntelligence: dummy,
+    });
     const tools = registered({
       memoryService: dummy,
       learningService: dummy,
-      hermesPartner: dummy,
       semanticIde: dummy,
       phoneController: { enabled: true },
       codeIntelligence: dummy,
     });
+    const baseNames = new Set(Object.keys(base));
     const names = Object.keys(tools);
-    expect(names).toHaveLength(62);
-    expect(names).toContain('code_symbol');
-    expect(names).toContain('code_refactor');
+    const added = names.filter(name => !baseNames.has(name)).sort();
+    expect(added).toEqual(['code_refactor', 'code_symbol']);
+    expect(names).toHaveLength(baseNames.size + 2);
     expect(names).toContain('read_file');
     expect(names).toContain('memory_search');
-    expect(names).toContain('partner');
+    expect(names).not.toContain('partner');
     expect(names).toContain('code_workspace');
   });
   it('keeps Serena generic tool families out of the public surface', () => {

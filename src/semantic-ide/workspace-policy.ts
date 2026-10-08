@@ -1,7 +1,8 @@
 import { access, lstat, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { inside, isProtectedPath } from './path-safety.js';
+import { inside, isProtectedPath, authorizedExistingPath } from './path-safety.js';
+import { readSemanticDigest, semanticFileIdentity, type SemanticFileIdentity } from './source-io.js';
 
 const HARD_IGNORED_DIRS = new Set([
   '.git', '.svn', '.hg', '.bzr',
@@ -66,7 +67,9 @@ async function runGitCheckIgnore(root: string, relativePaths: string[]): Promise
   return ignored;
 }
 
-async function runGitListFiles(root: string): Promise<string[] | null> {
+interface GitSourceListing { files: string[]; ioWarning: boolean }
+
+async function runGitListFiles(root: string): Promise<GitSourceListing | null> {
   return new Promise(resolve => {
     const safeRoot = path.resolve(root).replace(/\\/g, '/');
     const child = spawn('git', [
@@ -78,13 +81,15 @@ async function runGitListFiles(root: string): Promise<string[] | null> {
       '--others',
       '--exclude-standard',
     ], {
-      stdio: ['ignore', 'pipe', 'ignore'],
+      stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
     const chunks: Buffer[] = [];
     let total = 0;
+    let ioWarning = false;
+    child.stderr.on('data', chunk => { if (String(chunk).trim()) ioWarning = true; });
     let settled = false;
-    const finish = (value: string[] | null) => {
+    const finish = (value: GitSourceListing | null) => {
       if (settled) return;
       settled = true;
       resolve(value);
@@ -100,25 +105,35 @@ async function runGitListFiles(root: string): Promise<string[] | null> {
       chunks.push(value);
     });
     child.once('error', () => finish(null));
-    child.once('exit', code => {
+    // Wait for stdout/stderr to drain before judging listing completeness.
+    child.once('close', code => {
       if (settled) return;
       if (code !== 0) return finish(null);
       const output = Buffer.concat(chunks).toString('utf8');
-      finish(output.split('\0').filter(Boolean));
+      finish({ files: output.split('\0').filter(Boolean), ioWarning });
     });
   });
 }
 
-export interface WorkspaceSourceFile {
-  absolutePath: string;
-  relativePath: string;
+export interface WorkspaceFileStamp {
   mtimeMs: number;
   size: number;
+  identity: SemanticFileIdentity;
+  digest?: string;
+  evidence: 'metadata' | 'digest' | 'unknown';
+  cacheable: boolean;
+}
+export interface WorkspaceSourceFile extends WorkspaceFileStamp {
+  absolutePath: string;
+  relativePath: string;
 }
 
 export interface WorkspaceScanResult {
   files: WorkspaceSourceFile[];
   truncated: boolean;
+  complete: boolean;
+  ioIssueCount: number;
+  issues: Array<{ relativePath: string; code: string }>;
   durationMs: number;
   ignoredCount: number;
 }
@@ -134,17 +149,42 @@ export async function scanWorkspaceSources(
   extraIgnored: readonly string[] = [],
   maxFiles = 4000,
   maxMs = 5000,
+  previous?: ReadonlyMap<string, WorkspaceFileStamp>,
 ): Promise<WorkspaceScanResult> {
   const started = Date.now();
   const deadline = started + maxMs;
-  const realRoot = await realpath(root);
+  const issues: WorkspaceScanResult['issues'] = [];
+  let ioIssueCount = 0;
+  const noteIssue = (relativePath: string, error: unknown, rootFailure = false) => {
+    const rawCode = (error as NodeJS.ErrnoException | undefined)?.code;
+    const code = typeof rawCode === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(rawCode) ? rawCode : 'EUNKNOWN';
+    // A vanished leaf is absence; a missing root is not a healthy workspace.
+    if (code === 'ENOENT' && !rootFailure) return;
+    ioIssueCount += 1;
+    if (issues.length < 16) {
+      const safePath = !path.isAbsolute(relativePath) && !relativePath.split(/[\\/]+/).includes('..')
+        ? relativePath.replace(/\\/g, '/').slice(0, 240) : '.';
+      issues.push({ relativePath: safePath || '.', code });
+    }
+  };
+  let realRoot: string;
+  try { realRoot = await realpath(root); }
+  catch (error) {
+    noteIssue('.', error, true);
+    return { files: [], complete: false, ioIssueCount, issues, truncated: false,
+      durationMs: Date.now() - started, ignoredCount: 0 };
+  }
   const extensionSet = new Set(extensions.map(normalizeExt));
   const candidates: WorkspaceSourceCandidate[] = [];
   let truncated = false;
   let ignoredCount = 0;
 
-  const gitFiles = await runGitListFiles(root);
-  if (gitFiles !== null) {
+  const gitListing = await runGitListFiles(root);
+  if (gitListing !== null) {
+    const gitFiles = gitListing.files;
+    // A successful Git exit can still omit unreadable untracked subtrees.
+    // Preserve filtered positive evidence, but do not infer absence after a warning.
+    if (gitListing.ioWarning) noteIssue('.', { code: 'EGIT_ENUMERATION_WARNING' }, true);
     for (const rawRelative of gitFiles) {
       if (candidates.length >= maxFiles || Date.now() >= deadline) {
         truncated = true;
@@ -173,7 +213,7 @@ export async function scanWorkspaceSources(
       const absoluteDir = path.join(root, relativeDir);
       let entries;
       try { entries = await readdir(absoluteDir, { withFileTypes: true }); }
-      catch { continue; }
+      catch (error) { noteIssue(relativeDir || '.', error, relativeDir === ''); continue; }
 
       for (const entry of entries) {
         const relative = path.join(relativeDir, entry.name);
@@ -212,7 +252,12 @@ export async function scanWorkspaceSources(
       }
       const candidate = candidates[index]!;
       try {
-        const ownMetadata = await lstat(candidate.absolutePath);
+        try { await authorizedExistingPath(root, candidate.absolutePath); }
+        catch (error) {
+          if (error instanceof Error && /SEMANTIC_(?:REALPATH_OUTSIDE_WORKSPACE|PROTECTED_PATH)/.test(error.message)) { ignoredCount += 1; continue; }
+          throw error;
+        }
+        const ownMetadata = await lstat(candidate.absolutePath, { bigint: true });
         let metadata = ownMetadata;
         if (ownMetadata.isSymbolicLink()) {
           const resolved = await realpath(candidate.absolutePath);
@@ -220,26 +265,47 @@ export async function scanWorkspaceSources(
             ignoredCount += 1;
             continue;
           }
-          metadata = await stat(resolved);
+          metadata = await stat(resolved, { bigint: true });
         }
         if (!metadata.isFile()) continue;
+        const identity = semanticFileIdentity(metadata);
+        const threshold = BigInt(started - 2000) * 1000000n;
+        const cacheable = metadata.mtimeNs < threshold && metadata.ctimeNs < threshold;
         results[index] = {
           absolutePath: candidate.absolutePath,
           relativePath: candidate.relativePath,
-          mtimeMs: metadata.mtimeMs,
-          size: metadata.size,
+          mtimeMs: Number(metadata.mtimeNs) / 1000000,
+          size: identity.size, identity, cacheable,
+          evidence: cacheable && (!previous?.has(candidate.absolutePath) || previous.get(candidate.absolutePath)?.evidence === 'metadata') ? 'metadata' : 'unknown',
         };
-      } catch {
-        // Missing files from a Git listing represent a real deletion and are
-        // intentionally absent from the next snapshot. Other transient read
-        // failures remain fail-soft and are retried on the next reconcile.
+      } catch (error) {
+        noteIssue(candidate.relativePath, error);
       }
     }
   });
   await Promise.all(workers);
+  let digestCursor = 0;
+  let digestBytes = 0;
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    while (digestCursor < results.length) {
+      const file = results[digestCursor++];
+      if (!file || file.evidence === 'metadata') continue;
+      if (Date.now() >= deadline || file.size > 1024 * 1024 || digestBytes + file.size > 8 * 1024 * 1024) continue;
+      digestBytes += file.size;
+      try {
+        file.digest = await readSemanticDigest(root, file.absolutePath, file.identity, 1024 * 1024, deadline);
+        file.evidence = 'digest';
+      } catch (error) { noteIssue(file.relativePath, error); }
+    }
+  }));
   if (Date.now() >= deadline && results.some(item => item === undefined)) truncated = true;
 
+  // Root loss during enumeration must not turn all vanished leaves into a clean empty scan.
+  try { await lstat(root); } catch (error) { noteIssue('.', error, true); }
   return {
+    complete: !truncated && ioIssueCount === 0,
+    ioIssueCount,
+    issues,
     files: results.filter((item): item is WorkspaceSourceFile => Boolean(item)),
     truncated,
     durationMs: Date.now() - started,

@@ -1,10 +1,9 @@
 import type { PhoneDisplayConfig, PhoneGatewayConfig } from './config.js';
 import { base64ToBuffer, encodeScreenshot } from './image.js';
 import { fetchWithPolicy, correlationSuffix } from '../net/outbound-request.js';
-import { readResponseTextBounded } from '../net/bounded-response.js';
 import { parseCallToolResultJson } from '../mcp/call-tool-result.js';
-import { parseJsonRpcHttpResponse } from '../mcp/streamable-http.js';
-import { redactSensitiveString, redactSensitiveValue } from '../security/redaction.js';
+import { readJsonRpcHttpResponse } from '../mcp/streamable-http.js';
+import { redactSensitiveString } from '../security/redaction.js';
 import type {
   ForegroundApp,
   NamedAction,
@@ -38,16 +37,6 @@ const KEY_ALIASES: Record<string, 'back' | 'home'> = {
 
 function truncate(text: string, max = 400): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
-}
-
-/** Parse a bounded Streamable-HTTP MCP response body (SSE frames or plain JSON). */
-function parseRpc(text: string, contentType: string): RpcEnvelope {
-  try {
-    return parseJsonRpcHttpResponse(text, contentType) as RpcEnvelope;
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`${detail}: ${truncate(redactSensitiveString(text))}`);
-  }
 }
 
 function toolErrorText(result: RpcToolResult): string {
@@ -86,24 +75,31 @@ export class GatewayTransport implements PhoneTransport {
       accept: 'application/json, text/event-stream',
     };
     if (this.config.token) headers.authorization = `Bearer ${this.config.token}`;
+    const expectedId = 1;
+    const signal = AbortSignal.timeout(30_000);
     const body = JSON.stringify({
       jsonrpc: '2.0',
-      id: 1,
+      id: expectedId,
       method: 'tools/call',
       params: { name, arguments: { deviceId: this.deviceId, ...args } },
     });
-    const response = await fetchWithPolicy(this.config.url, { method: 'POST', headers, body }, {
+    const response = await fetchWithPolicy(this.config.url, { method: 'POST', headers, body, signal }, {
       safety: 'non-idempotent',
       maxAttempts: 1,
       timeoutMs: 30_000,
     });
-    const text = await readResponseTextBounded(response, 32 * 1024 * 1024, `phone gateway ${name} response`);
-    if (!response.ok) throw new Error(`gateway ${name} HTTP ${response.status}: ${truncate(redactSensitiveString(text))}${correlationSuffix(response)}`);
-    const rpc = parseRpc(text, response.headers.get('content-type') ?? '');
-    if (rpc.error) throw new Error(`gateway ${name} error: ${JSON.stringify(redactSensitiveValue(rpc.error))}`);
+    let rpc: RpcEnvelope;
+    try {
+      rpc = await readJsonRpcHttpResponse(response, {
+        expectedId, maxBytes: 32 * 1024 * 1024, maxFrameBytes: 32 * 1024 * 1024, signal,
+      }) as RpcEnvelope;
+    } catch (error) {
+      const detail = response.ok ? (error instanceof Error ? error.message : 'MCP_RESPONSE_READ_FAILED') : `HTTP ${response.status}`;
+      throw new Error(`gateway ${name} ${detail}${correlationSuffix(response)}`);
+    }
     const result = rpc.result;
     if (!result) throw new Error(`gateway ${name} returned no result`);
-    if (result.isError) throw new Error(`gateway ${name}: ${toolErrorText(result)}`);
+    if (result.isError) throw new Error(`gateway ${name}: ${truncate(redactSensitiveString(toolErrorText(result)))}`);
     return result;
   }
 
@@ -212,6 +208,14 @@ export class GatewayTransport implements PhoneTransport {
 
   async runMacro(actions: string[], delayMs: number): Promise<Record<string, unknown>> {
     return this.asRecord(await this.call('android_run_macro', { actions, delayMs }));
+  }
+
+  async setOverlay(enabled: boolean): Promise<Record<string, unknown>> {
+    return this.asRecord(await this.call('android_set_overlay', { enabled }));
+  }
+
+  async clearMarkers(): Promise<Record<string, unknown>> {
+    return this.asRecord(await this.call('android_clear_markers'));
   }
 
   private asRecord(result: RpcToolResult): Record<string, unknown> {

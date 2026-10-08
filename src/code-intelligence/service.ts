@@ -1,7 +1,15 @@
 import type { CallToolResult } from '@modelcontextprotocol/client';
+import path from 'node:path';
 import { parseCallToolResultJson } from '../mcp/call-tool-result.js';
+import { clearPortabilityReindexRequest, readPortabilityReindexRequest } from '../portability/runtime-relocation.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { GrafelClient } from './grafel-client.js';
+import {
+  collectSourceRepresentation,
+  GraphIntegrityObserver,
+  type GraphIntegrityObservation,
+  type GraphStructuralEvidence,
+} from './graph-observability.js';
 import {
   deriveProviderCapabilities,
   GRAFEL_CORE_TOOLS,
@@ -12,6 +20,7 @@ import type {
   CodeIndexState,
   CodeIntelligenceConfig,
   CodeIntelligenceHealth,
+  CodeProviderAttestation,
   CodeProviderCapabilities,
   CodeProviderReadiness,
   CodeWorkspaceContext,
@@ -58,7 +67,7 @@ interface ProviderIndexSnapshot {
 }
 
 function normalizeFsPath(value: string): string {
-  const normalized = value.replaceAll('\\\\', '/');
+  const normalized = value.replace(/\\/g, '/').replace(/\/+$/, '');
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
@@ -126,8 +135,12 @@ export class CodeIntelligenceService {
   private readonly runtime: GrafelRuntime;
   private readonly client: GrafelClient;
   private readonly workspaceResolver: WorkspaceResolver;
+  private readonly graphIntegrity: GraphIntegrityObserver;
   private lastHealth: CodeIntelligenceHealth;
   private lastHealthAt = 0;
+  private healthGeneration = 0;
+  private healthClosed = false;
+  private pendingHealth?: { generation: number; promise: Promise<CodeIntelligenceHealth> };
   private providerVersion?: string;
   private providerWireVersion?: string;
   private providerWireIssue?: string;
@@ -161,8 +174,9 @@ export class CodeIntelligenceService {
     this.runtime = new GrafelRuntime(config);
     this.client = new GrafelClient(this.runtime, config.callTimeoutMs);
     this.client.setToolSurfaceListener(async toolNames => {
+      if (this.healthClosed) return;
       this.providerCapabilities = deriveProviderCapabilities(toolNames, this.cliCapabilities);
-      this.lastHealthAt = 0;
+      this.invalidateHealth();
       activityTracker.record(
         'CODE_INTELLIGENCE',
         'info',
@@ -172,6 +186,9 @@ export class CodeIntelligenceService {
       );
     });
     this.workspaceResolver = new WorkspaceResolver(config, this.runtime);
+    this.graphIntegrity = new GraphIntegrityObserver(
+      path.join(config.runtimeDir, 'agent-core-graph-observability.json'),
+    );
     this.lastHealth = {
       status: config.enabled ? 'degraded' : 'not-configured',
       provider: 'grafel',
@@ -203,9 +220,48 @@ export class CodeIntelligenceService {
 
   async health(force = false): Promise<CodeIntelligenceHealth> {
     if (!this.config.enabled) return this.lastHealth;
+    if (this.healthClosed) return this.unavailableHealth('CODE_INTELLIGENCE_CLOSED');
     const now = Date.now();
-    if (!force && now - this.lastHealthAt < HEALTH_CACHE_MS) return this.lastHealth;
-    return this.refreshHealth();
+    if (!force && this.lastHealthAt > 0 && now - this.lastHealthAt < HEALTH_CACHE_MS) return this.lastHealth;
+    const generation = this.healthGeneration;
+    if (this.pendingHealth?.generation === generation) return this.pendingHealth.promise;
+    const owner = { generation, promise: undefined as unknown as Promise<CodeIntelligenceHealth> };
+    owner.promise = this.collectHealth(generation).then(health => {
+      if (this.healthClosed || generation !== this.healthGeneration) {
+        return this.unavailableHealth(this.healthClosed ? 'CODE_INTELLIGENCE_CLOSED' : 'CODE_INTELLIGENCE_HEALTH_SUPERSEDED');
+      }
+      this.lastHealth = health;
+      this.lastHealthAt = Date.now();
+      return health;
+    }).finally(() => {
+      if (this.pendingHealth === owner) this.pendingHealth = undefined;
+    });
+    this.pendingHealth = owner;
+    return owner.promise;
+  }
+
+  private invalidateHealth(): void {
+    this.healthGeneration += 1;
+    this.lastHealthAt = 0;
+  }
+
+  private async assertProviderMutationAllowed(operation: string): Promise<CodeProviderAttestation> {
+    const attestation = await this.runtime.assertMutationAttested();
+    if (attestation.state === 'unverifiable') {
+      activityTracker.record(
+        'CODE_INTELLIGENCE',
+        'info',
+        'Grafel provider mutation proceeding with unverifiable resident attestation',
+        'provider-attestation-unverifiable',
+        { operation, issue: attestation.issue ?? '' },
+      );
+    }
+    return attestation;
+  }
+
+  private unavailableHealth(issue: string): CodeIntelligenceHealth {
+    return { status: 'degraded', provider: 'grafel', daemon: 'unavailable', index: 'unknown',
+      group: this.config.group, issueCount: 1, issue };
   }
 
   async resolveWorkspace(input: WorkspaceContextInput = {}): Promise<CodeWorkspaceContext> {
@@ -224,6 +280,7 @@ export class CodeIntelligenceService {
 
   async registerWorkspace(input: WorkspaceRegistrationInput): Promise<CodeWorkspaceRecord> {
     this.assertCapability('workspaceRouting');
+    await this.assertProviderMutationAllowed('register-workspace');
     const registered = await this.workspaceResolver.register(input);
     if (input.trackWorktrees === true) {
       // Grafel v0.3.3 creates the worktree watcher only when a
@@ -257,6 +314,7 @@ export class CodeIntelligenceService {
 
   async unregisterWorkspace(input: { workspace: string; confirmation?: string }): Promise<unknown> {
     this.assertCapability('workspaceRouting');
+    await this.assertProviderMutationAllowed('unregister-workspace');
     const workspace = input.workspace.trim();
     if (!workspace) throw new Error('CODE_WORKSPACE_NAME_REQUIRED');
     if (workspace === this.config.group) throw new Error(`CODE_WORKSPACE_DEFAULT_PROTECTED: ${workspace}`);
@@ -283,6 +341,7 @@ export class CodeIntelligenceService {
     const hygiene = await this.workspaceResolver.hygiene();
     const stale = hygiene.filter(record => record.stale && record.workspace !== this.config.group);
     if (input.apply !== true) return { dryRun: true, stale, staleCount: stale.length };
+    await this.assertProviderMutationAllowed('prune-workspaces');
     if (input.confirmation !== 'PRUNE_STALE_WORKSPACES') {
       throw new Error('CODE_WORKSPACE_PRUNE_CONFIRMATION_REQUIRED: confirmation=PRUNE_STALE_WORKSPACES');
     }
@@ -307,13 +366,40 @@ export class CodeIntelligenceService {
     this.assertCapability('workspaceRouting');
     const context = await this.resolveWorkspace(input);
     await this.assertRequestedRef(context);
-    const [index, refs] = await Promise.all([
-      this.contextIndexState(context),
-      this.providerCapabilities.refGraphs ? this.runtime.refs(context.group) : Promise.resolve([]),
+    const members = (await this.workspaceResolver.list()).find(item => item.name === context.group)?.repos ?? [];
+    const [providerIndexStatus, refs, graphs] = await Promise.all([
+      this.providerIndexSnapshot(context),
+      this.providerCapabilities.refGraphs ? this.runtime.refs(context.group).catch(() => []) : Promise.resolve([]),
+      this.graphLoadEvidence(context, members.map(repo => repo.slug)),
     ]);
-    const providerIndexStatus = await this.providerIndexSnapshot(context);
+    const selected = this.contextGraphEvidence(context, providerIndexStatus, refs, graphs);
+    const index = selected.index;
+    const coverage = await Promise.all(members.map(async repo => {
+      const memberContext = { ...context, cwd: repo.path, repo: repo.slug,
+        ...(repo.slug === context.repo ? {} : { worktreePath: undefined }) };
+      const evidence = this.contextGraphEvidence(memberContext, providerIndexStatus, refs, graphs);
+      const integrity = this.config.enabled && evidence.index === 'current' && evidence.graphAvailability.available
+        ? await this.graphIntegrity.observe({
+            group: memberContext.group,
+            repo: repo.slug,
+            ...(memberContext.ref ? { ref: memberContext.ref } : {}),
+            repoPath: memberContext.worktreePath ?? repo.path,
+            evidence: evidence.graphAvailability,
+          }).catch(error => ({
+            state: 'unavailable' as const,
+            reason: `observer-failure: ${error instanceof Error ? error.message : String(error)}`,
+          }))
+        : { state: 'unavailable' as const, reason: evidence.graphAvailability.reason };
+      return { repo: repo.slug, index: evidence.index, ...evidence.graphAvailability, integrity };
+    }));
+    const selectedIntegrity = coverage.find(repo => repo.repo === context.repo)?.integrity
+      ?? { state: 'unavailable' as const, reason: selected.graphAvailability.reason };
     if (index === 'current') this.dirtyContexts.delete(contextKey(context));
-    const effectiveIndex = this.dirtyContexts.has(contextKey(context)) ? 'dirty' : index;
+    let effectiveIndex = this.dirtyContexts.has(contextKey(context)) ? 'dirty' : index;
+    if (effectiveIndex === 'current'
+      && (selectedIntegrity.state === 'degraded' || selectedIntegrity.state === 'unverified')) {
+      effectiveIndex = 'degraded';
+    }
     return {
       context,
       index: effectiveIndex,
@@ -323,16 +409,44 @@ export class CodeIntelligenceService {
         : 'provider-index-status',
       providerIndexStatus,
       refs,
+      graphAvailability: selected.graphAvailability,
+      graphIntegrity: selectedIntegrity,
+      groupCoverage: {
+        scope: 'registered-workspace',
+        totalRepos: members.length,
+        availableRepos: coverage.filter(repo => repo.available).length,
+        currentRepos: coverage.filter(repo => repo.index === 'current').length,
+        complete: members.length > 0 && coverage.every(repo => repo.index === 'current'),
+        integrityAcceptedRepos: coverage.filter(repo => repo.integrity.state === 'accepted').length,
+        integrityComplete: members.length > 0 && coverage.every(repo => repo.integrity.state === 'accepted'),
+        repos: coverage,
+      },
     };
   }
 
   async indexWorkspace(input: WorkspaceContextInput = {}): Promise<unknown> {
     this.assertCapability('workspaceRouting');
+    await this.assertProviderMutationAllowed('index-workspace');
     const context = await this.resolveWorkspace(input);
     await this.assertRequestedRef(context, true);
+    if (context.repo) {
+      await this.graphIntegrity.authorizeIndex({
+        group: context.group,
+        repo: context.repo,
+        ...(context.ref ? { ref: context.ref } : {}),
+        repoPath: context.worktreePath ?? context.cwd,
+      }).catch(error => {
+        activityTracker.captureFailure(
+          'CODE_INTELLIGENCE',
+          error,
+          'graph-integrity-index-authorization-failure',
+          { workspace: context.group, repo: context.repo ?? '', ref: context.ref ?? '' },
+        );
+      });
+    }
     await this.runtime.requestIndexFor(context.worktreePath ?? context.cwd, context.ref);
     this.dirtyContexts.add(contextKey(context));
-    this.lastHealthAt = 0;
+    this.invalidateHealth();
     activityTracker.record(
       'CODE_INTELLIGENCE',
       'info',
@@ -357,6 +471,7 @@ export class CodeIntelligenceService {
     },
   ): Promise<unknown> {
     this.assertCapability('refGraphs');
+    await this.assertProviderMutationAllowed('set-workspace-ref-pin');
     const context = await this.resolveWorkspace(input);
     const refs = await this.runtime.refs(context.group);
     const exact = refs.find(item =>
@@ -409,6 +524,7 @@ export class CodeIntelligenceService {
     this.assertCapability('refGraphs');
     const context = await this.resolveWorkspace(input);
     const apply = input.apply === true;
+    if (apply) await this.assertProviderMutationAllowed('prune-workspace-refs');
     if (apply && input.confirmation !== 'PRUNE_EXPIRED_REFS') {
       throw new Error('CODE_WORKSPACE_PRUNE_CONFIRMATION_REQUIRED: confirmation=PRUNE_EXPIRED_REFS');
     }
@@ -532,7 +648,7 @@ export class CodeIntelligenceService {
     });
     if (!result.isError) {
       this.dirtyContexts.add(contextKey(context));
-      this.lastHealthAt = 0;
+      this.invalidateHealth();
       activityTracker.record(
         'CODE_INTELLIGENCE',
         'success',
@@ -587,6 +703,7 @@ export class CodeIntelligenceService {
     },
   ): Promise<unknown> {
     this.assertCapability('quarantine');
+    await this.assertProviderMutationAllowed('mutate-quarantine');
     if (input.confirmation !== 'QUARANTINE_MUTATION') {
       throw new Error('CODE_QUARANTINE_CONFIRMATION_REQUIRED: confirmation=QUARANTINE_MUTATION');
     }
@@ -712,15 +829,55 @@ export class CodeIntelligenceService {
     };
   }
 
+  private async sourceRepresentation(context: CodeWorkspaceContext): Promise<unknown> {
+    if (!context.repo) {
+      return {
+        state: 'unavailable',
+        basis: 'git-files',
+        reason: 'repository-not-resolved',
+      };
+    }
+    const repoRoot = context.worktreePath ?? context.cwd;
+    return collectSourceRepresentation({
+      root: repoRoot,
+      probe: async relativePath => {
+        try {
+          const response = await this.client.callTool('grafel_find', {
+            query: relativePath,
+            search: 'substring',
+            fields: ['source_file'],
+            limit: 6,
+            repo_filter: [context.repo!],
+            group: context.group,
+            cwd: context.cwd,
+            ...(context.ref ? { ref: context.ref } : {}),
+          }, { cwd: context.cwd });
+          if (response.isError) return 'unknown' as const;
+          const payload = parseCallToolResultJson(response) as Record<string, unknown> | null;
+          const rows = payload && Array.isArray(payload.results)
+            ? payload.results.filter(Boolean) as Array<Record<string, unknown>>
+            : [];
+          const target = normalizeFsPath(relativePath);
+          return rows.some(row => typeof row.source_file === 'string'
+            && normalizeFsPath(row.source_file) === target);
+        } catch {
+          return 'unknown' as const;
+        }
+      },
+    });
+  }
+
   async diagnostics(input: WorkspaceContextInput = {}): Promise<unknown> {
     this.assertCapability('diagnostics');
     const context = await this.resolveWorkspace(input);
-    const [health, registry, refs, quarantine, providerMetadata] = await Promise.all([
+    const [health, registry, refs, quarantine, providerMetadata, providerAttestation, sourceRepresentation] = await Promise.all([
       this.workspaceStatus(input),
       this.runtime.registryDiagnostics(),
       this.providerCapabilities.refGraphs ? this.runtime.refs(context.group) : Promise.resolve([]),
       this.providerCapabilities.quarantine ? this.runtime.quarantine(context.group) : Promise.resolve([]),
       this.runtime.providerMetadata(),
+      this.runtime.providerAttestation(),
+      this.sourceRepresentation(context),
     ]);
     const result = {
       provider: 'grafel',
@@ -748,6 +905,8 @@ export class CodeIntelligenceService {
       },
       resourcePolicy: this.runtime.resourcePolicy(),
       providerArtifact: providerMetadata,
+      providerAttestation,
+      sourceRepresentation,
     };
     activityTracker.record(
       'CODE_INTELLIGENCE',
@@ -760,6 +919,9 @@ export class CodeIntelligenceService {
   }
 
   async close(): Promise<void> {
+    this.healthClosed = true;
+    this.invalidateHealth();
+    this.lastHealth = this.unavailableHealth('CODE_INTELLIGENCE_CLOSED');
     await this.client.close().catch(() => undefined);
     if (!this.config.enabled) return;
     await this.runtime.stop().catch(error => {
@@ -774,9 +936,31 @@ export class CodeIntelligenceService {
     }
   }
 
+  private async callReadOnlyProviderTool(
+    name: 'grafel_index_status' | 'grafel_orient',
+    args: Record<string, unknown>,
+    context: { cwd: string },
+  ): Promise<CallToolResult> {
+    try {
+      const result = await this.client.callTool(name, args, context);
+      if (!result.isError) return result;
+    } catch {
+      // The Grafel client resets itself on thrown transport failures.
+    }
+    activityTracker.record(
+      'CODE_INTELLIGENCE',
+      'info',
+      'Retrying read-only Grafel provider probe after stale bridge failure',
+      'provider-read-probe-retry',
+      { tool: name, retry: 1 },
+    );
+    await this.client.close().catch(() => undefined);
+    return this.client.callTool(name, args, context);
+  }
+
   private async providerIndexSnapshot(context: CodeWorkspaceContext): Promise<ProviderIndexSnapshot> {
     try {
-      const result = await this.client.callTool('grafel_index_status', {
+      const result = await this.callReadOnlyProviderTool('grafel_index_status', {
         group: context.group,
         cwd: context.cwd,
       }, { cwd: context.cwd });
@@ -786,30 +970,83 @@ export class CodeIntelligenceService {
     }
   }
 
-  private async contextIndexState(context: CodeWorkspaceContext): Promise<CodeIndexState> {
-    // This probe intentionally ignores the Agent Core dirty latch so
-    // code_workspace(status) can observe the provider becoming current and
-    // clear that latch. Normal structural calls still honor the latch first.
-    if (context.ref && !context.worktreePath) return 'unknown';
+  private async graphLoadEvidence(
+    context: CodeWorkspaceContext,
+    repos: string[],
+  ): Promise<Map<string, GraphStructuralEvidence>> {
+    const result = new Map<string, GraphStructuralEvidence>(
+      repos.map(repo => [repo, { available: false, reason: 'graph-not-reported' }]),
+    );
+    if (!repos.length) return result;
+    try {
+      // This canonical read actually loads graph data; a status sidecar alone
+      // is not evidence that the exact repository has a usable graph.
+      const response = await this.callReadOnlyProviderTool('grafel_orient', {
+        view: 'stats', group: context.group, cwd: context.cwd,
+        repo_filter: repos, ...(context.ref ? { ref: context.ref } : {}),
+      }, { cwd: context.cwd });
+      const parsed = parseCallToolResultJson(response) as {
+        repos?: Array<{ repo?: unknown; entities?: unknown; relationships?: unknown }>;
+        unavailable?: unknown[];
+      } | null;
+      if (!parsed || !Array.isArray(parsed.repos)) throw new Error('invalid graph-load reply');
+      for (const repo of repos) {
+        const rows = parsed.repos.filter(row => row && row.repo === repo);
+        const failed = Array.isArray(parsed.unavailable)
+          && parsed.unavailable.some(value => typeof value === 'string' && value.startsWith(`${repo}:`));
+        const row = rows.length === 1 ? rows[0] : undefined;
+        const loaded = !failed && Boolean(row
+          && Number.isSafeInteger(row.entities) && Number(row.entities) >= 0
+          && Number.isSafeInteger(row.relationships) && Number(row.relationships) >= 0);
+        result.set(repo, loaded
+          ? {
+              available: true,
+              reason: 'provider-graph-loaded',
+              entities: Number(row!.entities),
+              relationships: Number(row!.relationships),
+            }
+          : { available: false, reason: 'graph-unavailable' });
+      }
+    } catch {
+      for (const repo of repos) result.set(repo, { available: false, reason: 'graph-load-probe-failed' });
+    }
+    return result;
+  }
 
-    const snapshot = await this.providerIndexSnapshot(context);
+  private contextGraphEvidence(
+    context: CodeWorkspaceContext,
+    snapshot: ProviderIndexSnapshot,
+    refs: CodeWorkspaceRef[],
+    graphs: Map<string, GraphStructuralEvidence>,
+  ): { index: CodeIndexState; graphAvailability: GraphStructuralEvidence } {
     const repoPath = context.worktreePath ?? context.cwd;
     const state = indexStateFromSnapshot(snapshot, repoPath);
-    if (!context.ref) {
-      if (state === 'current' && this.providerCapabilities.refGraphs) {
-        try {
-          const refs = await this.runtime.refs(context.group);
-          if (!refs.length) return 'unknown';
-        } catch {
-          return 'unknown';
-        }
-      }
-      return state;
+    let graphAvailability = graphs.get(context.repo ?? '')
+      ?? { available: false, reason: 'repository-not-reported' };
+    const exactRef = refs.some(row => row.repo === context.repo
+      && (row.group === undefined || row.group === context.group)
+      && (context.ref === undefined || row.ref === context.ref));
+    if (graphAvailability.available && this.providerCapabilities.refGraphs && !exactRef) {
+      graphAvailability = { available: false, reason: 'exact-repository-ref-unavailable' };
     }
+    if (context.ref) {
+      const row = snapshot.repos.find(item => item.repo && normalizeFsPath(item.repo) === normalizeFsPath(repoPath));
+      if (!context.worktreePath || !row || row.indexed_ref !== context.ref || !row.indexed_commit) {
+        return { index: 'unknown', graphAvailability: { available: false, reason: 'indexed-ref-unproven' } };
+      }
+    }
+    return { index: state === 'current' && !graphAvailability.available ? 'unknown' : state, graphAvailability };
+  }
 
-    const repo = snapshot.repos.find(item => item.repo && normalizeFsPath(item.repo) === normalizeFsPath(repoPath));
-    if (!repo || String(repo.indexed_ref ?? '') !== context.ref || !repo.indexed_commit) return 'unknown';
-    return state;
+  private async contextIndexState(context: CodeWorkspaceContext): Promise<CodeIndexState> {
+    const snapshot = await this.providerIndexSnapshot(context);
+    const state = indexStateFromSnapshot(snapshot, context.worktreePath ?? context.cwd);
+    if (state !== 'current') return state;
+    const [refs, graphs] = await Promise.all([
+      this.providerCapabilities.refGraphs ? this.runtime.refs(context.group).catch(() => []) : Promise.resolve([]),
+      this.graphLoadEvidence(context, context.repo ? [context.repo] : []),
+    ]);
+    return this.contextGraphEvidence(context, snapshot, refs, graphs).index;
   }
 
   private async assertRequestedRef(context: CodeWorkspaceContext, allowMissingForIndex = false): Promise<void> {
@@ -825,7 +1062,9 @@ export class CodeIntelligenceService {
     }
 
     const refs = await this.runtime.refs(context.group);
-    const exact = refs.some(item => String(item.ref ?? '') === context.ref);
+    const exact = refs.some(item => item.repo === context.repo
+      && (item.group === undefined || item.group === context.group)
+      && String(item.ref ?? '') === context.ref);
     if (!exact && !allowMissingForIndex) {
       throw new Error(`CODE_INTELLIGENCE_REF_NOT_AVAILABLE: workspace=${context.group} ref=${context.ref}`);
     }
@@ -852,15 +1091,23 @@ export class CodeIntelligenceService {
     }
   }
 
+  private publishBootstrapHealth(health: CodeIntelligenceHealth): void {
+    if (this.healthClosed) return;
+    this.invalidateHealth();
+    this.lastHealth = health;
+    this.lastHealthAt = Date.now();
+  }
+
   private async bootstrap(): Promise<void> {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled || this.healthClosed) return;
+    this.invalidateHealth();
     try {
       const isolation = this.runtime.isolationStatus();
       if (!isolation.ok) {
         throw new Error(`CODE_INTELLIGENCE_ISOLATION_INVALID: ${isolation.missingOrInvalid.join(', ')}`);
       }
       if (!await this.runtime.isConfigured()) {
-        this.lastHealth = {
+        this.publishBootstrapHealth({
           status: 'not-configured',
           provider: 'grafel',
           daemon: 'unavailable',
@@ -868,31 +1115,27 @@ export class CodeIntelligenceService {
           group: this.config.group,
           issueCount: 1,
           issue: 'project-local grafel.exe is missing',
-        };
-        this.lastHealthAt = Date.now();
+        });
         return;
       }
 
       await this.runtime.ensureLayout();
+      await this.assertProviderMutationAllowed('bootstrap');
       this.providerVersion = await this.runtime.version();
+      const portabilityReindex = await readPortabilityReindexRequest(this.config.projectRoot);
       const registrationChanged = await this.runtime.registerProject();
-      if (registrationChanged) {
-        // A copied/moved Agent Core runtime can retain Grafel scheduler state
-        // for the previous absolute repo root. Re-registration repairs the
-        // fleet mapping; a synchronous index materializes the graph for the
-        // newly resolved root before the daemon is allowed to report ready.
+      let runtimeStarted = false;
+      if (registrationChanged || portabilityReindex) {
+        // Registration repair can invalidate process ownership, but graph
+        // materialization must not block Agent Core startup. Restart only the
+        // isolated provider here; freshness is evaluated below and any required
+        // indexing is requested asynchronously.
         await this.client.close().catch(() => undefined);
         await this.runtime.stop().catch(() => undefined);
-        await this.runtime.indexNowFor(this.config.projectRoot);
-        activityTracker.record(
-          'CODE_INTELLIGENCE',
-          'success',
-          'Grafel project relocation/registration repaired and synchronously indexed',
-          'provider-registration-repair',
-          { group: this.config.group },
-        );
+        await this.runtime.start();
+        runtimeStarted = true;
       }
-      await this.runtime.start();
+      if (!runtimeStarted) await this.runtime.start();
       await this.waitForProviderReadiness();
       const [tools, cliProbe] = await Promise.all([
         this.client.listToolNames(),
@@ -904,17 +1147,37 @@ export class CodeIntelligenceService {
       if (missing.length > 0) throw new Error(`GRAFEL_CORE_TOOL_MISMATCH: ${missing.join(', ')}`);
       await this.refreshProviderWireCompatibility();
 
-      const health = await this.refreshHealth();
+      const health = await this.health(true);
+      if (this.healthClosed) return;
+      if (portabilityReindex && health.index === 'current') {
+        // Clear relocation evidence only after the normal provider health path
+        // proves the exact active root has a current graph.
+        await clearPortabilityReindexRequest(this.config.projectRoot);
+        activityTracker.record(
+          'CODE_INTELLIGENCE',
+          'success',
+          'Grafel project relocation/registration verified on the active root',
+          'provider-registration-repair',
+          {
+            group: this.config.group,
+            registrationChanged,
+            portabilityReason: portabilityReindex.reason,
+          },
+        );
+      }
       if (health.index !== 'current') {
+        await this.assertProviderMutationAllowed('bootstrap-index-refresh');
         await this.runtime.requestIndex();
-        this.lastHealth = {
-          ...health,
-          status: 'degraded',
-          index: health.index === 'unknown' ? 'queued' : health.index,
-          issueCount: 1,
-          issue: 'Grafel index is not current; asynchronous refresh requested',
-        };
-        this.lastHealthAt = Date.now();
+        const refreshIndex = health.index === 'unknown' ? 'queued' : health.index;
+        this.publishBootstrapHealth(health.status === 'available'
+          ? { ...health, index: refreshIndex, issueCount: 0 }
+          : {
+              ...health,
+              status: 'degraded',
+              index: refreshIndex,
+              issueCount: 1,
+              issue: 'Grafel index is not current; asynchronous refresh requested',
+            });
       }
 
       activityTracker.record(
@@ -932,7 +1195,7 @@ export class CodeIntelligenceService {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.lastHealth = {
+      this.publishBootstrapHealth({
         status: 'error',
         provider: 'grafel',
         providerVersion: this.providerVersion,
@@ -941,8 +1204,7 @@ export class CodeIntelligenceService {
         group: this.config.group,
         issueCount: 1,
         issue: message,
-      };
-      this.lastHealthAt = Date.now();
+      });
       activityTracker.captureFailure('CODE_INTELLIGENCE', error, 'provider-start-failure', {
         provider: 'grafel',
         group: this.config.group,
@@ -965,12 +1227,15 @@ export class CodeIntelligenceService {
     if (lastError) throw lastError;
   }
 
-  private async refreshHealth(): Promise<CodeIntelligenceHealth> {
+  private async collectHealth(generation: number): Promise<CodeIntelligenceHealth> {
     try {
       const payload = await this.runtime.status();
+      if (this.healthClosed || generation !== this.healthGeneration) return this.unavailableHealth('CODE_INTELLIGENCE_HEALTH_SUPERSEDED');
       const isolation = this.runtime.isolationStatus();
       const daemonAvailable = String(payload.status ?? '').toLowerCase() === 'ok';
       let index = this.runtime.indexState(payload);
+      let activeGraphAvailable = false;
+      let graphIntegrity: GraphIntegrityObservation | undefined;
       let snapshot: ProviderIndexSnapshot = {
         repos: [],
         any_indexing: payload.indexing,
@@ -981,11 +1246,12 @@ export class CodeIntelligenceService {
       };
       if (daemonAvailable) {
         try {
-          const providerStatus = await this.client.callTool(
+          const providerStatus = await this.callReadOnlyProviderTool(
             'grafel_index_status',
             { group: this.config.group, cwd: this.config.projectRoot },
             { cwd: this.config.projectRoot },
           );
+          if (this.healthClosed || generation !== this.healthGeneration) return this.unavailableHealth('CODE_INTELLIGENCE_HEALTH_SUPERSEDED');
           const parsed = parseIndexSnapshot(providerStatus);
           snapshot = {
             ...snapshot,
@@ -994,18 +1260,69 @@ export class CodeIntelligenceService {
             busy: parsed.busy ?? snapshot.busy,
             warming: parsed.warming ?? snapshot.warming,
           };
-          const providerIndex = indexStateFromSnapshot(snapshot, this.config.projectRoot);
-          if (providerIndex !== 'unknown') index = providerIndex;
-          if (index === 'current' && this.providerCapabilities.refGraphs) {
-            const refs = await this.runtime.refs(this.config.group);
-            if (!refs.length) index = 'unknown';
+          index = indexStateFromSnapshot(snapshot, this.config.projectRoot);
+          if (index === 'current' || index === 'queued' || index === 'indexing' || index === 'warming') {
+            const context: CodeWorkspaceContext = {
+              workspace: this.config.group, group: this.config.group,
+              cwd: this.config.projectRoot, repo: this.config.repoSlug,
+            };
+            const [refs, graphs] = await Promise.all([
+              this.providerCapabilities.refGraphs ? this.runtime.refs(this.config.group).catch(() => []) : Promise.resolve([]),
+              this.graphLoadEvidence(context, [this.config.repoSlug]),
+            ]);
+            const graphEvidence = this.contextGraphEvidence(context, snapshot, refs, graphs);
+            activeGraphAvailable = graphEvidence.graphAvailability.available;
+            if (index === 'current') index = graphEvidence.index;
+            if (index === 'current' && graphEvidence.graphAvailability.available) {
+              graphIntegrity = await this.graphIntegrity.observe({
+                group: context.group,
+                repo: this.config.repoSlug,
+                repoPath: this.config.projectRoot,
+                evidence: graphEvidence.graphAvailability,
+              }).catch(error => ({
+                state: 'unavailable' as const,
+                reason: `observer-failure: ${error instanceof Error ? error.message : String(error)}`,
+              }));
+              if (graphIntegrity.state === 'degraded' || graphIntegrity.state === 'unverified') {
+                index = 'degraded';
+              }
+            }
           }
         } catch {
-          if (index === 'current' && this.providerCapabilities.refGraphs) index = 'unknown';
+          index = 'unknown';
         }
       }
+      if (index === 'current') {
+        const stalePortabilityMarker = await readPortabilityReindexRequest(this.config.projectRoot);
+        if (stalePortabilityMarker) {
+          try {
+            await clearPortabilityReindexRequest(this.config.projectRoot);
+            activityTracker.record(
+              'CODE_INTELLIGENCE',
+              'success',
+              'Cleared converged Grafel portability reindex marker',
+              'provider-portability-marker-cleared',
+              { reason: stalePortabilityMarker.reason, group: this.config.group },
+            );
+          } catch (error) {
+            activityTracker.captureFailure(
+              'CODE_INTELLIGENCE',
+              error,
+              'provider-portability-marker-clear-failure',
+              { reason: stalePortabilityMarker.reason, group: this.config.group },
+            );
+          }
+        }
+      }
+
       const wireCompatible = !this.providerWireIssue;
-      const available = daemonAvailable && isolation.ok && index === 'current' && wireCompatible;
+      const providerAttestation = await this.runtime.providerAttestation(payload);
+      const attestationMismatch = providerAttestation.state === 'metadata-mismatch'
+        || providerAttestation.state === 'resident-mismatch';
+      const refreshInProgress = index === 'queued' || index === 'indexing' || index === 'warming';
+      const usableDuringRefresh = refreshInProgress && activeGraphAvailable;
+      const available = daemonAvailable && isolation.ok && (index === 'current' || usableDuringRefresh)
+        && wireCompatible && !attestationMismatch;
       const health: CodeIntelligenceHealth = {
         status: available ? 'available' : 'degraded',
         provider: 'grafel',
@@ -1018,6 +1335,8 @@ export class CodeIntelligenceService {
         readiness: readinessFromSnapshot(snapshot, index, this.config.projectRoot),
         resourcePolicy: this.runtime.resourcePolicy(),
         isolation,
+        providerAttestation,
+        ...(graphIntegrity ? { graphIntegrity } : {}),
         issueCount: available ? 0 : 1,
         ...(available
           ? {}
@@ -1026,11 +1345,16 @@ export class CodeIntelligenceService {
                 ? 'Grafel daemon is unavailable'
                 : !isolation.ok
                   ? `Grafel isolation invalid: ${isolation.missingOrInvalid.join(', ')}`
-                  : this.providerWireIssue ?? `Grafel index state is ${index}`,
+                  : attestationMismatch
+                    ? `Grafel provider attestation mismatch: ${providerAttestation.issue ?? providerAttestation.state}`
+                    : graphIntegrity && (graphIntegrity.state === 'degraded' || graphIntegrity.state === 'unverified')
+                      ? `Grafel graph integrity ${graphIntegrity.state}: ${graphIntegrity.reason}`
+                      : this.providerWireIssue
+                        ?? (refreshInProgress && !activeGraphAvailable
+                          ? `Grafel index state is ${index}; no usable graph is loaded yet`
+                          : `Grafel index state is ${index}`),
             }),
       };
-      this.lastHealth = health;
-      this.lastHealthAt = Date.now();
       return health;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1048,8 +1372,6 @@ export class CodeIntelligenceService {
         issueCount: 1,
         issue: message,
       };
-      this.lastHealth = health;
-      this.lastHealthAt = Date.now();
       return health;
     }
   }

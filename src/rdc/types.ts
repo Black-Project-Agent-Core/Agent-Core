@@ -8,6 +8,14 @@ export interface ProcessInfo {
   memory: string;
 }
 
+export interface TerminalOutputSpillInfo {
+  path?: string;
+  bytes: number;
+  complete: boolean;
+  digest?: string;
+  issue?: string;
+}
+
 export interface TerminalSession {
   pid: number;
   process: ChildProcess;

@@ -28,30 +28,16 @@ const evolutionProposalSchema = z.object({
 
 export type MemoryEvolutionProposal = z.infer<typeof evolutionProposalSchema>;
 
-export interface MemoryEvolutionNeighborEvidence {
-  id: string;
-  title?: string;
-  similarity: number;
-  proposedLink: boolean;
-  proposedStrength?: number;
-  proposedReason?: string;
-  keywords: string[];
-  context: string;
-  tags: string[];
-  category: string;
-  pinned: boolean;
-}
-
 export interface MemoryEvolutionPreview {
   proposal: MemoryEvolutionProposal;
-  neighbors: MemoryEvolutionNeighborEvidence[];
+  neighbors: Array<{id: string; title?: string; similarity: number; proposedLink: boolean; proposedStrength?: number; proposedReason?: string; keywords: string[]; context: string; tags: string[]; category: string; pinned: boolean}>;
 }
 
 export interface MemoryIntelligence {
   readonly provider: string;
   enrich(content: string): Promise<{ keywords: string[]; context: string; tags: string[]; category: string }>;
-  preview(record: MemoryRecord, allRecords: MemoryRecord[], neighborLimit?: number): Promise<MemoryEvolutionPreview>;
   propose(record: MemoryRecord, allRecords: MemoryRecord[]): Promise<MemoryEvolutionProposal>;
+  preview(record: MemoryRecord, allRecords: MemoryRecord[], neighborLimit?: number): Promise<MemoryEvolutionPreview>;
 }
 function topKeywords(content: string, limit = 12): string[] {
   const counts = new Map<string, number>();
@@ -99,68 +85,64 @@ export class EmbeddingMemoryIntelligence implements MemoryIntelligence {
   async enrich(content: string) {
     return enrichMemoryMetadata(content);
   }
-  async preview(
-    record: MemoryRecord,
-    allRecords: MemoryRecord[],
-    neighborLimit = 5,
-  ): Promise<MemoryEvolutionPreview> {
-    const metadata: MemoryEvolutionProposal['metadata'] = {};
-    const enriched = await this.enrich(record.content);
-    if (!record.keywords.length) metadata.keywords = enriched.keywords;
-    if (!record.tags.length) metadata.tags = enriched.tags;
-    if (!record.context || record.context === 'General') metadata.context = enriched.context;
-    if (!record.category || record.category === 'Uncategorized') metadata.category = enriched.category;
-
-    const byId = new Map(allRecords.map((item) => [item.id, item]));
-    const nearest = await this.index.nearest(record.id, allRecords, 8);
-    const links = nearest
-      .filter((neighbor) => neighbor.similarity >= this.relationThreshold)
-      .filter((neighbor) => byId.has(neighbor.id))
-      .slice(0, 5)
-      .map((neighbor) => ({
-        targetId: neighbor.id,
-        type: 'related' as const,
-        strength: Math.max(0, Math.min(1, Number(neighbor.similarity.toFixed(6)))),
-        reason: `embedding cosine similarity ${neighbor.similarity.toFixed(4)}`,
-      }));
-
-    const proposal = evolutionProposalSchema.parse({
-      memoryId: record.id,
-      provider: 'embedding-deterministic',
-      metadata,
-      links,
-    });
-    const proposedById = new Map(proposal.links.map((link) => [link.targetId, link]));
-    const boundedLimit = Math.max(1, Math.min(8, neighborLimit));
-    const neighbors: MemoryEvolutionNeighborEvidence[] = nearest
-      .filter((neighbor) => byId.has(neighbor.id))
-      .slice(0, boundedLimit)
-      .map((neighbor) => {
-        const target = byId.get(neighbor.id)!;
-        const proposed = proposedById.get(neighbor.id);
-        return {
-          id: target.id,
-          ...(target.title ? { title: target.title } : {}),
-          similarity: Math.max(0, Math.min(1, Number(neighbor.similarity.toFixed(6)))),
-          proposedLink: Boolean(proposed),
-          ...(proposed ? {
-            proposedStrength: proposed.strength,
-            proposedReason: proposed.reason,
-          } : {}),
-          keywords: [...target.keywords],
-          context: target.context,
-          tags: [...target.tags],
-          category: target.category,
-          pinned: target.pinned,
-        };
-      });
-
-    return { proposal, neighbors };
-  }
-
+  async preview(record: MemoryRecord, allRecords: MemoryRecord[], neighborLimit = 5): Promise<MemoryEvolutionPreview> {
+        const metadata: MemoryEvolutionProposal['metadata'] = {};
+        const enriched = await this.enrich(record.content);
+        if (!record.keywords.length)
+            metadata.keywords = enriched.keywords;
+        if (!record.tags.length)
+            metadata.tags = enriched.tags;
+        if (!record.context || record.context === 'General')
+            metadata.context = enriched.context;
+        if (!record.category || record.category === 'Uncategorized')
+            metadata.category = enriched.category;
+        const byId = new Map(allRecords.map((item) => [item.id, item]));
+        const nearest = await this.index.nearest(record.id, allRecords, 8);
+        const links = nearest
+            .filter((neighbor) => neighbor.similarity >= this.relationThreshold)
+            .filter((neighbor) => byId.has(neighbor.id))
+            .slice(0, 5)
+            .map((neighbor) => ({
+            targetId: neighbor.id,
+            type: 'related' as const,
+            strength: Math.max(0, Math.min(1, Number(neighbor.similarity.toFixed(6)))),
+            reason: `embedding cosine similarity ${neighbor.similarity.toFixed(4)}`,
+        }));
+        const proposal = evolutionProposalSchema.parse({
+            memoryId: record.id,
+            provider: 'embedding-deterministic',
+            metadata,
+            links,
+        });
+        const proposedById = new Map(proposal.links.map((link) => [link.targetId, link]));
+        const boundedLimit = Math.max(1, Math.min(8, neighborLimit));
+        const neighbors = nearest
+            .filter((neighbor) => byId.has(neighbor.id))
+            .slice(0, boundedLimit)
+            .map((neighbor) => {
+            const target = byId.get(neighbor.id)!;
+            const proposed = proposedById.get(neighbor.id);
+            return {
+                id: target.id,
+                ...(target.title ? { title: target.title } : {}),
+                similarity: Math.max(0, Math.min(1, Number(neighbor.similarity.toFixed(6)))),
+                proposedLink: Boolean(proposed),
+                ...(proposed ? {
+                    proposedStrength: proposed.strength,
+                    proposedReason: proposed.reason,
+                } : {}),
+                keywords: [...target.keywords],
+                context: target.context,
+                tags: [...target.tags],
+                category: target.category,
+                pinned: target.pinned,
+            };
+        });
+        return { proposal, neighbors };
+    }
   async propose(record: MemoryRecord, allRecords: MemoryRecord[]): Promise<MemoryEvolutionProposal> {
-    return (await this.preview(record, allRecords)).proposal;
-  }
+        return (await this.preview(record, allRecords)).proposal;
+    }
 }
 
 export function proposalLinks(proposal: MemoryEvolutionProposal): Array<Omit<MemoryLink, 'createdAt'>> {

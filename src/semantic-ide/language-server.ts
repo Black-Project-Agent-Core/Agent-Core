@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+import { validateDiagnosticItems } from './diagnostic-payload.js';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { WorkspaceFreshnessResult } from './freshness.js';
-import { createProviderAdapter, type ProviderRuntimeControl } from './provider-registry.js';
+import { createProviderAdapter, type ProviderPostInitializeEvidence, type ProviderRuntimeControl } from './provider-registry.js';
 import { LspConnection, LspServerRequestError } from './protocol.js';
 import { readSemanticSource } from './source-io.js';
 import { buildOwnedChildEnv } from '../security/environment.js';
@@ -10,6 +10,7 @@ import type {
   SemanticLanguageServerDefinition,
   SemanticProviderReadiness,
   SemanticWorkspaceFolder,
+  WorkspaceFreshnessResult,
 } from './types.js';
 
 interface OpenDocument {
@@ -61,6 +62,7 @@ export class LanguageServerSession {
   private fatalMessage?: string;
   private capabilityIssuesValue: string[] = [];
   private freshnessValue?: WorkspaceFreshnessResult;
+  private postInitializeValue?: ProviderPostInitializeEvidence;
 
   constructor(
     readonly definition: SemanticLanguageServerDefinition,
@@ -93,6 +95,7 @@ export class LanguageServerSession {
   get serverCapabilities(): Record<string, unknown> { return { ...this.capabilities }; }
   get capabilityIssues(): string[] { return [...this.capabilityIssuesValue]; }
   get freshness(): WorkspaceFreshnessResult | undefined { return this.freshnessValue ? { ...this.freshnessValue } : undefined; }
+  get postInitializeEvidence(): ProviderPostInitializeEvidence | undefined { return this.postInitializeValue ? { ...this.postInitializeValue } : undefined; }
   get providerKind(): string { return this.adapter.kind; }
   get ignoredDirectories(): string[] {
     return [...new Set([...(this.definition.ignoredDirectories ?? []), ...this.adapter.ignoredDirectories])];
@@ -127,15 +130,16 @@ export class LanguageServerSession {
 
   private handleNotification(method: string, params: unknown): void {
     if (method === 'textDocument/publishDiagnostics' && params && typeof params === 'object') {
-      const value = params as { uri?: string; diagnostics?: unknown[] };
-      if (value.uri) {
-        const key = canonicalFileUri(value.uri);
-        this.diagnosticsGeneration += 1;
-        this.diagnostics.set(key, {
-          generation: this.diagnosticsGeneration,
-          items: Array.isArray(value.diagnostics) ? value.diagnostics : [],
-        });
+      const value = params as { uri?: unknown; diagnostics?: unknown };
+      const decoded = validateDiagnosticItems(value.diagnostics);
+      if (typeof value.uri !== 'string' || !value.uri.trim() || !decoded.valid) {
+        this.noteDiagnosticPayloadInvalid();
+        return;
       }
+      const key = canonicalFileUri(value.uri);
+      this.diagnosticsGeneration += 1;
+      this.diagnostics.set(key, { generation: this.diagnosticsGeneration, items: decoded.items });
+      this.capabilityIssuesValue = this.capabilityIssuesValue.filter(issue => issue !== 'SEMANTIC_DIAGNOSTIC_PAYLOAD_INVALID');
     }
     this.adapter.handleNotification(method, params, this.control());
   }
@@ -234,6 +238,7 @@ export class LanguageServerSession {
     this.capabilityIssuesValue = [];
     this.readinessValue = 'process-running';
     this.readinessMessageValue = undefined;
+    this.postInitializeValue = undefined;
 
     try {
       await this.connection.start();
@@ -249,23 +254,36 @@ export class LanguageServerSession {
       }) as { capabilities?: Record<string, unknown> };
 
       this.capabilities = result?.capabilities ?? {};
-      this.readinessValue = 'initialized';
+      if (this.readinessValue === 'process-running') this.readinessValue = 'initialized';
       this.connection.notify('initialized', {});
       this.initialized = true;
+      if (this.adapter.postInitialize) {
+        const plan = await this.adapter.postInitialize(this.root, this.ignoredDirectories);
+        for (const notification of plan.notifications) {
+          this.connection.notify(notification.method, notification.params);
+        }
+        this.postInitializeValue = { ...plan.evidence };
+      }
 
       if (this.adapter.initialReadiness === 'ready') {
-        this.readinessValue = 'ready';
-        this.readinessMessageValue = 'initialized';
+        if (this.readinessValue === 'initialized') {
+          this.readinessValue = 'ready';
+          this.readinessMessageValue = 'initialized';
+        }
       } else {
-        this.readinessValue = 'indexing';
-        this.readinessMessageValue = 'awaiting-provider-readiness';
-        const deadline = Date.now() + this.adapter.readinessTimeoutMs;
-        while (this.readinessValue === 'indexing' && Date.now() < deadline && !this.fatalMessage) {
-          await new Promise(resolve => setTimeout(resolve, 50));
+        if (this.readinessValue === 'initialized') {
+          this.readinessValue = 'indexing';
+          this.readinessMessageValue = 'awaiting-provider-readiness';
         }
         if (this.readinessValue === 'indexing') {
-          this.readinessValue = 'degraded';
-          this.readinessMessageValue = 'SEMANTIC_PROVIDER_READINESS_TIMEOUT';
+          const deadline = Date.now() + this.adapter.readinessTimeoutMs;
+          while (this.readinessValue === 'indexing' && Date.now() < deadline && !this.fatalMessage) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+          if (this.readinessValue === 'indexing') {
+            this.readinessValue = 'degraded';
+            this.readinessMessageValue = 'SEMANTIC_PROVIDER_READINESS_TIMEOUT';
+          }
         }
       }
 
@@ -371,6 +389,11 @@ export class LanguageServerSession {
     await this.start();
     this.assertUsable();
     return this.connection.request(method, params);
+  }
+
+  noteDiagnosticPayloadInvalid(): void {
+    const code = 'SEMANTIC_DIAGNOSTIC_PAYLOAD_INVALID';
+    if (!this.capabilityIssuesValue.includes(code)) this.capabilityIssuesValue.push(code);
   }
 
   diagnosticsFor(uri: string): unknown[] {

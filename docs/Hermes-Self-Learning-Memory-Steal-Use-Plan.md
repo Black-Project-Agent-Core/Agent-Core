@@ -1,3 +1,6 @@
+> HISTORICAL BACKUP RESTORED — 2026-09-23. This is a dated snapshot, not the latest lost revision and not a current task list. Status/OPEN/PLANNED statements below are historical only. Current runtime truth is in docs/CODEBASE.md and docs/System-Repair-SIE-Completion-20260923.md.
+> Source: runtime/backups/hermes-grafel-gate20-fix-20260918-175938/docs/Hermes-Self-Learning-Memory-Steal-Use-Plan.md; original payload SHA-256: 88e8ab91b519a4565ab89cd17f434511ac7dc86ad59628ae04e70977bea65124.
+
 # Hermes Self-Learning + Memory Steal/Use Integration Plan — Agent Core
 
 > **Status:** IMPLEMENTED — LIVE-ACTIVATED — AUTHORIZED VERIFICATION PENDING

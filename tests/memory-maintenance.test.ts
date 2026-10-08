@@ -34,7 +34,7 @@ async function createMemoryRoot(): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-memory-maintenance-'));
   roots.push(root);
   await mkdir(path.join(root, 'notes'), { recursive: true });
-  await writeFile(path.join(root, '00-agent-core-memory.md'), '# Maintenance Foundation\n', 'utf8');
+  await writeFile(path.join(root, '00-agent-core-memory.md'), '# Agent Core Maintenance Foundation\n', 'utf8');
   return root;
 }
 
@@ -136,10 +136,10 @@ describe('memory maintenance regressions', () => {
     expect(found!.components.semanticSimilarity).toBeCloseTo(1, 6);
   });
 
-  it('enforces budgetChars as a hard result budget, including the first result', async () => {
+  it('preserves one bounded preview when the top Memory result is larger than budgetChars', async () => {
     const { memory } = await createService();
-    await memory.remember({
-      content: `budget-marker ${'x'.repeat(8_000)}`,
+    const record = await memory.remember({
+      content: `budget-marker ${'x'.repeat(8_000)} tail-marker`,
       keywords: ['budget-marker'],
       context: 'budget-marker',
     });
@@ -149,7 +149,11 @@ describe('memory maintenance regressions', () => {
       maxNeighbors: 0,
       budgetChars: 500,
     });
-    expect(results).toHaveLength(0);
+    expect(results).toHaveLength(1);
+    expect(results[0]?.record.id).toBe(record.id);
+    expect(results[0]?.delivery.detail).toBe('preview');
+    expect(results[0]?.delivery.truncated).toBe(true);
+    expect(results[0]?.delivery.content.length).toBeLessThan(record.content.length);
   });
 
   it('reports semanticSimilarity as a raw 0..1 similarity instead of a weighted score', async () => {
@@ -252,6 +256,7 @@ describe('memory maintenance regressions', () => {
     const root = await createMemoryRoot();
     const dataDir = path.join(root, 'auth');
     const service = await startAgentCoreService({
+      projectRoot: root,
       host: '127.0.0.1',
       port: 0,
       dataDir,

@@ -4,6 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { ROOT } from "./release-policy.mjs";
+import { packageCopyAllowed, writePackagedFoundation } from "./packaging-policy.mjs";
 
 async function exists(target) {
   try {
@@ -59,7 +60,7 @@ async function copyIfExists(root, relative, destinationRoot, options = {}) {
   await fs.cp(source, destination, {
     recursive: true,
     force: true,
-    filter: options.filter,
+    filter: async source => await packageCopyAllowed(root, source) && (!options.filter || await options.filter(source)),
   });
   return true;
 }
@@ -92,7 +93,8 @@ export async function createDevelopmentArtifact(options) {
 
   await fs.rm(stageBase, { recursive: true, force: true });
   await fs.mkdir(packageRoot, { recursive: true });
-  await fs.mkdir(outputRoot, { recursive: true });
+  await fs.mkdir(path.dirname(outputRoot), { recursive: true });
+  await fs.mkdir(outputRoot); // Exclusive reservation: never share a live artifact destination.
 
   try {
     for (const relative of [
@@ -114,7 +116,6 @@ export async function createDevelopmentArtifact(options) {
       "runtime/node",
       "runtime/grafel/bin",
       "runtime/grafel/provider.json",
-      "runtime/memory/00-agent-core-memory.md",
       "scripts/windows",
       "Agent Core.exe",
       "tunnel-client/tunnel-client.exe",
@@ -122,6 +123,7 @@ export async function createDevelopmentArtifact(options) {
       await copyIfExists(root, relative, packageRoot);
     }
 
+    await writePackagedFoundation(packageRoot);
     const tunnelExample = path.join(root, "tunnel-client", "agent-core.example.yaml");
     if (await exists(tunnelExample)) {
       const tunnelTarget = path.join(packageRoot, "tunnel-client");
@@ -151,7 +153,7 @@ export async function createDevelopmentArtifact(options) {
         ".env and credential files",
         "secrets/",
         "runtime/bridge-auth",
-        "runtime/memory user notes/index/state",
+        "runtime/memory including user bootstrap (fresh product template only)",
         "runtime/tracker and logs",
         "runtime/webview2/browser profiles",
         "runtime/backups",

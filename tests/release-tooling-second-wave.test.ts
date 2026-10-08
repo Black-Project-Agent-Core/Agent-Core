@@ -4,9 +4,11 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   filterPendingIntentFilenames,
+  isGeneratedReleasePath,
   isPendingIntentPath,
   isReleaseRelevantPath,
   loadReleasePolicy,
+  releaseBaselinePathspecs,
 } from "../scripts/release/release-policy.mjs";
 import {
   renderSnapshotSuffix,
@@ -56,6 +58,16 @@ describe("Changesets-derived release second wave", () => {
     expect(isReleaseRelevantPath("scripts/release/release-plan.mjs", policy)).toBe(true);
     expect(isReleaseRelevantPath(".changeset/config.json", policy)).toBe(true);
     expect(isReleaseRelevantPath("package-lock.json", policy)).toBe(true);
+  });
+
+  it("excludes partial node_modules dependency debris from release relevance and baseline", () => {
+    const debris = "src/ui/node_modules.partial-20260924-1910/pkg/index.js";
+    expect(isGeneratedReleasePath(debris)).toBe(true);
+    expect(isReleaseRelevantPath(debris, {
+      changedFilePatterns: ["src/**"],
+      snapshot: { useCalculatedVersion: true, prereleaseTemplate: "{tag}.{datetime}.{commit-short}" },
+    })).toBe(false);
+    expect(releaseBaselinePathspecs()).toContain(":(exclude)src/**/node_modules.partial-*/**");
   });
 
   it("filters non-intent metadata markdown while keeping real intents deterministic", () => {

@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "task": "TASK 6 - Penpot -> Canonical Design IR v1 extractor",
+  "observedAt": "2026-10-02",
+  "status": "COMPLETE",
+  "fullAcceptance": "PASS",
+  "gateP4": "PASS",
+  "task7Status": "NOT_STARTED",
+  "blockerClosure": {
+    "formerBlocker": "UNBOUNDED_LOCAL_IR_RESPONSE",
+    "status": "CLOSED",
+    "implementation": [
+      "Shared MAX_CANVA_IR_TASK_RESULT_BYTES = 12,000,000 UTF-8 bytes.",
+      "Plugin task handler measures the exact successful WebSocket response envelope before task.sendSuccess in every plugin mode.",
+      "Oversize plugin results fail closed before transmission; Canonical IR is never truncated.",
+      "Server export_canva_ir serializes compact JSON and independently enforces the same UTF-8 byte ceiling before TextResponse emission.",
+      "The 12 MB ceiling remains below the existing integrated-remote 15,000,000-character transport guard, leaving protocol headroom."
+    ]
+  },
+  "verification": {
+    "extractorDeterminismTests": {
+      "pass": 2,
+      "fail": 0
+    },
+    "pluginResponseLimitTests": {
+      "pass": 3,
+      "fail": 0
+    },
+    "serverResponseLimitTests": {
+      "pass": 3,
+      "fail": 0
+    },
+    "priorNegativeAcceptanceProbe": {
+      "pass": true,
+      "blockingReasons": [
+        "MASK_GROUP_UNSUPPORTED",
+        "MULTIPLE_FILLS_UNSUPPORTED",
+        "ROOT_SHAPE_OUTSIDE_BOARD"
+      ]
+    },
+    "typechecks": {
+      "common": "PASS",
+      "plugin": "PASS",
+      "server": "PASS"
+    },
+    "builds": {
+      "common": "PASS",
+      "plugin": "PASS",
+      "server": "PASS"
+    },
+    "compiledWiring": {
+      "pluginHardBound": "PASS",
+      "pluginNoTruncationMessage": "PASS",
+      "serverHardBound": "PASS",
+      "serverNoTruncationMessage": "PASS",
+      "commonSharedConstant": "PASS",
+      "exportCanvaIrToolRegistration": "PASS"
+    },
+    "liveRuntime": {
+      "status": "NOT_RUN",
+      "reason": "Penpot MCP ports 4401/4402 were inactive; user requested targeted test/build closure, and no restart was required for Gate P4."
+    }
+  },
+  "acceptedBehavior": {
+    "responseCeilingBytes": 12000000,
+    "measurement": "UTF-8 bytes",
+    "pluginEnvelope": "{id, success:true, data}",
+    "serverOutput": "compact JSON TextResponse",
+    "oversizePolicy": "fail-closed",
+    "truncation": "forbidden"
+  },
+  "acceptedBaseline": "runtime/tmp/penpot-to-canva-task6-audit-20261002/task6-accepted-baseline.json",
+  "protected": {
+    "figExporterSha256": "159208b5a228d91d1f562a6ab32e3c352f4d55d6e18462f520d04932ddce50ef",
+    "canonicalIrV1Sha256": "ddc3e06eb958b08cee635e69214a42b29e2a2a230028520aacbb97a695571192",
+    "penpotToCanvaAdapterSha256": "b50650c8cbad0d1c4f4630367c51b690cd71e194dc868b6ef77582cbdc2fcb74"
+  },
+  "penpotAcceptedSourceBaseline": {
+    "files": 2209,
+    "sha256Tree": "d1297b63fe2a5d636c1a6f55a97a63c836f77b0542eab366fc37e86fb35dd9b3"
+  },
+  "penpotMcpRuntimeBuildBaseline": {
+    "files": 23,
+    "sha256Tree": "6185e9b02a4ef5a58471a2060459b491a2bd9ea35320912666d8ffc40d997d67"
+  }
+}

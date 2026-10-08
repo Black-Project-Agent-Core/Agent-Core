@@ -83,7 +83,11 @@ export function matchesChangedFilePatterns(file, patterns) {
 }
 
 export function isGeneratedReleasePath(file) {
-  return normalizeReleasePath(file).split("/").some((segment) => GENERATED_SEGMENTS.has(segment));
+  return normalizeReleasePath(file).split("/").some((segment) => {
+    const normalized = segment.toLowerCase();
+    return GENERATED_SEGMENTS.has(normalized)
+      || /^node_modules\.partial(?:[._-].*)?$/i.test(normalized);
+  });
 }
 
 export function isTestOnlyReleasePath(file) {
@@ -140,6 +144,7 @@ export function releaseBaselinePathspecs() {
     ":(exclude)src/**/bin/**",
     ":(exclude)src/**/obj/**",
     ":(exclude)src/**/node_modules/**",
+    ":(exclude)src/**/node_modules.partial-*/**",
     ":(exclude)src/**/dist/**",
   ];
 }

@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import type { PhoneAdbConfig, PhoneDisplayConfig } from './config.js';
 import { encodeScreenshot } from './image.js';
 import type { NamedActionStore } from './named-actions.js';
@@ -43,12 +44,13 @@ export class AdbTransport implements PhoneTransport {
     return this.config.serial ? ['-s', this.config.serial] : [];
   }
 
-  private exec(args: string[], binary = false): Promise<ExecResult> {
+  private exec(args: string[], binary = false, timeoutMs = 20_000): Promise<ExecResult> {
     return new Promise((resolve, reject) => {
       execFile(
         this.config.binaryPath,
         args,
-        { encoding: binary ? 'buffer' : 'utf8', maxBuffer: SCREENCAP_MAX_BUFFER, windowsHide: true, timeout: 20_000 },
+        { encoding: binary ? 'buffer' : 'utf8', maxBuffer: SCREENCAP_MAX_BUFFER, windowsHide: true, timeout: timeoutMs,
+          env: this.config.homeDir ? { ...process.env, ANDROID_USER_HOME: this.config.homeDir } : process.env }, 
         (error, stdout, stderr) => {
           if (error) {
             const detail = (typeof stderr === 'string' ? stderr : stderr?.toString('utf8')) || error.message;
@@ -192,6 +194,65 @@ export class AdbTransport implements PhoneTransport {
     }
     const { stdout } = await this.shell(['monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1']);
     return { ok: true, action: 'launchApp', packageName, output: stdout.toString('utf8').trim() };
+  }
+
+  async uiHierarchy(maxNodes = 120): Promise<Record<string, unknown>> {
+    const remote = '/sdcard/agent_core_ui_' + Date.now() + '_' + randomBytes(3).toString('hex') + '.xml';
+    let xml = '';
+    try {
+      await this.shell(['uiautomator', 'dump', '--compressed', remote]);
+      xml = await this.shellText(['cat', remote]);
+    } finally {
+      await this.shell(['rm', '-f', remote]).catch(() => undefined);
+    }
+    const nodes: Array<Record<string, string>> = [];
+    const nodePattern = /<node\s+([^>]+?)\/?>(?:<\/node>)?/g;
+    const attrPattern = /([A-Za-z0-9_-]+)="([^"]*)"/g;
+    for (const match of xml.matchAll(nodePattern)) {
+      const attrs: Record<string, string> = {};
+      for (const attr of match[1]!.matchAll(attrPattern)) attrs[attr[1]!] = attr[2]!;
+      if (attrs.password === 'true') {
+        delete attrs.text;
+        delete attrs['content-desc'];
+      }
+      if (attrs.text || attrs['content-desc'] || attrs['resource-id'] || attrs.clickable === 'true') nodes.push(attrs);
+      if (nodes.length >= Math.max(1, Math.min(300, maxNodes))) break;
+    }
+    return { available: true, nodes, nodeCount: nodes.length, xmlBytes: Buffer.byteLength(xml) };
+  }
+
+  async deviceTelemetry(packageName?: string): Promise<Record<string, unknown>> {
+    const [battery, display, android, thermal, pkg] = await Promise.all([
+      this.shellText(['dumpsys', 'battery']).catch(() => ''),
+      this.shellText(['wm', 'size']).catch(() => ''),
+      this.shellText(['getprop', 'ro.build.version.release']).catch(() => ''),
+      this.shellText(['dumpsys', 'thermalservice']).catch(() => ''),
+      packageName ? this.shellText(['dumpsys', 'package', packageName]).catch(() => '') : Promise.resolve(''),
+    ]);
+    const batteryLevel = battery.match(/level:\s*(\d+)/)?.[1];
+    const status = battery.match(/status:\s*(\d+)/)?.[1];
+    const size = display.match(/Physical size:\s*(\d+)x(\d+)/);
+    const versionName = pkg.match(/versionName=([^\s]+)/)?.[1];
+    const versionCode = pkg.match(/versionCode=(\d+)/)?.[1];
+    return {
+      androidVersion: android || null,
+      display: size ? { width: Number(size[1]), height: Number(size[2]) } : null,
+      battery: { level: batteryLevel ? Number(batteryLevel) : null, status: status ? Number(status) : null },
+      thermalPreview: thermal.split(/\r?\n/).filter(Boolean).slice(0, 12),
+      package: packageName ? { name: packageName, versionName: versionName ?? null, versionCode: versionCode ?? null } : null,
+    };
+  }
+
+  async recordScreen(durationSeconds: number, localPath: string): Promise<Record<string, unknown>> {
+    const seconds = Math.max(1, Math.min(30, Math.round(durationSeconds)));
+    const remote = '/sdcard/agent_core_game_' + Date.now() + '.mp4';
+    try {
+      await this.exec([...this.targetArgs(), 'shell', 'screenrecord', '--time-limit', String(seconds), remote], false, (seconds + 8) * 1000);
+      await this.exec([...this.targetArgs(), 'pull', remote, localPath], false, 60_000);
+      return { ok: true, durationSeconds: seconds, localPath };
+    } finally {
+      await this.shell(['rm', '-f', remote]).catch(() => undefined);
+    }
   }
 
   async listNamedActions(): Promise<NamedAction[]> {

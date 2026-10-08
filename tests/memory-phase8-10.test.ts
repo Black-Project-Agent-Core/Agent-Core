@@ -78,9 +78,10 @@ describe('memory phases 8-10', () => {
     });
 
     embedder.fail = true;
-    const results = await memory.search('fallback');
+    const results = await memory.search('fallback', { rankingProfile: 'bm25' });
 
     expect(results.some((item) => item.record.id === record.id)).toBe(true);
+    expect(results.find((item) => item.record.id === record.id)?.components.bm25Lexical).toBeGreaterThan(0);
     expect(memory.health().embedding).toBe('degraded');
     expect(memory.health().status).toBe('degraded');
     expect(memory.health().canonicalStore).toBe('available');

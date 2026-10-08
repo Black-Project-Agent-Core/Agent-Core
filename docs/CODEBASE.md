@@ -1,13 +1,23 @@
 # Agent Core Codebase Map
 
+> **Self-Improvement — 2026-10-07, RESIDENT-ACTIVATED / LIVE READBACK PASSED; ACCEPTANCE LIMITS REMAIN:** [Plan](Agent-Core-Self-Improvement-Plan.md) and [Execution](Agent-Core-Self-Improvement-Execution-20261007.md) record semantic proposals, reminders, exact decisions, bounded awareness/WHY and outcome review. Fresh readback: 531/531 installed hashes match, Core 14228 healthy at v0.14.0, new Skills facade responds, Native answer/reminder persisted. New proposal remains not-built with no user decision; interrupted delivery, later Skill use, junction host and cached external descriptor remain open. No measured benefit or whole-plan STABLE claim.
+
+**Cumulative workflow update, 2026-10-06:** Task-scoped Learning review, guarded verified persistence, shared procedure ownership, revision-bound receipts and shared ranked context are implemented. Work outcome is separate from Learning completion. Independent source identity is not semantic truth. Controlled 64-run engineering/research evaluation and resident activation are tracked in [Cumulative-Workflow-Implementation-20261006.md](Cumulative-Workflow-Implementation-20261006.md); earlier EC/MRR acceptance does not prove this larger benefit claim.
+
+
+> **Product-direction context, confirmed 2026-09-30:** [Agent Core Product Direction](Agent-Core-Product-Direction.md) records the user's cumulative-learning destination and why system mechanisms AND local Memory mechanisms are repeatedly grounded/adopted. The target is actual learning reuse in later decisions/actions, not tool-count growth. This link is intent context, not evidence that the full target is implemented; the source-grounded map and dated evidence below retain their own scope. `Target-Feture.md` is preserved conversation evidence.
+
+> **Latest scoped connectivity readback — 2026-09-30 +07 (2026-09-29 18:06Z):** Direct Agent Core connector discovery and native `memory_list`, `memory_read`, `memory_status`, `read_file`, and `start_process` calls succeeded in the user session. Core `127.0.0.1:8765/health` returned HTTP 200 / `status=ok` / version `0.14.0`; Memory canonical/index/embedding/intelligence were available with issueCount 0; Code Intelligence was available/current with accepted graph integrity; Semantic IDE, Execution, Learning, and Skills were available. This supersedes older live-version/connectivity assertions below, not their historical release/qualification evidence.
+> **Connection diagnosis correction:** Earlier controller-side `UNAVAILABLE / Connection failed` responses did not establish that Agent Core itself was offline. The original failure cause remains unconfirmed; the failure was not reproduced during this readback. External Remote Desktop Commander was independently reachable on the user-authorized device (ping returned pong) and is not an Agent Core dependency or proof of Agent Core health. No runtime/source repair, dependency install, restart, OAuth reset, or release was performed in this readback.
+
 > **Status:** Maintained architecture source of truth
 > **Baseline grounded:** 2026-09-16
 > **Project root:** `<PROJECT_ROOT>`
-> **Product version:** `0.11.0`
+> **Product version:** source/package is `0.14.0`; the pre-runtime grounding readback on 2026-09-30 observes resident `/health` reporting `0.14.0`. Older version and release-queue snapshots below are dated history; this audit does not re-evaluate or apply the release queue.
 > **Primary runtime model:** local authenticated Agent Core MCP bridge with an internal vendored RDC-derived machine-control layer
-> **Current mapping refresh:** 2026-09-20
+> **Current mapping refresh:** 2026-09-28 (stable package `v0.14.0` is immutable and integrity-verified; resident runtime is still `0.13.0` on the 70-tool image because packaging and runtime activation remain separate. Current source/dist and live connector agree on 70 tools. Launcher single-instance, Code Intelligence advisory metadata, Semantic IDE type ownership, cross-cutting network/evidence/persistence/document-projection, machine-control state ownership, cleanup/rebuild boundaries, and stable packaging state are synchronized below. Older dated sections retain historical evidence.)
 
-## 0. Current system snapshot — 2026-09-20
+## 0. Current system snapshot — 2026-09-28
 
 > **Scope of this section:** descriptive mapping only. It records what is active now; it does not define upgrade priorities, roadmap items, or recommendations.
 
@@ -17,37 +27,1595 @@ Observed from the running system during this mapping refresh:
 
 | Surface | Current state |
 | --- | --- |
-| Product release/source version | `0.12.0` — stable release applied locally from 11 archived intents; no pending release intents remain |
-| Native launcher metadata | Current root `Agent Core.exe` remains the pre-restart 0.11.0 launcher; packaged v0.12.0 launcher is `FileVersion 0.12.0.0`, `ProductVersion 0.12.0`, SHA-256 `5be78ce367840938b8e517cdae3b462269e0b5b1ce677dfd2e458b72e38885ac` |
-| Live Node core | `0.11.0`, project-local runtime on `:8765`; `/health` reports `status=ok`. Source/release packaging is now `0.12.0`, but the running Node process was intentionally not restarted during packaging. |
-| Release intent/version integrity | Stable/source version is now `0.12.0`. `release:apply` consumed and archived all 11 approved intents (8 minor + 3 patch); `release:plan` now reports `Pending: 0`. `release:compat` remains 62→62 tools with no tool/route removals or breaking evidence. The synthetic `refs/agent-core/current-line-baseline` was intentionally **not** refreshed during packaging, so `release:check-intent` currently reports release-relevant deltas without a new pending intent relative to the older baseline; refresh that ref only when explicitly starting the next development-line baseline. No commit, tag, push, publish, deploy, or restart was performed. |
-| Local release archive | `release\\v0.12.0\\Agent-Core-v0.12.0.zip` + release notes/manifest/SHA256; final ZIP 214,410,695 bytes / 19,350 entries / SHA-256 `9eaf5cacdaa689d0c8558779e9a90e6b8efd0d6e86f9608447d7f8eaff2411fe`; packaged launcher SHA-256 `5be78ce367840938b8e517cdae3b462269e0b5b1ce677dfd2e458b72e38885ac`, FileVersion `0.12.0.0`, ProductVersion `0.12.0`. Prior `v0.11.0`, `v0.10.0`, `v0.9.0`, and `v0.8.1` archives remain immutable. |
+| Product release/source version | Canonical source/package version is stable **`0.14.0`**; live Node Core still reports **`0.13.0`** because release packaging is separate from installed-runtime activation. `release:plan` now reports **0 pending intents / bump none**. |
+| Native launcher metadata | Audit-hardening launcher is **LIVE-ACTIVATED**: root `Agent Core.exe` FileVersion `0.13.0.0`, ProductVersion `0.13.0`, SHA-256 `C6A17A4CD7C9F17710E7485C6D8F3581D806C4E69C43181B0422A8FBD0A747DB`; root launcher PID `16168` started after the candidate write and is the single active desktop owner. Scoped rollback backup remains under `runtime\\backups\\codebase-audit-repair-20260928`. |
+| Live Node core | Project-local Node listener `:8765` is PID `12220`, parented by active-window launcher PID `16168`; tunnel listener `:8787` is PID `10984`, also parented by `16168`; native-dump helper is PID `16940`. Fresh `/health` is HTTP 200 / `status=ok`, version `0.13.0`; Memory, Code Intelligence, Semantic IDE, Learning and Skills report available. Exactly one root launcher is active; the earlier stale PID `3152` did not reappear after restart. |
+| Release intent/version integrity | The `0.14.0` release intents were applied and archived under `.changeset/applied/0.14.0-1790585693322`; `release:plan` reports current `0.14.0`, bump `none`, pending `0`. `release:check-intent` is clean and `release:compat` reports 70→70 tools, no route/tool removals, no breaking evidence, and manifest budget within limits. |
+| Local release archive | Current immutable stable package is `release/v0.14.0/Agent-Core-v0.14.0.zip`, **216,940,864 bytes**, SHA-256 `3951adec007571bc906621473e881bcc75b61ac33ece391dd3c72577d174956c`. Full ZIP-to-integrity-manifest verification passed **20,026/20,026 files**, **661,156,640 bytes**, 0 missing/mismatched/forbidden entries; archive launcher is FileVersion `0.14.0.0`, ProductVersion `0.14.0`. Older releases remain historical/immutable; `v0.12.0/` remains empty and was not reconstructed. |
 | Desktop host | `<PROJECT_ROOT>\Agent Core.exe` |
+| Native AI workspace UI | Foundation placeholder/current separate workstream: `Agent Core AI` is driven by the generic optional `agentRuntime` health contract and is intentionally preserved. The retired Hermes Partner backend/tool/health contract is no longer used by this UI surface. |
 | Node core | project-local `runtime\node\node.exe` running `dist\index.js` |
 | Local HTTP/MCP | `127.0.0.1:8765` |
 | Tunnel readiness/admin | `127.0.0.1:8787` via `tunnel-client\tunnel-client.exe` |
 | `/health` | `status: ok` |
 | Execution | `available`, mode `rdc-direct` |
-| MCP surface | 62 server-side tools = 26 machine-control + 11 memory + 14 Game Mode + 7 Grafel Code Intelligence + 1 Learning + 1 Hermes A2A Partner + 2 Semantic IDE/LSP tools |
-| Game Mode / phone | configured as a sibling capability; device availability is transport/runtime dependent |
-| Code Intelligence | Existing Grafel integration remains backed by the qualified Agent Core-owned provider `v0.3.3-50-g45f9745d0-agentcore` from commit `45f9745d0...`. Final re-grounded G20–G25 boundary hardening is **COMPLETE — IMPLEMENTED — LIVE-ACTIVATED — TARGETED VERIFIED — REFERENCE RETIRED**: stale workspace retirement/pruning, explicit `/Audit/` reference-tree exclusion from the current-line graph, MCP schema+manifest contract guards, provider `wire_version` compatibility, typed canonical query/discriminator parity, and bounded graph-touch evidence in the existing Activity Tracker. Targeted suite is 5 files / 21 tests PASS; `release:compat` is 62→62 with no breaking evidence and manifest budget 104,867 bytes/~26,217 tokens. Post-restart live acceptance reports Code Intelligence `available/current`, `providerWireVersion=0.1.0`, `providerWireCompatible=true`, and `issueCount=0`; typed substring find and analysisPreset routing are live, and Tracker records real touched entity IDs. External MCP clients initialized against an older manifest may still need their own reinitialize/reconnect for additive enum values. |
-| Learning | live 0.11.0 health `available`, enabled, issueCount `0`; Memory + Grafel Pattern sinks are active under the current adapter/runtime |
-| Hermes A2A Partner | **available** after 2026-09-20 stability repair, provider `hermes` v0.21.3 over `loopback-runs-api`, live loopback port `18642`, issueCount `0`. Functional acceptance remains **24 / 24 PASS**; fresh post-repair A2A acceptance on the restored v0.21.3 source completed alignment, approval and delegated execution successfully, with the final run reaching terminal `completed`. Source discovery preserves explicit `AGENT_CORE_HERMES_SOURCE_ROOT`; otherwise it prefers the sibling `..\hermes-agent` tree when it contains `gateway\platforms\api_server.py`, then falls back to `<HERMES_HOME>\hermes-agent`. Filesystem corruption had made all 40 tracked files under `gateway\platforms` and all 30 tracked files under `cron` unreadable/deleted from Git's perspective; both directories were quarantined and restored exactly from local Git HEAD, and a direct `APIServerAdapter` import probe passed. Current Node Core PID `11172` reports `/health=ok`. `docs\Hermes-A2A-Partner-Bridge-Plan.md` remains COMPLETE for approved scope. |
-| Semantic IDE / LSP | The full previously selected Serena/SolidLSP Semantic IDE scope remains **COMPLETE — VERIFIED** in Agent Core-owned `src\\semantic-ide`: freshness, multi-language provider registry/adapters, process-tree lifecycle, protocol/transaction hardening, overload/info/location/diagnostic precision, external loopback TCP, multi-root, hot reload, type hierarchy, diagnostics delta, version compatibility, and hardened provider environments. Historical final verification reached **14 files / 66 tests PASS** plus real TypeScript `semantic:smoke` PASS. A 2026-09-20 source-first re-grounding of `Audit\\Serena` found two residual gaps and the user approved both. `S3-P1` verified project-local provider provisioning/repair is now implemented with explicit confirmation, pinned recipes, host/redirect validation, bounded streaming, SHA-256, archive traversal/symlink/collision/expansion guards, staged atomic promotion, integrity manifests, repair semantics, and managed-provider health. `S3-P2` is implemented as a project-local external MCP acceptance harness under `scripts\\verify`, not a runtime subsystem. Targeted S3 verification is 3 files / 10 tests PASS; root TypeScript build passes; real Python/C#/PowerShell provider trees validate idempotently; `release:compat` remains 62→62 with no breaking evidence. Post-restart live `/health` reports Semantic IDE `available`, issueCount `0`, and TypeScript 6.0.0 / C# 5.5.0 / PowerShell 7.6.6 / Python 1.1.403 all compatible. A fresh authenticated external MCP client observed 62 tools and the live `code_symbol` schema contains `provision_provider`, `providerId`, `repair`, and `confirmation`; live Python provision readback returned `changed=false`, `alreadyValid=true`, `repaired=false`. Final active dependency/marker/registry census was zero-value and `Audit\Serena` was deleted. |
-| Controller exposure | server-side MCP registration is **62 tools** and includes exactly `code_symbol` + `code_refactor`; an already-open external MCP client initialized before this cutover may keep a cached pre-Semantic tool manifest until it reconnects/reinitializes |
-| Grafel provider | qualified project-local `v0.3.3-50-g45f9745d0-agentcore` binary under `runtime\grafel\bin`; SHA-256 `7CEB82CA002628DDBFEAAC56A6C136924014A840DEA3046AFB99C9BC9D8540C8`; rollback v0.3.3 retained under `runtime\backups\20260919-1620-grafel-post-v033` |
-| Memory | `available`, file-native canonical store |
-| Memory canonical store | `available` |
-| Memory index | `available` |
-| Memory embedding | `available` |
-| Memory intelligence | `available` |
-| Memory issues | `0` |
+| Document projection | **LIVE-ACTIVATED / installed-runtime verified.** Existing `read_file` owns native TypeScript semantic projection: automatic PPTX/EPUB/IPYNB/Outlook-MSG/safe-ZIP handling plus explicit `options.projection="markdown"` for HTML/RSS/Atom/CSV/DOCX/XLS/XLSX/XLSM/PDF. Existing editable/native DOCX/Excel/PDF owners remain the default. No second MCP server or hidden model call was added. |
+| MCP surface | Fresh live connector/runtime exposes **70 public tools**: 28 machine-control, 17 Memory, 1 Learning, 14 Phone, 7 Grafel Code Intelligence, 2 Semantic IDE/LSP, and 1 artifact-only Skills tool. The current Memory surface includes `memory_page`, `memory_retrieval_diagnostics`, `memory_export`, `memory_import`, `memory_feedback`, and `memory_retirement_review` in addition to the earlier list/read/search/mutation surfaces. The latest targeted MCP manifest/schema contracts remain within the reviewed budget; MarkItDown changed `read_file` behavior/schema metadata but did not add a public tool. |
+| Game Mode / phone | Gateway transport is currently observed online for `nubia-z2465n-main`; source/dist now also support live-orientation coordinate tracking, crop/burst observation with motion scoring, bounded mixed action sequences with visual-stability waits/final observation, broader ADB discovery, and the existing companion overlay-marker primitives. The resident Core remains on its currently loaded schema until a supported reload; no new public tool name or second phone-control authority was added. |
+| Code Intelligence | G26/G27/G29/G30 provider and preserved G28 behavior remain installed; wire `0.1.0` is compatible. The 2026-09-24 health repair restored the isolated daemon/index and added one bounded retry only for read-only stale-bridge probes. Fresh live status is `available/current`, issueCount `0`; graphAvailability is true with `provider-graph-loaded`, complete group coverage is 1/1, and a live substring graph query succeeds. |
+| Learning | Native SIE-P1/P2/P3/P4/P5 remains installed. The ASI-P1–P5 offline reporting stack is present in active `dist`; installed-runtime retrieval series/profile/portfolio + analysis verification passes 27/27. Learning health is available and both Memory and Grafel-pattern sinks are currently available. Reports remain offline/controller-declared and do not launch evaluators or approve deployments. |
+| Legacy Hermes A2A Partner | **RETIRED 2026-09-27.** `src\\partner`, `src\\mcp\\partner-*`, `AGENT_CORE_HERMES_*`, `/health.partner`, runtime `runtime\\partner\\hermes`, and public MCP `partner` were removed. Fresh live health and MCP acceptance contain neither `partner` nor `HERMES_HOME_NOT_FOUND`. External Hermes processes/projects are outside this removal and were not touched. |
+| Semantic IDE / LSP | S7 readiness preservation, S8 bounded C# post-initialize project-open, and Reef RF-P1 terminal-transport handling remain installed. After explicit provider reload on 2026-09-24, PowerShell is observed as `7.6.6` / `compatible`; TypeScript 6.0.0, C# 5.5.0 and Python 1.1.403 are also compatible. Fresh Semantic IDE health is `available` with issueCount `0`. S8 still requires successful C# initialize and does not rewrite historical timeout evidence. |
+| Controller exposure | Fresh connector/runtime exposure remains **70 live Agent Core tools**. Current connector schemas expose the full 17-tool Memory surface, including feedback/retirement review, and the live 2026-09-28 acceptance exercised both automatic and opt-in document-projection paths through the existing `read_file` tool. |
+| Grafel provider | The qualified project-local G26/G27/G29/G30 **runtime binary** remains active and wire-compatible under `runtime\\grafel\\bin`; non-runtime staging/build/candidate/download/qualification artifacts were pruned by cleanup 0.1.59. The isolated daemon/index remains `current`, graph loadable, provider attestation current, and health reports Code Intelligence `available/current` with issueCount `0`. |
+| Memory | Canonical memory is operational again after the 2026-09-22 authorized bootstrap reconstruction. Native list, reindex, remember and readback succeeded without restart. This is new grounded continuity, not recovery of deleted historical notes. |
+| Memory canonical store | `runtime/memory/00-agent-core-memory.md` was recreated as a minimal foundation derived from the current AGENTS.md contract. The pre-repair notes directory was empty; no lost historical content was invented. A verified recovery record is persisted as `46a4013d-695e-4450-9aac-602b2cdcca09`. |
+| Memory index | Native `memory_reindex` completed after the new bootstrap; index and canonical store both reported available. Subsequent native remember/read operations proved actual persistence, not just a health flag. |
+| Memory embedding | `available` (Cloudflare Workers AI / EmbeddingGemma); provider availability does not validate canonical-memory correctness. |
+| Memory intelligence | Available during resumed readback. Memory parser integrity hardening is installed; lost historical memory and incomplete Git provenance remain distinct limitations. |
+| Memory issues | Resumed health reports issueCount=0. Binary/NUL/unrelated foundation and BOM parsing hardening are installed and covered by the selected installed tests; this does not recover lost historical notes. |
 | Embedding provider/model | Cloudflare Workers AI / `@cf/google/embeddinggemma-300m` |
 | Embedding dimensions | `768` |
 
 The listener identity was verified during this refresh: port `8765` belongs to the project-local Node runtime executing `<PROJECT_ROOT>\dist\index.js`; port `8787` belongs to the project tunnel client.
 
-### 0.2 Active runtime topology
+### 0.1.1 Grounding audit exceptions — 2026-09-22
+
+The following findings include scoped updates through the 2026-09-23 resumed repair verification. CLOSED rows are historical repairs, and only OPEN rows remain outstanding. Current exact source/runtime evidence overrides older completion snapshots:
+
+| Status | Finding | Evidence / architectural consequence |
+| --- | --- | --- |
+| **CLOSED — ACTIVE TS SOURCE/ROOT TYPECHECK** | Active TypeScript source/build blocker repaired. | Twenty-one missing modules were recovered or reconstructed against installed runtime; generic JSON-reader typing restored. Fresh full-root no-emit check exits 0 with no diagnostics. Earlier corruption/loss is historical; no latest historical revision recovery is implied. |
+| **CLOSED — MEMORY PATH RECOVERED** | Missing bootstrap restored under explicit user authorization. | A new minimal grounded foundation plus native reindex restored operation. Native remember/readback of recovery record `46a4013d-695e-4450-9aac-602b2cdcca09` succeeded. Lost historical notes were not recovered. |
+| **CLOSED — CURRENT-LINE GIT METADATA RECOVERED** | The corrupt historical object database was replaced from a locally verified current-line baseline without using the legacy network remote. | `refs/agent-core/current-line-baseline` commit `639cdf77fd7288a722131862e22eecaff4a90f07` was verified complete, bundled locally, fetched into fresh metadata, and assigned to local `main` plus the baseline ref. `git fsck --full --no-reflogs` is clean; the pre-repair `.git` is preserved at `runtime/backups/git-object-db-corrupt-20260926/.git-corrupt`. A 3,715-file active-worktree SHA-256 inventory matched exactly before/after metadata replacement. Historical pre-baseline lineage remains archival evidence only. |
+| **CLOSED — PARSER HARDENING INSTALLED** | Malformed-foundation/BOM parsing gap repaired. | Installed parser rejects binary/NUL/empty/unrelated foundations and preserves BOM body offsets. The 11 targeted integrity cases are included in the passing installed test set. |
+| **CLOSED — ADAPTER SOURCE RESTORED** | Release adapters and current-line baseline metadata are available. | release-plan, check-release-intent, apply-release and pre-package are present and qualified; the local baseline object is now fsck-clean. No release apply was performed by the 2026-09-26 repair. |
+| **CLOSED — HISTORICAL PROVENANCE LIMITS RECORDED** | Recoverable historical artifacts were restored; unavailable historical bytes are no longer treated as active runtime repair work. | `docs/Agent-Core-14.md` was restored byte-identically from the supplied historical transcript (8,869 bytes; SHA-256 `9564E24703CAE4B8E25074DB30860E2F4D8A3C597464B76E653B3FD8AAEEAC67`). Other restored historical snapshots remain explicitly non-authoritative. Unknown newest lost revisions and the missing historical v0.12 archive are not reconstructed from newer source because that would create false provenance; this limitation is recorded rather than left as an OPEN runtime defect. |
+| **CLOSED — EXPLICIT SOURCE REQUIRED** | Implicit legacy network recovery rejected. | Recovery no longer silently uses the legacy repository as current-line authority. Qualified tests cover explicit-source refusal; no network restore was run. |
+| **CLOSED — SEMANTIC PROVIDER READINESS** | Managed providers are present and current health has trusted version compatibility evidence. | Fresh post-restart Semantic IDE health is `available`, issueCount `0`: TypeScript `6.0.0`, C# `5.5.0`, PowerShell `7.6.6`, and Python `1.1.403` all report `compatible`. PowerShell version probing now has one bounded read-only retry for transient spawn/probe failure; no provider reinstall or readiness status override is used. |
+| **CLOSED — LEGACY PARTNER RETIRED** | The old Hermes Partner degradation no longer exists in current Agent Core. | On 2026-09-27 the legacy Partner bridge/tool/config/health/runtime state was removed and live-verified; `/health` and the MCP manifest contain neither `partner` nor `HERMES_HOME_NOT_FOUND`. The separate future `agentRuntime`/Agent Core AI workstream remains untouched. |
+
+The active-source ownership map below describes **intended ownership and architecture**, not a claim that every current source file is intact. During recovery work, exact current bytes, trusted current-line backups/artifacts, and protected-user-state boundaries outrank stale graph/docs/history.
+
+### 0.1.2 Scoped disk cleanup — 2026-09-23
+
+User-authorized disk cleanup removed 84,136 disposable files, including 40,029 SHA-256-matched generated worker copies and one temporary launcher executable identical to the retained root executable. 3,454 empty generated worker directories were removed. npm content cache plus three inactive npx package caches and an abandoned Go build directory were removed; live dependencies and toolchains were not removed.
+Disk free space on E: increased from 5.25 GiB to 19.31 GiB (14.06 GiB observed delta); removed logical bytes total approximately 2.96 GiB. The exFAT volume reports 128 KiB allocation units. No disk format change or project relocation occurred.
+All 304 inspected source/test/script/config file hashes remain identical. All 339 activation-manifest artifact checks match. No active source or regression-test definitions were deleted. Grafel dead-code suggestions included confirmed live consumers and were not used as deletion authority. Source scans found no zero-byte or literal-NUL files in the 304 inspected files; 74 inspected test-related files have no byte-identical duplicates.
+Retained: runtime backups, current build candidates, canonical memory, OAuth/credentials, Grafel/provider state, protected references, SubProject/plugin ZIP, Git objects, original recovery source, and test/activation evidence. Only worker dist/src copies were pruned; test runtime fixtures remain. Two prior installed-test report files are zero-byte and remain evidence of incomplete reporting, not PASS.
+After-cleanup /health: HTTP 200, status ok; Execution/Memory/Learning/Semantic IDE/Code Intelligence available, Memory/Semantic issueCount 0. Hermes Partner remains degraded separately. No build/test suite, dependency installation, release, or runtime restart was performed by cleanup.
+Canonical cleanup memory: `7de1f836-1521-4546-9fe1-a9dddfdc5cea`; Learning checkpoint 61. Report: `docs/Cleanup-20260923.md`. Inventory, exact duplicate references, deletion ledger, source/runtime readbacks and disk evidence: `runtime/tmp/cleanup-20260923/`. Earlier repair-task completion is not inferred from this cleanup.
+
+### 0.1.3 ChatGPT custom plugin package — 2026-09-23
+
+The supplied export `SubProject/dev-6ab288f8a2e88191b706b2d3af6b525d.zip` was repackaged as `SubProject/Agent-Core-ChatGPT-Plugin-v1.0.1.zip` (641 bytes). Package version changes from 1.0.0 to 1.0.1; the optional null defaultPrompt is omitted. The original package name, Agent Core display name and byte-identical `.app.json` mapping to the existing registered MCP app are preserved. The archive contains two manifest files, not runtime binaries or a tool-schema snapshot. Root product version remains 0.12.0. Local archive/JSON/hash validation is complete; ChatGPT upload acceptance is pending. No runtime activation, authentication change, or resolution of earlier repair caveats is implied. Report: `docs/ChatGPT-Custom-Plugin-Package-20260923.md`; evidence: `runtime/tmp/chatgpt-plugin-package-20260923/validation.json`.
+
+#### 0.1.4 Resumed system repair / SIE closure — 2026-09-23
+
+SIE-P1/P2/P3/P4/P5 is installed and approved-scope verification is complete: 284 installed cases, 19/19 live HTTP MCP checks, 339/339 artifact hashes, six changed programs loaded and a clean full-root no-emit typecheck. No installer rerun or Core restart occurred. Test copies were replaced with three tiny forwarding modules per isolated worker; remaining synthetic fixture footprint was 73,570 bytes and was removed. The old zero-byte reports have a confirmed ENOSPC log and are retained as failed-report history.
+
+System-wide closure is deliberately PARTIAL: fresh Git fsck retains 56 missing blobs/25 trees/one commit and invalid current-line-baseline; Hermes home remains missing; C#/PowerShell have two reproducible readiness timeouts despite successful symbols; historical data and debugger-map warnings remain unrecovered. Four historical documents were restored with banners, not treated as new/current plans. Report: `docs/System-Repair-SIE-Completion-20260923.md`; evidence: `runtime/tmp/system-repair-sie-final-20260923/resume-20260923/`; existing continuity records: `3994c6ba-89a5-41a6-a995-d87f8d7d7664` and `2820c59d-9e92-41c5-821a-31da35c8837a`. Earlier conditional SIE-P2/P5 and activation-pending snapshots are superseded for current scope only.
+
+### 0.1.5 SIE / Awesome source-first re-grounding — 2026-09-23
+
+Historical planning checkpoint: SIE-P1–P5 was already installed and verified; the audit proposed SIE-P6/P7 and ASI-P1/P2/P3 without implementing or activating them. The user subsequently selected all five. Their implemented source and isolated-candidate state is recorded in section 0.1.6; the following census remains historical evidence, not a current awaiting-selection status.
+
+Both named protected references were retained at this historical checkpoint; current disposition is in section 0.1.7. File census: SIE48tracked files at f06504750b32c3b6a6e06b56ee6e69dc4476f333; Awesome49at99ce3979185536c1efb57b5c6935244b56f1dfec. SIE13Python/shellsource/test/stub files were read; Awesome is publication/catalog source, not an executable agent runtime. Its318catalog rows/185distinct GitHub URL strings are not all independently audited implementations. One bounded linked-source inspection pinned GEPA d771eb21b5dd3228bc3f567293d2ccfc423fc900; its pure utility preserves instance-front coverage, not a general proof of vector Pareto domination.
+
+Small isolated probes reproduced distinct-evaluation title deduplication, interrupted report completeness ambiguity (CLI correctly exits2), and aggregate-delta regression masking. No disk-full reproduction, synthetic production memory capture, dependency install, runtime patch, broad test suite, restart or release. Evidence: `runtime/tmp/sie-awesome-regrounding-20260923/`; small doc backups: `runtime/backups/sie-awesome-regrounding-20260923/`. Existing Git/Hermes/readiness residuals are unchanged and separate.
+
+### 0.1.6 Approved SIE / ASI offline reports — 2026-09-23
+
+**HISTORICAL QUALIFICATION CHECKPOINT — SOURCE AND ISOLATED CANDIDATE VERIFIED.** The user selected SIE-P6/P7 and ASI-P1/P2/P3. At the end of this 2026-09-23 stage the three ASI compiled modules were staged rather than installed; that activation boundary is superseded by section 0.1.11, where the ASI-P1–P5 reporting stack is present in active `dist`. Existing SIE-P1–P5 remains installed.
+
+| Owner | Exact role |
+| --- | --- |
+| `scripts/learning/report-bundle.mjs` | Shared bounded report identity, marker-last completeness, strict member/hash/binding replay and independent score/verifier recomputation; complete failure differs from incomplete evidence. |
+| `scripts/learning/evaluate-retrieval.mjs`, `report-io.mjs` | Existing explicit producer gains sealing and identity-bearing candidates; bounded regular-file reads and exclusive writes remain. Generic Memory dedup and default unapproved candidates are preserved. |
+| `scripts/learning/verify-report-bundle.mjs` | Read-only complete/failed/legacy-unsealed/invalid inspection. |
+| `src/learning/retrieval-profile.ts` | Verified case transitions, regression denominator, bounded ID lists and full-list digests; no retrieval mutation. |
+| `src/learning/retrieval-series.ts` | Explicit split/protocol/run/resource evidence, failed-attempt retention, conservative comparison groups and qualified seed dispersion. |
+| `src/learning/retrieval-portfolio.ts` | Deterministic union-coverage reduction with zero-loss checks; not pairwise Pareto domination or a deployment selector. |
+| `scripts/learning/analyze-retrieval.mjs` | Explicit profile/series/frontier modes write a new bounded sidecar; no experiment launch, telemetry ingestion or Memory capture. |
+
+Candidate: `runtime/build/sie-asi-20260923/` (12 selected JavaScript modules plus maps, six CLI files). Selected strict compile exits 0 with no diagnostics. Ten selected test files pass 123/123 in the source stage and the same 123/123 in the candidate stage, zero failures/skips. The latter selects compiled new ASI modules; unchanged legacy owners remain isolated regression fixtures. This is not a full-root build, full-project suite, installed acceptance test or production-quality benchmark. GEPA comparison matches 39/39 fixtures; its pinned MIT notice is preserved.
+
+Integrity: all 1,521 active-dist files unchanged, all 97 protected-reference files unchanged, and all 12 pre-sync canonical notes unchanged by testing. The source graph reported current but did not locate the new profile entity, so exact source/import checks were used; no complete graph-coverage claim. Hermes partner remains unavailable and no independent partner review is claimed. Existing Git/history/readiness and source-map residuals remain separate.
+
+Report: `docs/SIE-ASI-Offline-Reports-Execution-20260923.md`; plan closure: SIE section 23 and Awesome section 9. Evidence: `runtime/tmp/sie-asi-implementation-20260923/`; backup: `runtime/backups/sie-asi-implementation-20260923/`. One pending patch intent: `.changeset/20260923-sie-asi-offline-reports.md`. Canonical implementation memory: `cad67ec4-a591-4a93-9b28-8e4bb8899a65`, linked to the updated historical audit `c5bf2c4d-2f80-4a4d-b070-f3ec6b9a9bcd`. Both protected references were retained at implementation completion; section 0.1.7 records the subsequent SIE-only retirement and Awesome retention.
+
+### 0.1.7 Reference retirement recheck — 2026-09-23
+
+The user's separately requested final census retired **only** `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/self-improving-agent-ecosystem`. Its 48 worktree files matched the prior audit; all 13 executable source/test/stub files were reread. Selected SIE mechanisms already have native owners; remaining schemas and five unconfigured exit-2 stubs are not additional working subsystems. Source/scripts/tests reference searches and the SIE process-path check found no direct checkout dependency. Exact-path/hash/clean-checkout revalidation preceded deletion; subsequent readback confirmed the folder absent. Removed: 76 files including Git metadata, 205,855 logical bytes, not a measured free-space delta.
+
+At this retirement checkpoint, `awesome-Self-Improving-Agents` remained **RETAINED** at `99ce3979185536c1efb57b5c6935244b56f1dfec` and ASI-P4 was still unselected. That planning state is historical; section 0.1.9 records the later approved ASI-P4 implementation. ASI-P1/P2/P3 and SIE-P6/P7 remain source/candidate verified, with compiled ASI activation still separate.
+
+The adopted code, candidate, notices and prior rollback evidence are outside the deleted reference and preserved. Historical sections 0.1.5/0.1.6 describe the earlier retained-both checkpoint; this section supersedes only that retention disposition, not implementation or test evidence. The census does not claim every linked repository or possible future adaptation is exhausted. No production source edit, tests, build, dependency installation, reindex, release or restart occurred.
+
+Report: `docs/SIE-ASI-Reference-Retirement-Audit-20260923.md`; SIE retirement ledger: plan section 24. Evidence: `runtime/tmp/sie-asi-retirement-audit-20260923/`. Document backups: `runtime/backups/sie-asi-retirement-audit-20260923/`. Canonical memory synchronization is recorded in the audit report after native readback.
+
+### 0.1.8 Four numbered references grounded â€” 2026-09-23
+
+**HISTORICAL PLANNING CHECKPOINT — later superseded by section 0.1.9.** The user requested source-first grounding of `steal-use-repos/01-shiploop`, `02-SecondSight`, `03-Serena`, and `04-reef` under the explicitly named protected root. Three plans were created and the existing Serena second-wave plan was updated in place. At this checkpoint no proposal was implemented; the user subsequently selected the five-plan scope recorded in section 0.1.9.
+
+| Reference | Plan and proposed native owner (not yet implemented) |
+| --- | --- |
+| `01-shiploop` | `docs/Shiploop-Steal-Use-Integration-Plan.md`; SL-P1 explicit block-aware context-footprint/review command. The full mandatory protocol loader remains unchanged. |
+| `02-SecondSight` | `docs/SecondSight-Steal-Use-Integration-Plan.md`; SS-P1 correlated boundaries in the existing 26-tool machine-control wrapper, SS-P2 optional bounded completeness report. No second tracker/database or transcript collection. No explicit local license grant was found; source copying is not approved. |
+| `03-Serena` | `docs/Serena-Second-Wave-LSP-Freshness-Multi-Language-Integration-Plan.md` section 38; S7-P1 initialization-time readiness evidence in the existing session. S4/S5/S6 stay installed/closed; old C#/PowerShell readiness warnings are not claimed repaired. |
+| `04-reef` | `docs/Reef-Steal-Use-Integration-Plan.md`; RF-P1 terminal LSP transport state and pending-request settlement. No training/executor/deployment framework is introduced. |
+
+The native seams were inspected directly: `src/mcp/agent-protocol.ts`, machine-control wrapper `src/mcp/server.ts`, `src/tracker/activity-tracker.ts`, and the existing Semantic IDE protocol/session/adapter/recovery owners. The graph reported current but its incoming `LspConnection` relation result covered tests rather than the full native constructor path; exact source established that dependency. No new graph registration/marker or reindex occurred.
+
+Census: 3,999 regular tracked files plus two Reef gitlinks. Code-suffix indexes account for 254/311/509/936 files respectively; Python AST indexing is not an execution test or a claim of whole-repository semantic coverage. Reef submodules `third_party/cordis` and `third_party/reef-client` were empty and are not audited implementations. All four references remain retained because useful proposals/leads remain; no folder was deleted.
+
+SL/SS inspection reporting, SS tracker writes, S7 session readiness and RF transport failure are distinct ownership boundaries. If both S7 and RF are selected, sequence their edits through one reviewed session/protocol contract; do not create competing restart/generation schemes. No feature flags, MCP tools, dependencies, release intents, tests or runtime activation were added by this audit.
+
+Audit report: `docs/Four-Reference-Grounding-20260923.md`. Evidence: `runtime/tmp/four-ref-grounding-20260923/`; pre-edit document backups: `runtime/backups/four-ref-grounding-20260923/`. Canonical audit continuity and final document/native/reference readback are recorded in the report and final evidence. The current renamed reference paths above supersede only the old location labels, not historical adoption evidence.
+
+### 0.1.9 Approved five-plan adoption — 2026-09-23
+
+**COMPLETE — LIVE-ACTIVATED / INSTALLED-RUNTIME VERIFIED.** The user selected ASI-P4, SL-P1, SS-P1/SS-P2, S7-P1 and RF-P1. Source/candidate qualification occurred on 2026-09-23; the remaining active-dist cutover was completed on 2026-09-24 from current source without installing an external framework. Product version remains 0.12.0 and the existing patch intent remains metadata only; no release apply, commit, push, publish or deployment occurred.
+
+| Owner | Current implemented state |
+| --- | --- |
+| `src/learning/retrieval-series.ts` | ASI-P4 adds optional bounded acceptance/stopping protocol declarations and separately observed stop evidence. Legacy absence is `not-specified`; compliance stays `not-established`. No criterion text is executed and no process/approval action is triggered. |
+| `scripts/inspect/context-footprint.mjs` | SL-P1 explicit identity-safe read-only instruction/block report: exact bytes/SHA-256/Unicode scalar count/line count, conservative blocks and exact duplicate candidates. It never edits the mandatory contract or claims complete context-window/token accounting. |
+| `src/tracker/tool-invocation.ts`, `src/mcp/server.ts` | SS-P1 adds opaque invocation/process-session correlation to the existing 26 machine-control wrapper with fail-soft start/terminal evidence and exactly-once terminal state. Public tool schemas and results remain unchanged. |
+| `scripts/inspect/operation-completeness.mjs` | SS-P2 reads one explicit bounded journal snapshot and reports correlated, orphan, ambiguous and legacy-unpaired evidence without inferring crash/liveness/history completeness. |
+| `src/semantic-ide/language-server.ts` | S7-P1 preserves valid provider readiness observed before initialize continuation while still allowing later real indexing/fatal/capability transitions and clearing evidence on restart. |
+| `src/semantic-ide/protocol.ts`, `service.ts` | RF-P1 latches the first terminal transport failure per generation, settles pending requests once, fences stale callbacks and admits pipe failure to the existing one-replacement recovery path without adding a retry controller. |
+
+Verification: final selected matrix `runtime/tmp/five-plan-adoption-20260923/targeted-tests.json` reports **70/70 PASS** with zero fail/pending. Selected TypeScript no-emit exits 0 with no diagnostics. Isolated candidate `runtime/build/five-plan-adoption-20260923/dist/` contains 345 dependency-closure files / 2,494,684 bytes and candidate smoke proves ASI-P4 declaration reporting, RF terminal latching, S7 early-ready preservation and SS correlation. SL/SS2 CLI smoke succeeds; the inspected `AGENTS.md` hash remains unchanged. Five reference checkouts remain Git-clean at their recorded pins.
+
+Real-provider candidate check does **not** close the old provider residuals: C# still returns `SEMANTIC_IDE_LSP_TIMEOUT: initialize`; PowerShell returns a valid five-symbol overview but remains `degraded` with `SEMANTIC_PROVIDER_READINESS_TIMEOUT`; candidate health therefore reports two issues. This is separate from S7's verified early-signal ordering fix and must not be presented as repaired provider health.
+
+Historical qualification boundary: at the end of the 2026-09-23 implementation pass, `dist/learning/retrieval-series.js` and `dist/tracker/tool-invocation.js` were absent and the affected active files still differed from the candidate. That boundary is superseded by section 0.1.11: active `dist` now contains the current-source ASI/tracker/Semantic IDE artifacts and installed-runtime tests pass.
+
+Grafel reports its provider index current but did not locate the two newly added entities, so structural review used exact current source/import/callsite scans. Native ownership remains narrow and no second lifecycle/tracker/optimizer authority was introduced.
+
+Execution report: `docs/Five-Plan-Adoption-Execution-20260923.md`; evidence/ledger: `runtime/tmp/five-plan-adoption-20260923/`; initial scoped backups: `runtime/backups/five-plan-adoption-20260923/`. Canonical memory now records the later 2026-09-24 live closure rather than retaining this historical activation-pending boundary.
+
+### 0.1.10 Post-adoption five-reference residual census — 2026-09-23
+
+**COMPLETE — RESIDUAL SCOPE IMPLEMENTED / VERIFIED; FOUR REFERENCES RETAINED; SECONDSIGHT RETIRED/DELETED.** This section preserves the 2026-09-23 source census that identified ASI-P5, SL-P2, S8-P1 and RF-P2. Those proposals were later approved/implemented and their final live/operational closure is recorded in section 0.1.11.
+
+- `awesome-Self-Improving-Agents` remains at `99ce3979185536c1efb57b5c6935244b56f1dfec` for **ASI-P5**, an offline evaluator-independence/reliability evidence proposal. The checkout contains zero executable code; the requirement comes from `Paper/tex/evaluation.tex`. Native series reports already bind evaluator/verifier revisions and evaluator resources but do not represent update-judge versus final-report-judge independence/calibration evidence.
+- `steal-use-repos/01-shiploop` remains at `a238ad853916fd92319c20b83646abd0cde251cc` for **SL-P2**, an explicit read-only HEAD/status/diff workspace fingerprint. Clean native-source search found no generic session fingerprint primitive; Shiploop governor/apply/worktree/index/evidence systems remain rejected.
+- `steal-use-repos/02-SecondSight` was retired/deleted. After SS-P1/P2, output-repair, directive/effectiveness, SQL/raw-trace retention, analysis/runtime, hooks/API/UI and provider families had no current native consumer or duplicated existing owners. Final precheck: HEAD `3f05d3f681f4b08767aa0026f02d28ab027c442d`, Git-clean, 814 tracked regular files / 7,252,413 logical tracked bytes, zero production dependency hits, zero reparse points, zero external process references after excluding the audit process. Physical deletion readback reported absent; 842 files including Git metadata / 10,304,913 logical bytes were removed. This is not a measured disk-space delta.
+- `steal-use-repos/03-Serena` remains at `9f19a79a045f3f2681ba7b58f88938b83a81ca8f` for **S8-P1**, a bounded MIT-SolidLSP-derived C# post-initialize `solution/open`/`project/open` proposal. It runs only after successful initialize and therefore does not claim to repair the existing C# initialize timeout; no restore/MSBuild is authorized.
+- `steal-use-repos/04-reef` remains at `5ffac29acddeda199eca369aaf7edf837f642a80` for **RF-P2**, an expected-active compare-and-swap guard for candidate→active cutover. Current Agent Core has candidate hashes/rollback/release transactions but no reusable install primitive that refuses a stale candidate when active artifact hashes have changed since qualification.
+
+Structural census: Awesome 49 tracked regular / 0 code-suffix; Shiploop 329 / 254; SecondSight 814 / 312 before deletion; Serena 1,103 / 556; Reef 1,753 plus two empty gitlinks / 936. These counts are inventory coverage, not whole-repository semantic execution. Selected source/test bodies were read directly. At census time no product source/runtime changed; subsequent approved implementation and activation are separately evidenced in section 0.1.11.
+
+Report: `docs/Five-Reference-Post-Adoption-Regrounding-20260923.md`. Evidence: `runtime/tmp/five-ref-regrounding-20260923/`. Pre-edit document backups: `runtime/backups/five-ref-regrounding-20260923/`. Existing section 0.1.9 remains the implementation boundary; this section supersedes only the later reference-retention/proposal state.
+
+### 0.1.11 Six-plan/post-adoption activation closure — 2026-09-24
+
+**COMPLETE — INSTALLED — LIVE-ACTIVATED — TARGETED INSTALLED-RUNTIME VERIFIED.** Current source compiled cleanly to `runtime/build/six-plan-current-20260924/dist`; the focused source matrix passed **47/47**. RF-P2's expected-active CAS helper installed 9 JavaScript artifacts and then 9 matching sourcemaps after validating candidate and active hashes. Final installed readback is **18/18 hash matches**; scoped backups are under `runtime/backups/six-plan-cutover-20260924/`, `six-plan-sourcemap-cutover-20260924/`, and `six-plan-finalize-20260924/`.
+
+After restart, Node Core PID **13580** serves `dist/index.js` and `/health` returns HTTP 200 / `status=ok`, version `0.12.0`; Execution and Memory are available with Memory issueCount 0. Installed ASI retrieval/analysis verification passes **27/27**. Installed Semantic IDE verification passes **11/11** across S7 readiness preservation, S8 C# solution/project-open, and RF-P1 terminal failure. SS-P1 is proven live by correlated Activity Tracker start/terminal events carrying the same invocationId. SL-P2, SS-P2 and RF-P2 are explicit CLIs/helpers and do not require resident service activation; RF-P2 is additionally proven by the real cutover itself.
+
+Historical activation-time health caveat: immediately after the six-plan cutover, Grafel reported index/readiness `unknown` and Semantic IDE had one PowerShell version-probe issue; Hermes Partner also reported `HERMES_HOME_NOT_FOUND`. The Grafel and PowerShell issues were subsequently repaired and live-verified in section 0.1.12. Hermes remains separate. No `release:apply`, version bump, commit, tag, push, publish or deploy occurred. Consolidated activation report: `docs/Six-Plan-Activation-20260924.md`.
+
+### 0.1.12 Grafel + Semantic IDE health repair — 2026-09-24
+
+**COMPLETE — LIVE VERIFIED.** Grafel's post-restart degradation was traced first to stale/duplicate daemon ownership and an incorrect manually inherited environment, then to stale read-only bridge state in the already-running Code Intelligence service. The isolated daemon was restarted with the exact `GrafelRuntime` environment and a synchronous project index completed successfully over **411 files / 6,607 entities / 35,540 relationships**.
+
+`src/code-intelligence/service.ts` now retries **once at most and only for read-only** `grafel_index_status` and `grafel_orient(view=stats)` probes after a bridge failure. Mutation/index/pattern/repair calls are not routed through this retry helper, so mutation replay semantics are unchanged. The new stale-bridge case was RED before the patch and the focused suite is GREEN at **25/25 PASS** across health-refresh and exact-graph tests. Current-source TypeScript staging build exits 0.
+
+RF-P2 expected-active CAS installed only `dist/code-intelligence/service.js` plus its sourcemap. Installed service SHA-256 is `86560fc8541fa81e3c8f778f997d19328b1c8573a65de77e358961077b9765d3`; result evidence is `runtime/tmp/grafel-health-repair-cutover-result-20260924.json`, with scoped backup under `runtime/backups/grafel-health-repair-cutover-20260924/`.
+
+PowerShell itself returned `PowerShell 7.6.6` / exit 0. Explicit Semantic IDE provider reload re-established trusted version evidence without a source patch or reinstall: PowerShell now reports `7.6.6` / `compatible`. Fresh live readback after Core reconnection: Node PID **15404**, top-level `/health=ok`, Code Intelligence `available/current` issueCount 0, graphAvailability true / `provider-graph-loaded`, Semantic IDE `available` issueCount 0, and Learning has both Memory and Grafel-pattern sinks available. A live `CodeIntelligenceService` substring query returns graph entities. Repair report: `docs/Grafel-Semantic-Health-Repair-20260924.md`.
+
+### 0.1.13 Four-reference post-adoption re-grounding — 2026-09-25
+
+**PLAN-ONLY — USER REVIEW REQUIRED — NO NEW IMPLEMENTATION.** The retained Awesome, Shiploop, Serena and Reef references were re-audited source-first against current Agent Core after ASI-P5, SL-P2, S8-P1 and RF-P2 were already closed. Exact source/tests/Git history were authoritative; isolated Grafel workspaces were used only as structural aids and reached `current` for Shiploop, Serena and Reef.
+
+Four non-duplicate current-fit residuals remain: **ASI-P6** adds bounded mechanism/component attribution plus ablation/replay/regression-control evidence to the existing offline retrieval-series report without claiming causality; **SL-P3** proposes an explicit Node verification-output compactor that suppresses noisy successful output while preserving process-result semantics and bounded failure diagnostics; **S9-P1** proposes a TypeScript definition-only dependency fallback that prefers workspace source but may expose a bounded safe project-local `node_modules` definition when no editable source definition survives, without relaxing refactor/freshness ignore rules; **RF-P3** proposes effect/consequence evidence for verified behavioral Learning captures so generic completion evidence is not automatically treated as proof of the claimed behavior.
+
+Prior selected waves remain closed. No second evaluator, governor, LSP lifecycle, verifier service, memory store, retry controller or deployment runtime is proposed. Awesome training/benchmark infrastructure, Shiploop ticket/governor/worker systems, Serena application/runtime and unused language adapters, and Reef training/inference/distributed-executor/deployment families remain rejected or no-current-consumer. Because each fixed checkout still has one reviewable residual, all four references remain retained and none is a corpse at this checkpoint.
+
+Updated plans: `Awesome-Self-Improving-Agents-Steal-Use-Integration-Plan.md`, `Shiploop-Steal-Use-Integration-Plan.md`, `Serena-Second-Wave-LSP-Freshness-Multi-Language-Integration-Plan.md`, and `Reef-Steal-Use-Integration-Plan.md`. A same-day source-first revalidation reconfirmed all four clean pins and the same four native gaps (`mechanismAttribution`, verification-output compaction, definition-only dependency fallback, and Learning `effectEvidence`); no additional current-fit residual was found in these fixed pins. All four references therefore remain RETAIN / proposal-only and none qualifies as corpse. Evidence root remains `runtime/tmp/four-ref-regrounding-20260925/`; revalidation backup: `runtime/backups/four-ref-regrounding-revalidation-20260925-1348/`. No product tests/builds, dependency installs, provider/Core restart, release intent, runtime behavior change, or reference deletion occurred.
+
+### 0.1.14 Four residual adoptions implemented and qualified — 2026-09-25
+
+**IMPLEMENTED / TARGETED VERIFIED; RESIDENT ACTIVATION PENDING FOR ASI-P6, S9-P1 AND RF-P3.** User approval covered ASI-P6, SL-P3, S9-P1 and RF-P3. Current-line inspection found that all four implementations were already present in source from an interrupted/unsynchronized prior pass; execution therefore qualified the existing code, corrected one SL-P3 defect, and synchronized the architecture record rather than creating duplicate subsystems.
+
+- **ASI-P6:** `src/learning/retrieval-series.ts` carries bounded `mechanismAttribution` declarations for components, ablation/replay/regression-control evidence and failure surfaces while preserving `causalAttribution: not-established`. Source tests pass; an isolated compiled candidate plus the real analysis CLI passes **31/31** cases.
+- **SL-P3:** `scripts/verify/compact-output.mjs` is an explicit developer helper. Qualification found and fixed asynchronous stdout/stderr tail ordering so bounded failure diagnostics preserve stderr while keeping the child exit code. Focused acceptance passes **5/5**.
+- **S9-P1:** `SemanticIdeService` supports a bounded TypeScript definition-only project-local dependency fallback without relaxing the global `node_modules` ignore or refactor/freshness authorization. The three dedicated S9 cases pass and broader Semantic IDE routing/safety/freshness coverage remains green.
+- **RF-P3:** Learning accepts bounded `effectEvidence`; verified behavioral claims require `status=observed`, while unexercised/unavailable behavior remains proposal-only. Decision telemetry stores bounded status/type plus a digest rather than raw effect text, and the public Learning schema exposes the declaration. Focused acceptance passes **7/7**.
+
+Final source-targeted matrix: **7 files / 64 PASS / 0 FAIL / 2 host-fixture SKIP**. The two skips are pre-existing host source-safety fixture limitations and are not counted as PASS. Selected current-source TypeScript compilation to `runtime/build/four-residual-20260925-1500/dist` exits **0**. No additional dependency/toolchain installation was required.
+
+Active runtime truth remains separate: active `dist` hashes differ from the qualified candidate for retrieval-series, Learning review/schema/effect-evidence and Semantic IDE service; active `dist/learning/effect-evidence.js` is absent. Therefore ASI-P6/S9-P1/RF-P3 are not claimed live until a separately authorized cutover/restart. SL-P3 is a source CLI and requires no resident activation. No `release:apply`, version change, restart, provider cutover, commit, push, publish or deploy occurred.
+
+References remain retained through activation/final zero-value census. Backup: `runtime/backups/wave-asi6-sl3-s9-rf3-20260925-1500/`. Candidate: `runtime/build/four-residual-20260925-1500/`. Execution report: `docs/Four-Reference-Residual-Adoption-Execution-20260925.md`; machine-readable evidence: `runtime/tmp/four-reference-residual-adoption-20260925/result.json`. `release:compat` reports 62 current tools, no removed tool and `breakingEvidence=false`; its baseline/manifest comparison is degraded because `refs/agent-core/current-line-baseline` is currently absent, so `release:check-intent` exits 2. This task does not create or refresh that release baseline.
+
+### 0.1.15 Four-residual live activation and reference retirement — 2026-09-25
+
+**COMPLETE — LIVE-ACTIVATED — INSTALLED-RUNTIME VERIFIED.** The approved ASI-P6, S9-P1 and RF-P3 resident artifacts were installed with RF-P2 expected-active CAS. Exactly 12 JS/sourcemap artifacts were allowlisted; post-cutover readback is **12/12 candidate-hash matches** and rollback was not required. SL-P3 remains an explicit source CLI and needs no resident process.
+
+The owned Core lifecycle restarted only the port-8765 process whose command line matched the current root `dist/index.js`, moving PID **14360 → 14012**. Fresh health is `ok` at **0.12.0**; Memory, Code Intelligence/current graph, Semantic IDE and Learning are available with zero issues. Hermes `HERMES_HOME_NOT_FOUND` remains a separate sibling degradation.
+
+Installed-runtime acceptance: ASI-P6 active-dist series/analysis **31/31 PASS**; S9-P1 active Semantic IDE fallback **3/3 PASS**; RF-P3 active Learning modules/schema **7/7 PASS** plus direct active-schema parse; SL-P3 source CLI remains **5/5 PASS**. Sourcemap missing-source warnings are pre-existing: pre-activation backup maps have the same relative source paths.
+
+Final reference disposition: `01-shiploop`, `03-Serena` and `04-reef` were exact-pin/Git-clean and passed zero-reparse, zero-process, zero active `src/scripts/tests` dependency and zero Grafel-registration checks. Their full tracked hash manifests and license provenance were retained, then all three protected-reference checkouts were deleted and verified absent. `awesome-Self-Improving-Agents` remains present and Git-clean because its 185 external repository discovery leads were not independently source/license/consumer audited; the local ASI-P6 manuscript residual itself is closed.
+
+Provenance: `THIRD_PARTY_NOTICES.md` retains SolidLSP MIT plus Shiploop NOTICE/Apache-2.0 and Reef Apache-2.0 attribution. Evidence authority is `runtime/tmp/four-residual-activation-20260925/activation-closure.json`; detailed execution ledger is `docs/Four-Reference-Residual-Adoption-Execution-20260925.md`. No release apply, version change, commit, tag, push, publish or deploy occurred. The missing `refs/agent-core/current-line-baseline` remains a separate release-tooling issue.
+
+### 0.1.16 Stable-release dependency-debris boundary hardening — 2026-09-25
+
+**IMPLEMENTED / TARGETED VERIFIED.** Stable release preflight found `src/ui/node_modules.partial-20260924-1910/` (3,288 files / 73,635,844 bytes) was not covered by the existing exact-segment `node_modules` exclusion. The first current-line baseline therefore captured 2,260 dependency-debris paths and took ~149 seconds.
+
+Release ownership was corrected without deleting or moving that directory: `scripts/release/release-policy.mjs` now classifies `node_modules.partial*` segments as generated/dependency debris and excludes `src/**/node_modules.partial-*/**` from the synthetic current-line baseline; `scripts/release/package-release.mjs` now reuses the same generated-path predicate for source snapshot filtering. Targeted release tooling verification is **8/8 PASS** and package script syntax validation exits 0.
+
+Patch intent: `.changeset/20260925-release-dependency-debris-boundary.md`. This hardening changes only release/baseline/package boundaries; the debris directory itself remains untouched. Stable release application/packaging is handled separately by the active release task.
+
+### 0.1.17 Stable Agent Core v0.13.0 package closure — 2026-09-25
+
+**COMPLETE — STABLE PACKAGE CREATED / INTEGRITY VERIFIED / POST-RELEASE BASELINE CLEAN.** Canonical source/package version is now **0.13.0**. All release intents for this stable cut were applied and archived: **14** applied intents, **0** pending; `release:plan` reports bump `none`.
+
+Immutable package:
+- `release/v0.13.0/Agent-Core-v0.13.0.zip`
+- size **213,308,810 bytes**
+- SHA-256 `742002161f09fc604c044a772bffe520ffd4a5097b7b1ac9838d7cbdaf40143e`
+- launcher FileVersion **0.13.0.0**, ProductVersion **0.13.0**, launcher SHA-256 `61a2872cde52cf12c206e0a707cd992183d361edcbdc453fe767cdcf5316f3c4`.
+
+Package verification streamed the ZIP against its immutable integrity manifest: **19,399 / 19,399 files verified**, 0 missing, 0 byte mismatches and 0 SHA-256 mismatches; the manifest declares 649,195,899 immutable bytes. Outer and inner release notes/manifest/integrity metadata are byte-identical. No live credential/user-state/protected-reference paths were found. The only packaged Memory path is the fresh product foundation `runtime/memory/00-agent-core-memory.md`.
+
+Release compatibility is clean: MCP tools **62 -> 62**, no added/removed tools, no breaking evidence, no verification issues, and manifest budget remains inside limits. After version synchronization the synthetic release baseline was refreshed to `639cdf77fd7288a722131862e22eecaff4a90f07` with 289 baseline files; post-refresh `release:check-intent` is clean.
+
+Historical boundary: `CHANGELOG.md` preserves **0.12.0 (2026-09-20)**. The directory `release/v0.12.0/` exists but currently contains 0 files, and no historical `Agent-Core-v0.12.0.zip` exists elsewhere in the project. No fake v0.12 archive was reconstructed from newer source. v0.12 therefore remains historical through changelog/docs/canonical memory rather than a recoverable local ZIP.
+
+Packaging is not runtime activation: the live Node Core still reports **0.12.0** at this closure checkpoint. No Core restart, launcher replacement, commit, tag, push, publish, deploy or legacy-remote mutation occurred. Detailed ledger: `docs/Stable-Release-v0.13.0-20260925.md`; machine-readable verification: `runtime/tmp/stable-release-v0.13.0-20260925/verification.json`.
+
+### 0.1.18 Six-reference source-first steal/use grounding — 2026-09-25
+
+**HISTORICAL PLANNING CHECKPOINT — SUPERSEDED BY 0.1.19.** Six protected references were re-grounded against current Agent Core using fixed Git pins, executable source/test families, current native owners, license checks and an isolated Grafel audit workspace. The authoritative audit is `docs/Six-Reference-Source-First-Grounding-20260925.md`; the user subsequently approved the proposals and implementation state is recorded below.
+
+New current-fit proposals are recorded in five new plans: GenericAgent **GA-P1** explicit file checkpoint/rewind; AutoResearchClaw **ARC-P1** verified numeric provenance for offline Learning reports; atomic-hermes **AH-P1** oversized tool-result spill and **AH-P2** restart-resilient detached process sessions; EvoAgentX **EAX-P1** offline quality-diversity archive and **EAX-P2** convergence advisory; OpenViking **OV-P1** clean-room task-lifecycle hardening for the AH-P2 owner. OpenViking is AGPL-3.0, so direct code transplantation is forbidden by the plan; only independently implemented behavior may be selected.
+
+`Awesome-Self-Improving-Agents-Steal-Use-Integration-Plan.md` was updated in place. Its local manuscript checkout has no further direct runtime mechanism after ASI-P1–P6, but it is retained as a discovery index because 185 external GitHub leads remain independently unaudited. No reference qualified as a corpse at the grounding checkpoint; no checkout was deleted there.
+
+### 0.1.19 Six-reference approved adoption qualification — 2026-09-25
+
+**HISTORICAL QUALIFICATION CHECKPOINT — SUPERSEDED BY 0.1.20.** The user approved GA-P1, ARC-P1, AH-P1, AH-P2, EAX-P1, EAX-P2 and OV-P1. Current source already contained the native implementations when execution qualification resumed, so the task verified and closed them rather than creating duplicate subsystems.
+
+Native ownership: `src/rdc/checkpoints/service.ts` + additive `file_checkpoint` facade; `src/mcp/result-budget.ts`; shared `src/rdc/process-ledger.ts` lifecycle wired into TerminalManager; `src/learning/verified-value-registry.ts`; `src/learning/retrieval-diversity.ts`; and `src/learning/retrieval-stability.ts`. OpenViking AGPL source was not transplanted; OV-P1 is an independent TypeScript behavior implementation in the same AH-P2 process owner.
+
+Targeted capability matrix is **24/24 PASS**. Public contract checks are mcp-schema **2/2 PASS**, manifest **2/2 PASS**, and RDC parity **2/2 PASS** after updating the approved additive baselines from 62→63 total MCP tools and 26→27 machine-control tools. Root TypeScript compilation exits 0. `release:compat` reports 62→63, added `file_checkpoint`, zero removals/routes removed, `breakingEvidence=false`, and manifest size 112,147 bytes / ~28,037 tokens within budget.
+
+The authoritative release intent is `.changeset/20260925-six-reference-adoption.md` (minor). A duplicate intent created during closure was removed. `release:check-intent` is clean for the release-relevant delta; planned next stable version is 0.14.0 from current source/package 0.13.0.
+
+The compiled candidate is present in root `dist`, but the connected Node Core has not restarted and still reports 0.12.0 / pre-restart 62-tool manifest. A rollback set based on immutable v0.13.0 was prepared at `runtime/backups/six-reference-adoption-preactivation-20260925-v013`: 14 previous artifacts plus an explicit list of 14 newly added artifacts. No live-activation claim is made before restart/readback.
+
+Detailed ledger: `docs/Six-Reference-Adoption-Execution-20260925.md`. References remain retained pending post-activation/final zero-value census; Awesome remains as discovery-only catalog for 185 unaudited external leads.
+
+### 0.1.20 Six-reference live activation and final disposition — 2026-09-25
+
+**COMPLETE — LIVE-ACTIVATED — INSTALLED-RUNTIME VERIFIED — FINAL REFERENCE CENSUS CLOSED.** Node Core was restarted onto current `dist`; fresh `/health` reports Agent Core `0.13.0`. A fresh authenticated MCP client enumerated **63 tools**, confirmed `file_checkpoint`, and successfully called `memory_status`.
+
+Activation exposed one AH-P2/OV-P1 race in `TerminalManager`: ledger attachment was awaited before child exit/error listeners were installed, so a very short-lived child could exit before the terminal event was observed. The native owner now starts ledger attachment without blocking listener registration, and terminal/error paths await the same attachment before durable finalization. Existing process-ledger cases plus a real short-lived-process regression pass **4/4**; root TypeScript build exits 0; live fast-process smoke leaves **0 active sessions**.
+
+Final reference census at the same clean pins found GenericAgent, AutoResearchClaw, and EvoAgentX exhausted after their approved mechanisms were adopted. They had zero current `src/scripts/tests` dependency, zero process dependency, zero reparse boundary, and preserved license/provenance, so `05-GenericAgent`, `06-AutoResearchClaw`, and `08-EvoAgentX` were deleted as corpses. `07-atomic-hermes` remains for a conditional client-side OAuth-refresh mechanism; `09-OpenViking` remains for conditional OV-C1 durable-ingest-cursor behavior; Awesome remains discovery-only because 185 external repository leads are still unaudited.
+
+Release intent remains `.changeset/20260925-six-reference-adoption.md` (minor), now also describing the fast-exit lifecycle hardening. No release apply, commit, tag, push, publish, deploy, launcher replacement, or external-runtime installation was performed by this activation closure.
+
+Evidence: `docs/Six-Reference-Adoption-Execution-20260925.md`, `runtime/tmp/mcp-client-acceptance/2026-09-25T13-37-14-014Z`, and `tests/terminal-manager-process-ledger-race.test.ts`.
+
+### 0.1.21 Five retained references conditional re-grounding — 2026-09-25
+
+**SOURCE-FIRST RE-GROUNDED — NO NEW CURRENT-FIT INSTALLATION — ALL FIVE REFERENCES RETAINED.** The fixed clean pins for Awesome, atomic-hermes, OpenViking, Anthropic SDK Python and Anthropic SDK TypeScript were revalidated against Agent Core 0.13.0 and the current Grafel graph. Completed ASI/AH/OV/PY/TS waves remain closed and were excluded from new-candidate discovery.
+
+Direct source/test readback reconfirmed only conditional residuals: atomic-hermes outbound MCP OAuth disk-watch/expiry/401 single-flight; OpenViking durable ingest-cursor intent-before-effect; Anthropic credential token-cache/OIDC chains; and Anthropic distributed heartbeat/lost-lease worker semantics. Current Agent Core has no outbound refreshable MCP OAuth consumer, no OIDC/workload-identity owner, no external append/ingest cursor pipeline and no distributed claimed-work heartbeat-TTL owner. Existing `FileOAuthStore` is an inbound/server OAuth authority, Phone Gateway uses a configured bearer token, Partner is loopback, and ProcessLedger is local-process lifecycle rather than a distributed lease.
+
+Awesome local direct source remains exhausted after ASI-P1–P6, but its 185 external GitHub discovery leads are still independently unaudited, so the catalog is retained as discovery-only. None of the five checkouts qualifies as corpse today. No implementation, dependency install, build, product test run, runtime restart, release action or checkout mutation occurred. Detailed audit: `docs/Five-Reference-Conditional-Regrounding-20260925.md`.
+
+### 0.1.22 Five-reference approved conditional execution closure — 2026-09-25
+
+**APPROVED — EXECUTED AS INTENTIONAL NO-OP — CONDITIONAL FAMILIES DORMANT — REFERENCES RETAINED.** The user approved the five-reference re-grounded plan, including permission to install helper tooling where genuinely needed. A post-approval owner check confirmed the activation prerequisites remain absent: no outbound refreshable MCP OAuth client, no OIDC/workload-identity owner, no external append/import ingest cursor pipeline, and no distributed claimed-work heartbeat/TTL owner.
+
+Accordingly, no credential, cursor, lease-worker, external-replica, or discovery subsystem was installed. This is the correct execution of the approved plan: conditional mechanisms remain source-qualified but dormant until a concrete native consumer exists. atomic-hermes remains retained for outbound MCP OAuth refresh semantics; OpenViking OV-C1 remains retained clean-room-only for a future ingest owner; both Anthropic SDK references remain for conditional token-cache/OIDC/distributed-lifecycle behavior; Awesome remains discovery-only because 185 external GitHub leads are independently unaudited.
+
+No source/runtime/public-schema/provider/release/process/reference checkout changed, no helper dependency was needed, and no changeset is warranted for this docs/memory-only closure. Authority: `docs/Five-Reference-Conditional-Regrounding-20260925.md`.
+
+### 0.1.23 Consumer reference taxonomy — 2026-09-25
+
+**REFERENCE-ONLY STRUCTURE CHANGE — NO RUNTIME BEHAVIOR CHANGE.** The protected reference area now separates active steal/use study inputs from consumer-bound conditional references.
+
+`DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\steal-use-repos` is reserved for repositories actively being grounded for near-term steal/use/adoption. A sibling `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\Consumer` directory now holds references whose unique value depends on a future concrete native consumer and therefore must not be treated as active implementation backlog.
+
+Moved intact into `Consumer`: `07-atomic-hermes`, `09-OpenViking`, `anthropic-sdk-python`, and `anthropic-sdk-typescript`. Post-move Git readback preserved their audited HEADs and returned clean worktrees. `awesome-Self-Improving-Agents` remains outside Consumer because it is a discovery catalog for external leads rather than a consumer-bound implementation reference.
+
+This taxonomy does not authorize dormant capability installation. A Consumer entry is re-grounded only when its activation condition gains a real Agent Core owner. No source/runtime/public MCP/release behavior changed and no changeset is required. Detailed continuity: `docs/Five-Reference-Conditional-Regrounding-20260925.md`.
+
+### 0.1.24 Awesome discovery checkout final retirement — 2026-09-25
+
+**RETIRED / DELETED BY EXPLICIT USER DECISION.** After the Consumer taxonomy was established, the user decided the remaining Awesome external discovery leads were outside the intended Agent Core scope and explicitly authorized complete deletion without extraction or preservation of the lead catalog.
+
+Immediately before deletion, `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\awesome-Self-Improving-Agents` was at clean HEAD `99ce3979185536c1efb57b5c6935244b56f1dfec` with 49 tracked files. Current `src`, `scripts`, and `tests` contained zero references to the checkout path, and no independent active process/session used it. The checkout was then deleted in full; protected-root readback confirms it absent.
+
+ASI-P1–P6 remain implemented/live and independent of the deleted catalog. The approximately 185 GitHub URL discovery leads were intentionally discarded and were not copied into Discovery or Memory. The four conditional references under `Consumer` are unaffected.
+
+No runtime/source/public MCP/release behavior changed; this is reference retirement only and requires no changeset. Detailed continuity: `docs/Awesome-Self-Improving-Agents-Steal-Use-Integration-Plan.md` section 21 and `docs/Five-Reference-Conditional-Regrounding-20260925.md`.
+
+### 0.1.25 Memory reference wave 01–03 source-first grounding — 2026-09-25
+
+**HISTORICAL PLANNING CHECKPOINT — SUPERSEDED BY 0.1.26.** Three protected memory references were audited from executable/config source and tests rather than README claims.
+
+`01-claude-intro` was a Git-clean 55-file course/config/prompt checkout at `8ab5a4a8c46505fc8f2c1be1489f76ff647f069f`, with no implementation-code suffixes, no local license file, zero current `src/scripts/tests` dependency, no reparse boundary and no independent process consumer. Its permission hooks/instruction/tutor patterns duplicate current controller/AGENTS/Memory/Learning ownership. It was deleted as corpse; provenance remains in `docs/Claude-Intro-Steal-Use-Integration-Plan.md`.
+
+`03-langmem` was Git-clean at `9d033b47d9ce53e37e92c92241b0496c0278932e` with MIT license. Knowledge create/update/delete, model-driven extraction, reflection queues, prompt optimizers, short-term summarization, namespace stores and graph examples were either already covered by MemoryService/Learning/Grafel or wrong-owner for controller-led Agent Core. With zero current dependency/process/reparse coupling, it was deleted as corpse; provenance remains in `docs/LangMem-Steal-Use-Integration-Plan.md`.
+
+`02-Memori` is retained for **MEMORI-P1**, a user-review-required proposal adapting its source-backed BM25 lexical reranking/query-length weighting into the existing MemoryService hybrid search without importing Memori runtime/storage/cloud layers. Current Agent Core uses token-set overlap rather than BM25. Memori's Git metadata is degraded: the HEAD ref resolves textually to `574b1ea3e876f100ef82c37817d603eb7e258e59`, but object-dependent Git operations report `fatal: bad object HEAD`; relevant source-file SHA-256 anchors are recorded in `docs/Memori-Steal-Use-Integration-Plan.md`.
+
+No proposal was installed, no tests/build/restart/release action ran, and no changeset was created. The Memori proposal awaits explicit user selection.
+
+### 0.1.26 Memori BM25 retrieval adoption — 2026-09-25
+
+**IMPLEMENTED — TARGETED VERIFIED — COMPILED DIST QUALIFIED — LIVE ACTIVATED.** The user approved MEMORI-P1 from the source-first memory-reference wave. Agent Core added native, dependency-free BM25 lexical ranking to the existing MemoryService rather than installing Memori.
+
+Ownership:
+- `src/memory/bm25.ts` computes normalized BM25 over the canonical semantic document;
+- `src/memory/retrieval.ts` keeps `legacy` as the default profile and activates BM25 only for explicit `rankingProfile="bm25"`;
+- public retrieval components add `bm25Lexical` and `bm25Weight`;
+- `src/mcp/memory-schemas.ts` adds optional `memory_search.rankingProfile = legacy|bm25`;
+- `src/mcp/memory-tools.ts` advertises the optional BM25 profile.
+
+The selected profile preserves existing exact/token/metadata/source-file/semantic/typed-link/recency signals. Meaningful 1–2 token queries use bounded BM25 weight 0.9; longer meaningful queries use 0.45; stopword-only queries add zero BM25 weight. Dense-only candidate pruning from Memori was explicitly not adopted.
+
+Verification: BM25/fallback fixtures **6/6 PASS**, additive MCP schema **1/1 PASS**, root TypeScript build **exit 0**, and compiled `dist` contains the new BM25 module/wiring/schema. A full Claude-Mem fixture file remains host-blocked by Windows Git `safe.directory` behavior for temp repositories; only the directly relevant schema case is counted. A separate maintenance-file run hung before producing a test result and is not counted as PASS.
+
+Release/provenance: `.changeset/20260925-memory-bm25-ranking.md` is a minor additive capability intent. `release:plan` is 0.13.0 -> 0.14.0 with two pending minor intents; `release:check-intent` reports ok; `release:compat` classifies `memory_search.rankingProfile` as an additive optional field with no removed/newly-required/changed params, `breakingEvidence=false`, and manifest budget within limits. `THIRD_PARTY_NOTICES.md` preserves Memori Apache-2.0 attribution plus exact source-byte hashes because the protected Memori Git object store was degraded.
+
+Final exhaustion census found no other current-fit Memori family, zero `src/scripts/tests` dependency on the checkout, no reparse boundary, and no independent process consumer. `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\memory\02-Memori` was therefore deleted as corpse after adoption. The live Node Core was not restarted; source and compiled `dist` are qualified but the new public profile is not yet live.
+
+### 0.1.27 Memory reference wave 04/05/06/08 source-first grounding — 2026-09-25
+
+**PROPOSAL / RETIREMENT CENSUS — USER REVIEW REQUIRED FOR ADOPTIONS.** Protected references `04-EverOS`, `05-skills`, `06-ai-memory`, and `08-memary` were audited from executable source/tests against current Agent Core Memory/Learning ownership. No adoption was installed in this grounding turn.
+
+- **EverOS retained** at observed ref `5076683ab88d714390573d8f88ff3c470e51129a` for **EV-P1**: fail-closed canonical scan/index reconciliation so transient/unreadable ordinary notes cannot make a partial inventory look like verified deletion in the derived index. OME workflow gates, background scheduler/watcher, destructive reflection, second storage stack, and agentic hidden-LLM retrieval are rejected. Local Git object metadata is degraded by a truncated pack; exact source/tests are audit authority.
+- **Anthropic Skills retained** at `34040c9c568585f6929bedeaad110ad08f079624` for **SK-P1**: explicit offline MCP tool-description routing evaluation using positive/negative prompts, repeated trials and blinded holdout evidence. No native Skills runtime, marketplace, auto description mutation, or source-available document-skill copying is proposed; eligible source basis is the Apache-2.0 skill-creator subset.
+- **ai-memory retained** at observed ref `353841d91618d20b110b208de284a74d0b960379` for **AIM-P1** explicit workspace-scoped memory retrieval using existing provenance and **AIM-P2** read-only retention/curator scoring from existing access/age evidence. Session queue/workstream/auto-improve databases and hidden active-project routing are rejected. Its local Git object metadata also contains a truncated pack, so exact source/tests are authority.
+- **Memary retired/deleted as zero-value/current-fit exhausted** at observed ref `b2331a2c0844d66f69acd607b9e4dbaba56552c1`. Its JSON stream/entity counters are weaker duplicates; Neo4j/FalkorDB/LlamaIndex KG and LLM entity/synonym paths would create second authorities; chat summarization/routing is controller-owned; its LLM judge is weaker than current evidence-bound Learning evaluation. Production dependency search, process-path check, and reparse check were clean. Pre-delete inventory was 143 files / 48 directories / 20,174,208 logical bytes; exact-path readback confirmed the checkout absent. Retirement provenance is in `docs/Memary-Steal-Use-Integration-Plan.md`.
+
+Plans: `docs/EverOS-Steal-Use-Integration-Plan.md`, `docs/Anthropic-Skills-Steal-Use-Integration-Plan.md`, `docs/AI-Memory-Steal-Use-Integration-Plan.md`, and `docs/Memary-Steal-Use-Integration-Plan.md`. EV-P1, SK-P1, AIM-P1 and AIM-P2 require explicit user selection before implementation.
+
+### 0.1.28 New protected reference checkouts — 2026-09-25
+
+Two new source references were cloned under `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT` for future source-first grounding. They are **reference-only** and are not runtime dependencies, installed capabilities, or approved adoptions.
+
+- `jev-ultrafast` — `https://github.com/browser-use/jev-ultrafast.git`, branch `main`, HEAD `1231850a0bf1a0c0341fe408ef1668dbbfdfac46`, clean working tree.
+- `spec-kit` — `https://github.com/github/spec-kit.git`, branch `main`, HEAD `307b3a537fb39721adc7c00aa18adfa1582649aa`, clean working tree.
+
+No Agent Core source/runtime, MCP surface, dependency set, release intent, version, or activation state changed. These checkouts may be audited later only under explicit user instruction.
+
+### 0.1.29 Jev Ultrafast + Spec-Kit source-first grounding — 2026-09-25
+
+**PROPOSAL — USER REVIEW REQUIRED — NO IMPLEMENTATION.** Both protected references were audited from executable source/tests against current Agent Core ownership. Agent Core's target graph was current/complete; Grafel correctly refused indexing the protected source paths, so exact reference source/tests are the authority for those repositories.
+
+- **Jev Ultrafast retained** at clean `main` / `1231850a0bf1a0c0341fe408ef1668dbbfdfac46` for **JEV-P1**: a native structured browser action lane under existing machine-control ownership. The retained mechanism is atomic visible-DOM observation, bounded operation-compatible action IDs tied to code-owned nodes, semantic/action freshness guards, current-geometry/occlusion checks, no blind mutation replay, short state-aware settling, bounded execution, and independent final-state verification. TypeSafe/model routing, the Python agent loop, demo control plane, site-specific Flights logic, and hidden text-model authority are rejected.
+- **Spec-Kit retained** at clean `main` / `307b3a537fb39721adc7c00aa18adfa1582649aa` for **SPK-P1** focused archive/acquisition preflight deltas and **SPK-P2** an explicit read-only adoption-plan readiness inspector. SPK-P1 is limited to missing defenses beyond current Semantic IDE provisioning: archive format/signature consistency, ZIP central-directory/ZIP64/compression preflight, portable path/name limits, Windows reserved-name and Unicode/case collision rejection. SPK-P2 adapts no-overwrite/read-only/prerequisite/JSON evidence semantics into offline plan inspection only. Full workflow/DAG execution, extension/preset/bundle package authorities, layered replacement of `AGENTS.md`, auth store, and hidden integration routing are rejected.
+- Spec-Kit external-agent command rendering, layered preset/artifact provenance, and runtime event adapters remain **conditional only** on a future explicit Agent Core consumer; no consumer/system is created merely to adopt them.
+
+Plans: `docs/Jev-Ultrafast-Steal-Use-Integration-Plan.md` and `docs/Spec-Kit-Steal-Use-Integration-Plan.md`. Neither checkout is a corpse while these source-backed residuals await user review. No source/runtime/MCP/dependency/version/release/activation change and no test/build/restart occurred in this grounding task.
+
+### 0.1.30 Jev JEV-P1 + Spec-Kit SPK-P1/P2 adoption — 2026-09-26
+
+**COMPLETE — LIVE ACTIVATED — VERIFIED FOR APPROVED SCOPE.** The user explicitly approved both plans. Native ownership was preserved; no Spec-Kit runtime, Jev Python runtime, TypeSafe router, hidden text model, Browser Harness, Playwright runtime, workflow/DAG engine, or second package/auth authority was introduced.
+
+- **JEV-P1:** `src/rdc/browser-control/service.ts` plus the MCP schema/metadata/handler/registration adds an additive `browser_control` surface. It uses Node 24's native WebSocket over loopback CDP, isolated Agent Core browser profiles, bounded observe/action budgets, code-owned observed DOM identities, operation-compatible actions, semantic/action freshness, current geometry + occlusion checks, consume-once mutation semantics, short autocomplete settling, caller-supplied text, and no arbitrary selectors/coordinates/JavaScript from the controller. A project-local Chrome Headless Shell is available at version `154.0.8037.57`; no new npm dependency was required.
+- **SPK-P1:** existing `src/semantic-ide/provider-provisioning.ts` now additionally verifies response/archive format consistency and performs bounded ZIP preflight before `yauzl`: exact EOCD/comment boundary, ZIP64 locator/sentinels/extra fields, bounded central-directory size and entry count, central/local header consistency, extractor-version/compression restrictions, portable UTF-8 path/component limits, Windows reserved/invalid names, and NFC/case collision refusal. Existing allowed-host, redirect, SHA-256, compressed/expanded limits, staging, tree digest and rollback remain authoritative.
+- **SPK-P2:** `scripts/inspect/adoption-plan-readiness.mjs` is an explicit read-only inspector for one plan and optional one reference. It emits deterministic JSON/human evidence, uses per-command Git `safe.directory` without global trust mutation, and treats degraded Git evidence as incomplete rather than fabricating readiness.
+
+Targeted verification was run serially to avoid Chromium contention: `tests/browser-control.test.ts` **3/3 PASS**; `tests/semantic-ide-provisioning.test.ts` **13/13 PASS**; `tests/adoption-plan-readiness.test.ts` **3/3 PASS**; MCP manifest/schema + RDC parity **6/6 PASS**. Total selected-plan qualification: **25/25 PASS across six test files**. The root TypeScript build exited 0 and compiled `dist` contains the browser-control registration/schema/service plus strengthened provider preflight.
+
+Compatibility/release evidence: `release:compat` reports baseline 62 -> source/dist 64 tools, additive `browser_control` + previously selected `file_checkpoint`, no removed tools/routes, `breakingEvidence=false`, and a fresh manifest of 115,376 bytes / ~28,844 tokens within the 120,000 / 30,000 budgets. `release:check-intent` is `ok=true`; `.changeset/20260925-jev-speckit-adoption.md` is the single minor intent for this adoption. No release apply ran.
+
+Reference disposition: Jev Ultrafast was exhaustively recensused after JEV-P1, source-byte provenance was retained in `THIRD_PARTY_NOTICES.md`, and the exhausted protected checkout was retired/deleted. Spec-Kit remains intact at audited `main` / `307b3a537fb39721adc7c00aa18adfa1582649aa` because SPK-C1/C2/C3 remain explicit conditional source-backed residuals for future real consumers.
+
+Live activation completed on 2026-09-26. The Node Core was restarted onto current compiled `dist/index.js`; post-cutover health returned top-level `status=ok`, and a compiled browser-control smoke completed open → observe → observed click → re-observe successfully. SPK-P2 remains directly usable offline. No release apply/version bump/publish/deploy occurred.
+
+### 0.1.31 Non-Hermes system health repair — 2026-09-26
+
+**COMPLETE — LIVE VERIFIED FOR NON-HERMES SCOPE.** Hermes is intentionally excluded because it has a separate plan.
+
+- Live authority is `F:\Projects\Agent-Core`. The stale Grafel daemon from the old runtime state was replaced through the Agent Core-owned isolated `GrafelRuntime`; the installed provider remains the qualified G26/G27/G29/G30 build (SHA-256 `7C83AF3DD0A8870ABD07174792B8F1666319B20111EC4BFDA06BB2E18D4BCFF3`). Fresh provider MCP exposes 22 tools, root index is current, and graph stats materialize 37,429 entities / 189,686 relationships.
+- Grafel workspace hygiene now handles provider-`unknown group` plus stale local fleet records idempotently for non-default workspaces. Two obsolete E:-fixture fleet records were backed up then retired; dry-run hygiene is now `staleCount=0` with only `agent-core` registered.
+- Read-only Grafel health probes retain at most one retry and now reconnect on both thrown transport failures and MCP `isError=true` stale-bridge responses. Mutation/index/pattern/repair operations are not replayed.
+- Semantic IDE PowerShell version probing gains one bounded retry for transient read-only probe failure. Current managed-provider evidence is TypeScript 6.0.0, C# 5.5.0, PowerShell 7.6.6, Python 1.1.403 — all compatible.
+- Launcher local Core/tunnel polling uses `Connection: close` so Core restarts do not leave stale pooled HTTP connections that later surface as `unobserved-task-exception`. Root launcher was republished to 0.13.0.0 / ProductVersion 0.13.0, SHA-256 `632B7F0A1B4DC7B4364A26BD1ECE24FAA221FB9A3F59F15DC0869B2F69D2FC18`; prior root launcher is backed up.
+- Portable .NET SDK 8.0.425 was installed only under `runtime/toolchains/dotnet-sdk-8` to build/verify the net8.0-windows launcher; no global SDK/PATH mutation occurred.
+- Current-line Git metadata was reconstructed only from the locally verified baseline bundle. Corrupt prior `.git` is preserved; new metadata is fsck-clean, local `main` has no upstream, remote is `legacy`, and the 3,715-file active-worktree fingerprint is unchanged.
+- Historical `docs/Agent-Core-14.md` was restored byte-identically from the supplied transcript; unknown historical bytes remain documented provenance limitations rather than fabricated recoveries.
+- Targeted evidence: Grafel health/workspace tests 18/18 PASS; launcher VSTest 14/14 PASS; TypeScript build exit 0; release check-intent/compat both `ok=true`. Patch intent: `.changeset/20260926-non-hermes-health-repair.md`.
+
+The final Core restart completed successfully and loaded the compiled read-only Grafel reconnect behavior. Post-restart Core PID `14580` reports `/health status=ok`; Code Intelligence is `available/current`, Semantic IDE is `available` with issueCount `0`, Learning has both Memory and Grafel-pattern sinks available, Memory issueCount is `0`, Execution is available, and phone gateway transport is online. Since that Core start, the Activity Journal contains `0` non-Hermes error/warning entries, `0` Grafel retry events, and `0` unobserved-task-exception events. Git fsck remains clean. No release apply, commit, tag, push, publish, deploy, or legacy-network recovery was performed.
+
+### 0.1.32 Relocatable project-root portability repair — 2026-09-26
+
+**COMPLETE — LIVE VERIFIED — DRIVE/MACHINE RELOCATABLE.** This repair makes the Agent Core-owned runtime path model independent of a fixed drive/folder and removes operational `process.cwd()` ownership from project state.
+
+- Canonical root resolution now comes from launcher/module location plus optional `AGENT_CORE_PROJECT_ROOT`. A stale absolute root override falls back to the valid current module/launcher root rather than pinning the previous machine.
+- Project-owned overrides support relative paths, `@project/...`, `<PROJECT_ROOT>/...`, `${AGENT_CORE_PROJECT_ROOT}`, and `%AGENT_CORE_PROJECT_ROOT%`. Default-shaped absolute paths left over from a previous root are rebased to the current root; unrelated explicit external paths remain explicit.
+- The resolved root now owns Memory, Learning, RDC config, process-ledger storage, Activity Tracker, result-spill storage, Browser Control cache/profile state, phone local state, Grafel runtime/binary, Semantic IDE runtime/provider paths, and Node TypeScript provider paths.
+- Memory and Learning no longer use CWD as a fallback authority. Semantic provider version probes run from the canonical project root. Provider-specific Python/C#/dotnet/PowerShell Editor Services overrides are normalized by `loadConfig()` instead of reading global environment directly in the registry.
+- Grafel's default `agent-core` fleet record self-rebases when a copied/moved project retains the previous absolute repository root. Bootstrap then uses the existing registration-changed path: close stale bridge, stop stale daemon, synchronously index the new root, restart provider, and require fresh readiness. Custom/non-default workspaces are not guessed or silently rebased.
+- Relocation indexing is now fail-soft only at the synchronous convergence boundary: if the exact-root index does not become `current` inside the bounded startup window, capability discovery still completes so workspace routing and the Learning Grafel-pattern sink are not stranded at their default-disabled state. The relocation marker is retained until normal provider health proves the active root is `current`; a wrong-root graph therefore remains fail-closed.
+- Launcher `AgentCoreDataDirectory.Resolve()` now rebases stale default `runtime\bridge-auth` absolute paths and supports project-root tokens, so Reset OAuth/data ownership follows a relocated project as well.
+- Internal RDC config resolves from module/project root even when Node starts from another CWD. The only remaining CWD values in runtime evidence are descriptive command/failure metadata, not storage/config authority.
+- `.env.example` documents the portable-path contract and continues to use relative defaults. A redacted path-only scan of the real `.env` found no active path-bearing overrides; credential values were not exposed or modified.
+- `runtime/portability/root-state.json` now records the resolved root plus machine identity. When either changes, Agent Core archives only transient machine-bound Grafel daemon/index state, Semantic IDE session state, and abandoned browser-control sessions before subsystem bootstrap; durable Memory, auth/OAuth, Learning, provider binaries, checkpoint blobs, and user state are retained.
+- File Checkpoint rebases persisted root/snapshot paths relative to the prior project root instead of failing on a drive move; any checkpoint path outside the previous root still fails closed. Browser-control explicit executable overrides also pass through the portable project-path resolver.
+- External resources are intentionally not invented: an explicitly external custom path remains external; gateway credentials, external Hermes, and machine/device-specific resources keep their own ownership contracts. Project-local built-ins remain portable when the Agent Core directory/runtime is copied intact.
+
+Verification before activation includes the earlier targeted portability/semantic/Grafel/RDC/browser/result-budget matrix **8 files / 30 tests PASS**, launcher VSTest **16/16 PASS**, `Test-Agent-Core-Portability.ps1 -RequireLocalRuntime` **PORTABILITY AUDIT PASS**, and compiled non-root-CWD relocation smoke. The added machine/root lifecycle, checkpoint rebase, browser override, Grafel relocation, and health-reconnect cases additionally passed a focused **5 files / 28 tests** matrix. Root TypeScript build exits `0`. Patch intent remains the single `.changeset/20260926-relocatable-project-root.md`.
+
+Final live closure on `E:\Projects\Agent-Core` is complete. `runtime/portability/root-state.json` is schema 2 and names E as the current project root; `grafel-reindex-required.json` is absent after exact-root convergence. Core PID 1112 runs the project-local Node runtime and `/health` reports Agent Core 0.13.0 with Memory/Execution/Phone available, Grafel `available/current`, Semantic IDE `available`, and Learning available with both Memory and Grafel-pattern sinks. `code_orient(status)` proves provider graph load and 1/1 registered-workspace coverage; `code_workspace(list)` resolves only the current E-root workspace. Relocation startup demonstrated the intended fail-soft path: synchronous Grafel convergence timed out once, capability discovery still completed, the exact-root graph became current asynchronously, and the marker was then cleared. The launcher lifecycle race exposed during closure was also repaired: realtime log mirroring now skips BeginInvoke while the WinForms handle is unavailable while the durable journal remains authoritative; launcher 0.13.0.0 SHA-256 `0D5E8DE21F5318F9F658B11DD7F32B06F001D98CF402D4D81F7419D31BC8B546` is live. Since launcher PID 18348 started, the Activity Journal contains 0 non-MCP/non-Hermes warnings/errors and 0 `ui-thread-exception` events. `tunnel-client.exe` remains active. No release apply, commit, tag, push, publish, deploy, or legacy-network recovery was performed by this repair.
+
+### 0.1.33 Dynamic path governance hardening — 2026-09-26
+
+**COMPLETE — LIVE-ACTIVATED — LIVE-VERIFIED.** This hardening turns project-root portability from a one-time repair into an enforced engineering contract for future Agent Core builds, task runners, providers, local toolchains, machine-control helpers, and project-owned state.
+
+- `src/portability/paths.ts` now exports `discoverProjectRoot(startPath)` and `resolveModuleProjectRoot(import.meta.url)`. Module-root discovery ascends from the running source/compiled module until the Agent Core project marker is found, then applies the existing `AGENT_CORE_PROJECT_ROOT` portability contract. Callers no longer need hardcoded parent-depth assumptions or process working-directory ownership.
+- `src/config.ts`, Memory path defaults, Semantic IDE provider-version probe defaults, machine-control filesystem resolution, machine-control terminal spawn/ledger cwd, and Activity Tracker project identity now use module-derived canonical root resolution. Relative machine-control filesystem paths and project command execution therefore remain anchored to the Agent Core project even when the host process is launched from an unrelated cwd.
+- Launcher root discovery no longer uses `Environment.CurrentDirectory`; executable/AppContext location plus validated Agent Core root markers are sufficient. `scripts/verify/compact-output.mjs` now runs project verification commands from its script-derived project root rather than the caller cwd.
+- `scripts/portability/check-path-policy.mjs` is the machine-enforced policy. It derives its own root from script location, scans authored Agent Core source/scripts plus the Agent-Code Rust source and selected root launchers/config, ignores generated/dependency/test surfaces, and rejects: project ownership from `process.cwd()` / .NET current-directory / PowerShell cwd / CMD `%CD%`, fixed drive-specific Agent Core roots, fixed drive-specific project-owned runtime/source paths, and fixed user-profile paths.
+- `scripts/portability/path-exceptions.json` is the only machine-readable exception registry. Every exception must include an ID, exact file/rule/match, classification, reason, and relocation guidance; the checker also requires the same ID to be documented in `docs/PATH-GOVERNANCE.md` and rejects stale exception entries after the underlying finding disappears. Current active exception count is **0**.
+- `docs/PATH-GOVERNANCE.md` defines the path classes and migration rules: project-owned paths must be module/script/launcher-derived; user-supplied absolute paths remain explicit user intent; external integrations prefer config/PATH/system/sibling discovery; truly machine-bound paths require an explicit documented exception and relocation procedure.
+- `AGENTS.md` now makes the dynamic-path protocol mandatory for every Agent Core task. Project-local runtimes/providers/toolchains/state should live beneath a dynamically resolved project-owned runtime location; child processes doing Agent Core project work receive an explicit dynamic project/workspace cwd; hardcoded current roots are forbidden in active source/config/scripts.
+- `package.json` adds `path:check` and `path:report`; normal `npm run build` now executes `path:check` before TypeScript compilation. `scripts/windows/Test-Agent-Core-Portability.ps1` also invokes the same policy using the project-local Node runtime when available.
+- `.env.example` points operators to the governance document and explicitly states that hardcoded project-owned paths are rejected by the build policy.
+- Exact-source wiring readback shows eight authored consumers of `resolveModuleProjectRoot`: config, Memory, Semantic IDE provider registry, machine-control terminal manager, machine-control filesystem tool + handler, Activity Tracker, and the portability module itself. After activation/restart Grafel is `current`; the deferred structural review now resolves `resolveModuleProjectRoot` and reports eight affected graph entities, with only generic module-level no-test-coverage risk plus the existing portability test surfaces. Exact current `src/portability/paths.ts` confirms the module-root resolver ascends through validated project markers and then applies `resolveProjectRoot`; no contradictory material graph finding remains.
+- Implementation evidence: `npm run build` exits `0`; its embedded path policy reports **PATH POLICY PASS — 240 authored files scanned; 0 documented exceptions**. The net8 Windows launcher publishes successfully with the existing project-local .NET SDK to `runtime/build/dynamic-path-governance-20260926`.
+- Live activation is complete. Activation readback at `2026-09-26T15:56:07+07:00` reports `ok=true`; root launcher SHA-256 `11EF30293762E37AA50732AE417E4A2CF062A2EE5CFC81D3AFB004CC96C5665D` exactly matches the staged launcher. Launcher PID `4196` and Core PID `7720` are running from `E:\Projects\Agent-Core`; `/health` is `ok` on Agent Core `0.13.0`, Memory issueCount is `0`, Grafel is `available/current`, Semantic IDE is `available`, and Learning has both Memory and Grafel-pattern sinks available. A live machine-control command starts with cwd `E:\Projects\Agent-Core`, `path:report` remains **PASS — 240 authored files / 0 exceptions**, `root-state.json` is schema 2 on the E root, the Grafel relocation marker is absent, and tunnel-client PID `12048` remains project-local. Since Core PID `7720` started, the Activity Journal contains `0` non-MCP/non-Hermes warnings/errors, `0` unobserved-task-exception events, and `0` ui-thread-exception events. No broad test suite, release apply, commit, tag, push, publish, or deploy was performed.
+
+Patch intent: `.changeset/20260926-dynamic-path-governance.md`. Authoritative operator procedure: `docs/PATH-GOVERNANCE.md`.
+
+### 0.1.34 Hard-close owned-process shutdown — 2026-09-26
+
+**LIVE-ACTIVATED — FULL-SHUTDOWN OBSERVED — COLD-START FOLLOW-UP COMPILED.** The Windows close button now has a coordinated shutdown design that closes Agent Core-owned runtime state before the launcher exits, then applies bounded exact-ownership fallbacks so stale/orphan child or daemon processes do not survive a normal launcher close.
+
+- Root cause: `MainForm.FormClosed` previously stopped only the UI timer and disposed `AgentCoreRuntime`; `AgentCoreRuntime.Dispose()` only disposed its `HttpClient`. The launcher never requested Core shutdown, so Core/tunnel could remain alive. Live inspection also found project-owned orphan processes whose original parents were already gone: tunnel-client PID `12048` and Grafel daemon/engine PIDs `14628/1996`.
+- `MainForm` now handles `FormClosing`. A normal X/close immediately hides the UI, stops status polling, suppresses realtime WebView log dispatch during teardown, awaits `AgentCoreRuntime.ShutdownAsync()`, disposes native diagnostics, then allows the form to close. Windows shutdown / Task Manager close is not delayed; it falls through to the kill-on-job-close emergency path.
+- `AgentCoreRuntime` creates a dynamic launcher control marker beneath `runtime/launcher` and passes its path to launcher-started children through `AGENT_CORE_LAUNCHER_CONTROL_FILE`. The Core entrypoint watches only that project-local file. When signaled it runs the existing graceful service close and exits; launcher shutdown waits for the exact Core PID to exit rather than treating HTTP-port disappearance as completion.
+- Core graceful close is now component-resilient. It closes HTTP, all Browser Control sessions, all TerminalManager current/recovered-detached sessions, the Agent Core-owned Hermes child tree, Semantic IDE, Code Intelligence/Grafel, Tool History and RDC config. One component failure is recorded but does not prevent later cleanup components from receiving a shutdown attempt.
+- A shared `src/process/owned-process-tree.ts` now supplies descendant snapshots and bounded process-tree termination. Semantic IDE retains its existing import surface through a compatibility re-export. Terminal sessions, Browser Control sessions and the Agent Core-owned Hermes Partner child use this common tree-aware cleanup.
+- `OwnedProcessJob.cs` adds a Windows Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. Core and tunnel processes started by the launcher are assigned to this job when Windows permits it; descendants inherit the job. If assignment is unavailable, exact-identity shutdown remains active and a warning is journaled instead of assuming ownership.
+- Normal shutdown first requests Core graceful close, bounded to 20 seconds; an unresponsive exact-owned Core PID is then killed as a process tree. Current source identifies tunnel ownership by the exact project-local `tunnel-client.exe`, so both relative and absolute `--profile-file` forms remain safely manageable. Windows/CIM ownership probes are bounded to 6 seconds and cannot hold the close path indefinitely.
+- After graceful/port-based cleanup the launcher performs up to three exact-root residual sweeps. Eligible residuals are limited to project-local tunnel-client, project-local Grafel, project-local Semantic IDE runtimes, the exact project-local Node `dist/index.js` Core, native dump helpers for this launcher, Browser Control processes whose command line names the project-owned browser-control runtime, and WebView2 processes whose command line names the project-owned WebView profile. External Remote Desktop Commander and unrelated external processes are not candidates.
+- `NativeDumpDiagnostics.Dispose()` now force-kills its helper process tree if the stop event does not make the helper exit within 1.5 seconds.
+- Close no longer clears the Activity Journal visibility marker. Shutdown evidence remains inspectable on the next launch.
+- Backup before mutation: `runtime/backups/hard-close-shutdown-20260926`.
+- Implementation evidence: final `npm run build` exits `0`; its dynamic-path gate reports **PATH POLICY PASS — 242 authored files scanned; 0 documented exceptions**. The net8 Windows launcher publishes successfully with the existing project-local SDK to `runtime/build/hard-close-shutdown-20260926`. `release:check-intent` is `ok=true`; current release plan remains `0.13.0 -> 0.14.0` with **7 pending intents (3 minor + 4 patch)**.
+- Structural review: Grafel was explicitly re-indexed and later converged to `current`. `code_surface(impact)` for `AgentCoreRuntime.ShutdownAsync` reports 6 affected entities, with the direct source path limited to `MainForm.OnFormClosingAsync` / launcher ownership; `terminateOwnedProcessTree` reports 15 affected entities centered on the intended Browser Control close/closeAll, TerminalManager shutdownAll, Hermes runtime close, and Core service wiring; `startAgentCoreService` reports 11 affected entities, primarily the existing service/test surface. Grafel flags the new launcher/tree operations as having no direct test coverage, but no unexpected ownership edge or contradictory architecture finding was found. Material relationships were verified against the exact current source; no broad test suite was run because verification remains user-controlled.
+- Hard-close activation is live. Activation readback at `2026-09-26T16:40:51+07:00` reports `ok=true`, root launcher SHA-256 `3AB4590424F926A4D3C972EC565F4F62DD5F67DD82ABAFDDA46021C3D816EAFF`, and Core PID `6988`. A later real close at `16:54:18` journaled `launcher-close-shutdown`, Core `service-stop`, Grafel `provider-stop`, `service-stopped` with `issueCount=0`, and Core process exit code `0`. The same close exposed two follow-up defects rather than a shutdown failure: an empty Windows port probe was surfaced as `Windows process-state query failed (1)` during tunnel stop, and intentional WebView2 teardown triggered diagnostic/dump noise. After reopening from a true cold state, Core startup also took about 100 seconds, exceeding the old 30-second sequential Core-first startup timeout and leaving tunnel startup unreached. Those follow-ups are addressed in section 0.1.35. No release apply, commit, tag, push, publish or deploy was performed.
+
+Patch intent: `.changeset/20260926-hard-close-owned-process-shutdown.md`.
+
+### 0.1.35 Cold-start tunnel recovery and tunnel-only UI — 2026-09-26
+
+**HISTORICAL IMPLEMENTATION — STARTUP ORDER SUPERSEDED BY 0.1.36.** The parallel-start launcher was installed before the 0.1.36 investigation (root executable matched SHA-256 `554C35C3FC2A4CA2C06B82E1C596FCFDBAC9DC7EAA4D3F0E42B2775331E43FB1`). Its original activation-pending record below is historical; the cold-start allowance and ownership checks remain, but parallel tunnel discovery is corrected below.
+
+- Observed root cause: after a true hard-close, launcher started Core PID `6988` at `16:38:59`, but the Node service did not enter `service-start` until `16:40:45`—about 106 seconds later. A later cold start showed the same shape: Core PID `2860` started at `16:55:27`, while service initialization began at `16:57:08`. The old launcher waited only 30 seconds for Core and performed startup sequentially as `Core -> Tunnel`; therefore the tunnel branch could remain unreached after a genuine cold boot.
+- `AgentCoreRuntime.InitializeAsync()` now starts Core and tunnel independently with `Task.WhenAll`. Tunnel startup no longer waits behind slow Core/Grafel/provider reconstruction, so the remote connector can return while Core continues its cold initialization.
+- Core cold-start readiness is bounded at 180 seconds, matching the observed ~100-second full-cold startup while retaining a finite failure boundary. Tunnel readiness is independently bounded at 30 seconds.
+- `RestartAllAsync()` uses the same parallel Core+tunnel restart behavior. `RestartCoreAsync()` remains Core-only and keeps an already healthy tunnel alive.
+- Tunnel ownership is now verified by the exact dynamic project-local `tunnel-client.exe`, not by one absolute `--profile-file` spelling. This safely recognizes the manual relative form `--profile-file .\tunnel-client\agent-core.yaml` as the same Agent Core tunnel while still refusing unrelated executables.
+- `IsTunnelReadyAsync()` now requires both a successful `:8787/readyz` response and confirmation that the listening process executable is the project-local tunnel binary. A foreign or stale listener can no longer make the launcher report Tunnel ON.
+- Windows port-owner probes now explicitly `exit 0` when no listener/process exists. The launcher no longer treats a normal empty port state as `Windows process-state query failed (1)`; actual non-zero query failures remain errors.
+- Shutdown diagnostics are quieter and more accurate. The native watchdog is disarmed as soon as FormClosing begins, status refresh is bounded behind a try/catch and stops during shutdown, and intentional WebView2 navigation/process loss during shutdown no longer triggers crash snapshots or dump timeouts.
+- The existing runtime action `restart-tunnel` is now exposed in the UI as **Restart Tunnel Only** in the restart menu plus Dashboard/Systems quick actions. It restarts the tunnel without restarting Core.
+- UI production build succeeds and writes the new surface to `dist/ui`. Final root `npm run build` exits `0` with **PATH POLICY PASS — 242 authored files scanned; 0 documented exceptions**. The Windows launcher publishes successfully to `runtime/build/tunnel-cold-start-repair-20260926`.
+- At this historical build checkpoint, live launcher was SHA-256 `3AB4590424F926A4D3C972EC565F4F62DD5F67DD82ABAFDDA46021C3D816EAFF` and staging launcher was SHA-256 `554C35C3FC2A4CA2C06B82E1C596FCFDBAC9DC7EAA4D3F0E42B2775331E43FB1`, both FileVersion `0.13.0.0`. The latter was subsequently observed installed during the 0.1.36 investigation.
+- Grafel reindex converged to `current`. Structural impact review reports 6 affected entities for `InitializeAsync`, 19 total / top 15 shown for `IsTunnelReadyAsync`, and 6 for `RestartTunnelAsync`; all production impact stays within the intended launcher/MainForm startup, status, restart-all, and tunnel action surfaces. Grafel reports no direct test coverage for the new launcher methods; exact current source confirms no unexpected ownership edge.
+- Backup before this follow-up: `runtime/backups/tunnel-cold-start-repair-20260926`. No broad test suite, launcher cutover, Core restart, release apply, commit, tag, push, publish or deploy was performed.
+
+Patch intent remains `.changeset/20260926-hard-close-owned-process-shutdown.md`.
+
+### 0.1.36 Tunnel discovery startup and duplicate Core process repair — 2026-09-26
+
+**IMPLEMENTED — LIVE-ACTIVATED — COLD START OBSERVED.** Scope is the desktop tunnel startup and reported `EADDRINUSE` on Core port 8765.
+
+- Direct diagnosis found the project-owned tunnel listening on 8787 while `/readyz` returned 503 with the original OAuth-discovery connection refusal to Core. The Core discovery endpoint later returned 200, but the tunnel retained its startup failure. Starting tunnel in parallel with cold Core was therefore incorrect for this client.
+- Two project-local Node processes (`13376` and `20456`) were children of the same launcher and ran the same `dist/index.js`; `13376` owned 8765. The launcher previously interpreted a failed two-second health request as permission to start another process. The failed duplicate remained alive after the Node startup failure. This is a port collision between different PIDs, not duplicate PID allocation.
+- `AgentCoreRuntime.InitializeAsync` and restart-all now wait for Core before tunnel startup, retaining the 180-second Core cold-start allowance. Tunnel startup also waits for successful `/.well-known/oauth-protected-resource` discovery, preserves a healthy tunnel, and replaces only an exact-owned unhealthy tunnel before a fresh attempt.
+- Startup, UI lifecycle actions, and shutdown share the existing lifecycle semaphore. Close interrupts startup polling and prevents a queued start from creating new children. Core startup checks listener ownership and reuses an existing exact project-local Node/Core-entry process even before it binds its port. Explicit stop/restart also handles exact-owned non-listening processes. Foreign port owners are refused.
+- Only `src/launcher/AgentCoreRuntime.cs` changes runtime behavior. No Node service, tunnel profile, credentials, UI layout, other subsystem implementation, dependency, or product version was changed. Previous launcher and source are preserved under `runtime/backups/tunnel-startup-port-20260926`.
+- Release intent: `.changeset/20260926-tunnel-startup-port-ownership.md` (patch); release-intent check returned `ok=true`. Dynamic path policy passed for 242 authored files with zero exceptions. The launcher published successfully using the existing local .NET SDK and cached packages; the first no-restore attempt needed an explicit existing NuGet package-root property for WebView2 resolution. Four compiled ownership checks passed (quoted/unquoted exact entry accepted; filename suffix and other-script argument rejected). Independent source review found no remaining scoped blocker.
+- Root EXE was replaced and launched at `2026-09-26T18:08:53+07:00`; installed SHA-256 `4B1A55C4A445C1902AF5355C5A39AE5D824EB8B8FC766315C1A0089234BE85B2` matches the staged build. Activation record: `runtime/build/tunnel-startup-port-20260926/activation.json`.
+- Real cold-start observation: launcher `17788` started Core `12440` at `18:09:03`; Core readiness was logged at `18:11:17` (about 134 seconds). Tunnel `7616` was then started automatically at `18:11:23`. At `18:11:25`, Core `/health` and tunnel `/readyz` both returned 200; the journal recorded `Secure tunnel is ready`, followed by `Tunnel changed to ON`. There was exactly one Core and one tunnel, both children of the new launcher. Since activation: zero new `EADDRINUSE` and zero launcher startup errors. Evidence: `runtime/build/tunnel-startup-port-20260926/live-readback.json` and the Activity Journal. No broad regression suite, release apply, version bump, commit, push, or publication was performed.
+- Structural review of tunnel startup found nine affected graph entities within launcher startup/restart/action/MainForm wiring; exact source review confirmed the intended scope. The final ownership/cancellation refinements were reviewed directly and a final Grafel refresh was requested; its last readback was queued, so final helper semantics rely on exact source and compiled ownership checks rather than stale graph detail.
+
+### 0.1.37 Four-reference adoption implementation — 2026-09-26
+
+**IMPLEMENTED — REBUILT DIST — LIVE NODE ACTIVATED 2026-09-26.** The user approved the source-first Claude Code, EverOS, Anthropic Skills, and AI-Memory adoption plan. Current-fit mechanisms were independently implemented in Agent Core-owned code; prerequisite-bound native-AI mechanisms remain approved-deferred rather than being forced into dormant subsystems.
+
+- Claude Code CC-P1/P2/P3 are implemented without copying proprietary source: workspace fingerprints now carry bounded path-state/content-hash/noise evidence and before/after attribution buckets; `code_analysis(security, changed_source)` provides deterministic bounded changed-file advisories with stable rule IDs and additive rule validation; Activity Tracker has a typed local-only feature/outcome envelope. CC-P4/P5 remain user-approved but prerequisite-deferred for future registry/chat consumers. The protected `memory\14-claude-code` checkout is retained as fixed provenance and is not a runtime dependency.
+- EverOS EV-P1 is implemented inside existing Memory ownership: canonical scans now expose completeness, health exposes `canonicalComplete`, and incomplete degraded scans preserve previously indexed entries instead of treating unreadable/unseen ordinary notes as deletion evidence. Post-adoption source census found no remaining current-fit EverOS family and active `src`/`scripts`/`tests` have zero dependency on `04-EverOS`; after a fresh zero-match dependency scan, the explicitly authorized retirement succeeded and exact-path readback returned `NOT_FOUND`. `memory\04-EverOS` is retired/deleted as corpse; provenance remains in `docs\EverOS-Steal-Use-Integration-Plan.md`.
+- Anthropic Skills SK-P1 is implemented as standalone `scripts/verify/mcp-tool-routing-eval.mjs` plus `npm run verify:mcp-routing`: positive/negative train cohorts, optional holdout, repeated trials, fail-closed incomplete runs, explicit external-controller command, and source guard hashes. SK-P2 remains user-approved but deferred until the native AI runtime has a real declarative-skill consumer. The protected `memory\05-skills` checkout remains retained for that prerequisite-bound future value.
+- AI-Memory AIM-P1/P2 are implemented through existing Memory/Learning ownership: `memory_list` and `memory_search` accept an explicit provenance workspace with pinned foundation globally visible, and LearningCurator uses deterministic age/access retention scoring only to order/explain proposal-only stale review. AIM-C1 remains user-approved but deferred until a canonical native chat session-summary producer exists; cross-project agent messaging remains non-selected. The protected `memory\06-ai-memory` checkout remains retained for AIM-C1 provenance.
+
+Post-adoption census found no additional immediate current-fit source family beyond the implemented scope. EverOS alone reached zero-value/zero-active-dependency and has now been retired/deleted as corpse. The other three references retain prerequisite-bound future value. Plans remain at `docs\Claude-Code-Steal-Use-Integration-Plan.md`, `docs\EverOS-Steal-Use-Integration-Plan.md`, `docs\Anthropic-Skills-Steal-Use-Integration-Plan.md`, and `docs\AI-Memory-Steal-Use-Integration-Plan.md`. Product source changed in the approved implementation; no dependency installation, broad test suite, release apply, commit, tag, push, publish, or deploy was performed. Live Core activation was subsequently authorized and completed by manual desktop restart, with readback recorded below.
+
+Current 0.1.37 closure: root build exited 0 with `PATH POLICY PASS — 245 authored files scanned; 0 documented exceptions`; both changed `.mjs` programs pass `node --check`. After explicit user authorization, the desktop/Core was manually restarted and the live Node Core now listens on `127.0.0.1:8765` as PID `5532` (process start `2026-09-26T23:35:48.9943128+07:00`) from project-local `runtime\\node\\node.exe`. `/health` returns `status=ok`, version `0.13.0`, Memory `available` with `canonicalComplete=true`, issueCount `0`, index/embedding/intelligence `available`, Code Intelligence `available/current` with issueCount `0`, Semantic IDE `available`, and Learning `available`. Direct live AIM-P1 acceptance passed: `memory_list(workspace="agent-core")` returned only pinned/global plus `agent-core`-scoped records, while an unknown workspace returned only the pinned foundational memory. A live `learning curate` call also completed through the restarted Core; the current corpus emitted overlap proposals and did not exercise a stale-retention proposal, so AIM-P2 activation is established by the loaded current dist but its score-specific branch was not directly observed in this readback. The current ChatGPT-side cached MCP manifest still lacks the newly-added `changed_source` enum/fields, so a direct CC-P2 call from this chat is client-schema-blocked until connector/tool-manifest refresh; this is not treated as a Core runtime failure. No broad test suite was run. `.changeset/20260926-four-reference-adoption.md` remains the pending minor release intent.
+
+### 0.1.38 Prime Agent / MemOS / Skills / AI-Memory adoption — 2026-09-27
+
+**COMPLETE — IMPLEMENTED — TARGETED VERIFIED — LIVE-ACTIVATED — INSTALLED-RUNTIME VERIFIED.** The previously review-gated Prime Agent, MemOS, Anthropic Skills and AI-Memory residuals are implemented in existing Agent Core owners and are resident in the active Node Core; no duplicate subsystem or dependency was introduced.
+
+- Prime Agent: PRIME-P1 serializes same-target filesystem mutations across `write_file`, `edit_block`, and moves using canonical/realpath ownership plus deterministic multi-path ordering; PRIME-P2 extends TerminalManager's bounded tail with ordered stdout/stderr full-output spill under `runtime/terminal-output`, bounded retention, digest, and complete/degraded truth; PRIME-P3 closes AsyncIterable bodies on early bounded-read failure while preserving the original error.
+- MemOS: MEMOS-P1 replays bounded durable Activity `featureOutcome` evidence into proposal-only curator review with event-id dedupe, positive/negative support and small-sample shrinkage; MEMOS-P2 suppresses only deterministic exact-equivalent direct Memory slots after scoring and before neighbor/budget selection without mutating canonical notes; MEMOS-P3 requires resolvable Grafel exemplars plus deterministic candidate/evidence coherence before code-pattern capture.
+- Anthropic Skills: SK-P1 remains implemented. SK-P3 is complete as `scripts/verify/mcp-task-effectiveness-eval.mjs` / `verify:mcp-effectiveness`, measuring fixed-task correctness, real MCP tool count/duration/error evidence, source guards and fail-closed read-only policy. It is an explicit CLI and needs no resident activation.
+- AI-Memory: AIM-P1/P2 remain live. AIM-P3 adds hashed repository/worktree identity plus bounded Git checkpoint provenance without checkout mutation or raw rename/untracked path disclosure; AIM-P4 adds machine-readable `historical-data` / no-instruction-authority metadata to Memory list/read/search output without rewriting stored content; AIM-P5 stores bounded 30-day proposal/rejection fingerprints in existing Learning state as advisory-only history and reopens review when evidence changes.
+
+Plan-scoped evidence: `four-plan-adoption-wave.test.ts` **12/12 PASS**, SK-P3 HTTP MCP fixture **2/2 PASS**, MEMOS-P3 Grafel Learning subset **5/5 PASS**, MCP manifest contract **2/2 PASS**, final TypeScript no-emit and isolated compile both exit `0`. Structural Grafel review was performed from a `current` graph and shows expected impact limited to Memory MCP/server/search, Learning review/tool wiring and Grafel pattern surfaces. Qualification-time `release:compat` was `ok=true`, `breakingEvidence=false`, with 64 tools and no removed tool/route. Final resident activation subsequently installed the qualified runtime via CAS with **24/24 artifact hashes matching the candidate**. `release:check-intent` was `ok=true`; `.changeset/20260927-prime-memos-skills-ai-memory-wave.md` is minor and the planned release remains `0.14.0`.
+
+During implementation the desktop black-screen incident was traced to a stale/mixed active `dist/http/app.js` importing missing `dist/agent-runtime/http.js` even though exact current `src/http/app.ts` has no such import. A clean source compile repaired Node `dist` after backing up 377 existing artifacts and installing 383 staging artifacts; launcher-owned Core returned to `/health=ok` on v0.13.0 and WebView loaded index/CSS/JS with HTTP 200. The final qualified candidate was then activated separately: `runtime/tmp/four-plan-final-activation-20260927/cutover-result.json` records 24 installed artifacts with no rollback, fresh readback confirms **24/24 active hashes match**, launcher PID `15800` and Node PID `20432` started after the cutover, and live `/health` remains `ok`. Live Memory output carries `historical-data` trust metadata and Learning state carries `recentRejections`, proving the AIM-P4/P5 resident path is loaded. Backups remain `runtime/backups/four-plan-implementation-20260927` and `runtime/backups/core-dist-repair-20260927`.
+
+All four protected references remain retained after activation; deleting them requires a separate explicit zero-value/destructive retirement census. No release apply, version bump, commit, tag, push, publish or deploy was performed. Authoritative ledger: `docs/Prime-MemOS-Skills-AI-Memory-Adoption-Execution-20260927.md`.
+
+### 0.1.39 Prime / MemOS / Skills / AI-Memory capability-only re-grounding — 2026-09-27
+
+**PLAN ONLY — NO RUNTIME ARCHITECTURE CHANGE. OPEN: USER REVIEW OF NEW PROPOSALS.**
+
+The user narrowed this re-grounding to Agent Core capabilities only. Native chat, model/provider runtime, conversation/session runtime, agent loops and UI work are explicitly excluded from this wave.
+
+Fresh source/test-byte inspection of the four protected references found additional capability-level residual value:
+- Prime Agent: **PRIME-P4** crash-safe bounded append-only evidence-log semantics for ActivityTracker/ToolHistory, and **PRIME-P5** bounded lifecycle/cleanup for the existing external MCP acceptance harness.
+- MemOS: **MEMOS-P4** opt-in multi-channel Memory retrieval fusion with exact-identifier eligibility, relative-threshold evidence, and MMR-style redundancy control. Existing legacy/BM25 profiles remain unchanged unless a later approved implementation adds the opt-in profile.
+- Anthropic Skills: **SK-P4** local skill artifact catalog/validation/package capability with no automatic execution, plus **SK-P5** offline skill-vs-control effectiveness evaluation. Only Apache-2.0 skill-creator/mcp-builder implementation mechanics are selected.
+- AI-Memory: **AIM-P6** workspace evidence-capture policy controlling persisted tool-call detail only; it does not alter execution authorization or tool results.
+
+Grafel was `current` with complete registered-workspace coverage during Agent Core structural comparison. Current source remains authority.
+
+Reference provenance caveat: the Skills checkout has an available HEAD commit object and clean diff readback. Prime, MemOS and AI-Memory still expose their recorded HEAD hashes but their commit objects are unavailable; AI-Memory additionally reports a damaged Git packfile. Their current source/test bytes, not Git cleanliness, are the grounding authority.
+
+A fresh active-source dependency scan found no Agent Core runtime dependency on these protected checkout paths. Process-commandline inspection found no live consumer beyond the inspection process itself. All four checkouts are therefore retained because they still have non-zero proposal value, not because runtime depends on them. **No folder was deleted.**
+
+Detailed proposal/acceptance/disposition lives in the four corresponding steal/use plan documents. Evidence census: `runtime/tmp/prime-memos-skills-ai-memory-regrounding-20260927/source-family-census.json`.
+
+No implementation, dependency installation, broad test run, Core restart, release apply, commit, tag, push, publish, or deploy occurred in this grounding pass.
+
+### 0.1.40 Capability residual wave implementation — 2026-09-27
+
+**STABLE CURRENT RUNTIME — COMPLETE — IMPLEMENTED — TARGETED VERIFIED — LIVE-ACTIVATED — INSTALLED-RUNTIME VERIFIED.**
+
+The user-approved capability-only residual wave is implemented without adding a native chat/model/session runtime:
+- **PRIME-P4:** shared bounded committed-line JSONL persistence now backs ActivityTracker and ToolHistory; incomplete final appends remain uncommitted/repairable while committed interior corruption fails closed.
+- **PRIME-P5:** the external MCP acceptance harness now has bounded request/cleanup lifecycle, shared abort control, and fixed persistent failure categories.
+- **MEMOS-P4:** Memory adds explicit opt-in `fusion` ranking with independent lexical/metadata/semantic/source rank agreement, concrete-identifier eligibility, relative-threshold evidence, exact duplicate suppression, and deterministic MMR; `legacy` and `bm25` stay unchanged by default.
+- **SK-P4:** a new Agent Core-owned `SkillService` validates/imports/lists/inspects/packages bounded reusable skill artifacts without executing them. One additive MCP tool `skills` exposes those operations; tool declarations inside artifacts never grant execution authority.
+- **SK-P5:** offline `verify:skill-effectiveness` evaluates supplied repeated skill/control observations and never mutates skill artifacts.
+- **AIM-P6:** optional workspace evidence markers reduce durable MCP history detail to `full`, `metadata-only`, or `omit` without changing tool authorization, execution, or returned values/errors. Existing redaction remains layered after the policy.
+
+No new dependency was required: SK-P4 uses existing `yauzl` / `pizzip` and a deliberately strict Agent Core-owned frontmatter subset instead of adding a YAML package.
+
+Targeted verification after final source sync is **20/20 PASS across 5 files**. TypeScript no-emit and both changed verifier syntax checks exit `0`. Path governance passes **256 authored files / 0 exceptions**. `release:check-intent` is `ok=true`. Final `release:compat` reports **65 tools**, additive `skills`, no tool/route removal, `breakingEvidence=false`, `stale=false`, no verification issues, and a manifest of **117,088 bytes / ~29,272 tokens** within the reviewed budget.
+
+Grafel was explicitly reindexed after the source changes and converged to `current` with complete registered-workspace coverage. Structural review shows the new skill service/wiring bounded to the composition/MCP surface, Memory fusion bounded to Memory search/MCP, and evidence-policy wiring bounded to the generic MCP evidence path; exact source confirms ActivityTracker/ToolHistory consume the shared event-log primitive.
+
+The isolated candidate is `runtime/build/capability-residual-wave-20260927/dist`. CAS installation plus two bounded follow-up syncs completed with no rollback and no release apply. Fresh final readback proves **13/13 active `dist` runtime artifacts match the current candidate hashes**. Backups are under `runtime/backups/capability-residual-wave-20260927*`.
+
+Resident activation is complete and the capability wave is **STABLE CURRENT RUNTIME**. Active Node PID `14564` started at `2026-09-27T07:12:09.5922010Z`, after the capability cutover. Live `/health` is `ok` and exposes `skills: available` with `executionAuthority=false`. Two fresh authenticated HTTP MCP acceptance gates report the same **65-tool** manifest with `skills`, `memory_search:rankingProfile`, and `skills:action`; live `skills status` and fusion `memory_search` probes pass, and temporary acceptance keys were revoked. Stability evidence: `runtime/tmp/capability-residual-stability-gate-20260927.json`.
+
+Changeset: `.changeset/20260927-capability-residual-wave.md` (minor). Release plan remains `0.13.0 -> 0.14.0`. No release apply, version bump, commit, tag, push, publish, or deploy occurred.
+
+Authoritative execution ledger: `docs/Capability-Residual-Wave-Execution-20260927.md`.
+
+### 0.1.41 Legacy Hermes Partner retirement — 2026-09-27
+
+**COMPLETE — TARGETED VERIFIED — LIVE-ACTIVATED — RETIRED FROM CURRENT RUNTIME.**
+
+Only the legacy Hermes-backed Partner bridge was retired. The separate future Agent Core-owned native AI / `agentRuntime` workstream was explicitly preserved.
+
+Removed current owners/surfaces:
+- `src\partner\*`;
+- `src\mcp\partner-tools.ts` and `src\mcp\partner-schemas.ts`;
+- Partner config/discovery and all `AGENT_CORE_HERMES_*` configuration;
+- `/health.partner` and launcher/UI legacy Partner health projection;
+- public MCP `partner` tool;
+- active compiled `dist\partner` and `dist\mcp\partner-*` artifacts;
+- Agent Core-owned `runtime\partner\hermes` state.
+
+Preserved boundaries:
+- external Hermes processes/projects were not modified or terminated;
+- generic `Agent Core AI` UI/system identity and optional `agentRuntime` contract remain;
+- Memory, Learning, Grafel, Semantic IDE, Skills, Execution, Phone/Game Mode, Auth/OAuth, tunnel and desktop UI ownership remain unchanged.
+
+Verification:
+- exact active-source scan for `HermesPartner`, `AGENT_CORE_HERMES_`, and `HERMES_HOME_NOT_FOUND`: zero matches;
+- root TypeScript staging compile: PASS;
+- MCP contract tests: **5/5 PASS**;
+- launcher build: **0 errors / 0 warnings**;
+- UI TypeScript typecheck: PASS; UI App test remains independently blocked by the separate in-progress native-runtime import `pages.tsx -> ./chat`, which was intentionally not modified;
+- path policy: PASS, 250 authored files / 0 exceptions;
+- release intent check: `ok=true`;
+- `release:compat` intentionally reports breaking evidence because public `partner` was removed; live manifest remains within budget;
+- CAS disk cutover installed the bounded Node owner set and removed orphan compiled partner artifacts with rollback not required;
+- republished launcher SHA-256 `003D6DB7A12A9B9907F7E27B5A51E72F1AA00A4D134140A47C89780D70D4618B` is active;
+- live launcher PID `11520`, Core PID `21448`, `/health=ok`;
+- fresh authenticated live MCP acceptance: **64 tools**, `partner` absent, `skills` present;
+- live health contains neither a Partner object nor `HERMES_HOME_NOT_FOUND`; Memory issueCount=0, Grafel available/current, Semantic IDE/Learning/Skills available;
+- temporary verification credential was revoked.
+
+Scoped backup: `runtime\backups\hermes-legacy-partner-removal-20260927`.
+Live activation evidence: `runtime/tmp/hermes-legacy-partner-live-activation-20260927.json`.
+Changeset: `.changeset/20260927-hermes-legacy-partner-removal.md` (minor). Stable product version remains `0.13.0`; no release apply, commit, tag, push, publish or deploy occurred.
+
+### 0.1.42 Four-reference ecosystem-only residual grounding — 2026-09-27
+
+**PLAN ONLY — AGENT CORE SYSTEM/ECOSYSTEM ONLY — USER REVIEW REQUIRED — NO INSTALLATION AUTHORIZED.**
+
+The prior per-reference plans were removed by the user after a scope error and are intentionally not recreated. Current proposal authority is now the single file `docs/Agent-Core-Ecosystem-Residual-Steal-Use-Plan.md`.
+
+Hard scope:
+- included: MCP/control plane, persistence/recovery, Memory/index/embedding, Learning, Skills infrastructure, Code Intelligence/Semantic IDE integration, security/privacy, launcher/system lifecycle and verification/release safety;
+- excluded completely from this plan: Runtime/New Chat, chat/session engines, prompt loops, context compaction, model/provider runtime, TUI, daemon agent runtime, subagent/RLM, managed workstream/handoff and native session consolidation.
+
+Fresh protected-reference census:
+- Prime Agent: 1,266 files / 992 code / 423 test-code / 23,112,691 bytes;
+- MemOS: 2,021 files / 1,555 code / 495 test-code / 30,821,487 bytes;
+- Anthropic Skills: 419 files / 73 code / 3 test-code / 10,987,398 bytes;
+- ai-memory: 711 files / 472 code / 103 test-code / 15,474,622 bytes.
+
+Grafel was `current` with complete 1/1 registered-workspace coverage.
+
+Review-gated ecosystem proposals:
+- AC-ECO-P1: crash-safe mutating-MCP idempotency journal;
+- AC-ECO-P2: mutation quiescence during graceful Core shutdown;
+- AC-ECO-P3: durable Memory embedding repair state without a background retry timer;
+- AC-ECO-P4: offline stratified Skills trigger-routing holdout evaluator;
+- AC-ECO-P5: explicit Skills revision staging/review/promotion/rollback;
+- AC-ECO-P6: bounded explicit Memory feedback salience feeding proposal-only review;
+- AC-ECO-P7: dry-run Memory retirement review plus stale-selection delete guard.
+
+The previous MemOS mutation-pressure proposal was rejected during this correction as insufficiently strong/current-fit; MemOS source instead supports AC-ECO-P3 through its tested embedding retry queue/lease/backoff mechanics. Runtime/session-oriented Prime and ai-memory proposals were removed entirely rather than deferred.
+
+All four protected references remain **RETAINED** because each still has at least one source-backed ecosystem residual. No protected folder qualifies as zero-value/corpse yet.
+
+Evidence: `runtime/tmp/four-reference-ecosystem-only-regrounding-20260927/ecosystem-only-census.json`.
+No source/runtime implementation, dependency installation, Core restart, release apply, commit, tag, push, publish, deploy, or protected-reference deletion occurred.
+
+### 0.1.43 Ecosystem residual adoption implemented — 2026-09-27
+
+**SOURCE IMPLEMENTED + LOCAL BUILD VERIFIED — LIVE CORE RESTART/ACTIVATION NOT PERFORMED.**
+
+The user approved the ecosystem-only plan in `docs/Agent-Core-Ecosystem-Residual-Steal-Use-Plan.md`. All seven AC-ECO proposals are now implemented in current source without adding a second runtime/session authority:
+
+- AC-ECO-P1/P2: crash-safe mutating-MCP idempotency and bounded mutation drain in `src/mcp/mutation-safety.ts`, wired through the existing MCP server/handler and service lifecycle.
+- AC-ECO-P3: durable foreground/system-driven Memory embedding repair state in `src/memory/embedding-repair.ts`, integrated with current Memory index/service and no background retry timer.
+- AC-ECO-P4: offline deterministic stratified trigger-routing holdout evaluator in `scripts/verify/skill-routing-eval.mjs` with npm command `verify:skill-routing`.
+- AC-ECO-P5: explicit non-active Skills revision staging, evidence-bound promotion, bounded history and guarded rollback in the existing SkillService/`skills` MCP surface.
+- AC-ECO-P6: bounded explicit Memory feedback salience in auxiliary state via `src/memory/feedback.ts` and `memory_feedback`; canonical Memory body/links remain unchanged.
+- AC-ECO-P7: non-destructive Memory retirement review fingerprints via `src/memory/retirement.ts`, `memory_retirement_review`, and optional stale-selection guarding on `memory_delete`.
+
+Material release intent: `.changeset/20260927-ecosystem-residual-adoption.md` (minor).
+
+Targeted verification completed:
+- ecosystem adoption + MCP manifest contract: **8/8 PASS**;
+- `npm run build`: PASS;
+- path policy: **255 authored files / 0 exceptions**;
+- TypeScript compile: exit 0;
+- `release:check-intent`: `ok=true`;
+- Grafel structural impact review resolved current `createAgentCoreMcpServer` and source `MemoryService`. The MCP factory has a broad blast radius, so direct manifest-contract coverage remains part of the targeted evidence.
+
+No helper/dependency installation was required. No Core restart, release apply, version bump, commit, tag, push, publish or deploy occurred, so the already-running live Node process must not be described as activated for this wave yet.
+
+### 0.1.44 Four protected references retired after ecosystem harvest — 2026-09-27
+
+After AC-ECO-P1 through P7 were implemented and targeted-verified, a fresh post-adoption zero-value census rechecked the complete prior family disposition against the corrected ecosystem-only scope.
+
+Fresh dependency evidence:
+- current `src`: 0 references to `10-prime-agent`, `11-MemOS`, `05-skills`, or `06-ai-memory`;
+- current `scripts`: 0 references to those checkout names;
+- live process command-line census: no consumer beyond the census process itself.
+
+All previously selected current-fit ecosystem value has been harvested:
+- Prime -> AC-ECO-P1/P2;
+- MemOS -> AC-ECO-P3;
+- Anthropic Skills -> AC-ECO-P4/P5;
+- ai-memory -> AC-ECO-P6/P7.
+
+Remaining families are duplicate, rejected, provenance/example-only, or explicitly Runtime/New Chat/session/model-runtime scope. Under the user's explicit protected-reference deletion rule, all four folders now qualify as zero-value/corpse for current Agent Core ecosystem work and were deleted:
+- `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/memory/10-prime-agent`;
+- `.../11-MemOS`;
+- `.../05-skills`;
+- `.../06-ai-memory`.
+
+Retirement evidence: `runtime/tmp/four-reference-post-adoption-retirement-20260927.json`.
+
+This cleanup did not touch current Agent Core source/runtime owners and did not restart the live Core.
+
+### 0.1.45 Ecosystem wave live-activated + Grafel marker pre-authorization — 2026-09-27
+
+The user restarted `Agent Core.exe` after the AC-ECO source/build closure. Fresh installed-runtime readback now proves the wave is live:
+
+- listener `:8765` is owned by PID `2260`, project-local `runtime\node\node.exe` running `dist\index.js`;
+- `/health` = `status=ok`, Agent Core version `0.13.0`;
+- Code Intelligence = `available/current`, issueCount `0`;
+- `mcpMutationSafety` = `available`, not draining;
+- fresh authenticated MCP acceptance = **66 tools**;
+- `memory_feedback`, `memory_retirement_review`, `skills`, and `code_workspace` are present;
+- `memory_delete.expectedReviewFingerprint` and `code_workspace.allowRepoMarker` are present;
+- `partner` is absent;
+- `memory_status` probe succeeded;
+- manifest fingerprint: `e42ac657446f1370e3fd577109b7be11e8bc922cac10f5a532d531f5112ead2c`;
+- evidence: `runtime/tmp/mcp-client-acceptance/2026-09-27T10-22-43-747Z`.
+
+The temporary live-acceptance API key was created only inside the bounded verification helper and revoked in its `finally` block; the secret was never printed.
+
+Grafel repo-marker authorization is now a persistent **local controller policy**, not a weakened provider gate: `AGENTS.md` explicitly records the user's blanket pre-authorization for `.grafel/group.json` creation. Controllers must automatically pass `allowRepoMarker=true` whenever a registration preview requires only that marker, so the user is not prompted repeatedly. Explicit `allowRepoMarker=false`, marker conflicts, protected-path access, and destructive/other Grafel mutations keep their existing independent gates.
+
+`loadAgentProtocol()` reads `AGENTS.md` from disk for every fresh MCP server instance, so new connections consume the updated policy without rebuilding Grafel or changing provider internals.
+
+### 0.1.46 Graphiti / Claude Code / CodeMem / TencentDB source-first ecosystem grounding — 2026-09-27
+
+**PLAN ONLY — USER REVIEW REQUIRED BEFORE ANY INSTALLATION/ADOPTION.**
+
+Grounding scope is Agent Core system/ecosystem only. New Chat, native AI conversation/session/model runtime, prompt-injection runtime and alternate provider runtime are explicitly excluded.
+
+Fresh source census:
+- Graphiti: 363 files / 271 executable-code / 72 test-code / 22,462,071 bytes; revision `c035afb7990b6077331a81e98b04efcfd9bf8184`, Apache-2.0.
+- Claude Code: 1,153 files / 961 executable-code / 258 test-code / 14,262,656 bytes; unchanged clean revision `b782847db9a18667f00918ea341197f201b22bb4`; proprietary/all-rights-reserved, so only independent reimplementation is allowed.
+- CodeMem: 1,264 files / 968 executable-code / 389 test-code / 23,884,627 bytes; revision `bd78c065e0fc7155195a920225655bdcf24b2fae`, MIT.
+- TencentDB Agent Memory: 1,103 files / 891 executable-code / 8 test-code / 33,654,237 bytes; revision `b545fe9acf08b47b56d85872eb04b6aee24c85eb` on `feat/server_team`, MIT.
+
+Grafel inspection:
+- `ref-graphiti`: current, graph available, 1/1 coverage;
+- `ref-claude-code`: current, graph available, 1/1 coverage;
+- CodeMem and TencentDB were registered with user-authorized repo markers/protected-path inspection, but their graph state was unavailable in the current provider session; exhaustive direct source/test inspection is therefore the authority for those two.
+
+Review-gated residual proposals:
+- `GRAPHITI-P1`: temporal Memory relationship validity + bounded evidence lineage; explicit/controller-owned invalidation only, no Graphiti DB/model runtime.
+- `CC-P4`: re-scoped from conditional to current-fit Skill artifact source-provenance pinning now that SkillService/revision lifecycle exists. Historical `CC-P5` is excluded because it belongs to New Chat/runtime.
+- `CODEMEM-P1`: bounded Memory retrieval attempt/exposure ledger with hashed query evidence and explicit retrieval-vs-controller-delivery semantics.
+- `CODEMEM-P2`: conservative read-only retrieval attribution diagnostics over ledger + feedback + Activity Tracker evidence, with observational/indeterminate limitations and no automatic ranking/memory mutation.
+- `CODEMEM-P3`: versioned portable canonical Memory export/import with dry-run, idempotent import keys, deterministic link remapping and existing transaction authority.
+- `TDB-P1`: serialized Learning state read-modify-write transactions with re-read inside the critical section and explicit state-owner fields; no Redis/distributed runtime.
+- `TDB-P2`: bounded opaque snapshot-aware cursor pagination for growing Memory/Skill list surfaces while preserving legacy list behavior.
+
+Important negative-overlap findings from current Agent Core source:
+- Memory link model has no temporal validity/reference-time/evidence-lineage fields;
+- no per-retrieval attempt/exposure ledger or retrieval attribution contract exists;
+- no canonical Memory export/import contract exists;
+- SkillService has revision digests/evidence but no repository/worktree/source provenance;
+- Learning state mutations are atomic-file writes but checkpoint/review/curate still perform independent load -> modify -> save without a serialized state mutation owner;
+- `memory_list` has no cursor contract.
+
+Current Agent Core `src` and `scripts` contain 0 path-name dependencies on the four checkouts; live-process census found no checkout consumer beyond the inspection command. Temporary Grafel inspection workspaces were unregistered after grounding and the task-created `.grafel` markers were removed; final Git readback is clean for all four protected references.
+
+All executable families were classified. Major rejected/covered families include alternate graph/vector/DB/search/model providers, automatic LLM memory contradiction/extraction, automatic recall/prompt injection, session/offload runtime, cloud/device sync authorities, duplicate MCP/server/UI/adapters, external telemetry stacks, skill queues/versioning already covered by SkillService, and generic backup mechanisms already covered by Agent Core checkpoints/revisions.
+
+Reference disposition: **all four retained** because each has at least one current-fit selectable residual. No protected checkout is zero-value/corpse in this pass.
+
+Authoritative plans:
+- `docs/Graphiti-Steal-Use-Integration-Plan.md`
+- `docs/Claude-Code-Steal-Use-Integration-Plan.md` (updated §19)
+- `docs/CodeMem-Steal-Use-Integration-Plan.md`
+- `docs/TencentDB-Agent-Memory-Steal-Use-Integration-Plan.md`
+
+Evidence:
+- `runtime/tmp/graphiti-claude-codemem-tencent-grounding-20260927/source-first-census.json`
+- `runtime/tmp/graphiti-claude-codemem-tencent-grounding-20260927/family-disposition.json`
+
+No proposal was installed, no Agent Core dependency/runtime cutover/restart occurred, and no release apply/commit/tag/push/publish/deploy was performed.
+
+### 0.1.47 Graphiti / Claude Code / CodeMem / TencentDB ecosystem adoption — 2026-09-27
+
+**COMPLETE — TARGETED VERIFIED — LIVE-ACTIVATED — INSTALLED-RUNTIME VERIFIED — FOUR REFERENCES RETIRED.**
+
+The user approved all seven ecosystem-only proposals from section 0.1.46. Current source/dist now contains:
+- `GRAPHITI-P1`: optional temporal/evidence metadata on canonical Memory links (`validFrom`, `validTo`, `referenceTime`, bounded `evidenceRefs`), deterministic same-link evidence merge, active-link traversal filtering, and commit-time validation of `memory:<id>` evidence refs. Temporal fields are exposed through existing `memory_batch(op=link)` so remember/update schemas remain compact.
+- `CC-P4`: `SkillSourceProvenance` on active/staged/history artifacts using content digest, declared license, source kind, and Agent Core repository/worktree identity when available. Promotion checks expected active digest first and requires `CONFIRM_SKILL_SOURCE_CHANGE` when source lineage changes.
+- `CODEMEM-P1`: bounded auxiliary Memory retrieval attempt/exposure ledger using Agent Core crash-safe JSONL persistence; raw query content is not required or persisted by the ledger.
+- `CODEMEM-P2`: read-only retrieval attribution diagnostics joining retrieval evidence, explicit Memory feedback and bounded Activity Tracker outcomes; controller handoff is explicitly not model-use evidence and ordinary evidence remains observational.
+- `CODEMEM-P3`: versioned Memory export/import with preview-by-default, stable import keys, deterministic ID/link/evidence remapping, workspace authorization, pinned-foundation preservation, and `APPLY_MEMORY_IMPORT` guarded atomic apply.
+- `TDB-P1`: serialized `LearningStateStore.mutate(owner, ...)` transactions with reread-inside-critical-section and checkpoint/review/curator field ownership; no Redis/distributed state authority was added.
+- `TDB-P2`: deterministic snapshot-bound opaque Memory pagination with checksum/version, stale-cursor detection and unchanged legacy `memory_list` behavior.
+
+Public source/dist additions are `memory_page`, `memory_retrieval_diagnostics`, `memory_export`, and `memory_import`. The live connector now exposes **70 tools** after the user-controlled restart/reconnect, matching the built manifest (**119,577 bytes / about 29,895 tokens**) inside the reviewed 120,000-byte / 30,000-token budget. Resident Core PID **1624** runs `runtime\node\node.exe -> dist\index.js`; `/health` is `ok` on Agent Core **v0.13.0**.
+
+Verification:
+- `npm run build` PASS; path policy **258 authored files / 0 exceptions**; TypeScript exit 0.
+- Targeted `graphiti-codemem-tencent-claude-adoption`, prior ecosystem regression, and MCP manifest suites: **12/12 PASS**.
+- Grafel structural impact review covered source `MemoryService`, `registerMemoryTools`, `SkillService`, and `LearningStateStore` against a current graph. `registerMemoryTools` has the broadest blast radius, including the MCP factory/release manifest path, so direct manifest/budget coverage remains required evidence.
+- `release:check-intent`: `ok=true`.
+- `release:compat`: no HTTP route removal and current source manifest stays in budget. Its overall exit remains non-zero only because the current-line baseline still includes the intentionally retired legacy `partner` tool; this is historical breaking evidence, not a new breaking removal from this wave.
+- Material release intent: `.changeset/20260927-graphiti-codemem-tencent-claude-ecosystem-adoption.md` (minor). `release:plan` remains `0.13.0 -> 0.14.0` with **16** pending intents.
+
+Post-adoption retirement:
+- fresh current `src` path-name dependencies: 0;
+- fresh current `scripts` path-name dependencies: 0;
+- fresh non-shell live checkout consumers: 0;
+- all seven selected residuals are implemented and all remaining executable families are covered, rejected, support-only, or explicitly New Chat/runtime scope.
+
+Under the user's explicit zero-value cleanup rule, the following protected references were deleted after evidence was written:
+- `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/memory/13-graphiti`;
+- `.../14-claude-code`;
+- `.../15-codemem`;
+- `.../12-TencentDB-Agent-Memory`.
+
+Retirement evidence: `runtime/tmp/graphiti-claude-codemem-tencent-post-adoption-retirement-20260927.json`.
+
+No additional dependency/helper installation was required. The later user-controlled restart/reconnect activated the resident build; no `release:apply`, version bump, commit, tag, push, publish or deploy occurred. Live acceptance confirmed `memory_page`, `memory_retrieval_diagnostics`, `memory_export`, and `memory_import(mode=preview)` execute through the new connector; Memory canonical/index/embedding/intelligence remain available with `issueCount=0`.
+
+### 0.1.48 Source-grounded workflow refresh — 2026-09-27
+
+This refresh re-grounded current architecture from exact source plus live runtime rather than relying on older completion snapshots. Primary source evidence included `src/index.ts`, `src/mcp/server.ts`, `src/memory/*`, `src/learning/*`, `src/rdc/browser-control/*`, `src/code-intelligence/*`, `src/semantic-ide/*`, `src/skills/*`, and the fresh 70-tool connector/runtime surface.
+
+New/currently corrected findings:
+- live Agent Core is **70 tools**, not the historical 64/66 counts retained in older snapshots;
+- exact live split is **28 machine-control + 17 Memory + 1 Learning + 14 Phone + 7 Grafel Code Intelligence + 2 Semantic IDE/LSP + 1 Skills**;
+- Memory retrieval is now an evidence-producing pipeline: canonical reload/index freshness -> optional embedding -> legacy/BM25/fusion ranking -> duplicate suppression/threshold/MMR -> active temporal-link expansion -> bounded output -> recall touch + bounded retrieval ledger;
+- Memory canonical writes remain file-native and transactional; `memory_batch` applies up to 100 non-pinned operations atomically and refreshes the derived index once;
+- `memory_export` / `memory_import` are explicit versioned transfer surfaces, with preview default and guarded apply; `memory_page` uses snapshot-bound opaque cursors;
+- Learning remains a sibling reviewer/router: checkpoints request review, reviewed verified generic knowledge routes to Memory, verified repo recipes route to Grafel Patterns, and curator output remains proposal-only;
+- desktop lifecycle remains outside Node Core: launcher PID **13756** owns Node PID **1624**, native dump helper PID **25584**, and tunnel PID **7908** at this refresh.
+
+Workflow diagrams generated from this grounded state:
+- `docs/diagrams/Agent-Core-System-Workflow-20260927.png`
+- `docs/diagrams/Agent-Core-System-Workflow-20260927.svg`
+- `docs/diagrams/Agent-Core-Memory-Workflow-20260927.png`
+- `docs/diagrams/Agent-Core-Memory-Workflow-20260927.svg`
+
+These diagrams are descriptive architecture artifacts only; they add no runtime authority, gate, provider, or background process.
+
+### 0.1.49 Memory-reference wave 16–21 source-first grounding — 2026-09-27
+
+**PLANNING ONLY — USER REVIEW REQUIRED — NO ADOPTION INSTALLED.** Six protected memory references were exhaustively re-grounded from exact source/tests against current Agent Core v0.13.0 / 70-tool architecture. README/product claims were not used as feature authority.
+
+Plans:
+- `docs/Claude-Mem-Steal-Use-Integration-Plan.md` — new `thedotmack/claude-mem` provenance is separate from the previously exhausted historical `sinfawkes/claude_mem`; current checkout retained for CM2-P1.
+- `docs/DeepSeek-Harness-Steal-Use-Integration-Plan.md` — retained for DSH-P1/P2; checkout Git metadata is degraded (`git status` -> `fatal: bad object HEAD`), so exact source bytes are authority and the checkout is not a restoration source.
+- `docs/Mem0-Steal-Use-Integration-Plan.md` — retained for M0-P1.
+- `docs/Letta-Steal-Use-Integration-Plan.md` — zero-value source census; pinned HEAD itself contains 12 docs/workflow files, 0 executable source and 0 tests; reference retired/deleted under the user's explicit corpse-cleanup rule.
+- `docs/Supermemory-Steal-Use-Integration-Plan.md` — retained for SM-P1 plus conditional SM-C1.
+- `docs/Cognee-Steal-Use-Integration-Plan.md` — retained for CG-P1 plus conditional CG-P2.
+- authoritative combined census: `docs/Six-Memory-Reference-Source-First-Grounding-20260927.md`.
+
+Current-fit proposal families are limited to Memory result-budget projection, interrupted invocation reconciliation, byte-accurate result budgeting, non-destructive Memory expiry, reversible soft-forget, bounded explicit-feedback ranking influence, and conditional context/as-of retrieval surfaces. Alternate databases/vector stores/model runtimes, automatic LLM memory mutation, remote memory authorities, retrieval-frequency self-boosting, duplicate supervisors and automatic prompt injection remain covered/rejected/conditional as documented in the individual plans.
+
+A temporary Grafel workspace `audit-memory-wave-16-21` was used as a second opinion; only Claude Mem graph coverage became available. Exact source remained authority. The workspace was unregistered and repo markers were removed. Evidence snapshot: `runtime/tmp/six-memory-reference-grounding-20260927.json`.
+
+No Agent Core source, MCP schema, runtime behavior, dependency, build, test suite, restart, release intent, version, commit, tag, push, publish or deployment was changed by this grounding pass.
+
+### 0.1.50 Memory-reference wave 16–21 approved adoption — 2026-09-27
+
+**COMPLETE — SOURCE/DIST TARGETED VERIFIED — LIVE-ACTIVATED — INSTALLED-RUNTIME VERIFIED.** The user approved the source-backed proposals from section 0.1.49. Exact current-source grounding found the approved implementation already present together with `.changeset/20260927-memory-reference-wave-16-21-adoption.md`; this execution qualified and closed that candidate rather than duplicating it. The later user-controlled restart/reconnect activated the built wave in the resident runtime.
+
+Implemented ownership:
+- **CM2-P1:** `src/memory/search-projection.ts` performs actual controller-facing result fitting after ranking, with full/compact/minimal/preview degradation and explicit selected/trimmed/dropped retrieval evidence.
+- **DSH-P1:** `src/tracker/tool-invocation.ts` + `src/index.ts` reconcile prior-process orphan invocation starts as `outcome-unknown` / `never-blind-retry`; no automatic retry authority is created.
+- **DSH-P2:** `src/mcp/result-budget.ts` uses UTF-8 byte budgets, Unicode-safe head/tail retention, existing redaction/non-persistable policy and fail-soft local spill.
+- **M0-P1:** non-pinned canonical Memory supports optional `expiresAt`; expired records remain exactly readable/history-preserving but are excluded from active recall.
+- **SM-P1:** existing `memory_feedback` carries explicit reversible `forget`/`restore` lifecycle; forgotten Memory remains canonical but is excluded from active direct/linked recall.
+- **CG-P1:** explicit feedback salience affects only `fusion` through a bounded component and never creates query eligibility.
+- **CG-P2:** existing `memory_search` accepts validated optional `asOf` for temporal-link validity; reference time is recorded in retrieval evidence. No model date parser is introduced.
+- **SM-C1 remains conditional:** no real Agent Core AI prompt-assembly consumer exists in this scope, so no dormant prompt-injection subsystem was installed. `19-supermemory` remains retained for that future condition.
+
+Reference repair and retirement:
+- missing/broken planning references for DeepSeek Harness, Mem0, Cognee and thedotmack Claude Mem were freshly re-cloned from GitHub and detached-pinned to the exact audited revisions before implementation qualification; the prior DeepSeek `bad object HEAD` condition is no longer present in the replacement checkout;
+- post-adoption dependency/value census found no active `src/tests/scripts` dependency on the checkouts;
+- `16-deepseek-harness`, `17-mem0`, `20-cognee` and `21-claude-mem` were deleted after their selected mechanisms became native and residual families were covered/rejected;
+- `19-supermemory` remains the sole retained reference because SM-C1 is still a genuine conditional mechanism. Letta was already retired during planning.
+- retirement evidence: `runtime/tmp/memory-wave-post-adoption-retirement-20260927.json`.
+
+Qualification:
+- direct wave suite `tests/memory-reference-wave-16-21-adoption.test.ts`: **6/6 PASS**;
+- `tests/mcp-result-budget.test.ts`: **3/3 PASS**;
+- MCP manifest contract: **2/2 PASS**;
+- focused relevant `memory-maintenance -t preserves`: **3 PASS / 20 skipped**;
+- `npm run build`: **PASS**; path policy **260/0**;
+- compiled manifest: **70 tools / 116,107 bytes / ~29,027 tokens**, inside the 120,000-byte / 30,000-token reviewed budget;
+- `release:check-intent`: `ok=true`;
+- global `release:compat` remains `ok=false` only because the authoritative current-line baseline still contains the intentionally retired legacy `partner` tool; routes are unchanged and the Memory wave itself removes no tool/route.
+- the whole historical `memory-maintenance.test.ts` file still exits 1 without a Vitest failure diagnostic when run unfiltered; this is preserved as a non-diagnostic broader-suite residual and is not represented as PASS.
+
+Execution authority: `docs/Memory-Reference-Wave-16-21-Adoption-Execution-20260927.md`.
+
+Installed-runtime activation is complete after the user-controlled restart/reconnect. Live Node Core PID **17676** runs project-local `runtime\node\node.exe -> dist\index.js` under launcher PID **18820** with tunnel PID **22392**; `/health=ok` on v0.13.0; Memory canonical/index/embedding/intelligence are available with `issueCount=0`. Fresh direct authenticated MCP `tools/list` returns **70 tools** and exposes `memory_search.asOf`, `memory_remember.expiresAt`, `memory_update.expiresAt`, and `memory_feedback` values `forget` / `restore`. Isolated live behavior acceptance passed create-with-expiry -> `asOf` search -> forget suppression -> restore recall -> explicit cleanup. Post-probe Memory returned to 63 notes and `forgottenCount=0`. Evidence: `runtime/tmp/mcp-client-acceptance/2026-09-27T14-22-03-023Z`. The already-open ChatGPT conversation still carries a stale cached connector schema for some Memory actions; fresh direct runtime MCP descriptor is authoritative for installed state.
+
+### 0.1.51 Supermemory / Codebase Memory MCP / Continuous Claude / Obsidian / SIE / Spec-Kit grounding — 2026-09-27
+
+**PLANNING ONLY — USER REVIEW REQUIRED — NO NEW ADOPTION INSTALLED.** Six protected references were re-grounded from executable source/tests against the current Agent Core v0.13.0 / 70-tool architecture. README/product prose was supporting context only, not implementation authority.
+
+Current review surface:
+- `docs/Supermemory-Steal-Use-Integration-Plan.md`: SM-P1 remains complete/live; **SM-C1** owned Memory-context replacement and **SM-C2** tool-call-safe conversation persistence remain conditional on real native Agent Core AI prompt/session consumers. No dormant chat/prompt runtime is added.
+- `docs/Codebase-Memory-MCP-Steal-Use-Integration-Plan.md`: **CBM-P1** proposes exact-build Grafel/provider cohort attestation using already-qualified provider metadata and Agent Core-owned process identity; **CBM-C1** is conditional on a future Agent Core-owned provider install/update mutation. The CBM graph/store/parser runtime is rejected as a duplicate Grafel authority, and its `ingest_traces` handler is source-confirmed stub behavior.
+- `docs/Continuous-Claude-Steal-Use-Integration-Plan.md`: **CCLAUDE-C1** retains bounded run/time/cost/call/stall/error/completion semantics only for the future native Agent Core AI runtime. Dangerous permission/sandbox bypass and automatic Git/PR/release authority remain rejected.
+- `docs/Spec-Kit-Steal-Use-Integration-Plan.md`: prior SPK-P1/P2 remain live; the current artifact-only Skills subsystem now creates a real consumer for **SPK-P3**, a deterministic preview/export renderer from Agent Core-owned Skill artifacts to reviewed external-agent layouts. It must not silently write external AI-host config or grant execution authority. SPK-C2/C3 remain conditional.
+- `docs/Obsidian-API-Steal-Use-Integration-Plan.md`: no source-backed implementation proposal. The checkout is a declarations package (`main: ""`, `types: obsidian.d.ts`) with no runtime implementation/tests and was retired/deleted after zero dependency/process census.
+- `docs/Self-Improving-Agent-Ecosystem-Steal-Use-Integration-Plan.md`: the reappeared checkout was the exact historical revision and, after audit-marker removal, **48/48 byte-identical** with the prior retirement inventory. It was retired/deleted again after zero dependency/process census.
+
+Combined authority: `docs/Reference-Wave-Supermemory-CBM-Continuous-Obsidian-SIE-SpecKit-Grounding-20260927.md`.
+
+Audit details:
+- temporary request-scoped Grafel workspace `audit-steal-use-wave-20260927b` was unregistered; all repo markers were removed;
+- active Agent Core `src`, `scripts`, and `tests` contain zero dependency-path matches to the six checkouts;
+- retained references are Supermemory, Codebase Memory MCP, Continuous Claude and Spec-Kit because they still contain current-fit or conditional source-backed value;
+- protected Obsidian API and Self-Improving Agent Ecosystem folders were deleted under the user's explicit corpse rule;
+- retained checkout pre-existing state was preserved: Codebase Memory MCP still has its pre-existing `D Formula` + audit ZIP, Continuous Claude its audit ZIP, while Supermemory and Spec-Kit are clean.
+
+No Agent Core runtime/source behavior, MCP schema, dependency, build, product test suite, restart, release intent/version, commit, tag, push, publish or deploy was changed by this planning pass.
+
+### 0.1.52 CBM-P1 / Spec-Kit SPK-P3 approved adoption — 2026-09-27
+
+**COMPLETE — SOURCE/DIST TARGETED VERIFIED — LIVE-ACTIVATED — INSTALLED-RUNTIME VERIFIED.** The user approved the proposals from section 0.1.51. Current consumer gates were rechecked before implementation: CBM-P1 and SPK-P3 have real current owners; SM-C1/SM-C2, CBM-C1, CCLAUDE-C1 and SPK-C2/C3 remain approved but conditional because their required native consumers do not exist. The later user-controlled restart/reconnect activated CBM-P1 and SPK-P3 in the resident runtime.
+
+CBM-P1:
+- existing Code Intelligence/Grafel remains sole structural provider authority;
+- `GrafelRuntime.providerAttestation` compares qualified `provider.json.executableSha256` with the configured project-local Grafel binary, selected version/source commit with daemon-reported build identity, and captures resident `engine_pid`;
+- health/diagnostics expose `current | metadata-mismatch | resident-mismatch | unverifiable`;
+- proven mismatch degrades Code Intelligence and refuses Code Intelligence provider mutation/startover; `unverifiable` remains fail-soft with evidence;
+- Memory and normal machine control are never gated by this contract.
+
+SPK-P3:
+- existing artifact-only Skills remains the owner; no Spec-Kit runtime is imported;
+- existing `skills` MCP tool gains additive `render_export` with reviewed `claude` and `codex` profiles;
+- exports stay under `runtime/skills/exports/<profile>/<skill>`, include deterministic file hashes/source provenance, and describe target-relative `.claude/skills/...` or `.agents/skills/...` layouts;
+- renderer never writes external AI-host config, invokes a target agent, or grants execution authority.
+
+Qualification:
+- targeted suites: **27/27 PASS** across CBM/SPK wave, Code Intelligence health/finalization and MCP schema/manifest contracts;
+- `npm run build`: **PASS**; path policy **260/0**;
+- compiled real-provider CBM-P1 readback: `state=current`, exact executable SHA-256, resident engine PID **26676**, selected source commit matched resident build prefix;
+- compiled isolated SPK-P3 probe: Claude/Codex export PASS with active/export source digest identical;
+- compiled manifest: **70 tools / 116,215 bytes / ~29,054 tokens**, below 120,000-byte / 30,000-token budget;
+- Agent Core Grafel graph explicitly reindexed and current/complete **1/1**; structural impact covers expected Code Intelligence health/bootstrap/mutation and Skills/MCP surfaces;
+- provider TESTS-edge reachability is not ingested and reports 0%; that metric is not used as quality evidence.
+
+Release:
+- `.changeset/20260927-cbm-speckit-provider-skill-adoption.md` is one minor additive capability intent;
+- `release:check-intent` is `ok=true`;
+- global `release:compat` remains `ok=false` only because the current-line baseline still contains the intentionally retired legacy `partner` tool; HTTP routes are unchanged and this wave removes no tool/route.
+
+At the 0.1.52 historical checkpoint, approved-but-deferred conditionals were still retained in the active reference pool:
+- Supermemory SM-C1/SM-C2: native prompt/session consumer absent;
+- CBM-C1: Agent Core-owned Grafel install/update mutation absent;
+- Continuous Claude CCLAUDE-C1: native model/provider execution loop absent;
+- Spec-Kit SPK-C2/C3: preset/template and cross-agent hook products absent.
+
+That active-pool disposition is **superseded by section 0.1.53**, which moves those four consumer-only checkouts under protected `Consumer` without deleting them. Obsidian API and Self-Improving Agent Ecosystem remain retired/absent. Execution authority: `docs/CBM-SpecKit-Adoption-Execution-20260927.md`. Evidence: `runtime/tmp/cbm-speckit-adoption-closure-20260927.md`.
+
+Installed-runtime activation is complete after the user-controlled restart/reconnect. Live launcher PID **8056** owns Node Core PID **20336**, native dump helper PID **16888**, and tunnel PID **8336**. `/health=ok` on v0.13.0; Memory remains available with `issueCount=0`. Code Intelligence health/diagnostics expose `providerAttestation.state=current`, exact executable SHA-256/source-commit match, resident Grafel engine PID **6056**, and provider `issueCount=0`. Fresh authenticated direct resident MCP `tools/list` returns **70 tools** and exposes `skills.action=render_export` with `profile=claude|codex`; descriptor fingerprint is `sha256:31e712d8a4f6e2e91e4246a9b5732cf7da79408438f9a8bb2bd67dc5063b2c94`. Temporary live Skill import/inspect/render to Claude and Codex passed, then source/catalog/export artifacts were removed; post-cleanup Skills reports `skillCount=0`, `executionAuthority=false`. The already-open ChatGPT conversation still carries a stale cached Skills action enum; fresh direct runtime MCP descriptor is authoritative. Activation evidence: `runtime/tmp/cbm-speckit-live-activation-closure-20260927.md`.
+
+### 0.1.53 Five-reference lifecycle grounding + Graft review proposal — 2026-09-27
+
+**PLANNING/LIFECYCLE ONLY — NO RUNTIME ADOPTION.** Supermemory, Codebase Memory MCP, Continuous Claude, Spec-Kit and Graft were re-grounded from exact source/tests against the current Agent Core architecture after prior live adoption waves.
+
+Lifecycle result:
+- Supermemory SM-P1 is already live; only SM-C1/SM-C2 remain and both require native prompt/session consumers that current Agent Core does not own. Checkout moved to `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\Consumer\19-supermemory`.
+- Codebase Memory MCP CBM-P1 is already live; only CBM-C1 remains and requires an Agent Core-owned Grafel binary install/update mutation that does not exist. Checkout moved to `Consumer\codebase-memory-mcp`, preserving its pre-existing `D Formula` + audit ZIP state.
+- Continuous Claude has no current-fit residual outside CCLAUDE-C1, which requires a native model/provider execution owner. Checkout moved to `Consumer\continuous-claude`, preserving its pre-existing audit ZIP.
+- Spec-Kit SPK-P1/P2/P3 are already live; SPK-C2/C3 require preset/template or cross-agent hook/event products that do not exist. Clean checkout moved to `Consumer\spec-kit`.
+- Graft remains an **active adoption reference** at `65c29667bd59d7137caba8f6f5b5790e2d1f9404`; it is not consumer-only or corpse.
+
+New review proposal: `docs/Graft-Steal-Use-Integration-Plan.md` / **GRAFT-P1**. Source-backed gap is a changed-symbol review projection over existing Code Intelligence: changed hunk -> innermost symbol seed -> existing Grafel impact -> behavioural test-change evidence -> bounded explanatory source snippets -> best-effort Git owner/reviewer evidence. Current Agent Core source contains no equivalent `changedTest`, `testFiles`, `unreached`, or blast-review layer.
+
+GRAFT-P1 must keep Grafel as sole structural graph provider and Semantic IDE/source as symbol authority. Graft's `.context`/graph store, hidden query-time rebuild, LLM concept graph, provider/model runtimes, host hooks/config mutation, app/viewer and telemetry are rejected as duplicate/ownership-conflicting. Search reranking is not adopted absent measured current provider ranking defects.
+
+Authority: `docs/Five-Reference-Graft-Lifecycle-Grounding-20260927.md`. No dependency install, build, product test suite, runtime restart, release intent/version mutation, commit, tag, push, publish or deploy occurred.
+
+### 0.1.54 MarkItDown protected reference checkout — 2026-09-28
+
+User-authorized reference clone added at `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\\markitdown` from `https://github.com/microsoft/markitdown.git`. Checkout is branch `main`, pinned at `b8f79c57ebc0044be41323d89b2a45d3fda8460e`, with a clean working tree immediately after clone. This is reference-only evidence for future source-first grounding/steal-use review; it is not an Agent Core runtime dependency, provider, tool, or installed capability. No Agent Core source/runtime behavior, dependency install, build, restart, release intent/version, commit, tag, push, publish or deploy was changed by the clone.
+
+### 0.1.55 Code Intelligence cross-machine resilience — 2026-09-28
+
+**COMPLETE — LIVE-ACTIVATED — POST-RESTART VERIFIED.** A machine change from `archi` to `desktop-so3g9nf` at the same project root reproduced the dashboard symptom: Code Intelligence entered `indexing/degraded` while Grafel rebuilt the graph. Provider logs showed an incremental fallback over 2,614 changed candidates and a full index taking about 5m44s; the portability marker remained present after the provider later converged to `current`, making the same expensive repair eligible to repeat on later starts.
+
+The portability boundary is now narrower. A **pure machine change at the same project root** preserves `runtime/grafel/daemon/state` and archives only machine-bound provider ownership such as PID files, sockets, watcher/worktree state and RSS history. Full Grafel daemon-state archival plus reindex evidence remains required for a true project-root change, first anchor, or portability-schema upgrade. Semantic IDE transient state and browser-control sessions keep their existing machine-reset behavior.
+
+Code Intelligence bootstrap no longer performs a synchronous full Grafel index before capability startup. Registration/relocation repair restarts only the isolated Grafel provider, then requests required indexing asynchronously. Health now self-clears a stale portability reindex marker once the exact active-root graph is proven current. During `queued/indexing/warming`, Code Intelligence may remain `available` only when daemon/isolation/wire/attestation are valid **and a usable graph is already loaded**; provider calls still retain the existing freshness gate and refuse stale structural reads unless explicitly allowed. A first/root-changed graph with no usable loaded graph remains degraded until safe.
+
+`.gitignore` now excludes `**/node_modules.partial-*/`, matching observed recovery leftovers that Grafel otherwise walked during full indexing. This is an index-census optimization only; it does not delete those files.
+
+Implementation build completed with `npm run build`: path policy **260 authored files / 0 exceptions**, TypeScript compile exit `0`. The stale `reason=machine-change` Grafel reindex marker was removed only after live provider/readback proved `index=current`, graph availability `true`, group coverage complete `1/1`, and provider attestation current. After the user-controlled restart/reconnect, resident Node Core PID **14492** started at `2026-09-28T04:08:45.654Z`, after compiled `dist/code-intelligence/service.js` (`2026-09-28T04:03:06Z`), proving the new build is resident. Post-restart `/health=ok`; Code Intelligence is `available/current`, readiness has zero pending work, graph coverage is complete `1/1`, provider attestation is `current`, the portability marker is absent, and no new `indexer: starting` event appears in the Grafel daemon log during the 11:08–11:12 local startup window. This closes live activation for the cross-machine resilience patch.
+
+### 0.1.56 MarkItDown source-first steal/use adoption — 2026-09-28
+
+**COMPLETE — LIVE-ACTIVATED — INSTALLED-RUNTIME VERIFIED.** Microsoft MarkItDown was grounded from exact executable source/tests at clean pin `b8f79c57ebc0044be41323d89b2a45d3fda8460e`, then the user approved MID-P1 through MID-P6. Agent Core now owns a native TypeScript document-projection subsystem under `src/rdc/document-projection`; the public authority remains the existing `read_file` / `read_multiple_files` surface rather than a second MCP server.
+
+The projection dispatcher keeps immutable bounded input bytes, extension/MIME/signature evidence, stable converter priority/fallback, output bounds, and sanitized converter-failure families. New top-level automatic semantic Markdown handling covers PPTX, EPUB, IPYNB, Outlook MSG, and safe recursive ZIP archives. PPTX projection preserves slide ordering, grouped shapes, tables, chart data, notes, alt text and SVG-only embedded images. EPUB follows OPF metadata/spine order; IPYNB emits markdown/code/raw cells without executing code or replaying notebook outputs; MSG reads sender/recipient/subject/body with MAPI codepage-aware fallback.
+
+Established editable/native owners are preserved by default. `read_file(..., options={projection:"markdown"})` adds semantic views for HTML/XHTML, RSS/Atom, CSV with legacy-charset decoding, DOCX, XLS, XLSX/XLSM and PDF; `projection:"native"` forces the legacy reader. URL projection reuses Agent Core's existing `fetchWithPolicy`, redirect/timeout and bounded-response ownership, and resolves relative HTML/feed links without hidden secondary fetches.
+
+ZIP security is fail-closed. Generic recursive archives enforce archive/member/expanded-byte/file-count/depth budgets, reject encryption, unsupported compression, symlink metadata and path traversal, and preserve member-local format evidence. ZIP-backed document packages receive a separate bounded preflight before OOXML/EPUB parsing. Suspicious inputs expose generic public errors while stable internal error codes/failure families remain available to local evidence systems.
+
+Project-local exact dependencies added for the capability are `@xmldom/xmldom 0.9.12`, `node-html-markdown 2.0.0`, `chardet 2.2.0`, `cfb 1.2.2`, and `@e965/xlsx 0.20.3`; provenance/licenses are recorded in `THIRD_PARTY_NOTICES.md`. No MarkItDown Python package, MarkItDown MCP server, arbitrary Python entry-point plugin runtime, OCR model, cloud document-analysis provider, or hidden model call was installed. Post-install `npm audit` still reports only the pre-existing `exceljs`/transitive `uuid` moderate findings and `sharp` high finding; none of the new dependencies appears in the vulnerability set.
+
+Verification authority: `docs/MarkItDown-Steal-Use-Integration-Plan.md`. Final `npm run build` passes with path policy **267 authored files / 0 documented exceptions** and TypeScript exit 0. Relevant targeted verification is **4 files / 16 tests PASS** across document projection, safe regular-file I/O, MCP manifest contract and MCP schema contract. Source-backed acceptance against the retained upstream fixtures passed expected-content checks for PPTX, EPUB, IPYNB, MSG, ZIP, DOCX, XLSX, XLS and PDF. Real ZIP negative fixtures proved traversal, encryption, symlink and compression-bomb-like member refusal.
+
+A separate legacy `tests/rdc-parity.test.ts` check remains stale independently of this change: its static list expects 39 registrations while current source has 45 because six newer Memory tools are absent from that old test list. It was not altered under this scope. Grafel was explicitly reindexed after source changes and returned current; structural impact confirms `readFileFromDisk` remains a high-fan-in shared read surface, while exact-source review confirms the projection branch is additive and established native/edit owners keep default authority.
+
+Final source/value census exhausted the approved direct MarkItDown value. Remaining upstream-only value is consumer/provider-gated (OCR/vision, transcription, Azure document analysis, YouTube specialization) or explicitly rejected/lower-value (site-specific Bing/Wikipedia projections, arbitrary Python plugins, second MCP runtime). The clean reference was therefore moved to `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\Consumer\markitdown` per the user's lifecycle rule; it is not corpse because conditional consumer evidence remains.
+
+Release intent: `.changeset/20260928-markitdown-document-projection.md` (**minor**). After the user-controlled restart/reconnect, Node Core PID **12484** started at `2026-09-28T05:26:46.7632180Z`, after `dist/rdc/document-projection/service.js` (`2026-09-28T05:03:52Z`), proving the compiled projection code is resident. Post-restart `/health=ok`; Code Intelligence remains `available/current` with complete graph coverage `1/1`. Live MCP acceptance exercised automatic PPTX projection, explicit DOCX `options.projection="markdown"`, and automatic IPYNB projection successfully, confirming both automatic and opt-in branches in the installed runtime. MarkItDown adoption is therefore **LIVE-ACTIVATED — INSTALLED-RUNTIME VERIFIED**. No release apply, commit, tag, push, publish or deploy occurred.
+
+### 0.1.57 Codebase architecture review / current-map synchronization — 2026-09-28
+
+**MAPPING REFRESH ONLY — NO RUNTIME/SOURCE BEHAVIOR CHANGE.** A fresh review used exact current source plus a `current` Grafel graph with complete registered-workspace coverage. Live `/health` remains `ok` on product `0.13.0`; Code Intelligence is `available/current`, Semantic IDE/Learning/Skills are available, and the public MCP surface remains 70 tools. Fresh `release:plan` reports **19** pending intents toward `0.14.0`.
+
+The current ownership map above was synchronized for implementation that previously existed mainly in dated adoption ledgers rather than the compact active map: shared `src/net` outbound-request/credential-endpoint/bounded-response policy; shared `src/persistence/bounded-event-log.ts`; MCP mutation/result/evidence-persistence safety; `PathMutationCoordinator`; MarkItDown-derived document projection; and the dedicated `runtime\mcp`, `skills`, `checkpoints`, `browser-control`, `terminal-output`, `tool-results`, `portability`, and `launcher` ownership roots.
+
+Two Grafel review signals were checked against exact source rather than accepted mechanically. The reported Semantic IDE cycle is type-only: `freshness.ts` imports `SemanticLanguageServerDefinition` with `import type`, while `types.ts` imports `WorkspaceFreshnessResult` with `import type`; it therefore does not create a runtime module-execution cycle. The two launcher taint advisories on `AgentCoreRuntime.StartHidden` were also not confirmed as command/path injection: current call sites pass project-root-derived Node/tunnel executable paths, arguments are added through `ProcessStartInfo.ArgumentList`, the npm config path is derived from `Root\runtime`, and the inherited `PATH` value is assigned only to the child environment. Keep these as analyzer-review evidence, not vulnerability claims.
+
+The graph still identifies `createAgentCoreMcpServer` as a high-centrality composition bridge. Changes to MCP registration/result/evidence wiring should therefore continue to receive manifest/schema and exact-source review because this surface has broad fan-out even when individual capabilities are additive.
+
+**CLOSED by 0.1.58 — historical launcher single-instance/runtime mismatch.** The review found two same-session root `Agent Core.exe` instances from the same project path: PID `3152` had no main window, while PID `5316` owned the visible window and active Node/tunnel/helper tree. Follow-up source inspection identified the race: the named mutex was acquired only after `ApplicationConfiguration.Initialize()`, so a WinForms initialization hang could leave a pre-mutex root process alive. 0.1.58 records the source repair, exact-guarded stale-PID termination, build/publish evidence, and activation boundary.
+
+Grafel single-group dead-code output was also treated as advisory only: it classified operations such as `MemoryService.initialize` as test-only even though exact current source calls it from `src/index.ts`. Do not use that dead-code list as deletion authority without exact-source caller verification.
+
+No product source, dependency, compiled artifact, service lifecycle, release intent, restart, release apply, commit, tag, push, publish, or deploy was changed by this mapping review. Mutations were limited to this architecture documentation, matching durable Memory synchronization, and the explicit pre-edit file checkpoint/evidence generated by the review.
+
+### 0.1.58 Codebase audit repair — 2026-09-28
+
+**COMPLETE — LIVE-ACTIVATED — INSTALLED-RUNTIME VERIFIED.** Repair authority: `docs/Codebase-Audit-Repair-Plan-20260928.md`.
+
+Four audit items were addressed without release execution:
+
+- **AR-P1 launcher single-instance race:** `src/launcher/Program.cs` now acquires `Local\AgentCoreDesktop` immediately after native-helper dispatch and **before** `ApplicationConfiguration.Initialize()`. This closes the pre-mutex WinForms initialization window that could strand an invisible root launcher. Stale PID `3152` was revalidated as the exact project launcher, same session, with no child process and no listening port, then terminated. Active launcher `5316` continued parenting Node `12484`, tunnel `12448`, and helper `12536`; ports 8765/8787 and `/health=ok` remained unchanged.
+- **AR-P2 launcher taint-analysis ambiguity:** `AgentCoreRuntime.StartHidden` no longer mixes project runtime directory/npmrc creation, inherited environment reads, and process-start sinks in one method. `PrepareOwnedChildRuntime` owns project-root-derived directories/config creation; `ApplyOwnedChildEnvironment` owns child environment assignment; `StartHidden` retains `ProcessStartInfo(executable)`, `UseShellExecute=false`, and `ArgumentList`. Fresh Grafel security analysis at min confidence 0.7 now reports **0 findings**.
+- **AR-P3 Semantic IDE type cycle:** `WorkspaceFreshnessResult` moved to `src/semantic-ide/types.ts`; `freshness.ts` imports/re-exports it and `language-server.ts` imports it from `types.ts`. The reverse `types.ts -> freshness.ts` edge is gone. Fresh Grafel cycle analysis reports **0 cycles**.
+- **AR-P4 Code Intelligence advisory boundary:** the public `code_analysis` description now states that provider debt/security findings require exact current source/caller verification before deletion, vulnerability claims, or architectural conclusions. The raw provider dead-code preset can still contain extraction false positives, so it remains evidence rather than deletion authority.
+
+Build/static evidence:
+- root `npm run build` PASS;
+- path policy **267 authored files / 0 exceptions**;
+- TypeScript compile PASS;
+- Grafel reindex returned `current` with registered-workspace coverage **1/1 complete**;
+- post-change Grafel cycle analysis **0**;
+- post-change Grafel security findings **0** at min confidence 0.7;
+- no broad regression/product test suite was run.
+
+Launcher publish initially failed when the older partial `runtime/dotnet-sdk` + `runtime/nuget-packages` combination referenced incomplete WindowsDesktop 8.0.31 runtime assets. A second restore attempt on the full SDK encountered a NuGet file-exists collision. The corrected method used project-local `runtime/toolchains/dotnet-sdk-8`, `runtime/dotnet-packages`, the corrected existing asset graph, and `--no-restore`; publish then succeeded. Candidate: `runtime/build/codebase-audit-repair-launcher-20260928-r2/Agent Core.exe`, FileVersion `0.13.0.0`, ProductVersion `0.13.0`, SHA-256 `C6A17A4CD7C9F17710E7485C6D8F3581D806C4E69C43181B0422A8FBD0A747DB`.
+
+The root launcher file was staged without terminating the active control plane. Existing root EXE SHA-256 `003D6DB7A12A9B9907F7E27B5A51E72F1AA00A4D134140A47C89780D70D4618B` was copied to the scoped backup; the candidate occupies `<PROJECT_ROOT>\Agent Core.exe` with SHA-256 `C6A17A4CD7C9F17710E7485C6D8F3581D806C4E69C43181B0422A8FBD0A747DB`.
+
+Post-restart closure proves the candidate is live: root launcher PID `16168` started at `2026-09-28T06:25:47.7132925Z`, after root launcher write time `2026-09-28T06:11:42Z`; exactly one root launcher is active, with native-dump helper PID `16940`. Node PID `12220` and tunnel PID `10984` are children of launcher `16168` and own ports 8765/8787. `/health=ok` on `0.13.0`; Memory, Execution, Code Intelligence, Semantic IDE, Learning and Skills are available. Code Intelligence is `current` with registered-workspace coverage **1/1 complete**. Current connector exposure still contains **70 Agent Core tools**. Rebuilt `dist/mcp/code-intelligence-tools.js` contains the AR-P4 advisory metadata and live Node PID `12220` started after that artifact, proving the rebuilt tool-metadata implementation is resident. The obsolete renamed running-image `Agent Core.running-5316.exe` was removed only after verifying no process image referenced it; the pristine scoped rollback backup remains.
+
+Material intent metadata: `.changeset/20260928-codebase-audit-hardening.md` (**patch**). Pending intent count remains **20** toward planned `0.14.0`. This is metadata only; release execution remains explicitly deferred and still requires explicit user authorization. No `release:apply`, version bump, packaging, commit, tag, push, publish, or deploy occurred.
+
+### 0.1.59 Maximal safe codebase cleanup — 2026-09-28
+
+**COMPLETE — RUNTIME HEALTH PRESERVED — NO PRODUCT SOURCE DELETION.** The user explicitly authorized aggressive cleanup of unused/non-product files, directories, generated artifacts, caches, stale build material, and dead-code candidates while preserving current stability.
+
+Project footprint dropped from approximately **20.229 GiB to 7.254 GiB**, a reduction of approximately **12.974 GiB (~64%)**. `runtime` alone dropped from approximately **14.556 GiB to 1.715 GiB**. The protected `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT` tree remained untouched at approximately **4.113 GiB**, and the `release` tree remained untouched at approximately **0.990 GiB**.
+
+Removed/reclaimed material:
+- historical runtime backups were pruned from ~7.033 GiB to ~0.180 GiB; only `runtime/backups/codebase-audit-repair-20260928` and `runtime/backups/git-object-db-corrupt-20260926` remain;
+- `runtime/tmp` was emptied except the two tiny Grafel second-wave fixture repos still surfaced by provider status;
+- generated UI dependencies `src/ui/node_modules` were removed; source UI files and lockfile remain;
+- rebuildable npm/pnpm/NuGet/Chrome/ffmpeg caches, old downloads, stale installer/build/test captures, screenshots/logs, tracker dumps/reports, and persisted oversized tool-result artifacts were removed;
+- project-local launcher build toolchains/package caches (`runtime/toolchains`, `runtime/dotnet-packages`, dotnet CLI/home caches) were removed after confirming no running process or active source/script depends on them; future launcher rebuilds must reprovision build tooling;
+- non-runtime Grafel staging material (`runtime/grafel/build`, `candidate`, `downloads`, `qualification`) was removed while preserving the attested active binary, daemon/index, provider metadata, home and logs;
+- the stale duplicate Semantic IDE runtime `runtime/semantic-ide/providers/dotnet` and its unused legacy aggregate `manifest.json` were removed. Current C# provisioning owns its runtime under `providers/csharp/dotnet`, confirmed by exact source and live Semantic IDE health;
+- temporary cleanup helper scripts were removed after use.
+
+Explicitly preserved for stability/recovery:
+- `runtime/grafel/bin`, daemon/index/home and provider attestation state;
+- `runtime/rdc/puppeteer-cache` because PDF generation resolves cached Chrome from this path;
+- `runtime/browser-control` because it owns the current browser-control headless shell;
+- active Semantic IDE Python/C#/PowerShell provider trees, including `providers/csharp/dotnet`;
+- project-local Node runtime, root `node_modules`, WebView2 profile, canonical Memory, auth/OAuth, checkpoints, tracker journal, machine-control configuration/history, current rollback backup, and current Git-recovery backup;
+- all release archives and all explicitly protected reference/Consumer material.
+
+Dead-code handling was deliberately source-first rather than size-driven. Grafel still reports **42** `test_only_referenced` operation candidates, but the analyzer class is known to contain extraction false positives. Exact source re-checks again proved this (for example `TerminalManager.forceTerminate` is called by production terminal handlers/tools, and Memory initialization flows are wired despite the provider report). Because active authored `src` is now only ~**2.3 MiB**, no public method/source file was deleted for negligible storage gain at disproportionate stability risk.
+
+Post-cleanup readback: `/health=ok` on product `0.13.0`; Memory/Execution/Learning/Skills available; Code Intelligence remains `available/current` with provider attestation current and registered-workspace coverage **1/1 complete**; Semantic IDE remains `available` with TypeScript 6.0.0, C# 5.5.0, PowerShell 7.6.6 and Python 1.1.403 compatible. No source build, broad tests, restart, release apply, version bump, commit, tag, push, publish or deploy was performed by cleanup.
+
+### 0.1.60 Stable Agent Core v0.14.0 package closure — 2026-09-28
+
+**COMPLETE — IMMUTABLE ZIP CREATED — FULL INTEGRITY VERIFIED.** The stable release intent set was applied to source/package version **0.14.0** and archived under `.changeset/applied/0.14.0-1790585693322`. `release:plan` now reports current `0.14.0`, bump `none`, pending `0`; `release:check-intent` is clean. `release:compat` reports **70 → 70** MCP tools, no added/removed tools or routes, no breaking evidence, no verification issues, and manifest budget **117,703 bytes / ~29,426 tokens**, within the 120,000-byte / 30,000-token limits.
+
+Immutable package:
+- `release/v0.14.0/Agent-Core-v0.14.0.zip`
+- size **216,940,864 bytes** (~206.89 MiB)
+- SHA-256 `3951adec007571bc906621473e881bcc75b61ac33ece391dd3c72577d174956c`
+- launcher inside ZIP: FileVersion **0.14.0.0**, ProductVersion **0.14.0**, SHA-256 `452c75e2c4d9c37337d2656245477d684ee63d960670ad2343cdfcf482f8e86b`.
+
+Independent post-package verification streamed the ZIP against `INTEGRITY-MANIFEST.json`: **20,026 / 20,026 immutable files verified**, **661,156,640 bytes** checked, 0 missing files, 0 byte mismatches, 0 SHA-256 mismatches, and 0 forbidden credential/user-state/protected-reference paths. Outer `RELEASE-NOTES.md`, `RELEASE-MANIFEST.json`, and `INTEGRITY-MANIFEST.json` are byte-identical to their copies inside the ZIP; archive `package.json` reports `0.14.0`.
+
+Packaging boundary remains clean: live `.env`, secrets, OAuth/API-key state, canonical user Memory, tracker logs, browser/WebView profiles, backups, Git metadata, protected reference repositories, and live tunnel credentials are excluded. The packaged Memory content is only the fresh product foundation generated by packaging policy.
+
+The release directory is immutable. Do not rewrite/replace `v0.14.0`; future stable packaging must use a new version.
+
+**Runtime activation remains separate.** Root source/package metadata are now `0.14.0`, but the live installed Node/launcher still report `0.13.0` until the user separately authorizes a runtime version cutover/restart. No commit, tag, push, publish, deploy, or legacy-remote mutation was performed by stable packaging.
+
+### 0.1.61 Graft + Graphify source-first steal/use re-grounding — 2026-09-29
+
+**PLANNING ONLY — USER REVIEW REQUIRED — NO RUNTIME IMPLEMENTATION.** The protected `Graft` and `graphify` checkouts were re-grounded source-first against current Agent Core ownership. Both fixed revisions were inspected from executable source/tests; temporary request-scoped Grafel audit workspaces were registered with the user's explicit marker authorization, indexed only as a structural second opinion, then unregistered and removed. Both checkouts returned to their pre-audit state with only their pre-existing untracked ZIP snapshots.
+
+`docs/Graft-Steal-Use-Integration-Plan.md` was updated in place. **GRAFT-P1 remains current-fit**: current Code Intelligence still lacks changed-hunk -> innermost-symbol review seeding, per-changed-area behavioral test-change evidence/unreached behavior, bounded changed/dependent snippets, and bounded Git owner/reviewer evidence. Grafel remains the sole structural graph provider and Semantic IDE/exact source remain symbol/source authority.
+
+`docs/Graphify-Steal-Use-Integration-Plan.md` was created. Two current-fit mechanisms survived the zero-value census:
+- **GRAPHIFY-P1:** Agent Core-owned accepted-index integrity / unexplained destructive-shrink detection around existing Grafel indexing, inspired by Graphify's identity-aware shrink guards, incomplete-build fail-closed behavior, per-source semantic-shrink evidence and manifest non-stamping. It must not create a second parser, graph database or automatic rollback path.
+- **GRAPHIFY-P2:** truthful source-representation coverage that separates registered-repo graph availability from the fraction of relevant source actually represented; unsupported/unclassified/unknown files must remain visible rather than being silently interpreted as complete coverage.
+
+Graphify affected traversal, graph/query/store/parsers, clusters, cross-repo resolution, report/query logging, reflect/work-memory, LLM backends, host hooks/installers, Neo4j/FalkorDB and exporters were classified as duplicate authority, already covered, conditional without a native consumer, or outside current ownership. Semantic-fragment ingestion/evidence binding remains conditional because Agent Core has no native producer that should inject untrusted LLM graph fragments into structural authority; existing repair/enrichment already requires explicit source verification.
+
+Reference lifecycle result: **both Graft and Graphify remain in the active adoption-reference pool** pending user review. Neither is corpse, and neither is consumer-only, so nothing was moved to `Consumer` or deleted. No product source/runtime behavior, dependency, build, test suite, restart, release, commit, tag, push, publish or deployment was performed.
+
+### 0.1.62 Graft + Graphify approved adoption implementation — 2026-09-29
+
+**IMPLEMENTED — TARGETED VERIFIED — BUILT — RESIDENT ACTIVATION PENDING.** The user approved GRAFT-P1 plus GRAPHIFY-P1/P2 from section 0.1.61. Agent Core adopted the mechanisms natively; it did not install Graft/Graphify runtimes or create a second graph authority.
+
+GRAFT-P1 is implemented in `src/code-intelligence/change-review.ts` and the existing `code_surface(action=impact, scope=changeset)` path. Git hunks are mapped to the tightest Semantic IDE symbol with truthful whole-file fallback; Grafel remains structural authority for entity/dependent reach. Output adds bounded/redacted source evidence, changed/stale/none/na/unknown test evidence, and bounded recency-weighted Git reviewer names while preserving the provider payload at top level.
+
+GRAPHIFY-P1 is implemented by `src/code-intelligence/graph-observability.ts` plus `CodeIntelligenceService`. Project-local accepted graph evidence records source fingerprint and provider entity/relationship counts. Same-source unexplained shrink degrades Code Intelligence; source-changed shrink remains unverified unless the matching source fingerprint was explicitly authorized by `code_workspace(index)`. The observer never rewrites Grafel state or gates machine control.
+
+GRAPHIFY-P2 adds bounded `sourceRepresentation` to Code Intelligence diagnostics. It separates source candidates, intentional exclusions, unclassified paths, represented/unrepresented/unknown sampled source files and reports partial truth when the 64-file probe is truncated. Existing `groupCoverage` semantics remain unchanged.
+
+Verification: new acceptance **5/5 PASS**; touched Code Intelligence regression matrix **44/44 PASS**; root build PASS; path policy **261/0**; release compatibility **70 -> 70**, no route/tool/schema changes, `breakingEvidence=false`, manifest 117,703 bytes / ~29,426 tokens; explicit post-change Grafel reindex current with registered-workspace coverage 1/1; cycle analysis 0. Two stale test fixtures were updated only to supply the provider-attestation methods already required by pre-existing production source.
+
+Material intent: `.changeset/20260929-graft-graphify-code-intelligence.md` (**minor**), read-only plan `0.14.0 -> 0.15.0`, pending 1; `release:check-intent` is OK. Provenance is recorded in `THIRD_PARTY_NOTICES.md`.
+
+The built `dist` is not called live by this section. Restart/cutover remains user-controlled; live activation and final reference retirement/Consumer classification must use fresh resident readback. Graft/Graphify checkouts are retained until that closure. Section 0.1.61 is historical planning evidence and is superseded for implementation status by this section.
+
+### 0.1.63 First live activation, provider-exclusion correction, and reference lifecycle — 2026-09-29
+
+**FIRST RESTART VERIFIED — POST-LIVE GRAPHIFY-P2 CORRECTION BUILT — FINAL RESTART PENDING.** The user restarted/reconnected Agent Core after section 0.1.62. Launcher PID **16748** started at `2026-09-29T07:40:37.617Z`; Node PID **14624** started at `07:40:43.274Z` from `runtime/node/node.exe dist/index.js`, after the adoption artifacts were written at `07:18:40–42Z`. `/health=ok` on product `0.14.0`; Memory, Execution, Code Intelligence, Semantic IDE, Learning and Skills were available; Code Intelligence was `current`, provider attestation current and issueCount 0.
+
+Live Code Intelligence proved the new Graphify-derived runtime surfaces were resident: `code_workspace(status)` returned `graphIntegrity.state=accepted`, `stable-or-growing-graph`, **9,131 entities / 48,061 relationships**, registered-workspace coverage 1/1 and integrityComplete=true. `code_orient(diagnostics)` returned the new bounded `sourceRepresentation` object.
+
+That live source-representation readback found a correctness issue rather than being silently accepted: the first sample was dominated by `SubProject/...`, while root `.grafelignore` explicitly excludes `/SubProject/`. The classifier was therefore corrected so provider-ignore rules are applied before source representation: root-anchored and directory rules, `*`, `**`, `?`, and ordered negation are supported; `.grafelignore` itself is excluded configuration. Dedicated adoption acceptance after the correction is **5/5 PASS**; build PASS; path policy **261/0**; `release:compat` stays **70 -> 70**, no route/tool/schema changes and `breakingEvidence=false`; `release:check-intent` stays OK. A requested rerun of the prior 44-test seam matrix was blocked by the outer safety wrapper before process creation, so the existing earlier **44/44 PASS** result remains the latest completed matrix and no replacement result is claimed.
+
+GRAFT-P1 resident module evidence is present in the post-restart process: the running Node started after the compiled `dist/mcp/code-intelligence-tools.js` and its static import of `buildChangedSymbolReview`; the compiled impact wrapper contains additive `reviewEvidence`. Direct live changeset execution could not cross Grafel's named-ref precondition because the provider currently has only default `ref=""`; attempts using `HEAD/main` were refused because those named ref graphs do not exist. This is recorded as a provider ref-graph limitation, not as a successful behavioral live changeset probe.
+
+Final reference census after first activation: 0 active `src` matches, 0 `scripts` matches, no runtime process consumer; test matches are adoption fixture labels only. Graft had no residual current-fit family after P1 and was deleted under the user's explicit corpse-retirement rule after revision/source-hash capture. Graphify still retains only consumer-gated semantic-fragment / alternate-ingest value, so it was moved intact to `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\Consumer\graphify`; HEAD `26b02b5e3430e4ab85dd7e72c7b98836d8e65c48`, branch `v8`, pre-existing audit ZIP preserved. Evidence: `runtime/tmp/graft-graphify-live-activation-closure-20260929.json`.
+
+After the correction, Grafel was explicitly reindexed and returned `current` with integrity accepted and **9,140 entities / 48,111 relationships**. The `.grafelignore` correction itself was compiled after the first restart, so final installed-runtime verification of corrected GRAPHIFY-P2 remains pending one final user-controlled restart/reconnect. No `release:apply`, version bump, commit, tag, push, publish or deploy occurred.
+
+### 0.1.64 Graft / Graphify adoption final installed-runtime closure — 2026-09-29
+
+**COMPLETE — LIVE-ACTIVATED — INSTALLED-RUNTIME VERIFIED.** The second user-controlled restart loaded the post-live GRAPHIFY-P2 correction. Launcher PID **7428** started at `2026-09-29T08:01:36.594Z`; Node PID **1740** started at `08:01:41.390Z` from `runtime/node/node.exe dist/index.js`, later than corrected `dist/code-intelligence/graph-observability.js` modification at `07:53:30Z`.
+
+`/health=ok` on product `0.14.0`; Memory canonical/index/embedding/intelligence are available with issueCount 0. Execution, Code Intelligence, Semantic IDE, Learning and Skills are available. Code Intelligence is `current`, provider attestation current, graph integrity accepted/stable-or-growing, registered-workspace coverage 1/1 and integrityComplete=true.
+
+Corrected live GRAPHIFY-P2 diagnostics now report **373 source candidates, 967 intentional exclusions, 17 unclassified, 64 checked, 60 represented, 4 unrepresented, 0 unknown**, truncated=true. `SubProject/...` is no longer misclassified as unrepresented because provider `.grafelignore` rules are applied before source representation. The four remaining sampled unrepresented paths are explicit PowerShell scripts under `scripts/...`, so unsupported/unrepresented evidence remains visible rather than being silently hidden.
+
+GRAFT-P1 remains resident through the same compiled MCP review module proven by the first restart; the post-live correction changed only `graph-observability.ts`. No new tool, graph provider, runtime, parser, model backend, watcher or host mutation layer was introduced.
+
+Reference lifecycle is final for current scope: Graft is retired/deleted after zero-value census and source-hash capture; Graphify is retained only as `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\Consumer\graphify`, intact at revision `26b02b5e3430e4ab85dd7e72c7b98836d8e65c48` / branch `v8` with its pre-existing audit ZIP. Closure evidence: `runtime/tmp/graft-graphify-live-activation-closure-20260929.json`.
+
+Release semantics remain unchanged: `.changeset/20260929-graft-graphify-code-intelligence.md` is minor, read-only plan remains `0.14.0 -> 0.15.0`; no `release:apply`, version bump, commit, tag, push, publish or deploy occurred.
+
+### 0.1.65 ShinkaEvolve / SystemOneHarness source-first proposal grounding — 2026-09-29
+
+**HISTORICAL PLANNING — CURRENT IMPLEMENTATION STATUS IS SECTION 0.1.66.** Canonical foundational Memory was read first. No prior ShinkaEvolve/SystemOneHarness plan or content reference was found in the pre-write `docs/**/*.md` census. New plans are `docs/ShinkaEvolve-Steal-Use-Integration-Plan.md` and `docs/SystemOneHarness-Steal-Use-Integration-Plan.md`.
+
+The fixed local snapshots are ShinkaEvolve `fd583c15ebcb12ec662a7cd921baf4203572e492` (origin `N-I-ckel/shinkaevolve`, package metadata SakanaAI/ShinkaEvolve, version 0.0.6, Apache-2.0) and SystemOneHarness `ab8e8f08b4a6268c0633a474423d556599ee06a4` (HarnessRouter/SystemOneHarness, package 0.4.0, Apache-2.0). Full non-Git regular-file hash inventories cover 272/54 files respectively; 177/31 Python files were AST-indexed without import/execution and with no parse errors. Executable bodies and tests were inspected selectively across feature families; this is not an every-branch dynamic test claim.
+
+**Historical proposal SHINKA-P1 (now implemented):** native offline Pareto quality/resource evidence using the existing Learning report consumer. Source donor `shinka/plots/plot_pareto.py` provides explicit pairwise dominance and metric orientation. Existing `retrieval-portfolio.ts` is coverage-preserving, not pairwise Pareto; `retrieval-diversity.ts` is a grid archive. Proposed separate CLI `--pareto` must preserve those meanings, report missing/incomparable/invalid inputs explicitly, keep resource declarations distinct from verified measurements, and never launch or approve experiments.
+
+**Historical SystemOne selection (now implemented):** S1-P1 independent safe control-state projection; S1-P2 opt-in bounded canvas raster/grid evidence; S1-P3 owned-tab observation/switching; S1-P4 bounded observed keyboard/history primitives, with independently selectable press/hold/back. All have the existing native `browser_control` as consumer. The plan preserves current safe DOM/opaque action IDs, mutation freshness, one-action execution and owned-process boundaries. These proposals are not installed and introduce no current schema/tool changes.
+
+Current source, not donor descriptions, establishes the gaps: `BrowserControlService` already exposes currentValue/checked/selected/expanded on action rows, but lacks an independent safe control-state view, canvas sampling, owned-tab switching, and caller-facing keyboard/history primitives. Public/handler schema and dispatch seams were inspected. Native Grafel was checked current before structural queries; exact source supplied dynamic wiring not necessarily represented in graph.
+
+Conditional donor families remain separately documented: Shinka experiment scheduler/slot recovery, cost-aware bandit persistence, stochastic evaluation and population/prompt evolution; SystemOne finite decision compilation, prompt/context assembly and UHP/environment adapter consumers. No missing consumer was manufactured. Donor confidence-based permission, finish-insisted success, realtime safety bypass, unbounded/weak timeout or raw secret/state handling are not adopted as authority.
+
+Both references remain at their original protected paths awaiting proposal selection: neither is corpse nor consumer-only while current-fit proposals remain. No reference was deleted/moved. Audit artifacts: `runtime/tmp/shinka-systemone-grounding-20260929/` (per-file hashes/AST definitions, source identity, native comparison evidence and document closure).
+
+Only the two plans, this architecture record, the MEMORY.md projection, canonical Memory and bounded audit artifacts are updated in this task. No product source implementation, dependency installation, repo marker, build/test execution, reindex, restart, commit, release apply, version change or deployment occurred. Future test commands in plans are proposed acceptance scope, not results. This planning-only record does not change section 0.2 runtime topology.
+
+### 0.1.66 ShinkaEvolve / SystemOneHarness approved native implementation — 2026-09-29
+
+**IMPLEMENTED — SCOPED QUALIFIED — BUILT — RESIDENT ACTIVATION AND POST-CHANGE GRAPH VERIFICATION PENDING.** The user approved current-fit SHINKA-P1 and S1-P1/P2/P3/P4a/P4b/P4c from section 0.1.65. Conditional C families remain deferred. No donor Python runtime, autonomous optimizer/controller, UHP server, Browser Use dependency, new graph authority, model service, or new listener was installed.
+
+SHINKA-P1: `src/learning/retrieval-pareto.ts` implements finite bounded pairwise dominance with directed objectives, ties, witnesses, immutable input/config digests and explicit excluded/unknown rows. `retrieval-series.ts` adds optional `analysis.pareto` and `resourceContext`; `scripts/learning/analyze-retrieval.mjs --pareto` uses existing report verification/provenance/new-file output. Resource declarations remain operator-supplied; `--frontier` retains union-coverage semantics. No experiment/approval/deployment authority is added.
+
+S1-P1: `src/rdc/browser-control/control-state.ts` plus the shared DOM snapshot produces bounded independent safe `controlStates`, including selected-only/readOnly/disabled/mixed states. S1-P2: `canvas-observation.ts` provides optional visible inventory and explicit session/document-bound canvas sampling, document digest/timestamp, quantized RGBA/transparent palette, lossy/omission metadata and operator-label matching evidence. Native caps: eight inventory canvases, 128x64 grid, sixteen palette entries, 20,000 output characters; off mode does not sample.
+
+S1-P3: `owned-tabs.ts` binds opaque action/tab IDs to full page target IDs from the session's owned loopback browser, max16 visible entries, revalidation before switching and no external/personal browser attachment. S1-P4: `keyboard-actions.ts` adds fixed press keys, held keys at 150/400/800ms and observed history BACK. The hold deadline starts at dispatch, not delayed acknowledgement. Key release is idempotent across act/close, with explicit uncertain outcomes and no replay. Document/focus/history checks remain local to the owned session; dialogs are reported, never auto-accepted.
+
+One BrowserControlService still owns process/profile/CDP lifecycle. `open(url, headless?, options?)` and `observe(sessionId, options?)` are additive; public Zod v4 schema, handler Zod v3 schema, dispatch and metadata agree. Only optional `browser_control.canvas` and `browser_control.interactionCapabilities` were added. All old/new actions share max250 candidates/max60 consumed actions; observations max120. A per-session in-flight marker prevents interleaved key/tab mutations and is not a cross-subsystem execution gate. Navigation startup now requires an actual ready HTTP(S) document instead of accepting the initial about:blank readyState.
+
+**Browser repair 2026-10-05, scoped qualification:** executable discovery now honors the requested display mode. Headed requests skip automatically discovered headless-shell binaries and continue to full Chromium candidates. An explicit headless-only operator override remains a fail-closed `BROWSER_CONTROL_HEADED_BROWSER_UNAVAILABLE`; rejection precedes profile creation. Headless discovery retains its cached-shell preference. Existing `AGENT_CORE_BROWSER_EXECUTABLE` remains the operator override for an installed Chromium-family executable, always launched with an Agent Core-owned isolated profile. Three new selection regressions plus the existing browser/SystemOne suites passed **37/37**; root no-emit typecheck passed. Candidate headed Brave open/observe/click/fresh-observe/close passed on an owned loopback fixture. Resident MCP subsequently opened the approved Canva URL with `brave.exe`; observations encountered external MCP transport failures, and the session later reported closed. This proves headed startup, not authenticated Canva acceptance. The personal Brave instance has no debugging endpoint, and native personal-profile attachment remains unsupported. Evidence: `runtime/tmp/browser-native-repair-20261005/`.
+
+**Launcher health diagnosis 2026-10-05:** five live `/health` samples returned `ok`/v0.14.0 in 5008/4903/5423/1736/4934ms. The launcher had a 2000ms HTTP budget, causing false subsystem-unavailable snapshots and its hardcoded v0.12.0 fallback. The bounded probe budget is now 10000ms; unavailable responses still return null, and version fallback uses launcher assembly metadata. A source-backed native C# regression reproduced the delayed healthy endpoint failure before the patch and passed afterward, including refusal to treat a closed endpoint as healthy. The compiled launcher was activated through an ownership-checked graceful restart; installed executable SHA256 is `3b17dbc0d6fd5b6c9cf512badd0c7d81a732c63142281720f085fd02189d72cc`. A source-backed resident snapshot confirmed Core HTTP/Memory/Execution availability and version0.14.0. Dashboard pixels have not been independently captured. No auth reset or health-status override was added; phone/device connectivity remains an independent live condition.
+
+**Existing-tab bridge 2026-10-05 — source/candidate qualified; activation BLOCKED:** `src/rdc/browser-control/extension-bridge.ts` adds an in-memory single-tab transport to the existing `BrowserControlService`; `src/http/browser-bridge.ts` and the existing HTTP/index owner expose only physical-loopback extension pairing/poll/disconnect routes. Both public/handler schemas, handler forwarding and tool metadata add optional open-only `transport: isolated|extension`. Default isolated behavior stays compatible. Extension mode creates no browser process/profile and reuses the same opaque observed-action IDs, freshness/input/budget guards and independent semantic readback. `extensions/agent-core-browser-bridge/` contains the dependency-free Manifest V3 extension using debugger/activeTab and loopback-only host permission. One-use 128-bit pairing code, exact extension/tab origin binding, RAM-only grant, bounded leases/commands, at-most-once delivery and fail-closed timeout prevent blind replay. Close detaches only the grant and explicitly retains the browser/tab. Main-document controls are supported; cross-origin iframe controls remain a declared v1 gap. Source-backed grant/HTTP/owner/worker regressions plus browser/SystemOne/HTTP/schema suites passed82/82 serial, no skips; initial parallel81/82 history CDP timeout and focused1/1 recovery remain negative evidence. TypeScript candidate build/typecheck and path policy304/0 passed. Only18 JS/map modules are staged; nine source-map paths were normalized and verified for installed dist resolution without JS/mapping-table changes. Windows elevation was canceled before activation helper execution, and before-hash readback confirmed no overlay. User manual close is pending; guarded post-close installer refuses remaining launcher/helper/Core listener and candidate/before-hash drift. Real Brave installation/pairing/native action acceptance are NOT RUN. This adds no MCP server, orchestration daemon, provider or browser credential store. Canonical MemoryService save and MCP readback were verified; native Learning checkpoint and semantic review completed without promoting unverified browser behavior.
+
+Qualification: **46/46 tests PASS, 0 fail, 0 skip**, across `shinkaevolve-pareto-adoption.test.ts` (12), `systemone-browser-adoption.test.ts` (31), and existing `browser-control.test.ts` (3). Real isolated Chromium/loopback fixtures cover browser paths; transport/taint/closed-target cases use bounded mocks. CLI tests run compiled report-bundle/Pareto code. This is scoped qualification, not a full regression or resident external-MCP acceptance claim.
+
+Build exit0, path policy **266 authored files / 0 exceptions**. Compatibility exit0: **70 -> 70 tools**, no tool/route removal, no newly-required parameters, `breakingEvidence=false`. Manifest **118,082 bytes / ~29,521 tokens**, within configured120,000/30,000 caps. Source/schema parity and actual handler forwarding tests satisfy review of the two additive fields. Material intent `.changeset/20260929-shinka-systemone-adoption.md` is minor; current version stays0.14.0, read-only next plan0.15.0 with two pending intents including the prior Graft/Graphify wave.
+
+**HISTORICAL PRE-RESTART — resident activation (resolved in 0.1.67):** the existing Core Node PID1740 started2026-09-29T08:01:41Z; compiled browser service is09:15:42Z and public schema09:15:44Z. No restart/reconnect was performed by this implementation. Fresh live readback of new optional fields and browser effects remains operator-controlled.
+
+**HISTORICAL PRE-RESTART — graph verification (resolved in 0.1.67):** pre-change graph was current and structural impact was inspected. The authorized post-change index request failed `GRAFEL_CLI_FAILED: daemon not running`; subsequent workspace status was `unknown` with `graph-load-probe-failed`. Later core health reported Memory available/issueCount0, Code Intelligence degraded/indexunknown/issueCount1. No graph/current/health success is inferred for the new source and no automatic daemon restart was attempted; exact source remains the fallback authority.
+
+Both protected donor references remain at original paths pending activation/final lifecycle census. Apache-2.0 attribution is in `THIRD_PARTY_NOTICES.md`. Evidence and before-image checkpoints: `runtime/tmp/shinka-systemone-implementation-20260929/`, including `source-diff.patch`, red/green logs, final scoped/build/compatibility logs and `result.json`. No package dependency change, release apply, version bump, Git reset/commit/tag/push, publish or deployment occurred. Canonical Memory and MEMORY.md carry the same qualified-vs-pending boundary.
+
+### 0.1.67 Shinka / SystemOne post-restart live readback - 2026-09-29
+
+**RESTART CONFIRMED - GRAPH CURRENT - PARTIAL LIVE ACCEPTANCE; OPTIONAL CONNECTOR FIELDS PENDING.** User-controlled restart started resident Node PID3164 at2026-09-29T09:46:26.063Z, after browser artifact09:15:42Z and schema/Pareto artifact09:15:44Z. `/health=ok`, product0.14.0; Memory available/issueCount0. All recorded implementation/source and compiled hashes still match the previous qualified result. No product source, dependency, or build change occurred in this continuation.
+
+Fresh native index request succeeded; post-index graph is current, integrity accepted, **9,289 entities / 48,950 relationships**, registered-repo coverage1/1. New `analyzeRetrievalPareto` and `CanvasObserver` entities are discoverable. This resolves section0.1.66's daemon-not-running/post-change graph blocker; graph availability does not prove every runtime behavior.
+
+Actual connected-MCP loopback probe verified **S1-P1** independent controlStates (single-option select, read-only input, checked checkbox; synthetic password/hidden values absent) and **S1-P3**: an explicit observed click opened a second owned tab, SWITCH_TAB executed, and fresh observe read `SECOND TAB VERIFIED` on that tab. Browser session was explicitly closed/inputRelease confirmed, browser status lists zero sessions, and the known owned fixture process was stopped.
+
+**HISTORICAL optional-acceptance blocker - resident verification closed by 0.1.68; chat schema unchanged:** tools exposed to this chat still omit `browser_control.canvas` and `browser_control.interactionCapabilities`; targeted discovery for canvas returned no action. Therefore S1-P2 canvas and S1-P4 press/hold/history opt-in paths were not exercised through this connector. An unauthenticated local HTTP MCP handshake correctly returned http-unauthorized. No credential was read/minted, no auth state was changed, and no authenticated runtime tools/list was obtained; server-advertisement vs chat-binding/cache cause is not conclusively isolated. Completion requires refreshed connector fields or separately authorized temporary local verification credentials, not another inferred Core restart.
+
+Earlier qualification remains **46/46 PASS** from the prior scoped run (12 Pareto/CLI,31 SystemOne,3 browser seam), with unchanged hashes; tests were not rerun here. SHINKA-P1 remains offline compiled-CLI qualified. Do not label the entire wave COMPLETE/all live-verified while optional connector acceptance remains open. Both donor references remain in original protected paths pending final acceptance/lifecycle review.
+
+Evidence: `runtime/tmp/shinka-systemone-implementation-20260929/live-readback-20260929.json`. Prior result.json is retained as historical qualification. Plans, MEMORY.md and canonical Memory are synchronized to this narrower observed status. Version0.14.0 and existing minor changesets remain unchanged; no release apply, Git mutation, additional Core/daemon restart, or deployment occurred.
+
+### 0.1.68 Shinka / SystemOne authorized resident acceptance and reference closure - 2026-09-29
+
+**COMPLETE FOR APPROVED ADOPTION - AUTHENTICATED LOCAL MCP VERIFIED.** The user explicitly approved one temporary credential after its broad MCP authorization (not server-enforced browser-only/localhost-only scope) was explained. The verifier used only existing localhost MCP plus synthetic owned-browser loopback fixtures. No donor runtime, second Core, external website or personal browser profile was activated.
+
+Authenticated resident tools/list advertised 70 tools and both optional browser_control.canvas and browser_control.interactionCapabilities. This conclusively distinguishes the working resident advertisement from the narrower schema exposed to this chat; exact connector/cache cause is not proven. The chat binding remains unchanged. Adoption/runtime acceptance is closed without claiming that those optional fields are directly callable through the current chat connector.
+
+Fresh probe: **16/16 live checks PASS, exit 0**. Default/off modes, independent safe control states, visible canvas inventory and explicit lossy 32x16 sampling of 640x320 source, operator-label/document binding, unobserved/resized-canvas refusal, opt-in keyboard actions, observed Escape down/up, bounded held-key candidates, actual 150ms ArrowRight down/release, and forward/BACK page effects all passed. Earlier connected-MCP S1-P3 tab switching and the prior 46/46 scoped source/CLI/browser tests remain separate historical evidence with matching source and compiled hashes. No suite/build was rerun.
+
+The temporary key was created at 2026-09-29T10:19:01.957Z with expiry10:29:01.914Z, revoked at10:19:19.079Z, and then rejected by both native verification and an actual MCP HTTP request (401). Other key metadata excluding lastUsedAt remained unchanged. The secret value was not printed/persisted to scripts, reports or Memory. Its revoked hash/metadata audit record remains in the existing key store. Browser status showed zero sessions; client and fixture listener closed.
+
+Current graph readback: current, graphIntegrity accepted, 9,289 entities/48,950 relationships and registered-repo coverage1/1. No source or compiled hash drift versus the qualified implementation. Product remains0.14.0; existing minor intents/planned0.15.0 unchanged. No release apply, version bump, source/dependency/build change, Core/daemon restart, Git mutation or deployment occurred.
+
+Reference lifecycle closed under the user's original rule: both donors are now consumer-only after adoption of current-fit selections. shinkaevolve moved intact to DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/Consumer/shinkaevolve (272 files; fd583c15ebcb12ec662a7cd921baf4203572e492). SystemOneHarness moved intact to DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/Consumer/SystemOneHarness (54 files; ab8e8f08b4a6268c0633a474423d556599ee06a4). Every non-Git file hash matches original inventories, both working trees are clean, and old roots are absent. Native src/scripts references are attribution comments only; package files contain no donor dependency. Conditional experiment/bandit/evolution and discrete-decision/context/UHP consumers remain deferred, not installed or claimed exhausted.
+
+Evidence: runtime/tmp/shinka-systemone-implementation-20260929/authorized-live-2026-09-29T10-19-01-869Z.json and reference-lifecycle-20260929.json. This section supersedes 0.1.65-0.1.67 for current acceptance/lifecycle status; earlier results remain historical. The two plans, MEMORY.md and canonical Memory are synchronized to runtime-complete / chat-schema-unchanged.
+
+### 0.1.69 A-Evolve / Agent0 / agent-os source-first proposal grounding - 2026-09-29
+
+**PLANNING ONLY - USER REVIEW REQUIRED - NO PRODUCT IMPLEMENTATION.** Canonical Memory was viewed first. Exact pre-write docs filename/content search found no existing dedicated plan for these three references. New plans are `docs/A-Evolve-Steal-Use-Integration-Plan.md`, `docs/Agent0-Steal-Use-Integration-Plan.md`, and `docs/Agent-OS-Steal-Use-Integration-Plan.md`.
+
+Pinned source identities: a-evolve `18ba996dac9843f2759b2cdf8a94022f58fbfeb9` (A-EVO-Lab/a-evolve; package 0.1.0); Agent0 `f775b5101e62fe92976831adf4a21a38fcc0a767` (aiming-lab/Agent0); agent-os `ec63cb775306f0728a65a4045b6b0457a025af36` (smartcomputer-ai/agent-os; Rust workspace 0.1.0). All were clean main-branch snapshots. Hash inventories cover 424, 1286, and 816 files respectively; one agent-os `.env.example` was excluded. Python AST inventories cover 256/819/8 files with no parse errors; Rust/TypeScript declarations are lexical indexes. Targeted body/test-source review is not every-branch execution or dynamic verification.
+
+**OPEN REVIEW AE-P1:** native offline curve summaries through the existing Learning analysis CLI. A-Evolve's `evolution_capacity` is last-minus-first; its named AULC helper is the mean of prefix means, not conventional trapezoidal AUC. The proposal preserves that distinction, explicit run ordering, comparable split/cohort identity, unknown/failed checkpoints and numeric provenance. No optimizer, automatic convergence/rollback gate or experiment launcher is proposed for this current-fit selection.
+
+**OPEN REVIEW AOS-P1:** bind existing MCP overflow artifacts to exact persisted-byte digest/length and verify the same bytes when read through an explicit integrity-aware read_file option. Existing result-budget spill already exists; neither another CAS nor a new result server is proposed. The integrity consumer, not metadata alone, is part of the proposal.
+
+**OPEN REVIEW AOS-P2, independently selectable security-contract change:** optional credential-bound exact tool-name grants for scoped integration/verification clients. Donor workflow selected-tool dispatch supplies the membership principle; native bearer/OAuth binding is an explicitly proposed extension, not a claimed donor token feature. Legacy unscoped keys retain their current surface. Tool-name scope is not per-action, per-path, per-session or localhost-only scope. No credential, authentication record, runtime policy or tool registration is changed by this plan.
+
+Agent0 yielded conditional curriculum/trajectory/training/sandbox-workbench mechanisms but no sufficiently substantiated immediate native consumer beyond existing outcome/evidence/process owners. It is not corpse. Under the user's explicit consumer-only rule it was moved intact to `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/Consumer/Agent0`: all 1286 non-Git file hashes/sizes unchanged, HEAD unchanged, clean working tree and old root absent. Scoped native src/scripts/package searches and a targeted process-path check found no current reference consumer. a-evolve and agent-os remain at their original paths because current-fit proposals await selection; neither was deleted or moved.
+
+Source limits retained explicitly: a-evolve metadata declares MIT but has no license/notice file in this snapshot; authoritative notice evidence is needed before verbatim copying. Agent0 relevant code is Apache-2.0 with per-file attribution. agent-os code is Apache-2.0 while LICENSE-SPEC covers specifications separately; `third_party/smolvm` is an empty checkout at recorded gitlink f83a1bbdbb7abdde79c481dfe32df43934b59427, not an inspected working sandbox. Donor shadow Ok receipts, empty-evaluation defaults, confidence gates and remote-to-local sandbox fallbacks are not adopted as native proof or authorization.
+
+Native Grafel was current before structural queries (9289 entities/48950 relationships); source/impact inspection covered report analysis and result-budget/MCP owners. No reindex/marker was needed. Audit artifacts are under `runtime/tmp/a-evolve-agent0-agent-os-grounding-20260929/`, including identity, inventories, native hashes and Agent0 move evidence. No product source, dependencies, tests/builds, credential creation, Core/Grafel restart, release intent/apply/version bump, Git mutation or deployment occurred. This record documents planning and applied reference lifecycle only; runtime topology below remains unchanged. Plans, MEMORY.md and canonical Memory carry the same pending-review boundary.
+
+### 0.1.70 Approved A-Evolve / AgentOS native adoption - 2026-09-29
+
+**AE-P1 AND AOS-P1/P2 IMPLEMENTED - TARGETED/COMPILED VERIFIED - RESIDENT ACTIVATION PENDING.** The user approved the current-fit plans from 0.1.69. Agent0 has only conditional consumer proposals and remains in Consumer; no trainer, optimizer or other workload was invented by this continuation.
+
+AE-P1 is `src/learning/retrieval-curve.ts`, optional `analysis.curve` in retrieval-series, and `analyze-retrieval.mjs --curve`. Explicit ordered streams retain comparable profile/split/seed identity, missing/failed checkpoints and deterministic digest/numeric provenance. Last-minus-first and mean-of-prefix-means are descriptive, not trapezoidal AUC, statistical significance, auto stopping, Memory capture or execution authority. This is independent native mathematical code, not verbatim reuse of the donor's incompletely supplied MIT notice.
+
+AOS-P1 is `src/security/verified-result-artifact.ts` plus the existing result-budget and filesystem handler/ReadOptions/disk-reader path. Persisted redacted JSON is bound to its exact stored-byte SHA-256/length, verified by bounded readback, and consumed by explicit read_file options.expectedIntegrity. Only owned local UTF-8 JSON result artifacts qualify. Link/path/type/expiry/length/digest checks precede page output from one verified descriptor snapshot; Unicode output stays bounded. No second CAS, arbitrary-file verifier or mutation replay was introduced.
+
+AOS-P2 is `src/auth/tool-grant.ts`, additive key metadata/options and `createAgentCoreMcpServer` wiring. Optional exact-name grants apply to tools/list and raw tools/call in every family before mutation admission. Absent is legacy full-surface; empty is deny-all; malformed fails closed; unknown names grant nothing. Issuance of nonempty grants requires an operator-supplied current available-tool catalogue. Key verification/list/import/rotation preserve grants; revoked scoped secrets cannot be imported into an unscoped record. Existing OAuth backing-key metadata already propagates the grant. This is tool-name authentication scope, NOT per-action/path/session/localhost confinement. Existing live credentials and auth records were not changed.
+
+Fresh qualification: **61/61 PASS, 0 failed/skipped**, four named files (19 curve,23 integrity,16 grant,3 legacy result-budget). Actual compiled CLI was exercised; a separate compiled isolated SDK fixture passed **8/8** checks for grant-aware discovery/calls, spill/read integrity, tamper refusal and fixture-key revocation. No full regression suite or live credential probe was run. Junction support failed on the project volume; after confirming TEMP/home redirection, a disposable fixture on SystemRoot's temporary volume exercised the real reparse guard and was removed. No volume conversion/global environment change occurred.
+
+Build succeeded, path policy269/0. Compatibility70->70, no breaking evidence; manifest118082bytes/~29521tokens within budget. The pre-existing optional browser fields in the release-baseline diff belong to SystemOne, not this change. New minor intent `.changeset/20260929-a-evolve-agent-os-adoption.md`; read-only next0.15.0/pending3, current0.14.0. No version bump/release apply/commit/tag/push/deployment.
+
+Post-change Grafel explicitly reindexed: current, integrity accepted,9354 entities/49527 relationships,repo coverage1/1. Graph callers confirm installCredentialToolGrant is called by createAgentCoreMcpServer; inline source review verifies hook ordering, same-descriptor reads and unchanged original auth/OAuth source. This was inline structural/source review, not an independent second agent.
+
+Resident PID3164 began09:46:26Z, before new compiled artifacts11:36:00-02Z, so resident HTTP activation is still pending an operator restart/readback. a-evolve and agent-os donors remain at their original paths; Agent0 remains Consumer, with no donor changed or moved in this pass. Evidence: runtime/tmp/a-evolve-agent-os-implementation-20260929/ (before-images, diffs, logs, compiled acceptance, result.json). Both plans, Agent0 disposition, MEMORY.md and canonical Memory are synchronized to this narrower status.
+
+### 0.1.71 A-Evolve / AgentOS post-restart resident readback - 2026-09-29
+
+**RESIDENT ACTIVATED - AOS-P1 LIVE VERIFIED - AOS-P2 RESTRICTED-CREDENTIAL HTTP VERIFICATION PENDING.** User restart loaded Node PID16632 at 2026-09-29T12:10:32.0466760Z, later than the latest qualified compiled artifact at11:36:02Z. All12 selected source and11 compiled hashes match the implementation result.json. Health is ok on0.14.0, Memory available/issueCount0, Grafel current/integrity accepted with9354 entities/49527 relationships and registered-repo coverage1/1. No assistant restart, build, dependency or product-source change occurred.
+
+Actual connected-MCP AOS-P1 observations: a synthetic oversized start_process result was spilled by the resident wrapper, advertising the exact SHA-256 and280200 persisted bytes versus280166 compact serialized bytes. Independent disk hashing matched. Resident read_file consumed expectedIntegrity and returned verified-snapshot pagination. A separate UTF-8 JSON fixture preserved Greek/Japanese/emoji text; a same-length tampered copy was refused with RESULT_ARTIFACT_INTEGRITY_MISMATCH and no payload exposure. These five bounded observations are live evidence, not a rerun of the earlier61-test suite. Owned synthetic spill/fixture files were removed; no unrelated files were manually cleaned.
+
+AE-P1 remains complete for its approved explicit CLI scope, backed by the earlier19 curve tests and compiled CLI execution with unchanged hashes. Earlier61/61 targeted tests and8/8 compiled-isolated SDK checks remain historical qualification, not fresh whole-suite results.
+
+AOS-P2 is included in the restarted build and normal connected tools remain callable. Restricted-key tools/list and denied tools/call through resident HTTP have NOT been exercised here; static import/process age and unscoped compatibility are not that proof. No active key was read, issued, rotated, revoked or newly scoped; ordinary usage timestamps were not compared. A new limited live verification credential requires explicit approval under Agent-OS plan4.3. Previous one-key SystemOne authorization is not reused. Another Core restart is not required.
+
+The two plans and MEMORY.md are synchronized to this narrower status; canonical Memory is updated in the same task. References remain unchanged (a-evolve/agent-os at original paths; Agent0 conditional in Consumer), pending final grant-verification/lifecycle closure. Product0.14.0 and existing minor intents/planned0.15.0 remain unchanged; no release apply, Git-history mutation or deployment. Evidence: runtime/tmp/a-evolve-agent-os-implementation-20260929/resident-readback-20260929.json. This section supersedes0.1.70 for activation status while preserving prior qualification boundaries.
+
+### 0.1.72 A-Evolve / AgentOS authorized resident verification and lifecycle closure - 2026-09-29
+
+**COMPLETE FOR APPROVED ADOPTION - AE-P1 CLI QUALIFIED; AOS-P1/P2 RESIDENT VERIFIED.** The user explicitly authorized one new read_file-only temporary credential for the remaining AOS-P2 localhost probe. No previously issued credential was reused as a test subject; no browser, keyboard/mouse control, second Core or additional listener was introduced.
+
+The verifier passed **11/11 checks, exit 0**: two source/compiled hash comparisons (12 source, 11 compiled files, all unchanged) and nine issuance/resident checks. Actual tools/list exposed only read_file; the permitted call read a synthetic UTF-8 JSON fixture with expectedIntegrity. Raw write_file and memory_status requests were denied with JSON-RPC -32602 and disabled-tool errors; forged request metadata could not widen the grant. Neither forbidden-write target was created. HTTP200 with an RPC error is recorded as denial, not execution success.
+
+Key lifecycle was observed: created2026-09-29T12:33:34.223Z, expiry12:43:34.177Z, revoked12:33:35.558Z. The same revoked key was then rejected by native verification and an actual HTTP401 request. Other key metadata except lastUsedAt remained unchanged. Client closed and the owned fixture directory was removed. Raw secret value was not printed or saved to scripts, evidence or Memory; the existing key store retains only the revoked hash/metadata record.
+
+The observed grant is exact tool-name authorization, not per-action, per-path, per-session or server-enforced localhost confinement. The verifier's network requests were limited to localhost. No live OAuth token was issued or tested in this continuation; earlier OAuth inheritance tests remain separate qualification. Earlier61/61 scoped tests and8/8 compiled isolated checks were not rerun. AE-P1 remains complete for its explicit offline CLI scope, and AOS-P1 retains its previous resident positive/negative readback plus this scoped read.
+
+Reference lifecycle is closed under the user's original rule: a-evolve and agent-os moved intact to `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/Consumer/a-evolve` and `Consumer/agent-os`; Agent0 remains in `Consumer/Agent0`. Post-move/reference hashes match424/816/1286 inventoried files respectively, original HEADs remain and all working trees are clean. agent-os `worlds/demiurge/.env.example` remains excluded from content inspection; its smolvm subtree is still empty/unqualified. Native src/scripts matches are attribution/formula labels, not donor dependencies; no matching donor process was found. Remaining conditional consumers are retained, not declared universally exhausted. No reference was deleted.
+
+Health readback: ok on0.14.0; Memory available/issueCount0; Grafel current/integrity accepted,9354 entities/49527 relationships. No product source/dependency/build/restart/reindex/release-intent/apply/version/Git-history/deployment change occurred. Existing minor intents/planned0.15.0 remain unchanged.
+
+Evidence: `runtime/tmp/a-evolve-agent-os-implementation-20260929/authorized-scoped-http-2026-09-29T12-33-34-042Z.json`, `reference-lifecycle-closure-20260929.json`, and `final-authorized-closure-20260929.json`. Both adoption plans, Agent0 disposition, MEMORY.md and canonical Memory are synchronized. This section supersedes0.1.70-0.1.71 only for current acceptance/lifecycle status; their prior qualification remains historical evidence.
+
+### 0.1.73 AGiXT / AIOS / Lifelong catalogue source-first grounding - 2026-09-29
+
+**PLANNING ONLY - USER REVIEW REQUIRED - NO PRODUCT IMPLEMENTATION.** Three new plans were created after the pre-write docs search found no matching dedicated plan: `docs/AGiXT-Steal-Use-Integration-Plan.md`, `docs/AIOS-Steal-Use-Integration-Plan.md`, and `docs/Awesome-Lifelong-LLM-Agent-Steal-Use-Integration-Plan.md`. The requested basis is the named local checkouts and current native source, not repository marketing or inferred implementations from linked papers.
+
+Pinned references: AGiXT `3a3202419a962aa815d139849d6f218d3f81c998` (version file v1.9.4), AIOS/agiresearch `292d98f78c835499df18cdb6de6325bba1895862`, and qianlima-lab/awesome-lifelong-llm-agent `b52ee231579804eace965141180a6d4c7a80108a`. Available-file inventories cover843/250/14 non-Git files, respectively. Python AST inspection covers188/181/1 files; AIOS calculator.py has an indentation parse failure at line122. Rust/JS/TS declarations are lexical indexes, not compiled qualification. AIOS .env.example was excluded; no donor import/execution, model, VM, test or build occurred.
+
+**OPEN REVIEW AGIXT-P1:** optional public-only URL retrieval on the existing read_file URL path. Donor XT.py validates DNS addresses, connects to a pinned address and checks every redirect; its download consumer calls that helper. Native fetchWithPolicy owns retries/aborts but not public-address/pinned-peer admission. The proposal preserves existing intentional local URL reads when absent and requires explicit strict forwarding. It must also eliminate a second unrestricted PDF fetch in this new mode by using the existing byte parser. The donor's trusted-local bypass, unbounded preload and empty-object error outcomes are not adopted.
+
+**OPEN REVIEW AIOS-P1:** explicit offline workbook assertions after native workbook edits, through a small proposed CLI and existing ExcelJS/file/ZIP facilities. The donor's table comparator is source-wired into a desktop evaluator; native Excel reads/writes and the current answer-string effectiveness comparator do not perform equivalent selected cell/formula assertions. Proposed strict pass/fail/unavailable outcomes must distinguish formula text, stored caches, blank and missing values; no recalculation/visual/financial-correctness or automatic execution-gate claim. Empty-rule success and implicit four-place rounding are not copied. The new helper is not installed by this plan.
+
+AIOS's root LICENSE is two whitespace bytes; the Rust scaffold's Apache metadata is not blanket provenance for Python/embedded OSWorld-style evaluators. The plan favors independent native redesign and requires resolving applicable notices before verbatim reuse. The Rust tool and LLM implementations are echo placeholders, not runtime proof. Memory provider sharing/write-barrier/prompt-injection, scheduler, serving and VM families remain conditional on real consumers; native Memory/projection/process owners are not replaced.
+
+The Lifelong checkout is a catalogue plus one Markdown generator, not a lifelong-agent runtime. Static JSON inspection found64 full entries,12 label aliases,13 category paths,64 distinct link strings and no unresolved aliases. Perception Module / Memory Module / Action Module remain the source's taxonomy; descriptions of linked papers are not inspected code or independently verified results. Its future literature/evaluation-annotation consumer is unselected, so it was moved intact to `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/Consumer/awesome-lifelong-llm-agent` under the user's consumer-only rule. All14 file hashes/sizes and HEAD match; working tree clean, old root absent. Pre-move scoped native references and process-path checks found no consumer. No repository was deleted. AGiXT and AIOS remain at original paths because current-fit proposals await review.
+
+Evidence: `runtime/tmp/agixt-aios-lifelong-grounding-20260929/` contains identities, inventories, Python/lexical declarations, source anchors, a295-file native snapshot, catalogue analysis and move/closure readbacks. Native Grafel was current/integrity accepted (9354 entities/49527 relationships) before read-only owner/impact queries. No marker/reindex, native product-source/dependency change, credential action, restart, changeset/release/version/Git-history mutation or deployment was performed. This is bounded source grounding, not exhaustive execution or a guarantee against future reuse opportunities. The three plans, MEMORY.md and canonical Memory are synchronized to proposal-only plus the applied catalogue move; runtime topology below is unchanged.
+
+### 0.1.74 Approved AGiXT / AIOS native adoption — 2026-09-29
+
+**AGIXT-P1 AND AIOS-P1 IMPLEMENTED — TARGETED/COMPILED VERIFIED — AGIXT RESIDENT ACTIVATION PENDING.** The user selected the two current-fit proposals from 0.1.73. The Lifelong catalogue has no selected implementation consumer and stays in Consumer. No donor runtime, dependency, model, VM, proxy, new MCP tool or global execution-control layer was added.
+
+AGIXT-P1 adds `src/net/public-address.ts` and `public-url-read.ts`, connected to the existing read_file handler/ReadOptions/filesystem chain. Optional `options.networkPolicy='public-only'` applies a conservative all-address check, per-hop pinned HTTP/TLS connection, original Host/SNI/certificate identity, connected-peer validation before send, five-redirect cap, one 30-second network deadline and bounded identity-encoded response bytes. Invalid policy/local misuse/converter combinations are refused, not silently dropped. Existing URL behavior without the option remains unchanged. The PDF branch consumes the vetted byte snapshot through the existing byte parser, not a second URL fetch. Returned network metadata never makes fetched content trusted.
+
+AIOS-P1 adds `src/verification/workbook-input.ts`, `workbook-assertions.ts`, and the explicit `scripts/verify/verify-workbook.mjs` CLI. Strict digest-bound rules compare stored sheet order, typed scalar values, formula text, explicit cache values and frozen panes. Formula caches are not recalculated; zero/false are distinct from blank and missing. Same-descriptor input admission, actual ZIP expansion/CRC limits, relationship/macro refusal, XML validation and bounded worksheet allocations precede the existing ExcelJS parser. Admitted entries are repacked as STORE-only bytes. An owned worker has a 30-second deadline/V8 heap limits; it is not a hostile-code sandbox. New reports are exclusive and byte-verified, with pass/fail/unavailable outcomes and no workbook mutation or automatic approval.
+
+Fresh final qualification: **64/64 PASS, no failures/skips**, only `tests/agixt-public-url-adoption.test.ts` (28) and `tests/aios-workbook-assertions-adoption.test.ts` (36). Includes actual compiled CLI pass/fail/missing-cache/output-exists cases, report digests and unchanged inputs, a real byte-parsed PDF, and a real Windows junction fixture. A separate compiled-handler controlled-connector probe passed **8/8** checks. No real public-network TLS exchange or resident URL-mode call was claimed from those fixtures; no full regression suite was run.
+
+Review corrections are evidence-backed: validate raw redirect authorities before URL normalization; preserve falsy cache values using ExcelJS's result getter; reject malformed numeric/boolean XML, duplicate cells and oversized sparse allocation before library coercion. Installed Node agent=false behavior was inspected to confirm no inherited proxyEnv. Review was inline, not a second independent agent.
+
+Build passed, path policy **274 authored files / 0 exceptions**. Compatibility **70→70**, no removed/added routes/tools and no breaking evidence; manifest **118,082 bytes / approximately 29,521 tokens** within budget. The browser optional fields in the baseline comparison predate this task. New minor intent `.changeset/20260929-agixt-aios-adoption.md`; intent check passed; read-only next0.15.0/pending4, current0.14.0 unchanged.
+
+Explicit post-change Grafel index is current/integrity accepted, **9,501 entities / 50,539 relationships**, registered-repository coverage1/1. Find results include the new functions; impact edges do not completely describe their named/dynamic-import consumers. Exact source, handler tests and compiled CLI are the consumer evidence, not absent graph edges.
+
+Resident Node16632 started2026-09-29T12:10:32.0466760Z before the new compiled artifacts; AGIXT-P1 live activation remains pending one operator restart/readback. AIOS-P1 is an already-exercised standalone CLI, not a new resident tool. AGiXT/AIOS references remain at original paths; Lifelong remains Consumer; no reference is deleted or moved in this implementation. No credential, automatic restart, release apply, version bump, commit/tag/push or deployment occurred.
+
+Docs, attribution and canonical Memory are synchronized to this narrower status. Evidence: `runtime/tmp/agixt-aios-implementation-20260929/` (before-images, source diff, red/green/compiled/release logs, source/compiled hashes and result.json). Section0.1.73 remains historical proposal grounding, superseded only for the approved implementation status.
+
+### 0.1.75 AGiXT / AIOS post-restart resident verification and reference closure — 2026-09-29
+
+**COMPLETE FOR APPROVED ADOPTION — AGIXT-P1 RESIDENT VERIFIED; AIOS-P1 CLI QUALIFIED.** The user-controlled restart loaded the Core listener on 127.0.0.1:8765 as PID **14472**, started **2026-09-29T14:52:52.4511586Z**, after the newest selected compiled artifact at **14:20:50Z**. All **9 source/CLI, 8 compiled and 2 test hashes** match the qualified implementation. Health is ok on **0.14.0**; Memory available/issueCount0; Code Intelligence current/integrity accepted with **9,502 entities / 50,545 relationships**. No assistant restart/reindex was needed.
+
+Eight selected logical cases were observed through actual connected `read_file` MCP: public HTTPS success (713 bytes, zero redirects), a GitHub static-file public redirect (290 bytes, one hop), IPv4 loopback refusal, mapped-IPv6 loopback refusal, unknown policy refusal, policy-on-local-file refusal, unsupported projection refusal, and successful localhost health reading when policy is absent. Expected refusals return PUBLIC_URL_ADDRESS/PUBLIC_URL_MODE_INVALID. Public metadata still says contentTrust=untrusted. These are eight selected case outcomes, not a claim that every entry in shared tool history was successful or belonged to this verifier.
+
+An unsuccessful public redirect fixture is retained: httpbingo produced PUBLIC_URL_HTTP_STATUS. A separate compiled-helper observation with the unchanged strict native connector saw HTTP402 before a Location header. The successful resident redirect used a different GitHub static raw-file route; no policy weakening or unrestricted fallback was introduced. A repeated-failure advisory on invalid-mode negative controls was evidence-only, not retry authority.
+
+The earlier **64/64 targeted tests** and **8/8 controlled compiled checks** remain historical qualification and were not rerun. Live public TLS/redirect/denial behavior now complements those fixtures; adversarial DNS/TLS, byte-PDF and resource-cap cases are not falsely described as newly exercised on the public network. AIOS workbook assertions remain an explicit offline CLI, with no recalculation, financial/visual-correctness or automatic approval claim.
+
+Reference lifecycle closed under the user's original consumer-only rule. AGiXT and AIOS moved intact to `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/Consumer/AGiXT` and `Consumer/AIOS`. Post-move **843/250** inventoried sizes/hashes and original HEADs match, Git is clean, and old roots are absent. Lifelong stays in Consumer with **14/14** inventoried identities unchanged. AIOS .env.example remains excluded from content inspection. Native authored source/script matches were attribution comments, package files had no donor dependency, and the targeted process-path check found no consumer. No repository was deleted; remaining AGIXT-C1-C4, AIOS-C1-C3 and LLA-C1-C2 still require future explicit consumers.
+
+No product-source/dependency/credential/build/release-intent/apply/version/Git-history/deployment change occurred. Existing minor intents and the prior planned0.15.0 are not applied by this closure. No extra browser, listener or authentication credential was created; only readback evidence, reference relocation, documentation and canonical Memory changed.
+
+Evidence: `runtime/tmp/agixt-aios-implementation-20260929/resident-closure-20260929T145607/` (resident-readback.json, reference-preflight.json, before-docs, final-closure.json). Both plans section9, Lifelong disposition, MEMORY.md and canonical Memory are synchronized. This section supersedes0.1.74 only for activation/lifecycle status; earlier qualification and provenance boundaries remain historical evidence. No further restart is required for the approved task.
+
+### 0.1.76 Fourteen-reference source-first plans and Consumer separation â€” 2026-09-29
+
+**PLANNING ONLY â€” THREE OPEN PROPOSALS â€” NO PRODUCT IMPLEMENTATION.** The user explicitly requested fourteen named local references. Thirteen individual plans were created, the existing Awesome-Self-Improving-Agents plan was updated in-place without reopening ASI-P1â€“P6, and `docs/Fourteen-Reference-Steal-Use-Review-20260929.md` is the selection index. User review/selection must precede implementation.
+
+**OPEN CORAL-P1:** an explicit offline local evidence-reference CLI for selected document/source identities, byte digests, literal target paths and line ranges. It would produce pass/fail/unavailable evidence without equating a valid link with semantic support, executing source text, fetching URLs or becoming an approval gate. Donor check_grounding.py is connected to the research template/skill/tests; its regex/path/error and confidence-score shortcuts are not copied.
+
+**OPEN GEA-P1:** descriptive task-behavior K-neighbor cosine novelty through the existing offline retrieval analysis CLI. The proposal consumes native verified case vectors and comparability groups, separately from existing grid diversity, coverage portfolio, ordinary Pareto and curve reporting. Missing/zero-direction cases remain unavailable; no optimizer, parent selection, randomized fallback or causal improvement claim.
+
+**OPEN METACLAW-P1:** optional expected-content digest for existing Memory feedback, inspired by generation-tagged stale rollout exclusion, not a copied RL trainer. A full memory_read would expose an ID/body-only digest; guarded helpful/not-helpful/stale/wrong feedback would recheck it inside the existing canonical Memory lock before salience mutation. Default legacy feedback remains compatible; forget/restore misuse is explicitly refused; no new lock/store, automatic salience reset or complete-record-revision claim. Current source has no such guard; this section describes a proposal, not installed behavior.
+
+Source basis: 13,001 available-file identity entries; 2,385 Python files statically parsed with no parse errors and 1,877 other code files lexically indexed. Body/assertion review is targeted, not all-file semantic or every-branch dynamic qualification. Large vendor/example trees were indexed but not compiled/imported. Excluded environment/private-data paths are recorded. Godel_Agent/src/key.env was opaque identity-only in the initial inventory, not semantically inspected or printed; the final content readback excludes it and verifies 13,000 other file hashes/sizes. No credential was created, modified or exposed. The continual-harness pokered gitlink is pinned but empty and was not fetched.
+
+Native Grafel was current/integrity accepted (9,502 entities / 50,545 relationships) before owner/impact inspection. Its MemoryFeedbackStore impact had broad module nodes, not complete named caller evidence; current MemoryService/MCP/store-lock source establishes the consumer chain. No marker, donor workspace registration, reindex, repair or broad graph/test operation occurred. Existing native report, Skills, Memory, process, Semantic IDE and controller owners were compared rather than replaced.
+
+Reference lifecycle is applied: **CORAL, GEA and metaclaw remain at their original protected paths** pending current-fit proposal review. Eleven references moved intact under `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/Consumer/`: awesome-self-evolving-agents, Awesome-Self-Improving-Agents, continual-harness, dgm, EvolveR, gepa, Godel_Agent, live-swe-agent, meta-agent, nexus-agent and rust-norion. All fourteen original HEADs and clean working trees remain; all eleven moved old roots are absent; no included file drift/extra/missing paths or reparse links were found. Pre-move authored src/scripts/package matches were GEPA attribution only; targeted donor-process-path search was empty. No repository was deleted or claimed universally exhausted.
+
+The newly supplied Awesome-Self-Improving-Agents c746d3 checkout is different from the previously deleted 99ce397 pin: local Git diff changes only two README lines, including a research pointer and a closing details tag. No new runtime or changed manuscript mechanism appeared. ASI-P1â€“P6 stay closed; the new checkout is retained only for a future selected literature consumer, not automatically deleted using the prior different-checkout decision. Live-SWE-agent is configuration-only here; external mini-swe-agent code is not bundled. Rust-Norion root GPL-3.0/NOTICE and Sukoji root CC0/code MIT distinctions are recorded, not silently treated as blanket permissive licences.
+
+Evidence: `runtime/tmp/fourteen-reference-grounding-20260929T152826Z/` contains identities, fourteen inventories/static declarations, native-before.json, source/consumer anchors, licence/delta evidence, prior-plan search, pre/post-move checks, before-docs, plan review and final-closure.json. A 422-file native snapshot is rechecked at closure; no native product source/dependency, tests/build, new credential, restart, changeset/release/version/Git-history mutation or deployment is part of this task. Individual plans, selection index, MEMORY.md and canonical Memory carry the same proposal-only and applied-reference state. The runtime topology below is unchanged.
+
+### 0.1.77 CORAL / GEA / MetaClaw approved implementation and recovered status
+
+**COMPLETE FOR APPROVED ADOPTION: CORAL/GEA CLI COMPLETE; METACLAW AUTHENTICATED RESIDENT VERIFIED; REFERENCE LIFECYCLE CLOSED.** The user approved the three P1 proposals from 0.1.76. Product implementation and qualification occurred on 2026-09-29; this section and the aggregate status were recovered on 2026-09-30 WIB after direct file/log/process readback established that the prior aggregate documentation/Memory update had not completed. The eleven conditional references are not installation tasks.
+
+CORAL-P1 implements `src/verification/evidence-links.ts`, neutral `evidence-snapshot.ts` and `scripts/verify/verify-evidence-links.mjs`. The explicit offline root/manifest/output CLI checks declared document SHA-256 identities, literal references and line bounds, returns pass/fail/unavailable, and does not establish semantic support. Initial immutable byte snapshots supply all line checks; bounded digest/identity rechecks at helper completion and around exclusive report creation detect same-size writes that timestamps can miss. This is not an OS-mandatory file lock or a guarantee after the final read. No network fetch or source execution occurs. Complete for the approved CLI scope.
+
+GEA-P1 adds `src/learning/retrieval-novelty.ts`, optional `analysis.novelty.neighbors` (1..10) and the `--novelty` mode in the existing `scripts/learning/analyze-retrieval.mjs`. It computes descriptive nearest-neighbor cosine distances on verified per-case hit vectors within compatible profile/split groups, with explicit zero-vector/missing/failed/incomplete handling, deterministic ties and a 20,000,000 pair-case work bound. It neither selects parents nor launches experiments, and makes no causal/significance claim. All eight analysis modes remain distinct. Complete for the approved CLI scope.
+
+METACLAW-P1 adds `src/memory/feedback-target.ts`: the exact ID/body digest uses UTF-8 JSON.stringify(['agent-core-memory-feedback-content/v1', id, content]). Non-pinned `memory_read` returns `feedbackTargetDigest` derived from the returned body. Optional `memory_feedback.expectedContentDigest` is parsed and forwarded for ordinary feedback and validated against a non-locking canonical read inside the existing Memory process lock before salience/event mutation or replay. Changed-body feedback is refused without a new effect; unsupported lifecycle guard use is refused. Metadata/touch-only changes do not alter the body digest, legacy unguarded behavior is retained, and no second lock/store/trainer is introduced. This is content identity, not authorization or a complete-record revision.
+
+Saved qualification evidence: 116/116 tests passed with zero failures/skips in seven explicit files (79 adoption cases: CORAL38, GEA17, MetaClaw24; plus37 selected existing retrieval/manifest cases). Build exit0/path policy279 authored files/0 exceptions. Compiled acceptance19/19 passed, using isolated in-memory MCP plus actual analysis CLI modes; fixtures/client/server were cleaned up. Compatibility recorded70->70 tools, no new required/removed parameter, breakingEvidence=false; manifest118234 bytes/approximately29559 tokens. These logs were read again, not rerun, during status recovery. Fresh SHA-256/size comparison matches all11 selected source/CLI,18 compiled/maps and3 test files. This is not broad regression or resident HTTP behavioral acceptance.
+
+Historical pre-restart recovery readback (superseded below): `/health=ok`, product0.14.0, Memory/Execution/Code Intelligence/Semantic IDE/Learning/Skills available; Memory and Code Intelligence issueCount0; graph current/accepted9659entities/51413relationships. Node PID19512 started2026-09-29T15:23:11.7647380Z, before selected artifacts16:38:48Z. The current process is healthy but still predates this build. Historical pending steps were restart and bounded resident acceptance; both are superseded by 0.1.77.2. No credential or automatic restart is implicitly authorized, and no live guard success or long-duration stability is claimed.
+
+Reference lifecycle was already applied during execution: CORAL and GEA are in `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/Consumer/CORAL` and `Consumer/GEA`. Saved move readback compared3711/444 included hashes/sizes; fresh path/HEAD/Git checks confirm original pins and clean working trees, with original roots absent. At that recovery checkpoint metaclaw was still at its original root; it is now moved to Consumer/metaclaw with the same pin and included identities (0.1.77.2). No further move/deletion occurred in recovery.
+
+One minor intent `.changeset/20260929-coral-gea-metaclaw-adoption.md` remains unapplied, product0.14.0/planned0.15.0. No dependency, model, donor runtime, credential, HTTP fixture listener, restart, release apply, Git-history mutation or deployment was introduced. Recovery changed documentation, aggregate evidence and canonical Memory only. It does not reopen completed ASI or conditional proposals.
+
+Evidence: `runtime/tmp/coral-gea-metaclaw-implementation-20260929T161854Z/` including source-artifact-identities.json, qualification-final-vitest.json, compiled-acceptance.json, build-final.log, compatibility-result.json, move/graph readbacks and recovered result.json. Status-recovery before-images and fresh measurements are in `status-recovery-20260929T172506Z/`. The review index, three individual plans, MEMORY.md and canonical Memory206c85e5-8142-49bf-841b-7a9270b4bc25 share the same stage boundary.
+
+#### 0.1.77.1 Historical resident read-only checkpoint
+
+The initial post-restart readback verified native MCP exact-body digests and fixture cleanup, not guarded feedback. Its former acceptance-pending state is superseded by 0.1.77.2. The reports resident-readback-20260930.json and resident-digest-readback-20260930.json remain unchanged historical evidence.
+
+#### 0.1.77.2 Final authorized acceptance and Consumer relocation — 2026-09-30 WIB
+
+**COMPLETE FOR APPROVED ADOPTION.** CORAL-P1 and GEA-P1 retain their completed offline CLI scopes. METACLAW-P1 is live-activated and authenticated resident HTTP verified. No implementation, activation or runtime acceptance remains open for these three selected proposals; conditional donor families are not installation tasks.
+
+Authenticated acceptance at 2026-09-29T18:42Z (2026-09-30 01:42 WIB) completed with 19/19 bounded checks and exit 0. Matching feedback applied once; replay caused no second effect; old-body feedback and old-guard replay were refused with MEMORY_FEEDBACK_CONTENT_CHANGED without changing canonical bytes, salience or events. Guarded forget was refused; a new matching body digest was accepted. One authorized five-tool key was revoked at 18:42:15.172Z and the same key was rejected by native verification and HTTP 401. Synthetic canonical/feedback records were removed and 84 other note files stayed byte-identical across that probe. This is prior executed resident evidence, not a test rerun in the administrative closeout.
+
+On the user's subsequent explicit update-and-move instruction, metaclaw was moved intact to DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/Consumer/metaclaw. All 118 non-Git files and 28 Git files, plus directory inventory, match before/after. The 88 files included in the original audit still match that audit; 30 pre-existing __pycache__ files excluded by the original inventory were preserved, not deleted. HEAD remains e727cf86842b6411ad13591859349bb5a1fe3e69 on main, Git clean; old root absent, no reparse entries or observed process consumer. Workspace list contains only agent-core; scoped source/scripts search found only the existing attribution comment. Conditional MCL-C1/C2/C3 remain retained, not installed or declared exhausted.
+
+The administrative step leaves all 32 selected source/compiled/test identities unchanged. No new credential, test suite, build, restart, release apply, dependency or Git-history mutation occurred. Product remains 0.14.0; the existing minor intent stays unapplied. The chat memory_feedback descriptor is not claimed refreshed: the authenticated server itself advertised and executed expectedContentDigest.
+
+Primary evidence: runtime/tmp/coral-gea-metaclaw-implementation-20260929T161854Z/authorized-guard-http-20260930.json; final-admin-before-20260930.json; final-admin-after-20260930.json; final-doc-sync-20260930.json. Before-doc copies: before-final-admin-20260930/. Canonical continuity uses the existing record 206c85e5-8142-49bf-841b-7a9270b4bc25, not a duplicate.
+
+### 0.1.78 Product-direction documentation alignment — 2026-09-30
+
+**DOCUMENTATION / INTENT ALIGNMENT ONLY; NO NEW PRODUCT CAPABILITY IMPLEMENTED.** The user explicitly confirmed the interpretation of `Target-Feture.md`: Agent Core's destination is a model-pluggable cumulative-learning agent with persistent local knowledge, procedural reuse and evidence-grounded problem solving. Repeated grounding and steal/use are intended to develop both system and Memory mechanisms toward that destination. The maintained direction/rationale is `Agent-Core-Product-Direction.md`; the original transcript is preserved.
+
+A bounded source read established the existing composition and boundaries: `src/index.ts` initializes native services and HTTP/MCP; `src/learning/service.ts` constructs Memory/Grafel sinks and receives controller-supplied review candidates; `src/learning/memory-sink.ts` persists reviewed knowledge via MemoryService; `src/memory/retrieval-ledger.ts` explicitly separates returned-to-controller from model use and causation; `src/skills/service.ts` advertises artifact-only/executionAuthority=false. Grafel orientation reported current/available before this inspection. This is not a full caller/consumer audit and does not prove either absence or completion of every end-to-end learning path.
+
+The new direction document distinguishes confirmed intent, the source boundaries just observed, and proposed next work. Proposed gap audit, one learning/reuse slice, controlled acceptance and eventual native model/session integration remain proposals, not executed tasks or new authorizations. Existing per-wave COMPLETE statuses remain scoped; no donor, native-AI workstream, retired Hermes bridge, or separate Memory authority is created/reopened.
+
+Pointers/summary context are added to existing `AGENTS.md`, README and root `MEMORY.md`; their permission, verification and runtime ownership rules are not replaced. The existing native-AI direction canonical record is updated in place to carry the confirmed purpose while preserving the separate native-runtime/retired-Partner history. README's inherited v0.12/Hermes/recovery text is explicitly labeled historical rather than silently treated as current authority.
+
+Scope: documentation and durable product context only. No protected reference or secret-file inspection, clone/install, executable source change, behavioral test/benchmark, model call, build, restart, release apply or Git-history change. Before-doc copies and selected unchanged-file hashes are under `runtime/tmp/product-direction-alignment-20260930/`; document readback is not proof of learning improvement. No new release intent is needed for this non-executable direction clarification.
+
+### 0.1.79 Pre-runtime body / local-Memory grounding — 2026-09-30
+
+**SOURCE AUDIT COMPLETE FOR DECLARED SCOPE; PRODUCT MATURITY NOT YET ACCEPTED.** The user clarified the development order: mature the Agent Core body, machine capabilities and local knowledge/reuse mechanisms first; native model/API-key runtime is a later phase. The current external MCP controller may exercise the body. Missing native AI runtime is not a current defect or permission to build it.
+
+Detailed matrix, source references, limits and unexecuted next-work proposals: `Agent-Core-PreRuntime-Maturity-Grounding-20260930.md`. The audit records 433 source/scripts/tests file identities, including 268 src files, with targeted semantic reads rather than a claim of all-file/all-branch review. The graph was current/available/accepted, but omitted the production MemoryLearningSink constructor caller in a spot check; exact source controls the findings.
+
+Observed implementation limitations: (G1) generic `MemoryLearningSink.capture` does not forward candidate.workspace into Memory provenance, while scoped retrieval/list require provenance.workspace; (G2) `memory/provenance.ts` uses a different Git invocation from `repository-identity.ts`, omitting the latter's per-command safe.directory, and staleness requires top-level gitCommit even when identity.checkpoint.head exists; (G3) retrieval diagnostics links later feedback by memory ID/time, not exact body/attempt/task use, so the existing body feedback guard does not by itself prove task benefit. These are findings, not fixes installed by the audit.
+
+Procedural limits: SkillService remains artifact-only and the current catalogue reports 0 artifacts. A selected Patterns query returned three rejected probe records, not a census of all procedural knowledge. Review/capture and explicit Memory/Patterns/Skills owners exist; automatic skill execution/model generation is not required or introduced. Selected test source also has a load/save-only mock while current LearningService.review uses stateStore.mutate; this is a static fixture mismatch, not a newly executed test failure.
+
+Read-only evidence: scoped 7-day/100-limit retrieval diagnostics returned 18 attempts/42 controller exposures, 0 assessed attempts, 0 explicit feedback events and 18 linked feature outcomes. Those outcomes include retrieval completion itself; no downstream learning benefit is inferred. Fresh localhost health is HTTP 200/ok/version 0.14.0, Memory issueCount 0, Grafel current/accepted, and Execution/Semantic IDE/Learning/Skills available. Health does not certify freshness or applicability of individual knowledge.
+
+Recommended next work is the proposed pre-runtime Memory Reuse Reliability slice: preserve explicit scope, repair freshness semantics, design minimal use/outcome evidence through existing owners, and obtain approval for a controlled cross-session procedural pilot using the current controller. No product fix/test/build/model/credential/clone/restart/release has been performed. Prior closed adoptions remain closed on their scopes. No new release intent is required for this documentation-only audit.
+
+Documentation aligns Product-Direction, AGENTS, README and root MEMORY to body-first/runtime-later sequencing. AGENTS' obsolete Hermes A2A block is marked historical/non-operational, not reinstated. Canonical direction Memory is updated in place and a separate linked audit record records findings. Evidence/before-doc snapshots and final integrity readback: `runtime/tmp/preruntime-grounding-20260930/`. Original Target-Feture transcript and executable source are preserved.
+
+### 0.1.80 Memory Reuse Reliability / scoped user auto-trust — 2026-09-30
+
+**IMPLEMENTED — TARGETED/COMPILED VERIFIED — RESIDENT VERIFIED.** The user explicitly authorized full task-scoped execution and strengthened auto-trust for routine filesystem/engineering operations. `AGENTS.md` now states that approved tasks may perform list/search/read/read-multiple/get-info, create/write/append/edit, copy/move/rename, checkpoints, scoped commands, targeted tests/build preparation, documentation/Memory sync and readback without repeated permission prompts. This remains distinct from truth/evidence/authentication bypass, unrelated destructive cleanup, secrets access, implicit release/restart, or the deferred AI runtime. Current machine-control config already has `allowedDirectories=[]`, so there is no Agent Core directory allowlist blocking routine filesystem access.
+
+MRR-1 preserves normalized candidate.workspace through the generic MemoryLearningSink and uses same-scope exact content/category/reuse-condition deduplication; global lessons stay global, existing notes are not automatically migrated. MRR-2 adds optional bounded sourceSnapshot provenance through types, capture/staleness, canonical parser and transfer. New implicit local capture records selected working bytes, including dirty/untracked files; explicit historical commits keep a labeled git-reference basis. Git uses per-command safe.directory without global configuration. Missing/excluded/unsafe/over-budget source remains unavailable. Snapshots are byte evidence, not semantic truth or cross-file atomic snapshots.
+
+Changed owners: src/learning/memory-sink.ts; src/memory/{types,provenance,note-format,transfer}.ts; new src/memory/source-snapshot.ts reuses the existing bounded verification reader. Reads validate aliases before evidence-policy lookup, honor metadata-only/omit, and exclude private/runtime/protected trees. No new DB, provider, public tool, runtime policy bypass or generative model is added. Ordinary legacy records remain readable; no retroactive source-current labels.
+
+Evidence: 39/39 targeted tests (19 new reliability and 20 decision-evidence), 0 failures/skips; 8/8 isolated compiled checks; build exit 0, path policy 280/0. Initial unfinished-state failures and subsequent mock/junction-fixture failures are retained in reports. The E: filesystem rejected real junction creation with EISDIR; the final alias-order test is explicitly a unit seam, not OS junction acceptance. Learning test stateStore now models mutate and clears mock state between tests.
+
+Grafel was explicitly reindexed and reported current/accepted with 9,689 entities/51,590 relationships. captureMemorySourceSnapshot and callers captureMemoryProvenance, assessMemoryStaleness, compareMemorySourceSnapshot were observed in graph and exact source. Source-input schema and MCP registration are unchanged by these fixes; no broad compatibility or regression suite is claimed.
+
+Post-restart resident readback confirms Node PID 5716 runs `<PROJECT_ROOT>\\runtime\\node\\node.exe <PROJECT_ROOT>\\dist\\index.js` and started after `dist/memory/provenance.js` was written at 2026-09-29T20:25:36Z. `/health=ok` on v0.14.0; Memory canonical/index/embedding/intelligence are available with issueCount 0; Learning is available; Grafel is current/accepted. Resident MRR-2 verification captured a bounded `sourceSnapshot`, returned `current`, then detected a same-byte-length source edit as `changed` with basis `local-byte-snapshot`. Resident MRR-1 verification captured a verified Learning candidate with workspace `agent-core`; fusion search scoped to `agent-core` returned that record with the workspace preserved. Synthetic Memory records and filesystem fixtures were deleted after the probe. A separate filesystem smoke demonstrated write/read/edit/copy/move on task-owned fixture paths. **MRR-3 has progressed beyond the proposal state recorded here; current implementation/qualification status is section 0.1.81.** MRR-4 genuine cross-session pilot remains separate and waits for MRR-3 resident verification; overall cumulative-learning maturity remains unaccepted.
+
+Authority/results: Memory-Reuse-Reliability-20260930.md; evidence runtime/tmp/memory-reuse-reliability-20260930/ (targeted-corrected.json, compiled-check.json, build.log, resident-process.json, final-readback.json). One minor intent .changeset/20260930-memory-reuse-reliability.md remains unapplied; product stays 0.14.0. Source/doc changes use RDC; canonical continuity uses native Memory. No secrets, production Memory fixture, donor change, new credential, dependency, runtime AI, release apply or actual project-history commit.
+
+### 0.1.81 MRR-3 Knowledge Use Receipt / retrieval-to-outcome evidence — 2026-09-30
+
+**IMPLEMENTED — TARGETED/COMPILED VERIFIED — RESIDENT VERIFIED.** MRR-3 extends existing Memory/Learning evidence owners instead of adding an agent/runtime/store. Delivered `memory_search` results now carry additive `retrievalEvidence` with the retrieval attempt id, exact `memoryFeedbackContentDigest` body identity, and existing metadata fingerprint; retrieval exposures persist the same body digest. Historical exposure rows remain readable but are not receipt-eligible without exact body identity.
+
+The existing `learning` MCP tool gains additive `action="receipt"`; tool count stays unchanged. Receipt validation binds `useId -> retrievalAttemptId -> memoryId -> contentDigest -> workspace`, accepts only selected/trimmed exposures returned to the controller, requires verification reference for success/failure, enforces idempotency/conflict, and rejects applied/adapted use when canonical body changed. Explicit `rejected/stale-content/unavailable` can record correct refusal of stale knowledge. Receipt persistence uses a bounded `retrieval-use-receipts.jsonl` evidence log under `MemoryRetrievalLedger`; it is not canonical Memory and does not mutate Memory content/links, feedback salience, retrieval ranking, Skills, Grafel, permissions or machine execution. `ActivityTracker` receives fail-soft `memory.use` mirrors only after authoritative receipt persistence.
+
+`memory_retrieval_diagnostics` now exposes additive `useEvidence` counts for receipt-assessed attempts/exposures, applied/adapted/rejected and associated success/failure/unavailable while keeping ordinary feedback separate. Limitations explicitly preserve that returned-to-controller is not model use, observed use is not causal improvement, missing receipt means unknown, and MRR-4 comparable evidence is required before claiming cross-session improvement. Corrupt receipt evidence degrades receipt diagnostics/status fail-soft without blocking canonical Memory reads.
+
+Qualification: dedicated MRR-3 **15/15 PASS**; touched Learning/Memory regression **69/69 PASS**; compiled isolated checks **9/9 PASS**; build exit 0 with path policy **280/0**; `release:compat` **70 -> 70**, no added/removed tools, additive learning schema, `breakingEvidence=false`, manifest within budget. Explicit Grafel reindex is current/accepted at **9,742 entities / 51,915 relationships**. Structural source/graph review confirms `registerLearningTools -> LearningService.receipt -> MemoryService.recordUseReceipt -> MemoryRetrievalLedger.recordUseReceipt` plus existing `memoryFeedbackContentDigest` and `ActivityTracker.recordOutcome`; no Skills/Grafel/machine-control authority was introduced.
+
+Resident verification: after user restart, Node Core PID **13952** started `2026-09-29T21:51:54.7971494Z`, later than compiled `dist/memory/retrieval-ledger.js` `2026-09-29T21:30:40Z`. `/health=ok` on v0.14.0 with Memory available/issueCount0 and Learning available. Authenticated resident MCP acceptance passed **15/15**: scoped six-tool discovery, live `learning action=receipt`, exact search `retrievalEvidence`, accepted/idempotent applied receipt, stale applied rejection, explicit stale rejection, and `useEvidence` diagnostics. Temporary key `def1fbba-b4a3-40b3-a1d1-dc37ba93a988` was created `2026-09-29T21:57:12.882Z`, revoked `21:57:16.754Z`; native verify and a fresh resident MCP connection using the same secret both rejected it. Secret value was never emitted or persisted. Cleanup removed canonical fixture, 2 receipt rows, 1 retrieval attempt and the synthetic revision file under Memory lock; token residue scan in `runtime/memory` returned 0; final retrieval receiptCount=0 and Memory issueCount=0. **Historical boundary:** at this MRR-3 closure MRR-4 was still open; the later executed MRR-4/4.1/MRR-5 state is recorded in section 0.1.83.
+
+Evidence: `runtime/tmp/mrr3-red-capability.json`, `mrr3-green-attempt1.json`, `mrr3-touched-regression.json`, `mrr3-compiled-check.json`, `mrr3-build.log`, `mrr3-release-compat.log`, plus resident `runtime/tmp/mrr3-implementation-20260930/resident-acceptance.json` and `resident-closure.json`; plan authority: `MRR-3-Knowledge-Use-Receipt-Plan.md`. Release intent: `.changeset/20260930-mrr3-knowledge-use-receipt.md` (minor), unapplied. No dependency install, AI runtime, release apply, commit, tag, push, publish, deploy or automatic restart.
+
+### 0.1.82 MRR-3.1 controller-surface authority sync — 2026-09-30
+
+**LOCAL SERVER CORRECT — EXTERNAL CONNECTOR DESCRIPTOR PENDING.** Fresh-session authority mapping was performed before starting the formal MRR-4 matched procedural pilot. Exact source remains authoritative: `src/mcp/learning-schemas.ts` exposes `status/checkpoint/review/curate/journey/receipt`; `src/mcp/learning-tools.ts` keeps a single `learning` facade and routes receipt to the existing Learning/Memory owner; `src/mcp/server.ts` registers that facade. Current compiled `dist/mcp/learning-schemas.js` and `learning-tools.js` carry the same contract.
+
+A fresh tools/list-equivalent manifest generated from the resident/current `dist` registers **70 tools** and advertises all six Learning actions plus the receipt-specific additive fields. The resident Core remains v0.14.0 with `/health=ok`, Memory available/issueCount0 and Learning available. This confirms that no local Agent Core schema, build, registration, or resident capability gap exists.
+
+The controller-visible schema supplied to this ChatGPT session is stale: its `learning.action` enum exposes only `status/checkpoint/review/curate/journey`, its description predates Memory-use receipts, and it omits receipt fields. That descriptor rejects `action=receipt` before the call reaches Agent Core. Fresh connector wrapper evidence identifies the active binding as `asdk_app_6ab67420e4bc81918c25e17b46693ab6`. The repository-local `SubProject/Agent-Core-ChatGPT-Plugin-v1.0.1.zip` is not this schema authority: it contains only app/package metadata, no tool-schema snapshot, and maps the different legacy app id `asdk_app_6ab288f8a2e88191b706b2d3af6b525d`. No file in current Agent Core source owns the active controller descriptor.
+
+Therefore no local source fix, compatibility shim, second Learning API, or new MCP tool is justified. Authentication, tool grants, mutation safety, stale-body guards, idempotency and tool count remain unchanged. The exact remaining boundary is the **external registered connector/platform descriptor/binding**; repository-local evidence cannot distinguish whether its stale state comes from registration snapshotting, platform caching, or another external publishing layer. Controller-side closure requires that external owner refresh/update the binding so a fresh controller descriptor exposes `receipt` directly.
+
+**Historical boundary:** at the MRR-3.1 closure the formal matched MRR-4 procedural pilot was still open. It was subsequently executed; current MRR-4/4.1/MRR-5 state is recorded in section 0.1.83. Authority/plan: `MRR-3.1-Controller-Surface-Sync-Plan.md`; evidence: `runtime/tmp/mrr31-generated-manifest.json`, `runtime/tmp/mrr31-controller-visible-schema.json`, MRR-3 resident acceptance/closure, and fresh source/dist readback. No source/dist/dependency/build/restart/reindex/release/Git publication was performed for MRR-3.1.
+
+### 0.1.83 MRR-4/4.1 cross-session reuse + MRR-5 natural Learning finalization — 2026-09-30
+
+**MRR-4 / MRR-4.1 BEHAVIORAL EVIDENCE COMPLETE FOR TESTED SCOPE; MRR-5 NATURAL DURABLE CAPTURE OBSERVED — SECOND FINALIZATION CORRECTION IMPLEMENTED/TARGETED-COMPILED VERIFIED — RESIDENT ACTIVATED/READBACK VERIFIED — FINAL FRESH-CONTROLLER ACCEPTANCE PENDING.** Two genuine multi-session pilots were run with separate fresh controllers rather than simulated context resets. MRR-4 proved that a verified procedure captured in one session could be independently retrieved, freshness/applicability checked, applied on an equivalent-but-different fixture, and associated with a successful pre-action MRR-3 use receipt. The first pilot demonstrated reuse but not measurable advantage because its baseline was too easy.
+
+MRR-4.1 used harder matched layered-configuration fixtures with three interacting invariants and two plausible partial repair classes that independently remained FAIL. Baseline A met the predeclared hardness gate with **11 problem-solving calls / 114.198069 s / 0 failed substantive correction approaches** and verifier PASS. Fresh Session B did not receive A's transcript, Memory id, solution, or metrics; it independently retrieved the procedure, checked reuse conditions, applied it, and reached the same verifier PASS with **9 problem-solving calls / 116.240033 s / 0 failed approaches**. The supported claim is therefore a bounded reduction in investigation/tool-call work (**11 -> 9, -18.2%**) on that matched fixture, not universal causation or elapsed-time improvement.
+
+MRR-5 then tested the missing direction of the loop: whether ordinary engineering work naturally enters Learning without the user saying learn/remember/capture. Two fresh-controller isolated repairs both reproduced failure and reached authoritative PASS, but live `runtime/learning/state.json` remained at `checkpointCount=164`, `sinceReview=3`, `lastCheckpointAt=2026-09-29T22:03:14.144Z`; canonical Memory contained no new transaction/batch procedure. Verdict: **NATURAL_CAPTURE_FAILED**. The failure is on task-finalization/capture entry, not Memory retrieval/reuse.
+
+Source grounding found that the self-learning contract required meaningful-task checkpoints only in a lower AGENTS section, while `LearningCheckpointInput.evidenceRefs` was accepted by the public facade but discarded by state transition. The minimal correction keeps semantic judgment controller-owned while strengthening continuity: `AGENTS.md` now makes meaningful-task Learning finalization a top-level local controller obligation; `LearningState` gains an additive bounded `pendingReviews` queue inside the existing state file; checkpoint stores safe deduplicated evidence refs, reason, optional workspace, idempotency identity and timestamp; duplicate checkpoints do not duplicate evidence and retain the durable immediate-review reason; `learning(status)` exposes pending-review count/reason; completed semantic review clears the queue. State version remains `1` with legacy files defaulting to an empty queue.
+
+This is **not** a second Memory, semantic queue, hidden model, scheduler, background learner, execution/router gate, or automatic canonical-Memory mutation. Memory ranking/retrieval, MRR-3 receipts, auth/tool grants, Skills execution authority, Grafel provider ownership and machine-control routing remain unchanged. `src/mcp/learning-tools.ts` only starts forwarding the already-public `workspace` field for checkpoints; no public tool or Learning action is added.
+
+Qualification after implementation: dedicated finalization continuity **5/5 PASS**; touched Learning/MCP set **51/51 PASS across 5 files**. One first combined run produced 9 failures solely because `tests/learning-review-summary.test.ts` still mocked the already-preexisting `stateStore.save` interface while production `LearningService.review` uses `stateStore.mutate`; the fixture was corrected to the current owner contract and the same targeted set then passed 51/51. `npm run build` exits 0; path policy **280 authored / 0 exceptions**. `release:compat` remains **70 -> 70 tools**, routes unchanged, `breakingEvidence=false`, `verificationIssues=[]`, manifest **118,907 bytes / ~29,727 tokens** within budget. Compiled isolated readback reports `pendingAfterReload=1`, `reviewDue=true`, `reviewReason=verified-recovery`, and `pendingAfterReview=0`. Post-change Grafel index is current/integrity-accepted at **9,760 entities / 52,022 relationships**; structural review confirms `registerLearningTools -> LearningService.checkpoint -> checkpointEvidence/applyCheckpoint -> LearningStateStore.mutate`, with pending-state ownership confined to checkpoint/review and no new Memory/Skills/machine-control authority.
+
+First-correction resident activation/readback is closed: old Core PID 10176 was replaced by PID 12488; the process started after the rebuilt Learning artifact and live `learning(status)` exposed pending-review fields. The subsequent truly fresh `stream-frame-repair` controller reached authoritative PASS and naturally created canonical operational-reflection Memory `f5bf19c6-6d93-42e9-9724-ea66cebff8d4`, so natural durable capture is observed. It nevertheless skipped Learning checkpoint/review: live Learning lastCheckpoint remained `2026-09-30T12:23:58.759Z`, while Activity Tracker recorded `memory_remember completed` at `12:31:24Z` with no corresponding Learning finalization. Exact source review identified a contract conflict: Reflexion still offered direct Memory promotion while top-level finalization required checkpoint/review.
+
+The second correction removes that ambiguity without coupling Memory authority to Learning. `AGENTS.md` routes verified-recovery operational lessons through mandatory checkpoint/review and states direct Memory mutation never substitutes. `src/mcp/learning-tools.ts` changes the existing facade description from should→must and states the same boundary. `src/mcp/memory-tools.ts` keeps `memory_remember` independently writable but, for `operational-reflection` captures identified by `source.type=local-task` or `verified-recovery` tag, returns an additive non-persistent `controllerAdvisory` with `kind=learning-finalization-required`, `checkpointReason=verified-recovery`, and `directMemoryCaptureCompletesFinalization=false`. This is a response hint, not a gate, scheduler, second store, automatic checkpoint, or Memory mutation.
+
+Second-correction qualification: focused finalization/review/manifest/parity set **20/20 PASS** after correcting a stale parity fixture that omitted six already-existing Memory tools; build exit 0; path policy 280/0; compatibility **70→70**, routes unchanged, `breakingEvidence=false`, `verificationIssues=[]`, manifest within budget; release-intent check `ok=true`. Grafel is current/integrity accepted at **9,763 entities / 52,034 relationships** and confirms `registerMemoryTools -> memoryRememberLearningFinalizationAdvisory`. Release intent `.changeset/20260930-natural-learning-finalization.md` (minor) remains unapplied. The compiled second correction is now resident-activated/readback verified on PID 14772, which started after the 12:42:24Z compiled Memory/Learning tool artifacts. A live bounded operational-reflection/local-task/verified-recovery `memory_remember` probe returned the new non-persistent `learning-finalization-required` advisory with `checkpointReason=verified-recovery` and `directMemoryCaptureCompletesFinalization=false`; the temporary Memory was immediately deleted. Evidence: `runtime/tmp/mrr5-finalization-advisory-resident-20260930.json`. One final truly fresh ordinary-controller acceptance remains before MRR-5 mandatory finalization can close.
+
+### 0.1.84 Pre-runtime body/Memory closure and native-controller transition — 2026-09-30
+
+**PRE-RUNTIME BODY/MEMORY SCOPE CLOSED; NATIVE CONTROLLER LIFECYCLE IS THE REMAINING SEMANTIC FINALIZATION OWNER.** Final MRR-5 fresh-controller acceptance used an ordinary `runtime/tmp/dependency-order-repair` task with no learn/remember/Memory/MRR/checkpoint/review/capture wording. The fresh controller reproduced the bad alphabetical order, repaired only `src/order-steps.mjs`, and reached authoritative `PASS | unique=true | dependencySafe=true | stable=true`. Independent local rerun produced the same ordered output and verifier PASS.
+
+The finalization invariant still did not execute: live Learning remained `checkpointCount=167`, `lastCheckpointAt=2026-09-30T12:55:53.522Z`, `lastReviewAt=2026-09-30T12:56:10.183Z`, `pendingReviewCount=0`, all predating the final fresh task. No dependency-order/topological operational lesson appeared in scoped canonical Memory. Therefore external-controller instruction/advisory mechanisms are considered exhausted for this boundary; no MRR-5.3/MRR-5.4 or further Memory rewrite is justified.
+
+This does **not** reopen the verified body/Memory mechanisms: MRR-1/2/3 remain resident verified; MRR-4 cross-session procedural reuse remains verified; MRR-4.1 retains its bounded 11->9 problem-solving-call advantage claim; earlier MRR-5 fresh evidence already proved natural durable Memory capture can occur. The unresolved invariant is controller-owned task completion/finalization, not Memory persistence/retrieval/ranking.
+
+Architecture boundary going forward: the native Agent Runtime decides **when** finalization is mandatory; the active model/controller decides **what** semantic lesson is worth saving; existing LearningService validates/routes reviewed candidates; existing MemoryService persists accepted durable knowledge. The runtime must reuse the existing MCP/tool authority rather than duplicate RDC/machine-control routing.
+
+Closure authority: `docs/Pre-Runtime-Body-Memory-Learning-Closure-20260930.md`. Approved next-phase design: `docs/Native-Agent-Runtime-Phase-1-Plan.md`. **Historical transition note:** at this closure checkpoint native runtime source implementation had not yet been claimed complete. Section 0.1.85 now supersedes that pending state with the implemented backend foundation. Existing `.changeset/20260930-natural-learning-finalization.md` remains unapplied; no release/version/Git publication action occurred for the closure itself.
+
+### 0.1.85 Native Agent Runtime Phase 1 backend + desktop chat transport — 2026-09-30
+
+**IMPLEMENTED — TARGETED/BUILD VERIFIED — LAUNCHER/UI TRANSPORT RESIDENT VERIFIED — REAL PROVIDER ACCEPTANCE PENDING.** Final MRR-5 external-controller acceptance confirmed the remaining deterministic owner is the native controller lifecycle, not another Memory rewrite. The ordinary `dependency-order-repair` task reached authoritative PASS, but live Learning timestamps did not advance and no new dependency-order lesson appeared; pre-runtime body/Memory reliability is therefore closed for tested scope with native lifecycle ownership documented in `Pre-Runtime-Body-Memory-Learning-Closure-20260930.md`.
+
+Native backend source now exists in `src/agent-provider.ts`, `src/agent-runtime.ts`, `src/agent-tool-session.ts`, and `src/agent-controller.ts`. `AgentRuntimeService` persists bounded non-semantic session/task/finalization state under `runtime/agent-runtime/state.json`, requires **safe evidence references** for verified terminal tasks, preserves the terminal outcome independently from lifecycle status, preserves terminal-but-unfinalized state across reopen, and makes Learning checkpoint/review a lifecycle transition rather than an optional prompt convention. Immediate reasons (`verified-recovery`, `user-correction`, `explicit-learn`) cannot finalize without reviewed candidates or explicit nothing-worth-saving. Learning failure leaves the task visibly `finalization-failed` and retryable without changing task identity.
+
+`OpenAICompatibleProvider` is the first provider abstraction. It is default-off and reads `AGENT_CORE_AI_ENABLED`, `AGENT_CORE_AI_BASE_URL`, `AGENT_CORE_AI_MODEL`, optional `AGENT_CORE_AI_API_KEY`, request timeout, tool-iteration bound, and explicit allowed-tool list. Credential-bearing endpoints require HTTPS except loopback HTTP. Provider health never returns the API key. Responses are bounded and normalized into assistant content/tool calls.
+
+Before model work, the runtime uses existing canonical Memory fusion retrieval and preserves retrieval-attempt identities while projecting the result as historical-data-only context. The native tool loop uses `AgentRuntimeToolSession`, an in-memory MCP client/server pair whose principal receives only the configured existing Agent Core tool grant; RDC handlers, auth/grants, mutation safety, evidence handling, Learning, Memory and Code Intelligence are reused rather than duplicated. `NativeAgentController` exposes a synthetic model-only `agent_core_finalize` function: ordinary assistant text cannot terminate a turn. A user-facing response is returned only after runtime finalization reaches `finalized`; if Learning finalization reaches `finalization-failed`, the controller closes the session and raises an explicit runtime failure instead of returning the model's completion text.
+
+`src/index.ts` now initializes `AgentRuntimeService` whenever Learning is available, publishes truthful `health.agentRuntime`, and exposes the instantiated `NativeAgentController` programmatically through `AgentCoreService.agentController`. No new public MCP tool is added: the 70-tool manifest remains intentionally unchanged because the reviewed handshake is near budget and the external registered connector can lag local schema publication. Phase 1F desktop transport is now implemented separately: `src/http/app.ts` exposes loopback-only `POST /agent/run`; the route requires a per-launch 256-bit token generated by `Agent Core.exe`, compares it in constant time, bounds prompt/workspace input, and never exposes that token in health/errors. `AgentCoreRuntime.cs` injects the token only into the owned Core child and proxies WebView requests; `MainForm.cs` handles the `agent-run` WebView message; React `ChatPage` is enabled only when `health.agentRuntime.configuredProviderCount>0`, so an unconfigured runtime cannot present fake readiness.
+
+Current native-runtime/transport qualification is **26/26 PASS across seven root test files**, adding the launcher-only `/agent/run` transport contract to the prior provider/tool-session/controller/finalization/integration/manifest set. The integrated provider test still runs a real loopback OpenAI-compatible HTTP server against actual `MemoryService` and `LearningService`, performs Memory-first retrieval, a real existing `get_config` MCP round trip, and runtime-owned Learning checkpoint/review before persistent finalization. Desktop UI qualification is separately **4/4 PASS**, TypeScript typecheck PASS, and Vite production build PASS. Launcher qualification is **16/16 PASS**, and a self-contained win-x64 v0.14.0 launcher was published with SHA-256 `6a59e3e2540469975c772d1770a5aa150c34d701bfffac42ecee64037897c2cd`. A project-local .NET SDK 8.0.425 was installed under `runtime/dotnet-sdk` solely to build/test the launcher because the pre-existing C# runtime did not include an SDK. `npm run build` passes; path policy reports **284 authored / 0 exceptions**. `release:compat` remains **70→70 MCP tools**, now correctly reports additive route `/agent/run`, `breakingEvidence=false`, `verificationIssues=[]`, and manifest **119,380 bytes / ~29,845 tokens** within budget; `release:check-intent` is `ok=true`. Changed-source security review across native-runtime and UI/launcher transport files reports zero findings. Grafel is current/integrity-accepted at **10,227 entities / 55,434 relationships** and preserves the controller→runtime→Learning, Memory-first, and internal MCP-tool structural paths. Resident desktop transport is verified on launcher PID **8008** (v0.14.0) and Core PID **15376**, with Core started after rebuilt `dist/index.js`/`dist/http/app.js`; `/health=ok` v0.14.0 reports Memory/Learning available and truthful `agentRuntime.status=not-configured`, while an unauthenticated loopback `POST /agent/run` returns **401**, proving the route and launcher-injected ephemeral-token boundary are active. Evidence: `runtime/tmp/native-agent-runtime-phase1-ui-resident-20260930.json`. The only remaining Phase 1 acceptance is one operator-selected real OpenAI-compatible model endpoint; no provider credential has been inspected, invented, or persisted. Release intent `.changeset/20260930-native-agent-runtime-phase1.md` remains minor/unapplied; no release apply/version bump/commit/tag/push/publish/deploy was performed.
+
+**Live continuity refresh — 2026-10-01.** Current machine authority resolves the project at `E:\Projects\Agent-Core` (`get_config` Node path, active Grafel workspace, and live Core all agree); earlier `F:` relocation notes are historical. `/health` remains `ok` on v0.14.0 with Memory, Semantic IDE, Learning, Skills and Execution available. Native Agent Runtime remains truthfully `not-configured` with one supported provider and zero configured providers, zero sessions, and zero pending finalizations; Phase 1F Chat UI plus launcher-owned loopback `/agent/run` are resident. Local `.env` now contains provider credential scaffolding for OpenRouter, Atria, and GonkaRouter plus the generic `AGENT_CORE_AI_*` activation mapping. Each provider now has **20 numbered credential slots**: OpenRouter `OPENROUTER_API_KEY_01` through `_20`, Atria `ATRIA_API_KEY_01` through `_20`, and GonkaRouter `GONKA_API_KEY_01` through `_20`. Migration preserves each former single-key value in that provider's `_01` slot if one existed, without exposing it. `AGENT_CORE_AI_ENABLED=false`, and no provider is activated by this scaffolding change. Grafel integrity repair is now source-implemented and built. Root cause: `GraphIntegrityObserver` authorized an explicit reindex but ignored that authorization when the source fingerprint remained unchanged, so a legitimate post-reindex recount could remain permanently `unexplained-structural-shrink`. The observer now accepts a same-source shrink only when a matching explicit index authorization is fresh relative to the accepted baseline, consumes that one-shot authorization on acceptance, and continues to degrade any later unexplained shrink. Focused `tests/graft-graphify-adoption.test.ts` is **5/5 PASS** and `npm run build` passes with path policy **284/0**. **LIVE VERIFIED after explicit Core restart.** User-authorized Core-only restart moved Node Core from PID **12824** to **15036** while tunnel PID **2844** remained resident. The restart helper inherited the launcher-owned UI token, so Phase 1F desktop transport identity was preserved. After restart, the repaired observer correctly changed the prior false `unexplained-structural-shrink` lock into a source-change authorization requirement; one explicit workspace index on the new source fingerprint converged to `index=current`, `graphIntegrity=accepted`, `reason=stable-or-growing-graph`, **10,216 entities / 55,483 relationships**, and `integrityComplete=true`. Fresh `/health` reports Code Intelligence `available`, Learning `available`, and the `grafel-patterns` sink `available=true`. The repair is therefore source-implemented, built, targeted-tested **5/5 PASS**, resident-loaded, and live-verified. Launcher and tunnel were not restarted.
+
+### 0.1.86 Canva desktop interoperability grounding — 2026-10-01
+
+**GROUNDING ONLY — NO CANVA OR AGENT CORE RUNTIME MODIFICATION.** The installed Canva Desktop 1.126.0 at `C:\Users\Ikbal\AppData\Local\Programs\Canva` was inspected read-only to determine the correct target boundary before selecting or modifying a source editor. Evidence and implications are recorded in `docs/Canva-Desktop-Architecture-Grounding-20261001.md`.
+
+The Windows package is an Electron/Chromium host. Its ASAR contains local `desktop_chrome_v2`, offline-fallback and recording renderers; the narrow preload exposes an Electron message bridge, while remote page content is hosted in `WebContentsView` and the main process distinguishes `web_home` from `web_editor`. Editor routes include `/design/editor/shell`, and build provenance points to Canva web design routes. Local host responsibilities include tabs/windows, deep links/open-file, file drop, downloads, local save/export/render and recording.
+
+The local export boundary accepts an opaque `documentContentBlob` plus render/media/font/scene dependencies, but the installed local-export implementation only handles PNG/JPG. This is evidence that Canva has a structured internal document representation, **not** a stable public format or justification to couple to private desktop IPC. An internal strict/relaxed feature-support result shape also reinforces the need for our own explicit compatibility classifier; no private Canva interface is adopted.
+
+Current decision: target supported Canva web/developer document surfaces via an editor-neutral Canonical Design IR and a semantic compiler with `NATIVE / EMULATED / PARTIAL / UNSUPPORTED` reporting plus structural read-back. The source foundation is the user's existing modified Penpot 2.17.0 tree at `F:\Content Creator\Astra Content Factory\Toolchain\sources\penpot`; do **not** create another fork. Initial grounding shows the strongest first seam is its existing `mcp` Plugin API bridge (`execute_code` with `penpot`, persistent storage and semantic `PenpotUtils` traversal), while `exporter` is render/export evidence rather than semantic interchange authority. The root has no `.git`, so future edits require an explicit hash/file baseline. OpenDesign/Scenify/Layerhub remain donor/reference candidates only if a concrete Penpot gap appears.
+
+**PLAN-ONLY execution authority:** `docs/Canva-Penpot-Semantic-Bridge-Execution-Plan-20261001.md` defines the gated sequence: P0 exact Penpot baseline; P1 Canva Target Capability Matrix and controlled read/write/read-back proof; P2 Penpot semantic coverage; P3 Canonical Design IR v1; P4 Penpot->IR extractor in the existing MCP/plugin seam; P5 Canva compiler; P6 asset/transport; P7 placeholder/Autofill semantics; P8 structural round-trip verifier; then semantic expansion and final Send-to-Canva UX. No Penpot implementation is authorized by the plan itself.
+
+### 0.1.86a Penpot exact baseline closure — 2026-10-02
+
+**TASK 1 / P0 COMPLETE — READ-ONLY BASELINE ESTABLISHED; TASK 2 NOT STARTED.** Authority report: `docs/Penpot-Exact-Baseline-Manifest-20261002.md`; machine-readable evidence: `runtime/tmp/penpot-baseline-20261002/`. The Penpot root remains untouched. Exact source authority now records **2,199 files / 274,782,801 bytes** with tree digest `5d70ab81d45b97e97a858135f15a5b60a3c438cfabaff668a021de5a48253268`; focused Phase-0 digest is `c101d50ee9ad2c902998ec741941f971c7281c6f402b419d9817e300015d66e5`; MCP resident-build digest is `2ad61958540d2df7eed9c372cead55d6a4b34534c4dcdd701e352bc31fed2610`.
+
+The strongest initial ownership remains `mcp/packages/plugin` for semantic extraction, `mcp/packages/server` for external MCP/task transport, and `mcp/packages/common` for shared protocol contracts. `common`, `frontend`, `exporter`, and `render-wasm` are escalation owners only after a proven semantic gap. Existing Penpot→Figma behavior is a separately protected Toolchain adapter at `F:\Content Creator\Astra Content Factory\Toolchain\adapters\fig-exporter`, tree digest `159208b5a228d91d1f562a6ab32e3c352f4d55d6e18462f520d04932ddce50ef`; Canva work must not regress this path.
+
+Official Penpot tag `2.17.0` (`bdce5817ea86d028db29113d9ecdadcf07097b36`) was compared read-only only as a reference. The local root is structurally divergent and has no `.git`, so upstream delta is not a trustworthy custom-modification ledger; **current exact local bytes remain authority**. Exact-token inspection found no authored Canva bridge path; Canva mentions are confined to generated translation assets. Gate P0 therefore passes because future Canva changes can now be distinguished by per-file/tree hashes and ownership boundaries. Phase 1 remains blocked on explicit continuation after user review.
+
+### 0.1.86b Canva target capability matrix — 2026-10-02
+
+**TASK 2 COMPLETE — DOCUMENTATION-GROUNDED MATRIX; TASK 3 NOT STARTED.** Authority artifacts: `docs/Canva-Target-Capability-Matrix-20261002.md` + `.json`; evidence: `runtime/tmp/canva-target-capability-matrix-20261002/evidence.json`. Current production classification uses only GA Canva Developers SDK/REST contracts; Preview/Beta surfaces are recorded separately and are explicitly not production authority.
+
+Current GA target is materially stronger than the earlier grounding assumed. `openDesign` supports current-page and all-pages Design Editing on absolute pages; multi-page editing is GA since `@canva/design 2.10.0`, stable `PageId` is GA since 2.12.0, and supported Design Editing elements are embed/group/rect/shape/text with documented CRUD/list ordering. Solid/image/video fills are supported; gradients are explicitly future support. Images/videos are represented as media fills rather than standalone Design Editing element types. Richtext line-height and letter-spacing are GA. Table creation exists through the Table API, but tables remain unsupported by Design Editing.
+
+The most important placeholder finding is a **GA native replaceable-media candidate**: shape path fills support `dropTarget=true`; a drop target can act as a frame and the read-side path exposes media editability/container replacement. This is distinct from named Autofill/data-field semantics. Existing Autofill dataset read/fill/update is GA for image/text/chart/sheet fields, with image fields also accepting video and with `create_from_design` / `update_design` GA. However, programmatic creation/connection/removal of text/fill data-field mappings through `openDesign(...).helpers.getDataFieldFor(...).set(...)` is currently Preview only and therefore cannot be a production dependency.
+
+Current strict-v1 gaps are explicit: no GA contract found for arbitrary existing-page delete/reorder/resize, image crop/imageBox, masks/clipping, shadow/blur/effects, direct chart/sheet structural CRUD, or stable GA `ElementId`; current Design Editing explicitly lacks gradients and tables. Preview page positioning/duplication and data-field mapping are research candidates only. App Elements remain an emulation fallback because their children are locked to ordinary user editing and their composition is limited.
+
+TASK 2 does not alter Canva, Penpot, Figma adapter, Agent Core runtime, credentials, or user designs. Gate P1 remains **OPEN** because all documentation-backed native candidates still require TASK 3 controlled create/read/update/delete/reorder/read-back evidence before they may be labeled proven `NATIVE` or lossless.
+
+### 0.1.86c Canva controlled runtime probe gate — 2026-10-02
+
+**TASK 3 IN PROGRESS — BLOCKED AT USER-OWNED LEGAL ACCEPTANCE; TASK 4 NOT STARTED.** Runtime report: `docs/Canva-Controlled-ReadWrite-Readback-Probe-20261002.md`; fixture contract: `docs/Canva-Controlled-Reference-Design-Spec-20261002.json`; machine evidence: `runtime/tmp/canva-controlled-probe-20261002/runtime-gate-evidence.json`.
+
+A controlled local attempt reached Canva's Developer Portal using the already-authenticated Brave profile without copying browser cookies or credentials. The account currently shows first-app onboarding. Opening `Create an app` revealed a required checkbox labeled `I agree to the Canva Developer Terms`. The assistant did not select or accept that contractual agreement and did not create an app. Direct Canva Desktop relaunch does not provide a usable authenticated developer context; its prior restorable credentials are expired/logged out. The browser path remains authenticated, but supported Apps SDK preview still requires a Developer Portal app and Development URL, while REST APIs require OAuth 2.0 authorization.
+
+No Canva design, OAuth app, developer app, credential, cookie/profile copy, Penpot source, Figma adapter, or product/runtime implementation was created or modified in this probe attempt. The controlled three-page semantic fixture and exact mutation/read-back sequence are prepared, but no runtime Design Editing or Autofill read/write/read-back evidence exists yet. Gate P1 therefore remains **OPEN** and no capability is promoted to proven `NATIVE`/lossless. TASK 4 is blocked until the user personally accepts the Canva Developer Terms and creates the development app, after which TASK 3 can resume at app configuration/preview and actual structural round-trip proof.
+
+### 0.1.87 Cumulative-learning architecture plan — 2026-10-01
+
+**HISTORICAL PRIMARY PHASE (completed through EC-9): EXTERNAL-CONTROLLER CUMULATIVE LEARNING.** Native model runtime is no longer deferred; current planning authority is `docs\Agent-Core-Interactive-Agent-Chat-Plan-20261002.md` after resident provider-scheduler verification. `docs/Agent-Core-Cumulative-Learning-Architecture-Plan-20261001.md` remains the acceptance authority for the requested loop: `observe -> remember -> search old knowledge -> hypothesize -> act -> fail -> diagnose -> retry differently -> verify -> crystallize lesson -> reuse next time`. The active acceptance subject is the connected AI/controller (currently ChatGPT) operating through Agent Core MCP. Agent Core supplies the persistent local body, Memory, Learning, evidence, Code Intelligence, Skills and machine tools that should improve the controller across work. Native `/agent/run` provider execution is later-phase groundwork, not a current prerequisite or blocker.
+
+`src/agent-learning-loop.ts`, `src/agent-controller.ts`, `src/agent-runtime.ts` and `src/agent-knowledge-synthesis.ts` now implement the CL-1..CL-9 source path. Tasks persist bounded controller-visible episodes, retrieval identities, declared Memory/artifact use and cumulative metrics. `agent_core_strategy` is mandatory before ordinary tool action and after problem-solving failure; exact failed tool+argument retries are blocked. Tool failure records failure/diagnosis evidence, builds a changed adaptive Memory query, refreshes the synthesis packet and requires a materially changed strategy. Synthesis now includes current task evidence, linked Memory/Patterns, Skills, learned procedures, explicit contradictions/evidence gaps and recent verification-backed artifact outcomes. Finalization retains the existing mandatory Learning boundary.
+
+Knowledge attribution stays evidence-separated. Memory continues to own exact retrieval/use receipts. Procedure/Skill/Pattern use is declared only against artifacts actually surfaced by the synthesis packet; unverified self-report is Activity-only and cannot strengthen/weaken trust, while verification-backed success/failure becomes existing Activity Tracker feature-outcome evidence consumed by the Learning curator. Learned procedures track independent support/failure task IDs, rank by support minus failure pressure, and require at least two verified supports plus support > 2× failures before automatic Skill import/revision staging. SkillService keeps `executionAuthority=false`, evidence-bearing revisions and rollback. The cumulative evaluator now reports verified rate, tool/failure/retry efficiency, adaptive recall/strategy-change activity, Memory/artifact attribution, verification coverage and time-to-first-hypothesis without turning those metrics into an unsupported intelligence claim.
+
+**Donor grounding — 2026-10-01.** Under explicit user authorization for the protected path, nine shallow clean donor snapshots remain pinned under `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/Cumulative-Learning-Donors/`; exact origins/HEADs are in its `MANIFEST.md`. No donor runtime or dependency was installed. Concrete source grounding was limited to mechanism gaps: CortexPrism separates candidate/verified/released/degraded skill lifecycle and records success/failure usage; skillmem explicitly gives retrieval/self-report zero reinforcement while external evidence raises strength and failures reduce it; AutoMemory uses independent evaluation/failure analysis to force changed strategy. Agent Core adapted those principles into its existing runtime/Activity/Learning/Skill owners rather than importing donor stores or runtimes.
+
+External-controller status: `AGENTS.md` is mandatory MCP server instruction and already enforces Memory-first access, meaningful-work Learning checkpoint/review, changed strategy after failure, bounded Memory recall on recurrent/no-progress failures, evidence-grounded durable lessons, and no hidden secondary learner. The live MCP path supplies persistent Memory, exact retrieval/use receipts, Learning checkpoint/review/curator/journey, deterministic FailureLoopAdvisor evidence, artifact-only Skills with evidence-bearing revisions/rollback, Grafel/Semantic IDE, and real machine actions. **This was the product path during the EC acceptance phase; EC-9 is now closed.** The previously listed external-controller gaps were addressed by the completed EC roadmap. Current next-phase planning is Interactive Native Agent Chat, which reuses those completed Memory/Learning/Skill/tool mechanisms rather than reopening the EC roadmap.
+
+Deferred native-runtime evidence remains valid but non-blocking: `npm run build` exits 0 with path policy **286/0**; Grafel is `current/accepted` at **10,415 entities / 56,503 relationships**; Core PID **12036** reports `agentRuntime=available` with 3/3 configured providers while tunnel PID **2844** is unchanged. No real-provider task acceptance is currently required. No release apply/version bump, commit/tag/push/publish/deploy or release action was performed.
+
+### 0.1.88 External-controller cumulative-learning primary roadmap — 2026-10-01
+
+**SOURCE IMPLEMENTED — RESIDENT EXTERNAL-CONTROLLER LEARNING — HELD-OUT SESSIONS C/D VERIFIED — EC-8 EVALUATION PASS — EC-9 GRADUATION PASS.** `docs/Agent-Core-External-Controller-Cumulative-Learning-Plan-20261001.md` is the completed EC-0..EC-9 acceptance authority, not the current implementation roadmap. External-controller operation remains supported, while the current planning authority is `docs\Agent-Core-Interactive-Agent-Chat-Plan-20261002.md` for the resident Native Agent Chat evolution.
+
+The user correction that triggered this wave is treated as failure evidence: persistent Memory and correct phase text already existed, yet the controller still drifted toward native-provider acceptance. The implemented correction therefore targets continuity/reuse orchestration rather than adding another store. `src/learning/external-controller.ts` now persists bounded derived external-controller episodes/procedures under existing `runtime/learning` while MemoryService remains canonical semantic authority. MCP handler/server assign a hashed external session identity, build a deterministic `CURRENT AGENT CORE CONTEXT` bootstrap from current unsuperseded roadmap/correction Memory plus pending Learning obligations, and register the new provider-independent `controller_learning` surface for context synthesis, episode verification, artifact receipts, procedure lifecycle and cumulative evaluation.
+
+EC-0..EC-8 source mechanisms are present. Generic RDC tools, Grafel provider calls, Semantic IDE, Phone and Skills feed bounded tool/failure evidence into the external episode path; handled failures can append a maximum-three-item `PRIOR EXPERIENCE` capsule from local Memory. Memory/Learning failures intentionally do not recursively trigger Memory recall. Memory list/read/search now add canonical authority evidence (`active`/`superseded`, incoming supersession and contradiction IDs), and Memory searches can be attributed to the external episode. Learning checkpoint/review closes or annotates external episode obligations. Knowledge synthesis combines current episode evidence, Memory, canonical links, Learning Journey Patterns, Skills, learned procedures, verification-backed artifact outcomes and explicit evidence gaps without invoking a provider. Generalized receipts preserve the rule that retrieval/self-report alone gives zero reinforcement; verification-backed success/failure may affect future procedural confidence. Repeated independently verified procedures require >=2 supporting episode IDs and support > 2x failures before existing SkillService import/revision staging; Skills retain `executionAuthority=false` and existing rollback/history ownership. Pending meaningful episodes survive as derived state and are surfaced at later bootstrap until Learning checkpoint closure. EC-8 evaluation is observational and explicitly refuses to infer causal improvement from Memory size alone.
+
+Qualification/resident evidence: Session A (`ext-83b7e6d770b328207b6b9a1c0a67876a`) passed the accepted fresh-session checks and created one verified procedure candidate. Session B (`ext-0b02e6103ad7427bb418f7ce9fa6b592`) validated explicit logical rotation, reused that procedure with verification-backed attribution, added the second independent support, and automatically imported Skill `agent-core-fresh-session-cumulative-learning-accepta` (`sha256:b593f651017c2bafafe4ef26b439d09a5c8d5dc447137e9a7349c4630ac68c02`); lineage investigation confirmed `predecessorEpisodeId` is active transport/session-head based. Held-out Session C (`ext-f56eaf00d8e445088edd1af1cd741116`) independently surfaced the Skill, assessed it as applicable, adapted it after automatic failure recall, avoided repeating the failed operation, verified the changed strategy, recorded Skill attribution, and closed Learning. Fresh held-out Session D (`ext-a9a9fb20ba6a4d2f816de12e86a726e1`) independently surfaced the same Skill and prior artifact outcome, assessed it as applicable, then exercised a distinct directory-vs-file variation. `read_file` returned a non-exception directory diagnostic and therefore no automatic PRIOR EXPERIENCE; the controller did not repeat the misapplied operation, changed to `list_directory` from the observed evidence, verified the result, recorded verification-backed `adapted/success` Skill attribution, and closed Learning. EC-8 evaluation then returned a real four-episode comparison: 4/4 verified, 0 failed, correctness preserved, repeated failures 0→0, baseline 63 tool calls / 3 failures versus later pair 12 tool calls / 1 failure, artifact uses 2→2, pending Learning 0→0, and `toolCallsPerEpisodeDelta=-25.5`. The evaluator explicitly limits this to observational evidence, but the cumulative-evaluation gate is satisfied. EC-9 graduation is therefore accepted for the external-controller cumulative-learning phase: persistent knowledge, later fresh-session retrieval, applicability assessment, actual adaptation, changed behavior, verification, attribution, and Learning closure are all evidenced across A→B→C→D. Procedure support remains only A+B; C/D were not artificially added. No broad regression suite was run.
+
+Pinned donor snapshots remain reference-only. Hermes, SAKU, CortexPrism, TELL, Hindsight, AutoMemory, skillmem, OpenViking and MemOS remain grounding sources only; no donor runtime, dependency or second canonical Memory was installed.
+
+## 0.2 Active runtime topology
 
 ```text
 AI / MCP client
@@ -60,26 +1628,39 @@ optional tunnel-client.exe (:8787 readiness/admin)
 Node core (:8765) — dist/index.js
     |
     +-- GET /health
+    +-- Native Agent Runtime (default-off provider)
+    |       +-- OpenAI-compatible API/local endpoint adapter
+    |       +-- persistent runtime/agent-runtime session/task/finalization state
+    |       +-- Memory-first recall through existing MemoryService
+    |       +-- scoped in-memory reuse of existing MCP tools
+    |       +-- mandatory runtime-owned Learning checkpoint/review finalization
     +-- OAuth discovery / authorization / token flow
     +-- POST /mcp
             |
             +-- mandatory AGENTS.md instructions
             |
-            +-- 26 machine-control tools -> src/rdc -> local Windows machine
+            +-- 28 machine-control tools -> src/rdc -> local Windows machine, including live `browser_control`
             |
-            +-- 11 memory tools -> src/memory -> runtime/memory
+            +-- 17 Memory tools -> src/memory -> runtime/memory
             |
             +-- 1 Learning tool -> src/learning -> runtime/learning scheduling state
             |       +-- verified generic knowledge -> existing MemoryService
             |       +-- verified code recipes -> existing Grafel Patterns
             |
-            +-- 1 Partner tool -> src/partner -> owned loopback Hermes APIServerAdapter child
-            |       +-- alignment/discussion -> explicit lead approval
-            |       +-- async delegate/collect/steer/approval/stop
+            +-- 1 external-controller cumulative-learning tool -> controller_learning
+            |       +-- deterministic current-context synthesis (no model/provider call)
+            |       +-- bounded external episodes + pending Learning continuity
+            |       +-- generalized knowledge-use/outcome receipts
+            |       +-- verified procedure -> existing SkillService lifecycle
+            |       +-- external cross-session observational evaluation
             |
             +-- 14 Game Mode tools -> src/phone -> Android phone via gateway/ADB
             |
             +-- 7 Code Intelligence tools -> src/code-intelligence -> isolated Grafel provider
+            |
+            +-- 2 Semantic IDE/LSP tools -> src/semantic-ide -> project-local language-server providers
+            |
+            +-- 1 Skills artifact tool -> src/skills -> runtime/skills (artifact-only; no execution authority)
 ```
 
 Desktop lifecycle is owned separately by `Agent Core.exe`, which starts/monitors the Node core and tunnel, hosts the React UI through WebView2, and shares the persistent activity journal.
@@ -91,23 +1672,29 @@ Desktop lifecycle is owned separately by `Agent Core.exe`, which starts/monitors
 | Process bootstrap + service lifecycle | `src\index.ts`, `src\config.ts` | `dist\index.js`, project-local Node |
 | HTTP/auth/security | `src\http`, `src\auth` | listener `:8765`, `runtime\bridge-auth` |
 | OAuth | `src\oauth` | `runtime\bridge-auth\oauth.json` and related durable state |
-| MCP transport/registration | `src\mcp` | authenticated `/mcp`, 62 registered server-side tools when Memory/Learning/Hermes Partner/Game Mode/Code Intelligence/Semantic IDE are enabled |
-| Machine control | `src\rdc` | `runtime\rdc` + local Windows operations |
+| MCP transport/registration | `src\mcp` | source-qualified full runtime registers **72** public tools: 28 machine-control, 17 Memory, 1 Learning, 14 Phone, 7 Grafel Code Intelligence, 2 Semantic IDE/LSP, 1 artifact-only Skills tool, and 2 Web Research tools (`web_search`, `web_open`); resident Core remains on the prior loaded surface until the supported restart activates the new build |
+| MCP mutation/evidence safety | `src\mcp\mutation-safety.ts`, `src\mcp\result-budget.ts`, `src\security\evidence-capture-policy.ts`, `src\rdc\utils\toolHistory.ts` | crash-safe mutation journal under `runtime\mcp`; oversized persistable results spill under `runtime\tool-results`; nearest `.agent-core-evidence.json` can reduce durable file-tool evidence to `full`, `metadata-only`, or `omit` but never changes execution or returned results |
+| Shared outbound network policy | `src\net\endpoint-policy.ts`, `src\net\outbound-request.ts`, `src\net\bounded-response.ts` | common bounded fetch/retry/timeout/correlation/redaction layer used by Memory embeddings, Phone gateway, semantic-provider provisioning, URL file/PDF reads; non-idempotent or non-replayable sends remain one attempt, and credential-bearing non-loopback endpoints require HTTPS |
+| Shared bounded event-log persistence | `src\persistence\bounded-event-log.ts` | committed-line JSONL primitive used by Activity Tracker, Tool History, Memory retrieval ledger, and MCP mutation safety; bounds bytes/records and repairs only an incomplete final append |
+| Machine control | `src\rdc` | `runtime\rdc` + local Windows operations; 28 compiled/live machine-control tools including `browser_control`; same-target write/edit/move mutations serialize through `PathMutationCoordinator`, while checkpoints, browser sessions and terminal-output spill own dedicated runtime subtrees |
+| Document semantic projection | `src\rdc\document-projection`, `src\rdc\tools\filesystem.ts`, `src\rdc\handlers\filesystem-handlers.ts` | existing `read_file` / `read_multiple_files` facade owns automatic and opt-in semantic Markdown projection; no independent execution authority or second MCP server |
 | Native memory | `src\memory` | `runtime\memory`; transactional `memory_batch` journal lives under `runtime\memory\state\transactions` |
+| Native Agent Runtime + Interactive Chat | `src\agent-provider.ts`, `src\agent-provider-errors.ts`, `src\agent-provider-state.ts`, `src\agent-provider-scheduler.ts`, `src\agent-runtime.ts`, `src\agent-tool-session.ts`, `src\agent-controller.ts`, `src\agent-chat-store.ts`, `src\agent-chat-service.ts`, `src\agent-turn-events.ts`, `src\http\app.ts`, `src\config.ts`, `src\index.ts`, launcher/UI chat bridge | default-off OpenAI-compatible provider pool with stable credential IDs and deterministic persistent scheduling; task/session/finalization metadata lives under `runtime\agent-runtime\state.json`, conversation/thread state under `runtime\agent-runtime\chat.sqlite`, and provider rotation/cooldown/quota/scope/breaker state under `runtime\agent-runtime\provider-state.sqlite`; one chat maps to one durable runtime session and each user turn to one independently finalized task; chat history is not canonical Memory; internal scoped MCP tools, Memory-first context and Learning remain authoritative; raw provider secrets remain config-owned; legacy `/agent/run` remains compatible |
 | Self-learning | `src\learning`, `src\mcp\learning-*` | `runtime\learning\state.json` contains checkpoint/curator scheduling metadata only; learned content routes to existing Memory/Grafel authorities |
-| Hermes A2A Partner | `src\partner`, `src\mcp\partner-*` | `runtime\partner\hermes` bootstrap/runtime only; ephemeral API key stays in process memory; Hermes durable/session authority remains under `<HERMES_HOME>` |
-| Game Mode / phone control | `src\phone`, `src\mcp\phone-*` | `runtime\phone` + gateway/ADB transport state |
+| Game Mode / phone control | `src\phone`, `src\mcp\phone-*` | `runtime\phone` + gateway/ADB transport state; orientation-agnostic live coordinates, crop/burst observation with motion scoring, mixed bounded action sequences with screen-stability waits/final observation, and gateway companion overlay-marker control are source-built without adding a second phone-control authority |
 | Code Intelligence | `src\code-intelligence`, `src\mcp\code-intelligence-*` | isolated `runtime\grafel` provider/runtime state |
+| Semantic IDE / LSP | `src\semantic-ide`, `src\mcp\semantic-ide-*` | project-local provider trees/state under `runtime\semantic-ide`; provider processes remain sibling capability and fail-soft |
+| Skills artifact capability | `src\skills`, `src\mcp\skills-*` | `runtime\skills`; validates/imports/lists/inspects/packages bounded skill artifacts only; no artifact code execution and no tool-authority grant |
 | Reflexion safeguards | `AGENTS.md`, `src\failure-evidence.ts`, `src\mcp\failure-loop-advisor.ts`, `src\rdc\utils\toolHistory.ts`, `tests\reflexion-contract.test.ts`, `tests\failure-loop-advisor.test.ts`, `tests\reflexion-second-wave.test.ts` | controller contract + bounded exact/same-family advisory state + compact redacted failure-evidence history; no separate persistent store |
 | Activity/failure tracking | `src\tracker`, `src\launcher\ActivityJournal.cs` | `runtime\tracker` |
-| Secret redaction for evidence/history | `src\security\redaction.ts` | applied before tool-history/tracker persistence and during startup scrub |
+| Secret/evidence privacy | `src\security\redaction.ts`, `src\security\evidence-capture-policy.ts`, caller wiring in `src\mcp\server.ts` | redaction remains layered over persistence; workspace evidence markers can only reduce stored detail and fail toward metadata-only on invalid/untrustworthy file-tool paths or marker parsing |
 | Native desktop lifecycle | `src\launcher` | `Agent Core.exe` |
 | Desktop UI | `src\ui` | `dist\ui`, hosted by WebView2 |
 | Tunnel | `tunnel-client` + launcher orchestration | local readiness/admin `:8787`, forwards to core `:8765` |
 | Release intent + version integrity | `.changeset`, `scripts\release`, `src\version.ts` | development/release metadata + deterministic product-version synchronization; no runtime gate |
 | Tests | root `tests`, `src\launcher.tests`, `src\ui` tests | verification only; not runtime dependencies |
 
-The active architecture is deliberately compact: Node HTTP/MCP core, vendored machine-control layer, native memory, controller-reviewed self-learning, Game Mode phone control, Grafel-backed Code Intelligence, OAuth/auth, tracker, desktop launcher/UI, and tunnel. Learning is a sibling state/coordinator service and never an execution or memory gate. Removed historical router/workflow/execution-fabric modules are not part of the current runtime.
+The active architecture is deliberately compact: Node HTTP/MCP core, shared outbound-network and bounded-persistence primitives, vendored machine-control layer with document projection/checkpoints/browser/output-spill sub-owners, native memory, controller-reviewed self-learning, Game Mode phone control, Grafel-backed Code Intelligence, Semantic IDE/LSP, artifact-only Skills capability, Native Agent Runtime + persistent Interactive Chat, persistent provider scheduling, OAuth/auth, tracker/evidence privacy, desktop launcher/UI, and tunnel. Learning, Grafel, Semantic IDE, Skills, Native Agent Runtime, and machine-control remain sibling/connected authorities rather than duplicate stacks. The former Hermes Partner bridge is retired historical architecture. Native Agent Capability Parity is now source-implemented and targeted-qualified: task-scoped dynamic grants reuse the existing MCP body, and Agent Core-native Web Research adds search/open authorities; resident parity activation remains pending the supported launcher restart.
 
 ### 0.4 Runtime and persistent-state map
 
@@ -122,7 +1709,16 @@ The active architecture is deliberately compact: Node HTTP/MCP core, vendored ma
     learning\                    checkpoint/review/curator scheduling metadata only; no learned-content store
     phone\                       Game Mode named-action/state data when used
     grafel\                      isolated Code Intelligence provider binary/home/daemon/index state
+    semantic-ide\                managed LSP/provider state and integrity metadata
     rdc\                         Agent Core machine-control config/history/cache
+    mcp\                         mutating-MCP idempotency/drain journal state
+    skills\                      non-executing skill catalog/packages/exports/revisions
+    checkpoints\                 explicit file-checkpoint state + content-addressed blobs
+    browser-control\             Agent Core-owned browser binaries/session profiles
+    terminal-output\             bounded ordered stdout/stderr spill + advisory metadata
+    tool-results\                bounded persisted oversized MCP result spill
+    portability\                 root/machine relocation anchors + Grafel reindex evidence
+    launcher\                    launcher/Core control-file state
     tracker\                     shared activity journal + failure reports
     webview2\                    desktop WebView2 profile/state
     tmp\                         project-local transient working files
@@ -155,6 +1751,7 @@ EmbeddingGemma via Cloudflare Workers AI
     |
     +-- rebuildable vector index
     +-- hybrid lexical/metadata/semantic retrieval
+    +-- optional opt-in BM25 lexical ranking profile; legacy ranking remains default
     +-- optional explicit source-file ranking context
     +-- nearest-neighbor discovery
     +-- bounded reciprocal `related` links
@@ -164,43 +1761,109 @@ EmbeddingGemma via Cloudflare Workers AI
     +-- proposal-only consolidation
 ```
 
-Current live memory includes the pinned foundational record, durable integration-strategy records, and verified reusable operational reflections when they are explicitly promoted. Exact note count remains runtime-derived. MemoryService now also supports optional bounded source provenance, read-only Git/file staleness evidence, bounded subordinate prior-content revisions committed with the same memory transaction authority, and explicit source-file context as a transparent retrieval component. Canonical Markdown remains the sole memory authority. A-MEM/Reflexion/Claude-Mem-derived behavior is implemented through the existing TypeScript MemoryService plus controller contract; there is no Python/SQLite/NetworkX/MiniLM/second-LLM memory runtime.
+Canonical memory remains file-native and canonical-Markdown-first. The earlier corrupt bootstrap was deleted; on 2026-09-22 a new minimal foundation was explicitly reconstructed from the current operating contract, native reindex succeeded, and a durable recovery record was written/read back. Canonical content and derived retrieval are operational for new grounded notes. Deleted historical content is not claimed recovered, and the independent malformed-foundation detection gap remains open.
 
 ### 0.6 System boundaries and reference-only material
 
 - `src\rdc` is **internal Agent Core machine control**. External Remote Desktop Commander remains a separate operator tool and lifecycle.
 - `SubProject\*` projects are separate codebases/products unless an explicit integration says otherwise; they are not implicitly part of the Agent Core runtime.
-- `<PROJECT_ROOT>\Audit` currently contains forensic/read-only re-clones for Serena and Anthropic SDK Python. The re-cloned Grafel reference was deleted on 2026-09-20 after G20–G25 implementation, targeted verification, clean dependency scan, and final zero-value census. Audit checkouts are evidence only and are not runtime dependencies, package authorities, or replacement implementation sources.
+- `<PROJECT_ROOT>\Audit` is **not present on disk** in the 2026-09-22 audit. Historical references below describe prior forensic re-clones and retirement decisions; none of those `Audit` paths should be assumed to exist now. Audit checkouts, when explicitly recreated, remain evidence-only and are never runtime dependencies, package authorities, or replacement implementation sources.
 - `<PROJECT_ROOT>\DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT` remains protected and outside normal grounding.
+- 2026-09-23 user-authorized reference clones were added under `<PROJECT_ROOT>\DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\steal-use-repos`: `GenericAgent` (`e86ca723a9439acef38349180b33ee31f45e3388`), `AutoResearchClaw` (`be4ba4755bf1b52220f25e13b2293b5956590070`), `OpenViking` (`184a5cecef0612a893a8db5718674b3084c6811b`), `atomic-hermes` (`d73323210d1f6e01325f4e112371a14fede93c78`), `SecondSight` (`3f05d3f681f4b08767aa0026f02d28ab027c442d`), `EvoAgentX` (`d77fd6b9a3e76c8dd83bebe3374c53a3f5d16f54`), `shiploop` (`a238ad853916fd92319c20b83646abd0cde251cc`), and `reef` (`5ffac29acddeda199eca369aaf7edf837f642a80`). All eight checkouts are on `main`, have verified GitHub `origin` URLs, and were clean immediately after cloning. They are reference-only material for future grounding/adoption review, not Agent Core runtime/build/package authorities.
+- 2026-09-22 user-authorized protected reference re-clones were created under `<PROJECT_ROOT>\DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\steal-use-repos`. Four remain present: `Grafel` (`5eb5be1255aa7583b6310daf6d98c4fa648c4031`), `Serena` (`9f19a79a045f3f2681ba7b58f88938b83a81ca8f`), `anthropic-sdk-python` (`0af0190679a9e80388bd1b0328d557c9a91a11b2`), and `anthropic-sdk-typescript` (`3c5d9c0c15bb847a628f3f2876ac09719abe3012`). `claude_mem` at `da135e36010e888e8e97bcc43edac10aa0e3b383`, `A-MEM` at `f303dfc71e07bdc787f4bc135d4cea328ae30e99`, and `Changesets` at `c73949ba7b3160a4aa5729223335c190de1528f8` were each re-grounded source-first on 2026-09-22, produced no new current-fit adoption proposal, and were deleted as corpses after their request-scoped Grafel workspaces were unregistered. The Changesets re-grounding additionally covered all 21 current package source families plus non-merged remote feature branches; the three commits after the historical `c9269c0...` baseline contained no executable package-source/test delta. `docs\Claude-Mem-Steal-Use-Integration-Plan.md`, `docs\A-MEM-Integration-Plan.md`, and `docs\Changesets-Release-Intent-Version-Integrity-Integration-Plan.md` preserve the full censuses. Verification used command-local `safe.directory` because the underlying filesystem does not record ownership, and no global Git configuration was changed. Remaining checkouts are reference-only: their current upstream HEADs are not automatically approved implementation baselines, and historical pinned revisions below remain the provenance for mechanisms actually adopted into Agent Core.
+- 2026-09-22 five-reference follow-up selected TS5-P1, PY5-P1, S4-P1, G26, G27 and G28. All selected implementations are installed and live-activated after the user-run offline installer. Independent checks match 10/10 installed hashes, confirm new Core/provider processes, pass 45/45 cases against installed root dist and observe live G28 status/filter handling plus a fresh 22-tool provider handshake. Prior Go evidence remains 200 passing test/subtest events, 47 top-level, zero failures and one unverified host-symlink case. Four references and staging are retained; no conditional proposals or release apply were added. `docs/Approved-Adoption-Execution-20260922.md` and memory `71ca3311-98ac-4f70-8b95-4c6da22f4788` carry the matching result.
+- 2026-09-22 post-activation residual audit led to user approval and implementation of PY6-P1, TS6-P1, G29 and S5-P1. Current result is PARTIAL - NATIVE VERIFIED; G29 MCP ACCEPTANCE FAILED - NOT ACTIVATED, not plan-only and not a reopening of six prior live selections. See section 0.6.1, `docs/Residual-Adoption-Execution-20260922.md`, evidence `runtime/tmp/residual-adoption-20260922/`, and memory `163fc8f2-9be1-4956-bcaa-7c7a6537fb35`. Four references, original G26/G27 stage and active runtime remain unchanged.
+- The same follow-up re-grounded `steal-use-repos\Reflexion` at `218cf0ef1df84b05ce379dd4a8e47f17766733a0`, inspected current/earlier experiment mechanisms and surviving native advisor/history bodies, and found no new current-fit proposal. After workspace unregistration, audit-marker cleanup and exact HEAD/clean-tree/no-reparse guards, that reference folder was deleted; `docs\Reflexion-Integration-Plan.md` records the outcome. The other four requested clones and all unrelated protected material were preserved.
+- The temporary `five-repo-audit-20260922` workspace exposed a graph-status inconsistency: provider status reported current members whose graph files were absent; explicit per-repo indexing subsequently created graph state while some status rows still showed queued. G28 documents the observed scope/freshness problem and proposed correction; the approved G28 correction is now live, with exact-repo graph availability, group coverage and unknown-filter rejection independently observed after installation. Source/delta inventory is preserved as audit-only metadata in `runtime\tmp\five-repo-grounding-20260922.json`. The audit workspace/markers were removed; no new runtime subsystem was added.
+- 2026-09-23 SIE-P4/P1/P3 are now COMPLETE / LIVE-ACTIVATED / INSTALLED-RUNTIME VERIFIED after explicit user authorization. P4 adds truthful Learning review summaries while preserving the legacy capture-count Boolean; P1 strictly validates optional controller-declared evaluation metadata without authenticating artifacts or running a verifier; P3 adds scoped fingerprints, bounded best-effort decision/correction events and an explicit Memory source.ref audit pointer, without mutating prior knowledge. Seven changed JavaScript programs and their maps were installed: 14/14 hashes match, 321/321 preserved artifacts remain byte-identical, and all seven programs were loaded from installed dist in the same 68-case test set (68 PASS / 0 FAIL / 0 SKIP). Authenticated live HTTP MCP checks pass 10/10 with 62 tools, the same five Learning actions, and four optional SIE candidate fields. Probe records were not persisted and the temporary acceptance key was revoked. New Core PID 5196 started after installation; Core/Memory/Learning and Grafel are available/current, tunnel HTTP 200. The source/candidate qualification retains 29 pre-existing compiler diagnostics and zero additional diagnostics, not a clean root build. P2/P5 remain conditional; three managed Semantic IDE issues and source/release recovery remain outside scope. Reference retained; no install dependency, release/version bump or reference deletion. Plan: `docs/Self-Improving-Agent-Ecosystem-Steal-Use-Integration-Plan.md`; activation report: `docs/SIE-Activation-20260923.md`; history: `docs/SIE-Adoption-Execution-20260923.md`; evidence/backup: `runtime/tmp/sie-activation-20260923/` and `runtime/backups/sie-activation-20260923/`; canonical record: `2820c59d-9e92-41c5-821a-31da35c8837a`. Earlier audit/implementation evidence remains historical in its original directories.
+- 2026-09-20 user-authorized protected reference clones were added under `<PROJECT_ROOT>\DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\memory`: `TencentDB-Agent-Memory` (`b545fe9acf08b47b56d85872eb04b6aee24c85eb`, branch `feat/server_team`), `EverOS` (`5076683ab88d714390573d8f88ff3c470e51129a`, `main`), `MemOS` (`176d4f676a93e0e34ca9fd50091eff5ad3236506`, `main`), `Memori` (`574b1ea3e876f100ef82c37817d603eb7e258e59`, `main`), `deepseek-harness` (`ddefc45fbc7f8e46dd73185e68295696d1297887`, `master`), `prime-agent` (`e311d6495124cf0bdc629c813fc97a39a9a3054d`, `main`), and `ai-memory` (`353841d91618d20b110b208de284a74d0b960379`, `main`). These are reference-only checkouts for later grounding/adoption review; they are not Agent Core runtime dependencies, package authorities, or implemented subsystems.
+- The protected `memory\14-claude-code` checkout is grounded at clean revision `b782847db9a18667f00918ea341197f201b22bb4`. `docs\Claude-Code-Steal-Use-Integration-Plan.md` records the exhaustive source-first census and was re-grounded on 2026-09-26 against current Agent Core. The public checkout is mods/plugins/examples rather than the proprietary Claude Code core, and its All Rights Reserved / Commercial Terms license requires independent Agent Core-owned implementation of any selected behavior. Current review surface is CC-P1–CC-P5; CC-P5 is conditional on the future native AI session/runtime direction. The checkout is retained and is not an Agent Core runtime/build/package authority.
 - A-MEM revision `f303dfc71e07bdc787f4bc135d4cea328ae30e99` was re-cloned under `<PROJECT_ROOT>\Audit\A-MEM`, exhaustively re-grounded from source/tests/history, and yielded exactly two remaining selected mechanisms: non-mutating evolution preview plus proposal-only neighbor metadata review. Both are implemented through the existing `memory_evolve`/MemoryService boundary and targeted-verified without adding a model/runtime/store. Live activation was proven after the launcher restart by the new Node Core listener loading rebuilt `dist\index.js`, healthy `/health`, and a direct live MCP `memory_evolve(mode=preview, neighborLimit=3)` call returning `mode=preview`, `applied=false`, and bounded neighbor evidence. A final zero-value census found no additional unique mechanism and no active Agent Core source/runtime dependency on the checkout, so `<PROJECT_ROOT>\Audit\A-MEM` was deleted as a corpse on 2026-09-20. `docs\A-MEM-Integration-Plan.md` retains provenance and the complete accept/reject census.
 - Reflexion revision `218cf0ef1df84b05ce379dd4a8e47f17766733a0` was re-cloned under `<PROJECT_ROOT>\Audit\Reflexion`, exhaustively re-grounded across all 55 Python files / 293 parsed function-class definitions / four experiment families, and retired after the two remaining second-wave mechanisms were implemented and targeted-verified. Agent Core now preserves the original exact-repeat `FailureLoopAdvisor` and adds a broader advisory-only same-tool/same-failure-family stagnation streak across changed arguments; success/family change/TTL reset it and it never blocks/retries/routes execution. `src\failure-evidence.ts` provides shared redacted failure-family normalization and bounded evidence excerpts. Tool History captures a compact redacted failure capsule before oversized raw output is capped; `get_recent_tool_calls(compact=true, failuresOnly=true)` returns bounded diagnostic evidence while default/full history keeps its previous response shape. `AGENTS.md` keeps semantic reflection controller-side over inspectable evidence + MemoryService. Targeted verification passed 3 files / 18 tests after live acceptance exposed and then closed volatile-path normalization for coded failures; root build passed, compiled smoke accepted the additive history schema, and `release:compat` stayed 62→62. The rebuilt Node Core was live-activated as PID 18776 at 2026-09-20T14:46:49+07:00 with `/health=ok`, Memory available, and Execution available. Final live acceptance issued three ENOENT `read_file` failures with different absolute paths: calls 1–2 remained ordinary failures and call 3 emitted the new `scope=failure-family` no-progress advisory, proving argument variation no longer evades stagnation detection. Minor intent `.changeset/20260920073613-21747a.md` is pending toward 0.12.0. The Audit checkout was deleted after final zero-value/dependency census; `docs\Reflexion-Integration-Plan.md` retains provenance. The 2026-09-20 reconnect investigation exposed a real public/private schema drift for `get_recent_tool_calls`: internal parser/handler already accepted `compact`/`failuresOnly`, while `src\mcp\rdc-schemas.ts` omitted them. Grafel-derived G21 is now implemented in current source/rebuilt `dist`: the public schema includes both optional parameters and an AST-derived contract regression compares RDC server registrations with handler parser schemas. Post-restart live acceptance proved the corrected `get_recent_tool_calls` public schema/handler path is active (`compact=true`, `failuresOnly=true` returns compact failure evidence). External clients that cached an older MCP manifest may still need their own reinitialize/reconnect for additive schema fields/enums.
 - The former protected `grafel` checkout was retired on 2026-09-19 after the then-selected post-v0.3.3 scope completed. Active provider `v0.3.3-50-g45f9745d0-agentcore` remains built from MIT commit `45f9745d02f3662a8516fb35cd2d0624acf82cbf`, SHA-256 `7CEB82CA002628DDBFEAAC56A6C136924014A840DEA3046AFB99C9BC9D8540C8`; previous official v0.3.3 remains a scoped rollback artifact. On 2026-09-20 that exact source revision was re-cloned to `<PROJECT_ROOT>\Audit\Grafel`, exhaustively re-grounded source-first (8,505 tracked files / 5,301 Go / 3,047 Go tests / 71 of 71 `internal/*` families), and yielded G20–G25. All six were approved, implemented, and targeted-verified. Live/provider-side evidence includes exact removal of the three stale forensic workspace registrations, direct `wire_version=0.1.0`, typed substring find + corpus stats smoke, and Activity Tracker graph-touch evidence. Release intent `.changeset/20260920085541-e0820f.md` records the minor change toward 0.12.0; `release:check-intent` is healthy and no `release:apply` was performed. Final dependency scans found zero `Audit\\Grafel` dependency in active `src`, `tests`, or `scripts`; the checkout was Git-clean at `45f9745d...` and deleted as a corpse. `docs\Grafel-Post-v0.3.3-Exhaustive-Steal-Use-Plan.md` retains the completed selection/verification/retirement evidence. Primary Node activation is now complete: post-restart `/health` reports Grafel Code Intelligence available/current with wire 0.1.0 compatible and issueCount 0; direct live facade calls confirmed typed substring search, analysisPreset validation, and Activity Tracker touched-entity evidence.
-- The historical protected `serena` checkout at commit `2a6deef83861d61f839ab4b94f1fc323b2fe8edf` was retired after the previously selected Semantic IDE second-wave scope reached COMPLETE and its then-current zero-value census closed. For corruption-recovery forensics, the **same exact revision** was re-cloned under `<PROJECT_ROOT>\Audit\Serena` and re-grounded source-first on 2026-09-20 across source, tests, Git history, and a request-scoped Grafel graph. The implemented Agent Core-owned `src\semantic-ide` baseline remains authoritative and intact. The new census found exactly two proposal-only residual opportunities: `S3-P1` verified project-local language-server provisioning/repair (MIT SolidLSP evidence, reopened because Anthropic-derived Agent Core I/O/security primitives now make a narrow native design viable) and optional `S3-P2` external MCP client acceptance harness (clean-room behavior only). Neither is implemented or installed by this re-grounding. `Audit\Serena` is intentionally retained pending user proposal selection and is not a runtime dependency; delete it only after all remaining dispositions close and a final zero-value/dependency census passes. Public Semantic IDE exposure remains `code_symbol` + `code_refactor`; Grafel remains sibling structural intelligence and exact source remains final authority. The existing Serena release intent is `.changeset/20260920013812-8142dc.md`; no release apply has been performed.
+- The historical protected `serena` checkout at commit `2a6deef83861d61f839ab4b94f1fc323b2fe8edf` was retired after the previously selected Semantic IDE second-wave scope reached COMPLETE and its then-current zero-value census closed. For corruption-recovery forensics, the **same exact revision** was re-cloned under `<PROJECT_ROOT>\Audit\Serena` and re-grounded source-first on 2026-09-20 across source, tests, Git history, and a request-scoped Grafel graph. The implemented Agent Core-owned `src\semantic-ide` baseline remains authoritative and intact. That census found exactly two residual opportunities: `S3-P1` verified project-local language-server provisioning/repair and `S3-P2` an external MCP client acceptance harness. Both were subsequently approved, implemented, and targeted-verified in Agent Core-owned code; a final zero-value/dependency census then retired/deleted `Audit\Serena`. Public Semantic IDE exposure remains `code_symbol` + `code_refactor`; Grafel remains sibling structural intelligence and exact source remains final authority. Current provider health is separately described in section 0.1 and is presently degraded despite the historical implementation completion.
 - Changesets revision `c9269c01af5f3f7463adc648890fc3a8a729dd18` was re-cloned under `<PROJECT_ROOT>\Audit\Changesets`, exhaustively re-grounded, and then retired/deleted after all remaining selected mechanisms were implemented and a final zero-value census covered all 21 packages / 87 non-test package source files. Agent Core-owned release tooling now includes the original release-intent/version-integrity first wave plus a shared `changedFilePatterns` release-relevance policy, metadata-safe fail-closed intent discovery, non-consuming snapshot planning/packaging under `release\snapshots`, and explicit prerelease channel state with isolated prerelease packaging. Stable `release:apply` remains blocked while prerelease mode is active; stable apply/archive semantics remain separately authorized. Only `@changesets/parse` remains a direct Changesets package dependency. The second-wave implementation added minor intent `.changeset/20260920070130-c8f093.md`; stable remains 0.11.0 and the read-only plan now targets 0.12.0 with six pending minor intents after the Reflexion second-wave intent `.changeset/20260920073613-21747a.md` and Grafel G20–G25 intent `.changeset/20260920085541-e0820f.md` were added. No automatic Git commit/tag/push/fetch, registry publish, deployment, restart, daemon, or MCP release gate was introduced. A scoped Sysinternals Handle binary under `runtime\tools\sysinternals-handle` was used only to diagnose a transient Windows directory-handle lock during reference retirement and is not an Agent Core runtime dependency.
 - The protected `memory\anthropic-sdk-python` checkout was grounded at commit `7e5ca5c94126a6d7de159a169ff43eb9b1cac57f` (v1.6.0, MIT). The approved current-fit hardening is now **IMPLEMENTED - LIVE-ACTIVATED - TARGETED VERIFIED** as Agent Core-owned TypeScript: safe/idempotent retry policy with Retry-After, bounded response/file/PDF I/O, HTTPS-or-loopback credential endpoints, owned-child secret isolation, sensitive-file validation, atomic credential persistence, correlation-safe diagnostics, expanded redaction, and read-only `release:compat`. Targeted evidence is 13/13 Anthropic third-wave tests + 2/2 atomic-owned-file + 3/3 OAuth atomic-exchange, with build PASS and `release:compat` 62→62/no breaking evidence. No Anthropic Python runtime/model/provider or second execution framework was introduced. Conditional credential-cache/lease-worker/external-memory-sync families remain dormant without real consumers, so the reference is retained.
 - 2026-09-20 Anthropic fourth-wave implementation: PY4-P1 is **COMPLETE - IMPLEMENTED - TARGETED VERIFIED - LIVE-ACTIVATED** as Agent Core-owned TypeScript. Sensitive Key/OAuth reads and RDC no-follow config reads bind pre-open, opened-handle, and post-open file identity; Windows comparison uses exact BigInt `dev/ino` because observed NTFS inode values exceed JavaScript safe-integer range. RDC config persistence uses `writeOwnedFileAtomic` under the existing cross-process config lock. Live readback after rebuild shows Node Core PID 18268 created 2026-09-20 19:39:16 +07:00 running `dist\index.js`, `/health=status=ok`, and compiled `dist` contains the BigInt identity-bound file-read implementation. Conditional expiring-token cache, credential/OIDC, lease-worker, and external-memory-sync families remain dormant without real consumers. No Python runtime/dependency was added.
 - The protected `memory\anthropic-sdk-typescript` checkout was grounded source-first at commit `d10318284eece2f612d2758a6d5935fe32dc6f7d` (`@anthropic-ai/sdk` 0.126.0, MIT). Prior TS3 remains complete/live. Approved TS4-P1/P2/P3/P4 is now **COMPLETE - IMPLEMENTED - TARGETED VERIFIED - LIVE-ACTIVATED**: all internal Grafel/Learning/Phone JSON-result consumers converge on the structural text-first/`structuredContent` decoder; Phone parses complete LF/CRLF/CR SSE event frames and multi-line `data:` payloads; shared outbound policy distinguishes caller abort from retryable timeout/network failure, makes backoff abort-aware, cancels discarded retry bodies, and bounded-response cancels readers on failure; sensitive/config reads use BigInt identity-bound handles and config persistence uses the existing atomic writer/lock. Fourth-wave suite is 18/18 PASS; final Key/OAuth/RDC affected suites are 4/4 + 3/3 + 5/5 PASS; targeted bridge config/file path PASS; `release:compat` remains 62→62/no breaking evidence. Live readback after rebuild shows Node Core PID 18268 created 2026-09-20 19:39:16 +07:00, `/health=status=ok`, and compiled `dist` contains TS4-P1/P2/P3/P4. Patch intent `.changeset/20260920122716-874f7f.md` records this wave. No Anthropic TypeScript runtime/model/provider/dependency was installed; conditional TokenCache/OIDC/lease-worker/external-memory-sync families remain dormant.
 - The former protected `memory\claude_mem` checkout was grounded at revision `da135e36010e888e8e97bcc43edac10aa0e3b383` and retired after final zero-value/dependency census. Approved CM-P1/P2/P3 is now **COMPLETE - IMPLEMENTED - TARGETED VERIFIED - LIVE-ACTIVATED** as Agent Core-owned TypeScript: optional bounded workspace/repo/file/commit provenance with fail-soft local Git capture; advisory `current|changed|source-unavailable|unanchored` staleness on `memory_read`; bounded prior full-record revision snapshots under subordinate memory state committed in the same `MemoryTransactionCoordinator` transaction as content mutations; and optional `memory_search.sourceFiles` ranking boost exposed through `components.sourceFileMatch`. Targeted verification is 7/7 Claude-Mem adoption tests + 27/27 affected existing memory/manifest tests; root build passes; `release:compat` is 62→62/no breaking evidence. Minor intent `.changeset/20260920131504-f2cb0a.md` records the capability. The Python MCP server, SQLite canonical store, MiniLM embeddings, NetworkX graph, regex source indexer, LRU cache, and per-project parallel memory databases were not installed. CM-C1 is closed by the existing Learning review boundary: unverified learning candidates remain proposals and only verified candidates reach durable sinks. Final zero-value/dependency census passed; the pinned `claude_mem` checkout was clean and is retired/deleted as a corpse. `docs\Claude-Mem-Steal-Use-Integration-Plan.md` remains the provenance/audit record.
 - The protected `memory\awesome-ai-memory` checkout at `fa13101cdccdf88070a7a5114a874dafb484a135` had no executable AI-memory engine; its only executable project code was repository-statistics telemetry. Active Agent Core source/tests/scripts had zero dependency on it. `docs\Awesome-AI-Memory-Steal-Use-Plan.md` records the zero-value census, and the checkout was deleted as a corpse under explicit user authorization.
-- `docs\Hermes-Self-Learning-Memory-Steal-Use-Plan.md` is **COMPLETE — VERIFIED FOR APPROVED SCOPE**. The Hermes-adapted mechanisms are implemented natively through `src\learning`, `memory_batch`, existing MemoryService, Activity Tracker, Reflexion controller behavior, and Grafel Patterns; no Python Hermes runtime, hidden second agent/model, or parallel canonical memory store was introduced. Final external acceptance reached 40 / 40 PASS.
+- Hermes Self-Learning historically reached **40 / 40 external acceptance PASS** and the live Learning service currently reports `available`; the implemented design remains native `src\learning` + `memory_batch` + existing Memory/Grafel sinks with no hidden second model/runtime. The proven-corrupt 0-byte `docs\Hermes-Self-Learning-Memory-Steal-Use-Plan.md` artifact was deleted on 2026-09-22, so that plan is currently absent and historical evidence must come from remaining sources until trusted reconstruction.
 - Root `.env` and `secrets` may supply runtime configuration/credentials but their contents are excluded from architecture documentation.
+
+### 0.6.1 Earlier residual candidate result — historical checkpoint, 2026-09-22
+
+**Historical checkpoint: PARTIAL - NATIVE VERIFIED; OLD G29 MCP ACCEPTANCE FAILED - NOT ACTIVATED.** The later Wave7 result in 0.6.3 supersedes the current-candidate verdict without changing these historical test outputs. At this checkpoint source/candidates contained PY6-P1, TS6-P1, G29 and S5-P1. Installed runtime still runs the six earlier verified selections; do not infer activation from a passing build.
+
+`WorkspaceScanResult` now carries complete/ioIssueCount and at most 16 safe relative-path/error-code issues. Partial scans or successful Git listings with stderr warnings are degraded, not deletion evidence. Freshness preserves uncertain and undispatched stamps, advancing only delivered events.
+
+`CodeIntelligenceService.health` retains its signature and five-second completed-cache TTL while using per-instance generation/owner single-flight. Concurrent forced reads join the current collector; invalidation/close prevent stale publication. G28 exact-graph evidence stays authoritative.
+
+`diagnostic-payload.ts` is the shared publication/pull/direct acceptance boundary. Valid empty reports remain supported; invalid reports preserve stale evidence, do not advance accepted generations, and cannot establish resolved errors or complete diagnostic comparison.
+
+Native candidate `runtime/build/native-residual-adoption-20260922/dist` changes exactly six modules and preserves 21 dependency modules byte-for-byte. Provider candidate `runtime/build/grafel-g29-20260922/grafel-g29-candidate.exe`, SHA-256 `ccd6dcd9e8e63235db0c761f91addba7c92e11f449d7a9afbf8a7481a2497f7f`, selectively adds G29 on qualified G26/G27. Original stage and active runtime remain unchanged.
+
+Native source and compiled runs each report 92 PASS / 0 FAIL / 2 host SKIP from 94 cases; strict targeted compilation reports zero diagnostics. External package: 214 top-level passes, 38 skipped subcases; G26/G27 compatibility: 47 top-level passes, one host-symlink skip. MCP schemas are 22/22 identical and the final graph check result is 18 PASS / 6 FAIL; G29 is not accepted. Unverified host symlinks, cold-fixture bootstrap ordering, graph-readiness polling and orphan-node/npm limits are detailed in `docs/Residual-Adoption-Execution-20260922.md`. No activation, broad source/Git recovery, provider repair, or release apply occurred.
+
+### 0.6.2 Four-reference source-first re-grounding — historical audit, 2026-09-22
+
+The four exact Python/TypeScript/Grafel/Serena reference checkouts were audited source-first and retained with new proposals. Audit evidence remains runtime/tmp/four-repo-regrounding-20260922/. This was a proposal-only phase, but the subsequent user approval and implementation in section 0.6.3 now supersede its unselected/unimplemented status. Inventory/hash coverage is not a semantic proof over every function or remote branch; no reference was retired.
+
+The audit's five selected proposals were PY7-P1, TS7-P1, TS7-P2, S6-P1 and G30; G29.6-R was an existing failed-acceptance follow-up, not a duplicate classifier proposal. Prior G26 source-first/root-bound differences from upstream remain intentional. Platform-conditional process identity, kqueue watcher and additional language/framework families remain unselected.
+
+### 0.6.3 Wave7 implementation and qualification checkpoint — 2026-09-22 (historical)
+
+**HISTORICAL QUALIFICATION CHECKPOINT.** The candidate-not-active boundary below applied at the end of implementation; current live activation is recorded in section 0.6.4. Current source contains PY7-P1, TS7-P1, TS7-P2 and S6-P1, and preserves earlier unactivated PY6/TS6/S5. The new isolated provider stage contains G30 plus a correction for G29's actual incremental-path omission. Installed production still uses the earlier six live selections; no production restart or binary/dist replacement occurred.
+
+WorkspaceSourceFile now carries exact BigInt dev/ino/mtimeNs/ctimeNs identity serialized as strings, evidence metadata/digest/unknown and cacheable state. Bounded digest reads use the existing guarded regular-file handle with pre/post identity checks: 1 MiB per file, 8 MiB per scan, four concurrent readers and the existing scan deadline. Recent stamps within two seconds are distrusted. An unknown entry cannot become authoritative merely because time passed. Incomplete coverage still cannot authorize deletion; only dispatched differences or proved unchanged evidence advance stamps.
+
+WorkspaceFreshnessCoordinator binds epoch and pending ownership to each concrete session. Clear, session replacement and superseded completion cannot resurrect stale state or emit later side effects. Epoch bookkeeping is instance-local; no new background poller, cache service or memory authority exists.
+
+The shared text-position.ts maps UTF-16 offsets consistently for semantic source-body extraction and transaction planning. LF, CRLF and lone CR are handled with delimiter-excluding line widths, integer validation and explicit prior EOF compatibility. Only inserted text is EOL-normalized using the source's first delimiter; source encoding/BOM, drift detection and rollback remain owned by existing source-io/transaction code.
+
+GatewayTransport.call now consumes readJsonRpcHttpResponse incrementally with strict JSON-RPC response-ID matching, bounded SSE/JSON frames, one 30-second request/read timeout, owned-reader cancellation and sanitized errors. Non-idempotent sends remain one attempt. The older buffered parser remains available. No Phone command was sent during qualification and no MCP tool or HTTP route was added or removed.
+
+G29.6-R exact-source/pipeline evidence showed cold full Index resolved npm subpaths and emitted-extension imports, but actual TryIncremental reintroduced raw targets. The daemon composition now supplies a stateless typed optional canonical JS finalizer before merge/write, reusing the existing Synthesize and unchanged G26 root-bound/source-first relative resolution. New externals participate in the same module aggregation. G30 adds guarded process-signal defaults plus test recorders; production stale-selection predicates and Windows enumeration behavior are unchanged.
+
+New provider stage: runtime/build/grafel-g30-wave7-20260922. Delta against old G29: eight production Go files, six new test files. Candidate: grafel-wave7-candidate.exe, SHA-256 7c83af3dd0a8870abd07174792b8f1666319b20111ec4bfda06bb2e18d4bcff3, 110112256 bytes, static-linked/stripped but not trimpath-clean and not a stable release archive. Original G29 staging/candidate and the active provider remain unchanged.
+
+Native source and compiled runs each report 172 PASS / 0 FAIL / 6 host SKIP or explicit exclusions from 178 cases, including 57 new passing cases. The same cases were executed twice, not 356 unique tests. Four excluded tests demonstrably failed during EISDIR symlink setup before product execution; two were existing host skips. Strict selected TypeScript 6.0.3 compile: zero diagnostics, 36 modules, 11 changed/new candidate programs and 25 byte-identical dependencies. The selected compatibility closure uses installed unchanged code only for pre-existing absent/unselected dependencies, with provenance; no whole-root rebuild is claimed.
+
+Final provider suites: external 215 top-level PASS / 38 skipped subcases; compatibility plus pipeline/CLI/dashboard 52 PASS / one host symlink SKIP; process/supervisor four PASS. These include eight G30 no-signal tests. **Candidate-only cold and explicitly refreshed MCP graph checks: 24/24 PASS; 22/22 schemas identical.** The unchanged original baseline-and-candidate matrix remains **23 PASS / 1 FAIL**, exclusively baseline_G26_emitted_extension_import_preserved. The old baseline was not repaired or relabeled; historical 18/24 G29 evidence remains intact. Orphan components-node and universal resolver limitations remain explicit.
+
+Only two missing source prerequisites were reconstructed from surviving installed runtime with emitted-statement parity: src/net/bounded-response.ts and src/security/file-identity.ts. Other source/Git/release-tooling and language-server damage remains separate. No new dependencies or toolchains were installed. Third-party notices are in THIRD_PARTY_NOTICES.md. Patch intent 20260922-wave7-adoption-lifecycle-fidelity.md is pending; stable product remains 0.12.0.
+
+Integrity/readback evidence is runtime/tmp/wave7-adoption-20260922/: 40 installed artifact paths checked, 38 existing hashes unchanged and two candidate-only installed paths still absent; zero owned fixture Grafel processes; all four protected reference HEADs unchanged and Git-clean. Scoped backups: runtime/backups/wave7-adoption-20260922. Consolidated report: docs/Wave7-Adoption-Execution-20260922.md. Canonical memory record 1b2416e6-d8e3-4964-bf29-6e2775ed196f holds current qualification; 163fc8f2-9be1-4956-bcaa-7c7a6537fb35 preserves the earlier failed-candidate history.
+
+**CLOSED by the separately authorized activation in section 0.6.4.** This preceding evidence describes qualification before cutover. All conditional families not selected by the user remain uninstalled.
+
+### 0.6.4 Wave7 production activation — 2026-09-23
+
+**COMPLETE — LIVE-ACTIVATED — INSTALLED-RUNTIME VERIFIED WITH EXPLICIT HOST SKIPS.** The user explicitly approved cutover. Exactly 24 selected artifacts were installed after verified backups and scoped termination of the old launcher/Core/Grafel processes; no unrelated process tree was targeted. New launcher PID13928 and Core PID5600 started after installation. The MCP connection recovered in this same session without manual user action or OAuth reset.
+
+Independent readback confirms 24/24 installed hashes, 27/27 preserved dependency/package/launcher hashes, all eight old owned PIDs absent, and 15 installed-dist test files with 172 PASS / 0 FAIL / 6 unchanged host SKIP-excluded. Loaded-module provenance includes every one of the 11 changed programs, all from installed dist (33 modules recorded). Core HTTP200/ok, Execution/Memory/Learning available, memory issueCount0; Grafel available/current with issueCount0 and wire0.1.0 compatible. Fresh provider MCP handshake retains all22 input schemas; live code_orient status/search succeeds.
+
+Installed provider identity is g26g27g29g30-candidate, SHA2567c83af3dd0a8870abd07174792b8f1666319b20111ec4bfda06bb2e18d4bcff3. The build label remains unchanged, but the binary is now production-installed. Prior candidate cold/watched24/24 and old-baseline matrix23/24 remain distinct qualification evidence; no production-workspace graph mutation or universal accuracy claim is made. Native prior PY6/TS6/S5 are activated with Wave7.
+
+Three pre-existing Semantic IDE managed-provider entrypoint issues (Python/C#/PowerShell) and six unverified native host cases remain explicit. No version/release apply, dependency install, source/Git recovery, reference deletion or OAuth mutation occurred. Product remains0.12.0.
+
+Report: docs/Wave7-Activation-20260923.md. Evidence/journal: runtime/tmp/wave7-activation-20260923/. Backup: runtime/backups/wave7-activation-20260923/. Canonical activation memory561784e7-96b0-4b24-964a-940751b5e86e and implementation memory1b2416e6-d8e3-4964-bf29-6e2775ed196f hold the same result. ACTIVATE-WAVE7-ADOPTION.cmd remains an explicit offline operator helper, not a background service. OPEN activation items for this approved scope: NONE.
 
 ### 0.7 Repository-state mapping
 
-The current filesystem/runtime is substantially ahead of Git HEAD `5dc20d6`. The working tree contains extensive modified, deleted, and untracked files from the ongoing architecture transition.
+**Superseding current state — 2026-09-26:** the corrupted historical Git metadata was archived intact at `runtime/backups/git-object-db-corrupt-20260926/.git-corrupt`. A locally verified bundle of `refs/agent-core/current-line-baseline` commit `639cdf77fd7288a722131862e22eecaff4a90f07` was used to initialize fresh metadata. Local `main` and the baseline ref both point to that parentless current-line baseline, the index was rebuilt from `HEAD`, and `git fsck --full --no-reflogs` is clean. A 3,715-file active-worktree inventory matched SHA-256 `748fd0e135325db4545983befa2083dec3509e258c11a722bb29f7b7ca946f12` before and after metadata replacement, proving the recovery did not checkout/reset or rewrite active source bytes. Historical pre-baseline lineage that was absent from the healthy bundle remains forensic history, not reconstructed provenance.
 
-On 2026-09-20 the user explicitly reversed the prior legacy-only boundary for `https://github.com/Black-Project-Agent-Core/Agent-Core` and designated that repository's `main` branch as a **remote recovery mirror of the current local Agent Core line**. The local filesystem remains the source of truth: remote history must not be pulled/merged/rebased into the local project to reconcile differences. Remote replacement is performed from the current local snapshot, with credentials, private runtime state, protected reference checkouts, browser profiles, corruption backups, and generated temp/build debris excluded by the Git backup boundary. The immutable v0.12.0 release ZIP is stored separately as a GitHub Release asset because it exceeds GitHub's ordinary Git file-size limit.
+The public repository `https://github.com/Black-Project-Agent-Core/Agent-Core` remains **legacy/reference-only** for the current Agent Core line. It was not fetched or used during this repair. The only configured remote is named `legacy`; local `main` has no upstream tracking. Current exact source/runtime plus the fsck-clean current-line baseline are local authorities; legacy network history remains reference evidence only.
 
 Therefore:
 
-- **current local source files + maintained architecture map** are authoritative for what is pushed to the recovery repository;
-- remote `main` is a backup/mirror target, not an upstream source to merge into the local project;
-- deleted historical router/workflow/execution/memory files from the old remote lineage are intentionally replaced by the current local state;
-- active current modules under `src\memory`, `src\launcher`, `src\rdc`, `src\tracker`, `src\ui`, Semantic IDE, Code Intelligence, Learning, and Partner are included when not excluded by the explicit private/generated backup boundary.
+- **current local exact source/runtime + trusted current-line backups/release artifacts + this maintained architecture map** are the recovery authorities, subject to corruption checks;
+- the legacy GitHub remote is reference evidence only; local configuration names it `legacy` and local `main` has no upstream;
+- Git-diff/release-baseline logic must never compare or restore the current line against legacy `main`;
+- no push/publication of the current line to the legacy repository is authorized by this mapping;
+- credentials, private runtime state, protected references, browser profiles, memory, tracker state, and recovery backups remain outside any publication/recovery package boundary.
 
-This repository-state mapping records the user-authorized current recovery strategy; it does not authorize unrelated remote publication, deployment, or package-registry operations.
-
-GitHub presentation/community surfaces for the current recovery repository are now maintained in-repo: root `README.md` documents the stable v0.12.0 architecture, 62-tool public surface, install/recovery paths, and Git backup boundary; `CONTRIBUTING.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`, `.github/CODEOWNERS`, issue forms, and the pull-request template define repository collaboration and safety expectations. Root `SECURITY.md` additionally records current supported-version and private vulnerability-reporting guidance. GitHub About now describes the current machine-control/memory/Code Intelligence/Semantic IDE/Game Mode/Learning/Hermes architecture, links to the latest release, and uses current topics instead of the legacy continuity/execution/SQLite set. GitHub Release `v0.12.0` is published as Latest with the immutable ZIP, manifest, checksum, and a corrective `Agent-Core-v0.12.0-env.example` asset because the ZIP's bundled example was already NUL-corrupted when the immutable archive was created. Community profile readback is 85%; README, Code of Conduct, Contributing, issue template, and pull-request template are recognized, while LICENSE remains intentionally unset because no legal license choice has been authorized. These files/settings are documentation/repository-operability surfaces only and do not change Agent Core runtime behavior.
+Historical repository-operability work added root `README.md`, `CONTRIBUTING.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`, `.github/CODEOWNERS`, issue/PR templates, and `SECURITY.md`, and previously published a `v0.12.0` release asset set to the public GitHub repository. Treat those remote/community surfaces as **historical publication evidence on the legacy repository**, not as current-line authority or recovery authorization. Local current-line source/runtime and explicitly trusted current-line artifacts remain authoritative.
 
 ### 0.8 Mapping contract
 
@@ -210,9 +1873,9 @@ Active forensic recovery planning is tracked separately in `docs\Agent-Core-Corr
 
 ### 0.9 Release intent and product-version integrity
 
-Agent Core now has a lightweight Changesets-compatible release layer for development/release metadata. It is deliberately outside the normal MCP execution path.
+Agent Core has a lightweight Changesets-compatible release design for development/release metadata, deliberately outside the normal MCP execution path. The four release adapters that were lost during the 2026-09-22 corruption event were reconstructed and qualified before the current repair. On 2026-09-26 the local current-line baseline object store was also recovered from a verified local baseline bundle; release planning/check-intent may now use the fsck-clean `refs/agent-core/current-line-baseline` again. This repair does not itself run `release:apply`.
 
-Implemented source/state:
+Intended/implemented release source surface:
 
 ```text
 .changeset/
@@ -222,6 +1885,7 @@ Implemented source/state:
 
 scripts/release/
   create-intent.mjs
+  integrity-manifest.mjs
   release-lib.mjs
   release-plan.mjs
   sync-version.mjs
@@ -229,6 +1893,11 @@ scripts/release/
   current-line-baseline.mjs
   check-release-intent.mjs
   package-release.mjs
+
+scripts/windows/
+  Ensure-Agent-Core-LocalRuntime.ps1
+  Recover-Agent-Core.ps1
+  Test-Agent-Core-Portability.ps1
 
 src/version.ts
 CHANGELOG.md
@@ -260,11 +1929,25 @@ Public package scripts:
 - `release:apply` — explicit local release mutation that updates versions/changelog and archives exactly the included pending intents under `.changeset\applied`;
 - `release:baseline` — refresh the synthetic local `refs/agent-core/current-line-baseline` checkpoint using a temporary Git index without changing the real branch/index/worktree;
 - `release:check-intent` — read-only comparison against that local baseline; a release-relevant source delta without a new pending intent relative to the baseline exits non-zero;
-- `release:package` — builds Node/UI/native launcher, creates an allowlist-based runnable version ZIP, release notes, manifest, and SHA-256 under `release\\v<version>\\`; existing version ZIPs are immutable by default.
+- `recovery:audit` — verifies immutable files in an extracted packaged release against `INTEGRITY-MANIFEST.json` and exits non-zero on missing/size/hash mismatch;
+- `recovery:repair` — same-version trusted-release self-healing: verifies the release ZIP SHA-256 first, backs up and replaces only damaged immutable files, preserves unknown/mutable files, then re-audits and runs project-local Node runtime health/self-repair;
+- `release:package` — builds Node/UI/native launcher, creates an allowlist-based runnable version ZIP, release notes, release manifest, deterministic per-file `INTEGRITY-MANIFEST.json`, and ZIP SHA-256 under `release\\v<version>\\`; existing version ZIPs are immutable by default.
 
-No release script commits the current branch, tags, pushes, publishes, deploys, restarts Agent Core, contacts the legacy remote, or changes MCP authorization.
+Portable recovery/integrity contract:
 
-Version `0.8.1` has been explicitly applied and archived. The four patch intents were consumed into the changelog and `.changeset\\applied`; `release:plan` now reports no pending intents.
+- `scripts\\release\\integrity-manifest.mjs` recursively hashes regular package files with SHA-256 after all release content has been staged and before ZIP creation; symbolic links are rejected rather than silently followed.
+- Integrity enforcement deliberately excludes `INTEGRITY-MANIFEST.json` itself, mutable `tunnel-client\\agent-core.yaml`, and `runtime\\memory\\`. Live `.env`, secrets, auth/OAuth state, tracker/browser data, subsystem runtime state, forensic backups, and protected research trees are additionally protected by the recovery script and are never auto-repaired.
+- `scripts\\windows\\Recover-Agent-Core.ps1 -Mode Bootstrap` installs only into an empty destination and supports trusted ZIP/checksum recovery. The script also contains a network `gh release download` path, but its current default `Repository` still points to the **legacy/reference-only** GitHub repository. Therefore that implicit network path is currently **not an authorized current-line recovery authority**; use an explicitly trusted current-line `-SourceZip` + checksum/hash (or a separately user-authorized current-line repository argument) until the default is corrected.
+- `-Mode Audit` is read-only and checks package version, manifest schema, duplicate/unsafe/protected paths, file size, and SHA-256. Unknown local files are not treated as corruption and are not deleted.
+- `-Mode Repair` is restricted to a packaged layout, requires the same product version, verifies the trusted release ZIP before use, backs up every damaged existing file under `runtime\\recovery\\backups\\<timestamp>`, replaces only manifest-governed missing/mismatched immutable files, writes the trusted/derived local manifest, invokes project-local runtime health/self-repair, and audits again.
+- Offline bootstrap/repair accepts `-SourceZip` plus `-ChecksumFile` or explicit `-ExpectedZipSha256`; source checkouts are not mutated into release layouts by repair.
+- The immutable v0.12.0 ZIP predates `INTEGRITY-MANIFEST.json`; the new bootstrap supports that release by validating the whole archive hash and deriving a local manifest from the trusted extracted package, after applying its published corrective env-example asset when available.
+- Current implementation evidence is limited to source inspection plus syntax/parse validation of the Node and PowerShell files. No functional corruption/repair scenario or broader regression suite has been executed in this task; such testing remains user-controlled.
+- Minor intent `.changeset\\20260920161819-570db1.md` records this shipped capability for planned v0.13.0. Stable v0.12.0 and its immutable archive remain unchanged.
+
+The intended release layer does not auto-commit, tag, push, publish, deploy, restart Agent Core, or change MCP authorization. Recovery is a separate operator action. The current bootstrap implementation can contact a GitHub repository through authenticated `gh`, but its default points at the legacy/reference-only repository and is therefore **not an authorized implicit current-line source**.
+
+Historical release `0.8.1` was explicitly applied and archived, and its four patch intents were consumed at that time. **Current 2026-09-22 state is different:** stable product identity is `0.12.0`, three pending intent files are present, and aggregate next-version intent is `0.13.0`; the current 0-byte `release-plan.mjs` prevents a fresh authoritative `release:plan` execution until source recovery.
 
 Observed implementation evidence on 2026-09-18:
 
@@ -279,7 +1962,7 @@ Observed implementation evidence on 2026-09-18:
 - rerunning `release:package` for v0.8.1 is rejected by default, proving per-version archive immutability;
 - the protected Changesets reference checkout remained clean.
 
-Git-aware missing-intent enforcement is now **active** through the synthetic local ref `refs/agent-core/current-line-baseline`. The ref was created from the present current-line Agent Core release-relevant source using a temporary Git index, so the real branch/index/worktree remained untouched. `legacy/main` is explicitly ineligible as a comparison base. Targeted probe verification confirmed that a new source file without a new intent exits non-zero and the same delta with a new `.changeset/*.md` intent passes. Snapshot/prerelease channels remain deferred.
+Git-aware missing-intent enforcement was historically implemented around the synthetic local ref `refs/agent-core/current-line-baseline`, with `legacy/main` explicitly ineligible as a comparison base. **Current 2026-09-22 enforcement is not trustworthy/operational evidence** because the local Git object database is incomplete/untrusted and the proven-corrupt `scripts\release\check-release-intent.mjs` artifact was deleted. Do not refresh or rely on the baseline until both Git integrity and the missing release adapter source are recovered. Historical targeted probes remain evidence of the intended behavior, not proof of current execution health.
 
 ## 1. Purpose and maintenance contract
 
@@ -433,7 +2116,7 @@ tunnel-client\tunnel-client.exe run
   --harpoon.allow-plaintext-http
 ```
 
-Both are launched hidden. Launcher readiness waits are approximately 12 seconds with polling around 200 ms, while the desktop status timer continues independently after a transient timeout. Restart/stop is identity-aware: the launcher refuses to kill an unrelated process merely because it occupies a managed port.
+Both are launched hidden. Core readiness waits up to approximately 30 seconds with polling around 200 ms so current optional subsystem initialization can complete without a false launcher startup failure; tunnel readiness remains approximately 12 seconds. The desktop status timer continues independently after any transient timeout. Restart/stop is identity-aware: the launcher refuses to kill an unrelated process merely because it occupies a managed port.
 
 ### 3.3 Node core startup
 
@@ -453,15 +2136,16 @@ Startup order:
 10. Trigger background Chrome availability for PDF generation only when initial Agent Core machine-control configuration readiness is available.
 11. Construct the Game Mode `PhoneController`; phone readiness is live-probed through `/health` and phone tools register only when enabled.
 12. Initialize `CodeIntelligenceService`: verify the project-local Grafel binary, ensure isolated runtime/home/config/daemon directories, self-heal the project registration when its path/group marker is missing or stale, start/reuse the Grafel daemon, confirm the required provider MCP tool family, and request an asynchronous index refresh when the graph is not current. Failure is fail-soft and does not block Agent Core startup.
-13. Initialize `LearningService` fail-soft against the shared MemoryService and Code Intelligence service.
-14. Construct `HermesPartnerService` immediately and schedule its owned Hermes runtime bootstrap in the background. Hermes/9Router startup is optional sibling work and must not delay the Agent Core HTTP listener.
-15. Construct API key store.
-16. Construct OAuth store.
-17. Construct HTTP security policy.
-18. Construct OAuth service.
-19. Create HTTP server and MCP handler, passing the shared MemoryService, LearningService, HermesPartnerService, PhoneController, and CodeIntelligenceService to MCP server factories.
-20. Listen on configured host/port.
-21. Record listening state.
+13. Initialize Semantic IDE/LSP fail-soft using project-local provider configuration.
+14. Initialize `LearningService` fail-soft against the shared MemoryService and Code Intelligence service.
+15. Initialize the artifact-only `SkillService`; skill artifacts never gain execution authority.
+16. Construct API key store.
+17. Construct OAuth store.
+18. Construct HTTP security policy.
+19. Construct OAuth service.
+20. Create HTTP server and MCP handler, passing the shared MemoryService, LearningService, Semantic IDE, SkillService, PhoneController, and CodeIntelligenceService to MCP server factories.
+21. Listen on configured host/port.
+22. Record listening state.
 
 Source defaults from `src\config.ts`, unless overridden by process environment or excluded `.env`:
 
@@ -475,7 +2159,6 @@ Source defaults from `src\config.ts`, unless overridden by process environment o
 - MCP protocol mode: `dual`
 - Game Mode / phone control: enabled by default, transport default `gateway`; phone-specific overrides are loaded by `src\phone\config.ts`
 - Code Intelligence: enabled by default; runtime root `runtime\grafel`, provider binary `runtime\grafel\bin\grafel.exe`, group/repo slug `agent-core`, startup timeout 30s, call timeout 15s; all are overridable through the documented `AGENT_CORE_CODE_INTELLIGENCE_*` / `AGENT_CORE_GRAFEL_BINARY` environment variables
-- Hermes Partner: enabled by default; Agent-Core-owned runtime state defaults to `runtime\partner\hermes`; Hermes home/source defaults are derived as sibling directories `<PROJECT_PARENT>\hermes` and `<PROJECT_PARENT>\hermes-agent` from the resolved current Agent Core root, with explicit `AGENT_CORE_HERMES_*` overrides when needed. No drive letter or machine-specific project path is compiled into the active source.
 
 When normal process environment loading is used, `src\config.ts` attempts `process.loadEnvFile()` on the root `.env`. Credential values remain excluded from architecture documentation and must never be written into logs/docs.
 
@@ -566,6 +2249,7 @@ Low-level client/parser/socket errors are recorded as `CLIENT / info`, so a malf
 Primary files:
 
 - `src\auth\key-types.ts`
+- `src\auth\tool-grant.ts`
 - `src\auth\key-store.ts`
 - `src\auth\persistent-file.ts`
 - `src\http\auth.ts`
@@ -589,7 +2273,7 @@ Bearer authentication resolution order:
 3. if OAuth is enabled, verify as OAuth access token
 4. reject otherwise
 
-The verified principal is forwarded to MCP dispatch. The current 26 RDC tool handlers are direct local capabilities; they are not selected by a capability router or route context.
+The verified principal is forwarded to MCP dispatch. Optional toolGrant metadata is enforced before mutation admission for all registered families; unscoped principals preserve the default 28 machine-control tools plus available sibling tools. Exact-name grant filtering is an authentication boundary, not a workflow/capability router. Empty grants deny all callable tools; malformed grants are rejected. Key lifecycle/OAuth backing metadata preserve scope. The new compiled implementation is qualified, with resident activation pending as recorded in 0.1.70.
 
 Generic auth persistence uses temp-file replacement. On Windows, the generic persistence helper has a fallback for replacement failures such as `EPERM`, `EACCES`, or `EBUSY`. OAuth credential persistence is stricter and described separately below.
 
@@ -727,9 +2411,11 @@ The generic wrapper:
 - records handled `isError` results as `OPERATION / info`
 - captures thrown exceptions as real MCP failures
 
-## 10. Public MCP tool surface
+## 10. HISTORICAL public MCP tool-surface baseline
 
-The active runtime registers **55** tools when MemoryService, Game Mode, and Code Intelligence are enabled: **26 Agent Core machine-control tools implemented by the vendored `src\rdc` layer**, **10 explicit memory tools**, **14 Game Mode / Android phone-control tools**, and **5 Code Intelligence facade tools**. Memory, phone control, and Code Intelligence are sibling capabilities; none routes or gates normal machine-control calls.
+> Historical inventory retained for architecture evolution. It is **not the current manifest**. Current live tool truth is section 0.1/0.2: 64 tools after retirement of the legacy `partner` facade.
+
+This historical runtime baseline registered **55** tools when MemoryService, Game Mode, and Code Intelligence were enabled: **26 Agent Core machine-control tools implemented by the vendored `src\rdc` layer**, **10 explicit memory tools**, **14 Game Mode / Android phone-control tools**, and **5 Code Intelligence facade tools**. Memory, phone control, and Code Intelligence were sibling capabilities; none routed or gated normal machine-control calls.
 
 ### Configuration
 
@@ -828,8 +2514,9 @@ Primary source files:
 - `src\memory\store.ts` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â file-native canonical store with atomic fsync+rename writes and pinned deletion protection
 - `src\memory\semantic-document.ts` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â derived content+context+keywords+tags+category text
 - `src\memory\relations.ts` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â typed link validation, bounded fan-out, duplicate merge, and strength-preserving/strengthening normalization
+- `src\memory\bm25.ts` — dependency-free normalized BM25 scoring with bounded query-length weighting for the opt-in retrieval profile
 - `src\memory\embedder.ts` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â provider-neutral embedder contract plus Cloudflare Workers AI OpenAI-compatible adapter
-- `src\memory\retrieval.ts` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â hybrid lexical/metadata + semantic cosine ranking, hard response budgeting, and bounded linked-neighbor expansion
+- `src\memory\retrieval.ts` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â hybrid lexical/metadata + semantic cosine ranking with optional BM25 profile, hard response budgeting, and bounded linked-neighbor expansion
 - `src\memory\index.ts` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â rebuildable fingerprint/semantic-text/vector index with embedder identity, canonical-fingerprint freshness checks, and strict persisted/query vector validation
 - `src\memory\intelligence.ts` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â strict deterministic metadata enrichment + embedding-neighbor proposal engine
 - `src\memory\evolution.ts` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â conservative validated evolution for empty metadata plus add/strengthen/reciprocal `related` links
@@ -851,7 +2538,7 @@ Ordinary canonical notes carry a machine-readable `agent-core-memory` JSON comme
 
 Canonical files are authoritative. The derived index may be deleted/rebuilt without losing memory. Startup ensures/rebuilds the index from canonical records; semantic operations re-check canonical fingerprints before using vectors, and live health inspection detects a missing, stale, or invalid index without calling the embedding provider. Index failure degrades memory health but does not invalidate a healthy canonical store.
 
-Recall uses inspectable lexical/metadata components (phrase/token/keyword/tag/context/category with weak recency tie-break), raw semantic cosine similarity in the public `semanticSimilarity` component (`0..1`), weighted semantic contribution inside the total ranking score, hard `budgetChars` enforcement, and bounded typed-link expansion. Query embedding failure is fail-soft: search falls back to deterministic ranking while embedding/intelligence health becomes degraded. Actual returned non-pinned memories durably increment `retrievalCount` and `lastAccessedAt`; recall does not change `updatedAt`.
+Recall uses inspectable lexical/metadata components (phrase/token/keyword/tag/context/category with weak recency tie-break), raw semantic cosine similarity in the public `semanticSimilarity` component (`0..1`), weighted semantic contribution inside the total ranking score, hard `budgetChars` enforcement, and bounded typed-link expansion. `memory_search` defaults to the legacy profile; optional `rankingProfile="bm25"` adds normalized BM25 lexical evidence (`bm25Lexical`) with bounded weight 0.9 for 1–2 meaningful query tokens and 0.45 for longer meaningful queries while stopword-only input contributes zero. Query embedding failure is fail-soft: search falls back to deterministic ranking while embedding/intelligence health becomes degraded. Actual returned non-pinned memories durably increment `retrievalCount` and `lastAccessedAt`; recall does not change `updatedAt`.
 
 Mutation history is bounded and records concrete create/update/retrieval/link/evolution events. At the MCP boundary, semantic capture follows a controller-assisted A-MEM-style pattern without adding a second model runtime: the connected AI supplies structured semantic metadata when confident. Omitted metadata is enriched by the provider-independent deterministic `enrichMemoryMetadata()` path before canonical persistence, so basic metadata capture does not depend on an embedding provider. Content-changing updates should carry refreshed metadata when prior metadata would otherwise become stale. Ordinary APIs cannot update or delete the pinned foundational memory. Delete repairs incoming links and refuses destructive deletion when canonical memory issues make complete repair unsafe.
 
@@ -911,7 +2598,7 @@ runtime\grafel\
 
 The provider process receives isolated `HOME`, `USERPROFILE`, `XDG_CONFIG_HOME`, `APPDATA`, `LOCALAPPDATA`, `GRAFEL_HOME`, and `GRAFEL_DAEMON_ROOT`; `GrafelRuntime` now asserts that every required isolation plane remains inside the Agent Core-owned runtime before spawning provider children. Grafel eager algorithms/embedding remain disabled by default. Optional resource policy is typed through Agent Core config and maps only to provider-owned knobs for RSS budget, reload debounce, BM25 idle eviction, whole-group idle eviction, keep-reader, group RSS budget, and group-algorithm debounce. Whole-group idle/RSS eviction defaults remain off. Agent Core does not add Grafel to system PATH and does not use `grafel install`.
 
-Registration is narrow and idempotent: group `agent-core` maps the resolved current project root through `grafel group add ... --install=false --git-hooks=false --rules=false --mcp=false`. The repo-local `.grafel/group.json` discovery marker is ignored by Git and regenerated only when the isolated registry/path mapping is missing or stale. This lets a moved project repair the absolute repo path without modifying external AI-host configuration.
+Registration is narrow and idempotent: group `agent-core` maps the resolved current project root through `grafel group add ... --install=false --git-hooks=false --rules=false --mcp=false`. The repo-local `.grafel/group.json` discovery marker is ignored by Git and regenerated only when the isolated registry/path mapping is missing or stale. User policy now persistently pre-authorizes this marker-only mutation: Agent Core controllers must automatically supply `allowRepoMarker=true` when registration requires the marker, without prompting again. An explicit per-call `allowRepoMarker=false` still denies it; marker conflicts remain fail-closed; protected-path registration still has its separate explicit authorization boundary. This lets a moved project repair the absolute repo path without modifying external AI-host configuration.
 
 Repository boundaries are enforced before indexing through root `.grafelignore`. The protected reference tree, `SubProject`, external RDC trees, local artifacts/temp/publish outputs, root `.env*`, and other excluded state are not part of the Agent Core graph. Existing `.gitignore` rules continue to exclude runtime/secrets/build outputs.
 
@@ -931,9 +2618,11 @@ Every normal provider call checks Code Intelligence health/freshness first. Read
 
 The former protected checkout `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\grafel` was retired on 2026-09-19 after the final zero-value census mapped all 22 canonical MCP tools and all 33 top-level CLI surfaces with no unmapped mechanism. Active Agent Core TypeScript never imported it. The active provider binary was independently built/qualified from pinned MIT commit `45f9745d02f3662a8516fb35cd2d0624acf82cbf`, and `provider.json` preserves build/hash/qualification provenance; the official v0.3.3 binary remains a scoped rollback artifact. The full build staging source was deleted with the protected checkout so no hidden Grafel source replacement remains.
 
-## 10D. Hermes A2A Partner subsystem
+## 10D. HISTORICAL — retired Hermes A2A Partner subsystem
 
-The Hermes A2A Partner is a first-class **optional sibling collaboration capability** under `src\partner`. It is separate from the Hermes-inspired LearningService: LearningService performs deterministic controller-reviewed durable-learning support, while the Partner subsystem communicates with a live Hermes agent as an external subordinate collaborator.
+> **Retired 2026-09-27.** This section is retained only as historical architecture evidence. The active source/runtime no longer contains `src\partner`, `src\mcp\partner-*`, the public `partner` MCP facade, `AGENT_CORE_HERMES_*` config, `/health.partner`, or `runtime\partner\hermes`. Fresh live acceptance after retirement reports 64 tools and no `HERMES_HOME_NOT_FOUND`. The separate future Agent Core-owned `agentRuntime` / Agent Core AI workstream is not this subsystem and was not modified by retirement.
+
+Historically, the Hermes A2A Partner was a first-class **optional sibling collaboration capability** under `src\partner`. It was separate from the Hermes-inspired LearningService: LearningService performed deterministic controller-reviewed durable-learning support, while the Partner subsystem communicated with a live Hermes agent as an external subordinate collaborator.
 
 Primary files:
 
@@ -1065,6 +2754,8 @@ The ancestor/symlink handling prevents writing through an allowed-directory syml
 
 `read_file` supports both local files and explicit URL reads.
 
+The approved compiled AGIXT-P1 implementation adds optional `options.networkPolicy: 'public-only'` for explicit URL reads. It validates all resolved addresses, connects only to a selected public address, verifies the peer and original TLS identity, checks every redirect, and uses bounded identity-encoded bytes. Invalid policy/local-file use is refused. PDF uses the existing byte parser without a second fetch; unsupported converters are refused. The policy is not global: legacy intentional local/LAN URL reads remain unchanged when absent. See 0.1.74 for the pending resident-activation boundary and executed fixture qualification.
+
 Local file handlers cover:
 
 - text
@@ -1081,6 +2772,12 @@ URL fetch has an approximately 30-second timeout. Local reads use an abortable u
 Ordinary local-file reads now pass through shared `src\rdc\utils\files\safe-regular-file.ts` hardening. The guard classifies the path before opening, verifies the opened descriptor is still a regular file, bounds concurrent/outstanding opens and open latency, and keeps a timed-out open counted until the underlying OS open settles. `readRegularFileBounded` reports `truncated` explicitly and does not falsely mark a file whose size exactly equals the requested byte bound. Text streaming paths reuse the already-verified descriptor to avoid a second path open between verification and reading. RDC config reads use the same primitive with a 2 MiB bound.
 
 A directory passed to `read_file` is still detected before the regular-file guard and returns guidance/listing rather than only surfacing a raw `EISDIR` failure. Device/FIFO/socket/non-regular paths are refused before content handlers attempt to consume them.
+
+### 12.2.1 Explicit offline workbook assertions
+
+`src/verification/workbook-input.ts` and `workbook-assertions.ts` support `node scripts/verify/verify-workbook.mjs --workbook FILE.xlsx --spec SPEC.json --output NEW_REPORT.json`. The compiled CLI was exercised in the approved AIOS-P1 acceptance; it is not a resident MCP tool or an automatic postflight hook. Strict version-1 digest-bound rules cover selected sheet order, typed scalar values, exact formula text, explicit stored caches and frozen panes. Results are pass/fail/unavailable with exits 0/1/2. Observed values are represented by type/digest by default, not dumped cells.
+
+The input profile is local non-macro XLSX: 10 MiB compressed, 4,096 entries, 16 MiB/member, 64 MiB actual total expansion; specification 2 MiB and report 1 MiB. Descriptor identity and source hashes are checked; untrusted decompression occurs once before STORE-only repacking and ExcelJS parsing. Macro/external relationships, XML entities, malformed/coerced scalar values, duplicate cells and excessive worksheet allocations are refused. The worker deadline is 30 seconds with V8 heap limits, not OS sandbox isolation. Reports are exclusive and byte-verified. No formula recalculation, visual/financial correctness guarantee, automatic repair or deployment approval follows from a passing report.
 
 ### 12.3 Write behavior and overwrite guard
 
@@ -1381,7 +3078,7 @@ Output:
 
 `dist\ui`
 
-Independent UI package version: `0.8.0`.
+UI package version: `0.12.0`.
 
 Stack:
 
@@ -1413,57 +3110,68 @@ Browser/UI -> native messages include concepts such as:
 
 Native -> UI messages include:
 
-- status snapshot
+- compact status snapshot for backward compatibility
+- sanitized `DesktopSnapshot` with Core process metrics, safe paths and subsystem health projections
 - Activity Log snapshot/events
 - action state/error data as applicable
 
-### 20.2 Current visual and status surface
+### 20.2 Current six-screen visual and status surface
 
-Top action cards:
+The active desktop UI is now a shared React/WebView2 shell with six routed local pages:
 
-- System Snapshot
-- Open Tunnel Admin UI
-- Restart Tunnel
-- Open Agent Core Folder
-- Restart Agent Core
-- Restart All
+1. Dashboard
+2. Core Runtime
+3. Systems
+4. Activity Log
+5. Diagnostics
+6. Settings
 
-Left control/status area:
+`src/ui/src/App.tsx` owns only page/hash state and host subscriptions. Shared visual ownership is split across `components.tsx`, `pages.tsx`, `model.ts`, `systems.ts` and `index.css`. The shell provides the persistent topbar, Agent Core branding/version, page-sensitive search prompt, ONLINE state, live date/time, Settings navigation, persistent sidebar, page-sensitive quick actions and bottom process card.
 
-- Start Windows autostart toggle
-- Reset OAuth / Re-auth
-- Connection
-- Memory
-- Tunnel
-- Execution
+The design system is the dark navy/cyan reference family recorded in `docs/UI Agent Core/`: thin blue borders, compact workstation density, cyan active navigation rail, green/amber/red/offline state language, shared status pills/icon wells, dense cards/tables, right-side inspectors and bounded responsive fallbacks.
 
-Right area:
+Dashboard, Systems and Diagnostics use one shared system projection so health counts and system states cannot independently disagree. Runtime data remains authoritative: screenshot sample PID/time/count values are not hardcoded.
 
-- Activity Log
-- CLEAR action
+The native-to-UI `DesktopSnapshot` now carries sanitized live process/runtime and subsystem data: PID, uptime, CPU sample, process working set, available-memory capacity evidence, core/tunnel ports, safe runtime paths and projections of Memory, Execution, Phone, Code Intelligence, Semantic IDE, Learning and Partner health. Activity Log remains backed by the existing session-visible Activity Journal.
 
-Connection/Tunnel/Execution ON/OFF elements are passive status indicators, not manual power switches. Memory now follows the native MemoryService health reported by `/health`.
+Unsupported/destructive reference controls remain visibly non-operative unless an existing native action already owns the behavior. The UI does not create a second health, execution, diagnostics or settings authority.
 
-Status mapping semantics:
+### 20.3 Six-screen reference UI parity implementation — 2026-09-24
 
-- Connection ON = Agent Core `/health` reachable/healthy
-- Memory ON = `available`
-- Memory DEG/amber = `degraded`
-- Memory OFF = `not-used` or `error`
-- Tunnel ON = tunnel readiness succeeds
-- Execution available/ON = health reports direct RDC machine execution available
-- overall online = bridge+tunnel ready, memory not degraded/error, and Execution available
-- memory degraded/error or Execution unavailable contributes to overall degraded state
+**COMPLETE — IMPLEMENTED — BUILT — LIVE-ACTIVATED.** The approved `docs/Agent-Core-Reference-UI-Parity-Plan.md` scope UI-P0–UI-P10 was executed against the six local reference PNGs. Current production `dist/ui` was rebuilt by Vite 6.4.3 (1678 modules transformed). The launcher was built Release with 0 warnings / 0 errors, published as a self-contained win-x64 single-file executable and cut over at the root.
+
+Installed launcher SHA-256 is `DD68D32058A47A3ACF1900D1063584ED8239D903FF4BB577C4A2D349524BA65A`; version metadata remains 0.12.0.0 / 0.12.0. The previous launcher is preserved under `runtime/backups/reference-ui-parity-20260924/`. Launcher cutover stopped only old root launcher PIDs 380/13304, started PID 9044, and preserved live Node Core PID 15404 plus tunnel PID 7336.
+
+The UI dependency tree had pre-existing physical corruption. The damaged tree was preserved as `src/ui/node_modules.partial-20260924-1910`; exact-version package bodies required by the existing manifest/lock were restored without adding dependency/version declarations. Temporary npm script-approval metadata was removed from `src/ui/package.json`.
+
+Truth corrections completed during finalization include live-only CPU/memory sparklines, measured memory percentage, Unknown rather than fabricated Healthy for Auth/Integrations without a dedicated health surface, and removal of fabricated diagnostic durations.
+
+Fresh Activity Journal startup evidence shows the new launcher initialized and reached Core+tunnel successfully without a WebView2/React startup error in the inspected window.
+
+A 2026-09-24 continuation completed the missing independent screenshot review using a development-only Puppeteer capture helper against all six local reference PNGs. The visual-tightening pass switched the shared topbar to the reference-derived logo asset, compacted Dashboard cards to preserve the reference viewport density, removed encoding-sensitive runtime text glyphs in favor of Lucide/ASCII-safe rendering, and corrected cold-route Systems/Activity selection state. All six rebuilt routes captured with no page errors and no page-level overflow at their canonical reference viewport. The review is manual side-by-side acceptance rather than a numerical pixel-diff claim; live values still supersede screenshot sample values. The plan and execution-report headers were normalized on 2026-09-24 to this completed review state so current documentation no longer retains the earlier pre-review boundary.
+
+The rebuilt production dist/ui remains a 1678-module Vite build (final JS ~295.20 kB, CSS ~27.65 kB). The pre-tightening UI artifact is preserved under runtime/backups/ui-parity-visual-tightening-20260924/dist-ui-before-tightening/. Native MainForm remains the sole window-caption owner; no unsupported React window-* action contract was added.
+
+The visual-tightening build was live-reloaded by restarting only the primary launcher: PID 9044 → 12884 while Node Core PID 15404 was preserved. `/health` remained `ok` at version 0.12.0. Active `dist/ui/index.html` references `assets/index-HjFZI-sP.js` (SHA-256 `2D7D2DD69706B964B0E9C40EC57E646E8A4A8E86BE6238035D75CC9D5FC51DEC`) and `assets/index-Dplt5ICP.css` (SHA-256 `BD19386DD9B95201F691A7149B231C520D9A28D7B762D2C62AAD4F75D745A9D5`). Fresh desktop-session activity records initialization plus Core/tunnel reachability and no UI/WebView2 runtime error in the inspected window.
+
+A final 2026-09-24 native-window refinement addressed density visible only in the real maximized 1536-wide WebView. `src/ui/src/index.css` now has a scoped 1180-1599 px / <=1000 px media query that keeps shell/topbar/sidebar ownership unchanged, modestly tightens page internals, and switches only the constrained Systems catalog to three columns with a 330 px inspector. Targeted 1536x993 captures of all six routes returned `errors=[]` with document/body dimensions equal to the viewport. A follow-up brand correction replaced the temporary reference-derived topbar mark with the canonical `assets/agent-core.png` through the byte-identical `src/ui/public/agent-core.png`; a bounded `.brand-logo-frame` compensates for transparent padding without modifying the original artwork. The native launcher already uses `assets/agent-core.ico` through `ApplicationIcon`. Current active UI assets are `assets/index-BgHwrSne.js` SHA-256 `9EC535A382257A4B77DCA2F6E5D0266B2FCA0B4D0F0F2EF401B704C0B354406D` and `assets/index-bxpmMfta.css` SHA-256 `5F156A986BCA46E1212827ACF94DB67F419265261B686C8F86DC61D5528EA43A`; `dist/ui/agent-core.png` matches the canonical PNG SHA-256 `4E0FE25FD14837B941D5A62FF47E0EC66E8B96910A22544767D620B7AE346806`. The latest launcher-only reload runs primary PID 4916 with helper PID 15056 while Node Core PID 15404 remained active and `/health` stayed `ok` on 0.12.0. Evidence: `runtime/tmp/reference-ui-native-density-captures/`; backups: `runtime/backups/ui-responsive-refinement-20260924/` and `runtime/backups/official-logo-20260924/`.
+
+Execution report: docs/Agent-Core-Reference-UI-Parity-Execution-20260924.md. Changeset intent: .changeset/20260924-reference-ui-parity.md. No release:apply, version bump, commit, tag, push, publish or deployment occurred.
 
 ## 21. Launcher actions and controls
 
 `AgentCoreRuntime` currently supports actions including:
 
 - open Agent Core folder
+- open runtime folder
+- open Memory store
+- open Activity Log folder
 - open tunnel admin UI
-- restart Agent Core
+- start/stop/restart Agent Core
 - restart tunnel
 - restart all
+- view process details
+- record a sanitized system snapshot summary
 - reset OAuth / re-auth
 - enable/disable Windows autostart
 - clear Activity Log
@@ -3232,3 +4940,664 @@ The earlier status-hygiene edit was documentation-only; the subsequent approved 
 - Live `/health` after recovery reports Core `ok`, Execution/Memory/Grafel/Semantic IDE/Learning/Hermes Partner available with Memory/Grafel/Semantic issueCount `0`; Activity Log session reset also works on launcher restart while structured evidence remains persistent.
 - Corrupt pre-recovery source/dist/dependency artifacts remain preserved under `runtime\backups\launcher-rebuild-20260920-105821` and `runtime\backups\source-dist-recovery-20260920-1212`; they are forensic artifacts, not runtime authority.
 - Anthropic hardening remains targeted-verification pending; no broad regression suite or release apply was run during this recovery.
+
+
+### Approved-adoption continuation — 2026-09-22
+The post-launcher-restart continuation closed the selected native compiler blocker: src/semantic-ide/types.ts was reconstructed from six surviving semantic consumers and the config producer, not recovered byte-for-byte from history. Eleven negative type contracts and the semantic consumer closure compile cleanly; the emitted type module remains identical to the existing empty runtime module. Strict selected TS 6.0.3 no-emit now has zero diagnostics. A selected native candidate dependency closure of 19 JavaScript modules was built under runtime/build/native-approved-adoption-20260922/dist. Both fresh source and emitted-candidate runs passed the same 45 targeted cases, zero failed/skipped; these are two runs of the same cases, not 90 distinct tests. Native active dist was not replaced; no full-root build is claimed.
+The existing G26/G27 candidate hash was reconfirmed. A fresh isolated daemon and MCP bridge under the task evidence directory completed initialize/tools-list with 22 canonical provider tools, then the client and daemon were closed; a machine process query found zero remaining candidate processes. This is isolated candidate qualification, not active-provider cutover, full schema/response parity acceptance, or a graph-fidelity benchmark. Prior Go evidence remains 200 passing test/subtest events (47 top-level), zero failures, one unverified host-symlink case; those Go suites were not rerun in this continuation. The candidate remains static-linked without trimpath and is not a release archive.
+Evidence: `runtime/tmp/approved-adoption-20260922/semantic-types-reconstruction.json`, `native-typecheck-postrestart.json`, `native-candidate-build.json`, `native-postrestart.json`, `native-compiled-postrestart.json`, `compiled-native-test-provenance.json`, and `provider-candidate-mcp-postrestart.json`. The existing minor release intent remains pending. No active runtime replacement/restart, release apply, Git mutation, external notification or conditional adoption was performed.
+Canonical local memory record `71ca3311-98ac-4f70-8b95-4c6da22f4788` is the matching current execution record. Memory data recovery remains a new foundation, not restored historical experiences; the independent malformed-foundation detector gap remains open.
+
+### 2026-09-22 — Activation preparation (historical; now closed)
+
+**CLOSED: the user completed installation; independent live readback is recorded below.** The user continued after the candidate report and asked that ambiguous boundary wording be replaced with concrete unfinished work.
+
+Fresh comparison found four changed native programs and fifteen unchanged dependency programs. The replacement set is four JavaScript modules plus their four sourcemaps, Grafel executable and its updated provenance metadata. A fresh real-provider comparison returned 22 current and 22 candidate tools with zero missing tools and identical input schemas (`activation-schema-parity.json`). Earlier source/compiled 45-case test evidence remains valid as historical evidence; those suites were not rerun in this activation-preparation pass.
+
+The platform rejected writing the automatic stop/start batch before execution. No production process was stopped and no active native/provider file was replaced. This is a concrete tool limitation, not a maximum-work limit or missing implementation approval. The incomplete automatic helper is archived as text and must not be executed.
+
+`ACTIVATE-APPROVED-ADOPTION.cmd` now launches the task-local `runtime/tmp/approved-adoption-20260922/activation-20260922T095700/install-when-stopped.mjs`. This offline helper never stops/kills processes: it reports running Core/Grafel/launcher PIDs, refuses installation while they remain active, validates the exact allowlisted candidate/current/backup hashes, uses same-directory replacement with scoped rollback on error, and requests launcher start after installation. At this preparation checkpoint only syntax and non-mutating preflight had been executed. The later user-run installation and live startup are verified below; the rollback-on-error path was not exercised. `installer-check.json` reports all candidate/backup hashes valid, alreadyInstalled=false and readyToInstall=false because processes are running.
+
+Verified backup: `runtime/backups/approved-adoption-activation-20260922T095700`. Evidence and future installation result: `runtime/tmp/approved-adoption-20260922/activation-20260922T095700/`. The manual shutdown and root activation-launcher step were subsequently completed by the user; they are no longer pending. Preserve OAuth, tunnel, memory, other applications, references and current release version. Full source/Git recovery, the host-symlink check and pre-existing Semantic IDE provider damage remain separate unfinished work; no new release or broad repair was attempted.
+
+### 2026-09-22 — Selected runtime activation verified
+
+**CLOSED: installation and live readback completed.** The user installed the qualified files; independent checks now match all 10 installed files to the activation manifest. Node Core PID 18644 started at 2026-09-22T10:09:49Z after installation and serves the new native modules. The installed G26/G27 provider has SHA-256 `087f6df8d7bd7032b445a5683a3eb4cc39669f2ff7512527ed777e9ae803bd94`, a fresh 22-tool MCP handshake, wire 0.1.0 compatible and health available/current. G28 live status returns graphAvailability/groupCoverage and rejects unknown repo filters.
+
+A fresh run of the same four targeted files against installed root dist passes 45/45 cases, zero failed/skipped, exit 0; this is not a broad regression suite or full-root build. Evidence: `runtime/tmp/approved-adoption-20260922/activation-20260922T095700/live-verification.json`, `installed-native-tests.json`, and the user-run `install-result.json`. See `docs/Approved-Adoption-Execution-20260922.md` for the consolidated record. No further installation/restart is required for these selections. Prior host-symlink validation remains unverified; pre-existing Semantic IDE provider damage, complete source/Git recovery, and release tooling repair are separate unresolved work. No new repair, release apply or publication was performed.
+
+### Residual execution final acceptance note — 2026-09-22
+
+Final settled MCP acceptance supersedes preliminary passing snapshots: 18/24 graph checks PASS and 6 FAIL. Four failed checks concern the two npm-subpath IMPORTS edges; two concern ./canonical.js resolution in both baseline and candidate. The baseline/candidate health is available/current and the 22 tool schemas match, but that does not prove graph edge correctness. Root cause is not established. G29 is not accepted or activation-ready; no production installation occurred.
+Native PY6/TS6/S5: source and compiled each 92 PASS / 0 FAIL / 2 host SKIP. G29 source is corrected to the exact selected UTF-8 delta; external and compatibility suites passed again, but stable live-MCP graph behavior does not satisfy acceptance. Active runtime, protected references and product version are unchanged. Canonical task memory 163fc8f2-9be1-4956-bcaa-7c7a6537fb35 and docs/Residual-Adoption-Execution-20260922.md carry this final exception.
+
+
+### 2026-09-22 — Wave7 candidate qualification supersedes prior G29 candidate failure
+
+See section 0.6.3 and docs/Wave7-Adoption-Execution-20260922.md: five approved proposals implemented; G29 incremental-path omission corrected and candidate cold/warm MCP checks pass 24/24. The original baseline-and-candidate matrix remains 23/24 because unchanged baseline import resolution still fails. Native source/compiled runs each 172/178 PASS with six explicit host skips/exclusions; no production activation or release apply. Current canonical continuity: 1b2416e6-d8e3-4964-bf29-6e2775ed196f.
+
+### 2026-10-02 — Router/provider reference checkouts
+
+- User explicitly authorized three reference-only clones under `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT` for the next Native Agent Runtime/provider-routing phase.
+- `9router` → `https://github.com/decolua/9router.git`, branch `master`, HEAD `a99cf57239ff778b61e434c2786009d5ed1c412c`, Git-clean.
+- `omnirouter` → `https://github.com/devolkus/omniroute.git`, branch `release/v3.8.50`, HEAD `ea0cdc559ccc087d723f311a4217598cee4bb2b8`, Git-clean. Local folder name follows the user's `omnirouter` naming while the upstream repository is OmniRoute.
+- `freellmapi` → `https://github.com/leiworm/freellmapi.git`, branch `main`, HEAD `cc886c7c0be48731f7be10ab6bb42563e936f3b5`, Git-clean.
+- These checkouts are reference-only. No dependency installation, runtime execution, grounding/adoption, provider configuration, or Agent Core wiring was performed in this task.
+
+### 2026-10-02 — Provider credential rotation targeted grounding
+
+- Added source-first grounding authority: docs\Provider-Credential-Rotation-Grounding-20261002.md.
+- Current Agent Core provider pool supports multiple named routes/keys, but src\agent-provider.ts keeps keyCursor and route affinity in RAM; there is no durable per-credential cooldown/quota/error state, so restart-safe credential rotation is not implemented yet.
+- 9Router contributes restart-safe account rotation via persisted lastUsedAt/consecutiveUseCount plus model/account lock timestamps and earliest-retry calculation; its raw-key-oriented persistence/logging is not suitable to copy.
+- OmniRoute contributes the strongest durable connection resilience model: persisted last-used/backoff/rate-limit/error fields, reset-aware classification, provider-scoped selection mutexes, anti-thundering-herd handling and CAS recovery. Its separate apiKeyRotator helper is explicitly RAM-only and is rejected for the restart-continuity requirement.
+- FreeLLMAPI contributes encrypted API-key storage plus durable rate_limit_usage, rate_limit_cooldowns, provider_quota_state and provider_quota_observations, and a useful error taxonomy; its roundRobinIndex remains RAM-only and is not sufficient by itself.
+- Proposed direction remains proposal-only: Agent Core-owned deterministic persistent credential scheduler, operational state separate from AI Memory/Learning, secrets separated from scheduler metadata, absolute cooldown/reset timestamps, typed error scopes, and concurrency-safe selection/recovery.
+- No donor dependency was installed, no donor runtime was executed, and no Agent Core provider/runtime source was modified or activated in this grounding task.
+
+### 2026-10-02 — Persistent credential rotation execution plan
+
+- Added execution plan authority: docs\Agent-Core-Persistent-Credential-Rotation-Plan-20261002.md.
+- Plan selects one Agent Core-owned deterministic provider/credential scheduler before interactive Native Agent chat is considered ready.
+- Planned state owner is a dedicated live operational SQLite store under runtime\agent-runtime\provider-state.sqlite, separate from AI Memory/Learning and separate from runtime task/session state; implementation remains pending user authorization.
+- Wave 1 keeps raw API keys in existing protected numbered environment slots and introduces stable credential IDs. No raw key is planned for the operational DB.
+- Core rotation design combines an explicit durable lastCredentialId checkpoint with 9Router/OmniRoute-style persisted lastUsedAt/consecutiveUseCount fallback, absolute cooldown/reset timestamps, typed failure scope, provider-scoped selection serialization, CAS recovery, bounded quota observations, and an OmniRoute-derived persistent provider breaker.
+- Explicit rejects: 9Router raw-key-oriented persistence/logging, OmniRoute apiKeyRotator RAM-only cursor, FreeLLMAPI roundRobinIndex RAM-only cursor, and current Agent Core keyCursor as durable authority.
+- Hard acceptance requires restart continuation, cooldown survival/expiry, invalid-key persistence, scope isolation, bounded failover, concurrency safety, no secret disclosure, and preservation of the existing Memory-first/MCP/Learning lifecycle.
+- No product source, dependency, test/build, provider activation, restart, release apply, or donor runtime execution was performed while creating this plan.
+
+### 2026-10-02 — Persistent credential rotation implemented and targeted-qualified
+
+- Native Agent Runtime provider selection now uses `PersistentCredentialScheduler` plus `ProviderStateStore`; the previous RAM-only key cursor is no longer the credential-selection authority.
+- `src\config.ts` preserves stable numbered credential identities for Atria, Gonka and OpenRouter while raw secrets remain protected configuration values.
+- Live operational ownership is split intentionally: `runtime\agent-runtime\state.json` remains task/session/finalization state, while `runtime\agent-runtime\provider-state.sqlite` owns provider rotation checkpoints, credential cooldown/error state, scoped model blocks, quota observations and provider-breaker state.
+- Selection persists `last_credential_id` before dispatch, skips ineligible credentials deterministically, survives service reconstruction, and computes earliest future eligibility when a pool is exhausted.
+- Provider responses are classified into request, credential, model-credential, model-provider or provider scope; 401 invalid credentials persist until secret revision/reset, 429 uses reset-aware escalating cooldown, and genuine provider/transport failures feed a persisted CLOSED/OPEN/HALF_OPEN breaker.
+- Provider-scoped selection serialization and transactional SQLite updates prevent lost rotation checkpoints under concurrent calls. Raw provider secrets are not stored in scheduler state or exposed by health.
+- Final build PASS: path policy 293 authored / 0 exceptions and TypeScript compile PASS.
+- Targeted qualification PASS: 4 files / 21 tests, covering restart continuation, cooldown expiry, invalid-key recovery, request/model isolation, quota preflight/reset, rate-limit escalation, concurrent selection, provider/key failover, degraded state health, no raw fixture secret in SQLite/health, and preservation of Memory-first/MCP/Learning finalization.
+- Grafel was explicitly reindexed and is current/integrity accepted at 10,761 entities / 58,335 relationships with repository coverage 1/1. Its generic security scan surfaced one unrelated pre-existing OAuth XSS advisory; no changed-source secret logging/serialization path was found by scoped source readback and fixture secret checks.
+- Material release intent: `.changeset\20261002-persistent-credential-rotation.md` (minor, unapplied). No product version change, publication, Git-history mutation, Core restart, or real-provider acceptance occurred.
+- Resident activation remains pending explicit lifecycle authorization; this section records source/build/targeted qualification only, not live resident verification.
+
+### 2026-10-02 — Persistent credential rotation resident activation verified
+
+- User restarted Agent Core; fresh connector attached to resident Core 0.14.0, PID 13256, running project `dist\index.js`.
+- Resident dist contains `PersistentCredentialScheduler`, `ProviderStateStore`, `last_credential_id`, and provider-pool scheduler wiring.
+- `runtime\agent-runtime\provider-state.sqlite` exists with schema version 1 and 18 active credential records each for Atria, Gonka, and OpenRouter.
+- Public `/health` returned status ok; Agent Runtime available with issueCount 0, providerCount 3, configuredProviderCount 3; canonical Memory also reports issueCount 0.
+
+- A bounded resident Native Agent request completed through `/agent/run` with HTTP 200, status finalized, 3 iterations, and final response `PROVIDER_ROTATION_RESIDENT_OK`.
+- Provider metadata readback shows resident order Atria -> Gonka -> OpenRouter with 18 configured credentials per route; no secret values were printed.
+- Post-request SQLite readback shows Atria `last_credential_id=atria:03`, `rotation_sequence=3`, all 18 Atria credentials active, and no scope block or breaker row.
+- Post-request health shows one session, one finalized task, and pendingFinalizationCount 0.
+- This proves resident code loading, live operational-state initialization, real provider invocation through Native Agent Runtime, live rotation checkpoint writes, and preserved finalization. Targeted fixtures remain authority for restart/cooldown/error edge cases.
+
+### 2026-10-02 — Interactive Native Agent Chat selected as next phase (plan only)
+
+- Planning authority: `docs\Agent-Core-Interactive-Agent-Chat-Plan-20261002.md`.
+- Current resident Phase 1F ChatPage and `/agent/run` remain one-shot: React stores one AgentRunState, launcher waits for one complete response, and NativeAgentController.runTask creates/closes one runtime session per request.
+- The selected next architecture is one chat thread = one durable Agent Runtime session and one user turn = one independently finalized AgentRuntimeTask.
+- Planned conversation transcript ownership is separate local runtime state under `runtime\agent-runtime\chat.sqlite`; chat history is not canonical Memory and is not automatically promoted into Memory.
+
+- Planned model context uses bounded recent committed chat history plus the existing Memory-first / Skill / Procedure / Grafel synthesis path; failed or interrupted assistant output is excluded from future context.
+- PersistentCredentialScheduler remains the credential-selection authority. Chat may persist only safe preferred provider/model metadata for continuity.
+- Planned transport is additive loopback/token-protected chat routes plus safe incremental NDJSON events proxied by the launcher; `/agent/run` remains backward-compatible and no new public MCP tool is planned.
+- Planned React UI adds conversation list, durable message timeline, send/stop/retry, safe progress state, and restart resume while keeping launcher-owned authentication private.
+- Hard gates include duplicate-request protection, one running turn per conversation, final answer withheld on Learning-finalization failure, restart/interruption recovery without false success, thread isolation, and resident multi-turn continuation across a Core restart.
+- This is planning-only. No product source implementation, dependency installation, build/test execution, restart, release/version action, or publication was performed for this plan.
+
+### 0.1.86d Penpot-to-Canva boundary correction and TASK 3 reset — 2026-10-02
+
+**CURRENT TASK 3 AUTHORITY — Agent Core is NOT the Canva adapter/runtime.** The user corrected the product boundary: the shipped path is modified Penpot -> Penpot-to-Canva bridge/app -> Canva. Agent Core remains external engineering support only. The earlier Canva Developer App named `Agent-Core` is superseded probe history and must not be reused as product identity.
+
+The user created a fresh Canva Developer App named `Penpot-to-Canva`. On that app, Design Editor is configured and the minimum `canva:design:content:read` and `canva:design:content:write` scopes are enabled. The Development URL is blank and persisted, so TASK 3 will use a Canva-hosted uploaded JavaScript bundle rather than localhost.
+
+Product-side probe source is now under `F:\Content Creator\Astra Content Factory\Toolchain\adapters\penpot-to-canva\task3-probe\`. The corrected bundle was grounded against exact GA `@canva/design` 2.13.1 type definitions. It accounts for read-only post-creation width/height and uses Design Editing `PathFill.isMediaEditable` for the media-editable path semantic; `dropTarget` belongs to the separate shape-add fill surface. The probe refuses mutation unless the preview page is absolute, unlocked and empty.
+
+Runtime proof is still pending only on browser upload of `task3-probe\bundle.js`; the available machine-control surface could not reliably activate Brave's native file picker. Gate P1 remains OPEN and TASK 4 remains NOT STARTED.
+### 0.1.86e Penpot-to-Canva TASK 3 runtime acceptance — 2026-10-02
+
+**TASK 3 COMPLETE — GATE P1 PASS FOR SUPPORTED V1 SCOPE; TASK 4 NOT STARTED.** Runtime authority: `docs/Penpot-to-Canva-Task3-Runtime-Acceptance-20261002.md` + `.json`; machine evidence: `runtime/tmp/penpot-to-canva-task3-20261002/`. Product runtime boundary is modified Penpot -> Penpot-to-Canva bridge/app -> Canva. Agent Core remains engineering support only.
+
+Canva local development Preview correctly retains Development URL `http://localhost:8080/`. The Toolchain server `F:\Content Creator\Astra Content Factory\Toolchain\adapters\penpot-to-canva\task3-probe\serve-dev.cjs` serves `bundle.js` directly at the root with HTTP 200 / `text/javascript`. Developer Portal JavaScript bundle upload is a separate review/release path.
+
+Actual runtime proof covers opened-page PageId, absolute/multi-page read, `helpers.openPage`, page background write/read-back, `addPage()` with title/background/dimensions/native text+image elements, rect/richtext/shape CRUD, `PathFill.isMediaEditable`, position/rotation/transparency, fill/stroke update, list reorder, data-URL image upload, image media fill read-back, group/ungroup, delete/cleanup and fresh structural read-back. An image created by `addPage()` is observed by Design Editing as a `rect` with an image media fill.
+
+Runtime lifecycle constraint is now proven: burst `session.sync()` calls can return `RATE_LIMITED`; chaining group->ungroup->delete in one long-lived `openDesign` callback can return Canva `INTERNAL_ERROR` at finalization even after every intermediate sync succeeds. The verified correction is split-session execution: create/sync/close -> group/sync/close -> ungroup/sync/close -> delete/sync/close. This pattern passed without errors and is mandatory for TASK 4 implementation.
+
+Current public-contract cautions remain: post-creation width/height are read-only in GA Design Editing types; element IDs are runtime-observed but not treated as a guaranteed GA schema contract; PageRef itself did not expose PageId although opened pages/design metadata did. Existing-page delete/reorder/resize, crop/imageBox, gradients, masks/clipping, effects/shadows/blur, Design Editing tables and direct chart/sheet structural CRUD remain outside the proven native scope. Autofill/data-field runtime proof remains a separate tagged-design/OAuth track and is not promoted by TASK 3.
+
+Protected-boundary verification after TASK 3: Penpot source tree `5d70ab81d45b97e97a858135f15a5b60a3c438cfabaff668a021de5a48253268` MATCH; MCP resident build `2ad61958540d2df7eed9c372cead55d6a4b34534c4dcdd701e352bc31fed2610` MATCH; existing FIG adapter `159208b5a228d91d1f562a6ab32e3c352f4d55d6e18462f520d04932ddce50ef` MATCH. Initial Penpot-to-Canva adapter baseline: 8 files, tree SHA-256 `de0e0bd374c68b23929794993fbb7855d0e7031b0055a01405439f4bf5c1001e`.
+### 2026-10-02 — Interactive Native Agent Chat source implementation and targeted qualification
+
+- Interactive Native Agent Chat is now source-implemented across the existing Native Agent Runtime rather than as a second agent/controller.
+- `AgentChatStore` owns local conversation state in `runtime\agent-runtime\chat.sqlite`; conversation transcript remains separate from canonical Memory and is not automatically promoted into Memory.
+- `AgentChatService` maps one conversation to one durable `AgentRuntimeSession`; each user turn uses a distinct `AgentRuntimeTask`, preserves the existing verification/Learning finalization boundary, and keeps the session open across normal successful turns.
+- Bounded committed prior-turn context (default 24 messages / 48k chars) augments the existing Memory-first/Skill/Procedure/Grafel context. Failed/interrupted assistant output is excluded from later model context.
+- `clientRequestId` uniqueness provides duplicate-turn protection and one running turn per conversation is enforced.
+
+
+- Provider/model preference is safe conversation metadata restored into runtime affinity after reconstruction; `PersistentCredentialScheduler` remains the sole credential-selection authority and chat state stores no raw credential.
+- `src\http\app.ts` now exposes additive loopback/UI-token protected conversation list/create/read, NDJSON turn streaming, stop and archive routes while preserving legacy `POST /agent/run`.
+- The launcher reads turn NDJSON incrementally with `ResponseHeadersRead`, keeps the ephemeral UI token launcher-owned, and forwards safe event/result envelopes to WebView.
+- React chat state is conversation-keyed and provides a thread list, durable transcript, runtime/provider labels, send/stop/archive/reopen behavior and safe progress state.
+- A launcher recovery gap was repaired: after a streamed turn error/stop, `MainForm` now best-effort reloads the conversation detail and desktop status so the UI reflects persisted failed/stopped state immediately.
+
+
+Qualification evidence:
+- root `npm run build`: PASS; path policy 296 authored / 0 exceptions; TypeScript PASS.
+- targeted backend: 6 files / 26 tests PASS, covering chat store/service, controller, integrated runtime, HTTP transport and provider pool.
+- persistent provider scheduler: 10/10 PASS in separate targeted qualification.
+- React UI: typecheck PASS, 4/4 tests PASS, Vite production build PASS.
+- launcher: Release build PASS with 0 warnings / 0 errors; 16/16 launcher tests PASS after the recovery patch.
+- the provider-affinity test has an explicit 30-second local timeout because isolated behavior completed in ~6 seconds while the old 15-second default could expire only under parallel import/contention; no production logic was changed for that timing adjustment.
+
+
+Structural/security evidence:
+- Grafel was explicitly reindexed from final source and is current/integrity-accepted at 11,048 entities / 59,545 relationships with registered repository coverage 1/1.
+- Graph entities resolve `AgentChatService`, `AgentChatStore`, and `runConversationTurn`, with impact paths through NativeAgentController, HTTP/index composition, and direct chat/controller/runtime tests.
+- changed-source security analysis reported eight high shell-exec findings in `agent-chat-store.ts`; exact source verification shows all are false positives on `DatabaseSync.exec()` with static SQLite PRAGMA/transaction/schema/index SQL. User/content values use prepared statements and no shell/process execution exists in the store.
+- Grafel static test-reachability output is not used as qualification evidence because no coverage report is ingested; executed targeted suites above are authoritative.
+
+
+Release/lifecycle boundary:
+- material intent: `.changeset\20261002-interactive-native-agent-chat.md` (minor, unapplied).
+- no release application, version mutation, Git-history mutation or publication occurred.
+- source/build/targeted qualification is closed through IAC-8.
+- IAC-9 resident activation is still pending: current source shows Core restart is owned by the desktop launcher/WebView action path, with no independent CLI/HTTP restart surface. The running Core was therefore not manually replaced, avoiding loss of launcher-owned ephemeral UI-token/environment continuity.
+
+
+### 2026-10-02 — IAC-9 resident acceptance pre-restart stage
+
+- After a launcher-owned Core restart, public health now reports `agentChat.status=available`; `runtime\agent-runtime\chat.sqlite` is resident-created and the Native Agent Runtime remains available with all three configured provider routes.
+- Authoritative acceptance conversation: `51bb881d-b832-4aba-86f2-7696b45f1541`, durable runtime session `9bc41f9c-7e2c-47d6-9a32-cbd7a63bec7f`, workspace `agent-core`.
+- First resident chat turn finalized verified on Atria / Atria-Dawn-Preview. A later follow-up correctly tripped `AGENT_RUNTIME_VERIFICATION_EVIDENCE_REQUIRED` and committed no assistant message. A materially changed recovery turn on the same durable session then finalized verified and recovered the thread-local context correctly.
+- All acceptance runtime tasks are bound to the same session; conversation remains active; preferred provider/model remains Atria / Atria-Dawn-Preview; provider scheduler Atria rotation sequence is 10.
+- Canonical Memory search did not contain the private thread-local acceptance marker. That marker is intentionally not copied into docs/Memory before the restart-continuity check.
+- Final IAC-9 gate still requires one more actual Core restart followed by reopening this same conversation/session and completing the post-restart turn.
+
+### 0.1.86f Penpot semantic coverage / Gate P2 — 2026-10-02
+
+**TASK 4 COMPLETE — GATE P2 PASS FOR THE STRICT SUPPORTED V1 SOURCE SCOPE; TASK 5 NOT STARTED.** Authority: `docs/Penpot-Semantic-Coverage-Matrix-20261002.md` + `.json`; evidence: `runtime/tmp/penpot-semantic-coverage-20261002/source-evidence.json`; result: `runtime/tmp/penpot-semantic-coverage-20261002/task4-result.json`.
+
+The critical source-model decision is **top-level Penpot Board -> Canva Page**. A Penpot Page is retained as source section/grouping metadata because one Penpot Page may contain multiple Boards, while Board owns the fixed-screen semantics required by Canva: stable source ID, name, dimensions, fills/background, children and z-order. Strict v1 exports top-level Boards only; loose root shapes remain compatibility findings unless a later synthetic-page emulation is explicitly approved.
+
+The existing `execute_code -> penpot -> PenpotUtils` path is sufficient for strict-v1 extraction. Installed `@penpot/plugin-types 1.5.0` exposes Page/File traversal, Board/Group hierarchy, stable source IDs, geometry, parent/parentIndex, fills/strokes, Path/Boolean path data, Text/TextRange rich typography, ImageData bytes/MIME/dimensions, lock state and PluginData. `ExecuteCodeTaskHandler` already forces `naturalChildOrdering=true`, so child-array/parentIndex order is usable as extraction z-order evidence. No strict-v1 Penpot core change is required.
+
+Strict-v1 source scope: top-level Board pages, supported Board background subset, Rectangle, Path/Boolean plus bounded Ellipse-to-path normalization, non-mask Group hierarchy, Rich Text, geometry/rotation/opacity, creation-time size, z-order, a supported single solid fill/stroke subset, image fills/assets and Penpot source IDs. Multiple fills, unavailable Canva fonts, nested/clip Boards and similar cases are explicit compatibility findings rather than silent degradation.
+
+Three bridge-owned semantics can be represented without Penpot core changes through PluginData but are **not** admitted to strict v1 without explicit approval: replaceable image-placeholder role, explicit Canva page/export order, and Autofill field label/type. Name heuristics are not authority.
+
+A real future-only Plugin API gap was identified for image crop: internal `common/src/app/common/types/color.cljc` exposes optional `ImageTransform{x,y,width,height}` in image data, while public Plugin API `ImageData` omits that transform. This is not a current blocker because Canva crop/imageBox is also outside the proven v1 target surface. Native video is likewise absent from installed Plugin API and remains future-only.
+
+Grafel was not registered for this Penpot tree because registration would require writing a repo marker; no marker was created without user authorization. TASK 4 therefore used exact current source as authority. The runtime-pruned snapshot also has no `frontend/src`; ownership notes do not invent absent frontend implementation files.
+
+Protected-boundary verification after TASK 4: Penpot source SHA-256 `5d70ab81d45b97e97a858135f15a5b60a3c438cfabaff668a021de5a48253268` MATCH; Penpot MCP resident build `2ad61958540d2df7eed9c372cead55d6a4b34534c4dcdd701e352bc31fed2610` MATCH; existing Penpot->Figma adapter `159208b5a228d91d1f562a6ab32e3c352f4d55d6e18462f520d04932ddce50ef` MATCH; Penpot-to-Canva TASK 3 adapter baseline `de0e0bd374c68b23929794993fbb7855d0e7031b0055a01405439f4bf5c1001e` MATCH.
+### 2026-10-02 — Interactive Native Agent Chat resident activation and restart continuity closed
+
+- Interactive Native Agent Chat is now resident-activated and end-to-end verified.
+- The authoritative conversation `51bb881d-b832-4aba-86f2-7696b45f1541` survived a second launcher-owned Core restart while retaining durable runtime session `9bc41f9c-7e2c-47d6-9a32-cbd7a63bec7f`.
+- Post-restart Turn 3 finalized verified on the same session with task `93114e57-6d74-4119-a49a-21beb98a14b8`, verification ref `verification:iac9-post-restart-context`, complete Learning finalization, and Atria / Atria-Dawn-Preview provider affinity.
+- The turn correctly recovered the pre-restart thread-local context after restart. Exact canonical Memory search still had no matching Memory record for that marker, so the recovery is attributable to persisted chat context rather than Memory.
+- Persistent provider rotation continued across the acceptance lifecycle and reached Atria sequence 12; Agent Runtime remained available with pendingFinalizationCount 0, while Memory and Learning health remained issue-free.
+- The earlier empty duplicate acceptance conversation was archived through the supported chat API after the final proof.
+- IAC-0..IAC-9 and acceptance C1..C15 are closed for the implemented scope. The minor changeset remains unapplied; no version/release/Git-history/publication action occurred.
+
+### 2026-10-02 — Native Agent Capability Parity selected as next phase (plan only)
+
+- Planning authority: `docs\Agent-Core-Native-Agent-Capability-Parity-Plan-20261002.md`.
+- IAC-0..IAC-9 remain complete. Interactive Native Agent Chat is the resident conversation/controller surface and is not being replaced.
+- Exact resident config currently grants the Native Agent only one ordinary MCP tool: `get_config`. Memory-first retrieval, Learning finalization, Skills/Procedures/Grafel synthesis, provider routing and chat/session persistence are already internal controller capabilities and do not depend on this ordinary tool grant.
+- `AgentRuntimeToolSession` already connects an in-memory MCP client to the same `createAgentCoreMcpServer()` used by external controllers. `installCredentialToolGrant()` is installed before tool registration, so disallowed tools are hidden from discovery and direct raw calls are denied.
+- Current Core authority records 70 public MCP tools: 28 machine-control, 17 Memory, 1 Learning, 14 Phone, 7 Grafel Code Intelligence, 2 Semantic IDE/LSP and 1 artifact-only Skills tool.
+- The next phase adds a capability catalog and task-scoped resolver above the existing ToolGrant; it does not add a second MCP server or second execution body.
+- Planned capability families include local observation/search, file mutation, process execution/admin, browser navigation, code intelligence, Semantic IDE, Phone observe/act, Skills inspection and read-only targeted Memory retrieval.
+- Durable Native Agent knowledge writes continue through verified `agent_core_finalize -> Learning`; unrestricted ordinary Memory mutation is intentionally not the parity mechanism.
+- Bidirectional knowledge parity is a hard gate: verified knowledge created by external controllers must be reusable by Native Agent and Native-learned durable knowledge must be retrievable by fresh external-controller sessions from the same canonical Memory authority.
+- Browser control and URL reads already exist, but Agent Core lacks a dedicated platform-independent search-engine abstraction. The plan therefore includes an Agent Core-native Web Research subsystem with bounded search/open evidence under the shared outbound-network/security policy.
+- Existing `AGENT_CORE_AI_ALLOWED_TOOLS` must remain backward-compatible and conservative; current explicit lists are planned to remain an operator ceiling rather than silently expanding on upgrade.
+- This is planning-only. No runtime tool grant, configuration, dependency, web provider, build/test, restart, release/version or publication action occurred.
+
+### 0.1.86g Canonical Design IR v1 / Gate P3 — 2026-10-02
+
+**TASK 5 COMPLETE — GATE P3 PASS.** Product-side IR contract lives at `F:\Content Creator\Astra Content Factory\Toolchain\adapters\penpot-to-canva\ir-v1\`. Authority: `docs/Penpot-to-Canva-Task5-Canonical-IR-v1-20261002.md` + `.json`; validation evidence: `runtime/tmp/canonical-design-ir-v1-20261002/validation-result.json`; hashes: `runtime/tmp/canonical-design-ir-v1-20261002/artifact-hashes.json`. Exact current Penpot source now also contains additive TASK 6-shaped files (`CanvaIrExtractor.ts`, `ExportCanvaIrTaskHandler.ts`, server task/tool wiring and shared `CanvaIr.ts`) plus corresponding build output. These files were not assessed or accepted in this TASK 5 session; do not describe TASK 6 as complete from this note.
+
+Canonical Design IR v1 is source-neutral and does not copy Penpot/Canva private document structures. One top-level Penpot Board maps to one Canonical Page while Penpot Page remains source-section metadata. Strict tree element families are Text, Rect, Shape and Group. Image is a Fill referencing a separate ImageAsset. `Embed` is excluded from strict v1 because TASK 4 found no first-class Penpot Embed source semantic.
+
+Identity is deterministic and source-derived (`document:penpot:<fileId>`, `section:penpot:<pageId>`, `page:penpot:<boardId>`, `element:penpot:<shapeId>`, `asset:penpot:<imageId>`). Geometry is parent-relative; sibling/page order is explicit and zero-based. Rich text uses UTF-16 half-open run offsets and canonical units `fontSizePx`, `lineHeightEm`, `letterSpacingEm`. Assets separate raw image content/transfer references from frame geometry and carry raw-byte SHA-256.
+
+Every Page and Element carries compatibility status (`unassessed|native|emulated|partial|unsupported`) plus reason codes; compatibility reporting is versioned separately so target analysis does not mutate source identity. Strict mode forbids silent fallback. Generic `semanticRole`/`extensions` reserve future space, but placeholder/Autofill/page-order emulations remain unapproved.
+
+Deterministic serialization rules are defined in product README: UTF-8/no BOM, LF, lexical object-key ordering, explicit semantic array ordering, finite numerics, negative-zero normalization, no insignificant whitespace, SHA-256 over canonical JSON bytes. TASK 5 representative fixture contains two pages, all four strict element families, image fill + ImageAsset and passes targeted ID/reference/order/UTF-16 run/asset hash/determinism checks. Existing Penpot TypeScript compiler validated `types.ts` with exit code 0; no dependency was added.
+
+`coverage-map-v1.json` maps all 20 TASK 4 selected strict-v1 semantic requirements to explicit IR fields with zero private-format dependencies. Gate P3 passes on that basis. No Penpot source or existing Figma exporter file changed.
+
+IR v1 tree baseline after TASK 5: 12 files, SHA-256 `ddc3e06eb958b08cee635e69214a42b29e2a2a230028520aacbb97a695571192`. Whole Penpot-to-Canva adapter baseline after TASK 5: 20 files, SHA-256 `b50650c8cbad0d1c4f4630367c51b690cd71e194dc868b6ef77582cbdc2fcb74`. Existing TASK 3 probe subtree remains `de0e0bd374c68b23929794993fbb7855d0e7031b0055a01405439f4bf5c1001e` MATCH. Protected Penpot/Figma hashes remain unchanged.
+### 0.1.86h TASK 6 extractor audit / Gate P4 — 2026-10-02
+
+**AUDIT COMPLETE — GATE P4 PASS; FULL TASK 6 ACCEPTANCE OPEN ON ONE BLOCKER; TASK 7 NOT STARTED.** Authority: `docs/Penpot-to-Canva-Task6-Extractor-Audit-20261002.md` + `.json`; hash evidence: `runtime/tmp/penpot-to-canva-task6-audit-20261002/artifact-hashes.json`; negative acceptance probe: `runtime/tmp/penpot-to-canva-task6-audit-20261002/negative-probe.ts`.
+
+The existing extractor implementation was audited in place; no second extractor was created and no Penpot source was reverted. Source surface includes shared `CanvaIr.ts`, plugin `CanvaIrExtractor.ts`, task handler/plugin registration, server task/tool, and `PenpotMcpServer` registration. Common/plugin/server typechecks and builds pass. Compiled artifacts contain `export_canva_ir`, `exportCanvaIr`, and `ExportCanvaIrTaskResultData`.
+
+Gate P4 determinism is proven by the existing controlled test: two reads of the same deep-frozen fixture produce structurally identical IR, identical canonical byte count, and identical fixed SHA-256 `616f3c34092600430982a524c67722389f7eb4059cbcb380b5aa113a5ca4588a`. Extractor unit tests PASS 2/2.
+
+An independent negative acceptance fixture confirms fail-closed behavior: loose root shape, mask group and multiple fills produce `strictReady=false` with blocking diagnostics `ROOT_SHAPE_OUTSIDE_BOARD`, `MASK_GROUP_UNSUPPORTED`, and `MULTIPLE_FILLS_UNSUPPORTED`; loose/mask source IDs are explicitly omitted. Source review also finds explicit diagnostics for gradients, advanced strokes, raw SVG, nested Boards, effects, interactions and component linkage. `naturalChildOrdering` and validation flags are temporarily enabled by the handler and restored in `finally`, and the controlled fixture is deep-frozen, supporting the read-only claim.
+
+One plan requirement blocks full TASK 6 acceptance: **bounded output is not mode-independent**. The extractor bounds inline raw image bytes to <=6 MiB, and integrated remote MCP transport caps serialized responses at 15,000,000 characters, but that transport cap is only applied when `isIntegratedRemoteMcp===true`. Local/manual plugin mode has no equivalent total IR response limit, and `ExportCanvaIrTool` serializes the entire result into `TextResponse`. Large page/element/text documents therefore remain unbounded in local/manual mode. Required correction: fail closed on an explicit total-result/canonical-size limit below the transport ceiling; never silently truncate Canonical IR; add a targeted boundary test.
+
+`TEXT_RANGE_FILL_FALLBACK_TO_SHAPE` is an explicit warning/normalization and does not currently block `strictReady`; this is not silent but remains a source-fidelity review item. Multiple Boards use deterministic root child order with explicit `BOARD_ORDER_FROM_ROOT_Z_ORDER` normalization.
+
+No live `export_canva_ir` invocation was claimed because ports 4401/4402 were not listening and this audit did not start or restart Penpot merely to obtain evidence.
+### 0.1.86i TASK 6 bounded-output closure / full extractor acceptance — 2026-10-02
+
+**TASK 6 COMPLETE — FULL ACCEPTANCE PASS; GATE P4 PASS; TASK 7 NOT STARTED.** Closure authority: `docs/Penpot-to-Canva-Task6-Extractor-Acceptance-20261002.md` + `.json`; historical audit remains `docs/Penpot-to-Canva-Task6-Extractor-Audit-20261002.md` + `.json`; accepted baseline: `runtime/tmp/penpot-to-canva-task6-audit-20261002/task6-accepted-baseline.json`.
+
+The former bounded-output blocker is closed with shared `MAX_CANVA_IR_TASK_RESULT_BYTES = 12_000_000`. The plugin measures the exact successful task envelope before `task.sendSuccess()` in UTF-8 bytes for every plugin mode. Oversize results fail closed before transport; Canonical IR is never truncated. The server `export_canva_ir` path emits compact JSON and independently enforces the same byte ceiling before `TextResponse`.
+
+Targeted verification: plugin response-boundary 3/3 PASS; server final-response boundary 3/3 PASS; extractor determinism regression 2/2 PASS. Common/plugin/server typechecks PASS; common/plugin/server builds PASS. Compiled common/plugin/server artifacts contain the accepted hard bound and fail-closed messages.
+
+Accepted modified Penpot baselines after TASK 6: source 2209 files / SHA-256 `d1297b63fe2a5d636c1a6f55a97a63c836f77b0542eab366fc37e86fb35dd9b3`; MCP runtime build 23 files / SHA-256 `6185e9b02a4ef5a58471a2060459b491a2bd9ea35320912666d8ffc40d997d67`. Protected boundaries remain unchanged: FIG adapter `159208b5a228d91d1f562a6ab32e3c352f4d55d6e18462f520d04932ddce50ef`; Canonical IR v1 `ddc3e06eb958b08cee635e69214a42b29e2a2a230028520aacbb97a695571192`; Penpot-to-Canva adapter `b50650c8cbad0d1c4f4630367c51b690cd71e194dc868b6ef77582cbdc2fcb74`.
+
+Penpot `AGENTS.md` was read during closure. `.serena/memories` is absent in this runtime-pruned snapshot. `CHANGES.md` was not edited. No live Penpot runtime invocation is claimed: ports 4401/4402 were inactive, and no restart was required for Gate P4.
+### 2026-10-02 — Native Agent Capability Parity source implementation and targeted qualification
+
+- NACP-0..NACP-9 are source-implemented and targeted-qualified. NACP-10 resident activation remains pending a supported launcher Core restart.
+- New source owners include `src\agent-capability-catalog.ts`, `src\agent-capability-resolver.ts`, `src\web-research\service.ts`, `src\mcp\web-research-schemas.ts`, and `src\mcp\web-research-tools.ts`; existing owners `agent-controller.ts`, `agent-tool-session.ts`, `config.ts`, `mcp/server.ts`, `agent-runtime.ts`, and `index.ts` are extended rather than duplicated.
+- Native Agent capability requests are task-scoped through synthetic `agent_core_request_capabilities`; current ToolGrant enforcement still hides ungranted tools and refuses direct calls.
+- Capability families/risk policy cover local observation/search, file mutation, process execution/admin, browser navigate/act, Grafel, Semantic IDE, Phone observe/act, Skills inspection, targeted Memory read, admin config, and web research.
+- Argument-level restrictions narrow shared tools such as `browser_control`, `read_file`, `code_workspace`, `code_patterns`, `code_symbol`, and `skills` to approved action subsets.
+- Durable Native knowledge still flows through `agent_core_finalize -> Learning`; unrestricted ordinary Memory mutation is not used as the parity mechanism.
+- Shared canonical knowledge parity is targeted-verified in both directions: external-controller Memory -> Native knowledge-use receipt, and Native verified candidate -> fresh external Memory retrieval.
+- Agent Core-native Web Research implements credentialed Exa/Parallel/Firecrawl/Jina search and keyless Jina Reader extraction; live Jina Reader open against openai.com succeeded, while live search correctly remains degraded without a search-provider credential.
+- Build PASS: path policy 301 authored / 0 exceptions. Final NACP targeted suite: 10 files / 50 tests PASS. Browser-control isolated: 3/3 PASS. Changed-source security analysis: 0 findings.
+- Full source-qualified MCP runtime surface is 72 tools including `web_search` and `web_open`; manifest remains within the reviewed 120 KB budget.
+- Grafel resolves AgentCapabilityResolver and WebResearchService impacts, but graph integrity remains degraded due same-source `unexplained-structural-shrink`; exact source plus executed tests are the authority and no blind repeat reindex was performed.
+- Local `.env` activation keys are prepared for `dynamic` policy, an empty permanent tool-name ceiling, and all reviewed capability families. Resident health still shows `explicit` / one-tool ceiling until restart.
+- Material changeset: `.changeset\20261002-native-agent-capability-parity.md` (minor, unapplied). No version/release/Git-history/publication action occurred.
+
+### 2026-10-02 — NACP resident capability breadth verified; receipt repair pending reload
+
+- Native Agent Capability Parity is resident-active under dynamic policy with no permanent tool-name ceiling and a 16-family reviewed capability ceiling.
+- Resident Native Agent verification now covers bounded file/process execution, Grafel + Semantic IDE inspection, browser navigation, phone.observe, reversible phone.act, deny-by-default policy enforcement, and per-turn grant reset.
+- Read-only deny acceptance explicitly produced approved=[observe.local], denied=[process.admin:user-intent], riskCeiling=0; only read_file executed.
+- A second turn in the same conversation began again with initialGrantedTools=1 before requesting memory.read, proving grants do not remain over-broad across turns.
+- Shared canonical knowledge works in both directions: Native Agent can retrieve external-controller Memory, and Native verified Learning can create durable Memory later retrieved by an external controller.
+- Audit found direct memory_search attribution lacked knowledge-use receipts because NativeAgentController did not ingest returned retrievalEvidence. Source now absorbs memory_search attemptId/contentDigest and records those retrieval attempts for later knowledgeUse receipts.
+- The new direct-search receipt test passes; this exact source fix still requires a supported Core restart for resident proof.
+- Web Research browser/web_open parity is resident verified. Full web_search remains degraded until a supported Exa, Parallel, Firecrawl or Jina Search credential is configured; keyless/challenge-based public search fallbacks were explicitly rejected as unreliable.
+- Root build remains PASS at path policy 301/0; receipt-repair targeted qualification is green; changed-source security analysis reports 0 findings.
+- NACP minor changeset remains unapplied; no version/release/Git-history/publication action occurred.
+
+### 2026-10-02 — NACP resident body parity and shared-Memory receipt verified
+
+- Native Agent Capability Parity is resident-active under dynamic task-scoped capability policy: tool-name ceiling 0 and reviewed capability-family ceiling 16.
+- Resident acceptance covers Agent Core-owned file/process execution, Grafel + Semantic IDE, browser navigation, keyless web_open, phone.observe, bounded phone.act, deny-by-default policy, and per-turn grant reset.
+- Phone act proof used only status -> HOME once -> observe; task finalized verified.
+- Deny-boundary proof requested observe.local + process.admin for a read-only task; resolver approved observe.local and denied process.admin:user-intent; only get_config executed. The task after a prior high-risk phone grant again started with initialGrantedTools=1, proving grants do not persist over-broadly between turns.
+- External-controller -> Native shared canonical Memory is now fully attributed: post-reload Native memory_search surfaced retrievalEvidence, controller recorded the retrieval attempt, and later knowledgeUse produced one verified receipt for Memory eb894a07-1069-4971-93d4-01f6176ca835.
+- Native -> external knowledge sharing is also resident-proven through Native verified Learning capture followed by external Memory retrieval.
+- Matched engineering parity is observed on the same Agent Core-owned fixture: Native Agent and external controller both read the same bounded file evidence and execute the same harmless process evidence.
+- Final source qualification after receipt repair: root build PASS / path policy 301/0; NACP targeted suite 10 files / 39 tests PASS; changed-source security 0 findings.
+- Grafel is current/integrity accepted at 11,207 entities / 60,314 relationships with registered repository coverage 1/1.
+- Web Research source supports Exa, Parallel, Firecrawl and Jina Search plus keyless Jina Reader/web_open. Resident generic web_search remains unavailable only because no supported search-provider credential is configured; this is an external credential dependency, not a missing runtime implementation.
+- NACP minor changeset remains unapplied; no version/release/Git-history/publication action occurred.
+
+### 2026-10-03 — Creator-partnership doctrine and credentialed research expansion
+
+**SOURCE/BUILD/TARGETED VERIFIED — RESIDENT RELOAD PENDING.** Agent Core operating behavior now reflects the current creator/controller partnership instead of stale pre-runtime wording. Root `AGENTS.md` and the Native Agent system prompt both direct controllers to act as senior technical peers: recover context before asking, make reversible/equivalent technical decisions independently, challenge weak assumptions, avoid duplicate confirmation rituals, and report material actions transparently. This standing delegation does not bypass higher-priority safety, authentication, secret handling, evidence, provider policy, or law.
+
+Dynamic capability resolution retains the same task-scoped ToolGrant architecture. Generic explicit task-delegation wording is now recognized as R2 file/process execution intent. R3 process administration and R4 configuration mutation remain specific-intent gated; permanent tool-name ceilings and family ceilings are unchanged.
+
+The existing Agent Core-owned `web.research` capability is expanded without adding a parallel research subsystem or additional public MCP tools. `web_search` now accepts provider-neutral modes:
+- `web`: Exa -> Parallel -> Firecrawl -> Jina Search -> Browserbase Search;
+- `academic`: OpenAlex;
+- `assets`: Pexels -> Unsplash.
+
+`web_open` remains the bounded public-page extraction primitive: Jina Reader is first, configured Parallel/Firecrawl readers follow, and Browserbase Fetch is the final difficult-web fallback. Search results keep normalized source URLs and may carry academic author/source metadata or asset image/thumbnail metadata. Pexels/Unsplash remain source-discovery providers, not automatic download/generation authorities.
+
+`src/config.ts` reads OpenAlex, Pexels, Unsplash, Browserbase, Apify and Langfuse credentials from the protected project `.env` alongside the existing search/extraction keys. Browserbase is an active difficult-web Search/Fetch fallback because the credential and endpoint contracts are verified. Apify remains credential-validated but dormant until an explicit Actor/workflow contract exists; Agent Core does not silently choose a billable Actor. Langfuse remains credential-validated observability readiness and does not automatically export traces or user content.
+
+Secret-safe live credential probes from the current `.env` established Exa, Parallel, Firecrawl, Jina Search, OpenAlex, Pexels, Browserbase, Apify and Langfuse authentication. Unsplash returned HTTP 401 and is not claimed healthy; Pexels keeps `assets` mode available.
+
+Compiled-source smoke after build returned:
+- web search through Exa: PASS;
+- academic search through OpenAlex: PASS;
+- asset search through Pexels: PASS;
+- WebResearch health: general search, academic search and asset search configured; difficult-web and observability credentials present.
+
+Qualification:
+- targeted tests 23/23 PASS across Web Research, Native Agent integration, capability config and capability resolver;
+- compiled Browserbase fallback smoke: Search PASS with normalized results; direct Fetch PASS; unit fallback contract PASS;
+- root build PASS; path policy 301/0;
+- release compatibility PASS at 72 tools / 119,983 manifest bytes / ~29,996 tokens, with no removed tool/route and no breaking evidence;
+- changed-source security analysis: 0 findings across the 2 behavior-changing source files;
+- Grafel explicit reindex is current/integrity accepted at 11,231 entities / 60,407 relationships with repository coverage 1/1.
+
+Resident Core health observed before reload still reflected the old process environment (`searchConfigured=false`). Because `loadConfig()` reads project `.env` during Core startup, a supported desktop-launcher Core restart is required before resident acceptance can be claimed. P8 closure specifically requires a post-reload Native Agent turn to use `web.research` and finalize with verification evidence; source/provider smoke alone is not sufficient.
+
+### 2026-10-03 — DTC-1 durable turn continuation implemented, qualified, and resident-activated
+
+- DTC-1 adds explicit durable continuation for interrupted Interactive Native Agent Chat turns without introducing a second agent/runtime authority.
+- `AgentChatStore` schema v2 owns `chat_turn_execution` execution epochs/claims and `chat_turn_checkpoints` revisioned checkpoint state. Checkpointed running turns reconstruct as `resumable`; uncheckpointed legacy running turns remain interrupted.
+- Startup recovery is detection/classification only. Provider/tool work is never auto-resumed at startup. Explicit `AgentChatService.resumeTurn()` is the continuation entrypoint; the additive HTTP surface is `POST /agent/chat/turns/:turnId/resume`.
+- Checkpoints persist bounded model-visible/control state: stable conversation/turn/runtime task/session identity, canonical tool-call/result pairing, iteration/provider-attempt budgets, current strategy/failure discipline, Memory evidence receipts, historical capability evidence, current tool-contract digest, provider/model route, mutation invocation identity, verified result-artifact references, finalization state, and expiry.
+- Checkpoint serialization uses scoped redaction. Prompt/message/tool-argument/strategy/final-response strings are sanitized while stable continuation identity, authority digests, artifact identity, and execution ownership fields are preserved. This avoids the global `sessionId` redaction rule corrupting `runtimeSessionId`.
+- Resume recomputes effective authorization from current policy and intersects it with historical checkpoint grants. Revoked tools or changed tool schemas/contracts block continuation before provider/tool dispatch.
+- Provider continuation preserves already-consumed attempt budget. Same-provider credential rotation may continue the same model/context; cross-provider automatic continuation additionally requires explicit compatible route metadata. Cross-model continuation remains out of DTC-1 scope.
+- Mutation replay authority remains `McpMutationSafety`. Completed invocation receipts prevent duplicate side effects; receipt-without-terminal remains UNCERTAIN; a mutating dispatch checkpoint without a durable result fails closed as `SIDE_EFFECT_RESULT_UNAVAILABLE` and is not blindly replayed.
+- Cancellation persists by incrementing execution epoch and clearing ownership, so stale/late executors cannot commit assistant output.
+- Runtime/Learning terminal state can be reconciled into chat exactly once after reconstruction without rerunning finalization.
+- Local DTC qualification: DTC-focused 23/23 PASS; scoped owner regressions 7 files / 49 tests PASS; root TypeScript build PASS; path policy 302 authored files / 0 exceptions. Qualification includes an abruptly terminated real child process after checkpoint write and all nonterminal checkpoint phases.
+- Authority/report: `docs\history-agent-core\Agent-Core-DTC1-Continuation-Contract-20261003.md` and `docs\history-agent-core\Agent-Core-DTC1-Execution-20261003.md`.
+- DTC-A12 semantic no-hint real-model reuse remains intentionally deferred. Resident activation was subsequently user-authorized and live-verified on Core `0.14.0`: PID `5332` runs project-local `runtime\\node\\node.exe -> dist\\index.js`; `/health=ok`; Agent Chat reports 14 conversations / 13 active / 0 running / 0 resumable; production `chat.sqlite` is schema v2 with 14 conversations, 30 turns and 55 messages preserved; and a no-provider POST to `/agent/chat/turns/dtc1-nonexistent/resume` returned `AGENT_CHAT_TURN_NOT_FOUND`, proving the resident resume route is loaded and fail-closed. No paid provider, P8, Hermes benchmark, release apply/version bump, or DTC-A12 real-model evaluation was run. Closure evidence: `runtime\\tmp\\dtc1-activation-preflight\\live-closure.json`.
+
+### 2026-10-03 — Runtime stability repair after DTC-1 activation
+
+- Evidence tied Node exit code 1 to an uncaught `proper-lockfile` ECOMPROMISED heartbeat exception (`Unable to update lock within the stale threshold`) during a Memory mutation path. Only one resident `dist/index.js` Core was active when rechecked; the current repair does not treat duplicate Core ownership as the cause.
+- `src/memory/lock.ts` now keeps `proper-lockfile` as cross-process authority but extends the stale window to 120 seconds, records lease compromise through `onCompromised`, and returns `MEMORY_LOCK_COMPROMISED` through the Memory operation instead of letting an asynchronous timer throw terminate Node.
+- Launcher evidence showed successful MCP calls while the desktop status repeatedly toggled OFF/ON. `MainForm` now prevents overlapping 3-second status refreshes. Passive health/tunnel status has a bounded 10-second last-known-good grace, while explicit start/stop ownership checks remain strict.
+- Passive process metrics use a 2-second fail-soft Windows process query and rate-limited warning rather than failing the full desktop status refresh. Lifecycle process queries retain their stricter default timeout.
+- Source authority: `docs/history-agent-core/Agent-Core-Stability-Repair-20261003.md`. Root TypeScript build and self-contained launcher publish are PASS; the hash-checked launcher cutover is resident-active. Active launcher SHA-256 is `778138C355B38CD12F8C68B6D471CEC7C850B1D0E88E9E3B75A0B35507AEB251`; launcher PID 18984 and Core PID 11932 are healthy on v0.14.0. Post-cutover tracker observation reached 88 events with 0 error events, 2 bounded fail-soft process-metrics warnings, and 0 targeted crash/flapping hits, including after the canonical DTC-1 Memory update and two subsequent Learning Memory captures. Those warnings did not change Connection/Tunnel/Execution state and demonstrate that slow Windows metrics probes are now isolated from runtime health. Canonical DTC-1 Memory record `57b16ddb-31a1-4fec-9da4-7326b342a68b` is now synchronized.
+### 2026-10-03 — Stability repair r2 passive Execution debounce
+
+- A later tracker audit found one residual 3-second passive UI transition `Execution UNAVAILABLE -> AVAILABLE` while Core and MCP remained healthy. Exact source shows `/health.execution` mirrors `configManager.health()`, where a transient config read failure can emit one unavailable sample.
+- `AgentCoreRuntime` now debounces passive Execution and Game Mode negative samples for the existing 10-second status grace. This affects only desktop status presentation; raw `/health`, explicit lifecycle ownership checks, and start/stop behavior remain unchanged.
+- Self-contained r2 launcher publish PASS at `runtime/build/stability-launcher-20261003-r2/Agent Core.exe`, SHA-256 `67C9A88E6C75AFE6F6E32219B8489C9E6C0B4C3C7D6803243D9A75480E7B604B`, FileVersion/ProductVersion 0.14.0. User-controlled cutover is complete: launcher PID `1916`, Core PID `22436`. Final r2 observation reached at least 73 tracker events with 0 errors, only bounded rate-limited fail-soft process-metrics warnings, and 0 targeted crash/flapping hits; 15/15 health samples were `ok` with Execution and Memory available. Canonical DTC-1 Memory mutation also succeeded without a Core restart. r2 is resident-active and live-verified for this scoped stability repair.
+### 2026-10-03 — NACP P8 Web Research evidence-handoff repair
+
+- Resident P8 acceptance successfully executed Agent Core-native `web_search` and three `web_open` calls, then correctly failed closed with `AGENT_RUNTIME_VERIFICATION_EVIDENCE_REQUIRED`.
+- Root cause: `NativeAgentController` already created stable tool evidence refs (`tool:<tool>:<call-id>`) for runtime episodes, but successful Web Research tool messages did not expose those refs to the model. The model could inspect source content but had no explicit verification ref to submit through `agent_core_finalize`.
+- `src/agent-controller.ts` now appends `AGENT_CORE_EVIDENCE_REF=<stable-tool-ref>` to model-visible successful `web_search`/`web_open` results and instructs finalization to copy the exact ref when it supports the verified claim. Evidence is not auto-attached; semantic finalization remains explicit and fail-closed.
+- Plan authority: `docs/Agent-Core-Native-Agent-Capability-Parity-Plan-20261002.md`. Resident closure requires build + supported Core reload + repeat P8 live acceptance.
+### 2026-10-03 — Native Agent Capability Parity / P8 final closure
+
+- `docs\Agent-Core-Native-Agent-Capability-Parity-Plan-20261002.md` is now COMPLETE for its implemented scope: NACP-0..NACP-10 resident verified and P8 live generic Web Research verified.
+- Final resident P8 conversation `3f71cd6f-8fe3-452a-b91c-e5eb9876e72d`, runtime session `ae28fb04-a121-415d-80f0-c1cd49a3a937`, turn `8c54b9ed-ea55-44e1-ac82-c1d6297b2e73`, task `5237b96a-d28a-4957-ac13-cc3087fb7950`.
+- Native capability resolver approved `web.research` only, with grantedTools=3 and riskCeiling=1. Two `web_search` and two `web_open` calls succeeded with 0 tool failures.
+- The controller evidence-handoff repair exposes stable `AGENT_CORE_EVIDENCE_REF` values to the model without auto-attaching them. Final runtime state persisted four tool evidence refs and verificationRef `tool:web_open:chatcmpl-tool-855adac6c70bcd1b`; terminalOutcome is verified and Learning finalization complete.
+- P8 final answer was grounded in opened official nodejs.org evidence. Post-turn health retained Agent Runtime/Chat, Memory, Learning and Web Research availability with pendingFinalizationCount=0.
+- Structural review: Grafel index current/integrity accepted; NativeAgentController impact remains within the existing runtime/chat/controller/test ownership graph. No public route, public MCP signature, second controller or second machine-control layer was introduced.
+- Existing NACP minor changeset remains unapplied; no version/release/Git-history/publication/deployment action occurred.
+### 2026-10-03 — Native Agent Chat UI startup-race recovery
+
+- A persistent Chat-page `127.0.0.1:8765 connection refused` banner was traced to UI startup ordering, not Agent Runtime health. `MainForm.OnShownAsync()` initializes/navigates WebView before awaiting `AgentCoreRuntime.InitializeAsync()`, while the React app previously sent `agent-chat-list` immediately on mount.
+- If that one list request landed before Core port 8765 was listening, `agent-chat-error` populated the banner. Later healthy Dashboard snapshots did not repair Chat because the UI never retried the list request, and successful list results did not clear the previous error. This also explained `Chats=0` / `No conversations yet` while durable conversations existed in `chat.sqlite`.
+- `src/ui/src/App.tsx` now waits for a snapshot with `core.httpHealthy=true` and `health.agentChat.status=available` before requesting the conversation list. The list request is single-flight, automatically becomes retryable after a transient error, resets across unhealthy->healthy Core transitions, and successful list/state responses clear stale Chat errors.
+- This change is UI-only; Agent Runtime, Chat persistence, provider routing, DTC-1 and verification semantics are unchanged. UI build/resident reload evidence is recorded separately.
+### 2026-10-03 — Chat UI startup-race fix built; resident WebView reload pending
+
+- UI production build PASS in `src/ui`: Vite transformed 1,678 modules and wrote `dist/ui/index.html` plus `assets/index-B-PyDNvY.js` / `index-m6GgzCvf.css`.
+- Built `dist/ui/index.html` was modified after the currently running desktop/WebView session started, so the open window is still executing the pre-fix JavaScript bundle. A full desktop close/reopen or equivalent WebView reload is required to load the new UI assets; Core/provider/runtime restart semantics are otherwise unchanged.
+- Expected resident behavior after reload: Chat waits for `core.httpHealthy && agentChat.available`, retries a transient startup list failure on a later healthy snapshot, populates durable conversations, and removes the stale connection-refused banner after a successful list/state result.
+### 2026-10-03 — Chat UI recovery bridge completion
+
+- Live WebView accessibility readback after the first UI-only fix showed the stale red banner was gone, but `No conversations yet` / `Chats 0` remained while the direct `/agent/chat/conversations` endpoint returned HTTP 200 with 14 active conversations.
+- Root cause: TypeScript `DesktopHealthSnapshot.agentChat` expected Agent Chat readiness, but launcher `DesktopHealthSnapshot` / `ReadHealthSnapshot()` omitted the `/health.agentChat` object entirely. Therefore the new readiness gate could never become true.
+- `src/launcher/DesktopSnapshot.cs` now carries nullable `AgentChatHealthSnapshot` (status, conversation/active/running/resumable counts), and `src/launcher/AgentCoreRuntime.cs` maps `/health.agentChat` into the serialized WebView snapshot.
+- Structural review: Grafel index current/integrity accepted; `DesktopHealthSnapshot` impact is limited to the launcher snapshot schema/module. No Core HTTP route or Agent Chat persistence contract changed.
+- Activation requires publishing and user-controlled replacement/restart of the launcher; the existing UI bundle already contains the retry/error-clear logic.
+### 2026-10-03 — Chat UI recovery launcher candidate built
+
+- Launcher publish PASS to `runtime\build\chat-ui-startup-recovery-20261003\Agent Core.exe`.
+- Current active launcher SHA-256 before cutover: `67C9A88E6C75AFE6F6E32219B8489C9E6C0B4C3C7D6803243D9A75480E7B604B`.
+- Candidate launcher SHA-256: `D6E150F9EE73587705BD40AB9D2D5458FE1B2757C178CA42A3EA902741DC5E6B`; FileVersion/ProductVersion remain 0.14.0.
+- User-controlled activation helper: `APPLY-CHAT-UI-RECOVERY-20261003.cmd`. It refuses while Agent Core is running, verifies both hashes, backs up the previous launcher, installs the candidate, and starts Agent Core. It never terminates processes itself.
+- Resident visual verification remains pending until this candidate is installed.
+### 2026-10-03 — Chat UI mixed-version compatibility hardening
+
+- User restart after the first recovery build still ran launcher SHA-256 `67C9A88E...B604B` (pre-AgentChat-health bridge) while the new WebView bundle was already present. This mixed version removed the stale error banner but left conversation loading gated forever because `health.agentChat` was absent, which also kept the composer disabled due to no active conversation.
+- `src/ui/src/App.tsx` now treats `core.httpHealthy` as sufficient to attempt conversation loading when the optional launcher `health.agentChat` field is absent, while still requiring `agentChat.status=available` when the newer bridge is present. This keeps the UI compatible across launcher/UI cutovers and prevents a mixed-version deadlock.
+### 2026-10-03 — Native Agent Chat UI startup/input recovery live-verified
+
+- Live WebView recovery is now verified on the currently running pre-bridge launcher via the UI compatibility path. The UI bundle waits for Core HTTP health, tolerates missing optional `health.agentChat` on older launcher snapshots, retries conversation loading after startup races, and clears stale chat errors on successful list/state refresh.
+- After hot reload, the direct conversation API still returned 14 active conversations and WebView accessibility showed those threads populated. The newest thread (`NACP P8 Final Live Web Search Acceptance`) was auto-opened automatically.
+- The composer initially remained below the visible window because `.chat-shell` / `.chat-conversation-main` used min-height-only sizing. CSS now constrains Chat to the available page height, makes transcript/thread regions scroll internally, and keeps the composer inside the viewport.
+- Live accessibility readback after the layout fix: composer `Enabled=true`, `Offscreen=false`, `IsKeyboardFocusable=true`; window bounds 1552x999 and composer bounds X=751/Y=828/W=948/H=96. A non-sending input probe successfully wrote `typing-probe`, then the field was explicitly cleared and refocused.
+- Current live launcher can remain the existing `67C9A88E...B604B` build because mixed-version compatibility is now handled by the UI. The newer launcher bridge candidate `D6E150F9...C5E6B` remains build-ready and source-authoritative for future cutover/release; it is not required for current Chat usability.
+### OPEN — Native Conversation Control / Personality / Plan Mode — 2026-10-03
+
+- Plan authority: `docs\Agent-Core-Native-Conversation-Control-Plan-20261003.md`.
+- This is **plan-only and not implemented**. It was created after a live casual-chat turn (`Halo nama kamu siapa ?`) entered verified-task finalization and failed because verification evidence was absent, despite zero ordinary tool calls.
+- Proposed scope includes one shared personality/behavior constitution for external + Native controllers, explicit conversation/task semantics, Memory-first decoupled from planning, persistent per-conversation Auto/Plan mode, explicit plan approval before execution, typed failure recovery, and resident multi-provider acceptance.
+- No NCC implementation phase is authorized until the creator reviews and explicitly approves the plan. Do not treat this OPEN section as implemented state.
+
+## Self-Improvement ownership addendum — 2026-10-07
+
+Implemented and resident-activated with fresh readback; not a fresh audit of the whole older map. Source qualification remains historical evidence, not a claim of new full-suite execution.
+
+- LearningService owns proposal/decision/notice records through the existing LearningStateStore field owner `proposals`; no parallel knowledge database. `materializeProcedure` now upserts a semantic proposal instead of silently importing a Skill.
+- `src/learning/skill-proposal-types.ts`, `skill-proposals.ts`, `skill-proposal-files.ts`, `skill-proposal-notification.ts`, `skill-proposal-decisions.ts` own revision/scope identity, atomic Markdown projection, pending notices and exact host-recorded user decisions. Paths are dynamic under runtime/skills/proposals/<registered-workspace>/<semantic-name>.md; labels with spaces have collision-checked path projections, not inferred authority.
+- `src/skills/service.ts` builds native SKILL.md and uses existing import/revision/promotion/rollback. Declared tools stay metadata. Build-only and catalog-active are separate, and new knowledge never grants execution permission.
+- `src/mcp/skill-proposal-actions.ts` and existing Skills facade expose proposals/propose/decide_proposal/self_awareness/explain_improvement/review_outcomes. Old fields/actions are preserved; fully configured candidate manifest is 113021 bytes within 122000. These are additive actions, not new standalone MCP tools.
+- Native controller/runtime/chat commit the user-facing response before recording notice inclusion; the host consumes actual persisted user messages for decisions. External controller capsules request inclusion but never claim confirmed delivery or user acknowledgement. Missing optional Skill ownership does not block ordinary tasks.
+- `src/learning/self-awareness.ts` reads bounded catalog/proposal/Memory/Learning evidence and reports omissions. `improvement-explanation.ts` rechecks proof and binds notice/approval to the current revision. `skill-outcome-review.ts` consumes verified usage evidence; negative receipts request proposal review in the existing task and never replace/delete the active Skill.
+- `src/mcp/server.ts` strips transport-only template indentation from machine-control descriptions. Wording, schemas and permissions are preserved. AGENTS.md and Native prompt describe the new proposal/reminder contract.
+- Candidate root: runtime/build/self-improvement-20261007. Evidence and per-file source inventory: runtime/tmp/self-improvement-20261007/qualification-summary.json. Changeset: .changeset/20261007-self-improvement-skill-proposals.md (minor, unapplied).
+- Resident closure: 531/531 installed files match the prepared manifest plus the two-artifact evidence-handoff patch; six UI assets preserved. Core 14228 runs after cutover, launcher 7772 and tunnel 5556 remain. /health v0.14.0 reports core and relevant owners available. No additional restart during final readback.
+- src/agent-controller.ts::modelVisibleToolResult now exposes AGENT_CORE_EVIDENCE_REF for successful local and Skill results, not only web results. Explicit model evidence selection and consent checks remain. Prior Native failure lacked evidence; the corrected resident retest now stores a final response and selects the read_file receipt. Independent job verification is still unavailable, not silently marked successful.
+- Native task 903f44ba-eb9e-48f9-b274-c334c4b38fd0 finalized with Learning complete/no-new-knowledge; reminder inclusion follows response persistence and stays delivery unconfirmed. Native retest used get_config/read_file, not Skills.proposals. Fresh separate authenticated MCP proves proposals/self-awareness/WHY; temporary credential revoked. External reminder was relayed in the active conversation without fabricating receipt/ack.
+- Proposal agent-core-runtime-activation-audit is notified/not-built, decisions 0, awaiting-verification. The prior active catalog Skill remains unchanged. The test conversation was archived reversibly, not deleted.
+- OPEN: real user approval for exact revision and subsequent native Skill build/use, interrupted-stream/reconnect delivery, junction host, cached external Skills descriptor refresh and trusted external user-message ingestion. No scheduler/Goals, full benchmark, provider install, release or measured-benefit claim.
+- Fresh evidence: runtime/tmp/self-improvement-activation-20261007/postrestart-closure.json, postrestart-current-readback.json, postrestart-facade-readback.json and native-retest-proof.json. Docs backup: runtime/backups/self-improvement-postrestart-closure-20261007. Canonical Memory remains record 122f8273-4966-4fbd-b987-deb468ca66ed.
+
+### 2026-10-07 — Explicit native Skill authoring from self-improvement proposal
+
+- User explicitly requested the `agent-core-runtime-activation-audit` proposal be built/used. Because the external connector still lacks trusted persisted user-message ingestion, the host-only `decide_proposal` path was not forged or bypassed.
+- Existing SkillService explicit-authoring path validated and imported `runtime/skills/catalog/agent-core-runtime-activation-audit/SKILL.md`; digest `sha256:dc8a49f3ff2b811671de9f40339cab7e81d1ef5a7cc64b75df1092bd3debbb8d`.
+- Artifact metadata records origin proposal ID/revision as provenance only. Declared tools remain metadata; Skills mode remains artifact-only and `executionAuthority=false`.
+- Catalog now contains two active artifacts. Controller-learning synthesis surfaces the new skill under ACTIVE SKILL ARTIFACTS.
+- Native task `59a5e5d1-c7d2-4215-b47a-3480943bc24e` materially applied the skill in a read-only activation audit and finalized with 12 tool calls / 0 failures; its task state records `artifactUse.kind=skill`, matching artifact digest, applicability `applied`.
+- Test conversation was archived reversibly. Runtime remained v0.14.0 / health ok with Agent Runtime `skillCount=2` and no running Native turns.
+- Managed proposal state intentionally remains separate: the original proposal is still notified/not-built/awaiting-verification because external model assertion is not trusted approval evidence. Future trusted external ingestion may reconcile that state; do not rewrite it manually.
+- Closure evidence: `runtime/tmp/explicit-skill-authoring-20261007/closure.json`; pre-change checkpoint `b2e0cae0-820e-4513-b7f8-5b03dc64ceb0`.
+### 2026-10-07 — Capability Awareness / Auto-Selection / Usage Disclosure implementation
+
+**SOURCE IMPLEMENTED / TARGETED QUALIFIED / BUILD INSTALLED; RESIDENT RELOAD AND LIVE ACCEPTANCE OPEN.**
+
+Authority: docs/Agent-Core-Capability-Awareness-and-Usage-Disclosure-Plan-20261007.md, section 21. Canonical Memory: f0e457ac-209d-4a4d-a08a-1d0a7dfb5b3d.
+
+- The pure capability-awareness projection reads the existing tool-family catalog, live scoped registrations, active Skill census and scoped Learning artifacts; it never becomes another permission owner. Counts apply to supplied owner snapshots. Task ranking is separate from the census and omissions are explicit.
+- Native synthesis receives the inventory; Native controller records successful semantic tool use or delivered applied/adapted artifact declarations. A Skill discovered later by skills(list/inspect) is eligible only at the currently inspected active digest; resumed tool messages preserve delivery context.
+- The existing Agent Runtime task owns optional capabilityUses and capabilityNotice fields. Agent Chat composes a single grouped final sentence and records included-in-response/unconfirmed only after message persistence. Idempotent recovered-final composition preserves replay behavior; no new stream owner or chat database.
+- ExternalControllerLearningService owns per-session inventory callbacks and existing-episode usage/capsule keys. Tool observation references a persisted episode event; artifact declarations do not raise trust. A passive MCP registration wrapper observes successful calls without changing grant/mutation admission and emits bounded once-per-task capsules; external user delivery remains unconfirmed.
+- AGENTS.md and both controller instruction paths carry the relevance/actual-use/quiet-by-default contract. Routine file/config/Memory/Learning plumbing and unused/granted-only capabilities remain silent. Host plugins are unknown; C5 bridge has no concrete consumer and was not implemented.
+- Targeted selected set: initial 119 pass / 4 timeout fail / 1 host skip; the 3 affected files passed 12/12 with one worker and unchanged timeouts. Latest feature recheck 18/18. Distinct final coverage: 123 pass, 1 junction-host skip. Do not count reruns as extra unique tests or call the scripted provider a live-model selection proof.
+- TypeScript build exit 0, path policy 319/0. Compatibility: no breaking evidence/stale manifest; 72-tool standard fixture 109,744 bytes; full-config compiled schema 73 tools / 113,021 bytes. Eight modules and eight rebased maps installed with matching hashes; 6 UI files and the active ACRAA artifact are preserved.
+- Core was not restarted. The running process remains healthy v0.14.0 with two active Skills and no running Native turns at the last readback; that health is not proof it loaded this feature. OPEN: normal reload, fresh Native/external resident acceptance, held-out automatic Skill selection and live interrupted-delivery acceptance.
+- Intent: .changeset/20261007-capability-awareness-usage-disclosure.md (minor, unapplied). Evidence: runtime/tmp/capability-awareness-20261007/closure.json and installed-readback.json. No dependencies, release apply, version bump, commit, push or publication.
+
+
+### 2026-10-07 — Active Skill proposal reconciliation / stale reminder retirement
+
+- Proposal registry bookkeeping now distinguishes a proposal that has already been fulfilled by an independently active Skill from a still-pending proposal. `ProposalStatus` includes `implemented`; fulfillment records exact revision, active artifact digest, evidence ref, and timestamp.
+- `SkillProposalCoordinator.reconcileActiveArtifacts()` reconciles only when the active Skill itself carries an exact matching proposal ID + proposal revision in either native proposal metadata or explicit-user-authoring origin metadata. It does not synthesize a `user-message:*` decision, does not activate an artifact, and does not widen execution authority.
+- `pendingSkillNotices()` performs this reconciliation before calculating reminders. A matching active artifact therefore self-heals stale `proposed/notified/approved` bookkeeping to `implemented / catalog-active`; stale/tampered projection reconciliation remains fail-soft so ordinary work is not blocked.
+- `agent-core-runtime-activation-audit` production state was reconciled live from `notified / not-built` to `implemented / catalog-active`; artifact digest is `sha256:dc8a49f3ff2b811671de9f40339cab7e81d1ef5a7cc64b75df1092bd3debbb8d`, matching the already-active Skill provenance for proposal `skill-proposal:761c5a51ecb6c21e9a48d0c82ba51799` revision `sha256:8eb4a2ed7f2a8d5c412b61f8f7153aae37024cc0941a329cd4fb910aba0e3bd3`.
+- Pending reminder count for that proposal is now 0. Its evidence qualification remains `awaiting-verification`; that field is evidence/benefit qualification and no longer means installation is pending.
+- Targeted qualification: `tests/skill-proposal-decisions.test.ts` PASS 14/14 including the new explicit-active-artifact reconciliation case. Root build PASS; path policy 317 authored files / 0 exceptions.
+- Structural review used the current/integrity-accepted Grafel graph. The exact `LearningService` blast radius remained bounded to the Learning owner/module and related test scopes; no public route, second registry, or new permission layer was added.
+- Source/dist contains the generic reconciliation behavior for the next normal Core load. No Core restart was performed. The current proposal requires no restart to stop reminders because its persisted Learning state was already reconciled through the same Learning/Skill owners.
+- Existing `.changeset/20261007-self-improvement-skill-proposals.md` was extended; no release apply, version bump, commit, tag, push, publish, or deployment occurred.
+
+
+## Capability awareness: creator acceptance and stop-test boundary — 2026-10-07
+
+Current disposition: ACCEPTED BY CREATOR; additional testing stopped at the creator's explicit request. Do not resume or request acceptance again without a new instruction.
+Observed post-restart evidence: resident health ok/v0.14.0; serving Core PID 10332 started after build installation; 16/16 installed hashes matched; external context exposed 71 scoped tools, 16 families and 2 active Skills; actual-use capsules appeared and subsequent calls did not repeat them.
+The pending live Native audit was explicitly cancelled through its own turn endpoint (HTTP 200, stopped=true), conversation a9fd52d2-c385-4738-823d-3577d8f92b3c, turn eb22e3c9-0fc5-4870-813f-dab9dae624bf. No further tests were launched. User acceptance does not turn cancelled or unexecuted tests into passes; live-model selection, quiet-task and reconnect acceptance are not claimed completed by this run. C5 remains deferred and ACRAA's retired reminder stays closed.
+
+### 2026-10-08 — Game Mode controller capability expansion
+
+- Scope stays inside the existing `src\phone` + `src\mcp\phone-*` ownership. No second Android controller, background game bot, new public MCP tool name, or new dependency was introduced.
+- Live pre-change status observed the configured `nubia-z2465n-main` online through the existing gateway. Local ADB remained unavailable because no adb/Android SDK toolchain was present; the launcher/gateway path therefore remains the active transport.
+- `PhoneController` now learns the live device dimensions from observations and uses those dimensions for normalized actions. Portrait/landscape behavior is therefore observation-driven rather than game-name or orientation hardcoding.
+- `phone_observe` gains optional crop/zoom and bounded 1–6 frame burst sampling. Local image comparison returns mean/max motion difference plus a stable/not-stable label while returning only the last requested frame.
+- `phone_run_macro` remains backward compatible with legacy named-action arrays and additionally accepts bounded mixed `steps`: tap, swipe, long press, text/key/navigation, app launch, named action, fixed wait, `waitStable`, and gateway companion overlay enable/disable/marker clear. Mixed sequences final-observe by default.
+- `waitStable` performs low-resolution local visual-difference checks and fails closed on timeout instead of guessing that a loading/animation transition completed.
+- Existing companion MCP discovery exposed `android_set_overlay` and `android_clear_markers`; Agent Core now uses those existing primitives through mixed sequence steps. No APK rewrite was required for this capability.
+- ADB discovery now checks explicit override, project-local platform-tools, the historical sibling bridge path, `ANDROID_SDK_ROOT`, `ANDROID_HOME`, and the standard local Android SDK location before falling back to PATH. No Android SDK/toolchain was installed.
+- Game Mode controller instructions now direct all controllers to use crop/motion/stability primitives, treat routine reversible play as session-authorized when the user asks for game jockeying, use current Web Research + durable Memory for patch-sensitive party/character evaluation, and keep premium-currency/purchase/account/valuable-asset destruction behind task-specific user intent.
+- Root TypeScript build completed with exit code 0 after these source changes. No broad/regression test suite was run. Structural impact review used the current/integrity-accepted Grafel graph and remained bounded to PhoneController startup/status ownership plus MCP server/manifest/native-tool discovery consumers.
+- Resident activation is not claimed: the running Core must be reloaded through the supported launcher path before fresh MCP clients can receive the expanded schemas/instructions.
+
+### IN PROGRESS — Advanced Android / Game Mode capability plan — 2026-10-08
+
+- Plan authority: `docs\Agent-Core-Advanced-Android-Game-Mode-Plan-20261008.md`.
+- Plan approved and partially implemented as source/dist. Resident activation, optional APK build/install, full Android SDK provisioning, and in-game acceptance are not yet claimed.
+- Grounded baseline: `E:\scrcpy-win64-v5.0\adb.exe` exists at ADB 37.0.1 and currently sees USB device `325F60192864` / model `Z2465N` as `device`. The external scrcpy directory is bootstrap input only; planned Agent Core-owned ADB/toolchains stay under `runtime\android`.
+- Planned waves: project-local USB control + gateway fallback; perception/region/state efficiency; bounded game-session cognition; conditional tactical execution; companion APK v2 only after a concrete host-side gap is demonstrated; then representative Seven Knights landscape and 7DS Grand Cross portrait calibration.
+- Architecture invariants: existing `src\phone`/`src\mcp\phone-*` remain the single phone-control owner; canonical durable knowledge remains Memory; runtime game state stays operational only; no root, game-process injection, packet interception/manipulation, anti-cheat bypass, second remote gateway, or hidden autonomous gameplay authority.
+
+### OPEN — Game-agent donor grounding for Advanced Game Mode — 2026-10-08
+
+- Donor authority: `docs\Agent-Core-Game-Agent-Donor-Grounding-20261008.md`; parent implementation plan: `docs\Agent-Core-Advanced-Android-Game-Mode-Plan-20261008.md`.
+- Four public donors were shallow/partial cloned only under `runtime\tmp\game-agent-donors` for source inspection: `sonpiaz/4x-game-agent` main@`de7f073...` (MIT), `minitap-ai/mobile-use` main@`62913c9...` (Apache-2.0), `SerpentAI/SerpentAI` dev@`00a487d...` (MIT, archived), and `ruslanmv/BOT-MMORPG-AI` master@`1bbe2aa...` (Apache-2.0; sparse checkout). None is a runtime dependency.
+- Selection: 4x-game-agent is the primary local-perception/world-model/verified-workflow donor; mobile-use is the Android UI-hierarchy/app-guard/video donor; BOT-MMORPG-AI contributes profile/action/cooldown/stuck/demonstration patterns; SerpentAI contributes bounded frame-ring/frame-input alignment patterns only.
+- Explicitly rejected baseline imports: donor LLM/provider stacks, LangGraph multi-agent ownership, Redis/WAMP/offshoot, Docker, and default PyTorch/Paddle stacks. Existing Agent Core phone control, Memory, Learning and controller authority remain unchanged.
+- License boundary: substantial source adaptation must preserve applicable MIT/Apache-2.0 attribution/NOTICE requirements with donor repository and pinned commit. Temporary donor checkouts are inspection-only and must not leak into release packaging.
+
+### 2026-10-08 — Advanced Game Mode implementation milestone (source/dist, not resident)
+
+- Game Mode remains an **integrated Agent Core phone capability** owned by `src/phone`, with MCP surfaces under `src/mcp/phone-*`; no second agent/server/gateway or autonomous background bot.
+- Project-local USB ADB was staged from the already installed `E:\scrcpy-win64-v5.0`: `runtime/android/platform-tools/{adb.exe,AdbWinApi.dll,AdbWinUsbApi.dll}`. The bootstrap SHA-256 inventory is `runtime/android/manifests/adb-bootstrap.json`, and `runtime/android/home` is the process-scoped Android home. Source directory was not modified.
+- Target-local ADB 37.0.1 detected USB serial `325F60192864`, model Z2465N, state `device`. Source default mode is `auto` (local ADB preferred, existing gateway fallback), unless an operator's configured transport explicitly overrides it.
+- Two real installed game packages were identified and profiled under `runtime/phone/games`: Seven Knights Re:BIRTH `com.netmarble.tskgb`, version 1.29.03; 7DS Grand Cross `com.netmarble.nanagb`, version 2.113.1. No fabricated UI anchors/party/roster or gameplay claims were added.
+- Existing `game-mode-types`, `game-perception`, `game-mode-store` and `game-mode-service` were reused. Region perception now includes normalized brightness, contrast, RGB and dark-pixel fraction. Verified anchor captures reject low-information crops; references are root-relative, matching reads stay within the profile's anchor directory, and patch-version mismatch marks anchors stale.
+- Session state includes field observation age, evidence references, controller-supplied comparison labels, predicted next events, semantic-action cooldowns, bounded frame rings, and no-progress/stuck state. Scoreboards count only evidence-referenced battle outcomes and expose small-sample warnings; those outcomes remain controller-reported, not independently attested.
+- The existing PhoneController provides read-only fallback across ADB/gateway, guarded bounded sequences, structured ADB UI hierarchy/telemetry, on-demand screen recording and transport operation metrics. Read-only fallback never replays a potentially completed mutating action.
+- Public MCP registration adds `phone_game_inspect` (read-only, profile/session/cropped screen/structured/compare) and `phone_game_manage` (mutating, profile/session/anchors/outcome/frame/video/guarded workflow). Both reuse the existing phone owner and existing external Learning-result wrapper. Native capability catalog maps read to `phone.observe` and write to `phone.act`, with game-specific intent recognition.
+- A competing half-written, unregistered `game-mode-tools.ts`/`game-mode-schemas.ts` draft was preserved reversibly under `runtime/backups/game-mode-integration-20261008/unwired-drafts`, not published as a second MCP surface. Scoped source checkpoint copies are under `runtime/backups/game-mode-integration-20261008`.
+- Project-root TypeScript build completed with exit code 0 after the MCP and Game Mode integration. No broad tests, game battle, paid-currency actions, APK build/install, production Core reload, Git publish or release application were performed.
+- **OPEN:** fresh MCP/resident activation, device-side game-screen calibration and real battle/party acceptance, project-local companion APK decision based on a measured sensor gap, and controlled cross-controller gameplay evaluation.
+
+### 2026-10-08 — Game Mode continuation: MCP compatibility and guarded cognition
+
+- **Authority:** Game Mode remains inside the existing Agent Core capability/`PhoneController`; external AI controllers and Native Agent share `phone_game_inspect` (read-only) and `phone_game_manage` (mutating). No second gameplay agent, gateway, Memory store or autonomous process is introduced.
+- **MCP contract:** `scripts/release/mcp-contract.mjs` and `scripts/release/release-compat.mjs` now include the Game Mode tool/schema modules so both new tools appear in actual added-tool compatibility evidence. The TS build completed (exit 0) and read-only release-compat returned `ok=true`, `breakingEvidence=false`, zero verification issues and manifest **119735/120000 bytes** (74 tools). This does not establish resident/fresh-connector activation.
+- **Schema budget:** Heavy game-profile/session/action schemas stay fully runtime-validated, but the public `phone_game_manage` tool exposes bounded lightweight envelope types. `phone_game_inspect(action=status)` gives controllers an on-demand usage guide without inflating every MCP tool handshake.
+- **Safety:** Game workflows now require a defined semantic action explicitly marked reversible; premium, summon, economy and system categories are refused, as are app launch, Home, arbitrary key and text-input sequence steps. Mixed sequence steps are capped at 12 for this surface. Other direct phone tools retain their separate existing grant and owner.
+- **Classification:** Equal-scoring distinct screen states are reported ambiguous instead of guessed. Runtime game-profile validation checks region references, metric bound ordering and semantic action IDs. `waitRegionChange` compares against its initial frame rather than only adjacent frames, allowing gradual change detection.
+- **Continuity:** Duplicate session creation refuses overwrite; sessions retain their observed game version. Controller comparison reports game version/mode/stage/party comparability, workflow counts/time, evidence-referenced battle outcomes and small-sample warnings. Reused battle evidence is rejected within a session. Outcomes remain controller-reported; no independent victory verification is implied.
+- **Coordinates:** Normalized control coordinates must be finite and within [0,1]; the edge maps within actual observed device pixel bounds. Live orientation remains authoritative.
+- **Source-grounded donor adoption:** 4x fast perception/world state/verified-flow patterns, mobile-use Android context/guard, BOT-MMORPG action/profile/no-progress concepts and Serpent frame-ring concepts were reimplemented in the existing TypeScript owner. No donor runtime or new Python/ML dependency was installed.
+- **Unresolved:** supported Core reload + fresh MCP connector, portrait/landscape in-game calibration, real game battle/team evaluations, optional high-impact APK decision and cross-controller gameplay acceptance. No broad tests, live gameplay, APK build/install, Git commit/push, release or launcher restart in this continuation.
+
+### 2026-10-08 — Game Mode live acceptance after creator restart (PARTIAL)
+
+- **Detailed evidence authority:** `docs/Game-Mode-Live-Acceptance-20261008.md` (fresh connector observations, real Android screens, source fixes, targeted/broad tests and pending acceptance). The approved advanced plan remains IN PROGRESS.
+- Fresh connector exposed both `phone_game_inspect` and `phone_game_manage`. Nubia Z2465N USB ADB and companion gateway were both online. Operator configuration still selected gateway, so gameplay tests explicitly used OS-grounded `transport=adb` without changing settings.
+- **Seven Knights Re:BIRTH:** real landscape `2392x1080`; entered lobby and Heroes, read Rosie and Dellons data, captured hero name/stats/skills/roster regions and Skills anchor (similarity approximately 0.9997). Guarded reversible hero-selection workflow executed, but immediate screenshot was stale; a later frame confirmed character change. Session `seven-knights-live-acceptance-20261008` preserves evidence, without claiming battle victory.
+- **7DS Grand Cross:** real portrait `1080x2392`; Tavern -> Heroes -> UR Nemesis Meliodas detail through safe guarded navigation. Saved named roster, resource, menu, character and skill regions; captured/verified Tavern Heroes and character-detail anchors. Session `grand-cross-live-acceptance-20261008` retains grounded character stats and navigation evidence. Two saved samples classified offline as `heroes_roster` and `hero_detail` at confidence 1.0, which is **2/2 examples only**, not a generalization guarantee.
+- **Sensor reality:** 7DS UIAutomator exposed only one Unity `SurfaceView` node. Gateway captured the game visually but self-reported `com.joe.androidagentbridge` as foreground while USB ADB reported the actual game; gateway foreground claims cannot be trusted as game identity for guarded actions. Source-built Game Mode status now advises ADB when USB exists. A more precise companion sensor remains a conditional APK v2 candidate; no APK was built or installed.
+- **Source fixes discovered by live acceptance:** Sharp classifier colourspace `rgb` -> `srgb`; forwarding `expectedPackage` in `phone_run_macro`; bounded read-only post-action polling for rendering delays; per-region progress differences; no-drift verified visual anchors; additional validation/transport guidance. These fixes are in source/dist, but **resident was restarted before these fixes**, so the active connector still returned the prior Sharp error until another supported reload.
+- **Targeted verification:** nine `game-mode-advanced` tests plus three MCP manifest, two MCP schema and nine capability resolver tests = **23/23 passed**; TypeScript compile exit 0; compatibility ok=true / breakingEvidence=false / zero issues / MCP manifest 119735 of 120000 bytes.
+- **Broad suite NOT green:** attempted full Vitest; partial batch evidence includes Windows symlink/reparse tests failing, portability startup `projectRoot` undefined, maintenance cleanup ENOTEMPTY, and six Claude-Mem temporary Git fixture failures. No whole-repository success claim; treat those as separately scoped open failures rather than Game Mode passes.
+- **Still OPEN:** a supported Core reload to activate fresh classifier/guard/settling fixes; in-game postcondition and battle/party assessment, remote-only gateway foreground-sensor fix, measurable multi-controller gameplay comparisons, and decision to build APK v2 when its added signal is justified.
+
+### 2026-10-08 — Agent Core Memory experience-v2 host integration (SOURCE/STAGING; CUTOVER NOT YET ACTIVE)
+
+- **Implementation guide:** `docs/Agent-Core-Memory-v2-Installation-20261008.md` (manual stop/activate/restart, recovery and evidence boundaries). The existing `runtime/memory` remains the resident canonical writer until the host owner publishes `runtime/memory-v2-activation.json` after a verified halted-Core transfer.
+- **Upstream engine:** `SubProject/agent-core-memory` pinned at `rendevouz999/Agent-Core-Memory` commit `b266f62ba11b54859185cede8e61c43c4e28cb9a`; compiled Windows using the project's existing TypeScript/runtime Node. No second Memory server or model/provider stack.
+- **Host:** `src/memory/host-runtime.ts` selects legacy without activation marker, or the standalone v2 engine at `runtime/memory-v2` after exact validated marker/backup checks. `src/index.ts` supplies the same service to existing Learning/Native/MCP consumers. New `src/mcp/memory-experience-tools.ts` registers read-only `memory_v2_read` and mutation-scoped `memory_v2_write` only when experience-v2 is selected; controller/task/workspace identity comes from the host, not caller-provided payload. Existing Memory commands stay available.
+- **Authority:** `src/mcp/server.ts` keeps existing single Agent Core MCP lifecycle/permissions; `src/agent-capability-catalog.ts` extends Native `memory.read` and adds an explicit `memory.write` family for scoped v2 writer actions. No alternative auth system, second agent, or new registry.
+- **History preservation:** original v1 backup `runtime/backups/memory-v1-pre-v2-20261008/memory` has 196 hashed files/7,772,431 bytes (zip extracted and byte-compared), 123 canonical Memory records. The v2 staging copy includes 122 converted non-pinned records + pinned foundation, 122 immutable v1 canonical snapshots, 190 historical revision snapshots from 68 old sidecars, and 71 preserved legacy sidecars. 21 preexisting cross-scope links affecting 15 notes were quarantined from v2 active traversal and preserved in original v1 snapshots; no user history deleted.
+- **Transfer:** `runtime/memory-v2-candidate-20261008` generated from an isolated backup, not by mutating the active root. Complete v2 export/preview/import into `runtime/tmp/memory-v2-restore-post-history-20261008` succeeded with 123 readback records, no unresolved references and exact idempotent replay. Historical source reference roots remain as data, not rewritten to new workspace authority.
+- **Cutover:** scripts `scripts/memory/freeze-v1.mjs`, `reconcile-final-v1.mjs`, `activate-v2.mjs`, `rollback-v2.mjs` plus root `ACTIVATE-MEMORY-V2.cmd` and `ROLLBACK-MEMORY-V2.cmd`. Activation requires Launcher/service stopped, freezes the latest v1 bytes under lock, rejects unexplained semantic drift, synchronizes append-only retrieval changes, restores v2, verifies source/root, and atomically publishes marker last. Rollback first snapshots current v2, preserves the v2 root, and switches the next manually restarted Core to original v1 without deleting it. Neither helper stops/restarts Core.
+- **Packaging:** source and compiled v2 engine/NOTICE included in future release packaging via `scripts/release/package-release.mjs`; `scripts/release/packaging-policy.mjs` excludes Memory v1, Memory v2, candidate/restore roots, activation marker, backup and temporary migration data from release archives.
+- **Verification:** host/MCP/packaging targeted Windows regression 10/10, TypeScript/root npm build and path policy pass, release-compat candidate reports 76 tools, 119,724 bytes/120,000 budget, `breakingEvidence=false` and no verification issues. All source-level checks are separate from resident activation. Test fixture runtime and the standalone Linux 503/503 historical report are not evidence of live Windows v2 deployment.
+- **Pending:** user-controlled launcher shutdown, final v1 freeze and marker publication, manual launcher restart, live authenticated external/native v2 tools and old Memory calls, multi-controller task capsule / promotion acceptance, monitored rollback rehearsal. **Do not call this DONE/STABLE before those observations.**
+
+### 2026-10-08 — Memory v2 pre-cutover requalification on active `E:` root (OPEN: resident cutover)
+
+- The connected Agent Core host at this checkpoint is `E:\Projects\Agent-Core`; the earlier `F:` location is historical. Both the legacy canonical Memory and staged v2 engine/backup are present under the active `E:` project root; do not reactivate or copy data from a guessed drive.
+- Full installation and operator protocol: `docs/Agent-Core-Memory-v2-Installation-20261008.md`. User-controlled launcher stop + `ACTIVATE-MEMORY-V2.cmd` + user restart remain the activation boundary.
+- Scoped synthetic freeze/reconciliation acceptance PASSED on a copied 196-file Memory root: one simulated retrieval-only delta propagated to v2; repeated freeze was idempotent; unexplained semantic changes were rejected without modifying the real canonical root.
+- A separate isolated full lifecycle test PASSED: activation marker published after complete v1 freeze/v2 restore (123 records), host selected experience-v2, a new note was written only to v2, rollback preserved all v2 files in a hash inventory and restored v1 host selection with original 123 records. The fixture used `runtime/tmp/memory-v2-e2e-isolated-*`, not live `runtime/memory`.
+- Pre-cutover read-only audit on `E:` found 196 initial backup files and 123 records available in v2 candidate, with five note changes strictly limited to retrieval access metadata and an append-only retrieval ledger increase (14,735 bytes); zero unexplained semantic modifications. Source delta is re-evaluated under lock at actual cutover.
+- Host/MCP/schema/packaging 10/10 scoped tests, TypeScript root build and portable path policy were previously PASSED; final E: build/compatibility readback is tracked separately. The source and cutover helper remain unactivated while launcher/Core is live.
+- Broader standalone Windows donor test attempt is NOT GREEN: selected suite reported 34 failing tests, principally filesystem test cleanup (EBUSY/ENOTEMPTY), 5-second timing limits, and symlink fixture behavior. Do not substitute past Linux 503/503 report for actual Windows proof. A normal live post-restart acceptance and focused controller-handoff test are still mandatory before calling the installation complete or stable.
+- Memory history update for the installation must be written to the NEW canonical Memory after activation; writing new durable v1 knowledge before cutover would alter the frozen source baseline and require a reviewed rebase. The up-to-date CODEBASE/installation evidence is the source of continuity until then.
+
+### 2026-10-08 — Memory v2 external MCP wiring, Windows functional acceptance (CUTOVER STILL PENDING)
+
+- Source inspection found and corrected the missing `memoryExperience` pass-through in `src/mcp/handler.ts` (`BridgeMcpHttpOptions` and the per-session server factory). Previously the internal/Native path was wired but HTTP/MCP external clients would not receive new `memory_v2_read`/`memory_v2_write` tools even after v2 activation.
+- A new scoped test in `tests/memory-v2-host-integration.test.ts` exercised the actual loopback HTTP MCP handler, retrieved `tools/list`, and successfully invoked `memory_v2_read(capabilities)` with the host-bound controller identity. Result: 6/6 host-specific tests passed; no performance/latency benchmarks were requested or run.
+- Subsequent project-root `npm run build` passed Windows path policy (331 authored files, zero exceptions), compiled the pinned standalone v2 engine and the Agent Core host. `release:compat` reported `ok=true`, no removed tools/breaking evidence/issues, **76 tool registrations**, **119724/120000 bytes** handshake budget.
+- The activation launcher safety branch was checked again on the real `E:` root while the Launcher remained running: `ACTIVATE-MEMORY-V2.cmd` rejected with exit code 7, created no marker and did not materialize the production v2 destination. Original canonical `runtime/memory` plus hashed v1 backup remain intact.
+- Outstanding user-operated boundary: close Agent Core Launcher normally, execute `E:\Projects\Agent-Core\ACTIVATE-MEMORY-V2.cmd` and only after exit 0 reopen `Agent Core.exe`; then the assistant must inspect fresh `memory_status`, real `memory_v2_read`/`memory_v2_write` use, old-record continuity and cross-controller task episode before reporting DONE/STABLE. Rollback is `E:\Projects\Agent-Core\ROLLBACK-MEMORY-V2.cmd` with the Launcher stopped. No automatic restart, speed benchmark, Git push or release operation was performed.
+
+### 2026-10-08 — Memory v2 interrupted-activation recovery and launcher guard (IN PROGRESS)
+
+- Active host remains `E:\Projects\Agent-Core`, and its canonical `runtime/memory` is still v1: `runtime/memory-v2-activation.json` is absent and resident connector exposes no `memory_v2_read` / `memory_v2_write`. Existing `runtime/memory-v2` contains a prior completed import but is **not activated**.
+- Investigated the earlier post-restore blocker using isolated copies. The completed root had exactly 1,359 transferable objects matching `runtime/memory-v2-candidate-20261008` with no added, missing or differing files. Replaying a freshly exported bundle against the prior destination fails by design because the transfer receipt includes a destination-bound digest; disabling that check is prohibited.
+- `scripts/memory/activate-v2.mjs` now verifies source/target object digests before preserving the completed but unactivated v2 root under `runtime/backups/memory-v2-interrupted-*` with a local audit, and restores a fresh final root. It still emits the activation marker only after freeze, complete restore, access metadata reconciliation and source checks.
+- `scripts/memory/reconcile-final-v1.mjs` now retains pre-freeze retrieval counts/timestamps in delta plans and recognizes identical repeat applications. A targeted isolated replay applied five access deltas and the complete ledger once, then re-ran with `0` new mutations / `5` already applied, with 123 Memory records intact.
+- Isolated end-to-end `runtime/tmp/verify-memory-v2-e2e.mjs` completed successfully: interrupted root preserved; final v2 activated; a synthetic new Memory was written; rollback restored v1 selection and backed up the v2 root; no active canonical root was modified.
+- The launcher wrapper `ACTIVATE-MEMORY-V2.cmd` now captures the last result in `runtime/backups/memory-v2-activation-last.log`, verifies `runtime/memory-v2-activation.json` after a successful Node exit and prints `VERIFIED ACTIVATION` only after marker validation. With Agent Core running it returned exit code `7` and logged `FAILED: Launcher still running. No activation started.` The active machine had two `Agent Core` processes; original backups and root remain intact.
+- **Pending operator cutover:** close the Launcher completely (verify Agent Core processes are gone), run `E:\Projects\Agent-Core\ACTIVATE-MEMORY-V2.cmd` until it reports `VERIFIED ACTIVATION`, then manually reopen the Launcher and reconnect MCP. Only then perform resident Memory v2 history/episode/capsule/writer checks and record the corresponding durable new-memory milestone. No benchmark testing, commit/push, release or autonomous restart performed.
+
+### 2026-10-09 — Memory v2 Windows/exFAT cutover blocker corrected (SOURCE BUILT; RESIDENT PENDING)
+
+- **Observed root cause:** `E:` is exFAT. Windows reports directory `mtime` rounded to approximately two-second boundaries; `proper-lockfile` heartbeat expected an exact timestamp and raised `MEMORY_LOCK_COMPROMISED` even for an uncontended 38-second lease. The previous live activation failed before publishing `runtime/memory-v2-activation.json`; canonical v1 remained healthy.
+- **Engine patch:** `SubProject/agent-core-memory/src/memory/lock.ts` retains proper-lockfile's atomic directory exclusion and physical stat checks, using a Windows filesystem adapter that projects the requested lease mtime only when the physical identity/mtime/ctime/birthtime are unchanged. Tests confirmed a sustained lease releases correctly and a competing process is rejected with `MEMORY_STORE_BUSY`.
+- **Transfer patch:** `SubProject/agent-core-memory/src/memory/transfer-v2.ts` captures immutable canonical Buffers under lock; checksum, validation and chunk assembly happen after lock release. Existing scope, checksum, replay and destination-conflict checks remain. Targeted transfer tests 3/3 passed with functional test timeouts on exFAT (not performance benchmarking).
+- **Retry snapshot protection:** `scripts/memory/freeze-v1.mjs` retains a verified earlier final freeze; when v1 gained append-only retrieval events it creates a new `...-retry-YYYYMMDDHHMMSS-xxxxxxxx` immutable final snapshot instead of overwriting the original. `src/memory/host-runtime.ts` accepts only a strictly validated base/retry manifest path with matching digest; path traversal markers are rejected.
+- **Local source provenance:** `SubProject/agent-core-memory/PATCHES.md` records departures from pinned standalone commit; `scripts/release/package-release.mjs` includes the patch notice with compiled/source engine. Release remains excluded from private live v1/v2 Memory state.
+- **Targeted acceptance:** physical exFAT lease test 1/1 PASS; independent-process lock ownership PASS; transfer integrity tests 3/3 PASS; root build + path policy PASS; host/MCP/schema tests 12/12 PASS; release compatibility ok=true with 76 tool registrations, 119724/120000 bytes, zero breaking evidence/issues.
+- **Full isolated activation:** `runtime/tmp/memory-v2-e2e-isolated-84d61f7d-1d2` PASS, exit 0 (restore interrupted root retained, 123 original records, synthetic v2 write, full v2 backup and v1 rollback). Follow-up `runtime/tmp/memory-v2-e2e-isolated-c4a03372-714` PASS, exit 0 including stale final-freeze ledger, versioned snapshot retry, v2 write and rollback. Neither scenario touched production canonical v1.
+- **Live data safety:** final pre-cutover audit returned `readyForHaltedCutover=true`, 196 original backup files, 123 staged records, zero unexplained legacy semantic changes. Since the prior frozen snapshot, only the retrieval ledger appended. At actual cutover, a full new frozen snapshot is required; scripts reject unexpected content drift.
+- **Still OPEN:** user must close Launcher normally, rerun `ACTIVATE-MEMORY-V2.cmd` until `VERIFIED ACTIVATION`, restart Launcher manually, then verify resident `memory_v2_read/write` plus old history and controller episode/capsule. Do NOT claim Memory v2 is active/stable until the marker and fresh connector are observed. No speed benchmark, broad suite, Git publish or autonomous Core restart performed.
+
+### 2026-10-09 — Memory experience-v2 production cutover VERIFIED (external MCP + preservation)
+
+- **Current authority:** `docs/Agent-Core-Memory-v2-Live-Acceptance-20261009.md`.
+- Operator activation succeeded and `runtime/memory-v2-activation.json` validly selects
+  `runtime/memory-v2`; the referenced frozen v1 backup manifest digest matches.
+- Fresh Agent Core external MCP connector reports `memory_v2_read`/`memory_v2_write` and
+  `memory_v2_read(capabilities).writeMode=experience-v2`. Canonical Memory status is
+  complete/available with 123 migrated records and zero issues before new writes.
+- Full read-only parity check: 122 non-pinned records + foundation, unchanged IDs,
+  content and core metadata, zero missing/extra records. 21 cross-scope links are
+  intentionally excluded from active traversal but survive in v1 historical archives.
+- Exact version-1 archived Memory revision successfully expanded on live connector.
+- Live episode start + event append + deterministic capsule checkpoint succeeded;
+  task context readback returned current episode/capsule with `needsCheckpoint=false`.
+- The v1 canonical root, hashed initial backup, and immutable final freeze remain intact.
+- Targeted controlled durable Memory write/read and episode completion to be recorded
+  after execution; real cross-provider handoff/Native controller acceptance is separate.
+- This installation acceptance is functional only; no speed benchmarking or full
+  unrelated regression run. No release, push, automatic restart or root deletion.
+
+### 2026-10-09 — Memory experience-v2 live installation SELESAI (scoped functional acceptance)
+
+- **Current authority:** `docs/Agent-Core-Memory-v2-Live-Acceptance-20261009.md`.
+- User activation `VERIFIED ACTIVATION` and host startup select `runtime/memory-v2`.
+- Fresh external MCP tool `memory_v2_read(capabilities)` reports `writeMode=experience-v2`;
+  existing `memory_status` returns available canonical store with zero issues.
+- Source and resident verified: 123 migrated notes (122 regular + foundation), unchanged
+  IDs/title/content/core metadata; 21 cross-scope graph links deliberately inactive
+  but retained with the original v1 archive, and exact v1 snapshot retrievable via v2 expand.
+- Live `memory_v2_write` task start/event/checkpoint produced a deterministic capsule;
+  `memory_v2_read(task_context)` returned it with current freshness.
+- Real controlled durable `memory_remember` wrote Memory v2 record
+  `1099ff1c-aef0-4d31-b2e5-86cbe74402be` with version 2; legacy `memory_read`
+  and v2 `memory_v2_read(recall)` both returned that record.
+- Canonical status after write: **124 records, zero issues**. Original v1 Memory root
+  and both hashed legacy backups remain available for controlled rollback.
+- This closes installation and scoped external MCP functional acceptance. The broader
+  Windows test suite, Native Agent live work, cross-provider session continuation and
+  long-running stability are not claimed by this one-task check. No speed benchmarks.
+
+### 2026-10-09 — External ChatGPT controller: Memory v2 observed-use audit (Native deferred)
+
+- Scope comes from user clarification: prioritize ChatGPT external-controller access through Agent Core; do not run Native Agent, interactive Agent Core chat or any model/API-key inference in this audit.
+- Live `memory_v2_read(action=capabilities)` returned `writeMode=experience-v2`; `memory_status` confirmed 124 canonical records, complete/available canonical/index/embedding/intelligence and zero reported issues.
+- Live `memory_v2_read(recall, view=abstract)` retrieved current installed-v2 historical record `1099ff1c-aef0-4d31-b2e5-86cbe74402be`; `memory_v2_read(expand, view=record)` opened that same exact revision.
+- Real external task `abd87e67-d1bc-41a2-bc65-f8a9ca5c5ca2` was created with `memory_v2_write(task_start)`, with a real-document `evidence_capture` of `docs/Agent-Core-Memory-v2-Live-Acceptance-20261009.md` (available, 3642 bytes).
+- `memory_v2_write(event_append)` recorded a real observation; `memory_v2_write(checkpoint)` produced capsule `48afd36c-0b94-4acb-b81d-660d74c964b9`. A fresh `memory_v2_read(task_context)` returned the same capsule with `freshness=current`, `needsCheckpoint=false`.
+- This establishes external-controller ability to call the installed v2 engine and persist/recover this task state. It is not a synthetic performance/quality benchmark and does not establish broader lifetime effectiveness.
+- Native Agent-specific use, live interactive-chat model calls, and API-key inference were NOT exercised, by explicit user request. Do not interpret this exclusion as a v2 failure or an external-controller acceptance blocker.
+- The incomplete exploratory Native bridge attempted in the prior turn was removed from `src`: eight temporary edits to `src/agent-runtime.ts` were reverted. Its unconnected scratch file was preserved under `runtime/tmp/deferred-native-experience-bridge-20261009.ts`. No runtime rebuild, restart or Native activation occurred.
+- Retention mutation, consolidation apply, and unrelated destructive flows were not invoked solely to score a test; such workflows require a genuine user-authorized use case.
+- Status: external-controller installed feature use directly observed; regular-work impact and full cross-surface adoption must be evaluated separately, only when relevant and authorized.
+- Episode was subsequently marked `completed` at revision 3. Because closing changed the revision, a real final `phase-complete` checkpoint refreshed the capsule to `0a841b4e-f2a4-485d-acff-d3324d8cc56f`; a new `task_context` readback confirmed `status=completed`, `freshness=current`, `needsCheckpoint=false`.

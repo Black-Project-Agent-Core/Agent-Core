@@ -3,6 +3,7 @@ import { createServer, type Server } from 'node:http';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 import PizZip from 'pizzip';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -22,6 +23,26 @@ function makeZip(entries: Record<string, string>): Buffer {
   const zip = new PizZip();
   for (const [name, value] of Object.entries(entries)) zip.file(name, value);
   return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+
+function patchZipEntryHeader(
+  archive: Buffer,
+  patch: (copy: Buffer, local: number, central: number) => void,
+): Buffer {
+  const copy = Buffer.from(archive);
+  const local = copy.indexOf(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  const central = copy.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+  if (local < 0 || central < 0) throw new Error('fixture ZIP headers not found');
+  patch(copy, local, central);
+  return copy;
+}
+
+function patchCentralDirectorySize(archive: Buffer, size: number): Buffer {
+  const copy = Buffer.from(archive);
+  const eocd = copy.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (eocd < 0) throw new Error('fixture ZIP EOCD not found');
+  copy.writeUInt32LE(size >>> 0, eocd + 12);
+  return copy;
 }
 
 async function tempRuntime(): Promise<string> {
@@ -138,6 +159,103 @@ describe('SemanticProviderProvisioner', () => {
     });
     await expect(provisioner.provision('python')).rejects.toThrow('SEMANTIC_PROVIDER_ARTIFACT_TOO_LARGE');
   });
+  it('rejects declared content-type and byte-signature format mismatches before extraction', async () => {
+    const archive = makeZip({ 'bin/server.txt': 'ok' });
+    const { base } = await listen((_request, response) => {
+      response.statusCode = 200;
+      response.setHeader('content-type', 'application/gzip');
+      response.end(archive);
+    });
+    const runtime = await tempRuntime();
+    const provisioner = new SemanticProviderProvisioner(runtime, {
+      python: fixtureRecipe(`${base}/provider.zip`, archive),
+    });
+    await expect(provisioner.provision('python')).rejects.toThrow('SEMANTIC_PROVIDER_ARTIFACT_FORMAT_MISMATCH');
+    await expect(readFile(path.join(runtime, 'providers', 'python', 'bin', 'server.txt'), 'utf8')).rejects.toThrow();
+  });
+
+  it('rejects a byte-signature mismatch even without a content-type declaration', async () => {
+    const archive = gzipSync(Buffer.from('not-a-zip'));
+    const { base } = await listen((_request, response) => {
+      response.statusCode = 200;
+      response.end(archive);
+    });
+    const runtime = await tempRuntime();
+    const provisioner = new SemanticProviderProvisioner(runtime, {
+      python: fixtureRecipe(`${base}/provider.zip`, archive),
+    });
+    await expect(provisioner.provision('python')).rejects.toThrow('SEMANTIC_PROVIDER_ARTIFACT_FORMAT_MISMATCH');
+    await expect(readFile(path.join(runtime, 'providers', 'python', 'bin', 'server.txt'), 'utf8')).rejects.toThrow();
+  });
+
+  it('rejects oversized ZIP central-directory metadata before ZIP library extraction', async () => {
+    const baseArchive = makeZip({ 'bin/server.txt': 'ok' });
+    const archive = patchCentralDirectorySize(baseArchive, 4 * 1024 * 1024 + 1);
+    const { base } = await listen((_request, response) => { response.statusCode = 200; response.end(archive); });
+    const runtime = await tempRuntime();
+    const provisioner = new SemanticProviderProvisioner(runtime, {
+      python: fixtureRecipe(`${base}/provider.zip`, archive),
+    });
+    await expect(provisioner.provision('python')).rejects.toThrow('SEMANTIC_PROVIDER_ZIP_CENTRAL_DIRECTORY_LIMIT');
+  });
+
+  it('rejects ZIP64-era extractor versions and unbounded compression methods', async () => {
+    const original = makeZip({ 'bin/server.txt': 'ok' });
+    const zip64 = patchZipEntryHeader(original, (copy, local, central) => {
+      copy.writeUInt16LE(45, local + 4);
+      copy.writeUInt16LE(45, central + 6);
+    });
+    const refusedCompression = patchZipEntryHeader(original, (copy, local, central) => {
+      copy.writeUInt16LE(12, local + 8);
+      copy.writeUInt16LE(12, central + 10);
+    });
+    for (const [name, archive, expected] of [
+      ['zip64.zip', zip64, 'SEMANTIC_PROVIDER_ZIP64_OR_UNSUPPORTED_VERSION'],
+      ['bzip2.zip', refusedCompression, 'SEMANTIC_PROVIDER_ZIP_COMPRESSION_REFUSED'],
+    ] as const) {
+      const { base } = await listen((_request, response) => { response.statusCode = 200; response.end(archive); });
+      const runtime = await tempRuntime();
+      const provisioner = new SemanticProviderProvisioner(runtime, {
+        python: fixtureRecipe(`${base}/${name}`, archive),
+      });
+      await expect(provisioner.provision('python')).rejects.toThrow(expected);
+    }
+  });
+
+  it('rejects Windows-reserved and case-colliding archive paths before writes', async () => {
+    for (const entries of [
+      { 'NUL.txt': 'bad', 'bin/server.txt': 'ok' },
+      { 'Readme.txt': 'one', 'README.TXT': 'two', 'bin/server.txt': 'ok' },
+    ]) {
+      const archive = makeZip(entries);
+      const { base } = await listen((_request, response) => { response.statusCode = 200; response.end(archive); });
+      const runtime = await tempRuntime();
+      const provisioner = new SemanticProviderProvisioner(runtime, {
+        python: fixtureRecipe(`${base}/provider.zip`, archive),
+      });
+      await expect(provisioner.provision('python')).rejects.toThrow(/SEMANTIC_PROVIDER_ARCHIVE_PATH_NONPORTABLE|SEMANTIC_PROVIDER_ARCHIVE_COLLISION/);
+      await expect(readFile(path.join(runtime, 'providers', 'python', 'bin', 'server.txt'), 'utf8')).rejects.toThrow();
+    }
+  });
+
+  it('preserves a prior valid provider when an explicit repair candidate fails preflight', async () => {
+    const good = makeZip({ 'bin/server.txt': 'stable' });
+    const { base } = await listen((request, response) => {
+      response.statusCode = 200;
+      response.end(request.url === '/good.zip' ? good : patchCentralDirectorySize(good, 4 * 1024 * 1024 + 1));
+    });
+    const runtime = await tempRuntime();
+    const firstRecipe = fixtureRecipe(`${base}/good.zip`, good);
+    await new SemanticProviderProvisioner(runtime, { python: firstRecipe }).provision('python');
+
+    const bad = patchCentralDirectorySize(good, 4 * 1024 * 1024 + 1);
+    const nextRecipe = fixtureRecipe(`${base}/bad.zip`, bad);
+    nextRecipe.recipeVersion = 100;
+    const next = new SemanticProviderProvisioner(runtime, { python: nextRecipe });
+    await expect(next.provision('python', { repair: true })).rejects.toThrow('SEMANTIC_PROVIDER_ZIP_CENTRAL_DIRECTORY_LIMIT');
+    expect(await readFile(path.join(runtime, 'providers', 'python', 'bin', 'server.txt'), 'utf8')).toBe('stable');
+  });
+
   it('rejects archive traversal before extracting any final provider tree', async () => {
     const archive = makeZip({ '../escape.txt': 'escape', 'bin/server.txt': 'ok' });
     const { base } = await listen((_request, response) => {

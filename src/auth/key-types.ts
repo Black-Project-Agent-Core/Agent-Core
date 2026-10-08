@@ -1,4 +1,7 @@
+import type { ToolGrant } from './tool-grant.js';
+
 export interface KeyMetadata {
+  toolGrant?: ToolGrant;
   id: string;
   name: string;
   createdAt: string;
@@ -20,6 +23,9 @@ export interface CreatedKey {
 
 export interface CreateKeyOptions {
   expiresAt?: Date;
+  toolGrant?: ToolGrant;
+  /** Issuing operator supplies names from the current available registry. */
+  availableTools?: readonly string[];
 }
 
 export interface StoredKeyRecord extends KeyMetadata {

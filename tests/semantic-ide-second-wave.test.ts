@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -230,5 +230,52 @@ describe('Semantic IDE second-wave mutation/provider truth', () => {
     } finally {
       await service.close();
     }
+  });
+});
+
+describe('S9-P1 TypeScript dependency definition fallback', () => {
+  async function fixture(mode: string, dependencyInside = true) {
+    const root = await temp('agent-core-semantic-dependency-');
+    const outside = dependencyInside ? root : await temp('agent-core-semantic-dependency-outside-');
+    const dependency = path.join(outside, 'node_modules', 'fixture-pkg', 'index.d.ts');
+    await mkdir(path.dirname(dependency), { recursive: true });
+    await writeFile(dependency, 'export declare const dependencyValue: number;\n', 'utf8');
+    await writeFile(path.join(root, 'sample.ts'), 'function sample() { return 1; }\n', 'utf8');
+    const service = await SemanticIdeService.initialize(config(root, [
+      server('typescript', '.ts', mode, { adapter: 'typescript', languageIds: { '.ts': 'typescript' }, readinessTimeoutMs: 1000 }, dependency),
+    ]));
+    return { root, dependency, service };
+  }
+
+  it('returns a bounded project-local dependency definition only when no workspace source survives', async () => {
+    const { service } = await fixture('dependency-definition');
+    try {
+      const result = await service.symbol('decl', { relativePath: 'sample.ts', namePath: 'sample', language: 'typescript' }) as any;
+      expect(result.dependencyFallback).toBe(true);
+      expect(result.results.items).toHaveLength(1);
+      expect(result.results.items[0]).toMatchObject({ sourceClass: 'dependency', dependencyFallback: true });
+      expect(result.results.items[0].relativePath.replace(/\\/g, '/')).toBe('node_modules/fixture-pkg/index.d.ts');
+    } finally { await service.close(); }
+  });
+
+  it('prefers an editable workspace definition over a dependency fallback', async () => {
+    const { service } = await fixture('local-and-dependency-definition');
+    try {
+      const result = await service.symbol('decl', { relativePath: 'sample.ts', namePath: 'sample', language: 'typescript' }) as any;
+      expect(result.dependencyFallback).toBeUndefined();
+      expect(result.results.items).toHaveLength(1);
+      expect(result.results.items[0].relativePath).toBe('sample.ts');
+      expect(result.results.items[0].sourceClass).toBeUndefined();
+    } finally { await service.close(); }
+  });
+
+  it('does not expose dependency fallback outside the authorized workspace', async () => {
+    const { service } = await fixture('dependency-definition', false);
+    try {
+      const result = await service.symbol('decl', { relativePath: 'sample.ts', namePath: 'sample', language: 'typescript' }) as any;
+      expect(result.dependencyFallback).toBeUndefined();
+      expect(result.results.items).toEqual([]);
+      expect(result.droppedLocations.outside).toBeGreaterThan(0);
+    } finally { await service.close(); }
   });
 });

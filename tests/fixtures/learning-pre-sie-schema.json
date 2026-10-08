@@ -1,0 +1,141 @@
+{
+  "sourceSha256": "0f0cd56fd95d82282bb0e278fe64239c5b648bb6f46fd1f0ee64ec8272933927",
+  "source": "verified pre-SIE activation backup; historical comparator only",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "status",
+          "checkpoint",
+          "review",
+          "curate",
+          "journey"
+        ]
+      },
+      "idempotencyKey": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "meaningful": {
+        "type": "boolean"
+      },
+      "reason": {
+        "type": "string",
+        "enum": [
+          "task-complete",
+          "user-correction",
+          "verified-recovery",
+          "explicit-learn",
+          "status"
+        ]
+      },
+      "evidenceRefs": {
+        "maxItems": 32,
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        }
+      },
+      "candidates": {
+        "maxItems": 25,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "durable-fact",
+                "operational-reflection",
+                "architecture",
+                "code-pattern"
+              ]
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "content": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50000
+            },
+            "evidenceRefs": {
+              "default": [],
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              }
+            },
+            "verified": {
+              "type": "boolean"
+            },
+            "reuseCondition": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "workspace": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "tags": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "steps": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "exemplars": {
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "content",
+            "evidenceRefs",
+            "verified"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "explicit": {
+        "type": "boolean"
+      },
+      "workspace": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+    "required": [
+      "action"
+    ],
+    "additionalProperties": false
+  }
+}

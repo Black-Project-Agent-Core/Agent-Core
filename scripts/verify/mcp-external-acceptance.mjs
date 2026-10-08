@@ -7,6 +7,18 @@ import { redactSensitiveValue } from '../../dist/security/redaction.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DEFAULT_EVIDENCE_ROOT = path.join(ROOT, 'runtime', 'tmp', 'mcp-client-acceptance');
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+const DEFAULT_CLEANUP_TIMEOUT_MS = 2_500;
+
+export const MCP_ACCEPTANCE_ERRORS = Object.freeze({
+  TIMEOUT: 'verification-timeout',
+  UNAUTHORIZED: 'http-unauthorized',
+  NETWORK: 'network-unreachable',
+  SERVER_REJECTED: 'server-rejected-handshake',
+  HTTP: 'http-error',
+  INVALID_RESPONSE: 'invalid-response',
+  FAILED: 'verification-failed',
+});
 
 function arg(name) {
   const index = process.argv.indexOf(name);
@@ -66,6 +78,55 @@ function schemaHasParam(tool, param) {
   return Boolean(properties && typeof properties === 'object' && Object.prototype.hasOwnProperty.call(properties, param));
 }
 
+function classifyAcceptanceError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === MCP_ACCEPTANCE_ERRORS.TIMEOUT || error?.name === 'AbortError' || error?.name === 'TimeoutError') {
+    return MCP_ACCEPTANCE_ERRORS.TIMEOUT;
+  }
+  if (/\b(?:401|403|unauthori[sz]ed|insufficient scope)\b/i.test(message)) return MCP_ACCEPTANCE_ERRORS.UNAUTHORIZED;
+  if (/\b(?:fetch failed|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH|ECONNRESET|network)\b/i.test(message)) {
+    return MCP_ACCEPTANCE_ERRORS.NETWORK;
+  }
+  if (/\bHTTP\s+[45]\d\d\b/i.test(message)) return MCP_ACCEPTANCE_ERRORS.HTTP;
+  if (/\b(?:schema|parse|invalid response|validation)\b/i.test(message)) return MCP_ACCEPTANCE_ERRORS.INVALID_RESPONSE;
+  if (/\b(?:initialize|handshake|server rejected)\b/i.test(message)) return MCP_ACCEPTANCE_ERRORS.SERVER_REJECTED;
+  return MCP_ACCEPTANCE_ERRORS.FAILED;
+}
+
+async function withDeadline(promise, timeoutMs, lifecycle) {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve(promise),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          lifecycle.abort();
+          reject(new Error(MCP_ACCEPTANCE_ERRORS.TIMEOUT));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function cleanupWithin(promise, timeoutMs, lifecycle) {
+  let timer;
+  try {
+    await Promise.race([
+      Promise.resolve(promise).catch(() => undefined),
+      new Promise(resolve => {
+        timer = setTimeout(() => {
+          lifecycle.abort();
+          resolve(undefined);
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function writePrivateJson(filePath, value, maxBytes = 2 * 1024 * 1024) {
   const content = JSON.stringify(redactSensitiveValue(value), null, 2) + '\n';
   if (Buffer.byteLength(content, 'utf8') > maxBytes) {
@@ -90,18 +151,36 @@ export async function runExternalMcpAcceptance(options = {}) {
   const runDir = path.join(evidenceBase, new Date().toISOString().replace(/[:.]/g, '-'));
   await fs.mkdir(runDir, { recursive: true, mode: 0o700 });
 
+  const requestTimeoutMs = Math.max(50, Math.min(120_000, options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS));
+  const cleanupTimeoutMs = Math.max(50, Math.min(30_000, options.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS));
+  const lifecycle = new AbortController();
+  const absoluteDeadline = setTimeout(
+    () => lifecycle.abort(),
+    Math.max(requestTimeoutMs * 4 + cleanupTimeoutMs * 2, 1_000),
+  );
+  const boundedFetch = (input, init = {}) => fetch(input, {
+    ...init,
+    signal: init.signal
+      ? AbortSignal.any([init.signal, lifecycle.signal])
+      : lifecycle.signal,
+  });
   const transport = new StreamableHTTPClientTransport(url, {
     ...(bearer ? { authProvider: { token: async () => bearer } } : {}),
     onInsufficientScope: 'throw',
     maxStepUpRetries: 0,
+    fetch: boundedFetch,
     reconnectionOptions: { initialReconnectionDelay: 200, maxReconnectionDelay: 1000, reconnectionDelayGrowFactor: 1.5, maxRetries: 0 },
   });
   const client = new Client({ name: 'agent-core-external-acceptance', version: '1.0.0' }, {
     listMaxPages: 8,
   });
   try {
-    await client.connect(transport);
-    const listed = await client.listTools(undefined, { cacheMode: 'refresh' });
+    await withDeadline(client.connect(transport), requestTimeoutMs, lifecycle);
+    const listed = await withDeadline(
+      client.listTools(undefined, { cacheMode: 'refresh' }),
+      requestTimeoutMs,
+      lifecycle,
+    );
     const tools = listed.tools ?? [];
     const fingerprint = manifestFingerprint(tools);
     const requiredTools = options.requiredTools ?? [];
@@ -115,14 +194,18 @@ export async function runExternalMcpAcceptance(options = {}) {
     if (expectedCount !== undefined && tools.length !== expectedCount) {
       throw new Error(`MCP_ACCEPTANCE_TOOL_COUNT_MISMATCH: expected=${expectedCount} actual=${tools.length}`);
     }
-    if (missingTools.length) throw new Error(`MCP_ACCEPTANCE_MISSING_TOOLS: ${missingTools.join(',')}`);
-    if (missingParams.length) throw new Error(`MCP_ACCEPTANCE_MISSING_PARAMS: ${missingParams.join(',')}`);
+    if (missingTools.length) throw new Error('MCP_ACCEPTANCE_MISSING_TOOLS');
+    if (missingParams.length) throw new Error('MCP_ACCEPTANCE_MISSING_PARAMS');
 
     const probeTool = options.probeTool ?? 'memory_status';
     const probe = tools.find(tool => tool.name === probeTool);
-    if (!probe) throw new Error(`MCP_ACCEPTANCE_PROBE_TOOL_MISSING: ${probeTool}`);
-    const probeResult = await client.callTool({ name: probeTool, arguments: {} });
-    if (probeResult.isError === true) throw new Error(`MCP_ACCEPTANCE_PROBE_FAILED: ${probeTool}`);
+    if (!probe) throw new Error('MCP_ACCEPTANCE_PROBE_TOOL_MISSING');
+    const probeResult = await withDeadline(
+      client.callTool({ name: probeTool, arguments: {} }),
+      requestTimeoutMs,
+      lifecycle,
+    );
+    if (probeResult.isError === true) throw new Error('MCP_ACCEPTANCE_PROBE_FAILED');
     const report = {
       ok: true,
       endpoint: `${url.protocol}//${url.host}${url.pathname}`,
@@ -133,6 +216,8 @@ export async function runExternalMcpAcceptance(options = {}) {
       requiredParams,
       probeTool,
       probeOk: true,
+      requestTimeoutMs,
+      cleanupTimeoutMs,
       generatedAt: new Date().toISOString(),
     };
     await writePrivateJson(path.join(runDir, 'manifest.json'), { tools: manifestView(tools) });
@@ -144,8 +229,25 @@ export async function runExternalMcpAcceptance(options = {}) {
     });
     await writePrivateJson(path.join(runDir, 'report.json'), report);
     return { ...report, evidenceDir: runDir };
+  } catch (error) {
+    const category = lifecycle.signal.aborted
+      ? MCP_ACCEPTANCE_ERRORS.TIMEOUT
+      : classifyAcceptanceError(error);
+    await writePrivateJson(path.join(runDir, 'report.json'), {
+      ok: false,
+      endpoint: `${url.protocol}//${url.host}${url.pathname}`,
+      authenticated: Boolean(bearer),
+      error: category,
+      generatedAt: new Date().toISOString(),
+    }).catch(() => undefined);
+    throw new Error(category);
   } finally {
-    await client.close().catch(() => undefined);
+    clearTimeout(absoluteDeadline);
+    if (typeof transport.terminateSession === 'function') {
+      await cleanupWithin(transport.terminateSession(), cleanupTimeoutMs, lifecycle);
+    }
+    await cleanupWithin(client.close(), cleanupTimeoutMs, lifecycle);
+    lifecycle.abort();
   }
 }
 
@@ -164,6 +266,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     requiredParams: args('--require-param'),
     probeTool: arg('--probe-tool') ?? 'memory_status',
     evidenceRoot: arg('--evidence-root'),
+    requestTimeoutMs: integer(arg('--request-timeout-ms'), 'MCP_ACCEPTANCE_REQUEST_TIMEOUT'),
+    cleanupTimeoutMs: integer(arg('--cleanup-timeout-ms'), 'MCP_ACCEPTANCE_CLEANUP_TIMEOUT'),
   };
   runExternalMcpAcceptance(options)
     .then(result => {

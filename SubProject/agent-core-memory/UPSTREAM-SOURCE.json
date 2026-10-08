@@ -1,0 +1,8 @@
+﻿{
+    "repository":  "https://github.com/rendevouz999/Agent-Core-Memory",
+    "commit":  "b266f62ba11b54859185cede8e61c43c4e28cb9a",
+    "importedAt":  "2026-10-08T12:05:38.3321941Z",
+    "origin":  "reviewed GitHub main checkout",
+    "path":  "SubProject/agent-core-memory",
+    "note":  "Source only. No runtime/memory, credentials or user data copied."
+}

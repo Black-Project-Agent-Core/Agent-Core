@@ -21,11 +21,13 @@ if (-not (Test-Path -LiteralPath $package -PathType Leaf) -or
 }
 
 $targetPaths = @(
-    '.env.example', 'AGENTS.md', 'MEMORY.md',
+    '.env.example', 'AGENTS.md',
     'Start-Desktop-Commander.bat', 'Apply-Desktop-Commander-Allowlist.ps1',
     'Edit-Desktop-Commander-Allowlist.bat', 'Agent-Core-Allowlist.txt',
-    'Desktop-Commander-Allowlist.txt', 'docs\CODEBASE.md',
-    'src\launcher', 'src\rdc',
+    'Desktop-Commander-Allowlist.txt',
+    'src\config.ts', 'src\index.ts', 'src\portability',
+    'src\launcher', 'src\rdc', 'src\code-intelligence',
+    'src\semantic-ide', 'src\memory', 'src\learning', 'src\phone',
     'SubProject\Agent-Code\src-tauri\src\agent_core.rs'
 )
 
@@ -48,6 +50,29 @@ $forbidden = @(
 )
 
 $violations = [System.Collections.Generic.List[string]]::new()
+
+$pathPolicyScript = Join-Path $ProjectRoot 'scripts\portability\check-path-policy.mjs'
+$localNode = Join-Path $ProjectRoot 'runtime\node\node.exe'
+$nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+$policyNode = if (Test-Path -LiteralPath $localNode -PathType Leaf) {
+    $localNode
+} elseif ($nodeCommand) {
+    $nodeCommand.Source
+} else {
+    $null
+}
+if (-not $policyNode) {
+    $violations.Add('dynamic path governance -> no Node runtime available to run path policy')
+} elseif (-not (Test-Path -LiteralPath $pathPolicyScript -PathType Leaf)) {
+    $violations.Add('dynamic path governance -> path policy checker missing')
+} else {
+    $policyOutput = @(& $policyNode $pathPolicyScript --root $ProjectRoot 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        $detail = ($policyOutput | Select-Object -First 8) -join ' | '
+        $violations.Add("dynamic path governance -> $detail")
+    }
+}
+
 foreach ($file in $files | Sort-Object -Unique) {
     $content = Get-Content -LiteralPath $file -Raw -ErrorAction Stop
     foreach ($rule in $forbidden) {
@@ -85,6 +110,63 @@ if ($rdcConfigSource -match '(?i)[A-Z]:\\\\Windows') {
 $ripgrepSource = Get-Content -LiteralPath (Join-Path $ProjectRoot 'src\rdc\utils\ripgrep-resolver.ts') -Raw
 if ($ripgrepSource -match '(?i)[A-Z]:\\\\Program Files') {
     $violations.Add('src\rdc\utils\ripgrep-resolver.ts -> fixed Program Files drive fallback')
+}
+
+$configSource = Get-Content -LiteralPath (Join-Path $ProjectRoot 'src\config.ts') -Raw
+if ($configSource -notmatch 'resolveProjectRoot' -or $configSource -notmatch 'resolvePortableProjectPath') {
+    $violations.Add('src\config.ts -> canonical portable-root resolution contract missing')
+}
+$indexSource = Get-Content -LiteralPath (Join-Path $ProjectRoot 'src\index.ts') -Raw
+if ($indexSource -match 'MemoryService\.initialize\(process\.cwd\(\)') {
+    $violations.Add('src\index.ts -> MemoryService still depends on process.cwd()')
+}
+$semanticRegistry = Get-Content -LiteralPath (Join-Path $ProjectRoot 'src\semantic-ide\provider-registry.ts') -Raw
+if ($semanticRegistry -match 'cwd:\s*process\.cwd\(\)') {
+    $violations.Add('src\semantic-ide\provider-registry.ts -> provider probe still depends on process.cwd()')
+}
+$learningPaths = Get-Content -LiteralPath (Join-Path $ProjectRoot 'src\learning\paths.ts') -Raw
+if ($learningPaths -match 'process\.cwd\(\)') {
+    $violations.Add('src\learning\paths.ts -> Learning state root still depends on process.cwd()')
+}
+$rdcConfig = Get-Content -LiteralPath (Join-Path $ProjectRoot 'src\rdc\config.ts') -Raw
+if ($rdcConfig -match 'process\.cwd\(\)') {
+    $violations.Add('src\rdc\config.ts -> RDC config root still depends on process.cwd()')
+}
+$browserControl = Get-Content -LiteralPath (Join-Path $ProjectRoot 'src\rdc\browser-control\service.ts') -Raw
+if ($browserControl -match 'path\.join\(process\.cwd\(\)') {
+    $violations.Add('src\rdc\browser-control\service.ts -> browser runtime/cache still depends on process.cwd()')
+}
+$resultBudget = Get-Content -LiteralPath (Join-Path $ProjectRoot 'src\mcp\result-budget.ts') -Raw
+if ($resultBudget -match 'path\.join\(process\.cwd\(\)') {
+    $violations.Add('src\mcp\result-budget.ts -> result spill storage still depends on process.cwd()')
+}
+$grafelRuntime = Get-Content -LiteralPath (Join-Path $ProjectRoot 'src\code-intelligence\grafel-runtime.ts') -Raw
+if ($grafelRuntime -notmatch 'rebaseDefaultFleetPath') {
+    $violations.Add('src\code-intelligence\grafel-runtime.ts -> default workspace relocation repair missing')
+}
+$activityTracker = Get-Content -LiteralPath (Join-Path $ProjectRoot 'src\tracker\activity-tracker.ts') -Raw
+if ($activityTracker -match 'constructor\(root\s*=\s*path\.join\(process\.cwd\(\)') {
+    $violations.Add('src\tracker\activity-tracker.ts -> tracker storage still depends on process.cwd()')
+}
+$processLedger = Get-Content -LiteralPath (Join-Path $ProjectRoot 'src\rdc\process-ledger.ts') -Raw
+if ($processLedger -match 'path\.join\(process\.cwd\(\).*process-ledger') {
+    $violations.Add('src\rdc\process-ledger.ts -> process ledger storage still depends on process.cwd()')
+}
+
+$fleetPath = Join-Path $ProjectRoot 'runtime\grafel\home\.config\grafel\agent-core.fleet.json'
+if (Test-Path -LiteralPath $fleetPath -PathType Leaf) {
+    try {
+        $fleet = Get-Content -LiteralPath $fleetPath -Raw | ConvertFrom-Json
+        $defaultRepo = @($fleet.repos) | Where-Object { $_.slug -eq 'agent-core' } | Select-Object -First 1
+        if ($defaultRepo) {
+            $fleetRoot = [IO.Path]::GetFullPath([string]$defaultRepo.path).TrimEnd('\')
+            if (-not $fleetRoot.Equals($ProjectRoot.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
+                $violations.Add("runtime Grafel fleet still points to a previous root: $fleetRoot")
+            }
+        }
+    } catch {
+        $violations.Add('runtime Grafel fleet is unreadable')
+    }
 }
 
 $launcherRuntime = Get-Content -LiteralPath (Join-Path $ProjectRoot 'src\launcher\AgentCoreRuntime.cs') -Raw

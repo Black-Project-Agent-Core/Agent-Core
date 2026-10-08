@@ -45,7 +45,7 @@ describe('MCP schema contract auto-derivation', () => {
   it('derives every RDC registration and keeps public schemas aligned with handler parser schemas', async () => {
     const source = await readFile(SERVER_FILE, 'utf8');
     const registrations = deriveRdcRegistrations(source);
-    expect(registrations).toHaveLength(26);
+    expect(registrations).toHaveLength(28);
 
     for (const registration of registrations) {
       const publicSchema = (publicSchemas as Record<string, unknown>)[registration.schemaExport];

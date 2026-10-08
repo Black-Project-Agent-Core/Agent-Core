@@ -1,3 +1,15 @@
+# Agent Core: current product direction
+
+**User-confirmed direction, 2026-09-30:** a cumulative-learning agent whose model can be supplied through an API or local endpoint, while local knowledge and reusable procedures persist across sessions and improve later decisions/actions. System mechanisms and Memory mechanisms are developed together; grounding and steal/use are means to this outcome, not a target tool count.
+
+See [Agent Core Product Direction](docs/Agent-Core-Product-Direction.md) for the confirmed goal, adoption rationale, and proposed target-to-implementation grounding. [CODEBASE](docs/CODEBASE.md) remains the implemented-state map; [Target-Feture](docs/Target-Feture.md) is preserved conversation evidence. The current MCP body is a foundation, not by itself proof that the complete native model/learning loop exists or improves outcomes.
+
+**Phase order confirmed by the user:** mature the body/system and local Memory/reuse mechanisms first; begin the native model/API-key runtime only after the later maturity review and user decision. The existing external MCP controller can exercise the body now. MRR-1/MRR-2/MRR-3 are resident verified. [MRR-3 Knowledge Use Receipt](docs/MRR-3-Knowledge-Use-Receipt-Plan.md) binds exact retrieval body identity to controller-submitted applied/adapted/rejected receipts and bounded outcome evidence while canonical Memory/ranking/Skills/execution remain unchanged. MRR-3.1 authority mapping confirmed local source/dist/generated manifest expose `learning(action="receipt")`, while the external ChatGPT connector descriptor remains stale; no local duplicate tool/shim is justified. MRR-4 then verified genuine cross-session procedural reuse, and MRR-4.1 observed a bounded advantage on a harder matched fixture: equal correctness with problem-solving calls reduced 11→9, while elapsed time did not improve. MRR-5 exposed the remaining capture-side gap: two ordinary fresh-controller verified repairs completed without any new Learning checkpoint/review/capture. The correction is now implemented and source/build/compiled qualified: meaningful-task Learning finalization is promoted to the top-level Agent Core controller contract, and bounded safe pending-review evidence persists in the existing Learning state until semantic review. Targeted/touched tests are 51/51 PASS, build/path policy PASS, compatibility remains 70→70/non-breaking. First-correction resident activation/readback is verified. A subsequent truly fresh ordinary controller naturally captured a verified operational-reflection Memory, but skipped mandatory Learning checkpoint/review because Reflexion still offered direct Memory promotion as an alternative path. A second correction unified that contract and added a non-gating finalization advisory to verified-recovery `memory_remember` responses; focused tests/build/compatibility/Grafel qualification and resident readback passed. The final fresh ordinary dependency-order repair still skipped Learning finalization and produced no new reusable Memory, so MRR-5 is closed as boundary evidence: external-controller compliance is not deterministic. Pre-runtime body/Memory scope is closed. Native Agent Runtime Phase 1 backend foundation is now implemented and resident-activated: OpenAI-compatible provider configuration, persistent task/session/finalization state, Memory-first context assembly, scoped reuse of the existing MCP tool surface, and a synthetic mandatory finalization function that prevents plain assistant text from completing a native task. Verified terminal outcomes require safe evidence references; terminal outcome is preserved separately from lifecycle status; and Learning-finalization failure cannot return the model completion as a successful user-facing result. Targeted/integration native-runtime verification is now **23/23 PASS across six files**, including a real loopback OpenAI-compatible HTTP protocol run through actual Memory/Learning services and an existing MCP tool before mandatory finalization. Build/path policy is **284/0**, compatibility remains **70→70/non-breaking**, Grafel is current/accepted at **10,139/55,161**, and after relocation to `F:\Projects\Agent-Core` resident PID **10712** started after the latest build while `/health` truthfully reports `agentRuntime.status=not-configured` because no real API/local model endpoint is configured. The provider protocol path is verified; real model/provider acceptance remains pending. See `docs/Pre-Runtime-Body-Memory-Learning-Closure-20260930.md` and `docs/Native-Agent-Runtime-Phase-1-Plan.md`. Task-scoped auto-trust still covers routine approved filesystem/engineering operations without bypassing authentication, evidence checks, unrelated destructive scope, or unavailable platform capabilities.
+
+## Historical README snapshot — legacy/reference only
+
+The material below retains an older v0.12.0/62-tool/Hermes snapshot and legacy GitHub recovery assumptions. It is not current runtime, installation, release or recovery authority. Current local source, the operating contract and dated CODEBASE corrections supersede it; do not restore or publish the current line from the legacy GitHub repository implicitly.
+
 <p align="center">
   <img src="assets/agent-core.png" width="96" alt="Agent Core logo">
 </p>
@@ -66,6 +78,33 @@ Subsystems are siblings. Memory, Code Intelligence, Learning, Semantic IDE, Game
 The stable package intentionally excludes live `.env`, secrets, OAuth/API-key state, user memory notes, tracker logs, browser profiles, backups, Git metadata, and protected reference repositories.
 
 > **v0.12.0 recovery note:** the immutable v0.12.0 ZIP was created before discovery that its bundled `.env.example` had been overwritten by filesystem corruption. Use the release asset `Agent-Core-v0.12.0-env.example` instead. The `main` branch contains the corrected source-grounded template.
+
+### Portable recovery bootstrap and self-healing
+
+Current `main` includes `scripts/windows/Recover-Agent-Core.ps1`. Future stable packages carry `INTEGRITY-MANIFEST.json`, a deterministic per-file SHA-256 manifest for immutable package files. Mutable/private state is deliberately excluded from integrity enforcement.
+
+For a **new machine**, download the recovery script from this private repository, authenticate `gh`, then bootstrap into an empty directory:
+
+```powershell
+gh auth login
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Recover-Agent-Core.ps1 `
+  -Mode Bootstrap -Destination D:\Agent-Core
+```
+
+Bootstrap resolves the latest release, downloads the ZIP plus `SHA256SUMS.txt`, verifies the archive SHA-256 before extraction, applies a corrective env-example asset when the release provides one, installs only into an empty destination, and runs project-local Node runtime health/self-repair.
+
+For an existing **packaged** installation:
+
+```powershell
+npm run recovery:audit
+npm run recovery:repair
+```
+
+`recovery:audit` checks immutable files against `INTEGRITY-MANIFEST.json`. `recovery:repair` downloads the same-version trusted release, verifies its ZIP checksum, backs up each damaged file under `runtime\recovery\backups`, replaces only missing/mismatched immutable files, preserves unknown files, and audits again after repair.
+
+Offline repair/bootstrap can use `-SourceZip` with `-ChecksumFile` or `-ExpectedZipSha256`. Live `.env`, secrets, auth/OAuth data, user memory, tunnel credentials, browser profiles, subsystem state, and forensic backups are never governed or overwritten by automatic integrity repair.
+
+The immutable v0.12.0 archive predates the packaged per-file manifest. The new bootstrap can still trust that release by verifying its archive SHA-256 and deriving a local manifest after extraction; later packages will ship the manifest directly.
 
 ### Build the core from source
 

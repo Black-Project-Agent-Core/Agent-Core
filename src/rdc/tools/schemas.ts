@@ -136,6 +136,53 @@ export const MoveFileArgsSchema = z.object({
   destination: z.string(),
 });
 
+const browserCanvas = z.object({
+  mode:z.enum(['inventory','sample']),canvasId:z.string().uuid().optional(),
+  columns:z.number().int().min(1).max(128).optional(),rows:z.number().int().min(1).max(64).optional(),
+  paletteSize:z.number().int().min(2).max(16).optional(),
+  labels:z.record(z.string().regex(/^#[0-9a-fA-F]{6}$/),z.string().min(1).max(80)).optional(),
+}).strict().superRefine((v,c)=>{
+  if(v.mode==='sample'&&!v.canvasId)c.addIssue({code:'custom',message:'canvasId required for sample'});
+  if(Object.keys(v.labels??{}).length>(v.paletteSize??8))c.addIssue({code:'custom',message:'labels exceed palette budget'});
+  if(v.mode==='inventory'&&Object.keys(v).some(k=>k!=='mode'))c.addIssue({code:'custom',message:'inventory takes only mode'});
+});
+export const BrowserControlArgsSchema = z.object({
+  action: z.enum(['open', 'observe', 'act', 'close', 'status']),
+  transport: z.enum(['isolated', 'extension']).optional(),
+  sessionId: z.string().uuid().optional(),
+  url: z.string().url().max(4000).optional(),
+  observationId: z.string().uuid().optional(),
+  actionId: z.string().min(1).max(64).optional(),
+  text: z.string().max(2000).optional(),
+  headless: z.boolean().optional().default(true),
+  canvas:browserCanvas.optional(),
+  interactionCapabilities:z.array(z.enum(['keyboard','held-key','history'])).max(3).refine(v=>new Set(v).size===v.length).optional(),
+  origin: z.enum(['ui', 'llm']).optional(),
+}).superRefine((value, ctx) => {
+  if (value.action === 'open' && !value.url) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'url required for open' });
+  if (value.transport && value.action !== 'open') ctx.addIssue({ code: 'custom', message: 'transport is open-only' });
+  if(value.canvas && value.action!=='observe')ctx.addIssue({code:'custom',message:'canvas is observe-only'});
+  if(value.interactionCapabilities && value.action!=='open')ctx.addIssue({code:'custom',message:'interactionCapabilities is open-only'});
+  if (['observe', 'close'].includes(value.action) && !value.sessionId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'sessionId required' });
+  if (value.action === 'act') {
+    if (!value.sessionId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'sessionId required' });
+    if (!value.observationId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'observationId required' });
+    if (!value.actionId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'actionId required' });
+  }
+});
+
+export const FileCheckpointArgsSchema = z.object({
+  action: z.enum(['create', 'list', 'show', 'preview_restore', 'restore', 'drop']),
+  paths: z.array(z.string().min(1).max(4000)).min(1).max(32).optional(),
+  title: z.string().max(200).optional(),
+  checkpointId: z.string().min(1).max(200).optional(),
+  previewDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+}).superRefine((value, ctx) => {
+  if (value.action === 'create' && !value.paths?.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'paths required for create' });
+  if (['show','preview_restore','restore','drop'].includes(value.action) && !value.checkpointId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'checkpointId required' });
+  if (value.action === 'restore' && !value.previewDigest) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'previewDigest required for restore' });
+});
+
 export const GetFileInfoArgsSchema = z.object({
   path: z.string(),
 });
@@ -252,6 +299,8 @@ export const toolArgSchemas: Record<string, z.ZodTypeAny> = {
   create_directory: CreateDirectoryArgsSchema,
   list_directory: ListDirectoryArgsSchema,
   move_file: MoveFileArgsSchema,
+  file_checkpoint: FileCheckpointArgsSchema,
+  browser_control: BrowserControlArgsSchema,
   start_search: StartSearchArgsSchema,
   get_more_search_results: GetMoreSearchResultsArgsSchema,
   stop_search: StopSearchArgsSchema,

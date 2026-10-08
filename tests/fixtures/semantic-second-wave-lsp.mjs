@@ -1,4 +1,4 @@
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -9,6 +9,13 @@ let buffer = Buffer.alloc(0);
 let contentModifiedCount = 0;
 let unknownRequestOriginalId;
 let spawnedChild;
+let launchCount = 0;
+if (mode === 'early-ready-once' && aux) {
+  const countFile = `${aux}.count`;
+  try { launchCount = Number.parseInt(readFileSync(countFile, 'utf8'), 10) || 0; } catch {}
+  launchCount += 1;
+  writeFileSync(countFile, String(launchCount));
+}
 
 function log(value) {
   if (!aux || mode === 'outside-location') return;
@@ -83,7 +90,18 @@ function dispatch(message) {
   }
 
   if (message.method === 'initialize') {
-    if (mode === 'numeric-id') {
+    const earlyPowerShellReady = mode === 'early-powershell-ready'
+      || mode === 'early-ready-init-error'
+      || (mode === 'early-ready-once' && launchCount === 1);
+    if (earlyPowerShellReady) {
+      send({ jsonrpc: '2.0', method: 'window/logMessage', params: { type: 3, message: 'PowerShell Editor Services ready' } });
+    }
+    if (mode === 'early-typescript-ready-then-progress') {
+      send({ jsonrpc: '2.0', method: '$/typescriptVersion', params: { version: 'fixture' } });
+    }
+    if (mode === 'early-ready-init-error') {
+      error(message.id, -32603, 'fixture initialize failure');
+    } else if (mode === 'numeric-id') {
       send({ jsonrpc: '2.0', id: String(message.id), result: { capabilities: capabilities() } });
     } else {
       result(message.id, { capabilities: capabilities() });
@@ -99,12 +117,21 @@ function dispatch(message) {
       });
       log({ spawnedChildPid: spawnedChild.pid });
     }
-    if (mode === 'typescript-ready' || mode === 'fatal-typescript') {
+    if (mode === 'early-typescript-ready-then-progress') {
+      send({ jsonrpc: '2.0', method: '$/progress', params: { token: 'fixture-index', value: { kind: 'begin', title: 'index' } } });
+    }
+    if (['typescript-ready','fatal-typescript','dependency-definition','local-and-dependency-definition'].includes(mode)) {
       send({ jsonrpc: '2.0', method: '$/typescriptVersion', params: { version: 'fixture' } });
     }
     if (mode === 'rich' || mode === 'missing-capability') {
       send({ jsonrpc: '2.0', method: 'workspace/projectInitializationComplete', params: {} });
     }
+    return;
+  }
+
+  if (message.method === 'finish-progress' && mode === 'early-typescript-ready-then-progress') {
+    send({ jsonrpc: '2.0', method: '$/progress', params: { token: 'fixture-index', value: { kind: 'end', message: 'done' } } });
+    result(message.id, { ended: true });
     return;
   }
 
@@ -153,7 +180,16 @@ function dispatch(message) {
 
   if (message.method === 'textDocument/definition' || message.method === 'textDocument/implementation') {
     const uri = message.params?.textDocument?.uri;
-    result(message.id, [{ uri, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 6 } } }]);
+    const own = { uri, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 6 } } };
+    if (message.method === 'textDocument/definition' && mode === 'dependency-definition' && aux) {
+      result(message.id, [{ ...own, uri: pathToFileURL(path.resolve(aux)).href }]);
+      return;
+    }
+    if (message.method === 'textDocument/definition' && mode === 'local-and-dependency-definition' && aux) {
+      result(message.id, [own, { ...own, uri: pathToFileURL(path.resolve(aux)).href }]);
+      return;
+    }
+    result(message.id, [own]);
     return;
   }
 

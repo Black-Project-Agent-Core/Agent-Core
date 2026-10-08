@@ -1,0 +1,49 @@
+import path from 'node:path';
+import { realpath } from 'node:fs/promises';
+
+function platformKey(value: string): string {
+  const normalized = path.normalize(value);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+async function canonicalMutationKey(input: string): Promise<string> {
+  const resolved = path.resolve(input);
+  try {
+    return platformKey(await realpath(resolved));
+  } catch {
+    try {
+      const parent = await realpath(path.dirname(resolved));
+      return platformKey(path.join(parent, path.basename(resolved)));
+    } catch {
+      return platformKey(resolved);
+    }
+  }
+}
+
+export class PathMutationCoordinator {
+  private readonly tails = new Map<string, Promise<void>>();
+
+  async run<T>(paths: string[], action: () => Promise<T>): Promise<T> {
+    const keys = [...new Set(await Promise.all(paths.map(canonicalMutationKey)))].sort();
+    const releases: Array<() => void> = [];
+    try {
+      for (const key of keys) {
+        const previous = this.tails.get(key) ?? Promise.resolve();
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => { release = resolve; });
+        const tail = previous.catch(() => undefined).then(() => gate);
+        this.tails.set(key, tail);
+        await previous.catch(() => undefined);
+        releases.push(() => {
+          release();
+          if (this.tails.get(key) === tail) this.tails.delete(key);
+        });
+      }
+      return await action();
+    } finally {
+      for (let index = releases.length - 1; index >= 0; index -= 1) releases[index]();
+    }
+  }
+}
+
+export const fileMutationCoordinator = new PathMutationCoordinator();

@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -13,6 +14,9 @@ public sealed class MainForm : Form
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill };
     private readonly System.Windows.Forms.Timer _statusTimer = new() { Interval = 3000 };
     private readonly JsonSerializerOptions _json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    private bool _shutdownStarted;
+    private bool _shutdownComplete;
+    private int _statusRefreshInFlight;
 
     public MainForm(string root, NativeDumpDiagnostics? nativeDiagnostics)
     {
@@ -21,27 +25,97 @@ public sealed class MainForm : Form
         _nativeDiagnostics = nativeDiagnostics;
         Text = "Agent Core";
         Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
-        ClientSize = new Size(1120, 680);
+        var workingArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1536, 1024);
+        ClientSize = new Size(
+            Math.Min(1536, Math.Max(1120, workingArea.Width - 56)),
+            Math.Min(960, Math.Max(680, workingArea.Height - 72)));
         MinimumSize = new Size(940, 560);
         StartPosition = FormStartPosition.CenterScreen;
-        BackColor = Color.FromArgb(7, 11, 19);
+        BackColor = Color.FromArgb(6, 16, 27);
+        HandleCreated += (_, _) => ApplyDarkTitleBar();
         Controls.Add(_webView);
 
         Shown += OnShownAsync;
+        FormClosing += OnFormClosingAsync;
         FormClosed += (_, _) =>
         {
             _statusTimer.Stop();
-            _runtime.ClearLogs();
             _runtime.Dispose();
         };
         _statusTimer.Tick += async (_, _) =>
         {
+            if (_shutdownStarted) return;
             _nativeDiagnostics?.TouchUiHeartbeat();
-            await PushStatusAsync();
-            _nativeDiagnostics?.TouchUiHeartbeat();
+            if (Interlocked.Exchange(ref _statusRefreshInFlight, 1) != 0) return;
+            try
+            {
+                await PushStatusAsync();
+            }
+            catch (Exception error)
+            {
+                if (!_shutdownStarted)
+                    _runtime.CaptureFailure("LAUNCHER", error, "status-refresh");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _statusRefreshInFlight, 0);
+                _nativeDiagnostics?.TouchUiHeartbeat();
+            }
         };
-        _runtime.LogAdded += entry => BeginInvoke(() => Send(new { type = "log", entry }));
+        _runtime.LogAdded += entry =>
+        {
+            if (_shutdownStarted || IsDisposed || Disposing || !IsHandleCreated) return;
+            try
+            {
+                BeginInvoke(() =>
+                {
+                    if (!IsDisposed && !Disposing) Send(new { type = "log", entry });
+                });
+            }
+            catch (InvalidOperationException) when (!IsHandleCreated || IsDisposed || Disposing)
+            {
+                // The durable activity journal already captured the entry; only
+                // the realtime WebView mirror is skipped during handle teardown/setup.
+            }
+        };
     }
+
+    private async void OnFormClosingAsync(object? sender, FormClosingEventArgs e)
+    {
+        if (_shutdownComplete) return;
+
+        _statusTimer.Stop();
+        _nativeDiagnostics?.DisarmHangWatchdog();
+
+        if (e.CloseReason is CloseReason.WindowsShutDown or CloseReason.TaskManagerClosing)
+        {
+            _shutdownComplete = true;
+            _nativeDiagnostics?.Dispose();
+            _runtime.Dispose();
+            return;
+        }
+
+        e.Cancel = true;
+        if (_shutdownStarted) return;
+        _shutdownStarted = true;
+        Hide();
+
+        try
+        {
+            await _runtime.ShutdownAsync();
+        }
+        catch (Exception error)
+        {
+            _runtime.CaptureFailure("LAUNCHER", error, "shutdown-on-close");
+        }
+        finally
+        {
+            _nativeDiagnostics?.Dispose();
+            _shutdownComplete = true;
+            if (!IsDisposed) Close();
+        }
+    }
+
     private async void OnShownAsync(object? sender, EventArgs e)
     {
         try
@@ -106,13 +180,22 @@ public sealed class MainForm : Form
         };
         core.NavigationCompleted += (_, args) =>
         {
+            if (_shutdownStarted || _shutdownComplete) return;
             if (!args.IsSuccess)
-                _runtime.CaptureFailure("WEBVIEW2", new InvalidOperationException($"Navigation failed: {args.WebErrorStatus}"), "navigation-failed");
+                _runtime.CaptureFailure(
+                    "WEBVIEW2",
+                    new InvalidOperationException($"Navigation failed: {args.WebErrorStatus}"),
+                    "navigation-failed");
         };
         core.ProcessFailed += (_, args) =>
         {
+            if (_shutdownStarted || _shutdownComplete) return;
             var kind = args.ProcessFailedKind.ToString();
-            _runtime.CaptureFailure("WEBVIEW2", new InvalidOperationException($"WebView2 process failed: {kind}"), "webview2-process-failed", new { kind });
+            _runtime.CaptureFailure(
+                "WEBVIEW2",
+                new InvalidOperationException($"WebView2 process failed: {kind}"),
+                "webview2-process-failed",
+                new { kind });
             _nativeDiagnostics?.RequestSnapshot("webview2-process-failed");
         };
         core.WebMessageReceived += OnWebMessageReceivedAsync;
@@ -139,6 +222,145 @@ public sealed class MainForm : Form
                 Send(new { type = "logs", entries = _runtime.Logs });
                 return;
             }
+            if (type == "agent-chat-list")
+            {
+                try
+                {
+                    var result = await _runtime.ListAgentConversationsAsync();
+                    Send(new { type = "agent-chat-list-result", result });
+                }
+                catch (Exception error)
+                {
+                    Send(new { type = "agent-chat-error", error = error.Message });
+                }
+                return;
+            }
+            if (type == "agent-chat-create")
+            {
+                var workspace = root.TryGetProperty("workspace", out var workspaceNode)
+                    && workspaceNode.ValueKind == JsonValueKind.String
+                    ? workspaceNode.GetString()
+                    : null;
+                try
+                {
+                    var result = await _runtime.CreateAgentConversationAsync(workspace);
+                    Send(new { type = "agent-chat-state", result });
+                    await PushStatusAsync();
+                }
+                catch (Exception error)
+                {
+                    Send(new { type = "agent-chat-error", error = error.Message });
+                }
+                return;
+            }
+            if (type == "agent-chat-open")
+            {
+                var conversationId = root.TryGetProperty("conversationId", out var conversationNode)
+                    ? conversationNode.GetString() ?? string.Empty
+                    : string.Empty;
+                try
+                {
+                    var result = await _runtime.ReadAgentConversationAsync(conversationId);
+                    Send(new { type = "agent-chat-state", result });
+                }
+                catch (Exception error)
+                {
+                    Send(new { type = "agent-chat-error", error = error.Message });
+                }
+                return;
+            }
+            if (type == "agent-chat-send")
+            {
+                var requestId = root.TryGetProperty("requestId", out var requestNode)
+                    ? requestNode.GetString() ?? Guid.NewGuid().ToString("N")
+                    : Guid.NewGuid().ToString("N");
+                var conversationId = root.TryGetProperty("conversationId", out var conversationNode)
+                    ? conversationNode.GetString() ?? string.Empty
+                    : string.Empty;
+                var clientRequestId = root.TryGetProperty("clientRequestId", out var clientNode)
+                    ? clientNode.GetString() ?? requestId
+                    : requestId;
+                var prompt = root.TryGetProperty("prompt", out var promptNode)
+                    ? promptNode.GetString() ?? string.Empty
+                    : string.Empty;
+                try
+                {
+                    await _runtime.RunAgentTurnStreamAsync(
+                        conversationId,
+                        clientRequestId,
+                        prompt,
+                        envelope => Send(new {
+                            type = "agent-chat-event",
+                            requestId,
+                            envelope
+                        }));
+                    var result = await _runtime.ReadAgentConversationAsync(conversationId);
+                    Send(new { type = "agent-chat-state", result });
+                    await PushStatusAsync();
+                }
+                catch (Exception error)
+                {
+                    _runtime.CaptureFailure("AGENT_RUNTIME", error, "native-agent-chat-turn");
+                    Send(new { type = "agent-chat-error", requestId, error = error.Message });
+                    try
+                    {
+                        var state = await _runtime.ReadAgentConversationAsync(conversationId);
+                        Send(new { type = "agent-chat-state", result = state });
+                        await PushStatusAsync();
+                    }
+                    catch { }
+                }
+                return;
+            }
+            if (type == "agent-chat-cancel")
+            {
+                var turnId = root.TryGetProperty("turnId", out var turnNode)
+                    ? turnNode.GetString() ?? string.Empty
+                    : string.Empty;
+                var stopped = await _runtime.CancelAgentTurnAsync(turnId);
+                Send(new { type = "agent-chat-cancel-result", turnId, stopped });
+                return;
+            }
+            if (type == "agent-chat-archive")
+            {
+                var conversationId = root.TryGetProperty("conversationId", out var conversationNode)
+                    ? conversationNode.GetString() ?? string.Empty
+                    : string.Empty;
+                try
+                {
+                    await _runtime.ArchiveAgentConversationAsync(conversationId);
+                    var result = await _runtime.ListAgentConversationsAsync();
+                    Send(new { type = "agent-chat-list-result", result });
+                    await PushStatusAsync();
+                }
+                catch (Exception error)
+                {
+                    Send(new { type = "agent-chat-error", error = error.Message });
+                }
+                return;
+            }
+            if (type == "agent-run")
+            {
+                var requestId = root.TryGetProperty("requestId", out var requestIdNode)
+                    ? requestIdNode.GetString() ?? Guid.NewGuid().ToString("N")
+                    : Guid.NewGuid().ToString("N");
+                var prompt = root.TryGetProperty("prompt", out var promptNode) ? promptNode.GetString() ?? string.Empty : string.Empty;
+                var workspace = root.TryGetProperty("workspace", out var workspaceNode) && workspaceNode.ValueKind == JsonValueKind.String
+                    ? workspaceNode.GetString()
+                    : null;
+                try
+                {
+                    var result = await _runtime.RunAgentAsync(prompt, workspace);
+                    Send(new { type = "agent-result", requestId, result });
+                    await PushStatusAsync();
+                }
+                catch (Exception error)
+                {
+                    _runtime.CaptureFailure("AGENT_RUNTIME", error, "native-agent-ui-run");
+                    Send(new { type = "agent-result", requestId, error = error.Message });
+                }
+                return;
+            }
             if (type != "action") return;
             var action = root.GetProperty("action").GetString() ?? string.Empty;
             await _runtime.ExecuteActionAsync(action);
@@ -153,10 +375,28 @@ public sealed class MainForm : Form
     }
     private async Task PushStatusAsync()
     {
-        var status = await _runtime.GetStatusAsync();
-        Send(new { type = "status", status });
+        var snapshot = await _runtime.GetSnapshotAsync();
+        Send(new { type = "status", status = snapshot.Status });
+        Send(new { type = "snapshot", snapshot });
         Send(new { type = "logs", entries = _runtime.Logs });
     }
+
+    private void ApplyDarkTitleBar()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        try
+        {
+            var enabled = 1;
+            _ = DwmSetWindowAttribute(Handle, 20, ref enabled, sizeof(int));
+        }
+        catch
+        {
+            // Dark chrome is visual-only; launcher/runtime ownership must stay available if DWM rejects it.
+        }
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int attributeValue, int attributeSize);
 
     private void Send(object payload)
     {

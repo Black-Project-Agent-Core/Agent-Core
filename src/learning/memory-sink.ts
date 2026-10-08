@@ -1,9 +1,17 @@
 import type { MemoryService } from '../memory/service.js';
+import { normalizeMemoryWorkspace } from '../memory/provenance.js';
 import type { LearningCandidate } from './types.js';
+import { validateDecisionMetadata } from './decision-evidence.js';
 import type { LearningCaptureResult, LearningSink, LearningSinkHealth } from './sink.js';
 
-function normalized(value: string): string {
-  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+function workspaceOf(value: string | undefined): string | undefined {
+  return value === undefined ? undefined : normalizeMemoryWorkspace(value);
+}
+
+function contextFor(candidate: LearningCandidate): string {
+  return candidate.reuseCondition?.trim()
+    ? `Reusable when: ${candidate.reuseCondition.trim()}`
+    : 'Captured by Agent Core learning review.';
 }
 
 function categoryFor(candidate: LearningCandidate): string {
@@ -35,26 +43,28 @@ export class MemoryLearningSink implements LearningSink {
   }
 
   async findDuplicates(candidate: LearningCandidate): Promise<Array<{ id?: string; reason: string }>> {
-    const target = normalized(candidate.content);
-    const title = normalized(candidate.title ?? '');
+    const workspace = candidate.workspace ? this.memory.resolveWorkspace(candidate.workspace) : undefined;
     const records = await this.memory.list();
     return records
       .filter((record) => !record.pinned)
-      .filter((record) => {
-        if (normalized(record.content) === target) return true;
-        return Boolean(title && normalized(record.title ?? '') === title && normalized(record.category) === normalized(categoryFor(candidate)));
-      })
-      .map((record) => ({ id: record.id, reason: 'equivalent durable memory already exists' }));
+      .filter((record) => (record.provenance?.workspace ? this.memory.resolveWorkspace(record.provenance.workspace) : undefined) === workspace)
+      // A shared title is not evidence that a changed lesson has the same meaning.
+      // Preserve code case/whitespace and different applicability conditions.
+      .filter((record) => record.content.trim() === candidate.content.trim()
+        && record.category === categoryFor(candidate)
+        && record.context.trim() === contextFor(candidate))
+      .map((record) => ({ id: record.id, reason: 'same-scope content and reuse condition already exist' }));
   }
 
   async capture(candidate: LearningCandidate): Promise<LearningCaptureResult> {
-    const evidence = candidate.evidenceRefs.join(', ').slice(0, 480);
+    const { auditRef } = validateDecisionMetadata(candidate);
+    const evidence = auditRef ?? candidate.evidenceRefs.join(', ').slice(0, 480);
+    const workspace = candidate.workspace ? this.memory.resolveWorkspace(candidate.workspace) : undefined;
     const record = await this.memory.remember({
       ...(candidate.title ? { title: candidate.title } : {}),
       content: candidate.content,
-      context: candidate.reuseCondition
-        ? `Reusable when: ${candidate.reuseCondition}`
-        : 'Captured by Agent Core learning review.',
+      context: contextFor(candidate),
+      ...(workspace !== undefined ? { provenance: { workspace, files: [] } } : {}),
       tags: [...new Set(['learning', candidate.kind, ...(candidate.tags ?? [])])],
       category: categoryFor(candidate),
       source: { type: 'learning-review', ...(evidence ? { ref: evidence } : {}) },

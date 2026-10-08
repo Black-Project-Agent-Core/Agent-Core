@@ -5,6 +5,15 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { parseChangesetFile } from "@changesets/parse";
 import { ROOT, readJson, validateStableSemver } from "./release-lib.mjs";
+import { isGeneratedReleasePath } from "./release-policy.mjs";
+import { packageCopyAllowed, writePackagedFoundation } from "./packaging-policy.mjs";
+import {
+  INTEGRITY_MANIFEST_FILENAME,
+  INTEGRITY_MUTABLE_EXCLUSIONS,
+  INTEGRITY_SCHEMA_VERSION,
+  buildIntegrityManifest,
+  stringifyIntegrityManifest,
+} from "./integrity-manifest.mjs";
 
 function run(command, args, cwd = ROOT, extraEnv = {}) {
   return new Promise((resolve, reject) => {
@@ -58,9 +67,7 @@ async function sha256(file) {
 function sourceFilter(source) {
   const rel = path.relative(ROOT, source).replaceAll("\\", "/");
   if (!rel) return true;
-  const segments = rel.split("/");
-  if (segments.some(segment => ["node_modules", "bin", "obj", "dist"].includes(segment))) return false;
-  return true;
+  return !isGeneratedReleasePath(rel);
 }
 
 async function copyIfExists(relative, destinationRoot, options = {}) {
@@ -71,7 +78,7 @@ async function copyIfExists(relative, destinationRoot, options = {}) {
   await fs.cp(source, destination, {
     recursive: true,
     force: true,
-    filter: options.filter,
+    filter: async source => await packageCopyAllowed(ROOT, source) && (!options.filter || await options.filter(source)),
   });
 }
 async function collectAppliedChanges(version) {
@@ -107,27 +114,25 @@ function releaseNotes(version, changes) {
   return `# Agent Core v${version}\n\n## Changes\n\n${body}\n\n## Packaging boundary\n\nThis archive contains the current Agent Core runtime plus a source snapshot needed for audit/reconstruction. Live credentials, .env, secrets, OAuth/API-key state, user memory notes, tracker logs, browser profiles, backups, Git metadata, and protected reference repositories are intentionally excluded.\n`;
 }
 
+if (process.argv.includes("--help")) { console.log("Usage: release:package — explicitly build a new immutable stable archive; replacement is not supported"); process.exit(0); }
+if (process.argv.slice(2).length) throw new Error("Unknown release:package argument; archives are immutable");
 const pkg = await readJson(path.join(ROOT, "package.json"));
 const version = String(pkg.version ?? "");
 validateStableSemver(version);
 
 const releaseRoot = path.join(ROOT, "release", `v${version}`);
-const zipPath = path.join(releaseRoot, `Agent-Core-v${version}.zip`);
-if (await exists(zipPath) && !process.argv.includes("--replace")) {
-  throw new Error(`Release archive already exists and is immutable by default: ${zipPath}`);
-}
-if (await exists(releaseRoot) && !await exists(zipPath)) {
-  await fs.rm(releaseRoot, { recursive: true, force: true });
-}
+if (await exists(releaseRoot)) throw new Error(`Release archive directory is immutable: ${releaseRoot}`);
 
 const stageBase = path.join(ROOT, "runtime", "tmp", `agent-core-release-v${version}-${process.pid}`);
 const packageName = `Agent-Core-v${version}`;
 const packageRoot = path.join(stageBase, packageName);
 const launcherOut = path.join(stageBase, "launcher");
+const stagingReleaseRoot = path.join(stageBase, "release-output");
+const zipPath = path.join(stagingReleaseRoot, `Agent-Core-v${version}.zip`);
 
 await fs.rm(stageBase, { recursive: true, force: true });
 await fs.mkdir(packageRoot, { recursive: true });
-await fs.mkdir(releaseRoot, { recursive: true });
+await fs.mkdir(stagingReleaseRoot, { recursive: true });
 
 const node = path.join(ROOT, "runtime", "node", "node.exe");
 const npmCli = path.join(ROOT, "runtime", "node", "node_modules", "npm", "bin", "npm-cli.js");
@@ -172,7 +177,12 @@ await copyIfExists("node_modules", packageRoot);
 await copyIfExists("runtime/node", packageRoot);
 await copyIfExists("runtime/grafel/bin", packageRoot);
 await copyIfExists("runtime/grafel/provider.json", packageRoot);
-await copyIfExists("runtime/memory/00-agent-core-memory.md", packageRoot);
+// Memory v2 engine is loaded dynamically by the host runtime after activation.
+// Package the pinned standalone engine binaries; never package live Memory roots.
+await copyIfExists("SubProject/agent-core-memory/dist", packageRoot);
+await copyIfExists("SubProject/agent-core-memory/NOTICE.md", packageRoot);
+await copyIfExists("SubProject/agent-core-memory/PATCHES.md", packageRoot);
+await writePackagedFoundation(packageRoot);
 await copyIfExists("scripts/windows", packageRoot);
 
 const distSource = path.join(ROOT, "dist");
@@ -180,7 +190,7 @@ const distTarget = path.join(packageRoot, "dist");
 await fs.cp(distSource, distTarget, {
   recursive: true,
   force: true,
-  filter: source => !path.relative(distSource, source).replaceAll("\\", "/").startsWith(".desktop-commander"),
+  filter: source => packageCopyAllowed(ROOT, source),
 });
 
 await fs.mkdir(path.join(packageRoot, "tunnel-client"), { recursive: true });
@@ -199,8 +209,15 @@ await fs.mkdir(sourceRoot, { recursive: true });
 await fs.cp(path.join(ROOT, "src"), path.join(sourceRoot, "src"), {
   recursive: true,
   force: true,
-  filter: sourceFilter,
+  filter: async source => sourceFilter(source) && await packageCopyAllowed(ROOT, source),
 });
+// Keep the engine's reproducible source with the source snapshot.
+for (const relative of ["SubProject/agent-core-memory/src", "SubProject/agent-core-memory/package.json",
+  "SubProject/agent-core-memory/README.md", "SubProject/agent-core-memory/NOTICE.md",
+  "SubProject/agent-core-memory/PATCHES.md",
+  "SubProject/agent-core-memory/tsconfig.json", "SubProject/agent-core-memory/UPSTREAM-SOURCE.json"]) {
+  await copyIfExists(relative, sourceRoot);
+}
 await fs.cp(path.join(ROOT, "scripts", "release"), path.join(sourceRoot, "scripts", "release"), {
   recursive: true,
   force: true,
@@ -246,16 +263,23 @@ const manifest = {
     "dist runtime without dist/.desktop-commander debris",
     "root node_modules",
     "project-local Node runtime",
+    "pinned standalone Agent Core Memory v2 compiled engine and reproducible source",
     "Grafel provider binary + provider metadata",
-    "foundational memory bootstrap only",
+    "fresh product foundational bootstrap; user canonical memory never copied",
     "portable tunnel client with placeholder/non-secret profile",
     "source snapshot excluding node_modules/bin/obj/dist",
+    "per-file SHA-256 integrity manifest + portable recovery bootstrap",
   ],
+  integrityManifest: {
+    file: INTEGRITY_MANIFEST_FILENAME,
+    schemaVersion: INTEGRITY_SCHEMA_VERSION,
+    mutableExclusions: [...INTEGRITY_MUTABLE_EXCLUSIONS],
+  },
   excluded: [
     ".env and credential files",
     "secrets/",
     "runtime/bridge-auth",
-    "runtime/memory user notes/index/state",
+    "runtime/memory including user bootstrap, v2 activation markers and all migrated roots",
     "runtime/tracker and logs",
     "runtime/webview2/browser profiles",
     "runtime/backups",
@@ -281,11 +305,23 @@ if (await exists(appliedRoot)) {
     }
   }
 }
+
+const integrityManifest = await buildIntegrityManifest(packageRoot, {
+  product: "Agent Core",
+  version,
+});
+const integrityManifestText = stringifyIntegrityManifest(integrityManifest);
+await fs.writeFile(
+  path.join(packageRoot, INTEGRITY_MANIFEST_FILENAME),
+  integrityManifestText,
+  "utf8",
+);
+
 const zipScript = [
   "Add-Type -AssemblyName System.IO.Compression.FileSystem",
   "$src=$env:AGENT_CORE_RELEASE_PACKAGE_ROOT",
   "$zip=$env:AGENT_CORE_RELEASE_ZIP",
-  "if(Test-Path -LiteralPath $zip){Remove-Item -LiteralPath $zip -Force}",
+  "if(Test-Path -LiteralPath $zip){throw 'archive already exists'}",
   "[System.IO.Compression.ZipFile]::CreateFromDirectory($src,$zip,[System.IO.Compression.CompressionLevel]::Optimal,$true)",
 ].join("; ");
 
@@ -303,21 +339,31 @@ await run(
 const zipHash = await sha256(zipPath);
 const zipStat = await fs.stat(zipPath);
 
-await fs.copyFile(notesPath, path.join(releaseRoot, "RELEASE-NOTES.md"));
-await fs.writeFile(path.join(releaseRoot, "RELEASE-MANIFEST.json"), manifestText, "utf8");
+await fs.copyFile(notesPath, path.join(stagingReleaseRoot, "RELEASE-NOTES.md"));
+await fs.writeFile(path.join(stagingReleaseRoot, "RELEASE-MANIFEST.json"), manifestText, "utf8");
 await fs.writeFile(
-  path.join(releaseRoot, "SHA256SUMS.txt"),
+  path.join(stagingReleaseRoot, INTEGRITY_MANIFEST_FILENAME),
+  integrityManifestText,
+  "utf8",
+);
+await fs.writeFile(
+  path.join(stagingReleaseRoot, "SHA256SUMS.txt"),
   `${zipHash}  Agent-Core-v${version}.zip\n`,
   "utf8",
 );
 
+await fs.mkdir(path.dirname(releaseRoot), { recursive: true });
+if (await exists(releaseRoot)) throw new Error("Release directory appeared during packaging; refusing replacement");
+await fs.rename(stagingReleaseRoot, releaseRoot);
 await fs.rm(stageBase, { recursive: true, force: true });
 
 console.log(JSON.stringify({
   version,
   releaseRoot,
-  zipPath,
+  zipPath: path.join(releaseRoot, path.basename(zipPath)),
   bytes: zipStat.size,
   sha256: zipHash,
   changeCount: changes.length,
+  integrityFileCount: integrityManifest.fileCount,
+  integrityBytes: integrityManifest.totalBytes,
 }, null, 2));

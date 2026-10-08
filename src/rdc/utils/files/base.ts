@@ -71,6 +71,10 @@ export interface FileHandler {
  * Options for reading files
  */
 export interface ReadOptions {
+    /** Optional per-call restricted URL lane; never applies silently to local files. */
+    networkPolicy?: 'public-only';
+    /** Expected redacted owned-result bytes; no arbitrary file/hash verification. */
+    expectedIntegrity?: import('../../../security/verified-result-artifact.js').ExpectedResultIntegrity;
     /** Whether the path is a URL */
     isUrl?: boolean;
 
@@ -91,6 +95,9 @@ export interface ReadOptions {
 
     /** Optional AbortSignal to cancel an in-flight read (frees fd/thread on timeout). */
     signal?: AbortSignal;
+
+    /** Optional semantic projection profile for document readers. */
+    projection?: 'auto' | 'native' | 'markdown';
 }
 
 /**
@@ -111,6 +118,8 @@ export interface FileResult {
  * File-type specific metadata
  */
 export interface FileMetadata {
+    /** Connection-bound restriction evidence; not content-trust evidence. */
+    publicUrl?: { networkPolicy: 'public-only'; redirects: number; downloadedBytes: number };
     /** For images */
     isImage?: boolean;
 
@@ -138,6 +147,15 @@ export interface FileMetadata {
 
     /** For DOCX files */
     isDocx?: boolean;
+
+    /** For Agent Core semantic document projections */
+    isDocumentProjection?: boolean;
+    projection?: 'markdown';
+    sourceFormat?: string;
+    converter?: string;
+    sourceMimeType?: string;
+    sourceExtension?: string;
+    omittedEntries?: number;
 
     /** Error information if operation failed */
     error?: boolean;

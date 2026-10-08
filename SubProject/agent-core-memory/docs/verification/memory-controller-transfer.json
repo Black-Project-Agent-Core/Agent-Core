@@ -1,0 +1,443 @@
+{
+  "schemaVersion": 1,
+  "engineCommit": "913501b311948d098dd1530a441fd1fc14ec80b6",
+  "engineCommitRole": "Base before G9 round-1 correction; executed source identified by current hashes below.",
+  "testedEngineSourceTreeDigest": "9a86d72a7d60dc2839293d14df4cee75b680481725b42855c4287d7f9af40fb8",
+  "datasetRevision": "t9-controller-transfer-g9-r1-v1",
+  "platform": {
+    "os": "Linux",
+    "arch": "x86_64",
+    "node": "v24.19.0",
+    "npm": "11.9.0",
+    "localTimezone": "Asia/Jakarta",
+    "evidenceTimezone": "UTC"
+  },
+  "dependencyLockDigest": "sha256:f6e124f787c9b5958bdb2bcd13a1076a8018be525b40c75458f4b0b65db03505",
+  "extractionManifestDigest": "sha256:2984d9f03ab9ad7d736a97b910a56d90bfb5e2582aad8c3a6c47eb3cb67f3496",
+  "sourceDigests": {
+    "src/index.ts": "sha256:f43083cee1dcece26594e9b41482c32288810babc4a7a9ed8c63e6e9aa91cd45",
+    "src/memory/controller-protocol.ts": "sha256:7b5d2fca9497cf6e15f7e459e916293a66a6400ecc319e4d883d4cb2ba806e1b",
+    "src/memory/transfer.ts": "sha256:66c0c6d8594d4ea39a4063dc1dab69c2c14c8e28826b9aa8e96e646c6908512b",
+    "src/memory/transfer-v2.ts": "sha256:842d9649f429bee9c68c5d8a78a9b78276f1840ad57006ce066ae8ceb8f81d57",
+    "src/memory/archive.ts": "sha256:f521c0c6a54a14ded156c6a6d44d6b487af70ea62e862f2ffb40dd415d8e285b",
+    "src/memory/episodes.ts": "sha256:a2e614b6630e31c65c941432f1ea9bda1acda6dde09bdb03c896ce6e07544b09",
+    "src/memory/promotion.ts": "sha256:1a56c7e7daa600a0ee3b02b1e3945622175654104f8c73b8dd4c47cba3fb7a50",
+    "src/memory/revisions.ts": "sha256:25cfa4a34a7288bc2cac0df94dc875a660f9ad70d74100d697026ada758f91d1",
+    "examples/controller-continuation.ts": "sha256:c3ba2fa0e64b1a16325db6135919d0d6faa7156657bf364785070ee2ba702e46",
+    "tests/memory-controller-continuation.test.ts": "sha256:d5105f32d11a8d6a99f096cc073dfa84014f935fad6d18b774283c0ab2e024e9",
+    "tests/memory-transfer-v2.test.ts": "sha256:6ba4a68b30f8246f4d337aad54d4b25e45695496b6cb4b861e5be379ec22ee1c",
+    "tests/memory-portability.test.ts": "sha256:7ad9da7121a21d2fc1d173c788e2d527704c7b6e7a75c76f9113e44b03d16112",
+    "src/memory/feedback.ts": "sha256:87161546e4ad06198ed4cc4f4c42ed242a6d46b96fe6c4bac21ff4d1f44bd924",
+    "src/memory/retrieval-ledger.ts": "sha256:26362b77ecd78b6ef60e05f8d4043090fa250cef5c67261b533d33f8e9c232ba",
+    "tests/memory-transfer-review.test.ts": "sha256:90d6c4f65ce0d8ff03ec1b1992fe1f643269bf5594cfcf10329276696a25a707"
+  },
+  "mode": "deterministic-public-protocol-replay",
+  "models": {
+    "calls": 0,
+    "inputTokens": null,
+    "outputTokens": null,
+    "cost": null
+  },
+  "targeted": {
+    "status": "PASS",
+    "exitCode": 0,
+    "files": 4,
+    "passed": 34,
+    "failed": 0,
+    "pending": 0,
+    "todo": 0,
+    "durationSeconds": 20.45,
+    "startedAt": "2026-10-07T22:43:29.766000+00:00"
+  },
+  "full": {
+    "status": "PASS",
+    "exitCode": 0,
+    "files": 26,
+    "passed": 489,
+    "failed": 0,
+    "pending": 0,
+    "todo": 0,
+    "durationSeconds": 246.14,
+    "startedAt": "2026-10-07T22:43:52.156000+00:00"
+  },
+  "earlierFull": {
+    "passed": 470,
+    "files": 25,
+    "durationSeconds": 296.6,
+    "exitCode": 0,
+    "note": "Before final adapter preflight regression; retained as earlier evidence."
+  },
+  "redEvidence": [
+    {
+      "case": "Extra retained destination note and malformed live metadata",
+      "failed": 2,
+      "passed": 7,
+      "exitCode": 1
+    },
+    {
+      "case": "Facade invocation despite insufficient adapter envelope budget",
+      "failed": 1,
+      "passed": 4,
+      "exitCode": 1
+    },
+    {
+      "case": "G9-1 recent/retained scope and G9-2 checksum-valid episode consistency",
+      "failed": 11,
+      "passed": 2,
+      "exitCode": 1
+    },
+    {
+      "case": "Known telemetry file with corrupted purpose skips validation",
+      "failed": 1,
+      "skippedByNameSelection": 17,
+      "exitCode": 1
+    }
+  ],
+  "packageConsumer": {
+    "status": "PASS",
+    "source": "Final correction archive installed offline with scripts disabled in a fresh temporary consumer",
+    "checks": [
+      "named-package ESM import",
+      "public protocol resume",
+      "isolated complete restore",
+      "duplicate replay",
+      "retained private-workspace denial after recent-ledger removal",
+      "strict declaration consumption"
+    ],
+    "archiveFiles": 299,
+    "forbiddenRuntimeOrPrivatePaths": [],
+    "note": "Final archive digest and byte counts recorded in raw verification evidence to avoid self-referential package-size fields."
+  },
+  "preservation": {
+    "canonicalRecords": 502,
+    "historicalRevisions": "more than 8 retained and reconstructed",
+    "bundleEntries": "all compared byte-for-byte after restore",
+    "allAuthorizedWorkspaces": true,
+    "unknownSourceHistory": "not reconstructed",
+    "transferKind": "isolated logical-root restore, no active-root merge"
+  },
+  "continuation": {
+    "protocolReplay": "PASS",
+    "incorrectMandatoryFixture": "rejected as expected",
+    "staleCapsuleFallback": "PASS",
+    "liveAutonomousController": "NOT RUN"
+  },
+  "portability": {
+    "linux": "PASS",
+    "windows": "NOT RUN"
+  },
+  "t8RepeatGuardrails": [
+    {
+      "records": 10,
+      "status": "PASS",
+      "medianRatio": 0.36834199553089764,
+      "p95Ratio": 0.3101355680115753,
+      "thresholds": {
+        "medianRatio": 1.2,
+        "p95Ratio": 1.3
+      }
+    },
+    {
+      "records": 100,
+      "status": "PASS",
+      "medianRatio": 0.4517740353460042,
+      "p95Ratio": 0.44266282237379584,
+      "thresholds": {
+        "medianRatio": 1.2,
+        "p95Ratio": 1.3
+      }
+    },
+    {
+      "records": 1000,
+      "status": "PASS",
+      "medianRatio": 0.4523187211842655,
+      "p95Ratio": 0.45124844919644125,
+      "thresholds": {
+        "medianRatio": 1.2,
+        "p95Ratio": 1.3
+      }
+    }
+  ],
+  "testAssertions": [
+    {
+      "file": "tests/memory-controller-continuation.test.ts",
+      "assertions": [
+        {
+          "name": "allowlisted transport binds scope in host and refuses arbitrary methods, fields and scope injection",
+          "status": "passed"
+        },
+        {
+          "name": "fresh controller learns exact obligations, next action and old success via public dispatcher only; negative mandatory oracle fails",
+          "status": "passed"
+        },
+        {
+          "name": "stale capsule fallback reads current paged episode instead of using old next action",
+          "status": "passed"
+        },
+        {
+          "name": "adapter meters the final envelope at minimum and maximum supported budgets",
+          "status": "passed"
+        },
+        {
+          "name": "too-small adapter requests do not falsely record exposure or publish a checkpoint",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "tests/memory-portability.test.ts",
+      "assertions": [
+        {
+          "name": "Linux case-sensitive Unicode evidence paths, CRLF bytes, rename and retained evidence",
+          "status": "passed"
+        },
+        {
+          "name": "concurrent export waits for the root lock and captures the committed canonical bytes",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "tests/memory-transfer-review.test.ts",
+      "assertions": [
+        {
+          "name": "G9-1 recent attempt private-b is authorized and reported exactly",
+          "status": "passed"
+        },
+        {
+          "name": "G9-1 recent attempt unscoped is authorized and reported exactly",
+          "status": "passed"
+        },
+        {
+          "name": "G9-1 recent use receipt private-b is authorized and reported exactly",
+          "status": "passed"
+        },
+        {
+          "name": "G9-1 recent use receipt unscoped is authorized and reported exactly",
+          "status": "passed"
+        },
+        {
+          "name": "G9-1 rotated attempt private-b is authorized and reported exactly",
+          "status": "passed"
+        },
+        {
+          "name": "G9-1 rotated attempt unscoped is authorized and reported exactly",
+          "status": "passed"
+        },
+        {
+          "name": "G9-1 rotated use receipt private-b is authorized and reported exactly",
+          "status": "passed"
+        },
+        {
+          "name": "G9-1 rotated use receipt unscoped is authorized and reported exactly",
+          "status": "passed"
+        },
+        {
+          "name": "G9-2 checksum-valid working-state corruption is rejected before staging and cannot damage an interrupted restore",
+          "status": "passed"
+        },
+        {
+          "name": "G9-2 checksum-valid event-order corruption is rejected before staging and cannot damage an interrupted restore",
+          "status": "passed"
+        },
+        {
+          "name": "G9-2 checksum-valid event-count corruption is rejected before staging and cannot damage an interrupted restore",
+          "status": "passed"
+        },
+        {
+          "name": "G9-2 checksum-valid header-task corruption is rejected before staging and cannot damage an interrupted restore",
+          "status": "passed"
+        },
+        {
+          "name": "G9-2 checksum-valid header-workspace corruption is rejected before staging and cannot damage an interrupted restore",
+          "status": "passed"
+        },
+        {
+          "name": "G9-2 every retained historical snapshot is checked even when current public context is healthy",
+          "status": "passed"
+        },
+        {
+          "name": "G9-1 retained receipt workspace is inspected independently of an authorized attempt",
+          "status": "passed"
+        },
+        {
+          "name": "G9-1 scope comes from domain metadata, never JSON-shaped evidence text",
+          "status": "passed"
+        },
+        {
+          "name": "G9-1 retained telemetry envelope checksum is verified through its archive owner",
+          "status": "passed"
+        },
+        {
+          "name": "G9-1 a known retained telemetry file cannot evade validation by changing its purpose",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "tests/memory-transfer-v2.test.ts",
+      "assertions": [
+        {
+          "name": "complete transfer retains exact evidence, root identity, receipts, capsule and replay across isolated restore",
+          "status": "passed"
+        },
+        {
+          "name": "preview refuses checksum damage and unauthorized scope before any destination mutation",
+          "status": "passed"
+        },
+        {
+          "name": "knowledge-only is explicitly incomplete for restoration and refuses complete import",
+          "status": "passed"
+        },
+        {
+          "name": "interruption leaves unreadable activation; exact replay finishes without overwriting changed destination",
+          "status": "passed"
+        },
+        {
+          "name": "more than 500 records, historical revisions and all authorized workspaces survive exact-byte restore",
+          "status": "passed"
+        },
+        {
+          "name": "partial copy remains inactive, replays only its bundle and rejects unexpected retained data",
+          "status": "passed"
+        },
+        {
+          "name": "structurally corrupt live metadata is rejected even when every transport checksum is correct",
+          "status": "passed"
+        },
+        {
+          "name": "typed validity, uncertainty and links remain exact through transfer",
+          "status": "passed"
+        },
+        {
+          "name": "rechecks every digest, manifest path, and retained reference before creating destination files",
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "npx vitest run tests/memory-transfer-review.test.ts tests/memory-transfer-v2.test.ts tests/memory-controller-continuation.test.ts tests/memory-portability.test.ts --reporter=default --reporter=json",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run verify -- -- --reporter=default --reporter=json",
+      "exitCode": 0
+    },
+    {
+      "command": "npm pack --json",
+      "exitCode": 0
+    },
+    {
+      "command": "npm install --offline --ignore-scripts --no-audit --no-fund <local-tarball>; node smoke.mjs",
+      "exitCode": 0
+    },
+    {
+      "command": "tsc --ignoreConfig --strict --noEmit --module nodenext --target es2022 --skipLibCheck <consumer-types>",
+      "exitCode": 0
+    }
+  ],
+  "limitations": [
+    "G9 independent review pending",
+    "No live model/controller or Windows execution",
+    "Chunked representation is in memory, not streaming",
+    "Logical root identity is preserved, not tenant isolation or automatic sync",
+    "Hash/schema/link checks do not prove authenticity, truth or semantic entailment",
+    "OS-kill at every T9 instruction boundary was not separately tested; existing transaction kill tests passed in the full suite",
+    "Knowledge-only export is not a recovery backup"
+  ],
+  "completedAt": "2026-10-07T22:48:21.143817+00:00",
+  "previousT9Submission": {
+    "commit": "913501b311948d098dd1530a441fd1fc14ec80b6",
+    "targeted": {
+      "status": "PASS",
+      "exitCode": 0,
+      "files": 3,
+      "passed": 16,
+      "failed": 0,
+      "pending": 0,
+      "todo": 0,
+      "durationSeconds": 19.27,
+      "startedAt": "2026-10-07T22:19:45.952000+00:00"
+    },
+    "full": {
+      "status": "PASS",
+      "exitCode": 0,
+      "files": 25,
+      "passed": 471,
+      "failed": 0,
+      "pending": 0,
+      "todo": 0,
+      "durationSeconds": 244.73,
+      "startedAt": "2026-10-07T22:21:00.429000+00:00"
+    },
+    "sourceDigests": {
+      "src/index.ts": "sha256:f43083cee1dcece26594e9b41482c32288810babc4a7a9ed8c63e6e9aa91cd45",
+      "src/memory/controller-protocol.ts": "sha256:7b5d2fca9497cf6e15f7e459e916293a66a6400ecc319e4d883d4cb2ba806e1b",
+      "src/memory/transfer.ts": "sha256:66c0c6d8594d4ea39a4063dc1dab69c2c14c8e28826b9aa8e96e646c6908512b",
+      "src/memory/transfer-v2.ts": "sha256:cbbade41a3346ff0c3195d340e7bcf3ae2f392363d810a9eef0da3f868c2855e",
+      "src/memory/archive.ts": "sha256:1f258499e3f795fb49ecb60961a6c34433f06b02ae338034d5d991a1aee9368d",
+      "src/memory/episodes.ts": "sha256:00cd1b0701619d7089c96adc5209a6325ee6547b9daaed19d6f73d044b188c39",
+      "src/memory/promotion.ts": "sha256:1a56c7e7daa600a0ee3b02b1e3945622175654104f8c73b8dd4c47cba3fb7a50",
+      "src/memory/revisions.ts": "sha256:25cfa4a34a7288bc2cac0df94dc875a660f9ad70d74100d697026ada758f91d1",
+      "examples/controller-continuation.ts": "sha256:c3ba2fa0e64b1a16325db6135919d0d6faa7156657bf364785070ee2ba702e46",
+      "tests/memory-controller-continuation.test.ts": "sha256:d5105f32d11a8d6a99f096cc073dfa84014f935fad6d18b774283c0ab2e024e9",
+      "tests/memory-transfer-v2.test.ts": "sha256:6ba4a68b30f8246f4d337aad54d4b25e45695496b6cb4b861e5be379ec22ee1c",
+      "tests/memory-portability.test.ts": "sha256:7ad9da7121a21d2fc1d173c788e2d527704c7b6e7a75c76f9113e44b03d16112"
+    },
+    "packageConsumer": {
+      "status": "PASS",
+      "source": "Actual npm archive installed offline, scripts disabled, in a fresh temporary consumer",
+      "checks": [
+        "named-package ESM import",
+        "public protocol resume",
+        "isolated complete restore",
+        "duplicate replay",
+        "strict declaration consumption"
+      ],
+      "archiveFiles": 298,
+      "archiveCompressedBytes": 420748,
+      "archiveUnpackedBytes": 2248907,
+      "note": "Consumer-tested source archive before final documentation-only repack; final package scan recorded separately.",
+      "forbiddenRuntimeOrPrivatePaths": []
+    },
+    "note": "Historical initial submission; independent G9 review found two P1 gaps not covered by these initial assertions."
+  },
+  "reviewRound": 1,
+  "intermediateCorrectionRun": {
+    "passed": 488,
+    "files": 26,
+    "durationSeconds": 255.42,
+    "exitCode": 0,
+    "note": "Before final known-telemetry-filename classification regression."
+  },
+  "reviewCorrections": [
+    {
+      "finding": "G9-1",
+      "status": "IMPLEMENTED; independent re-review pending",
+      "checks": [
+        "Domain-owned immutable envelope identity/digest validation selected by filename or purpose",
+        "Domain-owned attempt/use-receipt payload validation for recent and retained rows",
+        "Exact workspace reporting and explicit unscoped authorization",
+        "Feedback subjects resolved through retained canonical provenance",
+        "Original reviewer probe now rejects MEMORY_SCOPE_MISMATCH"
+      ]
+    },
+    {
+      "finding": "G9-2",
+      "status": "IMPLEMENTED; independent re-review pending",
+      "checks": [
+        "Shared episode reader/transfer invariant, no duplicate weakened reducer",
+        "Owner/header, count/revision, retained event order/sequence and deterministic working state",
+        "All retained snapshots, including unselected history",
+        "Rejection before staging and no modification of interrupted destination",
+        "Original reviewer probe now rejects MEMORY_TRANSFER_LINKAGE_INVALID"
+      ]
+    }
+  ]
+}

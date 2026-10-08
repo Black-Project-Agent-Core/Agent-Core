@@ -1,15 +1,18 @@
+> HISTORICAL BACKUP RESTORED — 2026-09-23. This is a dated snapshot, not the latest lost revision and not a current task list. Status/OPEN/PLANNED statements below are historical only. Current runtime truth is in docs/CODEBASE.md and docs/System-Repair-SIE-Completion-20260923.md.
+> Source: runtime/backups/grafel-regrounding-20260920/Grafel-Second-Wave-Capability-Integration-Plan.md; original payload SHA-256: dee6832c6f5e78bce5919d80822ba54f8cc4d5084309a30d3038f075fc5e6ef1.
+
 # Grafel Second-Wave Capability Integration Plan — Agent Core
 
-> **Status:** COMPLETE — IMPLEMENTED AND TARGETED-VERIFIED FOR APPROVED SCOPE  
-> **Implementation state:** HISTORICAL COMPLETE — NO OPEN SECOND-WAVE TASK  
+> **Status:** PLANNED — READY FOR USER REVIEW  
+> **Implementation state:** NOT STARTED  
 > **Created:** 2026-09-18  
-> **Continuity normalized:** 2026-09-20 after corruption/doc rollback audit  
 > **Parent integration:** docs\Grafel-Code-Intelligence-Integration-Plan.md — COMPLETE  
-> **Historical reference revision:** 45f9745d02f3662a8516fb35cd2d0624acf82cbf, describe v0.3.3-50-g45f9745d0  
-> **Current runtime lineage:** qualified Agent Core-owned post-v0.3.3 Grafel provider  
-> **Remaining proposal authority:** docs\Grafel-Post-v0.3.3-Exhaustive-Steal-Use-Plan.md
+> **Protected reference:** DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\grafel — read-only grounding/reference  
+> **Current runtime provider:** official project-local Grafel v0.3.3 under runtime\grafel  
+> **Reference checkout state used for this plan:** clean main, HEAD 45f9745d02f3662a8516fb35cd2d0624acf82cbf, describe v0.3.3-50-g45f9745d0  
+> **Goal:** reuse seven remaining high-value Grafel capabilities with minimal Agent Core glue, no Grafel source port, no execution gate, no duplicate memory/tracker authority, and no external AI-host mutation.
 
-This document is historical implemented-state, not an active task queue. The 2026-09-20 source-first re-grounding found new boundary-hardening proposals and records them only in the post-v0.3.3 exhaustive plan.
+This is a planning document only. It records the approved-design candidate for the user's review. No behavior in this file is implemented merely because it is described here.
 
 ## 1. Why a second wave exists
 
@@ -1337,8 +1340,10 @@ activation + documentation
 
 This ordering maximizes reuse and keeps risk localized: workspace/ref correctness becomes the foundation before any mutating graph repair or workspace-specific architecture evaluation is exposed.
 
-## 27. Historical completion decision
+## 27. Review decision
 
-**This second-wave scope was implemented and targeted-verified. No second-wave implementation task remains open.**
+**Implementation is intentionally NOT started.**
 
-The document is retained as historical design/evidence. Any newly discovered Grafel mechanism from the 2026-09-20 source-first re-grounding belongs to `Grafel-Post-v0.3.3-Exhaustive-Steal-Use-Plan.md` and requires fresh user review before implementation.
+The user should review this plan first.
+
+After explicit approval, implementation should proceed phase-by-phase without reopening the completed first-wave Grafel integration except where this plan explicitly extends its stable interfaces.

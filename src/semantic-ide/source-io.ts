@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { chmod, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { authorizedExistingPath } from './path-safety.js';
+import { authorizedExistingPath, comparable } from './path-safety.js';
+import { lstat } from 'node:fs/promises';
+import type { BigIntStats } from 'node:fs';
+import { openRegularFile } from '../rdc/utils/files/safe-regular-file.js';
 
 export type SemanticSourceEncoding = 'utf8' | 'utf16le' | 'utf16be';
 
@@ -147,4 +150,62 @@ export async function writeSemanticSourceAtomic(
   } finally {
     await rm(temporary, { force: true }).catch(() => undefined);
   }
+}
+
+export interface SemanticFileIdentity {
+  dev: string;
+  ino: string;
+  mtimeNs: string;
+  ctimeNs: string;
+  size: number;
+}
+export function semanticFileIdentity(stats: BigIntStats): SemanticFileIdentity {
+  const size = Number(stats.size);
+  if (!Number.isSafeInteger(size) || size < 0) throw Object.assign(new Error('SEMANTIC_SOURCE_SIZE_INVALID'), { code: 'EOVERFLOW' });
+  return { dev: String(stats.dev), ino: String(stats.ino), mtimeNs: String(stats.mtimeNs), ctimeNs: String(stats.ctimeNs), size };
+}
+export function sameSemanticFileIdentity(a: SemanticFileIdentity, b: SemanticFileIdentity): boolean {
+  return a.dev === b.dev && a.ino === b.ino && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs && a.size === b.size;
+}
+
+/** Bounded hashing through the existing guarded handle, with pre/post identity checks. */
+export async function readSemanticDigest(root: string, filePath: string, expected: SemanticFileIdentity, maxBytes: number, deadline: number): Promise<string> {
+  const expired = () => Object.assign(new Error('SEMANTIC_SOURCE_DIGEST_DEADLINE'), { code: 'ETIMEDOUT' });
+  const checkTime = () => { if (Date.now() >= deadline) throw expired(); };
+  checkTime();
+  if (expected.size > maxBytes) throw Object.assign(new Error('SEMANTIC_SOURCE_DIGEST_LIMIT'), { code: 'EFBIG' });
+  const checkIdentity = (value: BigIntStats) => {
+    if (!value.isFile() || !sameSemanticFileIdentity(expected, semanticFileIdentity(value))) {
+      throw Object.assign(new Error('SEMANTIC_SOURCE_DIGEST_DRIFT'), { code: 'ESTALE' });
+    }
+  };
+  const work = async () => {
+    const authorized = await authorizedExistingPath(root, filePath);
+    checkTime();
+    const guarded = await openRegularFile(authorized.realPath, { followSymlinks: false, timeoutMs: Math.max(1, deadline - Date.now()) });
+    try {
+      checkIdentity(await guarded.handle.stat({ bigint: true }));
+      const digest = createHash('sha256');
+      const buffer = Buffer.alloc(Math.max(1, Math.min(65536, expected.size)));
+      let offset = 0;
+      while (offset < expected.size) {
+        checkTime();
+        const { bytesRead } = await guarded.handle.read(buffer, 0, Math.min(buffer.length, expected.size - offset), offset);
+        if (!bytesRead) throw Object.assign(new Error('SEMANTIC_SOURCE_DIGEST_SHORT_READ'), { code: 'ESTALE' });
+        digest.update(buffer.subarray(0, bytesRead)); offset += bytesRead;
+      }
+      checkTime();
+      checkIdentity(await guarded.handle.stat({ bigint: true }));
+      const after = await authorizedExistingPath(root, filePath);
+      if (comparable(after.realPath) !== comparable(authorized.realPath)) throw Object.assign(new Error('SEMANTIC_SOURCE_DIGEST_PATH_CHANGED'), { code: 'ESTALE' });
+      checkIdentity(await lstat(after.realPath, { bigint: true }));
+      return digest.digest('hex');
+    } finally { await guarded.close(); }
+  };
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([work(), new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(expired()), Math.max(1, deadline - Date.now())); timer.unref?.();
+    })]);
+  } finally { if (timer) clearTimeout(timer); }
 }

@@ -1,9 +1,10 @@
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CodeIntelligenceService, isSupportedGrafelWireVersion } from '../src/code-intelligence/service.js';
+import { GrafelRuntime } from '../src/code-intelligence/grafel-runtime.js';
 import { WorkspaceResolver } from '../src/code-intelligence/workspace-resolver.js';
 import { collectBoundedGraphTouches, registerCodeIntelligenceTools } from '../src/mcp/code-intelligence-tools.js';
 
@@ -20,7 +21,11 @@ function config(root = 'C:\\repo'): any {
 }
 function serviceWith(runtime: any, resolver?: any): any {
   const service = new (CodeIntelligenceService as any)(config());
-  service.runtime = runtime;
+  service.runtime = {
+    assertMutationAttested: vi.fn(async () => ({ state: 'current' })),
+    providerAttestation: vi.fn(async () => ({ state: 'current' })),
+    ...runtime,
+  };
   if (resolver) service.workspaceResolver = resolver;
   service.providerCapabilities = {
     coreNavigation: true, workspaceRouting: true, refGraphs: false, repairs: true,
@@ -73,6 +78,105 @@ describe('Grafel re-grounding G20-G25', () => {
       .toMatchObject({ changed: false, reason: 'already-unregistered' });
   });
 
+  it('removes a stale local fleet record when the provider already forgot the group', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'ac-grafel-delete-stale-'));
+    tempRoots.push(root);
+    const runtimeDir = path.join(root, 'runtime');
+    const fleetDir = path.join(runtimeDir, 'home', '.config', 'grafel');
+    await mkdir(fleetDir, { recursive: true });
+    const fleetPath = path.join(fleetDir, 'stale-audit.fleet.json');
+    await writeFile(fleetPath, JSON.stringify({ name: 'stale-audit', repos: [{ slug: 'x', path: 'C:\\gone' }] }));
+    const runtime = new GrafelRuntime({ ...config(root), runtimeDir } as any);
+    (runtime as any).runCli = vi.fn(async () => { throw new Error('GRAFEL_CLI_FAILED: unknown group: stale-audit'); });
+
+    await expect(runtime.deleteWorkspace('stale-audit')).resolves.toMatchObject({
+      group: 'stale-audit', providerAlreadyAbsent: true, localFleetRemoved: true,
+    });
+    await expect(access(fleetPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(runtime.deleteWorkspace('agent-core')).rejects.toThrow(/unknown group/);
+  });
+
+  it('rebases the default Grafel fleet to a relocated Agent Core root without provider mutation', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'ac-grafel-relocated-'));
+    tempRoots.push(root);
+    const runtimeDir = path.join(root, 'runtime', 'grafel');
+    const fleetDir = path.join(runtimeDir, 'home', '.config', 'grafel');
+    const registryDir = path.join(runtimeDir, 'home', '.grafel');
+    await mkdir(fleetDir, { recursive: true });
+    await mkdir(registryDir, { recursive: true });
+    await mkdir(path.join(root, '.grafel'), { recursive: true });
+    const fleetPath = path.join(fleetDir, 'agent-core.fleet.json');
+    const registryPath = path.join(registryDir, 'registry.json');
+    await writeFile(fleetPath, JSON.stringify({
+      name: 'agent-core',
+      repos: [{ slug: 'agent-core', path: 'E:\\PreviousMachine\\Agent-Core', stack: ['node'] }],
+      features: { watchers: false, git_hooks: false },
+    }, null, 2));
+    await writeFile(registryPath, JSON.stringify({
+      version: 1,
+      groups: [
+        {
+          name: 'agent-core',
+          config_path: 'E:\\PreviousMachine\\Agent-Core\\runtime\\grafel\\home\\.config\\grafel\\agent-core.fleet.json',
+          installed_at: '2026-01-01T00:00:00Z',
+        },
+        {
+          name: 'external-audit',
+          config_path: 'D:\\Shared\\external-audit.fleet.json',
+          installed_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+    }, null, 2));
+    await writeFile(path.join(root, '.grafel', 'group.json'), JSON.stringify({ group: 'agent-core' }));
+    const runtime = new GrafelRuntime({
+      ...config(root),
+      runtimeDir,
+      binaryPath: path.join(runtimeDir, 'bin', 'grafel.exe'),
+    } as any);
+    (runtime as any).runCli = vi.fn(async () => { throw new Error('provider mutation should not run'); });
+
+    await expect(runtime.registerProject()).resolves.toBe(true);
+    const fleet = JSON.parse(await readFile(fleetPath, 'utf8'));
+    const registry = JSON.parse(await readFile(registryPath, 'utf8'));
+    expect(fleet.repos[0]).toMatchObject({ slug: 'agent-core', path: root, stack: ['node'] });
+    expect(registry.groups.find((item: any) => item.name === 'agent-core')?.config_path).toBe(fleetPath);
+    expect(registry.groups.find((item: any) => item.name === 'external-audit')?.config_path)
+      .toBe('D:\\Shared\\external-audit.fleet.json');
+    await expect(runtime.registerProject()).resolves.toBe(false);
+    expect((runtime as any).runCli).not.toHaveBeenCalled();
+  });
+
+  it('accepts provider index exit 1 only when the exact relocated root becomes current', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'ac-grafel-index-postcondition-'));
+    tempRoots.push(root);
+    const runtimeDir = path.join(root, 'runtime', 'grafel');
+    const runtime = new GrafelRuntime({
+      ...config(root),
+      runtimeDir,
+      binaryPath: path.join(runtimeDir, 'bin', 'grafel.exe'),
+      startupTimeoutMs: 1_000,
+    } as any);
+    (runtime as any).runCli = vi.fn(async () => ({ exitCode: 1, stdout: '', stderr: '' }));
+    let checks = 0;
+    runtime.status = vi.fn(async () => {
+      checks += 1;
+      return checks < 3
+        ? { status: 'ok', state: 'unknown', repo_path: root }
+        : { status: 'ok', state: 'current', repo_path: root };
+    }) as any;
+
+    await expect(runtime.indexNowFor(root)).resolves.toBeUndefined();
+    expect(checks).toBeGreaterThanOrEqual(3);
+    expect(runtime.status).toHaveBeenCalledWith('agent-core', undefined, root);
+
+    runtime.status = vi.fn(async () => ({
+      status: 'ok',
+      state: 'current',
+      repo_path: path.join(root, '..', 'wrong-root'),
+    })) as any;
+    await expect(runtime.indexNowFor(root)).rejects.toThrow(/RELOCATION_INDEX_POSTCONDITION_FAILED/);
+  });
+
   it('keeps stale workspace pruning dry-run by default and gates apply', async () => {
     let workspaces = [{ name: 'stale-audit', repos: [{ slug: 'x', path: 'C:\\gone' }] }];
     const runtime = { deleteWorkspace: vi.fn(async () => { workspaces = []; }) };
@@ -105,7 +209,7 @@ describe('Grafel re-grounding G20-G25', () => {
         : { content: [{ type: 'text', text: JSON.stringify({ repos: [{ repo: 'C:\\repo', state: 'current' }] }) }] }),
     };
     await service.refreshProviderWireCompatibility();
-    const health = await service.refreshHealth();
+    const health = await service.health(true);
     expect(health).toMatchObject({ status: 'degraded', providerWireVersion: '0.2.0', providerWireCompatible: false });
     expect(health.issue).toMatch(/WIRE_VERSION_UNSUPPORTED/);
   });
