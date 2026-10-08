@@ -1,5 +1,7 @@
 # Progress evolusi Agent Core Memory
 
+> **Imported execution history:** this log records the upstream 7 October 2026 evolution. Branch, publication, platform and pending-gate statements below describe their original phase. The package has since been imported into the Agent Core monorepo; current host wiring and later acceptance are linked from the [package README](../../README.md). No historical test result was rerun by the documentation refresh.
+
 Updated: **2026-10-07 23:19 UTC**.
 
 **Pelaksanaan T0–T9 dan final integration review selesai.** Build + 503/503 tests; fresh package consumer dan 14 cross-phase package cases lulus. Batas: Linux synthetic/protocol replay/isolated restore teruji; Windows native dan live autonomous controllers belum dijalankan. Branch belum di-merge atau dirilis.
@@ -53,9 +55,9 @@ Dua temuan review dibuktikan RED sebelum diperbaiki: suffix halaman expansion te
 
 Kontrak, perintah reproduksi, hasil RED/GREEN, batas v1, dan payload measurement tersedia pada [progressive disclosure](../verification/memory-disclosure.md).
 
-## Langkah berikutnya
+## Status continuation
 
-Review **T5/G5**, lalu lanjut T6 setelah persetujuan fase. Preview/review/CAS promotion tersedia; temporal dan retention transitions tetap menunggu tahap pemiliknya.
+T0–T9 dan final independent review sudah selesai sebagaimana ringkasan dan penutupan di akhir dokumen ini. Jangan melanjutkan ulang T5 atau gate pending yang muncul dalam entri historis. Untuk integrasi monorepo yang lebih baru, lihat [README package](../../README.md) dan bukti host yang ditautkan di sana; runtime aktif harus diperiksa pada host yang bersangkutan.
 
 ## Catatan verifikasi gate
 

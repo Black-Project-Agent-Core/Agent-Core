@@ -1,5 +1,7 @@
 # Anthropic SDK TypeScript — Steal/Use Integration Plan
 
+> **Historical record (navigation reviewed 2026-10-08):** Preserve the findings, decisions and verification as dated evidence. They do not describe the present source/runtime by themselves. Use [CODEBASE](docs/CODEBASE.md) and [README](README.md) for the current implementation. Later adoption records are maintained in [the corresponding docs record](docs/Anthropic-SDK-TypeScript-Steal-Use-Integration-Plan.md). The proposal statuses below belong to this earlier snapshot; they neither reopen completed adoption nor authorize new work.
+
 **Status:** RE-GROUNDED — PROPOSALS READY FOR USER REVIEW — NO IMPLEMENTATION
 **Reference:** `<PROJECT_ROOT>\DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\memory\anthropic-sdk-typescript`
 **Pinned audit revision:** `d10318284eece2f612d2758a6d5935fe32dc6f7d`

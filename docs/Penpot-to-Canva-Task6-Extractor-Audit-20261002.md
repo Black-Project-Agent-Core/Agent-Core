@@ -1,5 +1,7 @@
 # Penpot-to-Canva TASK 6 Extractor Audit / Acceptance — 2026-10-02
 
+**Superseded blocker status:** The later [TASK 6 acceptance report](Penpot-to-Canva-Task6-Extractor-Acceptance-20261002.md) records the bounded-output correction and closes TASK 6. This audit preserves the earlier finding and test results. The [bridge execution plan](Canva-Penpot-Semantic-Bridge-Execution-Plan-20261001.md) remains the navigation point for TASK 7; Agent Core is engineering support, not a Penpot/Canva runtime dependency.
+
 ## Status
 
 **AUDIT COMPLETE.**

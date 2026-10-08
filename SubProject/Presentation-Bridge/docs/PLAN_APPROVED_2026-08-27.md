@@ -1,5 +1,7 @@
 # Approval Record
 
+> **Historical record:** this preserves the original plan or implementation evidence. Source is now colocated in `SubProject/Presentation-Bridge` with independent runtime ownership; old standalone-location wording does not prohibit the checked-in monorepo layout. Use the [current README](../README.md) for integration boundaries. Historical approval and verification are not a new authorization or fresh platform test.
+
 **Approved by user:** 2026-08-27
 **Implementation authorization:** Full approval to proceed with the plan; implementation decisions may be made without repeated confirmation.
 

@@ -1,5 +1,7 @@
 # Windows Release — Presentation Bridge v0.2.0
 
+Run all commands from `SubProject/Presentation-Bridge/` in the Agent Core monorepo. Generated files belong to this package's `release/` directory, not Agent Core's root release archives. Artifact names come from this package's own version. The evidence in [integration status](INTEGRATION_STATUS.md) is dated; no fresh build, signing or native-platform acceptance is claimed here.
+
 ## Outputs
 
 `npm run package:win` builds two distinct unsigned Windows x64 artifacts:

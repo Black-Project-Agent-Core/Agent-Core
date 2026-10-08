@@ -1,20 +1,22 @@
 # Market Signal Lab — Canonical Root & Worktree Integration Policy
 
+`<MSL_ROOT>` means the verified `SubProject/Market-Signal-Lab` directory inside the current Agent Core checkout. Git worktrees/branches belong to the containing monorepo; they are not nested standalone MSL repositories. Paths recorded in older reports remain historical. This path clarification does not authorize merge, publication, artifact replacement or worktree deletion.
+
 **Status:** PERMANENT PROJECT POLICY
 
 ## Core rule
 
-`E:\Market-Signal-Lab` is the canonical integrated project root.
+`<MSL_ROOT>` is the canonical integrated project root.
 
 Git worktrees are temporary isolation environments for implementation, experiments, review, merge preparation, or verification. A worktree is **not** a replacement project root and must never become the only durable home of accepted source, final checkpoints, stable binaries, installers, release packages, or operational launchers.
 
 ## Canonical paths
 
 ```text
-E:\Market-Signal-Lab\                  canonical integrated source checkout
-E:\Market-Signal-Lab\release-stable\   canonical local stable release/runtime artifacts
-E:\Market-Signal-Lab\dist\.worktrees\ temporary disposable implementation isolation
-E:\Market-Signal-Lab\.worktrees\       legacy temporary worktree isolation only
+<MSL_ROOT>\                  canonical integrated source checkout
+<MSL_ROOT>\release-stable\   canonical local stable release/runtime artifacts
+<MSL_ROOT>\dist\.worktrees\ temporary disposable implementation isolation
+<MSL_ROOT>\.worktrees\       legacy temporary worktree isolation only
 ```
 
 ## Required worktree lifecycle
@@ -45,7 +47,7 @@ A task is integrated only when the accepted source/history is reachable from the
 The canonical local stable artifact directory is:
 
 ```text
-E:\Market-Signal-Lab\release-stable\
+<MSL_ROOT>\release-stable\
 ```
 
 It must contain the currently approved local release package in a human-discoverable layout, including the installer and/or portable runtime needed to launch the product. `release-stable` is operational output and is ignored by Git so large binaries do not pollute source history.

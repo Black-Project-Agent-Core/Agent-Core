@@ -1,5 +1,7 @@
 # Market Signal Lab — RC Stability Hardening Wave 1 — In Progress
 
+> **Historical checkpoint:** the status, pending actions, machine paths, branch names and verification below belong to the dated revision. For the imported monorepo source and continuation boundary, use [CONTINUE_MSL.md](CONTINUE_MSL.md). This record is preserved as evidence and does not authorize resuming old work or certify the current checkout.
+
 **Checkpoint:** 2026-08-24 (Asia/Jakarta)
 **Branch:** `hardening/rc-stability-20260823`
 **Base integrated RC:** `64fc693ade90bfafbbd4b3f6799b835d2e402e9a`

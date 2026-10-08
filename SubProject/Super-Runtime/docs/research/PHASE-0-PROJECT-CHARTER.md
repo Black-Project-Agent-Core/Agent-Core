@@ -1,5 +1,7 @@
 # Super-Runtime — Phase 0 Project Charter
 
+> **Historical research evidence:** source observations, host paths, experiment results and proposed next steps below belong to the recorded Phase-0 work. The [master context](../SUPER-RUNTIME-MASTER-CONTEXT.md) governs subsequent decisions. See [current checkout prerequisites](../../README.md#source-checkout-reproducibility-status--8-october-2026) before trying to reproduce a reference-dependent result; this refresh neither fetched upstream references nor reran experiments.
+
 Status: Phase 0 research complete; architecture direction frozen for first implementation
 
 ## Product identity

@@ -1,5 +1,7 @@
 # Agent Core system repair and SIE completion — 23 September 2026
 
+**Historical recovery checkpoint.** The partial-system findings and legacy-repository boundary below record 2026-09-23. Later repair evidence is in [28 September audit repair](history-agent-core/Codebase-Audit-Repair-Plan-20260928.md); the user-confirmed current GitHub source is now [Black-Project-Agent-Core/Agent-Core](https://github.com/Black-Project-Agent-Core/Agent-Core), reviewed at `8a80251` on 2026-10-08 UTC. This correction does not authorize restoring, merging or publishing anything. See [current architecture](CODEBASE.md) before acting on a historical residual.
+
 **Current status: SIE-P1/P2/P3/P4/P5 INSTALLED AND VERIFIED; system-wide recovery PARTIAL with explicit residual issues below.**
 
 The user authorized repair of the previously reported errors and completion of SIE. Current source/runtime is authoritative; the legacy repository is not a restoration source. No release, commit, push, or historical baseline replacement is authorized implicitly.

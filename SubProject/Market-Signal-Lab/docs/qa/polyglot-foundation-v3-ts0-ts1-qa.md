@@ -1,5 +1,7 @@
 # Market Signal Lab — Polyglot Foundation v3, TS0/TS1 QA
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 **Date:** 2026-08-22 (UTC+7)
 **Status:** VERIFIED for the TS0/TS1 delta only (see explicit future gates below)
 **Repository:** `rendevouz999/Market-Signal-Lab`

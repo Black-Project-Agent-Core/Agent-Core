@@ -1,15 +1,15 @@
 # Permanent Development Execution Scope Guardrail
 
-**Status:** PERMANENT / USER-AUTHORED / VERBATIM
+**Status:** PROJECT GUIDANCE / ORIGINAL VERBATIM BLOCK UNAVAILABLE IN IMPORTED FILE
 **Scope:** All Market Signal Lab development, debugging, verification, documentation, release-preparation, and continuation work.
 
-This file is the canonical source for the user's execution-scope instruction. The verbatim block below must be copied unchanged into current/future MSL continuation checkpoints so that it survives cross-session handoffs.
+This imported file retains the prior operational interpretation, but its `User instruction — verbatim` section is empty. Do not fabricate or copy a nonexistent quote as proof of authorization. Use current user instructions, the root operating contract and applicable permissions for the actual task.
 
 **Mandatory companion purpose guardrail:** `docs/checkpoints/PERMANENT_MSL_PURPOSE_GUARDRAIL.md`
 
-**Current Phase C resume marker:** `docs/checkpoints/2026-08-18-phase-c-resumed.md`
+**Current continuation:** [CONTINUE_MSL.md](CONTINUE_MSL.md). The [Phase C resume marker](2026-08-18-phase-c-resumed.md) is historical evidence.
 
-Read and preserve the purpose guardrail **before interpreting any roadmap, spec, plan, QA, UI wording, analytics name, or future feature proposal**. During the active Phase C continuation, also read the resume marker above before relying on older checkpoint text that still says Phase C/C1 is frozen.
+Read and preserve the purpose guardrail **before interpreting any roadmap, spec, plan, QA, UI wording, analytics name, or future feature proposal**. The older Phase C/C1 frozen and resume states are historical; consult current continuation before treating them as an active task.
 
 MSL must remain focused on evidence-based Envato trend-direction inference and product insight, and must not be reframed as market-entry timing, trading, or buy/sell/hold decision support.
 

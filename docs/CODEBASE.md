@@ -1,5 +1,26 @@
 # Agent Core Codebase Map
 
+## Current source authority — 2026-10-08 UTC
+
+This refresh inspected repository `main` at `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` (commit subject dated 2026-10-09) and root package version **0.14.0**. The user confirmed that the current source was pushed to [Black-Project-Agent-Core/Agent-Core](https://github.com/Black-Project-Agent-Core/Agent-Core); the repository's former legacy/reference-only designation is superseded. The inspected clone uses `origin` and tracks `origin/main`. Those Git settings are checkout-specific, not a contract for every installation.
+
+This is a **static source refresh**, not a new resident-runtime acceptance. The clone contains no production Memory/runtime state. Dated PIDs, health reports, build/test counts, provider credentials/readiness, release archives and activation records below retain their original observation scope. They do not establish this clone's runtime state or a current installed tool count. Historical plans and intermediate pending statuses are superseded only by later evidence for the same scope.
+
+| Current source area | Implementation authority | Source-backed state / limit |
+| --- | --- | --- |
+| Composition | `src/index.ts`, `src/config.ts` | Shared Memory, Learning, Skills, external-controller learning, Native runtime/controller/chat, code, semantic, phone and web owners feed HTTP/MCP. Native provider use defaults off; runtime readiness requires separate configuration and observation. |
+| Tool registration | `src/mcp/server.ts`, `src/mcp/*-tools.ts`, `src/auth/tool-grant.ts` | Machine-control plus conditional Memory, Learning, controller learning, Skills, phone/game, Grafel, LSP and Web Research facades; credential grants can hide and reject tools. `memory_v2_read` / `memory_v2_write` register only when the experience service is supplied. Historical totals are not a current manifest. |
+| Memory selection | `src/memory/host-runtime.ts` | No activation marker: legacy service at configured Memory root. Valid marker plus matching backup digest: standalone experience-v2 engine at `runtime/memory-v2`, without initializing the legacy writer. Invalid activation fails closed. Source inclusion is not activation. |
+| Native controller | `src/agent-runtime.ts`, `src/agent-controller.ts`, `src/agent-chat-service.ts`, `src/agent-chat-store.ts` | Implemented provider-backed runtime and persistent interactive chat over shared owners, with durable turns, task-scoped capabilities and Learning finalization. The retired Hermes bridge and earlier UI placeholder are not current architecture. |
+| Shared learning and Skills | `src/learning`, `src/skills`, `src/capability-awareness.ts` | Task-scoped review, evidence/reuse/procedure records, semantic proposals and exact decisions, awareness/WHY and actual-use disclosure. Qualification or a saved record is not proof of task benefit. |
+| Phone/Game Mode | `src/phone`, `src/mcp/phone-game-tools.ts` | Existing phone transport/controller owns added `phone_game_inspect` / `phone_game_manage`, profiles, sessions, perception and guarded actions. Live gameplay/provider/transport acceptance is separate. |
+| Build | root `package.json` | `build` runs path policy, `build:memory` for `SubProject/agent-core-memory`, then root TypeScript compilation. UI and launcher retain their separate build owners. |
+| Recovery | `scripts/windows/Recover-Agent-Core.ps1` | Empty repository default, explicit network opt-in, and a retained hard-coded rejection of this repository with `LEGACY_REFERENCE_ONLY`. Current source publication does not remove that guard; use explicitly trusted ZIP/checksum recovery pending a separately authorized code change. |
+
+See the [documentation index](README.md) and [refresh audit](DOCUMENTATION-AUDIT-20261008.md) for navigation and scope. The targeted changes here update README, AGENTS, product direction, and the affected architecture/Git/build/Memory/SubProject sections. No product source, config, dependencies, runtime, release or publication state was changed by this refresh; no build, test or live acceptance was run. Native experience-v2 automatic episode capture is not claimed: the last recorded external Memory v2 audit explicitly deferred Native acceptance.
+
+## Dated implementation and acceptance records
+
 > **Self-Improvement — 2026-10-07, RESIDENT-ACTIVATED / LIVE READBACK PASSED; ACCEPTANCE LIMITS REMAIN:** [Plan](Agent-Core-Self-Improvement-Plan.md) and [Execution](Agent-Core-Self-Improvement-Execution-20261007.md) record semantic proposals, reminders, exact decisions, bounded awareness/WHY and outcome review. Fresh readback: 531/531 installed hashes match, Core 14228 healthy at v0.14.0, new Skills facade responds, Native answer/reminder persisted. New proposal remains not-built with no user decision; interrupted delivery, later Skill use, junction host and cached external descriptor remain open. No measured benefit or whole-plan STABLE claim.
 
 **Cumulative workflow update, 2026-10-06:** Task-scoped Learning review, guarded verified persistence, shared procedure ownership, revision-bound receipts and shared ranked context are implemented. Work outcome is separate from Learning completion. Independent source identity is not semantic truth. Controlled 64-run engineering/research evaluation and resident activation are tracked in [Cumulative-Workflow-Implementation-20261006.md](Cumulative-Workflow-Implementation-20261006.md); earlier EC/MRR acceptance does not prove this larger benefit claim.
@@ -7,7 +28,7 @@
 
 > **Product-direction context, confirmed 2026-09-30:** [Agent Core Product Direction](Agent-Core-Product-Direction.md) records the user's cumulative-learning destination and why system mechanisms AND local Memory mechanisms are repeatedly grounded/adopted. The target is actual learning reuse in later decisions/actions, not tool-count growth. This link is intent context, not evidence that the full target is implemented; the source-grounded map and dated evidence below retain their own scope. `Target-Feture.md` is preserved conversation evidence.
 
-> **Latest scoped connectivity readback — 2026-09-30 +07 (2026-09-29 18:06Z):** Direct Agent Core connector discovery and native `memory_list`, `memory_read`, `memory_status`, `read_file`, and `start_process` calls succeeded in the user session. Core `127.0.0.1:8765/health` returned HTTP 200 / `status=ok` / version `0.14.0`; Memory canonical/index/embedding/intelligence were available with issueCount 0; Code Intelligence was available/current with accepted graph integrity; Semantic IDE, Execution, Learning, and Skills were available. This supersedes older live-version/connectivity assertions below, not their historical release/qualification evidence.
+> **Historical scoped connectivity readback — 2026-09-30 +07 (2026-09-29 18:06Z):** Direct Agent Core connector discovery and native `memory_list`, `memory_read`, `memory_status`, `read_file`, and `start_process` calls succeeded in the user session. Core `127.0.0.1:8765/health` returned HTTP 200 / `status=ok` / version `0.14.0`; Memory canonical/index/embedding/intelligence were available with issueCount 0; Code Intelligence was available/current with accepted graph integrity; Semantic IDE, Execution, Learning, and Skills were available. This supersedes older live-version/connectivity assertions below, not their historical release/qualification evidence.
 > **Connection diagnosis correction:** Earlier controller-side `UNAVAILABLE / Connection failed` responses did not establish that Agent Core itself was offline. The original failure cause remains unconfirmed; the failure was not reproduced during this readback. External Remote Desktop Commander was independently reachable on the user-authorized device (ping returned pong) and is not an Agent Core dependency or proof of Agent Core health. No runtime/source repair, dependency install, restart, OAuth reset, or release was performed in this readback.
 
 > **Status:** Maintained architecture source of truth
@@ -15,15 +36,15 @@
 > **Project root:** `<PROJECT_ROOT>`
 > **Product version:** source/package is `0.14.0`; the pre-runtime grounding readback on 2026-09-30 observes resident `/health` reporting `0.14.0`. Older version and release-queue snapshots below are dated history; this audit does not re-evaluate or apply the release queue.
 > **Primary runtime model:** local authenticated Agent Core MCP bridge with an internal vendored RDC-derived machine-control layer
-> **Current mapping refresh:** 2026-09-28 (stable package `v0.14.0` is immutable and integrity-verified; resident runtime is still `0.13.0` on the 70-tool image because packaging and runtime activation remain separate. Current source/dist and live connector agree on 70 tools. Launcher single-instance, Code Intelligence advisory metadata, Semantic IDE type ownership, cross-cutting network/evidence/persistence/document-projection, machine-control state ownership, cleanup/rebuild boundaries, and stable packaging state are synchronized below. Older dated sections retain historical evidence.)
+> **Historical mapping refresh:** 2026-09-28 (stable package `v0.14.0` is immutable and integrity-verified; resident runtime is still `0.13.0` on the 70-tool image because packaging and runtime activation remain separate. Current source/dist and live connector agree on 70 tools. Launcher single-instance, Code Intelligence advisory metadata, Semantic IDE type ownership, cross-cutting network/evidence/persistence/document-projection, machine-control state ownership, cleanup/rebuild boundaries, and stable packaging state are synchronized below. Older dated sections retain historical evidence.)
 
-## 0. Current system snapshot — 2026-09-28
+## 0. Historical system snapshot — 2026-09-28
 
-> **Scope of this section:** descriptive mapping only. It records what is active now; it does not define upgrade priorities, roadmap items, or recommendations.
+> **Scope of this section:** dated runtime evidence and subsequent change records. The opening table records the 2026-09-28 observation, not current source or resident state. Later dated records retain their own scope; the current source authority above and maintained ownership sections supersede stale descriptions.
 
-### 0.1 Live runtime truth
+### 0.1 Historical runtime observation
 
-Observed from the running system during this mapping refresh:
+Observed from the running system during the 2026-09-28 mapping refresh:
 
 | Surface | Current state |
 | --- | --- |
@@ -1615,55 +1636,26 @@ Qualification/resident evidence: Session A (`ext-83b7e6d770b328207b6b9a1c0a67876
 
 Pinned donor snapshots remain reference-only. Hermes, SAKU, CortexPrism, TELL, Hindsight, AutoMemory, skillmem, OpenViking and MemOS remain grounding sources only; no donor runtime, dependency or second canonical Memory was installed.
 
-## 0.2 Active runtime topology
+## 0.2 Active source topology
 
 ```text
-AI / MCP client
-    |
-    | loopback or authenticated remote MCP
-    v
-optional tunnel-client.exe (:8787 readiness/admin)
-    |
-    v
-Node core (:8765) — dist/index.js
-    |
-    +-- GET /health
-    +-- Native Agent Runtime (default-off provider)
-    |       +-- OpenAI-compatible API/local endpoint adapter
-    |       +-- persistent runtime/agent-runtime session/task/finalization state
-    |       +-- Memory-first recall through existing MemoryService
-    |       +-- scoped in-memory reuse of existing MCP tools
-    |       +-- mandatory runtime-owned Learning checkpoint/review finalization
-    +-- OAuth discovery / authorization / token flow
-    +-- POST /mcp
-            |
-            +-- mandatory AGENTS.md instructions
-            |
-            +-- 28 machine-control tools -> src/rdc -> local Windows machine, including live `browser_control`
-            |
-            +-- 17 Memory tools -> src/memory -> runtime/memory
-            |
-            +-- 1 Learning tool -> src/learning -> runtime/learning scheduling state
-            |       +-- verified generic knowledge -> existing MemoryService
-            |       +-- verified code recipes -> existing Grafel Patterns
-            |
-            +-- 1 external-controller cumulative-learning tool -> controller_learning
-            |       +-- deterministic current-context synthesis (no model/provider call)
-            |       +-- bounded external episodes + pending Learning continuity
-            |       +-- generalized knowledge-use/outcome receipts
-            |       +-- verified procedure -> existing SkillService lifecycle
-            |       +-- external cross-session observational evaluation
-            |
-            +-- 14 Game Mode tools -> src/phone -> Android phone via gateway/ADB
-            |
-            +-- 7 Code Intelligence tools -> src/code-intelligence -> isolated Grafel provider
-            |
-            +-- 2 Semantic IDE/LSP tools -> src/semantic-ide -> project-local language-server providers
-            |
-            +-- 1 Skills artifact tool -> src/skills -> runtime/skills (artifact-only; no execution authority)
+External MCP controller                  Native model / interactive chat
+          |                                          |
+          |                         agent-provider / scheduler / chat store
+          |                                          |
+          +----- shared Agent Core MCP capability owners -----+
+                               |
+           machine/browser | Memory | Learning | Skills
+           Grafel/LSP | web research | phone/Game Mode
+                               |
+                   local machine and external services
 ```
 
-Desktop lifecycle is owned separately by `Agent Core.exe`, which starts/monitors the Node core and tunnel, hosts the React UI through WebView2, and shares the persistent activity journal.
+`src/index.ts` composes the Node HTTP/MCP server, shared owners, Native controller and persistent chat. MCP initialization loads `AGENTS.md`; credential grants and Native task-scoped capability grants retain their respective authority. The source-default listener is `127.0.0.1:8765`; remote MCP access can use the separate tunnel. Optional service initialization, feature enablement and grants determine actual tool exposure.
+
+Memory is selected by `initializeAgentCoreMemory`: legacy configured root by default, or the experience-v2 service only after host validation of the activation marker and backup digest. Both controllers receive the same selected service. Registering the v2 facade does not prove automatic Native episode capture or benefit.
+
+Desktop lifecycle is owned separately by `Agent Core.exe`, which starts/monitors the Node core and tunnel, hosts the React UI through WebView2, and shares the persistent activity journal. No live lifecycle state was observed in this source-only refresh.
 
 ### 0.3 Active source ownership map
 
@@ -1672,19 +1664,19 @@ Desktop lifecycle is owned separately by `Agent Core.exe`, which starts/monitors
 | Process bootstrap + service lifecycle | `src\index.ts`, `src\config.ts` | `dist\index.js`, project-local Node |
 | HTTP/auth/security | `src\http`, `src\auth` | listener `:8765`, `runtime\bridge-auth` |
 | OAuth | `src\oauth` | `runtime\bridge-auth\oauth.json` and related durable state |
-| MCP transport/registration | `src\mcp` | source-qualified full runtime registers **72** public tools: 28 machine-control, 17 Memory, 1 Learning, 14 Phone, 7 Grafel Code Intelligence, 2 Semantic IDE/LSP, 1 artifact-only Skills tool, and 2 Web Research tools (`web_search`, `web_open`); resident Core remains on the prior loaded surface until the supported restart activates the new build |
+| MCP transport/registration | `src\mcp`, `src\auth\tool-grant.ts` | Source facade registration is conditional on initialized owners and caller context; credential grants hide and reject ungranted tools. Includes `controller_learning`, Web Research, phone-game and activated Memory v2 facades; use fresh `tools/list` for a running instance rather than historical totals. |
 | MCP mutation/evidence safety | `src\mcp\mutation-safety.ts`, `src\mcp\result-budget.ts`, `src\security\evidence-capture-policy.ts`, `src\rdc\utils\toolHistory.ts` | crash-safe mutation journal under `runtime\mcp`; oversized persistable results spill under `runtime\tool-results`; nearest `.agent-core-evidence.json` can reduce durable file-tool evidence to `full`, `metadata-only`, or `omit` but never changes execution or returned results |
 | Shared outbound network policy | `src\net\endpoint-policy.ts`, `src\net\outbound-request.ts`, `src\net\bounded-response.ts` | common bounded fetch/retry/timeout/correlation/redaction layer used by Memory embeddings, Phone gateway, semantic-provider provisioning, URL file/PDF reads; non-idempotent or non-replayable sends remain one attempt, and credential-bearing non-loopback endpoints require HTTPS |
 | Shared bounded event-log persistence | `src\persistence\bounded-event-log.ts` | committed-line JSONL primitive used by Activity Tracker, Tool History, Memory retrieval ledger, and MCP mutation safety; bounds bytes/records and repairs only an incomplete final append |
-| Machine control | `src\rdc` | `runtime\rdc` + local Windows operations; 28 compiled/live machine-control tools including `browser_control`; same-target write/edit/move mutations serialize through `PathMutationCoordinator`, while checkpoints, browser sessions and terminal-output spill own dedicated runtime subtrees |
+| Machine control | `src\rdc` | `runtime\rdc` + local Windows operations; 28 source-registered machine-control tools including `browser_control`; same-target write/edit/move mutations serialize through `PathMutationCoordinator`, while checkpoints, browser sessions and terminal-output spill own dedicated runtime subtrees |
 | Document semantic projection | `src\rdc\document-projection`, `src\rdc\tools\filesystem.ts`, `src\rdc\handlers\filesystem-handlers.ts` | existing `read_file` / `read_multiple_files` facade owns automatic and opt-in semantic Markdown projection; no independent execution authority or second MCP server |
-| Native memory | `src\memory` | `runtime\memory`; transactional `memory_batch` journal lives under `runtime\memory\state\transactions` |
+| Native memory | `src\memory\host-runtime.ts`, `src\memory`, `SubProject\agent-core-memory` | Configured legacy root defaults to `runtime\memory`; host-validated experience-v2 activation selects `runtime\memory-v2` without starting the legacy writer. Existing facade callers share the selected service; v2 controller facades are conditional on activation. |
 | Native Agent Runtime + Interactive Chat | `src\agent-provider.ts`, `src\agent-provider-errors.ts`, `src\agent-provider-state.ts`, `src\agent-provider-scheduler.ts`, `src\agent-runtime.ts`, `src\agent-tool-session.ts`, `src\agent-controller.ts`, `src\agent-chat-store.ts`, `src\agent-chat-service.ts`, `src\agent-turn-events.ts`, `src\http\app.ts`, `src\config.ts`, `src\index.ts`, launcher/UI chat bridge | default-off OpenAI-compatible provider pool with stable credential IDs and deterministic persistent scheduling; task/session/finalization metadata lives under `runtime\agent-runtime\state.json`, conversation/thread state under `runtime\agent-runtime\chat.sqlite`, and provider rotation/cooldown/quota/scope/breaker state under `runtime\agent-runtime\provider-state.sqlite`; one chat maps to one durable runtime session and each user turn to one independently finalized task; chat history is not canonical Memory; internal scoped MCP tools, Memory-first context and Learning remain authoritative; raw provider secrets remain config-owned; legacy `/agent/run` remains compatible |
-| Self-learning | `src\learning`, `src\mcp\learning-*` | `runtime\learning\state.json` contains checkpoint/curator scheduling metadata only; learned content routes to existing Memory/Grafel authorities |
-| Game Mode / phone control | `src\phone`, `src\mcp\phone-*` | `runtime\phone` + gateway/ADB transport state; orientation-agnostic live coordinates, crop/burst observation with motion scoring, mixed bounded action sequences with screen-stability waits/final observation, and gateway companion overlay-marker control are source-built without adding a second phone-control authority |
+| Self-learning | `src\learning`, `src\mcp\learning-*`, `src\mcp\controller-learning-*` | `runtime\learning` owns checkpoint/review state, bounded task/evidence/reuse/procedure/proposal records and external-controller continuity. Canonical knowledge routes to selected Memory/Grafel/Skills owners; it is not merely a checkpoint counter. |
+| Game Mode / phone control | `src\phone`, `src\mcp\phone-*` | `runtime\phone` and existing gateway/ADB transports; observation/actions, bounded sequences, game profiles/sessions, region/perception assessments and guarded execution through the same controller. `phone_game_inspect` and `phone_game_manage` extend this owner. |
 | Code Intelligence | `src\code-intelligence`, `src\mcp\code-intelligence-*` | isolated `runtime\grafel` provider/runtime state |
 | Semantic IDE / LSP | `src\semantic-ide`, `src\mcp\semantic-ide-*` | project-local provider trees/state under `runtime\semantic-ide`; provider processes remain sibling capability and fail-soft |
-| Skills artifact capability | `src\skills`, `src\mcp\skills-*` | `runtime\skills`; validates/imports/lists/inspects/packages bounded skill artifacts only; no artifact code execution and no tool-authority grant |
+| Skills artifact capability | `src\skills`, `src\mcp\skills-*`, `src\learning\skill-proposal-*` | `runtime\skills` holds validated artifacts/revisions; Learning owns proposal/evidence/decision records. User-approved builds and activation are revision-bound. Artifacts do not independently execute code or grant tool authority. |
 | Reflexion safeguards | `AGENTS.md`, `src\failure-evidence.ts`, `src\mcp\failure-loop-advisor.ts`, `src\rdc\utils\toolHistory.ts`, `tests\reflexion-contract.test.ts`, `tests\failure-loop-advisor.test.ts`, `tests\reflexion-second-wave.test.ts` | controller contract + bounded exact/same-family advisory state + compact redacted failure-evidence history; no separate persistent store |
 | Activity/failure tracking | `src\tracker`, `src\launcher\ActivityJournal.cs` | `runtime\tracker` |
 | Secret/evidence privacy | `src\security\redaction.ts`, `src\security\evidence-capture-policy.ts`, caller wiring in `src\mcp\server.ts` | redaction remains layered over persistence; workspace evidence markers can only reduce stored detail and fail toward metadata-only on invalid/untrustworthy file-tool paths or marker parsing |
@@ -1694,7 +1686,7 @@ Desktop lifecycle is owned separately by `Agent Core.exe`, which starts/monitors
 | Release intent + version integrity | `.changeset`, `scripts\release`, `src\version.ts` | development/release metadata + deterministic product-version synchronization; no runtime gate |
 | Tests | root `tests`, `src\launcher.tests`, `src\ui` tests | verification only; not runtime dependencies |
 
-The active architecture is deliberately compact: Node HTTP/MCP core, shared outbound-network and bounded-persistence primitives, vendored machine-control layer with document projection/checkpoints/browser/output-spill sub-owners, native memory, controller-reviewed self-learning, Game Mode phone control, Grafel-backed Code Intelligence, Semantic IDE/LSP, artifact-only Skills capability, Native Agent Runtime + persistent Interactive Chat, persistent provider scheduling, OAuth/auth, tracker/evidence privacy, desktop launcher/UI, and tunnel. Learning, Grafel, Semantic IDE, Skills, Native Agent Runtime, and machine-control remain sibling/connected authorities rather than duplicate stacks. The former Hermes Partner bridge is retired historical architecture. Native Agent Capability Parity is now source-implemented and targeted-qualified: task-scoped dynamic grants reuse the existing MCP body, and Agent Core-native Web Research adds search/open authorities; resident parity activation remains pending the supported launcher restart.
+The active architecture is deliberately compact: Node HTTP/MCP core, shared outbound-network and bounded-persistence primitives, vendored machine-control layer with document projection/checkpoints/browser/output-spill sub-owners, native memory, controller-reviewed self-learning, Game Mode phone control, Grafel-backed Code Intelligence, Semantic IDE/LSP, artifact-only Skills capability, Native Agent Runtime + persistent Interactive Chat, persistent provider scheduling, OAuth/auth, tracker/evidence privacy, desktop launcher/UI, and tunnel. Learning, Grafel, Semantic IDE, Skills, Native Agent Runtime, and machine-control remain sibling/connected authorities rather than duplicate stacks. The former Hermes Partner bridge is retired historical architecture. Native task-scoped dynamic grants reuse the existing MCP body, including Agent Core-owned Web Research search/open authorities. The 2026-10-03 NACP/P8 closure below records scoped resident acceptance; this refresh does not repeat or broaden that claim.
 
 ### 0.4 Runtime and persistent-state map
 
@@ -1705,8 +1697,11 @@ The active architecture is deliberately compact: Node HTTP/MCP core, shared outb
   runtime\
     node\                        project-local Node runtime
     bridge-auth\                 Agent Core API-key/OAuth persistence
-    memory\                      canonical memory + derived semantic index + transactional journal state
-    learning\                    checkpoint/review/curator scheduling metadata only; no learned-content store
+    memory\                      default legacy canonical Memory and derived/index/transaction state
+    memory-v2\                   canonical experience-v2 root only after validated activation
+    memory-v2-activation.json     host-owned selection marker tied to a verified backup
+    learning\                    checkpoint/review, bounded evidence, procedures, proposals and controller continuity
+    agent-runtime\               task/finalization state, chat.sqlite and provider-state.sqlite
     phone\                       Game Mode named-action/state data when used
     grafel\                      isolated Code Intelligence provider binary/home/daemon/index state
     semantic-ide\                managed LSP/provider state and integrity metadata
@@ -1729,9 +1724,11 @@ The active architecture is deliberately compact: Node HTTP/MCP core, shared outb
   tunnel-client\                 tunnel executable + profile
 ```
 
-Canonical authority depends on subsystem: memory authority is `runtime\memory` Markdown; auth/OAuth authority is `runtime\bridge-auth`; machine-control configuration authority is `runtime\rdc`; tracker journals are operational evidence, not configuration authority.
+Canonical authority depends on subsystem: Memory authority is the host-selected legacy root (default `runtime\memory`) or activated experience-v2 root (`runtime\memory-v2`); auth/OAuth authority is `runtime\bridge-auth`; machine-control configuration authority is `runtime\rdc`; tracker journals are operational evidence, not configuration authority.
 
-### 0.5 Current memory map
+### 0.5 Legacy-compatible Memory map
+
+This diagram describes the legacy note/retrieval path. Host selection and the experience-v2 owner are documented in the current authority table, sections 0.3/10A/30, and the dated Memory v2 records. The active root must be resolved rather than assumed from this diagram.
 
 ```text
 AI/controller
@@ -1851,19 +1848,15 @@ Report: docs/Wave7-Activation-20260923.md. Evidence/journal: runtime/tmp/wave7-a
 
 ### 0.7 Repository-state mapping
 
-**Superseding current state — 2026-09-26:** the corrupted historical Git metadata was archived intact at `runtime/backups/git-object-db-corrupt-20260926/.git-corrupt`. A locally verified bundle of `refs/agent-core/current-line-baseline` commit `639cdf77fd7288a722131862e22eecaff4a90f07` was used to initialize fresh metadata. Local `main` and the baseline ref both point to that parentless current-line baseline, the index was rebuilt from `HEAD`, and `git fsck --full --no-reflogs` is clean. A 3,715-file active-worktree inventory matched SHA-256 `748fd0e135325db4545983befa2083dec3509e258c11a722bb29f7b7ca946f12` before and after metadata replacement, proving the recovery did not checkout/reset or rewrite active source bytes. Historical pre-baseline lineage that was absent from the healthy bundle remains forensic history, not reconstructed provenance.
+**Current source authority:** the user-confirmed current source repository is `https://github.com/Black-Project-Agent-Core/Agent-Core`. This refresh inspected `main` at `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3`, with `origin/main` tracking in this clone. The former legacy/reference-only designation and mandatory `legacy` remote/no-upstream assumptions are superseded. Inspect actual local Git state before operations; source publication does not establish installed runtime state or authorize destructive synchronization, release or further publication.
 
-The public repository `https://github.com/Black-Project-Agent-Core/Agent-Core` remains **legacy/reference-only** for the current Agent Core line. It was not fetched or used during this repair. The only configured remote is named `legacy`; local `main` has no upstream tracking. Current exact source/runtime plus the fsck-clean current-line baseline are local authorities; legacy network history remains reference evidence only.
+Release-intent comparison remains tied to the explicit synthetic local `refs/agent-core/current-line-baseline`. A fresh clone does not automatically contain that private local ref. The `legacyRepository` package field and recovery script's hard-coded `LEGACY_REFERENCE_ONLY` rejection remain implementation remnants; the recovery guard has not been changed in this documentation-only task.
 
-Therefore:
+Credentials, private runtime state, protected references, browser profiles, Memory, tracker state and recovery backups remain outside publication boundaries. Historical releases/community work retain their original provenance and do not prove current release-asset availability.
 
-- **current local exact source/runtime + trusted current-line backups/release artifacts + this maintained architecture map** are the recovery authorities, subject to corruption checks;
-- the legacy GitHub remote is reference evidence only; local configuration names it `legacy` and local `main` has no upstream;
-- Git-diff/release-baseline logic must never compare or restore the current line against legacy `main`;
-- no push/publication of the current line to the legacy repository is authorized by this mapping;
-- credentials, private runtime state, protected references, browser profiles, memory, tracker state, and recovery backups remain outside any publication/recovery package boundary.
+**Historical metadata recovery — 2026-09-26:** the corrupted historical Git metadata was archived intact at `runtime/backups/git-object-db-corrupt-20260926/.git-corrupt`. A locally verified bundle of `refs/agent-core/current-line-baseline` commit `639cdf77fd7288a722131862e22eecaff4a90f07` was used to initialize fresh metadata. Local `main` and the baseline ref both point to that parentless current-line baseline, the index was rebuilt from `HEAD`, and `git fsck --full --no-reflogs` is clean. A 3,715-file active-worktree inventory matched SHA-256 `748fd0e135325db4545983befa2083dec3509e258c11a722bb29f7b7ca946f12` before and after metadata replacement, proving the recovery did not checkout/reset or rewrite active source bytes. Historical pre-baseline lineage that was absent from the healthy bundle remains forensic history, not reconstructed provenance.
 
-Historical repository-operability work added root `README.md`, `CONTRIBUTING.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`, `.github/CODEOWNERS`, issue/PR templates, and `SECURITY.md`, and previously published a `v0.12.0` release asset set to the public GitHub repository. Treat those remote/community surfaces as **historical publication evidence on the legacy repository**, not as current-line authority or recovery authorization. Local current-line source/runtime and explicitly trusted current-line artifacts remain authoritative.
+At that historical repair, the network repository was not fetched, the remote was named `legacy`, and `main` had no upstream. Those were observations of the repaired local checkout at that time, not the current repository policy.
 
 ### 0.8 Mapping contract
 
@@ -1937,17 +1930,17 @@ Portable recovery/integrity contract:
 
 - `scripts\\release\\integrity-manifest.mjs` recursively hashes regular package files with SHA-256 after all release content has been staged and before ZIP creation; symbolic links are rejected rather than silently followed.
 - Integrity enforcement deliberately excludes `INTEGRITY-MANIFEST.json` itself, mutable `tunnel-client\\agent-core.yaml`, and `runtime\\memory\\`. Live `.env`, secrets, auth/OAuth state, tracker/browser data, subsystem runtime state, forensic backups, and protected research trees are additionally protected by the recovery script and are never auto-repaired.
-- `scripts\\windows\\Recover-Agent-Core.ps1 -Mode Bootstrap` installs only into an empty destination and supports trusted ZIP/checksum recovery. The script also contains a network `gh release download` path, but its current default `Repository` still points to the **legacy/reference-only** GitHub repository. Therefore that implicit network path is currently **not an authorized current-line recovery authority**; use an explicitly trusted current-line `-SourceZip` + checksum/hash (or a separately user-authorized current-line repository argument) until the default is corrected.
+- `scripts\\windows\\Recover-Agent-Core.ps1 -Mode Bootstrap` installs only into an empty destination and accepts trusted ZIP/checksum recovery. `Repository` defaults to empty; network recovery requires both `-AllowNetworkRecovery` and a named repository. The implementation still explicitly rejects `Black-Project-Agent-Core/Agent-Core` with `LEGACY_REFERENCE_ONLY`, despite the current-line source sync. This known guard requires a separately authorized implementation change; documentation does not bypass it.
 - `-Mode Audit` is read-only and checks package version, manifest schema, duplicate/unsafe/protected paths, file size, and SHA-256. Unknown local files are not treated as corruption and are not deleted.
 - `-Mode Repair` is restricted to a packaged layout, requires the same product version, verifies the trusted release ZIP before use, backs up every damaged existing file under `runtime\\recovery\\backups\\<timestamp>`, replaces only manifest-governed missing/mismatched immutable files, writes the trusted/derived local manifest, invokes project-local runtime health/self-repair, and audits again.
 - Offline bootstrap/repair accepts `-SourceZip` plus `-ChecksumFile` or explicit `-ExpectedZipSha256`; source checkouts are not mutated into release layouts by repair.
 - The immutable v0.12.0 ZIP predates `INTEGRITY-MANIFEST.json`; the new bootstrap supports that release by validating the whole archive hash and deriving a local manifest from the trusted extracted package, after applying its published corrective env-example asset when available.
-- Current implementation evidence is limited to source inspection plus syntax/parse validation of the Node and PowerShell files. No functional corruption/repair scenario or broader regression suite has been executed in this task; such testing remains user-controlled.
-- Minor intent `.changeset\\20260920161819-570db1.md` records this shipped capability for planned v0.13.0. Stable v0.12.0 and its immutable archive remain unchanged.
+- The original recovery implementation report recorded source inspection and syntax/parse validation. This documentation refresh re-read the recovery source only; it did not repeat syntax checks, run a recovery scenario, or execute regression tests.
+- Historical 2026-09-20 release-intent observation: `.changeset\\20260920161819-570db1.md` targeted v0.13.0 while stable v0.12.0 remained unchanged. Current source version is 0.14.0; this old queue snapshot is not a current release plan.
 
-The intended release layer does not auto-commit, tag, push, publish, deploy, restart Agent Core, or change MCP authorization. Recovery is a separate operator action. The current bootstrap implementation can contact a GitHub repository through authenticated `gh`, but its default points at the legacy/reference-only repository and is therefore **not an authorized implicit current-line source**.
+The release layer does not auto-commit, tag, push, publish, deploy, restart Agent Core, or change MCP authorization. Recovery is a separate operator action. Source inspection confirms the explicit network-recovery opt-in and retained repository rejection described above; no recovery was executed in this refresh.
 
-Historical release `0.8.1` was explicitly applied and archived, and its four patch intents were consumed at that time. **Current 2026-09-22 state is different:** stable product identity is `0.12.0`, three pending intent files are present, and aggregate next-version intent is `0.13.0`; the current 0-byte `release-plan.mjs` prevents a fresh authoritative `release:plan` execution until source recovery.
+Historical release `0.8.1` was explicitly applied and archived, and its four patch intents were consumed at that time. **Historical 2026-09-22 state:** stable product identity is `0.12.0`, three pending intent files are present, and aggregate next-version intent is `0.13.0`; the then-0-byte `release-plan.mjs` prevented a fresh authoritative `release:plan` execution until the later source recovery.
 
 Observed implementation evidence on 2026-09-18:
 
@@ -1993,41 +1986,25 @@ To prevent future controller/tool confusion, this document uses these terms stri
 External RDC status, Device ID/session/channel state, package version, allowlist/profile checks, `Start-Desktop-Commander.bat --check`, or external-RDC relocation tests **must never be used as Agent Core health, portability, or acceptance evidence**. Conversely, Agent Core health/test results do not prove external RDC health. The two systems may coexist in the same project directory for operator convenience, but their runtime state, verification, self-repair, and acceptance criteria remain separate unless an explicit integration is requested.
 
 ## 2. Executive architecture
-Agent Core is currently a direct machine bridge, not the previous autonomous-agent framework.
+
+Agent Core combines an authenticated local MCP body with an implemented Native model/controller runtime and persistent interactive chat. External and Native controllers share the existing capability and knowledge owners; the previous autonomous framework and retired Hermes bridge are not revived.
 
 ```text
-AI / MCP client
-    |
-    | authenticated MCP over tunnel or loopback
-    v
-Node HTTP server :8765
-    |
-    +-- GET /health                public health
-    +-- OAuth discovery/endpoints
-    +-- POST /mcp                  authenticated MCP
-            |
-            v
-mandatory AGENTS.md bootstrap
-            |
-            v
-MCP tools/list + tools/call
-            |
-            +-- 26 Agent Core machine-control tools (`src/rdc`, vendored RDC-derived) -> local Windows machine
-            |
-            +-- 10 explicit memory tools -> native MemoryService
-            |                          |
-            |                          +-- runtime/memory canonical notes
-            |                          +-- hybrid lexical + semantic retrieval
-            |                          +-- typed links + conservative evolution
-            |                          +-- rebuildable derived vector index
-            |                          +-- proposal-only consolidation
-            |
-            +-- 14 Game Mode tools -> PhoneController -> gateway/ADB -> Android phone
-            |
-            +-- 5 Code Intelligence tools -> CodeIntelligenceService
-                                           -> project-local Grafel MCP bridge/daemon
-                                           -> structural graph / impact / patterns
+External AI / MCP client                   Native provider / chat UI
+         |                                          |
+         +----- Node HTTP/MCP server :8765 ----------+
+                           |
+             mandatory AGENTS.md / scoped grants
+                           |
+             machine and browser control (src/rdc)
+             selected Memory host (legacy or experience-v2)
+             Learning / controller learning / Skills
+             phone and guarded Game Mode
+             Grafel Code Intelligence / Semantic IDE
+             Agent Core-owned web search / open
 ```
+
+Source topology is detailed in section 0.2 and the current source authority table. Actual runtime enablement, provider readiness and exposed tools require observation of that instance.
 
 Remote access is a separate tunnel path:
 
@@ -2130,7 +2107,7 @@ Startup order:
 4. Ensure configured data directory exists.
 5. Probe durable Agent Core machine-control config readiness (`runtime\rdc`, vendored RDC-derived implementation). Initialization/read failure is recorded as Execution unavailable; it is not replaced by permissive in-memory defaults.
 6. Resolve the optional memory embedder from `memoryEmbedding` config; current implementation supports Cloudflare Workers AI.
-7. Initialize the native file-backed MemoryService with the configured memory directory and optional embedder.
+7. Call `initializeAgentCoreMemory` to select the legacy configured root or the host-validated experience-v2 root/service, with the optional embedder.
 8. Validate canonical bootstrap/notes and ensure the rebuildable lexical/semantic memory index.
 9. Record memory-service readiness in the Activity Tracker.
 10. Trigger background Chrome availability for PDF generation only when initial Agent Core machine-control configuration readiness is available.
@@ -2139,20 +2116,20 @@ Startup order:
 13. Initialize Semantic IDE/LSP fail-soft using project-local provider configuration.
 14. Initialize `LearningService` fail-soft against the shared MemoryService and Code Intelligence service.
 15. Initialize the artifact-only `SkillService`; skill artifacts never gain execution authority.
-16. Construct API key store.
-17. Construct OAuth store.
-18. Construct HTTP security policy.
-19. Construct OAuth service.
-20. Create HTTP server and MCP handler, passing the shared MemoryService, LearningService, Semantic IDE, SkillService, PhoneController, and CodeIntelligenceService to MCP server factories.
-21. Listen on configured host/port.
-22. Record listening state.
+16. Attach Skills to Learning; initialize external-controller learning and the Native runtime against the selected Memory and Learning owners. Initialize MCP mutation safety.
+17. Construct API key store.
+18. Construct OAuth store and HTTP security policy, then OAuth service.
+19. Construct Web Research and the shared MCP runtime, including the selected experience service when active.
+20. Construct the Native controller and initialize persistent Agent Chat when their runtime dependencies are available.
+21. Create the HTTP server and MCP handler with shared owners, Native run/chat routes and live health providers.
+22. Listen on configured host/port and record listening state.
 
 Source defaults from `src\config.ts`, unless overridden by process environment or excluded `.env`:
 
 - host: `127.0.0.1`
 - port: `8765`
 - auth/OAuth data directory: `runtime\bridge-auth`
-- memory directory: `runtime\memory` (override: `AGENT_CORE_MEMORY_DIR`)
+- legacy memory directory: `runtime\memory` (override: `AGENT_CORE_MEMORY_DIR`); a valid host activation marker selects the fixed experience-v2 root `runtime\memory-v2`
 - memory embedding provider: `cloudflare-workers-ai` only when account ID + API token + model are all configured
 - memory embedding dimensions: `768` default, overridable with `CLOUDFLARE_EMBEDDING_DIMENSIONS`
 - runtime callers that construct an older/manual config object without `memoryEmbedding` are treated as embedding-disabled instead of crashing startup; `loadConfig()` still returns the full current field
@@ -2386,19 +2363,20 @@ Transport support:
 
 If protocol mode is explicitly set to `legacy`, modern requests are rejected. `/mcp` is POST-only.
 
-Current dispatch model:
+Direct machine-control dispatch (other registered facades call their own owners):
 
 ```text
 tools/list
-    -> registered metadata + input schemas
+    -> registered metadata + input schemas, filtered by credential tool grant
 
 tools/call
-    -> generic wrapper
+    -> credential tool-grant enforcement
+    -> existing mutation admission / generic wrapper
     -> Agent Core machine-control handler (`src\rdc`, vendored RDC-derived)
     -> local operation
 ```
 
-There is no route selection, workflow selection, memory lease, postflight gate, execution DAG, or capability-authority step.
+`src/auth/tool-grant.ts` is installed before registration/mutation admission: disallowed tools are hidden from discovery and direct calls fail with `MCP_TOOL_GRANT_DENIED`. An absent credential grant preserves legacy credential behavior; an explicit empty grant denies all tools. Native-controller execution additionally enforces its configured capability policy and task-scoped grants. These are actual authorization boundaries, not the retired route/workflow selection, Memory lease, postflight gate or execution-DAG model. Memory/Learning do not route or authorize ordinary machine-control operations.
 
 The generic wrapper:
 
@@ -2413,7 +2391,7 @@ The generic wrapper:
 
 ## 10. HISTORICAL public MCP tool-surface baseline
 
-> Historical inventory retained for architecture evolution. It is **not the current manifest**. Current live tool truth is section 0.1/0.2: 64 tools after retirement of the legacy `partner` facade.
+> Historical inventory retained for architecture evolution. It is **not the current manifest**. Current source registration is summarized at the top of this document and in section 0.2. Tool exposure must be read from the relevant running instance; neither this inventory nor an older 64/70-tool observation is its manifest.
 
 This historical runtime baseline registered **55** tools when MemoryService, Game Mode, and Code Intelligence were enabled: **26 Agent Core machine-control tools implemented by the vendored `src\rdc` layer**, **10 explicit memory tools**, **14 Game Mode / Android phone-control tools**, and **5 Code Intelligence facade tools**. Memory, phone control, and Code Intelligence were sibling capabilities; none routed or gated normal machine-control calls.
 
@@ -2503,7 +2481,7 @@ The runtime handler-schema map is kept in parity with these 26 RDC public tools.
 
 ## 10A. Native memory subsystem
 
-Memory is a first-class sibling subsystem under `src\memory`; it is **not** part of `src\rdc` and is never a preflight gate for normal machine-control tools.
+Memory is a first-class sibling subsystem, not part of `src\rdc` or a preflight gate for normal machine-control tools. `src\memory\host-runtime.ts` selects the legacy `src\memory\service.ts` by default or, after validating the activation marker and backup digest, `SubProject\agent-core-memory` experience-v2 at `runtime\memory-v2`. The branches do not initialize competing writers. The file map and layout below describe the legacy-compatible owner; the later Memory v2 change records describe its activated successor and evidence limits.
 
 Primary source files:
 
@@ -3290,7 +3268,8 @@ Current Agent Core internal machine-control filesystem policy instead comes from
 Root `package.json` commands:
 
 ```text
-npm run build   -> tsc -p tsconfig.json
+npm run build   -> path:check + build:memory + tsc -p tsconfig.json
+npm run build:memory -> tsc -p SubProject/agent-core-memory/tsconfig.json
 npm test        -> vitest run
 npm run start   -> node dist/index.js
 npm run verify  -> build + test
@@ -3339,11 +3318,11 @@ When corresponding source exists under `src`, do not edit generated implementati
 
 ## 28. Runtime directory map
 
-`runtime` is ignored by Git and currently contains both active state and historical development/recovery artifacts.
+`runtime` is ignored by Git. An installed instance may contain active state and historical development/recovery artifacts; this source clone does not include production runtime state.
 
 ### 28.1 Active or architecturally meaningful paths
 
-- `runtime\memory` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â canonical native memory root. `00-agent-core-memory.md` is the pinned foundational memory; `notes\` stores ordinary canonical memories; `index\index.json` is derived/rebuildable semantic-text/fingerprint state; `state\` is reserved local memory state. `AGENTS.md` still requires viewing this memory directory before other Agent Core work.
+- `runtime\memory` — default legacy Memory root, with pinned bootstrap, canonical notes, derived index and transactional state. `runtime\memory-v2` is selected instead when `src\memory\host-runtime.ts` validates `runtime\memory-v2-activation.json` and its backup digest. AGENTS requires viewing the active Memory root before other Agent Core work.
 - `runtime\rdc` — Agent Core internal machine-control config, local tool history, and Puppeteer Chrome cache
 - `runtime\tracker` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â persistent activity journal/TXT mirror/clear marker/reports/native dumps
 - `runtime\webview2` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â WebView2 profile/cache/state
@@ -3377,7 +3356,7 @@ Current user-facing desktop launcher.
 
 ### `AGENTS.md`
 
-Mandatory local AI operating contract injected into MCP initialization. It points controllers to the canonical `runtime\memory` first-action requirement and to this `CODEBASE.md` architecture map.
+Mandatory local AI operating contract injected into MCP initialization. It points controllers to the active canonical Memory root first-action requirement and to this `CODEBASE.md` architecture map.
 
 ### `MEMORY.md`
 
@@ -3397,25 +3376,9 @@ Current security model for the direct authenticated bridge, effective auth/OAuth
 
 ## 30. SubProject boundary
 
-Top-level `SubProject` currently contains:
+`SubProject/agent-core-memory` is an explicit current integration, not merely a co-located reference. Root `build:memory` compiles it before the Core; `src/memory/host-runtime.ts` dynamically loads its generated service only after experience-v2 activation validation. `src/mcp/memory-experience-tools.ts` exposes controller-scoped v2 read/write facades when the selected host runtime supplies that service.
 
-- `Agent-Code`
-- `Market-Signal-Lab`
-- `Presentation-Bridge`
-- `Super-Runtime`
-- `Tools-Photoshop`
-
-A scan of active Agent Core `src` and root operational scripts found no current runtime dependency on these SubProjects.
-
-### 30.1 `SubProject\Agent-Code`
-
-The older Agent Code application still exists with its own executables, Tauri source, UI, resources, WebView2 data, and tests.
-
-Current root `Agent Core.exe` does not require it according to active `RootLocator` and launcher source. Treat Agent Code as a separate/legacy SubProject unless active source explicitly reconnects it.
-
-### 30.2 Other SubProjects
-
-Market-Signal-Lab, Presentation-Bridge, Super-Runtime, and Tools-Photoshop are independent project areas, not components of the current Agent Core startup graph. Do not recursively interpret their internal code as Agent Core architecture unless an integration is explicitly introduced.
+This does not make every SubProject an Agent Core runtime dependency. The historically referenced `SubProject/Agent-Code` is absent from this source snapshot; it is not a root launcher dependency. Launcher discovery uses project root markers in `src/launcher/RootLocator.cs`. Other co-located projects retain their own ownership unless an exact import/build/runtime path establishes an integration. Do not recursively ground unrelated SubProjects solely because they share the repository.
 
 ## 31. Test architecture and contracts
 
@@ -3570,18 +3533,9 @@ Added during the 2026-09-17 maintenance hardening pass. It provides dedicated re
 
 ## 32. Current Git/worktree state
 
-At the 2026-09-16 baseline, the repository is in a **large uncommitted refactor state**.
+The inspected current source baseline is `main` at `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3`, tracking `origin/main` in this clone. See section 0.7 for repository and recovery boundaries. Inspect `git status` and the relevant diff at task time; the large uncommitted refactor observed on 2026-09-16 is historical, not this clone's state.
 
-Git reports many files from the prior Agent Core framework architecture as deleted while the current direct Agent Core bridge with vendored RDC-derived machine-control handlers, launcher, tracker, UI, and related files are modified or untracked.
-
-Worktree safety rules:
-
-- do not assume Git HEAD describes current architecture
-- do not run broad `git restore`, `git checkout`, `git clean`, `git reset --hard`, or mass deletion to make the tree match HEAD without explicit user instruction
-- preserve unrelated SubProject/user changes
-- treat the current working tree as implementation truth
-
-Old deleted paths still visible in Git history/status include routing, memory, workflow, execution DAG, GitHub fabric, Langflow, continuity, operator-directives, observability, plugin, Supabase, and many related tests/scripts. Their appearance in Git metadata does **not** make them active runtime code.
+Preserve unrelated local changes and separate project state. Do not use broad restore/reset/clean operations to force a worktree to match a remote without explicit authorization. Old architecture visible in history is not active implementation unless current source reconnects it.
 
 ## 33. Confirmed inactive legacy architecture
 
@@ -4050,9 +4004,9 @@ because that shared classifier is imported by active filesystem/edit handlers. T
 - `.git`: version-control metadata, not runtime architecture.
 - `node_modules`: installed third-party dependencies, not first-party source.
 - launcher `bin` / `obj`: .NET generated build/intermediate output, not source authority.
-## 41. Complete first-party source inventory baseline
+## 41. Historical first-party source inventory baseline — 2026-09-16
 
-This inventory exists to prevent future broad grounding merely to discover whether a first-party file exists. Generated dependency/build files are classified elsewhere; this list covers current first-party `src`, root `tests`, and `scripts`.
+This inventory preserves the original first-party file census. Generated dependency/build files are classified elsewhere; files added since the baseline are described in their current owner sections and dated change records. Inspect exact source rather than treating this historical census as exhaustive current discovery.
 
 ### Core / auth / HTTP
 
@@ -4241,13 +4195,11 @@ UI scaffold/support files also present:
 ### Root scripts
 
 - `scripts\tunnel\build-admin-client.ps1`
-- `scripts\windows\.keep` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â placeholder only; no active Windows script currently lives beside it.
+- `scripts\windows\.keep` was a placeholder in the original inventory. Current Windows scripts include recovery, runtime provisioning, portability and activation helpers; see exact `scripts/windows` source for the task-relevant owner.
 
 ### 41.1 SubProject boundary recheck
 
-Second-pass content searches found no `SubProject` references in active root `src`, root `tests`, or root `scripts`. Therefore the SubProject trees remain separate co-located projects/research products rather than runtime dependencies of the current Agent Core bridge.
-
-Their existence matters for repository navigation, but Agent Core architecture work should not deep-ground all SubProjects unless a requested change crosses that boundary.
+The original 2026-09-16 scan found no active SubProject imports. That result is historical and superseded by the explicit `SubProject/agent-core-memory` build/host/facade integration documented in section 30. Other co-located projects do not become runtime dependencies by association.
 
 ### 41.2 Inventory maintenance rule
 
@@ -4266,9 +4218,11 @@ When first-party files under `src`, root `tests`, or root `scripts` are added, r
 - Added a complete first-party source inventory baseline so controllers can discover files without repository-wide re-grounding.
 - Reconfirmed no active SubProject references in root `src`, `tests`, or `scripts`.
 - No build or test suite was executed during this second grounding pass.
-## 43. Mermaid architecture and workflow diagrams
+## 43. Historical Mermaid architecture and workflow diagrams — 2026-09-16
 
-The diagrams below visualize the grounded current implementation. They describe implemented topology, not planned architecture.
+These diagrams preserve the initial audit snapshot. Current Native chat, shared learning/capability owners and conditional Memory v2 selection are described in the current authority table and sections 0.2–0.4; old diagram tool counts and roots are not a current manifest.
+
+The diagrams below visualize the implementation grounded at the original audit date, rather than planned architecture. They are retained as historical topology evidence.
 
 ### 43.1 Whole-system topology
 

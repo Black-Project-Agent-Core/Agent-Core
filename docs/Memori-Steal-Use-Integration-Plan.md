@@ -1,4 +1,6 @@
 # Memori Steal/Use Integration Plan
+
+> **Dated implementation evidence — 2026-09-25.** The activation-pending and release-version statements below belong to that session. Current source retains [BM25 scoring](../src/memory/bm25.ts) and [legacy retrieval integration](../src/memory/retrieval.ts), while current Memory host ownership also includes the [v2 integration](Agent-Core-Memory-v2-Installation-20261008.md). This documentation review does not establish current resident ranking behavior or reopen an old restart request.
 > Status: MEMORI-P1 IMPLEMENTED — TARGETED VERIFIED — COMPILED DIST QUALIFIED — LIVE ACTIVATION PENDING — REFERENCE RETIRED / DELETED
 > Reference: `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\memory\02-Memori`
 > Remote: `https://github.com/MemoriLabs/Memori`

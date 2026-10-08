@@ -1,5 +1,7 @@
 # Market Signal Lab — Repository Content Policy
 
+`<MSL_ROOT>` means the verified `SubProject/Market-Signal-Lab` directory inside the current Agent Core checkout. Git worktrees/branches belong to the containing monorepo; they are not nested standalone MSL repositories. Paths recorded in older reports remain historical. This path clarification does not authorize merge, publication, artifact replacement or worktree deletion.
+
 Dokumen ini adalah aturan permanen untuk setiap push, commit dokumentasi, dan pengelolaan release Market Signal Lab.
 
 ## 1. README.md
@@ -98,7 +100,7 @@ raw private API payloads containing credentials
 
 Source code, tests, locale, specs, plans, QA, manifests, dan Browser Companion boleh disimpan.
 
-Binary besar seperti `.exe` dan release ZIP ditempatkan sebagai **GitHub Release artifacts** untuk distribusi remote dan pada `E:\Market-Signal-Lab\release-stable\` untuk canonical local stable runtime. `release-stable/` di-ignore oleh Git agar binary tidak memenuhi source history.
+Binary besar seperti `.exe` dan release ZIP ditempatkan sebagai **GitHub Release artifacts** untuk distribusi remote dan pada `<MSL_ROOT>\release-stable\` untuk canonical local stable runtime. `release-stable/` di-ignore oleh Git agar binary tidak memenuhi source history.
 
 Stable artifact **tidak boleh hanya berada di `.worktrees`, `dist/.worktrees`, temporary build directory, atau folder isolasi lain** yang secara desain dapat dihapus. Setelah sebuah kandidat dinyatakan stable/released, exact verified bytes harus dipromosikan keluar dari worktree ke `release-stable` dan diverifikasi ulang melalui SHA-256, tanpa rebuild jika kandidat sudah signed-off.
 
@@ -112,7 +114,7 @@ Larangan ini hanya boleh berubah jika operator secara eksplisit mengganti policy
 
 ## 8. Canonical root dan worktree
 
-`E:\Market-Signal-Lab` adalah canonical integrated project root. `.worktrees` dan `dist/.worktrees` hanya temporary isolation. Sebuah task belum dianggap selesai terintegrasi hanya karena branch/worktree sudah clean atau pushed; accepted work harus masuk ke canonical root integration branch atau terdokumentasi jelas sebagai intentionally separate/unreleased. Stable executable, installer, dan launcher tidak boleh bergantung pada worktree path.
+`<MSL_ROOT>` adalah canonical integrated project root. `.worktrees` dan `dist/.worktrees` hanya temporary isolation. Sebuah task belum dianggap selesai terintegrasi hanya karena branch/worktree sudah clean atau pushed; accepted work harus masuk ke canonical root integration branch atau terdokumentasi jelas sebagai intentionally separate/unreleased. Stable executable, installer, dan launcher tidak boleh bergantung pada worktree path.
 
 ## 9. Project scope saat ini
 

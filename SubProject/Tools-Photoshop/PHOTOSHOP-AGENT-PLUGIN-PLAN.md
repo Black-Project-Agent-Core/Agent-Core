@@ -1,5 +1,7 @@
 # PHOTOSHOP AGENT PLUGIN — Architecture & Implementation Plan
 
+> **Planning-only source boundary, 8 October 2026:** this directory contains this plan only. No `Photoshop-Agent-Plugin` implementation or upstream engine checkout is present in the imported snapshot, and Agent Core source does not register it as a runtime capability. The original machine path, inspected versions and upstream observations below are historical design context. They are not proof of current installation, compatibility or implementation, and this document does not authorize downloads or activation.
+
 Status: Planning baseline
 Target platform first: Windows
 Working project location: `D:\Games-kuyhAa\Agent-Core\SubProject\Tools-Photoshop\Photoshop-Agent-Plugin`

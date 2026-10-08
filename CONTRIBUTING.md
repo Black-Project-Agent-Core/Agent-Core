@@ -1,6 +1,6 @@
 # Contributing to Agent Core
 
-Agent Core is maintained as a private, local-first Windows project and recovery repository.
+Agent Core is a local-first, Windows-oriented project. This GitHub repository contains the current source line; it is not a legacy-only reference mirror. See [README.md](README.md) for supported entrypoints and [docs/CODEBASE.md](docs/CODEBASE.md) for source ownership.
 
 ## Ground rules
 

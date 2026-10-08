@@ -1,5 +1,7 @@
 # Reference Wave — Supermemory / Codebase Memory MCP / Continuous Claude / Obsidian API / SIE / Spec-Kit
 
+> **Dated grounding evidence.** The native-runtime absence described in this 2026-09-27 baseline is superseded by [Native chat acceptance](history-agent-core/Agent-Core-Interactive-Agent-Chat-Plan-20261002.md) and [current architecture](CODEBASE.md). Individual conditional donor mechanisms retain their original disposition until their exact consumer is reassessed; runtime existence alone does not prove adoption.
+
 > **Status:** SOURCE-FIRST GROUNDING COMPLETE — CBM-P1/SPK-P3 ADOPTED + LIVE-VERIFIED — CONDITIONALS RETAINED
 > **Grounded:** 2026-09-27
 > **Authority:** exact source/tests first; current Agent Core source/runtime second; Grafel only a structural second opinion.

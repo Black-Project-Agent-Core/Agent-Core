@@ -1,5 +1,7 @@
 # Market Signal Lab — Phase I Windows Installer Lifecycle QA
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 **Date:** 2026-08-18 (UTC+7)
 **Status:** COMPLETE / NATIVE WINDOWS LIFECYCLE VERIFIED
 **Repository:** `rendevouz999/Market-Signal-Lab`

@@ -1,5 +1,7 @@
 # Phase C2 Semantic Correction — QA Evidence
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 **Date:** 2026-08-23 (Asia/Jakarta)
 **Status recorded here:** derived only from observed automated/native evidence below.
 **Formal release status:** NOT RELEASED

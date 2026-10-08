@@ -1,5 +1,7 @@
 # Market Signal Lab â€” RC Release Publication Partial Checkpoint
 
+> **Historical checkpoint:** the status, pending actions, machine paths, branch names and verification below belong to the dated revision. For the imported monorepo source and continuation boundary, use [CONTINUE_MSL.md](CONTINUE_MSL.md). This record is preserved as evidence and does not authorize resuming old work or certify the current checkout.
+
 **Checkpoint:** 2026-08-26 (Asia/Jakarta)
 **Branch:** `hardening/rc-stability-20260823`
 **Branch head at publication preparation:** `0ce427406f5418aa7040e607893ec0cb788ae2f0`

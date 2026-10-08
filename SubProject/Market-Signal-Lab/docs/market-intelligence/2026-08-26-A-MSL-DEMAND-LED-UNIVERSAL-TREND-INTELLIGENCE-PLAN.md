@@ -1,8 +1,10 @@
 # A — MSL Demand-Led Universal Trend Intelligence Implementation Plan
 
+> **Plan, not implemented capability:** this preserves the approved demand-led direction and proposed D0–M4 work. The checked-in baseline remains the observed-market/C3 source described by [continuation](../checkpoints/CONTINUE_MSL.md); no completion of this demand-intelligence plan is asserted. Resume only under a current task scope. Historical machine paths and external research claims are not fresh runtime or external-service evidence.
+
 **Date:** 2026-08-26 (Asia/Jakarta)
 **Status:** USER-APPROVED DIRECTION — IMPLEMENTATION PLAN READY
-**Canonical root:** `E:\Market-Signal-Lab`
+**Current source root:** `<AGENT_CORE_ROOT>/SubProject/Market-Signal-Lab` (the original 26 August planning host used `E:\Market-Signal-Lab`).
 **Paired research:** `2026-08-26-B-DESIGN-PRODUCT-AND-TREND-FORMATION-RESEARCH.md`
 
 ---
@@ -1553,6 +1555,6 @@ READY FOR IMPLEMENTATION
 NOT YET CLAIMED IMPLEMENTED
 ```
 
-Implementation should begin from **Wave D0 / Milestone M1**, using an isolated worktree when code changes begin, then integrate accepted work back into `E:\Market-Signal-Lab` root according to the permanent worktree integration policy.
+Implementation should begin from **Wave D0 / Milestone M1**, using an isolated worktree when code changes begin, then integrate accepted work back into the containing Agent Core checkout according to the permanent worktree integration policy.
 
 No GitHub Actions/CI. No implicit `main` merge. No fabricated demand/outcome evidence.

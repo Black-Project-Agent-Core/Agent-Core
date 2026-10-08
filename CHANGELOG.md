@@ -1,5 +1,7 @@
 # Agent Core Changelog
 
+This is the applied-release history, not a complete current-source capability list. The current source may include pending intents under [.changeset](.changeset/README.md). Earlier legacy-only repository decisions and Native Chat placeholder descriptions below are historical; current source and repository identity are documented in [README](README.md) and [CODEBASE](docs/CODEBASE.md). This refresh does not apply a release or alter past release entries.
+
 ## 0.14.0 - 2026-09-28
 
 - [minor] Add the native structured browser-control MCP lane, harden semantic-provider archive preflight, and add the read-only adoption-plan readiness inspector.

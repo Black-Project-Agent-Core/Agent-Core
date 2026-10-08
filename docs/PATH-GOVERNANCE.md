@@ -4,7 +4,7 @@
 
 This is the authoritative implementation policy for path portability in Agent Core.
 
-Current policy state: **live-activated; no active hardcoded-path exceptions**.
+Source review — 2026-10-08 UTC, `8a80251`: the path-policy checker is wired into root `package.json` build, and `scripts/portability/path-exceptions.json` has an empty `exceptions` array. The prior live-activation statement is a historical host observation; this documentation review did not execute the checker, build, relocation flow or resident runtime.
 
 Machine-readable exception registry:
 

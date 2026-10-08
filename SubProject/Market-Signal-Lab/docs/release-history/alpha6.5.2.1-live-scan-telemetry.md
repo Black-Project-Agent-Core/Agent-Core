@@ -1,5 +1,7 @@
 # Market Signal Lab v0.3 Alpha 6.5.2.1
 
+> **Historical record:** this document preserves its original design/release revision, paths and evidence. It is not a current execution checklist or fresh verification. See [current continuation](../checkpoints/CONTINUE_MSL.md) for the imported monorepo boundary; unavailable historical source links are not silently reconstructed.
+
 **Live Scan Telemetry & Adaptive ETA**
 Windows x64 · local-first · private/internal use · English + Indonesia · no AI · no synthetic market data
 

@@ -1,5 +1,7 @@
 # Phase P — Market Mapping Performance QA
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 **Date:** 2026-08-18
 **Branch:** `feature/market-mapping-performance-phase-p-20260818`
 **P1 implementation commit:** `55a3dd387a3c4c1d97b983407646a85184fdcf49`

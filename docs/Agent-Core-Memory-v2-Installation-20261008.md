@@ -1,8 +1,9 @@
 # Agent Core Memory v2 — Installation and Cutover
 
 **Tanggal:** 2026-10-08
-**Root aktif terverifikasi:** `E:\Projects\Agent-Core` (runtime source of truth; lokasi `F:` pada audit sebelumnya adalah historis).
-**Status:** SOURCE/BUILD/MIGRATION ACCEPTED; RESIDENT CUTOVER PENDING USER-CONTROLLED LAUNCHER STOP/RESTART.
+**Root pada acceptance host asal:** `E:\Projects\Agent-Core`; bukan path wajib untuk checkout lain.
+**Status:** INSTALASI DAN ACCEPTANCE FUNGSIONAL EXTERNAL-CONTROLLER SELESAI menurut penutup 2026-10-09 waktu Indonesia dan [laporan live acceptance](Agent-Core-Memory-v2-Live-Acceptance-20261009.md). Pernyataan pending di tahap sebelumnya adalah kronologi, bukan pekerjaan aktivasi yang harus diulang.
+**Review dokumentasi 2026-10-08 UTC:** integrasi dikonfirmasi dari source `8a80251`; runtime host asal tidak diuji ulang. Tanggal, angka migrasi, dan bukti resident di bawah tetap milik sesi asal.
 **Upstream:** `rendevouz999/Agent-Core-Memory`, commit `b266f62ba11b54859185cede8e61c43c4e28cb9a`.
 
 ## Tujuan dan boundary
@@ -34,7 +35,7 @@
 - `src/index.ts`, `src/mcp/server.ts`, `src/agent-capability-catalog.ts`: engine terhubung ke external dan Native controller; operasi Memory lama tetap dapat dipanggil.
 - `scripts/release/package-release.mjs` dan `packaging-policy.mjs`: artefak engine + NOTICE dibawa saat packaging; Memory v1/v2, candidate root, activation marker, backup dan tmp dilarang ikut dalam arsip produk.
 
-## Prosedur cutover terkontrol
+## Prosedur cutover terkontrol — catatan runbook historis
 
 1. Tutup **Agent Core Launcher** secara normal sehingga Core port/service berhenti. Jangan kill paksa.
 2. Jalankan `E:\Projects\Agent-Core\ACTIVATE-MEMORY-V2.cmd`. Helper menolak jika Launcher masih ada atau port Core masih terbuka.
@@ -51,7 +52,7 @@
 4. Jalankan Launcher secara manual. Tanpa marker, engine v1 menggunakan `runtime/memory` semula.
 5. Jangan otomatis menggabungkan tulisan v2 baru kembali ke v1; simpan v2 untuk review/import terkontrol agar tidak menimpa sejarah.
 
-## Verified vs pending
+## Verified vs pending — checkpoint sebelum aktivasi final
 
 - **Verified on Windows:** root build + path policy; host adapter and MCP contracts (10/10), source-compiled v2 standalone; complete isolated restore + idempotent replay; backup and archive integrity. Separate synthetic end-to-end activation → v2 write → full rollback passed without modifying real `runtime/memory`. Live preflight found 123 migrated records, 196 preserved files, and only five access-metadata deltas plus append-only ledger bytes.
 - **Windows standalone test caveat:** A wider selected donor suite is not green on this Windows filesystem, with 34 failures largely involving 5-second timeouts, EBUSY/ENOTEMPTY temporary file cleanup, and Windows symlink fixture behavior. The scoped host/transfer/cutover acceptance above passed; no whole-engine Windows suite PASS or production-stability claim is made.

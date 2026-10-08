@@ -1,5 +1,7 @@
 # Super-Runtime Milestone 1 Stability Audit
 
+> **Historical acceptance:** this is the 1 September 2026 audit of the named implementation SHA. Its PASS results and release identity are preserved, not rerun or revalidated here. The imported Agent Core snapshot has [missing build inputs](../README.md#source-checkout-reproducibility-status--8-october-2026), so this report cannot certify fresh-checkout reproducibility.
+
 Status: **PASS — Milestone 1 Stable Core**
 
 Stable version: `0.1.0`

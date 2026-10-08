@@ -1,5 +1,7 @@
 # Agent Core — Maintenance Record
 
+> **Historical record (navigation reviewed 2026-10-08):** Preserve the findings, decisions and verification as dated evidence. They do not describe the present source/runtime by themselves. Use [CODEBASE](docs/CODEBASE.md) and [README](README.md) for the current implementation.
+
 > **Created:** 2026-09-17
 > **Executed:** 2026-09-17
 > **Scope:** Agent Core maintenance record. The first section covers native memory hardening; the later section tracks codebase authenticity and functional-integrity findings.

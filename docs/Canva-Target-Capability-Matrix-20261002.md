@@ -4,7 +4,7 @@
 
 **TASK 2 COMPLETE — DOCUMENTATION-GROUNDED CAPABILITY MATRIX ESTABLISHED.**
 
-**TASK 3 NOT STARTED.**
+**Historical TASK 2 snapshot.** The later [TASK 3 runtime acceptance](Penpot-to-Canva-Task3-Runtime-Acceptance-20261002.md) supersedes this document's initial TASK 3 / Gate P1 pending state for the specifically tested scope. See the [bridge execution plan](Canva-Penpot-Semantic-Bridge-Execution-Plan-20261001.md) for the latest recorded sequence. Public API versions and capabilities below remain the 2026-10-02 research snapshot; they were not rechecked against the web in the 2026-10-08 documentation review.
 
 This report is the TASK 2 authority for the Canva–Penpot Semantic Bridge plan. It records what the current public Canva developer surfaces document as of 2026-10-02. It does **not** claim runtime round-trip fidelity; that proof belongs to TASK 3.
 
@@ -12,7 +12,7 @@ This report is the TASK 2 authority for the Canva–Penpot Semantic Bridge plan.
 
 Production decisions use only current **GA** Canva Developers SDK / REST API contracts. Preview/Beta APIs are recorded separately because they materially affect the architecture, but Canva explicitly states public apps cannot be released using Preview APIs.
 
-For every semantic, runtime proof remains `PENDING TASK 3`. No Penpot mapping becomes `NATIVE` only because documentation suggests a matching Canva concept.
+At this TASK 2 checkpoint, every semantic was labeled `PENDING TASK 3`. Later runtime proof is scoped by the linked TASK 3 report; it must not be generalized to unsupported semantics. No Penpot mapping becomes `NATIVE` only because documentation suggests a matching Canva concept.
 
 ## 2. Current public Canva versions relevant to the bridge
 
@@ -75,7 +75,7 @@ REST Autofill milestones:
 | Stable ElementId | PREVIEW evidence | N/A | N/A | N/A | N/A | Do not depend on GA yet |
 | Canva Docs/non-absolute pages | NO Design Editing | PARTIAL cursor APIs | NO structural edit | NO | N/A | Out of v1 scope |
 
-Every row above still has structural round-trip status **PENDING TASK 3**.
+At the original TASK 2 checkpoint every row above had structural round-trip status **PENDING TASK 3**. Current recorded proof for tested rows is in the linked TASK 3 acceptance report; untested semantics remain outside that proof.
 
 ## 4. Production-v1 candidate surface
 
@@ -253,7 +253,7 @@ TASK 2       COMPLETE
 TASK 3       NOT STARTED
 ```
 
-TASK 2 is complete because the current Canva public target surface is now explicitly classified. **Gate P1 itself remains OPEN** until TASK 3 produces controlled read/create/update/delete/read-back evidence. Documentation-backed candidates must not yet be advertised as lossless/native mappings.
+At the original TASK 2 checkpoint, the public target surface was classified and Gate P1 remained open pending controlled read/create/update/delete/read-back evidence. The later TASK 3 report supersedes that gate status for its tested scope. Documentation-backed candidates outside that proof must not be advertised as lossless/native mappings.
 
 ## 14. Official authority URLs
 

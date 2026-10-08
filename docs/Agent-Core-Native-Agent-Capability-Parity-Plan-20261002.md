@@ -4,10 +4,10 @@ Date: 2026-10-02
 Status: **COMPLETE — NACP-0..NACP-10 RESIDENT VERIFIED — P8 LIVE WEB SEARCH VERIFIED — PLAN CLOSED**
 
 Prerequisite authorities:
-- docs\Agent-Core-Interactive-Agent-Chat-Plan-20261002.md — IAC-0..IAC-9 COMPLETE
-- docs\Agent-Core-Persistent-Credential-Rotation-Plan-20261002.md — resident provider scheduler verified
-- docs\Agent-Core-External-Controller-Cumulative-Learning-Plan-20261001.md — EC-0..EC-9 historical acceptance authority
-- docs\CODEBASE.md
+- [Interactive Native Chat](history-agent-core/Agent-Core-Interactive-Agent-Chat-Plan-20261002.md) — IAC-0..IAC-9 COMPLETE
+- [Persistent provider scheduling](history-agent-core/Agent-Core-Persistent-Credential-Rotation-Plan-20261002.md) — recorded resident provider scheduler acceptance
+- [External-controller roadmap](history-agent-core/Agent-Core-External-Controller-Cumulative-Learning-Plan-20261001.md) — EC-0..EC-9 historical acceptance authority
+- [CODEBASE](CODEBASE.md)
 - canonical Memory implementation-verification for IAC-9 and persistent credential rotation
 
 ## 1. Goal

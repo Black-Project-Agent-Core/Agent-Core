@@ -1,5 +1,7 @@
 # llama.cpp Runtime Extraction Notes
 
+> **Historical research evidence:** source observations, host paths, experiment results and proposed next steps below belong to the recorded Phase-0 work. The [master context](../SUPER-RUNTIME-MASTER-CONTEXT.md) governs subsequent decisions. See [current checkout prerequisites](../../README.md#source-checkout-reproducibility-status--8-october-2026) before trying to reproduce a reference-dependent result; this refresh neither fetched upstream references nor reran experiments.
+
 Reference: `research/references/llama.cpp`
 Pinned revision: `daef7b6874397a5a7c3d7e38b55e2ee0adf7da38`
 

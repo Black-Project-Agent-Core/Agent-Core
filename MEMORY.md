@@ -1,8 +1,22 @@
-# Agent Core Memory — Current Implemented State
+# Agent Core Memory — Historical Continuity Record
 
-## Current cumulative-learning implementation — 2026-10-01
+## Current reading guide — source baseline 8a80251, reviewed 2026-10-08
 
-**CURRENT PRIMARY PHASE: EXTERNAL-CONTROLLER CUMULATIVE LEARNING — NATIVE MODEL RUNTIME DEFERRED.** The active acceptance subject is the connected external AI/controller (currently ChatGPT) operating through Agent Core MCP. Agent Core is the persistent local body, Memory, Learning, evidence, Skills, Code Intelligence and machine-tool substrate that should make that controller progressively better across work. Native `/agent/run` model/provider execution is later-phase groundwork, not a current prerequisite or blocker.
+This file preserves dated implementation and resident-machine observations. The entries below are historical snapshots, not a current runtime status report or a queue to resume. In particular, older headings labelled “Current”, native-runtime deferrals, legacy-only GitHub boundaries, tool counts, PIDs, absolute machine paths, pending acceptance and test totals apply to their recorded dates. Later closures may supersede earlier open items. Do not infer present installed state from them.
+
+Current source and navigation:
+
+- [README](README.md), [CODEBASE](docs/CODEBASE.md), and [product direction](docs/Agent-Core-Product-Direction.md) are the maintained current-reader entrypoints. The current repository is `https://github.com/Black-Project-Agent-Core/Agent-Core`; this checkout starts from `main` at `8a80251`, package version `0.14.0`.
+- Native runtime is implemented in `src/agent-runtime.ts`, `src/agent-controller.ts`, `src/agent-chat-service.ts`, and `src/agent-provider.ts`; `src/index.ts` wires it to shared Learning, Memory and MCP capabilities. The early “NATIVE MODEL RUNTIME DEFERRED” phase below is superseded, not an instruction to disable that implementation.
+- `src/memory/host-runtime.ts` selects the legacy file-backed owner when no activation marker exists. A valid host-owned `runtime/memory-v2-activation.json` and matching backup manifest select the standalone `SubProject/agent-core-memory` Experience v2 owner at `runtime/memory-v2`. Source availability does not prove activation; no private state or Windows resident runtime was inspected here.
+- `package.json` builds that standalone Memory subproject before root TypeScript. Root `src/memory` still contains host integration and the fallback implementation; neither describing all Memory as embedded-only nor claiming v2 always runs is accurate.
+- Historical verification claims remain as recorded, without being rerun or promoted to present-machine evidence. [Documentation audit](docs/DOCUMENTATION-AUDIT-20261008.md) records this refresh's coverage and limits.
+
+## Preserved dated record
+
+## Historical cumulative-learning snapshot — 2026-10-01
+
+**PHASE RECORDED ON 2026-10-01 (SUPERSEDED): EXTERNAL-CONTROLLER CUMULATIVE LEARNING — NATIVE MODEL RUNTIME DEFERRED.** The active acceptance subject is the connected external AI/controller (currently ChatGPT) operating through Agent Core MCP. Agent Core is the persistent local body, Memory, Learning, evidence, Skills, Code Intelligence and machine-tool substrate that should make that controller progressively better across work. Native `/agent/run` model/provider execution is later-phase groundwork, not a current prerequisite or blocker.
 
 The external-controller EC-0..EC-8 mechanisms are now **SOURCE IMPLEMENTED — BUILD VERIFIED — STRUCTURAL REVIEW CURRENT — RESIDENT EC-0..EC-8 — SESSION-B CORRELATION FIX BUILT; RESTART/EC-9 ACCEPTANCE PENDING**. A new provider-independent `ExternalControllerLearningService` stores only bounded derived episode/procedure evidence under existing `runtime/learning`; MemoryService remains canonical semantic authority. MCP bootstrap can surface deterministic current phase/corrections/pending Learning; machine-control/Grafel/Semantic/Phone/Skills failures can receive bounded prior-experience recall; `controller_learning` exposes shared context synthesis, episode verification, generalized artifact receipts, procedure lifecycle and external cumulative evaluation; Memory list/read/search expose active/superseded/contradicted authority evidence; Learning checkpoint/review closes/annotates episode obligations; repeated independently verified procedures can enter existing SkillService only after support/failure gating. No native model/provider call is required for these mechanisms, and Skills retain `executionAuthority=false`. EC-9 live graduation remains pending.
 
@@ -16,7 +30,7 @@ Current qualification for the external-controller wave: Session A passed EC-0..E
 
 **Latest implementation, 2026-09-30:** MRR-1/MRR-2/MRR-3 are resident verified. MRR-4 verified cross-session procedural reuse and MRR-4.1 observed a bounded investigation advantage (equal correctness, problem-solving calls 11→9; elapsed time did not improve). MRR-5 first exposed that ordinary fresh-controller repairs could finish without Learning finalization. First correction added top-level mandatory finalization plus bounded `pendingReviews` continuity; a later fresh task proved natural durable Memory capture. Second correction removed the Reflexion-vs-Learning contract conflict and added a non-gating verified-recovery finalization advisory; focused 20/20, build/path, 70→70 compatibility, Grafel, and resident advisory readback passed. The final fresh dependency-order task still reached authoritative PASS without advancing Learning or creating a new topological-order lesson. Final verdict: **MANDATORY_LEARNING_FINALIZATION_NOT_RELIABLE_IN_EXTERNAL_CONTROLLER**. No MRR-5.3/MRR-5.4 or further Memory workaround is planned. Pre-runtime body/Memory scope is closed. Native Agent Runtime Phase 1 backend foundation is now **IMPLEMENTED — TARGETED/BUILD VERIFIED — RESIDENT ACTIVATED/READBACK VERIFIED — REAL PROVIDER ACCEPTANCE PENDING**: default-off OpenAI-compatible provider, persistent task/session/finalization state, Memory-first retrieval context, scoped internal MCP tool reuse, and runtime-owned mandatory finalization are present. Verified terminal tasks require safe evidence refs, terminal outcome persists independently from lifecycle status, and finalization failure cannot leak a successful-looking user completion. Targeted/integration native-runtime set is **23/23 PASS across six files**, including a real loopback OpenAI-compatible HTTP protocol run through actual Memory/Learning services and an existing `get_config` MCP tool before mandatory finalization. Build/path policy is **284/0** and compatibility is **70→70/non-breaking** for the qualified native-runtime build. **Current live continuity on 2026-10-01 resolves the active project root to `E:\Projects\Agent-Core`**, with `/health=ok` on v0.14.0 and truthful `health.agentRuntime` showing one supported but zero configured real providers, zero sessions, and zero pending finalizations. Grafel same-source integrity repair is now implemented and built: a fresh explicit reindex authorization can reconcile a same-source structural shrink exactly once, while unexplained shrink without fresh authorization still degrades. Focused Graphify acceptance is **5/5 PASS** and build/path policy is **PASS / 284 authored / 0 exceptions**. Grafel integrity repair is now **LIVE VERIFIED**. A user-authorized Core-only restart moved Node Core from PID **12824** to **15036** while tunnel PID **2844** remained resident and the launcher-owned UI token was inherited. One explicit workspace index after restart converged to `current/accepted` at **10,216 entities / 55,483 relationships** with `integrityComplete=true`; `/health` reports Code Intelligence `available`, Learning `available`, and `grafel-patterns` sink `available=true`. Focused Graphify acceptance remains **5/5 PASS** and build/path policy remains **PASS / 284 / 0**. MRR-3.1 remains **LOCAL SERVER CORRECT — EXTERNAL CONNECTOR DESCRIPTOR PENDING** for controller-visible `receipt`.
 
-## Latest phase decision and pre-runtime grounding — 2026-09-30
+## Historical phase decision and pre-runtime grounding — 2026-09-30
 
 The user explicitly fixed the order: mature Agent Core as the body/system and local Memory/knowledge-reuse substrate first; native AI/model/API-key runtime is a later phase after maturity review and user decision. Use the existing external MCP controller for present body/Memory work. Do not treat absent native model runtime as a current defect or build it to perform this phase.
 
@@ -40,7 +54,7 @@ The dated implementation snapshots below are historical at their stated dates; s
 > **Canonical durable authority:** <PROJECT_ROOT>\runtime\memory.
 > **Architecture authority:** <PROJECT_ROOT>\docs\CODEBASE.md.
 
-## Current override — 2026-09-28
+## Historical override — 2026-09-28
 
 ### Code Intelligence cross-machine resilience — LIVE-ACTIVATED
 
@@ -90,7 +104,7 @@ Packaging excludes live `.env`, secrets, OAuth/API-key state, user Memory notes,
 
 Packaging is separate from runtime activation: current installed Node/launcher still report **0.13.0**. No runtime restart/cutover, commit, tag, push, publish, deploy, or legacy-remote mutation was performed by this package closure. Authority: `docs/CODEBASE.md` section 0.1.60 and `release/README.md`.
 
-## Current override — 2026-09-26
+## Historical override — 2026-09-26
 
 ### Hard-close owned-process shutdown — 2026-09-26
 
@@ -120,7 +134,7 @@ Implementation + activation evidence: `npm run build` exits 0 and reports **PATH
 
 Authority: `docs/CODEBASE.md` section 0.1.33 and `docs/PATH-GOVERNANCE.md`. Patch intent: `.changeset/20260926-dynamic-path-governance.md`. Current release plan is now 0.13.0 -> 0.14.0 with seven pending intents (3 minor + 4 patch), including the later hard-close shutdown patch; `release:check-intent` is `ok=true`.
 
-## Current override — 2026-09-25
+## Historical override — 2026-09-25
 
 Agent Core source/package and live Node Core are `0.13.0`. Fresh authenticated MCP acceptance enumerates **63 tools / 27 machine-control tools** and confirms additive `file_checkpoint`; Memory probe succeeds. Current `release:plan` targets `0.14.0` with five pending intents (Jev/Spec-Kit, Memory BM25, six-reference adoption, non-Hermes health repair, and relocatable project-root repair), aggregate bump minor. The earlier six-reference compatibility check reported only additive `file_checkpoint`, no removed tools/routes, no breaking evidence, and manifest budget within limits.
 
@@ -164,7 +178,7 @@ Recovery note: on 2026-09-20 filesystem block corruption overwrote portions of s
 
 ## Historical implemented-state detail (retained for continuity)
 
-# Agent Core Memory — Current Implemented State
+### Historical embedded-Memory snapshot
 
 > **Status:** IMPLEMENTED, ACTIVE, VERIFIED
 > **Root:** `<PROJECT_ROOT>`
@@ -337,7 +351,7 @@ Final-graduation verification on 2026-09-18 supersedes the earlier pre-Grafel br
 
 Detailed maintenance evidence is retained in `Maintenance.md`. Current architecture ownership and subsystem relationships are documented in `docs\CODEBASE.md`.
 
-## Current task state
+## Historical task state
 
 A-MEM, Reflexion, Grafel Code Intelligence, and Hermes-adapted self-learning are implementation-complete for their approved scopes. Hermes final acceptance is complete at 40 / 40 PASS.
 

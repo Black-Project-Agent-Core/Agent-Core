@@ -1,5 +1,7 @@
 # MSL TS0/TS1 Polyglot Foundation — Verified Checkpoint
 
+> **Historical checkpoint:** the status, pending actions, machine paths, branch names and verification below belong to the dated revision. For the imported monorepo source and continuation boundary, use [CONTINUE_MSL.md](CONTINUE_MSL.md). This record is preserved as evidence and does not authorize resuming old work or certify the current checkout.
+
 **Date:** 2026-08-22 (UTC+7)
 **Branch:** `feature/typescript-bun-foundation-ts0-ts1-20260822`
 **Feature verification HEAD:** `af4993af9c29c136acb70b8b8fc74d20717a1438` ("ci: verify TypeScript source and generated frontend")

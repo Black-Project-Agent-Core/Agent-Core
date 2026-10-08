@@ -1,6 +1,6 @@
 # Provider Credential Rotation Grounding — 2026-10-02
 
-Status: **TARGETED SOURCE-FIRST GROUNDING COMPLETE — PROPOSALS READY FOR USER REVIEW**
+Status: **HISTORICAL GROUNDING — FOLLOWED BY IMPLEMENTATION AND RECORDED RESIDENT ACCEPTANCE.** See the [persistent credential rotation execution plan](history-agent-core/Agent-Core-Persistent-Credential-Rotation-Plan-20261002.md). Current source includes [PersistentCredentialScheduler](../src/agent-provider-scheduler.ts) and SQLite-backed [ProviderStateStore](../src/agent-provider-state.ts); the process-local gap below describes the pre-implementation checkpoint, not current architecture. No new credential/runtime inspection was performed during the 2026-10-08 documentation review.
 
 ## 1. Scope and user intent
 

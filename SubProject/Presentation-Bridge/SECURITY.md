@@ -47,9 +47,9 @@ The remote worker exposes only the bounded Presentation Bridge worker protocol. 
 
 ## Dependency audit
 
-The distributable runtime is checked with `npm audit --omit=dev`. Version 0.2.0 pins `sharp` to a patched 0.35.x release so the runtime audit has no high or critical findings.
+The release workflow uses `npm audit --omit=dev` for the distributable runtime. The 30 August 2026 verification recorded zero runtime vulnerabilities with `sharp` 0.35.4. This is a historical audit result, not a claim that the dependency set remains vulnerability-free today.
 
-The full development audit can still report the `pptxgenjs` test-fixture tool through its `image-size` dependency. The registry currently offers no `image-size` release outside the advisory range, and npm's suggested `pptxgenjs@1.1.5` downgrade is incompatible with the controlled fixture generator. `pptxgenjs` remains a development-only dependency used to create local test corpus files and is not included in the packaged application runtime.
+The same dated development audit reported the `pptxgenjs` test-fixture chain through `image-size`. At that time the recorded registry/advisory assessment found no suitable fixed `image-size` release, and npm's suggested `pptxgenjs@1.1.5` downgrade was incompatible with the controlled fixture generator. Recheck current advisories before a release rather than assuming that assessment is still current. `pptxgenjs` remains a development-only dependency used to create local test corpus files and is not included in the packaged application runtime.
 
 ## Windows release trust
 

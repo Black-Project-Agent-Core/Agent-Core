@@ -1,5 +1,7 @@
 # Agent Core Memory Evolution Implementation Plan
 
+> **Import status clarification:** this is the original planning record. T0–T9 and final independent review subsequently completed, as recorded in [progress](../progress/memory-evolution.md). Review-only wording and unchecked plan tasks below are historical, not the current implementation state. Agent Core host integration is documented in the [package README](../../README.md).
+
 > **Pelaksanaan setelah pengguna menyetujui rencana:** jalankan task, test, review, dan commit secara bertahap. Checkbox di bawah adalah pekerjaan mendatang, bukan bukti pekerjaan selesai. Jangan mulai implementasi hanya karena dokumen ini sudah dipush.
 
 **Goal:** membuat pengalaman engineering yang tersimpan bisa dipakai kembali oleh controller AI baru, dengan pengungkapan konteks secukupnya, bukti yang bisa dilacak, dan sejarah penting yang tetap utuh.

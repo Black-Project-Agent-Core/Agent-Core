@@ -9,6 +9,12 @@ MSL tidak menganggap satu halaman `Popular`, satu browser, satu akun, atau satu 
 
 > MSL bukan produk Envato dan tidak mengklaim akses ke source code algoritma internal, data privat, demand internal, earning kompetitor, probabilitas download, ataupun probabilitas acceptance. Setiap sinyal harus mempunyai scope dan evidence yang jelas.
 
+## Lokasi source dan batas integrasi
+
+Source saat ini berada di `SubProject/Market-Signal-Lab/` dalam repository Agent Core. MSL tetap aplikasi terpisah dengan Go host, Rust analytics worker, frontend, serta storage miliknya sendiri; folder ini tidak otomatis menjadi tool atau runtime Agent Core. Jalankan perintah MSL dari direktori subproject ini. Lokasi Windows absolut di laporan Agustus 2026 adalah provenance host lama, bukan root checkout baru.
+
+[Continuation](docs/checkpoints/CONTINUE_MSL.md) memisahkan source saat ini dari bukti release dan verifikasi historis.
+
 ## Tujuan
 
 MSL dibangun untuk mengurangi keputusan produksi yang hanya bergantung pada tebakan tanpa analisis atau satu tampilan market. Fokus utamanya adalah menjawab pertanyaan seperti:
@@ -61,7 +67,7 @@ Secara ringkas, MSL menyediakan:
 - temporal history produk dan market-map runs;
 - live scan progress, telemetry, dan adaptive ETA berdasarkan pekerjaan nyata;
 - Rust sebagai production analytics plane untuk kernel yang sudah dimigrasikan, dengan Go sebagai Windows control/security/provenance plane;
-- Python sebagai future offline Quant Research / Calibration Lab;
+- Python untuk offline Quant Research / Calibration Lab yang sudah tersedia; artifact tetap unapproved sampai mendapat validasi empirical dan persetujuan eksplisit;
 - C++ hanya sebagai accelerator opsional jika profiling membuktikan hotspot yang layak;
 - Advanced Research untuk validasi evidence dan model lebih dalam;
 - Browser Capture Companion yang explicit dan preview-first;
@@ -115,12 +121,13 @@ Data:      %LOCALAPPDATA%\MarketSignalLab\
 Struktur dokumentasi repository:
 
 ```text
-docs/superpowers/specs/  design contracts
-docs/superpowers/plans/  implementation plans
+docs/specs/             design contracts
+docs/plans/             implementation plans
 docs/qa/                 verification and QA reports
 docs/checkpoints/        continuation checkpoints + permanent guardrails
 docs/project/            permanent project/repository policies
 docs/release-history/    archived release-specific documentation
+docs/market-intelligence/ research and design direction
 ```
 
 Canonical purpose guardrail:

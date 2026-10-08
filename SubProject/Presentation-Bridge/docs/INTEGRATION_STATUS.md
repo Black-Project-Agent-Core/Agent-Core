@@ -1,5 +1,7 @@
 # Integration Status — Presentation Bridge v0.2.0
 
+> **Evidence date / monorepo boundary:** verification and audit counts below were recorded on 30 August 2026. They are not fresh results for Agent Core `8a80251`. Source now lives under `SubProject/Presentation-Bridge` with independent package/runtime ownership. No native Windows, Google or Keynote acceptance was rerun during the documentation refresh; the platform gates below remain unproven by this checkout.
+
 **Updated:** 2026-08-30
 **Repository state:** v0.2 desktop, hosted, conversion kernel, and simple UI are integrated.
 **Release state:** Windows x64 release-candidate artifacts can be built and structurally verified; platform-owned live gates remain explicit.
@@ -24,7 +26,7 @@
 - [x] Runtime dependency audit with zero vulnerabilities
 - [x] No hosted CI configuration by design
 
-## Fresh verification evidence
+## Recorded verification evidence — 30 August 2026
 
 The release-hardening worktree was installed from the committed lockfile and verified on 2026-08-30:
 

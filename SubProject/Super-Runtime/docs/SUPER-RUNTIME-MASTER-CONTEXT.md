@@ -1,5 +1,7 @@
 # Super-Runtime Master Context
 
+> **Source snapshot qualification, 8 October 2026:** this master context preserves the approved Milestone-1 decisions and original acceptance. The imported source has missing build inputs and no reference gitlinks; see the [current checkout blockers](../README.md#source-checkout-reproducibility-status--8-october-2026). Stable milestone evidence below is not proof that this fresh checkout builds or runs. Exact source and checkout completeness take precedence over historical current/runnable wording.
+
 Status: **CANONICAL SOURCE OF TRUTH**
 Date: 2026-09-01
 Canonical repository: `Black-Project-Agent-Core/Agent-Core`
@@ -36,7 +38,7 @@ This file is a **consolidation of approved research plus verified implementation
 
 # 1. Current factual status — read this first
 
-As of this master-context checkpoint:
+The following tree and acceptance state describe the recorded milestone checkpoint, not a guarantee that every build input is present in the current imported snapshot:
 
 ```text
 SubProject/Super-Runtime/

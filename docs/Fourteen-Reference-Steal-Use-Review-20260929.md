@@ -10,17 +10,17 @@ The three current-fit P1 proposals were approved and implemented. CORAL and GEA 
 | Reference | Individual plan | Current proposal / status | Folder disposition |
 |---|---|---|---|
 | awesome-self-evolving-agents | [Awesome-Self-Evolving-Agents-Steal-Use-Integration-Plan.md](Awesome-Self-Evolving-Agents-Steal-Use-Integration-Plan.md) | Conditional consumer only; no installation task | Consumer/awesome-self-evolving-agents (move verified) |
-| Awesome-Self-Improving-Agents | [Awesome-Self-Improving-Agents-Steal-Use-Integration-Plan.md](Awesome-Self-Improving-Agents-Steal-Use-Integration-Plan.md) | Conditional consumer only; no installation task | Consumer/Awesome-Self-Improving-Agents (move verified) |
+| Awesome-Self-Improving-Agents | [Awesome-Self-Improving-Agents-Steal-Use-Integration-Plan.md](history-agent-core/Awesome-Self-Improving-Agents-Steal-Use-Integration-Plan.md) | Conditional consumer only; no installation task | Consumer/Awesome-Self-Improving-Agents (move verified) |
 | continual-harness | [Continual-Harness-Steal-Use-Integration-Plan.md](Continual-Harness-Steal-Use-Integration-Plan.md) | Conditional consumer only; no installation task | Consumer/continual-harness (move verified) |
-| CORAL | [CORAL-Steal-Use-Integration-Plan.md](CORAL-Steal-Use-Integration-Plan.md) | COMPLETE for approved evidence-reference CLI scope | Consumer/CORAL (move verified) |
+| CORAL | [CORAL-Steal-Use-Integration-Plan.md](history-agent-core/CORAL-Steal-Use-Integration-Plan.md) | COMPLETE for approved evidence-reference CLI scope | Consumer/CORAL (move verified) |
 | dgm | [DGM-Steal-Use-Integration-Plan.md](DGM-Steal-Use-Integration-Plan.md) | Conditional consumer only; no installation task | Consumer/dgm (move verified) |
 | EvolveR | [EvolveR-Steal-Use-Integration-Plan.md](EvolveR-Steal-Use-Integration-Plan.md) | Conditional consumer only; no installation task | Consumer/EvolveR (move verified) |
-| GEA | [GEA-Steal-Use-Integration-Plan.md](GEA-Steal-Use-Integration-Plan.md) | COMPLETE for approved novelty CLI scope | Consumer/GEA (move verified) |
+| GEA | [GEA-Steal-Use-Integration-Plan.md](history-agent-core/GEA-Steal-Use-Integration-Plan.md) | COMPLETE for approved novelty CLI scope | Consumer/GEA (move verified) |
 | gepa | [GEPA-Steal-Use-Integration-Plan.md](GEPA-Steal-Use-Integration-Plan.md) | Conditional consumer only; no installation task | Consumer/gepa (move verified) |
 | Godel_Agent | [Godel-Agent-Steal-Use-Integration-Plan.md](Godel-Agent-Steal-Use-Integration-Plan.md) | Conditional consumer only; no installation task | Consumer/Godel_Agent (move verified) |
 | live-swe-agent | [Live-SWE-Agent-Steal-Use-Integration-Plan.md](Live-SWE-Agent-Steal-Use-Integration-Plan.md) | Conditional consumer only; no installation task | Consumer/live-swe-agent (move verified) |
 | meta-agent | [Meta-Agent-Steal-Use-Integration-Plan.md](Meta-Agent-Steal-Use-Integration-Plan.md) | Conditional consumer only; no installation task | Consumer/meta-agent (move verified) |
-| metaclaw | [MetaClaw-Steal-Use-Integration-Plan.md](MetaClaw-Steal-Use-Integration-Plan.md) | COMPLETE; authenticated resident HTTP verified | Consumer/metaclaw (move verified) |
+| metaclaw | [MetaClaw-Steal-Use-Integration-Plan.md](history-agent-core/MetaClaw-Steal-Use-Integration-Plan.md) | COMPLETE; authenticated resident HTTP verified | Consumer/metaclaw (move verified) |
 | nexus-agent | [Nexus-Agent-Steal-Use-Integration-Plan.md](Nexus-Agent-Steal-Use-Integration-Plan.md) | Conditional consumer only; no installation task | Consumer/nexus-agent (move verified) |
 | rust-norion | [Rust-Norion-Steal-Use-Integration-Plan.md](Rust-Norion-Steal-Use-Integration-Plan.md) | Conditional consumer only; no installation task | Consumer/rust-norion (move verified) |
 

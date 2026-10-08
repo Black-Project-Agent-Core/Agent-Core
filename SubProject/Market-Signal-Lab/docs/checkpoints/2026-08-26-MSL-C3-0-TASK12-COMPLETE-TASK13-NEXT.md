@@ -1,5 +1,7 @@
 # Market Signal Lab — C3.0 Task 12 Complete / Task 13 Next
 
+> **Historical checkpoint:** the status, pending actions, machine paths, branch names and verification below belong to the dated revision. For the imported monorepo source and continuation boundary, use [CONTINUE_MSL.md](CONTINUE_MSL.md). This record is preserved as evidence and does not authorize resuming old work or certify the current checkout.
+
 **Date:** 2026-08-26 (Asia/Jakarta)
 **Branch:** `task/c3-evidence-calibrated-model-v02-20260824`
 **Worktree:** `E:\Market-Signal-Lab\dist\.worktrees\c3-evidence-calibrated-model-20260826-repaired`

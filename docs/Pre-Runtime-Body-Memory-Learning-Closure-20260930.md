@@ -1,6 +1,6 @@
 # Pre-Runtime Body / Memory / Learning Closure — 2026-09-30
 
-Status: CLOSED FOR PRE-RUNTIME BODY/MEMORY SCOPE — NATIVE CONTROLLER LIFECYCLE IS THE REMAINING SEMANTIC FINALIZATION OWNER
+Status: HISTORICAL CLOSURE OF THE PRE-RUNTIME BODY/MEMORY SCOPE. The lifecycle transition described here was followed by [Native Runtime Phase 1](history-agent-core/Native-Agent-Runtime-Phase-1-Plan.md), [external-controller EC-9 graduation](history-agent-core/Agent-Core-External-Controller-Cumulative-Learning-Plan-20261001.md), and [Native chat acceptance](history-agent-core/Agent-Core-Interactive-Agent-Chat-Plan-20261002.md). The original evidence and acceptance requirements below remain historical; current shared lifecycle ownership is in [Cumulative Workflow](Cumulative-Workflow-Implementation-20261006.md) and [CODEBASE](CODEBASE.md).
 
 ## Decision
 

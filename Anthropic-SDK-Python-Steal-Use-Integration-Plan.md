@@ -1,5 +1,7 @@
 # Anthropic SDK Python — Steal/Use Integration Plan
 
+> **Historical record (navigation reviewed 2026-10-08):** Preserve the findings, decisions and verification as dated evidence. They do not describe the present source/runtime by themselves. Use [CODEBASE](docs/CODEBASE.md) and [README](README.md) for the current implementation. Later adoption records are maintained in [the corresponding docs record](docs/Anthropic-SDK-Python-Steal-Use-Integration-Plan.md). The proposal statuses below belong to this earlier snapshot; they neither reopen completed adoption nor authorize new work.
+
 **Status:** RE-GROUNDED — PROPOSAL UPDATE — USER REVIEW REQUIRED — NO NEW IMPLEMENTATION
 **Reference:** `<PROJECT_ROOT>\DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\memory\anthropic-sdk-python`
 **Pinned audit revision:** `7e5ca5c94126a6d7de159a169ff43eb9b1cac57f`

@@ -1,5 +1,7 @@
 # C2 + TS0/TS1 RC Baseline Integration — QA Evidence
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 **Date:** 2026-08-23 (Asia/Jakarta)
 **Integration branch:** `integration/c2-ts01-rc-baseline-20260823`
 **Status:** INTEGRATED BASELINE VERIFIED / RC SIGN-OFF PENDING

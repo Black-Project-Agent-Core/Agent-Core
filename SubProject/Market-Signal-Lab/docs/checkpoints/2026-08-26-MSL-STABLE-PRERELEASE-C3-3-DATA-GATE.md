@@ -1,5 +1,7 @@
 # Market Signal Lab — Stable Prerelease / C3.3 Empirical-Data Gate
 
+> **Historical checkpoint:** the status, pending actions, machine paths, branch names and verification below belong to the dated revision. For the imported monorepo source and continuation boundary, use [CONTINUE_MSL.md](CONTINUE_MSL.md). This record is preserved as evidence and does not authorize resuming old work or certify the current checkout.
+
 **Date:** 2026-08-26 (Asia/Jakarta)
 **Status:** STABLE PRERELEASE LINEAGE PUBLISHED / VERIFIED — C3.2 COMPLETE / VERIFIED — C3.3 BLOCKED BY REAL EMPIRICAL DATA
 **C3.2 branch:** `task/c3-2-quant-calibration-lab-20260826`

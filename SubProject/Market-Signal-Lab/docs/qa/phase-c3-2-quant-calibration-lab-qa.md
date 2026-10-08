@@ -1,5 +1,7 @@
 # Phase C3.2 Quant Calibration Lab — QA Evidence
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 **Date:** 2026-08-26 (Asia/Jakarta)
 **Status:** OFFLINE LAB INFRASTRUCTURE COMPLETE / VERIFIED — EMPIRICAL CALIBRATION DATA GATE BLOCKED
 **Formal release:** NOT RELEASED

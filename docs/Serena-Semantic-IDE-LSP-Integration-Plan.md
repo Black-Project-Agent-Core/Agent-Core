@@ -2,7 +2,7 @@
 
 > **Status:** COMPLETE — VERIFIED FOR APPROVED FIRST-WAVE SCOPE — NO OPEN FIRST-WAVE WORK
 > **Created:** 2026-09-18
-> **Original implementation baseline:** Agent Core 0.9.0; current stable line is 0.11.0
+> **Historical implementation baselines:** Agent Core 0.9.0 and the then-current stable line 0.11.0. Current product version comes from root `package.json` (0.14.0 at source review `8a80251`).
 > **Historical grounded reference:** `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT\serena`; current re-grounding authority is `Audit\Serena` in the second-wave plan
 > **Reference commit:** `2a6deef83861d61f839ab4b94f1fc323b2fe8edf`
 > **Reference origin:** `https://github.com/oraios/serena.git`
@@ -1165,9 +1165,9 @@ The important design choices to review are:
    - MIT SolidLSP / MIT cutoff may inform reuse;
    - notices preserved for any actual copied MIT code.
 
-## 29. Current open work from this plan
+## 29. Historical first-wave implementation checklist — closed
 
-**OPEN:** Phase 0–9 implementation and the corresponding authorized acceptance gates.
+The original checklist called for Phase 0–9 implementation and its authorized acceptance gates. The COMPLETE / NO OPEN FIRST-WAVE WORK status at the top of this document supersedes that old OPEN label. Subsequent work and its own evidence are recorded in the [second-wave plan](history-agent-core/Serena-Second-Wave-LSP-Freshness-Multi-Language-Integration-Plan.md); do not rerun first-wave acceptance merely because the original design is retained.
 
 No other Serena-derived implementation is implied by this plan.
 

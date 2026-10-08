@@ -1,5 +1,7 @@
 # Super-Runtime Native Substrate Boundary
 
+> **Current checkout:** build prerequisites are incomplete in the imported Agent Core snapshot. See [exact blockers](../../README.md#source-checkout-reproducibility-status--8-october-2026) before using the commands below. The milestone results are historical evidence; this documentation refresh did not configure or build the runtime.
+
 Status: **Super-Runtime v0.1.0 — Milestone 1 Stable Core**
 
 This directory is the native production core of the first Super-Runtime milestone. It now contains the pinned GGML/llama substrate boundary, deterministic memory ledger, stable-address file residency with RAII range leases, generic MoE range planning, fixed-order dense residency, global budget planning, and the unified `RuntimeEntry` lifecycle. HTTP/provider APIs, GPU runtime policy, downstream AI-tool integration, Windows residency, and broad real-model product hardening remain deferred.
@@ -35,16 +37,11 @@ The authoritative revision is stored in `LLAMA_CPP_REVISION`:
 daef7b6874397a5a7c3d7e38b55e2ee0adf7da38
 ```
 
-It must match both:
-
-1. the `research/references/llama.cpp` gitlink in the Agent-Core repository; and
-2. the checked-out llama.cpp source used by CMake.
-
-CMake fails closed if the checked-out source revision differs from this pin.
+The native contract expects both a matching `research/references/llama.cpp` gitlink in Agent Core and a matching checked-out source. Neither is present in this snapshot. CMake also references a missing pin-verification helper, so the intended fail-closed configuration path cannot be re-established merely by selecting another source directory. Preserve the recorded pin when repairing those prerequisites.
 
 ## Source and patch policy
 
-For Task 1, the production wrapper consumes the already pinned canonical llama.cpp source at `research/references/llama.cpp`. This avoids duplicating the upstream repository while the runtime boundary is still small.
+The Task-1 production wrapper was designed to consume the pinned canonical llama.cpp source at `research/references/llama.cpp`. That reference is currently absent from the imported source snapshot. This avoids duplicating the upstream repository while the runtime boundary is still small.
 
 Rules:
 

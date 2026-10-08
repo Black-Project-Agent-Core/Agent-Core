@@ -1,6 +1,6 @@
 # Presentation Bridge
 
-Fresh, standalone conversion kernel for **PPTX → native Google Slides** and **PPTX → native Keynote (.key)** with explicit structural/visual evidence.
+Independently built conversion kernel for **PPTX → native Google Slides** and **PPTX → native Keynote (.key)** with explicit structural/visual evidence.
 
 ## Product boundary
 
@@ -13,7 +13,7 @@ Mock mode is only a deterministic contract test. **Mock mode can never set `nati
 
 ## Isolation
 
-This repository is intentionally standalone. It has no imports, runtime paths, secrets, databases, launchers, or source dependencies from any other user project.
+Source is maintained in the Agent Core monorepo at `SubProject/Presentation-Bridge/`. The package remains operationally independent: it owns its dependencies, configuration, job state and launcher, and the Agent Core host does not automatically register it as an MCP conversion capability. Run the commands below from this subproject directory. Do not share another project's credentials or runtime state merely because the source is colocated.
 
 ## Requirements
 
@@ -32,7 +32,7 @@ npm test
 node dist/src/cli/index.js doctor
 ```
 
-`package-lock.json` is committed and is the reproducible install contract for the verified release.
+`package-lock.json` is committed and is the dependency-resolution input for reproducible installs. Recorded verification applies to the dated build described in `docs/INTEGRATION_STATUS.md`; a fresh checkout still needs its own authorized verification.
 
 ## Windows desktop package
 
@@ -54,13 +54,7 @@ release/release-manifest.json
 
 `package:win` uses offline publishing mode and automatically verifies SHA-256, file sizes, and packaged ASAR boundaries. Cross-building from headless Linux requires Wine 64/32-bit plus Xvfb. Native Windows smoke and Authenticode signing remain separate release gates. See `docs/WINDOWS_RELEASE.md`.
 
-On a Windows production machine, put the repository in its own directory, for example:
-
-```text
-E:\Presentation-Bridge
-```
-
-Do not place it inside another project's repository or runtime directory.
+The source directory may live in this monorepo. Install or extract a packaged Windows application into its own application directory and keep its generated jobs/configuration separate from the Agent Core runtime. Historical standalone paths in earlier reports describe the original build host, not a required drive or current source location.
 
 ## CLI
 
@@ -154,4 +148,4 @@ Remote Keynote conversion uses the bounded worker protocol documented in `docs/k
 
 ## Dependency reproducibility and audit
 
-`package-lock.json` is committed. Use `npm ci` for reproducible installs. The packaged/runtime dependency audit (`npm audit --omit=dev`) is expected to contain no high or critical findings. The development-only fixture generator currently retains `pptxgenjs` because npm's audit-recommended downgrade is incompatible with the controlled corpus generator; see `SECURITY.md` for the scoped development-tooling note.
+`package-lock.json` is committed. Use `npm ci` for reproducible installs. The packaged/runtime dependency audit (`npm audit --omit=dev`) is expected to contain no high or critical findings. The development-only fixture generator retains `pptxgenjs`; the dated audit rationale is preserved in `SECURITY.md`. Advisory availability and current audit results must be checked on the release being prepared, not inferred from that historical report.

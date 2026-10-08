@@ -1,5 +1,7 @@
 # Agent Core Corruption Recovery Plan
 
+> **Historical recovery proposal, created 2026-09-20.** The original PLAN ONLY status below is not a current task queue or a fresh authorization request. Later recovery outcomes are in [System Repair / SIE completion](System-Repair-SIE-Completion-20260923.md), [28 September audit repair](history-agent-core/Codebase-Audit-Repair-Plan-20260928.md), and [CODEBASE](CODEBASE.md). Current source and explicitly selected recovery artifacts remain authoritative; preserved legacy-lineage restrictions describe their original checkpoints.
+
 > **Status:** PLAN ONLY — READY FOR USER REVIEW
 > **Created:** 2026-09-20
 > **Scope:** Recover Agent Core continuity after filesystem corruption without rolling back valid post-v0.11.0 capabilities.

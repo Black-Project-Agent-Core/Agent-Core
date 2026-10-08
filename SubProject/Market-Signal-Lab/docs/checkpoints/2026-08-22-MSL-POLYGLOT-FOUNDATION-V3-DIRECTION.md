@@ -1,5 +1,7 @@
 # MSL Polyglot Foundation v3 — Direction Checkpoint
 
+> **Historical checkpoint:** the status, pending actions, machine paths, branch names and verification below belong to the dated revision. For the imported monorepo source and continuation boundary, use [CONTINUE_MSL.md](CONTINUE_MSL.md). This record is preserved as evidence and does not authorize resuming old work or certify the current checkout.
+
 **Status:** ARCHITECTURE DIRECTION APPROVED / C2 COMPLETE / VERIFIED / TS0–TS1 COMPLETE / VERIFIED / RC BASELINE INTEGRATION IN PROGRESS
 **Date:** 2026-08-22
 

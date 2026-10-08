@@ -1,5 +1,7 @@
 # B — Design Product & Market Trend Formation Research Foundation
 
+> **Dated research foundation:** external-service observations and citations reflect the 26 August 2026 research. This refresh does not revalidate those services or claim the paired plan has been implemented. Use [current continuation](../checkpoints/CONTINUE_MSL.md) to distinguish the imported source from future design work.
+
 **Date:** 2026-08-26 (Asia/Jakarta)
 **Status:** RESEARCH FOUNDATION COMPLETE — READY TO GOVERN IMPLEMENTATION
 **Scope:** Market Signal Lab (MSL), design-product intelligence, demand analysis, trend formation, cross-source evidence

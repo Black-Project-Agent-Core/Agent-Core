@@ -1,5 +1,7 @@
 # Alpha 6.5.2.1 Source Manifest
 
+> **Historical record:** this document preserves its original design/release revision, paths and evidence. It is not a current execution checklist or fresh verification. See [current continuation](../../docs/checkpoints/CONTINUE_MSL.md) for the imported monorepo boundary; unavailable historical source links are not silently reconstructed.
+
 Verified local release tree: `3475651`  
 Tracked source files: **264**  
 Tracked source size: approximately **1.8 MB** before ZIP compression.

@@ -1,5 +1,7 @@
 # Alpha 6.5.3 Preview.1 Test Status
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 This document is intentionally brief. The detailed verification record lives in:
 
 - `docs/qa/alpha6.5.3-preview.1-release-qa.md`

@@ -1,5 +1,7 @@
 # ChatGPT Custom Plugin Package — 2026-09-23
 
+**Historical packaging record — 2026-09-23.** Package/root versions, artifact paths and upload-pending wording below belong to that session. They are not the current installed connector inventory or a standing request to upload anything. This source-only review did not inspect a live ChatGPT connector, retrieve the original ZIP or repeat package validation. See [current documentation](README.md).
+
 Status: PACKAGE CREATED AND LOCALLY VALIDATED — CHATGPT UPLOAD PENDING.
 
 ## Source and output

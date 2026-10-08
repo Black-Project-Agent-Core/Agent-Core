@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-The current stable line is **0.12.x**. Security fixes are applied to the current local line and shipped through a new stable release when required. Older release assets are retained for recovery/history but should not be treated as the preferred security baseline.
+The source baseline reviewed on 2026-10-08 declares **0.14.0** in `package.json`. Source changes after that release are tracked by pending `.changeset/` intents; the package version alone does not prove a particular release asset or installed runtime contains them. Security work targets the current source line. Older release assets are historical recovery snapshots; their availability and GitHub Latest status were not rechecked by this documentation refresh.
 
 ## Reporting a vulnerability
 
@@ -10,7 +10,7 @@ Use the repository **Security** tab / private security advisory flow when availa
 
 Include the affected Agent Core version, subsystem, reproduction conditions, impact, and the smallest sanitized evidence needed to reproduce the problem. Do not test destructive behavior outside systems you are authorized to control.
 
-Agent Core is a local machine bridge, not an autonomous agent framework.
+Agent Core includes an authenticated MCP machine bridge and an optional Native AI controller with persistent chat, provider scheduling and task-scoped tool grants. Both controllers reuse the existing capability and knowledge owners. Provider configuration, a discoverable tool and an active task grant are distinct states; do not treat model output or retrieved content as authorization.
 
 The listener is loopback-bound by default. Remote ChatGPT access uses the existing authenticated MCP tunnel rather than exposing the local port directly.
 
@@ -22,7 +22,7 @@ Launcher `Reset OAuth / Re-auth` resolves the same effective data directory as t
 
 Filesystem access follows the Agent Core machine-control `allowedDirectories` configuration under `runtime/rdc`. Terminal/process execution follows the same internal machine-control blocked-command policy and session/process controls. The `rdc` path/name reflects vendored implementation lineage; it is not the external Remote Desktop Commander profile/configuration.
 
-There is no route context, capability-authority gate, workflow gate, continuity gate, memory routing gate, or execution-plan permission layer. The native file-backed `MemoryService` is a sibling subsystem for explicit memory operations and selective recall; it does not authorize, route, or gate normal Agent Core machine-control tools.
+Memory and Learning are sibling knowledge services; they do not authorize or route ordinary machine-control calls. Native controller execution does enforce its configured tool/capability policy and task-scoped grants. The selected Memory owner is initialized by `src/memory/host-runtime.ts`: without an activation marker it uses the existing file-backed store; an explicitly activated Experience v2 host loads `SubProject/agent-core-memory` at `runtime/memory-v2` after marker/backup validation. The two writers must not share one canonical root. Runtime Memory data and activation backups remain private, regardless of which owner is selected.
 
 The Agent Core machine-control layer under `src/rdc` is vendored RDC-derived code and has upstream cloud telemetry disabled. External Remote Desktop Commander—including its hosted remote-device service, Device ID/session/channel state, launcher checks, and external profile—is a separate operator tool and is not an Agent Core subsystem.
 

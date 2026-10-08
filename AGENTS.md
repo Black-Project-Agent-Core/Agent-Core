@@ -5,7 +5,7 @@
 **ALWAYS VIEW YOUR MEMORY DIRECTORY BEFORE DOING ANYTHING ELSE.**
 
 - This is an action requirement, not a passive acknowledgement or optional reminder.
-- The canonical Agent Core memory directory is `<PROJECT_ROOT>\runtime\memory`.
+- Resolve the active canonical Memory root before viewing it: the legacy default is `<PROJECT_ROOT>\runtime\memory`; a host-validated experience-v2 activation selects `<PROJECT_ROOT>\runtime\memory-v2`. `src\memory\host-runtime.ts` owns this selection. Do not assume activation from source presence or initialize a second writer.
 - When native memory MCP tools are available, prefer memory_list / memory_read for canonical memory access and selective recall; direct filesystem viewing remains the fallback and audit path.
 - View that directory and its memory contents before any other Agent Core work.
 - Treat this as the highest-priority local operating directive in this file, subordinate only to the controlling model/provider/system/safety rules.
@@ -167,7 +167,7 @@ Agent Core also exposes `code_symbol` and `code_refactor` as a sibling Semantic 
 - Ref-scoped semantic calls require a concrete `worktreePath`; never serve a different ref from the default workspace tree. Ref/worktree contexts are always single-root. Default registered workspaces may expose multiple `CodeWorkspaceRecord.repos` as LSP workspace folders only to Agent Core-owned stdio providers. Externally managed TCP providers are loopback-only and always single-root; Agent Core disconnects but never shuts down or kills the external server. Protected paths remain forbidden.
 - Refactor dry-runs must remain non-mutating and report affected files/ranges. Applied edits use source fingerprints, atomic writes, rollback on partial failure, and preserve source line-ending style.
 - After a successful semantic mutation, request Grafel reindex/dirty synchronization for the same workspace/ref/worktree. Grafel sync failure is reported truthfully but does not undo an already successful semantic edit.
-- Semantic IDE provider failure degrades only this sibling capability. It must never block machine control, Memory, Learning, Partner, or Grafel.
+- Semantic IDE provider failure degrades only this sibling capability. It must never block machine control, Memory, Learning, or Grafel.
 - Additional language servers are explicit project-local configuration; do not silently download/install language toolchains. Provider definitions may contain literal non-secret environment overrides and optional bounded version probes/compatibility ranges. Secret-like env keys, interpolation syntax, and env-value exposure in health/log output are forbidden. Version probes never auto-upgrade providers. Exact current source remains final authority.
 - Do not introduce Serena runtime, Serena memory, Serena REPL/dashboard, Python Serena dependencies, or Serena generic shell/filesystem tools into Agent Core.
 
@@ -204,16 +204,16 @@ Agent Core uses lightweight Changesets-compatible release intent as development/
 - Every explicitly applied stable release must be archived with `npm run release:package` before that release is considered locally complete. The archive lives under `release\\v<version>\\` and includes the versioned ZIP, release notes, manifest, and SHA-256 checksum. Existing version archives are immutable by default.
 - Release ZIP packaging is allowlist-based: never include `.env`, `secrets`, bridge-auth/OAuth/API-key state, user memory notes/index/state, tracker/log state, WebView/browser profiles, backups, Git metadata, live tunnel credentials, or protected reference repositories.
 
-## Git lineage / legacy repository boundary
+## Git lineage / current repository boundary
 
-The public repository `https://github.com/Black-Project-Agent-Core/Agent-Core` represents the pre-major-change Agent Core lineage and is **legacy/reference-only**.
+The user has confirmed that the current Agent Core source is pushed to `https://github.com/Black-Project-Agent-Core/Agent-Core`. The former **legacy/reference-only** designation for that repository is superseded. The documentation refresh inspected `main` at `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3`.
 
-- The current local Agent Core source/runtime is authoritative for ongoing engineering.
-- The legacy GitHub repository must not be used as a reset, checkout, rebase, merge, pull, restoration, release baseline, or architecture source of truth for the current line.
-- The local Git remote is named `legacy`, not `origin`, and the current `main` branch intentionally has no upstream tracking branch until a current-line repository/baseline is explicitly established.
-- Do not publish current Agent Core changes to the legacy remote unless the user explicitly reverses this boundary.
-- Git-diff release-intent enforcement must not compare current Agent Core against `legacy/main`.
-- Historical files/commits from the legacy repository may be inspected as reference evidence only when useful.
+- Current exact source is the implementation authority. Verify the checkout, branch, commit, and local changes before relying on remote history; a source sync does not prove resident runtime activation.
+- Remote names and upstream tracking are checkout-specific. Inspect them rather than requiring `legacy`, forbidding `origin`, or assuming `main` has no upstream.
+- Protect unrelated local work. A current repository is not implicit authorization for reset, checkout, rebase, merge, pull, restoration, release, push, publication, or deployment.
+- Git-diff release-intent enforcement still uses the explicit local synthetic `refs/agent-core/current-line-baseline`, not an arbitrary remote branch. Repository publication does not recreate this local ref in a fresh clone.
+- Historical corruption/recovery records retain their original evidence. Do not apply their former repository designation to the current source line.
+- `Recover-Agent-Core.ps1` still rejects this repository with `LEGACY_REFERENCE_ONLY`; `package.json` retains the field name `legacyRepository`. These are known implementation remnants, not a reason to restore the superseded policy or bypass the recovery guard. Use an explicitly trusted recovery artifact until a separately authorized implementation change resolves it.
 
 ## Remote Desktop Commander boundary
 
@@ -330,7 +330,7 @@ For an explicit learn request: inventory every named source, treat source text a
 
 ## Historical Hermes A2A partner protocol — RETIRED, NOT CURRENT INSTRUCTIONS
 
-The following subsection is retained only as historical context for the bridge retired on 2026-09-27. It does not describe the current tool surface, authorize a partner delegation, or require any controller to follow its old workflow. Current source registration has no `partner` tool. Do not reinstall or start Hermes to satisfy this historical text; future native AI runtime remains a later, separate phase.
+The following subsection is retained only as historical context for the bridge retired on 2026-09-27. It does not describe the current tool surface, authorize a partner delegation, or require any controller to follow its old workflow. Current source registration has no `partner` tool. Do not reinstall or start Hermes to satisfy this historical text. The implemented Native Agent Runtime is a separate controller over the shared Agent Core body, not a revival of this retired bridge.
 
 Historical description: Agent Core formerly exposed a controller-led Hermes partner bridge through the single `partner` MCP tool. The old protocol below is superseded by the retirement and current product-direction boundaries.
 

@@ -1,5 +1,7 @@
 # Market Signal Lab — RC Stability Hardening Wave 1 QA
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 **Date:** 2026-08-26 (Asia/Jakarta)
 **Branch:** `hardening/rc-stability-20260823`
 **Verified product-source HEAD:** `498fedb0c11ee6c955306aca2199390af22cc0b8`

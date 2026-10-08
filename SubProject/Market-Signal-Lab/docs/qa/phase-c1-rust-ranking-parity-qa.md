@@ -1,5 +1,7 @@
 # Phase C1 Rust Ranking Parity QA
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 Status: **COMPLETE / VERIFIED**
 
 This document records only evidence actually observed for Phase C1. Phase C1 is now COMPLETE / VERIFIED because the frozen Go-v0.1 behavior, Rust parity migration, Rust-mandatory production ownership, native Windows positive acceptance, native no-fallback negative acceptance, real installed Quick run, ranking persistence, credential reuse, and restart/history preservation have all been observed.

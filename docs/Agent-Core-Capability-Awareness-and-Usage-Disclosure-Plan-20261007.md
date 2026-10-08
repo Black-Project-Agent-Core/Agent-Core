@@ -1,6 +1,8 @@
 # Agent Core Capability Awareness and Usage Disclosure Plan — 2026-10-07
 
-Status: SOURCE IMPLEMENTED — TARGETED QUALIFIED — BUILD INSTALLED. C0-C4 complete at source/fixture level; C6 resident reload and live-controller acceptance remain OPEN. C5 deferred because no concrete host-registration consumer exists.
+Status: SOURCE IMPLEMENTED — BUILD INSTALLED — ACCEPTED BY CREATOR. The final 2026-10-07 section records resident post-restart evidence and an explicit stop-test boundary; it supersedes earlier reload-pending/C6 acceptance requests. C5 remains deferred. Cancelled Native selection, quiet-task and reconnect checks remain unverified, not passed. Do not resume them without a new instruction.
+
+Documentation review: 2026-10-08 UTC, source baseline `8a80251`. This status summarizes the existing acceptance record; it is not a new runtime verification.
 
 ## 1. Objective
 

@@ -1,5 +1,7 @@
 # Implementation Report — Presentation Bridge v0.2.0 Release Candidate
 
+> **Historical record:** this preserves the original plan or implementation evidence. Source is now colocated in `SubProject/Presentation-Bridge` with independent runtime ownership; old standalone-location wording does not prohibit the checked-in monorepo layout. Use the [current README](../README.md) for integration boundaries. Historical approval and verification are not a new authorization or fresh platform test.
+
 **Updated:** 2026-08-30
 **Source of truth:** `docs/PLAN_APPROVED_2026-08-27.md`
 **Implementation state:** conversion kernel, desktop/hosted product surfaces, remote Keynote protocol, simple UI, and Windows packaging are integrated and locally verified. Three platform-owned acceptance gates remain explicit.

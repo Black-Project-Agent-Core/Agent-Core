@@ -1,5 +1,7 @@
 # Market Signal Lab — Full Continuation Handoff — 2026-08-22 (C2 close, re-verified 2026-08-23)
 
+> **Historical checkpoint:** the status, pending actions, machine paths, branch names and verification below belong to the dated revision. For the imported monorepo source and continuation boundary, use [CONTINUE_MSL.md](CONTINUE_MSL.md). This record is preserved as evidence and does not authorize resuming old work or certify the current checkout.
+
 **Status:** C2 COMPLETE / VERIFIED — C3 DESIGN NEXT
 **Date:** 2026-08-23 (Asia/Jakarta)
 **Repository:** `rendevouz999/Market-Signal-Lab`

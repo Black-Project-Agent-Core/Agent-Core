@@ -1,5 +1,7 @@
 # Alpha 6.5.2.1 — Live Scan Telemetry & Adaptive ETA QA
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 ## Result
 
 Release tree: `3475651`  

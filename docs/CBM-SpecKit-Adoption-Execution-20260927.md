@@ -1,5 +1,7 @@
 # CBM / Spec-Kit Approved Adoption Execution — 2026-09-27
 
+> **Dated execution evidence.** This report closes its approved CBM-P1/SPK-P3 scope. The 2026-09-27 observation that no native prompt/model owner existed is historical: [Native chat](history-agent-core/Agent-Core-Interactive-Agent-Chat-Plan-20261002.md) and provider/runtime source now exist. Do not infer either adoption or renewed authorization for the remaining exact consumer-gated proposals from that change alone.
+
 > **Status:** COMPLETE — SOURCE/DIST TARGETED VERIFIED — LIVE-ACTIVATED — INSTALLED-RUNTIME VERIFIED
 > **Product version:** stable `0.13.0`; no release apply/version bump.
 > **Approved planning wave:** Supermemory, Codebase Memory MCP, Continuous Claude, Spec-Kit conditional/current-fit residuals.

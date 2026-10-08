@@ -1,5 +1,7 @@
 # Kimi K3 Runtime Extraction Notes
 
+> **Historical research evidence:** source observations, host paths, experiment results and proposed next steps below belong to the recorded Phase-0 work. The [master context](../SUPER-RUNTIME-MASTER-CONTEXT.md) governs subsequent decisions. See [current checkout prerequisites](../../README.md#source-checkout-reproducibility-status--8-october-2026) before trying to reproduce a reference-dependent result; this refresh neither fetched upstream references nor reran experiments.
+
 Reference: `research/references/kimi-k3-in-c`
 Pinned revision: `117e9d29bde14db9742f54fb66a191fd0bf03903`
 

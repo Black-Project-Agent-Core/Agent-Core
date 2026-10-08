@@ -1,5 +1,7 @@
 # Market Signal Lab — Secure Envato Credential QA
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 **Date:** 2026-08-18 (UTC+7)  
 **Implementation branch:** `feature/secure-envato-credential-runtime-resume-20260818`  
 **Exact native-tested source:** `ce9d1557a6f0504f195a351576d0961ea3e3a8b1`  

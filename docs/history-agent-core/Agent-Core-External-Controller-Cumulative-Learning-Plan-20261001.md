@@ -2,7 +2,7 @@
 
 **Status: SOURCE IMPLEMENTED — RESIDENT EXTERNAL-CONTROLLER LEARNING — HELD-OUT SESSIONS C/D VERIFIED — EC-8 EVALUATION PASS — EC-9 GRADUATION PASS.**
 **Primary controller:** external AI/controller connected through Agent Core MCP (currently ChatGPT).
-**Native model/API runtime:** deferred later phase; not a prerequisite, blocker, or current acceptance criterion.
+**Native model/API runtime at this acceptance checkpoint:** excluded from EC acceptance. This is a historical phase boundary, not a current deferred-runtime claim; [Native chat](Agent-Core-Interactive-Agent-Chat-Plan-20261002.md) and [capability parity](../Agent-Core-Native-Agent-Capability-Parity-Plan-20261002.md) subsequently reached their recorded acceptance. See [current architecture](../CODEBASE.md).
 **Authority:** exact current source/live evidence outranks this plan.
 
 ## 0. Implementation status — 2026-10-01

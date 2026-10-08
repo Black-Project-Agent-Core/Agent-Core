@@ -1,5 +1,7 @@
 # Market Signal Lab — Secure Envato Credential Native Windows Acceptance
 
+> **Historical checkpoint:** the status, pending actions, machine paths, branch names and verification below belong to the dated revision. For the imported monorepo source and continuation boundary, use [CONTINUE_MSL.md](CONTINUE_MSL.md). This record is preserved as evidence and does not authorize resuming old work or certify the current checkout.
+
 **Date:** 2026-08-18 (UTC+7)  
 **Repository:** `rendevouz999/Market-Signal-Lab`  
 **Tested source branch:** `feature/secure-envato-credential-runtime-resume-20260818`  

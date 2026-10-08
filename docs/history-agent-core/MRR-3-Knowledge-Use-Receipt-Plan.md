@@ -2,7 +2,7 @@
 
 > **Status:** IMPLEMENTED — TARGETED/COMPILED VERIFIED — RESIDENT VERIFIED. **Controller-surface note:** local source/dist/resident manifest advertise `receipt`; the current external connector descriptor remains stale and is tracked separately by `MRR-3.1-Controller-Surface-Sync-Plan.md`.
 > **Tanggal:** 2026-09-30 WIB.
-> **Prasyarat:** MRR-1/MRR-2 resident verified. Native AI runtime tetap deferred.
+> **Prasyarat historis — 2026-09-30:** MRR-1/MRR-2 resident verified; Native runtime belum menjadi acceptance target MRR-3. Penundaan fase itu telah dilampaui oleh [Native Runtime](Native-Agent-Runtime-Phase-1-Plan.md) dan [Native Chat](Agent-Core-Interactive-Agent-Chat-Plan-20261002.md); status konektor pada laporan ini tetap observasi sesi asal, bukan pemeriksaan konektor saat ini.
 > **Tujuan:** membuktikan penggunaan Memory pada pekerjaan nyata tanpa menyamakan retrieval dengan manfaat, tanpa menyimpan chain-of-thought, dan tanpa membuat Memory authority kedua.
 
 ## 1. Masalah yang ditutup

@@ -1,5 +1,7 @@
 # Market Signal Lab — Phase C Resume Marker
 
+> **Historical checkpoint:** the status, pending actions, machine paths, branch names and verification below belong to the dated revision. For the imported monorepo source and continuation boundary, use [CONTINUE_MSL.md](CONTINUE_MSL.md). This record is preserved as evidence and does not authorize resuming old work or certify the current checkout.
+
 **Date:** 2026-08-18 (UTC+7)
 **Status:** ACTIVE / USER-AUTHORIZED
 **Branch:** `feature/phase-c1-rust-ranking-parity-20260818`

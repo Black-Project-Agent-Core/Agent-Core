@@ -1,5 +1,7 @@
 # Super-Runtime Foundation Specification
 
+> **Architecture boundary:** approved direction is retained; milestone implementation and deferred capabilities are resolved by the [master context](../SUPER-RUNTIME-MASTER-CONTEXT.md). The current imported snapshot has [incomplete build inputs](../../README.md#source-checkout-reproducibility-status--8-october-2026), and no runtime/build proof was regenerated in this refresh.
+
 Status: Approved
 Date: 2026-08-31
 

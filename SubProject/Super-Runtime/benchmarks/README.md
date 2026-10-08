@@ -30,7 +30,7 @@ The harness:
 
 If any enforcement prerequisite is unavailable, the harness exits `77` with `classification=unsupported` and does **not** execute the user command.
 
-`systemd-run --user` is not required. The current build host lacks a user systemd bus, but it exposes a delegated cgroup-v2 hierarchy that is sufficient for real enforcement.
+`systemd-run --user` is not required. The original Task-7 build host lacked a user systemd bus but exposed a delegated cgroup-v2 hierarchy. A new host must be checked independently; this documentation refresh did not probe cgroups or execute the harness.
 
 ## Usage
 

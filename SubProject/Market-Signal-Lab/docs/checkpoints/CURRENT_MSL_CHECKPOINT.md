@@ -1,5 +1,7 @@
 # Market Signal Lab — Current Continuation Checkpoint
 
+> **Current source / historical evidence boundary (8 October 2026):** MSL source is now tracked under `<AGENT_CORE_ROOT>/SubProject/Market-Signal-Lab` in the Agent Core monorepo. The August checkpoint below preserves the prior host, branch, hashes, dataset audit and verification results. Its `E:` paths and observed runtime/release state are not current-checkout prerequisites or newly verified results. Use [CONTINUE_MSL.md](CONTINUE_MSL.md) for the active entry point. No private empirical dataset was inspected and no build/runtime gate was rerun in this refresh.
+
 **Checkpoint:** 2026-08-26 (Asia/Jakarta)
 **Canonical workspace policy:** `E:\Market-Signal-Lab` is the project root. `.worktrees` are temporary isolation only.
 **Integrated branch:** `integration/root-current-20260826`
@@ -18,7 +20,7 @@
 - Canonical root integration completion: `docs/checkpoints/2026-08-26-MSL-CANONICAL-ROOT-INTEGRATION-COMPLETE.md`
 - Worktree/root policy: `docs/project/WORKTREE_INTEGRATION_POLICY.md`
 
-## Current truth
+## Recorded development state at the August checkpoint
 
 ```text
 Phase P mapping performance                   COMPLETE / NATIVE VERIFIED
@@ -118,7 +120,7 @@ E:\Market-Signal-Lab\dist\.worktrees = disposable implementation isolation only
 
 A worktree may be created for safe implementation, review, or merge preparation. Once work is accepted, its commits must be integrated into the canonical root branch (or explicitly documented as intentionally separate/unreleased), and any stable operational artifact must be copied/promoted outside the worktree before that worktree is considered disposable.
 
-## Next exact action
+## Historical continuation action at the August checkpoint
 
 ```text
 canonical root integration = COMPLETE / VERIFIED

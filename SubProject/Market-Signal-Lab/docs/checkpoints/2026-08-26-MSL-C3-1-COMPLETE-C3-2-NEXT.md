@@ -1,5 +1,7 @@
 # Market Signal Lab — C3.1 COMPLETE / C3.2 NEXT
 
+> **Historical checkpoint:** the status, pending actions, machine paths, branch names and verification below belong to the dated revision. For the imported monorepo source and continuation boundary, use [CONTINUE_MSL.md](CONTINUE_MSL.md). This record is preserved as evidence and does not authorize resuming old work or certify the current checkout.
+
 **Date:** 2026-08-26 (Asia/Jakarta)
 **Status:** C3.1 DETERMINISTIC SIGNAL v0.2 COMPLETE / VERIFIED
 **Formal release:** NOT RELEASED

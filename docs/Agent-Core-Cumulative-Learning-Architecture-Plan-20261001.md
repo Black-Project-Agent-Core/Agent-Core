@@ -1,8 +1,8 @@
 # Agent Core Cumulative-Learning Architecture Plan — 2026-10-01
 
-**Status: SECONDARY / MIXED-MECHANISM REFERENCE.** The current primary roadmap is `docs/Agent-Core-External-Controller-Cumulative-Learning-Plan-20261001.md`. This document remains useful for NativeAgentController mechanisms that may be refactored into the shared external MCP path, but it is no longer the primary implementation sequence.
+**Status: HISTORICAL DESIGN / SECONDARY MECHANISM REFERENCE.** The [external-controller roadmap](history-agent-core/Agent-Core-External-Controller-Cumulative-Learning-Plan-20261001.md) graduated through EC-9; it is no longer an open implementation sequence. [Native chat](history-agent-core/Agent-Core-Interactive-Agent-Chat-Plan-20261002.md) and [capability parity](Agent-Core-Native-Agent-Capability-Parity-Plan-20261002.md) subsequently reached their recorded acceptance. Current shared-owner behavior is described by [Product Direction](Agent-Core-Product-Direction.md), [Cumulative Workflow](Cumulative-Workflow-Implementation-20261006.md), [Self-Improvement](Agent-Core-Self-Improvement-Execution-20261007.md) and [CODEBASE](CODEBASE.md). The phase-specific gaps and deferred-native wording below are dated design evidence, not current source absence claims.
 **Authority:** exact current Agent Core source/live state outranks this plan.
-**Corrected phase authority — 2026-10-01:** the acceptance subject for the current phase is the connected external AI/controller (currently ChatGPT) operating through Agent Core MCP. Agent Core is the persistent local body/tooling/Memory/Learning substrate that should make that controller progressively better across work. Native model/provider execution through `/agent/run` is a later phase and is not a prerequisite, blocker, or current success criterion.
+**Historical phase authority — 2026-10-01, superseded for current sequencing:** the acceptance subject for the current phase is the connected external AI/controller (currently ChatGPT) operating through Agent Core MCP. Agent Core is the persistent local body/tooling/Memory/Learning substrate that should make that controller progressively better across work. Native model/provider execution through `/agent/run` is a later phase and is not a prerequisite, blocker, or current success criterion.
 **Target:** make Agent Core behave as a persistent cumulative-learning problem solver, not merely an autonomous tool executor with memory.
 
 ## 1. Target operating loop
@@ -30,7 +30,7 @@ observe -> remember -> search old knowledge -> hypothesize -> act -> fail -> dia
 - All learned procedures remain reversible and evidence-linked.
 - No autonomous release/commit/push/deploy/restart authority is introduced.
 
-## 3. Current source baseline
+## 3. Source baseline recorded on 2026-10-01
 
 Already present and should be extended, not replaced:
 - Native Agent Controller with mandatory agent_core_finalize.
@@ -50,7 +50,7 @@ Already present and should be extended, not replaced:
 - Procedure candidates accumulate independent verified support/failure task identities; failure-aware readiness gates Skill import/revision staging, while SkillService remains artifact-only with executionAuthority=false.
 - Native cumulative evaluation now reports correctness/efficiency plus verification coverage and Memory/artifact attribution metrics. Controlled cross-session comparative evidence is still pending.
 
-## 3.1 Current primary path — external AI/controller through MCP
+## 3.1 Historical primary acceptance path — external AI/controller through MCP
 
 Already resident for ChatGPT/other connected controllers:
 - `AGENTS.md` is mandatory MCP server instruction and requires Memory-first access before any other Agent Core work.

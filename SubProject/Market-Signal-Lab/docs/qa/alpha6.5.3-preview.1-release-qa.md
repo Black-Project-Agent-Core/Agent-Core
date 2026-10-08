@@ -1,5 +1,7 @@
 # Market Signal Lab Alpha 6.5.3 Preview.1 — QA Report
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 **Status:** TEST / PRE-RELEASE BUILD  
 **Runtime identity:** `0.3.0-alpha.6.5.3-preview.1`  
 **Branch:** `feature/alpha6.5.3-polyglot`

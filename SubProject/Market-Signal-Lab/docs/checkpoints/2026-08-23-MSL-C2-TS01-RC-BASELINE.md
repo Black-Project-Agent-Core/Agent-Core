@@ -1,5 +1,7 @@
 # Market Signal Lab — C2 + TS0/TS1 Integrated RC Baseline
 
+> **Historical checkpoint:** the status, pending actions, machine paths, branch names and verification below belong to the dated revision. For the imported monorepo source and continuation boundary, use [CONTINUE_MSL.md](CONTINUE_MSL.md). This record is preserved as evidence and does not authorize resuming old work or certify the current checkout.
+
 **Checkpoint:** 2026-08-23 (Asia/Jakarta)
 **Branch:** `integration/c2-ts01-rc-baseline-20260823`
 **Status:** INTEGRATED BASELINE COMPLETE / VERIFIED — RC SIGN-OFF PENDING

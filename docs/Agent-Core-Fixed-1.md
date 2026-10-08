@@ -1,3 +1,5 @@
+> **Historical conversation / source evidence.** The conversation below is preserved as recorded. Its instructions, phase boundaries, local paths, status claims and links are not current operating authority. Use [Product Direction](Agent-Core-Product-Direction.md), [CODEBASE](CODEBASE.md) and the [documentation index](README.md) for current context.
+
 > From: https://chatgpt.com/g/g-p-6a4731eb0df081918f4e64005909762b-joe/c/6aaf58d7-c958-83ec-858f-173634297a19
 
 # you asked

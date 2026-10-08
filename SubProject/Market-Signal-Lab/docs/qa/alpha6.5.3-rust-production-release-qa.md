@@ -1,5 +1,7 @@
 # Alpha 6.5.3 Rust Production Analytics - Release QA
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 **Date:** 2026-08-17 (UTC+7)
 **Branch:** `feature/polyglot-runtime-v2`
 **Verified source commit:** `47288092ef552f101a838cb391c34d80c3b3e3b3`

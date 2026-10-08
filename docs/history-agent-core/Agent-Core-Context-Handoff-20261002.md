@@ -1,5 +1,7 @@
 # Agent Core Context Handoff — Partner Brainstorming
 
+**Historical handoff; NACP P8 follow-up superseded.** The later [NACP final acceptance](../Agent-Core-Native-Agent-Capability-Parity-Plan-20261002.md) closes P8 and NACP-0..NACP-10. The pending reload/search directions and next-execution request below preserve the pre-closure checkpoint; they must not reopen that acceptance. Read [current architecture](../CODEBASE.md) and [Product Direction](../Agent-Core-Product-Direction.md) for current scope.
+
 **Prepared:** 2026-10-03 +07  
 **Project:** `E:\Projects\Agent-Core`  
 **Purpose:** standalone context handoff for a review/brainstorming partner.  

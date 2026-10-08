@@ -1,128 +1,71 @@
-# Agent Core: current product direction
+# Agent Core
 
-**User-confirmed direction, 2026-09-30:** a cumulative-learning agent whose model can be supplied through an API or local endpoint, while local knowledge and reusable procedures persist across sessions and improve later decisions/actions. System mechanisms and Memory mechanisms are developed together; grounding and steal/use are means to this outcome, not a target tool count.
+Local-first, Windows-first agent body with authenticated MCP access, durable Memory and Learning, a native model/controller runtime, interactive chat, and shared machine, browser, code, research, and phone capabilities.
 
-See [Agent Core Product Direction](docs/Agent-Core-Product-Direction.md) for the confirmed goal, adoption rationale, and proposed target-to-implementation grounding. [CODEBASE](docs/CODEBASE.md) remains the implemented-state map; [Target-Feture](docs/Target-Feture.md) is preserved conversation evidence. The current MCP body is a foundation, not by itself proof that the complete native model/learning loop exists or improves outcomes.
+**Source version: 0.14.0.** This repository contains the current Agent Core source line. The documentation refresh is grounded in `main` at `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3`. Source availability does not establish what is installed or running on another machine, or which release assets are published.
 
-**Phase order confirmed by the user:** mature the body/system and local Memory/reuse mechanisms first; begin the native model/API-key runtime only after the later maturity review and user decision. The existing external MCP controller can exercise the body now. MRR-1/MRR-2/MRR-3 are resident verified. [MRR-3 Knowledge Use Receipt](docs/MRR-3-Knowledge-Use-Receipt-Plan.md) binds exact retrieval body identity to controller-submitted applied/adapted/rejected receipts and bounded outcome evidence while canonical Memory/ranking/Skills/execution remain unchanged. MRR-3.1 authority mapping confirmed local source/dist/generated manifest expose `learning(action="receipt")`, while the external ChatGPT connector descriptor remains stale; no local duplicate tool/shim is justified. MRR-4 then verified genuine cross-session procedural reuse, and MRR-4.1 observed a bounded advantage on a harder matched fixture: equal correctness with problem-solving calls reduced 11→9, while elapsed time did not improve. MRR-5 exposed the remaining capture-side gap: two ordinary fresh-controller verified repairs completed without any new Learning checkpoint/review/capture. The correction is now implemented and source/build/compiled qualified: meaningful-task Learning finalization is promoted to the top-level Agent Core controller contract, and bounded safe pending-review evidence persists in the existing Learning state until semantic review. Targeted/touched tests are 51/51 PASS, build/path policy PASS, compatibility remains 70→70/non-breaking. First-correction resident activation/readback is verified. A subsequent truly fresh ordinary controller naturally captured a verified operational-reflection Memory, but skipped mandatory Learning checkpoint/review because Reflexion still offered direct Memory promotion as an alternative path. A second correction unified that contract and added a non-gating finalization advisory to verified-recovery `memory_remember` responses; focused tests/build/compatibility/Grafel qualification and resident readback passed. The final fresh ordinary dependency-order repair still skipped Learning finalization and produced no new reusable Memory, so MRR-5 is closed as boundary evidence: external-controller compliance is not deterministic. Pre-runtime body/Memory scope is closed. Native Agent Runtime Phase 1 backend foundation is now implemented and resident-activated: OpenAI-compatible provider configuration, persistent task/session/finalization state, Memory-first context assembly, scoped reuse of the existing MCP tool surface, and a synthetic mandatory finalization function that prevents plain assistant text from completing a native task. Verified terminal outcomes require safe evidence references; terminal outcome is preserved separately from lifecycle status; and Learning-finalization failure cannot return the model completion as a successful user-facing result. Targeted/integration native-runtime verification is now **23/23 PASS across six files**, including a real loopback OpenAI-compatible HTTP protocol run through actual Memory/Learning services and an existing MCP tool before mandatory finalization. Build/path policy is **284/0**, compatibility remains **70→70/non-breaking**, Grafel is current/accepted at **10,139/55,161**, and after relocation to `F:\Projects\Agent-Core` resident PID **10712** started after the latest build while `/health` truthfully reports `agentRuntime.status=not-configured` because no real API/local model endpoint is configured. The provider protocol path is verified; real model/provider acceptance remains pending. See `docs/Pre-Runtime-Body-Memory-Learning-Closure-20260930.md` and `docs/Native-Agent-Runtime-Phase-1-Plan.md`. Task-scoped auto-trust still covers routine approved filesystem/engineering operations without bypassing authentication, evidence checks, unrelated destructive scope, or unavailable platform capabilities.
+## Product direction
 
-## Historical README snapshot — legacy/reference only
+Agent Core is a cumulative-learning agent: external MCP controllers and the Native AI Agent use the same local capability owners and persistent knowledge. The goal is verified learning that is used in later decisions and actions, not a larger tool count. Native runtime, provider scheduling, interactive chat, and capability grants are implemented; their presence alone does not prove improved task outcomes.
 
-The material below retains an older v0.12.0/62-tool/Hermes snapshot and legacy GitHub recovery assumptions. It is not current runtime, installation, release or recovery authority. Current local source, the operating contract and dated CODEBASE corrections supersede it; do not restore or publish the current line from the legacy GitHub repository implicitly.
+See [Product Direction](docs/Agent-Core-Product-Direction.md) for intent and evidence limits, [CODEBASE](docs/CODEBASE.md) for the source map and dated acceptance records, and [AGENTS.md](AGENTS.md) for the operating contract. [Target-Feture](docs/Target-Feture.md) preserves the original conversation evidence.
 
-<p align="center">
-  <img src="assets/agent-core.png" width="96" alt="Agent Core logo">
-</p>
+## Implemented capability owners
 
-<h1 align="center">Agent Core</h1>
+| Capability | Source owner / entry point | Scope |
+| --- | --- | --- |
+| Machine and browser control | `src/rdc`, `src/mcp/server.ts` | Files, documents, search, processes, checkpoints, and browser control |
+| Memory | `src/memory/host-runtime.ts`, `src/memory`, `SubProject/agent-core-memory` | Legacy-compatible memory facade; guarded experience-v2 activation and controller-scoped read/write facades |
+| Learning and cumulative workflow | `src/learning`, `controller_learning`, `learning` | Task episodes, evidence-backed review, reuse attribution, procedures, and outcome records |
+| Native runtime and chat | `src/agent-runtime.ts`, `src/agent-controller.ts`, `src/agent-chat-*` | OpenAI-compatible providers, persistent scheduling, conversations, durable turns, scoped tools, and finalization |
+| Skills and capability awareness | `src/skills`, `src/capability-awareness.ts` | Artifact catalog, revision-bound proposals/decisions, capability discovery, and actual-use disclosure |
+| Code Intelligence | `src/code-intelligence`, seven structural `code_*` tools | Project-local Grafel orientation, graph, surface, analysis, patterns, workspace, and repair |
+| Semantic IDE | `src/semantic-ide`, `code_symbol`, `code_refactor` | Language-server-backed inspection and scoped refactoring |
+| Web research | `src/web-research`, `web_search`, `web_open` | Configurable search/read providers with bounded results |
+| Phone and Game Mode | `src/phone`, `src/mcp/phone-*` | Android observation/actions and guarded game profiles, sessions, and assessment |
 
-<p align="center">
-  Local-first authenticated MCP control plane for Windows with machine control, durable semantic memory, code intelligence, Semantic IDE/LSP, learning, Game Mode, and Hermes partner workflows.
-</p>
+The actual MCP tool list depends on initialized services, enabled features, controller context, and credential grants. `src/mcp/server.ts` plus the registered facade modules define the source surface; a fresh `tools/list` establishes the exposed surface of a particular running instance. Older 55/62/70-tool counts are dated snapshots.
 
-<p align="center">
-  <strong>Stable: v0.12.0</strong> · <strong>62 MCP tools</strong> · <strong>Windows-first</strong> · <strong>Private recovery mirror</strong>
-</p>
+The Hermes `partner` bridge is retired. Internal `src/rdc` is Agent Core-owned machine-control code; the external Remote Desktop Commander product is a separate operator tool.
 
-## What Agent Core is
-
-Agent Core is the machine-side control layer for a connected AI/controller. It exposes a local authenticated MCP surface, keeps execution and memory local by default, and integrates optional sibling capabilities without turning them into execution gates.
-
-The current line is intentionally source-first: the local project is authoritative, while this GitHub repository is maintained as a recovery mirror. Live credentials, private runtime state, browser profiles, forensic backups, and protected research/reference trees are excluded from Git.
-
-## Current capability surface
-
-| Capability | Public tools | Purpose |
-| --- | ---: | --- |
-| Machine control | 26 | Filesystem, process, terminal, search, edit, config, and local desktop-adjacent operations |
-| Memory | 11 | Durable file-native memory, semantic retrieval, evolution preview, consolidation, provenance, and revisions |
-| Game Mode | 14 | Android/phone control through Agent Core-managed transports |
-| Code Intelligence | 7 | Grafel-backed orientation, graph, surface, analysis, patterns, workspace, and repair |
-| Semantic IDE | 2 | LSP-backed symbol/refactor workflows with multi-root/provider support |
-| Learning | 1 | Controller-reviewed durable learning checkpoints and sinks |
-| Hermes Partner | 1 | Optional A2A collaboration through Hermes' authenticated Runs API |
-
-Total public MCP surface: **62 tools**.
-
-## Architecture at a glance
+## Architecture
 
 ```text
-AI / MCP client
-      |
-      v
-Agent Core :8765
-  |-- machine control (src/rdc)
-  |-- MemoryService
-  |-- Game Mode / phone
-  |-- Grafel Code Intelligence
-  |-- Semantic IDE / LSP
-  |-- Learning
-  |-- Hermes Partner
-  |
-  +-- optional authenticated tunnel for remote ChatGPT access
+External MCP controller             Native AI / interactive chat
+          |                                      |
+          +------ Agent Core capability owners --+
+                             |
+             Memory / Learning / Skills / evidence
+             machine / browser / code / web / phone
+                             |
+                  local machine and services
 ```
 
-Subsystems are siblings. Memory, Code Intelligence, Learning, Semantic IDE, Game Mode, and Hermes Partner do not become hidden routing or authorization gates for normal machine-control operations.
+`src/index.ts` initializes the services, Node HTTP/MCP server, native controller, and chat service. The Windows launcher hosts the React UI in WebView2 and manages the local Core/tunnel lifecycle. Authentication and scoped grants remain enforced; subsystem availability does not grant additional authority.
 
-## Install / recovery
+Memory activation is explicit. Without `runtime/memory-v2-activation.json`, the host initializes the legacy Memory service at its configured root, defaulting to `runtime/memory`. A valid activation marker and matching backup digest select the experience-v2 service at `runtime/memory-v2`; the legacy writer is not initialized in that branch. A source checkout does not include or create that production activation state.
 
-### Recommended: stable Windows release
+The native provider runtime defaults to disabled in `src/config.ts` and needs appropriate local configuration. Provider credentials, live Memory, chat history, and machine-specific runtime state are not supplied by cloning the repository.
 
-1. Open the [latest GitHub release](https://github.com/Black-Project-Agent-Core/Agent-Core/releases/latest).
-2. Download `Agent-Core-v0.12.0.zip`.
-3. Verify the SHA-256 published with the release.
-4. Extract the archive to the desired project directory.
-5. Configure local secrets/runtime state locally; never commit them.
-6. Start Agent Core with the packaged launcher/runtime.
-
-The stable package intentionally excludes live `.env`, secrets, OAuth/API-key state, user memory notes, tracker logs, browser profiles, backups, Git metadata, and protected reference repositories.
-
-> **v0.12.0 recovery note:** the immutable v0.12.0 ZIP was created before discovery that its bundled `.env.example` had been overwritten by filesystem corruption. Use the release asset `Agent-Core-v0.12.0-env.example` instead. The `main` branch contains the corrected source-grounded template.
-
-### Portable recovery bootstrap and self-healing
-
-Current `main` includes `scripts/windows/Recover-Agent-Core.ps1`. Future stable packages carry `INTEGRITY-MANIFEST.json`, a deterministic per-file SHA-256 manifest for immutable package files. Mutable/private state is deliberately excluded from integrity enforcement.
-
-For a **new machine**, download the recovery script from this private repository, authenticate `gh`, then bootstrap into an empty directory:
-
-```powershell
-gh auth login
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Recover-Agent-Core.ps1 `
-  -Mode Bootstrap -Destination D:\Agent-Core
-```
-
-Bootstrap resolves the latest release, downloads the ZIP plus `SHA256SUMS.txt`, verifies the archive SHA-256 before extraction, applies a corrective env-example asset when the release provides one, installs only into an empty destination, and runs project-local Node runtime health/self-repair.
-
-For an existing **packaged** installation:
-
-```powershell
-npm run recovery:audit
-npm run recovery:repair
-```
-
-`recovery:audit` checks immutable files against `INTEGRITY-MANIFEST.json`. `recovery:repair` downloads the same-version trusted release, verifies its ZIP checksum, backs up each damaged file under `runtime\recovery\backups`, replaces only missing/mismatched immutable files, preserves unknown files, and audits again after repair.
-
-Offline repair/bootstrap can use `-SourceZip` with `-ChecksumFile` or `-ExpectedZipSha256`. Live `.env`, secrets, auth/OAuth data, user memory, tunnel credentials, browser profiles, subsystem state, and forensic backups are never governed or overwritten by automatic integrity repair.
-
-The immutable v0.12.0 archive predates the packaged per-file manifest. The new bootstrap can still trust that release by verifying its archive SHA-256 and deriving a local manifest after extraction; later packages will ship the manifest directly.
-
-### Build the core from source
+## Build from source
 
 Requirements:
 
-- Windows
-- Node.js **>= 24.15.0**
-- npm
-- .NET SDK only when rebuilding the native launcher
+- Windows for the native desktop launcher and Windows integration
+- Node.js **>= 24.15.0** and npm
+- .NET SDK when rebuilding the launcher
+- Separately configured optional providers/transports for the capabilities you use
+
+From the project root:
 
 ```powershell
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 npm ci
 npm run build
 npm start
 ```
 
-For the web UI:
+The root build runs the path policy, builds `SubProject/agent-core-memory`, and compiles the Core. Build the React UI separately:
 
 ```powershell
 Set-Location src\ui
@@ -130,54 +73,43 @@ npm ci
 npm run build
 ```
 
-Do not copy credentials from another machine blindly. Recreate machine-local authentication/runtime state as appropriate.
+Keep credentials local. Review [Maintenance](Maintenance.md), [Contributing](CONTRIBUTING.md), and the relevant subsystem documentation before configuring or activating optional runtimes.
 
 ## MCP and authentication
 
-The local listener is loopback-bound by default at `127.0.0.1:8765`. The MCP endpoint requires a valid Agent Core API key or OAuth access token.
-Remote ChatGPT access uses the authenticated tunnel path rather than exposing the local listener directly.
+The source-default listener is `127.0.0.1:8765`; `/mcp` requires an Agent Core API key or OAuth access token. Remote access uses the authenticated tunnel path. The native chat HTTP routes and local UI bridge are implemented separately from public MCP discovery.
 
-See [SECURITY.md](SECURITY.md) for the security boundary and credential-handling rules.
+See [SECURITY.md](SECURITY.md) for authentication, credential handling, and the security boundary.
 
-## Repository / recovery policy
+## Releases and recovery
 
-This repository's `main` branch is a **recovery mirror of the current local Agent Core source line**. It is not a source that should be merged into a newer local tree merely because the histories differ.
+Source version, packaged version, published assets, and resident runtime are separate facts. [CODEBASE release documentation](docs/CODEBASE.md#09-release-intent-and-product-version-integrity) records packaging policy; older release and activation reports remain historical evidence.
 
-The Git mirror intentionally excludes:
+`Recover-Agent-Core.ps1` supports an explicit trusted `-SourceZip` with `-ChecksumFile` or `-ExpectedZipSha256`. Bootstrap requires an empty destination; repair targets a packaged installation and the same product version. Read-only `npm run recovery:audit` checks its integrity manifest.
 
-- `.env` and credential backups
-- `secrets/`
-- private runtime memory/auth/tracker/browser state
-- `runtime/backups/` and forensic corruption artifacts
-- protected `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/` reference trees
-- browser/RDC profiles and caches
-- generated `bin/`, `obj/`, temporary build outputs, and large packaged binaries
+**Known implementation limitation:** the recovery script still rejects `Black-Project-Agent-Core/Agent-Core` with `LEGACY_REFERENCE_ONLY`, although that repository now contains the current source line. Its `Repository` default is empty and network recovery also requires `-AllowNetworkRecovery`. This documentation refresh does not change those guards or establish trusted release assets. Use a separately verified current-line ZIP/checksum for recovery; do not assume a source sync makes the network recovery path usable.
 
-Large stable binaries are stored as GitHub Release assets instead of normal Git objects.
+## Repository and private-state boundary
 
-## Documentation
+[Black-Project-Agent-Core/Agent-Core](https://github.com/Black-Project-Agent-Core/Agent-Core) is the current source repository, replacing the earlier legacy/reference-only designation. Remote names and tracking branches are checkout-specific; inspect them before Git operations. Repository access is not permission to reset local work, push, publish, release, or deploy.
 
-- [Architecture source of truth](docs/CODEBASE.md)
+The tracked tree excludes live `.env`, secrets, private runtime state, user Memory, browser profiles, protected reference trees, generated builds, and local release archives through `.gitignore`. The package metadata field `legacyRepository` is a retained implementation name, not the current repository policy. Do not publish private state or restore it from unrelated release/source snapshots.
+
+## Documentation and verification
+
+- [Documentation index](docs/README.md)
+- [Documentation audit and limitations](docs/DOCUMENTATION-AUDIT-20261008.md)
+- [Architecture and evidence map](docs/CODEBASE.md)
+- [Product direction](docs/Agent-Core-Product-Direction.md)
+- [Operating contract](AGENTS.md)
 - [Security policy](SECURITY.md)
-- [Maintenance notes](Maintenance.md)
+- [Maintenance](Maintenance.md)
 - [Changelog](CHANGELOG.md)
-- [Release artifacts](release/README.md)
 - [Contributing](CONTRIBUTING.md)
 - [Support](SUPPORT.md)
 
-## Development and verification
-
-Common commands:
-
-```powershell
-npm run build
-npm test
-npm run release:plan
-npm run release:compat
-```
-
-Tests and broader verification are run deliberately according to the task scope; the presence of a test command does not make every test suite an automatic execution gate.
+Available commands include `npm run build`, `npm test`, `npm run release:plan`, and `npm run release:compat`. Run them within the authorized task scope. This documentation refresh used static source inspection only; it did not build, test, install, activate, release, or publish the product.
 
 ## License
 
-No public open-source license is declared for this private repository. Do not assume redistribution rights from source visibility alone.
+No root open-source license is declared in this source baseline. Do not infer redistribution rights from repository visibility; retain applicable third-party notices.

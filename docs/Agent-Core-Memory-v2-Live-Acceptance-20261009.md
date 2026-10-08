@@ -1,5 +1,7 @@
 # Agent Core Memory v2 — Production Live Acceptance
 
+**Evidence scope:** This is the original Windows-host acceptance record, dated in Indonesia local time. The 2026-10-08 UTC documentation review checked the committed integration at `8a80251`; it did not rerun these production operations or inspect private runtime data. A clone without the host activation marker uses the legacy branch of [host-runtime.ts](../src/memory/host-runtime.ts), so this record does not establish that v2 is activated in every checkout.
+
 **Date:** 2026-10-09 (Indonesia local date)
 **Status:** SELESAI — production Memory v2 activation, preservation and live external-controller functional acceptance verified.
 **Owner:** Existing Agent Core Memory capability; no second MCP service or Memory server.

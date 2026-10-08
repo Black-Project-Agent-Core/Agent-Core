@@ -1,6 +1,7 @@
 # Agent Core AI Chat Placeholder Task — 2026-09-26
 
-> **Status:** COMPLETE — UI PLACEHOLDER BUILT — NO CHAT/AI RUNTIME ATTACHED
+> **Status:** HISTORICAL — 2026-09-26 UI PLACEHOLDER TASK COMPLETE; SUPERSEDED BY IMPLEMENTED NATIVE CHAT.
+> **Current navigation:** [Native chat acceptance](history-agent-core/Agent-Core-Interactive-Agent-Chat-Plan-20261002.md), [capability parity](Agent-Core-Native-Agent-Capability-Parity-Plan-20261002.md), and [CODEBASE](CODEBASE.md). The disabled UI, untouched Hermes backend and deferred runtime below describe this original task only. Source now contains `src/agent-controller.ts`, `src/agent-chat-service.ts`, `src/agent-chat-store.ts` and provider scheduling; do not restore the placeholder or retired partner bridge.
 > **Scope:** UI foundation only. No AI model runtime, chat engine, agent loop, provider routing, persistence, or tool orchestration is introduced.
 
 ## Goal

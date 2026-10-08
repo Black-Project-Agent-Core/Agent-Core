@@ -1,5 +1,7 @@
 # MSL Analytics v2 — Task 3 Rust Codec Verification
 
+> **Historical checkpoint:** the status, pending actions, machine paths, branch names and verification below belong to the dated revision. For the imported monorepo source and continuation boundary, use [CONTINUE_MSL.md](CONTINUE_MSL.md). This record is preserved as evidence and does not authorize resuming old work or certify the current checkout.
+
 **Date:** 2026-08-17 (UTC+7)  
 **Branch:** `feature/analytics-v2-ipc`  
 **Verified head:** `8f42f28ed937bd7d1a2c53955e2165d4bad69378`  

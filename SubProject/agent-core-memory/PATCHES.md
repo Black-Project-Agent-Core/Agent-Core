@@ -30,7 +30,7 @@ validation continue to reject corruption and unauthorized records.
 heartbeat while a separate process attempts to acquire the same lock.
 Windows/exFAT acceptance passed; project-level host/MCP tests and isolated
 activation/restore/rollback tests are documented in
-`docs/Agent-Core-Memory-v2-Installation-20261008.md` in the host repository.
+the host [installation record](../../docs/Agent-Core-Memory-v2-Installation-20261008.md) and [live acceptance record](../../docs/Agent-Core-Memory-v2-Live-Acceptance-20261009.md). These are recorded, environment-scoped results, not a full Windows regression claim or tests rerun during this documentation refresh.
 
 Legacy Memory data, credentials, original v1 backups, and runtime Memory
 roots are not part of the published subproject source.

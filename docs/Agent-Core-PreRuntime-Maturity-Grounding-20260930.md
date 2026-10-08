@@ -1,5 +1,7 @@
 # Agent Core: Grounding Kematangan Tubuh dan Memory sebelum Runtime AI
 
+> **Historical audit; phase superseded.** [MRR closure](Pre-Runtime-Body-Memory-Learning-Closure-20260930.md), [Native Runtime Phase 1](history-agent-core/Native-Agent-Runtime-Phase-1-Plan.md), and subsequent [Native chat acceptance](history-agent-core/Agent-Core-Interactive-Agent-Chat-Plan-20261002.md) supersede the activation-pending and runtime-deferred sequencing below. These paragraphs preserve the 2026-09-30 audit, not the current implementation state. See [Product Direction](Agent-Core-Product-Direction.md) and [CODEBASE](CODEBASE.md).
+
 > **Post-audit update:** G1/G2 have now been implemented and targeted/compiled verified in `Memory-Reuse-Reliability-20260930.md`; resident activation is pending. Findings below remain the original audit evidence, not a claim that fixes were absent after this update.
 
 > **Status audit:** SELESAI UNTUK CAKUPAN SOURCE DAN OBSERVASI READ-ONLY. Ini bukan acceptance kematangan produk dan bukan implementasi perbaikan.

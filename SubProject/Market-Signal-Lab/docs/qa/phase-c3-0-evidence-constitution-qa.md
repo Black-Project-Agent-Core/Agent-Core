@@ -1,5 +1,7 @@
 # Phase C3.0 Evidence Constitution Runtime — QA Evidence
 
+> **Historical QA evidence:** results below apply to their recorded revision, environment and date. They were not rerun during the monorepo documentation refresh. See [current continuation](../checkpoints/CONTINUE_MSL.md) before treating a pending step or machine path as current.
+
 **Date:** 2026-08-26 (Asia/Jakarta)
 **Status recorded here:** derived only from observed repository, automated, and staged-native evidence below.
 **Final whole-branch review:** SPEC PASS / QUALITY PASS — no open Critical/Important findings.
