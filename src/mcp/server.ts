@@ -20,6 +20,7 @@ import { getConfig, setConfigValue } from '../rdc/tools/config.js';
 import { getUsageStats } from '../rdc/tools/usage.js';
 import { giveFeedbackToDesktopCommander } from '../rdc/tools/feedback.js';
 import { getPrompts } from '../rdc/tools/prompts.js';
+import { createImageInspector, imageInspectSchema } from '../rdc/tools/image-inspect.js';
 import { toolHistory } from '../rdc/utils/toolHistory.js';
 import { usageTracker } from '../rdc/utils/usageTracker.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
@@ -47,6 +48,7 @@ export const SERVER_NAME = 'agent-core';
 export const SERVER_VERSION = AGENT_CORE_VERSION;
 
 export interface AgentCoreMcpRuntime {
+  imageInspector?: ReturnType<typeof createImageInspector>;
   memoryService?: MemoryService;
   memoryExperience?: ExperienceMemoryService;
   phoneController?: PhoneController;
@@ -129,7 +131,9 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
     const captureDecision: EvidenceCaptureDecision | undefined = trackCall
       ? decideToolEvidenceCapture(name, input)
       : undefined;
-    const captureContext = captureDecision && captureDecision.policyState !== 'inactive'
+    const observationArgs = name === 'image_inspect' ? { argumentKeys: Object.keys(input) } : input;
+    const imageFailure = new Error('Image inspection failed; detail omitted by metadata-only policy');
+    const captureContext = captureDecision && (captureDecision.policyState !== 'inactive' || captureDecision.disposition !== 'full')
       ? {
           evidenceCapture: captureDecision.disposition,
           evidencePolicyState: captureDecision.policyState,
@@ -143,13 +147,13 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
       let advisory: FailureLoopAdvisory | undefined;
       if (advisor) {
         if (result.isError) {
-          advisory = advisor.observeFailure(name, input, result);
+          advisory = advisor.observeFailure(name, observationArgs, name === 'image_inspect' ? imageFailure : result);
           if (advisory) {
             finalResult = appendFailureLoopAdvisory(finalResult, advisory) as ToolResult;
             recordFailureLoopAdvisory(name, advisory);
           }
         } else {
-          advisor.observeSuccess(name, input);
+          advisor.observeSuccess(name, observationArgs);
         }
       }
       if (result.isError && externalLearning && externalSessionId) {
@@ -157,8 +161,8 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
           const prior = await externalLearning.failureContext({
             sessionId: externalSessionId,
             tool: name,
-            args: input,
-            failure: result,
+            args: observationArgs,
+            failure: name === 'image_inspect' ? imageFailure : result,
             ...(workspace ? { workspace } : {}),
             repeated: Boolean(advisory),
           });
@@ -208,7 +212,7 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
       let finalError = error;
       let advisory: FailureLoopAdvisory | undefined;
       if (advisor) {
-        advisory = advisor.observeFailure(name, input, error);
+        advisory = advisor.observeFailure(name, observationArgs, name === 'image_inspect' ? imageFailure : error);
         if (advisory) {
           recordFailureLoopAdvisory(name, advisory);
           finalError = annotateFailureLoopException(error, advisory);
@@ -219,8 +223,8 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
           const prior = await externalLearning.failureContext({
             sessionId: externalSessionId,
             tool: name,
-            args: input,
-            failure: error,
+            args: observationArgs,
+            failure: name === 'image_inspect' ? imageFailure : error,
             ...(workspace ? { workspace } : {}),
             repeated: Boolean(advisory),
           });
@@ -271,6 +275,13 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     { name: SERVER_NAME, title: 'Agent Core', version: SERVER_VERSION },
     { instructions: instructions + '\n\n' + CAPABILITY_USE_CONTRACT },
   );
+  // The outer transport boundary also counts capability notices appended by
+  // registration wrappers after the ordinary history/evidence result budget.
+  const registerTool = server.registerTool.bind(server);
+  (server as any).registerTool = (name: string, config: any, callback: any) => registerTool(name, config,
+    name === 'image_inspect'
+      ? async (args: any, ctx: any) => applyResultBudget(name, await callback(args, ctx)) as any
+      : callback);
   if(!runtime.nativeTaskId) installCapabilityObservation(server,key,runtime.externalControllerLearning,runtime.controllerSessionId);
   installCredentialToolGrant(server, key);
   if (runtime.failureLoopAdvisor) advisorByServer.set(server, runtime.failureLoopAdvisor);
@@ -287,6 +298,9 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
   tool(server, 'get_config', 'Get Configuration', schemas.getConfig, async () => getConfig() as any, true);
   tool(server, 'set_config_value', 'Set Configuration Value', schemas.setConfigValue, setConfigValue as any);
   tool(server, 'read_file', 'Read File or URL', schemas.readFile, handlers.handleReadFile as any, true);
+  if (!runtime.nativeTaskId) {
+    tool(server, 'image_inspect', 'Inspect Local Image', imageInspectSchema, runtime.imageInspector ?? createImageInspector(), true);
+  }
   tool(server, 'read_multiple_files', 'Read Multiple Files', schemas.readMultipleFiles, handlers.handleReadMultipleFiles as any, true);
   tool(server, 'write_file', 'Write File', schemas.writeFile, handlers.handleWriteFile as any);
   tool(server, 'write_pdf', 'Write/Modify PDF', schemas.writePdf, handlers.handleWritePdf as any);

@@ -19,7 +19,7 @@ async function connected(key: any, runtime: any = {}) {
 }
 it('preserves legacy full discovery, while explicit empty grants deny all tools', async () => {
   const legacy = await connected({ id: 'old' }); const denied = await connected({ id: 'none', toolGrant: grant([]) });
-  expect((await legacy.client.listTools()).tools.length).toBe(28);
+  expect((await legacy.client.listTools()).tools.length).toBe(29);
   expect((await denied.client.listTools()).tools).toEqual([]);
   await expect(denied.client.callTool({ name: 'browser_control', arguments: { action: 'status' } })).rejects.toThrow(/disabled|GRANT_DENIED/);
 });

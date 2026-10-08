@@ -6,6 +6,15 @@ const PATH_GUIDANCE = `IMPORTANT: ${getPathGuidance(SYSTEM_INFO)} Relative paths
 const CMD_PREFIX_DESCRIPTION = `This command can be referenced as \"DC: ...\" or \"use Desktop Commander to ...\" in your instructions.`;
 
 export const RDC_TOOL_METADATA = {
+  image_inspect: {
+    title: 'Inspect Local Image',
+    description: `Inspect a local 8-bit PNG, JPEG or WebP image through real MCP image content. External controllers only.
+overview returns a bounded oriented image, viewId and original/displayed dimensions. crop requires that viewId and rectangle {x,y,width,height} in the returned image's displayed pixel coordinates: top-left origin, right/bottom exclusive. Crops always sample the original source, including nested crops. Optional crop zoom (1–16, default 1) enlarges with deterministic interpolation; it adds no source information. Use the returned dimensions and scale rather than a client-resized preview.
+Views are scoped to this credential/controller session, expire after 15 minutes and are invalidated by source changes. Re-run overview for a new source, expired or evicted view. Headerless clients sharing one credential share a view namespace; explicit MCP/Agent Core session headers isolate conversations. Local regular files and existing directory permissions only; no URLs, animated or vector formats. Input max 32 MiB and 24 million pixels. Output max 1536-pixel edge, 1.5 million pixels, 2 MiB encoded image and 3 MiB total response. Optional maxEdge (128–1536, default1536) explicitly lowers output size when an overview is too large. PNG is default; explicitly choose format="jpeg" for lossy JPEG. Oversized output fails; request a smaller crop or explicit JPEG.
+Image bytes are never stored in tool history, evidence or result artifacts. Metadata-only capture is mandatory; workspace omission remains stricter.
+${PATH_GUIDANCE}`,
+    annotations: { title: 'Inspect Local Image', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  },
   get_config: {
     title: 'Get Configuration',
     description: `

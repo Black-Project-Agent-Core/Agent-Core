@@ -44,6 +44,7 @@ interface LoadedMarker {
 }
 
 const FILE_TOOLS = new Set([
+  'image_inspect',
   'read_file',
   'read_multiple_files',
   'write_file',
@@ -101,6 +102,7 @@ export function extractEvidenceCandidatePaths(
   };
 
   switch (toolName) {
+    case 'image_inspect': add(o.path); break;
     case 'read_file': add(o.path); break;
     case 'read_multiple_files':
       if (Array.isArray(o.paths) && o.paths.length > MAX_CANDIDATES) {
@@ -270,6 +272,7 @@ export function decideToolEvidenceCapture(
   input: unknown,
 ): EvidenceCaptureDecision {
   const extracted = extractEvidenceCandidatePaths(toolName, input);
+  const minimum: EvidenceCaptureDisposition = toolName === 'image_inspect' ? 'metadata-only' : 'full';
   if (!extracted.knownFileTool) {
     return { disposition: 'full', policyState: 'inactive', pathCount: 0, ruleCount: 0, markerCount: 0 };
   }
@@ -303,7 +306,7 @@ export function decideToolEvidenceCapture(
   }
   if (markers.size === 0) {
     return {
-      disposition: 'full',
+      disposition: minimum,
       policyState: 'inactive',
       pathCount: paths.length,
       ruleCount: 0,
@@ -311,7 +314,7 @@ export function decideToolEvidenceCapture(
     };
   }
 
-  let disposition: EvidenceCaptureDisposition = 'full';
+  let disposition: EvidenceCaptureDisposition = minimum;
   let ruleCount = 0;
   const work = { value: 0 };
   try {

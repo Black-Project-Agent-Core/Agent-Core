@@ -9,6 +9,8 @@ import { redactSensitiveString, redactSensitiveValue } from '../security/redacti
 
 const DEFAULT_BUDGET = 256 * 1024;
 const DEFAULT_PREVIEW = 24 * 1024;
+const IMAGE_RESULT_BUDGET = 3 * 1024 * 1024;
+const IMAGE_ENCODED_BUDGET = 2 * 1024 * 1024;
 const MAX_ARTIFACTS = 128;
 const MAX_ARTIFACT_BYTES = 128 * 1024 * 1024;
 const ARTIFACT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -104,6 +106,20 @@ export async function applyResultBudget<T extends BudgetableToolResult>(
   result: T,
   options: { budgetChars?: number; previewChars?: number; storageDir?: string } = {},
 ): Promise<T> {
+  // Images are transport-only. Count the actual response (including base64),
+  // never a redacted projection, and never enter the artifact spill path.
+  if (toolName === 'image_inspect') {
+    const serializedBytes = Buffer.byteLength(JSON.stringify(result), 'utf8');
+    const oversizedImage = result.content.some(item => item.type === 'image'
+      && typeof item.data === 'string'
+      && Buffer.byteLength(item.data, 'base64') > IMAGE_ENCODED_BUDGET);
+    if (serializedBytes <= IMAGE_RESULT_BUDGET && !oversizedImage) return result;
+    return {
+      isError: true,
+      content: [{ type: 'text', text: 'IMAGE_RESULT_BUDGET_EXCEEDED: image inspection exceeds the 2 MiB encoded image or 3 MiB total response limit. Request a smaller crop or explicitly select JPEG. No image result was persisted.' }],
+      _meta: { resultBudget: { spilled: false, reason: 'image-result-budget', originalBytes: serializedBytes } },
+    } as unknown as T;
+  }
   const budgetBytes = Math.max(16 * 1024, options.budgetChars ?? DEFAULT_BUDGET);
   const previewBytes = Math.max(2 * 1024, Math.min(options.previewChars ?? DEFAULT_PREVIEW, budgetBytes));
   const safeResult = redactSensitiveValue(result) as BudgetableToolResult;

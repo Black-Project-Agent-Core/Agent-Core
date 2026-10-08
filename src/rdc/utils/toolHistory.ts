@@ -71,7 +71,7 @@ function compactArguments(args: unknown, maxChars = 800): string {
 }
 
 function captureMetadata(decision: EvidenceCaptureDecision | undefined): ToolCallRecord['capture'] {
-  if (!decision || decision.policyState === 'inactive') return undefined;
+  if (!decision || (decision.policyState === 'inactive' && decision.disposition === 'full')) return undefined;
   return {
     disposition: decision.disposition,
     policyState: decision.policyState,
@@ -343,6 +343,16 @@ export class ToolHistory {
     decision?: EvidenceCaptureDecision,
   ): boolean {
     if (decision?.disposition === 'omit') return false;
+
+    // Image bytes and identifying arguments must never enter history, even if
+    // a caller omits the workspace policy decision or supplies a weaker one.
+    if (toolName === 'image_inspect') {
+      decision = {
+        policyState: 'inactive', pathCount: 0, ruleCount: 0, markerCount: 0,
+        ...decision,
+        disposition: 'metadata-only',
+      };
+    }
 
     const capture = captureMetadata(decision);
     const metadataOnly = decision?.disposition === 'metadata-only';
