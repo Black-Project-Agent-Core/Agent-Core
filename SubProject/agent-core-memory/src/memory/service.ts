@@ -1,7 +1,7 @@
 import {MemoryPromotion,type ConsolidationPolicy} from './promotion.js';
 import { MemoryEpisodes } from './episodes.js';
 import { ControllerMemorySession } from './controller-session.js';
-import { MemoryControllerError, type ControllerScope } from './disclosure.js';
+import { memorySemanticRevision, MemoryControllerError, type ControllerScope } from './disclosure.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
@@ -227,9 +227,23 @@ export class MemoryService {
           .sort((a,b) => Number(b.pinned)-Number(a.pinned) || a.id.localeCompare(b.id));
       }),
       rank: async (records, query, rankingTime) => {
+        // Validate against a complete canonical snapshot, then release the store
+        // lock before the network-capable query embedder is invoked.
+        const canonicalRecords = await this.store.snapshot(async loaded => {
+          this.syncCanonicalIssues(loaded.issues, loaded.complete);
+          if (!this.canonicalComplete || this.canonicalStatus === 'error') throw new MemoryControllerError('MEMORY_SOURCE_UNAVAILABLE');
+          const canonical = new Map(loaded.records.map(record => [record.id, record]));
+          for (const record of records) {
+            const current = canonical.get(record.id);
+            if (!current || memorySemanticRevision(current) !== memorySemanticRevision(record)) {
+              throw new MemoryControllerError('MEMORY_CURSOR_STALE');
+            }
+          }
+          return structuredClone(loaded.records);
+        });
         let semantic;
         if (this.embedder && this.indexStatus === 'available') {
-          try { semantic = await this.index.semanticContext(query, records) ?? undefined; }
+          try { semantic = await this.index.semanticContext(query, canonicalRecords, records) ?? undefined; }
           catch { this.setEmbeddingIssue('Controller query embedding unavailable'); }
         }
         return searchMemories(records, query, { limit: Math.max(1, records.length), maxNeighbors: 0 }, semantic, Math.max(1, records.length), rankingTime);
@@ -1144,7 +1158,8 @@ export class MemoryService {
       this.assertOperational();
       await this.ensureCurrentIndex();
 
-      const currentRecords = [...this.records.values()].map(record => record.provenance?.workspace ? { ...record, provenance: { ...record.provenance, workspace: this.resolveWorkspace(record.provenance.workspace) } } : record);
+      const canonicalRecords = [...this.records.values()];
+      const currentRecords = canonicalRecords.map(record => record.provenance?.workspace ? { ...record, provenance: { ...record.provenance, workspace: this.resolveWorkspace(record.provenance.workspace) } } : record);
       const forgottenIds = await this.feedbackStore
         .forgottenIds(new Set(currentRecords.map(record => record.id)))
         .catch(() => new Set<string>());
@@ -1160,10 +1175,14 @@ export class MemoryService {
           || (record.provenance?.workspace && this.resolveWorkspace(record.provenance.workspace) === workspace)).length
         : activeRecords.length;
 
+      const activeIds = new Set(activeRecords.map(record => record.id));
+      const semanticEligible = canonicalRecords.filter(record => activeIds.has(record.id)
+        && (!workspace || record.pinned
+          || (record.provenance?.workspace && this.resolveWorkspace(record.provenance.workspace) === workspace)));
       let semanticContext;
       if (this.embedder && this.indexStatus === 'available' && this.embeddingStatus !== 'not-configured') {
         try {
-          semanticContext = await this.index.semanticContext(normalizedQuery, activeRecords) ?? undefined;
+          semanticContext = await this.index.semanticContext(normalizedQuery, canonicalRecords, semanticEligible) ?? undefined;
           if (semanticContext) this.clearEmbeddingQueryIssue();
         } catch (error) {
           this.setEmbeddingIssue(error);

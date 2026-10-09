@@ -5567,3 +5567,11 @@ The pending live Native audit was explicitly cancelled through its own turn endp
 - Retention mutation, consolidation apply, and unrelated destructive flows were not invoked solely to score a test; such workflows require a genuine user-authorized use case.
 - Status: external-controller installed feature use directly observed; regular-work impact and full cross-surface adoption must be evaluated separately, only when relevant and authorized.
 - Episode was subsequently marked `completed` at revision 3. Because closing changed the revision, a real final `phase-complete` checkpoint refreshed the capsule to `0a841b4e-f2a4-485d-acff-d3324d8cc56f`; a new `task_context` readback confirmed `status=completed`, `freshness=current`, `needsCheckpoint=false`.
+
+
+### 2026-10-09 — Memory plan 01 filtered semantic retrieval (source implemented; external acceptance pending)
+
+- `SubProject/agent-core-memory/src/memory/index.ts` validates the index against the complete canonical corpus, then supplies vectors only for unique eligible IDs with matching fingerprints. The existing two-argument call still means the full corpus; empty or invalid subsets never embed a query. Index format, provider identity checks, ranking weights, and thresholds are unchanged.
+- `SubProject/agent-core-memory/src/memory/service.ts` re-snapshots canonical records before controller ranking and rejects changed/missing candidate semantic revisions with `MEMORY_CURSOR_STALE`. Complete/error validation is fail-closed. The filesystem lock is released before the query embedder runs.
+- Public search validates raw canonical records and limits semantic vectors to active workspace-eligible records. Existing public all-pinned compatibility remains; controller cross-workspace exemption remains only the canonical pinned foundation. Alias normalization is used for ranking without changing index-validation material.
+- New `memory-semantic-subset.test.ts` and `memory-controller-semantic-subset.test.ts` cover offline subset matching, invalid embeddings/corpus, visibility/temporal boundaries, pinned compatibility, foreign linked records, revision races, provider fallback, and lock release. Local test evidence is distinct from external-controller/resident acceptance. No live Cloudflare quality claim, production index rebuild, deployment, or plan 02 implementation is implied.

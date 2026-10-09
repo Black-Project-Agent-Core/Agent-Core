@@ -326,21 +326,32 @@ export class MemoryIndex {
     };
   }
 
-  async semanticContext(query: string, records: MemoryRecord[]): Promise<SemanticSearchContext | null> {
+  async semanticContext(
+    query: string,
+    canonicalRecords: MemoryRecord[],
+    eligibleRecords: MemoryRecord[] = canonicalRecords,
+  ): Promise<SemanticSearchContext | null> {
     if (!this.embedder) return null;
     const file = await this.load();
-    if (!file || !fileMatchesRecords(file, records, this.embedder)) return null;
+    if (!file || !fileMatchesRecords(file, canonicalRecords, this.embedder)) return null;
+    const canonical = new Map(canonicalRecords.map(record => [record.id, fingerprint(record)]));
+    const eligible = new Set<string>();
+    for (const record of eligibleRecords) {
+      if (eligible.has(record.id) || canonical.get(record.id) !== fingerprint(record)) return null;
+      eligible.add(record.id);
+    }
+    const vectors = new Map<string, number[]>();
+    for (const entry of file.entries) {
+      if (eligible.has(entry.id) && validEmbedding(entry.embedding, this.embedder.identity.dimensions)) {
+        vectors.set(entry.id, entry.embedding);
+      }
+    }
+    if (!vectors.size) return null;
     const [queryVector] = await this.embedder.embedDocuments([query]);
     if (!validEmbedding(queryVector, this.embedder.identity.dimensions)) {
       throw new Error('Memory query embedding has invalid dimensions or values');
     }
-    const vectors = new Map<string, number[]>();
-    for (const entry of file.entries) {
-      if (validEmbedding(entry.embedding, this.embedder.identity.dimensions)) {
-        vectors.set(entry.id, entry.embedding);
-      }
-    }
-    return vectors.size ? { queryVector, vectors } : null;
+    return { queryVector, vectors };
   }
 
   async nearest(
