@@ -2,6 +2,10 @@
 
 This records explicit source prereleases and applied stable releases. Pending intents under [.changeset](.changeset/README.md) are retained until stable application. Earlier legacy-only repository decisions and Native Chat placeholder descriptions below are historical; current source and repository identity are documented in [README](README.md) and [CODEBASE](docs/CODEBASE.md).
 
+## Documentation follow-up — 2026-10-09
+
+Recorded the accepted isolated Windows Workflows functional report: 17 PASS, one initial CS5001 build failure retained with a successful explicit StartupObject retry, and 5 NOT RUN. Production activation remains pending; Memory 01 integration/acceptance is postponed. See the [scoped evidence](docs/verification/workflows-windows-functional-2026-10-09.md). This status-only documentation change does not change product behavior or require a version bump. The immutable v0.15.0-beta.0 source tag remains at 23fdca411e152c42fe1a5b81f526b18d6d57bd3b.
+
 ## 0.15.0-beta.0 - 2026-10-09 (source prerelease)
 
 This advances source product identity from 0.14.0 toward 0.15.0. It is not a stable release, Windows acceptance result, or claim that a resident installation was updated. See [release notes and acceptance boundaries](docs/releases/0.15.0-beta.0.md) and the [publication guide](docs/releases/README.md).

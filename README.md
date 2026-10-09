@@ -8,17 +8,17 @@ Agent Core keeps the model separate from the local capability owners. Connect an
 
 ## Current status
 
-**Source prerelease: `0.15.0-beta.0`.** The implementation baseline reviewed for this refresh is [`f22e6e4`](https://github.com/Black-Project-Agent-Core/Agent-Core/commit/f22e6e426d9c8937439763602f986b9fb3243f23); the prerelease metadata and documentation changes follow that baseline.
+**Source prerelease: `0.15.0-beta.0`.** The implementation baseline reviewed for this refresh is [`f22e6e4`](https://github.com/Black-Project-Agent-Core/Agent-Core/commit/f22e6e426d9c8937439763602f986b9fb3243f23); the published source prerelease is tagged at [`23fdca4`](https://github.com/Black-Project-Agent-Core/Agent-Core/commit/23fdca411e152c42fe1a5b81f526b18d6d57bd3b). Later documentation records do not change that immutable tag.
 
 | Area | Status |
 | --- | --- |
 | Image inspection | Implemented; external-controller acceptance reported in preceding work |
-| Memory 01: filtered semantic retrieval | Implemented and locally verified offline; external-controller acceptance pending |
-| Unified System + Memory Workflows | Implemented with Linux checks/builds; real Windows/WebView2 acceptance pending |
+| Memory 01: filtered semantic retrieval | Implemented and locally verified offline; further acceptance explicitly postponed by the user |
+| Unified System + Memory Workflows | [Scoped Windows/WebView2 functional PASS](docs/verification/workflows-windows-functional-2026-10-09.md) on an isolated test candidate; production activation pending |
 | Memory plans 02–11 and adaptive parallel execution | Proposed; not implemented |
-| Windows installation | Last reported as `0.14.0`; this prerelease has not been deployed or accepted there |
+| Production Windows installation | Last reported as `0.14.0`; unchanged by the isolated Workflows test, with this prerelease not deployed there |
 
-These are separate source, verification, and installation facts. A version change does not publish a release, update an installed process, or establish whole-product stability. Prior acceptance summaries above were not rerun by this documentation refresh. See the [plan status index](docs/plans/README.md) and [release notes](docs/releases/0.15.0-beta.0.md).
+These are separate source, verification, and installation facts. Source prerelease publication does not update an installed process or establish whole-product stability. Prior acceptance summaries above were not rerun by this documentation refresh. See the [plan status index](docs/plans/README.md) and [release notes](docs/releases/0.15.0-beta.0.md).
 
 ## Capabilities
 

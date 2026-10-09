@@ -1,6 +1,6 @@
 # Agent Core codebase map
 
-This is the maintained source-owner map for **`0.15.0-beta.0`**. The implementation review is grounded in [`f22e6e426d9c8937439763602f986b9fb3243f23`](https://github.com/Black-Project-Agent-Core/Agent-Core/commit/f22e6e426d9c8937439763602f986b9fb3243f23), followed by source-prerelease metadata and documentation changes. Exact source takes precedence over prose.
+This is the maintained source-owner map for **`0.15.0-beta.0`**. The implementation review is grounded in [`f22e6e426d9c8937439763602f986b9fb3243f23`](https://github.com/Black-Project-Agent-Core/Agent-Core/commit/f22e6e426d9c8937439763602f986b9fb3243f23), followed by source-prerelease metadata and documentation changes. Published source tag `0.15.0-beta.0` identifies [`23fdca411e152c42fe1a5b81f526b18d6d57bd3b`](https://github.com/Black-Project-Agent-Core/Agent-Core/commit/23fdca411e152c42fe1a5b81f526b18d6d57bd3b); this later documentation update does not move that tag. Exact source takes precedence over prose.
 
 [Documentation index](README.md) · [Source release notes](releases/0.15.0-beta.0.md) · [Historical codebase record](archive/CODEBASE-2026-10-09.md)
 
@@ -10,10 +10,10 @@ This is the maintained source-owner map for **`0.15.0-beta.0`**. The implementat
 | --- | --- | --- |
 | Shared Core, Native chat, Learning, Skills, machine/code/web/phone owners | Implemented in source; earlier scoped acceptance records retained | Configuration, grants, and live readiness are instance-specific |
 | External MCP image inspection | Implemented; external-controller acceptance reported in preceding work | No Native multimodal or paid-model accuracy claim |
-| Memory 01 filtered semantic retrieval | Source implemented; offline verification recorded | External-controller/resident acceptance pending |
-| Unified Workflows | Source implemented; focused Linux checks/builds recorded | Windows/WebView2 visuals, interactions, and automatic refresh pending |
+| Memory 01 filtered semantic retrieval | Source implemented; offline verification recorded | Further acceptance explicitly postponed by the user |
+| Unified Workflows | Source implemented; [isolated Windows/WebView2 functional PASS](verification/workflows-windows-functional-2026-10-09.md) on `f22e6e4` plus a documented test-only launcher wrapper | Production activation, pointer-drag pan, security and exact subscription-count checks remain unverified |
 | Memory 02–11; adaptive parallel execution | Proposed only | Implementation not started |
-| Windows installation | Last reported `0.14.0` | `0.15.0-beta.0` installation and acceptance not established |
+| Production Windows installation | Last reported `0.14.0`; untouched by the isolated test | `0.15.0-beta.0` production installation and acceptance not established |
 
 This refresh performs source/documentation review, not new native runtime acceptance. Previous user/controller acceptance reports retain their original scope. Published releases, source version, packaged binaries, and the running process are separate facts. The full dated history is preserved in the [historical snapshot](archive/CODEBASE-2026-10-09.md).
 
@@ -83,7 +83,7 @@ The engine's [`index.ts`](../SubProject/agent-core-memory/src/memory/index.ts) v
 
 [`service.ts`](../SubProject/agent-core-memory/src/memory/service.ts) re-snapshots candidates before controller ranking and fails stale revisions with `MEMORY_CURSOR_STALE`. Query embedding runs after releasing the filesystem lock. Existing ranking weights, thresholds, and index-format/provider contracts remain unchanged.
 
-The [implementation plan](plans/2026-10-09-memory-01-filtered-semantic-retrieval.md) records offline checks, including 537 Memory tests and a root build. These are prior scoped results; external-controller acceptance remains pending. [Plans 02–11](plans/README.md) are separate, unimplemented proposals.
+The [implementation plan](plans/2026-10-09-memory-01-filtered-semantic-retrieval.md) records offline checks, including 537 Memory tests and a root build. These are prior scoped results; the user explicitly postponed further Memory 01 acceptance. The Workflows test does not establish Memory retrieval quality or authorize migration/testing of the active Memory engine. [Plans 02–11](plans/README.md) are separate, unimplemented proposals.
 
 ### Learning and Skills
 
@@ -104,7 +104,7 @@ Metadata-only views are scoped and expire. Grants are rechecked on invocation; i
 - [`renderer.ts`](../src/workflows/renderer.ts) supplies bounded diagram metadata to a pinned offline Archify renderer with a stripped environment and restricted filesystem access. [Vendor provenance and modifications](../vendor/archify/README.agent-core.md) describe the narrow integration.
 - `GET /agent/workflows` returns cached state through the existing loopback/UI-token route. [`WorkflowsPage.tsx`](../src/ui/src/WorkflowsPage.tsx) polls while mounted and displays a single System + Memory canvas in an `allow-scripts`-only sandbox with network-blocking CSP.
 
-The map shows static dependency evidence, not complete call flow or live execution. C# dependency semantics and unresolved/dynamic imports remain explicit limitations. Dense layouts may have crossing edges. Windows/WebView2 visual, navigation, and refresh acceptance is still pending; Linux tests do not establish it. See the [implementation and acceptance plan](plans/2026-10-09-unified-workflows.md).
+The map shows static dependency evidence, not complete call flow or live execution. C# dependency semantics and unresolved/dynamic imports remain explicit limitations. Dense layouts may have crossing edges. The [Windows/WebView2 report](verification/workflows-windows-functional-2026-10-09.md) records functional PASS for an isolated `f22e6e4` test candidate: sidebar navigation, one System + Memory canvas, focus/search/zoom, scroll-based viewport movement, source refresh, stale/initial-error recovery, restoration, and graceful teardown. The launcher used three documented test-only isolation changes, so this is not acceptance of an unmodified production launcher or the later release commit. Pointer-drag pan, HTTP security, exact subscription counts, and production activation were not established. See the [implementation and acceptance plan](plans/2026-10-09-unified-workflows.md).
 
 ## Build and verification
 
