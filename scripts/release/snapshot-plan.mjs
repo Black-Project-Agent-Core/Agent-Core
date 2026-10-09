@@ -22,7 +22,8 @@ if (process.argv.includes("--json")) {
 }
 
 console.log("Agent Core snapshot plan");
-console.log("Stable current : " + plan.stableProductVersion);
+console.log("Stable baseline: " + plan.stableProductVersion);
+console.log("Runtime source : " + plan.runtimeProductVersion);
 console.log("Stable target  : " + plan.targetStableVersion);
 console.log("Bump           : " + plan.bump);
 console.log("Snapshot       : " + plan.snapshotVersion);

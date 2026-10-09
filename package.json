@@ -1,8 +1,8 @@
 {
   "name": "agent-core",
-  "version": "0.14.0",
+  "version": "0.15.0-beta.0",
   "private": true,
-  "description": "Local authenticated RDC-compatible MCP machine bridge",
+  "description": "Local-first agent runtime with shared MCP tools, Memory, Learning, Skills, and a Windows launcher",
   "type": "module",
   "scripts": {
     "path:check": "node scripts/portability/check-path-policy.mjs",

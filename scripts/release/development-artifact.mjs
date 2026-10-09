@@ -5,6 +5,8 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { ROOT } from "./release-policy.mjs";
 import { packageCopyAllowed, writePackagedFoundation } from "./packaging-policy.mjs";
+import { isGeneratedReleasePath } from './release-policy.mjs';
+import { parseProductVersion } from './release-lib.mjs';
 
 async function exists(target) {
   try {
@@ -65,6 +67,21 @@ async function copyIfExists(root, relative, destinationRoot, options = {}) {
   return true;
 }
 
+export async function copyDevelopmentSources(root, packageRoot) {
+  for (const relative of ['vendor/archify', 'SubProject/agent-core-memory/dist',
+    'SubProject/agent-core-memory/NOTICE.md', 'SubProject/agent-core-memory/PATCHES.md',
+    'THIRD_PARTY_NOTICES.md']) await copyIfExists(root, relative, packageRoot);
+  const sourceRoot = path.join(packageRoot, 'source');
+  for (const relative of ['src', 'SubProject/agent-core-memory/src',
+    'SubProject/agent-core-memory/package.json', 'SubProject/agent-core-memory/tsconfig.json',
+    'SubProject/agent-core-memory/UPSTREAM-SOURCE.json', 'SubProject/agent-core-memory/README.md',
+    'SubProject/agent-core-memory/NOTICE.md', 'SubProject/agent-core-memory/PATCHES.md']) {
+    await copyIfExists(root, relative, sourceRoot, {
+      filter: source => !isGeneratedReleasePath(path.relative(root, source)),
+    });
+  }
+}
+
 export function developmentArtifactLocation(root, kind, artifactVersion) {
   const safe = safeArtifactVersion(artifactVersion);
   const folder = kind === "snapshot" ? "snapshots" : "prereleases";
@@ -79,6 +96,8 @@ export async function createDevelopmentArtifact(options) {
   if (!/^\d+\.\d+\.\d+$/.test(stableProductVersion)) {
     throw new Error("Stable product version must be x.y.z");
   }
+  const runtimeProductVersion = options.runtimeProductVersion ?? stableProductVersion;
+  parseProductVersion(runtimeProductVersion);
 
   const outputRoot = developmentArtifactLocation(root, kind, artifactVersion);
   if (await exists(outputRoot)) {
@@ -117,13 +136,16 @@ export async function createDevelopmentArtifact(options) {
       "runtime/grafel/bin",
       "runtime/grafel/provider.json",
       "scripts/windows",
-      "Agent Core.exe",
       "tunnel-client/tunnel-client.exe",
     ]) {
       await copyIfExists(root, relative, packageRoot);
     }
 
+    if (options.launcherPath) await fs.copyFile(options.launcherPath, path.join(packageRoot, 'Agent Core.exe'));
+    else await copyIfExists(root, 'Agent Core.exe', packageRoot);
+
     await writePackagedFoundation(packageRoot);
+    await copyDevelopmentSources(root, packageRoot);
     const tunnelExample = path.join(root, "tunnel-client", "agent-core.example.yaml");
     if (await exists(tunnelExample)) {
       const tunnelTarget = path.join(packageRoot, "tunnel-client");
@@ -138,7 +160,7 @@ export async function createDevelopmentArtifact(options) {
       artifactKind: kind,
       artifactVersion,
       stableProductVersion,
-      runtimeProductIdentity: stableProductVersion,
+      runtimeProductIdentity: runtimeProductVersion,
       generatedAt: new Date().toISOString(),
       identity: options.identity ?? {},
       pendingIntentIds: options.pendingIntentIds ?? [],
@@ -165,7 +187,8 @@ export async function createDevelopmentArtifact(options) {
     const manifestText = JSON.stringify(manifest, null, 2) + "\n";
     const notes = "# Agent Core " + kind + " artifact\n\n"
       + "- Artifact identity: " + artifactVersion + "\n"
-      + "- Stable runtime product identity: " + stableProductVersion + "\n"
+      + "- Runtime product identity: " + runtimeProductVersion + "\n"
+      + "- Previous stable source baseline: " + stableProductVersion + "\n"
       + "- Pending release intents are preserved and not consumed.\n"
       + "- This artifact is not a stable Agent Core release and does not replace release/v" + stableProductVersion + ".\n";
 
@@ -194,6 +217,7 @@ export async function createDevelopmentArtifact(options) {
       kind,
       artifactVersion,
       stableProductVersion,
+      runtimeProductVersion,
       outputRoot,
       zipPath,
       sha256: hash,

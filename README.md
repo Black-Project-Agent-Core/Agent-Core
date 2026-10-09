@@ -1,115 +1,97 @@
 # Agent Core
 
-Local-first, Windows-first agent body with authenticated MCP access, durable Memory and Learning, a native model/controller runtime, interactive chat, and shared machine, browser, code, research, and phone capabilities.
+A local-first agent system for Windows. External MCP controllers and a native AI chat share machine tools, persistent Memory, Learning, Skills, and evidence.
 
-**Source version: 0.14.0.** This repository contains the current Agent Core source line. The documentation refresh is grounded in `main` at `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3`. Source availability does not establish what is installed or running on another machine, or which release assets are published.
+Agent Core keeps the model separate from the local capability owners. Connect an external controller or configure the native OpenAI-compatible runtime, then use the same authenticated body for files, processes, browser work, code intelligence, research, and Android control.
 
-## Product direction
+[Architecture](docs/CODEBASE.md) · [Documentation](docs/README.md) · [Source release notes](docs/releases/0.15.0-beta.0.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
-Agent Core is a cumulative-learning agent: external MCP controllers and the Native AI Agent use the same local capability owners and persistent knowledge. The goal is verified learning that is used in later decisions and actions, not a larger tool count. Native runtime, provider scheduling, interactive chat, and capability grants are implemented; their presence alone does not prove improved task outcomes.
+## Current status
 
-See [Product Direction](docs/Agent-Core-Product-Direction.md) for intent and evidence limits, [CODEBASE](docs/CODEBASE.md) for the source map and dated acceptance records, and [AGENTS.md](AGENTS.md) for the operating contract. [Target-Feture](docs/Target-Feture.md) preserves the original conversation evidence.
+**Source prerelease: `0.15.0-beta.0`.** The implementation baseline reviewed for this refresh is [`f22e6e4`](https://github.com/Black-Project-Agent-Core/Agent-Core/commit/f22e6e426d9c8937439763602f986b9fb3243f23); the prerelease metadata and documentation changes follow that baseline.
 
-## Implemented capability owners
+| Area | Status |
+| --- | --- |
+| Image inspection | Implemented; external-controller acceptance reported in preceding work |
+| Memory 01: filtered semantic retrieval | Implemented and locally verified offline; external-controller acceptance pending |
+| Unified System + Memory Workflows | Implemented with Linux checks/builds; real Windows/WebView2 acceptance pending |
+| Memory plans 02–11 and adaptive parallel execution | Proposed; not implemented |
+| Windows installation | Last reported as `0.14.0`; this prerelease has not been deployed or accepted there |
 
-| Capability | Source owner / entry point | Scope |
-| --- | --- | --- |
-| Machine and browser control | `src/rdc`, `src/mcp/server.ts` | Files, documents, search, processes, checkpoints, and browser control |
-| Memory | `src/memory/host-runtime.ts`, `src/memory`, `SubProject/agent-core-memory` | Legacy-compatible memory facade; guarded experience-v2 activation and controller-scoped read/write facades |
-| Learning and cumulative workflow | `src/learning`, `controller_learning`, `learning` | Task episodes, evidence-backed review, reuse attribution, procedures, and outcome records |
-| Native runtime and chat | `src/agent-runtime.ts`, `src/agent-controller.ts`, `src/agent-chat-*` | OpenAI-compatible providers, persistent scheduling, conversations, durable turns, scoped tools, and finalization |
-| Skills and capability awareness | `src/skills`, `src/capability-awareness.ts` | Artifact catalog, revision-bound proposals/decisions, capability discovery, and actual-use disclosure |
-| Code Intelligence | `src/code-intelligence`, seven structural `code_*` tools | Project-local Grafel orientation, graph, surface, analysis, patterns, workspace, and repair |
-| Semantic IDE | `src/semantic-ide`, `code_symbol`, `code_refactor` | Language-server-backed inspection and scoped refactoring |
-| Web research | `src/web-research`, `web_search`, `web_open` | Configurable search/read providers with bounded results |
-| Phone and Game Mode | `src/phone`, `src/mcp/phone-*` | Android observation/actions and guarded game profiles, sessions, and assessment |
+These are separate source, verification, and installation facts. A version change does not publish a release, update an installed process, or establish whole-product stability. Prior acceptance summaries above were not rerun by this documentation refresh. See the [plan status index](docs/plans/README.md) and [release notes](docs/releases/0.15.0-beta.0.md).
 
-The actual MCP tool list depends on initialized services, enabled features, controller context, and credential grants. `src/mcp/server.ts` plus the registered facade modules define the source surface; a fresh `tools/list` establishes the exposed surface of a particular running instance. Older 55/62/70-tool counts are dated snapshots.
+## Capabilities
 
-The Hermes `partner` bridge is retired. Internal `src/rdc` is Agent Core-owned machine-control code; the external Remote Desktop Commander product is a separate operator tool.
+- **Machine and browser tools:** bounded file/document operations, search, processes, checkpoints, browser control, and external MCP image inspection.
+- **Persistent knowledge:** host-selected Memory, task-scoped Learning, evidence-backed reuse records, and revision-bound Skill proposals and decisions.
+- **Native AI chat:** persistent conversations, provider scheduling, durable turns, and task-scoped tools over the shared owners.
+- **Code and research:** Grafel-backed structural intelligence, language-server inspection/refactoring, and configurable web search/read providers.
+- **Phone and Game Mode:** Android observation/actions with guarded profiles and sessions.
+- **Workflows:** one interactive System + Memory source map, refreshed from supported source changes without a model. It shows dependency evidence, not live execution telemetry.
+
+Availability depends on initialized services, configuration, and grants. A fresh MCP `tools/list` establishes the tool surface of a running instance; historical tool counts are not a current manifest.
 
 ## Architecture
 
 ```text
-External MCP controller             Native AI / interactive chat
-          |                                      |
-          +------ Agent Core capability owners --+
-                             |
-             Memory / Learning / Skills / evidence
-             machine / browser / code / web / phone
-                             |
-                  local machine and services
+External MCP controller                 Native AI chat
+          |                                   |
+          +----- Shared Agent Core owners ----+
+                              |
+          Memory · Learning · Skills · evidence
+          machine · browser · code · web · phone
+                              |
+                   local machine and services
 ```
 
-`src/index.ts` initializes the services, Node HTTP/MCP server, native controller, and chat service. The Windows launcher hosts the React UI in WebView2 and manages the local Core/tunnel lifecycle. Authentication and scoped grants remain enforced; subsystem availability does not grant additional authority.
+[`src/index.ts`](src/index.ts) composes the services and HTTP/MCP server. The Windows launcher hosts the React UI in WebView2 and manages the Core/tunnel lifecycle. Authentication and capability grants remain enforced across these surfaces.
 
-Memory activation is explicit. Without `runtime/memory-v2-activation.json`, the host initializes the legacy Memory service at its configured root, defaulting to `runtime/memory`. A valid activation marker and matching backup digest select the experience-v2 service at `runtime/memory-v2`; the legacy writer is not initialized in that branch. A source checkout does not include or create that production activation state.
+Memory v2 uses the existing host selection boundary. With no activation marker, the host uses legacy Memory. A validated marker selects the experience-v2 engine without starting a second writer; a present invalid marker fails closed. Cloning or building the source does not activate or migrate production Memory.
 
-The native provider runtime defaults to disabled in `src/config.ts` and needs appropriate local configuration. Provider credentials, live Memory, chat history, and machine-specific runtime state are not supplied by cloning the repository.
+The native provider runtime defaults to disabled. Provider credentials, browser profiles, chat history, live Memory, and machine-specific state must remain local. See the [codebase map](docs/CODEBASE.md) and [product direction](docs/Agent-Core-Product-Direction.md).
 
-## Build from source
+## Build and verify
 
-Requirements:
+Requirements: Node.js **>= 24.15.0**, npm, and Windows with the **.NET 8 SDK** for the native launcher. Optional providers and transports need their own configuration.
 
-- Windows for the native desktop launcher and Windows integration
-- Node.js **>= 24.15.0** and npm
-- .NET SDK when rebuilding the launcher
-- Separately configured optional providers/transports for the capabilities you use
-
-From the project root:
+From the repository root:
 
 ```powershell
-if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 npm ci
 npm run build
-npm start
+npm test
 ```
 
-The root build runs the path policy, builds `SubProject/agent-core-memory`, and compiles the Core. Build the React UI separately:
+The root build checks path policy, builds the Memory subproject, then compiles the Core. The root test suite excludes the standalone Memory, React UI, and launcher suites; verify those separately for changes in their scope.
 
 ```powershell
-Set-Location src\ui
-npm ci
-npm run build
+npm --prefix src/ui ci
+npm --prefix src/ui run typecheck
+npm --prefix src/ui test
+npm --prefix src/ui run build
 ```
 
-Keep credentials local. Review [Maintenance](Maintenance.md), [Contributing](CONTRIBUTING.md), and the relevant subsystem documentation before configuring or activating optional runtimes.
+For a configured local source runtime, copy `.env.example` to `.env` only if no local configuration exists, review it, and run `npm start`. Do not copy production credentials or runtime state into source packages. Source startup and build commands are not an installation or upgrade procedure for an existing Windows instance.
 
-## MCP and authentication
+See [verification entry points](docs/CODEBASE.md#build-and-verification) and [Contributing](CONTRIBUTING.md). The root package is private; an older plugin package is not a full Agent Core installer.
 
-The source-default listener is `127.0.0.1:8765`; `/mcp` requires an Agent Core API key or OAuth access token. Remote access uses the authenticated tunnel path. The native chat HTTP routes and local UI bridge are implemented separately from public MCP discovery.
+## Security and operation
 
-See [SECURITY.md](SECURITY.md) for authentication, credential handling, and the security boundary.
+- The default listener is `127.0.0.1:8765`; `/mcp` requires an Agent Core API key or OAuth access token.
+- Native desktop routes use the existing loopback/UI-token boundary. Workflows HTML runs in a display-only sandbox.
+- Live `.env`, secrets, private runtime data, browser profiles, and user Memory do not belong in the repository or release artifacts.
+- Agent Core-owned `src/rdc` is internal machine-control code. The separate Remote Desktop Commander product is not an Agent Core dependency. The Hermes `partner` bridge is retired.
 
-## Releases and recovery
+Read [SECURITY.md](SECURITY.md) and [AGENTS.md](AGENTS.md) before operating the system.
 
-Source version, packaged version, published assets, and resident runtime are separate facts. [CODEBASE release documentation](docs/CODEBASE.md#09-release-intent-and-product-version-integrity) records packaging policy; older release and activation reports remain historical evidence.
+## Releases, recovery, and history
 
-`Recover-Agent-Core.ps1` supports an explicit trusted `-SourceZip` with `-ChecksumFile` or `-ExpectedZipSha256`. Bootstrap requires an empty destination; repair targets a packaged installation and the same product version. Read-only `npm run recovery:audit` checks its integrity manifest.
+The [changelog](CHANGELOG.md) records applied source releases; [source release notes](docs/releases/0.15.0-beta.0.md) distinguish prerelease metadata, published assets, and installation state. Pending intents are preserved under [`.changeset`](.changeset/README.md).
 
-**Known implementation limitation:** the recovery script still rejects `Black-Project-Agent-Core/Agent-Core` with `LEGACY_REFERENCE_ONLY`, although that repository now contains the current source line. Its `Repository` default is empty and network recovery also requires `-AllowNetworkRecovery`. This documentation refresh does not change those guards or establish trusted release assets. Use a separately verified current-line ZIP/checksum for recovery; do not assume a source sync makes the network recovery path usable.
+Recovery accepts a separately trusted ZIP and checksum. The existing Windows recovery script still rejects this repository through its historical `LEGACY_REFERENCE_ONLY` guard; current source publication does not make network recovery usable. See [release and recovery boundaries](docs/CODEBASE.md#release-and-recovery).
 
-## Repository and private-state boundary
-
-[Black-Project-Agent-Core/Agent-Core](https://github.com/Black-Project-Agent-Core/Agent-Core) is the current source repository, replacing the earlier legacy/reference-only designation. Remote names and tracking branches are checkout-specific; inspect them before Git operations. Repository access is not permission to reset local work, push, publish, release, or deploy.
-
-The tracked tree excludes live `.env`, secrets, private runtime state, user Memory, browser profiles, protected reference trees, generated builds, and local release archives through `.gitignore`. The package metadata field `legacyRepository` is a retained implementation name, not the current repository policy. Do not publish private state or restore it from unrelated release/source snapshots.
-
-## Documentation and verification
-
-- [Documentation index](docs/README.md)
-- [Documentation audit and limitations](docs/DOCUMENTATION-AUDIT-20261008.md)
-- [Architecture and evidence map](docs/CODEBASE.md)
-- [Product direction](docs/Agent-Core-Product-Direction.md)
-- [Operating contract](AGENTS.md)
-- [Security policy](SECURITY.md)
-- [Maintenance](Maintenance.md)
-- [Changelog](CHANGELOG.md)
-- [Contributing](CONTRIBUTING.md)
-- [Support](SUPPORT.md)
-
-Available commands include `npm run build`, `npm test`, `npm run release:plan`, and `npm run release:compat`. Run them within the authorized task scope. This documentation refresh used static source inspection only; it did not build, test, install, activate, release, or publish the product.
+Previous architecture snapshots, donor research, acceptance reports, and conversations remain accessible through the [archive index](docs/archive/README.md). Historical dates, versions, counts, and pending instructions retain their original scope.
 
 ## License
 
-No root open-source license is declared in this source baseline. Do not infer redistribution rights from repository visibility; retain applicable third-party notices.
+No root open-source license is declared in this source baseline. Repository visibility does not grant redistribution rights. Preserve [third-party notices](THIRD_PARTY_NOTICES.md) and bundled component licenses.

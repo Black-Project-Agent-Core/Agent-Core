@@ -6,6 +6,7 @@ export const PACKAGED_FOUNDATION = '# Agent Core Foundational Memory\n\nRead AGE
 export function isPackagePathAllowed(relative) {
   const rel = relative.replaceAll('\\', '/').toLowerCase();
   const segments = rel.split('/');
+  if (segments.includes('secrets')) return false;
   if (segments.some(part => ['.git','.desktop-commander','.rdc-standalone','do not touch without instruction explicit'].includes(part))) return false;
   if (segments.some(part => part === '.env' || (part.startsWith('.env.') && part !== '.env.example'))) return false;
   // Memory v1/v2, candidate/restore roots, activation markers and migration temp are private operational state.

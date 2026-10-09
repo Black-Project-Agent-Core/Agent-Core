@@ -169,6 +169,7 @@ const rootFiles = [
   ".grafelignore",
   "SECURITY.md",
   "Maintenance.md",
+  "THIRD_PARTY_NOTICES.md",
 ];
 for (const relative of rootFiles) await copyIfExists(relative, packageRoot);
 
@@ -231,10 +232,13 @@ for (const relative of ["tsconfig.json", "vitest.config.ts"]) {
 await fs.mkdir(path.join(sourceRoot, "docs"), { recursive: true });
 for (const doc of [
   "CODEBASE.md",
-  "Changesets-Release-Intent-Version-Integrity-Integration-Plan.md",
+  "history-agent-core/Changesets-Release-Intent-Version-Integrity-Integration-Plan.md",
 ]) {
   const source = path.join(ROOT, "docs", doc);
-  if (await exists(source)) await fs.copyFile(source, path.join(sourceRoot, "docs", doc));
+  if (await exists(source)) {
+    await fs.mkdir(path.dirname(path.join(sourceRoot, 'docs', doc)), {recursive: true});
+    await fs.copyFile(source, path.join(sourceRoot, "docs", doc));
+  }
 }
 
 const changes = await collectAppliedChanges(version);

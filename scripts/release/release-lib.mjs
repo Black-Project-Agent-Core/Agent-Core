@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseChangesetFile } from "@changesets/parse";
 import { filterPendingIntentFilenames } from "./release-policy.mjs";
+import { readPrereleaseState } from './prerelease-lib.mjs';
 
 export const ROOT = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
 export const CHANGESET_DIR = path.join(ROOT, ".changeset");
@@ -16,9 +17,18 @@ export async function readJson(file) {
 }
 
 export function validateStableSemver(version) {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(version);
   if (!match) throw new Error(`Agent Core first-wave release tooling requires stable semver x.y.z, received: ${version}`);
   return match.slice(1).map(Number);
+}
+
+export function parseProductVersion(version) {
+  const match = /^((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(version);
+  if (!match || match[2]?.split('.').some(part => /^0\d+$/.test(part))) {
+    throw new Error(`Invalid Agent Core product version: ${version}`);
+  }
+  validateStableSemver(match[1]);
+  return { stableVersion: match[1], prerelease: match[2] ?? null };
 }
 
 export function incrementVersion(version, bump) {
@@ -62,20 +72,33 @@ export async function readPendingChangesets(changesetDir = CHANGESET_DIR) {
   return changesets;
 }
 
-export async function calculateReleasePlan() {
-  const pkg = await readJson(path.join(ROOT, "package.json"));
+export async function calculateReleasePlan(options = {}) {
+  const root = options.root ?? ROOT;
+  const pkg = await readJson(path.join(root, "package.json"));
   const currentVersion = String(pkg.version ?? "");
-  validateStableSemver(currentVersion);
-  const changesets = await readPendingChangesets();
+  const identity = parseProductVersion(currentVersion);
+  const changesets = await readPendingChangesets(path.join(root, '.changeset'));
   let bump = "none";
   for (const changeset of changesets) {
     if (BUMP_RANK[changeset.type] > (BUMP_RANK[bump] ?? 0)) bump = changeset.type;
+  }
+  if (identity.prerelease) {
+    const state = await readPrereleaseState({file: path.join(root, '.changeset', 'pre.json')});
+    if (!state?.stableProductVersion) throw new Error('Prerelease plan requires the previous stableProductVersion in .changeset/pre.json');
+    const minimum = incrementVersion(state.stableProductVersion, bump);
+    const minimumParts = validateStableSemver(minimum);
+    const targetParts = validateStableSemver(identity.stableVersion);
+    const different = minimumParts.findIndex((part, index) => part !== targetParts[index]);
+    if (different >= 0 && minimumParts[different] > targetParts[different]) {
+      throw new Error(`Pending ${bump} intent requires an explicit prerelease target of at least ${minimum}; current target is ${identity.stableVersion}`);
+    }
   }
   return {
     product: PRODUCT_NAME,
     currentVersion,
     bump,
-    nextVersion: incrementVersion(currentVersion, bump),
+    // Pending intents describe this prerelease train; they are consumed only on stable apply.
+    nextVersion: identity.prerelease ? identity.stableVersion : incrementVersion(currentVersion, bump),
     changesets,
   };
 }
@@ -162,8 +185,8 @@ function setCsprojVersions(xml, version, nativeVersion) {
 }
 
 export async function buildVersionEdits(version) {
-  validateStableSemver(version);
-  const nativeVersion = `${version}.0`;
+  const { stableVersion } = parseProductVersion(version);
+  const nativeVersion = `${stableVersion}.0`;
   const rootPackagePath = path.join(ROOT, "package.json");
   const rootLockPath = path.join(ROOT, "package-lock.json");
   const uiPackagePath = path.join(ROOT, "src", "ui", "package.json");

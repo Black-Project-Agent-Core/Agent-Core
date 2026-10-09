@@ -33,6 +33,9 @@ function validateState(raw) {
     throw new Error("Invalid prerelease state sequence");
   }
   const enteredAt = assertIso(raw.enteredAt, "enteredAt");
+  if (raw.stableProductVersion != null && !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(raw.stableProductVersion)) {
+    throw new Error('Invalid prerelease stableProductVersion');
+  }
   const exitRequestedAt = raw.exitRequestedAt == null
     ? undefined
     : assertIso(raw.exitRequestedAt, "exitRequestedAt");
@@ -45,6 +48,7 @@ function validateState(raw) {
     tag,
     sequence,
     enteredAt,
+    ...(raw.stableProductVersion ? { stableProductVersion: raw.stableProductVersion } : {}),
     ...(exitRequestedAt ? { exitRequestedAt } : {}),
   };
 }
@@ -80,13 +84,14 @@ export async function enterPrerelease(tag, options = {}) {
     throw new Error("Prerelease mode is already active for tag " + existing.tag);
   }
   const now = new Date(options.now ?? Date.now()).toISOString();
-  const state = {
+  const state = validateState({
     version: 1,
     mode: "pre",
     tag: validatePrereleaseTag(tag),
     sequence: 0,
     enteredAt: now,
-  };
+    ...(options.stableProductVersion ? { stableProductVersion: options.stableProductVersion } : {}),
+  });
   await atomicWriteJson(file, state);
   return state;
 }

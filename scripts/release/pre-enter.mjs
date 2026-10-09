@@ -1,4 +1,5 @@
 import { enterPrerelease } from "./prerelease-lib.mjs";
+import { calculateReleasePlan, validateStableSemver } from './release-lib.mjs';
 
 function arg(name) {
   const index = process.argv.indexOf(name);
@@ -11,5 +12,7 @@ if (!tag) {
   process.exit(1);
 }
 
-const state = await enterPrerelease(tag);
+const plan = await calculateReleasePlan();
+validateStableSemver(plan.currentVersion);
+const state = await enterPrerelease(tag, { stableProductVersion: plan.currentVersion });
 console.log(JSON.stringify(state, null, 2));

@@ -28,7 +28,7 @@ Source code outranks documentation when they disagree.
 2. Inspect the smallest relevant source surface.
 3. Make the minimal coherent change.
 4. Update the affected section of `docs/CODEBASE.md`.
-5. Add a release intent only when the change materially affects shipped behavior/capability/compatibility/security/persistent state/release semantics.
+5. Assess and record version impact for every change, including reduced capabilities. Add a release intent when the change affects behavior, capability, compatibility, security, persistent state or release semantics. Documentation-only work can explicitly record no product-version change. Use a prerelease for implemented changes awaiting functional acceptance.
 6. Run only the verification authorized or required for the task.
 7. Keep unrelated local changes intact.
 
@@ -44,6 +44,12 @@ Use concise commit messages that describe the actual change. Pull requests shoul
 - any known residual risk or follow-up.
 
 Do not claim a fix, pass, deployment, or verification result without evidence.
+
+## Integration and acceptance handoff
+
+A successful push is not a successful installation. Identify the exact repository, branch and commit to fetch before asking another controller to test. Inspect and back up local changes, integrate only the intended scope, build each affected component, activate the build and verify the actual running version before testing its behavior. Never use a destructive reset or blanket overwrite to resolve an unknown dirty checkout.
+
+Provide environment-specific follow-through for steps the author could not perform. Report source verification, native acceptance, publication and deployment separately. Use functional tests first when benchmarking is deferred. Return a complete sanitized ZIP with source/build identities, results, logs, screenshots where relevant, and a path/size/SHA-256 manifest verified after fresh extraction. Exclude secrets and private runtime data.
 
 ## Release integrity
 

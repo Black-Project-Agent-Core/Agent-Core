@@ -1,28 +1,12 @@
-import path from "node:path";
-import { spawn } from "node:child_process";
 import { ROOT } from "./release-policy.mjs";
 import { calculateSnapshotPlan } from "./snapshot-lib.mjs";
 import { createDevelopmentArtifact } from "./development-artifact.mjs";
 import { assertReleaseStateUnchanged, captureReleaseState } from "./release-state.mjs";
+import { buildDevelopmentRuntime } from './development-build.mjs';
 
 function arg(name) {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : undefined;
-}
-
-function run(command, args, cwd = ROOT) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd,
-      stdio: "inherit",
-      windowsHide: true,
-    });
-    child.on("error", reject);
-    child.on("close", code => {
-      if (code === 0) resolve();
-      else reject(new Error(command + " exited with code " + code));
-    });
-  });
 }
 
 const tag = arg("--tag") ?? "dev";
@@ -37,9 +21,7 @@ const plan = await calculateSnapshotPlan({
 });
 
 const before = await captureReleaseState();
-const node = path.join(ROOT, "runtime", "node", "node.exe");
-const npmCli = path.join(ROOT, "runtime", "node", "node_modules", "npm", "bin", "npm-cli.js");
-await run(node, [npmCli, "run", "build"], ROOT);
+const runtime = await buildDevelopmentRuntime(ROOT, plan.runtimeProductVersion);
 
 let artifact;
 try {
@@ -47,6 +29,8 @@ try {
     kind: "snapshot",
     artifactVersion: plan.snapshotVersion,
     stableProductVersion: plan.stableProductVersion,
+    runtimeProductVersion: plan.runtimeProductVersion,
+    launcherPath: runtime.launcherPath,
     pendingIntentIds: plan.pendingIntentIds,
     identity: {
       targetStableVersion: plan.targetStableVersion,
@@ -65,6 +49,8 @@ try {
     await rm(artifact.outputRoot, { recursive: true, force: true }).catch(() => undefined);
   }
   throw error;
+} finally {
+  await runtime.cleanup();
 }
 
 console.log(JSON.stringify(artifact, null, 2));

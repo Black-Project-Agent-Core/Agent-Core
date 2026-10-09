@@ -1,6 +1,25 @@
 # Agent Core Changelog
 
-This is the applied-release history, not a complete current-source capability list. The current source may include pending intents under [.changeset](.changeset/README.md). Earlier legacy-only repository decisions and Native Chat placeholder descriptions below are historical; current source and repository identity are documented in [README](README.md) and [CODEBASE](docs/CODEBASE.md). This refresh does not apply a release or alter past release entries.
+This records explicit source prereleases and applied stable releases. Pending intents under [.changeset](.changeset/README.md) are retained until stable application. Earlier legacy-only repository decisions and Native Chat placeholder descriptions below are historical; current source and repository identity are documented in [README](README.md) and [CODEBASE](docs/CODEBASE.md).
+
+## 0.15.0-beta.0 - 2026-10-09 (source prerelease)
+
+This advances source product identity from 0.14.0 toward 0.15.0. It is not a stable release, Windows acceptance result, or claim that a resident installation was updated. See [release notes and acceptance boundaries](docs/releases/0.15.0-beta.0.md) and the [publication guide](docs/releases/README.md).
+
+### Added
+
+- Read-only external MCP image inspection with overview, crop and zoom, original-pixel provenance, bounded resources and session-bound views.
+- Memory 01 filtered semantic retrieval fixes for eligible workspace/temporal subsets, full-corpus validation and candidate-revision race rejection.
+- Unified System + Memory Workflows canvas using a pinned offline Archify renderer, bounded source dependencies, automatic source refresh and stale last-good output.
+
+### Release integrity
+
+- Canonical prerelease identity is synchronized across root/UI manifests, Core version and launcher metadata; Windows assembly/file version remains numeric.
+- Pending change intents remain unconsumed. Stable publication and real Windows/WebView2 acceptance are still separate explicit steps.
+- Development packaging builds Core, UI and a fresh launcher; it includes the Memory engine, offline renderer and source snapshot, and rejects nested secrets.
+- Version assessment and a fresh Linux-to-Windows handoff are required for subsequent work. GitHub Actions automation remains absent.
+
+The release train also retains earlier pending capability intents since 0.14.0. Their presence is not a new verification of every historical capability. A source-only GitHub release does not replace a Windows runtime archive or the historical Agent Core plugin npm package.
 
 ## 0.14.0 - 2026-09-28
 

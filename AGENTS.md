@@ -24,6 +24,16 @@
 - Learning remains fail-soft. A Learning failure must be reported truthfully but must not erase an otherwise verified user-task result or authorize blind retries.
 - This finalization rule is a top-level local operating behavior, not an optional periodic housekeeping suggestion. Merely returning a successful task result without the required checkpoint is incomplete Agent Core controller behavior.
 
+## Version assessment and complete delivery handoff
+
+- Assess version impact for every change, including improvements, capability reductions, fixes and documentation maintenance. Record the decision and reason: patch, minor, major, or no product-version change. Documentation-only changes need a decision, not an artificial runtime version bump.
+- For behavior, compatibility, security, persistence or release-semantic changes, maintain the existing release intent, changelog/release notes, affected `docs/CODEBASE.md` section and synchronized version surfaces. Do not leave accumulated implementation changes indefinitely labelled as the old runtime. Use a truthful prerelease while functional acceptance is pending; a version number is not evidence of deployment or stability.
+- Distinguish the source commit, build identity, installed/running version, GitHub Release and registry package version. Never assume a pushed commit is already on the testing machine.
+- Every integration/test handoff must specify the repository, branch and exact pushed commit, then cover fetch/clone, local-change inspection and backup, scoped integration, required builds, activation, running-build identity verification, functional tests and evidence. Preserve unrelated local work and private state; stop rather than overwrite unresolved conflicts.
+- Pass environment-specific unfinished steps to the receiving controller with exact prerequisites and completion criteria. Report PASS, FAIL, BLOCKED and NOT RUN separately. Performance benchmarks may be deferred by user instruction without dropping correctness checks.
+- Require a complete sanitized report ZIP with logs, relevant screenshots, source/build identity, changed-file inventory, status ledger and a per-file path/size/SHA-256 manifest. Verify it after fresh extraction. Never include credentials or private Memory content; do not impose an arbitrary evidence-file limit.
+- Publication, merging, deployment, credential changes and destructive actions remain subject to the user's actual authorization and controlling platform policy. A handoff does not grant extra authority.
+
 ## Purpose and scope
 
 This file is the mandatory local operating contract for any AI/controller using Agent Core.

@@ -1,6 +1,9 @@
 import { calculateReleasePlan } from "./release-lib.mjs";
 import { loadReleasePolicy, ROOT } from "./release-policy.mjs";
 import { spawn } from "node:child_process";
+import { readPrereleaseState } from './prerelease-lib.mjs';
+import { parseProductVersion } from './release-lib.mjs';
+import path from 'node:path';
 
 const PLACEHOLDER = /\{([a-z-]+)\}/g;
 const ALLOWED = new Set(["tag", "commit", "commit-short", "datetime", "timestamp"]);
@@ -81,7 +84,11 @@ export async function currentCommit(root = ROOT) {
 export async function calculateSnapshotPlan(options = {}) {
   const root = options.root ?? ROOT;
   const policy = await loadReleasePolicy(root);
-  const plan = await calculateReleasePlan();
+  const plan = await calculateReleasePlan({root});
+  const identity = parseProductVersion(plan.currentVersion);
+  const preState = await readPrereleaseState({file: path.join(root, '.changeset', 'pre.json')});
+  const stableProductVersion = identity.prerelease ? preState?.stableProductVersion : plan.currentVersion;
+  if (!stableProductVersion) throw new Error('Prerelease state must record the previous stableProductVersion');
   const tag = validateReleaseTag(options.tag ?? "dev");
   const commit = String(options.commit ?? await currentCommit(root)).trim();
   if (!/^[0-9a-fA-F]{7,64}$/.test(commit)) {
@@ -99,7 +106,8 @@ export async function calculateSnapshotPlan(options = {}) {
   const baseVersion = policy.snapshot.useCalculatedVersion ? plan.nextVersion : "0.0.0";
   return {
     kind: "snapshot",
-    stableProductVersion: plan.currentVersion,
+    stableProductVersion,
+    runtimeProductVersion: plan.currentVersion,
     targetStableVersion: plan.nextVersion,
     bump: plan.bump,
     pendingIntentIds: plan.changesets.map(change => change.id),
