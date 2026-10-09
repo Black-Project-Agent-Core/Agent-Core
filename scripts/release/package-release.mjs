@@ -173,6 +173,8 @@ const rootFiles = [
 for (const relative of rootFiles) await copyIfExists(relative, packageRoot);
 
 await copyIfExists("assets", packageRoot);
+// Offline Workflows renderer and its licenses; no live runtime data.
+await copyIfExists("vendor/archify", packageRoot);
 await copyIfExists("node_modules", packageRoot);
 await copyIfExists("runtime/node", packageRoot);
 await copyIfExists("runtime/grafel/bin", packageRoot);
@@ -206,6 +208,7 @@ const launcherExe = path.join(launcherOut, "Agent Core.exe");
 await fs.copyFile(launcherExe, path.join(packageRoot, "Agent Core.exe"));
 const sourceRoot = path.join(packageRoot, "source");
 await fs.mkdir(sourceRoot, { recursive: true });
+await copyIfExists("vendor/archify", sourceRoot);
 await fs.cp(path.join(ROOT, "src"), path.join(sourceRoot, "src"), {
   recursive: true,
   force: true,

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { WorkflowsPage } from './WorkflowsPage';
 import type {
   ActivityEntry,
   AgentChatUiState,
@@ -460,7 +461,7 @@ function SettingToggle({title,text,on,disabled,onChange}:{title:string;text:stri
 
 export function ReferenceUi({page,setPage,snapshot,logs,onAction,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatArchive}:{page:PageId;setPage:(p:PageId)=>void;snapshot?:DesktopSnapshot;logs:ActivityEntry[];onAction:(id:string)=>void;agentRun:AgentRunState;onAgentRun:(prompt:string,workspace?:string)=>void;agentChat:AgentChatUiState;onChatCreate:(workspace?:string)=>void;onChatOpen:(conversationId:string)=>void;onChatSend:(conversationId:string,prompt:string)=>void;onChatCancel:(turnId:string)=>void;onChatArchive:(conversationId:string)=>void}) {
   const props={snapshot,logs,onAction,setPage,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatArchive};
-  const content=page==='chat'?<ChatPage {...props}/>:page==='dashboard'?<DashboardPage {...props}/>:page==='core'?<CoreRuntimePage {...props}/>:page==='systems'?<SystemsPage {...props}/>:page==='activity'?<ActivityLogPage {...props}/>:page==='diagnostics'?<DiagnosticsPage {...props}/>:<SettingsPage {...props}/>;
+  const content=page==='workflows'?<WorkflowsPage/>:page==='chat'?<ChatPage {...props}/>:page==='dashboard'?<DashboardPage {...props}/>:page==='core'?<CoreRuntimePage {...props}/>:page==='systems'?<SystemsPage {...props}/>:page==='activity'?<ActivityLogPage {...props}/>:page==='diagnostics'?<DiagnosticsPage {...props}/>:<SettingsPage {...props}/>;
   return <AppShell page={page} setPage={setPage} snapshot={snapshot} onAction={onAction}>{content}</AppShell>;
 }
 

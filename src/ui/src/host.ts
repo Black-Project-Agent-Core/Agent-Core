@@ -185,7 +185,23 @@ export type AgentChatUiState = {
   error?: string;
 };
 
+export type WorkflowsSnapshot = {
+  status: 'building' | 'ready' | 'stale' | 'error';
+  fingerprint?: string;
+  revision?: string;
+  generatedAt?: string;
+  sourceFiles?: number;
+  nodes?: number;
+  edges?: number;
+  unknowns?: number;
+  error?: string;
+  html?: string;
+  limitations: string[];
+};
+
 type HostEnvelope =
+  | { type: 'workflows-result'; requestId: string; result: WorkflowsSnapshot }
+  | { type: 'workflows-error'; requestId: string; error: string }
   | { type: 'status'; status: DesktopStatus }
   | { type: 'snapshot'; snapshot: DesktopSnapshot }
   | { type: 'log'; entry: ActivityEntry }

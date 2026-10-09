@@ -26,6 +26,7 @@ export interface HttpHandlerOptions {
   agentRun?: (input: { prompt: string; workspace?: string }) => Promise<unknown>;
   agentChat?: AgentChatService;
   browserBridge?: BrowserExtensionBridge;
+  workflows?: () => import('../workflows/service.js').WorkflowSnapshot;
 }
 
 function sendJson(
@@ -114,6 +115,14 @@ async function handleRequest(
   if (request.method === 'GET' && route === '/health') {
     const diagnostics = options.healthProvider ? await options.healthProvider() : {};
     sendJson(response, 200, { status: 'ok', service: 'agent-core-rdc-bridge', ...diagnostics });
+    return;
+  }
+
+  if (route === '/agent/workflows') {
+    if (!authorizeAgentUi(request, response, options, security)) return;
+    if (request.method !== 'GET') { sendJson(response, 405, {error:'method_not_allowed'}, {allow:'GET'}); return; }
+    if (!options.workflows) { sendJson(response, 503, {error:'workflows_unavailable'}); return; }
+    sendJson(response, 200, options.workflows(), {'cache-control':'no-store'});
     return;
   }
 

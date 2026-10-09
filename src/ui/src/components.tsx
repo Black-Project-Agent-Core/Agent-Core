@@ -11,7 +11,7 @@ import type { DesktopSnapshot, ActivityEntry } from './host';
 import type { SystemId, SystemView, Tone } from './model';
 import { formatDuration } from './model';
 
-export type PageId = 'chat' | 'dashboard' | 'core' | 'systems' | 'activity' | 'diagnostics' | 'settings';
+export type PageId = 'chat' | 'dashboard' | 'core' | 'systems' | 'workflows' | 'activity' | 'diagnostics' | 'settings';
 
 export const systemIcons: Record<SystemId, LucideIcon> = {
   core: Cpu,
@@ -32,6 +32,7 @@ export const navItems: Array<{id:PageId; label:string; icon:LucideIcon}> = [
   {id:'dashboard',label:'Dashboard',icon:Home},
   {id:'core',label:'Core Runtime',icon:Cpu},
   {id:'systems',label:'Systems',icon:Boxes},
+  {id:'workflows',label:'Workflows',icon:Link2},
   {id:'activity',label:'Activity Log',icon:FileText},
   {id:'diagnostics',label:'Diagnostics',icon:Stethoscope},
   {id:'settings',label:'Settings',icon:Settings},
@@ -143,6 +144,7 @@ export function TopBar({page,snapshot,query,setQuery,setPage}:{page:PageId;snaps
     dashboard:'Search systems, components, logs...',
     core:'Search systems, components, logs...',
     systems:'Search systems, components, dependencies...',
+    workflows:'Search systems, components, dependencies...',
     activity:'Search systems, components, logs, commands...',
     diagnostics:'Search systems, components, logs, commands...',
     settings:'Search systems, settings, components...',
@@ -157,6 +159,7 @@ export function TopBar({page,snapshot,query,setQuery,setPage}:{page:PageId;snaps
 export function Sidebar({page,setPage,snapshot,onAction}:{page:PageId;setPage:(p:PageId)=>void;snapshot?:DesktopSnapshot;onAction:(id:string)=>void}) {
   const shared={enabled:true} as const;
   const quickByPage:Record<PageId,Array<{id:string;label:string;icon:LucideIcon;enabled:boolean}>>={
+    workflows:[],
     chat:[
       {id:'open-memory-folder',label:'Open Memory Store',icon:Database,...shared},
       {id:'open-logs',label:'Open Logs Folder',icon:FileText,...shared},

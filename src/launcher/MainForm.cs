@@ -159,6 +159,7 @@ public sealed class MainForm : Form
         core.Settings.AreDevToolsEnabled = false;
         await core.AddScriptToExecuteOnDocumentCreatedAsync(@"
 (() => {
+  if (window !== window.top) return;
   const report = (kind, message) => {
     try { chrome.webview.postMessage({ type: 'ui-diagnostic-error', kind, message: String(message || '') }); } catch {}
   };
@@ -175,7 +176,7 @@ public sealed class MainForm : Form
             CoreWebView2HostResourceAccessKind.Allow);
         core.NewWindowRequested += (_, args) => args.Handled = true;
         core.NavigationStarting += (_, args) => {
-            if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri) || !uri.Host.Equals("app.agentcore.local", StringComparison.OrdinalIgnoreCase))
+            if (!IsTrustedAppSource(args.Uri))
                 args.Cancel = true;
         };
         core.NavigationCompleted += (_, args) =>
@@ -202,8 +203,22 @@ public sealed class MainForm : Form
         core.Navigate("https://app.agentcore.local/index.html");
     }
 
+    private static bool IsTrustedAppSource(string source)
+    {
+        return Uri.TryCreate(source, UriKind.Absolute, out var uri)
+            && uri.Scheme == Uri.UriSchemeHttps
+            && uri.IsDefaultPort
+            && uri.UserInfo.Length == 0
+            && uri.Query.Length == 0
+            && uri.Host.Equals("app.agentcore.local", StringComparison.OrdinalIgnoreCase)
+            && uri.AbsolutePath.Equals("/index.html", StringComparison.Ordinal);
+    }
+
     private async void OnWebMessageReceivedAsync(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
+        // Only the top-level application document owns native commands. Child-frame
+        // messages are not subscribed; sandboxed srcdoc canvases have opaque origins.
+        if (!IsTrustedAppSource(e.Source)) return;
         try
         {
             using var document = JsonDocument.Parse(e.WebMessageAsJson);
@@ -220,6 +235,22 @@ public sealed class MainForm : Form
             {
                 await PushStatusAsync();
                 Send(new { type = "logs", entries = _runtime.Logs });
+                return;
+            }
+            if (type == "workflows-get")
+            {
+                var requestId = root.TryGetProperty("requestId", out var requestIdNode)
+                    && requestIdNode.ValueKind == JsonValueKind.String ? requestIdNode.GetString() : null;
+                if (string.IsNullOrWhiteSpace(requestId) || requestId.Length > 128) return;
+                try
+                {
+                    var result = await _runtime.GetWorkflowsAsync();
+                    Send(new { type = "workflows-result", requestId, result });
+                }
+                catch (Exception error)
+                {
+                    Send(new { type = "workflows-error", requestId, error = error.Message });
+                }
                 return;
             }
             if (type == "agent-chat-list")
@@ -400,7 +431,7 @@ public sealed class MainForm : Form
 
     private void Send(object payload)
     {
-        if (_webView.CoreWebView2 is null) return;
+        if (_shutdownStarted || IsDisposed || Disposing || _webView.IsDisposed || _webView.CoreWebView2 is null) return;
         _webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(payload, _json));
     }
 }

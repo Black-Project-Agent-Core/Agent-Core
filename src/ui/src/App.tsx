@@ -10,7 +10,7 @@ import {
 import { ReferenceUi } from './pages';
 import type { PageId } from './components';
 
-const validPages = new Set<PageId>(['chat','dashboard','core','systems','activity','diagnostics','settings']);
+const validPages = new Set<PageId>(['chat','dashboard','core','systems','workflows','activity','diagnostics','settings']);
 
 function pageFromHash(): PageId {
   const value=window.location.hash.replace(/^#/,'').trim() as PageId;

@@ -1,3 +1,4 @@
+import { WorkflowService } from './workflows/service.js';
 import { access, mkdir, rm } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
@@ -237,7 +238,9 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     }
   }
 
+  const workflows = new WorkflowService(config.projectRoot);
   const server = createServer(createHttpHandler({
+    workflows: () => workflows.snapshot(),
     browserBridge: browserExtensionBridge,
     keyStore,
     oauthService,
@@ -312,6 +315,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
   });
 
   const address = server.address() as AddressInfo;
+  workflows.start();
   activityTracker.record('SYSTEM', 'success', 'Agent Core RDC bridge is listening', 'service-listening', { host: config.host, port: address.port });
   return {
     server,
@@ -342,6 +346,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
         }
       };
 
+      await cleanup('workflows', () => workflows.close());
       await cleanup('http-server', () => closeServer(server));
       await cleanup('browser-control', () => browserControlService.closeAll());
       await cleanup('terminal-manager', () => terminalManager.shutdownAll());

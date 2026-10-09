@@ -137,6 +137,31 @@ public sealed class AgentCoreRuntime : IDisposable
         return document.RootElement.Clone();
     }
 
+    public async Task<JsonElement> GetWorkflowsAsync()
+    {
+        const int maxBytes = 4 * 1024 * 1024;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var request = CreateAgentChatRequest(HttpMethod.Get, "/agent/workflows");
+        using var response = await _agentHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Workflows request failed ({(int)response.StatusCode}).");
+        if (response.Content.Headers.ContentLength > maxBytes)
+            throw new InvalidOperationException("Workflows snapshot exceeds the 4 MiB limit.");
+        await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[65536];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, timeout.Token)) > 0)
+        {
+            if (buffer.Length + read > maxBytes)
+                throw new InvalidOperationException("Workflows snapshot exceeds the 4 MiB limit.");
+            buffer.Write(chunk, 0, read);
+        }
+        buffer.Position = 0;
+        using var document = await JsonDocument.ParseAsync(buffer, cancellationToken: timeout.Token);
+        return document.RootElement.Clone();
+    }
+
     public async Task<JsonElement> ListAgentConversationsAsync()
     {
         using var request = CreateAgentChatRequest(HttpMethod.Get, "/agent/chat/conversations");
