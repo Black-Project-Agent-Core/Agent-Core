@@ -90,7 +90,9 @@ export class EmbeddingRepairStateStore {
     try {
       const raw = JSON.parse(await readFile(this.filePath, 'utf8')) as Partial<EmbeddingRepairState>;
       if (raw.version !== VERSION || !Array.isArray(raw.jobs)) throw new Error('MEMORY_EMBEDDING_REPAIR_STATE_INVALID');
-      const jobs = raw.jobs.map(validateJob).slice(-MAX_JOBS);
+      if (raw.jobs.length > MAX_JOBS) throw new Error('MEMORY_EMBEDDING_REPAIR_CAPACITY_EXCEEDED');
+      const jobs = raw.jobs.map(validateJob);
+      if (new Set(jobs.map(job => job.id)).size !== jobs.length) throw new Error('MEMORY_EMBEDDING_REPAIR_JOB_INVALID');
       this.issue = null;
       return { version: VERSION, jobs };
     } catch (error) {
@@ -104,9 +106,8 @@ export class EmbeddingRepairStateStore {
   }
 
   private async save(state: EmbeddingRepairState): Promise<void> {
-    const jobs = state.jobs
-      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
-      .slice(-MAX_JOBS);
+    if (state.jobs.length > MAX_JOBS) throw new Error('MEMORY_EMBEDDING_REPAIR_CAPACITY_EXCEEDED');
+    const jobs = state.jobs.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
     await writeOwnedFileAtomic(
       this.filePath,
       JSON.stringify({ version: VERSION, jobs }, null, 2) + '\n',
@@ -149,6 +150,12 @@ export class EmbeddingRepairStateStore {
         changed = true;
       }
       if (!job) {
+        // Reserve bounded retry ownership before dispatch; overflow remains degraded,
+        // rather than evicting failures and retrying them forever as fresh jobs.
+        if (state.jobs.length >= MAX_JOBS) continue;
+        job = { id: entry.id, fingerprint, embedderKey: key, status: 'pending', attempts: 0,
+          nextAttemptAt: now, lastError: null, updatedAt: new Date(now).toISOString() };
+        state.jobs.push(job); byId.set(entry.id, job); changed = true;
         output.push({ id: entry.id, fingerprint });
         continue;
       }
@@ -180,6 +187,7 @@ export class EmbeddingRepairStateStore {
     for (const entry of entries) {
       const fingerprint = entry.fingerprint.toLowerCase();
       const existing = byId.get(entry.id);
+      if (!existing && byId.size >= MAX_JOBS) continue;
       const baseAttempts = options.force && existing?.status === 'failed'
         ? 0
         : existing?.attempts ?? 0;
