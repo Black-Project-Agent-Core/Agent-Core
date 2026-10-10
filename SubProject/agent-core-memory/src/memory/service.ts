@@ -23,6 +23,7 @@ import { hashMemoryRetrievalQuery, memoryRecordFingerprint, MemoryRetrievalLedge
 import { buildMemoryTransferPayload, planMemoryImport, type MemoryImportOptions } from './transfer.js';
 import { memoryRetirementFingerprint } from './retirement.js';
 import { RETENTION_PARAMS, scoreMemoryRetention } from '../learning/retention-score.js';
+import { IDENTIFIER_TOKENIZER_VERSION } from './identifier-tokenizer.js';
 import { searchMemories, type MemorySearchOptions, type MemorySearchResult } from './retrieval.js';
 import { projectMemorySearchResults, type DeliveredMemorySearchResult } from './search-projection.js';
 import { FileMemoryStore } from './store.js';
@@ -265,7 +266,7 @@ export class MemoryService {
         }
         return {
           results: searchMemories(records, query, options, semantic, Math.max(1, records.length), rankingTime),
-          rankingRevision: disclosureDigest(['controller-ranking/v1', retrievalPolicy,
+          rankingRevision: disclosureDigest(['controller-ranking/v1', retrievalPolicy, IDENTIFIER_TOKENIZER_VERSION,
             semantic?.revision ?? 'semantic-unavailable/v1', salienceEntries]),
         };
       },
