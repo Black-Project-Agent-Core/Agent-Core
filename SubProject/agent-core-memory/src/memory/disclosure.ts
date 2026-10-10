@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { MemoryRecord } from './types.js';
+import type { MemoryExcerpt } from './evidence-excerpt.js';
 
 import { digestSchema } from './experience-types.js';
 import type { Digest, IsoInstant, SourceRef, Verification, RetentionTier, EpistemicType, TemporalClass,Validity,TimeValue } from './experience-types.js';
@@ -18,7 +19,7 @@ export interface RecallInput {
   asOf?: IsoInstant; limit?: number; cursor?: string; budget?: ReadBudget;
 }
 export interface MemoryHit {
-  id: string; revision: Digest; title: string; abstract?: string; validity?:Validity;observedAt?:TimeValue;invalidatedBy?:SourceRef[];retention: RetentionTier;
+  id: string; revision: Digest; title: string; abstract?: string; excerpt?: MemoryExcerpt; validity?:Validity;observedAt?:TimeValue;invalidatedBy?:SourceRef[];retention: RetentionTier;
   epistemic: EpistemicType; temporal: TemporalClass; verification: Verification['status'];
   applicability: 'current' | 'historical' | 'superseded' | 'conflicted' | 'unknown';
   freshness: 'current' | 'stale' | 'unknown'; availableViews: Array<'record' | 'episode' | 'evidence'>; score?: number;

@@ -2,6 +2,7 @@ import { recordExperience } from './experience-types.js';
 import type { MemoryHit } from './disclosure.js';
 import type { MemoryRecord } from './types.js';
 import type { MemorySearchResult } from './retrieval.js';
+import { selectMemoryExcerpt } from './evidence-excerpt.js';
 
 export type MemorySearchDeliveryDetail = 'full' | 'compact' | 'minimal' | 'preview';
 
@@ -187,14 +188,15 @@ export function formatDeliveredMemorySearchResult(item: DeliveredMemorySearchRes
 /** Additive compact projection; the legacy projection above stays unchanged. */
 export function projectMemoryHit(
   record: MemoryRecord,
-  input: { revision: string; view: 'map' | 'abstract'; score?: number;
+  input: { revision: string; view: 'map' | 'abstract'; query?: string; score?: number;
     applicability: MemoryHit['applicability'];invalidatedBy?:MemoryHit['invalidatedBy'];
     freshness: MemoryHit['freshness'];
     retrievalEvidence: MemoryHit['retrievalEvidence'] },
 ): MemoryHit {
   const experience = recordExperience(record);
+  const excerpt = input.view === 'abstract' ? selectMemoryExcerpt(record, input.query ?? '') : undefined;
   return { id: record.id, revision: input.revision, title: record.title ?? '',
-    ...(input.view === 'abstract' ? { abstract: Array.from(record.content).slice(0, 240).join('') } : {}),
+    ...(excerpt ? { abstract: excerpt.text, excerpt } : {}),
     ...(record.version===2?{validity:experience.validity,...(experience.observedAt?{observedAt:experience.observedAt}:{}),...(input.invalidatedBy?.length?{invalidatedBy:input.invalidatedBy}:{})}:{}),
     retention: experience.retention, epistemic: experience.epistemic, temporal: experience.temporal, verification: experience.verification.status,
     applicability: input.applicability, freshness: input.freshness, availableViews: ['record'],
