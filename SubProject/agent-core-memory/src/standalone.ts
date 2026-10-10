@@ -29,5 +29,6 @@ export async function initializeStandaloneMemory(
       await writeFile(paths.bootstrap, `# ${title}\n`, { encoding: 'utf8', flag: 'wx', mode:0o600 });
     }
   });
-  return MemoryService.initialize(baseDir, paths.root, options.embedder, {experience:options.experience,consolidation:options.consolidation,indexGranularity:options.indexGranularity});
+  return MemoryService.initialize(baseDir, paths.root, options.embedder, {experience:options.experience,consolidation:options.consolidation,indexGranularity:options.indexGranularity,
+    ...(options.queryCache ? { queryCache: { ...options.queryCache } } : {})});
 }

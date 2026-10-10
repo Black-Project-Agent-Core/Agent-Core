@@ -13,6 +13,7 @@ import { MemoryFeedbackStore, type MemoryFeedbackKind, type MemoryFeedbackResult
 import { assertMemoryFeedbackDigest, memoryFeedbackContentDigest } from './feedback-target.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { MemoryIndex, type MemoryIndexResult } from './index.js';
+import type { QueryCacheLimits } from './query-embedding-cache.js';
 import { EmbeddingMemoryIntelligence, enrichMemoryMetadata, type MemoryEvolutionPreview, type MemoryEvolutionProposal, type MemoryIntelligence } from './intelligence.js';
 import { boundedHistory, validateMemoryId } from './note-format.js';
 import { resolveMemoryPaths } from './paths.js';
@@ -30,7 +31,7 @@ import { FileMemoryStore } from './store.js';
 import { isMemoryExpired, normalizeMemoryExpiresAt } from './visibility.js';
 import { MEMORY_SCHEMA_VERSION, type EvolutionEvent, type MemoryHealth, type MemoryIssue, type MemoryLink, type MemoryProvenance, type MemoryRecord } from './types.js';
 
-export interface MemoryServiceOptions {experience?:{enabled:true};consolidation?:ConsolidationPolicy;indexGranularity?:'record'|'passage'}
+export interface MemoryServiceOptions {experience?:{enabled:true};consolidation?:ConsolidationPolicy;indexGranularity?:'record'|'passage';queryCache?:QueryCacheLimits}
 
 /** Host-owned rollout policy; public recall input cannot select ranking or feedback. */
 export type ControllerRetrievalPolicy = 'baseline-v1' | 'fusion-feedback-v1';
@@ -192,13 +193,20 @@ export class MemoryService {
     private readonly projectRoot: string,
     private readonly consolidation:ConsolidationPolicy = {},
     indexGranularity: 'record' | 'passage' = 'record',
+    queryCache?: QueryCacheLimits,
   ) {
-    this.index = new MemoryIndex(store.paths, embedder, { granularity: indexGranularity });
+    this.index = new MemoryIndex(store.paths, embedder, { granularity: indexGranularity,
+      ...(queryCache ? { queryCache: { ...queryCache } } : {}) });
     this.feedbackStore = new MemoryFeedbackStore(store.paths);
     this.retrievalLedger = new MemoryRetrievalLedger(store.paths);
     this.intelligence = embedder ? new EmbeddingMemoryIntelligence(this.index) : undefined;
     this.embeddingStatus = embedder ? 'degraded' : 'not-configured';
     this.intelligenceStatus = this.intelligence ? 'degraded' : 'not-configured';
+  }
+
+  /** Release owner-local query waiters and volatile vectors. No provider abort is implied. */
+  dispose(): void {
+    this.index.dispose();
   }
 
   controller(scope: ControllerScope, policy: ControllerRetrievalPolicy = 'baseline-v1'): ControllerMemorySession {
@@ -289,6 +297,7 @@ export class MemoryService {
       path.resolve(baseDir),
       options.consolidation,
       options.indexGranularity,
+      options.queryCache,
     );
     try {
       const loaded = await service.store.initialize();
