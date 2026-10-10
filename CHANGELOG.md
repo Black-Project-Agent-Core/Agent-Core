@@ -83,3 +83,7 @@ Release entries are generated from explicit Agent Core change intents.
 ## 0.15.0-beta.1 — locally integrated source candidate (2026-10-11; NOT RELEASED)
 
 Memory02 adds opt-in controller ranking and revision-bound pagination; Memory03 binds external v2 task scope to authenticated ownership and registered workspace; Memory04 updates semantic document/index versions; Memory05 supplies declarative, bounded offline outcome verification. The upstream delta was integrated without overwriting local Workflows/Memory01 changes. Staged Memory/Core/UI/Windows launcher builds and 55 targeted tests passed. The connected runtime is still beta.0. Plan04 embedding corpus/provider/data/volume/cost approval and independent cutover remain pending. No tag, release:apply, registry publication, or deployment took place.
+
+### 2026-10-11 — installed beta.1 runtime verification (not a new release)
+
+The previously staged Memory02–05 source was installed on the current Windows machine. Independent helper verified 51/51 installed hashes; resident Core/launcher reported `0.15.0-beta.1`, Memory v2 derived index format3/documentVersion2 with 130 complete embeddings, authenticated task-scoped v2 recall, and production Workflows GUI smoke. Two failed helper attempts rolled back due to checking the retained legacy index; the corrected helper completed without rollback. The three acceptance workspaces are ready for an explicitly approved manual/agent cleanup batch, not yet deleted. No new tag or publication.

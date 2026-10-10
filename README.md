@@ -185,3 +185,7 @@ No public open-source license is declared for this private repository. Do not as
 ## Current source handoff — 2026-10-11
 
 The local source/version is now **0.15.0-beta.1** with the scoped Memory02–05 changes integrated on top of the current Workflows/Memory01 installation. This is **source and staged build only**: the installed Agent Core launcher and connected Node Core remain 0.15.0-beta.0. No new release, deployment, provider switch, Memory migration or embedding was performed. See `docs/Memory02-05-Permanent-Integration-Execution-20261011.md` and `docs/releases/0.15.0-beta.1.md` for the distinct activation and provider/data/volume/cost gates.
+
+## Beta.1 live installation correction — 2026-10-11
+
+The earlier staged-source-only note is historical. This installation now runs **Agent Core 0.15.0-beta.1** from the original `E:/Projects/Agent-Core` launcher and Core with 51/51 installed artifact hashes verified. Memory02, host-bound external Memory03, real Memory04 v3 embedding index (130/130), and Workflows Windows UI have scoped live smoke evidence; Memory05 retains the accepted offline scripted evidence without any model-benefit assertion. Two earlier independent cutovers rolled back safely due to checking the legacy instead of experience-v2 index; the corrected helper completed the final installation without rollback. Consult `docs/Memory02-05-Permanent-Integration-Execution-20261011.md` for exact hashes, evidence, and pending approval for deletion of three historical temp workspaces. No new release/publish was run.
