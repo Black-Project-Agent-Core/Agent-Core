@@ -14,6 +14,7 @@ import { assertMemoryFeedbackDigest, memoryFeedbackContentDigest } from './feedb
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { MemoryIndex, type MemoryIndexResult } from './index.js';
 import type { QueryCacheLimits } from './query-embedding-cache.js';
+import {validateRelevancePolicy,type RelevancePolicy} from './relevance.js';
 import { EmbeddingMemoryIntelligence, enrichMemoryMetadata, type MemoryEvolutionPreview, type MemoryEvolutionProposal, type MemoryIntelligence } from './intelligence.js';
 import { boundedHistory, validateMemoryId } from './note-format.js';
 import { resolveMemoryPaths } from './paths.js';
@@ -31,7 +32,7 @@ import { FileMemoryStore } from './store.js';
 import { isMemoryExpired, normalizeMemoryExpiresAt } from './visibility.js';
 import { MEMORY_SCHEMA_VERSION, type EvolutionEvent, type MemoryHealth, type MemoryIssue, type MemoryLink, type MemoryProvenance, type MemoryRecord } from './types.js';
 
-export interface MemoryServiceOptions {experience?:{enabled:true};consolidation?:ConsolidationPolicy;indexGranularity?:'record'|'passage';queryCache?:QueryCacheLimits}
+export interface MemoryServiceOptions {experience?:{enabled:true};consolidation?:ConsolidationPolicy;indexGranularity?:'record'|'passage';queryCache?:QueryCacheLimits;controllerRelevancePolicy?:RelevancePolicy}
 
 /** Host-owned rollout policy; public recall input cannot select ranking or feedback. */
 export type ControllerRetrievalPolicy = 'baseline-v1' | 'fusion-feedback-v1';
@@ -194,6 +195,7 @@ export class MemoryService {
     private readonly consolidation:ConsolidationPolicy = {},
     indexGranularity: 'record' | 'passage' = 'record',
     queryCache?: QueryCacheLimits,
+    private readonly controllerRelevancePolicy?:Readonly<RelevancePolicy>,
   ) {
     this.index = new MemoryIndex(store.paths, embedder, { granularity: indexGranularity,
       ...(queryCache ? { queryCache: { ...queryCache } } : {}) });
@@ -223,6 +225,7 @@ export class MemoryService {
       }});
     return new ControllerMemorySession({
       root:this.store.paths.root,experienceEnabled:this.experienceEnabled,episodes,
+      ...(this.controllerRelevancePolicy ? {relevancePolicy:this.controllerRelevancePolicy} : {}),
       promotion:new MemoryPromotion(this.store,episodes,this.index,this.consolidation,async()=>{await this.refreshIndex();return this.indexStatus==='available'?'current':'degraded';}),
       resolveWorkspace: value => this.resolveWorkspace(value),
       inScope,
@@ -276,6 +279,7 @@ export class MemoryService {
         }
         return {
           results: searchMemories(records, query, options, semantic, Math.max(1, records.length), rankingTime),
+          relevanceContext:{semanticStatus:!this.embedder ? 'disabled' : semantic ? 'available' : 'unavailable'},
           rankingRevision: disclosureDigest(['controller-ranking/v1', retrievalPolicy, IDENTIFIER_TOKENIZER_VERSION,
             semantic?.revision ?? 'semantic-unavailable/v1', salienceEntries]),
         };
@@ -291,6 +295,7 @@ export class MemoryService {
   }
 
   static async initialize(baseDir: string, memoryRoot?: string, embedder?: MemoryEmbedder, options:MemoryServiceOptions = {}): Promise<MemoryService> {
+    const relevancePolicy=options.controllerRelevancePolicy===undefined ? undefined : validateRelevancePolicy(options.controllerRelevancePolicy);
     const service = new MemoryService(
       new FileMemoryStore(resolveMemoryPaths(baseDir, memoryRoot),options),
       embedder,
@@ -298,6 +303,7 @@ export class MemoryService {
       options.consolidation,
       options.indexGranularity,
       options.queryCache,
+      relevancePolicy,
     );
     try {
       const loaded = await service.store.initialize();

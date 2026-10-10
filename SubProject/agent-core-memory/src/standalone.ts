@@ -5,6 +5,7 @@ import { resolveMemoryPaths } from './memory/paths.js';
 import { MemoryService, type MemoryServiceOptions } from './memory/service.js';
 import { withMemoryProcessLock } from './memory/lock.js';
 import { assertContainedPath } from './memory/transaction.js';
+import {validateRelevancePolicy} from './memory/relevance.js';
 
 export interface StandaloneMemoryOptions extends MemoryServiceOptions {
   baseDir?: string;
@@ -16,6 +17,7 @@ export interface StandaloneMemoryOptions extends MemoryServiceOptions {
 export async function initializeStandaloneMemory(
   options: StandaloneMemoryOptions = {},
 ): Promise<MemoryService> {
+  const relevancePolicy=options.controllerRelevancePolicy===undefined ? undefined : validateRelevancePolicy(options.controllerRelevancePolicy);
   const baseDir = path.resolve(options.baseDir ?? process.cwd());
   const paths = resolveMemoryPaths(baseDir, options.memoryRoot);
   await assertContainedPath(paths.root,paths.bootstrap);
@@ -30,5 +32,6 @@ export async function initializeStandaloneMemory(
     }
   });
   return MemoryService.initialize(baseDir, paths.root, options.embedder, {experience:options.experience,consolidation:options.consolidation,indexGranularity:options.indexGranularity,
-    ...(options.queryCache ? { queryCache: { ...options.queryCache } } : {})});
+    ...(options.queryCache ? { queryCache: { ...options.queryCache } } : {}),
+    ...(relevancePolicy ? {controllerRelevancePolicy:relevancePolicy} : {})});
 }

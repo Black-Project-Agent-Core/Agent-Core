@@ -169,7 +169,7 @@ export class ControllerMemorySession {
     while (result.metrics.payloadBytes > maxBytes && take > 1) { take--; result = page(take); }
     if (result.metrics.payloadBytes > maxBytes) { result = insufficientBudget(result.metrics.payloadBytes,warnings); take = 0; }
     await this.exposure({ result,attemptId,startedAt,view,records:ranked.slice(start,start+count).map(item => item.record),
-      delivered:ranked.slice(start,start+take).map(item => item.record),query,candidateCount:ranked.length });
+      delivered:ranked.slice(start,start+take).map(item => item.record),query,candidateCount:rankedSnapshot?.results.length??ranked.length });
     return result;
   }
 

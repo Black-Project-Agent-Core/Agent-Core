@@ -37,12 +37,12 @@ export function validateRelevancePolicy(value:RelevancePolicy):Readonly<Relevanc
 export function assessMemoryRelevance(input:RelevanceInput):RelevanceDecision {
   const policy=validateRelevancePolicy(input?.policy);
   if(!Array.isArray(input.results)||!Number.isSafeInteger(input.eligibleCount)||input.eligibleCount<0
-    ||!['available','unavailable','disabled'].includes(input.semanticStatus))invalid();
+    ||input.results.length>input.eligibleCount||!['available','unavailable','disabled'].includes(input.semanticStatus))invalid();
   const acceptedIds:string[]=[],seen=new Set<string>();
   for(const result of input.results){
     const evidence=result?.components;
     if(!result?.record||typeof result.record.id!=='string'||seen.has(result.record.id)
-      ||!evidence||typeof evidence.contentExactPhrase!=='boolean'||!unit(evidence.contentLexicalCoverage)
+      ||!result.record.id||!evidence||typeof evidence.contentExactPhrase!=='boolean'||!unit(evidence.contentLexicalCoverage)
       ||!unit(evidence.semanticSimilarity)||input.eligibleCount===0)invalid();
     seen.add(result.record.id);
     if(evidence.contentExactPhrase||evidence.contentLexicalCoverage>=policy.minLexicalCoverage
