@@ -1,6 +1,7 @@
 import { buildBm25Profile } from './bm25.js';
 import { cosineSimilarity } from './embedder.js';
 import { buildSemanticDocument } from './semantic-document.js';
+import { memorySemanticRevision } from './disclosure.js';
 import { lexicalRetrievalTokens } from './identifier-tokenizer.js';
 import { normalizeMemorySourceFile, normalizeMemoryWorkspace } from './provenance.js';
 import { isMemoryLinkActive } from './relations.js';
@@ -134,7 +135,12 @@ function scoreRecord(
   }
 
   const vector = semantic?.vectors.get(record.id);
-  if (vector && semantic) {
+  if (semantic?.passageScores) {
+    const passage = semantic.passageScores.get(record.id);
+    if (passage && passage.parentRevision === memorySemanticRevision(record)) {
+      components.semanticSimilarity = Math.max(0, Math.min(1, passage.score));
+    }
+  } else if (vector && semantic) {
     components.semanticSimilarity = Math.max(0, Math.min(1, cosineSimilarity(semantic.queryVector, vector)));
   }
   const ageMs = Math.max(0, rankingTime - Date.parse(record.updatedAt));
