@@ -142,9 +142,10 @@ describe('contextual index version and cache invalidation', () => {
     const context = await index.semanticContext('Nebula', records, [records[0]]);
     const data = await stored(file);
     const expected = `sha256:${createHash('sha256').update(JSON.stringify([
-      'semantic-search/v1', 3, 'semantic-document', 2, data.embedder,
+      'semantic-search/v2', 3, 'record', 2, data.embedder,
       data.entries.filter((entry: any) => entry.id === records[0].id)
-        .map((entry: any) => [entry.id, entry.fingerprint]),
+        .map((entry: any) => [entry.id, entry.fingerprint, entry.embedding,
+          entry.passages?.map((child: any) => [child.id, child.fingerprint, child.embedding ?? null, child.unavailableReason ?? null])]),
     ])).digest('hex')}`;
     expect(context?.revision).toBe(expected);
   });

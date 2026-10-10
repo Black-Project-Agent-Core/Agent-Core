@@ -8,7 +8,7 @@
 
 **Spec:** Kontrak mandiri dokumen ini.
 
-**Status: PROPOSED — NOT IMPLEMENTED.** Baseline published yang diberikan `4b3e32d464b98aa5116df02e8fe524217d5ad811`. Inspeksi pada HEAD lokal `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` plus staged tree 174 file, bukan bukti published source identik. Tidak ada source/test/build/provider dijalankan atau diubah selama penyusunan rencana.
+**Status: IMPLEMENTED — OFFLINE FUNCTIONAL GATES PASS; FINAL INTEGRATED BUILD/SUITE AND REPORT PACKAGE OWNED BY COORDINATOR.** Passage source commits `c2d40db`, `539ffff`, `0159d3b`; host opt-in remains inactive. Performance benchmarks are NOT RUN by explicit user deferral. Per-task RED/GREEN, synthetic count/byte/oracle evidence and limitations are recorded in `evidence/memory-07/` of the consolidation workspace. Existing format3 record indexes remain compatible with zero reembedding; passage writes use strict format4. The baseline planning facts below remain historical source context. Baseline published yang diberikan `4b3e32d464b98aa5116df02e8fe524217d5ad811`. Inspeksi pada HEAD lokal `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` plus staged tree 174 file, bukan bukti published source identik. Tidak ada source/test/build/provider dijalankan atau diubah selama penyusunan rencana.
 
 ## Global Constraints
 
