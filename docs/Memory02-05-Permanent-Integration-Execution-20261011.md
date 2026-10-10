@@ -36,7 +36,7 @@
 
 ## Final nonduplicating acceptance-evidence relocation — 2026-10-11
 
-Ten original filesystem items were moved by same-volume rename from the three scoped temporary trees into permanent `runtime/build` ownership. No backup copy, new checkout, duplicate project archive, forced process stop or permanent deletion was created. Sources are absent and destinations exist; the two existing acceptance ZIP files retained their recorded SHA-256 digests and all 52/48 members decompressed without error.
+Eleven original filesystem items were moved by same-volume rename from the three scoped temporary trees into permanent `runtime/build` ownership. No backup copy, new checkout, duplicate project archive, forced process stop or permanent deletion was created. Sources are absent and destinations exist; the two existing acceptance ZIP files retained their recorded SHA-256 digests and all 52/48 members decompressed without error.
 
 - Workflows isolated acceptance originals, including reports/fixture patch, redacted screenshots, WebView2 profile (Login Data/Cookies), SQLite databases/WAL, activity tracker, home/profile state and test configuration, are retained at `E:\Projects\Agent-Core\runtime\build\workflows-production-integration-20261010\retained-acceptance-state-20261010`. 400 files / 35,211,324 bytes (logical); contains pre-existing Workflows ZIP SHA-256 `e1faef75508cf6b2578a97113d021a3ab0d5c1d9bcd8efee9b8876197dd35b16`.
 - Plan01 independent original evidence/scripts/logs and pre-existing 48-member report ZIP are retained at `E:\Projects\Agent-Core\runtime\build\memory01-windows-release-20261010\retained-plan01-evidence-20261009`. 39 files / 711,208 bytes (logical); ZIP SHA-256 `379b7239d9d305907fa29de90f4f0505cc05f2d97317d0adf1052582ee26b9e8`.
