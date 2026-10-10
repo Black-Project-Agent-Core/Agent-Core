@@ -26,8 +26,13 @@ describe('contextual semantic document', () => {
   });
 
   it('makes title-only queries relevant in lexical and BM25 channels without inventing unrelated relevance', () => {
-    const target = record();
-    const baseline = record({ title: undefined });
+    // Keep this title-only oracle independent of identifier subwords in aliases.
+    const target = record({ keywords: [] });
+    const baseline = record({ title: undefined, keywords: [] });
+    expect(buildSemanticDocument(baseline)).not.toMatch(/nebula|adapter/i);
+    expect(target.content).not.toMatch(/nebula|adapter/i);
+    expect(target.keywords).toEqual([]);
+    expect(buildSemanticDocument(target)).toContain('title: Nebula Adapter');
     const distractor = record({ id: 'distractor', title: 'Lunar Archive', content: 'A separate durable archive rule.', keywords: [] });
     const before = searchMemories([baseline, distractor], 'Nebula Adapter', { maxNeighbors: 0 }, undefined, 50, Date.parse(NOW));
     const after = searchMemories([target, distractor], 'Nebula Adapter', { maxNeighbors: 0 }, undefined, 50, Date.parse(NOW));
