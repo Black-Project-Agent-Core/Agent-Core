@@ -152,6 +152,9 @@ describe('query cache index integration', () => {
     const loaded = await index.load();
     expect(loaded?.entries[0].passages!.length).toBeGreaterThan(1);
     for (const entry of loaded!.entries) expect(entry.embedding).toEqual([1, 0, 0]);
+    const context = await index.semanticContext(QUERY, changed);
+    expect(context).not.toBeNull();
+    for (const score of context!.passageScores!.values()) expect(score.score).toBe(1);
   });
 
   it.each([true, false])('rejects_sparse_query_vectors_cache_%s', async enabled => {
