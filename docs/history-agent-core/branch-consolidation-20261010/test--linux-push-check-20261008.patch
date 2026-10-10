@@ -1,0 +1,14 @@
+diff --git a/docs/tests/linux-push-check.txt b/docs/tests/linux-push-check.txt
+new file mode 100644
+index 0000000000000000000000000000000000000000..c965192b3ff1693a47b4607f03f69dcc13b8996c
+--- /dev/null
++++ b/docs/tests/linux-push-check.txt
+@@ -0,0 +1,8 @@
++GitHub connector write test
++Date: 2026-10-08 UTC
++
++This mock text file verifies that the connected GitHub API can create a commit
++on an isolated test branch in Black-Project-Agent-Core/Agent-Core.
++
++Connector write test only. No runtime impact.
++This does not verify terminal git clone, authentication, or git push.

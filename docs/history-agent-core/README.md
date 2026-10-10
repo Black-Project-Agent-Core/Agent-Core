@@ -12,6 +12,8 @@ This directory preserves 71 Markdown plans/reports and two evidence-matrix artif
 
 ## Useful completed transitions
 
+- [Branch consolidation: preserved source and exact branch-head manifest](branch-consolidation-20261010/README.md)
+
 - [Native runtime foundation](Native-Agent-Runtime-Phase-1-Plan.md)
 - [External-controller EC-9 graduation](Agent-Core-External-Controller-Cumulative-Learning-Plan-20261001.md)
 - [Persistent provider scheduling](Agent-Core-Persistent-Credential-Rotation-Plan-20261002.md)

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { cosineSimilarity, type MemoryEmbedder, type MemoryEmbedderIdentity } from './embedder.js';
-import { buildSemanticDocument } from './semantic-document.js';
+import { buildSemanticDocument, SEMANTIC_DOCUMENT_VERSION } from './semantic-document.js';
 import { EmbeddingRepairStateStore } from './embedding-repair.js';
 import type { MemoryPaths } from './paths.js';
 import type { MemoryRecord } from './types.js';
@@ -15,7 +15,8 @@ export interface IndexEntry {
 }
 
 export interface MemoryIndexFile {
-  version: 2;
+  version: 3;
+  semanticDocumentVersion: typeof SEMANTIC_DOCUMENT_VERSION;
   builtAt: string;
   embedder: MemoryEmbedderIdentity | null;
   entries: IndexEntry[];
@@ -31,10 +32,15 @@ export interface MemoryIndexResult {
 export interface SemanticSearchContext {
   queryVector: number[];
   vectors: Map<string, number[]>;
+  /** Identity of the exact derived semantic snapshot used for this call. */
+  revision: string;
 }
 function fingerprint(record: MemoryRecord): string {
   return createHash('sha256').update(JSON.stringify({
     id: record.id,
+    title: record.title,
+    semanticDocumentVersion: SEMANTIC_DOCUMENT_VERSION,
+    semanticText: buildSemanticDocument(record),
     content: record.content,
     keywords: record.keywords,
     context: record.context,
@@ -66,7 +72,8 @@ function validEmbedding(vector: unknown, dimensions: number): vector is number[]
     && vector.every((value) => typeof value === 'number' && Number.isFinite(value));
 }
 function validateIndexFile(file: MemoryIndexFile): MemoryIndexFile {
-  if (file.version !== 2 || !Array.isArray(file.entries)) throw new Error('Unsupported memory index format');
+  if (file.version !== 3 || file.semanticDocumentVersion !== SEMANTIC_DOCUMENT_VERSION
+    || !Array.isArray(file.entries)) throw new Error('Unsupported memory index format');
   if (typeof file.builtAt !== 'string' || !Number.isFinite(Date.parse(file.builtAt))) {
     throw new Error('Invalid memory index builtAt');
   }
@@ -148,7 +155,7 @@ export class MemoryIndex {
     const entries = baseEntries(records);
     if (!this.embedder) {
       return {
-        file: { version: 2, builtAt: new Date().toISOString(), embedder: null, entries },
+        file: { version: 3, semanticDocumentVersion: SEMANTIC_DOCUMENT_VERSION, builtAt: new Date().toISOString(), embedder: null, entries },
         result: { index: 'available', embedding: 'not-configured' },
       };
     }
@@ -231,7 +238,8 @@ export class MemoryIndex {
       }
     }
     const file: MemoryIndexFile = {
-      version: 2,
+      version: 3,
+      semanticDocumentVersion: SEMANTIC_DOCUMENT_VERSION,
       builtAt: new Date().toISOString(),
       embedder: this.embedder.identity,
       entries,
@@ -351,7 +359,12 @@ export class MemoryIndex {
     if (!validEmbedding(queryVector, this.embedder.identity.dimensions)) {
       throw new Error('Memory query embedding has invalid dimensions or values');
     }
-    return { queryVector, vectors };
+    const revision = `sha256:${createHash('sha256').update(JSON.stringify([
+      'semantic-search/v1', file.version, 'semantic-document', file.semanticDocumentVersion, file.embedder,
+      file.entries.filter(entry => vectors.has(entry.id))
+        .map(entry => [entry.id,entry.fingerprint]).sort(([a],[b]) => a.localeCompare(b)),
+    ])).digest('hex')}`;
+    return { queryVector, vectors, revision };
   }
 
   async nearest(

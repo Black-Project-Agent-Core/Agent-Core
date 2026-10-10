@@ -6,6 +6,8 @@ export const PACKAGED_FOUNDATION = '# Agent Core Foundational Memory\n\nRead AGE
 export function isPackagePathAllowed(relative) {
   const rel = relative.replaceAll('\\', '/').toLowerCase();
   const segments = rel.split('/');
+  // Historical merge evidence must never become an installed source/runtime payload.
+  if (rel.startsWith('docs/history-agent-core/branch-consolidation-20261010/')) return false;
   if (segments.includes('secrets')) return false;
   if (segments.some(part => ['.git','.desktop-commander','.rdc-standalone','do not touch without instruction explicit'].includes(part))) return false;
   if (segments.some(part => part === '.env' || (part.startsWith('.env.') && part !== '.env.example'))) return false;

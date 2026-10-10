@@ -10,6 +10,7 @@ import type { SemanticIdeService } from '../semantic-ide/service.js';
 import type { MemoryService } from '../memory/service.js';
 import type { MemoryService as ExperienceMemoryService } from '../../SubProject/agent-core-memory/dist/index.js';
 import { registerMemoryExperienceTools } from './memory-experience-tools.js';
+import { memoryCredentialOwner, ownerScopedLearningSession } from './memory-scope.js';
 import type { SkillService } from '../skills/service.js';
 import type { WebResearchService } from '../web-research/service.js';
 import { registerWebResearchTools } from './web-research-tools.js';
@@ -264,6 +265,13 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
 };
 
 export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRuntime = {}): McpServer {
+  const memoryOwner = memoryCredentialOwner(key);
+  // Every observer and Learning tool uses the same owner-scoped namespace.
+  // Keep the transport helper unchanged: only explicit episodes identify tasks.
+  if (runtime.memoryExperience && !runtime.nativeTaskId && runtime.controllerSessionId && memoryOwner) {
+    runtime = { ...runtime, controllerSessionId: ownerScopedLearningSession(memoryOwner, runtime.controllerSessionId) };
+  }
+  const workspaceRegistry = runtime.memoryExperience ?? runtime.memoryService;
   const baseInstructions = loadAgentProtocol();
   const contextualInstructions = runtime.controllerBootstrap?.trim()
     ? `${baseInstructions}\n\n${runtime.controllerBootstrap.trim()}`
@@ -330,7 +338,13 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
   tool(server, 'get_prompts', 'Get Prompt', schemas.getPrompts, getPrompts as any, true);
 
   if (runtime.externalControllerLearning && runtime.controllerSessionId) {
-    registerControllerLearningTools(server, runtime.externalControllerLearning, runtime.controllerSessionId);
+    registerControllerLearningTools(server, runtime.externalControllerLearning, runtime.controllerSessionId,
+      runtime.memoryExperience && !runtime.nativeTaskId ? {
+        ownerId: memoryOwner ?? '', workspaceIdentity: workspace => {
+          if (!workspaceRegistry) throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
+          return workspaceRegistry.registeredWorkspaceIdentity(workspace);
+        },
+      } : undefined);
   }
   if (runtime.memoryService) registerMemoryTools(
     server,
@@ -340,8 +354,17 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.controllerSessionId,
     runtime.nativeTaskId,
   );
-  if (runtime.memoryExperience) registerMemoryExperienceTools(server, runtime.memoryExperience, {
-    sessionId:runtime.controllerSessionId,nativeTaskId:runtime.nativeTaskId,nativeWorkspace:runtime.nativeWorkspace,
+  if (runtime.memoryExperience) registerMemoryExperienceTools(server, runtime.memoryExperience, async selector => {
+    try {
+      if (runtime.nativeTaskId) {
+        if (!runtime.nativeWorkspace || !workspaceRegistry || (selector && selector.taskId !== runtime.nativeTaskId)) throw new Error('unavailable native task');
+        const identity = workspaceRegistry.registeredWorkspaceIdentity(runtime.nativeWorkspace);
+        return { taskId: runtime.nativeTaskId, workspaceKey: identity.name, controllerId: 'agent-core-native', sessionId: runtime.controllerSessionId };
+      }
+      if (!memoryOwner || !selector?.taskId || !runtime.externalControllerLearning) throw new Error('unavailable external task');
+      const scope = await runtime.externalControllerLearning.resolveMemoryTask(memoryOwner, selector.taskId);
+      return { ...scope, controllerId: 'agent-core-external', sessionId: runtime.controllerSessionId };
+    } catch { throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE'); }
   });
   if (runtime.learningService) registerLearningTools(
     server,

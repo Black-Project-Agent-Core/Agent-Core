@@ -1,6 +1,6 @@
 {
   "name": "agent-core",
-  "version": "0.15.0-beta.0",
+  "version": "0.15.0-beta.1",
   "private": true,
   "description": "Local-first agent runtime with shared MCP tools, Memory, Learning, Skills, and a Windows launcher",
   "type": "module",

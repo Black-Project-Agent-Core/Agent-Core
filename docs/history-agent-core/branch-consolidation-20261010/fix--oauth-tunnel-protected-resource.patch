@@ -1,0 +1,188 @@
+diff --git a/src/config.ts b/src/config.ts
+index b9f229c4a69bea820c4c74856739a20fd68d55e0..588a017c31fb2bb3be40d86c4d71374e56a76b65 100644
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -114,6 +114,7 @@ export interface GitHubConfig {
+ 
+ export interface HttpSecurityConfig {
+   publicBaseUrl: string | null;
++  protectedResourceUrl?: string | null;
+   trustProxy: boolean;
+   allowedOrigins: string[];
+ }
+@@ -219,6 +220,27 @@ function parsePublicBaseUrl(value: string | undefined): string | null {
+   return parsed.origin;
+ }
+ 
++function parseOAuthProtectedResourceUrl(value: string | undefined): string | null {
++  const raw = value?.trim();
++  if (!raw) return null;
++  let parsed: URL;
++  try {
++    parsed = new URL(raw);
++  } catch {
++    throw new Error('AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL must be a valid URL');
++  }
++  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
++    throw new Error('AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL must use http or https');
++  }
++  if (parsed.username || parsed.password) {
++    throw new Error('AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL must not include credentials');
++  }
++  if (parsed.search || parsed.hash) {
++    throw new Error('AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL must not include query or fragment');
++  }
++  return parsed.toString().replace(/\/$/, parsed.pathname === '/' ? '/' : '');
++}
++
+ function normalizeAllowedOriginHostname(value: string): string {
+   const raw = value.trim();
+   if (!raw) throw new Error('AGENT_CORE_MCP_ALLOWED_ORIGINS contains an invalid origin');
+@@ -407,6 +429,7 @@ export function loadConfig(env: Env = process.env, baseDir = process.cwd()): App
+ 
+   const httpSecurity: HttpSecurityConfig = {
+     publicBaseUrl: parsePublicBaseUrl(env.AGENT_CORE_PUBLIC_BASE_URL),
++    protectedResourceUrl: parseOAuthProtectedResourceUrl(env.AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL),
+     trustProxy: parseBoolean(env.AGENT_CORE_TRUST_PROXY, false),
+     allowedOrigins: parseAllowedOrigins(env.AGENT_CORE_MCP_ALLOWED_ORIGINS),
+   };
+diff --git a/src/http/security-policy.ts b/src/http/security-policy.ts
+index 042f62b924c999a3cd6b1972692b0cedc01b8856..f9a577fb7aff3fca103569bbca5037f9aa8da230 100644
+--- a/src/http/security-policy.ts
++++ b/src/http/security-policy.ts
+@@ -48,6 +48,7 @@ export class HttpSecurityPolicy {
+   constructor(config: HttpSecurityConfig) {
+     this.config = {
+       publicBaseUrl: config.publicBaseUrl,
++      protectedResourceUrl: config.protectedResourceUrl ?? null,
+       trustProxy: config.trustProxy,
+       allowedOrigins: [...config.allowedOrigins],
+     };
+@@ -72,7 +73,7 @@ export class HttpSecurityPolicy {
+   }
+ 
+   protectedResource(request: IncomingMessage): string {
+-    return `${this.externalBaseUrl(request)}/mcp`;
++    return this.config.protectedResourceUrl ?? `${this.externalBaseUrl(request)}/mcp`;
+   }
+ 
+   validateMcpOrigin(request: IncomingMessage):
+diff --git a/src/oauth/service.ts b/src/oauth/service.ts
+index 0719946dea7aa58ae36f1cf29e5428bce1fd28bb..7a26ac4e54ae2d0cf107f73cabcd6e74d59a4758 100644
+--- a/src/oauth/service.ts
++++ b/src/oauth/service.ts
+@@ -99,7 +99,7 @@ export class OAuthService {
+     )) {
+       const base = this.security.externalBaseUrl(request);
+       sendJson(response, 200, {
+-        resource: `${base}/mcp`,
++        resource: this.security.protectedResource(request),
+         authorization_servers: [base],
+         scopes_supported: [MCP_SCOPE],
+         bearer_methods_supported: ['header'],
+diff --git a/tests/config.test.ts b/tests/config.test.ts
+index 141552a1fac62a0b859f172bdf958ae82aa90484..b8e2cfe962c0636af9ac88974d653f2d2e2a4f7e 100644
+--- a/tests/config.test.ts
++++ b/tests/config.test.ts
+@@ -15,6 +15,7 @@ describe('loadConfig', () => {
+     expect(config.allowedRoots).toEqual([baseDir]);
+     expect(config.httpSecurity).toEqual({
+       publicBaseUrl: null,
++      protectedResourceUrl: null,
+       trustProxy: false,
+       allowedOrigins: [],
+     });
+@@ -86,6 +87,7 @@ describe('loadConfig', () => {
+       AGENT_CORE_CAPABILITY_DIR: 'F:\\AgentCoreCapabilities',
+       AGENT_CORE_ALLOWED_ROOTS: 'F:\\Projects;F:\\Design',
+       AGENT_CORE_PUBLIC_BASE_URL: 'https://agent-core.example.test/',
++      AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL: 'https://resource.example.test/v1/mcp/tunnel_test',
+       AGENT_CORE_TRUST_PROXY: 'true',
+       AGENT_CORE_MCP_ALLOWED_ORIGINS: 'https://app.example.test;LOCALHOST;https://app.example.test:8443',
+       AGENT_CORE_MCP_PROTOCOL_MODE: 'legacy',
+@@ -143,6 +145,7 @@ describe('loadConfig', () => {
+     ]);
+     expect(config.httpSecurity).toEqual({
+       publicBaseUrl: 'https://agent-core.example.test',
++      protectedResourceUrl: 'https://resource.example.test/v1/mcp/tunnel_test',
+       trustProxy: true,
+       allowedOrigins: ['app.example.test', 'localhost'],
+     });
+@@ -206,6 +209,14 @@ describe('loadConfig', () => {
+   });
+ 
+ 
++  it('accepts an explicit OAuth protected-resource URI that may differ from the authorization-server origin', () => {
++    const resource = 'https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/tunnel_test123';
++    const config = loadConfig({
++      AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL: resource,
++    }, 'F:\\Ignored');
++
++    expect(config.httpSecurity.protectedResourceUrl).toBe(resource);
++  });
+   it('rejects unsafe public base URLs and malformed allowed origins', () => {
+     expect(() => loadConfig({ AGENT_CORE_PUBLIC_BASE_URL: 'ftp://agent-core.example.test' }, 'F:\\Ignored'))
+       .toThrow('AGENT_CORE_PUBLIC_BASE_URL must use http or https');
+diff --git a/tests/oauth.test.ts b/tests/oauth.test.ts
+index ace371452f41e05bca02f896eefe9cdd496de3cc..d9fc5b40a743fa8d5a8f11037d3ec468bc126b80 100644
+--- a/tests/oauth.test.ts
++++ b/tests/oauth.test.ts
+@@ -27,6 +27,7 @@ function pkce(verifier: string): string {
+ 
+ async function setup(httpSecurity?: {
+   publicBaseUrl: string | null;
++  protectedResourceUrl?: string | null;
+   trustProxy: boolean;
+   allowedOrigins: string[];
+ }) {
+@@ -36,10 +37,12 @@ async function setup(httpSecurity?: {
+   const keyStore = new FileKeyStore(dataDir);
+   const oauthStore = new FileOAuthStore(dataDir);
+   const metrics = new RuntimeMetricRegistry();
+-  const oauthService = new OAuthService(keyStore, oauthStore, new HttpSecurityPolicy(httpSecurity ?? {
++  const oauthService = new OAuthService(keyStore, oauthStore, new HttpSecurityPolicy({
+     publicBaseUrl: null,
++    protectedResourceUrl: null,
+     trustProxy: true,
+     allowedOrigins: [],
++    ...httpSecurity,
+   }), metrics);
+   const baseMemory = loadConfig({}, root).memory;
+   const runtime = createRuntimeServices([root], path.join(root, 'capabilities'), undefined, { ...baseMemory, enabled: false });
+@@ -173,6 +176,36 @@ describe('Agent Core OAuth bridge', () => {
+     expect(await metadata.json()).toMatchObject({ issuer: canonical });
+   });
+ 
++  it('accepts an explicitly configured tunnel protected resource without changing the authorization-server issuer', async () => {
++    const tunnelResource = 'https://tunnel-service.gateway.unified-0.internal.api.openai.org/v1/mcp/tunnel_test123';
++    const { baseUrl, externalBase } = await setup({
++      publicBaseUrl: null,
++      protectedResourceUrl: tunnelResource,
++      trustProxy: true,
++      allowedOrigins: [],
++    });
++    const protectedResource = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`, { headers: forwarded });
++    expect(await protectedResource.json()).toMatchObject({
++      resource: tunnelResource,
++      authorization_servers: [externalBase],
++    });
++
++    const client = await registerClient(baseUrl);
++    const params = new URLSearchParams({
++      response_type: 'code',
++      client_id: client.client_id,
++      redirect_uri: client.redirect_uris[0] as string,
++      state: 'tunnel-resource',
++      code_challenge: pkce('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~tunnel-resource'),
++      code_challenge_method: 'S256',
++      resource: tunnelResource,
++      scope: 'mcp:tools',
++    });
++    const response = await fetch(`${baseUrl}/oauth/authorize?${params}`, { headers: forwarded });
++    expect(response.status).toBe(200);
++    expect(await response.text()).toContain('Agent Core API key');
++  });
++
+   it('registers a confidential OAuth client without storing its raw secret', async () => {
+     const { baseUrl, oauthStore } = await setup();
+     const client = await registerClient(baseUrl);

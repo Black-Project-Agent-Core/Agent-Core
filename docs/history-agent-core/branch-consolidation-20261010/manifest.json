@@ -1,0 +1,226 @@
+[
+  {
+    "branch": "chore/release-governance-0.15.0-beta.0-20261009",
+    "head": "23fdca411e152c42fe1a5b81f526b18d6d57bd3b",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "branch": "codex/memory02-05-permanent-20261011",
+    "head": "a90de218d782cf73d9f02a26cae6f178a9103657",
+    "resolution": "scoped-windows-line-reconciled",
+    "detail": "Sparse recovery line, not a replacement full tree. Memory02-05 matches current feature line; Windows launcher listener fix integrated; stale metadata/release regressions and dormant partner restored-source differences retained as inert patch and reachable history."
+  },
+  {
+    "branch": "design/agent-code-key-vault-rotation",
+    "head": "371d2ba7b232321bbd1ae01fa466f65bb3419451",
+    "base": "6d47de1cd6ec41952c5a88121739288004dd1c58",
+    "resolution": "historical-source-preserved-not-activated",
+    "patch": "design--agent-code-key-vault-rotation.patch",
+    "bytes": 98050,
+    "changes": "2 files changed, 2791 insertions(+)",
+    "sha256": "65cf52d9083c87278e63443a5d80a356777358662761bfb198e30cee03ba9dcb",
+    "replay": "PASS against exact recorded base; result matches head (sparse overlay: listed paths only)"
+  },
+  {
+    "branch": "design/cross-session-memory-nervous-system",
+    "head": "a0de73c3b40760ce3f20e77b59303a41556be0c9",
+    "base": "6cb89e4a6c6b3d79767ce9bd6369f9945cff8590",
+    "resolution": "historical-source-preserved-not-activated",
+    "patch": "design--cross-session-memory-nervous-system.patch",
+    "bytes": 87909,
+    "changes": "2 files changed, 3288 insertions(+), 2 deletions(-)",
+    "sha256": "65bb65b7da4ca6926daf408571b7efa634da65437edafc9e6ab2d1162ee6ed8b",
+    "replay": "PASS against exact recorded base; result matches head (sparse overlay: listed paths only)"
+  },
+  {
+    "branch": "docs/adaptive-parallel-tools-plan-20261009",
+    "head": "4b3e32d464b98aa5116df02e8fe524217d5ad811",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "branch": "docs/additional-memory-plans-20261009",
+    "head": "bcdde08f40330f405173bb47a0a2eca06621c135",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "branch": "docs/current-codebase-refresh-20261008",
+    "head": "73450df29c94c2cf52df8d53ed04af8e3a516692",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "branch": "docs/memory-improvement-plans-20261009",
+    "head": "45efa7225b86e0829323aaf4bcff8468a166c0c3",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "branch": "feat/agent-core-improvisation",
+    "head": "dfe96fd69bf97ab287992af28b32c5bd8aa69577",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "branch": "feat/mcp-image-inspect-20261008",
+    "head": "c5e3fe970b770aaa5ba3023ea19239f71f53709c",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "branch": "feat/memory-02-05-20261010",
+    "head": "eec8dab4aad4b93d8bb3ff8895eeabb38dae4232",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "branch": "feat/memory-filtered-semantic-retrieval-20261009",
+    "head": "3774a44e83fc941accd299eaefc4fd65a8e5d958",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "branch": "feat/unified-workflows-archify-20261009",
+    "head": "f22e6e426d9c8937439763602f986b9fb3243f23",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "branch": "feature/agent-code-key-vault-rotation",
+    "head": "73af05971832ab132f1c41d3643d8987435acb60",
+    "base": "6d47de1cd6ec41952c5a88121739288004dd1c58",
+    "resolution": "historical-source-preserved-not-activated",
+    "patch": "feature--agent-code-key-vault-rotation.patch",
+    "bytes": 604142,
+    "changes": "37 files changed, 8717 insertions(+), 10 deletions(-)",
+    "sha256": "0549ae904b98498b54fc4c0889d232e878593fce864ed4053aff9ce731e99946",
+    "replay": "PASS against exact recorded base; result matches head (sparse overlay: listed paths only)"
+  },
+  {
+    "branch": "feature/agent-code-key-vault-rotation-primary",
+    "head": "588d44e00d1bf7b141a887629dead7aa548225cf",
+    "base": "6d47de1cd6ec41952c5a88121739288004dd1c58",
+    "resolution": "historical-source-preserved-not-activated",
+    "patch": "feature--agent-code-key-vault-rotation-primary.patch",
+    "bytes": 219109,
+    "changes": "17 files changed, 5753 insertions(+), 1 deletion(-)",
+    "sha256": "1b90fc65176a1b38159dcaac0909046938b8a02a33f4c76d9aae92bc5a98b0a1",
+    "replay": "PASS against exact recorded base; result matches head (sparse overlay: listed paths only)"
+  },
+  {
+    "branch": "feature/agent-code-key-vault-rotation-reconciled",
+    "head": "a11f27453daf4a8e8c746f43d7d403133ca53da3",
+    "base": "6d47de1cd6ec41952c5a88121739288004dd1c58",
+    "resolution": "historical-source-preserved-not-activated",
+    "patch": "feature--agent-code-key-vault-rotation-reconciled.patch",
+    "bytes": 225063,
+    "changes": "17 files changed, 5989 insertions(+), 1 deletion(-)",
+    "sha256": "180f93bb2bfdfbbe8f194c3a9a29e8693e4738ee79059b3a86aa2dca2a46dc64",
+    "replay": "PASS against exact recorded base; result matches head (sparse overlay: listed paths only)"
+  },
+  {
+    "branch": "feature/memory-observatory-shadow-mode",
+    "head": "6c4eeb937d5ecc3a57bea01d4d3e39ed0f699c49",
+    "base": "6d47de1cd6ec41952c5a88121739288004dd1c58",
+    "resolution": "historical-source-preserved-not-activated",
+    "patch": "feature--memory-observatory-shadow-mode.patch",
+    "bytes": 702003,
+    "changes": "94 files changed, 14207 insertions(+), 621 deletions(-)",
+    "sha256": "3c0be96f84bc0d9e5038218498e58a75c694c426b6b6737e9b1514ccde3dba55",
+    "replay": "PASS against exact recorded base; result matches head (sparse overlay: listed paths only)"
+  },
+  {
+    "branch": "feature/real-steel-crafting-engine",
+    "head": "c3de3ca75536b24f5a4e70bead7c83087e0a58f6",
+    "base": "6b674c1f95a677dea5cb57263bb5b8b863faff5b",
+    "resolution": "historical-source-preserved-not-activated",
+    "patch": "feature--real-steel-crafting-engine.patch",
+    "bytes": 338073,
+    "changes": "52 files changed, 6220 insertions(+), 36 deletions(-)",
+    "sha256": "0c909836c4185c10a39a692d4d7499425b615e1ca76272ec498bdc798860aadb",
+    "replay": "PASS against exact recorded base; result matches head (sparse overlay: listed paths only)"
+  },
+  {
+    "branch": "feature/vault-intelligence-layer",
+    "head": "04283954b31c087018d69fc9cd3c20c13886c258",
+    "base": "6d47de1cd6ec41952c5a88121739288004dd1c58",
+    "resolution": "historical-source-preserved-not-activated",
+    "patch": "feature--vault-intelligence-layer.patch",
+    "bytes": 741232,
+    "changes": "46 files changed, 12196 insertions(+), 10 deletions(-)",
+    "sha256": "311c982dbb5b6d11f781fdaf724181be10ac5d634779e21f00dab86a09a25724",
+    "replay": "PASS against exact recorded base; result matches head (sparse overlay: listed paths only)"
+  },
+  {
+    "branch": "fix/oauth-tunnel-protected-resource",
+    "head": "241015391f9784537e53b48cdce5f7a0a8c2a322",
+    "base": "6b674c1f95a677dea5cb57263bb5b8b863faff5b",
+    "resolution": "historical-source-preserved-not-activated",
+    "patch": "fix--oauth-tunnel-protected-resource.patch",
+    "bytes": 8460,
+    "changes": "5 files changed, 71 insertions(+), 3 deletions(-)",
+    "sha256": "565badfa3712e9ad9c26a6caa911ad96db31e19c3766c53a08f3e0e7159311d1",
+    "replay": "PASS against exact recorded base; result matches head (sparse overlay: listed paths only)"
+  },
+  {
+    "branch": "main",
+    "head": "b3fe1063d11a198acb225f7698a6bad65d29bf1f",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "branch": "plan/memory-observatory-shadow-mode",
+    "head": "ec08a53d82374dc433f784c1f0ec658e27d5d232",
+    "base": "6d47de1cd6ec41952c5a88121739288004dd1c58",
+    "resolution": "historical-source-preserved-not-activated",
+    "patch": "plan--memory-observatory-shadow-mode.patch",
+    "bytes": 62454,
+    "changes": "2 files changed, 1619 insertions(+)",
+    "sha256": "ee6cbb2e15612b1c2bbe970a0a014edfbd88097258f64b686d06038c4fc63a09",
+    "replay": "PASS against exact recorded base; result matches head (sparse overlay: listed paths only)"
+  },
+  {
+    "branch": "planning/automatic-capability-routing",
+    "head": "2969fb438b18a9d3a24dabad224eecf244764f39",
+    "base": "8b478e3cf82a97eadc690a45ddd6caa14e8d4c63",
+    "resolution": "historical-source-preserved-not-activated",
+    "patch": "planning--automatic-capability-routing.patch",
+    "bytes": 31087,
+    "changes": "2 files changed, 540 insertions(+)",
+    "sha256": "8a9db14bfd3190db3ee33e6213ea8e819ff7263516948e0a25b24489f2601fe6",
+    "replay": "PASS against exact recorded base; result matches head (sparse overlay: listed paths only)"
+  },
+  {
+    "branch": "recovery/source-before-disk-cleanup-20261010",
+    "head": "ae6993834f8570041b56accca2473a6ef8c5d64f",
+    "resolution": "scoped-windows-line-reconciled",
+    "detail": "Sparse recovery line, not a replacement full tree. Memory02-05 matches current feature line; Windows launcher listener fix integrated; stale metadata/release regressions and dormant partner restored-source differences retained as inert patch and reachable history."
+  },
+  {
+    "branch": "test/linux-push-check-20261008",
+    "head": "4c48e94ff115d11df379ec91c97bca5354b95a24",
+    "base": "8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3",
+    "resolution": "historical-source-preserved-not-activated",
+    "patch": "test--linux-push-check-20261008.patch",
+    "bytes": 578,
+    "changes": "1 file changed, 8 insertions(+)",
+    "sha256": "1e9c72999ade5ed84a158e97a8852d1954985dc9d3d78cd109261e577d667404",
+    "replay": "PASS against exact recorded base; result matches head (sparse overlay: listed paths only)"
+  },
+  {
+    "branch": "wave-e/routing-memory-quality",
+    "head": "c547c937e66c3e51b5b5cbf4d7f4723f6752ee53",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "branch": "wave-f/adaptive-resource-governance",
+    "head": "37762344d35ae78be85ccfdb15fc34efcbf65b82",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "branch": "wave-g/core-recertification",
+    "head": "b2a3178a83ca48b3c88d572573d2d9cad7abbeb5",
+    "resolution": "contained-in-active-memory02-05-line"
+  },
+  {
+    "artifact": "windows-sparse-overlay.patch",
+    "base": "eec8dab4aad4b93d8bb3ff8895eeabb38dae4232",
+    "head": "a90de218d782cf73d9f02a26cae6f178a9103657",
+    "resolution": "exact-replayable-sparse-overlay-evidence",
+    "bytes": 1637816,
+    "note": "Only paths present in the sparse Windows source line. Does not delete other current repository files. Not an installation patch.",
+    "sha256": "3ae1a2480e8e6e33963e070539da9eeda8ed0d4cffd162fc7a2518a3010437a9",
+    "replay": "PASS against exact recorded base; result matches head (sparse overlay: listed paths only)"
+  }
+]

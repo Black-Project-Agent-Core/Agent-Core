@@ -1,0 +1,1635 @@
+diff --git a/docs/README.md b/docs/README.md
+index 447eb0e6bc7ecdfa4d0a1609bd2e0a5026118f90..8fc0d72ae10d74acce28d96cfdc2490953102b19 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -21,5 +21,6 @@ The current documentation tree is intentionally compact. Historical implementati
+ 
+ - [`roadmap/agent-core-balanced-evolution.md`](roadmap/agent-core-balanced-evolution.md) — certified A-G evolution history and the architectural constraints carried forward from those waves.
+ - [`roadmap/agent-core-cross-session-memory-nervous-system-design.md`](roadmap/agent-core-cross-session-memory-nervous-system-design.md) — implementation-oriented design for evolving DMF into a bounded local-first cross-session and cross-Codespace memory graph with mandatory Private Memory Remote durability, fresh-Codespace hydration, mandatory memory decisions, `remember_more`, revision/branch/root governance, causal failure-solution history, Codespace enforcement, and a read-only Memory Observatory. This document is a design specification, not an implemented capability claim.
++- [`roadmap/agent-core-memory-observatory-shadow-mode-implementation-plan.md`](roadmap/agent-core-memory-observatory-shadow-mode-implementation-plan.md) — executable shadow-first plan for the loopback `127.0.0.1:3697` Memory Observatory: authoritative read-only graph projection, persisted live activity/SSE replay, React node graph + tracker UI, isolated shadow MCP canary, reconnect/restart/cross-Codespace certification, and controlled cutover gates.
+ 
+ Roadmap/design documents are not statements that a feature is already implemented unless the document explicitly records a completed certification. The live MCP capability surface remains the factual source for currently available behavior.
+diff --git a/docs/roadmap/agent-core-memory-observatory-shadow-mode-implementation-plan.md b/docs/roadmap/agent-core-memory-observatory-shadow-mode-implementation-plan.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..4f6356c51c2597aea8a83f6d6d3b97304e936213
+--- /dev/null
++++ b/docs/roadmap/agent-core-memory-observatory-shadow-mode-implementation-plan.md
+@@ -0,0 +1,1618 @@
++# Agent Core Memory Observatory + Shadow-Mode Implementation Plan
++
++> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Every implementation task uses RED → GREEN → regression → verification → commit → push → remote readback.
++
++**Goal:** Build a loopback-only, real-time Memory Observatory at `http://127.0.0.1:3697` that visualizes Agent Core memory nodes/typed edges on the left and a live activity/trace tracker on the right, while keeping the new memory system in shadow/canary validation until real-time correctness, recovery, and performance are proven stable.
++
++**Architecture:** Agent Core DMF remains the sole memory authority. Memory and operational activity is emitted through a best-effort observer sink into the existing tamper-evident AuditJournal; persisted audit sequence numbers become the replayable real-time event cursor. A read-only Memory Observatory projection exposes bounded graph snapshots and node details through exact-loopback internal endpoints. A separate local sidecar serves a React/Vite UI on port `3697` and proxies only read-only observatory endpoints; killing the UI/server must never stop memory, MCP, execution, or Codespace work.
++
++**Tech Stack:** TypeScript 7, Node.js 24 built-in HTTP/SSE, SQLite/FTS5 through existing DMF, existing AuditJournal + correlation system, React 19 + Vite 8 in a separate subproject, `@xyflow/react` for graph interaction, Vitest, Testing Library, Playwright for browser acceptance. No external AI/model/API dependency.
++
++**Spec:** `docs/roadmap/agent-core-cross-session-memory-nervous-system-design.md` sections 35–37 and Phase 8, extended by the approved Shadow-Mode requirement from the September 1, 2026 discussion: do not replace the current live Codespace path until the Observatory proves real-time memory behavior stable.
++
++## Global Constraints
++
++- DMF remains the only semantic memory authority; no second SQLite/vector/LangGraph memory authority.
++- The Observatory is observer-only and has zero mutation authority.
++- Default Observatory host is exactly `127.0.0.1`; default UI port is `3697`.
++- Port `3697` must not be made public by Codespace lifecycle scripts. If browser access needs Codespaces forwarding, visibility remains private.
++- The current live Codespace connector/runtime is not replaced merely because the UI works.
++- Initial runtime mode is `shadow`; hard lifecycle enforcement is not escalated by this plan until the explicit canary/cutover gates are satisfied.
++- Existing shared-memory endpoints, Memory Context Lease, cognition controller, remote hydration, and remote durability remain authoritative and are extended, not duplicated.
++- Existing AuditJournal remains the durable activity flight recorder. Do not create a second durable activity database.
++- Activity streaming is best-effort and must never block a successful memory mutation, tool call, execution run, or HTTP response.
++- A dropped live-stream event must be detectable by sequence gap and recoverable from persisted AuditJournal records when retained.
++- If retained audit history is no longer available, the UI must show an explicit historical gap and refresh from an authoritative graph snapshot; never fabricate missing activity.
++- Activity records expose only safe IDs, bounded metadata, reason codes, statuses, relative workspace paths where allowed, and redacted text. Never expose API keys, OAuth tokens, Memory Remote encryption keys, leases, raw secrets, hidden reasoning, or principal identifiers.
++- The UI never accepts a principal identifier from the browser. Agent Core resolves the stable memory principal internally and binds requests to one configured workspace/project scope.
++- Graph snapshots are bounded. Starting defaults: 500 nodes, 2,000 edges, 250 recent activities. Hard maxima: 1,000 nodes, 5,000 edges, 2,000 recent activities.
++- Existing memory performance target remains `100k active memories: preflight p95 < 150 ms`.
++- Observatory instrumentation may add at most 10% relative p95 overhead to the existing 100k preflight benchmark and must still remain under 150 ms.
++- Local persisted-event → browser-visible activity target: p95 < 250 ms.
++- Authoritative memory mutation → graph convergence in browser target: p95 < 500 ms.
++- Cross-project contamination = 0; cross-principal contamination = 0.
++- Unjustified new-node acceptance = 0; required linked-node orphan rate = 0.
++- `.vscode/`, secrets, stable tunnel identity/defaults, and unrelated work are not touched.
++- No force-push. Every green checkpoint is pushed and read back from GitHub before moving to the next task.
++- No live cutover is performed by this plan's documentation task; implementation ends at a verified cutover-ready gate unless the user explicitly authorizes replacement.
++
++---
++
++# 1. Target Runtime Topology
++
++```text
++                         EXISTING AUTHORITY
++
++ChatGPT / Codespace tools
++          │
++          ▼
++   Agent Core Runtime
++          │
++          ├──────────────► DMF / Continuity / Remote Durability
++          │                       AUTHORITATIVE
++          │
++          ├──────────────► AuditJournal
++          │                 persisted ordered activity
++          │                       │
++          │                       ├── recent replay
++          │                       └── live persisted-record stream
++          │
++          └──────────────► Read-only Observatory Projection
++                                  │
++                                  ▼
++                      exact-loopback internal API
++                                  │
++                                  ▼
++                 Memory Observatory sidecar process
++                      127.0.0.1:3697
++                                  │
++                  ┌───────────────┴──────────────┐
++                  ▼                              ▼
++          LEFT: MEMORY GRAPH             RIGHT: LIVE ACTIVITY
++          nodes + typed edges            trace / tracker / log
++```
++
++Critical failure-isolation invariant:
++
++```text
++kill Memory Observatory UI/server
++            ↓
++Agent Core memory still works
++Codespace MCP still works
++execution still works
++remote durability still works
++```
++
++## 1.1 Truthful capture boundary
++
++During isolated shadow testing, the Observatory can only display activity that actually passes through the shadow Agent Core / candidate MCP path. It must not pretend to observe ChatGPT/Codespace operations that bypass that path.
++
++```text
++current live connector operation
++  bypasses shadow candidate
++        ↓
++NOT PRESENT in shadow activity tracker
++```
++
++```text
++shadow/canary MCP operation
++  passes through candidate Agent Core
++        ↓
++PRESENT in tracker + memory graph
++```
++
++Do not compensate for this boundary with filesystem polling that guesses user/agent intent. Real-work visibility begins in the advisory canary stage when work is deliberately routed through the candidate path, and becomes complete for that path only after controlled cutover.
++
++---
++
++# 2. UI Contract
++
++The first stable layout is intentionally close to the approved reference:
++
++```text
++┌───────────────────────────────────────────┬───────────────────────────┐
++│ MEMORY GRAPH / NODE CARDS                 │ LIVE ACTIVITY             │
++│                                           │                           │
++│  [A3 Failure] ─resolved_by─► [A4 Solution]│ 11:24:03 preflight.start  │
++│                              │            │ 11:24:04 recalled A4      │
++│                         validated_by      │ 11:24:04 remember_more    │
++│                              ▼            │ 11:24:05 read file        │
++│                         [A5 Validated]     │ 11:24:09 test.failed      │
++│                                           │ 11:24:18 revision.created │
++│                                           │ 11:24:19 remote.synced    │
++├───────────────────────────────────────────┼───────────────────────────┤
++│ NODE INSPECTOR / FILTERS / CONTEXT        │ EVENT DETAILS / FILTERS   │
++└───────────────────────────────────────────┴───────────────────────────┘
++```
++
++Starting desktop proportions:
++
++```text
++left graph workspace   68%
++right tracker          32%
++minimum right width    360 px
++```
++
++The UI must remain usable down to 1024 px viewport width. Below that width the activity tracker becomes a collapsible right drawer; the graph remains primary.
++
++## 2.1 Node card minimum fields
++
++```text
++title
++memory kind
++state
++current revision number
++root / branch indicator
++bounded current-value preview
++last updated timestamp
++last recalled indicator
++write-decision badge when available
++remote durability badge at scope level
++```
++
++The title uses `memory_node_metadata.title` when available and falls back to the canonical key. The browser never invents a title using AI.
++
++## 2.2 Edge families
++
++Primary semantic edges render with labels:
++
++```text
++continues
++supersedes
++branch_of
++derived_from
++learned_from
++caused_by
++failed_because
++resolved_by
++validated_by
++blocked_by
++depends_on
++produced
++contradicts
++```
++
++Associative edges remain visually secondary:
++
++```text
++same_anchor
++same_artifact
++same_route_or_task
++same_task_family
++cooccurs_in_event
++token_overlap
++temporal_neighbor
++```
++
++The client never infers a new edge. Every line originates from authoritative `memory_edges` data.
++
++## 2.3 Real-time visual states
++
++```text
++RECALLED          node pulse/highlight
++REMEMBER_MORE     source + expanded path highlighted
++NODE_CREATED      node appears after authoritative snapshot refresh
++REVISION_CREATED  revision badge increments
++EDGE_CREATED      new authoritative edge appears
++CONFLICT_OPENED   conflict marker becomes visible
++REMOTE_PENDING    durability badge shows pending
++REMOTE_SYNCED     durability badge shows synced
++STREAM_GAP        tracker warning + graph snapshot resync
++```
++
++Animations are finite and informational. No infinite decorative motion.
++
++---
++
++# 3. Read-only API Contract
++
++The internal Agent Core API remains on the Agent Core loopback service port. The sidecar on `3697` proxies these endpoints so the browser never needs direct cross-origin access to port `8765`.
++
++Proposed exact-loopback routes:
++
++```text
++GET /internal/memory-observatory/health
++GET /internal/memory-observatory/snapshot
++GET /internal/memory-observatory/node/:memoryId
++GET /internal/memory-observatory/activity?after=<sequence>&limit=<n>
++GET /internal/memory-observatory/stream
++```
++
++The sidecar exposes browser-facing read-only routes:
++
++```text
++GET /api/health
++GET /api/snapshot
++GET /api/node/:memoryId
++GET /api/activity
++GET /api/stream
++```
++
++No `POST`, `PUT`, `PATCH`, or `DELETE` browser route is permitted in v1.
++
++## 3.1 Snapshot interface
++
++```ts
++export interface MemoryObservatorySnapshot {
++  schemaVersion: 1;
++  generatedAt: string;
++  auditSequence: number;
++  project: {
++    projectId: string;
++    workspaceLabel: string;
++  };
++  status: {
++    memoryHealthy: boolean;
++    lifecycleMode: 'disabled' | 'advisory' | 'enforce';
++    remoteEnabled: boolean;
++    remoteDurabilityState: string;
++    hydrationState?: string;
++    generationId?: string;
++    logicalStateHash?: string;
++  };
++  nodes: MemoryObservatoryNode[];
++  edges: MemoryObservatoryEdge[];
++  conflicts: MemoryObservatoryConflict[];
++  continuity: MemoryObservatoryContinuitySummary;
++  truncated: {
++    nodes: boolean;
++    edges: boolean;
++  };
++}
++```
++
++## 3.2 Node interface
++
++```ts
++export interface MemoryObservatoryNode {
++  memoryId: string;
++  title: string;
++  canonicalKey: string;
++  kind: MemoryKind;
++  state: MemoryState;
++  revisionNo: number;
++  valuePreview: string;
++  importance: number;
++  pinned: boolean;
++  rootReason?: string;
++  branchParentMemoryId?: string;
++  createdFromDecisionId?: string;
++  createdAt: number;
++  updatedAt: number;
++}
++```
++
++No `principalId` field is permitted in the projection.
++
++## 3.3 Edge interface
++
++```ts
++export interface MemoryObservatoryEdge {
++  edgeId: string;
++  fromMemoryId: string;
++  toMemoryId: string;
++  relation: MemoryRelation;
++  weight: number;
++  evidenceEventId?: string;
++}
++```
++
++`edgeId` is deterministically derived from `fromMemoryId + relation + toMemoryId`, not from random browser state.
++
++## 3.4 Activity interface
++
++```ts
++export interface MemoryObservatoryActivity {
++  sequence: number;
++  timestamp: string;
++  category: 'memory' | 'continuity' | 'tool' | 'execution' | 'routing' | 'remote' | 'http' | 'system';
++  event: string;
++  state?: 'started' | 'completed' | 'failed' | 'pending';
++  requestId?: string;
++  traceId?: string;
++  routeContextId?: string;
++  toolName?: string;
++  runId?: string;
++  executionNodeId?: string;
++  memoryIds?: string[];
++  relation?: MemoryRelation;
++  decisionType?: MemoryPersistenceDecisionType;
++  reasonCodes?: string[];
++  statusCode?: string;
++  durationMs?: number;
++}
++```
++
++The activity projector uses a whitelist. It must not pass arbitrary `AuditJournalRecord.data` to the browser.
++
++---
++
++# 4. File Structure
++
++## Agent Core backend
++
++Create:
++
++```text
++src/memory/activity.ts
++src/memory/observatory-projection.ts
++src/http/memory-observatory.ts
++src/observability/audit-stream.ts
++```
++
++Modify:
++
++```text
++src/config.ts
++src/index.ts
++src/http/app.ts
++src/runtime/services.ts
++src/memory/service.ts
++src/logging/audit-log.ts
++src/observability/audit-journal.ts
++package.json
++```
++
++Tests:
++
++```text
++tests/memory-activity.test.ts
++tests/memory-observatory-projection.test.ts
++tests/audit-stream.test.ts
++tests/http-memory-observatory.test.ts
++tests/memory-observatory-shadow.acceptance.test.ts
++tests/memory-observatory-resilience.acceptance.test.ts
++tests/memory-observatory-cross-codespace.acceptance.test.ts
++```
++
++## Standalone Observatory UI / sidecar
++
++Create:
++
++```text
++SubProject/Memory-Observatory/package.json
++SubProject/Memory-Observatory/package-lock.json
++SubProject/Memory-Observatory/tsconfig.json
++SubProject/Memory-Observatory/tsconfig.app.json
++SubProject/Memory-Observatory/tsconfig.server.json
++SubProject/Memory-Observatory/vite.config.ts
++SubProject/Memory-Observatory/index.html
++SubProject/Memory-Observatory/server/server.ts
++SubProject/Memory-Observatory/src/main.tsx
++SubProject/Memory-Observatory/src/app/MemoryObservatoryApp.tsx
++SubProject/Memory-Observatory/src/app/api.ts
++SubProject/Memory-Observatory/src/app/types.ts
++SubProject/Memory-Observatory/src/app/activity-reducer.ts
++SubProject/Memory-Observatory/src/app/graph-layout.ts
++SubProject/Memory-Observatory/src/components/StatusBar.tsx
++SubProject/Memory-Observatory/src/components/MemoryGraph.tsx
++SubProject/Memory-Observatory/src/components/MemoryNodeCard.tsx
++SubProject/Memory-Observatory/src/components/NodeInspector.tsx
++SubProject/Memory-Observatory/src/components/ActivityTracker.tsx
++SubProject/Memory-Observatory/src/components/ActivityFilters.tsx
++SubProject/Memory-Observatory/src/styles/tokens.css
++SubProject/Memory-Observatory/src/styles/app.css
++SubProject/Memory-Observatory/src/test/setup.ts
++SubProject/Memory-Observatory/src/components/MemoryGraph.test.tsx
++SubProject/Memory-Observatory/src/components/ActivityTracker.test.tsx
++SubProject/Memory-Observatory/src/app/activity-reducer.test.ts
++SubProject/Memory-Observatory/tests/live-memory.spec.ts
++SubProject/Memory-Observatory/tests/reconnect.spec.ts
++```
++
++Codespace helpers:
++
++```text
++scripts/codespace/start-memory-observatory.sh
++scripts/codespace/verify-memory-observatory.sh
++scripts/benchmark-memory-observatory.mjs
++scripts/run-memory-observatory-shadow-canary.mjs
++```
++
++Do not add the Observatory to `scripts/codespace/ensure-running.sh` automatic startup until the final cutover task explicitly reaches its gate.
++
++---
++
++# 5. Task Plan
++
++### Task 1: Freeze the Shadow-Safety Contract and Configuration
++
++**Files:**
++- Modify: `src/config.ts`
++- Test: `tests/config.test.ts`
++
++**Interfaces:**
++- Produces `MemoryObservatoryConfig`:
++
++```ts
++export interface MemoryObservatoryConfig {
++  enabled: boolean;
++  mode: 'shadow' | 'advisory' | 'live';
++  maxNodes: number;
++  maxEdges: number;
++  recentActivityLimit: number;
++}
++```
++
++Environment contract:
++
++```text
++AGENT_CORE_MEMORY_OBSERVATORY_ENABLED=false
++AGENT_CORE_MEMORY_OBSERVATORY_MODE=shadow
++AGENT_CORE_MEMORY_OBSERVATORY_MAX_NODES=500
++AGENT_CORE_MEMORY_OBSERVATORY_MAX_EDGES=2000
++AGENT_CORE_MEMORY_OBSERVATORY_RECENT_ACTIVITY_LIMIT=250
++```
++
++Hard maxima:
++
++```text
++nodes      1000
++edges      5000
++activities 2000
++```
++
++- [ ] **Step 1: Write RED config tests** proving default disabled/shadow values, valid overrides, and hard-bound rejection.
++- [ ] **Step 2: Run** `npx vitest run tests/config.test.ts` and require failures caused by missing Observatory config.
++- [ ] **Step 3: Add the config type/parser** with exact bounded values above; do not add startup behavior.
++- [ ] **Step 4: Run** `npx vitest run tests/config.test.ts && npm run build` and require PASS.
++- [ ] **Step 5: Run** `git diff --check`.
++- [ ] **Step 6: Commit** `feat: define memory observatory shadow config`.
++- [ ] **Step 7: Push + fetch + verify local SHA equals remote feature SHA**.
++
++Acceptance: enabling config changes no memory/tool behavior because no runtime component consumes it yet.
++
++---
++
++### Task 2: Add Safe Memory Activity Events Without Changing Memory Authority
++
++**Files:**
++- Create: `src/memory/activity.ts`
++- Modify: `src/memory/service.ts`
++- Modify: `src/runtime/services.ts`
++- Test: `tests/memory-activity.test.ts`
++
++**Interfaces:**
++
++```ts
++export type MemoryActivityEventType =
++  | 'memory.preflight_started'
++  | 'memory.preflight_completed'
++  | 'memory.recalled'
++  | 'memory.remember_more_started'
++  | 'memory.remember_more_expanded'
++  | 'memory.write_decision'
++  | 'memory.node_created'
++  | 'memory.revision_created'
++  | 'memory.edge_created'
++  | 'memory.edge_retracted'
++  | 'memory.conflict_opened'
++  | 'memory.conflict_resolved'
++  | 'memory.postflight_completed'
++  | 'memory.remote_pending'
++  | 'memory.remote_synced'
++  | 'memory.hydration_started'
++  | 'memory.hydration_completed'
++  | 'memory.hydration_failed';
++
++export interface MemoryActivityEvent {
++  type: MemoryActivityEventType;
++  timestamp: string;
++  memoryIds?: string[];
++  contextId?: string;
++  relation?: MemoryRelation;
++  decisionType?: MemoryPersistenceDecisionType;
++  reasonCodes?: string[];
++  state?: 'started' | 'completed' | 'failed' | 'pending';
++  statusCode?: string;
++  durationMs?: number;
++}
++
++export interface MemoryActivitySink {
++  emit(event: MemoryActivityEvent): void;
++}
++```
++
++`NOOP_MEMORY_ACTIVITY_SINK` is the default.
++
++- [ ] **Step 1: RED tests** prove preflight, remember-more, postflight decision/application, conflict, and remote/hydration transitions emit safe events after/before the documented boundaries.
++- [ ] **Step 2: RED failure-isolation test** uses a sink whose `emit()` throws and proves authoritative memory operation still succeeds unchanged.
++- [ ] **Step 3: Run** `npx vitest run tests/memory-activity.test.ts` and confirm expected failures.
++- [ ] **Step 4: Implement the minimal sink interface and non-blocking emission points** in `MemoryService`; wrap observer emission so observer errors never change return values or transactions.
++- [ ] **Step 5: Route the concrete sink through `createRuntimeServices()` to `runtimeAudit.logRuntime('memory', event.type, safeData)`**. Do not expose raw task text/value text/leases/principal IDs.
++- [ ] **Step 6: Run focused memory/cognition/lifecycle suites** including `memory-activity`, `memory-remember-more`, `memory-cognition-controller`, `memory-hard-lifecycle`, `memory-durability-boundary`, and cross-session acceptance.
++- [ ] **Step 7: Build + diff check + commit** `feat: emit observable memory lifecycle events`.
++- [ ] **Step 8: Push/readback**.
++
++Acceptance: same memory logical-state hash with activity sink enabled vs disabled for identical deterministic input.
++
++---
++
++### Task 3: Make Persisted Audit Records Streamable and Replayable
++
++**Files:**
++- Create: `src/observability/audit-stream.ts`
++- Modify: `src/observability/audit-journal.ts`
++- Modify: `src/logging/audit-log.ts`
++- Test: `tests/audit-stream.test.ts`
++- Regression: `tests/audit-journal.test.ts`, `tests/audit-rotation.test.ts`
++
++**Architecture:** The live cursor is the existing AuditJournal `sequence`, assigned only after a record is successfully appended. Live events therefore correspond to durable flight-recorder records. There is no second sequence authority.
++
++**Interfaces:**
++
++```ts
++export interface AuditReplayRequest {
++  afterSequence: number;
++  limit: number;
++  categories?: string[];
++}
++
++export type AuditReplayResult =
++  | { ok: true; records: AuditJournalRecord[]; earliestSequence: number; latestSequence: number }
++  | { ok: false; code: 'AUDIT_HISTORY_GAP'; earliestSequence: number; latestSequence: number };
++
++export interface AuditRecordSubscription {
++  close(): void;
++}
++
++export interface AuditRecordBroadcaster {
++  publish(record: AuditJournalRecord): void;
++  subscribe(listener: (record: AuditJournalRecord) => void): AuditRecordSubscription;
++}
++```
++
++- [ ] **Step 1: RED test replay** for `afterSequence` across current + rotated segments.
++- [ ] **Step 2: RED test retention gap** proving an unavailable sequence returns `AUDIT_HISTORY_GAP`, not an empty success.
++- [ ] **Step 3: RED live subscriber test** proving records arrive in strict sequence after successful append.
++- [ ] **Step 4: RED slow/broken subscriber test** proving AuditJournal write/drain remains unaffected.
++- [ ] **Step 5: Implement bounded reader + broadcaster**. Subscriber callbacks are isolated; they never participate in persistence success.
++- [ ] **Step 6: Run audit focused + rotation + correlation regression**.
++- [ ] **Step 7: Commit** `feat: stream persisted audit activity`.
++- [ ] **Step 8: Push/readback**.
++
++Acceptance: persisted sequence and streamed sequence are identical for every delivered record; gaps are explicit.
++
++---
++
++### Task 4: Build the Authoritative Read-only Memory Graph Projection
++
++**Files:**
++- Create: `src/memory/observatory-projection.ts`
++- Modify: `src/memory/service.ts`
++- Test: `tests/memory-observatory-projection.test.ts`
++
++**Interfaces:**
++
++```ts
++export interface MemoryObservatoryProjectionRequest {
++  scope: MemoryScope;
++  maxNodes: number;
++  maxEdges: number;
++}
++
++export class MemoryObservatoryProjection {
++  snapshot(request: MemoryObservatoryProjectionRequest): Promise<MemoryObservatorySnapshot>;
++  node(scope: MemoryScope, memoryId: string): Promise<MemoryObservatoryNodeDetail | null>;
++}
++```
++
++Projection reads:
++
++```text
++memory_items + current memory_revisions
++memory_node_metadata
++memory_edges
++memory_conflicts
++memory_remote_state
++continuity snapshot
++```
++
++It must not query another database and must not write anything.
++
++- [ ] **Step 1: RED graph fixture** creates `Failure → resolved_by → Solution → validated_by → Validation`, then expects exact three nodes/two typed edges.
++- [ ] **Step 2: RED revision fixture** revises one memory and proves node count stays constant while `revisionNo` increments.
++- [ ] **Step 3: RED branch fixture** proves branch parent + `branch_of` are visible.
++- [ ] **Step 4: RED isolation fixture** creates two project scopes and proves one snapshot contains zero nodes/edges from the other scope.
++- [ ] **Step 5: RED privacy fixture** recursively scans snapshot and node detail to ensure no `principalId`, lease token, API key, remote encryption key, or secret-bearing field is present.
++- [ ] **Step 6: Implement bounded projection queries** with deterministic ordering by `updated_at DESC, memory_id` for nodes and stable `(from, relation, to)` order for edges.
++- [ ] **Step 7: Run memory export/explain/schema/cognition regressions**.
++- [ ] **Step 8: Commit** `feat: project read-only memory observatory graph`.
++- [ ] **Step 9: Push/readback**.
++
++Acceptance: projection makes zero SQL mutations; graph data is a projection of DMF, never a second source of truth.
++
++---
++
++### Task 5: Add Exact-Loopback Observatory HTTP + SSE Endpoints
++
++**Files:**
++- Create: `src/http/memory-observatory.ts`
++- Modify: `src/http/app.ts`
++- Modify: `src/index.ts`
++- Test: `tests/http-memory-observatory.test.ts`
++
++**Interfaces:**
++
++```ts
++export interface MemoryObservatoryHttpDependencies {
++  memory: MemoryService;
++  workspace: WorkspacePolicy;
++  auditJournal: AuditJournal;
++  config: MemoryObservatoryConfig;
++}
++```
++
++The handler resolves memory scope using the configured stable memory principal plus a fixed workspace root derived server-side. Browser callers never choose a principal.
++
++- [ ] **Step 1: RED disabled test** expects `404 observatory_unavailable` while `enabled=false`.
++- [ ] **Step 2: RED loopback security tests** reject forwarded/proxy/public identities exactly as existing internal memory endpoints do.
++- [ ] **Step 3: RED method tests** prove mutation methods return `405`/`404` and no memory state changes.
++- [ ] **Step 4: RED snapshot/node/activity tests** prove bounded safe responses.
++- [ ] **Step 5: RED SSE test** connects to `/stream`, appends two audit records, and requires `id:` values to equal persisted audit sequences in order.
++- [ ] **Step 6: RED SSE reconnect test** supplies `Last-Event-ID`, replays retained missing events, then continues live without duplicate sequence IDs.
++- [ ] **Step 7: RED retention-gap test** requires an explicit `event: stream.gap` followed by client-required snapshot resync semantics.
++- [ ] **Step 8: Implement handler and route wiring** using existing `HttpSecurityPolicy.isLoopbackRequest()`.
++- [ ] **Step 9: Run HTTP security/auth/shared-memory regressions**.
++- [ ] **Step 10: Commit** `feat: expose loopback memory observatory feed`.
++- [ ] **Step 11: Push/readback**.
++
++Acceptance: public Agent Core front door cannot use these observatory routes even when the public `/mcp` endpoint is available.
++
++---
++
++### Task 6: Create the Separate `Memory-Observatory` React/Vite Sidecar
++
++**Files:**
++- Create all `SubProject/Memory-Observatory/*` scaffolding listed in section 4.
++- Modify root `package.json` only to add orchestration scripts; do not add React/Vite packages to root dependencies.
++
++**Package scripts:**
++
++```json
++{
++  "dev": "vite --host 127.0.0.1 --port 3697",
++  "build": "tsc -p tsconfig.server.json && tsc -b tsconfig.app.json && vite build",
++  "test": "vitest run",
++  "test:e2e": "playwright test",
++  "start": "node server-dist/server.js"
++}
++```
++
++Root scripts:
++
++```text
++build:observatory
++verify:observatory
++observatory:shadow
++```
++
++Sidecar server environment:
++
++```text
++MEMORY_OBSERVATORY_HOST=127.0.0.1
++MEMORY_OBSERVATORY_PORT=3697
++MEMORY_OBSERVATORY_AGENT_CORE_URL=http://127.0.0.1:8765
++MEMORY_OBSERVATORY_WORKSPACE_ROOT=/workspaces/Agent-Core
++```
++
++- [ ] **Step 1: RED package contract test** or shell check proving host values other than `127.0.0.1` are rejected.
++- [ ] **Step 2: Scaffold React/Vite package** using same TypeScript/React major versions already present in `SubProject/Agent-Code`.
++- [ ] **Step 3: Add `@xyflow/react` only to the Observatory subproject** for graph interaction; no layout/AI dependencies in root.
++- [ ] **Step 4: Implement Node sidecar** that serves built static files and proxies only the five read-only `/api/*` routes to exact Agent Core internal routes.
++- [ ] **Step 5: Reject all browser mutation methods** before proxying.
++- [ ] **Step 6: Build/typecheck/test** subproject.
++- [ ] **Step 7: Start on `127.0.0.1:3697` and verify `/api/health` + root HTML locally**.
++- [ ] **Step 8: Commit** `feat: scaffold local memory observatory sidecar`.
++- [ ] **Step 9: Push/readback**.
++
++Acceptance: stopping the sidecar leaves Agent Core `/health`, `/mcp`, memory status, and execution health unchanged.
++
++---
++
++### Task 7: Implement the Left-Side Live Memory Graph
++
++**Files:**
++- Create/modify:
++  - `SubProject/Memory-Observatory/src/components/MemoryGraph.tsx`
++  - `MemoryNodeCard.tsx`
++  - `NodeInspector.tsx`
++  - `src/app/graph-layout.ts`
++  - related tests/styles.
++
++**Graph layout contract:**
++
++Use deterministic lanes rather than an AI layout:
++
++```text
++lane 0  evolution/root/branch spine
++lane 1  failures/causes
++lane 2  solutions/decisions/procedures
++lane 3  validation/artifact evidence
++lane 4+ associative/supporting memories
++```
++
++Within a lane, order by `createdAt`, then `memoryId` as deterministic tie-breaker. `@xyflow/react` provides pan/zoom/selection/edges; the client does not decide semantic relationships.
++
++- [ ] **Step 1: RED component test** renders known node titles and edge labels from fixture snapshot.
++- [ ] **Step 2: RED selection test** clicks a node and requires inspector fields for revision, state, relation, root/branch reason, and provenance.
++- [ ] **Step 3: RED no-orphan visual test** shows a root badge only for nodes with a root reason and shows a warning marker if backend fixture deliberately supplies a non-root node with no semantic edge; UI does not silently hide it.
++- [ ] **Step 4: Implement deterministic layout + custom node cards**.
++- [ ] **Step 5: Add zoom-to-current, fit-view, kind/state filters, and search by bounded title/canonical key**.
++- [ ] **Step 6: Run unit tests + production build**.
++- [ ] **Step 7: Commit** `feat: visualize memory nodes and typed edges`.
++- [ ] **Step 8: Push/readback**.
++
++Acceptance: graph rendering never changes memory state; page refresh reproduces the same node/edge topology for the same snapshot.
++
++---
++
++### Task 8: Implement the Right-Side Real-Time Activity Tracker
++
++**Files:**
++- Create/modify:
++  - `SubProject/Memory-Observatory/src/components/ActivityTracker.tsx`
++  - `ActivityFilters.tsx`
++  - `src/app/activity-reducer.ts`
++  - `src/app/api.ts`
++  - tests.
++
++Default visible categories:
++
++```text
++memory
++continuity
++tool
++execution
++routing
++remote
++```
++
++HTTP noise is hidden by default but can be enabled.
++
++- [ ] **Step 1: RED activity reducer tests** for strict sequence ordering, duplicate suppression, bounded 2,000-row client buffer, and explicit gap state.
++- [ ] **Step 2: RED tracker component test** verifies event timestamp, event name, status, affected memory IDs, relation, decision type, and reason codes.
++- [ ] **Step 3: Implement initial `/api/activity` load** using most recent 250 events.
++- [ ] **Step 4: Implement SSE connection** with browser `EventSource` and sequence-based dedupe.
++- [ ] **Step 5: On stream gap/reconnect, reload retained activity from last sequence; if history gap remains, display `HISTORY GAP — GRAPH RESYNCED` and fetch a fresh snapshot.**
++- [ ] **Step 6: Add finite highlight state** so `memory.recalled` pulses nodes and `memory.remember_more_expanded` highlights the returned causal/revision path.
++- [ ] **Step 7: Run unit tests + build**.
++- [ ] **Step 8: Commit** `feat: add live memory activity tracker`.
++- [ ] **Step 9: Push/readback**.
++
++Acceptance: no page refresh is required for new persisted activity to appear.
++
++---
++
++### Task 9: Add Timeline, Recall, Failure/Solution, Conflict, and Session Lenses
++
++**Files:**
++- Create:
++  - `SubProject/Memory-Observatory/src/components/TimelineView.tsx`
++  - `SubProject/Memory-Observatory/src/components/RecallView.tsx`
++  - `SubProject/Memory-Observatory/src/components/FailureSolutionView.tsx`
++  - `SubProject/Memory-Observatory/src/components/ConflictView.tsx`
++  - `SubProject/Memory-Observatory/src/components/SessionTaskView.tsx`
++- Modify: `SubProject/Memory-Observatory/src/app/MemoryObservatoryApp.tsx`
++- Modify backend snapshot/detail projection only if a required read-only field is absent.
++- Test each view with focused React tests.
++
++**Purpose:** Preserve the original Memory Observatory design beyond the main graph. These are alternative read-only lenses over the same authoritative snapshot/activity data, not new stores.
++
++View contracts:
++
++```text
++Timeline View
++  ordered memory revisions + relevant edge/write events
++
++Recall View
++  current context only:
++  RECALLED CURRENT / EXPANDED / PRIOR FAILURE / NOT LOADED
++
++Failure/Solution View
++  causal path:
++  failure → cause → solution → validation
++
++Conflict View
++  open/resolved contradictions with both memories preserved
++
++Session/Task View
++  group memory activity by Continuity task/context IDs
++```
++
++- [ ] **Step 1: Write RED Timeline tests** using a two-revision memory plus an edge event; require deterministic chronology and no client-created history.
++- [ ] **Step 2: Write RED Recall View tests** from real `memory.recalled` + `memory.remember_more_expanded` activity fixtures; require the exact loaded/not-loaded distinction.
++- [ ] **Step 3: Write RED Failure/Solution tests** requiring the typed `failed_because`/`resolved_by`/`validated_by` chain to render in order.
++- [ ] **Step 4: Write RED Conflict tests** requiring both sides of an open conflict and its evidence metadata; resolving a conflict changes status without deleting either historical memory.
++- [ ] **Step 5: Write RED Session/Task tests** requiring events with the same continuity/context identity to group together while unrelated task events remain separate.
++- [ ] **Step 6: Implement the five read-only views** using existing snapshot/activity/detail APIs. If a backend field is missing, add only the smallest bounded read-only projection necessary and cover it in backend tests.
++- [ ] **Step 7: Add a left-panel view switcher**: `Graph | Timeline | Recall | Failure/Solution | Conflict | Session` while keeping the right-side Activity Tracker persistent.
++- [ ] **Step 8: Run component tests + production build**.
++- [ ] **Step 9: Commit** `feat: add memory observatory analysis views`.
++- [ ] **Step 10: Push/readback**.
++
++Acceptance: switching views never causes a memory/tool mutation and all views converge back to the same authoritative IDs/revisions/relations.
++
++---
++
++### Task 10: Wire Real-Time Graph Convergence to Activity Events
++
++**Files:**
++- Modify `MemoryObservatoryApp.tsx`, `activity-reducer.ts`, `MemoryGraph.tsx`.
++- Test `MemoryGraph.test.tsx` and Playwright `tests/live-memory.spec.ts`.
++
++**Rule:** The client does not mutate the graph authoritatively. Graph-changing events trigger a bounded debounced authoritative snapshot refresh.
++
++Graph-changing events:
++
++```text
++memory.node_created
++memory.revision_created
++memory.edge_created
++memory.edge_retracted
++memory.conflict_opened
++memory.conflict_resolved
++memory.remote_pending
++memory.remote_synced
++memory.hydration_completed
++```
++
++Debounce starting value: `50 ms`, max wait `250 ms`.
++
++- [ ] **Step 1: RED browser test** starts with A1→A2, performs a real memory postflight that creates A3, and requires A3 to appear without browser reload.
++- [ ] **Step 2: RED revision browser test** revises A3 and requires node count unchanged + revision badge incremented.
++- [ ] **Step 3: RED edge browser test** creates `validated_by` and requires labelled edge to appear.
++- [ ] **Step 4: Implement event-triggered authoritative snapshot refresh**.
++- [ ] **Step 5: Instrument browser-side timestamps and assert local mutation→visible graph p95 < 500 ms over at least 50 samples in the benchmark harness.**
++- [ ] **Step 6: Commit** `feat: converge memory graph in real time`.
++- [ ] **Step 7: Push/readback**.
++
++Acceptance: after the event burst settles, browser node/edge sets equal a fresh backend snapshot exactly.
++
++---
++
++### Task 11: Build a Fully Isolated Shadow Runtime Harness
++
++**Files:**
++- Create: `scripts/run-memory-observatory-shadow-canary.mjs`
++- Create: `tests/memory-observatory-shadow.acceptance.test.ts`
++- Create/update: `scripts/codespace/start-memory-observatory.sh`
++
++**Shadow ports:**
++
++```text
++current live Agent Core / connector ports: untouched
++shadow Agent Core:       127.0.0.1:8865
++shadow Codespace MCP:    127.0.0.1:39765
++Observatory UI:          127.0.0.1:3697
++```
++
++**Shadow state:**
++
++```text
++$HOME/.agent-core-observatory-shadow/data
++$HOME/.agent-core-observatory-shadow/logs
++$HOME/.agent-core-observatory-shadow/execution
++```
++
++Initial shadow remote durability is disabled. Cross-Codespace remote is tested separately in Task 13 using an isolated remote fixture/canary namespace.
++
++Shadow plugin env:
++
++```text
++CODESPACE_MCP_HTTP_HOST=127.0.0.1
++CODESPACE_MCP_HTTP_PORT=39765
++CODESPACE_MEMORY_LIFECYCLE_MODE=advisory
++CODESPACE_AGENT_CORE_MEMORY_LEASE_URL=http://127.0.0.1:8865/internal/memory-context-lease
++CODESPACE_AGENT_CORE_SHARED_MEMORY_URL=http://127.0.0.1:8865/internal/codespace-memory
++```
++
++- [ ] **Step 1: RED acceptance test** asserts live production ports/PIDs/files remain unchanged while shadow services start and stop.
++- [ ] **Step 2: Start isolated shadow Agent Core** with separate DB/log/execution paths.
++- [ ] **Step 3: Start candidate Codespace MCP on `39765`** without registering/replacing the live connector.
++- [ ] **Step 4: Start Observatory on `3697`** pointing to shadow Agent Core.
++- [ ] **Step 5: Execute a real canary workflow through the shadow MCP:** open memory context → recall → bounded workspace mutation in a temporary canary workspace → checkpoint.
++- [ ] **Step 6: Require UI/backend snapshot to show resulting memory decision/revision/edge activity**.
++- [ ] **Step 7: Stop all shadow processes and verify live runtime is still healthy and unchanged.**
++- [ ] **Step 8: Commit** `test: add isolated observatory shadow canary`.
++- [ ] **Step 9: Push/readback**.
++
++Acceptance: shadow mode gives realistic MCP/memory behavior without replacing the live Codespace connector.
++
++---
++
++### Task 12: Resilience — UI Crash, SSE Drop, Agent Core Restart, Audit Rotation
++
++**Files:**
++- Create: `tests/memory-observatory-resilience.acceptance.test.ts`
++- Create: `SubProject/Memory-Observatory/tests/reconnect.spec.ts`
++- Modify stream/sidecar only where failures prove a defect.
++
++- [ ] **Step 1: Kill UI sidecar during active memory operations** and prove memory operations complete successfully.
++- [ ] **Step 2: Restart sidecar** and prove snapshot equals current DMF state.
++- [ ] **Step 3: Disconnect SSE after sequence N, create N+1..N+10, reconnect with `Last-Event-ID=N`, and require exact ordered replay with no duplicates.**
++- [ ] **Step 4: Force AuditJournal rotation between N and N+10** and require replay across segments.
++- [ ] **Step 5: Force retained-history deletion** and require explicit `AUDIT_HISTORY_GAP` + graph snapshot resync.
++- [ ] **Step 6: Restart Agent Core**, then reload Observatory and verify graph equality; in-memory live subscriber state may reset, durable audit sequence may not regress.
++- [ ] **Step 7: Commit** `test: harden observatory reconnect and replay`.
++- [ ] **Step 8: Push/readback**.
++
++Acceptance: no reconnect path ever interprets missing history as “nothing happened.”
++
++---
++
++### Task 13: Stress and Performance Certification
++
++**Files:**
++- Create: `scripts/benchmark-memory-observatory.mjs`
++- Extend: `tests/memory-performance.test.ts` only if a stable reusable assertion belongs there.
++
++Benchmark matrix:
++
++```text
++A. 100k active memory preflight, Observatory disabled
++B. 100k active memory preflight, activity instrumentation enabled, no UI subscriber
++C. 100k active memory preflight, one active SSE subscriber
++D. burst 10,000 safe audit/activity events
++E. 500-node / 2,000-edge graph snapshot serialization
++F. 50 real graph-changing operations → browser convergence
++```
++
++Required gates:
++
++```text
++existing preflight p95                         < 150 ms
++instrumentation relative p95 regression        <= 10%
++persisted event → SSE/browser p95              < 250 ms
++graph mutation → browser convergence p95       < 500 ms
++SSE sequence duplication                       0
++undetected sequence gaps                       0
++memory mutation failures caused by observer    0
++AuditJournal write-order regressions            0
++```
++
++- [ ] **Step 1: Write benchmark script and RED gate assertions where current code lacks the feature.**
++- [ ] **Step 2: Run baseline with Observatory disabled and preserve numbers in the execution log.**
++- [ ] **Step 3: Run enabled/subscriber/burst/snapshot/browser benchmarks.**
++- [ ] **Step 4: If a gate fails, debug root cause; do not raise thresholds to force PASS.**
++- [ ] **Step 5: Commit** `bench: certify memory observatory overhead` only after all gates pass.
++- [ ] **Step 6: Push/readback**.
++
++---
++
++### Task 14: Cross-Codespace / Remote-Durability Visual Recovery
++
++**Files:**
++- Create: `tests/memory-observatory-cross-codespace.acceptance.test.ts`
++- Extend Playwright fixture only if needed.
++
++Scenario:
++
++```text
++Shadow Codespace A
++  create/revise/link memory
++  reach REMOTE_SYNCED
++  Observatory shows graph + synced status
++        ↓
++destroy all A local memory/runtime/UI state
++        ↓
++Fresh Shadow Codespace B
++  hydrate remote
++  rebuild local SQLite
++  start Observatory
++        ↓
++node/edge/revision sets identical
++remote generation/hash visible
++old A lease invalid
++new B activity continues from fresh process
++```
++
++Use the existing encrypted Memory Remote implementation with an isolated test remote or explicitly isolated canary namespace. Never write test data into the production memory scope.
++
++- [ ] **Step 1: Build A fixture with failure → solution → validation and a branch.**
++- [ ] **Step 2: Sync and capture authoritative logical-state hash + Observatory graph projection.**
++- [ ] **Step 3: Delete A local DB, execution state, and sidecar state.**
++- [ ] **Step 4: Hydrate B and assert logical-state hash equality.**
++- [ ] **Step 5: Start fresh Observatory and assert exact node/edge/revision/conflict equality.**
++- [ ] **Step 6: Require `REMOTE_HYDRATED`/`REMOTE_SYNCED` activity and prohibit false `REMOTE_EMPTY_CONFIRMED`.**
++- [ ] **Step 7: Commit** `test: certify observatory cross-codespace recovery`.
++- [ ] **Step 8: Push/readback**.
++
++---
++
++### Task 15: Memory-Behavior Correctness Certification Using the Observatory
++
++**Files:**
++- Create: `tests/memory-observatory-behavior.acceptance.test.ts`
++- Reuse existing cognition, remember-more, relation-policy fixtures.
++
++Required scenarios:
++
++```text
++1. same knowledge + new evidence
++   → REVISE_EXISTING
++   → node count unchanged
++   → revision increments live
++
++2. distinct related path
++   → WRITE_BRANCH
++   → new node appears
++   → branch_of edge exists before/with visibility
++
++3. fresh durable context
++   → WRITE_NEW_ROOT
++   → rootReason visible
++
++4. unjustified candidate
++   → NO_DURABLE_MEMORY / rejected write
++   → no node appears
++
++5. conflict
++   → OPEN_CONFLICT
++   → both memories preserved
++   → conflict visible
++
++6. initial recall A4/A5
++   → highlighted
++   remember_more(A4)
++   → only bounded A2/A3 history highlighted
++
++7. failure → solution → validation
++   → full typed causal path visible and navigable
++```
++
++- [ ] **Step 1: Run every scenario against real DMF operations, not hand-built UI fixtures.**
++- [ ] **Step 2: Compare each UI/backend projection to cognition/write-decision ledgers.**
++- [ ] **Step 3: Require unjustified new-node acceptance = 0 and required linked-node orphan rate = 0.**
++- [ ] **Step 4: Require every visible node creation to map to a persisted write-decision ID or justified legacy provenance.**
++- [ ] **Step 5: Require every `remember_more` highlight to map to persisted `memory_recall_expansions` records.**
++- [ ] **Step 6: Commit** `test: certify observable memory behavior`.
++- [ ] **Step 7: Push/readback**.
++
++This task is the core answer to “can we visually prove the memory is behaving correctly?”
++
++---
++
++### Task 16: Codespace Lifecycle Helper — Manual Shadow Start Only
++
++**Files:**
++- Create: `scripts/codespace/start-memory-observatory.sh`
++- Create: `scripts/codespace/verify-memory-observatory.sh`
++- Test: `tests/codespace-memory-observatory-lifecycle.test.ts`
++
++Required behavior:
++
++```text
++bash scripts/codespace/start-memory-observatory.sh
++```
++
++prints only safe metadata:
++
++```text
++Memory Observatory READY
++Local URL: http://127.0.0.1:3697
++Mode: shadow
++Agent Core target: loopback
++```
++
++It must not print memory secrets, API keys, leases, principal IDs, or raw memory values.
++
++- [ ] **Step 1: RED lifecycle test** proves port `3697` binds only to loopback.
++- [ ] **Step 2: RED duplicate-start test** proves repeated invocation becomes idempotent/health-checked rather than spawning unlimited copies.
++- [ ] **Step 3: RED no-public-port test** proves scripts never call `gh codespace ports visibility 3697:public`.
++- [ ] **Step 4: Implement bounded start/health/repair behavior for Observatory only.**
++- [ ] **Step 5: Explicitly leave `ensure-running.sh` automatic startup unchanged.**
++- [ ] **Step 6: Commit** `feat: add manual observatory shadow lifecycle`.
++- [ ] **Step 7: Push/readback**.
++
++---
++
++### Task 17: Full Shadow Certification Before Any Live Integration
++
++**Files:**
++- Modify root `package.json` to add final `verify:observatory` if not already added.
++- Create/update certification evidence section in this plan or a dedicated certification doc after implementation.
++
++Fresh exact-SHA gate:
++
++```text
++npm ci
++npm run verify:release
++npm run verify:observatory
++npm run benchmark:memory
++node scripts/benchmark-memory-observatory.mjs
++```
++
++Required result matrix:
++
++```text
++Agent Core full release tests                     PASS
++Codespace standalone tests                        PASS
++Memory Observatory backend/API tests              PASS
++React unit tests                                  PASS
++Playwright real-time tests                        PASS
++Shadow MCP canary                                 PASS
++UI crash isolation                               PASS
++SSE disconnect/replay                            PASS
++Audit rotation replay                            PASS
++Audit retention gap truthfulness                 PASS
++Agent Core restart graph recovery                PASS
++Cross-Codespace hydration visualization          PASS
++revision-vs-duplicate correctness                PASS
++branch-with-edge correctness                     PASS
++fresh-root reason correctness                    PASS
++unjustified node acceptance                      0
++linked-node orphan rate                          0
++cross-project contamination                      0
++cross-principal contamination                    0
++secret/lease/principal leakage                   0
++UI mutation authority                            0
++100k preflight p95                               <150 ms
++observatory instrumentation overhead             <=10%
++activity browser latency p95                     <250 ms
++graph convergence p95                            <500 ms
++external AI/model/API dependency                 0
++```
++
++- [ ] **Step 1: Run all gates on one exact commit SHA.**
++- [ ] **Step 2: Push that SHA and fetch it back.**
++- [ ] **Step 3: Re-run critical smoke gates on the exact remote-visible SHA if docs/certification produce a final commit.**
++- [ ] **Step 4: Record failures and fixes as `Problem: ... / Fix with: ...` in certification evidence.**
++- [ ] **Step 5: Mark candidate `SHADOW_STABLE` only when every required gate passes.**
++
++No live replacement occurs in this task.
++
++---
++
++### Task 18: Advisory Real-Workspace Canary Without Full Replacement
++
++This task begins only after Task 16 is `SHADOW_STABLE`.
++
++**Goal:** Observe real work against the actual repository while preserving a rollback path and without enabling hard enforcement.
++
++Mode:
++
++```text
++Memory Observatory     enabled
++Memory lifecycle       advisory
++UI                     observer-only
++live plugin replacement no, unless an isolated connector registration is explicitly available
++```
++
++If a second connector registration is available, bind it to the candidate shadow MCP on a distinct port/tunnel identity and use it only for canary sessions. If the platform does not support a safe parallel connector registration, run the same real-work canary through the direct MCP integration harness rather than replacing the current connector.
++
++- [ ] **Step 1: Select a bounded non-critical repository task/canary workspace.**
++- [ ] **Step 2: Capture preflight recall visually.**
++- [ ] **Step 3: Perform real read/edit/test/checkpoint flow through candidate path.**
++- [ ] **Step 4: Verify node/revision/edge changes live and compare to persisted DMF state.**
++- [ ] **Step 5: Repeat across at least 20 meaningful canary tasks, including failures, revisions, branches, no-write decisions, and remember-more.**
++- [ ] **Step 6: Require zero unexplained node creation, zero silent activity gaps, zero memory-induced workflow failures.**
++- [ ] **Step 7: Record `ADVISORY_CANARY_STABLE` only after evidence is clean.**
++
++No automatic escalation to enforce mode.
++
++---
++
++### Task 19: Enforced Canary and Controlled Cutover Gate
++
++This task is preparation only until the user explicitly authorizes live replacement.
++
++Prerequisites:
++
++```text
++SHADOW_STABLE
++ADVISORY_CANARY_STABLE
++remote durability healthy
++rollback SHA recorded
++live connection metadata snapshot recorded
++```
++
++Enforced canary requirements:
++
++```text
++meaningful mutation without memory context      rejected correctly
++memory_open_context → lease → mutation           succeeds
++successful mutation → POSTFLIGHT_PENDING         visible
++checkpoint → CLOSED/REMOTE_SYNCED                visible
++restart → old lease rejected                     visible
++fresh context → new lease                        succeeds
++```
++
++Controlled cutover checklist after explicit authorization:
++
++```text
++1. capture current live SHA + connection metadata
++2. preserve .vscode and secrets
++3. preserve stable tunnel/gateway identity
++4. verify Memory Remote hydration
++5. verify Agent Core exact tool surface
++6. verify Codespace exact tool surface
++7. start Observatory privately on 3697
++8. replace/repoint live candidate
++9. run ensure-running.sh --repair --phase attach
++10. verify public health/OAuth/MCP + private Observatory
++11. open real memory context
++12. execute harmless bounded canary
++13. checkpoint and verify remote durability
++14. reconnect another session/client and verify recall
++15. keep rollback path until soak window passes
++```
++
++Rollback condition examples:
++
++```text
++unexplained node creation
++missing edge on non-root node
++wrong project/principal scope
++memory preflight blocking unrelated work
++SSE/dashboard affecting memory execution
++remote hydration ambiguity
++tool-surface regression
++public connection regression
++```
++
++The rollback target must be the last verified live SHA immediately before cutover, recorded at execution time rather than copied from this plan.
++
++---
++
++# 6. Real-Time Event Semantics
++
++Events exist for observability; they do not define memory truth.
++
++## Preflight
++
++```text
++memory.preflight_started
++memory.preflight_completed
++memory.recalled
++```
++
++`memory.recalled` safe payload:
++
++```json
++{
++  "memoryIds": ["A5", "A4"],
++  "reasonCodes": ["CURRENT_REVISION_MATCH", "PRIOR_FAILURE_MATCH"],
++  "state": "completed"
++}
++```
++
++No raw task prompt.
++
++## Remember More
++
++```text
++memory.remember_more_started
++memory.remember_more_expanded
++```
++
++Safe payload includes source/target IDs, reason, depth, relation path names, count, and duration; no hidden reasoning.
++
++## Postflight
++
++```text
++memory.write_decision
++memory.node_created
++memory.revision_created
++memory.edge_created
++memory.conflict_opened
++memory.postflight_completed
++```
++
++Every `memory.node_created` must correlate to a persisted decision/provenance record.
++
++## Remote Durability
++
++```text
++memory.remote_pending
++memory.remote_synced
++memory.hydration_started
++memory.hydration_completed
++memory.hydration_failed
++```
++
++Remote events may show generation ID/logical-state hash because those are verification metadata, but must never show Git credentials or encryption key material.
++
++---
++
++# 7. Graph Consistency Strategy
++
++Do not make the browser maintain an independent authoritative graph.
++
++Correct flow:
++
++```text
++memory mutation transaction commits
++        ↓
++safe observer event emitted
++        ↓
++AuditJournal persists event
++        ↓
++SSE notifies browser
++        ↓
++browser highlights activity immediately
++        ↓
++if graph-changing event:
++  debounce 50 ms
++        ↓
++fetch authoritative snapshot
++        ↓
++replace graph projection
++```
++
++This deliberately prefers correctness over a clever client-side patch protocol for v1.
++
++Later optimization may introduce bounded graph deltas only after snapshot-based convergence is certified.
++
++---
++
++# 8. Shadow Validation Matrix
++
++The minimum test corpus must include all of these patterns:
++
++```text
++A. linear evolution
++A1 continues A2 supersedes A3
++
++B. failure chain
++Failure → caused_by → Cause → resolved_by → Solution → validated_by → Evidence
++
++C. revise
++same node, revision N → N+1
++
++D. branch
++parent → branch_of child
++
++E. fresh root
++new root + FRESH_DURABLE_CONTEXT/rootReason
++
++F. conflict
++A contradicts B, both preserved
++
++G. remember_more
++initial A4/A5; bounded expansion reveals A2/A3
++
++H. no-write
++NO_DURABLE_MEMORY creates ledger event but zero semantic nodes
++
++I. remote pending/synced
++visible state transitions
++
++J. restart
++same graph after Agent Core restart
++
++K. cross-Codespace deletion recovery
++same logical graph after fresh hydration
++```
++
++For every scenario, compare three views:
++
++```text
++DMF authoritative rows
++Audit/write-decision/recall-expansion evidence
++Observatory projection/UI
++```
++
++All three must agree on observable truth.
++
++---
++
++# 9. Security Tests
++
++Mandatory automated checks:
++
++```text
++non-loopback internal observatory request        403
++forwarded/proxied observatory request            403
++browser mutation method                          rejected
++principalId in any UI JSON                       0
++memory lease token in any UI JSON                0
++GitHub token in any UI JSON                      0
++Memory Remote key in any UI JSON                 0
++OAuth token in any UI JSON                       0
++raw authorization/cookie headers                 0
++hidden/private reasoning field                   0
++public port-3697 visibility mutation             0
++```
++
++Also scan bundled frontend output for known synthetic secret fixtures used by tests.
++
++---
++
++# 10. Failure Policy
++
++## UI process fails
++
++```text
++UI unavailable
++memory remains healthy
++activity continues in AuditJournal
++restart UI → replay retained activity + snapshot
++```
++
++## SSE connection fails
++
++```text
++browser reconnects with Last-Event-ID
++retained history available → replay
++history gone → explicit gap + snapshot resync
++```
++
++## AuditJournal backpressure/drop
++
++```text
++authoritative memory continues
++metric/drop count increments
++live tracker shows observability degradation when status detects it
++snapshot remains authoritative
++```
++
++## Memory degraded
++
++```text
++UI shows DEGRADED
++must not invent nodes or empty state
++```
++
++## Remote unavailable after prior hydration
++
++```text
++UI shows REMOTE_PENDING / UNAVAILABLE
++local factual graph remains visible
++must not label task cross-Codespace durable
++```
++
++## Fresh runtime hydration fails
++
++```text
++UI shows hydration failure
++must not present an empty graph as confirmed new memory
++```
++
++---
++
++# 11. Cutover State Machine
++
++```text
++PLAN_COMPLETE
++      ↓
++SHADOW_IMPLEMENTED
++      ↓
++SHADOW_STABLE
++      ↓
++ADVISORY_CANARY_STABLE
++      ↓
++ENFORCED_CANARY_STABLE
++      ↓
++CUTOVER_READY
++      ↓
++[EXPLICIT USER AUTHORIZATION]
++      ↓
++LIVE_CUTOVER
++      ↓
++SOAK_VERIFIED
++```
++
++No implementation step may jump from `SHADOW_IMPLEMENTED` directly to `LIVE_CUTOVER`.
++
++---
++
++# 12. Definition of Stable
++
++The Memory Observatory + memory candidate may be called stable only when:
++
++```text
++1. Real memory operations create the expected visible node/revision/edge outcome.
++2. `remember_more` highlights only persisted bounded expansion history.
++3. Every new non-root node has a justified semantic edge.
++4. Every new root exposes its persisted fresh-context reason.
++5. Failure history survives solution/validation.
++6. Browser refresh/restart reproduces the authoritative graph.
++7. SSE disconnect/reconnect neither duplicates nor silently loses retained events.
++8. Audit retention gaps are explicit.
++9. UI crash has zero effect on memory/execution/MCP correctness.
++10. Cross-Codespace deletion/recovery reproduces identical logical memory state.
++11. Remote durability state is truthful in the UI.
++12. Scope isolation remains zero-contamination.
++13. No secret/lease/principal leakage is present.
++14. Existing 100k preflight p95 remains <150 ms.
++15. Observatory overhead and real-time latency meet this plan's gates.
++16. Full Agent Core/Codespace release regression remains green on the exact remote-visible SHA.
++```
++
++Only then may the project advance to controlled live integration.
++
++---
++
++# 13. Intended User Experience During a Real Task
++
++Example observable flow:
++
++```text
++USER TASK RECEIVED
++        │
++        ▼
++RIGHT TRACKER
++memory.preflight_started
++        │
++        ▼
++LEFT GRAPH
++A5 ● RECALLED CURRENT
++A4 ● RELATED SOLUTION
++        │
++        ▼
++RIGHT TRACKER
++memory.remember_more_started
++memory.remember_more_expanded
++        │
++        ▼
++LEFT GRAPH
++A3 ● PRIOR FAILURE
++A2 ● PRIOR DECISION
++        │
++        ▼
++RIGHT TRACKER
++tool/file/test activity
++        │
++        ▼
++RIGHT TRACKER
++memory.write_decision: REVISE_EXISTING
++        │
++        ▼
++LEFT GRAPH
++A5 revision 4 → 5
++        │
++        ▼
++RIGHT TRACKER
++memory.edge_created: validated_by
++memory.remote_pending
++memory.remote_synced
++```
++
++At no point does the browser decide that A5 should be revised; it only displays what Agent Core actually persisted.
++
++---
++
++# 14. Execution Order Summary
++
++```text
++Task 1   config / shadow safety
++Task 2   memory activity emission
++Task 3   durable audit replay + live stream
++Task 4   authoritative graph projection
++Task 5   exact-loopback observatory API + SSE
++Task 6   standalone localhost:3697 sidecar
++Task 7   left memory graph
++Task 8   right live tracker
++Task 9   timeline/recall/failure/conflict/session lenses
++Task 10  real-time graph convergence
++Task 11  isolated shadow runtime/MCP canary
++Task 12  reconnect/restart/rotation resilience
++Task 13  performance/stress certification
++Task 14  cross-Codespace durability visualization
++Task 15  memory behavior correctness certification
++Task 16  manual Codespace lifecycle helper
++Task 17  exact-SHA shadow certification
++Task 18  advisory real-work canary
++Task 19  enforced canary + controlled cutover gate
++```
++
++The first meaningful milestone is not “pretty graph renders.” It is:
++
++```text
++REAL MEMORY MUTATION
++      ↓
++AUTHORITATIVE DMF STATE
++      ↓
++PERSISTED AUDIT EVENT
++      ↓
++LIVE SSE
++      ↓
++GRAPH/TRACKER UPDATE
++      ↓
++REFRESH/RESTART
++      ↓
++SAME TRUTH
++```
++
++That is the minimum architecture needed before trusting the visualization as a debugger for the memory nervous system.

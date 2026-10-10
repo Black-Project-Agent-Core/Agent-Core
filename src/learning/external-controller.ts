@@ -38,6 +38,8 @@ export interface ExternalControllerEvent {
   outcome?: string;
 }
 
+export interface ExternalMemoryBinding { ownerId: string; workspaceIdentityKey: string }
+
 export interface ExternalControllerEpisode {
   id: string;
   startedAt: string;
@@ -46,6 +48,7 @@ export interface ExternalControllerEpisode {
   taskFamily?: string;
   predecessorEpisodeId?: string;
   taskKey?: string;
+  memoryBinding?: ExternalMemoryBinding;
   boundary?: 'explicit' | 'inferred';
   closedAt?: string;
   recoverySource?: string;
@@ -162,18 +165,45 @@ function event(kind: ExternalControllerEvent['kind'], summary: string, evidenceR
     ...extra,
   };
 }
+function normalizeMemoryBinding(raw: unknown): ExternalMemoryBinding {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)
+    || Object.keys(raw).length !== 2) throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
+  const { ownerId, workspaceIdentityKey } = raw as ExternalMemoryBinding;
+  if (typeof ownerId !== 'string' || !ownerId || ownerId !== ownerId.trim() || ownerId.length > 128
+    || typeof workspaceIdentityKey !== 'string' || !workspaceIdentityKey
+    || workspaceIdentityKey !== workspaceIdentityKey.trim() || workspaceIdentityKey.length > 2048
+    || /[\x00-\x1f\x7f]/.test(ownerId + workspaceIdentityKey)) throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
+  return { ownerId, workspaceIdentityKey };
+}
+/** Canonical identity is not descriptive text: preserve registry spelling exactly. */
+function boundWorkspaceName(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw || raw !== raw.trim() || raw.length > 120
+    || /[\x00-\x1f\x7f]/.test(raw)) throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
+  return raw;
+}
+/** Observational Learning labels cannot redirect a host-validated task binding. */
+function observeEpisodeWorkspace(episode: ExternalControllerEpisode, workspace: string | undefined): void {
+  if (workspace && !episode.memoryBinding) episode.workspace = bounded(workspace, 120);
+}
+function matchesMemoryBinding(episode: ExternalControllerEpisode, binding?: ExternalMemoryBinding): boolean {
+  return binding ? episode.memoryBinding?.ownerId === binding.ownerId
+    && episode.memoryBinding.workspaceIdentityKey === binding.workspaceIdentityKey : episode.memoryBinding === undefined;
+}
 function normalizeEpisode(raw: ExternalControllerEpisode): ExternalControllerEpisode {
   if (!raw || typeof raw.id !== 'string' || !raw.id.trim() || raw.id.length > 128) throw new Error('EXTERNAL_EPISODE_ID_INVALID');
   if (raw.events !== undefined && !Array.isArray(raw.events)) throw new Error('EXTERNAL_EPISODE_EVENTS_INVALID');
   if (raw.metrics && Object.values(raw.metrics).some(value => !Number.isFinite(value) || value < 0)) throw new Error('EXTERNAL_EPISODE_METRICS_INVALID');
+  const memoryBinding = raw.memoryBinding !== undefined ? normalizeMemoryBinding(raw.memoryBinding) : undefined;
+  if (memoryBinding) boundWorkspaceName(raw.workspace);
   return {
     id: bounded(raw.id, 128),
     startedAt: new Date(raw.startedAt).toISOString(),
     updatedAt: new Date(raw.updatedAt).toISOString(),
-    ...(raw.workspace ? { workspace: bounded(raw.workspace, 120) } : {}),
+    ...(raw.workspace ? { workspace: memoryBinding ? boundWorkspaceName(raw.workspace) : bounded(raw.workspace, 120) } : {}),
     ...(raw.taskFamily ? { taskFamily: bounded(raw.taskFamily, 160) } : {}),
     ...(raw.predecessorEpisodeId ? { predecessorEpisodeId: bounded(raw.predecessorEpisodeId, 128) } : {}),
     ...(raw.taskKey ? { taskKey: bounded(raw.taskKey, 200) } : {}),
+    ...(memoryBinding ? { memoryBinding } : {}),
     boundary: raw.boundary === 'explicit' ? 'explicit' : 'inferred',
     ...(raw.closedAt ? { closedAt: new Date(raw.closedAt).toISOString() } : {}),
     ...(raw.recoverySource ? { recoverySource: bounded(raw.recoverySource, 1000) } : {}),
@@ -325,7 +355,7 @@ export class ExternalControllerLearningService {
     return service;
   }
 
-  private async load(): Promise<ExternalControllerState> {
+  private async load(readOnly = false): Promise<ExternalControllerState> {
     try {
       const parsed = JSON.parse(await readFile(this.statePath, 'utf8')) as ExternalControllerState;
       if (parsed.version !== STATE_VERSION) throw new Error('EXTERNAL_CONTROLLER_STATE_VERSION_UNSUPPORTED');
@@ -342,7 +372,7 @@ export class ExternalControllerLearningService {
       if (await isNewState(this.statePath, error)) { this.issue = null; return defaultState(); }
       this.issue = 'EXTERNAL_CONTROLLER_STATE_DEGRADED';
       const backup = this.statePath + '.corrupt.' + new Date().toISOString().replaceAll(':', '-');
-      await copyFile(this.statePath, backup).catch(() => undefined);
+      if (!readOnly) await copyFile(this.statePath, backup).catch(() => undefined);
       activityTracker.captureFailure('LEARNING', error, 'external-controller-state-load-failure');
       return defaultState();
     }
@@ -418,16 +448,31 @@ export class ExternalControllerLearningService {
     await this.mutate(state => {
       const episode = this.getOrCreateEpisode(state, sessionId);
       episode.updatedAt = new Date().toISOString();
-      if (workspace) episode.workspace = bounded(workspace, 120);
+      observeEpisodeWorkspace(episode, workspace);
     });
   }
 
-  async startEpisode(sessionId: string, input: { workspace?: string; taskFamily?: string; taskKey?: string } = {}): Promise<ExternalControllerEpisode> {
-    if (input.workspace) input = { ...input, workspace: this.memory.resolveWorkspace(input.workspace) };
-    const prior = input.taskKey ? (await this.recentEpisodes({ workspace: input.workspace, taskKey: input.taskKey, limit: 1 }))[0] : undefined;
+  private validateMemoryWorkspace(workspace: string | undefined, binding: ExternalMemoryBinding): string {
+    try {
+      if (!workspace?.trim()) throw new Error('missing workspace');
+      const identity = this.memory.registeredWorkspaceIdentity(workspace);
+      if (identity.key !== binding.workspaceIdentityKey) throw new Error('workspace drift');
+      return boundWorkspaceName(identity.name);
+    } catch { throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE'); }
+  }
+
+  async startEpisode(sessionId: string, input: { workspace?: string; taskFamily?: string; taskKey?: string } = {}, hostBinding?: ExternalMemoryBinding): Promise<ExternalControllerEpisode> {
+    const binding = hostBinding === undefined ? undefined : normalizeMemoryBinding(hostBinding);
+    if (binding) {
+      if (!input.taskKey?.trim() || input.taskKey.length > 200) throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
+      input = { ...input, workspace: this.validateMemoryWorkspace(input.workspace, binding) };
+    } else if (input.workspace) input = { ...input, workspace: this.memory.resolveWorkspace(input.workspace) };
+    if (input.taskKey) input = { ...input, taskKey: bounded(input.taskKey, 200) };
+    const prior = input.taskKey ? (await this.recentEpisodes({ workspace: input.workspace, taskKey: input.taskKey.trim(), limit: 1, memoryBinding: binding, unboundOnly: !binding }))[0] : undefined;
     return this.mutate(state => {
+      if (binding) this.validateMemoryWorkspace(input.workspace, binding);
       const taskKey = input.taskKey?.trim();
-      const existing = (taskKey ? state.episodes.find(item => item.taskKey === taskKey && item.workspace === input.workspace) : undefined) ?? prior;
+      const existing = (taskKey ? state.episodes.find(item => item.taskKey === taskKey && item.workspace === input.workspace && matchesMemoryBinding(item, binding)) : undefined) ?? prior;
       if (existing && !state.episodes.some(item => item.id === existing.id)) state.episodes.push(existing);
       if (existing) { state.sessionHeads[sessionId] = existing.id; return normalizeEpisode(existing); }
       const predecessorId = this.activeEpisodeId(state, sessionId);
@@ -438,9 +483,10 @@ export class ExternalControllerLearningService {
         id: nextId,
         startedAt: now,
         updatedAt: now,
-        ...(input.workspace ? { workspace: bounded(input.workspace, 120) } : {}),
+        ...(input.workspace ? { workspace: binding ? boundWorkspaceName(input.workspace) : bounded(input.workspace, 120) } : {}),
         ...(input.taskFamily ? { taskFamily: bounded(input.taskFamily, 160) } : {}),
         ...(taskKey ? { taskKey } : {}),
+        ...(binding ? { memoryBinding: binding } : {}),
         boundary: 'explicit',
         ...(predecessor ? { predecessorEpisodeId: predecessor.id } : {}),
         meaningful: false,
@@ -471,7 +517,7 @@ export class ExternalControllerLearningService {
       const episode = this.getOrCreateEpisode(state, input.sessionId);
       if (episode.closedAt) return;
       episode.updatedAt = new Date().toISOString();
-      if (input.workspace) episode.workspace = bounded(input.workspace, 120);
+      observeEpisodeWorkspace(episode, input.workspace);
       episode.metrics.toolCalls += 1;
       if (input.outcome !== 'success') episode.metrics.toolFailures += 1;
       if (!input.readOnly || input.outcome !== 'success' || episode.boundary === 'explicit') this.markMeaningful(episode);
@@ -487,7 +533,7 @@ export class ExternalControllerLearningService {
   async recordMemoryRecall(sessionId: string, workspace: string | undefined, results: DeliveredMemorySearchResult[]): Promise<void> {
     await this.mutate(state => {
       const episode = this.getOrCreateEpisode(state, sessionId);
-      if (workspace) episode.workspace = bounded(workspace, 120);
+      observeEpisodeWorkspace(episode, workspace);
       episode.updatedAt = new Date().toISOString();
       episode.metrics.memoryRecalls += 1;
       episode.deliveredMemories ??= {};
@@ -507,7 +553,7 @@ export class ExternalControllerLearningService {
       if (!episode) throw new Error('EXTERNAL_CHECKPOINT_TASK_NOT_FOUND');
       if (episode.closedAt) return;
       const now = new Date().toISOString();
-      if (workspace) episode.workspace = bounded(workspace, 120);
+      observeEpisodeWorkspace(episode, workspace);
       episode.updatedAt = now;
       episode.checkpointAt = now;
       episode.pendingLearning = true;
@@ -535,7 +581,7 @@ export class ExternalControllerLearningService {
   async labelEpisode(sessionId: string, input: { workspace?: string; taskFamily?: string }): Promise<ExternalControllerEpisode> {
     return this.mutate(state => {
       const episode = this.getOrCreateEpisode(state, sessionId);
-      if (input.workspace) episode.workspace = bounded(input.workspace, 120);
+      observeEpisodeWorkspace(episode, input.workspace);
       if (input.taskFamily) episode.taskFamily = bounded(input.taskFamily, 160);
       episode.updatedAt = new Date().toISOString();
       return normalizeEpisode(episode);
@@ -555,7 +601,7 @@ export class ExternalControllerLearningService {
     return this.mutate(state => {
       const episode = this.getOrCreateEpisode(state, sessionId);
       if (episode.closedAt) return normalizeEpisode(episode);
-      if (input.workspace) episode.workspace = bounded(input.workspace, 120);
+      observeEpisodeWorkspace(episode, input.workspace);
       if (input.taskFamily) episode.taskFamily = bounded(input.taskFamily, 160);
       episode.updatedAt = new Date().toISOString();
       episode.terminalOutcome = input.outcome;
@@ -681,6 +727,20 @@ export class ExternalControllerLearningService {
     return { capsule: lines.join('\n').slice(0, 4_500), memoryIds: results.map(item => item.record.id) };
   }
 
+  /** Read-only selector resolution. Existence and ownership failures share one public code. */
+  async resolveMemoryTask(ownerId: string, taskId: string): Promise<{ taskId: string; workspaceKey: string }> {
+    try {
+      if (typeof ownerId !== 'string' || !ownerId.trim() || ownerId !== ownerId.trim()
+        || typeof taskId !== 'string' || !taskId.trim() || taskId.length > 128 || taskId !== taskId.trim()) throw new Error('invalid selector');
+      const state = await this.load(true);
+      if (this.issue) throw new Error('degraded state');
+      let episode = state.episodes.find(item => item.id === taskId);
+      if (!episode) episode = normalizeEpisode(JSON.parse(await readFile(path.join(path.dirname(this.statePath), 'episodes-archive', sha256(taskId) + '.json'), 'utf8')));
+      if (episode.id !== taskId || !episode.memoryBinding || episode.memoryBinding.ownerId !== ownerId) throw new Error('unavailable binding');
+      return { taskId: episode.id, workspaceKey: this.validateMemoryWorkspace(episode.workspace, episode.memoryBinding) };
+    } catch { throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE'); }
+  }
+
   async getEpisode(sessionId: string): Promise<ExternalControllerEpisode | null> {
     const state = await this.load();
     const episodeId = this.activeEpisodeId(state, sessionId);
@@ -688,7 +748,7 @@ export class ExternalControllerLearningService {
     return episode ? normalizeEpisode(episode) : null;
   }
 
-  async recentEpisodes(input: { workspace?: string; taskFamily?: string; taskKey?: string; episodeIds?: string[]; limit?: number } = {}) {
+  async recentEpisodes(input: { workspace?: string; taskFamily?: string; taskKey?: string; episodeIds?: string[]; limit?: number; memoryBinding?: ExternalMemoryBinding; unboundOnly?: boolean } = {}) {
     const state = await this.load();
     const archived: ExternalControllerEpisode[] = [];
     const directory = path.join(path.dirname(this.statePath), 'episodes-archive');
@@ -699,6 +759,7 @@ export class ExternalControllerLearningService {
       }
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     return [...new Map([...archived, ...state.episodes].map(item => [item.id, item])).values()]
+      .filter(item => input.memoryBinding ? matchesMemoryBinding(item, input.memoryBinding) : !input.unboundOnly || matchesMemoryBinding(item))
       .filter(item => !input.workspace || item.workspace === input.workspace)
       .filter(item => !input.taskFamily || item.taskFamily === input.taskFamily)
       .filter(item => !input.taskKey || item.taskKey === input.taskKey)
@@ -954,7 +1015,7 @@ export class ExternalControllerLearningService {
   private async recordArtifactEvent(sessionId: string, input: ExternalArtifactReceiptInput): Promise<void> {
     await this.mutate(state => {
       const episode = this.getOrCreateEpisode(state, sessionId);
-      if (input.workspace) episode.workspace = bounded(input.workspace, 120);
+      observeEpisodeWorkspace(episode, input.workspace);
       if (input.applicability !== 'rejected' && input.result !== 'unavailable') episode.metrics.artifactUses += 1;
       episode.events.push(event(
         'artifact-use',

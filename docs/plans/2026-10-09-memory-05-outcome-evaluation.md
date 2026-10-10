@@ -9,7 +9,21 @@
 
 **Spec:** Spesifikasi tertanam dalam dokumen ini, khususnya bagian kontrak eksperimen dan acceptance.
 
-**Status:** **PROPOSED / NOT IMPLEMENTED**. Baseline sumber yang diberikan: `c5e3fe970b770aaa5ba3023ea19239f71f53709c`; inspeksi memakai file checkout saat ini. Tidak ada build, test, inference, probe provider, ataupun perubahan source pada penyusunan rencana ini.
+**Status:** **IMPLEMENTED / VERIFIED OFFLINE HARNESS** (2026-10-10). Source contains strict frozen contracts, real isolated experience-v2 lifecycle owners, explicit baseline/fusion controller policy adapters, an independent recomputation verifier, exclusive fresh-extraction ZIP packaging, and a fail-closed live entrypoint. No inference or legacy USER-STOPPED continuation was performed. Efficiency benchmarking remains **DEFERRED**. Final build and 208/208 scoped regression/integration tests passed; independent review replayed 124 passing cases. The external delivery ledger binds retained functional reports to the final published source identity. Windows activation and live/model benefit remain separate.
+
+### Implemented safety and compatibility boundaries
+
+- Engineering artifact verification no longer executes untrusted JavaScript through `node:vm`. A dependency-free bounded declarative checker accepts numeric arrow expressions and three exact certified latest-event templates. Other JavaScript, including otherwise-correct `x => Math.imul(x,2)`, is rejected. There is no generic JavaScript sandbox claim.
+- The root and standalone workflow verifier now use revision `agent-core-controlled-workflow/v2-declarative`; previous v1 verification references cannot validate reuse until independently reverified. Both helper copies must remain byte-identical and pass the shared behavior test.
+- A frozen historical snapshot retains its historical owner code. Before its owner verifier sees an engineering artifact, the current adapter certifies the artifact with the bounded checker. Current independent outcome recomputation never executes artifact code.
+- Scripted operation counters come from per-run recorded operation traces. They include harness/owner verification operations and are not model-issued tool calls. Bundle replay requires every trace and verifies the recorded counts, as well as both baseline and comparison command ledgers.
+- Candidate snapshots are separate from baseline snapshots. Comparison copies and rechecks sealed baseline artifacts, oracle files, traces and command evidence without writing back to baseline. Candidate evidence uses a distinct snapshot filename.
+- Live or real-controller labels are rejected by the offline entrypoint and independent verifier. An arbitrary approval-reference string cannot enable provider execution. Cloudflare and the historical 25/64 USER-STOPPED cohort remain untouched.
+- Supplemental post-baseline preregistration binds immutable suite bytes and sealed baseline rows. Development evidence is independently replayed before candidate execution; measured p95 + 2×MAD and known-currency totals are recomputed. Scripted positive unit fixtures test the gate without proving real-world benefit.
+
+### Verification and rollback
+
+RED/GREEN evidence and exact command exits are retained under `.task-evidence/plan05/`. A passing focused test is not a passing whole project suite; the parent integration report owns the final stable full-suite ledger and distinguishes environment failures from introduced failures. Runtime snapshots and fixture runs remain under `runtime/tmp/`, while sanitized bundles exclude their private-store descendants. Rollback is a scoped source/helper reversal and removal of the opt-in evaluator entrypoints, preserving evidence bundles; it does not change production Memory or resume stopped evaluations.
 
 ## Global Constraints
 

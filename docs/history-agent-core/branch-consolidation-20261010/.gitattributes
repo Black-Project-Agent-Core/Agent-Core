@@ -1,0 +1,2 @@
+# Preserve exact replay bytes across Windows/Linux; patches are evidence, not source diffs.
+*.patch -text -diff

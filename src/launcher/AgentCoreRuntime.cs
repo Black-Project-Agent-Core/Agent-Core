@@ -988,7 +988,9 @@ public sealed class AgentCoreRuntime : IDisposable
     }
     private async Task<PortProcessInfo?> GetPortProcessInfoAsync(int port, TimeSpan? timeout = null)
     {
-        var script = $"$ErrorActionPreference='SilentlyContinue'; $c=Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if(!$c){{exit 0}}; $p=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$c.OwningProcess) -ErrorAction SilentlyContinue; if(!$p){{exit 0}}; $p | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress";
+        var processId = WindowsTcpListener.GetProcessId(port);
+        if (processId is null) return null;
+        var script = $"$ErrorActionPreference='SilentlyContinue'; $p=Get-CimInstance Win32_Process -Filter 'ProcessId={processId.Value}' -ErrorAction SilentlyContinue; if(!$p){{exit 0}}; $p | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress";
         var json = await RunPowerShellAsync(script, timeout);
         if (string.IsNullOrWhiteSpace(json)) return null;
         return JsonSerializer.Deserialize<PortProcessInfo>(json);
@@ -1050,10 +1052,7 @@ public sealed class AgentCoreRuntime : IDisposable
 
     private async Task StopOwnedPortProcessAsync(int port, string identityNeedle)
     {
-        var script = $"$ErrorActionPreference='SilentlyContinue'; $c=Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if(!$c){{exit 0}}; $p=Get-CimInstance Win32_Process -Filter ('ProcessId='+[int]$c.OwningProcess) -ErrorAction SilentlyContinue; if(!$p){{exit 0}}; $p | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress";
-        var json = await RunPowerShellAsync(script);
-        if (string.IsNullOrWhiteSpace(json)) return;
-        var processInfo = JsonSerializer.Deserialize<PortProcessInfo>(json);
+        var processInfo = await GetPortProcessInfoAsync(port);
         if (processInfo is null) return;
         var commandLine = processInfo.CommandLine ?? string.Empty;
         if (!commandLine.Contains(identityNeedle, StringComparison.OrdinalIgnoreCase))

@@ -9,7 +9,7 @@
 
 **Spec:** Spesifikasi mandiri tertanam di bagian “Requirements”. Baseline sumber: `c5e3fe970b770aaa5ba3023ea19239f71f53709c`.
 
-**Status: PROPOSED — NOT IMPLEMENTED.** Inspeksi 2026-10-08 UTC; revisi review 2026-10-09. Tes/build tidak dijalankan; source tidak diubah. Runtime Memory tidak tersedia. Dokumen bukan izin implementasi, migrasi, release, atau deployment.
+**Status: IMPLEMENTED — SCOPED OFFLINE GATES PASS; AGGREGATE REVIEW PENDING.** Implementasi sumber disetujui pengguna pada 2026-10-10 UTC dan dikerjakan di checkout sintetis dari snapshot upstream `b3fe106`. Gate root Plan03: 8 file / 75 tes PASS; gate engine terpisah: 4 file / 97 tes PASS. RED perilaku adapter, collision owner, reconnect HTTP/Native baseline, dan taskKey whitespace disimpan; symbol yang belum tersedia ditandai scaffolding, bukan defect. Build agregat, suite root penuh, dokumentasi CODEBASE, commit/push dan laporan gabungan dimiliki integrator induk. Provider/live/benchmark/resident activation tidak dijalankan atau diklaim. Laporan sumber: `.task-evidence/plan03/report.md`; ZIP terisolasi disertai receipt ekstraksi/hash. Tidak ada migrasi/aktivasi produksi, kredensial atau perubahan security runtime.
 
 ## Global Constraints
 
@@ -58,7 +58,7 @@ R7. Jaminan interleaving hanya state Memory v2. Learning context/label/verify/pr
 
 [OpenAI Cookbook: Session Memory](https://developers.openai.com/cookbook/examples/agents_sdk/session_memory) membahas kontinuitas percakapan. [Building Reliable Agents with Memory and Compaction](https://developers.openai.com/cookbook/examples/agents_sdk/building_reliable_agents_memory_compaction) membedakan kontinuitas konteks dan reuse memory. Adaptasi lokal: transport bukan identitas tugas; resume memakai state terverifikasi. Referensi telah dibuka, bukan spesifikasi otorisasi Agent Core; tidak menambah SDK/provider/store.
 
-## Interfaces yang diusulkan, belum tersedia
+## Interfaces yang diimplementasikan
 
 Semua perubahan berikut internal host kecuali selector envelope:
 
@@ -75,10 +75,10 @@ Semua perubahan berikut internal host kecuali selector envelope:
 
 **Consumes:** `VerifiedKey.id`, `registeredWorkspaceIdentity`, episode owner lama. **Produces:** ketiga interface host di atas serta normalisasi/arsip binding.
 
-- [ ] Tulis tes `separates_owner_and_registered_workspace`: owner A/B memakai taskKey `repair-1` pada workspace sama; `expect(a.id).not.toBe(b.id)`. Owner A reconnect memperoleh `expect(resumed.id).toBe(a.id)`. Workspace kedua memberi ID berbeda.
-- [ ] Jalankan `npm test -- tests/memory-task-binding.test.ts`; simpan RED. Missing symbol adalah RED scaffolding, bukan konfirmasi hipotesis; rekam juga reproduksi adapter baseline pada Task 2 sebelum menyatakan defect.
-- [ ] Implementasikan binding lewat owner Learning yang ada. `normalizeEpisode`, load/save/arsip mempertahankannya; reuse tidak mengambil episode unbound. `resolveMemoryTask` memakai registry kini dan menolak perubahan identity key.
-- [ ] Tambahkan tes nama workspace palsu, basename sama, registrasi ambigu, archived binding, state rusak, dan same-header berbeda owner. Assert penolakan tidak mengubah byte state dan tidak memanggil engine.
+- [x] Tulis tes `separates_owner_and_registered_workspace`: owner A/B memakai taskKey `repair-1` pada workspace sama; `expect(a.id).not.toBe(b.id)`. Owner A reconnect memperoleh `expect(resumed.id).toBe(a.id)`. Workspace kedua memberi ID berbeda.
+- [x] Jalankan `npm test -- tests/memory-task-binding.test.ts`; simpan RED. Missing symbol adalah RED scaffolding, bukan konfirmasi hipotesis; rekam juga reproduksi adapter baseline pada Task 2 sebelum menyatakan defect.
+- [x] Implementasikan binding lewat owner Learning yang ada. `normalizeEpisode`, load/save/arsip mempertahankannya; reuse tidak mengambil episode unbound. `resolveMemoryTask` memakai registry kini dan menolak perubahan identity key.
+- [x] Tambahkan tes nama workspace palsu, basename sama, registrasi ambigu, archived binding, state rusak, dan same-header berbeda owner. Assert penolakan tidak mengubah byte state dan tidak memanggil engine.
 - [ ] Ulangi command sampai GREEN, review perubahan task ini, lalu commit terpisah hanya saat eksekusi telah diizinkan.
 
 ## Task 2: Sambungkan adapter dan lifecycle eksternal
@@ -87,11 +87,11 @@ Semua perubahan berikut internal host kecuali selector envelope:
 
 **Consumes:** interface Task 1. **Produces:** resolver host dan schema selector; payload dispatcher engine tidak berubah.
 
-- [ ] Tambahkan tes baseline: buat dua episode melalui `ExternalControllerLearningService.startEpisode`, lalu gunakan fake Memory controller yang mencatat scope adapter. Assert taskId controller sama dengan episode Learning aktif; rotasi episode pada session sama harus mengubah taskId controller, reconnect taskKey sama mempertahankannya. Rekam kegagalan perilaku sebelum patch adapter.
-- [ ] Jalankan `npm test -- tests/memory-scope-mcp.test.ts` dan simpan RED asli. Jangan mengganti assert untuk membuat baseline lolos.
-- [ ] Di jalur v2, bentuk namespace Learning owner-scoped dari key terautentikasi, lalu gunakan konsisten untuk bootstrap, controller_learning, dan observation hooks. Pertahankan helper transport hourly saat ini; namespace bukan taskId.
-- [ ] Pada episode start, validasi workspace dengan registry dan berikan hostBinding internal. Bangun resolver server: external memerlukan selector+owner; native memakai task/workspace runtime tervalidasi. Adapter hanya mengirim hasil resolver ke `memory.controller`.
-- [ ] Uji semua aksi read/write, selector foreign owner/unknown/unbound, payload override, scope kosong, dan grant denial. Assert `isError === true`, error stabil, `controller` dipanggil nol kali pada penolakan; jalur valid menerima taskId episode, bukan sessionId.
+- [x] Tambahkan tes baseline: buat dua episode melalui `ExternalControllerLearningService.startEpisode`, lalu gunakan fake Memory controller yang mencatat scope adapter. Assert taskId controller sama dengan episode Learning aktif; rotasi episode pada session sama harus mengubah taskId controller, reconnect taskKey sama mempertahankannya. Rekam kegagalan perilaku sebelum patch adapter.
+- [x] Jalankan `npm test -- tests/memory-scope-mcp.test.ts` dan simpan RED asli. Jangan mengganti assert untuk membuat baseline lolos.
+- [x] Di jalur v2, bentuk namespace Learning owner-scoped dari key terautentikasi, lalu gunakan konsisten untuk bootstrap, controller_learning, dan observation hooks. Pertahankan helper transport hourly saat ini; namespace bukan taskId.
+- [x] Pada episode start, validasi workspace dengan registry dan berikan hostBinding internal. Bangun resolver server: external memerlukan selector+owner; native memakai task/workspace runtime tervalidasi. Adapter hanya mengirim hasil resolver ke `memory.controller`.
+- [x] Uji semua aksi read/write, selector foreign owner/unknown/unbound, payload override, scope kosong, dan grant denial. Assert `isError === true`, error stabil, `controller` dipanggil nol kali pada penolakan; jalur valid menerima taskId episode, bukan sessionId.
 - [ ] Ulangi command sampai GREEN; review gate Task 2 sebelum commit terpisah.
 
 ## Task 3: Verifikasi reconnect, interleaving, dan kompatibilitas
@@ -100,18 +100,18 @@ Semua perubahan berikut internal host kecuali selector envelope:
 
 **Consumes:** facade Task 2. **Produces:** bukti end-to-end offline melalui handler dan Native in-memory MCP.
 
-- [ ] Tulis tes RED headerless pada `2026-10-09T00:59:59Z` lalu `01:00:01Z`, header berubah, dan restart fixture. Bind ulang taskKey secara serial; assert taskId/episodeRef sama dan `memory_v2_write(action=checkpoint)` idempotent tidak menambah event kedua.
-- [ ] Uji interleaving langsung facade Memory v2: task_start, event_append, task_context, checkpoint A/B; state A tidak memuat B, cursor lintas task menghasilkan `MEMORY_SCOPE_MISMATCH`, task asing tidak mengubah ledger. Ini tidak menguji jaminan atribusi Learning.
-- [ ] Lewat handler nyata, jalankan kelompok aktivasi A→panggilan/hook/finalisasi A, lalu B, lalu A. Assert episode yang aktif sesuai kelompok. Tambahkan characterization: setelah start B, `getEpisode(sessionId).id === b.id` meski selector Memory adalah A; dokumentasikan keterbatasan, jangan mengharapkan Learning otomatis mengikuti selector.
-- [ ] Uji Native host task tetap stabil antar tool session; selector task lain ditolak. Pertahankan tes grant. Ubah fixture v2 session-only menjadi episode-bound, serta tambahkan assert fail-closed untuk klien tanpa selector; legacy read/list/search tetap lulus.
-- [ ] Jalankan `npm test -- tests/memory-task-reconnect.test.ts tests/memory-v2-host-integration.test.ts tests/agent-tool-session.test.ts tests/agent-os-tool-grant-adoption.test.ts`; perbaiki wiring minimal, rekam RED/GREEN tanpa provider.
+- [x] Tulis tes RED headerless pada `2026-10-09T00:59:59Z` lalu `01:00:01Z`, header berubah, dan restart fixture. Bind ulang taskKey secara serial; assert taskId/episodeRef sama dan `memory_v2_write(action=checkpoint)` idempotent tidak menambah event kedua.
+- [x] Uji interleaving langsung facade Memory v2: task_start, event_append, task_context, checkpoint A/B; state A tidak memuat B, cursor lintas task menghasilkan `MEMORY_SCOPE_MISMATCH`, task asing tidak mengubah ledger. Ini tidak menguji jaminan atribusi Learning.
+- [x] Lewat handler nyata, jalankan kelompok aktivasi A→panggilan/hook/finalisasi A, lalu B, lalu A. Assert episode yang aktif sesuai kelompok. Tambahkan characterization: setelah start B, `getEpisode(sessionId).id === b.id` meski selector Memory adalah A; dokumentasikan keterbatasan, jangan mengharapkan Learning otomatis mengikuti selector.
+- [x] Uji Native host task tetap stabil antar tool session; selector task lain ditolak. Pertahankan tes grant. Ubah fixture v2 session-only menjadi episode-bound, serta tambahkan assert fail-closed untuk klien tanpa selector; legacy read/list/search tetap lulus.
+- [x] Jalankan `npm test -- tests/memory-task-reconnect.test.ts tests/memory-v2-host-integration.test.ts tests/agent-tool-session.test.ts tests/agent-os-tool-grant-adoption.test.ts`; perbaiki wiring minimal, rekam RED/GREEN tanpa provider.
 
 ## Task 4: Gate mandiri, dokumentasi, rollback, dan laporan
 
 **Files:** Modify `docs/CODEBASE.md` bagian MCP/Memory v2 hanya setelah implementasi; create laporan terisolasi `reports/memory-03-task-workspace-binding/`.
 
 - [ ] Dari root repository, jalankan `npm run build`, lalu `npm test -- tests/memory-task-binding.test.ts tests/memory-scope-mcp.test.ts tests/memory-task-reconnect.test.ts tests/memory-v2-host-integration.test.ts tests/cumulative-workflow.test.ts tests/http-auth.test.ts tests/agent-tool-session.test.ts tests/agent-os-tool-grant-adoption.test.ts`.
-- [ ] Jalankan `npm --prefix SubProject/agent-core-memory test -- tests/memory-controller-scope.test.ts tests/memory-controller-continuation.test.ts tests/memory-episodes.test.ts tests/memory-episode-concurrency.test.ts`. Root Vitest mengecualikan `SubProject`; command terpisah wajib. Scripts/config telah diinspeksi, hasil eksekusinya masih **NOT RUN**.
+- [x] Jalankan `npm --prefix SubProject/agent-core-memory test -- tests/memory-controller-scope.test.ts tests/memory-controller-continuation.test.ts tests/memory-episodes.test.ts tests/memory-episode-concurrency.test.ts`. Root Vitest mengecualikan `SubProject`; command terpisah wajib. Scripts/config telah diinspeksi, hasil eksekusinya masih **NOT RUN**.
 - [ ] Catat exit code, versi tool, fixture seed/waktu, revision/diff. Update CODEBASE: kontrak selector, batas pemilik, dan kewajiban serialisasi Learning. Hasil harus memisahkan Memory-v2 interleaving dari Learning serial; concurrent Learning tetap unsupported.
 - [ ] Buat ZIP berisi `report.md`, `results.json`, `logs/`, `fixtures/`, `evidence/`, `patch/implementation.diff`, dan `SHA256SUMS` untuk setiap file selain manifest sendiri. Hanya fixture sintetis dan log tersanitasi. Ekstrak ke direktori baru, tolak path traversal, verifikasi seluruh hash dan inventaris, catat hasil pemeriksaan serta SHA256 ZIP terpisah.
 - [ ] Reviewer independen memeriksa diff, replay gate, dan ekstraksi. **PASS** hanya jika semua gate wajib dan verifikasi bundle lulus. Yang belum dieksekusi **NOT RUN**; environment/dependency menghalangi **BLOCKED**; kegagalan assert **FAIL**. Skenario live/provider dilaporkan terpisah, bukan syarat atau pengganti gate offline.
@@ -121,3 +121,9 @@ Semua perubahan berikut internal host kecuali selector envelope:
 Mandiri dari rencana retrieval subset, policy, context index, dan eval. File shared `server.ts`, `memory-experience-tools.ts`, fixture host, dan CODEBASE harus dikerjakan berurutan; review interface setelah rebase.
 
 Risiko: kontrak selector berubah, ownership historis tidak tersedia, registry drift, head Learning lama tertinggal. Jangan menebak migrasi. Rollback memakai commit terpisah dan backup terverifikasi; jangan menghapus episode, memindahkan canonical Memory, atau memulihkan session-as-task. Jika rollback menghilangkan metadata binding, hentikan write v2 sampai kompatibel. Deployment/resident memerlukan izin tersendiri.
+
+## Implementasi dan batas acceptance — 2026-10-10
+
+Binding, normalisasi/persistensi/arsip, resolver read-only, namespace pemilik, schema selector dan integrasi handler telah diimplementasikan. TaskKey dinormalisasi sekali sebelum lookup agar normalisasi penyimpanan tidak mengubah identitas saat reconnect. Root/engine gates di atas offline dengan fixture sintetis; tidak ada pembacaan Memory produksi, secret, atau provider. Test HTTP menjalankan aktivasi dan hook/finalisasi Learning secara serial A→B→A dan secara eksplisit membuktikan selector Memory A tidak mengubah head Learning B. ZIP Plan03 diverifikasi dengan fresh extraction dan manifest SHA-256; review independen atas perbaikan binding dan replay 75 tes root PASS; acceptance akhir menunggu integrator. Perubahan kontrak v2 adalah breaking pre-1.0 client tightening, changeset minor dalam train 0.15; perubahan version surface ditangani integrator.
+
+Review independen menemukan dua blocker dan keduanya diperbaiki dengan RED/GREEN: tujuh jalur observasi Learning sebelumnya mengubah canonical workspace binding, serta `bounded()` meruntuhkan spasi internal nama registry. Semua observasi sekarang hanya melabel ulang episode legacy unbound. Canonical workspace bound dipertahankan persis dan divalidasi, bukan diproses sebagai teks deskriptif, pada create/normalize/load/save/archive. Reconnect melalui alias, observasi workspace lain, restart, arsip, dan nama registry `my  repo` diuji; gate final Plan03 75 tes root PASS dan reviewer independen mereplay 75/75 PASS.

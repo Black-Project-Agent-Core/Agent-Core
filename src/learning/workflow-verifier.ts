@@ -1,7 +1,7 @@
-import { runInNewContext } from 'node:vm';
+import { evaluateEngineeringArtifact } from './outcome-safe-engineering.js';
 import { readEvidenceSnapshot } from '../verification/evidence-snapshot.js';
 
-export const WORKFLOW_VERIFIER_REVISION = 'agent-core-controlled-workflow/v1';
+export const WORKFLOW_VERIFIER_REVISION = 'agent-core-controlled-workflow/v2-declarative';
 export interface WorkflowVerificationManifest {
   taskId: string;
   case: { path: string; digest: string };
@@ -26,8 +26,7 @@ export function verifyWorkflowAnswer(test: WorkflowCase, answer: string) {
     if (test.domain === 'engineering') {
       if (!test.tests?.length || test.tests.length > 100) throw new Error('invalid-test-cases');
       const checks = test.tests.map(item => {
-        const actual = runInNewContext('JSON.stringify((' + answer.trim().replace(/;+\s*$/, '') + ')(JSON.parse(input)))',
-          { input: JSON.stringify(item.input) }, { timeout: 500, contextCodeGeneration: { strings: false, wasm: false } });
+        const actual = JSON.stringify(evaluateEngineeringArtifact(answer,item.input));
         return actual === JSON.stringify(item.expected);
       });
       return { verdict: checks.every(Boolean) ? 'pass' as const : 'fail' as const, checks, unsupportedClaims: 0 };
