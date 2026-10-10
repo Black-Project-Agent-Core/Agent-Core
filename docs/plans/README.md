@@ -37,6 +37,27 @@ Final integrated evidence is recorded in the [functional source ledger](../verif
 | [Adaptive parallel tool execution](2026-10-09-adaptive-parallel-tool-execution.md) | Capacity-aware coordination for independent tool work |
 
 
+<a id="memory-reference-adoption"></a>
+
+## Memory12–21 reference adoption proposals
+
+**PROPOSED / NOT IMPLEMENTED.** One reference per plan, with distinct responsibilities rather than ten new memory subsystems. Read the [shared specification and dependency map](2026-10-11-memory-reference-adoption-spec.md) before choosing an implementation. The source research uses pinned upstream commits; incomplete donor features and license limits are documented per plan. These proposals do not extend the active Memory06–11 installation task.
+
+| Plan | Reference | Unique scope | Category |
+| --- | --- | --- | --- |
+| [Memory12](2026-10-11-memory-12-anthropic-session-continuity.md) | Anthropic | Controller checkpoint/resume compliance | Incremental |
+| [Memory13](2026-10-11-memory-13-memu-capture-commit-recovery.md) | memU | Durable capture receipt and cursor recovery | Incremental |
+| [Memory14](2026-10-11-memory-14-graphiti-known-at-history.md) | Graphiti | validAt plus knownAt historical knowledge | New bounded capability |
+| [Memory15](2026-10-11-memory-15-hindsight-evidence-synthesis.md) | Hindsight | Evidence-dependent project synthesis | Incremental candidate |
+| [Memory16](2026-10-11-memory-16-ace-bounded-curation.md) | ACE | Bounded lesson/playbook curation and counterexamples | Incremental |
+| [Memory17](2026-10-11-memory-17-openai-memory-compaction.md) | OpenAI Cookbook | Compaction content integrity and promotion boundaries | Incremental |
+| [Memory18](2026-10-11-memory-18-pm-bench-prospective-intentions.md) | PM-Bench | Condition-based deferred intention candidates | New bounded capability |
+| [Memory19](2026-10-11-memory-19-realm-reconsolidation-experiment.md) | REALM | Outcome-driven relationship proposals in fixtures | Offline experiment only |
+| [Memory20](2026-10-11-memory-20-longmemeval-functional-evaluation.md) | LongMemEval | Recall/update/temporal functional diagnostics | Evaluation only |
+| [Memory21](2026-10-11-memory-21-memprobe-memory-integrity.md) | MemProbe | Interference/misinformation/consolidation diagnostics | Evaluation only |
+
+Priority is incremental continuity and historical correctness, followed by evidence synthesis/learning. Plan19 does not authorize production changes. Plan20 owns the shared diagnostic extension used by Plan21. Proposed tests and commands are not passed results. Planning-only version decision: **no product-version change**.
+
 ## Evidence and execution rules
 
 - Proposed commands and acceptance criteria are future steps, not test results.

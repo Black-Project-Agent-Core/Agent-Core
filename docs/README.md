@@ -30,6 +30,8 @@ The [plan status index](plans/README.md) separates implemented work from proposa
 
 A plan, unresolved checkbox, or historical approval request does not authorize implementation, installation, provider calls, or deployment. Follow current user scope and preserve existing stop boundaries.
 
+New research is organized as [ten separate Memory12–21 adoption proposals](plans/README.md#memory-reference-adoption), with [explicit non-duplication boundaries](plans/2026-10-11-memory-reference-adoption-spec.md). These are plans only and do not join the in-progress Memory06–11 Windows installation.
+
 ## Verification and operation
 
 - [Build and verification map](CODEBASE.md#build-and-verification)

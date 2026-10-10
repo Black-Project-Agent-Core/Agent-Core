@@ -2,6 +2,10 @@
 
 This records explicit source prereleases and applied stable releases. Pending intents under [.changeset](.changeset/README.md) are retained until stable application. Earlier legacy-only repository decisions and Native Chat placeholder descriptions below are historical; current source and repository identity are documented in [README](README.md) and [CODEBASE](docs/CODEBASE.md).
 
+## Memory reference adoption plans — 2026-10-11 WIB (documentation only)
+
+Added ten separate proposed reference-adoption plans (Memory12–21), a shared scope/dependency specification and source-pinned research grounding. Existing Memory/Learning owners remain authoritative; two plans are evaluation methodology and REALM is an offline experiment, not resident functionality. Source implementation and Windows activation are unchanged. Version assessment: no product-version change or release intent for planning-only documentation. See [plan index](docs/plans/README.md#memory-reference-adoption).
+
 ## 0.15.0-beta.2 - 2026-10-10 (source candidate)
 
 Advance the existing prerelease train for Memory Plans06–11, with synchronized source-version surfaces and one pending minor intent. No release application, tag, release publication, deployment or Windows activation. See [candidate notes and acceptance boundaries](docs/releases/0.15.0-beta.2.md).
