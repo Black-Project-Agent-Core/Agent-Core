@@ -11,6 +11,10 @@ Advance the existing prerelease train for Memory Plans06–11, with synchronized
 - Add bounded controller-led subquestion helpers, provenance/conflict/coverage projection and actual host-schema examples, with no model, new canonical store or production dispatcher.
 - Functional acceptance uses synthetic offline fixtures; latency/performance benchmarks and live controller/provider benefit remain deferred or unproven. The final integrated ledger records actual gate results separately from historical root-suite/platform failures.
 
+## Windows beta.1 resident acceptance - 2026-10-11 WIB (documentation only)
+
+Recorded [local Windows beta.1 acceptance](docs/verification/memory02-05-windows-resident-20261011.md): 51/51 installed artifact hashes, 130 complete index-v3/document-v2 vectors, host-bound Memory v2 scope and Workflows UI smoke. Memory05 remains offline evidence; Cloudflare billing is unknown. Cleanup remains pending with zero deletions reported. These dated installation findings do not activate or qualify beta.2, publish a release, or establish model benefit.
+
 ## 0.15.0-beta.1 - 2026-10-10 (source candidate)
 
 Source identity advances within the existing 0.15.0 beta train for Memory Plans02–05. All six product-version surfaces use `0.15.0-beta.1`; pending intents remain unconsumed. This source candidate is not a new tag, published release, deployment, or Windows activation. See [candidate notes and gates](docs/releases/0.15.0-beta.1.md).

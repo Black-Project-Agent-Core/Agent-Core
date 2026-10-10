@@ -26,6 +26,10 @@ Agent Core keeps the model separate from the local capability owners. Connect an
 
 See [plan status](docs/plans/README.md), [candidate notes](docs/releases/0.15.0-beta.2.md), and the original [beta.0 notes](docs/releases/0.15.0-beta.0.md), whose initial publication status is historical.
 
+### Recorded Windows beta.1 acceptance
+
+The separate Windows installation at `E:/Projects/Agent-Core` was reported resident `0.15.0-beta.1` on 2026-10-11 WIB, with 51/51 installed artifact hashes and bounded Memory02–04/Workflows live smoke. See the [dated resident report](docs/verification/memory02-05-windows-resident-20261011.md). This does not establish beta.2 installation or model benefit; the report records the three scoped temporary workspaces as not deleted.
+
 ## Capabilities
 
 - **Machine and browser tools:** bounded file/document operations, search, processes, checkpoints, browser control, and external MCP image inspection.
