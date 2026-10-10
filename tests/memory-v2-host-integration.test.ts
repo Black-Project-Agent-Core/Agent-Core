@@ -5,6 +5,8 @@ import {initializeAgentCoreMemory} from '../src/memory/host-runtime.js';
 import {registerMemoryExperienceTools} from '../src/mcp/memory-experience-tools.js';
 import {registerMemoryTools} from '../src/mcp/memory-tools.js';
 import {initializeStandaloneMemory} from '../SubProject/agent-core-memory/src/standalone.js';
+import {ExternalControllerLearningService} from '../src/learning/external-controller.js';
+import {LearningService} from '../src/learning/service.js';
 
 const base=path.resolve(process.cwd(),'runtime','tmp');
 const dirs:string[]=[];
@@ -51,22 +53,25 @@ describe('Agent Core Memory experience-v2 host selection',()=>{
   expect(JSON.stringify(legacySearch)).toContain(oldRecord.id);
   const status=await legacy.tools.get('memory_status')!({});
   expect(status.isError).not.toBe(true);
-  const own=serverMock();registerMemoryExperienceTools(own.server,runtime.experience!,{sessionId:'host-session-1'});
+  const external=await ExternalControllerLearningService.initialize({stateDir:path.join(root,'external'),memory:runtime.service,learning:{} as any});
+  const episode=await external.startEpisode('host-session-1',{taskKey:'host-task',workspace:'agent-core'},{ownerId:'synthetic-owner',workspaceIdentityKey:'agent-core'});
+  const scope={taskId:episode.id};
+  const own=serverMock();registerMemoryExperienceTools(own.server,runtime.experience!,async selector=>({...await external.resolveMemoryTask('synthetic-owner',selector?.taskId??''),controllerId:'agent-core-external'}));
   const read=own.tools.get('memory_v2_read')!,write=own.tools.get('memory_v2_write')!;
-  const caps=JSON.parse((await read({action:'capabilities',payload:{}})).content[0].text);
+  const caps=JSON.parse((await read({scope,action:'capabilities',payload:{}})).content[0].text);
   expect(caps.result.writeMode).toBe('experience-v2');
-  const recalled=JSON.parse((await read({action:'recall',payload:{query:'Verified architecture',view:'abstract'}})).content[0].text);
+  const recalled=JSON.parse((await read({scope,action:'recall',payload:{query:'Verified architecture',view:'abstract'}})).content[0].text);
   expect(recalled.result.data.hits.some((x:any)=>x.id===oldRecord.id)).toBe(true);
-  const started=JSON.parse((await write({action:'task_start',payload:{startKey:'start-a',goal:'Retain a cross-session engineering goal',sourceRefs:[]}})).content[0].text);
+  const started=JSON.parse((await write({scope,action:'task_start',payload:{startKey:'start-a',goal:'Retain a cross-session engineering goal',sourceRefs:[]}})).content[0].text);
   expect(started.result.id).toBeTruthy();
-  const resumed=JSON.parse((await read({action:'task_context',payload:{}})).content[0].text);
+  const resumed=JSON.parse((await read({scope,action:'task_context',payload:{}})).content[0].text);
   expect(resumed.result.data.episodeRef.id).toBe(started.result.id);
-  const spoof=await write({action:'task_start',payload:{startKey:'wrong',goal:'Spoof scope',sourceRefs:[],workspaceKey:'other'}});
+  const spoof=await write({scope,action:'task_start',payload:{startKey:'wrong',goal:'Spoof scope',sourceRefs:[],workspaceKey:'other'}});
   expect(spoof.isError).toBe(true);
  });
  it('refuses unbound controller identity even for read methods',async()=>{
   const root=await fixture();const v2=await activeRoot(root);
-  const bound=serverMock();registerMemoryExperienceTools(bound.server,v2,{});
+  const bound=serverMock();registerMemoryExperienceTools(bound.server,v2,async()=>{throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');});
   const result=await bound.tools.get('memory_v2_read')!({action:'capabilities',payload:{}});
   expect(result.isError).toBe(true);
  });
@@ -96,7 +101,9 @@ it('exposes v2 tools through the real external HTTP MCP handler',async()=>{
  const {createMcpHttpHandler}=await import('../src/mcp/handler.js');
  const root=await fixture();
  const memory=await activeRoot(root);
- const handler=createMcpHttpHandler({memoryExperience:memory});
+ const learning=await LearningService.initialize({enabled:true,stateDir:path.join(root,'learning'),reviewInterval:10,curatorIntervalHours:168},memory as any);
+ const external=await ExternalControllerLearningService.initialize({stateDir:path.join(root,'external'),memory:memory as any,learning});
+ const handler=createMcpHttpHandler({memoryExperience:memory,memoryService:memory as any,externalControllerLearning:external});
  const http=createServer((req,res)=>{void handler(req,res,{id:'synthetic-scoped-key'} as any);});
  await new Promise<void>((resolve,reject)=>{http.once('error',reject);http.listen(0,'127.0.0.1',resolve);});
  try {
@@ -115,7 +122,12 @@ it('exposes v2 tools through the real external HTTP MCP handler',async()=>{
   const names=(list.result?.tools??[]).map((x:any)=>x.name);
   expect(names).toContain('memory_v2_read');
   expect(names).toContain('memory_v2_write');
-  const caps=await query('tools/call',{name:'memory_v2_read',arguments:{action:'capabilities',payload:{}}});
+  const oldClient=await query('tools/call',{name:'memory_v2_read',arguments:{action:'capabilities',payload:{}}});
+  expect(oldClient.result?.isError).toBe(true);expect(JSON.stringify(oldClient.result)).toContain('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');expect(JSON.stringify(oldClient.result)).toContain('taskKey');
+  const start=await query('tools/call',{name:'controller_learning',arguments:{action:'episode',episodeOperation:'start',taskKey:'http-bound-task',workspace:'agent-core'}});
+  expect(start.result?.isError).not.toBe(true);
+  const episode=JSON.parse(start.result.content[0].text);
+  const caps=await query('tools/call',{name:'memory_v2_read',arguments:{action:'capabilities',scope:{taskId:episode.id},payload:{}}});
   expect(caps.result?.isError).not.toBe(true);
   expect(JSON.stringify(caps.result)).toContain('experience-v2');
  } finally {

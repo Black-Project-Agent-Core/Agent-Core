@@ -21,6 +21,7 @@ import type { PhoneController } from '../phone/controller.js';
 import { FailureLoopAdvisor } from './failure-loop-advisor.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { createAgentCoreMcpServer } from './server.js';
+import { memoryCredentialOwner, ownerScopedLearningSession } from './memory-scope.js';
 import { createImageInspector } from '../rdc/tools/image-inspect.js';
 
 export interface BridgeMcpHttpOptions {
@@ -152,8 +153,10 @@ export function createMcpHttpHandler(options: BridgeMcpHttpOptions = {}): McpHtt
     if (request.method !== 'POST') return sendProtocolError(response, 405, 'Method not allowed.');
     const controllerSessionId = externalControllerSessionId(request, key);
     const imageInspector = imageInspectorFor(request, key);
-    const controllerBootstrap = options.externalControllerLearning
-      ? await options.externalControllerLearning.bootstrapInstructions(controllerSessionId).catch(() => undefined)
+    const owner = memoryCredentialOwner(key);
+    const learningSessionId = options.memoryExperience && owner ? ownerScopedLearningSession(owner, controllerSessionId) : controllerSessionId;
+    const controllerBootstrap = options.externalControllerLearning && (!options.memoryExperience || owner)
+      ? await options.externalControllerLearning.bootstrapInstructions(learningSessionId).catch(() => undefined)
       : undefined;
     const factory: McpServerFactory = () => createAgentCoreMcpServer(key, {
       memoryService: options.memoryService,

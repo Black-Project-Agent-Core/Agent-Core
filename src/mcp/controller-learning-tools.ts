@@ -14,6 +14,7 @@ export function registerControllerLearningTools(
   server: McpServer,
   service: ExternalControllerLearningService,
   sessionId: string,
+  host?: { ownerId: string; workspaceIdentity: (workspace: string) => { name: string; key: string } },
 ): void {
   server.registerTool('controller_learning', {
     title: 'External Controller Learning',
@@ -44,11 +45,20 @@ export function registerControllerLearningTools(
           if (!input.recoverySource) throw new Error('recoverySource required');
           result = await service.recoverHistory(input.recoverySource, input.applyRecovery === true);
         } else if (operation === 'start') {
+          let binding: { ownerId: string; workspaceIdentityKey: string } | undefined;
+          let workspace = input.workspace;
+          if (host) {
+            try {
+              if (!host.ownerId || !input.taskKey?.trim() || !workspace?.trim()) throw new Error('missing task binding');
+              const identity = host.workspaceIdentity(workspace);
+              workspace = identity.name; binding = { ownerId: host.ownerId, workspaceIdentityKey: identity.key };
+            } catch { throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE'); }
+          }
           result = await service.startEpisode(sessionId, {
             ...(input.taskKey ? { taskKey: input.taskKey } : {}),
-            ...(input.workspace ? { workspace: input.workspace } : {}),
+            ...(workspace ? { workspace } : {}),
             ...(input.taskFamily ? { taskFamily: input.taskFamily } : {}),
-          });
+          }, binding);
         } else if (operation === 'label') {
           result = await service.labelEpisode(sessionId, {
             ...(input.workspace ? { workspace: input.workspace } : {}),
