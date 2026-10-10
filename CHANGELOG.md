@@ -2,9 +2,26 @@
 
 This records explicit source prereleases and applied stable releases. Pending intents under [.changeset](.changeset/README.md) are retained until stable application. Earlier legacy-only repository decisions and Native Chat placeholder descriptions below are historical; current source and repository identity are documented in [README](README.md) and [CODEBASE](docs/CODEBASE.md).
 
+## 0.15.0-beta.1 - 2026-10-10 (source candidate)
+
+Source identity advances within the existing 0.15.0 beta train for Memory Plans02–05. All six product-version surfaces use `0.15.0-beta.1`; pending intents remain unconsumed. This source candidate is not a new tag, published release, deployment, or Windows activation. See [candidate notes and gates](docs/releases/0.15.0-beta.1.md).
+
+- Plan02 adds host-selected controller ranking policies: `baseline-v1` remains the default; `fusion-feedback-v1` is opt-in. Revision-bound pagination rejects changed ranking state. No ranking gain is established.
+- Plan03 binds external experience-v2 requests through `scope.taskId` to host-authenticated credentials and registered workspace identity. Missing, foreign, changed or degraded bindings fail closed. Learning attribution remains serialized per session namespace.
+- Plan04 unifies semantic document rendering, advances semantic-document version to 2 and derived index format to 3, and invalidates old vectors. Startup can trigger full re-embedding: production restart needs explicit provider, transmitted-data, corpus-volume and cost approval. Verification uses fake providers only.
+- Plan05 adds an opt-in offline scripted outcome harness with frozen comparison identities, isolated synthetic Memory, artifact-oracle verification and evidence packaging. The scoped gate passed 208/208 tests and independent review found no remaining blockers. Its 4 development cases and 12 held-out cases across 3 conditions and 2 trusted scope labels yield 72 scripted comparison runs, not real Native/external model execution or proof of benefit. The live entry point fails closed.
+- Plans02–04 have independent reviews with no remaining blockers. Recorded Memory aggregate: 565/565 PASS across 33 files, excluding the lifecycle benchmark; Plan03 required Core checks: 75/75 PASS. The legacy BM25 budget suite remains 3 PASS / 1 FAIL with the same failure on pristine baseline. These scoped results do not imply an all-green repository, Windows activation or model benefit.
+
+- Full Core source-test run: 1519 passed and 36 failed, plus one suite-load failure. The same failing case/suite identities occur on pristine baseline (1353 passed, 36 failed, one suite-load failure). This does not diagnose every historical cause; complete logs and the explicit evidence-directory exclusion are retained in the handoff.
+- Security: replace in-process JavaScript artifact execution with bounded declarative verification. Unknown JavaScript fails closed; verifier v1 evidence requires reverification under `v2-declarative`. Final verification is recorded in the candidate notes.
+
+## Acceptance and publication follow-up — 2026-10-10
+
+[Directed Windows Memory01 and Workflows functional acceptance](docs/verification/memory01-windows-functional-2026-10-10.md) is closed within its documented scope, superseding the earlier production-pending status below. The published beta.0 Windows portable and immutable tag remain at `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`; later source changes do not inherit that acceptance. Registry publication awaits a new report and was not retried. These documentation-only acceptance corrections require no additional product bump.
+
 ## Documentation follow-up — 2026-10-09
 
-Recorded the accepted isolated Windows Workflows functional report: 17 PASS, one initial CS5001 build failure retained with a successful explicit StartupObject retry, and 5 NOT RUN. Production activation remains pending; Memory 01 integration/acceptance is postponed. See the [scoped evidence](docs/verification/workflows-windows-functional-2026-10-09.md). This status-only documentation change does not change product behavior or require a version bump. The immutable v0.15.0-beta.0 source tag remains at 23fdca411e152c42fe1a5b81f526b18d6d57bd3b.
+Historical checkpoint, superseded for current acceptance by the 2026-10-10 entry above. Recorded the accepted isolated Windows Workflows functional report: 17 PASS, one initial CS5001 build failure retained with a successful explicit StartupObject retry, and 5 NOT RUN. Production activation remains pending; Memory 01 integration/acceptance is postponed. See the [scoped evidence](docs/verification/workflows-windows-functional-2026-10-09.md). This status-only documentation change does not change product behavior or require a version bump. The immutable v0.15.0-beta.0 source tag remains at 23fdca411e152c42fe1a5b81f526b18d6d57bd3b.
 
 ## 0.15.0-beta.0 - 2026-10-09 (source prerelease)
 

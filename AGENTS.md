@@ -24,6 +24,14 @@
 - Learning remains fail-soft. A Learning failure must be reported truthfully but must not erase an otherwise verified user-task result or authorize blind retries.
 - This finalization rule is a top-level local operating behavior, not an optional periodic housekeeping suggestion. Merely returning a successful task result without the required checkpoint is incomplete Agent Core controller behavior.
 
+## External Memory v2 task selection
+
+- First perform canonical Memory inspection through the existing legacy read/list tools as directed above. A new explicit task binding is required before external `memory_v2_read` or `memory_v2_write`, including the v2 capabilities action.
+- Start a `controller_learning` episode with a stable `taskKey` and a currently registered workspace. Read the returned episode ID and pass `scope: { taskId: episode.id }` at the top level of every external v2 call. Never fabricate an ID or put task/owner/workspace overrides inside the payload.
+- A transport connection is not a task. The host checks authenticated ownership and current workspace registration on every call. Missing, foreign or stale bindings must be repaired through the supported episode/registration flow, never bypassed by selecting another user's task.
+- Native execution keeps host-owned task/workspace identity. Memory-only task interleaving does not make Learning attribution concurrent: serialize each task's Learning activation, observed operations and checkpoint/review group. Selecting a Memory task does not activate that task as the Learning head.
+- After upgrading clients, refresh tool schemas when necessary. Report a stale client that cannot send `scope` as blocked instead of silently falling back to session-based v2 identity.
+
 ## Version assessment and complete delivery handoff
 
 - Assess version impact for every change, including improvements, capability reductions, fixes and documentation maintenance. Record the decision and reason: patch, minor, major, or no product-version change. Documentation-only changes need a decision, not an artificial runtime version bump.

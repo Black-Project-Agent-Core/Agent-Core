@@ -4,21 +4,26 @@ A local-first agent system for Windows. External MCP controllers and a native AI
 
 Agent Core keeps the model separate from the local capability owners. Connect an external controller or configure the native OpenAI-compatible runtime, then use the same authenticated body for files, processes, browser work, code intelligence, research, and Android control.
 
-[Architecture](docs/CODEBASE.md) · [Documentation](docs/README.md) · [Source release notes](docs/releases/0.15.0-beta.0.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[Architecture](docs/CODEBASE.md) · [Documentation](docs/README.md) · [Candidate release notes](docs/releases/0.15.0-beta.1.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 ## Current status
 
-**Source prerelease: `0.15.0-beta.0`.** The implementation baseline reviewed for this refresh is [`f22e6e4`](https://github.com/Black-Project-Agent-Core/Agent-Core/commit/f22e6e426d9c8937439763602f986b9fb3243f23); the published source prerelease is tagged at [`23fdca4`](https://github.com/Black-Project-Agent-Core/Agent-Core/commit/23fdca411e152c42fe1a5b81f526b18d6d57bd3b). Later documentation records do not change that immutable tag.
+**Source candidate: `0.15.0-beta.1`.** Memory Plans02–05 are implemented in this candidate and have passed scoped offline functional verification; their Windows rollout is separate. The published [Windows portable beta.0](https://github.com/Black-Project-Agent-Core/Agent-Core/releases/tag/v0.15.0-beta.0) remains pinned to `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`.
 
 | Area | Status |
 | --- | --- |
-| Image inspection | Implemented; external-controller acceptance reported in preceding work |
-| Memory 01: filtered semantic retrieval | Implemented and locally verified offline; further acceptance explicitly postponed by the user |
-| Unified System + Memory Workflows | [Scoped Windows/WebView2 functional PASS](docs/verification/workflows-windows-functional-2026-10-09.md) on an isolated test candidate; production activation pending |
-| Memory plans 02–11 and adaptive parallel execution | Proposed; not implemented |
-| Production Windows installation | Last reported as `0.14.0`; unchanged by the isolated Workflows test, with this prerelease not deployed there |
+| Image inspection | Implemented; earlier external-controller acceptance |
+| Memory01 and Workflows | [Scoped production functional acceptance closed](docs/verification/memory01-windows-functional-2026-10-10.md); daily installation preserves local changes |
+| Memory02 | Host-owned ranking policy and revision-bound pagination; baseline remains default |
+| Memory03 | Explicit host-validated v2 task/workspace binding; external clients must send `scope.taskId` |
+| Memory04 | Contextual retrieval document v2 and derived index v3; startup may require full re-embedding |
+| Memory05 | Isolated deterministic outcome-evaluation tooling; no claim of measured AI improvement |
+| Memory06–11 and adaptive parallel execution | Proposed, not implemented |
+| New candidate Windows rollout | Not performed by source implementation; requires scoped integration and acceptance |
 
-These are separate source, verification, and installation facts. Source prerelease publication does not update an installed process or establish whole-product stability. Prior acceptance summaries above were not rerun by this documentation refresh. See the [plan status index](docs/plans/README.md) and [release notes](docs/releases/0.15.0-beta.0.md).
+**Upgrade cautions:** Memory03 intentionally rejects older v2 calls without the host-bound task selector. Memory04 may send the whole allowed canonical retrieval representation to the configured embedding provider during initialization; review corpus/provider/data/cost approval before restarting a production instance. Building or pushing source does not authorize or perform that rollout.
+
+See [plan status](docs/plans/README.md), [candidate notes](docs/releases/0.15.0-beta.1.md), and the original [beta.0 notes](docs/releases/0.15.0-beta.0.md), whose initial publication status is historical.
 
 ## Capabilities
 
@@ -86,7 +91,7 @@ Read [SECURITY.md](SECURITY.md) and [AGENTS.md](AGENTS.md) before operating the 
 
 ## Releases, recovery, and history
 
-The [changelog](CHANGELOG.md) records applied source releases; [source release notes](docs/releases/0.15.0-beta.0.md) distinguish prerelease metadata, published assets, and installation state. Pending intents are preserved under [`.changeset`](.changeset/README.md).
+The [changelog](CHANGELOG.md) records applied source releases; [current source notes](docs/releases/0.15.0-beta.1.md) distinguish prerelease metadata, published assets, and installation state. Pending intents are preserved under [`.changeset`](.changeset/README.md).
 
 Recovery accepts a separately trusted ZIP and checksum. The existing Windows recovery script still rejects this repository through its historical `LEGACY_REFERENCE_ONLY` guard; current source publication does not make network recovery usable. See [release and recovery boundaries](docs/CODEBASE.md#release-and-recovery).
 

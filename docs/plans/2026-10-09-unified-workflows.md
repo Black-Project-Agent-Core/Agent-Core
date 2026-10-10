@@ -1,6 +1,6 @@
 # Unified Workflows: implementation design and acceptance
 
-**Current status, 2026-10-09:** Source implemented; isolated Windows/WebView2 **functional PASS with limitations** on `f22e6e4` plus a documented test-only launcher wrapper. Production integration/activation is not established. Memory 01 acceptance is explicitly postponed. See the [sanitized verification record](../verification/workflows-windows-functional-2026-10-09.md). The original plan and earlier pending statements below retain their dated scope.
+**Current status, 2026-10-10:** Directed Windows Memory01 and Workflows **functional acceptance closed within the recorded scope**. The production current System + Memory canvas was verified after cutover; the independent production launcher rebuild matches the active executable. See the [latest evidence review](../verification/memory01-windows-functional-2026-10-10.md). The [isolated 2026-10-09 report](../verification/workflows-windows-functional-2026-10-09.md), original plan and earlier pending statements below retain only their dated scope. Later Memory02–05 source requires its own acceptance.
 
 ## Approved intent
 
@@ -54,6 +54,10 @@ A later user-supplied report documents actual Windows/WebView2 interaction on an
 
 The earlier cloud-browser limitation remains an accurate historical note; this later Windows evidence closes only the observed functional portion. The source prerelease was subsequently published at `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`, which includes version/governance changes beyond the candidate tested here. Its immutable tag remains unchanged by this documentation-only update.
 
-## Current integration boundary
+## Historical integration boundary — 2026-10-09
 
-The current handoff is limited to the Workflows delta `3774a44e83fc941accd299eaefc4fd65a8e5d958` → `f22e6e426d9c8937439763602f986b9fb3243f23`, plus the published source-version metadata from `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`. Inspect and preserve unrelated local changes. Preserve the active Memory engine and data; do not migrate it or run Memory 01 acceptance as part of this Workflows handoff. Memory 01 is explicitly postponed, and Memory 02 remains unstarted. Integration, build activation, and production functional readback still require their own recorded outcome; this report does not claim them complete.
+At that checkpoint, the handoff was limited to the Workflows delta `3774a44e83fc941accd299eaefc4fd65a8e5d958` → `f22e6e426d9c8937439763602f986b9fb3243f23`, plus the published source-version metadata from `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`. Inspect and preserve unrelated local changes. Preserve the active Memory engine and data; do not migrate it or run Memory 01 acceptance as part of this Workflows handoff. Memory 01 is explicitly postponed, and Memory 02 remains unstarted. Integration, build activation, and production functional readback still require their own recorded outcome; this report does not claim them complete.
+
+## Current integration boundary — 2026-10-10
+
+The later [Windows evidence](../verification/memory01-windows-functional-2026-10-10.md) supersedes the preceding Workflows production-pending and Memory01-postponed status. It records directed integration preserving unrelated work, resident Memory01 activation and the production Workflows canvas. Beta.0 portable publication remains pinned to `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`; scoped functional acceptance does not imply full fresh-machine/second-session GUI coverage. The [beta.1 Memory02–05 source candidate](../releases/0.15.0-beta.1.md) has separate verification and rollout gates, including provider/data/volume/cost approval before Plan04 production restart. No new release, deployment or activation is authorized by this plan.

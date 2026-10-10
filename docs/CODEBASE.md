@@ -1,21 +1,21 @@
 # Agent Core codebase map
 
-This is the maintained source-owner map for **`0.15.0-beta.0`**. The implementation review is grounded in [`f22e6e426d9c8937439763602f986b9fb3243f23`](https://github.com/Black-Project-Agent-Core/Agent-Core/commit/f22e6e426d9c8937439763602f986b9fb3243f23), followed by source-prerelease metadata and documentation changes. Published source tag `0.15.0-beta.0` identifies [`23fdca411e152c42fe1a5b81f526b18d6d57bd3b`](https://github.com/Black-Project-Agent-Core/Agent-Core/commit/23fdca411e152c42fe1a5b81f526b18d6d57bd3b); this later documentation update does not move that tag. Exact source takes precedence over prose.
+This is the maintained source-owner map for **`0.15.0-beta.1`**, based on remote `b3fe1063d11a198acb225f7698a6bad65d29bf1f` plus Memory Plans02–05. Exact source and verified receipts take precedence over prose. Published beta.0 remains at `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`; the new source candidate is not a Windows activation or release publication.
 
-[Documentation index](README.md) · [Source release notes](releases/0.15.0-beta.0.md) · [Historical codebase record](archive/CODEBASE-2026-10-09.md)
+[Documentation index](README.md) · [Candidate notes](releases/0.15.0-beta.1.md) · [Historical codebase record](archive/CODEBASE-2026-10-09.md)
 
 ## Source and acceptance status
 
 | Scope | Established state | Remaining boundary |
 | --- | --- | --- |
-| Shared Core, Native chat, Learning, Skills, machine/code/web/phone owners | Implemented in source; earlier scoped acceptance records retained | Configuration, grants, and live readiness are instance-specific |
-| External MCP image inspection | Implemented; external-controller acceptance reported in preceding work | No Native multimodal or paid-model accuracy claim |
-| Memory 01 filtered semantic retrieval | Source implemented; offline verification recorded | Further acceptance explicitly postponed by the user |
-| Unified Workflows | Source implemented; [isolated Windows/WebView2 functional PASS](verification/workflows-windows-functional-2026-10-09.md) on `f22e6e4` plus a documented test-only launcher wrapper | Production activation, pointer-drag pan, security and exact subscription-count checks remain unverified |
-| Memory 02–11; adaptive parallel execution | Proposed only | Implementation not started |
-| Production Windows installation | Last reported `0.14.0`; untouched by the isolated test | `0.15.0-beta.0` production installation and acceptance not established |
+| Shared Core, Native chat, Learning, Skills and tool owners | Existing source and scoped historical acceptance retained | Instance-specific configuration/grants |
+| Image inspection | Earlier external-controller acceptance | No paid-model accuracy claim |
+| Memory01 + Workflows | [Directed Windows functional acceptance closed](verification/memory01-windows-functional-2026-10-10.md) | Historical scoped results, not acceptance of later source |
+| Memory02–04; Memory05 | Plans02–05 independently reviewed; scoped offline gates passed | Windows integration and acceptance; Plan04 provider/data/cost gate |
+| Memory06–11; adaptive parallel execution | Proposed only | Implementation not started |
+| Windows portable beta.0 | Published exact-tag runtime; packaged Core smoke verified | Full fresh-machine/second-GUI acceptance not claimed |
 
-This refresh performs source/documentation review, not new native runtime acceptance. Previous user/controller acceptance reports retain their original scope. Published releases, source version, packaged binaries, and the running process are separate facts. The full dated history is preserved in the [historical snapshot](archive/CODEBASE-2026-10-09.md).
+Published source, packaged binary, installed process and model/provider quality remain separate facts. The full dated history remains in the archive.
 
 ## Composition and lifecycle
 
@@ -77,13 +77,24 @@ See [SECURITY.md](../SECURITY.md) and [AGENTS.md](../AGENTS.md).
 
 The engine lives under [`SubProject/agent-core-memory`](../SubProject/agent-core-memory/README.md). [`src/mcp/memory-experience-tools.ts`](../src/mcp/memory-experience-tools.ts) exposes controller-scoped adapters when supplied with the experience service. Source checkout, compilation, and package version changes do not perform migration or activation.
 
-### Memory 01: filtered semantic retrieval
+### Memory01–04 retrieval and host binding
 
-The engine's [`index.ts`](../SubProject/agent-core-memory/src/memory/index.ts) validates the complete canonical corpus, then restricts semantic vectors to unique eligible IDs with matching fingerprints. Empty or invalid subsets do not embed a query. Existing full-corpus calls remain compatible.
+[Memory01 Windows functional acceptance](verification/memory01-windows-functional-2026-10-10.md) is closed for its directed installation. Later source candidates do not inherit that acceptance automatically.
 
-[`service.ts`](../SubProject/agent-core-memory/src/memory/service.ts) re-snapshots candidates before controller ranking and fails stale revisions with `MEMORY_CURSOR_STALE`. Query embedding runs after releasing the filesystem lock. Existing ranking weights, thresholds, and index-format/provider contracts remain unchanged.
+- **Plan01:** engine `index.ts` validates the full canonical corpus and returns vectors only for eligible unique records; `service.ts` checks canonical revision races before ranking and releases filesystem locks before embedding.
+- **Plan02:** `MemoryService.controller(scope, policy)` defaults to `baseline-v1`; host-only `fusion-feedback-v1` uses existing fusion and eligible feedback with neighbor expansion zero. Backend rank returns results plus a policy/feedback/semantic revision. `controller-session.ts` binds pagination to that revision and ID/score ordering; mutable exposure counters are excluded. Candidate ranking is opt-in, not a default rollout or evidence of gain.
+- **Plan03:** [`memory-scope.ts`](../src/mcp/memory-scope.ts) and the MCP/Learning adapters bind explicit task episodes to authenticated credential owner and registered workspace identity. External v2 envelopes require `scope: {taskId}`; task selectors are references, not permission. Native task/workspace remains host supplied. Missing, foreign, unbound, drifted or degraded bindings fail closed before the engine. Legacy Memory APIs remain separate. Memory-v2 task interleaving does not make Learning attribution concurrent: start/activate, calls/hooks and Learning finalization for a task must remain serialized in each Learning session namespace.
+- **Plan04:** shared `semantic-document.ts` renders title, content and the existing narrow metadata allowlist with deterministic CRLF/trim handling. `SEMANTIC_DOCUMENT_VERSION=2` and derived index format3 bind title/document/experience inputs to cache fingerprints. Old format2 vectors are not reused; access counters do not invalidate embeddings. Provenance paths, evidence payloads and arbitrary metadata are not swept into provider text. Canonical data/schema is unchanged.
 
-The [implementation plan](plans/2026-10-09-memory-01-filtered-semantic-retrieval.md) records offline checks, including 537 Memory tests and a root build. These are prior scoped results; the user explicitly postponed further Memory 01 acceptance. The Workflows test does not establish Memory retrieval quality or authorize migration/testing of the active Memory engine. [Plans 02–11](plans/README.md) are separate, unimplemented proposals.
+**Operational gate:** initialization can rebuild an old index automatically. A production upgrade to Plan04 therefore requires corpus-volume, provider, transmitted-data and cost approval before restart; a build/test/push does not satisfy that gate. All implementation fixtures use fake embedding and isolated synthetic stores. Old cursors may become stale and must be restarted explicitly; never force a previous cursor to resume against changed ranking state.
+
+### Plan05 offline outcome evaluation
+
+[`outcome-contract.ts`](../src/learning/outcome-contract.ts), [`outcome-evaluation.ts`](../src/learning/outcome-evaluation.ts) and [`outcome-verifier.ts`](../src/learning/outcome-verifier.ts) define the strict suite/observation contract, paired comparison and independently recomputed artifact oracle. [`memory-outcome-eval.mjs`](../scripts/verify/memory-outcome-eval.mjs) and its adapter exercise isolated synthetic experience-v2 stores, frozen baseline/candidate artifacts, explicit use receipts and evidence references. [`package-memory-outcome.mjs`](../scripts/verify/package-memory-outcome.mjs) supplies sanitized manifest-backed ZIP packaging and fresh-extraction checks.
+
+The fixture has 4 development and 12 held-out cases; 3 conditions (`off`, `current`, `candidate`) across 2 trusted scope labels produce 72 scripted comparison runs. `native`/`external` labels exercise scope contracts, not real controller/model sessions. Scripted tool counters are harness/owner operations. No reasoning gain, provider quality or performance benefit is established; efficiency benchmarking is deferred. The final scoped gate passed 208/208 tests and independent review found no remaining blockers; Windows and live-model acceptance remain separate. The [live entry point](../scripts/verify/memory-outcome-live.mjs) remains fail-closed with zero inference requests until trusted controller integration and provider/data/cost/time authorization exist. The historical user-stopped evaluator is not resumed.
+
+Engineering artifact checks in both Core and standalone Learning no longer execute JavaScript through `node:vm`. Mirrored, equality-tested `outcome-safe-engineering.ts` helpers interpret bounded numeric expressions and exact certified fixture templates; unsupported JavaScript fails closed. Workflow verifier revision `v2-declarative` requires older v1 reports to be reverified. This is a deliberate security compatibility reduction, not a general JavaScript sandbox.
 
 ### Learning and Skills
 
@@ -104,7 +115,7 @@ Metadata-only views are scoped and expire. Grants are rechecked on invocation; i
 - [`renderer.ts`](../src/workflows/renderer.ts) supplies bounded diagram metadata to a pinned offline Archify renderer with a stripped environment and restricted filesystem access. [Vendor provenance and modifications](../vendor/archify/README.agent-core.md) describe the narrow integration.
 - `GET /agent/workflows` returns cached state through the existing loopback/UI-token route. [`WorkflowsPage.tsx`](../src/ui/src/WorkflowsPage.tsx) polls while mounted and displays a single System + Memory canvas in an `allow-scripts`-only sandbox with network-blocking CSP.
 
-The map shows static dependency evidence, not complete call flow or live execution. C# dependency semantics and unresolved/dynamic imports remain explicit limitations. Dense layouts may have crossing edges. The [Windows/WebView2 report](verification/workflows-windows-functional-2026-10-09.md) records functional PASS for an isolated `f22e6e4` test candidate: sidebar navigation, one System + Memory canvas, focus/search/zoom, scroll-based viewport movement, source refresh, stale/initial-error recovery, restoration, and graceful teardown. The launcher used three documented test-only isolation changes, so this is not acceptance of an unmodified production launcher or the later release commit. Pointer-drag pan, HTTP security, exact subscription counts, and production activation were not established. See the [implementation and acceptance plan](plans/2026-10-09-unified-workflows.md).
+The map shows static dependency evidence, not complete call flow or live execution. C# dependency semantics and unresolved/dynamic imports remain explicit limitations. Dense layouts may have crossing edges. The [2026-10-09 isolated report](verification/workflows-windows-functional-2026-10-09.md) preserves its original candidate, test-only launcher wrapper and limitations. The later [2026-10-10 directed Windows report](verification/memory01-windows-functional-2026-10-10.md) establishes the production current System + Memory canvas after cutover and closes scoped Memory01/Workflows functional acceptance. Earlier production-pending wording is historical. This does not establish later Plans02–05 acceptance, pointer-drag pan, all HTTP security/subscription checks, or full fresh-machine GUI acceptance. See the [implementation and acceptance plan](plans/2026-10-09-unified-workflows.md).
 
 ## Build and verification
 
@@ -124,7 +135,7 @@ Focused current-source checks include [image inspection](../tests/image-inspect.
 
 <a id="09-release-intent-and-product-version-integrity"></a>
 
-Root [`package.json`](../package.json), [`src/version.ts`](../src/version.ts), UI package metadata, and launcher display metadata define source/product version. Numeric Windows assembly/file versions follow their platform format. [Release notes](releases/0.15.0-beta.0.md) distinguish `0.15.0-beta.0` source metadata from published artifacts and installed runtime.
+Root [`package.json`](../package.json), [`src/version.ts`](../src/version.ts), UI package metadata, and launcher display metadata define source/product version. Numeric Windows assembly/file versions follow their platform format. [Candidate notes](releases/0.15.0-beta.1.md) distinguish `0.15.0-beta.1` source metadata from the immutable published beta.0 artifacts and installed runtime.
 
 [Pending release intents](../.changeset/README.md) describe unapplied changes; [CHANGELOG.md](../CHANGELOG.md) preserves release history. `release:apply`, packaging, tagging, publishing, deployment, and resident acceptance are distinct operations. This documentation refresh performs none of them.
 

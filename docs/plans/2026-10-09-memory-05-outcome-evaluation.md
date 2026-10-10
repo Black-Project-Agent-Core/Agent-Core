@@ -9,7 +9,7 @@
 
 **Spec:** Spesifikasi tertanam dalam dokumen ini, khususnya bagian kontrak eksperimen dan acceptance.
 
-**Status:** **IMPLEMENTED / FINAL OFFLINE ACCEPTANCE IN PROGRESS** (2026-10-10). Source contains strict frozen contracts, real isolated experience-v2 lifecycle owners, explicit baseline/fusion controller policy adapters, an independent recomputation verifier, exclusive fresh-extraction ZIP packaging, and a fail-closed live entrypoint. No inference or legacy USER-STOPPED continuation was performed. Efficiency benchmarking remains **DEFERRED**. Final build, retained functional reports and bundle replay are being verified before acceptance is recorded.
+**Status:** **IMPLEMENTED / VERIFIED OFFLINE HARNESS** (2026-10-10). Source contains strict frozen contracts, real isolated experience-v2 lifecycle owners, explicit baseline/fusion controller policy adapters, an independent recomputation verifier, exclusive fresh-extraction ZIP packaging, and a fail-closed live entrypoint. No inference or legacy USER-STOPPED continuation was performed. Efficiency benchmarking remains **DEFERRED**. Final build and 208/208 scoped regression/integration tests passed; independent review replayed 124 passing cases. The external delivery ledger binds retained functional reports to the final published source identity. Windows activation and live/model benefit remain separate.
 
 ### Implemented safety and compatibility boundaries
 

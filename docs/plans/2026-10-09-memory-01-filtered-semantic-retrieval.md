@@ -9,7 +9,7 @@
 
 **Spec:** Bagian “Spesifikasi mandiri” dalam file ini.
 
-**Status:** IMPLEMENTED IN ISOLATED SOURCE — local offline verification PASS (537 Memory tests; root build PASS); external-controller acceptance pending. Implementation baseline: `bcdde08f40330f405173bb47a0a2eca06621c135`. Original planning baseline: `c5e3fe970b770aaa5ba3023ea19239f71f53709c`. Tanggal rencana: 2026-10-09 (UTC+7). Checklist below records the original implementation procedure. The local evidence report records commands actually run; external acceptance remains a separate gate. Plan 02 must not begin before the user returns its acceptance report and that report is reviewed.
+**Status:** IMPLEMENTED — scoped Windows functional integration accepted on 2026-10-10. [Reviewed evidence](../verification/memory01-windows-functional-2026-10-10.md) distinguishes cumulative offline tests, actual resident activation, real synthetic MCP and deferred benchmark/provider quality. The user subsequently authorized implementation of Plans 02–05 together. Original checklists below remain historical implementation procedure, not new execution claims.
 
 ## Global Constraints
 

@@ -1,26 +1,26 @@
 # Implementation plans and status
 
-Status reviewed for source prerelease **`0.15.0-beta.0`**, based on implementation commit `f22e6e426d9c8937439763602f986b9fb3243f23`. The published source tag points to `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`; this later status record leaves the tag unchanged. Source completion, verification, publication, and resident acceptance are tracked separately.
+Source candidate **`0.15.0-beta.1`**. Source implementation, offline verification, published artifact and resident acceptance are separate gates. User authorization on 2026-10-10 covers implementation of Plans02–05 together; it does not authorize a provider benchmark or automatic production re-embedding.
 
-[Documentation](../README.md) · [Codebase map](../CODEBASE.md) · [Release notes](../releases/0.15.0-beta.0.md)
+[Documentation](../README.md) · [Codebase](../CODEBASE.md) · [Candidate notes](../releases/0.15.0-beta.1.md)
 
-## Implemented source with remaining acceptance
+## Implemented and accepted predecessor scope
 
-| Plan | Source state | Outstanding acceptance |
+[Memory01](2026-10-09-memory-01-filtered-semantic-retrieval.md) and [Workflows](2026-10-09-unified-workflows.md) have [reviewed Windows functional acceptance](../verification/memory01-windows-functional-2026-10-10.md). Do not repeat closed acceptance without a new regression reason.
+
+## Current source candidate
+
+| Plan | Implemented scope | Rollout boundary |
 | --- | --- | --- |
-| [Memory 01: filtered semantic retrieval](2026-10-09-memory-01-filtered-semantic-retrieval.md) | Implemented; offline Memory checks and root build recorded | Further acceptance explicitly postponed by the user; Plan 02 remains unstarted |
-| [Unified Workflows](2026-10-09-unified-workflows.md) | Implemented; Linux checks plus [isolated Windows/WebView2 functional PASS](../verification/workflows-windows-functional-2026-10-09.md) | Production activation; pointer-drag pan, broader security, exact subscription/non-overlap checks, and deferred benchmarks |
-
-The Windows Workflows result applies to `f22e6e4` plus a three-file test-only launcher wrapper. It does not establish unmodified production launcher acceptance or Memory 01 acceptance. The original implementation checklists describe their recorded workflow. They do not override the status above or prove that a current Windows process loaded these changes.
+| [Memory02](2026-10-09-memory-02-controller-ranking-policy.md) | Host-owned opt-in fusion/feedback and stable revision-bound pagination | Default remains baseline; relevance gain not established |
+| [Memory03](2026-10-09-memory-03-task-workspace-binding.md) | Credential-owner and registered-workspace task binding, explicit v2 selector | External clients must update envelopes; Learning task groups remain serialized |
+| [Memory04](2026-10-09-memory-04-contextual-index.md) | Title-aware document v2 and derived index v3 | Automatic startup re-embedding needs provider/data/volume/cost approval |
+| [Memory05](2026-10-09-memory-05-outcome-evaluation.md) | Isolated deterministic outcome harness and evidence verification | Synthetic results do not prove model benefit; live gate remains separate |
 
 ## Proposed, not implemented
 
 | Plan | Intended change |
 | --- | --- |
-| [Memory 02](2026-10-09-memory-02-controller-ranking-policy.md) | Controller ranking policy |
-| [Memory 03](2026-10-09-memory-03-task-workspace-binding.md) | Host-validated task/workspace binding |
-| [Memory 04](2026-10-09-memory-04-contextual-index.md) | Contextual index representation |
-| [Memory 05](2026-10-09-memory-05-outcome-evaluation.md) | End-to-end outcome evaluation |
 | [Memory 06](2026-10-09-memory-06-query-evidence-excerpts.md) | Query-focused evidence excerpts |
 | [Memory 07](2026-10-09-memory-07-passage-retrieval.md) | Derived passage-level retrieval |
 | [Memory 08](2026-10-09-memory-08-query-embedding-cache.md) | Bounded volatile query embedding cache |
@@ -28,6 +28,7 @@ The Windows Workflows result applies to `f22e6e4` plus a three-file test-only la
 | [Memory 10](2026-10-09-memory-10-relevance-abstention.md) | Relevance abstention |
 | [Memory 11](2026-10-09-memory-11-code-identifier-retrieval.md) | Exact/subword code identifier retrieval |
 | [Adaptive parallel tool execution](2026-10-09-adaptive-parallel-tool-execution.md) | Capacity-aware coordination for independent tool work |
+
 
 ## Evidence and execution rules
 

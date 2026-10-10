@@ -54,3 +54,7 @@ The observed graph had 359 source files, 41 nodes, 174 static import edges, and 
 ## Follow-through
 
 The current integration handoff covers the Workflows delta from `3774a44` to `f22e6e4` plus published source-version metadata from `23fdca4`. Preserve unrelated local changes and the active Memory engine/data. Do not migrate or test Memory 01 under this Workflows scope. Production integration, build activation, and functional readback remain separate pending outcomes; do not present this isolated functional PASS as their completion.
+
+## Subsequent production acceptance
+
+The [2026-10-10 report review](memory01-windows-functional-2026-10-10.md) closes scoped production Workflows acceptance and the launcher provenance discrepancy. Earlier pending states above describe the isolated candidate at that time.
