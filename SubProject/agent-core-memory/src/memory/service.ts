@@ -23,14 +23,14 @@ import { hashMemoryRetrievalQuery, memoryRecordFingerprint, MemoryRetrievalLedge
 import { buildMemoryTransferPayload, planMemoryImport, type MemoryImportOptions } from './transfer.js';
 import { memoryRetirementFingerprint } from './retirement.js';
 import { RETENTION_PARAMS, scoreMemoryRetention } from '../learning/retention-score.js';
-import { IDENTIFIER_TOKENIZER_VERSION } from './identifier-tokenizer.js';
+import { IDENTIFIER_TOKENIZER_VERSION, lexicalRetrievalTokens } from './identifier-tokenizer.js';
 import { searchMemories, type MemorySearchOptions, type MemorySearchResult } from './retrieval.js';
 import { projectMemorySearchResults, type DeliveredMemorySearchResult } from './search-projection.js';
 import { FileMemoryStore } from './store.js';
 import { isMemoryExpired, normalizeMemoryExpiresAt } from './visibility.js';
 import { MEMORY_SCHEMA_VERSION, type EvolutionEvent, type MemoryHealth, type MemoryIssue, type MemoryLink, type MemoryProvenance, type MemoryRecord } from './types.js';
 
-export interface MemoryServiceOptions {experience?:{enabled:true};consolidation?:ConsolidationPolicy}
+export interface MemoryServiceOptions {experience?:{enabled:true};consolidation?:ConsolidationPolicy;indexGranularity?:'record'|'passage'}
 
 /** Host-owned rollout policy; public recall input cannot select ranking or feedback. */
 export type ControllerRetrievalPolicy = 'baseline-v1' | 'fusion-feedback-v1';
@@ -191,8 +191,9 @@ export class MemoryService {
     private readonly embedder: MemoryEmbedder | undefined,
     private readonly projectRoot: string,
     private readonly consolidation:ConsolidationPolicy = {},
+    indexGranularity: 'record' | 'passage' = 'record',
   ) {
-    this.index = new MemoryIndex(store.paths, embedder);
+    this.index = new MemoryIndex(store.paths, embedder, { granularity: indexGranularity });
     this.feedbackStore = new MemoryFeedbackStore(store.paths);
     this.retrievalLedger = new MemoryRetrievalLedger(store.paths);
     this.intelligence = embedder ? new EmbeddingMemoryIntelligence(this.index) : undefined;
@@ -233,6 +234,7 @@ export class MemoryService {
           .sort((a,b) => Number(b.pinned)-Number(a.pinned) || a.id.localeCompare(b.id));
       }),
       rank: async (records, query, rankingTime) => {
+        lexicalRetrievalTokens(query, 'query');
         // Validate against a complete canonical snapshot, then release the store
         // lock before the network-capable query embedder is invoked.
         const canonicalRecords = await this.store.snapshot(async loaded => {
@@ -286,6 +288,7 @@ export class MemoryService {
       embedder,
       path.resolve(baseDir),
       options.consolidation,
+      options.indexGranularity,
     );
     try {
       const loaded = await service.store.initialize();
@@ -1167,6 +1170,7 @@ export class MemoryService {
     options = { ...options, ...(options.workspace ? { workspace: this.resolveWorkspace(options.workspace) } : {}) };
     const normalizedQuery = query.trim();
     if (!normalizedQuery) throw new Error('Memory search query is required');
+    lexicalRetrievalTokens(normalizedQuery, 'query');
     const attemptId = randomUUID().replaceAll('-', '');
     const startedAt = new Date().toISOString();
     const startedMs = Date.now();
@@ -1214,7 +1218,9 @@ export class MemoryService {
       const searchOptions: MemorySearchOptions = options.rankingProfile === 'fusion'
         ? { ...options, feedbackSalience: await this.feedbackSalienceMap() }
         : options;
-      const rankedResults = searchMemories(activeRecords, normalizedQuery, searchOptions, semanticContext);
+      // Scope was resolved against the host alias registry above. Rank canonical
+      // records so exact passage revisions are not changed by display normalization.
+      const rankedResults = searchMemories(semanticEligible, normalizedQuery, { ...searchOptions, workspace: undefined }, semanticContext);
       for (const result of rankedResults) {
         if (result.record.pinned) continue;
         try {
