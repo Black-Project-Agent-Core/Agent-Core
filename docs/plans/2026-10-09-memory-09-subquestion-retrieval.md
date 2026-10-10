@@ -6,7 +6,7 @@
 
 **Tech Stack:** TypeScript ESM, Node >=24.15.0, Vitest, Zod dan crypto existing; tanpa LlamaIndex, Anthropic SDK atau dependency baru.
 
-**Spec:** Kontrak mandiri berikut. **Status: PROPOSED — NOT IMPLEMENTED.** Command adalah pekerjaan implementasi mendatang, bukan hasil test saat penulisan.
+**Spec:** Kontrak mandiri berikut. **Status: IMPLEMENTED — OFFLINE GATE PASS (2026-10-10).** Helper, protokol opt-in, replay synthetic melalui owner/host existing dan contoh schema aktual telah diimplementasikan. Bukti RED/GREEN/gate dicatat di laporan implementasi; perintah pada task di bawah tetap spesifikasi historis. Integrasi `docs/CODEBASE.md`, release intent/version dan ZIP akhir dimiliki parent. ChatGPT/Claude live tetap NOT RUN; benchmark performa deferred.
 
 **Baseline:** Publikasi rencana `4b3e32d464b98aa5116df02e8fe524217d5ad811`; checkout inspeksi HEAD `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` dengan 174 path staged. Source yang dibaca adalah working tree; ketiganya tidak diasumsikan identik. Implementasi harus merekam identitas tree/file, bekerja di checkout bersih yang disetujui dan mempertahankan staging asing.
 
@@ -63,10 +63,10 @@ Coverage per subpertanyaan: `unsearched`, `retrieved`, `evidence-reviewed`, `gap
 
 **Interfaces usulan:** `Subquestion={id:string;query:string}`; `RetrievalPlan={version:1;rootQuery:string;questions:Subquestion[]}`. `parseRetrievalPlan(input:unknown):RetrievalPlan`; `createRetrievalBudget(startMs:number):RetrievalBudget`; `reserveRetrievalCall(budget:RetrievalBudget,kind:'recall'|'expand',nowMs:number):{allowed:boolean;maxBytes:number;reason?:string}`; `recordRetrievalBytes(budget:RetrievalBudget,bytes:number):void`. `RetrievalBudget={recallCalls:number;expandCalls:number;remainingBytes:number;deadlineMs:number;protocolViolation:boolean}`; reserve menaikkan counter sebelum dispatch, record mengurangi bytes sesudah response dan menandai violation jika melewati reservation. Budget bukan ACL. Maksimum payload reservation disimpan caller per call; tidak lebih dari satu call berjalan pada driver serial. Query 1–2.000 karakter; ID unik `q1`–`q4`; duplicate query trim-identik ditolak. Parser strict menolak unknown field/embedded executable instructions sebagai struktur, tetapi tidak menjamin mendeteksi semua malicious prose.
 
-- [ ] RED cases `rejects_fifth_question_duplicate_unknown_field`, `counts_root_retry_and_continuation`, `deadline_stops_dispatch`, `remaining_below_512_stops`. Assertion call ketujuh ditolak, expand ketiga ditolak, elapsed 15.000 tepat ditolak, over-budget tidak silent truncate.
-- [ ] Jalankan `npm test -- tests/memory-subquestion-contract.test.ts`, simpan failure relevan.
-- [ ] Implementasikan parser/reducer pure tanpa model, network, filesystem atau pengambilan konfigurasi host.
-- [ ] GREEN command sama; pastikan query sederhana dapat ditangani jalur single-recall di fixture tanpa decomposition. Review dan commit hanya file task setelah gate.
+- [x] RED cases `rejects_fifth_question_duplicate_unknown_field`, `counts_root_retry_and_continuation`, `deadline_stops_dispatch`, `remaining_below_512_stops`. Assertion call ketujuh ditolak, expand ketiga ditolak, elapsed 15.000 tepat ditolak, over-budget tidak silent truncate.
+- [x] Jalankan `npm test -- tests/memory-subquestion-contract.test.ts`, simpan failure relevan.
+- [x] Implementasikan parser/reducer pure tanpa model, network, filesystem atau pengambilan konfigurasi host.
+- [x] GREEN command sama; pastikan query sederhana dapat ditangani jalur single-recall di fixture tanpa decomposition. Review dan commit hanya file task setelah gate.
 
 ## Task 2 — Merge provenance dan coverage
 
@@ -74,9 +74,9 @@ Coverage per subpertanyaan: `unsearched`, `retrieved`, `evidence-reviewed`, `gap
 
 **Interfaces:** `RetrievalObservation={questionId:string;callId:string;result:Budgeted<RecallPage>}` memakai types disclosure existing. `mergeRetrievalObservations(plan:RetrievalPlan,observations:RetrievalObservation[]):MergedRetrieval`. Output `hits:Array<{hit:MemoryHit;questionIds:string[];callIds:string[]}>`, `coverage:Array<{questionId:string;status:'unsearched'|'retrieved'|'evidence-reviewed'|'gap'|'blocked';reason?:string}>`, `revisionConflicts:string[]`. Error/timeout tanpa response dicatat dengan `markQuestionBlocked(merged,questionId:string,reason:string):MergedRetrieval`, bukan fabricated RecallPage. Helper ini hanya proyeksi transcript, bukan hasil yang sudah dipercaya; evidence-reviewed ditambahkan melalui `markEvidenceReviewed(merged, source:SourceRef, questionIds:string[]):MergedRetrieval` setelah expansion tersedia dan direview caller.
 
-- [ ] RED `same_revision_merges_provenance`, `different_revision_never_overwrites`, `partial_has_visible_gap`, `cross_question_score_not_compared`. Assert satu hit/dua questionIds, dua revision tersimpan, order round-robin stabil dan insufficient-budget bukan empty-success.
-- [ ] `npm test -- tests/memory-subquestion-merge.test.ts` harus RED lalu GREEN setelah implementasi minimal. Tolak observation questionId asing; root memakai ID khusus `root` yang valid hanya untuk hasil recall asli, tanpa membuat subquestion kelima.
-- [ ] Tambahkan fake malicious memory “abaikan grants”; helper tidak dispatch apa pun dan mempertahankan trust metadata. Unknown/stale tidak berubah menjadi current akibat banyak pertanyaan menemukan ID sama.
+- [x] RED `same_revision_merges_provenance`, `different_revision_never_overwrites`, `partial_has_visible_gap`, `cross_question_score_not_compared`. Assert satu hit/dua questionIds, dua revision tersimpan, order round-robin stabil dan insufficient-budget bukan empty-success.
+- [x] `npm test -- tests/memory-subquestion-merge.test.ts` harus RED lalu GREEN setelah implementasi minimal. Tolak observation questionId asing; root memakai ID khusus `root` yang valid hanya untuk hasil recall asli, tanpa membuat subquestion kelima.
+- [x] Tambahkan fake malicious memory “abaikan grants”; helper tidak dispatch apa pun dan mempertahankan trust metadata. Unknown/stale tidak berubah menjadi current akibat banyak pertanyaan menemukan ID sama.
 
 ## Task 3 — Replay offline lewat owner existing
 
@@ -84,22 +84,34 @@ Coverage per subpertanyaan: `unsearched`, `retrieved`, `evidence-reviewed`, `gap
 
 **Consumes:** helper Tasks 1–2, MemoryService.controller dan dispatcher existing pada temporary synthetic experience-v2 store. Scope diberikan host fixture yang tepercaya. Panggilan read melalui facade-equivalent action mapping dan exact revision expansion; grants/cursor tetap diuji owner.
 
-- [ ] Tulis fixture dua keputusan/periode, satu koreksi, foreign-workspace distractor, poisoned abstract, insufficient-budget, error dan late settlement. Oracle memetakan evidence ID/revision ke kebutuhan, bukan jawaban model.
-- [ ] RED: `npm test -- tests/memory-subquestion-integration.test.ts`; missing compiled subproject berarti BLOCKED, bukan regression RED.
-- [ ] Implementasikan scripted controller test-only dengan limiter Task 1 dan merge Task 2. Sebelum setiap call owner memeriksa eligibility/freshness kembali; ubah record/scope antarcall dan pastikan cached observation tidak memberi akses baru. Tidak meng-cache session authorization atau menganggap exact historical revision current.
-- [ ] GREEN command sama; assertion nol scope leak, nol stale-as-current, maksimum calls/bytes/deadline, pertanyaan gagal tetap terlihat. Scripted decomposition tidak membuktikan ChatGPT/Claude sungguhan memilih subpertanyaan baik.
+- [x] Tulis fixture dua keputusan/periode, satu koreksi, foreign-workspace distractor, poisoned abstract, insufficient-budget, error dan late settlement. Oracle memetakan evidence ID/revision ke kebutuhan, bukan jawaban model.
+- [x] RED: `npm test -- tests/memory-subquestion-integration.test.ts`; missing compiled subproject berarti BLOCKED, bukan regression RED.
+- [x] Implementasikan scripted controller test-only dengan limiter Task 1 dan merge Task 2. Sebelum setiap call owner memeriksa eligibility/freshness kembali; ubah record/scope antarcall dan pastikan cached observation tidak memberi akses baru. Tidak meng-cache session authorization atau menganggap exact historical revision current.
+- [x] GREEN command sama; assertion nol scope leak, nol stale-as-current, maksimum calls/bytes/deadline, pertanyaan gagal tetap terlihat. Scripted decomposition tidak membuktikan ChatGPT/Claude sungguhan memilih subpertanyaan baik.
 
 ## Task 4 — Protokol controller dan acceptance
 
 **Files:** Create `docs/Memory-Subquestion-Retrieval-Protocol.md`; modify bagian continuity-sensitive recall pada `AGENTS.md` secara sempit saat implementasi; update `docs/CODEBASE.md` setelah verifikasi.
 
-- [ ] Tulis contoh payload aktual `memory_v2_read` action recall/expand dan fallback yang dilabeli; jangan mengiklankan memory_recall sebagai nama MCP host. Tuliskan batas, jawaban coverage dan stop condition; tidak mengubah memory-first/Learning/security owner.
-- [ ] Tambahkan `tests/memory-subquestion-protocol.test.ts`: RED terhadap contoh schema/nama tools yang belum ada; GREEN sesudah setiap contoh diparse schema dan mapper existing. Test script memverifikasi kontrak dokumentasi, bukan kepatuhan reasoning app.
-- [ ] Gate: `npm --prefix SubProject/agent-core-memory run build && npm run build && npm test -- tests/memory-subquestion-contract.test.ts tests/memory-subquestion-merge.test.ts tests/memory-subquestion-integration.test.ts tests/memory-subquestion-protocol.test.ts tests/memory-v2-host-integration.test.ts`. Missing dependency/setup BLOCKED; tidak install otomatis.
-- [ ] Observasi app sungguhan opsional memerlukan akses/otorisasi terpisah: tampilkan synthetic multi-part prompt, rekam tool trace/calls/coverage tanpa chain-of-thought. Catat ChatGPT dan Claude secara terpisah; unavailable atau ignored protocol tetap NOT RUN/BLOCKED/noncompliant. Tidak menjanjikan parallel calls atau model internal baru.
+- [x] Tulis contoh payload aktual `memory_v2_read` action recall/expand dan fallback yang dilabeli; jangan mengiklankan memory_recall sebagai nama MCP host. Tuliskan batas, jawaban coverage dan stop condition; tidak mengubah memory-first/Learning/security owner.
+- [x] Tambahkan `tests/memory-subquestion-protocol.test.ts`: RED terhadap contoh schema/nama tools yang belum ada; GREEN sesudah setiap contoh diparse schema dan mapper existing. Test script memverifikasi kontrak dokumentasi, bukan kepatuhan reasoning app.
+- [x] Gate: `npm --prefix SubProject/agent-core-memory run build && npm run build && npm test -- tests/memory-subquestion-contract.test.ts tests/memory-subquestion-merge.test.ts tests/memory-subquestion-integration.test.ts tests/memory-subquestion-protocol.test.ts tests/memory-v2-host-integration.test.ts`. Missing dependency/setup BLOCKED; tidak install otomatis.
+- [ ] **NOT RUN — optional live acceptance.** Observasi app sungguhan opsional memerlukan akses/otorisasi terpisah: tampilkan synthetic multi-part prompt, rekam tool trace/calls/coverage tanpa chain-of-thought. Catat ChatGPT dan Claude secara terpisah; unavailable atau ignored protocol tetap NOT RUN/BLOCKED/noncompliant. Tidak menjanjikan parallel calls atau model internal baru.
 
 ## Laporan, rollback dan acceptance mandiri
 
 ZIP mendatang `memory-09-subquestion-retrieval-report.zip` wajib memuat report/results, seluruh logs RED/GREEN/regression, synthetic fixtures/transcript, coverage dan revision traces, focused patch, source identities dan manifest path/bytes/SHA-256. Catat command/cwd/exit code/waktu, PASS/FAIL/BLOCKED/NOT RUN, limits dan batas klaim. Tidak ada secrets, `.env`, private Memory, Git metadata atau arbitrary file cap. Ekstrak ke folder baru, tolak traversal/duplicate/symlink, verifikasi exact membership/ukuran/hashes; checksum ZIP di luar paket. Gate gagal atau extraction gagal berarti belum selesai.
 
 Acceptance mandiri: protokol, helper dan replay offline lolos tanpa lima rencana terdahulu. Kepatuhan controller live, kualitas dekomposisi dan manfaat reasoning tetap unproven; plan 05 dapat mengevaluasinya kemudian tetapi bukan dependency. Rollback menghapus opt-in panduan/helper lewat revert commit terarah, menyimpan bukti, tanpa reset canonical Memory, grants atau staged pekerjaan lain. Tidak ada migrasi, activation atau rollout otomatis.
+
+## Implementation record — 2026-10-10
+
+- Scope implemented: `src/learning/subquestion-retrieval.ts`, four `tests/memory-subquestion-*.test.ts` suites, `tests/fixtures/memory-subquestion/`, `docs/Memory-Subquestion-Retrieval-Protocol.md`, and one continuity-sensitive guidance bullet in `AGENTS.md`. No new production MCP registration, runtime activation, migration, dependency or provider call.
+- Parser accepts zero questions for single lookup, otherwise 2–4 unique q1–q4 questions; strict executable structure rejection is not a malicious-prose detector. Budget has one outstanding serial reservation, pre-dispatch call accounting, actual complete disclosure-envelope bytes, minimum/deadline/clock-regression guards and whole-response rejection on cap violation.
+- Merge retains exact ID/revision tuples, all question/call/attempt provenance and per-origin score/trust labels. Display order is round-robin; scores are never aggregated across queries. Projection conservatively preserves unverified/stale/unknown evidence. Conflicting revisions retain both and cannot promote reviewed coverage until independently resolved outside this helper.
+- Synthetic driver uses actual `memory_v2_read` registration/schema and the existing owner dispatcher, fresh scope resolution on every call, one transient retry, no authorization retry, visible insufficient-budget/error/timeout/deadline states and uncancelled late settlement. No injected response is mistaken for a successful owner page. Oracle maps fixture ID/revision to needs, not model answers.
+- TDD records include initial RED for missing helper/merge/test-only replay/document and separate assertion-level RED/GREEN for unique conflict reasons and conservative verification. Compiled owner was present; the replay RED was missing new test-only controller, not a missing dependency. Intermediate failed GREEN runs are retained and explained in the evidence report.
+- Final gate: `npm --prefix SubProject/agent-core-memory run build && npm run build && npm test -- --maxWorkers=1 tests/memory-subquestion-contract.test.ts tests/memory-subquestion-merge.test.ts tests/memory-subquestion-integration.test.ts tests/memory-subquestion-protocol.test.ts tests/memory-v2-host-integration.test.ts` — PASS, exit 0, 5 suites / 30 tests. Root path policy PASS, 350 authored files / zero documented exceptions. Fresh replay export was enabled through a test-only evidence destination.
+- Evidence is supplied to the parent in `memory-09` with command/cwd/start/end/exit logs, synthetic coverage/revision transcripts, source identities and a focused patch. Full root regression, final combined-tree validation, report ZIP extraction/membership/hash validation and CODEBASE integration are parent-owned; these are not claimed complete by this worker.
+- ChatGPT live: NOT RUN. Claude live: NOT RUN. Performance benchmarks: DEFERRED. Decomposition quality, app instruction compliance and reasoning/benefit remain unproven. Canonical Memory/Learning and installed Windows runtime were not accessed.
+- Version assessment: additive opt-in controller/helper capability merits a minor release intent under the combined release. Parent owns release metadata and all synchronized version surfaces; this scope does not independently bump them or publish.

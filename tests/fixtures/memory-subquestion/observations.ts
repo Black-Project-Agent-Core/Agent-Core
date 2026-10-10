@@ -1,0 +1,4 @@
+import type {Budgeted,MemoryHit,RecallPage} from '../../../SubProject/agent-core-memory/dist/memory/disclosure.js';
+export const digest=(letter:string)=>'sha256:'+letter.repeat(64);
+export function hit(id:string,revision=digest('a'),score=1):MemoryHit {return {id,revision,title:id,retention:'active',epistemic:'fact',temporal:'dynamic',verification:'unverified',applicability:'unknown',freshness:'unknown',availableViews:['record'],score,retrievalEvidence:{attemptId:'attempt-'+id,contentDigest:digest('b'),recordFingerprint:digest('c')}};}
+export function page(hits:MemoryHit[],partial=false):Budgeted<RecallPage> {return {status:partial?'partial':'ok',data:{snapshot:digest('d'),hits,archiveSearchAvailable:true,completeness:partial?'partial':'complete',...(partial?{nextCursor:'synthetic-cursor'}:{})},metrics:{payloadBytes:200,estimatedTokens:50,tokenEstimator:'unicode-codepoints/4-v1'},warnings:['memory-is-advisory']};}
