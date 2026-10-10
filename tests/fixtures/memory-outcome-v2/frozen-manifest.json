@@ -1,0 +1,134 @@
+{
+  "version": "memory-outcome-frozen/v2",
+  "suiteDigest": "sha256:8958284b7dbf7c624cc6816f3e9fab266d7b9d65652d7967131db60ffe91a6e0",
+  "cases": [
+    {
+      "id": "dev-engineering-relevant-reuse",
+      "partition": "development",
+      "inputDigest": "sha256:ff3dffcb86629e7af628c1197b60624a046a1051e0701dd9957c3a74dfc6d7e2",
+      "oracleDigest": "sha256:0102389f2ac0180a0e09e4587d01bb809911ad9cdc23221cfb2c68fe91f50258",
+      "seedDigest": "sha256:1f4012ea293bd8895e610489e75fef9252640eed9952c2f321e9cd254f67468b",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "dev-engineering-irrelevant",
+      "partition": "development",
+      "inputDigest": "sha256:1d7d58be2058c093c70398624892c83c47d38b81c41b764046350b77078b8740",
+      "oracleDigest": "sha256:041ff0ccaf2b10fb886cb4252879225f9e90aaee45d95e0b2159fe79af12f9c3",
+      "seedDigest": "sha256:2fce1e904f33f4aa38b1b9a685f2fc03086e81997b753ccf192ff08ef1d039bf",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "dev-research-relevant-reuse",
+      "partition": "development",
+      "inputDigest": "sha256:052f81c4b3e3af248bef27d1bec476a2a80e1490a517cff28928b9f8358628e6",
+      "oracleDigest": "sha256:dd8e11928e7e3f2e82d5785d17763f4f3053c480019edf1c9fce5ae232fc933e",
+      "seedDigest": "sha256:e7e1541cadea56f4ebf54378a52a784282895258e6cde3cb1d060ec5a4115271",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "dev-research-irrelevant",
+      "partition": "development",
+      "inputDigest": "sha256:293b5ee0993c19fb47aa1ebb3fc2ce702528c4ecba65e793cd31121f8b621fe0",
+      "oracleDigest": "sha256:6bc256e4e571f783294602be4f014327cc5c495f099a31cd4e7243f049e49b9b",
+      "seedDigest": "sha256:1356ba3959e532fd9082f8603e2ed9c42f3b50b6cc7a29bd0693853120b8ab1f",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-engineering-relevant-reuse",
+      "partition": "heldout",
+      "inputDigest": "sha256:daef62b6446328509e8926f2674fa9d01a07e7cf79d8d46e04222e3cc0635fdc",
+      "oracleDigest": "sha256:cedeadfc2e1a3cc28fa4a47ba3f8eb14bf542dd76f0c88fa957a71e53e9d7e0a",
+      "seedDigest": "sha256:1f4012ea293bd8895e610489e75fef9252640eed9952c2f321e9cd254f67468b",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-engineering-irrelevant",
+      "partition": "heldout",
+      "inputDigest": "sha256:8f72a2e2ecd6b660430a96b18fbc0dce4b5b9bbb417779084a4244153dd63398",
+      "oracleDigest": "sha256:67e525e67f4e6097bfcf135efab471f0074ce307b5a675da0631fe2c23af4b3f",
+      "seedDigest": "sha256:2fce1e904f33f4aa38b1b9a685f2fc03086e81997b753ccf192ff08ef1d039bf",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-engineering-stale-evidence",
+      "partition": "heldout",
+      "inputDigest": "sha256:f0df396d69d3b86ed49f545a95f226a408d986b381e6ce729471e2f6098118fb",
+      "oracleDigest": "sha256:243c2a92b4591093d3041e790cc5b27fdfb213c481698c64cf4c2dd0b159dc2d",
+      "seedDigest": "sha256:952e759d416ea16d791eab7beb94f14c2911f877a33a785b19b23b97a530a67e",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-engineering-user-correction",
+      "partition": "heldout",
+      "inputDigest": "sha256:b3275ff0812bcc456c39fc51417c4b46dd1b2e231b721198d130a9020a386f7b",
+      "oracleDigest": "sha256:00f84bf9fe89a96bccce593925175fe84af35114d19b8efeb40ec5581a83c9d4",
+      "seedDigest": "sha256:adabfc30936c38cbbcdecd78e6b83efff47beece97dc0c07717a5665c883ec26",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-engineering-poisoning",
+      "partition": "heldout",
+      "inputDigest": "sha256:4ee09e5bbf7abda9b38c3b965c27117ed4e8a664167b7a7d8bda0d5de6f8a472",
+      "oracleDigest": "sha256:f706ac4e9f39c188430a2d58dc6e6a963567c7b4a70dd4a8b20e205249151502",
+      "seedDigest": "sha256:44a4e51bc34377eb890ecc906f33dbb25c75eeca86c87980a7d4140fc922eba9",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-engineering-restart",
+      "partition": "heldout",
+      "inputDigest": "sha256:3c99e31d18f8150f8866285f7603277cc24e8c33836e7a5324d1e4b6df173895",
+      "oracleDigest": "sha256:d0365bdfff281951606611dff5f533c47d7997b89c8e24e462c8c81b75771bb0",
+      "seedDigest": "sha256:1f4012ea293bd8895e610489e75fef9252640eed9952c2f321e9cd254f67468b",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-research-relevant-reuse",
+      "partition": "heldout",
+      "inputDigest": "sha256:f893ce34a1ec7df6aaa183d236eb5a0189a398ffb23981b0a454a0cba6746617",
+      "oracleDigest": "sha256:fd5f6f506ff01b13537691ceaf4c628d25104002e8805d3dcfbb5fe389e7a149",
+      "seedDigest": "sha256:e7e1541cadea56f4ebf54378a52a784282895258e6cde3cb1d060ec5a4115271",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-research-irrelevant",
+      "partition": "heldout",
+      "inputDigest": "sha256:77437bb44a9cdf16b37cc5d02fd0da30369378cc969a6b796e46fe15075257b6",
+      "oracleDigest": "sha256:d687a45223574f6cfd29728d98a3e5f64e1496aeb5fbe2ea2ec287dc32d029b2",
+      "seedDigest": "sha256:1356ba3959e532fd9082f8603e2ed9c42f3b50b6cc7a29bd0693853120b8ab1f",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-research-stale-evidence",
+      "partition": "heldout",
+      "inputDigest": "sha256:194df715dadfc3371437dfa3451d8dcb961de4a8b43e9a19d69563cc7a1a5138",
+      "oracleDigest": "sha256:d89c1d7759627153e89d66240381e50b34b1daa5d271c07f5c2ee7c6ae038b50",
+      "seedDigest": "sha256:d3cda8e179d9462d4bc92f5da65e721b327d53dadcb99adf4972f373c6001001",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-research-user-correction",
+      "partition": "heldout",
+      "inputDigest": "sha256:b409fc1617fa743996cec66124dafe91522e05108622fe89fc8cf8d599f39e06",
+      "oracleDigest": "sha256:559fa080c4a0abda9b753495e93c98ce938872d9691046c06f519d4bee7a173a",
+      "seedDigest": "sha256:24d2b23152c9255dcd8bc7595ff64f381cedd0fc7180166108a7087ab8e92a47",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-research-poisoning",
+      "partition": "heldout",
+      "inputDigest": "sha256:92c9ae2303e7cc25f0fb105834a450b840c04f4402a079b3275bbfccac4ff6a1",
+      "oracleDigest": "sha256:c4f41780bda3b3cbb2068f2e1d2850d6042b00321908f4a1628b08626394496c",
+      "seedDigest": "sha256:44882ca6202147bb7c9a61f819ac557df2bb75ed4e60bae18d58f3b2e03ac664",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-research-restart",
+      "partition": "heldout",
+      "inputDigest": "sha256:a6ce79641896e7bb5e5f366e844829b2f0c24ccecd758ecad9820e410384eaab",
+      "oracleDigest": "sha256:4b27cfae7775aff90dd7eadc6c7ff2f56347a431a8da6c818d5c0d4b81062583",
+      "seedDigest": "sha256:e7e1541cadea56f4ebf54378a52a784282895258e6cde3cb1d060ec5a4115271",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    }
+  ]
+}
