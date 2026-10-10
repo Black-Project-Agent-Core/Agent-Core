@@ -56,7 +56,7 @@ describe('controller compact disclosure E11–E13', () => {
     expect(hit).toMatchObject({ retention: 'durable', epistemic: 'unknown', temporal: 'unknown', verification: 'unverified', applicability: 'unknown', freshness: 'unknown' });
     expect(JSON.stringify(result)).not.toContain(saved.content);
     expect(JSON.stringify(result)).not.toContain(saved.context);
-    expect(Object.keys(hit).sort()).toEqual(['abstract','applicability','availableViews','epistemic','freshness','id','retention','retrievalEvidence','revision','score','temporal','title','verification'].sort());
+    expect(Object.keys(hit).sort()).toEqual(['abstract','excerpt','applicability','availableViews','epistemic','freshness','id','retention','retrievalEvidence','revision','score','temporal','title','verification'].sort());
   });
 
   it('uses map without body when query is omitted or map is requested', async () => {
@@ -77,9 +77,11 @@ describe('controller compact disclosure E11–E13', () => {
     expect(result.status).toBe('insufficient-budget');
     if (result.status === 'insufficient-budget') expect(result.requiredBytes).toBeGreaterThan(512);
     budget(result, 512);
-    const roomy = await session().recall({ query: 'budget needle', limit: 1, budget: { maxBytes: 8192 } });
+    // Exact excerpt text plus its backward-compatible abstract alias are both
+    // counted. A 6,000-character title is preserved rather than trimmed to fit.
+    const roomy = await session().recall({ query: 'budget needle', limit: 1, budget: { maxBytes: 65536 } });
     expect(roomy.status).not.toBe('insufficient-budget');
-    budget(roomy, 8192);
+    budget(roomy, 65536);
   });
 
   it('keeps exact IDs and whole long titles when a hit cannot fit, instead of silently trimming them', async () => {

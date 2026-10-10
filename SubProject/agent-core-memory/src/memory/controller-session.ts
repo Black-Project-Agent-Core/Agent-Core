@@ -112,7 +112,7 @@ export class ControllerMemorySession {
     const limit = input.limit ?? 5;
     const attemptId = randomUUID().replaceAll('-','');
     const startedAt = new Date().toISOString();
-    const request = disclosureCursorBinding(disclosureDigest(['recall/v1',query,view,retention,...(asOf?[asOf]:[])]));
+    const request = disclosureCursorBinding(disclosureDigest(['recall/v1','evidence-excerpt/v1',query,view,retention,...(asOf?[asOf]:[])]));
     let rankingTime = Date.now();
     if (input.cursor) {
       let previous;
@@ -142,7 +142,7 @@ export class ControllerMemorySession {
       try {assertMemoryDisclosureSafe(JSON.parse(serializeMemoryRecordView(item.record)));}catch{throw new MemoryControllerError('MEMORY_SOURCE_UNAVAILABLE');}
       const temporalItem=temporal?.find(c=>c.record.id===item.record.id);
       const conflicted = temporalItem ? temporalItem.conflicted : records.some(owner => owner.links.some(link => link.type === 'contradicts' && link.targetId === item.record.id && isMemoryLinkActive(link,asOf?Date.parse(asOf):rankingTime)));
-      hits.push(projectMemoryHit(item.record,{ revision:memorySemanticRevision(item.record),view,
+      hits.push(projectMemoryHit(item.record,{ revision:memorySemanticRevision(item.record),view,query,
         ...(item.score !== undefined ? { score:item.score } : {}), applicability:conflicted ? 'conflicted' : temporalItem?.certainty==='known' ? (asOf?'historical':'current') : 'unknown',
         invalidatedBy:temporalItem?.invalidatedBy,freshness:await this.#backend.freshness(item.record),retrievalEvidence:{ attemptId,
           contentDigest:memoryFeedbackContentDigest(item.record),recordFingerprint:memoryRecordFingerprint(item.record.id,item.record.updatedAt) } }));

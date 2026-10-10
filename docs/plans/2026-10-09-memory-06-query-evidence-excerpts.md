@@ -8,7 +8,7 @@
 
 **Spec:** Spesifikasi mandiri dan kontrak di bawah.
 
-**Status: PROPOSED — NOT IMPLEMENTED.** Penyusunan hanya dokumen. Baseline published yang diberikan: `4b3e32d464b98aa5116df02e8fe524217d5ad811`; sumber yang diperiksa adalah checkout HEAD `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` beserta staged tree yang sudah berisi 174 file. Bukan klaim published baseline identik dengan checkout. Semua command implementasi berikut belum dijalankan.
+**Status: SOURCE IMPLEMENTED — FINAL CONSOLIDATED ACCEPTANCE/PACKAGE PENDING (2026-10-10).** Implementasi pada checkout bersih branch `consolidate`, base `36e9cb3`, mempertahankan Plans01–05. RED relevan untuk preview tengah, penerusan query dispatcher, dan cursor selector lama sudah dicatat; selector/projection serta test adversarial sudah diterapkan. Evidence functional terisolasi tersimpan pada workstream Memory06; gate functional/build gabungan dan ZIP tervalidasi dimiliki final konsolidasi. Benchmark/median/p95 latency, provider/live controller dan Windows NOT RUN. Baseline published yang diberikan saat penyusunan: `4b3e32d464b98aa5116df02e8fe524217d5ad811`; checkout historis yang diperiksa: `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` dengan 174 staged file. Identitas historis itu bukan identitas kandidat implementasi ataupun bukti aktivasi.
 
 ## Global Constraints
 

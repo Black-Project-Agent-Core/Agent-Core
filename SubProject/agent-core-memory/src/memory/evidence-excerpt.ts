@@ -46,6 +46,7 @@ export function selectMemoryExcerpt(record: MemoryRecord, query: string, maxCode
 
 /** Proves exact source text/revision. A valid quote does not prove its claims. */
 export function verifyMemoryExcerpt(record: MemoryRecord, excerpt: MemoryExcerpt): boolean {
+  if (!excerpt || !excerpt.span || !excerpt.source) return false;
   const { span, source } = excerpt;
   const points = Array.from(record.content);
   return span.field === 'content' && span.unit === 'unicode-codepoint'

@@ -104,6 +104,14 @@ The fixture has 4 development and 12 held-out cases; 3 conditions (`off`, `curre
 
 Engineering artifact checks in both Core and standalone Learning no longer execute JavaScript through `node:vm`. Mirrored, equality-tested `outcome-safe-engineering.ts` helpers interpret bounded numeric expressions and exact certified fixture templates; unsupported JavaScript fails closed. Workflow verifier revision `v2-declarative` requires older v1 reports to be reverified. This is a deliberate security compatibility reduction, not a general JavaScript sandbox.
 
+### Plan06 query-focused evidence excerpts
+
+[`evidence-excerpt.ts`](../SubProject/agent-core-memory/src/memory/evidence-excerpt.ts) selects one deterministic, bounded range from canonical `content` after existing ranking. The legacy query tokenizer and case-insensitive matches on the original string preserve UTF-16-to-Unicode-codepoint offsets; CRLF, emoji and combining marks are not normalized. Distinct-token coverage wins, then the earliest start; no match produces an explicitly labeled head fallback. `verifyMemoryExcerpt` checks the exact slice, Memory identity and existing semantic revision, without treating the selection label as authority.
+
+`projectMemoryHit` adds optional `excerpt` only to abstract views; `abstract` remains its exact text alias. Map views and the legacy search projection remain unchanged. `controller-session.ts` supplies the recall query after existing eligibility and disclosure-safety checks, includes every excerpt field in whole-envelope budgeting, and binds recall cursors to `evidence-excerpt/v1` alongside the existing query, revision and ranking snapshot. Hits that cannot fit are omitted whole and are not recorded as exposed. Expansion pagination offsets still address sanitized JSON, not canonical content spans.
+
+This is an additive source change with no canonical schema/index migration, provider call, activation or trust promotion. Exact provenance proves which text was quoted; current applicability and the truth of a claim remain separate. Synthetic functional tests cover Unicode, small budgets, retained and missing revisions, visibility changes, stale evidence, poison/credential-shaped data and selector-version cursor rejection. Final consolidated functional/build acceptance and the sanitized report package remain pending; latency/performance benchmarks and live-provider/Windows acceptance are not claimed.
+
 ### Learning and Skills
 
 [`src/learning/external-controller.ts`](../src/learning/external-controller.ts) and [`src/learning/service.ts`](../src/learning/service.ts) own external task episodes and checkpoint/review workflows. Evidence-backed use and outcome records distinguish retrieval from application and benefit. Native execution retains its own finalization lifecycle over the shared owners.

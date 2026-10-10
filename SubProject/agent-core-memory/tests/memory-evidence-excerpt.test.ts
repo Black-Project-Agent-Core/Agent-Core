@@ -102,6 +102,13 @@ describe('query-focused canonical evidence excerpts', () => {
     expect(verifyMemoryExcerpt({ ...saved, updatedAt: '2026-02-01T00:00:00.000Z', retrievalCount: 3 }, excerpt)).toBe(true);
   });
 
+  it('malformed_proof_is_false_instead_of_throwing', () => {
+    const saved = record('needle');
+    for (const excerpt of [null, {}, { span: null, source: {} }, { span: {}, source: null }]) {
+      expect(verifyMemoryExcerpt(saved, excerpt as MemoryExcerpt)).toBe(false);
+    }
+  });
+
   it('map_has_no_excerpt and omitted_query keeps head fallback', () => {
     const saved = record('head ' + 'x '.repeat(200) + 'needle');
     const input = { revision: memorySemanticRevision(saved), view: 'abstract' as const,
@@ -113,5 +120,24 @@ describe('query-focused canonical evidence excerpts', () => {
     const map = projectMemoryHit(saved, { ...input, view: 'map', query: 'needle' });
     expect(map.abstract).toBeUndefined();
     expect(map.excerpt).toBeUndefined();
+  });
+
+  it.each([
+    { name: 'head', content: 'needle ' + 'x '.repeat(300), query: 'needle', start: 0, end: 240 },
+    { name: 'middle', content: 'x '.repeat(750) + 'needle ' + 'z '.repeat(750), query: 'needle', start: 1420, end: 1660 },
+    { name: 'tail', content: 'x '.repeat(300) + 'needle', query: 'needle', start: 366, end: 606 },
+    { name: 'absent', content: 'x '.repeat(300), query: 'absent', start: 0, end: 240 },
+  ])('frozen_$name_oracle proves exact bounded location against first-240 baseline', ({ content, query, start, end, name }) => {
+    const saved = record(content);
+    const before = Array.from(content).slice(0, 240).join('');
+    const after = selectMemoryExcerpt(saved, query);
+    expect(after.span.start).toBe(start);
+    expect(after.span.end).toBe(end);
+    expect(after.text).toBe(Array.from(content).slice(start, end).join(''));
+    expect(verifyMemoryExcerpt(saved, after)).toBe(true);
+    if (name === 'absent') expect(after.selection).toBe('head-fallback');
+    else expect(after.text).toContain('needle');
+    if (name === 'middle' || name === 'tail') expect(before).not.toContain('needle');
+    expect(saved.content).toBe(content);
   });
 });
