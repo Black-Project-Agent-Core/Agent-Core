@@ -1,0 +1,128 @@
+{
+  "version": "relevance-fixtures/v1",
+  "partition": "development",
+  "clock": "2026-10-01T00:00:00.000Z",
+  "fakeIdentity": {
+    "provider": "offline-fixture",
+    "model": "relevance-two-vector-v1",
+    "dimensions": 2
+  },
+  "rows": [
+    {
+      "id": "dev-exact",
+      "family": "dev-procedure",
+      "group": "lexical",
+      "label": true,
+      "query": "rotate staging logs",
+      "content": "Always rotate staging logs before cleanup.",
+      "semanticStatus": "disabled",
+      "similarity": 0
+    },
+    {
+      "id": "dev-coverage",
+      "family": "dev-retry",
+      "group": "lexical",
+      "label": true,
+      "query": "configure cache rety limit",
+      "content": "Set the cache retry limit; configure it per workspace.",
+      "semanticStatus": "disabled",
+      "similarity": 0
+    },
+    {
+      "id": "dev-identifier",
+      "family": "dev-error",
+      "group": "identifier",
+      "label": true,
+      "query": "ERR_MEM_Q7",
+      "content": "ERR_MEM_Q7 signals a query budget error.",
+      "semanticStatus": "disabled",
+      "similarity": 0
+    },
+    {
+      "id": "dev-semantic",
+      "family": "dev-retention",
+      "group": "semantic-only",
+      "label": true,
+      "query": "preserve historic audit proof",
+      "content": "Keep immutable records of prior verified activity.",
+      "semanticStatus": "available",
+      "similarity": 0.85
+    },
+    {
+      "id": "dev-unavailable-positive",
+      "family": "dev-permission",
+      "group": "provider-unavailable",
+      "label": true,
+      "query": "authorization scope",
+      "content": "The authorization scope belongs to the host.",
+      "semanticStatus": "unavailable",
+      "similarity": 0
+    },
+    {
+      "id": "dev-metadata",
+      "family": "dev-metadata-noise",
+      "group": "metadata-distractor",
+      "label": false,
+      "query": "quantum routing policy",
+      "content": "Water the garden sparingly.",
+      "semanticStatus": "disabled",
+      "similarity": 0,
+      "title": "quantum routing policy",
+      "keywords": [
+        "quantum routing policy"
+      ],
+      "context": "quantum routing policy"
+    },
+    {
+      "id": "dev-overlap",
+      "family": "dev-partial-noise",
+      "group": "lexical-distractor",
+      "label": false,
+      "query": "configure cache retry",
+      "content": "Configure the cache for unrelated image previews.",
+      "semanticStatus": "disabled",
+      "similarity": 0
+    },
+    {
+      "id": "dev-semantic-noise",
+      "family": "dev-vector-noise",
+      "group": "semantic-distractor",
+      "label": false,
+      "query": "renew service credentials",
+      "content": "Garden flowers need sunlight.",
+      "semanticStatus": "available",
+      "similarity": 0.7
+    },
+    {
+      "id": "dev-recent",
+      "family": "dev-recency-noise",
+      "group": "recent-pinned",
+      "label": false,
+      "query": "compile source modules",
+      "content": "Water the garden.",
+      "semanticStatus": "disabled",
+      "similarity": 0,
+      "pinned": true
+    },
+    {
+      "id": "dev-unavailable",
+      "family": "dev-offline-noise",
+      "group": "provider-unavailable",
+      "label": false,
+      "query": "immutable audit receipts",
+      "content": "Unrelated cooking recipe.",
+      "semanticStatus": "unavailable",
+      "similarity": 0
+    },
+    {
+      "id": "dev-typo-unknown",
+      "family": "dev-unknown-typo",
+      "group": "unknown",
+      "label": null,
+      "query": "mistery intennt",
+      "content": "Unknown intended question.",
+      "semanticStatus": "disabled",
+      "similarity": 0
+    }
+  ]
+}

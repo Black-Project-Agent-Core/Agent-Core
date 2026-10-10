@@ -16,15 +16,18 @@ import type { Budgeted, ControllerMemoryCapabilities, ControllerScope, ExpandInp
   MemoryHit, RecallInput, RecallPage, SourceRef } from './disclosure.js';
 import type { MemoryRecord } from './types.js';
 import type { MemorySearchResult } from './retrieval.js';
+import {assessMemoryRelevance,type RelevanceInput,type RelevancePolicy} from './relevance.js';
 
 /** Internal host-owned read/telemetry ports. Never exported from the package root. */
 export interface ControllerRankedSnapshot {
   results: MemorySearchResult[];
   rankingRevision: string;
+  relevanceContext?: {semanticStatus:RelevanceInput['semanticStatus']};
 }
 
 export interface ControllerMemoryBackend {
   root: string;
+  readonly relevancePolicy?:Readonly<RelevancePolicy>;
   experienceEnabled?:boolean;
   episodes?:MemoryEpisodes;
   promotion?:MemoryPromotion;
@@ -127,15 +130,22 @@ export class ControllerMemorySession {
     const eligible=temporal?temporal.map(c=>c.record):records;
     const rankedSnapshot = query && !(retention === 'archive' && !this.#backend.experienceEnabled)
       ? await this.#backend.rank(eligible,query,rankingTime) : undefined;
-    const ranked: Array<{ record: MemoryRecord; score?: number }> = retention === 'archive' && !this.#backend.experienceEnabled ? [] : rankedSnapshot ? rankedSnapshot.results : eligible.map(record => ({ record }));
+    const relevance = rankedSnapshot && this.#backend.relevancePolicy
+      ? assessMemoryRelevance({results:rankedSnapshot.results,eligibleCount:eligible.length,
+        semanticStatus:rankedSnapshot.relevanceContext?.semanticStatus as RelevanceInput['semanticStatus'],policy:this.#backend.relevancePolicy})
+      : undefined;
+    const accepted = relevance ? new Set(relevance.acceptedIds) : undefined;
+    const ranked: Array<{ record: MemoryRecord; score?: number }> = retention === 'archive' && !this.#backend.experienceEnabled ? [] : rankedSnapshot ? rankedSnapshot.results.filter(item=>!accepted||accepted.has(item.record.id)) : eligible.map(record => ({ record }));
     if(temporal){const known=new Map(temporal.map(c=>[c.record.id,c.certainty==='known']));ranked.sort((a,b)=>Number(known.get(b.record.id))-Number(known.get(a.record.id)));}
     const snapshot = disclosureDigest(['controller-snapshot/v2', records.map(record => [record.id,memorySemanticRevision(record)]).sort(([a],[b]) => a.localeCompare(b)),
-      rankedSnapshot?.rankingRevision ?? 'ranking-unrequested/v1', ranked.map(item => [item.record.id,item.score ?? null])]);
+      rankedSnapshot?.rankingRevision ?? 'ranking-unrequested/v1', ranked.map(item => [item.record.id,item.score ?? null]),
+      ...(relevance ? [{policyDigest:relevance.policyDigest,acceptedIds:relevance.acceptedIds,semanticStatus:relevance.semanticStatus}] : [])]);
     const snapshotBinding = disclosureCursorBinding(snapshot);
     const start = this.position(input.cursor,request,snapshotBinding);
     if (start >= ranked.length && (start !== 0 || input.cursor)) throw new MemoryControllerError('MEMORY_CURSOR_STALE');
     const warnings = [TRUST_WARNING,...(view === 'abstract' ? ['abstract-is-preview'] : []),
-      ...(retention !== 'active-durable' && !this.#backend.experienceEnabled ? ['archive-not-enabled'] : []),...(asOf?['valid-time-with-current-evidence','not-known-at']:[])];
+      ...(retention !== 'active-durable' && !this.#backend.experienceEnabled ? ['archive-not-enabled'] : []),
+      ...(relevance?.semanticStatus==='unavailable' ? ['semantic-unavailable'] : []),...(asOf?['valid-time-with-current-evidence','not-known-at']:[])];
     const count = Math.min(limit,ranked.length-start);
     const hits: MemoryHit[] = [];
     for (const item of ranked.slice(start,start+count)) {
@@ -151,7 +161,7 @@ export class ControllerMemorySession {
       const more = start+take < ranked.length;
       const partial = more || (retention !== 'active-durable' && !this.#backend.experienceEnabled);
       return measureBudgeted<RecallPage>({ status:partial ? 'partial' : 'ok',warnings,
-        data:{ snapshot,hits:hits.slice(0,take),...(more ? { nextCursor:this.cursor(request,snapshotBinding,start+take,rankingTime) } : {}),
+        data:{ snapshot,hits:hits.slice(0,take),...(relevance ? {relevance:{status:relevance.status,policyDigest:relevance.policyDigest,semanticStatus:relevance.semanticStatus}} : {}),...(more ? { nextCursor:this.cursor(request,snapshotBinding,start+take,rankingTime) } : {}),
           archiveSearchAvailable:Boolean(this.#backend.experienceEnabled),completeness:partial ? 'partial' : 'complete' } });
     };
     let result = page(count);

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { MemoryRecord } from './types.js';
 import type { MemoryExcerpt } from './evidence-excerpt.js';
+import type {RelevanceDecision} from './relevance.js';
 
 import { digestSchema } from './experience-types.js';
 import type { Digest, IsoInstant, SourceRef, Verification, RetentionTier, EpistemicType, TemporalClass,Validity,TimeValue } from './experience-types.js';
@@ -28,6 +29,7 @@ export interface MemoryHit {
 export interface RecallPage {
   snapshot: Digest; hits: MemoryHit[]; nextCursor?: string; archiveSearchAvailable: boolean;
   completeness: 'complete' | 'partial';
+  relevance?:Pick<RelevanceDecision,'status'|'policyDigest'|'semanticStatus'>;
 }
 export interface ExpandInput { source: SourceRef; view: 'record' | 'episode' | 'evidence'; cursor?: string; budget?: ReadBudget }
 export interface ExpansionPage {

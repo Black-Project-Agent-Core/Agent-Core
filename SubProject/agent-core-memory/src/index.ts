@@ -58,3 +58,5 @@ export {createControllerMemoryDispatcher,CONTROLLER_MEMORY_NOTICE} from './memor
 export type {ControllerMemoryDispatcher,ControllerMemoryMethod,ControllerMemoryInput,ControllerMemoryResult,ControllerMemoryResponse} from './memory/controller-protocol.js';
 export {MEMORY_TRANSFER_V2_VERSION,exportMemoryTransferV2,previewMemoryTransferV2,importMemoryTransferV2} from './memory/transfer.js';
 export type {MemoryTransferV2Policy,MemoryTransferV2ExportOptions,MemoryTransferV2Bundle,MemoryTransferV2Preview,MemoryTransferV2Receipt} from './memory/transfer.js';
+export {assessMemoryRelevance,validateRelevancePolicy} from './memory/relevance.js';
+export type {RelevancePolicy,RelevanceInput,RelevanceDecision} from './memory/relevance.js';

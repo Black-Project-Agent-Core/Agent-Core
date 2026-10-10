@@ -10,6 +10,8 @@ import type { MemoryRecord } from './types.js';
 
 export interface RetrievalComponents {
   lexicalTokenizationDegraded?: boolean;
+  contentExactPhrase: boolean;
+  contentLexicalCoverage: number;
   exactPhrase: number;
   tokenOverlap: number;
   keywordMatch: number;
@@ -60,6 +62,7 @@ export interface MemorySearchOptions {
 }
 
 const zero = (): RetrievalComponents => ({
+  contentExactPhrase:false,contentLexicalCoverage:0,
   exactPhrase: 0, tokenOverlap: 0, keywordMatch: 0, tagMatch: 0,
   contextMatch: 0, categoryMatch: 0, semanticSimilarity: 0, bm25Lexical: 0, bm25Weight: 0,
   sourceFileMatch: 0, feedbackInfluence: 0, recency: 0, linkBoost: 0,
@@ -110,6 +113,14 @@ function scoreRecord(
   const lexicalDocument = lexicalRetrievalTokens(rawDocument);
   const documentSet = new Set(lexicalDocument.tokens);
   const components = zero();
+  // Admission evidence is content-only and uses the active lexical tokenizer.
+  // These fields never contribute to ranking or channel weights.
+  const lexicalContent = lexicalRetrievalTokens(record.content);
+  const contentTokens = new Set(lexicalContent.tokens);
+  components.contentExactPhrase = Boolean(normalizedQuery && record.content.toLowerCase().includes(normalizedQuery));
+  let contentOverlap = 0;
+  for (const token of queryTokens) if (contentTokens.has(token)) contentOverlap++;
+  components.contentLexicalCoverage = queryTokens.size ? contentOverlap / queryTokens.size : 0;
   if (lexicalDocument.degraded) components.lexicalTokenizationDegraded = true;
   components.bm25Lexical = Math.max(0, Math.min(1, bm25Score));
   components.bm25Weight = Math.max(0, Math.min(2, bm25Weight));
