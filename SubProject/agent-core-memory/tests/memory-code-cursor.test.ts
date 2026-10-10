@@ -20,3 +20,13 @@ test('prior_tokenizer_version_cursor_is_stale_after_restart',async()=>{
  const after=await After.initialize(root,path.join(root,'memory'));
  await expect(after.controller(scope).recall({query:'controller',limit:1,cursor:first.data!.nextCursor})).rejects.toMatchObject({code:'MEMORY_CURSOR_STALE'});
 });
+test('invalid_identifier_query_is_rejected_before_embedding',async()=>{
+ const {initializeStandaloneMemory}=await import('../src/standalone.js');
+ const root=await mkdtemp(path.join(os.tmpdir(),'memory-code-preflight-'));roots.push(root);
+ const embedDocuments=vi.fn(async(texts:string[])=>texts.map(()=>[1,0]));
+ const memory=await initializeStandaloneMemory({baseDir:root,embedder:{identity:{provider:'fixture',model:'lexical-preflight',dimensions:2},embedDocuments}});
+ embedDocuments.mockClear();
+ await expect(memory.controller({workspaceKey:'agent-core',taskId:'lexical-preflight',controllerId:'synthetic'}).recall({query:'x'.repeat(257)})).rejects.toMatchObject({code:'MEMORY_INPUT_INVALID'});
+ await expect(memory.search('x'.repeat(257))).rejects.toMatchObject({code:'MEMORY_INPUT_INVALID'});
+ expect(embedDocuments).not.toHaveBeenCalled();
+});

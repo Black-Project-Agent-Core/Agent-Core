@@ -34,3 +34,7 @@ test('lexical_change_does_not_change_semantic_builder_or_legacy_tokenizer',()=>{
  searchMemories([r],'controller session',{rankingProfile:'fusion'},undefined,50,time);
  expect(buildSemanticDocument(r)).toBe(before);expect(tokenizeMemoryText('ControllerSession')).toEqual(['controllersession']);
 });
+test('expanded_query_occurrences_change_existing_bm25_weight_explicitly',()=>{
+ const profile=buildBm25Profile([record('camel','ControllerSession')],'ControllerSession');
+ expect(profile.meaningfulQueryTokens).toBe(3);expect(profile.weight).toBe(0.45);
+});
