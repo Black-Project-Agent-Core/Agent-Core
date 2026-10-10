@@ -3,6 +3,7 @@ import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { cosineSimilarity, type MemoryEmbedder, type MemoryEmbedderIdentity } from './embedder.js';
 import { buildSemanticDocument, SEMANTIC_DOCUMENT_VERSION } from './semantic-document.js';
+import { QueryEmbeddingCache, type QueryCacheLimits } from './query-embedding-cache.js';
 import { EmbeddingRepairStateStore } from './embedding-repair.js';
 import type { MemoryPaths } from './paths.js';
 import type { MemoryRecord } from './types.js';
@@ -15,7 +16,7 @@ export interface IndexedPassage extends PassageDescriptor {
   embedding?: number[];
   unavailableReason?: 'passage-input-too-large';
 }
-export interface MemoryIndexOptions { granularity?: 'record' | 'passage' }
+export interface MemoryIndexOptions { granularity?: 'record' | 'passage'; queryCache?: QueryCacheLimits }
 export interface PassageScore { score: number; passageId: string; start: number; end: number; parentRevision: Digest }
 
 
@@ -75,6 +76,10 @@ function sameEmbedder(
   return a.provider === b.provider && a.model === b.model && a.dimensions === b.dimensions;
 }
 
+function embedderIdentityDigest(identity: MemoryEmbedderIdentity): string {
+  return createHash('sha256').update(JSON.stringify([identity.provider, identity.model, identity.dimensions])).digest('hex');
+}
+
 function validIdentity(identity: MemoryEmbedderIdentity | null): boolean {
   return identity === null || (
     typeof identity.provider === 'string' && Boolean(identity.provider.trim())
@@ -84,9 +89,13 @@ function validIdentity(identity: MemoryEmbedderIdentity | null): boolean {
 }
 
 function validEmbedding(vector: unknown, dimensions: number): vector is number[] {
-  return Array.isArray(vector)
-    && vector.length === dimensions
-    && vector.every((value) => typeof value === 'number' && Number.isFinite(value));
+  if (!Array.isArray(vector) || !vector.length || vector.length !== dimensions) return false;
+  // Array.every skips sparse slots; inspect every dimension before accepting or
+  // persisting a provider vector, including the cache-disabled query path.
+  for (let i = 0; i < vector.length; i++) {
+    if (typeof vector[i] !== 'number' || !Number.isFinite(vector[i])) return false;
+  }
+  return true;
 }
 function validateIndexFile(file: MemoryIndexFile, granularity: 'record' | 'passage'): MemoryIndexFile {
   const supported = file.version === 3 ? granularity === 'record'
@@ -176,15 +185,65 @@ function normalizedMean(vectors: number[][], dimensions: number): number[] | und
   return sum.map(value => norm > 0 ? value / norm : 0);
 }
 
+function queryAbortError(): Error {
+  const error = new Error('Memory query embedding wait aborted');
+  error.name = 'AbortError';
+  return error;
+}
+
+/** Local cancellation for the uncached path; provider settlement is always handled. */
+function waitForQuery(produce: () => Promise<number[]>, signal: AbortSignal): Promise<number[]> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) { reject(queryAbortError()); return; }
+    let settled = false;
+    const settle = (operation: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', onAbort);
+      operation();
+    };
+    const onAbort = () => settle(() => reject(queryAbortError()));
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) { onAbort(); return; }
+    try {
+      void Promise.resolve(produce()).then(
+        vector => settle(() => resolve(vector)),
+        error => settle(() => reject(error)),
+      );
+    } catch (error) { settle(() => reject(error)); }
+  });
+}
+
 export class MemoryIndex {
   private readonly filePath: string;
   private readonly repairState: EmbeddingRepairStateStore;
   private readonly granularity: 'record' | 'passage';
+  private readonly queryCache?: QueryEmbeddingCache;
+  private queryCacheIdentityDigest?: string;
+  private readonly queryLifetime = new AbortController();
 
   constructor(paths: MemoryPaths, private readonly embedder?: MemoryEmbedder, options: MemoryIndexOptions = {}) {
     this.granularity = options.granularity ?? 'record';
     this.filePath = path.join(paths.index, 'index.json');
     this.repairState = new EmbeddingRepairStateStore(paths);
+    if (options.queryCache) {
+      this.queryCache = new QueryEmbeddingCache({ ...options.queryCache });
+      this.queryCacheIdentityDigest = embedder ? embedderIdentityDigest(embedder.identity) : undefined;
+    }
+  }
+
+  dispose(): void {
+    this.queryLifetime.abort();
+    this.queryCache?.dispose();
+  }
+
+  private refreshQueryCacheIdentity(identity: MemoryEmbedderIdentity): void {
+    if (!this.queryCache) return;
+    const digest = embedderIdentityDigest(identity);
+    if (this.queryCacheIdentityDigest !== digest) {
+      this.queryCache.clear();
+      this.queryCacheIdentityDigest = digest;
+    }
   }
 
   async load(): Promise<MemoryIndexFile | null> {
@@ -348,8 +407,14 @@ export class MemoryIndex {
     query: string,
     canonicalRecords: MemoryRecord[],
     eligibleRecords: MemoryRecord[] = canonicalRecords,
+    options: { signal?: AbortSignal } = {},
   ): Promise<SemanticSearchContext | null> {
+    const signal = options.signal ? AbortSignal.any([options.signal, this.queryLifetime.signal]) : this.queryLifetime.signal;
+    if (signal.aborted) throw queryAbortError();
     if (!this.embedder) return null;
+    // A visible embedder configuration change invalidates old generations even
+    // if the current index is incompatible. No query vector is read here.
+    this.refreshQueryCacheIdentity(this.embedder.identity);
     const file = await this.load();
     if (!file || !fileMatchesRecords(file, canonicalRecords, this.embedder, this.granularity)) return null;
     const canonical = new Map(baseEntries(canonicalRecords, this.granularity, this.embedder.identity).map(entry => [entry.id, entry.fingerprint]));
@@ -365,10 +430,22 @@ export class MemoryIndex {
       }
     }
     if (!vectors.size) return null;
-    const [queryVector] = await this.embedder.embedDocuments([query]);
-    if (!validEmbedding(queryVector, this.embedder.identity.dimensions)) {
-      throw new Error('Memory query embedding has invalid dimensions or values');
-    }
+    const identity = { ...this.embedder.identity };
+    const produce = async () => {
+      const [vector] = await this.embedder!.embedDocuments([query]);
+      if (!validEmbedding(vector, identity.dimensions)) throw new Error('Memory query embedding has invalid dimensions or values');
+      return vector;
+    };
+    // Every request has just loaded/validated the current corpus and eligible
+    // vectors. Only the query vector below can be reused; context, passage scores
+    // and snapshot identity are rebuilt for this exact request.
+    this.refreshQueryCacheIdentity(identity);
+    const queryVector = this.queryCache
+      ? await this.queryCache.getOrCreate({ identity, query,
+        queryRepresentationVersion: 'embedDocuments-query/v1',
+        documentRepresentationVersion: `semantic-document/v${file.semanticDocumentVersion}` }, produce, signal)
+      : await waitForQuery(produce, signal);
+    if (!sameEmbedder(identity, this.embedder.identity)) return null;
     const passageScores = this.granularity === 'passage' ? new Map<string, PassageScore>() : undefined;
     if (passageScores) for (const entry of file.entries) {
       if (!eligible.has(entry.id)) continue;

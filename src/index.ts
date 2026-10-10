@@ -347,6 +347,8 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
       };
 
       await cleanup('workflows', () => workflows.close());
+      const memoryExperience = memoryRuntime.experience;
+      if (memoryExperience) await cleanup('memory-experience', async () => memoryExperience.dispose());
       await cleanup('http-server', () => closeServer(server));
       await cleanup('browser-control', () => browserControlService.closeAll());
       await cleanup('terminal-manager', () => terminalManager.shutdownAll());
