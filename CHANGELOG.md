@@ -87,3 +87,7 @@ Memory02 adds opt-in controller ranking and revision-bound pagination; Memory03 
 ### 2026-10-11 — installed beta.1 runtime verification (not a new release)
 
 The previously staged Memory02–05 source was installed on the current Windows machine. Independent helper verified 51/51 installed hashes; resident Core/launcher reported `0.15.0-beta.1`, Memory v2 derived index format3/documentVersion2 with 130 complete embeddings, authenticated task-scoped v2 recall, and production Workflows GUI smoke. Two failed helper attempts rolled back due to checking the retained legacy index; the corrected helper completed without rollback. The three acceptance workspaces are ready for an explicitly approved manual/agent cleanup batch, not yet deleted. No new tag or publication.
+
+## Local beta.1 activation acceptance — 2026-10-11 (not a release)
+
+The permanent Windows installation at `E:/Projects/Agent-Core` now reports resident `0.15.0-beta.1` with exact 51/51 installed product hashes, complete version3/document2 experience index and scoped host-authenticated Memory v2 retrieval. The existing Workflows System+Memory canvas and navigation controls passed live WebView2 smoke. See `docs/verification/memory02-05-windows-resident-20261011.md`. Historical beta.0 and staging-only results remain dated evidence; this entry does not publish a new release. Three historical temp workspaces await a separately authorized cleanup batch.
