@@ -1,6 +1,8 @@
 # Code Identifier Retrieval Implementation Plan
 
-**Status: PROPOSED / NOT IMPLEMENTED.** Baseline target `4b3e32d464b98aa5116df02e8fe524217d5ad811`; inspeksi memakai checkout HEAD `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` beserta 174 staged changes. Target tidak disamakan dengan HEAD lokal. Penyusunan docs-only: tidak ada source edit, test, build, inference, atau provider probe.
+**Status: IMPLEMENTED IN SOURCE (2026-10-10); final combined functional/build/ZIP acceptance pending.** Bounded tokenizer, shared lexical retrieval, cursor version binding and sealed offline functional fixtures are implemented on the current source after `36e9cb3`. Performance/latency benchmarks are deferred by the user; live-provider/controller benefit and Windows activation are NOT RUN. The historical inspection baseline below is retained as plan context, not the implementation identity.
+
+**Historical planning baseline:** Baseline target `4b3e32d464b98aa5116df02e8fe524217d5ad811`; inspeksi memakai checkout HEAD `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` beserta 174 staged changes. Target tidak disamakan dengan HEAD lokal. Penyusunan docs-only: tidak ada source edit, test, build, inference, atau provider probe.
 
 **Goal:** Memory menemukan identifier kode utuh dan subword yang masuk akal, tanpa menganggap identifier berbeda sebagai fakta yang sama.
 
