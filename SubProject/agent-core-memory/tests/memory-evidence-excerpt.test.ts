@@ -35,7 +35,7 @@ describe('query-focused canonical evidence excerpts', () => {
     expect(verifyMemoryExcerpt(saved, excerpt)).toBe(true);
     const turkish = selectMemoryExcerpt(record('İSTANBUL followed by original text'), 'İSTANBUL', 17);
     expect(turkish.selection).toBe('query-match');
-    expect(turkish.text).toBe('İSTANBUL followed ');
+    expect(turkish.text).toBe('İSTANBUL followed');
   });
 
   it('duplicate_tokens_tie_first and distinct-token coverage choose deterministically', () => {
