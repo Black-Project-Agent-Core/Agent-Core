@@ -22,3 +22,7 @@ test('bounds_expansion_without_partial_identifiers',()=>{
  expect(tokenizeRetrievalText('')).toEqual({exact:[],subwords:[],truncated:false});
  expect(tokenizeRetrievalText('x'.repeat(256)).truncated).toBe(false);
 });
+test('exact_single_codepoint_keeps_legacy_utf16_case_behavior',()=>{
+ expect(tokenizeRetrievalText('𐐀').exact).toEqual(['𐐨']);
+ expect(tokenizeRetrievalText('İ').exact).toEqual(['i\u0307']);
+});

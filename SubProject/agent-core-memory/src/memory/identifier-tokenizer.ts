@@ -15,8 +15,10 @@ export function tokenizeRetrievalText(value:string):IdentifierTokens {
   if(!token.length&&!oversized)return;
   if(oversized){output.truncated=true;token=[];oversized=false;return;}
   const raw=token.join('').normalize('NFC');token=[];
-  if(!wordCharacter.test(raw)||Array.from(raw).length<2)return;
+  if(!wordCharacter.test(raw))return;
   const exact=raw.toLowerCase().replaceAll('\\','/');
+  // Legacy lexical single-character filtering measures lowercased UTF-16 length.
+  if(exact.length<2)return;
   const split=raw.replace(/(\p{Lu})(\p{Lu}\p{Ll})/gu,'$1 $2')
    .replace(/(\p{Ll})(\p{Lu})/gu,'$1 $2')
    .replace(/(\p{L})(\p{N})/gu,'$1 $2').replace(/(\p{N})(\p{L})/gu,'$1 $2')
