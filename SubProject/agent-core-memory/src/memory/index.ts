@@ -179,8 +179,13 @@ function fileMatchesRecords(file: MemoryIndexFile, records: MemoryRecord[], embe
 }
 function normalizedMean(vectors: number[][], dimensions: number): number[] | undefined {
   if (!vectors.length) return undefined;
+  // A shared scale preserves the relative weights of every child while avoiding
+  // overflow/underflow before normalization, even for finite extreme inputs.
+  let scale = 0;
+  for (const vector of vectors) for (let i = 0; i < dimensions; i++) scale = Math.max(scale, Math.abs(vector[i]));
+  if (!scale) return Array<number>(dimensions).fill(0);
   const sum = Array<number>(dimensions).fill(0);
-  for (const vector of vectors) for (let i = 0; i < dimensions; i++) sum[i] += vector[i];
+  for (const vector of vectors) for (let i = 0; i < dimensions; i++) sum[i] += vector[i] / scale;
   const norm = Math.sqrt(sum.reduce((total, value) => total + value * value, 0));
   return sum.map(value => norm > 0 ? value / norm : 0);
 }

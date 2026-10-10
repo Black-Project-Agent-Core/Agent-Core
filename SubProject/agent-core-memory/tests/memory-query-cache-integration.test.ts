@@ -144,6 +144,16 @@ describe('host shutdown', () => {
 });
 
 describe('query cache index integration', () => {
+  it.each([1e308, 1e-308])('normalizes_finite_extreme_passage_means_without_invalid_persistence_%s', async magnitude => {
+    const { index, records, embedder } = await indexFixture(true, 'passage');
+    const changed = [{ ...records[0], content: 'automobile ' + 'x'.repeat(1500) }, ...records.slice(1)];
+    vi.spyOn(embedder, 'embedDocuments').mockImplementation(async texts => texts.map(() => [magnitude, 0, 0]));
+    expect(await index.rebuild(changed)).toMatchObject({ embedding: 'available' });
+    const loaded = await index.load();
+    expect(loaded?.entries[0].passages!.length).toBeGreaterThan(1);
+    for (const entry of loaded!.entries) expect(entry.embedding).toEqual([1, 0, 0]);
+  });
+
   it.each([true, false])('rejects_sparse_query_vectors_cache_%s', async enabled => {
     const { index, records, embedder } = await indexFixture(enabled);
     embedder.queryVector = new Array(embedder.identity.dimensions);
