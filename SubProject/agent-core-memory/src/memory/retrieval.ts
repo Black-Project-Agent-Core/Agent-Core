@@ -1,12 +1,14 @@
 import { buildBm25Profile } from './bm25.js';
 import { cosineSimilarity } from './embedder.js';
-import { buildSemanticDocument, tokenizeMemoryText } from './semantic-document.js';
+import { buildSemanticDocument } from './semantic-document.js';
+import { lexicalRetrievalTokens } from './identifier-tokenizer.js';
 import { normalizeMemorySourceFile, normalizeMemoryWorkspace } from './provenance.js';
 import { isMemoryLinkActive } from './relations.js';
 import type { SemanticSearchContext } from './index.js';
 import type { MemoryRecord } from './types.js';
 
 export interface RetrievalComponents {
+  lexicalTokenizationDegraded?: boolean;
   exactPhrase: number;
   tokenOverlap: number;
   keywordMatch: number;
@@ -64,7 +66,7 @@ const zero = (): RetrievalComponents => ({
 function countMatches(queryTokens: Set<string>, values: string[]): number {
   let matches = 0;
   for (const value of values) {
-    const tokens = tokenizeMemoryText(value);
+    const tokens = lexicalRetrievalTokens(value).tokens;
     if (tokens.some((token) => queryTokens.has(token))) matches++;
   }
   return matches;
@@ -101,10 +103,13 @@ function scoreRecord(
   rankingTime = Date.now(),
 ): { score: number; components: RetrievalComponents } {
   const normalizedQuery = query.trim().toLowerCase();
-  const queryTokens = new Set(tokenizeMemoryText(normalizedQuery));
-  const document = buildSemanticDocument(record).toLowerCase();
-  const documentSet = new Set(tokenizeMemoryText(document));
+  const queryTokens = new Set(lexicalRetrievalTokens(query,'query').tokens);
+  const rawDocument = buildSemanticDocument(record);
+  const document = rawDocument.toLowerCase();
+  const lexicalDocument = lexicalRetrievalTokens(rawDocument);
+  const documentSet = new Set(lexicalDocument.tokens);
   const components = zero();
+  if (lexicalDocument.degraded) components.lexicalTokenizationDegraded = true;
   components.bm25Lexical = Math.max(0, Math.min(1, bm25Score));
   components.bm25Weight = Math.max(0, Math.min(2, bm25Weight));
 
@@ -159,6 +164,7 @@ export function searchMemories(
   candidateLimit = 50,
   rankingTime?: number,
 ): MemorySearchResult[] {
+  lexicalRetrievalTokens(query,'query');
   if (options.rankingProfile === 'fusion') {
     return searchMemoriesFusion(records, query, options, semantic, candidateLimit, rankingTime);
   }
