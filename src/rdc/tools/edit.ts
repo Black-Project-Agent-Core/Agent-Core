@@ -28,6 +28,7 @@ import { configManager } from '../config-manager.js';
 import { fuzzySearchLogger, type FuzzySearchLogEntry } from '../utils/fuzzySearchLogger.js';
 import { resolvePreviewFileType } from '../ui/file-preview/shared/preview-file-types.js';
 import { resolveAbsolutePath } from '../handlers/filesystem-handlers.js';
+import { fileMutationCoordinator } from '../mutation-coordinator.js';
 
 interface SearchReplace {
     search: string;
@@ -417,7 +418,13 @@ function highlightDifferences(expected: string, actual: string): string {
  */
 export async function handleEditBlock(args: unknown): Promise<ServerResult> {
     const parsed = EditBlockArgsSchema.parse(args);
+    return fileMutationCoordinator.run(
+        [resolveAbsolutePath(parsed.file_path)],
+        () => handleParsedEditBlock(parsed),
+    );
+}
 
+async function handleParsedEditBlock(parsed: ReturnType<typeof EditBlockArgsSchema.parse>): Promise<ServerResult> {
     // Note: Check for truthy range to handle empty strings from AI clients that send all optional params
     const hasRange = parsed.range !== undefined && parsed.range !== '';
     const hasContent = parsed.content !== undefined && parsed.content !== '';

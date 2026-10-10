@@ -74,8 +74,9 @@ async function builtManifestBudget() {
     const stale = Math.max(...sourceStats) > stat.mtimeMs;
     const mod = await import(`${pathToFileURL(serverPath).href}?compat=${stat.mtimeMs}`);
     const runtime = {
-      memoryService: {}, learningService: {}, hermesPartner: {}, semanticIde: {},
-      phoneController: { enabled: true }, codeIntelligence: {},
+      memoryService: {}, memoryExperience: {}, learningService: {}, semanticIde: {},
+      skillsService: {}, phoneController: { enabled: true }, codeIntelligence: {},
+      webResearch: {},
     };
     const server = mod.createAgentCoreMcpServer(undefined, runtime);
     const registrations = server._registeredTools ?? server.registeredTools;
@@ -96,11 +97,15 @@ async function builtManifestBudget() {
 const mcpFiles = [
   'src/mcp/server.ts',
   'src/mcp/memory-tools.ts',
+  'src/mcp/memory-experience-tools.ts',
   'src/mcp/learning-tools.ts',
   'src/mcp/partner-tools.ts',
   'src/mcp/semantic-ide-tools.ts',
+  'src/mcp/skills-tools.ts',
   'src/mcp/phone-tools.ts',
+  'src/mcp/phone-game-tools.ts',
   'src/mcp/code-intelligence-tools.ts',
+  'src/mcp/web-research-tools.ts',
 ];
 const routeFiles = ['src/http/app.ts', 'src/oauth/service.ts'];
 const schemaFiles = [
@@ -109,8 +114,11 @@ const schemaFiles = [
   'src/mcp/learning-schemas.ts',
   'src/mcp/partner-schemas.ts',
   'src/mcp/semantic-ide-schemas.ts',
+  'src/mcp/skills-schemas.ts',
   'src/mcp/phone-schemas.ts',
+  'src/mcp/phone-game-schemas.ts',
   'src/mcp/code-intelligence-schemas.ts',
+  'src/mcp/web-research-schemas.ts',
 ];
 
 const currentTools = new Set();

@@ -345,7 +345,11 @@ export async function readProcessOutput(args: unknown): Promise<ServerResult> {
   // markers used by other tools).
   if (result.evictedLines && result.evictedLines > 0) {
     const capMB = Math.round(MAX_BUFFERED_OUTPUT_CHARS / 1024 / 1024);
-    statusMessage += `\n[WARNING: output exceeded the ${capMB}MB buffer cap; the ${result.evictedLines} earliest lines were evicted and cannot be read. Line numbers and totals refer to the retained buffer only]`;
+    statusMessage += `\n[WARNING: output exceeded the ${capMB}MB buffer cap; the ${result.evictedLines} earliest lines were evicted from memory. Line numbers and totals refer to the retained buffer only]`;
+  }
+  if (result.spill) {
+    const state = result.spill.complete ? 'complete' : result.spill.issue ? 'degraded' : 'capturing';
+    statusMessage += `\n[Full-output spill: ${state}${result.spill.path ? `; path=${result.spill.path}` : ''}; bytes=${result.spill.bytes}${result.spill.digest ? `; digest=${result.spill.digest}` : ''}${result.spill.issue ? `; issue=${result.spill.issue}` : ''}]`;
   }
 
   // Add process state info

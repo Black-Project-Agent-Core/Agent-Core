@@ -79,12 +79,15 @@ const onlineSnapshot: DesktopSnapshot = {
         { name: 'grafel-patterns', available: true },
       ],
     },
-    partner: {
-      status: 'degraded',
-      provider: 'hermes',
-      transport: 'loopback-runs-api',
-      issueCount: 1,
-      issue: 'HERMES_HOME_NOT_FOUND',
+    agentRuntime: {
+      status: 'not-configured',
+      issueCount: 0,
+      providerCount: 1,
+      configuredProviderCount: 0,
+      sessionCount: 0,
+      runningSessionCount: 0,
+      skillCount: 0,
+      pendingFinalizationCount: 0,
     },
   },
 };
@@ -106,7 +109,7 @@ function pushSnapshot(snapshot: DesktopSnapshot = onlineSnapshot) {
   act(() => messageHandler!({ data: { type: 'snapshot', snapshot } }));
 }
 
-describe('Agent Core six-screen desktop UI host integration', () => {
+describe('Agent Core desktop UI host integration', () => {
   it('renders live snapshot truth in the reference dashboard shell', () => {
     render(<App />);
     expect(postMessage).toHaveBeenCalledWith({ type: 'ready' });
@@ -118,7 +121,7 @@ describe('Agent Core six-screen desktop UI host integration', () => {
     expect(screen.getByRole('heading', { name: 'System Dashboard' })).toBeInTheDocument();
     expect(screen.getByText('PID 15404')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Code Intelligence Healthy/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Hermes Partner Degraded/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Agent Core AI Offline/ })).toBeInTheDocument();
 
     pushSnapshot({
       ...onlineSnapshot,
@@ -168,5 +171,86 @@ describe('Agent Core six-screen desktop UI host integration', () => {
     postMessage.mockClear();
     fireEvent.click(startWithWindows!);
     expect(postMessage).toHaveBeenCalledWith({ type: 'action', action: 'toggle-autostart' });
+  });
+
+  it('opens persistent native chat, creates a conversation, and sends one turn', () => {
+    render(<App />);
+    pushSnapshot({
+      ...onlineSnapshot,
+      health: {
+        ...onlineSnapshot.health,
+        agentRuntime: {
+          ...onlineSnapshot.health.agentRuntime!,
+          status: 'available',
+          issueCount: 0,
+          providerCount: 1,
+          configuredProviderCount: 1,
+        },
+        agentChat: {
+          status: 'available',
+          conversationCount: 0,
+          activeConversationCount: 0,
+          runningTurnCount: 0,
+        },
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }));
+    expect(screen.getByRole('heading', { name: 'Agent Core AI' })).toBeInTheDocument();
+
+    postMessage.mockClear();
+    fireEvent.click(screen.getAllByRole('button', { name: 'New Chat' }).at(-1)!);
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'agent-chat-create',
+      workspace: 'agent-core',
+    });
+
+    const conversation = {
+      id: 'conversation-1',
+      runtimeSessionId: 'session-1',
+      workspace: 'agent-core',
+      title: 'New Chat',
+      status: 'active' as const,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    };
+    act(() => messageHandler!({ data: {
+      type: 'agent-chat-state',
+      result: { conversation, turns: [], messages: [] },
+    } }));
+
+    const prompt = screen.getByPlaceholderText('Message Agent Core…');
+    fireEvent.change(prompt, { target: { value: 'Inspect current runtime' } });
+    postMessage.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    const sent = postMessage.mock.calls.find(([value]) => value?.type === 'agent-chat-send')?.[0];
+    expect(sent).toEqual(expect.objectContaining({
+      type: 'agent-chat-send',
+      requestId: expect.any(String),
+      clientRequestId: expect.any(String),
+      conversationId: 'conversation-1',
+      prompt: 'Inspect current runtime',
+    }));
+
+    act(() => messageHandler!({ data: {
+      type: 'agent-chat-state',
+      result: {
+        conversation: { ...conversation, title: 'Inspect current runtime', updatedAtMs: 2 },
+        turns: [{
+          id: 'turn-1', conversationId: 'conversation-1',
+          clientRequestId: sent.clientRequestId, runtimeTaskId: 'task-1',
+          status: 'finalized', iterations: 2, retrievalCount: 1,
+          createdAtMs: 1, startedAtMs: 1, completedAtMs: 2,
+        }],
+        messages: [
+          { id: 'm1', conversationId: 'conversation-1', turnId: 'turn-1', role: 'user', content: 'Inspect current runtime', createdAtMs: 1 },
+          { id: 'm2', conversationId: 'conversation-1', turnId: 'turn-1', role: 'assistant', content: 'Runtime verified.', createdAtMs: 2 },
+        ],
+      },
+    } }));
+
+    expect(screen.getByText('Runtime verified.')).toBeInTheDocument();
+    expect(screen.getAllByText('Inspect current runtime').length).toBeGreaterThanOrEqual(2);
   });
 });

@@ -19,6 +19,49 @@ function normalized(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+const COHERENCE_STOP = new Set(['the','and','for','with','from','into','that','this','use','using','before','after','when','then','current','exact']);
+function coherenceTokens(values: string[]): Set<string> {
+  const output = new Set<string>();
+  for (const value of values) {
+    const expanded = value.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
+    for (const token of expanded.split(/[^a-z0-9_]+/).map((item) => item.trim()).filter(Boolean)) {
+      if (token.length < 3 || COHERENCE_STOP.has(token)) continue;
+      output.add(token);
+    }
+  }
+  return output;
+}
+
+function evidenceStrings(value: unknown, depth = 0): string[] {
+  if (depth > 3 || value === null || value === undefined) return [];
+  if (typeof value === 'string') return value.length <= 2_000 ? [value] : [value.slice(0, 2_000)];
+  if (Array.isArray(value)) return value.slice(0, 32).flatMap((item) => evidenceStrings(item, depth + 1));
+  if (typeof value !== 'object') return [];
+  const allowed = new Set(['id','name','label','kind','type','file','path','module','package','signature','qualified_name','qualifiedName','text','summary','content']);
+  return Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => allowed.has(key))
+    .slice(0, 48)
+    .flatMap(([, item]) => evidenceStrings(item, depth + 1));
+}
+
+function assertPatternCoherence(candidate: LearningCandidate, exemplars: unknown[]): void {
+  const candidateTokenSet = coherenceTokens([
+    candidateTrigger(candidate).natural_language,
+    ...candidateSteps(candidate),
+    ...(candidate.tags ?? []),
+  ]);
+  const evidenceTokenSet = coherenceTokens(exemplars.flatMap((value) => evidenceStrings(value)));
+  if (candidateTokenSet.size === 0 || evidenceTokenSet.size < 2) {
+    throw new Error('Code-pattern learning exemplar evidence is insufficient for deterministic coherence review');
+  }
+  let shared = 0;
+  for (const token of candidateTokenSet) if (evidenceTokenSet.has(token)) shared += 1;
+  const coverage = shared / candidateTokenSet.size;
+  if (shared < 2 && coverage < 0.15) {
+    throw new Error(`Code-pattern learning candidate is not coherent with exemplar evidence (shared=${shared}, coverage=${coverage.toFixed(4)})`);
+  }
+}
+
 function patternTriggerText(pattern: any): string {
   return String(
     pattern?.trigger?.natural_language
@@ -119,6 +162,7 @@ export class CodePatternLearningSink implements LearningSink {
       throw new Error('Code-pattern learning requires at least one verified Grafel entity exemplar; provenance evidenceRefs are not entity exemplars');
     }
 
+    const exemplarEvidence: unknown[] = [];
     for (const exemplar of exemplars) {
       const inspected = await this.code!.callProviderTool('grafel_inspect', {
         entity_id: exemplar,
@@ -126,7 +170,9 @@ export class CodePatternLearningSink implements LearningSink {
       if (inspected.isError) {
         throw new Error(providerErrorText(inspected, `Grafel exemplar is not resolvable: ${exemplar}`));
       }
+      exemplarEvidence.push(parseCallToolResultJson(inspected));
     }
+    assertPatternCoherence(candidate, exemplarEvidence);
 
     const result = await this.code!.callProviderTool('grafel_patterns', {
       kind: 'code',

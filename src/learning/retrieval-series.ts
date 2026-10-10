@@ -46,6 +46,32 @@ const mechanismAttribution=z.strictObject({
 });
 export const resourceDimensions=['task.wallMs','task.toolCalls','task.inputTokens','task.outputTokens','evaluator.wallMs',
   'evaluator.toolCalls','evaluator.inputTokens','evaluator.outputTokens','human.interventions','disk.bytes','writes.bytes'] as const;
+export const diversityFeatureIds=['candidateRate','objective','regressionFraction','failureSurfaceCount',
+  ...resourceDimensions.map(item=>'resource.'+item)] as string[];
+const diversityFeature=z.string().refine(value=>diversityFeatureIds.includes(value),'unsupported diversity feature');
+const diversityDimension=z.strictObject({id:diversityFeature,min:z.number().finite(),max:z.number().finite(),bins:z.number().int().min(1).max(100)})
+  .refine(value=>value.max>value.min,'diversity max must be greater than min');
+const diversityAnalysis=z.strictObject({fitness:z.enum(['candidateRate','objective']),
+  dimensions:z.array(diversityDimension).min(1).max(8).refine(items=>new Set(items.map(item=>item.id)).size===items.length)});
+const stabilityAnalysis=z.strictObject({absoluteTolerance:z.number().positive().max(1),zMultiplier:z.number().min(0).max(5),
+  consecutiveWindows:z.number().int().min(1).max(20)});
+export const paretoMetricIds = ['candidateRate', 'objective', 'regressionFraction', ...resourceDimensions.map(d => 'resource.' + d)];
+export const paretoAnalysisSchema = z.strictObject({
+  resourceBasis: z.enum(['per-run', 'cumulative']),
+  objectives: z.array(z.strictObject({
+    id: z.string().refine(value => paretoMetricIds.includes(value), 'unsupported Pareto metric'),
+    direction: z.enum(['maximize', 'minimize']),
+  })).min(2).max(8).refine(items => new Set(items.map(item => item.id)).size === items.length, 'duplicate Pareto objective'),
+});
+export const curveAnalysisSchema = z.strictObject({
+  metric: z.enum(['candidateRate', 'objective', 'regressionFraction']),
+  direction: z.enum(['maximize', 'minimize']),
+  streams: z.array(z.strictObject({ id, runIds: z.array(id).min(1).max(100), evidenceRefs: refs.min(1) }))
+    .min(1).max(16).refine(items => new Set(items.map(item => item.id)).size === items.length, 'duplicate curve stream')
+    .refine(items => { const runs = items.flatMap(item => item.runIds); return runs.length <= 100 && new Set(runs).size === runs.length; }, 'duplicate curve run'),
+});
+const noveltyAnalysis = z.strictObject({ neighbors: z.number().int().min(1).max(10) });
+const resourceContext = z.strictObject({ id, evidenceRefs: refs.min(1) });
 const dimension=z.enum(resourceDimensions),amount=z.number().min(0).max(Number.MAX_SAFE_INTEGER);
 const measurement=z.strictObject({dimension,value:amount,evidenceRefs:refs.min(1)})
   .refine(m=>m.dimension.endsWith('wallMs')||Number.isSafeInteger(m.value));
@@ -55,14 +81,15 @@ const runSchema=z.strictObject({id,iteration:z.number().int().min(0).max(Number.
   split:z.enum(['validation','holdout']).optional(),report:z.string().min(1).max(2000).optional(),seed:id.optional(),
   independentSeed:z.boolean().optional(),seedEvidenceRefs:refs.optional(),resources:measurements.optional(),cumulativeResources:measurements.optional(),
   humanModalities:z.array(z.enum(['labeling','approval','correction','intervention','other'])).max(5).optional(),observedStop:observedStop.optional(),
-  mechanismAttribution:mechanismAttribution.optional()})
+  resourceContext:resourceContext.optional(), mechanismAttribution:mechanismAttribution.optional()})
   .refine(r=>!r.independentSeed||(Boolean(r.seed)&&Boolean(r.seedEvidenceRefs?.length)));
 export const retrievalSeriesManifestSchema=z.strictObject({schemaVersion:z.literal(1),protocol:z.strictObject({id,
   splits:z.strictObject({train:ids,validation:ids,holdout:ids}),trainingExposure:z.strictObject({
     status:z.enum(['not-established','operator-attested-disjoint']),evidenceRefs:refs})
     .refine(v=>v.status==='not-established'||v.evidenceRefs.length>0),declaration:protocolDeclaration.optional(),
     evaluatorPolicy:evaluatorPolicyDeclaration.optional()}),runs:z.array(runSchema).min(1).max(100),
-  budgets:z.strictObject({basis:z.enum(['per-run','cumulative']),limits:z.partialRecord(dimension,amount)}).optional()});
+  budgets:z.strictObject({basis:z.enum(['per-run','cumulative']),limits:z.partialRecord(dimension,amount)}).optional(),
+  analysis:z.strictObject({diversity:diversityAnalysis.optional(),stability:stabilityAnalysis.optional(),pareto:paretoAnalysisSchema.optional(),curve:curveAnalysisSchema.optional(),novelty:noveltyAnalysis.optional()}).optional()});
 export type RetrievalSeriesManifest=z.infer<typeof retrievalSeriesManifestSchema>;
 export type RunEvidence={id:string;status:typeof runStatuses[number];profile?:RetrievalProfile;reason?:string;manifestDigest?:string};
 export function parseRetrievalSeriesManifest(value:unknown):RetrievalSeriesManifest{

@@ -8,7 +8,8 @@ export function isPackagePathAllowed(relative) {
   const segments = rel.split('/');
   if (segments.some(part => ['.git','.desktop-commander','.rdc-standalone','do not touch without instruction explicit'].includes(part))) return false;
   if (segments.some(part => part === '.env' || (part.startsWith('.env.') && part !== '.env.example'))) return false;
-  if (/^(?:secrets|runtime\/(?:memory|bridge-auth|tracker|webview2|backups|partner|learning|phone|rdc))(?:\/|$)/.test(rel)) return false;
+  // Memory v1/v2, candidate/restore roots, activation markers and migration temp are private operational state.
+  if (/^(?:secrets|runtime\/(?:memory(?:-[^/]*)?|memory-v2-activation\.json|tmp|bridge-auth|tracker|webview2|backups|partner|learning|phone|rdc))(?:\/|$)/.test(rel)) return false;
   return true;
 }
 export async function packageCopyAllowed(root, source) {

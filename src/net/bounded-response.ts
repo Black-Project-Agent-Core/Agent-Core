@@ -37,8 +37,25 @@ async function collectBody(response: Response, maxBytes: number, label: string):
         return Buffer.concat(chunks, total);
     }
     if (body && typeof (body as unknown as AsyncIterable<Uint8Array>)[Symbol.asyncIterator] === 'function') {
-        for await (const chunk of (body as unknown as AsyncIterable<Uint8Array>))
-            push(chunk);
+        const iterator = (body as unknown as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]();
+        let completed = false;
+        let closed = false;
+        try {
+            for (;;) {
+                const item = await iterator.next();
+                if (item.done) {
+                    completed = true;
+                    break;
+                }
+                if (item.value) push(item.value);
+            }
+        } catch (error) {
+            if (!completed && !closed && typeof iterator.return === 'function') {
+                closed = true;
+                try { await iterator.return(); } catch { /* preserve original source/limit error */ }
+            }
+            throw error;
+        }
         return Buffer.concat(chunks, total);
     }
     const fallback = Buffer.from(await response.arrayBuffer());

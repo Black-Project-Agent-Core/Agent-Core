@@ -5,6 +5,7 @@ import { bootstrapRecord, parseCanonicalNote, serializeCanonicalNote } from './n
 import { notePath, type MemoryPaths } from './paths.js';
 import { buildRevisionMutation, readMemoryRevisions, type MemoryRevisionRead } from './revisions.js';
 import { assertMemoryRecordSafe } from './safety.js';
+import { memoryRetirementFingerprint } from './retirement.js';
 import { fingerprintFile, MemoryTransactionCoordinator, type MemoryTransactionMutation } from './transaction.js';
 import type { MemoryIssue, MemoryRecord } from './types.js';
 import { withMemoryProcessLock } from './lock.js';
@@ -12,6 +13,7 @@ import { withMemoryProcessLock } from './lock.js';
 export interface LoadedMemories {
   records: MemoryRecord[];
   issues: MemoryIssue[];
+  complete: boolean;
 }
 
 export interface MemoryBatchPlan<T> {
@@ -63,13 +65,16 @@ export class FileMemoryStore {
   async loadAll(): Promise<LoadedMemories> {
     const records: MemoryRecord[] = [];
     const issues: MemoryIssue[] = [];
+    let complete = true;
 
     if (!await exists(this.paths.bootstrap)) {
+      complete = false;
       issues.push({ path: this.paths.bootstrap, message: 'Pinned bootstrap memory is missing', severity: 'error' });
     } else {
       try {
         records.push(bootstrapRecord(await readFile(this.paths.bootstrap, 'utf8'), this.paths.bootstrap));
       } catch (error) {
+        complete = false;
         issues.push({ path: this.paths.bootstrap, message: error instanceof Error ? error.message : String(error), severity: 'error' });
       }
     }
@@ -87,14 +92,18 @@ export class FileMemoryStore {
         if (`${record.id}.md` !== name) throw new Error(`Memory id/file mismatch: ${record.id}`);
         records.push(record);
       } catch (error) {
+        complete = false;
         issues.push({ path: filePath, message: error instanceof Error ? error.message : String(error), severity: 'degraded' });
       }
     }
 
     const duplicates = new Map<string, number>();
     for (const record of records) duplicates.set(record.id, (duplicates.get(record.id) ?? 0) + 1);
-    for (const [id, count] of duplicates) if (count > 1) issues.push({ path: this.paths.notes, message: `Duplicate memory id: ${id}`, severity: 'error' });
-    return { records, issues };
+    for (const [id, count] of duplicates) if (count > 1) {
+      complete = false;
+      issues.push({ path: this.paths.notes, message: `Duplicate memory id: ${id}`, severity: 'error' });
+    }
+    return { records, issues, complete };
   }
 
   async read(id: string): Promise<MemoryRecord | null> {
@@ -121,6 +130,11 @@ export class FileMemoryStore {
     for (const link of record.links) {
       if (link.targetId === record.id) throw new Error('Memory cannot link to itself');
       if (!ids.has(link.targetId)) throw new Error(`Linked memory not found at commit time: ${link.targetId}`);
+      for (const ref of link.evidenceRefs ?? []) {
+        if (!ref.toLowerCase().startsWith('memory:')) continue;
+        const evidenceId = ref.slice('memory:'.length);
+        if (!ids.has(evidenceId)) throw new Error(`Linked memory evidence not found at commit time: ${evidenceId}`);
+      }
     }
   }
 
@@ -243,7 +257,7 @@ export class FileMemoryStore {
     });
   }
 
-  async deleteWithLinkRepair(id: string): Promise<boolean> {
+  async deleteWithLinkRepair(id: string, expectedReviewFingerprint?: string): Promise<boolean> {
     if (id === 'agent-core-foundational') throw new Error('Pinned foundational memory cannot be deleted');
     const normalized = id.trim();
     const committed = await this.batch((records) => {
@@ -251,6 +265,13 @@ export class FileMemoryStore {
       const target = byId.get(normalized);
       if (!target) return { records, touchedIds: [], result: false };
       if (target.pinned) throw new Error('Pinned foundational memory cannot be deleted');
+      if (expectedReviewFingerprint) {
+        const expected = expectedReviewFingerprint.trim().toLowerCase();
+        if (!/^sha256:[0-9a-f]{64}$/.test(expected)) throw new Error('MEMORY_RETIREMENT_FINGERPRINT_INVALID');
+        if (memoryRetirementFingerprint(target) !== expected) {
+          throw new Error('MEMORY_RETIREMENT_REVIEW_STALE');
+        }
+      }
 
       byId.delete(normalized);
       const touched = new Set<string>([normalized]);

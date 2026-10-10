@@ -53,12 +53,22 @@ export type DesktopHealthSnapshot = {
     issueCount: number;
     sinkStatus: Array<{ name: string; available: boolean }>;
   };
-  partner: {
+  agentRuntime?: {
     status: string;
-    provider?: string;
-    transport?: string;
     issueCount: number;
     issue?: string;
+    providerCount: number;
+    configuredProviderCount: number;
+    sessionCount: number;
+    runningSessionCount: number;
+    skillCount: number;
+    pendingFinalizationCount: number;
+  };
+  agentChat?: {
+    status: string;
+    conversationCount: number;
+    activeConversationCount: number;
+    runningTurnCount: number;
   };
 };
 
@@ -93,11 +103,115 @@ export type ActivityEntry = {
   message: string;
 };
 
+export type AgentRunResult = {
+  sessionId: string;
+  taskId: string;
+  response: string;
+  status: 'finalized' | 'finalization-failed';
+  iterations: number;
+  retrievalAttemptIds: string[];
+};
+
+export type AgentRunState = {
+  requestId?: string;
+  status: 'idle' | 'running' | 'done' | 'error';
+  result?: AgentRunResult;
+  error?: string;
+};
+
+export type AgentChatConversation = {
+  id: string;
+  runtimeSessionId: string;
+  workspace: string;
+  title: string;
+  status: 'active' | 'archived';
+  preferredProviderId?: string;
+  preferredModel?: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  lastTurnId?: string;
+};
+
+export type AgentChatTurn = {
+  id: string;
+  conversationId: string;
+  clientRequestId: string;
+  runtimeTaskId: string;
+  status: 'running' | 'finalized' | 'failed' | 'interrupted' | 'stopped';
+  providerId?: string;
+  model?: string;
+  iterations?: number;
+  retrievalCount?: number;
+  errorCode?: string;
+  createdAtMs: number;
+  startedAtMs: number;
+  completedAtMs?: number;
+};
+
+export type AgentChatMessage = {
+  id: string;
+  conversationId: string;
+  turnId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAtMs: number;
+};
+
+export type AgentChatDetail = {
+  conversation: AgentChatConversation;
+  turns: AgentChatTurn[];
+  messages: AgentChatMessage[];
+};
+
+export type AgentChatEvent = {
+  type: string;
+  at: string;
+  conversationId: string;
+  turnId: string;
+  toolName?: string;
+  success?: boolean;
+  itemCount?: number;
+  providerId?: string;
+  model?: string;
+  response?: string;
+  code?: string;
+};
+
+export type AgentChatUiState = {
+  conversations: AgentChatConversation[];
+  active?: AgentChatDetail;
+  runningRequestId?: string;
+  lastEvent?: AgentChatEvent;
+  error?: string;
+};
+
+export type WorkflowsSnapshot = {
+  status: 'building' | 'ready' | 'stale' | 'error';
+  fingerprint?: string;
+  revision?: string;
+  generatedAt?: string;
+  sourceFiles?: number;
+  nodes?: number;
+  edges?: number;
+  unknowns?: number;
+  error?: string;
+  html?: string;
+  limitations: string[];
+};
+
 type HostEnvelope =
+  | { type: 'workflows-result'; requestId: string; result: WorkflowsSnapshot }
+  | { type: 'workflows-error'; requestId: string; error: string }
   | { type: 'status'; status: DesktopStatus }
   | { type: 'snapshot'; snapshot: DesktopSnapshot }
   | { type: 'log'; entry: ActivityEntry }
   | { type: 'logs'; entries: ActivityEntry[] }
+  | { type: 'agent-result'; requestId: string; result?: AgentRunResult; error?: string }
+  | { type: 'agent-chat-list-result'; result: { conversations?: AgentChatConversation[] } }
+  | { type: 'agent-chat-state'; result: AgentChatDetail }
+  | { type: 'agent-chat-event'; requestId: string; envelope: { type: string; event?: AgentChatEvent; result?: unknown; error?: string } }
+  | { type: 'agent-chat-cancel-result'; turnId: string; stopped: boolean }
+  | { type: 'agent-chat-error'; requestId?: string; error: string }
   | { type: 'error'; message: string };
 
 export type HostListener = (message: HostEnvelope) => void;

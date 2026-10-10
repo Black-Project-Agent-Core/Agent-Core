@@ -7,10 +7,12 @@ internal static class Program
     {
         if (NativeDumpDiagnostics.TryRunHelperMode(args)) return;
 
-        ApplicationConfiguration.Initialize();
+        // Own the single-instance boundary before any WinForms initialization can hang.
+        // Helper mode is intentionally exempt because it is a launcher-owned child role.
         using var mutex = new Mutex(initiallyOwned: true, name: @"Local\AgentCoreDesktop", createdNew: out var createdNew);
         if (!createdNew) return;
 
+        ApplicationConfiguration.Initialize();
         var root = RootLocator.Find();
         var journal = new ActivityJournal(root);
         NativeDumpDiagnostics? nativeDiagnostics = null;

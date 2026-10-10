@@ -27,54 +27,77 @@ export function applyCheckpoint(
 ): { state: LearningState; result: LearningCheckpointResult } {
   const key = input.idempotencyKey.trim();
   if (!key) throw new Error('Learning checkpoint idempotencyKey is required');
-  const duplicate = state.recentIdempotency.some((item) => item.key === key);
+  const pendingReviews = state.pendingReviews ?? [];
+  const duplicate = state.recentIdempotency.some((item) => item.key === key)
+    || pendingReviews.some(item => item.idempotencyKey === key)
+    || Boolean(state.reviewDecisions?.[key]?.complete);
   const meaningful = input.meaningful !== false && (input.reason ?? 'task-complete') !== 'status';
   const reason = input.reason ?? 'task-complete';
 
   if (duplicate) {
+    const pendingReview = pendingReviews.find((item) => item.idempotencyKey === key);
+    const effectiveReason = pendingReview?.reason ?? reason;
     return {
       state,
       result: {
         duplicate: true,
         advanced: false,
-        reviewDue: IMMEDIATE.has(reason) || state.sinceReview >= config.reviewInterval,
-        reviewReason: IMMEDIATE.has(reason) ? reason : state.sinceReview >= config.reviewInterval ? 'periodic' : null,
+        reviewDue: Boolean(pendingReview),
+        reviewReason: pendingReview ? effectiveReason : null,
         checkpointCount: state.checkpointCount,
         sinceReview: state.sinceReview,
         curatorDue: isCuratorDue(state, config, now.getTime()),
+        pendingReviewCount: pendingReviews.length,
+        ...(pendingReview ? { pendingReview } : {}),
       },
     };
   }
 
+  const createdAt = now.toISOString();
+  const pendingReview = meaningful ? {
+    idempotencyKey: key.slice(0, 200),
+    reason: reason as Exclude<LearningTriggerReason, 'status'>,
+    evidenceRefs: input.evidenceRefs ?? [],
+    ...(input.workspace?.trim() ? { workspace: input.workspace.trim().slice(0, 200) } : {}),
+    createdAt,
+    ...(input.taskId ? { taskId: input.taskId } : {}),
+  } : undefined;
+  const nextPendingReviews = pendingReview
+    ? [...pendingReviews, pendingReview]
+    : pendingReviews;
   const next: LearningState = {
     ...state,
     checkpointCount: state.checkpointCount + (meaningful ? 1 : 0),
     sinceReview: state.sinceReview + (meaningful ? 1 : 0),
-    lastCheckpointAt: now.toISOString(),
-    recentIdempotency: [...state.recentIdempotency, { key: key.slice(0, 200), at: now.toISOString() }].slice(-64),
+    lastCheckpointAt: createdAt,
+    recentIdempotency: [...state.recentIdempotency, { key: key.slice(0, 200), at: createdAt }].slice(-64),
+    pendingReviews: nextPendingReviews,
   };
-  const immediate = IMMEDIATE.has(reason);
-  const periodic = meaningful && next.sinceReview >= config.reviewInterval;
 
   return {
     state: next,
     result: {
       duplicate: false,
       advanced: meaningful,
-      reviewDue: immediate || periodic,
-      reviewReason: immediate ? reason : periodic ? 'periodic' : null,
+      reviewDue: meaningful,
+      reviewReason: meaningful ? reason : null,
       checkpointCount: next.checkpointCount,
       sinceReview: next.sinceReview,
       curatorDue: isCuratorDue(next, config, now.getTime()),
+      pendingReviewCount: nextPendingReviews.length,
+      ...(pendingReview ? { pendingReview } : {}),
     },
   };
 }
 
-export function markReviewed(state: LearningState, now = new Date()): LearningState {
+export function markReviewed(state: LearningState, now = new Date(), checkpointKeys: string[] = []): LearningState {
+  const reviewed = new Set(checkpointKeys);
+  const pendingReviews = (state.pendingReviews ?? []).filter(item => !reviewed.has(item.idempotencyKey));
   return {
     ...state,
-    sinceReview: 0,
+    sinceReview: pendingReviews.length,
     lastReviewAt: now.toISOString(),
+    pendingReviews,
   };
 }
 

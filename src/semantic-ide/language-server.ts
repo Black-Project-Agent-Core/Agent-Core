@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { validateDiagnosticItems } from './diagnostic-payload.js';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { WorkspaceFreshnessResult } from './freshness.js';
 import { createProviderAdapter, type ProviderPostInitializeEvidence, type ProviderRuntimeControl } from './provider-registry.js';
 import { LspConnection, LspServerRequestError } from './protocol.js';
 import { readSemanticSource } from './source-io.js';
@@ -11,6 +10,7 @@ import type {
   SemanticLanguageServerDefinition,
   SemanticProviderReadiness,
   SemanticWorkspaceFolder,
+  WorkspaceFreshnessResult,
 } from './types.js';
 
 interface OpenDocument {

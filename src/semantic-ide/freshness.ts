@@ -1,5 +1,6 @@
 import { pathToFileURL } from 'node:url';
-import type { SemanticLanguageServerDefinition } from './types.js';
+import type { SemanticLanguageServerDefinition, WorkspaceFreshnessResult } from './types.js';
+export type { WorkspaceFreshnessResult } from './types.js';
 import { scanWorkspaceSources, type WorkspaceFileStamp } from './workspace-policy.js';
 import { sameSemanticFileIdentity } from './source-io.js';
 
@@ -11,18 +12,6 @@ export interface FreshnessSession {
 }
 
 type Stamp = WorkspaceFileStamp;
-
-export interface WorkspaceFreshnessResult {
-  state: 'baseline' | 'fresh' | 'degraded';
-  scannedFiles: number;
-  eventCount: number;
-  created: number;
-  changed: number;
-  deleted: number;
-  truncated: boolean;
-  durationMs: number;
-  reason?: string;
-}
 
 function compareStamp(left: Stamp, right: Stamp): 'same' | 'changed' | 'unknown' {
   if (!left.identity || !right.identity) return 'unknown';

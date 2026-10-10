@@ -18,7 +18,8 @@ export function buildSystems(snapshot?: DesktopSnapshot): SystemView[] {
   const memoryTone = normalizeTone(h.memory.status, h.memory.issueCount);
   const executionTone = normalizeTone(h.execution.status);
   const learningTone = normalizeTone(h.learning.status, h.learning.issueCount);
-  const partnerTone = normalizeTone(h.partner.status, h.partner.issueCount);
+  const agentRuntime = h.agentRuntime;
+  const agentTone = agentRuntime ? normalizeTone(agentRuntime.status, agentRuntime.issueCount) : 'offline';
   const phoneTone = normalizeTone(h.phone.status);
   const tunnelTone = snapshot.tunnel.ready ? 'healthy' : 'offline';
   const coreTone = snapshot.core.httpHealthy ? 'healthy' : 'error';
@@ -58,10 +59,12 @@ export function buildSystems(snapshot?: DesktopSnapshot): SystemView[] {
       meta:[['Components',String(h.learning.sinkStatus.length)], ['Memory Sink',h.learning.sinkStatus.find(s=>s.name==='memory')?.available ? 'Ready' : 'Unavailable'], ['Grafel Sink',h.learning.sinkStatus.find(s=>s.name==='grafel-patterns')?.available ? 'Ready' : 'Unavailable'], ['Issues',String(h.learning.issueCount)]],
     },
     {
-      id:'partner', name:'Hermes Partner', description:'External partner integration', tone:partnerTone,
-      label:labelForTone(partnerTone), category:'Partner',
-      meta:[['Provider',text(h.partner.provider)], ['Transport',text(h.partner.transport)], ['Issue Count',String(h.partner.issueCount)], ['Last Error',text(h.partner.issue,'None')]],
-      issue:h.partner.issue,
+      id:'partner', name:'Agent Core AI', description:'Native model + Agent Core tool runtime', tone:agentTone,
+      label:agentRuntime ? labelForTone(agentTone) : 'Coming Soon', category:'AI Agent',
+      meta:agentRuntime
+        ? [['Providers',`${agentRuntime.configuredProviderCount}/${agentRuntime.providerCount}`], ['Sessions',String(agentRuntime.sessionCount)], ['Running',String(agentRuntime.runningSessionCount)], ['Pending Finalization',String(agentRuntime.pendingFinalizationCount)], ['Skills',String(agentRuntime.skillCount)]]
+        : [['Providers','Not configured'], ['Sessions','0'], ['Running','0'], ['Pending Finalization','0'], ['Skills','0']],
+      issue:agentRuntime?.issue,
     },
     {
       id:'phone', name:'Phone', description:'Mobile device integration and device bridge', tone:phoneTone,

@@ -402,7 +402,7 @@ async function loadSemanticProviderSet(config: SemanticIdeConfig): Promise<{
   const definitions = mergeProviderDefinitions(discovered.definitions, configDefinitions, fileDefinitions);
   const versions = new Map<string, SemanticProviderVersionInfo>();
   for (const definition of definitions) {
-    const version: SemanticProviderVersionInfo = await probeProviderVersion(definition).catch(error => ({
+    const version: SemanticProviderVersionInfo = await probeProviderVersion(definition, 5_000, config.projectRoot).catch(error => ({
       compatibility: 'unknown',
       issue: error instanceof Error ? error.message : String(error),
     }));

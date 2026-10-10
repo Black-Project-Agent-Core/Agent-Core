@@ -2,6 +2,8 @@ import fs from "fs/promises";
 import path from "path";
 import os from 'os';
 import { fetchWithPolicy, correlationSuffix } from '../../net/outbound-request.js';
+import { readPublicUrlBytes, publicContentKind } from '../../net/public-url-read.js';
+import { parsePdfBytesToMarkdown } from './pdf/index.js';
 import { readResponseBytesBounded, readResponseTextBounded } from '../../net/bounded-response.js';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -10,10 +12,17 @@ import { withTimeout, runWithAbortableTimeout } from '../utils/withTimeout.js';
 import { configManager } from '../config-manager.js';
 import { getFileHandler, TextFileHandler } from '../utils/files/index.js';
 import { assertRegularFile, readRegularFileBounded } from '../utils/files/safe-regular-file.js';
+import { readVerifiedResultPage } from '../../security/verified-result-artifact.js';
 import type { ReadOptions, FileResult, PdfPageItem } from '../utils/files/base.js';
 import { isPdfFile } from "./mime-types.js";
 import { parsePdfToMarkdown, editPdf, PdfOperations, PdfMetadata, parseMarkdownToPdf } from './pdf/index.js';
 import { isBinaryFile } from 'isbinaryfile';
+import { resolveModuleProjectRoot } from '../../portability/paths.js';
+import { documentProjectionService } from '../document-projection/service.js';
+import { decodeText } from '../document-projection/helpers.js';
+import { DocumentProjectionError, type ProjectionResult } from '../document-projection/types.js';
+
+const MACHINE_CONTROL_PROJECT_ROOT = resolveModuleProjectRoot(import.meta.url);
 
 // CONSTANTS SECTION - Consolidate all timeouts and thresholds
 
@@ -235,7 +244,7 @@ export async function validatePath(requestedPath: string): Promise<string> {
         // Convert to absolute path
         const absoluteOriginal = path.isAbsolute(expandedPath)
             ? path.resolve(expandedPath)
-            : path.resolve(process.cwd(), expandedPath);
+            : path.resolve(MACHINE_CONTROL_PROJECT_ROOT, expandedPath);
 
         // Attempt to resolve symlinks to get the real path
         // This will succeed if the path exists and all symlinks in the chain are valid
@@ -351,12 +360,51 @@ type PdfPayload = {
 
 type FileResultPayloads = PdfPayload;
 
+function projectionToFileResult(result: ProjectionResult): FileResult {
+    return {
+        content: result.markdown,
+        mimeType: 'text/markdown',
+        metadata: {
+            isDocumentProjection: true,
+            projection: 'markdown',
+            sourceFormat: result.format,
+            converter: result.converter,
+            sourceMimeType: result.evidence?.mimeType,
+            sourceExtension: result.evidence?.extension,
+            omittedEntries: result.omittedEntries,
+            title: result.title
+        }
+    };
+}
+
 /**
  * Read file content from a URL
  * @param url URL to fetch content from
  * @returns File content or file result with metadata
  */
-export async function readFileFromUrl(url: string): Promise<FileResult> {
+export async function readFileFromUrl(url: string, options?: ReadOptions): Promise<FileResult> {
+    if (options?.networkPolicy !== undefined) {
+        if (options.networkPolicy !== 'public-only' || options.expectedIntegrity !== undefined
+            || options.sheet !== undefined || options.range !== undefined
+            || (options.projection !== undefined && options.projection !== 'native'))
+            throw new Error('PUBLIC_URL_MODE_INVALID');
+        // A common conservative bound is never larger than any existing format limit.
+        const maxBytes = Math.min(URL_TEXT_MAX_BYTES, URL_BINARY_MAX_BYTES,
+            envByteLimit('AGENT_CORE_PDF_URL_MAX_BYTES', 64 * 1024 * 1024));
+        const result = await readPublicUrlBytes(url, { maxBytes, signal: options.signal });
+        const kind = publicContentKind(result.contentType);
+        const publicUrl = { networkPolicy: 'public-only' as const, redirects: result.redirects, downloadedBytes: result.bytes.length };
+        if (kind === 'pdf') {
+            const parsed = await parsePdfBytesToMarkdown(new Uint8Array(result.bytes));
+            return { content: '', mimeType: 'text/plain', metadata: { publicUrl, isPdf: true,
+                author: parsed.metadata.author, title: parsed.metadata.title,
+                totalPages: parsed.metadata.totalPages, pages: parsed.pages } };
+        }
+        if (kind === 'image') return { content: result.bytes.toString('base64'),
+            mimeType: result.contentType.split(';', 1)[0].trim().toLowerCase(), metadata: { publicUrl, isImage: true } };
+        const charset = /charset\s*=\s*([^;]+)/i.exec(result.contentType)?.[1]?.trim();
+        return { content: decodeText(result.bytes, charset).text, mimeType: result.contentType, metadata: { publicUrl, isImage: false } };
+    }
     const { isImageFile } = await import('./mime-types.js');
     try {
         const response = await fetchWithPolicy(url, {}, {
@@ -389,9 +437,27 @@ export async function readFileFromUrl(url: string): Promise<FileResult> {
             const buffer = await readResponseBytesBounded(response, URL_BINARY_MAX_BYTES, 'URL binary response');
             return { content: buffer.toString('base64'), mimeType: contentType, metadata: { isImage } };
         }
+
+        const projection = options?.projection ?? 'auto';
+        if (documentProjectionService.shouldAttempt(url, projection, contentType)) {
+            const buffer = await readResponseBytesBounded(response, URL_BINARY_MAX_BYTES, 'URL document response');
+            const projected = await documentProjectionService.projectBytes({
+                bytes: buffer,
+                profile: projection,
+                sourceName: url,
+                url,
+                mimeType: contentType
+            });
+            if (projected) return projectionToFileResult(projected);
+            const charset = /charset\s*=\s*([^;]+)/i.exec(contentType)?.[1]?.trim();
+            const content = decodeText(buffer, charset).text;
+            return { content, mimeType: contentType, metadata: { isImage: false } };
+        }
+
         const content = await readResponseTextBounded(response, URL_TEXT_MAX_BYTES, 'URL text response');
         return { content, mimeType: contentType, metadata: { isImage } };
     } catch (error) {
+        if (error instanceof DocumentProjectionError) throw error;
         throw new Error(`Failed to fetch URL: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
@@ -406,6 +472,7 @@ export async function readFileFromDisk(
     filePath: string,
     options?: ReadOptions
 ): Promise<FileResult> {
+    if (options?.networkPolicy !== undefined) throw new Error('PUBLIC_URL_MODE_LOCAL_REFUSED');
     const { offset = 0, sheet, range } = options ?? {};
     let { length } = options ?? {};
 
@@ -420,6 +487,12 @@ export async function readFileFromDisk(
     }
 
     const validPath = await validatePath(filePath);
+    if (options?.expectedIntegrity !== undefined) {
+        if (options.isUrl || options.sheet !== undefined || options.range !== undefined
+            || (options.projection !== undefined && options.projection !== 'native'))
+            throw new Error('RESULT_ARTIFACT_MODE_REFUSED');
+        return readVerifiedResultPage(filePath, options.expectedIntegrity, offset, length);
+    }
 
     // Get file extension for telemetry
     const fileExtension = getFileExtension(validPath);
@@ -484,6 +557,14 @@ export async function readFileFromDisk(
     // Read under an abortable timeout so a hung/stalled read is cancelled
     // (fd/thread freed) rather than leaked until the OS call returns.
     const readOperation = async (signal: AbortSignal) => {
+        if (signal.aborted) throw Object.assign(new Error('Read aborted'), { code: 'ABORT_ERR' });
+
+        const projected = await documentProjectionService.projectLocalFile(
+            validPath,
+            options?.projection ?? 'auto'
+        );
+        if (projected) return projectionToFileResult(projected);
+
         // Get appropriate handler for this file type (async - includes binary detection)
         const handler = await getFileHandler(validPath);
 
@@ -554,9 +635,11 @@ export async function readFile(
     options?: ReadOptions
 ): Promise<FileResult> {
     const { isUrl, offset, length, sheet, range } = options ?? {};
+    if (options?.networkPolicy !== undefined && !isUrl) throw new Error('PUBLIC_URL_MODE_LOCAL_REFUSED');
+    if (isUrl && options?.expectedIntegrity !== undefined) throw new Error('RESULT_ARTIFACT_URL_REFUSED');
     return isUrl
-        ? readFileFromUrl(filePath)
-        : readFileFromDisk(filePath, { offset, length, sheet, range });
+        ? readFileFromUrl(filePath, options)
+        : readFileFromDisk(filePath, { offset, length, sheet, range, projection: options?.projection, expectedIntegrity: options?.expectedIntegrity });
 }
 
 /**

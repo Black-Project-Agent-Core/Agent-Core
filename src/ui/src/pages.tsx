@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import type { ActivityEntry, DesktopSnapshot } from './host';
+import { WorkflowsPage } from './WorkflowsPage';
+import type {
+  ActivityEntry,
+  AgentChatUiState,
+  AgentRunState,
+  DesktopSnapshot,
+} from './host';
 import { buildSystems, systemCounts } from './systems';
 import { formatBytes, formatDuration, labelForTone, type SystemView, type Tone } from './model';
 import {
@@ -11,7 +17,7 @@ import {
 const {
   Activity, AlertTriangle, ArrowRight, BookOpen, Boxes, BrainCircuit, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, CircleSlash, Clock3, Code2,
   Cpu, Database, Download, ExternalLink, FileText, Folder, Gamepad2, Gauge, HardDrive, HeartPulse,
-  Info, KeyRound, LayoutDashboard, Link2, ListChecks, MoreHorizontal, Play, Power, Puzzle, RefreshCw,
+  Info, KeyRound, LayoutDashboard, Link2, ListChecks, MessageSquarePlus, MoreHorizontal, Play, Power, Puzzle, RefreshCw,
   Search, Settings, ShieldCheck, Smartphone, Stethoscope, Terminal, Trash2, UserRound, Wifi, X, XCircle,
 }=uiIcons;
 
@@ -20,6 +26,14 @@ type SharedProps = {
   logs: ActivityEntry[];
   onAction:(id:string)=>void;
   setPage:(id:PageId)=>void;
+  agentRun: AgentRunState;
+  onAgentRun:(prompt:string,workspace?:string)=>void;
+  agentChat: AgentChatUiState;
+  onChatCreate:(workspace?:string)=>void;
+  onChatOpen:(conversationId:string)=>void;
+  onChatSend:(conversationId:string,prompt:string)=>void;
+  onChatCancel:(turnId:string)=>void;
+  onChatArchive:(conversationId:string)=>void;
 };
 
 const statusTone=(status?:string, issues=0):Tone=>{
@@ -257,7 +271,7 @@ function buildChecks(snapshot?:DesktopSnapshot):DiagnosticCheck[] {
     ...h.semanticIde.configuredServers.map(server=>({name:`LSP ${server.id==='csharp'?'C#':server.id==='typescript'?'TypeScript':server.id==='powershell'?'PowerShell':server.id==='python'?'Python':server.id}`,category:'Semantic IDE',tone:server.compatibility==='compatible'?'healthy':'warning' as Tone,duration:'-',detail:`Version ${server.observedVersion??'unknown'}; compatibility ${server.compatibility??'unknown'}.`})),
     {name:'Execution Environment',category:'Execution',tone:statusTone(h.execution.status),duration:'-',detail:`Execution mode: ${h.execution.mode??'unknown'}.`},
     {name:'Tunnel Connection',category:'Tunnel',tone:snapshot.tunnel.ready?'healthy':'error',duration:'-',detail:snapshot.tunnel.ready?`Tunnel ready on port ${snapshot.tunnel.port}.`:'Tunnel is unavailable.'},
-    {name:'Hermes Partner',category:'Partner',tone:statusTone(h.partner.status,h.partner.issueCount),duration:'-',detail:h.partner.issue??'Partner integration available.'},
+    {name:'Agent Core AI',category:'AI Agent',tone:h.agentRuntime?statusTone(h.agentRuntime.status,h.agentRuntime.issueCount):'offline',duration:'-',detail:h.agentRuntime?`Native runtime ${h.agentRuntime.status}; providers ${h.agentRuntime.configuredProviderCount}/${h.agentRuntime.providerCount}; sessions ${h.agentRuntime.sessionCount}; running ${h.agentRuntime.runningSessionCount}; skills ${h.agentRuntime.skillCount}. ${h.agentRuntime.issue??''}`.trim():'Native Agent Core AI runtime is not active yet; UI placeholder remains Coming Soon.'},
     {name:'Phone Integration',category:'Phone',tone:statusTone(h.phone.status),duration:'-',detail:`Transport ${h.phone.transport??'unknown'}; device ${h.phone.deviceOnline?'online':'offline'}.`},
   ];
   return items;
@@ -336,15 +350,118 @@ export function SettingsPage(props:SharedProps) {
   </div>;
 }
 
+export function ChatPage(props:SharedProps) {
+  const [prompt,setPrompt]=useState('');
+  const [workspace,setWorkspace]=useState('agent-core');
+  const runtime=props.snapshot?.health.agentRuntime;
+  const chatHealth=props.snapshot?.health.agentChat;
+  const configured=(runtime?.configuredProviderCount??0)>0;
+  const active=props.agentChat.active;
+  const running=Boolean(props.agentChat.runningRequestId)
+    || Boolean(active?.turns.some(turn=>turn.status==='running'));
+  const runningTurn=active?.turns.find(turn=>turn.status==='running');
+  const event=props.agentChat.lastEvent?.conversationId===active?.conversation.id
+    ? props.agentChat.lastEvent
+    : undefined;
+  const runningTurnId=runningTurn?.id
+    ?? (props.agentChat.runningRequestId ? event?.turnId : undefined);
+
+  const submit=()=>{
+    const value=prompt.trim();
+    if(!value||!active||running||!configured)return;
+    props.onChatSend(active.conversation.id,value);
+    setPrompt('');
+  };
+
+  return <div className="page chat-page">
+    <PageHero icon={MessageSquarePlus} title="Agent Core AI" subtitle="Persistent Native Agent conversations with Memory-first context, existing tools, and Learning finalization on every turn.">
+      <StatusBadge tone={statusTone(runtime?.status,runtime?.issueCount??0)} label={configured?'Agent Ready':'Provider Not Configured'}/>
+    </PageHero>
+
+    <div className="chat-shell">
+      <Panel className="chat-thread-rail">
+        <div className="chat-thread-head">
+          <TinyButton kind="primary" disabled={!configured||running} onClick={()=>props.onChatCreate(workspace.trim()||undefined)}>
+            <MessageSquarePlus size={16}/>New Chat
+          </TinyButton>
+          <label><span>Workspace</span><input value={workspace} onChange={e=>setWorkspace(e.target.value)} disabled={running||Boolean(active)} maxLength={200}/></label>
+        </div>
+        <div className="chat-thread-list">
+          {props.agentChat.conversations.map(item=><button
+            key={item.id}
+            className={active?.conversation.id===item.id?'active':''}
+            onClick={()=>props.onChatOpen(item.id)}
+            disabled={running&&active?.conversation.id!==item.id}
+          >
+            <b>{item.title}</b>
+            <small>{item.workspace} · {new Date(item.updatedAtMs).toLocaleString()}</small>
+          </button>)}
+          {!props.agentChat.conversations.length&&<div className="empty-copy">No conversations yet.</div>}
+        </div>
+      </Panel>
+
+      <Panel className="chat-main chat-conversation-main">
+        <div className="chat-runtime-strip">
+          <span><b>Runtime</b>{runtime?.status??'unavailable'}</span>
+          <span><b>Providers</b>{runtime?runtime.configuredProviderCount+'/'+runtime.providerCount:'0/0'}</span>
+          <span><b>Chats</b>{chatHealth?.activeConversationCount??props.agentChat.conversations.length}</span>
+          <span><b>Pending finalization</b>{runtime?.pendingFinalizationCount??0}</span>
+        </div>
+
+        <div className="chat-response chat-transcript" aria-live="polite">
+          {!active&&<div className="chat-empty"><BrainCircuit size={34}/><h2>Start or open a conversation.</h2><p>Each thread keeps one durable Agent Runtime session. Every user turn still verifies and finalizes Learning independently.</p></div>}
+          {active&&<>
+            <div className="chat-conversation-title">
+              <div><h2>{active.conversation.title}</h2><p>{active.conversation.workspace}</p></div>
+              <div className="chat-conversation-actions">
+                {(active.conversation.preferredProviderId||active.conversation.preferredModel)&&<span className="chat-route-label">{active.conversation.preferredProviderId??'auto'}{active.conversation.preferredModel?' · '+active.conversation.preferredModel:''}</span>}
+                <TinyButton disabled={running} onClick={()=>props.onChatArchive(active.conversation.id)}><Trash2 size={15}/>Archive</TinyButton>
+              </div>
+            </div>
+            <div className="chat-message-list">
+              {active.messages.map(message=><div key={message.id} className={'chat-message '+message.role}>
+                <div className="chat-message-role">{message.role==='user'?'You':'Agent Core'}</div>
+                <pre>{message.content}</pre>
+              </div>)}
+              {running&&<div className="chat-message assistant pending">
+                <div className="chat-message-role">Agent Core</div>
+                <div className="chat-progress"><RefreshCw className="spin" size={17}/><span>{event?.type??'turn.accepted'}</span>{event?.toolName&&<b>{event.toolName}</b>}</div>
+              </div>}
+            </div>
+          </>}
+          {props.agentChat.error&&<div className="chat-error"><AlertTriangle size={22}/><div><b>Agent chat turn failed</b><p>{props.agentChat.error}</p></div></div>}
+        </div>
+
+        <div className="chat-composer">
+          <textarea
+            value={prompt}
+            onChange={e=>setPrompt(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit();}}}
+            placeholder={!configured?'No configured provider.':active?'Message Agent Core…':'Create or open a chat first.'}
+            disabled={!configured||!active||running}
+            rows={4}
+          />
+          <div className="chat-composer-footer">
+            <span className="chat-composer-hint">Enter to send · Shift+Enter for newline</span>
+            {running&&runningTurnId
+              ? <TinyButton onClick={()=>props.onChatCancel(runningTurnId)}><X size={16}/>Stop</TinyButton>
+              : <TinyButton kind="primary" disabled={!configured||!active||!prompt.trim()||running} onClick={submit}><Play size={17}/>Send</TinyButton>}
+          </div>
+        </div>
+      </Panel>
+    </div>
+  </div>;
+}
+
 function RotateCcwIcon(){return <RefreshCw size={18}/>}
 
 function SettingToggle({title,text,on,disabled,onChange}:{title:string;text:string;on:boolean;disabled?:boolean;onChange?:()=>void}) {
   return <div className="setting-toggle"><div><b>{title}</b><span>{text}</span></div><Toggle on={on} disabled={disabled} onChange={onChange}/></div>;
 }
 
-export function ReferenceUi({page,setPage,snapshot,logs,onAction}:{page:PageId;setPage:(p:PageId)=>void;snapshot?:DesktopSnapshot;logs:ActivityEntry[];onAction:(id:string)=>void}) {
-  const props={snapshot,logs,onAction,setPage};
-  const content=page==='dashboard'?<DashboardPage {...props}/>:page==='core'?<CoreRuntimePage {...props}/>:page==='systems'?<SystemsPage {...props}/>:page==='activity'?<ActivityLogPage {...props}/>:page==='diagnostics'?<DiagnosticsPage {...props}/>:<SettingsPage {...props}/>;
+export function ReferenceUi({page,setPage,snapshot,logs,onAction,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatArchive}:{page:PageId;setPage:(p:PageId)=>void;snapshot?:DesktopSnapshot;logs:ActivityEntry[];onAction:(id:string)=>void;agentRun:AgentRunState;onAgentRun:(prompt:string,workspace?:string)=>void;agentChat:AgentChatUiState;onChatCreate:(workspace?:string)=>void;onChatOpen:(conversationId:string)=>void;onChatSend:(conversationId:string,prompt:string)=>void;onChatCancel:(turnId:string)=>void;onChatArchive:(conversationId:string)=>void}) {
+  const props={snapshot,logs,onAction,setPage,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatArchive};
+  const content=page==='workflows'?<WorkflowsPage/>:page==='chat'?<ChatPage {...props}/>:page==='dashboard'?<DashboardPage {...props}/>:page==='core'?<CoreRuntimePage {...props}/>:page==='systems'?<SystemsPage {...props}/>:page==='activity'?<ActivityLogPage {...props}/>:page==='diagnostics'?<DiagnosticsPage {...props}/>:<SettingsPage {...props}/>;
   return <AppShell page={page} setPage={setPage} snapshot={snapshot} onAction={onAction}>{content}</AppShell>;
 }
 

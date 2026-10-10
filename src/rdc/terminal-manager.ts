@@ -1,11 +1,17 @@
 import { spawn } from 'child_process';
 import path from 'path';
-import { TerminalSession, CommandExecutionResult, ActiveSession, TimingInfo, OutputEvent } from './types.js';
+import { TerminalSession, CommandExecutionResult, ActiveSession, TimingInfo, OutputEvent, type TerminalOutputSpillInfo } from './types.js';
+import { TerminalOutputSpill, pruneTerminalOutputSpills, type SpillChunk } from './output-spill.js';
 import { DEFAULT_COMMAND_TIMEOUT } from './config.js';
 import { configManager } from './config-manager.js';
 import { buildMachineShellEnv } from '../security/environment.js';
 import {capture} from "./utils/capture.js";
 import { analyzeProcessState } from './utils/process-detection.js';
+import { processLedger, type ProcessLedgerRecord } from './process-ledger.js';
+import { snapshotDescendantPids, terminateOwnedProcessTree } from '../process/owned-process-tree.js';
+import { resolveModuleProjectRoot } from '../portability/paths.js';
+
+const MACHINE_CONTROL_PROJECT_ROOT = resolveModuleProjectRoot(import.meta.url);
 
 /**
  * Standard Windows PATHEXT value, used to repair a corrupted PATHEXT before
@@ -44,6 +50,14 @@ interface CompletedSession {
   endTime: Date;
   evictedLines: number;        // Carried over from the active session (see TerminalSession)
   evictedChars: number;
+  spill?: TerminalOutputSpillInfo;
+}
+
+interface DetachedSession {
+  pid: number;
+  startTime: Date;
+  commandDigest: string;
+  status: ProcessLedgerRecord['status'];
 }
 
 /**
@@ -55,6 +69,7 @@ interface CompletedSession {
  * process-state scan, both of which are O(total output).
  */
 export const MAX_BUFFERED_OUTPUT_CHARS = 50 * 1024 * 1024;  // per session; oldest lines evicted first
+const OUTPUT_SPILL_THRESHOLD_CHARS = 4 * 1024 * 1024;
 const MAX_LINE_CHARS = 1024 * 1024;                  // force-split longer lines so eviction can work
 const MAX_WAIT_OUTPUT_CHARS = 2 * 1024 * 1024;       // start_process wait buffer (prompt/state detection)
 
@@ -69,6 +84,7 @@ export interface PaginatedOutputResult {
   exitCode?: number | null;    // Exit code if completed
   runtimeMs?: number;          // Runtime in milliseconds (for completed processes)
   evictedLines?: number;       // Lines dropped by the buffer cap; when > 0, line numbers are relative to the retained buffer
+  spill?: TerminalOutputSpillInfo;
 }
 
 /**
@@ -148,6 +164,21 @@ function getShellSpawnArgs(shellPath: string, command: string): ShellSpawnConfig
 export class TerminalManager {
   private sessions: Map<number, TerminalSession> = new Map();
   private completedSessions: Map<number, CompletedSession> = new Map();
+  private detachedSessions: Map<number, DetachedSession> = new Map();
+  private outputSpills = new Map<number, { totalChars: number; prelude: SpillChunk[]; writer?: TerminalOutputSpill; issue?: string }>();
+
+  constructor() {
+    pruneTerminalOutputSpills();
+    for (const record of processLedger.recoverDetached()) {
+      if (record.pid === null) continue;
+      this.detachedSessions.set(record.pid, {
+        pid: record.pid,
+        startTime: new Date(record.createdAt),
+        commandDigest: record.commandDigest,
+        status: record.status,
+      });
+    }
+  }
   
   /**
    * Send input to a running process
@@ -206,6 +237,7 @@ export class TerminalManager {
       // Use shell-specific configuration with login flags where appropriate
       spawnConfig = getShellSpawnArgs(shellToUse, enhancedCommand);
       spawnOptions = {
+        cwd: MACHINE_CONTROL_PROJECT_ROOT,
         env: buildMachineShellEnv({ TERM: 'xterm-256color' }),
         windowsHide: true  // Prevent visible console windows on Windows
       };
@@ -223,6 +255,7 @@ export class TerminalManager {
       };
       spawnOptions = {
         shell: shellToUse,
+        cwd: MACHINE_CONTROL_PROJECT_ROOT,
         env: buildMachineShellEnv({ TERM: 'xterm-256color' }),
         windowsHide: true  // Prevent visible console windows on Windows
       };
@@ -245,6 +278,17 @@ export class TerminalManager {
     // because PowerShell/pwsh have different quote rules and must NOT use verbatim.
     if (process.platform === 'win32' && spawnConfig.windowsVerbatim) {
       spawnOptions.windowsVerbatimArguments = true;
+    }
+
+    let ledgerId: string | null = null;
+    try {
+      ledgerId = await processLedger.createPending(
+        enhancedCommand,
+        typeof shellToUse === 'string' ? shellToUse : 'default',
+        MACHINE_CONTROL_PROJECT_ROOT,
+      );
+    } catch (error) {
+      console.warn('Process ledger pending write failed:', error);
     }
 
     // Spawn the process with appropriate arguments
@@ -275,6 +319,7 @@ export class TerminalManager {
 
     // Ensure childProcess.pid is defined before proceeding
     if (!childProcess.pid) {
+      if (ledgerId) await processLedger.failPending(ledgerId, 'spawn returned no process id').catch(() => undefined);
       // Return a consistent error object instead of throwing
       return {
         pid: -1,  // Use -1 to indicate an error state
@@ -296,6 +341,15 @@ export class TerminalManager {
     };
 
     this.sessions.set(childProcess.pid, session);
+    this.outputSpills.set(childProcess.pid, { totalChars: 0, prelude: [] });
+    // Do not await ledger attachment before exit/error listeners are installed.
+    // Very short-lived commands can exit during the persistence/identity probe window;
+    // awaiting here would miss the one-shot child `exit` event and strand the session.
+    const ledgerAttach = ledgerId
+      ? processLedger.attachRunning(ledgerId, childProcess.pid, spawnConfig.executable).catch((error) => {
+          console.warn('Process ledger attach failed:', error);
+        })
+      : Promise.resolve();
 
     // Timing telemetry
     const startTime = Date.now();
@@ -338,6 +392,10 @@ export class TerminalManager {
       // a successful spawn means the process is gone, so the caller must not sit
       // waiting for output that will never arrive.
       forwardProcessError = (err: Error) => {
+        void ledgerAttach
+          .then(() => processLedger.finalizeExit(childProcess.pid!, null, err.message))
+          .catch(() => undefined);
+        this.finalizeSpill(childProcess.pid!);
         this.sessions.delete(childProcess.pid!);
         exitReason = 'process_exit';
         resolveOnce({
@@ -354,6 +412,7 @@ export class TerminalManager {
 
       childProcess.stdout.on('data', (data: any) => {
         const text = data.toString();
+        this.captureSpillChunk(childProcess.pid!, 'stdout', text);
         const now = Date.now();
 
         if (!firstOutputTime) firstOutputTime = now;
@@ -400,6 +459,7 @@ export class TerminalManager {
 
       childProcess.stderr.on('data', (data: any) => {
         const text = data.toString();
+        this.captureSpillChunk(childProcess.pid!, 'stderr', text);
         const now = Date.now();
 
         if (!firstOutputTime) firstOutputTime = now;
@@ -453,9 +513,14 @@ export class TerminalManager {
         });
       }, timeoutMs);
 
-      childProcess.on('exit', (code: any) => {
+      childProcess.on('exit', async (code: any) => {
         if (childProcess.pid) {
+          await ledgerAttach;
+          await processLedger.finalizeExit(childProcess.pid, code).catch((error) => {
+            console.warn('Process ledger finalize failed:', error);
+          });
           // Store completed session before removing active session
+          const spill = this.finalizeSpill(childProcess.pid);
           this.completedSessions.set(childProcess.pid, {
             pid: childProcess.pid,
             outputLines: [...session.outputLines], // Copy line buffer
@@ -463,7 +528,8 @@ export class TerminalManager {
             startTime: session.startTime,
             endTime: new Date(),
             evictedLines: session.evictedLines,
-            evictedChars: session.evictedChars
+            evictedChars: session.evictedChars,
+            ...(spill ? { spill } : {}),
           });
 
           // Keep only last 100 completed sessions
@@ -482,6 +548,36 @@ export class TerminalManager {
         });
       });
     });
+  }
+
+  private captureSpillChunk(pid: number, source: 'stdout' | 'stderr', text: string): void {
+    const state = this.outputSpills.get(pid);
+    if (!state || !text) return;
+    state.totalChars += text.length;
+    const chunk = { source, text } satisfies SpillChunk;
+    if (state.writer) {
+      state.writer.append([chunk]);
+      return;
+    }
+    state.prelude.push(chunk);
+    if (state.totalChars < OUTPUT_SPILL_THRESHOLD_CHARS) return;
+    try {
+      state.writer = new TerminalOutputSpill(pid);
+      state.writer.append(state.prelude);
+      state.prelude = [];
+    } catch (error) {
+      state.issue = error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500);
+      state.prelude = [];
+    }
+  }
+
+  private finalizeSpill(pid: number): TerminalOutputSpillInfo | undefined {
+    const state = this.outputSpills.get(pid);
+    this.outputSpills.delete(pid);
+    if (!state) return undefined;
+    if (state.writer) return state.writer.finalize();
+    if (state.issue) return { bytes: 0, complete: false, issue: state.issue };
+    return undefined;
   }
 
   /**
@@ -560,6 +656,8 @@ export class TerminalManager {
         undefined
       );
       result.evictedLines = session.evictedLines;
+      const activeSpill = this.outputSpills.get(pid)?.writer?.info();
+      if (activeSpill) result.spill = activeSpill;
       return result;
     }
 
@@ -578,7 +676,20 @@ export class TerminalManager {
         runtimeMs
       );
       result.evictedLines = completedSession.evictedLines;
+      if (completedSession.spill) result.spill = completedSession.spill;
       return result;
+    }
+
+    const detached = this.detachedSessions.get(pid);
+    if (detached) {
+      return this.readFromLineBuffer(
+        ['Detached session recovered after Agent Core restart; original stdout/stderr and stdin pipes are unavailable.'],
+        offset,
+        length,
+        0,
+        () => {},
+        false,
+      );
     }
 
     return null;
@@ -651,6 +762,7 @@ export class TerminalManager {
       return completedSession.outputLines.length;
     }
 
+    if (this.detachedSessions.has(pid)) return 1;
     return null;
   }
 
@@ -752,10 +864,27 @@ export class TerminalManager {
   forceTerminate(pid: number): boolean {
     const session = this.sessions.get(pid);
     if (!session) {
-      return false;
+      const detached = this.detachedSessions.get(pid);
+      if (!detached) return false;
+      const record = processLedger.snapshot().find(item => item.pid === pid && (item.status === 'running' || item.status === 'cancelling'));
+      if (!record || !processLedger.validateLive(record)) {
+        this.detachedSessions.delete(pid);
+        return false;
+      }
+      try {
+        void processLedger.markCancelling(pid).catch(() => undefined);
+        process.kill(pid);
+        this.detachedSessions.delete(pid);
+        void processLedger.finalizeExit(pid, null).catch(() => undefined);
+        return true;
+      } catch (error) {
+        void processLedger.finalizeExit(pid, null, error instanceof Error ? error.message : String(error)).catch(() => undefined);
+        return false;
+      }
     }
 
     try {
+        void processLedger.markCancelling(pid).catch(() => undefined);
         session.process.kill('SIGINT');
         setTimeout(() => {
           if (this.sessions.has(pid)) {
@@ -771,13 +900,54 @@ export class TerminalManager {
       }
   }
 
+  async shutdownAll(): Promise<{ requested: number; terminated: number; remaining: number }> {
+    const targets = [...new Set([...this.sessions.keys(), ...this.detachedSessions.keys()])];
+    let terminated = 0;
+
+    for (const pid of targets) {
+      const detached = this.detachedSessions.has(pid);
+      if (detached) {
+        const record = processLedger.snapshot().find(item =>
+          item.pid === pid && (item.status === 'running' || item.status === 'cancelling'),
+        );
+        if (!record || !processLedger.validateLive(record)) {
+          this.detachedSessions.delete(pid);
+          continue;
+        }
+      }
+
+      const descendants = await snapshotDescendantPids(pid).catch(() => []);
+      try {
+        await processLedger.markCancelling(pid).catch(() => undefined);
+        await terminateOwnedProcessTree(pid, descendants, true);
+        terminated += 1;
+      } finally {
+        this.sessions.delete(pid);
+        this.detachedSessions.delete(pid);
+        await processLedger.finalizeExit(pid, null).catch(() => undefined);
+      }
+    }
+
+    return {
+      requested: targets.length,
+      terminated,
+      remaining: this.sessions.size + this.detachedSessions.size,
+    };
+  }
+
   listActiveSessions(): ActiveSession[] {
     const now = new Date();
-    return Array.from(this.sessions.values()).map(session => ({
+    const active = Array.from(this.sessions.values()).map(session => ({
       pid: session.pid,
       isBlocked: session.isBlocked,
       runtime: now.getTime() - session.startTime.getTime()
     }));
+    const detached = Array.from(this.detachedSessions.values()).map(session => ({
+      pid: session.pid,
+      isBlocked: true,
+      runtime: now.getTime() - session.startTime.getTime(),
+    }));
+    return [...active, ...detached];
   }
 
   listCompletedSessions(): CompletedSession[] {

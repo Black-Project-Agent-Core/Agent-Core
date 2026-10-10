@@ -2,7 +2,6 @@
  * This is not a byte-for-byte restoration of the lost source. Runtime validation
  * remains in the existing provider, workspace and transaction implementations.
  */
-import type { WorkspaceFreshnessResult } from './freshness.js';
 import type { SemanticSourceEncoding } from './source-io.js';
 
 export interface LspPosition { line: number; character: number }
@@ -34,6 +33,17 @@ export type SemanticLanguageServerTransport =
       connectTimeoutMs?: number; retryDelayMs?: number };
 export type SemanticProviderReadiness =
   'stopped' | 'process-running' | 'initialized' | 'indexing' | 'ready' | 'degraded';
+export interface WorkspaceFreshnessResult {
+  state: 'baseline' | 'fresh' | 'degraded';
+  scannedFiles: number;
+  eventCount: number;
+  created: number;
+  changed: number;
+  deleted: number;
+  truncated: boolean;
+  durationMs: number;
+  reason?: string;
+}
 export interface SemanticLanguageServerDefinition {
   id: string;
   adapter?: string;
@@ -59,6 +69,8 @@ export interface SemanticIdeConfig {
   enabled: boolean; projectRoot: string; runtimeDir: string;
   startupTimeoutMs: number; callTimeoutMs: number;
   typescriptServerPath: string; typescriptTsserverPath?: string;
+  pythonServerPath?: string; csharpServerPath?: string; dotnetPath?: string;
+  powershellEditorServicesPath?: string;
   serversFile?: string; servers?: SemanticLanguageServerDefinition[];
 }
 export interface SemanticIdeIssue {

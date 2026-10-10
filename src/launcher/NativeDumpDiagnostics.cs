@@ -65,6 +65,12 @@ public sealed class NativeDumpDiagnostics : IDisposable
         _watchdogArmed = true;
     }
 
+    public void DisarmHangWatchdog()
+    {
+        _watchdogArmed = false;
+        TouchUiHeartbeat();
+    }
+
     public void TouchUiHeartbeat()
     {
         Interlocked.Exchange(ref _lastHeartbeatTicks, DateTime.UtcNow.Ticks);
@@ -168,7 +174,15 @@ public sealed class NativeDumpDiagnostics : IDisposable
         _disposed = true;
         _watchdogArmed = false;
         _stop.Set();
-        try { if (!_helper.HasExited) _helper.WaitForExit(1_500); } catch { }
+        try
+        {
+            if (!_helper.HasExited && !_helper.WaitForExit(1_500))
+            {
+                try { _helper.Kill(entireProcessTree: true); } catch { }
+                try { if (!_helper.HasExited) _helper.WaitForExit(1_500); } catch { }
+            }
+        }
+        catch { }
         if (_vectoredHandle != IntPtr.Zero)
         {
             try { RemoveVectoredExceptionHandler(_vectoredHandle); } catch { }

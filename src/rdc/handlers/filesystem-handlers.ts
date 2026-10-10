@@ -12,6 +12,7 @@ import {
     type MultiFileResult
 } from '../tools/filesystem.js';
 import type { ReadOptions } from '../utils/files/base.js';
+import { expectedResultIntegritySchema } from '../../security/verified-result-artifact.js';
 
 import { ServerResult } from '../types.js';
 import { withTimeout } from '../utils/withTimeout.js';
@@ -30,7 +31,11 @@ import {
 } from '../tools/schemas.js';
 import path from 'path';
 import os from 'os';
+import { resolveModuleProjectRoot } from '../../portability/paths.js';
 import { resolvePreviewFileType } from '../ui/file-preview/shared/preview-file-types.js';
+import { fileMutationCoordinator } from '../mutation-coordinator.js';
+
+const MACHINE_CONTROL_PROJECT_ROOT = resolveModuleProjectRoot(import.meta.url);
 
 /**
  * Expand home directory (~) in a file path
@@ -50,7 +55,7 @@ export function resolveAbsolutePath(filePath: string): string {
     const expanded = expandHome(filePath);
     return path.isAbsolute(expanded)
         ? path.resolve(expanded)
-        : path.resolve(process.cwd(), expanded);
+        : path.resolve(MACHINE_CONTROL_PROJECT_ROOT, expanded);
 }
 
 /**
@@ -98,20 +103,37 @@ export async function handleReadFile(args: unknown): Promise<ServerResult> {
             sheetParam = parseInt(parsed.sheet, 10);
         }
 
+        const projectionRaw = parsed.options?.projection;
+        if (projectionRaw !== undefined && !['auto', 'native', 'markdown'].includes(String(projectionRaw))) {
+            return createErrorResponse('Invalid read_file options.projection; expected auto, native, or markdown');
+        }
+
+        const networkPolicy = parsed.options?.networkPolicy;
+        if (networkPolicy !== undefined && (networkPolicy !== 'public-only' || !parsed.isUrl))
+            return createErrorResponse('PUBLIC_URL_MODE_INVALID');
+        const expectedIntegrity = parsed.options?.expectedIntegrity === undefined ? undefined
+            : expectedResultIntegritySchema.parse(parsed.options.expectedIntegrity);
         const options: ReadOptions = {
+            networkPolicy,
+            expectedIntegrity,
             isUrl: parsed.isUrl,
             offset: parsed.offset ?? 0,
             length: parsed.length ?? defaultLimit,
             sheet: sheetParam,
-            range: parsed.range
+            range: parsed.range,
+            projection: projectionRaw as ReadOptions['projection'] | undefined
         };
 
         // Resolve to absolute path for local files (not URLs) so "Open in folder" works
         const resolvedFilePath = parsed.isUrl
-            ? parsed.path
+            ? (networkPolicy ? new URL(parsed.path).origin + new URL(parsed.path).pathname : parsed.path)
             : resolveAbsolutePath(parsed.path);
 
-        const fileResult = await readFile(parsed.path, options);
+        const fileResult = await readFile(expectedIntegrity === undefined ? parsed.path : resolvedFilePath, options);
+        const publicEvidence = fileResult.metadata?.publicUrl;
+        const networkSummary = publicEvidence ? '[networkPolicy=public-only; redirects=' + publicEvidence.redirects
+            + '; downloadedBytes=' + publicEvidence.downloadedBytes + '; contentTrust=untrusted]\n' : '';
+        const displayPath = networkPolicy ? '[public-only URL]' : parsed.path;
 
         // Handle PDF files
         if (fileResult.metadata?.isPdf) {
@@ -135,7 +157,7 @@ export async function handleReadFile(args: unknown): Promise<ServerResult> {
                 content: [
                     {
                         type: "text",
-                        text: `PDF file: ${parsed.path}${author}${title} (${meta?.totalPages} pages) \n`
+                        text: networkSummary + `PDF file: ${displayPath}${author}${title} (${meta?.totalPages} pages) \n`
                     },
                     ...pdfContent
                 ],
@@ -158,7 +180,7 @@ export async function handleReadFile(args: unknown): Promise<ServerResult> {
             const imageData = typeof fileResult.content === 'string'
                 ? fileResult.content
                 : fileResult.content.toString('base64');
-            const imageSummary = `Image file: ${parsed.path} (${fileResult.mimeType})\n`;
+            const imageSummary = networkSummary + `Image file: ${displayPath} (${fileResult.mimeType})\n`;
             const imageStructuredContent = {
                 fileName: path.basename(resolvedFilePath),
                 filePath: resolvedFilePath,
@@ -209,7 +231,7 @@ export async function handleReadFile(args: unknown): Promise<ServerResult> {
                 textContent = textContent.replace(/^This is a directory, not a file\.[^\n]*\n+/, '');
             }
             return {
-                content: [{ type: "text", text: textContent }],
+                content: [{ type: "text", text: networkSummary + textContent }],
                 ...(parsed.origin === 'ui' ? {
                     structuredContent: {
                         fileName: path.basename(resolvedFilePath),
@@ -224,7 +246,17 @@ export async function handleReadFile(args: unknown): Promise<ServerResult> {
 
     // Execute with timeout at the handler level
     const result = await withTimeout(
-        readFileOperation(),
+        readFileOperation().catch(error => {
+            if (args && typeof args === 'object' && (args as any).options?.networkPolicy !== undefined) {
+                const message = error instanceof Error ? error.message : '';
+                return createErrorResponse(/^PUBLIC_URL_[A-Z_]+$/.test(message) ? message : 'PUBLIC_URL_READ_FAILED');
+            }
+            if (args && typeof args === 'object' && (args as any).options?.expectedIntegrity !== undefined) {
+                const message = error instanceof Error ? error.message : '';
+                return createErrorResponse(/^[A-Z_]+$/.test(message) ? message : 'RESULT_ARTIFACT_VERIFICATION_FAILED');
+            }
+            throw error;
+        }),
         HANDLER_TIMEOUT,
         'Read file handler operation',
         null
@@ -306,6 +338,7 @@ export async function handleWriteFile(args: unknown): Promise<ServerResult> {
     try {
         const modeProvided = !!(args && typeof args === 'object' && 'mode' in args);
         const parsed = WriteFileArgsSchema.parse(args);
+        return await fileMutationCoordinator.run([resolveAbsolutePath(parsed.path)], async () => {
 
         // An omitted `mode` falls back to 'rewrite', which silently destroys
         // the target's existing content. The common failure is an LLM caller
@@ -359,6 +392,7 @@ export async function handleWriteFile(args: unknown): Promise<ServerResult> {
                 text: `Successfully ${modeMessage} ${parsed.path} (${lineCount} lines) ${errorMessage}`
             }],
         };
+        });
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         return createErrorResponse(errorMessage);
@@ -416,10 +450,15 @@ export async function handleListDirectory(args: unknown): Promise<ServerResult> 
 export async function handleMoveFile(args: unknown): Promise<ServerResult> {
     try {
         const parsed = MoveFileArgsSchema.parse(args);
-        await moveFile(parsed.source, parsed.destination);
-        return {
-            content: [{ type: "text", text: `Successfully moved ${parsed.source} to ${parsed.destination}` }],
-        };
+        return await fileMutationCoordinator.run([
+            resolveAbsolutePath(parsed.source),
+            resolveAbsolutePath(parsed.destination),
+        ], async () => {
+            await moveFile(parsed.source, parsed.destination);
+            return {
+                content: [{ type: "text", text: `Successfully moved ${parsed.source} to ${parsed.destination}` }],
+            };
+        });
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         return createErrorResponse(errorMessage);

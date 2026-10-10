@@ -1,6 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import type { SemanticIdeService } from '../semantic-ide/service.js';
+import type { ExternalControllerLearningService } from '../learning/external-controller.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
+import { externalControllerToolResult } from './external-controller-tool-support.js';
 import * as schemas from './semantic-ide-schemas.js';
 
 function textResult(value: unknown): any {
@@ -30,7 +32,12 @@ function publicRefactorAction(action: string): string {
   if (action === 'insert_after') return 'after';
   return action;
 }
-export function registerSemanticIdeTools(server: McpServer, service: SemanticIdeService): void {
+export function registerSemanticIdeTools(
+  server: McpServer,
+  service: SemanticIdeService,
+  externalController?: ExternalControllerLearningService,
+  externalSessionId?: string,
+): void {
   server.registerTool('code_symbol', {
     title: 'Semantic IDE Symbols',
     description: 'IDE/LSP-backed symbol overview, search, references, declarations, implementations, type hierarchy, diagnostics, provider restart/hot reload, and explicit verified project-local provider provisioning/repair. Provisioning never runs implicitly during semantic queries. Exact source remains final authority; this tool never gates machine control.',
@@ -46,7 +53,15 @@ export function registerSemanticIdeTools(server: McpServer, service: SemanticIde
         workspace: input.workspace ?? '',
         durationMs: Date.now() - started,
       });
-      return textResult(result);
+      return externalControllerToolResult({
+        service: externalController,
+        sessionId: externalSessionId,
+        tool: 'code_symbol',
+        args: input,
+        result: textResult(result),
+        readOnly: ![schemas.SYMBOL_RESTART, schemas.SYMBOL_RELOAD, schemas.SYMBOL_PROVISION].includes(input.action),
+        ...(input.workspace ? { workspace: input.workspace } : {}),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       activityTracker.record('SEMANTIC_IDE', 'info', 'Semantic symbol operation unavailable', 'semantic-symbol-failure', {
@@ -55,7 +70,15 @@ export function registerSemanticIdeTools(server: McpServer, service: SemanticIde
         durationMs: Date.now() - started,
         family: message.split(':', 1)[0] ?? 'SEMANTIC_IDE_ERROR',
       });
-      return errorResult(message);
+      return externalControllerToolResult({
+        service: externalController,
+        sessionId: externalSessionId,
+        tool: 'code_symbol',
+        args: input,
+        result: errorResult(message),
+        readOnly: ![schemas.SYMBOL_RESTART, schemas.SYMBOL_RELOAD, schemas.SYMBOL_PROVISION].includes(input.action),
+        ...(input.workspace ? { workspace: input.workspace } : {}),
+      });
     }
   });
   server.registerTool('code_refactor', {
@@ -69,11 +92,27 @@ export function registerSemanticIdeTools(server: McpServer, service: SemanticIde
     try {
       const result = await service.refactor(publicRefactorAction(input.action), input);
       activityTracker.record('SEMANTIC_IDE', 'success', 'Semantic refactor operation completed', 'semantic-refactor-tool', { action: input.action, workspace: input.workspace ?? '', dryRun: input.dryRun === true, durationMs: Date.now() - started });
-      return textResult(result);
+      return externalControllerToolResult({
+        service: externalController,
+        sessionId: externalSessionId,
+        tool: 'code_refactor',
+        args: input,
+        result: textResult(result),
+        readOnly: input.dryRun === true,
+        ...(input.workspace ? { workspace: input.workspace } : {}),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       activityTracker.record('SEMANTIC_IDE', 'info', 'Semantic refactor operation refused or failed', 'semantic-refactor-failure', { action: input.action, workspace: input.workspace ?? '', durationMs: Date.now() - started, family: message.split(':', 1)[0] ?? 'SEMANTIC_IDE_ERROR' });
-      return errorResult(message);
+      return externalControllerToolResult({
+        service: externalController,
+        sessionId: externalSessionId,
+        tool: 'code_refactor',
+        args: input,
+        result: errorResult(message),
+        readOnly: input.dryRun === true,
+        ...(input.workspace ? { workspace: input.workspace } : {}),
+      });
     }
   });
 }
