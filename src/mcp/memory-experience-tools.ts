@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { MemoryService as V2MemoryService } from '../../SubProject/agent-core-memory/dist/index.js';
 
-interface BoundIdentity { sessionId?: string; nativeTaskId?: string; nativeWorkspace?: string }
+import type { MemoryScopeResolver, MemoryTaskSelector } from './memory-scope.js';
 const readonlyActions = {
   capabilities:'memory_capabilities', recall:'memory_recall',
   expand:'memory_expand', task_context:'memory_task_context',
@@ -13,23 +13,24 @@ const mutatingActions = {
   consolidation_preview:'memory_consolidation_preview', consolidation_apply:'memory_consolidation_apply',
   retention_set:'memory_retention_set', episode_status:'memory_episode_status',
 } as const;
-const input = z.strictObject({action:z.string().min(1).max(48),payload:z.record(z.string(),z.unknown()).optional()});
+const input = z.strictObject({action:z.string().min(1).max(48),scope:z.strictObject({taskId:z.string().min(1).max(128)}).optional(),payload:z.record(z.string(),z.unknown()).optional()});
+const forbiddenPayloadScope = new Set(['taskId','workspaceKey','ownerId','controllerId','sessionId','workspace','scope']);
 function errorResult(error: unknown) {
   const msg=error instanceof Error?error.message:'';
-  const code=/^[A-Z][A-Z0-9_:-]{3,100}$/.test(msg)?msg:'MEMORY_EXPERIENCE_UNAVAILABLE';
-  return {content:[{type:'text' as const,text:JSON.stringify({status:'error',code})}],isError:true};
+  const candidate=(error as {code?:unknown})?.code;
+  const code=error instanceof z.ZodError?'MEMORY_INPUT_INVALID':typeof candidate==='string' && /^MEMORY_[A-Z0-9_]+$/.test(candidate)?candidate:/^[A-Z][A-Z0-9_:-]{3,100}$/.test(msg)?msg:'MEMORY_EXPERIENCE_UNAVAILABLE';
+  return {content:[{type:'text' as const,text:JSON.stringify({status:'error',code, ...(code==='MEMORY_CONTROLLER_SCOPE_UNAVAILABLE'?{hint:'Start controller_learning episode with a stable taskKey and registered workspace, then pass scope: { taskId: episode.id }. Native calls require a host task/workspace.'}: {})})}],isError:true};
 }
 export function registerMemoryExperienceTools(
-  server:McpServer, memory:V2MemoryService, identity:BoundIdentity,
+  server:McpServer, memory:V2MemoryService, resolveScope:MemoryScopeResolver,
 ):void {
-  const taskId=identity.nativeTaskId??identity.sessionId;
-  const workspaceKey=identity.nativeWorkspace??'agent-core';
-  const controllerId=identity.nativeTaskId?'agent-core-native':'agent-core-external';
-  async function dispatch(action:string,payload:Record<string,unknown>,mode:'read'|'write'){
-    if(!taskId)throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
+  async function dispatch(action:string,payload:Record<string,unknown>,mode:'read'|'write',selector?:MemoryTaskSelector){
     const group=mode==='read'?readonlyActions:mutatingActions;
     if(!Object.hasOwn(group,action))throw new Error('MEMORY_INPUT_INVALID');
-    const session=memory.controller({workspaceKey,taskId,controllerId,sessionId:identity.sessionId});
+    if(Object.keys(payload).some(key=>forbiddenPayloadScope.has(key)))throw new Error('MEMORY_INPUT_INVALID');
+    const scope=await resolveScope(selector);
+    if(!scope?.taskId?.trim() || !scope.workspaceKey?.trim() || !scope.controllerId?.trim())throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
+    const session=memory.controller(scope);
     if(session.capabilities().writeMode!=='experience-v2')throw new Error('MEMORY_EXPERIENCE_NOT_ENABLED');
     const {createControllerMemoryDispatcher}=await import('../../SubProject/agent-core-memory/dist/index.js');
     const method=(group as Record<string,string>)[action]!;
@@ -37,11 +38,11 @@ export function registerMemoryExperienceTools(
     return {content:[{type:'text' as const,text:JSON.stringify(result)}]};
   }
   server.registerTool('memory_v2_read',{title:'Read Memory v2',
-    description:'Read compact Memory, exact history, task capsule and capabilities.',
+    description:'Read compact Memory, exact history, task capsule and capabilities. External callers must pass scope.taskId from their host-bound Learning episode.',
     inputSchema:input.shape,annotations:{title:'Read Memory v2',readOnlyHint:true,openWorldHint:false}
-  },async (args:unknown)=>{try{const request=input.parse(args);return await dispatch(request.action,request.payload??{},'read');}catch(error){return errorResult(error);}});
+  },async (args:unknown)=>{try{const request=input.parse(args);return await dispatch(request.action,request.payload??{},'read',request.scope);}catch(error){return errorResult(error);}});
   server.registerTool('memory_v2_write',{title:'Write Memory v2',
-    description:'Record task episodes, checkpoint, review promotion and retention.',
+    description:'Record task episodes, checkpoint, review promotion and retention. External callers must pass scope.taskId from their host-bound Learning episode.',
     inputSchema:input.shape,annotations:{title:'Write Memory v2',readOnlyHint:false,openWorldHint:false}
-  },async (args:unknown)=>{try{const request=input.parse(args);return await dispatch(request.action,request.payload??{},'write');}catch(error){return errorResult(error);}});
+  },async (args:unknown)=>{try{const request=input.parse(args);return await dispatch(request.action,request.payload??{},'write',request.scope);}catch(error){return errorResult(error);}});
 }
