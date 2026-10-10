@@ -1,5 +1,5 @@
 import {expect,test} from 'vitest';
-import {flattenRetrievalTokens,IDENTIFIER_TOKENIZER_VERSION,tokenizeRetrievalText} from '../src/memory/identifier-tokenizer.js';
+import {lexicalRetrievalTokens,flattenRetrievalTokens,IDENTIFIER_TOKENIZER_VERSION,tokenizeRetrievalText} from '../src/memory/identifier-tokenizer.js';
 test('retains_exact_and_splits_boundaries',()=>{
  const examples:Record<string,string[]>= {memoryRecall:['memory','recall'],HTTPServer:['http','server'],snake_case:['snake','case'],'foo-bar':['foo','bar'],'src/memory/host-runtime.ts':['src','memory','host','runtime','ts'],'src\\memory\\host-runtime.ts':['src','memory','host','runtime','ts'],ERR_CACHE_404:['err','cache','404'],OAuth2Client:['auth','client'],caféSession:['café','session']};
  for(const [input,subwords] of Object.entries(examples)){
@@ -24,5 +24,14 @@ test('bounds_expansion_without_partial_identifiers',()=>{
 });
 test('exact_single_codepoint_keeps_legacy_utf16_case_behavior',()=>{
  expect(tokenizeRetrievalText('𐐀').exact).toEqual(['𐐨']);
+ expect(tokenizeRetrievalText('İ').exact).toEqual(['i\u0307']);
+});
+
+test('bounds_normalized_emissions_after_unicode_case_expansion',()=>{
+ const oversized='İ'.repeat(256);
+ expect(tokenizeRetrievalText(oversized)).toEqual({exact:[],subwords:[],truncated:true});
+ expect(()=>lexicalRetrievalTokens(oversized,'query')).toThrow('MEMORY_INPUT_INVALID');
+ expect(lexicalRetrievalTokens(oversized,'document').degraded).toBe(true);
+ expect(tokenizeRetrievalText('İ'.repeat(128)).exact[0]).toHaveLength(256);
  expect(tokenizeRetrievalText('İ').exact).toEqual(['i\u0307']);
 });

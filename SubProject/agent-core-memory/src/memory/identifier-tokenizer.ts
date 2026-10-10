@@ -24,6 +24,9 @@ export function tokenizeRetrievalText(value:string):IdentifierTokens {
    .replace(/(\p{L})(\p{N})/gu,'$1 $2').replace(/(\p{N})(\p{L})/gu,'$1 $2')
    .split(/[\s_./\\-]+/u).map(word=>word.toLowerCase());
   const words=[...new Set(split)].filter(word=>word!==exact&&Array.from(word).length>1&&wordCharacter.test(word));
+  // Unicode case folding may expand one original code point into several.
+  // Reject the whole occurrence rather than emit a partial identifier.
+  if([exact,...words].some(word=>Array.from(word).length>MAX_TOKEN)){output.truncated=true;return;}
   if(emissions+1+words.length>MAX_TOKENS){output.truncated=true;stopped=true;return;}
   output.exact.push(exact);output.subwords.push(...words);emissions+=1+words.length;
  };
