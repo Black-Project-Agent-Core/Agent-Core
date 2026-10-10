@@ -79,7 +79,7 @@ test('E23 v2 normalizer retains temporal segments while legacy normalization rem
 });
 test('E21 retrieval clock reversal remains observable after legacy ledger interval normalization',async()=>{
  const{ControllerMemorySession}=await import('../src/memory/controller-session.js');const f=await fixture();vi.useFakeTimers({toFake:['Date']});vi.setSystemTime('2025-06-01T00:00:00Z');let saved:any;
- const session=new ControllerMemorySession({root:f.root,experienceEnabled:true,resolveWorkspace:x=>x,inScope:()=>true,snapshot:async()=>{vi.setSystemTime('2025-05-01T00:00:00Z');return[];},rank:async()=>[],read:async()=>null,freshness:async()=>'unknown',recordExposure:async attempt=>{saved=(await (f.service as any).retrievalLedger.record(attempt)).attempt;}},scope);
+ const session=new ControllerMemorySession({root:f.root,experienceEnabled:true,resolveWorkspace:x=>x,inScope:()=>true,snapshot:async()=>{vi.setSystemTime('2025-05-01T00:00:00Z');return[];},rank:async()=>({results:[],rankingRevision:'synthetic-empty/v1'}),read:async()=>null,freshness:async()=>'unknown',recordExposure:async attempt=>{saved=(await (f.service as any).retrievalLedger.record(attempt)).attempt;}},scope);
  await session.recall();expect(saved.completedAt).toBe(saved.startedAt);expect(saved.observedCompletedAt).toBe('2025-05-01T00:00:00.000Z');expect(saved.clockSkewMs).toBe(31*86400000);
 });
 test('E22 equal-time contradictory facts yield the same conflicted answer set in every ingestion order',async()=>{

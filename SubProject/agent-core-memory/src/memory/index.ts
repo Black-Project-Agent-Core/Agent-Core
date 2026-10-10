@@ -31,6 +31,8 @@ export interface MemoryIndexResult {
 export interface SemanticSearchContext {
   queryVector: number[];
   vectors: Map<string, number[]>;
+  /** Identity of the exact derived semantic snapshot used for this call. */
+  revision: string;
 }
 function fingerprint(record: MemoryRecord): string {
   return createHash('sha256').update(JSON.stringify({
@@ -351,7 +353,12 @@ export class MemoryIndex {
     if (!validEmbedding(queryVector, this.embedder.identity.dimensions)) {
       throw new Error('Memory query embedding has invalid dimensions or values');
     }
-    return { queryVector, vectors };
+    const revision = `sha256:${createHash('sha256').update(JSON.stringify([
+      'semantic-search/v1', file.version, 'semantic-document/v1', file.embedder,
+      file.entries.filter(entry => vectors.has(entry.id))
+        .map(entry => [entry.id,entry.fingerprint]).sort(([a],[b]) => a.localeCompare(b)),
+    ])).digest('hex')}`;
+    return { queryVector, vectors, revision };
   }
 
   async nearest(

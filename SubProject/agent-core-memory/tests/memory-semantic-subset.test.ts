@@ -57,3 +57,13 @@ test('experience_only_revision_mismatch_skips_query_embedding',async()=>{
  const changed={...original,experience:{...original.experience,retention:'archive' as const}};
  expect(await index.semanticContext('car',canonical,[changed])).toBeNull();expect(embedDocuments).not.toHaveBeenCalled();
 });
+
+test('semantic revision binds eligible fingerprints and embedder identity, excluding builtAt and access telemetry',async()=>{
+ const {index,records,paths,embedder}=await fixture();const original=await index.semanticContext('car',records,[records[0]!]);
+ expect(original!.revision).toMatch(/^sha256:[a-f0-9]{64}$/);
+ const file=path.join(paths.index,'index.json'),stored=JSON.parse(await readFile(file,'utf8'));stored.builtAt='2030-01-01T00:00:00.000Z';await writeFile(file,JSON.stringify(stored));
+ const accessed=records.map(record=>({...record,retrievalCount:99,lastAccessedAt:'2026-10-09T00:00:00.000Z'}));
+ expect((await index.semanticContext('car',accessed,[accessed[0]!]))!.revision).toBe(original!.revision);
+ for(const key of ['provider','model'] as const){const previous=embedder.identity[key];embedder.identity[key]=previous+'-changed';await index.rebuild(records);const changed=await index.semanticContext('car',records,[records[0]!]);expect(changed!.revision).not.toBe(original!.revision);embedder.identity[key]=previous;}
+ await index.rebuild(records);expect((await index.semanticContext('car',records))!.revision).not.toBe(original!.revision);
+});

@@ -18,6 +18,11 @@ import type { MemoryRecord } from './types.js';
 import type { MemorySearchResult } from './retrieval.js';
 
 /** Internal host-owned read/telemetry ports. Never exported from the package root. */
+export interface ControllerRankedSnapshot {
+  results: MemorySearchResult[];
+  rankingRevision: string;
+}
+
 export interface ControllerMemoryBackend {
   root: string;
   experienceEnabled?:boolean;
@@ -25,7 +30,7 @@ export interface ControllerMemoryBackend {
   promotion?:MemoryPromotion;
   resolveWorkspace(value: string): string;
   snapshot(workspace: string, options?:{historical?:boolean;referenceTime?:number}): Promise<MemoryRecord[]>;
-  rank(records: MemoryRecord[], query: string, rankingTime: number): Promise<MemorySearchResult[]>;
+  rank(records: MemoryRecord[], query: string, rankingTime: number): Promise<ControllerRankedSnapshot>;
   read(id: string): Promise<MemoryRecord | null>;
   archivedRevision?(ref:SourceRef):Promise<MemoryRecord|null>;
   inScope(record: MemoryRecord, workspace: string): boolean;
@@ -120,9 +125,12 @@ export class ControllerMemorySession {
     const records = await this.snapshot({historical:asOf!==undefined,referenceTime:rankingTime});
     const temporal=this.#backend.experienceEnabled?selectTemporalCandidates(records,asOf??new Date(rankingTime).toISOString())?.filter(({record})=>retention==='all'||(retention==='archive'?(record.version===2&&record.experience.retention==='archive'):(record.version!==2||record.experience.retention!=='archive'))):undefined;
     const eligible=temporal?temporal.map(c=>c.record):records;
-    const ranked: Array<{ record: MemoryRecord; score?: number }> = retention === 'archive' && !this.#backend.experienceEnabled ? [] : query ? await this.#backend.rank(eligible,query,rankingTime) : eligible.map(record => ({ record }));
+    const rankedSnapshot = query && !(retention === 'archive' && !this.#backend.experienceEnabled)
+      ? await this.#backend.rank(eligible,query,rankingTime) : undefined;
+    const ranked: Array<{ record: MemoryRecord; score?: number }> = retention === 'archive' && !this.#backend.experienceEnabled ? [] : rankedSnapshot ? rankedSnapshot.results : eligible.map(record => ({ record }));
     if(temporal){const known=new Map(temporal.map(c=>[c.record.id,c.certainty==='known']));ranked.sort((a,b)=>Number(known.get(b.record.id))-Number(known.get(a.record.id)));}
-    const snapshot = disclosureDigest(['controller-snapshot/v1', records.map(record => [record.id,memorySemanticRevision(record)]).sort(([a],[b]) => a.localeCompare(b)),ranked.map(item => item.record.id)]);
+    const snapshot = disclosureDigest(['controller-snapshot/v2', records.map(record => [record.id,memorySemanticRevision(record)]).sort(([a],[b]) => a.localeCompare(b)),
+      rankedSnapshot?.rankingRevision ?? 'ranking-unrequested/v1', ranked.map(item => [item.record.id,item.score ?? null])]);
     const snapshotBinding = disclosureCursorBinding(snapshot);
     const start = this.position(input.cursor,request,snapshotBinding);
     if (start >= ranked.length && (start !== 0 || input.cursor)) throw new MemoryControllerError('MEMORY_CURSOR_STALE');

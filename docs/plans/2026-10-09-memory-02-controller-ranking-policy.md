@@ -9,7 +9,7 @@
 
 **Spec:** Bagian spesifikasi mandiri dalam dokumen ini.
 
-**Status:** PROPOSED — NOT IMPLEMENTED. Baseline `c5e3fe970b770aaa5ba3023ea19239f71f53709c`; tanggal 2026-10-09 UTC+7. Command merupakan instruksi eksekusi mendatang, bukan hasil tes.
+**Status:** IMPLEMENTED — focused functional acceptance PASS; aggregate integration pending and benchmarks deferred by the user. Implementation checkpoint `b9c8f41c6177cdc29ea91ea94c3a2950e25e88ef`; actual input source `b3fe106` reconstructed from the verified remote snapshot. The historical plan baseline was `c5e3fe970b770aaa5ba3023ea19239f71f53709c`. Date 2026-10-10 UTC. Evidence and limitations below distinguish completed checks from pending gates.
 
 ## Global Constraints
 
@@ -61,29 +61,29 @@ Usulan internal port di `M/controller-session.ts`:
 **Files:** Modify `M/service.ts`, `M/controller-session.ts`, `M/index.ts`; create `SubProject/agent-core-memory/tests/memory-controller-ranking-policy.test.ts`.
 **Consumes:** searchMemories dan feedback store existing. **Produces:** factory overload/type dan rank envelope di atas.
 
-- [ ] Tulis red test yang membandingkan default dengan explicit baseline pada fixed records/time: ID, score, warnings, payload budget sama, tanpa membandingkan random attemptId. Candidate fixture pendek versus panjang dengan lexical term yang sama mengikuti expected fusion oracle, bukan hard-code asumsi tie yang belum dihitung.
-- [ ] Tambahkan spy rank yang memastikan candidate memanggil rankingProfile fusion, maxNeighbors 0, eligible salience; baseline tidak meneruskan feedback. Nilai policy palsu harus ditolak sebelum baca/embedding.
-- [ ] Jalankan dari root `npm --prefix SubProject/agent-core-memory test -- tests/memory-controller-ranking-policy.test.ts`; red wajib berasal dari policy belum tersedia, bukan fixture salah.
-- [ ] Implementasikan dua policy dan envelope. Perbarui fake SemanticSearchContext dengan revision serta semua backend fake yang menggunakan port rank, ditemukan dengan `rg -n 'rank:' SubProject/agent-core-memory/tests tests`; jangan mengubah assert safety demi compile.
-- [ ] Tambahkan feedback helpful versus wrong pada dua kandidat comparable. Assert pengaruh mengikuti batas existing dan tidak mengubah record canonical. Feedback tidak tersedia menghasilkan neutral ranking; forgotten-store failure tetap source-unavailable. Jalankan test sampai PASS, review dan commit file terfokus.
+- [x] Tulis red test yang membandingkan default dengan explicit baseline pada fixed records/time: ID, score, warnings, payload budget sama, tanpa membandingkan random attemptId. Candidate fixture pendek versus panjang dengan lexical term yang sama mengikuti expected fusion oracle, bukan hard-code asumsi tie yang belum dihitung.
+- [x] Tambahkan spy rank yang memastikan candidate memanggil rankingProfile fusion, maxNeighbors 0, eligible salience; baseline tidak meneruskan feedback. Nilai policy palsu harus ditolak sebelum baca/embedding.
+- [x] Jalankan dari root `npm --prefix SubProject/agent-core-memory test -- tests/memory-controller-ranking-policy.test.ts`; red wajib berasal dari policy belum tersedia, bukan fixture salah.
+- [x] Implementasikan dua policy dan envelope. Perbarui fake SemanticSearchContext dengan revision serta semua backend fake yang menggunakan port rank, ditemukan dengan `rg -n 'rank:' SubProject/agent-core-memory/tests tests`; jangan mengubah assert safety demi compile.
+- [x] Tambahkan feedback helpful versus wrong pada dua kandidat comparable. Assert pengaruh mengikuti batas existing dan tidak mengubah record canonical. Feedback tidak tersedia menghasilkan neutral ranking; forgotten-store failure tetap source-unavailable. Jalankan test sampai PASS, review dan commit file terfokus.
 
 ## Task 2 — Pagination terikat pada ranking state
 
 **Files:** Modify `M/controller-session.ts`; create `SubProject/agent-core-memory/tests/memory-controller-ranking-pagination.test.ts`.
 **Consumes:** ControllerRankedSnapshot Task 1. **Produces:** snapshot binding policy-aware; public RecallInput/RecallPage tidak berubah.
 
-- [ ] Buat tiga kandidat nonduplicate fixed clock; paginate limit 1 hingga selesai. Assert gabungan IDs sama dengan recall satu halaman, tidak duplicate/skip, tie ID stabil, dan clock maju tidak mengubah ordering karena rankingTime cursor.
-- [ ] Red cases: setelah halaman pertama, ubah helpful feedback, pilih policy berbeda untuk scope sama, ubah ketersediaan semantic channel, atau ganti provider/model/representation revision dengan urutan dan score identik. Masing-masing harus `MEMORY_CURSOR_STALE`, walaupun kebetulan urutan ID tidak berubah. Cross-workspace/task tetap `MEMORY_SCOPE_MISMATCH`.
-- [ ] Jalankan `npm --prefix SubProject/agent-core-memory test -- tests/memory-controller-ranking-pagination.test.ts`, simpan red evidence.
-- [ ] Masukkan rankingRevision serta ID+score ke digest snapshot; pertahankan existing temporal certainty sort sebelum binding final. Tidak memasukkan waktu baru, exposure counter, attemptId, atau retrievalCount ke ranking revision karena akan membuat semua cursor stale.
-- [ ] Ulangi test; uji map tanpa query, budget minimal 512, feedback berubah di proses kedua/restart, dan handoff session/controller pada task sama. Sebelum commit, jalankan `npm --prefix SubProject/agent-core-memory test -- tests/memory-controller-scope.test.ts tests/memory-controller-continuation.test.ts tests/memory-disclosure.test.ts` dan pastikan PASS.
+- [x] Buat tiga kandidat nonduplicate fixed clock; paginate limit 1 hingga selesai. Assert gabungan IDs sama dengan recall satu halaman, tidak duplicate/skip, tie ID stabil, dan clock maju tidak mengubah ordering karena rankingTime cursor.
+- [x] Red cases: setelah halaman pertama, ubah helpful feedback, pilih policy berbeda untuk scope sama, ubah ketersediaan semantic channel, atau ganti provider/model/representation revision dengan urutan dan score identik. Masing-masing harus `MEMORY_CURSOR_STALE`, walaupun kebetulan urutan ID tidak berubah. Cross-workspace/task tetap `MEMORY_SCOPE_MISMATCH`.
+- [x] Jalankan `npm --prefix SubProject/agent-core-memory test -- tests/memory-controller-ranking-pagination.test.ts`, simpan red evidence.
+- [x] Masukkan rankingRevision serta ID+score ke digest snapshot; pertahankan existing temporal certainty sort sebelum binding final. Tidak memasukkan waktu baru, exposure counter, attemptId, atau retrievalCount ke ranking revision karena akan membuat semua cursor stale.
+- [x] Ulangi test; uji map tanpa query, budget minimal 512, feedback berubah di proses kedua/restart, dan handoff session/controller pada task sama. Sebelum commit, jalankan `npm --prefix SubProject/agent-core-memory test -- tests/memory-controller-scope.test.ts tests/memory-controller-continuation.test.ts tests/memory-disclosure.test.ts` dan pastikan PASS.
 
 ## Task 3 — Evaluasi terkontrol dan acceptance independen
 
 **Files:** Extend dua test baru; update `docs/CODEBASE.md` hanya saat source benar-benar diimplementasikan.
 
-- [ ] Tambahkan fixture held-out lexical, semantic fake, duplicate, foreign distractor, stale/corrected claim, forgotten, archive dan temporal boundary. Jalankan kedua policy pada corpus identik. Plan 01 tidak wajib: semantic full-corpus fake bisa menguji policy; subset defect yang belum diperbaiki dicatat sebagai keterbatasan baseline terpisah.
-- [ ] Assert zero scope leak, zero stale/superseded dianggap current, budget tidak terlewati, ledger exposure tetap terpisah dari use receipt. Candidate tidak dapat menaikkan foreign memory lewat feedback besar. Poison instruction tetap data advisory, tidak menjadi tool permission.
+- [x] Tambahkan fixture held-out lexical, semantic fake, duplicate, foreign distractor, stale/corrected claim, forgotten, archive dan temporal boundary. Jalankan kedua policy pada corpus identik. Plan 01 tidak wajib: semantic full-corpus fake bisa menguji policy; subset defect yang belum diperbaiki dicatat sebagai keterbatasan baseline terpisah.
+- [x] Assert zero scope leak, zero stale/superseded dianggap current, budget tidak terlewati, ledger exposure tetap terpisah dari use receipt. Candidate tidak dapat menaikkan foreign memory lewat feedback besar. Poison instruction tetap data advisory, tidak menjadi tool permission.
 - [ ] Jalankan kedua test baru, `npm --prefix SubProject/agent-core-memory run verify`, `npm run build`, dan `npm test -- tests/capability-residual-wave.test.ts tests/memory-bm25-ranking.test.ts` untuk existing ranking consumers. Missing dependency adalah BLOCKED; tidak install otomatis.
 - [ ] Catat paired relevance/top-k/negative-case outcomes, calls, bytes, median/p95 latency dan raw rows. Sebelum melihat candidate, tetapkan target kualitas eksperimen berdasarkan baseline dan label fixture; jangan menjadikan angka persentase tanpa baseline sebagai fakta. Nonregression safety adalah gate wajib; candidate default tetap opt-in walau unit test PASS.
 - [ ] Review dan commit perubahan terfokus setelah gate. Default production tidak berubah dalam pekerjaan ini. Aktivasi default membutuhkan hasil outcome eval terpisah dan keputusan rollout; tidak harus menunggu seluruh lima rencana untuk menyelesaikan patch opt-in.
@@ -95,3 +95,16 @@ Deliverable wajib `memory-02-controller-ranking-policy-report.zip`: report.md, r
 Rollback: host kembali memilih baseline-v1; untuk source regression revert commit terarah beserta CODEBASE. Tidak reset feedback/canonical memory, mengubah grants, atau membuat cursor lama valid secara paksa. Cursor outstanding boleh stale dan dimulai ulang secara eksplisit.
 
 Plan 02 mandiri. Plan 01 memperbaiki availability semantic subset; plan 04 mengubah representation; keduanya dijalankan serial bila menyentuh service/index dan comparative results dipisahkan per revision. Plan 03 tidak perlu untuk test host scope synthetic. Plan 05 dapat memberi bukti outcome sebelum promosi default. Live Cloudflare/controller run adalah gate terpisah, memerlukan secure setup dan izin biaya/data, serta tidak menjadi syarat menguji kebijakan offline ini. Dokumen rencana tidak mengklaim tes atau improvement telah terjadi.
+
+
+## Implementation evidence — 2026-10-10 UTC
+
+- Source changes: host-only `ControllerRetrievalPolicy`, immutable factory selection, rank envelope, semantic identity revision, and versioned final ID+score snapshot binding. Public recall/capability input and payload contracts remain unchanged; default is `baseline-v1`. The later Plan 04 index-format patch must preserve the revision contract.
+- RED: policy 3 expected failures; pagination 5 expected failures after correcting an invalid old-cursor fixture; semantic revision 1 expected missing-revision failure. Logs are retained in the sanitized Plan 02 report package.
+- PASS: focused policy/pagination/semantic tests 37/37; controller scope, continuation, disclosure, semantic subset and temporal-order regressions 106/106; standalone TypeScript build.
+- Paired functional rows: same fixed synthetic corpus and clock, one recall call per row, exact payload bytes and ranks recorded. Zero scope leaks, stale-current disclosures or budget overflows in the held-out safety cases. Duplicate suppression, archive exclusion, forgotten filtering, half-open temporal boundaries, advisory poison text and exposure-without-receipt are covered.
+- Quality target was declared before paired runs. Lexical `z-rich` top-1 target was NOT MET by either policy: the existing fusion oracle tied reciprocal ranks and selected `a-thin`. Both retained the relevant record in top-3. Both semantic fake policies selected the labeled `semantic-only` record first. This is fixture behavior, not evidence of user benefit or permission to promote the default.
+- Recovery: a held-out fixture initially tried to replace an experience-v2 corpus by deleting records and correctly failed `MEMORY_PRESERVATION_REQUIRED`; fixture setup was corrected to preserve all unrelated synthetic records. No production safety assertion was weakened.
+- NOT RUN: live providers, canonical user runtime, Windows activation/install, benchmarks/median/p95 and complete `npm run verify`, because the user deferred benchmarks and the full command includes the lifecycle evaluation workload. Aggregate functional builds/tests and known legacy root BM25 failure are reported by the parent integration owner. The old BM25 failure is not repaired under this plan.
+- Version impact: minor release intent in `.changeset/20261010-memory-controller-ranking-policy.md`; parent owns synchronized prerelease/version surfaces, CODEBASE update and publication. No separate release or deployment is claimed.
+- Acceptance remains partial until aggregate functional gates/report integrity are verified. The opt-in implementation itself is complete; performance/outcome/default rollout remains a separate decision.

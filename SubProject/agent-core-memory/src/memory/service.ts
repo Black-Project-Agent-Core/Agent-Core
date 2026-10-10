@@ -1,7 +1,7 @@
 import {MemoryPromotion,type ConsolidationPolicy} from './promotion.js';
 import { MemoryEpisodes } from './episodes.js';
 import { ControllerMemorySession } from './controller-session.js';
-import { memorySemanticRevision, MemoryControllerError, type ControllerScope } from './disclosure.js';
+import { disclosureDigest, memorySemanticRevision, MemoryControllerError, type ControllerScope } from './disclosure.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
@@ -30,6 +30,9 @@ import { isMemoryExpired, normalizeMemoryExpiresAt } from './visibility.js';
 import { MEMORY_SCHEMA_VERSION, type EvolutionEvent, type MemoryHealth, type MemoryIssue, type MemoryLink, type MemoryProvenance, type MemoryRecord } from './types.js';
 
 export interface MemoryServiceOptions {experience?:{enabled:true};consolidation?:ConsolidationPolicy}
+
+/** Host-owned rollout policy; public recall input cannot select ranking or feedback. */
+export type ControllerRetrievalPolicy = 'baseline-v1' | 'fusion-feedback-v1';
 
 export type MemoryLinkInput = Omit<MemoryLink, 'createdAt'> & { createdAt?: string };
 
@@ -196,7 +199,9 @@ export class MemoryService {
     this.intelligenceStatus = this.intelligence ? 'degraded' : 'not-configured';
   }
 
-  controller(scope: ControllerScope): ControllerMemorySession {
+  controller(scope: ControllerScope, policy: ControllerRetrievalPolicy = 'baseline-v1'): ControllerMemorySession {
+    if (policy !== 'baseline-v1' && policy !== 'fusion-feedback-v1') throw new MemoryControllerError('MEMORY_INPUT_INVALID');
+    const retrievalPolicy = policy;
     const inScope = (record: MemoryRecord, workspace: string) =>
       (record.id === 'agent-core-foundational' && record.pinned)
       || Boolean(record.provenance?.workspace && this.resolveWorkspace(record.provenance.workspace) === workspace);
@@ -246,7 +251,23 @@ export class MemoryService {
           try { semantic = await this.index.semanticContext(query, canonicalRecords, records) ?? undefined; }
           catch { this.setEmbeddingIssue('Controller query embedding unavailable'); }
         }
-        return searchMemories(records, query, { limit: Math.max(1, records.length), maxNeighbors: 0 }, semantic, Math.max(1, records.length), rankingTime);
+        const options: MemorySearchOptions = { limit: Math.max(1, records.length), maxNeighbors: 0 };
+        let salienceEntries: Array<[string, number]> = [];
+        if (retrievalPolicy === 'fusion-feedback-v1') {
+          const eligibleIds = new Set(records.map(record => record.id));
+          // Salience is advisory and may fail soft; visibility was already read
+          // strictly in snapshot and is never replaced by this neutral fallback.
+          salienceEntries = [...await this.feedbackSalienceMap()]
+            .filter(([id, value]) => eligibleIds.has(id) && Number.isFinite(value))
+            .sort(([a], [b]) => a.localeCompare(b));
+          options.rankingProfile = 'fusion';
+          options.feedbackSalience = new Map(salienceEntries);
+        }
+        return {
+          results: searchMemories(records, query, options, semantic, Math.max(1, records.length), rankingTime),
+          rankingRevision: disclosureDigest(['controller-ranking/v1', retrievalPolicy,
+            semantic?.revision ?? 'semantic-unavailable/v1', salienceEntries]),
+        };
       },
       read: id => this.read(id, false),
       archivedRevision:ref => this.store.archivedRevision(ref),

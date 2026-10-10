@@ -1,6 +1,7 @@
 export { MemoryService } from './memory/service.js';
 export type {
   MemoryServiceOptions,
+  ControllerRetrievalPolicy,
   RememberInput,
   UpdateInput,
   MemoryBatchOperation,
