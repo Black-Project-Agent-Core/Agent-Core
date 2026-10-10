@@ -28,6 +28,18 @@ The standalone default below is separate from that host cutover. Source checkout
 - Embedding repair state with bounded retry
 - Workspace-aware memory scoping
 
+## Retrieval source additions (Memory Plans06–11)
+
+Abstract controller recall now includes an exact canonical excerpt and code-point source span; `abstract` aliases the excerpt text. Identifier-aware lexical retrieval preserves whole identifiers and adds bounded subwords. These source changes invalidate incompatible continuation snapshots without changing canonical records.
+
+The existing `MemoryServiceOptions` and `StandaloneMemoryOptions` expose host-local opt-ins:
+
+- `indexGranularity: 'passage'` derives bounded overlapping vectors and returns canonical parent results. The default remains record granularity; compatible format3 record indexes need no forced rebuild. Passage mode uses format4.
+- `queryCache` accepts explicit positive bounded limits (`maxEntries`, `maxVectorBytes`, `ttlMs`, `maxFlights`, `maxWaiters`, `maxQueryBytes`). Omission keeps caching off. The cache is volatile and stores only validated query vectors, never results or scope decisions. Call `memory.dispose()` when the owning host closes.
+- `controllerRelevancePolicy` accepts a versioned, calibrated lexical/semantic evidence policy. Omission preserves baseline admission; no default thresholds are enabled. Semantic availability comes from each ranking invocation, and evidence support is not factual certainty.
+
+These settings are not public tool inputs. Enabling passage embeddings against a real provider requires separate corpus, privacy and cost review. The [source verification ledger](../../docs/verification/memory06-11-source-functional-2026-10-10.md) records synthetic functional tests; performance and live-provider benefit remain unmeasured. The [bounded subquestion protocol](../../docs/Memory-Subquestion-Retrieval-Protocol.md) is controller-led and adds no internal model or planner.
+
 ## Requirements
 
 - Node.js 24.15 or newer

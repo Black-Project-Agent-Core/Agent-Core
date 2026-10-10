@@ -6,7 +6,7 @@
 
 **Tech Stack:** TypeScript ESM, Node >=24.15.0, Vitest, Zod dan crypto existing; tanpa LlamaIndex, Anthropic SDK atau dependency baru.
 
-**Spec:** Kontrak mandiri berikut. **Status: IMPLEMENTED — OFFLINE GATE PASS (2026-10-10).** Helper, protokol opt-in, replay synthetic melalui owner/host existing dan contoh schema aktual telah diimplementasikan. Bukti RED/GREEN/gate dicatat di laporan implementasi; perintah pada task di bawah tetap spesifikasi historis. Integrasi `docs/CODEBASE.md`, release intent/version dan ZIP akhir dimiliki parent. ChatGPT/Claude live tetap NOT RUN; benchmark performa deferred.
+**Spec:** Kontrak mandiri berikut. **Status: IMPLEMENTED IN SOURCE — OFFLINE FUNCTIONAL VERIFICATION RECORDED (2026-10-10).** See the [combined source ledger](../verification/memory06-11-source-functional-2026-10-10.md) for exact source identities, RED/GREEN cases, final affected gates, original timeout failures with separate assertion-preserving diagnostics, inherited root failures and sanitized report verification. Source version is `0.15.0-beta.2`; Windows beta.1 acceptance is separate. Performance benchmarks, real providers and live controller benefit are NOT RUN. Commands and checklists below retain the original specification; current implementation adapts the consolidated Plans01–05 owners rather than historical signatures.
 
 **Baseline:** Publikasi rencana `4b3e32d464b98aa5116df02e8fe524217d5ad811`; checkout inspeksi HEAD `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` dengan 174 path staged. Source yang dibaca adalah working tree; ketiganya tidak diasumsikan identik. Implementasi harus merekam identitas tree/file, bekerja di checkout bersih yang disetujui dan mempertahankan staging asing.
 

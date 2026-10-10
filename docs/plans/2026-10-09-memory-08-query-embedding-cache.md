@@ -6,7 +6,7 @@
 
 **Tech Stack:** TypeScript ESM, Node >=24.15.0, Vitest, Map/AbortSignal dan crypto bawaan; tanpa dependency/provider baru.
 
-**Spec:** Persyaratan mandiri dalam dokumen ini. **Status: PROPOSED — NOT IMPLEMENTED.** Semua command merupakan langkah mendatang; penyusunan dokumen tidak menjalankan test/build/provider atau menyentuh runtime pribadi.
+**Spec:** Persyaratan mandiri dalam dokumen ini. **Status: IMPLEMENTED IN SOURCE — OFFLINE FUNCTIONAL VERIFICATION RECORDED (2026-10-10).** See the [combined source ledger](../verification/memory06-11-source-functional-2026-10-10.md) for exact source identities, RED/GREEN cases, final affected gates, original timeout failures with separate assertion-preserving diagnostics, inherited root failures and sanitized report verification. Source version is `0.15.0-beta.2`; Windows beta.1 acceptance is separate. Performance benchmarks, real providers and live controller benefit are NOT RUN. Commands and checklists below retain the original specification; current implementation adapts the consolidated Plans01–05 owners rather than historical signatures.
 
 **Baseline:** Publikasi rencana `4b3e32d464b98aa5116df02e8fe524217d5ad811` berbeda dari HEAD checkout inspeksi `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` plus 174 path staged. Temuan berikut berasal dari working source, bukan klaim isi ketiga tree identik. Eksekusi harus merekam commit dan SHA-256 file input, memakai checkout bersih yang disetujui, serta tidak memasukkan staging pekerjaan lain.
 

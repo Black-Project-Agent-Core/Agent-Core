@@ -1,8 +1,8 @@
 # Implementation plans and status
 
-Source candidate **`0.15.0-beta.1`**. Source implementation, offline verification, published artifact and resident acceptance are separate gates. User authorization on 2026-10-10 covers implementation of Plans02–05 together; it does not authorize a provider benchmark or automatic production re-embedding.
+Source candidate **`0.15.0-beta.2`**. Source implementation, offline verification, published artifact and resident acceptance are separate gates. User authorization on 2026-10-10 covers the remaining Memory Plans06–11 in the separate Linux source while Windows beta.1 acceptance proceeds independently. Performance benchmarks are deferred; no provider or automatic production re-embedding approval is inferred.
 
-[Documentation](../README.md) · [Codebase](../CODEBASE.md) · [Candidate notes](../releases/0.15.0-beta.1.md)
+[Documentation](../README.md) · [Codebase](../CODEBASE.md) · [Candidate notes](../releases/0.15.0-beta.2.md)
 
 ## Implemented and accepted predecessor scope
 
@@ -17,9 +17,11 @@ Source candidate **`0.15.0-beta.1`**. Source implementation, offline verificatio
 | [Memory04](2026-10-09-memory-04-contextual-index.md) | Title-aware document v2 and derived index v3 | Automatic startup re-embedding needs provider/data/volume/cost approval |
 | [Memory05](2026-10-09-memory-05-outcome-evaluation.md) | Isolated deterministic outcome harness and evidence verification | Synthetic results do not prove model benefit; live gate remains separate |
 
-## Proposed, not implemented
+## Memory06–11 source implementation
 
-| Plan | Intended change |
+Final integrated evidence is recorded in the [functional source ledger](../verification/memory06-11-source-functional-2026-10-10.md). Passage granularity, query caching and relevance policy remain host-only opt-ins, disabled by default.
+
+| Plan | Implemented change |
 | --- | --- |
 | [Memory 06](2026-10-09-memory-06-query-evidence-excerpts.md) | Query-focused evidence excerpts |
 | [Memory 07](2026-10-09-memory-07-passage-retrieval.md) | Derived passage-level retrieval |
@@ -27,6 +29,11 @@ Source candidate **`0.15.0-beta.1`**. Source implementation, offline verificatio
 | [Memory 09](2026-10-09-memory-09-subquestion-retrieval.md) | Bounded controller-led subquestion retrieval |
 | [Memory 10](2026-10-09-memory-10-relevance-abstention.md) | Relevance abstention |
 | [Memory 11](2026-10-09-memory-11-code-identifier-retrieval.md) | Exact/subword code identifier retrieval |
+
+## Proposed, not implemented
+
+| Plan | Intended change |
+| --- | --- |
 | [Adaptive parallel tool execution](2026-10-09-adaptive-parallel-tool-execution.md) | Capacity-aware coordination for independent tool work |
 
 

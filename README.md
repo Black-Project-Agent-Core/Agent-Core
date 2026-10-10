@@ -4,11 +4,11 @@ A local-first agent system for Windows. External MCP controllers and a native AI
 
 Agent Core keeps the model separate from the local capability owners. Connect an external controller or configure the native OpenAI-compatible runtime, then use the same authenticated body for files, processes, browser work, code intelligence, research, and Android control.
 
-[Architecture](docs/CODEBASE.md) · [Documentation](docs/README.md) · [Candidate release notes](docs/releases/0.15.0-beta.1.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[Architecture](docs/CODEBASE.md) · [Documentation](docs/README.md) · [Candidate release notes](docs/releases/0.15.0-beta.2.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 ## Current status
 
-**Source candidate: `0.15.0-beta.1`.** Memory Plans02–05 are implemented in this candidate and have passed scoped offline functional verification; their Windows rollout is separate. The published [Windows portable beta.0](https://github.com/Black-Project-Agent-Core/Agent-Core/releases/tag/v0.15.0-beta.0) remains pinned to `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`.
+**Source candidate: `0.15.0-beta.2`.** Memory Plans06–11 extend the consolidated Plans01–05 source. Scoped offline functional verification and final integration are recorded separately from Windows beta.1 acceptance. The published [Windows portable beta.0](https://github.com/Black-Project-Agent-Core/Agent-Core/releases/tag/v0.15.0-beta.0) remains pinned to `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`.
 
 | Area | Status |
 | --- | --- |
@@ -18,12 +18,13 @@ Agent Core keeps the model separate from the local capability owners. Connect an
 | Memory03 | Explicit host-validated v2 task/workspace binding; external clients must send `scope.taskId` |
 | Memory04 | Contextual retrieval document v2 and derived index v3; startup may require full re-embedding |
 | Memory05 | Isolated deterministic outcome-evaluation tooling; no claim of measured AI improvement |
-| Memory06–11 and adaptive parallel execution | Proposed, not implemented |
+| Memory06–11 | Exact excerpts/identifiers, bounded subquestion helpers and host-opt-in passage/cache/relevance capabilities; [functional source ledger](docs/verification/memory06-11-source-functional-2026-10-10.md) |
+| Adaptive parallel execution | Proposed, not implemented |
 | New candidate Windows rollout | Not performed by source implementation; requires scoped integration and acceptance |
 
 **Upgrade cautions:** Memory03 intentionally rejects older v2 calls without the host-bound task selector. Memory04 may send the whole allowed canonical retrieval representation to the configured embedding provider during initialization; review corpus/provider/data/cost approval before restarting a production instance. Building or pushing source does not authorize or perform that rollout.
 
-See [plan status](docs/plans/README.md), [candidate notes](docs/releases/0.15.0-beta.1.md), and the original [beta.0 notes](docs/releases/0.15.0-beta.0.md), whose initial publication status is historical.
+See [plan status](docs/plans/README.md), [candidate notes](docs/releases/0.15.0-beta.2.md), and the original [beta.0 notes](docs/releases/0.15.0-beta.0.md), whose initial publication status is historical.
 
 ## Capabilities
 
@@ -91,7 +92,7 @@ Read [SECURITY.md](SECURITY.md) and [AGENTS.md](AGENTS.md) before operating the 
 
 ## Releases, recovery, and history
 
-The [changelog](CHANGELOG.md) records applied source releases; [current source notes](docs/releases/0.15.0-beta.1.md) distinguish prerelease metadata, published assets, and installation state. Pending intents are preserved under [`.changeset`](.changeset/README.md).
+The [changelog](CHANGELOG.md) records applied source releases; [current source notes](docs/releases/0.15.0-beta.2.md) distinguish prerelease metadata, published assets, and installation state. Pending intents are preserved under [`.changeset`](.changeset/README.md).
 
 Recovery accepts a separately trusted ZIP and checksum. The existing Windows recovery script still rejects this repository through its historical `LEGACY_REFERENCE_ONLY` guard; current source publication does not make network recovery usable. See [release and recovery boundaries](docs/CODEBASE.md#release-and-recovery).
 

@@ -1,8 +1,8 @@
 # Agent Core codebase map
 
-This is the maintained source-owner map for **`0.15.0-beta.1`**, based on remote `b3fe1063d11a198acb225f7698a6bad65d29bf1f` plus Memory Plans02–05. Exact source and verified receipts take precedence over prose. Published beta.0 remains at `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`; the new source candidate is not a Windows activation or release publication.
+This is the maintained source-owner map for **`0.15.0-beta.2`**, based on consolidated source `36e9cb3918c0f0e225fbcc18b8f92b4c8bf479f3` plus Memory Plans06–11. Exact source and verified receipts take precedence over prose. Published beta.0 remains at `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`; the new source candidate is not a Windows activation or release publication.
 
-[Documentation index](README.md) · [Candidate notes](releases/0.15.0-beta.1.md) · [Historical codebase record](archive/CODEBASE-2026-10-09.md)
+[Documentation index](README.md) · [Candidate notes](releases/0.15.0-beta.2.md) · [Historical codebase record](archive/CODEBASE-2026-10-09.md)
 
 ## Source and acceptance status
 
@@ -12,7 +12,8 @@ This is the maintained source-owner map for **`0.15.0-beta.1`**, based on remote
 | Image inspection | Earlier external-controller acceptance | No paid-model accuracy claim |
 | Memory01 + Workflows | [Directed Windows functional acceptance closed](verification/memory01-windows-functional-2026-10-10.md) | Historical scoped results, not acceptance of later source |
 | Memory02–04; Memory05 | Plans02–05 independently reviewed; scoped offline gates passed | Windows integration and acceptance; Plan04 provider/data/cost gate |
-| Memory06–11; adaptive parallel execution | Proposed only | Implementation not started |
+| Memory06–11 | Source implementations; [functional ledger](verification/memory06-11-source-functional-2026-10-10.md) | Performance deferred; Windows/live-provider acceptance separate |
+| Adaptive parallel execution | Proposed only | Implementation not started |
 | Windows portable beta.0 | Published exact-tag runtime; packaged Core smoke verified | Full fresh-machine/second-GUI acceptance not claimed |
 
 Published source, packaged binary, installed process and model/provider quality remain separate facts. The full dated history remains in the archive.
@@ -110,7 +111,17 @@ Engineering artifact checks in both Core and standalone Learning no longer execu
 
 `projectMemoryHit` adds optional `excerpt` only to abstract views; `abstract` remains its exact text alias. Map views and the legacy search projection remain unchanged. `controller-session.ts` supplies the recall query after existing eligibility and disclosure-safety checks, includes every excerpt field in whole-envelope budgeting, and binds recall cursors to `evidence-excerpt/v1` alongside the existing query, revision and ranking snapshot. Hits that cannot fit are omitted whole and are not recorded as exposed. Expansion pagination offsets still address sanitized JSON, not canonical content spans.
 
-This is an additive source change with no canonical schema/index migration, provider call, activation or trust promotion. Exact provenance proves which text was quoted; current applicability and the truth of a claim remain separate. Synthetic functional tests cover Unicode, small budgets, retained and missing revisions, visibility changes, stale evidence, poison/credential-shaped data and selector-version cursor rejection. Final consolidated functional/build acceptance and the sanitized report package remain pending; latency/performance benchmarks and live-provider/Windows acceptance are not claimed.
+This is an additive source change with no canonical schema/index migration, provider call, activation or trust promotion. Exact provenance proves which text was quoted; current applicability and the truth of a claim remain separate. Synthetic functional tests cover Unicode, small budgets, retained and missing revisions, visibility changes, stale evidence, poison/credential-shaped data and selector-version cursor rejection. The [combined source ledger](verification/memory06-11-source-functional-2026-10-10.md) records functional/build gates, original timeout failures, targeted recovery and sanitized report integrity; latency/performance benchmarks and live-provider/Windows acceptance are not claimed.
+
+### Plan07 opt-in passage retrieval
+
+Host-only `indexGranularity:'passage'` uses deterministic 600-code-point windows with 80-point overlap and a 128-child cap. Children stay private derived data under canonical parents; format4 binds passage version1, semantic document version2 and exact parent revisions. Queries use maximum valid child cosine per parent; nearest/diversity use normalized child means. Missing or oversized inputs, cap overflow and bounded retry admission remain explicit degraded/partial semantic coverage with lexical fallback. Metadata inputs over 1,600 UTF-16 units are unavailable without hidden chunking.
+
+The existing 512-job retry owner reserves admission before dispatch, preserves failed jobs through incomplete scans and never evicts them into fresh retries. Default record mode preserves compatible format3 reuse without re-embedding. Parent edits replace that parent's children; repairs alter semantic snapshot/cursor identity. Raw canonical records survive host workspace-alias filtering so passage revision checks are not compared against a display-normalized copy. Offline synthetic acceptance does not activate passage mode or authorize resident re-embedding/provider cost.
+
+### Plan08 opt-in query-vector cache
+
+Query-vector caching is host-local and opt-in through `MemoryServiceOptions.queryCache` and `StandaloneMemoryOptions.queryCache`; copied limits create a private per-index owner. Exact query/identity SHA-256 tuples include query representation v1 and semantic document v2. Bounded absolute-TTL LRU/payload storage and singleflight preserve per-waiter local cancellation, generation invalidation and terminal disposal. `semanticContext` still reloads and validates the canonical corpus and eligible vectors before reuse, then recomputes passage scores and revision. `MemoryService.dispose` reaches the index; the existing graceful host close disposes the optional experience owner through fail-soft cleanup. Dense validation rejects sparse arrays; shared-scale passage means and independently scaled cosine avoid finite-input overflow and underflow. This does not claim provider network cancellation, cached authorization, live savings or resident activation.
 
 ### Bounded subquestion retrieval (Plan09)
 
@@ -120,19 +131,24 @@ The reducer merges exact `(memory, id, revision)` tuples in per-question round-r
 
 `docs/Memory-Subquestion-Retrieval-Protocol.md` and the narrow opt-in `AGENTS.md` guidance preserve mandatory Memory-first, Learning and existing scope/grant owners. Actual examples use host `memory_v2_read` actions with top-level `scope.taskId`, and a labelled legacy fallback. Four `memory-subquestion` suites test the helper, provenance, synthetic experience-v2 replay through the existing MemoryService/controller/host dispatcher and actual registered schemas. The explicit Memory/root/five-suite gate passed with 30 tests on 2026-10-10. ChatGPT and Claude live compliance/decomposition/benefit are separately NOT RUN/unproven; performance benchmarks are deferred. No production MCP wrapper, planner model, provider, dependency, scheduler, migration or activation was introduced.
 
+### Plan10 opt-in relevance abstention
+
+Controller relevance abstention is a host-local opt-in through MemoryServiceOptions.controllerRelevancePolicy and initializeStandaloneMemory. The policy is validated and copied immutably before store I/O; absent configuration preserves baseline behavior. Admission uses content-only phrase/coverage evidence from the active lexicalRetrievalTokens helper, or semantic similarity only when the exact rank snapshot reports available. It retains existing ranking weights, scope/temporal eligibility and canonical parent identity; metadata, recency, pins, source or feedback alone cannot bypass admission. Accepted IDs and the policy digest extend the existing ranking/cursor snapshot before paging; RecallPage carries budgeted supported/insufficient-relevant-evidence/empty-corpus metadata with independent semantic health, while rejected text/IDs are not disclosed or recorded as exposure. There is no forced expand, retry or provider fallback. Frozen development and family-separated heldout correctness fixtures use fake vectors and a sealed .75 lexical/.85 semantic policy; latency, live-provider and live-benefit evaluation remain NOT RUN.
+
 ### Plan11 identifier-aware lexical retrieval
 
 [`identifier-tokenizer.ts`](../SubProject/agent-core-memory/src/memory/identifier-tokenizer.ts) performs a bounded original-codepoint scan with NFC normalization and separate whole-identifier/subword occurrences. Camel/acronym, snake/hyphen, path/dot and letter/digit boundaries retain exact normalized identifiers. Limits are 131,072 input code points, 4,096 emitted occurrences and 256 code points per token; partial identifiers are never manufactured. Queries exceeding bounds fail closed, while oversized documents use the legacy tokenizer with an explicit degraded lexical component.
 
 `retrieval.ts` and `bm25.ts` share this lexical representation and preserve raw case until boundary extraction. Compound query expansion intentionally changes meaningful-token counts and existing BM25 weight selection (for example, `ControllerSession` now counts three tokens and uses 0.45 instead of 0.9). No scoring coefficients, RRF rules, canonical schema, semantic document bytes/version or intelligence/consolidation tokenization change. Existing full-identifier eligibility remains the authority for non-pinned fusion; legacy/BM25/pinned exemptions are not advertised as exact-identifier guarantees.
 
-The existing controller ranking revision includes `code-identifiers/v1`, so old-version continuation is stale after restart. A sealed ten-case functional corpus uses actual baseline source replay, disjoint development/heldout symbol families and exact canonical ID/revision labels. Token bounds and correctness are tested; latency, real-provider performance and controller benefit remain unmeasured. Final combined source acceptance and report packaging remain pending.
+The existing controller ranking revision includes `code-identifiers/v1`, so old-version continuation is stale after restart. A sealed ten-case functional corpus uses actual baseline source replay, disjoint development/heldout symbol families and exact canonical ID/revision labels. Token bounds and correctness are tested; latency, real-provider performance and controller benefit remain unmeasured. Exact combined gate results and report integrity are recorded in the [source ledger](verification/memory06-11-source-functional-2026-10-10.md).
 
 ### Learning and Skills
 
 [`src/learning/external-controller.ts`](../src/learning/external-controller.ts) and [`src/learning/service.ts`](../src/learning/service.ts) own external task episodes and checkpoint/review workflows. Evidence-backed use and outcome records distinguish retrieval from application and benefit. Native execution retains its own finalization lifecycle over the shared owners.
 
 Skill proposals and decisions are revision-bound. Qualification is a proposal state; activation requires the appropriate explicit user decision. See [cumulative workflow](Cumulative-Workflow-Implementation-20261006.md) and [self-improvement implementation](Agent-Core-Self-Improvement-Execution-20261007.md) for dated evidence and residuals. Native experience-v2 automatic episode capture is not claimed by the external Memory acceptance record.
+
 
 ## External image inspection
 
@@ -167,7 +183,7 @@ Focused current-source checks include [image inspection](../tests/image-inspect.
 
 <a id="09-release-intent-and-product-version-integrity"></a>
 
-Root [`package.json`](../package.json), [`src/version.ts`](../src/version.ts), UI package metadata, and launcher display metadata define source/product version. Numeric Windows assembly/file versions follow their platform format. [Candidate notes](releases/0.15.0-beta.1.md) distinguish `0.15.0-beta.1` source metadata from the immutable published beta.0 artifacts and installed runtime.
+Root [`package.json`](../package.json), [`src/version.ts`](../src/version.ts), UI package metadata, and launcher display metadata define source/product version. Numeric Windows assembly/file versions follow their platform format. [Candidate notes](releases/0.15.0-beta.2.md) distinguish `0.15.0-beta.2` source metadata from the immutable published beta.0 artifacts and installed runtime.
 
 [Pending release intents](../.changeset/README.md) describe unapplied changes; [CHANGELOG.md](../CHANGELOG.md) preserves release history. `release:apply`, packaging, tagging, publishing, deployment, and resident acceptance are distinct operations. This documentation refresh performs none of them.
 

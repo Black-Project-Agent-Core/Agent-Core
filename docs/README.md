@@ -1,6 +1,6 @@
 # Documentation
 
-Agent Core source candidate **`0.15.0-beta.1`** covers the Memory Plans02–05 work over the recorded remote baseline. [Candidate notes](releases/0.15.0-beta.1.md) separate reviewed source, verified offline Plan05 functionality, rollout gates and published beta.0 artifacts. [Directed Windows Memory01 and Workflows functional acceptance](verification/memory01-windows-functional-2026-10-10.md) is closed within its recorded scope; later source does not inherit it.
+Agent Core source candidate **`0.15.0-beta.2`** adds Memory Plans06–11 over consolidated source `36e9cb3`. [Candidate notes](releases/0.15.0-beta.2.md) and the [functional source ledger](verification/memory06-11-source-functional-2026-10-10.md) separate implementation, offline gates, Windows beta.1 acceptance and immutable published beta.0 artifacts. [Directed Windows Memory01 and Workflows acceptance](verification/memory01-windows-functional-2026-10-10.md) remains closed only within its recorded scope.
 
 ## Start here
 
@@ -10,7 +10,7 @@ Agent Core source candidate **`0.15.0-beta.1`** covers the Memory Plans02–05 w
 | [Codebase map](CODEBASE.md) | Current architecture, source owners, and verification entry points |
 | [Product direction](Agent-Core-Product-Direction.md) | Cumulative-learning goals and evidence limits |
 | [Operating contract](../AGENTS.md) | Rules for controllers operating through Agent Core |
-| [Source candidate notes](releases/0.15.0-beta.1.md) | Source version, publication state, and outstanding acceptance |
+| [Source candidate notes](releases/0.15.0-beta.2.md) | Source version, publication state, and outstanding acceptance |
 
 ## Implemented systems
 
@@ -26,7 +26,7 @@ Agent Core source candidate **`0.15.0-beta.1`** covers the Memory Plans02–05 w
 
 ## Open proposals
 
-The [plan status index](plans/README.md) separates implemented work from proposals. **Memory06–11 and adaptive parallel execution remain proposals.** Memory02–04 have implemented source and independent reviews; Memory05 offline functionality is implemented and independently reviewed with passing scoped functional gates. These are source candidates, not production rollout or measured learning benefit. Native Chat exists, while the separate [conversation-control redesign](Agent-Core-Native-Conversation-Control-Plan-20261003.md) remains a plan.
+The [plan status index](plans/README.md) separates implemented work from proposals. **Adaptive parallel execution remains proposed. Memory06–11 are source implementations with separate functional, performance and resident acceptance boundaries.** Memory02–04 have implemented source and independent reviews; Memory05 offline functionality is implemented and independently reviewed with passing scoped functional gates. These are source candidates, not production rollout or measured learning benefit. Native Chat exists, while the separate [conversation-control redesign](Agent-Core-Native-Conversation-Control-Plan-20261003.md) remains a plan.
 
 A plan, unresolved checkbox, or historical approval request does not authorize implementation, installation, provider calls, or deployment. Follow current user scope and preserve existing stop boundaries.
 

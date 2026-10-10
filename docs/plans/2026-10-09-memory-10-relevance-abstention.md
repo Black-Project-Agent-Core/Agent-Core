@@ -1,6 +1,8 @@
 # Memory Relevance Abstention Implementation Plan
 
-**Status: PROPOSED / NOT IMPLEMENTED.** Baseline target `4b3e32d464b98aa5116df02e8fe524217d5ad811`; checkout inspeksi memiliki HEAD `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` dengan 174 perubahan staged. Identitas target bukan klaim HEAD lokal sama. Penyusunan hanya membaca sumber dan menulis rencana ini; tidak menjalankan source, build, test, provider, atau runtime pribadi.
+**Status: IMPLEMENTED IN SOURCE — OFFLINE FUNCTIONAL VERIFICATION RECORDED (2026-10-10).** See the [combined source ledger](../verification/memory06-11-source-functional-2026-10-10.md) for exact source identities, RED/GREEN cases, final affected gates, original timeout failures with separate assertion-preserving diagnostics, inherited root failures and sanitized report verification. Source version is `0.15.0-beta.2`; Windows beta.1 acceptance is separate. Performance benchmarks, real providers and live controller benefit are NOT RUN. Commands and checklists below retain the original specification; current implementation adapts the consolidated Plans01–05 owners rather than historical signatures.
+
+**Historical planning baseline:** Baseline target `4b3e32d464b98aa5116df02e8fe524217d5ad811`; checkout inspeksi memiliki HEAD `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` dengan 174 perubahan staged. Identitas target bukan klaim HEAD lokal sama. Penyusunan hanya membaca sumber dan menulis rencana ini; tidak menjalankan source, build, test, provider, atau runtime pribadi.
 
 **Goal:** Recall query boleh menyatakan bukti relevan tidak cukup, tanpa mengisi hasil dengan kandidat terbaik yang sebenarnya lemah.
 

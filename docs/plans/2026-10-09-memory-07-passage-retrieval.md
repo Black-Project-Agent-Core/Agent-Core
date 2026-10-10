@@ -8,7 +8,7 @@
 
 **Spec:** Kontrak mandiri dokumen ini.
 
-**Status: IMPLEMENTED — OFFLINE FUNCTIONAL GATES PASS; FINAL INTEGRATED BUILD/SUITE AND REPORT PACKAGE OWNED BY COORDINATOR.** Passage source commits `c2d40db`, `539ffff`, `0159d3b`; host opt-in remains inactive. Performance benchmarks are NOT RUN by explicit user deferral. Per-task RED/GREEN, synthetic count/byte/oracle evidence and limitations are recorded in `evidence/memory-07/` of the consolidation workspace. Existing format3 record indexes remain compatible with zero reembedding; passage writes use strict format4. The baseline planning facts below remain historical source context. Baseline published yang diberikan `4b3e32d464b98aa5116df02e8fe524217d5ad811`. Inspeksi pada HEAD lokal `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` plus staged tree 174 file, bukan bukti published source identik. Tidak ada source/test/build/provider dijalankan atau diubah selama penyusunan rencana.
+**Status: IMPLEMENTED IN SOURCE — OFFLINE FUNCTIONAL VERIFICATION RECORDED (2026-10-10).** See the [combined source ledger](../verification/memory06-11-source-functional-2026-10-10.md) for exact source identities, RED/GREEN cases, final affected gates, original timeout failures with separate assertion-preserving diagnostics, inherited root failures and sanitized report verification. Source version is `0.15.0-beta.2`; Windows beta.1 acceptance is separate. Performance benchmarks, real providers and live controller benefit are NOT RUN. Commands and checklists below retain the original specification; current implementation adapts the consolidated Plans01–05 owners rather than historical signatures.
 
 ## Global Constraints
 

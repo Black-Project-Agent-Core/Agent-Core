@@ -8,7 +8,7 @@
 
 **Spec:** Spesifikasi mandiri dan kontrak di bawah.
 
-**Status: SOURCE IMPLEMENTED — FINAL CONSOLIDATED ACCEPTANCE/PACKAGE PENDING (2026-10-10).** Implementasi pada checkout bersih branch `consolidate`, base `36e9cb3`, mempertahankan Plans01–05. RED relevan untuk preview tengah, penerusan query dispatcher, dan cursor selector lama sudah dicatat; selector/projection serta test adversarial sudah diterapkan. Evidence functional terisolasi tersimpan pada workstream Memory06; gate functional/build gabungan dan ZIP tervalidasi dimiliki final konsolidasi. Benchmark/median/p95 latency, provider/live controller dan Windows NOT RUN. Baseline published yang diberikan saat penyusunan: `4b3e32d464b98aa5116df02e8fe524217d5ad811`; checkout historis yang diperiksa: `8a80251fd43234cc9ff82aa8746b65b1ef3bd6b3` dengan 174 staged file. Identitas historis itu bukan identitas kandidat implementasi ataupun bukti aktivasi.
+**Status: IMPLEMENTED IN SOURCE — OFFLINE FUNCTIONAL VERIFICATION RECORDED (2026-10-10).** See the [combined source ledger](../verification/memory06-11-source-functional-2026-10-10.md) for exact source identities, RED/GREEN cases, final affected gates, original timeout failures with separate assertion-preserving diagnostics, inherited root failures and sanitized report verification. Source version is `0.15.0-beta.2`; Windows beta.1 acceptance is separate. Performance benchmarks, real providers and live controller benefit are NOT RUN. Commands and checklists below retain the original specification; current implementation adapts the consolidated Plans01–05 owners rather than historical signatures.
 
 ## Global Constraints
 

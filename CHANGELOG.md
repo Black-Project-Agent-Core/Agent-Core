@@ -2,6 +2,15 @@
 
 This records explicit source prereleases and applied stable releases. Pending intents under [.changeset](.changeset/README.md) are retained until stable application. Earlier legacy-only repository decisions and Native Chat placeholder descriptions below are historical; current source and repository identity are documented in [README](README.md) and [CODEBASE](docs/CODEBASE.md).
 
+## 0.15.0-beta.2 - 2026-10-10 (source candidate)
+
+Advance the existing prerelease train for Memory Plans06–11, with synchronized source-version surfaces and one pending minor intent. No release application, tag, release publication, deployment or Windows activation. See [candidate notes and acceptance boundaries](docs/releases/0.15.0-beta.2.md).
+
+- Add exact revision-bound query excerpts and bounded exact/subword code-identifier retrieval. Whole-response budgets and existing scope/trust owners remain authoritative; changed selector/tokenizer revisions invalidate incompatible cursors.
+- Add host-opt-in passage semantic retrieval, a volatile bounded query-vector cache, and content/semantic relevance abstention. Defaults preserve record granularity, no query cache and no abstention policy. Compatible format3 record indexes do not re-embed merely because passage support exists.
+- Add bounded controller-led subquestion helpers, provenance/conflict/coverage projection and actual host-schema examples, with no model, new canonical store or production dispatcher.
+- Functional acceptance uses synthetic offline fixtures; latency/performance benchmarks and live controller/provider benefit remain deferred or unproven. The final integrated ledger records actual gate results separately from historical root-suite/platform failures.
+
 ## 0.15.0-beta.1 - 2026-10-10 (source candidate)
 
 Source identity advances within the existing 0.15.0 beta train for Memory Plans02–05. All six product-version surfaces use `0.15.0-beta.1`; pending intents remain unconsumed. This source candidate is not a new tag, published release, deployment, or Windows activation. See [candidate notes and gates](docs/releases/0.15.0-beta.1.md).
