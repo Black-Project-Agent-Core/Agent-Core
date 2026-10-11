@@ -53,6 +53,7 @@ export function recordExperience(record: MemoryRecord): RecordExperience {
 export const experienceManifestSchema = z.strictObject({
   schemaVersion:z.literal(1),formatVersion:z.literal(2),rootId:safeIdSchema,generation:z.number().int().positive(),
   status:z.enum(['incomplete','complete']),
+  knowledgeClock:z.strictObject({lastPublishedAt:isoInstantSchema,publicationOrder:z.number().int().positive(),regressed:z.boolean()}).optional(),
   origin:z.strictObject({sourceDigest:digestSchema,sourceCount:z.number().int().nonnegative(),
     historyCompleteness:z.literal('available-only'),sourceRefs:z.array(sourceRefSchema)}).optional(),
 });
@@ -76,10 +77,15 @@ export type TemporalAssertion=z.infer<typeof temporalAssertionSchema>;
 export const episodeEventInputSchema = z.strictObject({kind:z.enum(['action','observation','decision','failure','success','correction','checkpoint']),
   summary:text,observedAt:timeValueSchema.optional(),temporalAssertion:temporalAssertionSchema.optional(),sourceRefs:refs,stateChanges:z.array(workingStateChangeSchema).max(64)});
 export type EpisodeEventKind = z.infer<typeof episodeEventInputSchema>['kind'] | 'status-change';
+export const ingestionBindingSchema=z.strictObject({streamId:inputIdentity,batchId:inputIdentity,sequence:z.number().int().positive(),previousReceipt:sourceRefSchema.refine(ref=>ref.kind==='event').optional(),sourceDigest:digestSchema});
+export type IngestionBinding=z.infer<typeof ingestionBindingSchema>;
+export const ingestionCursorInputSchema=z.strictObject({streamId:inputIdentity});
+export interface IngestionCursor {sequence:number;receipt?:SourceRef}
+export const ingestionReceiptSchema=z.strictObject({streamId:inputIdentity,sequence:z.number().int().positive(),eventRef:sourceRefSchema.refine(ref=>ref.kind==='event')});
 export interface EpisodeEvent {
   schemaVersion:1;id:string;episodeId:string;sequence:number;operationId:string;kind:EpisodeEventKind;summary:string;
   recordedAt:IsoInstant;observedAt?:TimeValue;temporalAssertion?:TemporalAssertion;clockSkewMs?:number;origin:{controllerId:string;sessionId?:string;role:'controller'|'tool'|'user'};
-  sourceRefs:SourceRef[];stateChanges:WorkingStateChange[];
+  sourceRefs:SourceRef[];stateChanges:WorkingStateChange[];ingestion?:IngestionBinding;
 }
 export const episodeHeaderSchema = z.strictObject({schemaVersion:z.literal(1),id:safeIdSchema,taskId:inputIdentity,
   workspaceKey:z.string().min(1).max(120),startKey:inputIdentity,status:z.enum(['open','paused','completed','abandoned']),
@@ -88,9 +94,9 @@ export type EpisodeHeader = z.infer<typeof episodeHeaderSchema>;
 export const startEpisodeInputSchema = z.strictObject({startKey:inputIdentity,goal:text,sourceRefs:refs});
 export type StartEpisodeInput = z.infer<typeof startEpisodeInputSchema>;
 export const appendEventInputSchema = z.strictObject({episodeId:safeIdSchema,expectedRevision:z.number().int().positive(),
-  operationId:inputIdentity,event:episodeEventInputSchema}).refine(value=>value.event.stateChanges.every(change=>change.op==='resolve'||change.item.verification.status!=='verified'));
+  operationId:inputIdentity,event:episodeEventInputSchema,ingestion:ingestionBindingSchema.optional()}).refine(value=>value.event.stateChanges.every(change=>change.op==='resolve'||change.item.verification.status!=='verified'));
 export type AppendEventInput = z.infer<typeof appendEventInputSchema>;
-export interface EpisodeAppendResult {episodeId:string;revision:number;eventRef:SourceRef;duplicate:boolean}
+export interface EpisodeAppendResult {episodeId:string;revision:number;eventRef:SourceRef;duplicate:boolean;ingestionReceipt?:z.infer<typeof ingestionReceiptSchema>}
 export const episodeStatusInputSchema = z.strictObject({episodeId:safeIdSchema,expectedRevision:z.number().int().positive(),
   operationId:inputIdentity,status:z.enum(['open','paused','completed','abandoned']),reason:text,sourceRefs:refs});
 export type EpisodeStatusInput = z.infer<typeof episodeStatusInputSchema>;
@@ -111,8 +117,9 @@ export const taskCapsuleSchema=z.strictObject({schemaVersion:z.literal(1),id:saf
   episodeRevision:z.number().int().positive(),generatedAt:isoInstantSchema,generator:z.literal('deterministic-v1'),trigger:checkpointTriggerSchema,
   criticalItems:z.array(workingItemSchema),supportingItems:z.array(workingItemSchema),sourceRefs:z.array(sourceRefSchema),omittedSupportingItemIds:z.array(safeIdSchema)});
 export type TaskCapsule=z.infer<typeof taskCapsuleSchema>;
+export interface ContinuityAssessment {status:'ready'|'checkpoint-required'|'revalidate-required'|'expand-required';reasons:string[]}
 export interface TaskContext {detail:'full'|'handle-only';episode?:EpisodeHeader;episodeRef:SourceRef;
-  freshness:'current'|'stale'|'unknown';capsule?:TaskCapsule;capsuleRef?:SourceRef;staleSourceRefs?:SourceRef[];needsCheckpoint:boolean}
+  freshness:'current'|'stale'|'unknown';capsule?:TaskCapsule;capsuleRef?:SourceRef;staleSourceRefs?:SourceRef[];needsCheckpoint:boolean;continuity?:ContinuityAssessment;intentionEvaluation?:import('./prospective-intentions.js').IntentionEvaluation & {episodeRevision:number}}
 
 export const retentionInputSchema = z.strictObject({memoryId:safeIdSchema,expectedRevision:digestSchema,
   operationId:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/),tier:z.enum(['active','durable','archive']),

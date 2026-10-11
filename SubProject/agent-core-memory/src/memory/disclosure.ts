@@ -1,10 +1,12 @@
+import {intentionObservationSchema} from './prospective-intentions.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { MemoryRecord } from './types.js';
 import type { MemoryExcerpt } from './evidence-excerpt.js';
 import type {RelevanceDecision} from './relevance.js';
 
-import { digestSchema } from './experience-types.js';
+import type {KnownHistoryCoverage} from './revisions.js';
+import { isoInstantSchema, digestSchema } from './experience-types.js';
 import type { Digest, IsoInstant, SourceRef, Verification, RetentionTier, EpistemicType, TemporalClass,Validity,TimeValue } from './experience-types.js';
 export { digestSchema } from './experience-types.js';
 export type { Digest, IsoInstant, SourceRef, Verification, RetentionTier, EpistemicType, TemporalClass,Validity,TimeValue } from './experience-types.js';
@@ -17,7 +19,7 @@ export type Budgeted<T> =
   | { status: 'insufficient-budget'; requiredBytes: number; metrics: BudgetMetrics; warnings: string[] };
 export interface RecallInput {
   query?: string; view?: 'map' | 'abstract'; retention?: 'active-durable' | 'archive' | 'all';
-  asOf?: IsoInstant; limit?: number; cursor?: string; budget?: ReadBudget;
+  asOf?: IsoInstant; validAt?:IsoInstant; knownAt?:IsoInstant; limit?: number; cursor?: string; budget?: ReadBudget;
 }
 export interface MemoryHit {
   id: string; revision: Digest; title: string; abstract?: string; excerpt?: MemoryExcerpt; validity?:Validity;observedAt?:TimeValue;invalidatedBy?:SourceRef[];retention: RetentionTier;
@@ -29,6 +31,7 @@ export interface MemoryHit {
 export interface RecallPage {
   snapshot: Digest; hits: MemoryHit[]; nextCursor?: string; archiveSearchAvailable: boolean;
   completeness: 'complete' | 'partial';
+  knowledgeCoverage?:KnownHistoryCoverage;
   relevance?:Pick<RelevanceDecision,'status'|'policyDigest'|'semanticStatus'>;
 }
 export interface ExpandInput { source: SourceRef; view: 'record' | 'episode' | 'evidence'; cursor?: string; budget?: ReadBudget }
@@ -39,7 +42,7 @@ export interface ExpansionPage {
 export interface ControllerMemoryCapabilities {
   contractVersion: 1; views: DisclosureView[];
   budgets: { defaultBytes: 8192; minBytes: 512; maxBytes: 65536 };
-  writeMode: 'legacy-read' | 'experience-v2'; temporalAsOf: boolean; advisory: true;
+  writeMode: 'legacy-read' | 'experience-v2'; temporalAsOf: boolean; temporalKnownAt?:true; advisory: true;
 }
 export type MemoryControllerErrorCode = 'MEMORY_INPUT_INVALID' | 'MEMORY_SCOPE_MISMATCH' | 'MEMORY_SOURCE_UNAVAILABLE'
   | 'MEMORY_REVISION_CONFLICT' | 'MEMORY_CURSOR_STALE' | 'MEMORY_CURSOR_INVALID'
@@ -53,7 +56,7 @@ export class MemoryControllerError extends Error {
 const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/);
 const identity = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/);
 const budgetSchema = z.strictObject({ maxBytes: z.number().int().min(512).max(65536).optional() });
-export const taskContextInputSchema=z.strictObject({budget:budgetSchema.optional()});
+export const taskContextInputSchema=z.strictObject({budget:budgetSchema.optional(),intentions:intentionObservationSchema.optional()});
 export const controllerScopeSchema = z.strictObject({
   workspaceKey: z.string().min(1).max(120).refine(value => value === value.trim() && !/[\x00-\x1f\x7f]/.test(value)),
   taskId: identity, controllerId: identity, sessionId: identity.optional(),
@@ -61,8 +64,10 @@ export const controllerScopeSchema = z.strictObject({
 export const recallInputSchema = z.strictObject({
   query: z.string().max(200_000).optional(), view: z.enum(['map','abstract']).optional(),
   retention: z.enum(['active-durable','archive','all']).optional(), asOf: z.string().optional(),
+  validAt:isoInstantSchema.optional(),knownAt:isoInstantSchema.optional(),
   limit: z.number().int().min(1).max(20).optional(), cursor: z.string().min(1).max(2048).optional(), budget: budgetSchema.optional(),
-});
+}).refine(value=>value.knownAt===undefined||value.validAt!==undefined,'knownAt requires validAt')
+  .refine(value=>value.asOf===undefined||(value.validAt===undefined&&value.knownAt===undefined),'asOf cannot be combined with validAt or knownAt');
 export const expandInputSchema = z.strictObject({
   source: z.strictObject({ kind: z.enum(['memory','episode','event','artifact','manifest']), id, revision: digestSchema }),
   view: z.enum(['record','episode','evidence']), cursor: z.string().min(1).max(2048).optional(), budget: budgetSchema.optional(),

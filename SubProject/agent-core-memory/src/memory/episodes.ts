@@ -1,3 +1,4 @@
+import {evaluateIntentions,decodeIntention,intentionObservationSchema,type IntentionObservation} from './prospective-intentions.js';
 import {promotionEpistemicRefs} from './promotion.js';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -7,8 +8,8 @@ import { budgetedCapsuleSchema,isCurrentWorkingAssertion,renderTaskCapsule,uniqu
 import { archiveJsonKey, archiveTextObjectKey, readArchivedJson, readArchiveObject, readArchivedMemory, readArchiveManifest, memoryArchiveManifestKey } from './archive.js';
 import { disclosureDigest, memorySemanticRevision, MemoryControllerError, parseControllerInput, stableDisclosureJson } from './disclosure.js';
 import type { Budgeted,ControllerScope, MemoryControllerErrorCode } from './disclosure.js';
-import { retentionInputSchema,retentionReceiptSchema,appendEventInputSchema, captureEvidenceInputSchema, checkpointInputSchema,digestSchema, episodeHeaderSchema, episodeStatusInputSchema, isoInstantSchema, safeIdSchema, sourceRefSchema, startEpisodeInputSchema, taskCapsuleSchema,temporalAssertionSchema,timeValueSchema, workingItemSchema, workingStateChangeSchema } from './experience-types.js';
-import type { RetentionInput,RetentionReceipt,AppendEventInput, ArtifactReceipt, CaptureEvidenceInput, CheckpointInput,EpisodeAppendResult, EpisodeEvent, EpisodeHeader, EpisodeStatusInput, ExperienceManifest, SourceRef, StartEpisodeInput,TaskCapsule,TaskContext, WorkingItem } from './experience-types.js';
+import { ingestionBindingSchema,ingestionCursorInputSchema,ingestionReceiptSchema,retentionInputSchema,retentionReceiptSchema,appendEventInputSchema, captureEvidenceInputSchema, checkpointInputSchema,digestSchema, episodeHeaderSchema, episodeStatusInputSchema, isoInstantSchema, safeIdSchema, sourceRefSchema, startEpisodeInputSchema, taskCapsuleSchema,temporalAssertionSchema,timeValueSchema, workingItemSchema, workingStateChangeSchema } from './experience-types.js';
+import type { IngestionCursor,RetentionInput,RetentionReceipt,AppendEventInput, ArtifactReceipt, CaptureEvidenceInput, CheckpointInput,EpisodeAppendResult, EpisodeEvent, EpisodeHeader, EpisodeStatusInput, ExperienceManifest, SourceRef, StartEpisodeInput,TaskCapsule,TaskContext, WorkingItem } from './experience-types.js';
 import { strictForgottenIdsFromContent } from './feedback.js';
 import { isMemoryLinkActive } from './relations.js';
 import { scanMemorySafety } from './safety.js';
@@ -23,7 +24,7 @@ import { assertEvidenceLocalPath,evidenceDirectoryIdentity, EVIDENCE_DOCUMENT_MA
 const identity = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/);
 const ownershipSchema = z.strictObject({ rootId: safeIdSchema, workspaceKey: z.string().min(1), taskId: identity });
 type Ownership = z.infer<typeof ownershipSchema>;
-const eventSchema = z.strictObject({ schemaVersion: z.literal(1), id: safeIdSchema, episodeId: safeIdSchema, sequence: z.number().int().positive(), operationId: identity, kind: z.enum(['action', 'observation', 'decision', 'failure', 'success', 'correction', 'checkpoint', 'status-change']), summary: z.string().min(1), recordedAt: isoInstantSchema, observedAt: timeValueSchema.optional(), temporalAssertion:temporalAssertionSchema.optional(),clockSkewMs:z.number().positive().optional(), origin: z.strictObject({ controllerId: identity, sessionId: identity.optional(), role: z.enum(['controller', 'tool', 'user']) }), sourceRefs: z.array(sourceRefSchema).max(64), stateChanges: z.array(workingStateChangeSchema).max(64) });
+const eventSchema = z.strictObject({ schemaVersion: z.literal(1), id: safeIdSchema, episodeId: safeIdSchema, sequence: z.number().int().positive(), operationId: identity, kind: z.enum(['action', 'observation', 'decision', 'failure', 'success', 'correction', 'checkpoint', 'status-change']), summary: z.string().min(1), recordedAt: isoInstantSchema, observedAt: timeValueSchema.optional(), temporalAssertion:temporalAssertionSchema.optional(),clockSkewMs:z.number().positive().optional(), origin: z.strictObject({ controllerId: identity, sessionId: identity.optional(), role: z.enum(['controller', 'tool', 'user']) }), sourceRefs: z.array(sourceRefSchema).max(64), stateChanges: z.array(workingStateChangeSchema).max(64), ingestion:ingestionBindingSchema.optional() });
 const eventManifestSchema = z.strictObject({ schemaVersion: z.literal(1), kind: z.literal('event'), owner: ownershipSchema, event: eventSchema });
 const episodeSnapshotSchema = z.strictObject({ schemaVersion: z.literal(1), kind: z.literal('episode'), owner: ownershipSchema, header: episodeHeaderSchema, predecessorRef: sourceRefSchema.optional(), workingState: z.array(workingItemSchema), eventRefs: z.array(sourceRefSchema) });
 type EpisodeSnapshot = z.infer<typeof episodeSnapshotSchema>;
@@ -41,6 +42,7 @@ type CapsuleManifest=z.infer<typeof capsuleManifestSchema>;
 const receiptSchema = z.strictObject({ schemaVersion: z.literal(1), owner: ownershipSchema, method: z.enum(['startEpisode', 'appendEvent', 'setEpisodeStatus', 'captureEvidence','checkpoint','setRetention']), operationId: identity, payloadDigest: digestSchema, result: z.unknown() });
 /** Internal transfer validator reuses persistence schemas; not a controller API. */
 export const episodePersistenceSchemas = { event:eventSchema, eventManifest:eventManifestSchema, episode:episodeSnapshotSchema, live:liveSchema, task:taskSchema, artifact:artifactManifestSchema, capsule:capsuleManifestSchema, receipt:receiptSchema };
+const appendResultSchema = z.strictObject({episodeId:safeIdSchema,revision:z.number().int().positive(),eventRef:sourceRefSchema,duplicate:z.boolean(),ingestionReceipt:ingestionReceiptSchema.optional()});
 function fail(code: MemoryControllerErrorCode): never { throw new MemoryControllerError(code); }
 const json = (value: unknown) => stableDisclosureJson(value) + '\n';
 const revision = (content: string) => `sha256:${fingerprintText(content)}`;
@@ -94,7 +96,29 @@ export function validateEpisodeSnapshot(snapshot:EpisodeSnapshot,events:EpisodeE
       const ref=snapshot.eventRefs[index]!;
       if(ref.kind!=='event'||ref.id!==event.id||event.episodeId!==header.id||event.sequence!==index+1)fail('MEMORY_SOURCE_UNAVAILABLE');
     }
+    const streams=new Map<string,{sequence:number;receipt:SourceRef;batches:Set<string>}>();
+    for(const [index,event] of events.entries())if(event.ingestion){
+      const binding=event.ingestion,previous=streams.get(binding.streamId);
+      if(binding.sequence!==(previous?.sequence??0)+1||previous?.batches.has(binding.batchId)
+        ||stableDisclosureJson(binding.previousReceipt??null)!==stableDisclosureJson(previous?.receipt??null))fail('MEMORY_SOURCE_UNAVAILABLE');
+      streams.set(binding.streamId,{sequence:binding.sequence,receipt:snapshot.eventRefs[index]!,batches:new Set([...(previous?.batches??[]),binding.batchId])});
+    }
     if(stableDisclosureJson(reduce(events))!==stableDisclosureJson(snapshot.workingState))fail('MEMORY_SOURCE_UNAVAILABLE');
+}
+
+/** Internal restore/live-read invariant; receipts establish durable ingestion, not claim validity. */
+export function validateIngestionReceipt(event:EpisodeEvent,eventRef:SourceRef,raw:unknown,owner:unknown):EpisodeAppendResult {
+    try {
+        if(!event.ingestion)fail('MEMORY_SOURCE_UNAVAILABLE');
+        const receipt=receiptSchema.parse(raw),accepted=appendResultSchema.parse(receipt.result);
+        const {schemaVersion,id,episodeId,sequence,operationId,recordedAt,clockSkewMs,origin,ingestion,...eventInput}=event;
+        if(stableDisclosureJson(receipt.owner)!==stableDisclosureJson(owner)||receipt.method!=='appendEvent'||receipt.operationId!==operationId
+          ||receipt.payloadDigest!==disclosureDigest(['appendEvent/v1',episodeId,eventInput,ingestion])
+          ||accepted.episodeId!==episodeId||accepted.revision!==sequence||accepted.duplicate
+          ||stableDisclosureJson(accepted.eventRef)!==stableDisclosureJson(eventRef)
+          ||stableDisclosureJson(accepted.ingestionReceipt)!==stableDisclosureJson({streamId:ingestion.streamId,sequence:ingestion.sequence,eventRef}))fail('MEMORY_SOURCE_UNAVAILABLE');
+        return accepted;
+    }catch{return fail('MEMORY_SOURCE_UNAVAILABLE');}
 }
 
 interface Prepared {
@@ -548,7 +572,7 @@ export class MemoryEpisodes {
     async appendEvent(scope: ControllerScope, raw: AppendEventInput): Promise<EpisodeAppendResult> {
         const input = parseControllerInput(appendEventInputSchema, raw);
         this.safeInput(input);
-        return this.mutate(scope, 'appendEvent', input.operationId, disclosureDigest(['appendEvent/v1', input.episodeId, input.event]), input.episodeId, input.expectedRevision, input);
+        return this.mutate(scope, 'appendEvent', input.operationId, disclosureDigest(['appendEvent/v1', input.episodeId, input.event,...(input.ingestion?[input.ingestion]:[])]), input.episodeId, input.expectedRevision, input);
     }
     async setEpisodeStatus(scope: ControllerScope, raw: EpisodeStatusInput): Promise<EpisodeHeader> {
         const input = parseControllerInput(episodeStatusInputSchema, raw);
@@ -611,7 +635,6 @@ export class MemoryEpisodes {
     private async mutate(scope: ControllerScope, method: 'appendEvent', operationId: string, payload: string, id: string, expectedRevision: number, input: AppendEventInput): Promise<EpisodeAppendResult>;
     private async mutate(scope: ControllerScope, method: 'setEpisodeStatus', operationId: string, payload: string, id: string, expectedRevision: number, input: EpisodeStatusInput): Promise<EpisodeHeader>;
     private async mutate(scope: ControllerScope, method: 'appendEvent' | 'setEpisodeStatus', operationId: string, payload: string, id: string, expectedRevision: number, input: AppendEventInput | EpisodeStatusInput): Promise<EpisodeAppendResult | EpisodeHeader> {
-        const appendResultSchema = z.strictObject({ episodeId: safeIdSchema, revision: z.number().int().positive(), eventRef: sourceRefSchema, duplicate: z.boolean() });
         const resultSchema: z.ZodType<EpisodeAppendResult | EpisodeHeader> = method === 'appendEvent' ? appendResultSchema : episodeHeaderSchema;
         const duplicate = (value: EpisodeAppendResult | EpisodeHeader) => 'duplicate' in value ? { ...value, duplicate: true } : value;
         const prepared = await this.prepare(scope, async (p) => {
@@ -632,6 +655,15 @@ export class MemoryEpisodes {
                 if (live.header.status !== 'open')
                     fail('MEMORY_OPERATION_CONFLICT');
                 await this.validateEvent(input, p);
+                if(input.ingestion){
+                    const task=await this.readJson(this.taskKey(p.owner),taskSchema,p.dependencies);this.scope(task.owner,p.owner);
+                    if(task.episodeId!==id)fail('MEMORY_SCOPE_MISMATCH');
+                    const cursor=await this.ingestionCursor(snapshot,events,p,input.ingestion.streamId);
+                    if(events.some(event=>event.ingestion?.streamId===input.ingestion!.streamId&&event.ingestion.batchId===input.ingestion!.batchId)
+                      ||input.ingestion.sequence!==cursor.sequence+1
+                      ||stableDisclosureJson(input.ingestion.previousReceipt??null)!==stableDisclosureJson(cursor.receipt??null))fail('MEMORY_OPERATION_CONFLICT');
+                    await this.validateIngestionSources(input.event.sourceRefs,input.ingestion.sourceDigest,p);
+                }
             }
             else {
                 await this.validateRefs(input.sourceRefs, p);
@@ -641,9 +673,9 @@ export class MemoryEpisodes {
                     fail('MEMORY_OPERATION_CONFLICT');
             }
             const now = new Date().toISOString(), header: EpisodeHeader = { ...live.header, revision: live.header.revision + 1, eventCount: live.header.eventCount + 1, updatedAt: now, ...('status' in input ? { status: input.status } : {}) };
-            const event: EpisodeEvent = { schemaVersion: 1, id: randomUUID(), episodeId: id, sequence: header.eventCount, operationId, recordedAt: now,...(Date.parse(now)<Date.parse(live.header.updatedAt)?{clockSkewMs:Date.parse(live.header.updatedAt)-Date.parse(now)}:{}), origin: origin(scope), ...('event' in input ? input.event : { kind: 'status-change' as const, summary: input.reason, sourceRefs: input.sourceRefs, stateChanges: [] }) };
+            const event: EpisodeEvent = { schemaVersion: 1, id: randomUUID(), episodeId: id, sequence: header.eventCount, operationId, recordedAt: now,...(Date.parse(now)<Date.parse(live.header.updatedAt)?{clockSkewMs:Date.parse(live.header.updatedAt)-Date.parse(now)}:{}), origin: origin(scope), ...('event' in input ? {...input.event,...(input.ingestion?{ingestion:input.ingestion}:{})} : { kind: 'status-change' as const, summary: input.reason, sourceRefs: input.sourceRefs, stateChanges: [] }) };
             const publication = this.publication(p.owner, header, [...events, event], snapshot.eventRefs, event, snapshot.predecessorRef,live.capsuleRef);
-            const result: EpisodeAppendResult | EpisodeHeader = method === 'appendEvent' ? { episodeId: id, revision: header.revision, eventRef: publication.eventRef, duplicate: false } : header;
+            const result: EpisodeAppendResult | EpisodeHeader = method === 'appendEvent' ? { episodeId: id, revision: header.revision, eventRef: publication.eventRef, duplicate: false,...('event' in input&&input.ingestion?{ingestionReceipt:{streamId:input.ingestion.streamId,sequence:input.ingestion.sequence,eventRef:publication.eventRef}}:{}) } : header;
             const writes = [...publication.writes, { key: opKey, content: json(this.receipt(p.owner, method, operationId, payload, result)) }];
             return { p, opKey, writes, result };
         });
@@ -773,7 +805,38 @@ export class MemoryEpisodes {
         });
         return committed.result;
     }
-    async taskContext(scope: ControllerScope,maxBytes=8192): Promise<{context:TaskContext;warnings:string[]}> {
+    private async validateIngestionSources(refs:SourceRef[],digest:string,p:Prepared):Promise<void> {
+        const artifacts=refs.filter(ref=>ref.kind==='artifact');
+        if(!artifacts.length||new Set(artifacts.map(stableDisclosureJson)).size!==artifacts.length)fail('MEMORY_INPUT_INVALID');
+        const texts:string[]=[];
+        for(const ref of artifacts){const source=await this.artifact(ref,p);if(source.availability!=='available')fail('MEMORY_SOURCE_UNAVAILABLE');texts.push(source.text);}
+        if(disclosureDigest(texts)!==digest)fail('MEMORY_OPERATION_CONFLICT');
+    }
+    private async ingestionCursor(snapshot:EpisodeSnapshot,events:EpisodeEvent[],p:Prepared,streamId:string):Promise<IngestionCursor> {
+        let cursor:IngestionCursor={sequence:0};
+        for(const [index,event] of events.entries())if(event.ingestion?.streamId===streamId){
+            const eventRef=snapshot.eventRefs[index]!;
+            const ingestion=event.ingestion;
+            const key=this.operationKey(p.owner,'appendEvent',event.operationId);
+            try{validateIngestionReceipt(event,eventRef,JSON.parse((await this.readKey(key,p.dependencies))??'null'),p.owner);}
+            catch{return fail('MEMORY_SOURCE_UNAVAILABLE');}
+            try{await this.validateIngestionSources(event.sourceRefs,ingestion.sourceDigest,p);}catch(error){if(error instanceof MemoryControllerError&&error.code==='MEMORY_SCOPE_MISMATCH')throw error;fail('MEMORY_SOURCE_UNAVAILABLE');}
+            cursor={sequence:ingestion.sequence,receipt:eventRef};
+        }
+        return cursor;
+    }
+    async getIngestionCursor(scope:ControllerScope,raw:{streamId:string}):Promise<IngestionCursor> {
+        const input=parseControllerInput(ingestionCursorInputSchema,raw);
+        return this.prepare(scope,async p=>{
+            const content=await this.readKey(this.taskKey(p.owner),p.dependencies);if(content===null)fail('MEMORY_TASK_NOT_FOUND');
+            let task;try{task=taskSchema.parse(JSON.parse(content));}catch{return fail('MEMORY_SOURCE_UNAVAILABLE');}
+            this.scope(task.owner,p.owner);const live=await this.readJson(liveKey(task.episodeId),liveSchema,p.dependencies);this.scope(live.owner,p.owner);
+            const {snapshot,events}=await this.episode(live.snapshotRef,p);if(stableDisclosureJson(snapshot.header)!==stableDisclosureJson(live.header))fail('MEMORY_SOURCE_UNAVAILABLE');
+            return this.ingestionCursor(snapshot,events,p,input.streamId);
+        });
+    }
+    async taskContext(scope: ControllerScope,maxBytes=8192,rawIntentions?:IntentionObservation): Promise<{context:TaskContext;warnings:string[]}> {
+        const intentions=rawIntentions?parseControllerInput(intentionObservationSchema,rawIntentions):undefined;
         return this.prepare(scope, async (p) => {
             const content = await this.readKey(this.taskKey(p.owner));
             if (content === null)
@@ -791,13 +854,19 @@ export class MemoryEpisodes {
             const { snapshot,events } = await this.episode(live.snapshotRef, p);
             if (stableDisclosureJson(snapshot.header) !== stableDisclosureJson(live.header))
                 fail('MEMORY_SOURCE_UNAVAILABLE');
-            const context:TaskContext={detail:'full',episode:live.header,episodeRef:live.snapshotRef,freshness:'unknown',needsCheckpoint:true};
+            const context:TaskContext={detail:'full',episode:live.header,episodeRef:live.snapshotRef,freshness:'unknown',needsCheckpoint:true,...(live.capsuleRef?{capsuleRef:live.capsuleRef}:{})};
+            const intentionWarnings:string[]=[];
+            if(intentions){
+                context.intentionEvaluation={...evaluateIntentions(snapshot.workingState,intentions,intentions.limit??64),episodeRevision:live.header.revision};
+                if(snapshot.workingState.some(item=>item.kind==='obligation'&&decodeIntention(item.text).status==='invalid'))intentionWarnings.push('intention-envelope-invalid');
+                if(context.intentionEvaluation.truncated)intentionWarnings.push('intentions-truncated');
+            }
             const required=renderTaskCapsule({id:live.header.id,header:live.header,generatedAt:live.header.updatedAt,trigger:'explicit',workingState:snapshot.workingState,events,episodeRef:live.snapshotRef,maxBytes});
             const mandatoryOverflow=required.status==='insufficient-budget';
-            if(!live.capsuleRef){if(mandatoryOverflow){context.detail='handle-only';delete context.episode;}return {context,warnings:['capsule-not-available',...(mandatoryOverflow?['capsule-omitted-budget']:[])]};}
+            if(!live.capsuleRef){if(mandatoryOverflow){context.detail='handle-only';delete context.episode;delete context.intentionEvaluation;}return {context,warnings:[...intentionWarnings,'capsule-not-available',...(mandatoryOverflow?['capsule-omitted-budget']:[])]};}
             let manifest:CapsuleManifest;
-            try{manifest=await this.capsule(live.capsuleRef,p);}catch(error){if(error instanceof MemoryControllerError&&error.code==='MEMORY_SCOPE_MISMATCH')throw error;return {context,warnings:['capsule-unavailable']};}
-            const stale:SourceRef[]=[],warnings:string[]=[];
+            try{manifest=await this.capsule(live.capsuleRef,p);}catch(error){if(error instanceof MemoryControllerError&&error.code==='MEMORY_SCOPE_MISMATCH')throw error;return {context,warnings:[...intentionWarnings,'capsule-unavailable']};}
+            const stale:SourceRef[]=[],warnings:string[]=[...intentionWarnings];
             let unknown=false,available=true;
             if(stableDisclosureJson(manifest.episodeRef)!==stableDisclosureJson(live.snapshotRef))stale.push(manifest.episodeRef);
             for(const ref of manifest.memoryDependencies){
@@ -819,7 +888,7 @@ export class MemoryEpisodes {
             context.freshness=stale.length?'stale':unknown?'unknown':'current';context.needsCheckpoint=context.freshness!=='current';
             if(stale.length)context.staleSourceRefs=uniqueSourceRefs(stale);
             if(available){context.capsule=manifest.capsule;context.capsuleRef=live.capsuleRef;if(manifest.capsule.omittedSupportingItemIds.length)warnings.push('supporting-items-omitted');}
-            if(mandatoryOverflow){context.detail='handle-only';delete context.episode;delete context.capsule;delete context.capsuleRef;delete context.staleSourceRefs;return {context,warnings:['capsule-omitted-budget']};}
+            if(mandatoryOverflow){context.detail='handle-only';delete context.episode;delete context.capsule;delete context.capsuleRef;delete context.staleSourceRefs;delete context.intentionEvaluation;return {context,warnings:[...intentionWarnings,'capsule-omitted-budget']};}
             return {context,warnings:[...new Set(warnings)]};
         });
     }

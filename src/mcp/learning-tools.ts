@@ -25,7 +25,7 @@ export function registerLearningTools(
 ): void {
   server.registerTool('learning', {
     title: 'Agent Core Learning',
-    description: 'Controller-driven self-learning facade. After meaningful completed work, the controller must checkpoint once with bounded evidence/workspace and, when reviewDue, perform semantic review before finalizing the turn; Name checkpointKeys and taskId in review; empty candidates require an explicit disposition. Legacy capture does not close pending tasks. Direct Memory remember/update or Reflexion promotion does not replace this finalization lifecycle. Agent Core persists bounded pending-review evidence, validates reviewed candidates, records bounded Memory-use receipts, routes verified non-destructive captures, proposes curation, and exposes a read-only learning journey. The controller owns semantic judgment and Learning never gates normal MCP execution.',
+    description: 'Controller-driven self-learning facade. After meaningful completed work, the controller must checkpoint once with bounded evidence/workspace and, when reviewDue, perform semantic review before finalizing the turn; Name checkpointKeys and taskId in review; empty candidates require an explicit disposition. Legacy capture does not close pending tasks. Direct Memory remember/update or Reflexion promotion does not replace this finalization lifecycle. Agent Core persists bounded pending-review evidence, validates reviewed candidates, records bounded Memory-use receipts, routes verified non-destructive captures, reviews bounded additive deltas with the host-bound active task (action=review-delta), proposes curation, and exposes a read-only learning journey. The controller owns semantic judgment and Learning never gates normal MCP execution.',
     inputSchema: schemas.learning.shape,
     annotations: { title: 'Agent Core Learning', readOnlyHint: false, destructiveHint: false },
   }, async (args: any) => {
@@ -57,6 +57,12 @@ export function registerLearningTools(
           const summary = (result as { summary?: { status?: string } })?.summary?.status ?? 'completed';
           await externalController.recordLearningReview(externalSessionId, summary, (result as any).checkpointDecisions).catch(() => undefined);
         }
+      } else if (input.action === 'review-delta') {
+        if (!input.delta || !externalController || !externalSessionId) throw new Error('CURATION_BINDING_REQUIRED');
+        const episode = await externalController.getEpisode(externalSessionId);
+        if (!episode?.id || !episode.workspace) throw new Error('CURATION_BINDING_REQUIRED');
+        result = await learning.reviewDelta(input.delta, input.explicit === true, { taskId: episode.id, workspace: episode.workspace });
+        await externalController.recordLearningReview(externalSessionId, (result as any).summary.status, (result as any).checkpointDecisions).catch(() => undefined);
       } else if (input.action === 'receipt') {
         result = await learning.receipt({
           taskId: input.taskId, actionRefs: input.actionRefs,

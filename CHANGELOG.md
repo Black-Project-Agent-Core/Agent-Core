@@ -2,6 +2,15 @@
 
 This records explicit source prereleases and applied stable releases. Pending intents under [.changeset](.changeset/README.md) are retained until stable application. Earlier legacy-only repository decisions and Native Chat placeholder descriptions below are historical; current source and repository identity are documented in [README](README.md) and [CODEBASE](docs/CODEBASE.md).
 
+## 0.15.0-beta.3 - 2026-10-11 WIB (source candidate)
+
+Advance the existing prerelease train for Memory12–21 with synchronized product-version surfaces and one pending minor intent. No release application, publication, deployment or Windows activation. See [candidate notes](docs/releases/0.15.0-beta.3.md) and the [functional ledger](docs/verification/memory12-21-source-functional-2026-10-11.md).
+
+- Preserve controller continuity and retry-safe ingestion through existing episode, capsule and transaction owners.
+- Separate valid-time from host-recorded knowledge-time and keep exact evidence dependencies for project synthesis. New metadata has an explicit older-reader fail-closed boundary; no automatic migration or reset.
+- Add bounded evidence-reviewed curation deltas, purpose-aware Learning admission, compaction integrity and opt-in prospective intentions. Eligibility and exposure never authorize actions or prove outcomes.
+- Extend the original offline outcome harness with recall/time and integrity diagnostics plus independent report replay. REALM-inspired related-edge proposals remain a synthetic offline experiment. No donor runtime/data, hidden model, autonomous scheduler or production graph mutation.
+
 ## Memory reference adoption plans — 2026-10-11 WIB (documentation only)
 
 Added ten separate proposed reference-adoption plans (Memory12–21), a shared scope/dependency specification and source-pinned research grounding. Existing Memory/Learning owners remain authoritative; two plans are evaluation methodology and REALM is an offline experiment, not resident functionality. Source implementation and Windows activation are unchanged. Version assessment: no product-version change or release intent for planning-only documentation. See [plan index](docs/plans/README.md#memory-reference-adoption).

@@ -8,7 +8,7 @@ import {experienceManifestSchema,sourceRefSchema,type SourceRef} from './experie
 import {disclosureDigest,memorySemanticRevision,stableDisclosureJson} from './disclosure.js';
 import {parseCanonicalNote} from './note-format.js';
 import {memoryArchiveManifestKey,archivePersistenceSchemas,parseRetainedTelemetry,isRetainedTelemetryKey} from './archive.js';
-import {episodePersistenceSchemas as episodeSchemas,validateEpisodeSnapshot} from './episodes.js';
+import {episodePersistenceSchemas as episodeSchemas,validateEpisodeSnapshot,validateIngestionReceipt} from './episodes.js';
 import {promotionPersistenceSchemas,promotionTransferReferenceView} from './promotion.js';
 import {parseRevisionFile} from './revisions.js';
 import {strictForgottenIdsFromContent,feedbackRecordSubjects} from './feedback.js';
@@ -140,7 +140,21 @@ function inspect(files:Map<string,Buffer>,complete:boolean,policy:MemoryTransfer
      const manifest=episodeSchemas.eventManifest.parse(parseJson(bytes));if(stableDisclosureJson(manifest.owner)!==stableDisclosureJson(snapshot.owner))fail('MEMORY_SCOPE_MISMATCH');
      return manifest.event;
     });
-    try{validateEpisodeSnapshot(snapshot,events);}catch{fail('MEMORY_TRANSFER_LINKAGE_INVALID');}
+    try{
+     validateEpisodeSnapshot(snapshot,events);
+     for(const [index,event] of events.entries())if(event.ingestion){
+      const receiptKey=`state/operations/${disclosureDigest(['episode-operation/v1',snapshot.owner,'appendEvent',event.operationId]).slice(7)}.json`;
+      const receiptBytes=files.get(receiptKey);if(!receiptBytes)fail('MEMORY_TRANSFER_UNRESOLVED_REF');
+      validateIngestionReceipt(event,snapshot.eventRefs[index]!,parseJson(receiptBytes),snapshot.owner);
+      const artifacts=event.sourceRefs.filter(ref=>ref.kind==='artifact');if(!artifacts.length||new Set(artifacts.map(refKey)).size!==artifacts.length)fail('MEMORY_TRANSFER_LINKAGE_INVALID');
+      const texts=artifacts.map(ref=>{
+       const bytes=files.get(`archive/manifests/artifact-${ref.id}.json`);if(!bytes)fail('MEMORY_TRANSFER_UNRESOLVED_REF');
+       const artifact=episodeSchemas.artifact.parse(parseJson(bytes));if(artifact.availability!=='available')fail('MEMORY_TRANSFER_LINKAGE_INVALID');
+       const body=files.get(`archive/objects/${artifact.bodyDigest!.slice(7)}`);if(!body)fail('MEMORY_TRANSFER_UNRESOLVED_REF');return decode(body);
+      });
+      if(disclosureDigest(texts)!==event.ingestion.sourceDigest)fail('MEMORY_TRANSFER_LINKAGE_INVALID');
+     }
+    }catch{fail('MEMORY_TRANSFER_LINKAGE_INVALID');}
    }
   }
   for(const record of records.values())for(const link of record.links){const target=records.get(link.targetId);if(link.targetId==='agent-core-foundational')continue;if(!target)fail('MEMORY_TRANSFER_UNRESOLVED_LINK');if(record.provenance?.workspace!==target.provenance?.workspace)fail('MEMORY_SCOPE_MISMATCH');}
@@ -175,7 +189,12 @@ function validateDocument(key:string,value:any,bytes:Buffer):void {
 function validateLiveLinks(key:string,value:any,files:Map<string,Buffer>):void {
  const get=(key:string)=>{const bytes=files.get(key);if(!bytes)fail('MEMORY_TRANSFER_UNRESOLVED_REF');return parseJson(bytes);};
  const same=(a:unknown,b:unknown)=>{if(stableDisclosureJson(a)!==stableDisclosureJson(b))fail('MEMORY_TRANSFER_LINKAGE_INVALID');};
- if(key.startsWith('state/episode-tasks/')){
+ if(key.startsWith('state/revisions/')&&value.version===2){
+  const bytes=files.get(`notes/${value.id}.md`);if(!bytes)fail('MEMORY_TRANSFER_UNRESOLVED_REF');
+  const record=parseCanonicalNote(decode(bytes));same(value.current.source,{kind:'memory',id:record.id,revision:memorySemanticRevision(record)});
+  const activation=get(activationPath),clock=activation.knowledgeClock;
+  if(!clock||value.current.publicationOrder>clock.publicationOrder||(!clock.regressed&&value.current.knownFrom>clock.lastPublishedAt))fail('MEMORY_TRANSFER_LINKAGE_INVALID');
+ }else if(key.startsWith('state/episode-tasks/')){
   same(key,`state/episode-tasks/${disclosureDigest(['episode-task/v1',value.owner]).slice(7)}.json`);
   same(value.owner,get(`state/episodes/${value.episodeId}/manifest.json`).owner);
  }else if(/^state\/episodes\/[^/]+\/manifest.json$/.test(key)){

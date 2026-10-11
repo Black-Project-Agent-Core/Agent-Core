@@ -9,6 +9,13 @@ export interface MemoryTransactionMutation {
   content: string | null;
   expectedFingerprint: string | null;
 }
+/** Host-only transaction publication watermark; never accepted from controller input. */
+export interface MemoryPublicationClock {lastPublishedAt:string;publicationOrder:number;regressed:boolean}
+export function nextMemoryPublicationClock(previous?:MemoryPublicationClock):MemoryPublicationClock {
+  const now=new Date().toISOString();
+  return {lastPublishedAt:now,publicationOrder:(previous?.publicationOrder??0)+1,
+    regressed:Boolean(previous&&(previous.regressed||now<previous.lastPublishedAt))};
+}
 const hash = z.string().regex(/^[a-f0-9]{64}$/).nullable();
 const journalSchema = z.strictObject({version:z.literal(2),id:z.uuid(),phase:z.enum(['preparing','prepared','applying','committed']),
   entries:z.array(z.strictObject({targetPath:z.string(),before:hash,after:hash}))});

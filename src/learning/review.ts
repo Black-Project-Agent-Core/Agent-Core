@@ -1,3 +1,4 @@
+import { validateCandidatePurpose } from './candidate-purpose.js';
 import { randomUUID } from 'node:crypto';
 import { assertLearningTextSafe } from '../memory/safety.js';
 import { createLearningDecision, validateDecisionMetadata } from './decision-evidence.js';
@@ -23,11 +24,13 @@ function validateEvidenceRefs(refs: string[]): string[] {
   return output;
 }
 
-function validateCandidate(candidate: LearningCandidate): LearningCandidate {
+export function validateCandidate(candidate: LearningCandidate): LearningCandidate {
+  validateCandidatePurpose(candidate);
   const content = candidate.content.trim();
   if (!content) throw new Error('Learning candidate content is required');
   if (content.length > 50_000) throw new Error('Learning candidate content is too large');
-  assertLearningTextSafe(content);
+  assertLearningTextSafe([content, candidate.title, candidate.reuseCondition, ...(candidate.steps ?? []),
+    ...(candidate.tags ?? []), ...(candidate.exemplars ?? [])].filter(value => value !== undefined).join('\n'));
 
   const evidenceRefs = validateEvidenceRefs(candidate.evidenceRefs);
   if (candidate.verified && !evidenceRefs.length) {
@@ -86,8 +89,9 @@ export class LearningReviewCoordinator {
           continue;
         }
         if (candidate.evaluation) assertEvaluatedClaimEligible(candidate.evaluation);
-        const evidence = enforceEvidence ? await Promise.all(candidate.evidenceRefs.map(resolveWorkflowEvidence)) : [];
-        if (enforceEvidence && (evidence.some(item => item.status === 'unavailable') || candidate.effectEvidence?.claimType === 'behavioral-outcome')) {
+        const requireEvidence = enforceEvidence || candidate.purpose !== undefined;
+        const evidence = requireEvidence ? await Promise.all(candidate.evidenceRefs.map(resolveWorkflowEvidence)) : [];
+        if (requireEvidence && (evidence.some(item => item.status === 'unavailable') || candidate.effectEvidence?.claimType === 'behavioral-outcome')) {
           output.push({ kind: candidate.kind, status: 'proposal', ...evaluated,
             reason: 'Evidence requires resolution or a controlled behavioral evaluation; a task correctness report and controller verified=true do not prove improvement.' });
           continue;

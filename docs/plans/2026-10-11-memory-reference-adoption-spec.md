@@ -1,5 +1,6 @@
 # Spesifikasi draft adopsi referensi Memory
 
+> Implementation follow-through: the approved source work is tracked in the [Memory12–21 functional ledger](../verification/memory12-21-source-functional-2026-10-11.md), with source candidate `0.15.0-beta.3`. The original draft status below records the planning baseline; it does not override the later implementation evidence or imply Windows activation.
 **Status:** PROPOSED / DOCUMENTATION ONLY. Dibuat 11 Oktober 2026 WIB berdasarkan permintaan membuat plan per referensi. Belum merupakan implementasi, migrasi, aktivasi, atau bukti manfaat model.
 
 **Baseline source:** `957077fab260dd58d0cc7cfc0881172d05f84667`, versi source `0.15.0-beta.2`. Runtime Windows dan pemasangan Memory06–11 memiliki verifikasi terpisah. Rencana baru tidak boleh disisipkan ke pemasangan tersebut.

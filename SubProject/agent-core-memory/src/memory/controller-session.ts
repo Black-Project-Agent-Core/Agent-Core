@@ -1,7 +1,10 @@
+import type {IntentionObservation} from './prospective-intentions.js';
+import {decodeProjectSynthesis,checkProjectSynthesisDependencies} from './project-synthesis.js';
+import type {HistoricalMemorySnapshot} from './revisions.js';
 import {exactInstant,selectTemporalCandidates} from './temporal.js';
 import type {MemoryPromotion,ConsolidationInput,ApplyConsolidationInput,ConsolidationPlan,PromotionReceipt} from './promotion.js';
 import type { MemoryEpisodes } from './episodes.js';
-import type { RetentionInput,RetentionReceipt,AppendEventInput, ArtifactReceipt, CaptureEvidenceInput,CheckpointInput, EpisodeAppendResult, EpisodeHeader, EpisodeStatusInput, StartEpisodeInput,TaskCapsule, TaskContext } from './experience-types.js';
+import type { IngestionCursor,ContinuityAssessment,RetentionInput,RetentionReceipt,AppendEventInput, ArtifactReceipt, CaptureEvidenceInput,CheckpointInput, EpisodeAppendResult, EpisodeHeader, EpisodeStatusInput, StartEpisodeInput,TaskCapsule, TaskContext } from './experience-types.js';
 import { isMemoryLinkActive } from './relations.js';
 import {assertMemoryDisclosureSafe} from './safety.js';
 import { randomUUID } from 'node:crypto';
@@ -33,6 +36,9 @@ export interface ControllerMemoryBackend {
   promotion?:MemoryPromotion;
   resolveWorkspace(value: string): string;
   snapshot(workspace: string, options?:{historical?:boolean;referenceTime?:number}): Promise<MemoryRecord[]>;
+  historicalSnapshot?(workspace:string,input:{knownAt:string;maxRecords:number}):Promise<HistoricalMemorySnapshot>;
+  rankHistorical?(records:MemoryRecord[],query:string,rankingTime:number):Promise<ControllerRankedSnapshot>;
+  sourceDependencyStatus?(ref:SourceRef,resolve?:(ref:SourceRef)=>Promise<'current'|'stale'|'unavailable'>):Promise<'current'|'stale'|'unavailable'>;
   rank(records: MemoryRecord[], query: string, rankingTime: number): Promise<ControllerRankedSnapshot>;
   read(id: string): Promise<MemoryRecord | null>;
   archivedRevision?(ref:SourceRef):Promise<MemoryRecord|null>;
@@ -42,6 +48,16 @@ export interface ControllerMemoryBackend {
 }
 
 const TRUST_WARNING = 'memory-is-advisory';
+
+/** Advisory projection only: ready is capsule freshness, never outcome verification or permission. */
+export function assessTaskContinuity(context:TaskContext):ContinuityAssessment {
+  if(context.detail==='handle-only')return {status:'expand-required',reasons:['handle-only']};
+  if(context.freshness==='stale')return {status:'revalidate-required',reasons:['capsule-source-stale']};
+  if(!context.capsule&&!context.capsuleRef)return {status:'checkpoint-required',reasons:['capsule-not-available']};
+  if(context.freshness==='unknown')return {status:'revalidate-required',reasons:['capsule-source-unknown']};
+  if(!context.capsule||context.needsCheckpoint)return {status:'checkpoint-required',reasons:['checkpoint-needed']};
+  return {status:'ready',reasons:[]};
+}
 
 /** Obtain sessions through MemoryService.controller with host-authorized scope. */
 export class ControllerMemorySession {
@@ -59,7 +75,7 @@ export class ControllerMemorySession {
 
   capabilities(): ControllerMemoryCapabilities {
     return { contractVersion: 1, views: this.#backend.experienceEnabled ? ['map','abstract','record','episode','evidence'] : ['map','abstract','record'],
-      budgets: { defaultBytes:8192,minBytes:512,maxBytes:65536 }, writeMode:this.#backend.experienceEnabled ? 'experience-v2' : 'legacy-read',temporalAsOf:Boolean(this.#backend.experienceEnabled),advisory:true };
+      budgets: { defaultBytes:8192,minBytes:512,maxBytes:65536 }, writeMode:this.#backend.experienceEnabled ? 'experience-v2' : 'legacy-read',temporalAsOf:Boolean(this.#backend.experienceEnabled),...(this.#backend.experienceEnabled&&this.#backend.historicalSnapshot&&this.#backend.rankHistorical?{temporalKnownAt:true as const}:{}),advisory:true };
   }
 
   private async snapshot(options?:{historical?:boolean;referenceTime?:number}): Promise<MemoryRecord[]> {
@@ -105,8 +121,9 @@ export class ControllerMemorySession {
 
   async recall(raw: RecallInput = {}): Promise<Budgeted<RecallPage>> {
     const input = parseControllerInput(recallInputSchema, raw);
-    if (input.asOf !== undefined && !this.#backend.experienceEnabled) throw new MemoryControllerError('MEMORY_TEMPORAL_UNSUPPORTED');
-    const asOf=input.asOf===undefined?undefined:exactInstant(input.asOf);
+    if ((input.asOf !== undefined || input.validAt!==undefined) && !this.#backend.experienceEnabled) throw new MemoryControllerError('MEMORY_TEMPORAL_UNSUPPORTED');
+    if(input.knownAt!==undefined&&(!this.#backend.experienceEnabled||!this.#backend.historicalSnapshot||!this.#backend.rankHistorical))throw new MemoryControllerError('MEMORY_TEMPORAL_UNSUPPORTED');
+    const asOf=input.validAt??(input.asOf===undefined?undefined:exactInstant(input.asOf));
     const query = input.query?.trim() ?? '';
     if (!query && input.view === 'abstract') throw new MemoryControllerError('MEMORY_INPUT_INVALID');
     const view = input.view ?? (query ? 'abstract' : 'map');
@@ -115,7 +132,7 @@ export class ControllerMemorySession {
     const limit = input.limit ?? 5;
     const attemptId = randomUUID().replaceAll('-','');
     const startedAt = new Date().toISOString();
-    const request = disclosureCursorBinding(disclosureDigest(['recall/v1','evidence-excerpt/v1',query,view,retention,...(asOf?[asOf]:[])]));
+    const request = disclosureCursorBinding(disclosureDigest(['recall/v1','evidence-excerpt/v1',query,view,retention,...(asOf?[asOf]:[]),...(input.knownAt?['knownAt',input.knownAt]:[])]));
     let rankingTime = Date.now();
     if (input.cursor) {
       let previous;
@@ -125,11 +142,35 @@ export class ControllerMemorySession {
       if (previous.request !== request) throw new MemoryControllerError('MEMORY_CURSOR_STALE');
       rankingTime = previous.rankingTime;
     }
-    const records = await this.snapshot({historical:asOf!==undefined,referenceTime:rankingTime});
+    let history:HistoricalMemorySnapshot|undefined;
+    if(input.knownAt){try{history=await this.#backend.historicalSnapshot!(this.#workspace,{knownAt:input.knownAt,maxRecords:500});}catch{throw new MemoryControllerError('MEMORY_SOURCE_UNAVAILABLE');}}
+    const selected = history?.records??await this.snapshot({historical:asOf!==undefined,referenceTime:rankingTime});
+    // Every current synthesis shares a bounded dependency resolution allowance.
+    // Historical syntheses cannot assert currentness using knowledge learned later.
+    const dependencyCache=new Map<string,Promise<'current'|'stale'|'unavailable'>>();
+    const resolveDependency=(ref:SourceRef,ancestors=new Set<string>()):Promise<'current'|'stale'|'unavailable'>=>{
+      const key=disclosureDigest(ref);
+      // Test the ancestry before the promise cache: a cycle must not await itself.
+      if(ancestors.has(key))return Promise.resolve('unavailable');
+      const existing=dependencyCache.get(key);if(existing)return existing;
+      if(dependencyCache.size>=32)return Promise.resolve('unavailable');
+      const next=new Set([...ancestors,key]);
+      const resolution=Promise.resolve().then(()=>this.#backend.sourceDependencyStatus!(ref,child=>resolveDependency(child,next))).catch(()=> 'unavailable' as const);
+      dependencyCache.set(key,resolution);return resolution;
+    };
+    const records:MemoryRecord[]=[];let synthesisOmitted=false;
+    for(const record of selected){
+      if(record.category!=='project-synthesis'){records.push(record);continue;}
+      const value=decodeProjectSynthesis(record.content);
+      if(!value||history||!this.#backend.sourceDependencyStatus){synthesisOmitted=true;continue;}
+      const ownKey=disclosureDigest({kind:'memory',id:record.id,revision:memorySemanticRevision(record)});
+      const status=await checkProjectSynthesisDependencies(value,ref=>resolveDependency(ref,new Set([ownKey])));
+      if(status.status==='current')records.push(record);else synthesisOmitted=true;
+    }
     const temporal=this.#backend.experienceEnabled?selectTemporalCandidates(records,asOf??new Date(rankingTime).toISOString())?.filter(({record})=>retention==='all'||(retention==='archive'?(record.version===2&&record.experience.retention==='archive'):(record.version!==2||record.experience.retention!=='archive'))):undefined;
     const eligible=temporal?temporal.map(c=>c.record):records;
     const rankedSnapshot = query && !(retention === 'archive' && !this.#backend.experienceEnabled)
-      ? await this.#backend.rank(eligible,query,rankingTime) : undefined;
+      ? await (history?this.#backend.rankHistorical!(eligible,query,rankingTime):this.#backend.rank(eligible,query,rankingTime)) : undefined;
     const relevance = rankedSnapshot && this.#backend.relevancePolicy
       ? assessMemoryRelevance({results:rankedSnapshot.results,eligibleCount:eligible.length,
         semanticStatus:rankedSnapshot.relevanceContext?.semanticStatus as RelevanceInput['semanticStatus'],policy:this.#backend.relevancePolicy})
@@ -139,13 +180,14 @@ export class ControllerMemorySession {
     if(temporal){const known=new Map(temporal.map(c=>[c.record.id,c.certainty==='known']));ranked.sort((a,b)=>Number(known.get(b.record.id))-Number(known.get(a.record.id)));}
     const snapshot = disclosureDigest(['controller-snapshot/v2', records.map(record => [record.id,memorySemanticRevision(record)]).sort(([a],[b]) => a.localeCompare(b)),
       rankedSnapshot?.rankingRevision ?? 'ranking-unrequested/v1', ranked.map(item => [item.record.id,item.score ?? null]),
+      ...(history?[{knowledgeCoverage:history.coverage,revisionRefs:history.revisionRefs}]:[]),
       ...(relevance ? [{policyDigest:relevance.policyDigest,acceptedIds:relevance.acceptedIds,semanticStatus:relevance.semanticStatus}] : [])]);
     const snapshotBinding = disclosureCursorBinding(snapshot);
     const start = this.position(input.cursor,request,snapshotBinding);
     if (start >= ranked.length && (start !== 0 || input.cursor)) throw new MemoryControllerError('MEMORY_CURSOR_STALE');
     const warnings = [TRUST_WARNING,...(view === 'abstract' ? ['abstract-is-preview'] : []),
       ...(retention !== 'active-durable' && !this.#backend.experienceEnabled ? ['archive-not-enabled'] : []),
-      ...(relevance?.semanticStatus==='unavailable' ? ['semantic-unavailable'] : []),...(asOf?['valid-time-with-current-evidence','not-known-at']:[])];
+      ...(relevance?.semanticStatus==='unavailable' ? ['semantic-unavailable'] : []),...(asOf&&!history?['valid-time-with-current-evidence','not-known-at']:[]),...(history?['historical-knowledge-snapshot',...(!history.coverage.complete?[`knowledge-history-${history.coverage.reason??'unknown'}`]:[])]:[]),...(synthesisOmitted?['synthesis-stale-or-unknown-omitted']:[])];
     const count = Math.min(limit,ranked.length-start);
     const hits: MemoryHit[] = [];
     for (const item of ranked.slice(start,start+count)) {
@@ -159,9 +201,9 @@ export class ControllerMemorySession {
     }
     const page = (take: number) => {
       const more = start+take < ranked.length;
-      const partial = more || (retention !== 'active-durable' && !this.#backend.experienceEnabled);
+      const partial = more || Boolean(history&&!history.coverage.complete) || (retention !== 'active-durable' && !this.#backend.experienceEnabled);
       return measureBudgeted<RecallPage>({ status:partial ? 'partial' : 'ok',warnings,
-        data:{ snapshot,hits:hits.slice(0,take),...(relevance ? {relevance:{status:relevance.status,policyDigest:relevance.policyDigest,semanticStatus:relevance.semanticStatus}} : {}),...(more ? { nextCursor:this.cursor(request,snapshotBinding,start+take,rankingTime) } : {}),
+        data:{ snapshot,hits:hits.slice(0,take),...(history?{knowledgeCoverage:history.coverage}:{}),...(relevance ? {relevance:{status:relevance.status,policyDigest:relevance.policyDigest,semanticStatus:relevance.semanticStatus}} : {}),...(more ? { nextCursor:this.cursor(request,snapshotBinding,start+take,rankingTime) } : {}),
           archiveSearchAvailable:Boolean(this.#backend.experienceEnabled),completeness:partial ? 'partial' : 'complete' } });
     };
     let result = page(count);
@@ -270,15 +312,19 @@ export class ControllerMemorySession {
   async startEpisode(input:StartEpisodeInput):Promise<EpisodeHeader> {return this.episodeOwner().startEpisode(this.episodeScope(),input);}
   async appendEvent(input:AppendEventInput):Promise<EpisodeAppendResult> {return this.episodeOwner().appendEvent(this.episodeScope(),input);}
   async setEpisodeStatus(input:EpisodeStatusInput):Promise<EpisodeHeader> {return this.episodeOwner().setEpisodeStatus(this.episodeScope(),input);}
-  async getTaskContext(raw?:{budget?:{maxBytes?:number}}):Promise<Budgeted<TaskContext>> {
+  async getIngestionCursor(input:{streamId:string}):Promise<IngestionCursor> {return this.episodeOwner().getIngestionCursor(this.episodeScope(),input);}
+  async getTaskContext(raw?:{budget?:{maxBytes?:number};intentions?:IntentionObservation}):Promise<Budgeted<TaskContext>> {
     const owner=this.episodeOwner();
     const input=parseControllerInput(taskContextInputSchema,raw??{});
-    const {context,warnings:sourceWarnings}=await owner.taskContext(this.episodeScope(),input.budget?.maxBytes??8192);
+    const {context,warnings:sourceWarnings}=await owner.taskContext(this.episodeScope(),input.budget?.maxBytes??8192,input.intentions);
+    context.continuity=assessTaskContinuity(context);
     const warnings=[TRUST_WARNING,...sourceWarnings];
     const full=measureBudgeted<TaskContext>({status:context.needsCheckpoint||sourceWarnings.length?'partial':'ok',warnings,data:context});
     if(full.metrics.payloadBytes<=(input.budget?.maxBytes??8192))return full;
     // Omit the capsule as a whole. The exact episode handle always retains paged full-state expansion.
-    const handle=measureBudgeted<TaskContext>({status:'partial',warnings:[TRUST_WARNING,context.capsule?'capsule-omitted-budget':'capsule-not-available'],data:{detail:'handle-only',episodeRef:context.episodeRef,freshness:context.freshness,needsCheckpoint:context.needsCheckpoint}});
+    const handleContext:TaskContext={detail:'handle-only',episodeRef:context.episodeRef,freshness:context.freshness,needsCheckpoint:context.needsCheckpoint};
+    handleContext.continuity=assessTaskContinuity(handleContext);
+    const handle=measureBudgeted<TaskContext>({status:'partial',warnings:[...new Set([...warnings,...(context.capsule?['capsule-omitted-budget']:[])])],data:handleContext});
     return handle.metrics.payloadBytes<=(input.budget?.maxBytes??8192)?handle:insufficientBudget(handle.metrics.payloadBytes,warnings);
   }
 

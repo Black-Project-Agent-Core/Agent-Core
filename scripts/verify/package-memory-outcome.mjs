@@ -18,14 +18,13 @@ const TRACE_DEFINITION = 'toolCalls counts scripted harness/owner operations, no
 const traceSchema = z.strictObject({ runId: z.string().min(1), definition: z.literal(TRACE_DEFINITION), operations: z.array(z.strictObject({ operation: z.string().min(1).max(240), status: z.enum(['success', 'failure']), reason: z.string().min(1).optional() })) });
 const sha = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const registrationSealSchema = z.strictObject({ schemaVersion: z.literal(1), frozenSuiteDigest: sha, baselineDigest: sha, registration: z.record(z.string(), z.unknown()), registrationDigest: sha });
-const manifestSchema = z.strictObject({
-  version: z.literal('memory-outcome-bundle/v1'),
+const manifestShape = {
   kind: z.literal('agent-core-memory-outcome'),
   members: z.array(z.strictObject({ name: z.string(), bytes: z.number().int().min(0).max(MAX_MEMBER_BYTES), digest: sha })).min(REQUIRED.length),
-  inputs: z.strictObject({ suiteDigest: sha, observationsDigest: sha, reportDigest: sha }),
   verification: z.strictObject({ method: z.literal('independent-recomputation'), verdict: z.literal('pass') }),
   statuses: z.strictObject({ mode: z.enum(['offline', 'live']), live: z.enum(['NOT RUN', 'RECORDED']), candidate: z.enum(['BLOCKED', 'PASS', 'FAIL']), efficiencyBenchmark: z.literal('DEFERRED') }),
-});
+};
+const manifestSchema=z.discriminatedUnion('version',[z.strictObject({...manifestShape,version:z.literal('memory-outcome-bundle/v1'),inputs:z.strictObject({suiteDigest:sha,observationsDigest:sha,reportDigest:sha})}),z.strictObject({...manifestShape,version:z.literal('memory-outcome-bundle/v2'),inputs:z.strictObject({suiteDigest:sha,observationsDigest:sha,reportDigest:sha,sidecarDigest:sha,diagnosticsObservationsDigest:sha,diagnosticsReportDigest:sha})})]);
 const reportStatuses = report => ({ mode: report.mode, live: report.mode === 'offline' ? 'NOT RUN' : 'RECORDED', candidate: report.candidateStatus, efficiencyBenchmark: report.efficiencyBenchmark });
 const invalid = code => { throw new Error(code); };
 async function rejectCredentialContent(bytes, name) {
@@ -53,7 +52,7 @@ function safeName(name, allowManifest = false) {
     /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(segment) || segment.startsWith('.') ||
     /^(?:secrets?|credentials?|memory(?:-v2)?|runtime|backups?|private|protected)(?:\.|$)/i.test(segment))) return false;
   if (allowManifest && name === MANIFEST) return true;
-  return /^(?:report\/[^/]+\.json|results\/observations\.json|logs\/[^/]+\.(?:json|txt)|fixtures\/[^/]+\.json|fixtures\/oracles\/[^/]+\.json|evidence\/(?:[A-Za-z0-9_-]+\/)*[^/]+\.(?:json|txt)|patch\/changes\.patch)$/.test(name);
+  return /^(?:diagnostics\/(?:report|observations)\.json|report\/[^/]+\.json|results\/(?:observations|partial-observations)\.json|logs\/[^/]+\.(?:json|txt)|fixtures\/[^/]+\.json|fixtures\/oracles\/[^/]+\.json|evidence\/(?:[A-Za-z0-9_-]+\/)*[^/]+\.(?:json|txt)|patch\/changes\.patch)$/.test(name);
 }
 async function noSymlinkAncestors(target) {
   let current = path.resolve(target);
@@ -79,7 +78,7 @@ async function sourceMembers(directory) {
       if (stats.isDirectory()) {
         // Runner-owned isolated stores are never read or copied into deliverable evidence.
         if (name === 'runs') continue;
-        if (!/^(?:report|results|logs|fixtures|fixtures\/oracles|evidence(?:\/[A-Za-z0-9_-]+)*|patch)$/.test(name)) invalid('UNSAFE_OUTCOME_MEMBER');
+        if (!/^(?:diagnostics|report|results|logs|fixtures|fixtures\/oracles|evidence(?:\/[A-Za-z0-9_-]+)*|patch)$/.test(name)) invalid('UNSAFE_OUTCOME_MEMBER');
         await visit(file, name + '/');
       } else {
         if (!safeName(name)) invalid('UNSAFE_OUTCOME_MEMBER');
@@ -106,7 +105,24 @@ async function validateOutcomeFiles(files) {
   const { verifyOutcome } = await import('../../dist/learning/outcome-verifier.js');
   const checked = verifyOutcome(suiteBytes, rowBytes, report);
   if (checked.verdict !== 'pass') invalid('OUTCOME_REPORT_DOES_NOT_REPRODUCE');
-  return { report, checked, executionComplete };
+  const rows=parseJSON(rowBytes,'INVALID_OUTCOME_OBSERVATIONS');
+  if(files.has('results/partial-observations.json')){if(!isDeepStrictEqual(parseJSON(files.get('results/partial-observations.json'),'INVALID_PARTIAL_OBSERVATIONS'),rows))invalid('INVALID_PARTIAL_OBSERVATIONS');const logs=parseJSON(files.get('logs/commands.json'),'INVALID_OUTCOME_COMMAND_LOG');if(!logs.some(entry=>['FAIL','BLOCKED'].includes(entry.status)&&Number.isInteger(entry.exitCode)&&entry.exitCode!==0&&typeof entry.reason==='string'&&entry.reason))invalid('MISSING_DIAGNOSTIC_FAILURE_LOG');}
+  const diagnostics=await validateDiagnosticFiles(files,{report,rows,executionComplete,suite:parseJSON(suiteBytes,'INVALID_OUTCOME_SUITE')});
+  return { report, checked, executionComplete:executionComplete&&(!diagnostics||diagnostics.complete&&diagnostics.integrityStatus!=='FAIL') };
+}
+async function validateDiagnosticFiles(files,core){
+ const names=['fixtures/diagnostics.json','diagnostics/observations.json','diagnostics/report.json'];
+ const present=names.filter(name=>files.has(name));if(!present.length){if([...files.keys()].some(name=>name.startsWith('evidence/diagnostics/')))invalid('UNBOUND_DIAGNOSTIC_EVIDENCE');return null;}
+ if(present.length!==names.length)invalid('MISSING_DIAGNOSTIC_MEMBER');
+ const rows=parseJSON(files.get('diagnostics/observations.json'),'INVALID_DIAGNOSTIC_OBSERVATIONS'),report=parseJSON(files.get('diagnostics/report.json'),'INVALID_DIAGNOSTIC_REPORT');
+ const logs=parseJSON(files.get('logs/commands.json'),'INVALID_OUTCOME_COMMAND_LOG'),phase=/^memory-outcome-eval --phase (baseline|compare)$/.exec(logs[0]?.command??'')?.[1];
+ if(report.phase!==phase||core.executionComplete&&(report.phase!==core.report.phase||!isDeepStrictEqual(rows.map(row=>row.runId).sort(),core.rows.map(row=>row.runId).sort())))invalid('DIAGNOSTIC_COHORT_MISMATCH');
+ const bound=new Set();for(const row of rows){if(!Array.isArray(row.evidenceRefs))invalid('INVALID_DIAGNOSTIC_EVIDENCE');for(const ref of row.evidenceRefs){const match=/^diagnostic:(evidence\/diagnostics\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+\.json)#(sha256:[a-f0-9]{64})$/.exec(ref);if(!match||!safeName(match[1]))invalid('INVALID_DIAGNOSTIC_EVIDENCE');if(!files.has(match[1])||digest(files.get(match[1]))!==match[2])invalid('DIAGNOSTIC_EVIDENCE_DIGEST_MISMATCH');bound.add(match[1]);}}
+ for(const name of files.keys())if(name.startsWith('evidence/diagnostics/')&&!bound.has(name))invalid('UNBOUND_DIAGNOSTIC_EVIDENCE');
+ for(const row of rows){const base=core.rows.find(value=>value.runId===row.runId),fixture=core.suite.cases.find(value=>value.id===row.caseId),traceName='evidence/diagnostics/'+row.runId.replaceAll(':','-')+'/trace.json',trace=parseJSON(files.get(traceName),'INVALID_DIAGNOSTIC_TRACE');for(const operation of trace.operations??[])if(operation.supportProof){const proof=operation.supportProof;if(!isDeepStrictEqual(proof.oracle,fixture?.oracle)||base&&(proof.artifactText!==base.evidence.artifactText||proof.report?.case?.digest!==base.hashes.oracleDigest||proof.report?.verdict!==base.evidence.verification.verdict))invalid('DIAGNOSTIC_SUPPORT_BASE_MISMATCH');}}
+ const {verifyDiagnosticReport}=await import('../../dist/learning/outcome-diagnostics-verifier.js');
+ const checked=verifyDiagnosticReport(files.get('fixtures/frozen-suite.json')??files.get('fixtures/suite.json'),files.get('fixtures/diagnostics.json'),files.get('diagnostics/observations.json'),report,files);
+ if(checked.verdict!=='pass')invalid('DIAGNOSTIC_REPORT_DOES_NOT_REPRODUCE');return report;
 }
 const valueDigest = value => digest(Buffer.from(typeof value === 'string' ? value : JSON.stringify(value)));
 function validateSupplementalRegistration(files, suite, rows, bound) {
@@ -132,7 +148,7 @@ function validateSupplementalRegistration(files, suite, rows, bound) {
 }
 function validateEvidence(files, suite, rows) {
   if (!Array.isArray(suite.cases) || !Array.isArray(rows)) invalid('INVALID_OUTCOME_INPUT');
-  const bound = new Set(REQUIRED), runSlugs = new Set(rows.map(row => typeof row.runId === 'string' ? row.runId.replaceAll(':', '-') : ''));
+  const bound = new Set([...REQUIRED,...(files.has('fixtures/diagnostics.json')?['fixtures/diagnostics.json']:[])]), runSlugs = new Set(rows.map(row => typeof row.runId === 'string' ? row.runId.replaceAll(':', '-') : ''));
   for (const item of suite.cases) {
     const name = `fixtures/oracles/${item.id}.json`, content = files.get(name);
     if (!content) invalid('MISSING_OUTCOME_ORACLE');
@@ -193,6 +209,7 @@ function validateEvidence(files, suite, rows) {
   }
   for (const name of files.keys()) {
     if (name.startsWith('fixtures/') && !bound.has(name)) invalid('UNBOUND_OUTCOME_FIXTURE');
+    if (name.startsWith('evidence/diagnostics/') && files.has('fixtures/diagnostics.json')) continue;
     if (name.startsWith('evidence/') && !bound.has(name) && ![...runSlugs].some(slug => slug && (name.startsWith('evidence/' + slug + '.') || name.startsWith('evidence/' + slug + '-')))) invalid('UNBOUND_OUTCOME_EVIDENCE');
   }
   return { executionComplete: commands.every(command => command.status === 'PASS' && command.exitCode === 0) };
@@ -256,6 +273,9 @@ function validateManifest(files) {
   requireCore(files);
   if (manifest.inputs.suiteDigest !== digest(files.get('fixtures/suite.json')) || manifest.inputs.observationsDigest !== digest(files.get('results/observations.json')) ||
     manifest.inputs.reportDigest !== digest(files.get('report/report.json'))) invalid('OUTCOME_INPUT_DIGEST_MISMATCH');
+  const hasDiagnostics=files.has('fixtures/diagnostics.json');
+  if(hasDiagnostics!==(manifest.version==='memory-outcome-bundle/v2'))invalid('OUTCOME_DIAGNOSTIC_VERSION_MISMATCH');
+  if(hasDiagnostics&&(manifest.inputs.sidecarDigest!==digest(files.get('fixtures/diagnostics.json'))||manifest.inputs.diagnosticsObservationsDigest!==digest(files.get('diagnostics/observations.json')??Buffer.alloc(0))||manifest.inputs.diagnosticsReportDigest!==digest(files.get('diagnostics/report.json')??Buffer.alloc(0))))invalid('OUTCOME_DIAGNOSTIC_INPUT_MISMATCH');
   return manifest;
 }
 
@@ -289,8 +309,8 @@ export async function packageOutcomeBundle(directory, zipPath) {
   const files = await sourceMembers(source); requireCore(files);
   const { report } = await validateOutcomeFiles(files);
   const members = [...files].map(([name, bytes]) => ({ name, bytes: bytes.length, digest: digest(bytes) })).sort((a, b) => a.name.localeCompare(b.name));
-  const manifest = manifestSchema.parse({ version: 'memory-outcome-bundle/v1', kind: 'agent-core-memory-outcome', members,
-    inputs: { suiteDigest: digest(files.get('fixtures/suite.json')), observationsDigest: digest(files.get('results/observations.json')), reportDigest: digest(files.get('report/report.json')) },
+  const manifest = manifestSchema.parse({ version:files.has('fixtures/diagnostics.json')?'memory-outcome-bundle/v2':'memory-outcome-bundle/v1', kind: 'agent-core-memory-outcome', members,
+    inputs: { suiteDigest: digest(files.get('fixtures/suite.json')), observationsDigest: digest(files.get('results/observations.json')), reportDigest: digest(files.get('report/report.json')),...(files.has('fixtures/diagnostics.json')?{sidecarDigest:digest(files.get('fixtures/diagnostics.json')),diagnosticsObservationsDigest:digest(files.get('diagnostics/observations.json')),diagnosticsReportDigest:digest(files.get('diagnostics/report.json'))}:{}) },
     verification: { method: 'independent-recomputation', verdict: 'pass' }, statuses: reportStatuses(report) });
   const archive = new PizZip(); for (const [name, content] of [...files, [MANIFEST, jsonBytes(manifest)]]) archive.file(name, content, { createFolders: false, unixPermissions: 0o100600, date: new Date('2000-01-01T00:00:00Z') });
   const bytes = archive.generate({ type: 'nodebuffer', platform: 'UNIX', compression: 'DEFLATE' });

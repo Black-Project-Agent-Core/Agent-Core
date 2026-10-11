@@ -1,0 +1,524 @@
+{
+  "version": "memory-diagnostics/v1",
+  "suiteDigest": "sha256:bb59f7ae63342767e2bdc28bba3a430c02c9af67362ecad37efd5678dfe1380d",
+  "cases": [
+    {
+      "caseId": "heldout-diagnostic-extraction-a",
+      "diagnosticFamily": "recall-extraction",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-a",
+          "value": "cobalt signal",
+          "sourceId": "target-a-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "distractor-a",
+          "value": "quartz unrelated",
+          "sourceId": "distractor-a-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "cobalt"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-a",
+          "distractor-a"
+        ],
+        "expectedRetrievedIds": [
+          "target-a"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "target-a",
+              "value": "cobalt signal",
+              "sourceId": "target-a-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      }
+    },
+    {
+      "caseId": "heldout-diagnostic-multi-session-a",
+      "diagnosticFamily": "recall-multi-session",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-a",
+          "value": "cobalt signal",
+          "sourceId": "target-a-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "capture",
+          "id": "other-a",
+          "value": "cobalt gate",
+          "sourceId": "other-a-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "cobalt"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-a",
+          "other-a"
+        ],
+        "expectedRetrievedIds": [
+          "target-a",
+          "other-a"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "other-a",
+              "value": "cobalt gate",
+              "sourceId": "other-a-memo"
+            },
+            {
+              "id": "target-a",
+              "value": "cobalt signal",
+              "sourceId": "target-a-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      }
+    },
+    {
+      "caseId": "heldout-diagnostic-update-a",
+      "diagnosticFamily": "recall-update",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-a",
+          "value": "cobalt signal",
+          "sourceId": "target-a-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "successor-a",
+          "value": "cobalt current",
+          "sourceId": "successor-a-memo",
+          "effectiveAt": "2025-02-01T00:00:00Z",
+          "trust": "verified-fixture",
+          "supersedes": "target-a"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "cobalt"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-a",
+          "successor-a"
+        ],
+        "expectedRetrievedIds": [
+          "successor-a"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "successor-a",
+              "value": "cobalt current",
+              "sourceId": "successor-a-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      }
+    },
+    {
+      "caseId": "heldout-diagnostic-temporal-a",
+      "diagnosticFamily": "recall-temporal",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-a",
+          "value": "cobalt signal",
+          "sourceId": "target-a-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "successor-a",
+          "value": "cobalt current",
+          "sourceId": "successor-a-memo",
+          "effectiveAt": "2025-02-01T00:00:00Z",
+          "trust": "verified-fixture",
+          "supersedes": "target-a"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "cobalt",
+          "asOf": "2025-01-15T00:00:00Z"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "historical"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-a",
+          "successor-a"
+        ],
+        "expectedRetrievedIds": [
+          "target-a"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "target-a",
+              "value": "cobalt signal",
+              "sourceId": "target-a-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      }
+    },
+    {
+      "caseId": "heldout-diagnostic-abstention-a",
+      "diagnosticFamily": "recall-abstention",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-a",
+          "value": "cobalt signal",
+          "sourceId": "target-a-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "nonexistent-quasar-horizon"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "abstain"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-a"
+        ],
+        "expectedRetrievedIds": [],
+        "expectedAnswer": {
+          "kind": "abstain"
+        },
+        "forbiddenIds": []
+      }
+    },
+    {
+      "caseId": "heldout-diagnostic-extraction-b",
+      "diagnosticFamily": "recall-extraction",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-b",
+          "value": "umber signal",
+          "sourceId": "target-b-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "distractor-b",
+          "value": "quartz unrelated",
+          "sourceId": "distractor-b-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "umber"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-b",
+          "distractor-b"
+        ],
+        "expectedRetrievedIds": [
+          "target-b"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "target-b",
+              "value": "umber signal",
+              "sourceId": "target-b-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      }
+    },
+    {
+      "caseId": "heldout-diagnostic-multi-session-b",
+      "diagnosticFamily": "recall-multi-session",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-b",
+          "value": "umber signal",
+          "sourceId": "target-b-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "capture",
+          "id": "other-b",
+          "value": "umber gate",
+          "sourceId": "other-b-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "umber"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-b",
+          "other-b"
+        ],
+        "expectedRetrievedIds": [
+          "target-b",
+          "other-b"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "other-b",
+              "value": "umber gate",
+              "sourceId": "other-b-memo"
+            },
+            {
+              "id": "target-b",
+              "value": "umber signal",
+              "sourceId": "target-b-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      }
+    },
+    {
+      "caseId": "heldout-diagnostic-update-b",
+      "diagnosticFamily": "recall-update",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-b",
+          "value": "umber signal",
+          "sourceId": "target-b-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "successor-b",
+          "value": "umber current",
+          "sourceId": "successor-b-memo",
+          "effectiveAt": "2025-02-01T00:00:00Z",
+          "trust": "verified-fixture",
+          "supersedes": "target-b"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "umber"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-b",
+          "successor-b"
+        ],
+        "expectedRetrievedIds": [
+          "successor-b"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "successor-b",
+              "value": "umber current",
+              "sourceId": "successor-b-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      }
+    },
+    {
+      "caseId": "heldout-diagnostic-temporal-b",
+      "diagnosticFamily": "recall-temporal",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-b",
+          "value": "umber signal",
+          "sourceId": "target-b-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "successor-b",
+          "value": "umber current",
+          "sourceId": "successor-b-memo",
+          "effectiveAt": "2025-02-01T00:00:00Z",
+          "trust": "verified-fixture",
+          "supersedes": "target-b"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "umber",
+          "asOf": "2025-01-15T00:00:00Z"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "historical"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-b",
+          "successor-b"
+        ],
+        "expectedRetrievedIds": [
+          "target-b"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "target-b",
+              "value": "umber signal",
+              "sourceId": "target-b-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      }
+    },
+    {
+      "caseId": "heldout-diagnostic-abstention-b",
+      "diagnosticFamily": "recall-abstention",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-b",
+          "value": "umber signal",
+          "sourceId": "target-b-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "nonexistent-quasar-horizon"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "abstain"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-b"
+        ],
+        "expectedRetrievedIds": [],
+        "expectedAnswer": {
+          "kind": "abstain"
+        },
+        "forbiddenIds": []
+      }
+    }
+  ]
+}

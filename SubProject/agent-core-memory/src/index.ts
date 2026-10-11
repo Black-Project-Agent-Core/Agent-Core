@@ -60,3 +60,11 @@ export {MEMORY_TRANSFER_V2_VERSION,exportMemoryTransferV2,previewMemoryTransferV
 export type {MemoryTransferV2Policy,MemoryTransferV2ExportOptions,MemoryTransferV2Bundle,MemoryTransferV2Preview,MemoryTransferV2Receipt} from './memory/transfer.js';
 export {assessMemoryRelevance,validateRelevancePolicy} from './memory/relevance.js';
 export type {RelevancePolicy,RelevanceInput,RelevanceDecision} from './memory/relevance.js';
+
+export {encodeIntention,decodeIntention,evaluateIntentions,intentionUpsert,INTENTION_PREFIX} from './memory/prospective-intentions.js';
+export type {ProspectiveIntention,IntentionObservation,IntentionEvaluation} from './memory/prospective-intentions.js';
+export type {ContinuityAssessment,IngestionBinding,IngestionCursor} from './memory/experience-types.js';
+export {assessTaskContinuity} from './memory/controller-session.js';
+export {encodeProjectSynthesis,decodeProjectSynthesis,buildProjectSynthesisAction,projectSynthesisRefs,checkProjectSynthesisDependencies} from './memory/project-synthesis.js';
+export type {ProjectSynthesis} from './memory/project-synthesis.js';
+export type {KnowledgeInterval,KnownHistoryCoverage,HistoricalMemorySnapshot} from './memory/revisions.js';

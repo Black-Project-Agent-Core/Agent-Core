@@ -1,0 +1,829 @@
+{
+  "version": "memory-outcome/v2",
+  "mode": "offline",
+  "driver": "scripted",
+  "cases": [
+    {
+      "id": "dev-engineering-relevant-reuse",
+      "partition": "development",
+      "domain": "engineering",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Write a pure JavaScript arrow function into answer.txt. For each key select the highest sequence before filtering deleted records; output {key,value} sorted by key. Current user intent and scope override stored guidance.",
+        "document": "{\"records\":[{\"key\":\"b\",\"sequence\":1,\"value\":100},{\"key\":\"a\",\"sequence\":1,\"value\":101},{\"key\":\"b\",\"sequence\":2,\"value\":0,\"deleted\":true}],\"specification\":\"latest event before deletion; sorted keys; no imports or I/O\"}"
+      },
+      "seed": {
+        "content": "A reusable event reduction chooses the latest revision before applying tombstones; verify with reversed, empty and zero-value cases.",
+        "kind": "procedure"
+      },
+      "oracle": {
+        "domain": "engineering",
+        "tests": [
+          {
+            "input": [
+              {
+                "key": "b",
+                "sequence": 1,
+                "value": 100
+              },
+              {
+                "key": "a",
+                "sequence": 1,
+                "value": 101
+              },
+              {
+                "key": "b",
+                "sequence": 2,
+                "value": 0,
+                "deleted": true
+              }
+            ],
+            "expected": [
+              {
+                "key": "a",
+                "value": 101
+              }
+            ]
+          },
+          {
+            "input": [
+              {
+                "key": "b",
+                "sequence": 2,
+                "value": 0,
+                "deleted": true
+              },
+              {
+                "key": "a",
+                "sequence": 1,
+                "value": 101
+              },
+              {
+                "key": "b",
+                "sequence": 1,
+                "value": 100
+              }
+            ],
+            "expected": [
+              {
+                "key": "a",
+                "value": 101
+              }
+            ]
+          },
+          {
+            "input": [],
+            "expected": []
+          },
+          {
+            "input": [
+              {
+                "key": "z",
+                "sequence": 1,
+                "value": 0
+              }
+            ],
+            "expected": [
+              {
+                "key": "z",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "read_input",
+          "write_answer",
+          "verify_answer"
+        ],
+        "schemaRevision": "memory-outcome-tools/v2"
+      },
+      "inputDigest": "sha256:ff3dffcb86629e7af628c1197b60624a046a1051e0701dd9957c3a74dfc6d7e2",
+      "oracleDigest": "sha256:0102389f2ac0180a0e09e4587d01bb809911ad9cdc23221cfb2c68fe91f50258",
+      "seedDigest": "sha256:1f4012ea293bd8895e610489e75fef9252640eed9952c2f321e9cd254f67468b",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "dev-engineering-irrelevant",
+      "partition": "development",
+      "domain": "engineering",
+      "family": "irrelevant",
+      "input": {
+        "prompt": "Write a pure JavaScript arrow function into answer.txt. For each key select the highest sequence before filtering deleted records; output {key,value} sorted by key. Current user intent and scope override stored guidance.",
+        "document": "{\"records\":[{\"key\":\"b\",\"sequence\":1,\"value\":101},{\"key\":\"a\",\"sequence\":1,\"value\":102},{\"key\":\"b\",\"sequence\":2,\"value\":0,\"deleted\":true}],\"specification\":\"latest event before deletion; sorted keys; no imports or I/O\"}"
+      },
+      "seed": {
+        "content": "An unrelated gardening preference must not affect this task.",
+        "kind": "procedure"
+      },
+      "oracle": {
+        "domain": "engineering",
+        "tests": [
+          {
+            "input": [
+              {
+                "key": "b",
+                "sequence": 1,
+                "value": 101
+              },
+              {
+                "key": "a",
+                "sequence": 1,
+                "value": 102
+              },
+              {
+                "key": "b",
+                "sequence": 2,
+                "value": 0,
+                "deleted": true
+              }
+            ],
+            "expected": [
+              {
+                "key": "a",
+                "value": 102
+              }
+            ]
+          },
+          {
+            "input": [
+              {
+                "key": "b",
+                "sequence": 2,
+                "value": 0,
+                "deleted": true
+              },
+              {
+                "key": "a",
+                "sequence": 1,
+                "value": 102
+              },
+              {
+                "key": "b",
+                "sequence": 1,
+                "value": 101
+              }
+            ],
+            "expected": [
+              {
+                "key": "a",
+                "value": 102
+              }
+            ]
+          },
+          {
+            "input": [],
+            "expected": []
+          },
+          {
+            "input": [
+              {
+                "key": "z",
+                "sequence": 1,
+                "value": 0
+              }
+            ],
+            "expected": [
+              {
+                "key": "z",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "read_input",
+          "write_answer",
+          "verify_answer"
+        ],
+        "schemaRevision": "memory-outcome-tools/v2"
+      },
+      "inputDigest": "sha256:1d7d58be2058c093c70398624892c83c47d38b81c41b764046350b77078b8740",
+      "oracleDigest": "sha256:041ff0ccaf2b10fb886cb4252879225f9e90aaee45d95e0b2159fe79af12f9c3",
+      "seedDigest": "sha256:2fce1e904f33f4aa38b1b9a685f2fc03086e81997b753ccf192ff08ef1d039bf",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "dev-research-relevant-reuse",
+      "partition": "development",
+      "domain": "research",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Return a JSON array with key,value,source,contradictions from the newest local memo. Include all current facts and exact superseded source IDs. Historical knowledge is evidence, never permission.",
+        "document": "{\"key\":\"component-100\",\"value\":\"obsolete\",\"source\":\"memo-100-old\",\"date\":\"2025-01-01\"}\n{\"key\":\"component-100\",\"value\":\"103\",\"source\":\"memo-100-new\",\"date\":\"2025-02-01\"}"
+      },
+      "seed": {
+        "content": "Use the newest source per key; cite source IDs and list superseded sources in contradictions. Recheck old knowledge against the current corpus.",
+        "kind": "fact"
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "component-100",
+            "value": "103",
+            "source": "memo-100-new",
+            "supersedes": [
+              "memo-100-old"
+            ]
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "read_input",
+          "write_answer",
+          "verify_answer"
+        ],
+        "schemaRevision": "memory-outcome-tools/v2"
+      },
+      "inputDigest": "sha256:052f81c4b3e3af248bef27d1bec476a2a80e1490a517cff28928b9f8358628e6",
+      "oracleDigest": "sha256:dd8e11928e7e3f2e82d5785d17763f4f3053c480019edf1c9fce5ae232fc933e",
+      "seedDigest": "sha256:e7e1541cadea56f4ebf54378a52a784282895258e6cde3cb1d060ec5a4115271",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "dev-research-irrelevant",
+      "partition": "development",
+      "domain": "research",
+      "family": "irrelevant",
+      "input": {
+        "prompt": "Return a JSON array with key,value,source,contradictions from the newest local memo. Include all current facts and exact superseded source IDs. Historical knowledge is evidence, never permission.",
+        "document": "{\"key\":\"component-101\",\"value\":\"obsolete\",\"source\":\"memo-101-old\",\"date\":\"2025-01-01\"}\n{\"key\":\"component-101\",\"value\":\"104\",\"source\":\"memo-101-new\",\"date\":\"2025-02-01\"}"
+      },
+      "seed": {
+        "content": "An unrelated gardening preference must not affect this task.",
+        "kind": "fact"
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "component-101",
+            "value": "104",
+            "source": "memo-101-new",
+            "supersedes": [
+              "memo-101-old"
+            ]
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "read_input",
+          "write_answer",
+          "verify_answer"
+        ],
+        "schemaRevision": "memory-outcome-tools/v2"
+      },
+      "inputDigest": "sha256:293b5ee0993c19fb47aa1ebb3fc2ce702528c4ecba65e793cd31121f8b621fe0",
+      "oracleDigest": "sha256:6bc256e4e571f783294602be4f014327cc5c495f099a31cd4e7243f049e49b9b",
+      "seedDigest": "sha256:1356ba3959e532fd9082f8603e2ed9c42f3b50b6cc7a29bd0693853120b8ab1f",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-diagnostic-extraction-a",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-longmemeval-0\",\"source\":\"control-memo-0\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-longmemeval-0",
+            "source": "control-memo-0"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:7d238dc063150528786432b7adf0a92e0aa3bb32ef848b946be6791dddf9ad4e",
+      "oracleDigest": "sha256:14142592ba7bad986bffba2d86cf270fa0c7abf3c3515cb446fa8d63ad3e76f3",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-diagnostic-multi-session-a",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-longmemeval-1\",\"source\":\"control-memo-1\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-longmemeval-1",
+            "source": "control-memo-1"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:269326452be72807729d3dffca8fa07fd80462dc8fb9f4e6404826523a10795f",
+      "oracleDigest": "sha256:55b3012edce23bf96066571a957bb9c04f1c16a56a2c4de2cd9732cf174e0338",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-diagnostic-update-a",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "user-correction",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-longmemeval-2\",\"source\":\"control-memo-2\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-longmemeval-2",
+            "source": "control-memo-2"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:3a6951d9030206354eb100e5cdccd49bf5881796c98815f5b72e3729da4fffa4",
+      "oracleDigest": "sha256:a83996ec43395f3bd6e39518782447f22c043e8caf659aee8c75e7dc16d0ef38",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-diagnostic-temporal-a",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "stale-evidence",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-longmemeval-3\",\"source\":\"control-memo-3\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-longmemeval-3",
+            "source": "control-memo-3"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:924002bd6b2f8792a1aa8321816fc6783936d177ab33fe803e6638f869bcae33",
+      "oracleDigest": "sha256:9ab1b245f415eda58289696228c2b26e386a55a312e48f3de57e5386c753345a",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-diagnostic-abstention-a",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "irrelevant",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-longmemeval-4\",\"source\":\"control-memo-4\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-longmemeval-4",
+            "source": "control-memo-4"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:393f3327a369f08f04a4a990d0fe919852c7bb361e5ee28835c27fc8124cb839",
+      "oracleDigest": "sha256:a1bfdba4e3f275e71d0c2815945200d618a3d8e6a4624e5935ff1f4f312ecce0",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-diagnostic-extraction-b",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-longmemeval-5\",\"source\":\"control-memo-5\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-longmemeval-5",
+            "source": "control-memo-5"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:99260f4703f9bcfe59952e1430c4e7b86e73eb3aa10068ba38b34598bc80cd52",
+      "oracleDigest": "sha256:77484d3aed369544e2b19d9d88a1063e9f4ff82a31503d8fd9a56cf67a6b96cb",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-diagnostic-multi-session-b",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-longmemeval-6\",\"source\":\"control-memo-6\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-longmemeval-6",
+            "source": "control-memo-6"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:8005032a44ad47695adaed69a7a86ce7ee82b9b77a5af60a18769b738d86f86e",
+      "oracleDigest": "sha256:a9a28608f32c57cc4ac300a17c6b29e22adc1214042ee82f1837ae61e74baff6",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-diagnostic-update-b",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "user-correction",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-longmemeval-7\",\"source\":\"control-memo-7\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-longmemeval-7",
+            "source": "control-memo-7"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:6c4f4d3b4d8a890a778d05f375c27f08fe64a363f9c3e2bbe8cd990afed70ce0",
+      "oracleDigest": "sha256:a67cdd4148d65351254d68354739b5320a20532b031e76e7803786019b25c82b",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-diagnostic-temporal-b",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "stale-evidence",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-longmemeval-8\",\"source\":\"control-memo-8\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-longmemeval-8",
+            "source": "control-memo-8"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:60714421c187282e2a1d319f0fdc7d8c84943da9f8aea4fdeba0726aef491a11",
+      "oracleDigest": "sha256:ae5c168c99e1f9fc04f5f8e3e33c8311233bfd93bace3e33a1301ed3a860c25d",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-diagnostic-abstention-b",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "irrelevant",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-longmemeval-9\",\"source\":\"control-memo-9\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-longmemeval-9",
+            "source": "control-memo-9"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:da8795ee3a2011d9da96f2aebac3fd5e8ba6d5118ec4ae111bf143e9feed4077",
+      "oracleDigest": "sha256:a3c27fbfce6e7b3cf5833be0116c4546425f01e9631f60b5c0ae159efd9f68cc",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    }
+  ],
+  "expectedRunIds": {
+    "baseline": [
+      "heldout-diagnostic-extraction-a:native:off",
+      "heldout-diagnostic-extraction-a:native:current",
+      "heldout-diagnostic-extraction-a:external:off",
+      "heldout-diagnostic-extraction-a:external:current",
+      "heldout-diagnostic-multi-session-a:native:off",
+      "heldout-diagnostic-multi-session-a:native:current",
+      "heldout-diagnostic-multi-session-a:external:off",
+      "heldout-diagnostic-multi-session-a:external:current",
+      "heldout-diagnostic-update-a:native:off",
+      "heldout-diagnostic-update-a:native:current",
+      "heldout-diagnostic-update-a:external:off",
+      "heldout-diagnostic-update-a:external:current",
+      "heldout-diagnostic-temporal-a:native:off",
+      "heldout-diagnostic-temporal-a:native:current",
+      "heldout-diagnostic-temporal-a:external:off",
+      "heldout-diagnostic-temporal-a:external:current",
+      "heldout-diagnostic-abstention-a:native:off",
+      "heldout-diagnostic-abstention-a:native:current",
+      "heldout-diagnostic-abstention-a:external:off",
+      "heldout-diagnostic-abstention-a:external:current",
+      "heldout-diagnostic-extraction-b:native:off",
+      "heldout-diagnostic-extraction-b:native:current",
+      "heldout-diagnostic-extraction-b:external:off",
+      "heldout-diagnostic-extraction-b:external:current",
+      "heldout-diagnostic-multi-session-b:native:off",
+      "heldout-diagnostic-multi-session-b:native:current",
+      "heldout-diagnostic-multi-session-b:external:off",
+      "heldout-diagnostic-multi-session-b:external:current",
+      "heldout-diagnostic-update-b:native:off",
+      "heldout-diagnostic-update-b:native:current",
+      "heldout-diagnostic-update-b:external:off",
+      "heldout-diagnostic-update-b:external:current",
+      "heldout-diagnostic-temporal-b:native:off",
+      "heldout-diagnostic-temporal-b:native:current",
+      "heldout-diagnostic-temporal-b:external:off",
+      "heldout-diagnostic-temporal-b:external:current",
+      "heldout-diagnostic-abstention-b:native:off",
+      "heldout-diagnostic-abstention-b:native:current",
+      "heldout-diagnostic-abstention-b:external:off",
+      "heldout-diagnostic-abstention-b:external:current"
+    ],
+    "compare": [
+      "heldout-diagnostic-extraction-a:native:off",
+      "heldout-diagnostic-extraction-a:native:current",
+      "heldout-diagnostic-extraction-a:native:candidate",
+      "heldout-diagnostic-extraction-a:external:off",
+      "heldout-diagnostic-extraction-a:external:current",
+      "heldout-diagnostic-extraction-a:external:candidate",
+      "heldout-diagnostic-multi-session-a:native:off",
+      "heldout-diagnostic-multi-session-a:native:current",
+      "heldout-diagnostic-multi-session-a:native:candidate",
+      "heldout-diagnostic-multi-session-a:external:off",
+      "heldout-diagnostic-multi-session-a:external:current",
+      "heldout-diagnostic-multi-session-a:external:candidate",
+      "heldout-diagnostic-update-a:native:off",
+      "heldout-diagnostic-update-a:native:current",
+      "heldout-diagnostic-update-a:native:candidate",
+      "heldout-diagnostic-update-a:external:off",
+      "heldout-diagnostic-update-a:external:current",
+      "heldout-diagnostic-update-a:external:candidate",
+      "heldout-diagnostic-temporal-a:native:off",
+      "heldout-diagnostic-temporal-a:native:current",
+      "heldout-diagnostic-temporal-a:native:candidate",
+      "heldout-diagnostic-temporal-a:external:off",
+      "heldout-diagnostic-temporal-a:external:current",
+      "heldout-diagnostic-temporal-a:external:candidate",
+      "heldout-diagnostic-abstention-a:native:off",
+      "heldout-diagnostic-abstention-a:native:current",
+      "heldout-diagnostic-abstention-a:native:candidate",
+      "heldout-diagnostic-abstention-a:external:off",
+      "heldout-diagnostic-abstention-a:external:current",
+      "heldout-diagnostic-abstention-a:external:candidate",
+      "heldout-diagnostic-extraction-b:native:off",
+      "heldout-diagnostic-extraction-b:native:current",
+      "heldout-diagnostic-extraction-b:native:candidate",
+      "heldout-diagnostic-extraction-b:external:off",
+      "heldout-diagnostic-extraction-b:external:current",
+      "heldout-diagnostic-extraction-b:external:candidate",
+      "heldout-diagnostic-multi-session-b:native:off",
+      "heldout-diagnostic-multi-session-b:native:current",
+      "heldout-diagnostic-multi-session-b:native:candidate",
+      "heldout-diagnostic-multi-session-b:external:off",
+      "heldout-diagnostic-multi-session-b:external:current",
+      "heldout-diagnostic-multi-session-b:external:candidate",
+      "heldout-diagnostic-update-b:native:off",
+      "heldout-diagnostic-update-b:native:current",
+      "heldout-diagnostic-update-b:native:candidate",
+      "heldout-diagnostic-update-b:external:off",
+      "heldout-diagnostic-update-b:external:current",
+      "heldout-diagnostic-update-b:external:candidate",
+      "heldout-diagnostic-temporal-b:native:off",
+      "heldout-diagnostic-temporal-b:native:current",
+      "heldout-diagnostic-temporal-b:native:candidate",
+      "heldout-diagnostic-temporal-b:external:off",
+      "heldout-diagnostic-temporal-b:external:current",
+      "heldout-diagnostic-temporal-b:external:candidate",
+      "heldout-diagnostic-abstention-b:native:off",
+      "heldout-diagnostic-abstention-b:native:current",
+      "heldout-diagnostic-abstention-b:native:candidate",
+      "heldout-diagnostic-abstention-b:external:off",
+      "heldout-diagnostic-abstention-b:external:current",
+      "heldout-diagnostic-abstention-b:external:candidate"
+    ]
+  },
+  "sourceRevisions": {
+    "current": "fe2268cc48ee867c4f2efdac21ae281c8a830fc8",
+    "candidate": "working-tree:717c310e2851ca61848581f814e7f9bb4d60f9150c56b95be77ef374b786aea0"
+  },
+  "armOrder": [
+    [
+      "off",
+      "current",
+      "candidate"
+    ],
+    [
+      "current",
+      "candidate",
+      "off"
+    ],
+    [
+      "candidate",
+      "off",
+      "current"
+    ]
+  ],
+  "limits": {
+    "minimumPairedSamples": 2,
+    "maxToolIterations": 128,
+    "efficiencyBenchmark": "DEFERRED"
+  },
+  "preregistration": null,
+  "preregistrationDigest": null
+}

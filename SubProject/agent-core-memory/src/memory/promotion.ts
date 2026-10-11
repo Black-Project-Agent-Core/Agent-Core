@@ -1,3 +1,4 @@
+import {decodeProjectSynthesis,projectSynthesisRefs} from './project-synthesis.js';
 import {applyTemporalTransition,temporalTransitionInputSchema} from './temporal.js';
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
@@ -175,6 +176,25 @@ export function promotionEpistemicRefs(manifest:ArchiveManifest):SourceRef[] {
  if(refs.some(ref=>!complete.has(stableDisclosureJson(ref))))fail('MEMORY_SOURCE_UNAVAILABLE');
  return refs;
 }
+/** Synthesis claims are explicit evidence dependencies, never citations inferred from prose. */
+function synthesisRefs(value:{category?:string;content:string;experience:MemoryRecordV2['experience']},inputRefs:SourceRef[],target?:SourceRef):SourceRef[] {
+ if(value.category!=='project-synthesis')return [];
+ const envelope=decodeProjectSynthesis(value.content);if(!envelope)fail('MEMORY_CONSOLIDATION_INVALID');
+ const refs=projectSynthesisRefs(envelope),keys=(values:SourceRef[])=>new Set(values.map(stableDisclosureJson));
+ const inputs=keys(inputRefs),evidence=keys(value.experience.sourceRefs),claimed=keys(refs);
+ if(inputs.size!==claimed.size||refs.some(ref=>!inputs.has(stableDisclosureJson(ref))||!evidence.has(stableDisclosureJson(ref)))
+  ||value.experience.verification.evidence.some(ref=>!claimed.has(stableDisclosureJson(ref)))
+  ||(target&&refs.some(ref=>ref.kind==='memory'&&ref.id===target.id)))fail('MEMORY_CONSOLIDATION_INVALID');
+ return refs;
+}
+async function assertSynthesisSources(p:PromotionContext,value:{category?:string;content:string;experience:MemoryRecordV2['experience']},inputRefs:SourceRef[],target?:SourceRef):Promise<SourceRef[]> {
+ const refs=synthesisRefs(value,inputRefs,target);if(!refs.length)return refs;
+ await p.validate(refs,true);
+ if(target&&(await p.lineage(refs)).some(ref=>ref.kind==='memory'&&ref.id===target.id))fail('MEMORY_CONSOLIDATION_INVALID');
+ for(const ref of refs.filter(ref=>ref.kind==='memory'))if(memorySemanticRevision(p.visible(ref.id))!==ref.revision)fail('MEMORY_REVISION_CONFLICT');
+ return refs;
+}
+
 function recordFor(action:Extract<ProposalAction,{value:unknown}>,p:PromotionContext,now:string,prior?:MemoryRecord):MemoryRecordV2 {
  const value=action.value;
  assertControllerVerification(value.experience.verification);
@@ -212,6 +232,8 @@ export class MemoryPromotion {
    for(const record of eligible)readSet.push({source:{kind:'memory',id:record.id,revision:memorySemanticRevision(record)},requireCurrent:true});
    const targets=new Set<string>();
    for(const action of proposal.actions){
+    if('value'in action){const synthesis=await assertSynthesisSources(p,action.value,action.inputRefs,'target'in action?action.target:undefined);
+     for(const source of synthesis)readSet.push({source,requireCurrent:source.kind==='memory'});}
     const allRefs=uniqueSourceRefs([...action.inputRefs,...(action.kind==='supersede'?[action.predecessor,action.successor,...action.evidence]:[]),...('value'in action?[...action.value.experience.sourceRefs,...action.value.experience.verification.evidence]:[]),...('target'in action&&action.target?[action.target]:[]),...(action.kind==='merge'?action.assertions.flatMap(a=>a.inputRefs):[])]);
     if(allRefs.length>64)fail('MEMORY_CONSOLIDATION_INVALID');
     await p.validate(allRefs);if('value'in action&&action.value.experience.verification.status==='supported')await p.validate(action.value.experience.verification.evidence,true);
@@ -269,7 +291,13 @@ export class MemoryPromotion {
   })).result;
  }
  private assertCurrent(plan:ConsolidationPlan,records:MemoryRecord[],p:PromotionContext):void{
-  for(const action of plan.actions)if(!action.transition&&action.target)p.visible(action.target.id);
+  for(const action of plan.actions){
+   if(!action.transition&&action.target)p.visible(action.target.id);
+   if(action.record)for(const ref of synthesisRefs(action.record,action.inputRefs,action.target).filter(ref=>ref.kind==='memory')){
+    const current=records.find(record=>record.id===ref.id);
+    if(!current||memorySemanticRevision(current)!==ref.revision)fail('MEMORY_REVISION_CONFLICT');
+   }
+  }
   for(const entry of plan.readSet.filter(r=>r.requireCurrent&&r.source.kind==='memory')){const record=records.find(r=>r.id===entry.source.id);if(!record||memorySemanticRevision(record)!==entry.source.revision)fail('MEMORY_REVISION_CONFLICT');}
  }
  async apply(scope:ControllerScope,raw:ApplyConsolidationInput):Promise<PromotionReceipt>{
@@ -303,6 +331,7 @@ export class MemoryPromotion {
     if(!action.record)continue;
     // Recheck saved pending plans too, including previews produced by an older writer.
     assertControllerVerification(action.record.experience.verification);
+    await assertSynthesisSources(p,action.record,action.inputRefs,action.target);
     const refs=[...action.inputRefs,...action.record.experience.sourceRefs,...action.record.experience.verification.evidence,...(action.target?[action.target]:[]),...(action.assertions??[]).flatMap(assertion=>assertion.inputRefs)];
     await assertActionHypotheses(p,await p.epistemicLineage(refs),action.record);
     if(action.record.experience.verification.status==='supported')await p.validate(action.record.experience.verification.evidence,true);

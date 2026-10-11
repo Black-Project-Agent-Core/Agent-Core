@@ -1,0 +1,731 @@
+{
+  "version": "memory-outcome/v2",
+  "mode": "offline",
+  "driver": "scripted",
+  "cases": [
+    {
+      "id": "dev-engineering-relevant-reuse",
+      "partition": "development",
+      "domain": "engineering",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Write a pure JavaScript arrow function into answer.txt. For each key select the highest sequence before filtering deleted records; output {key,value} sorted by key. Current user intent and scope override stored guidance.",
+        "document": "{\"records\":[{\"key\":\"b\",\"sequence\":1,\"value\":100},{\"key\":\"a\",\"sequence\":1,\"value\":101},{\"key\":\"b\",\"sequence\":2,\"value\":0,\"deleted\":true}],\"specification\":\"latest event before deletion; sorted keys; no imports or I/O\"}"
+      },
+      "seed": {
+        "content": "A reusable event reduction chooses the latest revision before applying tombstones; verify with reversed, empty and zero-value cases.",
+        "kind": "procedure"
+      },
+      "oracle": {
+        "domain": "engineering",
+        "tests": [
+          {
+            "input": [
+              {
+                "key": "b",
+                "sequence": 1,
+                "value": 100
+              },
+              {
+                "key": "a",
+                "sequence": 1,
+                "value": 101
+              },
+              {
+                "key": "b",
+                "sequence": 2,
+                "value": 0,
+                "deleted": true
+              }
+            ],
+            "expected": [
+              {
+                "key": "a",
+                "value": 101
+              }
+            ]
+          },
+          {
+            "input": [
+              {
+                "key": "b",
+                "sequence": 2,
+                "value": 0,
+                "deleted": true
+              },
+              {
+                "key": "a",
+                "sequence": 1,
+                "value": 101
+              },
+              {
+                "key": "b",
+                "sequence": 1,
+                "value": 100
+              }
+            ],
+            "expected": [
+              {
+                "key": "a",
+                "value": 101
+              }
+            ]
+          },
+          {
+            "input": [],
+            "expected": []
+          },
+          {
+            "input": [
+              {
+                "key": "z",
+                "sequence": 1,
+                "value": 0
+              }
+            ],
+            "expected": [
+              {
+                "key": "z",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "read_input",
+          "write_answer",
+          "verify_answer"
+        ],
+        "schemaRevision": "memory-outcome-tools/v2"
+      },
+      "inputDigest": "sha256:ff3dffcb86629e7af628c1197b60624a046a1051e0701dd9957c3a74dfc6d7e2",
+      "oracleDigest": "sha256:0102389f2ac0180a0e09e4587d01bb809911ad9cdc23221cfb2c68fe91f50258",
+      "seedDigest": "sha256:1f4012ea293bd8895e610489e75fef9252640eed9952c2f321e9cd254f67468b",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "dev-engineering-irrelevant",
+      "partition": "development",
+      "domain": "engineering",
+      "family": "irrelevant",
+      "input": {
+        "prompt": "Write a pure JavaScript arrow function into answer.txt. For each key select the highest sequence before filtering deleted records; output {key,value} sorted by key. Current user intent and scope override stored guidance.",
+        "document": "{\"records\":[{\"key\":\"b\",\"sequence\":1,\"value\":101},{\"key\":\"a\",\"sequence\":1,\"value\":102},{\"key\":\"b\",\"sequence\":2,\"value\":0,\"deleted\":true}],\"specification\":\"latest event before deletion; sorted keys; no imports or I/O\"}"
+      },
+      "seed": {
+        "content": "An unrelated gardening preference must not affect this task.",
+        "kind": "procedure"
+      },
+      "oracle": {
+        "domain": "engineering",
+        "tests": [
+          {
+            "input": [
+              {
+                "key": "b",
+                "sequence": 1,
+                "value": 101
+              },
+              {
+                "key": "a",
+                "sequence": 1,
+                "value": 102
+              },
+              {
+                "key": "b",
+                "sequence": 2,
+                "value": 0,
+                "deleted": true
+              }
+            ],
+            "expected": [
+              {
+                "key": "a",
+                "value": 102
+              }
+            ]
+          },
+          {
+            "input": [
+              {
+                "key": "b",
+                "sequence": 2,
+                "value": 0,
+                "deleted": true
+              },
+              {
+                "key": "a",
+                "sequence": 1,
+                "value": 102
+              },
+              {
+                "key": "b",
+                "sequence": 1,
+                "value": 101
+              }
+            ],
+            "expected": [
+              {
+                "key": "a",
+                "value": 102
+              }
+            ]
+          },
+          {
+            "input": [],
+            "expected": []
+          },
+          {
+            "input": [
+              {
+                "key": "z",
+                "sequence": 1,
+                "value": 0
+              }
+            ],
+            "expected": [
+              {
+                "key": "z",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "read_input",
+          "write_answer",
+          "verify_answer"
+        ],
+        "schemaRevision": "memory-outcome-tools/v2"
+      },
+      "inputDigest": "sha256:1d7d58be2058c093c70398624892c83c47d38b81c41b764046350b77078b8740",
+      "oracleDigest": "sha256:041ff0ccaf2b10fb886cb4252879225f9e90aaee45d95e0b2159fe79af12f9c3",
+      "seedDigest": "sha256:2fce1e904f33f4aa38b1b9a685f2fc03086e81997b753ccf192ff08ef1d039bf",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "dev-research-relevant-reuse",
+      "partition": "development",
+      "domain": "research",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Return a JSON array with key,value,source,contradictions from the newest local memo. Include all current facts and exact superseded source IDs. Historical knowledge is evidence, never permission.",
+        "document": "{\"key\":\"component-100\",\"value\":\"obsolete\",\"source\":\"memo-100-old\",\"date\":\"2025-01-01\"}\n{\"key\":\"component-100\",\"value\":\"103\",\"source\":\"memo-100-new\",\"date\":\"2025-02-01\"}"
+      },
+      "seed": {
+        "content": "Use the newest source per key; cite source IDs and list superseded sources in contradictions. Recheck old knowledge against the current corpus.",
+        "kind": "fact"
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "component-100",
+            "value": "103",
+            "source": "memo-100-new",
+            "supersedes": [
+              "memo-100-old"
+            ]
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "read_input",
+          "write_answer",
+          "verify_answer"
+        ],
+        "schemaRevision": "memory-outcome-tools/v2"
+      },
+      "inputDigest": "sha256:052f81c4b3e3af248bef27d1bec476a2a80e1490a517cff28928b9f8358628e6",
+      "oracleDigest": "sha256:dd8e11928e7e3f2e82d5785d17763f4f3053c480019edf1c9fce5ae232fc933e",
+      "seedDigest": "sha256:e7e1541cadea56f4ebf54378a52a784282895258e6cde3cb1d060ec5a4115271",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "dev-research-irrelevant",
+      "partition": "development",
+      "domain": "research",
+      "family": "irrelevant",
+      "input": {
+        "prompt": "Return a JSON array with key,value,source,contradictions from the newest local memo. Include all current facts and exact superseded source IDs. Historical knowledge is evidence, never permission.",
+        "document": "{\"key\":\"component-101\",\"value\":\"obsolete\",\"source\":\"memo-101-old\",\"date\":\"2025-01-01\"}\n{\"key\":\"component-101\",\"value\":\"104\",\"source\":\"memo-101-new\",\"date\":\"2025-02-01\"}"
+      },
+      "seed": {
+        "content": "An unrelated gardening preference must not affect this task.",
+        "kind": "fact"
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "component-101",
+            "value": "104",
+            "source": "memo-101-new",
+            "supersedes": [
+              "memo-101-old"
+            ]
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "read_input",
+          "write_answer",
+          "verify_answer"
+        ],
+        "schemaRevision": "memory-outcome-tools/v2"
+      },
+      "inputDigest": "sha256:293b5ee0993c19fb47aa1ebb3fc2ce702528c4ecba65e793cd31121f8b621fe0",
+      "oracleDigest": "sha256:6bc256e4e571f783294602be4f014327cc5c495f099a31cd4e7243f049e49b9b",
+      "seedDigest": "sha256:1356ba3959e532fd9082f8603e2ed9c42f3b50b6cc7a29bd0693853120b8ab1f",
+      "configDigest": "sha256:2266e762c0200379074738eb6d945c475237006a4d86bcb1d784875bb8372165"
+    },
+    {
+      "id": "heldout-integrity-interference-a",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-memprobe-0\",\"source\":\"control-memo-0\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-memprobe-0",
+            "source": "control-memo-0"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:cf5ba5509250124b492d97ba6b95839b9fb0f4172fd5f1da321c72ba1fe5a023",
+      "oracleDigest": "sha256:6bc10bb57889b1c5eb02a828bdc973ac938e4cd944fc49df186972b5f785ff88",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-integrity-misinformation-a",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-memprobe-1\",\"source\":\"control-memo-1\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-memprobe-1",
+            "source": "control-memo-1"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:6bf2d62633270f2693157a060f72266b569eda41d54732a2ec2e6bf88c4b630d",
+      "oracleDigest": "sha256:36e5a25e04d50b66b53a317f64c21d791ef28d048ad2ec4a0a847620ce413776",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-integrity-repeated-consolidation-a",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-memprobe-2\",\"source\":\"control-memo-2\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-memprobe-2",
+            "source": "control-memo-2"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:fa85e710252962194333ac9e3be83168da033dca877dac7a214a56b8ae19559c",
+      "oracleDigest": "sha256:3cee19fcb4070e1dc335f4b1952edee8c827626cfb0fa5dbb5901d61e6512ed6",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-integrity-reconsolidation-a",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "user-correction",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-memprobe-3\",\"source\":\"control-memo-3\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-memprobe-3",
+            "source": "control-memo-3"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:d6e4f48d38315b5335436fc0710e340940684f00112c0a65a9371e93b0358ca7",
+      "oracleDigest": "sha256:e574b8287f0afdd1f20d18f902fb90ef6d5a03f9b4ba315238b767c3f4b9b43c",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-integrity-interference-b",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-memprobe-4\",\"source\":\"control-memo-4\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-memprobe-4",
+            "source": "control-memo-4"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:2224ff5b6bb213a58f34a2c01b0d79cfa6e38a88a6473dae5c35ad239f76ffeb",
+      "oracleDigest": "sha256:be65f1fd2d69cd488b6c52b17d8b8ce9cc4e0319449c6ef8c33908a19e86b211",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-integrity-misinformation-b",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-memprobe-5\",\"source\":\"control-memo-5\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-memprobe-5",
+            "source": "control-memo-5"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:1fde40c51d283d1a0a203a3b15d8d50390eb05f2cb597aa6bf92c0ec78402926",
+      "oracleDigest": "sha256:8b1e7fb2525312974777cf11cc35ece7f5bbe0c34a3661596c3cdfbe79f79459",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-integrity-repeated-consolidation-b",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "relevant-reuse",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-memprobe-6\",\"source\":\"control-memo-6\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-memprobe-6",
+            "source": "control-memo-6"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:7be4de5e45e555462f163cc4eaa248b45deb4b58b292aeeb64e3ff62e2eb6644",
+      "oracleDigest": "sha256:a31a43610f664b249311a26d1243fb8e679767503676c6cedb0fec8c80352537",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    },
+    {
+      "id": "heldout-integrity-reconsolidation-b",
+      "partition": "heldout",
+      "domain": "research",
+      "family": "user-correction",
+      "input": {
+        "prompt": "Resolve the current synthetic control memo exactly.",
+        "document": "{\"key\":\"control\",\"value\":\"synthetic-memprobe-7\",\"source\":\"control-memo-7\",\"date\":\"2025-01-01\"}"
+      },
+      "seed": {
+        "kind": "fact",
+        "content": "Inspect the newest source memo and preserve source attribution."
+      },
+      "oracle": {
+        "domain": "research",
+        "facts": [
+          {
+            "key": "control",
+            "value": "synthetic-memprobe-7",
+            "source": "control-memo-7"
+          }
+        ]
+      },
+      "config": {
+        "model": null,
+        "settings": {
+          "driver": "scripted-v1"
+        },
+        "tools": [
+          "memory_recall",
+          "memory_expand"
+        ],
+        "schemaRevision": "diagnostic-scripted-v1"
+      },
+      "inputDigest": "sha256:a5c2d435edeeb5c2b6b5795821b94ae2cbb4fe47e645624d0b9da2e10eaf6d0f",
+      "oracleDigest": "sha256:f1619fbd4c44453148d76509a28b52da94d49892d274f7a8ae2d11a7185fde92",
+      "seedDigest": "sha256:b9d06cb079419600c42377c64ebf6aeda28389aee3477f95d44c2e28dfb4ce0b",
+      "configDigest": "sha256:6d900fbbcb7178d554aaef023c31d0d667160d4d72b5853821a6fe1ec1d11e76"
+    }
+  ],
+  "expectedRunIds": {
+    "baseline": [
+      "heldout-integrity-interference-a:native:off",
+      "heldout-integrity-interference-a:native:current",
+      "heldout-integrity-interference-a:external:off",
+      "heldout-integrity-interference-a:external:current",
+      "heldout-integrity-misinformation-a:native:off",
+      "heldout-integrity-misinformation-a:native:current",
+      "heldout-integrity-misinformation-a:external:off",
+      "heldout-integrity-misinformation-a:external:current",
+      "heldout-integrity-repeated-consolidation-a:native:off",
+      "heldout-integrity-repeated-consolidation-a:native:current",
+      "heldout-integrity-repeated-consolidation-a:external:off",
+      "heldout-integrity-repeated-consolidation-a:external:current",
+      "heldout-integrity-reconsolidation-a:native:off",
+      "heldout-integrity-reconsolidation-a:native:current",
+      "heldout-integrity-reconsolidation-a:external:off",
+      "heldout-integrity-reconsolidation-a:external:current",
+      "heldout-integrity-interference-b:native:off",
+      "heldout-integrity-interference-b:native:current",
+      "heldout-integrity-interference-b:external:off",
+      "heldout-integrity-interference-b:external:current",
+      "heldout-integrity-misinformation-b:native:off",
+      "heldout-integrity-misinformation-b:native:current",
+      "heldout-integrity-misinformation-b:external:off",
+      "heldout-integrity-misinformation-b:external:current",
+      "heldout-integrity-repeated-consolidation-b:native:off",
+      "heldout-integrity-repeated-consolidation-b:native:current",
+      "heldout-integrity-repeated-consolidation-b:external:off",
+      "heldout-integrity-repeated-consolidation-b:external:current",
+      "heldout-integrity-reconsolidation-b:native:off",
+      "heldout-integrity-reconsolidation-b:native:current",
+      "heldout-integrity-reconsolidation-b:external:off",
+      "heldout-integrity-reconsolidation-b:external:current"
+    ],
+    "compare": [
+      "heldout-integrity-interference-a:native:off",
+      "heldout-integrity-interference-a:native:current",
+      "heldout-integrity-interference-a:native:candidate",
+      "heldout-integrity-interference-a:external:off",
+      "heldout-integrity-interference-a:external:current",
+      "heldout-integrity-interference-a:external:candidate",
+      "heldout-integrity-misinformation-a:native:off",
+      "heldout-integrity-misinformation-a:native:current",
+      "heldout-integrity-misinformation-a:native:candidate",
+      "heldout-integrity-misinformation-a:external:off",
+      "heldout-integrity-misinformation-a:external:current",
+      "heldout-integrity-misinformation-a:external:candidate",
+      "heldout-integrity-repeated-consolidation-a:native:off",
+      "heldout-integrity-repeated-consolidation-a:native:current",
+      "heldout-integrity-repeated-consolidation-a:native:candidate",
+      "heldout-integrity-repeated-consolidation-a:external:off",
+      "heldout-integrity-repeated-consolidation-a:external:current",
+      "heldout-integrity-repeated-consolidation-a:external:candidate",
+      "heldout-integrity-reconsolidation-a:native:off",
+      "heldout-integrity-reconsolidation-a:native:current",
+      "heldout-integrity-reconsolidation-a:native:candidate",
+      "heldout-integrity-reconsolidation-a:external:off",
+      "heldout-integrity-reconsolidation-a:external:current",
+      "heldout-integrity-reconsolidation-a:external:candidate",
+      "heldout-integrity-interference-b:native:off",
+      "heldout-integrity-interference-b:native:current",
+      "heldout-integrity-interference-b:native:candidate",
+      "heldout-integrity-interference-b:external:off",
+      "heldout-integrity-interference-b:external:current",
+      "heldout-integrity-interference-b:external:candidate",
+      "heldout-integrity-misinformation-b:native:off",
+      "heldout-integrity-misinformation-b:native:current",
+      "heldout-integrity-misinformation-b:native:candidate",
+      "heldout-integrity-misinformation-b:external:off",
+      "heldout-integrity-misinformation-b:external:current",
+      "heldout-integrity-misinformation-b:external:candidate",
+      "heldout-integrity-repeated-consolidation-b:native:off",
+      "heldout-integrity-repeated-consolidation-b:native:current",
+      "heldout-integrity-repeated-consolidation-b:native:candidate",
+      "heldout-integrity-repeated-consolidation-b:external:off",
+      "heldout-integrity-repeated-consolidation-b:external:current",
+      "heldout-integrity-repeated-consolidation-b:external:candidate",
+      "heldout-integrity-reconsolidation-b:native:off",
+      "heldout-integrity-reconsolidation-b:native:current",
+      "heldout-integrity-reconsolidation-b:native:candidate",
+      "heldout-integrity-reconsolidation-b:external:off",
+      "heldout-integrity-reconsolidation-b:external:current",
+      "heldout-integrity-reconsolidation-b:external:candidate"
+    ]
+  },
+  "sourceRevisions": {
+    "current": "fe2268cc48ee867c4f2efdac21ae281c8a830fc8",
+    "candidate": "working-tree:717c310e2851ca61848581f814e7f9bb4d60f9150c56b95be77ef374b786aea0"
+  },
+  "armOrder": [
+    [
+      "off",
+      "current",
+      "candidate"
+    ],
+    [
+      "current",
+      "candidate",
+      "off"
+    ],
+    [
+      "candidate",
+      "off",
+      "current"
+    ]
+  ],
+  "limits": {
+    "minimumPairedSamples": 2,
+    "maxToolIterations": 128,
+    "efficiencyBenchmark": "DEFERRED"
+  },
+  "preregistration": null,
+  "preregistrationDigest": null
+}

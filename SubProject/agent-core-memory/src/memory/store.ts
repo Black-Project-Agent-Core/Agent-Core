@@ -3,14 +3,14 @@ import { mkdir, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { bootstrapRecord, normalizeRecord, parseCanonicalNote, serializeCanonicalNote, validateMemoryId } from './note-format.js';
 import { notePath, type MemoryPaths } from './paths.js';
-import { buildRevisionMutation, readMemoryRevisions, type MemoryRevisionRead } from './revisions.js';
+import { buildPublicationMutation, buildRevisionMutation, parseRevisionFile, readKnownMemoryRevision, readMemoryRevisions, type HistoricalMemorySnapshot, type KnownHistoryCoverage, type MemoryRevisionRead } from './revisions.js';
 import { assertMemoryRecordSafe } from './safety.js';
 import { memoryRetirementFingerprint } from './retirement.js';
-import { assertContainedPath, fingerprintFile, fingerprintText, MemoryTransactionCoordinator, type MemoryTransactionMutation } from './transaction.js';
+import { assertContainedPath, fingerprintFile, fingerprintText, nextMemoryPublicationClock, MemoryTransactionCoordinator, type MemoryTransactionMutation } from './transaction.js';
 import type { MemoryIssue, MemoryRecord } from './types.js';
 import { withMemoryProcessLock } from './lock.js';
 import { buildArchiveMutations, buildRecordAuditMutations, readArchivedMemory, isMemoryArchiveManifestKey } from './archive.js';
-import { experienceManifestSchema, legacyExperience, type ExperienceManifest, type SourceRef } from './experience-types.js';
+import { experienceManifestSchema, isoInstantSchema, legacyExperience, type ExperienceManifest, type SourceRef } from './experience-types.js';
 import { memorySemanticRevision } from './disclosure.js';
 
 export interface LoadedMemories {
@@ -94,6 +94,15 @@ export class FileMemoryStore {
       const bytes = await readFile(this.paths.experienceManifest,'utf8');
       const manifest = experienceManifestSchema.parse(JSON.parse(bytes));
       if (manifest.status !== 'complete') throw new Error('MEMORY_EXPERIENCE_INCOMPLETE');
+      if(!manifest.knowledgeClock){
+        // An old root has only v1 snapshots. Missing a watermark on already
+        // published v2 history is corruption, never permission to reset order.
+        const names=await readdir(this.paths.revisions).catch(error=>{if(error.code==='ENOENT')return [];throw error;});
+        for(const name of names.filter(name=>name.endsWith('.json'))){
+          const file=await assertContainedPath(this.paths.root,path.join(this.paths.revisions,name));
+          if(parseRevisionFile(await readFile(file,'utf8'),path.basename(name,'.json')).version===2)throw new Error('MEMORY_PUBLICATION_CLOCK_REQUIRED');
+        }
+      }
       return {manifest,fingerprint:fingerprintText(bytes)};
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -129,6 +138,29 @@ export class FileMemoryStore {
         if (((error as Error).cause as NodeJS.ErrnoException)?.code === 'ENOENT') return null;
         throw error;
       }
+    });
+  }
+
+  /** History and current privacy eligibility are checked under the same canonical lock. */
+  async historicalSnapshot(workspace:string,input:{knownAt:string;maxRecords:number},eligible?:(loaded:LoadedMemories)=>Promise<MemoryRecord[]>):Promise<HistoricalMemorySnapshot> {
+    const knownAt=isoInstantSchema.parse(input.knownAt);
+    if(!Number.isInteger(input.maxRecords)||input.maxRecords<1||input.maxRecords>500)throw new Error('MEMORY_INPUT_INVALID');
+    return this.snapshot(async(loaded,manifest)=>{
+      if(!manifest)throw new Error('MEMORY_TEMPORAL_UNSUPPORTED');
+      if(!loaded.complete)throw new Error('MEMORY_SOURCE_UNAVAILABLE');
+      if(manifest.knowledgeClock?.regressed)return {records:[],revisionRefs:[],coverage:{complete:false,reason:'clock-regression'}};
+      const allowed=eligible?await eligible(loaded):loaded.records.filter(record=>record.provenance?.workspace===workspace);
+      const current=allowed.filter(record=>!record.pinned).sort((a,b)=>a.id.localeCompare(b.id));
+      let coverage:KnownHistoryCoverage={complete:true};const records:MemoryRecord[]=[];
+      for(const record of current.slice(0,input.maxRecords)){
+        const historical=await readKnownMemoryRevision(this.paths,record,knownAt,manifest.knowledgeClock);
+        if(!historical.coverage.complete)coverage=historical.coverage;
+        else if(coverage.complete&&historical.coverage.from&&(!coverage.from||historical.coverage.from>coverage.from))coverage={...coverage,from:historical.coverage.from};
+        // Current visibility cannot authorize a formerly foreign revision.
+        if(historical.record&&historical.record.provenance?.workspace===workspace)records.push(historical.record);
+      }
+      if(current.length>input.maxRecords)coverage={complete:false,reason:'bounded-scan'};
+      return {records,coverage,revisionRefs:records.map(record=>({kind:'memory' as const,id:record.id,revision:memorySemanticRevision(record)}))};
     });
   }
 
@@ -301,6 +333,7 @@ export class FileMemoryStore {
         if (!record.pinned && (activation || !tolerateLegacyDegraded || plan.touchedIds.includes(record.id))) this.assertLinkTargets(record,finalRecords);
       }
       const mutations:MemoryTransactionMutation[] = [], retained:MemoryRecord[] = [];
+      let publicationClock=activation?.knowledgeClock;
       for (const id of new Set([...before.keys(),...after.keys()])) {
         if (id === 'agent-core-foundational') continue;
         const previous = before.get(id), next = after.get(id);
@@ -312,7 +345,11 @@ export class FileMemoryStore {
         if (!previous || serializeCanonicalNote(previous) !== content) {
           assertMemoryRecordSafe(next);
           const semanticChange = previous && memorySemanticRevision(previous) !== memorySemanticRevision(next);
-          if (previous && (activation ? semanticChange : previous.content !== next.content)) mutations.push(await buildRevisionMutation(this.paths,previous));
+          if (activation && (!previous || semanticChange)) {
+            publicationClock=nextMemoryPublicationClock(publicationClock);
+            mutations.push(await buildPublicationMutation(this.paths,previous,next,publicationClock));
+          }
+          else if (!activation && previous && previous.content !== next.content) mutations.push(await buildRevisionMutation(this.paths,previous));
           if (activation) {
             retained.push(...(previous ? [previous] : []),next);
             if (previous && !semanticChange) mutations.push(...await buildRecordAuditMutations(this.paths,previous,next));
@@ -320,7 +357,11 @@ export class FileMemoryStore {
           mutations.push({targetPath,content,expectedFingerprint});
         }
       }
-      if (activation) mutations.unshift(...await buildArchiveMutations(this.paths,retained));
+      if (activation) {
+        mutations.unshift(...await buildArchiveMutations(this.paths,retained));
+        if(publicationClock!==activation.knowledgeClock)mutations.push({targetPath:this.paths.experienceManifest,
+          content:JSON.stringify({...activation,knowledgeClock:publicationClock})+'\n',expectedFingerprint:activationFingerprint});
+      }
       const written = new Set<string>();
       for (const write of plan.stateWrites) {
         const snapshot = state.get(write.key);

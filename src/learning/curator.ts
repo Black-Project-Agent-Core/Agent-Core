@@ -1,3 +1,4 @@
+import { validateCurationDelta } from './curation-delta.js';
 import type { MemoryService } from '../memory/service.js';
 import type { LearningCuratorProposal } from './types.js';
 import type { CodePatternLearningSink } from './code-pattern-sink.js';
@@ -14,6 +15,9 @@ export class LearningCurator {
     private readonly memory: MemoryService,
     private readonly patterns?: CodePatternLearningSink,
   ) {}
+
+  /** Controller-supplied delta remains a proposal; this method has no sink side effects. */
+  proposeDelta(value: unknown) { return validateCurationDelta(value); }
 
   async propose(workspace?: string): Promise<LearningCuratorProposal[]> {
     const proposals: LearningCuratorProposal[] = [];

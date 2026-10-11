@@ -1,8 +1,8 @@
 # Agent Core codebase map
 
-This is the maintained source-owner map for **`0.15.0-beta.2`**, based on consolidated source `36e9cb3918c0f0e225fbcc18b8f92b4c8bf479f3` plus Memory Plans06–11. Exact source and verified receipts take precedence over prose. Published beta.0 remains at `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`; the new source candidate is not a Windows activation or release publication.
+This is the maintained source-owner map for **`0.15.0-beta.3`**, based on source `fe2268cc48ee867c4f2efdac21ae281c8a830fc8` plus Memory Plans12–21. Exact source and verified receipts take precedence over prose. Published beta.0 remains at `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`; the new source candidate is not a Windows activation or release publication.
 
-[Documentation index](README.md) · [Candidate notes](releases/0.15.0-beta.2.md) · [Historical codebase record](archive/CODEBASE-2026-10-09.md)
+[Documentation index](README.md) · [Candidate notes](releases/0.15.0-beta.3.md) · [Historical codebase record](archive/CODEBASE-2026-10-09.md)
 
 ## Source and acceptance status
 
@@ -13,6 +13,7 @@ This is the maintained source-owner map for **`0.15.0-beta.2`**, based on consol
 | Memory01 + Workflows | [Directed Windows functional acceptance closed](verification/memory01-windows-functional-2026-10-10.md) | Historical scoped results, not acceptance of later source |
 | Memory02–04; Memory05 | Plans02–05 independently reviewed; scoped offline gates passed | Windows integration and acceptance; Plan04 provider/data/cost gate |
 | Memory06–11 | Source implementations; [functional ledger](verification/memory06-11-source-functional-2026-10-10.md) | Performance deferred; Windows/live-provider acceptance separate |
+| Memory12–21 | Source implementations; [functional ledger](verification/memory12-21-source-functional-2026-10-11.md) | Windows/live-controller acceptance separate;19 experiment-only,20/21 scripted diagnostics |
 | Adaptive parallel execution | Proposed only | Implementation not started |
 | Windows portable beta.0 | Published exact-tag runtime; packaged Core smoke verified | Full fresh-machine/second-GUI acceptance not claimed |
 
@@ -25,6 +26,18 @@ The active tree combines the Memory02–05 line `eec8dab4aad4b93d8bb3ff8895eeabb
 All original branch histories are retained by the consolidation merge. Unique historical vault, observatory, crafting, design and routing code is explicitly [preserved as inert source patches](history-agent-core/branch-consolidation-20261010/README.md), not restored into the current runtime. The manifest identifies every branch/head and reconciliation. The sparse Windows recovery branch does not delete absent repository files; newer release governance and canonical documentation remain authoritative. Historical patch payloads are outside compilation/test discovery and explicitly excluded by `scripts/release/packaging-policy.mjs`.
 
 Version assessment: keep the existing `0.15.0-beta.1` candidate identity and pending release intents; add a patch intent for the bounded listener-source integration and archive-packaging exclusion. No release application, tag, deployment, process restart, Windows operation or provider call is performed by consolidation.
+
+## Memory reference-adoption owners (12–21)
+
+The existing experience engine remains the only Memory owner. `controller-session.ts` projects continuity and opt-in prospective intentions over `episodes.ts` snapshots; ingestion metadata/cursors use the same scoped operation receipts and canonical transactions. `prospective-intentions.ts` encodes explicit conditions in ordinary obligation text, with bounded pure evaluation and no scheduling or automatic completion.
+
+Knowledge-time history belongs to existing revision/store owners, separately from valid-time assertions. Host publication metadata is never inferred from a user-supplied timestamp. Legacy history without publication proof remains unproven; new persisted metadata must not be silently stripped for an old binary. Synthesis is a bounded evidence envelope admitted through existing promotion; dependencies, source revision drift and nested cycles determine recall eligibility.
+
+Learning candidate purpose, curation deltas and compaction checks preserve existing review, evidence, proposal and capsule owners. A target-referenced correction/counterexample does not silently rewrite canonical knowledge; unsupported atomic target mutation remains an inspectable pending proposal.
+
+`src/learning/reconsolidation-{experiment,report}.ts` and `scripts/verify/memory-reconsolidation-experiment.mjs` are offline-only original-fixture tools. Exact feedback source/target revisions are required; proposals contain at most eight `related` edges and never reach production mutation facades. Retrieval arithmetic is recomputed by the existing independent verifier; even a positive scripted result is only `further-study`, with `benefitProven=false`.
+
+`outcome-diagnostics.ts` and `outcome-diagnostics-verifier.ts` extend the existing Plan05 runner/packager with an opt-in versioned sidecar. LongMemEval-inspired recall families and MemProbe-inspired integrity families use original bounded fixtures and shared validation. Preservation, retrieval, declared use and outcome remain distinct; integrity failures cannot be averaged away. Exact results and unresolved boundaries are in the [functional ledger](verification/memory12-21-source-functional-2026-10-11.md).
 
 ## Composition and lifecycle
 

@@ -80,8 +80,9 @@ function readRows(value: unknown): OutcomeObservation[] {
   }
   return value as OutcomeObservation[];
 }
-function checkOracle(oracle: OutcomeSuite['cases'][number]['oracle'], answer: string): { verdict: 'pass' | 'fail'; unsupportedClaims: number } {
+export function verifyOutcomeOracle(oracle: OutcomeSuite['cases'][number]['oracle'], answer: string): { verdict: 'pass' | 'fail'; unsupportedClaims: number } {
   try {
+    requireValue(oracle && (oracle.domain === 'engineering' ? Array.isArray(oracle.tests) && oracle.tests.length > 0 : oracle.domain === 'research' && Array.isArray(oracle.facts) && oracle.facts.length > 0), 'invalid-oracle');
     if (oracle.domain === 'engineering') {
       let passed = true;
       for (const test of oracle.tests) {
@@ -133,15 +134,17 @@ export function verifyOutcome(suiteBytes: Uint8Array, rowBytes: Uint8Array, repo
       requireValue(suite.mode !== 'offline' || row.counters.inferenceCalls === 0, 'offline-inference-forbidden');
       if (row.usage) requireValue(row.usage.status === 'available' ? row.usage.inputTokens !== null && row.usage.outputTokens !== null : row.usage.inputTokens === null && row.usage.outputTokens === null, 'usage-status-invalid');
       if (row.cost) requireValue(row.cost.status === 'unavailable' ? row.cost.amount === null && row.cost.currency === null : row.cost.amount !== null && !!row.cost.currency, 'cost-status-invalid');
-      const checked = checkOracle(item.oracle, row.evidence.artifactText), passed = checked.verdict === 'pass';
+      const checked = verifyOutcomeOracle(item.oracle, row.evidence.artifactText), passed = checked.verdict === 'pass';
       requireValue(row.correct === passed && v.verdict === checked.verdict && v.unsupportedClaims === checked.unsupportedClaims, 'oracle-result-mismatch'); correct.set(row.runId, passed);
       attribution.set(row.runId, row.arm !== 'off' && row.evidence.receipts.some(receipt => (receipt.outcome === 'applied' || receipt.outcome === 'adapted') && receipt.verified && receipt.taskId === row.taskId && receipt.actionRef === row.artifactRef && receipt.verificationRef === row.verificationRef && row.adapter.selected.some(selected => selected.id === receipt.memoryId && selected.revision === receipt.memoryRevision)));
       completed.set(row.runId, row.lifecycle.compliant && !row.lifecycle.harnessRecovered && ['capture', 'persist', 'restart', 'recall', 'action', 'verification', 'receipt', 'review'].every(key => row.lifecycle[key as keyof OutcomeObservation['lifecycle']]));
       hardGates.scopeLeaks += row.violations.scopeLeaks; hardGates.staleTrust += row.violations.staleTrust; hardGates.unsupportedSuccess += Math.max(row.violations.unsupportedSuccess, row.correct && !passed ? 1 : 0);
     }
-    requireValue(seen.size === expected.size, 'cohort-membership-invalid');
+    // Missing executions are reproducible incomplete evidence, never acceptance.
+    const missingRuns = [...expected].filter(runId => !seen.has(runId));
     hardGates.passed = hardGates.scopeLeaks === 0 && hardGates.staleTrust === 0 && hardGates.unsupportedSuccess === 0;
-    const reportReasons = hardGates.passed ? [] : ['hard-gates-failed'];
+    const reportReasons = missingRuns.map(runId => 'missing-run:' + runId);
+    if (!hardGates.passed) reportReasons.push('hard-gates-failed');
     const cohorts: OutcomeCohort[] = [], arms: Arm[] = phase === 'baseline' ? ['off', 'current'] : ['off', 'current', 'candidate'];
     const percentile = (values: number[]) => values.length ? [...values].sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1]! : null;
     for (const domain of ['engineering', 'research'] as const) for (const controller of ['native', 'external'] as const) for (const arm of arms) {
@@ -181,7 +184,7 @@ export function verifyOutcome(suiteBytes: Uint8Array, rowBytes: Uint8Array, repo
           requireValue(row.counters.inferenceCalls === 0, 'development-inference-forbidden');
           if (row.usage) requireValue(row.usage.status === 'available' ? row.usage.inputTokens !== null && row.usage.outputTokens !== null : row.usage.inputTokens === null && row.usage.outputTokens === null, 'development-usage-status-invalid');
           if (row.cost) requireValue(row.cost.status === 'unavailable' ? row.cost.amount === null && row.cost.currency === null : row.cost.amount !== null && !!row.cost.currency, 'development-cost-status-invalid');
-          const checked = checkOracle(item.oracle, row.evidence.artifactText); requireValue(row.correct === (checked.verdict === 'pass') && verified.verdict === checked.verdict && verified.unsupportedClaims === checked.unsupportedClaims, 'development-oracle-result-mismatch');
+          const checked = verifyOutcomeOracle(item.oracle, row.evidence.artifactText); requireValue(row.correct === (checked.verdict === 'pass') && verified.verdict === checked.verdict && verified.unsupportedClaims === checked.unsupportedClaims, 'development-oracle-result-mismatch');
           requireValue(Object.values(row.violations).every(count => count === 0), 'development-hard-gates-failed');
         }
         requireValue(seenDevelopment.size === wanted.size, 'development-membership-invalid');

@@ -30,6 +30,7 @@ export interface LearningEffectEvidence {
 }
 
 export interface LearningCandidate {
+  purpose?: import('./candidate-purpose.js').CandidatePurpose;
   checkpointKey?: string;
   kind: LearningCandidateKind;
   title?: string;
@@ -66,13 +67,34 @@ export interface PendingLearningReview {
   taskId?: string;
 }
 
+export interface CurationDelta {
+  operationId: string;
+  checkpointKey: string;
+  taskId: string;
+  workspace: string;
+  entries: Array<{ kind: 'add-lesson' | 'add-counterexample'; target?: { id: string; revision: string }; refinement?: true; candidate: LearningCandidate }>;
+}
+/** Host-owned call context; never accepted from a delta or a controller payload. */
+export interface CurationBinding { taskId: string; workspace: string }
+export interface LearningCurationEvidence {
+  operationId: string;
+  entryFingerprint: string;
+  kind: 'add-lesson' | 'add-counterexample';
+  target?: { id: string; revision: string };
+  candidate: LearningCandidate;
+}
+
 export interface LearningReviewOptions {
+  /** Internal adapter context, absent from public tool schemas. */
+  curation?: { delta: CurationDelta; binding: CurationBinding };
   workspace?: string;
   checkpointKeys?: string[];
   taskId?: string;
   disposition?: 'no-new-knowledge' | 'rejected' | 'awaiting-verification';
 }
 export interface LearningCheckpointDecision {
+  workspace?: string;
+  curationOperations?: Record<string, string[]>;
   status: LearningReviewSummary['status'] | 'rejected';
   complete: boolean;
   reviewedAt: string;
@@ -119,6 +141,7 @@ export interface LearningCheckpointResult {
 }
 
 export interface LearningReviewOutcome {
+  curation?: LearningCurationEvidence;
   kind: LearningCandidateKind;
   status: 'captured' | 'proposal' | 'duplicate' | 'rejected' | 'sink-unavailable' | 'sink-failed';
   sink?: string;
@@ -234,6 +257,7 @@ export interface LearningCorrection {
   reasonRef: string;
 }
 export interface LearningDecisionEvidence {
+  purpose?: import('./candidate-purpose.js').CandidatePurpose;
   reviewId: string;
   candidateId: string;
   candidateKey: string;

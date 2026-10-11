@@ -1,3 +1,4 @@
+import {checkProjectSynthesisDependencies,decodeProjectSynthesis} from './project-synthesis.js';
 import {MemoryPromotion,type ConsolidationPolicy} from './promotion.js';
 import { MemoryEpisodes } from './episodes.js';
 import { ControllerMemorySession } from './controller-session.js';
@@ -244,6 +245,46 @@ export class MemoryService {
           || (!forgotten.has(record.id) && (options?.historical || (!isMemoryExpired(record, now) && (this.experienceEnabled || !superseded.has(record.id))))))
           .sort((a,b) => Number(b.pinned)-Number(a.pinned) || a.id.localeCompare(b.id));
       }),
+      historicalSnapshot: async (workspace,input) => this.store.historicalSnapshot(workspace,input,async loaded=>{
+        const scoped=loaded.records.filter(record=>inScope(record,workspace));
+        const forgotten=await this.feedbackStore.strictForgottenIds(new Set(scoped.map(record=>record.id)));
+        return scoped.filter(record=>!forgotten.has(record.id));
+      }),
+      rankHistorical: async (records,query,rankingTime) => {
+        lexicalRetrievalTokens(query,'query');
+        // Historical ranking is lexical over the reconstructed universe only. Current
+        // embeddings, feedback and document frequencies cannot leak a later correction.
+        await this.store.snapshot(async loaded=>{
+          if(!loaded.complete)throw new MemoryControllerError('MEMORY_SOURCE_UNAVAILABLE');
+          const forgotten=await this.feedbackStore.strictForgottenIds(new Set(records.map(record=>record.id)));
+          for(const record of records){
+            const current=loaded.records.find(item=>item.id===record.id);
+            if(!current||forgotten.has(record.id)||!inScope(current,this.resolveWorkspace(scope.workspaceKey))||!inScope(record,this.resolveWorkspace(scope.workspaceKey)))throw new MemoryControllerError('MEMORY_SOURCE_UNAVAILABLE');
+          }
+        });
+        return {results:searchMemories(records,query,{limit:Math.max(1,records.length),maxNeighbors:0},undefined,Math.max(1,records.length),rankingTime),
+          relevanceContext:{semanticStatus:'disabled' as const},rankingRevision:disclosureDigest(['historical-ranking/v1',IDENTIFIER_TOKENIZER_VERSION,records.map(record=>memorySemanticRevision(record))])};
+      },
+      sourceDependencyStatus: async (ref,resolve) => {
+        try{const checked=await episodes.promotionSnapshot({...scope,workspaceKey:this.resolveWorkspace(scope.workspaceKey)},async context=>{
+          await context.validate([ref],true);
+          if(ref.kind!=='memory')return 'current' as const;
+          const current=context.visible(ref.id);
+          if(memorySemanticRevision(current)!==ref.revision)return 'stale' as const;
+          if(current.provenance?.files.length){
+            const assessment=await assessMemoryStaleness(current,this.projectRoot);
+            if(assessment.status!=='current')return assessment.status==='changed'?'stale' as const:'unavailable' as const;
+          }
+          return current.category==='project-synthesis'?{synthesis:decodeProjectSynthesis(current.content)}:'current' as const;
+        });
+        if(typeof checked==='string')return checked;
+        if(!checked.synthesis||!resolve)return 'unavailable' as const;
+        // Resolve nested syntheses only after releasing the canonical snapshot lock.
+        // The caller supplies its shared cache, cycle guard and request allowance.
+        const dependencies=await checkProjectSynthesisDependencies(checked.synthesis,resolve);
+        return dependencies.status==='unknown'?'unavailable' as const:dependencies.status;
+        }catch{return 'unavailable' as const;}
+      },
       rank: async (records, query, rankingTime) => {
         lexicalRetrievalTokens(query, 'query');
         // Validate against a complete canonical snapshot, then release the store

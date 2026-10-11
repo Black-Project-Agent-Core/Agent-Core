@@ -5,7 +5,7 @@ import type { MemoryService as V2MemoryService } from '../../SubProject/agent-co
 import type { MemoryScopeResolver, MemoryTaskSelector } from './memory-scope.js';
 const readonlyActions = {
   capabilities:'memory_capabilities', recall:'memory_recall',
-  expand:'memory_expand', task_context:'memory_task_context',
+  expand:'memory_expand', task_context:'memory_task_context', ingestion_cursor:'memory_ingestion_cursor',
 } as const;
 const mutatingActions = {
   task_start:'memory_task_start', event_append:'memory_event_append',
@@ -38,7 +38,7 @@ export function registerMemoryExperienceTools(
     return {content:[{type:'text' as const,text:JSON.stringify(result)}]};
   }
   server.registerTool('memory_v2_read',{title:'Read Memory v2',
-    description:'Read compact Memory, exact history, task capsule and capabilities. External callers must pass scope.taskId from their host-bound Learning episode.',
+    description:'Read compact Memory, exact history, task capsule continuity assessment, committed ingestion cursor and capabilities. Recall supports separate validAt and host-recorded knownAt; asOf remains a validAt alias. task_context optionally accepts intentions:{now,eventKeys,limit} for an advisory current-episode projection; it never schedules, executes or resolves an obligation. Continuity ready is fresh context, never task completion or permission to resume paused/completed work. External callers must pass scope.taskId from their host-bound Learning episode.',
     inputSchema:input.shape,annotations:{title:'Read Memory v2',readOnlyHint:true,openWorldHint:false}
   },async (args:unknown)=>{try{const request=input.parse(args);return await dispatch(request.action,request.payload??{},'read',request.scope);}catch(error){return errorResult(error);}});
   server.registerTool('memory_v2_write',{title:'Write Memory v2',

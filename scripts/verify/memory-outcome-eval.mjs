@@ -10,7 +10,7 @@ const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const digest=bytes=>'sha256:'+createHash('sha256').update(bytes).digest('hex');
 const canonical=value=>JSON.stringify(value);
 async function sourcePatch(){
- const files=['src/learning/outcome-contract.ts','src/learning/outcome-evaluation.ts','src/learning/outcome-verifier.ts','src/learning/outcome-safe-engineering.ts','SubProject/agent-core-memory/src/learning/outcome-safe-engineering.ts','scripts/verify/cumulative-workflow-support.mjs','scripts/verify/memory-outcome-adapter.mjs','scripts/verify/memory-outcome-eval.mjs','scripts/verify/memory-outcome-live.mjs','scripts/verify/memory-outcome-preregistration.mjs','scripts/verify/package-memory-outcome.mjs','src/learning/workflow-verifier.ts','SubProject/agent-core-memory/src/learning/workflow-verifier.ts','scripts/verify/cumulative-workflow-eval.mjs'];
+ const files=['src/learning/outcome-contract.ts','src/learning/outcome-diagnostics.ts','src/learning/outcome-diagnostics-verifier.ts','src/learning/outcome-evaluation.ts','src/learning/outcome-verifier.ts','src/learning/outcome-safe-engineering.ts','SubProject/agent-core-memory/src/learning/outcome-safe-engineering.ts','scripts/verify/cumulative-workflow-support.mjs','scripts/verify/memory-outcome-adapter.mjs','scripts/verify/memory-outcome-eval.mjs','scripts/verify/memory-outcome-live.mjs','scripts/verify/memory-outcome-preregistration.mjs','scripts/verify/package-memory-outcome.mjs','src/learning/workflow-verifier.ts','SubProject/agent-core-memory/src/learning/workflow-verifier.ts','scripts/verify/cumulative-workflow-eval.mjs'];
  let patch='# Empty-directory source snapshot, not a baseline delta. The integration handoff carries the actual base-to-final patch.\n';for(const relative of files){const text=await fs.readFile(path.join(ROOT,relative),'utf8');const lines=text.replace(/\n$/,'').split('\n');patch+='diff --git a/'+relative+' b/'+relative+'\nnew file mode 100644\n--- /dev/null\n+++ b/'+relative+'\n@@ -0,0 +1,'+lines.length+' @@\n'+lines.map(line=>'+'+line).join('\n')+'\n';}
  return patch;
 }
@@ -58,12 +58,12 @@ async function validateSnapshot(root){
 }
 export function parseOutcomeArguments(argv){
  if(argv.includes('--continue'))throw Error('LEGACY_CONTINUE_REFUSED');
- const allowed=new Set(['--suite','--phase','--output','--baseline','--candidate-snapshot','--baseline-snapshot','--preregistration']);const values={};
+ const allowed=new Set(['--suite','--phase','--output','--baseline','--candidate-snapshot','--baseline-snapshot','--preregistration','--diagnostics']);const values={};
  for(let i=0;i<argv.length;i+=2){const key=argv[i],value=argv[i+1];if(!allowed.has(key))throw Error('UNKNOWN_OPTION:'+key);if(!value||value.startsWith('--')||Object.hasOwn(values,key))throw Error('INVALID_OR_DUPLICATE_OPTION');values[key.slice(2).replace(/-([a-z])/g,(_,letter)=>letter.toUpperCase())]=key==='--phase'?value:path.resolve(value);}
  if(!values.suite||!values.phase||!values.output)throw Error('MISSING_REQUIRED_OPTION');
  if(!['baseline','compare'].includes(values.phase))throw Error('INVALID_PHASE');
  if(values.phase==='compare'&&(!values.baseline||!values.candidateSnapshot))throw Error('COMPARE_SNAPSHOT_REQUIRED');
- return {suitePath:values.suite,phase:values.phase,output:values.output,baselinePath:values.baseline,candidateSnapshot:values.candidateSnapshot,baselineSnapshot:values.baselineSnapshot,preregistrationPath:values.preregistration};
+ return {suitePath:values.suite,phase:values.phase,output:values.output,baselinePath:values.baseline,candidateSnapshot:values.candidateSnapshot,baselineSnapshot:values.baselineSnapshot,preregistrationPath:values.preregistration,...(values.diagnostics?{diagnosticsPath:values.diagnostics}:{})};
 }
 async function evidenceFor(spec,context,result){
  const base='evidence/'+context.runId.replaceAll(':','-');
@@ -93,7 +93,7 @@ async function baselineEvidenceFiles(root,suite,rows){
  if(rows.some(row=>row.hashes.sourceRevision!==snapshot.sourceRevision||row.hashes.rootDistDigest!==snapshot.rootDistDigest||row.hashes.memoryDistDigest!==snapshot.memoryDistDigest))throw Error('BLOCKED:BASELINE_SNAPSHOT_DRIFT');
  return [...paths];
 }
-export async function runOutcomeSuite({suitePath,phase,output,baselinePath,candidateSnapshot,baselineSnapshot,preregistrationPath}){
+export async function runOutcomeSuite({suitePath,phase,output,baselinePath,candidateSnapshot,baselineSnapshot,preregistrationPath,diagnosticsPath}){
  if(!['baseline','compare'].includes(phase))throw Error('INVALID_PHASE');
  const destination=path.resolve(output),sourceSuite=path.resolve(suitePath);await noLinks(sourceSuite);
  try{await fs.lstat(destination);throw Error('OUTPUT_EXISTS');}catch(error){if(error.code!=='ENOENT')throw error;}
@@ -101,6 +101,11 @@ export async function runOutcomeSuite({suitePath,phase,output,baselinePath,candi
  const {evaluateOutcome}=await import(pathToFileURL(path.join(ROOT,'dist/learning/outcome-evaluation.js')).href);
  const {verifyOutcome}=await import(pathToFileURL(path.join(ROOT,'dist/learning/outcome-verifier.js')).href);
  const frozenSuiteBytes=await fs.readFile(sourceSuite);let suiteBytes=frozenSuiteBytes,suite=parseOutcomeSuite(JSON.parse(suiteBytes)),preregistrationSealBytes=null;
+ const diagnosticsModule=diagnosticsPath?await import(pathToFileURL(path.join(ROOT,'dist/learning/outcome-diagnostics.js')).href):null;
+ const diagnosticVerifier=diagnosticsPath?await import(pathToFileURL(path.join(ROOT,'dist/learning/outcome-diagnostics-verifier.js')).href):null;
+ let sidecarBytes=null,sidecar=null,diagnosticRows=[],diagnosticEvidence=new Map();
+ if(diagnosticsPath){await noLinks(diagnosticsPath);sidecarBytes=await fs.readFile(diagnosticsPath);sidecar=diagnosticsModule.parseOutcomeDiagnostics(JSON.parse(sidecarBytes),suite);}
+ const diagnosticSuite=suite;
  if(suite.mode!=='offline'||suite.driver!=='scripted')throw Error('BLOCKED:OFFLINE_MODE_REQUIRED');
  if(suite.preregistration!==null||suite.preregistrationDigest!==null||phase==='baseline'&&preregistrationPath)throw Error('BLOCKED:PREREGISTRATION_REQUIRES_COMPARE_SUPPLEMENT');
  let rows=[],baselineFiles=[],currentPath=baselineSnapshot??path.join(ROOT,'runtime/tmp/memory-outcome-v2/snapshots/current'),snapshot;
@@ -115,6 +120,15 @@ export async function runOutcomeSuite({suitePath,phase,output,baselinePath,candi
   const baselineCommands=JSON.parse(await fs.readFile(path.join(baselinePath,'logs/commands.json'),'utf8'));if(!Array.isArray(baselineCommands)||!baselineCommands.length||baselineCommands.some(command=>command.exitCode!==0||command.status!=='PASS'))throw Error('BLOCKED:BASELINE_EXECUTION_INCOMPLETE');
   const recheck=verifyOutcome(priorSuite,Buffer.from(canonical(rows)),priorReport);if(recheck.verdict!=='pass')throw Error('BLOCKED:BASELINE_SEAL_INVALID');
   baselineFiles=await baselineEvidenceFiles(path.resolve(baselinePath),suite,rows);
+  if(sidecar){
+   const previousSidecar=await fs.readFile(path.join(baselinePath,'fixtures/diagnostics.json'));
+   if(digest(previousSidecar)!==digest(sidecarBytes))throw Error('BLOCKED:DIAGNOSTIC_SIDECAR_DRIFT');
+   diagnosticRows=JSON.parse(await fs.readFile(path.join(baselinePath,'diagnostics/observations.json'),'utf8'));
+   const priorDiagnostics=JSON.parse(await fs.readFile(path.join(baselinePath,'diagnostics/report.json'),'utf8'));
+   for(const row of diagnosticRows)for(const ref of row.evidenceRefs){const match=/^diagnostic:(evidence\/diagnostics\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+\.json)#(sha256:[a-f0-9]{64})$/.exec(ref);if(!match)throw Error('BLOCKED:DIAGNOSTIC_BASELINE_REF');const file=path.join(baselinePath,match[1]);await noLinks(file);const data=await fs.readFile(file);if(digest(data)!==match[2])throw Error('BLOCKED:DIAGNOSTIC_BASELINE_DRIFT');diagnosticEvidence.set(match[1],data);baselineFiles.push(match[1]);}
+   const replay=diagnosticVerifier.verifyDiagnosticReport(priorSuite,previousSidecar,Buffer.from(canonical(diagnosticRows)),priorDiagnostics,diagnosticEvidence);
+   if(replay.verdict!=='pass'||!priorDiagnostics.complete)throw Error('BLOCKED:DIAGNOSTIC_BASELINE_INVALID');
+  }else if(await fs.access(path.join(baselinePath,'fixtures/diagnostics.json')).then(()=>true,()=>false))throw Error('BLOCKED:DIAGNOSTICS_REQUIRED');
   if(preregistrationPath){
    suite=await loadOutcomePreregistration(preregistrationPath,{suiteBytes:frozenSuiteBytes,baselineRows:rows,candidateOpenedAt:new Date().toISOString()});
    preregistrationSealBytes=await fs.readFile(preregistrationPath);const seal=JSON.parse(preregistrationSealBytes),{candidateOpenedAt,...registration}=suite.preregistration;
@@ -126,12 +140,13 @@ export async function runOutcomeSuite({suitePath,phase,output,baselinePath,candi
   if(suite.sourceRevisions.candidate!==snapshot.sourceRevision)throw Error('BLOCKED:CANDIDATE_SOURCE_REVISION_MISMATCH');
  }else{snapshot=await validateSnapshot(currentPath);if(suite.sourceRevisions.current!==snapshot.sourceRevision)throw Error('BLOCKED:CURRENT_SOURCE_REVISION_MISMATCH');}
  await fs.mkdir(path.dirname(destination),{recursive:true});await noLinks(path.dirname(destination));await fs.mkdir(destination,{mode:0o700});
- for(const dir of ['report','results','fixtures/oracles','evidence','logs','patch','runs'])await fs.mkdir(path.join(destination,dir),{recursive:true});
+ for(const dir of ['report','results','fixtures/oracles','evidence','logs','patch','runs',...(sidecar?['diagnostics']:[])])await fs.mkdir(path.join(destination,dir),{recursive:true});
  await fs.writeFile(path.join(destination,'fixtures/suite.json'),suiteBytes,{flag:'wx'});
+ if(sidecarBytes)await fs.writeFile(path.join(destination,'fixtures/diagnostics.json'),sidecarBytes,{flag:'wx'});
  if(preregistrationSealBytes){await fs.writeFile(path.join(destination,'fixtures/frozen-suite.json'),frozenSuiteBytes,{flag:'wx'});await fs.writeFile(path.join(destination,'fixtures/preregistration-seal.json'),preregistrationSealBytes,{flag:'wx'});}
  for(const spec of suite.cases)await save(path.join(destination,'fixtures/oracles',spec.id+'.json'),spec.oracle);
  if(suite.preregistration)await save(path.join(destination,'fixtures/preregistration.json'),suite.preregistration);
- if(phase==='compare'){for(const relative of baselineFiles)await fs.writeFile(path.join(destination,relative),await fs.readFile(path.join(baselinePath,relative)),{flag:'wx',mode:0o600});await fs.writeFile(path.join(destination,'logs/baseline-commands.json'),await fs.readFile(path.join(baselinePath,'logs/commands.json')),{flag:'wx',mode:0o600});}
+ if(phase==='compare'){for(const relative of new Set(baselineFiles)){await fs.mkdir(path.dirname(path.join(destination,relative)),{recursive:true});await fs.writeFile(path.join(destination,relative),await fs.readFile(path.join(baselinePath,relative)),{flag:'wx',mode:0o600});}await fs.writeFile(path.join(destination,'logs/baseline-commands.json'),await fs.readFile(path.join(baselinePath,'logs/commands.json')),{flag:'wx',mode:0o600});}
  const command={command:'memory-outcome-eval --phase '+phase,mode:'offline',status:'RUNNING',exitCode:null,sourceRevision:snapshot.sourceRevision,inferenceCalls:0};
  const runIds=phase==='baseline'?suite.cases.filter(item=>item.partition==='heldout').flatMap((item,index)=>['native','external'].flatMap((controller,ci)=>suite.armOrder[(index*2+ci)%3].filter(arm=>arm!=='candidate').map(arm=>item.id+':'+controller+':'+arm))):suite.expectedRunIds.compare.filter(id=>id.endsWith(':candidate'));
  try{
@@ -141,18 +156,23 @@ export async function runOutcomeSuite({suitePath,phase,output,baselinePath,candi
    const adapter=new OutcomeMemoryAdapter();
    try{
     await adapter.initialize(path.join(destination,'runs',runId.replaceAll(':','-')),spec.seed,{engineMode:'experience-v2',activation:'synthetic-v2',policy:arm==='candidate'?'fusion-feedback-v1':'baseline-v1',snapshotRoot:currentPath,...snapshot});
-    const context={runId,controller,arm,output:destination,oraclePath,readInput:resolveOutcomeRead};const result=await adapter.execute(spec,context);const evidence=await evidenceFor(spec,context,result);
+    const context={runId,controller,arm,output:destination,oraclePath,readInput:resolveOutcomeRead};let result;
+    if(sidecar){const diagnostic=sidecar.cases.find(c=>c.caseId===caseId);const execution=await adapter.executeDiagnostic(spec,context,diagnostic);result=execution.base;diagnosticRows.push(execution.diagnostic);for(const [name,data] of execution.evidence)diagnosticEvidence.set(name,data);}else result=await adapter.execute(spec,context);
+    const evidence=await evidenceFor(spec,context,result);
     rows.push({runId,caseId,controller,arm,taskId:runId,hashes:{inputDigest:spec.inputDigest,oracleDigest:spec.oracleDigest,seedDigest:spec.seedDigest,configDigest:spec.configDigest,sourceRevision:snapshot.sourceRevision,rootDistDigest:snapshot.rootDistDigest,memoryDistDigest:snapshot.memoryDistDigest,activationDigest:adapter.activationDigest},adapter:{engineMode:'experience-v2',activation:'synthetic-v2',policy:arm==='candidate'?'fusion-feedback-v1':'baseline-v1',factoryRevision:snapshot.sourceRevision,selected:result.selected.map(hit=>({id:hit.id,revision:hit.revision,score:hit.score??0}))},...evidence,correct:result.verification.verdict==='pass',violations:result.violations,lifecycle:result.lifecycle,latencyMs:result.latencyMs,counters:result.counters,usage:{status:'unavailable',inputTokens:null,outputTokens:null,provenance:'offline scripted driver: zero inference'},cost:{status:'unavailable',amount:null,currency:null,provenance:'offline scripted driver: billing not measured'}});
    }finally{await adapter.close();}
   }
+  if(canonical(await validateSnapshot(currentPath))!==canonical(snapshot))throw Error('BLOCKED:SNAPSHOT_IDENTITY_CHANGED');
   const reasons=validateOutcomePairs(suite,rows);if(reasons.length)throw Error('BLOCKED:PAIR_VALIDATION:'+reasons.join(','));
   const report=evaluateOutcome(suite,rows);const check=verifyOutcome(suiteBytes,Buffer.from(canonical(rows)),report);if(check.verdict!=='pass')throw Error('BLOCKED:INDEPENDENT_RECOMPUTATION:'+check.reasons.join(','));
   await save(path.join(destination,'results/observations.json'),rows);await save(path.join(destination,'report/report.json'),report);
+  if(sidecar){const diagnosticReport=await diagnosticsModule.evaluateDiagnosticsReport(diagnosticSuite,sidecar,diagnosticRows,diagnosticEvidence,phase);const replay=diagnosticVerifier.verifyDiagnosticReport(frozenSuiteBytes,sidecarBytes,Buffer.from(canonical(diagnosticRows)),diagnosticReport,diagnosticEvidence);if(replay.verdict!=='pass')throw Error('BLOCKED:DIAGNOSTIC_RECOMPUTATION:'+replay.reasons.join(','));await save(path.join(destination,'diagnostics/observations.json'),diagnosticRows);await save(path.join(destination,'diagnostics/report.json'),diagnosticReport);if(!diagnosticReport.complete||diagnosticReport.integrityStatus==='FAIL')throw Error('BLOCKED:DIAGNOSTIC_FUNCTIONAL_FAILURE');}
   await fs.writeFile(path.join(destination,'patch/changes.patch'),await sourcePatch(),{flag:'wx'});
   await save(path.join(destination,'evidence',phase==='compare'?'snapshot-candidate.json':'snapshot.json'),snapshot);
   await save(path.join(destination,'report/status-ledger.json'),{offlineFunctional:'PASS',live:'NOT RUN',efficiencyBenchmark:'DEFERRED',candidate:report.candidateStatus,benefitProven:false});command.status='PASS';command.exitCode=0;
   await save(path.join(destination,'logs/commands.json'),[command]);return rows;
  }catch(error){
+  if(sidecar){await save(path.join(destination,'diagnostics/observations.json'),diagnosticRows).catch(()=>{});await save(path.join(destination,'diagnostics/report.json'),await diagnosticsModule.evaluateDiagnosticsReport(diagnosticSuite,sidecar,diagnosticRows,diagnosticEvidence,phase)).catch(()=>{});}
   await save(path.join(destination,'results/partial-observations.json'),rows).catch(()=>{});
   await save(path.join(destination,'results/observations.json'),rows).catch(()=>{});
   await save(path.join(destination,'report/report.json'),evaluateOutcome(suite,rows)).catch(()=>{});

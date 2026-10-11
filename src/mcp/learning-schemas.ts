@@ -1,29 +1,15 @@
+import { curationDeltaSchema } from '../learning/curation-delta.js';
 import * as z from 'zod/v4';
-import { learningEvaluationSchema, safeEvidenceRefSchema, safeMetadataSchema } from '../learning/evaluation.js';
-import { learningEffectEvidenceSchema } from '../learning/effect-evidence.js';
-import { learningDecisionFields } from '../learning/decision-evidence.js';
+import { safeEvidenceRefSchema, safeMetadataSchema } from '../learning/evaluation.js';
 
 const evidenceRef = z.string().min(1).max(1000);
 
-const learningCandidate = z.object({
-  checkpointKey: z.string().min(1).max(200).optional(),
-  ...learningDecisionFields,
-  kind: z.enum(['durable-fact', 'operational-reflection', 'architecture', 'code-pattern']),
-  title: z.string().max(200).optional(),
-  content: z.string().min(1).max(50_000),
-  evidenceRefs: z.array(evidenceRef).max(32).default([]),
-  verified: z.boolean(),
-  effectEvidence: learningEffectEvidenceSchema.optional(),
-  evaluation: learningEvaluationSchema.optional(),
-  reuseCondition: z.string().max(2_000).optional(),
-  workspace: z.string().min(1).max(200).optional(),
-  tags: z.array(z.string().max(200)).max(32).optional(),
-  steps: z.array(z.string().min(1).max(2_000)).max(50).optional(),
-  exemplars: z.array(z.string().min(1).max(2_000)).max(100).optional(),
-});
+import { learningCandidateSchema } from '../learning/candidate-purpose.js';
+export const learningCandidate = learningCandidateSchema;
 
 export const learning = z.object({
-  action: z.enum(['status', 'checkpoint', 'review', 'curate', 'journey', 'receipt']),
+  action: z.enum(['status', 'checkpoint', 'review', 'review-delta', 'curate', 'journey', 'receipt']),
+  delta: curationDeltaSchema.optional(),
   idempotencyKey: z.string().min(1).max(200).optional(),
   taskId: z.string().min(1).max(200).optional(),
   actionRefs: z.array(safeEvidenceRefSchema()).max(16).optional(),

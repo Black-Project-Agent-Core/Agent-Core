@@ -1,8 +1,8 @@
 # Implementation plans and status
 
-Source candidate **`0.15.0-beta.2`**. Source implementation, offline verification, published artifact and resident acceptance are separate gates. User authorization on 2026-10-10 covers the remaining Memory Plans06–11 in the separate Linux source while Windows beta.1 acceptance proceeds independently. Performance benchmarks are deferred; no provider or automatic production re-embedding approval is inferred.
+Source candidate **`0.15.0-beta.3`**. Source implementation, offline verification, published artifact and resident acceptance are separate gates. User authorization covers Memory Plans 12–21 in the existing Linux source; Windows alignment of the earlier beta.2 remains separate. Performance benchmarks are deferred; no provider or automatic production re-embedding approval is inferred.
 
-[Documentation](../README.md) · [Codebase](../CODEBASE.md) · [Candidate notes](../releases/0.15.0-beta.2.md)
+[Documentation](../README.md) · [Codebase](../CODEBASE.md) · [Candidate notes](../releases/0.15.0-beta.3.md)
 
 ## Implemented and accepted predecessor scope
 
@@ -39,9 +39,9 @@ Final integrated evidence is recorded in the [functional source ledger](../verif
 
 <a id="memory-reference-adoption"></a>
 
-## Memory12–21 reference adoption proposals
+## Memory12–21 reference adoption source work
 
-**PROPOSED / NOT IMPLEMENTED.** One reference per plan, with distinct responsibilities rather than ten new memory subsystems. Read the [shared specification and dependency map](2026-10-11-memory-reference-adoption-spec.md) before choosing an implementation. The source research uses pinned upstream commits; incomplete donor features and license limits are documented per plan. These proposals do not extend the active Memory06–11 installation task.
+**Source candidate `0.15.0-beta.3`; final functional evidence is in the [source ledger](../verification/memory12-21-source-functional-2026-10-11.md).** One reference per plan, with distinct responsibilities rather than ten new memory subsystems. Read the [shared specification and dependency map](2026-10-11-memory-reference-adoption-spec.md) for the implementation boundaries. The source research uses pinned upstream commits; incomplete donor features and license limits are documented per plan. This source work does not perform or replace the user’s separate beta.2 Windows installation alignment.
 
 | Plan | Reference | Unique scope | Category |
 | --- | --- | --- | --- |
@@ -56,7 +56,7 @@ Final integrated evidence is recorded in the [functional source ledger](../verif
 | [Memory20](2026-10-11-memory-20-longmemeval-functional-evaluation.md) | LongMemEval | Recall/update/temporal functional diagnostics | Evaluation only |
 | [Memory21](2026-10-11-memory-21-memprobe-memory-integrity.md) | MemProbe | Interference/misinformation/consolidation diagnostics | Evaluation only |
 
-Priority is incremental continuity and historical correctness, followed by evidence synthesis/learning. Plan19 does not authorize production changes. Plan20 owns the shared diagnostic extension used by Plan21. Proposed tests and commands are not passed results. Planning-only version decision: **no product-version change**.
+Priority is incremental continuity and historical correctness, followed by evidence synthesis/learning. Plan 19 does not authorize production changes. Plan20 owns the shared diagnostic extension used by Plan21. The original proposed checklists remain planning history; only the linked ledger and verified logs establish passed results. Source implementation has one additive minor intent and advances the existing prerelease train to beta.3; no release/activation is implied.
 
 ## Evidence and execution rules
 

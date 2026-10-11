@@ -1,0 +1,796 @@
+{
+  "schemaVersion": 1,
+  "revision": "original-reconsolidation-suite-v1",
+  "corpusRevision": "corpus-1",
+  "cases": [
+    {
+      "id": "positive-supported-association",
+      "input": {
+        "scopeKey": "scope",
+        "corpusRevision": "corpus-1",
+        "nodes": [
+          {
+            "id": "n0",
+            "revision": "r0",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n1",
+            "revision": "r1",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n2",
+            "revision": "r2",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n3",
+            "revision": "r3",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n4",
+            "revision": "r4",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n5",
+            "revision": "r5",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n6",
+            "revision": "r6",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n7",
+            "revision": "r7",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n8",
+            "revision": "r8",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n9",
+            "revision": "r9",
+            "scopeKey": "scope"
+          }
+        ],
+        "outcomes": [
+          {
+            "sourceId": "n0",
+            "targetId": "n1",
+            "sourceRevision": "r0",
+            "targetRevision": "r1",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          }
+        ]
+      },
+      "queries": [
+        {
+          "id": "positive-supported-association-heldout",
+          "seedId": "n0"
+        }
+      ],
+      "oracle": {
+        "rejectInput": false,
+        "allowedEdges": [
+          [
+            "n0",
+            "n1"
+          ]
+        ],
+        "expected": [
+          {
+            "queryId": "positive-supported-association-heldout",
+            "expectedIds": [
+              "n1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "irrelevant-exposure",
+      "input": {
+        "scopeKey": "scope",
+        "corpusRevision": "corpus-1",
+        "nodes": [
+          {
+            "id": "n0",
+            "revision": "r0",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n1",
+            "revision": "r1",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n2",
+            "revision": "r2",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n3",
+            "revision": "r3",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n4",
+            "revision": "r4",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n5",
+            "revision": "r5",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n6",
+            "revision": "r6",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n7",
+            "revision": "r7",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n8",
+            "revision": "r8",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n9",
+            "revision": "r9",
+            "scopeKey": "scope"
+          }
+        ],
+        "outcomes": []
+      },
+      "queries": [
+        {
+          "id": "irrelevant-exposure-heldout",
+          "seedId": "n0"
+        }
+      ],
+      "oracle": {
+        "rejectInput": false,
+        "allowedEdges": [],
+        "expected": [
+          {
+            "queryId": "irrelevant-exposure-heldout",
+            "expectedIds": [
+              "n0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "negative-outcome",
+      "input": {
+        "scopeKey": "scope",
+        "corpusRevision": "corpus-1",
+        "nodes": [
+          {
+            "id": "n0",
+            "revision": "r0",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n1",
+            "revision": "r1",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n2",
+            "revision": "r2",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n3",
+            "revision": "r3",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n4",
+            "revision": "r4",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n5",
+            "revision": "r5",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n6",
+            "revision": "r6",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n7",
+            "revision": "r7",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n8",
+            "revision": "r8",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n9",
+            "revision": "r9",
+            "scopeKey": "scope"
+          }
+        ],
+        "outcomes": [
+          {
+            "sourceId": "n0",
+            "targetId": "n1",
+            "sourceRevision": "r0",
+            "targetRevision": "r1",
+            "scopeKey": "scope",
+            "verifiedUseful": false,
+            "verifierRevision": "oracle-feedback-1"
+          }
+        ]
+      },
+      "queries": [
+        {
+          "id": "negative-outcome-heldout",
+          "seedId": "n0"
+        }
+      ],
+      "oracle": {
+        "rejectInput": false,
+        "allowedEdges": [],
+        "expected": [
+          {
+            "queryId": "negative-outcome-heldout",
+            "expectedIds": [
+              "n0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "stale-revision",
+      "input": {
+        "scopeKey": "scope",
+        "corpusRevision": "corpus-1",
+        "nodes": [
+          {
+            "id": "n0",
+            "revision": "r0",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n1",
+            "revision": "r1",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n2",
+            "revision": "r2",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n3",
+            "revision": "r3",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n4",
+            "revision": "r4",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n5",
+            "revision": "r5",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n6",
+            "revision": "r6",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n7",
+            "revision": "r7",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n8",
+            "revision": "r8",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n9",
+            "revision": "r9",
+            "scopeKey": "scope"
+          }
+        ],
+        "outcomes": [
+          {
+            "sourceId": "n0",
+            "targetId": "n1",
+            "sourceRevision": "old",
+            "targetRevision": "r1",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          }
+        ]
+      },
+      "queries": [
+        {
+          "id": "stale-revision-heldout",
+          "seedId": "n0"
+        }
+      ],
+      "oracle": {
+        "rejectInput": true,
+        "allowedEdges": [],
+        "expected": [
+          {
+            "queryId": "stale-revision-heldout",
+            "expectedIds": [
+              "n0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "foreign-scope",
+      "input": {
+        "scopeKey": "scope",
+        "corpusRevision": "corpus-1",
+        "nodes": [
+          {
+            "id": "n0",
+            "revision": "r0",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n1",
+            "revision": "r1",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n2",
+            "revision": "r2",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n3",
+            "revision": "r3",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n4",
+            "revision": "r4",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n5",
+            "revision": "r5",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n6",
+            "revision": "r6",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n7",
+            "revision": "r7",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n8",
+            "revision": "r8",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n9",
+            "revision": "r9",
+            "scopeKey": "scope"
+          }
+        ],
+        "outcomes": [
+          {
+            "sourceId": "n0",
+            "targetId": "n1",
+            "sourceRevision": "r0",
+            "targetRevision": "r1",
+            "scopeKey": "foreign",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          }
+        ]
+      },
+      "queries": [
+        {
+          "id": "foreign-scope-heldout",
+          "seedId": "n0"
+        }
+      ],
+      "oracle": {
+        "rejectInput": true,
+        "allowedEdges": [],
+        "expected": [
+          {
+            "queryId": "foreign-scope-heldout",
+            "expectedIds": [
+              "n0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "duplicate",
+      "input": {
+        "scopeKey": "scope",
+        "corpusRevision": "corpus-1",
+        "nodes": [
+          {
+            "id": "n0",
+            "revision": "r0",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n1",
+            "revision": "r1",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n2",
+            "revision": "r2",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n3",
+            "revision": "r3",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n4",
+            "revision": "r4",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n5",
+            "revision": "r5",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n6",
+            "revision": "r6",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n7",
+            "revision": "r7",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n8",
+            "revision": "r8",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n9",
+            "revision": "r9",
+            "scopeKey": "scope"
+          }
+        ],
+        "outcomes": [
+          {
+            "sourceId": "n0",
+            "targetId": "n1",
+            "sourceRevision": "r0",
+            "targetRevision": "r1",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          },
+          {
+            "sourceId": "n0",
+            "targetId": "n1",
+            "sourceRevision": "r0",
+            "targetRevision": "r1",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          }
+        ]
+      },
+      "queries": [
+        {
+          "id": "duplicate-heldout",
+          "seedId": "n0"
+        }
+      ],
+      "oracle": {
+        "rejectInput": true,
+        "allowedEdges": [],
+        "expected": [
+          {
+            "queryId": "duplicate-heldout",
+            "expectedIds": [
+              "n0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "budget-overflow",
+      "input": {
+        "scopeKey": "scope",
+        "corpusRevision": "corpus-1",
+        "nodes": [
+          {
+            "id": "n0",
+            "revision": "r0",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n1",
+            "revision": "r1",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n2",
+            "revision": "r2",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n3",
+            "revision": "r3",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n4",
+            "revision": "r4",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n5",
+            "revision": "r5",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n6",
+            "revision": "r6",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n7",
+            "revision": "r7",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n8",
+            "revision": "r8",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n9",
+            "revision": "r9",
+            "scopeKey": "scope"
+          }
+        ],
+        "outcomes": [
+          {
+            "sourceId": "n0",
+            "targetId": "n1",
+            "sourceRevision": "r0",
+            "targetRevision": "r1",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          },
+          {
+            "sourceId": "n0",
+            "targetId": "n2",
+            "sourceRevision": "r0",
+            "targetRevision": "r2",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          },
+          {
+            "sourceId": "n0",
+            "targetId": "n3",
+            "sourceRevision": "r0",
+            "targetRevision": "r3",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          },
+          {
+            "sourceId": "n0",
+            "targetId": "n4",
+            "sourceRevision": "r0",
+            "targetRevision": "r4",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          },
+          {
+            "sourceId": "n0",
+            "targetId": "n5",
+            "sourceRevision": "r0",
+            "targetRevision": "r5",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          },
+          {
+            "sourceId": "n0",
+            "targetId": "n6",
+            "sourceRevision": "r0",
+            "targetRevision": "r6",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          },
+          {
+            "sourceId": "n0",
+            "targetId": "n7",
+            "sourceRevision": "r0",
+            "targetRevision": "r7",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          },
+          {
+            "sourceId": "n0",
+            "targetId": "n8",
+            "sourceRevision": "r0",
+            "targetRevision": "r8",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          },
+          {
+            "sourceId": "n0",
+            "targetId": "n9",
+            "sourceRevision": "r0",
+            "targetRevision": "r9",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          }
+        ]
+      },
+      "queries": [
+        {
+          "id": "budget-overflow-heldout",
+          "seedId": "n0"
+        }
+      ],
+      "oracle": {
+        "rejectInput": true,
+        "allowedEdges": [],
+        "expected": [
+          {
+            "queryId": "budget-overflow-heldout",
+            "expectedIds": [
+              "n0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "conflicting-outcome",
+      "input": {
+        "scopeKey": "scope",
+        "corpusRevision": "corpus-1",
+        "nodes": [
+          {
+            "id": "n0",
+            "revision": "r0",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n1",
+            "revision": "r1",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n2",
+            "revision": "r2",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n3",
+            "revision": "r3",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n4",
+            "revision": "r4",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n5",
+            "revision": "r5",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n6",
+            "revision": "r6",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n7",
+            "revision": "r7",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n8",
+            "revision": "r8",
+            "scopeKey": "scope"
+          },
+          {
+            "id": "n9",
+            "revision": "r9",
+            "scopeKey": "scope"
+          }
+        ],
+        "outcomes": [
+          {
+            "sourceId": "n0",
+            "targetId": "n1",
+            "sourceRevision": "r0",
+            "targetRevision": "r1",
+            "scopeKey": "scope",
+            "verifiedUseful": true,
+            "verifierRevision": "oracle-feedback-1"
+          },
+          {
+            "sourceId": "n0",
+            "targetId": "n1",
+            "sourceRevision": "r0",
+            "targetRevision": "r1",
+            "scopeKey": "scope",
+            "verifiedUseful": false,
+            "verifierRevision": "oracle-feedback-2"
+          }
+        ]
+      },
+      "queries": [
+        {
+          "id": "conflicting-outcome-heldout",
+          "seedId": "n0"
+        }
+      ],
+      "oracle": {
+        "rejectInput": true,
+        "allowedEdges": [],
+        "expected": [
+          {
+            "queryId": "conflicting-outcome-heldout",
+            "expectedIds": [
+              "n0"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

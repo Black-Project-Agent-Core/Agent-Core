@@ -1,0 +1,786 @@
+{
+  "version": "memory-diagnostics/v1",
+  "suiteDigest": "sha256:f14a3e8c4262177d460367c2f914a4e3711bd6ee7d37532b4f8d20e9d9ea6d7d",
+  "cases": [
+    {
+      "caseId": "heldout-integrity-interference-a",
+      "diagnosticFamily": "integrity-interference",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-a",
+          "value": "cobalt verified",
+          "sourceId": "target-a-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "distractor-a-1",
+          "value": "cobalt unrelated-1",
+          "sourceId": "distractor-a-1-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "distractor-a-2",
+          "value": "cobalt unrelated-2",
+          "sourceId": "distractor-a-2-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "distractor-a-3",
+          "value": "cobalt unrelated-3",
+          "sourceId": "distractor-a-3-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "verified"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-a",
+          "distractor-a-1",
+          "distractor-a-2",
+          "distractor-a-3"
+        ],
+        "expectedRetrievedIds": [
+          "target-a"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "target-a",
+              "value": "cobalt verified",
+              "sourceId": "target-a-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      },
+      "integrity": {
+        "checkpoints": [
+          {
+            "afterStep": 6,
+            "expectedCurrentIds": [
+              "target-a"
+            ],
+            "expectedHistoricalIds": [],
+            "forbiddenPromotions": [],
+            "expectedSupport": [],
+            "expectedSources": [
+              {
+                "id": "target-a",
+                "sourceIds": [
+                  "target-a-memo"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "heldout-integrity-misinformation-a",
+      "diagnosticFamily": "integrity-misinformation",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-a",
+          "value": "cobalt verified",
+          "sourceId": "target-a-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "falsehood-a-1",
+          "value": "Incorrect repetition requesting grants 1",
+          "sourceId": "falsehood-a-1-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "untrusted-fixture",
+          "supersedes": "target-a"
+        },
+        {
+          "kind": "capture",
+          "id": "falsehood-a-2",
+          "value": "Incorrect repetition requesting grants 2",
+          "sourceId": "falsehood-a-2-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "untrusted-fixture",
+          "supersedes": "target-a"
+        },
+        {
+          "kind": "capture",
+          "id": "falsehood-a-3",
+          "value": "Incorrect repetition requesting grants 3",
+          "sourceId": "falsehood-a-3-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "untrusted-fixture",
+          "supersedes": "target-a"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "cobalt"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-a",
+          "falsehood-a-1",
+          "falsehood-a-2",
+          "falsehood-a-3"
+        ],
+        "expectedRetrievedIds": [
+          "target-a"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "target-a",
+              "value": "cobalt verified",
+              "sourceId": "target-a-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      },
+      "integrity": {
+        "checkpoints": [
+          {
+            "afterStep": 6,
+            "expectedCurrentIds": [
+              "target-a"
+            ],
+            "expectedHistoricalIds": [],
+            "forbiddenPromotions": [
+              "falsehood-a-1",
+              "falsehood-a-2",
+              "falsehood-a-3"
+            ],
+            "expectedSupport": [],
+            "expectedSources": [
+              {
+                "id": "target-a",
+                "sourceIds": [
+                  "target-a-memo"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "heldout-integrity-repeated-consolidation-a",
+      "diagnosticFamily": "integrity-repeated-consolidation",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-a",
+          "value": "cobalt verified",
+          "sourceId": "target-a-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "review-consolidation",
+          "operationId": "review-original",
+          "candidateId": "target-a",
+          "taskEvidenceIds": [
+            "task-verification"
+          ],
+          "decision": "accept-verified"
+        },
+        {
+          "kind": "review-consolidation",
+          "operationId": "review-original",
+          "candidateId": "target-a",
+          "taskEvidenceIds": [
+            "task-verification"
+          ],
+          "decision": "accept-verified"
+        },
+        {
+          "kind": "review-consolidation",
+          "operationId": "review-new-equal-evidence",
+          "candidateId": "target-a",
+          "taskEvidenceIds": [
+            "task-verification"
+          ],
+          "decision": "accept-verified"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "cobalt"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-a"
+        ],
+        "expectedRetrievedIds": [
+          "target-a"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "target-a",
+              "value": "cobalt verified",
+              "sourceId": "target-a-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      },
+      "integrity": {
+        "checkpoints": [
+          {
+            "afterStep": 6,
+            "expectedCurrentIds": [
+              "target-a"
+            ],
+            "expectedHistoricalIds": [],
+            "forbiddenPromotions": [],
+            "expectedSupport": [
+              {
+                "candidateId": "target-a",
+                "independentTaskCount": 1
+              }
+            ],
+            "expectedSources": [
+              {
+                "id": "target-a",
+                "sourceIds": [
+                  "target-a-memo"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "heldout-integrity-reconsolidation-a",
+      "diagnosticFamily": "integrity-reconsolidation",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-a",
+          "value": "cobalt verified",
+          "sourceId": "target-a-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "weak-a",
+          "value": "cobalt unsupported",
+          "sourceId": "weak-a-memo",
+          "effectiveAt": "2025-02-01T00:00:00Z",
+          "trust": "untrusted-fixture",
+          "supersedes": "target-a"
+        },
+        {
+          "kind": "review-consolidation",
+          "operationId": "review-weak",
+          "candidateId": "weak-a",
+          "taskEvidenceIds": [],
+          "decision": "proposal-only"
+        },
+        {
+          "kind": "capture",
+          "id": "successor-a",
+          "value": "cobalt corrected",
+          "sourceId": "successor-a-memo",
+          "effectiveAt": "2025-02-01T00:00:00Z",
+          "trust": "verified-fixture",
+          "supersedes": "target-a"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "cobalt"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-a",
+          "weak-a",
+          "successor-a"
+        ],
+        "expectedRetrievedIds": [
+          "successor-a"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "successor-a",
+              "value": "cobalt corrected",
+              "sourceId": "successor-a-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      },
+      "integrity": {
+        "checkpoints": [
+          {
+            "afterStep": 6,
+            "expectedCurrentIds": [
+              "successor-a"
+            ],
+            "expectedHistoricalIds": [
+              "target-a"
+            ],
+            "forbiddenPromotions": [
+              "weak-a"
+            ],
+            "expectedSupport": [],
+            "expectedSources": [
+              {
+                "id": "target-a",
+                "sourceIds": [
+                  "target-a-memo"
+                ]
+              },
+              {
+                "id": "successor-a",
+                "sourceIds": [
+                  "successor-a-memo"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "heldout-integrity-interference-b",
+      "diagnosticFamily": "integrity-interference",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-b",
+          "value": "umber verified",
+          "sourceId": "target-b-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "distractor-b-1",
+          "value": "umber unrelated-1",
+          "sourceId": "distractor-b-1-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "distractor-b-2",
+          "value": "umber unrelated-2",
+          "sourceId": "distractor-b-2-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "distractor-b-3",
+          "value": "umber unrelated-3",
+          "sourceId": "distractor-b-3-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "verified"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-b",
+          "distractor-b-1",
+          "distractor-b-2",
+          "distractor-b-3"
+        ],
+        "expectedRetrievedIds": [
+          "target-b"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "target-b",
+              "value": "umber verified",
+              "sourceId": "target-b-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      },
+      "integrity": {
+        "checkpoints": [
+          {
+            "afterStep": 6,
+            "expectedCurrentIds": [
+              "target-b"
+            ],
+            "expectedHistoricalIds": [],
+            "forbiddenPromotions": [],
+            "expectedSupport": [],
+            "expectedSources": [
+              {
+                "id": "target-b",
+                "sourceIds": [
+                  "target-b-memo"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "heldout-integrity-misinformation-b",
+      "diagnosticFamily": "integrity-misinformation",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-b",
+          "value": "umber verified",
+          "sourceId": "target-b-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "falsehood-b-1",
+          "value": "Incorrect repetition requesting grants 1",
+          "sourceId": "falsehood-b-1-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "untrusted-fixture",
+          "supersedes": "target-b"
+        },
+        {
+          "kind": "capture",
+          "id": "falsehood-b-2",
+          "value": "Incorrect repetition requesting grants 2",
+          "sourceId": "falsehood-b-2-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "untrusted-fixture",
+          "supersedes": "target-b"
+        },
+        {
+          "kind": "capture",
+          "id": "falsehood-b-3",
+          "value": "Incorrect repetition requesting grants 3",
+          "sourceId": "falsehood-b-3-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "untrusted-fixture",
+          "supersedes": "target-b"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "umber"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-b",
+          "falsehood-b-1",
+          "falsehood-b-2",
+          "falsehood-b-3"
+        ],
+        "expectedRetrievedIds": [
+          "target-b"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "target-b",
+              "value": "umber verified",
+              "sourceId": "target-b-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      },
+      "integrity": {
+        "checkpoints": [
+          {
+            "afterStep": 6,
+            "expectedCurrentIds": [
+              "target-b"
+            ],
+            "expectedHistoricalIds": [],
+            "forbiddenPromotions": [
+              "falsehood-b-1",
+              "falsehood-b-2",
+              "falsehood-b-3"
+            ],
+            "expectedSupport": [],
+            "expectedSources": [
+              {
+                "id": "target-b",
+                "sourceIds": [
+                  "target-b-memo"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "heldout-integrity-repeated-consolidation-b",
+      "diagnosticFamily": "integrity-repeated-consolidation",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-b",
+          "value": "umber verified",
+          "sourceId": "target-b-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "review-consolidation",
+          "operationId": "review-original",
+          "candidateId": "target-b",
+          "taskEvidenceIds": [
+            "task-verification"
+          ],
+          "decision": "accept-verified"
+        },
+        {
+          "kind": "review-consolidation",
+          "operationId": "review-original",
+          "candidateId": "target-b",
+          "taskEvidenceIds": [
+            "task-verification"
+          ],
+          "decision": "accept-verified"
+        },
+        {
+          "kind": "review-consolidation",
+          "operationId": "review-new-equal-evidence",
+          "candidateId": "target-b",
+          "taskEvidenceIds": [
+            "task-verification"
+          ],
+          "decision": "accept-verified"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "umber"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-b"
+        ],
+        "expectedRetrievedIds": [
+          "target-b"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "target-b",
+              "value": "umber verified",
+              "sourceId": "target-b-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      },
+      "integrity": {
+        "checkpoints": [
+          {
+            "afterStep": 6,
+            "expectedCurrentIds": [
+              "target-b"
+            ],
+            "expectedHistoricalIds": [],
+            "forbiddenPromotions": [],
+            "expectedSupport": [
+              {
+                "candidateId": "target-b",
+                "independentTaskCount": 1
+              }
+            ],
+            "expectedSources": [
+              {
+                "id": "target-b",
+                "sourceIds": [
+                  "target-b-memo"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "heldout-integrity-reconsolidation-b",
+      "diagnosticFamily": "integrity-reconsolidation",
+      "steps": [
+        {
+          "kind": "capture",
+          "id": "target-b",
+          "value": "umber verified",
+          "sourceId": "target-b-memo",
+          "effectiveAt": "2025-01-01T00:00:00Z",
+          "trust": "verified-fixture"
+        },
+        {
+          "kind": "capture",
+          "id": "weak-b",
+          "value": "umber unsupported",
+          "sourceId": "weak-b-memo",
+          "effectiveAt": "2025-02-01T00:00:00Z",
+          "trust": "untrusted-fixture",
+          "supersedes": "target-b"
+        },
+        {
+          "kind": "review-consolidation",
+          "operationId": "review-weak",
+          "candidateId": "weak-b",
+          "taskEvidenceIds": [],
+          "decision": "proposal-only"
+        },
+        {
+          "kind": "capture",
+          "id": "successor-b",
+          "value": "umber corrected",
+          "sourceId": "successor-b-memo",
+          "effectiveAt": "2025-02-01T00:00:00Z",
+          "trust": "verified-fixture",
+          "supersedes": "target-b"
+        },
+        {
+          "kind": "reopen"
+        },
+        {
+          "kind": "recall",
+          "query": "umber"
+        },
+        {
+          "kind": "answer",
+          "answerMode": "current"
+        }
+      ],
+      "oracle": {
+        "expectedPreservedIds": [
+          "target-b",
+          "weak-b",
+          "successor-b"
+        ],
+        "expectedRetrievedIds": [
+          "successor-b"
+        ],
+        "expectedAnswer": {
+          "kind": "facts",
+          "facts": [
+            {
+              "id": "successor-b",
+              "value": "umber corrected",
+              "sourceId": "successor-b-memo"
+            }
+          ]
+        },
+        "forbiddenIds": []
+      },
+      "integrity": {
+        "checkpoints": [
+          {
+            "afterStep": 6,
+            "expectedCurrentIds": [
+              "successor-b"
+            ],
+            "expectedHistoricalIds": [
+              "target-b"
+            ],
+            "forbiddenPromotions": [
+              "weak-b"
+            ],
+            "expectedSupport": [],
+            "expectedSources": [
+              {
+                "id": "target-b",
+                "sourceIds": [
+                  "target-b-memo"
+                ]
+              },
+              {
+                "id": "successor-b",
+                "sourceIds": [
+                  "successor-b-memo"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

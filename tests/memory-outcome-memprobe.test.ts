@@ -1,0 +1,10 @@
+import {afterEach,expect,it} from 'vitest';
+import fs from 'node:fs/promises';
+import {runDiagnostic} from './helpers/memory-diagnostic-run.js';
+import {verifyDiagnosticEvidence,verifyIntegrityCheckpoints} from '../src/learning/outcome-diagnostics-verifier.js';
+const roots:string[]=[];afterEach(async()=>{for(const r of roots.splice(0))await fs.rm(r,{recursive:true,force:true});});
+async function run(family:string){const sidecar=JSON.parse(await fs.readFile('tests/fixtures/memory-outcome-memprobe/diagnostics.json','utf8'));const item=sidecar.cases.find((c:any)=>c.diagnosticFamily===family);item.caseId='heldout-research-relevant-reuse';const result=await runDiagnostic(item);roots.push(result.parent);return{item,...result};}
+it('interference_preserves_unrelated_fact',async()=>{const f=await run('integrity-interference');expect(verifyIntegrityCheckpoints(f.item,f.evidence).verdict).toBe('pass');expect(f.diagnostic.preservedRefs.length).toBe(4);},60000);
+it('repeated_falsehood_never_promotes',async()=>{const f=await run('integrity-misinformation');expect(verifyIntegrityCheckpoints(f.item,f.evidence).verdict).toBe('pass');const trace=JSON.parse(Buffer.from([...f.evidence].find(([k])=>k.endsWith('/trace.json'))![1]).toString());expect(trace.grantChanges).toBe(0);},60000);
+it('repeated_consolidation_deduplicates_support',async()=>{const f=await run('integrity-repeated-consolidation');expect(verifyIntegrityCheckpoints(f.item,f.evidence).verdict).toBe('pass');const final=JSON.parse(Buffer.from([...f.evidence].find(([k])=>k.endsWith('/final.json'))![1]).toString());expect(final.support[0].independentTaskCount).toBe(1);const trace=JSON.parse(Buffer.from([...f.evidence].find(([k])=>k.endsWith('/trace.json'))![1]).toString());expect(trace.operations[2].ownerReceipt.duplicate).toBe(true);},60000);
+it('reconsolidation_accepts_verified_correction_only',async()=>{const f=await run('integrity-reconsolidation');const checked=verifyDiagnosticEvidence(Buffer.from(JSON.stringify(f.item)),Buffer.from(JSON.stringify(f.diagnostic)),f.evidence);expect(checked.reasons).toEqual([]);expect(checked.integrity?.history.status).toBe('PASS');},60000);

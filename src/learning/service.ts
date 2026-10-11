@@ -1,3 +1,7 @@
+import { curationCandidateId, curationCandidates, curationEntryFingerprint } from './curation-delta.js';
+import { memorySemanticRevision } from '../../SubProject/agent-core-memory/dist/memory/disclosure.js';
+import { createLearningDecision } from './decision-evidence.js';
+import type { CurationBinding, CurationDelta } from './types.js';
 import type { CodeIntelligenceService } from '../code-intelligence/service.js';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
@@ -370,6 +374,26 @@ export class LearningService {
     return { ...transition.result, ...(curation ? { curation } : {}) };
   }
 
+  /** Binding comes from the host's active task, never from the delta being reviewed. */
+  async reviewDelta(value: CurationDelta, explicit = false, binding?: CurationBinding): ReturnType<LearningService['review']> {
+    if (!binding?.taskId || !binding.workspace) throw new Error('CURATION_BINDING_REQUIRED');
+    const delta = this.curator.proposeDelta(value);
+    this.assertCurationScope(delta, binding);
+    return this.review(curationCandidates(delta), explicit, { checkpointKeys: [delta.checkpointKey], taskId: binding.taskId,
+      workspace: binding.workspace, curation: { delta, binding } });
+  }
+
+  private assertCurationScope(delta: CurationDelta, binding: CurationBinding): void {
+    try {
+      if (delta.taskId !== binding.taskId) throw new Error('task mismatch');
+      const identity = this.memory.registeredWorkspaceIdentity(binding.workspace);
+      if (this.memory.registeredWorkspaceIdentity(delta.workspace).key !== identity.key
+        || delta.entries.some(entry => entry.candidate.checkpointKey && entry.candidate.checkpointKey !== delta.checkpointKey
+          || entry.candidate.workspace && this.memory.registeredWorkspaceIdentity(entry.candidate.workspace).key !== identity.key))
+        throw new Error('workspace mismatch');
+    } catch { throw new Error('CURATION_SCOPE_MISMATCH'); }
+  }
+
   async review(candidates: LearningCandidate[], explicit = false, options: LearningReviewOptions = {}): Promise<{
     outcomes: LearningReviewOutcome[];
     summary: LearningReviewSummary;
@@ -385,8 +409,9 @@ export class LearningService {
       if (candidates.some(candidate => candidate.checkpointKey
         ? !keys.includes(candidate.checkpointKey) : keys.length !== 1)) throw new Error('LEARNING_CANDIDATE_CHECKPOINT_REQUIRED');
       const committed = await this.stateStore.mutate('review', async state => {
+        if (options.curation) this.assertCurationScope(options.curation.delta, options.curation.binding);
         // ponytail: one Learning mutation lock during capture; split into durable leases if throughput requires it.
-        const decisions = { ...(state.reviewDecisions ?? {}) };
+        const decisions: NonNullable<LearningState['reviewDecisions']> = Object.assign(Object.create(null), state.reviewDecisions ?? {});
         const allOutcomes: LearningReviewOutcome[] = [];
         const cleared: string[] = [];
         for (const key of keys) {
@@ -401,6 +426,19 @@ export class LearningService {
           if (options.taskId && (pending?.taskId ?? previous?.taskId) && options.taskId !== (pending?.taskId ?? previous?.taskId)) {
             throw new Error('LEARNING_REVIEW_TASK_MISMATCH');
           }
+          const curationOperations: Record<string, string[]> = Object.assign(Object.create(null), previous?.curationOperations ?? {});
+          if (options.curation) {
+            const { delta, binding } = options.curation;
+            if ((pending?.taskId ?? previous?.taskId) !== binding.taskId
+              || !(pending?.workspace ?? previous?.workspace)
+              || this.memory.registeredWorkspaceIdentity((pending?.workspace ?? previous?.workspace)!).key
+                !== this.memory.registeredWorkspaceIdentity(binding.workspace).key) throw new Error('CURATION_SCOPE_MISMATCH');
+            const fingerprints = delta.entries.map(curationEntryFingerprint);
+            const priorEntries = curationOperations[delta.operationId];
+            if (previous?.complete && !priorEntries) throw new Error('CURATION_CHECKPOINT_COMPLETE');
+            if (priorEntries && fingerprints.some(value => !priorEntries.includes(value))) throw new Error('CURATION_OPERATION_CONFLICT');
+            curationOperations[delta.operationId] = priorEntries ?? fingerprints;
+          }
           if (previous?.complete) { allOutcomes.push(...Object.values(previous.candidateResults)); continue; }
           const selected = candidates.filter(candidate => (candidate.checkpointKey ?? keys[0]) === key);
           const candidateResults = { ...(previous?.candidateResults ?? {}) };
@@ -411,8 +449,22 @@ export class LearningService {
               ...(workspace ? { workspace: this.memory.resolveWorkspace(workspace) } : {}) };
             const identity = createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
             const cached = candidateResults[identity];
-            const outcome = cached && !['sink-failed', 'sink-unavailable'].includes(cached.status)
+            const entry = options.curation?.delta.entries.find(value => curationCandidateId(options.curation!.delta.operationId, value) === candidate.candidateId);
+            let outcome: LearningReviewOutcome;
+            if (entry?.target) {
+              // Existing sink cannot CAS a target reference. Inspect inside the review owner, preserve a proposal, never mutate the target.
+              const target = await this.memory.read(entry.target.id, false).catch(() => null);
+              const current = target && target.provenance?.workspace
+                && this.memory.resolveWorkspace(target.provenance.workspace) === normalized.workspace
+                && memorySemanticRevision(target) === entry.target.revision;
+              outcome = current ? (await this.reviewer.review([{ ...normalized, verified: false }], explicit, true))[0]!
+                : { kind: normalized.kind, status: 'rejected', reasonCode: 'evidence-invalid', reason: 'CURATION_TARGET_STALE_OR_UNAVAILABLE',
+                  decision: createLearningDecision(normalized, normalized, 'curation:' + options.curation!.delta.operationId, outcomes.length) };
+              if (current) outcome.reason = 'Target lineage cannot be atomically compared by the current sink; counterexample/refinement remains pending.';
+            } else outcome = cached && !['sink-failed', 'sink-unavailable'].includes(cached.status)
               ? cached : (await this.reviewer.review([normalized], explicit, true))[0]!;
+            if (entry) outcome.curation = { operationId: options.curation!.delta.operationId, entryFingerprint: curationEntryFingerprint(entry),
+              kind: entry.kind, ...(entry.target ? { target: entry.target } : {}), candidate: entry.candidate };
             candidateResults[identity] = outcome;
             outcomes.push(outcome);
           }
@@ -421,6 +473,8 @@ export class LearningService {
           decisions[key] = {
             status: selected.length ? summary.status : options.disposition!, complete,
             reviewedAt: new Date().toISOString(),
+            ...(pending?.workspace ?? previous?.workspace ? { workspace: pending?.workspace ?? previous?.workspace } : {}),
+            ...(Object.keys(curationOperations).length ? { curationOperations } : {}),
             ...(pending?.taskId ?? options.taskId ? { taskId: pending?.taskId ?? options.taskId } : {}),
             candidateResults,
           };

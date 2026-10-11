@@ -1,3 +1,4 @@
+import { assertCapsuleContentIntegrity } from './capsule-integrity.js';
 import { z } from 'zod';
 import { insufficientBudget,measureBudgeted,stableDisclosureJson } from './disclosure.js';
 import type { Budgeted } from './disclosure.js';
@@ -39,5 +40,6 @@ export function renderTaskCapsule(input:{id:string;header:EpisodeHeader;generate
   if(result.metrics.payloadBytes>input.maxBytes)return insufficientBudget(result.metrics.payloadBytes,['memory-is-advisory','mandatory-capsule-over-budget']);
   const selected:WorkingItem[]=[];
   for(const item of supporting){const candidate=page([...selected,item]);if(candidate.metrics.payloadBytes<=input.maxBytes){selected.push(item);result=candidate;}}
+  if (result.status !== 'insufficient-budget') assertCapsuleContentIntegrity({workingState:input.workingState,capsule:result.data,episodeRef:input.episodeRef});
   return result;
 }
