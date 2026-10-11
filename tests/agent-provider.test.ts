@@ -97,3 +97,15 @@ describe('OpenAI-compatible native agent provider', () => {
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer fixture-secret');
   });
 });
+
+describe('native provider image boundary', () => {
+  it('rejects undeclared multimodal input before any network request', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: 'should not see pixels' } }] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new OpenAICompatibleProvider(baseConfig);
+    await expect(provider.complete([{
+      role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,cHJpdmF0ZQ==' } }],
+    } as any])).rejects.toThrow('NATIVE_PROVIDER_IMAGE_INPUT_UNSUPPORTED');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

@@ -1,3 +1,4 @@
+import type { ServerResponseContent } from './rdc/types.js';
 import { assertCredentialBearingUrl } from './net/endpoint-policy.js';
 import { fetchWithPolicy } from './net/outbound-request.js';
 import { readResponseJsonBounded } from './net/bounded-response.js';
@@ -14,6 +15,22 @@ import {
 } from './agent-provider-scheduler.js';
 import type { AgentCapabilityFamily } from './agent-capability-catalog.js';
 import type { AgentCapabilityPolicyMode } from './agent-capability-resolver.js';
+
+// The current adapter and configured-route contract support text only. Do not
+// infer vision from a model name, change providers, or serialize pixels as text.
+export const NATIVE_PROVIDER_IMAGE_INPUT = Object.freeze({
+  supported: false,
+  reason: 'NATIVE_PROVIDER_IMAGE_INPUT_UNSUPPORTED',
+  detail: 'The current native OpenAI-compatible adapter has no declared image-input capability. Use DOM/actionId observations.',
+});
+
+export function nativeProviderToolResultText(text: string, content: ServerResponseContent[] = []): string {
+  const imageCount = content.filter(block => block.type === 'image').length;
+  if (!imageCount) return text;
+  return text + '\n\n' + NATIVE_PROVIDER_IMAGE_INPUT.reason + ': '
+    + imageCount + ' image block(s) were returned by the tool but not viewed by this text-only controller. '
+    + 'Pixels were not sent to the model. Use DOM/actionId evidence; do not infer screenshot contents.';
+}
 
 export interface AgentProviderCredentialConfig {
   id: string;
@@ -221,6 +238,9 @@ export class OpenAICompatibleProvider {
     const health = this.health();
     if (!health.configured || !this.config.model) {
       throw new Error(health.issue ?? 'AGENT_RUNTIME_PROVIDER_NOT_CONFIGURED');
+    }
+    if (messages.some(message => message.content !== null && typeof message.content !== 'string')) {
+      throw new Error(NATIVE_PROVIDER_IMAGE_INPUT.reason);
     }
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     if (this.config.apiKey) headers.authorization = `Bearer ${this.config.apiKey}`;

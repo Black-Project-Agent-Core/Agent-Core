@@ -10,9 +10,39 @@ export interface BrowserTransport {
 const METHODS = new Set([
   'Page.enable', 'Runtime.enable', 'Runtime.evaluate', 'Page.getNavigationHistory',
   'Page.navigateToHistoryEntry', 'Input.dispatchMouseEvent', 'Input.dispatchKeyEvent',
-  'Input.insertText', 'AgentCore.detach',
+  'Input.insertText', 'Page.getLayoutMetrics', 'Page.captureScreenshot',
+  'AgentCore.detach', 'AgentCore.pause', 'AgentCore.resume',
 ]);
-const EVENTS = new Set(['Page.javascriptDialogOpening', 'Page.javascriptDialogClosed']);
+const EVENTS = new Set(['Page.javascriptDialogOpening', 'Page.javascriptDialogClosed',
+  'Page.frameNavigated', 'Page.navigatedWithinDocument', 'Page.frameResized']);
+export const BROWSER_CAPTURE_MAX_BYTES = 128 * 1024;
+export const BROWSER_BRIDGE_MAX_ENVELOPE_BYTES = 240 * 1024;
+const METADATA_MAX_BYTES = 16 * 1024;
+
+function validateCaptureParams(params: Record<string, unknown>): void {
+  const clip = params.clip as Record<string, unknown> | undefined;
+  if (Object.keys(params).some(k => !['format', 'quality', 'fromSurface', 'captureBeyondViewport', 'clip'].includes(k))
+    || params.format !== 'jpeg' || params.fromSurface !== true || params.captureBeyondViewport !== false
+    || !Number.isInteger(params.quality) || Number(params.quality) < 55 || Number(params.quality) > 100
+    || !clip || Object.keys(clip).some(k => !['x', 'y', 'width', 'height', 'scale'].includes(k))
+    || !['x', 'y', 'width', 'height', 'scale'].every(k => typeof clip[k] === 'number' && Number.isFinite(clip[k]))
+    || Number(clip.x) < 0 || Number(clip.y) < 0 || Number(clip.width) <= 0 || Number(clip.width) > 8192
+    || Number(clip.height) <= 0 || Number(clip.height) > 8192 || Number(clip.scale) <= 0 || Number(clip.scale) > 1)
+    throw new Error('BROWSER_BRIDGE_CAPTURE_ARGUMENTS_REFUSED');
+}
+
+function validateCaptureReply(result: unknown): void {
+  const capture = result as { data?: unknown };
+  if (!capture || typeof capture.data !== 'string' || Object.keys(capture).some(k => k !== 'data'))
+    throw new Error('BROWSER_BRIDGE_CAPTURE_INVALID');
+  if (capture.data.length > Math.ceil(BROWSER_CAPTURE_MAX_BYTES / 3) * 4)
+    throw new Error('BROWSER_BRIDGE_CAPTURE_TOO_LARGE');
+  if (!capture.data.length || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(capture.data))
+    throw new Error('BROWSER_BRIDGE_CAPTURE_INVALID');
+  const data = Buffer.from(capture.data, 'base64');
+  if (data.byteLength > BROWSER_CAPTURE_MAX_BYTES) throw new Error('BROWSER_BRIDGE_CAPTURE_TOO_LARGE');
+  if (data.toString('base64') !== capture.data) throw new Error('BROWSER_BRIDGE_CAPTURE_INVALID');
+}
 export const EXTENSION_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/;
 type Command = { id: number; method: string; params: Record<string, unknown> };
 type Reply = { id: number; result?: unknown; error?: string };
@@ -29,7 +59,7 @@ export class ExtensionBrowserClient implements BrowserTransport {
   readonly id = randomUUID();
   readonly code = randomBytes(16).toString('hex');
   readonly openedAt: number;
-  state: 'pending' | 'paired' | 'attached' | 'closed' = 'pending';
+  state: 'pending' | 'paired' | 'attached' | 'paused' | 'closed' = 'pending';
   onEvent?: (method: string, params: any) => void;
   private origin = '';
   private token = '';
@@ -41,6 +71,7 @@ export class ExtensionBrowserClient implements BrowserTransport {
   private polling = false;
   private paired = false;
   private detached = false;
+  private readonly cancelled = new Set<number>();
 
   constructor(readonly expectedUrl: string, private readonly commandTimeoutMs = 10_000,
     private readonly now: () => number = Date.now) {
@@ -85,21 +116,37 @@ export class ExtensionBrowserClient implements BrowserTransport {
     if (this.polling) throw new Error('BROWSER_BRIDGE_POLL_IN_FLIGHT');
     if (!Array.isArray(replies) || replies.length > 16 || !Array.isArray(events) || events.length > 16)
       throw new Error('BROWSER_BRIDGE_INVALID_REPLY');
+    if (Buffer.byteLength(JSON.stringify({ replies, events })) >= BROWSER_BRIDGE_MAX_ENVELOPE_BYTES)
+      throw new Error('BROWSER_BRIDGE_ENVELOPE_TOO_LARGE');
+    if (Buffer.byteLength(JSON.stringify(events)) > METADATA_MAX_BYTES)
+      throw new Error('BROWSER_BRIDGE_METADATA_TOO_LARGE');
     const ids = new Set<number>();
     for (const reply of replies) {
       if (!reply || !Number.isSafeInteger(reply.id) || ids.has(reply.id)
-        || !this.commands.get(reply.id)?.delivered)
+        || (!this.commands.get(reply.id)?.delivered && !this.cancelled.has(reply.id)))
         throw new Error('BROWSER_BRIDGE_INVALID_REPLY');
+      if (this.commands.get(reply.id)?.command.method === 'Page.captureScreenshot' && !reply.error)
+        validateCaptureReply(reply.result);
+      if (this.commands.get(reply.id)?.command.method === 'Page.getLayoutMetrics'
+        && Buffer.byteLength(JSON.stringify(reply.result ?? {})) > METADATA_MAX_BYTES)
+        throw new Error('BROWSER_BRIDGE_METADATA_TOO_LARGE');
       ids.add(reply.id);
     }
     for (const reply of replies) {
+      if (this.cancelled.delete(reply.id)) continue;
       const pending = this.commands.get(reply.id)!;
       this.commands.delete(reply.id);
       clearTimeout(pending.timer);
-      if (reply.error) pending.reject(new Error('BROWSER_BRIDGE_CDP_ERROR: ' + redactSensitiveString(String(reply.error)).slice(0,500)));
+      if (reply.error) pending.reject(new Error(reply.error === 'BROWSER_CONTROL_CAPTURE_TOO_LARGE'
+        ? reply.error : 'BROWSER_BRIDGE_CDP_ERROR: ' + redactSensitiveString(String(reply.error)).slice(0,500)));
       else pending.resolve(reply.result ?? {});
     }
-    for (const event of events) if (EVENTS.has(event?.method)) this.onEvent?.(event.method, event.params ?? {});
+    for (const event of events) if (EVENTS.has(event?.method)
+      && !(event.method === 'Page.frameNavigated' && (event.params as any)?.frame?.parentId)) {
+        if (['Page.frameNavigated', 'Page.navigatedWithinDocument', 'Page.frameResized'].includes(event.method))
+          this.cancelPending('BROWSER_CONTROL_STALE_OBSERVATION', false);
+      this.onEvent?.(event.method, event.params ?? {});
+    }
     if (this.state === 'paired') this.state = 'attached';
     this.polling = true;
     try {
@@ -125,9 +172,12 @@ export class ExtensionBrowserClient implements BrowserTransport {
 
   async send(method: string, params: Record<string, unknown> = {}): Promise<any> {
     if (this.expired()) this.close();
-    if (this.state !== 'attached') throw new Error(this.state === 'closed'
-      ? 'BROWSER_CONTROL_SESSION_CLOSED' : 'BROWSER_BRIDGE_PAIRING_PENDING');
+    if (this.state !== 'attached' && !(this.state === 'paused' && ['AgentCore.detach', 'AgentCore.pause', 'AgentCore.resume'].includes(method)))
+      throw new Error(this.state === 'closed' ? 'BROWSER_CONTROL_SESSION_CLOSED'
+        : this.state === 'paused' ? 'BROWSER_CONTROL_PAUSED' : 'BROWSER_BRIDGE_PAIRING_PENDING');
     if (!METHODS.has(method)) throw new Error('BROWSER_BRIDGE_METHOD_REFUSED');
+    if (method === 'Page.captureScreenshot') validateCaptureParams(params);
+    if (method === 'Page.getLayoutMetrics' && Object.keys(params).length) throw new Error('BROWSER_BRIDGE_METHOD_REFUSED');
     if (this.commands.size >= 16) throw new Error('BROWSER_BRIDGE_COMMAND_BUDGET_EXCEEDED');
     const id = this.nextId++;
     return await new Promise((resolve, reject) => {
@@ -141,6 +191,41 @@ export class ExtensionBrowserClient implements BrowserTransport {
       this.commands.set(id, { command: { id, method, params }, delivered: false, resolve, reject, timer });
       this.wake?.();
     });
+  }
+
+  private cancelPending(reason: string, includeControls = true): void {
+    for (const [id, pending] of this.commands) {
+      if (!includeControls && pending.command.method.startsWith('AgentCore.')) continue;
+      clearTimeout(pending.timer);
+      if (pending.delivered) this.cancelled.add(id);
+      pending.reject(new Error(pending.delivered ? 'BROWSER_CONTROL_MUTATION_UNCERTAIN' : reason));
+      this.commands.delete(id);
+    }
+    if (this.cancelled.size > 64) { this.close(); throw new Error('BROWSER_BRIDGE_COMMAND_BUDGET_EXCEEDED'); }
+  }
+
+  /** User pause immediately invalidates queued work; late delivered replies are discarded once. */
+  setPaused(paused: boolean): void {
+    if (!['attached', 'paused'].includes(this.state)) throw new Error('BROWSER_BRIDGE_CONTROL_REFUSED');
+    if (!paused && this.state === 'attached') return;
+    this.state = paused ? 'paused' : 'attached';
+    if (paused) this.cancelPending('BROWSER_CONTROL_PAUSED');
+    this.onEvent?.(paused ? 'AgentCore.paused' : 'AgentCore.resumed', {});
+    this.wake?.();
+  }
+
+  async pause(): Promise<{ paused: true; released: boolean }> {
+    this.setPaused(true);
+    const result = await this.send('AgentCore.pause');
+    return { paused: true, released: result?.released === true };
+  }
+
+  async resume(): Promise<{ paused: false }> {
+    if (this.state !== 'paused') throw new Error('BROWSER_BRIDGE_CONTROL_REFUSED');
+    const result = await this.send('AgentCore.resume');
+    if (result?.paused !== false) throw new Error('BROWSER_BRIDGE_CONTROL_REFUSED');
+    this.setPaused(false);
+    return { paused: false };
   }
 
   async detach(): Promise<'confirmed' | 'uncertain'> {
@@ -157,13 +242,16 @@ export class ExtensionBrowserClient implements BrowserTransport {
   }
 
   close(): void {
+    if (this.state === 'closed') return;
     this.state = 'closed';
+    this.onEvent?.('AgentCore.detached', {});
     this.token = '';
     for (const pending of this.commands.values()) {
       clearTimeout(pending.timer);
       pending.reject(new Error('BROWSER_CONTROL_SESSION_CLOSED'));
     }
     this.commands.clear();
+    this.cancelled.clear();
     this.wake?.();
   }
 }

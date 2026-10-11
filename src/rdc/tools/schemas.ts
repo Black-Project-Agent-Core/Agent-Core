@@ -1,4 +1,6 @@
 import { z } from "zod/v3";
+import { pointerRequestSchema } from "../browser-control/pointer-actions.js";
+import { screenshotOptionsSchema } from "../browser-control/viewport-capture.js";
 
 // Config tools schemas
 export const GetConfigArgsSchema = z.object({
@@ -147,7 +149,7 @@ const browserCanvas = z.object({
   if(v.mode==='inventory'&&Object.keys(v).some(k=>k!=='mode'))c.addIssue({code:'custom',message:'inventory takes only mode'});
 });
 export const BrowserControlArgsSchema = z.object({
-  action: z.enum(['open', 'observe', 'act', 'close', 'status']),
+  action: z.enum(['open', 'observe', 'act', 'pause', 'resume', 'close', 'status']),
   transport: z.enum(['isolated', 'extension']).optional(),
   sessionId: z.string().uuid().optional(),
   url: z.string().url().max(4000).optional(),
@@ -156,18 +158,23 @@ export const BrowserControlArgsSchema = z.object({
   text: z.string().max(2000).optional(),
   headless: z.boolean().optional().default(true),
   canvas:browserCanvas.optional(),
+  screenshot: screenshotOptionsSchema.optional(),
+  pointer: pointerRequestSchema.optional(),
   interactionCapabilities:z.array(z.enum(['keyboard','held-key','history'])).max(3).refine(v=>new Set(v).size===v.length).optional(),
   origin: z.enum(['ui', 'llm']).optional(),
 }).superRefine((value, ctx) => {
   if (value.action === 'open' && !value.url) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'url required for open' });
   if (value.transport && value.action !== 'open') ctx.addIssue({ code: 'custom', message: 'transport is open-only' });
+  if(value.screenshot && value.action!=='observe')ctx.addIssue({code:'custom',message:'screenshot is observe-only'});
+  if(value.pointer && value.action!=='act')ctx.addIssue({code:'custom',message:'pointer is act-only'});
   if(value.canvas && value.action!=='observe')ctx.addIssue({code:'custom',message:'canvas is observe-only'});
   if(value.interactionCapabilities && value.action!=='open')ctx.addIssue({code:'custom',message:'interactionCapabilities is open-only'});
-  if (['observe', 'close'].includes(value.action) && !value.sessionId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'sessionId required' });
+  if (['observe', 'pause', 'resume', 'close'].includes(value.action) && !value.sessionId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'sessionId required' });
   if (value.action === 'act') {
     if (!value.sessionId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'sessionId required' });
     if (!value.observationId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'observationId required' });
-    if (!value.actionId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'actionId required' });
+    if (value.pointer?.captureId ? Boolean(value.actionId) : !value.actionId) ctx.addIssue({ code: 'custom', message: 'act requires either observed actionId or capture-bound pointer' });
+    if (value.pointer && value.text !== undefined) ctx.addIssue({code:'custom',message:'text is not a pointer argument'});
   }
 });
 

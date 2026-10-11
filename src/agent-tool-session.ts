@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import type { VerifiedKey } from './auth/key-types.js';
-import type { AgentModelTool } from './agent-provider.js';
+import { NATIVE_PROVIDER_IMAGE_INPUT, type AgentModelTool } from './agent-provider.js';
+import type { ServerResponseContent } from './rdc/types.js';
 import type { AgentToolRestriction } from './agent-capability-catalog.js';
 import { createAgentCoreMcpServer, type AgentCoreMcpRuntime } from './mcp/server.js';
 
@@ -9,6 +10,8 @@ export interface AgentToolResult {
   name: string;
   isError: boolean;
   text: string;
+  /** Typed tool content is transient; never persist image bytes in task history. */
+  content: ServerResponseContent[];
   raw: unknown;
 }
 
@@ -107,7 +110,11 @@ export class AgentRuntimeToolSession {
         type: 'function' as const,
         function: {
           name: tool.name,
-          ...(tool.description ? { description: tool.description } : {}),
+          ...((tool.description || tool.name === 'browser_control') ? { description: (tool.description ?? '')
+            + (tool.name === 'browser_control'
+              ? '\nNative controller image input: supported=false; ' + NATIVE_PROVIDER_IMAGE_INPUT.reason
+                + '. ' + NATIVE_PROVIDER_IMAGE_INPUT.detail
+              : '') } : {}),
           parameters: schema,
         },
       };
@@ -153,8 +160,14 @@ export class AgentRuntimeToolSession {
       request._meta = { 'io.agentcore/invocation-id': invocationId };
     }
     const raw: any = await this.client.callTool(request);
+    if (name === 'browser_control' && args.action === 'status' && raw?.isError !== true) {
+      const status = { ...(raw.structuredContent ?? {}), controllerImageInput: NATIVE_PROVIDER_IMAGE_INPUT };
+      raw.structuredContent = status;
+      raw.content = [{ type: 'text', text: JSON.stringify(status) }];
+    }
     return {
       name,
+      content: Array.isArray(raw?.content) ? raw.content : [],
       isError: raw?.isError === true,
       text: toolText(raw),
       raw,

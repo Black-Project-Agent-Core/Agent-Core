@@ -11,6 +11,9 @@ const DEFAULT_BUDGET = 256 * 1024;
 const DEFAULT_PREVIEW = 24 * 1024;
 const IMAGE_RESULT_BUDGET = 3 * 1024 * 1024;
 const IMAGE_ENCODED_BUDGET = 2 * 1024 * 1024;
+const BROWSER_SCREENSHOT_IMAGE_BUDGET = 128 * 1024;
+const BROWSER_SCREENSHOT_METADATA_BUDGET = 16 * 1024;
+const BROWSER_SCREENSHOT_ENVELOPE_BUDGET = 240 * 1024;
 const MAX_ARTIFACTS = 128;
 const MAX_ARTIFACT_BYTES = 128 * 1024 * 1024;
 const ARTIFACT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -118,6 +121,37 @@ export async function applyResultBudget<T extends BudgetableToolResult>(
       isError: true,
       content: [{ type: 'text', text: 'IMAGE_RESULT_BUDGET_EXCEEDED: image inspection exceeds the 2 MiB encoded image or 3 MiB total response limit. Request a smaller crop or explicitly select JPEG. No image result was persisted.' }],
       _meta: { resultBudget: { spilled: false, reason: 'image-result-budget', originalBytes: serializedBytes } },
+    } as unknown as T;
+  }
+  // Browser pixels are transient, even when a caller asks for a smaller text
+  // budget. Reject malformed/oversized screenshots before the generic spill path.
+  if (toolName === 'browser_control' && result.content.some(item => item.type === 'image')) {
+    const images = result.content.filter(item => item.type === 'image');
+    const image = images[0]!;
+    const { content, ...otherMetadata } = result;
+    const metadata = content.filter(item => item.type !== 'image');
+    const metadataJson = JSON.stringify({ ...otherMetadata, content: metadata });
+    // Count text as UTF-8 metadata, not JSON escaping, and count all extra fields.
+    const metadataBytes = metadata.reduce((bytes, item) => bytes + Buffer.byteLength(
+      typeof item.text === 'string' ? item.text : JSON.stringify(item), 'utf8'), 0)
+      + (Object.keys(otherMetadata).length ? Buffer.byteLength(JSON.stringify(otherMetadata), 'utf8') : 0);
+    const serializedBytes = Buffer.byteLength(JSON.stringify(result), 'utf8');
+    const data = image.data;
+    const validImage = images.length === 1 && image.mimeType === 'image/jpeg'
+      && Object.keys(image).every(key => ['type', 'mimeType', 'data'].includes(key))
+      && typeof data === 'string' && data.length > 0
+      && data.length <= 4 * Math.ceil(BROWSER_SCREENSHOT_IMAGE_BUDGET / 3)
+      && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)
+      && Buffer.byteLength(data, 'base64') <= BROWSER_SCREENSHOT_IMAGE_BUDGET
+      && !metadataJson.includes(data);
+    const validMetadata = metadata.every(item => item.type === 'text' && typeof item.text === 'string'
+      && Object.keys(item).every(key => ['type', 'text'].includes(key)));
+    if (validImage && validMetadata && metadataBytes <= BROWSER_SCREENSHOT_METADATA_BUDGET
+      && serializedBytes <= BROWSER_SCREENSHOT_ENVELOPE_BUDGET) return result;
+    return {
+      isError: true,
+      content: [{ type: 'text', text: 'BROWSER_SCREENSHOT_RESULT_INVALID: expected one JPEG image within 128 KiB, metadata within 16 KiB, and a total envelope within 240 KiB. Pixels must not be duplicated in text or metadata. No screenshot was persisted. Request a smaller screenshot, or use DOM/actionId observation.' }],
+      _meta: { resultBudget: { spilled: false, reason: 'browser-screenshot-budget', originalBytes: serializedBytes } },
     } as unknown as T;
   }
   const budgetBytes = Math.max(16 * 1024, options.budgetChars ?? DEFAULT_BUDGET);

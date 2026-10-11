@@ -1,5 +1,9 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { PointerActions, pointerRequestSchema, type BrowserPointerRequest, type PointerPoint } from './pointer-actions.js';
+import { captureViewport, screenshotOptionsSchema, readViewportGeometry, documentIdentity, geometryIdentity, assertPointInCapture, MAX_CAPTURE_METADATA_BYTES, type BrowserScreenshotOptions, type CaptureState } from './viewport-capture.js';
+export type { BrowserPointerRequest } from './pointer-actions.js';
+export type { BrowserScreenshotOptions } from './viewport-capture.js';
 import { projectControlStates } from './control-state.js';
 import { CanvasObserver, canvasOptionsSchema, type CanvasOptions } from './canvas-observation.js';
 import { OwnedTabs, listOwnedPageTargets, isPageUrl, type PageTarget } from './owned-tabs.js';
@@ -22,7 +26,8 @@ const PROJECT_ROOT = resolveProjectRoot(process.env, MODULE_PROJECT_ROOT);
 
 type ActionKind = 'click' | 'fill' | 'select' | 'scroll' | 'wait' | 'switch_tab' | 'press_key' | 'hold_key' | 'back';
 export interface BrowserOpenOptions { interactionCapabilities?: InteractionCapability[]; transport?: 'isolated' | 'extension' }
-export interface BrowserObserveOptions { canvas?: CanvasOptions }
+export interface BrowserObserveOptions { canvas?: CanvasOptions; screenshot?: BrowserScreenshotOptions }
+export interface BrowserActOptions { pointer?: BrowserPointerRequest }
 
 interface RawAction {
   id: string;
@@ -84,8 +89,14 @@ interface BrowserSession {
   tabs: OwnedTabs;
   canvas: CanvasObserver;
   keyboard: KeyboardActions;
+  fillRelease?: () => Promise<void>;
   interactionCapabilities: InteractionCapability[];
   actionInFlight: boolean;
+  observationInFlight: boolean;
+  pointer: PointerActions;
+  capture?: CaptureState;
+  paused: boolean;
+  generation: number;
   dialog?: {type:string;message:string};
 }
 
@@ -530,7 +541,7 @@ export class BrowserControlService {
         client, extension: client, headless: false, executable: 'connected-tab',
         actionCount: 0, observationCount: 0, openedAt: new Date().toISOString(),
         targetId: 'extension:' + client.id, tabs: new OwnedTabs(), canvas: new CanvasObserver(),
-        keyboard: new KeyboardActions(), interactionCapabilities, actionInFlight: false,
+        keyboard: new KeyboardActions(), interactionCapabilities, actionInFlight: false, observationInFlight: false, pointer: new PointerActions(), paused: false, generation: 0,
       };
       this.bindEvents(session, client);
       this.sessions.set(session.id, session);
@@ -584,7 +595,7 @@ export class BrowserControlService {
         id, process: child, runtimeDir, profileDir, port, client, headless,
         executable, actionCount: 0, observationCount: 0, openedAt: new Date().toISOString(),
         targetId:target.id, tabs:new OwnedTabs(), canvas:new CanvasObserver(), keyboard:new KeyboardActions(),
-        interactionCapabilities, actionInFlight:false,
+        interactionCapabilities, actionInFlight:false, observationInFlight:false, pointer:new PointerActions(), paused:false, generation:0,
       };
       this.bindEvents(session,client);
       this.sessions.set(id, session);
@@ -612,15 +623,38 @@ export class BrowserControlService {
     client.onEvent=(method,params)=>{
       if(method==='Page.javascriptDialogOpening')session.dialog={type:String(params.type??'dialog'),message:redactSensitiveString(String(params.message??'')).slice(0,500)};
       if(method==='Page.javascriptDialogClosed')session.dialog=undefined;
+      if (method === 'AgentCore.paused' || method === 'AgentCore.resumed' || method === 'AgentCore.detached'
+        || method === 'Page.frameResized' || method === 'Page.navigatedWithinDocument'
+        || (method === 'Page.frameNavigated' && !params.frame?.parentId)) {
+        if (method === 'AgentCore.paused' || method === 'AgentCore.detached') session.paused = true;
+        if (method === 'AgentCore.resumed') session.paused = false;
+        this.invalidate(session);
+        void session.pointer.close().catch(() => undefined);
+        void session.keyboard.close().catch(() => undefined);
+        void session.fillRelease?.().catch(() => undefined);
+      }
     };
   }
 
-  private session(id: string): BrowserSession {
+  private invalidate(session: BrowserSession): void {
+    session.generation++; session.lastObservation = undefined; session.capture = undefined;
+  }
+
+  private assertLive(session: BrowserSession, generation: number): void {
+    if (this.sessions.get(session.id) !== session) throw new Error('BROWSER_CONTROL_SESSION_CLOSED');
+    if (session.paused || session.extension?.state === 'paused') throw new Error('BROWSER_CONTROL_PAUSED');
+    if (session.generation !== generation) throw new Error('BROWSER_CONTROL_INPUT_CANCELLED');
+    if (session.extension && session.extension.state !== 'attached') throw new Error('BROWSER_CONTROL_SESSION_CLOSED');
+    if (session.dialog) throw new Error('BROWSER_CONTROL_DIALOG_BLOCKED');
+  }
+
+  private session(id: string, allowPaused = false): BrowserSession {
     const session = this.sessions.get(id);
     if (!session) throw new Error('BROWSER_CONTROL_SESSION_NOT_FOUND');
+    if (!allowPaused && (session.paused || session.extension?.state === 'paused')) throw new Error('BROWSER_CONTROL_PAUSED');
     if (session.extension) {
       if (session.extension.expired()) session.extension.close();
-      if (session.extension.state !== 'attached') throw new Error(session.extension.state === 'closed'
+      if (session.extension.state !== 'attached' && !(allowPaused && session.extension.state === 'paused')) throw new Error(session.extension.state === 'closed'
         ? 'BROWSER_CONTROL_SESSION_CLOSED' : 'BROWSER_BRIDGE_PAIRING_PENDING');
     }
     if (session.process && session.process.exitCode !== null) {
@@ -632,6 +666,12 @@ export class BrowserControlService {
 
   async observe(sessionId: string, options: BrowserObserveOptions = {}): Promise<Record<string, unknown>> {
     const session = this.session(sessionId);
+    if (session.actionInFlight || session.observationInFlight) throw new Error('BROWSER_CONTROL_ACTION_IN_FLIGHT');
+    const screenshotOptions = options.screenshot === undefined ? undefined : screenshotOptionsSchema.parse(options.screenshot);
+    session.observationInFlight = true;
+    session.lastObservation = undefined; session.capture = undefined;
+    const generation = session.generation;
+    try {
     if (session.extension && !session.initialized) {
       await session.client.send('Page.enable');
       await session.client.send('Runtime.enable');
@@ -693,15 +733,40 @@ export class BrowserControlService {
       try {canvas=await session.canvas.observe(expr=>runtimeEvaluate(session.client,expr),page.document_key,session.targetId,canvasOptions);}
       catch{canvas={state:'unavailable',reason:'optional-canvas-readback-failed'};}
     }
-    session.lastObservation = observation;
+    let screenshot: Awaited<ReturnType<typeof captureViewport>> | undefined;
+    if (screenshotOptions) {
+      screenshot = await captureViewport(session.client, session.targetId, screenshotOptions, () => this.assertLive(session, generation));
+      if (comparable(screenshot.state.geometry.documentKey) !== comparable(page.document_key)) throw new Error('BROWSER_CONTROL_CAPTURE_CHANGED');
+    }
+    this.assertLive(session, generation);
     session.observationCount += 1;
-    return {
+    const result: Record<string, any> = {
       sessionId, observationId: observation.id, url: page.url, title: page.title, text: page.text,
       actions: publicActions(page.actions),controlStates:projectControlStates(page.control_states,observation.id),
       tabs,history,...(canvasOptions?{canvas}:{}),
+      ...(screenshot ? { capture: screenshot.state.metadata } : {}),
       omittedActions:omittedByCategory.dom+omittedByCategory.additionalActions,omittedByCategory,
       observationCount: session.observationCount, remainingObservations: this.maxObservations - session.observationCount,
     };
+    if (screenshot && Buffer.byteLength(JSON.stringify(result), 'utf8') > MAX_CAPTURE_METADATA_BYTES) {
+      result.metadataOmissions = { text: true, title: String(result.title).length > 200, tabs: true, controlStates: true, canvas: Boolean(canvasOptions), actions: 0,
+        reason: 'screenshot-metadata-budget; use a separate DOM observe for the full report' };
+      result.text = ''; delete result.controlStates; delete result.canvas;
+      result.title = String(result.title).slice(0, 200);
+      result.tabs = { scope: session.extension ? 'user-connected-tab' : 'owned-session', items: [{ id: session.targetId, active: true }] };
+      while (Buffer.byteLength(JSON.stringify(result), 'utf8') > MAX_CAPTURE_METADATA_BYTES && result.actions.length) {
+        result.actions.pop(); result.metadataOmissions.actions++;
+        result.omittedActions++; result.omittedByCategory.screenshotMetadata = result.metadataOmissions.actions;
+      }
+      const visibleIds = new Set(result.actions.map((a: any) => a.id));
+      observation.page.actions = observation.page.actions.filter(a => visibleIds.has(a.id));
+      if (Buffer.byteLength(JSON.stringify(result), 'utf8') > MAX_CAPTURE_METADATA_BYTES)
+        throw new Error('BROWSER_CONTROL_CAPTURE_METADATA_TOO_LARGE');
+    }
+    session.lastObservation = observation;
+    session.capture = screenshot?.state;
+    return { ...result, ...(screenshot ? { image: screenshot.image } : {}) };
+    } finally { session.observationInFlight = false; }
   }
 
   private async assertFresh(session: BrowserSession, observation: Observation, action: RawAction): Promise<void> {
@@ -755,31 +820,38 @@ export class BrowserControlService {
   async act(
     sessionId: string,
     observationId: string,
-    actionId: string,
+    actionId?: string,
     text?: string,
+    options: BrowserActOptions = {},
   ): Promise<Record<string, unknown>> {
     const session = this.session(sessionId);
-    if (session.actionInFlight) throw new Error('BROWSER_CONTROL_ACTION_IN_FLIGHT');
+    if (session.actionInFlight || session.observationInFlight) throw new Error('BROWSER_CONTROL_ACTION_IN_FLIGHT');
     if (session.actionCount >= this.maxActions) throw new Error('BROWSER_CONTROL_ACTION_BUDGET_EXCEEDED');
     const observation = session.lastObservation;
     if (!observation || observation.id !== observationId) throw new Error('BROWSER_CONTROL_OBSERVATION_NOT_CURRENT');
+    const pointer = options.pointer === undefined ? undefined : pointerRequestSchema.parse(options.pointer);
+    if (pointer) return this.actPointer(session, observation, actionId, pointer);
     const action = observation.page.actions.find(value => value.id === actionId);
     if (!action) throw new Error('BROWSER_CONTROL_ACTION_NOT_OBSERVED');
     if (action.kind === 'fill' && (!text || text.length > MAX_TEXT_LENGTH)) {
       throw new Error('BROWSER_CONTROL_TEXT_REQUIRED_OR_TOO_LONG');
     }
-    session.lastObservation = undefined;
+    session.lastObservation = undefined; session.capture = undefined;
+    const generation = session.generation;
     session.actionInFlight = true;
     try {
     await this.assertFresh(session, observation, action);
+    this.assertLive(session, generation);
     if(action.kind==='switch_tab'){
       const target=await session.tabs.resolve(session.port,action.targetId!,action.targetUrl!);
       const next=await CdpClient.connect(target.webSocketDebuggerUrl);
       try {
         await next.send('Page.enable');await next.send('Runtime.enable');
         if(await runtimeEvaluate(next,'location.href')!==action.targetUrl)throw new Error('BROWSER_CONTROL_TAB_CHANGED');
+        this.assertLive(session, generation);
         session.actionCount++;
         await next.send('Page.bringToFront');
+        this.assertLive(session, generation);
       }catch(error){next.close();throw error;}
       session.client.close();session.client=next;session.targetId=target.id;session.canvas.clear();session.dialog=undefined;
       this.bindEvents(session,next);
@@ -789,6 +861,7 @@ export class BrowserControlService {
     }else if(action.kind==='back'){
       const h=await session.client.send('Page.getNavigationHistory'),current=h.entries?.[h.currentIndex],prior=h.entries?.[h.currentIndex-1];
       if(!action.history||current?.id!==action.history.currentId||prior?.id!==action.history.entryId||prior?.url!==action.history.url||!isPageUrl(prior.url))throw new Error('BROWSER_CONTROL_HISTORY_CHANGED');
+      this.assertLive(session, generation);
       session.actionCount++;session.canvas.clear();
       try{await session.client.send('Page.navigateToHistoryEntry',{entryId:prior.id});}catch{throw new Error('BROWSER_CONTROL_MUTATION_UNCERTAIN');}
     }else if (action.kind === 'wait') {
@@ -813,6 +886,7 @@ export class BrowserControlService {
         return true;
       })(${JSON.stringify(action)})`;
       try {
+        this.assertLive(session, generation);
         const result = await runtimeEvaluate(session.client, expression);
         if (result !== true) throw new Error('BROWSER_CONTROL_STALE_OBSERVATION');
       } catch (error) {
@@ -832,20 +906,27 @@ export class BrowserControlService {
         return {x,y};
       })(${JSON.stringify(action)})`);
       if (!target) throw new Error('BROWSER_CONTROL_TARGET_CHANGED_OR_COVERED');
+      this.assertLive(session, generation);
       session.actionCount += 1;
-      for (const type of ['mousePressed', 'mouseReleased']) {
-        await session.client.send('Input.dispatchMouseEvent', {
-          type, x: target.x, y: target.y, button: 'left', clickCount: 1,
-        });
-      }      if (action.kind === 'fill') {
+      await session.pointer.execute(session.client, { operation: 'CLICK' }, target, [], () => this.assertLive(session, generation));
+      if (action.kind === 'fill') {
         const modifiers = process.platform === 'darwin' ? 4 : 2;
-        await session.client.send('Input.dispatchKeyEvent', {
-          type: 'keyDown', key: 'a', code: 'KeyA', modifiers, commands: ['selectAll'],
-        });
-        await session.client.send('Input.dispatchKeyEvent', {
-          type: 'keyUp', key: 'a', code: 'KeyA', modifiers,
-        });
-        await session.client.send('Input.insertText', { text });
+        const client = session.client;
+        let released: Promise<void> | undefined;
+        const release = () => released ??= client.send('Input.dispatchKeyEvent', {
+          type: 'keyUp', key: 'a', code: 'KeyA', modifiers: 0,
+        }).then(() => undefined);
+        this.assertLive(session, generation);
+        session.fillRelease = release;
+        try {
+          await client.send('Input.dispatchKeyEvent', {
+            type: 'keyDown', key: 'a', code: 'KeyA', modifiers, commands: ['selectAll'],
+          });
+        } finally {
+          try { await release(); } finally { if (session.fillRelease === release) session.fillRelease = undefined; }
+        }
+        this.assertLive(session, generation);
+        await client.send('Input.insertText', { text });
       }
     }
     await this.settle(session, action);
@@ -854,6 +935,7 @@ export class BrowserControlService {
       executed: action.id,
       operation: action.kind,
       label: action.label,
+      dispatched: true, outcome: 'not-observed',
       actionCount: session.actionCount,
       remainingActions: this.maxActions - session.actionCount,
       status: session.dialog ? 'blocked-dialog' : 'ready-for-observe',
@@ -862,14 +944,76 @@ export class BrowserControlService {
     } finally { session.actionInFlight=false; }
   }
 
+  private async observedPoint(session: BrowserSession, observation: Observation, actionId: string): Promise<PointerPoint> {
+    const action = observation.page.actions.find(a => a.id === actionId && a.node !== undefined);
+    if (!action) throw new Error('BROWSER_CONTROL_ACTION_NOT_OBSERVED');
+    await this.assertFresh(session, observation, action);
+    const point = await runtimeEvaluate(session.client, `(action => {
+      const e=window.__agentCoreBrowser?.nodes.get(action.node);
+      if(!e?.isConnected || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]')) return null;
+      const r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;
+      if(!r.width||!r.height||x<0||y<0||x>=innerWidth||y>=innerHeight||!e.contains(document.elementFromPoint(x,y)))return null;
+      return {x,y};
+    })(${JSON.stringify(action)})`);
+    if (!point) throw new Error('BROWSER_CONTROL_TARGET_CHANGED_OR_COVERED');
+    return point;
+  }
+
+  private async actPointer(session: BrowserSession, observation: Observation, actionId: string | undefined,
+    pointer: BrowserPointerRequest): Promise<Record<string, unknown>> {
+    if (Boolean(pointer.captureId) === Boolean(actionId)) throw new Error('BROWSER_CONTROL_POINTER_TARGET_INVALID');
+    const capture = session.capture, generation = session.generation;
+    session.lastObservation = undefined; session.capture = undefined; session.actionInFlight = true;
+    try {
+      let point: PointerPoint, points: PointerPoint[] = [];
+      if (pointer.captureId) {
+        if (!capture || Date.now() >= capture.expiresAt || pointer.captureId !== capture.metadata.captureId
+          || pointer.targetId !== session.targetId || pointer.targetId !== capture.metadata.targetId
+          || pointer.documentId !== capture.metadata.documentId || pointer.geometryVersion !== capture.metadata.geometryVersion)
+          throw new Error('BROWSER_CONTROL_CAPTURE_NOT_CURRENT');
+        point = { x: pointer.x!, y: pointer.y! }; points = pointer.path ?? [];
+        for (const p of [point, ...points]) assertPointInCapture(p, capture.metadata);
+        const current = await readViewportGeometry(session.client);
+        if (Date.now() >= capture.expiresAt || documentIdentity(current) !== pointer.documentId || geometryIdentity(current) !== pointer.geometryVersion)
+          throw new Error('BROWSER_CONTROL_CAPTURE_CHANGED');
+      } else {
+        point = await this.observedPoint(session, observation, actionId!);
+        if (pointer.toActionId) points = [await this.observedPoint(session, observation, pointer.toActionId)];
+      }
+      this.assertLive(session, generation);
+      session.actionCount++;
+      await session.pointer.execute(session.client, pointer, point, points, () => this.assertLive(session, generation));
+      return { sessionId: session.id, executed: actionId ?? pointer.captureId, operation: pointer.operation,
+        dispatched: true, outcome: 'not-observed', actionCount: session.actionCount,
+        remainingActions: this.maxActions - session.actionCount, status: 'ready-for-observe' };
+    } finally { session.actionInFlight = false; }
+  }
+
+  async pause(sessionId: string): Promise<Record<string, unknown>> {
+    const session = this.session(sessionId, true);
+    session.paused = true; this.invalidate(session);
+    const releases = [session.pointer.close(), session.keyboard.close(), session.fillRelease?.() ?? Promise.resolve()];
+    const [results, paused] = await Promise.all([Promise.allSettled(releases), session.extension?.pause()]);
+    const inputRelease = results.every(r => r.status === 'fulfilled') ? 'confirmed' : 'uncertain';
+    return { sessionId, paused: true, inputRelease: paused?.released === false ? 'uncertain' : inputRelease, status: 'paused' };
+  }
+
+  async resume(sessionId: string): Promise<Record<string, unknown>> {
+    const session = this.session(sessionId, true);
+    if (session.extension) await session.extension.resume();
+    this.invalidate(session); session.paused = false;
+    return { sessionId, paused: false, status: 'fresh-observation-required' };
+  }
+
   async close(sessionId: string): Promise<Record<string, unknown>> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('BROWSER_CONTROL_SESSION_NOT_FOUND');
     this.sessions.delete(sessionId);
-    session.lastObservation = undefined;
+    this.invalidate(session);
+    session.paused = true;
     session.canvas.clear();
     let inputRelease: string = 'confirmed';
-    await session.keyboard.close().catch(()=>{inputRelease='uncertain';});
+    await Promise.all([session.keyboard.close(), session.pointer.close(), session.fillRelease?.() ?? Promise.resolve()].map(p => p.catch(() => { inputRelease = 'uncertain'; })));
     if (session.extension) {
       const detached = await session.extension.detach();
       return { sessionId, closed: true, inputRelease, detach: detached, tabRetained: true, browserRetained: true };
@@ -923,6 +1067,10 @@ export class BrowserControlService {
         sessionId: session.id,
         pid: session.process?.pid ?? null,
         transport: session.extension ? 'extension' : 'isolated',
+        targetId: session.targetId, paused: session.paused || session.extension?.state === 'paused',
+        screenshot: { available: true, coordinateSpace: 'css-viewport', defaultAgeMs: 30000, maxAgeMs: 120000, maxBinaryBytes: 131072 },
+        pointerOperations: ['POINTER_MOVE', 'HOVER', 'CLICK', 'DRAG', 'SCROLL'],
+        controllerVisualInput: 'determined-by-controller',
         ...(session.extension ? { state: session.extension.state } : {}),
         headless: session.headless,
         browser: path.basename(session.executable),

@@ -109,6 +109,76 @@ describe('existing-tab bridge grant and delivery', () => {
     expect(await detach).toBe('confirmed');
     expect(await client.detach()).toBe('confirmed');
   });
+  it('allows capture/metrics only with bounded image replies and validates batches atomically', async () => {
+    const { client, token } = await attached();
+    const params = { format: 'jpeg', quality: 70, fromSurface: true, captureBeyondViewport: false,
+      clip: { x: 0, y: 0, width: 1120, height: 780, scale: 1 } };
+    const sending = client.send('Page.captureScreenshot', params);
+    const batch: any = await client.poll(ORIGIN, token, [], [], undefined, 0);
+    expect(batch.commands[0].method).toBe('Page.captureScreenshot');
+    const id = batch.commands[0].id;
+    await expect(client.poll(ORIGIN, token, [{ id, result: { data: Buffer.alloc(128 * 1024 + 1).toString('base64') } }], [], undefined, 0))
+      .rejects.toThrow('CAPTURE_TOO_LARGE');
+    const data = Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64');
+    await client.poll(ORIGIN, token, [{ id, result: { data } }], [], undefined, 0);
+    expect(await sending).toEqual({ data });
+  });
+
+  it('pause cancels delivered work, blocks new input and resume never replays it', async () => {
+    const { client, token } = await attached();
+    const events: string[] = []; client.onEvent = method => { events.push(method); };
+    const delivered = client.send('Input.insertText', { text: 'one time' });
+    const rejected = expect(delivered).rejects.toThrow('MUTATION_UNCERTAIN');
+    const batch: any = await client.poll(ORIGIN, token, [], [], undefined, 0);
+    client.setPaused(true);
+    await rejected;
+    expect(client.state).toBe('paused');
+    await expect(client.send('Input.insertText', { text: 'forbidden' })).rejects.toThrow('PAUSED');
+    await client.poll(ORIGIN, token, [{ id: batch.commands[0].id, result: {} }], [], undefined, 0);
+    client.setPaused(false);
+    expect(client.state).toBe('attached');
+    expect(events).toEqual(['AgentCore.paused', 'AgentCore.resumed']);
+    expect((await client.poll(ORIGIN, token, [], [], undefined, 0)).commands).toEqual([]);
+  });
+
+  it('drops queued input before dispatch when navigation invalidates the target', async () => {
+    const { client, token } = await attached();
+    const sending = client.send('Input.insertText', { text: 'stale' });
+    const outcome = sending.catch(error => error.message);
+    const batch: any = await client.poll(ORIGIN, token, [], [
+      { method: 'Page.frameNavigated', params: { frame: { id: 'main' } } },
+    ], undefined, 0);
+    expect(batch.commands).toEqual([]);
+    expect(await outcome).toBe('BROWSER_CONTROL_STALE_OBSERVATION');
+    expect(client.state).toBe('attached');
+  });
+
+  it('coordinates tool pause/resume acknowledgements over the same grant', async () => {
+    const { client, token } = await attached();
+    const pausing = client.pause();
+    const paused: any = await client.poll(ORIGIN, token, [], [], undefined, 0);
+    expect(paused.commands[0].method).toBe('AgentCore.pause');
+    await client.poll(ORIGIN, token, [{ id: paused.commands[0].id, result: { paused: true, released: true } }], [], undefined, 0);
+    expect(await pausing).toEqual({ paused: true, released: true });
+    const resuming = client.resume();
+    const resumed: any = await client.poll(ORIGIN, token, [], [], undefined, 0);
+    expect(resumed.commands[0].method).toBe('AgentCore.resume');
+    await client.poll(ORIGIN, token, [{ id: resumed.commands[0].id, result: { paused: false } }], [], undefined, 0);
+    expect(await resuming).toEqual({ paused: false });
+    expect(client.state).toBe('attached');
+  });
+
+  it('refuses oversized layout metadata without partially accepting its reply', async () => {
+    const { client, token } = await attached();
+    const sending = client.send('Page.getLayoutMetrics');
+    const batch: any = await client.poll(ORIGIN, token, [], [], undefined, 0);
+    const id = batch.commands[0].id;
+    await expect(client.poll(ORIGIN, token, [{ id, result: { extra: 'x'.repeat(16 * 1024) } }], [], undefined, 0))
+      .rejects.toThrow('METADATA_TOO_LARGE');
+    await client.poll(ORIGIN, token, [{ id, result: {} }], [], undefined, 0);
+    expect(await sending).toEqual({});
+  });
+
 });
 
 describe('bridge HTTP boundary', () => {
@@ -163,6 +233,28 @@ describe('bridge HTTP boundary', () => {
     expect(error).not.toContain(grant.token);
     expect(error).not.toContain(client.code);
   });
+  it('authenticates pause/resume on the existing loopback route and keeps the tab grant', async () => {
+    const { bridge, client, token } = await attached();
+    const base = await listen(bridge);
+    const headers = { Origin: ORIGIN, 'X-Agent-Core-Extension': 'a'.repeat(32), 'Content-Type': 'application/json' };
+    const post = (body: any) => fetch(base + '/browser-bridge/control', { method: 'POST', headers, body: JSON.stringify(body) });
+    expect((await post({ sessionId: client.id, token: 'wrong', paused: true })).status).toBe(400);
+    expect(client.state).toBe('attached');
+    expect(await (await post({ sessionId: client.id, token, paused: true })).json()).toEqual({ state: 'paused' });
+    expect(await (await post({ sessionId: client.id, token, paused: false })).json()).toEqual({ state: 'attached' });
+    expect((await post({ sessionId: client.id, token, paused: 'false' })).status).toBe(400);
+  });
+
+  it('enforces the stricter poll envelope without increasing the global 256 KiB limit', async () => {
+    const { bridge, client, token } = await attached();
+    const base = await listen(bridge);
+    const headers = { Origin: ORIGIN, 'X-Agent-Core-Extension': 'a'.repeat(32), 'Content-Type': 'application/json' };
+    const post = (size: number) => fetch(base + '/browser-bridge/poll', { method: 'POST', headers,
+      body: JSON.stringify({ sessionId: client.id, token, extra: 'x'.repeat(size) }) });
+    expect(await (await post(240 * 1024)).json()).toEqual({ error: 'BROWSER_BRIDGE_ENVELOPE_TOO_LARGE' });
+    expect(await (await post(256 * 1024)).json()).toEqual({ error: 'BROWSER_BRIDGE_BODY_TOO_LARGE' });
+  });
+
 });
 
 describe('native BrowserControlService extension integration', () => {

@@ -103,19 +103,19 @@ export const AGENT_CAPABILITY_CATALOG: readonly AgentCapabilityDescriptor[] = [
   {
     family: 'browser.navigate',
     risk: 1,
-    description: 'Open/observe/status/close isolated browser sessions and read public URLs.',
+    description: 'Open, observe, pause and close browser sessions; read public URLs.',
     tools: [
-      t('browser_control', { allowedActions: ['open', 'observe', 'status', 'close'] }),
+      t('browser_control', { allowedActions: ['open', 'observe', 'status', 'pause', 'close'] }),
       t('read_file', { forbidUrlRead: false }),
     ],
   },
   {
     family: 'browser.act',
     risk: 3,
-    description: 'Act on an already observed isolated browser session.',
+    description: 'Act on observed browser sessions, including capture-bound pointer gestures and explicit resume.',
     tools: [
       t('browser_control', {
-        allowedActions: ['open', 'observe', 'status', 'close', 'act'],
+        allowedActions: ['open', 'observe', 'status', 'pause', 'resume', 'close', 'act'],
       }),
     ],
   },

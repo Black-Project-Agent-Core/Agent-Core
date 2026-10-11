@@ -346,7 +346,10 @@ export class ToolHistory {
 
     // Image bytes and identifying arguments must never enter history, even if
     // a caller omits the workspace policy decision or supplies a weaker one.
-    if (toolName === 'image_inspect') {
+    // Browser captures are transport-only too, including very small images that
+    // would otherwise fit the history cap. Never persist screenshots or copies.
+    if (toolName === 'image_inspect' || (toolName === 'browser_control'
+      && (args?.screenshot !== undefined || output?.content?.some(item => item.type === 'image')))) {
       decision = {
         policyState: 'inactive', pathCount: 0, ruleCount: 0, markerCount: 0,
         ...decision,

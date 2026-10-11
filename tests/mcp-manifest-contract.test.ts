@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createAgentCoreMcpServer } from '../src/mcp/server.js';
 
-// Additive task/checkpoint/receipt bindings; retain a bounded public handshake.
-const MANIFEST_BYTE_BUDGET = 122_000;
-const APPROX_TOKEN_BUDGET = 30_500;
+// Reviewed additive image/browser contract: upstream 8250441 already measured
+// 127,091 bytes / 75 tools; browser pointer/capture adds 3,251 bytes (130,342 total).
+// Keep the complete guidance within a bounded 128 KiB handshake, not an open-ended budget.
+const MANIFEST_BYTE_BUDGET = 128 * 1024;
+const APPROX_TOKEN_BUDGET = 32_768;
 
 function fullRuntimeStub(): any {
   return {
@@ -57,12 +59,13 @@ function wireManifest(entries: Array<[string, any]>): unknown {
 describe('MCP public manifest contract', () => {
   it('keeps the complete production tool surface deterministic and schema-fingerprintable', () => {
     const entries = registeredTools();
-    expect(entries).toHaveLength(74);
+    expect(entries).toHaveLength(75);
     const fingerprints = entries.map(([name, tool]) => fingerprint(name, tool));
-    expect(new Set(entries.map(([name]) => name)).size).toBe(74);
-    expect(fingerprints).toHaveLength(74);
+    expect(new Set(entries.map(([name]) => name)).size).toBe(75);
+    expect(fingerprints).toHaveLength(75);
 
     expect(entries.map(([name]) => name)).toEqual(expect.arrayContaining([
+      'image_inspect',
       'memory_feedback',
       'memory_retirement_review',
       'memory_page',

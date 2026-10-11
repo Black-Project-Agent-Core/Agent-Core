@@ -12,6 +12,7 @@ import type {
   AgentModelToolCall,
   AgentProviderContinuationRequirement,
 } from './agent-provider.js';
+import { nativeProviderToolResultText } from './agent-provider.js';
 import { AgentRuntimeService } from './agent-runtime.js';
 import { AgentRuntimeToolSession } from './agent-tool-session.js';
 import { AGENT_CAPABILITY_FAMILIES, type AgentCapabilityFamily } from './agent-capability-catalog.js';
@@ -1136,6 +1137,9 @@ export class NativeAgentController {
               raw: error,
             };
           }
+          // Images remain transient at the tool boundary. The current provider
+          // receives an explicit omission notice on success and failure alike.
+          result.text = nativeProviderToolResultText(result.text, 'content' in result ? result.content : []);
           if (result.isError) {
             await emitAgentTurnEvent(input.eventSink, {
               type: 'tool.completed',

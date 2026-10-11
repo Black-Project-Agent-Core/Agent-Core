@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { AgentRuntimeToolSession } from '../src/agent-tool-session.js';
 import { NativeAgentController } from '../src/agent-controller.js';
 import { AgentRuntimeService } from '../src/agent-runtime.js';
 import type { AgentRuntimeConfig } from '../src/agent-provider.js';
@@ -9,6 +10,7 @@ import type { AgentRuntimeConfig } from '../src/agent-provider.js';
 const roots: string[] = [];
 afterEach(async () => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
@@ -286,4 +288,33 @@ describe('native Agent Core controller lifecycle', () => {
     expect(learning.checkpoint).toHaveBeenCalledTimes(1);
     expect(learning.review).not.toHaveBeenCalled();
   });
+});
+
+
+it('reports unsupported tool images explicitly and excludes pixels from provider messages and checkpoints', async () => {
+  const pixels = Buffer.from('PRIVATE_BROWSER_SCREENSHOT_FIXTURE').toString('base64');
+  const toolChoice = {
+    finish_reason: 'tool_calls',
+    message: { content: null, tool_calls: [{ id: 'image-tool', type: 'function',
+      function: { name: 'get_config', arguments: '{}' } }] },
+  };
+  vi.spyOn(AgentRuntimeToolSession.prototype, 'call').mockResolvedValue({
+    name: 'get_config', isError: false, text: 'Screenshot captured; captureId=fixture',
+    content: [{ type: 'text', text: 'Screenshot captured; captureId=fixture' },
+      { type: 'image', mimeType: 'image/jpeg', data: pixels }],
+    raw: { content: [{ type: 'image', mimeType: 'image/jpeg', data: pixels }] },
+  });
+  const { controller, fetchMock } = await fixture([strategyChoice(), toolChoice, finalizeChoice('DOM-only result')], ['get_config']);
+  const checkpoints: any[] = [];
+  await controller.runTask({ prompt: 'inspect fixture', continuation: {
+    conversationId: 'visual-conversation', turnId: 'visual-turn',
+    save: async (state: any) => { checkpoints.push(structuredClone(state)); },
+  } } as any);
+  const request = JSON.parse(String((fetchMock.mock.calls[2] as any)[1].body));
+  const toolMessage = request.messages.find((message: any) => message.role === 'tool' && message.name === 'get_config');
+  expect(toolMessage.content).toContain('NATIVE_PROVIDER_IMAGE_INPUT_UNSUPPORTED');
+  expect(toolMessage.content).toContain('not viewed');
+  expect(JSON.stringify(request)).not.toContain(pixels);
+  expect(checkpoints.length).toBeGreaterThan(0);
+  expect(JSON.stringify(checkpoints)).not.toContain(pixels);
 });

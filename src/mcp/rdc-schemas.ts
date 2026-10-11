@@ -96,8 +96,40 @@ const browserCanvas = z.object({
   if(Object.keys(v.labels??{}).length>(v.paletteSize??8))c.addIssue({code:'custom',message:'labels exceed palette budget'});
   if(v.mode==='inventory'&&Object.keys(v).some(k=>k!=='mode'))c.addIssue({code:'custom',message:'inventory takes only mode'});
 });
+const pointSchema = z.object({ x: z.number().finite().min(0), y: z.number().finite().min(0) }).strict();
+const browserPointer = z.object({
+  operation: z.enum(['POINTER_MOVE', 'HOVER', 'CLICK', 'DRAG', 'SCROLL']),
+  captureId: z.string().uuid().optional(), targetId: z.string().min(1).max(256).optional(),
+  documentId: z.string().min(1).max(128).optional(), geometryVersion: z.string().min(1).max(128).optional(),
+  x: z.number().finite().min(0).optional(), y: z.number().finite().min(0).optional(),
+  path: z.array(pointSchema).min(1).max(119).optional(),
+  durationMs: z.number().int().min(0).max(5000).optional(),
+  deltaX: z.number().finite().min(-4000).max(4000).optional(),
+  deltaY: z.number().finite().min(-4000).max(4000).optional(),
+  toActionId: z.string().min(1).max(64).optional(),
+}).strict().superRefine((value, ctx) => {
+  const coordinates = [value.captureId, value.targetId, value.documentId, value.geometryVersion, value.x, value.y];
+  if (coordinates.some(v => v !== undefined) && coordinates.some(v => v === undefined))
+    ctx.addIssue({ code: 'custom', message: 'coordinates require captureId, targetId, documentId, geometryVersion, x and y' });
+  if (value.operation === 'DRAG') {
+    if (value.captureId ? !value.path || value.toActionId !== undefined : !value.toActionId || value.path !== undefined)
+      ctx.addIssue({ code: 'custom', message: 'DRAG requires either capture path or observed toActionId' });
+  } else if (value.path !== undefined || value.toActionId !== undefined || value.durationMs !== undefined)
+    ctx.addIssue({ code: 'custom', message: 'path, toActionId and durationMs are DRAG-only' });
+  if (value.operation === 'SCROLL') {
+    if (!(value.deltaX || value.deltaY)) ctx.addIssue({ code: 'custom', message: 'SCROLL requires a nonzero delta' });
+  } else if (value.deltaX !== undefined || value.deltaY !== undefined)
+    ctx.addIssue({ code: 'custom', message: 'deltaX and deltaY are SCROLL-only' });
+});
+const browserScreenshot = z.object({
+  maxAgeMs: z.number().int().min(1).max(120000).optional(),
+  maxWidth: z.number().int().min(320).max(1280).optional(),
+  maxHeight: z.number().int().min(240).max(960).optional(),
+  crop: z.object({ x: z.number().finite().min(0), y: z.number().finite().min(0),
+    width: z.number().finite().positive().max(8192), height: z.number().finite().positive().max(8192) }).strict().optional(),
+}).strict();
 export const browserControl = z.object({
-  action: z.enum(['open', 'observe', 'act', 'close', 'status']),
+  action: z.enum(['open', 'observe', 'act', 'pause', 'resume', 'close', 'status']),
   transport: z.enum(['isolated', 'extension']).optional(),
   sessionId: z.string().uuid().optional(),
   url: z.string().url().max(4000).optional(),
@@ -106,20 +138,25 @@ export const browserControl = z.object({
   text: z.string().max(2000).optional(),
   headless: z.boolean().optional().meta({ default: true }),
   canvas:browserCanvas.optional(),
+  screenshot: browserScreenshot.optional(),
+  pointer: browserPointer.optional(),
   interactionCapabilities:z.array(z.enum(['keyboard','held-key','history'])).max(3).refine(v=>new Set(v).size===v.length).optional(),
   origin: z.enum(['ui', 'llm']).optional(),
 }).superRefine((value, ctx) => {
   if (value.action === 'open' && !value.url) ctx.addIssue({ code: 'custom', message: 'url required for open' });
   if (value.transport && value.action !== 'open') ctx.addIssue({ code: 'custom', message: 'transport is open-only' });
+  if(value.screenshot && value.action!=='observe')ctx.addIssue({code:'custom',message:'screenshot is observe-only'});
+  if(value.pointer && value.action!=='act')ctx.addIssue({code:'custom',message:'pointer is act-only'});
   if(value.canvas && value.action!=='observe')ctx.addIssue({code:'custom',message:'canvas is observe-only'});
   if(value.interactionCapabilities && value.action!=='open')ctx.addIssue({code:'custom',message:'interactionCapabilities is open-only'});
-  if (['observe', 'close'].includes(value.action) && !value.sessionId) {
+  if (['observe', 'pause', 'resume', 'close'].includes(value.action) && !value.sessionId) {
     ctx.addIssue({ code: 'custom', message: 'sessionId required' });
   }
   if (value.action === 'act') {
     if (!value.sessionId) ctx.addIssue({ code: 'custom', message: 'sessionId required' });
     if (!value.observationId) ctx.addIssue({ code: 'custom', message: 'observationId required' });
-    if (!value.actionId) ctx.addIssue({ code: 'custom', message: 'actionId required' });
+    if (value.pointer?.captureId ? Boolean(value.actionId) : !value.actionId) ctx.addIssue({ code: 'custom', message: 'act requires either observed actionId or capture-bound pointer' });
+    if (value.pointer && value.text !== undefined) ctx.addIssue({code:'custom',message:'text is not a pointer argument'});
   }
 });
 export const getPrompts = z.object({ action: z.literal('get_prompt'), promptId: z.string() });

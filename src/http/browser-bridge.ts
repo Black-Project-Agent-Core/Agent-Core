@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { BrowserExtensionBridge, EXTENSION_ORIGIN } from '../rdc/browser-control/extension-bridge.js';
+import { BrowserExtensionBridge, EXTENSION_ORIGIN, BROWSER_BRIDGE_MAX_ENVELOPE_BYTES } from '../rdc/browser-control/extension-bridge.js';
 
 /** Physical loopback only. Reverse-proxy trust never grants access to this channel. */
 export async function handleBrowserBridge(request: IncomingMessage, response: ServerResponse,
@@ -38,12 +38,19 @@ export async function handleBrowserBridge(request: IncomingMessage, response: Se
       if (bytes > 256 * 1024) throw new Error('BROWSER_BRIDGE_BODY_TOO_LARGE');
       chunks.push(buffer);
     }
+    if (route === '/browser-bridge/poll' && bytes >= BROWSER_BRIDGE_MAX_ENVELOPE_BYTES)
+      throw new Error('BROWSER_BRIDGE_ENVELOPE_TOO_LARGE');
     const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('BROWSER_BRIDGE_INVALID_BODY');
     if (route === '/browser-bridge/pair') { finish(200, bridge.pair(body, origin)); return; }
     const client = bridge.get(body, origin);
     if (route === '/browser-bridge/poll') {
       finish(200, await client.poll(origin, body.token, body.replies, body.events, abort.signal)); return;
+    }
+    if (route === '/browser-bridge/control') {
+      if (typeof body.paused !== 'boolean') throw new Error('BROWSER_BRIDGE_CONTROL_REFUSED');
+      client.setPaused(body.paused);
+      finish(200, { state: client.state }); return;
     }
     if (route === '/browser-bridge/disconnect') { client.close(); finish(200, { closed: true }); return; }
     finish(404, { error: 'not_found' });
