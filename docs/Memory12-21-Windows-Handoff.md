@@ -1,12 +1,14 @@
 # Memory12–21 Windows integration handoff
 
-## Publication prerequisite: BLOCKED until a real SHA is recorded
+## Verified source publication; Windows work deferred
 
-Repository: `https://github.com/Black-Project-Agent-Core/Agent-Core`.
-Source candidate: `0.15.0-beta.3`, existing prerelease train; no stable release, tag or package publication is implied.
-Implementation branch and full 40-character pushed commit: **pending publisher verification**. Do not fetch a placeholder or use the baseline `fe2268cc48ee867c4f2efdac21ae281c8a830fc8` as the implementation revision.
+Repository: `https://github.com/Black-Project-Agent-Core/Agent-Core`. Branch: `main`.
+Published implementation commit: **`60e504f9bf1c876934146dfa7298f1a270e99a14`**.
+Source candidate: `0.15.0-beta.3`, existing prerelease train. The implementation commit and full tree were read back from GitHub after a guarded fast-forward update. A later documentation-only main head is recorded separately in the delivered publication receipt; use the implementation SHA above for runtime-source identity.
 
-The publisher must fill these fields from an actual remote readback, with the final scoped inventory and test ledger. The Linux checkout's `origin` is a local mirror, not evidence of GitHub publication. This document does not itself authorize release, deployment or activation.
+The Linux checkout's `origin` is a local mirror, not the GitHub remote. No stable release, tag, package publication, deployment or activation is implied.
+
+**Windows integration and tests are deferred until the user returns.** Prior beta.2 Plans06–11 integration is partial and paused; verify actual source, host wiring and targeted prerequisite tests rather than its version label. Limited restart setup has reached preflight only and is not ready. Do not trigger UAC, restart, stop a resident process or perform browser work from this handoff. The following is a deferred checklist, not current execution authorization.
 
 ## 1. Protect the current installation and local work
 

@@ -1,10 +1,10 @@
 # Memory12–21 source-functional ledger
 
-Source candidate: **0.15.0-beta.3**. Implementation base: `fe2268cc48ee867c4f2efdac21ae281c8a830fc8`. The implementation is a modified source tree until the publisher records an actual commit and verifies its remote identity. This document is not installed-process or Windows acceptance.
+Source candidate: **0.15.0-beta.3**. Implementation base: `fe2268cc48ee867c4f2efdac21ae281c8a830fc8`. Published implementation commit on GitHub `main`: `60e504f9bf1c876934146dfa7298f1a270e99a14`, with exact scoped tree verified by remote readback. Any subsequent documentation-only head is identified separately in the delivery publication receipt. This document is not installed-process or Windows acceptance.
 
 ## Scope and environment
 
-All ten plans implement mechanisms through existing owners. Plan19 is an offline experiment; 20/21 extend Plan05 evaluation, not production Memory. No donor runtime/code/data was copied or executed, no dependencies were installed, and no provider/network/model, production Memory, Windows/browser, migration, activation or publication action was performed.
+All ten plans implement mechanisms through existing owners. Plan19 is an offline experiment; 20/21 extend Plan05 evaluation, not production Memory. No donor runtime/code/data was copied or executed, no dependencies were installed, and no provider/network/model, production Memory, Windows/browser, migration or activation action was performed. The reviewed source was subsequently published through the approved guarded fast-forward workflow; no release artifact was published.
 
 The inspected Linux canonical `runtime/memory`, `runtime/memory-v2` and activation marker were absent. They were not initialized. Production Memory/Learning finalization therefore remains unavailable; isolated synthetic test stores are not substitutes for production continuity. Installed Node is 24.19.0; locked root/Memory dependencies are present. UI dependencies and dotnet are absent.
 
@@ -64,7 +64,7 @@ Strict new ingestion/history fields can cause older binaries to reject a store a
 
 The permanent implementation evidence directory contains per-plan RED/GREEN/regression logs, reports, original failures, command identities and consolidated manifests. Only sanitized logs/reports and synthetic verification artifacts belong in the delivered ZIP; compiled evaluation snapshots and synthetic backing stores are not whole-project deliverables. Fresh extraction must reproduce every path/size/SHA-256 and independent report result.
 
-Use the [Windows handoff](../Memory12-21-Windows-Handoff.md) after a real publication SHA is supplied and verified. Preserve the user's separate beta.2 launcher/UI alignment. Windows, installed/runtime identity, live models, heavy benchmarking and production adoption remain separate gates.
+Use the [Windows handoff](../Memory12-21-Windows-Handoff.md) with the verified implementation SHA recorded there. Windows integration and testing are deferred until the user returns; limited restart setup is preflight-only and not ready. Preserve the user's separate beta.2 launcher/UI alignment. Windows, installed/runtime identity, live models, heavy benchmarking and production adoption remain separate gates.
 
 ## Reproducible focused commands
 

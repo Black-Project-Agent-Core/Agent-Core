@@ -4,7 +4,7 @@ This records explicit source prereleases and applied stable releases. Pending in
 
 ## 0.15.0-beta.3 - 2026-10-11 WIB (source candidate)
 
-Advance the existing prerelease train for Memory12–21 with synchronized product-version surfaces and one pending minor intent. No release application, publication, deployment or Windows activation. See [candidate notes](docs/releases/0.15.0-beta.3.md) and the [functional ledger](docs/verification/memory12-21-source-functional-2026-10-11.md).
+Advance the existing prerelease train for Memory12–21 with synchronized product-version surfaces and one pending minor intent. No release application, release/package publication, deployment or Windows activation. Reviewed source publication is recorded in the linked ledger. See [candidate notes](docs/releases/0.15.0-beta.3.md) and the [functional ledger](docs/verification/memory12-21-source-functional-2026-10-11.md).
 
 - Preserve controller continuity and retry-safe ingestion through existing episode, capsule and transaction owners.
 - Separate valid-time from host-recorded knowledge-time and keep exact evidence dependencies for project synthesis. New metadata has an explicit older-reader fail-closed boundary; no automatic migration or reset.

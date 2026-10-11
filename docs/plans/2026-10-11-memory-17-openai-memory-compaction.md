@@ -1,9 +1,9 @@
 # Memory 17 — OpenAI Memory/Compaction Content Integrity Implementation Plan
 
-> Implementation follow-through: source candidate `0.15.0-beta.3`; see the [actual functional ledger](../verification/memory12-21-source-functional-2026-10-11.md) for results, review fixes and limitations. Original proposed checklists below are retained as the authored plan, not evidence of execution. Windows activation is not performed by this source work.
+> **Status saat ini:** Implementasi source dipublikasikan pada `60e504f9bf1c876934146dfa7298f1a270e99a14` (`0.15.0-beta.3`). Hasil dan batasan ada di [ledger fungsional](../verification/memory12-21-source-functional-2026-10-11.md). Windows belum diuji/diaktifkan dan ditunda sampai pengguna kembali. Checklist serta rancangan antarmuka di bawah dipertahankan sebagai bukti perencanaan historis, bukan klaim semua acceptance PASS.
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Draft / PROPOSED; belum ada implementasi, test run, atau aktivasi.
+**Status awal saat perencanaan (historis):** Draft / PROPOSED; belum ada implementasi, test run, atau aktivasi.
 
 **Goal:** Memisahkan task facts dan artifact outcomes dari reusable procedure candidates, serta membuktikan isi penting tetap utuh pada capsule berbudget.
 
