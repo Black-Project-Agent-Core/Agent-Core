@@ -2,7 +2,7 @@
 
 **Status: RISET SAJA. Bukan plan Batch 5/6 atau perintah implementasi.**
 
-Riset source native tetap memakai body kode baseline `86fe9efe53dcfa8da61616c5e5d34e724e0a1891`; publikasi dokumentasi pertama `97863a285646170846da6a81c79556b1b9eeb58d` tidak mengubah produk. Pendalaman kedua memperbarui dokumen dan register yang sama. Tanggal menggunakan UTC.
+Riset source native tetap memakai body kode baseline `86fe9efe53dcfa8da61616c5e5d34e724e0a1891`; publikasi dokumentasi pertama `97863a285646170846da6a81c79556b1b9eeb58d` tidak mengubah produk. Pendalaman kedua dan ketiga memperbarui dokumen dan register yang sama. Tanggal menggunakan UTC.
 
 ## Hasil kumulatif terkini
 
@@ -18,6 +18,51 @@ Riset source native tetap memakai body kode baseline `86fe9efe53dcfa8da61616c5e5
 - **17 kelompok peluang tetap**, dari **18 kandidat utama**. #69 dan #92 menambah bukti/pembanding untuk kelompok existing, tidak menambah kelompok atau instalasi. Kategori tetap 6 gap eksternal, 4 bersyarat eksternal, 4 bukti/evaluasi, 2 producer/aplikasi opsional, 1 native-only.
 - Inventaris lokal pada 20:19 UTC memuat **209 checkout Git dengan remote berbeda**. Ini inventaris sumber penelitian, bukan 209 kandidat atau 209 engine lengkap. Ada keluarga kandidat multi-repo; repo SDK/contoh/model card tidak otomatis membuka source engine.
 - #169 misalnya memiliki body SDK HTTP, tetapi itu tidak membuktikan server sandbox terbuka. #65 wrapper memanggil implementasi internal/layanan hosted. #50/#54/#55/#68 tidak menyediakan source mekanisme curriculum/self-learning yang diajukan. #49 kini memiliki pin historis resmi, tetapi hanya membuktikan mekanisme riwayat percakapan.
+
+## Pendalaman mekanisme: keputusan terkini
+
+Putaran ini menelusuri **17 kelompok peluang**, bukan mengklaim sudah membaca seluruh 216 engine. Snapshot native `9d12985d1cb112cc5399432d38e8647a89fe1f66` hanya melanjutkan dokumentasi; source produk sama dengan baseline di atas. Hasil: **1 dipertahankan, 11 dipersempit, 5 ditunda**. Tidak ada kelompok baru atau instalasi.
+
+“Dipertahankan/dipersempit” berarti gagasan masih mempunyai dasar riset, **belum dipilih untuk batch implementasi**. Lima yang ditunda tetap tercatat agar tidak dicari ulang sebagai peluang baru. Semua klaim perilaku di bawah berasal dari source statis, bukan insiden yang direproduksi atau manfaat terukur.
+
+### Ringkasan keputusan
+
+| Kandidat | Keputusan riset | Batas peluang setelah penelusuran |
+|---|---|---|
+| #30 | Dipersempit | Status gagal/kosong sudah ada di Memory; pertahankan informasinya pada keluaran context/failure capsule, tanpa mesin pencarian baru. |
+| #34 | Dipersempit | Batasi pada cakupan bagian dan omission yang benar-benar sampai ke controller; MCP donor justru membuang statistik assembler. |
+| #44 | Dipersempit | Native sudah memiliki evaluasi positif/negatif. Sisa peluang hanya identitas dan makna bukti pemilihan Skill, bukan evaluator kedua. |
+| #47 | Dipertahankan | Pertahankan fallback kemiripan lexical untuk pasangan yang kehilangan vector; gunakan loop native berbatas hasil, bukan rerank semua kandidat donor. |
+| #82 | Dipersempit | Advisory sumber/metode hanya deskriptif dan bersyarat bukti lintas task; jangan menyalin confidence atau menjadikannya keputusan routing. |
+| #83 | Dipersempit | Tambahkan konteks tujuan yang sah ke query recall kegagalan existing; taskKey buram bukan pengganti tujuan semantik. |
+| #90 | Dipersempit | Isolasi advisory pada invocation/task. Hasil sukses yang sama belum membuktikan stagnasi tanpa metadata efek yang benar-benar diamati. |
+| #94 | Dipersempit | Ambil taksonomi bukti saja; tidak menambahkan benchmark, provider atau hakim umum. |
+| #120, #140 | Dipersempit | Gunakan satu snapshot bytes, simpan geometri teks pendekatan sebelum transformasi, lalu teruskan melalui adapter keluaran existing. |
+| #123 | Ditunda | Tunda karena kebutuhan race aplikasi belum dibuktikan. Jika diperlukan kelak, serialisasi di owner worker karena entrypoint remote melewati service. |
+| #127 | Dipersempit | Saran read-only harus mengikat revisi prosedur dan observasi native saat ini; fingerprint donor bisa direkam setelah aksi dan tidak cukup sebagai precondition. |
+| #131 | Ditunda | Tetap di luar sasaran: belum ditemukan consumer AI eksternal untuk pemotongan riwayat Native Agent Chat. |
+| #135 | Ditunda | Tunda sampai ada kebutuhan pelaporan tersisa setelah Batch 3/4; tidak membuat gate kebenaran atau export baru. |
+| #144 | Dipersempit | Bridge sudah mencatat hash source dan media. Sisa peluang adalah pengikatan bytes preview/hasil/options saat dipakai, bukan hashing source ulang. |
+| #164 | Dipersempit | Paket bukti advisory terikat revisi; pertahankan staging, approval dan review native. Tidak mengimpor self-play atau penerapan otomatis. |
+| #183 | Ditunda | Tunda: timestamp donor berasal dari pengikatan sinyal oleh model, bukan konfirmasi independen per fakta; makna authority/revisi perlu jelas. |
+| #192 | Ditunda | Tunda: belum ada consumer yang ditetapkan dan source caller donor tidak tersedia pada jalur yang diperiksa; jangan menyimpulkan lifecycle dari helper. |
+
+### Temuan yang mengubah arah adopsi
+
+- **Jangan mengganti owner yang sudah ada.** Memory sudah merekam `succeeded/no-results/failed`; gap #30 berada di dua caller yang mengubah exception menjadi array kosong. Preflight tertentu bisa gagal sebelum attempt ledger dibuat. Native juga sudah mempunyai cohort positif/negatif dan hash source/media Bridge.
+- **Telusuri sampai keluaran yang dibaca controller.** OpenViking memiliki statistik omission tetapi route MCP membuangnya. `web_open` menghilangkan metadata halaman pada proyeksi hasil. Menambahkan field pada helper saja tidak menyelesaikan jalur pengguna.
+- **Pisahkan observasi dari klaim keberhasilan.** OpenChrome dapat merekam fingerprint sesudah aksi; status native browser saat ini hanya dispatched/not-observed. EXAONE mengubah exception planner menjadi finalize/no_progress. Mekanisme itu bukan bukti stagnasi yang aman dipindahkan.
+- **Gunakan source bytes yang sama.** Jalur PDF lokal membuka ulang pathname setelah admission bytes, sedangkan public URL memproses snapshot tersendiri. Geometri parser existing dibulatkan dan bukan kotak glyph presisi. Freshness producer harus mengikat snapshot saat dikonsumsi, bukan sekadar hash path setelah render.
+- **Jaga identitas task saat operasi berjalan.** Pada jalur yang diperiksa, outcome disimpan dengan episode session yang dicari sesudah tool selesai. Pergantian task pada session yang sama saat tool masih berjalan merupakan risiko kondisional, bukan kejadian salah atribusi yang telah diamati.
+- **Lisensi dan coupling tetap berlaku.** Source publik tidak otomatis layak disalin. OpenViking AGPL, bagian donor yang lisensinya belum jelas, serta ketergantungan provider/LLM tidak dibawa hanya karena mekanismenya menarik. Keputusan reuse harus merujuk bukti lisensi per kelompok.
+
+### Jejak rinci dan batas berhenti
+
+Register JSON menambahkan `mechanismDepth` pada setiap peluang dan konteks bukti per kelompok pada bagian tingkat atas dengan nama sama. Isinya rantai donor/native, pin, path/range/hash, dependency closure, kegagalan/cancellation/state, lisensi, seam internal, dan hal yang masih tidak diketahui. Review independen dilakukan pada klaim material terpilih, bukan audit seluruh produk.
+
+Pendalaman dihentikan ketika cukup bukti untuk keputusan riset di atas. #192 menyisakan caller donor yang tidak tersedia dari objek lokal maupun pembacaan resmi yang dicoba; tidak ditebak dari komentar helper. Tidak ada referensi baru ditambahkan karena source existing sudah cukup memperjelas peluang prioritas. Pencarian baru kelak harus menjawab celah spesifik, bukan memperbesar katalog.
+
+Analisis lama di bawah dipertahankan sebagai riwayat. Bila cakupan lama lebih luas daripada tabel keputusan ini, gunakan keputusan terkini dan jejak `mechanismDepth`. Prasyarat Batch 3/4 dan pencocokan ulang sebelum Batch 5/6 tetap berlaku.
 
 ## Syarat sebelum plan Batch 5 dan 6
 
@@ -60,7 +105,7 @@ Konsep Invocate tetap ditunda. Riset ini tidak mengotorisasi pembangunan, pergan
 
 [Register JSON](candidate-adoption-opportunities-20261012.json) memuat 216 ID, `firstPassDepth`, `cumulativeInspectionDepth`, dan `continuationEvidence` pada 65 entri yang diperdalam. Field `opportunities` mempertahankan analisis donor/native beserta supporting evidence. Pin/range/simbol, lisensi, coupling dan syarat recheck disimpan agar keputusan dapat ditelusuri. [Ledger awal](candidate-source-review-216-20261012.md) adalah keputusan first-pass, bukan daftar instalasi. Prioritas tetap AI eksternal yang mengendalikan owner internal Agent Core.
 
-## Pendalaman lanjutan: hasil terbaru
+## Riwayat pendalaman cakupan 65 entri
 
 ### Pendalaman sumber kandidat #46–#102
 
@@ -480,4 +525,4 @@ Tidak ada engine donor dijalankan, dependency dipasang, source produk diubah, bu
 
 ## Ringkasan kesinambungan
 
-Riset source kandidat Agent Core pada 12 Oktober 2026 mencakup 216 ID: 8 reserved Batch 1–4 dan 208 entri lain. Setelah pendalaman lanjutan 65 entri, cakupan kumulatif adalah 175 body kode berpinned, 3 interface, 30 entri berbukti dokumentasi saja, dan 8 reserved. Body kode berarti potongan implementasi yang dibaca, bukan seluruh engine; SDK atau wrapper tidak membuktikan source backend tersedia. Tidak ada entri unallocated yang hanya mengandalkan bukti putaran lama tanpa tindak lanjut. Tetap ada 17 kelompok peluang dari 18 kandidat utama; #69 dan #92 menambah bukti pada kelompok existing, bukan instalasi baru. Riset membedakan 6 gap eksternal, 4 peluang eksternal bersyarat, 4 bukti/evaluasi, 2 producer/aplikasi opsional, dan 1 native-only. Tidak ada perubahan produk, eksekusi donor, instalasi, build/test/benchmark atau Windows. Batch 5–6 belum dibuat: wajib menunggu Batch 3–4 terintegrasi lalu mencocokkan ulang source donor/native dan kontrak aktual. Invocate tetap ditunda; storage canonical tetap runtime/memory.
+Riset 216 kandidat Agent Core tetap mencatat 175 potongan body berpinned, 3 interface, 30 dokumentasi saja, dan 8 reserved Batch 1–4. Pendalaman 17 kelompok peluang menelusuri caller, keluaran, dependensi, lifecycle, lisensi dan owner native: 1 dipertahankan, 11 dipersempit, 5 ditunda. Status ini keputusan riset, bukan seleksi implementasi. Status recall gagal/kosong sudah ada secara internal tetapi hilang pada dua keluaran controller; evaluasi positif/negatif dan hash source/media juga sudah ada sehingga tidak perlu diduplikasi. PDF memerlukan snapshot bytes dan penerusan metadata ke keluaran; geometri existing bersifat pendekatan. Caller donor #192 belum tersedia; bukti tetap dibatasi. Tidak ada kandidat baru, perubahan produk, instalasi, eksekusi donor, build/test/benchmark atau Windows. Batch 5–6 tetap menunggu integrasi Batch 3–4 lalu pencocokan ulang source/kontrak aktual. Invocate ditunda; storage tetap runtime/memory.
