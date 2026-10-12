@@ -4,7 +4,7 @@
 
 Semua ID asli 1–216 dipertahankan. Detail commit, path source, cakupan pembacaan, pembanding Agent Core, dan batas lisensi ada di JSON pendamping. `extend` berarti ada mekanisme layak dipertimbangkan; bukan semua otomatis dipilih untuk integrasi. `reuse` harus berdasarkan kecukupan mekanisme, bukan keberadaan nama fitur saja.
 
-**Pembagian eksekusi:** Batch 1 mengadopsi mekanisme #73, #133, dan #178 untuk satu jalur pembacaan web native. Batch 2 belum disusun; kandidat lain tidak otomatis dianggap sebagai pekerjaan implementasi yang tertunda.
+**Pembagian source saat ini:** Batch 1 (#73/#133/#178) dan Batch 2 (#7/#17/#195) sudah diimplementasikan pada source Linux. Batch 3 (#25) dan Batch 4 (#138) tetap alokasi plan, belum diklaim terintegrasi. Sisa 208 entri bukan 208 instalasi wajib. Riset pendalaman berikutnya ada pada [peluang adopsi source](candidate-adoption-opportunities-20261012.md); Batch 5–6 baru boleh disusun setelah Batch 3–4 terintegrasi dan temuan riset dicocokkan ulang dengan source hasilnya.
 
 ## Jumlah keputusan
 
@@ -24,7 +24,7 @@ Semua ID asli 1–216 dipertahankan. Detail commit, path source, cakupan pembaca
 | 4 | DSPy / MIPROv2 | defer | code | Belum dialokasikan |
 | 5 | Reflexion | reuse | code | Belum dialokasikan |
 | 6 | ExpeL | reuse | code | Belum dialokasikan |
-| 7 | Voyager | extend | code | Belum dialokasikan |
+| 7 | Voyager | extend | code | Batch 2 — source implemented |
 | 8 | TextGrad | defer | code | Belum dialokasikan |
 | 9 | SICA — Self-Improving Coding Agent | defer | code | Belum dialokasikan |
 | 10 | Darwin Gödel Machine / DGM | defer | code | Belum dialokasikan |
@@ -34,7 +34,7 @@ Semua ID asli 1–216 dipertahankan. Detail commit, path source, cakupan pembaca
 | 14 | Agent Lightning | defer | code | Belum dialokasikan |
 | 15 | Self-Refine | reuse | code | Belum dialokasikan |
 | 16 | ReasoningBank | reuse | code | Belum dialokasikan |
-| 17 | AutoSkill / SkillEvo | extend | code | Belum dialokasikan |
+| 17 | AutoSkill / SkillEvo | extend | code | Batch 2 — source implemented |
 | 18 | Acontext | reuse | code | Belum dialokasikan |
 | 19 | MetaClaw | reuse | code | Belum dialokasikan |
 | 20 | Hermes Agent | reuse | code | Belum dialokasikan |
@@ -42,7 +42,7 @@ Semua ID asli 1–216 dipertahankan. Detail commit, path source, cakupan pembaca
 | 22 | Agent Workflow Memory / AWM | reuse | code | Belum dialokasikan |
 | 23 | Agent Skill Induction | reuse | code | Belum dialokasikan |
 | 24 | Skill-Pro / ProcMEM | defer | code | Belum dialokasikan |
-| 25 | SimpleMem / EvolveMem | extend | code | Belum dialokasikan |
+| 25 | SimpleMem / EvolveMem | extend | code | Batch 3 — plan only |
 | 26 | memU | reuse | code | Belum dialokasikan |
 | 27 | Hindsight | reuse | code | Belum dialokasikan |
 | 28 | ReMe | reuse | code | Belum dialokasikan |
@@ -90,7 +90,7 @@ Semua ID asli 1–216 dipertahankan. Detail commit, path source, cakupan pembaca
 | 70 | AC — Wrtn Labs | reuse | focused-static-source-call-path; no donor execution | Belum dialokasikan |
 | 71 | Agentica / MicroAgentica — Wrtn Labs | defer | documentation-and-metadata-only-for-proposed-mechanism | Belum dialokasikan |
 | 72 | Evidence — Wrtn Labs | reuse | focused-static-source-call-path; no donor execution | Belum dialokasikan |
-| 73 | web-content-extractor — Wrtn Labs | extend | focused-static-source-call-path; no donor execution | Batch 1 |
+| 73 | web-content-extractor — Wrtn Labs | extend | focused-static-source-call-path; no donor execution | Batch 1 — source implemented |
 | 74 | Storm MCP Server — Sionic AI | reject | focused-static-source-call-path; no donor execution | Belum dialokasikan |
 | 75 | Document Parse — Upstage | no-source | documentation-and-metadata-only-for-proposed-mechanism | Belum dialokasikan |
 | 76 | Studio + Agents API — Upstage | no-source | documentation-and-metadata-only-for-proposed-mechanism | Belum dialokasikan |
@@ -150,12 +150,12 @@ Semua ID asli 1–216 dipertahankan. Detail commit, path source, cakupan pembaca
 | 130 | Oh My OpenAgent / OmO — sebelumnya oh-my-opencode | reject | code | Belum dialokasikan |
 | 131 | senpi — fork runtime oleh maintainer Seoul | extend | code | Belum dialokasikan |
 | 132 | cc-plus — maintainer code-yeongyu | reuse | code | Belum dialokasikan |
-| 133 | web-fetch — maintainer code-yeongyu | extend | code | Batch 1 |
+| 133 | web-fetch — maintainer code-yeongyu | extend | code | Batch 1 — source implemented |
 | 134 | OMX / OMC — oh-my-codex + oh-my-claudecode | reuse | code | Belum dialokasikan |
 | 135 | Ouroboros — maintainer Q00 | extend | code | Belum dialokasikan |
 | 136 | AutoBE — Wrtn Labs | defer | docs-only | Belum dialokasikan |
 | 137 | Connectors — Wrtn Labs | defer | docs-only | Belum dialokasikan |
-| 138 | Sindie — Wrtn Labs | extend | code | Belum dialokasikan |
+| 138 | Sindie — Wrtn Labs | extend | code | Batch 4 — plan only |
 | 139 | vector-store — Wrtn Labs | defer | docs-only | Belum dialokasikan |
 | 140 | OpenDataLoader PDF — Hancom | defer | code | Belum dialokasikan |
 | 141 | PULSE / AutoCode — ETRI | reject | code | Belum dialokasikan |
@@ -195,7 +195,7 @@ Semua ID asli 1–216 dipertahankan. Detail commit, path source, cakupan pembaca
 | 175 | tRPC-Agent-Go — Tencent | reuse | focused-static-source-call-path; no execution | Belum dialokasikan |
 | 176 | Qwen-Agent — Alibaba Qwen | reuse | focused-static-source-call-path; no execution | Belum dialokasikan |
 | 177 | ModelScope-Agent → MS-Agent — Alibaba | reuse | focused-static-source-call-path; no execution | Belum dialokasikan |
-| 178 | Qwen Code — Alibaba Qwen | extend | focused-static-source-call-path; no execution | Batch 1 |
+| 178 | Qwen Code — Alibaba Qwen | extend | focused-static-source-call-path; no execution | Batch 1 — source implemented |
 | 179 | Trae Agent — ByteDance | reuse | focused-static-source-call-path; no execution | Belum dialokasikan |
 | 180 | Kimi Code CLI — Moonshot AI | reuse | focused-static-source-call-path; no execution | Belum dialokasikan |
 | 181 | MiniMax Code + MiniMax MCP | reject | focused-static-source-call-path; no execution | Belum dialokasikan |
@@ -212,7 +212,7 @@ Semua ID asli 1–216 dipertahankan. Detail commit, path source, cakupan pembaca
 | 192 | Kagura Memory Cloud — Kagura AI | reuse | focused-static-source-call-path; no execution | Belum dialokasikan |
 | 193 | TreeQuest / Adaptive Branching MCTS — Sakana AI | defer | focused-static-source-call-path; no execution | Belum dialokasikan |
 | 194 | ShinkaEvolve — Sakana AI | reuse | focused-static-source-call-path; no execution | Belum dialokasikan |
-| 195 | SkillPort — gotalab | extend | focused-static-source-call-path; no execution | Belum dialokasikan |
+| 195 | SkillPort — gotalab | extend | focused-static-source-call-path; no execution | Batch 2 — source implemented |
 | 196 | cc-sdd — gotalab | reuse | focused-static-source-call-path; no execution | Belum dialokasikan |
 | 197 | Caty — self-growth-loop / context-kit / family-memory / harness | reuse | focused-static-source-call-path; no execution | Belum dialokasikan |
 | 198 | Eidetic — maintainer issyuNaN | reject | focused-static-source-call-path; no execution | Belum dialokasikan |
