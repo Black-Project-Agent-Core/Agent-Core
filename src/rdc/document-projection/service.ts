@@ -48,6 +48,7 @@ export interface ProjectBytesOptions {
   localPath?: string;
   url?: string;
   mimeType?: string;
+  charsetHint?: string;
   extension?: string;
   depth?: number;
   budget?: ProjectionBudget;
@@ -68,6 +69,7 @@ function normalizedInput(options: ProjectBytesOptions): ProjectionInput {
     localPath: options.localPath,
     url: options.url,
     mimeType: options.mimeType?.split(';', 1)[0]?.trim().toLowerCase(),
+    charsetHint: options.charsetHint,
     extension: options.extension?.toLowerCase() ?? extensionFrom(source),
     depth: options.depth ?? 0,
     budget: options.budget ?? { entries: 0, expandedBytes: 0 },

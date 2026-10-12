@@ -2,8 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from 'os';
 import { fetchWithPolicy, correlationSuffix } from '../../net/outbound-request.js';
-import { readPublicUrlBytes, publicContentKind } from '../../net/public-url-read.js';
-import { parsePdfBytesToMarkdown } from './pdf/index.js';
+import { readPublicDocument } from '../document-projection/public-url.js';
 import { readResponseBytesBounded, readResponseTextBounded } from '../../net/bounded-response.js';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -386,24 +385,16 @@ export async function readFileFromUrl(url: string, options?: ReadOptions): Promi
     if (options?.networkPolicy !== undefined) {
         if (options.networkPolicy !== 'public-only' || options.expectedIntegrity !== undefined
             || options.sheet !== undefined || options.range !== undefined
-            || (options.projection !== undefined && options.projection !== 'native'))
+            || (options.projection !== undefined && options.projection !== 'native' && options.projection !== 'markdown'))
             throw new Error('PUBLIC_URL_MODE_INVALID');
         // A common conservative bound is never larger than any existing format limit.
         const maxBytes = Math.min(URL_TEXT_MAX_BYTES, URL_BINARY_MAX_BYTES,
             envByteLimit('AGENT_CORE_PDF_URL_MAX_BYTES', 64 * 1024 * 1024));
-        const result = await readPublicUrlBytes(url, { maxBytes, signal: options.signal });
-        const kind = publicContentKind(result.contentType);
-        const publicUrl = { networkPolicy: 'public-only' as const, redirects: result.redirects, downloadedBytes: result.bytes.length };
-        if (kind === 'pdf') {
-            const parsed = await parsePdfBytesToMarkdown(new Uint8Array(result.bytes));
-            return { content: '', mimeType: 'text/plain', metadata: { publicUrl, isPdf: true,
-                author: parsed.metadata.author, title: parsed.metadata.title,
-                totalPages: parsed.metadata.totalPages, pages: parsed.pages } };
-        }
-        if (kind === 'image') return { content: result.bytes.toString('base64'),
-            mimeType: result.contentType.split(';', 1)[0].trim().toLowerCase(), metadata: { publicUrl, isImage: true } };
-        const charset = /charset\s*=\s*([^;]+)/i.exec(result.contentType)?.[1]?.trim();
-        return { content: decodeText(result.bytes, charset).text, mimeType: result.contentType, metadata: { publicUrl, isImage: false } };
+        return readPublicDocument(url, {
+            projection: options.projection,
+            maxBytes,
+            signal: options.signal,
+        });
     }
     const { isImageFile } = await import('./mime-types.js');
     try {

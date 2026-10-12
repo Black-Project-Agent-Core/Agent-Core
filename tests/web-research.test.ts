@@ -21,6 +21,7 @@ const base = (overrides: Partial<ConstructorParameters<typeof WebResearchService
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('WebResearchService', () => {
@@ -30,6 +31,8 @@ describe('WebResearchService', () => {
       status: 'degraded',
       searchConfigured: false,
       readerConfigured: true,
+      nativeReaderAvailable: true,
+      externalReaderConfigured: true,
       academicConfigured: false,
       assetConfigured: false,
       difficultWebCredentialsPresent: false,
@@ -37,7 +40,7 @@ describe('WebResearchService', () => {
       searchProviders: [],
       academicProviders: [],
       assetProviders: [],
-      openProviders: ['jina'],
+      openProviders: ['native', 'jina'],
       issue: 'WEB_RESEARCH_SEARCH_KEY_MISSING',
     });
   });
@@ -213,13 +216,16 @@ describe('WebResearchService', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const service = new WebResearchService(base());
-    const result = await service.open({ url: 'https://example.com/article' });
+    const result = await service.open({ reader: 'external', url: 'https://example.com/article' });
     expect(result).toEqual({
       provider: 'jina',
       url: 'https://example.com/article',
       title: 'Example Article',
       content: 'Readable article body',
       publishedAt: '2026-10-01',
+      truncated: false,
+      returnedChars: 'Readable article body'.length,
+      provenance: { kind: 'provider-reported', untrusted: true },
     });
   });
   it('falls back from Jina Reader to Firecrawl scrape when configured', async () => {
@@ -243,7 +249,7 @@ describe('WebResearchService', () => {
     const service = new WebResearchService(base({
       firecrawlApiKey: 'fixture-firecrawl-secret',
     }));
-    const result = await service.open({ url: 'https://example.com/page' });
+    const result = await service.open({ reader: 'external', url: 'https://example.com/page' });
     expect(result.provider).toBe('firecrawl');
     expect(result.content).toContain('Useful body');
     expect(JSON.stringify(result)).not.toContain('fixture-firecrawl-secret');
@@ -275,7 +281,7 @@ describe('WebResearchService', () => {
     const service = new WebResearchService(base({
       browserbaseApiKey: 'fixture-browserbase-secret',
     }));
-    const result = await service.open({ url: 'https://example.com/difficult' });
+    const result = await service.open({ reader: 'external', url: 'https://example.com/difficult' });
     expect(result.provider).toBe('browserbase');
     expect(result.content).toContain('Difficult page body');
     expect(JSON.stringify(result)).not.toContain('fixture-browserbase-secret');
@@ -285,9 +291,9 @@ describe('WebResearchService', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const service = new WebResearchService(base({ jinaApiKey: 'fixture-jina' }));
-    await expect(service.open({ url: 'http://127.0.0.1:8765/health' }))
+    await expect(service.open({ reader: 'external', url: 'http://127.0.0.1:8765/health' }))
       .rejects.toThrow('WEB_RESEARCH_URL_INVALID');
-    await expect(service.open({ url: 'http://10.0.0.1/private' }))
+    await expect(service.open({ reader: 'external', url: 'http://10.0.0.1/private' }))
       .rejects.toThrow('WEB_RESEARCH_URL_INVALID');
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -296,5 +302,54 @@ describe('WebResearchService', () => {
     const service = new WebResearchService(base());
     await expect(service.search({ query: 'anything' }))
       .rejects.toThrow('WEB_RESEARCH_WEB_NOT_CONFIGURED');
+  });
+});
+
+
+describe('native-first web reading', () => {
+  it('uses the shared native owner with raw URL, signal and observed provenance', async () => {
+    const native = await import('../src/rdc/document-projection/public-url.js');
+    const spy = vi.spyOn(native, 'readPublicDocument').mockResolvedValue({
+      content: '# Source\nBody', mimeType: 'text/markdown', metadata: {
+        isDocumentProjection: true, converter: 'html', publicUrl: {
+          networkPolicy: 'public-only', finalUrl: 'https://example.org/final',
+          contentType: 'text/html', downloadedBytes: 64, redirects: 1,
+          contentSha256: 'a'.repeat(64), extractionScope: 'main', selectionReason: 'semantic-main',
+        },
+      },
+    } as any);
+    const cloud = vi.fn(); vi.stubGlobal('fetch', cloud);
+    const signal = new AbortController().signal;
+    const result = await new WebResearchService(base()).open({
+      url: 'https://example.org/raw?private=query', contentScope: 'main', signal,
+    });
+    expect(spy).toHaveBeenCalledWith('https://example.org/raw?private=query', expect.objectContaining({projection: 'markdown', contentScope: 'main', signal}));
+    expect(result).toMatchObject({provider: 'native', url: 'https://example.org/final', content: '# Source\nBody', truncated: false, returnedChars: 13,
+      provenance: {kind: 'native-public', untrusted: true, redirects: 1, extractionScope: 'main', contentSha256: 'a'.repeat(64)}});
+    expect(JSON.stringify(result)).not.toContain('private=query');
+    expect(cloud).not.toHaveBeenCalled();
+  });
+  it('does not send denied native reads to a cloud reader', async () => {
+    const native = await import('../src/rdc/document-projection/public-url.js');
+    vi.spyOn(native, 'readPublicDocument').mockRejectedValue(new Error('PUBLIC_URL_ADDRESS'));
+    const cloud = vi.fn(); vi.stubGlobal('fetch', cloud);
+    await expect(new WebResearchService(base({firecrawlApiKey: 'fixture-key'})).open({url: 'http://127.1/private'})).rejects.toThrow('PUBLIC_URL_ADDRESS');
+    expect(cloud).not.toHaveBeenCalled();
+  });
+  it('refuses external scope instead of silently changing its meaning', async () => {
+    const cloud = vi.fn(); vi.stubGlobal('fetch', cloud);
+    await expect(new WebResearchService(base()).open({url:'https://example.org',reader:'external',contentScope:'main'})).rejects.toThrow(/SCOPE/);
+    expect(cloud).not.toHaveBeenCalled();
+  });
+  it('bounds external output without splitting a surrogate pair or hiding truncation', async () => {
+    const notice = '\n\n[Content truncated]';
+    const body = 'a'.repeat(80_000-notice.length-1)+'🧠'+'z'.repeat(100);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({data:{content:body}}), {status:200,headers:{'content-type':'application/json'}})));
+    const result=await new WebResearchService(base()).open({url:'https://example.org',reader:'external'});
+    expect(result.truncated).toBe(true);expect(result.returnedChars).toBe(result.content.length);
+    expect(result.content.length).toBeLessThanOrEqual(80_000);
+    expect(result.content.endsWith(notice)).toBe(true);
+    expect(result.content.isWellFormed()).toBe(true);
+    expect(result.provenance).toEqual({kind:'provider-reported',untrusted:true});
   });
 });

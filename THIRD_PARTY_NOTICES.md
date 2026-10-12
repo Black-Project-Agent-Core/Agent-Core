@@ -135,7 +135,7 @@ Copyright 2025 Zhipu AI.
 
 ## Apache License, Version 2.0
 
-The following Apache License text is retained for the Shiploop and Reef source references above.
+The following Apache License text is retained for the Apache-2.0 source references in this file.
 
                                  Apache License
                            Version 2.0, January 2004
@@ -455,3 +455,62 @@ The inspected GEA root licence is Apache License, Version 2.0; its full terms ar
 The optional Memory body-digest feedback guard independently applies the stale-subject evidence principle inspected in MetaClaw revision `e727cf86842b6411ad13591859349bb5a1fe3e69` (qhz991029/metaclaw), particularly `data_formatter.py::ConversationSample`, `api_server.py` sample tagging, and `trainer.py` generation filtering. Agent Core uses an exact ID/body digest and its existing canonical lock, not a generation counter, trainer, skill mutator, inference proxy, scheduler or online-RL process. No MetaClaw Python source is copied verbatim.
 
 The inspected MetaClaw MIT notice names Copyright (c) 2026 Peng Xia, Jianwen Chen, Xinyu Yang, Siwei Han, Shi Qiu, Zeyu Zheng, Cihang Xie, Huaxiu Yao. The upstream MIT permission and disclaimer are preserved with the source evidence; native design additions do not claim a transferred RL implementation.
+
+## Batch 1: native public web evidence
+
+### web-fetch envelope mechanism reference
+
+Agent Core independently adapts result/provenance/error-envelope semantics inspected in `code-yeongyu/web-fetch`, revision `9af775ff57af401afcce20b7ce5c53a051c630d2`, `scripts/web_fetch.py`. Its Python runtime, browser impersonation and dependencies are not bundled. The existing Agent Core public-address transport remains the network authority. Upstream license notice:
+
+MIT License
+
+Copyright (c) 2026 Yeongyu Kim
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+### Wrtn web-content-extractor
+
+Density and ancestor/subtree-selection mechanisms in `src/rdc/document-projection/html-main-content.ts` are adapted from `wrtnlabs/web-content-extractor` revision `4cdefff7726a9612bb828d1416becfc5715f8310`, `src/compute-text-density.ts` and `src/extract-content.ts`. Agent Core uses its existing public node-html-markdown hooks, explicit main scope, bounded traversal and conservative full-content fallback. No donor parser package or separate service is installed.
+
+MIT License
+
+Copyright (c) 2025 Wrtn Technologies
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+### Qwen Code bounded text prefix
+
+The safe UTF-16 prefix and bounded truncation notice in `src/web-research/service.ts` adapt `packages/core/src/core/tool-hook-context.ts` from `QwenLM/qwen-code`, revision `e9789d091133d9753decfc139df64c935a1866e6`. Copyright 2026 Qwen Team. Licensed under Apache-2.0; the full Apache License 2.0 is retained above in this file. Agent Core changes the context to web content, applies redaction before truncation, retains a bounded visible notice and reports explicit truncation metadata. No Qwen hook engine or model runtime is bundled.

@@ -1,6 +1,6 @@
 # Plan Adopsi Bertahap Learning, Memory, dan Self-Improvement Agent Core
 
-**Status:** P0, P1, P2, P3, dan P5 diimplementasikan pada source utama; P4 memakai ulang portfolio/Pareto existing. Aktivasi fresh Memory Linux sudah selesai. Sinkronisasi final isi Memory operasional dan finalisasi Learning masih menunggu penyelesaian pelaksana utama; deployment Windows dan refresh plugin belum dinyatakan selesai.
+**Status terkini, direkonsiliasi 12 Oktober 2026:** scope pemasangan sampai aktif ditutup berdasarkan implementasi Linux dan laporan Windows yang diberikan pengguna. P0, P1, P2, P3, dan P5 diimplementasikan; P4 memakai ulang portfolio/Pareto existing. Aktivasi canonical Memory, sinkronisasi isi, dan finalisasi Learning Linux selesai. Laporan pengguna menyatakan jalur inti Windows aktif dan `memoryFeedback` sudah terekspos pada plugin. **Sisa tahap wajib: 0.** Batas audit tambahan tetap dicatat sebagai belum terbukti, bukan blocker pemasangan atau tugas baru. Laporan Windows tidak diverifikasi langsung oleh pelaksana rekonsiliasi Linux ini.
 **Tanggal:** 12 Oktober 2026.  
 **Tujuan:** membuat kemampuan yang sudah ada benar-benar tersambung dan berguna bagi satu AI eksternal yang mengendalikan Agent Core, kemudian mengisi kekurangan dengan mekanisme kandidat terpilih.  
 **Arsitektur:** pertahankan pemilik Memory, Learning, Skills, dan Browser yang sudah ada. Donor adalah referensi algoritme atau kontrak kecil, bukan alasan memasang seluruh framework.  
@@ -32,7 +32,7 @@ Temuan source pada baseline tersebut:
 - **Pada baseline, `host-runtime.ts` memuat target `runtime/memory-v2`.** Ini berbeda dari keputusan pengguna tentang nama penyimpanan, tetapi bukan bukti bahwa mesin Windows sedang memakai folder tersebut.
 - Credential scheduler adalah penjadwalan credential/quota provider, **bukan scheduler tugas atau pengingat**.
 
-**Target penyimpanan Memory:** `<PROJECT_ROOT>/runtime/memory`; pada mesin Windows pengguna saat ini: `E:\Projects\Agent-Core\runtime\memory`. Nama folder tetap `memory` pada Linux maupun Windows. Versi engine v2/v3/v4 dan seterusnya boleh berubah tanpa mengubah nama lokasi penyimpanan. Target ini bukan klaim bahwa migrasi Windows sudah selesai. Nama versi engine boleh dipertahankan pada kode. Skills dan state operasional yang punya tanggung jawab berbeda tetap memakai pemilik aslinya; satu folder Memory tidak berarti memindahkan semua state aplikasi ke sana.
+**Target penyimpanan Memory:** `<PROJECT_ROOT>/runtime/memory`; pada mesin Windows pengguna saat ini: `E:\Projects\Agent-Core\runtime\memory`. Nama folder tetap `memory` pada Linux maupun Windows. Versi engine v2/v3/v4 dan seterusnya boleh berubah tanpa mengubah nama lokasi penyimpanan. Pada inspeksi awal, target ini belum menjadi bukti migrasi Windows; laporan pengguna yang kemudian menutup scope aktivasi dicatat terpisah pada bagian 12. Nama versi engine boleh dipertahankan pada kode. Skills dan state operasional yang punya tanggung jawab berbeda tetap memakai pemilik aslinya; satu folder Memory tidak berarti memindahkan semua state aplikasi ke sana.
 
 Sumber proyek: [host runtime](https://github.com/Black-Project-Agent-Core/Agent-Core/blob/main/src/memory/host-runtime.ts), [curation delta](https://github.com/Black-Project-Agent-Core/Agent-Core/blob/main/src/learning/curation-delta.ts), [ekspor Memory](https://github.com/Black-Project-Agent-Core/Agent-Core/blob/main/SubProject/agent-core-memory/src/index.ts).
 
@@ -63,7 +63,7 @@ Path relatif terhadap repo. Tanda `retrieval-*.ts` menunjuk keluarga modul yang 
 
 ## 5. Tahapan pengerjaan
 
-Kotak tercentang mencatat implementasi atau pemakaian ulang owner pada source; bukan klaim manfaat terukur atau deployment Windows. Aktivasi runtime Linux dan pekerjaan operasional yang masih terbuka dijelaskan terpisah pada bagian 12.
+Kotak tercentang mencatat implementasi atau pemakaian ulang owner pada source; bukan klaim manfaat terukur atau deployment Windows. Aktivasi runtime Linux, penutupan scope operasional, dan batas bukti laporan Windows dijelaskan terpisah pada bagian 12.
 
 ### P0. Satukan jalur aktif dan penyimpanan
 
@@ -208,21 +208,20 @@ Tidak menjadikan pemeriksaan berulang, laporan panjang, speed test, atau benchma
 ### Dokumentasi, Memory lokal, dan plugin
 
 - [x] Perbarui plan ini dan `MEMORY.md` dengan source owner dan status pelaksanaan yang selaras.
-- [ ] Selesaikan sinkronisasi isi Memory operasional melalui owner aktif, baca kembali record/revision, dan finalisasi Learning. Aktivasi fresh root saja belum menutup langkah ini.
+- [x] Sinkronisasi isi Memory operasional dan finalisasi Learning Linux selesai melalui owner aktif; record `f8a6042a-7ad1-4994-a1b7-812e170e30ad` dibaca kembali dengan `pendingReviewCount=0`. Rekonsiliasi status mempertahankan record yang sama dan riwayatnya, bukan membuat duplikat.
 - [x] Jangan menulis bahwa integrasi sudah selesai hanya karena dokumen atau plan dibuat.
 - [x] Utamakan tool existing dan nyatakan perubahan schema: field opsional `memoryFeedback` pada `controller_learning`, tanpa tool baru.
-- [ ] Refresh/re-upload plugin Agent Core yang memakai descriptor lama setelah schema server terbaru tersedia, lalu pastikan field tersebut terlihat. Urutan pemakaian ada pada bagian 12.
+- [x] Kebutuhan exposure schema plugin ditutup berdasarkan laporan Windows pengguna: descriptor yang terhubung sudah menampilkan `memoryFeedback`. Tidak perlu mengulang refresh/re-upload hanya karena catatan historis masih menyebutnya pending; feedback manfaat nyata tetap belum diuji.
 - [x] Kerjakan hal yang berada dalam kewenangan pelaksana tanpa meminta arahan berulang. Intervensi manusia hanya untuk kebutuhan nyata seperti unggah plugin, login/credential, izin keamanan, atau tindakan destruktif yang memerlukan persetujuan saat itu.
 
 ### Folder sementara dan salinan lama
 
-Pekerjaan housekeeping ini terpisah dari status integrasi source. Tidak ada akses, deployment, atau pembersihan Windows dalam pelaksanaan Linux ini.
+Housekeeping dilaporkan sesuai batas bukti, bukan disimpulkan selesai menyeluruh. Rekonsiliasi ini tidak menjalankan tindakan Windows atau pembersihan baru.
 
-- [ ] Setelah integrasi benar-benar berada pada source utama dan tidak ada dependency aktif pada lokasi sementara, pindahkan seluruh materi yang masih diperlukan ke owner yang benar.
-- [ ] Inventarisasi lokasi `temp` dan `E:\Projects\Agent-Core\runtime\tmp` yang tepat; jangan menganggap semua folder bernama temp di komputer termasuk scope.
-- [ ] Bersihkan seluruh isi lokasi sementara yang berada dalam scope setelah syarat tadi terpenuhi. `runtime/tmp` bukan pengecualian permanen.
-- [ ] Gunakan penghapusan yang dapat dipulihkan bila tersedia. Penghapusan permanen yang tidak dapat dipulihkan memerlukan konfirmasi saat tindakan; izin membuat plan bukan izin menghapus data sekarang.
-- [ ] Cadangan pemulihan yang diperlukan harus jelas perannya, tidak di-load sebagai runtime alternatif, dan bukan alasan membiarkan codebase aktif di temp.
+- **Linux, pelaksanaan 12 Oktober 2026:** source aktif berada pada owner utama, `dist` standar telah dibangun, dan `runtime/tmp` dilaporkan kosong pada penutupan batch.
+- **Windows, menurut laporan pengguna 12 Oktober 2026:** pemeriksaan `runtime/tmp` tidak menemukan item; receipt mencatat `ACTIVE_VERIFIED`, `COMPLETE_TMP_EMPTY`, serta enam item lama yang dipindahkan melalui Recycle Bin.
+- **Belum terbukti di luar cakupan tersebut:** pemindahan seluruh materi dari setiap lokasi `temp`, pemeriksaan setiap item Recycle Bin, seluruh Scheduled Task, seluruh backup, dan ketiadaan seluruh kemungkinan dependency sementara. Jangan memberi centang selesai pada klaim yang lebih luas.
+- **Batas tindak lanjut:** audit cleanup forensic dan hash arsip penuh bersifat opsional bila diminta terpisah. Ini bukan blocker pemasangan dan tidak otomatis menjadi task baru. Pertahankan receipt/backup; rekonsiliasi status tidak memberi izin penghapusan tambahan.
 
 ## 9. Sumber kandidat utama
 
@@ -280,15 +279,31 @@ Manifest mencatat keberadaan berkas lisensi, bukan izin menyeluruh untuk setiap 
 **Paket publikasi:** plan ini, manifest commit sumber, dan catatan kontinuitas repository. Checkout donor tetap berada di Linux sebagai referensi; tidak dimasukkan ke GitHub Agent Core sebagai salinan codebase, dependency, submodule, atau sistem aktif.
 
 
-## 12. Status implementasi dan aktivasi Linux — 12 Oktober 2026
+## 12. Status implementasi, aktivasi, dan penutupan scope — 12 Oktober 2026
 
-### Ringkasan pelaksanaan
+### Ringkasan pelaksanaan Linux (bukti historis 12 Oktober 2026)
 
 - **P0 diimplementasikan dan fresh root Linux diaktifkan.** `runtime/memory-v2-activation.json` kini memakai schema 2, `root: runtime/memory`, `mode: experience-v2`, dan identitas engine `256e31b4-0186-4265-86f4-ea2cb3e16175`. Aktivasi tercatat pada `2026-10-12T05:56:25.018Z`; manifest engine mempunyai identitas yang sama. Nama metadata engine tidak mengubah nama folder penyimpanan. Tidak ada root paralel `runtime/memory-v2` yang dibuat untuk aktivasi fresh.
 - **P1, P2, P3, P5 diimplementasikan pada jalur existing.** Source owner dan batas tiap jalur ada pada tabel berikut. Implementasi bukan bukti bahwa semua alur sudah memberi manfaat dalam pekerjaan pengguna.
 - **P4 dipakai ulang.** Portfolio/Pareto/riwayat existing cukup untuk batch ini; tidak ada optimizer, model, daemon, atau store donor tambahan yang diperlukan. Tidak ada klaim siklus optimisasi baru sudah dijalankan.
-- **Status sinkronisasi operasional, terpisah dari implementasi source:** pelaksana utama sudah membaca owner terlebih dahulu, menyimpan record interim `f8a6042a-7ad1-4994-a1b7-812e170e30ad`, dan membacanya kembali secara tepat. Episode controller adalah `ext-d3f2bf5039ec49a9a52a1511dada14bc`; episode Memory adalah `af631b5b-5fb7-48f2-8fc6-16012752a0a9`. Isi final diamend melalui checkpoint/reviewDelta pada record yang sama; riwayat lama tetap tersedia (1 revision). Revision final `sha256:dd492b17c8ba733787154b53342dd69d344ad9336f3004861aa429458c62a00f` berhasil dibaca kembali sesudah reopen, sama persis dengan ringkasan bersama di bawah, dan ditemukan melalui fusion recall. Learning finalization selesai dengan `pendingReviewCount=0`. Refresh plugin yang membawa schema lama juga belum diklaim selesai.
-- **Batas mesin:** tidak ada relokasi root historis atau deployment Windows pada pelaksanaan ini. Marker schema 1 tetap dibaca secara kompatibel; relokasi ke nama canonical tersedia sebagai operasi offline eksplisit setelah semua writer berhenti dan data/backup lolos pemeriksaan.
+- **Sinkronisasi operasional Linux selesai pada 06:07 UTC, terpisah dari implementasi source:** pelaksana utama sudah membaca owner terlebih dahulu, menyimpan record interim `f8a6042a-7ad1-4994-a1b7-812e170e30ad`, dan membacanya kembali secara tepat. Episode controller adalah `ext-d3f2bf5039ec49a9a52a1511dada14bc`; episode Memory adalah `af631b5b-5fb7-48f2-8fc6-16012752a0a9`. Isi final diamend melalui checkpoint/reviewDelta pada record yang sama; riwayat lama tetap tersedia (1 revision). Revision saat penutupan awal `sha256:dd492b17c8ba733787154b53342dd69d344ad9336f3004861aa429458c62a00f` berhasil dibaca kembali sesudah reopen, cocok dengan ringkasan bersama saat itu, dan ditemukan melalui fusion recall. Learning finalization selesai dengan `pendingReviewCount=0`. Pernyataan plugin belum selesai berlaku pada waktu itu saja dan superseded oleh laporan Windows di bawah.
+- **Batas pelaksanaan Linux:** tidak ada relokasi root historis atau deployment Windows yang dijalankan oleh pelaksana Linux. Marker schema 1 tetap dibaca secara kompatibel; relokasi ke nama canonical tersedia sebagai operasi offline eksplisit setelah semua writer berhenti dan data/backup lolos pemeriksaan.
+
+### Penutupan Windows berdasarkan laporan pengguna
+
+Sumber: `Pengujian-Integrasi-Independen.md`, Library ID `libfile_1c0cb9310d3c819182c5b378e2a90e15`, diberikan pengguna pada 12 Oktober 2026. Laporan berasal dari [sesi pengujian Windows](https://chatgpt.com/g/g-p-6a4731eb0df081918f4e64005909762b-joe/c/6accc358-6944-83ec-8cc1-3904bc651b5b). Ini laporan yang diberikan pengguna, bukan hasil verifikasi langsung Windows dalam rekonsiliasi Linux ini.
+
+- Laporan menyatakan `/health` HTTP 200 / `ok`, versi `0.15.0-beta.3`, marker schema 2 / `complete`, canonical `runtime/memory`, root ID `84705917-7036-4eb4-b4a4-bf9de887aab8`, dan 133 record pada waktu pemeriksaan. Jumlah record merupakan snapshot, bukan invariant.
+- Task, event, capsule, task context controller, Learning checkpoint/idempotency/review dinyatakan operasional; review key pengujian selesai dengan `no-new-knowledge`, tanpa durable knowledge sintetis.
+- `memoryFeedback` sudah terlihat pada descriptor plugin yang benar-benar terhubung di sesi laporan. Ini menutup pending exposure/refresh plugin; tidak membuktikan outcome `helpful`/`not-helpful` atau manfaat terukur.
+- Identitas root dan sampel record historis dapat dibaca menurut laporan. Hash seluruh arsip, audit menyeluruh 28 file rekonsiliasi, manfaat feedback nyata, dan cleanup forensic belum dibuktikan. Verdict laporan tetap **PARTIAL PASS** untuk keseluruhan cakupan audit; jangan mengubahnya menjadi PASS penuh.
+- Berdasarkan jalur inti yang berhasil dilaporkan, pengguna dan assistant menutup **scope pemasangan sampai aktif**. Tidak ada tindakan pengguna mendesak atau tahap wajib tersisa. Batas bukti tadi bukan blocker pemasangan, bukan alasan memasang ulang, dan bukan daftar tugas baru.
+
+### Hitungan kandidat dan batas adopsi
+
+- **216 entri katalog:** bahan discovery/alternatif, bukan 216 kewajiban instalasi.
+- **12 repository di-clone dan dipelajari:** checkout referensi dengan commit dipatok. Ini bukan klaim 12 framework diintegrasikan utuh; adopsi hanya mekanisme/kontrak terpilih pada owner Agent Core yang sudah ada.
+- **0 tahap wajib tersisa dalam batch yang disetujui:** P0/P1/P2/P3/P5 diimplementasikan, P4 reuse. Kandidat opsional/ditunda di bagian 7 tetap bukan pekerjaan yang otomatis harus dilanjutkan.
 
 ### Source owner dan hasil yang dihubungkan
 
@@ -304,21 +319,25 @@ Manifest mencatat keberadaan berkas lisensi, bukan izin menyeluruh untuk setiap 
 ### Ringkasan implementasi bersama
 
 <!-- adoption-memory-summary:start -->
-Agent Core mempertahankan satu owner Memory dengan root runtime/memory; versi engine tidak mengubah nama folder. P1 memakai delta Learning, episode sah, revision target, evidence, dan transaksi existing untuk koreksi/counterexample serta riwayat. P2 menghubungkan receipt terverifikasi ke penilaian eksplisit memoryFeedback; retrieval saja tidak mendapat credit manfaat. P3 mempertahankan resource Skill dan menolak baseline revisi yang berubah. P4 memakai portfolio/Pareto existing tanpa optimizer kedua. P5 menampilkan intention eligible dari episode terikat host, dengan suppression paparan dan tanpa wake offline. Schema controller_learning perlu refresh plugin untuk memoryFeedback. Implementasi source ini bukan bukti manfaat terukur atau deployment Windows.
+Status 12 Oktober 2026: scope pemasangan sampai aktif ditutup; 0 tahap wajib tersisa. Katalog 216 kandidat dan 12 clone adalah referensi, bukan 12 framework terintegrasi utuh. P0/P1/P2/P3/P5 diimplementasikan; P4 reuse portfolio/Pareto. Satu owner memakai runtime/memory. P1 menjaga koreksi, sumber dan riwayat melalui delta Learning; P2 menilai memoryFeedback hanya setelah penggunaan terverifikasi; P3 menjaga resource dan revision Skill; P5 intention terikat episode tanpa wake offline. Aktivasi, sinkronisasi record dan Learning Linux selesai. Laporan Windows pengguna Pengujian-Integrasi-Independen.md menyatakan root canonical schema 2 complete, jalur task/event/capsule/context/checkpoint/review aktif, dan memoryFeedback terekspos plugin; ini tidak diverifikasi langsung oleh pelaksana Linux. PARTIAL PASS laporan membatasi audit arsip penuh, manfaat feedback dan cleanup forensic yang belum terbukti. Batas itu bukan blocker instalasi atau task baru. Jangan mengulang pemasangan/refresh yang sudah ditutup tanpa kebutuhan baru. Riwayat sebelum penutupan dipertahankan.
 <!-- adoption-memory-summary:end -->
 
 ### Kontrak connector dan pemanggilan awal
 
-Tidak ada tool baru. Schema `controller_learning` menambah field opsional `memoryFeedback: helpful | not-helpful` untuk `action: artifact_receipt`, `artifactKind: memory`, dan pemakaian applied/adapted dengan outcome terverifikasi. Descriptor plugin Agent Core perlu di-refresh atau paket custom plugin lama diunggah ulang agar field ini dapat dipakai. Pemanggilan lama tanpa field tersebut tetap tidak mengirim penilaian manfaat secara tersirat; refresh connector belum diklaim selesai.
+Tidak ada tool baru. Schema `controller_learning` menambah field opsional `memoryFeedback: helpful | not-helpful` untuk `action: artifact_receipt`, `artifactKind: memory`, dan pemakaian applied/adapted dengan outcome terverifikasi. Pada awal implementasi descriptor lama memerlukan refresh/re-upload; kebutuhan exposure tersebut sudah ditutup oleh laporan Windows pengguna yang menampilkan field ini pada plugin terhubung. Pemanggilan lama tanpa field tersebut tetap tidak mengirim penilaian manfaat secara tersirat. Jangan mengulang refresh tanpa bukti descriptor kembali tertinggal.
 
 Mulai dengan Memory-first melalui `memory_list`/`memory_read`. Buat atau resume episode melalui `controller_learning(action=episode, episodeOperation=start, taskKey=..., workspace=...)`; gunakan `taskId` yang dikembalikan sebagai scope pada jalur Memory experience existing. Bila perlu episode Memory untuk koreksi/intention, gunakan `memory_v2_write(action=task_start, scope={taskId}, payload=...)`, lalu `controller_learning(action=context)` untuk konteks bersama. Kirim `artifact_receipt` hanya untuk pemakaian yang benar-benar diketahui beserta evidence/revision/attempt; sertakan `memoryFeedback` hanya jika penilaian eksplisit memang tersedia. Finalisasi tetap melalui checkpoint/review Learning existing.
 
 ### Verifikasi dan batas kesimpulan
 
-Build canonical (`npm run build`, termasuk path policy dan build subproject Memory) serta pemeriksaan terarah dijalankan selama implementasi. Bukti tes berada pada `tests/memory-canonical-activation.test.ts`, `tests/memory-v2-host-integration.test.ts`, `tests/learning-curation-promotion.test.ts`, `tests/adoption-reuse-wiring.test.ts`, pemeriksaan receipt/ledger, dan tes promotion/synthesis subproject yang terkait. Build akhir resmi lulus (path policy: 361 authored files, tanpa exception). Pemeriksaan gabungan akhir: 36 kasus pada 5 file lulus; pemeriksaan koreksi/curation terakhir: 26 kasus lulus; engine promotion terakhir: 139 kasus lulus. Angka kelompok dapat bertumpang-tindih dan tidak dijumlahkan atau diklaim sebagai seluruh repository.
+**Bukti historis implementasi Linux; tidak dijalankan ulang saat rekonsiliasi status.** Build canonical (`npm run build`, termasuk path policy dan build subproject Memory) serta pemeriksaan terarah dijalankan selama implementasi. Bukti tes berada pada `tests/memory-canonical-activation.test.ts`, `tests/memory-v2-host-integration.test.ts`, `tests/learning-curation-promotion.test.ts`, `tests/adoption-reuse-wiring.test.ts`, pemeriksaan receipt/ledger, dan tes promotion/synthesis subproject yang terkait. Build akhir resmi lulus (path policy: 361 authored files, tanpa exception). Pemeriksaan gabungan akhir: 36 kasus pada 5 file lulus; pemeriksaan koreksi/curation terakhir: 26 kasus lulus; engine promotion terakhir: 139 kasus lulus. Angka kelompok dapat bertumpang-tindih dan tidak dijumlahkan atau diklaim sebagai seluruh repository.
 
-Aktivasi, amendment record tugas, readback setelah reopen, fusion recall, dan finalisasi Learning Linux sudah dilakukan pada data canonical aktual. Hash isi bersama: `a42c5ff0df2833bf40f4d7da31b8a7d2fc10b9201a0b3389c00fc48153bd2d9b`. Deployment Windows, refresh connector, serta manfaat pada tugas pengguna tidak disimpulkan dari build atau fixture. Tidak ada benchmark atau klaim peningkatan kecerdasan/kecepatan untuk batch ini.
+Aktivasi, amendment record tugas, readback setelah reopen, fusion recall, dan finalisasi Learning Linux sudah dilakukan pada data canonical aktual. Hash isi bersama pada penutupan awal 06:07 UTC: `a42c5ff0df2833bf40f4d7da31b8a7d2fc10b9201a0b3389c00fc48153bd2d9b`; ini bukan hash ringkasan rekonsiliasi terbaru. Status Windows dan exposure connector berasal dari laporan pengguna di atas, bukan disimpulkan dari build atau fixture. Manfaat pada tugas pengguna tetap belum dibuktikan. Tidak ada benchmark atau klaim peningkatan kecerdasan/kecepatan untuk batch ini.
 
 ### Penutupan operasional batch
 
 Implementasi aktif berada pada source utama; build memperbarui dist standar, tanpa dist atau store tandingan. `runtime/tmp` Linux kosong; tidak ada implementasi aktif untuk dipindahkan atau data sementara untuk dihapus. Tidak ada dependensi tambahan yang diperlukan. Pemeriksaan akhir menemukan dan memperbaiki celah validasi sumber saat commit, pemulihan receipt setelah sumber hilang, preservasi metadata link, dan pemangkasan intention. Publikasi hanya mencakup perubahan batch ini; perubahan dokumentasi lokal yang sudah ada dipertahankan.
+
+### Rekonsiliasi dokumentasi dan Memory — 12 Oktober 2026
+
+Ringkasan bersama terbaru menjadi isi amendment pada record Linux yang sama, `f8a6042a-7ad1-4994-a1b7-812e170e30ad`, melalui resume episode adopsi yang masih terbuka serta checkpoint/reviewDelta baru. Riwayat penutupan awal dipertahankan. Receipt rekonsiliasi `runtime/learning/adoption-status-reconcile-20261012-receipt.json` mencatat revision tepat, hash isi, hasil review, readback, dan jumlah pending review. Ini koreksi kontinuitas status, bukan implementasi fitur, instalasi, pengujian ulang, atau verifikasi langsung Windows.

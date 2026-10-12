@@ -56,7 +56,7 @@ export const htmlConverter: ProjectionConverter = {
       || input.bytes.toString('utf8', 0, Math.min(input.bytes.length, 256)).trimStart().match(/^<!doctype html|^<html/i) !== null;
   },
   async convert(input): Promise<ProjectionResult> {
-    const decoded = decodeText(input.bytes);
+    const decoded = decodeText(input.bytes, input.charsetHint);
     return {
       markdown: htmlToMarkdown(decoded.text, sourceBase(input)),
       format: 'html',
@@ -125,12 +125,15 @@ export const feedConverter: ProjectionConverter = {
   accepts(input) {
     if (!semanticRequested(input)) return false;
     const mime = (input.mimeType ?? '').toLowerCase();
+    // A declared HTML document stays with the HTML translator, even if it
+    // contains feed-shaped markup or its endpoint happens to end in .rss.
+    if (mime === 'text/html') return false;
     if (input.extension === '.rss' || mime.includes('rss') || mime.includes('atom')) return true;
-    const prefix = decodeText(input.bytes.subarray(0, Math.min(input.bytes.length, 2048))).text.toLowerCase();
+    const prefix = decodeText(input.bytes.subarray(0, Math.min(input.bytes.length, 2048)), input.charsetHint).text.toLowerCase();
     return /<rss(?:\s|>)/.test(prefix) || /<feed(?:\s|>)/.test(prefix);
   },
   async convert(input): Promise<ProjectionResult> {
-    const decoded = decodeText(input.bytes);
+    const decoded = decodeText(input.bytes, input.charsetHint);
     const document = parseXml(decoded.text);
     const root = document.documentElement!;
     const rootName = localName(root);
@@ -197,7 +200,7 @@ export const csvConverter: ProjectionConverter = {
     return input.extension === '.csv' || mime.includes('text/csv') || mime.includes('application/csv');
   },
   async convert(input): Promise<ProjectionResult> {
-    const decoded = decodeText(input.bytes);
+    const decoded = decodeText(input.bytes, input.charsetHint);
     const rows = parseCsv(decoded.text.replace(/^\uFEFF/, ''));
     return {
       markdown: rows.length > 0 ? markdownTable(rows) : '',

@@ -4,15 +4,20 @@ import { readResponseJsonBounded } from '../net/bounded-response.js';
 import { assertCredentialBearingUrl } from '../net/endpoint-policy.js';
 import { isPublicAddress } from '../net/public-address.js';
 import { redactSensitiveString } from '../security/redaction.js';
+import { readPublicDocument } from '../rdc/document-projection/public-url.js';
 
 const MAX_JSON_BYTES = 2 * 1024 * 1024;
 const MAX_CONTENT_CHARS = 80_000;
+const CONTENT_TRUNCATION_NOTICE = '\n\n[Content truncated]';
 
 export type WebSearchMode = 'web' | 'academic' | 'assets';
 export type WebSearchProvider =
   | 'exa' | 'parallel' | 'firecrawl' | 'jina' | 'browserbase'
   | 'openalex' | 'pexels' | 'unsplash';
-export type WebOpenProvider = 'jina' | 'parallel' | 'firecrawl' | 'browserbase';
+export type WebOpenProvider = 'native' | 'jina' | 'parallel' | 'firecrawl' | 'browserbase';
+export type WebOpenReader = 'native' | 'external';
+export type WebContentScope = 'full' | 'main';
+type ExternalWebOpenProvider = Exclude<WebOpenProvider, 'native'>;
 
 export interface WebResearchConfig {
   enabled: boolean;
@@ -57,12 +62,29 @@ export interface WebOpenResponse {
   title?: string;
   content: string;
   publishedAt?: string;
+  truncated: boolean;
+  returnedChars: number;
+  provenance: {
+    kind: 'native-public' | 'provider-reported';
+    untrusted: true;
+    contentType?: string;
+    converter?: string;
+    downloadedBytes?: number;
+    redirects?: number;
+    contentSha256?: string;
+    extractionScope?: WebContentScope;
+    selectionReason?: string;
+    retainedTextChars?: number;
+    droppedTextChars?: number;
+  };
 }
 
 export interface WebResearchHealth {
   status: 'available' | 'degraded' | 'disabled';
   searchConfigured: boolean;
   readerConfigured: boolean;
+  nativeReaderAvailable: boolean;
+  externalReaderConfigured: boolean;
   academicConfigured: boolean;
   assetConfigured: boolean;
   difficultWebCredentialsPresent: boolean;
@@ -73,12 +95,50 @@ export interface WebResearchHealth {
   openProviders: WebOpenProvider[];
   issue?: string;
 }
+
+/**
+ * Safe-prefix mechanism adapted from Qwen Code tool-hook-context.ts,
+ * commit e9789d091133d9753decfc139df64c935a1866e6.
+ * Copyright 2026 Qwen Team. SPDX-License-Identifier: Apache-2.0.
+ * Modified for redacted web content and an explicit response envelope.
+ * Does not repair malformed source Unicode or preserve grapheme clusters.
+ */
+function safePrefix(text: string, length: number): string {
+  if (length <= 0) return '';
+  if (length >= text.length) return text;
+  const last = text.charCodeAt(length - 1);
+  const end = last >= 0xd800 && last <= 0xdbff ? length - 1 : length;
+  return text.slice(0, end);
+}
+
+function boundedContent(raw: string): Pick<WebOpenResponse, 'content' | 'truncated' | 'returnedChars'> {
+  const redacted = redactSensitiveString(raw);
+  const prefix = safePrefix(redacted, MAX_CONTENT_CHARS);
+  const truncated = prefix.length < redacted.length;
+  const content = truncated
+    ? safePrefix(redacted, MAX_CONTENT_CHARS - CONTENT_TRUNCATION_NOTICE.length) + CONTENT_TRUNCATION_NOTICE
+    : prefix;
+  return { content, truncated, returnedChars: content.length };
+}
+
+function assertNotAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new Error('WEB_RESEARCH_ABORTED');
+}
+
+function providerFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  if (message === 'WEB_RESEARCH_OPEN_EMPTY') return 'EMPTY';
+  if (/^(?:EXA|PARALLEL|FIRECRAWL|JINA|BROWSERBASE|OPENALEX|PEXELS|UNSPLASH)_[A-Z_]+_FAILED:\d{3}$/.test(message)) {
+    return message;
+  }
+  return error instanceof SyntaxError ? 'INVALID_RESPONSE' : 'REQUEST_FAILED';
+}
+
 function clean(value: unknown, max = 2_000): string {
-  return redactSensitiveString(String(value ?? ''))
+  return safePrefix(redactSensitiveString(String(value ?? ''))
     .replace(/[\u0000-\u001f\u007f]+/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, max);
+    .trim(), max);
 }
 
 function normalizedHost(url: URL): string {
@@ -166,7 +226,7 @@ function normalizedSearchRows(
 }
 
 function normalizedOpen(
-  provider: WebOpenProvider,
+  provider: ExternalWebOpenProvider,
   row: any,
   requestedUrl: string,
 ): WebOpenResponse {
@@ -176,6 +236,7 @@ function normalizedOpen(
       : typeof row?.markdown === 'string' ? row.markdown
         : typeof row?.text === 'string' ? row.text
           : typeof row === 'string' ? row : '';
+  if (!content.trim()) throw new Error('WEB_RESEARCH_OPEN_EMPTY');
   const title = clean(row?.title ?? metadata.title ?? '', 500);
   const publishedAt = clean(
     row?.publishedTime ?? row?.published_at ?? row?.publish_date
@@ -189,8 +250,9 @@ function normalizedOpen(
     provider,
     url: finalUrl,
     ...(title ? { title } : {}),
-    content: redactSensitiveString(content).slice(0, MAX_CONTENT_CHARS),
+    ...boundedContent(content),
     ...(publishedAt ? { publishedAt } : {}),
+    provenance: { kind: 'provider-reported', untrusted: true },
   };
 }
 export class WebResearchService {
@@ -215,8 +277,8 @@ export class WebResearchService {
     return providers;
   }
 
-  private openProviders(): WebOpenProvider[] {
-    const providers: WebOpenProvider[] = ['jina'];
+  private externalOpenProviders(): ExternalWebOpenProvider[] {
+    const providers: ExternalWebOpenProvider[] = ['jina'];
     if (this.config.parallelApiKey) providers.push('parallel');
     if (this.config.firecrawlApiKey) providers.push('firecrawl');
     if (this.config.browserbaseApiKey) providers.push('browserbase');
@@ -229,6 +291,8 @@ export class WebResearchService {
         status: 'disabled',
         searchConfigured: false,
         readerConfigured: false,
+        nativeReaderAvailable: false,
+        externalReaderConfigured: false,
         academicConfigured: false,
         assetConfigured: false,
         difficultWebCredentialsPresent: false,
@@ -246,6 +310,8 @@ export class WebResearchService {
       status: searchProviders.length ? 'available' : 'degraded',
       searchConfigured: searchProviders.length > 0,
       readerConfigured: true,
+      nativeReaderAvailable: true,
+      externalReaderConfigured: this.externalOpenProviders().length > 0,
       academicConfigured: academicProviders.length > 0,
       assetConfigured: assetProviders.length > 0,
       difficultWebCredentialsPresent: Boolean(
@@ -259,7 +325,7 @@ export class WebResearchService {
       searchProviders,
       academicProviders,
       assetProviders,
-      openProviders: this.openProviders(),
+      openProviders: ['native', ...this.externalOpenProviders()],
       ...(!searchProviders.length ? { issue: 'WEB_RESEARCH_SEARCH_KEY_MISSING' } : {}),
     };
   }
@@ -270,6 +336,7 @@ export class WebResearchService {
     init: RequestInit,
     signal?: AbortSignal,
   ): Promise<any> {
+    assertNotAborted(signal);
     const url = assertCredentialBearingUrl(endpoint, label);
     const response = await fetchWithPolicy(url, {
       ...init,
@@ -281,9 +348,11 @@ export class WebResearchService {
       maxTotalDelayMs: 2_000,
     });
     if (!response.ok) throw new Error(label + '_FAILED:' + response.status);
-    return readResponseJsonBounded<any>(
+    const payload = await readResponseJsonBounded<any>(
       response, MAX_JSON_BYTES, label.toLowerCase().replace(/_/g, ' '),
     );
+    assertNotAborted(signal);
+    return payload;
   }
   private async searchProvider(
     provider: WebSearchProvider,
@@ -548,18 +617,18 @@ export class WebResearchService {
     let empty: WebSearchResponse | undefined;
     const failures: string[] = [];
     for (const provider of providers) {
-      if (input.signal?.aborted) throw input.signal.reason;
+      assertNotAborted(input.signal);
       try {
         const results = await this.searchProvider(
           provider, query, limit, domains, recencyDays, input.signal,
         );
+        assertNotAborted(input.signal);
         const response: WebSearchResponse = { provider, mode, query, results };
         if (results.length) return response;
         empty ??= response;
       } catch (error) {
-        failures.push(provider + ':' + clean(
-          error instanceof Error ? error.message : String(error), 180,
-        ));
+        assertNotAborted(input.signal);
+        failures.push(provider + ':' + providerFailure(error));
       }
     }
     if (empty) return empty;
@@ -658,14 +727,67 @@ export class WebResearchService {
 
   async open(input: {
     url: string;
+    reader?: WebOpenReader;
+    contentScope?: WebContentScope;
     signal?: AbortSignal;
   }): Promise<WebOpenResponse> {
     if (!this.config.enabled) throw new Error('WEB_RESEARCH_DISABLED');
+    const reader = input.reader ?? 'native';
+    if (reader !== 'native' && reader !== 'external') {
+      throw new Error('WEB_RESEARCH_READER_INVALID');
+    }
+    if (input.contentScope !== undefined && input.contentScope !== 'full' && input.contentScope !== 'main') {
+      throw new Error('WEB_RESEARCH_CONTENT_SCOPE_INVALID');
+    }
+    if (reader === 'external' && input.contentScope !== undefined) {
+      throw new Error('WEB_RESEARCH_CONTENT_SCOPE_UNSUPPORTED');
+    }
+
+    // Admit the original spelling in the native transport. Normalizing it here
+    // would hide ambiguous numeric hosts. Native failures never enter the cloud chain.
+    if (reader === 'native') {
+      const result = await readPublicDocument(input.url, {
+        projection: 'markdown',
+        contentScope: input.contentScope ?? 'full',
+        signal: input.signal,
+      });
+      assertNotAborted(input.signal);
+      if (typeof result.content !== 'string' || result.metadata?.isImage || result.metadata?.isBinary) {
+        throw new Error('WEB_RESEARCH_OPEN_UNSUPPORTED');
+      }
+      if (result.metadata?.error) throw new Error('WEB_RESEARCH_OPEN_FAILED');
+      if (!result.content.trim()) throw new Error('WEB_RESEARCH_OPEN_EMPTY');
+      const source = result.metadata?.publicUrl;
+      if (!source?.finalUrl || (input.contentScope === 'main' && (!source.extractionScope || !source.selectionReason))) {
+        throw new Error('WEB_RESEARCH_OPEN_METADATA_MISSING');
+      }
+      const title = clean(result.metadata?.title ?? '', 500);
+      return {
+        provider: 'native',
+        url: source.finalUrl,
+        ...(title ? { title } : {}),
+        ...boundedContent(result.content),
+        provenance: {
+          kind: 'native-public',
+          untrusted: true,
+          ...(source.contentType !== undefined ? { contentType: source.contentType } : {}),
+          ...(result.metadata?.converter !== undefined ? { converter: result.metadata.converter } : {}),
+          downloadedBytes: source.downloadedBytes,
+          redirects: source.redirects,
+          ...(source.contentSha256 !== undefined ? { contentSha256: source.contentSha256 } : {}),
+          ...(source.extractionScope !== undefined ? { extractionScope: source.extractionScope } : {}),
+          ...(source.selectionReason !== undefined ? { selectionReason: source.selectionReason } : {}),
+          ...(source.retainedTextChars !== undefined ? { retainedTextChars: source.retainedTextChars } : {}),
+          ...(source.droppedTextChars !== undefined ? { droppedTextChars: source.droppedTextChars } : {}),
+        },
+      };
+    }
+
     const requestedUrl = normalizeHttpUrl(input.url);
     if (!requestedUrl) throw new Error('WEB_RESEARCH_URL_INVALID');
     const failures: string[] = [];
-    for (const provider of this.openProviders()) {
-      if (input.signal?.aborted) throw input.signal.reason;
+    for (const provider of this.externalOpenProviders()) {
+      assertNotAborted(input.signal);
       try {
         const result = provider === 'jina'
           ? await this.openJina(requestedUrl, input.signal)
@@ -674,12 +796,11 @@ export class WebResearchService {
             : provider === 'firecrawl'
               ? await this.openFirecrawl(requestedUrl, input.signal)
               : await this.openBrowserbase(requestedUrl, input.signal);
-        if (result.content.trim()) return result;
-        failures.push(provider + ':EMPTY');
+        assertNotAborted(input.signal);
+        return result;
       } catch (error) {
-        failures.push(provider + ':' + clean(
-          error instanceof Error ? error.message : String(error), 180,
-        ));
+        assertNotAborted(input.signal);
+        failures.push(provider + ':' + providerFailure(error));
       }
     }
     throw new Error('WEB_RESEARCH_OPEN_FAILED_ALL:' + failures.join('|').slice(0, 900));

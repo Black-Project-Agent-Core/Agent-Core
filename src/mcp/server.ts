@@ -401,6 +401,9 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.externalControllerLearning,
     runtime.controllerSessionId,
   );
-  if (runtime.webResearch) registerWebResearchTools(server, runtime.webResearch);
+  if (runtime.webResearch) registerWebResearchTools(server, runtime.webResearch, {
+    externalLearning: runtime.externalControllerLearning,
+    controllerSessionId: runtime.controllerSessionId,
+  });
   return server;
 }

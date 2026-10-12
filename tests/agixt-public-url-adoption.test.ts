@@ -98,22 +98,22 @@ it('actual handler consumes the pinned connector and refuses loopback before con
   const denied:any = await handleReadFile({path:'http://127.0.0.1/',isUrl:true,options:{networkPolicy:'public-only'}});
   expect(denied.isError).toBe(true); expect(spy).toHaveBeenCalledTimes(1); expect(forbiddenFetch).not.toHaveBeenCalled();
 });
-it('keeps ordinary URL fetch unchanged and rejects nonnative restricted projections', async () => {
+it('keeps ordinary URL fetch unchanged and rejects unsupported auto restricted projection', async () => {
   const fetch = vi.fn(async()=>new Response('ordinary-local')); vi.stubGlobal('fetch',fetch);
   const ordinary:any=await handleReadFile({path:'http://127.0.0.1/example',isUrl:true});
   expect(ordinary.isError).not.toBe(true); expect(JSON.stringify(ordinary)).toContain('ordinary-local');
-  for (const projection of ['auto','markdown']) {
+  for (const projection of ['auto']) {
     const result:any=await handleReadFile({path:'http://8.8.8.8/',isUrl:true,options:{networkPolicy:'public-only',projection}});
     expect(result.isError).toBe(true);
   }
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 it('parses an actual PDF snapshot exactly once without any second unrestricted URL fetch',async()=>{
-  const {PDFDocument}=await import('pdf-lib'),pdf=await import('../src/rdc/tools/pdf/index.js');
+  const {PDFDocument}=await import('pdf-lib'),pdf=await import('../src/rdc/tools/pdf/lib/pdf2md.js');
   const doc=await PDFDocument.create();doc.addPage([180,90]).drawText('Pinned PDF fixture',{x:5,y:30,size:10});
   const bytes=Buffer.from(await doc.save()),f=transportFixture([{body:bytes,headers:{'content-type':'application/pdf'}}]);
   const request=vi.spyOn(http,'request').mockImplementation(((options:any,cb:any)=>f.request(false,options,cb)) as any);
-  const byteParser=vi.spyOn(pdf,'parsePdfBytesToMarkdown'),urlParser=vi.spyOn(pdf,'parsePdfToMarkdown');
+  const byteParser=vi.spyOn(pdf,'pdf2md'),urlParser=vi.spyOn(await import('../src/rdc/tools/pdf/index.js'),'parsePdfToMarkdown');
   const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
   const r:any=await handleReadFile({path:'http://8.8.8.8/document.pdf?secret=hidden',isUrl:true,options:{networkPolicy:'public-only'}});
   expect(r.isError).not.toBe(true);expect(JSON.stringify(r)).toContain('Pinned PDF fixture');
@@ -129,3 +129,17 @@ it('keeps certificate hostname checks on the original host and rejects unsupport
   await expect(m.createPublicUrlReader(bad)('https://example.org')).rejects.toThrow('PUBLIC_URL_CONTENT_TYPE');
   expect(bad.responsesSeen[0].destroyed).toBe(true);
 });
+
+it('returns public PDF markdown as text-only page projection in the real file handler', async () => {
+  const {PDFDocument}=await import('pdf-lib');
+  const doc=await PDFDocument.create();doc.addPage([180,90]).drawText('Markdown snapshot',{x:5,y:30,size:10});
+  const f=transportFixture([{body:Buffer.from(await doc.save()),headers:{'content-type':'application/pdf'}}]);
+  vi.spyOn(http,'request').mockImplementation(((options:any,cb:any)=>f.request(false,options,cb)) as any);
+  const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
+  const result:any=await handleReadFile({path:'http://8.8.8.8/document.pdf?secret=hidden',isUrl:true,options:{networkPolicy:'public-only',projection:'markdown'}});
+  expect(result.isError).not.toBe(true);
+  expect(result.content.every((part:any)=>part.type==='text')).toBe(true);
+  expect(JSON.stringify(result)).toContain('## Page 1');expect(JSON.stringify(result)).toContain('Markdown snapshot');
+  expect(JSON.stringify(result)).not.toContain('secret=hidden');expect(fetch).not.toHaveBeenCalled();
+  expect(f.request).toHaveBeenCalledTimes(1);
+},20000);

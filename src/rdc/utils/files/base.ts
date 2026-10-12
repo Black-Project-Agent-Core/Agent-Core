@@ -119,7 +119,20 @@ export interface FileResult {
  */
 export interface FileMetadata {
     /** Connection-bound restriction evidence; not content-trust evidence. */
-    publicUrl?: { networkPolicy: 'public-only'; redirects: number; downloadedBytes: number };
+    publicUrl?: {
+        networkPolicy: 'public-only';
+        redirects: number;
+        downloadedBytes: number;
+        /** Sanitized final locator: origin and pathname only. */
+        finalUrl: string;
+        contentType: string;
+        /** SHA-256 of the original received bytes, not a content-trust claim. */
+        contentSha256: string;
+        extractionScope?: 'full' | 'main';
+        selectionReason?: string;
+        retainedTextChars?: number;
+        droppedTextChars?: number;
+    };
     /** For images */
     isImage?: boolean;
 

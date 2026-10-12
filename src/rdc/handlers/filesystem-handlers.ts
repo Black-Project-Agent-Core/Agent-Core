@@ -136,7 +136,7 @@ export async function handleReadFile(args: unknown): Promise<ServerResult> {
         const displayPath = networkPolicy ? '[public-only URL]' : parsed.path;
 
         // Handle PDF files
-        if (fileResult.metadata?.isPdf) {
+        if (fileResult.metadata?.isPdf && !fileResult.metadata.isDocumentProjection) {
             const meta = fileResult.metadata;
             const author = meta?.author ? `, Author: ${meta?.author}` : "";
             const title = meta?.title ? `, Title: ${meta?.title}` : "";

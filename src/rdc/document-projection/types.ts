@@ -18,6 +18,7 @@ export interface ProjectionInput {
   localPath?: string;
   url?: string;
   mimeType?: string;
+  charsetHint?: string;
   extension?: string;
   depth: number;
   budget: ProjectionBudget;

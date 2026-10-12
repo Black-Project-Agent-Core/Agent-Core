@@ -15,6 +15,7 @@ import type { SemanticIdeService } from '../semantic-ide/service.js';
 import type { MemoryService } from '../memory/service.js';
 import type { MemoryService as ExperienceMemoryService } from '../../SubProject/agent-core-memory/dist/index.js';
 import type { SkillService } from '../skills/service.js';
+import type { WebResearchService } from '../web-research/service.js';
 import type { McpMutationSafety } from './mutation-safety.js';
 import type { McpHttpHandler } from '../http/app.js';
 import type { PhoneController } from '../phone/controller.js';
@@ -34,6 +35,7 @@ export interface BridgeMcpHttpOptions {
   skillsService?: SkillService;
   phoneController?: PhoneController;
   codeIntelligence?: CodeIntelligenceService;
+  webResearch?: WebResearchService;
   mutationSafety?: McpMutationSafety;
 }
 
@@ -170,6 +172,7 @@ export function createMcpHttpHandler(options: BridgeMcpHttpOptions = {}): McpHtt
       skillsService: options.skillsService,
       phoneController: options.phoneController,
       codeIntelligence: options.codeIntelligence,
+      webResearch: options.webResearch,
       failureLoopAdvisor,
       mutationSafety: options.mutationSafety,
     });
