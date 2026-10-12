@@ -9,7 +9,7 @@ export interface MemoryEmbedderIdentity {
 
 export interface MemoryEmbedder {
   readonly identity: MemoryEmbedderIdentity;
-  embedDocuments(texts: string[]): Promise<number[][]>;
+  embedDocuments(texts: string[], options?: { signal?: AbortSignal }): Promise<number[][]>;
 }
 
 export interface CloudflareEmbedderConfig {
@@ -84,7 +84,7 @@ export class CloudflareWorkersAIEmbedder implements MemoryEmbedder {
     this.endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(config.accountId.trim())}/ai/v1/embeddings`;
   }
 
-  private async embedBatch(input: string[]): Promise<number[][]> {
+  private async embedBatch(input: string[], signal?: AbortSignal): Promise<number[][]> {
     const requestBody = JSON.stringify({ model: this.identity.model, input });
     if (Buffer.byteLength(requestBody) > 2 * 1024 * 1024) {
       throw new Error('Cloudflare embedding request exceeded 2097152 bytes');
@@ -96,6 +96,7 @@ export class CloudflareWorkersAIEmbedder implements MemoryEmbedder {
         'content-type': 'application/json',
       },
       body: requestBody,
+      signal,
     }, {
       safety: 'safe',
       maxAttempts: 3,
@@ -108,6 +109,7 @@ export class CloudflareWorkersAIEmbedder implements MemoryEmbedder {
       8 * 1024 * 1024,
       'Cloudflare embedding response',
     );
+    signal?.throwIfAborted();
     if (!Array.isArray(body.data) || body.data.length !== input.length) {
       throw new Error('Cloudflare embedding response did not contain the expected vector count');
     }
@@ -119,7 +121,8 @@ export class CloudflareWorkersAIEmbedder implements MemoryEmbedder {
         return normalizeVector(item.embedding.map(Number));
       });
   }
-  async embedDocuments(texts: string[]): Promise<number[][]> {
+  async embedDocuments(texts: string[], options?: { signal?: AbortSignal }): Promise<number[][]> {
+    options?.signal?.throwIfAborted();
     if (!texts.length) return [];
     const flattened: Array<{ documentIndex: number; text: string }> = [];
     texts.forEach((text, documentIndex) => {
@@ -129,7 +132,7 @@ export class CloudflareWorkersAIEmbedder implements MemoryEmbedder {
     const chunkVectors: number[][] = [];
     for (let offset = 0; offset < flattened.length; offset += API_BATCH_SIZE) {
       const batch = flattened.slice(offset, offset + API_BATCH_SIZE);
-      chunkVectors.push(...await this.embedBatch(batch.map((item) => item.text)));
+      chunkVectors.push(...await this.embedBatch(batch.map((item) => item.text), options?.signal));
     }
 
     const grouped = texts.map(() => [] as number[][]);

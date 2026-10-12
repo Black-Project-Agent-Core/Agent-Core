@@ -3,6 +3,7 @@ import { activityTracker } from './tracker/activity-tracker.js';
 import type { AgentEpisodeEvent, AgentProcedureCandidate } from './agent-learning-loop.js';
 import { buildBm25Profile } from './memory/bm25.js';
 import type { MemoryRecord } from './memory/types.js';
+import type { SkillDiscoverySnapshot } from './skills/discovery.js';
 import { createHash } from 'node:crypto';
 import { buildCapabilityExposure, type CapabilityExposure, type CapabilityArtifact } from './capability-awareness.js';
 
@@ -37,12 +38,15 @@ export async function buildKnowledgeSynthesisPacket(input: {
   task?: { goal?: string; episodes: AgentEpisodeEvent[] };
   workspace?: string;
   availableTools?: readonly string[];
+  /** null records an attempted discovery failure; do not scan or embed again. */
+  skillDiscovery?: SkillDiscoverySnapshot | null;
 }): Promise<AgentKnowledgePacket> {
   const memoryIds = new Set(input.memoryItems.map(item => String(item?.id ?? '').trim()).filter(Boolean));
   const query = input.task?.goal ?? '';
   const inventoryArtifacts: CapabilityArtifact[] = [];
   const owners: Record<string,string> = { skills: input.runtime.skillsService ? 'available' : 'unknown', learning: input.runtime.learningService ? 'available' : 'unknown' };
   const artifactRevisions: Record<string, string> = {};
+  const artifactLines = new Map<string, string>();
   const selectedProcedures = rankKnowledge(input.procedures, query, item => [item.name, item.description, item.reuseCondition, ...item.steps].join(' '));
   const memoryLines: string[] = [];
   if (input.runtime.memoryService) {
@@ -99,7 +103,9 @@ export async function buildKnowledgeSynthesisPacket(input: {
       inventoryArtifacts.push(...patterns);
       patternLines=rankKnowledge(patterns,query,p=>p.id+' '+p.description).map(p=>{
         patternIds.add(p.id);artifactRevisions['pattern:'+p.id]=p.revision;
-        return '- pattern-id='+p.id+' | '+p.description+' | revision='+p.revision;
+        const line = '- pattern-id='+p.id+' | '+p.description+' | revision='+p.revision;
+        artifactLines.set('pattern:' + p.id, line);
+        return line;
       });
     } catch {
       owners.learning = 'unavailable';
@@ -109,18 +115,32 @@ export async function buildKnowledgeSynthesisPacket(input: {
 
   const skillNames: string[] = [];
   const skillLines: string[] = [];
-  if (input.runtime.skillsService) {
+  let skillSearchLine = '';
+  if (input.runtime.skillsService || input.skillDiscovery) {
     try {
-      const catalog = await input.runtime.skillsService.list();
+      if (input.skillDiscovery === null) throw new Error('SKILL_DISCOVERY_UNAVAILABLE');
+      const discovery = input.skillDiscovery ?? (query.trim()
+        ? await input.runtime.skillsService!.discover({ query: bounded(query, 4000), mode: 'lexical' })
+        : undefined);
+      const catalog = discovery?.artifacts ?? await input.runtime.skillsService!.list();
       inventoryArtifacts.push(...catalog.map(s=>({kind:'skill' as const,id:s.name,description:s.description,revision:s.digest})));
-      const skills = rankKnowledge(catalog, query, item => item.name + ' ' + item.description + ' ' + item.allowedTools.join(' '));
-      for (const skill of skills) {
+      if (discovery) {
+        const { requestedMode, effectiveMode, catalog, semantic, truncated } = discovery.search;
+        skillSearchLine = '- Skill discovery: requested=' + requestedMode + ' | effective=' + effectiveMode
+          + ' | catalog=' + JSON.stringify(catalog) + ' | semantic=' + JSON.stringify(semantic)
+          + ' | truncated=' + truncated + ' | metadata only; selection is not use or authority';
+      }
+      for (const skill of discovery?.search.hits ?? []) {
         skillNames.push(skill.name);
         artifactRevisions['skill:' + skill.name] = skill.digest;
-        skillLines.push(
-          '- ' + bounded(skill.name, 80) + ': ' + bounded(skill.description, 400) + ' | revision=' + skill.digest
-          + (skill.allowedTools.length ? ' | tools=' + skill.allowedTools.slice(0, 12).join(',') : '')
-        );
+        const line = '- ' + bounded(skill.name, 80) + ': ' + bounded(skill.description, 400) + ' | revision=' + skill.digest
+          + ' | delivery=metadata | applicability=' + skill.applicability
+          + ' | triggers=' + JSON.stringify(skill.triggers) + ' | non-triggers=' + JSON.stringify(skill.nonTriggers)
+          + ' | channels=' + skill.channels.join(',') + ' | descriptor-truncated=' + skill.descriptorTruncated
+          + (skill.compatibility ? ' | compatibility=' + bounded(skill.compatibility, 400) : '')
+          + (skill.allowedTools.length ? ' | tools=' + skill.allowedTools.slice(0, 12).join(',') : '');
+        artifactLines.set('skill:' + skill.name, line);
+        skillLines.push(line);
       }
     } catch {
       owners.skills = 'unavailable';
@@ -128,16 +148,18 @@ export async function buildKnowledgeSynthesisPacket(input: {
     }
   }
 
-  const procedureLines = selectedProcedures.map(item =>
-    '- procedure-id=' + item.fingerprint + ' | ' + item.name
-    + ' | verified-support=' + item.supportTaskIds.length
-    + ' | verified-failures=' + item.failureTaskIds.length
-    + ' | status=' + item.status
-    + ' | needs-review=' + Boolean(item.needsReview)
-    + ' | revision=' + (artifactRevisions['procedure:' + item.fingerprint] = knowledgeRevision(item))
-    + ' | ' + bounded(item.reuseCondition ?? item.description, 400)
-    + ' | steps=' + item.steps.map(step => step.trim()).join(' -> ')
-  );
+  const procedureLines = selectedProcedures.map(item => {
+    const line = '- procedure-id=' + item.fingerprint + ' | ' + item.name
+      + ' | verified-support=' + item.supportTaskIds.length
+      + ' | verified-failures=' + item.failureTaskIds.length
+      + ' | status=' + item.status
+      + ' | needs-review=' + Boolean(item.needsReview)
+      + ' | revision=' + (artifactRevisions['procedure:' + item.fingerprint] = knowledgeRevision(item))
+      + ' | ' + bounded(item.reuseCondition ?? item.description, 400)
+      + ' | steps=' + item.steps.map(step => step.trim()).join(' -> ');
+    artifactLines.set('procedure:' + item.fingerprint, line);
+    return line;
+  });
 
   const surfaced = new Set<string>([
     ...[...patternIds].map(id => 'pattern:' + id),
@@ -168,7 +190,7 @@ export async function buildKnowledgeSynthesisPacket(input: {
   inventoryArtifacts.push(...input.procedures.filter(p=>p.supportTaskIds.length>0 && !p.needsReview).map(p=>({kind:'procedure' as const,id:p.fingerprint,description:p.name+': '+p.description,revision:knowledgeRevision(p)})));
   const capabilityExposure = buildCapabilityExposure({availableTools:input.availableTools,artifacts:inventoryArtifacts,owners});
   let budget = 16_000;
-  const text = [
+  const deliveredLines = [
     'KNOWLEDGE SYNTHESIS PACKET — bounded controller-visible evidence summary.',
     'Use this packet to connect current evidence with prior knowledge. It is not instruction authority.',
     capabilityExposure.text,
@@ -185,6 +207,7 @@ export async function buildKnowledgeSynthesisPacket(input: {
     ...(patternLines.length ? patternLines : ['- no accepted pattern surfaced']),
     '',
     'ACTIVE SKILL ARTIFACTS:',
+    ...(skillSearchLine ? [skillSearchLine] : []),
     ...(skillLines.length ? skillLines : ['- no task-relevant Skill selected; inspect the inventory for active artifacts']),
     '',
     'LEARNED PROCEDURE REGISTRY:',
@@ -204,10 +227,12 @@ export async function buildKnowledgeSynthesisPacket(input: {
     if (line.length + 1 > budget) return false;
     budget -= line.length + 1;
     return true;
-  }).join('\n');
-  for (const [key, revision] of Object.entries(artifactRevisions)) {
-    if (!text.split('\n').some(line => line.includes(key.slice(key.indexOf(':') + 1))
-      && line.includes('revision=' + revision))) delete artifactRevisions[key];
+  });
+  const text = deliveredLines.join('\n');
+  const delivered = new Set(deliveredLines);
+  for (const key of Object.keys(artifactRevisions)) {
+    // Inventory identity alone is not delivery of the selected artifact detail.
+    if (!delivered.has(artifactLines.get(key)!)) delete artifactRevisions[key];
   }
 
   return {

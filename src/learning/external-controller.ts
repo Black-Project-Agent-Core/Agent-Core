@@ -12,6 +12,7 @@ import { buildKnowledgeSynthesisPacket, rankKnowledge } from '../agent-knowledge
 import { failureContext, validateWorkflowUse } from './workflow-evidence.js';
 import { recheckWorkflowReport } from './workflow-verifier.js';
 import type { SkillService } from '../skills/service.js';
+import type { SkillSearchMode } from '../skills/discovery.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { normalizeFailureFamily } from '../mcp/failure-loop-advisor.js';
 import { procedureFingerprint } from '../agent-learning-loop.js';
@@ -101,6 +102,8 @@ interface ExternalControllerState {
 }
 
 export interface ExternalControllerContextInput {
+  skillSearchMode?: SkillSearchMode;
+  signal?: AbortSignal;
   workspace?: string;
   query?: string;
   taskFamily?: string;
@@ -835,16 +838,22 @@ export class ExternalControllerLearningService {
   }
 
   async context(sessionId: string, input: ExternalControllerContextInput = {}) {
+    const skillQuery = String(input.query ?? '').trim();
+    const skillSearchMode = input.skillSearchMode ?? 'lexical';
+    if (!['lexical', 'hybrid'].includes(skillSearchMode)) throw new Error('SKILL_SEARCH_MODE_INVALID');
+    if (skillSearchMode === 'hybrid' && !skillQuery) throw new Error('SKILL_SEARCH_QUERY_REQUIRED');
     const active = await this.getEpisode(sessionId);
     input = { ...input, workspace: input.workspace ?? active?.workspace };
     if (input.workspace) input = { ...input, workspace: this.memory.resolveWorkspace(input.workspace) };
     if (input.workspace || input.taskFamily) await this.labelEpisode(sessionId, input);
-    const [authority, episode, state, journey, skills] = await Promise.all([
+    const [authority, episode, state, journey, skillDiscovery] = await Promise.all([
       this.authoritySnapshot(input.workspace),
       this.getEpisode(sessionId),
       this.load(),
       input.workspace ? this.learning.journey(input.workspace).catch(() => undefined) : Promise.resolve(undefined),
-      this.skills ? this.skills.list().catch(() => []) : Promise.resolve([]),
+      skillQuery && this.skills
+        ? this.skills.discover({ query: skillQuery, mode: skillSearchMode, ...(input.signal ? { signal: input.signal } : {}) }).catch(() => null)
+        : Promise.resolve(undefined),
     ]);
     const query = bounded(input.query, 4000);
     const memories = query ? await this.memory.search(query, {
@@ -876,10 +885,20 @@ export class ExternalControllerLearningService {
     const synthesis = await buildKnowledgeSynthesisPacket({
       runtime: { memoryService: this.memory, learningService: this.learning, skillsService: this.skills },
       availableTools:this.capabilityTools(sessionId),
+      skillDiscovery,
       memoryItems: memories.map(item => ({ id: item.record.id })),
       procedures: procedures.map(item => ({ ...item, supportTaskIds: item.supportEpisodeIds, failureTaskIds: item.failureEpisodeIds })),
       task: { goal: query, episodes: [] }, workspace: input.workspace,
     });
+    const deliveredSkills = new Set(synthesis.skillNames);
+    const skills = (skillDiscovery?.search.hits ?? []).filter(hit => deliveredSkills.has(hit.name)).map(hit => ({
+      ...skillDiscovery!.artifacts.find(artifact => artifact.name === hit.name && artifact.digest === hit.digest)!,
+      ...hit, delivery: 'metadata' as const,
+    }));
+    const skillSearch = skillDiscovery ? (() => {
+      const { hits, ...diagnostics } = skillDiscovery.search;
+      return { ...diagnostics, deliveredHits: skills.length, omittedByBudget: hits.length - skills.length };
+    })() : { status: skillQuery ? 'unavailable' as const : 'not-requested' as const, requestedMode: skillSearchMode };
     const outcomeEvents = activityTracker.readFeatureOutcomes({
       maxEvents: 256,
       maxAgeMs: 90 * 24 * 60 * 60 * 1000,
@@ -932,7 +951,8 @@ export class ExternalControllerLearningService {
       })),
       contradictions,
       patterns: journey?.nodes.filter(node => node.type === 'pattern').slice(0, 12) ?? [],
-      skills: rankKnowledge(skills, query, item => item.name + ' ' + item.description + ' ' + item.allowedTools.join(' ')),
+      skills,
+      skillSearch,
       procedures,
       recentArtifactOutcomes: outcomeEvents.map(item => ({
         ref: 'activity:' + item.id,
@@ -943,7 +963,10 @@ export class ExternalControllerLearningService {
       evidenceGaps: [
         ...(episode?.metrics.toolFailures && !episode.metrics.verifications ? ['current episode has failures but no verification evidence yet'] : []),
         ...(!memories.length && query ? ['no relevant Memory surfaced for the requested synthesis query'] : []),
-        ...(!skills.length ? ['no active Skill artifacts are currently available'] : []),
+        ...(skillDiscovery?.search.emptyReason === 'empty-catalog'
+          || !skillQuery && synthesis.capabilityExposure.owners.skills === 'available' && !synthesis.capabilityExposure.counts.skill
+          ? ['no active Skill artifacts are currently available'] : []),
+        ...(synthesis.capabilityExposure.owners.skills === 'unavailable' ? ['Skill discovery is unavailable; catalog contents are unknown'] : []),
       ],
       surfacedMemoryIds: [...surfacedIds],
     };

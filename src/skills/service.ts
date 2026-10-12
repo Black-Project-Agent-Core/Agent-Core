@@ -9,6 +9,12 @@ import { captureRepositoryIdentity } from '../memory/repository-identity.js';
 import { normalizeRepositoryIdentity } from '../memory/provenance.js';
 import type { MemoryRepositoryIdentity } from '../memory/types.js';
 import type { SkillProposalRecord, SkillProposalDecision } from '../learning/skill-proposal-types.js';
+import { cosineSimilarity, type MemoryEmbedder } from '../memory/embedder.js';
+import { redactSensitiveString } from '../security/redaction.js';
+import { boundSkillSearchResult, describeSkill, positiveSkillDescriptor, rankSkillDescriptors,
+  SKILL_DESCRIPTOR_VERSION, truncateSkillEmbeddingText,
+  type SkillCatalogCoverage, type SkillDiscoverInput, type SkillDiscoveryDescriptor,
+  type SkillDiscoverySnapshot, type SkillReadResult, type SkillSemanticCoverage } from './discovery.js';
 
 const MAX_FILES = 256;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -213,6 +219,7 @@ async function scanDirectory(sourceRoot: string): Promise<ScannedSkill> {
       if (entry.isDirectory()) { await walk(absolute, relative); continue; }
       if (!entry.isFile()) throw new Error('SKILL_NON_REGULAR_ENTRY_REFUSED');
       const info = await lstat(absolute);
+      if (info.isSymbolicLink() || !info.isFile()) throw new Error('SKILL_NON_REGULAR_ENTRY_REFUSED');
       if (info.size > MAX_FILE_BYTES) throw new Error('SKILL_FILE_TOO_LARGE');
       totalBytes += info.size;
       if (totalBytes > MAX_TOTAL_BYTES) throw new Error('SKILL_TOTAL_BYTES_LIMIT');
@@ -223,9 +230,19 @@ async function scanDirectory(sourceRoot: string): Promise<ScannedSkill> {
   await walk(root);
   const skillFile = files.find(file => file.relative === 'SKILL.md');
   if (!skillFile?.absolute) throw new Error('SKILL_MD_NOT_FOUND');
-  const metadata = parseSkillMarkdown(await readFile(skillFile.absolute, 'utf8'));
+  // Retain only SKILL.md. Metadata, descriptor, digest and selected read share these bytes.
+  skillFile.content = await readFile(skillFile.absolute);
+  const metadata = parseSkillMarkdown(skillFile.content.toString('utf8'));
   const hash = createHash('sha256');
-  for (const file of files) updateDigest(hash, file.relative, await readFile(file.absolute!));
+  totalBytes = 0;
+  for (const file of files) {
+    const content = file.content ?? await readFile(file.absolute!);
+    if (content.length > MAX_FILE_BYTES) throw new Error('SKILL_FILE_TOO_LARGE');
+    file.size = content.length;
+    totalBytes += content.length;
+    if (totalBytes > MAX_TOTAL_BYTES) throw new Error('SKILL_TOTAL_BYTES_LIMIT');
+    updateDigest(hash, file.relative, content);
+  }
   return { metadata, files, digest: 'sha256:' + hash.digest('hex'), totalBytes };
 }
 
@@ -493,9 +510,13 @@ export class SkillService {
   private readonly stagingRoot: string;
   private readonly revisionRoot: string;
   private readonly revisionTails = new Map<string, Promise<void>>();
+  private readonly descriptorVectors = new Map<string, number[]>();
+  private activeDescriptorKeys = new Set<string>();
+  private semanticBusy = false;
   private constructor(
     projectRoot: string,
     private readonly sourceValidator: (sourcePath: string) => Promise<string>,
+    private readonly embedder?: MemoryEmbedder,
   ) {
     this.root = path.join(projectRoot, 'runtime', 'skills');
     this.catalogRoot = path.join(this.root, 'catalog');
@@ -507,8 +528,9 @@ export class SkillService {
   static async initialize(
     projectRoot: string,
     sourceValidator: (sourcePath: string) => Promise<string> = validatePath,
+    options: { embedder?: MemoryEmbedder } = {},
   ): Promise<SkillService> {
-    const service = new SkillService(path.resolve(projectRoot), sourceValidator);
+    const service = new SkillService(path.resolve(projectRoot), sourceValidator, options.embedder);
     await Promise.all([
       mkdir(service.catalogRoot, { recursive: true, mode: 0o700 }),
       mkdir(service.packageRoot, { recursive: true, mode: 0o700 }),
@@ -633,25 +655,193 @@ export class SkillService {
       executionAuthority: false,
       parserProfile: 'strict-subset-v1' as const,
       exportProfiles: Object.keys(SKILL_EXPORT_PROFILES) as SkillExportProfile[],
+      discovery: { defaultMode: 'lexical' as const, maxHits: 8, instructionRead: true,
+        semantic: { providerAvailable: Boolean(this.embedder), requiresExplicitRequest: true } },
     };
   }
-  async list(): Promise<SkillArtifactSummary[]> {
-    const entries = await readdir(this.catalogRoot, { withFileTypes: true });
-    const output: SkillArtifactSummary[] = [];
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 500)) {
-      if (!entry.isDirectory()) continue;
-      try {
-        const directory = path.join(this.catalogRoot, entry.name);
-        const scanned = await scanDirectory(directory);
-        output.push(summary(scanned, await readSkillSourceProvenance(directory)));
-      } catch { /* invalid catalog entry stays invisible */ }
+  private async checkActiveCatalog(): Promise<void> {
+    for (const directory of [this.root, this.catalogRoot]) {
+      if ((await lstat(directory)).isSymbolicLink()
+        || path.resolve(await realpath(directory)).toLowerCase() !== path.resolve(directory).toLowerCase()) {
+        throw new Error('SKILL_CATALOG_PATH_DRIFT');
+      }
     }
-    return output;
+  }
+  private async scanActive(name: string): Promise<ScannedSkill> {
+    const normalized = validateName(name);
+    const directory = path.join(this.catalogRoot, normalized);
+    const info = await lstat(directory);
+    if (info.isSymbolicLink() || !info.isDirectory()) throw new Error('SKILL_SYMLINK_REFUSED');
+    const scanned = await scanDirectory(directory);
+    if (scanned.metadata.name !== normalized) throw new Error('SKILL_CATALOG_NAME_MISMATCH');
+    return scanned;
+  }
+  private async catalogSnapshot(): Promise<{
+    artifacts: SkillArtifactSummary[]; descriptors: SkillDiscoveryDescriptor[]; catalog: SkillCatalogCoverage;
+  }> {
+    await this.checkActiveCatalog();
+    const entries = (await readdir(this.catalogRoot, { withFileTypes: true }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const artifacts: SkillArtifactSummary[] = [], descriptors: SkillDiscoveryDescriptor[] = [];
+    const catalog: SkillCatalogCoverage = { scanned: Math.min(entries.length, 500), valid: 0,
+      invalid: 0, omitted: Math.max(0, entries.length - 500), complete: false };
+    for (const entry of entries.slice(0, 500)) {
+      try {
+        if (!entry.isDirectory() || validateName(entry.name) !== entry.name) throw new Error('SKILL_CATALOG_ENTRY_INVALID');
+        const scanned = await this.scanActive(entry.name);
+        const markdown = scanned.files.find(file => file.relative === 'SKILL.md')!.content!;
+        artifacts.push(summary(scanned, await readSkillSourceProvenance(path.join(this.catalogRoot, entry.name))));
+        descriptors.push(describeSkill(scanned.metadata, markdown.toString('utf8'), scanned.digest));
+        catalog.valid++;
+      } catch { catalog.invalid++; }
+    }
+    catalog.complete = catalog.invalid === 0 && catalog.omitted === 0;
+    return { artifacts, descriptors, catalog };
+  }
+  async list(): Promise<SkillArtifactSummary[]> {
+    return (await this.catalogSnapshot()).artifacts;
   }
   async inspect(name: string): Promise<SkillArtifactSummary & { metadata: SkillMetadata }> {
-    const directory = path.join(this.catalogRoot, validateName(name));
-    const scanned = await scanDirectory(directory);
-    return { ...summary(scanned, await readSkillSourceProvenance(directory)), metadata: scanned.metadata };
+    await this.checkActiveCatalog();
+    const scanned = await this.scanActive(name);
+    return { ...summary(scanned, await readSkillSourceProvenance(path.join(this.catalogRoot, scanned.metadata.name))), metadata: scanned.metadata };
+  }
+  private descriptorKey(descriptor: SkillDiscoveryDescriptor): string {
+    const identity = this.embedder?.identity;
+    return JSON.stringify([identity?.provider, identity?.model, identity?.dimensions, SKILL_DESCRIPTOR_VERSION, descriptor.digest]);
+  }
+  private async semanticCandidates(descriptors: SkillDiscoveryDescriptor[], query: string, signal?: AbortSignal): Promise<{
+    scores: Map<string, number>; coverage: SkillSemanticCoverage;
+  }> {
+    const scores = new Map<string, number>();
+    const coverage: SkillSemanticCoverage = { providerAvailable: Boolean(this.embedder), status: 'fallback',
+      embeddedDescriptors: descriptors.filter(item => this.descriptorVectors.has(this.descriptorKey(item))).length,
+      validDescriptors: descriptors.length, sentDescriptors: 0,
+      queryTruncated: truncateSkillEmbeddingText(query) !== query, descriptorTruncated: 0 };
+    const fallback = (reason: SkillSemanticCoverage['reason']) => ({ scores, coverage: { ...coverage, reason } });
+    if (!this.embedder) { coverage.status = 'unavailable'; return fallback('no-provider'); }
+    if (!descriptors.length) return fallback('empty-catalog');
+    if (signal?.aborted) return fallback('cancelled');
+    if (this.semanticBusy) return fallback('busy');
+    if (redactSensitiveString(query) !== query) return fallback('sensitive-input');
+    const pending: Array<{ descriptor: SkillDiscoveryDescriptor; key: string; text: string }> = [];
+    let sensitive = false;
+    for (const descriptor of descriptors) {
+      const positive = positiveSkillDescriptor(descriptor);
+      const text = truncateSkillEmbeddingText(positive);
+      if (text !== positive) coverage.descriptorTruncated++;
+      if (redactSensitiveString(positive) !== positive) { sensitive = true; continue; }
+      const key = this.descriptorKey(descriptor);
+      if (!this.descriptorVectors.has(key) && pending.length < 31) pending.push({ descriptor, key, text });
+    }
+    if (!pending.length && !coverage.embeddedDescriptors) return fallback('sensitive-input');
+    const identityKey = JSON.stringify(this.embedder.identity);
+    const dimensions = this.embedder.identity.dimensions;
+    if (!Number.isSafeInteger(dimensions) || dimensions < 1) return fallback('invalid-vector');
+    const validVector = (vector: unknown): vector is number[] => {
+      if (!Array.isArray(vector) || vector.length !== dimensions
+        || !vector.every(value => typeof value === 'number' && Number.isFinite(value))) return false;
+      const squaredNorm = vector.reduce((sum, value) => sum + value * value, 0);
+      return Number.isFinite(squaredNorm) && squaredNorm > 0;
+    };
+    const controller = new AbortController();
+    let timedOut = false;
+    const abort = () => controller.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) controller.abort();
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 5_000);
+    let rejectAbort!: () => void;
+    const cancelled = new Promise<never>((_, reject) => {
+      rejectAbort = () => reject(new Error('SKILL_SEMANTIC_ABORTED'));
+      controller.signal.addEventListener('abort', rejectAbort, { once: true });
+    });
+    this.semanticBusy = true;
+    // Keep the slot occupied until the provider actually settles, including after cancellation.
+    const operation = Promise.resolve().then(() => {
+      controller.signal.throwIfAborted();
+      coverage.sentDescriptors = pending.length;
+      return this.embedder!.embedDocuments([truncateSkillEmbeddingText(query), ...pending.map(item => item.text)], { signal: controller.signal });
+    }).finally(() => { this.semanticBusy = false; });
+    try {
+      const vectors = await Promise.race([operation, cancelled]);
+      controller.signal.throwIfAborted();
+      if (identityKey !== JSON.stringify(this.embedder.identity) || vectors.length !== pending.length + 1
+        || !vectors.every(validVector)) return fallback('invalid-vector');
+      for (let index = 0; index < pending.length; index++) {
+        const item = pending[index]!;
+        if (this.activeDescriptorKeys.has(item.key)) this.descriptorVectors.set(item.key, vectors[index + 1]!);
+      }
+      const queryVector = vectors[0]!;
+      for (const descriptor of descriptors) {
+        const vector = this.descriptorVectors.get(this.descriptorKey(descriptor));
+        if (!validVector(vector)) continue;
+        const cosine = cosineSimilarity(queryVector, vector);
+        if (Number.isFinite(cosine) && cosine > 0) scores.set(descriptor.name, cosine);
+      }
+      coverage.embeddedDescriptors = descriptors.filter(item => this.descriptorVectors.has(this.descriptorKey(item))).length;
+      coverage.status = coverage.embeddedDescriptors === descriptors.length ? 'complete' : 'partial';
+      if (coverage.status === 'partial') coverage.reason = sensitive ? 'sensitive-input' : 'batch-limit';
+      return { scores, coverage };
+    } catch {
+      return fallback(timedOut ? 'timeout' : controller.signal.aborted ? 'cancelled' : 'provider-failure');
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      controller.signal.removeEventListener('abort', rejectAbort);
+    }
+  }
+  async discover(input: SkillDiscoverInput): Promise<SkillDiscoverySnapshot> {
+    if (typeof input.query !== 'string' || !input.query.trim() || input.query.length > 4_000) throw new Error('SKILL_SEARCH_QUERY_INVALID');
+    const limit = input.limit ?? 5, mode = input.mode ?? 'lexical';
+    if (!Number.isInteger(limit) || limit < 1 || limit > 8) throw new Error('SKILL_SEARCH_LIMIT_INVALID');
+    if (mode !== 'lexical' && mode !== 'hybrid') throw new Error('SKILL_SEARCH_MODE_INVALID');
+    const { artifacts, descriptors, catalog } = await this.catalogSnapshot();
+    this.activeDescriptorKeys = new Set(descriptors.map(item => this.descriptorKey(item)));
+    for (const key of this.descriptorVectors.keys()) if (!this.activeDescriptorKeys.has(key)) this.descriptorVectors.delete(key);
+    const semantic = mode === 'hybrid' ? await this.semanticCandidates(descriptors, input.query, input.signal) : {
+      scores: new Map<string, number>(), coverage: { providerAvailable: Boolean(this.embedder), status: 'not-requested' as const,
+        embeddedDescriptors: descriptors.filter(item => this.descriptorVectors.has(this.descriptorKey(item))).length,
+        validDescriptors: descriptors.length, sentDescriptors: 0, queryTruncated: false, descriptorTruncated: 0 },
+    };
+    const hits = rankSkillDescriptors(descriptors, input.query, semantic.scores);
+    return { artifacts, search: boundSkillSearchResult({ version: 1, requestedMode: mode,
+      effectiveMode: ['complete', 'partial'].includes(semantic.coverage.status) ? 'hybrid' : 'lexical',
+      hits, catalog, semantic: semantic.coverage, truncated: !catalog.complete,
+      ...(!hits.length ? { emptyReason: catalog.scanned === 0 && catalog.omitted === 0 ? 'empty-catalog' as const
+        : catalog.valid === 0 ? 'no-valid-descriptors' as const : 'no-match' as const } : {}),
+    }, limit) };
+  }
+  async read(name: string, input: { expectedActiveDigest: string; offset?: number; maxBytes?: number }): Promise<SkillReadResult> {
+    const expected = normalizeSkillDigest(input.expectedActiveDigest ?? '');
+    const offset = input.offset ?? 0, maxBytes = input.maxBytes ?? 8_192;
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('SKILL_READ_OFFSET_INVALID');
+    if (!Number.isInteger(maxBytes) || maxBytes < 512 || maxBytes > 32_768) throw new Error('SKILL_READ_BUDGET_INVALID');
+    await this.checkActiveCatalog();
+    const scanned = await this.scanActive(name);
+    if (scanned.digest !== expected) throw new Error('SKILL_ACTIVE_REVISION_CHANGED');
+    const content = scanned.files.find(file => file.relative === 'SKILL.md')!.content!;
+    try { new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(content); }
+    catch { throw new Error('SKILL_READ_UTF8_INVALID'); }
+    if (offset > content.length || offset < content.length && (content[offset]! & 0xc0) === 0x80) throw new Error('SKILL_READ_OFFSET_INVALID');
+    const boundary = (end: number) => {
+      while (end > offset && end < content.length && (content[end]! & 0xc0) === 0x80) end--;
+      return end;
+    };
+    const result = (end: number): SkillReadResult => ({ name: scanned.metadata.name, digest: scanned.digest,
+      source: 'SKILL.md', content: content.subarray(offset, end).toString('utf8'), offset,
+      nextOffset: end < content.length ? end : null, totalContentBytes: content.length,
+      truncated: end < content.length, delivery: 'instruction-fragment', executionAuthority: false });
+    let low = offset, high = Math.min(content.length, offset + maxBytes);
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (Buffer.byteLength(JSON.stringify(result(boundary(middle))), 'utf8') <= maxBytes) low = middle;
+      else high = middle - 1;
+    }
+    const end = boundary(low);
+    if (end === offset && offset < content.length || Buffer.byteLength(JSON.stringify(result(end)), 'utf8') > maxBytes) {
+      throw new Error('SKILL_READ_BUDGET_TOO_SMALL');
+    }
+    return result(end);
   }
   async validate(sourcePath: string): Promise<SkillArtifactSummary> {
     const validated = await this.sourceValidator(sourcePath);

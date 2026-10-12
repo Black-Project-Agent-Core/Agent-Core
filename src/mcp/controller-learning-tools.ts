@@ -18,14 +18,13 @@ export function registerControllerLearningTools(
 ): void {
   server.registerTool('controller_learning', {
     title: 'External Controller Learning',
-    description: 'Inspect and update the cumulative-learning substrate for the connected external controller. Use context for difficult or continuity-sensitive work, episode start to rotate a new independent logical task episode when the transport session is reused, episode for bounded task evidence, artifact_receipt only when knowledge use is known (optional memoryFeedback is an explicit helpful/not-helpful assessment requiring independently verified applied/adapted use), procedure for verified reusable workflows, and evaluate for cross-session evidence. This tool never invokes a model/provider and never grants execution authority.',
+    description: 'Inspect/update cumulative learning. context gathers task evidence; Skill search defaults local. Explicit skillSearchMode=hybrid requires query and user consent to send query/positive Skill descriptors to configured Cloudflare Workers AI. episode start rotates logical tasks on reused transports; episode records evidence. artifact_receipt requires known use; memoryFeedback requires independently verified applied/adapted use. procedure stores verified workflows; evaluate compares episodes. No execution authority.',
     inputSchema: schemas.controllerLearning,
     annotations: {
-      title: 'External Controller Learning',
       readOnlyHint: false,
       destructiveHint: false,
     },
-  }, async (args: any) => {
+  }, async (args: any, ctx) => {
     const started = Date.now();
     const input = schemas.controllerLearning.parse(args ?? {});
     try {
@@ -36,6 +35,8 @@ export function registerControllerLearningTools(
         result = await service.context(sessionId, {
           ...(input.workspace ? { workspace: input.workspace } : {}),
           ...(input.query ? { query: input.query } : {}),
+          ...(input.skillSearchMode ? { skillSearchMode: input.skillSearchMode } : {}),
+          ...(ctx?.mcpReq?.signal ? { signal: ctx.mcpReq.signal } : {}),
           ...(input.taskFamily ? { taskFamily: input.taskFamily } : {}),
           ...(input.limit ? { limit: input.limit } : {}),
         });

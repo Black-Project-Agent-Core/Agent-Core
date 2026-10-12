@@ -1,13 +1,13 @@
-# Draft Plan Batch 2 — Pencarian Skill Terarah dan Pembacaan Revisi yang Tepat
+# Plan Batch 2 — Pencarian Skill Terarah dan Pembacaan Revisi yang Tepat
 
-**Status:** DRAFT UNTUK REVIEW PENGGUNA. Belum disetujui untuk implementasi dan tidak menyatakan capability sudah terpasang.
+**Status:** DISETUJUI DAN DIIMPLEMENTASIKAN pada source utama Linux, 12 Oktober 2026. Build berhasil. Pemasangan runtime Windows dilakukan kemudian oleh AI pengguna dari hasil repository; belum diklaim terpasang di Windows.
 **Tujuan:** controller eksternal dapat menemukan Skill yang relevan melalui query, melihat batas pemakaiannya, lalu membaca instruksi dari revisi yang dipilih, tanpa membongkar seluruh katalog atau menjalankan runtime donor.
 **Arsitektur:** `SkillService` tetap satu-satunya owner katalog dan pembacaan artefak. Satu selector internal dipakai oleh `skills(search)` dan knowledge synthesis. Pencarian leksikal lokal menjadi default; kandidat semantik opsional memakai instance embedder host yang sudah ada, hanya atas permintaan eksplisit. Memory, Learning, proposal, aktivasi, grant, dan receipt existing tetap menjadi owner masing-masing.
-**Baseline source:** `38b00b53650b2893017e50df852013ef270902eb`, dibaca 12 Oktober 2026. Batch 1 sedang diimplementasikan dalam checkout yang sama. Cocokkan perubahan relevan satu kali saat handoff; jangan menimpa kerja Batch 1.
+**Baseline analisis awal (historis):** `38b00b53650b2893017e50df852013ef270902eb`, dibaca 12 Oktober 2026. Batch 1 sedang diimplementasikan dalam checkout yang sama. Cocokkan perubahan relevan satu kali saat handoff; jangan menimpa kerja Batch 1.
 **Batas kompleksitas:** satu kemampuan utama, enam fase berurutan, satu penulis aktif per file. Tidak ada model selector, database vektor baru, daemon, adapter donor, atau agent berbasis API tambahan.
 **Bahasa implementasi:** TypeScript pada stack Node existing. Tidak ada dependency produksi baru yang diperlukan oleh rancangan ini.
 
-## 1. Masalah konkret yang akan diperbaiki
+## 1. Temuan baseline yang mendasari implementasi
 
 Pembacaan source menemukan empat bagian dari satu alur yang masih lemah:
 
@@ -122,9 +122,9 @@ Fase di bawah adalah rancangan untuk persetujuan berikutnya, bukan instruksi unt
 
 **File:** tambah `src/skills/discovery.ts`; ubah terbatas `src/skills/service.ts` pada scanner dan proyeksi metadata.
 
-- [ ] Definisikan tipe §4.1 dan `describeSkill(metadata, skillMarkdown, digest): SkillDiscoveryDescriptor` sebagai fungsi murni.
-- [ ] Ambil metadata, descriptor, dan bytes untuk digest dari buffer `SKILL.md` yang sama; pertahankan semua batas scanner dan format artefak existing.
-- [ ] Bentuk satu snapshot active catalog dengan count dan completeness, tanpa membaca staging/proposal/history sebagai aktif.
+- [x] Definisikan tipe §4.1 dan `describeSkill(metadata, skillMarkdown, digest): SkillDiscoveryDescriptor` sebagai fungsi murni.
+- [x] Ambil metadata, descriptor, dan bytes untuk digest dari buffer `SKILL.md` yang sama; pertahankan semua batas scanner dan format artefak existing.
+- [x] Bentuk satu snapshot active catalog dengan count dan completeness, tanpa membaca staging/proposal/history sebagai aktif.
 
 **Hasil operasional:** Skill yang sudah ada dapat ditemukan tanpa migrasi; trigger dan non-trigger yang benar-benar dideklarasikan terlihat, sedangkan yang tidak diketahui tetap dilabeli tidak diketahui. Digest tidak berasal dari bytes yang berbeda dengan descriptor.
 
@@ -132,9 +132,9 @@ Fase di bawah adalah rancangan untuk persetujuan berikutnya, bukan instruksi unt
 
 **File:** `src/skills/discovery.ts`, `src/skills/service.ts`.
 
-- [ ] Implementasikan `SkillService.discover({ query, limit, mode })` dengan mode lexical terlebih dahulu dan kontrak hasil §4.1–4.2.
-- [ ] Pakai BM25 existing, exact-name precedence, batas delapan hit, stable tie-break, dan descriptor positif yang tidak memasukkan non-trigger.
-- [ ] Terapkan batas serialized output 32 KiB, laporan partial catalog, dan status kosong yang membedakan tidak ada katalog dari tidak ada match.
+- [x] Implementasikan `SkillService.discover({ query, limit, mode })` dengan mode lexical terlebih dahulu dan kontrak hasil §4.1–4.2.
+- [x] Pakai BM25 existing, exact-name precedence, batas delapan hit, stable tie-break, dan descriptor positif yang tidak memasukkan non-trigger.
+- [x] Terapkan batas serialized output 32 KiB, laporan partial catalog, dan status kosong yang membedakan tidak ada katalog dari tidak ada match.
 
 **Hasil operasional:** controller memperoleh shortlist terurut query dan batas pemakaiannya tanpa meminta seluruh list; query hanya pada non-trigger tidak menaikkan Skill menjadi match positif. Seluruh jalur ini bekerja tanpa provider embedding.
 
@@ -142,10 +142,10 @@ Fase di bawah adalah rancangan untuk persetujuan berikutnya, bukan instruksi unt
 
 **File:** `src/skills/service.ts`, `src/skills/discovery.ts`, `src/memory/embedder.ts`, dan bagian inisialisasi Skills pada `src/index.ts`.
 
-- [ ] Perluas `SkillService.initialize(projectRoot, sourceValidator?, options?: { embedder?: MemoryEmbedder })` secara backward-compatible; inject instance yang sudah dibuat host, bukan membuat provider kedua.
-- [ ] Implementasikan cache sementara, batas batch/deadline/cancellation, pemeriksaan vector, dan coverage parsial §4.3. Memperluas signature embedder tidak mengubah perilaku Memory caller lama.
-- [ ] Implementasikan fusion dua ranking di helper yang sama; semantic-only hit boleh masuk, mode default tidak pernah memulai embedding Skill.
-- [ ] Expose ketersediaan provider, requested/effective mode, alasan degradasi dan coverage. Jangan menulis atau mengaktifkan konfigurasi/kredensial dari perubahan ini.
+- [x] Perluas `SkillService.initialize(projectRoot, sourceValidator?, options?: { embedder?: MemoryEmbedder })` secara backward-compatible; inject instance yang sudah dibuat host, bukan membuat provider kedua.
+- [x] Implementasikan cache sementara, batas batch/deadline/cancellation, pemeriksaan vector, dan coverage parsial §4.3. Memperluas signature embedder tidak mengubah perilaku Memory caller lama.
+- [x] Implementasikan fusion dua ranking di helper yang sama; semantic-only hit boleh masuk, mode default tidak pernah memulai embedding Skill.
+- [x] Expose ketersediaan provider, requested/effective mode, alasan degradasi dan coverage. Jangan menulis atau mengaktifkan konfigurasi/kredensial dari perubahan ini.
 
 **Hasil operasional:** pada permintaan hybrid yang berizin dan provider terkonfigurasi, parafrasa dapat memperoleh kandidat walaupun skor lexical nol. Provider absen/gagal, batas waktu, atau cakupan cache parsial terlihat; discovery lexical tetap dapat digunakan. Tidak ada klaim bahwa kandidat pasti cocok.
 
@@ -153,9 +153,9 @@ Fase di bawah adalah rancangan untuk persetujuan berikutnya, bukan instruksi unt
 
 **File:** `src/skills/service.ts`, tipe read pada `src/skills/discovery.ts`.
 
-- [ ] Implementasikan `SkillService.read()` dengan mandatory `expectedActiveDigest`, snapshot bytes, cursor byte UTF-8, dan budget envelope §4.4.
-- [ ] Tolak revision drift sebelum mengembalikan body; tidak melakukan fallback ke history atau revisi baru.
-- [ ] Kembalikan continuation yang eksplisit tanpa menjalankan instruksi atau membaca semua resource secara otomatis.
+- [x] Implementasikan `SkillService.read()` dengan mandatory `expectedActiveDigest`, snapshot bytes, cursor byte UTF-8, dan budget envelope §4.4.
+- [x] Tolak revision drift sebelum mengembalikan body; tidak melakukan fallback ke history atau revisi baru.
+- [x] Kembalikan continuation yang eksplisit tanpa menjalankan instruksi atau membaca semua resource secara otomatis.
 
 **Hasil operasional:** controller membaca tepat revisi yang dipilih dalam ukuran terkendali; dokumen panjang jelas masih parsial dan dapat dilanjutkan, sementara revision change menghasilkan alasan yang dapat ditindaklanjuti.
 
@@ -163,10 +163,10 @@ Fase di bawah adalah rancangan untuk persetujuan berikutnya, bukan instruksi unt
 
 **File:** `src/learning/external-controller.ts`, `src/agent-knowledge-synthesis.ts`, `src/capability-awareness.ts`, `src/mcp/capability-observation.ts`.
 
-- [ ] Tambahkan optional `skillSearchMode` pada `ExternalControllerContextInput`; gunakan satu discovery snapshot untuk external context, inventory, dan synthesis.
-- [ ] Ganti dua ranking Skill BM25-only dengan hasil shared selector; pertahankan ranking Patterns/procedures dan retrieval Memory existing.
-- [ ] Tampilkan descriptor applicability dan diagnostics ringkas; hanya artefak yang benar-benar tersampaikan masuk delivery attribution.
-- [ ] Kenali envelope search/read pada observer/parser existing tanpa mengubah retrieval menjadi material use. Perbarui petunjuk discovery dari hanya `list/inspect` menjadi `search`, kemudian selected `read`.
+- [x] Tambahkan optional `skillSearchMode` pada `ExternalControllerContextInput`; gunakan satu discovery snapshot untuk external context, inventory, dan synthesis.
+- [x] Ganti dua ranking Skill BM25-only dengan hasil shared selector; pertahankan ranking Patterns/procedures dan retrieval Memory existing.
+- [x] Tampilkan descriptor applicability dan diagnostics ringkas; hanya artefak yang benar-benar tersampaikan masuk delivery attribution.
+- [x] Kenali envelope search/read pada observer/parser existing tanpa mengubah retrieval menjadi material use. Perbarui petunjuk discovery dari hanya `list/inspect` menjadi `search`, kemudian selected `read`.
 
 **Hasil operasional:** shortlist pada context dan synthesis berasal dari snapshot/revisi yang sama, tanpa scan dan embedding ganda. Penggunaan Skill tetap membutuhkan keputusan controller dan bukti existing; proposal/activation tidak berubah.
 
@@ -174,11 +174,11 @@ Fase di bawah adalah rancangan untuk persetujuan berikutnya, bukan instruksi unt
 
 **File:** `src/mcp/skills-schemas.ts`, `src/mcp/skills-tools.ts`, `src/mcp/controller-learning-schemas.ts`, `src/mcp/controller-learning-tools.ts`, `src/agent-capability-catalog.ts`; bagian terkait `docs/CODEBASE.md`, `docs/README.md`, `README.md`, `THIRD_PARTY_NOTICES.md`, dan plan ini sesuai hasil nyata.
 
-- [ ] Tambahkan `skills.action=search|read` dan field action-specific: search memakai `query`, `limit`, `searchMode`; read memakai `name`, `expectedActiveDigest`, `offset`, `maxBytes`. Tolak field mode/cursor yang dipakai pada action lain.
-- [ ] Tambahkan optional `controller_learning.skillSearchMode` hanya untuk `action=context`; query wajib untuk pilihan hybrid. Default lexical tidak mengubah cara Memory dicari oleh context existing.
-- [ ] Klasifikasikan search/read sebagai read-only pada outcome plumbing dan capability family `skills.inspect`; pertahankan mutation actions dan grants existing. Deskripsi tool menjelaskan optional embedding tanpa mengklaim ada model reasoning baru. Tool `skills` gabungan tetap memiliki anotasi mutasi yang benar untuk action lifecycle-nya.
-- [ ] Sajikan status kemampuan berdasarkan jalur source/runtime yang benar-benar tersedia. Descriptor custom plugin harus mengikuti action/field baru; jika refresh manual diperlukan, laporkan perubahan satu kali tanpa mengaku client telah refresh.
-- [ ] Dokumentasikan hanya source/perilaku yang sudah diimplementasikan. Simpan batas aktivasi, konfigurasi semantic dan manfaat yang belum diketahui; parent menuntaskan Memory/Learning dan publikasi sesuai otorisasi pengguna.
+- [x] Tambahkan `skills.action=search|read` dan field action-specific: search memakai `query`, `limit`, `searchMode`; read memakai `name`, `expectedActiveDigest`, `offset`, `maxBytes`. Tolak field mode/cursor yang dipakai pada action lain.
+- [x] Tambahkan optional `controller_learning.skillSearchMode` hanya untuk `action=context`; query wajib untuk pilihan hybrid. Default lexical tidak mengubah cara Memory dicari oleh context existing.
+- [x] Klasifikasikan search/read sebagai read-only pada outcome plumbing dan capability family `skills.inspect`; pertahankan mutation actions dan grants existing. Deskripsi tool menjelaskan optional embedding tanpa mengklaim ada model reasoning baru. Tool `skills` gabungan tetap memiliki anotasi mutasi yang benar untuk action lifecycle-nya.
+- [x] Sajikan status kemampuan berdasarkan jalur source/runtime yang benar-benar tersedia. Descriptor custom plugin harus mengikuti action/field baru; jika refresh manual diperlukan, laporkan perubahan satu kali tanpa mengaku client telah refresh.
+- [x] Dokumentasikan hanya source/perilaku yang sudah diimplementasikan. Simpan batas aktivasi, konfigurasi semantic dan manfaat yang belum diketahui; parent menuntaskan Memory/Learning dan publikasi sesuai otorisasi pengguna.
 
 **Hasil operasional:** AI eksternal dapat mengakses search → read melalui tool Skills yang sama dan context memakai jalur yang sama. Mode lokal tidak membutuhkan cloud; mode hybrid tetap opsional dan tidak dapat dianggap aktif hanya karena source sudah dibangun. Pembaruan descriptor tidak menambah server atau tool owner baru.
 
@@ -186,7 +186,7 @@ Fase di bawah adalah rancangan untuk persetujuan berikutnya, bukan instruksi unt
 
 [Register 216 kandidat](../research/candidate-source-review-216-20261012.md) dan [JSON evidence](../research/candidate-source-review-216-20261012.json) tetap ledger bersama. Snapshot keputusan: 88 `reuse`, 54 `defer`, 15 `extend`, 38 `reject`, dan 21 `no-source`. Status source tersebut tidak otomatis menjadi otorisasi implementasi.
 
-Batch 1 memilih #73, #133 dan #178; draft Batch 2 memilih #7, #17 dan #195. **210 entri lain tetap tercatat dengan keputusan dan batas masing-masing**, bukan dianggap terintegrasi, dilupakan, atau harus dipasang. Sembilan kandidat `extend` yang belum dipilih dijelaskan berikut agar scope tidak diam-diam melebar:
+Batch 1 memilih #73, #133 dan #178; Batch 2 memilih #7, #17 dan #195. **210 entri lain tetap tercatat dengan keputusan dan batas masing-masing**, bukan dianggap terintegrasi, dilupakan, atau harus dipasang. Sembilan kandidat `extend` yang belum dipilih dijelaskan berikut agar scope tidak diam-diam melebar:
 
 - **#25 SimpleMem:** helper `src/learning/subquestion-retrieval.ts` memiliki batas yang lebih kuat, tetapi belum tersambung ke runtime context yang sekarang melakukan satu `memory.search`. Itu celah wiring multi-query yang nyata, terpisah dari Skill discovery. Tetap calon pekerjaan tersendiri; tidak membuka P0–P5, menambah planner LLM, atau mengimpor Memory engine donor.
 - **#47 Grok Build:** missing-vector path `maxSemanticRedundancy()` pada `SubProject/agent-core-memory/src/memory/retrieval.ts:332–345` belum memberi lexical near-duplicate penalty. Perbaikan standar MMR/Jaccard independen tetap calon tersendiri. Tidak menyalin donor; batas lisensi/reuse yang telah ditetapkan tetap berlaku. Tidak menyisipkannya ke selector Skill hanya untuk menambah jumlah adopsi.
@@ -202,12 +202,39 @@ Temuan cadangan yang sudah dianalisis tetap dihormati: **#129 MIMIC** hanya pelu
 
 ## 7. Batas hasil dan handoff
 
-Draft selesai bila interface, owner, donor, batas data/provider, dan enam fase di atas dapat direview pengguna. Implementasi baru dimulai setelah persetujuan pengguna atas draft ini. Pembacaan source tidak menghasilkan klaim runtime, aktivasi Windows, manfaat semantic, atau pekerjaan yang sudah selesai.
+Pengguna menyetujui implementasi pada 12 Oktober 2026. Keenam fase telah diterapkan di checkout utama Linux di atas hasil Batch 1. Source dan build tersedia untuk handoff; aktivasi runtime Windows, refresh custom plugin, dan manfaat semantic pada pekerjaan nyata merupakan status terpisah.
 
-Saat implementasi nanti diizinkan, gunakan owner utama dan alur activation/descriptor existing. Pertahankan satu penulis per file, laporkan blocker yang benar-benar membutuhkan tindakan manusia, dan pisahkan source terpasang, capability terekspos, mode hybrid berizin, Skill digunakan, serta manfaat teramati. Jangan membuat rangkaian review tanpa akhir atau menjadikan semua kandidat sebagai daftar instalasi wajib.
+Implementasi menggunakan owner utama dan alur activation/descriptor existing. Pertahankan satu penulis per file, laporkan blocker yang benar-benar membutuhkan tindakan manusia, dan pisahkan source terpasang, capability terekspos, mode hybrid berizin, Skill digunakan, serta manfaat teramati. Jangan membuat rangkaian review tanpa akhir atau menjadikan semua kandidat sebagai daftar instalasi wajib.
 
 ## 8. Ringkasan bersama untuk Memory lokal
 
 <!-- batch-02-memory-summary:start -->
-Draft Batch 2 memilih satu alur pencarian dan pembacaan Skill terikat revisi untuk controller eksternal, enam fase. #195 SkillPort memberi metadata-first query discovery dan selected loading; #17 AutoSkill memberi prinsip descriptor applicability melalui implementasi independen; #7 Voyager memberi kandidat semantik opsional tanpa mewajibkan overlap lexical. SkillService tetap owner katalog. Dua seleksi Skill BM25-only diganti satu jalur bersama; Patterns/procedures dan Memory retrieval tidak diganti. Default lexical bekerja lokal. Hybrid hanya atas intent eksplisit dan izin berbagi query/descriptor bounded ke Cloudflare Workers AI yang sudah dikonfigurasi, memakai instance embedder host existing, cache sementara, batas batch/waktu, dan status coverage/fallback; tidak ada provider, database, atau runtime donor baru. Search tidak otomatis membaca body; read memerlukan digest aktif yang dipilih dan mengembalikan fragment bounded. Proposal/aktivasi, revision/resource P3, grant dan verified-use receipts existing tetap berlaku. Draft tidak mengimplementasikan source, tidak mengaktifkan hybrid, tidak mengubah Batch 1, dan tidak membuka ulang Memory/Learning P0–P5. Seluruh 216 kandidat tetap tercatat; kandidat lain bukan instalasi wajib. Menunggu review dan persetujuan pengguna.
+Batch 2 sudah diimplementasikan pada source utama Agent Core: SkillService menyediakan discovery descriptor lokal dan pembacaan SKILL.md terikat active digest, memakai bytes snapshot yang sama. Mekanisme #195 SkillPort, #17 AutoSkill dan #7 Voyager diadaptasi secara independen tanpa runtime donor, dependency produksi baru, katalog paralel, atau folder penyimpanan baru. Default lexical tidak memanggil embedding; hybrid hanya melalui permintaan eksplisit dan izin berbagi query/descriptor positif bounded ke Cloudflare Workers AI existing, dengan cache sementara terikat model/revisi, batas batch, pembatalan dan deadline. Context dan synthesis memakai satu hasil discovery; hanya detail yang benar-benar tersampaikan mendapat atribusi, tanpa kredit penggunaan otomatis. Tool skills memperoleh action search/read dan controller_learning memperoleh skillSearchMode. Build Linux berhasil; belum ada panggilan provider live, aktivasi Windows, atau klaim manfaat semantic. Memory/Learning P0–P5 dan Batch 1 tetap pada owner existing. Hasil source disiapkan untuk diambil AI pengguna dari repository; setelah pemasangan runtime, custom plugin perlu diunggah ulang agar kontrak baru tersedia.
 <!-- batch-02-memory-summary:end -->
+
+
+## 9. Hasil implementasi dan handoff repository
+
+### Source yang tersedia
+
+- `src/skills/discovery.ts` menyediakan descriptor positif, applicability yang eksplisit, BM25/exact-name dan optional RRF semantic, tanpa body/provenance di query embedding.
+- `src/skills/service.ts` memegang katalog yang sama: maksimum 500 entri, snapshot bytes yang konsisten, coverage valid/invalid/omitted, cache ephemeral terikat model/revisi, satu request embedding aktif, maksimal 31 descriptor baru ditambah query per batch, dan deadline 5 detik. Panggilan provider yang mengabaikan abort tetap menahan slot hingga selesai agar timeout tidak membuat request bertumpuk.
+- `skills(search)` mengembalikan descriptor maksimal 32 KiB serialized UTF-8. `skills(read)` memerlukan `expectedActiveDigest`, `offset` byte, dan envelope budget 512–32768 byte; revision drift tidak mengembalikan body. Fragment menyatakan `nextOffset`, bukan mengaku seluruh instruksi sudah dibaca.
+- `controller_learning(context)` menggunakan snapshot discovery yang sama untuk inventory, selection dan synthesis; tanpa query tetap inventory lokal. Hanya selected detail yang lolos anggaran output mendapat atribusi revisi. Search/read tidak memberi usage credit atau authority untuk eksekusi.
+- Embedder host existing mendukung AbortSignal sepanjang fetch/retry/body consumption. Default lexical tidak memanggil provider. Tidak ada dependency baru atau instalasi runtime donor.
+- Deskripsi MCP dibersihkan hanya dari whitespace transport dan judul anotasi identik yang sudah ada pada top-level. Kata petunjuk, judul tampilan dan behavioral hints dipertahankan. Kohort manifest existing 75 tools berukuran 130681 byte, di bawah 128 KiB; kohort tersebut tidak mencakup semua optional tools, termasuk controller_learning.
+
+### Bukti penyelesaian Linux
+
+Build resmi `npm run build` berhasil, termasuk path policy (364 authored files) dan build Memory subproject. Gabungan pemeriksaan terarah 11 file/123 kasus berhasil; kasus provider menggunakan doubles offline. Review source terfokus tidak menemukan masalah penting. Fixture host lama yang melewatkan konfigurasi webResearch wajib dilengkapi pada test fixture saja; tidak ada fallback konfigurasi produksi baru. Ini bukan klaim whole-suite, benchmark, live Cloudflare, atau runtime Windows.
+
+### Arahan pemasangan oleh AI pengguna
+
+1. Ambil hasil Batch 2 dari repository resmi Black-Project-Agent-Core/Agent-Core ke checkout utama pengguna. Cocokkan perubahan lokal yang belum dipublikasikan tanpa menimpanya dan tanpa membuat checkout/runtime duplikat.
+2. Gunakan source utama dan prosedur build/start project existing. Jangan mengulang adopsi donor, menambahkan service Skills baru, atau menyalin engine ke folder temporary. Data tetap pada owner penyimpanan existing, termasuk runtime/memory.
+3. Muat hasil build pada runtime target melalui prosedur restart existing saat pengguna siap. Source terpublikasi di Linux belum berarti runtime Windows sudah memakai source tersebut.
+4. Setelah runtime target terpasang, unggah ulang custom plugin untuk memperbarui action search/read pada tool skills dan field skillSearchMode pada controller_learning. Tidak ada nama tool baru.
+5. Jalur default langsung menggunakan lexical lokal. Hybrid hanya dipilih jika pengguna mengizinkan pengiriman query/descriptor positif bounded ke provider existing; jangan mengaktifkannya otomatis atau menyalin kredensial.
+6. Catat status pemasangan nyata ke Memory lokal target dan dokumentasinya. Source implementasi tidak memerlukan file aktif dari folder temporary. Jangan menghapus data yang belum dipindahkan atau menganggap catatan Learning Linux otomatis tersedia di Windows hanya karena repository diambil.
+
+Ringkasan section 8 disamakan dengan record canonical Memory lokal dan proyeksi MEMORY.md. Bukti hash publikasi dan finalisasi episode disimpan setelah remote readback, tanpa mengklaim keberhasilan sebelum hasil nyata.

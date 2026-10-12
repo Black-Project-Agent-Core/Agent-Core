@@ -109,12 +109,13 @@ function annotateExternalLearningException(error: unknown, capsule: string | und
 
 const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: string, schema: any, handler: Handler, _readOnly = false) => {
   const metadata = RDC_TOOL_METADATA[name];
+  const { title: annotationTitle, ...behaviorHints } = metadata.annotations;
   server.registerTool(name, {
     title: metadata.title,
-    // Remove template indentation only; preserve every instruction and nested list offset.
-    description: metadata.description.replace(/^[ \t]{24}/gm, '').trim(),
+    // Remove transport-only whitespace; preserve instruction text and nested list offsets.
+    description: metadata.description.replace(/^[ \t]{24}/gm, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim(),
     inputSchema: schema,
-    annotations: metadata.annotations,
+    annotations: annotationTitle === metadata.title ? behaviorHints : metadata.annotations,
   }, async (args: any, ctx: any) => {
     const started = Date.now();
     const input = args ?? {};

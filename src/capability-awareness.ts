@@ -41,7 +41,7 @@ export function buildCapabilityExposure(input: { availableTools?: readonly strin
   'revision='+revision+' | counts='+JSON.stringify(counts),
   'Tools='+tools.status+' | count='+names.length+' | unclassified='+tools.unclassified.join(','),
   'Owners='+JSON.stringify(input.owners)+' | host plugins=unknown (no host registration bridge).',
-  'Discover omitted Skills with skills(list/inspect); use task-relevant descriptors below.'];
+  'Discover Skills with skills(search), check applicability, then skills(read) with the selected digest; list/inspect remain available.'];
  let used=lines.join('\n').length, shown=0;
  for(const item of inventory) {
   if(item.kind==='tool-family' && item.availability!=='available') continue;
@@ -116,9 +116,19 @@ export const CAPABILITY_USE_CONTRACT = 'Automatically select available capabilit
 export function inspectedSkillArtifacts(text:string):Array<{name:string;digest:string}> {
  try {
   const value=JSON.parse(text.split('\n\nAGENT_CORE_EVIDENCE_REF=')[0]);
-  const values=Array.isArray(value)?value:[value];
-  return values.slice(0,500).filter(v=>v && typeof v.name==='string' && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v.name)
+  let values:unknown[];
+  if(value && !Array.isArray(value) && 'hits' in value) {
+   if(value.version!==1 || !['lexical','hybrid'].includes(value.requestedMode)
+    || !['lexical','hybrid'].includes(value.effectiveMode) || !Array.isArray(value.hits))return [];
+   values=value.hits.slice(0,8).filter((hit:any)=>hit?.scoreKind==='rank-fusion' && hit.executionAuthority===false
+    && Number.isInteger(hit.rank) && hit.rank>=1 && hit.rank<=8);
+  } else if(value && !Array.isArray(value) && ('delivery' in value || 'content' in value)) {
+   if(value.source!=='SKILL.md' || value.delivery!=='instruction-fragment' || value.executionAuthority!==false
+    || typeof value.content!=='string')return [];
+   values=[value];
+  } else values=Array.isArray(value)?value:[value];
+  return values.slice(0,500).filter((v:any)=>v && typeof v.name==='string' && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v.name)
    && v.name.length<=64 && typeof v.digest==='string' && /^sha256:[a-f0-9]{64}$/.test(v.digest))
-   .map(v=>({name:v.name,digest:v.digest}));
+   .map((v:any)=>({name:v.name,digest:v.digest}));
  }catch{return [];}
 }

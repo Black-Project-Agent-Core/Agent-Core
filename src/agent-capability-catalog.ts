@@ -191,9 +191,9 @@ export const AGENT_CAPABILITY_CATALOG: readonly AgentCapabilityDescriptor[] = [
   {
     family: 'skills.inspect',
     risk: 0,
-    description: 'Read-only inspection and validation of bounded Skill artifacts.',
+    description: 'Read-only Skill discovery, revision-bound instruction fragments and validation.',
     tools: [
-      t('skills', { allowedActions: ['status', 'list', 'inspect', 'validate', 'proposals', 'self_awareness', 'explain_improvement'] }),
+      t('skills', { allowedActions: ['status', 'list', 'inspect', 'search', 'read', 'validate', 'proposals', 'self_awareness', 'explain_improvement'] }),
     ],
   },
   {

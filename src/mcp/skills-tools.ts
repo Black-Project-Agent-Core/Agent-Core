@@ -7,9 +7,11 @@ import * as schemas from './skills-schemas.js';
 import type { LearningService } from '../learning/service.js';
 import { PROPOSAL_ACTIONS, runSkillProposalAction } from './skill-proposal-actions.js';
 
-function text(value: unknown) {
-  return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] } as any;
+function text(value: unknown, compact = false) {
+  return { content: [{ type: 'text', text: JSON.stringify(value, null, compact ? undefined : 2) }] } as any;
 }
+
+const READ_ONLY_ACTIONS = new Set(['status', 'list', 'inspect', 'search', 'read', 'validate', 'list_revisions', 'proposals', 'self_awareness', 'explain_improvement']);
 
 export function registerSkillsTools(
   server: McpServer,
@@ -22,10 +24,10 @@ export function registerSkillsTools(
 ): void {
   server.registerTool('skills', {
     title: 'Skill Artifacts',
-    description: 'Manage native Skill artifacts and semantic proposals. proposals/self_awareness/explain_improvement read current evidence; propose and review_outcomes never activate. decide_proposal requires a host-recorded user message for the exact revision/scope. Send proposal reminders in the current user session. Declared tools never grant execution authority.',
+    description: 'Manage Skill artifacts and proposals. search(query) defaults local; read(name,expectedActiveDigest) returns bounded instruction fragments. Explicit hybrid sends query/positive descriptors to configured Cloudflare Workers AI; obtain user sharing consent first. proposals/self_awareness/explain_improvement read evidence. propose/review_outcomes never activate. decide_proposal needs a host-recorded user message for exact revision/scope. Relay reminders in this session. Declared tools never grant execution authority.',
     inputSchema: schemas.skills,
-    annotations: { title: 'Skill Artifacts', readOnlyHint: false, destructiveHint: false },
-  }, async (args: any) => {
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  }, async (args: any, ctx) => {
     const started = Date.now();
     const input = schemas.skills.parse(args ?? {});
     try {
@@ -36,6 +38,8 @@ export function registerSkillsTools(
         case 'status': result = await service.status(); break;
         case 'list': result = await service.list(); break;
         case 'inspect': result = await service.inspect(input.name!); break;
+        case 'search': result = (await service.discover({ query: input.query!, limit: input.limit, mode: input.searchMode, signal: ctx?.mcpReq?.signal })).search; break;
+        case 'read': result = await service.read(input.name!, { expectedActiveDigest: input.expectedActiveDigest!, offset: input.offset, maxBytes: input.maxBytes }); break;
         case 'validate': result = await service.validate(input.sourcePath!); break;
         case 'import': result = await service.import(input.sourcePath!); break;
         case 'package': result = await service.package(input.name!); break;
@@ -54,8 +58,8 @@ export function registerSkillsTools(
         sessionId: externalSessionId,
         tool: 'skills',
         args: input,
-        result: text(result),
-        readOnly: ['status', 'list', 'inspect', 'validate', 'list_revisions', 'proposals', 'self_awareness', 'explain_improvement'].includes(input.action),
+        result: text(result, input.action === 'search' || input.action === 'read'),
+        readOnly: READ_ONLY_ACTIONS.has(input.action),
       });
     } catch (error) {
       activityTracker.record('SKILLS', 'info', 'skills operation failed', 'handled-skills-failure', {
@@ -69,7 +73,7 @@ export function registerSkillsTools(
         tool: 'skills',
         args: input,
         result: { content: [{ type: 'text', text: 'Error: ' + message }], isError: true } as any,
-        readOnly: ['status', 'list', 'inspect', 'validate', 'list_revisions', 'proposals', 'self_awareness', 'explain_improvement'].includes(input.action),
+        readOnly: READ_ONLY_ACTIONS.has(input.action),
       });
     }
   });

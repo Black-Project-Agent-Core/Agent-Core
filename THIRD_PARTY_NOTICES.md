@@ -514,3 +514,14 @@ SOFTWARE.
 ### Qwen Code bounded text prefix
 
 The safe UTF-16 prefix and bounded truncation notice in `src/web-research/service.ts` adapt `packages/core/src/core/tool-hook-context.ts` from `QwenLM/qwen-code`, revision `e9789d091133d9753decfc139df64c935a1866e6`. Copyright 2026 Qwen Team. Licensed under Apache-2.0; the full Apache License 2.0 is retained above in this file. Agent Core changes the context to web content, applies redaction before truncation, retains a bounded visible notice and reports explicit truncation metadata. No Qwen hook engine or model runtime is bundled.
+
+
+## Batch 2: native Skill discovery and revision-bound reads
+
+These mechanisms are independently implemented in TypeScript in Agent Core's existing SkillService and context owners. No donor runtime, database, Python module, or substantial donor source is bundled.
+
+- SkillPort, `gotalab/skillport` revision `51334ae94919fc1c261673ffefdce9176c9094ef`: metadata-first search and selected loading inspected in `packages/skillport-core/src/skillport/interfaces/mcp/tools.py` and `modules/indexing/internal/search_service.py`. MIT, Copyright (c) 2025 Gota. Agent Core retains its own digest, grants and lifecycle.
+- Voyager, `MineDojo/Voyager` revision `55e45a880755d0c8c66ca7fb5fe7962ac8974f89`: description-based semantic candidate retrieval inspected in `voyager/agents/skill.py`. MIT, Copyright (c) 2023 MineDojo Team. Agent Core uses explicit opt-in, its existing embedder and bounded ephemeral vectors; no Chroma, Minecraft or generated-description pipeline.
+- AutoSkill, `ECNU-ICALK/AutoSkill` revision `94c47ca488d4ba4117d20272e66d49b9877e68cf`: descriptor/applicability design inspected in `autoskill/interactive/selection.py` and `retrieval.py`. A root license was not available in the inspected revision. No source is copied; applicability parsing is an independent implementation over Agent Core's existing Trigger/Non-trigger sections.
+
+The MIT permission and warranty disclaimer reproduced in this file apply to the MIT-licensed reference notices above; attribution does not assert inclusion of their complete implementations.

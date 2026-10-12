@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { buildKnowledgeSynthesisPacket } from '../src/agent-knowledge-synthesis.js';
+import { rankSkillDescriptors } from '../src/skills/discovery.js';
 const digest = 'sha256:' + 'a'.repeat(64);
 const skills = [{ name: 'activation-audit', description: 'Audit activation hashes and deployment integrity', digest, allowedTools: ['read_file'] }, { name: 'invoice-review', description: 'Review invoice totals', digest: 'sha256:'+'b'.repeat(64), allowedTools: [] }];
+function skillsOwner(artifacts: typeof skills) {
+ return { list: async () => artifacts, discover: async ({ query }: { query: string }) => ({ artifacts, search: {
+  version: 1, requestedMode: 'lexical', effectiveMode: 'lexical',
+  hits: rankSkillDescriptors(artifacts.map(item => ({ ...item, triggers: [], nonTriggers: [], applicability: 'missing', descriptorTruncated: false })), query).slice(0, 5),
+  catalog: { scanned: artifacts.length, valid: artifacts.length, invalid: 0, omitted: 0, complete: true },
+  semantic: { providerAvailable: false, status: 'not-requested', embeddedDescriptors: 0, validDescriptors: artifacts.length, sentDescriptors: 0, queryTruncated: false, descriptorTruncated: 0 }, truncated: false,
+ } }) };
+}
 async function packet(query: string, extra: any = {}) {
- return buildKnowledgeSynthesisPacket({ runtime: { skillsService: { list: async () => skills } as any }, memoryItems: [], procedures: [], task: { goal: query, episodes: [] }, availableTools: ['read_file', 'code_graph', 'custom_helper'], ...extra } as any);
+ return buildKnowledgeSynthesisPacket({ runtime: { skillsService: skillsOwner(skills) as any }, memoryItems: [], procedures: [], task: { goal: query, episodes: [] }, availableTools: ['read_file', 'code_graph', 'custom_helper'], ...extra } as any);
 }
 describe('capability awareness projection', () => {
  it('exposes all active identities separately from task-ranked selection', async () => {
@@ -27,14 +36,14 @@ describe('capability awareness projection', () => {
  });
  it('refreshes skill revisions and reports owner failure without claiming empty inventory', async () => {
   const a:any = await packet('hello');
-  const b:any = await packet('hello',{runtime:{skillsService:{list:async()=>[{...skills[0],digest:'sha256:'+'c'.repeat(64)}]}}});
+  const b:any = await packet('hello',{runtime:{skillsService:skillsOwner([{...skills[0],digest:'sha256:'+'c'.repeat(64)}])}});
   expect(a.capabilityExposure?.revision).not.toBe(b.capabilityExposure?.revision);
-  const c:any = await packet('hello',{runtime:{skillsService:{list:async()=>{throw Error('offline')}}}});
+  const c:any = await packet('hello',{runtime:{skillsService:{discover:async()=>{throw Error('offline')}}}});
   expect(c.capabilityExposure?.owners.skills).toBe('unavailable');
  });
  it('keeps prompts bounded without hiding catalog omissions', async () => {
   const many=Array.from({length:500},(_,i)=>({...skills[0],name:'skill-'+i,description:'audit '.repeat(200)}));
-  const p:any=await packet('audit',{runtime:{skillsService:{list:async()=>many}}});
+  const p:any=await packet('audit',{runtime:{skillsService:skillsOwner(many)}});
   expect(p.text.length).toBeLessThanOrEqual(16000);
   expect(p.capabilityExposure?.counts.skill).toBe(500);
   expect(p.capabilityExposure?.text.length).toBeLessThanOrEqual(5000);

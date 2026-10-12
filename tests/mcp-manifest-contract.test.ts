@@ -87,8 +87,11 @@ describe('MCP public manifest contract', () => {
 
     const skills = entries.find(([name]) => name === 'skills')?.[1];
     expect(Object.keys(jsonSchema(skills?.inputSchema).properties ?? {})).toEqual(
-      expect.arrayContaining(['action', 'name', 'sourcePath', 'evidenceRefs', 'candidateDigest', 'expectedActiveDigest', 'sourceChangeConfirmation']),
+      expect.arrayContaining(['action', 'name', 'sourcePath', 'evidenceRefs', 'candidateDigest', 'expectedActiveDigest', 'sourceChangeConfirmation',
+        'query', 'limit', 'searchMode', 'offset', 'maxBytes']),
     );
+    expect(jsonSchema(skills?.inputSchema).properties?.action?.enum).toEqual(expect.arrayContaining(['search', 'read']));
+    expect(skills?.annotations?.readOnlyHint).toBe(false);
 
     const recent = entries.find(([name]) => name === 'get_recent_tool_calls')?.[1];
     const recentProps = Object.keys(jsonSchema(recent?.inputSchema).properties ?? {});
@@ -110,7 +113,12 @@ it('removes transport-only description indentation without dropping tool guidanc
     const metadata = RDC_TOOL_METADATA[name as keyof typeof RDC_TOOL_METADATA];
     if (!metadata) continue;
     expect(tool.description).not.toMatch(/^[ \t]{24}/m);
+    expect(tool.description).not.toMatch(/[ \t]+$/m);
+    expect(tool.description).not.toMatch(/\n{3,}/);
     const words = (value: string) => value.replace(/\s+/g, ' ').trim();
     expect(words(tool.description)).toBe(words(metadata.description));
+    const { title, ...behaviorHints } = metadata.annotations;
+    expect(tool.title).toBe(metadata.title);
+    expect(tool.annotations).toEqual(title === metadata.title ? behaviorHints : metadata.annotations);
   }
 });

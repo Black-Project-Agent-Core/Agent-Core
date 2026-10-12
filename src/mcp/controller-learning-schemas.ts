@@ -8,6 +8,7 @@ export const controllerLearning = z.object({
   action: z.enum(['status', 'context', 'episode', 'artifact_receipt', 'procedure', 'evaluate']),
   workspace: z.string().min(1).max(120).optional(),
   query: z.string().min(1).max(4000).optional(),
+  skillSearchMode: z.enum(['lexical', 'hybrid']).optional(),
   taskFamily: z.string().min(1).max(160).optional(),
   taskKey: z.string().min(1).max(200).optional(),
   taskId: z.string().min(1).max(200).optional(),
@@ -43,6 +44,12 @@ export const controllerLearning = z.object({
   allowedTools: z.array(z.string().min(1).max(120)).max(64).optional(),
   reuseCondition: z.string().min(1).max(2000).optional(),
 }).superRefine((value, ctx) => {
+  if (value.skillSearchMode !== undefined && value.action !== 'context') {
+    ctx.addIssue({ code: 'custom', path: ['skillSearchMode'], message: 'skillSearchMode is only valid for context' });
+  }
+  if (value.skillSearchMode === 'hybrid' && !value.query?.trim()) {
+    ctx.addIssue({ code: 'custom', path: ['query'], message: 'Nonblank query required for hybrid Skill search' });
+  }
   if (value.memoryFeedback !== undefined && (value.action !== 'artifact_receipt' || value.artifactKind !== 'memory'
     || value.applicability === 'rejected' || value.result === 'unavailable')) {
     ctx.addIssue({ code: 'custom', path: ['memoryFeedback'], message: 'memoryFeedback requires an applied/adapted Memory receipt with verified outcome' });

@@ -264,6 +264,11 @@ describe('memory maintenance regressions', () => {
       memoryEmbedding: { provider: null, accountId: null, apiToken: null, model: null, dimensions: 768 },
       httpSecurity: { publicBaseUrl: null, protectedResourceUrl: null, trustProxy: false, allowedOrigins: [] },
       mcp: { protocolMode: 'dual' },
+      // The host configuration requires an explicit research service config.
+      webResearch: { enabled: false, exaApiKey: null, parallelApiKey: null, jinaApiKey: null,
+        firecrawlApiKey: null, openAlexApiKey: null, pexelsApiKey: null, unsplashAccessKey: null,
+        browserbaseApiKey: null, apifyToken: null, langfusePublicKey: null,
+        langfuseSecretKey: null, langfuseBaseUrl: null, timeoutMs: 5_000 },
     });
     try {
       const initial = await fetch(`http://127.0.0.1:${service.port}/health`).then((response) => response.json()) as any;

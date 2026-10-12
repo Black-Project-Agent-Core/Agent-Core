@@ -16,7 +16,7 @@ export function installCapabilityObservation(server:McpServer,principal:unknown,
    const result=await callback(args,ctx);
    if(args?.origin==='ui' || result?.isError)return result;
    try {
-    if(name==='skills' && ['list','inspect'].includes(String(args?.action))) {
+    if(name==='skills' && ['list','inspect','search','read'].includes(String(args?.action))) {
       const payload=(result?.content??[]).find((part:any)=>part?.type==='text')?.text;
       if(typeof payload==='string')await external.recordInspectedSkillArtifacts?.(sessionId,payload);
     }

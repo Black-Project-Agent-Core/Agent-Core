@@ -14,11 +14,16 @@ export const skillProposalDraft = z.object({
 
 export const skills = z.object({
   action: z.enum([
-    'status', 'list', 'inspect', 'validate', 'import', 'package', 'render_export',
+    'status', 'list', 'inspect', 'search', 'read', 'validate', 'import', 'package', 'render_export',
     'stage_revision', 'list_revisions', 'promote_revision', 'rollback_revision',
     'proposals', 'propose', 'decide_proposal', 'self_awareness', 'explain_improvement', 'review_outcomes',
   ]),
   workspace: z.string().min(1).max(120).optional(),
+  query: z.string().min(1).max(4000).optional(),
+  limit: z.number().int().min(1).max(8).optional(),
+  searchMode: z.enum(['lexical', 'hybrid']).optional(),
+  offset: z.number().int().min(0).optional(),
+  maxBytes: z.number().int().min(512).max(32768).optional(),
   proposalId: z.string().min(1).max(128).optional(),
   proposalDigest: digest.optional(),
   proposal: skillProposalDraft.optional(),
@@ -36,10 +41,26 @@ export const skills = z.object({
   confirmation: z.string().min(1).max(100).optional(),
   sourceChangeConfirmation: z.string().min(1).max(100).optional(),
 }).superRefine((value, ctx) => {
+  if (value.action === 'search' && !value.query?.trim()) {
+    ctx.addIssue({ code: 'custom', path: ['query'], message: 'Nonblank query required for search' });
+  }
+  for (const key of ['query', 'limit', 'searchMode'] as const) {
+    if (value.action !== 'search' && value[key] !== undefined) {
+      ctx.addIssue({ code: 'custom', path: [key], message: key + ' is only valid for search' });
+    }
+  }
+  for (const key of ['offset', 'maxBytes'] as const) {
+    if (value.action !== 'read' && value[key] !== undefined) {
+      ctx.addIssue({ code: 'custom', path: [key], message: key + ' is only valid for read' });
+    }
+  }
+  if (value.action === 'read' && !value.expectedActiveDigest) {
+    ctx.addIssue({ code: 'custom', path: ['expectedActiveDigest'], message: 'Selected active digest required for read' });
+  }
   if (value.action === 'propose' && !value.proposal) ctx.addIssue({ code: 'custom', message: 'proposal draft required' });
   if (value.action === 'decide_proposal' && (!value.proposalId || !value.proposalDigest || !value.decision || !value.decisionScope || !value.userEvidenceRef)) ctx.addIssue({ code: 'custom', message: 'Exact proposal revision, decision scope and host-recorded userEvidenceRef required; model claims are not consent.' });
   if (value.action === 'explain_improvement' && !value.proposalId && !value.name) ctx.addIssue({ code: 'custom', message: 'proposalId or name required' });
-  if (['inspect', 'package', 'render_export', 'list_revisions', 'promote_revision', 'rollback_revision'].includes(value.action) && !value.name) {
+  if (['inspect', 'read', 'package', 'render_export', 'list_revisions', 'promote_revision', 'rollback_revision'].includes(value.action) && !value.name) {
     ctx.addIssue({ code: 'custom', message: 'name required for this action' });
   }
   if (value.action === 'render_export' && !value.profile) {

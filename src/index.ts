@@ -150,7 +150,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
 
   let skillsService: SkillService | undefined;
   try {
-    skillsService = await SkillService.initialize(config.projectRoot);
+    skillsService = await SkillService.initialize(config.projectRoot, undefined, { embedder: memoryEmbedder });
     activityTracker.record('SKILLS', 'success', 'Skill artifact service initialized', 'skills-service-start', {
       status: 'available',
     });
