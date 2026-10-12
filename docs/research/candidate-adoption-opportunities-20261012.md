@@ -1,27 +1,23 @@
-# Peluang Adopsi Source Kandidat — Pendalaman 12 Oktober 2026
+# Peluang Adopsi Source Kandidat — Analisis Kumulatif 12 Oktober 2026
 
-**Status: RISET SAJA. Bukan plan Batch 5/6 dan bukan perintah implementasi.**
+**Status: RISET SAJA. Bukan plan Batch 5/6 atau perintah implementasi.**
 
-Baseline source Agent Core: `86fe9efe53dcfa8da61616c5e5d34e724e0a1891`. Source produk lokal tidak berubah dari commit tersebut pada awal riset. Dokumen donor dibaca pada pin yang dirinci di register; ini tidak mengklaim semua donor memakai versi upstream paling baru.
+Riset source native tetap memakai body kode baseline `86fe9efe53dcfa8da61616c5e5d34e724e0a1891`; publikasi dokumentasi pertama `97863a285646170846da6a81c79556b1b9eeb58d` tidak mengubah produk. Pendalaman kedua memperbarui dokumen dan register yang sama. Tanggal menggunakan UTC.
 
-## Ringkasan
+## Hasil kumulatif terkini
 
-- Seluruh **216 ID** dipetakan tepat sekali; semuanya pernah menjalani first-pass sebelumnya.
-- **8 kandidat** tetap milik Batch 1–4; **208 entri** lain ditinjau status/peluangnya.
-- Putaran ini membaca ulang **143 kandidat pada body kode berpinned**, **2 source parsial tanpa pin**, **5 interface**, **1 konfigurasi**, dan **7 dokumentasi/metadata**.
-- **50 entri** memakai bukti putaran sebelumnya tanpa pembacaan body donor baru; **8 reserved** juga tidak dihitung sebagai inspeksi donor baru. Daftar ID dan batas tiap entri ada di JSON. Tidak semua entri yang dipetakan berarti engine-nya terbuka atau dibaca penuh.
-- Ditemukan **17 kelompok peluang dari 18 kandidat**. #120 dan #140 digabung dalam satu gap PDF. Ini bukan 17 instalasi wajib dan bukan klaim donor lebih unggul secara terukur.
-- Fokus adopsi: mekanisme yang memperbaiki owner internal untuk AI eksternal pengendali Agent Core. Modul, store, runtime donor dan dependency eksternal tidak otomatis diadopsi.
-
-## Klasifikasi peluang
-
-| Kategori | Jumlah | Makna |
+| Kedalaman bukti | Entri | Batas klaim |
 |---|---:|---|
-| Gap source untuk controller eksternal | 6 | Ada perbedaan mekanisme konkret; tetap memerlukan pencocokan ulang setelah Batch 3/4 |
-| Peluang eksternal bersyarat | 4 | Bergantung consumer, evidence, scope atau kontrak tambahan |
-| Bukti/evaluasi saja | 4 | Tidak otomatis menjadi fitur runtime, gate atau instruksi menjalankan pengujian |
-| Producer/aplikasi opsional | 2 | Hanya relevan bila producer/worker yang sesuai memang dibutuhkan |
-| Native-only | 1 | Dicatat untuk kelengkapan, bukan prioritas AI eksternal |
+| Body kode berpinned | 175 | Potongan implementasi pada SHA tertentu, bukan seluruh codebase/engine |
+| Interface saja | 3 | Tidak membuktikan implementasi backend |
+| Dokumentasi saja | 30 | Source fitur yang hendak diadopsi tidak tersedia/terverifikasi; bukan dasar transplantasi kode |
+| Reserved Batch 1–4 | 8 | Tidak dibuka ulang sebagai kandidat baru |
+| Total | 216 | ID kandidat, bukan jumlah repository unik |
+
+- Seluruh **65 entri** yang sebelumnya prior-only, docs, interface/config atau source unpinned sudah ditindaklanjuti. Hasilnya **32 body berpinned, 3 interface, dan 30 docs-only**. Tidak ada entri unallocated yang masih hanya ditandai prior-only tanpa tindak lanjut.
+- **17 kelompok peluang tetap**, dari **18 kandidat utama**. #69 dan #92 menambah bukti/pembanding untuk kelompok existing, tidak menambah kelompok atau instalasi. Kategori tetap 6 gap eksternal, 4 bersyarat eksternal, 4 bukti/evaluasi, 2 producer/aplikasi opsional, 1 native-only.
+- Inventaris lokal pada 20:19 UTC memuat **209 checkout Git dengan remote berbeda**. Ini inventaris sumber penelitian, bukan 209 kandidat atau 209 engine lengkap. Ada keluarga kandidat multi-repo; repo SDK/contoh/model card tidak otomatis membuka source engine.
+- #169 misalnya memiliki body SDK HTTP, tetapi itu tidak membuktikan server sandbox terbuka. #65 wrapper memanggil implementasi internal/layanan hosted. #50/#54/#55/#68 tidak menyediakan source mekanisme curriculum/self-learning yang diajukan. #49 kini memiliki pin historis resmi, tetapi hanya membuktikan mekanisme riwayat percakapan.
 
 ## Syarat sebelum plan Batch 5 dan 6
 
@@ -38,31 +34,196 @@ Saat prasyarat itu tercapai, lakukan satu rekonsiliasi terarah terhadap peluang 
 
 Konsep Invocate tetap ditunda. Riset ini tidak mengotorisasi pembangunan, pergantian engine, pemasangan provider, aktivasi model/API, atau perubahan memory store. Nama penyimpanan tetap runtime/memory.
 
-## Daftar peluang terkelompok
+## Daftar peluang
 
-| ID kandidat | Peluang | Kategori |
+| Kandidat utama | Peluang | Kategori | Bukti tambahan |
+|---|---|---|---|
+| #30 | Membedakan recall kosong dan recall gagal | external-runtime-gap | — |
+| #34 | Cakupan bagian dan disclosure omission pada knowledge packet | external-runtime-gap | — |
+| #44 | Bukti negatif untuk pemilihan Skill yang opsional | evidence-evaluation-only | — |
+| #47 | Diversitas lexical ketika embedding tidak tersedia | external-runtime-gap | #92 |
+| #82 | Advisory sumber/metode berbasis evidence lintas task, conditional | conditional-external | — |
+| #83 | Task-conditioned failure-local recall untuk controller eksternal | external-runtime-gap | — |
+| #90 | Advisory progress dengan isolasi run/task dan hasil sukses yang unchanged | external-runtime-gap | #69 |
+| #94 | Evaluasi pemilihan respons tool yang membedakan slot, relevansi, dan completion | evidence-evaluation-only | — |
+| #120, #140 | Proyeksi PDF berbasis kemampuan, halaman, wilayah, dan asal ekstraksi | external-runtime-gap | — |
+| #123 | Serialisasi per aplikasi untuk worker non-reentrant | producer-or-optional-application | — |
+| #127 | Saran prosedur terverifikasi yang terikat konteks halaman | conditional-external | — |
+| #131 | Batas turn utuh untuk context Native Agent Chat | native-only-not-current-target | — |
+| #135 | Cakupan klaim eksplisit terhadap evidence exact-revision | conditional-external | — |
+| #144 | Freshness artefak dari dependency set yang diketahui producer | producer-or-optional-application | — |
+| #164 | Paket bukti revisi Skill dengan cakupan keberhasilan lama dan defect probe | evidence-evaluation-only | — |
+| #183 | Penjelasan freshness berbasis bukti konfirmasi pada retirement preview | conditional-external | — |
+| #192 | Propensity yang dapat diputar ulang untuk evaluasi recall | evidence-evaluation-only | — |
+
+## Cara membaca bukti
+
+[Register JSON](candidate-adoption-opportunities-20261012.json) memuat 216 ID, `firstPassDepth`, `cumulativeInspectionDepth`, dan `continuationEvidence` pada 65 entri yang diperdalam. Field `opportunities` mempertahankan analisis donor/native beserta supporting evidence. Pin/range/simbol, lisensi, coupling dan syarat recheck disimpan agar keputusan dapat ditelusuri. [Ledger awal](candidate-source-review-216-20261012.md) adalah keputusan first-pass, bukan daftar instalasi. Prioritas tetap AI eksternal yang mengendalikan owner internal Agent Core.
+
+## Pendalaman lanjutan: hasil terbaru
+
+### Pendalaman sumber kandidat #46–#102
+
+12 Oktober 2026. Lingkup: **26 ID yang ditugaskan**, bukan seluruh rentang nomor. Baseline Agent Core `97863a285646170846da6a81c79556b1b9eeb58d`; diff authored `src` dan source Memory terhadap baseline pertama `86fe9efe…` kosong. Semua pekerjaan berupa pembacaan statis, tanpa implementasi, test/build, eksekusi donor, instalasi, model, atau perubahan Memory pada tahap inspeksi.
+
+#### Hasil utama
+
+- **26/26 tercatat tepat sekali:** 8 badan implementasi berpinned, 3 interface/wrapper saja untuk mekanisme yang dibahas, 15 dokumentasi tanpa engine.
+- **#49 xAI kini berpinned.** Riwayat file resmi menemukan notebook pada `bd388d4caac49ce49f41312dced4a0ca41f0add8`. Class `ChatApp` dan `ChatAppWithTools` benar-benar dibaca beserta lisensi pada revisi itu. Ini memperbaiki keterbatasan pin sebelumnya, tetapi implementasinya tetap riwayat chat host, bukan Memory belajar persisten. [Notebook](https://github.com/xai-org/xai-cookbook/blob/bd388d4caac49ce49f41312dced4a0ca41f0add8/examples/multi_turn_conversation/guide.ipynb#L90-L326).
+- **#65 Simulang belum membuka engine.** Source CLI dan binding NAPI tersedia. `StateSatisfiesModel` meneruskan pekerjaan ke dependency `simulang-rs-internal` dan layanan persepsi; tidak ada alasan menamai wrapper itu engine persepsi/belajar. [Binding](https://github.com/simular-ai/simulang-js/blob/bd05ff840554429e40a7e4090457c2212bd78fe6/src/language_model/state_satisfies.rs#L1-L85), [dependency](https://github.com/simular-ai/simulang-js/blob/bd05ff840554429e40a7e4090457c2212bd78fe6/Cargo.toml#L20-L24).
+- **#78 AI:GO lebih jelas:** README resmi eksplisit menyatakan source Backend.AI GO tidak dipublikasikan. Lisensi binary Apache-2.0 dan source subkomponen mlxcel tidak boleh dipakai untuk mengklaim source engine AI:GO terbuka. [Disclosure resmi](https://github.com/lablup/backend.ai-go-releases#license).
+- **#71 Agentica diperketat menjadi interface-only.** API repo/commit saat ini memberi 404; panduan resmi cached memperlihatkan deklarasi method, tanpa badan method. Penyebab 404 tidak ditebak. [Deklarasi MicroAgentica](https://wrtnlabs.github.io/agentica/docs/core/micro/).
+- **#50/#54/#55/#68 tetap tanpa source mekanisme training/curriculum.** Model card, pin repo, file inference, paper atau weights bukan bukti implementasi algoritme belajar yang dimaksud.
+
+#### Dua pendukung kelompok peluang existing
+
+##### #69 atria → opp-090-scoped-progress-advice
+
+Donor `a5e51c066bf604d9292b2eb8a791176d5cbe1909` membatasi pencocokan status aktif mulai `max(0, liveAnchor - 7)` sampai akhir capture, bukan jendela persis delapan baris. Pola idle boleh cocok di mana pun; bell di mana pun merupakan pengecualian needs-input. `Tracker.Observe` membedakan snapshot berubah, tidak berubah, serta bell event. Badan fungsi dan caller dibaca, bukan hanya interface. [Classifier](https://github.com/sethdeckard/atria/blob/a5e51c066bf604d9292b2eb8a791176d5cbe1909/libatria/agent/classify.go#L122-L237), [caller](https://github.com/sethdeckard/atria/blob/a5e51c066bf604d9292b2eb8a791176d5cbe1909/libatria/watch/tracker.go#L105-L170).
+
+Gap native yang spesifik:
+- `analyzeProcessState` dapat menghasilkan `isFinished` dari substring completion pada seluruh output atau pola error di tiga baris terakhir.
+- `startProcess` memakai hasil itu untuk pesan finished.
+- `interactWithProcess` memakainya untuk mengakhiri wait lebih awal dan menulis pesan finished.
+- **Ini tidak membunuh proses atau memfinalisasi ledger.** `terminal-manager` melakukan finalisasi dan perpindahan completed-session dari event exit aktual. `readProcessOutput` melaporkan completion dari `isComplete/exitCode`; teks hanya dipakai untuk waiting pada sesi hidup.
+
+Consumer tepat ialah external MCP `start_process`/`interact_with_process`, lewat `terminal-handlers.ts`. Seam internalnya tetap deteksi/proyeksi status terminal existing: observasi terbaru dapat memberi status advisori, sementara klaim selesai harus terikat bukti exit. Native memproses raw stream, donor memproses screen; konstanta live-anchor/blank-screen tidak langsung dapat disalin. Ini submekanisme tambahan dalam kelompok progres existing, bukan owner/process manager baru. Lisensi donor MIT dengan notice dependency. Belum ada reproduksi runtime atau klaim manfaat terukur.
+
+[Bukti native deteksi](https://github.com/Black-Project-Agent-Core/Agent-Core/blob/97863a285646170846da6a81c79556b1b9eeb58d/src/rdc/utils/process-detection.ts#L54-L130), [wait-return](https://github.com/Black-Project-Agent-Core/Agent-Core/blob/97863a285646170846da6a81c79556b1b9eeb58d/src/rdc/tools/improved-process-tools.ts#L549-L594), [exit authority](https://github.com/Black-Project-Agent-Core/Agent-Core/blob/97863a285646170846da6a81c79556b1b9eeb58d/src/rdc/terminal-manager.ts#L516-L548).
+
+##### #92 Dataverse → AC-047-lexical-mmr-fallback
+
+Badan `get_signatures`, pembentukan star edges dan pipeline Spark sampai connected components dibaca. Native masih memakai exact-signature dedup serta redundansi vector-only; vector yang hilang menghasilkan nol. Ini memperkuat gap leksikal **yang sudah ada**, bukan peluang baru.
+
+Caveat source tambahan: `minhash.py:249` menulis `mod_prime = 1 << 61 - 1`, yang diparse sebagai `1 << (61 - 1)` atau 2^60, bukan `(1 << 61) - 1`. Rentang 230–258 kini dibaca langsung. Ini catatan aritmetika parameter dari source; dampak runtime, tingkat kegagalan, atau invalidasi seluruh algoritme tidak diuji. Donor belum tervalidasi dan tidak disarankan ditransplantasikan langsung.
+
+MinHash adalah pembanding alternatif, belum dipilih. Untuk jumlah kandidat kecil, exact token-Jaccard #47 lebih sederhana daripada Spark/GraphFrames/LSH. Collision maupun transitivitas cluster bukan bukti kesamaan semantik, authority atau izin menghapus Memory. Apache-2.0 dan atribusi upstream harus diperiksa per file sebelum penyalinan. [Donor](https://github.com/UpstageAI/dataverse/blob/a0adedc316a4269ae6292fa1527381cfc2688eec/dataverse/etl/deduplication/minhash.py#L33-L101), [native](https://github.com/Black-Project-Agent-Core/Agent-Core/blob/97863a285646170846da6a81c79556b1b9eeb58d/SubProject/agent-core-memory/src/memory/retrieval.ts#L332-L345).
+
+#### Akuntansi seluruh kandidat
+
+- Badan berpinned: **#49, #60, #69, #88, #92, #93, #101, #102**.
+  - #60 benar-benar memiliki self-edit → LoRA reset/tokenization → `Trainer.train` → simpan adapter. Ini adaptasi bobot model, di luar consumer Learning body eksternal.
+  - #88 mempertahankan `response.ok` di output tetapi mengembalikan `StageResult(success=True)` bila panggilan tidak melempar exception. Jangan mengambil status itu sebagai verified effect; lisensi source belum ditemukan.
+  - #93 yang terbuka ialah serving/media adapter OmniServe, **bukan** training/self-learning HyperCLOVA.
+  - #101 memiliki retrieval dan eksekusi eksperimen shell/CUDA, dengan larangan komersial CC BY-NC.
+  - #102 forward GNN/attention/MLP dibaca sampai sigmoid output. Prediktor terlatih bukan bukti efek yang terverifikasi.
+- Interface/wrapper: **#65, #71, #74**. #74 handler/client HTTP STORM terbuka; engine RAG tetap di endpoint hosted, lisensi repo belum ditemukan.
+- Docs tanpa engine: **#46, #50, #54, #55, #62, #63, #68, #75, #76, #77, #78, #79, #80, #81, #96**.
+  - #62 hanya abstrak resmi berhasil diambil ulang; pembacaan data-availability lama tidak diklaim sebagai pembacaan baru.
+  - #75 menambah konteks dokumentasi untuk kelompok PDF existing, bukan donor source baru.
+  - #96 ialah Lumigloo Sai, terpisah dari Simular. Metadata GitHub cached sangat lama; tidak dipakai sebagai bukti source selamanya tidak ada.
+
+#### Batas dan syarat lanjut
+
+`candidate-adoption-opportunities-20261012.json` menyimpan bukti tiap ID: commit/path/symbol/range/hash, pembacaan pass ini, lisensi, caller/owner native, keterbatasan, dan pembedaan source yang tersedia dari source engine yang belum tersedia. Keputusan ledger sebelumnya dipertahankan; **nol kelompok peluang independen baru** dibuat.
+
+Batch 3 dan 4 masih draft. Sesudah benar-benar terintegrasi, baca ulang owner/caller pada commit hasil, bandingkan dengan dua kelompok existing, dan tutup atau kecilkan gap yang sudah teratasi. Pertahankan batas retrieval/revisi/disclosure/receipt Batch 3 dan view/source/assessment Batch 4. Tidak ada plan Batch 5–6; Invocate tetap ditunda.
+
+### Pendalaman lanjutan kandidat 111–161
+
+Tanggal: 12 Oktober 2026. Baseline Agent Core: `97863a285646170846da6a81c79556b1b9eeb58d`.
+
+#### Hasil
+
+Seluruh **28 ID yang dialokasikan** sudah diperiksa lagi: **19 body implementasi berpinned** dan **9 dokumentasi resmi tanpa engine yang dapat diperiksa**. Tidak ada entri prior-only tersisa dalam partisi ini. Ini pembacaan terarah pada fungsi/jalur yang dicatat, bukan audit seluruh repository.
+
+**Tidak ditemukan kelompok peluang baru yang layak ditambahkan.** Keputusan ledger lama dipertahankan. Temuan mendukung pembatasan scope dan beberapa peluang existing; tidak menambah owner, runtime, store, atau batch.
+
+Semua 141 record bukti donor/native yang berpinned diverifikasi identik dengan bytes commit yang dirujuk. Rentang baris diperiksa terhadap panjang file. Hasil lengkap, symbol, SHA, hash file, source URL, lisensi, dan keterbatasan ada di [candidate-adoption-opportunities-20261012.json](candidate-adoption-opportunities-20261012.json).
+
+#### Temuan paling berguna
+
+- **Bridge rhwp perlu dipisahkan dari pola uji UI.** `agent=1` hanya membatasi pemasangan `window.__rhwpAgent`; listener `message` didefinisikan di luar gate, tidak memeriksa origin, dan membalas `targetOrigin: '*'`. Ini temuan source snippet, bukan bukti kerentanan deployment. Bridge native justru memeriksa physical loopback, extension origin/ID dan client binding. Jangan memindahkan transport donor. [Donor](https://github.com/leeryong/rhwp-Agent-Skills_by_BLUESKY/blob/22b71ac155e4f0d1dd8ff927c0c64cd2cd28d24d/skills/rhwp-gui-agent/bridge/agent-bridge.snippet.ts#L19-L131), [native](https://github.com/Black-Project-Agent-Core/Agent-Core/blob/97863a285646170846da6a81c79556b1b9eeb58d/src/http/browser-bridge.ts#L1-L63).
+- **Taxonomy T-MAP tidak selalu mempertahankan unknown.** Timeout/error menjadi pesan assistant; empty response dan gagal parse judge dapat jatuh ke Refused. Ini mendukung kehati-hatian pada peluang taxonomy evaluasi existing, bukan alasan membuat evaluator produksi baru. [Body evaluasi](https://github.com/pwnhyo/T-MAP/blob/7e7fa027c1b0a1c0f7ef4365202b660823d17c34/core/base.py#L267-L389).
+- **OMC memiliki korelasi request, tetapi batas retry bukan bukti kelulusan.** Helper feedback mengakhiri pending setelah maksimum percobaan. Caller completion menyeluruh belum diaudit, sehingga tidak disimpulkan otomatis menerima task. Native episode/report recheck dan exact-revision receipt tetap authority. [Helper](https://github.com/Yeachan-Heo/oh-my-claudecode/blob/8262f9f790eed35e6cbd66572b36c2acba18f679/src/hooks/ralph/verifier.ts#L196-L269).
+- **MemoryBank tidak cocok untuk canonical history.** Formula aktual `exp(-t / 5*S)` berlawanan dengan intuisi strength pada komentar; loader secara probabilistik menghapus history dan menulis ulang file asli. Persode juga menguatkan hasil hanya karena di-recall. Native receipt mempertahankan perbedaan exposure, penggunaan terverifikasi dan utility. [MemoryBank](https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/memory_retrieval/forget_memory.py#L20-L148), [native feedback](https://github.com/Black-Project-Agent-Core/Agent-Core/blob/97863a285646170846da6a81c79556b1b9eeb58d/src/learning/external-controller.ts#L1005-L1036).
+- **Batas source diperjelas.** DURU secara eksplisit menyatakan installer-only/source not published; Scarlet hanya README/gambar. Empat repository Wrtn mengembalikan 404 melalui API yang diperiksa, sementara halaman resmi terindeks masih terbaca. Status 404 tidak membuktikan private/deleted. SelfMem, Alibaba SkillForge dan vesslctl tetap paper/announcement tanpa implementasi terverifikasi. Tidak mengganti mereka dengan repo senama yang tidak terkait.
+
+#### Cakupan per kandidat
+
+| ID | Kedalaman baru | Kesimpulan terarah |
 |---|---|---|
-| #30 | Membedakan recall kosong dan recall gagal | external-runtime-gap |
-| #34 | Cakupan bagian dan disclosure omission pada knowledge packet | external-runtime-gap |
-| #44 | Bukti negatif untuk pemilihan Skill yang opsional | evidence-evaluation-only |
-| #47 | Diversitas lexical ketika embedding tidak tersedia | external-runtime-gap |
-| #82 | Advisory sumber/metode berbasis evidence lintas task, conditional | conditional-external |
-| #83 | Task-conditioned failure-local recall untuk controller eksternal | external-runtime-gap |
-| #90 | Advisory progress dengan isolasi run/task dan hasil sukses yang unchanged | external-runtime-gap |
-| #94 | Evaluasi pemilihan respons tool yang membedakan slot, relevansi, dan completion | evidence-evaluation-only |
-| #120, #140 | Proyeksi PDF berbasis kemampuan, halaman, wilayah, dan asal ekstraksi | external-runtime-gap |
-| #123 | Serialisasi per aplikasi untuk worker non-reentrant | producer-or-optional-application |
-| #127 | Saran prosedur terverifikasi yang terikat konteks halaman | conditional-external |
-| #131 | Batas turn utuh untuk context Native Agent Chat | native-only-not-current-target |
-| #135 | Cakupan klaim eksplisit terhadap evidence exact-revision | conditional-external |
-| #144 | Freshness artefak dari dependency set yang diketahui producer | producer-or-optional-application |
-| #164 | Paket bukti revisi Skill dengan cakupan keberhasilan lama dan defect probe | evidence-evaluation-only |
-| #183 | Penjelasan freshness berbasis bukti konfirmasi pada retirement preview | conditional-external |
-| #192 | Propensity yang dapat diputar ulang untuk evaluasi recall | evidence-evaluation-only |
+| 111 | Body berpinned | Cache prompt/exemplar dan classifier model; Skill existing cukup sebagai seam konten, tanpa classifier baru |
+| 112 | Body berpinned | Learned safety routing tidak menggantikan origin/grant/authorization native |
+| 113 | Body berpinned | Harness defensive-only; sebagian error/empty dipetakan ke refusal, dukungan taxonomy existing |
+| 115 | Body berpinned | Cache Lucene dan gold-label rationale filtering, bukan verifikasi langkah atau kebutuhan training native |
+| 116 | Body berpinned | Proxy token-logit efisiensi dengan fallback parse; bukan pengukuran resource terverifikasi |
+| 119 | Docs-only | Source tidak dipublikasikan; region citation hanya dukungan dokumentasi untuk gap PDF existing |
+| 121 | Body berpinned | Bridge/load/export nyata; origin check snippet tidak memadai untuk transplantasi transport |
+| 122 | Docs-only | Watson/Holmes hanya deskripsi sistem; engine tidak terlihat |
+| 124 | Body berpinned | Similarity/salience dan recall reinforcement tidak setara verified-use feedback |
+| 126 | Body berpinned | Eksperimen SAE/model steering; di luar body external-controller |
+| 128 | Body berpinned | SSOT installer vendor; native resource/revision/activation owner sudah menjadi seam yang tepat |
+| 130 | Body berpinned | Full-scan transcript positional search; native-chat scope bukan context model eksternal |
+| 132 | Body berpinned | Ekspor Markdown lokal dan merge backup; fuzzy session lookup tidak menjadi authority Agent Core |
+| 134 | Body berpinned | Transition/request-correlated reviewer state; tidak menambah mode store atau critic runtime |
+| 136 | Docs-only | AutoBE compiler/rewrite body tidak dapat diakses; Code Intelligence bukan bukti parity compiler |
+| 137 | Docs-only | Typed service/DTO example hanya placeholder implementasi; current source tak terakses |
+| 139 | Docs-only | Hosted vector-store dedupe klaim README; hash implementation belum terbaca |
+| 141 | Body berpinned | Graph dan remote execution heuristic; lisensi ETRI membatasi reuse |
+| 142 | Docs-only | Hosted compute CLI announcement; tidak ada workload/consumer native yang membutuhkan service baru |
+| 143 | Body berpinned | Buffered HTTP event export; worker tidak requeue failure pada body yang diperiksa |
+| 145 | Body berpinned | Ed25519/payload/caller dan nonce scope nyata; signed cross-app consumer belum dibutuhkan |
+| 146 | Body berpinned | Dashboard/cache/managed config sync; bukan kebutuhan local revision-bound Skill owner |
+| 147 | Docs-only | AutoView usage menginvokasi generate tanpa body; lisensi CLI belum terkonfirmasi |
+| 153 | Body berpinned | Stochastic destructive forgetting; ditolak untuk canonical history |
+| 154 | Docs-only | SelfMem paper; helper subquestion native belum ditemukan caller produksi sebelum Batch 3 |
+| 157 | Docs-only | SkillForge paper; diagnosis section tidak mengotorisasi auto-rewrite/activation |
+| 159 | Body berpinned | Macro generation/repair dapat usable tanpa verification; native verified procedure lifecycle dipertahankan |
+| 161 | Body berpinned | Scaffold search baseline tetap dan exception→0; native invalid/unknown tidak boleh dihilangkan |
 
-## Cara menggunakan register
+#### Lisensi dan batas penggunaan
 
-[JSON pendamping](candidate-adoption-opportunities-20261012.json) memuat setiap ID, kedalaman pembacaan aktual, source pin/range/simbol, pembanding native, batas lisensi, coupling, hipotesis manfaat, serta syarat pemeriksaan setelah Batch 3/4. Field analysis mempertahankan detail masing-masing kelompok agar caveat donor tidak hilang. [Ledger awal](candidate-source-review-216-20261012.md) tetap menyimpan keputusan first-pass; penelitian ini menambah atau mengoreksi bukti spesifik, tidak mengubahnya menjadi status implementasi.
+MIT root text dibaca untuk SoT, KARD, Persode, oh-my-agent, cc-plus, OMX/OMC, Align SDK, MeshKit dan MemoryBank. Oh My OpenAgent memakai Sustainable Use License dengan batas pemakaian/distribusi; komponen pihak ketiga mempunyai ketentuan sendiri. Zeude menampilkan Apache-2.0 beserta notice ZEP. LICENSE AutoCode secara eksplisit menyatakan rights reserved dan izin tertulis; ArchCode tidak punya root LICENSE yang ditemukan. Kandidat lain tanpa root text tidak dianggap bebas disalin. MIT pada README Samsung hanya klaim README, bukan teks lisensi penuh. Lisensi paper tidak memberi lisensi engine yang tidak tersedia.
+
+Tidak ada source donor yang disalin ke produk. Tidak ada donor execution, dependency/model download, test/build/benchmark, perubahan runtime/Memory, perubahan Windows, atau implementasi pada tahap inspeksi.
+
+#### Syarat tetap sebelum pemilihan lanjutan
+
+Batch 3 dan 4 masih **draft**, bukan integrasi yang diamati. Setelah benar-benar terintegrasi, baca ulang external caller, revision/disclosure, receipt serta view/source-assessment contract dan tutup peluang yang sudah tercakup. Source helper yang belum wired tidak boleh disebut capability eksternal aktif. `outcome-verifier` offline juga bukan bukti parity compiler/rewrite dengan AutoBE.
+
+Dukungan dari partisi ini tidak menambah tiga kelompok existing: `opp-094-tool-response-eval-taxonomy`, `opp-pdf-projection-evidence`, dan `opp-native-turn-boundaries`. Yang terakhir tetap native-only, di luar prioritas current target. **Tidak ada plan Batch 5/6. Invocate tetap ditunda.**
+
+### Pendalaman lanjutan: 11 kandidat 167–214
+
+Baseline Agent Core: `97863a285646170846da6a81c79556b1b9eeb58d`, descendant dokumentasi dari baseline product sebelumnya. Sebelas file native yang dikutip cocok dengan blob HEAD.
+
+#### Hasil
+
+- **5 kandidat naik dari interface ke body implementasi terpin:** #169, #172, #175, #180, #182.
+- **6 kandidat tetap dokumentasi tanpa engine publik terverifikasi:** #167, #186, #199, #203, #208, #214.
+- **0 kelompok peluang baru.** Keputusan awal dipertahankan. Kedalaman implementasi tidak disamakan dengan keunggulan terukur atau kesesuaian untuk controller eksternal.
+
+#### Body implementasi yang benar-benar dibaca
+
+1. **#169 AIO Sandbox.** Body `Bash.__exec`, fetch/error handling dan retry kini dibaca. Retry default dua kali berlaku pada 408/429/5xx tanpa pemeriksaan metode/idempotency. Jangan menyalin retry POST menjadi jaminan eksekusi aman. Ini **SDK HTTP**, bukan audit engine server sandbox. Native terminal manager/ledger sudah membedakan wait timeout, exit code dan identitas proses. [Source retry](https://github.com/agent-infra/sandbox/blob/7f1afaf8d82bd30531a19caeb1a24dfebbc97d8c/sdk/js/src/core/fetcher/requestWithRetries.ts#L18-L73). Apache-2.0.
+
+2. **#172 TARS.** Loop screenshot → VLM → operator, batas loop, abort dan retry dibaca. Native `browser_control.act` mengikat aksi ke observation terbaru dan memeriksa freshness. Kualitas model visual donor belum dibandingkan; loop controller baru tidak menjadi kebutuhan body eksternal. [GUIAgent.run](https://github.com/bytedance/UI-TARS-desktop/blob/3ac2cb8d946d78d5ff92ad17b318eaafa18c178c/packages/ui-tars/sdk/src/GUIAgent.ts#L128-L452). Apache-2.0.
+
+3. **#175 tRPC-Agent-Go.** Registry request, deadline/cancel dan FIFO invocation-scoped dibaca. Queue membedakan owning/borrowed attachment agar child tidak menutup queue owner. Pemanggil `llmflow` yang memilih waktu drain belum diaudit; jangan mengklaim keseluruhan safe-boundary sudah terbukti. Runner semantik ini belum mempunyai consumer body eksternal yang membutuhkan transplantasi. [Queue](https://github.com/trpc-group/trpc-agent-go/blob/cbd89b07842e68f4e50279e7fb009e1d66cb9044/internal/state/steer/steer.go#L44-L191). Apache-2.0.
+
+4. **#180 Kimi Code/CLI.** Matching dan subprocess hook kini dibaca, termasuk fail-open pada kegagalan serta akumulasi output tanpa batas pada helper TS. CLI Python memisahkan kegagalan telemetry agar keputusan block tidak hilang. Native MCP sudah memisahkan grant enforcement dan error observer; prinsip ini mendukung owner existing, bukan gap baru. [Hook runner](https://github.com/MoonshotAI/kimi-code/blob/cbd754049a114ee36d1b27675c82819e4963c692/packages/agent-core-v2/src/features/externalHooks/internal/runHook.ts#L58-L205), [isolasi telemetry Python](https://github.com/MoonshotAI/kimi-cli/blob/9ab1286b8fe4e6bcd116949a27ce5e0ac3389c82/src/kimi_cli/hooks/engine.py#L205-L256). MIT / Apache-2.0 sesuai repo.
+
+5. **#182 OpenAgentCore.** Dispatch, cancellation dan transaksi konfigurasi Agent benar-benar dibaca. Settlement prepared release belum ditelusuri penuh, sehingga tidak ada klaim exactly-once atau cancellation superior. Control-plane pengganti belum punya manfaat konkret untuk consumer MCP eksternal existing. [Dispatch](https://github.com/MiniMax-AI/OpenAgentCore/blob/0bffeb361f4b09b4c99386a0528e7938ecf9757c/apps/daemon/internal/dispatch/router.go#L93-L219). MIT.
+
+#### Batas sumber yang dikonfirmasi ulang
+
+- **#167 MiniMax Forge/M2.7:** laporan resmi menyebut framework/harness internal. Training engine dan code license belum terverifikasi. [Forge](https://www.minimax.io/news/forge-scalable-agent-rl-framework-and-algorithm), [M2.7](https://www.minimax.io/news/minimax-m27-en).
+- **#186 Tencent ADP:** halaman produk menjelaskan layanan, belum memberikan body engine yang dapat dibandingkan. [ADP](https://adp.tencentcloud.com/en).
+- **#199 BeliefMem:** paper **v2** dan lisensi CC BY 4.0 dibaca ulang. Nilai belief dinyatakan sebagai confidence hasil LLM, bukan posterior terkalibrasi. Public engine tetap belum terverifikasi. [Paper](https://arxiv.org/html/2605.05583v2).
+- **#203 EVE-Agent:** reward bukti merupakan objective training proposer/solver; belum menjadi verifikasi task independen. Engine publik belum terverifikasi; paper CC BY-NC-ND 4.0. [Paper](https://arxiv.org/html/2605.22905v1).
+- **#208 Fugu/TRINITY/Conductor:** README menegaskan coordinator melalui Sakana API. Fungsi installer memang dibaca, tetapi tidak dihitung sebagai engine. Root tree tidak memiliki LICENSE; lisensi asset demo tidak mewakili keseluruhan repo. [README](https://github.com/SakanaAI/fugu/blob/0e04afcc10d8fb7f82cdbe903b83666dc0fe51ec/README.md#L5-L43).
+- **#214 Kozuchi:** dokumentasi menyebut sebagian teknologi proprietary sebagai **planned**; tidak membuktikan engine self-evolution tersedia. [Dokumentasi resmi](https://en-documents.research.global.fujitsu.com/multi-ai-agent-framework/).
+
+#### Batas dan kelanjutan
+
+JSON pendamping menyimpan SHA, path, symbol, rentang, caller native, lisensi dan unknown per entri. Tidak ada donor/product execution, instalasi, build/test, product edit, ataupun plan Batch 5/6 pada tahap inspeksi. Pencarian luas pada clone sparse tRPC sempat gagal lazy-fetch SSL; known-path reads sukses, dan kegagalan itu tidak dipakai untuk menyimpulkan ketiadaan engine.
+
+Setelah Batch 3/4 benar-benar terintegrasi, wajib membaca ulang owner/caller hasil implementasi dan mencocokkan dokumentasinya. Recall, source/view binding, grants, receipts dan metadata-only capture tidak boleh diasumsikan dari draft. Invocate tetap ditunda.
+
+## Lampiran: hasil putaran pertama
+
+Bagian berikut mempertahankan cakupan pembacaan pada putaran pertama. Angka prior-only dan depth di lampiran bersifat historis; tabel kumulatif di awal adalah status terkini.
 
 ## Pendalaman kandidat 001–054
 
@@ -319,4 +480,4 @@ Tidak ada engine donor dijalankan, dependency dipasang, source produk diubah, bu
 
 ## Ringkasan kesinambungan
 
-Pendalaman source kandidat pada 12 Oktober 2026 adalah riset saja untuk AI eksternal pengendali Agent Core. Seluruh 216 ID dipetakan: 8 tetap milik Batch 1–4 dan 208 entri lainnya ditinjau peluangnya. Putaran ini membaca 143 body kode berpinned, 2 source parsial tanpa pin, 5 interface, 1 konfigurasi, dan 7 dokumentasi/metadata; 50 entri memakai bukti lama dan 8 reserved tidak dihitung sebagai pembacaan donor baru. Ditemukan 17 kelompok peluang dari 18 kandidat: 6 gap eksternal, 4 peluang eksternal bersyarat, 4 bukti/evaluasi saja, 2 producer/aplikasi opsional, dan 1 native-only di luar prioritas. #120/#140 digabung sebagai satu peluang PDF. Source pin, owner penerima, batas lisensi, coupling, dan hipotesis manfaat dicatat tanpa klaim keunggulan terukur. Tidak ada implementasi, donor execution, instalasi, build/test/benchmark atau perubahan Windows. Batch 5–6 belum dibuat dan hanya boleh disusun setelah Batch 3–4 terintegrasi serta temuan dicocokkan ulang terhadap source dan kontrak hasil integrasi. Invocate tetap ditunda; penyimpanan canonical tetap runtime/memory.
+Riset source kandidat Agent Core pada 12 Oktober 2026 mencakup 216 ID: 8 reserved Batch 1–4 dan 208 entri lain. Setelah pendalaman lanjutan 65 entri, cakupan kumulatif adalah 175 body kode berpinned, 3 interface, 30 entri berbukti dokumentasi saja, dan 8 reserved. Body kode berarti potongan implementasi yang dibaca, bukan seluruh engine; SDK atau wrapper tidak membuktikan source backend tersedia. Tidak ada entri unallocated yang hanya mengandalkan bukti putaran lama tanpa tindak lanjut. Tetap ada 17 kelompok peluang dari 18 kandidat utama; #69 dan #92 menambah bukti pada kelompok existing, bukan instalasi baru. Riset membedakan 6 gap eksternal, 4 peluang eksternal bersyarat, 4 bukti/evaluasi, 2 producer/aplikasi opsional, dan 1 native-only. Tidak ada perubahan produk, eksekusi donor, instalasi, build/test/benchmark atau Windows. Batch 5–6 belum dibuat: wajib menunggu Batch 3–4 terintegrasi lalu mencocokkan ulang source donor/native dan kontrak aktual. Invocate tetap ditunda; storage canonical tetap runtime/memory.
