@@ -1,0 +1,102 @@
+[
+  {
+    "directory": "AutoSkill",
+    "remote": "https://github.com/ECNU-ICALK/AutoSkill.git",
+    "commit": "94c47ca488d4ba4117d20272e66d49b9877e68cf",
+    "shallow": "true",
+    "root_license_files": []
+  },
+  {
+    "directory": "MemRL",
+    "remote": "https://github.com/MemTensor/MemRL.git",
+    "commit": "c1b322ca43de36ddf64c6712f89d0095bfc35ce0",
+    "shallow": "true",
+    "root_license_files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "directory": "ReMe",
+    "remote": "https://github.com/agentscope-ai/ReMe.git",
+    "commit": "c1de31ab2cf581394b821382d78d87eeeed35fad",
+    "shallow": "true",
+    "root_license_files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "directory": "ShinkaEvolve",
+    "remote": "https://github.com/SakanaAI/ShinkaEvolve.git",
+    "commit": "8adc053a2ce4511ad2ac310e004c530a73fb974a",
+    "shallow": "true",
+    "root_license_files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "directory": "SimpleMem",
+    "remote": "https://github.com/aiming-lab/SimpleMem.git",
+    "commit": "db80b6a7c591e0ea730a058e9f5fc4eb06572299",
+    "shallow": "true",
+    "root_license_files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "directory": "Trace2Skill",
+    "remote": "https://github.com/Qwen-Applications/Trace2Skill.git",
+    "commit": "3d0b52a140f002a512930252b613c49048f7d5ac",
+    "shallow": "true",
+    "root_license_files": []
+  },
+  {
+    "directory": "ace",
+    "remote": "https://github.com/ace-agent/ace.git",
+    "commit": "82709de050e1db6e6ef2f07bcb0393560b94992a",
+    "shallow": "true",
+    "root_license_files": [
+      "LICENSE.txt"
+    ]
+  },
+  {
+    "directory": "agentic_memory_distillation",
+    "remote": "https://github.com/taeilkim2465/agentic_memory_distillation.git",
+    "commit": "2895d10c07105432325b088f4803dc94a10003c9",
+    "shallow": "true",
+    "root_license_files": []
+  },
+  {
+    "directory": "gepa",
+    "remote": "https://github.com/gepa-ai/gepa.git",
+    "commit": "462e437a09be67d2acb59564cc0ea59132f5777c",
+    "shallow": "true",
+    "root_license_files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "directory": "hindsight",
+    "remote": "https://github.com/vectorize-io/hindsight.git",
+    "commit": "a9eeed77f9bce99d8f97d39a30d3281747300824",
+    "shallow": "true",
+    "root_license_files": [
+      "LICENSE"
+    ]
+  },
+  {
+    "directory": "mimic",
+    "remote": "https://github.com/first-fluke/mimic.git",
+    "commit": "3b179ecdb0f59254efaaad4eb6d24d85f671014d",
+    "shallow": "true",
+    "root_license_files": []
+  },
+  {
+    "directory": "treequest",
+    "remote": "https://github.com/SakanaAI/treequest.git",
+    "commit": "96047d712d66bbbf4dcc86dcd3e2eaab98c35f83",
+    "shallow": "true",
+    "root_license_files": [
+      "LICENSE"
+    ]
+  }
+]
