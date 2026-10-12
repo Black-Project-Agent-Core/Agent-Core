@@ -467,6 +467,7 @@ export class MemoryEpisodes {
             enableTemporal:()=>{temporalTargets=true;},
             temporalEvidence:async refs=>Promise.all(refs.map(async source=>({source,...(source.kind==='event'?{temporalAssertion:(await this.event(source,p)).temporalAssertion}:{})}))),
             read:(key)=>this.readKey(key,p.dependencies),
+            sourceOrigin:ref=>ref.kind==='artifact'?this.artifactOrigin(ref,p):ref.kind==='memory'?this.memoryOrigin(ref,p):Promise.resolve({freshness:'current' as const}),
             validate:async(refs,available=false)=>this.validateRefs(await this.lineage(refs,p,new Set(),true),p,available),
             lineage:refs=>this.lineage(refs,p,new Set(),true),
             epistemicLineage:refs=>this.lineage(refs,p,new Set(),true,true),
@@ -936,6 +937,7 @@ export interface PromotionContext {
     enableTemporal():void;
     temporalEvidence(refs:SourceRef[]):Promise<import('./temporal.js').ResolvedTemporalEvidence[]>;
     read(key:string):Promise<string|null>;
+    sourceOrigin(ref:SourceRef):Promise<{freshness:TaskContext['freshness'];warning?:string;validate?:()=>Promise<void>}>;
     validate(refs:SourceRef[],available?:boolean):Promise<void>;
     lineage(refs:SourceRef[]):Promise<SourceRef[]>;
     epistemicLineage(refs:SourceRef[]):Promise<SourceRef[]>;

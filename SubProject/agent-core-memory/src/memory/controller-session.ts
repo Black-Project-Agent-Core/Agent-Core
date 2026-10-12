@@ -333,5 +333,7 @@ export class ControllerMemorySession {
   async checkpoint(input:CheckpointInput): Promise<Budgeted<TaskCapsule>> { return this.episodeOwner().checkpoint(this.episodeScope(),input); }
   async prepareConsolidation(input:ConsolidationInput):Promise<ConsolidationPlan> { this.episodeOwner();if(!this.#backend.promotion)return this.unsupported();return this.#backend.promotion.prepare(this.episodeScope(),input); }
   async applyConsolidation(input:ApplyConsolidationInput):Promise<PromotionReceipt> { this.episodeOwner();if(!this.#backend.promotion)return this.unsupported();return this.#backend.promotion.apply(this.episodeScope(),input); }
+  /** Host reconciliation only; deliberately absent from the controller protocol dispatcher. */
+  async committedConsolidation(input:{operationId:string}):Promise<PromotionReceipt|undefined> { this.episodeOwner();if(!this.#backend.promotion)return this.unsupported();return this.#backend.promotion.committed(this.episodeScope(),input); }
   async setRetention(input:RetentionInput):Promise<RetentionReceipt> {return this.episodeOwner().setRetention(this.episodeScope(),input);}
 }

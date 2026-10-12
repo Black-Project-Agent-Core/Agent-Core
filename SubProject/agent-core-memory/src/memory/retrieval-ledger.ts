@@ -1,4 +1,5 @@
 import {preservesMemoryHistory,readRetainedTelemetry,retainTelemetry} from './archive.js';
+import {stableDisclosureJson} from './disclosure.js';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { BoundedJsonlEventLog } from '../persistence/bounded-event-log.js';
@@ -102,7 +103,7 @@ export interface MemoryUseReceipt extends MemoryUseReceiptInput {
 }
 
 function stableDigest(value: unknown): string {
-  return 'sha256:' + createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  return 'sha256:' + createHash('sha256').update(stableDisclosureJson(value)).digest('hex');
 }
 
 function iso(value: string, name: string): string {

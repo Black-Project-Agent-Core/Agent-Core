@@ -1,4 +1,4 @@
-import {mkdtemp,readFile,readdir,rm} from 'node:fs/promises';
+import {mkdtemp,readFile,readdir,rm,writeFile} from 'node:fs/promises';
 import os from 'node:os';import path from 'node:path';
 import {afterEach,expect,test} from 'vitest';
 import {initializeStandaloneMemory,MemoryService} from '../src/index.js';
@@ -38,4 +38,46 @@ test('P15 indirect synthesis self-reference is rejected through exact dependency
  const{session,header,ref,service}=await setup(),first=await session.prepareConsolidation(prepare(header,proposal(ref))),receipt=await session.applyConsolidation(apply(first)),target=receipt.canonicalRefs[0];
  const link=await service.remember({content:'Derived observation',provenance:{workspace:'agent-core',files:[]}});await (service as any).store.mutate(link.id,(r:any)=>({...r,experience:{...r.experience,sourceRefs:[target]}}));const linked=(await service.read(link.id,false))!,source={kind:'memory' as const,id:linked.id,revision:memorySemanticRevision(linked)};
  await expect(session.prepareConsolidation(prepare({...header,revision:2},proposal(source,target),'cycle-preview'))).rejects.toThrow('MEMORY_CONSOLIDATION_INVALID');
+});
+
+test('P1 preparation rejects an unchanged synthesis whose pinned leaf revision is stale',async()=>{
+ const{session,header,ref,service}=await setup(),first=await session.prepareConsolidation(prepare(header,proposal(ref))),receipt=await session.applyConsolidation(apply(first));
+ await service.update(ref.id,{content:'Corrected underlying source'});
+ await expect(session.prepareConsolidation(prepare({...header,revision:receipt.episodeRevision},proposal(receipt.canonicalRefs[0]),'prepare-nested-stale'))).rejects.toThrow('MEMORY_REVISION_CONFLICT');
+});
+test('P1 a batch cannot correct a source and publish a synthesis pinned to its prior revision',async()=>{
+ const{session,header,ref,root,service}=await setup(),source=(await session.captureEvidence({operationId:'correction-evidence',source:{kind:'controller-text',text:'Corrected source observation'}})).source;
+ const correction={actionId:'correct-source',kind:'amend',target:ref,inputRefs:[source],reason:'Replace the exact mistaken source revision',value:{content:'Corrected source observation',experience:legacyExperience()}};
+ const before=await notes(root);
+ await expect((async()=>{const plan=await session.prepareConsolidation({episodeId:header.id,expectedRevision:header.revision,operationId:'prepare-conflicting-batch',proposal:{actions:[correction,proposal(ref)]}});await session.applyConsolidation(apply(plan));})()).rejects.toThrow('MEMORY_REVISION_CONFLICT');
+ expect(await notes(root)).toEqual(before);expect((await service.read(ref.id,false))!.content).toBe('Source observation');
+});
+
+for(const phase of ['prepare','review'] as const)test(`P1 changed workspace evidence at ${phase} cannot publish a current synthesis`,async()=>{
+ const{session,header,root,scope}=await setup(),file=path.join(root,'project-source.ts');await writeFile(file,'export const mode = "before";');
+ const source=(await session.captureEvidence({operationId:'capture-file',source:{kind:'workspace-file',relativePath:'project-source.ts'}})).source;
+ if(phase==='prepare'){
+  await writeFile(file,'export const mode = "corrected";');
+  await expect(session.prepareConsolidation(prepare(header,proposal(source)))).rejects.toThrow('MEMORY_REVISION_CONFLICT');
+ }else{
+  const plan=await session.prepareConsolidation(prepare(header,proposal(source))),service=await MemoryService.initialize(root,root,undefined,{consolidation:{review:async plan=>{await writeFile(file,'export const mode = "corrected";');return{digest:plan.digest,reviewer:'synthetic-host',reason:'Review fixture'};}}});
+  await expect(service.controller(scope).applyConsolidation(apply(plan))).rejects.toThrow('MEMORY_REVISION_CONFLICT');
+ }
+ expect(await notes(root)).toHaveLength(1);
+});
+
+test('P1 exact correction refresh retains historical citations and restores current synthesis recall',async()=>{
+ const{session,header,ref,service}=await setup(),first=await session.prepareConsolidation(prepare(header,proposal(ref))),published=await session.applyConsolidation(apply(first)),target=published.canonicalRefs[0];
+ const evidence=(await session.captureEvidence({operationId:'corrected-source-evidence',source:{kind:'controller-text',text:'Source inspection corrected the project observation'}})).source;
+ const correction=await session.prepareConsolidation({episodeId:header.id,expectedRevision:published.episodeRevision,operationId:'prepare-source-correction',proposal:{actions:[{actionId:'correct-source',kind:'amend',target:ref,inputRefs:[evidence],reason:'Correct the exact source revision from inspected evidence',value:{content:'Corrected source observation',experience:legacyExperience()}}]}});
+ const corrected=await session.applyConsolidation({...apply(correction),operationId:'apply-source-correction'});
+ expect((await session.recall({view:'map',limit:20})).data!.hits.map(hit=>hit.id)).not.toContain(target.id);
+ const refresh=await session.prepareConsolidation(prepare({...header,revision:corrected.episodeRevision},proposal(corrected.canonicalRefs[0],target),'prepare-refresh'));
+ const refreshed=await session.applyConsolidation({...apply(refresh),operationId:'apply-refresh'});
+ expect(refreshed.canonicalRefs[0].id).toBe(target.id);
+ const record:any=await service.read(target.id,false);
+ expect(record.experience.sourceRefs).toEqual(expect.arrayContaining([ref,corrected.canonicalRefs[0]]));
+ expect((await service.revisions(ref.id)).revisions.some(revision=>revision.record.content==='Source observation')).toBe(true);
+ expect((await service.revisions(target.id)).revisions.some(revision=>revision.record.content.includes(ref.revision))).toBe(true);
+ expect((await session.recall({view:'map',limit:20})).data!.hits.map(hit=>hit.id)).toContain(target.id);
 });

@@ -1,6 +1,6 @@
 # Plan Adopsi Bertahap Learning, Memory, dan Self-Improvement Agent Core
 
-**Status:** plan integrasi berbasis checkout kandidat; implementasi fitur belum dijalankan.  
+**Status:** P0, P1, P2, P3, dan P5 diimplementasikan pada source utama; P4 memakai ulang portfolio/Pareto existing. Aktivasi fresh Memory Linux sudah selesai. Sinkronisasi final isi Memory operasional dan finalisasi Learning masih menunggu penyelesaian pelaksana utama; deployment Windows dan refresh plugin belum dinyatakan selesai.
 **Tanggal:** 12 Oktober 2026.  
 **Tujuan:** membuat kemampuan yang sudah ada benar-benar tersambung dan berguna bagi satu AI eksternal yang mengendalikan Agent Core, kemudian mengisi kekurangan dengan mekanisme kandidat terpilih.  
 **Arsitektur:** pertahankan pemilik Memory, Learning, Skills, dan Browser yang sudah ada. Donor adalah referensi algoritme atau kontrak kecil, bukan alasan memasang seluruh framework.  
@@ -21,13 +21,15 @@
 
 ## 2. Dasar faktual dan batasnya
 
+**Baseline inspeksi awal, 12 Oktober 2026, sebelum implementasi.** Temuan di bawah dipertahankan sebagai dasar keputusan. Status pelaksanaan terbaru ada pada bagian 12; checkout kemudian diselaraskan ke upstream `d4d03e3` tanpa menimpa perubahan lokal yang sah.
+
 Checkout yang diperiksa berada pada revisi `8d1f1582411b16548cd52f0b869dd1d59ebe51f8`. Source default branch GitHub juga dibaca untuk `src/memory/host-runtime.ts`, `src/learning/curation-delta.ts`, dan ekspor Memory subproject. Ada perubahan dokumentasi lokal yang sudah ada; plan ini tidak menimpanya.
 
-Temuan source:
+Temuan source pada baseline tersebut:
 - Memory memiliki recall, episode, bukti, consolidation, revision/temporal history, project synthesis, dan prospective intentions.
 - Learning memiliki curation delta, counterexample, receipts pemakaian, prosedur, serta proposal skill.
 - Retrieval memiliki portfolio, diversity, Pareto, dan riwayat; sebagian pola Shinka sudah diadopsi.
-- **`host-runtime.ts` masih memuat target `runtime/memory-v2`.** Ini berbeda dari keputusan pengguna tentang nama penyimpanan, tetapi bukan bukti bahwa mesin Windows sedang memakai folder tersebut.
+- **Pada baseline, `host-runtime.ts` memuat target `runtime/memory-v2`.** Ini berbeda dari keputusan pengguna tentang nama penyimpanan, tetapi bukan bukti bahwa mesin Windows sedang memakai folder tersebut.
 - Credential scheduler adalah penjadwalan credential/quota provider, **bukan scheduler tugas atau pengingat**.
 
 **Target penyimpanan Memory:** `<PROJECT_ROOT>/runtime/memory`; pada mesin Windows pengguna saat ini: `E:\Projects\Agent-Core\runtime\memory`. Nama folder tetap `memory` pada Linux maupun Windows. Versi engine v2/v3/v4 dan seterusnya boleh berubah tanpa mengubah nama lokasi penyimpanan. Target ini bukan klaim bahwa migrasi Windows sudah selesai. Nama versi engine boleh dipertahankan pada kode. Skills dan state operasional yang punya tanggung jawab berbeda tetap memakai pemilik aslinya; satu folder Memory tidak berarti memindahkan semua state aplikasi ke sana.
@@ -61,19 +63,21 @@ Path relatif terhadap repo. Tanda `retrieval-*.ts` menunjuk keluarga modul yang 
 
 ## 5. Tahapan pengerjaan
 
+Kotak tercentang mencatat implementasi atau pemakaian ulang owner pada source; bukan klaim manfaat terukur atau deployment Windows. Aktivasi runtime Linux dan pekerjaan operasional yang masih terbuka dijelaskan terpisah pada bagian 12.
+
 ### P0. Satukan jalur aktif dan penyimpanan
 
-**Prioritas:** pertama. **Donor baru:** tidak ada.
+**Status source:** diimplementasikan. **Prioritas:** pertama. **Donor baru:** tidak ada.
 
-- [ ] Cocokkan source utama terbaru, entrypoint, build, tool schema, dan resolver root pada mesin pelaksanaan; catat satu pemilik untuk setiap fungsi pada tabel di atas.
-- [ ] Selaraskan root akhir ke `runtime/memory`, termasuk konfigurasi dan activation metadata yang bergantung pada nama lama. Jangan hanya mengganti nama folder atau melemahkan integritas marker.
-- [ ] Jika format data berbeda, gunakan jalur migrasi/transfer milik engine; pertahankan ID, bukti, revision, dan relasi. Jangan menumpuk isi dua format dalam satu root atau menjalankan dua writer.
-- [ ] Hubungkan episode controller yang sah ke Memory melalui scope/binding host yang sudah tersedia; cocokkan schema connector dengan implementasi sumber, tanpa membuat identitas episode palsu.
-- [ ] Pastikan jalur yang dipakai AI eksternal menunjuk service tersebut. Lengkapi build/entrypoint dari source utama, bukan hanya menyimpan patch di folder sementara.
+- [x] Cocokkan source utama terbaru, entrypoint, build, tool schema, dan resolver root pada mesin pelaksanaan; catat satu pemilik untuk setiap fungsi pada tabel di atas.
+- [x] Selaraskan root akhir ke `runtime/memory`, termasuk konfigurasi dan activation metadata yang bergantung pada nama lama. Jangan hanya mengganti nama folder atau melemahkan integritas marker.
+- [x] Jika format data berbeda, gunakan jalur migrasi/transfer milik engine; pertahankan ID, bukti, revision, dan relasi. Jangan menumpuk isi dua format dalam satu root atau menjalankan dua writer.
+- [x] Hubungkan episode controller yang sah ke Memory melalui scope/binding host yang sudah tersedia; cocokkan schema connector dengan implementasi sumber, tanpa membuat identitas episode palsu.
+- [x] Pastikan jalur yang dipakai AI eksternal menunjuk service tersebut. Lengkapi build/entrypoint dari source utama, bukan hanya menyimpan patch di folder sementara.
 
 **Hasil aktif:** controller bisa membaca dan menulis melalui jalur yang sama, dengan root dan engine yang eksplisit; tidak ada kebingungan tentang salinan mana yang dipakai.
 
-**Catatan:** tahap ini menyelesaikan sambungan integrasi. Bukan perluasan task ke game, model lokal, atau browser baru.
+**Catatan:** Linux dimulai dengan root kosong, sehingga tidak ada migrasi format atau relokasi data historis pada pelaksanaan ini. Jalur relokasi eksplisit mempertahankan data dan backup; marker historis tetap kompatibel sampai relokasi sengaja dilakukan. Tahap ini menyelesaikan sambungan integrasi. Bukan perluasan task ke game, model lokal, atau browser baru.
 
 ### P1. Koreksi Memory dan pelajaran yang terlacak
 
@@ -81,11 +85,11 @@ Path relatif terhadap repo. Tanda `retrieval-*.ts` menunjuk keluarga modul yang 
 
 **Owner:** curation delta/curator yang sudah ada; `controller-session.ts`, `promotion.ts`, `revisions.ts`, `provenance.ts`, dan `project-synthesis.ts` pada engine Memory.
 
-- [ ] Gunakan delta `add-lesson` / `add-counterexample` yang sudah ada. Bedakan menguatkan bukti, mempersempit cakupan, dan mengoreksi record; jangan menambah record identik setiap sesi.
-- [ ] Sertakan sumber, waktu, ruang lingkup penerapan, dan revision target pada koreksi. Pisahkan observasi, dugaan, keputusan, dan hasil.
-- [ ] Saat sumber berubah, tandai kesimpulan turunannya untuk direvisi melalui dependency yang sudah tersedia; jangan menganggap seluruh Memory otomatis salah.
-- [ ] Pertahankan riwayat koreksi dan alasan penggantian. Pengetahuan lama yang tidak lagi berlaku tidak boleh muncul sebagai fakta terkini.
-- [ ] Hubungkan keputusan konsolidasi ke episode asal dan ke pembacaan berikutnya melalui kontrak existing.
+- [x] Gunakan delta `add-lesson` / `add-counterexample` yang sudah ada. Bedakan menguatkan bukti, mempersempit cakupan, dan mengoreksi record; jangan menambah record identik setiap sesi.
+- [x] Sertakan sumber, waktu, ruang lingkup penerapan, dan revision target pada koreksi. Pisahkan observasi, dugaan, keputusan, dan hasil.
+- [x] Saat sumber berubah, tandai kesimpulan turunannya untuk direvisi melalui dependency yang sudah tersedia; jangan menganggap seluruh Memory otomatis salah.
+- [x] Pertahankan riwayat koreksi dan alasan penggantian. Pengetahuan lama yang tidak lagi berlaku tidak boleh muncul sebagai fakta terkini.
+- [x] Hubungkan keputusan konsolidasi ke episode asal dan ke pembacaan berikutnya melalui kontrak existing.
 
 **Hasil aktif:** kesalahan tidak hanya dicatat; pelajarannya direvisi, riwayatnya terlihat, dan versi yang sesuai konteks yang disajikan kembali.
 
@@ -97,11 +101,11 @@ Path relatif terhadap repo. Tanda `retrieval-*.ts` menunjuk keluarga modul yang 
 
 **Owner:** `retrieval-ledger.ts`, `feedback.ts`, `retrieval.ts` milik engine terpilih; `artifactReceipt` pada controller eksternal; modul retrieval Learning yang sudah ada; failure advisor yang sudah ada.
 
-- [ ] Sambungkan retrieval yang disajikan dengan receipt ketika Memory benar-benar dipakai. Record diambil, dibaca, diterapkan, dan bermanfaat adalah kejadian berbeda.
-- [ ] Gunakan ID/revision/attempt yang tersedia untuk menghubungkan hasil tindakan. Bila manfaat tidak dapat diatribusikan, simpan sebagai belum diketahui, bukan keberhasilan palsu.
-- [ ] Perluas pemeringkatan existing dengan kegunaan yang didukung hasil, sambil menjaga relevansi, validitas waktu, ruang lingkup, dan keberagaman. Jangan membuat search engine kedua.
-- [ ] Untuk kegagalan tool, ambil petunjuk relevan dari pengalaman yang sudah ada berdasarkan jenis kegagalan, argumen, serta prasyarat. Controller tetap memutuskan perbaikan berikutnya.
-- [ ] Hindari mengulang petunjuk identik pada error yang sama tanpa bukti baru; gunakan batas pengulangan milik jalur existing.
+- [x] Sambungkan retrieval yang disajikan dengan receipt ketika Memory benar-benar dipakai. Record diambil, dibaca, diterapkan, dan bermanfaat adalah kejadian berbeda.
+- [x] Gunakan ID/revision/attempt yang tersedia untuk menghubungkan hasil tindakan. Bila manfaat tidak dapat diatribusikan, simpan sebagai belum diketahui, bukan keberhasilan palsu.
+- [x] Perluas pemeringkatan existing dengan kegunaan yang didukung hasil, sambil menjaga relevansi, validitas waktu, ruang lingkup, dan keberagaman. Jangan membuat search engine kedua.
+- [x] Untuk kegagalan tool, ambil petunjuk relevan dari pengalaman yang sudah ada berdasarkan jenis kegagalan, argumen, serta prasyarat. Controller tetap memutuskan perbaikan berikutnya.
+- [x] Hindari mengulang petunjuk identik pada error yang sama tanpa bukti baru; gunakan batas pengulangan milik jalur existing.
 
 **Hasil aktif:** pengalaman yang tepat memengaruhi pilihan berikutnya; tool failure dapat memunculkan petunjuk koreksi bersumber.
 
@@ -113,11 +117,11 @@ Path relatif terhadap repo. Tanda `retrieval-*.ts` menunjuk keluarga modul yang 
 
 **Owner:** controller procedure, `src/skills/service.ts`, seluruh jalur skill proposal yang sudah ada.
 
-- [ ] Bentuk usulan dari episode dan pelajaran P1–P2, lengkap dengan bukti, prasyarat, batas tool, cakupan, dan kondisi tidak berlaku.
-- [ ] Cari fingerprint dan skill terkait sebelum memilih salah satu keputusan: pakai ulang, perbaiki, gabung, buat, atau buang usulan.
-- [ ] Untuk koreksi skill, targetkan revision tertentu; pertahankan pengecualian yang sah dan jangan menggabungkan dua prosedur dengan prasyarat yang saling bertentangan.
-- [ ] Simpan perubahan sebagai revisi pada registry yang sama. Muat hanya skill relevan ke konteks controller, bukan seluruh katalog.
-- [ ] Hubungkan outcome pemakaian ke revisi skill agar revisi buruk bisa ditarik melalui jalur yang sudah ada.
+- [x] Bentuk usulan dari episode dan pelajaran P1–P2, lengkap dengan bukti, prasyarat, batas tool, cakupan, dan kondisi tidak berlaku.
+- [x] Cari fingerprint dan skill terkait sebelum memilih salah satu keputusan: pakai ulang, perbaiki, gabung, buat, atau buang usulan.
+- [x] Untuk koreksi skill, targetkan revision tertentu; pertahankan pengecualian yang sah dan jangan menggabungkan dua prosedur dengan prasyarat yang saling bertentangan.
+- [x] Simpan perubahan sebagai revisi pada registry yang sama. Muat hanya skill relevan ke konteks controller, bukan seluruh katalog.
+- [x] Hubungkan outcome pemakaian ke revisi skill agar revisi buruk bisa ditarik melalui jalur yang sudah ada.
 
 **Hasil aktif:** tugas berikutnya memakai prosedur yang telah dipelajari, dan kesalahan memperbaiki prosedur yang sama, bukan melahirkan tumpukan skill serupa.
 
@@ -125,15 +129,15 @@ Path relatif terhadap repo. Tanda `retrieval-*.ts` menunjuk keluarga modul yang 
 
 ### P4. Perbaikan terbatas pada artefak milik sistem
 
-**Acuan:** GEPA #3 dan ShinkaEvolve #194. **Keputusan:** adopsi tambahan ditunda sampai P1–P3 benar-benar menyediakan artefak dan feedback yang dibutuhkan.
+**Acuan:** GEPA #3 dan ShinkaEvolve #194. **Status:** portfolio/Pareto/riwayat existing dipakai ulang; optimizer baru tidak diperlukan untuk batch ini. Siklus optimisasi tambahan tetap bersyarat pada kebutuhan nyata dan feedback P1–P3. Ketentuan siklus di bawah berlaku bila perluasan opsional itu kelak diperlukan; tidak ada siklus baru yang dijalankan pada batch ini.
 
 **Owner:** jalur improvement/outcome dan retrieval portfolio/Pareto/series existing.
 
-- [ ] Pakai kemampuan portfolio/Pareto/riwayat yang sudah ada; source menunjukkan adopsi parsial Shinka, sehingga jangan membuat archive atau optimizer baru.
-- [ ] Batasi satu siklus pada satu jenis artefak: misalnya aturan retrieval atau instruksi skill. Catat parent revision, perubahan, alasan, dan bukti hasil.
-- [ ] Controller mengusulkan revisi; mekanisme lokal menangani penyimpanan, batas, dan keputusan penerapan menurut otoritas existing.
-- [ ] Pertahankan versi yang sedang dipakai dan jalur pemulihan. Hasil yang belum jelas tidak boleh dipromosikan menjadi klaim peningkatan.
-- [ ] Jangan memberi izin perubahan source produksi, credential, atau kebijakan keamanan hanya karena usulan berasal dari proses learning.
+- [x] Pakai kemampuan portfolio/Pareto/riwayat yang sudah ada; source menunjukkan adopsi parsial Shinka, sehingga jangan membuat archive atau optimizer baru.
+- **Opsional, tidak diperlukan pada batch ini:** batasi satu siklus pada satu jenis artefak: misalnya aturan retrieval atau instruksi skill. Catat parent revision, perubahan, alasan, dan bukti hasil.
+- **Ketentuan perluasan opsional:** controller mengusulkan revisi; mekanisme lokal menangani penyimpanan, batas, dan keputusan penerapan menurut otoritas existing.
+- **Ketentuan perluasan opsional:** pertahankan versi yang sedang dipakai dan jalur pemulihan. Hasil yang belum jelas tidak boleh dipromosikan menjadi klaim peningkatan.
+- [x] Jangan memberi izin perubahan source produksi, credential, atau kebijakan keamanan hanya karena usulan berasal dari proses learning.
 
 **Hasil aktif:** perbaikan artefak kecil dapat diterapkan dan dibatalkan dengan alasan yang jelas, tanpa agent pengubah dirinya secara tak terbatas.
 
@@ -143,17 +147,17 @@ Path relatif terhadap repo. Tanda `retrieval-*.ts` menunjuk keluarga modul yang 
 
 **Acuan:** prospective intentions milik Agent Core; pola `proactive_read` ReMe #28. Saï #96 tetap referensi produk, bukan SDK yang diasumsikan tersedia.
 
-**Owner:** `prospective-intentions.ts`, project synthesis, dan konteks controller eksternal.
+**Owner:** `prospective-intentions.ts`, project synthesis, dan konteks controller eksternal. API encode/session intention existing dipertahankan; tidak ada pengingat pribadi baru yang perlu dibuat untuk menyelesaikan integrasi ini.
 
-- [ ] Bentuk intention dari kebutuhan eksplisit atau pengalaman yang relevan, dengan sumber, kondisi pemicu, masa berlaku, serta batas kewenangan.
-- [ ] Pada titik konteks yang sudah tersedia, seperti awal/resume sesi atau hasil tool, bandingkan observasi dengan intention dan tampilkan kandidat perhatian yang relevan.
-- [ ] Bedakan pernah ditampilkan, ditunda, selesai, dan kedaluwarsa agar pengingat tidak berulang tanpa perubahan.
-- [ ] Controller memutuskan respons/tindakan sesuai izin pengguna. Memory tidak boleh mengubah catatan menjadi izin baru.
-- [ ] Bila host tidak bisa membangunkan sesi AI yang sedang tidak aktif, antrekan intention sampai sesi tersedia. Jangan mengklaim proaktif offline atau memakai credential scheduler sebagai scheduler tugas.
+- [x] Bentuk intention dari kebutuhan eksplisit atau pengalaman yang relevan, dengan sumber, kondisi pemicu, masa berlaku, serta batas kewenangan.
+- [x] Pada titik konteks yang sudah tersedia, seperti awal/resume sesi atau hasil tool, bandingkan observasi dengan intention dan tampilkan kandidat perhatian yang relevan.
+- [x] Bedakan pernah ditampilkan, ditunda, selesai, dan kedaluwarsa agar pengingat tidak berulang tanpa perubahan.
+- [x] Controller memutuskan respons/tindakan sesuai izin pengguna. Memory tidak boleh mengubah catatan menjadi izin baru.
+- [x] Bila host tidak bisa membangunkan sesi AI yang sedang tidak aktif, antrekan intention sampai sesi tersedia. Jangan mengklaim proaktif offline atau memakai credential scheduler sebagai scheduler tugas.
 
 **Hasil aktif:** controller mengenali kejadian serupa dan mengangkat kebutuhan yang relevan berdasarkan pengalaman, dengan bukti serta batas yang dapat dipahami.
 
-**Perluasan opsional:** timer/wake adapter hanya menjadi task terpisah jika kebutuhan nyata dan dukungan host telah jelas. Bukan syarat menyelesaikan P0–P4.
+**Perluasan opsional, tidak diperlukan untuk batch ini:** timer/wake adapter tetap ditunda dan hanya menjadi task terpisah jika kebutuhan nyata dan dukungan host telah jelas. Bukan syarat menyelesaikan P0–P4.
 
 ## 6. Antarmuka yang dipertahankan
 
@@ -203,12 +207,16 @@ Tidak menjadikan pemeriksaan berulang, laporan panjang, speed test, atau benchma
 
 ### Dokumentasi, Memory lokal, dan plugin
 
-- [ ] Setelah perubahan diterapkan, perbarui dokumentasi dan Memory lokal melalui jalur yang sama, dengan revision/sumber dan status yang selaras.
-- [ ] Jangan menulis bahwa integrasi sudah selesai hanya karena dokumen atau plan dibuat.
-- [ ] Utamakan tool existing. Jika schema/tool baru memerlukan unggah ulang custom plugin, beritahu pengguna dengan nama tool/perubahan dan paket yang perlu diunggah. Jelaskan juga pemanggilan awal tool terkait saat aktivasi.
-- [ ] Kerjakan hal yang berada dalam kewenangan pelaksana tanpa meminta arahan berulang. Intervensi manusia hanya untuk kebutuhan nyata seperti unggah plugin, login/credential, izin keamanan, atau tindakan destruktif yang memerlukan persetujuan saat itu.
+- [x] Perbarui plan ini dan `MEMORY.md` dengan source owner dan status pelaksanaan yang selaras.
+- [ ] Selesaikan sinkronisasi isi Memory operasional melalui owner aktif, baca kembali record/revision, dan finalisasi Learning. Aktivasi fresh root saja belum menutup langkah ini.
+- [x] Jangan menulis bahwa integrasi sudah selesai hanya karena dokumen atau plan dibuat.
+- [x] Utamakan tool existing dan nyatakan perubahan schema: field opsional `memoryFeedback` pada `controller_learning`, tanpa tool baru.
+- [ ] Refresh/re-upload plugin Agent Core yang memakai descriptor lama setelah schema server terbaru tersedia, lalu pastikan field tersebut terlihat. Urutan pemakaian ada pada bagian 12.
+- [x] Kerjakan hal yang berada dalam kewenangan pelaksana tanpa meminta arahan berulang. Intervensi manusia hanya untuk kebutuhan nyata seperti unggah plugin, login/credential, izin keamanan, atau tindakan destruktif yang memerlukan persetujuan saat itu.
 
 ### Folder sementara dan salinan lama
+
+Pekerjaan housekeeping ini terpisah dari status integrasi source. Tidak ada akses, deployment, atau pembersihan Windows dalam pelaksanaan Linux ini.
 
 - [ ] Setelah integrasi benar-benar berada pada source utama dan tidak ada dependency aktif pada lokasi sementara, pindahkan seluruh materi yang masih diperlukan ke owner yang benar.
 - [ ] Inventarisasi lokasi `temp` dan `E:\Projects\Agent-Core\runtime\tmp` yang tepat; jangan menganggap semua folder bernama temp di komputer termasuk scope.
@@ -232,11 +240,11 @@ Tidak menjadikan pemeriksaan berulang, laporan panjang, speed test, atau benchma
 - [ReMe proactive read](https://github.com/agentscope-ai/ReMe/blob/main/docs/en/proactive.md)
 - [TreeQuest](https://github.com/SakanaAI/treequest)
 
-## 10. Mulai dari mana?
+## 10. Urutan awal dan keputusan pelaksanaan
 
-**Batch pertama hanya P0 dan P1.** Tujuannya satu jalur aktif dan koreksi yang benar-benar terbaca kembali. Sesudah itu P2, kemudian P3. P4 bersifat bersyarat, dan P5 memanfaatkan hasil tahap sebelumnya tanpa mengasumsikan kemampuan membangunkan AI.
+**Rencana awal saat inspeksi:** mulai dengan P0 dan P1, lalu P2 dan P3; P4 bersifat bersyarat, sedangkan P5 memakai hasil tahap sebelumnya tanpa mengasumsikan kemampuan membangunkan AI.
 
-Plan ini siap direview. Task ini mencakup clone referensi, kajian source, penyusunan plan di checkout Agent Core, dan publikasi dokumen ke repo sesuai permintaan. Migrasi Memory, implementasi fitur, instalasi dependency donor, dan aktivasi plugin belum dijalankan.
+**Pelaksanaan yang kemudian disetujui:** integrasikan P0, P1, P2, P3, dan P5 melalui owner existing pada Linux; pakai ulang portfolio/Pareto untuk P4. Status awal “plan siap direview; implementasi belum dijalankan” sudah superseded oleh catatan bagian 12. Clone donor dan hasil inspeksi bagian 11 tetap merupakan referensi bertanggal, bukan service atau dependency runtime.
 
 ## 11. Hasil inspeksi checkout donor dan keputusan integrasi
 
@@ -270,3 +278,47 @@ Plan ini siap direview. Task ini mencakup clone referensi, kajian source, penyus
 Manifest mencatat keberadaan berkas lisensi, bukan izin menyeluruh untuk setiap dependency. AutoSkill menyatakan MIT di README, Trace2Skill menyatakan Apache-2.0, MIMIC menyatakan MIT pada README/package tetapi ketiganya tidak memiliki teks lisensi root dalam snapshot ini. AMD tidak ditemukan berkas lisensinya. Untuk kandidat tersebut, plan memilih implementasi mekanisme secara mandiri dan tidak menyalin source substansial sebelum dasar izin dan notice jelas. Kandidat berlisensi juga tetap memerlukan atribusi serta pemeriksaan lisensi komponen yang benar-benar diambil.
 
 **Paket publikasi:** plan ini, manifest commit sumber, dan catatan kontinuitas repository. Checkout donor tetap berada di Linux sebagai referensi; tidak dimasukkan ke GitHub Agent Core sebagai salinan codebase, dependency, submodule, atau sistem aktif.
+
+
+## 12. Status implementasi dan aktivasi Linux — 12 Oktober 2026
+
+### Ringkasan pelaksanaan
+
+- **P0 diimplementasikan dan fresh root Linux diaktifkan.** `runtime/memory-v2-activation.json` kini memakai schema 2, `root: runtime/memory`, `mode: experience-v2`, dan identitas engine `256e31b4-0186-4265-86f4-ea2cb3e16175`. Aktivasi tercatat pada `2026-10-12T05:56:25.018Z`; manifest engine mempunyai identitas yang sama. Nama metadata engine tidak mengubah nama folder penyimpanan. Tidak ada root paralel `runtime/memory-v2` yang dibuat untuk aktivasi fresh.
+- **P1, P2, P3, P5 diimplementasikan pada jalur existing.** Source owner dan batas tiap jalur ada pada tabel berikut. Implementasi bukan bukti bahwa semua alur sudah memberi manfaat dalam pekerjaan pengguna.
+- **P4 dipakai ulang.** Portfolio/Pareto/riwayat existing cukup untuk batch ini; tidak ada optimizer, model, daemon, atau store donor tambahan yang diperlukan. Tidak ada klaim siklus optimisasi baru sudah dijalankan.
+- **Status sinkronisasi operasional, terpisah dari implementasi source:** pelaksana utama sudah membaca owner terlebih dahulu, menyimpan record interim `f8a6042a-7ad1-4994-a1b7-812e170e30ad`, dan membacanya kembali secara tepat. Episode controller adalah `ext-d3f2bf5039ec49a9a52a1511dada14bc`; episode Memory adalah `af631b5b-5fb7-48f2-8fc6-16012752a0a9`. Isi final diamend melalui checkpoint/reviewDelta pada record yang sama; riwayat lama tetap tersedia (1 revision). Revision final `sha256:dd492b17c8ba733787154b53342dd69d344ad9336f3004861aa429458c62a00f` berhasil dibaca kembali sesudah reopen, sama persis dengan ringkasan bersama di bawah, dan ditemukan melalui fusion recall. Learning finalization selesai dengan `pendingReviewCount=0`. Refresh plugin yang membawa schema lama juga belum diklaim selesai.
+- **Batas mesin:** tidak ada relokasi root historis atau deployment Windows pada pelaksanaan ini. Marker schema 1 tetap dibaca secara kompatibel; relokasi ke nama canonical tersedia sebagai operasi offline eksplisit setelah semua writer berhenti dan data/backup lolos pemeriksaan.
+
+### Source owner dan hasil yang dihubungkan
+
+| Tahap | Owner source | Implementasi/pemakaian ulang dan batas |
+|---|---|---|
+| P0 | `src/memory/host-runtime.ts`, `src/memory/host-activation.ts`, `scripts/memory/activate-canonical.mjs`; binding existing pada `src/learning/external-controller.ts` | Satu selector host, aktivasi fresh canonical dan relokasi eksplisit. Marker incomplete, identitas berbeda, orphaned experience data, root konflik, dan backup tidak cocok ditolak; tidak menginisialisasi writer legacy untuk menyembunyikan kehilangan metadata experience. Scope controller tetap berasal dari episode yang diikat host. |
+| P1 | `src/learning/{service,memory-sink}.ts`; `SubProject/agent-core-memory/src/memory/{promotion,service,episodes}.ts` | Delta refinement/counterexample dipromosikan melalui episode, revision target, sumber berpinned, dan reviewer host untuk digest plan yang tepat. Riwayat serta metadata sah dipertahankan. Source dependency diperiksa kembali sebelum publikasi; perubahan sumber/target membuat usulan perlu diperiksa ulang, bukan menghapus bukti diam-diam. |
+| P2 | `src/learning/external-controller.ts`, `src/mcp/controller-learning-{schemas,tools}.ts`; kedua owner `memory/retrieval-ledger.ts`, feedback/retrieval existing | Receipt penggunaan tetap mengikat task, attempt, record, revision, tindakan, dan verifikasi. `memoryFeedback` bersifat penilaian eksplisit setelah pemakaian applied/adapted yang terverifikasi; retrieval atau hasil sukses saja tidak otomatis berarti helpful. Feedback dibatasi/dideduplikasi; failure advisor dan ranking existing dipakai ulang. |
+| P3 | `src/skills/service.ts`; owner proposal/decision/outcome Learning existing | Build revisi mempertahankan supporting files dan metadata Skill dari baseline digest yang tepat. Staging/promosi menolak baseline yang berubah. Proposal, build, aktivasi, dan manfaat tetap keadaan berbeda; keputusan aktivasi existing tidak dilonggarkan. |
+| P4 | `src/learning/retrieval-{portfolio,pareto,series}.ts` dan jalur improvement/outcome existing | Reuse owner existing; tidak memasang archive/optimizer kedua atau memberi kewenangan mengubah source/credential dari catatan Learning. |
+| P5 | `src/learning/external-controller.ts`; `SubProject/agent-core-memory/src/memory/prospective-intentions.ts` | Context controller menampilkan task context dan eligible intentions dari episode sah; owner mengutamakan item eligible sebelum pemangkasan batas jumlah, dengan suppression paparan berdasarkan episode/revision/item. Paparan tetap advisory dan delivery belum dikonfirmasi; tidak menyelesaikan obligation, tidak memberi izin tindakan, dan tidak membangunkan AI offline. |
+
+### Ringkasan implementasi bersama
+
+<!-- adoption-memory-summary:start -->
+Agent Core mempertahankan satu owner Memory dengan root runtime/memory; versi engine tidak mengubah nama folder. P1 memakai delta Learning, episode sah, revision target, evidence, dan transaksi existing untuk koreksi/counterexample serta riwayat. P2 menghubungkan receipt terverifikasi ke penilaian eksplisit memoryFeedback; retrieval saja tidak mendapat credit manfaat. P3 mempertahankan resource Skill dan menolak baseline revisi yang berubah. P4 memakai portfolio/Pareto existing tanpa optimizer kedua. P5 menampilkan intention eligible dari episode terikat host, dengan suppression paparan dan tanpa wake offline. Schema controller_learning perlu refresh plugin untuk memoryFeedback. Implementasi source ini bukan bukti manfaat terukur atau deployment Windows.
+<!-- adoption-memory-summary:end -->
+
+### Kontrak connector dan pemanggilan awal
+
+Tidak ada tool baru. Schema `controller_learning` menambah field opsional `memoryFeedback: helpful | not-helpful` untuk `action: artifact_receipt`, `artifactKind: memory`, dan pemakaian applied/adapted dengan outcome terverifikasi. Descriptor plugin Agent Core perlu di-refresh atau paket custom plugin lama diunggah ulang agar field ini dapat dipakai. Pemanggilan lama tanpa field tersebut tetap tidak mengirim penilaian manfaat secara tersirat; refresh connector belum diklaim selesai.
+
+Mulai dengan Memory-first melalui `memory_list`/`memory_read`. Buat atau resume episode melalui `controller_learning(action=episode, episodeOperation=start, taskKey=..., workspace=...)`; gunakan `taskId` yang dikembalikan sebagai scope pada jalur Memory experience existing. Bila perlu episode Memory untuk koreksi/intention, gunakan `memory_v2_write(action=task_start, scope={taskId}, payload=...)`, lalu `controller_learning(action=context)` untuk konteks bersama. Kirim `artifact_receipt` hanya untuk pemakaian yang benar-benar diketahui beserta evidence/revision/attempt; sertakan `memoryFeedback` hanya jika penilaian eksplisit memang tersedia. Finalisasi tetap melalui checkpoint/review Learning existing.
+
+### Verifikasi dan batas kesimpulan
+
+Build canonical (`npm run build`, termasuk path policy dan build subproject Memory) serta pemeriksaan terarah dijalankan selama implementasi. Bukti tes berada pada `tests/memory-canonical-activation.test.ts`, `tests/memory-v2-host-integration.test.ts`, `tests/learning-curation-promotion.test.ts`, `tests/adoption-reuse-wiring.test.ts`, pemeriksaan receipt/ledger, dan tes promotion/synthesis subproject yang terkait. Build akhir resmi lulus (path policy: 361 authored files, tanpa exception). Pemeriksaan gabungan akhir: 36 kasus pada 5 file lulus; pemeriksaan koreksi/curation terakhir: 26 kasus lulus; engine promotion terakhir: 139 kasus lulus. Angka kelompok dapat bertumpang-tindih dan tidak dijumlahkan atau diklaim sebagai seluruh repository.
+
+Aktivasi, amendment record tugas, readback setelah reopen, fusion recall, dan finalisasi Learning Linux sudah dilakukan pada data canonical aktual. Hash isi bersama: `a42c5ff0df2833bf40f4d7da31b8a7d2fc10b9201a0b3389c00fc48153bd2d9b`. Deployment Windows, refresh connector, serta manfaat pada tugas pengguna tidak disimpulkan dari build atau fixture. Tidak ada benchmark atau klaim peningkatan kecerdasan/kecepatan untuk batch ini.
+
+### Penutupan operasional batch
+
+Implementasi aktif berada pada source utama; build memperbarui dist standar, tanpa dist atau store tandingan. `runtime/tmp` Linux kosong; tidak ada implementasi aktif untuk dipindahkan atau data sementara untuk dihapus. Tidak ada dependensi tambahan yang diperlukan. Pemeriksaan akhir menemukan dan memperbaiki celah validasi sumber saat commit, pemulihan receipt setelah sumber hilang, preservasi metadata link, dan pemangkasan intention. Publikasi hanya mencakup perubahan batch ini; perubahan dokumentasi lokal yang sudah ada dipertahankan.

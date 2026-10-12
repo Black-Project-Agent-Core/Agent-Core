@@ -5,6 +5,7 @@ import { writeOwnedFileAtomic } from '../persistence/atomic-file.js';
 import { isNewState, writeStateFile } from '../persistence/state-file.js';
 import { redactSensitiveString } from '../security/redaction.js';
 import type { MemoryService } from '../memory/service.js';
+import type { MemoryService as ExperienceMemoryService } from '../../SubProject/agent-core-memory/dist/index.js';
 import type { DeliveredMemorySearchResult } from '../memory/search-projection.js';
 import type { LearningService } from './service.js';
 import { buildKnowledgeSynthesisPacket, rankKnowledge } from '../agent-knowledge-synthesis.js';
@@ -62,6 +63,7 @@ export interface ExternalControllerEpisode {
   deliveredArtifacts?: Record<string, string>;
   capabilityUses?: CapabilityUse[];
   capabilityNoticeKeys?: string[];
+  intentionExposureKeys?: string[];
   deliveredMemories?: Record<string, string>;
   events: ExternalControllerEvent[];
   metrics: {
@@ -119,6 +121,7 @@ export interface ExternalArtifactReceiptInput {
   retrievalAttemptId?: string;
   memoryId?: string;
   contentDigest?: string;
+  memoryFeedback?: 'helpful' | 'not-helpful';
   workspace?: string;
 }
 
@@ -217,6 +220,7 @@ function normalizeEpisode(raw: ExternalControllerEpisode): ExternalControllerEpi
     deliveredArtifacts: raw.deliveredArtifacts ?? {},
     ...(raw.capabilityUses ? {capabilityUses:normalizeCapabilityUses(raw.capabilityUses)} : {}),
     ...(Array.isArray(raw.capabilityNoticeKeys) ? {capabilityNoticeKeys:raw.capabilityNoticeKeys.filter(k=>typeof k==='string' && k.length<=400).slice(0,128)} : {}),
+    ...(Array.isArray(raw.intentionExposureKeys) ? { intentionExposureKeys: raw.intentionExposureKeys.filter(key => typeof key === 'string' && /^[a-f0-9]{64}$/.test(key)).slice(-64) } : {}),
     deliveredMemories: raw.deliveredMemories ?? {},
     events: Array.isArray(raw.events) ? raw.events.map(item => ({
       id: bounded(item.id, 128),
@@ -815,6 +819,21 @@ export class ExternalControllerLearningService {
     })), 'external');
     return result;
   }
+  private async memoryTaskContext(sessionId: string, episode: ExternalControllerEpisode | null) {
+    const memory = this.memory as MemoryService & Partial<Pick<ExperienceMemoryService, 'controller'>>;
+    try {
+      if (!episode?.memoryBinding || !memory.controller) throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
+      const scope = await this.resolveMemoryTask(episode.memoryBinding.ownerId, episode.id);
+      const controller = memory.controller({ ...scope, controllerId: 'agent-core-external', sessionId });
+      if (controller.capabilities().writeMode !== 'experience-v2') throw new Error('MEMORY_EXPERIENCE_NOT_ENABLED');
+      // Host time is an observation. No tool/event cue is inferred from asking for context.
+      return await controller.getTaskContext({ budget: { maxBytes: 8192 }, intentions: { now: new Date().toISOString(), eventKeys: [], limit: 16 } });
+    } catch (error) {
+      const code = error instanceof Error && /^MEMORY_[A-Z0-9_]+$/.test(error.message) ? error.message : 'MEMORY_TASK_CONTEXT_UNAVAILABLE';
+      return { status: 'unavailable' as const, reason: code, advisory: true as const };
+    }
+  }
+
   async context(sessionId: string, input: ExternalControllerContextInput = {}) {
     const active = await this.getEpisode(sessionId);
     input = { ...input, workspace: input.workspace ?? active?.workspace };
@@ -867,15 +886,31 @@ export class ExternalControllerLearningService {
       ...(input.workspace ? { workspace: input.workspace } : {}),
     }).filter(item => typeof item.context?.artifactKind === 'string').slice(-20);
 
-    await this.mutate(next => {
+    const memoryTaskContext = await this.memoryTaskContext(sessionId, episode);
+    const intentionAttention = await this.mutate(next => {
       const current = this.getOrCreateEpisode(next, sessionId);
       current.deliveredArtifacts = { ...(current.deliveredArtifacts ?? {}), ...synthesis.artifactRevisions };
       current.events.push(event('context', 'Shared controller context synthesized'
         + (query ? ' for query=' + query.slice(0, 180) : '') + '.', memories.map(item => 'memory:' + item.record.id)));
+      const source = 'data' in memoryTaskContext ? memoryTaskContext.data : undefined;
+      const evaluation = source?.intentionEvaluation;
+      const keys = new Set(current.intentionExposureKeys ?? []), itemIds: string[] = [];
+      for (const item of evaluation?.items ?? []) {
+        if (item.status !== 'eligible') continue;
+        const key = sha256(JSON.stringify([source!.episodeRef.id, evaluation!.episodeRevision, item.itemId]));
+        if (!keys.has(key)) { itemIds.push(item.itemId); keys.add(key); }
+      }
+      current.intentionExposureKeys = [...keys].slice(-64);
+      // Exposure suppression belongs to this existing transport episode. It does not
+      // resolve/defer the obligation or establish that the user received a notice.
+      return { status: evaluation ? 'available' as const : 'unavailable' as const,
+        itemIds, advisory: true as const, delivery: 'unconfirmed' as const };
     });
 
     return {
       contractVersion: 1,
+      memoryTaskContext,
+      intentionAttention,
       synthesis,
       capabilities:synthesis.capabilityExposure,
       workspace: input.workspace ?? null,
@@ -935,6 +970,11 @@ export class ExternalControllerLearningService {
     const failedUse=input.result==='failure';
     const validation = await validateWorkflowUse(input);
     if (validation.status === 'unavailable' || validation.verification !== (input.result === 'success' ? 'pass' : 'fail')) input = { ...input, result: 'unavailable' };
+    if (input.memoryFeedback !== undefined && (input.kind !== 'memory'
+      || !['helpful', 'not-helpful'].includes(input.memoryFeedback) || input.applicability === 'rejected'
+      || validation.status !== 'resolved' || input.result === 'unavailable')) {
+      throw new Error('EXTERNAL_MEMORY_FEEDBACK_VERIFIED_USE_REQUIRED');
+    }
     const evidenceRefs = refs(input.evidenceRefs);
     if ((input.result === 'success' || input.result === 'failure') && !input.verificationRef) {
       throw new Error('EXTERNAL_ARTIFACT_RECEIPT_VERIFICATION_REQUIRED');
@@ -960,7 +1000,18 @@ export class ExternalControllerLearningService {
         ...(input.summary ? { summary: bounded(input.summary, 500) } : {}),
       });
       await this.recordArtifactEvent(sessionId, input);
-      return receipt;
+      if (!input.memoryFeedback) return receipt;
+      // Explicit assessment only. One task/revision gets one bounded utility update,
+      // even if the controller repeats recall or supplies another receipt reason.
+      const eventId = 'external-use:' + sha256(JSON.stringify([episode!.id, input.memoryId, input.contentDigest]));
+      try {
+        if (receipt.receipt.evidenceValidation !== 'resolved' || receipt.receipt.result === 'unavailable') throw new Error('EXTERNAL_MEMORY_FEEDBACK_VERIFIED_USE_REQUIRED');
+        const feedback = await this.memory.feedback(input.memoryId, eventId, input.memoryFeedback, input.contentDigest);
+        return { ...receipt, memoryFeedback: { status: 'recorded' as const, ...feedback } };
+      } catch (error) {
+        activityTracker.captureFailure('LEARNING', error, 'external-memory-feedback-unavailable');
+        return { ...receipt, memoryFeedback: { status: 'unavailable' as const, reason: bounded(error instanceof Error ? error.message : 'feedback unavailable', 200) } };
+      }
     }
 
     const context = {

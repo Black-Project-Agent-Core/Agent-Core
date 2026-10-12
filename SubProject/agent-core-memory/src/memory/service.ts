@@ -268,13 +268,11 @@ export class MemoryService {
       sourceDependencyStatus: async (ref,resolve) => {
         try{const checked=await episodes.promotionSnapshot({...scope,workspaceKey:this.resolveWorkspace(scope.workspaceKey)},async context=>{
           await context.validate([ref],true);
+          const origin=await context.sourceOrigin(ref);
+          if(origin.freshness!=='current')return origin.freshness==='stale'?'stale' as const:'unavailable' as const;
           if(ref.kind!=='memory')return 'current' as const;
           const current=context.visible(ref.id);
           if(memorySemanticRevision(current)!==ref.revision)return 'stale' as const;
-          if(current.provenance?.files.length){
-            const assessment=await assessMemoryStaleness(current,this.projectRoot);
-            if(assessment.status!=='current')return assessment.status==='changed'?'stale' as const:'unavailable' as const;
-          }
           return current.category==='project-synthesis'?{synthesis:decodeProjectSynthesis(current.content)}:'current' as const;
         });
         if(typeof checked==='string')return checked;

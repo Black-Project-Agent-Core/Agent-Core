@@ -18,7 +18,7 @@ export function registerControllerLearningTools(
 ): void {
   server.registerTool('controller_learning', {
     title: 'External Controller Learning',
-    description: 'Inspect and update the cumulative-learning substrate for the connected external controller. Use context for difficult or continuity-sensitive work, episode start to rotate a new independent logical task episode when the transport session is reused, episode for bounded task evidence, artifact_receipt only when knowledge use is known, procedure for verified reusable workflows, and evaluate for cross-session evidence. This tool never invokes a model/provider and never grants execution authority.',
+    description: 'Inspect and update the cumulative-learning substrate for the connected external controller. Use context for difficult or continuity-sensitive work, episode start to rotate a new independent logical task episode when the transport session is reused, episode for bounded task evidence, artifact_receipt only when knowledge use is known (optional memoryFeedback is an explicit helpful/not-helpful assessment requiring independently verified applied/adapted use), procedure for verified reusable workflows, and evaluate for cross-session evidence. This tool never invokes a model/provider and never grants execution authority.',
     inputSchema: schemas.controllerLearning,
     annotations: {
       title: 'External Controller Learning',
@@ -97,6 +97,7 @@ export function registerControllerLearningTools(
           ...(input.retrievalAttemptId ? { retrievalAttemptId: input.retrievalAttemptId } : {}),
           ...(input.memoryId ? { memoryId: input.memoryId } : {}),
           ...(input.contentDigest ? { contentDigest: input.contentDigest } : {}),
+          ...(input.memoryFeedback ? { memoryFeedback: input.memoryFeedback } : {}),
           ...(input.workspace ? { workspace: input.workspace } : {}),
         });
       } else if (input.action === 'procedure') {

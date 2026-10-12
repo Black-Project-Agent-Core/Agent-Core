@@ -1,4 +1,4 @@
-import {afterEach,expect,test} from 'vitest';import {mkdtemp,rm} from 'node:fs/promises';import os from 'node:os';import path from 'node:path';
+import {afterEach,expect,test} from 'vitest';import {mkdtemp,rm,writeFile} from 'node:fs/promises';import os from 'node:os';import path from 'node:path';
 import {initializeStandaloneMemory} from '../src/index.js';import {memorySemanticRevision} from '../src/memory/disclosure.js';import {legacyExperience} from '../src/memory/experience-types.js';import {encodeProjectSynthesis} from '../src/memory/project-synthesis.js';
 const roots:string[]=[];afterEach(async()=>{await Promise.all(roots.splice(0).map(root=>rm(root,{recursive:true,force:true})));});
 async function setup(){const root=await mkdtemp(path.join(os.tmpdir(),'memory-synthesis-reuse-'));roots.push(root);const service=await initializeStandaloneMemory({baseDir:root,memoryRoot:root,experience:{enabled:true}}),session=service.controller({workspaceKey:'agent-core',taskId:'reuse-task',controllerId:'test'}),source=await service.remember({content:'Underlying project evidence',provenance:{workspace:'agent-core',files:[]}}),ref={kind:'memory' as const,id:source.id,revision:memorySemanticRevision(source)};const synthesis=await service.remember({category:'project-synthesis',content:encodeProjectSynthesis({schemaVersion:1,projectKey:'agent-core',claims:[{text:'Summary project evidence',refs:[ref]}],gaps:[]}),provenance:{workspace:'agent-core',files:[]}});return{service,session,source,synthesis,ref};}
@@ -33,4 +33,16 @@ for(const mode of ['cycle','nested-budget'] as const)test(`P15 ${mode} dependenc
   calls++;if(mode==='cycle')return resolve!(value);if(value.id!==ref.id)return 'current';const results=await Promise.all(Array.from({length:32},(_,i)=>resolve!({kind:'memory',id:`nested-leaf-${i}`,revision:'sha256:'+String(i%10).repeat(64)})));return results.every(result=>result==='current')?'current':'unavailable';
  }},{workspaceKey:'agent-core',taskId:'bounded-nested-task',controllerId:'synthetic'});
  const result:any=await session.recall({limit:20});expect(calls).toBe(mode==='cycle'?1:32);expect(result.data.hits.map((hit:any)=>hit.id)).toEqual([source.id]);
+});
+
+test('P1 changed workspace artifact invalidates synthesis recall while preserving captured history',async()=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'memory-synthesis-origin-'));roots.push(root);
+ const service=await initializeStandaloneMemory({baseDir:root,memoryRoot:root,experience:{enabled:true}}),session=service.controller({workspaceKey:'agent-core',taskId:'artifact-reuse',controllerId:'test'}),file=path.join(root,'project-source.ts');
+ await writeFile(file,'export const source = "original";');const ref=(await session.captureEvidence({operationId:'capture-file',source:{kind:'workspace-file',relativePath:'project-source.ts'}})).source;
+ const synthesis=await service.remember({category:'project-synthesis',content:encodeProjectSynthesis({schemaVersion:1,projectKey:'agent-core',claims:[{text:'Current project observation',refs:[ref]}],gaps:[]}),provenance:{workspace:'agent-core',files:[]}});
+ expect(await ids(session)).toContain(synthesis.id);
+ await writeFile(file,'export const source = "corrected";');
+ expect(await ids(session)).not.toContain(synthesis.id);
+ expect((await session.expand({source:ref,view:'evidence'})).data).toBeDefined();
+ expect((await service.read(synthesis.id,false))!.content).toContain(ref.revision);
 });

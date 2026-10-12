@@ -30,3 +30,14 @@ test('bounds_purity_and_stable_order_are_enforced',()=>{
  expect(()=>evaluateIntentions(items,{...observation,eventKeys:['bad\nkey']},64)).toThrow();
  expect(()=>encodeIntention({...intention,summary:'🧠'.repeat(2000)})).toThrow();
 });
+test('eligible_intention_is_not_starved_by_sixteen_earlier_waiting_ids',()=>{
+ const waiting=Array.from({length:16},(_,i)=>item('a'+String(i).padStart(2,'0'),{summary:'Wait for a later time',cue:{kind:'at-or-after',instant:'2026-10-12T02:00:00Z'}}));
+ const items=[...waiting,item('z17')],before=structuredClone(items),observation={now:'2026-10-11T02:00:00Z',eventKeys:[]};
+ const result=evaluateIntentions(items,observation,16);
+ expect(result.items).toHaveLength(16);
+ expect(result.items[0]).toEqual({itemId:'z17',status:'eligible'});
+ expect(result.items.slice(1).map(value=>value.itemId)).toEqual(waiting.slice(0,15).map(value=>value.id));
+ expect(result).toMatchObject({truncated:true,advisory:true});
+ expect(evaluateIntentions([...items].reverse(),observation,16)).toEqual(result);
+ expect(items).toEqual(before);
+});

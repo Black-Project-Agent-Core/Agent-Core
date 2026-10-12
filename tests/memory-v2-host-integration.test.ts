@@ -1,5 +1,5 @@
 import path from 'node:path';
-import {mkdir,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
+import {mkdir,mkdtemp,readFile,rm,writeFile,access} from 'node:fs/promises';
 import {describe,it,expect,afterEach} from 'vitest';
 import {initializeAgentCoreMemory} from '../src/memory/host-runtime.js';
 import {registerMemoryExperienceTools} from '../src/mcp/memory-experience-tools.js';
@@ -7,6 +7,7 @@ import {registerMemoryTools} from '../src/mcp/memory-tools.js';
 import {initializeStandaloneMemory} from '../SubProject/agent-core-memory/src/standalone.js';
 import {ExternalControllerLearningService} from '../src/learning/external-controller.js';
 import {LearningService} from '../src/learning/service.js';
+import {MemoryLearningSink} from '../src/learning/memory-sink.js';
 
 const base=path.resolve(process.cwd(),'runtime','tmp');
 const dirs:string[]=[];
@@ -29,6 +30,38 @@ function serverMock(){
  return {tools,server:{registerTool:(name:string,_meta:unknown,callback:(args:unknown)=>Promise<any>)=>{tools.set(name,callback)}} as any};
 }
 describe('Agent Core Memory experience-v2 host selection',()=>{
+ it('opens a root-identity-bound canonical activation without a second Memory directory',async()=>{
+  const root=await fixture(),canonical=path.join(root,'runtime','memory');
+  await initializeStandaloneMemory({baseDir:root,memoryRoot:canonical,experience:{enabled:true}});
+  const manifest=JSON.parse(await readFile(path.join(canonical,'state','experience-manifest.json'),'utf8'));
+  await writeFile(path.join(root,'runtime','memory-v2-activation.json'),JSON.stringify({
+   schemaVersion:2,mode:'experience-v2',root:'runtime/memory',status:'complete',origin:'fresh',rootId:manifest.rootId,
+  }));
+  const runtime=await initializeAgentCoreMemory(root,canonical);
+  expect(runtime.root).toBe(canonical);expect(runtime.mode).toBe('experience-v2');
+  expect(new MemoryLearningSink(runtime.service).supportsCorrections()).toBe(true);
+  const record=await runtime.service.remember({title:'Canonical ownership',content:'One root survives reopen',provenance:{workspace:'agent-core',files:[]}});
+  await expect((await initializeAgentCoreMemory(root,canonical)).service.read(record.id,false)).resolves.toMatchObject({id:record.id,version:2});
+  await expect(access(path.join(root,'runtime','memory-v2'))).rejects.toMatchObject({code:'ENOENT'});
+ });
+ it('never falls back to a legacy writer when experience activation is missing',async()=>{
+  const root=await fixture(),canonical=path.join(root,'runtime','memory');
+  await initializeStandaloneMemory({baseDir:root,memoryRoot:canonical,experience:{enabled:true}});
+  await expect(initializeAgentCoreMemory(root,canonical)).rejects.toThrow('ACTIVATION_REQUIRED');
+ });
+ it('does not ignore an unmarked historical root or initialize a new canonical root',async()=>{
+  const root=await fixture(),canonical=path.join(root,'runtime','memory');
+  await mkdir(path.join(root,'runtime','memory-v2'),{recursive:true});
+  await writeFile(path.join(root,'runtime','memory-v2','unknown.txt'),'Preserve this data');
+  await expect(initializeAgentCoreMemory(root,canonical)).rejects.toThrow('HISTORICAL_ROOT_REQUIRES_REVIEW');
+  await expect(access(canonical)).rejects.toMatchObject({code:'ENOENT'});
+ });
+ it('does not recreate a missing historical experience root from activation metadata',async()=>{
+  const root=await fixture();await activeRoot(root);
+  await rm(path.join(root,'runtime','memory-v2'),{recursive:true});
+  await expect(initializeAgentCoreMemory(root,path.join(root,'runtime','memory'))).rejects.toThrow('EXPERIENCE_MANIFEST_REQUIRED');
+  await expect(access(path.join(root,'runtime','memory-v2'))).rejects.toMatchObject({code:'ENOENT'});
+ });
  it('preserves legacy selection without activation marker',async()=>{
   const root=await fixture(),legacy=path.join(root,'runtime','memory');
   await mkdir(legacy,{recursive:true});

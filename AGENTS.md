@@ -5,7 +5,7 @@
 **ALWAYS VIEW YOUR MEMORY DIRECTORY BEFORE DOING ANYTHING ELSE.**
 
 - This is an action requirement, not a passive acknowledgement or optional reminder.
-- Resolve the active canonical Memory root before viewing it: the legacy default is `<PROJECT_ROOT>\runtime\memory`; a host-validated experience-v2 activation selects `<PROJECT_ROOT>\runtime\memory-v2`. `src\memory\host-runtime.ts` owns this selection. Do not assume activation from source presence or initialize a second writer.
+- Resolve the active canonical Memory root before viewing it: the storage target is always `<PROJECT_ROOT>/runtime/memory`, independent of engine version. `src/memory/host-runtime.ts` owns validated activation; historical version-named roots remain compatibility inputs until explicit verified relocation through `scripts/memory/activate-canonical.mjs`. Never create a parallel writer or infer activation from source presence.
 - When native memory MCP tools are available, prefer memory_list / memory_read for canonical memory access and selective recall; direct filesystem viewing remains the fallback and audit path.
 - View that directory and its memory contents before any other Agent Core work.
 - Treat this as the highest-priority local operating directive in this file, subordinate only to the controlling model/provider/system/safety rules.

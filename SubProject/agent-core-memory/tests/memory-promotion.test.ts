@@ -291,3 +291,44 @@ for(const mode of ['create-convergence','merge-convergence','amend','merge','ret
  const candidate=create(receipt.auditRef,'Independent fact from complete action metadata');candidate.value.experience.epistemic='fact';
  const next:any=await A.prepareConsolidation(prepare({...header,revision:2},[candidate],'reuse-valid-audit')),result:any=await A.applyConsolidation(apply(next,'apply-valid-audit'));expect((await service.read(result.canonicalRefs[0].id,false)as any).experience.epistemic).toBe('fact');
 });
+
+test('P1 ordinary amendment checks workspace origin again after host review',async()=>{
+ const{A,header,dir,scope,service}=await setup(),{writeFile}=await import('node:fs/promises'),file=path.join(dir,'correction-source.ts');await writeFile(file,'export const observation = "corrected";');
+ const source=(await A.captureEvidence({operationId:'capture-correction-source',source:{kind:'workspace-file',relativePath:'correction-source.ts'}})).source;
+ const target=await service.remember({content:'Prior source claim',provenance:{workspace:'agent-core',files:[]}}),ref={kind:'memory',id:target.id,revision:memorySemanticRevision(target)};
+ const plan:any=await A.prepareConsolidation(prepare(header,[{...create(source,'Corrected source claim'),kind:'amend',target:ref}]));
+ const reviewing=await MemoryService.initialize(dir,dir,undefined,{consolidation:{review:async reviewed=>{await writeFile(file,'export const observation = "changed after review";');return{digest:reviewed.digest,reviewer:'test-host',reason:'Inspected correction'};}}});
+ await expect(reviewing.controller(scope).applyConsolidation(apply(plan))).rejects.toThrow('MEMORY_REVISION_CONFLICT');
+ expect(await service.read(target.id,false)).toEqual(target);
+});
+test('P1 committed lookup reconciles completed episodes without checking deleted live origins',async()=>{
+ const{A,header,dir,scope,service}=await setup(),{writeFile}=await import('node:fs/promises'),file=path.join(dir,'committed-source.ts');await writeFile(file,'export const observed = true;');
+ const source=(await A.captureEvidence({operationId:'capture-committed-source',source:{kind:'workspace-file',relativePath:'committed-source.ts'}})).source,plan:any=await A.prepareConsolidation(prepare(header,[create(source)])),receipt=await A.applyConsolidation(apply(plan));
+ await A.setEpisodeStatus({episodeId:header.id,expectedRevision:receipt.episodeRevision,operationId:'complete-committed',status:'completed',reason:'Task completed',sourceRefs:[]});await rm(file);
+ const B:any=(await MemoryService.initialize(dir,dir)).controller(scope),before=await bytes(dir);
+ expect(typeof B.committedConsolidation).toBe('function');
+ expect(await B.committedConsolidation({operationId:'apply-one'})).toEqual({...receipt,duplicate:true});
+ expect(await B.committedConsolidation({operationId:'not-committed'})).toBeUndefined();
+ expect(await (service.controller({...scope,taskId:'other-task'}) as any).committedConsolidation({operationId:'apply-one'})).toBeUndefined();
+ expect(await bytes(dir)).toEqual(before);
+});
+test('P1 amend keeps unchanged relation metadata and history intact',async()=>{
+ const{A,header,source,service}=await setup(),other=await service.remember({content:'Related source',provenance:{workspace:'agent-core',files:[]}}),target=await service.remember({content:'Original claim',provenance:{workspace:'agent-core',files:[]}});
+ const link={targetId:other.id,type:'supports',strength:0.7,reason:'Bounded support',createdAt:'2026-01-01T00:00:00.000Z',validFrom:'2026-01-02T00:00:00.000Z',validTo:'2027-01-01T00:00:00.000Z',referenceTime:'2026-01-03T00:00:00.000Z',evidenceRefs:[`source:${source.id}#${source.revision}`]};
+ await (service as any).store.mutate(target.id,(record:any)=>({...record,links:[link]}));const prior:any=await service.read(target.id,false),ref={kind:'memory',id:prior.id,revision:memorySemanticRevision(prior)};
+ const candidate:any={...create(source,'Corrected claim'),kind:'amend',target:ref};candidate.value.links=[{targetId:link.targetId,type:link.type,strength:link.strength,reason:link.reason}];
+ const plan:any=await A.prepareConsolidation(prepare(header,[candidate])),receipt=await A.applyConsolidation(apply(plan));
+ expect((await service.read(receipt.canonicalRefs[0].id,false))!.links).toEqual(prior.links);
+});
+test('P1 committed lookup never applies a pending plan and fails closed on inconsistent receipt bytes',async()=>{
+ const{A,header,source,dir}=await setup(),session:any=A,plan:any=await A.prepareConsolidation(prepare(header,[create(source)]));
+ expect(await session.committedConsolidation({operationId:'apply-one'})).toBeUndefined();expect(await bytes(dir)).toHaveLength(0);
+ await A.applyConsolidation(apply(plan));
+ const{writeFile}=await import('node:fs/promises'),operations=path.join(dir,'state/operations');
+ for(const file of await readdir(operations)){
+  const location=path.join(operations,file),operation=JSON.parse(await readFile(location,'utf8'));
+  if(operation.method==='applyConsolidation'&&operation.operationId==='apply-one'){operation.result.receiptId='fabricated-committed-receipt';await writeFile(location,JSON.stringify(operation)+'\n');}
+ }
+ await expect(session.committedConsolidation({operationId:'apply-one'})).rejects.toThrow('MEMORY_SOURCE_UNAVAILABLE');
+ expect(await bytes(dir)).toHaveLength(1);
+});

@@ -531,10 +531,14 @@ export class SkillService {
     }
     if (create) await mkdir(directory, { recursive: true, mode: 0o700 });
   }
-  private proposalSkillText(item: SkillProposalRecord): string {
+  private proposalSkillText(item: SkillProposalRecord, baseline?: SkillMetadata): string {
     const name = validateName(item.targetSkillName);
     return ['---', 'name: ' + name, 'description: ' + JSON.stringify(item.input.purpose),
+      ...(baseline?.license ? ['license: ' + JSON.stringify(baseline.license)] : []),
+      ...(baseline?.compatibility ? ['compatibility: ' + JSON.stringify(baseline.compatibility)] : []),
       'allowed-tools: ' + JSON.stringify(item.input.allowedTools), 'metadata:',
+      ...Object.entries(baseline?.metadata ?? {}).filter(([key]) => !['proposal-id', 'proposal-revision'].includes(key))
+        .map(([key, value]) => '  ' + key + ': ' + JSON.stringify(value)),
       '  proposal-id: ' + JSON.stringify(item.id), '  proposal-revision: ' + JSON.stringify(item.revisionDigest),
       '---', '', '# ' + name, '', '## Purpose', item.input.purpose, '', '## Trigger', ...item.input.triggers,
       '', '## Non-trigger', ...item.input.nonTriggers, '', '## Workflow', ...item.input.steps.map((s, i) => (i + 1) + '. ' + s),
@@ -542,14 +546,44 @@ export class SkillService {
       '', 'This artifact does not grant execution authority. Benefits remain unmeasured.', '',
     ].join('\n');
   }
+  private async proposalSkillTree(item: SkillProposalRecord): Promise<ScannedSkill> {
+    let baseline: ScannedSkill | undefined;
+    if (item.action === 'revise') {
+      if (!item.expectedActiveDigest) throw new Error('SKILL_PROPOSAL_ACTIVE_DRIFT');
+      const paths = this.revisionPaths(item.targetSkillName);
+      baseline = await scanDirectory(paths.active);
+      if (baseline.digest !== item.expectedActiveDigest) {
+        baseline = await scanDirectory(path.join(paths.history, digestSegment(item.expectedActiveDigest)));
+      }
+      if (baseline.digest !== item.expectedActiveDigest) throw new Error('SKILL_PROPOSAL_ACTIVE_DRIFT');
+    }
+    const files: ScannedFile[] = [];
+    const baselineHash = createHash('sha256');
+    for (const file of baseline?.files ?? []) {
+      const content = await readFile(file.absolute!);
+      updateDigest(baselineHash, file.relative, content);
+      files.push({ relative: file.relative, content, size: content.length });
+    }
+    if (baseline && 'sha256:' + baselineHash.digest('hex') !== baseline.digest) throw new Error('SKILL_PROPOSAL_ACTIVE_DRIFT');
+    const text = this.proposalSkillText(item, baseline?.metadata), content = Buffer.from(text);
+    const skillFile = files.find(file => file.relative === 'SKILL.md');
+    if (skillFile) { skillFile.content = content; skillFile.size = content.length; }
+    else files.push({ relative: 'SKILL.md', content, size: content.length });
+    const totalBytes = files.reduce((total, file) => total + file.size, 0);
+    if (totalBytes > MAX_TOTAL_BYTES) throw new Error('SKILL_TOTAL_BYTES_LIMIT');
+    const hash = createHash('sha256');
+    for (const file of files) updateDigest(hash, file.relative, file.content!);
+    return { files, metadata: parseSkillMarkdown(text), totalBytes, digest: 'sha256:' + hash.digest('hex') };
+  }
+
   async inspectBuiltProposal(item: SkillProposalRecord, decision: SkillProposalDecision): Promise<{
     artifactStatus: 'validated' | 'catalog-active'; artifactPath: string; artifactDigest: string;
   }> {
     const directory = this.proposalBuildDirectory(item);
     await this.checkProposalBuildDirectory(directory);
-    if (await readFile(path.join(directory, 'SKILL.md'), 'utf8') !== this.proposalSkillText(item)) throw new Error('SKILL_PROPOSAL_BUILD_DRIFT');
+    const expected = await this.proposalSkillTree(item);
     const artifact = await this.validate(directory);
-    if (artifact.fileCount !== 1 || item.artifactDigest && artifact.digest !== item.artifactDigest) throw new Error('SKILL_PROPOSAL_BUILD_DRIFT');
+    if (artifact.digest !== expected.digest || item.artifactDigest && artifact.digest !== item.artifactDigest) throw new Error('SKILL_PROPOSAL_BUILD_DRIFT');
     if (decision.scope === 'build-and-activate') {
       if ((await this.inspect(item.targetSkillName)).digest !== artifact.digest) throw new Error('SKILL_PROPOSAL_ACTIVE_DRIFT');
       return { artifactStatus: 'catalog-active', artifactPath: directory, artifactDigest: artifact.digest };
@@ -567,11 +601,10 @@ export class SkillService {
     const directory = this.proposalBuildDirectory(item);
     await this.checkProposalBuildDirectory(directory, true);
     if (path.resolve(await realpath(directory)).toLowerCase() !== path.resolve(directory).toLowerCase()) throw new Error('SKILL_PROPOSAL_PATH_DRIFT');
-    const text = this.proposalSkillText(item);
-    const file = path.join(directory, 'SKILL.md');
-    try { if (await readFile(file, 'utf8') !== text) throw new Error('SKILL_PROPOSAL_BUILD_DRIFT'); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; await writeOwnedFileAtomic(file, text); }
+    const expected = await this.proposalSkillTree(item);
+    if (!(await readdir(directory)).length) await writeScannedSkillTree(expected, directory);
     const validated = await this.validate(directory);
+    if (validated.digest !== expected.digest) throw new Error('SKILL_PROPOSAL_BUILD_DRIFT');
     if (item.artifactDigest && item.artifactDigest !== validated.digest) throw new Error('SKILL_PROPOSAL_BUILD_DRIFT');
     if (decision.scope === 'build') return { artifactStatus: 'validated', artifactPath: directory, artifactDigest: validated.digest };
     const current = (await this.list()).find(s => s.name === name);
@@ -760,6 +793,8 @@ export class SkillService {
     if (await this.directoryExists(destination)) {
       const existing = await scanDirectory(destination);
       if (existing.digest !== scanned.digest) throw new Error('SKILL_REVISION_STAGE_COLLISION');
+      const metadata = await readRevisionMetadata(destination);
+      if (!metadata || metadata.previousDigest !== active.digest) throw new Error('SKILL_REVISION_BASELINE_CONFLICT');
       return { ...summary(existing, await readSkillSourceProvenance(destination)), status: 'duplicate-staged', evidenceRefs: evidence };
     }
 
@@ -895,6 +930,7 @@ export class SkillService {
       if (currentActive.digest !== normalizeSkillDigest(expectedActiveDigest)) {
         throw new Error('SKILL_REVISION_ACTIVE_DIGEST_MISMATCH');
       }
+      if (metadata.previousDigest !== currentActive.digest) throw new Error('SKILL_REVISION_BASELINE_CONFLICT');
       const activeSourceProvenance = await readSkillSourceProvenance(paths.active);
       const candidateSourceProvenance = await readSkillSourceProvenance(sourceDirectory);
       if (!sameSkillSourceLineage(activeSourceProvenance, candidateSourceProvenance)

@@ -253,6 +253,7 @@ export class LearningService {
   private readonly patternSink: CodePatternLearningSink;
   private readonly sinkManager: LearningSinkManager;
   private readonly reviewer: LearningReviewCoordinator;
+  private readonly memorySink: MemoryLearningSink;
   private readonly curator: LearningCurator;
   private readonly journeyBuilder: LearningJourneyBuilder;
 
@@ -262,7 +263,7 @@ export class LearningService {
     code?: CodeIntelligenceService,
   ) {
     this.stateStore = new LearningStateStore(resolveLearningPaths(config.stateDir));
-    const memorySink = new MemoryLearningSink(memory);
+    const memorySink = this.memorySink = new MemoryLearningSink(memory);
     this.patternSink = new CodePatternLearningSink(code);
     this.sinkManager = new LearningSinkManager([memorySink, this.patternSink]);
     this.reviewer = new LearningReviewCoordinator(this.sinkManager);
@@ -451,8 +452,24 @@ export class LearningService {
             const cached = candidateResults[identity];
             const entry = options.curation?.delta.entries.find(value => curationCandidateId(options.curation!.delta.operationId, value) === candidate.candidateId);
             let outcome: LearningReviewOutcome;
-            if (entry?.target) {
-              // Existing sink cannot CAS a target reference. Inspect inside the review owner, preserve a proposal, never mutate the target.
+            if (entry?.target && cached && ['captured', 'duplicate'].includes(cached.status)) outcome = cached;
+            else if (entry?.target && this.memorySink.supportsCorrections()) {
+              try {
+                // Reconciliation of an already committed exact operation is read-only;
+                // it must survive later source changes or episode completion.
+                const replay = await this.memorySink.replayCorrection(options.curation!.delta, entry, options.curation!.binding);
+                const correctionReviewer = new LearningReviewCoordinator(new LearningSinkManager([
+                  this.memorySink.correctionSink(options.curation!.delta, entry, options.curation!.binding),
+                ]));
+                outcome = replay ? { kind: normalized.kind, status: 'captured', sink: 'memory', id: replay.id,
+                  reason: 'Reconciled the existing committed correction receipt.',
+                  decision: createLearningDecision(normalized, normalized, 'curation:' + options.curation!.delta.operationId, outcomes.length) }
+                  : (await correctionReviewer.review([normalized], explicit, true))[0]!;
+              } catch (error) {
+                outcome = { kind: normalized.kind, status: 'sink-failed', sink: 'memory', reason: error instanceof Error ? error.message : String(error),
+                  decision: createLearningDecision(normalized, normalized, 'curation:' + options.curation!.delta.operationId, outcomes.length) };
+              }
+            } else if (entry?.target) {
               const target = await this.memory.read(entry.target.id, false).catch(() => null);
               const current = target && target.provenance?.workspace
                 && this.memory.resolveWorkspace(target.provenance.workspace) === normalized.workspace
@@ -460,7 +477,7 @@ export class LearningService {
               outcome = current ? (await this.reviewer.review([{ ...normalized, verified: false }], explicit, true))[0]!
                 : { kind: normalized.kind, status: 'rejected', reasonCode: 'evidence-invalid', reason: 'CURATION_TARGET_STALE_OR_UNAVAILABLE',
                   decision: createLearningDecision(normalized, normalized, 'curation:' + options.curation!.delta.operationId, outcomes.length) };
-              if (current) outcome.reason = 'Target lineage cannot be atomically compared by the current sink; counterexample/refinement remains pending.';
+              if (current) outcome.reason = 'CURATION_PROMOTION_UNAVAILABLE: enable the experience Memory host and bind this task episode, then retry the same delta.';
             } else outcome = cached && !['sink-failed', 'sink-unavailable'].includes(cached.status)
               ? cached : (await this.reviewer.review([normalized], explicit, true))[0]!;
             if (entry) outcome.curation = { operationId: options.curation!.delta.operationId, entryFingerprint: curationEntryFingerprint(entry),

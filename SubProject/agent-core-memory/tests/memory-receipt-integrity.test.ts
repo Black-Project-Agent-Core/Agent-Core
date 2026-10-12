@@ -61,3 +61,14 @@ test('retained attempt identity cannot be replaced by a conflicting recent expos
  const file=path.join(paths.state,'retrieval-ledger.jsonl'),rows=(await readFile(file,'utf8')).trim().split('\n').map(line=>JSON.parse(line));rows.find(row=>row.attemptId===hit.retrievalEvidence.attemptId).payloadDigest='sha256:'+'f'.repeat(64);await writeFile(file,rows.map(row=>JSON.stringify(row)).join('\n')+'\n');
  await expect(service.recordUseReceipt({useId:'conflicting-telemetry',taskId:'task-race',workspace:'agent-core',retrievalAttemptId:hit.retrievalEvidence.attemptId,memoryId:record.id,contentDigest:hit.retrievalEvidence.contentDigest,applicability:'applied',result:'unavailable',reasonCode:'reported'})).rejects.toThrow('MEMORY_RETRIEVAL_ATTEMPT_CONFLICT');
 });
+
+test('retained ranked exposure compares score fields by meaning rather than insertion order',async()=>{
+ const{service,dir}=await setup(),record=await service.remember({content:'Ranked receipt source',provenance:{workspace:'agent-core',files:[]}}),paths=resolveMemoryPaths(dir,dir),ledger=new MemoryRetrievalLedger(paths),digest=memoryFeedbackContentDigest(record),now=new Date().toISOString();
+ const attempt:any={version:1,attemptId:'ordered-score-attempt',taskId:'task-race',workspace:'agent-core',surface:'memory_recall',trigger:'explicit',startedAt:now,completedAt:now,retrievalStatus:'succeeded',deliveryStatus:'returned-to-controller',candidateCount:1,selectedCount:1,exposures:[{memoryId:record.id,rank:1,disposition:'selected',handoffStatus:'returned-to-controller',recordFingerprint:memoryRecordFingerprint(record.id,record.updatedAt),contentDigest:digest,scoreSummary:{semantic:0.8,lexical:0.4}}]};
+ await ledger.record(attempt);
+ const receipt=await ledger.recordUseReceipt({useId:'ordered-score-use',retrievalAttemptId:attempt.attemptId,taskId:'task-race',workspace:'agent-core',memoryId:record.id,contentDigest:digest,applicability:'applied',result:'unavailable',reasonCode:'controller-reported'},digest);
+ expect(receipt.duplicate).toBe(false);
+ const reordered={...attempt,exposures:[{...attempt.exposures[0],scoreSummary:{lexical:0.4,semantic:0.8}}]};
+ expect((await ledger.record(reordered)).duplicate).toBe(true);
+ await expect(ledger.record({...reordered,exposures:[{...reordered.exposures[0],scoreSummary:{lexical:0.9,semantic:0.8}}]})).rejects.toThrow('MEMORY_RETRIEVAL_ATTEMPT_CONFLICT');
+});

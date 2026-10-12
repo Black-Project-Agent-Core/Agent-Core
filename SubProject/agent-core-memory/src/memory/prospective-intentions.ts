@@ -33,10 +33,10 @@ export function evaluateIntentions(items:readonly WorkingItem[],observation:{now
  const parsed=intentionObservationSchema.parse({...observation,limit});
  const obligations=items.filter(item=>item.kind==='obligation');
  if(obligations.length>64)throw new Error('MEMORY_INTENTION_INPUT_LIMIT');
- const values=obligations.map(item=>({item,decoded:decodeIntention(item.text)})).filter(({decoded})=>decoded.status!=='ordinary').sort((a,b)=>a.item.id<b.item.id?-1:a.item.id>b.item.id?1:0);
+ const values=obligations.map(item=>({item,decoded:decodeIntention(item.text)})).filter(({decoded})=>decoded.status!=='ordinary');
  const time=instant.safeParse(parsed.now),now=time.success?Date.parse(time.data):NaN;
  const keys=new Set(parsed.eventKeys);
- return {items:values.slice(0,limit).map(({item,decoded})=>{
+ const evaluated=values.map(({item,decoded})=>{
   let status:IntentionEvaluation['items'][number]['status']='unknown';
   if(item.state==='resolved')status='resolved';
   else if(decoded.status==='valid'&&Number.isFinite(now)){
@@ -45,7 +45,11 @@ export function evaluateIntentions(items:readonly WorkingItem[],observation:{now
    else status=(value.cue.kind==='at-or-after'?now>=Date.parse(value.cue.instant):keys.has(value.cue.key))?'eligible':'waiting';
   }
   return {itemId:item.id,status};
- }),truncated:values.length>limit,advisory:true};
+ });
+ // Classify before bounding so earlier waiting/resolved IDs cannot hide due work.
+ evaluated.sort((a,b)=>Number(b.status==='eligible')-Number(a.status==='eligible')
+  || (a.itemId<b.itemId?-1:a.itemId>b.itemId?1:0));
+ return {items:evaluated.slice(0,limit),truncated:evaluated.length>limit,advisory:true};
 }
 export function intentionUpsert(itemId:string,value:ProspectiveIntention,sourceRefs:SourceRef[]):WorkingStateChange {
  return workingStateChangeSchema.parse({op:'upsert',item:{id:itemId,kind:'obligation',text:encodeIntention(value),critical:true,state:'active',sourceRefs,verification:{status:'unverified',evidence:[]}}});
