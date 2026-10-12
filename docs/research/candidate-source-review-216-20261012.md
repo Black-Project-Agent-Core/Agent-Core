@@ -245,3 +245,13 @@ Semua ID asli 1–216 dipertahankan. Detail commit, path source, cakupan pembaca
 - Plan integrasi P0–P5 terdahulu tetap ditutup; register ini menilai improvement berikutnya.
 
 Detail: [JSON source review](candidate-source-review-216-20261012.json).
+
+
+## Kelanjutan Batch 3–4 — draft 12 Oktober 2026
+
+Perencanaan lanjutan 12 Oktober 2026 memakai asumsi Batch 2 sudah terpasang sesuai kontraknya; ini baseline desain, bukan klaim aktivasi Windows. Urutan rencana 2 → 3 → 4. Batch 3 memilih #25 SimpleMem dalam enam fase untuk menghubungkan rencana 2–4 subpertanyaan eksplisit ke recall Memory canonical berbatas melalui controller context existing. Tidak mengubah ranking global, tidak memakai planner LLM, dan mempertahankan snapshot/discovery Skill, digest, grants serta receipt Batch 2. #47 lexical MMR tetap gap tersendiri di luar batch. Batch 4 memilih #138 Sindie dalam lima fase untuk review visual per kriteria yang terikat source digest dan view overview/crop milik image_inspect existing; penilaian tetap berasal dari controller, bukan quality oracle atau gate ekspor. Batch 4 tidak mengubah retrieval Batch 3. Keduanya tanpa runtime donor, dependency produksi, store paralel, atau perubahan nama runtime/memory. Keenam kandidat Batch 1–2 sudah diimplementasikan pada source Linux; dua kandidat baru hanya dialokasikan ke draft, 208 entri lainnya tetap di ledger dengan keputusan masing-masing. Dua plan menunggu review pengguna; tidak ada implementasi Batch 3/4 atau pemasangan Windows pada pekerjaan perencanaan ini.
+
+- [Batch 3 — Retrieval Memory multi-query berbatas](../plans/2026-10-12-batch-03-bounded-memory-subquestions.md): #25; enam fase; owner ExternalControllerLearningService dan dispatcher/Memory canonical existing.
+- [Batch 4 — Review visual terikat gambar dan view](../plans/2026-10-12-batch-04-view-bound-visual-review.md): #138; lima fase; owner image_inspect existing.
+
+Keputusan mekanisme pada 216 entri tetap 88 reuse / 54 defer / 15 extend / 38 reject / 21 no-source. Alokasi draft tidak mengubahnya menjadi implementasi atau bukti manfaat. Entri #47, #120, #127, #131, #135, #144, dan #164 tetap kandidat extend yang belum dialokasikan; tidak disisipkan ke dua plan baru untuk menambah jumlah adopsi. Baseline source terinspeksi 1657e52be193c8f55cb306397b5d0004d595bd8b; laporan Windows Batch 2 diselaraskan sebagai bukti aktual tersendiri saat diterima.

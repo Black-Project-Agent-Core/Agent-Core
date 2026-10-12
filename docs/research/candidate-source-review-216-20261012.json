@@ -3,7 +3,7 @@
   "reviewDate": "2026-10-12",
   "scope": "All 216 original discovery entries; focused source analysis where available, not full-codebase execution or proof of benefit.",
   "baselineAgentCore": "38b00b53650b2893017e50df852013ef270902eb",
-  "planSequence": "Batch 1 first; Batch 2 drafted only while Batch 1 implementation is underway.",
+  "planSequence": "Design continuation assumes Batch 2 fully installed according to its committed contract. Batch 3 and Batch 4 are drafts for user review, planned in order 2 -> 3 -> 4; this assumption is not a claim of observed Windows deployment.",
   "counts": {
     "reuse": 88,
     "defer": 54,
@@ -502,7 +502,7 @@
       ],
       "qualityReview": "2026-10-12 one-pass mechanism comparison corrected prior reuse verdict; stronger candidate submechanism identified within the same native owner.",
       "reviewPartition": "001-054",
-      "planAllocation": "reviewed-not-assigned-to-batch-02",
+      "planAllocation": "batch-02-source-implemented-windows-report-awaited",
       "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
     },
     {
@@ -1182,7 +1182,7 @@
       ],
       "inspectionLimit": "Focused static inspection; donor not installed, imported, executed or tested.",
       "reviewPartition": "001-054",
-      "planAllocation": "reviewed-not-assigned-to-batch-02",
+      "planAllocation": "batch-02-source-implemented-windows-report-awaited",
       "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
     },
     {
@@ -1737,7 +1737,7 @@
       ],
       "qualityReview": "2026-10-12 one-pass mechanism comparison corrected prior reuse verdict; stronger candidate submechanism identified within the same native owner.",
       "reviewPartition": "001-054",
-      "planAllocation": "reviewed-not-assigned-to-batch-02",
+      "planAllocation": "batch-03-draft-bounded-memory-subquestions-not-implemented",
       "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
     },
     {
@@ -6056,7 +6056,7 @@
         }
       ],
       "reviewPartition": "055-108",
-      "planAllocation": "batch-01",
+      "planAllocation": "batch-01-source-implemented-windows-reported-complete",
       "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
     },
     {
@@ -11983,7 +11983,7 @@
         "src/mcp/handler.ts"
       ],
       "reviewPartition": "109-162",
-      "planAllocation": "batch-01",
+      "planAllocation": "batch-01-source-implemented-windows-reported-complete",
       "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
     },
     {
@@ -12341,7 +12341,7 @@
         "src/security/verified-result-artifact.ts"
       ],
       "reviewPartition": "109-162",
-      "planAllocation": "reviewed-not-assigned-to-batch-02",
+      "planAllocation": "batch-04-draft-view-bound-visual-review-not-implemented",
       "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
     },
     {
@@ -16244,7 +16244,7 @@
         ]
       },
       "reviewPartition": "163-216",
-      "planAllocation": "batch-01",
+      "planAllocation": "batch-01-source-implemented-windows-reported-complete",
       "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
     },
     {
@@ -18295,7 +18295,7 @@
       },
       "comparisonUpdate": "Reassessed against latest instruction: improve or replace weaker internals in their existing owner; do not retain them merely because a capability exists.",
       "reviewPartition": "163-216",
-      "planAllocation": "reviewed-not-assigned-to-batch-02",
+      "planAllocation": "batch-02-source-implemented-windows-report-awaited",
       "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
     },
     {
