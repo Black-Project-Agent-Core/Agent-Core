@@ -9,21 +9,36 @@ import { evidenceDirectoryIdentity, evidenceDigest, evidenceError, evidencePathK
 type Status = 'pass' | 'fail' | 'unavailable';
 const id=z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/);
 const line=z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
-const spec=z.strictObject({schemaVersion:z.literal(1),documents:z.array(z.strictObject({id,path:z.string().min(1).max(2000),
-  digest:z.string().regex(/^sha256:[a-f0-9]{64}$/)})).min(1).max(128),links:z.array(z.strictObject({
+const documentSpec=z.strictObject({id,path:z.string().min(1).max(2000),
+  digest:z.string().regex(/^sha256:[a-f0-9]{64}$/)});
+const lineRange=z.strictObject({start:line,end:line}).refine(r=>r.end>=r.start);
+const linkSpec=z.strictObject({
   id,from:id,to:id,sourceLine:line,literal:z.string().min(1).max(2000),basis:z.enum(['root','source-directory']),
-  targetLines:z.strictObject({start:line,end:line}).refine(r=>r.end>=r.start).optional(),
-})).min(1).max(512)});
+  targetLines:lineRange.optional(),
+});
+const spec=z.strictObject({schemaVersion:z.literal(1),documents:z.array(documentSpec).min(1).max(128),
+  links:z.array(linkSpec).min(1).max(512)});
+const claimSpec=z.strictObject({id,from:id,lines:lineRange,linkIds:z.array(id).max(8)});
+const specV2=z.strictObject({schemaVersion:z.literal(2),documents:z.array(documentSpec).min(1).max(128),
+  links:z.array(linkSpec).max(512),expectedClaims:z.array(id).min(1).max(32),
+  claims:z.array(claimSpec).max(32)});
+type ClaimStatus='bound'|'unknown'|'failed'|'unavailable';
+export interface ClaimCoverage {
+  version:1;scope:'declared-claims-only';expected:number;supplied:number;bound:number;unknown:number;
+  missing:number;evidenceMissing:number;failed:number;unavailable:number;complete:boolean;
+  results:Array<{id:string;status:ClaimStatus;reason:string|null}>;
+}
 interface DocumentResult {
   id:string;path:string;digest:string;actualDigest:string|null;bytes:number|null;lineCount:number|null;
   identity:EvidenceFileIdentity|null;status:Status;reason:string|null;
 }
 export interface EvidenceLinkReport {
-  schemaVersion:1;algorithmRevision:'agent-core-evidence-links/v1';status:Status;reason:string|null;
+  schemaVersion:1|2;algorithmRevision:'agent-core-evidence-links/v1'|'agent-core-evidence-links/v2';status:Status;reason:string|null;
   manifestDigest:string|null;rootIdentity:EvidenceFileIdentity|null;
   documents:DocumentResult[];links:Array<{id:string;from:string;to:string;status:Status;reason:string|null}>;
   selectedDocuments:number;checkedDocuments:number;selectedLinks:number;checkedLinks:number;snapshotBytes:number;
   semanticSupport:'not-established';automaticApproval:false;memoryPersisted:false;mutatesSources:false;
+  claimCoverage?:ClaimCoverage;
 }
 const errorCode=(e:unknown)=>e instanceof Error&&/^EVIDENCE_[A-Z_]+$/.test(e.message)?e.message:
   ['EACCES','EPERM'].includes((e as NodeJS.ErrnoException)?.code??'')?'EVIDENCE_INPUT_UNREADABLE':'EVIDENCE_INPUT_UNAVAILABLE';
@@ -41,8 +56,9 @@ function resolveLiteral(root:string,sourcePath:string,literal:string,basis:'root
   relativePath(literal,true);const file=path.resolve(basis==='root'?root:path.dirname(path.join(root,sourcePath)),literal);
   if(!contained(root,file))throw evidenceError('PATH_ESCAPE');return file;
 }
-function emptyReport():EvidenceLinkReport {
-  return {schemaVersion:1,algorithmRevision:'agent-core-evidence-links/v1',status:'unavailable',reason:null,manifestDigest:null,
+function emptyReport(version:1|2=1):EvidenceLinkReport {
+  return {schemaVersion:version,algorithmRevision:version===2?'agent-core-evidence-links/v2':'agent-core-evidence-links/v1',
+    status:'unavailable',reason:null,manifestDigest:null,
     rootIdentity:null,documents:[],links:[],selectedDocuments:0,checkedDocuments:0,selectedLinks:0,checkedLinks:0,snapshotBytes:0,
     semanticSupport:'not-established',automaticApproval:false,memoryPersisted:false,mutatesSources:false};
 }
@@ -51,7 +67,44 @@ function conclude(report:EvidenceLinkReport):EvidenceLinkReport {
   report.checkedDocuments=report.documents.filter(d=>d.status!=='unavailable').length;
   report.checkedLinks=report.links.filter(l=>l.status!=='unavailable').length;
   report.status=all.some(r=>r.status==='unavailable')?'unavailable':all.some(r=>r.status==='fail')?'fail':'pass';
+  const coverage=report.claimCoverage;
+  if(coverage) {
+    if(coverage.unknown>0||coverage.unavailable>0) report.status='unavailable';
+    else if(coverage.failed>0&&report.status!=='unavailable') report.status='fail';
+    if(!coverage.complete&&report.status==='pass') report.status='unavailable';
+  }
   if(!all.length)report.status='unavailable';return report;
+}
+function projectClaims(m:z.infer<typeof specV2>,report:EvidenceLinkReport,lines:Map<string,string[]>):ClaimCoverage {
+  const claimed=new Map(m.claims.map(c=>[c.id,c]));
+  const documents=new Map(report.documents.map(d=>[d.id,d]));
+  const links=new Map(report.links.map(l=>[l.id,l]));
+  const results:ClaimCoverage['results']=[];
+  for(const id of m.expectedClaims){
+    const row=claimed.get(id);
+    let status:ClaimStatus='bound',reason:string|null=null;
+    if(!row){status='unknown';reason='claim-missing';}
+    else if(!row.linkIds.length){status='unknown';reason='claim-evidence-missing';}
+    else if(report.reason==='EVIDENCE_INPUT_CHANGED'){status='unavailable';reason='claim-source-changed';}
+    else {
+      const document=documents.get(row.from)!;
+      if(document.status==='unavailable'){status='unavailable';reason='claim-document-unavailable';}
+      else if(document.status==='fail'){status='failed';reason='claim-document-failed';}
+      else if(row.lines.end>(lines.get(row.from)?.length??0)){status='failed';reason='claim-lines-missing';}
+      else {
+        const bindings=row.linkIds.map(linkId=>links.get(linkId)!);
+        if(bindings.some(l=>l.status==='unavailable')){status='unavailable';reason='claim-link-unavailable';}
+        else if(bindings.some(l=>l.status==='fail')){status='failed';reason='claim-link-failed';}
+      }
+    }
+    results.push({id,status,reason});
+  }
+  const count=(s:ClaimStatus)=>results.filter(row=>row.status===s).length;
+  const missing=results.filter(row=>row.reason==='claim-missing').length;
+  const evidenceMissing=results.filter(row=>row.reason==='claim-evidence-missing').length;
+  const bound=count('bound'),unknown=count('unknown'),failed=count('failed'),unavailable=count('unavailable');
+  return {version:1,scope:'declared-claims-only',expected:results.length,supplied:m.claims.length,
+    bound,unknown,missing,evidenceMissing,failed,unavailable,complete:bound===results.length,results};
 }
 /** Exact snapshot recheck, including digest because coarse timestamps can miss same-size writes. */
 export async function revalidateEvidenceLinks(root:string,report:EvidenceLinkReport):Promise<void> {
@@ -69,12 +122,27 @@ export async function revalidateEvidenceLinks(root:string,report:EvidenceLinkRep
   }
 }
 export async function verifyEvidenceLinks(root:string,manifest:unknown):Promise<EvidenceLinkReport> {
-  const report=emptyReport();const parsed=spec.safeParse(manifest);
+  const isV2=!!manifest&&typeof manifest==='object'&&'schemaVersion' in manifest&&manifest.schemaVersion===2;
+  const report=emptyReport(isV2?2:1);
+  const parsed=(isV2?specV2:spec).safeParse(manifest);
   if(!parsed.success){report.reason='EVIDENCE_MANIFEST_INVALID';return report;}
   const m=parsed.data;report.selectedDocuments=m.documents.length;report.selectedLinks=m.links.length;
   const docById=new Map(m.documents.map(d=>[d.id,d]));
   if(docById.size!==m.documents.length||new Set(m.links.map(l=>l.id)).size!==m.links.length||m.links.some(l=>!docById.has(l.from)||!docById.has(l.to))) {
     report.reason='EVIDENCE_MANIFEST_IDENTITIES_INVALID';return report;
+  }
+  if(m.schemaVersion===2) {
+    const expected=new Set(m.expectedClaims),claims=new Set(m.claims.map(c=>c.id));
+    const linkById=new Map(m.links.map(l=>[l.id,l]));
+    if(expected.size!==m.expectedClaims.length||claims.size!==m.claims.length||
+      m.claims.some(c=>!expected.has(c.id)||!docById.has(c.from)||
+        new Set(c.linkIds).size!==c.linkIds.length||c.linkIds.some(linkId=>{
+          const l=linkById.get(linkId);
+          return !l||l.from!==c.from||l.sourceLine<c.lines.start||
+            l.sourceLine>c.lines.end||!l.targetLines;
+        }))||m.claims.reduce((n,c)=>n+c.linkIds.length,0)>256) {
+      report.reason='EVIDENCE_CLAIM_ASSOCIATIONS_INVALID';return report;
+    }
   }
   report.manifestDigest=evidenceDigest(Buffer.from(JSON.stringify(m),'utf8'));
   try {
@@ -122,5 +190,6 @@ export async function verifyEvidenceLinks(root:string,manifest:unknown):Promise<
     report.reason='EVIDENCE_INPUT_CHANGED';
     for(const l of report.links){l.status='unavailable';l.reason='EVIDENCE_INPUT_CHANGED';}
   }
+  if(m.schemaVersion===2) report.claimCoverage=projectClaims(m,report,linesById);
   return conclude(report);
 }
