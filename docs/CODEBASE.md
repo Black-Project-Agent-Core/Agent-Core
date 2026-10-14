@@ -1,5 +1,16 @@
 # Agent Core Codebase Map
 
+## Batch 9–10 Windows implementation — 2026-10-15 (source built; activation separated)
+
+The active Windows source is `E:\Projects\Agent-Core` on `codex/cumulative-learning-workflow`. Batch 7–8 Windows history was published to remote main as merge `c7596b0a1b087b7d5fe9fff9a21d6804708c4d78`, retaining Linux publication `4a7478d67288e44fd39056681afaa6871313ca11` and Windows commit `1cdad890b9a82a944637ad91665c0e83387a993d` as ancestors; no force push or prior source rollback.
+
+**Batch 9 #135** extends `src/verification/evidence-links.ts` and `scripts/verify/verify-evidence-links.mjs` on the existing snapshot verifier. Strict manifest v2 adds expectedClaims (1–32), explicit claim→source/target anchor bindings and bounded `claimCoverage`; v1 and CLI 0/1/2 semantics remain. Official Windows build exited 0, and a genuine 3-claim source-anchor CLI run produced 3/3 bound, exit0 with a hash-verified persistent JSON report. This is **structural association**, not semantic support/truth. No added MCP tool, reviewer, store or auto-approval. Details: `docs/Batch-09-Windows-Implementation-20261015.md`.
+
+**Batch 10 #144** adds optional `sourceFiles` (1–8 local UTF-8 text paths; overview only) to the existing `imageInspectSchema`. Internal `src/rdc/tools/image-source-dependencies.ts` reuses file permissions, `decideToolEvidenceCapture('read_file',...)` and `readEvidenceSnapshot` for immutable expected text-source digests and bounded compare/final recheck. Crop inherits overview source baseline; review refuses differing source snapshots. `sourceDependencies` independently reports not-requested/current/changed/unavailable with 4 KiB metadata cap, 2 MiB/file, two-pass 32 MiB invocation cap, 15 minute source TTL, no source bodies/paths in report; declaredDependenciesOnly and derivationVerified:false are explicit. Existing raster geometry, digest and `bindingStatus` stay raster-scoped. Official build PID21416 exited0 with path policy372/0. No renderer, binary closure, new memory/writer, provider or export gate. Details: `docs/Batch-10-Windows-Implementation-20261015.md`.
+
+Compiled schema from registration/Zod: 75 reviewed tools/124403 bytes and full 78 client tools/130539 bytes (131072 limit, 533 spare), SHA256 `605fa606c60cff875272e3f438f4cc69e82fb0a5213ad15ef2d8039a3deefb45`. Actual installed private app metadata 1.0.3; same-app plugin wrapper 1.0.4 ZIP prepared (SHA256 `93986b888f92a8de78315d0bf6fc2a8ddd83987eb5cfa8863ba6febac46136d9`). **Plugin upload, client refresh, resident activation, and real sourceFiles image call are not yet verified; no restart was done while upload remained pending.** Batch 9 CLI needs no resident restart. Follow-up only after user completes the exact app upload/activation handoff. No Batch 11–12, Consumer or Invocate work was executed.
+
+
 ## Batch 7–8 — source implemented and built, 2026-10-14
 
 <!-- batch07-08-current:start -->

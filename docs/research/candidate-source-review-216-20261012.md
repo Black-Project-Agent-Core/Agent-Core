@@ -296,3 +296,12 @@ Batch 3–4 COMPLETE untuk kontrak yang diterima. Consumer hanya pengikatan invo
 - Plan integrasi P0–P5 terdahulu tetap ditutup; register ini menilai improvement berikutnya.
 
 Detail: [JSON source review](candidate-source-review-216-20261012.json).
+
+## Windows Batch 9–10 selected-submechanism outcome — 2026-10-15
+
+Historical discovery decisions, donor pins and all 216 IDs are preserved. This is a bounded execution annotation, not a reclassification of the full donor families.
+
+- **#135 — RLM-FORGE/Ouroboros:** the selected claim ID → validated local document/line/link anchor mechanism is implemented through `src/verification/evidence-links.ts` and `scripts/verify/verify-evidence-links.mjs`. v1 remains available; v2 reports explicit expected-claim coverage. Official Windows build passed and an actual report anchored 3/3 declared claims with CLI exit 0. Source linkage does not prove semantic entailment; no model reviewer or new MCP tool was added. See `docs/Batch-09-Windows-Implementation-20261015.md`.
+- **#144 — slides-grab only:** declared local UTF-8 dependency fingerprint freshness is implemented in the existing image inspector. `image_inspect(overview)` gains optional `sourceFiles` (1–8), while crop/review inherit an immutable view baseline and independently report sourceDependencies. No MinSync/Jikji/k-skill, binary asset closure, renderer or export gate was adopted. Source/build and the compiled schema are ready, but plugin v1.0.4 upload, resident/client activation and real preview usage remain pending. See `docs/Batch-10-Windows-Implementation-20261015.md`.
+
+Only Batch 9 → Batch 10 was executed from these instructions; Batch 11–12 remain separate plans.

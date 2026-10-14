@@ -7,6 +7,8 @@ import { validatePath } from './filesystem.js';
 import { openRegularFile } from '../utils/files/safe-regular-file.js';
 import { assertSameFileIdentity } from '../../security/file-identity.js';
 import { imageReviewCriteriaSchema, referencedReviewIds, buildImageReviewReport, type ImageReviewView } from './image-review.js';
+import {captureSourceDependencies, sampleSourceDependencies, completeSourceDependencies, noSourceDependencies,
+  type SourceSnapshot } from './image-source-dependencies.js';
 
 const INPUT_BYTES = 32 * 1024 * 1024;
 const INPUT_PIXELS = 24_000_000;
@@ -31,8 +33,9 @@ export const imageInspectSchema = z.strictObject({
   }).optional(),
   zoom: z.number().finite().min(1).max(16).optional(),
   criteria: imageReviewCriteriaSchema.optional(),
+  sourceFiles: z.array(z.string().min(1).max(4096)).min(1).max(8).optional(),
 }).superRefine((value,ctx)=>{
-  const invalid=(key:'format'|'maxEdge'|'viewId'|'rectangle'|'zoom'|'criteria',message:string)=>
+  const invalid=(key:'format'|'maxEdge'|'viewId'|'rectangle'|'zoom'|'criteria'|'sourceFiles',message:string)=>
     ctx.addIssue({code:'custom',path:[key],message});
   if(value.action==='overview'){
     for(const key of ['viewId','rectangle','zoom','criteria'] as const)
@@ -41,10 +44,11 @@ export const imageInspectSchema = z.strictObject({
     if(!value.viewId)invalid('viewId','Crop requires viewId');
     if(!value.rectangle)invalid('rectangle','Crop requires rectangle');
     if(value.criteria!==undefined)invalid('criteria','Not valid for crop');
+    if(value.sourceFiles!==undefined)invalid('sourceFiles','Only valid for overview');
   } else {
     if(!value.viewId)invalid('viewId','Review requires viewId');
     if(!value.criteria)invalid('criteria','Review requires criteria');
-    for(const key of ['format','maxEdge','rectangle','zoom'] as const)
+    for(const key of ['format','maxEdge','rectangle','zoom','sourceFiles'] as const)
       if(value[key]!==undefined)invalid(key,'Not valid for review');
   }
 });
@@ -52,7 +56,7 @@ export const imageInspectSchema = z.strictObject({
 type Rectangle = { x: number; y: number; width: number; height: number };
 type Dimensions = { width: number; height: number };
 type View = {
-  canonicalPath: string; digest: string; expiresAt: number;
+  canonicalPath: string; digest: string; expiresAt: number; sourceSnapshot:SourceSnapshot|null;
   original: Dimensions; displayed: Dimensions; sourceRect: Rectangle;
   /** Metadata is the exact immutable object emitted alongside the delivered image. */
   metadata: Readonly<ImageReviewView & Record<string,unknown>>;
@@ -160,11 +164,11 @@ export function createImageInspector() {
   const views = new Map<string, View>();
   return async (args: unknown): Promise<{ content: Array<Record<string, unknown>> }> => {
     // Bound review payload before any image I/O or view-state mutations.
-    if(args && typeof args==='object' && (args as {action?:unknown}).action==='review') {
+    if(args && typeof args==='object' && ((args as {action?:unknown}).action==='review'||'sourceFiles' in args)) {
       let size:number;
       try{size=Buffer.byteLength(JSON.stringify(args),'utf8');}
       catch{throw new Error('IMAGE_INSPECT_REVIEW_INPUT_INVALID');}
-      if(size>24*1024)throw new Error('IMAGE_INSPECT_REVIEW_INPUT_LIMIT');
+      if(size>24*1024)throw new Error('IMAGE_INSPECT_INPUT_LIMIT: maximum 24 KiB with review/sourceFiles');
     }
     const input = imageInspectSchema.parse(args);
     const now = Date.now();
@@ -179,23 +183,37 @@ export function createImageInspector() {
     if (active >= 2) throw new Error('IMAGE_INSPECT_BUSY: two image operations already active; retry after one finishes');
     active++;
     try {
+      // Validate and capture declared dependencies before raster decode/read.
+      const captured=input.action==='overview'&&input.sourceFiles
+        ? await captureSourceDependencies(input.sourceFiles):null;
       const source = await readSource(input.path);
       if (parent && (source.canonicalPath !== parent.canonicalPath || source.digest !== parent.digest)) {
         throw new Error('IMAGE_INSPECT_SOURCE_CHANGED: request overview again');
       }
+      const sourceSnapshot=input.action==='crop'?(parent?.sourceSnapshot??null):(captured?.snapshot??null);
+      const dependencyBudget=captured?.budget??{attempts:0};
+      const initialDependencies=captured?.observed??(sourceSnapshot
+        ? await sampleSourceDependencies(sourceSnapshot,dependencyBudget):undefined);
       if(input.action==='review') {
         const checked=reviewViews.map(({view})=>view!);
         if(checked.some(view=>view.canonicalPath!==source.canonicalPath||view.digest!==source.digest))
           throw new Error('IMAGE_INSPECT_SOURCE_CHANGED: source or view snapshot mismatch');
+        const reviewSnapshot=checked[0]?.sourceSnapshot??null;
+        if(checked.some(view=>(view.sourceSnapshot?.snapshotId??null)!==(reviewSnapshot?.snapshotId??null)))
+          throw new Error('IMAGE_INSPECT_DEPENDENCY_SNAPSHOT_MISMATCH');
         if(reviewViews.some(({id,view})=>views.get(id)!==view||view!.expiresAt<=Date.now()))
           throw new Error('IMAGE_INSPECT_VIEW_NOT_FOUND: expired or evicted during source read');
-        const report=buildImageReviewReport({criteria:input.criteria!,sourceDigest:source.digest,
+        const reportBase=buildImageReviewReport({criteria:input.criteria!,sourceDigest:source.digest,
           snapshotAt:new Date().toISOString(),views:checked.map(view=>({
             viewId:view.metadata.viewId,digest:view.metadata.digest,viewDigest:view.metadata.viewDigest,
             viewDigestAlgorithm:view.metadata.viewDigestAlgorithm,sourceRect:view.metadata.sourceRect,
             original:view.metadata.original,displayed:view.metadata.displayed,mimeType:view.metadata.mimeType,
             fidelity:view.metadata.fidelity,createdAt:view.metadata.createdAt,expiresAt:view.metadata.expiresAt,
           }))});
+        const reviewBudget={attempts:0};
+        const first=reviewSnapshot?await sampleSourceDependencies(reviewSnapshot,reviewBudget):undefined;
+        const deps=await completeSourceDependencies(reviewSnapshot,first,reviewBudget);
+        const report={...reportBase,sourceDependencies:deps};
         const json=JSON.stringify(report);
         if(Buffer.byteLength(json,'utf8')>32_768)throw new Error('IMAGE_INSPECT_REVIEW_OUTPUT_LIMIT');
         if(reviewViews.some(({id,view})=>views.get(id)!==view||view!.expiresAt<=Date.now()))
@@ -221,9 +239,13 @@ export function createImageInspector() {
       pipeline = format === 'png' ? pipeline.png() : pipeline.jpeg({ quality: 95, chromaSubsampling: '4:4:4' });
       const output = await pipeline.toBuffer();
       if (output.length > OUTPUT_BYTES) throw new Error('IMAGE_INSPECT_OUTPUT_LIMIT: maximum 2 MiB encoded; lower maxEdge/zoom, request a smaller crop, or explicitly choose JPEG');
+      const sourceDependencies=await completeSourceDependencies(sourceSnapshot,initialDependencies,dependencyBudget);
+      if(parent && (views.get(input.viewId!)!==parent||parent.expiresAt<=Date.now()))
+        throw new Error('IMAGE_INSPECT_VIEW_NOT_FOUND: expired or evicted before crop delivery');
       const viewId = randomUUID();
       const createdAt=new Date().toISOString();
-      const expiresAt = Date.now() + VIEW_TTL;
+      const expiresAt = Math.min(Date.now()+VIEW_TTL,sourceSnapshot?.expiresAt??Infinity,parent?.expiresAt??Infinity);
+      if(expiresAt<=Date.now())throw new Error('IMAGE_INSPECT_DEPENDENCY_SNAPSHOT_EXPIRED');
       const viewDigest=createHash('sha256').update(output).digest('hex');
       const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
       const resized = displayed.width !== sourceRect.width || displayed.height !== sourceRect.height;
@@ -232,6 +254,7 @@ export function createImageInspector() {
         viewDigest,viewDigestAlgorithm:'sha256-returned-image-bytes' as const,
         createdAt,expiresAt: new Date(expiresAt).toISOString(),
         original, displayed, sourceRect, mimeType, encodedBytes: output.length,
+        sourceDependencies,
         fileValidation: process.platform === 'linux' ? 'opened-descriptor target and parent identities' : 'parent identities; trusted local workspace required, no adversarial replacement guarantee',
         inputColor: { space: info.space, channels: info.channels, bitsPerSample: info.bitsPerSample ?? 8, embeddedProfile: info.hasProfile },
         outputColor: '8-bit sRGB; source color profiles converted by sharp; EXIF and other source metadata removed',
@@ -241,7 +264,7 @@ export function createImageInspector() {
         fidelity: format === 'jpeg' ? 'lossy JPEG quality 95, 4:4:4' : 'lossless PNG encoding',
         note: 'EXIF orientation normalized; every crop uses original oriented pixels. Resizing/interpolation adds no source information. Use returned displayed dimensions for coordinates; clients may transform images.',
       });
-      const view:View=Object.freeze({canonicalPath:source.canonicalPath,digest:source.digest,expiresAt,
+      const view:View=Object.freeze({canonicalPath:source.canonicalPath,digest:source.digest,expiresAt,sourceSnapshot,
         original:Object.freeze(original),displayed:Object.freeze(displayed),sourceRect:Object.freeze(sourceRect),metadata});
       while (views.size >= MAX_VIEWS) views.delete(views.keys().next().value!);
       views.set(viewId, view);

@@ -63,7 +63,9 @@ export function buildImageReviewReport(input:{
       declaredFail:statuses.filter(s=>s==='fail').length,
       declaredUnknown:statuses.filter(s=>s==='unknown').length,
       declaredNotAssessable:statuses.filter(s=>s==='not-assessable').length},
-    bindingStatus:'current-source-snapshot' as const,assessmentAuthority:'external-controller' as const,
+    bindingStatus:'current-source-snapshot' as const,bindingStatusScope:'raster-only' as const,
+    dependencySemantics:'Declared source byte freshness is independent of raster provenance; no renderer derivation is verified.' as const,
+    assessmentAuthority:'external-controller' as const,
     semanticVerification:'not-performed' as const,executionAuthority:false as const,
     advisory:'Controller declarations are not verified pixel judgments or task/quality decisions.',
   };

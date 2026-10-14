@@ -9,7 +9,8 @@ export const RDC_TOOL_METADATA = {
   image_inspect: {
     title: 'Inspect Local Image',
     description: `External controllers only. Local regular 8-bit PNG/JPEG/WebP under existing path permissions; no URL, animated or vector files. Use absolute paths, not ~.
-overview returns oriented image/viewId. crop needs that viewId and displayed-pixel rectangle {x,y,width,height}, top-left origin, right/bottom exclusive; every crop reads original pixels. zoom 1-16 adds no detail.
+overview returns oriented image/viewId; optional sourceFiles=[1..8 absolute local UTF-8 text paths] captures a declared dependency baseline (2MiB each). crop inherits the baseline; review rechecks it. current/changed/unavailable applies only to declared files, not verified render derivation or full dependency closure.
+crop uses viewId and displayed-pixel rectangle {x,y,width,height}, top-left origin, right/bottom exclusive; every crop reads original pixels. zoom 1-16 adds no detail.
 review binds caller-supplied criteria[].assessment to live source/view digests; it never judges pixels, verifies claims, or approves exports. Missing assessments stay unknown; pass/fail require evidenceViewIds. Max 16 criteria/8 unique views; review input 24KiB/output 32KiB.
 Views expire after 15 minutes or source change, scoped to credential and session header. Headerless clients sharing credentials share a view namespace. Re-observe on expired/foreign/evicted views.
 Input 32MiB/24M pixels. Image output max 1536 edge/1.5M pixels/2MiB encoded/3MiB result; PNG default, JPEG lossy, maxEdge 128-1536. Oversize: lower maxEdge or crop. Images and reviews never spill; capture metadata only, stricter workspace omission applies.`,

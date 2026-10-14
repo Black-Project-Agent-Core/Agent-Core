@@ -1,5 +1,11 @@
 # Agent Core Memory — Current Implemented State
 
+## Batch 9–10 Windows source and client handoff — 2026-10-15
+
+Batch 7–8 Windows branch was reconciled and remote main verified at `c7596b0a1b087b7d5fe9fff9a21d6804708c4d78` (parents Windows 1cdad89 and Linux 4a7478d). Batch 9 #135 extends the existing offline verifier with manifest v2 expectedClaims/claimCoverage; official build exit0, real source report 3/3 bound, CLI exit0 and persistent digest. That demonstrates association only, not semantic truth; v1, memory owner and public tool surface remain.
+
+Batch 10 #144 adds declared local UTF-8 `image_inspect.overview.sourceFiles` (1–8) with immutable sourceDependencies baseline, crop/review rechecks, per-file read_file policy and bounded snapshots; derived render lineage remains unverified. Official final Windows build PID21416 exit0, 372 authored paths / 0 exceptions. Compiled schema reviewed75/124403B; full78/130539B, SHA256 `605fa606c60cff875272e3f438f4cc69e82fb0a5213ad15ef2d8039a3deefb45`. Installed plugin admin metadata 1.0.3; same-app ZIP1.0.4 ready `SubProject/Agent-Core-ChatGPT-Plugin-Batch-09-10-v1.0.4.zip`, SHA256 `93986b888f92a8de78315d0bf6fc2a8ddd83987eb5cfa8863ba6febac46136d9`. **Upload, client refresh, resident load, and real preview sourceFiles use remain pending**; the resident was not restarted while upload is required. Source details: `docs/Batch-09-Windows-Implementation-20261015.md` and `docs/Batch-10-Windows-Implementation-20261015.md`. No Batch 11–12, Consumer, Invocate, release apply, credential or security changes.
+
 ## Batch 7–8 — source implemented and built, 2026-10-14
 
 <!-- batch07-08-current:start -->
