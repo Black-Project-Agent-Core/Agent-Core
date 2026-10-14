@@ -32,13 +32,27 @@ export interface CommandExecutionResult {
   pid: number;
   output: string;
   isBlocked: boolean;
+  processObservation?: ProcessObservation;
+  waitReason?: TimingInfo['exitReason'];
   timingInfo?: TimingInfo;
 }
+
+/** Read-only, bounded lifecycle evidence for one manager-owned process instance. */
+export type ProcessObservation = {
+  pid: number;
+  startTime: number;
+  observedAt: number;
+} & (
+  | { state: 'exit-observed'; basis: 'child-exit'; exitCode: number | null }
+  | { state: 'managed'; basis: 'managed-session' }
+  | { state: 'unavailable'; basis: 'unavailable'; reasonCode: 'missing' | 'replaced' | 'detached' | 'process-error' }
+);
+
 export interface TimingInfo {
   startTime: number;
   endTime: number;
   totalDurationMs: number;
-  exitReason: 'early_exit_quick_pattern' | 'early_exit_periodic_check' | 'process_exit' | 'timeout';
+  exitReason: 'early_exit_quick_pattern' | 'early_exit_periodic_check' | 'process_exit' | 'process_unavailable' | 'timeout';
   firstOutputTime?: number;
   lastOutputTime?: number;
   timeToFirstOutputMs?: number;

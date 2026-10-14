@@ -113,7 +113,11 @@ export async function externalControllerToolResult(input: {
       try {
         const prior = await service.failureContext({ sessionId, tool: input.tool, args: input.args, failure: input.result,
           invocationContext: context, repeated: input.repeated === true });
-        if (prior.capsule && await service.invocationDisclosureCurrent(context)) result = appendCapsule(result, prior.capsule);
+        if (prior.capsule && await service.invocationDisclosureCurrent(context)) {
+          result = appendCapsule(result, prior.capsule);
+          if (prior.deliveredMemories.length) await service.recordMemoryRecall(sessionId,
+            context?.workspace, prior.deliveredMemories, context);
+        }
       } catch {}
     }
   }

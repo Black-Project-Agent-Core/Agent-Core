@@ -2064,8 +2064,23 @@
       "inspectionLimit": "Focused static inspection; donor not installed, imported, executed or tested.",
       "qualityReview": "2026-10-12 one-pass check: reuse applies to the concrete submechanism described in currentGapVsAlreadyCovered, not merely presence of a similarly named native capability; no proven donor replacement identified in focused source scope.",
       "reviewPartition": "001-054",
-      "planAllocation": "reviewed-not-assigned-to-batch-02",
-      "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
+      "planAllocation": "batch-07-source-built-local-activation-pending",
+      "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code.",
+      "batch07": {
+        "date": "2026-10-14",
+        "status": "source-built-local-activation-pending",
+        "opportunityId": "AC-030-empty-vs-unavailable",
+        "previousPlanAllocation": "reviewed-not-assigned-to-batch-02",
+        "baseline": "06ffb7155cf59c3a0bb88bc970cb2b694805ddd8",
+        "mechanism": "Four-state legacy recall status; no failure-to-empty conversion or empty delivery credit.",
+        "owners": [
+          "src/learning/external-controller.ts",
+          "src/agent-knowledge-synthesis.ts"
+        ],
+        "verification": "Official Linux production build passed; no runtime branch or benefit claim.",
+        "localAdoption": "Windows integration, canonical Memory/Learning and scoped cleanup are pending.",
+        "report": "docs/Batch-07-08-Linux-Implementation-20261014.md"
+      }
     },
     {
       "id": 31,
@@ -2330,8 +2345,23 @@
       "inspectionLimit": "Focused static inspection; donor not installed, imported, executed or tested.",
       "qualityReview": "2026-10-12 one-pass check: reuse applies to the concrete submechanism described in currentGapVsAlreadyCovered, not merely presence of a similarly named native capability; no proven donor replacement identified in focused source scope.",
       "reviewPartition": "001-054",
-      "planAllocation": "reviewed-not-assigned-to-batch-02",
-      "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
+      "planAllocation": "batch-07-source-built-local-activation-pending",
+      "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code.",
+      "batch07": {
+        "date": "2026-10-14",
+        "status": "source-built-local-activation-pending",
+        "opportunityId": "AC-034-packet-budget-coverage",
+        "previousPlanAllocation": "reviewed-not-assigned-to-batch-02",
+        "baseline": "06ffb7155cf59c3a0bb88bc970cb2b694805ddd8",
+        "mechanism": "Coherent nine-section packet admission and bounded omission coverage; independent implementation without donor code.",
+        "owners": [
+          "src/learning/external-controller.ts",
+          "src/agent-knowledge-synthesis.ts"
+        ],
+        "verification": "Official Linux production build passed; no runtime branch or benefit claim.",
+        "localAdoption": "Windows integration, canonical Memory/Learning and scoped cleanup are pending.",
+        "report": "docs/Batch-07-08-Linux-Implementation-20261014.md"
+      }
     },
     {
       "id": 35,
@@ -5280,8 +5310,28 @@
         }
       ],
       "reviewPartition": "055-108",
-      "planAllocation": "reviewed-not-assigned-to-batch-02",
-      "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
+      "planAllocation": "batch-08-terminal-submechanism-source-built-local-activation-pending",
+      "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code.",
+      "batch08": {
+        "date": "2026-10-14",
+        "status": "source-built-local-activation-pending",
+        "opportunityId": "opp-090-scoped-progress-advice",
+        "selectedSubmechanism": "terminal-observation-vs-exit",
+        "previousPlanAllocation": "reviewed-not-assigned-to-batch-02",
+        "historicalDecision": "Framework rejection retained; only the independently implemented terminal submechanism is selected. Broader #90 progress/stagnation is out of scope.",
+        "baseline": "06ffb7155cf59c3a0bb88bc970cb2b694805ddd8",
+        "mechanism": "Read-only PID/startTime-bound owner observation; text remains a prompt hint; silent-exit-aware interaction wait and final snapshot delta.",
+        "owners": [
+          "src/rdc/terminal-manager.ts",
+          "src/rdc/types.ts",
+          "src/rdc/utils/process-detection.ts",
+          "src/rdc/tools/improved-process-tools.ts"
+        ],
+        "donorConcept": "sethdeckard/atria@a5e51c066bf604d9292b2eb8a791176d5cbe1909; classify.go and watch/tracker.go; MIT; no donor code/dependency/runtime copied.",
+        "verification": "Official combined Linux production build passed; runtime branches and benefit not exercised.",
+        "localAdoption": "Windows integration, canonical Memory/Learning and scoped cleanup are pending.",
+        "report": "docs/Batch-07-08-Linux-Implementation-20261014.md"
+      }
     },
     {
       "id": 70,

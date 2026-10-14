@@ -1,11 +1,11 @@
 /**
- * REPL and Process State Detection Utilities
- * Detects when processes are waiting for input vs finished vs running
+ * Output-only REPL prompt hints. Process exit requires owner lifecycle evidence.
  */
 
 export interface ProcessState {
   isWaitingForInput: boolean;
-  isFinished: boolean;
+  isFinished: false;
+  // Compatibility hint only; this field does not prove OS liveness.
   isRunning: boolean;
   detectedPrompt?: string;
   lastOutput: string;
@@ -24,32 +24,8 @@ const REPL_PROMPTS = {
   mongo: ['> ', '... ']
 };
 
-// Error patterns that indicate completion (even with errors)
-const ERROR_COMPLETION_PATTERNS = [
-  /Error:/i,
-  /Exception:/i,
-  /Traceback/i,
-  /SyntaxError/i,
-  /NameError/i,
-  /TypeError/i,
-  /ValueError/i,
-  /ReferenceError/i,
-  /Uncaught/i,
-  /at Object\./i, // Node.js stack traces
-  /^\s*\^/m       // Syntax error indicators
-];
-
-// Process completion indicators
-const COMPLETION_INDICATORS = [
-  /Process finished/i,
-  /Command completed/i,
-  /\[Process completed\]/i,
-  /Program terminated/i,
-  /Exit code:/i
-];
-
 /**
- * Analyze process output to determine current state
+ * Detect a possible input prompt; arbitrary output never proves completion.
  */
 export function analyzeProcessState(output: string, pid?: number): ProcessState {
   if (!output || output.trim().length === 0) {
@@ -63,7 +39,6 @@ export function analyzeProcessState(output: string, pid?: number): ProcessState 
 
   const lines = output.split('\n');
   const lastLine = lines[lines.length - 1] || '';
-  const lastFewLines = lines.slice(-3).join('\n');
 
   // Check for REPL prompts (waiting for input)
   const allPrompts = Object.values(REPL_PROMPTS).flat();
@@ -81,46 +56,7 @@ export function analyzeProcessState(output: string, pid?: number): ProcessState 
     };
   }
 
-  // Check for completion indicators
-  const hasCompletionIndicator = COMPLETION_INDICATORS.some(pattern => 
-    pattern.test(output)
-  );
-
-  if (hasCompletionIndicator) {
-    return {
-      isWaitingForInput: false,
-      isFinished: true,
-      isRunning: false,
-      lastOutput: output
-    };
-  }
-
-  // Check for error completion (errors usually end with prompts, but let's be thorough)
-  const hasErrorCompletion = ERROR_COMPLETION_PATTERNS.some(pattern => 
-    pattern.test(lastFewLines)
-  );
-
-  if (hasErrorCompletion) {
-    // Errors can indicate completion, but check if followed by prompt
-    if (detectedPrompt) {
-      return {
-        isWaitingForInput: true,
-        isFinished: false,
-        isRunning: true,
-        detectedPrompt,
-        lastOutput: output
-      };
-    } else {
-      return {
-        isWaitingForInput: false,
-        isFinished: true,
-        isRunning: false,
-        lastOutput: output
-      };
-    }
-  }
-
-  // Default: process is running, not clearly waiting or finished
+  // No prompt hint. Lifecycle remains unknown from text alone.
   return {
     isWaitingForInput: false,
     isFinished: false,
@@ -171,10 +107,7 @@ function escapeRegExp(string: string): string {
  */
 export function formatProcessStateMessage(state: ProcessState, pid: number): string {
   if (state.isWaitingForInput) {
-    return `Process ${pid} is waiting for input${state.detectedPrompt ? ` (detected: "${state.detectedPrompt.trim()}")` : ''}`;
-  } else if (state.isFinished) {
-    return `Process ${pid} has finished execution`;
-  } else {
-    return `Process ${pid} is running`;
+    return `Prompt detected; process ${pid} may be waiting for input${state.detectedPrompt ? ` (detected: "${state.detectedPrompt.trim()}")` : ''}`;
   }
+  return `No prompt detected for process ${pid}; lifecycle cannot be determined from output`;
 }

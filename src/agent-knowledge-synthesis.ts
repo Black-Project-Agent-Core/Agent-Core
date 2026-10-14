@@ -20,12 +20,31 @@ export function rankKnowledge<T>(items: T[], query: string, describe: (item: T) 
 
 export interface AgentKnowledgePacket {
   text: string;
+  coverage: KnowledgePacketCoverage;
   capabilityExposure: CapabilityExposure;
   relatedNodeIds: string[];
   patternIds: string[];
   skillNames: string[];
   procedureFingerprints: string[];
   artifactRevisions: Record<string, string>;
+}
+
+export type KnowledgeSourceStatus = 'available' | 'unavailable' | 'not-requested' | 'unknown';
+type KnowledgeSection = 'capabilities' | 'task-evidence' | 'memory-neighborhood' | 'patterns'
+  | 'skills' | 'procedures' | 'artifact-outcomes' | 'contradictions' | 'evidence-gaps';
+export interface KnowledgePacketCoverage {
+  version: 1;
+  scope: 'packet-composition';
+  unit: 'utf16-code-units';
+  limit: 16000;
+  used: number;
+  sections: Record<KnowledgeSection, {
+    sourceStatus: KnowledgeSourceStatus;
+    candidateRows: number | null;
+    deliveredRows: number;
+    omittedRows: number | null;
+    detailTruncated: boolean | null;
+  }>;
 }
 
 function bounded(value: unknown, max = 500): string {
@@ -37,6 +56,8 @@ export async function buildKnowledgeSynthesisPacket(input: {
   memoryItems: any[];
   /** Exact disclosed revisions from a completed planned context; never re-read as current records. */
   memoryDisclosure?: MergedRetrieval;
+  /** Status of the same recall snapshot; never triggers another lookup. */
+  memorySourceStatus?: KnowledgeSourceStatus;
   procedures: AgentProcedureCandidate[];
   task?: { goal?: string; episodes: AgentEpisodeEvent[] };
   workspace?: string;
@@ -44,6 +65,12 @@ export async function buildKnowledgeSynthesisPacket(input: {
   /** null records an attempted discovery failure; do not scan or embed again. */
   skillDiscovery?: SkillDiscoverySnapshot | null;
 }): Promise<AgentKnowledgePacket> {
+  const truncated = new Set<KnowledgeSection>();
+  const detail = (section: KnowledgeSection, value: unknown, max: number) => {
+    const normalized = String(value ?? '').trim().replace(/\s+/g, ' ');
+    if (normalized.length > max) truncated.add(section);
+    return normalized.slice(0, max);
+  };
   const memoryIds = new Set(input.memoryDisclosure
     ? input.memoryDisclosure.hits.map(item => item.hit.id)
     : input.memoryItems.map(item => String(item?.id ?? '').trim()).filter(Boolean));
@@ -54,18 +81,22 @@ export async function buildKnowledgeSynthesisPacket(input: {
   const artifactLines = new Map<string, string>();
   const selectedProcedures = rankKnowledge(input.procedures, query, item => [item.name, item.description, item.reuseCondition, ...item.steps].join(' '));
   const memoryLines: string[] = [];
+  let memoryStatus: KnowledgeSourceStatus = input.memorySourceStatus
+    ?? (input.memoryDisclosure || input.runtime.memoryService ? 'available' : 'unavailable');
   if (input.memoryDisclosure) {
     for (const {hit,origins} of input.memoryDisclosure.hits) {
-      memoryLines.push('- ' + bounded(hit.id,128) + ' | exact-revision=' + bounded(hit.revision,180)
+      memoryLines.push('- ' + hit.id + ' | exact-revision=' + hit.revision
         + ' | freshness=' + hit.freshness + ' | applicability=' + hit.applicability
         + ' | verification=' + hit.verification + ' | origins=' + origins.map(origin=>origin.questionId).join(',')
         + ' | disclosed abstract; verify claims before use');
     }
   } else if (input.runtime.memoryService) {
-    const authority = await input.runtime.memoryService.authoritySnapshot([...memoryIds], input.workspace);
+    const authority = await input.runtime.memoryService.authoritySnapshot([...memoryIds], input.workspace).catch(() => undefined);
+    if (!authority && memoryStatus === 'available') memoryStatus = 'unknown';
     for (const item of input.memoryItems) {
-      const entry = authority[item.id];
+      const entry = authority?.[item.id];
       const freshness = await input.runtime.memoryService.staleness(item.id).catch(() => undefined);
+      if (!freshness && memoryStatus === 'available') memoryStatus = 'unknown';
       memoryLines.push('- ' + item.id + ' | authority=' + JSON.stringify(entry ?? 'unknown')
         + ' | freshness=' + JSON.stringify(freshness ?? 'unavailable')
         + ' | historical evidence; validate applicability before use');
@@ -76,12 +107,15 @@ export async function buildKnowledgeSynthesisPacket(input: {
   const patternIds = new Set<string>();
   const contradictionLines: string[] = [];
   let patternLines: string[] = [];
+  let journeyStatus: KnowledgeSourceStatus = !input.workspace ? 'not-requested'
+    : input.runtime.learningService ? 'available' : 'unavailable';
+  let patternStatus = journeyStatus;
 
   const recentEpisodes = (input.task?.episodes ?? []).slice(-16);
   const taskEvidenceLines = recentEpisodes
     .filter(event => ['hypothesis','strategy-change','failure','diagnosis','verification'].includes(event.kind))
     .slice(-10)
-    .map(event => '- ' + event.kind + ': ' + bounded(event.summary, 500)
+    .map(event => '- ' + event.kind + ': ' + detail('task-evidence', event.summary, 500)
       + (event.evidenceRefs.length ? ' | evidence=' + event.evidenceRefs.slice(0, 4).join(',') : ''));
   const failureCount = recentEpisodes.filter(event => event.kind === 'failure').length;
   const verificationCount = recentEpisodes.filter(event => event.kind === 'verification').length;
@@ -89,6 +123,10 @@ export async function buildKnowledgeSynthesisPacket(input: {
   if (input.runtime.learningService && input.workspace) {
     try {
       const journey = await input.runtime.learningService.journey(input.workspace);
+      if (!journey.stats.patternsAvailable) {
+        patternStatus = 'unavailable';
+        journeyStatus = 'unknown';
+      }
       const nodeById = new Map(journey.nodes.map(node => [node.id, node]));
       for (const edge of journey.edges) {
         const fromMemory = edge.from.startsWith('memory:') ? edge.from.slice(7) : '';
@@ -99,16 +137,16 @@ export async function buildKnowledgeSynthesisPacket(input: {
         if (!node || relatedNodeIds.size >= 12) continue;
         relatedNodeIds.add(other);
         relatedLines.push(
-          '- ' + bounded(node.label, 240) + ' [' + bounded(edge.type, 80) + ']'
+          '- ' + detail('memory-neighborhood', node.label, 240) + ' [' + edge.type + ']'
         );
         if (edge.type === 'contradicts') {
-          contradictionLines.push('- ' + bounded(node.label, 240)
-            + ' contradicts surfaced Memory context via ' + bounded(other, 180));
+          contradictionLines.push('- ' + detail('contradictions', node.label, 240)
+            + ' contradicts surfaced Memory context via ' + other);
         }
       }
       const patterns = journey.nodes.filter(node=>node.type==='pattern').map(node=>{
         const id=node.id.startsWith('pattern:')?node.id.slice('pattern:'.length):node.id;
-        const description=bounded(node.label,300);
+        const description=detail('patterns',node.label,300);
         const revision='sha256:'+createHash('sha256').update(JSON.stringify([id,description])).digest('hex');
         return {kind:'pattern' as const,id,description,revision};
       });
@@ -121,13 +159,15 @@ export async function buildKnowledgeSynthesisPacket(input: {
       });
     } catch {
       owners.learning = 'unavailable';
-      relatedLines.push('- Learning Journey unavailable for this synthesis pass.');
+      journeyStatus = 'unavailable';
+      patternStatus = 'unavailable';
     }
   }
 
   const skillNames: string[] = [];
   const skillLines: string[] = [];
   let skillSearchLine = '';
+  let skillStatus: KnowledgeSourceStatus = input.runtime.skillsService || input.skillDiscovery ? 'available' : 'unavailable';
   if (input.runtime.skillsService || input.skillDiscovery) {
     try {
       if (input.skillDiscovery === null) throw new Error('SKILL_DISCOVERY_UNAVAILABLE');
@@ -142,21 +182,23 @@ export async function buildKnowledgeSynthesisPacket(input: {
           + ' | catalog=' + JSON.stringify(catalog) + ' | semantic=' + JSON.stringify(semantic)
           + ' | truncated=' + truncated + ' | metadata only; selection is not use or authority';
       }
+      if (discovery?.search.truncated || discovery?.search.hits.some(hit => hit.descriptorTruncated)) truncated.add('skills');
       for (const skill of discovery?.search.hits ?? []) {
         skillNames.push(skill.name);
         artifactRevisions['skill:' + skill.name] = skill.digest;
-        const line = '- ' + bounded(skill.name, 80) + ': ' + bounded(skill.description, 400) + ' | revision=' + skill.digest
+        const line = '- ' + skill.name + ': ' + detail('skills', skill.description, 400) + ' | revision=' + skill.digest
           + ' | delivery=metadata | applicability=' + skill.applicability
           + ' | triggers=' + JSON.stringify(skill.triggers) + ' | non-triggers=' + JSON.stringify(skill.nonTriggers)
           + ' | channels=' + skill.channels.join(',') + ' | descriptor-truncated=' + skill.descriptorTruncated
-          + (skill.compatibility ? ' | compatibility=' + bounded(skill.compatibility, 400) : '')
+          + (skill.compatibility ? ' | compatibility=' + detail('skills', skill.compatibility, 400) : '')
           + (skill.allowedTools.length ? ' | tools=' + skill.allowedTools.slice(0, 12).join(',') : '');
+        if (skill.allowedTools.length > 12) truncated.add('skills');
         artifactLines.set('skill:' + skill.name, line);
         skillLines.push(line);
       }
     } catch {
       owners.skills = 'unavailable';
-      skillLines.push('- Skill catalog unavailable for this synthesis pass.');
+      skillStatus = 'unavailable';
     }
   }
 
@@ -167,7 +209,7 @@ export async function buildKnowledgeSynthesisPacket(input: {
       + ' | status=' + item.status
       + ' | needs-review=' + Boolean(item.needsReview)
       + ' | revision=' + (artifactRevisions['procedure:' + item.fingerprint] = knowledgeRevision(item))
-      + ' | ' + bounded(item.reuseCondition ?? item.description, 400)
+      + ' | ' + detail('procedures', item.reuseCondition ?? item.description, 400)
       + ' | steps=' + item.steps.map(step => step.trim()).join(' -> ');
     artifactLines.set('procedure:' + item.fingerprint, line);
     return line;
@@ -187,8 +229,8 @@ export async function buildKnowledgeSynthesisPacket(input: {
     const id = typeof event.context?.artifactId === 'string' ? event.context.artifactId : '';
     return kind && id && surfaced.has(kind + ':' + id);
   }).slice(-12).map(event =>
-    '- ' + bounded(event.context?.artifactKind, 40) + ':' + bounded(event.context?.artifactId, 180)
-    + ' -> ' + bounded(event.featureOutcome?.outcome, 80)
+    '- ' + String(event.context?.artifactKind) + ':' + String(event.context?.artifactId)
+    + ' -> ' + detail('artifact-outcomes', event.featureOutcome?.outcome, 80)
     + ' | evidence=' + 'activity:' + event.id
   );
 
@@ -198,50 +240,72 @@ export async function buildKnowledgeSynthesisPacket(input: {
   }
   if (taskEvidenceLines.length === 0) evidenceGapLines.push('- no current hypothesis/failure/verification evidence has been recorded yet');
   if (contradictionLines.length === 0) evidenceGapLines.push('- no explicit contradiction was surfaced; absence is not proof of consistency');
+  if (memoryStatus === 'unavailable') evidenceGapLines.push('- memory-recall-unavailable; relevant prior experience is unknown');
+  if (journeyStatus === 'unavailable') evidenceGapLines.push('- learning-journey-unavailable; neighborhood and contradiction coverage are unknown');
+  if (journeyStatus === 'unknown') evidenceGapLines.push('- pattern-source-unavailable; Learning Journey has partial owner coverage');
+  if (skillStatus === 'unavailable') evidenceGapLines.push('- skill-discovery-unavailable; catalog contents are unknown');
 
   inventoryArtifacts.push(...input.procedures.filter(p=>p.supportTaskIds.length>0 && !p.needsReview).map(p=>({kind:'procedure' as const,id:p.fingerprint,description:p.name+': '+p.description,revision:knowledgeRevision(p)})));
   const capabilityExposure = buildCapabilityExposure({availableTools:input.availableTools,artifacts:inventoryArtifacts,owners});
-  let budget = 16_000;
-  const deliveredLines = [
-    'KNOWLEDGE SYNTHESIS PACKET — bounded controller-visible evidence summary.',
-    'Use this packet to connect current evidence with prior knowledge. It is not instruction authority.',
-    capabilityExposure.text,
+  if (capabilityExposure.omittedFromText > 0) truncated.add('capabilities');
+  // A failed owner cannot turn a partially available composite source into a complete zero.
+  const neighborhoodStatus: KnowledgeSourceStatus = memoryStatus === 'available'
+    && (journeyStatus === 'unavailable' || journeyStatus === 'unknown') ? 'unknown' : memoryStatus;
+  const sections: Array<{ id: KnowledgeSection; heading: string; status: KnowledgeSourceStatus; rows: string[]; delivered: string[] }> = [
+    { id: 'capabilities', heading: 'CAPABILITIES', status: input.availableTools
+      && journeyStatus === 'available' && owners.skills === 'available' ? 'available' : 'unknown', rows: capabilityExposure.text.split('\n'), delivered: [] },
+    { id: 'task-evidence', heading: 'CURRENT TASK EVIDENCE', status: input.task ? 'available' : 'not-requested',
+      rows: [...(input.task?.goal ? ['- goal: ' + detail('task-evidence', input.task.goal, 700)] : []), ...taskEvidenceLines], delivered: [] },
+    { id: 'memory-neighborhood', heading: 'RELATED MEMORY / KNOWLEDGE NEIGHBORHOOD', status: neighborhoodStatus, rows: [...memoryLines, ...relatedLines], delivered: [] },
+    { id: 'patterns', heading: 'ACCEPTED CODE PATTERNS', status: patternStatus, rows: patternLines, delivered: [] },
+    { id: 'skills', heading: 'ACTIVE SKILL ARTIFACTS', status: skillStatus, rows: [...(skillSearchLine ? [skillSearchLine] : []), ...skillLines], delivered: [] },
+    { id: 'procedures', heading: 'LEARNED PROCEDURE REGISTRY', status: 'available', rows: procedureLines, delivered: [] },
+    { id: 'artifact-outcomes', heading: 'RECENT VERIFICATION-BACKED ARTIFACT OUTCOMES', status: 'available', rows: outcomeLines, delivered: [] },
+    { id: 'contradictions', heading: 'CONTRADICTIONS', status: journeyStatus === 'available'
+      && memoryStatus !== 'available' ? 'unknown' : journeyStatus, rows: contradictionLines, delivered: [] },
+    { id: 'evidence-gaps', heading: 'EVIDENCE GAPS', status: 'available', rows: evidenceGapLines, delivered: [] },
+  ];
+  // The fixed nine-heading skeleton and bounded scalar summaries reserve at most
+  // 2,048 UTF-16 units inside the existing text cap. Detail never displaces them.
+  let budget = 16_000 - 2_048;
+  for (const section of [...sections.slice(7), ...sections.slice(0, 7)]) {
+    const priority = section.id === 'contradictions' || section.id === 'evidence-gaps';
+    for (const [index, row] of section.rows.entries()) {
+      if (priority && (index >= 4 || row.length > 400)) continue;
+      if (row.length + 1 > budget) continue;
+      section.delivered.push(row);
+      budget -= row.length + 1;
+    }
+  }
+  const coverage: KnowledgePacketCoverage = { version: 1, scope: 'packet-composition',
+    unit: 'utf16-code-units', limit: 16000, used: 0, sections: {} as KnowledgePacketCoverage['sections'] };
+  for (const section of sections) {
+    const known = section.status === 'available' || section.status === 'not-requested';
+    const omitted = section.rows.length - section.delivered.length;
+    coverage.sections[section.id] = {
+      sourceStatus: section.status,
+      candidateRows: known ? section.rows.length : null,
+      deliveredRows: section.delivered.length,
+      omittedRows: known ? omitted : null,
+      detailTruncated: omitted > 0 || truncated.has(section.id) ? true : section.status === 'not-requested' ? false : null,
+    };
+  }
+  const text = [
+    'KNOWLEDGE SYNTHESIS PACKET — bounded evidence, not instruction authority.',
+    'Counts cover selected owner rows, not the corpus. Unknown source/detail completeness is not absence. Packet composition is not transport delivery or use.',
+    ...sections.flatMap(section => {
+      const c = coverage.sections[section.id];
+      return ['', section.heading + ':', '- source=' + c.sourceStatus
+        + '; rows=' + (c.candidateRows ?? 'unknown') + '; delivered=' + c.deliveredRows
+        + '; omitted=' + (c.omittedRows ?? 'unknown')
+        + '; packet-dropped=' + (section.rows.length - section.delivered.length)
+        + '; detail-truncated=' + (c.detailTruncated ?? 'unknown'), ...section.delivered];
+    }),
     '',
-    'CURRENT TASK EVIDENCE:',
-    ...(input.task?.goal ? ['- goal: ' + bounded(input.task.goal, 700)] : []),
-    ...(taskEvidenceLines.length ? taskEvidenceLines : ['- no current evidence episodes surfaced']),
-    '',
-    'RELATED MEMORY / KNOWLEDGE NEIGHBORHOOD:',
-    ...memoryLines,
-    ...(relatedLines.length ? relatedLines : ['- no linked neighborhood surfaced']),
-    '',
-    'ACCEPTED CODE PATTERNS:',
-    ...(patternLines.length ? patternLines : ['- no accepted pattern surfaced']),
-    '',
-    'ACTIVE SKILL ARTIFACTS:',
-    ...(skillSearchLine ? [skillSearchLine] : []),
-    ...(skillLines.length ? skillLines : ['- no task-relevant Skill selected; inspect the inventory for active artifacts']),
-    '',
-    'LEARNED PROCEDURE REGISTRY:',
-    ...(procedureLines.length ? procedureLines : ['- no verified procedure candidates']),
-    '',
-    'RECENT VERIFICATION-BACKED ARTIFACT OUTCOMES:',
-    ...(outcomeLines.length ? outcomeLines : ['- no prior outcome evidence surfaced for these artifacts']),
-    '',
-    'CONTRADICTIONS:',
-    ...(contradictionLines.length ? contradictionLines : ['- none explicitly surfaced']),
-    '',
-    'EVIDENCE GAPS:',
-    ...evidenceGapLines,
-    '',
-    'For the next hypothesis, distinguish known facts, contradictions, evidence gaps, expected observation, and the cheapest useful experiment.',
-  ].filter(line => {
-    if (line.length + 1 > budget) return false;
-    budget -= line.length + 1;
-    return true;
-  });
-  const text = deliveredLines.join('\n');
-  const delivered = new Set(deliveredLines);
+    'Distinguish facts, contradictions, evidence gaps and expected observations before choosing the next step.',
+  ].join('\n');
+  coverage.used = text.length;
+  const delivered = new Set(sections.flatMap(section => section.delivered));
   for (const key of Object.keys(artifactRevisions)) {
     // Inventory identity alone is not delivery of the selected artifact detail.
     if (!delivered.has(artifactLines.get(key)!)) delete artifactRevisions[key];
@@ -251,6 +315,7 @@ export async function buildKnowledgeSynthesisPacket(input: {
     artifactRevisions,
     capabilityExposure,
     text,
+    coverage,
     relatedNodeIds: [...relatedNodeIds],
     patternIds: [...patternIds].filter(id => artifactRevisions['pattern:' + id]),
     skillNames: skillNames.filter(name => artifactRevisions['skill:' + name]),
