@@ -179,7 +179,11 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
             ...(workspace ? { workspace } : {}),
             repeated: Boolean(advisory), invocationContext,
           });
-          if (await externalLearning.invocationDisclosureCurrent(invocationContext)) finalResult = appendExternalLearningCapsule(finalResult, prior.capsule);
+          if (prior.capsule && await externalLearning.invocationDisclosureCurrent(invocationContext)) {
+            finalResult = appendExternalLearningCapsule(finalResult, prior.capsule);
+            if (prior.deliveredMemories.length) await externalLearning.recordMemoryRecall(externalSessionId,
+              invocationContext?.workspace, prior.deliveredMemories, invocationContext);
+          }
         } catch (error) {
           activityTracker.captureFailure('LEARNING', error, 'external-failure-context-failure', { tool: name });
         }
@@ -231,7 +235,11 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
             ...(workspace ? { workspace } : {}),
             repeated: Boolean(advisory), invocationContext,
           });
-          if (await externalLearning.invocationDisclosureCurrent(invocationContext)) finalError = annotateExternalLearningException(finalError, prior.capsule);
+          if (prior.capsule && finalError instanceof Error && await externalLearning.invocationDisclosureCurrent(invocationContext)) {
+            finalError = annotateExternalLearningException(finalError, prior.capsule);
+            if (prior.deliveredMemories.length) await externalLearning.recordMemoryRecall(externalSessionId,
+              invocationContext?.workspace, prior.deliveredMemories, invocationContext);
+          }
         } catch (learningError) {
           activityTracker.captureFailure('LEARNING', learningError, 'external-failure-context-failure', { tool: name });
         }

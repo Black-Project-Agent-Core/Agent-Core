@@ -1,5 +1,17 @@
 # Register Analisis Source 216 Kandidat
 
+## Batch 7–8 — source implemented and built, 2026-10-14
+
+<!-- batch07-08-current:start -->
+The user authorized Linux development from the newly published current line `06ffb7155cf59c3a0bb88bc970cb2b694805ddd8`, followed by normal non-force publication. Batch 7 implements #30 legacy recall status and #34 coherent packet coverage in the existing owners. Legacy recall distinguishes not-requested/returned/empty/unavailable; planned Batch 3 retrieval and exact revisions remain separate. Nine packet sections retain headings and omission summaries within 16,000 UTF-16 units, reserving 2,048 units for the skeleton. Coverage is packet composition only, not transport delivery, use, truth or benefit. Failure capsules admit complete Memory rows under the existing 4,000-unit minimum wrapper cap; only actually appended rows are recorded through the existing invocation-bound recall owner.
+
+Batch 8 implements only #69’s selected terminal submechanism in the existing TerminalManager and callers. A read-only PID/startTime-bound observer reports managed, exit-observed or unavailable without consuming output or adding a ledger. Completion/error text no longer proves exit; prompt hints are tentative. Existing interaction polling checks lifecycle even without new output and takes a final same-instance snapshot delta. Responses say input sent and distinguish exit code (including unavailable null), wait timeout and unavailable status. Process exit does not prove task success or closed descendant streams. node:local, no-wait, pagination and invocation/checkpoint ownership remain intact. The broader #90 progress/stagnation work is not selected.
+
+Combined production build passed on Linux (path policy: 371 authored files, zero exceptions; Memory and Core TypeScript). No suite, synthetic scenario, benchmark, provider change, Windows restart or activation was performed. No tool/input schema changed; additive output alone does not require a new plugin ZIP. Windows plugin 1.0.3 remains the latest reported installed baseline. Canonical `runtime/memory` is absent in this development checkout; no second store or runtime was initialized, and canonical Memory/Learning synchronization remains a local-adoption step. See [Batch 7–8 source and adoption record](../Batch-07-08-Linux-Implementation-20261014.md).
+
+The current published register is `docs/research/candidate-source-review-216-20261012.{md,json}`. The older plan filenames `candidate-adoption-opportunities-20261012.*` are absent from this current line; update the maintained register in place rather than reconstruct a second catalog. All 216 IDs and historical donor decisions are preserved. The #69 historical framework rejection remains; its independent terminal submechanism is separately selected in opp-090-scoped-progress-advice. Older status sections below are dated history, not the current Batch 7–8 state. Roadmap: finish the required decisions/adoptions for the original 216 candidates, then remaining Consumer work, deepen the six earlier reports about five repositories before planning that work, and Invocate last. No additional Consumer, REA or hooks work is included.
+<!-- batch07-08-current:end -->
+
 **Status:** analisis statis terarah; bukan 216 instalasi dan bukan klaim seluruh repository dijalankan. Dokumen ini register keputusan, bukan plan batch tambahan.
 
 Semua ID asli 1–216 dipertahankan. Detail commit, path source, cakupan pembacaan, pembanding Agent Core, dan batas lisensi ada di JSON pendamping. `extend` berarti ada mekanisme layak dipertimbangkan; bukan semua otomatis dipilih untuk integrasi. `reuse` harus berdasarkan kecukupan mekanisme, bukan keberadaan nama fitur saja.
@@ -86,11 +98,11 @@ Batch 3–4 COMPLETE untuk kontrak yang diterima. Consumer hanya pengikatan invo
 | 27 | Hindsight | reuse | code | Belum dialokasikan |
 | 28 | ReMe | reuse | code | Belum dialokasikan |
 | 29 | Zep / Graphiti | reuse | code | Belum dialokasikan |
-| 30 | Mem0 | reuse | code | Belum dialokasikan |
+| 30 | Mem0 | reuse | code | Batch 7 source built: four-state legacy recall; Windows adoption pending; no new search/store |
 | 31 | A-MEM | reuse | code | Belum dialokasikan |
 | 32 | Letta / MemGPT → Letta Code | reuse | code | Belum dialokasikan |
 | 33 | Cognee | reuse | code | Belum dialokasikan |
-| 34 | OpenViking | reuse | code | Belum dialokasikan |
+| 34 | OpenViking | reuse | code | Batch 7 source built: coherent packet sections and omission coverage; independent implementation, no AGPL source copied; Windows adoption pending |
 | 35 | EverMemOS → EverOS | reuse | code | Belum dialokasikan |
 | 36 | MemOS — local Reflect2Evolve | reuse | code | Belum dialokasikan |
 | 37 | Memvid | reject | code | Belum dialokasikan |
@@ -125,7 +137,7 @@ Batch 3–4 COMPLETE untuk kontrak yang diterima. Consumer hanya pengikatan invo
 | 66 | SAI — Stack of AI | reuse | focused-static-source-call-path; no donor execution | Belum dialokasikan |
 | 67 | Sai — Rust coding workbench | reuse | focused-static-source-call-path; no donor execution | Belum dialokasikan |
 | 68 | Atria Dawn Preview | no-source | documentation-and-metadata-only-for-proposed-mechanism | Belum dialokasikan |
-| 69 | atria — terminal session manager | reject | focused-static-source-call-path; no donor execution | Belum dialokasikan |
+| 69 | atria — terminal session manager | reject | focused-static-source-call-path; no donor execution | Batch 8 source built: independent terminal submechanism selected within opp-090-scoped-progress-advice; historical framework rejection preserved; Windows adoption pending |
 | 70 | AC — Wrtn Labs | reuse | focused-static-source-call-path; no donor execution | Belum dialokasikan |
 | 71 | Agentica / MicroAgentica — Wrtn Labs | defer | documentation-and-metadata-only-for-proposed-mechanism | Belum dialokasikan |
 | 72 | Evidence — Wrtn Labs | reuse | focused-static-source-call-path; no donor execution | Belum dialokasikan |

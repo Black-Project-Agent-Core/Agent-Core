@@ -2,7 +2,7 @@ import { terminalManager, MAX_BUFFERED_OUTPUT_CHARS } from '../terminal-manager.
 import { commandManager } from '../command-manager.js';
 import { StartProcessArgsSchema, ReadProcessOutputArgsSchema, InteractWithProcessArgsSchema, ForceTerminateArgsSchema, ListSessionsArgsSchema } from './schemas.js';
 import { capture } from "../utils/capture.js";
-import { ServerResult } from '../types.js';
+import { ServerResult, type ProcessObservation } from '../types.js';
 import { analyzeProcessState, cleanProcessOutput, formatProcessStateMessage, ProcessState } from '../utils/process-detection.js';
 import * as os from 'os';
 import { configManager } from '../config-manager.js';
@@ -182,16 +182,23 @@ export async function startProcess(args: unknown): Promise<ServerResult> {
     };
   }
 
-  // Analyze the process state to detect if it's waiting for input
+  // Text can suggest a prompt; only the owner observation can establish exit.
   const processState = analyzeProcessState(result.output, result.pid);
+  const observation = result.processObservation;
 
   let statusMessage = '';
-  if (processState.isWaitingForInput) {
+  if (observation?.state === 'exit-observed') {
+    statusMessage = `\n${formatObservedExit(result.pid, observation.exitCode)}`;
+  } else if (!observation || observation.state === 'unavailable') {
+    statusMessage = `\nProcess status unavailable for this session${observation?.state === 'unavailable' ? ` (${observation.reasonCode})` : ''}.`;
+  } else if (result.waitReason === 'timeout') {
+    statusMessage = '\n⏱️ Wait timeout reached; response may be incomplete. Process exit has not been observed. Use read_process_output to get more output.';
+  } else if (processState.isWaitingForInput) {
     statusMessage = `\n🔄 ${formatProcessStateMessage(processState, result.pid)}`;
-  } else if (processState.isFinished) {
-    statusMessage = `\n✅ ${formatProcessStateMessage(processState, result.pid)}`;
-  } else if (result.isBlocked) {
-    statusMessage = '\n⏳ Process is running. Use read_process_output to get more output.';
+  } else if (result.waitReason === 'early_exit_quick_pattern' || result.waitReason === 'early_exit_periodic_check') {
+    statusMessage = `\n🔄 Prompt detected; process ${result.pid} may be waiting for input.`;
+  } else {
+    statusMessage = '\nProcess exit has not been observed. Use read_process_output to get more output.';
   }
 
   // Add timing information if requested
@@ -206,6 +213,12 @@ export async function startProcess(args: unknown): Promise<ServerResult> {
       text: `Process started with PID ${result.pid} (shell: ${shellUsed})\nInitial output:\n${result.output}${statusMessage}${timingMessage}`
     }],
   };
+}
+
+function formatObservedExit(pid: number, exitCode: number | null | undefined): string {
+  return exitCode === null || exitCode === undefined
+    ? `Process ${pid} exited; exit code unavailable.`
+    : `Process ${pid} exited with code ${exitCode}.`;
 }
 
 function formatTimingInfo(timing: any): string {
@@ -358,7 +371,7 @@ export async function readProcessOutput(args: unknown): Promise<ServerResult> {
     const runtimeStr = result.runtimeMs !== undefined 
       ? ` (runtime: ${(result.runtimeMs / 1000).toFixed(2)}s)` 
       : '';
-    processStateMessage = `\n✅ Process completed with exit code ${result.exitCode}${runtimeStr}`;
+    processStateMessage = `\n${formatObservedExit(pid, result.exitCode)}${runtimeStr}`;
   } else if (session) {
     // Analyze state for running processes
     const fullOutput = session.outputLines.join('\n');
@@ -432,7 +445,7 @@ export async function interactWithProcess(args: unknown): Promise<ServerResult> 
   let firstOutputTime: number | undefined;
   let lastOutputTime: number | undefined;
   const outputEvents: any[] = [];
-  let exitReason: 'early_exit_quick_pattern' | 'early_exit_periodic_check' | 'process_finished' | 'timeout' | 'no_wait' = 'timeout';
+  let exitReason: 'early_exit_periodic_check' | 'process_finished' | 'process_unavailable' | 'timeout' | 'no_wait' = 'timeout';
 
   try {
     capture('server_interact_with_process', {
@@ -440,8 +453,9 @@ export async function interactWithProcess(args: unknown): Promise<ServerResult> 
       inputLength: input.length
     });
 
-    // Capture output snapshot BEFORE sending input
-    // This handles REPLs where output is appended to the prompt line
+    // Pin the instance and snapshot BEFORE sending input, with no asynchronous gap.
+    // This handles REPLs where output is appended to the prompt line.
+    const processStartTime = terminalManager.getSession(pid)?.startTime.getTime();
     const outputSnapshot = terminalManager.captureOutputSnapshot(pid);
 
     const success = terminalManager.sendInputToProcess(pid, input);
@@ -479,13 +493,61 @@ export async function interactWithProcess(args: unknown): Promise<ServerResult> 
       };
     }
 
-    // Smart waiting with immediate and periodic detection
+    if (processStartTime === undefined || !outputSnapshot) {
+      return {
+        content: [{
+          type: 'text',
+          text: `Input sent to process ${pid}. Process status unavailable for this session; no same-instance output snapshot is available.`,
+        }],
+      };
+    }
+
+    // Reuse the existing wait and output snapshot; no cursor-consuming fallback.
     let output = "";
     let processState: ProcessState | undefined;
-    let earlyExit = false;
+    let observation: ProcessObservation = terminalManager.observeProcess(pid, processStartTime);
+    let lastOutputLength = 0;
 
-    // Quick prompt patterns for immediate detection
-    const quickPromptPatterns = />>>\s*$|>\s*$|\$\s*$|#\s*$/;
+    const readLatestOutput = (): boolean => {
+      const newOutput = terminalManager.getOutputSinceSnapshot(pid, outputSnapshot);
+      if (newOutput === null) return false;
+      if (newOutput.length > lastOutputLength) {
+        const now = Date.now();
+        if (!firstOutputTime) firstOutputTime = now;
+        lastOutputTime = now;
+
+        if (verbose_timing) {
+          outputEvents.push({
+            timestamp: now,
+            deltaMs: now - startTime,
+            source: 'periodic_poll',
+            length: newOutput.length - lastOutputLength,
+            snippet: newOutput.slice(lastOutputLength, lastOutputLength + 50).replace(/\n/g, '\\n'),
+          });
+        }
+      }
+      if (newOutput !== output || !processState) {
+        processState = analyzeProcessState(newOutput, pid);
+      }
+      output = newOutput;
+      lastOutputLength = newOutput.length;
+      return true;
+    };
+
+    const observeAndRead = () => {
+      observation = terminalManager.observeProcess(pid, processStartTime);
+      // Do not read buffers for a replacement PID or an unavailable instance.
+      if (observation.state !== 'unavailable' && !readLatestOutput()) {
+        observation = {
+          pid,
+          startTime: processStartTime,
+          observedAt: Date.now(),
+          state: 'unavailable',
+          basis: 'unavailable',
+          reasonCode: 'missing',
+        };
+      }
+    };
     
     const waitForResponse = (): Promise<void> => {
       return new Promise((resolve) => {
@@ -494,9 +556,7 @@ export async function interactWithProcess(args: unknown): Promise<ServerResult> 
         const pollIntervalMs = 50; // Poll every 50ms for faster response
         const maxAttempts = Math.ceil(timeout_ms / pollIntervalMs);
         let interval: NodeJS.Timeout | null = null;
-        let lastOutputLength = 0; // Track output length to detect new output
-
-        let resolveOnce = () => {
+        const resolveOnce = () => {
           if (resolved) return;
           resolved = true;
           if (interval) clearInterval(interval);
@@ -507,51 +567,27 @@ export async function interactWithProcess(args: unknown): Promise<ServerResult> 
         interval = setInterval(() => {
           if (resolved) return;
 
-          // Use snapshot-based reading to handle REPL prompt line appending
-          const newOutput = outputSnapshot 
-            ? terminalManager.getOutputSinceSnapshot(pid, outputSnapshot)
-            : terminalManager.getNewOutput(pid);
-            
-          if (newOutput && newOutput.length > lastOutputLength) {
-            const now = Date.now();
-            if (!firstOutputTime) firstOutputTime = now;
-            lastOutputTime = now;
+          // Lifecycle is checked on every tick, including a silent process exit.
+          // The snapshot delta is read before settling a terminal observation.
+          observeAndRead();
+          if (observation.state === 'exit-observed') {
+            exitReason = 'process_finished';
+            resolveOnce();
+            return;
+          }
+          if (observation.state === 'unavailable') {
+            exitReason = 'process_unavailable';
+            resolveOnce();
+            return;
+          }
 
-            if (verbose_timing) {
-              outputEvents.push({
-                timestamp: now,
-                deltaMs: now - startTime,
-                source: 'periodic_poll',
-                length: newOutput.length - lastOutputLength,
-                snippet: newOutput.slice(lastOutputLength, lastOutputLength + 50).replace(/\n/g, '\\n')
-              });
+          if (processState?.isWaitingForInput) {
+            exitReason = 'early_exit_periodic_check';
+            if (verbose_timing && outputEvents.length > 0) {
+              outputEvents[outputEvents.length - 1].matchedPattern = 'periodic_check';
             }
-
-            output = newOutput; // Replace with full output since snapshot
-            lastOutputLength = newOutput.length;
-
-            // Analyze current state
-            processState = analyzeProcessState(output, pid);
-
-            // Exit early if we detect the process is waiting for input
-            if (processState.isWaitingForInput) {
-              earlyExit = true;
-              exitReason = 'early_exit_periodic_check';
-
-              if (verbose_timing && outputEvents.length > 0) {
-                outputEvents[outputEvents.length - 1].matchedPattern = 'periodic_check';
-              }
-
-              resolveOnce();
-              return;
-            }
-
-            // Also exit if process finished
-            if (processState.isFinished) {
-              exitReason = 'process_finished';
-              resolveOnce();
-              return;
-            }
+            resolveOnce();
+            return;
           }
 
           attempts++;
@@ -565,9 +601,18 @@ export async function interactWithProcess(args: unknown): Promise<ServerResult> 
     
     await waitForResponse();
 
+    // Project the same instance and collect the last delta currently available.
+    // An exit observation does not promise that descendant streams are closed.
+    observeAndRead();
+    if (observation.state === 'exit-observed') {
+      exitReason = 'process_finished';
+    } else if (observation.state === 'unavailable') {
+      exitReason = 'process_unavailable';
+    }
+
     // Clean and format output
     let cleanOutput = cleanProcessOutput(output, input);
-    const timeoutReached = !earlyExit && !processState?.isFinished && !processState?.isWaitingForInput;
+    const timeoutReached = exitReason === 'timeout';
     
     // Apply output line limit to prevent context overflow
     let truncationMessage = '';
@@ -579,18 +624,15 @@ export async function interactWithProcess(args: unknown): Promise<ServerResult> 
       truncationMessage = `\n\n⚠️ Output truncated: showing ${maxOutputLines} of ${outputLines.length} lines (${remainingLines} hidden). Use read_process_output with offset/length for full output.`;
     }
     
-    // Determine final state
-    if (!processState) {
-      processState = analyzeProcessState(output, pid);
-    }
-    
     let statusMessage = '';
-    if (processState.isWaitingForInput) {
-      statusMessage = `\n🔄 ${formatProcessStateMessage(processState, pid)}`;
-    } else if (processState.isFinished) {
-      statusMessage = `\n✅ ${formatProcessStateMessage(processState, pid)}`;
+    if (observation.state === 'exit-observed') {
+      statusMessage = `\n${formatObservedExit(pid, observation.exitCode)}`;
+    } else if (observation.state === 'unavailable') {
+      statusMessage = `\nProcess status unavailable for this session (${observation.reasonCode}); response may be incomplete.`;
     } else if (timeoutReached) {
-      statusMessage = '\n⏱️ Response may be incomplete (timeout reached)';
+      statusMessage = '\n⏱️ Wait timeout reached; response may be incomplete. Process exit has not been observed.';
+    } else if (processState?.isWaitingForInput) {
+      statusMessage = `\n🔄 ${formatProcessStateMessage(processState, pid)}`;
     }
 
     // Add timing information if requested
@@ -614,18 +656,18 @@ export async function interactWithProcess(args: unknown): Promise<ServerResult> 
       return {
         content: [{
           type: "text",
-          text: `✅ Input executed in process ${pid}.\n📭 (No output produced)${statusMessage}${timingMessage}`
+          text: `Input sent to process ${pid}.\n📭 (No output observed)${statusMessage}${timingMessage}`
         }],
       };
     }
 
     // Format response with better structure and consistent emojis
-    let responseText = `✅ Input executed in process ${pid}`;
+    let responseText = `Input sent to process ${pid}`;
 
     if (cleanOutput && cleanOutput.trim().length > 0) {
       responseText += `:\n\n📤 Output:\n${cleanOutput}`;
     } else {
-      responseText += `.\n📭 (No output produced)`;
+      responseText += `.\n📭 (No output observed)`;
     }
 
     if (statusMessage) {

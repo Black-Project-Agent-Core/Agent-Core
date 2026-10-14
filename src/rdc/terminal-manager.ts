@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
 import path from 'path';
-import { TerminalSession, CommandExecutionResult, ActiveSession, TimingInfo, OutputEvent, type TerminalOutputSpillInfo } from './types.js';
+import { TerminalSession, CommandExecutionResult, ActiveSession, TimingInfo, OutputEvent, type TerminalOutputSpillInfo, type ProcessObservation } from './types.js';
 import { TerminalOutputSpill, pruneTerminalOutputSpills, type SpillChunk } from './output-spill.js';
 import { DEFAULT_COMMAND_TIMEOUT } from './config.js';
 import { configManager } from './config-manager.js';
@@ -370,6 +370,9 @@ export class TerminalManager {
         resolved = true;
         if (periodicCheck) clearInterval(periodicCheck);
 
+        result.processObservation ??= this.observeProcess(session.pid, session.startTime.getTime());
+        result.waitReason = exitReason;
+
         // Add timing info if requested
         if (collectTiming) {
           const endTime = Date.now();
@@ -388,20 +391,27 @@ export class TerminalManager {
         resolve(result);
       };
 
-      // Now that resolveOnce exists, route process errors into it: an error after
-      // a successful spawn means the process is gone, so the caller must not sit
-      // waiting for output that will never arrive.
+      // An error ends this wait, but is not evidence that the child exited.
+      // Preserve the existing cleanup while reporting lifecycle as unavailable.
       forwardProcessError = (err: Error) => {
         void ledgerAttach
           .then(() => processLedger.finalizeExit(childProcess.pid!, null, err.message))
           .catch(() => undefined);
         this.finalizeSpill(childProcess.pid!);
         this.sessions.delete(childProcess.pid!);
-        exitReason = 'process_exit';
+        exitReason = 'process_unavailable';
         resolveOnce({
           pid: childProcess.pid!,
           output: output + `\nProcess error: ${err.message}`,
-          isBlocked: false
+          isBlocked: false,
+          processObservation: {
+            pid: session.pid,
+            startTime: session.startTime.getTime(),
+            observedAt: Date.now(),
+            state: 'unavailable',
+            basis: 'unavailable',
+            reasonCode: 'process-error',
+          },
         });
       };
       // An error emitted between spawn and here (the common case — spawn errors
@@ -488,6 +498,12 @@ export class TerminalManager {
 
       // Periodic comprehensive check every 100ms
       periodicCheck = setInterval(() => {
+        const observation = this.observeProcess(session.pid, session.startTime.getTime());
+        if (observation.state !== 'managed') {
+          exitReason = observation.state === 'exit-observed' ? 'process_exit' : 'process_unavailable';
+          resolveOnce({ pid: session.pid, output, isBlocked: false, processObservation: observation });
+          return;
+        }
         if (output.trim()) {
           const processState = analyzeProcessState(output, childProcess.pid);
           if (processState.isWaitingForInput) {
@@ -859,6 +875,40 @@ export class TerminalManager {
    */
   getSession(pid: number): TerminalSession | undefined {
     return this.sessions.get(pid);
+  }
+
+  /**
+   * Observe one existing process instance without consuming output or probing the OS.
+   * Active identity takes precedence: a reused PID must not select an older completion.
+   * Child exit fields are available even while the exit callback awaits the ledger.
+   */
+  observeProcess(pid: number, expectedStartTime: number): ProcessObservation {
+    const identity = { pid, startTime: expectedStartTime, observedAt: Date.now() };
+    const session = this.sessions.get(pid);
+    if (session) {
+      if (session.startTime.getTime() !== expectedStartTime) {
+        return { ...identity, state: 'unavailable', basis: 'unavailable', reasonCode: 'replaced' };
+      }
+      if (session.process.exitCode !== null || session.process.signalCode !== null) {
+        return { ...identity, state: 'exit-observed', basis: 'child-exit', exitCode: session.process.exitCode };
+      }
+      return { ...identity, state: 'managed', basis: 'managed-session' };
+    }
+
+    const completed = this.completedSessions.get(pid);
+    if (completed) {
+      if (completed.startTime.getTime() !== expectedStartTime) {
+        return { ...identity, state: 'unavailable', basis: 'unavailable', reasonCode: 'replaced' };
+      }
+      return { ...identity, state: 'exit-observed', basis: 'child-exit', exitCode: completed.exitCode };
+    }
+
+    return {
+      ...identity,
+      state: 'unavailable',
+      basis: 'unavailable',
+      reasonCode: this.detachedSessions.has(pid) ? 'detached' : 'missing',
+    };
   }
 
   forceTerminate(pid: number): boolean {
