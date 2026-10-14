@@ -8,7 +8,6 @@ public static class RootLocator
         var processPath = Environment.ProcessPath;
         if (!string.IsNullOrWhiteSpace(processPath))
             candidates.Add(Path.GetDirectoryName(processPath)!);
-        candidates.Add(Environment.CurrentDirectory);
         candidates.Add(AppContext.BaseDirectory);
         return FindFrom(candidates);
     }

@@ -23,6 +23,7 @@ import {
   type ProvisionProviderId,
 } from './provider-provisioning.js';
 import { applyWorkspacePlans, planWorkspaceEdit } from './transaction.js';
+import type { MutationExecutionContext } from '../rdc/mutation-coordinator.js';
 import type {
   LspPosition,
   LspRange,
@@ -402,7 +403,7 @@ async function loadSemanticProviderSet(config: SemanticIdeConfig): Promise<{
   const definitions = mergeProviderDefinitions(discovered.definitions, configDefinitions, fileDefinitions);
   const versions = new Map<string, SemanticProviderVersionInfo>();
   for (const definition of definitions) {
-    const version: SemanticProviderVersionInfo = await probeProviderVersion(definition).catch(error => ({
+    const version: SemanticProviderVersionInfo = await probeProviderVersion(definition, 5_000, config.projectRoot).catch(error => ({
       compatibility: 'unknown',
       issue: error instanceof Error ? error.message : String(error),
     }));
@@ -1359,6 +1360,8 @@ export class SemanticIdeService {
     edit: WorkspaceEdit,
     dryRun: boolean,
     verifyDiagnostics = false,
+    autoCheckpoint = false,
+    execution?: MutationExecutionContext,
   ): Promise<SemanticMutationResult> {
     const preview = await planWorkspaceEdit(context.root, edit);
     const diagnosticPairs = preview.flatMap(plan =>
@@ -1381,7 +1384,7 @@ export class SemanticIdeService {
       }
     }
 
-    const mutation = await applyWorkspacePlans(preview, { dryRun });
+    const mutation = await applyWorkspacePlans(preview, { dryRun, autoCheckpoint, execution });
     if (dryRun) {
       return {
         mutation,
@@ -1469,7 +1472,8 @@ export class SemanticIdeService {
 
   async refactor(
     action: string,
-    input: SemanticSymbolQuery & { newName?: string; body?: string; dryRun?: boolean; verifyDiagnostics?: boolean },
+    input: SemanticSymbolQuery & { newName?: string; body?: string; dryRun?: boolean; verifyDiagnostics?: boolean; autoCheckpoint?: boolean },
+    execution?: MutationExecutionContext,
   ): Promise<unknown> {
     const context = await this.resolveContext(input, true);
     await this.ensureComposition(context.root);
@@ -1483,7 +1487,7 @@ export class SemanticIdeService {
       if (action === 'before') range = { start: hit.symbol.range.start, end: hit.symbol.range.start };
       if (action === 'after') range = { start: hit.symbol.range.end, end: hit.symbol.range.end };
       const edit: WorkspaceEdit = { changes: { [hit.uri]: [{ range, newText: input.body }] } };
-      return this.commitEdit(context, edit, dryRun, input.verifyDiagnostics === true);
+      return this.commitEdit(context, edit, dryRun, input.verifyDiagnostics === true, input.autoCheckpoint === true, execution);
     }
 
     if (action === 'rename') {
@@ -1496,7 +1500,7 @@ export class SemanticIdeService {
         return session.request('textDocument/rename', { ...params, newName: input.newName });
       }, input.language);
       if (!edit || typeof edit !== 'object') throw new Error('SEMANTIC_RENAME_NOT_AVAILABLE');
-      return this.commitEdit(context, edit as WorkspaceEdit, dryRun, input.verifyDiagnostics === true);
+      return this.commitEdit(context, edit as WorkspaceEdit, dryRun, input.verifyDiagnostics === true, input.autoCheckpoint === true, execution);
     }
 
     if (action === 'safeRemove') {
@@ -1535,7 +1539,7 @@ export class SemanticIdeService {
         };
       }
       const edit: WorkspaceEdit = { changes: { [hit.uri]: [{ range: hit.symbol.range, newText: '' }] } };
-      return this.commitEdit(context, edit, dryRun, input.verifyDiagnostics === true);
+      return this.commitEdit(context, edit, dryRun, input.verifyDiagnostics === true, input.autoCheckpoint === true, execution);
     }
 
     throw new Error('SEMANTIC_REFACTOR_ACTION_UNSUPPORTED: ' + action);

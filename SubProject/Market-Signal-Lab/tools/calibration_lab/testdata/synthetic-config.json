@@ -1,0 +1,32 @@
+{
+  "evidenceClass": "SYNTHETIC_MECHANICS_ONLY",
+  "signalId": "catalog.odmi.v0.2",
+  "signalModelVersion": "directional-momentum-v0.2",
+  "requirementsVersion": "msl-evidence-requirements/2",
+  "outcomeDefinitionVersion": "synthetic-direction-followthrough/1",
+  "createdAt": "2026-08-26T05:30:00Z",
+  "splitPolicy": {
+    "trainEnd": "2026-01-31T23:59:59Z",
+    "validationEnd": "2026-02-28T23:59:59Z",
+    "holdoutEnd": "2026-03-31T23:59:59Z"
+  },
+  "thresholdCandidates": [
+    {
+      "name": "temporal-comparability",
+      "feature": "facts.temporalComparabilityRate",
+      "comparison": ">=",
+      "values": [50.0, 70.0, 90.0]
+    }
+  ],
+  "peerSizeBins": [
+    {"name": "small", "min": 2, "max": 3},
+    {"name": "medium", "min": 4, "max": 7},
+    {"name": "large", "min": 8, "max": null}
+  ],
+  "confidenceField": "facts.candidateConfidence",
+  "confidenceBins": [0.0, 0.5, 0.75, 1.0],
+  "seasonField": "facts.seasonKey",
+  "candidateParameters": {
+    "temporalComparabilityRate": 70.0
+  }
+}

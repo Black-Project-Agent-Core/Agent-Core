@@ -1,3 +1,5 @@
+import type { GraphIntegrityObservation } from './graph-observability.js';
+
 export type CodeIntelligenceStatus = 'available' | 'degraded' | 'not-configured' | 'error';
 export type CodeIndexState = 'current' | 'queued' | 'indexing' | 'warming' | 'dirty' | 'degraded' | 'unknown';
 
@@ -97,6 +99,24 @@ export interface CodeIsolationHealth {
   missingOrInvalid: string[];
 }
 
+export type CodeProviderAttestationState =
+  | 'current'
+  | 'metadata-mismatch'
+  | 'resident-mismatch'
+  | 'unverifiable';
+
+export interface CodeProviderAttestation {
+  state: CodeProviderAttestationState;
+  expectedExecutableSha256?: string;
+  observedExecutableSha256?: string;
+  expectedVersion?: string;
+  observedVersion?: string;
+  expectedSourceCommit?: string;
+  observedSourceCommit?: string;
+  enginePid?: number;
+  issue?: string;
+}
+
 export interface CodeIntelligenceHealth {
   status: CodeIntelligenceStatus;
   provider: 'grafel';
@@ -111,6 +131,8 @@ export interface CodeIntelligenceHealth {
   readiness?: CodeProviderReadiness;
   resourcePolicy?: CodeIntelligenceResourcePolicy;
   isolation?: CodeIsolationHealth;
+  providerAttestation?: CodeProviderAttestation;
+  graphIntegrity?: GraphIntegrityObservation;
 }
 
 export interface GrafelStatusPayload {
@@ -120,6 +142,7 @@ export interface GrafelStatusPayload {
   warming?: boolean;
   busy?: boolean;
   version?: string;
+  engine_pid?: number;
   repo_path?: string;
   indexed_ref?: string;
   indexed_commit?: string;

@@ -210,6 +210,14 @@ export class GatewayTransport implements PhoneTransport {
     return this.asRecord(await this.call('android_run_macro', { actions, delayMs }));
   }
 
+  async setOverlay(enabled: boolean): Promise<Record<string, unknown>> {
+    return this.asRecord(await this.call('android_set_overlay', { enabled }));
+  }
+
+  async clearMarkers(): Promise<Record<string, unknown>> {
+    return this.asRecord(await this.call('android_clear_markers'));
+  }
+
   private asRecord(result: RpcToolResult): Record<string, unknown> {
     const payload = firstJsonPayload(result);
     if (payload && typeof payload === 'object') return payload as Record<string, unknown>;

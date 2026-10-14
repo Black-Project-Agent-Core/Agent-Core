@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "task": "TASK 6 - Existing Penpot -> Canonical IR extractor audit/acceptance",
+  "observedAt": "2026-10-02",
+  "status": "AUDIT_COMPLETE_ACCEPTANCE_OPEN",
+  "gateP4": "PASS",
+  "fullTask6Acceptance": "BLOCKED_ONE_REQUIREMENT",
+  "blocker": {
+    "id": "UNBOUNDED_LOCAL_IR_RESPONSE",
+    "severity": "blocking",
+    "requirement": "bounded output",
+    "evidence": [
+      "Extractor only bounds inline image bytes with maxTotalAssetBytes <= 6 MiB.",
+      "Integrated remote MCP transport has MAX_TASK_RESPONSE_SIZE_REMOTE_MCP = 15,000,000 serialized JSON characters.",
+      "sendTaskResponse applies that cap only when isIntegratedRemoteMcp is true.",
+      "Local/manual plugin mode has no equivalent total response cap, and ExportCanvaIrTool serializes full result.data to TextResponse."
+    ],
+    "impact": "A large Penpot file with many pages/elements/text can produce an arbitrarily large local/manual export_canva_ir response even when image bytes are bounded.",
+    "recommendedCorrection": "Add a mode-independent bounded IR response policy below the transport cap, fail closed with an explicit diagnostic/error, and cover it with a targeted test. Do not silently truncate IR."
+  },
+  "audit": {
+    "requirements": {
+      "deterministicTraversal": "PASS",
+      "stablePageAndChildOrdering": "PASS",
+      "stableSourceIds": "PASS",
+      "explicitAssetReferences": "PASS",
+      "noDesignMutation": "PASS",
+      "boundedOutput": "PARTIAL_BLOCKER",
+      "explicitUnsupportedSemanticList": "PASS",
+      "versionedIrOutput": "PASS"
+    },
+    "sourceReview": {
+      "boardToPage": "PASS",
+      "looseRootFailClosed": "PASS",
+      "maskGroupFailClosed": "PASS",
+      "multipleFillsFailClosed": "PASS",
+      "unsupportedSemantics": "PASS_EXPLICIT",
+      "ellipseNormalization": "PASS",
+      "richTextUtf16Runs": "PASS",
+      "assetHashAndInlineOrTransferRef": "PASS",
+      "canonicalDeterminism": "PASS",
+      "semanticRoleEmulationDisabled": "PASS",
+      "handlerFlagRestore": "PASS",
+      "toolRegistration": "PASS"
+    },
+    "notes": [
+      "TEXT_RANGE_FILL_FALLBACK_TO_SHAPE is explicit warning/normalization and does not block strictReady; it is not silent, but remains a source-fidelity review item.",
+      "Multiple top-level Boards use deterministic root child order and emit BOARD_ORDER_FROM_ROOT_Z_ORDER normalization."
+    ]
+  },
+  "verification": {
+    "extractorUnitTests": {
+      "pass": 2,
+      "fail": 0
+    },
+    "negativeAcceptanceProbe": {
+      "pass": true,
+      "blockingReasons": [
+        "MASK_GROUP_UNSUPPORTED",
+        "MULTIPLE_FILLS_UNSUPPORTED",
+        "ROOT_SHAPE_OUTSIDE_BOARD"
+      ],
+      "omittedSourceIds": [
+        "loose-1",
+        "mask-1"
+      ]
+    },
+    "typechecks": {
+      "common": "PASS",
+      "plugin": "PASS",
+      "server": "PASS"
+    },
+    "builds": {
+      "common": "PASS",
+      "plugin": "PASS",
+      "server": "PASS"
+    },
+    "compiledWiring": {
+      "serverExportCanvaIrTool": "PASS",
+      "pluginExportCanvaIrTask": "PASS",
+      "commonContract": "PASS"
+    },
+    "liveRuntime": {
+      "status": "NOT_RUN",
+      "reason": "No listeners on Penpot MCP ports 4401/4402; audit did not start/restart Penpot runtime."
+    }
+  },
+  "hashesEvidence": "runtime/tmp/penpot-to-canva-task6-audit-20261002/artifact-hashes.json",
+  "negativeProbeEvidence": "runtime/tmp/penpot-to-canva-task6-audit-20261002/negative-probe.ts",
+  "task7Status": "NOT_STARTED"
+}

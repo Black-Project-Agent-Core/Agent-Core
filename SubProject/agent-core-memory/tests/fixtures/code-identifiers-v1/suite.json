@@ -1,0 +1,176 @@
+{
+  "version": "code-identifiers-fixture/v1",
+  "baselineCommit": "36e9cb3918c0f0e225fbcc18b8f92b4c8bf479f3",
+  "preregistration": {
+    "rankingProfile": "fusion",
+    "k": 1,
+    "semantic": "disabled",
+    "requiredExactWrongAdmissions": 0,
+    "minimumRecallDelta": 0,
+    "maximumFalsePositiveDelta": 0,
+    "latency": "NOT RUN (user deferred)",
+    "tuning": "No threshold/weight tuning; fixed implementation contract"
+  },
+  "rows": [
+    {
+      "partition": "development",
+      "family": "controller-camel",
+      "query": "controller session",
+      "records": [
+        {
+          "id": "right",
+          "content": "ControllerSession coordinates work"
+        },
+        {
+          "id": "wrong",
+          "content": "OtherWorker"
+        }
+      ],
+      "expectedId": "right"
+    },
+    {
+      "partition": "development",
+      "family": "event-snake",
+      "query": "event queue",
+      "records": [
+        {
+          "id": "right",
+          "content": "event_queue stores entries"
+        },
+        {
+          "id": "wrong",
+          "content": "event_cache discards entries"
+        }
+      ],
+      "expectedId": "right"
+    },
+    {
+      "partition": "development",
+      "family": "cache-code",
+      "query": "ERR_CACHE_404",
+      "records": [
+        {
+          "id": "right",
+          "content": "ERR_CACHE_404 missing cache"
+        },
+        {
+          "id": "wrong",
+          "content": "ERR_CACHE_403 prohibited cache"
+        }
+      ],
+      "expectedId": "right"
+    },
+    {
+      "partition": "development",
+      "family": "worker-path",
+      "query": "src/runtime/worker-host.ts",
+      "records": [
+        {
+          "id": "right",
+          "content": "src/runtime/worker-host.ts owns launch"
+        },
+        {
+          "id": "wrong",
+          "content": "src/cache/worker-host.ts owns cache"
+        }
+      ],
+      "expectedId": "right"
+    },
+    {
+      "partition": "heldout",
+      "family": "listener-acronym",
+      "query": "http listener connection",
+      "records": [
+        {
+          "id": "right",
+          "content": "HTTPListenerConnection accepts requests"
+        },
+        {
+          "id": "wrong",
+          "content": "HTTPReaderCodec parses bytes"
+        }
+      ],
+      "expectedId": "right"
+    },
+    {
+      "partition": "heldout",
+      "family": "unicode-render",
+      "query": "café renderer query",
+      "records": [
+        {
+          "id": "right",
+          "content": "caféRendererQuery draws labels"
+        },
+        {
+          "id": "wrong",
+          "content": "teaReaderQueue stores labels"
+        }
+      ],
+      "expectedId": "right"
+    },
+    {
+      "partition": "heldout",
+      "family": "oauth-digit",
+      "query": "auth client",
+      "records": [
+        {
+          "id": "right",
+          "content": "OAuth2Client signs calls"
+        },
+        {
+          "id": "wrong",
+          "content": "TokenStore persists labels"
+        }
+      ],
+      "expectedId": "right"
+    },
+    {
+      "partition": "heldout",
+      "family": "absent-natural",
+      "query": "comet routing",
+      "records": [
+        {
+          "id": "right",
+          "content": "Maple leaves fall"
+        },
+        {
+          "id": "wrong",
+          "content": "Quartz timers tick"
+        }
+      ],
+      "expectedId": null
+    },
+    {
+      "partition": "heldout",
+      "family": "renamed-code",
+      "query": "ERR_RENAMED_901",
+      "records": [
+        {
+          "id": "right",
+          "content": "ERR_RENAMED_902 replaces retired code"
+        },
+        {
+          "id": "wrong",
+          "content": "ERR_OTHER_901 unrelated code"
+        }
+      ],
+      "expectedId": null
+    },
+    {
+      "partition": "heldout",
+      "family": "plain-language",
+      "query": "velvet telescope",
+      "records": [
+        {
+          "id": "right",
+          "content": "Only velvet telescope control is retained."
+        },
+        {
+          "id": "wrong",
+          "content": "A telescope manual describes paper"
+        }
+      ],
+      "expectedId": "right"
+    }
+  ]
+}

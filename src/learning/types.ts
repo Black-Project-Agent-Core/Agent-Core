@@ -30,6 +30,8 @@ export interface LearningEffectEvidence {
 }
 
 export interface LearningCandidate {
+  purpose?: import('./candidate-purpose.js').CandidatePurpose;
+  checkpointKey?: string;
   kind: LearningCandidateKind;
   title?: string;
   content: string;
@@ -47,21 +49,83 @@ export interface LearningCandidate {
   exemplars?: string[];
 }
 
+export interface LearningRejectionFingerprint {
+  fingerprint: string;
+  evidenceDigest: string;
+  workspaceKey: string;
+  status: 'proposal' | 'rejected';
+  reasonCode: string;
+  at: string;
+}
+
+export interface PendingLearningReview {
+  idempotencyKey: string;
+  reason: Exclude<LearningTriggerReason, 'status'>;
+  evidenceRefs: string[];
+  workspace?: string;
+  createdAt: string;
+  taskId?: string;
+}
+
+export interface CurationDelta {
+  operationId: string;
+  checkpointKey: string;
+  taskId: string;
+  workspace: string;
+  entries: Array<{ kind: 'add-lesson' | 'add-counterexample'; target?: { id: string; revision: string }; refinement?: true; candidate: LearningCandidate }>;
+}
+/** Host-owned call context; never accepted from a delta or a controller payload. */
+export interface CurationBinding { taskId: string; workspace: string }
+export interface LearningCurationEvidence {
+  operationId: string;
+  entryFingerprint: string;
+  kind: 'add-lesson' | 'add-counterexample';
+  target?: { id: string; revision: string };
+  candidate: LearningCandidate;
+}
+
+export interface LearningReviewOptions {
+  /** Internal adapter context, absent from public tool schemas. */
+  curation?: { delta: CurationDelta; binding: CurationBinding };
+  workspace?: string;
+  checkpointKeys?: string[];
+  taskId?: string;
+  disposition?: 'no-new-knowledge' | 'rejected' | 'awaiting-verification';
+}
+export interface LearningCheckpointDecision {
+  workspace?: string;
+  curationOperations?: Record<string, string[]>;
+  status: LearningReviewSummary['status'] | 'rejected';
+  complete: boolean;
+  reviewedAt: string;
+  taskId?: string;
+  candidateResults: Record<string, LearningReviewOutcome>;
+}
+
 export interface LearningState {
   version: 1;
+  skillProposals?: import('./skill-proposal-types.js').SkillProposalRecord[];
+  workflowVersion?: 2;
+  verificationManifests?: import('./workflow-verifier.js').WorkflowVerificationManifest[];
   checkpointCount: number;
   sinceReview: number;
   lastCheckpointAt: string | null;
   lastReviewAt: string | null;
   lastCuratorAt: string | null;
   recentIdempotency: Array<{ key: string; at: string }>;
+  recentRejections: LearningRejectionFingerprint[];
+  pendingReviews?: PendingLearningReview[];
+  reviewDecisions?: Record<string, LearningCheckpointDecision>;
+  procedures?: import('../agent-learning-loop.js').AgentProcedureCandidate[];
 }
 
 export interface LearningCheckpointInput {
+  taskId?: string;
   idempotencyKey: string;
   meaningful?: boolean;
   reason?: LearningTriggerReason;
   evidenceRefs?: string[];
+  workspace?: string;
 }
 
 export interface LearningCheckpointResult {
@@ -72,9 +136,12 @@ export interface LearningCheckpointResult {
   checkpointCount: number;
   sinceReview: number;
   curatorDue: boolean;
+  pendingReviewCount?: number;
+  pendingReview?: PendingLearningReview;
 }
 
 export interface LearningReviewOutcome {
+  curation?: LearningCurationEvidence;
   kind: LearningCandidateKind;
   status: 'captured' | 'proposal' | 'duplicate' | 'rejected' | 'sink-unavailable' | 'sink-failed';
   sink?: string;
@@ -94,12 +161,16 @@ export type LearningCuratorRecommendation =
   | 'review-overlap'
   | 'review-stale'
   | 'review-contradiction'
-  | 'review-pattern-refine';
+  | 'review-pattern-refine'
+  | 'review-feature-outcome';
 
 export interface LearningCuratorProposal {
   recommendation: LearningCuratorRecommendation;
   memoryIds?: string[];
   patternId?: string;
+  featureId?: string;
+  evidenceRefs?: string[];
+  support?: { positive: number; negative: number; score: number };
   reason: string;
 }
 
@@ -142,7 +213,7 @@ export interface LearningHealth {
 }
 
 export interface LearningReviewSummary {
-  status: 'no-new-knowledge' | 'partial' | 'incomplete' | 'captured' | 'awaiting-verification' | 'duplicates-only';
+  status: 'no-new-knowledge' | 'partial' | 'incomplete' | 'captured' | 'awaiting-verification' | 'duplicates-only' | 'rejected';
   /** Validation rejection or sink failure makes the batch incomplete. Proposals remain explicit. */
   complete: boolean;
   counts: Record<LearningReviewOutcome['status'], number>;
@@ -186,6 +257,7 @@ export interface LearningCorrection {
   reasonRef: string;
 }
 export interface LearningDecisionEvidence {
+  purpose?: import('./candidate-purpose.js').CandidatePurpose;
   reviewId: string;
   candidateId: string;
   candidateKey: string;

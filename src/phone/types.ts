@@ -12,6 +12,15 @@ export interface PhoneTransportStatus {
   error?: string;
 }
 
+export interface PhoneCropRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Treat x/y/width/height as 0..1 fractions of the native device image. */
+  normalized?: boolean;
+}
+
 export interface ScreenshotOptions {
   /** Longest edge width to downscale to for vision. 0 or undefined keeps native size. */
   maxWidth?: number;
@@ -19,6 +28,8 @@ export interface ScreenshotOptions {
   quality?: number;
   /** Return the original device-encoded image untouched (no resize/re-encode). */
   raw?: boolean;
+  /** Optional crop applied in native screenshot coordinates before resize/re-encode. */
+  crop?: PhoneCropRegion;
 }
 
 export interface PhoneScreenshot {
@@ -53,6 +64,25 @@ export interface NamedAction {
   verified: boolean;
   updatedAt: number;
 }
+
+export type PhoneSequenceStep =
+  | { action: 'tap'; x: number; y: number; normalized?: boolean }
+  | { action: 'swipe'; x1: number; y1: number; x2: number; y2: number; durationMs?: number; normalized?: boolean }
+  | { action: 'longPress'; x: number; y: number; durationMs?: number; normalized?: boolean }
+  | { action: 'inputText'; text: string }
+  | { action: 'key'; keycode: string }
+  | { action: 'back' }
+  | { action: 'home' }
+  | { action: 'launchApp'; packageName: string; activity?: string }
+  | { action: 'namedAction'; name: string }
+  | { action: 'wait'; durationMs: number }
+  | { action: 'waitStable'; timeoutMs?: number; intervalMs?: number; threshold?: number; stableSamples?: number }
+  | { action: 'waitRegionStable'; region: PhoneCropRegion; timeoutMs?: number; intervalMs?: number; threshold?: number; stableSamples?: number }
+  | { action: 'waitRegionChange'; region: PhoneCropRegion; timeoutMs?: number; intervalMs?: number; threshold?: number }
+  | { action: 'waitForeground'; packageName: string; timeoutMs?: number; intervalMs?: number }
+  | { action: 'observeCheckpoint'; label?: string; maxWidth?: number }
+  | { action: 'setOverlay'; enabled: boolean }
+  | { action: 'clearMarkers' };
 
 export interface PhoneHealth {
   /** Live control readiness of the phone controller within this Agent Core process. */

@@ -44,6 +44,7 @@ const refactorActions = [
 ] as [string, ...string[]];
 
 export const codeRefactor = z.object({
+  autoCheckpoint: z.boolean().optional().describe('Default false. Best-effort pre-mutation snapshot; skipped/failed capture does not cancel an authorized mutation.'),
   action: z.enum(refactorActions),
   workspace, ref, worktreePath,
   relativePath: z.string().min(1).max(4000),

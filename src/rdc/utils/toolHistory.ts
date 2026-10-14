@@ -3,7 +3,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CONFIG_DIR } from '../config.js';
 import { compactFailureEvidence, type CompactFailureEvidence } from '../../failure-evidence.js';
+import { BoundedJsonlEventLog } from '../../persistence/bounded-event-log.js';
 import { redactSensitiveString, redactSensitiveValue } from '../../security/redaction.js';
+import type { EvidenceCaptureDecision } from '../../security/evidence-capture-policy.js';
 
 export interface ToolCallRecord {
   timestamp: string;
@@ -11,6 +13,13 @@ export interface ToolCallRecord {
   arguments: any;
   output: ServerResult;
   failureEvidence?: CompactFailureEvidence;
+  capture?: {
+    disposition: EvidenceCaptureDecision['disposition'];
+    policyState: EvidenceCaptureDecision['policyState'];
+    pathCount: number;
+    ruleCount: number;
+    markerCount: number;
+  };
   duration?: number;
 }
 
@@ -61,6 +70,17 @@ function compactArguments(args: unknown, maxChars = 800): string {
   }
 }
 
+function captureMetadata(decision: EvidenceCaptureDecision | undefined): ToolCallRecord['capture'] {
+  if (!decision || (decision.policyState === 'inactive' && decision.disposition === 'full')) return undefined;
+  return {
+    disposition: decision.disposition,
+    policyState: decision.policyState,
+    pathCount: decision.pathCount,
+    ruleCount: decision.ruleCount,
+    markerCount: decision.markerCount,
+  };
+}
+
 export class ToolHistory {
   private history: ToolCallRecord[] = [];
   private readonly MAX_ENTRIES = 1000;
@@ -84,11 +104,15 @@ export class ToolHistory {
    */
   private readonly MAX_STORED_OUTPUT_BYTES = 4 * 1024;
   private readonly MAX_HISTORY_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+  private readonly MAX_HISTORY_HARD_BYTES = 8 * 1024 * 1024;
+  private readonly MAX_HISTORY_RECORDS = 4_000;
   // When the file exceeds the cap we trim it down to this target instead of
   // all the way to zero, so a single overflow doesn't cause every subsequent
   // flush to re-trim.
   private readonly HISTORY_FILE_TRIM_TARGET_BYTES = 4 * 1024 * 1024;
   private readonly historyFile: string;
+  private readonly journal: BoundedJsonlEventLog;
+  private journalIssue: string | null = null;
   private writeQueue: ToolCallRecord[] = [];
   private isWriting = false;
   private writeInterval?: NodeJS.Timeout;
@@ -104,6 +128,10 @@ export class ToolHistory {
     
     // Use append-only JSONL format (JSON Lines)
     this.historyFile = path.join(historyDir, 'tool-history.jsonl');
+    this.journal = new BoundedJsonlEventLog(this.historyFile, {
+      maxBytes: this.MAX_HISTORY_HARD_BYTES,
+      maxRecords: this.MAX_HISTORY_RECORDS,
+    });
     
     // Load existing history on startup
     this.loadFromDisk();
@@ -117,52 +145,37 @@ export class ToolHistory {
    */
   private loadFromDisk(): void {
     try {
-      if (!fs.existsSync(this.historyFile)) {
-        return;
-      }
+      if (!fs.existsSync(this.historyFile)) return;
 
-      // If the file is over the cap, trim it down before reading so we
-      // load a bounded amount.
+      // Bound the file before replay. Interior malformed records fail closed;
+      // an incomplete final append remains uncommitted and is ignored by the journal.
       this.trimHistoryFileIfTooLarge();
-
-      const content = fs.readFileSync(this.historyFile, 'utf-8');
-      const lines = content.trim().split('\n').filter(line => line.trim());
-
-      // Parse + sanitize every persisted record. This also scrubs historical
-      // secrets on startup rather than only protecting newly-added calls.
-      const records: ToolCallRecord[] = [];
-      const sanitizedLines: string[] = [];
       let rewriteNeeded = false;
-      for (const line of lines) {
-        try {
-          const parsed = JSON.parse(line) as ToolCallRecord;
-          const sanitized = this.sanitizeRecord(parsed);
-          records.push(sanitized);
-          sanitizedLines.push(JSON.stringify(sanitized));
-          if (JSON.stringify(parsed) !== JSON.stringify(sanitized)) rewriteNeeded = true;
-        } catch (e) {
-          rewriteNeeded = true;
-        }
-      }
+      const records = this.journal.replaySync((line) => {
+        const parsed = JSON.parse(line) as ToolCallRecord;
+        const sanitized = this.sanitizeRecord(parsed);
+        if (JSON.stringify(parsed) !== JSON.stringify(sanitized)) rewriteNeeded = true;
+        return sanitized;
+      });
+      this.journalIssue = null;
+
       if (rewriteNeeded) {
-        fs.writeFileSync(this.historyFile, sanitizedLines.length ? `${sanitizedLines.join('\n')}\n` : '', 'utf-8');
+        const kept = records.slice(-this.MAX_ENTRIES);
+        fs.writeFileSync(
+          this.historyFile,
+          kept.length ? kept.map((record) => JSON.stringify(record)).join('\n') + '\n' : '',
+          'utf-8',
+        );
       }
 
-      // Keep only last 1000 entries, and cap on the way IN as well as on the
-      // way out. Entries written before the cap existed are still on disk and
-      // are well under the whole-file trim threshold, so without this the cap
-      // does nothing for anyone upgrading with an existing history file â€” i.e.
-      // for everyone it was written for.
       this.history = records
         .slice(-this.MAX_ENTRIES)
         .map(record => ({ ...record, output: this.capOutput(record.output) }));
 
-      // If file is getting too large, trim it
-      if (lines.length > this.MAX_ENTRIES * 2) {
-        this.trimHistoryFile();
-      }
+      if (records.length > this.MAX_ENTRIES * 2) this.trimHistoryFile();
     } catch (error) {
-      // Silently fail
+      this.journalIssue = boundText(error instanceof Error ? error.message : String(error), 500);
+      this.history = [];
     }
   }
 
@@ -176,46 +189,45 @@ export class ToolHistory {
    * Always keeps at least the most recent entry, even if a single record
    * exceeds the trim target â€” there is no useful state below that.
    */
-  private trimHistoryFileIfTooLarge(): boolean {
+  private trimHistoryFileIfTooLarge(projectedAppendBytes = 0): boolean {
     let stats: fs.Stats;
     try {
-      if (!fs.existsSync(this.historyFile)) {
-        return false;
-      }
+      if (!fs.existsSync(this.historyFile)) return false;
       stats = fs.statSync(this.historyFile);
-      if (stats.size <= this.MAX_HISTORY_FILE_SIZE_BYTES) {
+      if (stats.size + projectedAppendBytes <= this.MAX_HISTORY_FILE_SIZE_BYTES) return false;
+      if (stats.size > this.MAX_HISTORY_HARD_BYTES) {
+        this.journalIssue = `TOOL_HISTORY_HARD_LIMIT_EXCEEDED: size=${stats.size}`;
         return false;
       }
-    } catch (error) {
+    } catch {
       return false;
     }
 
     try {
       const content = fs.readFileSync(this.historyFile, 'utf-8');
-      const lines = content.split('\n').filter(line => line.length > 0);
-      if (lines.length === 0) {
-        return false;
+      const terminated = content.endsWith('\n');
+      const lines = content.split('\n');
+      if (!terminated) lines.pop(); // incomplete final append is uncommitted
+      const committed = lines.filter(line => line.length > 0);
+      if (committed.length === 0) {
+        fs.writeFileSync(this.historyFile, '', 'utf-8');
+        return stats.size > 0;
       }
 
-      // Walk lines from newest to oldest, accumulating bytes (line + '\n'),
-      // and keep as many as fit within the trim target. Always keep at
-      // least the last line.
       const kept: string[] = [];
       let bytes = 0;
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const lineBytes = Buffer.byteLength(lines[i], 'utf-8') + 1; // +1 for '\n'
-        if (kept.length > 0 && bytes + lineBytes > this.HISTORY_FILE_TRIM_TARGET_BYTES) {
-          break;
-        }
-        kept.push(lines[i]);
+      for (let i = committed.length - 1; i >= 0; i--) {
+        const lineBytes = Buffer.byteLength(committed[i], 'utf-8') + 1;
+        if (kept.length > 0 && bytes + lineBytes > this.HISTORY_FILE_TRIM_TARGET_BYTES) break;
+        kept.push(committed[i]);
         bytes += lineBytes;
       }
       kept.reverse();
-
       fs.writeFileSync(this.historyFile, kept.join('\n') + '\n', 'utf-8');
+      this.journalIssue = null;
       return true;
     } catch (error) {
-      // Trim failed; do not claim the file was changed.
+      this.journalIssue = boundText(error instanceof Error ? error.message : String(error), 500);
       return false;
     }
   }
@@ -261,16 +273,15 @@ export class ToolHistory {
     this.writeQueue = [];
 
     try {
-      // If the on-disk file has grown past the cap, trim it down to the
-      // target size (keeping the most recent entries) before appending.
-      // The in-memory cache is unaffected â€” it is already bounded by
-      // MAX_ENTRIES via addCall.
-      this.trimHistoryFileIfTooLarge();
-
-      // Append to file (atomic append operation)
-      const lines = toWrite.map(entry => JSON.stringify(entry)).join('\n') + '\n';
-      fs.appendFileSync(this.historyFile, lines, 'utf-8');
+      const projectedBytes = toWrite.reduce(
+        (total, entry) => total + Buffer.byteLength(JSON.stringify(entry), 'utf8') + 1,
+        0,
+      );
+      this.trimHistoryFileIfTooLarge(projectedBytes);
+      this.journal.appendSync(toWrite, { durable: true });
+      this.journalIssue = null;
     } catch (error) {
+      this.journalIssue = boundText(error instanceof Error ? error.message : String(error), 500);
       // Put back in queue on failure
       this.writeQueue.unshift(...toWrite);
     } finally {
@@ -328,26 +339,51 @@ export class ToolHistory {
     toolName: string,
     args: any,
     output: ServerResult,
-    duration?: number
-  ): void {
+    duration?: number,
+    decision?: EvidenceCaptureDecision,
+  ): boolean {
+    if (decision?.disposition === 'omit') return false;
+
+    // Image bytes and identifying arguments must never enter history, even if
+    // a caller omits the workspace policy decision or supplies a weaker one.
+    if (toolName === 'image_inspect') {
+      decision = {
+        policyState: 'inactive', pathCount: 0, ruleCount: 0, markerCount: 0,
+        ...decision,
+        disposition: 'metadata-only',
+      };
+    }
+
+    const capture = captureMetadata(decision);
+    const metadataOnly = decision?.disposition === 'metadata-only';
+    const safeOutput = metadataOnly
+      ? ({
+          ...(output?.isError ? { isError: true } : {}),
+          content: [{ type: 'text', text: '[tool history detail omitted by workspace evidence policy]' }],
+        } as ServerResult)
+      : output;
+    const safeArgs = metadataOnly
+      ? {
+          evidenceCapture: 'metadata-only',
+          policyState: decision?.policyState ?? 'invalid',
+          pathCount: decision?.pathCount ?? 0,
+        }
+      : args;
+
     const record = this.sanitizeRecord({
       timestamp: new Date().toISOString(),
       toolName,
-      arguments: args,
-      output,
+      arguments: safeArgs,
+      output: safeOutput,
+      ...(capture ? { capture } : {}),
       duration,
     });
     record.output = this.capOutput(record.output);
 
     this.history.push(record);
-
-    // Keep only last 1000 in memory
-    if (this.history.length > this.MAX_ENTRIES) {
-      this.history.shift();
-    }
-    
-    // Queue for async write
+    if (this.history.length > this.MAX_ENTRIES) this.history.shift();
     this.writeQueue.push(record);
+    return true;
   }
 
   /**
@@ -439,7 +475,8 @@ export class ToolHistory {
       oldestEntry: this.history[0]?.timestamp,
       newestEntry: this.history[this.history.length - 1]?.timestamp,
       historyFile: this.historyFile,
-      queuedWrites: this.writeQueue.length
+      queuedWrites: this.writeQueue.length,
+      journalIssue: this.journalIssue,
     };
   }
 

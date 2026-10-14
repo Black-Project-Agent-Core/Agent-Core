@@ -14,6 +14,8 @@ import type {
   WorkspaceEdit,
 } from './types.js';
 
+import { fileMutationCoordinator, type MutationExecutionContext } from '../rdc/mutation-coordinator.js';
+import { fileCheckpointService } from '../rdc/checkpoints/service.js';
 export interface TextFilePlan {
   kind: 'text';
   root: string;
@@ -199,6 +201,8 @@ export async function planWorkspaceEdit(root: string, edit: WorkspaceEdit): Prom
 
 export interface WorkspaceApplyOptions {
   dryRun?: boolean;
+  autoCheckpoint?: boolean;
+  execution?: MutationExecutionContext;
   atomicWriter?: (filePath: string, content: string) => Promise<void>;
 }
 
@@ -229,8 +233,8 @@ export async function applyWorkspacePlans(
   options: WorkspaceApplyOptions = {},
 ): Promise<RefactorSummary> {
   const dryRun = options.dryRun === true;
-  const textPlans = plans.filter((item): item is TextFilePlan => item.kind === 'text');
-  const renamePlans = plans.filter((item): item is RenamePlan => item.kind === 'rename' && !item.skip);
+  const textPlans = plans.filter((item): item is TextFilePlan => item.kind === 'text' && (!options.autoCheckpoint || item.original !== item.staged && item.editCount > 0));
+  const renamePlans = plans.filter((item): item is RenamePlan => item.kind === 'rename' && !item.skip && (!options.autoCheckpoint || item.oldAbsolutePath !== item.newAbsolutePath));
   const summary: RefactorSummary = {
     dryRun,
     changedFiles: textPlans.length + renamePlans.length,
@@ -240,7 +244,25 @@ export async function applyWorkspacePlans(
       ? { renamedFiles: renamePlans.map(item => ({ from: item.oldRelativePath, to: item.newRelativePath })) }
       : {}),
   };
-  if (dryRun) return summary;
+  if (dryRun || !summary.changedFiles) {
+    if (options.autoCheckpoint) options.execution?.reportAutoCheckpoint({ status: 'not-captured', reason: dryRun ? 'dry-run' : 'no-change' });
+    return summary;
+  }
+  const targets = [...textPlans.map(plan => plan.absolutePath), ...renamePlans.flatMap(plan => [plan.oldAbsolutePath, plan.newAbsolutePath])];
+  return fileMutationCoordinator.run(targets, async () => {
+    // Validate every planned source/destination before capture or the first mutation.
+    for (const plan of textPlans) {
+      await authorizedExistingPath(plan.root, plan.absolutePath);
+      const current = await readSemanticSource(plan.root, plan.absolutePath, plan.source.encoding);
+      if (current.fingerprint !== plan.fingerprint) throw new Error('SEMANTIC_SOURCE_DRIFT: ' + plan.relativePath);
+    }
+    for (const plan of renamePlans) {
+      await authorizedExistingPath(plan.root, plan.oldAbsolutePath);
+      await authorizedDestinationPath(plan.root, plan.newAbsolutePath);
+      if (fingerprintBytes(await readFile(plan.oldAbsolutePath)) !== plan.fingerprint
+        || await pathExists(plan.newAbsolutePath) !== plan.destinationExists) throw new Error('SEMANTIC_SOURCE_DRIFT: ' + plan.oldRelativePath);
+    }
+    if (options.autoCheckpoint) await fileCheckpointService.createAutomatic([...new Set(targets)], options.execution);
 
   const appliedText: AppliedText[] = [];
   const appliedRenames: AppliedRename[] = [];
@@ -306,6 +328,7 @@ export async function applyWorkspacePlans(
     if (applied.backupPath) await rm(applied.backupPath, { force: true }).catch(() => undefined);
   }
   return summary;
+  });
 }
 
 export async function applyWorkspaceEdit(root: string, edit: WorkspaceEdit, dryRun = false): Promise<RefactorSummary> {

@@ -1,0 +1,108 @@
+[submodule "SubProject/Super-Runtime/research/references/kimi-k3-in-c"]
+	path = SubProject/Super-Runtime/research/references/kimi-k3-in-c
+	url = https://github.com/FareedKhan-dev/kimi-k3-in-c.git
+	shallow = true
+[submodule "SubProject/Super-Runtime/research/references/llama.cpp"]
+	path = SubProject/Super-Runtime/research/references/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp.git
+	shallow = true
+[submodule "referensi/02-aislop"]
+	path = referensi/02-aislop
+	url = https://github.com/scanaislop/aislop.git
+	shallow = true
+[submodule "referensi/03-anti-slop-miqdad"]
+	path = referensi/03-anti-slop-miqdad
+	url = https://github.com/miqdadbadjuber/anti-slop.git
+	shallow = true
+[submodule "referensi/04-anti-slop-dmmulroy"]
+	path = referensi/04-anti-slop-dmmulroy
+	url = https://github.com/dmmulroy/anti-slop.git
+	shallow = true
+[submodule "referensi/05-9router"]
+	path = referensi/05-9router
+	url = https://github.com/decolua/9router.git
+	shallow = true
+[submodule "referensi/06-OmniRoute"]
+	path = referensi/06-OmniRoute
+	url = https://github.com/diegosouzapw/OmniRoute.git
+	shallow = true
+[submodule "referensi/Graft"]
+	path = referensi/Graft
+	url = https://github.com/Black-Project-Agent-Core/Graft.git
+	shallow = true
+[submodule "referensi/GroundingDINO"]
+	path = referensi/GroundingDINO
+	url = https://github.com/IDEA-Research/GroundingDINO.git
+	shallow = true
+[submodule "referensi/OmniParser"]
+	path = referensi/OmniParser
+	url = https://github.com/microsoft/OmniParser.git
+	shallow = true
+[submodule "referensi/PaddleOCR"]
+	path = referensi/PaddleOCR
+	url = https://github.com/PaddlePaddle/PaddleOCR.git
+	shallow = true
+[submodule "referensi/SoM"]
+	path = referensi/SoM
+	url = https://github.com/microsoft/SoM.git
+	shallow = true
+[submodule "referensi/UI-TARS"]
+	path = referensi/UI-TARS
+	url = https://github.com/bytedance/UI-TARS.git
+	shallow = true
+[submodule "referensi/YOLO-Master"]
+	path = referensi/YOLO-Master
+	url = https://github.com/Tencent/YOLO-Master.git
+	shallow = true
+[submodule "referensi/auto-browser"]
+	path = referensi/auto-browser
+	url = https://github.com/LvcidPsyche/auto-browser.git
+	shallow = true
+[submodule "referensi/browser"]
+	path = referensi/browser
+	url = https://github.com/lightpanda-io/browser.git
+	shallow = true
+[submodule "referensi/caveman"]
+	path = referensi/caveman
+	url = https://github.com/JuliusBrussee/caveman.git
+	shallow = true
+[submodule "referensi/claude-code-best-practice"]
+	path = referensi/claude-code-best-practice
+	url = https://github.com/shanraisshan/claude-code-best-practice.git
+	shallow = true
+[submodule "referensi/codebase-memory-mcp"]
+	path = referensi/codebase-memory-mcp
+	url = https://github.com/Black-Project-Agent-Core/codebase-memory-mcp.git
+	shallow = true
+[submodule "referensi/continuous-claude"]
+	path = referensi/continuous-claude
+	url = https://github.com/AnandChowdhary/continuous-claude.git
+	shallow = true
+[submodule "referensi/graphify"]
+	path = referensi/graphify
+	url = https://github.com/Graphify-Labs/graphify.git
+	shallow = true
+[submodule "referensi/obsidian-api"]
+	path = referensi/obsidian-api
+	url = https://github.com/obsidianmd/obsidian-api.git
+	shallow = true
+[submodule "referensi/opencv"]
+	path = referensi/opencv
+	url = https://github.com/opencv/opencv.git
+	shallow = true
+[submodule "referensi/rtk"]
+	path = referensi/rtk
+	url = https://github.com/rtk-ai/rtk.git
+	shallow = true
+[submodule "referensi/sam2"]
+	path = referensi/sam2
+	url = https://github.com/facebookresearch/sam2.git
+	shallow = true
+[submodule "referensi/skills"]
+	path = referensi/skills
+	url = https://github.com/mattpocock/skills.git
+	shallow = true
+[submodule "referensi/vision-agent"]
+	path = referensi/vision-agent
+	url = https://github.com/landing-ai/vision-agent.git
+	shallow = true

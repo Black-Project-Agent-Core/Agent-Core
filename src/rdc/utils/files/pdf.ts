@@ -29,28 +29,13 @@ export class PdfFileHandler implements FileHandler {
         const { offset = 0, length } = options ?? {};
 
         try {
-            // Use existing PDF parser
-            // Ensure we pass a valid PageRange or number array
-            // If length is undefined, we assume "rest of file" which requires careful handling.
-            // If length is defined, we pass { offset, length }.
-            // If neither, we pass empty array (all pages).
-            // Note: offset defaults to 0 if undefined.
-            
-            let range: any;
-            if (length !== undefined) {
-                range = { offset, length };
-            } else if (offset > 0) {
-                 // If offset provided but no length, try to read reasonable amount or all?
-                 // PageRange requires length. Let's assume 0 means "all" or use a large number?
-                 // Looking at pdf2md implementation, it uses generatePageNumbers(offset, length, total).
-                 // We'll pass 0 for length to imply "rest" if supported, or just undefined length if valid.
-                 // But typescript requires length.
-                 range = { offset, length: 0 }; 
-            } else {
-                range = [];
-            }
-
+            // The existing parser admits one bounded regular-file snapshot.
+            const range = length !== undefined || options?.offset !== undefined
+                ? { offset, length: length ?? Number.MAX_SAFE_INTEGER }
+                : undefined;
+            if (options?.signal?.aborted) throw new Error('PDF_READ_ABORTED');
             const pdfResult = await parsePdfToMarkdown(path, range);
+            if (options?.signal?.aborted) throw new Error('PDF_READ_ABORTED');
 
             return {
                 content: '', // Main content is in metadata.pages
@@ -60,7 +45,8 @@ export class PdfFileHandler implements FileHandler {
                     author: pdfResult.metadata.author,
                     title: pdfResult.metadata.title,
                     totalPages: pdfResult.metadata.totalPages,
-                    pages: pdfResult.pages
+                    pages: pdfResult.pages,
+                    pdfEvidence: pdfResult.pdfEvidence
                 }
             };
         } catch (error) {
@@ -121,7 +107,7 @@ export class PdfFileHandler implements FileHandler {
         // Get basic PDF metadata
         let metadata: any = { isPdf: true };
         try {
-            const pdfResult = await parsePdfToMarkdown(path, { offset: 0, length: 0 }); // Just metadata
+            const pdfResult = await parsePdfToMarkdown(path, [], { extractImages: false }); // Just metadata
             metadata = {
                 isPdf: true,
                 title: pdfResult.metadata.title,

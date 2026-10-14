@@ -38,13 +38,13 @@ export function createLearningDecision(candidate: LearningCandidate | undefined,
   const corrections = candidate?.corrections ?? [];
   const effectEvidence = candidate?.effectEvidence;
   const fingerprint = candidate ? digest({
-    kind:candidate.kind,title:candidate.title,content:candidate.content,verified:candidate.verified,
+    purpose:candidate.purpose,kind:candidate.kind,title:candidate.title,content:candidate.content,verified:candidate.verified,
     evidenceRefs:candidate.evidenceRefs,evaluation:candidate.evaluation,auditRef:candidate.auditRef,
     effectEvidence:candidate.effectEvidence,
     corrections:candidate.corrections,reuseCondition:candidate.reuseCondition,
     tags:candidate.tags,steps:candidate.steps,exemplars:candidate.exemplars,
   }) : digest(['rejected-input',reviewId,index]);
-  return { reviewId, candidateId, candidateKey:digest([reviewId,workspaceKey,candidateId]),workspaceKey,
+  return { ...(candidate?.purpose ? { purpose: candidate.purpose } : {}), reviewId, candidateId, candidateKey:digest([reviewId,workspaceKey,candidateId]),workspaceKey,
     fingerprint,fingerprintBasis:candidate?'normalized-claim':'rejected-input',index,
     evidenceCount:evidence.length,evidenceDigest:digest(evidence),
     correctionCount:corrections.length,correctionsDigest:digest(corrections),

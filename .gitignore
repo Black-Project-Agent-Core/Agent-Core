@@ -1,0 +1,52 @@
+.worktrees/
+node_modules/
+**/node_modules.partial-*/
+dist/
+data/
+logs/
+.env
+*.log
+coverage/
+.vitest/
+/runtime/
+/.grafel/
+
+# GitHub backup boundary: keep authoritative source/config/docs, exclude local/private/generated state.
+/.env.*
+!/.env.example
+/DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/
+/.rdc-standalone/
+/.tmp/
+/launcher-publish/
+/Microsoft/
+/Agent Core.exe
+/Agent Core.exe.bak-*
+/agent-core.zip
+/Steal.txt
+/rdc/profile/
+/rdc/npm-cache/
+**/bin/
+**/obj/
+SubProject/Agent-Code/*.WebView2/
+/Audit/
+/secrets/
+/tunnel-client/*
+!/tunnel-client/agent-core.example.yaml
+/capabilities/
+/plugin/agent-core/generated/
+/Set-Tunnel-Key.bat
+/Set-Tunnel-Key.ps1
+/release/
+/docs/superpowers/
+/.tools/
+
+# Historical incident reports were removed in the file-native cutover; their husks are
+# undeletable without elevation, so keep them unstageable until the elevated sweep runs.
+/reports/
+/docs/roadmap/agent-core-low-friction-compatibility-2026-09-06/
+
+/.grafel/
+
+# Accidental zero-byte PowerShell fragments: local artifacts, not sources.
+/{console.error(e)
+/{try{const

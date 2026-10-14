@@ -1,0 +1,80 @@
+{
+  "baselineCommit": "36e9cb3918c0f0e225fbcc18b8f92b4c8bf479f3",
+  "rows": [
+    {
+      "family": "controller-camel",
+      "partition": "development",
+      "expectedId": "right",
+      "hits": []
+    },
+    {
+      "family": "event-snake",
+      "partition": "development",
+      "expectedId": "right",
+      "hits": []
+    },
+    {
+      "family": "cache-code",
+      "partition": "development",
+      "expectedId": "right",
+      "hits": [
+        {
+          "id": "right",
+          "revision": "sha256:d3ee5c14be32b99ead64edca674f3992049c0fc014c744c90ea57e788bd8164c"
+        }
+      ]
+    },
+    {
+      "family": "worker-path",
+      "partition": "development",
+      "expectedId": "right",
+      "hits": [
+        {
+          "id": "right",
+          "revision": "sha256:bcda3e84790de466eed2f5354dff2c49fbc4d191f1b09568ad3772ce34b1799d"
+        }
+      ]
+    },
+    {
+      "family": "listener-acronym",
+      "partition": "heldout",
+      "expectedId": "right",
+      "hits": []
+    },
+    {
+      "family": "unicode-render",
+      "partition": "heldout",
+      "expectedId": "right",
+      "hits": []
+    },
+    {
+      "family": "oauth-digit",
+      "partition": "heldout",
+      "expectedId": "right",
+      "hits": []
+    },
+    {
+      "family": "absent-natural",
+      "partition": "heldout",
+      "expectedId": null,
+      "hits": []
+    },
+    {
+      "family": "renamed-code",
+      "partition": "heldout",
+      "expectedId": null,
+      "hits": []
+    },
+    {
+      "family": "plain-language",
+      "partition": "heldout",
+      "expectedId": "right",
+      "hits": [
+        {
+          "id": "right",
+          "revision": "sha256:0d554046a640c9cf2fa7d203a2c5a32aa41a571739c09e693e649a72471e05ac"
+        }
+      ]
+    }
+  ]
+}

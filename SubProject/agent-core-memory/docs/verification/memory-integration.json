@@ -1,0 +1,226 @@
+{
+  "schemaVersion": 1,
+  "baseEngineCommit": "cb433fce97b034dbfab6b1844ec82b47f1decf4e",
+  "commitRole": "Base before the final integration corrections; executed source hashes identify the tested changes.",
+  "datasetRevision": "memory-final-integration-fi1-fi2-v1",
+  "platform": {
+    "os": "Linux",
+    "arch": "x86_64",
+    "node": "v24.19.0",
+    "npm": "11.9.0",
+    "processTimezone": "Asia/Jakarta",
+    "evidenceTimezone": "UTC"
+  },
+  "dependencyLockDigest": "sha256:f6e124f787c9b5958bdb2bcd13a1076a8018be525b40c75458f4b0b65db03505",
+  "extractionManifestDigest": "sha256:2984d9f03ab9ad7d736a97b910a56d90bfb5e2582aad8c3a6c47eb3cb67f3496",
+  "engineSourceTreeDigest": "f489ff9abec88e8d589592fcbcaff95a13528a88d404797c088c5de567853105",
+  "sourceDigests": {
+    "src/memory/promotion.ts": "sha256:3253ebda6a023f65a8854250c71bfd99cc475fb1938c6733a3841f6d811b79e6",
+    "src/memory/transfer-v2.ts": "sha256:7ab0137a3e029391c2c467bb94539d04d41857326b7324c068d3787db5adfe58",
+    "tests/memory-promotion-transfer.test.ts": "sha256:bb7f2a651312a4b1ad11dafcfcd37e4e1107ac3669db4b65ced749721296c3d0"
+  },
+  "findings": [
+    {
+      "id": "FI-1",
+      "status": "IMPLEMENTED; scoped independent re-review pending",
+      "finding": "Strict transfer schema omitted required engine-written eligibleIds.",
+      "repair": "Single complete promotion-owned strict saved schema reused by all runtime readers and transfer."
+    },
+    {
+      "id": "FI-2",
+      "status": "IMPLEMENTED; scoped independent re-review pending",
+      "finding": "Pending transition projected audit.after references were treated as already retained archive objects.",
+      "repair": "Domain-owned reference view validates strict shape, plan/snapshot binding and projected identity/scope/semantic hashes, then excludes only future plan outputs from retained-reference traversal; raw bytes and actual refs are preserved."
+    }
+  ],
+  "redEvidence": [
+    {
+      "scope": "Correct public pending/applied retain/create/temporal fixtures against the preserved pre-fix installed package",
+      "failed": 6,
+      "skippedByNameSelection": 5,
+      "exitCode": 1,
+      "error": "MEMORY_TRANSFER_SCHEMA_INVALID"
+    },
+    {
+      "scope": "Schema-only repair with valid public typed-record seeding",
+      "failed": 1,
+      "passed": 10,
+      "exitCode": 1,
+      "error": "MEMORY_TRANSFER_UNRESOLVED_REF for pending transition"
+    }
+  ],
+  "fixtureCorrection": "Two initial temporal fixture failures used legacy remember() as if it accepted typed experience. The corrected fixture seeds typed records through public reviewed promotion; fixture errors are not counted as product defects.",
+  "focusedIntegrationCases": 14,
+  "targeted": {
+    "exitCode": 0,
+    "passed": 192,
+    "failed": 0,
+    "pending": 0,
+    "todo": 0,
+    "files": 8,
+    "durationSeconds": 30.29
+  },
+  "full": {
+    "exitCode": 0,
+    "passed": 503,
+    "failed": 0,
+    "pending": 0,
+    "todo": 0,
+    "files": 27,
+    "durationSeconds": 240.5
+  },
+  "testAssertions": [
+    {
+      "name": "FI-1 pending retain public roundtrip preserves apply, replay and continuation",
+      "status": "passed"
+    },
+    {
+      "name": "FI-1 applied retain public roundtrip preserves apply, replay and continuation",
+      "status": "passed"
+    },
+    {
+      "name": "FI-1 pending create public roundtrip preserves apply, replay and continuation",
+      "status": "passed"
+    },
+    {
+      "name": "FI-1 applied create public roundtrip preserves apply, replay and continuation",
+      "status": "passed"
+    },
+    {
+      "name": "FI-1 pending transition public roundtrip preserves apply, replay and continuation",
+      "status": "passed"
+    },
+    {
+      "name": "FI-1 applied transition public roundtrip preserves apply, replay and continuation",
+      "status": "passed"
+    },
+    {
+      "name": "FI-1 strict saved-plan schema rejects missing eligibleIds before activation",
+      "status": "passed"
+    },
+    {
+      "name": "FI-1 strict saved-plan schema rejects null eligibleIds before activation",
+      "status": "passed"
+    },
+    {
+      "name": "FI-1 strict saved-plan schema rejects string eligibleIds before activation",
+      "status": "passed"
+    },
+    {
+      "name": "FI-1 strict saved-plan schema rejects unsafe-id eligibleIds before activation",
+      "status": "passed"
+    },
+    {
+      "name": "FI-1 strict saved-plan schema rejects unknown-field eligibleIds before activation",
+      "status": "passed"
+    },
+    {
+      "name": "FI-2 pending/applied transfer rejects malformed projected-hash references",
+      "status": "passed"
+    },
+    {
+      "name": "FI-2 pending/applied transfer rejects malformed actual-input references",
+      "status": "passed"
+    },
+    {
+      "name": "FI-2 pending/applied transfer rejects malformed applied-output references",
+      "status": "passed"
+    }
+  ],
+  "t8RepeatGuardrails": [
+    {
+      "records": 10,
+      "status": "PASS",
+      "medianRatio": 0.4116149781364016,
+      "p95Ratio": 0.36453528969839494,
+      "thresholds": {
+        "medianRatio": 1.2,
+        "p95Ratio": 1.3
+      }
+    },
+    {
+      "records": 100,
+      "status": "PASS",
+      "medianRatio": 0.4473012695755529,
+      "p95Ratio": 0.47421882201908894,
+      "thresholds": {
+        "medianRatio": 1.2,
+        "p95Ratio": 1.3
+      }
+    },
+    {
+      "records": 1000,
+      "status": "PASS",
+      "medianRatio": 0.43393233640988194,
+      "p95Ratio": 0.44947734141038975,
+      "thresholds": {
+        "medianRatio": 1.2,
+        "p95Ratio": 1.3
+      }
+    }
+  ],
+  "models": {
+    "calls": 0,
+    "inputTokens": null,
+    "outputTokens": null,
+    "cost": null
+  },
+  "packageConsumer": {
+    "status": "PASS",
+    "files": 301,
+    "runtime": "Named-package ESM smoke verifies pending promotion restore/apply, applied restore/replay, continuation and prior retained-workspace scope rejection",
+    "declarations": "PASS",
+    "crossPhaseAgainstInstalledPackage": {
+      "passed": 14,
+      "failed": 0,
+      "exitCode": 0
+    },
+    "forbiddenRuntimeOrPrivatePaths": [],
+    "note": "Exact final archive hash/byte counts recorded in raw evidence to avoid self-referential package metrics."
+  },
+  "commands": [
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "npx vitest run tests/memory-promotion-transfer.test.ts tests/memory-promotion.test.ts tests/memory-promotion-recovery.test.ts tests/memory-temporal-order.test.ts tests/memory-transfer-v2.test.ts tests/memory-transfer-review.test.ts tests/memory-controller-continuation.test.ts tests/memory-portability.test.ts --reporter=default --reporter=json",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run verify -- -- --reporter=default --reporter=json",
+      "exitCode": 0
+    },
+    {
+      "command": "npm pack --dry-run --json; npm pack --json",
+      "exitCode": 0
+    },
+    {
+      "command": "npm install --offline --ignore-scripts --no-audit --no-fund <local-tarball>; node smoke.mjs; node transfer-smoke.mjs",
+      "exitCode": 0
+    },
+    {
+      "command": "tsc --ignoreConfig --strict --noEmit --module nodenext --target es2022 --skipLibCheck <consumer-types>",
+      "exitCode": 0
+    },
+    {
+      "command": "vitest run <public integration fixtures pointed at the installed package>",
+      "exitCode": 0
+    }
+  ],
+  "readiness": {
+    "scopedIndependentReview": "PENDING",
+    "finalIntegratedAcceptance": "PENDING",
+    "liveAutonomousController": "NOT RUN",
+    "windows": "NOT RUN",
+    "releaseOrDeployment": "NOT REQUESTED"
+  },
+  "generatedAt": "2026-10-07T23:14:33.264052+00:00",
+  "originalReviewerProbe": {
+    "status": "PASS",
+    "exitCode": 0,
+    "beforeConsolidation": "complete export PASS",
+    "pendingConsolidation": "complete export PASS",
+    "appliedConsolidation": "complete export PASS"
+  }
+}

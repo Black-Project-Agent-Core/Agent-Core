@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from 'os';
 import { fetchWithPolicy, correlationSuffix } from '../../net/outbound-request.js';
+import { readPublicDocument } from '../document-projection/public-url.js';
 import { readResponseBytesBounded, readResponseTextBounded } from '../../net/bounded-response.js';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -10,10 +11,17 @@ import { withTimeout, runWithAbortableTimeout } from '../utils/withTimeout.js';
 import { configManager } from '../config-manager.js';
 import { getFileHandler, TextFileHandler } from '../utils/files/index.js';
 import { assertRegularFile, readRegularFileBounded } from '../utils/files/safe-regular-file.js';
+import { readVerifiedResultPage } from '../../security/verified-result-artifact.js';
 import type { ReadOptions, FileResult, PdfPageItem } from '../utils/files/base.js';
 import { isPdfFile } from "./mime-types.js";
-import { parsePdfToMarkdown, editPdf, PdfOperations, PdfMetadata, parseMarkdownToPdf } from './pdf/index.js';
+import { parsePdfBytesToMarkdown, editPdf, PdfOperations, PdfMetadata, parseMarkdownToPdf } from './pdf/index.js';
 import { isBinaryFile } from 'isbinaryfile';
+import { resolveModuleProjectRoot } from '../../portability/paths.js';
+import { documentProjectionService } from '../document-projection/service.js';
+import { decodeText } from '../document-projection/helpers.js';
+import { DocumentProjectionError, type ProjectionResult } from '../document-projection/types.js';
+
+const MACHINE_CONTROL_PROJECT_ROOT = resolveModuleProjectRoot(import.meta.url);
 
 // CONSTANTS SECTION - Consolidate all timeouts and thresholds
 
@@ -235,7 +243,7 @@ export async function validatePath(requestedPath: string): Promise<string> {
         // Convert to absolute path
         const absoluteOriginal = path.isAbsolute(expandedPath)
             ? path.resolve(expandedPath)
-            : path.resolve(process.cwd(), expandedPath);
+            : path.resolve(MACHINE_CONTROL_PROJECT_ROOT, expandedPath);
 
         // Attempt to resolve symlinks to get the real path
         // This will succeed if the path exists and all symlinks in the chain are valid
@@ -351,12 +359,46 @@ type PdfPayload = {
 
 type FileResultPayloads = PdfPayload;
 
+function projectionToFileResult(result: ProjectionResult): FileResult {
+    return {
+        content: result.markdown,
+        mimeType: 'text/markdown',
+        metadata: {
+            isDocumentProjection: true,
+            projection: 'markdown',
+            sourceFormat: result.format,
+            converter: result.converter,
+            sourceMimeType: result.evidence?.mimeType,
+            sourceExtension: result.evidence?.extension,
+            omittedEntries: result.omittedEntries,
+            title: result.title,
+            pdfEvidence: result.pdfEvidence
+        }
+    };
+}
+
 /**
  * Read file content from a URL
  * @param url URL to fetch content from
  * @returns File content or file result with metadata
  */
-export async function readFileFromUrl(url: string): Promise<FileResult> {
+export async function readFileFromUrl(url: string, options?: ReadOptions): Promise<FileResult> {
+    if (options?.networkPolicy !== undefined) {
+        if (options.networkPolicy !== 'public-only' || options.expectedIntegrity !== undefined
+            || options.sheet !== undefined || options.range !== undefined
+            || (options.projection !== undefined && options.projection !== 'native' && options.projection !== 'markdown'))
+            throw new Error('PUBLIC_URL_MODE_INVALID');
+        // A common conservative bound is never larger than any existing format limit.
+        const maxBytes = Math.min(URL_TEXT_MAX_BYTES, URL_BINARY_MAX_BYTES,
+            envByteLimit('AGENT_CORE_PDF_URL_MAX_BYTES', 64 * 1024 * 1024));
+        return readPublicDocument(url, {
+            projection: options.projection,
+            maxBytes,
+            signal: options.signal,
+            pdfPageRange: options.offset !== undefined || options.length !== undefined
+                ? { offset: options.offset ?? 0, length: options.length ?? Number.MAX_SAFE_INTEGER } : undefined,
+        });
+    }
     const { isImageFile } = await import('./mime-types.js');
     try {
         const response = await fetchWithPolicy(url, {}, {
@@ -372,7 +414,20 @@ export async function readFileFromUrl(url: string): Promise<FileResult> {
         const isImage = isImageFile(contentType);
         const isPdf = isPdfFile(contentType) || url.toLowerCase().endsWith('.pdf');
         if (isPdf) {
-            const pdfResult = await parsePdfToMarkdown(url);
+            const buffer = await readResponseBytesBounded(response,
+                envByteLimit('AGENT_CORE_PDF_URL_MAX_BYTES', 128 * 1024 * 1024), 'PDF URL response');
+            const observedAt = new Date().toISOString();
+            const pdfPageRange = options?.offset !== undefined || options?.length !== undefined
+                ? { offset: options.offset ?? 0, length: options.length ?? Number.MAX_SAFE_INTEGER } : undefined;
+            if (options?.projection === 'markdown') {
+                const projected = await documentProjectionService.projectBytes({
+                    bytes: buffer, profile: 'markdown', mimeType: 'application/pdf', extension: '.pdf',
+                    pdfPageRange, observedAt,
+                });
+                if (projected) return projectionToFileResult(projected);
+                throw new Error('PDF_CONVERSION_FAILED');
+            }
+            const pdfResult = await parsePdfBytesToMarkdown(buffer, pdfPageRange, { observedAt });
             return {
                 content: '',
                 mimeType: 'text/plain',
@@ -381,7 +436,8 @@ export async function readFileFromUrl(url: string): Promise<FileResult> {
                     author: pdfResult.metadata.author,
                     title: pdfResult.metadata.title,
                     totalPages: pdfResult.metadata.totalPages,
-                    pages: pdfResult.pages
+                    pages: pdfResult.pages,
+                    pdfEvidence: pdfResult.pdfEvidence
                 }
             };
         }
@@ -389,9 +445,27 @@ export async function readFileFromUrl(url: string): Promise<FileResult> {
             const buffer = await readResponseBytesBounded(response, URL_BINARY_MAX_BYTES, 'URL binary response');
             return { content: buffer.toString('base64'), mimeType: contentType, metadata: { isImage } };
         }
+
+        const projection = options?.projection ?? 'auto';
+        if (documentProjectionService.shouldAttempt(url, projection, contentType)) {
+            const buffer = await readResponseBytesBounded(response, URL_BINARY_MAX_BYTES, 'URL document response');
+            const projected = await documentProjectionService.projectBytes({
+                bytes: buffer,
+                profile: projection,
+                sourceName: url,
+                url,
+                mimeType: contentType
+            });
+            if (projected) return projectionToFileResult(projected);
+            const charset = /charset\s*=\s*([^;]+)/i.exec(contentType)?.[1]?.trim();
+            const content = decodeText(buffer, charset).text;
+            return { content, mimeType: contentType, metadata: { isImage: false } };
+        }
+
         const content = await readResponseTextBounded(response, URL_TEXT_MAX_BYTES, 'URL text response');
         return { content, mimeType: contentType, metadata: { isImage } };
     } catch (error) {
+        if (error instanceof DocumentProjectionError) throw error;
         throw new Error(`Failed to fetch URL: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
@@ -406,6 +480,7 @@ export async function readFileFromDisk(
     filePath: string,
     options?: ReadOptions
 ): Promise<FileResult> {
+    if (options?.networkPolicy !== undefined) throw new Error('PUBLIC_URL_MODE_LOCAL_REFUSED');
     const { offset = 0, sheet, range } = options ?? {};
     let { length } = options ?? {};
 
@@ -420,6 +495,12 @@ export async function readFileFromDisk(
     }
 
     const validPath = await validatePath(filePath);
+    if (options?.expectedIntegrity !== undefined) {
+        if (options.isUrl || options.sheet !== undefined || options.range !== undefined
+            || (options.projection !== undefined && options.projection !== 'native'))
+            throw new Error('RESULT_ARTIFACT_MODE_REFUSED');
+        return readVerifiedResultPage(filePath, options.expectedIntegrity, offset, length);
+    }
 
     // Get file extension for telemetry
     const fileExtension = getFileExtension(validPath);
@@ -484,6 +565,15 @@ export async function readFileFromDisk(
     // Read under an abortable timeout so a hung/stalled read is cancelled
     // (fd/thread freed) rather than leaked until the OS call returns.
     const readOperation = async (signal: AbortSignal) => {
+        if (signal.aborted) throw Object.assign(new Error('Read aborted'), { code: 'ABORT_ERR' });
+
+        const projected = await documentProjectionService.projectLocalFile(
+            validPath,
+            options?.projection ?? 'auto',
+            { offset, length }
+        );
+        if (projected) return projectionToFileResult(projected);
+
         // Get appropriate handler for this file type (async - includes binary detection)
         const handler = await getFileHandler(validPath);
 
@@ -554,9 +644,11 @@ export async function readFile(
     options?: ReadOptions
 ): Promise<FileResult> {
     const { isUrl, offset, length, sheet, range } = options ?? {};
+    if (options?.networkPolicy !== undefined && !isUrl) throw new Error('PUBLIC_URL_MODE_LOCAL_REFUSED');
+    if (isUrl && options?.expectedIntegrity !== undefined) throw new Error('RESULT_ARTIFACT_URL_REFUSED');
     return isUrl
-        ? readFileFromUrl(filePath)
-        : readFileFromDisk(filePath, { offset, length, sheet, range });
+        ? readFileFromUrl(filePath, options)
+        : readFileFromDisk(filePath, { offset, length, sheet, range, projection: options?.projection, expectedIntegrity: options?.expectedIntegrity });
 }
 
 /**
@@ -616,7 +708,8 @@ export async function readFileInternal(filePath: string, offset: number = 0, len
     return lines.slice(offset, offset + length).join('');
 }
 
-export async function writeFile(filePath: string, content: string, mode: 'rewrite' | 'append' = 'rewrite'): Promise<void> {
+export async function writeFile(filePath: string, content: string, mode: 'rewrite' | 'append' = 'rewrite',
+    beforeWrite?: (canonicalPath: string, changed: boolean) => Promise<void>): Promise<void> {
     const validPath = await validatePath(filePath);
 
     // Get file extension for telemetry
@@ -637,7 +730,24 @@ export async function writeFile(filePath: string, content: string, mode: 'rewrit
     // Get appropriate handler for this file type (async - includes binary detection)
     const handler = await getFileHandler(validPath);
 
-    // Use handler to write the file
+    // The hook is host-owned and runs only after path/handler admission, immediately before write.
+    if (beforeWrite) {
+        let changed = true;
+        if (handler instanceof TextFileHandler) {
+            try {
+                const info = await fs.lstat(validPath);
+                if (info.isFile() && !info.isSymbolicLink()) {
+                    if (mode === 'append' && contentBytes === 0) changed = false;
+                    else if (mode === 'rewrite' && info.size === contentBytes && info.size <= 8 * 1024 * 1024) {
+                        const prior = await readRegularFileBounded(validPath, Math.max(1, contentBytes), { followSymlinks: false });
+                        changed = prior.truncated || !prior.buffer.equals(Buffer.from(content));
+                    }
+                }
+            } catch { /* unknown prestate is handled by best-effort capture, not write authorization */ }
+        }
+        await beforeWrite(validPath, changed);
+        if (!changed) return;
+    }
     await handler.write(validPath, content, mode);
 }
 
@@ -766,9 +876,22 @@ export async function listDirectory(dirPath: string, depth: number = 2): Promise
     return results;
 }
 
-export async function moveFile(sourcePath: string, destinationPath: string): Promise<void> {
+export async function moveFile(sourcePath: string, destinationPath: string,
+    beforeMove?: (source: string, destination: string, reason?: 'unsupported-operation' | 'no-change' | 'path-not-eligible') => Promise<void>): Promise<void> {
     const validSourcePath = await validatePath(sourcePath);
     const validDestPath = await validatePath(destinationPath);
+    if (beforeMove) {
+        let reason: 'unsupported-operation' | 'no-change' | 'path-not-eligible' | undefined;
+        const key = (value: string) => process.platform === 'win32' ? value.toLowerCase() : value;
+        try {
+            const source = await fs.lstat(validSourcePath);
+            const destination = await fs.lstat(validDestPath).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; });
+            if (!source.isFile() || source.isSymbolicLink() || destination && (!destination.isFile() || destination.isSymbolicLink())) reason = 'unsupported-operation';
+            else if (key(validSourcePath) === key(validDestPath)) reason = 'no-change';
+        } catch { reason = 'path-not-eligible'; }
+        await beforeMove(validSourcePath, validDestPath, reason);
+        if (reason === 'no-change') return;
+    }
     await fs.rename(validSourcePath, validDestPath);
 }
 

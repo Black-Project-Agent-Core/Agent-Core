@@ -11,8 +11,26 @@ public static class AgentCoreDataDirectory
         if (string.IsNullOrWhiteSpace(configured))
             configured = Path.Combine("runtime", "bridge-auth");
 
-        var value = Unquote(configured.Trim());
-        return Path.GetFullPath(Path.IsPathRooted(value) ? value : Path.Combine(root, value));
+        var projectRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var value = Unquote(configured.Trim())
+            .Replace("${AGENT_CORE_PROJECT_ROOT}", projectRoot, StringComparison.OrdinalIgnoreCase)
+            .Replace("%AGENT_CORE_PROJECT_ROOT%", projectRoot, StringComparison.OrdinalIgnoreCase)
+            .Replace("<PROJECT_ROOT>", projectRoot, StringComparison.OrdinalIgnoreCase);
+        if (value.StartsWith("@project", StringComparison.OrdinalIgnoreCase))
+        {
+            value = value["@project".Length..].TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return Path.GetFullPath(Path.Combine(projectRoot, value));
+        }
+        if (!Path.IsPathRooted(value))
+            return Path.GetFullPath(Path.Combine(projectRoot, value));
+
+        var candidate = Path.GetFullPath(value);
+        var portableDefault = Path.GetFullPath(Path.Combine(projectRoot, "runtime", "bridge-auth"));
+        var suffix = Path.Combine("runtime", "bridge-auth");
+        if (candidate.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+            && !candidate.Equals(portableDefault, StringComparison.OrdinalIgnoreCase))
+            return portableDefault;
+        return candidate;
     }
 
     private static string? ReadDotEnv(string root, string name)

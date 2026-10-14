@@ -1,0 +1,21 @@
+{
+  "autopilot.configured": "Terkonfigurasi",
+  "autopilot.runtime_override": "Override runtime",
+  "autopilot.credential_id": "ID Kredensial: {id}",
+  "autopilot.last_verified": "Terakhir diverifikasi: {at}",
+  "autopilot.replace_api_key": "Hubungkan / Ganti API Key",
+  "autopilot.connect_or_replace": "Hubungkan / Ganti API Key",
+  "autopilot.remove_credential": "Hapus Kredensial",
+  "autopilot.first_setup_title": "Hubungkan Envato",
+  "autopilot.first_setup_desc": "Market Signal Lab membutuhkan token API Envato bersama satu kali pada akun Windows ini. Token diverifikasi sebelum disimpan secara aman.",
+  "autopilot.verify_continue": "Verifikasi & Lanjutkan",
+  "autopilot.network_unavailable_desc": "Envato tidak dapat dijangkau. Periksa koneksi jaringan lalu coba lagi; kredensial tersimpan tidak dihapus.",
+  "autopilot.credential_store_desc": "Windows tidak dapat mengakses kredensial Envato yang tersimpan. Mulai ulang Market Signal Lab atau hubungi administrator; riwayat pasar tetap tidak berubah.",
+  "autopilot.provider_response_desc": "Envato mengembalikan respons yang tidak terduga. Kredensial tersimpan dan riwayat lokal tetap dipertahankan.",
+  "autopilot.observe_uses_saved_credential": "Jalur API resmi. Kredensial Envato yang telah dikonfigurasi diambil oleh aplikasi Go lokal dan tidak pernah disertakan dalam request browser ini.",
+  "autopilot.source_settings_desc": "Masukkan token Envato bersama satu kali. Market Signal Lab memverifikasinya lalu menyimpannya di Windows Credential Manager untuk akun researcher ini.",
+  "autopilot.uses_settings_token": "Menggunakan kredensial Envato tersimpan dari Pengaturan.",
+  "autopilot.schedule_note": "Pemetaan headless menggunakan kredensial tersimpan atau override environment yang diberikan secara eksplisit.",
+  "autopilot.first_run_desc": "Hubungkan Envato satu kali di Pengaturan, lalu petakan pasar teramati. Peta pertama hanya menunjukkan komposisi; arah memerlukan riwayat yang dapat dibandingkan.",
+  "autopilot.configure_token_first": "Hubungkan Envato di Pengaturan terlebih dahulu."
+}

@@ -1,0 +1,13 @@
+﻿{
+  "version": "relevance-fixture-manifest/v1",
+  "development": {
+    "bytes": 3589,
+    "sha256": "4f6cb3b53fab31df1d0b990eee114c4b0353e69b1228a9ffd98996f1130099d4",
+    "canonicalDigest": "sha256:f17fa2ee5bbd84d23b09c3ee941edd3874dd92258ec163bf0ecd0e0ff16e0932"
+  },
+  "heldout": {
+    "bytes": 3647,
+    "sha256": "8b1f751ba8b300dbab6261fbedd79aa82974fd5cb8860c7587bdd8c512a400e9",
+    "canonicalDigest": "sha256:f29737e065ae6a78c4e245bdbad21fbe858865f7724266f9dc9bec9b6a346bba"
+  }
+}

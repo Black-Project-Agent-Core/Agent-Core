@@ -1,6 +1,8 @@
 import path from 'node:path';
 import type { EvolutionEvent, MemoryLink, MemoryLinkType, MemoryRecord, MemoryProvenance } from './types.js';
 import { MEMORY_SCHEMA_VERSION } from './types.js';
+import { normalizeRepositoryIdentity } from './provenance.js';
+import { normalizeMemorySourceSnapshot } from './source-snapshot.js';
 
 const HEADER_RE = /^<!-- agent-core-memory\s*\n([\s\S]*?)\n-->\s*\n?/;
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/;
@@ -43,10 +45,28 @@ function links(value: unknown): MemoryLink[] {
     const strength = Number(raw.strength);
     if (!Number.isFinite(strength) || strength < 0 || strength > 1) throw new Error('Invalid memory link strength');
     const createdAt = iso(raw.createdAt, 'link createdAt') as string;
+    const validFrom = raw.validFrom === undefined ? undefined : iso(raw.validFrom, 'link validFrom') as string;
+    const validTo = raw.validTo === undefined ? undefined : iso(raw.validTo, 'link validTo') as string;
+    const referenceTime = raw.referenceTime === undefined ? undefined : iso(raw.referenceTime, 'link referenceTime') as string;
+    if (validFrom && validTo && Date.parse(validTo) < Date.parse(validFrom)) throw new Error('Invalid memory link validity range');
+    const evidenceRefs = raw.evidenceRefs === undefined
+      ? undefined
+      : strings(raw.evidenceRefs, 'link evidenceRefs').map(item => item.trim()).filter(Boolean).slice(0, 16);
+    if (evidenceRefs?.some(item => /^(?:chat|session):/i.test(item))) throw new Error('Invalid memory link runtime evidence ref');
     const key = `${targetId}\u0000${type}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    output.push({ targetId, type, strength, createdAt, ...(typeof raw.reason === 'string' && raw.reason.trim() ? { reason: raw.reason.trim() } : {}) });
+    output.push({
+      targetId,
+      type,
+      strength,
+      createdAt,
+      ...(typeof raw.reason === 'string' && raw.reason.trim() ? { reason: raw.reason.trim() } : {}),
+      ...(validFrom ? { validFrom } : {}),
+      ...(validTo ? { validTo } : {}),
+      ...(referenceTime ? { referenceTime } : {}),
+      ...(evidenceRefs?.length ? { evidenceRefs } : {}),
+    });
   }
   return output;
 }
@@ -70,12 +90,19 @@ function provenance(value: unknown): MemoryProvenance | undefined {
     const gitCommit = typeof raw.gitCommit === 'string' && raw.gitCommit.trim() ? raw.gitCommit.trim() : undefined;
     if (gitCommit && !/^[0-9a-fA-F]{7,64}$/.test(gitCommit))
         throw new Error('Invalid memory provenance gitCommit');
+    const identity = raw.identity && typeof raw.identity === 'object' && !Array.isArray(raw.identity)
+        ? normalizeRepositoryIdentity(raw.identity as MemoryProvenance['identity'])
+        : undefined;
     return {
         files: [...new Set(files)],
         ...(typeof raw.workspace === 'string' && raw.workspace.trim() ? { workspace: raw.workspace.trim().slice(0, 120) } : {}),
         ...(typeof raw.repo === 'string' && raw.repo.trim() ? { repo: raw.repo.trim().slice(0, 160) } : {}),
         ...(gitCommit ? { gitCommit } : {}),
         ...(typeof raw.gitRef === 'string' && raw.gitRef.trim() ? { gitRef: raw.gitRef.trim().slice(0, 240) } : {}),
+        ...(typeof raw.importKey === 'string' && /^sha256:[0-9a-f]{64}$/i.test(raw.importKey) ? { importKey: raw.importKey.toLowerCase() } : {}),
+        ...(typeof raw.importKey === 'string' && !/^sha256:[0-9a-f]{64}$/i.test(raw.importKey) ? (() => { throw new Error('Invalid memory provenance importKey'); })() : {}),
+        ...(identity ? { identity } : {}),
+        ...(raw.sourceSnapshot !== undefined ? { sourceSnapshot: normalizeMemorySourceSnapshot(raw.sourceSnapshot, [...new Set(files)]) } : {}),
     };
 }
 
@@ -106,6 +133,7 @@ export function normalizeRecord(raw: unknown, content: string): MemoryRecord {
   if (!body) throw new Error('Memory content is empty');
   const createdAt = iso(meta.createdAt, 'createdAt') as string;
   const updatedAt = iso(meta.updatedAt, 'updatedAt') as string;
+  const expiresAt = meta.expiresAt === undefined ? undefined : iso(meta.expiresAt, 'expiresAt') as string;
   const lastAccessedAt = iso(meta.lastAccessedAt ?? null, 'lastAccessedAt', true);
   const retrievalCount = Number(meta.retrievalCount ?? 0);
   if (!Number.isSafeInteger(retrievalCount) || retrievalCount < 0) throw new Error('Invalid memory retrievalCount');
@@ -125,6 +153,7 @@ export function normalizeRecord(raw: unknown, content: string): MemoryRecord {
     links: links(meta.links ?? []),
     createdAt,
     updatedAt,
+    ...(expiresAt ? { expiresAt } : {}),
     lastAccessedAt,
     retrievalCount,
     evolutionHistory: history(meta.evolutionHistory ?? []),

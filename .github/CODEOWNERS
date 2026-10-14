@@ -1,0 +1,10 @@
+# Default owner for the private Agent Core recovery repository.
+* @rendevouz999
+
+# Security-sensitive and release-control surfaces.
+SECURITY.md @rendevouz999
+.github/ @rendevouz999
+scripts/release/ @rendevouz999
+src/auth/ @rendevouz999
+src/oauth/ @rendevouz999
+src/security/ @rendevouz999

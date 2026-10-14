@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { assertCredentialBearingUrl } from '../net/endpoint-policy.js';
+import { resolvePortableProjectPath } from '../portability/paths.js';
 
 export type PhoneTransportMode = 'auto' | 'gateway' | 'adb';
 
@@ -16,6 +17,8 @@ export interface PhoneAdbConfig {
   binaryPath: string;
   /** Specific device serial to target, or null to use the single attached device. */
   serial: string | null;
+  /** Process-scoped Android state root, never the user's global SDK/ADB home. */
+  homeDir?: string;
 }
 
 export interface PhoneDisplayConfig {
@@ -60,27 +63,40 @@ function firstExisting(candidates: Array<string | undefined>): string | null {
 }
 
 /**
- * Resolve the adb binary without changing the user's tool layout. Order:
- * explicit env override -> the sibling Android-Agent-Bridge platform-tools -> PATH.
- * The sibling path is derived from the Agent Core root so it stays drive-agnostic.
+ * Resolve ADB without installing or relocating the user's Android toolchain.
+ * Prefer explicit/project-owned paths, then historical sibling/standard SDK locations,
+ * and finally PATH. All project-derived candidates stay drive-agnostic.
  */
 function resolveAdbBinary(env: NodeJS.ProcessEnv, baseDir: string): string {
   const siblingAdb = path.resolve(baseDir, '..', 'Android-Agent-Bridge', 'tools', 'platform-tools', 'adb.exe');
+  const projectAdb = path.resolve(baseDir, 'runtime', 'android', 'platform-tools', 'adb.exe');
+  const sdkRootAdb = env.ANDROID_SDK_ROOT?.trim()
+    ? path.resolve(env.ANDROID_SDK_ROOT.trim(), 'platform-tools', 'adb.exe')
+    : undefined;
+  const androidHomeAdb = env.ANDROID_HOME?.trim()
+    ? path.resolve(env.ANDROID_HOME.trim(), 'platform-tools', 'adb.exe')
+    : undefined;
+  const localAppDataAdb = env.LOCALAPPDATA?.trim()
+    ? path.resolve(env.LOCALAPPDATA.trim(), 'Android', 'Sdk', 'platform-tools', 'adb.exe')
+    : undefined;
   const resolved = firstExisting([
     env.AGENT_CORE_ADB_PATH?.trim() || undefined,
+    projectAdb,
     siblingAdb,
+    sdkRootAdb,
+    androidHomeAdb,
+    localAppDataAdb,
   ]);
   return resolved ?? 'adb';
 }
 
 export function loadPhoneConfig(env: NodeJS.ProcessEnv, baseDir: string): PhoneConfig {
-  // Default to the online gateway: control the phone over the internet through the
-  // Cloudflare relay + on-device app — no ADB, no same-Wi-Fi requirement. Agent Core
-  // is still the only controller (AI -> Agent Core -> relay -> phone); the relay is a
-  // dumb pipe, so if Agent Core dies, no commands flow and Game Mode goes off.
-  // Set "adb" for a local USB/Wi-Fi path, or "auto" to prefer local then fall back online.
+  // Default to auto: prefer project-local/attached ADB for low-latency Game Mode
+  // and fall back to the existing gateway when USB/Wi-Fi ADB is unavailable. Agent Core
+  // remains the only controller; neither transport owns gameplay decisions independently.
+  // Set "gateway" or "adb" only when an operator wants to force one transport.
   const configuredTransport = env.AGENT_CORE_PHONE_TRANSPORT;
-  const rawMode = (configuredTransport ?? 'gateway').trim().toLowerCase();
+  const rawMode = (configuredTransport ?? 'auto').trim().toLowerCase();
   if (configuredTransport !== undefined && !['gateway', 'adb', 'auto'].includes(rawMode)) {
     throw new Error('AGENT_CORE_PHONE_TRANSPORT_INVALID');
   }
@@ -99,11 +115,12 @@ export function loadPhoneConfig(env: NodeJS.ProcessEnv, baseDir: string): PhoneC
     adb: {
       binaryPath: resolveAdbBinary(env, baseDir),
       serial: env.AGENT_CORE_ADB_SERIAL?.trim() || null,
+      homeDir: path.resolve(baseDir, 'runtime', 'android', 'home'),
     },
     display: {
       width: positiveInt(env.AGENT_CORE_PHONE_WIDTH, DEFAULT_DISPLAY.width),
       height: positiveInt(env.AGENT_CORE_PHONE_HEIGHT, DEFAULT_DISPLAY.height),
     },
-    dataDir: path.resolve(env.AGENT_CORE_PHONE_DATA_DIR?.trim() || path.join(baseDir, 'runtime', 'phone')),
+    dataDir: resolvePortableProjectPath(baseDir, env.AGENT_CORE_PHONE_DATA_DIR, path.join('runtime', 'phone')),
   };
 }

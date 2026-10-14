@@ -1,9 +1,11 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { constants as fsConstants } from 'node:fs';
-import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type {
   CodeIndexState,
+  CodeProviderAttestation,
   CodeIntelligenceConfig,
   CodeWorkspaceRecord,
   CodeWorkspaceRef,
@@ -45,6 +47,23 @@ function pathInside(candidate: string, root: string): boolean {
   return child === parent || child.startsWith(parent.endsWith(path.sep) ? parent : parent + path.sep);
 }
 
+function normalizeSha256(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase().replace(/^sha256:/, '');
+  return /^[0-9a-f]{64}$/.test(normalized) ? normalized : undefined;
+}
+
+function normalizeCommit(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  return /^[0-9a-f]{7,64}$/.test(normalized) ? normalized : undefined;
+}
+
+function commitFromProviderVersion(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return normalizeCommit(/\bcommit\s+([0-9a-f]{7,64})/i.exec(value)?.[1]);
+}
+
 export function validateGrafelIsolationEnvironment(
   runtimeDir: string,
   env: NodeJS.ProcessEnv,
@@ -78,6 +97,7 @@ export class GrafelRuntime {
   readonly configDir: string;
   readonly appDataDir: string;
   readonly localAppDataDir: string;
+  private binaryDigestCache?: { size: number; mtimeMs: number; sha256: string };
 
   constructor(readonly config: CodeIntelligenceConfig) {
     this.homeDir = path.join(config.runtimeDir, 'home');
@@ -204,12 +224,22 @@ export class GrafelRuntime {
 
   async registerProject(): Promise<boolean> {
     if (await this.registrationCurrent()) return false;
+
+    const fleetRebased = await this.rebaseDefaultFleetPath();
+    const registryRebased = await this.rebaseDefaultProviderRegistryPath();
+    if ((fleetRebased || registryRebased) && await this.registrationCurrent()) return true;
+
     await this.registerWorkspace(
       this.config.group,
       [{ slug: this.config.repoSlug, path: this.config.projectRoot }],
       false,
     );
-    return true;
+    if (await this.registrationCurrent()) return true;
+
+    const fleetRepaired = await this.rebaseDefaultFleetPath();
+    const registryRepaired = await this.rebaseDefaultProviderRegistryPath();
+    if ((fleetRepaired || registryRepaired) && await this.registrationCurrent()) return true;
+    throw new Error('CODE_INTELLIGENCE_DEFAULT_REGISTRATION_REPAIR_FAILED');
   }
 
   async registerWorkspace(
@@ -231,11 +261,33 @@ export class GrafelRuntime {
   }
 
   async deleteWorkspace(group: string): Promise<unknown> {
-    const { stdout } = await this.runCli(
-      ['delete', group, '--force', '--json', '--keep-caches'],
-      Math.min(this.config.startupTimeoutMs, 30_000),
-    );
-    return parseJsonValue(stdout) ?? stdout.trim();
+    try {
+      const { stdout } = await this.runCli(
+        ['delete', group, '--force', '--json', '--keep-caches'],
+        Math.min(this.config.startupTimeoutMs, 30_000),
+      );
+      return parseJsonValue(stdout) ?? stdout.trim();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (group === this.config.group || !/unknown group:/i.test(message)) throw error;
+
+      const fleetDir = path.join(this.configDir, 'grafel');
+      let removed = false;
+      for (const name of await readdir(fleetDir).catch(() => [] as string[])) {
+        if (!name.endsWith('.fleet.json')) continue;
+        const fleetPath = path.join(fleetDir, name);
+        try {
+          const parsed = JSON.parse(await readFile(fleetPath, 'utf8')) as { name?: string };
+          if (parsed.name !== group) continue;
+          await rm(fleetPath, { force: true });
+          removed = true;
+          break;
+        } catch {
+          // Malformed unrelated provider records are handled by diagnostics.
+        }
+      }
+      return { group, providerAlreadyAbsent: true, localFleetRemoved: removed };
+    }
   }
 
   async listWorkspaces(): Promise<CodeWorkspaceRecord[]> {
@@ -259,7 +311,7 @@ export class GrafelRuntime {
             .filter(repo => Boolean(repo?.slug && repo?.path))
             .map(repo => ({
               slug: repo.slug,
-              path: path.resolve(repo.path),
+              path: path.isAbsolute(repo.path) ? path.resolve(repo.path) : path.resolve(this.config.projectRoot, repo.path),
               ...(Array.isArray(repo.stack) ? { stack: [...repo.stack] } : {}),
             })),
           ...(parsed.features && typeof parsed.features === 'object' ? { features: { ...parsed.features } } : {}),
@@ -342,12 +394,36 @@ export class GrafelRuntime {
   async indexNowFor(repoPath: string): Promise<void> {
     // Relocation repair must materialize the graph for the newly resolved
     // project root before the daemon can truthfully report the workspace as
-    // ready. A synchronous index avoids inheriting stale scheduler state from
-    // a copied runtime directory whose previous absolute root no longer exists.
-    await this.runCli(
+    // ready. This provider build can return exit 1 even after successfully
+    // materializing a current graph, so exit 1 is accepted only when the
+    // provider postcondition proves the exact active root is current.
+    const result = await this.runCli(
       ['index', repoPath, '--quiet', '--json-stats'],
       Math.max(this.config.startupTimeoutMs, 30_000),
-      { cwd: repoPath },
+      { cwd: repoPath, acceptedExitCodes: [0, 1] },
+    );
+    if (result.exitCode === 0) return;
+
+    const deadline = Date.now() + Math.max(this.config.startupTimeoutMs, 30_000);
+    let lastStatus: GrafelStatusPayload = {};
+    while (Date.now() < deadline) {
+      try {
+        lastStatus = await this.status(this.config.group, undefined, repoPath);
+        const sameRoot = typeof lastStatus.repo_path === 'string'
+          && comparablePath(lastStatus.repo_path) === comparablePath(repoPath);
+        if (lastStatus.status === 'ok' && lastStatus.state === 'current') {
+          if (sameRoot) return;
+          break;
+        }
+      } catch {
+        // Provider status can be briefly unavailable while the engine swaps the
+        // relocated graph into place. Retry within the same bounded startup window.
+      }
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+
+    throw new Error(
+      `CODE_INTELLIGENCE_RELOCATION_INDEX_POSTCONDITION_FAILED: exit=${result.exitCode} status=${lastStatus.status ?? 'unknown'} state=${lastStatus.state ?? 'unknown'} repo=${lastStatus.repo_path ?? 'unknown'}`,
     );
   }
 
@@ -409,6 +485,71 @@ export class GrafelRuntime {
     } catch {
       return null;
     }
+  }
+
+  private async executableSha256(): Promise<string> {
+    const info = await stat(this.config.binaryPath);
+    const cached = this.binaryDigestCache;
+    if (cached && cached.size === info.size && cached.mtimeMs === info.mtimeMs) return cached.sha256;
+    const sha256 = createHash('sha256').update(await readFile(this.config.binaryPath)).digest('hex');
+    this.binaryDigestCache = { size: info.size, mtimeMs: info.mtimeMs, sha256 };
+    return sha256;
+  }
+
+  async providerAttestation(payload?: GrafelStatusPayload): Promise<CodeProviderAttestation> {
+    const metadata = await this.providerMetadata();
+    const expectedExecutableSha256 = normalizeSha256(metadata?.executableSha256);
+    const expectedVersion = typeof metadata?.version === 'string' ? metadata.version.trim() : undefined;
+    const expectedSourceCommit = normalizeCommit(metadata?.sourceCommit);
+    let observedExecutableSha256: string | undefined;
+    try {
+      observedExecutableSha256 = await this.executableSha256();
+    } catch {
+      return { state: 'unverifiable', expectedExecutableSha256, expectedVersion, expectedSourceCommit,
+        issue: 'GRAFEL_PROVIDER_EXECUTABLE_DIGEST_UNAVAILABLE' };
+    }
+
+    if (!expectedExecutableSha256) {
+      return { state: 'unverifiable', observedExecutableSha256, expectedVersion, expectedSourceCommit,
+        issue: 'GRAFEL_PROVIDER_METADATA_DIGEST_MISSING' };
+    }
+    if (observedExecutableSha256 !== expectedExecutableSha256) {
+      return { state: 'metadata-mismatch', expectedExecutableSha256, observedExecutableSha256,
+        expectedVersion, expectedSourceCommit, issue: 'GRAFEL_PROVIDER_EXECUTABLE_DIGEST_MISMATCH' };
+    }
+
+    const resident = payload ?? await this.status().catch(() => undefined);
+    const observedVersion = typeof resident?.version === 'string' ? resident.version.trim() : undefined;
+    const observedSourceCommit = commitFromProviderVersion(observedVersion);
+    const enginePid = Number.isInteger(resident?.engine_pid) && Number(resident?.engine_pid) > 0
+      ? Number(resident?.engine_pid) : undefined;
+    const common = { expectedExecutableSha256, observedExecutableSha256, expectedVersion,
+      observedVersion, expectedSourceCommit, observedSourceCommit, enginePid };
+
+    if (!resident || String(resident.status ?? '').toLowerCase() !== 'ok' || !enginePid) {
+      return { state: 'unverifiable', ...common, issue: 'GRAFEL_PROVIDER_RESIDENT_ATTESTATION_UNAVAILABLE' };
+    }
+    if (expectedVersion && (!observedVersion
+      || !(observedVersion === expectedVersion || observedVersion.startsWith(expectedVersion + ' ')))) {
+      return { state: 'resident-mismatch', ...common, issue: 'GRAFEL_PROVIDER_RESIDENT_VERSION_MISMATCH' };
+    }
+    if (expectedSourceCommit && !observedSourceCommit) {
+      return { state: 'unverifiable', ...common, issue: 'GRAFEL_PROVIDER_RESIDENT_COMMIT_UNAVAILABLE' };
+    }
+    if (expectedSourceCommit && observedSourceCommit
+      && !expectedSourceCommit.startsWith(observedSourceCommit)
+      && !observedSourceCommit.startsWith(expectedSourceCommit)) {
+      return { state: 'resident-mismatch', ...common, issue: 'GRAFEL_PROVIDER_RESIDENT_COMMIT_MISMATCH' };
+    }
+    return { state: 'current', ...common };
+  }
+
+  async assertMutationAttested(payload?: GrafelStatusPayload): Promise<CodeProviderAttestation> {
+    const attestation = await this.providerAttestation(payload);
+    if (attestation.state === 'metadata-mismatch' || attestation.state === 'resident-mismatch') {
+      throw new Error(`CODE_INTELLIGENCE_PROVIDER_ATTESTATION_MISMATCH: ${attestation.state}: ${attestation.issue ?? 'unknown'}`);
+    }
+    return attestation;
   }
 
   async probeCliCapabilities(): Promise<GrafelCliCapabilityProbe> {
@@ -479,25 +620,103 @@ export class GrafelRuntime {
     });
   }
 
+  private async rebaseDefaultFleetPath(): Promise<boolean> {
+    const fleetPath = path.join(this.configDir, 'grafel', `${this.config.group}.fleet.json`);
+    try {
+      const fleet = JSON.parse(await readFile(fleetPath, 'utf8')) as {
+        name?: string;
+        repos?: Array<{ slug?: string; path?: string; stack?: string[] }>;
+        features?: Record<string, unknown>;
+      };
+      if (fleet.name !== this.config.group || !Array.isArray(fleet.repos)) return false;
+
+      const expected = comparablePath(this.config.projectRoot);
+      let changed = false;
+      const repos = fleet.repos.map(repo => {
+        if (repo.slug !== this.config.repoSlug) return repo;
+        const current = repo.path ? comparablePath(repo.path) : '';
+        if (current === expected) return repo;
+        changed = true;
+        return { ...repo, path: this.config.projectRoot };
+      });
+      if (!changed) return false;
+
+      const tempPath = fleetPath + `.relocate-${process.pid}.tmp`;
+      await writeFile(tempPath, JSON.stringify({ ...fleet, repos }, null, 2) + '\n', 'utf8');
+      await rename(tempPath, fleetPath);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
+  }
+
+  private async rebaseDefaultProviderRegistryPath(): Promise<boolean> {
+    const registryPath = path.join(this.grafelHome, 'registry.json');
+    const expectedFleetPath = path.join(this.configDir, 'grafel', `${this.config.group}.fleet.json`);
+    try {
+      const registry = JSON.parse(await readFile(registryPath, 'utf8')) as {
+        version?: number;
+        groups?: Array<{ name?: string; config_path?: string; installed_at?: string }>;
+      };
+      if (registry.version !== 1 || !Array.isArray(registry.groups)) {
+        throw new Error('CODE_INTELLIGENCE_REGISTRY_SCHEMA_UNSUPPORTED');
+      }
+      let changed = false;
+      const groups = registry.groups.map(group => {
+        if (group.name !== this.config.group) return group;
+        const current = group.config_path ? comparablePath(group.config_path) : '';
+        if (current === comparablePath(expectedFleetPath)) return group;
+        changed = true;
+        return { ...group, config_path: expectedFleetPath };
+      });
+      if (!changed) return false;
+
+      const tempPath = registryPath + `.relocate-${process.pid}.tmp`;
+      await writeFile(tempPath, JSON.stringify({ ...registry, groups }, null, 2) + '\n', 'utf8');
+      await rename(tempPath, registryPath);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
+  }
+
   private async registrationCurrent(): Promise<boolean> {
     try {
       const fleetPath = path.join(this.configDir, 'grafel', `${this.config.group}.fleet.json`);
       const markerPath = path.join(this.config.projectRoot, '.grafel', 'group.json');
-      const [fleetRaw, markerRaw] = await Promise.all([
+      const registryPath = path.join(this.grafelHome, 'registry.json');
+      const [fleetRaw, markerRaw, registryRaw] = await Promise.all([
         readFile(fleetPath, 'utf8'),
         readFile(markerPath, 'utf8'),
+        readFile(registryPath, 'utf8'),
       ]);
       const fleet = JSON.parse(fleetRaw) as { name?: string; repos?: Array<{ slug?: string; path?: string }> };
       const marker = JSON.parse(markerRaw) as { group?: string };
+      const registry = JSON.parse(registryRaw) as {
+        version?: number;
+        groups?: Array<{ name?: string; config_path?: string }>;
+      };
       const repo = Array.isArray(fleet.repos)
         ? fleet.repos.find(item => item.slug === this.config.repoSlug)
         : undefined;
+      const groupEntry = Array.isArray(registry.groups)
+        ? registry.groups.find(item => item.name === this.config.group)
+        : undefined;
       const configuredPath = repo?.path ? path.resolve(repo.path) : '';
       const expectedPath = path.resolve(this.config.projectRoot);
+      const expectedFleetPath = path.join(this.configDir, 'grafel', `${this.config.group}.fleet.json`);
       const samePath = process.platform === 'win32'
         ? configuredPath.toLowerCase() === expectedPath.toLowerCase()
         : configuredPath === expectedPath;
-      return fleet.name === this.config.group && marker.group === this.config.group && samePath;
+      const sameRegistryPath = typeof groupEntry?.config_path === 'string'
+        && comparablePath(groupEntry.config_path) === comparablePath(expectedFleetPath);
+      return fleet.name === this.config.group
+        && marker.group === this.config.group
+        && registry.version === 1
+        && samePath
+        && sameRegistryPath;
     } catch {
       return false;
     }

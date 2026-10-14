@@ -3,7 +3,7 @@ import {
   Activity, AlertTriangle, ArrowRight, BookOpen, Boxes, BrainCircuit, ChevronDown, ChevronLeft, ChevronRight,
   CircleAlert, CircleSlash, Clock3, Code2, Cpu, Database, Download, ExternalLink,
   FileText, Folder, FolderOpen, Gamepad2, Gauge, HardDrive, HeartPulse, Home, Info,
-  KeyRound, LayoutDashboard, Link2, ListChecks, MoreHorizontal, Play, Power, Puzzle,
+  KeyRound, LayoutDashboard, Link2, ListChecks, MessageSquarePlus, MoreHorizontal, Play, Power, Puzzle,
   RefreshCw, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Square, Stethoscope,
   Terminal, Trash2, UserRound, Wifi, X, XCircle, type LucideIcon,
 } from 'lucide-react';
@@ -11,7 +11,7 @@ import type { DesktopSnapshot, ActivityEntry } from './host';
 import type { SystemId, SystemView, Tone } from './model';
 import { formatDuration } from './model';
 
-export type PageId = 'dashboard' | 'core' | 'systems' | 'activity' | 'diagnostics' | 'settings';
+export type PageId = 'chat' | 'dashboard' | 'core' | 'systems' | 'workflows' | 'activity' | 'diagnostics' | 'settings';
 
 export const systemIcons: Record<SystemId, LucideIcon> = {
   core: Cpu,
@@ -32,6 +32,7 @@ export const navItems: Array<{id:PageId; label:string; icon:LucideIcon}> = [
   {id:'dashboard',label:'Dashboard',icon:Home},
   {id:'core',label:'Core Runtime',icon:Cpu},
   {id:'systems',label:'Systems',icon:Boxes},
+  {id:'workflows',label:'Workflows',icon:Link2},
   {id:'activity',label:'Activity Log',icon:FileText},
   {id:'diagnostics',label:'Diagnostics',icon:Stethoscope},
   {id:'settings',label:'Settings',icon:Settings},
@@ -103,6 +104,7 @@ export function RestartMenu({open,onClose,onAction}:{open:boolean;onClose:()=>vo
   if(!open) return null;
   const items=[
     {id:'restart-core',icon:RotateCcw,title:'Graceful Restart',desc:'Restart core with proper shutdown',enabled:true},
+    {id:'restart-tunnel',icon:Wifi,title:'Restart Tunnel Only',desc:'Restart tunnel without restarting core',enabled:true},
     {id:'force-restart',icon:RefreshCw,title:'Force Restart',desc:'Force restart (if unresponsive)',enabled:false},
     {id:'clean-restart',icon:RotateCcw,title:'Restart with Clean Cache',desc:'Clear cache and restart',enabled:false},
     {id:'open-runtime-folder',icon:FolderOpen,title:'Open Runtime Folder',desc:'Open dist/runtime directory',enabled:true},
@@ -138,9 +140,11 @@ export function ProcessCard({snapshot}:{snapshot?:DesktopSnapshot}) {
 export function TopBar({page,snapshot,query,setQuery,setPage}:{page:PageId;snapshot?:DesktopSnapshot;query:string;setQuery:(v:string)=>void;setPage:(p:PageId)=>void}) {
   const now=new Date();
   const placeholders:Record<PageId,string>={
+    chat:'Search systems, components, logs...',
     dashboard:'Search systems, components, logs...',
     core:'Search systems, components, logs...',
     systems:'Search systems, components, dependencies...',
+    workflows:'Search systems, components, dependencies...',
     activity:'Search systems, components, logs, commands...',
     diagnostics:'Search systems, components, logs, commands...',
     settings:'Search systems, settings, components...',
@@ -155,8 +159,15 @@ export function TopBar({page,snapshot,query,setQuery,setPage}:{page:PageId;snaps
 export function Sidebar({page,setPage,snapshot,onAction}:{page:PageId;setPage:(p:PageId)=>void;snapshot?:DesktopSnapshot;onAction:(id:string)=>void}) {
   const shared={enabled:true} as const;
   const quickByPage:Record<PageId,Array<{id:string;label:string;icon:LucideIcon;enabled:boolean}>>={
+    workflows:[],
+    chat:[
+      {id:'open-memory-folder',label:'Open Memory Store',icon:Database,...shared},
+      {id:'open-logs',label:'Open Logs Folder',icon:FileText,...shared},
+      {id:'system-snapshot',label:'System Snapshot',icon:Gauge,...shared},
+    ],
     dashboard:[
       {id:'open-tunnel-admin',label:'Open Tunnel UI',icon:ExternalLink,...shared},
+      {id:'restart-tunnel',label:'Restart Tunnel Only',icon:Wifi,...shared},
       {id:'open-folder',label:'Open Agent Core Folder',icon:FolderOpen,...shared},
       {id:'system-snapshot',label:'System Snapshot',icon:Gauge,...shared},
       {id:'reset-oauth',label:'Reset OAuth',icon:KeyRound,...shared},
@@ -170,6 +181,7 @@ export function Sidebar({page,setPage,snapshot,onAction}:{page:PageId;setPage:(p
       {id:'restart-all',label:'Restart All',icon:RefreshCw,...shared},
     ],
     systems:[
+      {id:'restart-tunnel',label:'Restart Tunnel Only',icon:Wifi,...shared},
       {id:'open-folder',label:'Open Agent Core Folder',icon:FolderOpen,...shared},
       {id:'system-snapshot',label:'System Snapshot',icon:Gauge,...shared},
       {id:'open-logs',label:'Open Logs Folder',icon:FileText,...shared},
@@ -198,7 +210,7 @@ export function Sidebar({page,setPage,snapshot,onAction}:{page:PageId;setPage:(p
   };
   const quick=quickByPage[page];
   return <aside className="sidebar">
-    <nav>{navItems.map(({id,label,icon:Icon})=><button type="button" key={id} onClick={()=>setPage(id)} className={page===id?'active':''}><Icon size={20}/><span>{label}</span></button>)}</nav>
+    <nav><button type="button" className={`new-chat-placeholder ${page==='chat'?'active':''}`} onClick={()=>setPage('chat')} title="Native Agent Core Chat"><MessageSquarePlus size={20}/><span>New Chat</span></button>{navItems.map(({id,label,icon:Icon})=><button type="button" key={id} onClick={()=>setPage(id)} className={page===id?'active':''}><Icon size={20}/><span>{label}</span></button>)}</nav>
     <div className="sidebar-divider"/>
     <small className="sidebar-label">Quick Actions</small>
     <div className="quick-actions">{quick.map(({id,label,icon:Icon,enabled})=><button type="button" key={id} disabled={!enabled} onClick={()=>enabled&&onAction(id)}><Icon size={18}/><span>{label}</span></button>)}</div>
@@ -226,7 +238,7 @@ export function EmptyAction({label}:{label:string}) {
 export const uiIcons = {
   Activity, AlertTriangle, ArrowRight, BookOpen, Boxes, BrainCircuit, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, CircleSlash, Clock3,
   Code2, Cpu, Database, Download, ExternalLink, FileText, Folder, Gamepad2, Gauge, HardDrive,
-  HeartPulse, Info, KeyRound, LayoutDashboard, Link2, ListChecks, MoreHorizontal, Play, Power,
+  HeartPulse, Info, KeyRound, LayoutDashboard, Link2, ListChecks, MessageSquarePlus, MoreHorizontal, Play, Power,
   Puzzle, RefreshCw, Search, Settings, ShieldCheck, Smartphone, Stethoscope, Terminal, Trash2,
   UserRound, Wifi, X, XCircle,
 };

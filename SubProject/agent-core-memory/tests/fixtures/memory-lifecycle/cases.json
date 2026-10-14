@@ -1,0 +1,460 @@
+{
+  "schemaVersion": 1,
+  "datasetRevision": "memory-lifecycle-v1",
+  "cases": [
+    {
+      "id": "E01",
+      "expectedBoundary": "Clean Linux dependency resolution/build",
+      "requiredProofs": [
+        {
+          "file": "@commands",
+          "titlePattern": "dependency-and-build"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E02",
+      "expectedBoundary": "Existing suite before and after",
+      "requiredProofs": [
+        {
+          "file": "@commands",
+          "titlePattern": "baseline-and-full-suite"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E03",
+      "expectedBoundary": "Empty root persistence across processes",
+      "requiredProofs": [
+        {
+          "file": "memory-baseline-contract.test.ts",
+          "titlePattern": "process"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E04",
+      "expectedBoundary": "Package and extraction boundary",
+      "requiredProofs": [
+        {
+          "file": "@commands",
+          "titlePattern": "package-boundary"
+        }
+      ],
+      "unrun": [
+        "T9 final transfer/publication boundary NOT RUN"
+      ]
+    },
+    {
+      "id": "E05",
+      "expectedBoundary": "Idempotent event and conflict",
+      "requiredProofs": [
+        {
+          "file": "memory-episodes.test.ts",
+          "titlePattern": "duplicate append replays"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E06",
+      "expectedBoundary": "Crash/restart unresolved state",
+      "requiredProofs": [
+        {
+          "file": "memory-episodes.test.ts",
+          "titlePattern": "restart discovers unresolved"
+        },
+        {
+          "file": "memory-episode-concurrency.test.ts",
+          "titlePattern": "episode child killed"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E07",
+      "expectedBoundary": "Success applicability and failure lineage",
+      "requiredProofs": [
+        {
+          "file": "memory-episodes.test.ts",
+          "titlePattern": "events preserve sequence"
+        },
+        {
+          "file": "memory-promotion.test.ts",
+          "titlePattern": "E07 preview does not publish"
+        },
+        {
+          "file": "memory-lifecycle-evals.test.ts",
+          "titlePattern": "sealed continuation workload"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E08",
+      "expectedBoundary": "Invalid promotion never mutates canonical",
+      "requiredProofs": [
+        {
+          "file": "memory-promotion.test.ts",
+          "titlePattern": "E10/E24"
+        },
+        {
+          "file": "memory-promotion.test.ts",
+          "titlePattern": "E09 stale amend target"
+        },
+        {
+          "file": "memory-promotion.test.ts",
+          "titlePattern": "G5 F2"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E09",
+      "expectedBoundary": "Real killed process and replay",
+      "requiredProofs": [
+        {
+          "file": "memory-promotion-recovery.test.ts",
+          "titlePattern": "real process kill|amendment killed"
+        },
+        {
+          "file": "memory-transaction-recovery.test.ts",
+          "titlePattern": "killed child"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E10",
+      "expectedBoundary": "Near duplicate constraint distinction",
+      "requiredProofs": [
+        {
+          "file": "memory-promotion.test.ts",
+          "titlePattern": "rare constraint difference"
+        },
+        {
+          "file": "memory-promotion.test.ts",
+          "titlePattern": "reviewed semantic merge retains"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E11",
+      "expectedBoundary": "Mandatory exact capsule items",
+      "requiredProofs": [
+        {
+          "file": "memory-lifecycle-evals.test.ts",
+          "titlePattern": "sealed continuation workload"
+        },
+        {
+          "file": "memory-capsule.test.ts",
+          "titlePattern": "mandatory"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E12",
+      "expectedBoundary": "Explicit insufficient budget",
+      "requiredProofs": [
+        {
+          "file": "memory-lifecycle-evals.test.ts",
+          "titlePattern": "sealed continuation workload"
+        },
+        {
+          "file": "memory-capsule.test.ts",
+          "titlePattern": "mandatory state above maximum"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E13",
+      "expectedBoundary": "Compact discovery to selected record, episode and evidence",
+      "requiredProofs": [
+        {
+          "file": "memory-lifecycle-evals.test.ts",
+          "titlePattern": "sealed continuation workload"
+        },
+        {
+          "file": "memory-disclosure.test.ts",
+          "titlePattern": "pag"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E14",
+      "expectedBoundary": "Live source freshness",
+      "requiredProofs": [
+        {
+          "file": "memory-capsule.test.ts",
+          "titlePattern": "origin"
+        },
+        {
+          "file": "memory-capsule-race.test.ts",
+          "titlePattern": "source metadata changes"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E15",
+      "expectedBoundary": "Computed proposal stale CAS",
+      "requiredProofs": [
+        {
+          "file": "memory-capsule-race.test.ts",
+          "titlePattern": "decision arrives"
+        },
+        {
+          "file": "memory-promotion.test.ts",
+          "titlePattern": "approval awaited outside writer lock"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E16",
+      "expectedBoundary": "Archived successful experience reconstructable",
+      "requiredProofs": [
+        {
+          "file": "memory-retention.test.ts",
+          "titlePattern": "E16 accepted success"
+        },
+        {
+          "file": "memory-lifecycle-evals.test.ts",
+          "titlePattern": "sealed continuation workload"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E17",
+      "expectedBoundary": "Same workload bytes calls latency correctness",
+      "requiredProofs": [
+        {
+          "file": "memory-lifecycle-evals.test.ts",
+          "titlePattern": "sealed continuation workload"
+        },
+        {
+          "file": "memory-lifecycle-evals.test.ts",
+          "titlePattern": "warm lexical"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E18",
+      "expectedBoundary": "Dynamic current/asOf answers",
+      "requiredProofs": [
+        {
+          "file": "memory-temporal-order.test.ts",
+          "titlePattern": "E18/E19 late evidence"
+        },
+        {
+          "file": "memory-temporal.test.ts",
+          "titlePattern": "E18 historical recall precedes"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E19",
+      "expectedBoundary": "Reverse and intra-batch ingestion",
+      "requiredProofs": [
+        {
+          "file": "memory-temporal-order.test.ts",
+          "titlePattern": "E18/E19 late evidence"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E20",
+      "expectedBoundary": "Epistemic and scope non-invalidation",
+      "requiredProofs": [
+        {
+          "file": "memory-temporal.test.ts",
+          "titlePattern": "E20/E21 transition rejects"
+        },
+        {
+          "file": "memory-temporal.test.ts",
+          "titlePattern": "E20 opinion and cross-scope"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E21",
+      "expectedBoundary": "Temporal invalid/cycle/partial/timezone",
+      "requiredProofs": [
+        {
+          "file": "memory-temporal.test.ts",
+          "titlePattern": "E21"
+        },
+        {
+          "file": "memory-temporal-order.test.ts",
+          "titlePattern": "process TZ="
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E22",
+      "expectedBoundary": "Equal-time conflict remains conflict",
+      "requiredProofs": [
+        {
+          "file": "memory-temporal.test.ts",
+          "titlePattern": "E22 equal-time"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E23",
+      "expectedBoundary": "Legacy and typed temporal roundtrip",
+      "requiredProofs": [
+        {
+          "file": "memory-temporal-order.test.ts",
+          "titlePattern": "E23 typed canonical roundtrip"
+        },
+        {
+          "file": "memory-experience-migration.test.ts",
+          "titlePattern": "pure legacy upgrade"
+        }
+      ],
+      "unrun": [
+        "T9 transfer/2 import/export NOT RUN"
+      ]
+    },
+    {
+      "id": "E24",
+      "expectedBoundary": "Capture, consolidation, disclosure injection",
+      "requiredProofs": [
+        {
+          "file": "memory-safety-boundaries.test.ts",
+          "titlePattern": "E24 capture and promotion"
+        },
+        {
+          "file": "memory-safety-boundaries.test.ts",
+          "titlePattern": "E24 disclosure rescans"
+        },
+        {
+          "file": "memory-safety-boundaries.test.ts",
+          "titlePattern": "E24 exact episode/event"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E25",
+      "expectedBoundary": "Current correction versus advisory remembered instruction",
+      "requiredProofs": [
+        {
+          "file": "memory-safety-boundaries.test.ts",
+          "titlePattern": "E25 old instructions"
+        }
+      ],
+      "unrun": [
+        "T9 live controller action choice NOT RUN"
+      ]
+    },
+    {
+      "id": "E26",
+      "expectedBoundary": "Exposure/use/associated outcome/unrelated evidence",
+      "requiredProofs": [
+        {
+          "file": "memory-receipt-integrity.test.ts",
+          "titlePattern": "E26 byte availability"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E27",
+      "expectedBoundary": "Repeated hypothesis retrieval remains unverified",
+      "requiredProofs": [
+        {
+          "file": "memory-safety-boundaries.test.ts",
+          "titlePattern": "E27 frequent retrieval"
+        }
+      ],
+      "unrun": []
+    },
+    {
+      "id": "E28",
+      "expectedBoundary": "Retained refs and recovery after rotation",
+      "requiredProofs": [
+        {
+          "file": "memory-retention.test.ts",
+          "titlePattern": "E28 feedback over 512"
+        },
+        {
+          "file": "memory-receipt-integrity.test.ts",
+          "titlePattern": "E28 over-limit"
+        },
+        {
+          "file": "memory-experience-migration.test.ts",
+          "titlePattern": "synthetic copy-upgrade interrupted"
+        },
+        {
+          "file": "memory-preservation.test.ts",
+          "titlePattern": "metadata-only changes and more than eight"
+        }
+      ],
+      "unrun": [
+        "T9 final transfer/2 preservation NOT RUN"
+      ]
+    },
+    {
+      "id": "E29",
+      "expectedBoundary": "A to B autonomous continuation",
+      "requiredProofs": [],
+      "unrun": [
+        "T9 controller protocol and live continuation NOT RUN; local deterministic replay is only E17 evidence"
+      ]
+    },
+    {
+      "id": "E30",
+      "expectedBoundary": "New controller acts on stale capsule",
+      "requiredProofs": [],
+      "unrun": [
+        "T9 controller protocol/live action NOT RUN; engine stale rejection is only E14/E15 evidence"
+      ]
+    },
+    {
+      "id": "E31",
+      "expectedBoundary": "Offline replay separated from live step",
+      "requiredProofs": [
+        {
+          "file": "memory-lifecycle-evals.test.ts",
+          "titlePattern": "sealed continuation workload"
+        }
+      ],
+      "unrun": [
+        "T9 live/model credential-dependent step NOT RUN; no model invoked"
+      ]
+    },
+    {
+      "id": "E32",
+      "expectedBoundary": "Separate Linux and Windows portability",
+      "requiredProofs": [
+        {
+          "file": "memory-episode-concurrency.test.ts",
+          "titlePattern": "file fingerprints remain exact"
+        },
+        {
+          "file": "memory-transaction-recovery.test.ts",
+          "titlePattern": "two processes serialize"
+        }
+      ],
+      "unrun": [
+        "Separate Windows casing/newline/lock/replace/path tests NOT RUN"
+      ]
+    }
+  ]
+}

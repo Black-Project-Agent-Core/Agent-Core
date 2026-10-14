@@ -173,10 +173,17 @@ const rootFiles = [
 for (const relative of rootFiles) await copyIfExists(relative, packageRoot);
 
 await copyIfExists("assets", packageRoot);
+// Offline Workflows renderer and its licenses; no live runtime data.
+await copyIfExists("vendor/archify", packageRoot);
 await copyIfExists("node_modules", packageRoot);
 await copyIfExists("runtime/node", packageRoot);
 await copyIfExists("runtime/grafel/bin", packageRoot);
 await copyIfExists("runtime/grafel/provider.json", packageRoot);
+// Memory v2 engine is loaded dynamically by the host runtime after activation.
+// Package the pinned standalone engine binaries; never package live Memory roots.
+await copyIfExists("SubProject/agent-core-memory/dist", packageRoot);
+await copyIfExists("SubProject/agent-core-memory/NOTICE.md", packageRoot);
+await copyIfExists("SubProject/agent-core-memory/PATCHES.md", packageRoot);
 await writePackagedFoundation(packageRoot);
 await copyIfExists("scripts/windows", packageRoot);
 
@@ -201,11 +208,19 @@ const launcherExe = path.join(launcherOut, "Agent Core.exe");
 await fs.copyFile(launcherExe, path.join(packageRoot, "Agent Core.exe"));
 const sourceRoot = path.join(packageRoot, "source");
 await fs.mkdir(sourceRoot, { recursive: true });
+await copyIfExists("vendor/archify", sourceRoot);
 await fs.cp(path.join(ROOT, "src"), path.join(sourceRoot, "src"), {
   recursive: true,
   force: true,
   filter: async source => sourceFilter(source) && await packageCopyAllowed(ROOT, source),
 });
+// Keep the engine's reproducible source with the source snapshot.
+for (const relative of ["SubProject/agent-core-memory/src", "SubProject/agent-core-memory/package.json",
+  "SubProject/agent-core-memory/README.md", "SubProject/agent-core-memory/NOTICE.md",
+  "SubProject/agent-core-memory/PATCHES.md",
+  "SubProject/agent-core-memory/tsconfig.json", "SubProject/agent-core-memory/UPSTREAM-SOURCE.json"]) {
+  await copyIfExists(relative, sourceRoot);
+}
 await fs.cp(path.join(ROOT, "scripts", "release"), path.join(sourceRoot, "scripts", "release"), {
   recursive: true,
   force: true,
@@ -251,6 +266,7 @@ const manifest = {
     "dist runtime without dist/.desktop-commander debris",
     "root node_modules",
     "project-local Node runtime",
+    "pinned standalone Agent Core Memory v2 compiled engine and reproducible source",
     "Grafel provider binary + provider metadata",
     "fresh product foundational bootstrap; user canonical memory never copied",
     "portable tunnel client with placeholder/non-secret profile",
@@ -266,7 +282,7 @@ const manifest = {
     ".env and credential files",
     "secrets/",
     "runtime/bridge-auth",
-    "runtime/memory including user bootstrap",
+    "runtime/memory including user bootstrap, v2 activation markers and all migrated roots",
     "runtime/tracker and logs",
     "runtime/webview2/browser profiles",
     "runtime/backups",

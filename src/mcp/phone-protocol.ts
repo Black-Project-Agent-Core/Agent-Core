@@ -1,34 +1,47 @@
 /**
  * Skill-level usage guide for the Game Mode phone-control capability. Appended to the
- * Agent Core MCP server instructions so the controlling AI is told HOW to use the
- * phone_* tools as one coherent skill — not just their individual descriptions.
+ * Agent Core MCP server instructions so every controller gets the same operating model.
  */
-export const PHONE_SKILL_INSTRUCTIONS = `## Game Mode — Android phone control (internal Agent Core capability)
+export const PHONE_SKILL_INSTRUCTIONS = `## Game Mode — Android phone control and gameplay assistance
 
-You can fully control the user's own Android phone directly through these Agent Core
-tools (the "Game Mode" skill). This is a first-class internal capability of Agent Core:
-you drive the phone by calling these tools, and Agent Core handles the transport to the
-device for you. There is no separate system to connect to — use these tools like any
-other Agent Core tool.
+You control the user's authorized Android device through Agent Core. Treat Game Mode as
+an observe/reason/act capability, not as a blind macro runner. The same workflow must work
+for portrait, landscape, and orientation changes; never hardcode a game's orientation.
 
-How to use the skill:
-- Call \`phone_status\` first to confirm the phone is reachable (\`deviceOnline: true\`).
-  If it is offline, tell the user and stop — control is unavailable until it reconnects.
-- Call \`phone_observe\` to SEE the screen before acting. It returns a screenshot plus the
-  foreground app. Reason about what is on screen from the image itself.
-- Act with \`phone_tap\`, \`phone_swipe\`, \`phone_long_press\`, \`phone_input_text\`,
-  \`phone_key\`, \`phone_back\`, \`phone_home\`, and \`phone_launch_app\`.
-- Coordinates are DEVICE PIXELS. \`phone_observe\` reports \`deviceWidth\` x \`deviceHeight\`;
-  read a target's position from the screenshot and scale to device pixels, or pass
-  \`normalized: true\` with x/y as 0..1 fractions of the screen.
-- Work in a loop: observe -> decide -> act -> observe again to confirm the result. Do not
-  fire blind taps; re-observe after any action that changes the screen.
-- For repetitive game steps, calibrate reusable taps with \`phone_save_verified_action\`
-  (only after visually verifying the coordinate via \`phone_observe\`), inspect them with
-  \`phone_list_named_actions\`, run one with \`phone_run_named_action\`, and replay a whole
-  sequence with \`phone_run_macro\`.
+Operating loop:
+- Start with \`phone_status\` and \`phone_game_inspect({action:'status'})\`. That status
+  returns the Game Mode API guide. Reuse saved profiles, regions and sessions before acting.
+- Use \`phone_observe\` for live dimensions. Normalized taps follow the last observed screen.
+  Use \`phone_game_inspect\` to retrieve named crops, state classification or session comparisons.
+- Use \`phone_observe.crop\` to zoom into small character stats, skill text, inventory, party
+  slots, currencies, or other dense regions. Use burst samples when animation/motion state matters.
+- Prefer bounded mixed \`phone_run_macro.steps\` for multi-step interaction. Use \`waitStable\`
+  instead of arbitrary long sleeps when waiting for loading/animation to settle. Mixed sequences
+  return a final observation by default.
+- Gateway sequences may toggle the companion app's touch-through marker overlay with
+  \`setOverlay\` and clear session markers with \`clearMarkers\`. Use markers for calibration
+  or visual planning, then disable them when they obstruct gameplay.
+- For reusable gameplay plans, define verified profile state rules and reversible action
+  semantics; then use \`phone_game_manage({action:'workflow',...})\` with pre/postconditions.
+  Treat ambiguous screen states as a reason to re-observe, not a license to guess.
+- Re-observe whenever the semantic state is uncertain. Never continue an irreversible
+  sequence merely because earlier coordinates used to be correct.
 
-Important:
-- This is the user's real personal phone. Follow the user's instructions, and observe
-  before irreversible actions (purchases, sending messages, deleting things).
-- Control flows only through Agent Core. If Agent Core stops, phone control stops.`;
+Gameplay reasoning:
+- When the user asks you to play/jockey a game, routine reversible gameplay is within that
+  session intent: battles, navigation, retries, team experimentation, formation changes, and
+  similar low-risk actions do not require confirmation for every tap.
+- For character/party worthiness, combine live roster/stat observations with existing Memory.
+  If patch-sensitive meta knowledge matters and Web Research is available, check current public
+  sources before making a strong ranking claim or recommending a costly investment.
+- Persist durable game knowledge only when useful: proven team synergies, stage mechanics,
+  successful counters, character evaluations with patch/context, and reusable navigation facts.
+  Do not turn every battle frame or failed tap into long-term Memory.
+- Treat experimental outcomes as evidence: compare before/after state, record what actually
+  worked, and update or supersede stale strategy rather than accumulating contradictory notes.
+
+Boundaries:
+- Purchases, spending paid/premium currency, account/security changes, deleting or consuming
+  valuable/rare assets, and comparable irreversible commitments require task-specific user intent.
+- Never use blind input loops through unknown screens. Agent Core control stops when its control
+  plane stops; companion/gateway transport does not create independent gameplay authority.`;

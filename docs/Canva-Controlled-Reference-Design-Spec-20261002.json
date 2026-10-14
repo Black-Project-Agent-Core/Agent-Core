@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "task": "TASK 3 - Controlled Canva Read/Write/Read-back Probe",
+  "status": "BLOCKED_BEFORE_APP_CREATION",
+  "observedAt": "2026-10-02",
+  "runtimePrerequisite": {
+    "developerPortalAuthenticated": true,
+    "existingDeveloperAppsObserved": 0,
+    "createAppRequired": true,
+    "developerTermsAcceptanceRequired": true,
+    "developerTermsAcceptedByAssistant": false,
+    "reason": "Canva requires explicit agreement to Canva Developer Terms before creating the first developer app. The assistant did not accept a legal agreement on the user's behalf."
+  },
+  "proposedProbeApp": {
+    "name": "Penpot Canva Bridge Probe 20261002",
+    "purpose": "Private/development-only controlled Design Editing probe. Not a production bridge.",
+    "created": false
+  },
+  "fixture": {
+    "designType": "absolute-page presentation",
+    "dimensions": {
+      "width": 1920,
+      "height": 1080
+    },
+    "pages": [
+      {
+        "id": "A",
+        "purpose": "GA positive-path structural semantics",
+        "cases": [
+          "page background",
+          "plain text",
+          "rich text with multiple ranges",
+          "rectangle",
+          "custom shape/vector path",
+          "group",
+          "nested group",
+          "solid fill",
+          "solid stroke",
+          "rotation",
+          "transparency",
+          "layer ordering",
+          "image/video fill if asset upload is available"
+        ]
+      },
+      {
+        "id": "B",
+        "purpose": "replaceable media and negative capability boundaries",
+        "cases": [
+          "shape fill with dropTarget=true and no initial media",
+          "shape fill with dropTarget=true and initial media",
+          "multiple overlapping elements for z-order moveBefore/moveAfter",
+          "locked-element read-only observation if a locked fixture can be prepared manually",
+          "negative probe: gradient fill unsupported by Design Editing",
+          "negative probe: table absent from Design Editing",
+          "negative observation: no GA crop/mask/effects contract"
+        ]
+      },
+      {
+        "id": "C",
+        "purpose": "Autofill/data-field semantics",
+        "cases": [
+          "existing GA text field if a tagged source design is available",
+          "existing GA image field if a tagged source design is available",
+          "GA get-design-dataset",
+          "GA create_from_design or update_design",
+          "Preview-only getDataFieldFor mapping probe kept separate and never treated as production authority"
+        ]
+      }
+    ]
+  },
+  "operationPlan": [
+    "Open controlled design with openDesign({type:'all_pages'}) where supported.",
+    "Capture normalized pre-mutation structural snapshot.",
+    "Create supported GA elements using unique probe content markers.",
+    "Read back immediately.",
+    "Update supported properties.",
+    "Read back immediately.",
+    "Reorder elements through ElementList list operations.",
+    "Read back ordering.",
+    "Delete only probe-created disposable element(s).",
+    "Read back deletion.",
+    "For dropTarget, verify Path media editability and mediaContainer behavior; replacement UI/asset operation must be observed separately.",
+    "For Autofill, use only a controlled tagged design and record field labels/types; Preview mapping creation is a separate research-only probe.",
+    "Normalize source/target representation and produce semantic diff."
+  ],
+  "acceptance": {
+    "positive": "Every claimed GA-native semantic must survive create/read/update/read-back with expected values and hierarchy.",
+    "deletion": "Probe-created disposable element must disappear after delete and remain absent on read-back.",
+    "ordering": "List order must match requested moveBefore/moveAfter operation.",
+    "identity": "PageId stability must be observed. Element identity must be recorded only if the actual GA runtime exposes it.",
+    "strictNegative": "Unsupported/document-gap semantics must not be silently flattened and must be marked unsupported/unknown.",
+    "outputCounts": [
+      "native",
+      "emulated",
+      "partial",
+      "unsupported",
+      "lost",
+      "unexpected"
+    ]
+  },
+  "safety": {
+    "useDedicatedDesign": true,
+    "noUserDesignMutation": true,
+    "noCredentialCapture": true,
+    "noCanvaPrivateIPC": true,
+    "noPenpotSourceMutation": true,
+    "noFigmaAdapterMutation": true
+  },
+  "task4Status": "NOT_STARTED"
+}

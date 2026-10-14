@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Agent Core Browser Bridge</title>
+<style>body{font:14px system-ui;background:#071724;color:#edf7ff;width:320px;margin:0;padding:20px}h1{font-size:18px;margin:0 0 12px}p{line-height:1.5}label{display:block;margin:12px 0 6px}input{box-sizing:border-box;width:100%;padding:9px;background:#102a3c;color:white;border:1px solid #4d7187;border-radius:5px}button{padding:9px 12px;margin:12px 6px 0 0;border:0;border-radius:5px;cursor:pointer}#connect{background:#28b9ed;color:#052131}#status{overflow-wrap:anywhere}button:disabled{opacity:.5}</style>
+</head><body><h1>Agent Core Browser Bridge</h1>
+<p>Connect this selected tab. Your browser and login stay open when you disconnect.</p>
+<label for="code">One-use pairing code from Agent Core</label><input id="code" maxlength="32" autocomplete="off" spellcheck="false">
+<button id="connect">Connect selected tab</button><button id="disconnect">Disconnect</button>
+<p id="status" role="status">Checking connection…</p><script src="popup.js" type="module"></script></body></html>

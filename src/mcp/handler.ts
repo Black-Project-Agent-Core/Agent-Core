@@ -6,26 +6,37 @@ import {
   type McpServerFactory,
 } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
+import { createHash } from 'node:crypto';
 import type { McpProtocolMode } from '../config.js';
 import type { CodeIntelligenceService } from '../code-intelligence/service.js';
 import type { LearningService } from '../learning/service.js';
-import type { HermesPartnerService } from '../partner/service.js';
+import type { ExternalControllerLearningService } from '../learning/external-controller.js';
 import type { SemanticIdeService } from '../semantic-ide/service.js';
 import type { MemoryService } from '../memory/service.js';
+import type { MemoryService as ExperienceMemoryService } from '../../SubProject/agent-core-memory/dist/index.js';
+import type { SkillService } from '../skills/service.js';
+import type { WebResearchService } from '../web-research/service.js';
+import type { McpMutationSafety } from './mutation-safety.js';
 import type { McpHttpHandler } from '../http/app.js';
 import type { PhoneController } from '../phone/controller.js';
 import { FailureLoopAdvisor } from './failure-loop-advisor.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { createAgentCoreMcpServer } from './server.js';
+import { memoryCredentialOwner, ownerScopedLearningSession } from './memory-scope.js';
+import { createImageInspector } from '../rdc/tools/image-inspect.js';
 
 export interface BridgeMcpHttpOptions {
   protocolMode?: McpProtocolMode;
   memoryService?: MemoryService;
+  memoryExperience?: ExperienceMemoryService;
   learningService?: LearningService;
-  hermesPartner?: HermesPartnerService;
+  externalControllerLearning?: ExternalControllerLearningService;
   semanticIde?: SemanticIdeService;
+  skillsService?: SkillService;
   phoneController?: PhoneController;
   codeIntelligence?: CodeIntelligenceService;
+  webResearch?: WebResearchService;
+  mutationSafety?: McpMutationSafety;
 }
 
 function sendProtocolError(
@@ -48,6 +59,20 @@ export function bindAbortClose(
   const onAbort = () => close();
   signal.addEventListener('abort', onAbort, { once: true });
   return () => signal.removeEventListener('abort', onAbort);
+}
+
+function externalControllerSessionId(
+  request: Parameters<McpHttpHandler>[0],
+  key: unknown,
+): string {
+  const rawHeader = request.headers['mcp-session-id'] ?? request.headers['x-agent-core-session-id'];
+  const header = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+  const keyId = typeof key === 'object' && key !== null && typeof (key as { id?: unknown }).id === 'string'
+    ? (key as { id: string }).id
+    : 'anonymous';
+  const hourlyBucket = Math.floor(Date.now() / (60 * 60 * 1000));
+  const basis = header?.trim() ? 'mcp:' + header.trim() : 'legacy:' + keyId + ':' + hourlyBucket;
+  return 'ext-' + createHash('sha256').update(basis, 'utf8').digest('hex').slice(0, 32);
 }
 
 function legacyJsonFallback(factory: McpServerFactory) {
@@ -105,16 +130,51 @@ function protocolHandler(factory: McpServerFactory, protocolMode: McpProtocolMod
 export function createMcpHttpHandler(options: BridgeMcpHttpOptions = {}): McpHttpHandler {
   const protocolMode = options.protocolMode ?? 'dual';
   const failureLoopAdvisor = new FailureLoopAdvisor();
+  // Inspectors retain at most 64 metadata views each, never source/output buffers.
+  const imageSessions = new Map<string, { inspect: ReturnType<typeof createImageInspector>; lastUsed: number }>();
+  const imageInspectorFor = (request: Parameters<McpHttpHandler>[0], key: Parameters<McpHttpHandler>[2]) => {
+    const now = Date.now();
+    for (const [id, session] of imageSessions) {
+      if (session.lastUsed + 15 * 60_000 <= now) imageSessions.delete(id);
+    }
+    // app.ts authenticates every request. Never share an anonymous fallback.
+    if (typeof key?.id !== 'string' || !key.id.trim()) return createImageInspector();
+    const rawHeader = request.headers['mcp-session-id'] ?? request.headers['x-agent-core-session-id'];
+    const header = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+    // Headerless legacy clients sharing one credential also share one view namespace.
+    // Keep this fallback stable across the learning session's hourly bucket boundary.
+    const id = createHash('sha256').update(JSON.stringify([key.id, header?.trim() || null])).digest('hex');
+    const session = imageSessions.get(id) ?? { inspect: createImageInspector(), lastUsed: now };
+    session.lastUsed = now;
+    imageSessions.delete(id);
+    while (imageSessions.size >= 32) imageSessions.delete(imageSessions.keys().next().value!);
+    imageSessions.set(id, session);
+    return session.inspect;
+  };
   return async (request, response, key) => {
     if (request.method !== 'POST') return sendProtocolError(response, 405, 'Method not allowed.');
+    const controllerSessionId = externalControllerSessionId(request, key);
+    const imageInspector = imageInspectorFor(request, key);
+    const owner = memoryCredentialOwner(key);
+    const learningSessionId = options.memoryExperience && owner ? ownerScopedLearningSession(owner, controllerSessionId) : controllerSessionId;
+    const controllerBootstrap = options.externalControllerLearning && (!options.memoryExperience || owner)
+      ? await options.externalControllerLearning.bootstrapInstructions(learningSessionId).catch(() => undefined)
+      : undefined;
     const factory: McpServerFactory = () => createAgentCoreMcpServer(key, {
       memoryService: options.memoryService,
+      memoryExperience: options.memoryExperience,
       learningService: options.learningService,
-      hermesPartner: options.hermesPartner,
+      externalControllerLearning: options.externalControllerLearning,
+      controllerSessionId,
+      controllerBootstrap,
+      imageInspector,
       semanticIde: options.semanticIde,
+      skillsService: options.skillsService,
       phoneController: options.phoneController,
       codeIntelligence: options.codeIntelligence,
+      webResearch: options.webResearch,
       failureLoopAdvisor,
+      mutationSafety: options.mutationSafety,
     });
     const webHandler = protocolHandler(factory, protocolMode);
     try {

@@ -2,11 +2,13 @@ import fs from 'fs/promises';
 import { existsSync, readdirSync } from 'fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'path';
 import { mdToPdf } from 'md-to-pdf';
-import type { PageRange } from './lib/pdf2md.js';
+import type { PageRange, PdfParseOptions } from './lib/pdf2md.js';
 import { PdfParseResult, pdf2md } from './lib/pdf2md.js';
 import { CONFIG_FILE } from '../../config.js';
 import { fetchWithPolicy, correlationSuffix } from '../../../net/outbound-request.js';
 import { readResponseBytesBounded } from '../../../net/bounded-response.js';
+import { readRegularFileBounded } from '../../utils/files/safe-regular-file.js';
+import { DOCUMENT_INPUT_MAX_BYTES } from '../../document-projection/helpers.js';
 
 const isUrl = (source: string): boolean =>
     source.startsWith('http://') || source.startsWith('https://');
@@ -286,18 +288,26 @@ async function loadPdfToBuffer(source: string): Promise<Buffer | ArrayBuffer> {
         }
         return await readResponseBytesBounded(response, pdfUrlMaxBytes(), 'PDF URL response');
     }
-    return await fs.readFile(source);
+    const read = await readRegularFileBounded(source, DOCUMENT_INPUT_MAX_BYTES);
+    if (read.truncated) throw new Error('PDF_INPUT_TOO_LARGE');
+    return read.buffer;
 }
 
 /**
  * Convert PDF to Markdown using @opendocsg/pdf2md
  */
-export async function parsePdfToMarkdown(source: string, pageNumbers: number[] | PageRange = []): Promise<PdfParseResult> {
+export async function parsePdfToMarkdown(
+    source: string,
+    pageNumbers?: number[] | PageRange,
+    options: PdfParseOptions = {},
+): Promise<PdfParseResult> {
     try {
         const data = await loadPdfToBuffer(source);
 
         // @ts-ignore: Type definition mismatch for ESM usage
-        return await pdf2md(new Uint8Array(data), pageNumbers);
+        return await pdf2md(new Uint8Array(data), pageNumbers, {
+            ...options, observedAt: options.observedAt ?? new Date().toISOString(),
+        });
 
     } catch (error) {
         console.error("Error converting PDF to Markdown (v3):", error);

@@ -1,0 +1,32 @@
+import {afterEach,expect,test,vi} from 'vitest';
+import {mkdtemp,rm} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+const roots:string[]=[];
+afterEach(async()=>{vi.doUnmock('../src/memory/identifier-tokenizer.js');vi.resetModules();await Promise.all(roots.splice(0).map(root=>rm(root,{recursive:true,force:true})));});
+test('prior_tokenizer_version_cursor_is_stale_after_restart',async()=>{
+ vi.doMock('../src/memory/identifier-tokenizer.js',async()=>({...await vi.importActual<object>('../src/memory/identifier-tokenizer.js'),IDENTIFIER_TOKENIZER_VERSION:'code-identifiers/prior'}));
+ const {initializeStandaloneMemory:beforeInitialize}=await import('../src/standalone.js');
+ const root=await mkdtemp(path.join(os.tmpdir(),'memory-code-cursor-'));roots.push(root);
+ const before=await beforeInitialize({baseDir:root,memoryRoot:path.join(root,'memory')});
+ expect(before.health()).not.toMatchObject({status:'error'});
+ await before.remember({content:'controller first record',provenance:{workspace:'agent-core',files:[]}});
+ await before.remember({content:'controller second record',provenance:{workspace:'agent-core',files:[]}});
+ const scope={workspaceKey:'agent-core',taskId:'tokenizer-cursor-test',controllerId:'synthetic'};
+ const first=await before.controller(scope).recall({query:'controller',limit:1});
+ expect(first.data?.nextCursor).toBeDefined();
+ vi.doUnmock('../src/memory/identifier-tokenizer.js');vi.resetModules();
+ const {MemoryService:After}=await import('../src/memory/service.js');
+ const after=await After.initialize(root,path.join(root,'memory'));
+ await expect(after.controller(scope).recall({query:'controller',limit:1,cursor:first.data!.nextCursor})).rejects.toMatchObject({code:'MEMORY_CURSOR_STALE'});
+});
+test('invalid_identifier_query_is_rejected_before_embedding',async()=>{
+ const {initializeStandaloneMemory}=await import('../src/standalone.js');
+ const root=await mkdtemp(path.join(os.tmpdir(),'memory-code-preflight-'));roots.push(root);
+ const embedDocuments=vi.fn(async(texts:string[])=>texts.map(()=>[1,0]));
+ const memory=await initializeStandaloneMemory({baseDir:root,embedder:{identity:{provider:'fixture',model:'lexical-preflight',dimensions:2},embedDocuments}});
+ embedDocuments.mockClear();
+ await expect(memory.controller({workspaceKey:'agent-core',taskId:'lexical-preflight',controllerId:'synthetic'}).recall({query:'x'.repeat(257)})).rejects.toMatchObject({code:'MEMORY_INPUT_INVALID'});
+ await expect(memory.search('x'.repeat(257))).rejects.toMatchObject({code:'MEMORY_INPUT_INVALID'});
+ expect(embedDocuments).not.toHaveBeenCalled();
+});

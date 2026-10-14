@@ -1,8 +1,14 @@
+import { validateCurationDelta } from './curation-delta.js';
 import type { MemoryService } from '../memory/service.js';
 import type { LearningCuratorProposal } from './types.js';
 import type { CodePatternLearningSink } from './code-pattern-sink.js';
+import { RETENTION_PARAMS, scoreMemoryRetention } from './retention-score.js';
+import { activityTracker } from '../tracker/activity-tracker.js';
+import { buildFeatureOutcomeProposals } from './feature-outcome-pool.js';
 
 const STALE_MS = 30 * 24 * 60 * 60 * 1000;
+
+type RankedStale = { proposal: LearningCuratorProposal; score: number; id: string };
 
 export class LearningCurator {
   constructor(
@@ -10,20 +16,33 @@ export class LearningCurator {
     private readonly patterns?: CodePatternLearningSink,
   ) {}
 
+  /** Controller-supplied delta remains a proposal; this method has no sink side effects. */
+  proposeDelta(value: unknown) { return validateCurationDelta(value); }
+
   async propose(workspace?: string): Promise<LearningCuratorProposal[]> {
     const proposals: LearningCuratorProposal[] = [];
-    const records = await this.memory.list();
+    const stale: RankedStale[] = [];
+    const records = await this.memory.list(workspace);
+    const salienceByMemory = await this.memory.feedbackSalienceMap();
     const now = Date.now();
 
     for (const record of records) {
       if (record.pinned) continue;
       const accessBase = record.lastAccessedAt ?? record.updatedAt;
       const age = now - Date.parse(accessBase);
-      if (record.retrievalCount === 0 && Number.isFinite(age) && age >= STALE_MS) {
-        proposals.push({
-          recommendation: 'review-stale',
-          memoryIds: [record.id],
-          reason: 'memory has not been recalled and is older than the conservative stale-review window',
+      const retention = scoreMemoryRetention(record, now, salienceByMemory.get(record.id) ?? 1);
+      const legacyStale = record.retrievalCount === 0 && Number.isFinite(age) && age >= STALE_MS;
+      const scoreStale = retention !== null && retention.score < RETENTION_PARAMS.reviewThreshold;
+      if (legacyStale || scoreStale) {
+        const scoreText = retention ? retention.score.toFixed(4) : 'unavailable';
+        stale.push({
+          score: retention?.score ?? Number.POSITIVE_INFINITY,
+          id: record.id,
+          proposal: {
+            recommendation: 'review-stale',
+            memoryIds: [record.id],
+            reason: `retention score ${scoreText}; salience ${retention?.salience.toFixed(2) ?? 'unavailable'}; explicit review recommended (threshold ${RETENTION_PARAMS.reviewThreshold})`,
+          },
         });
       }
       for (const link of record.links) {
@@ -35,6 +54,15 @@ export class LearningCurator {
         });
       }
     }
+
+    stale.sort((a, b) => a.score - b.score || a.id.localeCompare(b.id));
+    proposals.unshift(...stale.map((item) => item.proposal));
+
+    proposals.push(...buildFeatureOutcomeProposals(activityTracker.readFeatureOutcomes({
+      maxEvents: 512,
+      maxAgeMs: 90 * 24 * 60 * 60 * 1000,
+      ...(workspace ? { workspace } : {}),
+    })));
 
     for (const candidate of await this.memory.consolidate({ limit: 20 })) {
       proposals.push({

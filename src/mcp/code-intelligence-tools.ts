@@ -1,9 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/client';
 import type { CodeIntelligenceService } from '../code-intelligence/service.js';
+import { buildChangedSymbolReview } from '../code-intelligence/change-review.js';
+import { scanChangedSourceSecurity } from '../code-intelligence/changed-source-security.js';
+import type { SemanticIdeService } from '../semantic-ide/service.js';
+import type { ExternalControllerLearningService } from '../learning/external-controller.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { redactSensitiveString } from '../security/redaction.js';
 import { parseCallToolResultJson } from './call-tool-result.js';
+import { externalControllerToolResult, beginExternalControllerToolCall } from './external-controller-tool-support.js';
 import * as schemas from './code-intelligence-schemas.js';
 
 function textResult(value: unknown): any {
@@ -80,7 +85,10 @@ async function runProvider(
   args: Record<string, unknown>,
   context: ReturnType<typeof contextFromInput>,
   allowStale = false,
+  externalController?: ExternalControllerLearningService,
+  externalSessionId?: string,
 ): Promise<any> {
+  const call = beginExternalControllerToolCall(family);
   const started = Date.now();
   try {
     const result = await service.callProviderTool(providerTool, args, { context, allowStale });
@@ -111,7 +119,15 @@ async function runProvider(
         ...touchContext,
       },
     );
-    return result as any;
+    return externalControllerToolResult({ call,
+      service: externalController,
+      sessionId: externalSessionId,
+      tool: family,
+      args,
+      result: result as any,
+      readOnly: ['code_orient', 'code_graph', 'code_surface', 'code_analysis'].includes(family),
+      ...(context.workspace ? { workspace: context.workspace } : {}),
+    });
   } catch (error) {
     activityTracker.record(
       'CODE_INTELLIGENCE',
@@ -128,11 +144,38 @@ async function runProvider(
         errorFamily: compactErrorFamily(error),
       },
     );
-    return errorResult(error instanceof Error ? error.message : String(error));
+    return externalControllerToolResult({ call,
+      service: externalController,
+      sessionId: externalSessionId,
+      tool: family,
+      args,
+      result: errorResult(error instanceof Error ? error.message : String(error)),
+      readOnly: ['code_orient', 'code_graph', 'code_surface', 'code_analysis'].includes(family),
+      ...(context.workspace ? { workspace: context.workspace } : {}),
+    });
   }
 }
 
-export function registerCodeIntelligenceTools(server: McpServer, service: CodeIntelligenceService): void {
+export function registerCodeIntelligenceTools(
+  server: McpServer,
+  service: CodeIntelligenceService,
+  semanticIde?: SemanticIdeService,
+  externalController?: ExternalControllerLearningService,
+  externalSessionId?: string,
+): void {
+  const providerCall = (
+    serviceArg: CodeIntelligenceService,
+    family: string,
+    action: string,
+    providerTool: string,
+    args: Record<string, unknown>,
+    context: ReturnType<typeof contextFromInput>,
+    allowStale = false,
+  ) => runProvider(
+    serviceArg, family, action, providerTool, args, context, allowStale,
+    externalController, externalSessionId,
+  );
+
   server.registerTool('code_orient', {
     title: 'Code Intelligence Orient',
     description: 'Structural code orientation, freshness, diagnostics, quarantine visibility, entity discovery, and inspection backed by project-local Grafel. Source files remain authoritative.',
@@ -160,7 +203,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
 
     if (input.action === 'find') {
       if (!input.query) return errorResult('query is required for action=find');
-      return runProvider(service, 'code_orient', input.action, 'grafel_find', providerArgs(input.params, {
+      return providerCall(service, 'code_orient', input.action, 'grafel_find', providerArgs(input.params, {
         query: input.query,
         ...(input.search ? { search: input.search } : {}),
         ...(input.kind ? { kind_filter: input.kind } : {}),
@@ -177,7 +220,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
 
     if (input.action === 'inspect') {
       if (!input.entityId) return errorResult('entityId is required for action=inspect');
-      return runProvider(service, 'code_orient', input.action, 'grafel_inspect', providerArgs(input.params, {
+      return providerCall(service, 'code_orient', input.action, 'grafel_inspect', providerArgs(input.params, {
         entity_id: input.entityId,
         ...(input.fields?.length ? { fields: input.fields } : {}),
         ...(input.includeUnresolved !== undefined ? { include_unresolved: input.includeUnresolved } : {}),
@@ -187,7 +230,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
       }), context);
     }
 
-    return runProvider(service, 'code_orient', input.action, 'grafel_orient', providerArgs(input.params, {
+    return providerCall(service, 'code_orient', input.action, 'grafel_orient', providerArgs(input.params, {
       view: input.action,
       ...(input.tokenBudget !== undefined ? { token_budget: input.tokenBudget } : {}),
       ...(input.repoFilter ? { repo_filter: input.repoFilter } : {}),
@@ -205,7 +248,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
 
     if (input.action === 'related') {
       if (!input.entityId) return errorResult('entityId is required for action=related');
-      return runProvider(service, 'code_graph', input.action, 'grafel_related', providerArgs(input.params, {
+      return providerCall(service, 'code_graph', input.action, 'grafel_related', providerArgs(input.params, {
         entity_id: input.entityId,
         ...(input.direction ? { direction: input.direction } : {}),
         ...(input.depth !== undefined ? { depth: input.depth } : {}),
@@ -215,7 +258,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
     }
     if (input.action === 'paths') {
       if (!input.from || !input.to) return errorResult('from and to are required for action=paths');
-      return runProvider(service, 'code_graph', input.action, 'grafel_find_paths', providerArgs(input.params, {
+      return providerCall(service, 'code_graph', input.action, 'grafel_find_paths', providerArgs(input.params, {
         from: input.from,
         to: input.to,
         ...(input.maxHops !== undefined ? { max_hops: input.maxHops } : {}),
@@ -223,7 +266,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
     }
     if (input.action === 'subgraph') {
       if (!input.entityId) return errorResult('entityId is required for action=subgraph');
-      return runProvider(service, 'code_graph', input.action, 'grafel_subgraph', providerArgs(input.params, {
+      return providerCall(service, 'code_graph', input.action, 'grafel_subgraph', providerArgs(input.params, {
         entity_id: input.entityId,
         ...(input.depth !== undefined ? { depth: input.depth } : {}),
         ...(input.maxNodes !== undefined ? { max_nodes: input.maxNodes } : {}),
@@ -236,7 +279,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
       const target = input.target ?? input.to;
       if (!source) return errorResult(`source or from is required for action=trace kind=${traceKind}`);
       if (traceKind === 'path' && !target) return errorResult('target or to is required for action=trace kind=path');
-      return runProvider(service, 'code_graph', input.action, 'grafel_trace', providerArgs(input.params, {
+      return providerCall(service, 'code_graph', input.action, 'grafel_trace', providerArgs(input.params, {
         kind: traceKind,
         source,
         ...(target ? { target } : {}),
@@ -245,7 +288,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
     }
     const entityId = input.entityId ?? input.target ?? input.to;
     if (!entityId) return errorResult(`entityId, target, or to is required for action=trace kind=${traceKind}`);
-    return runProvider(service, 'code_graph', input.action, 'grafel_trace', providerArgs(input.params, {
+    return providerCall(service, 'code_graph', input.action, 'grafel_trace', providerArgs(input.params, {
       kind: traceKind,
       entity_id: entityId,
       ...(input.repoFilter ? { repo_filter: input.repoFilter } : {}),
@@ -262,7 +305,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
     const context = contextFromInput(input);
 
     if (input.action === 'endpoints') {
-      return runProvider(service, 'code_surface', input.action, 'grafel_endpoints', providerArgs(input.params, {
+      return providerCall(service, 'code_surface', input.action, 'grafel_endpoints', providerArgs(input.params, {
         action: input.endpointAction ?? 'definitions',
         ...(input.detail ? { detail: input.detail } : {}),
         ...(input.entityId ? { entity_id: input.entityId } : {}),
@@ -270,7 +313,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
       }), context);
     }
     if (input.action === 'cross_links') {
-      return runProvider(service, 'code_surface', input.action, 'grafel_cross_links', providerArgs(input.params, {
+      return providerCall(service, 'code_surface', input.action, 'grafel_cross_links', providerArgs(input.params, {
         action: 'list',
       }), context);
     }
@@ -278,13 +321,54 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
       const scope = input.scope ?? (input.entityId ? 'entity' : 'changeset');
       if (scope === 'entity' && !input.entityId) return errorResult('entityId is required for entity impact');
       if (scope === 'changeset' && !input.repo) return errorResult('repo is required for changeset impact');
-      return runProvider(service, 'code_surface', input.action, 'grafel_impact_radius', providerArgs(input.params, {
-        scope,
-        ...(input.entityId ? { entity_id: input.entityId } : {}),
-        ...(input.repo ? { repo: input.repo } : {}),
-        ...(input.base ? { base: input.base } : {}),
-        ...(input.head ? { head: input.head } : {}),
-      }), context);
+      const providerResult = await runProvider(
+        service,
+        'code_surface',
+        input.action,
+        'grafel_impact_radius',
+        providerArgs(input.params, {
+          scope,
+          ...(input.entityId ? { entity_id: input.entityId } : {}),
+          ...(input.repo ? { repo: input.repo } : {}),
+          ...(input.base ? { base: input.base } : {}),
+          ...(input.head ? { head: input.head } : {}),
+        }),
+        context,
+      ) as CallToolResult;
+      if (scope === 'entity' || providerResult.isError) return providerResult as any;
+
+      const structuralImpact = parseCallToolResultJson(providerResult);
+      try {
+        const reviewContext = await service.resolveWorkspace({
+          ...context,
+          repoFilter: [input.repo!],
+        });
+        const reviewEvidence = await buildChangedSymbolReview({
+          service,
+          semanticIde,
+          context: reviewContext,
+          repo: input.repo!,
+          root: reviewContext.worktreePath ?? reviewContext.cwd,
+          ...(input.base ? { base: input.base } : {}),
+          ...(input.head ? { head: input.head } : {}),
+        });
+        const base = structuralImpact && typeof structuralImpact === 'object' && !Array.isArray(structuralImpact)
+          ? structuralImpact as Record<string, unknown>
+          : { structuralImpact };
+        return textResult({ ...base, reviewEvidence });
+      } catch (error) {
+        const base = structuralImpact && typeof structuralImpact === 'object' && !Array.isArray(structuralImpact)
+          ? structuralImpact as Record<string, unknown>
+          : { structuralImpact };
+        return textResult({
+          ...base,
+          reviewEvidence: {
+            status: 'unavailable',
+            reason: error instanceof Error ? error.message : String(error),
+            sourceAuthority: 'exact-source+semantic-ide+grafel',
+          },
+        });
+      }
     }
 
     const aspect = input.aspect ?? 'refs';
@@ -292,7 +376,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
       const refA = input.refA ?? input.base;
       const refB = input.refB ?? input.head;
       if (!input.repo || !refA || !refB) return errorResult('repo plus refA/refB (or base/head) are required for diff aspect=refs');
-      return runProvider(service, 'code_surface', input.action, 'grafel_diff', providerArgs(input.params, {
+      return providerCall(service, 'code_surface', input.action, 'grafel_diff', providerArgs(input.params, {
         aspect,
         repo: input.repo,
         ref_a: refA,
@@ -300,11 +384,11 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
       }), context);
     }
     if (aspect === 'payload') {
-      return runProvider(service, 'code_surface', input.action, 'grafel_diff', providerArgs(input.params, { aspect }), context);
+      return providerCall(service, 'code_surface', input.action, 'grafel_diff', providerArgs(input.params, { aspect }), context);
     }
     if (!input.groupOracle || !input.groupV3) return errorResult(`groupOracle and groupV3 are required for diff aspect=${aspect}`);
     if (aspect === 'literals' && !input.set) return errorResult('set is required for diff aspect=literals');
-    return runProvider(service, 'code_surface', input.action, 'grafel_diff', providerArgs(input.params, {
+    return providerCall(service, 'code_surface', input.action, 'grafel_diff', providerArgs(input.params, {
       aspect,
       group_oracle: input.groupOracle,
       group_v3: input.groupV3,
@@ -314,7 +398,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
 
   server.registerTool('code_analysis', {
     title: 'Code Intelligence Analysis',
-    description: 'On-demand structural debt, security, tests, or architectural-fitness analysis. Fitness violations are evidence and never an execution gate.',
+    description: 'On-demand structural debt, security, tests, or architectural-fitness analysis. Provider debt/security findings are advisory evidence: verify exact current source/callers before deletion, vulnerability claims, or architectural conclusions. Fitness violations are evidence and never an execution gate.',
     inputSchema: schemas.codeAnalysis.shape,
     annotations: { title: 'Code Intelligence Analysis', readOnlyHint: true, openWorldHint: false },
   }, async (args: any) => {
@@ -322,7 +406,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
     const context = contextFromInput(input);
     const allowedAnalysis: Record<'debt' | 'security' | 'tests', readonly string[]> = {
       debt: ['dead_code', 'find_dead_code', 'cycles', 'import_cycles', 'stubs', 'impure', 'license'],
-      security: ['findings', 'secrets', 'auth_coverage'],
+      security: ['findings', 'secrets', 'auth_coverage', 'changed_source'],
       tests: ['coverage', 'reachability', 'contract_effectiveness', 'coverage_effectiveness'],
     };
     if (input.kind === 'fitness') {
@@ -341,13 +425,35 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
     if (input.analysisPreset && !allowedAnalysis[input.kind].includes(input.analysisPreset)) {
       return errorResult(`analysisPreset=${input.analysisPreset} is invalid for kind=${input.kind}; valid values: ${allowedAnalysis[input.kind].join(', ')}`);
     }
+    if (input.kind === 'security' && input.analysisPreset === 'changed_source') {
+      if (!input.worktreePath) return errorResult('worktreePath is required for security changed_source analysis');
+      if (!input.changedFiles?.length) return errorResult('changedFiles is required for security changed_source analysis');
+      try {
+        const scan = await scanChangedSourceSecurity({
+          root: input.worktreePath,
+          files: input.changedFiles,
+          rules: input.securityRules,
+        });
+        activityTracker.recordOutcome('CODE_INTELLIGENCE', 'success', 'Deterministic changed-source security advisory completed', {
+          featureId: 'code.security.changed-source',
+          outcome: scan.findings.length ? 'findings' : 'clean',
+          properties: { filesScanned: scan.filesScanned, findings: scan.findings.length, resolved: scan.resolved.length },
+        }, 'code-security-advisory', { workspace: context.workspace ?? '', ref: context.ref ?? '' });
+        return textResult(scan);
+      } catch (error) {
+        activityTracker.recordOutcome('CODE_INTELLIGENCE', 'warn', 'Deterministic changed-source security advisory unavailable', {
+          featureId: 'code.security.changed-source', outcome: 'unavailable',
+        }, 'code-security-advisory');
+        return errorResult(error instanceof Error ? error.message : String(error));
+      }
+    }
     const providerTool = input.kind === 'debt'
       ? 'grafel_debt'
       : input.kind === 'security'
         ? 'grafel_security'
         : 'grafel_test_analysis';
     const discriminator = input.analysisPreset ?? input.analysis ?? (input.kind === 'debt' ? 'dead_code' : input.kind === 'security' ? 'findings' : 'coverage');
-    return runProvider(service, 'code_analysis', input.kind, providerTool, providerArgs(input.params, {
+    return providerCall(service, 'code_analysis', input.kind, providerTool, providerArgs(input.params, {
       kind: discriminator,
       ...(input.kind === 'security' && input.minConfidence !== undefined
         ? { min_confidence: input.minConfidence }
@@ -371,7 +477,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
         return errorResult('kind=graph is read-only and supports action=list|get');
       }
       if (input.action === 'get' && !input.patternId) return errorResult('patternId is required for kind=graph action=get');
-      return runProvider(service, 'code_patterns', input.action, 'grafel_patterns', providerArgs(input.params, {
+      return providerCall(service, 'code_patterns', input.action, 'grafel_patterns', providerArgs(input.params, {
         kind: 'graph',
         action: input.action,
         ...(input.patternId ? { pattern_id: input.patternId } : {}),
@@ -383,7 +489,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
       if (input.action !== 'list' && input.action !== 'query') {
         return errorResult('kind=template is read-only; provider supports list/query enumeration but no stable get id');
       }
-      return runProvider(service, 'code_patterns', input.action, 'grafel_patterns', providerArgs(input.params, {
+      return providerCall(service, 'code_patterns', input.action, 'grafel_patterns', providerArgs(input.params, {
         kind: 'template',
         ...(input.literalKind ? { literal_kind: input.literalKind } : {}),
         ...(input.limit !== undefined ? { limit: input.limit } : {}),
@@ -434,7 +540,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
       Object.assign(base, { candidate_id: input.candidateId, ...(input.approvalNote !== undefined ? { approval_note: input.approvalNote } : {}) });
     }
 
-    return runProvider(
+    return providerCall(
       service,
       'code_patterns',
       input.action,
@@ -600,7 +706,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
 
         if (input.action === 'accept') {
           if (input.targetVerified !== true) return errorResult('targetVerified=true is required before cross-link accept');
-          return runProvider(service, 'code_repair', 'cross_link_accept', 'grafel_cross_links', {
+          return providerCall(service, 'code_repair', 'cross_link_accept', 'grafel_cross_links', {
             action: 'accept',
             candidate_id: input.candidateId,
             ...(input.overrideTarget ? { override_target: input.overrideTarget } : {}),
@@ -608,7 +714,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
         }
 
         if (!input.reason) return errorResult('reason is required for cross-link reject');
-        return runProvider(service, 'code_repair', 'cross_link_reject', 'grafel_cross_links', {
+        return providerCall(service, 'code_repair', 'cross_link_reject', 'grafel_cross_links', {
           action: 'reject',
           candidate_id: input.candidateId,
           reason: input.reason,
@@ -651,7 +757,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
           if (!input.value) return errorResult('value is required for enrichment submit');
           if (!input.reasoning) return errorResult('reasoning is required for enrichment submit');
           if (input.confidence === undefined) return errorResult('confidence is required explicitly for enrichment submit');
-          return runProvider(service, 'code_repair', 'enrichment_submit', 'grafel_docgen_apply', {
+          return providerCall(service, 'code_repair', 'enrichment_submit', 'grafel_docgen_apply', {
             kind: 'enrichments',
             action: 'submit',
             candidate_id: input.candidateId,
@@ -662,7 +768,7 @@ export function registerCodeIntelligenceTools(server: McpServer, service: CodeIn
         }
 
         if (!input.reason) return errorResult('reason is required for enrichment reject');
-        return runProvider(service, 'code_repair', 'enrichment_reject', 'grafel_docgen_apply', {
+        return providerCall(service, 'code_repair', 'enrichment_reject', 'grafel_docgen_apply', {
           kind: 'enrichments',
           action: 'reject',
           candidate_id: input.candidateId,

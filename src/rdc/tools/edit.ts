@@ -28,6 +28,8 @@ import { configManager } from '../config-manager.js';
 import { fuzzySearchLogger, type FuzzySearchLogEntry } from '../utils/fuzzySearchLogger.js';
 import { resolvePreviewFileType } from '../ui/file-preview/shared/preview-file-types.js';
 import { resolveAbsolutePath } from '../handlers/filesystem-handlers.js';
+import { fileMutationCoordinator, type MutationExecutionContext } from '../mutation-coordinator.js';
+import { fileCheckpointService } from '../checkpoints/service.js';
 
 interface SearchReplace {
     search: string;
@@ -113,7 +115,7 @@ function getCharacterCodeData(expected: string, actual: string): {
     };
 }
 
-export async function performSearchReplace(filePath: string, block: SearchReplace, expectedReplacements: number = 1, origin?: 'ui' | 'llm'): Promise<ServerResult> {
+export async function performSearchReplace(filePath: string, block: SearchReplace, expectedReplacements: number = 1, origin?: 'ui' | 'llm', autoCheckpoint = false, execution?: MutationExecutionContext): Promise<ServerResult> {
     // Get file extension for telemetry using path module
     const fileExtension = path.extname(filePath).toLowerCase();
     
@@ -201,7 +203,11 @@ export async function performSearchReplace(filePath: string, block: SearchReplac
 RECOMMENDATION: For large search/replace operations, consider breaking them into smaller chunks with fewer lines.`;
         }
         
-        await writeFile(filePath, newContent);
+        if (autoCheckpoint && newContent === content) execution?.reportAutoCheckpoint({ status: 'not-captured', reason: 'no-change' });
+        else await writeFile(validPath, newContent, 'rewrite', autoCheckpoint ? async (file, changed) => {
+            if (!changed) execution?.reportAutoCheckpoint({ status: 'not-captured', reason: 'no-change' });
+            else await fileCheckpointService.createAutomatic([file], execution);
+        } : undefined);
         capture('server_edit_block_exact_success', {fileExtension: fileExtension, expectedReplacements, hasWarning: warningMessage !== ""});
         const resolvedEditPath = resolveAbsolutePath(filePath);
 
@@ -415,9 +421,13 @@ function highlightDifferences(expected: string, actual: string): string {
  *    - Supports chunking for large datasets (e.g., 1000 rows at a time)
 
  */
-export async function handleEditBlock(args: unknown): Promise<ServerResult> {
+export async function handleEditBlock(args: unknown, execution?: MutationExecutionContext): Promise<ServerResult> {
     const parsed = EditBlockArgsSchema.parse(args);
+    const canonicalPath = await validatePath(parsed.file_path);
+    return fileMutationCoordinator.run([canonicalPath], () => handleParsedEditBlock({ ...parsed, file_path: canonicalPath }, execution));
+}
 
+async function handleParsedEditBlock(parsed: ReturnType<typeof EditBlockArgsSchema.parse>, execution?: MutationExecutionContext): Promise<ServerResult> {
     // Note: Check for truthy range to handle empty strings from AI clients that send all optional params
     const hasRange = parsed.range !== undefined && parsed.range !== '';
     const hasContent = parsed.content !== undefined && parsed.content !== '';
@@ -435,6 +445,7 @@ export async function handleEditBlock(args: unknown): Promise<ServerResult> {
     }
 
     const hasEditRange = 'editRange' in handler && typeof handler.editRange === 'function';
+    if (parsed.autoCheckpoint && (hasEditRange || hasRange)) execution?.reportAutoCheckpoint({ status: 'not-captured', reason: 'unsupported-operation' });
 
     // Path 1: Range rewrite (Excel, etc.) — range + content
     if (hasRange && hasContent) {
@@ -521,5 +532,5 @@ export async function handleEditBlock(args: unknown): Promise<ServerResult> {
     return performSearchReplace(parsed.file_path, {
         search: parsed.old_string,
         replace: parsed.new_string
-    }, parsed.expected_replacements, parsed.origin);
+    }, parsed.expected_replacements, parsed.origin, parsed.autoCheckpoint === true, execution);
 }

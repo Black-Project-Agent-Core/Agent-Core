@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "task": "TASK 3 - Controlled Canva read/write/read-back",
+  "status": "COMPLETE",
+  "gateP1": "PASS_FOR_SUPPORTED_V1_SCOPE",
+  "appBoundary": "Penpot-to-Canva",
+  "productRoot": "F:\\Content Creator\\Astra Content Factory",
+  "bridgeRoot": "F:\\Content Creator\\Astra Content Factory\\Toolchain\\adapters\\penpot-to-canva",
+  "agentCoreRole": "engineering-support-only",
+  "runtime": {
+    "canvaDesign": "2.13.1",
+    "canvaIntents": "2.7.1",
+    "canvaAsset": "2.3.1",
+    "developmentUrl": "http://localhost:8080/",
+    "developmentUrlMeaning": "local development preview source; server root returns JavaScript directly",
+    "uploadedBundleRole": "separate review/release path"
+  },
+  "provenNative": [
+    "absolute page read",
+    "stable PageId on opened absolute pages",
+    "multi-page traversal",
+    "helpers.openPage deep read-back",
+    "page background write/read-back",
+    "addPage create/read-back with title/background/dimensions/native elements",
+    "rect create/read/update/delete",
+    "rich text regions and paragraph/inline formatting read-back",
+    "shape/path create/read",
+    "media-editable shape path via PathFill.isMediaEditable",
+    "position/rotation/transparency update",
+    "solid fill update",
+    "solid stroke update",
+    "element list reorder",
+    "group read-back",
+    "ungroup read-back using split-session lifecycle",
+    "asset upload from data URL",
+    "native image fill via mediaContainer imageRef",
+    "final cleanup/read-back"
+  ],
+  "runtimeObservations": {
+    "elementIdObserved": true,
+    "elementIdContractStatus": "runtime-observed/stable-in-probe; not promoted to guaranteed GA schema contract",
+    "pageRefIdObserved": false,
+    "openedPageIdObserved": true,
+    "addPageImageDeepReadback": "image element is observed by Design Editing as rect with image media fill",
+    "resizeAfterCreate": "not tested; width/height are read-only in GA Design Editing type contract"
+  },
+  "requiredSessionDiscipline": {
+    "burstSyncCalls": "avoid; Canva returns RATE_LIMITED",
+    "groupUngroupSameSession": "avoid; finalization INTERNAL_ERROR observed even when syncs succeeded",
+    "approvedPattern": [
+      "openDesign -> create -> sync -> close",
+      "openDesign -> group -> sync -> close",
+      "openDesign -> ungroup -> sync -> close",
+      "openDesign -> delete -> sync -> close"
+    ]
+  },
+  "notPromotedOrDeferred": [
+    "existing-page delete",
+    "arbitrary existing-page reorder",
+    "existing-page resize",
+    "crop/imageBox",
+    "gradient fill/stroke",
+    "mask/clipping",
+    "effects/shadows/blur",
+    "Design Editing table round-trip",
+    "direct chart/sheet structural CRUD",
+    "Autofill/data-field runtime proof (separate tagged-design/OAuth track)",
+    "Preview getDataFieldFor field creation"
+  ],
+  "evidence": [
+    "runtime/tmp/penpot-to-canva-task3-20261002/semantic-probe-v4-report.json",
+    "runtime/tmp/penpot-to-canva-task3-20261002/postcheck-pass.json",
+    "runtime/tmp/penpot-to-canva-task3-20261002/sync-rate-limit-isolation.json",
+    "runtime/tmp/penpot-to-canva-task3-20261002/same-session-group-finalization-fail.json",
+    "runtime/tmp/penpot-to-canva-task3-20261002/group-split-pass.json",
+    "runtime/tmp/penpot-to-canva-task3-20261002/asset-page-pass.json",
+    "runtime/tmp/penpot-to-canva-task3-20261002/multipage-deep-readback-pass.json"
+  ],
+  "protectedBoundaries": {
+    "penpotSourceSha256": "5d70ab81d45b97e97a858135f15a5b60a3c438cfabaff668a021de5a48253268",
+    "penpotSourceMatch": true,
+    "penpotMcpRuntimeSha256": "2ad61958540d2df7eed9c372cead55d6a4b34534c4dcdd701e352bc31fed2610",
+    "penpotMcpRuntimeMatch": true,
+    "figExporterSha256": "159208b5a228d91d1f562a6ab32e3c352f4d55d6e18462f520d04932ddce50ef",
+    "figExporterMatch": true
+  },
+  "productAdapterBaseline": {
+    "root": "F:\\Content Creator\\Astra Content Factory\\Toolchain\\adapters\\penpot-to-canva",
+    "files": 8,
+    "sha256Tree": "de0e0bd374c68b23929794993fbb7855d0e7031b0055a01405439f4bf5c1001e"
+  },
+  "task4Status": "NOT_STARTED"
+}

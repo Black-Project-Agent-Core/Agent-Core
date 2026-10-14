@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1500" viewBox="0 0 2400 1500">
+<rect width="2400" height="1500" fill="#0B1020"/>
+<text x="80" y="86" font-family="Segoe UI,Arial,sans-serif" font-size="46" font-weight="700" fill="#F4F7FF">Agent Core — System Workflow</text>
+<text x="80" y="126" font-family="Segoe UI,Arial,sans-serif" font-size="22" fill="#A8B3CF">Source-grounded 2026-09-27 • live v0.13.0 • 70 MCP tools</text>
+<rect x="830" y="175" rx="22" width="740" height="125" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="844" y="189" rx="6" width="12" height="97" fill="#5FE1D5"/>
+<text x="874" y="217" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">USER / AI CONTROLLER</text>
+<text x="874" y="253" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Understands task, chooses tools, owns semantic judgment</text>
+<text x="874" y="281" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">and human-facing decisions.</text>
+<rect x="110" y="365" rx="22" width="610" height="170" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="124" y="379" rx="6" width="12" height="142" fill="#A98BFF"/>
+<text x="154" y="407" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">Agent Core.exe</text>
+<text x="154" y="443" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Native Windows host • WebView2 UI •</text>
+<text x="154" y="471" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">starts/monitors Node Core + tunnel • Activity</text>
+<text x="154" y="499" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Log session boundary.</text>
+<rect x="1680" y="365" rx="22" width="610" height="170" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="1694" y="379" rx="6" width="12" height="142" fill="#FFB86B"/>
+<text x="1724" y="407" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">Tunnel / Remote MCP</text>
+<text x="1724" y="443" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Optional authenticated remote path. Local</text>
+<text x="1724" y="471" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">readiness/admin on :8787, forwarded to Node</text>
+<text x="1724" y="499" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Core :8765.</text>
+<rect x="780" y="360" rx="22" width="840" height="210" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="794" y="374" rx="6" width="12" height="182" fill="#5EA7FF"/>
+<text x="824" y="402" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">NODE CORE :8765</text>
+<text x="824" y="438" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">dist/index.js • HTTP /health • OAuth/auth • POST /mcp • mutation</text>
+<text x="824" y="466" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">safety • result budget.</text>
+<defs><marker id="a26" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#5FE1D5"/></marker></defs>
+<line x1="1200" y1="300" x2="1200" y2="360" stroke="#5FE1D5" stroke-width="5" marker-end="url(#a26)"/>
+<defs><marker id="a28" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#A98BFF"/></marker></defs>
+<line x1="720" y1="450" x2="780" y2="450" stroke="#A98BFF" stroke-width="5" marker-end="url(#a28)"/>
+<defs><marker id="a30" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#FFB86B"/></marker></defs>
+<line x1="1680" y1="450" x2="1620" y2="450" stroke="#FFB86B" stroke-width="5" marker-end="url(#a30)"/>
+<rect x="80" y="680" rx="22" width="570" height="165" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="94" y="694" rx="6" width="12" height="137" fill="#5EA7FF"/>
+<text x="124" y="722" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">28 Machine Control</text>
+<text x="124" y="758" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Filesystem, process, search, checkpoints,</text>
+<text x="124" y="786" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">browser_control and local Windows</text>
+<text x="124" y="814" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">operations.</text>
+<rect x="690" y="680" rx="22" width="570" height="165" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="704" y="694" rx="6" width="12" height="137" fill="#5FE1D5"/>
+<text x="734" y="722" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">17 Memory</text>
+<text x="734" y="758" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Canonical file-native Memory, search, page,</text>
+<text x="734" y="786" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">diagnostics, transfer, feedback, evolution.</text>
+<rect x="1300" y="680" rx="22" width="570" height="165" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="1314" y="694" rx="6" width="12" height="137" fill="#65D99B"/>
+<text x="1344" y="722" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">1 Learning</text>
+<text x="1344" y="758" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Checkpoint/review/curate/journey. Verified</text>
+<text x="1344" y="786" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">knowledge routes to Memory or Grafel</text>
+<text x="1344" y="814" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Patterns.</text>
+<rect x="1910" y="680" rx="22" width="410" height="165" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="1924" y="694" rx="6" width="12" height="137" fill="#A98BFF"/>
+<text x="1954" y="722" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">1 Skills</text>
+<text x="1954" y="758" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Artifact-only</text>
+<text x="1954" y="786" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">validate/import/package/revision</text>
+<text x="1954" y="814" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">lifecycle. No execution</text>
+<text x="1954" y="842" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">authority.</text>
+<rect x="80" y="900" rx="22" width="570" height="165" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="94" y="914" rx="6" width="12" height="137" fill="#FFB86B"/>
+<text x="124" y="942" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">14 Phone / Game Mode</text>
+<text x="124" y="978" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Android control via gateway or ADB;</text>
+<text x="124" y="1006" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">calibrated actions and macros.</text>
+<rect x="690" y="900" rx="22" width="570" height="165" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="704" y="914" rx="6" width="12" height="137" fill="#5EA7FF"/>
+<text x="734" y="942" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">7 Grafel Code Intelligence</text>
+<text x="734" y="978" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Graph orientation, analysis, workspace,</text>
+<text x="734" y="1006" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">repair, patterns and structural evidence.</text>
+<rect x="1300" y="900" rx="22" width="570" height="165" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="1314" y="914" rx="6" width="12" height="137" fill="#5FE1D5"/>
+<text x="1344" y="942" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">2 Semantic IDE / LSP</text>
+<text x="1344" y="978" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">code_symbol + code_refactor using</text>
+<text x="1344" y="1006" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">project-local language servers; source</text>
+<text x="1344" y="1034" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">remains authority.</text>
+<rect x="1910" y="900" rx="22" width="410" height="165" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="1924" y="914" rx="6" width="12" height="137" fill="#FF7E8A"/>
+<text x="1954" y="942" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">Cross-cutting Safety</text>
+<text x="1954" y="978" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Activity Tracker, Reflexion</text>
+<text x="1954" y="1006" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">advisory, redaction, tool</text>
+<text x="1954" y="1034" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">history, mutation drain and</text>
+<text x="1954" y="1062" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">bounded outputs.</text>
+<defs><marker id="a79" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#5EA7FF"/></marker></defs>
+<line x1="1200" y1="570" x2="365" y2="665" stroke="#5EA7FF" stroke-width="5" marker-end="url(#a79)"/>
+<defs><marker id="a81" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#5EA7FF"/></marker></defs>
+<line x1="1200" y1="570" x2="975" y2="665" stroke="#5EA7FF" stroke-width="5" marker-end="url(#a81)"/>
+<defs><marker id="a83" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#5EA7FF"/></marker></defs>
+<line x1="1200" y1="570" x2="1585" y2="665" stroke="#5EA7FF" stroke-width="5" marker-end="url(#a83)"/>
+<defs><marker id="a85" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#5EA7FF"/></marker></defs>
+<line x1="1200" y1="570" x2="2115" y2="665" stroke="#5EA7FF" stroke-width="5" marker-end="url(#a85)"/>
+<rect x="80" y="1160" rx="22" width="570" height="210" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="94" y="1174" rx="6" width="12" height="182" fill="#FFB86B"/>
+<text x="124" y="1202" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">Android gateway / ADB</text>
+<text x="124" y="1238" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Phone transport target for the 14 Phone /</text>
+<text x="124" y="1266" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Game Mode tools; device availability</text>
+<text x="124" y="1294" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">remains runtime-dependent.</text>
+<rect x="690" y="1160" rx="22" width="570" height="210" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="704" y="1174" rx="6" width="12" height="182" fill="#5EA7FF"/>
+<text x="734" y="1202" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">Grafel provider</text>
+<text x="734" y="1238" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Isolated project-local graph daemon/index</text>
+<text x="734" y="1266" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">used by the 7 Code Intelligence tools.</text>
+<rect x="1300" y="1160" rx="22" width="570" height="210" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="1314" y="1174" rx="6" width="12" height="182" fill="#5FE1D5"/>
+<text x="1344" y="1202" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">LSP providers</text>
+<text x="1344" y="1238" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Project-local TypeScript, C#, PowerShell</text>
+<text x="1344" y="1266" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">and Python language-server processes.</text>
+<rect x="1910" y="1160" rx="22" width="410" height="210" fill="#131B31" stroke="#273552" stroke-width="2"/>
+<rect x="1924" y="1174" rx="6" width="12" height="182" fill="#FF7E8A"/>
+<text x="1954" y="1202" font-family="Segoe UI,Arial,sans-serif" font-size="27" font-weight="700" fill="#F4F7FF">Evidence / runtime state</text>
+<text x="1954" y="1238" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">Tracker, tool history, mutation</text>
+<text x="1954" y="1266" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">journal, learning scheduler and</text>
+<text x="1954" y="1294" font-family="Segoe UI,Arial,sans-serif" font-size="20" fill="#A8B3CF">other bounded auxiliary state.</text>
+<defs><marker id="a109" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#5EA7FF"/></marker></defs>
+<line x1="365" y1="1065" x2="365" y2="1160" stroke="#5EA7FF" stroke-width="5" marker-end="url(#a109)"/>
+<defs><marker id="a111" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#5FE1D5"/></marker></defs>
+<line x1="975" y1="1065" x2="975" y2="1160" stroke="#5FE1D5" stroke-width="5" marker-end="url(#a111)"/>
+<defs><marker id="a113" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#65D99B"/></marker></defs>
+<line x1="1585" y1="1065" x2="1585" y2="1160" stroke="#65D99B" stroke-width="5" marker-end="url(#a113)"/>
+<defs><marker id="a115" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#FFB86B"/></marker></defs>
+<line x1="2115" y1="1065" x2="2115" y2="1160" stroke="#FFB86B" stroke-width="5" marker-end="url(#a115)"/>
+</svg>

@@ -152,6 +152,24 @@ const RECIPES: Record<ProvisionProviderId, ProviderRecipe> = {
 const MANIFEST_NAME = '.agent-core-provider.json';
 const USER_AGENT = 'Agent-Core-Semantic-Provider';
 const REDIRECT_LIMIT = 5;
+const MAX_ARCHIVE_PATH_BYTES = 4096;
+const MAX_ARCHIVE_COMPONENT_BYTES = 255;
+const MAX_ZIP_CENTRAL_DIRECTORY_BYTES = 4 * 1024 * 1024;
+const ZIP_EOCD_SIGNATURE = 0x06054b50;
+const ZIP_EOCD_MIN_BYTES = 22;
+const ZIP_CENTRAL_SIGNATURE = 0x02014b50;
+const ZIP_CENTRAL_HEADER_BYTES = 46;
+const ZIP_LOCAL_SIGNATURE = 0x04034b50;
+const ZIP_LOCAL_HEADER_BYTES = 30;
+const ZIP64_LOCATOR_SIGNATURE = 0x07064b50;
+const ZIP64_EXTRA_FIELD_ID = 0x0001;
+const ZIP_MAX_COMMENT_BYTES = 0xffff;
+const ZIP64_SENTINEL_16 = 0xffff;
+const ZIP64_SENTINEL_32 = 0xffffffff;
+const ZIP64_MIN_EXTRACT_VERSION = 45;
+const BOUNDED_ZIP_COMPRESSION_METHODS = new Set([0, 8]);
+const WINDOWS_RESERVED_COMPONENT = /^(?:con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i;
+const WINDOWS_INVALID_COMPONENT = /[<>:"|?*\u0000-\u001f\u007f-\u009f]/;
 
 function comparable(value: string): string {
   const resolved = path.resolve(value);
@@ -177,16 +195,36 @@ function assertArtifactUrl(value: string, allowedHosts: readonly string[]): URL 
   return url;
 }
 
+function assertPortableArchiveComponent(part: string, raw: string): void {
+  const bytes = Buffer.byteLength(part, 'utf8');
+  if (
+    !part
+    || bytes > MAX_ARCHIVE_COMPONENT_BYTES
+    || part !== part.trim()
+    || part.endsWith('.')
+    || WINDOWS_INVALID_COMPONENT.test(part)
+    || WINDOWS_RESERVED_COMPONENT.test(part)
+  ) {
+    throw new Error(`SEMANTIC_PROVIDER_ARCHIVE_PATH_NONPORTABLE: ${raw}`);
+  }
+}
+
 function sanitizeArchiveName(raw: string): string[] {
   if (!raw || raw.includes('\0')) throw new Error('SEMANTIC_PROVIDER_ARCHIVE_PATH_INVALID');
   const normalized = raw.replaceAll('\\', '/');
-  if (normalized.startsWith('/') || normalized.startsWith('//') || /^[A-Za-z]:/.test(normalized)) {
+  if (
+    Buffer.byteLength(normalized, 'utf8') > MAX_ARCHIVE_PATH_BYTES
+    || normalized.startsWith('/')
+    || normalized.startsWith('//')
+    || /^[A-Za-z]:/.test(normalized)
+  ) {
     throw new Error(`SEMANTIC_PROVIDER_ARCHIVE_PATH_ESCAPE: ${raw}`);
   }
   const parts = normalized.split('/').filter(Boolean);
   if (parts.some(part => part === '.' || part === '..' || part.includes(':'))) {
     throw new Error(`SEMANTIC_PROVIDER_ARCHIVE_PATH_ESCAPE: ${raw}`);
   }
+  for (const part of parts) assertPortableArchiveComponent(part, raw);
   return parts;
 }
 function selectedArchivePath(raw: string, prefix?: string): string | undefined {
@@ -219,7 +257,7 @@ function registerArchiveDestination(
   type: 'file' | 'directory',
 ): void {
   const normalized = relativePath.replaceAll('\\', '/').replace(/\/$/, '');
-  const key = process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  const key = normalized.normalize('NFC').toLowerCase();
   if (!key) return;
   if (seen.has(key)) throw new Error(`SEMANTIC_PROVIDER_ARCHIVE_COLLISION: ${relativePath}`);
   const parts = key.split('/');
@@ -282,6 +320,20 @@ async function streamResponseToFile(
   return { bytes: total, sha256: hash.digest('hex') };
 }
 
+function assertArtifactContentType(response: Response, expected: ArtifactFormat): void {
+  const mediaType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase();
+  if (!mediaType) return;
+  const declared: ArtifactFormat | undefined =
+    ['application/zip', 'application/x-zip-compressed'].includes(mediaType)
+      ? 'zip'
+      : ['application/gzip', 'application/x-gzip', 'application/x-tar+gzip'].includes(mediaType)
+        ? 'tgz'
+        : undefined;
+  if (declared && declared !== expected) {
+    throw new Error(`SEMANTIC_PROVIDER_ARTIFACT_FORMAT_MISMATCH: expected=${expected} content-type=${mediaType}`);
+  }
+}
+
 async function downloadVerified(
   recipe: ProviderArtifactRecipe,
   destination: string,
@@ -310,6 +362,7 @@ async function downloadVerified(
       try { await response.body?.cancel(); } catch {}
       throw new Error(`SEMANTIC_PROVIDER_ARTIFACT_HTTP_${response.status}`);
     }
+    assertArtifactContentType(response, recipe.format);
     const written = await streamResponseToFile(response, destination, recipe.maxBytes);
     if (written.sha256.toLowerCase() !== recipe.sha256.toLowerCase()) {
       throw new Error(`SEMANTIC_PROVIDER_ARTIFACT_SHA256_MISMATCH: ${recipe.id}`);
@@ -317,6 +370,154 @@ async function downloadVerified(
     return { ...written, finalUrl: current.toString() };
   }
   throw new Error('SEMANTIC_PROVIDER_ARTIFACT_REDIRECT_LIMIT');
+}
+
+async function assertArtifactSignature(
+  archivePath: string,
+  expected: ArtifactFormat,
+): Promise<void> {
+  const handle = await open(archivePath, 'r');
+  try {
+    const header = Buffer.alloc(4);
+    const { bytesRead } = await handle.read(header, 0, header.length, 0);
+    const zipSignature = bytesRead >= 4 && (
+      header.readUInt32LE(0) === 0x04034b50
+      || header.readUInt32LE(0) === 0x06054b50
+      || header.readUInt32LE(0) === 0x08074b50
+    );
+    const gzipSignature = bytesRead >= 2 && header[0] === 0x1f && header[1] === 0x8b;
+    const actual: ArtifactFormat | undefined = zipSignature ? 'zip' : gzipSignature ? 'tgz' : undefined;
+    if (actual !== expected) {
+      throw new Error(`SEMANTIC_PROVIDER_ARTIFACT_FORMAT_MISMATCH: expected=${expected} actual=${actual ?? 'unknown'}`);
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+function assertBoundedZipFeatures(extractVersion: number, compressionMethod: number): void {
+  if (extractVersion >= ZIP64_MIN_EXTRACT_VERSION) {
+    throw new Error('SEMANTIC_PROVIDER_ZIP64_OR_UNSUPPORTED_VERSION');
+  }
+  if (!BOUNDED_ZIP_COMPRESSION_METHODS.has(compressionMethod)) {
+    throw new Error(`SEMANTIC_PROVIDER_ZIP_COMPRESSION_REFUSED: ${compressionMethod}`);
+  }
+}
+
+function rejectZip64Extra(extra: Buffer): void {
+  let offset = 0;
+  while (offset + 4 <= extra.length) {
+    const fieldId = extra.readUInt16LE(offset);
+    const fieldSize = extra.readUInt16LE(offset + 2);
+    const end = offset + 4 + fieldSize;
+    if (end > extra.length) throw new Error('SEMANTIC_PROVIDER_ZIP_EXTRA_INVALID');
+    if (fieldId === ZIP64_EXTRA_FIELD_ID) throw new Error('SEMANTIC_PROVIDER_ZIP64_REFUSED');
+    offset = end;
+  }
+}
+
+async function preflightLegacyZip(archivePath: string, maxEntries: number): Promise<void> {
+  const handle = await open(archivePath, 'r');
+  try {
+    const info = await handle.stat();
+    if (info.size < ZIP_EOCD_MIN_BYTES) throw new Error('SEMANTIC_PROVIDER_ZIP_EOCD_MISSING');
+    const windowSize = Math.min(info.size, ZIP_EOCD_MIN_BYTES + ZIP_MAX_COMMENT_BYTES);
+    const tail = Buffer.alloc(windowSize);
+    await handle.read(tail, 0, windowSize, info.size - windowSize);
+    const signature = Buffer.alloc(4);
+    signature.writeUInt32LE(ZIP_EOCD_SIGNATURE, 0);
+    const eocd = tail.lastIndexOf(signature);
+    if (eocd < 0 || eocd + ZIP_EOCD_MIN_BYTES > tail.length) {
+      throw new Error('SEMANTIC_PROVIDER_ZIP_EOCD_MISSING');
+    }
+    const commentSize = tail.readUInt16LE(eocd + 20);
+    if (eocd + ZIP_EOCD_MIN_BYTES + commentSize !== tail.length) {
+      throw new Error('SEMANTIC_PROVIDER_ZIP_EOCD_INVALID');
+    }
+    const eocdOffset = info.size - tail.length + eocd;
+    if (eocdOffset >= 20) {
+      const locator = Buffer.alloc(4);
+      await handle.read(locator, 0, 4, eocdOffset - 20);
+      if (locator.readUInt32LE(0) === ZIP64_LOCATOR_SIGNATURE) throw new Error('SEMANTIC_PROVIDER_ZIP64_REFUSED');
+    }
+
+    const disk = tail.readUInt16LE(eocd + 4);
+    const centralDisk = tail.readUInt16LE(eocd + 6);
+    const diskEntries = tail.readUInt16LE(eocd + 8);
+    const totalEntries = tail.readUInt16LE(eocd + 10);
+    const centralSize = tail.readUInt32LE(eocd + 12);
+    const centralOffset = tail.readUInt32LE(eocd + 16);
+    if (disk !== 0 || centralDisk !== 0 || diskEntries !== totalEntries) {
+      throw new Error('SEMANTIC_PROVIDER_ZIP_MULTIDISK_REFUSED');
+    }
+    if (diskEntries === ZIP64_SENTINEL_16 || totalEntries === ZIP64_SENTINEL_16
+      || centralSize === ZIP64_SENTINEL_32 || centralOffset === ZIP64_SENTINEL_32) {
+      throw new Error('SEMANTIC_PROVIDER_ZIP64_REFUSED');
+    }
+    if (totalEntries > maxEntries) throw new Error('SEMANTIC_PROVIDER_ARCHIVE_ENTRY_LIMIT');
+    if (centralSize > MAX_ZIP_CENTRAL_DIRECTORY_BYTES) {
+      throw new Error('SEMANTIC_PROVIDER_ZIP_CENTRAL_DIRECTORY_LIMIT');
+    }
+    const centralStart = eocdOffset - centralSize;
+    if (centralStart < 0 || centralOffset > centralStart) throw new Error('SEMANTIC_PROVIDER_ZIP_CENTRAL_INVALID');
+    const archivePrefix = centralStart - centralOffset;
+    const localOffsets: number[] = [];
+    let consumed = 0;
+    let actualEntries = 0;
+    while (consumed < centralSize) {
+      if (centralSize - consumed < ZIP_CENTRAL_HEADER_BYTES) throw new Error('SEMANTIC_PROVIDER_ZIP_CENTRAL_INVALID');
+      const header = Buffer.alloc(ZIP_CENTRAL_HEADER_BYTES);
+      await handle.read(header, 0, header.length, centralStart + consumed);
+      if (header.readUInt32LE(0) !== ZIP_CENTRAL_SIGNATURE) throw new Error('SEMANTIC_PROVIDER_ZIP_CENTRAL_INVALID');
+      assertBoundedZipFeatures(header.readUInt16LE(6), header.readUInt16LE(10));
+      const compressedSize = header.readUInt32LE(20);
+      const uncompressedSize = header.readUInt32LE(24);
+      const fileNameSize = header.readUInt16LE(28);
+      const extraSize = header.readUInt16LE(30);
+      const entryCommentSize = header.readUInt16LE(32);
+      const diskStart = header.readUInt16LE(34);
+      const localOffset = header.readUInt32LE(42);
+      if (compressedSize === ZIP64_SENTINEL_32 || uncompressedSize === ZIP64_SENTINEL_32
+        || localOffset === ZIP64_SENTINEL_32 || diskStart === ZIP64_SENTINEL_16) {
+        throw new Error('SEMANTIC_PROVIDER_ZIP64_REFUSED');
+      }
+      if (diskStart !== 0) throw new Error('SEMANTIC_PROVIDER_ZIP_MULTIDISK_REFUSED');
+      const variableSize = fileNameSize + extraSize + entryCommentSize;
+      const recordSize = ZIP_CENTRAL_HEADER_BYTES + variableSize;
+      if (recordSize > centralSize - consumed) throw new Error('SEMANTIC_PROVIDER_ZIP_CENTRAL_INVALID');
+      const variable = Buffer.alloc(variableSize);
+      await handle.read(variable, 0, variable.length, centralStart + consumed + ZIP_CENTRAL_HEADER_BYTES);
+      rejectZip64Extra(variable.subarray(fileNameSize, fileNameSize + extraSize));
+      localOffsets.push(localOffset);
+      consumed += recordSize;
+      actualEntries += 1;
+      if (actualEntries > maxEntries) throw new Error('SEMANTIC_PROVIDER_ARCHIVE_ENTRY_LIMIT');
+    }
+    if (actualEntries !== totalEntries) throw new Error('SEMANTIC_PROVIDER_ZIP_CENTRAL_INVALID');
+
+    for (const localOffset of localOffsets) {
+      const physical = archivePrefix + localOffset;
+      if (physical < archivePrefix || physical + ZIP_LOCAL_HEADER_BYTES > centralStart) {
+        throw new Error('SEMANTIC_PROVIDER_ZIP_LOCAL_INVALID');
+      }
+      const header = Buffer.alloc(ZIP_LOCAL_HEADER_BYTES);
+      await handle.read(header, 0, header.length, physical);
+      if (header.readUInt32LE(0) !== ZIP_LOCAL_SIGNATURE) throw new Error('SEMANTIC_PROVIDER_ZIP_LOCAL_INVALID');
+      assertBoundedZipFeatures(header.readUInt16LE(4), header.readUInt16LE(8));
+      if (header.readUInt32LE(18) === ZIP64_SENTINEL_32 || header.readUInt32LE(22) === ZIP64_SENTINEL_32) {
+        throw new Error('SEMANTIC_PROVIDER_ZIP64_REFUSED');
+      }
+      const fileNameSize = header.readUInt16LE(26);
+      const extraSize = header.readUInt16LE(28);
+      const extraOffset = physical + ZIP_LOCAL_HEADER_BYTES + fileNameSize;
+      if (extraOffset + extraSize > centralStart) throw new Error('SEMANTIC_PROVIDER_ZIP_LOCAL_INVALID');
+      const extra = Buffer.alloc(extraSize);
+      await handle.read(extra, 0, extra.length, extraOffset);
+      rejectZip64Extra(extra);
+    }
+  } finally {
+    await handle.close();
+  }
 }
 
 function zipOpen(filePath: string): Promise<yauzl.ZipFile> {
@@ -342,6 +543,7 @@ async function scanZip(
   archivePath: string,
   recipe: ProviderArtifactRecipe,
 ): Promise<ZipEntryMeta[]> {
+  await preflightLegacyZip(archivePath, recipe.maxEntries);
   const zip = await zipOpen(archivePath);
   return new Promise((resolve, reject) => {
     const entries: ZipEntryMeta[] = [];
@@ -357,6 +559,12 @@ async function scanZip(
         sanitizeArchiveName(entry.fileName);
         if ((entry.generalPurposeBitFlag & 0x1) !== 0) {
           throw new Error(`SEMANTIC_PROVIDER_ARCHIVE_ENCRYPTED: ${entry.fileName}`);
+        }
+        if (entry.versionNeededToExtract >= ZIP64_MIN_EXTRACT_VERSION) {
+          throw new Error(`SEMANTIC_PROVIDER_ZIP64_OR_UNSUPPORTED_VERSION: ${entry.fileName}`);
+        }
+        if (!BOUNDED_ZIP_COMPRESSION_METHODS.has(entry.compressionMethod)) {
+          throw new Error(`SEMANTIC_PROVIDER_ZIP_COMPRESSION_REFUSED: ${entry.compressionMethod}`);
         }
         if (zipSymlink(entry)) throw new Error(`SEMANTIC_PROVIDER_ARCHIVE_SYMLINK: ${entry.fileName}`);
         const directory = entry.fileName.endsWith('/');
@@ -532,6 +740,7 @@ async function extractArtifact(
   stageRoot: string,
   recipe: ProviderArtifactRecipe,
 ): Promise<void> {
+  await assertArtifactSignature(archivePath, recipe.format);
   const destination = path.resolve(stageRoot, recipe.targetSubdir);
   if (!inside(destination, stageRoot)) throw new Error('SEMANTIC_PROVIDER_TARGET_OUTSIDE_STAGE');
   if (recipe.format === 'zip') return extractZip(archivePath, destination, recipe);

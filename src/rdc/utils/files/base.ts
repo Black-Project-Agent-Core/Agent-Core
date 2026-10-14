@@ -3,6 +3,8 @@
  * All file handlers implement the FileHandler interface
  */
 
+import type { PdfEvidence } from '../../tools/pdf/index.js';
+
 // ============================================================================
 // Core Interfaces
 // ============================================================================
@@ -71,6 +73,10 @@ export interface FileHandler {
  * Options for reading files
  */
 export interface ReadOptions {
+    /** Optional per-call restricted URL lane; never applies silently to local files. */
+    networkPolicy?: 'public-only';
+    /** Expected redacted owned-result bytes; no arbitrary file/hash verification. */
+    expectedIntegrity?: import('../../../security/verified-result-artifact.js').ExpectedResultIntegrity;
     /** Whether the path is a URL */
     isUrl?: boolean;
 
@@ -91,6 +97,9 @@ export interface ReadOptions {
 
     /** Optional AbortSignal to cancel an in-flight read (frees fd/thread on timeout). */
     signal?: AbortSignal;
+
+    /** Optional semantic projection profile for document readers. */
+    projection?: 'auto' | 'native' | 'markdown';
 }
 
 /**
@@ -111,6 +120,21 @@ export interface FileResult {
  * File-type specific metadata
  */
 export interface FileMetadata {
+    /** Connection-bound restriction evidence; not content-trust evidence. */
+    publicUrl?: {
+        networkPolicy: 'public-only';
+        redirects: number;
+        downloadedBytes: number;
+        /** Sanitized final locator: origin and pathname only. */
+        finalUrl: string;
+        contentType: string;
+        /** SHA-256 of the original received bytes, not a content-trust claim. */
+        contentSha256: string;
+        extractionScope?: 'full' | 'main';
+        selectionReason?: string;
+        retainedTextChars?: number;
+        droppedTextChars?: number;
+    };
     /** For images */
     isImage?: boolean;
 
@@ -135,9 +159,19 @@ export interface FileMetadata {
     title?: string;
     totalPages?: number;
     pages?: PdfPageItem[];
+    pdfEvidence?: PdfEvidence;
 
     /** For DOCX files */
     isDocx?: boolean;
+
+    /** For Agent Core semantic document projections */
+    isDocumentProjection?: boolean;
+    projection?: 'markdown';
+    sourceFormat?: string;
+    converter?: string;
+    sourceMimeType?: string;
+    sourceExtension?: string;
+    omittedEntries?: number;
 
     /** Error information if operation failed */
     error?: boolean;

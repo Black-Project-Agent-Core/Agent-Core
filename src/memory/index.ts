@@ -3,6 +3,7 @@ import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { cosineSimilarity, type MemoryEmbedder, type MemoryEmbedderIdentity } from './embedder.js';
 import { buildSemanticDocument } from './semantic-document.js';
+import { EmbeddingRepairStateStore } from './embedding-repair.js';
 import type { MemoryPaths } from './paths.js';
 import type { MemoryRecord } from './types.js';
 
@@ -123,9 +124,11 @@ function fileMatchesRecords(
 
 export class MemoryIndex {
   private readonly filePath: string;
+  private readonly repairState: EmbeddingRepairStateStore;
 
   constructor(paths: MemoryPaths, private readonly embedder?: MemoryEmbedder) {
     this.filePath = path.join(paths.index, 'index.json');
+    this.repairState = new EmbeddingRepairStateStore(paths);
   }
 
   async load(): Promise<MemoryIndexFile | null> {
@@ -167,19 +170,63 @@ export class MemoryIndex {
     let embedding: MemoryIndexResult['embedding'] = 'available';
     let embeddingWarning: string | undefined;
     if (missing.length) {
+      let due: IndexEntry[] = [];
       try {
-        const vectors = await this.embedder.embedDocuments(missing.map((entry) => entry.semanticText));
-        if (vectors.length !== missing.length) throw new Error('Embedding vector count mismatch');
-        missing.forEach((entry, index) => {
-          const vector = vectors[index];
-          if (!validEmbedding(vector, this.embedder!.identity.dimensions)) {
-            throw new Error(`Embedding dimension/value mismatch for ${entry.id}`);
-          }
-          entry.embedding = vector;
-        });
+        await this.repairState.reconcile(
+          entries.map(entry => ({ id: entry.id, fingerprint: entry.fingerprint })),
+          this.embedder.identity,
+        );
+        const dueKeys = new Set(
+          (await this.repairState.due(
+            missing.map(entry => ({ id: entry.id, fingerprint: entry.fingerprint })),
+            this.embedder.identity,
+            { force: forceEmbed },
+          )).map(entry => `${entry.id}\u0000${entry.fingerprint}`),
+        );
+        due = missing.filter(entry => dueKeys.has(`${entry.id}\u0000${entry.fingerprint}`));
       } catch (error) {
         embedding = 'degraded';
         embeddingWarning = error instanceof Error ? error.message : String(error);
+      }
+
+      if (!embeddingWarning && due.length) {
+        try {
+          const vectors = await this.embedder.embedDocuments(due.map((entry) => entry.semanticText));
+          if (vectors.length !== due.length) throw new Error('Embedding vector count mismatch');
+          due.forEach((entry, index) => {
+            const vector = vectors[index];
+            if (!validEmbedding(vector, this.embedder!.identity.dimensions)) {
+              throw new Error(`Embedding dimension/value mismatch for ${entry.id}`);
+            }
+            entry.embedding = vector;
+          });
+          await this.repairState.markSuccess(
+            due.map(entry => ({ id: entry.id, fingerprint: entry.fingerprint })),
+            this.embedder.identity,
+          );
+        } catch (error) {
+          embedding = 'degraded';
+          embeddingWarning = error instanceof Error ? error.message : String(error);
+          try {
+            await this.repairState.markFailure(
+              due.map(entry => ({ id: entry.id, fingerprint: entry.fingerprint })),
+              this.embedder.identity,
+              error,
+              { force: forceEmbed },
+            );
+          } catch {
+            // Canonical Memory and lexical index remain authoritative if repair-state persistence degrades.
+          }
+        }
+      }
+
+      const stillMissing = missing.filter(entry =>
+        !validEmbedding(entry.embedding, this.embedder!.identity.dimensions));
+      if (stillMissing.length) {
+        embedding = 'degraded';
+        embeddingWarning ??= due.length
+          ? 'Memory embedding repair remains incomplete'
+          : 'Memory embedding repair deferred by bounded retry policy';
       }
     }
     const file: MemoryIndexFile = {
@@ -244,19 +291,38 @@ export class MemoryIndex {
     return result;
   }
 
-  async ensure(records: MemoryRecord[]): Promise<MemoryIndexResult> {
+  async ensure(records: MemoryRecord[], options: { retainMissing?: boolean } = {}): Promise<MemoryIndexResult> {
     let existing: MemoryIndexFile | null = null;
     try { existing = await this.load(); } catch { existing = null; }
     const matches = existing
       && fileMatchesRecords(existing, records, this.embedder)
       && (!this.embedder || existing.entries.every((entry) =>
         validEmbedding(entry.embedding, this.embedder!.identity.dimensions)));
-    if (matches) {
+    if (matches && !options.retainMissing) {
       return { index: 'available', embedding: this.embedder ? 'available' : 'not-configured' };
     }
     const { file, result } = await this.build(records, existing, false);
+    if (options.retainMissing && existing) {
+      const currentIds = new Set(file.entries.map((entry) => entry.id));
+      const preserveEmbedding = sameEmbedder(existing.embedder, file.embedder);
+      for (const entry of existing.entries) {
+        if (currentIds.has(entry.id)) continue;
+        file.entries.push({
+          id: entry.id,
+          fingerprint: entry.fingerprint,
+          semanticText: entry.semanticText,
+          ...(preserveEmbedding && entry.embedding ? { embedding: entry.embedding } : {}),
+        });
+      }
+      file.entries.sort((a, b) => a.id.localeCompare(b.id));
+    }
     await atomicWrite(this.filePath, `${JSON.stringify(file, null, 2)}\n`);
-    return result;
+    if (!options.retainMissing) return result;
+    return {
+      ...result,
+      index: 'degraded',
+      indexWarning: 'Canonical scan incomplete; prior derived entries were retained rather than treated as deletions',
+    };
   }
 
   async semanticContext(query: string, records: MemoryRecord[]): Promise<SemanticSearchContext | null> {
@@ -316,6 +382,10 @@ export class MemoryIndex {
     return pairs
       .sort((a, b) => b.similarity - a.similarity || a.leftId.localeCompare(b.leftId))
       .slice(0, Math.max(1, Math.min(200, limit)));
+  }
+
+  async repairSummary(): Promise<{ pending: number; failed: number; issue?: string }> {
+    return this.repairState.summary(this.embedder?.identity);
   }
 
   identity(): MemoryEmbedderIdentity | null {

@@ -1,4 +1,7 @@
 import path from 'node:path';
+import { resolveModuleProjectRoot } from '../portability/paths.js';
+
+const MODULE_PROJECT_ROOT = resolveModuleProjectRoot(import.meta.url);
 
 export interface MemoryPaths {
   root: string;
@@ -10,7 +13,7 @@ export interface MemoryPaths {
   lock: string;
 }
 
-export function resolveMemoryPaths(baseDir = process.cwd(), memoryRoot?: string): MemoryPaths {
+export function resolveMemoryPaths(baseDir = MODULE_PROJECT_ROOT, memoryRoot?: string): MemoryPaths {
   const root = path.resolve(memoryRoot ?? path.join(baseDir, 'runtime', 'memory'));
   return {
     root,

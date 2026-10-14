@@ -1,0 +1,48 @@
+import {afterEach,expect,test} from 'vitest';import {mkdtemp,rm,writeFile} from 'node:fs/promises';import os from 'node:os';import path from 'node:path';
+import {initializeStandaloneMemory} from '../src/index.js';import {memorySemanticRevision} from '../src/memory/disclosure.js';import {legacyExperience} from '../src/memory/experience-types.js';import {encodeProjectSynthesis} from '../src/memory/project-synthesis.js';
+const roots:string[]=[];afterEach(async()=>{await Promise.all(roots.splice(0).map(root=>rm(root,{recursive:true,force:true})));});
+async function setup(){const root=await mkdtemp(path.join(os.tmpdir(),'memory-synthesis-reuse-'));roots.push(root);const service=await initializeStandaloneMemory({baseDir:root,memoryRoot:root,experience:{enabled:true}}),session=service.controller({workspaceKey:'agent-core',taskId:'reuse-task',controllerId:'test'}),source=await service.remember({content:'Underlying project evidence',provenance:{workspace:'agent-core',files:[]}}),ref={kind:'memory' as const,id:source.id,revision:memorySemanticRevision(source)};const synthesis=await service.remember({category:'project-synthesis',content:encodeProjectSynthesis({schemaVersion:1,projectKey:'agent-core',claims:[{text:'Summary project evidence',refs:[ref]}],gaps:[]}),provenance:{workspace:'agent-core',files:[]}});return{service,session,source,synthesis,ref};}
+const ids=async(session:any)=>(await session.recall({view:'map',limit:20})).data.hits.map((hit:any)=>hit.id);
+test('P15 recall reuses unchanged synthesis and ignores unrelated edits',async()=>{const{service,session,synthesis}=await setup();expect(await ids(session)).toContain(synthesis.id);const unrelated=await service.remember({content:'Unrelated note',provenance:{workspace:'agent-core',files:[]}});await service.update(unrelated.id,{content:'Changed unrelated note'});expect(await ids(session)).toContain(synthesis.id);});
+test('P15 changed source revision gates synthesis and preserves ordinary source fallback',async()=>{const{service,session,synthesis,source}=await setup();await service.update(source.id,{content:'Changed source exact revision'});const hits=await ids(session);expect(hits).not.toContain(synthesis.id);expect(hits).toContain(source.id);});
+test('P15 unavailable and malformed synthesis never pass as ordinary notes',async()=>{const{service,session,synthesis,source}=await setup();await service.lifecycle(source.id,'forget-dependency','forget');expect(await ids(session)).not.toContain(synthesis.id);await service.update(synthesis.id,{content:'malformed ordinary text'});expect(await ids(session)).not.toContain(synthesis.id);const ordinary=await service.remember({content:'Legacy ordinary note',provenance:{workspace:'agent-core',files:[]}});expect(await ids(session)).toContain(ordinary.id);});
+test('P15 foreign dependency is unavailable rather than expanding scope',async()=>{const{service,session,synthesis,source}=await setup();await service.update(source.id,{provenance:{workspace:'foreign',files:[]}});expect(await ids(session)).not.toContain(synthesis.id);});
+test('P15 controller shares a 32-resolution budget and falls back to ordinary evidence',async()=>{
+ const{source,synthesis}=await setup();const refs=Array.from({length:34},(_,i)=>({kind:'memory' as const,id:`dependency-${i}`,revision:'sha256:'+String(i%10).repeat(64)}));
+ const records=[source,...[0,1].map(i=>({...synthesis,id:`synthesis-${i}`,content:encodeProjectSynthesis({schemaVersion:1,projectKey:'agent-core',claims:[{text:`Claim ${i}`,refs:refs.slice(i*17,(i+1)*17)}],gaps:[]})}))];let calls=0;
+ const{ControllerMemorySession}=await import('../src/memory/controller-session.js');const session=new ControllerMemorySession({root:'synthetic-root',experienceEnabled:true,resolveWorkspace:value=>value,snapshot:async()=>records,rank:async()=>({results:[],rankingRevision:'synthetic-rank'}),read:async()=>null,inScope:()=>true,freshness:async()=> 'current',recordExposure:async()=>{},sourceDependencyStatus:async()=>{calls++;return 'current';}},{workspaceKey:'agent-core',taskId:'budget-task',controllerId:'synthetic'});
+ const result:any=await session.recall({limit:20});expect(calls).toBe(32);expect(result.data.hits.map((hit:any)=>hit.id)).toEqual([source.id,'synthesis-0']);expect(result.warnings).toContain('synthesis-stale-or-unknown-omitted');
+});
+test('P15 transitive synthesis loses currentness when a leaf dependency changes in map and abstract recall',async()=>{
+ const{service,session,source,synthesis,ref}=await setup(),store=(service as any).store;
+ await store.mutate(synthesis.id,(record:any)=>({...record,experience:{...record.experience,sourceRefs:[ref]}}));
+ const parent=(await service.read(synthesis.id,false))!,parentRef={kind:'memory' as const,id:parent.id,revision:memorySemanticRevision(parent)};
+ const child=await service.remember({category:'project-synthesis',content:encodeProjectSynthesis({schemaVersion:1,projectKey:'agent-core',claims:[{text:'Derived project evidence',refs:[parentRef]}],gaps:[]}),provenance:{workspace:'agent-core',files:[]}});
+ await store.mutate(child.id,(record:any)=>({...record,experience:{...record.experience,sourceRefs:[parentRef]}}));
+ for(const input of [{view:'map' as const},{query:'project evidence',view:'abstract' as const}]){const before:any=await session.recall({...input,limit:20});expect(before.data.hits.map((hit:any)=>hit.id)).toContain(child.id);}
+ await service.update(source.id,{content:'Changed underlying project evidence'});
+ for(const input of [{view:'map' as const},{query:'project evidence',view:'abstract' as const}]){const after:any=await session.recall({...input,limit:20});const hits=after.data.hits.map((hit:any)=>hit.id);expect(hits).not.toContain(synthesis.id);expect(hits).not.toContain(child.id);expect(hits).toContain(source.id);}
+});
+test('P15 malformed nested synthesis is unknown even when its exact revision is available',async()=>{
+ const{service,session,source,synthesis}=await setup();await service.update(synthesis.id,{content:'Malformed nested synthesis'});const parent=(await service.read(synthesis.id,false))!,parentRef={kind:'memory' as const,id:parent.id,revision:memorySemanticRevision(parent)};
+ const child=await service.remember({category:'project-synthesis',content:encodeProjectSynthesis({schemaVersion:1,projectKey:'agent-core',claims:[{text:'Derived project claim',refs:[parentRef]}],gaps:[]}),provenance:{workspace:'agent-core',files:[]}});await (service as any).store.mutate(child.id,(record:any)=>({...record,experience:{...record.experience,sourceRefs:[parentRef]}}));const result=await ids(session);expect(result).not.toContain(child.id);expect(result).toContain(source.id);
+});
+for(const mode of ['cycle','nested-budget'] as const)test(`P15 ${mode} dependency resolution cannot self-await or exceed the shared request budget`,async()=>{
+ const{source,synthesis,ref}=await setup();let calls=0;const{ControllerMemorySession}=await import('../src/memory/controller-session.js');
+ const session=new ControllerMemorySession({root:'synthetic-root',experienceEnabled:true,resolveWorkspace:value=>value,snapshot:async()=>[synthesis,source],rank:async()=>({results:[],rankingRevision:'synthetic-rank'}),read:async()=>null,inScope:()=>true,freshness:async()=> 'current',recordExposure:async()=>{},sourceDependencyStatus:async(value,resolve)=>{
+  calls++;if(mode==='cycle')return resolve!(value);if(value.id!==ref.id)return 'current';const results=await Promise.all(Array.from({length:32},(_,i)=>resolve!({kind:'memory',id:`nested-leaf-${i}`,revision:'sha256:'+String(i%10).repeat(64)})));return results.every(result=>result==='current')?'current':'unavailable';
+ }},{workspaceKey:'agent-core',taskId:'bounded-nested-task',controllerId:'synthetic'});
+ const result:any=await session.recall({limit:20});expect(calls).toBe(mode==='cycle'?1:32);expect(result.data.hits.map((hit:any)=>hit.id)).toEqual([source.id]);
+});
+
+test('P1 changed workspace artifact invalidates synthesis recall while preserving captured history',async()=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'memory-synthesis-origin-'));roots.push(root);
+ const service=await initializeStandaloneMemory({baseDir:root,memoryRoot:root,experience:{enabled:true}}),session=service.controller({workspaceKey:'agent-core',taskId:'artifact-reuse',controllerId:'test'}),file=path.join(root,'project-source.ts');
+ await writeFile(file,'export const source = "original";');const ref=(await session.captureEvidence({operationId:'capture-file',source:{kind:'workspace-file',relativePath:'project-source.ts'}})).source;
+ const synthesis=await service.remember({category:'project-synthesis',content:encodeProjectSynthesis({schemaVersion:1,projectKey:'agent-core',claims:[{text:'Current project observation',refs:[ref]}],gaps:[]}),provenance:{workspace:'agent-core',files:[]}});
+ expect(await ids(session)).toContain(synthesis.id);
+ await writeFile(file,'export const source = "corrected";');
+ expect(await ids(session)).not.toContain(synthesis.id);
+ expect((await session.expand({source:ref,view:'evidence'})).data).toBeDefined();
+ expect((await service.read(synthesis.id,false))!.content).toContain(ref.revision);
+});

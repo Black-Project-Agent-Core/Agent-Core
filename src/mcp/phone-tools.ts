@@ -1,7 +1,11 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import type { PhoneController } from '../phone/controller.js';
-import type { PhoneObservation } from '../phone/types.js';
+import { registerPhoneGameTools } from './phone-game-tools.js';
+import { screenDifference } from '../phone/image.js';
+import type { PhoneObservation, PhoneSequenceStep } from '../phone/types.js';
+import type { ExternalControllerLearningService } from '../learning/external-controller.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
+import { externalControllerToolResult, beginExternalControllerToolCall } from './external-controller-tool-support.js';
 import * as schemas from './phone-schemas.js';
 
 function text(value: unknown): any {
@@ -14,7 +18,7 @@ function failure(name: string, error: unknown): any {
   return { content: [{ type: 'text', text: `Error: ${message}` }], isError: true };
 }
 
-async function run(name: string, action: () => Promise<unknown>): Promise<any> {
+async function runBase(name: string, action: () => Promise<unknown>): Promise<any> {
   const started = Date.now();
   try {
     const result = await action();
@@ -25,7 +29,7 @@ async function run(name: string, action: () => Promise<unknown>): Promise<any> {
   }
 }
 
-async function runResult(name: string, action: () => Promise<any>): Promise<any> {
+async function runResultBase(name: string, action: () => Promise<any>): Promise<any> {
   const started = Date.now();
   try {
     const result = await action();
@@ -36,7 +40,10 @@ async function runResult(name: string, action: () => Promise<any>): Promise<any>
   }
 }
 
-function observationResult(observation: PhoneObservation): any {
+function observationResult(
+  observation: PhoneObservation,
+  extra: Record<string, unknown> = {},
+): any {
   const { screenshot, foreground, transport, deviceId } = observation;
   const meta = {
     transport,
@@ -50,7 +57,8 @@ function observationResult(observation: PhoneObservation): any {
       deviceHeight: screenshot.deviceHeight,
       bytes: screenshot.bytes,
     },
-    hint: 'Tap/swipe coordinates are in device pixels (deviceWidth x deviceHeight), or pass normalized:true with 0..1 fractions.',
+    ...extra,
+    hint: 'Tap/swipe coordinates are in live device pixels (deviceWidth x deviceHeight). normalized:true follows the latest observed orientation and dimensions.',
   };
   return {
     content: [
@@ -60,28 +68,80 @@ function observationResult(observation: PhoneObservation): any {
   };
 }
 
-export function registerPhoneTools(server: McpServer, controller: PhoneController): void {
+export function registerPhoneTools(
+  server: McpServer,
+  controller: PhoneController,
+  externalController?: ExternalControllerLearningService,
+  externalSessionId?: string,
+): void {
   if (!controller.enabled) return;
+
+  const readOnlyTools = new Set(['phone_status', 'phone_observe', 'phone_list_named_actions', 'phone_game_inspect']);
+  const run = async (name: string, action: () => Promise<unknown>) => {
+    const call = beginExternalControllerToolCall(name);
+    return externalControllerToolResult({ call, service: externalController, sessionId: externalSessionId,
+      tool: name, args: {}, result: await runBase(name, action), readOnly: readOnlyTools.has(name) });
+  };
+  const runResult = async (name: string, action: () => Promise<any>) => {
+    const call = beginExternalControllerToolCall(name);
+    return externalControllerToolResult({ call, service: externalController, sessionId: externalSessionId,
+      tool: name, args: {}, result: await runResultBase(name, action), readOnly: readOnlyTools.has(name) });
+  };
 
   server.registerTool('phone_status', {
     title: 'Phone Status',
-    description: 'Report control status for the authorized Android phone: configured mode, active transport, gateway (remote app) online state, and local ADB device state.',
+    description: 'Android device, USB ADB, gateway and active transport status.',
     inputSchema: schemas.phoneStatus.shape,
     annotations: { title: 'Phone Status', readOnlyHint: true, openWorldHint: true },
   }, async () => run('phone_status', () => controller.status()));
 
   server.registerTool('phone_observe', {
     title: 'Observe Phone Screen',
-    description: 'Capture the current phone screen (downscaled JPEG for vision by default) plus the foreground app. Use this to see the game/UI before acting.',
+    description: 'Capture screen, foreground app, optional crop/zoom or motion burst.',
     inputSchema: schemas.phoneObserve.shape,
     annotations: { title: 'Observe Phone Screen', readOnlyHint: true, openWorldHint: true },
   }, async (args: any) => runResult('phone_observe', async () => {
     const input = schemas.phoneObserve.parse(args);
-    const observation = await controller.observe(
-      { maxWidth: input.maxWidth, format: input.format, quality: input.quality, raw: input.raw },
-      input.transport,
-    );
-    return observationResult(observation);
+    const options = {
+      maxWidth: input.maxWidth,
+      format: input.format,
+      quality: input.quality,
+      raw: input.raw,
+      crop: input.crop,
+    };
+    const sampleCount = input.samples ?? 1;
+    const intervalMs = input.intervalMs ?? 250;
+    const threshold = input.motionThreshold ?? 0.02;
+    let observation = await controller.observe(options, input.transport);
+    let previous = Buffer.from(observation.screenshot.base64, 'base64');
+    const differences: number[] = [];
+
+    for (let sample = 1; sample < sampleCount; sample += 1) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      const current = await controller.observe(options, input.transport);
+      const currentBytes = Buffer.from(current.screenshot.base64, 'base64');
+      differences.push(await screenDifference(previous, currentBytes));
+      previous = currentBytes;
+      observation = current;
+    }
+
+    const motion = sampleCount > 1 ? {
+      samples: sampleCount,
+      intervalMs,
+      threshold,
+      differences,
+      meanDifference: differences.reduce((sum, value) => sum + value, 0) / Math.max(1, differences.length),
+      maxDifference: differences.length ? Math.max(...differences) : 0,
+      stable: differences.every((value) => value <= threshold),
+    } : undefined;
+    const crop = input.crop ? {
+      requested: input.crop,
+      note: 'Crop coordinates refer to the full live device screen; actions still use full-screen coordinates.',
+    } : undefined;
+    return observationResult(observation, {
+      ...(motion ? { motion } : {}),
+      ...(crop ? { crop } : {}),
+    });
   }));
 
   server.registerTool('phone_tap', {
@@ -191,12 +251,30 @@ export function registerPhoneTools(server: McpServer, controller: PhoneControlle
   }));
 
   server.registerTool('phone_run_macro', {
-    title: 'Run Phone Macro',
-    description: 'Run a sequence of verified named actions as one macro — useful for repetitive game steps while you play.',
+    title: 'Run Phone Macro / Action Sequence',
+    description: 'Run legacy verified named-action macros or a bounded mixed sequence of taps, swipes, navigation, app launch, waitStable and gateway overlay actions. Mixed sequences can return a final observation.',
     inputSchema: schemas.phoneRunMacro.shape,
-    annotations: { title: 'Run Phone Macro', readOnlyHint: false, openWorldHint: true },
-  }, async (args: any) => run('phone_run_macro', () => {
+    annotations: { title: 'Run Phone Macro / Action Sequence', readOnlyHint: false, openWorldHint: true },
+  }, async (args: any) => runResult('phone_run_macro', async () => {
     const input = schemas.phoneRunMacro.parse(args);
-    return controller.runMacro(input.actions, input.delayMs ?? 400, input.transport);
+    if (input.expectedPackage && !input.steps?.length) {
+      throw new Error('PHONE_APP_GUARD_REQUIRES_SEQUENCE_STEPS');
+    }
+    const result = input.steps?.length
+      ? await controller.runSequence(input.steps as PhoneSequenceStep[], input.transport, input.expectedPackage)
+      : await controller.runMacro(input.actions ?? [], input.delayMs ?? 400, input.transport);
+    const observeAfter = input.observeAfter ?? Boolean(input.steps?.length);
+    if (!observeAfter) return text(result);
+    if ((input.settleMs ?? 0) > 0) {
+      await new Promise((resolve) => setTimeout(resolve, input.settleMs));
+    }
+    const observation = await controller.observe(
+      { maxWidth: input.observeMaxWidth ?? 960, format: 'jpeg', quality: 65 },
+      input.transport,
+    );
+    return observationResult(observation, { actionResult: result });
   }));
+
+  // Advanced Game Mode is an integrated phone capability, not a second controller.
+  registerPhoneGameTools(server, controller, run, runResult, observationResult);
 }

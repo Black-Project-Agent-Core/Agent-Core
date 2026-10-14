@@ -33,7 +33,8 @@ public sealed record DesktopHealthSnapshot(
     CodeIntelligenceHealthSnapshot CodeIntelligence,
     SemanticIdeHealthSnapshot SemanticIde,
     LearningHealthSnapshot Learning,
-    PartnerHealthSnapshot Partner);
+    AgentRuntimeHealthSnapshot? AgentRuntime,
+    AgentChatHealthSnapshot? AgentChat);
 
 public sealed record MemoryHealthSnapshot(
     string Status,
@@ -80,9 +81,21 @@ public sealed record LearningHealthSnapshot(
     int IssueCount,
     IReadOnlyList<SinkHealthSnapshot> SinkStatus);
 
-public sealed record PartnerHealthSnapshot(
+public sealed record AgentRuntimeHealthSnapshot(
     string Status,
-    string? Provider,
-    string? Transport,
     int IssueCount,
-    string? Issue);
+    string? Issue,
+    int ProviderCount,
+    int ConfiguredProviderCount,
+    int SessionCount,
+    int RunningSessionCount,
+    int SkillCount,
+    int PendingFinalizationCount);
+
+
+public sealed record AgentChatHealthSnapshot(
+    string Status,
+    int ConversationCount,
+    int ActiveConversationCount,
+    int RunningTurnCount,
+    int ResumableTurnCount);
