@@ -12869,14 +12869,14 @@
       "receivingOwner": "src/memory/source-snapshot.ts; SubProject/agent-core-memory/src/memory/index.ts; src/rdc/document-projection/service.ts; src/security/verified-result-artifact.ts",
       "gapVsAlreadyCovered": "Use existing source digests/index owner before adopting chunk cache. Narrow potentially useful delta is freshness validation covering the dependency closure of an artifact (source, preview, review), not a new index/skill service. Donor MinSync has pre-embedding purge_first deletion, so its comment claiming no prior write on failure is not unconditional.",
       "batch10Windows": {
-        "status": "source-built-descriptor-generated-plugin-package-ready-upload-and-resident-pending",
+        "status": "source-built-published-plugin-1.0.4-uploaded-resident-verified-client-schema-and-preview-use-pending",
         "date": "2026-10-15",
         "selectedRepository": "NomaDamas/slides-grab",
         "submechanism": "declared local UTF-8 text source dependency fingerprint freshness, not complete closure",
         "owner": "src/rdc/tools/image-inspect.ts + src/rdc/tools/image-source-dependencies.ts + src/rdc/tools/image-review.ts",
         "schema": "image_inspect overview-only sourceFiles[1..8]",
         "limitations": "derivationVerified=false; binary/remote/full-closure unsupported; no export gate or automatic render action",
-        "activation": "plugin v1.0.4 package ready; existing v1.0.3 installed at last checked admin metadata; upload and client refresh pending"
+        "activation": "plugin version1.0.4 uploaded on same private app, release pluginrel_6ad0031b71d88191a7739fa2238ae80b; resident Core PID13324 restarted and 5/5 compiled pairs matched; current chat schema stale, actual preview call unobserved"
       },
       "decision": "extend",
       "licenseCoupling": "MinSync/Jikji/slides-grab root MIT. k-skill root MIT with AGPL-3.0-only proxy/dashboard subcomponents; external providers and runtime CLI are not selected. No Rust/Python/LanceDB or provider adapters added.",
