@@ -1,5 +1,9 @@
 # Agent Core Memory — Current Implemented State
 
+## Active GitHub current-line repository — verified 2026-10-14
+
+The user explicitly reactivated private `https://github.com/Black-Project-Agent-Core/Agent-Core` as the active GitHub repository for the current Agent Core architecture. `E:\Projects\Agent-Core` remains authoritative local source; only local-to-remote push was performed, without clone/fetch/pull/reset/merge/rebase. Remote name `legacy` was changed to `origin`. The original GitHub `main` SHA `73e9fd270ee96fe7d9782b9e87ccc70dbbae986d` is preserved at `archive/pre-current-line-2026-10-14`. Commit `7b416e5f772f9fdd3afe5e815e97b81b25da079b` was pushed and verified on remote `main` and `codex/cumulative-learning-workflow`; a later documentation commit may advance those refs. Sensitive runtime state, private user memory, secrets, backups, builds and protected references remain Git-ignored. `refs/agent-core/current-line-baseline` remains the local release-intent basis; the push did not apply a product release, tag or deploy.
+
 ## Batch 5–6 — implementation/integration COMPLETE, 14 Oktober 2026 Asia/Tomsk
 
 Batch 5 source kini memasang Jaccard berbatas untuk pasangan tanpa salah satu vector pada selector canonical; cosine dua vector, skor native, eligibility dan identitas tetap. Batas invocation: 256 content, 8192 Unicode codepoints/content, 512 token unik/content, 8192 pasangan lexical. Metadata selection memperlihatkan basis dan cakupan; rankingRevision hanya berubah untuk fusion. Satu pemeriksaan terarah lulus (1 passed, 6 skipped), bukan bukti manfaat retrieval atau cabang lexical pada runtime aktif.
