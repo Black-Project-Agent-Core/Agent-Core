@@ -1,5 +1,6 @@
 import { activityTracker } from '../../tracker/activity-tracker.js';
 import { readRegularFileBounded } from '../utils/files/safe-regular-file.js';
+import { assertReadActive, isReadCancelled } from '../utils/withTimeout.js';
 import { finalizePdfEvidence, type PageRange } from '../tools/pdf/index.js';
 import {
   boundMarkdown,
@@ -44,6 +45,7 @@ const converters = [
 ].sort((a, b) => a.priority - b.priority);
 export interface ProjectBytesOptions {
   bytes: Buffer;
+  signal?: AbortSignal;
   profile?: ProjectionProfile;
   sourceName?: string;
   localPath?: string;
@@ -98,9 +100,12 @@ export class DocumentProjectionService {
     localPath: string,
     profile: ProjectionProfile = 'auto',
     pdfPageRange?: PageRange,
+    signal?: AbortSignal,
   ): Promise<ProjectionResult | null> {
+    assertReadActive(signal);
     if (!this.shouldAttempt(localPath, profile)) return null;
-    const read = await readRegularFileBounded(localPath, DOCUMENT_INPUT_MAX_BYTES);
+    const read = await readRegularFileBounded(localPath, DOCUMENT_INPUT_MAX_BYTES, { signal });
+    assertReadActive(signal);
     const observedAt = new Date().toISOString();
     if (read.truncated) {
       throw new DocumentProjectionError(
@@ -108,10 +113,11 @@ export class DocumentProjectionService {
         'Document semantic projection input exceeds the bounded size limit.',
       );
     }
-    return this.projectBytes({ bytes: read.buffer, profile, localPath, pdfPageRange, observedAt });
+    return this.projectBytes({ bytes: read.buffer, profile, localPath, pdfPageRange, observedAt, signal });
   }
 
   async projectBytes(options: ProjectBytesOptions): Promise<ProjectionResult | null> {
+    assertReadActive(options.signal);
     const input = normalizedInput(options);
     if (input.profile === 'native') return null;
     if (input.bytes.length > DOCUMENT_INPUT_MAX_BYTES) {
@@ -124,6 +130,7 @@ export class DocumentProjectionService {
     const signature = inferSignature(input.bytes);
     if (signature === 'zip') {
       await preflightZipBuffer(input.bytes);
+      assertReadActive(options.signal);
     }
 
     const accepted = converters.filter(converter => {
@@ -142,13 +149,16 @@ export class DocumentProjectionService {
           ...nested,
           depth: input.depth + 1,
           budget: input.budget,
+          signal: options.signal,
         });
       },
     };
 
     for (const converter of accepted) {
+      assertReadActive(options.signal);
       try {
         const result = await converter.convert(input, context);
+        assertReadActive(options.signal);
         let outputTruncated = false;
         const markdown = boundMarkdown(result.markdown, () => { outputTruncated = true; });
         return {
@@ -163,6 +173,7 @@ export class DocumentProjectionService {
           },
         };
       } catch (error) {
+        if (isReadCancelled(error) || options.signal?.aborted) throw error;
         if (error instanceof DocumentProjectionSecurityError) throw error;
         const attempt = { converter: converter.id, failure: failureFamily(error) };
         attempts.push(attempt);

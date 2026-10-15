@@ -70,7 +70,7 @@ export async function readPublicDocument(rawUrl: string, options: PublicDocument
       try {
         result = await documentProjectionService.projectBytes({
           bytes: snapshot.bytes, profile: 'markdown', mimeType, extension: '.pdf',
-          pdfPageRange, observedAt,
+          pdfPageRange, observedAt, signal: options.signal,
         });
       } catch {
         assertLive(options.signal);
@@ -122,6 +122,7 @@ export async function readPublicDocument(rawUrl: string, options: PublicDocument
       url: snapshot.finalUrl,
       mimeType,
       charsetHint: projectionCharset,
+      signal: options.signal,
       // An endpoint suffix must not choose an unrelated document converter.
       extension: '.html',
     });

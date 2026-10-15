@@ -29,6 +29,8 @@ import { LearningReviewCoordinator } from './review.js';
 import { summarizeLearningReview } from './review-summary.js';
 import { recordLearningDecisions } from './decision-evidence.js';
 import { safeEvidenceRefSchema } from './evaluation.js';
+import { resolveBrowserObservationUse } from './workflow-evidence.js';
+import { validBrowserReceipt } from '../rdc/browser-control/procedure-context.js';
 import type { LearningReviewSummary } from './types.js';
 import { LearningSinkManager } from './sink-manager.js';
 import { LearningStateStore } from './state.js';
@@ -197,7 +199,9 @@ export class LearningService {
 
   async supportProcedure(input: { taskId: string; origin: 'native' | 'external'; workspace?: string;
     name: string; description: string; steps: string[]; allowedTools?: string[]; reuseCondition?: string;
-    evidenceRefs: string[]; outcome: 'verified' | 'failed'; expectedContractDigest?: string }): Promise<AgentProcedureCandidate & { materialization: { status: 'completed' | 'unavailable'; reason?: string } }> {
+    evidenceRefs: string[]; outcome: 'verified' | 'failed'; expectedContractDigest?: string;
+    browserBinding?: {taskId:string;ownerId:string;workspace:string;workspaceIdentityKey:string};
+  }): Promise<AgentProcedureCandidate & { materialization: { status: 'completed' | 'unavailable'; reason?: string }; browserContextStatus?: string }> {
     if (!input.taskId.trim() || input.taskId.length > 200 || !input.name.trim() || input.name.length > 160
       || !input.description.trim() || input.description.length > 2000 || !input.steps.length || input.steps.length > 50
       || input.steps.some(step => !step.trim() || step.length > 2000)) throw new Error('LEARNING_PROCEDURE_INVALID');
@@ -212,6 +216,10 @@ export class LearningService {
     if (input.expectedContractDigest !== undefined && input.expectedContractDigest !== contractDigest) throw new Error('LEARNING_PROCEDURE_DELIVERED_CONTRACT_CONFLICT');
     const checks = await Promise.all(input.evidenceRefs.map(ref => recheckWorkflowReport(ref, input.taskId)));
     const supported = checks.includes(input.outcome === 'verified' ? 'pass' : 'fail');
+    // Explicit refs only; metadata is never inferred from task name or timestamps.
+    const browserAssociation = supported && input.outcome === 'verified'
+      ? resolveBrowserObservationUse(input.evidenceRefs,
+          input.browserBinding?.taskId===input.taskId ? input.browserBinding : undefined) : undefined;
     const result = await this.stateStore.mutate('procedures', state => {
       const procedures = [...(state.procedures ?? [])];
       let item = procedures.find(value => value.fingerprint === fingerprint && value.workspace === workspace);
@@ -224,6 +232,7 @@ export class LearningService {
       }
       // Only fresh, independently checked evidence receives contract attribution.
       // Existing task arrays stay intact and never become receipts by backfill.
+      let browserContextStatus = browserAssociation?.status ?? 'not-requested';
       if (supported) {
         const receipts = [...(item.contractReceipts ?? [])];
         const prior = receipts.find(receipt => receipt.taskId === input.taskId && receipt.outcome === input.outcome);
@@ -231,6 +240,17 @@ export class LearningService {
         if (evidenceRefs.length > 32 || (!prior && receipts.length >= 32)) throw new Error('LEARNING_PROCEDURE_RECEIPT_CAPACITY_REVIEW_REQUIRED');
         if (prior) prior.evidenceRefs = evidenceRefs;
         else receipts.push({ taskId: input.taskId, contractDigest, outcome: input.outcome, evidenceRefs });
+        const ownedReceipt = prior ?? receipts[receipts.length - 1]!;
+        if (input.outcome === 'verified' && browserAssociation?.status === 'eligible') {
+          const proposed = browserAssociation.browserContext;
+          if (!validBrowserReceipt(proposed)) throw new Error('LEARNING_BROWSER_CONTEXT_INVALID');
+          if (ownedReceipt.browserContext && (
+            !validBrowserReceipt(ownedReceipt.browserContext)
+            || ownedReceipt.browserContext.actionRef !== proposed.actionRef
+            || ownedReceipt.browserContext.sourceDigest !== proposed.sourceDigest
+          )) browserContextStatus = 'browser-context-conflict';
+          else if (!ownedReceipt.browserContext) ownedReceipt.browserContext = proposed;
+        }
         item.contractVersion = 1; item.contractDigest = contractDigest; item.contractReceipts = receipts;
       }
       const key = input.taskId; // Task identity is shared; controller transfer must not add support.
@@ -240,16 +260,17 @@ export class LearningService {
       item.evidenceRefs = [...new Set([...item.evidenceRefs, ...input.evidenceRefs])];
       if (input.outcome === 'failed') item.needsReview = true;
       item.updatedAt = new Date().toISOString();
-      return { state: { ...state, procedures }, result: item };
+      return { state: { ...state, procedures }, result: {item,browserContextStatus} };
     });
     let materialization: { status: 'completed' | 'unavailable'; reason?: string } = { status: 'completed' };
-    try { await this.materializeProcedure(result.result); }
+    try { await this.materializeProcedure(result.result.item); }
     catch (error) {
       activityTracker.captureFailure('LEARNING', error, 'procedure-proposal-materialization-unavailable');
       const message = error instanceof Error ? error.message : '';
       materialization = { status: 'unavailable', reason: /^(?:LEARNING_PROCEDURE|SKILL_PROPOSAL)_[A-Z_]+(?::[a-zA-Z,]+)?$/.test(message) ? message.slice(0, 240) : 'SKILL_PROPOSAL_MATERIALIZATION_UNAVAILABLE' };
     }
-    return { ...(await this.procedures(workspace)).find(item => item.fingerprint === fingerprint)!, materialization };
+    return { ...(await this.procedures(workspace)).find(item => item.fingerprint === fingerprint)!,
+      materialization, browserContextStatus: result.result.browserContextStatus };
   }
 
   async markProcedureArtifact(input: { fingerprint: string; workspace?: string; status: 'skill-imported' | 'revision-staged'; skillName: string; skillDigest: string }) {

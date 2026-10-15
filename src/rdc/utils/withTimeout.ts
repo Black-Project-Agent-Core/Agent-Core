@@ -97,3 +97,46 @@ export function runWithAbortableTimeout<T>(
 
     return Promise.race([op, timeout]).finally(() => clearTimeout(timeoutId));
 }
+
+/** Caller cancellation uses a stable internal code, never an untrusted signal.reason. */
+export function readCancellationError(): NodeJS.ErrnoException {
+  return Object.assign(new Error('READ_CANCELLED'), { code: 'ABORT_ERR' });
+}
+export function assertReadActive(signal?: AbortSignal): void {
+  if (signal?.aborted) throw readCancellationError();
+}
+export function isReadCancelled(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | null)?.code === 'ABORT_ERR'
+    || (error as Error | null)?.name === 'AbortError';
+}
+/** One operation lifetime: parent abort or local timeout wins its first terminal cause. */
+export function runWithCallerAbortableTimeout<T>(
+  operation: (signal: AbortSignal) => Promise<T>, timeoutMs: number,
+  operationName: string, parent?: AbortSignal,
+): Promise<T> {
+  const controller = new AbortController();
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    const cleanup = () => { if (timer) clearTimeout(timer);
+      if (parent) parent.removeEventListener('abort', onParentAbort); };
+    const finish = (error?: unknown, value?: T) => {
+      if (settled) return; settled = true; cleanup();
+      if (error !== undefined) reject(error); else resolve(value as T);
+    };
+    const cancel = (error: Error) => {
+      if (settled) return;
+      finish(error); controller.abort();
+    };
+    const onParentAbort = () => cancel(readCancellationError());
+    if (parent?.aborted) { cancel(readCancellationError()); return; }
+    parent?.addEventListener('abort', onParentAbort, { once: true });
+    if (parent?.aborted) { onParentAbort(); return; }
+    timer = setTimeout(() => {
+      const error = Object.assign(new Error(operationName + ' timed out'), { code: 'ETIMEDOUT' });
+      cancel(error);
+    }, timeoutMs);
+    Promise.resolve().then(() => { assertReadActive(controller.signal); return operation(controller.signal); })
+      .then(value => finish(undefined, value), error => finish(error));
+  });
+}

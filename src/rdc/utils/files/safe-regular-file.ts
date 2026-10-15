@@ -1,6 +1,7 @@
 import { constants as fsConstants, type Stats } from 'node:fs';
 import { open, stat, lstat, type FileHandle } from 'node:fs/promises';
 import { assertSameFileIdentity } from '../../../security/file-identity.js';
+import { assertReadActive, readCancellationError, runWithCallerAbortableTimeout } from '../withTimeout.js';
 
 const DEFAULT_OPEN_TIMEOUT_MS = 5_000;
 const MAX_ACTIVE_OPENS = 8;
@@ -12,6 +13,8 @@ const waiters: Array<{
   resolve: (release: () => void) => void;
   reject: (error: Error) => void;
   timer: NodeJS.Timeout;
+  signal?: AbortSignal;
+  onAbort?: () => void;
 }> = [];
 const refusalCounts = new Map<string, number>();
 
@@ -48,16 +51,19 @@ function openTimeout(timeoutMs: number): Error {
 }
 
 function releaseSlot(): void {
-  const next = waiters.shift();
-  if (next) {
+  while (waiters.length) {
+    const next = waiters.shift()!;
     clearTimeout(next.timer);
+    if (next.onAbort) next.signal?.removeEventListener('abort', next.onAbort);
+    if (next.signal?.aborted) { next.reject(readCancellationError()); continue; }
     next.resolve(releaseSlot);
     return;
   }
   activeOpens = Math.max(0, activeOpens - 1);
 }
 
-async function acquireSlot(timeoutMs: number): Promise<() => void> {
+async function acquireSlot(timeoutMs: number, signal?: AbortSignal): Promise<() => void> {
+  assertReadActive(signal);
   if (activeOpens < MAX_ACTIVE_OPENS) {
     activeOpens += 1;
     return releaseSlot;
@@ -67,22 +73,33 @@ async function acquireSlot(timeoutMs: number): Promise<() => void> {
   }
   return new Promise<() => void>((resolve, reject) => {
     const waiter = {
-      resolve,
-      reject,
+      resolve, reject, signal,
+      onAbort: undefined as (() => void) | undefined,
       timer: setTimeout(() => {
         const index = waiters.indexOf(waiter);
-        if (index >= 0) waiters.splice(index, 1);
-        reject(openTimeout(timeoutMs));
+        if (index >= 0) { waiters.splice(index, 1);
+          if (waiter.onAbort) signal?.removeEventListener('abort', waiter.onAbort);
+          reject(openTimeout(timeoutMs)); }
       }, timeoutMs),
     };
     waiter.timer.unref?.();
     waiters.push(waiter);
+    if (signal) {
+      waiter.onAbort = () => {
+        const i = waiters.indexOf(waiter);
+        if (i >= 0) { waiters.splice(i, 1); clearTimeout(waiter.timer);
+          signal.removeEventListener('abort', waiter.onAbort!); reject(readCancellationError()); }
+      };
+      signal.addEventListener('abort', waiter.onAbort, { once: true });
+      if (signal.aborted) waiter.onAbort();
+    }
   });
 }
 
 export interface RegularFileOpenOptions {
   timeoutMs?: number;
   followSymlinks?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface GuardedRegularFile {
@@ -97,27 +114,25 @@ export async function openRegularFile(
 ): Promise<GuardedRegularFile> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_OPEN_TIMEOUT_MS;
   const noFollow = options.followSymlinks === false;
+  assertReadActive(options.signal);
   const pre = noFollow ? await lstat(filePath) : await stat(filePath);
   const preIdentity = noFollow ? await lstat(filePath, { bigint: true }) : undefined;
   if (!pre.isFile()) throw refusal(classify(pre));
 
-  const release = await acquireSlot(timeoutMs);
+  const release = await acquireSlot(timeoutMs, options.signal);
+  try { assertReadActive(options.signal); } catch (error) { release(); throw error; }
   const flags = fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0);
   const openPromise = open(filePath, flags);
 
   let timer: NodeJS.Timeout | undefined;
   let openedHandle: FileHandle | undefined;
   try {
-    openedHandle = await Promise.race([
-      openPromise,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(openTimeout(timeoutMs)), timeoutMs);
-        timer.unref?.();
-      }),
-    ]);
+    openedHandle = await runWithCallerAbortableTimeout(
+      () => openPromise, timeoutMs, 'Safe regular-file open', options.signal);
 
     if (timer) clearTimeout(timer);
     const openedStats = await openedHandle.stat();
+    assertReadActive(options.signal);
     if (!openedStats.isFile()) throw refusal(classify(openedStats));
 
     if (noFollow) {
@@ -147,7 +162,7 @@ export async function openRegularFile(
     };
   } catch (error) {
     if (timer) clearTimeout(timer);
-    if (!openedHandle && (error as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
+    if (!openedHandle && ['ETIMEDOUT', 'ABORT_ERR'].includes((error as NodeJS.ErrnoException).code ?? '')) {
       void openPromise.then(async handle => {
         try { await handle.close(); } finally { release(); }
       }, () => release());
@@ -182,7 +197,9 @@ export async function readRegularFileBounded(
     const size = guarded.stats.size;
     const readLength = Math.min(size, maxBytes + 1);
     const buffer = Buffer.alloc(readLength);
+    assertReadActive(options.signal);
     const { bytesRead } = await guarded.handle.read(buffer, 0, readLength, 0);
+    assertReadActive(options.signal);
     const truncated = bytesRead > maxBytes || size > maxBytes;
     return {
       buffer: buffer.subarray(0, Math.min(bytesRead, maxBytes)),

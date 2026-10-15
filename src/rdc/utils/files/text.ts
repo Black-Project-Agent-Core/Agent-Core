@@ -18,6 +18,7 @@ import path from "path";
 import { createReadStream } from 'fs';
 import { assertRegularFile, openRegularFile, readRegularFileBounded } from './safe-regular-file.js';
 import { createInterface } from 'readline';
+import { assertReadActive, isReadCancelled } from '../withTimeout.js';
 import {
     FileHandler,
     ReadOptions,
@@ -51,8 +52,8 @@ export class TextFileHandler implements FileHandler {
         return true;
     }
 
-    private async detectTextEncoding(filePath: string): Promise<'utf8' | 'utf16le'> {
-        const guarded = await openRegularFile(filePath);
+    private async detectTextEncoding(filePath: string, signal?: AbortSignal): Promise<'utf8' | 'utf16le'> {
+        const guarded = await openRegularFile(filePath, { signal });
         try {
             const bom = Buffer.alloc(2);
             const { bytesRead } = await guarded.handle.read(bom, 0, bom.length, 0);
@@ -72,7 +73,8 @@ export class TextFileHandler implements FileHandler {
 
         // Direct TextFileHandler callers still receive the same non-regular
         // guard as the top-level filesystem facade.
-        await assertRegularFile(filePath);
+        await assertRegularFile(filePath, { signal: options?.signal });
+        assertReadActive(options?.signal);
         return this.readFileWithSmartPositioning(filePath, offset, length, 'text/plain', includeStatusMessage, options?.signal);
     }
 
@@ -148,8 +150,8 @@ export class TextFileHandler implements FileHandler {
         encoding: 'utf8' | 'utf16le' = 'utf8'
     ): Promise<number | undefined> {
         try {
-            if (signal?.aborted) return undefined;
-            const read = await readRegularFileBounded(filePath, FILE_SIZE_LIMITS.LINE_COUNT_LIMIT);
+            assertReadActive(signal);
+            const read = await readRegularFileBounded(filePath, FILE_SIZE_LIMITS.LINE_COUNT_LIMIT, { signal });
             if (!read.truncated) {
                 let content = read.buffer.toString(encoding);
                 if (encoding === 'utf16le' && content.charCodeAt(0) === 0xfeff) {
@@ -157,8 +159,9 @@ export class TextFileHandler implements FileHandler {
                 }
                 return TextFileHandler.countLines(content);
             }
-        } catch {
-            // If we can't safely read the file, return undefined.
+        } catch (error) {
+            if (isReadCancelled(error) || signal?.aborted) throw error;
+            // Ordinary metadata failures remain non-terminal.
         }
         return undefined;
     }
@@ -245,7 +248,8 @@ export class TextFileHandler implements FileHandler {
     ): Promise<FileResult> {
         const stats = await fs.stat(filePath);
         const fileSize = stats.size;
-        const encoding = await this.detectTextEncoding(filePath);
+        assertReadActive(signal);
+        const encoding = await this.detectTextEncoding(filePath, signal);
         const totalLines = await this.getFileLineCount(filePath, signal, encoding);
 
         // UTF-16LE needs character-aware streaming. Skip the two-byte BOM and keep

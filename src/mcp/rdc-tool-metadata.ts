@@ -467,41 +467,19 @@ Input 32MiB/24M pixels. Image output max 1536 edge/1.5M pixels/2MiB encoded/3MiB
     description: `
                         Start a new terminal process with intelligent state detection.
                         
-                        PRIMARY TOOL FOR FILE ANALYSIS AND DATA PROCESSING
-                        This is the ONLY correct tool for analyzing local files (CSV, JSON, logs, etc.).
-                        The analysis tool CANNOT access local files and WILL FAIL - always use processes for file-based work.
-                        
-                        CRITICAL RULE: For ANY local file work, ALWAYS use this tool + interact_with_process, NEVER use analysis/REPL tool.
+                        LOCAL FILE/DATA WORK: Use start_process plus interact_with_process; remote analysis cannot read local paths.
                         
                         ${OS_GUIDANCE}
                         
-                        REQUIRED WORKFLOW FOR LOCAL FILES:
-                        1. start_process("python3 -i") - Start Python REPL for data analysis
-                        2. interact_with_process(pid, "import pandas as pd, numpy as np")
-                        3. interact_with_process(pid, "df = pd.read_csv('/absolute/path/file.csv')")
-                        4. interact_with_process(pid, "print(df.describe())")
-                        5. Continue analysis with pandas, matplotlib, seaborn, etc.
-                        
-                        COMMON FILE ANALYSIS PATTERNS:
-                        • start_process("python3 -i") → Python REPL for data analysis (RECOMMENDED)
-                        • start_process("node -i") → Node.js REPL for JSON processing
-                        • start_process("node:local") → Node.js on MCP server (stateless, ES imports, all code in one call)
-                        • start_process("cut -d',' -f1 file.csv | sort | uniq -c") → Quick CSV analysis
-                        • start_process("wc -l /path/file.csv") → Line counting
-                        • start_process("head -10 /path/file.csv") → File preview
+                        LOCAL ANALYSIS: Use start_process("python3 -i") with interact_with_process(pid, input)
+                        for data files, or node -i / node:local when Python is unavailable. Use Node ES imports.
+                        For short inspections, use the existing command-line readers (head, sort, etc.).
                         
                         BINARY FILE SUPPORT:
                         For PDF, Excel, Word, archives, databases, and other binary formats, use process tools with appropriate libraries or command-line utilities.
                         
-                        INTERACTIVE PROCESSES FOR DATA ANALYSIS:
-                        For code/calculations, use in this priority order:
-                        1. start_process("python3 -i") - Python REPL (preferred)
-                        2. start_process("node -i") - Node.js REPL (when Python unavailable)
-                        3. start_process("node:local") - Node.js fallback (when node -i fails)
-                        4. Use interact_with_process() to send commands
-                        5. Use read_process_output() to get responses
-                        When Python is unavailable, prefer Node.js over shell for calculations.
-                        Node.js: Always use ES import syntax (import x from 'y'), not require().
+                        INTERACTIVE: Prefer Python REPL, then node -i / node:local; send commands with
+                        interact_with_process and read results with read_process_output. Use Node ES imports.
 
                         SMART DETECTION:
                         - Detects REPL prompts (>>>, >, $, etc.)
@@ -521,9 +499,6 @@ Input 32MiB/24M pixels. Image output max 1536 edge/1.5M pixels/2MiB encoded/3MiB
                         - Complete timeline of all output events with timestamps
                         - Which detection mechanism triggered early exit
                         Use this to identify missed optimization opportunities and improve detection patterns.
-
-                        ALWAYS USE FOR: Local file analysis, CSV processing, data exploration, system commands
-                        NEVER USE ANALYSIS TOOL FOR: Local file access (analysis tool is browser-only and WILL FAIL)
 
                         ${PATH_GUIDANCE}
                         ${CMD_PREFIX_DESCRIPTION}`,

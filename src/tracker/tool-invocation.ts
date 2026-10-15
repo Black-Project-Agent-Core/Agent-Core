@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ExternalInvocationContext } from '../learning/external-controller.js';
 import type { AutoCheckpointReceipt, MutationExecutionContext } from '../rdc/mutation-coordinator.js';
 import type { TrackerEvent } from './activity-tracker.js';
+import { validBrowserUse, type BrowserObservationUse } from '../rdc/browser-control/procedure-context.js';
 
 export type ToolInvocationOutcome = 'success' | 'handled-failure';
 
@@ -45,6 +46,22 @@ export interface ToolInvocationRequest {
 }
 const invocationRequests = new AsyncLocalStorage<ToolInvocationRequest>();
 const requestEvidence = new WeakMap<ToolInvocationRequest, ToolInvocationEvidence>();
+const browserUseByRequest = new WeakMap<ToolInvocationRequest, BrowserObservationUse>();
+/** Internal browser owner only: the terminal wrapper remains the only persistence writer. */
+export function stageBrowserObservationUse(value: BrowserObservationUse): void {
+  const request = invocationRequests.getStore();
+  if (!request || request.tool !== 'browser_control' || request.invocationContext?.binding !== 'bound'
+    || request.mutationContext.signal?.aborted || !validBrowserUse(value)) return;
+  browserUseByRequest.set(request, value);
+}
+/** One terminal read, never reusable across requests or after late/cancelled settlement. */
+export function takeBrowserObservationUse(): BrowserObservationUse | undefined {
+  const request = invocationRequests.getStore();
+  if (!request) return undefined;
+  const value = browserUseByRequest.get(request);
+  browserUseByRequest.delete(request);
+  return value && !request.mutationContext.signal?.aborted ? value : undefined;
+}
 export function createToolInvocationIdentity() {
   return Object.freeze({ id: randomUUID().replaceAll('-', ''), processSessionId: TOOL_INVOCATION_PROCESS_SESSION_ID });
 }

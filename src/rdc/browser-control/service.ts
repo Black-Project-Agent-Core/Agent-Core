@@ -1,5 +1,8 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { projectBrowserShape, type BrowserShapeProfile, type BrowserShapeKind } from './procedure-context.js';
+import { stageBrowserObservationUse } from '../../tracker/tool-invocation.js';
+import type { ExternalInvocationContext } from '../../learning/external-controller.js';
 import { projectControlStates } from './control-state.js';
 import { CanvasObserver, canvasOptionsSchema, type CanvasOptions } from './canvas-observation.js';
 import { OwnedTabs, listOwnedPageTargets, isPageUrl, type PageTarget } from './owned-tabs.js';
@@ -22,7 +25,7 @@ const PROJECT_ROOT = resolveProjectRoot(process.env, MODULE_PROJECT_ROOT);
 
 type ActionKind = 'click' | 'fill' | 'select' | 'scroll' | 'wait' | 'switch_tab' | 'press_key' | 'hold_key' | 'back';
 export interface BrowserOpenOptions { interactionCapabilities?: InteractionCapability[]; transport?: 'isolated' | 'extension' }
-export interface BrowserObserveOptions { canvas?: CanvasOptions }
+export interface BrowserObserveOptions { canvas?: CanvasOptions; host?: ExternalInvocationContext }
 
 interface RawAction {
   id: string;
@@ -63,6 +66,25 @@ interface Observation {
   id: string;
   page: RawPage;
   targetId: string;
+  capturedAt: string;
+  browserProfile?: BrowserShapeProfile;
+  browserBinding?: Readonly<BrowserObservationBinding>;
+}
+interface BrowserObservationBinding {
+  ownerId:string; sessionId:string; taskId:string; workspace:string;
+  workspaceIdentityKey:string; processSessionId:string;
+}
+function browserBinding(context?:ExternalInvocationContext): Readonly<BrowserObservationBinding> | undefined {
+  return context?.binding==='bound' && context.ownerId && context.sessionId && context.taskId
+    && context.workspace && context.workspaceIdentityKey && context.processSessionId
+    ? Object.freeze({ownerId:context.ownerId, sessionId:context.sessionId,
+      taskId:context.taskId, workspace:context.workspace,
+      workspaceIdentityKey:context.workspaceIdentityKey, processSessionId:context.processSessionId}) : undefined;
+}
+function sameBrowserBinding(a?:Readonly<BrowserObservationBinding>, b?:Readonly<BrowserObservationBinding>):boolean {
+  return Boolean(a && b && a.ownerId===b.ownerId && a.sessionId===b.sessionId
+    && a.taskId===b.taskId && a.workspace===b.workspace
+    && a.workspaceIdentityKey===b.workspaceIdentityKey && a.processSessionId===b.processSessionId);
 }
 
 interface BrowserSession {
@@ -687,7 +709,11 @@ export class BrowserControlService {
     const omittedByCategory={dom:page.omitted_actions+dom.length-selectedDom.length,
       tabs:tabs.omitted??0,additionalActions:extras.length-selectedExtras.length};
     page.actions=[...selectedDom,...fixed,...selectedExtras];
-    const observation: Observation = { id: randomUUID(), page, targetId:session.targetId };
+    const observedBinding = browserBinding(options.host);
+    const observation: Observation = { id: randomUUID(), page, targetId:session.targetId,
+      capturedAt:new Date().toISOString(),
+      ...(observedBinding ? {browserBinding:observedBinding,
+        browserProfile:projectBrowserShape(page.actions, omittedByCategory.dom)} : {}) };
     let canvas:unknown;
     if(canvasOptions) {
       try {canvas=await session.canvas.observe(expr=>runtimeEvaluate(session.client,expr),page.document_key,session.targetId,canvasOptions);}
@@ -757,6 +783,8 @@ export class BrowserControlService {
     observationId: string,
     actionId: string,
     text?: string,
+    host?: ExternalInvocationContext,
+    signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
     const session = this.session(sessionId);
     if (session.actionInFlight) throw new Error('BROWSER_CONTROL_ACTION_IN_FLIGHT');
@@ -849,6 +877,17 @@ export class BrowserControlService {
       }
     }
     await this.settle(session, action);
+    // Only a host-bound, same-task successful DOM action can stage metadata.
+    // Observation alone, unbound/native, dialog, failure or caller abort are not use.
+    const actScope = browserBinding(host);
+    if (!session.dialog && !signal?.aborted
+      && ['click','fill','select'].includes(action.kind)
+      && sameBrowserBinding(observation.browserBinding, actScope)
+      && observation.browserProfile) {
+      stageBrowserObservationUse({ version:1, observationUsed:true,
+        actionKind: ({click:'C',fill:'F',select:'S'} as Record<string,BrowserShapeKind>)[action.kind]!,
+        profile:observation.browserProfile });
+    }
     return {
       sessionId,
       executed: action.id,
@@ -860,6 +899,27 @@ export class BrowserControlService {
       ...(session.dialog ? {dialog:session.dialog} : {}),
     };
     } finally { session.actionInFlight=false; }
+  }
+
+  /** Advisory read of the explicitly chosen LAST observation; no CDP/network calls. */
+  selectProcedureObservation(selector:{sessionId:string;observationId:string},
+    host?:ExternalInvocationContext):
+    {status:'available';profile:BrowserShapeProfile;capturedAt:string;freshness:'last-observed-not-revalidated'}
+    | {status:'unknown';reason:string} {
+    const bound = browserBinding(host);
+    if (!bound) return {status:'unknown',reason:'host-task-unbound'};
+    const session = this.sessions.get(selector.sessionId);
+    if (!session || session.extension?.expired() || (session.process && session.process.exitCode !== null))
+      return {status:'unknown',reason:'session-unavailable'};
+    if (session.actionInFlight || session.dialog)
+      return {status:'unknown',reason:'observation-in-flight-or-dialog'};
+    const item = session.lastObservation;
+    if (!item || item.id !== selector.observationId || item.targetId !== session.targetId)
+      return {status:'unknown',reason:'observation-not-current'};
+    if (!sameBrowserBinding(item.browserBinding,bound) || !item.browserProfile)
+      return {status:'unknown',reason:'observation-task-or-principal-mismatch'};
+    return {status:'available',profile:item.browserProfile,capturedAt:item.capturedAt,
+      freshness:'last-observed-not-revalidated'};
   }
 
   async close(sessionId: string): Promise<Record<string, unknown>> {

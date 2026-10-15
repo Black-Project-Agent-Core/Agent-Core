@@ -2,6 +2,45 @@ import { createHash } from 'node:crypto';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { readEvidenceSnapshot } from '../verification/evidence-snapshot.js';
 import { recheckWorkflowReport } from './workflow-verifier.js';
+import { validBrowserUse, validBrowserReceipt, type BrowserReceiptContext } from '../rdc/browser-control/procedure-context.js';
+export { validBrowserReceipt };
+
+export type BrowserUseResolution = {status:'eligible';browserContext:BrowserReceiptContext}
+  | {status:'unavailable' | 'ambiguous';reason:string};
+/** One bounded owner tracker read; no alias, event id or model-supplied profile accepted. */
+export function resolveBrowserObservationUse(
+  refs:readonly string[], binding?:{taskId:string;ownerId:string;workspace:string;workspaceIdentityKey:string},
+):BrowserUseResolution {
+  if (!binding?.taskId || !binding.ownerId || !binding.workspace || !binding.workspaceIdentityKey)
+    return {status:'unavailable',reason:'host-binding-unavailable'};
+  const selected=[...new Set(refs.filter(ref=>/^tool:[0-9a-f]{32}$/.test(ref)))];
+  if (!selected.length) return {status:'unavailable',reason:'no-exact-browser-action-ref'};
+  const events=activityTracker.readToolInvocationEvents({maxEvents:10_000,maxAgeMs:30*86_400_000});
+  const qualified:BrowserReceiptContext[]=[];
+  for(const ref of selected) {
+    const id=ref.slice(5);
+    const event=events.find(item=>item.kind==='tool-call' && item.context?.invocationId===id
+      && item.context.tool==='browser_control' && item.context.outcome==='success'
+      && item.context.attributionStatus==='attributed' && item.context.binding==='bound'
+      && item.context.taskId===binding.taskId && item.context.ownerId===binding.ownerId
+      && item.context.workspace===binding.workspace
+      && item.context.workspaceIdentityKey===binding.workspaceIdentityKey
+      && typeof item.context.processSessionId==='string');
+    if (!event) continue;
+    const packed=event.context?.browserObservationUse;
+    if (typeof packed!=='string' || packed.length>1600) continue;
+    try {
+      const payload=JSON.parse(packed);
+      if (!validBrowserUse(payload)) continue;
+      qualified.push({version:1,actionRef:ref,sourceDigest:payload.profile.shapeDigest,
+        shape:payload.profile,association:'controller-selected-host-observation',semanticSupport:'not-established'});
+    }catch { /* malformed tracker evidence is unavailable, not permission. */ }
+  }
+  if(qualified.length>1)return {status:'ambiguous',reason:'multiple-eligible-browser-action-refs'};
+  return qualified[0] ? {status:'eligible',browserContext:qualified[0]}
+    : {status:'unavailable',reason:'browser-terminal-or-profile-unavailable'};
+}
+
 
 export interface WorkflowEvidence {
   ref: string;

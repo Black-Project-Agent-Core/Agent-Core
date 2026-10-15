@@ -24,6 +24,7 @@ import { activityTracker } from '../tracker/activity-tracker.js';
 import { createAgentCoreMcpServer } from './server.js';
 import { memoryCredentialOwner, ownerScopedLearningSession } from './memory-scope.js';
 import { createImageInspector } from '../rdc/tools/image-inspect.js';
+import type { ArtifactAuthorization } from '../auth/artifact-authorization.js';
 
 export interface BridgeMcpHttpOptions {
   protocolMode?: McpProtocolMode;
@@ -37,6 +38,7 @@ export interface BridgeMcpHttpOptions {
   codeIntelligence?: CodeIntelligenceService;
   webResearch?: WebResearchService;
   mutationSafety?: McpMutationSafety;
+  artifactAuthorization?: ArtifactAuthorization;
 }
 
 function sendProtocolError(
@@ -89,12 +91,22 @@ function legacyJsonFallback(factory: McpServerFactory) {
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
     });
-    let closed = false;
-    const close = async () => {
-      if (closed) return;
-      closed = true;
-      await transport.close().catch(() => undefined);
-      await product.close().catch(() => undefined);
+    let closePromise: Promise<void> | undefined;
+    const close = (): Promise<void> => {
+      if (closePromise) return closePromise;
+      // Reserve the completion before any close side effect can reenter.
+      let complete!: () => void;
+      closePromise = new Promise<void>(resolve => { complete = () => resolve(); });
+      // Eager initiation: an already-aborted request starts teardown in this stack.
+      void (async () => {
+        try {
+          try { await transport.close(); } catch { /* Existing fail-soft close. */ }
+          try { await product.close(); } catch { /* Attempt product close independently. */ }
+        } finally {
+          complete();
+        }
+      })();
+      return closePromise;
     };
     let detachAbort = () => {};
     try {
@@ -175,6 +187,7 @@ export function createMcpHttpHandler(options: BridgeMcpHttpOptions = {}): McpHtt
       webResearch: options.webResearch,
       failureLoopAdvisor,
       mutationSafety: options.mutationSafety,
+      artifactAuthorization: options.artifactAuthorization,
     });
     const webHandler = protocolHandler(factory, protocolMode);
     try {

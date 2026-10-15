@@ -11536,6 +11536,7 @@
       "receivingOwner": "src/rdc/browser-control/service.ts; src/learning/service.ts; src/learning/external-controller.ts",
       "gapVsAlreadyCovered": "BrowserControlService already invalidates observation IDs on document/generation/focus changes. Do not copy this guard or add domain-memory store. Only a future read-only suggestion of already verified procedure steps conditioned on a current page fingerprint could add value; replay still needs current observed IDs and grants.",
       "decision": "extend",
+    "implementation": "Batch14 #127 source-built, plugin 1.0.6 same-app installed and resident active; refreshed client now advertises browserObservation in controller_learning; no eligible actual browser/procedure receipt exercised",
       "licenseCoupling": "MIT. TypeScript plus Chrome/CDP and donor domain-memory runtime; adopt only small native contracts, never donor browser runtime.",
       "batchDomain": "native evidence acquisition",
       "sourceEvidence": [
@@ -12113,6 +12114,16 @@
         }
       ],
       "concreteMechanism": "OMX transition function preserves current modes and explicitly marks predecessor modes auto-complete only for configured transitions; unreadable active state throws. OMC verification state correlates request_id and criteria_revision; consume uses conditional locked clear.",
+      "batch16Implementation": {
+        "scope": "OMC #134 conditional exact-task completion on external verifyEpisode only",
+        "receivingOwner": "src/learning/external-controller.ts; src/mcp/controller-learning-tools.ts",
+        "sourceStatus": "implemented; official build exit 0; post-build resident observed",
+        "residentEvidence": "Node PID19948 started 2026-10-16 02:49:22 WIB after emitted code 02:38:42; official receipt 4521f9ce0ca24ed79c3874d31a7eca7f.json exit0/error null; /health ok",
+        "mechanism": "Host-issued invocation identity admitted before verifier I/O, exact expectedTaskId, and repeated current-head/binding validation inside existing mutation callback before verification writes; closed-same-target no-op.",
+        "evidenceBoundary": "Source/build and unchanged MCP contract only; missing-binding, rotation and concurrency branches not exercised live; no global generation or dedup guarantee.",
+        "donor": "Yeachan-Heo/oh-my-claudecode@8262f9f790eed35e6cbd66572b36c2acba18f679 verifier.ts 162-190; MIT; principle adapted without substantial source copying",
+        "reserve": "#18 Skill writer exclusion remains independent and not implemented in Batch 16"
+      },
       "receivingOwner": "src/agent-turn-checkpoint.ts; src/learning/controlled-outcome.ts; src/learning/decision-evidence.ts",
       "gapVsAlreadyCovered": "Native task/checkpoint/verification and revision-bound decisions already exist. Multi-mode names and reviewer agents are donor architecture, not missing capability. Reuse native owners and use request-bound verification as negative-test inspiration only.",
       "decision": "reuse",
@@ -15056,7 +15067,7 @@
           "basis": "actual Git object read; selected line ranges, not whole-repository audit"
         }
       ],
-      "implementation": "none; research recommendation only",
+      "implementation": "Batch15 source patch in existing src/mcp/handler.ts legacyJsonFallback, request-local eager memoized close completion join for external MCP abort/finally. Build/resident evidence held in scoped Windows implementation report",
       "availability": "Public snapshot(s) obtained and selected source inspected; exact engine/client/benchmark boundaries stated in mechanism/gap.",
       "qualityComparison": {
         "finding": "equivalent-focused-contract-no-measured-superiority",
@@ -17676,7 +17687,7 @@
           "basis": "actual Git object read; selected line ranges, not whole-repository audit"
         }
       ],
-      "implementation": "none; research recommendation only",
+      "implementation": "Batch13 selected #189 external episode evidence projection implemented in native source; source build/resident/client and operational event coverage tracked in combined 20261015 report",
       "availability": "Public snapshot(s) obtained and selected source inspected; exact engine/client/benchmark boundaries stated in mechanism/gap.",
       "qualityComparison": {
         "finding": "equivalent-focused-contract-no-measured-superiority",
@@ -17805,6 +17816,7 @@
         }
       ],
       "implementation": "none; research recommendation only",
+      "batch15NativePremiseCorrection": "Native PhoneController, ADB/gateway, normalization and callers already exist. No phone product change, no new permission or backend installed; donor phone-full absence premise corrected by source research",
       "availability": "Public snapshot(s) obtained and selected source inspected; exact engine/client/benchmark boundaries stated in mechanism/gap.",
       "qualityComparison": {
         "finding": "native-stronger-on-inspected-confirmation-dimension",

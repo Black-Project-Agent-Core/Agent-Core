@@ -11,6 +11,7 @@ export const controllerLearning = z.object({
   query: z.string().min(1).max(4000).optional(),
   skillSearchMode: z.enum(['lexical', 'hybrid']).optional(),
   retrievalPlan: retrievalPlanSchema.optional(),
+  browserObservation: z.object({ sessionId:z.string().uuid(), observationId:z.string().uuid() }).strict().optional(),
   taskFamily: z.string().min(1).max(160).optional(),
   taskKey: z.string().min(1).max(200).optional(),
   taskId: z.string().min(1).max(200).optional(),
@@ -46,6 +47,11 @@ export const controllerLearning = z.object({
   allowedTools: z.array(z.string().min(1).max(120)).max(64).optional(),
   reuseCondition: z.string().min(1).max(2000).optional(),
 }).superRefine((value, ctx) => {
+  if (value.browserObservation !== undefined && !(value.action === 'context'
+    || value.action === 'procedure' && value.procedureOperation === 'inspect')) {
+    ctx.addIssue({ code:'custom',path:['browserObservation'],
+      message:'browserObservation only valid for context or procedure inspect' });
+  }
   if (value.retrievalPlan !== undefined) {
     if (value.action !== 'context') ctx.addIssue({ code: 'custom', path: ['retrievalPlan'], message: 'retrievalPlan is only valid for context' });
     if (!value.taskId?.trim()) ctx.addIssue({ code: 'custom', path: ['taskId'], message: 'taskId required for planned context' });

@@ -8,6 +8,7 @@ import { NativeAgentController } from './agent-controller.js';
 import { AgentChatService } from './agent-chat-service.js';
 import { AgentRuntimeService } from './agent-runtime.js';
 import { FileKeyStore } from './auth/key-store.js';
+import { ArtifactAuthorization } from './auth/artifact-authorization.js';
 import { CodeIntelligenceService } from './code-intelligence/service.js';
 import { loadConfig, type AppConfig } from './config.js';
 import { createHttpHandler } from './http/app.js';
@@ -183,6 +184,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     }
   }
 
+  const artifactAuthorization = new ArtifactAuthorization();
   const mutationSafety = McpMutationSafety.initialize(path.join(config.projectRoot, 'runtime', 'mcp'));
   activityTracker.record('MCP', mutationSafety.status().status === 'available' ? 'success' : 'warn', 'MCP mutation-safety service initialized', 'mcp-mutation-safety-start', { ...mutationSafety.status() });
 
@@ -210,6 +212,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     codeIntelligence,
     externalControllerLearning,
     mutationSafety,
+    artifactAuthorization,
     webResearch,
   };
   const agentController = agentRuntime
@@ -222,6 +225,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
         config.projectRoot,
         agentRuntime,
         agentController,
+        artifactAuthorization,
       );
       activityTracker.record(
         'AGENT_RUNTIME',
@@ -355,6 +359,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
       await cleanup('terminal-manager', () => terminalManager.shutdownAll());
       if (semanticIde) await cleanup('semantic-ide', () => semanticIde.close());
       if (codeIntelligence) await cleanup('code-intelligence', () => codeIntelligence.close());
+      artifactAuthorization.shutdown();
       await cleanup('tool-history', () => toolHistory.cleanup());
       await cleanup('config-manager', () => configManager.close());
 

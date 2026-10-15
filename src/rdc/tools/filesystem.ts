@@ -7,7 +7,7 @@ import { readResponseBytesBounded, readResponseTextBounded } from '../../net/bou
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { capture } from '../utils/capture.js';
-import { withTimeout, runWithAbortableTimeout } from '../utils/withTimeout.js';
+import { withTimeout, runWithAbortableTimeout, runWithCallerAbortableTimeout, assertReadActive, isReadCancelled } from '../utils/withTimeout.js';
 import { configManager } from '../config-manager.js';
 import { getFileHandler, TextFileHandler } from '../utils/files/index.js';
 import { assertRegularFile, readRegularFileBounded } from '../utils/files/safe-regular-file.js';
@@ -401,12 +401,13 @@ export async function readFileFromUrl(url: string, options?: ReadOptions): Promi
     }
     const { isImageFile } = await import('./mime-types.js');
     try {
-        const response = await fetchWithPolicy(url, {}, {
+        const response = await fetchWithPolicy(url, { signal: options?.signal }, {
             safety: 'safe',
             maxAttempts: 2,
             maxTotalDelayMs: 2_000,
             timeoutMs: FILE_OPERATION_TIMEOUTS.URL_FETCH,
         });
+        assertReadActive(options?.signal);
         if (!response.ok) {
             throw new Error(`HTTP error! Status: ${response.status}${correlationSuffix(response)}`);
         }
@@ -422,7 +423,7 @@ export async function readFileFromUrl(url: string, options?: ReadOptions): Promi
             if (options?.projection === 'markdown') {
                 const projected = await documentProjectionService.projectBytes({
                     bytes: buffer, profile: 'markdown', mimeType: 'application/pdf', extension: '.pdf',
-                    pdfPageRange, observedAt,
+                    pdfPageRange, observedAt, signal: options?.signal,
                 });
                 if (projected) return projectionToFileResult(projected);
                 throw new Error('PDF_CONVERSION_FAILED');
@@ -454,7 +455,8 @@ export async function readFileFromUrl(url: string, options?: ReadOptions): Promi
                 profile: projection,
                 sourceName: url,
                 url,
-                mimeType: contentType
+                mimeType: contentType,
+                signal: options?.signal
             });
             if (projected) return projectionToFileResult(projected);
             const charset = /charset\s*=\s*([^;]+)/i.exec(contentType)?.[1]?.trim();
@@ -465,6 +467,7 @@ export async function readFileFromUrl(url: string, options?: ReadOptions): Promi
         const content = await readResponseTextBounded(response, URL_TEXT_MAX_BYTES, 'URL text response');
         return { content, mimeType: contentType, metadata: { isImage } };
     } catch (error) {
+        if (isReadCancelled(error) || options?.signal?.aborted) throw error;
         if (error instanceof DocumentProjectionError) throw error;
         throw new Error(`Failed to fetch URL: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -495,6 +498,7 @@ export async function readFileFromDisk(
     }
 
     const validPath = await validatePath(filePath);
+    assertReadActive(options?.signal);
     if (options?.expectedIntegrity !== undefined) {
         if (options.isUrl || options.sheet !== undefined || options.range !== undefined
             || (options.projection !== undefined && options.projection !== 'native'))
@@ -518,12 +522,13 @@ export async function readFileFromDisk(
                     metadata: { isImage: false, isDirectory: true }
                 } as FileResult;
             };
-            const dirResult = await withTimeout(
-                dirListOp(),
+            const dirResult = await runWithCallerAbortableTimeout(
+                () => dirListOp(),
                 FILE_OPERATION_TIMEOUTS.FILE_READ,
                 'Directory listing fallback',
-                null
+                options?.signal
             );
+            assertReadActive(options?.signal);
             if (dirResult === null) {
                 throw new Error(`Directory listing timed out for: ${filePath}`);
             }
@@ -542,7 +547,8 @@ export async function readFileFromDisk(
     // From this point onward the path must be a regular file. This rejects
     // devices/FIFOs/sockets before MIME/binary handlers can block on them and
     // verifies the opened descriptor type inside the shared guard.
-    await assertRegularFile(validPath);
+    await assertRegularFile(validPath, { signal: options?.signal });
+    assertReadActive(options?.signal);
 
     // Check file size before attempting to read
     try {
@@ -570,8 +576,10 @@ export async function readFileFromDisk(
         const projected = await documentProjectionService.projectLocalFile(
             validPath,
             options?.projection ?? 'auto',
-            { offset, length }
+            { offset, length },
+            signal
         );
+        assertReadActive(signal);
         if (projected) return projectionToFileResult(projected);
 
         // Get appropriate handler for this file type (async - includes binary detection)
@@ -610,10 +618,11 @@ export async function readFileFromDisk(
     // Execute with a 3-minute, cancellable timeout
     let result;
     try {
-        result = await runWithAbortableTimeout(
+        result = await runWithCallerAbortableTimeout(
             (signal) => readOperation(signal),
             READ_OPERATION_TIMEOUT_MS,
-            `Read file operation for ${filePath}`
+            `Read file operation for ${filePath}`,
+            options?.signal
         );
     } catch (error) {
         const err = error as NodeJS.ErrnoException;
@@ -648,7 +657,8 @@ export async function readFile(
     if (isUrl && options?.expectedIntegrity !== undefined) throw new Error('RESULT_ARTIFACT_URL_REFUSED');
     return isUrl
         ? readFileFromUrl(filePath, options)
-        : readFileFromDisk(filePath, { offset, length, sheet, range, projection: options?.projection, expectedIntegrity: options?.expectedIntegrity });
+        : readFileFromDisk(filePath, { offset, length, sheet, range, signal: options?.signal,
+            projection: options?.projection, expectedIntegrity: options?.expectedIntegrity });
 }
 
 /**
@@ -761,12 +771,15 @@ export interface MultiFileResult {
     payload?: FileResultPayloads;
 }
 
-export async function readMultipleFiles(paths: string[]): Promise<MultiFileResult[]> {
-    return Promise.all(
+export async function readMultipleFiles(paths: string[], options?: Pick<ReadOptions, 'signal'>): Promise<MultiFileResult[]> {
+    assertReadActive(options?.signal);
+    const results = await Promise.all(
         paths.map(async (filePath: string) => {
             try {
                 const validPath = await validatePath(filePath);
-                const fileResult = await readFile(validPath);
+                assertReadActive(options?.signal);
+                const fileResult = await readFile(validPath, { signal: options?.signal });
+                assertReadActive(options?.signal);
                 // Handle content conversion properly for images vs text
                 let content: string;
                 if (typeof fileResult.content === 'string') {
@@ -793,6 +806,7 @@ export async function readMultipleFiles(paths: string[]): Promise<MultiFileResul
                     } : undefined
                 };
             } catch (error) {
+                if (isReadCancelled(error) || options?.signal?.aborted) throw error;
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 return {
                     path: filePath,
@@ -801,6 +815,8 @@ export async function readMultipleFiles(paths: string[]): Promise<MultiFileResul
             }
         }),
     );
+    assertReadActive(options?.signal);
+    return results;
 }
 
 export async function createDirectory(dirPath: string): Promise<void> {

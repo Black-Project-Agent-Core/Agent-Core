@@ -12,14 +12,15 @@ import { parseRetrievalPlan, RETRIEVAL_LIMITS, type RetrievalPlan, type MergedRe
 import { blockedPlannedMemory, discardPlannedMemory, withinBudget, runPlannedMemoryContext, type ContextMemoryRetrieval } from './planned-memory-context.js';
 import type { DeliveredMemorySearchResult } from '../memory/search-projection.js';
 import type { LearningService } from './service.js';
-import { buildKnowledgeSynthesisPacket, rankKnowledge } from '../agent-knowledge-synthesis.js';
+import { buildKnowledgeSynthesisPacket, rankKnowledge, type ExternalTaskEvidenceProjection } from '../agent-knowledge-synthesis.js';
 import { failureContext, validateWorkflowUse } from './workflow-evidence.js';
 import { recheckWorkflowReport } from './workflow-verifier.js';
 import type { SkillService } from '../skills/service.js';
 import type { SkillSearchMode } from '../skills/discovery.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { normalizeFailureFamily } from '../mcp/failure-loop-advisor.js';
-import { procedureFingerprint, procedureContractDigest, procedureBoundEvidence } from '../agent-learning-loop.js';
+import { procedureFingerprint, procedureContractDigest, procedureBoundEvidence, type AgentEpisodeEvent } from '../agent-learning-loop.js';
+import { compareProcedureBrowserContext, type BrowserShapeSelection } from '../rdc/browser-control/procedure-context.js';
 import { readEvidenceSnapshot } from '../verification/evidence-snapshot.js';
 import { normalizeCapabilityUses, artifactCapabilityUse, capabilityUseKey, renderCapabilityNotice, inspectedSkillArtifacts, type CapabilityUse } from '../capability-awareness.js';
 
@@ -154,6 +155,8 @@ export interface ExternalControllerContextInput {
   query?: string;
   taskFamily?: string;
   limit?: number;
+  /** Host-only read of one explicitly selected, still-current observation. */
+  browserSelection?: () => BrowserShapeSelection;
 }
 
 interface PlannedContextScope {
@@ -193,6 +196,8 @@ export interface ExternalProcedureInput {
   verificationRef?: string;
   result?: 'success' | 'failure';
   workspace?: string;
+  browserSelection?: () => BrowserShapeSelection;
+  invocationContext?: ExternalInvocationContext;
 }
 
 function sha256(value: string): string {
@@ -750,6 +755,26 @@ export class ExternalControllerLearningService {
     });
   }
 
+  /** Exact host-issued target check, also used inside the existing mutation queue. */
+  private verificationTarget(state: ExternalControllerState, sessionId: string,
+    context?: ExternalInvocationContext): ExternalControllerEpisode {
+    if (!context || !this.invocationLifecycles.has(context) || context.binding !== 'bound'
+      || context.sessionId !== sessionId || !context.taskId || !context.ownerId
+      || !context.workspaceIdentityKey || !context.workspace)
+      throw new Error('EXTERNAL_EPISODE_VERIFICATION_SCOPE_UNAVAILABLE');
+    if (state.sessionHeads[sessionId] !== context.taskId)
+      throw new Error('EXTERNAL_EPISODE_VERIFICATION_STALE_TASK');
+    const episode = state.episodes.find(item => item.id === context.taskId);
+    if (!episode || episode.boundary !== 'explicit' || !episode.memoryBinding
+      || episode.memoryBinding.ownerId !== context.ownerId
+      || episode.memoryBinding.workspaceIdentityKey !== context.workspaceIdentityKey
+      || episode.workspace !== context.workspace)
+      throw new Error('EXTERNAL_EPISODE_VERIFICATION_SCOPE_UNAVAILABLE');
+    if (this.validateMemoryWorkspace(episode.workspace, episode.memoryBinding) !== context.workspace)
+      throw new Error('EXTERNAL_EPISODE_VERIFICATION_SCOPE_UNAVAILABLE');
+    return episode;
+  }
+
   async verifyEpisode(sessionId: string, input: {
     outcome: 'verified' | 'failed';
     verificationRef: string;
@@ -757,11 +782,14 @@ export class ExternalControllerLearningService {
     summary?: string;
     workspace?: string;
     taskFamily?: string;
-  }): Promise<ExternalControllerEpisode> {
-    const current = await this.getEpisode(sessionId);
-    const verificationStatus = await recheckWorkflowReport(input.verificationRef, current?.id);
+  }, invocationContext?: ExternalInvocationContext): Promise<ExternalControllerEpisode> {
+    const state = await this.load(true);
+    if (this.issue) throw new Error('EXTERNAL_CONTROLLER_STATE_DEGRADED_WRITE_REFUSED');
+    const captured = this.verificationTarget(state, sessionId, invocationContext);
+    if (captured.closedAt) return normalizeEpisode(captured);
+    const verificationStatus = await recheckWorkflowReport(input.verificationRef, captured.id);
     return this.mutate(state => {
-      const episode = this.getOrCreateEpisode(state, sessionId);
+      const episode = this.verificationTarget(state, sessionId, invocationContext);
       if (episode.closedAt) return normalizeEpisode(episode);
       observeEpisodeWorkspace(episode, input.workspace);
       if (input.taskFamily) episode.taskFamily = bounded(input.taskFamily, 160);
@@ -1085,6 +1113,18 @@ export class ExternalControllerLearningService {
     });
   }
 
+  /** Capture one read-only owner state, preserving failure status independently of mutable issue. */
+  private async contextEpisodeSnapshot(sessionId: string) {
+    try {
+      const raw = JSON.parse(await readFile(this.statePath, 'utf8')) as ExternalControllerState;
+      if (raw.version !== STATE_VERSION || !Array.isArray(raw.episodes)) throw new Error('SNAPSHOT_INVALID');
+      const heads = normalizeSessionHeads(raw.sessionHeads);
+      const episode = raw.episodes.find(item => item.id === (heads[sessionId] ?? sessionId));
+      return { status: 'available' as const, head: heads[sessionId] ?? sessionId,
+        episode: episode ? normalizeEpisode(episode) : undefined };
+    } catch { return { status: 'unavailable' as const, head: undefined, episode: undefined }; }
+  }
+
   /** Planned contexts are opt-in and cannot start sibling work without a valid host-bound episode. */
   async context(sessionId:string,input:ExternalControllerContextInput={},hostOwnerId?:string,invocationContext?:ExternalInvocationContext) {
     if(!input.retrievalPlan)return this.contextCore(sessionId,input,undefined,invocationContext,hostOwnerId);
@@ -1133,15 +1173,15 @@ export class ExternalControllerLearningService {
         current.updatedAt=new Date().toISOString();
       });
     } else if (input.workspace || input.taskFamily) await this.labelEpisode(sessionId, input);
-    const [authority, episode, state, journey, skillDiscovery] = await Promise.all([
+    const [authority, episodeSnapshot, journey, skillDiscovery] = await Promise.all([
       this.authoritySnapshot(input.workspace).catch(() => undefined),
-      this.getEpisode(sessionId),
-      this.load(),
+      this.contextEpisodeSnapshot(sessionId),
       input.workspace ? this.learning.journey(input.workspace).catch(() => undefined) : Promise.resolve(undefined),
       skillQuery && this.skills
         ? this.skills.discover({ query: skillQuery, mode: skillSearchMode, ...(input.signal ? { signal: input.signal } : {}) }).catch(() => null)
         : Promise.resolve(undefined),
     ]);
+    const episode = episodeSnapshot.episode;
     const query = bounded(input.query, 4000);
     const memoryRetrieval = planned ? await this.contextMemoryRetrieval(sessionId, input, planned) : undefined;
     if(planned&&memoryRetrieval)planned.retrieval=memoryRetrieval;
@@ -1180,6 +1220,7 @@ export class ExternalControllerLearningService {
       }
     }
     const procedures = rankKnowledge((await this.learning.procedures(input.workspace)).map(item => ({ ...item,
+      contractReceipts:procedureBoundEvidence(item).receipts,
       supportEpisodeIds: procedureBoundEvidence(item).supportTaskIds, failureEpisodeIds: procedureBoundEvidence(item).failureTaskIds }))
       .filter(item => item.supportEpisodeIds.length > 0)
       .sort((a, b) => {
@@ -1194,6 +1235,11 @@ export class ExternalControllerLearningService {
       // Dropping whole hits can only shrink this already-budgeted conflict list.
       memoryRetrieval.deliveryConflicts=this.plannedDeliveryConflicts(episode,memoryRetrieval);
     }
+    const projectionBound = Boolean(episode && (!input.workspace || input.workspace === episode.workspace)
+      && (planned ? planned.taskId === episode.id && planned.ownerId === episode.memoryBinding?.ownerId
+        : invocationContext?.binding === 'bound' && invocationContext.taskId === episode.id
+          && invocationContext.workspace === episode.workspace && invocationContext.ownerId === hostOwnerId));
+    const taskEvidence = projectExternalTask(episode, episodeSnapshot.status, projectionBound);
     const synthesis = await buildKnowledgeSynthesisPacket({
       runtime: { memoryService: this.memory, learningService: this.learning, skillsService: this.skills },
       availableTools:this.capabilityTools(sessionId),
@@ -1206,7 +1252,7 @@ export class ExternalControllerLearningService {
         : synthesisEligibility?.completeness === 'partial' ? 'unknown' : 'available',
       ...(memoryRetrieval ? { memoryDisclosure: { hits:memoryRetrieval.hits,coverage:memoryRetrieval.coverage,revisionConflicts:memoryRetrieval.revisionConflicts } } : {}),
       procedures,
-      task: { goal: query, episodes: [] }, workspace: input.workspace,
+      task: { goal: query, episodes: taskEvidence.events }, taskProjection: taskEvidence.meta, workspace: input.workspace,
     });
     const deliveredSkills = new Set(synthesis.skillNames);
     const skills = (skillDiscovery?.search.hits ?? []).filter(hit => deliveredSkills.has(hit.name)).map(hit => ({
@@ -1223,7 +1269,7 @@ export class ExternalControllerLearningService {
       ...(input.workspace ? { workspace: input.workspace } : {}),
     }).filter(item => typeof item.context?.artifactKind === 'string').slice(-20);
 
-    const memoryTaskContext = await this.memoryTaskContext(sessionId, episode);
+    const memoryTaskContext = await this.memoryTaskContext(sessionId, projectionBound ? episode ?? null : null);
     // Recheck after synthesis too. A rotated task receives no previously synthesized hits.
     const finalRetrieval = memoryRetrieval;
     if(planned?.readUsage&&finalRetrieval)finalRetrieval.usage=planned.readUsage();
@@ -1268,6 +1314,27 @@ export class ExternalControllerLearningService {
         itemIds, advisory: true as const, delivery: 'unconfirmed' as const };
     });
 
+    if (projectionBound) {
+      const finalHead = await this.contextEpisodeSnapshot(sessionId);
+      if (finalHead.status !== 'available' || finalHead.head !== episode!.id
+        || finalHead.episode?.memoryBinding?.ownerId !== episode!.memoryBinding?.ownerId
+        || finalHead.episode?.workspace !== episode!.workspace) throw new Error('EXTERNAL_CONTEXT_TASK_CHANGED');
+    }
+    // Browser compatibility is outer, advisory, post-synthesis only.
+    // The selector is resolved now, against the existing last observation; no browser I/O.
+    const chosenBrowser = input.browserSelection ? (projectionBound
+      ? input.browserSelection() : {status:'unknown' as const,reason:'task-disclosure-unbound'}) : undefined;
+    let browserBudget = 8192;
+    const browserProcedures = procedures.map((item,index) => {
+      if (!input.browserSelection) return item;
+      const comp = index < 8
+        ? compareProcedureBrowserContext(procedureContractDigest(item), procedureBoundEvidence(item).receipts, chosenBrowser)
+        : {status:'unknown' as const,reason:'not-compared-budget'};
+      const size=Buffer.byteLength(JSON.stringify(comp),'utf8');
+      if(size > browserBudget) return {...item,browserCompatibility:{status:'unknown',reason:'response-budget-omitted'}};
+      browserBudget-=size;
+      return {...item,browserCompatibility:comp};
+    });
     return {
       contractVersion: planned ? 2 : 1,
       memoryTaskContext,
@@ -1275,12 +1342,12 @@ export class ExternalControllerLearningService {
       synthesis,
       capabilities:synthesis.capabilityExposure,
       workspace: input.workspace ?? null,
-      sessionId: episode ? episode.id : sessionId,
+      sessionId: projectionBound && episode ? episode.id : sessionId,
       currentAuthority: (authority?.current ?? []).map(item => ({
         id: item.id, title: item.title, context: bounded(item.context || item.content, 1200), updatedAt: item.updatedAt,
       })),
       corrections: (authority?.corrections ?? []).map(item => ({ id: item.id, title: item.title, updatedAt: item.updatedAt })),
-      episode,
+      episode: projectionBound ? episode : null,
       ...(planned ? { memoryRetrieval: finalRetrieval } : { memoryRecall, ...(synthesisEligibility ? { synthesisEligibility } : {}), memories: memories.map(item => ({
         id: item.record.id,
         title: item.record.title,
@@ -1295,7 +1362,7 @@ export class ExternalControllerLearningService {
       patterns: journey?.nodes.filter(node => node.type === 'pattern').slice(0, 12) ?? [],
       skills,
       skillSearch,
-      procedures,
+      procedures:browserProcedures,
       recentArtifactOutcomes: outcomeEvents.map(item => ({
         ref: 'activity:' + item.id,
         feature: item.featureOutcome,
@@ -1303,7 +1370,8 @@ export class ExternalControllerLearningService {
         artifactId: item.context?.artifactId,
       })),
       evidenceGaps: [
-        ...(episode?.metrics.toolFailures && !episode.metrics.verifications ? ['current episode has failures but no verification evidence yet'] : []),
+        ...(projectionBound && episode?.metrics.toolFailures && episode.verificationStatus !== 'pass'
+          ? ['current task has failures without owner replay pass'] : []),
         ...(memoryRecall && memoryRecall.state !== 'returned' ? [memoryRecallDescription(memoryRecall)] : []),
         ...(synthesisEligibility?.omitted ? ['Current project synthesis omitted: ' + synthesisEligibility.omitted + '; reasons=' + synthesisEligibility.reasons.join(',') + '; coverage=' + synthesisEligibility.completeness] : []),
         ...(!planned && query && !searchHostContext ? ['Current project synthesis eligibility has no current host-bound scope; ordinary Memory recall remains available.'] : []),
@@ -1464,13 +1532,28 @@ export class ExternalControllerLearningService {
         current.deliveredArtifacts ??= {};
         for (const item of values) current.deliveredArtifacts['procedure:' + item.fingerprint] = procedureContractDigest(item);
       });
-      return values.map(item => ({ ...item, deliveryContractDigest: procedureContractDigest(item), evidenceAttribution: procedureBoundEvidence(item) }));
+      return values.map(({contractReceipts:_sourceReceipts,...item}) => ({
+        ...item, contractReceipts:procedureBoundEvidence(item).receipts,
+        deliveryContractDigest:procedureContractDigest(item), evidenceAttribution:procedureBoundEvidence(item),
+      }));
     };
     if (input.operation === 'list') return deliver(items);
     if (input.operation === 'inspect') {
       const found = items.find(item => item.fingerprint === input.fingerprint);
       if (!found) throw new Error('EXTERNAL_PROCEDURE_NOT_FOUND');
-      return (await deliver([found]))[0];
+      const delivered = (await deliver([found]))[0]!;
+      if (!input.browserSelection) return delivered;
+      const live = await this.contextEpisodeSnapshot(sessionId);
+      const host = input.invocationContext;
+      const bound = Boolean(episode && live.status==='available' && live.head===episode.id
+        && host?.binding==='bound' && host.taskId===episode.id
+        && host.ownerId===episode.memoryBinding?.ownerId
+        && host.workspaceIdentityKey===episode.memoryBinding?.workspaceIdentityKey
+        && host.workspace===episode.workspace);
+      const observation = bound ? input.browserSelection()
+        : {status:'unknown' as const,reason:'host-or-task-not-current'};
+      return {...delivered, browserCompatibility:compareProcedureBrowserContext(
+        procedureContractDigest(found),procedureBoundEvidence(found).receipts,observation)};
     }
     if (input.operation === 'outcome') {
       return this.applyProcedureOutcome(input.fingerprint!, sessionId, input.result!, [input.verificationRef!, ...(input.evidenceRefs ?? [])]);
@@ -1478,7 +1561,10 @@ export class ExternalControllerLearningService {
     if (!episode || episode.terminalOutcome !== 'verified' || !input.name || !input.description || !input.steps?.length || !input.verificationRef) throw new Error('EXTERNAL_PROCEDURE_PROPOSAL_FIELDS_REQUIRED');
     const supported = await this.learning.supportProcedure({ taskId: episode.id, origin: 'external', workspace,
       name: input.name, description: input.description, steps: input.steps, allowedTools: input.allowedTools,
-      reuseCondition: input.reuseCondition, outcome: 'verified', evidenceRefs: [input.verificationRef, ...(input.evidenceRefs ?? [])] });
+      reuseCondition: input.reuseCondition, outcome: 'verified', evidenceRefs: [input.verificationRef, ...(input.evidenceRefs ?? [])],
+      ...(episode.memoryBinding && episode.workspace && episode.boundary==='explicit' ? {browserBinding:{
+        taskId:episode.id,ownerId:episode.memoryBinding.ownerId,workspace:episode.workspace,
+        workspaceIdentityKey:episode.memoryBinding.workspaceIdentityKey}} : {}) });
     return (await deliver([supported]))[0];
   }
 
@@ -1491,7 +1577,10 @@ export class ExternalControllerLearningService {
     if (!deliveredDigest || (declaredDigest !== undefined && declaredDigest !== deliveredDigest)
       || deliveredDigest !== procedureContractDigest(item)) throw new Error('LEARNING_PROCEDURE_DELIVERED_CONTRACT_CONFLICT');
     return this.learning.supportProcedure({ ...item, taskId: episode.id, origin: 'external', evidenceRefs,
-      expectedContractDigest: deliveredDigest, outcome: result === 'success' ? 'verified' : 'failed' });
+      expectedContractDigest: deliveredDigest, outcome: result === 'success' ? 'verified' : 'failed',
+      ...(episode.memoryBinding && episode.workspace && episode.boundary==='explicit' ? {browserBinding:{
+        taskId:episode.id,ownerId:episode.memoryBinding.ownerId,workspace:episode.workspace,
+        workspaceIdentityKey:episode.memoryBinding.workspaceIdentityKey}} : {}) });
   }
 
   async evaluate(input: { workspace?: string; taskFamily?: string; limit?: number; cohortId?: string; baselineEpisodeIds?: string[]; candidateEpisodeIds?: string[] } = {}) {
@@ -1592,4 +1681,41 @@ export class ExternalControllerLearningService {
       modelProviderRequired: false,
     };
   }
+}
+
+/** Bounded owner episode projection for externally observed events. */
+function projectExternalTask(episode: ExternalControllerEpisode | undefined,
+  readStatus: 'available' | 'unavailable', bound: boolean): {
+  meta: ExternalTaskEvidenceProjection; events: AgentEpisodeEvent[];
+} {
+  if (readStatus !== 'available' || !episode || !bound) return { events: [], meta: {
+    sourceStatus: readStatus !== 'available' ? 'unavailable' : 'unknown',
+    snapshotEventCount: null, inspectedEventCount: null, outsideWindowCount: null,
+    outOfScopeCount: null, excludedAttributionCount: null, eligibleCount: null,
+    selectedCount: null, selectionOmittedCount: null, detailTruncated: true,
+  } };
+  const full = episode.events;
+  const inspected = full.slice(-160);
+  const relevant = inspected.filter(item => item.kind === 'failure' || item.kind === 'verification');
+  const excluded = relevant.filter(item => (item.taskId && item.taskId !== episode.id)
+    || (item.attributionStatus && item.attributionStatus !== 'attributed'));
+  const eligible = relevant.filter(item => !excluded.includes(item));
+  const selected = eligible.slice(-16);
+  const events: AgentEpisodeEvent[] = selected.slice(-10).map(item => ({
+    id: item.id, at: item.at, kind: item.kind as 'failure' | 'verification',
+    summary: item.summary, evidenceRefs: item.evidenceRefs,
+    ...(item.tool ? { toolName: item.tool } : {}),
+  }));
+  return { events, meta: {
+    sourceStatus: 'available', episodeId: episode.id, capturedUpdatedAt: episode.updatedAt,
+    snapshotEventCount: full.length, inspectedEventCount: inspected.length,
+    outsideWindowCount: full.length - inspected.length,
+    outOfScopeCount: inspected.length - relevant.length,
+    excludedAttributionCount: excluded.length, eligibleCount: eligible.length,
+    selectedCount: selected.length, selectionOmittedCount: eligible.length - selected.length,
+    ownerVerificationStatus: episode.verificationStatus ?? 'unknown',
+    declaredTerminalOutcome: episode.terminalOutcome,
+    ownerVerificationMetric: episode.metrics.verifications,
+    detailTruncated: full.length > 160 || selected.length > 10 || eligible.length > 16 || excluded.length > 0,
+  } };
 }

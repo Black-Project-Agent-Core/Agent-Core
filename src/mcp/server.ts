@@ -25,7 +25,7 @@ import { createImageInspector, imageInspectSchema } from '../rdc/tools/image-ins
 import { toolHistory } from '../rdc/utils/toolHistory.js';
 import { usageTracker } from '../rdc/utils/usageTracker.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
-import { beginToolInvocationEvidence, currentExternalInvocationContext, currentToolInvocationRequest } from '../tracker/tool-invocation.js';
+import { beginToolInvocationEvidence, currentExternalInvocationContext, currentToolInvocationRequest, takeBrowserObservationUse } from '../tracker/tool-invocation.js';
 import { loadAgentProtocol } from './agent-protocol.js';
 import { annotateFailureLoopException, appendFailureLoopAdvisory, type FailureLoopAdvisory, type FailureLoopAdvisor } from './failure-loop-advisor.js';
 import { registerCodeIntelligenceTools } from './code-intelligence-tools.js';
@@ -40,6 +40,8 @@ import type { PhoneController } from '../phone/controller.js';
 import * as schemas from './rdc-schemas.js';
 import { RDC_TOOL_METADATA } from './rdc-tool-metadata.js';
 import { installInvocationContext } from './external-controller-tool-support.js';
+import type { ArtifactAuthorization } from '../auth/artifact-authorization.js';
+import { registerArtifactInspectTool } from './artifact-inspect-tools.js';
 import type { MutationExecutionContext } from '../rdc/mutation-coordinator.js';
 import type { ExternalAttributionStatus } from '../learning/external-controller.js';
 import { applyResultBudget } from './result-budget.js';
@@ -68,6 +70,7 @@ export interface AgentCoreMcpRuntime {
   webResearch?: WebResearchService;
   failureLoopAdvisor?: FailureLoopAdvisor;
   mutationSafety?: McpMutationSafety;
+  artifactAuthorization?: ArtifactAuthorization;
 }
 
 type ToolResult = { content: Array<Record<string, unknown>>; isError?: boolean; [key: string]: unknown };
@@ -201,9 +204,15 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
         } catch (error) {
           activityTracker.captureFailure('USAGE', error, 'tool-usage-write-failure', { tool: name });
         }
+        const browserUse = name === 'browser_control' ? takeBrowserObservationUse() : undefined;
+        const browserUseAdmitted = Boolean(browserUse && input.action === 'act'
+          && !finalResult.isError && attributionStatus === 'attributed'
+          && !currentToolInvocationRequest()?.mutationContext.signal?.aborted
+          && externalLearning && await externalLearning.invocationDisclosureCurrent(invocationContext));
         invocation?.finish(finalResult.isError ? 'handled-failure' : 'success', { attributionStatus,
           argumentKeys: Object.keys(input),
           ...captureContext,
+          ...(browserUseAdmitted ? { browserObservationUse: browserUse } : {}),
           // Invocation settlement is metadata-only; the existing response/history owners retain their own policy.
         });
       }
@@ -282,7 +291,7 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
   // registration wrappers after the ordinary history/evidence result budget.
   const registerTool = server.registerTool.bind(server);
   (server as any).registerTool = (name: string, config: any, callback: any) => registerTool(name, config,
-    name === 'image_inspect'
+    (name === 'image_inspect' || name === 'artifact_inspect')
       ? async (args: any, ctx: any) => applyResultBudget(name, await callback(args, ctx)) as any
       : callback);
   installCredentialToolGrant(server, key);
@@ -335,8 +344,10 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
   tool(server, 'get_prompts', 'Get Prompt', schemas.getPrompts, getPrompts as any, true);
 
   if (runtime.externalControllerLearning && runtime.controllerSessionId) {
+    const browserAllowedForController = credentialAllowsTool(key,'browser_control');
     registerControllerLearningTools(server, runtime.externalControllerLearning, runtime.controllerSessionId,
       runtime.memoryExperience && !runtime.nativeTaskId ? {
+        browserAllowed: browserAllowedForController,
         ownerId: memoryOwner ?? '', workspaceIdentity: workspace => {
           if (!workspaceRegistry) throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
           return workspaceRegistry.registeredWorkspaceIdentity(workspace);
@@ -400,6 +411,7 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.externalControllerLearning,
     runtime.controllerSessionId,
   );
+  if (runtime.artifactAuthorization && !runtime.nativeTaskId) registerArtifactInspectTool(server, runtime.artifactAuthorization);
   if (runtime.webResearch) registerWebResearchTools(server, runtime.webResearch, {
     externalLearning: runtime.externalControllerLearning,
     controllerSessionId: runtime.controllerSessionId,

@@ -128,11 +128,11 @@ async function builtManifestBudget(options = {}) {
     const mod = await import(`${pathToFileURL(serverPath).href}?compat=${stat.mtimeMs}`);
     // This is the exact reviewed cohort, not a claim about all optional runtime tools.
     const runtime = { memoryService: {}, learningService: {}, semanticIde: {}, skillsService: {},
-      phoneController: { enabled: true }, codeIntelligence: {}, webResearch: {} };
+      phoneController: { enabled: true }, codeIntelligence: {}, webResearch: {}, artifactAuthorization: {} };
     const manifest = registeredManifest(mod.createAgentCoreMcpServer(undefined, runtime));
     const bytes = serializedBytes(manifest), approximateTokens = Math.ceil(bytes / 4);
     const image = manifest.tools.find(tool => tool.name === 'image_inspect');
-    const result = { available: true, stale, cohort: 'reviewed-75-without-memory-v2-and-controller-learning',
+    const result = { available: true, stale, cohort: 'reviewed-registration-without-memory-v2-and-controller-learning',
       toolCount: manifest.tools.length, bytes, approximateTokens, byteBudget: 128 * 1024, tokenBudget: 32_768,
       exceeded: bytes > 128 * 1024 || approximateTokens > 32_768,
       imageNodeBytes: serializedBytes(image), imageDescriptionBytes: Buffer.byteLength(image.description, 'utf8') };
@@ -166,6 +166,7 @@ async function builtManifestBudget(options = {}) {
 
 const mcpFiles = [
   'src/mcp/server.ts',
+  'src/mcp/artifact-inspect-tools.ts',
   'src/mcp/memory-tools.ts',
   'src/mcp/memory-experience-tools.ts',
   'src/mcp/learning-tools.ts',
@@ -180,6 +181,7 @@ const mcpFiles = [
 const routeFiles = ['src/http/app.ts', 'src/oauth/service.ts'];
 const schemaFiles = [
   'src/mcp/rdc-schemas.ts',
+  'src/mcp/rdc-tool-metadata.ts',
   'src/mcp/memory-schemas.ts',
   'src/mcp/learning-schemas.ts',
   'src/mcp/partner-schemas.ts',
@@ -201,7 +203,7 @@ if (process.argv.includes('--manifest-only')) {
   const option = name => { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; };
   const result = await builtManifestBudget({ output: option('--output'), imageBaseline: option('--image-baseline') });
   console.log(JSON.stringify(result, null, 2));
-  if (!result.available || result.stale || result.exceeded || result.toolCount !== 75 || result.imageBaseline?.withinDelta === false)
+  if (!result.available || result.stale || result.exceeded || result.toolCount !== 76 || result.imageBaseline?.withinDelta === false)
     process.exitCode = 2;
 } else {
 const currentTools = new Set();

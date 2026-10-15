@@ -16,7 +16,7 @@ import { finalizePdfEvidence, PDF_EVIDENCE_BLOCK } from '../tools/pdf/index.js';
 import { expectedResultIntegritySchema } from '../../security/verified-result-artifact.js';
 
 import { ServerResult } from '../types.js';
-import { withTimeout } from '../utils/withTimeout.js';
+import { withTimeout, runWithCallerAbortableTimeout, assertReadActive, isReadCancelled } from '../utils/withTimeout.js';
 import { createErrorResponse } from '../error-handlers.js';
 import { configManager } from '../config-manager.js';
 
@@ -78,7 +78,7 @@ function getErrorFromPath(path: string): string {
 /**
  * Handle read_file command
  */
-export async function handleReadFile(args: unknown): Promise<ServerResult> {
+export async function handleReadFile(args: unknown, context?: MutationExecutionContext): Promise<ServerResult> {
     // Backstop for the whole handler operation. The real control is the
     // 3-minute cancellable read timeout inside readFileFromDisk; this sits just
     // above it (so that one fires first, with cleanup + a useful error) but
@@ -89,7 +89,8 @@ export async function handleReadFile(args: unknown): Promise<ServerResult> {
     if (args === null || args === undefined) {
         return createErrorResponse('No arguments provided for read_file command');
     }
-    const readFileOperation = async () => {
+    const readFileOperation = async (signal: AbortSignal) => {
+        assertReadActive(signal);
         const parsed = ReadFileArgsSchema.parse(args);
 
         // Get the configuration for file read limits
@@ -117,6 +118,7 @@ export async function handleReadFile(args: unknown): Promise<ServerResult> {
         const expectedIntegrity = parsed.options?.expectedIntegrity === undefined ? undefined
             : expectedResultIntegritySchema.parse(parsed.options.expectedIntegrity);
         const options: ReadOptions = {
+            signal,
             networkPolicy,
             expectedIntegrity,
             isUrl: parsed.isUrl,
@@ -259,8 +261,9 @@ export async function handleReadFile(args: unknown): Promise<ServerResult> {
     };
 
     // Execute with timeout at the handler level
-    const result = await withTimeout(
-        readFileOperation().catch(error => {
+    const result = await runWithCallerAbortableTimeout(
+        signal => readFileOperation(signal).catch(error => {
+            if (isReadCancelled(error) || signal.aborted) throw error;
             if (args && typeof args === 'object' && (args as any).options?.networkPolicy !== undefined) {
                 const message = error instanceof Error ? error.message : '';
                 return createErrorResponse(/^PUBLIC_URL_[A-Z_]+$/.test(message) ? message : 'PUBLIC_URL_READ_FAILED');
@@ -273,8 +276,9 @@ export async function handleReadFile(args: unknown): Promise<ServerResult> {
         }),
         HANDLER_TIMEOUT,
         'Read file handler operation',
-        null
+        context?.signal
     );
+    assertReadActive(context?.signal);
     if (result == null) {
         // Handles the impossible case where withTimeout resolves to null instead of throwing
         throw new Error('Failed to read the file');
@@ -285,9 +289,11 @@ export async function handleReadFile(args: unknown): Promise<ServerResult> {
 /**
  * Handle read_multiple_files command
  */
-export async function handleReadMultipleFiles(args: unknown): Promise<ServerResult> {
+export async function handleReadMultipleFiles(args: unknown, context?: MutationExecutionContext): Promise<ServerResult> {
+    assertReadActive(context?.signal);
     const parsed = ReadMultipleFilesArgsSchema.parse(args);
-    const fileResults = await readMultipleFiles(parsed.paths);
+    const fileResults = await readMultipleFiles(parsed.paths, { signal: context?.signal });
+    assertReadActive(context?.signal);
 
     // Create a text summary of all files
     const textSummary = fileResults.map(result => {

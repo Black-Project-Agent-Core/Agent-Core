@@ -12,7 +12,7 @@ export interface CapabilityArtifact { kind: 'skill' | 'pattern' | 'procedure'; i
 const clean = (s: unknown, max = 160) => redactSensitiveString(String(s ?? '')).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g,' ').trim().slice(0,max);
 const hash = (value: unknown) => 'sha256:' + createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export const CAPABILITY_LABELS: Record<string,string> = {
- 'code.intelligence':'Code Intelligence', 'code.modify':'Code Intelligence', 'semantic.ide':'Semantic IDE',
+ 'artifact.inspect':'Artifact Inspection', 'code.intelligence':'Code Intelligence', 'code.modify':'Code Intelligence', 'semantic.ide':'Semantic IDE',
  'web.research':'Web Research', 'browser.navigate':'Browser Control', 'browser.act':'Browser Control',
  'phone.observe':'Phone Control', 'phone.act':'Phone Control', 'process.execute':'Process Execution', 'process.admin':'Process Execution',
 };
@@ -64,7 +64,8 @@ export const capabilityUseKey=(u:CapabilityUse)=>u.capabilityId+'|'+u.revision;
 export function toolCapabilityUse(name:string,args:Record<string,unknown>,success:boolean,evidenceRef:string):CapabilityUse|null {
  if(!success || !evidenceRef) return null;
  let family='';
- if(['code_graph','code_surface','code_analysis','code_patterns','code_repair','code_refactor'].includes(name))family='code.intelligence';
+ if(name==='artifact_inspect' && args.action==='inspect')family='artifact.inspect';
+ else if(['code_graph','code_surface','code_analysis','code_patterns','code_repair','code_refactor'].includes(name))family='code.intelligence';
  else if(name==='code_orient' && args.action!=='status')family='code.intelligence';
  else if(name==='code_workspace' && !['list','resolve','status','refs'].includes(String(args.action)))family='code.intelligence';
  else if(name==='code_symbol' && args.action!=='status')family='semantic.ide';
@@ -73,7 +74,7 @@ export function toolCapabilityUse(name:string,args:Record<string,unknown>,succes
  else if(name.startsWith('phone_') && name!=='phone_status' && name!=='phone_list_named_actions')family='phone.act';
  else if(['start_process','interact_with_process','kill_process','force_terminate'].includes(name))family='process.execute';
  if(!family)return null;
- const purposes:Record<string,string>={'code.intelligence':'menelusuri struktur dan hubungan kode','semantic.ide':'memeriksa simbol dan referensi kode','web.research':'mencari serta membaca sumber web','browser.navigate':'berinteraksi dengan halaman yang relevan','phone.act':'mengerjakan langkah pada perangkat','process.execute':'menjalankan langkah proses yang relevan'};
+ const purposes:Record<string,string>={'artifact.inspect':'memeriksa deklarasi statis artefak yang telah diizinkan','code.intelligence':'menelusuri struktur dan hubungan kode','semantic.ide':'memeriksa simbol dan referensi kode','web.research':'mencari serta membaca sumber web','browser.navigate':'berinteraksi dengan halaman yang relevan','phone.act':'mengerjakan langkah pada perangkat','process.execute':'menjalankan langkah proses yang relevan'};
  return {capabilityId:'family:'+family,kind:'tool-family',displayName:CAPABILITY_LABELS[family],revision:hash(family),
   purpose:purposes[family],evidenceRef:clean(evidenceRef,500),evidenceKind:'observed-tool'};
 }

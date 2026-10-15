@@ -29,6 +29,23 @@ export interface AgentKnowledgePacket {
 }
 
 export type KnowledgeSourceStatus = 'available' | 'unavailable' | 'not-requested' | 'unknown';
+export interface ExternalTaskEvidenceProjection {
+  sourceStatus: KnowledgeSourceStatus;
+  episodeId?: string;
+  capturedUpdatedAt?: string;
+  snapshotEventCount: number | null;
+  inspectedEventCount: number | null;
+  outsideWindowCount: number | null;
+  outOfScopeCount: number | null;
+  excludedAttributionCount: number | null;
+  eligibleCount: number | null;
+  selectedCount: number | null;
+  selectionOmittedCount: number | null;
+  ownerVerificationStatus?: 'pass' | 'fail' | 'unavailable' | 'unknown';
+  declaredTerminalOutcome?: 'verified' | 'failed';
+  ownerVerificationMetric?: number;
+  detailTruncated: boolean;
+}
 type KnowledgeSection = 'capabilities' | 'task-evidence' | 'memory-neighborhood' | 'patterns'
   | 'skills' | 'procedures' | 'artifact-outcomes' | 'contradictions' | 'evidence-gaps';
 export interface KnowledgePacketCoverage {
@@ -59,6 +76,8 @@ export async function buildKnowledgeSynthesisPacket(input: {
   memorySourceStatus?: KnowledgeSourceStatus;
   procedures: AgentProcedureCandidate[];
   task?: { goal?: string; episodes: AgentEpisodeEvent[] };
+  /** Optional snapshot metadata from the external owner; never a fresh lookup. */
+  taskProjection?: ExternalTaskEvidenceProjection;
   workspace?: string;
   availableTools?: readonly string[];
   /** null records an attempted discovery failure; do not scan or embed again. */
@@ -111,13 +130,33 @@ export async function buildKnowledgeSynthesisPacket(input: {
   let patternStatus = journeyStatus;
 
   const recentEpisodes = (input.task?.episodes ?? []).slice(-16);
+  const projected = input.taskProjection;
+  if (projected?.detailTruncated) truncated.add('task-evidence');
   const taskEvidenceLines = recentEpisodes
     .filter(event => ['hypothesis','strategy-change','failure','diagnosis','verification'].includes(event.kind))
     .slice(-10)
-    .map(event => '- ' + event.kind + ': ' + detail('task-evidence', event.summary, 500)
-      + (event.evidenceRefs.length ? ' | evidence=' + event.evidenceRefs.slice(0, 4).join(',') : ''));
+    .map(event => '- ' + (projected ? 'id=' + event.id + ' at=' + event.at + ' ' : '')
+      + event.kind + ': ' + detail('task-evidence', event.summary, 500)
+      + (event.toolName ? ' | tool=' + detail('task-evidence', event.toolName, 120) : '')
+      + (projected ? ' | source=source:external-episode:' + projected.episodeId + '#' + event.id : '')
+      + (event.evidenceRefs.length ? ' | refs=' + event.evidenceRefs.filter(ref => ref.length <= 360).slice(0, 4).join(',') : ''));
   const failureCount = recentEpisodes.filter(event => event.kind === 'failure').length;
   const verificationCount = recentEpisodes.filter(event => event.kind === 'verification').length;
+  const taskEventSummary: string[] = [];
+  if (projected) taskEventSummary.push('- episode=' + (projected.episodeId ?? 'unknown')
+    + ' updated=' + (projected.capturedUpdatedAt ?? 'unknown')
+    + ' snapshot=' + (projected.snapshotEventCount ?? 'unknown')
+    + ' inspected=' + (projected.inspectedEventCount ?? 'unknown'));
+  if (projected) taskEventSummary.push('- outside-window=' + (projected.outsideWindowCount ?? 'unknown')
+    + ' other-kinds=' + (projected.outOfScopeCount ?? 'unknown')
+    + ' attribution-excluded=' + (projected.excludedAttributionCount ?? 'unknown')
+    + ' eligible=' + (projected.eligibleCount ?? 'unknown')
+    + ' selected=' + (projected.selectedCount ?? 'unknown')
+    + ' selection-omitted=' + (projected.selectionOmittedCount ?? 'unknown'));
+  if (projected) taskEventSummary.push('- owner-replay=' + (projected.ownerVerificationStatus ?? 'unknown')
+    + ' declared-terminal=' + (projected.declaredTerminalOutcome ?? 'unknown')
+    + ' verification-metric=' + (projected.ownerVerificationMetric ?? 'unknown')
+    + ' | event declaration is not independent verification');
 
   if (input.runtime.learningService && input.workspace) {
     try {
@@ -236,10 +275,10 @@ export async function buildKnowledgeSynthesisPacket(input: {
   );
 
   const evidenceGapLines: string[] = [];
-  if (failureCount > 0 && verificationCount === 0) {
-    evidenceGapLines.push('- failures are present but no independent verification episode is recorded yet');
+  if (failureCount > 0 && (!projected || projected.ownerVerificationStatus !== 'pass')) {
+    evidenceGapLines.push('- selected failures lack owner-recorded replay pass; event declarations do not prove recovery');
   }
-  if (taskEvidenceLines.length === 0) evidenceGapLines.push('- no current hypothesis/failure/verification evidence has been recorded yet');
+  if (taskEvidenceLines.length === 0) evidenceGapLines.push('- no selected event detail in inspected window; earlier history or excluded attribution may exist');
   if (contradictionLines.length === 0) evidenceGapLines.push('- no explicit contradiction was surfaced; absence is not proof of consistency');
   if (memoryStatus === 'unavailable') evidenceGapLines.push('- memory-recall-unavailable; relevant prior experience is unknown');
   if (journeyStatus === 'unavailable') evidenceGapLines.push('- learning-journey-unavailable; neighborhood and contradiction coverage are unknown');
@@ -255,8 +294,8 @@ export async function buildKnowledgeSynthesisPacket(input: {
   const sections: Array<{ id: KnowledgeSection; heading: string; status: KnowledgeSourceStatus; rows: string[]; delivered: string[] }> = [
     { id: 'capabilities', heading: 'CAPABILITIES', status: input.availableTools
       && journeyStatus === 'available' && owners.skills === 'available' ? 'available' : 'unknown', rows: capabilityExposure.text.split('\n'), delivered: [] },
-    { id: 'task-evidence', heading: 'CURRENT TASK EVIDENCE', status: input.task ? 'available' : 'not-requested',
-      rows: [...(input.task?.goal ? ['- goal: ' + detail('task-evidence', input.task.goal, 700)] : []), ...taskEvidenceLines], delivered: [] },
+    { id: 'task-evidence', heading: 'CURRENT TASK EVIDENCE', status: projected?.sourceStatus ?? (input.task ? 'available' : 'not-requested'),
+      rows: [...taskEventSummary, ...(input.task?.goal ? ['- goal: ' + detail('task-evidence', input.task.goal, 700)] : []), ...taskEvidenceLines], delivered: [] },
     { id: 'memory-neighborhood', heading: 'RELATED MEMORY / KNOWLEDGE NEIGHBORHOOD', status: neighborhoodStatus, rows: [...memoryLines, ...relatedLines], delivered: [] },
     { id: 'patterns', heading: 'ACCEPTED CODE PATTERNS', status: patternStatus, rows: patternLines, delivered: [] },
     { id: 'skills', heading: 'ACTIVE SKILL ARTIFACTS', status: skillStatus, rows: [...(skillSearchLine ? [skillSearchLine] : []), ...skillLines], delivered: [] },
@@ -277,6 +316,15 @@ export async function buildKnowledgeSynthesisPacket(input: {
       section.delivered.push(row);
       budget -= row.length + 1;
     }
+  }
+  if (projected) {
+    const current = sections.find(section => section.id === 'task-evidence')!;
+    const count = taskEvidenceLines.filter(row => current.delivered.includes(row)).length;
+    const status = '- event-details-delivered=' + count + ' | events are not row-coverage counts';
+    if (status.length + 1 <= budget) {
+      current.rows.push(status); current.delivered.push(status); budget -= status.length + 1;
+    } else truncated.add('task-evidence');
+    if (count < (projected.selectedCount ?? 0)) truncated.add('task-evidence');
   }
   const coverage: KnowledgePacketCoverage = { version: 1, scope: 'packet-composition',
     unit: 'utf16-code-units', limit: 16000, used: 0, sections: {} as KnowledgePacketCoverage['sections'] };

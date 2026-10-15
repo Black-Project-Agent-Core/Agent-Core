@@ -1,7 +1,8 @@
 import { browserControlService } from '../browser-control/service.js';
 import type { ServerResult } from '../types.js';
+import type { MutationExecutionContext } from '../mutation-coordinator.js';
 
-export async function handleBrowserControl(args: any): Promise<ServerResult> {
+export async function handleBrowserControl(args: any, context?: MutationExecutionContext): Promise<ServerResult> {
   try {
     let result: Record<string, unknown>;
     switch (args.action) {
@@ -9,7 +10,7 @@ export async function handleBrowserControl(args: any): Promise<ServerResult> {
         result = await browserControlService.open(args.url, args.headless ?? true, {interactionCapabilities:args.interactionCapabilities,transport:args.transport});
         break;
       case 'observe':
-        result = await browserControlService.observe(args.sessionId, {canvas:args.canvas});
+        result = await browserControlService.observe(args.sessionId, {canvas:args.canvas,host:context?.invocationContext});
         break;
       case 'act':
         result = await browserControlService.act(
@@ -17,6 +18,8 @@ export async function handleBrowserControl(args: any): Promise<ServerResult> {
           args.observationId,
           args.actionId,
           args.text,
+          context?.invocationContext,
+          context?.signal,
         );
         break;
       case 'close':

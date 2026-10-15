@@ -533,3 +533,13 @@ These mechanisms are independently implemented in TypeScript in Agent Core's exi
 - AutoSkill, `ECNU-ICALK/AutoSkill` revision `94c47ca488d4ba4117d20272e66d49b9877e68cf`: descriptor/applicability design inspected in `autoskill/interactive/selection.py` and `retrieval.py`. A root license was not available in the inspected revision. No source is copied; applicability parsing is an independent implementation over Agent Core's existing Trigger/Non-trigger sections.
 
 The MIT permission and warranty disclaimer reproduced in this file apply to the MIT-licensed reference notices above; attribution does not assert inclusion of their complete implementations.
+
+## REA (morluto/rea), selected static artifact-analysis mechanisms — 2026-10-15
+
+Native Agent Core `src/artifact-analysis/` independently adapts bounded directory/ASAR admission, JavaScript/Electron static declaration analysis and PE/CLI managed metadata/native-boundary patterns inspected from `morluto/rea` at commit `788964d52c62aa5b29b342e31b37fe63a27d69d1` (REA 6.5.0). The adaptation uses the existing Agent Core identity, authorization, worker lifecycle and TypeScript runtime; the donor REA runtime, binary engine registry, CLR execution, commercial engines, decompiler and entire dependency tree are **not** bundled. See `docs/Batch13-Hooks-REA-Windows-Implementation-20261015.md` for scope and limitations.
+
+The selected upstream REA-authored source is licensed under the **MIT License**, Copyright (c) 2026 morluto. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+This attribution does **not** license third-party target artifacts. The provenance concerns only the selected REA-authored mechanisms; vendor/dependency licenses remain independent.

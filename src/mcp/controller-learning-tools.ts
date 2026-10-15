@@ -4,6 +4,8 @@ import { currentExternalInvocationContext } from '../tracker/tool-invocation.js'
 import { activityTracker } from '../tracker/activity-tracker.js';
 import * as schemas from './controller-learning-schemas.js';
 import { appendSkillReminderCapsule } from './external-controller-tool-support.js';
+import { browserControlService } from '../rdc/browser-control/service.js';
+import type { BrowserShapeSelection } from '../rdc/browser-control/procedure-context.js';
 
 function text(value: unknown) {
   return {
@@ -15,11 +17,12 @@ export function registerControllerLearningTools(
   server: McpServer,
   service: ExternalControllerLearningService,
   sessionId: string,
-  host?: { ownerId: string; workspaceIdentity: (workspace: string) => { name: string; key: string } },
+  host?: { ownerId: string; workspaceIdentity: (workspace: string) => { name: string; key: string };
+    browserAllowed: boolean },
 ): void {
   server.registerTool('controller_learning', {
     title: 'External Controller Learning',
-    description: 'Controller episodes, evidence context and reuse receipts; Memory CRUD and learning(checkpoint/review) are separate tools. Start/resume with episodeOperation=start, stable taskKey and registered workspace; use the returned taskId. context without retrievalPlan keeps v1. Opt-in retrievalPlan needs that active taskId, matching query/rootQuery and 2–4 unique q1–q4 questions; limit 1–8 per recall. v2 reports bounded serial Memory recall, exact revisions, gaps and omissions; existing embeddings may receive each query. Timeout stops waiting, not in-flight I/O. Skill discovery stays lexical unless explicit hybrid plus consent to send query/positive descriptors to configured Cloudflare Workers AI. artifact_receipt needs actual use; memoryFeedback needs independently verified use. procedure/evaluate manage recorded workflows/outcomes, not permission. Missing new fields: refresh the client after resident update; do not replace task identity or grants.',
+    description: 'Host-bound controller episodes, context and receipts; Memory CRUD and Learning checkpoint/review are separate. Start with stable taskKey and registered workspace, then use host-returned taskId. Planned retrieval requires active taskId, matching query/rootQuery, 2–4 q1–q4 questions and limit 1–8; embeds may receive queries, timeout only stops waiting. Skill hybrid can send queries/descriptors to Cloudflare AI only with consent. Artifact receipts need actual use, Memory helpfulness independent verification; procedure/evaluate grant no permissions. browserObservation selects only a grant-gated current host-bound browser snapshot for context/procedure inspect: shape is advisory, not page identity or permission. Refresh after schema updates.',
     inputSchema: schemas.controllerLearning,
     annotations: {
       readOnlyHint: false,
@@ -29,6 +32,12 @@ export function registerControllerLearningTools(
     const invocationContext = currentExternalInvocationContext();
     const started = Date.now();
     const input = schemas.controllerLearning.parse(args ?? {});
+    const selectBrowser = input.browserObservation ? ():BrowserShapeSelection => {
+      if (!host?.browserAllowed || invocationContext?.binding !== 'bound'
+        || invocationContext.ownerId !== host.ownerId)
+        return {status:'unknown',reason:'browser-grant-or-host-binding-unavailable'};
+      return browserControlService.selectProcedureObservation(input.browserObservation!,invocationContext);
+    } : undefined;
     try {
       let result: unknown;
       if (input.action === 'status') {
@@ -39,6 +48,7 @@ export function registerControllerLearningTools(
           ...(input.query ? { query: input.query } : {}),
           ...(input.retrievalPlan ? { retrievalPlan: input.retrievalPlan, taskId: input.taskId } : {}),
           ...(input.skillSearchMode ? { skillSearchMode: input.skillSearchMode } : {}),
+          ...(selectBrowser ? {browserSelection:selectBrowser} : {}),
           ...(ctx?.mcpReq?.signal ? { signal: ctx.mcpReq.signal } : {}),
           ...(input.taskFamily ? { taskFamily: input.taskFamily } : {}),
           ...(input.limit ? { limit: input.limit } : {}),
@@ -76,7 +86,7 @@ export function registerControllerLearningTools(
             ...(input.summary ? { summary: input.summary } : {}),
             ...(input.workspace ? { workspace: input.workspace } : {}),
             ...(input.taskFamily ? { taskFamily: input.taskFamily } : {}),
-          });
+          }, invocationContext);
         } else {
           result = {
             current: await service.getEpisode(sessionId),
@@ -107,6 +117,8 @@ export function registerControllerLearningTools(
       } else if (input.action === 'procedure') {
         result = await service.procedure(sessionId, {
           operation: input.procedureOperation ?? 'list',
+          ...(selectBrowser ? {browserSelection:selectBrowser} : {}),
+          ...(invocationContext?.binding === 'bound' ? {invocationContext} : {}),
           ...(input.fingerprint ? { fingerprint: input.fingerprint } : {}),
           ...(input.name ? { name: input.name } : {}),
           ...(input.description ? { description: input.description } : {}),

@@ -17,7 +17,8 @@ export type AgentCapabilityFamily =
   | 'memory.read'
   | 'memory.write'
   | 'admin.config'
-  | 'web.research';
+  | 'web.research'
+  | 'artifact.inspect';
 
 export interface AgentToolRestriction {
   allowedActions?: string[];
@@ -41,6 +42,9 @@ const t = (name: string, restriction?: AgentToolRestriction): AgentCapabilityToo
 });
 
 export const AGENT_CAPABILITY_CATALOG: readonly AgentCapabilityDescriptor[] = [
+  { family: 'artifact.inspect', risk: 2,
+    description: 'Static bounded artifact inspection of operator-approved exact targets only; no execution or implicit authorization.',
+    tools: [t('artifact_inspect', { allowedActions: ['prepare','status','inspect'] })] },
   {
     family: 'observe.local',
     risk: 0,

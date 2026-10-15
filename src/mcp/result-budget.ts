@@ -15,7 +15,7 @@ const IMAGE_ENCODED_BUDGET = 2 * 1024 * 1024;
 const MAX_ARTIFACTS = 128;
 const MAX_ARTIFACT_BYTES = 128 * 1024 * 1024;
 const ARTIFACT_TTL_MS = 24 * 60 * 60 * 1000;
-const NON_PERSISTABLE = new Set(['read_file', 'read_multiple_files', 'get_config', 'get_prompts']);
+const NON_PERSISTABLE = new Set(['read_file', 'read_multiple_files', 'get_config', 'get_prompts', 'artifact_inspect']);
 const MODULE_PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PROJECT_ROOT = resolveProjectRoot(process.env, MODULE_PROJECT_ROOT);
 

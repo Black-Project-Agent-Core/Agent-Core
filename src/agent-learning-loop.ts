@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { redactSensitiveValue } from './security/redaction.js';
+import { validBrowserReceipt, type BrowserReceiptContext } from './rdc/browser-control/procedure-context.js';
 
 export type AgentEpisodeEventKind =
   | 'task-start' | 'recall' | 'hypothesis' | 'action' | 'observation'
@@ -60,7 +61,7 @@ export interface AgentArtifactUseDeclaration {
 export interface AgentProcedureCandidate {
   contractVersion?: 1;
   contractDigest?: string;
-  contractReceipts?: Array<{ taskId: string; contractDigest: string; outcome: 'verified' | 'failed'; evidenceRefs: string[] }>;
+  contractReceipts?: Array<{ taskId: string; contractDigest: string; outcome: 'verified' | 'failed'; evidenceRefs: string[]; browserContext?: BrowserReceiptContext }>;
   workspace?: string;
   origins?: Array<'native' | 'external'>;
   historicalTaskIds?: string[];
@@ -152,7 +153,12 @@ export function assertProcedureCompatible(current: Parameters<typeof procedureCo
 /** Counts attributable history only; qualification still freshly replays each receipt. */
 export function procedureBoundEvidence(item: AgentProcedureCandidate) {
   const receipts = item.contractVersion === 1 && item.contractDigest === procedureContractDigest(item)
-    ? (item.contractReceipts ?? []).filter(receipt => receipt.contractDigest === item.contractDigest) : [];
+    ? (item.contractReceipts ?? []).filter(receipt => receipt.contractDigest === item.contractDigest)
+      .map(receipt => ({ taskId:receipt.taskId,contractDigest:receipt.contractDigest,
+        outcome:receipt.outcome,evidenceRefs:receipt.evidenceRefs,
+        ...(receipt.browserContext === undefined ? {} : validBrowserReceipt(receipt.browserContext)
+          ? {browserContext:receipt.browserContext}
+          : {browserContextUnavailable:'malformed-or-unsupported'}) })) : [];
   const supportTaskIds = [...new Set(receipts.filter(r => r.outcome === 'verified').map(r => r.taskId))];
   const failureTaskIds = [...new Set(receipts.filter(r => r.outcome === 'failed').map(r => r.taskId))];
   return { receipts, supportTaskIds, failureTaskIds,

@@ -19,6 +19,7 @@
 import fs from 'fs/promises';
 import PizZip from 'pizzip';
 import { FileHandler, FileResult, FileInfo, ReadOptions, EditResult } from './base.js';
+import { assertReadActive } from '../withTimeout.js';
 
 // ════════════════════════════════════════════════════════════════
 // XML Pretty-Print / Compact
@@ -516,7 +517,9 @@ export class DocxFileHandler implements FileHandler {
      * With offset/length: returns raw pretty-printed XML with line pagination
      */
     async read(path: string, options?: ReadOptions): Promise<FileResult> {
-        const buf = await fs.readFile(path);
+        assertReadActive(options?.signal);
+        const buf = await fs.readFile(path, { signal: options?.signal });
+        assertReadActive(options?.signal);
         const { zip, documentXml } = loadDocxZip(buf);
         const pretty = prettyPrintXml(documentXml);
         const allLines = pretty.split('\n');

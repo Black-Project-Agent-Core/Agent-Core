@@ -12,6 +12,7 @@ import {
   NativeAgentController,
 } from './agent-controller.js';
 import { AgentRuntimeService } from './agent-runtime.js';
+import type { ArtifactAuthorization } from './auth/artifact-authorization.js';
 import {
   AgentChatStore,
   type AgentChatConversation,
@@ -92,6 +93,7 @@ export class AgentChatService {
     private readonly runtime: AgentRuntimeService,
     private readonly controller: NativeAgentController,
     private readonly projectRoot: string,
+    private readonly artifactAuthorization?: ArtifactAuthorization,
   ) {
     this.store = store;
   }
@@ -100,6 +102,7 @@ export class AgentChatService {
     projectRoot: string,
     runtime: AgentRuntimeService,
     controller: NativeAgentController,
+    artifactAuthorization?: ArtifactAuthorization,
   ): Promise<AgentChatService> {
     const service = new AgentChatService(
       new AgentChatStore(
@@ -108,6 +111,7 @@ export class AgentChatService {
       runtime,
       controller,
       projectRoot,
+      artifactAuthorization,
     );
     await service.reconcileInterruptedTurns();
     return service;
@@ -246,10 +250,10 @@ export class AgentChatService {
     return { state, revision: record.revision };
   }
 
-  private async finalizeTurnWithSkillReceipt(input: Parameters<AgentChatStore['finalizeTurn']>[0]) {
+  private async finalizeTurnWithSkillReceipt(input: Parameters<AgentChatStore['finalizeTurn']>[0], skipRuntimeNotice = false) {
     this.store.finalizeTurn(input);
     const turn = this.store.getTurn(input.turnId);
-    if (turn) {
+    if (turn && !skipRuntimeNotice) {
       await this.runtime.recordNativeSkillNoticeInclusion?.(turn.runtimeTaskId, input.response);
       await this.runtime.recordNativeCapabilityNoticeInclusion?.(turn.runtimeTaskId,input.response);
     }
@@ -273,8 +277,11 @@ export class AgentChatService {
     if (!conversation || conversation.status !== 'active') {
       throw new Error('AGENT_CHAT_CONVERSATION_NOT_ACTIVE');
     }
-    await this.runtime.ensureActiveSession(conversation.runtimeSessionId);
-    if (conversation.preferredProviderId) {
+    // Explicit artifact decisions are authenticated local-chat commands, not model tasks.
+    // Do not make a Native model/provider session a prerequisite to operator approval.
+    const artifactOperatorCommand = this.artifactAuthorization?.isOperatorCommand(input.prompt) === true;
+    if (!artifactOperatorCommand) await this.runtime.ensureActiveSession(conversation.runtimeSessionId);
+    if (!artifactOperatorCommand && conversation.preferredProviderId) {
       this.runtime.setProviderAffinity(
         conversation.runtimeSessionId,
         conversation.preferredProviderId,
@@ -324,9 +331,18 @@ export class AgentChatService {
     let result: NativeAgentTaskResult;
     try {
       // The user message was persisted by beginTurn above. Tool output cannot enter this host-only path.
-      const skillDecision = await this.runtime.applyUserSkillCommand?.({ workspace: conversation.workspace ?? 'agent-core',
-        sessionId: conversation.runtimeSessionId, taskId, userEvidenceRef: 'user-message:' + userMessageId, prompt: input.prompt });
-      result = skillDecision ? await this.runtime.completeUserSkillDecision({ workspace: conversation.workspace ?? 'agent-core',
+      // Only a freshly persisted real user message enters artifact operator commands.
+      // No MCP tool, Memory record, or model output may invoke this host authority.
+      const artifactReply = await this.artifactAuthorization?.operatorCommand(input.prompt, {
+        workspace: conversation.workspace ?? 'agent-core', conversationId: conversation.id,
+        userMessageId, persistedUserMessage: true,
+      });
+      const skillDecision = artifactReply === undefined ? await this.runtime.applyUserSkillCommand?.({ workspace: conversation.workspace ?? 'agent-core',
+        sessionId: conversation.runtimeSessionId, taskId, userEvidenceRef: 'user-message:' + userMessageId, prompt: input.prompt }) : undefined;
+      result = artifactReply !== undefined ? {
+        sessionId: conversation.runtimeSessionId, taskId, response: artifactReply,
+        status: 'finalized', iterations: 0, retrievalAttemptIds: [],
+      } : skillDecision ? await this.runtime.completeUserSkillDecision({ workspace: conversation.workspace ?? 'agent-core',
         sessionId: conversation.runtimeSessionId, taskId, prompt: input.prompt }, skillDecision) : await this.controller.runConversationTurn({
         sessionId: conversation.runtimeSessionId,
         taskId,
@@ -338,11 +354,17 @@ export class AgentChatService {
         signal: controller.signal,
         continuation,
       });
-      if (skillDecision) await emit({ type: 'assistant.final', at: new Date().toISOString(), response: result.response }).catch(() => undefined);
+      if (skillDecision || artifactReply !== undefined) await emit({ type: 'assistant.final', at: new Date().toISOString(), response: result.response }).catch(() => undefined);
       if (continuation.state?.finalResult) {
         await continuation.save(continuation.state, 'chat-commit-pending');
       }
-      await this.finalizeTurnWithSkillReceipt({
+      if (artifactReply !== undefined) {
+        // Operator commands do not create a Native model task or Skill receipt.
+        this.store.finalizeTurn({
+          turnId, assistantMessageId: randomUUID(), response: result.response,
+          iterations: 0, retrievalCount: 0, claim,
+        });
+      } else await this.finalizeTurnWithSkillReceipt({
         turnId,
         assistantMessageId: randomUUID(),
         response: result.response,
