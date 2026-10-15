@@ -1188,6 +1188,16 @@
     {
       "id": 18,
       "name": "Acontext",
+      "batch17Implementation": {
+        "scope": "Same-owner import/promote/rollback writer exclusion and native activation backup preservation",
+        "receivingOwner": "src/skills/service.ts",
+        "baseline": "bbbd75c7c8784f11f3c7cd1d0c0393265caa762d",
+        "sourceStatus": "implemented; one official Linux build exit 0; Windows activation not performed",
+        "mechanism": "Import destination inspection, duplicate/collision decisions, publication and owned cleanup share the existing per-name revision guard. Failed publication restores the prior tree or preserves its backup with a bounded recovery error; committed-publication cleanup errors are reported separately.",
+        "donor": "memodb-io/Acontext@259d73bfdebeed35ec2d4211ddc060a2d4126bc6 skill_learner.py 124-189; Apache-2.0; writer-ownership principle only, no donor code or runtime copied",
+        "evidenceBoundary": "Source reconciliation, official build and fresh 79-tool compiled descriptor only. No live concurrency/recovery branch, Windows resident activation, independent Learning receipt, cross-process fencing, crash recovery or measured benefit is claimed.",
+        "report": "docs/Batch17-Linux-Skill-Writer-Recovery-20261015.md"
+      },
       "catalogURLs": [
         "https://github.com/memodb-io/Acontext"
       ],
