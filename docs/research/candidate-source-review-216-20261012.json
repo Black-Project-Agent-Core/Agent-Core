@@ -1867,8 +1867,25 @@
       "inspectionLimit": "Focused static inspection; donor not installed, imported, executed or tested.",
       "qualityReview": "2026-10-12 one-pass check: reuse applies to the concrete submechanism described in currentGapVsAlreadyCovered, not merely presence of a similarly named native capability; no proven donor replacement identified in focused source scope.",
       "reviewPartition": "001-054",
-      "planAllocation": "reviewed-not-assigned-to-batch-02",
-      "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
+      "planAllocation": "batch-12-selected-submechanism-source-implemented",
+      "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code.",
+      "planAllocationHistory": [
+        {
+          "date": "2026-10-12",
+          "value": "reviewed-not-assigned-to-batch-02"
+        }
+      ],
+      "batch12Linux": {
+        "date": "2026-10-15",
+        "baseline": "5a6c7ffb72a8ba63f6489fadf1dbc0eeafc788b5",
+        "status": "source-implemented-built-reviewed-windows-adoption-pending",
+        "report": "docs/Batch-11-12-Linux-Implementation-20261015.md",
+        "submechanism": "shared current project-synthesis dependency eligibility across recall and search",
+        "historicalDecisionPreserved": "reuse",
+        "donorRuntimeOrSourceCopied": false,
+        "residentWindowsCanonicalMemoryLearning": "pending-authorized-local-adoption"
+      },
+      "currentGapReview20261015": "Historical reuse assessment was correct for current v2 recall but incomplete for normal Memory search and unplanned context. Batch 12 shares that native eligibility guard before ranking, preserving exact history and ordinary Memory availability."
     },
     {
       "id": 28,
@@ -2493,8 +2510,25 @@
       "inspectionLimit": "Focused static inspection; donor not installed, imported, executed or tested.",
       "qualityReview": "2026-10-12 one-pass check: reuse applies to the concrete submechanism described in currentGapVsAlreadyCovered, not merely presence of a similarly named native capability; no proven donor replacement identified in focused source scope.",
       "reviewPartition": "001-054",
-      "planAllocation": "reviewed-not-assigned-to-batch-02",
-      "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
+      "planAllocation": "batch-11-selected-submechanism-source-implemented",
+      "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code.",
+      "planAllocationHistory": [
+        {
+          "date": "2026-10-12",
+          "value": "reviewed-not-assigned-to-batch-02"
+        }
+      ],
+      "batch11Linux": {
+        "date": "2026-10-15",
+        "baseline": "5a6c7ffb72a8ba63f6489fadf1dbc0eeafc788b5",
+        "status": "source-implemented-built-reviewed-windows-adoption-pending",
+        "report": "docs/Batch-11-12-Linux-Implementation-20261015.md",
+        "submechanism": "exact procedure contract compatibility and attributable verified receipts",
+        "historicalDecisionPreserved": "reuse",
+        "donorRuntimeOrSourceCopied": false,
+        "residentWindowsCanonicalMemoryLearning": "pending-authorized-local-adoption"
+      },
+      "currentGapReview20261015": "Historical reuse assessment did not cover name/steps fingerprint collisions across different purpose, trigger and tools. Batch 11 adds a native compatibility/receipt boundary without replacing the existing Skill lifecycle."
     },
     {
       "id": 37,

@@ -95,7 +95,7 @@ Batch 3–4 COMPLETE untuk kontrak yang diterima. Consumer hanya pengikatan invo
 | 24 | Skill-Pro / ProcMEM | defer | code | Belum dialokasikan |
 | 25 | SimpleMem / EvolveMem | extend | code | Dipilih Batch 3 (13 Okt 2026): native bounded controller-led subquestion recall; source built, resident/client tracked separately; donor runtime/LLM tidak diadopsi |
 | 26 | memU | reuse | code | Belum dialokasikan |
-| 27 | Hindsight | reuse | code | Belum dialokasikan |
+| 27 | Hindsight | reuse | code | Batch 12: selected current-synthesis eligibility implemented in source; local adoption pending |
 | 28 | ReMe | reuse | code | Belum dialokasikan |
 | 29 | Zep / Graphiti | reuse | code | Belum dialokasikan |
 | 30 | Mem0 | reuse | code | Batch 7 source built: four-state legacy recall; Windows adoption pending; no new search/store |
@@ -104,7 +104,7 @@ Batch 3–4 COMPLETE untuk kontrak yang diterima. Consumer hanya pengikatan invo
 | 33 | Cognee | reuse | code | Belum dialokasikan |
 | 34 | OpenViking | reuse | code | Batch 7 source built: coherent packet sections and omission coverage; independent implementation, no AGPL source copied; Windows adoption pending |
 | 35 | EverMemOS → EverOS | reuse | code | Belum dialokasikan |
-| 36 | MemOS — local Reflect2Evolve | reuse | code | Belum dialokasikan |
+| 36 | MemOS — local Reflect2Evolve | reuse | code | Batch 11: selected procedure contract evidence implemented in source; local adoption pending |
 | 37 | Memvid | reject | code | Belum dialokasikan |
 | 38 | LangMem | reuse | code | Belum dialokasikan |
 | 39 | OpenAI/Bain — Self-Evolving Agents | defer | code | Belum dialokasikan |
@@ -304,4 +304,12 @@ Historical discovery decisions, donor pins and all 216 IDs are preserved. This i
 - **#135 — RLM-FORGE/Ouroboros:** the selected claim ID → validated local document/line/link anchor mechanism is implemented through `src/verification/evidence-links.ts` and `scripts/verify/verify-evidence-links.mjs`. v1 remains available; v2 reports explicit expected-claim coverage. Official Windows build passed and an actual report anchored 3/3 declared claims with CLI exit 0. Source linkage does not prove semantic entailment; no model reviewer or new MCP tool was added. See `docs/Batch-09-Windows-Implementation-20261015.md`.
 - **#144 — slides-grab only:** declared local UTF-8 dependency fingerprint freshness is implemented in the existing image inspector. `image_inspect(overview)` gains optional `sourceFiles` (1–8), while crop/review inherit an immutable view baseline and independently report sourceDependencies. No MinSync/Jikji/k-skill, binary asset closure, renderer or export gate was adopted. Source/build and compiled schema are ready; plugin v1.0.4 has been uploaded to the same app and resident PID13324 is hash-verified after one restart. This chat's cached client schema still lacks sourceFiles, and actual sourced preview usage remains unobserved. See `docs/Batch-10-Windows-Implementation-20261015.md`.
 
-Only Batch 9 → Batch 10 was executed from these instructions; Batch 11–12 remain separate plans.
+At the preceding Batch 9 → Batch 10 checkpoint, Batch 11–12 were still separate plans. The later source implementation annotation below supersedes that status only for the selected submechanisms.
+
+
+## Linux Batch 11–12 selected-submechanism outcome — 2026-10-15
+
+- **#36 MemOS local Reflect2Evolve:** native procedure contract compatibility and fresh contract-bound receipt qualification are source-implemented within existing Learning/Skill owners. The broad prior `reuse` decision and donor pin remain historical; this is a newly selected narrow mechanism, not adoption of MemOS runtime or automatic policy promotion.
+- **#27 Hindsight:** current synthesis dependency eligibility is shared between v2 recall and ordinary current search/context. The earlier reuse claim was incomplete for the latter route. No Hindsight bank, writer, retraction engine or dependency was added.
+
+All 216 IDs and historical decision counts remain unchanged. Final combined build/review/descriptor evidence is recorded in [the implementation report](../Batch-11-12-Linux-Implementation-20261015.md). Resident Windows activation, genuine-data usage, canonical Memory/Learning and Windows cleanup remain separate pending local-adoption outcomes.

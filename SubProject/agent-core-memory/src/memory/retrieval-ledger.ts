@@ -1,5 +1,6 @@
 import {preservesMemoryHistory,readRetainedTelemetry,retainTelemetry} from './archive.js';
 import {stableDisclosureJson} from './disclosure.js';
+import type {SynthesisEligibilityReason,SynthesisEligibilitySummary} from './project-synthesis.js';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { BoundedJsonlEventLog } from '../persistence/bounded-event-log.js';
@@ -65,6 +66,7 @@ export interface MemoryRetrievalAttempt {
   latencyMs?: number;
   failureCode?: string;
   failureStage?: string;
+  synthesisEligibility?:SynthesisEligibilitySummary;
   exposures: MemoryRetrievalExposure[];
 }
 
@@ -191,6 +193,16 @@ function normalizeScoreSummary(input: Record<string, number | null> | undefined)
   return Object.keys(output).length ? output : undefined;
 }
 
+function normalizeSynthesisEligibility(raw:SynthesisEligibilitySummary|undefined):SynthesisEligibilitySummary|undefined {
+  if(raw===undefined)return undefined;
+  if(!raw||typeof raw!=='object')throw new Error('MEMORY_RETRIEVAL_SYNTHESIS_ELIGIBILITY_INVALID');
+  const checked=nonNegativeInt(raw.checked,'synthesis_checked'),omitted=nonNegativeInt(raw.omitted,'synthesis_omitted');
+  const allowed:SynthesisEligibilityReason[]=['stale','unknown','scope-unavailable','deadline','cycle','limit'];
+  if(omitted>checked||!['complete','partial'].includes(raw.completeness)||!Array.isArray(raw.reasons)
+    ||raw.reasons.some(reason=>!allowed.includes(reason))||(omitted>0&&raw.completeness!=='partial'))throw new Error('MEMORY_RETRIEVAL_SYNTHESIS_ELIGIBILITY_INVALID');
+  return {checked,omitted,completeness:raw.completeness,reasons:[...new Set(raw.reasons)].sort()};
+}
+
 function normalizeAttempt(raw: MemoryRetrievalAttempt): MemoryRetrievalAttempt {
   if (raw.version !== VERSION) throw new Error('MEMORY_RETRIEVAL_LEDGER_VERSION_INVALID');
   const attemptId = raw.attemptId.trim();
@@ -238,6 +250,7 @@ function normalizeAttempt(raw: MemoryRetrievalAttempt): MemoryRetrievalAttempt {
   const referenceTime = raw.referenceTime === undefined ? undefined : iso(raw.referenceTime, 'reference_time');
   const failureCode = optionalText(raw.failureCode, 120);
   const failureStage = optionalText(raw.failureStage, 120);
+  const synthesisEligibility=normalizeSynthesisEligibility(raw.synthesisEligibility);
   const queryHashSha256 = raw.queryHashSha256?.toLowerCase();
   if (queryHashSha256 && !/^sha256:[0-9a-f]{64}$/.test(queryHashSha256)) throw new Error('MEMORY_RETRIEVAL_QUERY_HASH_INVALID');
   return {
@@ -268,6 +281,7 @@ function normalizeAttempt(raw: MemoryRetrievalAttempt): MemoryRetrievalAttempt {
     ...(raw.latencyMs !== undefined ? { latencyMs: nonNegativeInt(raw.latencyMs, 'latency') } : {}),
     ...(failureCode ? { failureCode } : {}),
     ...(failureStage ? { failureStage } : {}),
+    ...(synthesisEligibility?{synthesisEligibility}:{}),
     exposures,
   };
 }
@@ -473,6 +487,7 @@ export class MemoryRetrievalLedger {
     input: MemoryRetrievalDiagnosticsInput = {},
   ) {
     const attempts = this.list(input);
+    const eligibilityAttempts=attempts.filter(row=>row.surface==='memory_search'||row.surface==='memory_recall');
     let receiptStatus: 'available' | 'unavailable' = 'available';
     let allReceipts: MemoryUseReceipt[] = [];
     try { allReceipts = this.readReceipts(); }
@@ -545,6 +560,13 @@ export class MemoryRetrievalLedger {
         noResults: attempts.filter(row => row.retrievalStatus === 'no-results').length,
         retrievalFailed: attempts.filter(row => row.retrievalStatus === 'failed').length,
         deliveryFailed: attempts.filter(row => row.deliveryStatus === 'failed').length,
+      },
+      synthesisEligibility:{
+        attempts:eligibilityAttempts.filter(row=>row.synthesisEligibility!==undefined).length,
+        checked:eligibilityAttempts.reduce((sum,row)=>sum+(row.synthesisEligibility?.checked??0),0),
+        omitted:eligibilityAttempts.reduce((sum,row)=>sum+(row.synthesisEligibility?.omitted??0),0),
+        completeness:eligibilityAttempts.some(row=>!row.synthesisEligibility||row.synthesisEligibility.completeness==='partial')?'partial' as const:'complete' as const,
+        reasons:[...new Set(eligibilityAttempts.flatMap(row=>row.synthesisEligibility?.reasons??[]))].sort(),
       },
       evidenceCompleteness: {
         assessedAttempts,

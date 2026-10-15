@@ -17,6 +17,8 @@ import {
   artifactUseFeatureId,
   defaultTaskMetrics,
   procedureFingerprint,
+  procedureBoundEvidence,
+  procedureContractDigest,
   type AgentArtifactUseDeclaration,
   type AgentArtifactKind,
   type AgentEpisodeEvent,
@@ -543,7 +545,7 @@ export class AgentRuntimeService {
       artifactUseOutcomeCount: state.tasks.reduce((sum, task) => sum + task.metrics.artifactUseOutcomes, 0),
       procedureCandidateCount: procedures.length,
       procedureReadyCount: procedures.filter(item => !item.needsReview
-        && item.supportTaskIds.length >= 2 && item.supportTaskIds.length > item.failureTaskIds.length * 2).length,
+        && procedureBoundEvidence(item).supportTaskIds.length >= 2 && procedureBoundEvidence(item).supportTaskIds.length > procedureBoundEvidence(item).failureTaskIds.length * 2).length,
     };
     return {
       status,
@@ -1049,10 +1051,16 @@ export class AgentRuntimeService {
     }
     if (externallyVerified) {
       for (const use of task.artifactUse) {
-        if (use.kind !== 'procedure' || use.applicability === 'rejected') continue;
+        if (use.kind !== 'procedure' || use.applicability === 'rejected' || !use.contentDigest) continue;
         const item = (await this.learning.procedures(task.workspace)).find(item => item.fingerprint === use.artifactId);
-        if (item) await this.learning.supportProcedure({ ...item, taskId: task.id, origin: 'native',
-          outcome: input.outcome, evidenceRefs: [...evidenceRefs, verificationRef!] });
+        if (item) {
+          try {
+            if (use.contentDigest !== procedureContractDigest(item)) throw new Error('LEARNING_PROCEDURE_DELIVERED_CONTRACT_CONFLICT');
+            const supported = await this.learning.supportProcedure({ ...item, taskId: task.id, origin: 'native',
+              expectedContractDigest: use.contentDigest, outcome: input.outcome, evidenceRefs: [...evidenceRefs, verificationRef!] });
+            if (supported.materialization.status === 'unavailable') activityTracker.captureFailure('LEARNING', new Error(supported.materialization.reason), 'native-procedure-proposal-unavailable');
+          } catch (error) { activityTracker.captureFailure('LEARNING', error, 'native-procedure-outcome-unavailable'); }
+        }
       }
       if (task.workspace && task.artifactUse.some(use => use.kind === 'skill') && this.learning.reviewSkillOutcomes) {
         try { await this.learning.reviewSkillOutcomes(task.workspace); }
@@ -1072,7 +1080,7 @@ export class AgentRuntimeService {
     reuseCondition?: string;
     evidenceRefs?: string[];
     outcome: 'verified' | 'failed';
-  }): Promise<AgentProcedureCandidate> {
+  }): ReturnType<LearningService['supportProcedure']> {
     const task = await this.getTask(input.taskId);
     if (!task) throw new Error('AGENT_RUNTIME_TASK_NOT_FOUND');
     return this.learning.supportProcedure({ ...input, origin: 'native', workspace: task.workspace, evidenceRefs: input.evidenceRefs ?? [] });
@@ -1080,7 +1088,7 @@ export class AgentRuntimeService {
 
   async readyProcedures(minSupport = 2): Promise<AgentProcedureCandidate[]> {
     return (await this.learning.procedures()).filter(item => item.status === 'candidate' && !item.needsReview
-      && item.supportTaskIds.length >= minSupport && item.supportTaskIds.length > item.failureTaskIds.length * 2);
+      && procedureBoundEvidence(item).supportTaskIds.length >= minSupport && procedureBoundEvidence(item).supportTaskIds.length > procedureBoundEvidence(item).failureTaskIds.length * 2);
   }
 
   async proceduresForContext(limit = 12, workspace?: string): Promise<AgentProcedureCandidate[]> {
@@ -1309,7 +1317,8 @@ export class AgentRuntimeService {
       const supported = await this.supportProcedure({ ...procedure, taskId: task.id,
         evidenceRefs: cleanEvidence([...task.evidenceRefs, task.verificationRef]), outcome: 'verified' });
       await this.recordEpisode(task.id, { kind: 'procedure-candidate',
-        summary: 'Procedure ' + supported.name + ' has verified support from ' + supported.supportTaskIds.length + ' independent task(s).',
+        summary: 'Procedure ' + supported.name + ' has contract-bound support from ' + procedureBoundEvidence(supported).supportTaskIds.length + ' independent task(s); legacy history is not current qualification.'
+          + (supported.materialization.status === 'unavailable' ? ' Proposal unavailable: ' + supported.materialization.reason : ''),
         evidenceRefs: supported.evidenceRefs });
     }
     await this.mutate(state => {

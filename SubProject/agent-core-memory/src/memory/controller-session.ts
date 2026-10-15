@@ -1,5 +1,5 @@
 import type {IntentionObservation} from './prospective-intentions.js';
-import {decodeProjectSynthesis,checkProjectSynthesisDependencies} from './project-synthesis.js';
+import {createProjectSynthesisEligibility,type ProjectSynthesisEligibility,type SynthesisEligibilitySummary} from './project-synthesis.js';
 import type {HistoricalMemorySnapshot} from './revisions.js';
 import {exactInstant,selectTemporalCandidates} from './temporal.js';
 import type {MemoryPromotion,ConsolidationInput,ApplyConsolidationInput,ConsolidationPlan,PromotionReceipt} from './promotion.js';
@@ -18,7 +18,7 @@ import { controllerScopeSchema, disclosureDigest, disclosurePayloadDigest, expan
 import type { Budgeted, ControllerMemoryCapabilities, ControllerScope, ExpandInput, ExpansionPage,
   MemoryHit, RecallInput, RecallPage, SourceRef } from './disclosure.js';
 import type { MemoryRecord } from './types.js';
-import type { MemorySearchResult } from './retrieval.js';
+import {searchMemories,type MemorySearchResult} from './retrieval.js';
 import {assessMemoryRelevance,type RelevanceInput,type RelevancePolicy} from './relevance.js';
 
 /** Internal host-owned read/telemetry ports. Never exported from the package root. */
@@ -26,6 +26,7 @@ export interface ControllerRankedSnapshot {
   results: MemorySearchResult[];
   rankingRevision: string;
   relevanceContext?: {semanticStatus:RelevanceInput['semanticStatus']};
+  invalidatedSynthesisIds?:string[];
 }
 
 export interface ControllerMemoryBackend {
@@ -38,7 +39,8 @@ export interface ControllerMemoryBackend {
   snapshot(workspace: string, options?:{historical?:boolean;referenceTime?:number}): Promise<MemoryRecord[]>;
   historicalSnapshot?(workspace:string,input:{knownAt:string;maxRecords:number}):Promise<HistoricalMemorySnapshot>;
   rankHistorical?(records:MemoryRecord[],query:string,rankingTime:number):Promise<ControllerRankedSnapshot>;
-  sourceDependencyStatus?(ref:SourceRef,resolve?:(ref:SourceRef)=>Promise<'current'|'stale'|'unavailable'>):Promise<'current'|'stale'|'unavailable'>;
+  synthesisEligibility?():ProjectSynthesisEligibility;
+  onSynthesisEligibility?:(summary:SynthesisEligibilitySummary)=>void;
   rank(records: MemoryRecord[], query: string, rankingTime: number): Promise<ControllerRankedSnapshot>;
   read(id: string): Promise<MemoryRecord | null>;
   archivedRevision?(ref:SourceRef):Promise<MemoryRecord|null>;
@@ -98,7 +100,7 @@ export class ControllerMemorySession {
 
   private async exposure<T>(input: { result: Budgeted<T>; attemptId: string; startedAt: string;
     view: 'map' | 'abstract' | 'record' | 'episode' | 'evidence'; sourceDelivered?:boolean; records: MemoryRecord[]; delivered: MemoryRecord[];
-    query?: string; full?: boolean; candidateCount?: number }): Promise<void> {
+    query?: string; full?: boolean; candidateCount?: number; synthesisEligibility?:SynthesisEligibilitySummary }): Promise<void> {
     const { result, attemptId, startedAt, view, records, delivered } = input;
     const deliveredIds = new Set(delivered.map(record => record.id));
     const observedNow = new Date().toISOString(),skew=Date.parse(observedNow)<Date.parse(startedAt);
@@ -110,6 +112,7 @@ export class ControllerMemorySession {
         retrievalStatus:delivered.length||input.sourceDelivered ? 'succeeded' : 'no-results',deliveryStatus:'returned-to-controller',
         candidateCount:input.candidateCount ?? records.length,selectedCount:delivered.length+(input.sourceDelivered?1:0),workspace:this.#workspace,
         disclosureView:view,payloadBytes:result.metrics.payloadBytes,payloadDigest:disclosurePayloadDigest(result),
+        ...(input.synthesisEligibility?{synthesisEligibility:input.synthesisEligibility}:{}),
         ...(input.query ? { queryHashSha256:hashMemoryRetrievalQuery(input.query),queryCharCount:Array.from(input.query).length } : {}),
         exposures:records.slice(0,50).map((record,index) => ({ memoryId:record.id,rank:index+1,
           disposition:deliveredIds.has(record.id) ? (input.full ? 'selected' : 'trimmed') : 'dropped',
@@ -132,6 +135,8 @@ export class ControllerMemorySession {
     const limit = input.limit ?? 5;
     const attemptId = randomUUID().replaceAll('-','');
     const startedAt = new Date().toISOString();
+    const synthesisEligibility=this.#backend.synthesisEligibility?.()??createProjectSynthesisEligibility({
+      assertScopeCurrent:()=>{throw new MemoryControllerError('MEMORY_SCOPE_MISMATCH');},inScope:()=>false,validateSnapshot:async()=>{}});
     const request = disclosureCursorBinding(disclosureDigest(['recall/v1','evidence-excerpt/v1',query,view,retention,...(asOf?[asOf]:[]),...(input.knownAt?['knownAt',input.knownAt]:[])]));
     let rankingTime = Date.now();
     if (input.cursor) {
@@ -145,51 +150,42 @@ export class ControllerMemorySession {
     let history:HistoricalMemorySnapshot|undefined;
     if(input.knownAt){try{history=await this.#backend.historicalSnapshot!(this.#workspace,{knownAt:input.knownAt,maxRecords:500});}catch{throw new MemoryControllerError('MEMORY_SOURCE_UNAVAILABLE');}}
     const selected = history?.records??await this.snapshot({historical:asOf!==undefined,referenceTime:rankingTime});
-    // Every current synthesis shares a bounded dependency resolution allowance.
-    // Historical syntheses cannot assert currentness using knowledge learned later.
-    const dependencyCache=new Map<string,Promise<'current'|'stale'|'unavailable'>>();
-    const resolveDependency=(ref:SourceRef,ancestors=new Set<string>()):Promise<'current'|'stale'|'unavailable'>=>{
-      const key=disclosureDigest(ref);
-      // Test the ancestry before the promise cache: a cycle must not await itself.
-      if(ancestors.has(key))return Promise.resolve('unavailable');
-      const existing=dependencyCache.get(key);if(existing)return existing;
-      if(dependencyCache.size>=32)return Promise.resolve('unavailable');
-      const next=new Set([...ancestors,key]);
-      const resolution=Promise.resolve().then(()=>this.#backend.sourceDependencyStatus!(ref,child=>resolveDependency(child,next))).catch(()=> 'unavailable' as const);
-      dependencyCache.set(key,resolution);return resolution;
-    };
-    const records:MemoryRecord[]=[];let synthesisOmitted=false;
-    for(const record of selected){
-      if(record.category!=='project-synthesis'){records.push(record);continue;}
-      const value=decodeProjectSynthesis(record.content);
-      if(!value||history||!this.#backend.sourceDependencyStatus){synthesisOmitted=true;continue;}
-      const ownKey=disclosureDigest({kind:'memory',id:record.id,revision:memorySemanticRevision(record)});
-      const status=await checkProjectSynthesisDependencies(value,ref=>resolveDependency(ref,new Set([ownKey])));
-      if(status.status==='current')records.push(record);else synthesisOmitted=true;
-    }
+    // Preserve historical behavior: current evidence cannot establish a knownAt synthesis.
+    if(history)for(const record of selected)synthesisEligibility.omit(record,'unknown');
+    const records=history?selected.filter(record=>record.category!=='project-synthesis'):await synthesisEligibility.filter(selected);
+    // Withheld synthesis cannot suppress or contradict ordinary temporal candidates.
     const temporal=this.#backend.experienceEnabled?selectTemporalCandidates(records,asOf??new Date(rankingTime).toISOString())?.filter(({record})=>retention==='all'||(retention==='archive'?(record.version===2&&record.experience.retention==='archive'):(record.version!==2||record.experience.retention!=='archive'))):undefined;
-    const eligible=temporal?temporal.map(c=>c.record):records;
-    const rankedSnapshot = query && !(retention === 'archive' && !this.#backend.experienceEnabled)
-      ? await (history?this.#backend.rankHistorical!(eligible,query,rankingTime):this.#backend.rank(eligible,query,rankingTime)) : undefined;
+    const eligible=temporal?temporal.map(candidate=>candidate.record):records;
+    // Abandoned dependency I/O may still hold a snapshot lock. Ordinary memory can
+    // use its already-read snapshot without waiting behind that operation again.
+    const dependencyDeadline=synthesisEligibility.summary().reasons.includes('deadline');
+    const rankedSnapshot:ControllerRankedSnapshot|undefined = query && !(retention === 'archive' && !this.#backend.experienceEnabled)
+      ? dependencyDeadline?{results:searchMemories(eligible,query,{limit:Math.max(1,eligible.length),maxNeighbors:0},undefined,Math.max(1,eligible.length),rankingTime),
+        rankingRevision:disclosureDigest(['synthesis-deadline-lexical/v1']),relevanceContext:{semanticStatus:'unavailable'}}
+        :await (history?this.#backend.rankHistorical!(eligible,query,rankingTime):this.#backend.rank(eligible,query,rankingTime)) : undefined;
     const relevance = rankedSnapshot && this.#backend.relevancePolicy
       ? assessMemoryRelevance({results:rankedSnapshot.results,eligibleCount:eligible.length,
         semanticStatus:rankedSnapshot.relevanceContext?.semanticStatus as RelevanceInput['semanticStatus'],policy:this.#backend.relevancePolicy})
       : undefined;
     const accepted = relevance ? new Set(relevance.acceptedIds) : undefined;
-    const ranked: Array<{ record: MemoryRecord; score?: number }> = retention === 'archive' && !this.#backend.experienceEnabled ? [] : rankedSnapshot ? rankedSnapshot.results.filter(item=>!accepted||accepted.has(item.record.id)) : eligible.map(record => ({ record }));
+    let ranked: Array<{ record: MemoryRecord; score?: number }> = retention === 'archive' && !this.#backend.experienceEnabled ? [] : rankedSnapshot ? rankedSnapshot.results.filter(item=>!accepted||accepted.has(item.record.id)) : eligible.map(record => ({ record }));
     if(temporal){const known=new Map(temporal.map(c=>[c.record.id,c.certainty==='known']));ranked.sort((a,b)=>Number(known.get(b.record.id))-Number(known.get(a.record.id)));}
-    const snapshot = disclosureDigest(['controller-snapshot/v2', records.map(record => [record.id,memorySemanticRevision(record)]).sort(([a],[b]) => a.localeCompare(b)),
+    for(const id of rankedSnapshot?.invalidatedSynthesisIds??[]){const record=records.find(item=>item.id===id);if(record)synthesisEligibility.omit(record,'unknown');}
+    const eligibleDelivery=new Set((await synthesisEligibility.validateDelivery(ranked.map(item=>item.record))).map(record=>record.id));
+    ranked=ranked.filter(item=>eligibleDelivery.has(item.record.id));
+    let snapshot = disclosureDigest(['controller-snapshot/v2', records.map(record => [record.id,memorySemanticRevision(record)]).sort(([a],[b]) => a.localeCompare(b)),
       rankedSnapshot?.rankingRevision ?? 'ranking-unrequested/v1', ranked.map(item => [item.record.id,item.score ?? null]),
       ...(history?[{knowledgeCoverage:history.coverage,revisionRefs:history.revisionRefs}]:[]),
       ...(relevance ? [{policyDigest:relevance.policyDigest,acceptedIds:relevance.acceptedIds,semanticStatus:relevance.semanticStatus}] : [])]);
-    const snapshotBinding = disclosureCursorBinding(snapshot);
+    let snapshotBinding = disclosureCursorBinding(snapshot);
     const start = this.position(input.cursor,request,snapshotBinding);
     if (start >= ranked.length && (start !== 0 || input.cursor)) throw new MemoryControllerError('MEMORY_CURSOR_STALE');
     const warnings = [TRUST_WARNING,...(view === 'abstract' ? ['abstract-is-preview'] : []),
       ...(retention !== 'active-durable' && !this.#backend.experienceEnabled ? ['archive-not-enabled'] : []),
-      ...(relevance?.semanticStatus==='unavailable' ? ['semantic-unavailable'] : []),...(asOf&&!history?['valid-time-with-current-evidence','not-known-at']:[]),...(history?['historical-knowledge-snapshot',...(!history.coverage.complete?[`knowledge-history-${history.coverage.reason??'unknown'}`]:[])]:[]),...(synthesisOmitted?['synthesis-stale-or-unknown-omitted']:[])];
+      ...(relevance?.semanticStatus==='unavailable' ? ['semantic-unavailable'] : []),...(asOf&&!history?['valid-time-with-current-evidence','not-known-at']:[]),...(history?['historical-knowledge-snapshot',...(!history.coverage.complete?[`knowledge-history-${history.coverage.reason??'unknown'}`]:[])]:[]),...(synthesisEligibility.summary().omitted?['synthesis-stale-or-unknown-omitted']:[])];
     const count = Math.min(limit,ranked.length-start);
-    const hits: MemoryHit[] = [];
+    let pageRecords=ranked.slice(start,start+count).map(item=>item.record);
+    let hits: MemoryHit[] = [];
     for (const item of ranked.slice(start,start+count)) {
       try {assertMemoryDisclosureSafe(JSON.parse(serializeMemoryRecordView(item.record)));}catch{throw new MemoryControllerError('MEMORY_SOURCE_UNAVAILABLE');}
       const temporalItem=temporal?.find(c=>c.record.id===item.record.id);
@@ -199,19 +195,31 @@ export class ControllerMemorySession {
         invalidatedBy:temporalItem?.invalidatedBy,freshness:await this.#backend.freshness(item.record),retrievalEvidence:{ attemptId,
           contentDigest:memoryFeedbackContentDigest(item.record),recordFingerprint:memoryRecordFingerprint(item.record.id,item.record.updatedAt) } }));
     }
+    // Freshness projection may await I/O. Recheck after it and before disclosure/ledger delivery.
+    const finalEligible=new Set((await synthesisEligibility.validateDelivery(ranked.map(item=>item.record))).map(record=>record.id));
+    const deliveryDrift=ranked.some(item=>!finalEligible.has(item.record.id));
+    if(deliveryDrift){
+      pageRecords=pageRecords.filter(record=>finalEligible.has(record.id));
+      const ids=new Set(pageRecords.map(record=>record.id));hits=hits.filter(hit=>ids.has(hit.id));
+      snapshot=disclosureDigest([snapshot,'synthesis-delivery-drift',ranked.filter(item=>finalEligible.has(item.record.id)).map(item=>[item.record.id,memorySemanticRevision(item.record)])]);
+      snapshotBinding=disclosureCursorBinding(snapshot);
+      if(!warnings.includes('synthesis-stale-or-unknown-omitted'))warnings.push('synthesis-stale-or-unknown-omitted');
+    }
+    const eligibilitySummary=synthesisEligibility.summary();
+    try{this.#backend.onSynthesisEligibility?.(eligibilitySummary);}catch{/* Advisory coverage remains fail-soft. */}
     const page = (take: number) => {
       const more = start+take < ranked.length;
-      const partial = more || Boolean(history&&!history.coverage.complete) || (retention !== 'active-durable' && !this.#backend.experienceEnabled);
+      const partial = more || eligibilitySummary.completeness==='partial' || Boolean(history&&!history.coverage.complete) || (retention !== 'active-durable' && !this.#backend.experienceEnabled);
       return measureBudgeted<RecallPage>({ status:partial ? 'partial' : 'ok',warnings,
-        data:{ snapshot,hits:hits.slice(0,take),...(history?{knowledgeCoverage:history.coverage}:{}),...(relevance ? {relevance:{status:relevance.status,policyDigest:relevance.policyDigest,semanticStatus:relevance.semanticStatus}} : {}),...(more ? { nextCursor:this.cursor(request,snapshotBinding,start+take,rankingTime) } : {}),
+        data:{ snapshot,hits:hits.slice(0,take),...(history?{knowledgeCoverage:history.coverage}:{}),...(relevance ? {relevance:{status:relevance.status,policyDigest:relevance.policyDigest,semanticStatus:relevance.semanticStatus}} : {}),...(more&&!deliveryDrift ? { nextCursor:this.cursor(request,snapshotBinding,start+take,rankingTime) } : {}),
           archiveSearchAvailable:Boolean(this.#backend.experienceEnabled),completeness:partial ? 'partial' : 'complete' } });
     };
-    let result = page(count);
-    let take = count;
+    let take = hits.length;
+    let result = page(take);
     while (result.metrics.payloadBytes > maxBytes && take > 1) { take--; result = page(take); }
     if (result.metrics.payloadBytes > maxBytes) { result = insufficientBudget(result.metrics.payloadBytes,warnings); take = 0; }
-    await this.exposure({ result,attemptId,startedAt,view,records:ranked.slice(start,start+count).map(item => item.record),
-      delivered:ranked.slice(start,start+take).map(item => item.record),query,candidateCount:rankedSnapshot?.results.length??ranked.length });
+    await this.exposure({ result,attemptId,startedAt,view,records:pageRecords,
+      delivered:pageRecords.slice(0,take),query,candidateCount:rankedSnapshot?.results.length??ranked.length,synthesisEligibility:eligibilitySummary });
     return result;
   }
 

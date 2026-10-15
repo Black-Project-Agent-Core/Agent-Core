@@ -25,6 +25,8 @@ export interface SkillProposalFulfillment {
 }
 export interface SkillProposalRecord {
   version: 1; id: string; workspace: string; workspaceIdentity: string; name: string; path: string;
+  procedureContractDigest?: string;
+  procedureEvidenceAttribution?: 'contract-bound' | 'legacy-unattributed';
   input: SkillProposalInput; revisionDigest: string; contentKey: string;
   status: ProposalStatus; artifactStatus: 'not-built' | 'staged' | 'validated' | 'catalog-active';
   qualification: 'awaiting-verification' | 'qualified' | 'needs-review';

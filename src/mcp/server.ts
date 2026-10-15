@@ -10,7 +10,7 @@ import type { SemanticIdeService } from '../semantic-ide/service.js';
 import type { MemoryService } from '../memory/service.js';
 import type { MemoryService as ExperienceMemoryService } from '../../SubProject/agent-core-memory/dist/index.js';
 import { registerMemoryExperienceTools } from './memory-experience-tools.js';
-import { memoryCredentialOwner, ownerScopedLearningSession } from './memory-scope.js';
+import { memoryCredentialOwner, ownerScopedLearningSession, type MemoryScopeResolver } from './memory-scope.js';
 import type { SkillService } from '../skills/service.js';
 import type { WebResearchService } from '../web-research/service.js';
 import { registerWebResearchTools } from './web-research-tools.js';
@@ -343,15 +343,7 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
         },
       } : undefined);
   }
-  if (runtime.memoryService) registerMemoryTools(
-    server,
-    runtime.memoryService,
-    runtime.failureLoopAdvisor,
-    runtime.externalControllerLearning,
-    runtime.controllerSessionId,
-    runtime.nativeTaskId,
-  );
-  if (runtime.memoryExperience) registerMemoryExperienceTools(server, runtime.memoryExperience, async selector => {
+  const resolveMemoryScope: MemoryScopeResolver = async selector => {
     try {
       if (runtime.nativeTaskId) {
         if (!runtime.nativeWorkspace || !workspaceRegistry || (selector && selector.taskId !== runtime.nativeTaskId)) throw new Error('unavailable native task');
@@ -362,7 +354,17 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
       const scope = await runtime.externalControllerLearning.resolveMemoryTask(memoryOwner, selector.taskId);
       return { ...scope, controllerId: 'agent-core-external', sessionId: runtime.controllerSessionId };
     } catch { throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE'); }
-  });
+  };
+  if (runtime.memoryService) registerMemoryTools(
+    server,
+    runtime.memoryService,
+    runtime.failureLoopAdvisor,
+    runtime.externalControllerLearning,
+    runtime.controllerSessionId,
+    runtime.nativeTaskId,
+    runtime.memoryExperience ? resolveMemoryScope : undefined,
+  );
+  if (runtime.memoryExperience) registerMemoryExperienceTools(server, runtime.memoryExperience, resolveMemoryScope);
   if (runtime.learningService) registerLearningTools(
     server,
     runtime.learningService,

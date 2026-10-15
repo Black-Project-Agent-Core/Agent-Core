@@ -6,9 +6,9 @@ import { writeOwnedFileAtomic } from '../persistence/atomic-file.js';
 import { isNewState, writeStateFile } from '../persistence/state-file.js';
 import { redactSensitiveString } from '../security/redaction.js';
 import type { MemoryService } from '../memory/service.js';
-import type { MemoryService as ExperienceMemoryService } from '../../SubProject/agent-core-memory/dist/index.js';
+import type { MemoryService as ExperienceMemoryService, MemorySearchHostContext, SynthesisEligibilitySummary } from '../../SubProject/agent-core-memory/dist/index.js';
 import { createControllerMemoryDispatcher } from '../../SubProject/agent-core-memory/dist/index.js';
-import { parseRetrievalPlan, type RetrievalPlan, type MergedRetrieval } from './subquestion-retrieval.js';
+import { parseRetrievalPlan, RETRIEVAL_LIMITS, type RetrievalPlan, type MergedRetrieval } from './subquestion-retrieval.js';
 import { blockedPlannedMemory, discardPlannedMemory, withinBudget, runPlannedMemoryContext, type ContextMemoryRetrieval } from './planned-memory-context.js';
 import type { DeliveredMemorySearchResult } from '../memory/search-projection.js';
 import type { LearningService } from './service.js';
@@ -19,7 +19,7 @@ import type { SkillService } from '../skills/service.js';
 import type { SkillSearchMode } from '../skills/discovery.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { normalizeFailureFamily } from '../mcp/failure-loop-advisor.js';
-import { procedureFingerprint } from '../agent-learning-loop.js';
+import { procedureFingerprint, procedureContractDigest, procedureBoundEvidence } from '../agent-learning-loop.js';
 import { readEvidenceSnapshot } from '../verification/evidence-snapshot.js';
 import { normalizeCapabilityUses, artifactCapabilityUse, capabilityUseKey, renderCapabilityNotice, inspectedSkillArtifacts, type CapabilityUse } from '../capability-awareness.js';
 
@@ -781,7 +781,8 @@ export class ExternalControllerLearningService {
     });
   }
   private async authoritySnapshot(workspace = 'agent-core') {
-    const records = await this.memory.list(workspace);
+    // This unvalidated authority projection cannot admit current synthesis or its links.
+    const records = (await this.memory.list(workspace)).filter(record => record.category !== 'project-synthesis');
     const supersededBy = new Map<string, string[]>();
     for (const owner of records) {
       for (const link of owner.links) {
@@ -1021,9 +1022,15 @@ export class ExternalControllerLearningService {
     if(expected&&(expected.taskId!==active.id||expected.ownerId!==ownerId
       ||expected.workspace!==identity.name||expected.workspaceIdentityKey!==identity.key))
       throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
-    const controller=expected?.controller??this.experience.controller({...bound,controllerId:'agent-core-external',sessionId},'fusion-feedback-v1');
+    let resolved: PlannedContextScope;
+    const scope = {...bound,controllerId:'agent-core-external',sessionId};
+    const controller=expected?.controller??this.experience.controller(scope,'fusion-feedback-v1',{
+      scope, signal: input.signal, deadlineMs: Date.now()+RETRIEVAL_LIMITS.elapsedMs,
+      assertScopeCurrent: async()=>{ await this.validatePlannedScope(sessionId,input,ownerId,resolved); },
+    });
     if(controller.capabilities().writeMode!=='experience-v2')throw new Error('MEMORY_EXPERIENCE_NOT_ENABLED');
-    return expected??{taskId:active.id,ownerId,workspace:identity.name,workspaceIdentityKey:identity.key,permitKey:ownerId+':'+sessionId,controller};
+    resolved=expected??{taskId:active.id,ownerId,workspace:identity.name,workspaceIdentityKey:identity.key,permitKey:ownerId+':'+sessionId,controller};
+    return resolved;
   }
 
   /** Check the same task inside the existing mutation transaction; never create a new episode. */
@@ -1080,7 +1087,7 @@ export class ExternalControllerLearningService {
 
   /** Planned contexts are opt-in and cannot start sibling work without a valid host-bound episode. */
   async context(sessionId:string,input:ExternalControllerContextInput={},hostOwnerId?:string,invocationContext?:ExternalInvocationContext) {
-    if(!input.retrievalPlan)return this.contextCore(sessionId,input,undefined,invocationContext);
+    if(!input.retrievalPlan)return this.contextCore(sessionId,input,undefined,invocationContext,hostOwnerId);
     const plan=parseRetrievalPlan(input.retrievalPlan);
     input={...input,retrievalPlan:plan};
     if(!input.taskId||!input.query?.trim()||input.query.trim()!==plan.rootQuery
@@ -1109,7 +1116,8 @@ export class ExternalControllerLearningService {
       else this.plannedMemoryBusy.delete(scope.permitKey);
     }
   }
-  private async contextCore(sessionId:string,input:ExternalControllerContextInput={},planned?:PlannedContextScope,invocationContext?:ExternalInvocationContext) {
+  private async contextCore(sessionId:string,input:ExternalControllerContextInput={},planned?:PlannedContextScope,invocationContext?:ExternalInvocationContext,hostOwnerId?:string) {
+    const synthesisDeadlineMs=Date.now()+RETRIEVAL_LIMITS.elapsedMs;
     const skillQuery = String(input.query ?? '').trim();
     const skillSearchMode = input.skillSearchMode ?? 'lexical';
     if (!['lexical', 'hybrid'].includes(skillSearchMode)) throw new Error('SKILL_SEARCH_MODE_INVALID');
@@ -1137,6 +1145,20 @@ export class ExternalControllerLearningService {
     const query = bounded(input.query, 4000);
     const memoryRetrieval = planned ? await this.contextMemoryRetrieval(sessionId, input, planned) : undefined;
     if(planned&&memoryRetrieval)planned.retrieval=memoryRetrieval;
+    let synthesisEligibility: SynthesisEligibilitySummary | undefined;
+    let searchHostContext: MemorySearchHostContext | undefined;
+    if (!planned && query && hostOwnerId && episode) {
+      try {
+        // Ordinary context gets its task from the active host episode, never model args.
+        const scopedInput = { ...input, taskId: invocationContext?.binding === 'bound' ? invocationContext.taskId : episode.id };
+        const scope = await this.validatePlannedScope(sessionId, scopedInput, hostOwnerId);
+        searchHostContext = { scope: { taskId: scope.taskId, workspaceKey: scope.workspace, controllerId: 'agent-core-external', sessionId },
+          signal: input.signal, deadlineMs: synthesisDeadlineMs,
+          assertScopeCurrent: async () => { await this.validatePlannedScope(sessionId, scopedInput, hostOwnerId, scope); },
+          onSynthesisEligibility: summary => { synthesisEligibility = summary; },
+        };
+      } catch { /* Scope failure withholds synthesis only; the ordinary Memory path stays fail-soft. */ }
+    }
     const recalled = !planned && query ? await this.memory.search(query, {
       taskId: episode?.id,
       limit: Math.max(1, Math.min(8, input.limit ?? 5)),
@@ -1144,7 +1166,7 @@ export class ExternalControllerLearningService {
       budgetChars: 12_000,
       rankingProfile: 'fusion',
       ...(input.workspace ? { workspace: input.workspace } : {}),
-    }).catch(() => null) : [];
+    }, searchHostContext).catch(() => null) : [];
     const memories = recalled ?? [];
     const memoryRecall = planned ? undefined : memoryRecallStatus(recalled, Boolean(query));
     if (memories.length) await this.recordMemoryRecall(sessionId, input.workspace, memories, invocationContext);
@@ -1158,7 +1180,7 @@ export class ExternalControllerLearningService {
       }
     }
     const procedures = rankKnowledge((await this.learning.procedures(input.workspace)).map(item => ({ ...item,
-      supportEpisodeIds: item.supportTaskIds, failureEpisodeIds: item.failureTaskIds }))
+      supportEpisodeIds: procedureBoundEvidence(item).supportTaskIds, failureEpisodeIds: procedureBoundEvidence(item).failureTaskIds }))
       .filter(item => item.supportEpisodeIds.length > 0)
       .sort((a, b) => {
         const as = a.supportEpisodeIds.length - a.failureEpisodeIds.length * 2;
@@ -1180,9 +1202,10 @@ export class ExternalControllerLearningService {
       memorySourceStatus: memoryRetrieval ? memoryRetrieval.status === 'completed' ? 'available'
         : memoryRetrieval.status === 'blocked' ? 'unavailable' : 'unknown'
         : memoryRecall?.state === 'unavailable' ? 'unavailable'
-        : memoryRecall?.state === 'not-requested' ? 'not-requested' : 'available',
+        : memoryRecall?.state === 'not-requested' ? 'not-requested'
+        : synthesisEligibility?.completeness === 'partial' ? 'unknown' : 'available',
       ...(memoryRetrieval ? { memoryDisclosure: { hits:memoryRetrieval.hits,coverage:memoryRetrieval.coverage,revisionConflicts:memoryRetrieval.revisionConflicts } } : {}),
-      procedures: procedures.map(item => ({ ...item, supportTaskIds: item.supportEpisodeIds, failureTaskIds: item.failureEpisodeIds })),
+      procedures,
       task: { goal: query, episodes: [] }, workspace: input.workspace,
     });
     const deliveredSkills = new Set(synthesis.skillNames);
@@ -1258,7 +1281,7 @@ export class ExternalControllerLearningService {
       })),
       corrections: (authority?.corrections ?? []).map(item => ({ id: item.id, title: item.title, updatedAt: item.updatedAt })),
       episode,
-      ...(planned ? { memoryRetrieval: finalRetrieval } : { memoryRecall, memories: memories.map(item => ({
+      ...(planned ? { memoryRetrieval: finalRetrieval } : { memoryRecall, ...(synthesisEligibility ? { synthesisEligibility } : {}), memories: memories.map(item => ({
         id: item.record.id,
         title: item.record.title,
         category: item.record.category,
@@ -1282,6 +1305,8 @@ export class ExternalControllerLearningService {
       evidenceGaps: [
         ...(episode?.metrics.toolFailures && !episode.metrics.verifications ? ['current episode has failures but no verification evidence yet'] : []),
         ...(memoryRecall && memoryRecall.state !== 'returned' ? [memoryRecallDescription(memoryRecall)] : []),
+        ...(synthesisEligibility?.omitted ? ['Current project synthesis omitted: ' + synthesisEligibility.omitted + '; reasons=' + synthesisEligibility.reasons.join(',') + '; coverage=' + synthesisEligibility.completeness] : []),
+        ...(!planned && query && !searchHostContext ? ['Current project synthesis eligibility has no current host-bound scope; ordinary Memory recall remains available.'] : []),
         ...(finalRetrieval && !finalRetrieval.hits.length ? ['Planned Memory disclosure has no hits; inspect memoryRetrieval.status and coverage.'] : []),
         ...(!authority ? ['Memory authority metadata is unavailable; authority remains unknown.'] : []),
         ...(skillDiscovery?.search.emptyReason === 'empty-catalog'
@@ -1406,10 +1431,11 @@ export class ExternalControllerLearningService {
     }
     await this.recordArtifactEvent(sessionId, input);
     if(!failedUse && declaredUse) await this.recordCapabilityUse(sessionId,declaredUse,invocationContext);
+    let procedureOutcome: Awaited<ReturnType<LearningService['supportProcedure']>> | undefined;
     if (input.kind === 'procedure' && input.applicability !== 'rejected' && input.verificationRef && input.result !== 'unavailable') {
-      await this.applyProcedureOutcome(input.artifactId, sessionId, input.result, [input.verificationRef, ...evidenceRefs]);
+      procedureOutcome = await this.applyProcedureOutcome(input.artifactId, sessionId, input.result, [input.verificationRef, ...evidenceRefs], input.contentDigest);
     }
-    return { recorded: true, trustChanged: Boolean(input.applicability !== 'rejected' && input.verificationRef && input.result !== 'unavailable') };
+    return { recorded: true, ...(procedureOutcome ? { materialization: procedureOutcome.materialization } : {}), trustChanged: Boolean(input.applicability !== 'rejected' && input.verificationRef && input.result !== 'unavailable') };
   }
 
   private async recordArtifactEvent(sessionId: string, input: ExternalArtifactReceiptInput): Promise<void> {
@@ -1431,28 +1457,41 @@ export class ExternalControllerLearningService {
     const episode = await this.getEpisode(sessionId);
     const workspace = input.workspace ?? episode?.workspace;
     const items = await this.learning.procedures(workspace);
-    if (input.operation === 'list') return items;
+    const deliver = async (values: typeof items) => {
+      if (episode) await this.mutate(state => {
+        const current = state.episodes.find(item => item.id === episode.id);
+        if (!current || current.closedAt || state.sessionHeads[sessionId] !== current.id) throw new Error('EXTERNAL_EPISODE_REQUIRED');
+        current.deliveredArtifacts ??= {};
+        for (const item of values) current.deliveredArtifacts['procedure:' + item.fingerprint] = procedureContractDigest(item);
+      });
+      return values.map(item => ({ ...item, deliveryContractDigest: procedureContractDigest(item), evidenceAttribution: procedureBoundEvidence(item) }));
+    };
+    if (input.operation === 'list') return deliver(items);
     if (input.operation === 'inspect') {
       const found = items.find(item => item.fingerprint === input.fingerprint);
       if (!found) throw new Error('EXTERNAL_PROCEDURE_NOT_FOUND');
-      return found;
+      return (await deliver([found]))[0];
     }
     if (input.operation === 'outcome') {
       return this.applyProcedureOutcome(input.fingerprint!, sessionId, input.result!, [input.verificationRef!, ...(input.evidenceRefs ?? [])]);
     }
     if (!episode || episode.terminalOutcome !== 'verified' || !input.name || !input.description || !input.steps?.length || !input.verificationRef) throw new Error('EXTERNAL_PROCEDURE_PROPOSAL_FIELDS_REQUIRED');
-    return this.learning.supportProcedure({ taskId: episode.id, origin: 'external', workspace,
+    const supported = await this.learning.supportProcedure({ taskId: episode.id, origin: 'external', workspace,
       name: input.name, description: input.description, steps: input.steps, allowedTools: input.allowedTools,
       reuseCondition: input.reuseCondition, outcome: 'verified', evidenceRefs: [input.verificationRef, ...(input.evidenceRefs ?? [])] });
+    return (await deliver([supported]))[0];
   }
 
-  private async applyProcedureOutcome(fingerprint: string, sessionId: string, result: 'success' | 'failure', evidenceRefs: string[]) {
+  private async applyProcedureOutcome(fingerprint: string, sessionId: string, result: 'success' | 'failure', evidenceRefs: string[], declaredDigest?: string) {
     const episode = await this.getEpisode(sessionId);
     if (!episode) throw new Error('EXTERNAL_EPISODE_REQUIRED');
     const item = (await this.learning.procedures(episode.workspace)).find(value => value.fingerprint === fingerprint);
     if (!item) throw new Error('EXTERNAL_PROCEDURE_NOT_FOUND');
+    const deliveredDigest = episode.deliveredArtifacts?.['procedure:' + fingerprint];
+    if (!deliveredDigest || (declaredDigest !== undefined && declaredDigest !== deliveredDigest)
+      || deliveredDigest !== procedureContractDigest(item)) throw new Error('LEARNING_PROCEDURE_DELIVERED_CONTRACT_CONFLICT');
     return this.learning.supportProcedure({ ...item, taskId: episode.id, origin: 'external', evidenceRefs,
-      outcome: result === 'success' ? 'verified' : 'failed' });
+      expectedContractDigest: deliveredDigest, outcome: result === 'success' ? 'verified' : 'failed' });
   }
 
   async evaluate(input: { workspace?: string; taskFamily?: string; limit?: number; cohortId?: string; baselineEpisodeIds?: string[]; candidateEpisodeIds?: string[] } = {}) {
@@ -1546,8 +1585,8 @@ export class ExternalControllerLearningService {
       pendingLearningEpisodes: state.episodes
         .filter(item => item.meaningful && item.pendingLearning).length,
       procedureCount: procedures.length,
-      readyProcedureCount: procedures.filter(item => !item.needsReview && item.supportTaskIds.length >= 2
-        && item.supportTaskIds.length > item.failureTaskIds.length * 2).length,
+      readyProcedureCount: procedures.filter(item => !item.needsReview && procedureBoundEvidence(item).supportTaskIds.length >= 2
+        && procedureBoundEvidence(item).supportTaskIds.length > procedureBoundEvidence(item).failureTaskIds.length * 2).length,
       statePath: this.statePath,
       semanticAuthority: 'memory-service',
       modelProviderRequired: false,

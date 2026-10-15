@@ -4,7 +4,9 @@ const brief = (value: string, max = 180) => value.length > max ? value.slice(0, 
 export function skillNoticeText(item: SkillProposalRecord): string {
   return ['Usulan skill: ' + item.name + ' (' + item.action + ').',
     'Fungsi: ' + brief(item.input.purpose), 'Dipakai ketika: ' + brief(item.input.triggers.join('; '), 120),
-    'Bukti: ' + item.supportTaskIds.length + ' task terverifikasi; ' + item.failureTaskIds.length + ' kegagalan; ' + item.qualification + '.',
+    item.input.procedureFingerprint && !item.procedureContractDigest
+      ? 'Bukti prosedur legacy: atribusi kontrak belum diketahui; hitungan/kualifikasi lama adalah riwayat.'
+      : 'Bukti: ' + item.supportTaskIds.length + ' task terverifikasi; ' + item.failureTaskIds.length + ' kegagalan; ' + item.qualification + '.',
     'Manfaat yang diharapkan, belum diukur: ' + brief(item.input.expectedBenefit, 140),
     'Batas: ' + brief(item.input.limitations.join('; '), 120), 'Proposal: ' + item.path,
     'Status: proposal/revisi belum aktif. Pilihan: setujui, revisi, tolak, atau nanti.',

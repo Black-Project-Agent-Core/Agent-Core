@@ -1,6 +1,6 @@
 import type { AgentCoreMcpRuntime } from './mcp/server.js';
 import { activityTracker } from './tracker/activity-tracker.js';
-import type { AgentEpisodeEvent, AgentProcedureCandidate } from './agent-learning-loop.js';
+import { procedureContractDigest, procedureBoundEvidence, type AgentEpisodeEvent, type AgentProcedureCandidate } from './agent-learning-loop.js';
 import { buildBm25Profile } from './memory/bm25.js';
 import type { MemoryRecord } from './memory/types.js';
 import type { SkillDiscoverySnapshot } from './skills/discovery.js';
@@ -8,8 +8,7 @@ import type { MergedRetrieval } from './learning/subquestion-retrieval.js';
 import { createHash } from 'node:crypto';
 import { buildCapabilityExposure, type CapabilityExposure, type CapabilityArtifact } from './capability-awareness.js';
 
-export const knowledgeRevision = (item: { name: string; description: string; steps: string[]; reuseCondition?: string }) =>
-  'sha256:' + createHash('sha256').update(JSON.stringify([item.name, item.description, item.steps, item.reuseCondition ?? ''])).digest('hex');
+export const knowledgeRevision = procedureContractDigest;
 
 export function rankKnowledge<T>(items: T[], query: string, describe: (item: T) => string, limit = 8): T[] {
   const records = items.map((item, index) => ({ id: String(index), content: describe(item), keywords: [], tags: [], context: '', category: '' } as unknown as MemoryRecord));
@@ -203,9 +202,11 @@ export async function buildKnowledgeSynthesisPacket(input: {
   }
 
   const procedureLines = selectedProcedures.map(item => {
+    const bound = procedureBoundEvidence(item);
     const line = '- procedure-id=' + item.fingerprint + ' | ' + item.name
-      + ' | verified-support=' + item.supportTaskIds.length
-      + ' | verified-failures=' + item.failureTaskIds.length
+      + ' | contract-bound-support=' + bound.supportTaskIds.length
+      + ' | contract-bound-failures=' + bound.failureTaskIds.length
+      + ' | legacy-unattributed=' + bound.legacyTaskIds.length
       + ' | status=' + item.status
       + ' | needs-review=' + Boolean(item.needsReview)
       + ' | revision=' + (artifactRevisions['procedure:' + item.fingerprint] = knowledgeRevision(item))
@@ -245,7 +246,7 @@ export async function buildKnowledgeSynthesisPacket(input: {
   if (journeyStatus === 'unknown') evidenceGapLines.push('- pattern-source-unavailable; Learning Journey has partial owner coverage');
   if (skillStatus === 'unavailable') evidenceGapLines.push('- skill-discovery-unavailable; catalog contents are unknown');
 
-  inventoryArtifacts.push(...input.procedures.filter(p=>p.supportTaskIds.length>0 && !p.needsReview).map(p=>({kind:'procedure' as const,id:p.fingerprint,description:p.name+': '+p.description,revision:knowledgeRevision(p)})));
+  inventoryArtifacts.push(...input.procedures.filter(p=>procedureBoundEvidence(p).supportTaskIds.length>0 && !p.needsReview).map(p=>({kind:'procedure' as const,id:p.fingerprint,description:p.name+': '+p.description,revision:knowledgeRevision(p)})));
   const capabilityExposure = buildCapabilityExposure({availableTools:input.availableTools,artifacts:inventoryArtifacts,owners});
   if (capabilityExposure.omittedFromText > 0) truncated.add('capabilities');
   // A failed owner cannot turn a partially available composite source into a complete zero.

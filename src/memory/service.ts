@@ -1,3 +1,4 @@
+import type { MemorySearchHostContext } from '../../SubProject/agent-core-memory/dist/index.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
@@ -1052,7 +1053,7 @@ export class MemoryService {
     return { committed: true, operations: committed.result, indexRefreshes: 1 };
   }
 
-  async search(query: string, options: MemorySearchOptions = {}): Promise<DeliveredMemorySearchResult[]> {
+  async search(query: string, options: MemorySearchOptions = {}, _hostContext?: MemorySearchHostContext): Promise<DeliveredMemorySearchResult[]> {
     this.assertOperational();
     options = { ...options, ...(options.workspace ? { workspace: this.resolveWorkspace(options.workspace) } : {}) };
     const normalizedQuery = query.trim();

@@ -34,6 +34,7 @@ export function renderSkillProposal(item: SkillProposalRecord): string {
     section('Bukti dan pengalaman asal', [
       'Task sumber: ' + item.sourceTaskIds.join(', '), 'Dukungan terverifikasi: ' + item.supportTaskIds.join(', '),
       'Kegagalan: ' + item.failureTaskIds.join(', '), 'Historical/unknown: ' + item.historicalTaskIds.join(', '), ...item.evidenceRefs]),
+    ...(item.procedureContractDigest ? [section('Kontrak bukti prosedur', ['Version: 1', 'Digest: ' + item.procedureContractDigest, 'Hanya receipt contract-bound yang replayable menyumbang kualifikasi; bukti legacy tetap historical/unknown.'])] : []),
     section('Keterbatasan', p.limitations), section('Kebutuhan implementasi', [p.implementation]),
     section('Acceptance yang direncanakan', p.acceptance),
     section('Keputusan pengguna', item.decisions.filter(d => d.revisionDigest === item.revisionDigest)

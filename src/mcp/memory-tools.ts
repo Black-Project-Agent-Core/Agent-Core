@@ -1,5 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import type { MemoryService } from '../memory/service.js';
+import type { MemorySearchHostContext } from '../../SubProject/agent-core-memory/dist/index.js';
+import type { MemoryScopeResolver } from './memory-scope.js';
 import type { ExternalControllerLearningService } from '../learning/external-controller.js';
 import { formatDeliveredMemorySearchResult } from '../memory/search-projection.js';
 import { memoryFeedbackContentDigest } from '../memory/feedback-target.js';
@@ -88,6 +90,7 @@ export function registerMemoryTools(
   externalController?: ExternalControllerLearningService,
   externalSessionId?: string,
   nativeTaskId?: string,
+  resolveMemoryScope?: MemoryScopeResolver,
 ): void {
   server.registerTool('memory_list', {
     title: 'List Memories',
@@ -163,13 +166,30 @@ export function registerMemoryTools(
     description: 'Search scoped Memory with lexical, BM25 or fusion ranking.',
     inputSchema: schemas.memorySearch,
     annotations: { title: 'Search Memories', readOnlyHint: false },
-  }, async (args: any) => run('memory_search', args, async () => {
+  }, async (args: any, ctx) => run('memory_search', args, async () => {
+    const deadlineMs = Date.now() + 15_000;
     const input = schemas.memorySearch.parse(args);
     const invocationContext = currentExternalInvocationContext();
     const episode = invocationContext?.binding === 'bound'
       ? { id: invocationContext.taskId, workspace: invocationContext.workspace } : undefined;
-    const results = await memory.search(input.query, { ...input, taskId: nativeTaskId ?? episode?.id,
-      workspace: input.workspace ?? episode?.workspace });
+    const taskId = nativeTaskId ?? episode?.id;
+    let hostContext: MemorySearchHostContext | undefined;
+    if (resolveMemoryScope && taskId) {
+      try {
+        const scope = await resolveMemoryScope({ taskId });
+        const identity = memory.registeredWorkspaceIdentity(scope.workspaceKey);
+        hostContext = { scope, deadlineMs, ...(ctx?.mcpReq?.signal ? { signal: ctx.mcpReq.signal } : {}),
+          assertScopeCurrent: async () => {
+            const fresh = await resolveMemoryScope({ taskId });
+            if (JSON.stringify(fresh) !== JSON.stringify(scope)
+              || memory.registeredWorkspaceIdentity(fresh.workspaceKey).key !== identity.key
+              || (!nativeTaskId && (!externalController || !await externalController.invocationDisclosureCurrent(invocationContext))))
+              throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
+          } };
+      } catch { /* Missing host authority withholds synthesis; ordinary recall stays available. */ }
+    }
+    const results = await memory.search(input.query, { ...input, taskId,
+      workspace: input.workspace ?? episode?.workspace ?? hostContext?.scope.workspaceKey }, hostContext);
     const authority = await memory.authoritySnapshot(results.map(item => item.record.id), input.workspace);
     if (externalController && externalSessionId) {
       await externalController.recordMemoryRecall(externalSessionId, input.workspace, results, invocationContext).catch(() => undefined);

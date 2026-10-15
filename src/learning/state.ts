@@ -3,6 +3,8 @@ import path from 'node:path';
 import { isNewState, writeStateFile } from '../persistence/state-file.js';
 import type { LearningRejectionFingerprint, LearningState, PendingLearningReview } from './types.js';
 import type { LearningPaths } from './paths.js';
+import { procedureContractDigest } from '../agent-learning-loop.js';
+import { safeEvidenceRefSchema } from './evaluation.js';
 
 const MAX_IDEMPOTENCY = 64;
 const MAX_REJECTIONS = 128;
@@ -57,6 +59,21 @@ function normalizeState(value: unknown): LearningState {
   for (const item of raw.procedures ?? []) {
     if (!item || !DIGEST_RE.test(item.fingerprint) || !item.name || !Array.isArray(item.steps)
       || !Array.isArray(item.supportTaskIds) || !Array.isArray(item.failureTaskIds)) throw new Error('Invalid learning procedure');
+    if (item.contractVersion !== undefined || item.contractDigest !== undefined || item.contractReceipts !== undefined) {
+      if (item.contractVersion !== 1 || !item.contractDigest || !DIGEST_RE.test(item.contractDigest)
+        || item.contractDigest !== procedureContractDigest(item) || !Array.isArray(item.contractReceipts)
+        || item.contractReceipts.length > 32) throw new Error('Invalid learning procedure contract');
+      const keys = new Set<string>();
+      for (const receipt of item.contractReceipts) {
+        const key = receipt.taskId + ':' + receipt.outcome;
+        if (typeof receipt.taskId !== 'string' || !receipt.taskId.trim() || receipt.taskId.length > 200
+          || receipt.contractDigest !== item.contractDigest || !['verified', 'failed'].includes(receipt.outcome)
+          || !Array.isArray(receipt.evidenceRefs) || !receipt.evidenceRefs.length || receipt.evidenceRefs.length > 32
+          || receipt.evidenceRefs.some(ref => !safeEvidenceRefSchema().safeParse(ref).success)
+          || keys.has(key)) throw new Error('Invalid learning procedure receipt');
+        keys.add(key);
+      }
+    }
   }
   for (const item of raw.verificationManifests ?? []) {
     if (!item || typeof item.taskId !== 'string' || !item.taskId || typeof item.case?.path !== 'string'

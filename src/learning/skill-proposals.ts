@@ -5,6 +5,7 @@ import type { SkillProposalInput, SkillProposalRecord, SkillWorkspaceIdentity } 
 import { assertLearningTextSafe } from '../memory/safety.js';
 import { recheckWorkflowReport } from './workflow-verifier.js';
 import { safeEvidenceRefSchema } from './evaluation.js';
+import { assertProcedureCompatible, procedureBoundEvidence } from '../agent-learning-loop.js';
 import { proposalDigest, semanticSkillName, proposalWorkspaceSegment, renderSkillProposal, writeProposalProjection, proposalFileMatches } from './skill-proposal-files.js';
 
 const unique = (values: string[]) => [...new Set(values)].sort();
@@ -33,7 +34,7 @@ export class SkillProposalCoordinator {
     private readonly resolveWorkspace: (value: string) => SkillWorkspaceIdentity) {}
   get root(): string { return this.skills.proposalDirectory(); }
   project(item: SkillProposalRecord): SkillProposalRecord {
-    return { ...structuredClone(item), path: path.join(this.root, proposalWorkspaceSegment(item.workspace), semanticSkillName(item.name) + '.md') };
+    return { ...structuredClone(item), ...(item.input.procedureFingerprint ? { procedureEvidenceAttribution: item.procedureContractDigest ? 'contract-bound' as const : 'legacy-unattributed' as const } : {}), path: path.join(this.root, proposalWorkspaceSegment(item.workspace), semanticSkillName(item.name) + '.md') };
   }
   async list(workspace: string): Promise<SkillProposalRecord[]> {
     const scope = this.resolveWorkspace(workspace), state = await this.stateStore.load();
@@ -51,28 +52,48 @@ export class SkillProposalCoordinator {
       if (input.expectedProposalDigest && old?.revisionDigest !== input.expectedProposalDigest) throw new Error('SKILL_PROPOSAL_REVISION_CONFLICT');
       const procedure = input.procedureFingerprint ? state.procedures?.find(p => p.fingerprint === input.procedureFingerprint && p.workspace === scope.name) : undefined;
       if (input.procedureFingerprint && !procedure) throw new Error('SKILL_PROPOSAL_PROCEDURE_NOT_FOUND');
+      if (old && old.input.procedureFingerprint !== input.procedureFingerprint) throw new Error('SKILL_PROPOSAL_SEMANTIC_CONFLICT');
+      if (procedure) {
+        if (input.triggers.length !== 1) throw new Error('LEARNING_PROCEDURE_CONTRACT_CONFLICT:trigger');
+        assertProcedureCompatible(procedure, { ...procedure, description: input.purpose,
+          reuseCondition: input.triggers[0], steps: input.steps, allowedTools: input.allowedTools });
+      }
       const targetSkillName = input.targetSkillName ?? procedure?.skillName ?? input.name;
       const active = (await this.skills.list()).find(s => s.name === targetSkillName);
       const contentKey = proposalDigest(JSON.stringify([input.name, input.purpose, input.triggers, input.nonTriggers,
         input.steps, input.allowedTools, input.expectedBenefit, input.limitations, input.implementation, input.acceptance, targetSkillName]));
       if (old && old.contentKey !== contentKey && input.expectedProposalDigest !== old.revisionDigest) throw new Error('SKILL_PROPOSAL_SEMANTIC_CONFLICT');
       const sourceTaskIds = unique([...(old?.sourceTaskIds ?? []), input.taskId, ...(procedure?.supportTaskIds ?? []), ...(procedure?.failureTaskIds ?? []), ...(procedure?.historicalTaskIds ?? [])]);
-      const recordedSupport = unique([...(procedure?.supportTaskIds ?? old?.supportTaskIds ?? []), ...(trustedOutcomes?.positive ?? [])]);
-      const recordedFailure = unique([...(procedure?.failureTaskIds ?? old?.failureTaskIds ?? []), ...(trustedOutcomes?.negative ?? [])]);
+      const bound = procedure ? procedureBoundEvidence(procedure) : undefined;
+      const recordedSupport = unique([...(bound?.supportTaskIds ?? old?.supportTaskIds ?? []), ...(!procedure ? trustedOutcomes?.positive ?? [] : [])]);
+      const recordedFailure = unique([...(bound?.failureTaskIds ?? old?.failureTaskIds ?? []), ...(!procedure ? trustedOutcomes?.negative ?? [] : [])]);
       const evidenceRefs = unique([...(old?.evidenceRefs ?? []), ...input.evidenceRefs, ...(procedure?.evidenceRefs ?? []), ...(trustedOutcomes?.refs ?? [])]);
       const supportTaskIds: string[] = [], failureTaskIds: string[] = [];
       // Bounded fresh replay; stored counts are history, not permanent proof.
       for (const id of unique([...recordedSupport, ...recordedFailure]).slice(0, 32)) {
-        const verdicts = await Promise.all(evidenceRefs.filter(ref => ref.startsWith('verification:')).slice(0, 32).map(ref => recheckWorkflowReport(ref, id)));
-        if (recordedSupport.includes(id) && verdicts.includes('pass')) supportTaskIds.push(id);
-        if (recordedFailure.includes(id) && verdicts.includes('fail')) failureTaskIds.push(id);
+        if (bound) {
+          for (const receipt of bound.receipts.filter(receipt => receipt.taskId === id)) {
+            const verdicts = await Promise.all(receipt.evidenceRefs.map(ref => recheckWorkflowReport(ref, id)));
+            if (receipt.outcome === 'verified' && verdicts.includes('pass') && !supportTaskIds.includes(id)) supportTaskIds.push(id);
+            if (receipt.outcome === 'failed' && verdicts.includes('fail') && !failureTaskIds.includes(id)) failureTaskIds.push(id);
+          }
+        } else {
+          const verdicts = await Promise.all(evidenceRefs.filter(ref => ref.startsWith('verification:')).slice(0, 32).map(ref => recheckWorkflowReport(ref, id)));
+          if (recordedSupport.includes(id) && verdicts.includes('pass')) supportTaskIds.push(id);
+          if (recordedFailure.includes(id) && verdicts.includes('fail')) failureTaskIds.push(id);
+        }
       }
-      const historicalTaskIds = unique([...(old?.historicalTaskIds ?? []), ...(procedure?.historicalTaskIds ?? []), ...recordedSupport, ...recordedFailure, input.taskId]).filter(id => !supportTaskIds.includes(id) && !failureTaskIds.includes(id));
+      const historicalTaskIds = unique([...(old?.historicalTaskIds ?? []), ...(procedure?.historicalTaskIds ?? []), ...(bound?.legacyTaskIds ?? []), ...recordedSupport, ...recordedFailure, input.taskId]).filter(id => !supportTaskIds.includes(id) && !failureTaskIds.includes(id));
       const qualification = procedure?.needsReview || trustedOutcomes?.negative.length || (!procedure && failureTaskIds.length) ? 'needs-review' : supportTaskIds.length >= 2 && supportTaskIds.length > failureTaskIds.length * 2 ? 'qualified' : 'awaiting-verification';
-      const sameEvidence = old && contentKey === old.contentKey && JSON.stringify([sourceTaskIds, supportTaskIds, failureTaskIds, historicalTaskIds, evidenceRefs, qualification]) === JSON.stringify([old.sourceTaskIds, old.supportTaskIds, old.failureTaskIds, old.historicalTaskIds, old.evidenceRefs, old.qualification]);
+      // Compatibility rollout alone is not a new user decision or active-Skill revision.
+      if (old && procedure && !bound?.receipts.length && !trustedOutcomes?.negative.length && contentKey === old.contentKey
+        && (old.status === 'approved' || old.status === 'implemented' || old.artifactStatus === 'catalog-active')) {
+        return { state, result: old, persist: false };
+      }
+      const sameEvidence = old && contentKey === old.contentKey && (procedure?.contractDigest ?? null) === (old.procedureContractDigest ?? null) && JSON.stringify([sourceTaskIds, supportTaskIds, failureTaskIds, historicalTaskIds, evidenceRefs, qualification]) === JSON.stringify([old.sourceTaskIds, old.supportTaskIds, old.failureTaskIds, old.historicalTaskIds, old.evidenceRefs, old.qualification]);
       if (sameEvidence && old.artifactStatus === 'catalog-active' && old.artifactDigest !== active?.digest) throw new Error('SKILL_PROPOSAL_ACTIVE_DRIFT');
       const replayActive = sameEvidence && old.artifactStatus === 'catalog-active';
-      const revisionDigest = replayActive ? old.revisionDigest : proposalDigest(JSON.stringify([contentKey, sourceTaskIds, supportTaskIds, failureTaskIds, historicalTaskIds, evidenceRefs, qualification, active?.digest ?? null]));
+      const revisionDigest = replayActive ? old.revisionDigest : proposalDigest(JSON.stringify([contentKey, sourceTaskIds, supportTaskIds, failureTaskIds, historicalTaskIds, evidenceRefs, qualification, active?.digest ?? null, ...(procedure?.contractDigest ? [procedure.contractDigest] : [])]));
       const changed = !old || revisionDigest !== old.revisionDigest;
       const now = new Date().toISOString();
       const item: SkillProposalRecord = {
@@ -80,6 +101,7 @@ export class SkillProposalCoordinator {
         workspace: scope.name, workspaceIdentity: scope.key, name: input.name,
         path: path.join(this.root, proposalWorkspaceSegment(scope.name), input.name + '.md'), input, contentKey, revisionDigest,
         status: changed ? 'proposed' : old.status, artifactStatus: changed ? 'not-built' : old.artifactStatus,
+        ...(procedure?.contractDigest ? { procedureContractDigest: procedure.contractDigest } : {}),
         qualification, sourceTaskIds, supportTaskIds, failureTaskIds, historicalTaskIds, evidenceRefs,
         sourceSessionIds: unique([...(old?.sourceSessionIds ?? []), ...(input.sessionId ? [input.sessionId] : [])]),
         action: changed ? active ? 'revise' : 'create' : old.action, targetSkillName,

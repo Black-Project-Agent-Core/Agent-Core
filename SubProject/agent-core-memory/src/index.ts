@@ -1,6 +1,7 @@
 export { MemoryService } from './memory/service.js';
 export type {
   MemoryServiceOptions,
+  MemorySearchHostContext,
   ControllerRetrievalPolicy,
   RememberInput,
   UpdateInput,
@@ -66,5 +67,5 @@ export type {ProspectiveIntention,IntentionObservation,IntentionEvaluation} from
 export type {ContinuityAssessment,IngestionBinding,IngestionCursor} from './memory/experience-types.js';
 export {assessTaskContinuity} from './memory/controller-session.js';
 export {encodeProjectSynthesis,decodeProjectSynthesis,buildProjectSynthesisAction,projectSynthesisRefs,checkProjectSynthesisDependencies} from './memory/project-synthesis.js';
-export type {ProjectSynthesis} from './memory/project-synthesis.js';
+export type {ProjectSynthesis,SynthesisEligibilitySummary,SynthesisEligibilityReason} from './memory/project-synthesis.js';
 export type {KnowledgeInterval,KnownHistoryCoverage,HistoricalMemorySnapshot} from './memory/revisions.js';

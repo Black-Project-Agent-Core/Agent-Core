@@ -24,13 +24,19 @@ function errorResult(error: unknown) {
 export function registerMemoryExperienceTools(
   server:McpServer, memory:V2MemoryService, resolveScope:MemoryScopeResolver,
 ):void {
-  async function dispatch(action:string,payload:Record<string,unknown>,mode:'read'|'write',selector?:MemoryTaskSelector){
+  async function dispatch(action:string,payload:Record<string,unknown>,mode:'read'|'write',selector?:MemoryTaskSelector,signal?:AbortSignal){
+    const deadlineMs=Date.now()+15_000;
     const group=mode==='read'?readonlyActions:mutatingActions;
     if(!Object.hasOwn(group,action))throw new Error('MEMORY_INPUT_INVALID');
     if(Object.keys(payload).some(key=>forbiddenPayloadScope.has(key)))throw new Error('MEMORY_INPUT_INVALID');
     const scope=await resolveScope(selector);
     if(!scope?.taskId?.trim() || !scope.workspaceKey?.trim() || !scope.controllerId?.trim())throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
-    const session=memory.controller(scope);
+    const identity=memory.registeredWorkspaceIdentity(scope.workspaceKey);
+    const session=memory.controller(scope,'baseline-v1',{scope,deadlineMs,signal,assertScopeCurrent:async()=>{
+      const fresh=await resolveScope(selector);
+      if(JSON.stringify(fresh)!==JSON.stringify(scope)||memory.registeredWorkspaceIdentity(fresh.workspaceKey).key!==identity.key)
+        throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
+    }});
     if(session.capabilities().writeMode!=='experience-v2')throw new Error('MEMORY_EXPERIENCE_NOT_ENABLED');
     const {createControllerMemoryDispatcher}=await import('../../SubProject/agent-core-memory/dist/index.js');
     const method=(group as Record<string,string>)[action]!;
@@ -40,9 +46,9 @@ export function registerMemoryExperienceTools(
   server.registerTool('memory_v2_read',{title:'Read Memory v2',
     description:'Read compact Memory, exact history, task capsule continuity assessment, committed ingestion cursor and capabilities. Recall supports separate validAt and host-recorded knownAt; asOf remains a validAt alias. task_context optionally accepts intentions:{now,eventKeys,limit} for an advisory current-episode projection; it never schedules, executes or resolves an obligation. Continuity ready is fresh context, never task completion or permission to resume paused/completed work. External callers must pass scope.taskId from their host-bound Learning episode.',
     inputSchema:input.shape,annotations:{title:'Read Memory v2',readOnlyHint:true,openWorldHint:false}
-  },async (args:unknown)=>{try{const request=input.parse(args);return await dispatch(request.action,request.payload??{},'read',request.scope);}catch(error){return errorResult(error);}});
+  },async (args:unknown,ctx)=>{try{const request=input.parse(args);return await dispatch(request.action,request.payload??{},'read',request.scope,ctx?.mcpReq?.signal);}catch(error){return errorResult(error);}});
   server.registerTool('memory_v2_write',{title:'Write Memory v2',
     description:'Record task episodes, checkpoint, review promotion and retention. External callers must pass scope.taskId from their host-bound Learning episode.',
     inputSchema:input.shape,annotations:{title:'Write Memory v2',readOnlyHint:false,openWorldHint:false}
-  },async (args:unknown)=>{try{const request=input.parse(args);return await dispatch(request.action,request.payload??{},'write',request.scope);}catch(error){return errorResult(error);}});
+  },async (args:unknown,ctx)=>{try{const request=input.parse(args);return await dispatch(request.action,request.payload??{},'write',request.scope,ctx?.mcpReq?.signal);}catch(error){return errorResult(error);}});
 }

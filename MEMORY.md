@@ -1,5 +1,13 @@
 # Agent Core Memory — Current Implemented State
 
+## Batch 11–12 Linux implementation — 2026-10-15
+
+<!-- batch11-12-current:start -->
+Source implementation extends the existing Learning and canonical Memory owners from current-line baseline `5a6c7ffb72a8ba63f6489fadf1dbc0eeafc788b5`. Batch 11 (#36) preserves procedure fingerprints, adds exact contract-bound receipts, rejects incompatible evidence within the owner transaction, keeps legacy attribution unknown, preserves historical approved/active Skill decisions, and binds actual-use outcomes to delivered contract revisions. Batch 12 (#27) shares current project-synthesis eligibility across controller recall and normal search, with host-only scope, pre-ranking filtering, 32 distinct synthesis-graph dependency resolutions (including nested synthesis; not a physical-read cap) / 15 seconds or shorter caller deadline / zero retries, late-result suppression and existing aggregate diagnostics. Ordinary Memory remains fail-soft; exact/historical reads and the one canonical store remain intact.
+
+Batch 11 and final combined production builds passed (path guard 372/0; Memory/Core TypeScript). Independent combined review has no remaining material finding. Compiled full descriptor is 78 tools/130219 bytes on Linux; all input schemas match Batch 10, with only the existing platform-generated start_process description differing from the Windows artifact. No new plugin ZIP is required. No test suite, benchmark, synthetic task/source history, donor runtime or dependency was added. This checkout lacks canonical runtime/memory; repository MEMORY.md is documentation, not local Memory persistence. Windows activation, genuine-data adoption, canonical Memory/Learning and post-finalization Windows cleanup remain pending the authorized local route. See [Batch 11–12 source and adoption record](docs/Batch-11-12-Linux-Implementation-20261015.md).
+<!-- batch11-12-current:end -->
+
 ## Batch 9–10 Windows source and client handoff — 2026-10-15
 
 Batch 7–8 Windows branch was reconciled and remote main verified at `c7596b0a1b087b7d5fe9fff9a21d6804708c4d78` (parents Windows 1cdad89 and Linux 4a7478d). Batch 9 #135 extends the existing offline verifier with manifest v2 expectedClaims/claimCoverage; official build exit0, real source report 3/3 bound, CLI exit0 and persistent digest. That demonstrates association only, not semantic truth; v1, memory owner and public tool surface remain.

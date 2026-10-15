@@ -1,8 +1,8 @@
-import {checkProjectSynthesisDependencies,decodeProjectSynthesis} from './project-synthesis.js';
+import {checkProjectSynthesisDependencies,decodeProjectSynthesis,createProjectSynthesisEligibility,type ProjectSynthesisEligibility,type SynthesisEligibilitySummary} from './project-synthesis.js';
 import {MemoryPromotion,type ConsolidationPolicy} from './promotion.js';
 import { MemoryEpisodes } from './episodes.js';
 import { ControllerMemorySession } from './controller-session.js';
-import { disclosureDigest, memorySemanticRevision, MemoryControllerError, type ControllerScope } from './disclosure.js';
+import { controllerScopeSchema, stableDisclosureJson, disclosureDigest, memorySemanticRevision, MemoryControllerError, type ControllerScope } from './disclosure.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
@@ -32,6 +32,16 @@ import { projectMemorySearchResults, type DeliveredMemorySearchResult } from './
 import { FileMemoryStore } from './store.js';
 import { isMemoryExpired, normalizeMemoryExpiresAt } from './visibility.js';
 import { MEMORY_SCHEMA_VERSION, type EvolutionEvent, type MemoryHealth, type MemoryIssue, type MemoryLink, type MemoryProvenance, type MemoryRecord } from './types.js';
+
+/** Internal, host-authenticated context. Never populate from public/model search options. */
+export interface MemorySearchHostContext {
+  scope:ControllerScope;
+  assertScopeCurrent:()=>void|Promise<void>;
+  signal?:AbortSignal;
+  /** Absolute epoch milliseconds; eligibility caps this to 15 seconds per request. */
+  deadlineMs?:number;
+  onSynthesisEligibility?:(summary:SynthesisEligibilitySummary)=>void;
+}
 
 export interface MemoryServiceOptions {experience?:{enabled:true};consolidation?:ConsolidationPolicy;indexGranularity?:'record'|'passage';queryCache?:QueryCacheLimits;controllerRelevancePolicy?:RelevancePolicy}
 
@@ -212,18 +222,92 @@ export class MemoryService {
     this.index.dispose();
   }
 
-  controller(scope: ControllerScope, policy: ControllerRetrievalPolicy = 'baseline-v1'): ControllerMemorySession {
+  private controllerInScope(record:MemoryRecord,workspace:string):boolean {
+    return (record.id==='agent-core-foundational'&&record.pinned)
+      || Boolean(record.provenance?.workspace&&this.resolveWorkspace(record.provenance.workspace)===workspace);
+  }
+
+  private controllerEpisodes():MemoryEpisodes {
+    return new MemoryEpisodes(this.store,{inScope:(record,workspace)=>this.controllerInScope(record,workspace),workspaceRoot:workspace=>{
+      if(workspace==='agent-core')return this.projectRoot;
+      const registrations=[...this.workspaceAliases].filter(([,alias])=>alias===workspace);
+      const roots=registrations.map(([root])=>this.workspaceRoots.get(root));
+      return roots.length===1&&roots[0]?roots[0]:undefined;
+    }});
+  }
+
+  /** Factory stays in the Memory owner; both consumers share orchestration in project-synthesis. */
+  private synthesisEligibility(scope:ControllerScope|undefined,hostContext?:MemorySearchHostContext,workspace?:string,
+    episodes=this.controllerEpisodes()):ProjectSynthesisEligibility {
+    const parsed=controllerScopeSchema.safeParse(scope);
+    const ownedScope=parsed.success?Object.freeze({...parsed.data,workspaceKey:this.resolveWorkspace(parsed.data.workspaceKey)}):undefined;
+    const dependencies=new Map<string,string|null>(),memoryRefs=new Map<string,string>();
+    const origins=new Map<string,()=>Promise<void>>();
+    let activation:string|undefined,drift=false;
+    const assertScopeCurrent=async()=>{
+      if(!ownedScope||(workspace&&ownedScope.workspaceKey!==workspace))throw new MemoryControllerError('MEMORY_SCOPE_MISMATCH');
+      if(this.resolveWorkspace(ownedScope.workspaceKey)!==ownedScope.workspaceKey)throw new MemoryControllerError('MEMORY_SCOPE_MISMATCH');
+      if(hostContext){
+        const current=controllerScopeSchema.parse(hostContext.scope);
+        if(stableDisclosureJson({...current,workspaceKey:this.resolveWorkspace(current.workspaceKey)})!==stableDisclosureJson(ownedScope))throw new MemoryControllerError('MEMORY_SCOPE_MISMATCH');
+        await hostContext.assertScopeCurrent();
+      }
+    };
+    return createProjectSynthesisEligibility({assertScopeCurrent,
+      ...(hostContext?.signal?{signal:hostContext.signal}:{}),...(hostContext?.deadlineMs!==undefined?{deadlineMs:hostContext.deadlineMs}:{}),
+      inScope:record=>Boolean(ownedScope&&record.provenance?.workspace&&this.resolveWorkspace(record.provenance.workspace)===ownedScope.workspaceKey),
+      resolve:ownedScope?async(ref,resolve,wait)=>{
+        try{
+          const checked=await episodes.promotionSnapshot(ownedScope,context=>wait(async()=>{
+            await context.validate([ref],true);
+            const origin=await context.sourceOrigin(ref);
+            if(origin.freshness!=='current')return origin.freshness==='stale'?'stale' as const:'unavailable' as const;
+            let synthesis:ReturnType<typeof decodeProjectSynthesis>|undefined;
+            if(ref.kind==='memory'){
+              const current=context.visible(ref.id);
+              if(memorySemanticRevision(current)!==ref.revision)return 'stale' as const;
+              if(memoryRefs.has(ref.id)&&memoryRefs.get(ref.id)!==ref.revision)drift=true;
+              memoryRefs.set(ref.id,ref.revision);
+              if(current.category==='project-synthesis')synthesis=decodeProjectSynthesis(current.content);
+            }
+            const currentActivation=stableDisclosureJson(context.activation);
+            if(activation!==undefined&&activation!==currentActivation)drift=true;
+            activation=currentActivation;
+            for(const [key,content]of context.dependencies){
+              if(dependencies.has(key)&&dependencies.get(key)!==content)drift=true;
+              dependencies.set(key,content);
+            }
+            if(origin.validate)origins.set(stableDisclosureJson(ref),origin.validate);
+            return synthesis!==undefined?{synthesis}:'current' as const;
+          }));
+          if(typeof checked==='string')return checked;
+          if(!checked.synthesis)return 'unavailable' as const;
+          // Never recurse while holding the canonical snapshot lock.
+          const status=await checkProjectSynthesisDependencies(checked.synthesis,resolve);
+          return status.status==='unknown'?'unavailable' as const:status.status;
+        }catch(error){
+          if(error instanceof MemoryControllerError&&error.code==='MEMORY_SCOPE_MISMATCH')throw error;
+          return 'unavailable' as const;
+        }
+      }:undefined,
+      validateSnapshot:async(records,wait)=>{
+        if(!ownedScope||drift)throw new MemoryControllerError('MEMORY_REVISION_CONFLICT');
+        await episodes.promotionSnapshot(ownedScope,context=>wait(async()=>{
+          if(activation!==stableDisclosureJson(context.activation))throw new MemoryControllerError('MEMORY_REVISION_CONFLICT');
+          for(const record of records)if(memorySemanticRevision(context.visible(record.id))!==memorySemanticRevision(record))throw new MemoryControllerError('MEMORY_REVISION_CONFLICT');
+          for(const [id,revision]of memoryRefs)if(memorySemanticRevision(context.visible(id))!==revision)throw new MemoryControllerError('MEMORY_REVISION_CONFLICT');
+          for(const [key,content]of dependencies)if(await context.read(key)!==content)throw new MemoryControllerError('MEMORY_REVISION_CONFLICT');
+          for(const validate of origins.values())await validate();
+        }));
+      },
+    });
+  }
+
+  controller(scope: ControllerScope, policy: ControllerRetrievalPolicy = 'baseline-v1',hostContext?:MemorySearchHostContext): ControllerMemorySession {
     if (policy !== 'baseline-v1' && policy !== 'fusion-feedback-v1') throw new MemoryControllerError('MEMORY_INPUT_INVALID');
     const retrievalPolicy = policy;
-    const inScope = (record: MemoryRecord, workspace: string) =>
-      (record.id === 'agent-core-foundational' && record.pinned)
-      || Boolean(record.provenance?.workspace && this.resolveWorkspace(record.provenance.workspace) === workspace);
-    const episodes=new MemoryEpisodes(this.store,{inScope,workspaceRoot:workspace=>{
-        if(workspace==='agent-core')return this.projectRoot;
-        const registrations=[...this.workspaceAliases].filter(([,alias])=>alias===workspace);
-        const roots=registrations.map(([root])=>this.workspaceRoots.get(root));
-        return roots.length===1&&roots[0]?roots[0]:undefined;
-      }});
+    const inScope = (record:MemoryRecord,workspace:string)=>this.controllerInScope(record,workspace);
+    const episodes=this.controllerEpisodes();
     return new ControllerMemorySession({
       root:this.store.paths.root,experienceEnabled:this.experienceEnabled,episodes,
       ...(this.controllerRelevancePolicy ? {relevancePolicy:this.controllerRelevancePolicy} : {}),
@@ -265,28 +349,13 @@ export class MemoryService {
         return {results:searchMemories(records,query,{limit:Math.max(1,records.length),maxNeighbors:0},undefined,Math.max(1,records.length),rankingTime),
           relevanceContext:{semanticStatus:'disabled' as const},rankingRevision:disclosureDigest(['historical-ranking/v1',IDENTIFIER_TOKENIZER_VERSION,records.map(record=>memorySemanticRevision(record))])};
       },
-      sourceDependencyStatus: async (ref,resolve) => {
-        try{const checked=await episodes.promotionSnapshot({...scope,workspaceKey:this.resolveWorkspace(scope.workspaceKey)},async context=>{
-          await context.validate([ref],true);
-          const origin=await context.sourceOrigin(ref);
-          if(origin.freshness!=='current')return origin.freshness==='stale'?'stale' as const:'unavailable' as const;
-          if(ref.kind!=='memory')return 'current' as const;
-          const current=context.visible(ref.id);
-          if(memorySemanticRevision(current)!==ref.revision)return 'stale' as const;
-          return current.category==='project-synthesis'?{synthesis:decodeProjectSynthesis(current.content)}:'current' as const;
-        });
-        if(typeof checked==='string')return checked;
-        if(!checked.synthesis||!resolve)return 'unavailable' as const;
-        // Resolve nested syntheses only after releasing the canonical snapshot lock.
-        // The caller supplies its shared cache, cycle guard and request allowance.
-        const dependencies=await checkProjectSynthesisDependencies(checked.synthesis,resolve);
-        return dependencies.status==='unknown'?'unavailable' as const:dependencies.status;
-        }catch{return 'unavailable' as const;}
-      },
+      synthesisEligibility:()=>this.synthesisEligibility(scope,hostContext,this.resolveWorkspace(scope.workspaceKey),episodes),
+      onSynthesisEligibility:hostContext?.onSynthesisEligibility,
       rank: async (records, query, rankingTime) => {
         lexicalRetrievalTokens(query, 'query');
         // Validate against a complete canonical snapshot, then release the store
         // lock before the network-capable query embedder is invoked.
+        const invalidatedSynthesisIds:string[]=[];
         const canonicalRecords = await this.store.snapshot(async loaded => {
           this.syncCanonicalIssues(loaded.issues, loaded.complete);
           if (!this.canonicalComplete || this.canonicalStatus === 'error') throw new MemoryControllerError('MEMORY_SOURCE_UNAVAILABLE');
@@ -294,11 +363,13 @@ export class MemoryService {
           for (const record of records) {
             const current = canonical.get(record.id);
             if (!current || memorySemanticRevision(current) !== memorySemanticRevision(record)) {
+              if(record.category==='project-synthesis'){invalidatedSynthesisIds.push(record.id);continue;}
               throw new MemoryControllerError('MEMORY_CURSOR_STALE');
             }
           }
           return structuredClone(loaded.records);
         });
+        records=records.filter(record=>!invalidatedSynthesisIds.includes(record.id));
         let semantic;
         if (this.embedder && this.indexStatus === 'available') {
           try { semantic = await this.index.semanticContext(query, canonicalRecords, records) ?? undefined; }
@@ -318,6 +389,7 @@ export class MemoryService {
         }
         return {
           results: searchMemories(records, query, options, semantic, Math.max(1, records.length), rankingTime),
+          invalidatedSynthesisIds,
           relevanceContext:{semanticStatus:!this.embedder ? 'disabled' : semantic ? 'available' : 'unavailable'},
           rankingRevision: disclosureDigest(['controller-ranking/v1', retrievalPolicy, IDENTIFIER_TOKENIZER_VERSION,
             semantic?.revision ?? 'semantic-unavailable/v1', salienceEntries,
@@ -844,9 +916,10 @@ export class MemoryService {
     return this.retrievalLedger.status();
   }
 
-  private async touch(record: MemoryRecord): Promise<MemoryRecord> {
+  private async touch(record: MemoryRecord,exactRevision=false): Promise<MemoryRecord> {
     if (record.pinned) return record;
     const updated = await this.store.mutate(record.id, (current) => {
+      if(exactRevision&&memorySemanticRevision(current)!==memorySemanticRevision(record))throw new MemoryControllerError('MEMORY_REVISION_CONFLICT');
       const now = new Date().toISOString();
       return {
         ...current,
@@ -1220,7 +1293,7 @@ export class MemoryService {
     return { committed: true, operations: committed.result, indexRefreshes: 1 };
   }
 
-  async search(query: string, options: MemorySearchOptions = {}): Promise<DeliveredMemorySearchResult[]> {
+  async search(query: string, options: MemorySearchOptions = {},hostContext?:MemorySearchHostContext): Promise<DeliveredMemorySearchResult[]> {
     this.assertOperational();
     options = { ...options, ...(options.workspace ? { workspace: this.resolveWorkspace(options.workspace) } : {}) };
     const normalizedQuery = query.trim();
@@ -1233,6 +1306,8 @@ export class MemoryService {
       ? new Date(options.asOf).toISOString()
       : undefined;
     let candidateCount = 0;
+    const synthesisEligibility=this.synthesisEligibility(hostContext?.scope,hostContext,options.workspace);
+    const reportSynthesisEligibility=()=>{try{hostContext?.onSynthesisEligibility?.(synthesisEligibility.summary());}catch{/* Advisory diagnostics must remain fail-soft. */}};
 
     try {
       await this.reload();
@@ -1244,22 +1319,17 @@ export class MemoryService {
       const forgottenIds = await this.feedbackStore
         .forgottenIds(new Set(currentRecords.map(record => record.id)))
         .catch(() => new Set<string>());
-      const scopeRecords = currentRecords.filter(record => !options.workspace || record.pinned
+      const scopeRecords = canonicalRecords.filter(record => !options.workspace || record.pinned
         || (record.provenance?.workspace && this.resolveWorkspace(record.provenance.workspace) === options.workspace));
-      const supersededIds = new Set(scopeRecords.flatMap(record => record.links
+      // Filter before supersession as well as ranking: a withheld derivative must
+      // not hide ordinary memory through a link. Ordinary visibility rules stay intact.
+      const eligibleScopeRecords=await synthesisEligibility.filter(scopeRecords);
+      const supersededIds = new Set(eligibleScopeRecords.flatMap(record => record.links
         .filter(link => link.type === 'supersedes' && isMemoryLinkActive(link, Date.now())).map(link => link.targetId)));
-      const activeRecords = currentRecords.filter(record =>
-        !supersededIds.has(record.id) && (record.pinned || (!isMemoryExpired(record) && !forgottenIds.has(record.id) && (record.version!==2||record.experience.retention!=='archive'))));
       const workspace = options.workspace ? this.resolveWorkspace(options.workspace) : undefined;
-      candidateCount = workspace
-        ? activeRecords.filter(record => record.pinned
-          || (record.provenance?.workspace && this.resolveWorkspace(record.provenance.workspace) === workspace)).length
-        : activeRecords.length;
-
-      const activeIds = new Set(activeRecords.map(record => record.id));
-      const semanticEligible = canonicalRecords.filter(record => activeIds.has(record.id)
-        && (!workspace || record.pinned
-          || (record.provenance?.workspace && this.resolveWorkspace(record.provenance.workspace) === workspace)));
+      const semanticEligible = eligibleScopeRecords.filter(record =>
+        !supersededIds.has(record.id) && (record.pinned || (!isMemoryExpired(record) && !forgottenIds.has(record.id) && (record.version!==2||record.experience.retention!=='archive'))));
+      candidateCount=semanticEligible.length;
       let semanticContext;
       if (this.embedder && this.indexStatus === 'available' && this.embeddingStatus !== 'not-configured') {
         try {
@@ -1275,12 +1345,15 @@ export class MemoryService {
         : options;
       // Scope was resolved against the host alias registry above. Rank canonical
       // records so exact passage revisions are not changed by display normalization.
-      const rankedResults = searchMemories(semanticEligible, normalizedQuery, { ...searchOptions, workspace: undefined }, semanticContext);
+      let rankedResults = searchMemories(semanticEligible, normalizedQuery, { ...searchOptions, workspace: undefined }, semanticContext);
+      let deliveryIds=new Set((await synthesisEligibility.validateDelivery(rankedResults.map(result=>result.record))).map(record=>record.id));
+      rankedResults=rankedResults.filter(result=>deliveryIds.has(result.record.id));
       for (const result of rankedResults) {
-        if (result.record.pinned) continue;
+        if (result.record.pinned||synthesisEligibility.summary().reasons.includes('deadline')) continue;
         try {
-          result.record = await this.touch(result.record);
+          result.record = await this.touch(result.record,result.record.category==='project-synthesis');
         } catch (error) {
+          if(result.record.category==='project-synthesis')synthesisEligibility.omit(result.record,'unknown');
           const issue: MemoryIssue = {
             path: this.store.paths.root,
             message: `Recall metadata update failed for ${result.record.id}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1289,6 +1362,8 @@ export class MemoryService {
           this.syncCanonicalIssues([...this.canonicalIssues, issue]);
         }
       }
+      deliveryIds=new Set((await synthesisEligibility.validateDelivery(rankedResults.map(result=>result.record))).map(record=>record.id));
+      rankedResults=rankedResults.filter(result=>deliveryIds.has(result.record.id));
       const projection = projectMemorySearchResults(
         rankedResults,
         Math.max(500, Math.min(100_000, options.budgetChars ?? 20_000)),
@@ -1382,8 +1457,10 @@ export class MemoryService {
         queryCharCount: normalizedQuery.length,
         queryTokenEstimate: Math.ceil(normalizedQuery.length / 4),
         latencyMs: Date.now() - startedMs,
+        synthesisEligibility:synthesisEligibility.summary(),
         exposures,
       };
+      reportSynthesisEligibility();
       await this.retrievalLedger.record(attempt).catch(() => undefined);
       try {
         activityTracker.recordOutcome(
@@ -1421,8 +1498,10 @@ export class MemoryService {
         latencyMs: Date.now() - startedMs,
         failureCode,
         failureStage: 'search',
+        synthesisEligibility:synthesisEligibility.summary(),
         exposures: [],
       }).catch(() => undefined);
+      reportSynthesisEligibility();
       throw error;
     }
   }

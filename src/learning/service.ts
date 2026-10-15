@@ -6,7 +6,7 @@ import type { CodeIntelligenceService } from '../code-intelligence/service.js';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { procedureFingerprint, type AgentProcedureCandidate } from '../agent-learning-loop.js';
+import { procedureFingerprint, procedureContractDigest, assertProcedureCompatible, type AgentProcedureCandidate } from '../agent-learning-loop.js';
 import { assertLearningTextSafe } from '../memory/safety.js';
 import type { SkillService } from '../skills/service.js';
 import { SkillProposalCoordinator } from './skill-proposals.js';
@@ -167,14 +167,20 @@ export class LearningService {
 
   async migrateProcedures(records: AgentProcedureCandidate[], origin: 'native' | 'external') {
     if (!records.length) return;
-    await this.stateStore.mutate('procedures', state => {
+    const migrated = await this.stateStore.mutate('procedures', state => {
       const procedures = [...(state.procedures ?? [])];
+      const conflicts: Array<{ fingerprint: string; reason: string }> = [];
       for (const raw of records) {
         const workspace = raw.workspace ? this.memory.resolveWorkspace(raw.workspace) : undefined;
         const source = origin + ':' + raw.fingerprint + ':' + (workspace ?? 'unknown');
         let item = procedures.find(value => value.fingerprint === raw.fingerprint && value.workspace === workspace);
+        if (item) {
+          try { assertProcedureCompatible(item, { ...raw, workspace }); }
+          catch (error) { conflicts.push({ fingerprint: raw.fingerprint, reason: String(error).slice(0, 240) }); continue; }
+        }
         if (!item) {
-          item = { ...raw, workspace, supportTaskIds: [], failureTaskIds: [], historicalTaskIds: [], origins: [], migratedSources: [] };
+          const { contractVersion: _version, contractDigest: _digest, contractReceipts: _receipts, ...legacy } = raw;
+          item = { ...legacy, workspace, supportTaskIds: [], failureTaskIds: [], historicalTaskIds: [], origins: [], migratedSources: [] };
           procedures.push(item);
         }
         item.historicalTaskIds = [...new Set([...(item.historicalTaskIds ?? []), ...raw.supportTaskIds.map(id => origin + ':' + id)])];
@@ -183,29 +189,49 @@ export class LearningService {
         item.origins = [...new Set([...(item.origins ?? []), origin])];
         item.migratedSources = [...new Set([...(item.migratedSources ?? []), source])];
       }
-      return { state: { ...state, procedures }, result: null };
+      return { state: { ...state, procedures }, result: conflicts };
     });
+    for (const conflict of migrated.result) activityTracker.captureFailure('LEARNING', new Error(conflict.reason), 'procedure-migration-contract-conflict', { fingerprint: conflict.fingerprint });
+    return { conflicts: migrated.result };
   }
 
   async supportProcedure(input: { taskId: string; origin: 'native' | 'external'; workspace?: string;
     name: string; description: string; steps: string[]; allowedTools?: string[]; reuseCondition?: string;
-    evidenceRefs: string[]; outcome: 'verified' | 'failed' }): Promise<AgentProcedureCandidate> {
+    evidenceRefs: string[]; outcome: 'verified' | 'failed'; expectedContractDigest?: string }): Promise<AgentProcedureCandidate & { materialization: { status: 'completed' | 'unavailable'; reason?: string } }> {
     if (!input.taskId.trim() || input.taskId.length > 200 || !input.name.trim() || input.name.length > 160
       || !input.description.trim() || input.description.length > 2000 || !input.steps.length || input.steps.length > 50
       || input.steps.some(step => !step.trim() || step.length > 2000)) throw new Error('LEARNING_PROCEDURE_INVALID');
     assertLearningTextSafe([input.name, input.description, ...input.steps, input.reuseCondition ?? ''].join('\n'));
     const workspace = input.workspace ? this.memory.resolveWorkspace(input.workspace) : undefined;
+    const contract = { ...input, workspace, allowedTools: input.allowedTools ?? [] };
+    if (contract.allowedTools.length > 50 || contract.allowedTools.some(tool => !tool.trim() || tool.length > 200)
+      || (input.reuseCondition !== undefined && (!input.reuseCondition.trim() || input.reuseCondition.length > 2000))
+      || input.evidenceRefs.length > 32 || input.evidenceRefs.some(ref => !safeEvidenceRefSchema().safeParse(ref).success)) throw new Error('LEARNING_PROCEDURE_INVALID');
     const fingerprint = procedureFingerprint(input.name, input.steps);
+    const contractDigest = procedureContractDigest(contract);
+    if (input.expectedContractDigest !== undefined && input.expectedContractDigest !== contractDigest) throw new Error('LEARNING_PROCEDURE_DELIVERED_CONTRACT_CONFLICT');
     const checks = await Promise.all(input.evidenceRefs.map(ref => recheckWorkflowReport(ref, input.taskId)));
     const supported = checks.includes(input.outcome === 'verified' ? 'pass' : 'fail');
     const result = await this.stateStore.mutate('procedures', state => {
       const procedures = [...(state.procedures ?? [])];
       let item = procedures.find(value => value.fingerprint === fingerprint && value.workspace === workspace);
+      if (item) assertProcedureCompatible(item, contract);
       if (!item) {
         item = { fingerprint, name: input.name, description: input.description, steps: input.steps,
           allowedTools: [...new Set(input.allowedTools ?? [])], reuseCondition: input.reuseCondition, workspace,
           evidenceRefs: [], supportTaskIds: [], failureTaskIds: [], status: 'candidate', updatedAt: new Date().toISOString() };
         procedures.push(item);
+      }
+      // Only fresh, independently checked evidence receives contract attribution.
+      // Existing task arrays stay intact and never become receipts by backfill.
+      if (supported) {
+        const receipts = [...(item.contractReceipts ?? [])];
+        const prior = receipts.find(receipt => receipt.taskId === input.taskId && receipt.outcome === input.outcome);
+        const evidenceRefs = [...new Set([...(prior?.evidenceRefs ?? []), ...input.evidenceRefs])];
+        if (evidenceRefs.length > 32 || (!prior && receipts.length >= 32)) throw new Error('LEARNING_PROCEDURE_RECEIPT_CAPACITY_REVIEW_REQUIRED');
+        if (prior) prior.evidenceRefs = evidenceRefs;
+        else receipts.push({ taskId: input.taskId, contractDigest, outcome: input.outcome, evidenceRefs });
+        item.contractVersion = 1; item.contractDigest = contractDigest; item.contractReceipts = receipts;
       }
       const key = input.taskId; // Task identity is shared; controller transfer must not add support.
       const field = supported ? input.outcome === 'verified' ? 'supportTaskIds' : 'failureTaskIds' : 'historicalTaskIds';
@@ -216,13 +242,20 @@ export class LearningService {
       item.updatedAt = new Date().toISOString();
       return { state: { ...state, procedures }, result: item };
     });
-    await this.materializeProcedure(result.result);
-    return (await this.procedures(workspace)).find(item => item.fingerprint === fingerprint)!;
+    let materialization: { status: 'completed' | 'unavailable'; reason?: string } = { status: 'completed' };
+    try { await this.materializeProcedure(result.result); }
+    catch (error) {
+      activityTracker.captureFailure('LEARNING', error, 'procedure-proposal-materialization-unavailable');
+      const message = error instanceof Error ? error.message : '';
+      materialization = { status: 'unavailable', reason: /^(?:LEARNING_PROCEDURE|SKILL_PROPOSAL)_[A-Z_]+(?::[a-zA-Z,]+)?$/.test(message) ? message.slice(0, 240) : 'SKILL_PROPOSAL_MATERIALIZATION_UNAVAILABLE' };
+    }
+    return { ...(await this.procedures(workspace)).find(item => item.fingerprint === fingerprint)!, materialization };
   }
 
   async markProcedureArtifact(input: { fingerprint: string; workspace?: string; status: 'skill-imported' | 'revision-staged'; skillName: string; skillDigest: string }) {
+    const workspace = input.workspace ? this.memory.resolveWorkspace(input.workspace) : undefined;
     const transition = await this.stateStore.mutate('procedures', state => {
-      const item = state.procedures?.find(value => value.fingerprint === input.fingerprint && value.workspace === input.workspace);
+      const item = state.procedures?.find(value => value.fingerprint === input.fingerprint && value.workspace === workspace);
       if (!item) throw new Error('LEARNING_PROCEDURE_NOT_FOUND');
       Object.assign(item, { status: input.status, skillName: input.skillName, skillDigest: input.skillDigest });
       return { state, result: item };
@@ -236,6 +269,8 @@ export class LearningService {
     if (!taskId) return;
     const name = candidate.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64).replace(/-$/, '');
     const previous = (await this.skillProposals(candidate.workspace)).find(p => p.name === name && p.input.procedureFingerprint === candidate.fingerprint);
+    // Merely revisiting legacy evidence must not revoke an existing user decision.
+    if (previous && !candidate.contractReceipts?.length && (previous.status === 'approved' || previous.status === 'implemented' || previous.artifactStatus === 'catalog-active')) return;
     await this.upsertSkillProposal({ workspace: candidate.workspace, name, taskId,
       purpose: candidate.description, triggers: [candidate.reuseCondition ?? candidate.description],
       nonTriggers: ['Actions outside the user-approved task scope.'], steps: candidate.steps,

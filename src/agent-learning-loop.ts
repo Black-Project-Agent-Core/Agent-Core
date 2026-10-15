@@ -58,6 +58,9 @@ export interface AgentArtifactUseDeclaration {
 }
 
 export interface AgentProcedureCandidate {
+  contractVersion?: 1;
+  contractDigest?: string;
+  contractReceipts?: Array<{ taskId: string; contractDigest: string; outcome: 'verified' | 'failed'; evidenceRefs: string[] }>;
   workspace?: string;
   origins?: Array<'native' | 'external'>;
   historicalTaskIds?: string[];
@@ -123,6 +126,38 @@ export function procedureFingerprint(name: string, steps: string[]): string {
   return 'sha256:' + createHash('sha256')
     .update(name.trim().toLowerCase() + '\n' + steps.map(step => step.trim()).join('\n'))
     .digest('hex');
+}
+
+/** Internal compatibility identity. The historical name/steps address remains unchanged. */
+export function procedureContract(item: Pick<AgentProcedureCandidate, 'name' | 'description' | 'steps' | 'allowedTools' | 'reuseCondition' | 'workspace'>) {
+  return {
+    fingerprint: procedureFingerprint(item.name, item.steps),
+    name: item.name.trim(), steps: item.steps.map(step => step.trim()),
+    workspace: item.workspace ?? null, purpose: item.description.trim(),
+    trigger: (item.reuseCondition ?? item.description).trim(),
+    allowedTools: [...new Set((item.allowedTools ?? []).map(tool => tool.trim()))].sort(),
+  };
+}
+
+export function procedureContractDigest(item: Parameters<typeof procedureContract>[0]): string {
+  return 'sha256:' + createHash('sha256').update(JSON.stringify(procedureContract(item))).digest('hex');
+}
+
+export function assertProcedureCompatible(current: Parameters<typeof procedureContract>[0], incoming: Parameters<typeof procedureContract>[0]): void {
+  const before = procedureContract(current), after = procedureContract(incoming);
+  const fields = (Object.keys(before) as Array<keyof typeof before>).filter(key => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
+  if (fields.length) throw new Error('LEARNING_PROCEDURE_CONTRACT_CONFLICT:' + fields.join(','));
+}
+
+/** Counts attributable history only; qualification still freshly replays each receipt. */
+export function procedureBoundEvidence(item: AgentProcedureCandidate) {
+  const receipts = item.contractVersion === 1 && item.contractDigest === procedureContractDigest(item)
+    ? (item.contractReceipts ?? []).filter(receipt => receipt.contractDigest === item.contractDigest) : [];
+  const supportTaskIds = [...new Set(receipts.filter(r => r.outcome === 'verified').map(r => r.taskId))];
+  const failureTaskIds = [...new Set(receipts.filter(r => r.outcome === 'failed').map(r => r.taskId))];
+  return { receipts, supportTaskIds, failureTaskIds,
+    legacyTaskIds: [...new Set([...item.supportTaskIds, ...item.failureTaskIds, ...(item.historicalTaskIds ?? [])])]
+      .filter(id => !supportTaskIds.includes(id) && !failureTaskIds.includes(id)) };
 }
 
 export function artifactUseFeatureId(kind: AgentArtifactKind, artifactId: string): string {
