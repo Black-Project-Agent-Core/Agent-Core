@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   CHANGESET_DIR,
+  MEMORY_INTENT_DIR,
   ROOT,
   buildVersionEdits,
   calculateReleasePlan,
@@ -44,6 +45,7 @@ const rollback = await writeTransaction([
 
 const archiveDir = path.join(
   CHANGESET_DIR,
+  MEMORY_INTENT_DIR,
   "applied",
   `${plan.nextVersion}-${Date.now()}`,
 );
@@ -56,7 +58,11 @@ try {
     moved.push({ from: PRE_STATE_PATH, to: destination });
   }
   for (const change of plan.changesets) {
-    const destination = path.join(archiveDir, change.file);
+    const targetArchive = path.dirname(change.fullPath) === MEMORY_INTENT_DIR
+      ? path.join(MEMORY_INTENT_DIR, "applied", path.basename(archiveDir))
+      : archiveDir;
+    await fs.mkdir(targetArchive, { recursive: true });
+    const destination = path.join(targetArchive, change.file);
     await fs.rename(change.fullPath, destination);
     moved.push({ from: change.fullPath, to: destination });
   }

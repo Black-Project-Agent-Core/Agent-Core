@@ -2,8 +2,8 @@ import { getSystemInfo, getOSSpecificGuidance, getPathGuidance } from '../rdc/ut
 
 const SYSTEM_INFO = getSystemInfo();
 const OS_GUIDANCE = getOSSpecificGuidance(SYSTEM_INFO);
-const PATH_GUIDANCE = `IMPORTANT: ${getPathGuidance(SYSTEM_INFO)} Relative paths may fail as they depend on the current working directory. Tilde paths (~/...) might not work in all contexts. Unless the user explicitly asks for relative paths, use absolute paths.`;
-const CMD_PREFIX_DESCRIPTION = `This command can be referenced as \"DC: ...\" or \"use Desktop Commander to ...\" in your instructions.`;
+const PATH_GUIDANCE = `IMPORTANT: ${getPathGuidance(SYSTEM_INFO)} Use absolute paths unless explicitly asked otherwise; relative paths depend on cwd and may fail, as may ~/ paths.`;
+const CMD_PREFIX_DESCRIPTION = `Aliases: "DC: ..." or "use Desktop Commander to ...".`;
 
 export const RDC_TOOL_METADATA = {
   image_inspect: {
@@ -154,26 +154,11 @@ Input 32MiB/24M pixels. Image output max 1536 edge/1.5M pixels/2MiB encoded/3MiB
                         DO NOT use this tool to edit DOCX files. Use 'edit_block' with old_string/new_string instead.
                         To CREATE a new DOCX, use write_file with .docx extension — text content with markdown headings (#, ##, ###) is converted to styled DOCX paragraphs.
 
-                        CHUNKING IS STANDARD PRACTICE: Always write files in chunks of 25-30 lines maximum.
-                        This is the normal, recommended way to write files - not an emergency measure.
-
-                        STANDARD PROCESS FOR ANY FILE:
-                        1. FIRST → write_file(filePath, firstChunk, {mode: 'rewrite'})  [≤30 lines]
-                        2. THEN → write_file(filePath, secondChunk, {mode: 'append'})   [≤30 lines]
-                        3. CONTINUE → write_file(filePath, nextChunk, {mode: 'append'}) [≤30 lines]
-
-                        ALWAYS CHUNK PROACTIVELY - don't wait for performance warnings!
-
-                        WHEN TO CHUNK (always be proactive):
-                        1. Any file expected to be longer than 25-30 lines
-                        2. When writing multiple files in sequence
-                        3. When creating documentation, code files, or configuration files
-
-                        HANDLING CONTINUATION ("Continue" prompts):
-                        If user asks to "Continue" after an incomplete operation:
-                        1. Read the file to see what was successfully written
-                        2. Continue writing ONLY the remaining content using {mode: 'append'}
-                        3. Keep chunks to 25-30 lines each
+                        Always write 25-30-line maximum chunks proactively, without waiting for warnings.
+                        This is standard for all files, including multiple files, documentation, code and configuration:
+                        first use mode='rewrite', then mode='append' for every remaining chunk (≤30 lines each).
+                        To continue an incomplete operation, first read what was written, then append ONLY the
+                        remaining content in 25-30-line chunks.
 
                         FORMAT HANDLING (by extension):
                         - Text files: String content
@@ -471,34 +456,18 @@ Input 32MiB/24M pixels. Image output max 1536 edge/1.5M pixels/2MiB encoded/3MiB
                         
                         ${OS_GUIDANCE}
                         
-                        LOCAL ANALYSIS: Use start_process("python3 -i") with interact_with_process(pid, input)
-                        for data files, or node -i / node:local when Python is unavailable. Use Node ES imports.
-                        For short inspections, use the existing command-line readers (head, sort, etc.).
-                        
-                        BINARY FILE SUPPORT:
-                        For PDF, Excel, Word, archives, databases, and other binary formats, use process tools with appropriate libraries or command-line utilities.
-                        
-                        INTERACTIVE: Prefer Python REPL, then node -i / node:local; send commands with
-                        interact_with_process and read results with read_process_output. Use Node ES imports.
+                        LOCAL/INTERACTIVE ANALYSIS: Prefer start_process("python3 -i"), then node -i / node:local
+                        if Python is unavailable (use Node ES imports). Send code with interact_with_process(pid, input)
+                        and read results with read_process_output. Short inspections may use command-line readers
+                        (head, sort, etc.). Binary formats (PDF, Excel, Word, archives, databases, etc.) need appropriate
+                        libraries or command-line utilities through process tools.
 
-                        SMART DETECTION:
-                        - Detects REPL prompts (>>>, >, $, etc.)
-                        - Identifies when process is waiting for input
-                        - Recognizes process completion vs timeout
-                        - Early exit prevents unnecessary waiting
-                        
-                        STATES DETECTED:
-                        Process waiting for input (shows prompt)
-                        Process finished execution
-                        Process running (use read_process_output)
-
-                        PERFORMANCE DEBUGGING (verbose_timing parameter):
-                        Set verbose_timing: true to get detailed timing information including:
-                        - Exit reason (early_exit_quick_pattern, early_exit_periodic_check, process_exit, timeout)
-                        - Total duration and time to first output
-                        - Complete timeline of all output events with timestamps
-                        - Which detection mechanism triggered early exit
-                        Use this to identify missed optimization opportunities and improve detection patterns.
+                        Detects prompts (>>>, >, $, etc.) and input waiting, distinguishes completion from timeout,
+                        and exits early when possible. States: waiting for input (prompt shown), finished, or running
+                        (use read_process_output).
+                        verbose_timing=true reports exit reason (early_exit_quick_pattern, early_exit_periodic_check,
+                        process_exit, timeout), total duration, time to first output, all output events with timestamps,
+                        and the early-exit mechanism for diagnosing missed optimizations/detection patterns.
 
                         ${PATH_GUIDANCE}
                         ${CMD_PREFIX_DESCRIPTION}`,
@@ -546,58 +515,24 @@ Input 32MiB/24M pixels. Image output max 1536 edge/1.5M pixels/2MiB encoded/3MiB
     description: `
                         Send input to a running process and automatically receive the response.
                         
-                        CRITICAL: THIS IS THE PRIMARY TOOL FOR ALL LOCAL FILE ANALYSIS
-                        For ANY local file analysis (CSV, JSON, data processing), ALWAYS use this instead of the analysis tool.
-                        The analysis tool CANNOT access local files and WILL FAIL - use processes for ALL file-based work.
-                        
-                        FILE ANALYSIS PRIORITY ORDER (MANDATORY):
-                        1. ALWAYS FIRST: Use this tool (start_process + interact_with_process) for local data analysis
-                        2. ALTERNATIVE: Use command-line tools (cut, awk, grep) for quick processing  
-                        3. NEVER EVER: Use analysis tool for local file access (IT WILL FAIL)
-                        
-                        REQUIRED INTERACTIVE WORKFLOW FOR FILE ANALYSIS:
-                        1. Start REPL: start_process("python3 -i")
-                        2. Load libraries: interact_with_process(pid, "import pandas as pd, numpy as np")
-                        3. Read file: interact_with_process(pid, "df = pd.read_csv('/absolute/path/file.csv')")
-                        4. Analyze: interact_with_process(pid, "print(df.describe())")
-                        5. Continue: interact_with_process(pid, "df.groupby('column').size()")
-                        
-                        BINARY FILE PROCESSING WORKFLOWS:
-                        Use appropriate Python libraries (PyPDF2, pandas, docx2txt, etc.) or command-line tools for binary file analysis.
-                        
-                        SMART DETECTION:
-                        - Automatically waits for REPL prompt (>>>, >, etc.)
-                        - Detects errors and completion states
-                        - Early exit prevents timeout delays
-                        - Clean output formatting (removes prompts)
-                        
-                        SUPPORTED REPLs:
-                        - Python: python3 -i (RECOMMENDED for data analysis)
-                        - Node.js: node -i
-                        - R: R
-                        - Julia: julia
-                        - Shell: bash, zsh
-                        - Database: mysql, postgres
-                        
-                        PARAMETERS:
-                        - pid: Process ID from start_process
-                        - input: Code/command to execute
-                        - timeout_ms: Max wait (default: 8000ms)
-                        - wait_for_prompt: Auto-wait for response (default: true)
-                        - verbose_timing: Enable detailed performance telemetry (default: false)
+                        CRITICAL: For ALL local file analysis (CSV, JSON, statistics, visualization prep or other data),
+                        use start_process + interact_with_process first; command-line tools (cut, awk, grep) are an
+                        alternative for quick processing. NEVER use the remote analysis tool: it cannot access local files.
 
-                        Returns execution result with status indicators.
+                        Required interactive workflow: start_process("python3 -i"), then interact_with_process(pid, input)
+                        to import libraries, read an absolute file path, analyze, and continue in the same REPL.
+                        Example inputs: "import pandas as pd, numpy as np", "df = pd.read_csv('/absolute/path/file.csv')",
+                        "print(df.describe())", "df.groupby('column').size()".
+                        Binary files: use appropriate libraries (PyPDF2, pandas, docx2txt, etc.) or command-line tools.
+                        Supported REPLs: python3 -i (recommended for data), node -i, R, julia, bash, zsh, mysql, postgres.
 
-                        PERFORMANCE DEBUGGING (verbose_timing parameter):
-                        Set verbose_timing: true to get detailed timing information including:
-                        - Exit reason (early_exit_quick_pattern, early_exit_periodic_check, process_finished, timeout, no_wait)
-                        - Total duration and time to first output
-                        - Complete timeline of all output events with timestamps
-                        - Which detection mechanism triggered early exit
-                        Use this to identify slow interactions and optimize detection patterns.
-
-                        ALWAYS USE FOR: CSV analysis, JSON processing, file statistics, data visualization prep, ANY local file work
-                        NEVER USE ANALYSIS TOOL FOR: Local file access (it cannot read files from disk and WILL FAIL)
+                        Automatically waits for prompts (>>>, >, etc.), detects errors/completion and exits early;
+                        removes prompts from output and returns status indicators.
+                        pid comes from start_process; input is code/command. timeout_ms defaults 8000ms;
+                        wait_for_prompt defaults true; verbose_timing defaults false.
+                        verbose_timing=true reports exit reason (early_exit_quick_pattern, early_exit_periodic_check,
+                        process_finished, timeout, no_wait), total duration, time to first output, all output events
+                        with timestamps and the early-exit detection mechanism for diagnosing slow interactions.
 
                         ${CMD_PREFIX_DESCRIPTION}`,
     annotations: { title: 'Send Input to Process', readOnlyHint: false, destructiveHint: true, openWorldHint: true },
@@ -743,13 +678,7 @@ ${CMD_PREFIX_DESCRIPTION}`,
                         4. Analyze a data file (promptId: 'onb2_04')
                         5. Check system health and resources (promptId: 'onb2_05')
                         
-                        USAGE:
-                        When user says "1", "2", "3", "4", or "5" from onboarding:
-                        - "1" → get_prompts(action='get_prompt', promptId='onb2_01')
-                        - "2" → get_prompts(action='get_prompt', promptId='onb2_02')
-                        - "3" → get_prompts(action='get_prompt', promptId='onb2_03')
-                        - "4" → get_prompts(action='get_prompt', promptId='onb2_04')
-                        - "5" → get_prompts(action='get_prompt', promptId='onb2_05')
+                        When the user chooses 1-5, call get_prompts(action='get_prompt', promptId=<matching ID above>).
                         
                         The prompt content will be injected and execution begins immediately.
 

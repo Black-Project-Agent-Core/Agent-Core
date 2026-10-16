@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { architectureFromGraph, secureWorkflowHtml, renderWorkflowGraph } from '../src/workflows/renderer.js';
 
-const graph = {schemaVersion:1 as const,fingerprint:'a'.repeat(64),files:2,unknowns:0,limitations:[],nodes:[{id:'system',label:'System',kind:'system' as const,paths:['src/index.ts']},{id:'memory',label:'Memory',kind:'memory' as const,paths:['SubProject/agent-core-memory/src/index.ts']}],edges:[{id:'link',from:'system',to:'memory',kind:'imports' as const,evidence:[{path:'src/index.ts',line:1}]}]};
+const graph = {schemaVersion:1 as const,fingerprint:'a'.repeat(64),files:2,unknowns:0,limitations:[],nodes:[{id:'system',label:'System',kind:'system' as const,paths:['src/index.ts']},{id:'memory',label:'Memory',kind:'memory' as const,paths:['src/memory/facade.ts']}],edges:[{id:'link',from:'system',to:'memory',kind:'imports' as const,evidence:[{path:'src/index.ts',line:1}]}]};
 describe('Workflows Archify adapter',()=>{
  it('keeps system and Memory in one architecture with literal dependency evidence',()=>{
   const diagram=architectureFromGraph(graph);

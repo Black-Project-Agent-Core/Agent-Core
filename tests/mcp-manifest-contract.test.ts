@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAgentCoreMcpServer } from '../src/mcp/server.js';
+import { registerControllerLearningTools } from '../src/mcp/controller-learning-tools.js';
 
 // Pinned Batch 2/3/4 contract at 73e9fd270ee96fe7d9782b9e87ccc70dbbae986d:
 // 75-tool cohort, excluding optional Memory v2 and external-controller registration.
@@ -103,6 +104,23 @@ describe('MCP public manifest contract', () => {
     const approximateTokens = Math.ceil(bytes / 4);
     expect(bytes).toBeLessThanOrEqual(MANIFEST_BYTE_BUDGET);
     expect(approximateTokens).toBeLessThanOrEqual(APPROX_TOKEN_BUDGET);
+  });
+
+  it('keeps the full optional-cohort manifest inside the handshake budget', () => {
+    const server = createAgentCoreMcpServer(undefined, {
+      ...fullRuntimeStub(), artifactAuthorization: {}, memoryExperience: {},
+    });
+    // Register schemas only; no owner, task binding or invocation is fabricated.
+    registerControllerLearningTools(server, undefined, undefined);
+    const registrations = (server as any)._registeredTools ?? (server as any).registeredTools;
+    const entries: Array<[string, any]> = registrations instanceof Map
+      ? [...registrations.entries()] : Object.entries(registrations ?? {});
+    expect(entries.map(([name]) => name)).toEqual(expect.arrayContaining([
+      'memory_v2_read', 'memory_v2_write', 'controller_learning',
+    ]));
+    const bytes = Buffer.byteLength(JSON.stringify(wireManifest(entries)), 'utf8');
+    expect(bytes).toBeLessThanOrEqual(MANIFEST_BYTE_BUDGET);
+    expect(Math.ceil(bytes / 4)).toBeLessThanOrEqual(APPROX_TOKEN_BUDGET);
   });
 });
 

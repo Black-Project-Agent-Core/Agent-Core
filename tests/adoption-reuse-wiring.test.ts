@@ -1,26 +1,33 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fixture, proposalInput, report } from './skill-proposal-fixture.js';
-import { memoryTaskFixture } from './memory-task-test-utils.js';
+import { memoryTaskFixture } from './memory/memory-task-test-utils.js';
 import { LearningService } from '../src/learning/service.js';
 import { ExternalControllerLearningService } from '../src/learning/external-controller.js';
-import { intentionUpsert } from '../SubProject/agent-core-memory/src/memory/prospective-intentions.js';
+import { intentionUpsert } from '../src/memory/prospective-intentions.js';
 import { controllerLearning } from '../src/mcp/controller-learning-schemas.js';
 
 const extraRoots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(extraRoots.splice(0).map(root => rm(root, {recursive:true,force:true}))); });
+async function boundContext(service: ExternalControllerLearningService, input: { query?: string } = {}) {
+  const invocation = await service.captureToolInvocationContext({ invocationId: randomUUID(), processSessionId: 'fixture-process', sessionId: 'transport', ownerId: 'owner' });
+  expect(invocation.binding).toBe('bound');
+  return service.context('transport', input, 'owner', invocation);
+}
 async function receiptFixture(experience = false) {
   const f = await fixture();
   if (experience) {
-    const {initializeStandaloneMemory}=await import('../SubProject/agent-core-memory/dist/standalone.js');
+    const {initializeStandaloneMemory}=await import('../src/memory/initialize.js');
     f.memory=await initializeStandaloneMemory({baseDir:f.root,memoryRoot:path.join(f.root,'runtime/memory-experience'),experience:{enabled:true}}) as any;
     f.learning=await LearningService.initialize({enabled:true,stateDir:path.join(f.root,'runtime/learning-experience'),reviewInterval:10,curatorIntervalHours:168},f.memory);
   }
   const external = await ExternalControllerLearningService.initialize({stateDir:path.join(f.root,'external'),memory:f.memory,learning:f.learning,skills:f.skills});
-  const episode = await external.startEpisode('transport',{workspace:'agent-core',taskKey:'receipt-task'});
+  const episode = await external.startEpisode('transport',{workspace:'agent-core',taskKey:'receipt-task'},
+    {ownerId:'owner',workspaceIdentityKey:f.memory.registeredWorkspaceIdentity('agent-core').key});
   const record = await f.memory.remember({content:'Reuse exact compiler validation recipe.',category:'procedure',provenance:{workspace:'agent-core',files:[]}});
-  const context = await external.context('transport',{query:'exact compiler validation recipe'});
+  const context = await boundContext(external,{query:'exact compiler validation recipe'});
   const hit = context.memories.find(item => item.id === record.id)!;
   const verificationRef = await report(f.root,episode.id);
   const proof = JSON.parse(await readFile(path.join(f.root,episode.id+'-report.json'),'utf8'));
@@ -33,7 +40,7 @@ async function receiptFixture(experience = false) {
 it('shares trusted host verification manifests with the experience runtime verifier',async()=>{
   const {root}=await fixture();
   const ref=await report(root,'shared-host-proof');
-  const verifier=await import('../SubProject/agent-core-memory/dist/learning/workflow-verifier.js');
+  const verifier=await import('../src/memory/workflow-verifier.js');
   expect(await verifier.recheckWorkflowReport(ref,'shared-host-proof')).toBe('pass');
 });
 it.each([false,true])('bridges explicit verified assessment once per task/revision (experience runtime: %s)',async(experience)=>{
@@ -118,18 +125,18 @@ it('projects intentions at the bound controller context boundary without fabrica
     intentionUpsert('event-review',{summary:'Review real build output',cue:{kind:'observed-event',key:'build.finished'}},[]),
   ]}});
   const before=await session.getTaskContext();
-  const result:any=await f.external.context('transport');
+  const result:any=await boundContext(f.external);
   expect(result.memoryTaskContext.data.intentionEvaluation).toMatchObject({advisory:true,items:expect.arrayContaining([{itemId:'due-review',status:'eligible'},{itemId:'event-review',status:'waiting'}])});
   expect((await session.getTaskContext()).data?.episodeRef).toEqual(before.data?.episodeRef);
   expect(result.intentionAttention).toMatchObject({status:'available',itemIds:['due-review'],advisory:true});
-  const repeated:any=await f.external.context('transport');
+  const repeated:any=await boundContext(f.external);
   expect(repeated.intentionAttention.itemIds).toEqual([]);
   expect(repeated.memoryTaskContext.data.intentionEvaluation.items).toContainEqual({itemId:'due-review',status:'eligible'});
   const reopened=await ExternalControllerLearningService.initialize({stateDir:path.join(f.root,'external'),memory:f.memory as any,learning:f.learning});
-  expect((await reopened.context('transport') as any).intentionAttention.itemIds).toEqual([]);
+  expect((await boundContext(reopened) as any).intentionAttention.itemIds).toEqual([]);
   const current=await session.getTaskContext();
   await session.appendEvent({episodeId:header.id,expectedRevision:current.data!.episode!.revision,operationId:'defer',event:{kind:'correction',summary:'Explicitly defer the review',sourceRefs:[],stateChanges:[intentionUpsert('due-review',{summary:'Review pending item later',cue:{kind:'at-or-after',instant:'2099-01-01T00:00:00Z'}},[])]}});
-  const deferred:any=await reopened.context('transport');
+  const deferred:any=await boundContext(reopened);
   expect(deferred.intentionAttention.itemIds).toEqual([]);
   expect(deferred.memoryTaskContext.data.intentionEvaluation.items).toContainEqual({itemId:'due-review',status:'waiting'});
   const unbound=await f.external.startEpisode('unbound',{taskKey:'unbound',workspace:'agent-core'});

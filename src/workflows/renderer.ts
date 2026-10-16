@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import type { WorkflowGraph } from './types.js';
 
 const execFileAsync = promisify(execFile);
-const vendorRoot = fileURLToPath(new URL('../../vendor/archify/', import.meta.url));
+const vendorRoot = fileURLToPath(new URL('../../vendor/archify', import.meta.url));
 const diagramId=(value:string)=>/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(value)?value:`n-${createHash('sha256').update(value).digest('hex').slice(0,24)}`;
 const escape = (value: string) => value.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 

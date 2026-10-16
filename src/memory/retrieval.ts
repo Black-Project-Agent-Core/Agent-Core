@@ -1,12 +1,17 @@
 import { buildBm25Profile } from './bm25.js';
 import { cosineSimilarity } from './embedder.js';
-import { buildSemanticDocument, tokenizeMemoryText } from './semantic-document.js';
+import { buildSemanticDocument } from './semantic-document.js';
+import { memorySemanticRevision } from './disclosure.js';
+import { flattenRetrievalTokens, lexicalRetrievalTokens, tokenizeRetrievalText } from './identifier-tokenizer.js';
 import { normalizeMemorySourceFile, normalizeMemoryWorkspace } from './provenance.js';
 import { isMemoryLinkActive } from './relations.js';
 import type { SemanticSearchContext } from './index.js';
 import type { MemoryRecord } from './types.js';
 
 export interface RetrievalComponents {
+  lexicalTokenizationDegraded?: boolean;
+  contentExactPhrase: boolean;
+  contentLexicalCoverage: number;
   exactPhrase: number;
   tokenOverlap: number;
   keywordMatch: number;
@@ -22,6 +27,16 @@ export interface RetrievalComponents {
   linkBoost: number;
 }
 
+export const FUSION_DIVERSITY_POLICY = {
+  version: 'semantic-lexical-mmr/v1',
+  maxCandidates: 256,
+  maxCodepoints: 8192,
+  maxUniqueTokens: 512,
+  maxLexicalPairs: 8192,
+} as const;
+
+type RedundancyBasis = 'semantic' | 'lexical' | 'mixed' | 'none';
+
 export interface FusionSelectionDiagnostics {
   profile: 'fusion';
   channels: Array<'lexical' | 'metadata' | 'semantic' | 'source'>;
@@ -30,6 +45,13 @@ export interface FusionSelectionDiagnostics {
   thresholdFloor: number;
   bypassedThreshold: boolean;
   redundancy: number;
+  diversityVersion: typeof FUSION_DIVERSITY_POLICY.version;
+  /** Comparisons actually available for this candidate when it was selected. */
+  redundancyBasis: RedundancyBasis;
+  /** Invocation totals, including comparisons for candidates that were not selected. */
+  lexicalPairsEvaluated: number;
+  lexicalPairsSkipped: number;
+  lexicalCoverage: 'complete' | 'bounded';
 }
 
 export interface MemorySearchResult {
@@ -57,6 +79,7 @@ export interface MemorySearchOptions {
 }
 
 const zero = (): RetrievalComponents => ({
+  contentExactPhrase:false,contentLexicalCoverage:0,
   exactPhrase: 0, tokenOverlap: 0, keywordMatch: 0, tagMatch: 0,
   contextMatch: 0, categoryMatch: 0, semanticSimilarity: 0, bm25Lexical: 0, bm25Weight: 0,
   sourceFileMatch: 0, feedbackInfluence: 0, recency: 0, linkBoost: 0,
@@ -64,7 +87,7 @@ const zero = (): RetrievalComponents => ({
 function countMatches(queryTokens: Set<string>, values: string[]): number {
   let matches = 0;
   for (const value of values) {
-    const tokens = tokenizeMemoryText(value);
+    const tokens = lexicalRetrievalTokens(value).tokens;
     if (tokens.some((token) => queryTokens.has(token))) matches++;
   }
   return matches;
@@ -78,6 +101,7 @@ function duplicateSignature(record: MemoryRecord): string | undefined {
   if (record.pinned) return undefined;
   return JSON.stringify({
     content: record.content.trim().replace(/\s+/g, ' ').toLowerCase(),
+    ...(record.version===2?{experience:record.experience}:{}),
     context: record.context.trim().replace(/\s+/g, ' ').toLowerCase(),
     category: record.category.trim().toLowerCase(),
     keywords: normalizedList(record.keywords),
@@ -86,7 +110,7 @@ function duplicateSignature(record: MemoryRecord): string | undefined {
     repo: record.provenance?.repo?.trim().toLowerCase() ?? '',
     files: normalizedList(record.provenance?.files ?? []),
     source: record.source ? [record.source.type, record.source.ref ?? ''] : [],
-    links: record.links.map((link) => [link.type, link.targetId]).sort(),
+    links: record.links.map((link) => record.version===2?[link.type,link.targetId,link.validFrom,link.validTo]:[link.type, link.targetId]).sort(),
   });
 }
 
@@ -97,12 +121,24 @@ function scoreRecord(
   sourceFiles: string[] = [],
   bm25Score = 0,
   bm25Weight = 0,
+  rankingTime = Date.now(),
 ): { score: number; components: RetrievalComponents } {
   const normalizedQuery = query.trim().toLowerCase();
-  const queryTokens = new Set(tokenizeMemoryText(normalizedQuery));
-  const document = buildSemanticDocument(record).toLowerCase();
-  const documentSet = new Set(tokenizeMemoryText(document));
+  const queryTokens = new Set(lexicalRetrievalTokens(query,'query').tokens);
+  const rawDocument = buildSemanticDocument(record);
+  const document = rawDocument.toLowerCase();
+  const lexicalDocument = lexicalRetrievalTokens(rawDocument);
+  const documentSet = new Set(lexicalDocument.tokens);
   const components = zero();
+  // Admission evidence is content-only and uses the active lexical tokenizer.
+  // These fields never contribute to ranking or channel weights.
+  const lexicalContent = lexicalRetrievalTokens(record.content);
+  const contentTokens = new Set(lexicalContent.tokens);
+  components.contentExactPhrase = Boolean(normalizedQuery && record.content.toLowerCase().includes(normalizedQuery));
+  let contentOverlap = 0;
+  for (const token of queryTokens) if (contentTokens.has(token)) contentOverlap++;
+  components.contentLexicalCoverage = queryTokens.size ? contentOverlap / queryTokens.size : 0;
+  if (lexicalDocument.degraded) components.lexicalTokenizationDegraded = true;
   components.bm25Lexical = Math.max(0, Math.min(1, bm25Score));
   components.bm25Weight = Math.max(0, Math.min(2, bm25Weight));
 
@@ -127,10 +163,15 @@ function scoreRecord(
   }
 
   const vector = semantic?.vectors.get(record.id);
-  if (vector && semantic) {
+  if (semantic?.passageScores) {
+    const passage = semantic.passageScores.get(record.id);
+    if (passage && passage.parentRevision === memorySemanticRevision(record)) {
+      components.semanticSimilarity = Math.max(0, Math.min(1, passage.score));
+    }
+  } else if (vector && semantic) {
     components.semanticSimilarity = Math.max(0, Math.min(1, cosineSimilarity(semantic.queryVector, vector)));
   }
-  const ageMs = Math.max(0, Date.now() - Date.parse(record.updatedAt));
+  const ageMs = Math.max(0, rankingTime - Date.parse(record.updatedAt));
   components.recency = Math.max(
     0,
     0.05 - Math.min(0.05, ageMs / (365 * 24 * 60 * 60 * 1000) * 0.05),
@@ -154,11 +195,14 @@ export function searchMemories(
   query: string,
   options: MemorySearchOptions = {},
   semantic?: SemanticSearchContext,
+  candidateLimit = 50,
+  rankingTime?: number,
 ): MemorySearchResult[] {
+  lexicalRetrievalTokens(query,'query');
   if (options.rankingProfile === 'fusion') {
-    return searchMemoriesFusion(records, query, options, semantic);
+    return searchMemoriesFusion(records, query, options, semantic, candidateLimit, rankingTime);
   }
-  const limit = Math.max(1, Math.min(50, options.limit ?? 5));
+  const limit = Math.max(1, Math.min(candidateLimit, options.limit ?? 5));
   const maxNeighbors = Math.max(0, Math.min(10, options.maxNeighbors ?? 2));
   const sourceFiles = [...new Set((options.sourceFiles ?? []).map(normalizeMemorySourceFile))].slice(0, 32);
   const rankingProfile = options.rankingProfile ?? 'legacy';
@@ -174,7 +218,7 @@ export function searchMemories(
   const ranked = scopedRecords
     .map((record) => ({
       record,
-      ...scoreRecord(record, query, semantic, sourceFiles, bm25.scores.get(record.id) ?? 0, bm25.weight),
+      ...scoreRecord(record, query, semantic, sourceFiles, bm25.scores.get(record.id) ?? 0, bm25.weight, rankingTime),
     }))
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.record.id.localeCompare(b.record.id));
@@ -241,6 +285,7 @@ interface FusionCandidate {
   relativeScore: number;
   bypassedThreshold: boolean;
   redundancy: number;
+  redundancyBasis: RedundancyBasis;
   score: number;
 }
 
@@ -302,38 +347,75 @@ function strongFusionEvidence(candidate: FusionCandidate): boolean {
     || c.sourceFileMatch >= 0.75
     || candidate.channelScores.metadata >= 0.8;
 }
-function maxSemanticRedundancy(
-  candidate: FusionCandidate,
-  selected: FusionCandidate[],
-  semantic?: SemanticSearchContext,
-): number {
-  const vector = semantic?.vectors.get(candidate.record.id);
-  if (!vector || selected.length === 0) return 0;
-  let maximum = 0;
-  for (const prior of selected) {
-    const priorVector = semantic?.vectors.get(prior.record.id);
-    if (!priorVector) continue;
-    maximum = Math.max(maximum, Math.max(0, Math.min(1, cosineSimilarity(vector, priorVector))));
+/** Reject incomplete content before normalization; never fall back to an unbounded document scan. */
+function diversityTokens(content: string): Set<string> | undefined {
+  let end = 0;
+  for (let points = 0; end < content.length && points < FUSION_DIVERSITY_POLICY.maxCodepoints; points += 1) {
+    end += content.codePointAt(end)! > 0xffff ? 2 : 1;
   }
-  return maximum;
+  if (end < content.length) return undefined;
+  const parsed = tokenizeRetrievalText(content);
+  if (parsed.truncated) return undefined;
+  const tokens = new Set<string>();
+  for (const token of flattenRetrievalTokens(parsed)) {
+    if (tokens.has(token)) continue;
+    if (tokens.size >= FUSION_DIVERSITY_POLICY.maxUniqueTokens) return undefined;
+    tokens.add(token);
+  }
+  return tokens.size ? tokens : undefined;
+}
+
+function addRedundancy(candidate: FusionCandidate, similarity: number, basis: 'semantic' | 'lexical'): void {
+  candidate.redundancy = Math.max(candidate.redundancy, similarity);
+  candidate.redundancyBasis = candidate.redundancyBasis === 'none' ? basis
+    : candidate.redundancyBasis === basis ? basis : 'mixed';
 }
 
 function selectFusionCandidates(
   candidates: FusionCandidate[],
   limit: number,
   semantic?: SemanticSearchContext,
-): FusionCandidate[] {
+): { selected: FusionCandidate[]; lexicalPairsEvaluated: number; lexicalPairsSkipped: number } {
   const selected: FusionCandidate[] = [];
   const pool = [...candidates];
+  const tokenCache = new Map<string, Set<string> | undefined>();
+  if (limit > 1 && candidates.some(candidate => !semantic?.vectors.get(candidate.record.id))) {
+    // Admission, threshold and exact-signature dedup already ran. Cache allowance
+    // follows native candidate order without limiting the candidate universe.
+    for (const candidate of candidates.slice(0, FUSION_DIVERSITY_POLICY.maxCandidates)) {
+      tokenCache.set(candidate.record.id, diversityTokens(candidate.record.content));
+    }
+  }
+  let lexicalPairsEvaluated = 0;
+  let lexicalPairsSkipped = 0;
   while (selected.length < limit && pool.length > 0) {
     let bestIndex = -1;
     let bestScore = Number.NEGATIVE_INFINITY;
-    let bestRedundancy = 0;
+    const prior = selected.at(-1);
     for (let index = 0; index < pool.length; index += 1) {
       const candidate = pool[index]!;
-      const redundancy = maxSemanticRedundancy(candidate, selected, semantic);
+      if (prior) {
+        // Only the newly selected candidate is compared. Earlier maxima remain
+        // cached on each candidate, so no pair consumes the allowance twice.
+        const vector = semantic?.vectors.get(candidate.record.id);
+        const priorVector = semantic?.vectors.get(prior.record.id);
+        if (vector && priorVector) {
+          addRedundancy(candidate, Math.max(0, Math.min(1, cosineSimilarity(vector, priorVector))), 'semantic');
+        } else {
+          const tokens = tokenCache.get(candidate.record.id);
+          const priorTokens = tokenCache.get(prior.record.id);
+          if (!tokens || !priorTokens || lexicalPairsEvaluated >= FUSION_DIVERSITY_POLICY.maxLexicalPairs) {
+            lexicalPairsSkipped += 1;
+          } else {
+            let intersection = 0;
+            for (const token of tokens) if (priorTokens.has(token)) intersection += 1;
+            lexicalPairsEvaluated += 1;
+            addRedundancy(candidate, intersection / (tokens.size + priorTokens.size - intersection), 'lexical');
+          }
+        }
+      }
       const score = FUSION_MMR_LAMBDA * candidate.relativeScore
-        + (1 - FUSION_MMR_LAMBDA) * (1 - redundancy)
+        + (1 - FUSION_MMR_LAMBDA) * (1 - candidate.redundancy)
         + candidate.components.feedbackInfluence;
       const currentBest = bestIndex >= 0 ? pool[bestIndex]! : undefined;
       if (
@@ -344,16 +426,14 @@ function selectFusionCandidates(
       ) {
         bestIndex = index;
         bestScore = score;
-        bestRedundancy = redundancy;
       }
     }
     if (bestIndex < 0) break;
     const [picked] = pool.splice(bestIndex, 1);
-    picked!.redundancy = bestRedundancy;
     picked!.score = bestScore;
     selected.push(picked!);
   }
-  return selected;
+  return { selected, lexicalPairsEvaluated, lexicalPairsSkipped };
 }
 
 function searchMemoriesFusion(
@@ -361,8 +441,10 @@ function searchMemoriesFusion(
   query: string,
   options: MemorySearchOptions,
   semantic?: SemanticSearchContext,
+  candidateLimit = 50,
+  rankingTime?: number,
 ): MemorySearchResult[] {
-  const limit = Math.max(1, Math.min(50, options.limit ?? 5));
+  const limit = Math.max(1, Math.min(candidateLimit, options.limit ?? 5));
   const maxNeighbors = Math.max(0, Math.min(10, options.maxNeighbors ?? 2));
   const sourceFiles = [...new Set((options.sourceFiles ?? []).map(normalizeMemorySourceFile))].slice(0, 32);
   const workspace = options.workspace ? normalizeMemoryWorkspace(options.workspace) : undefined;
@@ -383,6 +465,7 @@ function searchMemoriesFusion(
       sourceFiles,
       bm25.scores.get(record.id) ?? 0,
       bm25.weight,
+      rankingTime,
     );
     components.feedbackInfluence = feedbackInfluence(options.feedbackSalience?.get(record.id));
     return {
@@ -394,6 +477,7 @@ function searchMemoriesFusion(
       relativeScore: 0,
       bypassedThreshold: false,
       redundancy: 0,
+      redundancyBasis: 'none' as const,
       score: 0,
     };
   }).filter((candidate) =>
@@ -443,7 +527,7 @@ function searchMemoriesFusion(
     deduped.push(candidate);
   }
 
-  const selected = selectFusionCandidates(deduped, limit, semantic);
+  const { selected, lexicalPairsEvaluated, lexicalPairsSkipped } = selectFusionCandidates(deduped, limit, semantic);
   const output: MemorySearchResult[] = selected.map((candidate) => ({
     record: candidate.record,
     score: candidate.score,
@@ -460,6 +544,11 @@ function searchMemoriesFusion(
       thresholdFloor,
       bypassedThreshold: candidate.bypassedThreshold,
       redundancy: candidate.redundancy,
+      diversityVersion: FUSION_DIVERSITY_POLICY.version,
+      redundancyBasis: candidate.redundancyBasis,
+      lexicalPairsEvaluated,
+      lexicalPairsSkipped,
+      lexicalCoverage: lexicalPairsSkipped > 0 ? 'bounded' : 'complete',
     },
   }));
   const seen = new Set(output.map((item) => item.record.id));

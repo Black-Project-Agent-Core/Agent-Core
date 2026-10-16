@@ -95,6 +95,7 @@ export function buildMemoryTransferPayload(records: MemoryRecord[], workspace?: 
     .filter(record => !normalizedWorkspace
       || (record.provenance?.workspace && normalizeMemoryWorkspace(record.provenance.workspace) === normalizedWorkspace))
     .sort((a, b) => a.id.localeCompare(b.id));
+  if (selected.some(record => record.version !== 1)) throw new Error('MEMORY_TRANSFER_V2_UNSUPPORTED');
   if (selected.length > MAX_TRANSFER_RECORDS) {
     throw new Error(`MEMORY_EXPORT_TOO_LARGE: count=${selected.length} max=${MAX_TRANSFER_RECORDS}`);
   }
@@ -292,3 +293,7 @@ export function planMemoryImport(
     )),
   };
 }
+
+// Transfer/1 compatibility remains unchanged. The complete restore contract is separate.
+export {MEMORY_TRANSFER_V2_VERSION,exportMemoryTransferV2,previewMemoryTransferV2,importMemoryTransferV2} from './transfer-v2.js';
+export type {MemoryTransferV2Policy,MemoryTransferV2ExportOptions,MemoryTransferV2Bundle,MemoryTransferV2Preview,MemoryTransferV2Receipt} from './transfer-v2.js';

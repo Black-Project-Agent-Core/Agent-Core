@@ -3,7 +3,7 @@ import type { LearningStateStore } from './state.js';
 import type { SkillService } from '../skills/service.js';
 import type { SkillProposalInput, SkillProposalRecord, SkillWorkspaceIdentity } from './skill-proposal-types.js';
 import { assertLearningTextSafe } from '../memory/safety.js';
-import { recheckWorkflowReport } from './workflow-verifier.js';
+import { recheckWorkflowReport } from '../memory/workflow-verifier.js';
 import { safeEvidenceRefSchema } from './evaluation.js';
 import { assertProcedureCompatible, procedureBoundEvidence } from '../agent-learning-loop.js';
 import { proposalDigest, semanticSkillName, proposalWorkspaceSegment, renderSkillProposal, writeProposalProjection, proposalFileMatches } from './skill-proposal-files.js';

@@ -17,9 +17,7 @@ export const WORKFLOW_SOURCE_LIMITS = {
   maxEvidencePerEdge: 8,
 } as const;
 
-const SOURCE_ROOTS = ['src', 'SubProject/agent-core-memory/src'] as const;
-const MEMORY_SOURCE_ROOT = `${SOURCE_ROOTS[1]}/`;
-const MEMORY_OUTPUT_ROOT = 'SubProject/agent-core-memory/dist/';
+const SOURCE_ROOTS = ['src'] as const;
 const BLOCKED = /^(?:runtime|secrets?|credentials?|node_modules|dist|build|bin|obj|assets|public|coverage|tests?|__tests__|fixtures?|__fixtures__|DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT)$/i;
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 const digest = (value: string | Buffer): string => createHash('sha256').update(value).digest('hex');
@@ -114,7 +112,7 @@ export async function collectAllowedSources(projectRoot: string): Promise<{ sour
   }
 
   for (const sourceRoot of SOURCE_ROOTS) {
-    // Check every source-root ancestor before entering it, including SubProject.
+    // Check every source-root ancestor before entering it, before source traversal.
     let valid = true;
     let current = root;
     for (const part of sourceRoot.split('/')) {
@@ -137,9 +135,9 @@ export async function collectAllowedSources(projectRoot: string): Promise<{ sour
 }
 
 function subsystem(sourcePath: string): string {
-  const memory = sourcePath.startsWith(MEMORY_SOURCE_ROOT);
-  const local = sourcePath.slice(memory ? MEMORY_SOURCE_ROOT.length : 4).split('/');
-  const group = local.length === 1 ? (!memory && local[0].startsWith('agent-') ? 'agent' : 'core')
+  const local = sourcePath.slice(4).split('/');
+  const memory = local[0] === 'memory';
+  const group = memory ? (local.length>2 ? local[1] : 'engine') : local.length === 1 ? (local[0].startsWith('agent-') ? 'agent' : 'core')
     : local[0] === 'rdc' && local.length > 2 ? `rdc/${local[1]}` : local[0];
   return `${memory ? 'memory' : 'system'}/${group}`;
 }
@@ -155,7 +153,6 @@ function resolveImport(sourcePath: string, specifier: string, allowed: Set<strin
   if (!specifier.startsWith('./') && !specifier.startsWith('../')) return;
   if (/[\\\x00-\x1f]/.test(specifier)) return;
   let target = path.posix.normalize(path.posix.join(path.posix.dirname(sourcePath), specifier));
-  if (target.startsWith(MEMORY_OUTPUT_ROOT)) target = MEMORY_SOURCE_ROOT + target.slice(MEMORY_OUTPUT_ROOT.length);
   const base = target.replace(/\.(?:js|jsx)$/, '');
   return [target, `${base}.ts`, `${base}.tsx`, `${target}/index.ts`, `${target}/index.tsx`].find(candidate => allowed.has(candidate));
 }
@@ -197,7 +194,7 @@ export async function analyzeSources(projectRoot: string): Promise<WorkflowGraph
   const cache = root === previousRoot ? previousImports : new Map<string, { hash: string; result: SourceImports }>();
   const nextImports = new Map<string, { hash: string; result: SourceImports }>();
   limitations.push('Static source dependencies only, not observed execution; subsystem-internal imports are omitted.',
-    'Only src and SubProject/agent-core-memory/src are scanned; Memory dist imports map to matching src files.');
+    'Only the single src tree is scanned; Memory is the src/memory domain.');
   const groups = [...new Set(sources.map(source => subsystem(source.path)))].sort(compare);
   // Reserve two overflow nodes so both source families survive larger repositories.
   const retained = new Set(groups.length > WORKFLOW_SOURCE_LIMITS.maxNodes ? groups.slice(0, WORKFLOW_SOURCE_LIMITS.maxNodes - 2) : groups);

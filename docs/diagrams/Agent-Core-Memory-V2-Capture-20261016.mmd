@@ -1,0 +1,23 @@
+flowchart TB
+  START["Memory ordinary write OR task-bound event"] --> BRANCH{"Which path?"}
+  BRANCH -->|"ordinary note V1-compatible"| NOTE["memory_remember/update/batch"]
+  NOTE --> VALID["Schema + safety + metadata + provenance"]
+  VALID --> STORE["FileMemoryStore"]
+  BRANCH -->|"experience task V2"| SCOPE["Host-bound ControllerMemorySession"]
+  SCOPE --> EP["MemoryEpisodes: start/event/evidence"]
+  EP --> CHECK["Checkpoint validates source lineage"]
+  CHECK --> CAPS["Bounded TaskCapsule + archive manifest"]
+  CAPS --> STORE
+  EP --> PLAN["Consolidation preview + exact read-set"]
+  LEARN["Learning verified candidate + host policy"] --> PLAN
+  PLAN --> APPROVE{"Review + evidence revalidation passes?"}
+  APPROVE -->|no| NO["No canonical promotion"]
+  APPROVE -->|yes| APPLY["MemoryPromotion apply (CAS)"]
+  APPLY --> STORE
+  STORE --> TX["Lock + transaction journal + drift fingerprint"]
+  TX --> CANON["Canonical notes/state/archive"]
+  CANON --> IDX["Derived index refresh"]
+  IDX --> RECALL["Future bounded recall"]
+  classDef store fill:#e5f7ee,stroke:#279669,color:#183d2c
+  class TX,CANON store
+

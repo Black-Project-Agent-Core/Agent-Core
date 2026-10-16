@@ -104,9 +104,10 @@ export interface LearningCheckpointDecision {
 
 export interface LearningState {
   version: 1;
+  decisionReviews?: import('./decision-review.js').DecisionRecord[];
   skillProposals?: import('./skill-proposal-types.js').SkillProposalRecord[];
   workflowVersion?: 2;
-  verificationManifests?: import('./workflow-verifier.js').WorkflowVerificationManifest[];
+  verificationManifests?: import('../memory/workflow-verifier.js').WorkflowVerificationManifest[];
   checkpointCount: number;
   sinceReview: number;
   lastCheckpointAt: string | null;

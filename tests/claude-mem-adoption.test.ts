@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MemoryService } from '../src/memory/service.js';
 import { resolveMemoryPaths } from '../src/memory/paths.js';
-import * as schemas from '../src/mcp/memory-schemas.js';
+import * as schemas from '../src/memory/mcp/schemas.js';
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];

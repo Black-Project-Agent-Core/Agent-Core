@@ -7,8 +7,8 @@
   "scripts": {
     "path:check": "node scripts/portability/check-path-policy.mjs",
     "path:report": "node scripts/portability/check-path-policy.mjs --report",
-    "build": "npm run path:check && npm run build:memory && tsc -p tsconfig.json",
-    "build:memory": "tsc -p SubProject/agent-core-memory/tsconfig.json",
+    "build": "npm run path:check && tsc -p tsconfig.json",
+    "build:memory": "npm run build",
     "semantic:smoke": "node scripts/semantic-ide-smoke.mjs",
     "verify:mcp-external": "node scripts/verify/mcp-external-acceptance.mjs",
     "verify:mcp-routing": "node scripts/verify/mcp-tool-routing-eval.mjs",
@@ -33,8 +33,8 @@
     "release:pre-exit": "node scripts/release/pre-exit.mjs",
     "release:pre-package": "node scripts/release/pre-package.mjs",
     "release:compat": "node scripts/release/release-compat.mjs",
-    "learning:evaluate-retrieval": "node scripts/learning/evaluate-retrieval.mjs",
-    "learning:verify-retrieval": "node scripts/learning/verify-retrieval.mjs"
+    "learning:evaluate-retrieval": "node scripts/memory/evaluation/evaluate-retrieval.mjs",
+    "learning:verify-retrieval": "node scripts/memory/evaluation/verify-retrieval.mjs"
   },
   "engines": {
     "node": ">=24.15.0"
@@ -75,5 +75,8 @@
     "typescript": "7.0.2",
     "vitest": "4.1.11"
   },
-  "legacyRepository": "https://github.com/Black-Project-Agent-Core/Agent-Core"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Black-Project-Agent-Core/Agent-Core.git"
+  }
 }

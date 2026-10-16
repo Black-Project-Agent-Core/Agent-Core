@@ -2,6 +2,7 @@ import * as z from 'zod/v4';
 import { learningEvaluationSchema, safeEvidenceRefSchema, safeMetadataSchema } from '../learning/evaluation.js';
 import { learningEffectEvidenceSchema } from '../learning/effect-evidence.js';
 import { learningDecisionFields } from '../learning/decision-evidence.js';
+import { decisionRequestSchema } from '../learning/decision-review.js';
 
 const evidenceRef = z.string().min(1).max(1000);
 
@@ -23,7 +24,8 @@ const learningCandidate = z.object({
 });
 
 export const learning = z.object({
-  action: z.enum(['status', 'checkpoint', 'review', 'curate', 'journey', 'receipt']),
+  action: z.enum(['status', 'checkpoint', 'review', 'curate', 'journey', 'receipt', 'decision']),
+  decision: decisionRequestSchema.optional(),
   idempotencyKey: z.string().min(1).max(200).optional(),
   taskId: z.string().min(1).max(200).optional(),
   actionRefs: z.array(safeEvidenceRefSchema()).max(16).optional(),
@@ -51,6 +53,8 @@ export const learning = z.object({
   verificationRef: safeEvidenceRefSchema().optional(),
   summary: safeMetadataSchema(500).optional(),
 }).superRefine((value, context) => {
+  if (value.action === 'decision' && !value.decision) context.addIssue({ code: 'custom', path: ['decision'], message: 'decision required' });
+  if (value.action !== 'decision' && value.decision) context.addIssue({ code: 'custom', path: ['decision'], message: 'decision only valid for action=decision' });
   if (value.action !== 'receipt') return;
   for (const key of ['useId', 'retrievalAttemptId', 'memoryId', 'contentDigest', 'applicability', 'result', 'reasonCode'] as const) {
     if (value[key] === undefined) context.addIssue({ code: 'custom', path: [key], message: `${key} is required for action=receipt` });

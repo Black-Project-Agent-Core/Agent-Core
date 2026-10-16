@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { expect, it } from 'vitest';
-import { bytes, hash, input, readJSON, report, run, temp } from './helpers/retrieval-report-fixtures.js';
+import { bytes, hash, input, readJSON, report, run, temp } from './memory/evaluation/helpers/retrieval-report-fixtures.js';
 const inspect=(dir:string)=>run('verify-report-bundle.mjs',['--report',dir]);
 it('seals a complete passing bundle last and replays it without approving capture',async()=>{
   const f=await report();expect(f.result.status,f.result.stderr).toBe(0);

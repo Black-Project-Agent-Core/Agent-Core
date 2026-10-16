@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { input, load, report, temp, run, readJSON } from './helpers/retrieval-report-fixtures.js';
+import { input, load, report, temp, run, readJSON } from './memory/evaluation/helpers/retrieval-report-fixtures.js';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 async function fixture(scores = [2, 8, 5]) {

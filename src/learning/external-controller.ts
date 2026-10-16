@@ -1,3 +1,4 @@
+import { IMPROVEMENT_HANDOFF_CONTRACT } from './improvement-handoff.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -6,15 +7,15 @@ import { writeOwnedFileAtomic } from '../persistence/atomic-file.js';
 import { isNewState, writeStateFile } from '../persistence/state-file.js';
 import { redactSensitiveString } from '../security/redaction.js';
 import type { MemoryService } from '../memory/service.js';
-import type { MemoryService as ExperienceMemoryService, MemorySearchHostContext, SynthesisEligibilitySummary } from '../../SubProject/agent-core-memory/dist/index.js';
-import { createControllerMemoryDispatcher } from '../../SubProject/agent-core-memory/dist/index.js';
-import { parseRetrievalPlan, RETRIEVAL_LIMITS, type RetrievalPlan, type MergedRetrieval } from './subquestion-retrieval.js';
-import { blockedPlannedMemory, discardPlannedMemory, withinBudget, runPlannedMemoryContext, type ContextMemoryRetrieval } from './planned-memory-context.js';
+import type { MemoryService as ExperienceMemoryService, MemorySearchHostContext, SynthesisEligibilitySummary } from '../memory/facade.js';
+import { createControllerMemoryDispatcher } from '../memory/facade.js';
+import { parseRetrievalPlan, RETRIEVAL_LIMITS, type RetrievalPlan, type MergedRetrieval } from '../memory/subquestion-retrieval.js';
+import { blockedPlannedMemory, discardPlannedMemory, withinBudget, runPlannedMemoryContext, type ContextMemoryRetrieval } from '../memory/planned-context.js';
 import type { DeliveredMemorySearchResult } from '../memory/search-projection.js';
 import type { LearningService } from './service.js';
 import { buildKnowledgeSynthesisPacket, rankKnowledge, type ExternalTaskEvidenceProjection } from '../agent-knowledge-synthesis.js';
 import { failureContext, validateWorkflowUse } from './workflow-evidence.js';
-import { recheckWorkflowReport } from './workflow-verifier.js';
+import { recheckWorkflowReport } from '../memory/workflow-verifier.js';
 import type { SkillService } from '../skills/service.js';
 import type { SkillSearchMode } from '../skills/discovery.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
@@ -857,6 +858,7 @@ export class ExternalControllerLearningService {
       'Native and external controllers share Memory, Learning and Skills. External compliance is observed, not enforced by the runtime.',
       'Start each meaningful external task with controller_learning(action=episode, episodeOperation=start, taskKey=<stable-id>, workspace=<verified-scope>).',
       'At completion declare verification, then learning(checkpoint) with taskId and a stable key; learning(review) must name checkpointKeys and candidates or an explicit disposition. Legacy review never clears pending tasks.',
+      IMPROVEMENT_HANDOFF_CONTRACT,
       ...authority.current.map(item => '- current authority: ' + item.id + ' | ' + bounded(item.title ?? item.id, 180)
         + ' | ' + bounded(item.context || item.content, 650)),
       ...authority.corrections.map(item => '- material correction: ' + item.id + ' | ' + bounded(item.title ?? item.id, 180)

@@ -1,10 +1,10 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, it } from 'vitest';
-import { MemoryLearningSink } from '../src/learning/memory-sink.js';
+import { MemoryLearningSink } from '../src/memory/learning-sink.js';
 import { LearningSinkManager } from '../src/learning/sink-manager.js';
 import { learning } from '../src/mcp/learning-schemas.js';
-import { input, readJSON, report, temp } from './helpers/retrieval-report-fixtures.js';
+import { input, readJSON, report, temp } from './memory/evaluation/helpers/retrieval-report-fixtures.js';
 it('different equal-delta experiments have stable distinct titles and candidate IDs',async()=>{
   const a=await report(),b=await report(input(undefined,undefined,{experimentId:'other-experiment'})),again=await report();
   for(const f of [a,b,again])expect(f.result.status,f.result.stderr).toBe(0);
@@ -35,7 +35,7 @@ it('real isolated Memory retains distinct evaluations and preserves the first po
   expect((await manager.capture({...legacy,content:'Different legacy content'})).status).toBe('duplicate');
 });
 it('binds identity to each input, revision and implementation component',async()=>{
-  const {reportIdentity}=await import('../scripts/learning/report-bundle.mjs');
+  const {reportIdentity}=await import('../scripts/memory/evaluation/report-bundle.mjs');
   const f=await report(),m=await readJSON(path.join(f.output,'report-manifest.json'));
   const binding={inputsDigest:m.inputsDigest,evaluatorRevision:m.evaluatorRevision,verifierRevision:m.verifierRevision,implementationHashes:m.implementationHashes};
   expect(reportIdentity(binding)).toBe(m.reportId);

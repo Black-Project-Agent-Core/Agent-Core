@@ -167,8 +167,8 @@ async function builtManifestBudget(options = {}) {
 const mcpFiles = [
   'src/mcp/server.ts',
   'src/mcp/artifact-inspect-tools.ts',
-  'src/mcp/memory-tools.ts',
-  'src/mcp/memory-experience-tools.ts',
+  'src/memory/mcp/tools.ts',
+  'src/memory/mcp/experience-tools.ts',
   'src/mcp/learning-tools.ts',
   'src/mcp/partner-tools.ts',
   'src/mcp/semantic-ide-tools.ts',
@@ -182,7 +182,7 @@ const routeFiles = ['src/http/app.ts', 'src/oauth/service.ts'];
 const schemaFiles = [
   'src/mcp/rdc-schemas.ts',
   'src/mcp/rdc-tool-metadata.ts',
-  'src/mcp/memory-schemas.ts',
+  'src/memory/mcp/schemas.ts',
   'src/mcp/learning-schemas.ts',
   'src/mcp/partner-schemas.ts',
   'src/mcp/semantic-ide-schemas.ts',
@@ -193,7 +193,7 @@ const schemaFiles = [
   'src/mcp/web-research-schemas.ts',
   'src/mcp/controller-learning-schemas.ts',
   'src/mcp/controller-learning-tools.ts',
-  'src/learning/subquestion-retrieval.ts',
+  'src/memory/subquestion-retrieval.ts',
   'src/rdc/tools/image-inspect.ts',
   'src/rdc/tools/image-review.ts',
 ];

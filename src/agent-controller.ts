@@ -1,4 +1,6 @@
 import { failureContext } from './learning/workflow-evidence.js';
+import { IMPROVEMENT_HANDOFF_CONTRACT } from './learning/improvement-handoff.js';
+import { decisionRequestSchema } from './learning/decision-review.js';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import * as z from 'zod/v4';
@@ -72,6 +74,7 @@ const capabilityRequestSchema = z.object({
 });
 
 const strategySchema = z.object({
+  decisionReview: decisionRequestSchema.optional(),
   strategy: z.string().min(1).max(2_000),
   hypothesis: z.string().min(1).max(2_000),
   expectedObservation: z.string().min(1).max(2_000),
@@ -138,6 +141,7 @@ const STRATEGY_TOOL: AgentModelTool = {
       type: 'object',
       required: ['strategy', 'hypothesis', 'expectedObservation'],
       properties: {
+        decisionReview: z.toJSONSchema(decisionRequestSchema),
         strategy: { type: 'string' },
         hypothesis: { type: 'string' },
         expectedObservation: { type: 'string' },
@@ -341,6 +345,8 @@ function systemPrompt(memoryContext: string, synthesis: string): string {
     'If a verified multi-step procedure is genuinely reusable, include procedure in agent_core_finalize; otherwise omit it.',
     'Reusable procedures produce proposals, not automatic active Skills. Use a short capability-based name such as code-review, never an opaque ID.',
     'Explain expected usefulness without claiming measured improvement. The host appends pending proposal reminders to this task response; only an actual user decision can authorize building or activation.',
+    IMPROVEMENT_HANDOFF_CONTRACT,
+    'When reusing experience or testing uncertain effects, include decisionReview={operation:declare,declaration:...} in agent_core_strategy before acting; later use operation assess or inspect with separate prediction and goal evidence. The same Learning owner serves external learning(action=decision). Retrieval relevance is not applicability or authority. Inspect uncertain contracts; report unknown effects. Never rewrite forecasts after observations. For optional verification stopping use inspect.salience with stoppingContext and observation requirement/resolution/marginalValue; unresolved mandatory or serious risk remains visible, and deferral needs a reason. These reviews grant no execution permission.',
     'You MUST call agent_core_finalize before the turn can complete.',
     'For every meaningful task, include reviewed candidates/procedure or an explicit learningDecision (no-new-knowledge, rejected, awaiting-verification); nothingWorthSaving=true remains a supported alias.',
     '',
@@ -877,6 +883,17 @@ export class NativeAgentController {
               continue;
             }
             const changed = Boolean(hasStrategy);
+            let decisionReview: unknown;
+            if (parsed.decisionReview) {
+              try {
+                if (!task.workspace || !this.mcpRuntime.learningService) throw new Error('LEARNING_DECISION_SCOPE_REQUIRED');
+                decisionReview = await this.mcpRuntime.learningService.decisionReview(
+                  { taskId: task.id, workspace: task.workspace }, parsed.decisionReview,
+                  { readFiles: capabilityGrant.tools.includes('read_file') });
+              } catch (error) {
+                decisionReview = { status: 'unavailable', reason: redactSensitiveString(String(error)), executionPermission: 'unchanged' };
+              }
+            }
             hasStrategy = true;
             needsStrategy = false;
             lastStrategyText = normalizedStrategy;
@@ -954,7 +971,8 @@ export class NativeAgentController {
               content: 'STRATEGY_ACCEPTED: hypothesis and expected observation recorded. Memory uses accepted='
                 + acceptedUses + '; artifact uses accepted=' + acceptedArtifacts
                 + (ignored.length ? '; unknown memory ids ignored=' + ignored.join(',') : '')
-                + (ignoredArtifacts.length ? '; unsurfaced artifacts ignored=' + ignoredArtifacts.join(',') : ''),
+                + (ignoredArtifacts.length ? '; unsurfaced artifacts ignored=' + ignoredArtifacts.join(',') : '')
+                + (decisionReview ? '\nDECISION_REVIEW: ' + JSON.stringify(decisionReview) : ''),
             });
             await persistCheckpoint('tool-result-durable');
             continue;

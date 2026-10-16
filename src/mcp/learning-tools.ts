@@ -6,6 +6,7 @@ import { activityTracker } from '../tracker/activity-tracker.js';
 import { appendFailureLoopAdvisory, type FailureLoopAdvisor } from './failure-loop-advisor.js';
 import * as schemas from './learning-schemas.js';
 import { appendSkillReminderCapsule } from './external-controller-tool-support.js';
+import type { MemoryScopeResolver } from '../memory/mcp/scope.js';
 
 function text(value: unknown) {
   return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] as any };
@@ -23,10 +24,12 @@ export function registerLearningTools(
   advisor?: FailureLoopAdvisor,
   externalController?: ExternalControllerLearningService,
   externalSessionId?: string,
+  resolveTaskScope?: MemoryScopeResolver,
+  evidenceReadAllowed = false,
 ): void {
   server.registerTool('learning', {
     title: 'Agent Core Learning',
-    description: 'Controller-driven self-learning facade. After meaningful completed work, the controller must checkpoint once with bounded evidence/workspace and, when reviewDue, perform semantic review before finalizing the turn; Name checkpointKeys and taskId in review; empty candidates require an explicit disposition. Legacy capture does not close pending tasks. Direct Memory remember/update or Reflexion promotion does not replace this finalization lifecycle. Agent Core persists bounded pending-review evidence, validates reviewed candidates, records bounded Memory-use receipts, routes verified non-destructive captures, proposes curation, and exposes a read-only learning journey. The controller owns semantic judgment and Learning never gates normal MCP execution.',
+    description: 'Shared Learning owner. After meaningful work checkpoint with evidence/workspace; review when due using checkpointKeys/taskId and disposition for empty candidates. Memory writes do not finalize Learning. decision declares immutable forecasts, assesses observation/goal evidence, or inspects context/salience/calibration. Salience stoppingContext assesses optional verification stopping; required checks and unresolved risk remain visible. External decisions require host-bound taskId; native uses current task. File evidence obeys read grants. Tool success is not goal success. Review/receipts/curation/journey preserve evidence; no execution grant or automatic policy activation.',
     inputSchema: schemas.learning.shape,
     annotations: { title: 'Agent Core Learning', readOnlyHint: false, destructiveHint: false },
   }, async (args: any) => {
@@ -37,6 +40,11 @@ export function registerLearningTools(
 
       if (input.action === 'status') {
         result = await learning.status();
+      } else if (input.action === 'decision') {
+        if (!resolveTaskScope) throw new Error('LEARNING_DECISION_SCOPE_REQUIRED');
+        const scope = await resolveTaskScope(input.taskId ? { taskId: input.taskId } : undefined);
+        if (input.workspace && input.workspace !== scope.workspaceKey) throw new Error('LEARNING_DECISION_WORKSPACE_MISMATCH');
+        result = await learning.decisionReview({ taskId: scope.taskId, workspace: scope.workspaceKey }, input.decision!, { readFiles: evidenceReadAllowed });
       } else if (input.action === 'checkpoint') {
         if (!input.idempotencyKey) throw new Error('idempotencyKey is required for action=checkpoint');
         result = await learning.checkpoint({

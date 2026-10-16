@@ -1,5 +1,8 @@
 import { curationCandidateId, curationCandidates, curationEntryFingerprint } from './curation-delta.js';
-import { memorySemanticRevision } from '../../SubProject/agent-core-memory/dist/memory/disclosure.js';
+import { updateDecisionReview, reviewDecisions, type DecisionRequest } from './decision-review.js';
+import { evaluateDecisionCalibration } from './decision-calibration.js';
+import { improvementHandoff } from './improvement-handoff.js';
+import { memorySemanticRevision } from '../memory/disclosure.js';
 import { createLearningDecision } from './decision-evidence.js';
 import type { CurationBinding, CurationDelta } from './types.js';
 import type { CodeIntelligenceService } from '../code-intelligence/service.js';
@@ -16,14 +19,14 @@ import { recordSkillOutcome, reviewSkillOutcomes, type SkillOutcomeInput } from 
 import { recordUserSkillDecision, decideSkillProposal, applyUserSkillCommand, isUserSkillCommand, type SkillDecisionInput } from './skill-proposal-decisions.js';
 import { pendingSkillNotices, recordSkillNoticeDelivery } from './skill-proposal-notification.js';
 import type { SkillProposalInput, SkillNoticeScope, SkillNoticeDeliveryInput } from './skill-proposal-types.js';
-import { recheckWorkflowReport, registerWorkflowVerification, type WorkflowVerificationManifest } from './workflow-verifier.js';
+import { recheckWorkflowReport, registerWorkflowVerification, type WorkflowVerificationManifest } from '../memory/workflow-verifier.js';
 import type { MemoryService } from '../memory/service.js';
 import type { MemoryUseReceiptInput } from '../memory/retrieval-ledger.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { CodePatternLearningSink } from './code-pattern-sink.js';
 import { LearningCurator } from './curator.js';
 import { LearningJourneyBuilder } from './journey.js';
-import { MemoryLearningSink } from './memory-sink.js';
+import { MemoryLearningSink } from '../memory/learning-sink.js';
 import { resolveLearningPaths } from './paths.js';
 import { LearningReviewCoordinator } from './review.js';
 import { summarizeLearningReview } from './review-summary.js';
@@ -100,6 +103,12 @@ export function withRejectionHistory(state: LearningState, outcomes: LearningRev
 }
 
 export class LearningService {
+  async decisionReview(binding: { taskId: string; workspace: string }, request: DecisionRequest, access = { readFiles: false }) {
+    const workspace = this.memory.registeredWorkspaceIdentity(binding.workspace).name;
+    const records = await updateDecisionReview(this.stateStore, { taskId: binding.taskId, workspace }, request, access);
+    return { records, ...await reviewDecisions(records, request.operation === 'inspect' ? request.salience : undefined, access),
+      ...(request.operation === 'inspect' ? { calibration: await evaluateDecisionCalibration(records, access) } : {}) };
+  }
   /** Trusted host/harness setup only; deliberately absent from the controller tool contract. */
   async registerVerificationManifest(manifest: WorkflowVerificationManifest): Promise<void> {
     await this.stateStore.mutate('verification', state => {
@@ -428,7 +437,8 @@ export class LearningService {
         workspace: normalizedInput.workspace ?? '',
       },
     );
-    return { ...transition.result, ...(curation ? { curation } : {}) };
+    const handoff = improvementHandoff(normalizedInput, transition.result);
+    return { ...transition.result, ...(curation ? { curation } : {}), ...(handoff ? { improvementHandoff: handoff } : {}) };
   }
 
   /** Binding comes from the host's active task, never from the delta being reviewed. */

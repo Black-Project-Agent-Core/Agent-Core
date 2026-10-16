@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { performance } from 'node:perf_hooks';
 vi.mock('../src/tracker/activity-tracker.js', () => ({ activityTracker: {
   record: vi.fn(), recordOutcome: vi.fn(), captureFailure: vi.fn(), readFeatureOutcomes: () => [],
 } }));
@@ -14,7 +15,7 @@ import { LearningService } from '../src/learning/service.js';
 import { MemoryService } from '../src/memory/service.js';
 import { rankKnowledge, buildKnowledgeSynthesisPacket } from '../src/agent-knowledge-synthesis.js';
 import { resolveWorkflowEvidence, validateWorkflowUse } from '../src/learning/workflow-evidence.js';
-import { verifyWorkflowAnswer, WORKFLOW_VERIFIER_REVISION, registerWorkflowVerification, recheckWorkflowReport } from '../src/learning/workflow-verifier.js';
+import { verifyWorkflowAnswer, WORKFLOW_VERIFIER_REVISION, registerWorkflowVerification, recheckWorkflowReport } from '../src/memory/workflow-verifier.js';
 import * as atomicFile from '../src/persistence/atomic-file.js';
 import { SkillService } from '../src/skills/service.js';
 
@@ -26,6 +27,13 @@ async function fixture() {
   const root = await mkdtemp(path.join(parent, 'workflow-'));
   roots.push(root);
   return root;
+}
+async function hostObservation<T>(action: () => Promise<T>): Promise<T> {
+  // Exercise attribution independently of disk latency and the observational deadline.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+  try { return await action(); }
+  finally { clock.mockRestore(); vi.useRealTimers(); }
 }
 const config = { enabled: true, stateDir: '', reviewInterval: 10, curatorIntervalHours: 168 };
 async function learningFixture() {
@@ -93,32 +101,46 @@ describe('cumulative workflow persistence and task identity', () => {
 
   it('starts idempotent explicit tasks and freezes closed metrics on a reused transport', async () => {
     const root = await fixture();
-    const service = await ExternalControllerLearningService.initialize({ stateDir: root, memory: {} as any, learning: {} as any });
-    const first = await service.startEpisode('transport', { taskKey: 'first' } as any);
-    await service.recordToolOutcome({ sessionId: 'transport', tool: 'read_file', argumentKeys: [], outcome: 'success', readOnly: true });
-    const duplicate = await service.startEpisode('transport', { taskKey: 'first' } as any);
+    const memory = await MemoryService.initialize(root);
+    const service = await ExternalControllerLearningService.initialize({ stateDir: root, memory, learning: {} as any });
+    const binding = { ownerId: 'fixture-owner', workspaceIdentityKey: memory.registeredWorkspaceIdentity('agent-core').key };
+    const start = (taskKey: string) => service.startEpisode('transport', { taskKey, workspace: 'agent-core' }, binding);
+    const first = await start('first');
+    const invocation = await hostObservation(() => service.captureToolInvocationContext({ invocationId: 'first-read', processSessionId: 'fixture-process', sessionId: 'transport', ownerId: binding.ownerId }));
+    expect(invocation.binding).toBe('bound');
+    await hostObservation(() => service.recordToolOutcome({ sessionId: 'transport', tool: 'read_file', argumentKeys: [], outcome: 'success', readOnly: true, invocationContext: invocation }));
+    const duplicate = await start('first');
     expect(duplicate.id).toBe(first.id);
-    await service.verifyEpisode('transport', { outcome: 'verified', verificationRef: 'verification:first' });
-    await service.recordLearningCheckpoint('transport', undefined, 'first');
+    await service.verifyEpisode('transport', { outcome: 'verified', verificationRef: 'verification:first' }, invocation);
+    await service.recordLearningCheckpoint('transport', undefined, 'first', first.id);
     await service.recordLearningReview('transport', 'no-new-knowledge', { first: { complete: true, status: 'no-new-knowledge' } });
     const terminal = await service.getEpisode('transport');
-    await service.recordToolOutcome({ sessionId: 'transport', tool: 'learning', argumentKeys: [], outcome: 'success', readOnly: true });
+    expect(terminal?.closedAt).toBeTruthy();
+    expect(terminal?.metrics.toolCalls).toBe(1);
+    const late = await hostObservation(() => service.captureToolInvocationContext({ invocationId: 'late-learning', processSessionId: 'fixture-process', sessionId: 'transport', ownerId: binding.ownerId }));
+    await hostObservation(() => service.recordToolOutcome({ sessionId: 'transport', tool: 'learning', argumentKeys: [], outcome: 'success', readOnly: true, invocationContext: late }));
     expect((await service.getEpisode('transport'))?.metrics).toEqual(terminal?.metrics);
-    const second = await service.startEpisode('transport', { taskKey: 'second' } as any);
+    const second = await start('second');
     expect(second.id).not.toBe(first.id);
     expect(second.metrics.toolCalls).toBe(0);
   });
 
   it('recovers valid historical episodes without replacing current records or resolving pending work', async () => {
     const root = await fixture();
-    const service = await ExternalControllerLearningService.initialize({ stateDir: root, memory: {} as any, learning: {} as any });
+    const memory = await MemoryService.initialize(root);
+    const service = await ExternalControllerLearningService.initialize({ stateDir: root, memory, learning: {} as any });
     const old = await service.startEpisode('old', { taskKey: 'historical' } as any);
     const file = path.join(root, 'external-controller.json');
     const backup = file + '.corrupt.fixture';
     await writeFile(backup, await readFile(file));
     await writeFile(file, JSON.stringify({ version: 1, episodes: [], procedures: [], sessionHeads: {} }));
-    const current = await service.startEpisode('current', { taskKey: 'current' } as any);
-    await service.recordToolOutcome({ sessionId: 'current', tool: 'edit_block', argumentKeys: [], outcome: 'success', readOnly: false });
+    const current = await service.startEpisode('current', { taskKey: 'current', workspace: 'agent-core' },
+      { ownerId: 'fixture-owner', workspaceIdentityKey: memory.registeredWorkspaceIdentity('agent-core').key });
+    const invocation = await hostObservation(() => service.captureToolInvocationContext({ invocationId: 'current-edit',
+      processSessionId: 'fixture-process', sessionId: 'current', ownerId: 'fixture-owner' }));
+    expect(invocation.binding).toBe('bound');
+    expect(await hostObservation(() => service.recordToolOutcome({ sessionId: 'current', tool: 'edit_block',
+      argumentKeys: [], outcome: 'success', readOnly: false, invocationContext: invocation }))).toBe('attributed');
     expect(await (service as any).recoverHistory(backup, false)).toMatchObject({ addedEpisodes: 1, applied: false });
     expect(await (service as any).recoverHistory(backup, true)).toMatchObject({ addedEpisodes: 1, applied: true });
     expect((await service.recentEpisodes({ limit: 10 })).map(row => row.id)).toEqual(expect.arrayContaining([old.id, current.id]));
@@ -208,7 +230,7 @@ describe('task-scoped Learning decisions', () => {
   it('delivers whole procedure steps within budget and revisions only for visible artifacts', async () => {
     const step = 'atomic ' + 'x'.repeat(900);
     const procedure = { fingerprint: 'sha256:' + 'a'.repeat(64), name: 'atomic', description: 'atomic persistence', steps: Array(30).fill(step), supportTaskIds: [], failureTaskIds: [], evidenceRefs: [], allowedTools: [], status: 'candidate' as const, updatedAt: new Date().toISOString() };
-    const packet = await buildKnowledgeSynthesisPacket({ runtime: { learningService: { journey: async () => ({ nodes: [{ id: 'pattern:p', type: 'pattern', label: 'Atomic procedure' }], edges: [] }) } } as any,
+    const packet = await buildKnowledgeSynthesisPacket({ runtime: { learningService: { journey: async () => ({ nodes: [{ id: 'pattern:p', type: 'pattern', label: 'Atomic procedure' }], edges: [], stats: { patternsAvailable: true } }) } } as any,
       memoryItems: [], procedures: [procedure], workspace: 'agent-core', task: { goal: 'atomic', episodes: [] } });
     expect(packet.text.length).toBeLessThanOrEqual(16000);
     expect(packet.artifactRevisions['procedure:' + procedure.fingerprint]).toBeUndefined();

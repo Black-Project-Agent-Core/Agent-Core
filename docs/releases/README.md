@@ -3,7 +3,7 @@
 ## Current identities
 
 - Canonical source candidate: **0.15.0-beta.1** (source candidate; no new tag, release publication or deployment)
-- Published beta.0 source and Windows portable: immutable tag `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`; [scoped Windows evidence](../verification/memory01-windows-functional-2026-10-10.md)
+- Published beta.0 source and Windows portable: immutable tag `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`; [scoped Windows evidence](../memory/verification/memory01-windows-functional-2026-10-10.md)
 - Target stable product: **0.15.0**
 - Previous stable source baseline: **0.14.0**
 - Latest published stable GitHub release observed on 2026-10-09: [v0.12.0](https://github.com/Black-Project-Agent-Core/Agent-Core/releases/tag/v0.12.0)
@@ -52,7 +52,7 @@ Every later Linux-to-Windows handoff must be freshly generated from the complete
 
 ## Current acceptance and rollout gates
 
-Memory01 and Workflows directed Windows functional acceptance is closed within the [2026-10-10 evidence scope](../verification/memory01-windows-functional-2026-10-10.md). Full fresh-machine GUI acceptance and later Plans02–05 are separate. See [beta.1 notes](0.15.0-beta.1.md) for ongoing Plan05 verification, the opt-in ranking policy, serialized Learning attribution and the Plan04 full-re-embedding approval gate. Do not restart production onto Plan04 merely because source builds.
+Memory01 and Workflows directed Windows functional acceptance is closed within the [2026-10-10 evidence scope](../memory/verification/memory01-windows-functional-2026-10-10.md). Full fresh-machine GUI acceptance and later Plans02–05 are separate. See [beta.1 notes](0.15.0-beta.1.md) for ongoing Plan05 verification, the opt-in ranking policy, serialized Learning attribution and the Plan04 full-re-embedding approval gate. Do not restart production onto Plan04 merely because source builds.
 
 ## Registry publication status
 

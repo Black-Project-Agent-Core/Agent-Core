@@ -1,8 +1,10 @@
+import {isoInstantSchema} from './experience-types.js';
 import type { MemoryLink, MemoryRecord } from './types.js';
 
 const MAX_EVIDENCE_REFS = 16;
 
-function normalizeIso(value: string | undefined, code: string): string | undefined {
+function normalizeIso(value: string | undefined, code: string,strict=false): string | undefined {
+  if(strict){if(value===undefined)return undefined;const parsed=isoInstantSchema.safeParse(value);if(!parsed.success)throw new Error(code);return parsed.data;}
   if (!value) return undefined;
   if (!Number.isFinite(Date.parse(value))) throw new Error(code);
   return new Date(value).toISOString();
@@ -27,14 +29,14 @@ function normalizeEvidenceRefs(values: string[] | undefined, validIds: Set<strin
   return output.length ? output : undefined;
 }
 
-function normalizeLink(raw: MemoryLink, validIds: Set<string>): MemoryLink {
-  const validFrom = normalizeIso(raw.validFrom, 'MEMORY_LINK_VALID_FROM_INVALID');
-  const validTo = normalizeIso(raw.validTo, 'MEMORY_LINK_VALID_TO_INVALID');
-  const referenceTime = normalizeIso(raw.referenceTime, 'MEMORY_LINK_REFERENCE_TIME_INVALID');
+function normalizeLink(raw: MemoryLink, validIds: Set<string>,strict=false): MemoryLink {
+  const validFrom = normalizeIso(raw.validFrom, 'MEMORY_LINK_VALID_FROM_INVALID',strict);
+  const validTo = normalizeIso(raw.validTo, 'MEMORY_LINK_VALID_TO_INVALID',strict);
+  const referenceTime = normalizeIso(raw.referenceTime, 'MEMORY_LINK_REFERENCE_TIME_INVALID',strict);
   if (validFrom && validTo && Date.parse(validTo) < Date.parse(validFrom)) {
     throw new Error('MEMORY_LINK_VALIDITY_RANGE_INVALID');
   }
-  const createdAt = normalizeIso(raw.createdAt, 'MEMORY_LINK_CREATED_AT_INVALID');
+  const createdAt = normalizeIso(raw.createdAt, 'MEMORY_LINK_CREATED_AT_INVALID',strict);
   if (!createdAt) throw new Error('MEMORY_LINK_CREATED_AT_INVALID');
   const evidenceRefs = normalizeEvidenceRefs(raw.evidenceRefs, validIds);
   return {
@@ -86,20 +88,21 @@ export function isMemoryLinkActive(link: MemoryLink, at = Date.now()): boolean {
   return true;
 }
 
-export function normalizeLinks(ownerId: string, links: MemoryLink[], validIds: Set<string>): MemoryLink[] {
+/** V2 mode preserves segments and requires zoned instants before any legacy conversion. */
+export function normalizeLinks(ownerId: string, links: MemoryLink[], validIds: Set<string>,preserveSegments=false): MemoryLink[] {
   const positions = new Map<string, number>();
   const output: MemoryLink[] = [];
   for (const raw of links) {
     if (raw.targetId === ownerId) throw new Error('Memory cannot link to itself');
     if (!validIds.has(raw.targetId)) throw new Error(`Linked memory not found: ${raw.targetId}`);
-    const link = normalizeLink(raw, validIds);
-    const key = `${link.targetId}\u0000${link.type}`;
+    const link = normalizeLink(raw, validIds,preserveSegments);
+    const key = `${link.targetId}\u0000${link.type}`+(preserveSegments?`\u0000${link.validFrom??''}\u0000${link.validTo??''}`:'');
     const position = positions.get(key);
     if (position !== undefined) {
       output[position] = mergeDuplicate(output[position]!, link);
       continue;
     }
-    if (output.length >= 32) continue;
+    if (!preserveSegments && output.length >= 32) continue;
     positions.set(key, output.length);
     output.push(link);
   }

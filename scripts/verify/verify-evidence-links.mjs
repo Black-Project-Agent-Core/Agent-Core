@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { parseArguments, jsonBytes } from '../learning/report-io.mjs';
+import { parseArguments, jsonBytes } from '../memory/evaluation/report-io.mjs';
 import { verifyEvidenceLinks, revalidateEvidenceLinks } from '../../dist/verification/evidence-links.js';
 import { readEvidenceSnapshot, revalidateEvidenceSnapshot, writeEvidenceReport, evidenceDigest,
   evidencePathKey, EVIDENCE_DOCUMENT_MAX } from '../../dist/verification/evidence-snapshot.js';

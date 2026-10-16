@@ -1,4 +1,5 @@
-import { buildSemanticDocument, tokenizeMemoryText } from './semantic-document.js';
+import { buildSemanticDocument } from './semantic-document.js';
+import { lexicalRetrievalTokens } from './identifier-tokenizer.js';
 import type { MemoryRecord } from './types.js';
 
 const STOPWORDS = new Set([
@@ -15,12 +16,12 @@ export interface Bm25Profile {
   weight: number;
 }
 
-function meaningfulTokens(value: string): string[] {
-  return tokenizeMemoryText(value).filter((token) => token.length > 1 && !STOPWORDS.has(token));
+function meaningfulTokens(value: string, kind:'query'|'document'='document'): string[] {
+  return lexicalRetrievalTokens(value,kind).tokens.filter((token) => token.length > 1 && !STOPWORDS.has(token));
 }
 
 export function buildBm25Profile(records: MemoryRecord[], query: string): Bm25Profile {
-  const queryTokens = [...new Set(meaningfulTokens(query))];
+  const queryTokens = [...new Set(meaningfulTokens(query,'query'))];
   const weight = queryTokens.length > 0 && queryTokens.length <= 2 ? 0.9 : queryTokens.length ? 0.45 : 0;
   if (!records.length || !queryTokens.length) {
     return { scores: new Map(), meaningfulQueryTokens: queryTokens.length, weight };

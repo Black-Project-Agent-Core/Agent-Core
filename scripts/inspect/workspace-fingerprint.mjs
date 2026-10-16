@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { lstat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { readArtifact, writeExclusive, failure } from '../learning/report-io.mjs';
+import { readArtifact, writeExclusive, failure } from '../memory/evaluation/report-io.mjs';
 
 const MAX_REPOS=16, MAX_GIT_BYTES=8*1024*1024, MAX_STATUS_ENTRIES=10000, MAX_PATH_EVIDENCE=256, GIT_TIMEOUT_MS=5000;
 const PROTECTED_SEGMENT='do not touch without instruction explicit';

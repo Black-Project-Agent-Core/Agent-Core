@@ -8,9 +8,9 @@ import type { LearningService } from '../learning/service.js';
 import type { ExternalControllerLearningService } from '../learning/external-controller.js';
 import type { SemanticIdeService } from '../semantic-ide/service.js';
 import type { MemoryService } from '../memory/service.js';
-import type { MemoryService as ExperienceMemoryService } from '../../SubProject/agent-core-memory/dist/index.js';
-import { registerMemoryExperienceTools } from './memory-experience-tools.js';
-import { memoryCredentialOwner, ownerScopedLearningSession, type MemoryScopeResolver } from './memory-scope.js';
+import type { MemoryService as ExperienceMemoryService } from '../memory/facade.js';
+import { registerMemoryExperienceTools } from '../memory/mcp/experience-tools.js';
+import { memoryCredentialOwner, ownerScopedLearningSession, createMemoryScopeResolver } from '../memory/mcp/scope.js';
 import type { SkillService } from '../skills/service.js';
 import type { WebResearchService } from '../web-research/service.js';
 import { registerWebResearchTools } from './web-research-tools.js';
@@ -31,7 +31,7 @@ import { annotateFailureLoopException, appendFailureLoopAdvisory, type FailureLo
 import { registerCodeIntelligenceTools } from './code-intelligence-tools.js';
 import { registerLearningTools } from './learning-tools.js';
 import { registerControllerLearningTools } from './controller-learning-tools.js';
-import { registerMemoryTools } from './memory-tools.js';
+import { registerMemoryTools } from '../memory/mcp/tools.js';
 import { registerSemanticIdeTools } from './semantic-ide-tools.js';
 import { registerSkillsTools } from './skills-tools.js';
 import { registerPhoneTools } from './phone-tools.js';
@@ -354,18 +354,7 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
         },
       } : undefined);
   }
-  const resolveMemoryScope: MemoryScopeResolver = async selector => {
-    try {
-      if (runtime.nativeTaskId) {
-        if (!runtime.nativeWorkspace || !workspaceRegistry || (selector && selector.taskId !== runtime.nativeTaskId)) throw new Error('unavailable native task');
-        const identity = workspaceRegistry.registeredWorkspaceIdentity(runtime.nativeWorkspace);
-        return { taskId: runtime.nativeTaskId, workspaceKey: identity.name, controllerId: 'agent-core-native', sessionId: runtime.controllerSessionId };
-      }
-      if (!memoryOwner || !selector?.taskId || !runtime.externalControllerLearning) throw new Error('unavailable external task');
-      const scope = await runtime.externalControllerLearning.resolveMemoryTask(memoryOwner, selector.taskId);
-      return { ...scope, controllerId: 'agent-core-external', sessionId: runtime.controllerSessionId };
-    } catch { throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE'); }
-  };
+  const resolveMemoryScope = createMemoryScopeResolver({ nativeTaskId:runtime.nativeTaskId, nativeWorkspace:runtime.nativeWorkspace, controllerSessionId:runtime.controllerSessionId, memoryOwner, workspaceRegistry, externalControllerLearning:runtime.externalControllerLearning });
   if (runtime.memoryService) registerMemoryTools(
     server,
     runtime.memoryService,
@@ -382,6 +371,8 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.failureLoopAdvisor,
     runtime.externalControllerLearning,
     runtime.controllerSessionId,
+    resolveMemoryScope,
+    credentialAllowsTool(key, 'read_file'),
   );
   if (runtime.semanticIde) registerSemanticIdeTools(
     server,

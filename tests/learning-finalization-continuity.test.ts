@@ -8,7 +8,7 @@ vi.mock('../src/tracker/activity-tracker.js', () => ({
 import { applyCheckpoint, markReviewed } from '../src/learning/triggers.js';
 import { LearningStateStore, defaultLearningState } from '../src/learning/state.js';
 import { LearningService } from '../src/learning/service.js';
-import { memoryRememberLearningFinalizationAdvisory } from '../src/mcp/memory-tools.js';
+import { memoryRememberLearningFinalizationAdvisory } from '../src/memory/mcp/tools.js';
 import { AgentRuntimeService } from '../src/agent-runtime.js';
 
 const config = { enabled: true, stateDir: 'fixture', reviewInterval: 10, curatorIntervalHours: 168 };
@@ -52,7 +52,7 @@ describe('natural learning finalization continuity', () => {
     expect(reviewed.sinceReview).toBe(0);
   });
   it('loads legacy version-1 state without pendingReviews and persists the additive field', async () => {
-    const fixtureParent = fileURLToPath(new URL('../runtime/tmp/', import.meta.url));
+    const fixtureParent = fileURLToPath(new URL('../runtime/tmp', import.meta.url));
     await mkdir(fixtureParent, { recursive: true });
     const root = await mkdtemp(path.join(fixtureParent, 'learning-finalization-'));
     const statePath = path.join(root, 'state.json');
@@ -104,7 +104,7 @@ describe('natural learning finalization continuity', () => {
 
 describe('native agent runtime finalization lifecycle', () => {
   async function runtimeFixture(learning: any) {
-    const fixtureParent = fileURLToPath(new URL('../runtime/tmp/', import.meta.url));
+    const fixtureParent = fileURLToPath(new URL('../runtime/tmp', import.meta.url));
     await mkdir(fixtureParent, { recursive: true });
     const root = await mkdtemp(path.join(fixtureParent, 'agent-runtime-'));
     return { root, runtime: await AgentRuntimeService.initialize(root, learning as any) };
@@ -167,7 +167,7 @@ describe('native agent runtime finalization lifecycle', () => {
       retrievalEvidence: { attemptId: 'attempt-1', contentDigest: 'sha256:a', recordFingerprint: 'sha256:b' },
     }]) };
     const learning = { checkpoint: vi.fn(), review: vi.fn() };
-    const fixtureParent = fileURLToPath(new URL('../runtime/tmp/', import.meta.url));
+    const fixtureParent = fileURLToPath(new URL('../runtime/tmp', import.meta.url));
     await mkdir(fixtureParent, { recursive: true });
     const root = await mkdtemp(path.join(fixtureParent, 'agent-runtime-memory-'));
     try {

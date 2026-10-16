@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseRetrievalSeriesManifest } from '../src/learning/retrieval-series.js';
-const file = fileURLToPath(new URL('../src/learning/retrieval-pareto.ts', import.meta.url));
+import { parseRetrievalSeriesManifest } from '../src/memory/evaluation/retrieval-series.js';
+const file = fileURLToPath(new URL('../src/memory/evaluation/retrieval-pareto.ts', import.meta.url));
 const load = async () => {
   expect(existsSync(file), 'native Pareto implementation must exist').toBe(true);
-  return import('../src/learning/retrieval-pareto.js');
+  return import('../src/memory/evaluation/retrieval-pareto.js');
 };
 const config = { resourceBasis: 'per-run', objectives: [
   { id: 'candidateRate', direction: 'maximize' },
@@ -21,7 +21,7 @@ const row = (runId: string, quality: number | null, cost: number | null, extra =
 });
 describe('SHINKA-P1 native Pareto', () => {
   it('adds an independent CLI mode without replacing coverage frontier', () => {
-    const cli = fileURLToPath(new URL('../scripts/learning/analyze-retrieval.mjs', import.meta.url));
+    const cli = fileURLToPath(new URL('../scripts/memory/evaluation/analyze-retrieval.mjs', import.meta.url));
     const text = execFileSync(process.execPath, [cli, '--help'], { encoding: 'utf8' });
     expect(text).toContain('--pareto'); expect(text).toContain('--frontier');
     expect(readFileSync(cli, 'utf8')).toContain('createRetrievalPortfolio');
@@ -79,7 +79,7 @@ describe('SHINKA-P1 native Pareto', () => {
 
 import path from 'node:path';
 import { writeFile, readFile } from 'node:fs/promises';
-import { bytes, input, readJSON, report, run, temp } from './helpers/retrieval-report-fixtures.js';
+import { bytes, input, readJSON, report, run, temp } from './memory/evaluation/helpers/retrieval-report-fixtures.js';
 it('Pareto CLI verifies real bundles, preserves unknown attempts and never overwrites output', async () => {
   const a=await report(input([true,true,false,false],[true,true,false,false],{experimentId:'pareto-a'}));
   const b=await report(input([true,true,false,false],[true,true,true,false],{experimentId:'pareto-b'}));

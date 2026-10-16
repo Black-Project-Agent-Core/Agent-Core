@@ -29,7 +29,7 @@ function git(args, options = {}) {
 
 const policy = await loadReleasePolicy(ROOT);
 const pending = await readPendingChangesets();
-const existingIntents = new Set(pending.map(item => ".changeset/" + item.file));
+const existingIntents = new Set(pending.map(item => path.relative(ROOT, item.fullPath).replaceAll("\\", "/")));
 const tempDir = path.join(ROOT, "runtime", "tmp");
 await fs.mkdir(tempDir, { recursive: true });
 const tempIndex = path.join(tempDir, `agent-core-release-intent-check-${process.pid}.index`);

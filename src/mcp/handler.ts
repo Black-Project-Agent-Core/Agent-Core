@@ -13,7 +13,7 @@ import type { LearningService } from '../learning/service.js';
 import type { ExternalControllerLearningService } from '../learning/external-controller.js';
 import type { SemanticIdeService } from '../semantic-ide/service.js';
 import type { MemoryService } from '../memory/service.js';
-import type { MemoryService as ExperienceMemoryService } from '../../SubProject/agent-core-memory/dist/index.js';
+import type { MemoryService as ExperienceMemoryService } from '../memory/facade.js';
 import type { SkillService } from '../skills/service.js';
 import type { WebResearchService } from '../web-research/service.js';
 import type { McpMutationSafety } from './mutation-safety.js';
@@ -22,7 +22,7 @@ import type { PhoneController } from '../phone/controller.js';
 import { FailureLoopAdvisor } from './failure-loop-advisor.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { createAgentCoreMcpServer } from './server.js';
-import { memoryCredentialOwner, ownerScopedLearningSession } from './memory-scope.js';
+import { memoryCredentialOwner, ownerScopedLearningSession } from '../memory/mcp/scope.js';
 import { createImageInspector } from '../rdc/tools/image-inspect.js';
 import type { ArtifactAuthorization } from '../auth/artifact-authorization.js';
 

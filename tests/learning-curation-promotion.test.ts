@@ -3,9 +3,9 @@ import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { afterEach, expect, test, vi } from 'vitest';
-import { initializeStandaloneMemory, MemoryService as ExperienceMemoryService } from '../SubProject/agent-core-memory/dist/index.js';
-import { memorySemanticRevision } from '../SubProject/agent-core-memory/dist/memory/disclosure.js';
-import { createLearningConsolidationHost } from '../src/learning/memory-sink.js';
+import { initializeMemoryRoot, MemoryService as ExperienceMemoryService } from '../dist/memory/facade.js';
+import { memorySemanticRevision } from '../dist/memory/disclosure.js';
+import { createLearningConsolidationHost } from '../src/memory/learning-sink.js';
 import { LearningService } from '../src/learning/service.js';
 import type { CurationDelta, LearningCandidate } from '../src/learning/types.js';
 const roots: string[] = [];
@@ -13,7 +13,7 @@ afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).
 async function fixture(startEpisode = true) {
  const root = await mkdtemp(path.join(os.tmpdir(), 'learning-promotion-')); roots.push(root);
  const host = createLearningConsolidationHost(root);
- const memory = await initializeStandaloneMemory({ baseDir: root, memoryRoot: path.join(root, 'memory'), experience: { enabled: true },
+ const memory = await initializeMemoryRoot({ baseDir: root, memoryRoot: path.join(root, 'memory'), experience: { enabled: true },
   consolidation: host.policy });
  host.bind(memory);
  const config = { enabled: true, stateDir: path.join(root, 'learning'), reviewInterval: 10, curatorIntervalHours: 168 };

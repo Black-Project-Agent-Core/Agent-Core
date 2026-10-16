@@ -143,14 +143,25 @@ export class CloudflareWorkersAIEmbedder implements MemoryEmbedder {
 
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (!a.length || a.length !== b.length) return 0;
+  // Independent positive scales preserve cosine while keeping finite extremes
+  // away from overflowing products and underflowing squared norms.
+  let scaleA = 0;
+  let scaleB = 0;
+  for (let i = 0; i < a.length; i++) {
+    scaleA = Math.max(scaleA, Math.abs(a[i]));
+    scaleB = Math.max(scaleB, Math.abs(b[i]));
+  }
+  if (!scaleA || !scaleB) return 0;
   let dot = 0;
   let aa = 0;
   let bb = 0;
   for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    aa += a[i] * a[i];
-    bb += b[i] * b[i];
+    const x = a[i] / scaleA;
+    const y = b[i] / scaleB;
+    dot += x * y;
+    aa += x * x;
+    bb += y * y;
   }
-  const denominator = Math.sqrt(aa) * Math.sqrt(bb);
-  return denominator > 0 ? dot / denominator : 0;
+  const denominator = Math.sqrt(aa * bb);
+  return denominator > 0 ? Math.max(-1, Math.min(1, dot / denominator)) : 0;
 }

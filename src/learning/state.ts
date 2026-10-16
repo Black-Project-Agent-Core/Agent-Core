@@ -5,14 +5,16 @@ import type { LearningRejectionFingerprint, LearningState, PendingLearningReview
 import type { LearningPaths } from './paths.js';
 import { procedureContractDigest } from '../agent-learning-loop.js';
 import { safeEvidenceRefSchema } from './evaluation.js';
+import { decisionRecordSchema } from './decision-review.js';
 
 const MAX_IDEMPOTENCY = 64;
 const MAX_REJECTIONS = 128;
 const DIGEST_RE = /^sha256:[0-9a-f]{64}$/i;
 const STATE_MUTATION_TAILS = new Map<string, Promise<void>>();
 
-export type LearningStateOwner = 'checkpoint' | 'review' | 'curator' | 'procedures' | 'verification' | 'proposals';
+export type LearningStateOwner = 'checkpoint' | 'review' | 'curator' | 'procedures' | 'verification' | 'proposals' | 'decisions';
 const OWNER_FIELDS: Record<LearningStateOwner, ReadonlySet<keyof LearningState>> = {
+  decisions: new Set(['decisionReviews']),
   proposals: new Set(['skillProposals']),
   verification: new Set(['verificationManifests']),
   procedures: new Set(['procedures']),
@@ -37,6 +39,7 @@ export function defaultLearningState(): LearningState {
     reviewDecisions: {},
     procedures: [],
     skillProposals: [],
+    decisionReviews: [],
   };
 }
 
@@ -45,6 +48,8 @@ function normalizeState(value: unknown): LearningState {
   const raw = value as Partial<LearningState>;
   if (raw.version !== 1) throw new Error('Unsupported learning state version');
   if (raw.workflowVersion !== undefined && raw.workflowVersion !== 2) throw new Error('Unsupported learning workflow version');
+  if (raw.decisionReviews !== undefined && (!Array.isArray(raw.decisionReviews) || raw.decisionReviews.length > 256
+    || raw.decisionReviews.some(item => !decisionRecordSchema.safeParse(item).success))) throw new Error('Invalid learning decision review');
   for (const key of ['pendingReviews', 'procedures', 'verificationManifests', 'skillProposals'] as const) {
     if (raw[key] !== undefined && !Array.isArray(raw[key])) throw new Error('Invalid learning ' + key);
   }
@@ -171,6 +176,7 @@ function normalizeState(value: unknown): LearningState {
       ? raw.reviewDecisions : {},
     procedures: Array.isArray(raw.procedures) ? raw.procedures : [],
     skillProposals: Array.isArray(raw.skillProposals) ? raw.skillProposals : [],
+    decisionReviews: raw.decisionReviews ?? [],
     verificationManifests: Array.isArray(raw.verificationManifests) ? raw.verificationManifests : [],
     workflowVersion: 2,
   };

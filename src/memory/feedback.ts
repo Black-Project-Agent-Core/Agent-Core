@@ -3,6 +3,8 @@ import path from 'node:path';
 import type { MemoryPaths } from './paths.js';
 import { writeOwnedFileAtomic } from '../persistence/atomic-file.js';
 import { withMemoryProcessLock } from './lock.js';
+import {preservesMemoryHistory,retainTelemetry} from './archive.js';
+import {fingerprintText} from './transaction.js';
 import { assertMemoryFeedbackDigest } from './feedback-target.js';
 
 export type MemoryFeedbackKind = 'helpful' | 'not-helpful' | 'stale' | 'wrong';
@@ -87,7 +89,7 @@ function validateRecord(raw: unknown): FeedbackRecord {
     || !Array.isArray(value.events)) {
     throw new Error('MEMORY_FEEDBACK_RECORD_INVALID');
   }
-  const events = value.events.slice(-MAX_EVENTS_PER_MEMORY).map((item) => {
+  const events = value.events.map((item) => {
     if (!item || typeof item !== 'object') throw new Error('MEMORY_FEEDBACK_EVENT_INVALID');
     const event = item as Partial<MemoryFeedbackEvent>;
     if (typeof event.eventId !== 'string'
@@ -104,7 +106,7 @@ function validateRecord(raw: unknown): FeedbackRecord {
     };
   });
   const lifecycleEvents = (Array.isArray(value.lifecycleEvents) ? value.lifecycleEvents : [])
-    .slice(-MAX_EVENTS_PER_MEMORY).map((item) => {
+    .map((item) => {
       if (!item || typeof item !== 'object') throw new Error('MEMORY_LIFECYCLE_EVENT_INVALID');
       const event = item as Partial<MemoryLifecycleEvent>;
       if (typeof event.eventId !== 'string'
@@ -122,12 +124,29 @@ function validateRecord(raw: unknown): FeedbackRecord {
   return { id: value.id, salience: value.salience, events, forgotten: value.forgotten === true, lifecycleEvents };
 }
 
+/** Exact captured visibility bytes for declared transaction read sets; no missing-state fallback. */
+function persistedFeedbackRecords(content:string|null) {
+  if (content === null) throw new Error('MEMORY_FEEDBACK_STATE_MISSING');
+  const raw = JSON.parse(content) as Partial<FeedbackState>;
+  if (raw.version !== VERSION || !Array.isArray(raw.records)) throw new Error('MEMORY_FEEDBACK_STATE_INVALID');
+  if(raw.records.some(record=>typeof record.forgotten!=='boolean')||new Set(raw.records.map(record=>record.id)).size!==raw.records.length)throw new Error('MEMORY_FEEDBACK_STATE_INVALID');
+  return raw.records.map(validateRecord);
+}
+
+export function strictForgottenIdsFromContent(content:string|null):Set<string> {
+  return new Set(persistedFeedbackRecords(content).filter(record=>record.forgotten).map(record=>record.id));
+}
+/** Domain-owned record subjects used to authorize retained feedback metadata. */
+export function feedbackRecordSubjects(content:string):string[] {
+  return persistedFeedbackRecords(content).map(record=>record.id);
+}
+
 export class MemoryFeedbackStore {
   private readonly filePath: string;
   private readonly lockPath: string;
   private issue: string | null = null;
 
-  constructor(paths: MemoryPaths) {
+  constructor(private readonly paths: MemoryPaths) {
     this.filePath = path.join(paths.state, 'feedback.json');
     this.lockPath = paths.lock;
   }
@@ -136,15 +155,20 @@ export class MemoryFeedbackStore {
     return this.issue;
   }
 
-  private async load(): Promise<FeedbackState> {
+  private async load(requireExisting = false): Promise<FeedbackState> {
     try {
       const raw = JSON.parse(await readFile(this.filePath, 'utf8')) as Partial<FeedbackState>;
       if (raw.version !== VERSION || !Array.isArray(raw.records)) throw new Error('MEMORY_FEEDBACK_STATE_INVALID');
-      const records = raw.records.map(validateRecord).slice(-MAX_RECORDS);
+      if(requireExisting)strictForgottenIdsFromContent(JSON.stringify(raw));
+      const records = raw.records.map(validateRecord);
       this.issue = null;
       return { version: VERSION, records };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        if (requireExisting) {
+          this.issue = 'Memory visibility state is missing';
+          throw new Error('MEMORY_FEEDBACK_STATE_MISSING');
+        }
         this.issue = null;
         return { version: VERSION, records: [] };
       }
@@ -154,7 +178,12 @@ export class MemoryFeedbackStore {
   }
 
   private async save(state: FeedbackState): Promise<void> {
-    const records = state.records.slice(-MAX_RECORDS);
+    const preserve=await preservesMemoryHistory(this.paths);
+    if(preserve&&state.records.length)await retainTelemetry(this.paths,'feedback',fingerprintText(JSON.stringify(state)),state);
+    // Visibility is authoritative state, not bounded telemetry. Forgotten entries never rotate out.
+    const retained=new Set(state.records.slice(-MAX_RECORDS).map(record=>record.id));
+    const records=state.records.filter(record=>retained.has(record.id)||(preserve&&record.forgotten)).map(record=>({...record,
+      events:record.events.slice(-MAX_EVENTS_PER_MEMORY),lifecycleEvents:record.lifecycleEvents.slice(-MAX_EVENTS_PER_MEMORY)}));
     await writeOwnedFileAtomic(
       this.filePath,
       JSON.stringify({ version: VERSION, records }, null, 2) + '\n',
@@ -173,7 +202,7 @@ export class MemoryFeedbackStore {
       const contentDigest = validateContent === undefined ? undefined : await validateContent();
       if (validateContent !== undefined) assertMemoryFeedbackDigest(contentDigest);
       const binding = contentDigest === undefined ? {} : { contentDigest };
-      const state = await this.load();
+      const state = await this.load(await preservesMemoryHistory(this.paths));
       let record = state.records.find(item => item.id === id);
       if (!record) {
         record = { id, salience: DEFAULT_SALIENCE, events: [], forgotten: false, lifecycleEvents: [] };
@@ -188,8 +217,7 @@ export class MemoryFeedbackStore {
           ...(prior.contentDigest === undefined ? {} : { contentDigest: prior.contentDigest }) };
       }
       record.salience = nextSalience(record.salience, kind);
-      record.events = [...record.events, { eventId: key, kind, at: new Date().toISOString(), ...binding }]
-        .slice(-MAX_EVENTS_PER_MEMORY);
+      record.events = [...record.events, { eventId: key, kind, at: new Date().toISOString(), ...binding }];
       await this.save(state);
       return { id, kind, eventId: key, duplicate: false, salience: record.salience, ...binding };
     });
@@ -203,7 +231,7 @@ export class MemoryFeedbackStore {
   ): Promise<MemoryLifecycleResult> {
     const key = safeEventId(eventId);
     return withMemoryProcessLock(this.lockPath, async () => {
-      const state = await this.load();
+      const state = await this.load(await preservesMemoryHistory(this.paths));
       let record = state.records.find(item => item.id === id);
       if (!record) {
         record = { id, salience: DEFAULT_SALIENCE, events: [], forgotten: false, lifecycleEvents: [] };
@@ -224,32 +252,55 @@ export class MemoryFeedbackStore {
         action,
         at: new Date().toISOString(),
         ...(reason?.trim() ? { reason: reason.trim().slice(0, 500) } : {}),
-      }].slice(-MAX_EVENTS_PER_MEMORY);
+      }];
       await this.save(state);
       return { id, action, eventId: key, duplicate: false, forgotten: record.forgotten };
     });
   }
 
   async lifecycle(id: string): Promise<{ forgotten: boolean; events: MemoryLifecycleEvent[] }> {
-    const state = await this.load();
+    const state = await this.load(await preservesMemoryHistory(this.paths));
     const record = state.records.find(item => item.id === id);
     return { forgotten: record?.forgotten === true, events: record?.lifecycleEvents.map(event => ({ ...event })) ?? [] };
   }
 
   async forgottenIds(validIds?: ReadonlySet<string>): Promise<Set<string>> {
-    const state = await this.load();
+    const state = await this.load(await preservesMemoryHistory(this.paths));
     return new Set(state.records
       .filter(record => record.forgotten && (!validIds || validIds.has(record.id)))
       .map(record => record.id));
   }
 
+  /** Facade read: missing state is not evidence that no memories were forgotten. */
+  async strictForgottenIds(validIds?: ReadonlySet<string>): Promise<Set<string>> {
+    const state = await this.load(true);
+    return new Set(state.records
+      .filter(record => record.forgotten && (!validIds || validIds.has(record.id)))
+      .map(record => record.id));
+  }
+
+  /** Bootstrap only a host-confirmed complete, foundation-only store.
+   * Recheck canonical eligibility while holding the same lock as all writers.
+   * Existing/corrupt visibility is never overwritten by this initializer.
+   */
+  async initializeEmptyVisibilityIf(canInitialize: () => Promise<boolean>): Promise<void> {
+    await withMemoryProcessLock(this.lockPath, async () => {
+      try { await this.load(true); }
+      catch (error) {
+        if (!(error instanceof Error) || error.message !== 'MEMORY_FEEDBACK_STATE_MISSING') throw error;
+        if (!await canInitialize()) return;
+        await this.save({ version: VERSION, records: [] });
+      }
+    });
+  }
+
   async salience(id: string): Promise<number> {
-    const state = await this.load();
+    const state = await this.load(await preservesMemoryHistory(this.paths));
     return state.records.find(record => record.id === id)?.salience ?? DEFAULT_SALIENCE;
   }
 
   async salienceMap(validIds?: ReadonlySet<string>): Promise<Map<string, number>> {
-    const state = await this.load();
+    const state = await this.load(await preservesMemoryHistory(this.paths));
     const output = new Map<string, number>();
     for (const record of state.records) {
       if (!validIds || validIds.has(record.id)) output.set(record.id, record.salience);
@@ -259,22 +310,26 @@ export class MemoryFeedbackStore {
 
   async reset(id: string): Promise<void> {
     await withMemoryProcessLock(this.lockPath, async () => {
-      const state = await this.load();
-      const records = state.records.filter(record => record.id !== id);
+      const state = await this.load(await preservesMemoryHistory(this.paths));
+      const preserve=await preservesMemoryHistory(this.paths);
+      const records = state.records.filter(record => record.id !== id||(preserve&&record.forgotten));
+      if(preserve&&state.records.length)await retainTelemetry(this.paths,'feedback',fingerprintText(JSON.stringify(state)),state);
       if (records.length !== state.records.length) await this.save({ version: VERSION, records });
     });
   }
 
   async reconcile(validIds: ReadonlySet<string>): Promise<void> {
     await withMemoryProcessLock(this.lockPath, async () => {
-      const state = await this.load();
-      const records = state.records.filter(record => validIds.has(record.id));
+      const state = await this.load(await preservesMemoryHistory(this.paths));
+      const preserve=await preservesMemoryHistory(this.paths);
+      const records = state.records.filter(record => validIds.has(record.id)||(preserve&&record.forgotten));
+      if(preserve&&state.records.length)await retainTelemetry(this.paths,'feedback',fingerprintText(JSON.stringify(state)),state);
       if (records.length !== state.records.length) await this.save({ version: VERSION, records });
     });
   }
 
   async snapshot(validIds?: ReadonlySet<string>): Promise<MemoryFeedbackSnapshot[]> {
-    const state = await this.load();
+    const state = await this.load(await preservesMemoryHistory(this.paths));
     return state.records
       .filter(record => !validIds || validIds.has(record.id))
       .map(record => ({
@@ -294,7 +349,7 @@ export class MemoryFeedbackStore {
     issue?: string;
   }> {
     try {
-      const state = await this.load();
+      const state = await this.load(await preservesMemoryHistory(this.paths));
       const records = validIds ? state.records.filter(record => validIds.has(record.id)) : state.records;
       return {
         recordCount: records.length,

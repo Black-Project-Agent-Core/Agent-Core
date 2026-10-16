@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import * as z from 'zod/v4';
-import { stableDisclosureJson } from '../../SubProject/agent-core-memory/dist/memory/disclosure.js';
+import { stableDisclosureJson } from '../memory/disclosure.js';
 import { learningCandidateSchema } from './candidate-purpose.js';
 import { safeEvidenceRefSchema, safeMetadataSchema } from './evaluation.js';
 import { validateCandidate } from './review.js';

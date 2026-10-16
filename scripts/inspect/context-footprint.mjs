@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { readArtifact, writeExclusive, failure } from '../learning/report-io.mjs';
+import { readArtifact, writeExclusive, failure } from '../memory/evaluation/report-io.mjs';
 
 const MAX_FILES=16;
 const MAX_FILE_BYTES=1024*1024;

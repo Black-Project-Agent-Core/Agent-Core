@@ -1,4 +1,6 @@
 import path from 'node:path';
+import { z } from 'zod';
+import { isoInstantSchema,recordExperienceSchema } from './experience-types.js';
 import type { EvolutionEvent, MemoryLink, MemoryLinkType, MemoryRecord, MemoryProvenance } from './types.js';
 import { MEMORY_SCHEMA_VERSION } from './types.js';
 import { normalizeRepositoryIdentity } from './provenance.js';
@@ -32,7 +34,7 @@ export function validateMemoryId(id: string): string {
   return normalized;
 }
 
-function links(value: unknown): MemoryLink[] {
+function links(value: unknown,preserveSegments=false): MemoryLink[] {
   if (!Array.isArray(value)) throw new Error('Invalid memory links');
   const output: MemoryLink[] = [];
   const seen = new Set<string>();
@@ -53,7 +55,7 @@ function links(value: unknown): MemoryLink[] {
       ? undefined
       : strings(raw.evidenceRefs, 'link evidenceRefs').map(item => item.trim()).filter(Boolean).slice(0, 16);
     if (evidenceRefs?.some(item => /^(?:chat|session):/i.test(item))) throw new Error('Invalid memory link runtime evidence ref');
-    const key = `${targetId}\u0000${type}`;
+    const key = `${targetId}\u0000${type}`+(preserveSegments?`\u0000${validFrom??''}\u0000${validTo??''}`:'');
     if (seen.has(key)) continue;
     seen.add(key);
     output.push({
@@ -106,9 +108,9 @@ function provenance(value: unknown): MemoryProvenance | undefined {
     };
 }
 
-function history(value: unknown): EvolutionEvent[] {
+function history(value: unknown, preserve = false): EvolutionEvent[] {
   if (!Array.isArray(value)) throw new Error('Invalid memory evolutionHistory');
-  return value.slice(-MAX_HISTORY).map((item) => {
+  return (preserve ? value : value.slice(-MAX_HISTORY)).map((item) => {
     if (!item || typeof item !== 'object') throw new Error('Invalid memory evolution event');
     const raw = item as Record<string, unknown>;
     const kind = String(raw.kind ?? '') as EvolutionEvent['kind'];
@@ -123,10 +125,34 @@ function history(value: unknown): EvolutionEvent[] {
   });
 }
 
+const optionalText = z.string().optional();
+const stringList = z.array(z.string());
+export const v2MetadataSchema = z.strictObject({
+  version:z.literal(2),id:z.string(),title:optionalText,content:optionalText,
+  keywords:stringList,context:z.string(),tags:stringList,category:z.string(),
+  // Legacy link fields cannot express uncertainty; v2 must reject ambiguous times.
+  links:z.array(z.strictObject({targetId:z.string(),type:z.string(),strength:z.number(),createdAt:isoInstantSchema,reason:optionalText,
+    validFrom:isoInstantSchema.optional(),validTo:isoInstantSchema.optional(),referenceTime:isoInstantSchema.optional(),evidenceRefs:stringList.max(16).optional()})),
+  createdAt:z.string(),updatedAt:z.string(),expiresAt:optionalText,lastAccessedAt:z.string().nullable(),
+  retrievalCount:z.number().int().nonnegative(),pinned:z.boolean(),
+  source:z.strictObject({type:z.string(),ref:optionalText}).optional(),
+  provenance:z.strictObject({workspace:optionalText,repo:optionalText,files:stringList.max(64),gitCommit:optionalText,gitRef:optionalText,importKey:optionalText,
+    identity:z.strictObject({kind:z.enum(['git','directory']),repositoryId:z.string(),worktreeId:z.string(),
+      checkpoint:z.strictObject({head:optionalText,ref:optionalText,statusDigest:optionalText,statusEntryCount:z.number().optional(),renamedCount:z.number().optional(),untrackedCount:z.number().optional(),renamedPathDigest:optionalText,untrackedPathDigest:optionalText}).optional()}).optional(),
+    sourceSnapshot:z.strictObject({version:z.literal(1),observedAt:z.string(),files:z.array(z.union([
+      z.strictObject({path:z.string(),status:z.literal('captured'),digest:z.string(),bytes:z.number()}),
+      z.strictObject({path:z.string(),status:z.literal('unavailable'),reason:z.string()}),
+    ]))}).optional(),
+  }).optional(),
+  evolutionHistory:z.array(z.strictObject({kind:z.string(),timestamp:z.string(),source:z.string(),changedFields:stringList.optional(),details:z.record(z.string(),z.unknown()).optional()})),
+  experience:recordExperienceSchema,
+});
+
 export function normalizeRecord(raw: unknown, content: string): MemoryRecord {
   if (!raw || typeof raw !== 'object') throw new Error('Invalid memory metadata');
   const meta = raw as Record<string, unknown>;
-  if (meta.version !== MEMORY_SCHEMA_VERSION) throw new Error(`Unsupported memory version: ${String(meta.version)}`);
+  if (meta.version === 2) v2MetadataSchema.parse(meta);
+  if (meta.version !== 2 && meta.version !== MEMORY_SCHEMA_VERSION) throw new Error(`Unsupported memory version: ${String(meta.version)}`);
   const id = validateMemoryId(String(meta.id ?? ''));
   assertCanonicalText(content);
   const body = content.trim();
@@ -142,7 +168,7 @@ export function normalizeRecord(raw: unknown, content: string): MemoryRecord {
     ? meta.source as { type: string; ref?: string }
     : undefined;
   return {
-    version: MEMORY_SCHEMA_VERSION,
+    ...(meta.version === 2 ? {version:2 as const,experience:recordExperienceSchema.parse(meta.experience)} : {version:MEMORY_SCHEMA_VERSION}),
     id,
     ...(typeof meta.title === 'string' && meta.title.trim() ? { title: meta.title.trim() } : {}),
     content: body,
@@ -150,13 +176,13 @@ export function normalizeRecord(raw: unknown, content: string): MemoryRecord {
     context: typeof meta.context === 'string' && meta.context.trim() ? meta.context.trim() : 'General',
     tags: strings(meta.tags ?? [], 'tags'),
     category: typeof meta.category === 'string' && meta.category.trim() ? meta.category.trim() : 'Uncategorized',
-    links: links(meta.links ?? []),
+    links: links(meta.links ?? [],meta.version===2),
     createdAt,
     updatedAt,
     ...(expiresAt ? { expiresAt } : {}),
     lastAccessedAt,
     retrievalCount,
-    evolutionHistory: history(meta.evolutionHistory ?? []),
+    evolutionHistory: history(meta.evolutionHistory ?? [], meta.version === 2),
     pinned,
     ...(source && typeof source.type === 'string' ? { source } : {}),
     ...(provenance(meta.provenance) ? { provenance: provenance(meta.provenance) } : {}),
@@ -174,6 +200,7 @@ export function parseCanonicalNote(serialized: string): MemoryRecord {
 }
 
 export function serializeCanonicalNote(record: MemoryRecord): string {
+  if (record.version === 2) v2MetadataSchema.parse(record);
   const { content, ...metadata } = record;
   assertCanonicalText(content);
   return `<!-- agent-core-memory\n${JSON.stringify(metadata)}\n-->\n\n${content.trim()}\n`;

@@ -4,8 +4,9 @@ import { fileURLToPath } from "node:url";
 import { parseChangesetFile } from "@changesets/parse";
 import { filterPendingIntentFilenames } from "./release-policy.mjs";
 
-export const ROOT = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
+export const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 export const CHANGESET_DIR = path.join(ROOT, ".changeset");
+export const MEMORY_INTENT_DIR = path.join(ROOT, "docs", "memory", "release-intents");
 export const PRODUCT_NAME = "agent-core";
 export const CURRENT_LINE_BASELINE_REF = "refs/agent-core/current-line-baseline";
 
@@ -31,7 +32,23 @@ export function incrementVersion(version, bump) {
 }
 
 export async function readPendingChangesets(changesetDir = CHANGESET_DIR) {
-  const entries = await fs.readdir(changesetDir, { withFileTypes: true });
+  if (changesetDir === CHANGESET_DIR) {
+    const main = await readPendingChangesetsFromDirectory(CHANGESET_DIR);
+    const memory = await readPendingChangesetsFromDirectory(MEMORY_INTENT_DIR);
+    const ids = new Set(main.map(item => item.id));
+    for (const item of memory) {
+      if (ids.has(item.id)) throw new Error(`Duplicate release intent: ${item.id}`);
+      ids.add(item.id);
+    }
+    return [...main, ...memory].sort((a, b) => a.id.localeCompare(b.id));
+  }
+  return readPendingChangesetsFromDirectory(changesetDir);
+}
+
+async function readPendingChangesetsFromDirectory(changesetDir) {
+  let entries;
+  try { entries = await fs.readdir(changesetDir, { withFileTypes: true }); }
+  catch (error) { if (error?.code === "ENOENT" && changesetDir === MEMORY_INTENT_DIR) return []; throw error; }
   const files = filterPendingIntentFilenames(
     entries.filter(entry => entry.isFile()).map(entry => entry.name),
   );

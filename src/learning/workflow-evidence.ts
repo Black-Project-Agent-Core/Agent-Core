@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { readEvidenceSnapshot } from '../verification/evidence-snapshot.js';
-import { recheckWorkflowReport } from './workflow-verifier.js';
+import { recheckWorkflowReport } from '../memory/workflow-verifier.js';
 import { validBrowserUse, validBrowserReceipt, type BrowserReceiptContext } from '../rdc/browser-control/procedure-context.js';
 export { validBrowserReceipt };
 
@@ -86,11 +86,11 @@ export async function validateWorkflowUse(input: { taskId?: string; actionRefs?:
         actionBound = (input.actionRefs ?? []).includes('file:' + report.answer.path + '#' + report.answer.digest);
       }
     } catch { /* Unavailable evidence cannot validate use. */ }
-    actionBound ||= evidence.some(item => (input.actionRefs ?? []).includes(item.ref) && item.status === 'resolved'
-      && (item.taskId === input.taskId || item.ref.startsWith('tool:dtc:' + input.taskId + ':')));
+    // Same-task availability is not proof it produced this independently checked answer.
+
   }
-  return { status: actionBound && input.taskId && input.actionRefs?.length && input.verificationRef && evidence.every(item => item.status === 'resolved')
-    ? 'resolved' as const : 'unavailable' as const, evidence, verification, semanticSupport: 'not-established' as const };
+  return { status: verification !== 'unavailable' && actionBound && input.taskId && input.actionRefs?.length && input.verificationRef && evidence.every(item => item.status === 'resolved')
+    ? 'resolved' as const : 'unavailable' as const, evidence, verification, semanticSupport: 'not-established' as const, use:'controller-reported' as const, causation:'not-established' as const };
 }
 
 export function failureContext(action: string, observation: string, cause = 'unknown', strategyChange = 'required', nextCheck = 'gather new evidence') {

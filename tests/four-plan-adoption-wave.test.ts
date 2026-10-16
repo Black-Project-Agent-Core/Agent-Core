@@ -9,7 +9,7 @@ import { readResponseBytesBounded } from '../src/net/bounded-response.js';
 import { buildFeatureOutcomeProposals } from '../src/learning/feature-outcome-pool.js';
 import { searchMemories } from '../src/memory/retrieval.js';
 import { captureRepositoryIdentity } from '../src/memory/repository-identity.js';
-import { memoryTrust } from '../src/mcp/memory-tools.js';
+import { memoryTrust } from '../src/memory/mcp/tools.js';
 import { applyPriorRejectionAdvisory, withRejectionHistory } from '../src/learning/service.js';
 import { LearningStateStore } from '../src/learning/state.js';
 import type { LearningReviewOutcome, LearningState } from '../src/learning/types.js';
@@ -270,7 +270,7 @@ describe('AI-Memory residual adoptions', () => {
 describe('AIM-P4 registered MCP trust envelope', () => {
   it('returns historical-data trust on list, read, and search without rewriting memory content', async () => {
     const { McpServer } = await import('@modelcontextprotocol/server');
-    const { registerMemoryTools } = await import('../src/mcp/memory-tools.js');
+    const { registerMemoryTools } = await import('../src/memory/mcp/tools.js');
     const { activityTracker } = await import('../src/tracker/activity-tracker.js');
     const record = memory('memory-trust');
     const components = {
@@ -283,7 +283,11 @@ describe('AIM-P4 registered MCP trust envelope', () => {
       read: async () => record,
       staleness: async () => ({ status: 'current', anchoredFiles: [], changedFiles: [] }),
       revisions: async () => ({ revisions: [] }),
-      search: async () => [{ record, score: 1, components, matchType: 'direct' }],
+      visibilitySnapshot: async () => ({ [record.id]: { forgotten: false, expired: false } }),
+      authoritySnapshot: async () => ({ [record.id]: { state: 'active', supersededBy: [], contradictedBy: [] } }),
+      lifecycleState: async () => ({ forgotten: false, expired: false }),
+      search: async () => [{ record, score: 1, components, matchType: 'direct',
+        delivery: { detail: 'full', content: record.content, truncated: false, originalContentChars: record.content.length, omittedContentChars: 0 } }],
     };
     const originalRecord = activityTracker.record;
     (activityTracker as any).record = () => ({});
@@ -328,7 +332,12 @@ describe('AIM-P5 LearningService backward compatibility', () => {
     const service: any = {
       assertEnabled() {},
       reviewer: { review: async () => [{ ...outcome }] },
-      stateStore: { load: async () => legacyState, save: async (state: any) => { saved = state; } },
+      stateStore: { load: async () => saved ?? legacyState, mutate: async (domain: string, change: any) => {
+        expect(domain).toBe('review');
+        const result = await change(saved ?? legacyState);
+        saved = result.state;
+        return result;
+      } },
     };
     const originalRecord = activityTracker.record;
     (activityTracker as any).record = () => ({});

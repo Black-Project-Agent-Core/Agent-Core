@@ -1,3 +1,5 @@
+import type { RecordExperience } from './experience-types.js';
+
 export const MEMORY_SCHEMA_VERSION = 1 as const;
 
 export type MemoryLinkType =
@@ -78,7 +80,7 @@ export interface MemoryProvenance {
   sourceSnapshot?: MemorySourceSnapshot;
 }
 
-export interface MemoryRecord {
+export interface MemoryRecordV1 {
   version: typeof MEMORY_SCHEMA_VERSION;
   id: string;
   title?: string;
@@ -97,6 +99,9 @@ export interface MemoryRecord {
   source?: { type: string; ref?: string };
   provenance?: MemoryProvenance;
 }
+
+export type MemoryRecordV2 = Omit<MemoryRecordV1, 'version'> & { version: 2; experience: RecordExperience };
+export type MemoryRecord = MemoryRecordV1 | MemoryRecordV2;
 
 export interface MemoryIssue {
   path: string;

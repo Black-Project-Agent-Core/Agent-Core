@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const ROOT = path.resolve(fileURLToPath(new URL("../../", import.meta.url)));
+export const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 export const CHANGESET_CONFIG = path.join(ROOT, ".changeset", "config.json");
 
 const MAX_PATTERNS = 128;
@@ -122,7 +122,7 @@ export function isIgnoredChangesetMarkdownName(name) {
 
 export function isPendingIntentPath(file) {
   const normalized = normalizeReleasePath(file);
-  const match = /^\.changeset\/([^/]+\.md)$/i.exec(normalized);
+  const match = /^(?:\.changeset|docs\/memory\/release-intents)\/([^/]+\.md)$/i.exec(normalized);
   return Boolean(match && !isIgnoredChangesetMarkdownName(match[1]));
 }
 
@@ -140,6 +140,7 @@ export function releaseBaselinePathspecs() {
     "package-lock.json",
     "scripts/release",
     ".changeset",
+    "docs/memory/release-intents",
     "src",
     ":(exclude)src/**/bin/**",
     ":(exclude)src/**/obj/**",
@@ -150,5 +151,5 @@ export function releaseBaselinePathspecs() {
 }
 
 export function releaseChangeScanPathspecs() {
-  return ["package.json", "package-lock.json", "scripts/release", ".changeset", "src"];
+  return ["package.json", "package-lock.json", "scripts/release", ".changeset", "docs/memory/release-intents", "src"];
 }

@@ -1,0 +1,31 @@
+flowchart TB
+  USER["User / external AI controller"] --> MCP["Host MCP server.ts"]
+  NATIVE["Native AI controller"] --> MCP
+  START["src/index.ts bootstrap"] --> HOST["host-runtime.ts selection"]
+  MARKER["runtime/memory-v2-activation.json"] --> HOST
+  HOST --> CORE["SubProject MemoryService Experience V2"]
+  MCP --> STANDARD["memory-tools.ts\ncompatibility API"]
+  MCP --> SCOPE["memory-scope.ts\nhost-bound task identity"]
+  SCOPE --> V2["memory-experience-tools.ts\nread/write"]
+  STANDARD --> CORE
+  V2 --> SESSION["ControllerMemorySession\ncontroller-protocol.ts"]
+  SESSION --> CORE
+  CORE --> STORE["FileMemoryStore"]
+  CORE --> RETRIEVE["Retrieval + MemoryIndex"]
+  SESSION --> EPISODE["MemoryEpisodes + capsules"]
+  EPISODE --> PROMOTION["MemoryPromotion"]
+  EPISODE --> STORE
+  PROMOTION --> STORE
+  STORE --> JOURNAL["TransactionCoordinator + lock"]
+  JOURNAL --> CANONICAL["runtime/memory\ncanonical notes, state, archive"]
+  CANONICAL --> RETRIEVE
+  RETRIEVE --> INDEX["index/index.json\nderived and rebuildable"]
+  LEARNING["LearningService\nMemoryLearningSink"] --> CORE
+  LEARNING -. "verified host-bound corrections" .-> PROMOTION
+  classDef primary fill:#e7edff,stroke:#3d62c9,color:#17264b
+  classDef storage fill:#e5f7ee,stroke:#279669,color:#183d2c
+  classDef auxiliary fill:#fff4db,stroke:#b87b21,color:#44320b
+  class HOST,CORE,SESSION primary
+  class STORE,JOURNAL,CANONICAL storage
+  class LEARNING,RETRIEVE,INDEX auxiliary
+

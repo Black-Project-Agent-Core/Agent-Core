@@ -4,7 +4,7 @@ import { procedureContractDigest, procedureBoundEvidence, type AgentEpisodeEvent
 import { buildBm25Profile } from './memory/bm25.js';
 import type { MemoryRecord } from './memory/types.js';
 import type { SkillDiscoverySnapshot } from './skills/discovery.js';
-import type { MergedRetrieval } from './learning/subquestion-retrieval.js';
+import type { MergedRetrieval } from './memory/subquestion-retrieval.js';
 import { createHash } from 'node:crypto';
 import { buildCapabilityExposure, type CapabilityExposure, type CapabilityArtifact } from './capability-awareness.js';
 

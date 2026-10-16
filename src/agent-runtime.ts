@@ -5,7 +5,7 @@ import path from 'node:path';
 import { OpenAICompatibleProviderPool, type AgentModelMessage, type AgentModelResponse, type AgentModelTool, type AgentProviderCompletionOptions, type AgentRuntimeConfig } from './agent-provider.js';
 import { isNewState, writeStateFile } from './persistence/state-file.js';
 import { validateWorkflowUse } from './learning/workflow-evidence.js';
-import { recheckWorkflowReport } from './learning/workflow-verifier.js';
+import { recheckWorkflowReport } from './memory/workflow-verifier.js';
 import { formatDeliveredMemorySearchResult } from './memory/search-projection.js';
 import type { MemoryService } from './memory/service.js';
 import type { LearningService } from './learning/service.js';

@@ -91,6 +91,7 @@ export function beginToolInvocationEvidence(
     ...fixedProperties,
     tool, invocationId: id, processSessionId: identity.processSessionId, processInstanceDigest: PROCESS_INSTANCE_DIGEST, invocationSource: 'mcp-wrapper',
     binding: original?.binding ?? 'unbound',
+    ...(!original?.taskId && request?.mutationContext.taskId ? { taskId: request.mutationContext.taskId } : {}),
     ...(original?.taskId ? { taskId: original.taskId, ownerId: original.ownerId,
       workspaceIdentityKey: original.workspaceIdentityKey, workspace: original.workspace } : {}),
     ...(original ? { capturedAt: original.capturedAt, unboundReason: original.unboundReason } : {}),

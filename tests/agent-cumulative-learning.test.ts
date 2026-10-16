@@ -69,7 +69,8 @@ async function controllerFixture(responses: any[], allowedTools: string[], extra
   const requests: any[] = [];
   const fetchMock = vi.fn(async (_url: unknown, init: any) => {
     requests.push(JSON.parse(String(init?.body ?? '{}')));
-    const next = responses.shift();
+    const queued = responses.shift();
+    const next = typeof queued === 'function' ? queued(requests.at(-1)) : queued;
     if (!next) throw new Error('unexpected provider call');
     return new Response(JSON.stringify({ choices: [next] }), {
       status: 200, headers: { 'content-type': 'application/json' },
@@ -84,6 +85,56 @@ async function controllerFixture(responses: any[], allowedTools: string[], extra
 }
 
 describe('native cumulative-learning loop', () => {
+  it('uses the shared decision owner through strategy without granting a separate Learning tool', async () => {
+    const declaration = { id: 'native-context', strategyId: 'inspect-config', goal: 'Inspect current configuration',
+      context: [], authority: 'authorized', risk: 'low', control: 'inspect',
+      predictions: [{ id: 'observation', expected: 'Configuration tool succeeds', probability: 0.8,
+        expectedTool: 'get_config', expectedOutcome: 'success' }] };
+    const first = strategy('Inspect the current configuration');
+    const firstArgs = JSON.parse(first.message.tool_calls[0].function.arguments);
+    first.message.tool_calls[0].function.arguments = JSON.stringify({ ...firstArgs,
+      decisionReview: { operation: 'declare', declaration } });
+    const inspect = strategy('Review the observed context without claiming a verified forecast');
+    const inspectArgs = JSON.parse(inspect.message.tool_calls[0].function.arguments);
+    inspect.message.tool_calls[0].function.arguments = JSON.stringify({ ...inspectArgs,
+      decisionReview: { operation: 'inspect', id: 'native-context', salience: {
+        stoppingContext: { requiredChecks: 'complete', userConstraints: 'satisfied' }, observations: [{
+          id: 'missing-contract', goalRelevance: 'direct', potentialSeverity: 'critical', evidenceReliability: 'unknown',
+          uncertainty: ['Contract remains unverified'], evidenceRefs: ['tool:missing-contract'], inspectionAuthority: 'unknown',
+          reviewState: 'reviewed-unchanged', requirement: 'mandatory', resolution: 'deferred',
+          deferralReason: 'Affected action deferred until the contract can be inspected', marginalValue: 'unknown',
+        }],
+      } } });
+    const assess = (request: any) => {
+      const observed = request.messages.find((message: any) => message.role === 'tool' && message.name === 'get_config');
+      const ref = /AGENT_CORE_EVIDENCE_REF=(\S+)/.exec(observed.content)?.[1];
+      expect(ref).toBeTruthy();
+      const response = strategy('Assess the exact observed invocation before final reporting');
+      const args = JSON.parse(response.message.tool_calls[0].function.arguments);
+      response.message.tool_calls[0].function.arguments = JSON.stringify({ ...args, decisionReview: { operation: 'assess',
+        assessment: { id: 'native-context', actionRefs: [ref], observationRefs: [ref], attribution: 'unknown', sideEffects: 'unknown' } } });
+      return response;
+    };
+    const fx = await controllerFixture([first, choice('get_config', {}), assess, inspect, finalize('verification:native-review')], ['get_config']);
+    const result = await fx.controller.runTask({ prompt: 'Inspect configuration and review uncertainty.',
+      workspace: 'agent-core', taskId: 'native-review-task' });
+    expect(result.status).toBe('finalized');
+    expect(fx.requests[0].tools.map((tool: any) => tool.function.name)).not.toContain('learning');
+    expect(JSON.stringify(fx.requests[1].messages)).toContain('DECISION_REVIEW:');
+    const nativeReview = fx.requests.at(-1).messages.filter((message: any) => message.role === 'tool' && message.content.includes('DECISION_REVIEW:'))
+      .map((message: any) => JSON.parse(message.content.split('DECISION_REVIEW: ')[1])).find((review: any) => review.salience);
+    expect(nativeReview.salience.stopping).toMatchObject({ recommendation: 'defer-action', deferredObservationIds: ['missing-contract'], actionAuthorization: 'unchanged' });
+    const review = await fx.learning.decisionReview({ taskId: 'native-review-task', workspace: 'agent-core' },
+      { operation: 'inspect', id: 'native-context' });
+    expect(review.records).toHaveLength(1);
+    expect(review.records[0].taskId).toBe('native-review-task');
+    expect(review.evaluations[0].goal).toBe('unknown');
+    expect(review.evaluations[0].predictions[0]).toMatchObject({ outcome: 'pass', prospective: true,
+      predictionMeaning: 'technical-invocation-outcome' });
+    expect(review.calibration?.status).toBe('descriptive');
+    expect(review.calibration?.brierScore).toBeCloseTo(0.04);
+  });
+
   it('re-retrieves after failure and blocks ordinary actions until strategy materially changes', async () => {
     const missing = path.join(fileURLToPath(new URL('../runtime/tmp/', import.meta.url)), 'definitely-missing-cumulative.txt');
     const responses = [
@@ -108,6 +159,9 @@ describe('native cumulative-learning loop', () => {
     expect(result.status).toBe('finalized');
     expect(searchSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(fx.requests).toHaveLength(6);
+    expect(fx.requests[0].messages[0].content).toContain('Offer at most one material opportunity');
+    expect(fx.requests[0].messages[0].content).toContain('APPROVE / REVISE / HOLD / REJECT');
+    expect(fx.requests[0].messages[0].content).toContain('decisionReview={operation:declare');
     expect(JSON.stringify(fx.requests[2].messages)).toContain('ADAPTIVE_MEMORY_CONTEXT');
     expect(JSON.stringify(fx.requests[3].messages)).toContain('STRATEGY_REQUIRED_AFTER_FAILURE');
     const task = await fx.runtime.getTask('adaptive-task');

@@ -47,6 +47,7 @@ export function assertMemoryRecordSafe(record: MemoryRecord): void {
     record.tags.join(' '),
     record.category,
     record.source?.ref ?? '',
+    ...(record.version === 2 ? [JSON.stringify(record.experience)] : []),
   ].join('\n');
 
   const findings = scanMemorySafety(material);
@@ -58,4 +59,12 @@ export function assertLearningTextSafe(text: string): void {
   const findings = scanMemorySafety(text);
   if (!findings.length) return;
   throw new Error(`LEARNING_SAFETY_REJECTED: ${findings.map((item) => item.code).join(', ')}`);
+}
+
+/** Rescan decoded allowlisted values; JSON escaping must not hide a dangerous source string. */
+export function assertMemoryDisclosureSafe(value:unknown):void {
+  const strings:string[]=[];
+  const visit=(item:unknown):void=>{if(typeof item==='string')strings.push(item);else if(Array.isArray(item))item.forEach(visit);else if(item&&typeof item==='object')for(const [key,child]of Object.entries(item)){strings.push(key);visit(child);}};
+  visit(value);
+  if(scanMemorySafety(strings.join('\n')).length)throw new Error('MEMORY_SOURCE_UNAVAILABLE');
 }

@@ -5,7 +5,7 @@ import { LearningService } from '../src/learning/service.js';
 import { normalizeMemoryWorkspace } from '../src/memory/provenance.js';
 import { LearningReviewCoordinator } from '../src/learning/review.js';
 import { LearningSinkManager } from '../src/learning/sink-manager.js';
-import { MemoryLearningSink } from '../src/learning/memory-sink.js';
+import { MemoryLearningSink } from '../src/memory/learning-sink.js';
 import { activityTracker } from '../src/tracker/activity-tracker.js';
 import { learning } from '../src/mcp/learning-schemas.js';
 afterEach(()=>{vi.restoreAllMocks();vi.resetAllMocks();});
@@ -103,7 +103,7 @@ it('validates an audit pointer even for direct Memory sink calls',async()=>{
 it('persists an audit pointer through real isolated MemoryService without rewriting the duplicate',async()=>{
   const fs=await import('node:fs/promises'),path=await import('node:path');
   const {MemoryService}=await import('../dist/memory/service.js');
-  const fixtureParent=fileURLToPath(new URL('../runtime/tmp/',import.meta.url));
+  const fixtureParent=fileURLToPath(new URL('../runtime/tmp',import.meta.url));
   await fs.mkdir(fixtureParent,{recursive:true});
   const base=await fs.mkdtemp(path.join(fixtureParent,'sie-memory-')); 
   const memoryRoot=path.join(base,'memory');await fs.mkdir(memoryRoot);

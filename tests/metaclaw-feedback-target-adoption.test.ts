@@ -8,8 +8,8 @@ import { MemoryFeedbackStore } from '../src/memory/feedback.js';
 import { resolveMemoryPaths, notePath } from '../src/memory/paths.js';
 import { parseCanonicalNote, serializeCanonicalNote } from '../src/memory/note-format.js';
 import { withMemoryProcessLock } from '../src/memory/lock.js';
-import { registerMemoryTools } from '../src/mcp/memory-tools.js';
-import { memoryFeedback } from '../src/mcp/memory-schemas.js';
+import { registerMemoryTools } from '../src/memory/mcp/tools.js';
+import { memoryFeedback } from '../src/memory/mcp/schemas.js';
 const roots:string[]=[];
 const digest=(r:{id:string;content:string})=>'sha256:'+createHash('sha256').update(JSON.stringify(['agent-core-memory-feedback-content/v1',r.id,r.content])).digest('hex');
 async function fixture(){

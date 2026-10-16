@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1640" height="1180" viewBox="0 0 1640 1180"><title>Agent Core Memory Experience V2</title>
+<rect width="1640" height="1180" fill="#0b1328"/>
+<text x="60" y="70" fill="#95b9fb" font-family="Arial" font-size="17">AGENT CORE / LIVE MEMORY SOURCE MAP</text>
+<text x="60" y="125" fill="#fff" font-family="Arial" font-size="42" font-weight="bold">Experience V2 - Alur Kerja Memory</text>
+<text x="60" y="163" fill="#adbfde" font-family="Arial" font-size="18">16 October 2026 | canonical root: runtime/memory | click cards for source</text>
+<text x="60" y="212" fill="#9db5d8" font-family="Arial" font-size="15">LAYER 1</text>
+<a href="../../src/index.ts">
+<rect x="60" y="230" width="330" height="130" rx="15" fill="#283c6a" stroke="#729ff4" stroke-width="2"/>
+<text x="78" y="267" fill="white" font-family="Arial" font-size="20" font-weight="bold">AI Controller</text>
+<text x="78" y="303" fill="#d5e1f3" font-family="Arial" font-size="16">User / Native AI</text>
+<text x="78" y="338" fill="#afc6e3" font-family="Arial" font-size="12">index.ts</text>
+</a>
+<a href="../../src/mcp/server.ts">
+<rect x="455" y="230" width="330" height="130" rx="15" fill="#283c6a" stroke="#729ff4" stroke-width="2"/>
+<text x="473" y="267" fill="white" font-family="Arial" font-size="20" font-weight="bold">MCP Server</text>
+<text x="473" y="303" fill="#d5e1f3" font-family="Arial" font-size="16">Tool registration</text>
+<text x="473" y="338" fill="#afc6e3" font-family="Arial" font-size="12">server.ts</text>
+</a>
+<a href="../../src/memory/host-runtime.ts">
+<rect x="850" y="230" width="330" height="130" rx="15" fill="#283c6a" stroke="#729ff4" stroke-width="2"/>
+<text x="868" y="267" fill="white" font-family="Arial" font-size="20" font-weight="bold">Host Activation</text>
+<text x="868" y="303" fill="#d5e1f3" font-family="Arial" font-size="16">Validated marker</text>
+<text x="868" y="338" fill="#afc6e3" font-family="Arial" font-size="12">host-runtime.ts</text>
+</a>
+<a href="../../SubProject/agent-core-memory/src/memory/service.ts">
+<rect x="1245" y="230" width="330" height="130" rx="15" fill="#283c6a" stroke="#729ff4" stroke-width="2"/>
+<text x="1263" y="267" fill="white" font-family="Arial" font-size="20" font-weight="bold">MemoryService V2</text>
+<text x="1263" y="303" fill="#d5e1f3" font-family="Arial" font-size="16">Active engine</text>
+<text x="1263" y="338" fill="#afc6e3" font-family="Arial" font-size="12">service.ts</text>
+</a>
+<text x="60" y="457" fill="#9db5d8" font-family="Arial" font-size="15">LAYER 2</text>
+<a href="../../src/mcp/memory-tools.ts">
+<rect x="60" y="475" width="330" height="130" rx="15" fill="#3b2f62" stroke="#b89bea" stroke-width="2"/>
+<text x="78" y="512" fill="white" font-family="Arial" font-size="20" font-weight="bold">Compatibility API</text>
+<text x="78" y="548" fill="#d5e1f3" font-family="Arial" font-size="16">memory_search / remember</text>
+<text x="78" y="583" fill="#afc6e3" font-family="Arial" font-size="12">memory-tools.ts</text>
+</a>
+<a href="../../src/mcp/memory-experience-tools.ts">
+<rect x="455" y="475" width="330" height="130" rx="15" fill="#3b2f62" stroke="#b89bea" stroke-width="2"/>
+<text x="473" y="512" fill="white" font-family="Arial" font-size="20" font-weight="bold">Experience V2 API</text>
+<text x="473" y="548" fill="#d5e1f3" font-family="Arial" font-size="16">memory_v2_read / write</text>
+<text x="473" y="583" fill="#afc6e3" font-family="Arial" font-size="12">memory-experience-tools.ts</text>
+</a>
+<a href="../../SubProject/agent-core-memory/src/memory/controller-session.ts">
+<rect x="850" y="475" width="330" height="130" rx="15" fill="#3b2f62" stroke="#b89bea" stroke-width="2"/>
+<text x="868" y="512" fill="white" font-family="Arial" font-size="20" font-weight="bold">Controller Session</text>
+<text x="868" y="548" fill="#d5e1f3" font-family="Arial" font-size="16">Task scope and budget</text>
+<text x="868" y="583" fill="#afc6e3" font-family="Arial" font-size="12">controller-session.ts</text>
+</a>
+<a href="../../src/learning/memory-sink.ts">
+<rect x="1245" y="475" width="330" height="130" rx="15" fill="#3b2f62" stroke="#b89bea" stroke-width="2"/>
+<text x="1263" y="512" fill="white" font-family="Arial" font-size="20" font-weight="bold">Learning Memory Sink</text>
+<text x="1263" y="548" fill="#d5e1f3" font-family="Arial" font-size="16">Reviewed candidate</text>
+<text x="1263" y="583" fill="#afc6e3" font-family="Arial" font-size="12">memory-sink.ts</text>
+</a>
+<text x="60" y="702" fill="#9db5d8" font-family="Arial" font-size="15">LAYER 3</text>
+<a href="../../SubProject/agent-core-memory/src/memory/retrieval.ts">
+<rect x="60" y="720" width="330" height="130" rx="15" fill="#174d40" stroke="#73d3ad" stroke-width="2"/>
+<text x="78" y="757" fill="white" font-family="Arial" font-size="20" font-weight="bold">Retrieval / Index</text>
+<text x="78" y="793" fill="#d5e1f3" font-family="Arial" font-size="16">Lexical + BM25 + fusion</text>
+<text x="78" y="828" fill="#afc6e3" font-family="Arial" font-size="12">retrieval.ts</text>
+</a>
+<a href="../../SubProject/agent-core-memory/src/memory/episodes.ts">
+<rect x="455" y="720" width="330" height="130" rx="15" fill="#174d40" stroke="#73d3ad" stroke-width="2"/>
+<text x="473" y="757" fill="white" font-family="Arial" font-size="20" font-weight="bold">Episode / Capsule</text>
+<text x="473" y="793" fill="#d5e1f3" font-family="Arial" font-size="16">Evidence + checkpoint</text>
+<text x="473" y="828" fill="#afc6e3" font-family="Arial" font-size="12">episodes.ts</text>
+</a>
+<a href="../../SubProject/agent-core-memory/src/memory/store.ts">
+<rect x="850" y="720" width="330" height="130" rx="15" fill="#174d40" stroke="#73d3ad" stroke-width="2"/>
+<text x="868" y="757" fill="white" font-family="Arial" font-size="20" font-weight="bold">FileMemoryStore</text>
+<text x="868" y="793" fill="#d5e1f3" font-family="Arial" font-size="16">Canonical snapshots</text>
+<text x="868" y="828" fill="#afc6e3" font-family="Arial" font-size="12">store.ts</text>
+</a>
+<a href="../../SubProject/agent-core-memory/src/memory/transaction.ts">
+<rect x="1245" y="720" width="330" height="130" rx="15" fill="#174d40" stroke="#73d3ad" stroke-width="2"/>
+<text x="1263" y="757" fill="white" font-family="Arial" font-size="20" font-weight="bold">Transaction Journal</text>
+<text x="1263" y="793" fill="#d5e1f3" font-family="Arial" font-size="16">CAS + rollback</text>
+<text x="1263" y="828" fill="#afc6e3" font-family="Arial" font-size="12">transaction.ts</text>
+</a>
+<text x="60" y="947" fill="#9db5d8" font-family="Arial" font-size="15">LAYER 4</text>
+<a href="../../SubProject/agent-core-memory/src/memory/retrieval-ledger.ts">
+<rect x="60" y="965" width="330" height="130" rx="15" fill="#253a5b" stroke="#84abe3" stroke-width="2"/>
+<text x="78" y="1002" fill="white" font-family="Arial" font-size="20" font-weight="bold">Retrieval Ledger</text>
+<text x="78" y="1038" fill="#d5e1f3" font-family="Arial" font-size="16">Delivery != task success</text>
+<text x="78" y="1073" fill="#afc6e3" font-family="Arial" font-size="12">retrieval-ledger.ts</text>
+</a>
+<a href="../../SubProject/agent-core-memory/src/memory/promotion.ts">
+<rect x="455" y="965" width="330" height="130" rx="15" fill="#253a5b" stroke="#84abe3" stroke-width="2"/>
+<text x="473" y="1002" fill="white" font-family="Arial" font-size="20" font-weight="bold">Promotion</text>
+<text x="473" y="1038" fill="#d5e1f3" font-family="Arial" font-size="16">Host-bound verified review</text>
+<text x="473" y="1073" fill="#afc6e3" font-family="Arial" font-size="12">promotion.ts</text>
+</a>
+<a href="../../SubProject/agent-core-memory/src/memory/paths.ts">
+<rect x="850" y="965" width="330" height="130" rx="15" fill="#253a5b" stroke="#84abe3" stroke-width="2"/>
+<text x="868" y="1002" fill="white" font-family="Arial" font-size="20" font-weight="bold">Canonical Memory</text>
+<text x="868" y="1038" fill="#d5e1f3" font-family="Arial" font-size="16">runtime/memory notes/state</text>
+<text x="868" y="1073" fill="#afc6e3" font-family="Arial" font-size="12">paths.ts</text>
+</a>
+<a href="../../SubProject/agent-core-memory/src/memory/index.ts">
+<rect x="1245" y="965" width="330" height="130" rx="15" fill="#253a5b" stroke="#84abe3" stroke-width="2"/>
+<text x="1263" y="1002" fill="white" font-family="Arial" font-size="20" font-weight="bold">Derived Index</text>
+<text x="1263" y="1038" fill="#d5e1f3" font-family="Arial" font-size="16">index.json, 768d optional</text>
+<text x="1263" y="1073" fill="#afc6e3" font-family="Arial" font-size="12">index.ts</text>
+</a>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#96b7e8"/></marker></defs>
+<path d="M225 360 L225 475" fill="none" stroke="#96b7e8" stroke-width="2.4" marker-end="url(#a)"/>
+<path d="M225 605 L225 720" fill="none" stroke="#96b7e8" stroke-width="2.4" marker-end="url(#a)"/>
+<path d="M225 850 L225 965" fill="none" stroke="#96b7e8" stroke-width="2.4" marker-end="url(#a)"/>
+<path d="M620 360 L620 475" fill="none" stroke="#96b7e8" stroke-width="2.4" marker-end="url(#a)"/>
+<path d="M620 605 L620 720" fill="none" stroke="#96b7e8" stroke-width="2.4" marker-end="url(#a)"/>
+<path d="M620 850 L620 965" fill="none" stroke="#96b7e8" stroke-width="2.4" marker-end="url(#a)"/>
+<path d="M1015 605 L1015 720" fill="none" stroke="#96b7e8" stroke-width="2.4" marker-end="url(#a)"/>
+<path d="M1015 850 L1015 965" fill="none" stroke="#96b7e8" stroke-width="2.4" marker-end="url(#a)"/>
+<path d="M1410 605 L1410 720" fill="none" stroke="#96b7e8" stroke-width="2.4" marker-end="url(#a)"/>
+<path d="M390 297 H455 M1180 297 H1245" fill="none" stroke="#96b7e8" stroke-width="2.5" marker-end="url(#a)"/>
+<path d="M1180 1030 H1245" fill="none" stroke="#96b7e8" stroke-width="2.5" marker-end="url(#a)"/>
+<path d="M1410 850 V899 H1015 V965" fill="none" stroke="#73d3ad" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#a)"/>
+<text x="60" y="1142" fill="#c4d1e7" font-family="Arial" font-size="15">Blue: facade / retrieval   Purple: episode path   Green: canonical store   |   Memory is advisory, not execution authority.</text>
+</svg>

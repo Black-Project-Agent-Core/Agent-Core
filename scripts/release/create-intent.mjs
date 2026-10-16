@@ -2,13 +2,15 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { parseChangesetFile } from "@changesets/parse";
-import { CHANGESET_DIR, PRODUCT_NAME } from "./release-lib.mjs";
+import { CHANGESET_DIR, MEMORY_INTENT_DIR, PRODUCT_NAME } from "./release-lib.mjs";
 
 function arg(name) {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
+const domain = arg("--domain");
+if (domain !== undefined && domain !== "memory") throw new Error("Unsupported intent domain");
 const type = arg("--type");
 const summary = arg("--summary")?.trim();
 const allowed = new Set(["patch", "minor", "major"]);
@@ -33,7 +35,8 @@ ${summary}
 `;
 
 parseChangesetFile(content);
-await fs.mkdir(CHANGESET_DIR, { recursive: true });
-const target = path.join(CHANGESET_DIR, `${id}.md`);
+const intentDir = domain === "memory" ? MEMORY_INTENT_DIR : CHANGESET_DIR;
+await fs.mkdir(intentDir, { recursive: true });
+const target = path.join(intentDir, `${id}.md`);
 await fs.writeFile(target, content, { encoding: "utf8", flag: "wx" });
 console.log(target);

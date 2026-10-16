@@ -1,0 +1,543 @@
+graph TD
+%% AUTO-GENERATED from src/**/*.ts actual relative import/dynamic-import references
+%% Arrows denote static source dependencies ONLY; not proof of a runtime call.
+%% Source and line evidence: Agent-Core-Memory-Dependency-Inventory-20261016.md
+  F000["src/agent-knowledge-synthesis.ts"]
+  F001["src/agent-runtime.ts"]
+  F002["src/code-intelligence/graph-observability.ts"]
+  F003["src/index.ts"]
+  F004["src/learning/controlled-outcome.ts"]
+  F005["src/learning/curation-delta.ts"]
+  F006["src/learning/curator.ts"]
+  F007["src/learning/decision-evidence.ts"]
+  F008["src/learning/decision-review.ts"]
+  F009["src/learning/evaluation.ts"]
+  F010["src/learning/external-controller.ts"]
+  F011["src/learning/improvement-explanation.ts"]
+  F012["src/learning/journey.ts"]
+  F013["src/learning/outcome-safe-engineering.ts"]
+  F014["src/learning/review.ts"]
+  F015["src/learning/self-awareness.ts"]
+  F016["src/learning/service.ts"]
+  F017["src/learning/sink.ts"]
+  F018["src/learning/skill-proposals.ts"]
+  F019["src/learning/types.ts"]
+  F020["src/learning/verified-value-registry.ts"]
+  F021["src/learning/workflow-evidence.ts"]
+  F022["src/mcp/controller-learning-schemas.ts"]
+  F023["src/mcp/failure-loop-advisor.ts"]
+  F024["src/mcp/handler.ts"]
+  F025["src/mcp/learning-tools.ts"]
+  F026["src/mcp/server.ts"]
+  F027["src/memory/archive.ts"]
+  F028["src/memory/bm25.ts"]
+  F029["src/memory/capsule-integrity.ts"]
+  F030["src/memory/capsule.ts"]
+  F031["src/memory/consolidation.ts"]
+  F032["src/memory/controller-protocol.ts"]
+  F033["src/memory/controller-session.ts"]
+  F034["src/memory/disclosure.ts"]
+  F035["src/memory/embedder.ts"]
+  F036["src/memory/embedding-repair.ts"]
+  F037["src/memory/episodes.ts"]
+  F038["src/memory/evaluation/retrieval-curve.ts"]
+  F039["src/memory/evaluation/retrieval-evaluation.ts"]
+  F040["src/memory/evaluation/retrieval-novelty.ts"]
+  F041["src/memory/evaluation/retrieval-pareto.ts"]
+  F042["src/memory/evaluation/retrieval-portfolio.ts"]
+  F043["src/memory/evaluation/retrieval-profile.ts"]
+  F044["src/memory/evaluation/retrieval-series.ts"]
+  F045["src/memory/evaluation/retrieval-verifier.ts"]
+  F046["src/memory/evidence-excerpt.ts"]
+  F047["src/memory/evolution.ts"]
+  F048["src/memory/examples/controller-continuation.ts"]
+  F049["src/memory/experience-types.ts"]
+  F050["src/memory/facade.ts"]
+  F051["src/memory/feedback-target.ts"]
+  F052["src/memory/feedback.ts"]
+  F053["src/memory/host-activation.ts"]
+  F054["src/memory/host-runtime.ts"]
+  F055["src/memory/identifier-tokenizer.ts"]
+  F056["src/memory/index.ts"]
+  F057["src/memory/initialize.ts"]
+  F058["src/memory/intelligence.ts"]
+  F059["src/memory/learning-sink.ts"]
+  F060["src/memory/lock.ts"]
+  F061["src/memory/mcp/experience-tools.ts"]
+  F062["src/memory/mcp/schemas.ts"]
+  F063["src/memory/mcp/scope.ts"]
+  F064["src/memory/mcp/tools.ts"]
+  F065["src/memory/migration.ts"]
+  F066["src/memory/note-format.ts"]
+  F067["src/memory/outcome/contract.ts"]
+  F068["src/memory/outcome/diagnostics-verifier.ts"]
+  F069["src/memory/outcome/diagnostics.ts"]
+  F070["src/memory/outcome/evaluation.ts"]
+  F071["src/memory/outcome/verifier.ts"]
+  F072["src/memory/page.ts"]
+  F073["src/memory/passages.ts"]
+  F074["src/memory/paths.ts"]
+  F075["src/memory/planned-context.ts"]
+  F076["src/memory/project-synthesis.ts"]
+  F077["src/memory/promotion.ts"]
+  F078["src/memory/prospective-intentions.ts"]
+  F079["src/memory/provenance.ts"]
+  F080["src/memory/query-embedding-cache.ts"]
+  F081["src/memory/reconsolidation-experiment.ts"]
+  F082["src/memory/reconsolidation-report.ts"]
+  F083["src/memory/relations.ts"]
+  F084["src/memory/relevance.ts"]
+  F085["src/memory/repository-identity.ts"]
+  F086["src/memory/retention-score.ts"]
+  F087["src/memory/retirement.ts"]
+  F088["src/memory/retrieval-ledger.ts"]
+  F089["src/memory/retrieval.ts"]
+  F090["src/memory/revisions.ts"]
+  F091["src/memory/safety.ts"]
+  F092["src/memory/search-projection.ts"]
+  F093["src/memory/semantic-document.ts"]
+  F094["src/memory/service.ts"]
+  F095["src/memory/source-snapshot.ts"]
+  F096["src/memory/store.ts"]
+  F097["src/memory/subquestion-retrieval.ts"]
+  F098["src/memory/temporal.ts"]
+  F099["src/memory/transaction.ts"]
+  F100["src/memory/transfer-v2.ts"]
+  F101["src/memory/transfer.ts"]
+  F102["src/memory/types.ts"]
+  F103["src/memory/visibility.ts"]
+  F104["src/memory/workflow-verifier.ts"]
+  F105["src/net/bounded-response.ts"]
+  F106["src/net/outbound-request.ts"]
+  F107["src/persistence/atomic-file.ts"]
+  F108["src/persistence/bounded-event-log.ts"]
+  F109["src/portability/paths.ts"]
+  F110["src/security/evidence-capture-policy.ts"]
+  F111["src/skills/discovery.ts"]
+  F112["src/skills/service.ts"]
+  F113["src/tracker/activity-tracker.ts"]
+  F114["src/tracker/tool-invocation.ts"]
+  F115["src/verification/evidence-snapshot.ts"]
+  F000 -->|"reference L4"| F028
+  F000 -->|"reference L5"| F102
+  F000 -->|"reference L7"| F097
+  F001 -->|"reference L8"| F104
+  F001 -->|"reference L9"| F092
+  F001 -->|"reference L10"| F094
+  F001 -->|"reference L14"| F091
+  F002 -->|"reference L5"| F085
+  F003 -->|"reference L23"| F035
+  F003 -->|"reference L24"| F054
+  F005 -->|"reference L3"| F034
+  F006 -->|"reference L2"| F094
+  F006 -->|"reference L5"| F086
+  F008 -->|"reference L5"| F104
+  F009 -->|"reference L2"| F091
+  F010 -->|"reference L9"| F094
+  F010 -->|"reference L10"| F050
+  F010 -->|"reference L11"| F050
+  F010 -->|"reference L12"| F097
+  F010 -->|"reference L13"| F075
+  F010 -->|"reference L14"| F092
+  F010 -->|"reference L18"| F104
+  F011 -->|"reference L4"| F104
+  F012 -->|"reference L1"| F094
+  F014 -->|"reference L3"| F091
+  F014 -->|"reference L10"| F104
+  F015 -->|"reference L1"| F094
+  F016 -->|"reference L5"| F034
+  F016 -->|"reference L13"| F091
+  F016 -->|"reference L22"| F104
+  F016 -->|"reference L23"| F094
+  F016 -->|"reference L24"| F088
+  F016 -->|"reference L29"| F059
+  F018 -->|"reference L5"| F091
+  F018 -->|"reference L6"| F104
+  F019 -->|"reference L110"| F104
+  F021 -->|"reference L4"| F104
+  F022 -->|"reference L3"| F097
+  F024 -->|"reference L15"| F094
+  F024 -->|"reference L16"| F050
+  F024 -->|"reference L25"| F063
+  F025 -->|"reference L9"| F063
+  F026 -->|"reference L10"| F094
+  F026 -->|"reference L11"| F050
+  F026 -->|"reference L12"| F061
+  F026 -->|"reference L13"| F063
+  F026 -->|"reference L34"| F064
+  F027 -->|"reference L4"| F107
+  F027 -->|"reference L5"| F049
+  F027 -->|"reference L6"| F034
+  F027 -->|"reference L7"| F066
+  F027 -->|"reference L8"| F074
+  F027 -->|"reference L9"| F102
+  F027 -->|"reference L10"| F099
+  F028 -->|"reference L1"| F093
+  F028 -->|"reference L2"| F055
+  F028 -->|"reference L3"| F102
+  F029 -->|"reference L1"| F030
+  F029 -->|"reference L2"| F034
+  F029 -->|"reference L3"| F049
+  F030 -->|"reference L1"| F029
+  F030 -->|"reference L3"| F034
+  F030 -->|"reference L4"| F034
+  F030 -->|"reference L5"| F049
+  F030 -->|"reference L6"| F049
+  F031 -->|"reference L1"| F056
+  F031 -->|"reference L2"| F093
+  F031 -->|"reference L3"| F102
+  F032 -->|"reference L2"| F033
+  F032 -->|"reference L3"| F034
+  F032 -->|"reference L4"| F049
+  F033 -->|"reference L1"| F078
+  F033 -->|"reference L2"| F076
+  F033 -->|"reference L3"| F090
+  F033 -->|"reference L4"| F098
+  F033 -->|"reference L5"| F077
+  F033 -->|"reference L6"| F037
+  F033 -->|"reference L7"| F049
+  F033 -->|"reference L8"| F083
+  F033 -->|"reference L9"| F091
+  F033 -->|"reference L11"| F051
+  F033 -->|"reference L12"| F088
+  F033 -->|"reference L13"| F072
+  F033 -->|"reference L14"| F092
+  F033 -->|"reference L17"| F034
+  F033 -->|"reference L19"| F034
+  F033 -->|"reference L20"| F102
+  F033 -->|"reference L21"| F089
+  F033 -->|"reference L22"| F084
+  F034 -->|"reference L1"| F078
+  F034 -->|"reference L4"| F102
+  F034 -->|"reference L5"| F046
+  F034 -->|"reference L6"| F084
+  F034 -->|"reference L8"| F090
+  F034 -->|"reference L9"| F049
+  F034 -->|"reference L10"| F049
+  F034 -->|"reference L11"| F049
+  F034 -->|"reference L12"| F049
+  F035 -->|"reference L1"| F106
+  F035 -->|"reference L2"| F105
+  F036 -->|"reference L3"| F035
+  F036 -->|"reference L4"| F074
+  F036 -->|"reference L5"| F107
+  F037 -->|"reference L1"| F078
+  F037 -->|"reference L2"| F077
+  F037 -->|"reference L7"| F030
+  F037 -->|"reference L8"| F027
+  F037 -->|"reference L9"| F034
+  F037 -->|"reference L10"| F034
+  F037 -->|"reference L11"| F049
+  F037 -->|"reference L12"| F049
+  F037 -->|"reference L13"| F052
+  F037 -->|"reference L14"| F083
+  F037 -->|"reference L15"| F091
+  F037 -->|"reference L16"| F095
+  F037 -->|"reference L17"| F079
+  F037 -->|"reference L18"| F096
+  F037 -->|"reference L19"| F099
+  F037 -->|"reference L20"| F102
+  F037 -->|"reference L21"| F103
+  F037 -->|"reference L22"| F110
+  F037 -->|"reference L23"| F115
+  F037 -->|"reference L938"| F098
+  F038 -->|"reference L3"| F044
+  F038 -->|"reference L4"| F043
+  F039 -->|"reference L3"| F004
+  F040 -->|"reference L3"| F043
+  F040 -->|"reference L4"| F044
+  F041 -->|"reference L5"| F044
+  F041 -->|"reference L6"| F043
+  F041 -->|"reference L7"| F020
+  F042 -->|"reference L3"| F043
+  F043 -->|"reference L3"| F045
+  F043 -->|"reference L4"| F039
+  F044 -->|"reference L2"| F043
+  F046 -->|"reference L1"| F034
+  F046 -->|"reference L2"| F093
+  F046 -->|"reference L3"| F049
+  F046 -->|"reference L4"| F102
+  F047 -->|"reference L1"| F066
+  F047 -->|"reference L2"| F083
+  F047 -->|"reference L3"| F058
+  F047 -->|"reference L4"| F102
+  F048 -->|"reference L3"| F050
+  F049 -->|"reference L2"| F102
+  F049 -->|"reference L122"| F078
+  F050 -->|"reference L1"| F094
+  F050 -->|"reference L13"| F094
+  F050 -->|"reference L18"| F035
+  F050 -->|"reference L23"| F035
+  F050 -->|"reference L25"| F057
+  F050 -->|"reference L26"| F057
+  F050 -->|"reference L28"| F074
+  F050 -->|"reference L29"| F074
+  F050 -->|"reference L30"| F102
+  F050 -->|"reference L34"| F089
+  F050 -->|"reference L38"| F101
+  F050 -->|"reference L40"| F033
+  F050 -->|"reference L41"| F034
+  F050 -->|"reference L46"| F034
+  F050 -->|"reference L48"| F049
+  F050 -->|"reference L52"| F049
+  F050 -->|"reference L54"| F077
+  F050 -->|"reference L56"| F049
+  F050 -->|"reference L58"| F032
+  F050 -->|"reference L59"| F032
+  F050 -->|"reference L60"| F101
+  F050 -->|"reference L61"| F101
+  F050 -->|"reference L62"| F084
+  F050 -->|"reference L63"| F084
+  F050 -->|"reference L65"| F078
+  F050 -->|"reference L66"| F078
+  F050 -->|"reference L67"| F049
+  F050 -->|"reference L68"| F033
+  F050 -->|"reference L69"| F076
+  F050 -->|"reference L70"| F076
+  F050 -->|"reference L71"| F090
+  F051 -->|"reference L3"| F102
+  F052 -->|"reference L3"| F074
+  F052 -->|"reference L4"| F107
+  F052 -->|"reference L5"| F060
+  F052 -->|"reference L6"| F027
+  F052 -->|"reference L7"| F099
+  F052 -->|"reference L8"| F051
+  F053 -->|"reference L6"| F054
+  F053 -->|"reference L7"| F057
+  F054 -->|"reference L3"| F035
+  F054 -->|"reference L4"| F094
+  F054 -->|"reference L5"| F060
+  F054 -->|"reference L6"| F049
+  F054 -->|"reference L90"| F059
+  F055 -->|"reference L1"| F034
+  F055 -->|"reference L2"| F093
+  F056 -->|"reference L4"| F035
+  F056 -->|"reference L5"| F093
+  F056 -->|"reference L6"| F080
+  F056 -->|"reference L7"| F036
+  F056 -->|"reference L8"| F074
+  F056 -->|"reference L9"| F102
+  F056 -->|"reference L10"| F034
+  F056 -->|"reference L11"| F049
+  F056 -->|"reference L12"| F073
+  F057 -->|"reference L3"| F109
+  F057 -->|"reference L4"| F035
+  F057 -->|"reference L5"| F074
+  F057 -->|"reference L6"| F094
+  F057 -->|"reference L7"| F060
+  F057 -->|"reference L8"| F099
+  F057 -->|"reference L9"| F084
+  F058 -->|"reference L2"| F056
+  F058 -->|"reference L3"| F093
+  F058 -->|"reference L4"| F102
+  F059 -->|"reference L3"| F033
+  F059 -->|"reference L4"| F077
+  F059 -->|"reference L5"| F049
+  F059 -->|"reference L6"| F034
+  F059 -->|"reference L7"| F095
+  F059 -->|"reference L8"| F115
+  F059 -->|"reference L9"| F005
+  F059 -->|"reference L10"| F019
+  F059 -->|"reference L11"| F094
+  F059 -->|"reference L12"| F079
+  F059 -->|"reference L13"| F019
+  F059 -->|"reference L14"| F007
+  F059 -->|"reference L15"| F017
+  F061 -->|"reference L3"| F050
+  F061 -->|"reference L5"| F063
+  F061 -->|"reference L41"| F050
+  F063 -->|"reference L2"| F050
+  F064 -->|"reference L2"| F094
+  F064 -->|"reference L3"| F050
+  F064 -->|"reference L4"| F063
+  F064 -->|"reference L5"| F010
+  F064 -->|"reference L6"| F092
+  F064 -->|"reference L7"| F051
+  F064 -->|"reference L8"| F114
+  F064 -->|"reference L9"| F113
+  F064 -->|"reference L10"| F023
+  F064 -->|"reference L11"| F062
+  F065 -->|"reference L1"| F102
+  F065 -->|"reference L2"| F049
+  F065 -->|"reference L3"| F066
+  F066 -->|"reference L3"| F049
+  F066 -->|"reference L4"| F102
+  F066 -->|"reference L5"| F102
+  F066 -->|"reference L6"| F079
+  F066 -->|"reference L7"| F095
+  F068 -->|"reference L2"| F037
+  F068 -->|"reference L3"| F066
+  F068 -->|"reference L4"| F051
+  F068 -->|"reference L5"| F077
+  F068 -->|"reference L6"| F034
+  F068 -->|"reference L7"| F071
+  F068 -->|"reference L8"| F067
+  F068 -->|"reference L9"| F069
+  F069 -->|"reference L3"| F067
+  F069 -->|"reference L83"| F068
+  F070 -->|"reference L1"| F067
+  F070 -->|"reference L2"| F104
+  F071 -->|"reference L2"| F013
+  F071 -->|"reference L3"| F067
+  F071 -->|"reference L4"| F070
+  F072 -->|"reference L2"| F102
+  F073 -->|"reference L2"| F034
+  F073 -->|"reference L3"| F049
+  F073 -->|"reference L4"| F093
+  F073 -->|"reference L5"| F102
+  F074 -->|"reference L2"| F109
+  F075 -->|"reference L2"| F032
+  F075 -->|"reference L3"| F034
+  F075 -->|"reference L8"| F097
+  F076 -->|"reference L2"| F049
+  F076 -->|"reference L3"| F034
+  F076 -->|"reference L4"| F102
+  F076 -->|"reference L5"| F030
+  F076 -->|"reference L6"| F077
+  F077 -->|"reference L1"| F076
+  F077 -->|"reference L2"| F098
+  F077 -->|"reference L5"| F027
+  F077 -->|"reference L6"| F030
+  F077 -->|"reference L7"| F031
+  F077 -->|"reference L8"| F034
+  F077 -->|"reference L9"| F034
+  F077 -->|"reference L10"| F049
+  F077 -->|"reference L11"| F049
+  F077 -->|"reference L12"| F037
+  F077 -->|"reference L13"| F056
+  F077 -->|"reference L14"| F066
+  F077 -->|"reference L15"| F091
+  F077 -->|"reference L16"| F096
+  F077 -->|"reference L17"| F099
+  F077 -->|"reference L18"| F102
+  F077 -->|"reference L50"| F098
+  F078 -->|"reference L2"| F049
+  F079 -->|"reference L4"| F102
+  F079 -->|"reference L5"| F085
+  F079 -->|"reference L6"| F095
+  F080 -->|"reference L2"| F035
+  F082 -->|"reference L4"| F081
+  F082 -->|"reference L5"| F039
+  F082 -->|"reference L6"| F045
+  F083 -->|"reference L1"| F049
+  F083 -->|"reference L2"| F102
+  F084 -->|"reference L1"| F034
+  F084 -->|"reference L2"| F089
+  F085 -->|"reference L6"| F102
+  F086 -->|"reference L1"| F102
+  F087 -->|"reference L2"| F102
+  F088 -->|"reference L1"| F027
+  F088 -->|"reference L2"| F034
+  F088 -->|"reference L3"| F076
+  F088 -->|"reference L6"| F108
+  F088 -->|"reference L7"| F107
+  F088 -->|"reference L8"| F113
+  F088 -->|"reference L9"| F052
+  F088 -->|"reference L10"| F060
+  F088 -->|"reference L11"| F091
+  F088 -->|"reference L12"| F074
+  F089 -->|"reference L1"| F028
+  F089 -->|"reference L2"| F035
+  F089 -->|"reference L3"| F093
+  F089 -->|"reference L4"| F034
+  F089 -->|"reference L5"| F055
+  F089 -->|"reference L6"| F079
+  F089 -->|"reference L7"| F083
+  F089 -->|"reference L8"| F056
+  F089 -->|"reference L9"| F102
+  F090 -->|"reference L4"| F099
+  F090 -->|"reference L5"| F074
+  F090 -->|"reference L6"| F102
+  F090 -->|"reference L7"| F066
+  F090 -->|"reference L8"| F049
+  F090 -->|"reference L9"| F034
+  F091 -->|"reference L1"| F102
+  F092 -->|"reference L1"| F049
+  F092 -->|"reference L2"| F034
+  F092 -->|"reference L3"| F102
+  F092 -->|"reference L4"| F089
+  F092 -->|"reference L5"| F046
+  F093 -->|"reference L1"| F102
+  F094 -->|"reference L1"| F076
+  F094 -->|"reference L2"| F077
+  F094 -->|"reference L3"| F037
+  F094 -->|"reference L4"| F033
+  F094 -->|"reference L5"| F034
+  F094 -->|"reference L9"| F021
+  F094 -->|"reference L10"| F031
+  F094 -->|"reference L11"| F035
+  F094 -->|"reference L12"| F047
+  F094 -->|"reference L13"| F052
+  F094 -->|"reference L14"| F051
+  F094 -->|"reference L15"| F113
+  F094 -->|"reference L16"| F056
+  F094 -->|"reference L17"| F080
+  F094 -->|"reference L18"| F084
+  F094 -->|"reference L19"| F058
+  F094 -->|"reference L20"| F066
+  F094 -->|"reference L21"| F074
+  F094 -->|"reference L22"| F072
+  F094 -->|"reference L23"| F079
+  F094 -->|"reference L24"| F083
+  F094 -->|"reference L25"| F088
+  F094 -->|"reference L26"| F101
+  F094 -->|"reference L27"| F087
+  F094 -->|"reference L28"| F086
+  F094 -->|"reference L29"| F055
+  F094 -->|"reference L30"| F089
+  F094 -->|"reference L31"| F092
+  F094 -->|"reference L32"| F096
+  F094 -->|"reference L33"| F103
+  F094 -->|"reference L34"| F102
+  F095 -->|"reference L3"| F110
+  F095 -->|"reference L4"| F115
+  F095 -->|"reference L5"| F102
+  F096 -->|"reference L4"| F066
+  F096 -->|"reference L5"| F074
+  F096 -->|"reference L6"| F090
+  F096 -->|"reference L7"| F091
+  F096 -->|"reference L8"| F087
+  F096 -->|"reference L9"| F099
+  F096 -->|"reference L10"| F102
+  F096 -->|"reference L11"| F060
+  F096 -->|"reference L12"| F027
+  F096 -->|"reference L13"| F049
+  F096 -->|"reference L14"| F034
+  F097 -->|"reference L2"| F034
+  F098 -->|"reference L2"| F066
+  F098 -->|"reference L3"| F049
+  F098 -->|"reference L4"| F049
+  F098 -->|"reference L5"| F034
+  F098 -->|"reference L6"| F083
+  F098 -->|"reference L7"| F102
+  F099 -->|"reference L5"| F107
+  F100 -->|"reference L4"| F074
+  F100 -->|"reference L5"| F060
+  F100 -->|"reference L6"| F099
+  F100 -->|"reference L7"| F049
+  F100 -->|"reference L8"| F034
+  F100 -->|"reference L9"| F066
+  F100 -->|"reference L10"| F027
+  F100 -->|"reference L11"| F037
+  F100 -->|"reference L12"| F077
+  F100 -->|"reference L13"| F090
+  F100 -->|"reference L14"| F052
+  F100 -->|"reference L15"| F088
+  F100 -->|"reference L16"| F107
+  F100 -->|"reference L17"| F102
+  F101 -->|"reference L2"| F079
+  F101 -->|"reference L3"| F083
+  F101 -->|"reference L4"| F066
+  F101 -->|"reference L5"| F102
+  F101 -->|"reference L298"| F100
+  F101 -->|"reference L299"| F100
+  F102 -->|"reference L1"| F049
+  F103 -->|"reference L1"| F102
+  F104 -->|"reference L1"| F013
+  F104 -->|"reference L2"| F115
+  F111 -->|"reference L1"| F028
+  F111 -->|"reference L2"| F102
+  F112 -->|"reference L8"| F085
+  F112 -->|"reference L9"| F079
+  F112 -->|"reference L10"| F102
+  F112 -->|"reference L12"| F035

@@ -56,7 +56,7 @@ export function applyEvolutionProposal(
   const now = new Date().toISOString();
   const candidateLinks: MemoryLink[] = proposal.links.map((link) => ({ ...link, createdAt: now }));
   const before = new Map(next.links.map((link) => [`${link.targetId}\u0000${link.type}`, link]));
-  next.links = normalizeLinks(next.id, [...next.links, ...candidateLinks], validIds);
+  next.links = normalizeLinks(next.id, [...next.links, ...candidateLinks], validIds,next.version===2);
   for (const link of next.links) {
     const key = `${link.targetId}\u0000${link.type}`;
     const previous = before.get(key);

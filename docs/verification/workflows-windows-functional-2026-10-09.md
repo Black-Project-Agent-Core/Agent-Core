@@ -57,4 +57,4 @@ The current integration handoff covers the Workflows delta from `3774a44` to `f2
 
 ## Subsequent production acceptance
 
-The [2026-10-10 report review](memory01-windows-functional-2026-10-10.md) closes scoped production Workflows acceptance and the launcher provenance discrepancy. Earlier pending states above describe the isolated candidate at that time.
+The [2026-10-10 report review](../memory/verification/memory01-windows-functional-2026-10-10.md) closes scoped production Workflows acceptance and the launcher provenance discrepancy. Earlier pending states above describe the isolated candidate at that time.

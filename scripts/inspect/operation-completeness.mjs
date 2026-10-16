@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { writeExclusive, failure } from '../learning/report-io.mjs';
+import { writeExclusive, failure } from '../memory/evaluation/report-io.mjs';
 
 const MAX_BYTES=16*1024*1024;
 const MAX_LINE_BYTES=256*1024;

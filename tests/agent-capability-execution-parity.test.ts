@@ -15,7 +15,7 @@ afterEach(async () => {
 
 describe('Native Agent capability execution parity', () => {
   it('turns a dynamic file/process capability resolution into real existing MCP tool execution', async () => {
-    const parent = fileURLToPath(new URL('../runtime/tmp/', import.meta.url));
+    const parent = fileURLToPath(new URL('../runtime/tmp', import.meta.url));
     const root = await mkdtemp(path.join(parent, 'nacp-exec-'));
     roots.push(root);
     const availableTools = await AgentRuntimeToolSession.discoverAvailableTools({});

@@ -7,7 +7,7 @@ import type { LearningCandidate, LearningReviewOutcome } from './types.js';
 import { LearningSinkManager } from './sink-manager.js';
 import { assertEvaluatedClaimEligible, LearningEvidenceError, validateEvaluationEnvelope } from './evaluation.js';
 import { resolveWorkflowEvidence } from './workflow-evidence.js';
-import { recheckWorkflowReport } from './workflow-verifier.js';
+import { recheckWorkflowReport } from '../memory/workflow-verifier.js';
 
 const EVIDENCE_PREFIX = /^(?:tool|activity|memory|file|grafel|source|verification|user-correction):/i;
 

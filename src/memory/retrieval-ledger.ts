@@ -1,5 +1,7 @@
+import {preservesMemoryHistory,readRetainedTelemetry,retainTelemetry} from './archive.js';
+import {stableDisclosureJson} from './disclosure.js';
+import type {SynthesisEligibilityReason,SynthesisEligibilitySummary} from './project-synthesis.js';
 import { createHash } from 'node:crypto';
-import {stableDisclosureJson} from '../../SubProject/agent-core-memory/dist/memory/disclosure.js';
 import path from 'node:path';
 import { BoundedJsonlEventLog } from '../persistence/bounded-event-log.js';
 import { writeOwnedFileAtomic } from '../persistence/atomic-file.js';
@@ -40,10 +42,15 @@ export interface MemoryRetrievalAttempt {
   taskId?: string;
   version: typeof VERSION;
   attemptId: string;
-  surface: 'memory_search' | 'memory_page';
+  surface: 'memory_search' | 'memory_page' | 'memory_recall' | 'memory_expand';
+  disclosureView?: 'map' | 'abstract' | 'record' | 'episode' | 'evidence';
+  payloadDigest?: string;
+  payloadBytes?: number;
   trigger: 'explicit';
   startedAt: string;
   completedAt: string;
+  observedCompletedAt?:string;
+  clockSkewMs?:number;
   retrievalStatus: MemoryRetrievalStatus;
   deliveryStatus: MemoryRetrievalDeliveryStatus;
   candidateCount: number;
@@ -59,6 +66,7 @@ export interface MemoryRetrievalAttempt {
   latencyMs?: number;
   failureCode?: string;
   failureStage?: string;
+  synthesisEligibility?:SynthesisEligibilitySummary;
   exposures: MemoryRetrievalExposure[];
 }
 
@@ -89,6 +97,8 @@ export interface MemoryUseReceiptInput {
 }
 
 export interface MemoryUseReceipt extends MemoryUseReceiptInput {
+  /** Original controller outcome, retained separately from the independently checked result. */
+  reportedResult?: MemoryUseResult;
   version: typeof VERSION;
   recordedAt: string;
   evidenceRefs: string[];
@@ -160,7 +170,8 @@ function normalizeUseReceiptInput(raw: MemoryUseReceiptInput): MemoryUseReceiptI
 function normalizePersistedReceipt(raw: MemoryUseReceipt): MemoryUseReceipt {
   if (raw.version !== VERSION) throw new Error('MEMORY_USE_RECEIPT_VERSION_INVALID');
   const normalized = normalizeUseReceiptInput(raw);
-  return { version: VERSION, recordedAt: iso(raw.recordedAt, 'receipt_recorded_at'), ...normalized };
+  if(raw.reportedResult!==undefined&&!['success','failure','unavailable'].includes(raw.reportedResult))throw new Error('MEMORY_USE_RECEIPT_RESULT_INVALID');
+  return { version: VERSION, recordedAt: iso(raw.recordedAt, 'receipt_recorded_at'), ...normalized,...(raw.reportedResult!==undefined?{reportedResult:raw.reportedResult}:{}) };
 }
 
 function normalizeReasonCodes(values: string[] | undefined): string[] | undefined {
@@ -182,17 +193,29 @@ function normalizeScoreSummary(input: Record<string, number | null> | undefined)
   return Object.keys(output).length ? output : undefined;
 }
 
+function normalizeSynthesisEligibility(raw:SynthesisEligibilitySummary|undefined):SynthesisEligibilitySummary|undefined {
+  if(raw===undefined)return undefined;
+  if(!raw||typeof raw!=='object')throw new Error('MEMORY_RETRIEVAL_SYNTHESIS_ELIGIBILITY_INVALID');
+  const checked=nonNegativeInt(raw.checked,'synthesis_checked'),omitted=nonNegativeInt(raw.omitted,'synthesis_omitted');
+  const allowed:SynthesisEligibilityReason[]=['stale','unknown','scope-unavailable','deadline','cycle','limit'];
+  if(omitted>checked||!['complete','partial'].includes(raw.completeness)||!Array.isArray(raw.reasons)
+    ||raw.reasons.some(reason=>!allowed.includes(reason))||(omitted>0&&raw.completeness!=='partial'))throw new Error('MEMORY_RETRIEVAL_SYNTHESIS_ELIGIBILITY_INVALID');
+  return {checked,omitted,completeness:raw.completeness,reasons:[...new Set(raw.reasons)].sort()};
+}
+
 function normalizeAttempt(raw: MemoryRetrievalAttempt): MemoryRetrievalAttempt {
   if (raw.version !== VERSION) throw new Error('MEMORY_RETRIEVAL_LEDGER_VERSION_INVALID');
   const attemptId = raw.attemptId.trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(attemptId)) throw new Error('MEMORY_RETRIEVAL_ATTEMPT_ID_INVALID');
-  if (!['memory_search', 'memory_page'].includes(raw.surface)) throw new Error('MEMORY_RETRIEVAL_SURFACE_INVALID');
+  if (!['memory_search', 'memory_page', 'memory_recall', 'memory_expand'].includes(raw.surface)) throw new Error('MEMORY_RETRIEVAL_SURFACE_INVALID');
   if (raw.trigger !== 'explicit') throw new Error('MEMORY_RETRIEVAL_TRIGGER_INVALID');
   if (!['succeeded', 'no-results', 'failed'].includes(raw.retrievalStatus)) throw new Error('MEMORY_RETRIEVAL_STATUS_INVALID');
   if (!['not-attempted', 'returned-to-controller', 'failed'].includes(raw.deliveryStatus)) throw new Error('MEMORY_RETRIEVAL_DELIVERY_INVALID');
   const startedAt = iso(raw.startedAt, 'started_at');
   const completedAt = iso(raw.completedAt, 'completed_at');
   if (Date.parse(completedAt) < Date.parse(startedAt)) throw new Error('MEMORY_RETRIEVAL_TIME_ORDER_INVALID');
+  if (raw.disclosureView !== undefined && !['map','abstract','record','episode','evidence'].includes(raw.disclosureView)) throw new Error('MEMORY_RETRIEVAL_VIEW_INVALID');
+  if (raw.payloadDigest !== undefined && !/^sha256:[a-f0-9]{64}$/.test(raw.payloadDigest)) throw new Error('MEMORY_RETRIEVAL_PAYLOAD_DIGEST_INVALID');
   const exposures = (raw.exposures ?? []).slice(0, MAX_EXPOSURES).map((exposure, index) => {
     const memoryId = exposure.memoryId.trim();
     if (!memoryId || memoryId.length > 128) throw new Error('MEMORY_RETRIEVAL_EXPOSURE_ID_INVALID');
@@ -227,6 +250,7 @@ function normalizeAttempt(raw: MemoryRetrievalAttempt): MemoryRetrievalAttempt {
   const referenceTime = raw.referenceTime === undefined ? undefined : iso(raw.referenceTime, 'reference_time');
   const failureCode = optionalText(raw.failureCode, 120);
   const failureStage = optionalText(raw.failureStage, 120);
+  const synthesisEligibility=normalizeSynthesisEligibility(raw.synthesisEligibility);
   const queryHashSha256 = raw.queryHashSha256?.toLowerCase();
   if (queryHashSha256 && !/^sha256:[0-9a-f]{64}$/.test(queryHashSha256)) throw new Error('MEMORY_RETRIEVAL_QUERY_HASH_INVALID');
   return {
@@ -234,9 +258,14 @@ function normalizeAttempt(raw: MemoryRetrievalAttempt): MemoryRetrievalAttempt {
     attemptId,
     ...(raw.taskId ? { taskId: strictSafeText(raw.taskId, 200, 'MEMORY_RETRIEVAL_TASK_INVALID') } : {}),
     surface: raw.surface,
+    ...(raw.disclosureView !== undefined ? { disclosureView: raw.disclosureView } : {}),
+    ...(raw.payloadDigest !== undefined ? { payloadDigest: raw.payloadDigest } : {}),
+    ...(raw.payloadBytes !== undefined ? { payloadBytes: nonNegativeInt(raw.payloadBytes, 'payload_bytes') } : {}),
     trigger: 'explicit',
     startedAt,
     completedAt,
+    ...(raw.observedCompletedAt!==undefined?{observedCompletedAt:iso(raw.observedCompletedAt,'observed_completed_at')} : {}),
+    ...(raw.clockSkewMs!==undefined?{clockSkewMs:nonNegativeInt(raw.clockSkewMs,'clock_skew_ms')}:{}),
     retrievalStatus: raw.retrievalStatus,
     deliveryStatus: raw.deliveryStatus,
     candidateCount: nonNegativeInt(raw.candidateCount, 'candidate_count'),
@@ -252,8 +281,20 @@ function normalizeAttempt(raw: MemoryRetrievalAttempt): MemoryRetrievalAttempt {
     ...(raw.latencyMs !== undefined ? { latencyMs: nonNegativeInt(raw.latencyMs, 'latency') } : {}),
     ...(failureCode ? { failureCode } : {}),
     ...(failureStage ? { failureStage } : {}),
+    ...(synthesisEligibility?{synthesisEligibility}:{}),
     exposures,
   };
+}
+
+/** Read persisted domain metadata for whole-root transfer. Reuse the same
+ * normalizers as ledger replay; never discover scope by scanning source text.
+ * A noncanonical stored workspace is rejected rather than silently rewritten. */
+export function inspectRetrievalTelemetry(kind:'retrieval-attempt'|'use-receipt',raw:unknown):{key:string;workspace?:string} {
+  if(!raw||typeof raw!=='object')throw new Error('MEMORY_RETRIEVAL_LEDGER_VERSION_INVALID');
+  const value=raw as MemoryRetrievalAttempt & MemoryUseReceipt;
+  const normalized=kind==='retrieval-attempt'?normalizeAttempt(value):normalizePersistedReceipt(value);
+  if(value.workspace!==normalized.workspace)throw new Error('MEMORY_RETRIEVAL_WORKSPACE_INVALID');
+  return {key:kind==='retrieval-attempt'?(normalized as MemoryRetrievalAttempt).attemptId:(normalized as MemoryUseReceipt).useId,workspace:normalized.workspace};
 }
 
 export function memoryRecordFingerprint(id: string, updatedAt: string): string {
@@ -273,7 +314,7 @@ export class MemoryRetrievalLedger {
   private issue: string | null = null;
   private receiptIssue: string | null = null;
 
-  constructor(paths: MemoryPaths) {
+  constructor(private readonly paths: MemoryPaths) {
     this.filePath = path.join(paths.state, 'retrieval-ledger.jsonl');
     this.receiptFilePath = path.join(paths.state, 'retrieval-use-receipts.jsonl');
     this.lockPath = paths.lock;
@@ -317,16 +358,37 @@ export class MemoryRetrievalLedger {
     }
   }
 
+  /** Replay immutable historical evidence before rechecking now-changed external outcomes. */
+  async replayUseReceipt(input:MemoryUseReceiptInput):Promise<{duplicate:true;receipt:MemoryUseReceipt}|undefined> {
+    const requested=normalizeUseReceiptInput({...input,evidenceValidation:'unavailable'});
+    return withMemoryProcessLock(this.lockPath,async()=>{
+      const archived=await preservesMemoryHistory(this.paths)?await readRetainedTelemetry(this.paths,'use-receipt',requested.useId):undefined;
+      const retained=archived===undefined?undefined:normalizePersistedReceipt(archived as MemoryUseReceipt);
+      const recent=this.readReceipts().find(row=>row.useId===requested.useId);
+      if(recent&&retained&&stableDigest(recent)!==stableDigest(retained))throw new Error('MEMORY_USE_RECEIPT_CONFLICT');
+      const receipt=retained??recent;if(!receipt)return undefined;
+      const {version:_version,recordedAt:_recordedAt,reportedResult,...payload}=receipt;
+      if(stableDigest({...payload,result:reportedResult??receipt.result,evidenceValidation:'unavailable'})!==stableDigest(requested))throw new Error('MEMORY_USE_RECEIPT_CONFLICT');
+      return {duplicate:true,receipt};
+    });
+  }
+
   async recordUseReceipt(
     input: MemoryUseReceiptInput,
     currentContentDigest: string,
+    reportedResult:MemoryUseResult=input.result,
   ): Promise<{ duplicate: boolean; receipt: MemoryUseReceipt }> {
     const normalized = normalizeUseReceiptInput(input);
     const currentDigest = String(currentContentDigest ?? '').trim().toLowerCase();
     if (!/^sha256:[0-9a-f]{64}$/.test(currentDigest)) throw new Error('MEMORY_USE_RECEIPT_CURRENT_DIGEST_INVALID');
 
     return withMemoryProcessLock(this.lockPath, async () => {
-      const attempt = this.readAll().find(row => row.attemptId === normalized.retrievalAttemptId);
+      const preserve=await preservesMemoryHistory(this.paths);
+      const retained=preserve?await readRetainedTelemetry(this.paths,'retrieval-attempt',normalized.retrievalAttemptId):undefined;
+      const recentAttempt=this.readAll().find(row=>row.attemptId===normalized.retrievalAttemptId);
+      const retainedAttempt=retained===undefined?undefined:normalizeAttempt(retained as MemoryRetrievalAttempt);
+      if(recentAttempt&&retainedAttempt&&stableDigest(recentAttempt)!==stableDigest(retainedAttempt))throw new Error('MEMORY_RETRIEVAL_ATTEMPT_CONFLICT');
+      const attempt=retainedAttempt??recentAttempt;
       if (!attempt) throw new Error('MEMORY_USE_RECEIPT_ATTEMPT_NOT_FOUND');
       if (normalized.taskId && attempt.taskId !== normalized.taskId) throw new Error('MEMORY_USE_RECEIPT_TASK_MISMATCH');
       if (!normalized.taskId) { normalized.result = 'unavailable'; normalized.evidenceValidation = 'unavailable'; }
@@ -348,15 +410,21 @@ export class MemoryRetrievalLedger {
       }
 
       const rows = this.readReceipts();
-      const existing = rows.find(row => row.useId === normalized.useId);
+      const archived=preserve?await readRetainedTelemetry(this.paths,'use-receipt',normalized.useId):undefined;
+      const recentReceipt=rows.find(row=>row.useId===normalized.useId),retainedReceipt=archived===undefined?undefined:normalizePersistedReceipt(archived as MemoryUseReceipt);
+      if(recentReceipt&&retainedReceipt&&stableDigest(recentReceipt)!==stableDigest(retainedReceipt))throw new Error('MEMORY_USE_RECEIPT_CONFLICT');
+      const existing=retainedReceipt??recentReceipt;
       if (existing) {
-        const { version: _version, recordedAt: _recordedAt, ...existingPayload } = existing;
+        const { version: _version, recordedAt: _recordedAt, reportedResult:priorReported, ...existingPayload } = existing;
+        if((priorReported??existing.result)!==reportedResult)throw new Error('MEMORY_USE_RECEIPT_CONFLICT');
         if (stableDigest(existingPayload) !== stableDigest(normalized)) throw new Error('MEMORY_USE_RECEIPT_CONFLICT');
         return { duplicate: true, receipt: existing };
       }
 
-      const receipt: MemoryUseReceipt = { version: VERSION, recordedAt: new Date().toISOString(), ...normalized };
+      const receipt: MemoryUseReceipt = { version: VERSION, recordedAt: new Date().toISOString(), ...normalized,reportedResult };
+      if(preserve)await retainTelemetry(this.paths,'use-receipt',receipt.useId,receipt);
       if (rows.length >= MAX_RECEIPTS) {
+        if(preserve)for(const row of rows.slice(0,-(COMPACT_RECEIPTS_TO-1)))await retainTelemetry(this.paths,'use-receipt',row.useId,row);
         const retained = [...rows.slice(-(COMPACT_RECEIPTS_TO - 1)), receipt];
         await writeOwnedFileAtomic(
           this.receiptFilePath,
@@ -375,12 +443,18 @@ export class MemoryRetrievalLedger {
     const attempt = normalizeAttempt(input);
     return withMemoryProcessLock(this.lockPath, async () => {
       const rows = this.readAll();
-      const existing = rows.find(row => row.attemptId === attempt.attemptId);
+      const preserve=await preservesMemoryHistory(this.paths);
+      const archived=preserve?await readRetainedTelemetry(this.paths,'retrieval-attempt',attempt.attemptId):undefined;
+      const recent=rows.find(row=>row.attemptId===attempt.attemptId),retained=archived===undefined?undefined:normalizeAttempt(archived as MemoryRetrievalAttempt);
+      if(recent&&retained&&stableDigest(recent)!==stableDigest(retained))throw new Error('MEMORY_RETRIEVAL_ATTEMPT_CONFLICT');
+      const existing=retained??recent;
       if (existing) {
         if (stableDigest(existing) !== stableDigest(attempt)) throw new Error('MEMORY_RETRIEVAL_ATTEMPT_CONFLICT');
         return { duplicate: true, attempt: existing };
       }
+      if(preserve)await retainTelemetry(this.paths,'retrieval-attempt',attempt.attemptId,attempt);
       if (rows.length >= MAX_ATTEMPTS) {
+        if(preserve)for(const row of rows.slice(0,-(COMPACT_TO-1)))await retainTelemetry(this.paths,'retrieval-attempt',row.attemptId,row);
         const retained = [...rows.slice(-(COMPACT_TO - 1)), attempt];
         await writeOwnedFileAtomic(
           this.filePath,
@@ -413,6 +487,7 @@ export class MemoryRetrievalLedger {
     input: MemoryRetrievalDiagnosticsInput = {},
   ) {
     const attempts = this.list(input);
+    const eligibilityAttempts=attempts.filter(row=>row.surface==='memory_search'||row.surface==='memory_recall');
     let receiptStatus: 'available' | 'unavailable' = 'available';
     let allReceipts: MemoryUseReceipt[] = [];
     try { allReceipts = this.readReceipts(); }
@@ -485,6 +560,13 @@ export class MemoryRetrievalLedger {
         noResults: attempts.filter(row => row.retrievalStatus === 'no-results').length,
         retrievalFailed: attempts.filter(row => row.retrievalStatus === 'failed').length,
         deliveryFailed: attempts.filter(row => row.deliveryStatus === 'failed').length,
+      },
+      synthesisEligibility:{
+        attempts:eligibilityAttempts.filter(row=>row.synthesisEligibility!==undefined).length,
+        checked:eligibilityAttempts.reduce((sum,row)=>sum+(row.synthesisEligibility?.checked??0),0),
+        omitted:eligibilityAttempts.reduce((sum,row)=>sum+(row.synthesisEligibility?.omitted??0),0),
+        completeness:eligibilityAttempts.some(row=>!row.synthesisEligibility||row.synthesisEligibility.completeness==='partial')?'partial' as const:'complete' as const,
+        reasons:[...new Set(eligibilityAttempts.flatMap(row=>row.synthesisEligibility?.reasons??[]))].sort(),
       },
       evidenceCompleteness: {
         assessedAttempts,

@@ -28,23 +28,22 @@ describe('deterministic Workflows source analysis', () => {
     const root = await fixture({
       'src/index.ts': '// import "./fake.js";\nimport { run } from "./mcp/server.js";\nexport * from "./memory/host.js";\nconst view = import("./ui/view.js");',
       'src/mcp/server.ts': 'export const run = 1;',
-      'src/memory/host.ts': 'export * from "../../SubProject/agent-core-memory/dist/index.js";',
+      'src/memory/host.ts': 'export * from "./facade.js";',
       'src/ui/view.tsx': 'export const view = <div />;',
-      'SubProject/agent-core-memory/src/index.ts': 'export * from "./memory/service.js";',
-      'SubProject/agent-core-memory/src/memory/service.ts': 'export const memory = true;',
+      'src/memory/facade.ts': 'export * from "./service.js";',
+      'src/memory/service.ts': 'export const memory = true;',
     });
     const graph = await analyzeSources(root);
     expect(graph.schemaVersion).toBe(1);
     expect(graph.files).toBe(6);
-    expect(graph.edges).toHaveLength(5);
+    expect(graph.edges).toHaveLength(3);
     expect(graph.unknowns).toBe(0);
     expect(graph.edges.flatMap(edge => edge.evidence)).toEqual(expect.arrayContaining([
       { path: 'src/index.ts', line: 2 }, { path: 'src/index.ts', line: 3 }, { path: 'src/index.ts', line: 4 },
-      { path: 'src/memory/host.ts', line: 1 },
     ]));
-    expect(graph.nodes.some(node => node.kind === 'memory')).toBe(true);
+    expect(graph.nodes.some(node => node.kind === 'memory' && node.paths.includes('src/memory/host.ts'))).toBe(true);
     expect(graph.edges.some(edge => edge.from.startsWith('system/') && edge.to.startsWith('memory/'))).toBe(true);
-    expect(graph.limitations.join(' ')).toContain('dist');
+    expect(graph.limitations.join(' ')).toContain('single src');
   });
 
   it('hashes source content deterministically, ignoring timestamps and excluded files', async () => {
@@ -78,7 +77,7 @@ describe('deterministic Workflows source analysis', () => {
     await symlink(path.join(outside, 'outside.ts'), path.join(root, 'src/linked.ts'));
     await symlink(path.join(outside, 'private'), path.join(root, 'src/linked-dir'), 'dir');
     await mkdir(path.join(root, 'SubProject'), { recursive: true });
-    await symlink(outside, path.join(root, 'SubProject/agent-core-memory'), 'dir');
+    await symlink(outside, path.join(root, 'SubProject/excluded-fixture'), 'dir');
     const graph = await analyzeSources(root);
     expect(graph.files).toBe(1);
     expect(graph.edges).toEqual([]);
@@ -103,7 +102,7 @@ describe('deterministic Workflows source analysis', () => {
   it('bounds subsystem nodes, evidence and oversized input while retaining both source families', async () => {
     const files: Record<string, string> = { 'src/index.ts': '' };
     for (let index = 0; index < 80; index++) files[`src/module-${index}/index.ts`] = 'import "../index.js";\n'.repeat(30);
-    files['SubProject/agent-core-memory/src/index.ts'] = '';
+    files['src/memory/facade.ts'] = '';
     files['src/oversized.ts'] = 'x'.repeat(WORKFLOW_SOURCE_LIMITS.maxFileBytes + 1);
     const graph = await analyzeSources(await fixture(files));
     expect(graph.files).toBe(82);

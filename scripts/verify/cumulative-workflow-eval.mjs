@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 const DIST = process.env.AGENT_CORE_EVALUATION_DIST ?? fileURLToPath(new URL('../../dist', import.meta.url));
-const { verifyWorkflowAnswer, WORKFLOW_VERIFIER_REVISION } = await import(pathToFileURL(path.join(DIST, 'learning/workflow-verifier.js')).href);
+const { verifyWorkflowAnswer, WORKFLOW_VERIFIER_REVISION } = await import(pathToFileURL(path.join(DIST, 'memory/workflow-verifier.js')).href);
 const ROOT = process.env.AGENT_CORE_EVALUATION_PROJECT_ROOT ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const digest = value => 'sha256:' + createHash('sha256').update(value).digest('hex');
 const json = value => JSON.stringify(value, null, 2) + '\n';
@@ -250,7 +250,7 @@ async function main() {
   await cp(path.join(ROOT,'AGENTS.md'),path.join(bundle,'AGENTS.md'));
   await cp(path.join(ROOT,'package.json'),path.join(bundle,'package.json'));
   await save(path.join(bundle,'implementation.json'),{ capturedAt:new Date().toISOString(),dist:snapshotDist,harnessDigest:digest(await readFile(snapshotScript)),harness:snapshotScript,
-    hashes:Object.fromEntries(await Promise.all(['agent-controller.js','agent-runtime.js','learning/service.js','learning/external-controller.js','learning/workflow-verifier.js','memory/service.js'].map(async file=>[file,digest(await readFile(path.join(snapshotDist,file)))]))) });
+    hashes:Object.fromEntries(await Promise.all(['agent-controller.js','agent-runtime.js','learning/service.js','learning/external-controller.js','memory/workflow-verifier.js','memory/service.js'].map(async file=>[file,digest(await readFile(path.join(snapshotDist,file)))]))) });
   process.env.AGENT_CORE_EVALUATION_DIST = snapshotDist;
   process.env.AGENT_CORE_EVALUATION_PROJECT_ROOT = ROOT;
   process.env.AGENT_CORE_EVALUATION_SCRIPT = snapshotScript;

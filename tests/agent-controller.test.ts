@@ -18,7 +18,7 @@ async function fixture(
   learningOverride?: any,
   runtimeOverride: Partial<AgentRuntimeConfig> = {},
 ) {
-  const parent = fileURLToPath(new URL('../runtime/tmp/', import.meta.url));
+  const parent = fileURLToPath(new URL('../runtime/tmp', import.meta.url));
   await mkdir(parent, { recursive: true });
   const root = await mkdtemp(path.join(parent, 'native-controller-'));
   roots.push(root);

@@ -6,7 +6,7 @@ import { McpMutationSafety } from '../src/mcp/mutation-safety.js';
 import type { MemoryEmbedder } from '../src/memory/embedder.js';
 import { MemoryService } from '../src/memory/service.js';
 import { applyFeedbackSalience } from '../src/memory/feedback.js';
-import { scoreMemoryRetention } from '../src/learning/retention-score.js';
+import { scoreMemoryRetention } from '../src/memory/retention-score.js';
 import { SkillService } from '../src/skills/service.js';
 
 const roots: string[] = [];

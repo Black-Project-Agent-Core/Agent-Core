@@ -3,8 +3,8 @@ import * as ts from 'typescript-lsp-runtime';
 
 export const MCP_REGISTRATION_FILES = [
   'src/mcp/server.ts',
-  'src/mcp/memory-tools.ts',
-  'src/mcp/memory-experience-tools.ts',
+  'src/memory/mcp/tools.ts',
+  'src/memory/mcp/experience-tools.ts',
   'src/mcp/learning-tools.ts',
   'src/mcp/partner-tools.ts',
   'src/mcp/semantic-ide-tools.ts',

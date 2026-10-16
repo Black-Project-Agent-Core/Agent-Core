@@ -1,0 +1,20 @@
+flowchart TB
+  START["memory_search / memory_v2_read recall"] --> SCOPE["MCP schema + host task / workspace"]
+  SCOPE --> SNAP["Canonical reload + complete snapshot"]
+  SNAP --> VIS["Visibility / forgotten / expiry / supersession"]
+  VIS --> SYN["Project synthesis dependency eligibility"]
+  SYN --> TOKENS["Identifier-aware lexical tokens"]
+  TOKENS --> RANK["BM25 / lexical / semantic / fusion"]
+  EMB["MemoryIndex + optional Cloudflare query embedding"] --> RANK
+  RANK --> RELEVANCE["Relevance / diversity / link-neighbor selection"]
+  RELEVANCE --> FRESH["Source freshness + validAt / knownAt filters"]
+  FRESH --> VIEW["Budgeted map / abstract / record projection"]
+  VIEW --> CURSOR["Task + scope + snapshot cursor guard"]
+  CURSOR --> LEDGER["Retrieval ledger: selected vs delivered vs dropped"]
+  LEDGER --> RESULT["Advisory Memory context"]
+  RESULT -. "usage separate from verified outcome" .-> RECEIPT["Memory use receipts + Learning assessment"]
+  CANON["runtime/memory canonical"] --> SNAP
+  CANON --> EMB
+  classDef store fill:#e5f7ee,stroke:#279669,color:#183d2c
+  class CANON,LEDGER store
+

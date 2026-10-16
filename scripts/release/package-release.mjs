@@ -82,26 +82,16 @@ async function copyIfExists(relative, destinationRoot, options = {}) {
   });
 }
 async function collectAppliedChanges(version) {
-  const appliedRoot = path.join(ROOT, ".changeset", "applied");
-  if (!await exists(appliedRoot)) return [];
-  const dirs = (await fs.readdir(appliedRoot, { withFileTypes: true }))
-    .filter(entry => entry.isDirectory() && entry.name.startsWith(`${version}-`))
-    .map(entry => entry.name)
-    .sort();
-
-  const changes = [];
-  for (const dir of dirs) {
-    const fullDir = path.join(appliedRoot, dir);
-    for (const file of (await fs.readdir(fullDir)).filter(name => name.endsWith(".md")).sort()) {
-      const raw = await fs.readFile(path.join(fullDir, file), "utf8");
-      const parsed = parseChangesetFile(raw);
-      const release = parsed.releases.find(item => item.name === "agent-core");
-      changes.push({
-        id: file.replace(/\.md$/i, ""),
-        type: release?.type ?? "none",
-        summary: parsed.summary.trim(),
-        archiveDir: dir,
-      });
+  const changes=[];
+  for(const relative of ['.changeset/applied','docs/memory/release-intents/applied']){
+    const appliedRoot=path.join(ROOT,relative);if(!await exists(appliedRoot))continue;
+    for(const dir of (await fs.readdir(appliedRoot,{withFileTypes:true})).filter(entry=>entry.isDirectory()&&entry.name.startsWith(`${version}-`)).map(entry=>entry.name).sort()){
+      const fullDir=path.join(appliedRoot,dir);
+      for(const file of (await fs.readdir(fullDir)).filter(name=>name.endsWith('.md')).sort()){
+        const parsed=parseChangesetFile(await fs.readFile(path.join(fullDir,file),'utf8'));
+        const release=parsed.releases.find(item=>item.name==='agent-core');
+        changes.push({id:file.replace(/\.md$/i,''),type:release?.type??'none',summary:parsed.summary.trim(),archiveDir:dir});
+      }
     }
   }
   return changes;
@@ -179,11 +169,9 @@ await copyIfExists("node_modules", packageRoot);
 await copyIfExists("runtime/node", packageRoot);
 await copyIfExists("runtime/grafel/bin", packageRoot);
 await copyIfExists("runtime/grafel/provider.json", packageRoot);
-// Memory v2 engine is loaded dynamically by the host runtime after activation.
-// Package the pinned standalone engine binaries; never package live Memory roots.
-await copyIfExists("SubProject/agent-core-memory/dist", packageRoot);
-await copyIfExists("SubProject/agent-core-memory/NOTICE.md", packageRoot);
-await copyIfExists("SubProject/agent-core-memory/PATCHES.md", packageRoot);
+// Memory is compiled in the same dist tree; source/license history is domain-owned.
+await copyIfExists("docs/memory", packageRoot);
+await copyIfExists("scripts/memory", packageRoot);
 await writePackagedFoundation(packageRoot);
 await copyIfExists("scripts/windows", packageRoot);
 
@@ -214,13 +202,8 @@ await fs.cp(path.join(ROOT, "src"), path.join(sourceRoot, "src"), {
   force: true,
   filter: async source => sourceFilter(source) && await packageCopyAllowed(ROOT, source),
 });
-// Keep the engine's reproducible source with the source snapshot.
-for (const relative of ["SubProject/agent-core-memory/src", "SubProject/agent-core-memory/package.json",
-  "SubProject/agent-core-memory/README.md", "SubProject/agent-core-memory/NOTICE.md",
-  "SubProject/agent-core-memory/PATCHES.md",
-  "SubProject/agent-core-memory/tsconfig.json", "SubProject/agent-core-memory/UPSTREAM-SOURCE.json"]) {
-  await copyIfExists(relative, sourceRoot);
-}
+await copyIfExists("docs/memory", sourceRoot);
+await copyIfExists("scripts/memory", sourceRoot);
 await fs.cp(path.join(ROOT, "scripts", "release"), path.join(sourceRoot, "scripts", "release"), {
   recursive: true,
   force: true,
@@ -254,7 +237,7 @@ const manifest = {
   generatedAt: new Date().toISOString(),
   changes,
   currentLineBaselineRef: baselineRef || null,
-  legacyRepository: pkg.legacyRepository ?? null,
+  repository: pkg.repository ?? null,
   nativeLauncher: {
     file: "Agent Core.exe",
     sha256: launcherHash,
@@ -294,18 +277,11 @@ const manifest = {
 const manifestText = `${JSON.stringify(manifest, null, 2)}\n`;
 await fs.writeFile(path.join(packageRoot, "RELEASE-MANIFEST.json"), manifestText, "utf8");
 
-const releaseMetadataRoot = path.join(sourceRoot, ".changeset", "applied");
-await fs.mkdir(releaseMetadataRoot, { recursive: true });
-const appliedRoot = path.join(ROOT, ".changeset", "applied");
-if (await exists(appliedRoot)) {
-  for (const dir of await fs.readdir(appliedRoot, { withFileTypes: true })) {
-    if (dir.isDirectory() && dir.name.startsWith(`${version}-`)) {
-      await fs.cp(
-        path.join(appliedRoot, dir.name),
-        path.join(releaseMetadataRoot, dir.name),
-        { recursive: true, force: true },
-      );
-    }
+for(const relative of ['.changeset/applied','docs/memory/release-intents/applied']){
+  const appliedRoot=path.join(ROOT,relative),destination=path.join(sourceRoot,relative);
+  if(!await exists(appliedRoot))continue;await fs.mkdir(destination,{recursive:true});
+  for(const dir of await fs.readdir(appliedRoot,{withFileTypes:true})){
+    if(dir.isDirectory()&&dir.name.startsWith(`${version}-`))await fs.cp(path.join(appliedRoot,dir.name),path.join(destination,dir.name),{recursive:true,force:true});
   }
 }
 

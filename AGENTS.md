@@ -6,7 +6,7 @@
 
 - This is an action requirement, not a passive acknowledgement or optional reminder.
 - The canonical Agent Core Memory storage target is always `<PROJECT_ROOT>\runtime\memory`, regardless of engine version.
-- Resolve its active ownership through `src/memory/host-runtime.ts` and the validated activation marker. A historical `runtime/memory-v2` is a compatibility input until explicitly relocated by `scripts/memory/activate-canonical.mjs`; never infer activation or start a parallel writer.
+- The only Memory implementation owner is `src/memory` (including `src/memory/mcp`); the main build emits `dist/memory`. Resolve the canonical store through `src/memory/host-runtime.ts` and the validated `runtime/memory/state/host/activation.json`. The pre-consolidation marker `runtime/memory-v2-activation.json` and historical `runtime/memory-v2` are read-only migration inputs, not alternative engines or writable stores. Migrate legacy control state explicitly with `scripts/memory/activate-canonical.mjs` while every Memory writer is stopped; never infer activation or start a parallel writer.
 - When native memory MCP tools are available, prefer memory_list / memory_read for canonical memory access and selective recall; direct filesystem viewing remains the fallback and audit path.
 - View that directory and its memory contents before any other Agent Core work.
 - Treat this as the highest-priority local operating directive in this file, subordinate only to the controlling model/provider/system/safety rules.

@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { input, load, report, temp, run, readJSON } from './helpers/retrieval-report-fixtures.js';
+import { input, load, report, temp, run, readJSON } from './memory/evaluation/helpers/retrieval-report-fixtures.js';
 async function setup(vectors:boolean[][],neighbors=2){
   const {deriveRetrievalProfile}=await load('retrieval-profile');
   const size=vectors[0].length;

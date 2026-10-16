@@ -6,10 +6,10 @@ import {MEMORY_ROOT_RELATIVE} from '../../dist/memory/host-runtime.js';
 
 const args=process.argv.slice(2);
 if(args.includes('--help')) {
- console.log('Usage: node scripts/memory/activate-canonical.mjs --fresh|--relocate-historical [--dry-run]\nStop Agent Core and all other Memory writers first. Fresh activation requires both roots absent. Relocation preserves the verified legacy root under backups; interrupted operations remain blocked for inspection.');
+ console.log('Usage: node scripts/memory/activate-canonical.mjs --fresh|--relocate-historical|--migrate-control-state [--dry-run]\nStop Agent Core and all other Memory writers first. Fresh activation requires both roots absent. Relocation preserves the verified legacy root under backups; interrupted operations remain blocked for inspection.');
 } else {
- if(args.some(arg=>!['--fresh','--relocate-historical','--dry-run'].includes(arg))
-   ||args.filter(arg=>arg==='--fresh'||arg==='--relocate-historical').length!==1)throw Error('SELECT_EXACTLY_ONE_ACTIVATION_OPERATION');
+ if(args.some(arg=>!['--fresh','--relocate-historical','--migrate-control-state','--dry-run'].includes(arg))
+   ||args.filter(arg=>arg==='--fresh'||arg==='--relocate-historical'||arg==='--migrate-control-state').length!==1)throw Error('SELECT_EXACTLY_ONE_ACTIVATION_OPERATION');
  const root=resolveModuleProjectRoot(import.meta.url);
  try {process.loadEnvFile(path.join(root,'.env'));}catch(error){if(error.code!=='ENOENT')throw error;}
  const canonical=path.join(root,MEMORY_ROOT_RELATIVE);
@@ -26,6 +26,6 @@ if(args.includes('--help')) {
   });
   if(open)throw Error('STOP_AGENT_CORE_BEFORE_MEMORY_ACTIVATION');
  }
- const result=await activateCanonicalMemory(root,{operation:args.includes('--fresh')?'fresh':'relocate',dryRun:args.includes('--dry-run')});
+ const result=await activateCanonicalMemory(root,{operation:args.includes('--fresh')?'fresh':args.includes('--migrate-control-state')?'metadata':'relocate',dryRun:args.includes('--dry-run')});
  console.log(JSON.stringify({...result,manualRestartRequired:!result.dryRun}));
 }

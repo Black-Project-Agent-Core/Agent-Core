@@ -9,11 +9,11 @@ vi.mock('../src/tracker/activity-tracker.js', () => ({ activityTracker: {
 import { MemoryService } from '../src/memory/service.js';
 import { LearningService } from '../src/learning/service.js';
 import { SkillService } from '../src/skills/service.js';
-import { WORKFLOW_VERIFIER_REVISION, registerWorkflowVerification } from '../src/learning/workflow-verifier.js';
+import { WORKFLOW_VERIFIER_REVISION, registerWorkflowVerification } from '../src/memory/workflow-verifier.js';
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 export async function fixture() {
-  const parent = fileURLToPath(new URL('../runtime/tmp/', import.meta.url)); await mkdir(parent, { recursive: true });
+  const parent = fileURLToPath(new URL('../runtime/tmp', import.meta.url)); await mkdir(parent, { recursive: true });
   const root = await mkdtemp(path.join(parent, 'skill-proposal-test-')); roots.push(root);
   await mkdir(path.join(root, 'runtime/memory'), { recursive: true });
   await writeFile(path.join(root, 'runtime/memory/00-agent-core-memory.md'), '# Agent Core Foundational Memory\n\nIsolated test foundation.');

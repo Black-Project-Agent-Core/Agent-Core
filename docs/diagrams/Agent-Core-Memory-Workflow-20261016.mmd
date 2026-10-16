@@ -1,0 +1,136 @@
+graph TD
+  %% ACTIVE SOURCE-GROUNDED AGENT CORE MEMORY WORKFLOW — 2026-10-16
+  %% Each node names a concrete source method/file or verified canonical on-disk path.
+  subgraph BOOT["INITIALIZATION — Active host"]
+    I["src/index.ts: memory initialization (L75–85)"]
+    H["src/memory/host-runtime.ts: initializeAgentCoreMemory (L79)"]
+    ACT["src/memory/host-runtime.ts: readMemoryActivation (L52)"]
+    INIT["src/memory/service.ts: MemoryService.initialize (L409)"]
+    SI["src/memory/store.ts: FileMemoryStore.initialize (L48)"]
+    LOAD["src/memory/store.ts: FileMemoryStore.loadAll (L167)"]
+    BOOTFILE["runtime/memory/00-agent-core-memory.md"]
+    NOTES["runtime/memory/notes/{id}.md"]
+    I -->|"configured embedder + projectRoot"| H
+    H -->|"validate host activation"| ACT
+    H -->|"experience-v2 service"| INIT
+    INIT -->|"initialize FileMemoryStore"| SI
+    SI -->|"load canonical records"| LOAD
+    LOAD -->|"read pinned bootstrap"| BOOTFILE
+    LOAD -->|"parse note files"| NOTES
+  end
+  subgraph PUBLIC["PUBLIC MCP — Existing server registration"]
+    HD["src/mcp/handler.ts: createMcpHttpHandler (L142)"]
+    MS["src/mcp/server.ts: createAgentCoreMcpServer (L271)"]
+    REG["src/memory/mcp/tools.ts: registerMemoryTools (L86)"]
+    V2REG["src/memory/mcp/experience-tools.ts: registerMemoryExperienceTools (L24)"]
+    S_TOOL["src/memory/mcp/tools.ts: memory_search registration (L164)"]
+    W_TOOL["src/memory/mcp/tools.ts: memory_remember registration (L241)"]
+    B_TOOL["src/memory/mcp/tools.ts: memory_batch registration (L283)"]
+    U_TOOL["src/memory/mcp/tools.ts: memory_update registration (L258)"]
+    D_TOOL["src/memory/mcp/tools.ts: memory_delete registration (L269)"]
+    V2_TOOL["src/memory/mcp/experience-tools.ts: dispatch (L27)"]
+    I -->|"MCP options"| HD
+    HD -->|"server factory"| MS
+    MS -->|"register v1 operations"| REG
+    MS -->|"register v2 operations"| V2REG
+    REG --> S_TOOL
+    REG --> W_TOOL
+    REG --> B_TOOL
+    REG --> U_TOOL
+    REG --> D_TOOL
+    V2REG --> V2_TOOL
+  end
+  subgraph READ["READ / RETRIEVAL — Canonical-first"]
+    SVC_SEARCH["src/memory/service.ts: MemoryService.search (L1296)"]
+    RELOAD["src/memory/service.ts: MemoryService.reload (L780)"]
+    SEM["src/memory/index.ts: MemoryIndex.semanticContext (L411)"]
+    RANK["src/memory/retrieval.ts: searchMemories (L193)"]
+    PROJ["src/memory/search-projection.ts: projectMemorySearchResults (L126)"]
+    LEDGER["src/memory/retrieval-ledger.ts: MemoryRetrievalLedger.record (L442)"]
+    INDEXFILE["runtime/memory/index/index.json"]
+    S_TOOL -->|"query + scope + limits"| SVC_SEARCH
+    SVC_SEARCH -->|"reload source"| RELOAD
+    RELOAD -->|"FileMemoryStore snapshot"| LOAD
+    SVC_SEARCH -->|"semantic context if configured"| SEM
+    SEM -->|"validate derived index"| INDEXFILE
+    SVC_SEARCH -->|"lexical/BM25/fusion + links"| RANK
+    RANK -->|"ranked candidates"| PROJ
+    SVC_SEARCH -->|"bounded exposures"| LEDGER
+  end
+  subgraph WRITE["WRITE / PERSISTENCE — Guarded transaction"]
+    REM["src/memory/service.ts: MemoryService.remember (L964)"]
+    BATCH["src/memory/service.ts: MemoryService.batch (L1124)"]
+    UPDATE["src/memory/service.ts: MemoryService.update (L1018)"]
+    DELETE["src/memory/service.ts: MemoryService.delete (L1112)"]
+    MUTATE["src/memory/store.ts: FileMemoryStore.mutate (L252)"]
+    REPAIRDEL["src/memory/store.ts: FileMemoryStore.deleteWithLinkRepair (L388)"]
+    CREATE["src/memory/store.ts: FileMemoryStore.create (L265)"]
+    STBATCH["src/memory/store.ts: FileMemoryStore.batch (L383)"]
+    TRANSACT["src/memory/store.ts: FileMemoryStore.transact (L286)"]
+    CP["src/memory/store.ts: FileMemoryStore.commitPlan (L290)"]
+    TX["src/memory/transaction.ts: MemoryTransactionCoordinator.commit (L120)"]
+    REFIDX["src/memory/service.ts: MemoryService.refreshIndex (L791)"]
+    ENSURE["src/memory/index.ts: MemoryIndex.ensure (L379)"]
+    EMD["src/memory/embedder.ts: CloudflareWorkersAIEmbedder (L71)"]
+    EVOLVE["src/memory/service.ts: MemoryService.evolve (L1608)"]
+    W_TOOL -->|"validated RememberInput"| REM
+    REM -->|"create MemoryRecord"| CREATE
+    B_TOOL -->|"validated operations"| BATCH
+    U_TOOL -->|"validated patch"| UPDATE
+    UPDATE -->|"mutate one record"| MUTATE
+    MUTATE --> CP
+    D_TOOL -->|"delete request; v2 preservation guard applies"| DELETE
+    DELETE -->|"link repair or reject v2 deletion"| REPAIRDEL
+    REPAIRDEL -->|"batch transaction"| STBATCH
+    BATCH -->|"one atomic batch"| STBATCH
+    CREATE --> CP
+    STBATCH --> TRANSACT
+    CP -->|"staged CAS + journal"| TX
+    TX -->|"commit canonical Markdown"| NOTES
+    REM -->|"after commit"| REFIDX
+    BATCH -->|"after commit"| REFIDX
+    UPDATE -->|"after commit"| REFIDX
+    DELETE -->|"only when deletion succeeds"| REFIDX
+    REFIDX --> ENSURE
+    ENSURE -->|"derived index"| INDEXFILE
+    ENSURE -->|"embed missing vectors, optional"| EMD
+    REM -->|"when intelligence available"| EVOLVE
+  end
+  subgraph V2["EXPERIENCE V2 — Host-bound, not separate engine"]
+    SCOPE["src/memory/mcp/scope.ts: createMemoryScopeResolver (L19)"]
+    CTRL["src/memory/service.ts: MemoryService.controller (L306)"]
+    SESSION["src/memory/controller-session.ts: ControllerMemorySession (L65)"]
+    DISP["src/memory/controller-protocol.ts: createControllerMemoryDispatcher (L27)"]
+    EP["src/memory/episodes.ts: MemoryEpisodes (L140)"]
+    PROM["src/memory/promotion.ts: MemoryPromotion (L249)"]
+    V2_TOOL -->|"resolve task/workspace identity"| SCOPE
+    SCOPE -->|"host-verified ControllerScope"| CTRL
+    CTRL --> SESSION
+    V2_TOOL -->|"construct dispatcher for scope"| DISP
+    DISP -->|"invoke mapped method"| SESSION
+    SESSION -->|"task/event/capsule operations"| EP
+    SESSION -->|"proposed consolidation"| PROM
+    EP -->|"transact episode state"| TRANSACT
+    TRANSACT --> CP
+    PROM -->|"transactional publication"| TRANSACT
+  end
+  subgraph CONSUMERS["ACTUAL CONTEXT CONSUMERS"]
+    AR["src/agent-runtime.ts: AgentRuntimeService.assembleMemoryContext (L673)"]
+    NA["src/agent-controller.ts: NativeAgentController.runTaskInternal (L438)"]
+    SP["src/agent-controller.ts: systemPrompt (L322)"]
+    EX["src/learning/external-controller.ts: ExternalControllerLearningService.context (L1131)"]
+    PL["src/memory/planned-context.ts: runPlannedMemoryContext (L89)"]
+    LR["src/learning/service.ts: LearningService initialization (L330–334)"]
+    REVIEW["src/learning/review.ts: LearningReviewCoordinator.review (L67)"]
+    SINK["src/memory/learning-sink.ts: MemoryLearningSink.capture (L187)"]
+    NA -->|"initial + adaptive recall"| AR
+    AR -->|"fusion search + 12k budget"| SVC_SEARCH
+    AR -->|"provide promptText"| NA
+    NA -->|"put returned memory promptText in system message"| SP
+    EX -->|"ordinary explicit context search"| SVC_SEARCH
+    EX -->|"opt-in planned retrieval"| PL
+    PL -->|"bounded v2 recall through dispatcher"| DISP
+    LR -->|"review candidates"| REVIEW
+    REVIEW -->|"only evidence-eligible verified candidates"| SINK
+    SINK -->|"memory.remember"| REM
+  end

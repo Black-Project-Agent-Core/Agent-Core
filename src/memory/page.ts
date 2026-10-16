@@ -94,3 +94,32 @@ export function pageMemoryRecords(
     ...(nextCursor ? { nextCursor } : {}),
   };
 }
+
+// Controller cursors are bounded continuation hints, not authorization tokens.
+// The host revalidates every binding against actual scoped source state.
+interface DisclosureCursor { scope: string; request: string; snapshot: string; position: number; rankingTime: number }
+function cursorHash(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value)).digest('base64url');
+}
+export function encodeDisclosureCursor(value: DisclosureCursor): string {
+  const parts = [1, value.scope, value.request, value.snapshot, value.position, value.rankingTime];
+  return Buffer.from(JSON.stringify([...parts, cursorHash(parts)]), 'utf8').toString('base64url');
+}
+export function decodeDisclosureCursor(raw: string): DisclosureCursor {
+  if (!/^[A-Za-z0-9_-]+$/.test(raw) || raw.length > 2048) throw new Error('MEMORY_CURSOR_INVALID');
+  let parts: unknown;
+  try {
+    const bytes = Buffer.from(raw, 'base64url');
+    if (bytes.length > 1536 || bytes.toString('base64url') !== raw) throw new Error();
+    parts = JSON.parse(bytes.toString('utf8'));
+  } catch { throw new Error('MEMORY_CURSOR_INVALID'); }
+  if (!Array.isArray(parts) || parts.length !== 7 || parts[0] !== 1
+    || !parts.slice(1,4).every(value => typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value))
+    || !Number.isSafeInteger(parts[4]) || parts[4] < 0 || !Number.isSafeInteger(parts[5]) || parts[5] < 0 || cursorHash(parts.slice(0,6)) !== parts[6]) {
+    throw new Error('MEMORY_CURSOR_INVALID');
+  }
+  return { scope: parts[1], request: parts[2], snapshot: parts[3], position: parts[4], rankingTime: parts[5] };
+}
+export function disclosureCursorBinding(digest: string): string {
+  return Buffer.from(digest.slice('sha256:'.length), 'hex').toString('base64url');
+}

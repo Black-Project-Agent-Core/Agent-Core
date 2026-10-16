@@ -2,7 +2,7 @@ import { validateCurationDelta } from './curation-delta.js';
 import type { MemoryService } from '../memory/service.js';
 import type { LearningCuratorProposal } from './types.js';
 import type { CodePatternLearningSink } from './code-pattern-sink.js';
-import { RETENTION_PARAMS, scoreMemoryRetention } from './retention-score.js';
+import { RETENTION_PARAMS, scoreMemoryRetention } from '../memory/retention-score.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { buildFeatureOutcomeProposals } from './feature-outcome-pool.js';
 

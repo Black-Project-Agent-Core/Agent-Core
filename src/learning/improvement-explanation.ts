@@ -1,7 +1,7 @@
 import type { SkillProposalCoordinator } from './skill-proposals.js';
 import { resolveWorkflowEvidence } from './workflow-evidence.js';
 import { skillUseTrace } from './skill-outcome-review.js';
-import { recheckWorkflowReport } from './workflow-verifier.js';
+import { recheckWorkflowReport } from '../memory/workflow-verifier.js';
 export async function explainImprovement(coordinator: SkillProposalCoordinator, input: {
   workspace: string; proposalId?: string; skillName?: string; revisionDigest?: string;
 }) {

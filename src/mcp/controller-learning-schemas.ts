@@ -1,6 +1,6 @@
 import * as z from 'zod/v4';
 import { safeEvidenceRefSchema } from '../learning/evaluation.js';
-import { retrievalPlanSchema } from '../learning/subquestion-retrieval.js';
+import { retrievalPlanSchema } from '../memory/subquestion-retrieval.js';
 
 const evidenceRef = safeEvidenceRefSchema();
 const evidenceRefs = z.array(evidenceRef).max(24);
