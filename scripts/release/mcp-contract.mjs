@@ -32,6 +32,18 @@ function importMap(sf, file) {
 }
 function schemaRef(expr, imports) {
   let node = expr;
+  while (ts.isParenthesizedExpression(node)) node = node.expression;
+  if (ts.isConditionalExpression(node)) {
+    const condition = node.condition;
+    // This report covers external discovery. Never execute a selector or guess
+    // arbitrary conditions; the known Native selector chooses its false arm.
+    if (!ts.isPropertyAccessExpression(condition) || !ts.isIdentifier(condition.expression)
+      || condition.expression.text !== 'runtime' || condition.name.text !== 'nativeTaskId')
+      throw new Error('MCP_CONTRACT_UNSUPPORTED_CONDITION: ' + canonical(condition.getText()));
+    const external = schemaRef(node.whenFalse, imports);
+    if (!external) throw new Error('MCP_CONTRACT_UNSUPPORTED_CONDITION: external schema is unresolved');
+    return external;
+  }
   if (ts.isPropertyAccessExpression(node) && node.name.text === 'shape') node = node.expression;
   if (!ts.isPropertyAccessExpression(node) || !ts.isIdentifier(node.expression)) return null;
   const schemaFile = imports.get(node.expression.text);
@@ -108,11 +120,31 @@ function schemaContract(text, file, exportName) {
   const init = defs.get(exportName);
   const object = objectLiteralFrom(init);
   if (!object) return { properties: {}, required: [], opaque: canonical(init?.getText(sf) ?? '') };
+  const shape = (name, ancestors = []) => {
+    if (ancestors.includes(name) || ancestors.length >= 32)
+      throw new Error('MCP_CONTRACT_UNSUPPORTED_SPREAD: cyclic or excessive shape ancestry in ' + file);
+    const declaration = defs.get(name);
+    const source = declaration && ts.isObjectLiteralExpression(declaration) ? declaration : objectLiteralFrom(declaration);
+    if (!source) throw new Error('MCP_CONTRACT_UNSUPPORTED_SPREAD: unresolved shape ' + name + ' in ' + file);
+    const fields = new Map();
+    for (const prop of source.properties) {
+      if (ts.isSpreadAssignment(prop)) {
+        const expression = prop.expression;
+        const spreadName = ts.isIdentifier(expression) ? expression.text
+          : ts.isPropertyAccessExpression(expression) && expression.name.text === 'shape' && ts.isIdentifier(expression.expression)
+            ? expression.expression.text : null;
+        if (!spreadName)
+          throw new Error('MCP_CONTRACT_UNSUPPORTED_SPREAD: only same-file declared objects/shapes are supported in ' + file);
+        for (const [key, field] of shape(spreadName, [...ancestors, name])) fields.set(key, field);
+      } else if (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop)) {
+        fields.set(prop.name.getText(sf).replace(/^['"]|['"]$/g, ''), prop);
+      }
+    }
+    return fields;
+  };
   const properties = {};
   const required = [];
-  for (const prop of object.properties) {
-    if (!ts.isPropertyAssignment(prop) && !ts.isShorthandPropertyAssignment(prop)) continue;
-    const name = prop.name.getText(sf).replace(/^['"]|['"]$/g, '');
+  for (const [name, prop] of shape(exportName)) {
     let expression = ts.isPropertyAssignment(prop) ? prop.initializer.getText(sf) : prop.name.getText(sf);
     if (ts.isShorthandPropertyAssignment(prop)) {
       const dep = defs.get(prop.name.text);
@@ -174,5 +206,5 @@ export async function compareMcpContracts(currentRead, baselineRead) {
       toolChanges.push({ name, removedParams, addedParams, newlyRequired, changedParams });
     }
   }
-  return { removedTools, addedTools, toolChanges, breakingEvidence: breaking, currentCount: Object.keys(current).length, baselineCount: Object.keys(baseline).length };
+  return { cohort: 'external', removedTools, addedTools, toolChanges, breakingEvidence: breaking, currentCount: Object.keys(current).length, baselineCount: Object.keys(baseline).length };
 }

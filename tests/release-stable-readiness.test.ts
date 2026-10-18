@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { afterEach, expect, it, vi } from 'vitest';
 import { requestPrereleaseExit, readPrereleaseState } from '../scripts/release/prerelease-lib.mjs';
 import * as packaging from '../scripts/release/packaging-policy.mjs';
+import { compareMcpContracts } from '../scripts/release/mcp-contract.mjs';
 
 const roots:string[]=[];
 afterEach(async()=>{vi.restoreAllMocks();for(const root of roots.splice(0))await rm(root,{recursive:true,force:true});});
@@ -106,4 +107,70 @@ it('stages readable guides and only the hash-bound browser transport, excluding 
   await expect(access(path.join(destination,'runtime/rdc'))).rejects.toThrow();
   await put(root,transport+'/'+binary,'modified transport');
   await expect(packaging.stageExternalReleaseSupport(root,path.join(root,'invalid-package'))).rejects.toThrow(/integrity/);
+});
+
+const browserBase = `export const browserControl = z.object({
+  action: z.enum(['open','observe']), url: z.string().optional(), sessionId: z.string().optional()
+});`;
+function contractSource(schema: string, selector = 'schemas.browserControl') {
+  const files: Record<string,string> = {
+    'src/mcp/server.ts': `import * as schemas from './rdc-schemas.js';
+      tool(server, 'browser_control', 'Browser Control', ${selector}, handler);`,
+    'src/mcp/rdc-schemas.ts': schema,
+  };
+  return async (file:string) => files[file] ?? null;
+}
+function externalBrowserSource(base = browserBase, actions = "['open','observe','conversation_read']") {
+  return `${base}
+    export const externalBrowserControl = z.object({ ...browserControl.shape,
+      action: z.enum(${actions}), read: z.string().optional() }).strict();`;
+}
+const externalBrowserSelector = 'runtime.nativeTaskId ? schemas.browserControl : schemas.externalBrowserControl';
+
+it('compares the explicit external browser cohort without losing inherited parameters',async()=>{
+  const result = await compareMcpContracts(contractSource(externalBrowserSource(),externalBrowserSelector),contractSource(browserBase));
+  expect(result.removedTools).toEqual([]);
+  expect(result.currentCount).toBe(1);
+  expect(result.breakingEvidence).toBe(false);
+  expect(result.toolChanges).toEqual([expect.objectContaining({name:'browser_control',removedParams:[],addedParams:['read'],newlyRequired:[],
+    changedParams:[{param:'action',typeChanged:false,enumNarrowed:false}]})]);
+});
+it('still detects a removed inherited browser parameter after conditional schema selection',async()=>{
+  const after = externalBrowserSource(browserBase.replace('url: z.string().optional(), ',''));
+  const result = await compareMcpContracts(contractSource(after,externalBrowserSelector),contractSource(browserBase));
+  expect(result.removedTools).toEqual([]);
+  expect(result.toolChanges.find((item:any)=>item.name==='browser_control')?.removedParams).toEqual(['url']);
+  expect(result.breakingEvidence).toBe(true);
+});
+it('still detects an inherited parameter becoming required in the external cohort',async()=>{
+  const after = externalBrowserSource(browserBase.replace('sessionId: z.string().optional()','sessionId: z.string()'));
+  const result = await compareMcpContracts(contractSource(after,externalBrowserSelector),contractSource(browserBase));
+  expect(result.toolChanges.find((item:any)=>item.name==='browser_control')?.newlyRequired).toEqual(['sessionId']);
+  expect(result.breakingEvidence).toBe(true);
+});
+it('still detects narrowed action enums instead of accepting any external schema override',async()=>{
+  const result = await compareMcpContracts(contractSource(externalBrowserSource(browserBase,"['open']"),externalBrowserSelector),contractSource(browserBase));
+  expect(result.toolChanges.find((item:any)=>item.name==='browser_control')?.changedParams ?? [])
+    .toContainEqual({param:'action',typeChanged:false,enumNarrowed:true});
+  expect(result.breakingEvidence).toBe(true);
+});
+it('refuses an unknown conditional rather than silently dropping the tool from both cohorts',async()=>{
+  const source = contractSource(externalBrowserSource(),'runtime.featureFlag ? schemas.browserControl : schemas.externalBrowserControl');
+  await expect(compareMcpContracts(source,source)).rejects.toThrow(/MCP_CONTRACT_UNSUPPORTED_CONDITION/);
+});
+it('refuses cyclic or unresolved shape spreads rather than claiming a complete safe contract',async()=>{
+  for (const schema of [
+    `export const externalBrowserControl = z.object({ ...unknown.shape, read:z.string().optional() });`,
+    `export const browserControl = z.object({ ...externalBrowserControl.shape });
+     export const externalBrowserControl = z.object({ ...browserControl.shape });`,
+  ]) await expect(compareMcpContracts(contractSource(schema,externalBrowserSelector),contractSource(browserBase)))
+    .rejects.toThrow(/MCP_CONTRACT_UNSUPPORTED_SPREAD/);
+});
+it('compares same-file object-field spreads used by existing phone registrations',async()=>{
+  const before = `const screenshotOptions = { format:z.enum(['jpeg','png']).optional(), quality:z.number().optional() };
+    export const browserControl = z.object({ ...screenshotOptions, action:z.enum(['open','observe']) });`;
+  const after = before.replace('quality:z.number().optional()','quality:z.number()');
+  const result = await compareMcpContracts(contractSource(after),contractSource(before));
+  expect(result.toolChanges).toEqual([expect.objectContaining({name:'browser_control',removedParams:[],newlyRequired:['quality']})]);
+  expect(result.breakingEvidence).toBe(true);
 });
