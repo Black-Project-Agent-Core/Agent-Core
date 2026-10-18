@@ -4,6 +4,8 @@ import { currentToolInvocationRequest } from '../tracker/tool-invocation.js';
 import { ArtifactAuthorization, type ArtifactIdentity } from '../auth/artifact-authorization.js';
 import { ArtifactInspectionService } from '../artifact-analysis/service.js';
 import { decideToolEvidenceCapture } from '../security/evidence-capture-policy.js';
+import type { ExternalInvocationContext } from '../learning/external-controller.js';
+import { assertReadActive } from '../rdc/utils/withTimeout.js';
 
 const schema = z.object({
   action: z.enum(['prepare','status','inspect']),
@@ -16,15 +18,19 @@ const schema = z.object({
   disclosureAudience: z.string().min(1).max(120).optional(),
 }).strict();
 const deny = () => { throw new Error('ARTIFACT_SCOPE_NOT_AUTHORIZED'); };
-function identity(): { identity: ArtifactIdentity; invocationId: string; signal?: AbortSignal } {
+function identity(): { identity: ArtifactIdentity; invocationId: string; context: ExternalInvocationContext; signal?: AbortSignal } {
   const request = currentToolInvocationRequest();
   const ctx = request?.invocationContext;
-  if (!request || !ctx || ctx.binding !== 'bound' || !ctx.ownerId || !ctx.taskId || !ctx.workspace)
+  if (!request || request.tool !== 'artifact_inspect' || !ctx || ctx.binding !== 'bound' || !ctx.ownerId || !ctx.taskId || !ctx.workspace
+    || ctx.invocationId !== request.identity.id || ctx.processSessionId !== request.identity.processSessionId
+    || request.mutationContext.taskId !== ctx.taskId)
     return deny();
   return { identity: { ownerId: ctx.ownerId, taskId: ctx.taskId, workspace: ctx.workspace },
-    invocationId: request.identity.id, signal: request.mutationContext.signal };
+    invocationId: request.identity.id, context: ctx, signal: request.mutationContext.signal };
 }
-export function registerArtifactInspectTool(server: McpServer, auth: ArtifactAuthorization) {
+export type ArtifactInvocationValidator = (context: ExternalInvocationContext) => Promise<boolean>;
+export function registerArtifactInspectTool(server: McpServer, auth: ArtifactAuthorization,
+  isInvocationCurrent?: ArtifactInvocationValidator) {
   const service = new ArtifactInspectionService(auth);
   server.registerTool('artifact_inspect', {
     title: 'Inspect Authorized Artifact',
@@ -34,6 +40,12 @@ export function registerArtifactInspectTool(server: McpServer, auth: ArtifactAut
   }, async (raw) => {
     const args = schema.parse(raw);
     const host = identity();
+    const assertCurrent = async () => {
+      assertReadActive(host.signal);
+      if (!isInvocationCurrent || !await isInvocationCurrent(host.context)) return deny();
+      assertReadActive(host.signal);
+    };
+    await assertCurrent();
     if (args.action === 'prepare') {
       if (!args.path || !args.format || !args.rightsEvidenceRef || !args.disclosureAudience) return deny();
       const prepared = auth.prepare(host.identity, { target: args.path, format: args.format,
@@ -48,7 +60,7 @@ export function registerArtifactInspectTool(server: McpServer, auth: ArtifactAut
     const policy = decideToolEvidenceCapture('read_file', { path: snapshot.target });
     if (policy.disposition !== 'full' || policy.policyState === 'invalid') return deny();
     const result = await service.inspect(host.identity,args.requestId,args.revisionDigest,
-      host.invocationId,host.signal);
+      host.invocationId,host.signal,assertCurrent);
     return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
   });
 }

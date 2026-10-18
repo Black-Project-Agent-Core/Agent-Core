@@ -6,7 +6,16 @@ import { toolCapabilityUse } from '../src/capability-awareness.js';
 import path from 'node:path';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { createAgentCoreMcpServer } from '../src/mcp/server.js';
+import { attachControllerContract } from './controller-contract-fixture.js';
+import { createToolInvocationIdentity } from '../src/tracker/tool-invocation.js';
 const use=()=>toolCapabilityUse('code_graph',{},true,'tool:observed-call')!;
+const ownerId = 'capability-fixture-owner';
+const binding = (f: Awaited<ReturnType<typeof fixture>>) => ({ ownerId, workspaceIdentityKey: f.memory.registeredWorkspaceIdentity('agent-core').key });
+async function capture(e: ExternalControllerLearningService, sessionId: string) {
+ const identity = createToolInvocationIdentity();
+ const context = await e.captureToolInvocationContext({ ...identity, invocationId: identity.id, sessionId, ownerId });
+ expect(context.binding).toBe('bound'); return context;
+}
 describe('Native and external usage delivery',()=>{
  it('persists Native usage/inclusion without claiming delivery; repeated render is idempotent',async()=>{
   const f=await fixture(); const r:any=await AgentRuntimeService.initialize(f.root,f.learning,undefined,f.memory);
@@ -27,23 +36,23 @@ describe('Native and external usage delivery',()=>{
   const f=await fixture();const input={stateDir:path.join(f.root,'runtime/learning'),memory:f.memory,learning:f.learning,skills:f.skills};
   const e:any=await ExternalControllerLearningService.initialize(input);
   expect(e.recordCapabilityUse).toBeTypeOf('function');
-  await e.startEpisode('session',{workspace:'agent-core',taskKey:'first'});
-  expect(await e.takeCapabilityUsageNotice('session')).toBe('');
-  await e.recordCapabilityUse('session',use());
-  expect(await e.takeCapabilityUsageNotice('session')).toContain('CAPABILITY USAGE NOTICE');
+  await e.startEpisode('session',{workspace:'agent-core',taskKey:'first'},binding(f));
+  expect(await e.takeCapabilityUsageNotice('session',await capture(e,'session'))).toBe('');
+  await e.recordCapabilityUse('session',use(),await capture(e,'session'));
+  expect(await e.takeCapabilityUsageNotice('session',await capture(e,'session'))).toContain('CAPABILITY USAGE NOTICE');
   const again:any=await ExternalControllerLearningService.initialize(input);
-  expect(await again.takeCapabilityUsageNotice('session')).toBe('');
-  await again.startEpisode('session',{workspace:'agent-core',taskKey:'second'});
-  await again.recordCapabilityUse('session',use());
-  expect(await again.takeCapabilityUsageNotice('session')).toContain('Code Intelligence');
+  expect(await again.takeCapabilityUsageNotice('session',await capture(again,'session'))).toBe('');
+  await again.startEpisode('session',{workspace:'agent-core',taskKey:'second'},binding(f));
+  await again.recordCapabilityUse('session',use(),await capture(again,'session'));
+  expect(await again.takeCapabilityUsageNotice('session',await capture(again,'session'))).toContain('Code Intelligence');
  });
  it('observes real MCP dispatch, respects grants, and exposes a scoped live registry',async()=>{
   const f=await fixture(); const e:any=await ExternalControllerLearningService.initialize({stateDir:path.join(f.root,'runtime/learning'),memory:f.memory,learning:f.learning,skills:f.skills});
-  await e.startEpisode('x',{workspace:'agent-core',taskKey:'fixture'});
-  const server=createAgentCoreMcpServer({toolGrant:{version:1,allowedTools:['code_graph','get_config']}},{externalControllerLearning:e,controllerSessionId:'x',skillsService:f.skills});
+  await e.startEpisode('x',{workspace:'agent-core',taskKey:'fixture'},binding(f));
+  const server=createAgentCoreMcpServer({id:ownerId,toolGrant:{version:1,allowedTools:['code_graph','get_config']}},{externalControllerLearning:e,controllerSessionId:'x',skillsService:f.skills});
   server.registerTool('code_graph',{inputSchema:{}},async()=>({content:[{type:'text',text:'graph observation'}]}));
   const client=new Client({name:'capability-test',version:'1'});const [ct,st]=InMemoryTransport.createLinkedPair();
-  try{await server.connect(st);await client.connect(ct);
+  try{await server.connect(st);await client.connect(ct);await attachControllerContract(client);
    const c:any=await e.context('x',{workspace:'agent-core',query:'dependencies'});
    expect(c.synthesis.capabilityExposure?.tools.count).toBe(2);
    const silent=await client.callTool({name:'get_config',arguments:{}});
@@ -63,24 +72,24 @@ it('external inspect delivers an unranked Skill; only an applied receipt emits a
  await writeFile(path.join(dir,'SKILL.md'),'---\nname: spectral-helper\ndescription: Spectral reasoning recipe\nallowed-tools: ["get_config"]\n---\n\n# Recipe\nInspect configuration.\n');
  const skill=await f.skills.import(dir);
  const e=await ExternalControllerLearningService.initialize({stateDir:path.join(f.root,'runtime/learning'),memory:f.memory,learning:f.learning,skills:f.skills});
- const episode=await e.startEpisode('late',{workspace:'agent-core',taskKey:'unranked'});
- const server=createAgentCoreMcpServer(undefined,{externalControllerLearning:e,controllerSessionId:'late',skillsService:f.skills});
+ const episode=await e.startEpisode('late',{workspace:'agent-core',taskKey:'unranked'},binding(f));
+ const server=createAgentCoreMcpServer({id:ownerId},{externalControllerLearning:e,controllerSessionId:'late',skillsService:f.skills});
  const client=new Client({name:'late-discovery-test',version:'1'});const [ct,st]=InMemoryTransport.createLinkedPair();
- try{await server.connect(st);await client.connect(ct);
+ try{await server.connect(st);await client.connect(ct);await attachControllerContract(client);
   await e.context('late',{workspace:'agent-core',query:'Explain anomaly'});
   const inspected=await client.callTool({name:'skills',arguments:{action:'inspect',name:skill.name}});
   expect(JSON.stringify(inspected)).not.toContain('CAPABILITY USAGE NOTICE');
   expect((await e.getEpisode('late'))?.deliveredArtifacts?.['skill:'+skill.name]).toBe(skill.digest);
-  const receipt=await e.artifactReceipt('late',{taskId:episode.id,kind:'skill',artifactId:skill.name,contentDigest:skill.digest,applicability:'applied',result:'unavailable',reasonCode:'inspected-recipe'});
+  const receipt=await e.artifactReceipt('late',{taskId:episode.id,kind:'skill',artifactId:skill.name,contentDigest:skill.digest,applicability:'applied',result:'unavailable',reasonCode:'inspected-recipe'},await capture(e,'late'));
   expect(receipt.trustChanged).toBe(false);
-  expect(await (e as any).takeCapabilityUsageNotice('late')).toContain('Skill spectral-helper');
+  expect(await (e as any).takeCapabilityUsageNotice('late',await capture(e,'late'))).toContain('Skill spectral-helper');
  }finally{await client.close();await server.close();}
 });
 
 it('binds an external host observation to its persisted episode event rather than a synthetic tool proof',async()=>{
  const f=await fixture();const e:any=await ExternalControllerLearningService.initialize({stateDir:path.join(f.root,'runtime/learning'),memory:f.memory,learning:f.learning,skills:f.skills});
- await e.startEpisode('observed',{workspace:'agent-core',taskKey:'observed'});
- await e.recordCapabilityUse('observed',use());const episode=await e.getEpisode('observed');
+ await e.startEpisode('observed',{workspace:'agent-core',taskKey:'observed'},binding(f));
+ await e.recordCapabilityUse('observed',use(),await capture(e,'observed'));const episode=await e.getEpisode('observed');
  const recorded=episode.capabilityUses[0];
  expect(recorded.evidenceRef).toContain('source:external-episode:'+episode.id+'#');
  const id=recorded.evidenceRef.split('#')[1];expect(episode.events.some((event:any)=>event.id===id)).toBe(true);

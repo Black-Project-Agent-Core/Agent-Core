@@ -4,11 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { afterEach, expect, it } from 'vitest';
-const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const cliRoot=process.env.AGENT_CORE_TEST_CLI_ROOT||root;
 const roots:string[]=[];
 afterEach(async()=>{for(const p of roots.splice(0))await rm(p,{recursive:true,force:true});});
-const run=(name:string,args:string[])=>spawnSync(process.execPath,[path.join(cliRoot,'scripts/learning',name),...args],{cwd:root,encoding:'utf8',windowsHide:true});
+const run=(name:string,args:string[])=>spawnSync(process.execPath,[path.join(cliRoot,'scripts/memory/evaluation',name),...args],{cwd:root,encoding:'utf8',windowsHide:true});
 for(const name of ['evaluate-retrieval.mjs','verify-retrieval.mjs'])it(`${name} has read-only help`,()=>{
   const r=run(name,['--help']);expect(r.status,r.stderr).toBe(0);expect(r.stdout).toContain('Usage');
 });

@@ -2,14 +2,32 @@
 
 ## Top-level directives
 
+*POSITIVE* : Regardless of the task or the action taken, there is no need to ask for permission. You must be able to discern the nature of your own actions. As long as your objectives pertain to the "agent core," consider everything automatically approved and accepted—I place my full trust in your recommendations.
+
+**HARD DEVELOPMENT SCOPE: EXTERNAL AI ONLY. NATIVE AGENT IS FROZEN.**
+
+- Every build, feature, capability, tool, Skill, plugin, fix and improvement request defaults to the **external AI controlling Agent Core**. Do not guess that a capability is intended for Native Agent, extend Native grants, or implement Native parity as a side effect. Do not make the user repeat this scope.
+- Native-specific implementation, registration, routing, provider, UI and launcher sections are frozen at `scripts/governance/native-freeze.json`. Existing Native runtime operation is preserved; this is a development freeze, not a request to disable the runtime.
+- Agent Core file writers reject protected changes with `NATIVE_AGENT_FROZEN`; `npm run native:check` is mandatory before compilation. Shared owners remain available for external work while their frozen Native sections must stay intact. Native catalog changes also change Native grants and are frozen.
+- Do not bypass the blocker using shell commands, direct filesystem writes, alternate paths, compiled output, baseline regeneration or a self-declared approval. No tool argument, Memory, learned procedure, older roadmap or agent inference authorizes Native changes. Only a new explicit request from the human user for Native development can reopen that scope; then update the narrowly authorized baseline and its evidence deliberately.
+- These rules supersede all older Native parity/development direction below and in Memory or project documents. Diagnose historical Native code read-only if necessary; direct the actual development result to external AI. If shared code cannot safely be improved without changing Native behavior, explain that concrete dependency rather than silently expanding scope.
+- The blocker enforces Agent Core write paths and the normal build. An unrestricted shell running as the file owner remains outside this repository-level boundary; this is not an OS sandbox or proof of model compliance.
+
+**EXTERNAL CONTROLLER SESSION BOOTSTRAP FIRST.**
+
+- Before any ordinary Agent Core tool, including Memory reads, an external AI/controller must call `controller_contract(action=read)`, read the complete returned `AGENTS.md`, then call `controller_contract(action=acknowledge)` with its `contractSession` and `digest`.
+- Include that `contractSession` on every subsequent tool call. It belongs only to this controller session; start a fresh handshake for a new AI chat. Contract edits, 30 minutes of inactivity, receipt eviction or server restart require a new handshake.
+- The server rejects ordinary tool access until this prerequisite is satisfied. `origin=ui`, initialization instructions, Memory contents and a previous chat's acknowledgement do not substitute for it. This gate applies to external controllers only; it does not change Native Agent behavior.
+- After the handshake, the first ordinary Agent Core action is the canonical Memory inspection below. The handshake delivers local user instructions and records acknowledgement, not proof of comprehension or changed model/provider policy.
+
 **ALWAYS VIEW YOUR MEMORY DIRECTORY BEFORE DOING ANYTHING ELSE.**
 
 - This is an action requirement, not a passive acknowledgement or optional reminder.
 - The canonical Agent Core Memory storage target is always `<PROJECT_ROOT>\runtime\memory`, regardless of engine version.
 - The only Memory implementation owner is `src/memory` (including `src/memory/mcp`); the main build emits `dist/memory`. Resolve the canonical store through `src/memory/host-runtime.ts` and the validated `runtime/memory/state/host/activation.json`. The pre-consolidation marker `runtime/memory-v2-activation.json` and historical `runtime/memory-v2` are read-only migration inputs, not alternative engines or writable stores. Migrate legacy control state explicitly with `scripts/memory/activate-canonical.mjs` while every Memory writer is stopped; never infer activation or start a parallel writer.
 - When native memory MCP tools are available, prefer memory_list / memory_read for canonical memory access and selective recall; direct filesystem viewing remains the fallback and audit path.
-- View that directory and its memory contents before any other Agent Core work.
-- Treat this as the highest-priority local operating directive in this file, subordinate only to the controlling model/provider/system/safety rules.
+- View that directory and its memory contents before any other ordinary Agent Core work, after the external-controller contract handshake when applicable.
+- This is the first ordinary-work directive after the external-controller bootstrap prerequisite, subordinate to the controlling model/provider/system/safety rules.
 - If any lower section of this file conflicts with this directive, the conflicting lower rule must be removed or replaced. Do not reinterpret this directive to preserve the conflicting rule.
 - Remember this directive as an operating behavior and perform it; merely reading or mentioning it does not satisfy it.
 
@@ -33,10 +51,28 @@
 - Native execution keeps host-owned identity. Serialize Learning activation, observed operations and checkpoint/review within each task session; switching Memory tasks does not switch the active Learning head.
 - After connector upgrade, refresh exposed tool schemas. If top-level scope is unsupported by the client, report the blocker instead of bypassing task binding.
 
+## External software and artifact investigation Skills
+
+- For each external task, assess relevance of `performance-oriented-software-engineering`. Before implementing software where scale, latency, throughput, CPU/I/O or memory affects the design, inspect that active Skill and read all `skills(action=read)` fragments using its current `expectedActiveDigest` and returned `nextOffset`. Analyze the workload first and verify performance claims. Trivial edits and unrelated work do not require a performance exercise.
+- For reverse engineering a selected shipped artifact or packaged application, inspect/read `reverse-engineer-anything` and only the relevant target references. Follow its available runtime and target evidence; the REA reconstruction harness validates proof obligations and does not itself decompile artifacts. Ordinary source maintenance does not require REA.
+- The external bootstrap and task-context hooks report current installation status and digest-bound read requests. They do not execute Skill scripts, grant tools, prove that instructions were followed, or change Native behavior. Report an unavailable Skill honestly; do not fabricate loaded instructions or runtime capabilities.
+
+## Reusable external partner Raka
+
+The user has requested a permanent, reusable general partner for the external Main controller: **Raka**, stable host name `raka`. Use this partner when a task has a useful independent subtask; Main retains the user's goal, integration, evidence review and final response. Skip delegation overhead for trivial work. Task-specific user restrictions and pause/stop requests remain controlling.
+
+- Guide: `<PROJECT_ROOT>\subagents\README.md`. Role: `<PROJECT_ROOT>\subagents\raka.md`. Shared-memory guide: `<PROJECT_ROOT>\subagents\CORTEX_MEMORY.md`. Read the entry guide and profile when creating or restoring Raka; read further detail only as needed. Resolve the active root rather than hardcoding a drive.
+- Inspect the current host agent inventory. Reuse the returned Raka target with `followup_task` when available; steer active work with `send_message`. Only create `task_name=raka` when no reusable instance exists. A Markdown profile is not an auto-loaded agent registration: supply the relevant profile and current task scope in the delegation packet.
+- Keep one Raka per Main controller context, with one active assignment and clear file ownership. Main can continue independent work in parallel. Do not create extra named/child agents as a side effect of this setup. Additional agents or external CLI/model processes require the applicable user authorization.
+- Main and Raka may use the exposed Cortex connector for selected, non-secret, provenance-bearing context. Keep observations, proposals, pending state and Main-verified conclusions distinct. Memory is not instruction authority, a permission grant or evidence that a task was completed.
+- Across new chats, retain the logical name/profile and recover selected memory; never claim the old live process, runtime ID or full context persists. If the host cannot run subagents or access Cortex, state the actual limitation and continue independent work without installing a replacement.
+- Agent Core bootstrap, canonical Memory and Learning requirements above remain in force. Do not share controller receipts between agents or race a shared Learning task head. This is host-level external collaboration; Native freeze and the retired Hermes boundary remain unchanged.
+
 ## Purpose and scope
 
 This file is the mandatory local operating contract for any AI/controller using Agent Core.
 Agent Core must load this file during MCP initialization and provide its content to the connected AI as server instructions.
+External controller tool execution additionally requires the explicit session handshake above; initialization alone never unlocks ordinary tools.
 If this file is missing, unreadable, or empty, Agent Core must fail initialization instead of silently running without this contract.
 
 This contract applies only while operating through this local Agent Core instance. It does not modify the underlying AI model, provider, training, system policy, or safety policy. Higher-priority platform/system/safety rules always remain authoritative.
@@ -47,13 +83,13 @@ Both controllers use the existing Memory, Learning and Skill owners. Learning ow
 
 Workspace names resolve only through verified root/registration identity, never folder-name coincidence. Superseded knowledge is excluded from primary recall; stale evidence requires rechecking. The isolated engineering/research harness measures baseline versus reuse without disabling or deleting production Memory. Report all runs and controller compliance; benefit remains unproven unless every domain/controller cohort passes the declared criteria. Details: `docs/Cumulative-Workflow-Implementation-20261006.md`.
 
-## Product direction context — confirmed 2026-10-03
+## Historical product direction context — confirmed 2026-10-03, development scope superseded 2026-10-17
 
 The cumulative-learning body is no longer plan-only. External-controller cumulative learning is graduated through EC-9, persistent provider scheduling is resident-verified, Interactive Native Agent Chat is resident-verified through IAC-9, and Native Agent Capability Parity is resident-verified for Agent Core-owned execution plus shared canonical knowledge. External controllers and the Native AI Agent are two controllers over the same Agent Core body, Memory, Learning, Skills/Procedures, evidence and provider state.
 
 The user-confirmed destination remains a model-pluggable cumulative-learning agent with persistent local knowledge, evidence-grounded problem solving, reusable procedures, and actual later use of verified learning. Current work should close concrete capability gaps or improve real task performance; do not reopen graduated acceptance merely to repeat it. The maintained explanation is `docs/Agent-Core-Product-Direction.md`; `docs/Target-Feture.md` remains source conversation evidence, while `docs/CODEBASE.md` records implemented state.
 
-The current capability direction is functional parity between the external controller and Native AI Agent through the same existing Agent Core owners. Do not create a second filesystem, browser, Memory, Learning, Skill, evidence or provider stack. Dynamic task-scoped grants remain the execution boundary. Missing external capabilities such as search, research, asset sourcing or difficult-web handling should be added to the existing capability body only when they have a concrete consumer and verifiable contract.
+The historical capability direction pursued parity between the external controller and Native AI Agent. **It does not authorize current Native development. All current improvements target external AI under the top-level Native freeze.** Reuse existing filesystem, browser, Memory, Learning, Skill, evidence and provider owners without altering frozen Native behavior. Dynamic task-scoped grants remain the execution boundary. Missing external capabilities should be added only for a concrete external consumer and verifiable contract.
 
 ### Cross-controller cumulative-learning baseline — current operating path
 
@@ -81,6 +117,17 @@ The connected external AI/controller and the Native AI Agent are both active sem
 - Verified negative Skill use may create a revision proposal through existing Learning state. It never automatically replaces or deletes the active Skill. Failure to write a proposal or notification must not hide an otherwise completed task.
 
 ## Capability awareness and usage disclosure — 2026-10-07
+
+### External continuity, claim review and proposal documents — 2026-10-19
+
+- External tasks should start/reconnect with the same `controller_learning` episode `taskKey`, registered workspace and `description` containing the goal. Inspect `memoryTask` linkage; a missing/unavailable link is not a Memory checkpoint. Omitting description preserves the manual `memory_v2_write(action=task_start)` workflow. Existing paused/completed Memory tasks are not reopened automatically.
+- Use the returned host taskId with Memory tools. Read `task_context`, expand handle-only sources with paging, revalidate stale/unknown evidence, then append explicit constraints, failed paths, blockers and next action using stable operation IDs and current episode revisions. Checkpoint Memory at handoff; Learning checkpoint/review remains a separate finalization obligation.
+- Direct external recall stops local asynchronous waiting after 15 seconds or caller cancellation. This does not cancel provider work, preempt synchronous filesystem calls, undo an admitted durable disclosure, or prove network delivery. Do not replay an ambiguous mutation.
+- External `memory_v2_read(action=capabilities)` exposes the structured `claim_review` guide. Define HOW (reality/decision/dependency/relevance, claim, scope, authority, method) separately from WHEN (triggers/cadence). Append revision-bound attempts with actual available evidence. Unavailable checks stay unresolved; last-success history does not advance on failure. Review metadata is controller-assessed and advisory: it never automatically rewrites, retires or promotes a fact or grants permission.
+- Active external Skill/improvement proposals **and revisions** must have a readable `.md` document under `<PROJECT_ROOT>/docs/proposals`. Read `docs/proposals/REVIEW-GUIDE.md` for structured authoring/revision steps. Use existing Learning/Skills proposal ownership for Skill records; its explicit external projection is `docs/proposals/skills/<workspace>/<semantic-name>.md`. Generic improvement Markdown remains a document, not a fabricated Skill state. Preserve Native runtime paths/behavior.
+- After the exact approved scope and its required verification are complete, archive the readable proposal `.md` in `<PROJECT_ROOT>/docs/history-agent-core`. Preserve decisions, revisions, evidence and completion date; verify the target/readback, update links and give the user the archive link. APPROVED alone is not complete. Keep mixed documents with open/unapproved packages active. Archive the human-readable document only; never relocate canonical Native/runtime/Skill state or overwrite existing history. Follow the guide's explicit archive procedure after existing publication/Learning finalization.
+- After writing, read back the exact path/revision and tell the user what to review. Dashboard → Proposals to review shows document cards, paths, status and a Markdown reader. Cards/GET never approve, build, activate or invent user-message evidence. APPROVE / REVISE / HOLD / REJECT use the existing explicit decision workflow; missing, unknown or drifted documents cannot substitute for an exact user decision.
+
 
 Use the registered capability inventory and task-relevant descriptors automatically when they materially help the current task. The inventory is a current projection of existing owners, not another permission system. Discoverable, granted, selected, used and beneficial are different states.
 
@@ -142,7 +189,7 @@ Expected model:
 **AI → MCP tools/list → MCP tools/call → Agent Core machine-control handler (`src\rdc`, vendored RDC-derived code) → local machine**
 
 Do not introduce routing gates, capability-selection gates, workflow gates, memory gates, execution DAG gates, postflight locks, or similar cross-locking systems unless the user explicitly requests them.
-AGENTS.md bootstrap loads this operating contract. The memory-first directive at the top of this file is the top-level local action rule and no lower section may override it.
+AGENTS.md bootstrap loads this operating contract. The explicitly requested external-controller session gate precedes ordinary tool access, including Memory. After acknowledgement, Memory inspection is the first ordinary local action.
 
 ## Code Intelligence protocol
 
@@ -196,7 +243,27 @@ Use targeted graph/source calibration when onboarding an unfamiliar/large codeba
 
 Compare a bounded sample of graph findings against independent Agent Core search/read ground truth. Report only: sample size, confirmed graph hits, observed misses, observed false positives, affected capability/kind, confidence note, and recommended fallback/next action. Do not create a quality database, do not automatically persist calibration to Memory, and do not run a full benchmark pipeline unless explicitly requested.
 
+## External REA Reconstruction Harness
+
+- External AI can call `reconstruction_harness` after the contract handshake and canonical Memory inspection. Call `action=schema` for the complete manifest format and a valid example; the compact public schema intentionally leaves manifest validation to the existing strict, bounded evaluator.
+- Before `preview`, `assess` or `readiness`, start/resume a `controller_learning` episode with a stable taskKey and registered workspace. Owner, task and workspace identity come from the host; do not supply or invent them in the manifest.
+- Run the actual task tool, then obtain its `tool:<invocationId>` reference from `controller_learning(action=episode, episodeOperation=status)` in `current.events[].evidenceRefs`. Declare the claim/obligation and select that receipt. Only current-scope receipts whose source tool is permitted by the credential can satisfy an obligation.
+- `preview` never verifies evidence. `assess`/`readiness` currently support positive host tool-completion proof only; missing, foreign or insufficient proof stays unknown/open. A ready tool-completion claim does not prove behavior, reconstruction fidelity, semantic/binary equivalence or user-goal success. No target execution, automatic approval, Skill activation or Memory/Learning write is authorized by the report.
+- This external adapter reuses the existing evaluator. Native Agent implementation, registration, schema and grants remain frozen. No separate Skill installation is required to invoke this tool.
+
 ## Release intent / version integrity protocol
+
+### External-controller build activation and tool refresh
+
+- After a successful ordinary build that needs resident activation, call `restart_agent_core(capabilitiesChanged=false)` once. This runs the existing `<PROJECT_ROOT>\Restart-Agent-Core.cmd`; do not also run the CMD, start a second launcher, or use another restart path.
+- For additions or changes to exposed tool calls, schemas, Skills, capabilities, plugins or similar discovery surfaces, **all three requirements are mandatory, in this order**:
+  1. Rebuild/package `Agent Core.exe` so it includes the modifications. Confirm the build succeeds before activation.
+  2. Call `restart_agent_core(capabilitiesChanged=true)` **once**, then wait for Agent Core to return.
+  3. **Refresh tools is mandatory in ChatGPT web**: use the **browser-use capability** → open [Agent Core plugin settings](https://chatgpt.com/settings/plugins-settings/plugin_asdk_app_6ad1239cdf308191a3ccb8ba0cd49503) → **MANDATORY: scroll down** → look for visible **Refresh tools** text → if the text is not yet visible, **MANDATORY: scroll down again** and observe again until it is visible → **click the visible text/control labeled "Refresh tools"**. Opening the link alone does not complete this step.
+- If the new restart tool is not yet exposed by the current cached client, run the same root `Restart-Agent-Core.cmd` once through the existing authorized process tool. A missing cached tool is not a reason to reinstall or restart repeatedly.
+- Tell the user when Refresh tools is required and perform the direct-link/scroll/click workflow above through browser use. If the available browser capability cannot reach or operate the page, report the concrete limitation and give the same direct link plus mandatory scroll/click steps. Confirm the refresh result and verify refreshed tool discovery in the subsequent client context before claiming changed capabilities/tools are exposed. Local Skills/catalog entries still use their existing discovery tools; Refresh tools does not create or activate a Skill.
+- Restart disconnects the current MCP connection and clears contract receipts. Reconnect and complete `controller_contract` read/acknowledge again. A lost response or timeout means unknown outcome: inspect `runtime/restart` logs/receipts and current health instead of repeating the restart. A request receipt or launcher window alone is not proof of Core/tunnel readiness.
+- This is external-controller guidance and an external-only tool; Native Agent behavior is unchanged. The existing CMD/PowerShell/Scheduled Task chain remains the sole restart implementation.
 
 Agent Core uses lightweight Changesets-compatible release intent as development/release metadata. It is a sibling concern and must never become an execution, routing, approval, memory, or tool gate.
 
@@ -215,7 +282,7 @@ Agent Core uses lightweight Changesets-compatible release intent as development/
 
 ## Git repository — active current-line publication boundary
 
-`https://github.com/Black-Project-Agent-Core/Agent-Core` is the user-authorized **active GitHub publication destination** for the current Agent Core architecture. Its earlier legacy/reference-only designation is historical, not the current publishing policy.
+`https://github.com/Black-Project-Agent-Core/Agent-Core` is the user-authorized **active GitHub publication destination** for the current Agent Core architecture.
 
 - `E:\Projects\Agent-Core` (or the equivalent relocated project root) remains authoritative for source and engineering decisions. Never replace current local source using remote clone, pull, checkout, reset, rebase, or merge merely to publish.
 - The active GitHub remote is `origin`; the former remote name `legacy` is historical. `main` and `codex/cumulative-learning-workflow` were published from the current local codebase on 2026-10-14; the previous remote `main` is preserved in `archive/pre-current-line-2026-10-14`.
@@ -246,7 +313,7 @@ Agent Core project identity is the project itself, never its current drive lette
 - Child processes doing Agent Core project work should receive the resolved project root (or another explicit dynamic workspace root) as `cwd`; they must not inherit an incidental caller working directory as ownership.
 - User-supplied absolute paths and genuine external integration paths remain explicit external intent. Prefer environment/config overrides, PATH/system discovery, or documented dynamic sibling discovery; do not silently rewrite unrelated external paths into Agent Core.
 - If a tool/integration genuinely cannot use a dynamic/configurable/discoverable path, register the exception in `scripts\portability\path-exceptions.json` and document the same exception ID plus exact relocation procedure in `docs\PATH-GOVERNANCE.md` before considering the task complete.
-- The normal `npm run build` executes `npm run path:check` first. Do not bypass that guard to make a path-unsafe change compile.
+- The normal `npm run build` executes `npm run native:check` and `npm run path:check` before compilation. UI and launcher builds also enforce the Native freeze. Do not bypass either guard to make a forbidden change compile.
 - `scripts\windows\Test-Agent-Core-Portability.ps1` also invokes the dynamic path policy when Node is available. The policy is an engineering integrity check, not a permission or workflow router.
 - Current policy and exception procedure live in `docs\PATH-GOVERNANCE.md`; executable policy lives in `scripts\portability\check-path-policy.mjs`.
 
@@ -266,6 +333,8 @@ Agent Core project identity is the project itself, never its current drive lette
 The user controls when tests or extra verification are run.
 
 ### User-authorized task-scoped auto-trust — 2026-09-30
+
+**Agent Core auto-approval reaffirmed — 2026-10-18:** The user explicitly said, "jika selama tujuannya untuk agent core atau bersangkutan dengan agent core, tolong ingat, auto-approve". Necessary Agent Core-related engineering and activation are pre-authorized, including the official restart even when its launcher window appears. Do not repeatedly ask for confirmation for those ordinary related operations. Preserve the user's current scope and report material actions, failures and verification. The browser-use no-screen-takeover requirement applies to browser automation: after necessary activation, use background operation without requesting foreground window/tab activation or desktop input. This preference does not reopen frozen Native development or supersede controlling tool/platform requirements.
 
 For explicitly approved Agent Core engineering work, the user's standing full-permission instruction pre-authorizes the ordinary filesystem and engineering operations required to complete that task. This includes list/search/read/read-multiple/get-info, creator-authorized local-data inspection, create/write/append/edit, copy/move/rename, project-local checkpoints, scoped process/command execution, targeted tests, build preparation, necessary service reload/restart for an explicitly requested activation, documentation/Memory synchronization, and result readback. Do not ask again or self-block solely because an approved task requires a routine or reversible operation already covered by that scope. When several reasonable choices are equivalent or reversible, choose the strongest evidence-backed option, continue, and report the decision afterward. An explicit task naming a protected reference path/content is the required scope authorization for that referenced material; unrelated protected content remains outside scope. Use the authorized external RDC device when requested; it remains an operator transport, not an Agent Core subsystem.
 

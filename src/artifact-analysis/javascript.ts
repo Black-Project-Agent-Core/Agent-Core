@@ -3,12 +3,19 @@ import type { ArtifactFinding } from './contracts.js';
 
 const maxText = (s: string) => s.slice(0, 220);
 export function inspectJavaScript(relative: string, bytes: Uint8Array): ArtifactFinding[] {
+  return inspectJavaScriptWithCoverage(relative, bytes).findings;
+}
+/** Counts only supported static declaration findings, never program behavior. */
+export function inspectJavaScriptWithCoverage(relative: string, bytes: Uint8Array): {
+  findings: ArtifactFinding[]; droppedFindings: number;
+} {
   const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   const ext = relative.toLowerCase().split('.').pop();
   const kind = ext === 'tsx' ? ts.ScriptKind.TSX : ['ts','mts','cts'].includes(ext ?? '') ? ts.ScriptKind.TS
     : ext === 'jsx' ? ts.ScriptKind.JSX : ts.ScriptKind.JS;
   const script = ts.createSourceFile(relative, text, ts.ScriptTarget.Latest, true, kind);
   const result: ArtifactFinding[] = [];
+  let droppedFindings = 0;
   // Only direct runtime Electron imports or immutable require bindings establish origin.
   // Ambiguous aliasing, local shadowing and reassignment produce no Electron claim.
   const electronBindings = new Set<string>();
@@ -16,7 +23,7 @@ export function inspectJavaScript(relative: string, bytes: Uint8Array): Artifact
   const electronNamespaces = new Set<string>();
   const shadowed = new Set<string>();
   const add = (node: ts.Node, kind: string, summary: string, status: ArtifactFinding['classification'] = 'observed') => {
-    if (result.length >= 256) return;
+    if (result.length >= 256) { droppedFindings++; return; }
     const pos = script.getLineAndCharacterOfPosition(node.getStart(script));
     result.push({ id: 'j' + result.length, kind, classification: status,
       summary: maxText(summary), source: relative, line: pos.line + 1, offset: node.getStart(script) });
@@ -71,7 +78,6 @@ export function inspectJavaScript(relative: string, bytes: Uint8Array): Artifact
   scanShadows(script);
   const trusted = (name: string, names: Set<string>) => names.has(name) && !shadowed.has(name);
   function visit(node: ts.Node) {
-    if (result.length >= 256) return;
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier)
       add(node, 'module-reference', (ts.isImportDeclaration(node) ? 'import ' : 'export-from ')
         + (literal(node.moduleSpecifier) ?? 'dynamic/unknown'));
@@ -112,11 +118,11 @@ export function inspectJavaScript(relative: string, bytes: Uint8Array): Artifact
   visit(script);
   const parseDiagnostics = (script as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics ?? [];
   for (const error of parseDiagnostics) {
-    if (result.length >= 256) break;
+    if (result.length >= 256) { droppedFindings++; continue; }
     const pos = script.getLineAndCharacterOfPosition(error.start ?? 0);
     result.push({ id: 'j' + result.length, kind: 'syntax-diagnostic', classification: 'observed',
       summary: maxText(ts.flattenDiagnosticMessageText(error.messageText, ' ')),
       source: relative, line: pos.line + 1, offset: error.start ?? 0 });
   }
-  return result;
+  return { findings: result, droppedFindings };
 }

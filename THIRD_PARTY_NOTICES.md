@@ -543,3 +543,13 @@ The selected upstream REA-authored source is licensed under the **MIT License**,
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 This attribution does **not** license third-party target artifacts. The provenance concerns only the selected REA-authored mechanisms; vendor/dependency licenses remain independent.
+
+
+## Open Browser Use internal browser transport — 2026-10-18
+
+`src/rdc/browser-control/open-browser-use-rpc.ts` adapts framing and pending-request correlation from `iFurySt/open-browser-use`, revision `b136cac71a3c497b5696aefd871dd15cba7d7559` (`packages/open-browser-use-js/src/index.ts` and `internal/wire/frame.go`). Upstream: https://github.com/iFurySt/open-browser-use. MIT License, Copyright (c) 2026 Leo; the complete permission and warranty notice is retained in `src/rdc/browser-control/open-browser-use-LICENSE.txt` and must accompany distribution.
+
+Agent Core adds bounded framing, its own session/turn identity, filtered tab events, unknown-outcome handling and owned helper lifecycle. The stdlib Go IPC helper is independently authored. The optional managed lifecycle also adapts `internal/host/relay.go` into `src/launcher/BrowserUseNativeHost.cs`, and bundles the selected `apps/chrome-extension` assets under `extensions/agent-core-open-browser-use` with their full MIT notice. That dedicated-profile copy changes its native host name and retains the upstream public extension key. The donor CLI, SDK package, MCP server and setup/registry writer are not bundled. Existing BrowserControlService owns the capability and public action evidence.
+# Bundled REA Skill instructions
+
+`bundled-skills/reverse-engineer-anything` retains the MIT license in its `LICENSE` file and operational references matching `rea-agents@6.5.0` (upstream Skill revision 42). The adapted launcher reuses an existing isolated runtime; the distribution includes a pinned dependency manifest/lockfile, not a decompiler or native provider. Runtime dependencies retain their own licenses when restored. The performance Skill is the user's supplied artifact; no additional third-party license is asserted for it.

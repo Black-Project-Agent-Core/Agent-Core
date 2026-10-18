@@ -13,6 +13,7 @@ import { configManager } from '../src/rdc/config-manager.js';
 import { toolHistory } from '../src/rdc/utils/toolHistory.js';
 import { usageTracker } from '../src/rdc/utils/usageTracker.js';
 import { activityTracker } from '../src/tracker/activity-tracker.js';
+import { acknowledgeControllerContract } from './controller-contract-fixture.js';
 
 const roots: string[] = [];
 const closers: Array<() => Promise<void>> = [];
@@ -46,7 +47,7 @@ async function fixture(dropCredentialId = false) {
   closers.push(async () => { http.closeAllConnections(); await new Promise<void>(resolve => http.close(() => resolve())); });
   const address = http.address();
   if (!address || typeof address === 'string') throw new Error('LISTENER_NOT_BOUND');
-  const query = async (method: string, params: Record<string, unknown>, token = owner.key, session: string | null = 'controller-a', header = 'x-agent-core-session-id') => {
+  const rawQuery = async (method: string, params: Record<string, unknown>, token = owner.key, session: string | null = 'controller-a', header = 'x-agent-core-session-id') => {
     const response = await fetch(`http://127.0.0.1:${address.port}/mcp`, {
       method: 'POST', headers: {
         'content-type': 'application/json', accept: 'application/json,text/event-stream', authorization: `Bearer ${token}`,
@@ -57,6 +58,14 @@ async function fixture(dropCredentialId = false) {
     const body = await response.text();
     const line = body.split('\n').find(value => value.startsWith('data:'));
     return { status: response.status, ...JSON.parse(line ? line.slice(5) : body) };
+  };
+  const query = async (method: string, params: Record<string, unknown>, token = owner.key, session: string | null = 'controller-a', header = 'x-agent-core-session-id') => {
+    if (method !== 'tools/call') return rawQuery(method, params, token, session, header);
+    const read = await rawQuery('tools/call', { name: 'controller_contract', arguments: { action: 'read' } }, token, session, header);
+    if (read.status !== 200) return read;
+    const contractSession = await acknowledgeControllerContract(async (name, args) =>
+      args.action === 'read' ? read.result : (await rawQuery('tools/call', { name, arguments: args }, token, session, header)).result);
+    return rawQuery(method, { ...params, arguments: { ...(params.arguments as object), contractSession } }, token, session, header);
   };
   const inspect = (args: object, token = owner.key, session: string | null = 'controller-a', header = 'x-agent-core-session-id') =>
     query('tools/call', { name: 'image_inspect', arguments: { path: file, ...args } }, token, session, header);
@@ -162,7 +171,7 @@ describe('image_inspect authenticated HTTP session ownership', () => {
     record.toolGrant.allowedTools = ['read_file'];
     await writeFile(keyStore.filePath, JSON.stringify(state));
     const listed = await query('tools/list', {});
-    expect(listed.result.tools.map((tool: any) => tool.name)).toEqual(['read_file']);
+    expect(listed.result.tools.map((tool: any) => tool.name)).toEqual(['controller_contract', 'read_file']);
     const denied = await inspect(crop(view.viewId));
     expect(JSON.stringify(denied)).toMatch(/disabled|GRANT_DENIED/);
     expect(denied.result?.content?.some((part: any) => part.type === 'image')).not.toBe(true);

@@ -5,6 +5,7 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (BrowserUseNativeHost.TryRunHelperMode(args)) return;
         if (NativeDumpDiagnostics.TryRunHelperMode(args)) return;
 
         // Own the single-instance boundary before any WinForms initialization can hang.

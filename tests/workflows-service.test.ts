@@ -8,6 +8,17 @@ afterEach(async()=>{await Promise.all(services.splice(0).map(s=>s.close()));awai
 async function setup(){const root=await mkdtemp(path.join(os.tmpdir(),'workflow-service-'));roots.push(root);await mkdir(path.join(root,'src'));await writeFile(path.join(root,'src/index.ts'),'export const value=1;');return root;}
 async function until(check:()=>boolean){for(let i=0;i<100&&!check();i++)await new Promise(r=>setTimeout(r,20));expect(check()).toBe(true);}
 describe('Workflows automatic source refresh',()=>{
+ it('detects added and deleted source modules and updates relationships without a manual refresh',async()=>{
+  const root=await setup();const service=new WorkflowService(root,{pollMs:30,debounceMs:20});services.push(service);service.start();
+  await until(()=>service.snapshot().status==='ready');const initial=service.snapshot();
+  expect(initial.checkedAt).toBeDefined();expect(initial.observedFingerprint).toBe(initial.fingerprint);
+  await mkdir(path.join(root,'src/feature'));await writeFile(path.join(root,'src/feature/index.ts'),'export const added=true;');
+  await writeFile(path.join(root,'src/index.ts'),"import {added} from './feature/index.js'; export {added};");
+  await until(()=>service.snapshot().status==='ready'&&service.snapshot().sourceFiles===2);
+  expect(service.snapshot().edges).toBe(1);expect(service.snapshot().fingerprint).not.toBe(initial.fingerprint);
+  await rm(path.join(root,'src/feature'),{recursive:true});await writeFile(path.join(root,'src/index.ts'),'export const removed=true;');
+  await until(()=>service.snapshot().status==='ready'&&service.snapshot().sourceFiles===1&&service.snapshot().edges===0);
+ });
  it('initializes, debounces source changes, and ignores runtime data',async()=>{
   const root=await setup();let renders=0;
   const service=new WorkflowService(root,{pollMs:30,debounceMs:40,render:async()=>`<html>${++renders}</html>`});services.push(service);service.start();
@@ -42,10 +53,10 @@ it('reports unavailable source honestly instead of a ready empty map',async()=>{
  const root=await mkdtemp(path.join(os.tmpdir(),'workflow-empty-'));roots.push(root);const service=new WorkflowService(root,{pollMs:30,render:async()=>'<html>empty</html>'});services.push(service);service.start();
  await until(()=>service.snapshot().status==='error');expect(service.snapshot().html).toBeUndefined();expect(service.snapshot().error).toContain('source');
 });
-it('automatically replaces a real offline Archify canvas after source bytes change',async()=>{
+it('automatically replaces the real offline diagram after source bytes change',async()=>{
  const root=await setup();const service=new WorkflowService(root,{pollMs:30,debounceMs:20});services.push(service);service.start();
  await until(()=>service.snapshot().status==='ready');const first=service.snapshot();
- expect(first.html).toContain('archify 3.0.1');expect(first.html).toContain("connect-src 'none'");
+ expect(first.html).toContain('agent-core-source-diagram 1');expect(first.html).toContain("connect-src 'none'");
  await writeFile(path.join(root,'src/index.ts'),'export const value=4;');
  await until(()=>service.snapshot().status==='ready'&&service.snapshot().fingerprint!==first.fingerprint);
  expect(service.snapshot().html).not.toBe(first.html);expect(service.snapshot().generatedAt).not.toBe(first.generatedAt);

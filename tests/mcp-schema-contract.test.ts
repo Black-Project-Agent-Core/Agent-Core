@@ -27,7 +27,10 @@ function deriveRdcRegistrations(source: string): Registration[] {
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'tool') {
       const toolName = node.arguments[1];
-      const schema = node.arguments[3];
+      const declared = node.arguments[3];
+      // The shared browser registration selects the preserved Native schema or
+      // its external extension. This parity check compares the original parser.
+      const schema = declared && ts.isConditionalExpression(declared) ? declared.whenTrue : declared;
       if (
         toolName && ts.isStringLiteralLike(toolName)
         && schema && ts.isPropertyAccessExpression(schema)

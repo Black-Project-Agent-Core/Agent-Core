@@ -344,9 +344,10 @@ export class ToolHistory {
   ): boolean {
     if (decision?.disposition === 'omit') return false;
 
-    // Image bytes and identifying arguments must never enter history, even if
+    // Images, conversation contents and identifying arguments never enter history, even if
     // a caller omits the workspace policy decision or supplies a weaker one.
-    if (toolName === 'image_inspect') {
+    if (toolName === 'image_inspect' || (toolName === 'browser_control'
+      && (String(args?.action).startsWith('conversation_') || (args?.action === 'open' && args?.mode === 'conversation')))) {
       decision = {
         policyState: 'inactive', pathCount: 0, ruleCount: 0, markerCount: 0,
         ...decision,

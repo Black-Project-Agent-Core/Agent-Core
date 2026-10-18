@@ -52,7 +52,7 @@ describe('host-validated Memory task binding', () => {
       else if (hook === 'label') await f.service.labelEpisode(session, { workspace });
       else if (hook === 'verify') {
         const context=await f.service.captureToolInvocationContext({invocationId:'fixture-invocation',processSessionId:'fixture-process',sessionId:session,ownerId:'owner-a'});
-        await f.service.verifyEpisode(session,{workspace,outcome:'failed',verificationRef:'verification:synthetic-unavailable'},context);
+        await f.service.verifyEpisode(session,{taskId:task.id,workspace,outcome:'failed',verificationRef:'verification:synthetic-unavailable'},context);
       }
       else await f.service.artifactReceipt(session, { workspace, kind: 'pattern', artifactId: 'synthetic-pattern', contentDigest: digest, applicability: 'rejected', result: 'unavailable', reasonCode: 'synthetic' });
     };

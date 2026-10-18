@@ -147,7 +147,7 @@ describe('memory maintenance regressions', () => {
     const results = await memory.search('budget-marker', {
       limit: 1,
       maxNeighbors: 0,
-      budgetChars: 500,
+      budgetChars: 2048,
     });
     expect(results).toHaveLength(1);
     expect(results[0]?.record.id).toBe(record.id);
@@ -253,10 +253,13 @@ describe('memory maintenance regressions', () => {
     expect((await memory.read(source.id, false))?.links.some((link) => link.targetId === target.id)).toBe(false);
   });
   it('reports post-start canonical corruption through the live /health path', async () => {
-    const root = await createMemoryRoot();
-    const dataDir = path.join(root, 'auth');
+    const projectRoot = await createMemoryRoot();
+    const {activateCanonicalMemory}=await import('../../src/memory/host-activation.js');
+    await activateCanonicalMemory(projectRoot,{operation:'fresh'});
+    const root=path.join(projectRoot,'runtime/memory');
+    const dataDir = path.join(projectRoot, 'auth');
     const service = await startAgentCoreService({
-      projectRoot: root,
+      projectRoot,
       host: '127.0.0.1',
       port: 0,
       dataDir,

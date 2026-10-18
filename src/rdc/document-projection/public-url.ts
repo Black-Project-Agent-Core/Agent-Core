@@ -90,7 +90,9 @@ export async function readPublicDocument(rawUrl: string, options: PublicDocument
     let parsed;
     try {
       // Byte parser only: never pass a URL to the existing PDF URL reader.
-      parsed = await parsePdfBytesToMarkdown(snapshot.bytes, pdfPageRange, { observedAt });
+      // unpdf's image extractor rejects Node Buffer subclasses. Keep the
+      // admitted snapshot intact and pass a plain owned byte array downstream.
+      parsed = await parsePdfBytesToMarkdown(Uint8Array.from(snapshot.bytes), pdfPageRange, { observedAt });
     } catch {
       assertLive(options.signal);
       throw new Error('PUBLIC_URL_PDF_CONVERSION_FAILED');

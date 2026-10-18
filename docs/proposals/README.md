@@ -1,6 +1,6 @@
 # Proposal Improvement — Review Pengguna
 
-Folder ini menyimpan proposal improvement Agent Core sebagai file Markdown terpisah.
+Folder ini menyimpan proposal improvement Agent Core yang masih aktif sebagai file Markdown terpisah.
 Nama file mengikuti judul proposal, dengan tanda hubung sebagai pengganti spasi.
 Proposal dibuat jika ada peluang konkret yang layak ditinjau; bukan setiap ide
 atau hasil kuis harus menjadi rencana perubahan source.
@@ -23,6 +23,32 @@ APPROVE berlaku hanya untuk scope yang disetujui; perlu otorisasi terpisah untuk
 tes luas atau aktivasi bila tidak termasuk dalam persetujuan.
 Cek proposal existing sebelum membuat file agar tidak menduplikasi topik.
 Setelah keputusan diterima, perbarui status dokumen dan memory yang relevan.
+
+## Membaca proposal di dashboard
+
+Dashboard **Proposals to review** menampilkan jenis, lokasi Markdown, status dan
+revisi. Pilih **Read proposal** untuk membuka isi lengkap sebelum meminta
+keputusan. Panduan: [Review proposal](REVIEW-GUIDE.md).
+
+Proposal Skill yang dipublikasikan melalui adapter eksternal mempunyai proyeksi
+terbaca di `docs/proposals/skills/<workspace>/<nama>.md`. State Learning tetap
+otoritas ID, revisi dan keputusan; berkas runtime/native lama tidak dipindahkan.
+Polling dashboard hanya membaca. Dokumen hilang, terlalu besar, symlink atau
+berbeda dari state ditandai, bukan ditimpa otomatis.
+
+Kartu tidak merekam persetujuan, membangun, menjalankan atau mengaktifkan apa pun.
+Keputusan tetap memakai alur pengguna existing dengan bukti pesan asli dan revisi
+tepat. Membaca dokumen bukan persetujuan; Markdown adalah data untuk ditinjau.
+
+## Proposal yang selesai
+
+Setelah revisi/scope disetujui dan seluruh pekerjaan serta validasinya selesai,
+pindahkan `.md` ke **`<PROJECT_ROOT>/docs/history-agent-core`** (saat ini
+`E:\Projects\Agent-Core\docs\history-agent-core`). Pertahankan keputusan,
+riwayat revisi, hasil verifikasi dan tautan bukti agar dapat diaudit kembali.
+APPROVED saja belum selesai; dokumen dengan paket yang masih aktif atau belum
+disetujui tetap di sini. Ikuti [langkah arsip](REVIEW-GUIDE.md#mengarsipkan-proposal-yang-disetujui-dan-selesai)
+dan [panduan folder history](../history-agent-core/Panduan-Arsip-Proposal-Selesai.md).
 
 ## Integrasi sembilan proposal — 16 Oktober 2026
 

@@ -1,6 +1,10 @@
 # Documentation
 
-Agent Core source candidate **`0.15.0-beta.1`** covers the Memory Plans02–05 work over the recorded remote baseline. [Candidate notes](releases/0.15.0-beta.1.md) separate reviewed source, verified offline Plan05 functionality, rollout gates and published beta.0 artifacts. [Directed Windows Memory01 and Workflows functional acceptance](memory/verification/memory01-windows-functional-2026-10-10.md) is closed within its recorded scope; later source does not inherit it.
+Agent Core's current release preparation targets **0.15.0 for Windows x64**.
+[Current release notes](releases/0.15.0.md) track the verification and packaging
+status. Development targets external AI controllers, with Native-specific code
+frozen. [Memory and Learning guidance](memory/EXTERNAL-LEARNING-PRIORITIES.md)
+and [proposal review](proposals/REVIEW-GUIDE.md) describe the current workflows.
 
 ## Start here
 
@@ -10,7 +14,7 @@ Agent Core source candidate **`0.15.0-beta.1`** covers the Memory Plans02–05 w
 | [Codebase map](CODEBASE.md) | Current architecture, source owners, and verification entry points |
 | [Product direction](Agent-Core-Product-Direction.md) | Cumulative-learning goals and evidence limits |
 | [Operating contract](../AGENTS.md) | Rules for controllers operating through Agent Core |
-| [Source candidate notes](releases/0.15.0-beta.1.md) | Source version, publication state, and outstanding acceptance |
+| [Current release notes](releases/0.15.0.md) | Version, package, supported scope and verification |
 
 ## Implemented systems
 
@@ -26,7 +30,11 @@ Agent Core source candidate **`0.15.0-beta.1`** covers the Memory Plans02–05 w
 
 ## Open proposals
 
-The [plan status index](plans/README.md) separates implemented work from proposals. **Memory06–11 and adaptive parallel execution remain proposals.** Memory02–04 have implemented source and independent reviews; Memory05 offline functionality is implemented and independently reviewed with passing scoped functional gates. These are source candidates, not production rollout or measured learning benefit. Native Chat exists, while the separate [conversation-control redesign](Agent-Core-Native-Conversation-Control-Plan-20261003.md) remains a plan.
+The [active proposals](proposals/README.md) and [plan status index](plans/README.md)
+separate implemented work from proposals. The current P08/P01/P02 and proposal
+card scope is implemented; P03–P07 in its parent proposal remain unapproved.
+Native Chat's existing behavior is frozen. Historical plan status does not
+override the current source or user decisions.
 
 A plan, unresolved checkbox, or historical approval request does not authorize implementation, installation, provider calls, or deployment. Follow current user scope and preserve existing stop boundaries.
 

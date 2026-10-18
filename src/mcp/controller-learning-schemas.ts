@@ -74,6 +74,9 @@ export const controllerLearning = z.object({
     if (operation === 'verify' && (!value.episodeOutcome || !value.verificationRef)) {
       ctx.addIssue({ code: 'custom', message: 'episode verify requires episodeOutcome and verificationRef' });
     }
+    if (operation === 'verify' && (!value.taskId?.trim() || value.taskId !== value.taskId.trim())) {
+      ctx.addIssue({ code: 'custom', path: ['taskId'], message: 'episode verify requires the exact host-returned taskId' });
+    }
   }
 
   if (value.action === 'artifact_receipt') {

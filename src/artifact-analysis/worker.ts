@@ -4,6 +4,7 @@ import { readCancellationError } from '../rdc/utils/withTimeout.js';
 
 export interface WorkerSummary {
   findings: ArtifactFinding[];
+  droppedFindings: number;
   inspected: number; unavailable: number; inventory: number; notExamined: number;
   limitations: string[];
 }
@@ -49,7 +50,8 @@ export async function runArtifactWorker(input: StaticInput, selected: string[], 
           return finish(new Error('ARTIFACT_PARSER_FAILED'));
         const r = message as WorkerSummary;
         if (!Array.isArray(r.findings) || r.findings.length > ARTIFACT_LIMITS.maxFindings
-          || !Array.isArray(r.limitations) || !Number.isSafeInteger(r.inspected))
+          || !Array.isArray(r.limitations) || !Number.isSafeInteger(r.inspected)
+          || !Number.isSafeInteger(r.droppedFindings) || r.droppedFindings < 0)
           return finish(new Error('ARTIFACT_WORKER_INVALID_RESULT'));
         finish(undefined, r);
       });

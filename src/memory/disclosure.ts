@@ -2,6 +2,8 @@ import {intentionObservationSchema} from './prospective-intentions.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { MemoryRecord } from './types.js';
+import type {EvidenceLineageAdvisory} from './evidence-lineage.js';
+import type {MemoryDetailHint} from './progressive-disclosure.js';
 import type { MemoryExcerpt } from './evidence-excerpt.js';
 import type {RelevanceDecision} from './relevance.js';
 
@@ -27,6 +29,8 @@ export interface MemoryHit {
   applicability: 'current' | 'historical' | 'superseded' | 'conflicted' | 'unknown';
   freshness: 'current' | 'stale' | 'unknown'; availableViews: Array<'record' | 'episode' | 'evidence'>; score?: number;
   retrievalEvidence: { attemptId: string; contentDigest: Digest; recordFingerprint: Digest };
+  evidenceLineage?:EvidenceLineageAdvisory;
+  detailHint?:MemoryDetailHint;
 }
 export interface RecallPage {
   snapshot: Digest; hits: MemoryHit[]; nextCursor?: string; archiveSearchAvailable: boolean;
@@ -43,12 +47,14 @@ export interface ControllerMemoryCapabilities {
   contractVersion: 1; views: DisclosureView[];
   budgets: { defaultBytes: 8192; minBytes: 512; maxBytes: 65536 };
   writeMode: 'legacy-read' | 'experience-v2'; temporalAsOf: boolean; temporalKnownAt?:true; advisory: true;
+  claimReview?:ReturnType<typeof import('./claim-review.js').externalClaimReviewGuide>;
 }
 export type MemoryControllerErrorCode = 'MEMORY_INPUT_INVALID' | 'MEMORY_SCOPE_MISMATCH' | 'MEMORY_SOURCE_UNAVAILABLE'
   | 'MEMORY_REVISION_CONFLICT' | 'MEMORY_CURSOR_STALE' | 'MEMORY_CURSOR_INVALID'
   | 'MEMORY_SCHEMA_UNSUPPORTED' | 'MEMORY_EXPERIENCE_NOT_ENABLED' | 'MEMORY_TEMPORAL_UNSUPPORTED'
   | 'MEMORY_CONSOLIDATION_INVALID' | 'MEMORY_CONSOLIDATION_REVIEW_REQUIRED'
-  | 'MEMORY_DISCLOSURE_LEDGER_UNAVAILABLE' | 'MEMORY_OPERATION_CONFLICT' | 'MEMORY_PRESERVATION_REQUIRED' | 'MEMORY_TASK_NOT_FOUND';
+  | 'MEMORY_DISCLOSURE_LEDGER_UNAVAILABLE' | 'MEMORY_OPERATION_CONFLICT' | 'MEMORY_PRESERVATION_REQUIRED' | 'MEMORY_TASK_NOT_FOUND'
+  | 'MEMORY_RECALL_DEADLINE' | 'MEMORY_DISCLOSURE_CANCELLED';
 export class MemoryControllerError extends Error {
   constructor(readonly code: MemoryControllerErrorCode) { super(code); this.name = 'MemoryControllerError'; }
 }

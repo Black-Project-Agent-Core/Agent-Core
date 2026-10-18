@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, lstat, readFile, readlink, realpath, rmdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, test } from 'vitest';
@@ -9,8 +10,211 @@ import { resolveMemoryPaths } from '../../../src/memory/paths.js';
 import { FileMemoryStore } from '../../../src/memory/store.js';
 
 const roots: string[] = [];
-async function root() { const value = await mkdtemp(path.join(os.tmpdir(), 'memory-t2-')); roots.push(value); return value; }
-afterEach(async () => { await Promise.all(roots.splice(0).map(p => rm(p, { recursive:true, force:true }))); });
+const symlinkFixtureLinks = new Map<string, { link: string; outside: string; privilegedRunId?: string }>();
+async function root(base = os.tmpdir()) {
+ const value = await mkdtemp(path.join(base, 'memory-t2-'));
+ roots.push(value);
+ return value;
+}
+/** Only fixtures created by this test may be removed; never recurse through an alias. */
+afterEach(async () => {
+ await Promise.all(roots.splice(0).map(async p => {
+  const owned = symlinkFixtureLinks.get(p);
+  if (owned) {
+   symlinkFixtureLinks.delete(p);
+   if(owned.privilegedRunId) {
+    const cleaned=invokeInstalledFixture('Cleanup',owned.privilegedRunId);
+    if('reason' in cleaned)throw Error('SYMLINK_HELPER_CLEANUP_UNAVAILABLE:'+cleaned.reason);
+    try {
+     await lstat(p);
+     throw Error('SYMLINK_HELPER_CLEANUP_STILL_EXISTS:'+p);
+    } catch(error) {
+     if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;
+    }
+    console.info('MEMORY_SYMLINK_FIXTURE_TEARDOWN',JSON.stringify({fixtureRoot:p,cleaned:true,kind:'fixed-scheduled-task'}));
+    return;
+   }
+   const parent = await lstat(p);
+   if (!parent.isDirectory() || parent.isSymbolicLink()) throw Error('SYMLINK_FIXTURE_TEARDOWN_ROOT_CHANGED:' + p);
+   try {
+    const entry = await lstat(owned.link);
+    if (!entry.isSymbolicLink()
+      || path.resolve(await realpath(owned.link)).toLowerCase() !== path.resolve(await realpath(owned.outside)).toLowerCase()
+      || !(await readlink(owned.link))) throw Error('SYMLINK_FIXTURE_TEARDOWN_TARGET_CHANGED:' + owned.link);
+    await unlink(owned.link);
+   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+     console.error('SYMLINK_FIXTURE_TEARDOWN_LEFT_UNTOUCHED', p, error);
+     throw error;
+    }
+   }
+  }
+  await rm(p, { recursive:true, force:true });
+  if(owned)console.info('MEMORY_SYMLINK_FIXTURE_TEARDOWN',JSON.stringify({fixtureRoot:p,cleaned:true}));
+ }));
+});
+type SymlinkFixture = { dir:string; outside:string; link:string; fixtureRoot:string; filesystem:string; origin:string; prepared?:boolean };
+type SymlinkCapability = { origin:string; filesystem:string; status:string; reason?:string; directory?:string; cleanup:'not-created'|'clean'|'left-untouched' };
+function symlinkTempCandidates() {
+ const windowsHome = process.platform === 'win32' && process.env.HOMEDRIVE && process.env.HOMEPATH
+  ? path.join(process.env.HOMEDRIVE + path.sep, process.env.HOMEPATH.replace(/^[\\/]+/, ''), 'AppData', 'Local', 'Temp')
+  : undefined;
+ const locations = [
+  { origin:'project-runtime-tmp', directory:path.resolve('runtime/tmp') },
+  { origin:'os-tmpdir', directory:os.tmpdir() },
+  { origin:'TEMP', directory:process.env.TEMP },
+  { origin:'TMP', directory:process.env.TMP },
+  { origin:'LOCALAPPDATA-Temp', directory:process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA,'Temp') },
+  { origin:'Windows-user-home-Temp', directory:windowsHome },
+ ];
+ const seen = new Set<string>();
+ return locations.filter((item):item is {origin:string;directory:string}=>Boolean(item.directory))
+  .map(item=>({...item,directory:path.resolve(item.directory)}))
+  .filter(item=>{
+   const id=process.platform==='win32'?item.directory.toLowerCase():item.directory;
+   if(seen.has(id))return false;
+   seen.add(id);
+   return true;
+  });
+}
+function filesystemForFixture(directory:string):string {
+ if(process.platform!=='win32')return 'platform-native';
+ const root=path.parse(directory).root, drive=/^([A-Za-z]):[\\/]$/.exec(root)?.[1];
+ if(!drive)return 'unknown-non-drive';
+ // Read-only, optional Windows metadata. The actual symlink probe is authoritative.
+ const info=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',
+  "(Get-Volume -DriveLetter '"+drive+"' -ErrorAction Stop).FileSystem"],{encoding:'utf8',timeout:8000,windowsHide:true});
+ return info.status===0 ? info.stdout.trim()||'unknown' : 'unknown';
+}
+async function probeRealDirectorySymlink(candidate:{origin:string;directory:string}):Promise<SymlinkCapability> {
+ const result:SymlinkCapability={origin:candidate.origin,filesystem:filesystemForFixture(candidate.directory),status:'unavailable',cleanup:'not-created'};
+ let probe:string|undefined, target:string|undefined, link:string|undefined;
+ try {
+  const directory=await lstat(candidate.directory);
+  if(!directory.isDirectory()||directory.isSymbolicLink())throw Error('TEMP_PATH_NOT_REGULAR_DIRECTORY');
+  if(path.resolve(await realpath(candidate.directory)).toLowerCase()!==candidate.directory.toLowerCase())
+   throw Error('TEMP_PATH_ALIAS_UNVERIFIED');
+  probe=await mkdtemp(path.join(candidate.directory,'agent-core-symlink-probe-'));
+  if(!(await lstat(probe)).isDirectory()||(await lstat(probe)).isSymbolicLink())
+   throw Error('PROBE_ROOT_NOT_OWNED_DIRECTORY');
+  target=path.join(probe,'target'); link=path.join(probe,'link');
+  await mkdir(target);
+  await symlink(target,link,'dir'); // No junction, mock, or special OS privilege.
+  if(!(await lstat(link)).isSymbolicLink()
+    || path.resolve(await realpath(link)).toLowerCase()!==path.resolve(await realpath(target)).toLowerCase()
+    || !(await readlink(link)))throw Error('PROBE_NOT_A_REAL_DIRECTORY_SYMLINK');
+  result.status='supported';
+  result.directory=candidate.directory;
+ } catch(error) {
+  const code=(error as NodeJS.ErrnoException).code??(error instanceof Error?error.message:'unknown');
+  result.reason=(code==='EPERM'||code==='EACCES')?'symlink-permission-unavailable:'+code
+   : code==='EISDIR'||code==='ENOTSUP'||code==='EOPNOTSUPP'?'filesystem-symlink-unsupported:'+code
+   : code==='ENOENT'||code==='ENOTDIR'?'temp-path-unavailable:'+code
+   :'symlink-probe-unavailable:'+code;
+ } finally {
+  if(probe) {
+   try {
+    if(link) {
+     try {
+      const entry=await lstat(link);
+      if(!entry.isSymbolicLink()||!target
+        ||path.resolve(await realpath(link)).toLowerCase()!==path.resolve(await realpath(target)).toLowerCase())
+       throw Error('PROBE_LINK_TARGET_CHANGED');
+      await unlink(link); // Do not recurse through the symlink.
+     } catch(error) { if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error; }
+    }
+    if(target)await rmdir(target); // Known empty synthetic target only.
+    await rmdir(probe); // Known empty unique probe only.
+    result.cleanup='clean';
+   } catch(error) {
+    result.status='unavailable';
+    result.reason='probe-cleanup-unsafe:'+(error instanceof Error?error.message:'unknown');
+    result.directory=probe; // Preserve evidence; never broad-clean user temp.
+    result.cleanup='left-untouched';
+   }
+  }
+ }
+ return result;
+}
+/** Non-elevated caller of an independently installed, fixed SYSTEM task.
+ * No executable/path arguments go to the elevated task: only a bounded registry
+ * operation and GUID. The installed helper creates both literal directory links. */
+function invokeInstalledFixture(operation:'Prepare'|'Cleanup',runId?:string) {
+ if(process.platform!=='win32')return {reason:'SYMLINK_PRIVILEGED_HELPER_WINDOWS_ONLY'};
+ const script=path.resolve('scripts/windows/Invoke-Agent-Core-Symlink-Fixture.ps1');
+ const ps=path.join(process.env.SystemRoot??'', 'System32','WindowsPowerShell','v1.0','powershell.exe');
+ const args=['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
+  '-File',script,'-Operation',operation,...(runId?['-RunId',runId]:[])];
+ const result=spawnSync(ps,args,{cwd:process.cwd(),encoding:'utf8',timeout:35000,windowsHide:true});
+ if(result.status!==0) {
+  const reason=(result.stderr||result.error?.message||'helper unavailable').trim().slice(0,900);
+  if(/SYMLINK_SETUP_REQUIRED|ENOENT|cannot find/i.test(reason))
+   return {reason:'SYMLINK_HELPER_SETUP_REQUIRED:'+reason};
+  throw Error('SYMLINK_PRIVILEGED_HELPER_FAILED:'+reason);
+ }
+ const data=JSON.parse(result.stdout.trim());
+ if(data.status!=='ok'||data.operation!==operation.toLowerCase()
+  ||!(/^[0-9a-f]{32}$/.test(data.runId))
+  ||(runId&&data.runId!==runId))throw Error('SYMLINK_HELPER_RECEIPT_INVALID');
+ return {data};
+}
+async function verifiedInstalledFixture(linkName:'linked-root'|'parent-alias'):
+ Promise<SymlinkFixture|{reason:string}> {
+ const prepared=invokeInstalledFixture('Prepare');
+ if('reason' in prepared)return prepared;
+ const data=prepared.data!;
+ const root=path.resolve(data.fixtureRoot);
+ const base=path.resolve(process.env.ProgramData??'');
+ const parts=path.relative(base,root).split(path.sep);
+ if(parts.length!==3||!/^AgentCore-SymlinkFixture-[0-9a-f]{16}$/.test(parts[0]!)
+   ||parts[1]!=='fixtures'||parts[2]!==data.runId)
+  throw Error('SYMLINK_HELPER_ROOT_UNTRUSTED:'+root);
+ const inside=path.join(root,'inside'),outside=path.join(root,'outside');
+ const link=path.join(inside,linkName);
+ if(path.resolve(data.inside)!==inside||path.resolve(data.outside)!==outside
+   ||path.resolve(data[linkName==='linked-root'?'linkedRoot':'parentAlias'])!==link)
+  throw Error('SYMLINK_HELPER_PATH_MISMATCH');
+ const {readdir}=await import('node:fs/promises');
+ for(const dir of [base,path.join(base,parts[0]!),path.join(base,parts[0]!,'fixtures'),
+  root,inside,outside]) {
+  const info=await lstat(dir);
+  if(!info.isDirectory()||info.isSymbolicLink())throw Error('SYMLINK_HELPER_PARENT_NOT_REGULAR');
+ }
+ for(const name of ['linked-root','parent-alias']) {
+  const current=path.join(inside,name);
+  if(!(await lstat(current)).isSymbolicLink()
+   ||path.resolve(await realpath(current)).toLowerCase()!==outside.toLowerCase())
+   throw Error('SYMLINK_HELPER_EXPECTED_SYMBOLIC_LINK_MISSING');
+ }
+ if((await readdir(outside)).length)throw Error('SYMLINK_HELPER_TARGET_NOT_EMPTY');
+ roots.push(root);
+ symlinkFixtureLinks.set(root,{link,outside,privilegedRunId:data.runId});
+ console.info('MEMORY_SYMLINK_PRIVILEGED_FIXTURE',JSON.stringify({
+  fixtureRoot:root,filesystem:'NTFS',linkType:'SymbolicLink',runId:data.runId}));
+ return {dir:inside,outside,link,fixtureRoot:root,filesystem:'NTFS',origin:'fixed-scheduled-task',prepared:true};
+}
+async function adaptiveSymlinkFixture(linkName:'linked-root'|'parent-alias'):
+ Promise<SymlinkFixture|{reason:string}> {
+ const results:SymlinkCapability[]=[];
+ for(const candidate of symlinkTempCandidates()) {
+  const probe=await probeRealDirectorySymlink(candidate);
+  results.push(probe);
+  if(probe.status!=='supported'||!probe.directory)continue;
+  const fixtureRoot=await root(probe.directory); // Unique; safe for concurrent tests.
+  const dir=path.join(fixtureRoot,'inside'),outside=path.join(fixtureRoot,'outside');
+  await mkdir(dir);await mkdir(outside);
+  const link=path.join(dir,linkName);
+  symlinkFixtureLinks.set(fixtureRoot,{link,outside});
+  console.info('MEMORY_SYMLINK_FIXTURE',JSON.stringify({origin:probe.origin,
+   filesystem:probe.filesystem,capability:'real-directory-symlink',fixtureRoot}));
+  return {dir,outside,link,fixtureRoot,filesystem:probe.filesystem,origin:probe.origin};
+ }
+ const scheduled=await verifiedInstalledFixture(linkName);
+ if(!('reason' in scheduled))return scheduled;
+ const reason=JSON.stringify(results.map(({origin,filesystem,status,reason,cleanup})=>({origin,filesystem,status,reason,cleanup})));
+ console.info('MEMORY_SYMLINK_NOT_RUN',JSON.stringify({nativeProbes:results,helper:scheduled.reason}));
+ return {reason:'No real native directory symlink capability: '+reason+'; '+scheduled.reason};
+}
 const legacy = { version:1, id:'synthetic-note', title:'Available source', content:'The tested result is retained.', keywords:[], context:'General', tags:[], category:'Uncategorized', links:[], createdAt:'2026-10-07T00:00:00.000Z', updatedAt:'2026-10-07T00:00:00.000Z', lastAccessedAt:null, retrievalCount:0, evolutionHistory:[], pinned:false } as const;
 const experience = { schemaVersion:1, kind:'note', retention:'durable', epistemic:'unknown', temporal:'unknown', validity:{state:'unknown'}, verification:{status:'unverified',evidence:[]}, sourceRefs:[] };
 
@@ -168,12 +372,16 @@ test('concurrent empty-root standalone initialization uses the common bootstrap 
  expect(await readFile(path.join(dir,'00-agent-core-memory.md'),'utf8')).toBe('# Agent Core Memory Foundation\n');
 });
 
-test('standalone refuses a symlinked root before creating any foundation outside it',async()=>{
- const {symlink,readdir}=await import('node:fs/promises');const dir=await root(),outside=await root();
- const link=path.join(dir,'linked-root');await symlink(outside,link,'dir');
+test('standalone refuses a symlinked root before creating any foundation outside it',async({skip})=>{
+ const selected=await adaptiveSymlinkFixture('linked-root');
+ if('reason' in selected){skip(selected.reason);return;}
+ const {dir,outside,link}=selected;
+ if(!selected.prepared)await symlink(outside,link,'dir'); // Real link pre-created only by the fixed protected worker.
+ expect((await lstat(link)).isSymbolicLink()).toBe(true);
+ expect(path.resolve(await realpath(link)).toLowerCase()).toBe(path.resolve(await realpath(outside)).toLowerCase());
  await expect(initializeMemoryRoot({memoryRoot:link,experience:{enabled:true}})).rejects.toThrow('MEMORY_PATH_SYMLINK');
- expect(await readdir(outside)).toEqual([]);
-});
+ expect(await import('node:fs/promises').then(fs=>fs.readdir(outside))).toEqual([]);
+},60000);
 
 test('v2 batch delete cannot be hidden by recreation in the same plan',async()=>{
  const dir=await root();const service=await initializeMemoryRoot({memoryRoot:dir,experience:{enabled:true}});
@@ -182,12 +390,17 @@ test('v2 batch delete cannot be hidden by recreation in the same plan',async()=>
  expect((await service.read(record.id,false))?.content).toBe(record.content);
 });
 
-test('parent-directory symlink aliases are rejected before bootstrap',async()=>{
- const {symlink,readdir}=await import('node:fs/promises');const dir=await root(),outside=await root();
- await symlink(outside,path.join(dir,'parent-alias'),'dir');
- await expect(initializeMemoryRoot({memoryRoot:path.join(dir,'parent-alias','nested'),experience:{enabled:true}})).rejects.toThrow('MEMORY_PATH_SYMLINK');
- expect(await readdir(outside)).toEqual([]);
-});
+test('parent-directory symlink aliases are rejected before bootstrap',async({skip})=>{
+ const selected=await adaptiveSymlinkFixture('parent-alias');
+ if('reason' in selected){skip(selected.reason);return;}
+ const {dir,outside,link}=selected;
+ if(!selected.prepared)await symlink(outside,link,'dir'); // Intermediate path remains a real directory symlink.
+ expect((await lstat(link)).isSymbolicLink()).toBe(true);
+ expect(path.resolve(await realpath(link)).toLowerCase()).toBe(path.resolve(await realpath(outside)).toLowerCase());
+ await expect(initializeMemoryRoot({memoryRoot:path.join(link,'nested'),experience:{enabled:true}}))
+  .rejects.toThrow('MEMORY_PATH_SYMLINK');
+ expect(await import('node:fs/promises').then(fs=>fs.readdir(outside))).toEqual([]);
+},60000);
 
 test('v2 safety also scans typed descriptive metadata',async()=>{
  const dir=await root();const service=await initializeMemoryRoot({memoryRoot:dir,experience:{enabled:true}});const record=await service.remember({content:'Synthetic safe observation'});

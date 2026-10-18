@@ -11,11 +11,11 @@ const pause=async point=>{process.stdout.write(JSON.stringify({boundary:point})+
 const rename=fs.rename;
 fs.rename=async(from,to)=>{
   await rename(from,to);
-  if(String(to).endsWith('journal.json')){
+  if(String(to).replaceAll('\\','/').endsWith('journal.json')){
     const journal=JSON.parse(await fs.readFile(to,'utf8'));
     if(journal.phase===boundary)await pause(boundary);
   }
-  if(boundary==='apply'&&String(to).includes('/events/'))await pause('apply');
+  if(boundary==='apply'&&String(to).replaceAll('\\','/').includes('/events/'))await pause('apply');
 };
 syncBuiltinESMExports();
 try{

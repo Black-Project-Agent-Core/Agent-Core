@@ -117,6 +117,7 @@ export async function createDevelopmentArtifact(options) {
       "runtime/grafel/bin",
       "runtime/grafel/provider.json",
       "scripts/windows",
+      "scripts/governance/native-freeze.json",
       "Agent Core.exe",
       "tunnel-client/tunnel-client.exe",
     ]) {

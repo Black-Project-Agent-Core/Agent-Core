@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { parseChangesetFile } from "@changesets/parse";
 import { filterPendingIntentFilenames } from "./release-policy.mjs";
 
@@ -20,6 +22,30 @@ export function validateStableSemver(version) {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
   if (!match) throw new Error(`Agent Core first-wave release tooling requires stable semver x.y.z, received: ${version}`);
   return match.slice(1).map(Number);
+}
+
+export function parseProductVersion(version) {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(version);
+  if (!match || match[4]?.split('.').some(part => /^\d+$/.test(part) && part.length > 1 && part.startsWith('0'))) {
+    throw new Error(`Invalid Agent Core product semver: ${version}`);
+  }
+  return { stable: `${match[1]}.${match[2]}.${match[3]}`, ...(match[4] ? { prerelease: match[4] } : {}) };
+}
+
+export function plannedStableTarget(currentVersion, bump, stableBaseline) {
+  const identity = parseProductVersion(currentVersion);
+  if (!identity.prerelease) return incrementVersion(currentVersion, bump);
+  validateStableSemver(stableBaseline);
+  const required = incrementVersion(stableBaseline, bump);
+  const compare = (a, b) => {
+    const left = validateStableSemver(a), right = validateStableSemver(b);
+    for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return left[i] - right[i];
+    return 0;
+  };
+  if (compare(stableBaseline, identity.stable) >= 0 || compare(required, identity.stable) > 0) {
+    throw new Error(`Pending intents exceed the prerelease target ${identity.stable}; choose a new target explicitly`);
+  }
+  return identity.stable;
 }
 
 export function incrementVersion(version, bump) {
@@ -82,7 +108,12 @@ async function readPendingChangesetsFromDirectory(changesetDir) {
 export async function calculateReleasePlan() {
   const pkg = await readJson(path.join(ROOT, "package.json"));
   const currentVersion = String(pkg.version ?? "");
-  validateStableSemver(currentVersion);
+  const identity = parseProductVersion(currentVersion);
+  let stableBaseline;
+  if (identity.prerelease) {
+    const { stdout } = await promisify(execFile)('git', ['-C', ROOT, 'show', `${CURRENT_LINE_BASELINE_REF}:package.json`], { timeout: 5000, maxBuffer: 128 * 1024, windowsHide: true });
+    stableBaseline = String(JSON.parse(stdout).version ?? '');
+  }
   const changesets = await readPendingChangesets();
   let bump = "none";
   for (const changeset of changesets) {
@@ -92,7 +123,8 @@ export async function calculateReleasePlan() {
     product: PRODUCT_NAME,
     currentVersion,
     bump,
-    nextVersion: incrementVersion(currentVersion, bump),
+    nextVersion: plannedStableTarget(currentVersion, bump, stableBaseline),
+    ...(stableBaseline ? { stableBaseline, prerelease: identity.prerelease, sourceOnly: true } : {}),
     changesets,
   };
 }
@@ -179,8 +211,8 @@ function setCsprojVersions(xml, version, nativeVersion) {
 }
 
 export async function buildVersionEdits(version) {
-  validateStableSemver(version);
-  const nativeVersion = `${version}.0`;
+  const identity = parseProductVersion(version);
+  const nativeVersion = `${identity.stable}.0`;
   const rootPackagePath = path.join(ROOT, "package.json");
   const rootLockPath = path.join(ROOT, "package-lock.json");
   const uiPackagePath = path.join(ROOT, "src", "ui", "package.json");

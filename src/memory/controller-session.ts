@@ -12,6 +12,7 @@ import { memoryFeedbackContentDigest } from './feedback-target.js';
 import { hashMemoryRetrievalQuery, memoryRecordFingerprint, type MemoryRetrievalAttempt } from './retrieval-ledger.js';
 import { decodeDisclosureCursor, disclosureCursorBinding, encodeDisclosureCursor } from './page.js';
 import { projectMemoryHit } from './search-projection.js';
+import { assessEvidenceLineage } from './evidence-lineage.js';
 import { controllerScopeSchema, disclosureDigest, disclosurePayloadDigest, expandInputSchema,
   insufficientBudget, measureBudgeted, memorySemanticRevision, MemoryControllerError, parseControllerInput,
   recallInputSchema, serializeMemoryRecordView,taskContextInputSchema } from './disclosure.js';
@@ -20,6 +21,7 @@ import type { Budgeted, ControllerMemoryCapabilities, ControllerScope, ExpandInp
 import type { MemoryRecord } from './types.js';
 import {searchMemories,type MemorySearchResult} from './retrieval.js';
 import {assessMemoryRelevance,type RelevanceInput,type RelevancePolicy} from './relevance.js';
+import {externalClaimReviewGuide,type MemoryClaimReviews} from './claim-review.js';
 
 /** Internal host-owned read/telemetry ports. Never exported from the package root. */
 export interface ControllerRankedSnapshot {
@@ -34,6 +36,8 @@ export interface ControllerMemoryBackend {
   readonly relevancePolicy?:Readonly<RelevancePolicy>;
   experienceEnabled?:boolean;
   episodes?:MemoryEpisodes;
+  claimReviews?:MemoryClaimReviews;
+  assertScopeCurrent?:()=>void|Promise<void>;
   promotion?:MemoryPromotion;
   resolveWorkspace(value: string): string;
   snapshot(workspace: string, options?:{historical?:boolean;referenceTime?:number}): Promise<MemoryRecord[]>;
@@ -77,7 +81,7 @@ export class ControllerMemorySession {
 
   capabilities(): ControllerMemoryCapabilities {
     return { contractVersion: 1, views: this.#backend.experienceEnabled ? ['map','abstract','record','episode','evidence'] : ['map','abstract','record'],
-      budgets: { defaultBytes:8192,minBytes:512,maxBytes:65536 }, writeMode:this.#backend.experienceEnabled ? 'experience-v2' : 'legacy-read',temporalAsOf:Boolean(this.#backend.experienceEnabled),...(this.#backend.experienceEnabled&&this.#backend.historicalSnapshot&&this.#backend.rankHistorical?{temporalKnownAt:true as const}:{}),advisory:true };
+      budgets: { defaultBytes:8192,minBytes:512,maxBytes:65536 }, writeMode:this.#backend.experienceEnabled ? 'experience-v2' : 'legacy-read',temporalAsOf:Boolean(this.#backend.experienceEnabled),...(this.#backend.experienceEnabled&&this.#backend.historicalSnapshot&&this.#backend.rankHistorical?{temporalKnownAt:true as const}:{}),...(this.#backend.experienceEnabled&&this.#backend.claimReviews?{claimReview:externalClaimReviewGuide()}:{}),advisory:true };
   }
 
   private async snapshot(options?:{historical?:boolean;referenceTime?:number}): Promise<MemoryRecord[]> {
@@ -210,9 +214,13 @@ export class ControllerMemorySession {
     try{this.#backend.onSynthesisEligibility?.(eligibilitySummary);}catch{/* Advisory coverage remains fail-soft. */}
     const page = (take: number) => {
       const more = start+take < ranked.length;
+      const lineage = take > 1 ? assessEvidenceLineage(pageRecords.slice(0,take),records,asOf?Date.parse(asOf):rankingTime) : undefined;
+      const returned = hits.slice(0,take).map(hit=>({
+        ...hit,...(lineage?{evidenceLineage:lineage.get(hit.id)}:{}),
+      }));
       const partial = more || eligibilitySummary.completeness==='partial' || Boolean(history&&!history.coverage.complete) || (retention !== 'active-durable' && !this.#backend.experienceEnabled);
       return measureBudgeted<RecallPage>({ status:partial ? 'partial' : 'ok',warnings,
-        data:{ snapshot,hits:hits.slice(0,take),...(history?{knowledgeCoverage:history.coverage}:{}),...(relevance ? {relevance:{status:relevance.status,policyDigest:relevance.policyDigest,semanticStatus:relevance.semanticStatus}} : {}),...(more&&!deliveryDrift ? { nextCursor:this.cursor(request,snapshotBinding,start+take,rankingTime) } : {}),
+        data:{ snapshot,hits:returned,...(history?{knowledgeCoverage:history.coverage}:{}),...(relevance ? {relevance:{status:relevance.status,policyDigest:relevance.policyDigest,semanticStatus:relevance.semanticStatus}} : {}),...(more&&!deliveryDrift ? { nextCursor:this.cursor(request,snapshotBinding,start+take,rankingTime) } : {}),
           archiveSearchAvailable:Boolean(this.#backend.experienceEnabled),completeness:partial ? 'partial' : 'complete' } });
     };
     let take = hits.length;
@@ -345,4 +353,14 @@ export class ControllerMemorySession {
   /** Host reconciliation only; deliberately absent from the controller protocol dispatcher. */
   async committedConsolidation(input:{operationId:string}):Promise<PromotionReceipt|undefined> { this.episodeOwner();if(!this.#backend.promotion)return this.unsupported();return this.#backend.promotion.committed(this.episodeScope(),input); }
   async setRetention(input:RetentionInput):Promise<RetentionReceipt> {return this.episodeOwner().setRetention(this.episodeScope(),input);}
+  async readClaimReview(input:unknown){
+    if(!this.#backend.claimReviews)throw new MemoryControllerError('MEMORY_SCOPE_MISMATCH');
+    await this.#backend.assertScopeCurrent?.();
+    const result=await this.#backend.claimReviews.read(this.#scope,input);
+    await this.#backend.assertScopeCurrent?.();return result;
+  }
+  async writeClaimReview(input:unknown){
+    if(!this.#backend.claimReviews)throw new MemoryControllerError('MEMORY_SCOPE_MISMATCH');
+    return this.#backend.claimReviews.write(this.#scope,input,this.#backend.assertScopeCurrent);
+  }
 }

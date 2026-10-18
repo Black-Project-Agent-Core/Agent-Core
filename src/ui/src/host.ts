@@ -16,6 +16,10 @@ export type ProviderServerSnapshot = {
 };
 
 export type DesktopHealthSnapshot = {
+  skills?: {status:string; mode?:string; skillCount?:number|null; executionAuthority?:boolean|null; discoveryMode?:string; instructionRead?:boolean|null; issue?:string}|null;
+  externalControllerLearning?: {status:string;mode?:string;episodeCount?:number|null;pendingLearningEpisodes?:number|null;procedureCount?:number|null;readyProcedureCount?:number|null;semanticAuthority?:string;issue?:string}|null;
+  webResearch?: {status:string;searchConfigured?:boolean|null;readerConfigured?:boolean|null;nativeReaderAvailable?:boolean|null;externalReaderConfigured?:boolean|null;searchProviders?:string[]|null;openProviders?:string[]|null;issue?:string}|null;
+  mcpMutationSafety?: {status:string;issueCount?:number|null;issue?:string;draining?:boolean|null;activeMutations?:number|null;journalEntries?:number|null}|null;
   memory: {
     status: string;
     canonicalStore?: string;
@@ -190,6 +194,8 @@ export type WorkflowsSnapshot = {
   fingerprint?: string;
   revision?: string;
   generatedAt?: string;
+  checkedAt?: string;
+  observedFingerprint?: string;
   sourceFiles?: number;
   nodes?: number;
   edges?: number;
@@ -199,7 +205,19 @@ export type WorkflowsSnapshot = {
   limitations: string[];
 };
 
+export type ProposalDocumentItem = {
+  id: string; kind: 'skill' | 'skill-revision' | 'improvement' | 'guide'; title: string; path: string;
+  status: string; revisionDigest: string; documentDigest?: string; updatedAt?: string;
+  readStatus: 'available' | 'missing' | 'drift' | 'unavailable'; projection: 'external-docs' | 'legacy-runtime' | 'document';
+};
+export type ProposalDocumentList = { items: ProposalDocumentItem[]; guides: ProposalDocumentItem[]; warnings: string[] };
+export type ProposalDocumentRead = ProposalDocumentItem & { text: string; decisionGuidance: string };
+
 type HostEnvelope =
+  | { type: 'proposals-result'; requestId: string; result: ProposalDocumentList }
+  | { type: 'proposals-error'; requestId: string; error: string }
+  | { type: 'proposal-read-result'; requestId: string; result: ProposalDocumentRead }
+  | { type: 'proposal-read-error'; requestId: string; error: string }
   | { type: 'workflows-result'; requestId: string; result: WorkflowsSnapshot }
   | { type: 'workflows-error'; requestId: string; error: string }
   | { type: 'status'; status: DesktopStatus }

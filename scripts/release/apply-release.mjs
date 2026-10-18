@@ -17,6 +17,8 @@ const { readPrereleaseState, PRE_STATE_PATH } = await import("./prerelease-lib.m
 const preState = await readPrereleaseState();
 if (preState?.mode === "pre") throw new Error("Stable release apply refused while prerelease mode is active; request prerelease exit first");
 const plan = await calculateReleasePlan();
+if (plan.prerelease && preState?.mode !== "exit") throw new Error("Stable apply from prerelease source requires an explicit prerelease exit state; source synchronization does not authorize stable promotion");
+if (preState?.sourceVersion && preState.sourceVersion !== plan.currentVersion) throw new Error("Source version changed after explicit prerelease exit; review the release again");
 if (plan.changesets.length === 0 || plan.bump === "none") {
   console.error("No pending Agent Core release intents.");
   process.exit(1);
@@ -45,7 +47,6 @@ const rollback = await writeTransaction([
 
 const archiveDir = path.join(
   CHANGESET_DIR,
-  MEMORY_INTENT_DIR,
   "applied",
   `${plan.nextVersion}-${Date.now()}`,
 );
@@ -67,11 +68,17 @@ try {
     moved.push({ from: change.fullPath, to: destination });
   }
 } catch (error) {
+  const recoveryFailures=[];
   for (const item of moved.reverse()) {
-    await fs.rename(item.to, item.from).catch(() => undefined);
+    try{await fs.rename(item.to,item.from);}catch(recoveryError){recoveryFailures.push(recoveryError);}
+  }
+  try{await rollback();}catch(recoveryError){recoveryFailures.push(recoveryError);}
+  if(recoveryFailures.length){
+    const locations=[...new Set(moved.map(item=>path.relative(ROOT,path.dirname(item.to)).replaceAll('\\','/')))];
+    throw new Error(`RELEASE_ROLLBACK_INCOMPLETE: retained=${locations.join(',')}; inspect archived intents and version files before retry`,
+      {cause:new AggregateError([error,...recoveryFailures],'Release archival and rollback failed')});
   }
   await fs.rm(archiveDir, { recursive: true, force: true }).catch(() => undefined);
-  await rollback().catch(() => undefined);
   throw error;
 }
 

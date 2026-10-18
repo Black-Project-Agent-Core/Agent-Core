@@ -1,0 +1,7 @@
+interface:
+  display_name: "REA: Reverse Engineer Anything"
+  short_description: "Inspect shipped apps and binaries with evidence"
+  default_prompt: "Use $reverse-engineer-anything to investigate this application or artifact, explain the evidence, and guide a tested reconstruction."
+
+policy:
+  allow_implicit_invocation: true

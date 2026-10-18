@@ -13,6 +13,9 @@ import { usageTracker } from '../src/rdc/utils/usageTracker.js';
 import { activityTracker } from '../src/tracker/activity-tracker.js';
 import { AGENT_CAPABILITY_CATALOG } from '../src/agent-capability-catalog.js';
 import * as imageInspection from '../src/rdc/tools/image-inspect.js';
+import { attachControllerContract } from './controller-contract-fixture.js';
+import { fixture as learningFixture } from './skill-proposal-fixture.js';
+import { ExternalControllerLearningService } from '../src/learning/external-controller.js';
 
 const roots: string[] = [];
 const closers: Array<() => Promise<void>> = [];
@@ -27,8 +30,9 @@ async function connected(key?: unknown, runtime = {}) {
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(b);
   await client.connect(a);
+  const contractSession = !(runtime as any).nativeTaskId ? await attachControllerContract(client) : undefined;
   closers.push(async () => { await client.close(); await server.close(); });
-  return { server, client };
+  return { server, client, contractSession };
 }
 async function fixture(width = 10, height = 10) {
   const root = await tempDir();
@@ -39,6 +43,16 @@ async function fixture(width = 10, height = 10) {
 function imageResult(bytes: number) {
   return { content: [{ type: 'image', mimeType: 'image/png', data: Buffer.alloc(bytes, 77).toString('base64') },
     { type: 'text', text: '{"viewId":"bounded-view"}' }] };
+}
+async function observerFixture(sessionId = 'external-test') {
+  const f = await learningFixture(), ownerId = 'image-observer-owner';
+  const externalControllerLearning = await ExternalControllerLearningService.initialize({
+    stateDir: path.join(f.root, 'external'), memory: f.memory, learning: f.learning, skills: f.skills,
+  });
+  await externalControllerLearning.startEpisode(sessionId, { taskKey: 'image-inspect', workspace: 'agent-core' }, {
+    ownerId, workspaceIdentityKey: f.memory.registeredWorkspaceIdentity('agent-core').key,
+  });
+  return { key: { id: ownerId }, runtime: { controllerSessionId: sessionId, externalControllerLearning } };
 }
 beforeEach(() => {
   vi.spyOn(toolHistory, 'addCall').mockReturnValue(true);
@@ -69,8 +83,8 @@ describe('image_inspect transport and permission boundary', () => {
     expect((await denied.client.listTools()).tools.map(tool => tool.name)).not.toContain('image_inspect');
     await expect(denied.client.callTool({ name: 'image_inspect', arguments: { action: 'overview', path: '/never-read' } })).rejects.toThrow(/disabled|GRANT_DENIED/);
     const granted = await connected({ id: 'image-only', toolGrant: { version: 1, allowedTools: ['image_inspect'] } });
-    expect((await granted.client.listTools()).tools.map(tool => tool.name)).toEqual(['image_inspect']);
-    await expect((denied.server as any)._registeredTools.image_inspect.executor({ action: 'overview', path: '/never-read' }, {})).rejects.toThrow(/GRANT_DENIED/);
+    expect((await granted.client.listTools()).tools.map(tool => tool.name)).toEqual(['controller_contract', 'image_inspect']);
+    await expect((denied.server as any)._registeredTools.image_inspect.executor({ action: 'overview', path: '/never-read', contractSession: denied.contractSession }, {})).rejects.toThrow(/GRANT_DENIED/);
   });
 
   it('does not register image_inspect in Native tasks or the Native executable capability catalog', async () => {
@@ -94,11 +108,9 @@ describe('image_inspect transport and permission boundary', () => {
 
   it('bounds the whole response after optional capability notices are appended', async () => {
     const { file } = await fixture();
-    const runtime = { controllerSessionId: 'external-test', externalControllerLearning: {
-      attachCapabilityInventory() {}, recordToolOutcome: async () => undefined,
-      takeCapabilityUsageNotice: async () => 'N'.repeat(3 * 1024 * 1024),
-    } };
-    const { client } = await connected(undefined, runtime as any);
+    const observer = await observerFixture();
+    vi.spyOn(observer.runtime.externalControllerLearning, 'takeCapabilityUsageNotice').mockResolvedValue('N'.repeat(3 * 1024 * 1024));
+    const { client } = await connected(observer.key, observer.runtime);
     const result: any = await client.callTool({ name: 'image_inspect', arguments: { action: 'overview', path: file } });
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result).length).toBeLessThan(3 * 1024 * 1024);
@@ -151,18 +163,16 @@ describe('image_inspect metadata-only persistence', () => {
     const { root, file } = await fixture();
     const failures: any[] = [];
     const observations: any[] = [];
+    const observer = await observerFixture();
+    vi.spyOn(observer.runtime.externalControllerLearning, 'failureContext').mockImplementation(async (input: any) => { failures.push(input); return {} as any; });
     const runtime = {
-      controllerSessionId: 'external-test',
-      externalControllerLearning: {
-        attachCapabilityInventory() {}, recordToolOutcome: async () => undefined,
-        failureContext: async (input: any) => { failures.push(input); return {}; },
-      },
+      ...observer.runtime,
       failureLoopAdvisor: {
         observeFailure: (tool: string, args: unknown, failure: unknown) => { observations.push({ tool, args, failure }); },
         observeSuccess() {},
       },
     };
-    const { client } = await connected(undefined, runtime as any);
+    const { client } = await connected(observer.key, runtime as any);
     // Actual image owner exceptions are sent to the caller, while observers
     // receive metadata only. The missing path appears in the underlying error.
     const privatePath = path.join(root, 'private-image-does-not-exist.png');
@@ -172,7 +182,7 @@ describe('image_inspect metadata-only persistence', () => {
     expect(observations).toHaveLength(1);
     const captured = JSON.stringify([...failures, ...observations], (_key, value) => value instanceof Error ? value.message : value);
     expect(captured).not.toContain(root);
-    expect(failures[0].args).toEqual({ argumentKeys: ['action', 'path', 'format', 'maxEdge'] });
+    expect(failures[0].args).toEqual({ argumentKeys: ['action', 'path'] });
     expect(String(failures[0].failure)).toMatch(/detail omitted/);
 
     // Force a handled failure at the owner boundary to exercise the sibling
@@ -181,7 +191,7 @@ describe('image_inspect metadata-only persistence', () => {
     vi.spyOn(imageInspection, 'createImageInspector').mockReturnValue(async () => ({
       isError: true, content: [{ type: 'text', text: privatePath }, { type: 'image', data: bytes, mimeType: 'image/png' }],
     }));
-    const handled = await connected(undefined, runtime as any);
+    const handled = await connected(observer.key, runtime as any);
     const viewId = '123e4567-e89b-42d3-a456-426614174000';
     await handled.client.callTool({ name: 'image_inspect', arguments: {
       action: 'crop', path: file, viewId, rectangle: { x: 123, y: 234, width: 345, height: 456 },
@@ -189,7 +199,7 @@ describe('image_inspect metadata-only persistence', () => {
     expect(failures).toHaveLength(2);
     const allCaptured = JSON.stringify([...failures, ...observations], (_key, value) => value instanceof Error ? value.message : value);
     for (const sensitive of [root, viewId, bytes, '123', '234', '345', '456']) expect(allCaptured).not.toContain(sensitive);
-    expect(failures[1].args).toEqual({ argumentKeys: ['action', 'path', 'format', 'maxEdge', 'viewId', 'rectangle', 'zoom'] });
+    expect(failures[1].args).toEqual({ argumentKeys: ['action', 'path', 'viewId', 'rectangle'] });
     expect(JSON.stringify(vi.mocked(activityTracker.record).mock.calls)).not.toContain(root);
     expect(JSON.stringify(vi.mocked(activityTracker.captureFailure).mock.calls)).not.toContain(root);
   });
@@ -240,9 +250,10 @@ describe('image_inspect metadata-only persistence', () => {
   });
   it('keeps private image arguments and raw errors out of failure-learning observations', async () => {
     const {file}=await fixture(); await writeFile(file,'invalid-image-private-content');
-    const failureContext=vi.fn(async()=>({capsule:'',memoryIds:[]}));
+    const observer=await observerFixture('private-test');
+    const failureContext=vi.spyOn(observer.runtime.externalControllerLearning,'failureContext').mockResolvedValue({capsule:'',memoryIds:[]} as any);
     const observeFailure=vi.fn(()=>undefined);
-    const {client}=await connected(undefined,{controllerSessionId:'private-test',externalControllerLearning:{attachCapabilityInventory(){},recordToolOutcome:async()=>undefined,failureContext},failureLoopAdvisor:{observeFailure}} as any);
+    const {client}=await connected(observer.key,{...observer.runtime,failureLoopAdvisor:{observeFailure}} as any);
     await client.callTool({name:'image_inspect',arguments:{action:'overview',path:file}}).catch(()=>undefined);
     expect(failureContext).toHaveBeenCalled();
     expect(observeFailure).toHaveBeenCalled();

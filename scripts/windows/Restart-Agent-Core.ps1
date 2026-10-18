@@ -39,6 +39,50 @@ $profilePaths = @(
 )
 $knownOwned = @{}
 
+function Install-PendingLauncher {
+    param([Parameter(Mandatory = $true)][string]$ProjectRoot)
+    $hashFile = {
+        param([string]$File)
+        $stream = [IO.File]::OpenRead($File)
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try { ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '').ToLowerInvariant() }
+        finally { $sha.Dispose(); $stream.Dispose() }
+    }
+    $project = [IO.Path]::GetFullPath($ProjectRoot)
+    $pending = Join-Path $project 'runtime\launcher\pending'
+    $marker = Join-Path $pending 'sha256.txt'
+    if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) { return }
+    $candidate = Join-Path $pending 'Agent Core.exe'
+    $destination = Join-Path $project 'Agent Core.exe'
+    foreach ($path in @($pending, $marker, $candidate)) {
+        if ((Get-Item -LiteralPath $path -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw 'Pending launcher activation refuses reparse points.'
+        }
+    }
+    if ((Get-Item -LiteralPath $marker).Length -gt 128) { throw 'Pending launcher checksum is invalid.' }
+    $expected = (Get-Content -LiteralPath $marker -Raw).Trim()
+    if ($expected -cnotmatch '^[0-9a-f]{64}$' -or
+        (& $hashFile $candidate) -cne $expected) {
+        throw 'Pending launcher checksum mismatch; original launcher preserved.'
+    }
+    $backupDirectory = Join-Path $project 'runtime\launcher\backups'
+    [IO.Directory]::CreateDirectory($backupDirectory) | Out-Null
+    $backup = Join-Path $backupDirectory ('launcher-' + [Guid]::NewGuid().ToString('N') + '.exe')
+    Copy-Item -LiteralPath $destination -Destination $backup -ErrorAction Stop
+    try {
+        Copy-Item -LiteralPath $candidate -Destination $destination -Force -ErrorAction Stop
+        if ((& $hashFile $destination) -cne $expected) {
+            throw 'Activated launcher checksum mismatch.'
+        }
+        Remove-Item -LiteralPath $marker -ErrorAction Stop
+    }
+    catch {
+        Copy-Item -LiteralPath $backup -Destination $destination -Force -ErrorAction Stop
+        throw
+    }
+    Write-Host "Verified launcher build activated; original retained at $backup"
+}
+
 function Test-ProjectProcess($Process) {
     $path = [string]$Process.ExecutablePath
     $command = [string]$Process.CommandLine
@@ -110,7 +154,9 @@ function Get-RestartState {
         }
         $owned += $item
         $nextKnownOwned[$processId] = $item
-        if ($path -ieq $exePath -and
+        $browserUseHelper = $command -match '(?:^|\s)"?chrome-extension://bgjoihaepiejlfjinojjfgokghnodnhd/"?(?:\s|$)' -or
+            $command -match '^(?:"[^"]+"|\S+)\s+--browser-use-transport\s+(?:"[^"]+"|\S+)\s*$'
+        if ($path -ieq $exePath -and -not $browserUseHelper -and
             $command -cnotmatch '^(?:"[^"]+"|\S+)\s+--native-dump-helper\s+\d+\s+(?:"[^"]+"|\S+)\s+\S+\s*$') {
             $launchers += $item
         }
@@ -224,6 +270,7 @@ try {
         $appMutex.Dispose()
         throw 'Mutex launcher masih ada. Tidak meluncurkan instance tambahan.'
     }
+    Install-PendingLauncher -ProjectRoot $root
     Write-Host 'Membuka Agent Core satu kali...'
     $started = Start-Process -FilePath $exePath -WorkingDirectory $root -PassThru
     $timer = [Diagnostics.Stopwatch]::StartNew()

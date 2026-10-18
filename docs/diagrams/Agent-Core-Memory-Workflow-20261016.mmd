@@ -134,3 +134,27 @@ graph TD
     REVIEW -->|"only evidence-eligible verified candidates"| SINK
     SINK -->|"memory.remember"| REM
   end
+  %% 2026-10-17 source-only external workflow addition; no resident claim.
+  subgraph EXTERNAL_FLOW["EXTERNAL CONTROLLER — source wiring added 2026-10-17"]
+    TASK_HOST["controller_learning episode/start: host-bound external taskId"]
+    V2_MIRROR["ExternalControllerLearningService.recordV2MemoryRecall"]
+    ADMIT["memory/mcp/experience-tools: serialized response + host scope + cancellation gate"]
+    RECONCILE["MemoryRetrievalLedger.confirmedDelivery: immutable attempt check"]
+    USE_DECISION["ExternalControllerLearningService.artifactReceipt: caller choice"]
+    FEEDBACK_OWNER["MemoryService.feedback: explicit verified-use feedback"]
+    LEARNING_LINK["learning checkpoint/review: host task + checkpointKeys"]
+    GUIDANCE["ExternalControllerLearningService.workflowNext: advisory state"]
+    TASK_HOST -->|"scope.taskId; Memory episodeId differs"| V2_TOOL
+    V2_TOOL -->|"direct MCP v2 recall stages one attempt"| ADMIT
+    ADMIT -->|"serialized, current host task, not cancelled"| LEDGER
+    ADMIT -->|"admitted final hits only"| V2_MIRROR
+    SESSION -->|"Native/planned record exposure as before"| LEDGER
+    V2_MIRROR -->|"mirror into current external episode"| USE_DECISION
+    LEDGER -->|"missed mirror: same attempt, scope and digest"| RECONCILE
+    RECONCILE -->|"idempotent recovered binding"| USE_DECISION
+    USE_DECISION -->|"MemoryService.recordUseReceipt; no inferred use"| LEDGER
+    USE_DECISION -->|"only explicit, evidence-resolved feedback"| FEEDBACK_OWNER
+    TASK_HOST -->|"task status/context; no new state"| GUIDANCE
+    USE_DECISION -->|"task result separate from Memory use"| LEARNING_LINK
+    LEARNING_LINK -->|"LearningService.review keyed disposition"| REVIEW
+  end

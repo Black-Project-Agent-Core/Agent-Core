@@ -215,17 +215,29 @@ export function registerMemoryTools(
 
   server.registerTool('memory_export', {
     title: 'Export Memory',
-    description: 'Export scoped legacy Memory records (not a full backup).',
+    description: 'Legacy records only; active v2 returns unavailable with offline transfer-v2 guidance.',
     inputSchema: schemas.memoryExport,
     annotations: { title: 'Export Memory', readOnlyHint: true },
   }, async (args: any) => run('memory_export', args, async () => {
     const input = schemas.memoryExport.parse(args ?? {});
-    return memory.exportTransfer(input.workspace);
+    try { return await memory.exportTransfer(input.workspace); }
+    catch (error) {
+      if (error instanceof Error && error.message === 'MEMORY_TRANSFER_V2_UNSUPPORTED') return {
+        status: 'unavailable', code: 'MEMORY_TRANSFER_V2_UNSUPPORTED',
+        activeMode: 'experience-v2', legacyRecordExport: false,
+        offlineAlternative: {
+          owner: 'src/memory/transfer-v2.ts::exportMemoryTransferV2',
+          required: ['controlled offline source root', 'allowedWorkspaces', 'completeness=complete'],
+          note: 'Host-authorized whole-root export preserves revisions, provenance and history; no online or partial substitute.',
+        },
+      };
+      throw error;
+    }
   }, advisor));
 
   server.registerTool('memory_import', {
     title: 'Import Memory',
-    description: 'Preview/import legacy Memory; apply requires confirmation.',
+    description: 'Legacy record import; v2 whole-root restore is offline-only.',
     inputSchema: schemas.memoryImport,
     annotations: { title: 'Import Memory', readOnlyHint: false, destructiveHint: true },
   }, async (args: any) => run('memory_import', args, async () => {
@@ -268,7 +280,7 @@ export function registerMemoryTools(
 
   server.registerTool('memory_delete', {
     title: 'Delete Memory',
-    description: 'Delete non-pinned Memory; foundation protected.',
+    description: 'Physical delete blocked for preserved v2; use retention_set archive or reversible forget.',
     inputSchema: schemas.memoryDelete,
     annotations: { title: 'Delete Memory', readOnlyHint: false, destructiveHint: true },
   }, async (args: any) => run('memory_delete', args, async () => {
@@ -282,7 +294,7 @@ export function registerMemoryTools(
 
   server.registerTool('memory_batch', {
     title: 'Batch Memory Transaction',
-    description: 'Batch Memory mutations (up to 100 operations).',
+    description: 'Batch mutations; preserved v2 delete blocked. Archive/forget instead.',
     inputSchema: schemas.memoryBatch,
     annotations: { title: 'Batch Memory Transaction', readOnlyHint: false, destructiveHint: true },
   }, async (args: any) => run('memory_batch', args, async () => {
@@ -293,7 +305,7 @@ export function registerMemoryTools(
 
   server.registerTool('memory_feedback', {
     title: 'Memory Feedback',
-    description: 'Record bounded feedback; reject stale content guards.',
+    description: 'Feedback/forget/restore; forget hides, never deletes preserved history.',
     inputSchema: schemas.memoryFeedback,
     annotations: { title: 'Memory Feedback', readOnlyHint: false, destructiveHint: false },
   }, async (args: any) => run('memory_feedback', args, async () => {

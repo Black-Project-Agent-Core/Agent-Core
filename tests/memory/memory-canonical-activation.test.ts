@@ -1,3 +1,4 @@
+import { symlinkOrSkip } from '../helpers/optional-symlink.js';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {access,mkdir,mkdtemp,readFile,readdir,rm,symlink,writeFile} from 'node:fs/promises';
@@ -45,8 +46,8 @@ it.each(['identity','incomplete','missing-manifest','config','historical-conflic
  const expected={identity:'ROOT_IDENTITY_MISMATCH',incomplete:'INCOMPLETE_MARKER','missing-manifest':'EXPERIENCE_MANIFEST_REQUIRED',config:'CONFIGURED_ROOT_CONFLICT','historical-conflict':'HISTORICAL_ROOT_REQUIRES_REVIEW','relocated-no-backup':'UNAUTHORIZED_MARKER'}[kind]!;
  await expect(initializeAgentCoreMemory(root,path.join(root,kind==='config'?'custom-memory':'runtime/memory'))).rejects.toThrow(expected);
 });
-it('fresh activation refuses a symlinked runtime before writing through it',async()=>{
- const root=await fixture(),external=await fixture();await symlink(external,path.join(root,'runtime'),'dir');
+it('fresh activation refuses a symlinked runtime before writing through it',async context=>{
+ const root=await fixture(),external=await fixture();await symlinkOrSkip(context,external,path.join(root,'runtime'),'dir');
  await expect(activate(root,'fresh')).rejects.toThrow('SYMLINK_PATH');
  expect(await readdir(external)).toEqual([]);
 });

@@ -9,6 +9,8 @@ import { activityTracker } from '../tracker/activity-tracker.js';
 import type { AgentChatService } from '../agent-chat-service.js';
 import type { BrowserExtensionBridge } from '../rdc/browser-control/extension-bridge.js';
 import { handleBrowserBridge } from './browser-bridge.js';
+import { handleProposalDocuments } from './proposals.js';
+import type { ProposalDocumentReader } from '../learning/proposal-documents.js';
 
 export type McpHttpHandler = (
   request: IncomingMessage,
@@ -27,6 +29,7 @@ export interface HttpHandlerOptions {
   agentChat?: AgentChatService;
   browserBridge?: BrowserExtensionBridge;
   workflows?: () => import('../workflows/service.js').WorkflowSnapshot;
+  proposals?: ProposalDocumentReader;
 }
 
 function sendJson(
@@ -123,6 +126,12 @@ async function handleRequest(
     if (request.method !== 'GET') { sendJson(response, 405, {error:'method_not_allowed'}, {allow:'GET'}); return; }
     if (!options.workflows) { sendJson(response, 503, {error:'workflows_unavailable'}); return; }
     sendJson(response, 200, options.workflows(), {'cache-control':'no-store'});
+    return;
+  }
+
+  if (route === '/agent/proposals' || route === '/agent/proposals/read') {
+    if (!authorizeAgentUi(request, response, options, security)) return;
+    await handleProposalDocuments(request, response, options.proposals, requestUrl);
     return;
   }
 

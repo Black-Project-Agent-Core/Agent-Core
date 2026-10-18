@@ -39,6 +39,8 @@ export interface SkillProposalRecord {
   fulfillment?: SkillProposalFulfillment;
   history: Array<{ revisionDigest: string; at: string; status: ProposalStatus; evidenceRefs: string[] }>;
   previousDocumentDigest?: string;
+  /** External-only readable projection; canonical/native path and decision identity stay unchanged. */
+  externalDocument?: { revisionDigest: string; documentDigest: string; publishedAt: string };
 }
 export interface SkillNoticeScope { workspace: string; sessionId: string; taskId?: string; query?: string; }
 export interface SkillProposalNotice {

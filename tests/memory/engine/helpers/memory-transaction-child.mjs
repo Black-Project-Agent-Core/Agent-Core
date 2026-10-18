@@ -13,15 +13,15 @@ const rename = fs.rename, remove = fs.rm;
 let committed = false, cleanupFailed = false;
 fs.rename = async (from,to) => {
  await rename(from,to);
- if (String(to).endsWith('journal.json')) {
+ if (String(to).replaceAll('\\','/').endsWith('journal.json')) {
    const journal=JSON.parse(await fs.readFile(to,'utf8'));
    if(journal.phase==='committed') committed=true;
    if(journal.phase===boundary) await pause(boundary);
  }
- if(boundary==='apply' && String(to)===path.join(root,'notes',`${id}.md`)) await pause('apply');
+ if(boundary==='apply' && String(to).replaceAll('\\','/')===path.join(root,'notes',`${id}.md`).replaceAll('\\','/')) await pause('apply');
 };
 fs.rm = async (target,options) => {
- if(boundary==='cleanup' && committed && !cleanupFailed && String(target).includes('/transactions/') && options?.recursive) {
+ if(boundary==='cleanup' && committed && !cleanupFailed && String(target).replaceAll('\\','/').includes('/transactions/') && options?.recursive) {
    cleanupFailed=true; throw Object.assign(new Error('synthetic cleanup failure'),{code:'EACCES'});
  }
  return remove(target,options);

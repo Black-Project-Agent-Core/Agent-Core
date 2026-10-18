@@ -30,6 +30,7 @@ import { IDENTIFIER_TOKENIZER_VERSION, lexicalRetrievalTokens } from './identifi
 import { FUSION_DIVERSITY_POLICY, searchMemories, type MemorySearchOptions, type MemorySearchResult } from './retrieval.js';
 import { projectMemorySearchResults, type DeliveredMemorySearchResult } from './search-projection.js';
 import { FileMemoryStore } from './store.js';
+import {MemoryClaimReviews} from './claim-review.js';
 import { isMemoryExpired, normalizeMemoryExpiresAt } from './visibility.js';
 import { MEMORY_SCHEMA_VERSION, type EvolutionEvent, type MemoryHealth, type MemoryIssue, type MemoryLink, type MemoryProvenance, type MemoryRecord } from './types.js';
 
@@ -303,13 +304,17 @@ export class MemoryService {
     });
   }
 
-  controller(scope: ControllerScope, policy: ControllerRetrievalPolicy = 'baseline-v1',hostContext?:MemorySearchHostContext): ControllerMemorySession {
+  controller(scope: ControllerScope, policy: ControllerRetrievalPolicy = 'baseline-v1',hostContext?:MemorySearchHostContext,
+    // Internal MCP-only handoff deferral: the authenticated caller owns final
+    // response admission. Normal Native/planned sessions keep direct recording.
+    onExposure?: (attempt: MemoryRetrievalAttempt) => Promise<unknown>): ControllerMemorySession {
     if (policy !== 'baseline-v1' && policy !== 'fusion-feedback-v1') throw new MemoryControllerError('MEMORY_INPUT_INVALID');
     const retrievalPolicy = policy;
     const inScope = (record:MemoryRecord,workspace:string)=>this.controllerInScope(record,workspace);
     const episodes=this.controllerEpisodes();
     return new ControllerMemorySession({
       root:this.store.paths.root,experienceEnabled:this.experienceEnabled,episodes,
+      ...(scope.controllerId==='agent-core-external'?{claimReviews:new MemoryClaimReviews(this.store,episodes),assertScopeCurrent:hostContext?.assertScopeCurrent}:{}),
       ...(this.controllerRelevancePolicy ? {relevancePolicy:this.controllerRelevancePolicy} : {}),
       promotion:new MemoryPromotion(this.store,episodes,this.index,this.consolidation,async()=>{await this.refreshIndex();return this.indexStatus==='available'?'current':'degraded';}),
       resolveWorkspace: value => this.resolveWorkspace(value),
@@ -372,8 +377,11 @@ export class MemoryService {
         records=records.filter(record=>!invalidatedSynthesisIds.includes(record.id));
         let semantic;
         if (this.embedder && this.indexStatus === 'available') {
-          try { semantic = await this.index.semanticContext(query, canonicalRecords, records) ?? undefined; }
-          catch { this.setEmbeddingIssue('Controller query embedding unavailable'); }
+          const externalSignal=hostContext?.scope.controllerId==='agent-core-external'?hostContext.signal:undefined;
+          try { semantic = await this.index.semanticContext(query, canonicalRecords, records,
+            externalSignal?{signal:externalSignal}:{}) ?? undefined; }
+          catch { if(externalSignal?.aborted)throw externalSignal.reason;
+            this.setEmbeddingIssue('Controller query embedding unavailable'); }
         }
         const options: MemorySearchOptions = { limit: Math.max(1, records.length), maxNeighbors: 0 };
         let salienceEntries: Array<[string, number]> = [];
@@ -402,7 +410,7 @@ export class MemoryService {
         const assessment = await assessMemoryStaleness(record, this.projectRoot);
         return assessment.status === 'current' ? 'current' : assessment.status === 'changed' ? 'stale' : 'unknown';
       },
-      recordExposure: attempt => this.retrievalLedger.record(attempt),
+      recordExposure: onExposure ?? (attempt => this.retrievalLedger.record(attempt)),
     }, scope);
   }
 
@@ -595,6 +603,25 @@ export class MemoryService {
       if (observed !== expectedContentDigest) throw new Error('MEMORY_FEEDBACK_CONTENT_CHANGED');
       return observed;
     });
+  }
+
+  /** Commit one final admitted MCP response to the existing canonical ledger.
+   * Never invent or rewrite an attempt. Scope was issued and revalidated by host. */
+  async recordControllerDisclosure(attempt: MemoryRetrievalAttempt, scope: ControllerScope, admit?:()=>void,onCommitted?:()=>void) {
+    this.assertOperational();
+    if (!attempt.taskId || attempt.taskId !== scope.taskId
+      || !attempt.workspace || attempt.workspace !== this.resolveWorkspace(scope.workspaceKey)
+      || attempt.surface !== 'memory_recall') throw new Error('MEMORY_DISCLOSURE_SCOPE_UNAVAILABLE');
+    return this.retrievalLedger.record(attempt,admit,onCommitted);
+  }
+
+  /** Confirm one already returned canonical retrieval without touching Memory access metadata. */
+  async confirmedMemoryDelivery(input: {
+    taskId: string; workspace: string; retrievalAttemptId: string;
+    memoryId: string; contentDigest: string;
+  }): Promise<boolean> {
+    this.assertOperational();
+    return this.retrievalLedger.confirmedDelivery(input);
   }
 
   async recordUseReceipt(input: MemoryUseReceiptInput) {
@@ -854,8 +881,10 @@ export class MemoryService {
   }
 
   async exportTransfer(workspace?: string) {
-    const records = await this.list(workspace);
+    // Refuse the incompatible legacy format before loading scoped records.
+    // Never silently strip v2 revisions, provenance, receipts, or history.
     if (await this.store.experienceEnabled()) throw new Error('MEMORY_TRANSFER_V2_UNSUPPORTED');
+    const records = await this.list(workspace);
     return buildMemoryTransferPayload(records, workspace);
   }
 
@@ -1367,6 +1396,8 @@ export class MemoryService {
       const projection = projectMemorySearchResults(
         rankedResults,
         Math.max(500, Math.min(100_000, options.budgetChars ?? 20_000)),
+        semanticEligible,
+        referenceTime ? Date.parse(referenceTime) : Date.now(),
       );
       const results: DeliveredMemorySearchResult[] = projection.results.map(item => ({
         ...item,

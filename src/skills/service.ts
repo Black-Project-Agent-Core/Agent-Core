@@ -541,6 +541,7 @@ export class SkillService {
     return service;
   }
   proposalDirectory(): string { return path.join(this.root, 'proposals'); }
+  proposalProjectRoot(): string { return path.dirname(path.dirname(this.root)); }
 
   private proposalBuildDirectory(item: SkillProposalRecord): string {
     return path.join(this.stagingRoot, 'proposals', item.id.replace(/[^a-z0-9-]/gi, '-'), digestSegment(item.revisionDigest));
@@ -858,26 +859,28 @@ export class SkillService {
     const scanned = sourceKind === 'directory' ? await scanDirectory(validated) : await scanArchive(validated);
     const sourceProvenance = await captureSkillSourceProvenance(validated, sourceKind, scanned);
     if (scanned.metadata.metadata['proposal-id'] && scanned.metadata.metadata['proposal-revision'] !== approvedProposalRevision) throw new Error('SKILL_PROPOSAL_APPROVAL_REQUIRED');
-    const destination = path.join(this.catalogRoot, scanned.metadata.name);
-    try {
-      const existing = await scanDirectory(destination);
-      if (existing.digest === scanned.digest) {
-        return { ...summary(existing, await readSkillSourceProvenance(destination)), status: 'duplicate' };
+    return this.withRevisionLock(scanned.metadata.name, async () => {
+      const destination = path.join(this.catalogRoot, scanned.metadata.name);
+      try {
+        const existing = await scanDirectory(destination);
+        if (existing.digest === scanned.digest) {
+          return { ...summary(existing, await readSkillSourceProvenance(destination)), status: 'duplicate' as const };
+        }
+        throw new Error('SKILL_NAME_COLLISION');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT'
+          && !(error instanceof Error && /ENOENT/.test(error.message))) throw error;
       }
-      throw new Error('SKILL_NAME_COLLISION');
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT'
-        && !(error instanceof Error && /ENOENT/.test(error.message))) throw error;
-    }
 
-    const staging = path.join(this.stagingRoot, `${scanned.metadata.name}-${randomUUID()}`);
-    try {
-      await writeScannedSkillTree(scanned, staging, undefined, sourceProvenance);
-      await rename(staging, destination);
-    } finally {
-      await rm(staging, { recursive: true, force: true }).catch(() => undefined);
-    }
-    return { ...summary(scanned, sourceProvenance), status: 'imported' };
+      const staging = path.join(this.stagingRoot, `${scanned.metadata.name}-${randomUUID()}`);
+      try {
+        await writeScannedSkillTree(scanned, staging, undefined, sourceProvenance);
+        await rename(staging, destination);
+      } finally {
+        await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+      }
+      return { ...summary(scanned, sourceProvenance), status: 'imported' as const };
+    });
   }
 
 
@@ -1066,22 +1069,47 @@ export class SkillService {
     await this.archiveActive(paths.normalized, evidenceRefs);
     const activation = path.join(this.stagingRoot, `activate-${paths.normalized}-${randomUUID()}`);
     const backup = path.join(this.stagingRoot, `active-backup-${paths.normalized}-${randomUUID()}`);
-    await writeScannedSkillTree(candidate, activation, undefined, candidateSourceProvenance);
-    let activeMoved = false;
+    const recoveryPath = ['runtime', 'skills', '.staging', path.basename(backup)].join('/');
+    const failureCode = (error: unknown): string => {
+      const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+      if (typeof code === 'string' && /^[A-Z0-9_]{1,80}$/.test(code)) return code;
+      return error instanceof Error && /^SKILL_REVISION_[A-Z_]{1,80}$/.test(error.message) ? error.message : 'UNKNOWN';
+    };
     try {
+      await writeScannedSkillTree(candidate, activation, undefined, candidateSourceProvenance);
       await rename(paths.active, backup);
-      activeMoved = true;
+      // Backup owns the previous active tree until publish or restoration succeeds.
       try {
         await rename(activation, paths.active);
-      } catch (error) {
-        await rename(backup, paths.active).catch(() => undefined);
-        activeMoved = false;
-        throw error;
+      } catch (publishError) {
+        try {
+          // Never remove or knowingly overwrite an unexpected active-path occupant.
+          try {
+            await lstat(paths.active);
+            throw new Error('SKILL_REVISION_RESTORE_DESTINATION_OCCUPIED');
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          }
+          await rename(backup, paths.active);
+        } catch (restoreError) {
+          throw new Error(`SKILL_REVISION_RESTORE_FAILED:publish=${failureCode(publishError)};restore=${failureCode(restoreError)};recovery=${recoveryPath}`, {
+            cause: new AggregateError([publishError, restoreError], 'Skill revision publication and restoration failed'),
+          });
+        }
+        // Restoration succeeded, but the requested publication still failed.
+        throw publishError;
       }
-      activeMoved = false;
-      await rm(backup, { recursive: true, force: true });
-      if (removeSource) await rm(sourceDirectory, { recursive: true, force: true });
-      await this.pruneRevisionHistory(paths.normalized);
+      // Publication is committed. Cleanup failures must never trigger restoration.
+      let cleanupPhase = 'backup';
+      try {
+        await rm(backup, { recursive: true, force: true });
+        cleanupPhase = 'source';
+        if (removeSource) await rm(sourceDirectory, { recursive: true, force: true });
+        cleanupPhase = 'history';
+        await this.pruneRevisionHistory(paths.normalized);
+      } catch (cleanupError) {
+        throw new Error(`SKILL_REVISION_ACTIVATED_CLEANUP_FAILED:phase=${cleanupPhase};cause=${failureCode(cleanupError)}`, { cause: cleanupError });
+      }
       return {
         active: summary(candidate, candidateSourceProvenance),
         previousDigest: current.digest,
@@ -1089,11 +1117,8 @@ export class SkillService {
         sourceLineageChanged: !sameSkillSourceLineage(currentSourceProvenance, candidateSourceProvenance),
       };
     } finally {
+      // Only our unpublished candidate is disposable here. A failed-restore backup stays.
       await rm(activation, { recursive: true, force: true }).catch(() => undefined);
-      if (activeMoved) {
-        await rename(backup, paths.active).catch(() => undefined);
-      }
-      await rm(backup, { recursive: true, force: true }).catch(() => undefined);
     }
   }
 

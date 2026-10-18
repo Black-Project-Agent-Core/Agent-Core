@@ -108,6 +108,8 @@ async function isolatedHostClose(experience?: { dispose: () => void }) {
   const legacy = { dispose: vi.fn() };
   const laterCleanup = vi.fn(async () => undefined);
   const bindings = { memoryRuntime: { service: legacy, experience }, activityTracker: tracker,
+    artifactAuthorization: { shutdown: vi.fn() },
+    managedBrowserUseRuntime: () => ({ close: async () => undefined }), config: { projectRoot: 'fixture' },
     mutationSafety: { beginDraining() {}, waitForDrain: async () => true, status: () => ({}) },
     workflows: { close: async () => undefined }, server: {}, closeServer: async () => undefined,
     browserControlService: { closeAll: async () => undefined }, terminalManager: { shutdownAll: async () => undefined },

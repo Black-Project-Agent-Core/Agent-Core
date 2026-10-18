@@ -10,6 +10,7 @@ export const INTEGRITY_MUTABLE_EXCLUSIONS = Object.freeze([
   "INTEGRITY-MANIFEST.json",
   "tunnel-client/agent-core.yaml",
   "runtime/memory/",
+  "runtime/skills/",
 ]);
 
 function normalizeRelative(relative) {

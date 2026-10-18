@@ -32,16 +32,19 @@ export async function handleBrowserBridge(request: IncomingMessage, response: Se
   response.once('close', () => abort.abort());
   try {
     const chunks: Buffer[] = []; let bytes = 0;
+    // A 48k-character semantic window can expand beyond 256 KiB when JSON-escaped.
+    const bodyLimit = route === '/browser-bridge/poll' ? 1024 * 1024 : 256 * 1024;
     for await (const chunk of request) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       bytes += buffer.length;
-      if (bytes > 256 * 1024) throw new Error('BROWSER_BRIDGE_BODY_TOO_LARGE');
+      if (bytes > bodyLimit) throw new Error('BROWSER_BRIDGE_BODY_TOO_LARGE');
       chunks.push(buffer);
     }
     const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('BROWSER_BRIDGE_INVALID_BODY');
     if (route === '/browser-bridge/pair') { finish(200, bridge.pair(body, origin)); return; }
     const client = bridge.get(body, origin);
+    if (bytes > 256 * 1024 && client.mode !== 'conversation') throw new Error('BROWSER_BRIDGE_BODY_TOO_LARGE');
     if (route === '/browser-bridge/poll') {
       finish(200, await client.poll(origin, body.token, body.replies, body.events, abort.signal)); return;
     }

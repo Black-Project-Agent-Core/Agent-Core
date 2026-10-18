@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+const option=name=>{const i=process.argv.indexOf(name);return i<0?null:process.argv[i+1];};
+const source=option('--source'),output=option('--output');
+if(!source||!output)throw Error('Required: --source extension-directory --output runtime/path/fixture.html');
+const destination=path.resolve(root,output),relative=path.relative(path.join(root,'runtime'),destination);
+if(relative.startsWith('..')||path.isAbsolute(relative)||!destination.endsWith('.html'))throw Error('Output must be HTML under project runtime');
+const adapter=fs.readFileSync(path.join(source,'conversation.js'),'utf8');
+const cases=fs.readFileSync(path.join(root,'tests/browser-bridge-dom-cases.js'),'utf8');
+const code=adapter.replace(/\bexport /g,'')+'\n'+cases;
+if(code.includes('</script'))throw Error('Unexpected script terminator in fixture source');
+const html='<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'"><title>Isolated Browser Bridge DOM regression</title><body><script>'+code+'</script></body>';
+fs.mkdirSync(path.dirname(destination),{recursive:true});fs.writeFileSync(destination,html,{flag:'wx'});
+console.log(JSON.stringify({fixture:destination,sourceSha256:createHash('sha256').update(adapter).digest('hex'),casesSha256:createHash('sha256').update(cases).digest('hex'),generatedOnly:true,testsExecuted:false}));

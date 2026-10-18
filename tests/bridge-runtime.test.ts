@@ -1,26 +1,38 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
+import { acknowledgeControllerContract } from './controller-contract-fixture.js';
+
+vi.mock('../src/rdc/tools/pdf/markdown.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../src/rdc/tools/pdf/markdown.js')>(), ensureChromeAvailable() {},
+}));
+vi.mock('@puppeteer/browsers', async importOriginal => ({
+  ...await importOriginal<typeof import('@puppeteer/browsers')>(),
+  install: async () => { throw new Error('Browser installation is outside this fixture; use an installed browser'); },
+}));
 
 const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-rdc-bridge-'));
+const originalEnvironment = { rdc: process.env.AGENT_CORE_RDC_CONFIG_DIR, cache: process.env.AGENT_CORE_PUPPETEER_CACHE_DIR, project: process.env.AGENT_CORE_PROJECT_ROOT };
+process.env.AGENT_CORE_PROJECT_ROOT = root;
 process.env.AGENT_CORE_RDC_CONFIG_DIR = path.join(root, 'rdc-config');
-process.env.AGENT_CORE_PUPPETEER_CACHE_DIR = path.join(os.tmpdir(), 'agent-core-puppeteer-cache');
+process.env.AGENT_CORE_PUPPETEER_CACHE_DIR = path.join(root, 'browser-cache');
 const { startAgentCoreService } = await import('../src/index.js');
 const dataDir = path.join(root, 'auth');
-const memoryDir = path.join(root, 'memory');
-await mkdir(memoryDir, { recursive: true });
-await writeFile(path.join(memoryDir, '00-agent-core-memory.md'), '# Test Agent Core Foundational Memory\n', 'utf8');
+const memoryDir = path.join(root, 'runtime/memory');
+await (await import('../src/memory/host-activation.js')).activateCanonicalMemory(root, { operation: 'fresh' });
 const keyStore = new FileKeyStore(dataDir);
 const key = await keyStore.create('acceptance');
-const service = await startAgentCoreService({
-  host: '127.0.0.1', port: 0, dataDir, memoryDir,
-  httpSecurity: { publicBaseUrl: null, protectedResourceUrl: null, trustProxy: false, allowedOrigins: [] },
-  mcp: { protocolMode: 'dual' },
-});
+const { loadConfig } = await import('../src/config.js');
+const config = loadConfig({ AGENT_CORE_DATA_DIR: dataDir, AGENT_CORE_MEMORY_DIR: memoryDir,
+  AGENT_CORE_PHONE_ENABLED: 'false', AGENT_CORE_CODE_INTELLIGENCE_ENABLED: 'false',
+  AGENT_CORE_SEMANTIC_IDE_ENABLED: 'false', AGENT_CORE_LEARNING_ENABLED: 'false' }, root);
+config.port = 0;
+const service = await startAgentCoreService(config);
 const base = `http://127.0.0.1:${service.port}`;
 let id = 0;
+let contractSession: string;
 async function rpc(method: string, params: Record<string, unknown>) {
   const response = await fetch(`${base}/mcp`, {
     method: 'POST',
@@ -35,7 +47,8 @@ async function rpc(method: string, params: Record<string, unknown>) {
   return await response.json() as any;
 }
 async function call(name: string, args: Record<string, unknown> = {}) {
-  const response = await rpc('tools/call', { name, arguments: args });
+  contractSession ??= await acknowledgeControllerContract(async (tool, input) => (await rpc('tools/call', { name: tool, arguments: input })).result);
+  const response = await rpc('tools/call', { name, arguments: { ...args, contractSession } });
   expect(response.error).toBeUndefined();
   expect(response.result?.isError).not.toBe(true);
   return response.result;
@@ -51,16 +64,21 @@ function totalCalls(result: any): number {
 afterAll(async () => {
   await service.close();
   await rm(root, { recursive: true, force: true });
+  for (const [key, value] of [['AGENT_CORE_RDC_CONFIG_DIR', originalEnvironment.rdc], ['AGENT_CORE_PUPPETEER_CACHE_DIR', originalEnvironment.cache], ['AGENT_CORE_PROJECT_ROOT', originalEnvironment.project]]) {
+    if (value === undefined) delete process.env[key!]; else process.env[key!] = value;
+  }
 });
 
 describe('RDC-compatible local bridge runtime', () => {
-  it('publishes the 26 RDC tools plus explicit memory tools over authenticated MCP', async () => {
+  it('publishes the external RDC, memory and controller tools over authenticated MCP', async () => {
     const initialized = await rpc('initialize', {
       protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'bridge-test', version: '1.0.0' },
     });
     expect(initialized.result?.serverInfo?.name).toBe('agent-core');
     const listed = await rpc('tools/list', {});
-    expect(listed.result.tools).toHaveLength(36);
+    expect(listed.result.tools).toHaveLength(66);
+    for (const name of ['controller_contract', 'learning', 'skills', 'image_inspect', 'reconstruction_harness'])
+      expect(listed.result.tools.some((tool: any) => tool.name === name)).toBe(true);
     expect(listed.result.tools.some((tool: any) => tool.name === 'memory_search')).toBe(true);
     expect(listed.result.tools.some((tool: any) => tool.name === 'capability_route')).toBe(false);
     const writeTool = listed.result.tools.find((tool: any) => tool.name === 'write_file');
@@ -74,7 +92,7 @@ describe('RDC-compatible local bridge runtime', () => {
     await call('write_file', { path: target, content: 'alpha\nbeta\n', mode: 'rewrite' });
     expect(await readFile(target, 'utf8')).toBe('alpha\nbeta\n');
     const accidentalOverwrite = await rpc('tools/call', {
-      name: 'write_file', arguments: { path: target, content: 'must-not-overwrite' },
+      name: 'write_file', arguments: { path: target, content: 'must-not-overwrite', contractSession },
     });
     expect(accidentalOverwrite.result?.isError).toBe(true);
     expect(await readFile(target, 'utf8')).toBe('alpha\nbeta\n');

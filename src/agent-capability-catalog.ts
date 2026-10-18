@@ -18,7 +18,8 @@ export type AgentCapabilityFamily =
   | 'memory.write'
   | 'admin.config'
   | 'web.research'
-  | 'artifact.inspect';
+  | 'artifact.inspect'
+  | 'reconstruction.harness';
 
 export interface AgentToolRestriction {
   allowedActions?: string[];
@@ -42,6 +43,9 @@ const t = (name: string, restriction?: AgentToolRestriction): AgentCapabilityToo
 });
 
 export const AGENT_CAPABILITY_CATALOG: readonly AgentCapabilityDescriptor[] = [
+  { family: 'reconstruction.harness', risk: 0,
+    description: 'Native task-bound proof obligations, evidence authority, dependency closure and readiness; observational only.',
+    tools: [t('reconstruction_harness', { allowedActions: ['preview','assess','readiness'] })] },
   { family: 'artifact.inspect', risk: 2,
     description: 'Static bounded artifact inspection of operator-approved exact targets only; no execution or implicit authorization.',
     tools: [t('artifact_inspect', { allowedActions: ['prepare','status','inspect'] })] },

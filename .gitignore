@@ -48,5 +48,5 @@ SubProject/Agent-Code/*.WebView2/
 /.grafel/
 
 # Accidental zero-byte PowerShell fragments: local artifacts, not sources.
-/{console.error(e)
-/{try{const
+/[{]console.error(e)
+/[{]try[{]const

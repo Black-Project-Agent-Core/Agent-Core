@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { afterEach, expect } from 'vitest';
 import { evaluateRetrieval } from '../../../src/memory/evaluation/retrieval-evaluation.js';
-export const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+export const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..');
 export const cliRoot=process.env.AGENT_CORE_TEST_CLI_ROOT||root;
 export const hash=(x:Uint8Array|string)=>'sha256:'+createHash('sha256').update(x).digest('hex');
 export const bytes=(x:unknown)=>Buffer.from(JSON.stringify(x));
@@ -21,7 +21,7 @@ export function input(baseline=[true,true,false,false],candidate=[false,false,tr
     results:baseline.map((hit,i)=>({queryId:'q'+i,baselineIds:hit?['m'+i]:[],candidateIds:candidate[i]?['m'+i]:[]})),...patch};
   const o=bytes(observation);return {cohort,observation,c,o,score:evaluateRetrieval(c,o)};
 }
-export const run=(name:string,args:string[],extra:Record<string,string>={})=>spawnSync(process.execPath,[path.join(cliRoot,'scripts/learning',name),...args],
+export const run=(name:string,args:string[],extra:Record<string,string>={})=>spawnSync(process.execPath,[path.join(cliRoot,'scripts/memory/evaluation',name),...args],
   {cwd:process.cwd(),encoding:'utf8',windowsHide:true,timeout:20000,env:{...process.env,...extra}});
 export async function report(data=input(),extra:Record<string,string>={}){
   const dir=await temp(),cohort=path.join(dir,'c.json'),observations=path.join(dir,'o.json'),output=path.join(dir,'report');
@@ -32,6 +32,6 @@ export async function report(data=input(),extra:Record<string,string>={}){
 export const readJSON=async(file:string)=>JSON.parse(await readFile(file,'utf8'));
 const sources=import.meta.glob('../../../src/memory/evaluation/retrieval-*.ts');
 export async function load(name:string):Promise<any>{
-  if(process.env.AGENT_CORE_TEST_DIST)return import(/* @vite-ignore */pathToFileURL(path.join(process.env.AGENT_CORE_TEST_DIST,'learning',name+'.js')).href);
-  const loader=sources['../../src/learning/'+name+'.ts'];expect(loader,`missing selected module ${name}`).toBeTypeOf('function');return loader();
+  if(process.env.AGENT_CORE_TEST_DIST)return import(/* @vite-ignore */pathToFileURL(path.join(process.env.AGENT_CORE_TEST_DIST,'memory/evaluation',name+'.js')).href);
+  const loader=sources['../../../src/memory/evaluation/'+name+'.ts'];expect(loader,`missing selected module ${name}`).toBeTypeOf('function');return loader();
 }

@@ -5,6 +5,9 @@ const text = (value: unknown, fallback = '-') => {
   const str = String(value ?? '').trim();
   return str || fallback;
 };
+const observed = (value: unknown) => text(value, 'Unknown');
+const yesNo = (value?: boolean | null) => value === true ? 'Yes' : value === false ? 'No' : 'Unknown';
+const providers = (value?: string[] | null) => value ? value.join(', ') || 'None configured' : 'Unknown';
 
 export function buildSystems(snapshot?: DesktopSnapshot): SystemView[] {
   if (!snapshot) return [];
@@ -23,6 +26,15 @@ export function buildSystems(snapshot?: DesktopSnapshot): SystemView[] {
   const phoneTone = normalizeTone(h.phone.status);
   const tunnelTone = snapshot.tunnel.ready ? 'healthy' : 'offline';
   const coreTone = snapshot.core.httpHealthy ? 'healthy' : 'error';
+  const skills = h.skills;
+  const skillsTone = normalizeTone(skills?.status);
+  const externalLearning = h.externalControllerLearning;
+  const externalLearningTone = normalizeTone(externalLearning?.status);
+  const webResearch = h.webResearch;
+  const webResearchTone = webResearch?.status === 'disabled' ? 'offline' : normalizeTone(webResearch?.status);
+  const mutationSafety = h.mcpMutationSafety;
+  const mutationOwnerTone = normalizeTone(mutationSafety?.status, mutationSafety?.issueCount ?? 0);
+  const mutationTone = mutationSafety?.draining && mutationOwnerTone === 'healthy' ? 'warning' : mutationOwnerTone;
 
   const systems: SystemView[] = [
     {
@@ -80,6 +92,30 @@ export function buildSystems(snapshot?: DesktopSnapshot): SystemView[] {
       id:'tunnel', name:'Tunnel', description:'Secure tunnel and remote access', tone:tunnelTone,
       label:labelForTone(tunnelTone), category:'Tunnel',
       meta:[['Port',String(snapshot.tunnel.port)], ['Status',snapshot.tunnel.ready ? 'Ready' : 'Offline'], ['Transport','Secure tunnel'], ['Issues',snapshot.tunnel.ready ? '0' : '1']],
+    },
+    {
+      id:'skills', name:'Skills', description:'Active artifacts and instruction discovery', tone:skillsTone,
+      label:labelForTone(skillsTone), category:'Skills',
+      meta:[['Skills',observed(skills?.skillCount)], ['Discovery',observed(skills?.discoveryMode)], ['Mode',observed(skills?.mode)], ['Status',observed(skills?.status)], ['Source','/health.skills'], ['Execution authority',yesNo(skills?.executionAuthority)], ['Instruction read',yesNo(skills?.instructionRead)]],
+      issue:skills?.issue,
+    },
+    {
+      id:'external-learning', name:'External Controller', description:'Task episodes and Learning review state', tone:externalLearningTone,
+      label:labelForTone(externalLearningTone), category:'Learning',
+      meta:[['Episodes',observed(externalLearning?.episodeCount)], ['Pending reviews',observed(externalLearning?.pendingLearningEpisodes)], ['Ready procedures',observed(externalLearning?.readyProcedureCount)], ['Procedures',observed(externalLearning?.procedureCount)], ['Mode',observed(externalLearning?.mode)], ['Status',observed(externalLearning?.status)], ['Source','/health.externalControllerLearning'], ['Semantic authority',observed(externalLearning?.semanticAuthority)]],
+      issue:externalLearning?.issue,
+    },
+    {
+      id:'web-research', name:'Web Research', description:'Search and reader configuration', tone:webResearchTone,
+      label:labelForTone(webResearchTone), category:'Web Research',
+      meta:[['Search providers',providers(webResearch?.searchProviders)], ['Reader configured',yesNo(webResearch?.readerConfigured)], ['Open providers',providers(webResearch?.openProviders)], ['Search configured',yesNo(webResearch?.searchConfigured)], ['Status',observed(webResearch?.status)], ['Source','/health.webResearch'], ['Local reader',yesNo(webResearch?.nativeReaderAvailable)], ['External reader',yesNo(webResearch?.externalReaderConfigured)]],
+      issue:webResearch?.issue,
+    },
+    {
+      id:'mutation-safety', name:'Mutation Safety', description:'Mutation journal and drain state', tone:mutationTone,
+      label:mutationSafety?.draining && mutationTone === 'warning' ? 'Draining' : labelForTone(mutationTone), category:'Security',
+      meta:[['Active mutations',observed(mutationSafety?.activeMutations)], ['Journal entries',observed(mutationSafety?.journalEntries)], ['Draining',yesNo(mutationSafety?.draining)], ['Issues',observed(mutationSafety?.issueCount)], ['Status',observed(mutationSafety?.status)], ['Source','/health.mcpMutationSafety']],
+      issue:mutationSafety?.issue,
     },
     {
       id:'integrations', name:'Integrations', description:'OAuth, API keys and external services', tone:'unknown',

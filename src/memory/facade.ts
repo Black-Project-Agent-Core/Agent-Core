@@ -69,3 +69,5 @@ export {assessTaskContinuity} from './controller-session.js';
 export {encodeProjectSynthesis,decodeProjectSynthesis,buildProjectSynthesisAction,projectSynthesisRefs,checkProjectSynthesisDependencies} from './project-synthesis.js';
 export type {ProjectSynthesis,SynthesisEligibilitySummary,SynthesisEligibilityReason} from './project-synthesis.js';
 export type {KnowledgeInterval,KnownHistoryCoverage,HistoricalMemorySnapshot} from './revisions.js';
+export {claimReviewContractSchema,claimReviewReadSchema,claimReviewWriteSchema,externalClaimReviewGuide} from './claim-review.js';
+export type {ClaimReviewContract,ClaimReviewRead,ClaimReviewWrite} from './claim-review.js';

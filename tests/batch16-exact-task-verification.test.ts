@@ -12,6 +12,7 @@ import { MemoryService } from '../src/memory/service.js';
 import { registerControllerLearningTools } from '../src/mcp/controller-learning-tools.js';
 import { installInvocationContext } from '../src/mcp/external-controller-tool-support.js';
 import * as stateFiles from '../src/persistence/state-file.js';
+import { controllerLearning } from '../src/mcp/controller-learning-schemas.js';
 
 const roots: string[] = [];
 const session = 'batch16-transport', owner = 'batch16-owner', workspace = 'batch16-fixture';
@@ -63,7 +64,7 @@ async function fixture() {
     case: { path: casePath, digest: digest(caseText) }, answer: { path: answerPath, digest: digest(answerText) } });
   await writeFile(reportPath, report);
   verifier.registerWorkflowVerification({ taskId: task.id, case: { path: casePath, digest: digest(caseText) }, answerPath });
-  const input = { outcome: 'verified' as const, verificationRef: 'verification:' + reportPath + '#' + digest(report) };
+  const input = { taskId: task.id, outcome: 'verified' as const, verificationRef: 'verification:' + reportPath + '#' + digest(report) };
   const failedReport = async () => {
     const wrongAnswer = JSON.stringify([{ ...fact, value: 'wrong-task', contradictions: [] }]);
     await writeFile(answerPath, wrongAnswer);
@@ -99,11 +100,55 @@ function controller(f: Awaited<ReturnType<typeof fixture>>) {
   registerControllerLearningTools(server as any, f.service, session, {
     ownerId: owner, workspaceIdentity: value => f.memory.registeredWorkspaceIdentity(value), browserAllowed: false,
   });
-  return () => callback({ action: 'episode', episodeOperation: 'verify', episodeOutcome: 'verified',
-    verificationRef: f.input.verificationRef, workspace }, {});
+  return (taskId: string | undefined = f.task.id) => callback({ action: 'episode', episodeOperation: 'verify', episodeOutcome: 'verified',
+    verificationRef: f.input.verificationRef, workspace, taskId }, {});
 }
 
 describe('Batch16 exact-task episode verification', () => {
+  it('requires the task selector only for episode verification in the public input contract', () => {
+    const verify = { action: 'episode', episodeOperation: 'verify', episodeOutcome: 'verified', verificationRef: 'verification:fixture' };
+    expect(controllerLearning.safeParse(verify).success).toBe(false);
+    expect(controllerLearning.safeParse({ ...verify, taskId: '  ' }).success).toBe(false);
+    expect(controllerLearning.safeParse({ ...verify, taskId: ' task-a' }).success).toBe(false);
+    expect(controllerLearning.safeParse({ ...verify, taskId: 'task-a' }).success).toBe(true);
+    expect(controllerLearning.safeParse({ action: 'episode', episodeOperation: 'status' }).success).toBe(true);
+  });
+  it('rejects requested task A when a new MCP invocation captures current task B without changing either episode', async () => {
+    const f = await fixture(), invoke = controller(f);
+    await f.start('B');
+    const before = await f.snapshot();
+    const recheck = vi.spyOn(verifier, 'recheckWorkflowReport'), writes = vi.spyOn(stateFiles, 'writeStateFile');
+    const result = await invoke(f.task.id);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('EXTERNAL_EPISODE_VERIFICATION_TASK_MISMATCH');
+    expect(recheck).not.toHaveBeenCalled(); expect(writes).not.toHaveBeenCalled();
+    expect(await f.snapshot()).toEqual(before);
+  });
+
+  it('rejects a requested task owned by another session even with a genuine current invocation', async () => {
+    const f = await fixture();
+    const other = await f.service.startEpisode('other-session', { taskKey: 'other', workspace }, {
+      ownerId: owner, workspaceIdentityKey: f.memory.registeredWorkspaceIdentity(workspace).key,
+    });
+    const before = await f.snapshot();
+    const recheck = vi.spyOn(verifier, 'recheckWorkflowReport'), writes = vi.spyOn(stateFiles, 'writeStateFile');
+    await expect(f.service.verifyEpisode(session, { ...f.input, taskId: other.id }, f.context))
+      .rejects.toThrow('EXTERNAL_EPISODE_VERIFICATION_TASK_MISMATCH');
+    expect(recheck).not.toHaveBeenCalled(); expect(writes).not.toHaveBeenCalled();
+    expect(await f.snapshot()).toEqual(before);
+  });
+
+  it('requires an explicit task selector before verifier I/O or state writes', async () => {
+    const f = await fixture();
+    const before = await f.snapshot();
+    const recheck = vi.spyOn(verifier, 'recheckWorkflowReport'), writes = vi.spyOn(stateFiles, 'writeStateFile');
+    const { taskId: _omitted, ...input } = f.input;
+    await expect(f.service.verifyEpisode(session, input as any, f.context))
+      .rejects.toThrow('EXTERNAL_EPISODE_VERIFICATION_TASK_REQUIRED');
+    expect(recheck).not.toHaveBeenCalled(); expect(writes).not.toHaveBeenCalled();
+    expect(await f.snapshot()).toEqual(before);
+  });
+
   it.each(['missing', 'copied', 'foreign-service', 'unbound', 'foreign-owner', 'wrong-session'] as const)(
     'refuses %s invocation authority before verifier I/O or state writes', async kind => {
       const f = await fixture();

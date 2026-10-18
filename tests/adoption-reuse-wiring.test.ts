@@ -16,11 +16,19 @@ async function boundContext(service: ExternalControllerLearningService, input: {
   expect(invocation.binding).toBe('bound');
   return service.context('transport', input, 'owner', invocation);
 }
+/** Receipt tests must carry a real host-issued invocation, not an unbound shortcut. */
+async function boundReceipt(service: ExternalControllerLearningService, input: any) {
+  const invocation = await service.captureToolInvocationContext({
+    invocationId: randomUUID(), processSessionId: 'fixture-process', sessionId: 'transport', ownerId: 'owner',
+  });
+  expect(invocation.binding).toBe('bound');
+  return service.artifactReceipt('transport', input, invocation);
+}
 async function receiptFixture(experience = false) {
   const f = await fixture();
   if (experience) {
-    const {initializeStandaloneMemory}=await import('../src/memory/initialize.js');
-    f.memory=await initializeStandaloneMemory({baseDir:f.root,memoryRoot:path.join(f.root,'runtime/memory-experience'),experience:{enabled:true}}) as any;
+    const {initializeMemoryRoot}=await import('../src/memory/initialize.js');
+    f.memory=await initializeMemoryRoot({baseDir:f.root,memoryRoot:path.join(f.root,'runtime/memory-experience'),experience:{enabled:true}}) as any;
     f.learning=await LearningService.initialize({enabled:true,stateDir:path.join(f.root,'runtime/learning-experience'),reviewInterval:10,curatorIntervalHours:168},f.memory);
   }
   const external = await ExternalControllerLearningService.initialize({stateDir:path.join(f.root,'external'),memory:f.memory,learning:f.learning,skills:f.skills});
@@ -46,37 +54,37 @@ it('shares trusted host verification manifests with the experience runtime verif
 it.each([false,true])('bridges explicit verified assessment once per task/revision (experience runtime: %s)',async(experience)=>{
   const f=await receiptFixture(experience);
   expect((await f.memory.feedbackStatus()).recordCount).toBe(0);
-  await f.external.artifactReceipt('transport',f.input);
+  await boundReceipt(f.external,f.input);
   expect((await f.memory.feedbackStatus()).recordCount).toBe(0);
   const assessed={...f.input,memoryFeedback:'helpful'};
-  const first:any=await f.external.artifactReceipt('transport',assessed as any);
+  const first:any=await boundReceipt(f.external,assessed as any);
   expect(first.memoryFeedback).toMatchObject({status:'recorded',duplicate:false,salience:1.25});
-  const second:any=await f.external.artifactReceipt('transport',{...assessed,reasonCode:'same-use-other-label'} as any);
+  const second:any=await boundReceipt(f.external,{...assessed,reasonCode:'same-use-other-label'} as any);
   expect(second.memoryFeedback).toMatchObject({status:'recorded',duplicate:true,salience:1.25});
   expect(controllerLearning.parse({action:'artifact_receipt',artifactKind:'memory',...assessed}).memoryFeedback).toBe('helpful');
 });
 it('refuses unverified or rejected assessment and preserves receipt if feedback writing fails',async()=>{
   const f=await receiptFixture();
-  await expect(f.external.artifactReceipt('transport',{...f.input,result:'unavailable',verificationRef:undefined,memoryFeedback:'helpful'} as any)).rejects.toThrow('EXTERNAL_MEMORY_FEEDBACK_VERIFIED_USE_REQUIRED');
-  await expect(f.external.artifactReceipt('transport',{...f.input,applicability:'rejected',memoryFeedback:'helpful'} as any)).rejects.toThrow('EXTERNAL_MEMORY_FEEDBACK_VERIFIED_USE_REQUIRED');
+  await expect(boundReceipt(f.external,{...f.input,result:'unavailable',verificationRef:undefined,memoryFeedback:'helpful'} as any)).rejects.toThrow('EXTERNAL_MEMORY_FEEDBACK_VERIFIED_USE_REQUIRED');
+  await expect(boundReceipt(f.external,{...f.input,applicability:'rejected',memoryFeedback:'helpful'} as any)).rejects.toThrow('EXTERNAL_MEMORY_FEEDBACK_VERIFIED_USE_REQUIRED');
   const feedback=vi.spyOn(f.memory,'feedback').mockRejectedValueOnce(new Error('TEST_FEEDBACK_UNAVAILABLE'));
-  const result:any=await f.external.artifactReceipt('transport',{...f.input,memoryFeedback:'helpful'} as any);
+  const result:any=await boundReceipt(f.external,{...f.input,memoryFeedback:'helpful'} as any);
   expect(result.receipt.memoryId).toBe(f.record.id);
   expect(result.memoryFeedback).toMatchObject({status:'unavailable'});
   feedback.mockRestore();
-  const retry:any=await f.external.artifactReceipt('transport',{...f.input,memoryFeedback:'helpful'} as any);
+  const retry:any=await boundReceipt(f.external,{...f.input,memoryFeedback:'helpful'} as any);
   expect(retry.duplicate).toBe(true);expect(retry.memoryFeedback).toMatchObject({status:'recorded',duplicate:false});
 });
 it('keeps conflicting utility assessments and changed Memory revisions from getting new credit',async()=>{
   const f=await receiptFixture();
-  const first:any=await f.external.artifactReceipt('transport',{...f.input,memoryFeedback:'helpful'} as any);
+  const first:any=await boundReceipt(f.external,{...f.input,memoryFeedback:'helpful'} as any);
   expect(first.memoryFeedback.salience).toBe(1.25);
-  const conflicting:any=await f.external.artifactReceipt('transport',{...f.input,memoryFeedback:'not-helpful'} as any);
+  const conflicting:any=await boundReceipt(f.external,{...f.input,memoryFeedback:'not-helpful'} as any);
   expect(conflicting.duplicate).toBe(true);
   expect(conflicting.memoryFeedback).toMatchObject({status:'unavailable',reason:'MEMORY_FEEDBACK_EVENT_CONFLICT'});
   expect((await f.memory.feedbackSalienceMap()).get(f.record.id)).toBe(1.25);
   await f.memory.update(f.record.id,{content:'Changed recipe with new prerequisites.'});
-  await expect(f.external.artifactReceipt('transport',{...f.input,reasonCode:'after-body-change',memoryFeedback:'helpful'} as any)).rejects.toThrow('MEMORY_USE_RECEIPT_CONTENT_CHANGED');
+  await expect(boundReceipt(f.external,{...f.input,reasonCode:'after-body-change',memoryFeedback:'helpful'} as any)).rejects.toThrow('MEMORY_USE_RECEIPT_CONTENT_CHANGED');
   expect((await f.memory.feedbackSalienceMap()).get(f.record.id)).toBe(1.25);
   expect(controllerLearning.safeParse({action:'artifact_receipt',artifactKind:'memory',...f.input,applicability:'rejected',memoryFeedback:'helpful'}).success).toBe(false);
 });

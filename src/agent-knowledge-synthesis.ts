@@ -7,6 +7,7 @@ import type { SkillDiscoverySnapshot } from './skills/discovery.js';
 import type { MergedRetrieval } from './memory/subquestion-retrieval.js';
 import { createHash } from 'node:crypto';
 import { buildCapabilityExposure, type CapabilityExposure, type CapabilityArtifact } from './capability-awareness.js';
+import { readRakaCapability } from './external-partner-capability.js';
 
 export const knowledgeRevision = procedureContractDigest;
 
@@ -80,6 +81,7 @@ export async function buildKnowledgeSynthesisPacket(input: {
   taskProjection?: ExternalTaskEvidenceProjection;
   workspace?: string;
   availableTools?: readonly string[];
+  externalController?: boolean;
   /** null records an attempted discovery failure; do not scan or embed again. */
   skillDiscovery?: SkillDiscoverySnapshot | null;
 }): Promise<AgentKnowledgePacket> {
@@ -286,7 +288,8 @@ export async function buildKnowledgeSynthesisPacket(input: {
   if (skillStatus === 'unavailable') evidenceGapLines.push('- skill-discovery-unavailable; catalog contents are unknown');
 
   inventoryArtifacts.push(...input.procedures.filter(p=>procedureBoundEvidence(p).supportTaskIds.length>0 && !p.needsReview).map(p=>({kind:'procedure' as const,id:p.fingerprint,description:p.name+': '+p.description,revision:knowledgeRevision(p)})));
-  const capabilityExposure = buildCapabilityExposure({availableTools:input.availableTools,artifacts:inventoryArtifacts,owners});
+  const externalPartners = input.externalController ? [await readRakaCapability()] : undefined;
+  const capabilityExposure = buildCapabilityExposure({availableTools:input.availableTools,artifacts:inventoryArtifacts,owners,externalController:input.externalController,externalPartners});
   if (capabilityExposure.omittedFromText > 0) truncated.add('capabilities');
   // A failed owner cannot turn a partially available composite source into a complete zero.
   const neighborhoodStatus: KnowledgeSourceStatus = memoryStatus === 'available'

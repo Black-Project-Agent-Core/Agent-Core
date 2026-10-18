@@ -81,18 +81,20 @@ it('rejects pinned and absent targets',async()=>{
   await expect((f.memory.feedback as any)('absent-id','absent','helpful',digest(f.record))).rejects.toThrow(/not found/);
 });
 it('checks the canonical body after acquiring the existing lock, not the service cache',async()=>{
-  const f=await fixture(),d=digest(f.record);let release!:()=>void,entered!:()=>void,attempt!:()=>void;
-  const releasePromise=new Promise<void>(r=>release=r),enteredPromise=new Promise<void>(r=>entered=r),attemptPromise=new Promise<void>(r=>attempt=r);
+  const f=await fixture(),d=digest(f.record),prior=await maybeRead(f.feedback);
   const original=MemoryFeedbackStore.prototype.apply;
-  vi.spyOn(MemoryFeedbackStore.prototype,'apply').mockImplementation(function(this:MemoryFeedbackStore,...args:any[]){attempt();return (original as any).apply(this,args);});
-  const writer=withMemoryProcessLock(f.paths.lock,async()=>{
-    entered();await releasePromise;const r=parseCanonicalNote(await readFile(f.canonical,'utf8'));r.content='Cooperating concurrent writer';await writeFile(f.canonical,serializeCanonicalNote(r));
+  vi.spyOn(MemoryFeedbackStore.prototype,'apply').mockImplementationOnce(async function(this:MemoryFeedbackStore,...args:any[]){
+    // Current reload also uses the process lock. Insert the competing writer
+    // after reload, then queue the real feedback admission behind its lease.
+    let pending!:ReturnType<MemoryFeedbackStore['apply']>;
+    await withMemoryProcessLock(f.paths.lock,async()=>{
+      pending=(original as any).apply(this,args);
+      const r=parseCanonicalNote(await readFile(f.canonical,'utf8'));r.content='Cooperating concurrent writer';await writeFile(f.canonical,serializeCanonicalNote(r));
+    });
+    return pending;
   });
-  await enteredPromise;
-  const pending=(f.memory.feedback as any)(f.record.id,'race','helpful',d);
-  const expectation=expect(pending).rejects.toThrow('MEMORY_FEEDBACK_CONTENT_CHANGED');
-  try {await attemptPromise;} finally {release();}
-  await writer;await expectation;expect(await maybeRead(f.feedback)).toBeNull();
+  await expect((f.memory.feedback as any)(f.record.id,'race','helpful',d)).rejects.toThrow('MEMORY_FEEDBACK_CONTENT_CHANGED');
+  expect(await maybeRead(f.feedback)).toBe(prior);
 });
 it('actual MCP handlers parse/forward the guard and refuse lifecycle misuse',async()=>{
   const f=await fixture(),d=digest(f.record),call=f.calls.get('memory_feedback').call;
@@ -125,12 +127,12 @@ it('read binds the body actually returned even when canonical content changes du
   expect(no.isError).toBe(true);expect(no.content[0].text).toContain('MEMORY_FEEDBACK_CONTENT_CHANGED');
 });
 it('refuses a target removed after reload but before feedback lock admission',async()=>{
-  const f=await fixture(),original=MemoryFeedbackStore.prototype.apply;
+  const f=await fixture(),original=MemoryFeedbackStore.prototype.apply,prior=await maybeRead(f.feedback);
   vi.spyOn(MemoryFeedbackStore.prototype,'apply').mockImplementationOnce(async function(this:MemoryFeedbackStore,...args:any[]){
     await withMemoryProcessLock(f.paths.lock,async()=>{await rm(f.canonical);});return (original as any).apply(this,args);
   });
   await expect((f.memory.feedback as any)(f.record.id,'removed','helpful',digest(f.record))).rejects.toThrow('MEMORY_FEEDBACK_TARGET_MISSING');
-  expect(await maybeRead(f.feedback)).toBeNull();
+  expect(await maybeRead(f.feedback)).toBe(prior);
 });
 it('rejects malformed persisted binding without rewriting the corrupted fixture',async()=>{
   const f=await fixture();await (f.memory.feedback as any)(f.record.id,'history','helpful',digest(f.record));

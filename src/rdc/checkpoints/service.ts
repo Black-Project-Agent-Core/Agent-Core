@@ -5,7 +5,7 @@ import { assertSameFileIdentity } from '../../security/file-identity.js';
 import { assertEvidenceLocalPath } from '../../verification/evidence-snapshot.js';
 import { decideToolEvidenceCapture } from '../../security/evidence-capture-policy.js';
 import { isSensitiveKey, redactSensitiveString } from '../../security/redaction.js';
-import { fileMutationCoordinator, type AutoCheckpointReceipt, type AutoCheckpointReason, type MutationExecutionContext } from '../mutation-coordinator.js';
+import { fileMutationCoordinator, nativeDevelopmentFreeze, type AutoCheckpointReceipt, type AutoCheckpointReason, type MutationExecutionContext } from '../mutation-coordinator.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeOwnedFileAtomic } from '../../persistence/atomic-file.js';
@@ -461,6 +461,8 @@ export class FileCheckpointService {
       if (preview.previewDigest !== previewDigest) throw new Error('CHECKPOINT_RESTORE_PREVIEW_STALE');
       const target = this.targetFiles(state, state.nodes[checkpointId]);
       const rollback = new Map<string, FileCheckpointSnapshot>();
+      // Check every target before the first restore; checkpoint capture remains read-only.
+      for (const item of preview.changes) await nativeDevelopmentFreeze.assertWritable(item.path);
       try {
         for (const item of preview.changes) rollback.set(this.key(item.path), await this.snapshotCanonical(item.path));
         for (const item of preview.changes) {

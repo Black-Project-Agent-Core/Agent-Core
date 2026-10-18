@@ -1,3 +1,5 @@
+import { symlinkOrSkip } from '../../helpers/optional-symlink.js';
+import { fileURLToPath } from "node:url";
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -113,7 +115,7 @@ test('activation parsed before source preparation remains the exact namespace de
 });
 async function childTask(dir: string, mode: string, value: unknown, boundary = 'none', controller = 'controller-child') {
     const { spawn } = await import('node:child_process');
-    const child = spawn(process.execPath, [new URL('./helpers/memory-episode-child.mjs', import.meta.url).pathname, dir, mode, boundary, Buffer.from(JSON.stringify(value)).toString('base64url'), controller], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [fileURLToPath(new URL('./helpers/memory-episode-child.mjs', import.meta.url)), dir, mode, boundary, Buffer.from(JSON.stringify(value)).toString('base64url'), controller], { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
@@ -221,9 +223,9 @@ test('source change during canonical loading is rechecked inside the commit lock
   await expect(A.captureEvidence({operationId:'while-loading',source:{kind:'workspace-file',relativePath:'while-loading.md'}})).rejects.toThrow('MEMORY_REVISION_CONFLICT');expect(await readdir(path.join(dir,'archive/objects'))).toHaveLength(1);
 });
 
-test('capture identity drift from real file to symlink before commit cannot publish bytes',async()=>{
+test('capture identity drift from real file to symlink before commit cannot publish bytes',async context=>{
   const {A,service,dir}=await setup();const fs=await import('node:fs/promises'),file=path.join(dir,'before-alias.md'),other=path.join(dir,'replacement.md');await fs.writeFile(file,'original evidence');await fs.writeFile(other,'replacement evidence');const store=(service as any).store,transact=store.transact.bind(store);let changed=false;
-  store.transact=async(...args:any[])=>{if(!changed){changed=true;await fs.rm(file);await fs.symlink(other,file);}return transact(...args);};
+  store.transact=async(...args:any[])=>{if(!changed){changed=true;await fs.rm(file);await symlinkOrSkip(context,other,file,'file');}return transact(...args);};
   await expect(A.captureEvidence({operationId:'alias-race',source:{kind:'workspace-file',relativePath:'before-alias.md'}})).rejects.toThrow('MEMORY_REVISION_CONFLICT');expect(await readdir(path.join(dir,'archive/objects'))).toHaveLength(1);
 });
 

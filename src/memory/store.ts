@@ -8,7 +8,7 @@ import { assertMemoryRecordSafe } from './safety.js';
 import { memoryRetirementFingerprint } from './retirement.js';
 import { assertContainedPath, fingerprintFile, fingerprintText, nextMemoryPublicationClock, MemoryTransactionCoordinator, type MemoryTransactionMutation } from './transaction.js';
 import type { MemoryIssue, MemoryRecord } from './types.js';
-import { withMemoryProcessLock } from './lock.js';
+import { MEMORY_LOCK_STALE_MS, withMemoryProcessLock } from './lock.js';
 import { buildArchiveMutations, buildRecordAuditMutations, readArchivedMemory, isMemoryArchiveManifestKey } from './archive.js';
 import { experienceManifestSchema, isoInstantSchema, legacyExperience, type ExperienceManifest, type SourceRef } from './experience-types.js';
 import { memorySemanticRevision } from './disclosure.js';
@@ -76,7 +76,8 @@ export class FileMemoryStore {
         ]);
       }
       return loaded;
-    });
+    // Cold startup must outwait an orphan lease; ordinary operations keep their short timeout.
+    }, MEMORY_LOCK_STALE_MS + 5_000);
   }
 
   private assertActivationRecords(manifest:ExperienceManifest|null,records:MemoryRecord[]):void {
@@ -106,7 +107,7 @@ export class FileMemoryStore {
       return {manifest,fingerprint:fingerprintText(bytes)};
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        for (const dir of [this.paths.archiveObjects,this.paths.archiveManifests,...['episodes','episode-tasks','capsules','operations','consolidation'].map(name=>path.join(this.paths.state,name))]) {
+        for (const dir of [this.paths.archiveObjects,this.paths.archiveManifests,...['episodes','episode-tasks','capsules','operations','consolidation','claim-reviews'].map(name=>path.join(this.paths.state,name))]) {
           await assertContainedPath(this.paths.root,dir);
           const names = await readdir(dir).catch(error=>{if(error.code==='ENOENT')return [];throw error;});
           if (names.length) throw new Error('MEMORY_EXPERIENCE_MANIFEST_REQUIRED');
@@ -274,6 +275,7 @@ export class FileMemoryStore {
     if (key === 'feedback.json') return {path:path.join(this.paths.state,key),immutable:false,readOnly:true};
     const id = '[A-Za-z0-9][A-Za-z0-9._-]{2,127}', digest = '[a-f0-9]{64}';
     if (new RegExp(`^episode-tasks/${digest}\\.json$`).test(key)) return {path:path.join(this.paths.state,key),immutable:false};
+    if (new RegExp(`^claim-reviews/${digest}\\.json$`).test(key)) return {path:path.join(this.paths.state,key),immutable:false};
     if (new RegExp(`^episodes/${id}/manifest\\.json$`).test(key)) return {path:path.join(this.paths.state,key),immutable:false};
     if (new RegExp(`^(?:episodes/${id}/events/[0-9]+-${id}\\.json|capsules/${id}/${digest}\\.json|operations/${digest}\\.json|consolidation/${id}\\.json)$`).test(key)) {
       return {path:path.join(this.paths.state,key),immutable:!key.startsWith('consolidation/')};

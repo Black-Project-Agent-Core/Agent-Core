@@ -72,6 +72,8 @@ public sealed class AgentCoreRuntime : IDisposable
                 "success",
                 "Agent Core HTTP endpoint and tunnel are reachable; Execution readiness is reported by /health");
         });
+        // Fixed fixture setup is fail-soft and runs after ordinary services start.
+        await SymlinkFixtureSetup.EnsureAsync(Root, (level, message) => AddLog("FIXTURE", level, message));
     }
     public async Task<DesktopStatus> GetStatusAsync()
     {
@@ -156,6 +158,43 @@ public sealed class AgentCoreRuntime : IDisposable
             if (buffer.Length + read > maxBytes)
                 throw new InvalidOperationException("Workflows snapshot exceeds the 4 MiB limit.");
             buffer.Write(chunk, 0, read);
+        }
+        buffer.Position = 0;
+        using var document = await JsonDocument.ParseAsync(buffer, cancellationToken: timeout.Token);
+        return document.RootElement.Clone();
+    }
+
+    public Task<JsonElement> GetProposalDocumentsAsync() => ReadProposalJsonAsync("/agent/proposals");
+
+    public Task<JsonElement> ReadProposalDocumentAsync(string id, string revisionDigest, string documentDigest)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(id, @"^(?:doc|skill-proposal):[a-f0-9]{32}$") ||
+            !System.Text.RegularExpressions.Regex.IsMatch(revisionDigest, @"^sha256:[a-f0-9]{64}$") ||
+            !System.Text.RegularExpressions.Regex.IsMatch(documentDigest, @"^sha256:[a-f0-9]{64}$"))
+            throw new InvalidOperationException("PROPOSAL_DOCUMENT_INPUT_INVALID");
+        return ReadProposalJsonAsync("/agent/proposals/read?id=" + Uri.EscapeDataString(id) +
+            "&revisionDigest=" + Uri.EscapeDataString(revisionDigest) + "&documentDigest=" + Uri.EscapeDataString(documentDigest));
+    }
+
+    private async Task<JsonElement> ReadProposalJsonAsync(string route)
+    {
+        const int maxBytes = 2 * 1024 * 1024;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var request = CreateAgentChatRequest(HttpMethod.Get, route);
+        using var response = await _agentHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(response.StatusCode == System.Net.HttpStatusCode.Conflict
+                ? "PROPOSAL_DOCUMENT_CHANGED" : $"PROPOSAL_DOCUMENT_UNAVAILABLE ({(int)response.StatusCode})");
+        if (response.Content.Headers.ContentLength > maxBytes)
+            throw new InvalidOperationException("PROPOSAL_DOCUMENT_SIZE_LIMIT");
+        await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[16384];
+        int count;
+        while ((count = await stream.ReadAsync(chunk, timeout.Token)) > 0)
+        {
+            if (buffer.Length + count > maxBytes) throw new InvalidOperationException("PROPOSAL_DOCUMENT_SIZE_LIMIT");
+            buffer.Write(chunk, 0, count);
         }
         buffer.Position = 0;
         using var document = await JsonDocument.ParseAsync(buffer, cancellationToken: timeout.Token);
@@ -797,6 +836,11 @@ public sealed class AgentCoreRuntime : IDisposable
         var learning = ReadObject(root, "learning");
         var agentRuntime = ReadObject(root, "agentRuntime");
         var agentChat = ReadObject(root, "agentChat");
+        var skills = ReadObject(root, "skills");
+        var skillDiscovery = ReadObject(skills, "discovery");
+        var externalLearning = ReadObject(root, "externalControllerLearning");
+        var webResearch = ReadObject(root, "webResearch");
+        var mutationSafety = ReadObject(root, "mcpMutationSafety");
 
         var servers = new List<ProviderServerSnapshot>();
         if (semantic.ValueKind == JsonValueKind.Object &&
@@ -873,6 +917,47 @@ public sealed class AgentCoreRuntime : IDisposable
                     ReadInt(agentChat, "activeConversationCount"),
                     ReadInt(agentChat, "runningTurnCount"),
                     ReadInt(agentChat, "resumableTurnCount"))
+                : null,
+            skills.ValueKind == JsonValueKind.Object
+                ? new SkillsHealthSnapshot(
+                    ReadString(skills, "status") ?? "unknown",
+                    ReadString(skills, "mode"),
+                    ReadNullableInt(skills, "skillCount"),
+                    ReadNullableBool(skills, "executionAuthority"),
+                    ReadString(skillDiscovery, "defaultMode"),
+                    ReadNullableBool(skillDiscovery, "instructionRead"),
+                    ReadString(skills, "issue"))
+                : null,
+            externalLearning.ValueKind == JsonValueKind.Object
+                ? new ExternalControllerLearningHealthSnapshot(
+                    ReadString(externalLearning, "status") ?? "unknown",
+                    ReadString(externalLearning, "mode"),
+                    ReadNullableInt(externalLearning, "episodeCount"),
+                    ReadNullableInt(externalLearning, "pendingLearningEpisodes"),
+                    ReadNullableInt(externalLearning, "procedureCount"),
+                    ReadNullableInt(externalLearning, "readyProcedureCount"),
+                    ReadString(externalLearning, "semanticAuthority"),
+                    ReadString(externalLearning, "issue"))
+                : null,
+            webResearch.ValueKind == JsonValueKind.Object
+                ? new WebResearchHealthSnapshot(
+                    ReadString(webResearch, "status") ?? "unknown",
+                    ReadNullableBool(webResearch, "searchConfigured"),
+                    ReadNullableBool(webResearch, "readerConfigured"),
+                    ReadNullableBool(webResearch, "nativeReaderAvailable"),
+                    ReadNullableBool(webResearch, "externalReaderConfigured"),
+                    ReadStringArray(webResearch, "searchProviders"),
+                    ReadStringArray(webResearch, "openProviders"),
+                    ReadString(webResearch, "issue"))
+                : null,
+            mutationSafety.ValueKind == JsonValueKind.Object
+                ? new MutationSafetyHealthSnapshot(
+                    ReadString(mutationSafety, "status") ?? "unknown",
+                    ReadNullableInt(mutationSafety, "issueCount"),
+                    ReadString(mutationSafety, "issue"),
+                    ReadNullableBool(mutationSafety, "draining"),
+                    ReadNullableInt(mutationSafety, "activeMutations"),
+                    ReadNullableInt(mutationSafety, "journalEntries"))
                 : null);
     }
 
@@ -901,6 +986,31 @@ public sealed class AgentCoreRuntime : IDisposable
     {
         if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty(name, out var node)) return false;
         return node.ValueKind == JsonValueKind.True || (node.ValueKind == JsonValueKind.String && bool.TryParse(node.GetString(), out var value) && value);
+    }
+
+    private static int? ReadNullableInt(JsonElement root, string name)
+    {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty(name, out var node)) return null;
+        return node.ValueKind == JsonValueKind.Number && node.TryGetInt32(out var value) ? value : null;
+    }
+
+    private static bool? ReadNullableBool(JsonElement root, string name)
+    {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty(name, out var node)) return null;
+        return node.ValueKind == JsonValueKind.True ? true : node.ValueKind == JsonValueKind.False ? false : null;
+    }
+
+    private static IReadOnlyList<string>? ReadStringArray(JsonElement root, string name)
+    {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty(name, out var node)
+            || node.ValueKind != JsonValueKind.Array) return null;
+        var values = new List<string>();
+        foreach (var item in node.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String) return null;
+            values.Add(item.GetString()!);
+        }
+        return values;
     }
 
     private ChildRuntimePaths PrepareOwnedChildRuntime()

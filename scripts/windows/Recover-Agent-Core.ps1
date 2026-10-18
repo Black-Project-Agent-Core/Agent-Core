@@ -38,6 +38,7 @@ function Test-ProtectedRelativePath([string]$Relative) {
         'secrets\',
         'runtime\bridge-auth\',
         'runtime\memory\',
+        'runtime\skills\',
         'runtime\tracker\',
         'runtime\webview2\',
         'runtime\backups\',
@@ -288,7 +289,8 @@ function New-DerivedManifest([string]$Root, [string]$Version) {
             mutableExclusions = @(
                 $IntegrityManifestName,
                 'tunnel-client/agent-core.yaml',
-                'runtime/memory/'
+                'runtime/memory/',
+                'runtime/skills/'
             )
         }
         fileCount = $files.Count

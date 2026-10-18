@@ -63,7 +63,9 @@ test('more than 500 records, historical revisions and all authorized workspaces 
  const originalPage:any=await A.recall({retention:'all',limit:1});expect(originalPage.data.nextCursor).toBeTruthy();
  await expect(B.recall({retention:'all',limit:1,cursor:originalPage.data.nextCursor})).rejects.toThrow('MEMORY_SCOPE_MISMATCH');
  await expect(B.expand({source:{kind:'memory',id:other.id,revision:memorySemanticRevision(other)},view:'record'})).rejects.toThrow('MEMORY_SCOPE_MISMATCH');
-},60000);
+// This is a disk-backed correctness test, not a latency gate. Windows filesystem
+// checks exceeded the old 60s runner limit before this preserved workload completed.
+},process.platform==='win32'?240000:60000);
 
 test('partial copy remains inactive, replays only its bundle and rejects unexpected retained data',async()=>{
  const {dir,A}=await setup();await A.startEpisode(start);const bundle=await exportMemoryTransferV2(dir,{...policy,completeness:'complete'}),destination=await target();

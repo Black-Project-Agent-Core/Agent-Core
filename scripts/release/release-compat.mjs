@@ -147,8 +147,8 @@ async function builtManifestBudget(options = {}) {
       const full = registeredManifest(expanded);
       const raw = JSON.stringify(full), output = path.resolve(ROOT, options.output);
       if (stale) throw new Error('Refusing schema artifact from a stale build');
-      if (path.dirname(output) !== path.join(ROOT, 'SubProject') || !output.endsWith('.json'))
-        throw new Error('Schema artifact output must be a JSON file in the existing SubProject directory');
+      if (path.dirname(output) !== path.join(ROOT, 'docs', 'memory') || !output.endsWith('.json'))
+        throw new Error('Schema artifact output must be a JSON file in docs/memory');
       await fs.writeFile(output, raw, { encoding: 'utf8', flag: 'wx' });
       const { createHash } = await import('node:crypto');
       result.optionalCohorts = { memoryV2: { toolCount: memoryManifest.tools.length, bytes: serializedBytes(memoryManifest) },
@@ -166,6 +166,9 @@ async function builtManifestBudget(options = {}) {
 
 const mcpFiles = [
   'src/mcp/server.ts',
+  'src/mcp/controller-contract.ts',
+  'src/mcp/restart-tool.ts',
+  'src/mcp/external-reconstruction-harness-tools.ts',
   'src/mcp/artifact-inspect-tools.ts',
   'src/memory/mcp/tools.ts',
   'src/memory/mcp/experience-tools.ts',
@@ -203,7 +206,7 @@ if (process.argv.includes('--manifest-only')) {
   const option = name => { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; };
   const result = await builtManifestBudget({ output: option('--output'), imageBaseline: option('--image-baseline') });
   console.log(JSON.stringify(result, null, 2));
-  if (!result.available || result.stale || result.exceeded || result.toolCount !== 76 || result.imageBaseline?.withinDelta === false)
+  if (!result.available || result.stale || result.exceeded || result.toolCount !== 79 || result.imageBaseline?.withinDelta === false)
     process.exitCode = 2;
 } else {
 const currentTools = new Set();

@@ -1,3 +1,5 @@
+import { symlinkOrSkip } from '../../helpers/optional-symlink.js';
+import { fileURLToPath } from "node:url";
 import { mkdtemp, mkdir, readFile, rm, writeFile, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -29,11 +31,14 @@ test('invalid journal is preserved and blocks recovery without touching external
  expect(await readFile(outside,'utf8')).toBe('unchanged'); expect(await readdir(evidence)).toContain('journal.json');
 });
 
-test('corrupt journal and symlinked destinations fail closed',async()=>{
- const {symlink}=await import('node:fs/promises'); const dir=await root(); const outside=await root();
+test('symlinked destinations fail closed',async context=>{
+ const dir=await root(); const outside=await root();
  const tx=new MemoryTransactionCoordinator(path.join(dir,'state'));
- await symlink(outside,path.join(dir,'notes'),'dir');
+ await symlinkOrSkip(context,outside,path.join(dir,'notes'),'dir');
  await expect(tx.commit([{targetPath:path.join(dir,'notes/escape.md'),content:'no',expectedFingerprint:null}])).rejects.toThrow('MEMORY_PATH_SYMLINK');
+});
+test('a corrupt journal fails closed and preserves its original bytes',async()=>{
+ const dir=await root(),tx=new MemoryTransactionCoordinator(path.join(dir,'state'));
  const broken=path.join(tx.root,'broken'); await mkdir(broken,{recursive:true}); await writeFile(path.join(broken,'journal.json'),'{');
  await expect(tx.recover()).rejects.toThrow('MEMORY_TRANSACTION_RECOVERY_BLOCKED');
  expect(await readFile(path.join(broken,'journal.json'),'utf8')).toBe('{');
@@ -71,7 +76,7 @@ test('same-process contending store transactions preserve all increments',async(
 
 async function spawnFixture(rootDir:string,id:string,boundary:string,operation='fixture-operation',count=1) {
  const {spawn}=await import('node:child_process');
- const child=spawn(process.execPath,[new URL('./helpers/memory-transaction-child.mjs',import.meta.url).pathname,rootDir,id,boundary,operation,String(count)],{stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,[fileURLToPath(new URL('./helpers/memory-transaction-child.mjs',import.meta.url)),rootDir,id,boundary,operation,String(count)],{stdio:['ignore','pipe','pipe']});
  let stdout='',stderr=''; child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
  const exit=new Promise<number|null>((resolve,reject)=>{child.on('error',reject);child.on('close',code=>resolve(code));});
  const ready=new Promise<void>((resolve,reject)=>{

@@ -1,6 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { constants } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { ROOT } from "./release-policy.mjs";
+import { parseProductVersion } from "./release-lib.mjs";
 
 export const PRE_STATE_PATH = path.join(ROOT, ".changeset", "pre.json");
 
@@ -27,6 +30,12 @@ function validateState(raw) {
   if (raw.mode !== "pre" && raw.mode !== "exit") {
     throw new Error("Invalid prerelease state mode");
   }
+  if (raw.mode === "exit" && raw.sourceVersion !== undefined) {
+    if (!parseProductVersion(raw.sourceVersion).prerelease || raw.tag !== undefined || raw.sequence !== undefined)
+      throw new Error("Invalid source-only prerelease exit");
+    return { version: 1, mode: "exit", sourceVersion: raw.sourceVersion,
+      exitRequestedAt: assertIso(raw.exitRequestedAt, "exitRequestedAt") };
+  }
   const tag = validatePrereleaseTag(raw.tag);
   const sequence = Number(raw.sequence);
   if (!Number.isSafeInteger(sequence) || sequence < 0) {
@@ -49,12 +58,12 @@ function validateState(raw) {
   };
 }
 
-async function atomicWriteJson(file, value) {
+async function atomicWriteJson(file, value, exclusive = false) {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const temp = file + ".agent-core-pre-" + process.pid + "-" + Date.now() + ".tmp";
+  const temp = file + ".agent-core-pre-" + process.pid + "-" + randomUUID() + ".tmp";
   try {
     await fs.writeFile(temp, JSON.stringify(value, null, 2) + "\n", "utf8");
-    await fs.copyFile(temp, file);
+    await fs.copyFile(temp, file, exclusive ? constants.COPYFILE_EXCL : 0);
   } finally {
     await fs.rm(temp, { force: true }).catch(() => undefined);
   }
@@ -94,6 +103,14 @@ export async function enterPrerelease(tag, options = {}) {
 export async function requestPrereleaseExit(options = {}) {
   const file = options.file ?? PRE_STATE_PATH;
   const existing = await readPrereleaseState({ file });
+  if (options.sourceVersion !== undefined) {
+    if (existing || !parseProductVersion(options.sourceVersion).prerelease)
+      throw new Error("Source-only exit requires a prerelease source with no existing channel state");
+    const state = { version: 1, mode: "exit", sourceVersion: options.sourceVersion,
+      exitRequestedAt: new Date(options.now ?? Date.now()).toISOString() };
+    await atomicWriteJson(file, state, true);
+    return state;
+  }
   if (!existing || existing.mode !== "pre") {
     throw new Error("Cannot exit prerelease mode because no active prerelease channel exists");
   }

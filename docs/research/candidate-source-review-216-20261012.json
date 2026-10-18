@@ -1248,7 +1248,17 @@
       "qualityReview": "2026-10-12 one-pass check: reuse applies to the concrete submechanism described in currentGapVsAlreadyCovered, not merely presence of a similarly named native capability; no proven donor replacement identified in focused source scope.",
       "reviewPartition": "001-054",
       "planAllocation": "reviewed-not-assigned-to-batch-02",
-      "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code."
+      "qualityRule": "Compare implementation quality and concrete mechanisms; existing owner presence alone does not justify reuse. Do not infer measured benefit from static code.",
+      "batch17Implementation": {
+        "scope": "Same-owner import/promote/rollback writer exclusion and native activation backup preservation",
+        "receivingOwner": "src/skills/service.ts",
+        "baseline": "bbbd75c7c8784f11f3c7cd1d0c0393265caa762d",
+        "sourceStatus": "implemented; one official Linux build exit 0; Windows activation not performed",
+        "mechanism": "Import destination inspection, duplicate/collision decisions, publication and owned cleanup share the existing per-name revision guard. Failed publication restores the prior tree or preserves its backup with a bounded recovery error; committed-publication cleanup errors are reported separately.",
+        "donor": "memodb-io/Acontext@259d73bfdebeed35ec2d4211ddc060a2d4126bc6 skill_learner.py 124-189; Apache-2.0; writer-ownership principle only, no donor code or runtime copied",
+        "evidenceBoundary": "Source reconciliation, official build and fresh 79-tool compiled descriptor only. No live concurrency/recovery branch, Windows resident activation, independent Learning receipt, cross-process fencing, crash recovery or measured benefit is claimed.",
+        "report": "docs/Batch17-Linux-Skill-Writer-Recovery-20261015.md"
+      }
     },
     {
       "id": 19,
@@ -11536,7 +11546,7 @@
       "receivingOwner": "src/rdc/browser-control/service.ts; src/learning/service.ts; src/learning/external-controller.ts",
       "gapVsAlreadyCovered": "BrowserControlService already invalidates observation IDs on document/generation/focus changes. Do not copy this guard or add domain-memory store. Only a future read-only suggestion of already verified procedure steps conditioned on a current page fingerprint could add value; replay still needs current observed IDs and grants.",
       "decision": "extend",
-    "implementation": "Batch14 #127 source-built, plugin 1.0.6 same-app installed and resident active; refreshed client now advertises browserObservation in controller_learning; no eligible actual browser/procedure receipt exercised",
+      "implementation": "Batch14 #127 source-built, plugin 1.0.6 same-app installed and resident active; refreshed client now advertises browserObservation in controller_learning; no eligible actual browser/procedure receipt exercised",
       "licenseCoupling": "MIT. TypeScript plus Chrome/CDP and donor domain-memory runtime; adopt only small native contracts, never donor browser runtime.",
       "batchDomain": "native evidence acquisition",
       "sourceEvidence": [
@@ -12117,10 +12127,10 @@
       "batch16Implementation": {
         "scope": "OMC #134 conditional exact-task completion on external verifyEpisode only",
         "receivingOwner": "src/learning/external-controller.ts; src/mcp/controller-learning-tools.ts",
-        "sourceStatus": "implemented; official build exit 0; post-build resident observed",
-        "residentEvidence": "Node PID19948 started 2026-10-16 02:49:22 WIB after emitted code 02:38:42; official receipt 4521f9ce0ca24ed79c3874d31a7eca7f.json exit0/error null; /health ok",
+        "sourceStatus": "implemented and already resident; 2026-10-16 continuation adds functional regression acceptance without production edits; scoped Learning checkpoint393/review complete for ext-7d8c60ef98de4833ba2f6695cf6b882e",
+        "residentEvidence": "Current Core PID9752 began2026-10-15T22:30:40.790957Z after compiled owner files22:28:06Z/22:28:08Z; healthok, Memory/Learning available at23:07:19Z. Historical PID19948/receipt4521f9ce0ca24ed79c3874d31a7eca7f retained in Batch16 report. No restart in this continuation.",
         "mechanism": "Host-issued invocation identity admitted before verifier I/O, exact expectedTaskId, and repeated current-head/binding validation inside existing mutation callback before verification writes; closed-same-target no-op.",
-        "evidenceBoundary": "Source/build and unchanged MCP contract only; missing-binding, rotation and concurrency branches not exercised live; no global generation or dedup guarantee.",
+        "evidenceBoundary": "55 distinct targeted tests pass across3files, including21 exact-task cases with actual service-issued identity and canonical verifier. Controlled isolated A-to-B await regression refuses verification mutation; pass/fail/unavailable and closed/binding guards exercised. No production race injection, speed/benchmark, global generation or new dedup guarantee. Report:docs/Batch16-Windows-Exact-Task-Verification-20261016.md; runner evidence:runtime/backups/batch16-exact-task-20261016/functional-finalization-20261016/test-run-final.json.",
         "donor": "Yeachan-Heo/oh-my-claudecode@8262f9f790eed35e6cbd66572b36c2acba18f679 verifier.ts 162-190; MIT; principle adapted without substantial source copying",
         "reserve": "#18 Skill writer exclusion remains independent and not implemented in Batch 16"
       },

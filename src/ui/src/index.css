@@ -29,14 +29,18 @@
 .workflows-status-row{display:flex;align-items:center;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--text-2)}
 .workflows-status-row small{margin-left:auto;color:var(--muted)}
 .workflows-counts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.workflows-counts small{align-self:center;margin-right:4px;color:var(--muted);font-size:11px}
 .workflows-counts span{padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text-2)}
 .workflows-details{margin-top:12px;color:var(--muted);font-size:11px}
 .workflows-details summary{cursor:pointer;color:var(--text-2)}
 .workflows-details dl{display:grid;gap:6px}.workflows-details dl>div{display:grid;grid-template-columns:125px minmax(0,1fr);gap:8px}.workflows-details dd{margin:0;overflow-wrap:anywhere;font-family:Consolas,monospace;color:var(--text-2)}
 .workflows-details p,.workflows-details ul{margin-bottom:0}.workflows-details li{margin:5px 0}
 .workflows-error{color:var(--red)!important;margin:12px 0 0}.workflows-stale{color:var(--amber)!important;margin:12px 0 0}
-.workflows-canvas{min-height:520px;height:calc(100dvh - 360px);border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg-deep)}
+.workflows-update{font-size:12px;color:var(--green);margin:12px 0 0}
+.workflows-canvas{min-height:650px;height:calc(100dvh - 310px);border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg-deep)}
 .workflows-canvas iframe{display:block;width:100%;height:100%;border:0}
+.workflows-canvas.is-expanded{position:fixed;inset:16px;z-index:1000;min-height:0;height:auto;box-shadow:0 0 0 20px #030a12dd}
+.workflows-collapse{position:absolute;bottom:14px;right:16px;z-index:2;background:var(--panel-3)}
 .workflows-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:32px;text-align:center;color:var(--muted)}
 .workflows-empty strong{color:var(--text-2)}
 html,body,#root{width:100%;height:100%;margin:0}
@@ -280,3 +284,20 @@ h1,h2,h3,p{margin-top:0}.page h1{font-size:30px;line-height:1.05;margin-bottom:5
 .chat-progress{display:flex;align-items:center;gap:7px;color:#8ccce8;font-size:10px}.chat-progress b{color:#b8e3f6}
 .chat-composer-hint{font-size:9px;color:#7895aa}
 @media(max-width:1050px){.chat-shell{grid-template-columns:1fr}.chat-thread-list{max-height:230px}.chat-message-list .chat-message{max-width:95%}}
+
+/* External proposal review: documents are displayed as text, never executed. */
+.proposal-panel{min-width:0}.proposal-panel .section-title{flex-wrap:wrap}.proposal-panel .section-title-copy{min-width:0}
+.proposal-panel .section-title>div{max-width:100%}.proposal-panel .tiny-button{max-width:100%;white-space:normal;height:auto;min-height:39px;padding:8px 12px}.proposal-panel .tiny-button svg{flex-shrink:0}
+.proposal-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,265px),1fr));gap:12px;margin-top:14px}
+.proposal-card{min-width:0;padding:15px;border:1px solid #233c50;border-radius:10px;background:#0d1d2b}
+.proposal-card-heading{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:flex-start;font-size:10px}
+.proposal-kind{color:#8ccce8;text-transform:uppercase;letter-spacing:.06em}.proposal-status{min-width:0;max-width:100%;padding:3px 7px;border:1px solid #4d4b31;border-radius:5px;background:#302a1c;color:#e9cb84;overflow-wrap:anywhere}
+.proposal-card h3{margin:12px 0 8px;font-size:15px;color:#e0edf5}.proposal-path{font-size:11px;color:#8ca8bd;overflow-wrap:anywhere;line-height:1.5}
+.proposal-revision{display:grid;gap:5px;margin:12px 0 14px;font-size:10px;color:#86a4ba}.proposal-revision code,.proposal-reader-heading code{font-size:10px;color:#93b9d2;overflow-wrap:anywhere}
+.proposal-warning{font-size:11px;color:#d5b77a;line-height:1.5}.proposal-error{padding:10px;border:1px solid #73424a;border-radius:6px;color:#f1aab6;font-size:12px}
+.proposal-guides{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0;color:#9dbbd0;font-size:12px}
+.proposal-guides button{white-space:normal;text-align:left;overflow-wrap:anywhere}.proposal-reader-heading>div{min-width:0}
+.proposal-reader{margin-top:18px;border:1px solid #34546c;border-radius:10px;background:#091724;overflow:hidden}.proposal-reader-heading{display:flex;justify-content:space-between;gap:12px;padding:14px;background:#12283a}
+.proposal-reader-heading h3{margin:0 0 6px;color:#e0edf5;font-size:16px}.proposal-reader-heading p{margin:0 0 6px;color:#9dbbd0;font-size:11px;overflow-wrap:anywhere}
+.proposal-reader pre{max-height:520px;overflow:auto;margin:0;padding:18px;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.7 Consolas,monospace;color:#d4e5ef;tab-size:4}
+.proposal-decision-guidance{margin:0;padding:12px 18px;border-top:1px solid #233c50;font-size:12px;line-height:1.6;color:#a8c6d9;overflow-wrap:anywhere}

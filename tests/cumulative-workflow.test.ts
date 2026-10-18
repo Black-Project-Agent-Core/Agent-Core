@@ -111,7 +111,7 @@ describe('cumulative workflow persistence and task identity', () => {
     await hostObservation(() => service.recordToolOutcome({ sessionId: 'transport', tool: 'read_file', argumentKeys: [], outcome: 'success', readOnly: true, invocationContext: invocation }));
     const duplicate = await start('first');
     expect(duplicate.id).toBe(first.id);
-    await service.verifyEpisode('transport', { outcome: 'verified', verificationRef: 'verification:first' }, invocation);
+    await service.verifyEpisode('transport', { taskId: first.id, outcome: 'verified', verificationRef: 'verification:first' }, invocation);
     await service.recordLearningCheckpoint('transport', undefined, 'first', first.id);
     await service.recordLearningReview('transport', 'no-new-knowledge', { first: { complete: true, status: 'no-new-knowledge' } });
     const terminal = await service.getEpisode('transport');

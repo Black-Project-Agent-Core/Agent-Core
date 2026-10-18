@@ -1,8 +1,8 @@
 import { parentPort, workerData } from 'node:worker_threads';
-import { inspectJavaScript } from './javascript.js';
+import { inspectJavaScriptWithCoverage } from './javascript.js';
 import { inspectAsar } from './asar.js';
 import { inspectManaged } from './managed.js';
-import type { StaticInput } from './contracts.js';
+import type { ArtifactFinding, StaticInput } from './contracts.js';
 
 const input = workerData as { captured: StaticInput; selected: string[] };
 const source = input.captured;
@@ -14,19 +14,22 @@ try {
   } else if (source.format === 'asar' && source.archive) {
     parentPort?.postMessage(inspectAsar(source.archive, input.selected));
   } else if (source.format === 'directory-js') {
-    const findings = [];
+    const findings: ArtifactFinding[] = [];
     let inspected = 0;
     let unavailable = 0;
+    let droppedFindings = 0;
     for (const file of source.files) {
       if (!file.bytes) continue;
       try {
         if (!/\.(?:[cm]?js|jsx|tsx?|mts|cts)$/i.test(file.relative)) continue;
-        const items = inspectJavaScript(file.relative, file.bytes);
-        findings.push(...items.slice(0, 256 - findings.length));
+        const parsed = inspectJavaScriptWithCoverage(file.relative, file.bytes);
+        const remaining: number = 256 - findings.length;
+        findings.push(...parsed.findings.slice(0, remaining));
+        droppedFindings += parsed.droppedFindings + Math.max(0, parsed.findings.length - remaining);
         inspected++;
       } catch { unavailable++; }
     }
-    parentPort?.postMessage({ findings, inspected, unavailable, inventory: source.files.length,
+    parentPort?.postMessage({ findings, droppedFindings, inspected, unavailable, inventory: source.files.length,
       notExamined: source.files.length - inspected - unavailable,
       limitations: ['Selected JS source only; unresolved imports/dynamic code and inactive members remain unknown'] });
   } else throw new Error('ARTIFACT_FORMAT_UNSUPPORTED');

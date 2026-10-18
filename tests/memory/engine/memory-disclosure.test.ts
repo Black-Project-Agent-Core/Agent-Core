@@ -56,7 +56,7 @@ describe('controller compact disclosure E11–E13', () => {
     expect(hit).toMatchObject({ retention: 'durable', epistemic: 'unknown', temporal: 'unknown', verification: 'unverified', applicability: 'unknown', freshness: 'unknown' });
     expect(JSON.stringify(result)).not.toContain(saved.content);
     expect(JSON.stringify(result)).not.toContain(saved.context);
-    expect(Object.keys(hit).sort()).toEqual(['abstract','excerpt','applicability','availableViews','epistemic','freshness','id','retention','retrievalEvidence','revision','score','temporal','title','verification'].sort());
+    expect(Object.keys(hit).sort()).toEqual(['abstract','excerpt','applicability','availableViews','detailHint','epistemic','freshness','id','retention','retrievalEvidence','revision','score','temporal','title','verification'].sort());
   });
 
   it('uses map without body when query is omitted or map is requested', async () => {

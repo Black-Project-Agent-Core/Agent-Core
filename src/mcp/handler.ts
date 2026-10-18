@@ -22,6 +22,7 @@ import type { PhoneController } from '../phone/controller.js';
 import { FailureLoopAdvisor } from './failure-loop-advisor.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { createAgentCoreMcpServer } from './server.js';
+import { ControllerContractGate } from './controller-contract.js';
 import { memoryCredentialOwner, ownerScopedLearningSession } from '../memory/mcp/scope.js';
 import { createImageInspector } from '../rdc/tools/image-inspect.js';
 import type { ArtifactAuthorization } from '../auth/artifact-authorization.js';
@@ -142,6 +143,7 @@ function protocolHandler(factory: McpServerFactory, protocolMode: McpProtocolMod
 export function createMcpHttpHandler(options: BridgeMcpHttpOptions = {}): McpHttpHandler {
   const protocolMode = options.protocolMode ?? 'dual';
   const failureLoopAdvisor = new FailureLoopAdvisor();
+  const contractGate = new ControllerContractGate();
   // Inspectors retain at most 64 metadata views each, never source/output buffers.
   const imageSessions = new Map<string, { inspect: ReturnType<typeof createImageInspector>; lastUsed: number }>();
   const imageInspectorFor = (request: Parameters<McpHttpHandler>[0], key: Parameters<McpHttpHandler>[2]) => {
@@ -166,11 +168,13 @@ export function createMcpHttpHandler(options: BridgeMcpHttpOptions = {}): McpHtt
   return async (request, response, key) => {
     if (request.method !== 'POST') return sendProtocolError(response, 405, 'Method not allowed.');
     const controllerSessionId = externalControllerSessionId(request, key);
+    // Headerless clients must carry their own receipt; never unlock by credential/hour.
+    const contractBinding = JSON.stringify([key.id, request.headers['mcp-session-id'] ?? request.headers['x-agent-core-session-id'] ?? null]);
     const imageInspector = imageInspectorFor(request, key);
     const owner = memoryCredentialOwner(key);
     const learningSessionId = options.memoryExperience && owner ? ownerScopedLearningSession(owner, controllerSessionId) : controllerSessionId;
-    const controllerBootstrap = options.externalControllerLearning && (!options.memoryExperience || owner)
-      ? await options.externalControllerLearning.bootstrapInstructions(learningSessionId).catch(() => undefined)
+    const bootstrap = options.externalControllerLearning && (!options.memoryExperience || owner)
+      ? () => options.externalControllerLearning!.bootstrapInstructions(learningSessionId)
       : undefined;
     const factory: McpServerFactory = () => createAgentCoreMcpServer(key, {
       memoryService: options.memoryService,
@@ -178,7 +182,7 @@ export function createMcpHttpHandler(options: BridgeMcpHttpOptions = {}): McpHtt
       learningService: options.learningService,
       externalControllerLearning: options.externalControllerLearning,
       controllerSessionId,
-      controllerBootstrap,
+      controllerContract: { gate: contractGate, binding: contractBinding, bootstrap },
       imageInspector,
       semanticIde: options.semanticIde,
       skillsService: options.skillsService,

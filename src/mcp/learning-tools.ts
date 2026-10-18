@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import type { LearningService } from '../learning/service.js';
 import type { ExternalControllerLearningService } from '../learning/external-controller.js';
-import { currentExternalInvocationContext } from '../tracker/tool-invocation.js';
+import { currentExternalInvocationContext, currentToolInvocationRequest } from '../tracker/tool-invocation.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { appendFailureLoopAdvisory, type FailureLoopAdvisor } from './failure-loop-advisor.js';
 import * as schemas from './learning-schemas.js';
@@ -26,16 +26,38 @@ export function registerLearningTools(
   externalSessionId?: string,
   resolveTaskScope?: MemoryScopeResolver,
   evidenceReadAllowed = false,
+  externalCaller = false,
 ): void {
   server.registerTool('learning', {
     title: 'Agent Core Learning',
     description: 'Shared Learning owner. After meaningful work checkpoint with evidence/workspace; review when due using checkpointKeys/taskId and disposition for empty candidates. Memory writes do not finalize Learning. decision declares immutable forecasts, assesses observation/goal evidence, or inspects context/salience/calibration. Salience stoppingContext assesses optional verification stopping; required checks and unresolved risk remain visible. External decisions require host-bound taskId; native uses current task. File evidence obeys read grants. Tool success is not goal success. Review/receipts/curation/journey preserve evidence; no execution grant or automatic policy activation.',
     inputSchema: schemas.learning.shape,
     annotations: { title: 'Agent Core Learning', readOnlyHint: false, destructiveHint: false },
-  }, async (args: any) => {
+  }, async (args: any, ctx) => {
     const invocationContext = currentExternalInvocationContext();
     const input = schemas.learning.parse(args);
     try {
+      // Caller classification is host-owned; an unbound external invocation must
+      // not slip into a native or taskless Learning write.
+      const boundExternalTask = async () => {
+        if (!externalCaller) return null;
+        if (!externalController || !externalSessionId || !resolveTaskScope
+          || invocationContext?.binding !== 'bound'
+          || currentToolInvocationRequest()?.identity.id !== invocationContext.invocationId
+          || currentToolInvocationRequest()?.mutationContext.signal?.aborted
+          || ctx?.mcpReq?.signal?.aborted
+          || !await externalController.invocationTaskCurrent(invocationContext))
+          throw new Error('LEARNING_EXTERNAL_SCOPE_UNAVAILABLE');
+        const externalTaskId = invocationContext.taskId;
+        if (!externalTaskId) throw new Error('LEARNING_EXTERNAL_SCOPE_UNAVAILABLE');
+        const scope = await resolveTaskScope({ taskId: externalTaskId });
+        if (scope.controllerId !== 'agent-core-external' || scope.taskId !== externalTaskId
+          || scope.workspaceKey !== invocationContext.workspace
+          || (input.taskId && input.taskId !== scope.taskId)
+          || (input.workspace && input.workspace !== scope.workspaceKey))
+          throw new Error('LEARNING_EXTERNAL_SCOPE_MISMATCH');
+        return scope;
+      };
       let result: unknown;
 
       if (input.action === 'status') {
@@ -47,34 +69,98 @@ export function registerLearningTools(
         result = await learning.decisionReview({ taskId: scope.taskId, workspace: scope.workspaceKey }, input.decision!, { readFiles: evidenceReadAllowed });
       } else if (input.action === 'checkpoint') {
         if (!input.idempotencyKey) throw new Error('idempotencyKey is required for action=checkpoint');
+        const bound = await boundExternalTask();
+        const taskId = bound?.taskId ?? input.taskId;
+        const workspace = bound?.workspaceKey ?? input.workspace;
         result = await learning.checkpoint({
           idempotencyKey: input.idempotencyKey,
-          ...(input.taskId ? { taskId: input.taskId } : {}),
+          ...(taskId ? { taskId } : {}),
           ...(input.meaningful !== undefined ? { meaningful: input.meaningful } : {}),
           ...(input.reason ? { reason: input.reason } : {}),
           ...(input.evidenceRefs ? { evidenceRefs: input.evidenceRefs } : {}),
-          ...(input.workspace ? { workspace: input.workspace } : {}),
+          ...(workspace ? { workspace } : {}),
         });
-        if (externalController && externalSessionId) {
-          await externalController.recordLearningCheckpoint(externalSessionId, input.workspace, input.idempotencyKey, input.taskId ?? invocationContext?.taskId).catch(() => undefined);
+        if (externalCaller && externalController && externalSessionId) {
+          if (!(result as { advanced?:boolean; pendingReview?:unknown }).advanced
+            && !(result as { pendingReview?:unknown }).pendingReview) {
+            result = { ...(result as object), externalEpisodeLinkage: 'not-required' };
+          } else try {
+            const linked = await externalController.recordLearningCheckpoint(externalSessionId, workspace, input.idempotencyKey, taskId);
+            result = { ...(result as object), externalEpisodeLinkage: linked ? 'recorded' : 'unavailable' };
+          } catch {
+            // Learning checkpoint remains durable; do not claim the mirror exists.
+            result = { ...(result as object), externalEpisodeLinkage: 'unavailable' };
+          }
         }
       } else if (input.action === 'review') {
-        result = await learning.review(input.candidates ?? [], input.explicit === true, {
-          checkpointKeys: input.checkpointKeys, taskId: input.taskId, disposition: input.disposition,
-          ...(input.workspace ? { workspace: input.workspace } : {}),
-        });
-        if (externalController && externalSessionId) {
-          const summary = (result as { summary?: { status?: string } })?.summary?.status ?? 'completed';
-          await externalController.recordLearningReview(externalSessionId, summary, (result as any).checkpointDecisions).catch(() => undefined);
+        const bound = await boundExternalTask();
+        let completedReplay: Record<string, { complete: boolean; status: string; taskId?: string; workspace?: string }> | undefined;
+        if (externalCaller) {
+          if (!input.checkpointKeys?.length) throw new Error('LEARNING_EXTERNAL_CHECKPOINT_KEYS_REQUIRED');
+          const current = await externalController!.getEpisode(externalSessionId!);
+          if (!current || current.id !== bound?.taskId
+            || currentToolInvocationRequest()?.mutationContext.signal?.aborted
+            || ctx?.mcpReq?.signal?.aborted
+            || !await externalController!.invocationTaskCurrent(invocationContext))
+            throw new Error('LEARNING_EXTERNAL_CHECKPOINT_NOT_BOUND');
+          const keys = input.checkpointKeys;
+          const active = new Set(current.checkpointKeys ?? []);
+          const missing = keys.filter(key => !active.has(key));
+          if (missing.length) {
+            // Only an exact already-closed, disposition-only replay is read-only.
+            // Never reopen a foreign, unresolved or partly missing checkpoint.
+            if (missing.length !== keys.length || input.candidates?.length || !input.disposition)
+              throw new Error('LEARNING_EXTERNAL_CHECKPOINT_NOT_BOUND');
+            const snapshot = await learning.status() as { state?: { reviewDecisions?: Record<string, {
+              complete: boolean; status: string; taskId?: string; workspace?: string;
+            }> } };
+            const decisions = snapshot.state?.reviewDecisions ?? {};
+            if (!keys.every(key => decisions[key]?.complete === true
+              && decisions[key]?.taskId === bound?.taskId
+              && decisions[key]?.workspace === bound.workspaceKey
+              && decisions[key]?.status === input.disposition))
+              throw new Error('LEARNING_EXTERNAL_CHECKPOINT_NOT_BOUND');
+            completedReplay = Object.fromEntries(keys.map(key => [key, decisions[key]!]));
+          }
+        }
+        if (completedReplay) {
+          result = { duplicate: true, checkpointDecisions: completedReplay, externalEpisodeLinkage: 'not-required',
+            note: 'Previously completed keyed review; no new Learning or episode write.' };
+        } else {
+          result = await learning.review(input.candidates ?? [], input.explicit === true, {
+            checkpointKeys: input.checkpointKeys, taskId: bound?.taskId ?? input.taskId,
+            disposition: input.disposition,
+            ...((bound?.workspaceKey ?? input.workspace) ? { workspace: bound?.workspaceKey ?? input.workspace } : {}),
+          });
+          if (externalCaller && externalController && externalSessionId) {
+            const summary = (result as { summary?: { status?: string } })?.summary?.status ?? 'completed';
+            // Publication needs the still-admitted task; the episode mirror below
+            // may close it. Canonical review is already durable, so publication
+            // failure is a separate partial result, never a reason to replay it.
+            try{
+              await boundExternalTask();
+              result={...(result as object),proposalDocuments:await learning.publishExternalTaskSkillProposals({workspace:bound!.workspaceKey,taskId:bound!.taskId}),proposalReviewGuide:learning.hasSkillProposals()?learning.proposalReviewGuide():undefined};
+            }catch{
+              result={...(result as object),proposalDocuments:{status:'unavailable',reason:'EXTERNAL_PROPOSAL_PUBLICATION_UNAVAILABLE'}};
+            }
+            try {
+              const linked = await externalController.recordLearningReview(externalSessionId, summary,
+                (result as any).checkpointDecisions, bound?.taskId);
+              result = { ...(result as object), externalEpisodeLinkage: linked ? 'recorded' : 'unavailable' };
+            } catch {
+              result = { ...(result as object), externalEpisodeLinkage: 'unavailable' };
+            }
+          }
         }
       } else if (input.action === 'receipt') {
+        const bound = await boundExternalTask();
         result = await learning.receipt({
-          taskId: input.taskId, actionRefs: input.actionRefs,
+          taskId: bound?.taskId ?? input.taskId, actionRefs: input.actionRefs,
           useId: input.useId!,
           retrievalAttemptId: input.retrievalAttemptId!,
           memoryId: input.memoryId!,
           contentDigest: input.contentDigest!,
-          ...(input.workspace ? { workspace: input.workspace } : {}),
+          ...((bound?.workspaceKey ?? input.workspace) ? { workspace: bound?.workspaceKey ?? input.workspace } : {}),
           applicability: input.applicability!,
           result: input.result!,
           reasonCode: input.reasonCode!,

@@ -14,6 +14,7 @@ import {parseRevisionFile} from './revisions.js';
 import {strictForgottenIdsFromContent,feedbackRecordSubjects} from './feedback.js';
 import {inspectRetrievalTelemetry} from './retrieval-ledger.js';
 import {writeOwnedFileAtomic} from '../persistence/atomic-file.js';
+import {claimReviewStateSchema,claimReviewStateKey} from './claim-review.js';
 import type {MemoryRecord} from './types.js';
 
 export const MEMORY_TRANSFER_V2_VERSION='agent-core-memory-transfer/2' as const;
@@ -30,7 +31,7 @@ export interface MemoryTransferV2Preview {bundleDigest:string;completeness:'comp
 export interface MemoryTransferV2Receipt {version:2;status:'complete';bundleDigest:string;sourceRootId:string;destinationDigest:string;objectCount:number;duplicate:boolean}
 const activationPath='state/experience-manifest.json',receiptPath='state/transfer-v2-receipt.json';
 const allowedState=new Set(['feedback.json','retrieval-ledger.jsonl','retrieval-use-receipts.jsonl','experience-manifest.json']);
-const stateTrees=new Set(['revisions','episodes','episode-tasks','capsules','operations','consolidation']);
+const stateTrees=new Set(['revisions','episodes','episode-tasks','capsules','operations','consolidation','claim-reviews']);
 function fail(code:string):never {throw new Error(code);}
 function hash(bytes:Uint8Array|string){return `sha256:${typeof bytes==='string'?fingerprintText(bytes):fingerprintBytes(bytes)}`;}
 function keyAllowed(key:string):boolean {
@@ -79,6 +80,10 @@ function inspect(files:Map<string,Buffer>,complete:boolean,policy:MemoryTransfer
   else if(key.startsWith('archive/objects/')){if(hash(bytes).slice(7)!==key.slice('archive/objects/'.length))fail('MEMORY_TRANSFER_CHECKSUM');}
   else if(key.endsWith('.json')){const value=parseJson(bytes);
    validateDocument(key,value,bytes);
+   if(key.startsWith('state/claim-reviews/')){
+    if(value.rootId!==activation.rootId)fail('MEMORY_SCOPE_MISMATCH');
+    workspace(value.workspaceKey);
+   }
    if(key==='state/feedback.json')for(const id of feedbackRecordSubjects(decode(bytes)))feedbackSubjects.add(id);
    if(key.startsWith('archive/manifests/')&&isRetainedTelemetryKey(key,value.purpose)){
     const retained=parseRetainedTelemetry(value);
@@ -173,6 +178,7 @@ function validateDocument(key:string,value:any,bytes:Buffer):void {
   else if(/^state\/episodes\/[^/]+\/events\/[^/]+.json$/.test(key))episodeSchemas.event.parse(value);
   else if(key.startsWith('state/capsules/'))episodeSchemas.capsule.parse(value);
   else if(key.startsWith('state/consolidation/'))promotionPersistenceSchemas.saved.parse(value);
+  else if(key.startsWith('state/claim-reviews/'))claimReviewStateSchema.parse(value);
   else if(key.startsWith('state/operations/')){
    if(['prepareConsolidation','applyConsolidation'].includes(value.method))promotionPersistenceSchemas.operation.parse(value);
    else episodeSchemas.receipt.parse(value);
@@ -194,6 +200,10 @@ function validateLiveLinks(key:string,value:any,files:Map<string,Buffer>):void {
   const record=parseCanonicalNote(decode(bytes));same(value.current.source,{kind:'memory',id:record.id,revision:memorySemanticRevision(record)});
   const activation=get(activationPath),clock=activation.knowledgeClock;
   if(!clock||value.current.publicationOrder>clock.publicationOrder||(!clock.regressed&&value.current.knownFrom>clock.lastPublishedAt))fail('MEMORY_TRANSFER_LINKAGE_INVALID');
+ }else if(key.startsWith('state/claim-reviews/')){
+  same(key,'state/'+claimReviewStateKey(value.workspaceKey,value.memory.id));
+  const record=parseCanonicalNote(decode(files.get(`notes/${value.memory.id}.md`)??Buffer.alloc(0)));
+  if(record.provenance?.workspace!==value.workspaceKey)fail('MEMORY_SCOPE_MISMATCH');
  }else if(key.startsWith('state/episode-tasks/')){
   same(key,`state/episode-tasks/${disclosureDigest(['episode-task/v1',value.owner]).slice(7)}.json`);
   same(value.owner,get(`state/episodes/${value.episodeId}/manifest.json`).owner);
@@ -242,7 +252,7 @@ export async function exportMemoryTransferV2(root:string,options:MemoryTransferV
  if(options.completeness==='knowledge-only')for(const key of files.keys())if(key!==activationPath&&key!=='00-agent-core-memory.md'&&!key.startsWith('notes/'))files.delete(key);
  const found=inspect(files,options.completeness==='complete',options),chunks=new Map<string,string>();
  const entries=[...files].sort(([a],[b])=>a.localeCompare(b)).map(([key,bytes])=>{const ids:string[]=[];for(let offset=0;offset<bytes.length;offset+=chunkBytes){const chunk=bytes.subarray(offset,offset+chunkBytes),id=hash(chunk);ids.push(id);chunks.set(id,chunk.toString('base64'));}return {path:key,digest:hash(bytes),bytes:bytes.length,chunks:ids};});
- const manifest:MemoryTransferV2Bundle['manifest']={version:MEMORY_TRANSFER_V2_VERSION,completeness:options.completeness,sourceRootId:found.activation.rootId,exportedAt:new Date().toISOString(),workspaces:found.workspaces,unscoped:found.unscoped,recordCount:found.recordCount,entries,retainedRefs:found.refs,omitted:options.completeness==='complete'?['derived-index','transaction-journals','transfer-receipts']:['episodes','capsules','retained-revisions','evidence','receipts','derived-index']};
+ const manifest:MemoryTransferV2Bundle['manifest']={version:MEMORY_TRANSFER_V2_VERSION,completeness:options.completeness,sourceRootId:found.activation.rootId,exportedAt:new Date().toISOString(),workspaces:found.workspaces,unscoped:found.unscoped,recordCount:found.recordCount,entries,retainedRefs:found.refs,omitted:options.completeness==='complete'?['derived-index','transaction-journals','transfer-receipts']:['episodes','capsules','retained-revisions','evidence','receipts','claim-reviews','derived-index']};
  return {manifest,manifestDigest:disclosureDigest(manifest),chunks:[...chunks].map(([digest,data])=>({digest,data}))};
 }
 export function previewMemoryTransferV2(raw:unknown,policy:MemoryTransferV2Policy):MemoryTransferV2Preview {

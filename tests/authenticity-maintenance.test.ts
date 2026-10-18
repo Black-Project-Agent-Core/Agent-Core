@@ -1,18 +1,23 @@
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
 const originalRdcConfigDir = process.env.AGENT_CORE_RDC_CONFIG_DIR;
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let productionBuilt = false;
+let compiledFixture: string;
 function buildProduction(): void {
   if (productionBuilt) return;
-  execFileSync(process.execPath, [path.join(repoRoot, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', 'tsconfig.json'], { cwd: repoRoot, stdio: 'pipe' });
+  const parent = path.join(repoRoot, 'runtime/tmp'); mkdirSync(parent, { recursive: true });
+  compiledFixture = mkdtempSync(path.join(parent, 'authenticity-compiled-'));
+  execFileSync(process.execPath, [path.join(repoRoot, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', 'tsconfig.json', '--outDir', compiledFixture, '--incremental', 'false'], { cwd: repoRoot, stdio: 'pipe' });
   productionBuilt = true;
 }
+afterAll(async () => { if (compiledFixture) await rm(compiledFixture, { recursive: true, force: true }); });
 
 async function restoreEnvironment(): Promise<void> {
   if (originalRdcConfigDir === undefined) delete process.env.AGENT_CORE_RDC_CONFIG_DIR;
@@ -59,19 +64,19 @@ describe('Agent Core authenticity maintenance', () => {
     await mkdir(path.dirname(fakeChrome), { recursive: true });
     await writeFile(fakeChrome, '', 'utf8');
 
-    const memoryDir = path.join(root, 'memory');
-    await mkdir(memoryDir, { recursive: true });
-    await writeFile(path.join(memoryDir, '00-agent-core-memory.md'), '# Test Agent Core Foundational Memory\n', 'utf8');
+    const memoryDir = path.join(root, 'runtime/memory');
+    const { activateCanonicalMemory } = await import('../src/memory/host-activation.js');
+    await activateCanonicalMemory(root, { operation: 'fresh' });
     process.env.AGENT_CORE_RDC_CONFIG_DIR = configDir;
     vi.resetModules();
 
     const { startAgentCoreService } = await import('../src/index.js');
-    const service = await startAgentCoreService({
-      host: '127.0.0.1', port: 0, dataDir: path.join(root, 'auth'), memoryDir,
-      memoryEmbedding: { provider: null, accountId: null, apiToken: null, model: null, dimensions: 768 },
-      httpSecurity: { publicBaseUrl: null, protectedResourceUrl: null, trustProxy: false, allowedOrigins: [] },
-      mcp: { protocolMode: 'dual' },
-    });
+    const { loadConfig } = await import('../src/config.js');
+    const config = loadConfig({ AGENT_CORE_DATA_DIR: path.join(root, 'auth'), AGENT_CORE_MEMORY_DIR: memoryDir,
+      AGENT_CORE_PHONE_ENABLED: 'false', AGENT_CORE_CODE_INTELLIGENCE_ENABLED: 'false',
+      AGENT_CORE_SEMANTIC_IDE_ENABLED: 'false', AGENT_CORE_LEARNING_ENABLED: 'false' }, root);
+    config.port = 0;
+    const service = await startAgentCoreService(config);
     try {
       const body = await (await fetch(`http://127.0.0.1:${service.port}/health`)).json() as any;
       expect(body.execution.status).toBe('unavailable');
@@ -82,7 +87,7 @@ describe('Agent Core authenticity maintenance', () => {
   });
   it('ships get_prompts with all production runtime data', async () => {
     buildProduction();
-    const moduleUrl = `${pathToFileURL(path.join(repoRoot, 'dist', 'rdc', 'tools', 'prompts.js')).href}?audit=${Date.now()}`;
+    const moduleUrl = `${pathToFileURL(path.join(compiledFixture, 'rdc', 'tools', 'prompts.js')).href}?audit=${Date.now()}`;
     const { getPrompts } = await import(moduleUrl);
     const result = await getPrompts({ action: 'get_prompt', promptId: 'onb2_01' }) as any;
 
@@ -98,7 +103,7 @@ describe('Agent Core authenticity maintenance', () => {
     await writeFile(target, 'alpha beta gamma\n', 'utf8');
 
     buildProduction();
-    const editModuleUrl = `${pathToFileURL(path.join(repoRoot, 'dist', 'rdc', 'tools', 'edit.js')).href}?audit=${Date.now()}`;
+    const editModuleUrl = `${pathToFileURL(path.join(compiledFixture, 'rdc', 'tools', 'edit.js')).href}?audit=${Date.now()}`;
     const { handleEditBlock } = await import(editModuleUrl);
     const result = await handleEditBlock({
       file_path: target,

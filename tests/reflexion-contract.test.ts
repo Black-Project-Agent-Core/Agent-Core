@@ -14,7 +14,7 @@ function assertReflexionContract(contract: string): void {
     ['blind retry prohibition', /Never repeat an equivalent failed tool\/action with equivalent arguments blindly/i],
     ['bounded durable recall', /at most \*\*1[–-]3\*\* relevant durable lessons/i],
     ['task-local reflection is not durable truth', /task-local reflection is not durable truth/i],
-    ['verified promotion requirement', /only after a correction materially succeeds/i],
+    ['verified promotion requirement', /After a correction materially succeeds.*mandatory Learning finalization lifecycle.*checkpoint with reason `verified-recovery`/i],
     ['private reasoning persistence prohibition', /Do not persist hidden\/private reasoning, raw scratchpads, full chain-of-thought/i],
     ['controller-side architecture', /Reflexion must remain controller behavior over existing evidence and MemoryService/i],
     ['no autonomous retry runtime', /Do not introduce autonomous retry loops, a second agent\/runtime, a reflection database, or a machine-control gate/i],
@@ -54,7 +54,7 @@ describe('Reflexion controller contract regression', () => {
     };
 
     expect(serverSource).toContain("tool(server, 'read_file'");
-    expect(serverSource).toContain('registerMemoryTools(server');
+    expect(serverSource).toMatch(/registerMemoryTools\(\s*server/);
     expect(serverSource).not.toContain('capability_route');
     expect(handlerSource).not.toContain('ReflexionService');
 

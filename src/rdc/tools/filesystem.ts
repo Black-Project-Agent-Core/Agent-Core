@@ -20,6 +20,7 @@ import { resolveModuleProjectRoot } from '../../portability/paths.js';
 import { documentProjectionService } from '../document-projection/service.js';
 import { decodeText } from '../document-projection/helpers.js';
 import { DocumentProjectionError, type ProjectionResult } from '../document-projection/types.js';
+import { nativeDevelopmentFreeze } from '../mutation-coordinator.js';
 
 const MACHINE_CONTROL_PROJECT_ROOT = resolveModuleProjectRoot(import.meta.url);
 
@@ -721,6 +722,10 @@ export async function readFileInternal(filePath: string, offset: number = 0, len
 export async function writeFile(filePath: string, content: string, mode: 'rewrite' | 'append' = 'rewrite',
     beforeWrite?: (canonicalPath: string, changed: boolean) => Promise<void>): Promise<void> {
     const validPath = await validatePath(filePath);
+    // Appends to shared Native owners require checking the complete resulting source.
+    await nativeDevelopmentFreeze.assertWritable(validPath, mode === 'append'
+        ? async () => await fs.readFile(validPath, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; }) + content
+        : content);
 
     // Get file extension for telemetry
     const fileExtension = getFileExtension(validPath);
@@ -821,6 +826,8 @@ export async function readMultipleFiles(paths: string[], options?: Pick<ReadOpti
 
 export async function createDirectory(dirPath: string): Promise<void> {
     const validPath = await validatePath(dirPath);
+    if ((await fs.stat(validPath).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; }))?.isDirectory()) return;
+    await nativeDevelopmentFreeze.assertWritable(validPath);
     await fs.mkdir(validPath, { recursive: true });
 }
 
@@ -896,6 +903,8 @@ export async function moveFile(sourcePath: string, destinationPath: string,
     beforeMove?: (source: string, destination: string, reason?: 'unsupported-operation' | 'no-change' | 'path-not-eligible') => Promise<void>): Promise<void> {
     const validSourcePath = await validatePath(sourcePath);
     const validDestPath = await validatePath(destinationPath);
+    await nativeDevelopmentFreeze.assertWritable(validSourcePath);
+    await nativeDevelopmentFreeze.assertWritable(validDestPath);
     if (beforeMove) {
         let reason: 'unsupported-operation' | 'no-change' | 'path-not-eligible' | undefined;
         const key = (value: string) => process.platform === 'win32' ? value.toLowerCase() : value;
@@ -1131,6 +1140,7 @@ export async function writePdf(
 ): Promise<void> {
     const validPath = await validatePath(filePath);
     const fileExtension = getFileExtension(validPath);
+    await nativeDevelopmentFreeze.assertWritable(outputPath ? await validatePath(outputPath) : validPath);
 
     if (typeof content === 'string') {
         // --- PDF CREATION MODE ---

@@ -5,6 +5,7 @@ import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { fixture } from './skill-proposal-fixture.js';
 import { ExternalControllerLearningService } from '../src/learning/external-controller.js';
 import { createAgentCoreMcpServer } from '../src/mcp/server.js';
+import { attachControllerContract } from './controller-contract-fixture.js';
 
 it('observes actual search/read delivery with active revision rechecks and no material-use credit', async () => {
   const f = await fixture(), source = path.join(f.root, 'source-skill');
@@ -14,14 +15,18 @@ it('observes actual search/read delivery with active revision rechecks and no ma
   const imported = await f.skills.import(source);
   const external = await ExternalControllerLearningService.initialize({ stateDir: path.join(f.root, 'runtime/learning'),
     memory: f.memory, learning: f.learning, skills: f.skills });
-  await external.startEpisode('search', { taskKey: 'search-only', workspace: 'agent-core' });
-  const server = createAgentCoreMcpServer({ toolGrant: { version: 1, allowedTools: ['skills'] } }, {
+  const ownerId = 'skill-delivery-owner';
+  await external.startEpisode('search', { taskKey: 'search-only', workspace: 'agent-core' }, {
+    ownerId, workspaceIdentityKey: f.memory.registeredWorkspaceIdentity('agent-core').key,
+  });
+  const server = createAgentCoreMcpServer({ id: ownerId, toolGrant: { version: 1, allowedTools: ['skills'] } }, {
     externalControllerLearning: external, controllerSessionId: 'search', skillsService: f.skills,
   });
   const client = new Client({ name: 'skill-delivery-test', version: '1' });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   try {
     await server.connect(st); await client.connect(ct);
+    await attachControllerContract(client);
     const searched = await client.callTool({ name: 'skills', arguments: { action: 'search', query: 'review' } });
     expect(searched.isError, JSON.stringify(searched)).not.toBe(true);
     const payload = JSON.parse((searched.content as any[])[0].text);
@@ -56,7 +61,7 @@ it('does not expose skills search/read without the existing tool grant', async (
   const [ct, st] = InMemoryTransport.createLinkedPair();
   try {
     await server.connect(st); await client.connect(ct);
-    expect((await client.listTools()).tools.map(tool => tool.name)).toEqual(['get_config']);
+    expect((await client.listTools()).tools.map(tool => tool.name)).toEqual(['controller_contract', 'get_config']);
     for (const args of [{ action: 'search', query: 'review' }, { action: 'read', name: 'source-review', expectedActiveDigest: 'sha256:' + 'a'.repeat(64) }]) {
       const result = await client.callTool({ name: 'skills', arguments: args }).catch(() => null);
       expect(result === null || result.isError === true).toBe(true);

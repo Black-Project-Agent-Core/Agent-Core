@@ -22,7 +22,7 @@ export function registerControllerLearningTools(
 ): void {
   server.registerTool('controller_learning', {
     title: 'External Controller Learning',
-    description: 'Host-bound controller episodes, context and receipts; Memory CRUD and Learning checkpoint/review are separate. Start with stable taskKey and registered workspace, then use host-returned taskId. Planned retrieval requires active taskId, matching query/rootQuery, 2–4 q1–q4 questions and limit 1–8; embeds may receive queries, timeout only stops waiting. Skill hybrid can send queries/descriptors to Cloudflare AI only with consent. Artifact receipts need actual use, Memory helpfulness independent verification; procedure/evaluate grant no permissions. browserObservation selects only a grant-gated current host-bound browser snapshot for context/procedure inspect: shape is advisory, not page identity or permission. Refresh after schema updates.',
+    description: 'Host-bound episodes, context and receipts. Start with stable taskKey, registered workspace and description(goal) to link resumable Memory; use returned taskId. Memory working-state/checkpoint via memory_v2_write is separate from Learning finalization. episode/verify needs exact taskId; stale targets refused. Planned retrieval: matching query/rootQuery, active taskId, 2–4 q1–q4 questions, limit 1–8. Embeds may receive queries; deadline stops local waiting only. Skill hybrid sends descriptors to Cloudflare AI only with consent. Artifact receipts require actual use; helpfulness needs verification. procedure/evaluate grant no permissions. browserObservation selects a grant-gated host snapshot for context/procedure inspect: advisory, not page identity or authority. Refresh after schema updates.',
     inputSchema: schemas.controllerLearning,
     annotations: {
       readOnlyHint: false,
@@ -72,6 +72,7 @@ export function registerControllerLearningTools(
             ...(input.taskKey ? { taskKey: input.taskKey } : {}),
             ...(workspace ? { workspace } : {}),
             ...(input.taskFamily ? { taskFamily: input.taskFamily } : {}),
+            ...(input.description ? {description:input.description}:{}),
           }, binding);
         } else if (operation === 'label') {
           result = await service.labelEpisode(sessionId, {
@@ -80,6 +81,7 @@ export function registerControllerLearningTools(
           });
         } else if (operation === 'verify') {
           result = await service.verifyEpisode(sessionId, {
+            taskId: input.taskId!,
             outcome: input.episodeOutcome!,
             verificationRef: input.verificationRef!,
             evidenceRefs: input.evidenceRefs ?? [],
@@ -137,6 +139,24 @@ export function registerControllerLearningTools(
           ...(input.taskFamily ? { taskFamily: input.taskFamily } : {}),
           ...(input.limit ? { limit: input.limit } : {}),
         });
+      }
+      if (input.action === 'episode' && input.episodeOperation === 'start'
+        && result && typeof result === 'object' && 'memoryBinding' in result
+        && 'id' in result && typeof result.id === 'string') {
+        const next = { advisory: true, status: 'active',
+          taskId: result.id, nextTool: 'controller_learning',
+          nextAction: 'context-if-needed',
+          instruction: 'Use this host-returned taskId as memory_v2 scope.taskId; recall is optional and not proof of use.' };
+        if (Buffer.byteLength(JSON.stringify({ ...result, workflowNext: next }), 'utf8') <= 64 * 1024)
+          result = { ...result, workflowNext: next };
+      }
+      if ((input.action === 'status' || input.action === 'context'
+        || input.action === 'episode' && ['status', 'verify'].includes(input.episodeOperation ?? 'status'))
+        && result && typeof result === 'object' && !Array.isArray(result)) {
+        const next = await service.workflowNext(sessionId, invocationContext);
+        // A bounded advisory never displaces a selected Memory disclosure.
+        if (Buffer.byteLength(JSON.stringify({ ...result, workflowNext: next }), 'utf8') <= 64 * 1024)
+          result = { ...result, workflowNext: next };
       }
       activityTracker.record(
         'LEARNING',

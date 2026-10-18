@@ -53,6 +53,6 @@ describe('capability awareness projection', () => {
 
 it('keeps all accepted Pattern identities discoverable beyond ranked detail limit',async()=>{
  const nodes=Array.from({length:12},(_,i)=>({id:'pattern:p'+i,type:'pattern',label:'dependency recipe '+i}));
- const p:any=await packet('dependency',{workspace:'agent-core',runtime:{learningService:{journey:async()=>({nodes,edges:[]})}}});
+ const p:any=await packet('dependency',{workspace:'agent-core',runtime:{learningService:{journey:async()=>({nodes,edges:[],stats:{patternsAvailable:true}})}}});
  expect(p.capabilityExposure.counts.pattern).toBe(12);
 });

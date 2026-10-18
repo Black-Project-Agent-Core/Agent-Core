@@ -11,6 +11,7 @@ if (jsonMode) {
     currentVersion: plan.currentVersion,
     bump: plan.bump,
     nextVersion: plan.nextVersion,
+    ...(plan.stableBaseline ? { stableBaseline: plan.stableBaseline, prerelease: plan.prerelease, sourceOnly: true } : {}),
     changesets: plan.changesets.map(({ id, type, summary }) => ({ id, type, summary })),
   }, null, 2));
   process.exit(0);

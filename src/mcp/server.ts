@@ -10,7 +10,7 @@ import type { SemanticIdeService } from '../semantic-ide/service.js';
 import type { MemoryService } from '../memory/service.js';
 import type { MemoryService as ExperienceMemoryService } from '../memory/facade.js';
 import { registerMemoryExperienceTools } from '../memory/mcp/experience-tools.js';
-import { memoryCredentialOwner, ownerScopedLearningSession, createMemoryScopeResolver } from '../memory/mcp/scope.js';
+import { memoryCredentialOwner, ownerScopedLearningSession, createMemoryScopeResolver, createExternalMemoryRecallAdmission } from '../memory/mcp/scope.js';
 import type { SkillService } from '../skills/service.js';
 import type { WebResearchService } from '../web-research/service.js';
 import { registerWebResearchTools } from './web-research-tools.js';
@@ -27,6 +27,9 @@ import { usageTracker } from '../rdc/utils/usageTracker.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { beginToolInvocationEvidence, currentExternalInvocationContext, currentToolInvocationRequest, takeBrowserObservationUse } from '../tracker/tool-invocation.js';
 import { loadAgentProtocol } from './agent-protocol.js';
+import { ControllerContractGate, CONTRACT_INSTRUCTIONS, installControllerContract, type ControllerContractBinding } from './controller-contract.js';
+import { registerRestartTool } from './restart-tool.js';
+import { registerExternalReconstructionHarnessTool } from './external-reconstruction-harness-tools.js';
 import { annotateFailureLoopException, appendFailureLoopAdvisory, type FailureLoopAdvisory, type FailureLoopAdvisor } from './failure-loop-advisor.js';
 import { registerCodeIntelligenceTools } from './code-intelligence-tools.js';
 import { registerLearningTools } from './learning-tools.js';
@@ -38,10 +41,11 @@ import { registerPhoneTools } from './phone-tools.js';
 import { PHONE_SKILL_INSTRUCTIONS } from './phone-protocol.js';
 import type { PhoneController } from '../phone/controller.js';
 import * as schemas from './rdc-schemas.js';
-import { RDC_TOOL_METADATA } from './rdc-tool-metadata.js';
+import { RDC_TOOL_METADATA, EXTERNAL_BROWSER_DESCRIPTION } from './rdc-tool-metadata.js';
 import { installInvocationContext } from './external-controller-tool-support.js';
 import type { ArtifactAuthorization } from '../auth/artifact-authorization.js';
 import { registerArtifactInspectTool } from './artifact-inspect-tools.js';
+import { registerReconstructionHarnessTool } from './reconstruction-harness-tools.js';
 import type { MutationExecutionContext } from '../rdc/mutation-coordinator.js';
 import type { ExternalAttributionStatus } from '../learning/external-controller.js';
 import { applyResultBudget } from './result-budget.js';
@@ -64,6 +68,7 @@ export interface AgentCoreMcpRuntime {
   controllerSessionId?: string;
   nativeTaskId?: string;
   nativeWorkspace?: string;
+  controllerContract?: ControllerContractBinding;
   controllerBootstrap?: string;
   semanticIde?: SemanticIdeService;
   skillsService?: SkillService;
@@ -113,13 +118,13 @@ function annotateExternalLearningException(error: unknown, capsule: string | und
   return error;
 }
 
-const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: string, schema: any, handler: Handler, _readOnly = false) => {
+const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: string, schema: any, handler: Handler, _readOnly = false, description?: string) => {
   const metadata = RDC_TOOL_METADATA[name];
   const { title: annotationTitle, ...behaviorHints } = metadata.annotations;
   server.registerTool(name, {
     title: metadata.title,
     // Remove transport-only whitespace; preserve instruction text and nested list offsets.
-    description: metadata.description.replace(/^[ \t]{24}/gm, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim(),
+    description: (description ?? metadata.description).replace(/^[ \t]{24}/gm, '').replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim(),
     inputSchema: schema,
     annotations: annotationTitle === metadata.title ? behaviorHints : metadata.annotations,
   }, async (args: any, ctx: any) => {
@@ -137,11 +142,16 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
       idempotentHint: 'idempotentHint' in metadata.annotations && metadata.annotations.idempotentHint === true,
     }) : undefined;
     const invocationContext = currentExternalInvocationContext();
+    const privateBrowserCall = name === 'browser_control' && (String(input.action).startsWith('conversation_')
+      || (input.action === 'open' && input.mode === 'conversation'));
     const captureDecision: EvidenceCaptureDecision | undefined = trackCall
-      ? decideToolEvidenceCapture(name, input)
+      ? privateBrowserCall ? { disposition: 'metadata-only', policyState: 'inactive', pathCount: 0, ruleCount: 0, markerCount: 0,
+          reason: 'conversation-content-transport-only' } : decideToolEvidenceCapture(name, input)
       : undefined;
-    const observationArgs = name === 'image_inspect' ? { argumentKeys: Object.keys(input) } : input;
+    const metadataOnly = name === 'image_inspect' || privateBrowserCall;
+    const observationArgs = metadataOnly ? { argumentKeys: Object.keys(input) } : input;
     const imageFailure = new Error('Image inspection failed; detail omitted by metadata-only policy');
+    const privateFailure = privateBrowserCall ? new Error('Conversation control failed; detail omitted by metadata-only policy') : imageFailure;
     const captureContext = captureDecision && (captureDecision.policyState !== 'inactive' || captureDecision.disposition !== 'full')
       ? {
           evidenceCapture: captureDecision.disposition,
@@ -152,7 +162,8 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
     try {
       const result = await handler(input, currentToolInvocationRequest()?.mutationContext);
       const durationMs = Date.now() - started;
-      let finalResult = await applyResultBudget(name, result);
+      let finalResult = await applyResultBudget(name, result, privateBrowserCall
+        ? { budgetChars: 1024 * 1024, persist: false } : undefined);
       let attributionStatus: ExternalAttributionStatus = 'unbound';
       if (externalLearning && externalSessionId) {
         attributionStatus = await externalLearning.recordToolOutcome({ sessionId: externalSessionId, tool: name,
@@ -163,7 +174,7 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
       let advisory: FailureLoopAdvisory | undefined;
       if (advisor) {
         if (result.isError) {
-          advisory = advisor.observeFailure(name, observationArgs, name === 'image_inspect' ? imageFailure : result);
+          advisory = advisor.observeFailure(name, observationArgs, metadataOnly ? privateFailure : result);
           if (advisory) {
             finalResult = appendFailureLoopAdvisory(finalResult, advisory) as ToolResult;
             recordFailureLoopAdvisory(name, advisory);
@@ -178,7 +189,7 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
             sessionId: externalSessionId,
             tool: name,
             args: observationArgs,
-            failure: name === 'image_inspect' ? imageFailure : result,
+            failure: metadataOnly ? privateFailure : result,
             ...(workspace ? { workspace } : {}),
             repeated: Boolean(advisory), invocationContext,
           });
@@ -228,7 +239,7 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
       }
       let advisory: FailureLoopAdvisory | undefined;
       if (advisor) {
-        advisory = advisor.observeFailure(name, observationArgs, name === 'image_inspect' ? imageFailure : error);
+        advisory = advisor.observeFailure(name, observationArgs, metadataOnly ? privateFailure : error);
         if (advisory) {
           recordFailureLoopAdvisory(name, advisory);
           finalError = annotateFailureLoopException(error, advisory);
@@ -240,7 +251,7 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
             sessionId: externalSessionId,
             tool: name,
             args: observationArgs,
-            failure: name === 'image_inspect' ? imageFailure : error,
+            failure: metadataOnly ? privateFailure : error,
             ...(workspace ? { workspace } : {}),
             repeated: Boolean(advisory), invocationContext,
           });
@@ -285,8 +296,11 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     : contextualInstructions;
   const server = new McpServer(
     { name: SERVER_NAME, title: 'Agent Core', version: SERVER_VERSION },
-    { instructions: instructions + '\n\n' + CAPABILITY_USE_CONTRACT },
+    { instructions: instructions + '\n\n' + CAPABILITY_USE_CONTRACT + (runtime.nativeTaskId ? '' : '\n\n' + CONTRACT_INSTRUCTIONS) },
   );
+  if (!runtime.nativeTaskId) installControllerContract(server, runtime.controllerContract ?? {
+    gate: new ControllerContractGate(), binding: 'in-memory-server',
+  });
   // The outer transport boundary also counts capability notices appended by
   // registration wrappers after the ordinary history/evidence result budget.
   const registerTool = server.registerTool.bind(server);
@@ -322,7 +336,10 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
   tool(server, 'list_directory', 'List Directory Contents', schemas.listDirectory, handlers.handleListDirectory as any, true);
   tool(server, 'move_file', 'Move/Rename File', schemas.moveFile, handlers.handleMoveFile as any);
   tool(server, 'file_checkpoint', 'File Checkpoint', schemas.fileCheckpoint, handlers.handleFileCheckpoint as any);
-  tool(server, 'browser_control', 'Browser Control', schemas.browserControl, handlers.handleBrowserControl as any);
+  tool(server, 'browser_control', 'Browser Control',
+    runtime.nativeTaskId ? schemas.browserControl : schemas.externalBrowserControl,
+    async (args, context) => handlers.handleBrowserControl(args, context, !runtime.nativeTaskId) as any,
+    false, runtime.nativeTaskId ? undefined : EXTERNAL_BROWSER_DESCRIPTION);
 
   tool(server, 'start_search', 'Start Search', schemas.startSearch, handlers.handleStartSearch as any, true);
   tool(server, 'get_more_search_results', 'Get Search Results', schemas.getMoreSearchResults, handlers.handleGetMoreSearchResults as any, true);
@@ -364,7 +381,19 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.nativeTaskId,
     runtime.memoryExperience ? resolveMemoryScope : undefined,
   );
-  if (runtime.memoryExperience) registerMemoryExperienceTools(server, runtime.memoryExperience, resolveMemoryScope);
+  if (runtime.memoryExperience) registerMemoryExperienceTools(server, runtime.memoryExperience, resolveMemoryScope,
+    !runtime.nativeTaskId && runtime.externalControllerLearning && runtime.controllerSessionId
+      ? async hits => {
+        const context=currentExternalInvocationContext();
+        if (context?.binding !== 'bound') return;
+        await runtime.externalControllerLearning!.recordV2MemoryRecall(runtime.controllerSessionId!, hits, context);
+      } : undefined,
+    !runtime.nativeTaskId && runtime.externalControllerLearning && runtime.controllerSessionId
+      ? createExternalMemoryRecallAdmission(runtime.externalControllerLearning, runtime.controllerSessionId)
+      : undefined,
+    !runtime.nativeTaskId && runtime.externalControllerLearning && runtime.controllerSessionId
+      ? createExternalMemoryRecallAdmission(runtime.externalControllerLearning, runtime.controllerSessionId,'memory_v2_write')
+      : undefined);
   if (runtime.learningService) registerLearningTools(
     server,
     runtime.learningService,
@@ -373,6 +402,7 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.controllerSessionId,
     resolveMemoryScope,
     credentialAllowsTool(key, 'read_file'),
+    Boolean(runtime.externalControllerLearning && runtime.controllerSessionId && !runtime.nativeTaskId),
   );
   if (runtime.semanticIde) registerSemanticIdeTools(
     server,
@@ -402,7 +432,16 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.externalControllerLearning,
     runtime.controllerSessionId,
   );
-  if (runtime.artifactAuthorization && !runtime.nativeTaskId) registerArtifactInspectTool(server, runtime.artifactAuthorization);
+  if (runtime.artifactAuthorization && !runtime.nativeTaskId) registerArtifactInspectTool(server, runtime.artifactAuthorization,
+    context => runtime.externalControllerLearning?.invocationTaskCurrent(context) ?? Promise.resolve(false));
+  if (!runtime.nativeTaskId) registerRestartTool(server);
+  if (!runtime.nativeTaskId) registerExternalReconstructionHarnessTool(server, {
+    principal: key, ownerId: memoryOwner, sessionId: runtime.controllerSessionId,
+    externalLearning: runtime.externalControllerLearning,
+  });
+  // Deliberately native-only while the installed external MCP schema is near its byte limit.
+  if (runtime.nativeTaskId && runtime.nativeWorkspace) registerReconstructionHarnessTool(server,
+    { taskId: runtime.nativeTaskId, workspace: runtime.nativeWorkspace });
   if (runtime.webResearch) registerWebResearchTools(server, runtime.webResearch, {
     externalLearning: runtime.externalControllerLearning,
     controllerSessionId: runtime.controllerSessionId,

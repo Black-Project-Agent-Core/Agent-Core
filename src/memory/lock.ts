@@ -12,7 +12,7 @@ interface LegacyLockOwner {
   acquiredAt: string;
 }
 
-const STALE_MS = 120_000;
+export const MEMORY_LOCK_STALE_MS = 120_000;
 const UPDATE_MS = 15_000;
 const RETRY_CAP_MS = 25;
 
@@ -158,7 +158,7 @@ function localProcessAlive(pid: number): boolean {
 function legacyLockIsBusy(owner: LegacyLockOwner | null, mtimeMs: number): boolean {
   if (owner?.hostname === hostname()) return localProcessAlive(owner.pid);
   const ageBase = owner ? Date.parse(owner.acquiredAt) : mtimeMs;
-  return Date.now() - ageBase < STALE_MS;
+  return Date.now() - ageBase < MEMORY_LOCK_STALE_MS;
 }
 
 async function prepareLegacyLock(lockPath: string): Promise<void> {
@@ -200,7 +200,7 @@ async function acquire(lockPath: string, timeoutMs: number): Promise<MemoryLockL
         realpath: false,
         lockfilePath: lockPath,
         ...(process.platform === 'win32' ? { fs: windowsSafeFs as typeof callbackFs } : {}),
-        stale: STALE_MS,
+        stale: MEMORY_LOCK_STALE_MS,
         update: UPDATE_MS,
         retries: 0,
         onCompromised: (error) => {

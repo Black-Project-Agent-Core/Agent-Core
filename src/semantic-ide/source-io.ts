@@ -5,6 +5,7 @@ import { authorizedExistingPath, comparable } from './path-safety.js';
 import { lstat } from 'node:fs/promises';
 import type { BigIntStats } from 'node:fs';
 import { openRegularFile } from '../rdc/utils/files/safe-regular-file.js';
+import { nativeDevelopmentFreeze } from '../rdc/mutation-coordinator.js';
 
 export type SemanticSourceEncoding = 'utf8' | 'utf16le' | 'utf16be';
 
@@ -140,6 +141,7 @@ export async function writeSemanticSourceAtomic(
 ): Promise<void> {
   const authorized = await authorizedExistingPath(root, filePath);
   const target = authorized.realPath;
+  await nativeDevelopmentFreeze.assertWritable(target, text);
   const temporary = path.join(path.dirname(target), `.${path.basename(target)}.semantic-${process.pid}-${randomUUID()}.tmp`);
   try {
     await writeFile(temporary, encodeSource(text, source.encoding, source.bom));

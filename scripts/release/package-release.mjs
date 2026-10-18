@@ -3,10 +3,11 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { parseChangesetFile } from "@changesets/parse";
 import { ROOT, readJson, validateStableSemver } from "./release-lib.mjs";
 import { isGeneratedReleasePath } from "./release-policy.mjs";
-import { packageCopyAllowed, writePackagedFoundation } from "./packaging-policy.mjs";
+import { packageCopyAllowed, writePackagedSetup, stageExternalReleaseSupport, assertReleaseSource } from "./packaging-policy.mjs";
 import {
   INTEGRITY_MANIFEST_FILENAME,
   INTEGRITY_MUTABLE_EXCLUSIONS,
@@ -109,6 +110,7 @@ if (process.argv.slice(2).length) throw new Error("Unknown release:package argum
 const pkg = await readJson(path.join(ROOT, "package.json"));
 const version = String(pkg.version ?? "");
 validateStableSemver(version);
+const sourceCommit = await assertReleaseSource(ROOT);
 
 const releaseRoot = path.join(ROOT, "release", `v${version}`);
 if (await exists(releaseRoot)) throw new Error(`Release archive directory is immutable: ${releaseRoot}`);
@@ -161,8 +163,10 @@ const rootFiles = [
   "Maintenance.md",
 ];
 for (const relative of rootFiles) await copyIfExists(relative, packageRoot);
+await stageExternalReleaseSupport(ROOT, packageRoot);
 
 await copyIfExists("assets", packageRoot);
+await copyIfExists("extensions/agent-core-open-browser-use", packageRoot);
 // Offline Workflows renderer and its licenses; no live runtime data.
 await copyIfExists("vendor/archify", packageRoot);
 await copyIfExists("node_modules", packageRoot);
@@ -172,8 +176,15 @@ await copyIfExists("runtime/grafel/provider.json", packageRoot);
 // Memory is compiled in the same dist tree; source/license history is domain-owned.
 await copyIfExists("docs/memory", packageRoot);
 await copyIfExists("scripts/memory", packageRoot);
-await writePackagedFoundation(packageRoot);
+await writePackagedSetup(packageRoot);
+await copyIfExists("bundled-skills", packageRoot, { filter: sourceFilter });
+// Ship only the two user-approved portable artifacts, through the existing owner.
+const { SkillService } = await import(pathToFileURL(path.join(ROOT,'dist/skills/service.js')).href);
+const packagedSkills = await SkillService.initialize(packageRoot,async source=>source);
+for(const name of ['performance-oriented-software-engineering','reverse-engineer-anything'])
+  await packagedSkills.import(path.join(ROOT,'bundled-skills',name));
 await copyIfExists("scripts/windows", packageRoot);
+await copyIfExists("scripts/governance/native-freeze.json", packageRoot);
 
 const distSource = path.join(ROOT, "dist");
 const distTarget = path.join(packageRoot, "dist");
@@ -204,6 +215,9 @@ await fs.cp(path.join(ROOT, "src"), path.join(sourceRoot, "src"), {
 });
 await copyIfExists("docs/memory", sourceRoot);
 await copyIfExists("scripts/memory", sourceRoot);
+await copyIfExists("scripts/governance", sourceRoot);
+await copyIfExists("scripts/browser-control", sourceRoot);
+await copyIfExists("bundled-skills", sourceRoot, { filter: sourceFilter });
 await fs.cp(path.join(ROOT, "scripts", "release"), path.join(sourceRoot, "scripts", "release"), {
   recursive: true,
   force: true,
@@ -231,9 +245,11 @@ const baselineRef = await runCapture(
 ).catch(() => null);
 
 const launcherHash = await sha256(launcherExe);
+await assertReleaseSource(ROOT, sourceCommit);
 const manifest = {
   product: "Agent Core",
   version,
+  sourceCommit,
   generatedAt: new Date().toISOString(),
   changes,
   currentLineBaselineRef: baselineRef || null,
@@ -249,9 +265,10 @@ const manifest = {
     "dist runtime without dist/.desktop-commander debris",
     "root node_modules",
     "project-local Node runtime",
+    "two user-approved Skill artifacts via the existing Skills owner; immutable seeds and mutable catalog",
     "pinned standalone Agent Core Memory v2 compiled engine and reproducible source",
     "Grafel provider binary + provider metadata",
-    "fresh product foundational bootstrap; user canonical memory never copied",
+    "MEMORY-BOOTSTRAP.md product text; explicit offline --fresh activation before first launch; no pre-created canonical store",
     "portable tunnel client with placeholder/non-secret profile",
     "source snapshot excluding node_modules/bin/obj/dist",
     "per-file SHA-256 integrity manifest + portable recovery bootstrap",
@@ -332,6 +349,7 @@ await fs.writeFile(
 );
 
 await fs.mkdir(path.dirname(releaseRoot), { recursive: true });
+await assertReleaseSource(ROOT, sourceCommit);
 if (await exists(releaseRoot)) throw new Error("Release directory appeared during packaging; refusing replacement");
 await fs.rename(stagingReleaseRoot, releaseRoot);
 await fs.rm(stageBase, { recursive: true, force: true });

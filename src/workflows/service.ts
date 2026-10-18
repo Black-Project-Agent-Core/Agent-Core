@@ -11,6 +11,8 @@ export interface WorkflowSnapshot {
   fingerprint?: string;
   revision?: string;
   generatedAt?: string;
+  checkedAt?: string;
+  observedFingerprint?: string;
   sourceFiles?: number;
   nodes?: number;
   edges?: number;
@@ -88,6 +90,7 @@ export class WorkflowService {
     try {
       const graph=await this.analyze();
       if(this.stopped)return;
+      this.state={...this.state,checkedAt:new Date().toISOString(),observedFingerprint:graph.fingerprint};
       if(graph.fingerprint===this.state.fingerprint&&this.state.html){
         this.state={...this.state,status:'ready',error:undefined};
         this.candidate=undefined;
@@ -109,6 +112,7 @@ export class WorkflowService {
       this.state={
         status:after.fingerprint===graph.fingerprint?'ready':'stale',
         fingerprint:graph.fingerprint,revision:await this.revision(),generatedAt:new Date().toISOString(),
+        checkedAt:new Date().toISOString(),observedFingerprint:after.fingerprint,
         sourceFiles:graph.files,nodes:graph.nodes.length,edges:graph.edges.length,unknowns:graph.unknowns,
         html,limitations:graph.limitations,
       };

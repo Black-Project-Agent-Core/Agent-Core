@@ -116,10 +116,21 @@ it('parses an actual PDF snapshot exactly once without any second unrestricted U
   const byteParser=vi.spyOn(pdf,'pdf2md'),urlParser=vi.spyOn(await import('../src/rdc/tools/pdf/index.js'),'parsePdfToMarkdown');
   const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
   const r:any=await handleReadFile({path:'http://8.8.8.8/document.pdf?secret=hidden',isUrl:true,options:{networkPolicy:'public-only'}});
-  expect(r.isError).not.toBe(true);expect(JSON.stringify(r)).toContain('Pinned PDF fixture');
+  expect(r.isError,JSON.stringify(r)).not.toBe(true);expect(JSON.stringify(r)).toContain('Pinned PDF fixture');
   expect(byteParser).toHaveBeenCalledTimes(1);expect(urlParser).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+  expect(byteParser.mock.calls[0][0]).toBeInstanceOf(Uint8Array);
+  expect(Buffer.isBuffer(byteParser.mock.calls[0][0])).toBe(false);
   expect(request).toHaveBeenCalledTimes(1);expect(JSON.stringify(r)).not.toContain('secret=hidden');
 },20000);
+it('reports invalid public PDF bytes without retrying or exposing parser details',async()=>{
+  const f=transportFixture([{body:Buffer.from('PRIVATE_INVALID_PDF_PAYLOAD'),headers:{'content-type':'application/pdf'}}]);
+  vi.spyOn(http,'request').mockImplementation(((options:any,cb:any)=>f.request(false,options,cb)) as any);
+  const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
+  const result:any=await handleReadFile({path:'http://8.8.8.8/broken.pdf?secret=hidden',isUrl:true,options:{networkPolicy:'public-only'}});
+  expect(result.isError).toBe(true);expect(JSON.stringify(result)).toContain('PUBLIC_URL_PDF_CONVERSION_FAILED');
+  expect(JSON.stringify(result)).not.toMatch(/PRIVATE_INVALID|secret=hidden/);
+  expect(f.request).toHaveBeenCalledTimes(1);expect(fetch).not.toHaveBeenCalled();
+});
 it('keeps certificate hostname checks on the original host and rejects unsupported content',async()=>{
   const m=await load(),f=transportFixture();await m.createPublicUrlReader(f)('https://example.org');
   const verify=f.optionsSeen[0].checkServerIdentity;
@@ -139,7 +150,7 @@ it('returns public PDF markdown as text-only page projection in the real file ha
   const result:any=await handleReadFile({path:'http://8.8.8.8/document.pdf?secret=hidden',isUrl:true,options:{networkPolicy:'public-only',projection:'markdown'}});
   expect(result.isError).not.toBe(true);
   expect(result.content.every((part:any)=>part.type==='text')).toBe(true);
-  expect(JSON.stringify(result)).toContain('## Page 1');expect(JSON.stringify(result)).toContain('Markdown snapshot');
+  expect(JSON.stringify(result)).toContain('<!-- Page: 1 -->');expect(JSON.stringify(result)).toContain('Markdown snapshot');
   expect(JSON.stringify(result)).not.toContain('secret=hidden');expect(fetch).not.toHaveBeenCalled();
   expect(f.request).toHaveBeenCalledTimes(1);
 },20000);

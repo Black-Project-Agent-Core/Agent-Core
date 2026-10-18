@@ -34,7 +34,11 @@ public sealed record DesktopHealthSnapshot(
     SemanticIdeHealthSnapshot SemanticIde,
     LearningHealthSnapshot Learning,
     AgentRuntimeHealthSnapshot? AgentRuntime,
-    AgentChatHealthSnapshot? AgentChat);
+    AgentChatHealthSnapshot? AgentChat,
+    SkillsHealthSnapshot? Skills = null,
+    ExternalControllerLearningHealthSnapshot? ExternalControllerLearning = null,
+    WebResearchHealthSnapshot? WebResearch = null,
+    MutationSafetyHealthSnapshot? McpMutationSafety = null);
 
 public sealed record MemoryHealthSnapshot(
     string Status,
@@ -80,6 +84,43 @@ public sealed record LearningHealthSnapshot(
     string Status,
     int IssueCount,
     IReadOnlyList<SinkHealthSnapshot> SinkStatus);
+
+public sealed record SkillsHealthSnapshot(
+    string Status,
+    string? Mode,
+    int? SkillCount,
+    bool? ExecutionAuthority,
+    string? DiscoveryMode,
+    bool? InstructionRead,
+    string? Issue);
+
+public sealed record ExternalControllerLearningHealthSnapshot(
+    string Status,
+    string? Mode,
+    int? EpisodeCount,
+    int? PendingLearningEpisodes,
+    int? ProcedureCount,
+    int? ReadyProcedureCount,
+    string? SemanticAuthority,
+    string? Issue);
+
+public sealed record WebResearchHealthSnapshot(
+    string Status,
+    bool? SearchConfigured,
+    bool? ReaderConfigured,
+    bool? NativeReaderAvailable,
+    bool? ExternalReaderConfigured,
+    IReadOnlyList<string>? SearchProviders,
+    IReadOnlyList<string>? OpenProviders,
+    string? Issue);
+
+public sealed record MutationSafetyHealthSnapshot(
+    string Status,
+    int? IssueCount,
+    string? Issue,
+    bool? Draining,
+    int? ActiveMutations,
+    int? JournalEntries);
 
 public sealed record AgentRuntimeHealthSnapshot(
     string Status,

@@ -1,0 +1,64 @@
+import { createHash } from 'node:crypto';
+import type { WorkflowGraph, WorkflowNode } from './types.js';
+import { buildControllerCycle, cycleStyles, renderControllerCycle } from './controller-cycle.js';
+
+const id=(value:string)=>/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(value)?value:`n-${createHash('sha256').update(value).digest('hex').slice(0,24)}`;
+const esc=(value:string)=>value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+const lanes=[
+  {label:'Interfaces',hint:'Entry points & connections',color:'#43baff'},
+  {label:'Coordination',hint:'Runtime & task lifecycle',color:'#48deb1'},
+  {label:'Capabilities',hint:'Tools & local services',color:'#ffbd63'},
+  {label:'Knowledge',hint:'Memory & retrieval',color:'#b596ff'},
+];
+function laneFor(node:WorkflowNode):number {
+  if(node.kind==='memory')return 3;
+  if(/(?:^|\/)(?:ui|launcher|mcp|http|oauth|auth|net|tunnel)$/.test(node.id))return 0;
+  if(/(?:core|learning|harness|persistence|native|agent|runtime)/i.test(node.id))return 1;
+  return 2;
+}
+
+/** Lanes group source owners. They do not imply execution order. */
+export function layoutDiagram(graph:WorkflowGraph) {
+  const counts=[0,0,0,0];
+  const degree=new Map(graph.nodes.map(n=>[n.id,graph.edges.filter(e=>e.from===n.id||e.to===n.id).length]));
+  const nodes=[...graph.nodes].sort((a,b)=>laneFor(a)-laneFor(b)||(degree.get(b.id)!-degree.get(a.id)!)||a.id.localeCompare(b.id));
+  return {
+    components:nodes.map(node=>{const lane=laneFor(node),row=counts[lane]++;return {id:id(node.id),label:node.label,lane,pos:[68+lane*324,116+row*112],size:[244,72],paths:node.paths,degree:degree.get(node.id)!};}),
+    connections:graph.edges.map(e=>({id:id(e.id),from:id(e.from),to:id(e.to),evidence:e.evidence})),
+    height:Math.max(490,170+Math.max(...counts)*112),width:1364,
+  };
+}
+
+/** Maximum-evidence spanning forest: a sparse overview with real edges only.
+ * Focus and full mode retain every source dependency and its evidence. */
+function overviewEdges(graph:WorkflowGraph):Set<string> {
+  const parents=new Map(graph.nodes.map(n=>[n.id,n.id])),selected=new Set<string>();
+  const root=(value:string):string=>{while(parents.get(value)!==value)value=parents.get(value)!;return value;};
+  for(const edge of [...graph.edges].sort((a,b)=>b.evidence.length-a.evidence.length||a.id.localeCompare(b.id))){
+    const a=root(edge.from),b=root(edge.to);if(a!==b){parents.set(a,b);selected.add(id(edge.id));}
+  }
+  return selected;
+}
+
+export function sourceDiagram(graph:WorkflowGraph):string {
+  const cycle=buildControllerCycle(graph),cycleHtml=renderControllerCycle(graph);
+  const viewNavigation=`<nav class="view-switch" aria-label="Workflow diagram views"><button id="view-controller" aria-pressed="${cycle.available}">Controller cycle</button><button id="view-source" aria-pressed="${!cycle.available}">Source dependencies</button><small id="view-note">Interaction reference · not a live trace</small></nav>`;
+  const scene=layoutDiagram(graph),overview=overviewEdges(graph),byId=new Map(scene.components.map(n=>[n.id,n]));
+  const edges=scene.connections.map((edge,i)=>{
+    const a=byId.get(edge.from)!,b=byId.get(edge.to)!,forward=b.pos[0]>a.pos[0],same=a.lane===b.lane;
+    const sx=a.pos[0]+(same||forward?244:0),sy=a.pos[1]+36,tx=b.pos[0]+(same||!forward?244:0),ty=b.pos[1]+36;
+    const rail=same?sx+18+(i%5)*6:sx+(forward?28:-28),targetRail=same?rail:tx+(forward?-28:28),corridor=Math.min(a.pos[1],b.pos[1])-18-(i%4)*5;
+    const d=same?`M${sx} ${sy} H${rail} V${ty} H${tx}`:`M${sx} ${sy} H${rail} V${corridor} H${targetRail} V${ty} H${tx}`;
+    return `<path data-edge-key="${esc(edge.id)}" data-from="${esc(edge.from)}" data-to="${esc(edge.to)}" data-overview="${overview.has(edge.id)}" d="${d}" marker-end="url(#arrow)"${overview.has(edge.id)?'':' hidden="hidden"'}><title>${esc(a.label)} → ${esc(b.label)} · ${edge.evidence.length} import references</title></path>`;
+  }).join('');
+  const nodes=scene.components.map(n=>`<g data-node-id="${esc(n.id)}" role="button" tabindex="0" aria-label="Focus ${esc(n.label)}" transform="translate(${n.pos.join(' ')})" style="--accent:${lanes[n.lane].color}"><rect class="node-shadow" y="6" width="244" height="72" rx="12"/><rect class="node-body" width="244" height="72" rx="12"/><rect class="node-accent" width="4" height="44" y="14" rx="2"/><circle cx="22" cy="23" r="4"/><text class="node-title" x="36" y="28">${esc(n.label.length>25?n.label.slice(0,24)+'…':n.label)}</text><text class="node-meta" x="22" y="53">${n.paths.length} files · ${n.degree} connections</text><title>${esc(n.label)} · inspect source relationships</title></g>`).join('');
+  const groups=lanes.map((lane,i)=>`<g><rect x="${40+i*324}" y="26" width="300" height="${scene.height-48}" rx="18" fill="${lane.color}" fill-opacity=".035" stroke="${lane.color}" stroke-opacity=".14"/><text x="${64+i*324}" y="58" fill="${lane.color}" font-size="17" font-weight="700">${lane.label}</text><text x="${64+i*324}" y="80" fill="#8ba3ba" font-size="11">${lane.hint}</text></g>`).join('');
+  const data=JSON.stringify(scene).replace(/</g,'\\u003c');
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="generator" content="agent-core-source-diagram 1"><title>Agent Core · System + Memory</title><style>
+*{box-sizing:border-box}body{margin:0;background:#050e1a;color:#e5eff9;font:13px 'Segoe UI',system-ui,sans-serif}button,select{font:inherit;color:inherit;background:#0d2235;border:1px solid #23445e;border-radius:7px;padding:8px 11px}button{cursor:pointer}button:hover,button[aria-pressed=true]{background:#123852;border-color:#43baff}button:focus-visible,select:focus-visible{outline:2px solid #43baff;outline-offset:3px}.toolbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 16px;border-bottom:1px solid #193249;background:#081725f5;backdrop-filter:blur(10px)}.toolbar b{margin-right:auto;font-size:14px}.toolbar label{display:flex;align-items:center;gap:6px;color:#8ba3ba}.toolbar select{max-width:210px}.diagram-scroll{height:calc(100vh - 176px);min-height:340px;overflow:auto;background-image:radial-gradient(#1e3045 .7px,transparent .7px);background-size:20px 20px}svg{display:block;width:100%;min-width:820px;height:auto}svg text{font-family:'Segoe UI',system-ui,sans-serif}path[data-edge-key]{fill:none;stroke:#5faccf;stroke-width:1.7;opacity:.7;stroke-linejoin:round;vector-effect:non-scaling-stroke}path[hidden]{display:none}path[data-active=true]{stroke:#72daff;stroke-width:2.5;opacity:1}.node-body{fill:url(#surface);stroke:var(--accent);stroke-opacity:.62}.node-shadow{fill:#000;opacity:.4;filter:url(#shadow)}.node-accent,circle{fill:var(--accent)}.node-title{fill:#edf6ff;font-size:13px;font-weight:650}.node-meta{fill:#8faac0;font-size:11px}[data-node-id]{cursor:pointer;transition:opacity .12s}[data-node-id]:hover .node-body,[data-node-id][aria-pressed=true] .node-body{stroke-width:2;fill:#13324a}[data-node-id]:focus-visible{outline:none}[data-node-id]:focus-visible .node-body{stroke:#fff;stroke-width:3}.inspector{padding:12px 18px;min-height:80px;border-top:1px solid #193249;background:#0a1929}.inspector strong{color:#70d8ff}.inspector p{color:#8faac0;margin:7px 0;line-height:1.5}.inspector details{margin-top:10px;overflow-wrap:anywhere}.inspector li{padding:4px 0}#workflow-source-evidence{padding:14px 18px;color:#8faac0;font-size:11px;border-top:1px solid #193249}#workflow-source-evidence details{margin:6px 0}#workflow-source-evidence summary{cursor:pointer}#count{color:#8faac0;font-size:12px}#zoom-value{min-width:38px;text-align:center}.zoom{display:flex;align-items:center;gap:4px}.zoom button{padding:6px 10px}@media(max-width:760px){.toolbar b{width:100%}.diagram-scroll{height:65vh}.toolbar select{max-width:160px}}@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+${cycleStyles}</style></head><body>${viewNavigation}<div id="source-view"><div class="toolbar"><b>System architecture <span id="count"></span></b><button id="overview" aria-pressed="true">Overview</button><button id="all-connections" aria-pressed="false">All connections</button><label>Focus<select id="focus" aria-label="Focus a system"><option value="">Choose a system…</option>${scene.components.map(n=>`<option value="${esc(n.id)}">${esc(n.label)}</option>`).join('')}</select></label><div class="zoom"><button id="zoom-out" aria-label="Zoom out">−</button><span id="zoom-value">100%</span><button id="zoom-in" aria-label="Zoom in">+</button><button id="fit">Fit width</button></div></div><div class="diagram-scroll"><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agent Core source dependency diagram" viewBox="0 0 ${scene.width} ${scene.height}"><defs><linearGradient id="surface" x2="0" y2="1"><stop stop-color="#11283c"/><stop offset="1" stop-color="#0a1929"/></linearGradient><filter id="shadow" x="-15%" y="-20%" width="130%" height="160%"><feGaussianBlur stdDeviation="5"/></filter><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#72cfff"/></marker></defs>${groups}<g id="connections">${edges}</g><g id="systems">${nodes}</g></svg></div><section class="inspector" aria-live="polite"><strong id="selection">Connected overview</strong><p id="hint">Select a system to inspect all incoming and outgoing dependencies.</p><div id="inspection"></div></section></div>${cycleHtml}<script id="scene" type="application/json">${data}</script><script>
+(()=>{'use strict';const scene=JSON.parse(document.getElementById('scene').textContent),nodes=[...document.querySelectorAll('[data-node-id]')],edges=[...document.querySelectorAll('[data-edge-key]')],select=document.getElementById('focus'),inspection=document.getElementById('inspection');let zoom=100;
+function show(id,all=false){const node=scene.components.find(n=>n.id===id),related=new Set([id]);let visible=0;edges.forEach(e=>{const match=id?e.dataset.from===id||e.dataset.to===id:all||e.dataset.overview==='true';e.toggleAttribute('hidden',!match);e.dataset.active=String(Boolean(id&&match));if(match){visible++;related.add(e.dataset.from);related.add(e.dataset.to);}});nodes.forEach(n=>{n.style.opacity=!id||related.has(n.dataset.nodeId)?'1':'.22';n.setAttribute('aria-pressed',String(n.dataset.nodeId===id));});select.value=id||'';document.getElementById('count').textContent=visible+' / '+edges.length+' links';document.getElementById('overview').setAttribute('aria-pressed',String(!id&&!all));document.getElementById('all-connections').setAttribute('aria-pressed',String(!id&&all));document.getElementById('selection').textContent=node?node.label:all?'All source connections':'Connected overview';document.getElementById('hint').textContent=node?visible+' connections · arrows point from importer to dependency. Unconnected systems are dimmed.':all?'Every extracted import relationship is visible. Select a system to reduce crossings.':'An evidenced backbone connects each component. Select a system to see all its relationships; crossing lines are not junctions.';inspection.replaceChildren();if(node){const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Inspect source files & dependency evidence';details.append(summary);const list=document.createElement('ul');node.paths.forEach(p=>{const li=document.createElement('li');li.textContent=p;list.append(li);});scene.connections.filter(e=>e.from===id||e.to===id).forEach(e=>{const li=document.createElement('li'),a=scene.components.find(n=>n.id===e.from),b=scene.components.find(n=>n.id===e.to);li.textContent=a.label+' → '+b.label+' · '+e.evidence.map(p=>p.path+':'+p.line).join(', ');list.append(li);});details.append(list);inspection.append(details);}}
+nodes.forEach(n=>{const activate=()=>show(n.dataset.nodeId);n.addEventListener('click',activate);n.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();activate();}});});select.addEventListener('change',()=>show(select.value));document.getElementById('overview').onclick=()=>show('');document.getElementById('all-connections').onclick=()=>show('',true);document.addEventListener('keydown',e=>{if(e.key==='Escape')show('');});function scale(value){zoom=Math.max(60,Math.min(200,value));document.querySelector('#source-view svg').style.width=zoom+'%';document.getElementById('zoom-value').textContent=zoom+'%';}document.getElementById('zoom-in').onclick=()=>scale(zoom+20);document.getElementById('zoom-out').onclick=()=>scale(zoom-20);document.getElementById('fit').onclick=()=>scale(100);show('');})();
+</script></body></html>`;
+}

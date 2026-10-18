@@ -10,6 +10,12 @@ export function WorkflowsPage() {
   const [snapshot, setSnapshot] = useState<WorkflowsSnapshot>({ status: 'building', limitations: [] });
   const [canvas, setCanvas] = useState<WorkflowsSnapshot>();
   const [pending, setPending] = useState(false);
+  const [autoUpdate, setAutoUpdate] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const autoUpdateRef = useRef(true);
+  const [checkedAt, setCheckedAt] = useState<string>();
+  const [updates, setUpdates] = useState(0);
+  const fingerprint = useRef<string | undefined>(undefined);
   const refresh = useRef(() => {});
 
   useEffect(() => {
@@ -22,14 +28,14 @@ export function WorkflowsPage() {
       clearTimeout(requestTimer);
       pendingId = undefined;
       setPending(false);
-      pollTimer = setTimeout(request, POLL_MS);
+      if (autoUpdateRef.current) pollTimer = setTimeout(request, POLL_MS);
     };
     const fail = (error: string) => {
       setSnapshot(previous => ({ ...previous, status: 'error', error }));
       finish();
     };
-    function request() {
-      if (!active || pendingId) return;
+    function request(manual = false) {
+      if (!active || pendingId || (!manual && !autoUpdateRef.current)) return;
       clearTimeout(pollTimer);
       pendingId = globalThis.crypto?.randomUUID?.() ?? `workflows-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       setPending(true);
@@ -53,10 +59,15 @@ export function WorkflowsPage() {
         return;
       }
       setSnapshot(result);
+      if (result.checkedAt) setCheckedAt(result.checkedAt);
+      if (result.fingerprint && result.html) {
+        if (fingerprint.current && result.fingerprint !== fingerprint.current) setUpdates(value => value + 1);
+        fingerprint.current = result.fingerprint;
+      }
       if (typeof result.html === 'string' && result.html.trim()) setCanvas(result);
       finish();
     });
-    refresh.current = request;
+    refresh.current = () => request(true);
     request();
     return () => {
       active = false;
@@ -75,16 +86,25 @@ export function WorkflowsPage() {
   const limitations = [...new Set([...(canvas?.limitations ?? []), ...snapshot.limitations])];
 
   return <div className="page workflows-page">
-    <PageHero icon={Link2} title="Workflows" subtitle="One interactive source map of Agent Core, including Memory and its connections.">
+    <PageHero icon={Link2} title="Workflows" subtitle="Follow the controller cycle: requests enter Agent Core, services respond, and results return to the AI.">
+      <button type="button" className="tiny-button" onClick={() => setExpanded(true)} aria-label="Expand workflows diagram">Expand diagram</button>
+      <button type="button" className="tiny-button" aria-pressed={autoUpdate} onClick={() => {
+        const enabled = !autoUpdate;
+        autoUpdateRef.current = enabled;
+        setAutoUpdate(enabled);
+        if (enabled) refresh.current();
+      }}>Auto update {autoUpdate ? 'on' : 'paused'}</button>
       <button type="button" className="tiny-button" aria-label="Refresh workflows" onClick={() => refresh.current()} disabled={pending}>
         <RefreshCw size={16}/>{pending ? 'Checking…' : 'Refresh'}
       </button>
     </PageHero>
     <Panel className="workflows-summary">
-      <div className="workflows-status-row"><StatusBadge tone={tone} label={status}/><span>Source analysis, not live execution</span><small>Automatically checks for source changes</small></div>
+      <div className="workflows-status-row"><StatusBadge tone={tone} label={status}/><span>Source analysis, not live execution</span><small>{autoUpdate ? 'Auto update · every 3 seconds' : 'Auto update paused'}{checkedAt && <> · Checked <time dateTime={checkedAt}>{new Date(checkedAt).toLocaleTimeString()}</time></>}</small></div>
+      {updates > 0 && <p className="workflows-update" role="status">Source change detected · diagram updated {updates} {updates === 1 ? 'time' : 'times'} this visit.</p>}
       {(snapshot.status === 'error' || snapshot.error) && <p role="alert" className="workflows-error">{snapshot.error || 'Source analysis is unavailable. Retrying automatically.'}</p>}
       {canvas && stale && <p className="workflows-stale">Showing the last successful source map while the current source is unavailable or rebuilding.</p>}
       <div className="workflows-counts" aria-label="Source map counts">
+        <small>Source inventory</small>
         <span>{shown.sourceFiles ?? '—'} source files</span><span>{shown.nodes ?? '—'} nodes</span><span>{shown.edges ?? '—'} edges</span><span>{shown.unknowns ?? '—'} unresolved</span>
       </div>
       <details className="workflows-details">
@@ -93,12 +113,14 @@ export function WorkflowsPage() {
           <div><dt>Git HEAD (reference only)</dt><dd>{shown.revision || 'Unavailable'}</dd></div>
           <div><dt>Working-tree fingerprint</dt><dd>{shown.fingerprint || 'Unavailable'}</dd></div>
           <div><dt>Generated</dt><dd>{shown.generatedAt ? <time dateTime={shown.generatedAt}>{shown.generatedAt}</time> : 'Pending'}</dd></div>
+          <div><dt>Latest observed source</dt><dd>{snapshot.observedFingerprint || 'Pending check'}</dd></div>
         </dl>
         <p>Connections are extracted from source. They do not prove that a path ran or that every dynamic call was resolved.</p>
         {limitations.length > 0 && <ul>{limitations.map(item => <li key={item}>{item}</li>)}</ul>}
       </details>
     </Panel>
-    <section className="workflows-canvas" aria-label="Unified system and Memory source map">
+    <section className={`workflows-canvas${expanded ? ' is-expanded' : ''}`} aria-label="Unified system and Memory source map">
+      {expanded && <button type="button" className="tiny-button workflows-collapse" onClick={() => setExpanded(false)} aria-label="Close expanded diagram">Collapse diagram</button>}
       {canvas?.html
         ? <iframe title="Agent Core unified workflows canvas" sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={canvas.html}/>
         : <div className="workflows-empty"><Link2 size={32}/><strong>{snapshot.status === 'error' ? 'Waiting for source analysis' : 'Building the source map…'}</strong><p>The interactive canvas will appear here when a source snapshot is ready.</p></div>}

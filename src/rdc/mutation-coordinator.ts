@@ -1,4 +1,6 @@
 import path from 'node:path';
+import { NativeDevelopmentFreeze } from '../native-development-freeze.js';
+import { resolveModuleProjectRoot } from '../portability/paths.js';
 import type { ExternalInvocationContext } from '../learning/external-controller.js';
 
 export type AutoCheckpointReason = 'grant-unavailable' | 'path-not-eligible' | 'unsupported-operation'
@@ -83,3 +85,4 @@ export class PathMutationCoordinator {
 }
 
 export const fileMutationCoordinator = new PathMutationCoordinator();
+export const nativeDevelopmentFreeze = new NativeDevelopmentFreeze(resolveModuleProjectRoot(import.meta.url));

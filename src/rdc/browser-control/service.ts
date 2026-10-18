@@ -9,6 +9,9 @@ import { OwnedTabs, listOwnedPageTargets, isPageUrl, type PageTarget } from './o
 import { KeyboardActions, PRESS_KEYS, HOLD_KEYS, HOLD_DURATIONS, validateCapabilities, type InteractionCapability } from './keyboard-actions.js';
 import { redactSensitiveString } from '../../security/redaction.js';
 import { browserExtensionBridge, BrowserExtensionBridge, ExtensionBrowserClient, type BrowserTransport } from './extension-bridge.js';
+import type { BrowserBridgeMode, ConversationAction } from './conversation-contract.js';
+import { OpenBrowserUseTransport } from './open-browser-use.js';
+import { OwnedConversationReader } from './owned-conversation-reader.js';
 import { access, mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +27,7 @@ const MODULE_PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.
 const PROJECT_ROOT = resolveProjectRoot(process.env, MODULE_PROJECT_ROOT);
 
 type ActionKind = 'click' | 'fill' | 'select' | 'scroll' | 'wait' | 'switch_tab' | 'press_key' | 'hold_key' | 'back';
-export interface BrowserOpenOptions { interactionCapabilities?: InteractionCapability[]; transport?: 'isolated' | 'extension' }
+export interface BrowserOpenOptions { interactionCapabilities?: InteractionCapability[]; transport?: 'isolated' | 'extension' | 'open-browser-use'; mode?: BrowserBridgeMode }
 export interface BrowserObserveOptions { canvas?: CanvasOptions; host?: ExternalInvocationContext }
 
 interface RawAction {
@@ -36,6 +39,7 @@ interface RawAction {
   value?: string;
   current_value?: string;
   delta?: number;
+  scrollKey?: unknown;
   checked?: string;
   selected?: string;
   expanded?: string;
@@ -95,6 +99,8 @@ interface BrowserSession {
   port: number;
   client: BrowserTransport;
   extension?: ExtensionBrowserClient;
+  openBrowserUse?: OpenBrowserUseTransport;
+  conversationReader?: OwnedConversationReader;
   initialized?: boolean;
   headless: boolean;
   executable: string;
@@ -311,7 +317,7 @@ class CdpClient {
   }
 }
 
-const SNAPSHOT_SCRIPT = String.raw`(() => {
+const SNAPSHOT_EXPRESSION = String.raw`(panelScrolling => {
   const cache = window.__agentCoreBrowser || (window.__agentCoreBrowser = {
     next: 1, ids: new WeakMap(), nodes: new Map()
   });
@@ -363,9 +369,46 @@ const SNAPSHOT_SCRIPT = String.raw`(() => {
       if (['text','email','url','tel'].includes(e.type)) return 'textbox';
     }
     return null;
-  };  cache.pageKey = () => [performance.timeOrigin, location.href, scrollX, scrollY, innerWidth, innerHeight,
+  };
+  const panels = [];
+  const rootScroller = document.scrollingElement;
+  const hit = (e, r) => {
+    const x=(Math.max(0,r.left)+Math.min(innerWidth,r.right))/2;
+    const y=(Math.max(0,r.top)+Math.min(innerHeight,r.bottom))/2;
+    if(r.right<=0||r.bottom<=0||r.left>=innerWidth||r.top>=innerHeight)return false;
+    const top=document.elementFromPoint(x,y);
+    return Boolean(top && (top===e || e.contains(top)));
+  };
+  if(panelScrolling) {
+    // Fixed sampling and bounded ancestor walks avoid scanning every page element.
+    const seen=new Set();
+    const visit=start=>{
+      for(let e=start,depth=0;e&&depth<12&&seen.size<256;e=e.parentElement,depth++) {
+        if(seen.has(e))continue;seen.add(e);
+        if(panels.length>=8||e===rootScroller||e===document.body||!visible(e))continue;
+        if(e.clientHeight<24||e.scrollHeight<=e.clientHeight+2)continue;
+        if(!['auto','scroll','overlay'].includes(getComputedStyle(e).overflowY))continue;
+        if(hit(e,e.getBoundingClientRect()))panels.push(e);
+      }
+    };
+    for(const [x,y] of [[.5,.5],[.75,.5],[.25,.5],[.5,.25],[.5,.75],[.25,.25],[.75,.25],[.25,.75],[.75,.75]])
+      visit(document.elementFromPoint(innerWidth*x,innerHeight*y));
+    let count=0;for(const e of document.querySelectorAll(selector)) {if(count++>=64)break;visit(e);}
+    cache.scrollGuard=e=>{
+      if(!e?.isConnected || (e!==rootScroller&&!visible(e)))return null;
+      const r=e.getBoundingClientRect();
+      return [identity(e),e.scrollTop,e.scrollLeft,e.scrollHeight,e.clientHeight,e.scrollWidth,e.clientWidth,
+        r.x,r.y,r.width,r.height,getComputedStyle(e).overflowY,
+        e===rootScroller&&document.body?getComputedStyle(document.body).overflowY:null];
+    };
+  }
+  cache.pageKey = () => {
+    const key=[performance.timeOrigin, location.href, scrollX, scrollY, innerWidth, innerHeight,
     [...document.querySelectorAll('input,textarea,select')].filter(safe)
       .map(e => [identity(e), e.value, e.checked, e.selectedIndex, e.disabled, e.readOnly])];
+    if(panelScrolling)key.push(panels.map(e=>cache.scrollGuard(e)));
+    return key;
+  };
   cache.guard = e => {
     if (!e?.isConnected || !visible(e)) return null;
     const scope = e.closest('form,dialog,[role="dialog"],article,li,tr,[role="row"]') || e.parentElement;
@@ -417,6 +460,7 @@ const SNAPSHOT_SCRIPT = String.raw`(() => {
     if (!safe(e) || !visible(e) || e.matches(':disabled') || e.closest('[aria-disabled="true"]')) continue;
     const r = e.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2, rname = role(e);
     if (!rname || r.width <= 0 || r.height <= 0 || x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
+    if (panelScrolling && !hit(e,r)) continue;
     if (rname === 'gridcell' && e.querySelector('button,[role="button"]')) continue;
     const base = { node: identity(e), role: rname, label: name(e) || rname };
     for (const key of ['checked','selected','expanded']) {
@@ -446,23 +490,39 @@ const SNAPSHOT_SCRIPT = String.raw`(() => {
     const value = node.textContent.trim(), parent = node.parentElement;
     if (!value || !parent || parent.closest('script,style,noscript,template') || !visible(parent)) continue;
     range.selectNodeContents(node); const r = range.getBoundingClientRect();
+    if(panelScrolling && !hit(parent,r))continue;
     if (r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth) {
       words.push(value); length += value.length;
     }
   }  const text = words.join('\n').slice(0, 6000), height = document.documentElement.scrollHeight;
+  const scrollActions=[];
+  if(panelScrolling)for(const e of [...panels,...(rootScroller?[rootScroller]:[])]) {
+    if(e===rootScroller && [getComputedStyle(e).overflowY,document.body?getComputedStyle(document.body).overflowY:''].some(v=>['hidden','clip'].includes(v)))continue;
+    const node=identity(e),scrollKey=cache.scrollGuard(e);
+    const label=e===rootScroller?'page':(e.getAttribute('aria-label')||e.getAttribute('role')||'panel '+(panels.indexOf(e)+1)).slice(0,80);
+    if(e.scrollTop+e.clientHeight<e.scrollHeight-2)scrollActions.push({id:'scroll-'+node+'-down',kind:'scroll',label:'Scroll down in '+label,node,delta:560,scrollKey});
+    if(e.scrollTop>0)scrollActions.push({id:'scroll-'+node+'-up',kind:'scroll',label:'Scroll up in '+label,node,delta:-560,scrollKey});
+  }
   const page_key = cache.pageKey(), guards = {};
   for (const a of actions) if (!(a.node in guards)) guards[a.node] = cache.guard(cache.nodes.get(a.node));
   const semantics = actions.map(a => ({ ...a }));
   const marker = [performance.timeOrigin, location.href, scrollX, scrollY, innerWidth, innerHeight,
     document.title, text, semantics, page_key[6]];
-  const omitted_actions = Math.max(0, actions.length - 247);
-  actions.splice(247);
+  if(panelScrolling)marker.push(page_key[7],scrollActions);
+  const domLimit=panelScrolling?Math.min(247,249-scrollActions.length):247;
+  const omitted_actions = Math.max(0, actions.length - domLimit);
+  actions.splice(domLimit);
   actions.forEach((a, i) => a.id = 'e' + (i + 1));
-  if (scrollY + innerHeight < height - 2) actions.push({ id: 'scroll_down', kind: 'scroll', label: 'Scroll down', delta: 560 });
-  if (scrollY > 0) actions.push({ id: 'scroll_up', kind: 'scroll', label: 'Scroll up', delta: -560 });
+  if(panelScrolling)actions.push(...scrollActions);
+  else {
+    if (scrollY + innerHeight < height - 2) actions.push({ id: 'scroll_down', kind: 'scroll', label: 'Scroll down', delta: 560 });
+    if (scrollY > 0) actions.push({ id: 'scroll_up', kind: 'scroll', label: 'Scroll up', delta: -560 });
+  }
   actions.push({ id: 'wait', kind: 'wait', label: 'Wait briefly for the page to update' });
   return { url: location.href, title: document.title, text, actions, marker, page_key, guards, omitted_actions, control_states, document_key:[performance.timeOrigin,location.href], focus_key, keyboard_safe };
-})()`;
+})`;
+const SNAPSHOT_SCRIPT = SNAPSHOT_EXPRESSION + '(false)';
+const PANEL_SNAPSHOT_SCRIPT = SNAPSHOT_EXPRESSION + '(true)';
 
 async function runtimeEvaluate(client: BrowserTransport, expression: string, awaitPromise = false): Promise<any> {
   const response = await client.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise });
@@ -532,6 +592,7 @@ function comparable(value: unknown): string {
 
 export class BrowserControlService {
   private readonly sessions = new Map<string, BrowserSession>();
+  private openBrowserUseOpening = 0;
   private readonly maxActions: number;
   private readonly maxObservations: number;
   private readonly extensionBridge: BrowserExtensionBridge;
@@ -546,7 +607,8 @@ export class BrowserControlService {
     const interactionCapabilities=validateCapabilities(options.interactionCapabilities);
     const url = assertOpenUrl(urlValue);
     if (options.transport === 'extension') {
-      const client = this.extensionBridge.request(url.toString());
+      if (options.mode === 'conversation' && interactionCapabilities.length) throw new Error('BROWSER_CONVERSATION_GENERIC_CAPABILITIES_REFUSED');
+      const client = this.extensionBridge.request(url.toString(), options.mode);
       const session: BrowserSession = {
         id: client.id, process: null, runtimeDir: '', profileDir: '', port: 0,
         client, extension: client, headless: false, executable: 'connected-tab',
@@ -558,8 +620,42 @@ export class BrowserControlService {
       this.sessions.set(session.id, session);
       return { sessionId: session.id, transport: 'extension', status: 'pairing-required',
         pairingCode: client.code, pairingExpiresInSeconds: 300, expectedOrigin: url.origin,
+        ...(options.mode === 'conversation' ? { mode: 'conversation', expectedUrl: client.expectedUrl,
+          reviewPolicy: 'popup-only-once-per-draft', observationScope: 'loaded-visible-DOM-window' } : {}),
         instructions: 'Activate the intended existing HTTP(S) tab, open Agent Core Browser Bridge and enter this one-use code.',
         pid: null, headless: false, maxActions: this.maxActions, maxObservations: this.maxObservations };
+    }
+    if (options.transport === 'open-browser-use') {
+      if (options.mode !== undefined) throw new Error('BROWSER_OBU_CONVERSATION_MODE_UNSUPPORTED');
+      if (this.openBrowserUseOpening + [...this.sessions.values()].filter(s => s.openBrowserUse).length >= 4) throw new Error('BROWSER_OBU_SESSION_LIMIT');
+      this.openBrowserUseOpening++;
+      try {
+      const id = randomUUID();
+      // Installed browsers stay physically headed. headless=true requests a background task
+      // in an already connected extension, without foreground activation or fallback launch.
+      const client = await OpenBrowserUseTransport.connect(PROJECT_ROOT, id, undefined, headless);
+      const session: BrowserSession = {
+        id, process: null, runtimeDir: '', profileDir: '', port: 0, client, openBrowserUse: client,
+        headless: false, executable: 'open-browser-use', initialized: true,
+        actionCount: 0, observationCount: 0, openedAt: new Date().toISOString(),
+        targetId: '', tabs: new OwnedTabs(), canvas: new CanvasObserver(), keyboard: new KeyboardActions(),
+        interactionCapabilities, actionInFlight: false,
+      };
+      this.bindEvents(session, client);
+      try {
+        await client.open(url.toString(), headless);
+        session.targetId = 'obu:' + client.tabId;
+        this.sessions.set(id, session);
+        return { sessionId: id, transport: 'open-browser-use', status: 'attached', url: url.toString(),
+          tabId: client.tabId, extensionVersion: client.info.version, headless: false, background: client.background, pid: null,
+          scope: 'task-created-tab', maxActions: this.maxActions, maxObservations: this.maxObservations };
+      } catch (error) {
+        const cleanup = await client.dispose();
+        if (cleanup.manualInspectionRequired) throw new Error(
+          `BROWSER_OBU_OPEN_OUTCOME_UNCERTAIN: sessionId=${id}; ownedTabId=${client.tabId ?? 'unknown'}; inspect the task tab before retrying`);
+        throw error;
+      }
+      } finally { this.openBrowserUseOpening--; }
     }
     const executable = await resolveBrowserExecutable(headless);
     const id = randomUUID();
@@ -640,6 +736,7 @@ export class BrowserControlService {
   private session(id: string): BrowserSession {
     const session = this.sessions.get(id);
     if (!session) throw new Error('BROWSER_CONTROL_SESSION_NOT_FOUND');
+    if (session.openBrowserUse?.closed) { session.openBrowserUse.close(); throw new Error('BROWSER_CONTROL_SESSION_CLOSED'); }
     if (session.extension) {
       if (session.extension.expired()) session.extension.close();
       if (session.extension.state !== 'attached') throw new Error(session.extension.state === 'closed'
@@ -667,13 +764,13 @@ export class BrowserControlService {
       return {sessionId,status:'blocked-dialog',dialog:session.dialog,actions:[],observationCount:session.observationCount,
         remainingObservations:this.maxObservations-session.observationCount};
     }
-    const page = await runtimeEvaluate(session.client, SNAPSHOT_SCRIPT) as RawPage;
+    const page = await runtimeEvaluate(session.client, session.openBrowserUse ? PANEL_SNAPSHOT_SCRIPT : SNAPSHOT_SCRIPT) as RawPage;
     if (!page || !Array.isArray(page.actions)) throw new Error('BROWSER_CONTROL_OBSERVATION_INVALID');
     if (!isPageUrl(page.url)) throw new Error('BROWSER_CONTROL_URL_SCHEME_REFUSED');
     if (page.actions.length > MAX_CANDIDATES) throw new Error('BROWSER_CONTROL_CANDIDATE_BUDGET_EXCEEDED');
     const extras:RawAction[]=[];let tabs:any;
-    if (session.extension) {
-      tabs = { state: 'available', scope: 'user-connected-tab', items: [{ id: session.targetId, active: true,
+    if (session.extension || session.openBrowserUse) {
+      tabs = { state: 'available', scope: session.openBrowserUse ? 'task-created-tab' : 'user-connected-tab', items: [{ id: session.targetId, active: true,
         title: redactSensitiveString(page.title).slice(0,200), url: redactSensitiveString(page.url).slice(0,4000) }] };
     } else try {
       const listed=await session.tabs.inventory(session.port,session.targetId);tabs=listed.public;
@@ -733,6 +830,11 @@ export class BrowserControlService {
   private async assertFresh(session: BrowserSession, observation: Observation, action: RawAction): Promise<void> {
     if(session.targetId!==observation.targetId)throw new Error('BROWSER_CONTROL_STALE_OBSERVATION');
     if(session.dialog)throw new Error('BROWSER_CONTROL_DIALOG_BLOCKED');
+    if(action.kind==='scroll' && action.node!==undefined && session.openBrowserUse) {
+      const current=await runtimeEvaluate(session.client,`(() => {const c=window.__agentCoreBrowser;return c?.scrollGuard ? [c.pageKey(),c.scrollGuard(c.nodes.get(${action.node}))] : null;})()`);
+      if(comparable(current)!==comparable([observation.page.page_key,action.scrollKey]))throw new Error('BROWSER_CONTROL_STALE_OBSERVATION');
+      return;
+    }
     if(action.kind==='press_key'||action.kind==='hold_key') {
       const focus=await runtimeEvaluate(session.client,'window.__agentCoreBrowser?.focusKey() ?? null');
       if(!focus||comparable(focus)!==comparable(observation.page.focus_key))throw new Error('BROWSER_CONTROL_STALE_FOCUS');
@@ -746,14 +848,17 @@ export class BrowserControlService {
       if (comparable(current) !== comparable(expected)) throw new Error('BROWSER_CONTROL_STALE_OBSERVATION');
       return;
     }
-    const current = await runtimeEvaluate(session.client, SNAPSHOT_SCRIPT) as RawPage;
+    const current = await runtimeEvaluate(session.client, session.openBrowserUse ? PANEL_SNAPSHOT_SCRIPT : SNAPSHOT_SCRIPT) as RawPage;
     if (comparable(current?.marker) !== comparable(observation.page.marker)) {
       throw new Error('BROWSER_CONTROL_STALE_OBSERVATION');
     }
   }
 
   private async settle(session: BrowserSession, action: RawAction): Promise<void> {
-    if (action.kind === 'wait') return;
+    if (action.kind === 'wait' || (session.openBrowserUse && session.dialog)) return;
+    // Installed-browser tabs can remain backgrounded: renderer timers/animation frames may pause.
+    // A bounded host delay does not assert page readiness; the next observation owns that evidence.
+    if (session.openBrowserUse) { await sleep(action.kind === 'fill' ? 200 : 50); return; }
     const expression = `(action => new Promise(resolve => {
       const field=window.__agentCoreBrowser?.nodes.get(action.node);
       const autocomplete=action.kind==='fill' && field?.getAttribute('role')==='combobox';
@@ -800,6 +905,11 @@ export class BrowserControlService {
     session.actionInFlight = true;
     try {
     await this.assertFresh(session, observation, action);
+    if (session.openBrowserUse && action.kind !== 'wait') {
+      await session.openBrowserUse.assertForeground();
+      // Focus handlers may mutate the document while the owned target is activated.
+      await this.assertFresh(session, observation, action);
+    }
     if(action.kind==='switch_tab'){
       const target=await session.tabs.resolve(session.port,action.targetId!,action.targetUrl!);
       const next=await CdpClient.connect(target.webSocketDebuggerUrl);
@@ -824,9 +934,29 @@ export class BrowserControlService {
       await sleep(100);
     } else if (action.kind === 'scroll') {
       session.actionCount += 1;
-      await session.client.send('Input.dispatchMouseEvent', {
-        type: 'mouseWheel', x: 550, y: 650, deltaX: 0, deltaY: action.delta ?? 0,
-      });
+      if(session.openBrowserUse && action.node!==undefined) {
+        const result=await runtimeEvaluate(session.client,`(expected => {
+          const c=window.__agentCoreBrowser,e=c?.nodes.get(expected.node);
+          if(!c?.scrollGuard||!e||JSON.stringify([c.pageKey(),c.scrollGuard(e)])!==JSON.stringify(expected.key))return 'stale';
+          const root=e===document.scrollingElement;
+          if(!root) {
+            const r=e.getBoundingClientRect(),x=(Math.max(0,r.left)+Math.min(innerWidth,r.right))/2,y=(Math.max(0,r.top)+Math.min(innerHeight,r.bottom))/2;
+            const top=document.elementFromPoint(x,y);
+            if(!top||!(top===e||e.contains(top)))return 'covered';
+          }
+          const before=e.scrollTop,max=e.scrollHeight-e.clientHeight;
+          const distance=Math.sign(expected.delta)*Math.min(560,Math.max(1,e.clientHeight*.8));
+          const next=Math.max(0,Math.min(max,before+distance));
+          if(root)window.scrollTo({left:e.scrollLeft,top:next,behavior:'instant'});
+          else Element.prototype.scrollTo.call(e,{left:e.scrollLeft,top:next,behavior:'instant'});
+          return Math.sign(e.scrollTop-before)===Math.sign(expected.delta)?'moved':'no-effect';
+        })(${JSON.stringify({node:action.node,delta:action.delta,key:[observation.page.page_key,action.scrollKey]})})`);
+        if(result==='stale')throw new Error('BROWSER_CONTROL_STALE_OBSERVATION');
+        if(result==='covered')throw new Error('BROWSER_CONTROL_TARGET_CHANGED_OR_COVERED');
+        if(result!=='moved')throw new Error('BROWSER_CONTROL_SCROLL_NO_EFFECT');
+      } else await session.client.send('Input.dispatchMouseEvent', {
+          type: 'mouseWheel', x: 550, y: 650, deltaX: 0, deltaY: action.delta ?? 0,
+        });
     } else if (action.kind === 'select') {
       if (typeof action.node !== 'number') throw new Error('BROWSER_CONTROL_ACTION_NODE_INVALID');
       session.actionCount += 1;
@@ -861,11 +991,30 @@ export class BrowserControlService {
       })(${JSON.stringify(action)})`);
       if (!target) throw new Error('BROWSER_CONTROL_TARGET_CHANGED_OR_COVERED');
       session.actionCount += 1;
-      for (const type of ['mousePressed', 'mouseReleased']) {
+      if (session.openBrowserUse?.background && action.kind === 'click') {
+        const clicked = await runtimeEvaluate(session.client, `(() => { const e=window.__agentCoreBrowser?.nodes.get(${action.node});
+          if (!(e instanceof HTMLElement) || !e.isConnected || e.matches(':disabled')
+            || e.closest('[aria-disabled="true"],[inert]')
+            || (typeof e.checkVisibility==='function' && !e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}))) return false;
+          const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
+          if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight
+            || !e.contains(document.elementFromPoint(x,y))) return false;
+          HTMLElement.prototype.click.call(e); return true; })()`);
+        if (clicked !== true) throw new Error('BROWSER_CONTROL_BACKGROUND_CLICK_UNAVAILABLE');
+      } else if (!session.openBrowserUse?.background) for (const type of ['mousePressed', 'mouseReleased']) {
         await session.client.send('Input.dispatchMouseEvent', {
           type, x: target.x, y: target.y, button: 'left', clickCount: 1,
         });
       }      if (action.kind === 'fill') {
+        if (session.openBrowserUse?.background) {
+          const focused = await runtimeEvaluate(session.client, `(() => { const e=window.__agentCoreBrowser?.nodes.get(${action.node});
+            if (!e?.isConnected || e.readOnly || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]')) return false;
+            e.focus({preventScroll:true});
+            return Boolean(e?.isConnected && (e===document.activeElement || e.contains(document.activeElement))); })()`);
+          if (focused !== true) throw new Error('BROWSER_CONTROL_BACKGROUND_FIELD_NOT_FOCUSED');
+          if (session.dialog) throw new Error('BROWSER_CONTROL_DIALOG_BLOCKED');
+          await this.assertFresh(session, observation, action);
+        }
         const modifiers = process.platform === 'darwin' ? 4 : 2;
         await session.client.send('Input.dispatchKeyEvent', {
           type: 'keyDown', key: 'a', code: 'KeyA', modifiers, commands: ['selectAll'],
@@ -877,6 +1026,7 @@ export class BrowserControlService {
       }
     }
     await this.settle(session, action);
+    if (session.openBrowserUse?.closed) throw new Error('BROWSER_CONTROL_MUTATION_UNCERTAIN');
     // Only a host-bound, same-task successful DOM action can stage metadata.
     // Observation alone, unbound/native, dialog, failure or caller abort are not use.
     const actScope = browserBinding(host);
@@ -909,7 +1059,7 @@ export class BrowserControlService {
     const bound = browserBinding(host);
     if (!bound) return {status:'unknown',reason:'host-task-unbound'};
     const session = this.sessions.get(selector.sessionId);
-    if (!session || session.extension?.expired() || (session.process && session.process.exitCode !== null))
+    if (!session || session.openBrowserUse?.closed || session.extension?.expired() || (session.process && session.process.exitCode !== null))
       return {status:'unknown',reason:'session-unavailable'};
     if (session.actionInFlight || session.dialog)
       return {status:'unknown',reason:'observation-in-flight-or-dialog'};
@@ -922,6 +1072,30 @@ export class BrowserControlService {
       freshness:'last-observed-not-revalidated'};
   }
 
+  async conversation(sessionId: string, action: ConversationAction, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    const session = this.sessions.get(sessionId);
+    if(!session)throw new Error('BROWSER_CONTROL_SESSION_NOT_FOUND');
+    if(session.openBrowserUse) {
+      this.session(sessionId);
+      if(action!=='conversation_read')throw new Error('BROWSER_OBU_CONVERSATION_READ_ONLY');
+      if(params.sinceRevision!==undefined)throw new Error('BROWSER_OBU_CONVERSATION_USE_READ_SELECTOR');
+      if(session.actionInFlight)throw new Error('BROWSER_CONTROL_ACTION_IN_FLIGHT');
+      if(session.dialog)throw new Error('BROWSER_CONTROL_DIALOG_BLOCKED');
+      if(session.observationCount>=this.maxObservations)throw new Error('BROWSER_CONTROL_OBSERVATION_BUDGET_EXCEEDED');
+      session.actionInFlight=true;
+      session.observationCount++;
+      try {
+        session.conversationReader??=new OwnedConversationReader((expression,awaitPromise)=>runtimeEvaluate(session.client,expression,awaitPromise));
+        const value=await session.conversationReader.read(params.read as Parameters<OwnedConversationReader['read']>[0]);
+        return {sessionId,transport:'open-browser-use',background:session.openBrowserUse.background,...value,
+          observationCount:session.observationCount,remainingObservations:this.maxObservations-session.observationCount};
+      }finally{session.actionInFlight=false;}
+    }
+    if (!session.extension) throw new Error('BROWSER_CONVERSATION_EXTENSION_REQUIRED');
+    if(params.read!==undefined)throw new Error('BROWSER_CONVERSATION_PAGED_READ_REQUIRES_OBU');
+    return { sessionId, ...(await session.extension.conversation(action, params)) };
+  }
+
   async close(sessionId: string): Promise<Record<string, unknown>> {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('BROWSER_CONTROL_SESSION_NOT_FOUND');
@@ -930,6 +1104,7 @@ export class BrowserControlService {
     session.canvas.clear();
     let inputRelease: string = 'confirmed';
     await session.keyboard.close().catch(()=>{inputRelease='uncertain';});
+    if (session.openBrowserUse) return { sessionId, closed: true, inputRelease, ...(await session.openBrowserUse.dispose()) };
     if (session.extension) {
       const detached = await session.extension.detach();
       return { sessionId, closed: true, inputRelease, detach: detached, tabRetained: true, browserRetained: true };
@@ -977,13 +1152,19 @@ export class BrowserControlService {
     return { requested: ids.length, closed, remaining: this.sessions.size };
   }
 
-  status(): Record<string, unknown> {
+  isOpenBrowserUseSession(sessionId: string): boolean { return Boolean(this.sessions.get(sessionId)?.openBrowserUse); }
+
+  status(includeOpenBrowserUse = true): Record<string, unknown> {
     return {
-      sessions: [...this.sessions.values()].map(session => ({
+      sessions: [...this.sessions.values()].filter(session => includeOpenBrowserUse || !session.openBrowserUse).map(session => ({
         sessionId: session.id,
         pid: session.process?.pid ?? null,
-        transport: session.extension ? 'extension' : 'isolated',
-        ...(session.extension ? { state: session.extension.state } : {}),
+        transport: session.openBrowserUse ? 'open-browser-use' : session.extension ? 'extension' : 'isolated',
+        ...(session.openBrowserUse ? { state: session.openBrowserUse.closed ? 'closed' : 'attached',
+          tabId: session.openBrowserUse.tabId, extensionVersion: session.openBrowserUse.info.version,
+          background: session.openBrowserUse.background } : {}),
+        ...(session.extension ? { state: session.extension.state,
+          ...(session.extension.mode === 'conversation' ? { mode: 'conversation', modeConfirmed: session.extension.modeConfirmed } : {}) } : {}),
         headless: session.headless,
         browser: path.basename(session.executable),
         actionCount: session.actionCount,

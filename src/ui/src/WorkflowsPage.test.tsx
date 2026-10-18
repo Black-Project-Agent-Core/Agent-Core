@@ -42,6 +42,35 @@ afterEach(() => {
 });
 
 describe('unified Workflows page', () => {
+  it('expands and restores the diagram while retaining its canvas and polling subscription', () => {
+    render(<App />);
+    result(ready);
+    const canvas=screen.getByTitle('Agent Core unified workflows canvas');
+    fireEvent.click(screen.getByRole('button', {name:'Expand workflows diagram'}));
+    expect(screen.getByRole('region', {name:'Unified system and Memory source map'})).toHaveClass('is-expanded');
+    expect(screen.getByTitle('Agent Core unified workflows canvas')).toBe(canvas);
+    fireEvent.click(screen.getByRole('button', {name:'Close expanded diagram'}));
+    expect(screen.getByRole('region', {name:'Unified system and Memory source map'})).not.toHaveClass('is-expanded');
+    expect(requests()).toHaveLength(1);
+  });
+  it('can pause automatic refresh, refresh manually and detect a changed source fingerprint', () => {
+    render(<App />);
+    result(ready);
+    fireEvent.click(screen.getByRole('button', { name: 'Auto update on' }));
+    act(() => vi.advanceTimersByTime(9000));
+    expect(requests()).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh workflows' }));
+    result({ ...ready, fingerprint: 'fingerprint-two', html: '<html>Updated source</html>' });
+    expect(screen.getByRole('status')).toHaveTextContent('Source change detected');
+    expect(screen.getByTitle('Agent Core unified workflows canvas')).toHaveAttribute('srcdoc', '<html>Updated source</html>');
+    act(() => vi.advanceTimersByTime(9000));
+    expect(requests()).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Auto update paused' }));
+    expect(requests()).toHaveLength(3);
+    result({ ...ready, fingerprint: 'fingerprint-two' });
+    act(() => vi.advanceTimersByTime(3000));
+    expect(requests()).toHaveLength(4);
+  });
   it('restores the Workflows route and offers one source-analysis canvas for the system and Memory', () => {
     render(<App />);
     expect(screen.getByRole('heading', { name: 'Workflows' })).toBeInTheDocument();
@@ -132,7 +161,8 @@ describe('unified Workflows page', () => {
     expect(handlers.size).toBe(2);
     fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
     expect(window.location.hash).toBe('#dashboard');
-    expect(handlers.size).toBe(1);
+    // App + dashboard proposal reader; the Workflows subscriber was removed.
+    expect(handlers.size).toBe(2);
     act(() => vi.advanceTimersByTime(20000));
     expect(requests()).toHaveLength(1);
     act(() => {

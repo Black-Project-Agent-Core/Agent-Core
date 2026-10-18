@@ -13,6 +13,7 @@ import { procedureFingerprint, procedureContractDigest, assertProcedureCompatibl
 import { assertLearningTextSafe } from '../memory/safety.js';
 import type { SkillService } from '../skills/service.js';
 import { SkillProposalCoordinator } from './skill-proposals.js';
+import { createProposalDocuments, proposalReviewGuide } from './proposal-documents.js';
 import { buildSelfAwarenessView, type SelfAwarenessQuestion } from './self-awareness.js';
 import { explainImprovement } from './improvement-explanation.js';
 import { recordSkillOutcome, reviewSkillOutcomes, type SkillOutcomeInput } from './skill-outcome-review.js';
@@ -131,6 +132,28 @@ export class LearningService {
   }
   hasSkillProposals(): boolean { return Boolean(this.proposalCoordinator); }
   async upsertSkillProposal(input: SkillProposalInput) { return this.requireProposals().upsert(input); }
+  /** Explicit external publication; never called by Native proposal creation or dashboard GET. */
+  async publishExternalSkillProposal(input: { workspace: string; proposalId: string; revisionDigest: string }) {
+    return this.requireProposals().publishExternal(input);
+  }
+  /** Publish only proposals already attributed to this external task. No replay of the mutation. */
+  async publishExternalTaskSkillProposals(input:{workspace:string;taskId:string}){
+    if(!this.hasSkillProposals())return{status:'not-required' as const,documents:[],unavailable:[]};
+    const items=(await this.skillProposals(input.workspace)).filter(item=>item.sourceTaskIds.includes(input.taskId));
+    const documents:Array<{proposalId:string;path:string;revisionDigest:string;documentDigest:string}>=[];
+    const unavailable:Array<{proposalId:string;reason:string}>=[];
+    for(const item of items){
+      try{const published=await this.publishExternalSkillProposal({workspace:input.workspace,proposalId:item.id,revisionDigest:item.revisionDigest});
+        documents.push({proposalId:item.id,path:published.path,revisionDigest:item.revisionDigest,documentDigest:published.documentDigest});}
+      catch{unavailable.push({proposalId:item.id,reason:'EXTERNAL_PROPOSAL_PUBLICATION_UNAVAILABLE'});}
+    }
+    return{status:unavailable.length?'partial' as const:items.length?'completed' as const:'not-required' as const,documents,unavailable};
+  }
+  proposalDocuments() {
+    const coordinator = this.requireProposals();
+    return createProposalDocuments(coordinator.skills.proposalProjectRoot(), { listSkills: () => coordinator.listForReview() });
+  }
+  proposalReviewGuide() { return proposalReviewGuide(this.requireProposals().skills.proposalProjectRoot()); }
   async selfAwareness(workspace: string, questionType: SelfAwarenessQuestion = 'capabilities') {
     return buildSelfAwarenessView({ workspace, questionType, memory: this.memory, proposals: this.requireProposals(), learningHealth: () => this.health() });
   }

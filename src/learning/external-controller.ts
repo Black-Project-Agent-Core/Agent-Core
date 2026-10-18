@@ -1,4 +1,5 @@
 import { IMPROVEMENT_HANDOFF_CONTRACT } from './improvement-handoff.js';
+import { externalSkillGuidance } from '../skills/external-guidance.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -9,6 +10,8 @@ import { redactSensitiveString } from '../security/redaction.js';
 import type { MemoryService } from '../memory/service.js';
 import type { MemoryService as ExperienceMemoryService, MemorySearchHostContext, SynthesisEligibilitySummary } from '../memory/facade.js';
 import { createControllerMemoryDispatcher } from '../memory/facade.js';
+import { memorySemanticRevision } from '../memory/disclosure.js';
+import { progressiveMemoryDetail } from '../memory/progressive-disclosure.js';
 import { parseRetrievalPlan, RETRIEVAL_LIMITS, type RetrievalPlan, type MergedRetrieval } from '../memory/subquestion-retrieval.js';
 import { blockedPlannedMemory, discardPlannedMemory, withinBudget, runPlannedMemoryContext, type ContextMemoryRetrieval } from '../memory/planned-context.js';
 import type { DeliveredMemorySearchResult } from '../memory/search-projection.js';
@@ -414,6 +417,18 @@ export class ExternalControllerLearningService {
     }, false);
   }
 
+  /** Task-authority check for explicitly scoped Learning writes, not timed observation.
+   * The host-created invocation object must still be current after an await.
+   * A slow review must not lose authority merely because telemetry expired. */
+  async invocationTaskCurrent(context?: ExternalInvocationContext): Promise<boolean> {
+    if (!context || !this.invocationLifecycles.has(context) || context.binding !== 'bound') return false;
+    try {
+      const state = await this.load(true);
+      if (this.issue) return false;
+      return !this.verificationTarget(state, context.sessionId, context).closedAt;
+    } catch { return false; }
+  }
+
   private readonly capabilityInventories = new Map<string,()=>string[]>();
   attachCapabilityInventory(sessionId:string,read:()=>string[]):void {
     this.capabilityInventories.set(sessionId,read);
@@ -624,7 +639,7 @@ export class ExternalControllerLearningService {
     } catch { throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE'); }
   }
 
-  async startEpisode(sessionId: string, input: { workspace?: string; taskFamily?: string; taskKey?: string } = {}, hostBinding?: ExternalMemoryBinding): Promise<ExternalControllerEpisode> {
+  async startEpisode(sessionId: string, input: { workspace?: string; taskFamily?: string; taskKey?: string; description?:string } = {}, hostBinding?: ExternalMemoryBinding): Promise<ExternalControllerEpisode & {memoryTask?:{status:'linked'|'unavailable';reason?:string;episodeId?:string;revision?:number}}> {
     const binding = hostBinding === undefined ? undefined : normalizeMemoryBinding(hostBinding);
     if (binding) {
       if (!input.taskKey?.trim() || input.taskKey.length > 200) throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
@@ -632,7 +647,7 @@ export class ExternalControllerLearningService {
     } else if (input.workspace) input = { ...input, workspace: this.memory.resolveWorkspace(input.workspace) };
     if (input.taskKey) input = { ...input, taskKey: bounded(input.taskKey, 200) };
     const prior = input.taskKey ? (await this.recentEpisodes({ workspace: input.workspace, taskKey: input.taskKey.trim(), limit: 1, memoryBinding: binding, unboundOnly: !binding }))[0] : undefined;
-    return this.mutate(state => {
+    const episode=await this.mutate(state => {
       if (binding) this.validateMemoryWorkspace(input.workspace, binding);
       const taskKey = input.taskKey?.trim();
       const existing = (taskKey ? state.episodes.find(item => item.taskKey === taskKey && item.workspace === input.workspace && matchesMemoryBinding(item, binding)) : undefined) ?? prior;
@@ -665,6 +680,42 @@ export class ExternalControllerLearningService {
       state.episodes.push(episode);
       return normalizeEpisode(episode);
     });
+    // A supplied goal opts into Memory continuity; legacy/manual task_start callers
+    // remain compatible. Reconnection reads the existing episode without resetting it.
+    if(!binding||!input.description?.trim())return episode;
+    const memoryTask=await this.linkMemoryTask(sessionId,episode,input.description);
+    return {...episode,memoryTask};
+  }
+
+  private async linkMemoryTask(sessionId:string,episode:ExternalControllerEpisode,goal:string):Promise<{status:'linked'|'unavailable';reason?:string;episodeId?:string;revision?:number}>{
+    try{
+      const memory=this.experience??this.memory;
+      if(!episode.memoryBinding||!memory.controller)throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
+      const assertCurrent=async()=>{
+        const current=await this.getEpisode(sessionId,true);
+        if(!current||current.id!==episode.id||!matchesMemoryBinding(current,episode.memoryBinding))throw new Error('EXTERNAL_CONTINUITY_STALE_TASK');
+        this.validateMemoryWorkspace(current.workspace,episode.memoryBinding!);
+      };
+      await assertCurrent();
+      const scope=await this.resolveMemoryTask(episode.memoryBinding.ownerId,episode.id);
+      const controller=memory.controller({...scope,controllerId:'agent-core-external',sessionId});
+      if(controller.capabilities().writeMode!=='experience-v2')throw new Error('MEMORY_EXPERIENCE_NOT_ENABLED');
+      let context;
+      try{context=await controller.getTaskContext();}
+      catch(error){
+        if(!(error instanceof Error)||error.message!=='MEMORY_TASK_NOT_FOUND'||episode.closedAt)throw error;
+        await assertCurrent();
+        await controller.startEpisode({startKey:'external-learning-continuity',goal,sourceRefs:[]});
+        await assertCurrent();
+        context=await controller.getTaskContext();
+      }
+      await assertCurrent();
+      if(context.status==='insufficient-budget')throw new Error('MEMORY_TASK_CONTEXT_UNAVAILABLE');
+      return{status:'linked',episodeId:context.data.episodeRef.id,...(context.data.episode?{revision:context.data.episode.revision}:{})};
+    }catch(error){
+      const reason=error instanceof Error&&/^(?:MEMORY|EXTERNAL_CONTINUITY)_[A-Z0-9_]+$/.test(error.message)?error.message:'MEMORY_TASK_CONTEXT_UNAVAILABLE';
+      return{status:'unavailable',reason};
+    }
   }
 
   async recordToolOutcome(input: {
@@ -715,11 +766,44 @@ export class ExternalControllerLearningService {
     }, expiresAt), undefined);
   }
 
-  async recordLearningCheckpoint(sessionId: string, workspace?: string, checkpointKey?: string, taskId?: string): Promise<void> {
-    await this.mutate(state => {
+  /** Mirror only the final host-returned v2 hits into the existing external episode.
+   * The canonical retrieval ledger remains the authority; a missed mirror is
+   * reconciled by the receipt path against that exact immutable attempt. */
+  async recordV2MemoryRecall(
+    sessionId: string,
+    hits: ReadonlyArray<{ id: string; retrievalEvidence: { attemptId: string; contentDigest: string } }>,
+    context?: ExternalInvocationContext,
+  ): Promise<boolean> {
+    if (!hits.length || context?.binding !== 'bound' || context.sessionId !== sessionId) return false;
+    return this.observeInvocation(context, expiresAt => this.mutate(state => {
+      const episode = this.invocationEpisode(state, context).episode;
+      if (!episode || episode.closedAt || state.sessionHeads[sessionId] !== episode.id) return false;
+      const next = { ...(episode.deliveredMemories ?? {}) };
+      for (const hit of hits) {
+        const key = hit.retrievalEvidence.attemptId + ':' + hit.id;
+        if (next[key] && next[key] !== hit.retrievalEvidence.contentDigest) return false;
+        next[key] = hit.retrievalEvidence.contentDigest;
+      }
+      episode.deliveredMemories = next;
+      episode.updatedAt = new Date().toISOString();
+      const evidence = 'v2-recall:' + context.invocationId;
+      if (!episode.events.some(item => item.kind === 'recall' && item.evidenceRefs.includes(evidence))) {
+        episode.metrics.memoryRecalls += 1;
+        episode.events.push(event('recall', 'Memory v2 returned ' + hits.length + ' hit(s).',
+          [evidence, ...hits.slice(0, 12).map(hit => 'memory:' + hit.id)],
+          { invocationId: context.invocationId, processSessionId: context.processSessionId,
+            taskId: episode.id, attributionStatus: 'attributed' }));
+      }
+      return true;
+    }, expiresAt), false);
+  }
+
+  async recordLearningCheckpoint(sessionId: string, workspace?: string, checkpointKey?: string, taskId?: string): Promise<boolean> {
+    return this.mutate(state => {
       const episode = taskId ? state.episodes.find(item => item.id === taskId) : undefined;
-      if (!episode) throw new Error('EXTERNAL_CHECKPOINT_TASK_NOT_FOUND');
-      if (episode.closedAt) return;
+      if (!episode || state.sessionHeads[sessionId] !== episode.id) throw new Error('EXTERNAL_CHECKPOINT_TASK_NOT_FOUND');
+      if (episode.closedAt) return false;
+      if (checkpointKey && episode.checkpointKeys?.includes(checkpointKey)) return true;
       const now = new Date().toISOString();
       observeEpisodeWorkspace(episode, workspace);
       episode.updatedAt = now;
@@ -727,14 +811,19 @@ export class ExternalControllerLearningService {
       episode.pendingLearning = true;
       if (checkpointKey) episode.checkpointKeys = [...new Set([...(episode.checkpointKeys ?? []), checkpointKey])];
       episode.events.push(event('learning', 'Learning checkpoint completed for this external-controller episode.'));
+      return true;
     });
   }
 
-  async recordLearningReview(sessionId: string, summary: string, decisions?: Record<string, { complete: boolean; status: string }>): Promise<void> {
-    await this.mutate(state => {
+  async recordLearningReview(sessionId: string, summary: string,
+    decisions?: Record<string, { complete: boolean; status: string }>, taskId?: string): Promise<boolean> {
+    return this.mutate(state => {
+      let linked = false;
       for (const episode of state.episodes) {
+        if (taskId && (episode.id !== taskId || state.sessionHeads[sessionId] !== taskId)) continue;
         const keys = episode.checkpointKeys ?? [];
         if (!keys.some(key => decisions?.[key])) continue;
+        linked = true;
         episode.updatedAt = new Date().toISOString();
         episode.events.push(event('learning', 'Learning review: ' + summary));
         episode.checkpointKeys = keys.filter(key => !decisions?.[key]?.complete);
@@ -744,6 +833,7 @@ export class ExternalControllerLearningService {
           if (episode.terminalOutcome) episode.closedAt = episode.updatedAt;
         }
       }
+      return linked;
     });
   }
   async labelEpisode(sessionId: string, input: { workspace?: string; taskFamily?: string }): Promise<ExternalControllerEpisode> {
@@ -758,11 +848,13 @@ export class ExternalControllerLearningService {
 
   /** Exact host-issued target check, also used inside the existing mutation queue. */
   private verificationTarget(state: ExternalControllerState, sessionId: string,
-    context?: ExternalInvocationContext): ExternalControllerEpisode {
+    context?: ExternalInvocationContext, requestedTaskId?: string): ExternalControllerEpisode {
     if (!context || !this.invocationLifecycles.has(context) || context.binding !== 'bound'
       || context.sessionId !== sessionId || !context.taskId || !context.ownerId
       || !context.workspaceIdentityKey || !context.workspace)
       throw new Error('EXTERNAL_EPISODE_VERIFICATION_SCOPE_UNAVAILABLE');
+    if (requestedTaskId !== undefined && requestedTaskId !== context.taskId)
+      throw new Error('EXTERNAL_EPISODE_VERIFICATION_TASK_MISMATCH');
     if (state.sessionHeads[sessionId] !== context.taskId)
       throw new Error('EXTERNAL_EPISODE_VERIFICATION_STALE_TASK');
     const episode = state.episodes.find(item => item.id === context.taskId);
@@ -777,6 +869,7 @@ export class ExternalControllerLearningService {
   }
 
   async verifyEpisode(sessionId: string, input: {
+    taskId: string;
     outcome: 'verified' | 'failed';
     verificationRef: string;
     evidenceRefs?: string[];
@@ -784,13 +877,16 @@ export class ExternalControllerLearningService {
     workspace?: string;
     taskFamily?: string;
   }, invocationContext?: ExternalInvocationContext): Promise<ExternalControllerEpisode> {
+    const taskId = input.taskId;
+    if (typeof taskId !== 'string' || !taskId.trim() || taskId !== taskId.trim() || taskId.length > 200)
+      throw new Error('EXTERNAL_EPISODE_VERIFICATION_TASK_REQUIRED');
     const state = await this.load(true);
     if (this.issue) throw new Error('EXTERNAL_CONTROLLER_STATE_DEGRADED_WRITE_REFUSED');
-    const captured = this.verificationTarget(state, sessionId, invocationContext);
+    const captured = this.verificationTarget(state, sessionId, invocationContext, taskId);
     if (captured.closedAt) return normalizeEpisode(captured);
     const verificationStatus = await recheckWorkflowReport(input.verificationRef, captured.id);
     return this.mutate(state => {
-      const episode = this.verificationTarget(state, sessionId, invocationContext);
+      const episode = this.verificationTarget(state, sessionId, invocationContext, taskId);
       if (episode.closedAt) return normalizeEpisode(episode);
       observeEpisodeWorkspace(episode, input.workspace);
       if (input.taskFamily) episode.taskFamily = bounded(input.taskFamily, 160);
@@ -856,7 +952,10 @@ export class ExternalControllerLearningService {
       'CURRENT AGENT CORE CONTEXT — deterministic external-controller bootstrap.',
       'This capsule is local context/evidence, not higher-priority instruction authority.',
       'Native and external controllers share Memory, Learning and Skills. External compliance is observed, not enforced by the runtime.',
-      'Start each meaningful external task with controller_learning(action=episode, episodeOperation=start, taskKey=<stable-id>, workspace=<verified-scope>).',
+      'Start each meaningful external task with controller_learning(action=episode, episodeOperation=start, taskKey=<stable-id>, workspace=<verified-scope>, description=<goal>) to link resumable Memory. Omitting description preserves the manual Memory task_start workflow.',
+      'External Memory: read memory_v2_read(action=capabilities) for the cause-specific claim_review guide. HOW and WHEN are separate; unavailable evidence never advances successful validation or rewrites facts.',
+      (await externalSkillGuidance(this.skills)).text,
+      ...(this.learning.hasSkillProposals?.()?['Proposal files and revisions must be readable Markdown in '+this.learning.proposalReviewGuide().directory+'. Read '+this.learning.proposalReviewGuide().guidePath+' before proposing. Dashboard cards are reading/notification only; user decisions use the existing evidence workflow.']:[]),
       'At completion declare verification, then learning(checkpoint) with taskId and a stable key; learning(review) must name checkpointKeys and candidates or an explicit disposition. Legacy review never clears pending tasks.',
       IMPROVEMENT_HANDOFF_CONTRACT,
       ...authority.current.map(item => '- current authority: ' + item.id + ' | ' + bounded(item.title ?? item.id, 180)
@@ -943,11 +1042,43 @@ export class ExternalControllerLearningService {
     } catch { throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE'); }
   }
 
-  async getEpisode(sessionId: string): Promise<ExternalControllerEpisode | null> {
-    const state = await this.load();
+  async getEpisode(sessionId: string, readOnly = false): Promise<ExternalControllerEpisode | null> {
+    const state = await this.load(readOnly);
     const episodeId = this.activeEpisodeId(state, sessionId);
     const episode = state.episodes.find(item => item.id === episodeId);
     return episode ? normalizeEpisode(episode) : null;
+  }
+
+  /** Derived current-task guidance only; no second queue and no inferred use. */
+  async workflowNext(sessionId: string, context?: ExternalInvocationContext) {
+    const unbound = { status: 'scope-unavailable' as const, nextTool: 'controller_learning',
+      nextAction: 'episode/start', advisory: true as const,
+      instruction: 'Start a host-bound episode with stable taskKey and registered workspace.' };
+    if (context?.binding !== 'bound' || context.sessionId !== sessionId
+      || !await this.invocationDisclosureCurrent(context)) return unbound;
+    const episode = await this.getEpisode(sessionId);
+    if (!episode || episode.id !== context.taskId || episode.workspace !== context.workspace) return unbound;
+    const base = { advisory: true as const, taskId: episode.id, workspace: episode.workspace,
+      reportedTaskOutcome: episode.terminalOutcome ?? 'unavailable',
+      verifierStatus: episode.verificationStatus ?? 'unavailable',
+      pendingLearning: episode.pendingLearning };
+    if (episode.closedAt) return { ...base, status: 'closed' as const, nextTool: null, nextAction: null };
+    if (episode.pendingLearning && episode.checkpointKeys?.length) return {
+      ...base, status: 'review-pending' as const, nextTool: 'learning', nextAction: 'review',
+      checkpointKeys: episode.checkpointKeys.slice(0, 25),
+      instruction: 'Review only these task checkpointKeys with candidates or an explicit disposition; no-new-knowledge is valid.',
+    };
+    if (episode.terminalOutcome) return { ...base, status: 'checkpoint-needed' as const,
+      nextTool: 'learning', nextAction: 'checkpoint',
+      instruction: 'Create one meaningful checkpoint with this taskId, stable idempotencyKey and available evidenceRefs.' };
+    if (Object.keys(episode.deliveredMemories ?? {}).length) return {
+      ...base, status: 'memory-delivered' as const, nextTool: 'controller_learning',
+      nextAction: 'artifact_receipt-if-actually-used',
+      instruction: 'Only report applied/adapted/rejected when a real decision exists; preserve attemptId, memoryId, digest and actionRefs. Task verification and Learning finalization remain separate.',
+    };
+    return { ...base, status: 'active' as const, nextTool: 'controller_learning',
+      nextAction: 'context-if-needed',
+      instruction: 'Recall is optional and exposure does not mean use. After observed action report the task outcome independently and finalize Learning.' };
   }
 
   async recentEpisodes(input: { workspace?: string; taskFamily?: string; taskKey?: string; episodeIds?: string[]; limit?: number; memoryBinding?: ExternalMemoryBinding; unboundOnly?: boolean } = {}) {
@@ -1245,6 +1376,7 @@ export class ExternalControllerLearningService {
     const synthesis = await buildKnowledgeSynthesisPacket({
       runtime: { memoryService: this.memory, learningService: this.learning, skillsService: this.skills },
       availableTools:this.capabilityTools(sessionId),
+      externalController:true,
       skillDiscovery,
       memoryItems: memories.map(item => ({ id: item.record.id })),
       memorySourceStatus: memoryRetrieval ? memoryRetrieval.status === 'completed' ? 'available'
@@ -1339,7 +1471,18 @@ export class ExternalControllerLearningService {
     });
     return {
       contractVersion: planned ? 2 : 1,
+      skillGuidance: await externalSkillGuidance(this.skills),
       memoryTaskContext,
+      memoryClaimReviewGuide:{version:1,tool:'memory_v2_read',action:'capabilities',documentation:'docs/memory/EXTERNAL-LEARNING-PRIORITIES.md',advisory:true},
+      ...(this.learning.hasSkillProposals?.()?{proposalReviewGuide:this.learning.proposalReviewGuide()}:{}),
+      memoryContinuityGuide:{advisory:true,taskId:projectionBound?episode?.id:undefined,
+        steps:[
+          'Start/reconnect with the same taskKey/workspace and description(goal); read memoryTask linkage and memoryTaskContext.',
+          'Use scope.taskId from the host Learning episode on memory_v2_read/write; never infer owner/workspace from source text.',
+          'If handle-only, expand the exact episodeRef with paging. Revalidate stale/unknown sources before action. Paused/completed is never permission to resume.',
+          'Append explicit working-state changes using memory_v2_write event_append: goal, constraints, failed paths, blockers and next action. Use current episode revision and a stable operationId; preserve ambiguous operation receipts.',
+          'Checkpoint that Memory episode with a stable operationId on handoff/budget pressure. This does not replace the separate Learning checkpoint/review finalization.',
+        ]},
       intentionAttention,
       synthesis,
       capabilities:synthesis.capabilityExposure,
@@ -1350,16 +1493,31 @@ export class ExternalControllerLearningService {
       })),
       corrections: (authority?.corrections ?? []).map(item => ({ id: item.id, title: item.title, updatedAt: item.updatedAt })),
       episode: projectionBound ? episode : null,
-      ...(planned ? { memoryRetrieval: finalRetrieval } : { memoryRecall, ...(synthesisEligibility ? { synthesisEligibility } : {}), memories: memories.map(item => ({
-        id: item.record.id,
-        title: item.record.title,
-        category: item.record.category,
-        content: bounded(item.delivery.content, 1400),
-        retrievalEvidence: item.retrievalEvidence,
-        authority: !authority ? { state: 'unknown' } : authority.supersededBy.has(item.record.id)
-          ? { state: 'superseded', supersededBy: authority.supersededBy.get(item.record.id) }
-          : { state: 'active' },
-      })),
+      ...(planned ? { memoryRetrieval: finalRetrieval } : { memoryRecall, ...(synthesisEligibility ? { synthesisEligibility } : {}), memories: memories.map(item => {
+        const sourceRef = { kind: 'memory' as const, id: item.record.id,
+          revision: memorySemanticRevision(item.record) };
+        // The exact SourceRef comes from the same record snapshot as the digest.
+        // Reserve its actual serialized bytes inside the original text allowance.
+        const limit = Math.max(128, 1400 - Buffer.byteLength(JSON.stringify(sourceRef), 'utf8'));
+        let content = bounded(item.delivery.content, limit);
+        while (Buffer.byteLength(JSON.stringify(content), 'utf8') > limit)
+          content = content.slice(0, Math.max(0, Math.floor(content.length * 0.8)));
+        const hint = progressiveMemoryDetail(item.record,
+          item.delivery.truncated || content !== item.record.content, 'delivery-truncated', sourceRef);
+        return {
+          id: item.record.id,
+          title: item.record.title,
+          category: item.record.category,
+          content,
+          sourceRef,
+          ...(item.evidenceLineage ? { evidenceLineage: item.evidenceLineage } : {}),
+          ...(hint ? { detailHint: hint } : {}),
+          retrievalEvidence: item.retrievalEvidence,
+          authority: !authority ? { state: 'unknown' } : authority.supersededBy.has(item.record.id)
+            ? { state: 'superseded', supersededBy: authority.supersededBy.get(item.record.id) }
+            : { state: 'active' },
+        };
+      }),
       contradictions }),
       patterns: journey?.nodes.filter(node => node.type === 'pattern').slice(0, 12) ?? [],
       skills,
@@ -1404,7 +1562,13 @@ export class ExternalControllerLearningService {
   }
 
   async artifactReceipt(sessionId: string, input: ExternalArtifactReceiptInput, invocationContext?: ExternalInvocationContext) {
-    const episode = await this.getEpisode(sessionId);
+    // A Memory use statement requires the exact host-issued current external task.
+    // Do not fall through to an inferred/Native scope when the invocation is unbound.
+    const episode = input.kind === 'memory'
+      ? this.verificationTarget(await this.load(true), sessionId, invocationContext)
+      : await this.getEpisode(sessionId);
+    if (input.kind === 'memory' && (!episode || episode.closedAt || (input.workspace && input.workspace !== episode.workspace)))
+      throw new Error('EXTERNAL_RECEIPT_SCOPE_UNAVAILABLE');
     if (input.kind !== 'memory' && (!input.contentDigest || episode?.deliveredArtifacts?.[input.kind + ':' + input.artifactId] !== input.contentDigest)) {
       throw new Error('EXTERNAL_RECEIPT_REVISION_NOT_DELIVERED');
     }
@@ -1412,6 +1576,7 @@ export class ExternalControllerLearningService {
     input = { ...input, taskId: episode?.id };
     const declaredUse=artifactCapabilityUse(input,episode?.deliveredArtifacts??{});
     const failedUse=input.result==='failure';
+    const callerReportedResult = input.result;
     const validation = await validateWorkflowUse(input);
     if (validation.status === 'unavailable' || validation.verification !== (input.result === 'success' ? 'pass' : 'fail')) input = { ...input, result: 'unavailable' };
     if (input.memoryFeedback !== undefined && (input.kind !== 'memory'
@@ -1424,10 +1589,31 @@ export class ExternalControllerLearningService {
       throw new Error('EXTERNAL_ARTIFACT_RECEIPT_VERIFICATION_REQUIRED');
     }
     if (input.kind === 'memory') {
+      if (!episode) throw new Error('EXTERNAL_RECEIPT_SCOPE_UNAVAILABLE');
       if (!input.retrievalAttemptId || !input.memoryId || !input.contentDigest) {
         throw new Error('EXTERNAL_MEMORY_RECEIPT_FIELDS_REQUIRED');
       }
-      if (episode?.deliveredMemories?.[input.retrievalAttemptId + ':' + input.memoryId] !== input.contentDigest) throw new Error('EXTERNAL_RECEIPT_MEMORY_NOT_DELIVERED_TO_TASK');
+      const deliveredKey = input.retrievalAttemptId + ':' + input.memoryId;
+      if (episode.deliveredMemories?.[deliveredKey] !== input.contentDigest) {
+        // Recover a missed observer mirror only from the immutable canonical
+        // attempt. This cannot invent a retrieval, receipt, or use decision.
+        const eligible = await this.memory.confirmedMemoryDelivery({
+          taskId: episode.id, workspace: episode.workspace!,
+          retrievalAttemptId: input.retrievalAttemptId, memoryId: input.memoryId,
+          contentDigest: input.contentDigest,
+        });
+        if (!eligible) throw new Error('EXTERNAL_RECEIPT_MEMORY_NOT_DELIVERED_TO_TASK');
+        await this.mutate(state => {
+          const active = this.verificationTarget(state, sessionId, invocationContext);
+          if (active.closedAt) throw new Error('EXTERNAL_RECEIPT_SCOPE_UNAVAILABLE');
+          const previous = active.deliveredMemories?.[deliveredKey];
+          if (previous && previous !== input.contentDigest) throw new Error('EXTERNAL_RECEIPT_MEMORY_DELIVERY_CONFLICT');
+          active.deliveredMemories = { ...(active.deliveredMemories ?? {}), [deliveredKey]: input.contentDigest! };
+          active.updatedAt = new Date().toISOString();
+        });
+      }
+      // Close the await boundary against task rotation before writing the receipt.
+      this.verificationTarget(await this.load(true), sessionId, invocationContext);
       const useId = 'external:' + input.retrievalAttemptId.slice(0, 80) + ':' + sha256(input.memoryId + input.reasonCode).slice(0, 16);
       const receipt = await this.learning.receipt({
         taskId: input.taskId, actionRefs: input.actionRefs,
@@ -1435,15 +1621,17 @@ export class ExternalControllerLearningService {
         retrievalAttemptId: input.retrievalAttemptId,
         memoryId: input.memoryId,
         contentDigest: input.contentDigest,
-        ...(input.workspace ? { workspace: input.workspace } : {}),
+        // The registered workspace of the host-bound task is authoritative.
+        workspace: episode.workspace,
         applicability: input.applicability,
-        result: input.result,
+        // The ledger rechecks and retains this exact caller claim separately.
+        result: callerReportedResult,
         reasonCode: input.reasonCode,
         evidenceRefs,
         ...(input.verificationRef ? { verificationRef: input.verificationRef } : {}),
         ...(input.summary ? { summary: bounded(input.summary, 500) } : {}),
       });
-      await this.recordArtifactEvent(sessionId, input);
+      await this.recordArtifactEvent(sessionId, input, useId);
       if (!input.memoryFeedback) return receipt;
       // Explicit assessment only. One task/revision gets one bounded utility update,
       // even if the controller repeats recall or supplies another receipt reason.
@@ -1508,16 +1696,19 @@ export class ExternalControllerLearningService {
     return { recorded: true, ...(procedureOutcome ? { materialization: procedureOutcome.materialization } : {}), trustChanged: Boolean(input.applicability !== 'rejected' && input.verificationRef && input.result !== 'unavailable') };
   }
 
-  private async recordArtifactEvent(sessionId: string, input: ExternalArtifactReceiptInput): Promise<void> {
+  private async recordArtifactEvent(sessionId: string, input: ExternalArtifactReceiptInput, useId?: string): Promise<void> {
     await this.mutate(state => {
       const episode = state.episodes.find(item => item.id === input.taskId);
-      if (!episode || episode.closedAt) return;
+      if (!episode || episode.closedAt || state.sessionHeads[sessionId] !== episode.id) return;
+      // A replayed canonical use receipt must not inflate episode use metrics.
+      const marker = useId ? 'receipt:' + useId : undefined;
+      if (marker && episode.events.some(row => row.kind === 'artifact-use' && row.evidenceRefs.includes(marker))) return;
       observeEpisodeWorkspace(episode, input.workspace);
       if (input.applicability !== 'rejected' && input.result !== 'unavailable') episode.metrics.artifactUses += 1;
       episode.events.push(event(
         'artifact-use',
         input.kind + ':' + input.artifactId + ' -> ' + input.applicability + '/' + input.result,
-        [input.verificationRef ?? '', ...(input.evidenceRefs ?? [])].filter(Boolean),
+        [input.verificationRef ?? '', ...(input.evidenceRefs ?? []), ...(marker ? [marker] : [])].filter(Boolean),
         { outcome: input.result },
       ));
     });
@@ -1567,7 +1758,11 @@ export class ExternalControllerLearningService {
       ...(episode.memoryBinding && episode.workspace && episode.boundary==='explicit' ? {browserBinding:{
         taskId:episode.id,ownerId:episode.memoryBinding.ownerId,workspace:episode.workspace,
         workspaceIdentityKey:episode.memoryBinding.workspaceIdentityKey}} : {}) });
-    return (await deliver([supported]))[0];
+    const current=await this.getEpisode(sessionId,true);
+    const publication=current?.id===episode.id&&workspace
+      ?await this.learning.publishExternalTaskSkillProposals({workspace,taskId:episode.id})
+      :{status:'unavailable',reason:'EXTERNAL_PROPOSAL_TASK_NOT_CURRENT'};
+    return {...(await deliver([supported]))[0],proposalDocuments:publication};
   }
 
   private async applyProcedureOutcome(fingerprint: string, sessionId: string, result: 'success' | 'failure', evidenceRefs: string[], declaredDigest?: string) {

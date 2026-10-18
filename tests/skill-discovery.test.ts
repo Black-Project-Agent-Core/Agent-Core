@@ -113,7 +113,8 @@ it('bounds embedding strings without splitting surrogate pairs and reports trunc
   const calls: string[][] = [];
   const { service, add } = await fixture({ identity: { provider: 'test', model: 'one', dimensions: 2 }, embedDocuments: async texts => { calls.push(texts); return texts.map(() => [1, 0]); } });
   await add('review-code', '## Trigger\n' + Array(8).fill('😀'.repeat(200)).join('\n'));
-  const result = (await service.discover({ query: 'x'.repeat(1199) + '😀more', mode: 'hybrid' })).search;
+  // Exercise the embedding boundary with valid bounded lexical tokens.
+  const result = (await service.discover({ query: 'word '.repeat(239) + 'word😀more', mode: 'hybrid' })).search;
   expect(result.semantic).toMatchObject({ queryTruncated: true, descriptorTruncated: 1 });
   for (const text of calls[0]!) { expect(text.length).toBeLessThanOrEqual(1200); expect(text.isWellFormed()).toBe(true); }
 });
@@ -172,14 +173,19 @@ it('reads exact digest-bound UTF8 fragments with bounded full envelopes and reje
   await writeFile(path.join(directory, 'SKILL.md'), content + 'changed');
   await expect(service.read('review-code', { expectedActiveDigest: digest })).rejects.toThrow('SKILL_ACTIVE_REVISION_CHANGED');
 });
-it('rejects invalid UTF8 reads and symlinked active directories', async () => {
-  const { symlink } = await import('node:fs/promises');
+it('rejects invalid UTF8 reads', async () => {
   const { root, service, add } = await fixture();
   const { directory, content } = await add('review-code');
   await writeFile(path.join(directory, 'SKILL.md'), Buffer.concat([Buffer.from(content), Buffer.from([0xc0, 0xaf])]));
   const { digest } = await service.inspect('review-code');
   await expect(service.read('review-code', { expectedActiveDigest: digest })).rejects.toThrow('SKILL_READ_UTF8_INVALID');
-  await symlink(directory, path.join(root, 'runtime/skills/catalog', 'linked-skill'));
+});
+it('rejects symlinked active directories', async context => {
+  const { symlinkOrSkip } = await import('./helpers/optional-symlink.js');
+  const { root, service, add } = await fixture();
+  const { directory } = await add('review-code');
+  const { digest } = await service.inspect('review-code');
+  await symlinkOrSkip(context, directory, path.join(root, 'runtime/skills/catalog', 'linked-skill'), 'dir');
   const discovery = await service.discover({ query: 'review-code' }); expect(discovery.search.catalog.invalid).toBe(1);
   await expect(service.read('linked-skill', { expectedActiveDigest: digest })).rejects.toThrow('SKILL_SYMLINK_REFUSED');
 });

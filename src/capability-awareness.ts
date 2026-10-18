@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { AGENT_CAPABILITY_CATALOG } from './agent-capability-catalog.js';
 import { redactSensitiveString } from './security/redaction.js';
+import type { ExternalPartnerCapability } from './external-partner-capability.js';
 export type CapabilityDisclosurePolicy = 'silent-internal' | 'grouped-family' | 'announce-on-material-use';
 export type CapabilityKind = 'tool-family' | 'skill' | 'pattern' | 'procedure' | 'helper' | 'external';
 export interface CapabilityDescriptor {
@@ -12,19 +13,23 @@ export interface CapabilityArtifact { kind: 'skill' | 'pattern' | 'procedure'; i
 const clean = (s: unknown, max = 160) => redactSensitiveString(String(s ?? '')).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g,' ').trim().slice(0,max);
 const hash = (value: unknown) => 'sha256:' + createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export const CAPABILITY_LABELS: Record<string,string> = {
- 'artifact.inspect':'Artifact Inspection', 'code.intelligence':'Code Intelligence', 'code.modify':'Code Intelligence', 'semantic.ide':'Semantic IDE',
+ 'reconstruction.harness':'Reconstruction Harness', 'artifact.inspect':'Artifact Inspection', 'code.intelligence':'Code Intelligence', 'code.modify':'Code Intelligence', 'semantic.ide':'Semantic IDE',
  'web.research':'Web Research', 'browser.navigate':'Browser Control', 'browser.act':'Browser Control',
  'phone.observe':'Phone Control', 'phone.act':'Phone Control', 'process.execute':'Process Execution', 'process.admin':'Process Execution',
 };
-export function buildCapabilityExposure(input: { availableTools?: readonly string[]; artifacts: CapabilityArtifact[]; owners: Record<string,string> }) {
+export function buildCapabilityExposure(input: { availableTools?: readonly string[]; artifacts: CapabilityArtifact[]; owners: Record<string,string>; externalController?: boolean; externalPartners?: readonly ExternalPartnerCapability[] }) {
  const known = Array.isArray(input.availableTools);
  const names = [...new Set(input.availableTools ?? [])].filter(n => /^[A-Za-z0-9_-]{1,128}$/.test(n)).sort();
  const available = new Set(names);
  const mapped = new Set(AGENT_CAPABILITY_CATALOG.flatMap(f => f.tools.map(t=>t.name)));
  const families: CapabilityDescriptor[] = AGENT_CAPABILITY_CATALOG.map(f => {
   const memberTools = f.tools.map(t=>t.name).filter(n=>available.has(n));
+  const definition = input.externalController && f.family === 'reconstruction.harness'
+   ? {...f, description:'External task-bound REA proof obligations; schema discovery and host receipt assessment. Tool completion is not goal correctness.'}
+   : input.externalController && (f.family === 'browser.navigate' || f.family === 'browser.act')
+    ? {...f, description:'Browser Control: isolated Chromium, paired Browser Bridge, or task-created tabs through the installed Open Browser Use extension/native host; observed actions and bounded evidence.'} : f;
   return { capabilityId:'family:'+f.family, kind:'tool-family', displayName:CAPABILITY_LABELS[f.family] ?? f.family,
-   description:f.description, revision:hash([f,memberTools]), availability:known ? memberTools.length ? 'available' : 'unavailable' : 'unknown',
+   description:definition.description, revision:hash([definition,memberTools]), availability:known ? memberTools.length ? 'available' : 'unavailable' : 'unknown',
    availabilityBasis:'registered-tools-only; connection/effectiveness not established', memberTools,
    disclosurePolicy:CAPABILITY_LABELS[f.family] ? 'grouped-family' : 'silent-internal', sourceOwner:'MCP / AGENT_CAPABILITY_CATALOG' };
  });
@@ -32,9 +37,11 @@ export function buildCapabilityExposure(input: { availableTools?: readonly strin
   displayName:clean(a.id,200),description:clean(a.description,500),revision:a.revision,
   availability:'available',availabilityBasis:'owner-catalog; exposure is not use',
   disclosurePolicy:'announce-on-material-use',sourceOwner:a.kind==='skill'?'SkillService':'LearningService'}));
- const inventory = [...families,...artifacts];
+ const partners = input.externalController ? [...input.externalPartners ?? []] : [];
+ const inventory = [...partners,...families,...artifacts];
  const counts = { 'tool-family':families.length, skill:artifacts.filter(a=>a.kind==='skill').length,
-  pattern:artifacts.filter(a=>a.kind==='pattern').length, procedure:artifacts.filter(a=>a.kind==='procedure').length };
+  pattern:artifacts.filter(a=>a.kind==='pattern').length, procedure:artifacts.filter(a=>a.kind==='procedure').length,
+  ...(input.externalController ? {external:partners.length} : {}) };
  const tools = {status:known?'observed':'unknown',count:names.length,unclassified:names.filter(n=>!mapped.has(n))};
  const revision = hash([names,inventory,input.owners]);
  const lines = ['CAPABILITY EXPOSURE — registered inventory, not a permission grant or usage claim.',
@@ -42,8 +49,10 @@ export function buildCapabilityExposure(input: { availableTools?: readonly strin
   'Tools='+tools.status+' | count='+names.length+' | unclassified='+tools.unclassified.join(','),
   'Owners='+JSON.stringify(input.owners)+' | host plugins=unknown (no host registration bridge).',
   'Discover Skills with skills(search), check applicability, then skills(read) with the selected digest; list/inspect remain available.'];
- let used=lines.join('\n').length, shown=0;
- for(const item of inventory) {
+ // Host-partner instructions precede ordinary rows so a crowded catalog cannot hide how to invoke Raka.
+ for(const partner of partners) lines.push(...partner.contextRows);
+ let used=lines.join('\n').length, shown=partners.length;
+ for(const item of [...families,...artifacts]) {
   if(item.kind==='tool-family' && item.availability!=='available') continue;
   const line='- '+clean(item.capabilityId,220)+' | revision='+item.revision+' | '+item.availability;
   if(used+line.length+1>4650)continue;
@@ -64,7 +73,8 @@ export const capabilityUseKey=(u:CapabilityUse)=>u.capabilityId+'|'+u.revision;
 export function toolCapabilityUse(name:string,args:Record<string,unknown>,success:boolean,evidenceRef:string):CapabilityUse|null {
  if(!success || !evidenceRef) return null;
  let family='';
- if(name==='artifact_inspect' && args.action==='inspect')family='artifact.inspect';
+ if(name==='reconstruction_harness' && ['assess','readiness'].includes(String(args.action)))family='reconstruction.harness';
+ else if(name==='artifact_inspect' && args.action==='inspect')family='artifact.inspect';
  else if(['code_graph','code_surface','code_analysis','code_patterns','code_repair','code_refactor'].includes(name))family='code.intelligence';
  else if(name==='code_orient' && args.action!=='status')family='code.intelligence';
  else if(name==='code_workspace' && !['list','resolve','status','refs'].includes(String(args.action)))family='code.intelligence';
@@ -74,7 +84,7 @@ export function toolCapabilityUse(name:string,args:Record<string,unknown>,succes
  else if(name.startsWith('phone_') && name!=='phone_status' && name!=='phone_list_named_actions')family='phone.act';
  else if(['start_process','interact_with_process','kill_process','force_terminate'].includes(name))family='process.execute';
  if(!family)return null;
- const purposes:Record<string,string>={'artifact.inspect':'memeriksa deklarasi statis artefak yang telah diizinkan','code.intelligence':'menelusuri struktur dan hubungan kode','semantic.ide':'memeriksa simbol dan referensi kode','web.research':'mencari serta membaca sumber web','browser.navigate':'berinteraksi dengan halaman yang relevan','phone.act':'mengerjakan langkah pada perangkat','process.execute':'menjalankan langkah proses yang relevan'};
+ const purposes:Record<string,string>={'reconstruction.harness':'memeriksa kelengkapan pembuktian klaim berbasis bukti host','artifact.inspect':'memeriksa deklarasi statis artefak yang telah diizinkan','code.intelligence':'menelusuri struktur dan hubungan kode','semantic.ide':'memeriksa simbol dan referensi kode','web.research':'mencari serta membaca sumber web','browser.navigate':'berinteraksi dengan halaman yang relevan','phone.act':'mengerjakan langkah pada perangkat','process.execute':'menjalankan langkah proses yang relevan'};
  return {capabilityId:'family:'+family,kind:'tool-family',displayName:CAPABILITY_LABELS[family],revision:hash(family),
   purpose:purposes[family],evidenceRef:clean(evidenceRef,500),evidenceKind:'observed-tool'};
 }

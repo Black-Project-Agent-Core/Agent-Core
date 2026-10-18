@@ -20,7 +20,7 @@ async function initRepo(withCommit=true){
   return root;
 }
 afterEach(async()=>{await Promise.all(roots.splice(0).map(root=>rm(root,{recursive:true,force:true})));});
-it('fingerprints clean, staged and untracked state without reading untracked contents',async()=>{
+it('fingerprints clean, staged and untracked state with bounded content hashes and no emitted contents',async()=>{
   const {fingerprintWorkspace,compareWorkspaceFingerprints}=await api(),root=await initRepo();
   const clean=await fingerprintWorkspace(root);
   expect(clean.head).toMatch(/^[a-f0-9]{40}$/);expect(clean.statusEntryCount).toBe(0);expect(clean.trackedDiffBytes).toBe(0);
@@ -30,8 +30,12 @@ it('fingerprints clean, staged and untracked state without reading untracked con
   await writeFile(path.join(root,'untracked.txt'),'secret-content-b\n','utf8');
   const samePathChangedContent=await fingerprintWorkspace(root);
   expect(samePathChangedContent.statusDigest).toBe(untracked.statusDigest);
-  expect(samePathChangedContent.fingerprint).toBe(untracked.fingerprint);
-  expect(samePathChangedContent.limitations).toContain('untracked-file-contents-not-read');
+  expect(samePathChangedContent.fingerprint).not.toBe(untracked.fingerprint);
+  expect(samePathChangedContent.limitations).toContain('path-content-is-hashed-not-emitted');
+  expect(compareWorkspaceFingerprints(untracked,samePathChangedContent).modifiedSinceBaseline).toEqual([
+    expect.objectContaining({path:'untracked.txt',status:'??',contentHash:expect.stringMatching(/^[a-f0-9]{40}$/)}),
+  ]);
+  expect(JSON.stringify([untracked,samePathChangedContent])).not.toContain('secret-content-');
   await writeFile(path.join(root,'tracked.txt'),'two\n','utf8');git(root,'add','tracked.txt');
   const staged=await fingerprintWorkspace(root);
   expect(staged.trackedDiffBytes).toBeGreaterThan(0);

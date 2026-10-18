@@ -2,7 +2,7 @@
 
 ## Current identities
 
-- Canonical source candidate: **0.15.0-beta.1** (source candidate; no new tag, release publication or deployment)
+- Canonical source candidate: **0.15.0-beta.4** (local source/runtime update on 2026-10-18; no new tag or publication). See [candidate notes](0.15.0-beta.4.md).
 - Published beta.0 source and Windows portable: immutable tag `23fdca411e152c42fe1a5b81f526b18d6d57bd3b`; [scoped Windows evidence](../memory/verification/memory01-windows-functional-2026-10-10.md)
 - Target stable product: **0.15.0**
 - Previous stable source baseline: **0.14.0**
@@ -25,7 +25,14 @@ npm run release:pre-enter -- --tag beta
 npm run release:sync-version -- --version <planned-version>-beta.0
 ```
 
-The current beta train is already entered. Do not run `pre-enter` again. Successful prerelease packaging advances only the artifact sequence; synchronize the next explicit source prerelease before packaging that next sequence. The current source has already been synchronized to `0.15.0-beta.1`; this does not authorize packaging or publication. The stable baseline remains 0.14.0 throughout this train.
+The current source is synchronized to `0.15.0-beta.4`; the stable baseline remains 0.14.0 and retained intents target 0.15.0. The local `.changeset/pre.json` artifact-sequence state was absent when checked on 2026-10-18. Source synchronization does not recreate that historical state, package an artifact, consume intents or authorize publication. Reconcile packaging state explicitly before any future prerelease archive; do not infer an artifact sequence from a source version or blindly re-enter the train. Read-only release planning and source-version synchronization support the current prerelease identity. Stable apply from prerelease source requires an explicit exit state.
+
+For the explicitly authorized stable promotion of a source-only prerelease with
+no channel state, `npm run release:pre-exit -- --from-source` records only the
+current exact source version and approval time. It does not recreate a prior
+artifact sequence or an active channel. `release:apply` rejects a source version
+that changed after that receipt. Existing artifact channels still use ordinary
+`release:pre-exit`. See [0.15.0 readiness](0.15.0.md) for current evidence.
 
 ## Source-only GitHub prerelease
 

@@ -5,6 +5,7 @@ import { fixture } from './skill-proposal-fixture.js';
 import { buildKnowledgeSynthesisPacket } from '../src/agent-knowledge-synthesis.js';
 import { ExternalControllerLearningService } from '../src/learning/external-controller.js';
 import type { SkillDiscoverySnapshot, SkillSearchHit } from '../src/skills/discovery.js';
+import { createToolInvocationIdentity } from '../src/tracker/tool-invocation.js';
 
 const digest = 'sha256:' + 'a'.repeat(64);
 const summary = { name: 'locking-review', description: 'Database locking inspection', digest,
@@ -76,9 +77,16 @@ describe('shared Skill discovery context', () => {
     const selected = snapshot();
     const discover = vi.fn(async () => selected), list = vi.fn(async () => []);
     const service = await ExternalControllerLearningService.initialize({ stateDir: path.join(f.root, 'external'),
-      memory: f.memory, learning: f.learning, skills: { discover, list } as any });
+      memory: f.memory, learning: f.learning, skills: { discover, list, proposalProjectRoot: () => f.root } as any });
+    const ownerId = 'context-fixture-owner';
+    await service.startEpisode('transport', { taskKey: 'discovery', workspace: 'agent-core' }, {
+      ownerId, workspaceIdentityKey: f.memory.registeredWorkspaceIdentity('agent-core').key,
+    });
+    const identity = createToolInvocationIdentity();
+    const context = await service.captureToolInvocationContext({ ...identity, invocationId: identity.id, sessionId: 'transport', ownerId });
+    expect(context.binding).toBe('bound');
     const signal = new AbortController().signal;
-    const result: any = await service.context('transport', { query: 'diagnose concurrency', skillSearchMode: 'hybrid', signal } as any);
+    const result: any = await service.context('transport', { query: 'diagnose concurrency', skillSearchMode: 'hybrid', signal } as any, ownerId, context);
     expect(result.skills).toEqual([{ ...summary, ...selected.search.hits[0], delivery: 'metadata' }]);
     expect(result.synthesis.skillNames).toEqual(['locking-review']);
     expect(result.skillSearch).toMatchObject({ requestedMode: 'hybrid', effectiveMode: 'hybrid', deliveredHits: 1 });
@@ -95,7 +103,7 @@ describe('shared Skill discovery context', () => {
     const f = await fixture();
     const discover = vi.fn(async () => { throw new Error('unavailable'); });
     const service = await ExternalControllerLearningService.initialize({ stateDir: path.join(f.root, 'external'),
-      memory: f.memory, learning: f.learning, skills: { discover, list: async () => [] } as any });
+      memory: f.memory, learning: f.learning, skills: { discover, list: async () => [], proposalProjectRoot: () => f.root } as any });
     const result: any = await service.context('transport', { query: 'diagnose concurrency' });
     expect(discover).toHaveBeenCalledTimes(1);
     expect(result.skills).toEqual([]);

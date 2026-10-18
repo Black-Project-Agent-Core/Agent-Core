@@ -1,3 +1,4 @@
+import { symlinkOrSkip } from '../helpers/optional-symlink.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -6,7 +7,7 @@ import { createHash } from 'node:crypto';
 import PizZip from 'pizzip';
 import { afterEach, expect, it } from 'vitest';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const modulePath = path.join(root, 'scripts/memory/outcome/package-memory-outcome.mjs');
 const temporary: string[] = [];
 const hash = (bytes: Uint8Array) => 'sha256:' + createHash('sha256').update(bytes).digest('hex');
@@ -32,9 +33,9 @@ it('rejects missing mandatory members before publishing a ZIP', async () => {
   await expect(m.packageOutcomeBundle(dir, output)).rejects.toThrow('MISSING_OUTCOME_MEMBER');
   expect(await fs.stat(output).then(() => true, () => false)).toBe(false);
 });
-it('rejects a symlink report root without reading its contents', async () => {
+it('rejects a symlink report root without reading its contents', async context => {
   const m = await load(), dir = await temp(), report = path.join(dir, 'report');
-  await fs.symlink(dir, report, 'dir');
+  await symlinkOrSkip(context, dir, report, 'dir');
   await expect(m.packageOutcomeBundle(report, path.join(dir, 'outcome.zip'))).rejects.toThrow('INVALID_OUTCOME_DIRECTORY');
 });
 it('rejects prohibited source members rather than copying private files', async () => {
@@ -42,10 +43,10 @@ it('rejects prohibited source members rather than copying private files', async 
   await fs.writeFile(path.join(dir, '.env'), 'synthetic-placeholder');
   await expect(m.packageOutcomeBundle(dir, path.join(await temp(), 'outcome.zip'))).rejects.toThrow('UNSAFE_OUTCOME_MEMBER');
 });
-it('rejects source evidence symlinks without following them', async () => {
+it('rejects source evidence symlinks without following them', async context => {
   const m = await load(), dir = await temp();
   await fs.mkdir(path.join(dir, 'evidence')); await fs.writeFile(path.join(dir, 'outside.txt'), 'synthetic');
-  await fs.symlink(path.join(dir, 'outside.txt'), path.join(dir, 'evidence/a.txt'));
+  await symlinkOrSkip(context, path.join(dir, 'outside.txt'), path.join(dir, 'evidence/a.txt'), 'file');
   await fs.unlink(path.join(dir, 'outside.txt'));
   await expect(m.packageOutcomeBundle(dir, path.join(await temp(), 'outcome.zip'))).rejects.toThrow('NONREGULAR_OUTCOME_MEMBER');
 });

@@ -1,13 +1,15 @@
 {
   "name": "agent-core",
-  "version": "0.15.0-beta.3",
+  "version": "0.15.0-beta.4",
   "private": true,
   "description": "Local authenticated RDC-compatible MCP machine bridge",
   "type": "module",
   "scripts": {
     "path:check": "node scripts/portability/check-path-policy.mjs",
     "path:report": "node scripts/portability/check-path-policy.mjs --report",
-    "build": "npm run path:check && tsc -p tsconfig.json",
+    "native:check": "node scripts/governance/check-native-freeze.mjs",
+    "build": "npm run native:check && npm run path:check && node scripts/browser-control/build-open-browser-use-transport.mjs && tsc -p tsconfig.json",
+    "build:browser-transport": "npm run native:check && node scripts/browser-control/build-open-browser-use-transport.mjs",
     "build:memory": "npm run build",
     "semantic:smoke": "node scripts/semantic-ide-smoke.mjs",
     "verify:mcp-external": "node scripts/verify/mcp-external-acceptance.mjs",

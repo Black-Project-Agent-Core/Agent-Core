@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import type { ExternalControllerLearningService } from '../../learning/external-controller.js';
+import { currentExternalInvocationContext, currentToolInvocationRequest } from '../../tracker/tool-invocation.js';
 import type { ControllerScope } from '../facade.js';
 export interface MemoryTaskSelector { taskId: string }
 export type MemoryScopeResolver = (selector?: MemoryTaskSelector) => Promise<ControllerScope>;
@@ -33,5 +35,39 @@ export function createMemoryScopeResolver(runtime: {
       const scope=await runtime.externalControllerLearning.resolveMemoryTask(memoryOwner,selector.taskId);
       return {...scope,controllerId:'agent-core-external',sessionId:runtime.controllerSessionId};
     } catch {throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');}
+  };
+}
+
+/**
+ * Admission for a real, still-running Memory MCP recall. Learning's 250ms
+ * observer allowance is for optional attribution, not the lifetime of a
+ * host-bound retrieval. Recheck authoritative task ownership after I/O.
+ */
+export function createExternalMemoryRecallAdmission(
+  learning: Pick<ExternalControllerLearningService, 'resolveMemoryTask' | 'getEpisode'>,
+  sessionId: string,
+  expectedTool:'memory_v2_read'|'memory_v2_write'='memory_v2_read',
+): (taskId: string, workspaceKey: string) => Promise<void> {
+  return async (taskId, workspaceKey) => {
+    const request = currentToolInvocationRequest();
+    const context = currentExternalInvocationContext();
+    // Keep the rejection inline so TypeScript narrows host-issued context.
+    if (!request || request.tool !== expectedTool || !context || context.binding !== 'bound'
+      || context.sessionId !== sessionId || context.taskId !== taskId || context.workspace !== workspaceKey
+      || !context.ownerId || !context.workspaceIdentityKey
+      || request.identity.id !== context.invocationId
+      || request.identity.processSessionId !== context.processSessionId
+      || request.mutationContext.signal?.aborted) throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
+    try {
+      const scope = await learning.resolveMemoryTask(context.ownerId!, taskId);
+      const active = await learning.getEpisode(sessionId);
+      if (scope.taskId !== taskId || scope.workspaceKey !== workspaceKey || !active
+        || active.id !== taskId || active.workspace !== workspaceKey || active.closedAt
+        || active.boundary !== 'explicit' || active.memoryBinding?.ownerId !== context.ownerId
+        || active.memoryBinding?.workspaceIdentityKey !== context.workspaceIdentityKey
+        || request.mutationContext.signal?.aborted
+        || currentToolInvocationRequest() !== request || currentExternalInvocationContext() !== context)
+        throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
+    } catch { throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE'); }
   };
 }

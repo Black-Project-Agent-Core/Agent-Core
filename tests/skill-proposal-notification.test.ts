@@ -1,6 +1,25 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { fixture, proposalInput, nativeChatFixture } from './skill-proposal-fixture.js';
+
+async function externalNoticeFixture(sessionId: string) {
+  const f = await fixture();
+  const { ExternalControllerLearningService } = await import('../src/learning/external-controller.js');
+  const { createToolInvocationIdentity } = await import('../src/tracker/tool-invocation.js');
+  const service = await ExternalControllerLearningService.initialize({ stateDir: f.root, memory: f.memory, learning: f.learning, skills: f.skills });
+  const ownerId = randomUUID();
+  const episode = await service.startEpisode(sessionId, { taskKey: 'notice-fixture', workspace: 'agent-core' }, {
+    ownerId, workspaceIdentityKey: f.memory.registeredWorkspaceIdentity('agent-core').key,
+  });
+  const capture = async () => {
+    const identity = createToolInvocationIdentity();
+    const context = await service.captureToolInvocationContext({ ...identity, invocationId: identity.id, sessionId, ownerId });
+    expect(context.binding).toBe('bound');
+    return { identity, context };
+  };
+  return { ...f, service, episode, capture };
+}
 
 describe('in-session Skill proposal notices (P2)', () => {
   it('tool exposure stays pending until a user-facing response includes the notice', async () => {
@@ -43,13 +62,15 @@ it('persists a Native user-facing reminder before recording inclusion', async ()
   } finally { await f.close(); }
 });
 it('surfaces a reminder to an external controller without inventing delivery', async () => {
-  const f = await fixture();
-  const { ExternalControllerLearningService } = await import('../src/learning/external-controller.js');
-  const { externalControllerToolResult } = await import('../src/mcp/external-controller-tool-support.js');
-  const service = await ExternalControllerLearningService.initialize({ stateDir: f.root, memory: f.memory, learning: f.learning, skills: f.skills });
-  const episode = await service.startEpisode('external-one', { workspace: 'agent-core' });
-  const p = await f.learning.upsertSkillProposal(proposalInput({ taskId: episode.id, sessionId: 'external-one' }));
-  const result = await externalControllerToolResult({ service, sessionId: 'external-one', tool: 'skills', args: {}, result: { content: [{ type: 'text', text: 'main result' }] }, readOnly: true });
+  const f = await externalNoticeFixture('external-one');
+  const { beginExternalControllerToolCall, externalControllerToolResult } = await import('../src/mcp/external-controller-tool-support.js');
+  const { withToolInvocationRequest } = await import('../src/tracker/tool-invocation.js');
+  const p = await f.learning.upsertSkillProposal(proposalInput({ taskId: f.episode.id, sessionId: 'external-one' }));
+  const { identity, context } = await f.capture();
+  const result = await withToolInvocationRequest({ tool: 'skills', identity, invocationContext: context,
+    mutationContext: { invocationId: identity.id, invocationContext: context, checkpointGranted: false, reportAutoCheckpoint() {} }, checkpointReceipt: () => undefined },
+    () => externalControllerToolResult({ service: f.service, sessionId: 'external-one', call: beginExternalControllerToolCall('skills'),
+      tool: 'skills', args: {}, result: { content: [{ type: 'text', text: 'main result' }] }, readOnly: true }));
   expect(JSON.stringify(result)).toContain('SKILL PROPOSAL REMINDER'); expect(JSON.stringify(result)).toContain(p.path.replaceAll('\\', '\\\\'));
   expect((await f.learning.skillProposals('agent-core'))[0].notices).toHaveLength(0);
 });
@@ -65,14 +86,29 @@ it('controller contracts require same-session semantic proposals without grantin
 });
 
 it('does not truncate a reminder or mark an omitted proposal as exposed', async () => {
+  const f = await externalNoticeFixture('session');
   const { appendSkillReminderCapsule } = await import('../src/mcp/external-controller-tool-support.js');
   const notices = ['first', 'second', 'third'].map(name => ({ proposalId: name, revisionDigest: 'revision-' + name,
     name, path: name + '.md', text: 'NOTICE-' + name + ': ' + 'x'.repeat(1850), status: 'proposed', qualification: 'awaiting-verification' }));
-  const service: any = { getEpisode: async () => ({ id: 'one' }), skillProposalNotices: async () => notices };
-  const first = await appendSkillReminderCapsule({ content: [] }, service, 'session');
+  // Only the notice payload is a fixture. Disclosure authority uses the real bound task/context.
+  const noticeSpy = vi.spyOn(f.service, 'skillProposalNotices').mockResolvedValue(notices as any);
+  const first = await appendSkillReminderCapsule({ content: [] }, f.service, 'session', undefined, (await f.capture()).context);
   const firstText = first.content.map(c => c.text ?? '').join('');
   expect(firstText).toContain(notices[0].text); expect(firstText).toContain(notices[1].text);
   expect(firstText).not.toContain('NOTICE-third');
-  const second = await appendSkillReminderCapsule({ content: [] }, service, 'session');
+  const second = await appendSkillReminderCapsule({ content: [] }, f.service, 'session', undefined, (await f.capture()).context);
   expect(second.content.map(c => c.text ?? '').join('')).toContain(notices[2].text);
+  noticeSpy.mockRestore();
+});
+
+it('suppresses reminders with missing, foreign-session or copied non-host context', async () => {
+  const f = await externalNoticeFixture('session');
+  const { appendSkillReminderCapsule } = await import('../src/mcp/external-controller-tool-support.js');
+  const { context } = await f.capture();
+  const noticeSpy = vi.spyOn(f.service, 'skillProposalNotices');
+  const main = { content: [{ type: 'text', text: 'main result' }] };
+  expect(await appendSkillReminderCapsule(main, f.service, 'session')).toBe(main);
+  expect(await appendSkillReminderCapsule(main, f.service, 'other-session', undefined, context)).toBe(main);
+  expect(await appendSkillReminderCapsule(main, f.service, 'session', undefined, { ...context })).toBe(main);
+  expect(noticeSpy).not.toHaveBeenCalled(); noticeSpy.mockRestore();
 });

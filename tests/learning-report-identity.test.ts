@@ -15,7 +15,7 @@ it('different equal-delta experiments have stable distinct titles and candidate 
   for(const c of candidates){expect(c.verified).toBe(false);expect(learning.safeParse({action:'review',candidates:[c]}).success).toBe(true);}
 });
 it('real isolated Memory retains distinct evaluations and preserves the first pointer on an exact rerun',async()=>{
-  const {MemoryService}=await import('../dist/memory/service.js');
+  const {MemoryService}=await import('../src/memory/service.js');
   const base=await temp(),memoryRoot=path.join(base,'memory');await mkdir(memoryRoot);
   await writeFile(path.join(memoryRoot,'00-agent-core-memory.md'),'# Agent Core test foundation\nSynthetic isolated report test.\n');
   const memory=await MemoryService.initialize(base,memoryRoot);
@@ -32,7 +32,8 @@ it('real isolated Memory retains distinct evaluations and preserves the first po
   expect((await memory.list()).length).toBe(4);
   const legacy={kind:'durable-fact' as const,title:'Legacy title',content:'Legacy first content',verified:true,evidenceRefs:['source:fixture']};
   expect((await manager.capture(legacy)).status).toBe('captured');
-  expect((await manager.capture({...legacy,content:'Different legacy content'})).status).toBe('duplicate');
+  expect((await manager.capture({...legacy,content:'Different legacy content'})).status).toBe('captured');
+  expect((await manager.capture(legacy)).status).toBe('duplicate');
 });
 it('binds identity to each input, revision and implementation component',async()=>{
   const {reportIdentity}=await import('../scripts/memory/evaluation/report-bundle.mjs');

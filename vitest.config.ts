@@ -15,6 +15,8 @@ export default defineConfig({
       '**/DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/**',
       '**/src/ui/**',
       '**/referensi/**',
+      // Portable Skill payloads keep their own Node/Python test runners.
+      '**/bundled-skills/**',
     ],
   },
 });

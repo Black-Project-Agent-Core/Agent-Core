@@ -28,6 +28,8 @@ import { FileOAuthStore } from './oauth/store.js';
 import { PhoneController } from './phone/controller.js';
 import { preparePortableRuntime } from './portability/runtime-relocation.js';
 import { browserControlService } from './rdc/browser-control/service.js';
+import { OpenBrowserUseTransport, readObuConfiguration } from './rdc/browser-control/open-browser-use.js';
+import { managedBrowserUseRuntime } from './rdc/browser-control/open-browser-use-runtime.js';
 import { browserExtensionBridge } from './rdc/browser-control/extension-bridge.js';
 import { configManager } from './rdc/config-manager.js';
 import { terminalManager } from './rdc/terminal-manager.js';
@@ -246,6 +248,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
   const workflows = new WorkflowService(config.projectRoot);
   const server = createServer(createHttpHandler({
     workflows: () => workflows.snapshot(),
+    ...(learningService?.hasSkillProposals() ? {proposals: learningService.proposalDocuments()} : {}),
     browserBridge: browserExtensionBridge,
     keyStore,
     oauthService,
@@ -322,6 +325,15 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
   const address = server.address() as AddressInfo;
   workflows.start();
   activityTracker.record('SYSTEM', 'success', 'Agent Core RDC bridge is listening', 'service-listening', { host: config.host, port: address.port });
+  // Optional external browser startup never delays HTTP/tunnel readiness or Native initialization.
+  void readObuConfiguration(config.projectRoot).then(async browserConfig => {
+    if (browserConfig.discovery !== 'auto') return;
+    await managedBrowserUseRuntime(config.projectRoot).prepare();
+    const connection = await OpenBrowserUseTransport.connect(config.projectRoot, undefined, undefined, true);
+    const backend = connection.info.metadata.nativeHostName;
+    connection.close();
+    activityTracker.record('BROWSER', 'success', 'Browser-use extension is reachable', 'browser-use-startup', { backend });
+  }).catch(error => activityTracker.captureFailure('BROWSER', error, 'browser-use-startup-unavailable'));
   return {
     server,
     host: config.host,
@@ -356,6 +368,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
       if (memoryExperience) await cleanup('memory-experience', async () => memoryExperience.dispose());
       await cleanup('http-server', () => closeServer(server));
       await cleanup('browser-control', () => browserControlService.closeAll());
+      await cleanup('managed-browser-use', () => managedBrowserUseRuntime(config.projectRoot).close());
       await cleanup('terminal-manager', () => terminalManager.shutdownAll());
       if (semanticIde) await cleanup('semantic-ide', () => semanticIde.close());
       if (codeIntelligence) await cleanup('code-intelligence', () => codeIntelligence.close());

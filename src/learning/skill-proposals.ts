@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { lstat, mkdir, realpath } from 'node:fs/promises';
 import type { LearningStateStore } from './state.js';
 import type { SkillService } from '../skills/service.js';
 import type { SkillProposalInput, SkillProposalRecord, SkillWorkspaceIdentity } from './skill-proposal-types.js';
@@ -40,6 +41,40 @@ export class SkillProposalCoordinator {
     const scope = this.resolveWorkspace(workspace), state = await this.stateStore.load();
     if (this.stateStore.getIssue()) throw new Error('SKILL_PROPOSAL_STATE_DEGRADED');
     return (state.skillProposals ?? []).filter(p => p.workspaceIdentity === scope.key).map(p => this.project(p));
+  }
+  /** Local dashboard reader; no publication or lifecycle mutation on polling. */
+  async listForReview(): Promise<SkillProposalRecord[]> {
+    const state = await this.stateStore.load();
+    if (this.stateStore.getIssue()) throw new Error('SKILL_PROPOSAL_STATE_DEGRADED');
+    return (state.skillProposals ?? []).filter(item => {
+      try { return this.resolveWorkspace(item.workspace).key === item.workspaceIdentity; } catch { return false; }
+    }).map(item => this.project(item));
+  }
+  /** Trusted external adapter only. Same state owner serializes this projection, never a second writer. */
+  async publishExternal(input: { workspace: string; proposalId: string; revisionDigest: string }) {
+    const scope = this.resolveWorkspace(input.workspace);
+    const result = await this.stateStore.mutate('proposals', async state => {
+      const old = state.skillProposals?.find(item => item.id === input.proposalId && item.workspaceIdentity === scope.key);
+      if (!old || old.revisionDigest !== input.revisionDigest) throw new Error('SKILL_PROPOSAL_REVISION_CONFLICT');
+      const projectRoot = this.skills.proposalProjectRoot();
+      if (path.resolve(await realpath(projectRoot)).toLowerCase() !== projectRoot.toLowerCase()) throw new Error('SKILL_PROPOSAL_SYMLINK_REFUSED');
+      let parent = projectRoot;
+      for (const part of ['docs', 'proposals', 'skills']) {
+        parent = path.join(parent, part);
+        try { const stat = await lstat(parent); if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error('SKILL_PROPOSAL_SYMLINK_REFUSED'); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; await mkdir(parent); }
+      }
+      if (old.externalDocument && (!/^sha256:[a-f0-9]{64}$/.test(old.externalDocument.documentDigest)
+        || !/^sha256:[a-f0-9]{64}$/.test(old.externalDocument.revisionDigest))) throw new Error('SKILL_PROPOSAL_STATE_DEGRADED');
+      const projected = { ...this.project(old), path: path.join(parent, proposalWorkspaceSegment(old.workspace), semanticSkillName(old.name) + '.md'),
+        previousDocumentDigest: old.externalDocument?.documentDigest };
+      await writeProposalProjection(parent, projected);
+      const documentDigest = proposalDigest(renderSkillProposal(projected));
+      const item = { ...old, externalDocument: { revisionDigest: old.revisionDigest, documentDigest, publishedAt: new Date().toISOString() } };
+      return { state: { ...state, skillProposals: state.skillProposals!.map(record => record.id === old.id ? item : record) },
+        result: { proposalId: old.id, revisionDigest: old.revisionDigest, documentDigest, path: projected.path } };
+    });
+    return result.result;
   }
   async upsert(raw: SkillProposalInput, trustedOutcomes?: { positive: string[]; negative: string[]; refs: string[] }): Promise<SkillProposalRecord> {
     const input = validatedInput(raw), scope = this.resolveWorkspace(input.workspace);
@@ -112,6 +147,7 @@ export class SkillProposalCoordinator {
         ...(old ? { previousDocumentDigest: proposalDigest(renderSkillProposal(old)) } : {}),
         ...(!changed && old?.artifactDigest ? { artifactDigest: old.artifactDigest, artifactPath: old.artifactPath } : {}),
         ...(!changed && old?.fulfillment ? { fulfillment: old.fulfillment } : {}),
+        ...(old?.externalDocument ? { externalDocument: old.externalDocument } : {}),
       };
       await writeProposalProjection(this.root, item);
       return { state: { ...state, skillProposals: [...records.filter(p => p.id !== item.id), item] }, result: item };

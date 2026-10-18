@@ -11,7 +11,7 @@ const engineSourceDigests=Object.fromEntries(await Promise.all(execFileSync('git
 const engineSourceTreeDigest=sha256(JSON.stringify(engineSourceDigests));
 const roots: string[] = [];
 const results: any = {schemaVersion: 1, engineCommit: execFileSync('git', ['rev-parse', 'HEAD'], {encoding:'utf8'}).trim(), datasetRevision:corpus.datasetRevision,
-  fixtureSeals, harnessSourceDigest:sha256(await readFile(new URL(import.meta.url))), engineSourceTreeDigest, engineSourceDigests, startedAt:new Date().toISOString(), platform:{platform:process.platform, arch:process.arch, release:os.release(), node:process.version, npm:execFileSync('npm',['--version'],{encoding:'utf8'}).trim()},
+  fixtureSeals, harnessSourceDigest:sha256(await readFile(new URL(import.meta.url))), engineSourceTreeDigest, engineSourceDigests, startedAt:new Date().toISOString(), platform:{platform:process.platform, arch:process.arch, release:os.release(), node:process.version, npm:execFileSync(process.platform==='win32'?'cmd.exe':'npm',process.platform==='win32'?['/d','/c','npm --version']:['--version'],{encoding:'utf8',windowsHide:true}).trim()},
   dependencyLockDigest:sha256(await readFile(new URL('../../../package-lock.json',import.meta.url))), measurement:corpus.measurement,
   models:{status:'NOT RUN', calls:0, tokens:null, cost:null, reason:'No model adapter, credentials or live controller used'}, histories:[], lexical:[], storage:[]};
 async function root() {const dir=await mkdtemp(path.join(os.tmpdir(),'memory-t8-'));roots.push(dir);return dir;}
@@ -198,7 +198,9 @@ for(const eventCount of corpus.workloads.eventCounts)test(`sealed continuation w
     capture:{accepted:1,rejected:1,stagedEvents:eventCount,reviewedUnverifiedPromotions:1,falseVerifiedPromotion:0,unauthorizedDurablePromotion:0,note:'Reviewed unverified observation promoted; no source assertion upgraded to verified'},
     preservation:{evidenceDigest:corpus.evidence.sha256,status:'PASS'},storageBeforeReads:beforeReads,storageAfterReads:afterReads,bytesPerEvent:beforeReads.totalBytes/eventCount,
     outcome:{status:'UNAVAILABLE',reason:'Replay did not execute the proposed recovery; no use/outcome or causation claim'}});
-},240000);
+// Preserve the sealed workload and measured latency thresholds. The runner's
+// outer allowance includes disk-backed setup and all trials on Windows.
+},process.platform==='win32'?900000:240000);
 
 for(const count of corpus.workloads.lexicalRecordCounts)test(`warm lexical ${count} records measures discovery and full selected workload with fixed latency guardrails`,async()=>{
   const dir=await root(),service=await initializeMemoryRoot({baseDir:dir,memoryRoot:dir,experience:{enabled:true}}),setupMeter=new Meter();
@@ -241,7 +243,7 @@ for(const count of corpus.workloads.lexicalRecordCounts)test(`warm lexical ${cou
   const rebuildMeter=new Meter();await rm(path.join(dir,'index'),{recursive:true,force:true});
   const rebuild=await timed(()=>rebuildMeter.call('reindex',()=>service.reindex()));
   const afterReads=await storage(dir);results.storage.push({count,empty,beforeReads,afterReads,incrementalBytesPerRecord:(beforeReads.totalBytes-empty.totalBytes)/count,setupMs,indexRebuild:{...rebuildMeter.summary(),elapsedMs:rebuild.elapsedMs,note:'Derived index directory deleted in owned synthetic root; rebuild is excluded from warm samples'},note:'Real public batch writes in chunks <=100; initial snapshots, not a steady-state revision-growth claim'});
-},240000);
+},process.platform==='win32'?900000:240000);
 
 // Supplementary bound from section 12: links have no count cap; each legacy link
 // has a 16-evidence-reference cap. Exercise all 16 plus a 65-link retained record.

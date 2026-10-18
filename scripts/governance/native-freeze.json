@@ -1,0 +1,462 @@
+{
+  "version": 1,
+  "files": {
+    "scripts/verify/rea-harness-registration.mjs": "a2d0a1f9ed53f4ae43fca996d9fdd7b812f9ad3df7a1841d64addc3d43ad1265",
+    "src/agent-capability-catalog.ts": "0437478a46661de76fbd8987a8d72452a1f2c8820c184a083917d1b266834e22",
+    "src/agent-capability-resolver.ts": "e56b4fe7fde2e67cce68dc2b3880554118597f710ee905b00273b536e962156b",
+    "src/agent-chat-service.ts": "8744df3dd49897e0920f7945b608c1e5988025e301f4e4dee31be69c83aedd4e",
+    "src/agent-chat-store.ts": "9e55665c66d9366491939582cde4b63ec37b7a826503021c657a997bbe2a3a4d",
+    "src/agent-controller.ts": "69f7c3149d5b08ce0f3875e87ad5a2fafce7e2c812d0b199f5ee4f18aa8922a8",
+    "src/agent-provider-errors.ts": "48d4abfc01443d86c8f8348ede78c611aae873320678cabfbdf9327cf1bdb311",
+    "src/agent-provider-scheduler.ts": "5fbcb9e103ee503bb31c7da6f957ad7229836915c831a475bde49e74b1308a2e",
+    "src/agent-provider-state.ts": "ffa0ffa4a726304d61d3fd6479c793f9081de9afa581c53a1e1e9e71adf6c984",
+    "src/agent-provider.ts": "3d56f3b48877b278a188c3766b87e39125f92405a9b1abcb613b8c39bc5686bd",
+    "src/agent-runtime.ts": "dfea9f2d55e2e6dfe82e39786a64599a71dc0e03cd1e9b24c3bfa93abf031e5e",
+    "src/agent-tool-session.ts": "536e48c661df4e80b2497f93208717c0959bae935e54f7dca7bb30d9c3d0efce",
+    "src/agent-turn-checkpoint.ts": "67576afd64e9bac05208732b7bafebdba9aeee77e5a939499abc28892dccbace",
+    "src/agent-turn-events.ts": "9b94ecf6ef3d1298f82082f6d256f2329da4b19c45f050f25d9e0a792146346b",
+    "src/mcp/reconstruction-harness-tools.ts": "e1a711ad6b5b08045b94e4406fc89d87716992a1c25245ff6a8c0b1cdc9e26ba",
+    "tests/agent-capability-config.test.ts": "5cc3fce70a441f2a37019f0a79b7dc6b397c10e6fc35e5b450264e36a477e318",
+    "tests/agent-capability-execution-parity.test.ts": "3a63dee0a7018f5d3abba5b95900fc71a72f4acbf448b75e5e00176abc35bca4",
+    "tests/agent-capability-resolver.test.ts": "7df11cb436a1ef185c2fd7cbb0492d4532e1cedd24f1b3fab60db8863894a97e",
+    "tests/agent-chat-service.test.ts": "c92663ae257db9152a6c71449db3904dbf598b81cfd6a4079cbe3d4981589680",
+    "tests/agent-chat-store.test.ts": "3e0cb69fb87f5b702982e5d571ef9fe5a2b711a79f44243cb131a551d67a61b4",
+    "tests/agent-controller.test.ts": "5b6c4a2078770f47598438fff2c801c5c50b13ed300725a4b57ce31490eafe66",
+    "tests/agent-cumulative-learning.test.ts": "d42923985d1a570a02bb2bbe9b26f86f5510a196ca758f8e0415a3862f11b79c",
+    "tests/agent-provider-pool.test.ts": "ef56ac4e72b4d3664ad28f5e227d03b3d6f6545729184f90f74b7aae4060a987",
+    "tests/agent-provider-scheduler.test.ts": "09d46771fabde39533dc54650522bf923fa19ecfafd594ea5deaf82430b54851",
+    "tests/agent-provider.test.ts": "cc10254eb5de3a2dd1338c04e39d858972e59ecf03d882ca8b8ed80ee639c52b",
+    "tests/agent-runtime-integration.test.ts": "b612647d2f6993bb6772566cf38f1b7b3b0bd313c8ebad1b34b44ac9fb735d1b",
+    "tests/agent-shared-knowledge-parity.test.ts": "88c87f1499c8ff5f92b9234b7dac7019f4e68379ac4b93ac6137b9c5d7f6a343",
+    "tests/agent-tool-session.test.ts": "a15c9693e75e36f589925f9162428e2e102a6e404a30e361a88e8330fa00a38e",
+    "tests/agent-ui-transport.test.ts": "9d9b176beabda05575fb5dfee522e519367ce1e4e81c629113ffa5e373a15244",
+    "tests/capability-native-loop.test.ts": "63fc00ee9a84344d333838e27a6633b1b33322eacaed6c9716cbd7c7971d821a",
+    "tests/dtc1-durable-turn-continuation.test.ts": "594549cd6d137b620ca8d08060fc0237e251462eea5435d22eec4ee276a8b512"
+  },
+  "sections": {
+    "src/config.ts": [
+      {
+        "start": "numberedCredentials = (\n  env: NodeJS.ProcessEnv,\n  prefix: stri",
+        "end": "rId}:${slot}`, secret, ordinal: index });\n  }\n  return values;\n}",
+        "sha256": "cf4fa60d620d62b51d26fc7aab3f01161b0fe1f43f3884f25f405f18f89c54d5"
+      },
+      {
+        "start": "capabilityFamilies = (value: string | undefined): AgentCapabilit",
+        "end": "LID:' + item);\n  }\n  return values as AgentCapabilityFamily[];\n}",
+        "sha256": "3e0fe0305479afbfefff052ef21aef14bb980f2d37fb86637660cde5cfe3d74c"
+      },
+      {
+        "start": "capabilityPolicy = (value: string | undefined): AgentRuntimeConf",
+        "end": ";\n  }\n  return mode as AgentRuntimeConfig['capabilityPolicy'];\n}",
+        "sha256": "e6f11c9394a17ab346b8fdbc489aaeac19a1c4ffb76511e54571b4b57a53fc7b"
+      },
+      {
+        "start": "namedAgentProviders = [\n    {\n      id: 'atria',\n      baseUrl: ",
+        "end": "er.baseUrl || provider.model || provider.credentials.length > 0)",
+        "sha256": "093dbfe0341b1aff8886e0ac9162b8cb782824a91507075485a38523d3e60203"
+      },
+      {
+        "start": "configuredProviderOrder = list(env.AGENT_CORE_AI_PROVIDER_ORDER)",
+        "end": "configuredProviderOrder = list(env.AGENT_CORE_AI_PROVIDER_ORDER)",
+        "sha256": "7e2590e76027b2bdbd866ad4a44c85de4560062cebadc4cbf9e9f6173ccf2367"
+      },
+      {
+        "start": "agentRuntime: {\n      enabled: bool(env.AGENT_CORE_AI_ENABLED, f",
+        "end": "apabilityFamilies(env.AGENT_CORE_AI_ALLOWED_CAPABILITIES),\n    }",
+        "sha256": "f107acef4ad39b5f65cd6ad43f10f264e41aa4f0cf0cece7e7706cea2c6f8e80"
+      },
+      {
+        "start": "agentRuntime: AgentRuntimeConfig;",
+        "end": "agentRuntime: AgentRuntimeConfig;",
+        "sha256": "afe2046ee38f3f18f105140333e631747a51a829a171f6fab024ce52d8eab23f"
+      }
+    ],
+    ".env.example": [
+      {
+        "start": "# Native Agent Runtime / Capability Parity\n# Existing installati",
+        "end": "CAPABILITY_POLICY=explicit\n# AGENT_CORE_AI_ALLOWED_CAPABILITIES=",
+        "sha256": "71122607581c6d6c852934d0678bc86bb582ea837da95e9300936b7cf6f8c930"
+      }
+    ],
+    "src/index.ts": [
+      {
+        "start": "agentRuntime: AgentRuntimeService | undefined",
+        "end": "agentRuntime: AgentRuntimeService | undefined",
+        "sha256": "f64a913e4d2349f7d3e6e132f59e79f60bc10449fa2ed2fef1b523f95bd70dd4"
+      },
+      {
+        "start": "if (learningService) {\n    try {\n      agentRuntime = await Agen",
+        "end": "AGENT_RUNTIME', error, 'agent-runtime-start-failure');\n    }\n  }",
+        "sha256": "1afdf53369bde90a6d2f1d5de9523f5f9fe70b15cc981cd5a3dcf27f5c6ca1fb"
+      },
+      {
+        "start": "agentController = agentRuntime\n    ? new NativeAgentController(agentRuntime, controllerMcpRuntime, config.agentRuntime)\n    : undefined",
+        "end": "agentController = agentRuntime\n    ? new NativeAgentController(agentRuntime, controllerMcpRuntime, config.agentRuntime)\n    : undefined",
+        "sha256": "9be3e30d6db035f9e2ccb248df9725071434cff80423fc8f44ce727213c9bab9"
+      },
+      {
+        "start": "agentChat: AgentChatService | undefined",
+        "end": "agentChat: AgentChatService | undefined",
+        "sha256": "88e383d0998b8578049249805b00b5640a28872b5c76a77dbdd30817b0703ec3"
+      },
+      {
+        "start": "if (agentRuntime && agentController) {\n    try {\n      agentChat",
+        "end": "   error,\n        'agent-chat-start-failure',\n      );\n    }\n  }",
+        "sha256": "e52ee44be96abf068da8ff2bc8dfd44f9db5e9fdc70d6bd4df5551cb4eebc467"
+      },
+      {
+        "start": "liveAgentRuntimeHealth = agentRuntime\n        ? await agentRuntime.health(liveSkillsHealth?.skillCount ?? 0)\n        : undefined",
+        "end": "liveAgentRuntimeHealth = agentRuntime\n        ? await agentRuntime.health(liveSkillsHealth?.skillCount ?? 0)\n        : undefined",
+        "sha256": "1f05095bb83c2eb5dc2c0e48b53fc7b6125cc90e015b285cd94d733c4d126959"
+      },
+      {
+        "start": "...(agentController ? { agentRun: (input: { prompt: string; workspace?: string }) => agentController.runTask(input) } : {}),",
+        "end": "...(agentController ? { agentRun: (input: { prompt: string; workspace?: string }) => agentController.runTask(input) } : {}),",
+        "sha256": "594208d7cedcc9c6432538fbcf66ebab5208fcb1184e67edffb21062854decda"
+      },
+      {
+        "start": "...(agentController ? { agentRun: (input: { prompt: string; work",
+        "end": "runTask(input) } : {}),\n    ...(agentChat ? { agentChat } : {}),",
+        "sha256": "6284ceeb3394d74cddc63a96b6d8ba66817b7193c630980d1a3425a627159c3a"
+      },
+      {
+        "start": "...(agentController ? { agentController } : {}),\n    ...(agentChat ? { agentChat } : {}),",
+        "end": "...(agentController ? { agentController } : {}),\n    ...(agentChat ? { agentChat } : {}),",
+        "sha256": "2cebb11e07f2e18ae30b951bc56e6a6f8474a0b01750491d624d513ed820552d"
+      },
+      {
+        "start": "...(liveAgentRuntimeHealth ? { agentRuntime: liveAgentRuntimeHealth } : {}),",
+        "end": "...(liveAgentRuntimeHealth ? { agentRuntime: liveAgentRuntimeHealth } : {}),",
+        "sha256": "956ed90b0016e912630027fdc40c35190b39ce94c2f88a9dd33c301caafe7312"
+      },
+      {
+        "start": "...(agentChat ? { agentChat: agentChat.health() } : {}),",
+        "end": "...(agentChat ? { agentChat: agentChat.health() } : {}),",
+        "sha256": "b64bd81534d1e66e3a05214c2213d86032177b8cfd1dd53a153272de47aeed93"
+      }
+    ],
+    "src/http/app.ts": [
+      {
+        "start": "function authorizeAgentUi(\n  request: IncomingMessage,\n  respons",
+        "end": "error: 'unauthorized' });\n    return false;\n  }\n  return true;\n}",
+        "sha256": "9fec8803351c7afd4ba9a5ddd9860ee2c0ae0ada6850c53c5a388907568328fb"
+      },
+      {
+        "start": "if (route === '/agent/chat/conversations' || route.startsWith('/",
+        "end": "     }\n      return;\n    }\n\n    sendJson(response, 404, { error: 'not_found' });\n    return;\n  }",
+        "sha256": "d62a5367ef0707b224f45a9a32e905947cfbfb3848c6eb43bb4bc7291bd22de0"
+      },
+      {
+        "start": "if (route === '/agent/run') {\n    if (request.method !== 'POST')",
+        "end": ".slice(0, 300) });\n      else throw error;\n    }\n    return;\n  }",
+        "sha256": "48ea521b6a368923ea4d2836fd6aa692cd95be065444005040d24c2757664e47"
+      }
+    ],
+    "src/memory/mcp/scope.ts": [
+      {
+        "start": "if (runtime.nativeTaskId) {\n        if (!runtime.nativeWorkspace",
+        "end": "ent-core-native',sessionId:runtime.controllerSessionId};\n      }",
+        "sha256": "a96c7987507e19e18e02ea77a2b993d66e8ee902a09cff65e3b12f8b42298e1a"
+      }
+    ],
+    "src/mcp/server.ts": [
+      {
+        "start": "if (runtime.nativeTaskId && runtime.nativeWorkspace) registerRec",
+        "end": "Id: runtime.nativeTaskId, workspace: runtime.nativeWorkspace });",
+        "sha256": "601f6cdfbd641dc8c412d3ed084aa8e52fdb642355ede2aaf05f545eef001c07"
+      },
+      {
+        "start": "nativeTaskId?: string;",
+        "end": "nativeTaskId?: string;",
+        "sha256": "aa8c53fb8aac644070c09b16d08d21b1752d6c3c4337940c70cca788d6bf106e"
+      },
+      {
+        "start": "nativeWorkspace?: string;",
+        "end": "nativeWorkspace?: string;",
+        "sha256": "6a79f725659b4b00160d55c710d1acaddad4f66707b746559a7d28b694748898"
+      },
+      {
+        "start": "runtime.nativeTaskId ? '' :",
+        "end": "runtime.nativeTaskId ? '' :",
+        "sha256": "38e9d65f97b5a79d18544fc8f0ff5db1d92cefb3a8c2dec5391dbc8fa367ab4e"
+      },
+      {
+        "start": "if (!runtime.nativeTaskId) installControllerContract",
+        "end": "if (!runtime.nativeTaskId) installControllerContract",
+        "sha256": "ccc1a4bae6c3de6a9afb67ba8258d76b3bbf60607512235bd6113c076017fa74"
+      },
+      {
+        "start": "if (!runtime.nativeTaskId) installCapabilityObservation",
+        "end": "if (!runtime.nativeTaskId) installCapabilityObservation",
+        "sha256": "d6c12272bebd15fb927cdb27575b6e3c11bfe066f3b0183fd781b012bec6934a"
+      },
+      {
+        "start": "if (!runtime.nativeTaskId) {\n    tool(server, 'image_inspect'",
+        "end": "if (!runtime.nativeTaskId) {\n    tool(server, 'image_inspect'",
+        "sha256": "b0de37ae1298b848c66cd0ef1e55566cbdce863963b38bde92f4ff3bd88d64d2"
+      },
+      {
+        "start": "if (runtime.artifactAuthorization && !runtime.nativeTaskId) registerArtifactInspectTool",
+        "end": "if (runtime.artifactAuthorization && !runtime.nativeTaskId) registerArtifactInspectTool",
+        "sha256": "5f88371452f326cc4b248f10ef99330fb6e03c4adcbfa899a9d90645921ca482"
+      },
+      {
+        "start": "if (!runtime.nativeTaskId) registerRestartTool",
+        "end": "if (!runtime.nativeTaskId) registerRestartTool",
+        "sha256": "df6c8c1a0d9f03b4b3429e898c48e788113d5c4303fde747d06b716d28ee0362"
+      },
+      {
+        "start": "nativeTaskId:runtime.nativeTaskId, nativeWorkspace:runtime.nativeWorkspace",
+        "end": "nativeTaskId:runtime.nativeTaskId, nativeWorkspace:runtime.nativeWorkspace",
+        "sha256": "e18ab82fc40b6baf6cd0af214740f2d5786a2f2c6d37edd1cdda48c6bd2f9205"
+      }
+    ],
+    "src/mcp/external-controller-tool-support.ts": [
+      {
+        "start": "!authority.nativeTaskId && authority.external && authority.sessionId && args?.origin !== 'ui'",
+        "end": "!authority.nativeTaskId && authority.external && authority.sessionId && args?.origin !== 'ui'",
+        "sha256": "917ac4de491c7b47277b9c80103561527be0d91320ca2a274e7d8cf069553b4f"
+      },
+      {
+        "start": "authority.nativeTaskId ?? invocationContext?.taskId",
+        "end": "authority.nativeTaskId ?? invocationContext?.taskId",
+        "sha256": "a8c9a13bd45f7a64b8546fb24d972b9017312187188536654d53a803fb0a4153"
+      }
+    ],
+    "src/ui/src/host.ts": [
+      {
+        "start": "agentRuntime?: {\n    status: string;\n    issueCount: number;\n   ",
+        "end": "  skillCount: number;\n    pendingFinalizationCount: number;\n  };",
+        "sha256": "0eb58530406ece6ce18cd3db8581d83d7a137edea866672478455c433df04436"
+      },
+      {
+        "start": "agentChat?: {\n    status: string;\n    conversationCount: number;\n    activeConversationCount: number;\n    runningTurnCount: number;\n  };",
+        "end": "agentChat?: {\n    status: string;\n    conversationCount: number;\n    activeConversationCount: number;\n    runningTurnCount: number;\n  };",
+        "sha256": "a08b02cde671f8d4f767efae54d4216ddf3df06cf97640d7f8ad5c9c491a071d"
+      },
+      {
+        "start": "export type AgentRunResult = {\n  sessionId: string;\n  taskId: st",
+        "end": "iled';\n  iterations: number;\n  retrievalAttemptIds: string[];\n};",
+        "sha256": "d93358998f7de13a2e31668549bdb1985eaf90502db50c64fb0db46d54b577fa"
+      },
+      {
+        "start": "export type AgentRunState = {\n  requestId?: string;\n  status: 'idle' | 'running' | 'done' | 'error';\n  result?: AgentRunResult;\n  error?: string;\n};",
+        "end": "export type AgentRunState = {\n  requestId?: string;\n  status: 'idle' | 'running' | 'done' | 'error';\n  result?: AgentRunResult;\n  error?: string;\n};",
+        "sha256": "85b41c17db7a5849d2fd2ffb100488eb801475c6edab1ad669e4ce953e75d8e0"
+      },
+      {
+        "start": "export type AgentChatConversation = {\n  id: string;\n  runtimeSes",
+        "end": "edAtMs: number;\n  updatedAtMs: number;\n  lastTurnId?: string;\n};",
+        "sha256": "d93ab1de214afe68a6fb55009817ed1817b7211b2431a721a93c6fae83c3f927"
+      },
+      {
+        "start": "export type AgentChatTurn = {\n  id: string;\n  conversationId: st",
+        "end": "tMs: number;\n  startedAtMs: number;\n  completedAtMs?: number;\n};",
+        "sha256": "9309b2a9da11fd3f51ba830fb9c35a4db77ca047dbc5a24ae04bc015ff5e475c"
+      },
+      {
+        "start": "export type AgentChatMessage = {\n  id: string;\n  conversationId:",
+        "end": "ser' | 'assistant';\n  content: string;\n  createdAtMs: number;\n};",
+        "sha256": "bcde595296e41b4471cee4343caf93ec92e547c21c7ec87ee53f966ef5a2761e"
+      },
+      {
+        "start": "export type AgentChatDetail = {\n  conversation: AgentChatConversation;\n  turns: AgentChatTurn[];\n  messages: AgentChatMessage[];\n};",
+        "end": "export type AgentChatDetail = {\n  conversation: AgentChatConversation;\n  turns: AgentChatTurn[];\n  messages: AgentChatMessage[];\n};",
+        "sha256": "7d2216ae9a83739ae25575e2709dfc58b7b5a348d29517752a2034abea7b843a"
+      },
+      {
+        "start": "export type AgentChatEvent = {\n  type: string;\n  at: string;\n  c",
+        "end": "ring;\n  model?: string;\n  response?: string;\n  code?: string;\n};",
+        "sha256": "9098bae54524fa25ceb765ce8430b13aec13d4503db75af9c082e1a5b0497d06"
+      },
+      {
+        "start": "export type AgentChatUiState = {\n  conversations: AgentChatConve",
+        "end": "tId?: string;\n  lastEvent?: AgentChatEvent;\n  error?: string;\n};",
+        "sha256": "a3e3f8dc21b3441daf5c4aad2e251478f9e1e66f3940348d7c53acfc62319c12"
+      }
+    ],
+    "src/ui/src/pages.tsx": [
+      {
+        "start": "export function ChatPage(props:SharedProps) {\n  const [prompt,se",
+        "end": "     </div>\n        </div>\n      </Panel>\n    </div>\n  </div>;\n}",
+        "sha256": "908761c1a7f6fef1402deea41adc4944f5fa13f51304995de2dc0e6f10819297"
+      },
+      {
+        "start": "page==='chat'?<ChatPage {...props}/>",
+        "end": "page==='chat'?<ChatPage {...props}/>",
+        "sha256": "d44c67c7ea46f5ed05b73bf8f8bde3658567e3e050d5daf0b72de002ce720a6b"
+      }
+    ],
+    "src/ui/src/App.tsx": [
+      {
+        "start": "[agentRun,setAgentRun]=useState<AgentRunState>({status:'idle'})",
+        "end": "[agentRun,setAgentRun]=useState<AgentRunState>({status:'idle'})",
+        "sha256": "fc86a0b757033b7c8244972c856dca1cd514d112596d44d8403c7c5d74c6b3fd"
+      },
+      {
+        "start": "[agentChat,setAgentChat]=useState<AgentChatUiState>({conversations:[]})",
+        "end": "[agentChat,setAgentChat]=useState<AgentChatUiState>({conversations:[]})",
+        "sha256": "04f530ea7de6f415506c1090ef1c17a0f72d269d8c14d763f4ecdc87a575cb5d"
+      },
+      {
+        "start": "chatListLoadedRef=useRef(false)",
+        "end": "chatListLoadedRef=useRef(false)",
+        "sha256": "b2bd7160938f3770ed5bd41ea53da4adf72d86f86e9704c2540a3b47b92daca4"
+      },
+      {
+        "start": "chatListPendingRef=useRef(false)",
+        "end": "chatListPendingRef=useRef(false)",
+        "sha256": "0cbfee643d7cc0a1eef0918c890d6addb7bf7b2319f76fc3919790254e5cbdfc"
+      },
+      {
+        "start": "chatOpenPendingRef=useRef(false)",
+        "end": "chatOpenPendingRef=useRef(false)",
+        "sha256": "28a0b1816e85095ad24ca75bd4922f8b6d562343151487146766b4c9c360c890"
+      },
+      {
+        "start": "chatReady=message.snapshot.core.httpHealthy\n          && (!message.snapshot.health.agentChat || message.snapshot.health.agentChat.status==='available')",
+        "end": "chatReady=message.snapshot.core.httpHealthy\n          && (!message.snapshot.health.agentChat || message.snapshot.health.agentChat.status==='available')",
+        "sha256": "b90176687bf9eb83e683f78166643dedd3000e07700ea75d506351b5656daf78"
+      },
+      {
+        "start": "if(!chatReady){\n          chatListLoadedRef.current=false;\n     ",
+        "end": "nt=true;\n          postHost({type:'agent-chat-list'});\n        }",
+        "sha256": "98e2dfd6d9d960e8049038d5ccca8b1a55dc3f70926f2924587ea8a1effaedee"
+      },
+      {
+        "start": "if(message.type==='agent-result'){\n        setAgentRun(prev=>pre",
+        "end": "sult:message.result})\n          : prev);\n        return;\n      }",
+        "sha256": "fc48d4cc621cc0f545aaf330a774e6021c70a0a4b13110397cd7b995baf702ef"
+      },
+      {
+        "start": "if(message.type==='agent-chat-list-result'){\n        chatListPen",
+        "end": "\n          error:undefined,\n        }));\n        return;\n      }",
+        "sha256": "d755d0c14e032d5b6cac48d5e76f4b24d4e6efa5c879addee1ac3f7094c64a65"
+      },
+      {
+        "start": "if(message.type==='agent-chat-state'){\n        const detail=mess",
+        "end": "updatedAtMs-a.updatedAtMs),\n        }));\n        return;\n      }",
+        "sha256": "5aac0965fa3486bf02f9674dc4e4b201133bfd516c1f33a3cd9dfcf2af8267c1"
+      },
+      {
+        "start": "if(message.type==='agent-chat-event'){\n        if(message.envelo",
+        "end": "t turn failed',\n          }));\n        }\n        return;\n      }",
+        "sha256": "ad1b7dbeab4a2b855b3a250d36003c1c51b91009cffa842925b11581c5fc69f4"
+      },
+      {
+        "start": "if(message.type==='agent-chat-error'){\n        if(!chatListLoade",
+        "end": "       error:message.error,\n        }));\n        return;\n      }",
+        "sha256": "7838a1fa318354e86c7e012e027a018f792088b088ed9456e066cf8369dbf15d"
+      },
+      {
+        "start": "useEffect(()=>{\n    if(agentChat.active||!agentChat.conversation",
+        "end": "ations[0].id});\n  },[agentChat.active,agentChat.conversations]);",
+        "sha256": "baa859e9f0a83226facacb2e12e6c799edc55313b3ce756ebeba6d13cb79f83a"
+      },
+      {
+        "start": "onAgentRun=(prompt:string,workspace?:string)=>{\n    const reques",
+        "end": "    postHost({type:'agent-run',requestId,prompt,workspace});\n  }",
+        "sha256": "dc0bf25e8c5d18bc1fbf48fd79eaac9bb5788082524516b85b8ac23a07fd07c1"
+      },
+      {
+        "start": "onChatCreate=(workspace?:string)=>{\n    postHost({type:'agent-chat-create',workspace});\n  }",
+        "end": "onChatCreate=(workspace?:string)=>{\n    postHost({type:'agent-chat-create',workspace});\n  }",
+        "sha256": "d73c67ba61ef8c47c1078feb6c58f1d8e0095c345e406990c5573285601385e9"
+      },
+      {
+        "start": "onChatOpen=(conversationId:string)=>{\n    postHost({type:'agent-chat-open',conversationId});\n  }",
+        "end": "onChatOpen=(conversationId:string)=>{\n    postHost({type:'agent-chat-open',conversationId});\n  }",
+        "sha256": "119145a1770da25a6d8e509e543a9d13b9c68e933689b938035b0b0219a569a3"
+      },
+      {
+        "start": "onChatSend=(conversationId:string,prompt:string)=>{\n    const re",
+        "end": "estId:requestId,\n      conversationId,\n      prompt,\n    });\n  }",
+        "sha256": "32049efcb9306356677adfc31d17b4935cdb5cac6c7ee0f6c88fc9f75f8dc5a2"
+      },
+      {
+        "start": "onChatCancel=(turnId:string)=>{\n    postHost({type:'agent-chat-cancel',turnId});\n  }",
+        "end": "onChatCancel=(turnId:string)=>{\n    postHost({type:'agent-chat-cancel',turnId});\n  }",
+        "sha256": "0372f1d6517ae20fe154456f4c4490a995cf8baf237874a7b1bcf14ecf353ed2"
+      },
+      {
+        "start": "onChatArchive=(conversationId:string)=>{\n    postHost({type:'age",
+        "end": "ersation.id===conversationId?undefined:prev.active,\n    }));\n  }",
+        "sha256": "d3fa7c7e7b43ad2d1b32d278c7f62abe5f97d9abc85e8ad1519ea1c731aed916"
+      }
+    ],
+    "src/ui/src/systems.ts": [
+      {
+        "start": "agentRuntime = h.agentRuntime",
+        "end": "agentRuntime = h.agentRuntime",
+        "sha256": "8618dff5988ba2d1bbd1eb928aecd1fdc0e5d9fbc7b991c957322a1106486f25"
+      },
+      {
+        "start": "agentTone = agentRuntime ? normalizeTone(agentRuntime.status, agentRuntime.issueCount) : 'offline'",
+        "end": "agentTone = agentRuntime ? normalizeTone(agentRuntime.status, agentRuntime.issueCount) : 'offline'",
+        "sha256": "42aa27020a697adb6f2a71b9c8b09e32d98b576e4c5e1a4147e28a84b0169fc2"
+      },
+      {
+        "start": "{\n      id:'partner', name:'Agent Core AI', description:'Native ",
+        "end": "n','0'], ['Skills','0']],\n      issue:agentRuntime?.issue,\n    }",
+        "sha256": "d79b82fa88c5f272cf9aaa0b4663540e49b104289cefa524506ee9483418a83a"
+      }
+    ],
+    "src/launcher/AgentCoreRuntime.cs": [
+      {
+        "start": "    public async Task<JsonElement> RunAgentAsync(string prompt, ",
+        "end": "on(message);\n        }\n        using var document = JsonDocument.Parse(body);\n        return document.RootElement.Clone();\n    }",
+        "sha256": "da92b9315be4bc24df64f4ab6f66101774f027e85bb90ec3cac9f8b35e8aa28c"
+      },
+      {
+        "start": "    public async Task<JsonElement> ListAgentConversationsAsync()",
+        "end": "{ }\n        return new InvalidOperationException(message);\n    }",
+        "sha256": "deacea23ec6806610f545f553191a5c679295ebba409422a1ccd444caa23e8b5"
+      },
+      {
+        "start": "private readonly HttpClient _agentHttp = new() { Timeout = TimeSpan.FromMinutes(10) };",
+        "end": "private readonly HttpClient _agentHttp = new() { Timeout = TimeSpan.FromMinutes(10) };",
+        "sha256": "737b20532ce0f1f7b5af84a049e0395830b01cc577c64461ff24b1abb682e681"
+      },
+      {
+        "start": "private readonly string _agentUiToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));",
+        "end": "private readonly string _agentUiToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));",
+        "sha256": "3d30cce1b91176ddb513f73d02274a9b4e452c71cbd7ce84b1a6a8cd8af76775"
+      }
+    ],
+    "src/launcher/MainForm.cs": [
+      {
+        "start": "            if (type == \"agent-chat-list\")\n            {\n       ",
+        "end": "t\", requestId, error = error.Message });\n                }\n                return;\n            }",
+        "sha256": "337c49d4a9c120347c16316d039cdfdf3d09fe436bed0f2d9064d622fd4bea31"
+      }
+    ],
+    "src/launcher/DesktopSnapshot.cs": [
+      {
+        "start": "public sealed record AgentRuntimeHealthSnapshot(\n    string Stat",
+        "end": "ionCount,\n    int RunningTurnCount,\n    int ResumableTurnCount);",
+        "sha256": "060bc608c3d96a987ee3ba48d5ec181ad1703b851132ab1855a33422770fea74"
+      }
+    ],
+    "src/ui/src/index.css": [
+      {
+        "start": "/* Native Agent Core chat workspace */\n.native-chat-page{height:",
+        "end": "ax-height:230px}.chat-message-list .chat-message{max-width:95%}}",
+        "sha256": "72a917cc32b53b1a0ca58a15be1bedf6f0a3a77fe495c0c28af6fcfcd513c225"
+      }
+    ],
+    "src/harness/reconstruction/receipt-adapter.ts": [
+      {
+        "start": "{\n      // The raw process session ID is intentionally redacted ",
+        "end": "  if(!exact(ctx?.processInstanceDigest,expected))continue;\n    }",
+        "sha256": "40e1fc343e7daf7f7a83fb5195ff044ecb541b704f774cb6801116da90793cf6"
+      }
+    ],
+    "src/harness/reconstruction/service.ts": [
+      {
+        "start": "scope.origin==='native'&&!scope.processSessionId",
+        "end": "scope.origin==='native'&&!scope.processSessionId",
+        "sha256": "d950d5efeb318178c4addf008fc02bf7285a2f610b091eba18cb19486b4233e1"
+      }
+    ]
+  }
+}

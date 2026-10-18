@@ -6,6 +6,7 @@ import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configManager } from '../src/rdc/config-manager.js';
 import { createImageInspector } from '../src/rdc/tools/image-inspect.js';
+import { symlinkOrSkip } from './helpers/optional-symlink.js';
 
 const roots: string[] = [];
 async function fixture(width = 101, height = 57) {
@@ -91,12 +92,12 @@ describe('image_inspect original pixel views', () => {
     await truncate(file, 32 * 1024 * 1024 + 1);
     await expect(inspect({ action: 'overview', path: file })).rejects.toThrow(/INPUT_LIMIT/);
   });
-  it('honors canonical allowed paths and rejects symlink escapes or changed symlink targets', async () => {
+  it('honors canonical allowed paths and rejects symlink escapes or changed symlink targets', async context => {
     const { root, file } = await fixture(); const outside = await fixture(); const inspect = createImageInspector();
-    const link = path.join(root, 'alias.png'); await symlink(file, link);
+    const link = path.join(root, 'alias.png'); await symlinkOrSkip(context, file, link, 'file');
     vi.spyOn(configManager, 'getConfig').mockResolvedValue({ allowedDirectories: [root] });
     const view = metadata(await inspect({ action: 'overview', path: link }));
-    await rm(link); await symlink(outside.file, link);
+    await rm(link); await symlink(outside.file, link, 'file');
     await expect(inspect({ action: 'overview', path: link })).rejects.toThrow(/Path not allowed/);
     await expect(inspect({ action: 'crop', path: link, viewId: view.viewId, rectangle: {x:0,y:0,width:1,height:1} })).rejects.toThrow(/Path not allowed/);
     vi.restoreAllMocks();
@@ -150,9 +151,10 @@ describe('image_inspect original pixel views', () => {
     expect(crop.sourceRect).toEqual({x:4,y:2,width:1,height:1});
   });
 
-  it('fails closed when a canonical ancestor changes during validation', async () => {
+  it('fails closed when a canonical ancestor changes during validation', async context => {
     const {root}=await fixture(1,1); const allowed=path.join(root,'allowed'), inside=path.join(allowed,'inside'), saved=path.join(allowed,'saved'), outside=path.join(root,'outside');
     await mkdir(inside,{recursive:true}); await mkdir(outside);
+    const probe=path.join(root,'symlink-probe'); await symlinkOrSkip(context,outside,probe,'dir'); await fs.unlink(probe);
     const file=path.join(inside,'pixels.png');
     await sharp({create:{width:2,height:2,channels:3,background:'red'}}).png().toFile(file);
     await sharp({create:{width:3,height:3,channels:3,background:'blue'}}).png().toFile(path.join(outside,'pixels.png'));
@@ -162,21 +164,22 @@ describe('image_inspect original pixel views', () => {
       return (realpath as any)(...args);
     });
     vi.spyOn(configManager,'getConfig').mockImplementation(async()=>{
-      if(!swapped){await fs.rename(inside,saved);await fs.symlink(outside,inside);swapped=true;}
+      if(!swapped){await fs.rename(inside,saved);await fs.symlink(outside,inside,'dir');swapped=true;}
       return {allowedDirectories:[allowed]};
     });
     await expect(createImageInspector()({action:'overview',path:file})).rejects.toThrow(/ANCESTOR_CHANGED/);
   });
 
-  it('fails closed when a validated parent is replaced before opening', async () => {
+  it('fails closed when a validated parent is replaced before opening', async context => {
     const {root}=await fixture(); const allowed=path.join(root,'allowed'), inside=path.join(allowed,'inside'), saved=path.join(allowed,'saved'), outside=path.join(root,'outside');
     await mkdir(inside,{recursive:true}); await mkdir(outside);
+    const probe=path.join(root,'symlink-probe'); await symlinkOrSkip(context,outside,probe,'dir'); await fs.unlink(probe);
     const file=path.join(inside,'pixels.png');
     await sharp({create:{width:2,height:2,channels:3,background:'red'}}).png().toFile(file);
     await sharp({create:{width:3,height:3,channels:3,background:'blue'}}).png().toFile(path.join(outside,'pixels.png'));
     let swapped=false;
     vi.spyOn(configManager,'getConfig').mockImplementation(async()=>{
-      if(!swapped){await rename(inside,saved);await symlink(outside,inside);swapped=true;}
+      if(!swapped){await rename(inside,saved);await symlink(outside,inside,'dir');swapped=true;}
       return {allowedDirectories:[allowed]};
     });
     await expect(createImageInspector()({action:'overview',path:file})).rejects.toThrow(/ANCESTOR_CHANGED/);

@@ -9,7 +9,8 @@ export interface ArtifactInspection {
   subject: { sha256: string; size: number; scopeDigest: string; format: ArtifactFormat };
   analyzer: { revision: string; optionsDigest: string };
   outcome: ArtifactOutcome; execution: 'settled' | 'settlement-unknown';
-  coverage: { inventory: number; selected: number; inspected: number; unavailable: number; omitted: number; notExamined: number };
+  coverage: { inventory: number; selected: number; inspected: number; unavailable: number; omitted: number; notExamined: number;
+    returnedFindings: number; droppedFindings: number; findingsTruncated: boolean };
   findings: ArtifactFinding[]; limitations: string[];
 }
 export type StaticInput = {

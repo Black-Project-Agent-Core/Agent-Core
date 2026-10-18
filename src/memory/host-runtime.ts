@@ -4,6 +4,7 @@ import type {MemoryEmbedder} from './embedder.js';
 import {MemoryService} from './service.js';
 import {withMemoryProcessLock} from './lock.js';
 import {experienceManifestSchema} from './experience-types.js';
+import {redactSensitiveString} from '../security/redaction.js';
 
 export interface AgentCoreMemoryRuntime {
   service:MemoryService;
@@ -91,7 +92,11 @@ export async function initializeAgentCoreMemory(projectRoot:string,memoryDir:str
     const learningHost=createLearningConsolidationHost(projectRoot);
     const service=await MemoryService.initialize(projectRoot,root,embedder,{experience:{enabled:true},consolidation:learningHost.policy});
     if(service.health().canonicalStore==='error'||!service.health().canonicalComplete
-      ||service.controller({workspaceKey:'agent-core',taskId:'activation-status',controllerId:'agent-core-host'}).capabilities().writeMode!=='experience-v2')return bad('ENGINE_NOT_ENABLED');
+      ||service.controller({workspaceKey:'agent-core',taskId:'activation-status',controllerId:'agent-core-host'}).capabilities().writeMode!=='experience-v2'){
+      const detail=redactSensitiveString(service.getIssues().slice(0,3).map(issue=>issue.message).join('; ')).slice(0,1000);
+      service.dispose();
+      return bad('ENGINE_NOT_ENABLED'+(detail?':'+detail:''));
+    }
     learningHost.bind(service);
     return {service,experience:service,mode:'experience-v2',root};
   });

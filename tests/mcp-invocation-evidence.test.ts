@@ -4,6 +4,7 @@ import { activityTracker } from '../src/tracker/activity-tracker.js';
 import { createAgentCoreMcpServer } from '../src/mcp/server.js';
 import { toolHistory } from '../src/rdc/utils/toolHistory.js';
 import { usageTracker } from '../src/rdc/utils/usageTracker.js';
+import { acknowledgeControllerContract } from './controller-contract-fixture.js';
 
 class FakeTracker {
   events:any[]=[]; failWrites=false;
@@ -57,9 +58,10 @@ it('correlates the actual machine-control wrapper without persisting tracker/his
   (usageTracker as any).trackFailure=async()=>undefined;
   try{
     const server=createAgentCoreMcpServer();
+    const contractSession=await acknowledgeControllerContract((name,args)=>(server as any)._registeredTools[name].executor(args,{}));
     const tool=(server as any)._registeredTools?.get_config;
     expect(tool?.executor).toBeTypeOf('function');
-    const result=await tool.executor({origin:'llm'},{});
+    const result=await tool.executor({origin:'llm',contractSession},{});
     expect(result?.isError).not.toBe(true);
     const boundaries=events.filter(e=>e.kind==='tool-invocation-start'||e.kind==='tool-call');
     expect(boundaries).toHaveLength(2);

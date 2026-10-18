@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerWebResearchTools } from '../src/mcp/web-research-tools.js';
 import { createMcpHttpHandler } from '../src/mcp/handler.js';
 import { activityTracker } from '../src/tracker/activity-tracker.js';
+import { acknowledgeControllerContract } from './controller-contract-fixture.js';
 
 const events: any[] = [];
 const closers: Array<() => Promise<void>> = [];
@@ -121,7 +122,8 @@ describe('web MCP controller wiring', () => {
 
   it('forwards the existing service and host Learning session through HTTP while retaining credential grants', async () => {
     const service = { open: vi.fn().mockResolvedValue(response), search: vi.fn() };
-    const external = { bootstrapInstructions: vi.fn().mockResolvedValue(undefined), recordToolOutcome: vi.fn().mockResolvedValue(undefined) };
+    const external = { bootstrapInstructions: vi.fn().mockResolvedValue(undefined), recordToolOutcome: vi.fn().mockResolvedValue(undefined),
+      captureToolInvocationContext: async (input: any) => ({ ...input, version: 1, capturedAt: new Date().toISOString(), binding: 'unbound', unboundReason: 'no-task' }) };
     const handler = createMcpHttpHandler({ webResearch: service as any, externalControllerLearning: external as any });
     const key = { id: 'owner', toolGrant: { version: 1, allowedTools: ['web_open'] } };
     const http = createServer((request, result) => void handler(request, result, key as any));
@@ -137,8 +139,9 @@ describe('web MCP controller wiring', () => {
       return result.json();
     };
     const listed = await rpc('tools/list', {});
-    expect(listed.result.tools.map((tool: any) => tool.name)).toEqual(['web_open']);
-    const opened = await rpc('tools/call', { name: 'web_open', arguments: { url: 'https://example.com/' } });
+    expect(listed.result.tools.map((tool: any) => tool.name)).toEqual(['controller_contract', 'web_open']);
+    const contractSession = await acknowledgeControllerContract(async (name, args) => (await rpc('tools/call', { name, arguments: args })).result);
+    const opened = await rpc('tools/call', { name: 'web_open', arguments: { url: 'https://example.com/', contractSession } });
     expect(opened.result.isError).not.toBe(true);
     expect(JSON.parse(opened.result.content[0].text)).toEqual(response);
     expect(service.open.mock.calls[0][0].signal).toBeInstanceOf(AbortSignal);

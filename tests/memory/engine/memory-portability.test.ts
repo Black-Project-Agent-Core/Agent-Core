@@ -7,7 +7,7 @@ import {setup,cleanup,expandAll} from './helpers/memory-capsule.js';
 import {withMemoryProcessLock} from '../../../src/memory/lock.js';
 import {writeOwnedFileAtomic} from '../../../src/persistence/atomic-file.js';
 const roots:string[]=[];afterEach(async()=>{await cleanup();await Promise.all(roots.splice(0).map(root=>rm(root,{recursive:true,force:true})));});
-test('Linux case-sensitive Unicode evidence paths, CRLF bytes, rename and retained evidence',async()=>{
+test.skipIf(process.platform==='win32')('Linux case-sensitive Unicode evidence paths, CRLF bytes, rename and retained evidence',async()=>{
  const {dir,A,scope}=await setup();await mkdir(path.join(dir,'Src'));const upper='Src/Case-🧠-é.txt',lower='Src/case-🧠-é.txt';
  const content='\uFEFFOriginal\r\nSecond line 漢🧠é\r\n';await writeFile(path.join(dir,upper),content);await writeFile(path.join(dir,lower),'different casing');
  const captured=await A.captureEvidence({operationId:'capture-unicode',source:{kind:'workspace-file',relativePath:upper}});

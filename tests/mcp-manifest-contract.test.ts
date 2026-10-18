@@ -3,7 +3,8 @@ import { createAgentCoreMcpServer } from '../src/mcp/server.js';
 import { registerControllerLearningTools } from '../src/mcp/controller-learning-tools.js';
 
 // Pinned Batch 2/3/4 contract at 73e9fd270ee96fe7d9782b9e87ccc70dbbae986d:
-// 75-tool cohort, excluding optional Memory v2 and external-controller registration.
+// 75-tool cohort plus session-contract bootstrap, restart and reconstruction harness,
+// excluding optional Memory v2, artifact inspection and external-controller registration.
 const MANIFEST_BYTE_BUDGET = 128 * 1024;
 const APPROX_TOKEN_BUDGET = 32_768;
 
@@ -57,15 +58,24 @@ function wireManifest(entries: Array<[string, any]>): unknown {
   };
 }
 describe('MCP public manifest contract', () => {
+  it('keeps restart and contract bootstrap outside the Native Agent surface', () => {
+    const server = createAgentCoreMcpServer(undefined, { ...fullRuntimeStub(), nativeTaskId: 'fixture' });
+    const tools = (server as any)._registeredTools ?? (server as any).registeredTools;
+    const names = tools instanceof Map ? [...tools.keys()] : Object.keys(tools);
+    expect(names).not.toContain('restart_agent_core');
+    expect(names).not.toContain('controller_contract');
+  });
   it('keeps the complete production tool surface deterministic and schema-fingerprintable', () => {
     const entries = registeredTools();
-    expect(entries).toHaveLength(75);
+    expect(entries).toHaveLength(78);
     const fingerprints = entries.map(([name, tool]) => fingerprint(name, tool));
-    expect(new Set(entries.map(([name]) => name)).size).toBe(75);
-    expect(fingerprints).toHaveLength(75);
+    expect(new Set(entries.map(([name]) => name)).size).toBe(78);
+    expect(fingerprints).toHaveLength(78);
 
     expect(entries.map(([name]) => name)).toEqual(expect.arrayContaining([
       'image_inspect',
+      'restart_agent_core',
+      'reconstruction_harness',
       'memory_feedback',
       'memory_retirement_review',
       'memory_page',
@@ -118,6 +128,7 @@ describe('MCP public manifest contract', () => {
     expect(entries.map(([name]) => name)).toEqual(expect.arrayContaining([
       'memory_v2_read', 'memory_v2_write', 'controller_learning',
     ]));
+    expect(entries).toHaveLength(82);
     const bytes = Buffer.byteLength(JSON.stringify(wireManifest(entries)), 'utf8');
     expect(bytes).toBeLessThanOrEqual(MANIFEST_BYTE_BUDGET);
     expect(Math.ceil(bytes / 4)).toBeLessThanOrEqual(APPROX_TOKEN_BUDGET);
@@ -125,7 +136,7 @@ describe('MCP public manifest contract', () => {
 });
 
 it('removes transport-only description indentation without dropping tool guidance', async () => {
-  const { RDC_TOOL_METADATA } = await import('../src/mcp/rdc-tool-metadata.js');
+  const { RDC_TOOL_METADATA, EXTERNAL_BROWSER_DESCRIPTION } = await import('../src/mcp/rdc-tool-metadata.js');
   for (const [name, tool] of registeredTools()) {
     const metadata = RDC_TOOL_METADATA[name as keyof typeof RDC_TOOL_METADATA];
     if (!metadata) continue;
@@ -133,7 +144,7 @@ it('removes transport-only description indentation without dropping tool guidanc
     expect(tool.description).not.toMatch(/[ \t]+$/m);
     expect(tool.description).not.toMatch(/\n{3,}/);
     const words = (value: string) => value.replace(/\s+/g, ' ').trim();
-    expect(words(tool.description)).toBe(words(metadata.description));
+    expect(words(tool.description)).toBe(words(name === 'browser_control' ? EXTERNAL_BROWSER_DESCRIPTION : metadata.description));
     const { title, ...behaviorHints } = metadata.annotations;
     expect(tool.title).toBe(metadata.title);
     expect(tool.annotations).toEqual(title === metadata.title ? behaviorHints : metadata.annotations);

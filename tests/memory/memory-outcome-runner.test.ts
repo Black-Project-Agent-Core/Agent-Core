@@ -1,3 +1,4 @@
+import { symlinkOrSkip } from '../helpers/optional-symlink.js';
 import path from 'node:path';
 import {mkdir,mkdtemp,readFile,rm,symlink,writeFile} from 'node:fs/promises';
 import {afterEach,describe,expect,it,vi} from 'vitest';
@@ -26,13 +27,17 @@ describe('offline outcome runner isolation',()=>{
  it('accepts a separate sealed preregistration argument for comparisons',()=>{
   expect(parseOutcomeArguments(['--suite','suite','--phase','compare','--output','new','--baseline','prior','--candidate-snapshot','candidate','--preregistration','seal.json'])).toMatchObject({phase:'compare',preregistrationPath:path.resolve('seal.json')});
  });
- it('rejects oracle reads, symlinks and neighboring roots',async()=>{
+ it('rejects oracle reads and neighboring roots while reading its own source',async()=>{
   const root=await fixture(),work=path.join(root,'work'),oracle=path.join(root,'oracle');await mkdir(work);await mkdir(oracle);
   await writeFile(path.join(oracle,'answer.json'),'private oracle');await writeFile(path.join(work,'input.txt'),'input');
-  await symlink(path.join(oracle,'answer.json'),path.join(work,'link.txt'));
   await expect(resolveOutcomeRead(work,path.join(oracle,'answer.json'))).rejects.toThrow(/SCOPE_REFUSED/);
-  await expect(resolveOutcomeRead(work,path.join(work,'link.txt'))).rejects.toThrow(/SYMLINK_REFUSED/);
   expect(await resolveOutcomeRead(work,path.join(work,'input.txt'))).toBe('input');
+ });
+ it('rejects a real source symlink without following its oracle target',async context=>{
+  const root=await fixture(),work=path.join(root,'work'),oracle=path.join(root,'oracle');await mkdir(work);await mkdir(oracle);
+  await writeFile(path.join(oracle,'answer.json'),'private oracle');
+  await symlinkOrSkip(context,path.join(oracle,'answer.json'),path.join(work,'link.txt'),'file');
+  await expect(resolveOutcomeRead(work,path.join(work,'link.txt'))).rejects.toThrow(/SYMLINK_REFUSED/);
  });
  it('baseline never loads live config and creates exactly 48 isolated rows',async()=>{
   const root=await fixture();vi.stubGlobal('fetch',()=>{throw Error('NETWORK_FORBIDDEN');});
@@ -44,7 +49,7 @@ describe('offline outcome runner isolation',()=>{
   expect(rows.filter((row:any)=>row.arm==='current').every((row:any)=>row.adapter.policy==='baseline-v1'&&row.adapter.engineMode==='experience-v2')).toBe(true);
   expect(await readFile(sentinel,'utf8')).toBe('unchanged');
   await expect(runOutcomeSuite({suitePath,phase:'baseline',output,baselineSnapshot:snapshot})).rejects.toThrow(/OUTPUT_EXISTS/);
- },120000);
+ },process.platform==='win32'?600000:120000);
  it('old one-argument factory cannot masquerade as fusion candidate',async()=>{
   const root=await fixture(),snapshot=path.join(root,'snapshot');const seal=await freezeOutcomeSnapshot(process.cwd(),snapshot,'test-built-snapshot');
   const adapter=new OutcomeMemoryAdapter();await adapter.initialize(path.join(root,'run'),{content:'latest events',kind:'procedure'},{engineMode:'experience-v2',activation:'synthetic-v2',policy:'fusion-feedback-v1',snapshotRoot:snapshot,...seal});
@@ -72,7 +77,7 @@ describe('offline outcome runner isolation',()=>{
   expect(await readFile(path.join(baseline,'results/observations.json'))).toEqual(before);
   const baselineRow=rows.find((row:any)=>row.arm==='current');const artifact=baselineRow.artifactRef.split(':')[1].split('#')[0];await writeFile(path.join(baseline,artifact),'tampered');
   await expect(runOutcomeSuite({suitePath,phase:'compare',output:path.join(root,'tampered-compare'),baselinePath:baseline,candidateSnapshot:candidate.snapshot})).rejects.toThrow(/BASELINE_ARTIFACT_DRIFT/);
- },120000);
+ },process.platform==='win32'?600000:120000);
  it('rejects empty or failed baseline command ledgers before candidate opening',async()=>{
   const root=await fixture(),suitePath=await outcomeFixtureSuite(root),baseline=path.join(root,'baseline');
   for(const dir of ['fixtures','results','report','logs'])await mkdir(path.join(baseline,dir),{recursive:true});

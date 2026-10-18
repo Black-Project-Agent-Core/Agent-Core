@@ -1,9 +1,10 @@
-import { mkdir, mkdtemp, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, realpath, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ts from 'typescript-lsp-runtime';
 import { analyzeSources, collectAllowedSources, WORKFLOW_SOURCE_LIMITS } from '../src/workflows/analyzer.js';
+import { windowsWorkflowsSymlinkFixture } from './helpers/windows-workflows-symlink.js';
 
 // Count real parser executions; all fixtures still run TypeScript's actual parser.
 vi.mock('typescript-lsp-runtime', async importOriginal => {
@@ -72,20 +73,37 @@ describe('deterministic Workflows source analysis', () => {
   });
 
   it('rejects symlink sources, symlink source roots and import paths outside the allowlist', async () => {
-    const outside = await fixture({ 'outside.ts': 'export const secret = 1;', 'private/file.ts': '' });
-    const root = await fixture({ 'src/index.ts': 'import "../outside.ts";\nimport "./linked.ts";' });
-    await symlink(path.join(outside, 'outside.ts'), path.join(root, 'src/linked.ts'));
-    await symlink(path.join(outside, 'private'), path.join(root, 'src/linked-dir'), 'dir');
-    await mkdir(path.join(root, 'SubProject'), { recursive: true });
-    await symlink(outside, path.join(root, 'SubProject/excluded-fixture'), 'dir');
+    let root: string;
+    let outside: string;
+    let projectLink: string;
+    if (process.platform === 'win32') {
+      ({ root, outside, projectLink } = await windowsWorkflowsSymlinkFixture());
+    } else {
+      outside = await fixture({ 'outside.ts': 'export const secret = 1;', 'private/file.ts': '' });
+      root = await fixture({ 'src/index.ts': 'import "../outside.ts";\nimport "./linked.ts";' });
+      await symlink(path.join(outside, 'outside.ts'), path.join(root, 'src/linked.ts'));
+      await symlink(path.join(outside, 'private'), path.join(root, 'src/linked-dir'), 'dir');
+      await mkdir(path.join(root, 'SubProject'), { recursive: true });
+      await symlink(outside, path.join(root, 'SubProject/excluded-fixture'), 'dir');
+      projectLink = path.join(outside, 'project-link');
+      await symlink(root, projectLink, 'dir');
+    }
+    for (const [link, target] of [
+      [path.join(root, 'src/linked.ts'), path.join(outside, 'outside.ts')],
+      [path.join(root, 'src/linked-dir'), path.join(outside, 'private')],
+      [path.join(root, 'SubProject/excluded-fixture'), outside],
+      [projectLink, root],
+    ]) {
+      expect((await lstat(link)).isSymbolicLink()).toBe(true);
+      expect(await realpath(link)).toBe(await realpath(target));
+    }
     const graph = await analyzeSources(root);
     expect(graph.files).toBe(1);
     expect(graph.edges).toEqual([]);
     expect(graph.unknowns).toBe(2);
     expect(graph.limitations.join(' ')).toMatch(/symlink/i);
-    await symlink(root, path.join(outside, 'project-link'), 'dir');
-    await expect(analyzeSources(path.join(outside, 'project-link'))).rejects.toThrow(/symlink/i);
-  });
+    await expect(analyzeSources(projectLink)).rejects.toThrow(/symlink/i);
+  }, 45_000);
 
   it('reports unresolved, external, dynamic and unsupported C# evidence without fabricating edges', async () => {
     const root = await fixture({

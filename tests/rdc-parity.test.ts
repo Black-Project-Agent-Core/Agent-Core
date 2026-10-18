@@ -29,7 +29,11 @@ describe('RDC local parity', () => {
     const server = createAgentCoreMcpServer({ id: 'parity', name: 'parity', authentication: 'bearer-api-key' } as any, runtimeStub);
     const registrations = (server as any)._registeredTools ?? (server as any).registeredTools;
     const names = registrations instanceof Map ? [...registrations.keys()] : Object.keys(registrations ?? {});
-    expect(names).toHaveLength(RDC_LOCAL_TOOLS.length + MEMORY_TOOLS.length);
+    expect(names).toHaveLength(RDC_LOCAL_TOOLS.length + MEMORY_TOOLS.length + 4);
+    expect(names).toContain('controller_contract');
+    expect(names).toContain('restart_agent_core');
+    expect(names).toContain('image_inspect');
+    expect(names).toContain('reconstruction_harness');
     expect(RDC_LOCAL_TOOLS.every((name) => names.includes(name))).toBe(true);
     expect(MEMORY_TOOLS.every((name) => names.includes(name))).toBe(true);
     expect(names.includes('capability_route')).toBe(false);

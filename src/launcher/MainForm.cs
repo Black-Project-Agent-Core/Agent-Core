@@ -253,6 +253,30 @@ public sealed class MainForm : Form
                 }
                 return;
             }
+            if (type == "proposals-get" || type == "proposal-read")
+            {
+                var requestId = root.TryGetProperty("requestId", out var proposalRequestId)
+                    && proposalRequestId.ValueKind == JsonValueKind.String ? proposalRequestId.GetString() : null;
+                if (string.IsNullOrWhiteSpace(requestId) || requestId.Length > 128) return;
+                try
+                {
+                    JsonElement result;
+                    if (type == "proposals-get") result = await _runtime.GetProposalDocumentsAsync();
+                    else
+                    {
+                        string ReadProposalField(string name) => root.TryGetProperty(name, out var value)
+                            && value.ValueKind == JsonValueKind.String && value.GetString() is string text && text.Length <= 128
+                                ? text : throw new InvalidOperationException("PROPOSAL_DOCUMENT_INPUT_INVALID");
+                        result = await _runtime.ReadProposalDocumentAsync(ReadProposalField("id"), ReadProposalField("revisionDigest"), ReadProposalField("documentDigest"));
+                    }
+                    Send(new { type = type == "proposals-get" ? "proposals-result" : "proposal-read-result", requestId, result });
+                }
+                catch (Exception error)
+                {
+                    Send(new { type = type == "proposals-get" ? "proposals-error" : "proposal-read-error", requestId, error = error.Message });
+                }
+                return;
+            }
             if (type == "agent-chat-list")
             {
                 try

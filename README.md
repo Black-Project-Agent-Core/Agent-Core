@@ -1,195 +1,175 @@
-# Agent Core: current product direction
-
-**User-confirmed direction, 2026-09-30:** a cumulative-learning agent whose model can be supplied through an API or local endpoint, while local knowledge and reusable procedures persist across sessions and improve later decisions/actions. System mechanisms and Memory mechanisms are developed together; grounding and steal/use are means to this outcome, not a target tool count.
-
-See [Agent Core Product Direction](docs/Agent-Core-Product-Direction.md) for the confirmed goal, adoption rationale, and proposed target-to-implementation grounding. [CODEBASE](docs/CODEBASE.md) remains the implemented-state map; [Target-Feture](docs/Target-Feture.md) is preserved conversation evidence. The current MCP body is a foundation, not by itself proof that the complete native model/learning loop exists or improves outcomes.
-
-**Phase order confirmed by the user:** mature the body/system and local Memory/reuse mechanisms first; begin the native model/API-key runtime only after the later maturity review and user decision. The existing external MCP controller can exercise the body now. MRR-1/MRR-2/MRR-3 are resident verified. [MRR-3 Knowledge Use Receipt](docs/MRR-3-Knowledge-Use-Receipt-Plan.md) binds exact retrieval body identity to controller-submitted applied/adapted/rejected receipts and bounded outcome evidence while canonical Memory/ranking/Skills/execution remain unchanged. MRR-3.1 authority mapping confirmed local source/dist/generated manifest expose `learning(action="receipt")`, while the external ChatGPT connector descriptor remains stale; no local duplicate tool/shim is justified. MRR-4 then verified genuine cross-session procedural reuse, and MRR-4.1 observed a bounded advantage on a harder matched fixture: equal correctness with problem-solving calls reduced 11→9, while elapsed time did not improve. MRR-5 exposed the remaining capture-side gap: two ordinary fresh-controller verified repairs completed without any new Learning checkpoint/review/capture. The correction is now implemented and source/build/compiled qualified: meaningful-task Learning finalization is promoted to the top-level Agent Core controller contract, and bounded safe pending-review evidence persists in the existing Learning state until semantic review. Targeted/touched tests are 51/51 PASS, build/path policy PASS, compatibility remains 70→70/non-breaking. First-correction resident activation/readback is verified. A subsequent truly fresh ordinary controller naturally captured a verified operational-reflection Memory, but skipped mandatory Learning checkpoint/review because Reflexion still offered direct Memory promotion as an alternative path. A second correction unified that contract and added a non-gating finalization advisory to verified-recovery `memory_remember` responses; focused tests/build/compatibility/Grafel qualification and resident readback passed. The final fresh ordinary dependency-order repair still skipped Learning finalization and produced no new reusable Memory, so MRR-5 is closed as boundary evidence: external-controller compliance is not deterministic. Pre-runtime body/Memory scope is closed. Native Agent Runtime Phase 1 backend foundation is now implemented and resident-activated: OpenAI-compatible provider configuration, persistent task/session/finalization state, Memory-first context assembly, scoped reuse of the existing MCP tool surface, and a synthetic mandatory finalization function that prevents plain assistant text from completing a native task. Verified terminal outcomes require safe evidence references; terminal outcome is preserved separately from lifecycle status; and Learning-finalization failure cannot return the model completion as a successful user-facing result. Targeted/integration native-runtime verification is now **23/23 PASS across six files**, including a real loopback OpenAI-compatible HTTP protocol run through actual Memory/Learning services and an existing MCP tool before mandatory finalization. Build/path policy is **284/0**, compatibility remains **70→70/non-breaking**, Grafel is current/accepted at **10,139/55,161**, and after relocation to `F:\Projects\Agent-Core` resident PID **10712** started after the latest build while `/health` truthfully reports `agentRuntime.status=not-configured` because no real API/local model endpoint is configured. The provider protocol path is verified; real model/provider acceptance remains pending. See `docs/Pre-Runtime-Body-Memory-Learning-Closure-20260930.md` and `docs/Native-Agent-Runtime-Phase-1-Plan.md`. Task-scoped auto-trust still covers routine approved filesystem/engineering operations without bypassing authentication, evidence checks, unrelated destructive scope, or unavailable platform capabilities.
-
-## Historical README snapshot — legacy/reference only
-
-The material below retains an older v0.12.0/62-tool/Hermes snapshot and legacy GitHub recovery assumptions. It is not current runtime, installation, release or recovery authority. Current local source, the operating contract and dated CODEBASE corrections supersede it; do not restore or publish the current line from the legacy GitHub repository implicitly.
-
 <p align="center">
-  <img src="assets/agent-core.png" width="96" alt="Agent Core logo">
+  <img src="assets/agent-core.png" width="96" alt="Agent Core">
 </p>
 
 <h1 align="center">Agent Core</h1>
 
 <p align="center">
-  Local-first authenticated MCP control plane for Windows with machine control, durable semantic memory, code intelligence, Semantic IDE/LSP, learning, Game Mode, and Hermes partner workflows.
+  A Windows workspace for AI-controlled tools, persistent Memory, and evidence-based Learning.
 </p>
 
 <p align="center">
-  <strong>Stable: v0.12.0</strong> · <strong>62 MCP tools</strong> · <strong>Windows-first</strong> · <strong>Private recovery mirror</strong>
+  <a href="https://github.com/Black-Project-Agent-Core/Agent-Core/releases/latest">Download a release</a> ·
+  <a href="docs/CODEBASE.md">Architecture</a> ·
+  <a href="docs/README.md">Documentation</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-## What Agent Core is
+Agent Core connects an external AI assistant—such as ChatGPT, Codex, or another compatible MCP client—to tools on your Windows machine. The desktop launcher runs the local Core, presents system status and Workflows, and provides a place to read improvement proposals. Memory and Learning retain selected knowledge, task continuity, and review history across sessions.
 
-Agent Core is the machine-side control layer for a connected AI/controller. It exposes a local authenticated MCP surface, keeps execution and memory local by default, and integrates optional sibling capabilities without turning them into execution gates.
+**Current development targets external controllers. Native Agent is frozen.** Existing Native runtime code is retained; new features and fixes must preserve its protected files, sections, and grants. See the [operating contract](AGENTS.md) and [development freeze](scripts/governance/native-freeze.json).
 
-The current line is intentionally source-first: the local project is authoritative, while this GitHub repository is maintained as a recovery mirror. Live credentials, private runtime state, browser profiles, forensic backups, and protected research/reference trees are excluded from Git.
+## What you can do
 
-## Current capability surface
+| Area | Capabilities |
+| --- | --- |
+| Machine tools | Read, search and edit files; run and inspect terminal processes; inspect supported documents and images. Access depends on the configured tool grants and path rules. |
+| Memory | Store local knowledge with provenance and revisions; retrieve relevant content; keep scoped task events, checkpoints and continuity capsules; transfer preserved history through the v2 backup format. |
+| Learning | Record task evidence and reuse receipts, review candidate knowledge, and propose reusable procedures. Claim review separates validation method, review triggers, attempts and last successful checks. |
+| Browser use | Create owned task tabs through a supported Open Browser Use connection; observe and act using fresh page evidence; operate supported HTML controls and nested panels in the background. |
+| Conversation reading | Page through loaded messages and read long rendered bodies in chunks from an owned ChatGPT tab, without typing, scrolling or sending messages during a read. |
+| Skills and proposals | Keep proposal Markdown under `docs/proposals`, review path/status/revision cards in the dashboard, and read the exact document before a separate user decision. Reading grants no approval or execution permission. |
+| Code tools | Use configured Grafel Code Intelligence and Semantic IDE/LSP providers for source navigation, analysis and scoped refactoring. |
+| Workflows and devices | Inspect System + Memory diagrams and status. Android/Game Mode tools are available when their device connection and dependencies are configured. |
 
-| Capability | Public tools | Purpose |
-| --- | ---: | --- |
-| Machine control | 26 | Filesystem, process, terminal, search, edit, config, and local desktop-adjacent operations |
-| Memory | 11 | Durable file-native memory, semantic retrieval, evolution preview, consolidation, provenance, and revisions |
-| Game Mode | 14 | Android/phone control through Agent Core-managed transports |
-| Code Intelligence | 7 | Grafel-backed orientation, graph, surface, analysis, patterns, workspace, and repair |
-| Semantic IDE | 2 | LSP-backed symbol/refactor workflows with multi-root/provider support |
-| Learning | 1 | Controller-reviewed durable learning checkpoints and sinks |
-| Hermes Partner | 1 | Optional A2A collaboration through Hermes' authenticated Runs API |
+Optional providers, browsers, device transports and remote access require their own configuration. The live tool inventory depends on the connection and its grants; a fixed tool count is not a compatibility guarantee.
 
-Total public MCP surface: **62 tools**.
+### Browser and conversation boundaries
 
-## Architecture at a glance
+Background Open Browser Use requests reuse an unambiguous supported extension connection and create their own task tab. They do not request OS foreground activation or desktop mouse/keyboard input. A background request fails when a suitable connection is unavailable; it does not silently launch a fallback browser. The managed native host starts through the extension while Core is running, without a separate manual server command.
 
-```text
-AI / MCP client
-      |
-      v
-Agent Core :8765
-  |-- machine control (src/rdc)
-  |-- MemoryService
-  |-- Game Mode / phone
-  |-- Grafel Code Intelligence
-  |-- Semantic IDE / LSP
-  |-- Learning
-  |-- Hermes Partner
-  |
-  +-- optional authenticated tunnel for remote ChatGPT access
-```
+Browser actions still depend on site behavior. Synthetic HTML activation may not work with controls that require trusted input. Session ownership and fresh observations are required; Agent Core does not claim arbitrary existing tabs.
 
-Subsystems are siblings. Memory, Code Intelligence, Learning, Semantic IDE, Game Mode, and Hermes Partner do not become hidden routing or authorization gates for normal machine-control operations.
+Conversation reads describe the site's **loaded DOM**, with `completeHistory:false`. Unmounted history, attachments and uncertain authors remain explicit limitations. Rendered text is distinct from original Markdown. Private conversation bodies are not automatically copied into durable Memory or Learning.
 
-## Install / recovery
+See [Browser control](docs/Browser-Control.md), [Open Browser Use](docs/Open-Browser-Use.md), and [owned conversation reading](docs/Conversation-Reading.md).
 
-### Recommended: stable Windows release
+## Quick start on Windows
 
-1. Open the [latest GitHub release](https://github.com/Black-Project-Agent-Core/Agent-Core/releases/latest).
-2. Download `Agent-Core-v0.12.0.zip`.
-3. Verify the SHA-256 published with the release.
-4. Extract the archive to the desired project directory.
-5. Configure local secrets/runtime state locally; never commit them.
-6. Start Agent Core with the packaged launcher/runtime.
+The packaged desktop target is **Windows x64**. The launcher uses the Microsoft Edge WebView2 Runtime; install or repair that runtime if the desktop view cannot initialize.
 
-The stable package intentionally excludes live `.env`, secrets, OAuth/API-key state, user memory notes, tracker logs, browser profiles, backups, Git metadata, and protected reference repositories.
+1. Download the ZIP and `SHA256SUMS.txt` from the [release page](https://github.com/Black-Project-Agent-Core/Agent-Core/releases/latest) and read its current requirements.
+2. Verify the ZIP's SHA-256 against the published checksum:
+   ```powershell
+   # Replace X.Y.Z with the version you downloaded.
+   Get-FileHash .\Agent-Core-vX.Y.Z.zip -Algorithm SHA256
+   ```
+3. Extract the full archive to a writable local folder. Keep its bundled files and directories together; the EXE is not a standalone installation.
+4. For a **new installation with no existing Memory**, initialize the canonical store once from the extracted root while Core is stopped:
+   ```powershell
+   & .\runtime\node\node.exe .\scripts\memory\activate-canonical.mjs --fresh
+   ```
+   Existing stores require the explicit migration/recovery workflow; `--fresh` refuses existing canonical or historical roots.
+5. Launch **Agent Core.exe**:
+   ```powershell
+   & '.\Agent Core.exe'
+   ```
+6. Configure authentication for your MCP client. The local default endpoint is `http://127.0.0.1:8765/mcp`; API-key or OAuth authentication is required. Remote access uses the separately configured authenticated tunnel.
 
-> **v0.12.0 recovery note:** the immutable v0.12.0 ZIP was created before discovery that its bundled `.env.example` had been overwritten by filesystem corruption. Use the release asset `Agent-Core-v0.12.0-env.example` instead. The `main` branch contains the corrected source-grounded template.
+A release package includes its Node runtime and a self-contained launcher. A .NET SDK is needed to build the launcher, not to run that package. Browser automation additionally needs the browser/extension setup described in the browser guide.
 
-### Portable recovery bootstrap and self-healing
+For local configuration, use [.env.example](.env.example) as the template. Keep real credentials and private state local. Do not extract a new package over a running installation or replace an existing Memory store with the package's starter data; follow the [release and recovery guidance](docs/CODEBASE.md).
 
-Current `main` includes `scripts/windows/Recover-Agent-Core.ps1`. Future stable packages carry `INTEGRITY-MANIFEST.json`, a deterministic per-file SHA-256 manifest for immutable package files. Mutable/private state is deliberately excluded from integrity enforcement.
+## Using Agent Core with an AI assistant
 
-For a **new machine**, download the recovery script from this private repository, authenticate `gh`, then bootstrap into an empty directory:
+Controllers begin with `controller_contract` read/acknowledge and the canonical Memory inspection described in [AGENTS.md](AGENTS.md). Meaningful work uses a stable host-bound Learning task. External v2 Memory calls carry that task's `scope.taskId`; connection identity alone is not task identity.
 
-```powershell
-gh auth login
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Recover-Agent-Core.ps1 `
-  -Mode Bootstrap -Destination D:\Agent-Core
-```
+A task description can link the Learning episode to resumable Memory continuity. Working-state events and Memory checkpoints remain separate from Learning checkpoint/review finalization. Failed or unavailable evidence must remain distinguishable from a successful outcome.
 
-Bootstrap resolves the latest release, downloads the ZIP plus `SHA256SUMS.txt`, verifies the archive SHA-256 before extraction, applies a corrective env-example asset when the release provides one, installs only into an empty destination, and runs project-local Node runtime health/self-repair.
+Proposal cards are notifications and readers. They do not approve, build or activate a Skill. Review the exact Markdown and revision, then use the existing user-evidence decision workflow.
 
-For an existing **packaged** installation:
+The release includes `performance-oriented-software-engineering` and `reverse-engineer-anything` instructions in the existing Skills catalog. External bootstrap/task-context hooks disclose the current installation and revision to read. Controllers assess performance relevance before software changes and use REA for shipped-artifact investigations. Hooks supply guidance; instruction delivery does not prove compliance or a speedup.
 
-```powershell
-npm run recovery:audit
-npm run recovery:repair
-```
+REA's launcher reuses its pinned **6.5.0** runtime from an existing personal skill installation; `AGENT_CORE_REA_SKILL_ROOT` can select a custom owning skill folder. On a new computer, restore the included Skill's `tooling/rea` lockfile with `npm ci --ignore-scripts --no-audit --no-fund` in that directory before CLI use. Importing a Skill does not install a decompiler or provider. Agent Core's static artifact inspector and proof-obligation harness remain separate bounded capabilities.
 
-`recovery:audit` checks immutable files against `INTEGRITY-MANIFEST.json`. `recovery:repair` downloads the same-version trusted release, verifies its ZIP checksum, backs up each damaged file under `runtime\recovery\backups`, replaces only missing/mismatched immutable files, preserves unknown files, and audits again after repair.
+- [External Memory/Learning guide](docs/memory/EXTERNAL-LEARNING-PRIORITIES.md)
+- [Engineering Skills and hooks](docs/External-Engineering-Skills.md)
+- [Proposal review guide](docs/proposals/REVIEW-GUIDE.md)
+- [External controller partner profile](subagents/README.md)
 
-Offline repair/bootstrap can use `-SourceZip` with `-ChecksumFile` or `-ExpectedZipSha256`. Live `.env`, secrets, auth/OAuth data, user memory, tunnel credentials, browser profiles, subsystem state, and forensic backups are never governed or overwritten by automatic integrity repair.
-
-The immutable v0.12.0 archive predates the packaged per-file manifest. The new bootstrap can still trust that release by verifying its archive SHA-256 and deriving a local manifest after extraction; later packages will ship the manifest directly.
-
-### Build the core from source
+## Build from source
 
 Requirements:
 
-- Windows
-- Node.js **>= 24.15.0**
-- npm
-- .NET SDK only when rebuilding the native launcher
+- Windows, Node.js **24.15.0 or newer**, and npm.
+- A local **Go toolchain** for the first browser-transport build, unless an existing transport binary and manifest match the current source, builder and target. The build does not download Go.
+- **.NET 8 SDK** for the Windows launcher.
+- Dependencies for any optional provider or device capability you intend to use.
+
+From the repository root:
 
 ```powershell
-Copy-Item .env.example .env
 npm ci
+npm --prefix src/ui ci
+
+if (-not (Test-Path .env)) {
+    Copy-Item .env.example .env
+}
+
 npm run build
+npm --prefix src/ui run build
+# New installation only, with no existing Memory roots and Core stopped:
+node scripts/memory/activate-canonical.mjs --fresh
 npm start
 ```
 
-For the web UI:
+`npm start` runs the Node Core. It does not build or open the Windows launcher. The Core build checks the Native freeze and path policy before compiling; the UI build also checks the freeze.
+
+To publish a launcher into a staging directory:
 
 ```powershell
-Set-Location src\ui
-npm ci
-npm run build
+dotnet publish src/launcher/AgentCore.Launcher.csproj -c Release -r win-x64 `
+  --self-contained true -p:PublishSingleFile=true `
+  -p:IncludeNativeLibrariesForSelfExtract=true -o runtime/build/launcher
 ```
 
-Do not copy credentials from another machine blindly. Recreate machine-local authentication/runtime state as appropriate.
+The staged launcher still requires the complete project layout: compiled Core/UI, project-local Node runtime and tunnel configuration. Building that EXE alone does not assemble a release. Use the [release workflow](.changeset/README.md) for versioning and packaging, and the project's [documented restart workflow](docs/CODEBASE.md) for an existing installation.
 
-## MCP and authentication
-
-The local listener is loopback-bound by default at `127.0.0.1:8765`. The MCP endpoint requires a valid Agent Core API key or OAuth access token.
-Remote ChatGPT access uses the authenticated tunnel path rather than exposing the local listener directly.
-
-See [SECURITY.md](SECURITY.md) for the security boundary and credential-handling rules.
-
-## Repository / recovery policy
-
-This repository's `main` branch is a **recovery mirror of the current local Agent Core source line**. It is not a source that should be merged into a newer local tree merely because the histories differ.
-
-The Git mirror intentionally excludes:
-
-- `.env` and credential backups
-- `secrets/`
-- private runtime memory/auth/tracker/browser state
-- `runtime/backups/` and forensic corruption artifacts
-- protected `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/` reference trees
-- browser/RDC profiles and caches
-- generated `bin/`, `obj/`, temporary build outputs, and large packaged binaries
-
-Large stable binaries are stored as GitHub Release assets instead of normal Git objects.
-
-## Documentation
-
-- [Architecture source of truth](docs/CODEBASE.md)
-- [Security policy](SECURITY.md)
-- [Maintenance notes](Maintenance.md)
-- [Changelog](CHANGELOG.md)
-- [Release artifacts](release/README.md)
-- [Contributing](CONTRIBUTING.md)
-- [Support](SUPPORT.md)
-
-## Development and verification
-
-Common commands:
+### Checks
 
 ```powershell
-npm run build
+npm run native:check
+npm run path:check
 npm test
+npm --prefix src/ui test
 npm run release:plan
 npm run release:compat
 ```
 
-Tests and broader verification are run deliberately according to the task scope; the presence of a test command does not make every test suite an automatic execution gate.
+Run checks appropriate to the change. Unit tests, Windows application acceptance, provider quality and measured learning benefit are different forms of evidence. Passing a build does not establish that every website, machine, provider or task works.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A[External AI / MCP client] --> B[Authenticated Agent Core]
+    D[Windows dashboard] --> B
+    B --> T[Machine and browser tools]
+    B --> M[Canonical local Memory]
+    B --> L[Learning and Skills]
+    B --> C[Code and optional device providers]
+    L --> P[Proposal Markdown]
+    P --> D
+```
+
+Memory, Learning and code providers share existing owners and remain separate from execution authority. Native behavior is preserved under the development freeze.
+
+## Privacy and security
+
+Memory, task state and application data are stored locally. Configured external AI, embedding, search, tunnel or other providers can receive the data needed for their requests; local storage does not imply that every operation is offline.
+
+The listener binds to loopback by default. Authentication, tool grants and path restrictions remain necessary. Never publish `.env`, API/OAuth credentials, browser profiles, private chats, user Memory, runtime logs or backups. Release archives and source visibility do not authorize access to someone else's machine or data.
+
+Read the [security policy](SECURITY.md) for reporting and credential-handling guidance.
+
+## Documentation and releases
+
+- [Codebase map](docs/CODEBASE.md) — implemented owners and verification entry points.
+- [Product direction](docs/Agent-Core-Product-Direction.md) — goals and evidence limits.
+- [External Memory and Learning guide](docs/memory/EXTERNAL-LEARNING-PRIORITIES.md) — task continuity, claim review and finalization.
+- [Release notes](docs/releases/README.md), [changelog](CHANGELOG.md), and [downloads](https://github.com/Black-Project-Agent-Core/Agent-Core/releases).
+- [Contributing](CONTRIBUTING.md) and [support](SUPPORT.md).
 
 ## License
 
-No public open-source license is declared for this private repository. Do not assume redistribution rights from source visibility alone.
-
-## Current source handoff — 2026-10-11
-
-The local source/version is now **0.15.0-beta.1** with the scoped Memory02–05 changes integrated on top of the current Workflows/Memory01 installation. This is **source and staged build only**: the installed Agent Core launcher and connected Node Core remain 0.15.0-beta.0. No new release, deployment, provider switch, Memory migration or embedding was performed. See `docs/Memory02-05-Permanent-Integration-Execution-20261011.md` and `docs/releases/0.15.0-beta.1.md` for the distinct activation and provider/data/volume/cost gates.
-
-## Beta.1 live installation correction — 2026-10-11
-
-The earlier staged-source-only note is historical. This installation now runs **Agent Core 0.15.0-beta.1** from the original `E:/Projects/Agent-Core` launcher and Core with 51/51 installed artifact hashes verified. Memory02, host-bound external Memory03, real Memory04 v3 embedding index (130/130), and Workflows Windows UI have scoped live smoke evidence; Memory05 retains the accepted offline scripted evidence without any model-benefit assertion. Two earlier independent cutovers rolled back safely due to checking the legacy instead of experience-v2 index; the corrected helper completed the final installation without rollback. Consult `docs/Memory02-05-Permanent-Integration-Execution-20261011.md` for exact hashes, evidence, and pending approval for deletion of three historical temp workspaces. No new release/publish was run.
-
-### Windows beta.1 resident verification — 2026-10-11
-
-The **local installed** Agent Core at `E:/Projects/Agent-Core` is now resident `0.15.0-beta.1`, not merely a source/stage candidate. A 51-file targeted installed manifest and the root launcher hash matched the beta.1 stage; Memory v2 index format3/documentVersion2 and authenticated task-bound v2 retrieval were verified; real Workflows System+Memory navigation passed. This does not publish a new release or prove model benefit. See [Windows resident verification](docs/verification/memory02-05-windows-resident-20261011.md). The three previously audited acceptance workspaces are ready for separately approved permanent deletion; nothing has been removed by this verification.
+No project-wide open-source license is declared in this repository. Do not infer redistribution rights from access to its source. Bundled third-party components retain their own licenses and notices.

@@ -151,7 +151,7 @@ async function cleanupArtifacts(directory: string): Promise<void> {
 export async function applyResultBudget<T extends BudgetableToolResult>(
   toolName: string,
   result: T,
-  options: { budgetChars?: number; previewChars?: number; storageDir?: string } = {},
+  options: { budgetChars?: number; previewChars?: number; storageDir?: string; persist?: boolean } = {},
 ): Promise<T> {
   // Images are transport-only. Count the actual response (including base64),
   // never a redacted projection, and never enter the artifact spill path.
@@ -207,7 +207,7 @@ export async function applyResultBudget<T extends BudgetableToolResult>(
   const retainedNonTextBytes = Buffer.byteLength(JSON.stringify(retainedNonText), 'utf8');
   const storageDir = options.storageDir ?? path.join(PROJECT_ROOT, 'runtime', 'tool-results');
 
-  if (NON_PERSISTABLE.has(toolName)) {
+  if (NON_PERSISTABLE.has(toolName) || options.persist === false) {
     const suffix = '\n\n[Truncated: oversized sensitive-capable tool result was not persisted. Use the tool pagination/range controls.]';
     const preview = boundedPreview(
       projection,

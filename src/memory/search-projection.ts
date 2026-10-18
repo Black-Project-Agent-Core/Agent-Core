@@ -3,6 +3,8 @@ import type { MemoryHit } from './disclosure.js';
 import type { MemoryRecord } from './types.js';
 import type { MemorySearchResult } from './retrieval.js';
 import { selectMemoryExcerpt } from './evidence-excerpt.js';
+import { progressiveMemoryDetail } from './progressive-disclosure.js';
+import { assessEvidenceLineage, type EvidenceLineageAdvisory } from './evidence-lineage.js';
 
 export type MemorySearchDeliveryDetail = 'full' | 'compact' | 'minimal' | 'preview';
 
@@ -22,6 +24,7 @@ export interface MemorySearchRetrievalEvidence {
 
 export type DeliveredMemorySearchResult = MemorySearchResult & {
   delivery: MemorySearchDelivery;
+  evidenceLineage?: EvidenceLineageAdvisory;
   retrievalEvidence?: MemorySearchRetrievalEvidence;
 };
 
@@ -50,10 +53,14 @@ function headTail(text: string, maxChars: number): string {
   return points.slice(0, head).join('') + PREVIEW_MARKER + points.slice(-tail).join('');
 }
 
-function shape(item: MemorySearchResult & { retrievalEvidence?: MemorySearchRetrievalEvidence }, delivery: MemorySearchDelivery) {
+function shape(item: MemorySearchResult & { retrievalEvidence?: MemorySearchRetrievalEvidence; evidenceLineage?: EvidenceLineageAdvisory }, delivery: MemorySearchDelivery) {
+  const guidance = progressiveMemoryDetail(item.record, delivery.truncated, 'delivery-truncated');
+  const annotations = { ...(item.evidenceLineage ? { evidenceLineage: item.evidenceLineage } : {}),
+    ...(guidance ? { detailHint: guidance } : {}) };
   if (delivery.detail === 'preview') {
     return {
       id: item.record.id,
+      ...annotations,
       content: delivery.content,
       score: item.score,
       matchType: item.matchType,
@@ -68,6 +75,7 @@ function shape(item: MemorySearchResult & { retrievalEvidence?: MemorySearchRetr
   }
   const base = {
     id: item.record.id,
+    ...annotations,
     ...(item.record.title ? { title: item.record.title } : {}),
     content: delivery.content,
     category: item.record.category,
@@ -108,7 +116,7 @@ function shape(item: MemorySearchResult & { retrievalEvidence?: MemorySearchRetr
   return base;
 }
 
-function sizeOf(item: MemorySearchResult, delivery: MemorySearchDelivery): number {
+function sizeOf(item: MemorySearchResult & { evidenceLineage?: EvidenceLineageAdvisory }, delivery: MemorySearchDelivery): number {
   return JSON.stringify(shape(item, delivery)).length + TRUST_RESERVE_CHARS;
 }
 
@@ -124,8 +132,10 @@ function delivery(item: MemorySearchResult, detail: MemorySearchDeliveryDetail, 
   };
 }
 export function projectMemorySearchResults(
-  items: MemorySearchResult[],
+  items: Array<MemorySearchResult & { evidenceLineage?: EvidenceLineageAdvisory }>,
   budgetChars: number,
+  eligible: readonly MemoryRecord[] = items.map(item => item.record),
+  referenceTime = Date.now(),
 ): MemorySearchProjection {
   const budget = Math.max(500, Math.min(100_000, budgetChars));
   const ranked = items.map((item, index) => ({ item, index }));
@@ -171,8 +181,21 @@ export function projectMemorySearchResults(
     });
   }
 
-  return {
-    results: [...selected.entries()].sort((a, b) => a[0] - b[0]).map(([, item]) => item),
+  // Only actual returned hits may corroborate one another. Re-budget these
+  // advisories before finalizing the same ranked delivery/disposition list.
+  const published = [...selected.entries()].sort((a,b)=>a[0]-b[0]);
+  let results: DeliveredMemorySearchResult[] = [];
+  for (;;) {
+    const lineage = published.length > 1
+      ? assessEvidenceLineage(published.map(([,item])=>item.record),eligible,referenceTime) : undefined;
+    results = published.map(([,item])=>({
+      ...item,...(lineage ? { evidenceLineage:lineage.get(item.record.id) } : {}),
+    }));
+    if(results.reduce((bytes,item)=>bytes+sizeOf(item,item.delivery),0)<=budget||!published.length)break;
+    const [removedIndex,removed] = published.pop()!;
+    dispositionByIndex.set(removedIndex,{memoryId:removed.record.id,rank:removedIndex+1,disposition:'dropped'});
+  }
+  return { results,
     dispositions: ranked.map(({ item, index }) => dispositionByIndex.get(index) ?? {
       memoryId: item.record.id,
       rank: index + 1,
@@ -195,8 +218,11 @@ export function projectMemoryHit(
 ): MemoryHit {
   const experience = recordExperience(record);
   const excerpt = input.view === 'abstract' ? selectMemoryExcerpt(record, input.query ?? '') : undefined;
+  const incomplete = Boolean(excerpt && excerpt.span.end - excerpt.span.start < Array.from(record.content).length);
+  const detailHint = progressiveMemoryDetail(record, incomplete, 'excerpt-incomplete', excerpt?.source);
   return { id: record.id, revision: input.revision, title: record.title ?? '',
     ...(excerpt ? { abstract: excerpt.text, excerpt } : {}),
+    ...(detailHint ? { detailHint } : {}),
     ...(record.version===2?{validity:experience.validity,...(experience.observedAt?{observedAt:experience.observedAt}:{}),...(input.invalidatedBy?.length?{invalidatedBy:input.invalidatedBy}:{})}:{}),
     retention: experience.retention, epistemic: experience.epistemic, temporal: experience.temporal, verification: experience.verification.status,
     applicability: input.applicability, freshness: input.freshness, availableViews: ['record'],

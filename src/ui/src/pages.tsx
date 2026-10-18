@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { WorkflowsPage } from './WorkflowsPage';
+import { ProposalCards } from './ProposalCards';
 import type {
   ActivityEntry,
   AgentChatUiState,
@@ -79,6 +80,8 @@ export function DashboardPage(props:SharedProps) {
       <HealthCounts systems={systems}/>
     </Panel>
 
+    <ProposalCards/>
+
     <Panel className="systems-panel">
       <SectionTitle icon={Settings} title="Internal Systems" subtitle="Real-time status of all Agent Core subsystems." action={<div className="filter-row">
         <FilterChip active={filter==='all'} label="All" count={counts.all} onClick={()=>setFilter('all')}/>
@@ -86,10 +89,10 @@ export function DashboardPage(props:SharedProps) {
         <FilterChip active={filter==='warning'} label="Warning" count={counts.degraded+counts.warning} tone="warning" onClick={()=>setFilter('warning')}/>
         <FilterChip active={filter==='error'} label="Error" count={counts.error} tone="error" onClick={()=>setFilter('error')}/>
         <FilterChip active={filter==='offline'} label="Offline" count={counts.offline} tone="offline" onClick={()=>setFilter('offline')}/>
+        <FilterChip active={filter==='unknown'} label="Unknown" count={counts.unknown} tone="unknown" onClick={()=>setFilter('unknown')}/>
       </div>}/>
       <div className="dashboard-system-grid">
-        {visible.filter(s=>s.id!=='auth').map(s=><SystemCard key={s.id} system={s} compact onClick={()=>props.setPage('systems')}/>)}
-        <button type="button" className="add-system" disabled><span>+</span><b>Add System</b><small>Future integrations</small></button>
+        {visible.map(s=><SystemCard key={s.id} system={s} compact onClick={()=>props.setPage('systems')}/>)}
       </div>
     </Panel>
 
@@ -101,7 +104,7 @@ export function DashboardPage(props:SharedProps) {
         </div>
       </Panel>
       <Panel>
-        <SectionTitle icon={HeartPulse} title="System Health" subtitle="Overall system status and resource usage." action={<StatusBadge tone={counts.error?'error':counts.degraded?'degraded':'healthy'} label={counts.error?'ERROR':counts.degraded?'DEGRADED':'HEALTHY'}/>}/>
+        <SectionTitle icon={HeartPulse} title="System Health" subtitle="Overall system status and resource usage." action={<StatusBadge tone={!props.snapshot?'unknown':counts.error?'error':counts.degraded||counts.warning?'degraded':counts.offline||counts.unknown?'unknown':'healthy'} label={!props.snapshot?'WAITING':counts.error?'ERROR':counts.degraded||counts.warning?'DEGRADED':counts.offline||counts.unknown?'PARTIAL':'HEALTHY'}/>}/>
         <div className="mini-health-grid">
           <div><IconWell icon={Cpu}/><span>CPU</span><b>{props.snapshot?.core.cpuPercent===undefined?'-':`${Math.round(props.snapshot.core.cpuPercent)}%`}</b><div className="mini-bar"><i style={{width:`${Math.min(props.snapshot?.core.cpuPercent??0,100)}%`}}/></div></div>
           <div><IconWell icon={Database}/><span>Memory</span><b>{formatBytes(props.snapshot?.core.workingSetBytes)}</b><div className="mini-bar blue"><i style={{width:`${memoryPercent(props.snapshot)}%`}}/></div></div>

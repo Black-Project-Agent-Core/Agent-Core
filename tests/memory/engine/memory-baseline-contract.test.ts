@@ -24,7 +24,7 @@ describe('legacy memory baseline contract', () => {
     const memory = await initializeMemoryRoot({ baseDir: await temporaryRoot() });
     const content = ('baseline serialization needle ' + 'Synthetic durable body. '.repeat(300)).trimEnd();
     const saved = await memory.remember({ title: 'Serialization fixture', content });
-    const budgetChars = 500;
+    const budgetChars = 2048;
     const results = await memory.search('baseline serialization needle', {
       limit: 1,
       maxNeighbors: 0,

@@ -1,14 +1,14 @@
 import type { ArtifactFinding } from './contracts.js';
 import { ARTIFACT_LIMITS } from './contracts.js';
-import { inspectJavaScript } from './javascript.js';
+import { inspectJavaScriptWithCoverage } from './javascript.js';
 export interface AsarInspect {
   inventory: number; inspected: number; unavailable: number; notExamined: number;
-  findings: ArtifactFinding[]; limitations: string[];
+  findings: ArtifactFinding[]; droppedFindings: number; limitations: string[];
 }
 interface AsarEntry { size?: number; offset?: string; unpacked?: boolean; link?: string; files?: Record<string, AsarEntry> }
 export function inspectAsar(bytes: Uint8Array, selected: string[]): AsarInspect {
   const output: AsarInspect = { inventory: 0, inspected: 0, unavailable: 0, notExamined: 0,
-    findings: [], limitations: ['ASAR companion .unpacked, symlinks and nested ASAR not examined'] };
+    findings: [], droppedFindings: 0, limitations: ['ASAR companion .unpacked, symlinks and nested ASAR not examined'] };
   if (bytes.length < 16) throw new Error('ARTIFACT_ASAR_HEADER_INVALID');
   const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   // Electron ASAR starts with a Pickle of length four, then a Pickle containing JSON.
@@ -55,15 +55,19 @@ export function inspectAsar(bytes: Uint8Array, selected: string[]): AsarInspect 
     if (sourceBudget > ARTIFACT_LIMITS.maxTotalSourceBytes) { output.notExamined++; continue; }
     const data = buf.subarray(start, end);
     if (/\.(?:[cm]?js|jsx|tsx?|mts|cts)$/i.test(rel)) {
-      try { output.findings.push(...inspectJavaScript(rel, data).slice(0, 256 - output.findings.length)); output.inspected++; }
+      try {
+        const parsed = inspectJavaScriptWithCoverage(rel, data), remaining = ARTIFACT_LIMITS.maxFindings - output.findings.length;
+        output.findings.push(...parsed.findings.slice(0, remaining));
+        output.droppedFindings += parsed.droppedFindings + Math.max(0, parsed.findings.length - remaining);
+        output.inspected++;
+      }
       catch { output.unavailable++; }
     } else { output.notExamined++; }
-    if (output.findings.length >= 256) { output.limitations.push('findings-budget-exhausted'); break; }
   }
   // Inventory is not analysis: account for all unselected/opaque entries as not examined.
   output.notExamined = Math.max(output.notExamined,
     output.inventory - output.inspected - output.unavailable);
-  if (output.findings.length >= ARTIFACT_LIMITS.maxFindings)
+  if (output.droppedFindings > 0)
     output.limitations.push('Selected findings limited to the first 256 declarations');
   return output;
 }

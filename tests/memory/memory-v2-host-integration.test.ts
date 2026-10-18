@@ -8,6 +8,7 @@ import {initializeMemoryRoot} from '../../src/memory/initialize.js';
 import {ExternalControllerLearningService} from '../../src/learning/external-controller.js';
 import {LearningService} from '../../src/learning/service.js';
 import {MemoryLearningSink} from '../../src/memory/learning-sink.js';
+import {acknowledgeControllerContract} from '../controller-contract-fixture.js';
 
 const base=path.resolve(process.cwd(),'runtime','tmp');
 const dirs:string[]=[];
@@ -24,6 +25,12 @@ function serverMock(){
  return {tools,server:{registerTool:(name:string,_meta:unknown,callback:(args:unknown)=>Promise<any>)=>{tools.set(name,callback)}} as any};
 }
 describe('Agent Core Memory experience-v2 host selection',()=>{
+ it('preserves the canonical startup failure detail instead of claiming only a disabled engine',async()=>{
+  const root=await fixture();await activeRoot(root);
+  await rm(path.join(root,'runtime/memory/00-agent-core-memory.md'));
+  await expect(initializeAgentCoreMemory(root,path.join(root,'runtime','memory')))
+   .rejects.toThrow('ENGINE_NOT_ENABLED:Pinned bootstrap memory is missing');
+ });
  it('opens a root-identity-bound canonical activation without a second Memory directory',async()=>{
   const root=await fixture(),canonical=path.join(root,'runtime','memory');
   await initializeMemoryRoot({baseDir:root,memoryRoot:canonical,experience:{enabled:true}});
@@ -78,6 +85,13 @@ describe('Agent Core Memory experience-v2 host selection',()=>{
   expect(JSON.stringify(legacySearch)).toContain(oldRecord.id);
   const status=await legacy.tools.get('memory_status')!({});
   expect(status.isError).not.toBe(true);
+  const exportAttempt=await legacy.tools.get('memory_export')!({});
+  expect(exportAttempt.isError).not.toBe(true);
+  expect(JSON.parse(exportAttempt.content[0].text)).toMatchObject({
+    status:'unavailable',code:'MEMORY_TRANSFER_V2_UNSUPPORTED',
+    activeMode:'experience-v2',legacyRecordExport:false,
+  });
+  await expect(runtime.service.delete(oldRecord.id)).rejects.toThrow('MEMORY_PRESERVATION_REQUIRED');
   const external=await ExternalControllerLearningService.initialize({stateDir:path.join(root,'external'),memory:runtime.service,learning:{} as any});
   const episode=await external.startEpisode('host-session-1',{taskKey:'host-task',workspace:'agent-core'},{ownerId:'synthetic-owner',workspaceIdentityKey:'agent-core'});
   const scope={taskId:episode.id};
@@ -134,7 +148,7 @@ it('exposes v2 tools through the real external HTTP MCP handler',async()=>{
  try {
   const address=http.address();if(!address||typeof address==='string')throw Error('LISTENER_NOT_BOUND');
   const url='http://127.0.0.1:'+address.port+'/mcp';
-  const query=async(method:string,params:unknown)=>{
+  const rawQuery=async(method:string,params:unknown)=>{
    const response=await fetch(url,{method:'POST',headers:{
     'content-type':'application/json','accept':'application/json,text/event-stream',
    },body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
@@ -143,6 +157,8 @@ it('exposes v2 tools through the real external HTTP MCP handler',async()=>{
    const line=body.split('\n').find(x=>x.startsWith('data:'));
    return JSON.parse(line?line.slice(5):body);
   };
+  const contractSession=await acknowledgeControllerContract(async(name,args)=>(await rawQuery('tools/call',{name,arguments:args})).result);
+  const query=(method:string,params:any)=>rawQuery(method,method==='tools/call'?{...params,arguments:{...params.arguments,contractSession}}:params);
   const list=await query('tools/list',{});
   const names=(list.result?.tools??[]).map((x:any)=>x.name);
   expect(names).toContain('memory_v2_read');

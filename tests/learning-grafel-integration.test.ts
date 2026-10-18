@@ -162,7 +162,7 @@ describe('Grafel project relocation primitives', () => {
   it('signals re-registration and provides a synchronous relocation index', async () => {
     const runtime = new GrafelRuntime(config);
     const calls: any[] = [];
-    (runtime as any).registrationCurrent = vi.fn().mockResolvedValue(false);
+    (runtime as any).registrationCurrent = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
     (runtime as any).runCli = vi.fn(async (...args: any[]) => {
       calls.push(args);
       return { exitCode: 0, stdout: '', stderr: '' };

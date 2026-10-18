@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { AGENT_CORE_VERSION } from '../../version';
 import {
   Activity, AlertTriangle, ArrowRight, BookOpen, Boxes, BrainCircuit, ChevronDown, ChevronLeft, ChevronRight,
   CircleAlert, CircleSlash, Clock3, Code2, Cpu, Database, Download, ExternalLink,
@@ -20,6 +21,10 @@ export const systemIcons: Record<SystemId, LucideIcon> = {
   semantic: Code2,
   execution: Terminal,
   learning: BrainCircuit,
+  skills: BookOpen,
+  'external-learning': ListChecks,
+  'web-research': Search,
+  'mutation-safety': ShieldCheck,
   partner: Link2,
   phone: Smartphone,
   game: Gamepad2,
@@ -150,9 +155,9 @@ export function TopBar({page,snapshot,query,setQuery,setPage}:{page:PageId;snaps
     settings:'Search systems, settings, components...',
   };
   return <header className="topbar">
-    <div className="brand"><span className="brand-logo-frame"><img src="./agent-core.png" alt="Agent Core"/></span><div><div className="brand-line"><b>AGENT CORE</b><span>v{snapshot?.version ?? '0.12.0'}</span></div><p><span>Local AI Runtime</span><i className="brand-separator"/><span>Your Machine. Your AI Partner.</span></p></div></div>
+    <div className="brand"><span className="brand-logo-frame"><img src="./agent-core.png" alt="Agent Core"/></span><div><div className="brand-line"><b>AGENT CORE</b><span>v{snapshot?.version ?? AGENT_CORE_VERSION}</span></div><p><span>Local AI Runtime</span><i className="brand-separator"/><span>Your Machine. Your AI Partner.</span></p></div></div>
     <label className="global-search"><Search size={19}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={placeholders[page]}/><kbd>Ctrl + K</kbd></label>
-    <div className="top-right"><span className={`online-pill ${snapshot?.status.overall==='offline'?'offline':''}`}><i/> {snapshot?.status.overall==='offline'?'OFFLINE':'ONLINE'}</span><div className="date-block"><span>{now.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</span><b>{now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</b></div><span className="user-pill">AC</span><button type="button" className="top-icon-button" onClick={()=>setPage('settings')} aria-label="Settings"><Settings size={20}/></button></div>
+    <div className="top-right"><span className={`online-pill ${!snapshot||snapshot.status.overall==='offline'?'offline':''}`}><i/> {!snapshot?'CONNECTING':snapshot.status.overall==='offline'?'OFFLINE':snapshot.status.overall==='degraded'?'DEGRADED':'ONLINE'}</span><div className="date-block"><span>{now.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</span><b>{now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</b></div><span className="user-pill">AC</span><button type="button" className="top-icon-button" onClick={()=>setPage('settings')} aria-label="Settings"><Settings size={20}/></button></div>
   </header>;
 }
 

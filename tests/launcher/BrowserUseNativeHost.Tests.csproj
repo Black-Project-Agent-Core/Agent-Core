@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RestoreIgnoreFailedSources>true</RestoreIgnoreFailedSources>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="BrowserUseNativeHostTests.cs" />
+    <Compile Include="../../src/launcher/BrowserUseNativeHost.cs" Link="BrowserUseNativeHost.cs" />
+    <Compile Include="../../src/launcher/RootLocator.cs" Link="RootLocator.cs" />
+  </ItemGroup>
+</Project>

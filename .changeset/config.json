@@ -10,6 +10,7 @@
   "bumpVersionsWithWorkspaceProtocolOnly": false,
   "changedFilePatterns": [
     "src/**",
+    "bundled-skills/**",
     "package.json",
     "src/ui/**",
     "src/launcher/**"

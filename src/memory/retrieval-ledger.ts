@@ -373,6 +373,33 @@ export class MemoryRetrievalLedger {
     });
   }
 
+  /** Read-only canonical handoff check for idempotent external episode reconciliation.
+   * A caller's statement is not enough: the exact task/workspace/exposure/digest must
+   * already be durable in this ledger. No new attempt or access count is created. */
+  async confirmedDelivery(input: {
+    taskId: string; workspace: string; retrievalAttemptId: string;
+    memoryId: string; contentDigest: string;
+  }): Promise<boolean> {
+    if (!input.taskId?.trim() || !input.workspace?.trim() || !input.retrievalAttemptId?.trim()
+      || !input.memoryId?.trim() || !/^sha256:[a-f0-9]{64}$/.test(input.contentDigest)) return false;
+    const archived = await preservesMemoryHistory(this.paths)
+      ? await readRetainedTelemetry(this.paths, 'retrieval-attempt', input.retrievalAttemptId)
+      : undefined;
+    const retained = archived === undefined ? undefined : normalizeAttempt(archived as MemoryRetrievalAttempt);
+    const recent = this.readAll().find(row => row.attemptId === input.retrievalAttemptId);
+    if (retained && recent && stableDigest(retained) !== stableDigest(recent))
+      throw new Error('MEMORY_RETRIEVAL_ATTEMPT_CONFLICT');
+    const attempt = retained ?? recent;
+    if (!attempt || attempt.taskId !== input.taskId || attempt.workspace !== input.workspace
+      || attempt.retrievalStatus !== 'succeeded' || attempt.selectedCount < 1
+      || attempt.deliveryStatus !== 'returned-to-controller'
+      || !['memory_recall', 'memory_search'].includes(attempt.surface)) return false;
+    return attempt.exposures.some(row => row.memoryId === input.memoryId
+      && row.contentDigest === input.contentDigest
+      && row.handoffStatus === 'returned-to-controller'
+      && (row.disposition === 'selected' || row.disposition === 'trimmed'));
+  }
+
   async recordUseReceipt(
     input: MemoryUseReceiptInput,
     currentContentDigest: string,
@@ -439,18 +466,37 @@ export class MemoryRetrievalLedger {
     });
   }
 
-  async record(input: MemoryRetrievalAttempt): Promise<{ duplicate: boolean; attempt: MemoryRetrievalAttempt }> {
+  async record(input: MemoryRetrievalAttempt,admit?:()=>void,onCommitted?:()=>void): Promise<{ duplicate: boolean; attempt: MemoryRetrievalAttempt }> {
     const attempt = normalizeAttempt(input);
     return withMemoryProcessLock(this.lockPath, async () => {
+      admit?.();
       const rows = this.readAll();
       const preserve=await preservesMemoryHistory(this.paths);
       const archived=preserve?await readRetainedTelemetry(this.paths,'retrieval-attempt',attempt.attemptId):undefined;
+      admit?.();
       const recent=rows.find(row=>row.attemptId===attempt.attemptId),retained=archived===undefined?undefined:normalizeAttempt(archived as MemoryRetrievalAttempt);
       if(recent&&retained&&stableDigest(recent)!==stableDigest(retained))throw new Error('MEMORY_RETRIEVAL_ATTEMPT_CONFLICT');
       const existing=retained??recent;
       if (existing) {
         if (stableDigest(existing) !== stableDigest(attempt)) throw new Error('MEMORY_RETRIEVAL_ATTEMPT_CONFLICT');
+        onCommitted?.();
         return { duplicate: true, attempt: existing };
+      }
+      if(admit){
+        // Prepare only older history while the caller can still time out. The
+        // new disclosure is published by one admitted synchronous durable append,
+        // with no awaited archival step that could publish it after cancellation.
+        // Recent rows are canonical too; ordinary compaction archives them later.
+        if(rows.length>=MAX_ATTEMPTS){
+          if(preserve)for(const row of rows.slice(0,-(COMPACT_TO-1)))await retainTelemetry(this.paths,'retrieval-attempt',row.attemptId,row);
+          admit();
+          await writeOwnedFileAtomic(this.filePath,rows.slice(-(COMPACT_TO-1)).map(row=>JSON.stringify(row)).join('\n')+'\n',{mode:0o600});
+        }
+        admit();
+        this.log.appendSync([attempt],{durable:true});
+        onCommitted?.();
+        this.issue=null;
+        return{duplicate:false,attempt};
       }
       if(preserve)await retainTelemetry(this.paths,'retrieval-attempt',attempt.attemptId,attempt);
       if (rows.length >= MAX_ATTEMPTS) {

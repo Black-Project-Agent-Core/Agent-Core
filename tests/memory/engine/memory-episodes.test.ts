@@ -1,3 +1,4 @@
+import { symlinkOrSkip } from '../../helpers/optional-symlink.js';
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -156,13 +157,12 @@ test('captured source preserves original UTF8 bytes after edit removal and resta
     const restarted = (await MemoryService.initialize(dir, root)).controller({ ...scope, controllerId: 'controller-B' });
     expect(await expandAll(restarted, receipt.source, 'evidence')).toBe(text);
 });
-test('missing symlink excluded oversized and secret source produce honest unavailable manifests without bytes', async () => {
+test('missing excluded oversized and secret sources produce honest unavailable manifests without bytes', async () => {
     const { controller, dir, root } = await setup();
     await writeFile(path.join(dir, 'safe.md'), 'allowed');
-    await symlink(path.join(dir, 'safe.md'), path.join(dir, 'alias.md'));
     await writeFile(path.join(dir, 'oversize.txt'), 'x'.repeat(2 * 1024 * 1024 + 1));
     await writeFile(path.join(dir, 'secret.txt'), 'api_key=abcdefghijklmnopqrstuv');
-    const sources = [{ kind: 'workspace-file', relativePath: 'missing.md' }, { kind: 'workspace-file', relativePath: 'alias.md' }, { kind: 'workspace-file', relativePath: 'oversize.txt' }, { kind: 'workspace-file', relativePath: 'secret.txt' }, { kind: 'workspace-file', relativePath: '../../../outside.md' }, { kind: 'controller-text', text: 'raw private chain-of-thought' }];
+    const sources = [{ kind: 'workspace-file', relativePath: 'missing.md' }, { kind: 'workspace-file', relativePath: 'oversize.txt' }, { kind: 'workspace-file', relativePath: 'secret.txt' }, { kind: 'workspace-file', relativePath: '../../../outside.md' }, { kind: 'controller-text', text: 'raw private chain-of-thought' }];
     for (const [i, source] of sources.entries()) {
         const receipt = await controller.captureEvidence({ operationId: 'rejected-' + i, source });
         expect(receipt.availability).toBe('unavailable');
@@ -173,6 +173,14 @@ test('missing symlink excluded oversized and secret source produce honest unavai
     }
     const objects = await readdir(path.join(root, 'archive/objects'));
     expect(objects.length).toBe(1);
+});
+
+test('a real symlink source produces an unavailable manifest without captured bytes',async context=>{
+    const {controller,dir}=await setup();await writeFile(path.join(dir,'safe.md'),'allowed');
+    await symlinkOrSkip(context,path.join(dir,'safe.md'),path.join(dir,'alias.md'),'file');
+    const receipt=await controller.captureEvidence({operationId:'rejected-link',source:{kind:'workspace-file',relativePath:'alias.md'}});
+    expect(receipt.availability).toBe('unavailable');expect(receipt.bytes).toBeUndefined();
+    expect((await controller.expand({source:receipt.source,view:'evidence'})).data.text).toBe('');
 });
 test('workspace identity and policy restrict file capture without exposing host absolute paths', async () => {
     const { controller, service, scope, dir } = await setup();
@@ -224,7 +232,7 @@ test('episode lineage remains fully reachable through many bounded pages and arc
     expect(body.events).toHaveLength(25);
     expect(body.eventRefs.slice(1)).toEqual(eventRefs);
     expect(body.events.map((e: any) => e.sequence)).toEqual(Array.from({ length: 25 }, (_, i) => i + 1));
-}, 30000);
+}, process.platform === 'win32' ? 120000 : 30000);
 test('malformed inaccessible and missing visibility never turn into permissive episode reads', async () => {
     const { controller, root } = await setup();
     await controller.startEpisode(start);
@@ -325,7 +333,7 @@ test.each([
     expect(receipt.availability).toBe('unavailable');
     expect(receipt.bytes).toBeUndefined();
 });
-test('distinct Linux case-sensitive registered roots that normalize together remain ambiguous', async () => {
+test.skipIf(process.platform === 'win32')('distinct Linux case-sensitive registered roots that normalize together remain ambiguous', async () => {
     const { service, scope, dir } = await setup();
     const upper = path.join(dir, 'MixedCase'), lower = path.join(dir, 'mixedcase');
     await mkdir(upper);
@@ -393,9 +401,9 @@ test('file that changes during a bounded capture read never publishes partial or
   try{const receipt=await controller.captureEvidence({operationId:'during-read',source:{kind:'workspace-file',relativePath:'during-read.md'}});expect(mutated).toBe(true);expect(receipt.availability).toBe('unavailable');expect(receipt.bytes).toBeUndefined();expect((await controller.expand({source:receipt.source,view:'evidence'})).data.text).toBe('');expect(await readdir(path.join(root,'archive/objects'))).toHaveLength(1);}finally{fs.open=original;syncBuiltinESMExports();}
 });
 
-test('ancestor aliases and symlink workspace roots cannot authorize file capture',async()=>{
-  const {controller,service,scope,dir}=await setup();const target=path.join(dir,'real-directory');await mkdir(target);await writeFile(path.join(target,'source.md'),'Synthetic real directory');await symlink(target,path.join(dir,'alias-directory'),'dir');const receipt=await controller.captureEvidence({operationId:'ancestor-alias',source:{kind:'workspace-file',relativePath:'alias-directory/source.md'}});expect(receipt.availability).toBe('unavailable');
-  const aliasRoot=path.join(dir,'alias-root');await symlink(dir,aliasRoot,'dir');const aliased=await initializeMemoryRoot({baseDir:aliasRoot,memoryRoot:path.join(dir,'other-memory'),experience:{enabled:true}});const result=await aliased.controller(scope).captureEvidence({operationId:'root-alias',source:{kind:'workspace-file',relativePath:'real-directory/source.md'}});expect(result.availability).toBe('unavailable');
+test('ancestor aliases and symlink workspace roots cannot authorize file capture',async context=>{
+  const {controller,service,scope,dir}=await setup();const target=path.join(dir,'real-directory');await mkdir(target);await writeFile(path.join(target,'source.md'),'Synthetic real directory');await symlinkOrSkip(context,target,path.join(dir,'alias-directory'),'dir');const receipt=await controller.captureEvidence({operationId:'ancestor-alias',source:{kind:'workspace-file',relativePath:'alias-directory/source.md'}});expect(receipt.availability).toBe('unavailable');
+  const aliasRoot=path.join(dir,'alias-root');await symlinkOrSkip(context,dir,aliasRoot,'dir');const aliased=await initializeMemoryRoot({baseDir:aliasRoot,memoryRoot:path.join(dir,'other-memory'),experience:{enabled:true}});const result=await aliased.controller(scope).captureEvidence({operationId:'root-alias',source:{kind:'workspace-file',relativePath:'real-directory/source.md'}});expect(result.availability).toBe('unavailable');
 });
 
 test('corrupt artifact manifest remains a coded error and damaged evidence cannot claim supported status',async()=>{

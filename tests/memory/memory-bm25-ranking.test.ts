@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildBm25Profile } from '../../src/memory/bm25.js';
 import { searchMemories } from '../../src/memory/retrieval.js';
+import { projectMemorySearchResults, formatDeliveredMemorySearchResult } from '../../src/memory/search-projection.js';
 import type { MemoryRecord } from '../../src/memory/types.js';
 
 const stamp = '2026-09-25T00:00:00.000Z';
@@ -105,6 +106,10 @@ describe('Memori-inspired BM25 ranking profile', () => {
       'quasar',
       { limit: 2, maxNeighbors: 0, budgetChars: 500, rankingProfile: 'bm25' },
     );
-    expect(budgeted.every((item) => item.record.content.length < 500)).toBe(true);
+    // Ranking preserves canonical records; the delivery owner applies the budget.
+    expect(budgeted.some(item=>item.record.id==='oversize'&&item.record.content.length>500)).toBe(true);
+    const projected=projectMemorySearchResults(budgeted,2048).results;
+    expect(projected.length).toBeGreaterThan(0);
+    expect(JSON.stringify(projected.map(formatDeliveredMemorySearchResult)).length).toBeLessThanOrEqual(2048);
   });
 });

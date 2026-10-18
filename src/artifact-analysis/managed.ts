@@ -1,9 +1,10 @@
 import type { ArtifactFinding } from './contracts.js';
 
 const invalid = () => { throw new Error('ARTIFACT_MANAGED_METADATA_INVALID'); };
-export function inspectManaged(bytes: Uint8Array): { findings: ArtifactFinding[]; limitations: string[] } {
+export function inspectManaged(bytes: Uint8Array): { findings: ArtifactFinding[]; droppedFindings: number; limitations: string[] } {
   const b = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const results: ArtifactFinding[] = [];
+  let droppedFindings = 0;
   const limitations = ['PE/CLI metadata declarations only: no CLR load, CIL, native export resolution, or runtime inference'];
   const within = (off: number, n: number) => Number.isSafeInteger(off) && off >= 0 && n >= 0 && off + n <= b.length;
   const u16 = (o: number) => within(o, 2) ? b.readUInt16LE(o) : invalid();
@@ -12,6 +13,7 @@ export function inspectManaged(bytes: Uint8Array): { findings: ArtifactFinding[]
   const emit = (kind: string, summary: string, offset: number) => {
     if (results.length < 256) results.push({ id: 'm' + results.length, kind,
       classification: 'observed', summary: summary.slice(0, 220), source: 'managed-pe', offset });
+    else droppedFindings++;
   };
   if (!within(0, 64) || u16(0) !== 0x5a4d) return invalid();
   const pe = u32(0x3c);
@@ -112,6 +114,10 @@ export function inspectManaged(bytes: Uint8Array): { findings: ArtifactFinding[]
     if (start > table.offset + table.size) return invalid();
   }
   const indexVal = (o: number, size: number) => size === 4 ? u32(o) : u16(o);
+  // These supported declaration tables have explicit row caps; excluded rows
+  // are known omissions even when the global finding budget has spare room.
+  for (const [tableId, cap] of [[35,80],[26,80],[4,64],[6,64],[28,128]] as const)
+    droppedFindings += Math.max(0, rows[tableId]! - cap);
   if (rows[0]) { const o = starts[0]; const mvid = indexVal(o + 2 + S, G);
     emit('module', 'name=' + strAt(indexVal(o + 2, S)) + ' MVID=' + guidAt(mvid), o); }
   if (rows[32]) { const o = starts[32];
@@ -151,5 +157,5 @@ export function inspectManaged(bytes: Uint8Array): { findings: ArtifactFinding[]
       ' import='+name+' moduleRefRow='+scope+' declaration-only',o);
   }
   limitations.push('Unselected metadata tables and member bodies not examined');
-  return { findings: results, limitations };
+  return { findings: results, droppedFindings, limitations };
 }
