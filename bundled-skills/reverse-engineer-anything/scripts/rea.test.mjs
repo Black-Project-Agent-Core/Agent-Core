@@ -25,3 +25,10 @@ test('an explicit mismatched runtime fails closed rather than silently selecting
  const owner=path.join(root,'mismatch');await runtime(owner,'0.0.0');await runtime(root);const result=run(await launcher(root),root,{AGENT_CORE_REA_SKILL_ROOT:owner});
  assert.notEqual(result.status,0);assert.match(result.stderr,/pinned|differs|mismatch/i);assert.equal(result.stdout,'');
 }));
+test('Agent Core isolated HOME reuses its explicitly installed host tooling link',()=>fixture(async root=>{
+ const owner=path.join(root,'owner'),catalog=path.join(root,'runtime/skills/catalog/reverse-engineer-anything');await runtime(owner);const file=await launcher(catalog);
+ await mkdir(path.join(root,'runtime/skills/tooling'),{recursive:true});
+ await writeFile(path.join(root,'runtime/skills/tooling/reverse-engineer-anything.json'),JSON.stringify({version:1,name:'reverse-engineer-anything',runtimeVersion:'6.5.0',skillRoot:owner}));
+ const isolated=path.join(root,'isolated-home');const result=run(file,root,{USERPROFILE:isolated,HOME:isolated,CODEX_HOME:''});
+ assert.equal(result.status,0,result.stderr);assert.equal(JSON.parse(result.stdout).cwd,root);
+}));

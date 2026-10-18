@@ -13,8 +13,20 @@ if (!supported) {
 } else {
   try {
     const explicit = process.env.AGENT_CORE_REA_SKILL_ROOT?.trim();
+    const skillRoot=fileURLToPath(new URL('../',import.meta.url));
+    let hostRoot;
+    if(!explicit&&path.basename(path.dirname(skillRoot))==='catalog'){
+      const linkFile=path.resolve(skillRoot,'../../tooling/reverse-engineer-anything.json');
+      try {
+        const link=JSON.parse(await readFile(linkFile,'utf8'));
+        if(link.version!==1||link.name!=='reverse-engineer-anything'||link.runtimeVersion!=='6.5.0'||typeof link.skillRoot!=='string'||!path.isAbsolute(link.skillRoot))
+          throw new Error('Agent Core REA host tooling link is invalid or differs from the pinned runtime.');
+        hostRoot=link.skillRoot;
+      }catch(error){if(error.code!=='ENOENT')throw error;}
+    }
     const candidates = explicit ? [path.resolve(explicit)] : [...new Set([
-      fileURLToPath(new URL("../", import.meta.url)),
+      skillRoot,
+      ...(hostRoot?[hostRoot]:[]),
       ...(process.env.CODEX_HOME ? [path.join(process.env.CODEX_HOME,"skills","reverse-engineer-anything")] : []),
       path.join(os.homedir(),".codex","skills","reverse-engineer-anything"),
       path.join(os.homedir(),".agents","skills","reverse-engineer-anything"),
@@ -29,7 +41,7 @@ if (!supported) {
           throw new Error("Installed REA differs from the pinned skill dependency 6.5.0.");
         root=tooling;break;
       } catch(error) {
-        if(error.code!=="ENOENT"||explicit)throw error;
+        if(error.code!=="ENOENT"||explicit||candidate===hostRoot)throw error;
       }
     }
     if(!root)throw new Error("Pinned REA runtime not found. Set AGENT_CORE_REA_SKILL_ROOT to its owning skill folder or restore that folder's tooling/rea lockfile.");

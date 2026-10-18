@@ -25,6 +25,15 @@ dependency manifest and installed package must declare exactly `6.5.0`.
 This reuses one environment; it does not turn the static Agent Core
 `artifact_inspect` or proof-only `reconstruction_harness` into a REA provider.
 
+For Agent Core's isolated execution HOME, a host-local link may explicitly
+name the existing owning Skill folder in
+`runtime/skills/tooling/reverse-engineer-anything.json` with `version:1`,
+`name:"reverse-engineer-anything"`, `runtimeVersion:"6.5.0"`, and an absolute
+`skillRoot`. The launcher validates the link and both runtime manifests.
+This private configuration stays outside the catalog and release package;
+a missing/mismatched explicit host link fails closed. It does not authorize
+arbitrary target access, install a provider or weaken environment isolation.
+
 Use existing Node 22.x >=22.19, 24.x >=24.11, or 26+. Initial installation
 reused Node 24.18.0 and npm 11.16.0. No global installation, PATH edit, MCP
 registration or permission change is needed for CLI use. The checkout is not

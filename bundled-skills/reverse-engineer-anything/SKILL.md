@@ -37,6 +37,13 @@ runtime installation. Use `--version` once to verify the selected runtime
 when establishing or repairing this integration. No automatic download,
 provider installation or MCP registration occurs.
 
+Agent Core deliberately gives execution processes an isolated HOME. Its local
+installation may therefore record an explicit runtime link at
+`runtime/skills/tooling/reverse-engineer-anything.json`, outside the catalog.
+The catalog launcher honors that validated, host-local link; it is not shipped
+in release packages or copied into Skill artifacts. No user-profile scan or
+change to the execution environment's isolation is required.
+
 Use command-specific `--help` or `--schema` and the connected MCP's actual tool
 schemas. MCP names generally use underscores; CLI names use hyphens. Independent
 CLI invocations do not preserve an active native target or retained Evidence
