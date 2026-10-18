@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-The current stable line is **0.12.x**. Security fixes are applied to the current local line and shipped through a new stable release when required. Older release assets are retained for recovery/history but should not be treated as the preferred security baseline.
+The supported security baseline is the latest accepted stable [GitHub Release](https://github.com/Black-Project-Agent-Core/Agent-Core/releases/latest). Candidates require their release-specific verification and package-acceptance evidence. A source version, successful build or candidate download does not establish stable acceptance.
 
 ## Reporting a vulnerability
 
@@ -22,7 +22,9 @@ Launcher `Reset OAuth / Re-auth` resolves the same effective data directory as t
 
 Filesystem access follows the Agent Core machine-control `allowedDirectories` configuration under `runtime/rdc`. Terminal/process execution follows the same internal machine-control blocked-command policy and session/process controls. The `rdc` path/name reflects vendored implementation lineage; it is not the external Remote Desktop Commander profile/configuration.
 
-There is no route context, capability-authority gate, workflow gate, continuity gate, memory routing gate, or execution-plan permission layer. The native file-backed `MemoryService` is a sibling subsystem for explicit memory operations and selective recall; it does not authorize, route, or gate normal Agent Core machine-control tools.
+External MCP access requires valid authentication, the credential's effective tool grants, and a current `controller_contract` acknowledgement before ordinary tools run. Existing filesystem/process controls and task/workspace-bound Memory and Learning admission remain enforced by their owners. Memory and Learning retain scoped knowledge and continuity; they do not grant machine-control permissions.
+
+The `src/memory` owner resolves canonical Memory through the validated activation under `<PROJECT_ROOT>/runtime/memory`. Fresh initialization, migration and recovery must use that owner's documented workflow. Native-specific development is frozen under repository governance; that freeze is not an operating-system sandbox or proof of controller compliance.
 
 The Agent Core machine-control layer under `src/rdc` is vendored RDC-derived code and has upstream cloud telemetry disabled. External Remote Desktop Commander—including its hosted remote-device service, Device ID/session/channel state, launcher checks, and external profile—is a separate operator tool and is not an Agent Core subsystem.
 

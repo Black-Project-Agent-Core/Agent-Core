@@ -163,7 +163,9 @@ describe('image_inspect metadata-only persistence', () => {
     const { root, file } = await fixture();
     const failures: any[] = [];
     const observations: any[] = [];
-    const observer = await observerFixture();
+    // Session/task metadata may legitimately contain these digit sequences;
+    // privacy assertions must inspect the argument boundary, not substrings.
+    const observer = await observerFixture('external-test-123-234-345-456');
     vi.spyOn(observer.runtime.externalControllerLearning, 'failureContext').mockImplementation(async (input: any) => { failures.push(input); return {} as any; });
     const runtime = {
       ...observer.runtime,
@@ -198,8 +200,10 @@ describe('image_inspect metadata-only persistence', () => {
     } });
     expect(failures).toHaveLength(2);
     const allCaptured = JSON.stringify([...failures, ...observations], (_key, value) => value instanceof Error ? value.message : value);
-    for (const sensitive of [root, viewId, bytes, '123', '234', '345', '456']) expect(allCaptured).not.toContain(sensitive);
+    for (const sensitive of [root, viewId, bytes]) expect(allCaptured).not.toContain(sensitive);
     expect(failures[1].args).toEqual({ argumentKeys: ['action', 'path', 'viewId', 'rectangle'] });
+    expect(observations[1].args).toEqual({ argumentKeys: ['action', 'path', 'viewId', 'rectangle'] });
+    for(const observation of [failures[1],observations[1]])expect(observation.failure.message).toBe('Image inspection failed; detail omitted by metadata-only policy');
     expect(JSON.stringify(vi.mocked(activityTracker.record).mock.calls)).not.toContain(root);
     expect(JSON.stringify(vi.mocked(activityTracker.captureFailure).mock.calls)).not.toContain(root);
   });

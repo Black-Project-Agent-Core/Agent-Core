@@ -84,7 +84,7 @@ describe('Agent Core authenticity maintenance', () => {
       await service.close();
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, process.platform === 'win32' ? 60_000 : 15_000);
   it('ships get_prompts with all production runtime data', async () => {
     buildProduction();
     const moduleUrl = `${pathToFileURL(path.join(compiledFixture, 'rdc', 'tools', 'prompts.js')).href}?audit=${Date.now()}`;

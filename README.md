@@ -4,6 +4,8 @@
 
 <h1 align="center">Agent Core</h1>
 
+<p align="center"><strong>0.15.0 · Windows x64 · MCP</strong></p>
+
 <p align="center">
   A Windows workspace for AI-controlled tools, persistent Memory, and evidence-based Learning.
 </p>

@@ -1,6 +1,6 @@
 {
   "name": "agent-core",
-  "version": "0.15.0-beta.4",
+  "version": "0.15.0",
   "private": true,
   "description": "Local authenticated RDC-compatible MCP machine bridge",
   "type": "module",

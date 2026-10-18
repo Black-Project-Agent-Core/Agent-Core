@@ -9,7 +9,9 @@ import {OutcomeMemoryAdapter} from '../../scripts/memory/outcome/memory-outcome-
 import {workflowCase,taskReviewDecision} from '../../scripts/verify/cumulative-workflow-support.mjs';
 const roots:string[]=[];
 async function fixture(){const base=path.resolve('runtime/tmp');await mkdir(base,{recursive:true});const root=await mkdtemp(path.join(base,'outcome-runner-'));roots.push(root);return root;}
-afterEach(async()=>{vi.unstubAllGlobals();for(const root of roots.splice(0))await rm(root,{recursive:true,force:true});});
+// Removal of multiple sealed source snapshots is disk-bound on Windows. This
+// cleanup allowance does not change any workload or measured product latency.
+afterEach(async()=>{vi.unstubAllGlobals();for(const root of roots.splice(0))await rm(root,{recursive:true,force:true});},process.platform==='win32'?120000:10000);
 describe('offline outcome runner isolation',()=>{
  it('preserves extracted pure fixture and task review accounting',()=>{
   expect(workflowCase('engineering',1).oracle.tests).toHaveLength(5);
