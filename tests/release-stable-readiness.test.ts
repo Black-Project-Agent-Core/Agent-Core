@@ -73,20 +73,23 @@ it('binds stable package provenance to committed source and refuses dirty, untra
   const git=(...args:string[])=>execFileSync('git',args,{cwd:root,encoding:'utf8',windowsHide:true});
   git('init','--quiet');await put(root,'package.json','{"name":"fixture","version":"0.15.0"}\n');
   await put(root,'tunnel-client/agent-core.example.yaml','placeholder profile');
-  git('add','package.json','tunnel-client/agent-core.example.yaml');git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false','commit','--quiet','-m','fixture');
+  await put(root,'Restart-Agent-Core.cmd','fixture restart entry');
+  git('add','package.json','tunnel-client/agent-core.example.yaml','Restart-Agent-Core.cmd');git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false','commit','--quiet','-m','fixture');
   expect(packaging.assertReleaseSource).toBeTypeOf('function');
   const commit=await packaging.assertReleaseSource(root);expect(commit).toMatch(/^[0-9a-f]{40}$/);
   await put(root,'package.json','changed');await expect(packaging.assertReleaseSource(root,commit)).rejects.toThrow(/SOURCE/);
   git('restore','package.json');await put(root,'tunnel-client/agent-core.example.yaml','uncommitted profile');
   await expect(packaging.assertReleaseSource(root,commit)).rejects.toThrow(/SOURCE/);
-  git('restore','tunnel-client/agent-core.example.yaml');await put(root,'src/untracked.ts','export {};');
+  git('restore','tunnel-client/agent-core.example.yaml');await put(root,'Restart-Agent-Core.cmd','uncommitted restart entry');
+  await expect(packaging.assertReleaseSource(root,commit)).rejects.toThrow(/SOURCE/);
+  git('restore','Restart-Agent-Core.cmd');await put(root,'src/untracked.ts','export {};');
   await expect(packaging.assertReleaseSource(root,commit)).rejects.toThrow(/SOURCE/);
   git('add','src/untracked.ts');git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','commit.gpgsign=false','commit','--quiet','-m','changed');
   await expect(packaging.assertReleaseSource(root,commit)).rejects.toThrow(/HEAD/);
 });
 it('stages readable guides and only the hash-bound browser transport, excluding operational debris',async()=>{
   const root=await fixture(),destination=path.join(root,'package');
-  for(const name of ['README.md','THIRD_PARTY_NOTICES.md','docs/proposals/REVIEW-GUIDE.md','docs/proposals/README.md','docs/history-agent-core/Panduan-Arsip-Proposal-Selesai.md','subagents/README.md'])await put(root,name,'fixture '+name);
+  for(const name of ['README.md','Restart-Agent-Core.cmd','THIRD_PARTY_NOTICES.md','docs/proposals/REVIEW-GUIDE.md','docs/proposals/README.md','docs/history-agent-core/Panduan-Arsip-Proposal-Selesai.md','subagents/README.md'])await put(root,name,'fixture '+name);
   const transport='runtime/browser-control/open-browser-use/win32-x64',binary='transport-0123456789abcdef.exe';
   await put(root,'src/rdc/browser-control/open-browser-use-stdio.go','fixture-go-source');
   await put(root,transport+'/'+binary,'fixture-transport');
@@ -97,6 +100,7 @@ it('stages readable guides and only the hash-bound browser transport, excluding 
   await packaging.stageExternalReleaseSupport(root,destination);
   expect(await readFile(path.join(destination,'docs/proposals/REVIEW-GUIDE.md'),'utf8')).toContain('fixture');
   expect(await readFile(path.join(destination,'README.md'),'utf8')).toContain('fixture');
+  expect(await readFile(path.join(destination,'Restart-Agent-Core.cmd'),'utf8')).toBe('fixture Restart-Agent-Core.cmd');
   expect(await readFile(path.join(destination,'src/rdc/browser-control/open-browser-use-stdio.go'),'utf8')).toBe('fixture-go-source');
   expect((await readdir(path.join(destination,transport))).sort()).toEqual(['build.json',binary].sort());
   await expect(access(path.join(destination,'runtime/rdc'))).rejects.toThrow();

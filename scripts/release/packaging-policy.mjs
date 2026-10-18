@@ -41,7 +41,7 @@ export async function assertReleaseSource(root, expectedCommit) {
   if(expectedCommit&&commit!==expectedCommit)throw new Error('RELEASE_SOURCE_HEAD_CHANGED');
   const dirty=await git(['status','--porcelain','--untracked-files=all','--',
     'package.json','package-lock.json','AGENTS.md','README.md','SECURITY.md','THIRD_PARTY_NOTICES.md','CHANGELOG.md',
-    'CONTRIBUTING.md','SUPPORT.md','.env.example','.grafelignore','Maintenance.md','tsconfig.json','vitest.config.ts','tunnel-client/agent-core.example.yaml',
+    'CONTRIBUTING.md','SUPPORT.md','.env.example','.grafelignore','Maintenance.md','Restart-Agent-Core.cmd','tsconfig.json','vitest.config.ts','tunnel-client/agent-core.example.yaml',
     'src','scripts','assets','vendor','bundled-skills','extensions/agent-core-open-browser-use','docs','subagents','.changeset']);
   if(dirty)throw new Error('RELEASE_SOURCE_NOT_COMMITTED: commit the reviewed package inputs before packaging');
   return commit;
@@ -55,7 +55,7 @@ export async function stageExternalReleaseSupport(root, packageRoot) {
     await fs.mkdir(path.dirname(destination),{recursive:true});
     await fs.cp(source,destination,{recursive:true,filter:source=>packageCopyAllowed(root,source)});
   };
-  for(const relative of ['README.md','THIRD_PARTY_NOTICES.md','docs/proposals/README.md',
+  for(const relative of ['README.md','Restart-Agent-Core.cmd','THIRD_PARTY_NOTICES.md','docs/proposals/README.md',
     'docs/proposals/REVIEW-GUIDE.md','docs/history-agent-core/Panduan-Arsip-Proposal-Selesai.md','subagents'])await copy(relative);
   for(const relative of ['docs/README.md','docs/CODEBASE.md','docs/releases','docs/Browser-Control.md','docs/Open-Browser-Use.md','docs/Conversation-Reading.md',
     'docs/Agent-Core-Product-Direction.md','docs/External-Learning-Priorities-20261019.md','docs/External-Engineering-Skills.md','.changeset/README.md','CONTRIBUTING.md','SUPPORT.md']){
