@@ -17,7 +17,7 @@
     "src/agent-turn-events.ts": "9b94ecf6ef3d1298f82082f6d256f2329da4b19c45f050f25d9e0a792146346b",
     "src/mcp/reconstruction-harness-tools.ts": "e1a711ad6b5b08045b94e4406fc89d87716992a1c25245ff6a8c0b1cdc9e26ba",
     "tests/agent-capability-config.test.ts": "5cc3fce70a441f2a37019f0a79b7dc6b397c10e6fc35e5b450264e36a477e318",
-    "tests/agent-capability-execution-parity.test.ts": "3a63dee0a7018f5d3abba5b95900fc71a72f4acbf448b75e5e00176abc35bca4",
+    "tests/agent-capability-execution-parity.test.ts": "fa61475c6bd0bafbfde3358e78f0b882c114f2396188f5d40bfbb149365ead1b",
     "tests/agent-capability-resolver.test.ts": "7df11cb436a1ef185c2fd7cbb0492d4532e1cedd24f1b3fab60db8863894a97e",
     "tests/agent-chat-service.test.ts": "c92663ae257db9152a6c71449db3904dbf598b81cfd6a4079cbe3d4981589680",
     "tests/agent-chat-store.test.ts": "3e0cb69fb87f5b702982e5d571ef9fe5a2b711a79f44243cb131a551d67a61b4",
@@ -28,10 +28,10 @@
     "tests/agent-provider.test.ts": "cc10254eb5de3a2dd1338c04e39d858972e59ecf03d882ca8b8ed80ee639c52b",
     "tests/agent-runtime-integration.test.ts": "b612647d2f6993bb6772566cf38f1b7b3b0bd313c8ebad1b34b44ac9fb735d1b",
     "tests/agent-shared-knowledge-parity.test.ts": "88c87f1499c8ff5f92b9234b7dac7019f4e68379ac4b93ac6137b9c5d7f6a343",
-    "tests/agent-tool-session.test.ts": "a15c9693e75e36f589925f9162428e2e102a6e404a30e361a88e8330fa00a38e",
+    "tests/agent-tool-session.test.ts": "2ed08488bc341818234429976f862a39a83e5e91d719254fffa9ab1e3a6b8e78",
     "tests/agent-ui-transport.test.ts": "9d9b176beabda05575fb5dfee522e519367ce1e4e81c629113ffa5e373a15244",
     "tests/capability-native-loop.test.ts": "63fc00ee9a84344d333838e27a6633b1b33322eacaed6c9716cbd7c7971d821a",
-    "tests/dtc1-durable-turn-continuation.test.ts": "594549cd6d137b620ca8d08060fc0237e251462eea5435d22eec4ee276a8b512"
+    "tests/dtc1-durable-turn-continuation.test.ts": "389f0657abac0d6399a298b324e6f37468058b37baff4d9479159c3756dfc83b"
   },
   "sections": {
     "src/config.ts": [

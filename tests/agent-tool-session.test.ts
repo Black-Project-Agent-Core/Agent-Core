@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { AgentRuntimeToolSession } from '../src/agent-tool-session.js';
+const nativeRuntime = { nativeTaskId: 'fixture-native-task', nativeWorkspace: 'agent-core' };
 
 describe('native agent MCP tool session', () => {
   it('discovers and dispatches only explicitly granted existing Agent Core tools', async () => {
-    const session = await AgentRuntimeToolSession.open('fixture', ['get_config'], {});
+    const session = await AgentRuntimeToolSession.open('fixture', ['get_config'], nativeRuntime);
     try {
       const tools = await session.modelTools();
       expect(tools.map(tool => tool.function.name)).toEqual(['get_config']);
@@ -18,7 +19,7 @@ describe('native agent MCP tool session', () => {
   });
 
   it('discovers the current Agent Core registry without granting it', async () => {
-    const tools = await AgentRuntimeToolSession.discoverAvailableTools({});
+    const tools = await AgentRuntimeToolSession.discoverAvailableTools(nativeRuntime);
     expect(tools).toEqual(expect.arrayContaining([
       'get_config',
       'read_file',
@@ -31,7 +32,7 @@ describe('native agent MCP tool session', () => {
     const session = await AgentRuntimeToolSession.open(
       'fixture-browser',
       ['browser_control'],
-      {},
+      nativeRuntime,
       { browser_control: { allowedActions: ['status'] } },
     );
     try {
@@ -53,7 +54,7 @@ describe('native agent MCP tool session', () => {
     const session = await AgentRuntimeToolSession.open(
       'fixture-file',
       ['read_file'],
-      {},
+      nativeRuntime,
       { read_file: { forbidUrlRead: true } },
     );
     try {

@@ -785,7 +785,7 @@ describe('DTC-1 current-authority and budget invariants', () => {
     const oldSession = await AgentRuntimeToolSession.open(
       'old-session',
       ['get_config'],
-      {} as any,
+      { nativeTaskId: 'task-1', nativeWorkspace: 'fixture' },
     );
     const oldDigest = await oldSession.contractDigest();
     await oldSession.close();
@@ -838,7 +838,7 @@ describe('DTC-1 current-authority and budget invariants', () => {
     const currentSession = await AgentRuntimeToolSession.open(
       'budget-contract',
       [],
-      {} as any,
+      { nativeTaskId: 'task-1', nativeWorkspace: 'fixture' },
     );
     const currentDigest = await currentSession.contractDigest();
     await currentSession.close();

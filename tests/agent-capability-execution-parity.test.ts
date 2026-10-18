@@ -18,7 +18,8 @@ describe('Native Agent capability execution parity', () => {
     const parent = fileURLToPath(new URL('../runtime/tmp', import.meta.url));
     const root = await mkdtemp(path.join(parent, 'nacp-exec-'));
     roots.push(root);
-    const availableTools = await AgentRuntimeToolSession.discoverAvailableTools({});
+    const nativeRuntime = { nativeTaskId: 'nacp-fixture-task', nativeWorkspace: 'agent-core' };
+    const availableTools = await AgentRuntimeToolSession.discoverAvailableTools(nativeRuntime);
     const resolver = new AgentCapabilityResolver({
       mode: 'dynamic',
       allowedTools: [],
@@ -41,7 +42,7 @@ describe('Native Agent capability execution parity', () => {
     const session = await AgentRuntimeToolSession.open(
       'nacp-execution-parity',
       grant.tools,
-      {},
+      nativeRuntime,
       grant.restrictions,
     );
     try {
