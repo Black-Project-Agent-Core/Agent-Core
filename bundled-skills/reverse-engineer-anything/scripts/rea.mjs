@@ -24,9 +24,8 @@ if (!supported) {
         hostRoot=link.skillRoot;
       }catch(error){if(error.code!=='ENOENT')throw error;}
     }
-    const candidates = explicit ? [path.resolve(explicit)] : [...new Set([
+    const candidates = explicit ? [path.resolve(explicit)] : hostRoot ? [hostRoot] : [...new Set([
       skillRoot,
-      ...(hostRoot?[hostRoot]:[]),
       ...(process.env.CODEX_HOME ? [path.join(process.env.CODEX_HOME,"skills","reverse-engineer-anything")] : []),
       path.join(os.homedir(),".codex","skills","reverse-engineer-anything"),
       path.join(os.homedir(),".agents","skills","reverse-engineer-anything"),

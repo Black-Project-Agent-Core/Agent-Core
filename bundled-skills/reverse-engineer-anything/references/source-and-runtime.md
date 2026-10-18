@@ -29,7 +29,9 @@ For Agent Core's isolated execution HOME, a host-local link may explicitly
 name the existing owning Skill folder in
 `runtime/skills/tooling/reverse-engineer-anything.json` with `version:1`,
 `name:"reverse-engineer-anything"`, `runtimeVersion:"6.5.0"`, and an absolute
-`skillRoot`. The launcher validates the link and both runtime manifests.
+`skillRoot`. Unless the environment override selects another explicit owner,
+the configured link selects the sole runtime. The launcher validates the link
+and both runtime manifests even when a local catalog runtime is available.
 This private configuration stays outside the catalog and release package;
 a missing/mismatched explicit host link fails closed. It does not authorize
 arbitrary target access, install a provider or weaken environment isolation.

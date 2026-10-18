@@ -32,3 +32,11 @@ test('Agent Core isolated HOME reuses its explicitly installed host tooling link
  const isolated=path.join(root,'isolated-home');const result=run(file,root,{USERPROFILE:isolated,HOME:isolated,CODEX_HOME:''});
  assert.equal(result.status,0,result.stderr);assert.equal(JSON.parse(result.stdout).cwd,root);
 }));
+
+for(const version of [null,'0.0.0'])test(`an explicit host link with ${version===null?'missing':'mismatched'} runtime fails closed even when the catalog has a valid runtime`,()=>fixture(async root=>{
+ const owner=path.join(root,'owner'),catalog=path.join(root,'runtime/skills/catalog/reverse-engineer-anything');
+ await runtime(catalog);if(version!==null)await runtime(owner,version);const file=await launcher(catalog);
+ await mkdir(path.join(root,'runtime/skills/tooling'),{recursive:true});
+ await writeFile(path.join(root,'runtime/skills/tooling/reverse-engineer-anything.json'),JSON.stringify({version:1,name:'reverse-engineer-anything',runtimeVersion:'6.5.0',skillRoot:owner}));
+ const result=run(file,root);assert.notEqual(result.status,0);assert.equal(result.stdout,'');assert.match(result.stderr,/unavailable|differs|pinned/i);
+}));
