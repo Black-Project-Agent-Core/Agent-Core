@@ -1,0 +1,5 @@
+---
+"agent-core": patch
+---
+
+Let a Native chat session be archived or continued after a turn was stopped, failed or interrupted, and make the Duanyan route usable. A stop between task creation and the model loop no longer leaves the runtime task `running`: the controller records its `model-ready` checkpoint inside the guarded block, and the chat service settles the runtime task of every stopped, failed or interrupted turn at startup, on send, on archive, on stop and when the executor ends. Settling is deduplicated per task, bounded in time, retried once after a running-task conflict, never replays a tool, and finalizes (awaiting verification) only for the task it ended itself. Provider readiness now reads schema-2.x model catalogs with per-modality objects, skips models without a text output and requires an explicit tools capability; `quota_exceeded` and `insufficient_quota` count as quota exhaustion only as whole tokens, so per-minute or concurrency quota codes stay short rate limits; the default provider request timeout is 180 s while catalog requests keep a 15 s cap. Selection order, cursor, failure scopes and the database schema are unchanged.

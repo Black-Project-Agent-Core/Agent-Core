@@ -172,4 +172,61 @@ describe('OAuth bridge', () => {
     expect(mcp.status).toBe(200);
     expect(dispatched()).toBe(key.metadata.id);
   });
+
+  it('serves a Cloudflare resource beside the existing tunnel resource and binds tokens to their own host', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-oauth-multi-'));
+    roots.push(root);
+    const keyStore = new FileKeyStore(path.join(root, 'data'));
+    const oauthStore = new FileOAuthStore(path.join(root, 'data'));
+    const openai = 'https://tunnel-service.gateway.example/v1/mcp/tunnel_test';
+    const cloudflare = 'https://agent-core.example.test/mcp';
+    const security = new HttpSecurityPolicy({
+      publicBaseUrl: null, protectedResourceUrl: openai,
+      additionalProtectedResourceUrls: [cloudflare], trustProxy: true, allowedOrigins: [],
+    });
+    const oauthService = new OAuthService(keyStore, oauthStore, security);
+    const app = createHttpHandler({ keyStore, oauthService, security, mcpHandler: async (_request, response) => { response.writeHead(200); response.end('{}'); } });
+    const server = createServer(app);
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    servers.push(server);
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const viaCloudflare = { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'agent-core.example.test' };
+    const viaOpenAi = { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'tunnel-service.gateway.example' };
+
+    const discovery = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`, { headers: viaCloudflare });
+    expect(await discovery.json()).toMatchObject({ resource: cloudflare, authorization_servers: ['https://agent-core.example.test'] });
+    const legacy = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`, { headers: viaOpenAi });
+    expect(await legacy.json()).toMatchObject({ resource: openai });
+
+    const key = await keyStore.create('cloudflare-oauth');
+    const client = await register(baseUrl);
+    const verifier = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~pkce';
+    const redirectUri = client.redirect_uris[0] as string;
+    const authorize = (headers: Record<string, string>, resource: string) => fetch(`${baseUrl}/oauth/authorize`, {
+      method: 'POST', redirect: 'manual',
+      headers: { ...headers, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        response_type: 'code', client_id: client.client_id, redirect_uri: redirectUri, code_challenge: pkce(verifier),
+        code_challenge_method: 'S256', resource, scope: 'mcp:tools', api_key: key.key,
+      }),
+    });
+    expect((await authorize(viaOpenAi, cloudflare)).status).toBe(400);
+    const approved = await authorize(viaCloudflare, cloudflare);
+    expect(approved.status).toBe(302);
+    const code = new URL(approved.headers.get('location')!).searchParams.get('code')!;
+    const tokenResponse = await fetch(`${baseUrl}/oauth/token`, {
+      method: 'POST', headers: { ...viaCloudflare, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code', client_id: client.client_id, client_secret: client.client_secret,
+        code, redirect_uri: redirectUri, code_verifier: verifier, resource: cloudflare,
+      }),
+    });
+    expect(tokenResponse.status).toBe(200);
+    const { access_token: token } = await tokenResponse.json() as Record<string, string>;
+    const call = (headers: Record<string, string>) => fetch(`${baseUrl}/mcp`, {
+      method: 'POST', headers: { ...headers, Authorization: `Bearer ${token}` },
+    });
+    expect((await call(viaCloudflare)).status).toBe(200);
+    expect((await call(viaOpenAi)).status).toBe(401);
+  });
 });

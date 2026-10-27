@@ -4,7 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { ROOT } from "./release-policy.mjs";
-import { packageCopyAllowed, writePackagedFoundation } from "./packaging-policy.mjs";
+import { packageCopyAllowed, writePackagedFoundation, finalizePackagedStructure } from "./packaging-policy.mjs";
 
 async function exists(target) {
   try {
@@ -117,7 +117,10 @@ export async function createDevelopmentArtifact(options) {
       "runtime/grafel/bin",
       "runtime/grafel/provider.json",
       "scripts/windows",
-      "scripts/governance/native-freeze.json",
+      "scripts/portability",
+      "docs/PROJECT-STRUCTURE.md",
+      "docs/PATH-GOVERNANCE.md",
+      "docs/CODEBASE.md",
       "Agent Core.exe",
       "tunnel-client/tunnel-client.exe",
     ]) {
@@ -133,6 +136,9 @@ export async function createDevelopmentArtifact(options) {
       await fs.writeFile(path.join(tunnelTarget, "agent-core.example.yaml"), text, "utf8");
       await fs.writeFile(path.join(tunnelTarget, "agent-core.yaml"), text, "utf8");
     }
+
+    if (await exists(path.join(packageRoot, 'docs/PROJECT-STRUCTURE.md')))
+      await finalizePackagedStructure(packageRoot);
 
     const manifest = {
       product: "Agent Core",

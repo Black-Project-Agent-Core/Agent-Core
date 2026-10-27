@@ -10,7 +10,8 @@
   "bumpVersionsWithWorkspaceProtocolOnly": false,
   "changedFilePatterns": [
     "src/**",
-    "bundled-skills/**",
+    "runtime/skills/capability-packs/**",
+    "runtime/skills/README.md",
     "package.json",
     "src/ui/**",
     "src/launcher/**"

@@ -4,6 +4,7 @@
  */
 
 import type { PdfEvidence } from '../../tools/pdf/index.js';
+import type { XlsxEvidence } from '../../document-projection/xlsx-evidence.js';
 
 // ============================================================================
 // Core Interfaces
@@ -160,6 +161,7 @@ export interface FileMetadata {
     totalPages?: number;
     pages?: PdfPageItem[];
     pdfEvidence?: PdfEvidence;
+    xlsxEvidence?: XlsxEvidence;
 
     /** For DOCX files */
     isDocx?: boolean;

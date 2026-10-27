@@ -19,7 +19,7 @@
 
 Agent Core connects an external AI assistant—such as ChatGPT, Codex, or another compatible MCP client—to tools on your Windows machine. The desktop launcher runs the local Core, presents system status and Workflows, and provides a place to read improvement proposals. Memory and Learning retain selected knowledge, task continuity, and review history across sessions.
 
-**Current development targets external controllers. Native Agent is frozen.** Existing Native runtime code is retained; new features and fixes must preserve its protected files, sections, and grants. See the [operating contract](AGENTS.md) and [development freeze](scripts/governance/native-freeze.json).
+**Native AI Agent Core and external controllers are active development targets.** The user opened Native development on 2026-10-24. Both use the existing owners and task-scoped runtime grants. See the [operating contract](AGENTS.md) and [Native integration status](docs/proposals/Integrasi-Arsitektur-Native-Agent-Core.md).
 
 ## What you can do
 
@@ -80,7 +80,7 @@ A task description can link the Learning episode to resumable Memory continuity.
 
 Proposal cards are notifications and readers. They do not approve, build or activate a Skill. Review the exact Markdown and revision, then use the existing user-evidence decision workflow.
 
-The release includes `performance-oriented-software-engineering` and `reverse-engineer-anything` instructions in the existing Skills catalog. External bootstrap/task-context hooks disclose the current installation and revision to read. Controllers assess performance relevance before software changes and use REA for shipped-artifact investigations. Hooks supply guidance; instruction delivery does not prove compliance or a speedup.
+A fresh release seeds `agent-core-capability-index`, `mind-control`, `performance-oriented-software-engineering`, and `reverse-engineer-anything` into the existing Skills catalog. Native and external task hooks auto-advertise the compact index and the exact-revision scientific activation descriptor. Controllers read `mind-control` for every coding task and every other task that requires reasoning, including ordinary or non-scientific work; only routine deterministic non-coding work with no reasoning skips it. References remain selective. Performance guidance applies before scale-sensitive software changes, and REA applies to shipped-artifact investigations. Hooks supply guidance; instruction delivery does not prove compliance, causal benefit, or a speedup.
 
 REA's launcher reuses its pinned **6.5.0** runtime from an existing personal skill installation; `AGENT_CORE_REA_SKILL_ROOT` can select a custom owning skill folder. On a new computer, restore the included Skill's `tooling/rea` lockfile with `npm ci --ignore-scripts --no-audit --no-fund` in that directory before CLI use. Importing a Skill does not install a decompiler or provider. Agent Core's static artifact inspector and proof-obligation harness remain separate bounded capabilities.
 
@@ -115,7 +115,7 @@ node scripts/memory/activate-canonical.mjs --fresh
 npm start
 ```
 
-`npm start` runs the Node Core. It does not build or open the Windows launcher. The Core build checks the Native freeze and path policy before compiling; the UI build also checks the freeze.
+`npm start` runs the Node Core. It does not build or open the Windows launcher. Core, UI and launcher builds check project path policy before compiling.
 
 To publish a launcher into a staging directory:
 
@@ -130,7 +130,6 @@ The staged launcher still requires the complete project layout: compiled Core/UI
 ### Checks
 
 ```powershell
-npm run native:check
 npm run path:check
 npm test
 npm --prefix src/ui test
@@ -154,7 +153,7 @@ flowchart TD
     P --> D
 ```
 
-Memory, Learning and code providers share existing owners and remain separate from execution authority. Native behavior is preserved under the development freeze.
+Memory, Learning and code providers share existing owners and remain separate from execution authority. Native and external tasks retain explicit runtime identity and scoped grants.
 
 ## Privacy and security
 

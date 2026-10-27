@@ -106,29 +106,67 @@ public sealed class ActivityJournal
 
     public IReadOnlyList<ActivityEntry> ReadRecent(int limit, DateTimeOffset? after = null)
     {
-        var output = new Queue<ActivityEntry>(Math.Max(1, limit));
-        if (!File.Exists(_journalPath)) return output.ToArray();
+        var entries = new List<ActivityEntry>();
+        var invocations = new Dictionary<string, int>(StringComparer.Ordinal);
+        if (!File.Exists(_journalPath)) return entries;
         var clearCutoff = ReadClearCutoff();
         var effectiveAfter = after.HasValue && after.Value > clearCutoff ? after.Value : clearCutoff;
-
         try
         {
             using var stream = new FileStream(_journalPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            // Polling reads only a bounded journal tail; full stored details are loaded on demand.
+            const long scanLimit = 16L * 1024 * 1024;
+            var skipPartialLine = stream.Length > scanLimit;
+            if (skipPartialLine) stream.Seek(-scanLimit, SeekOrigin.End);
             using var reader = new StreamReader(stream, Encoding.UTF8);
+            if (skipPartialLine) reader.ReadLine();
             string? line;
             while ((line = reader.ReadLine()) is not null)
             {
                 var entry = TryParseEntry(line, effectiveAfter);
-                if (entry is null) continue;
-                output.Enqueue(entry);
-                while (output.Count > limit) output.Dequeue();
+                if (entry is null || entry.Kind == "tool-detail") continue;
+                if (entry.InvocationId is { Length: 32 } id && entry.Status is not null)
+                {
+                    if (invocations.TryGetValue(id, out var index))
+                    {
+                        // Correlate by invocation ID, never by tool name or nearby timestamps.
+                        // A duplicate/late start cannot retroactively prove an earlier terminal.
+                        if (entry.Kind == "tool-invocation-start") continue;
+                        var previous = entries[index];
+                        var hasObservedStart = previous.StartedAt is not null;
+                        entries[index] = previous with {
+                            Status = entry.Status,
+                            Lifecycle = hasObservedStart ? "complete" : "incomplete",
+                            TerminalAt = entry.Timestamp,
+                            DurationMs = hasObservedStart ? entry.DurationMs : null,
+                            Level = entry.Status == "error" ? "error" : entry.Level == "success" ? "success" : previous.Level,
+                            Tool = entry.Tool ?? previous.Tool,
+                            Target = entry.Target ?? previous.Target
+                        };
+                        continue;
+                    }
+                    invocations[id] = entries.Count;
+                    var startObserved = entry.Kind == "tool-invocation-start";
+                    entries.Add(entry with {
+                        Lifecycle = startObserved ? "start-only" : "incomplete",
+                        StartedAt = startObserved ? entry.Timestamp : null,
+                        TerminalAt = startObserved ? null : entry.Timestamp,
+                        // Without observed start, the terminal duration cannot be corroborated.
+                        DurationMs = null
+                    });
+                }
+                else entries.Add(entry);
+                if (entries.Count > Math.Max(200, limit * 3))
+                {
+                    entries.RemoveRange(0, entries.Count - Math.Max(200, limit * 2));
+                    invocations.Clear();
+                    for (var i = 0; i < entries.Count; i++)
+                        if (entries[i].InvocationId is { Length: 32 } key) invocations[key] = i;
+                }
             }
         }
-        catch
-        {
-            // Activity rendering must not take down the launcher.
-        }
-        return output.ToArray();
+        catch { /* A partial journal must never break the desktop UI. */ }
+        return entries.TakeLast(Math.Max(1, limit)).ToArray();
     }
     private ActivityEntry? TryParseEntry(string line, DateTimeOffset? after)
     {
@@ -140,18 +178,48 @@ public sealed class ActivityJournal
                 DateTimeOffset.TryParse(timestampNode.GetString(), out var timestamp) && timestamp <= after.Value)
                 return null;
 
+            var kind = root.TryGetProperty("kind", out var kindNode) ? kindNode.GetString() : null;
+            var context = root.TryGetProperty("context", out var contextNode) && contextNode.ValueKind == JsonValueKind.Object
+                ? contextNode : default;
+            string? Ctx(string key) => context.ValueKind == JsonValueKind.Object
+                && context.TryGetProperty(key, out var node) && node.ValueKind == JsonValueKind.String
+                ? node.GetString() : null;
+            var id = Ctx("invocationId");
+            if (id is not null && !System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-fA-F0-9]{32}$")) id = null;
+            var status = kind switch {
+                "tool-invocation-start" => "running",
+                "tool-call" => "success",
+                "handled-tool-failure" or "tool-exception" => "error",
+                "tool-invocation-interrupted" => "unknown",
+                _ => null
+            };
+            double? duration = context.ValueKind == JsonValueKind.Object &&
+                context.TryGetProperty("durationMs", out var d) && d.ValueKind == JsonValueKind.Number
+                && d.TryGetDouble(out var elapsed) && double.IsFinite(elapsed) && elapsed >= 0 ? elapsed : null;
             return new ActivityEntry(
                 root.GetProperty("id").GetString() ?? Guid.NewGuid().ToString("N"),
                 root.GetProperty("time").GetString() ?? "--:--:--",
                 root.GetProperty("module").GetString() ?? "SYSTEM",
                 root.GetProperty("level").GetString() ?? "info",
-                root.GetProperty("message").GetString() ?? string.Empty);
+                root.GetProperty("message").GetString() ?? string.Empty)
+            {
+                Timestamp = root.TryGetProperty("timestamp", out var stamp) ? stamp.GetString() : null,
+                Kind = kind, InvocationId = id, Tool = Ctx("tool"),
+                Target = Ctx("targetSummary"), Status = status, DurationMs = duration
+            };
         }
         catch
         {
             return null;
         }
     }
+    public ActivityDetailPage ReadDetail(string id, string phase, int offset, DateTimeOffset? after = null)
+    {
+        var cutoff = ReadClearCutoff();
+        if (after.HasValue && after.Value > cutoff) cutoff = after.Value;
+        return ActivityDetailReader.Read(_journalPath, cutoff, id, phase, offset);
+    }
+
     private FileStream? TryAcquireJournalLock()
     {
         for (var attempt = 0; attempt < 40; attempt++)

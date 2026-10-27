@@ -18,19 +18,28 @@ const schema = z.object({
   disclosureAudience: z.string().min(1).max(120).optional(),
 }).strict();
 const deny = () => { throw new Error('ARTIFACT_SCOPE_NOT_AUTHORIZED'); };
-function identity(): { identity: ArtifactIdentity; invocationId: string; context: ExternalInvocationContext; signal?: AbortSignal } {
+function identity(native?: ArtifactIdentity): {
+  identity: ArtifactIdentity; invocationId: string; context?: ExternalInvocationContext;
+  request: NonNullable<ReturnType<typeof currentToolInvocationRequest>>; signal?: AbortSignal;
+} {
   const request = currentToolInvocationRequest();
-  const ctx = request?.invocationContext;
-  if (!request || request.tool !== 'artifact_inspect' || !ctx || ctx.binding !== 'bound' || !ctx.ownerId || !ctx.taskId || !ctx.workspace
+  if (!request || request.tool !== 'artifact_inspect') return deny();
+  if (native) {
+    if (!native.ownerId || !native.taskId || !native.workspace
+      || request.mutationContext.taskId !== native.taskId || request.mutationContext.signal?.aborted) return deny();
+    return { identity: native, invocationId: request.identity.id, request,
+      signal: request.mutationContext.signal };
+  }
+  const ctx = request.invocationContext;
+  if (!ctx || ctx.binding !== 'bound' || !ctx.ownerId || !ctx.taskId || !ctx.workspace
     || ctx.invocationId !== request.identity.id || ctx.processSessionId !== request.identity.processSessionId
-    || request.mutationContext.taskId !== ctx.taskId)
-    return deny();
+    || request.mutationContext.taskId !== ctx.taskId) return deny();
   return { identity: { ownerId: ctx.ownerId, taskId: ctx.taskId, workspace: ctx.workspace },
-    invocationId: request.identity.id, context: ctx, signal: request.mutationContext.signal };
+    invocationId: request.identity.id, context: ctx, request, signal: request.mutationContext.signal };
 }
 export type ArtifactInvocationValidator = (context: ExternalInvocationContext) => Promise<boolean>;
 export function registerArtifactInspectTool(server: McpServer, auth: ArtifactAuthorization,
-  isInvocationCurrent?: ArtifactInvocationValidator) {
+  isInvocationCurrent?: ArtifactInvocationValidator, nativeIdentity?: ArtifactIdentity) {
   const service = new ArtifactInspectionService(auth);
   server.registerTool('artifact_inspect', {
     title: 'Inspect Authorized Artifact',
@@ -39,10 +48,13 @@ export function registerArtifactInspectTool(server: McpServer, auth: ArtifactAut
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
   }, async (raw) => {
     const args = schema.parse(raw);
-    const host = identity();
+    const host = identity(nativeIdentity);
     const assertCurrent = async () => {
       assertReadActive(host.signal);
-      if (!isInvocationCurrent || !await isInvocationCurrent(host.context)) return deny();
+      if (nativeIdentity) {
+        if (currentToolInvocationRequest() !== host.request
+          || host.request.mutationContext.taskId !== nativeIdentity.taskId) return deny();
+      } else if (!host.context || !isInvocationCurrent || !await isInvocationCurrent(host.context)) return deny();
       assertReadActive(host.signal);
     };
     await assertCurrent();

@@ -1,33 +1,27 @@
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { projectBrowserShape, type BrowserShapeProfile, type BrowserShapeKind } from './procedure-context.js';
 import { stageBrowserObservationUse } from '../../tracker/tool-invocation.js';
 import type { ExternalInvocationContext } from '../../learning/external-controller.js';
 import { projectControlStates } from './control-state.js';
 import { CanvasObserver, canvasOptionsSchema, type CanvasOptions } from './canvas-observation.js';
-import { OwnedTabs, listOwnedPageTargets, isPageUrl, type PageTarget } from './owned-tabs.js';
+import { isPageUrl } from './owned-tabs.js';
 import { KeyboardActions, PRESS_KEYS, HOLD_KEYS, HOLD_DURATIONS, validateCapabilities, type InteractionCapability } from './keyboard-actions.js';
 import { redactSensitiveString } from '../../security/redaction.js';
-import { browserExtensionBridge, BrowserExtensionBridge, ExtensionBrowserClient, type BrowserTransport } from './extension-bridge.js';
-import type { BrowserBridgeMode, ConversationAction } from './conversation-contract.js';
-import { OpenBrowserUseTransport } from './open-browser-use.js';
-import { OwnedConversationReader } from './owned-conversation-reader.js';
-import { access, mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { OpenBrowserUseTransport, type BrowserTransport } from './open-browser-use.js';
+import { OwnedConversationReader, type OwnedConversationRead } from './owned-conversation-reader.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolvePortableProjectPath, resolveProjectRoot } from '../../portability/paths.js';
-import { snapshotDescendantPids, terminateOwnedProcessTree } from '../../process/owned-process-tree.js';
+import { resolveProjectRoot } from '../../portability/paths.js';
 
 const MAX_ACTIONS = 60;
 const MAX_OBSERVATIONS = 120;
 const MAX_CANDIDATES = 250;
 const MAX_TEXT_LENGTH = 2000;
-const START_TIMEOUT_MS = 15_000;
 const MODULE_PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const PROJECT_ROOT = resolveProjectRoot(process.env, MODULE_PROJECT_ROOT);
 
-type ActionKind = 'click' | 'fill' | 'select' | 'scroll' | 'wait' | 'switch_tab' | 'press_key' | 'hold_key' | 'back';
-export interface BrowserOpenOptions { interactionCapabilities?: InteractionCapability[]; transport?: 'isolated' | 'extension' | 'open-browser-use'; mode?: BrowserBridgeMode }
+type ActionKind = 'click' | 'fill' | 'select' | 'scroll' | 'wait' | 'press_key' | 'hold_key' | 'back';
+export interface BrowserOpenOptions { interactionCapabilities?: InteractionCapability[]; transport?: 'open-browser-use'; owner?: string }
 export interface BrowserObserveOptions { canvas?: CanvasOptions; host?: ExternalInvocationContext }
 
 interface RawAction {
@@ -93,12 +87,8 @@ function sameBrowserBinding(a?:Readonly<BrowserObservationBinding>, b?:Readonly<
 
 interface BrowserSession {
   id: string;
-  process: ChildProcess | null;
-  runtimeDir: string;
-  profileDir: string;
-  port: number;
+  owner?: string;
   client: BrowserTransport;
-  extension?: ExtensionBrowserClient;
   openBrowserUse?: OpenBrowserUseTransport;
   conversationReader?: OwnedConversationReader;
   initialized?: boolean;
@@ -109,7 +99,6 @@ interface BrowserSession {
   observationCount: number;
   openedAt: string;
   targetId: string;
-  tabs: OwnedTabs;
   canvas: CanvasObserver;
   keyboard: KeyboardActions;
   interactionCapabilities: InteractionCapability[];
@@ -120,117 +109,10 @@ interface BrowserSession {
 interface BrowserControlLimits {
   maxActions?: number;
   maxObservations?: number;
-  extensionBridge?: BrowserExtensionBridge;
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function registryAppPath(executable: string): string | undefined {
-  if (process.platform !== 'win32') return undefined;
-  for (const hive of ['HKLM', 'HKCU']) {
-    try {
-      const output = execFileSync('reg.exe', [
-        'query',
-        `${hive}\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\${executable}`,
-        '/ve',
-      ], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
-      const match = output.match(/REG_SZ\s+(.+)$/m);
-      const candidate = match?.[1]?.trim();
-      if (candidate) return candidate;
-    } catch {
-      // Try the next registry hive.
-    }
-  }
-  return undefined;
-}
-
-function whereExecutable(executable: string): string | undefined {
-  try {
-    const output = execFileSync(
-      process.platform === 'win32' ? 'where.exe' : 'which',
-      [executable],
-      { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] },
-    );
-    return output.split(/\r?\n/).map(value => value.trim()).find(Boolean);
-  } catch {
-    return undefined;
-  }
-}
-
-async function projectLocalBrowserCandidates(): Promise<string[]> {
-  const roots = [
-    {
-      root: path.join(PROJECT_ROOT, 'runtime', 'browser-control', 'headless-shell', 'chrome-headless-shell'),
-      leaf: ['chrome-headless-shell-win64', 'chrome-headless-shell.exe'],
-    },
-    {
-      root: path.join(PROJECT_ROOT, 'runtime', 'browser-control', 'browsers', 'chrome'),
-      leaf: ['chrome-win64', 'chrome.exe'],
-    },
-  ];
-  const candidates: string[] = [];
-  for (const item of roots) {
-    try {
-      const builds = (await readdir(item.root, { withFileTypes: true }))
-        .filter(entry => entry.isDirectory() && entry.name.startsWith('win64-'))
-        .map(entry => entry.name)
-        .sort()
-        .reverse();
-      for (const build of builds) candidates.push(path.join(item.root, build, ...item.leaf));
-    } catch {
-      // Optional project-local browser cache may not exist yet.
-    }
-  }
-  return candidates;
-}
-
-async function resolveBrowserExecutable(headless: boolean): Promise<string> {
-  const explicitBrowser = process.env.AGENT_CORE_BROWSER_EXECUTABLE?.trim();
-  const portableExplicitBrowser = explicitBrowser
-    ? resolvePortableProjectPath(
-      PROJECT_ROOT,
-      explicitBrowser,
-      path.join('runtime', 'browser-control', 'browser.exe'),
-    )
-    : undefined;
-  const candidates = [
-    portableExplicitBrowser,
-    ...await projectLocalBrowserCandidates(),
-    process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    process.env['PROGRAMFILES(X86)'] && path.join(process.env['PROGRAMFILES(X86)']!, 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    registryAppPath('chrome.exe'),
-    whereExecutable('chrome.exe'),
-    process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-    process.env['PROGRAMFILES(X86)'] && path.join(process.env['PROGRAMFILES(X86)']!, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-    registryAppPath('msedge.exe'),
-    whereExecutable('msedge.exe'),
-    whereExecutable('chromium'),
-    whereExecutable('chromium-browser'),
-  ].filter((value): value is string => Boolean(value));
-  let headlessCandidateFound = false;
-  for (const candidate of candidates) {
-    if (!await fileExists(candidate)) continue;
-    if (!headless && path.basename(candidate).toLowerCase().includes('headless-shell')) {
-      if (candidate === portableExplicitBrowser) throw new Error('BROWSER_CONTROL_HEADED_BROWSER_UNAVAILABLE');
-      headlessCandidateFound = true;
-      continue;
-    }
-    return candidate;
-  }
-  if (headlessCandidateFound) throw new Error('BROWSER_CONTROL_HEADED_BROWSER_UNAVAILABLE');
-  throw new Error('BROWSER_CONTROL_EXECUTABLE_NOT_FOUND');
 }
 
 function assertOpenUrl(raw: string): URL {
@@ -246,87 +128,29 @@ function assertOpenUrl(raw: string): URL {
   return url;
 }
 
-class CdpClient {
-  private readonly pending = new Map<number, {
-    resolve: (value: any) => void;
-    reject: (error: Error) => void;
-    timer: ReturnType<typeof setTimeout>;
-  }>();
-  private nextId = 1;
-  private closed = false;
-  onEvent?: (method:string, params:any) => void;
-
-  private constructor(private readonly socket: any) {
-    socket.addEventListener('message', (event: any) => {
-      if (typeof event.data !== 'string') return;
-      let message: any;
-      try {
-        message = JSON.parse(event.data);
-      } catch {
-        return;
-      }
-      if (!message?.id) { if(typeof message?.method==='string')this.onEvent?.(message.method,message.params??{}); return; }
-      const pending = this.pending.get(message.id);
-      if (!pending) return;
-      this.pending.delete(message.id);
-      clearTimeout(pending.timer);
-      if (message.error) pending.reject(new Error(`CDP_${message.error.code}: ${message.error.message}`));
-      else pending.resolve(message.result ?? {});
-    });
-    socket.addEventListener('close', () => {
-      this.closed = true;
-      const error = new Error('BROWSER_CONTROL_CDP_CLOSED');
-      for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(error); }
-      this.pending.clear();
-    });
-  }
-
-  static async connect(url: string): Promise<CdpClient> {
-    const WebSocketImpl = (globalThis as any).WebSocket;
-    if (typeof WebSocketImpl !== 'function') throw new Error('BROWSER_CONTROL_WEBSOCKET_UNAVAILABLE');
-    const socket = new WebSocketImpl(url);
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('BROWSER_CONTROL_CDP_CONNECT_TIMEOUT')), 5_000);
-      socket.addEventListener('open', () => { clearTimeout(timer); resolve(); }, { once: true });
-      socket.addEventListener('error', () => {
-        clearTimeout(timer);
-        reject(new Error('BROWSER_CONTROL_CDP_CONNECT_FAILED'));
-      }, { once: true });
-    });
-    return new CdpClient(socket);
-  }
-
-  async send(method: string, params: Record<string, unknown> = {}): Promise<any> {
-    if(this.closed)throw new Error('BROWSER_CONTROL_CDP_CLOSED');
-    const id = this.nextId++;
-    return await new Promise((resolve, reject) => {
-      const timer=setTimeout(()=>{this.pending.delete(id);reject(new Error('BROWSER_CONTROL_CDP_TIMEOUT'));},10000);
-      this.pending.set(id, { resolve, reject, timer });
-      try {
-        this.socket.send(JSON.stringify({ id, method, params }));
-      } catch (error) {
-        this.pending.delete(id);
-        clearTimeout(timer);
-        reject(error);
-      }
-    });
-  }
-
-  close(): void {
-    try { this.socket.close(); } catch { /* best effort */ }
-  }
-}
-
 const SNAPSHOT_EXPRESSION = String.raw`(panelScrolling => {
   const cache = window.__agentCoreBrowser || (window.__agentCoreBrowser = {
     next: 1, ids: new WeakMap(), nodes: new Map()
   });
+  // Compare exact state in the renderer; large values and guards must not cross the capped wire.
+  cache.keys ||= new Map();
+  cache.epoch ||= [...crypto.getRandomValues(new Uint32Array(4))].join('-');
+  cache.revision ||= 0;
+  cache.key = (name, value) => {
+    const text = JSON.stringify(value), prior = cache.keys.get(name);
+    if (prior?.text === text) return [cache.epoch, prior.revision];
+    const revision = ++cache.revision;
+    cache.keys.set(name, {text, revision});
+    return [cache.epoch, revision];
+  };
   const identity = e => {
     let id = cache.ids.get(e);
     if (!id) { id = cache.next++; cache.ids.set(e, id); cache.nodes.set(id, e); }
     return id;
   };
-  for (const [id, e] of cache.nodes) if (!e.isConnected) cache.nodes.delete(id);
+  for (const [id, e] of cache.nodes) if (!e.isConnected) {
+    cache.nodes.delete(id); cache.keys.delete('guard:'+id);
+  }
   const safe = e => !['password','file','hidden'].includes(String(e.type || '').toLowerCase());
   const visible = e => {
     if (!e || e.closest('[aria-hidden="true"],[inert]')) return false;
@@ -407,22 +231,22 @@ const SNAPSHOT_EXPRESSION = String.raw`(panelScrolling => {
     [...document.querySelectorAll('input,textarea,select')].filter(safe)
       .map(e => [identity(e), e.value, e.checked, e.selectedIndex, e.disabled, e.readOnly])];
     if(panelScrolling)key.push(panels.map(e=>cache.scrollGuard(e)));
-    return key;
+    return cache.key('page', key);
   };
   cache.guard = e => {
     if (!e?.isConnected || !visible(e)) return null;
     const scope = e.closest('form,dialog,[role="dialog"],article,li,tr,[role="row"]') || e.parentElement;
-    return [identity(e), role(e), name(e), e.value ?? null, e.checked ?? null, e.selectedIndex ?? null,
+    return cache.key('guard:'+identity(e), [identity(e), role(e), name(e), e.value ?? null, e.checked ?? null, e.selectedIndex ?? null,
       e.readOnly ?? null, e.matches(':disabled'), e.getAttribute('aria-disabled'),
       e.getAttribute('aria-expanded'), e.getAttribute('aria-checked'), e.getAttribute('aria-selected'),
-      e.getAttribute('href'), scope?.innerText?.slice(0, 6000) || ''];
+      e.getAttribute('href'), scope?.innerText?.slice(0, 6000) || '']);
   };
   cache.focusKey = () => {
     const e=document.activeElement;
     if(!e || e.tagName==='IFRAME' || !safe(e) || !visible(e)) return null;
     return [performance.timeOrigin,location.href,identity(e),role(e),e.getAttribute('type'),
       e.readOnly===true,e.matches(':disabled'),e.getAttribute('aria-disabled'),
-      e.value ?? (e.isContentEditable ? e.innerText.slice(0,2000) : null)];
+      cache.key('focus-value', e.value ?? (e.isContentEditable ? e.innerText.slice(0,2000) : null))];
   };
   const focus_key=cache.focusKey();
   const keyboard_safe=Boolean(focus_key) && ['http:','https:'].includes(location.protocol);
@@ -504,14 +328,20 @@ const SNAPSHOT_EXPRESSION = String.raw`(panelScrolling => {
     if(e.scrollTop>0)scrollActions.push({id:'scroll-'+node+'-up',kind:'scroll',label:'Scroll up in '+label,node,delta:-560,scrollKey});
   }
   const page_key = cache.pageKey(), guards = {};
-  for (const a of actions) if (!(a.node in guards)) guards[a.node] = cache.guard(cache.nodes.get(a.node));
-  const semantics = actions.map(a => ({ ...a }));
-  const marker = [performance.timeOrigin, location.href, scrollX, scrollY, innerWidth, innerHeight,
-    document.title, text, semantics, page_key[6]];
-  if(panelScrolling)marker.push(page_key[7],scrollActions);
+  const marker = cache.key('marker', [performance.timeOrigin, location.href, scrollX, scrollY, innerWidth, innerHeight,
+    document.title, text, actions, page_key, scrollActions]);
   const domLimit=panelScrolling?Math.min(247,249-scrollActions.length):247;
-  const omitted_actions = Math.max(0, actions.length - domLimit);
-  actions.splice(domLimit);
+  const encoder = new TextEncoder();
+  let actionBytes=0, omitted_actions=0;
+  const admitted=actions.filter(a => {
+    const bytes=encoder.encode(JSON.stringify(a)).length;
+    if (actionBytes+bytes>256*1024) { omitted_actions++; return false; }
+    actionBytes+=bytes;
+    return true;
+  });
+  omitted_actions+=Math.max(0,admitted.length-domLimit);
+  actions.splice(0,actions.length,...admitted.slice(0,domLimit));
+  for (const a of actions) if (!(a.node in guards)) guards[a.node] = cache.guard(cache.nodes.get(a.node));
   actions.forEach((a, i) => a.id = 'e' + (i + 1));
   if(panelScrolling)actions.push(...scrollActions);
   else {
@@ -519,7 +349,8 @@ const SNAPSHOT_EXPRESSION = String.raw`(panelScrolling => {
     if (scrollY > 0) actions.push({ id: 'scroll_up', kind: 'scroll', label: 'Scroll up', delta: -560 });
   }
   actions.push({ id: 'wait', kind: 'wait', label: 'Wait briefly for the page to update' });
-  return { url: location.href, title: document.title, text, actions, marker, page_key, guards, omitted_actions, control_states, document_key:[performance.timeOrigin,location.href], focus_key, keyboard_safe };
+  const result={ url: location.href, title: document.title, text, actions, marker, page_key, guards, omitted_actions, control_states, document_key:[performance.timeOrigin,location.href], focus_key, keyboard_safe };
+  return encoder.encode(JSON.stringify(result)).length<=512*1024 ? result : {error:'BROWSER_CONTROL_SNAPSHOT_TOO_LARGE'};
 })`;
 const SNAPSHOT_SCRIPT = SNAPSHOT_EXPRESSION + '(false)';
 const PANEL_SNAPSHOT_SCRIPT = SNAPSHOT_EXPRESSION + '(true)';
@@ -530,37 +361,6 @@ async function runtimeEvaluate(client: BrowserTransport, expression: string, awa
   return response.result?.value;
 }
 
-async function pageTarget(port: number): Promise<PageTarget> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    try {
-      const values = await listOwnedPageTargets(port);
-      const page = values.find(value => value.url==='about:blank'||isPageUrl(value.url));
-      if (page) return page;
-    } catch {
-      // Browser may still be starting.
-    }
-    await sleep(50);
-  }
-  throw new Error('BROWSER_CONTROL_PAGE_TARGET_TIMEOUT');
-}
-
-async function waitForDevToolsPort(profileDir: string, child: ChildProcess): Promise<number> {
-  const portFile = path.join(profileDir, 'DevToolsActivePort');
-  const deadline = Date.now() + START_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error(`BROWSER_CONTROL_BROWSER_EXITED_${child.exitCode}`);
-    try {
-      const first = (await readFile(portFile, 'utf8')).split(/\r?\n/)[0]?.trim();
-      const port = Number(first);
-      if (Number.isInteger(port) && port > 0 && port < 65536) return port;
-    } catch {
-      // File is created asynchronously by Chromium.
-    }
-    await sleep(50);
-  }
-  throw new Error('BROWSER_CONTROL_START_TIMEOUT');
-}
-
 function publicActions(actions: RawAction[]): Array<Record<string, unknown>> {
   return actions.map(action => ({
     id: action.id,
@@ -568,7 +368,6 @@ function publicActions(actions: RawAction[]): Array<Record<string, unknown>> {
       : action.kind === 'select' ? 'SELECT'
       : action.kind === 'scroll' ? 'SCROLL'
       : action.kind === 'wait' ? 'WAIT'
-      : action.kind === 'switch_tab' ? 'SWITCH_TAB'
       : action.kind === 'press_key' ? 'PRESS_KEY'
       : action.kind === 'hold_key' ? 'HOLD_KEY'
       : action.kind === 'back' ? 'BACK' : 'CLICK',
@@ -593,40 +392,44 @@ function comparable(value: unknown): string {
 export class BrowserControlService {
   private readonly sessions = new Map<string, BrowserSession>();
   private openBrowserUseOpening = 0;
+  private openQueue: Promise<unknown> = Promise.resolve();
   private readonly maxActions: number;
   private readonly maxObservations: number;
-  private readonly extensionBridge: BrowserExtensionBridge;
 
   constructor(limits: BrowserControlLimits = {}) {
     this.maxActions = limits.maxActions ?? MAX_ACTIONS;
     this.maxObservations = limits.maxObservations ?? MAX_OBSERVATIONS;
-    this.extensionBridge = limits.extensionBridge ?? browserExtensionBridge;
   }
 
-  async open(urlValue: string, headless = true, options: BrowserOpenOptions = {}): Promise<Record<string, unknown>> {
+  open(urlValue: string, headless = true, options: BrowserOpenOptions = {}): Promise<Record<string, unknown>> {
+    // Serialized so two concurrent opens for one owner cannot each create a tab.
+    return this.serializeOpen(() => this.openOwnedTab(urlValue, headless, options));
+  }
+
+  private serializeOpen<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.openQueue.then(task);
+    this.openQueue = run.catch(() => undefined);
+    return run;
+  }
+
+  private async openOwnedTab(urlValue: string, headless: boolean, options: BrowserOpenOptions): Promise<Record<string, unknown>> {
     const interactionCapabilities=validateCapabilities(options.interactionCapabilities);
     const url = assertOpenUrl(urlValue);
-    if (options.transport === 'extension') {
-      if (options.mode === 'conversation' && interactionCapabilities.length) throw new Error('BROWSER_CONVERSATION_GENERIC_CAPABILITIES_REFUSED');
-      const client = this.extensionBridge.request(url.toString(), options.mode);
-      const session: BrowserSession = {
-        id: client.id, process: null, runtimeDir: '', profileDir: '', port: 0,
-        client, extension: client, headless: false, executable: 'connected-tab',
-        actionCount: 0, observationCount: 0, openedAt: new Date().toISOString(),
-        targetId: 'extension:' + client.id, tabs: new OwnedTabs(), canvas: new CanvasObserver(),
-        keyboard: new KeyboardActions(), interactionCapabilities, actionInFlight: false,
-      };
-      this.bindEvents(session, client);
-      this.sessions.set(session.id, session);
-      return { sessionId: session.id, transport: 'extension', status: 'pairing-required',
-        pairingCode: client.code, pairingExpiresInSeconds: 300, expectedOrigin: url.origin,
-        ...(options.mode === 'conversation' ? { mode: 'conversation', expectedUrl: client.expectedUrl,
-          reviewPolicy: 'popup-only-once-per-draft', observationScope: 'loaded-visible-DOM-window' } : {}),
-        instructions: 'Activate the intended existing HTTP(S) tab, open Agent Core Browser Bridge and enter this one-use code.',
-        pid: null, headless: false, maxActions: this.maxActions, maxObservations: this.maxObservations };
-    }
-    if (options.transport === 'open-browser-use') {
-      if (options.mode !== undefined) throw new Error('BROWSER_OBU_CONVERSATION_MODE_UNSUPPORTED');
+    const transport = options.transport ?? 'open-browser-use';
+    if (transport === 'open-browser-use') {
+      // One owned tab per owner: reuse it, navigating only when the URL differs.
+      const owned = [...this.sessions.values()].find(s => s.openBrowserUse?.usable && s.owner === options.owner);
+      if (owned?.openBrowserUse) {
+        if (owned.actionInFlight) throw new Error('BROWSER_CONTROL_ACTION_IN_FLIGHT');
+        const client = owned.openBrowserUse;
+        if (client.url !== url.toString()) {
+          await client.navigate(url.toString());
+          owned.lastObservation = undefined;
+        }
+        return { sessionId: owned.id, transport: 'open-browser-use', status: 'attached', url: url.toString(),
+          tabId: client.tabId, extensionVersion: client.info.version, headless: false, background: client.background, pid: null,
+          scope: 'task-created-tab', reused: true, maxActions: this.maxActions, maxObservations: this.maxObservations };
+      }
       if (this.openBrowserUseOpening + [...this.sessions.values()].filter(s => s.openBrowserUse).length >= 4) throw new Error('BROWSER_OBU_SESSION_LIMIT');
       this.openBrowserUseOpening++;
       try {
@@ -635,10 +438,10 @@ export class BrowserControlService {
       // in an already connected extension, without foreground activation or fallback launch.
       const client = await OpenBrowserUseTransport.connect(PROJECT_ROOT, id, undefined, headless);
       const session: BrowserSession = {
-        id, process: null, runtimeDir: '', profileDir: '', port: 0, client, openBrowserUse: client,
+        id, owner: options.owner, client, openBrowserUse: client,
         headless: false, executable: 'open-browser-use', initialized: true,
         actionCount: 0, observationCount: 0, openedAt: new Date().toISOString(),
-        targetId: '', tabs: new OwnedTabs(), canvas: new CanvasObserver(), keyboard: new KeyboardActions(),
+        targetId: '', canvas: new CanvasObserver(), keyboard: new KeyboardActions(),
         interactionCapabilities, actionInFlight: false,
       };
       this.bindEvents(session, client);
@@ -657,73 +460,7 @@ export class BrowserControlService {
       }
       } finally { this.openBrowserUseOpening--; }
     }
-    const executable = await resolveBrowserExecutable(headless);
-    const id = randomUUID();
-    const runtimeDir = path.join(PROJECT_ROOT, 'runtime', 'rdc', 'browser-control', id);
-    const profileDir = path.join(runtimeDir, 'profile');
-    const headlessOnly = path.basename(executable).toLowerCase().includes('headless-shell');
-    if (!headless && headlessOnly) throw new Error('BROWSER_CONTROL_HEADED_BROWSER_UNAVAILABLE');
-    await mkdir(profileDir, { recursive: true });
-    const args = [
-      '--remote-debugging-port=0',
-      `--user-data-dir=${profileDir}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--disable-features=Translate,OptimizationHints',
-      '--window-size=1120,780',
-      ...(headless && !headlessOnly ? ['--headless=new', '--disable-gpu'] : []),
-      ...(headlessOnly ? ['--disable-gpu'] : []),
-      'about:blank',
-    ];
-    const child = spawn(executable, args, {
-      stdio: 'ignore',
-      windowsHide: headless,
-    });
-    let client: CdpClient | undefined;
-    try {
-      const port = await waitForDevToolsPort(profileDir, child);
-      const target = await pageTarget(port);
-      client = await CdpClient.connect(target.webSocketDebuggerUrl);
-      await client.send('Page.enable');
-      await client.send('Runtime.enable');
-      const navigation=await client.send('Page.navigate', { url: url.toString() });
-      if(navigation.errorText)throw new Error('BROWSER_CONTROL_NAVIGATION_FAILED');
-      const deadline = Date.now() + START_TIMEOUT_MS;
-      let documentReady=false;
-      while (Date.now() < deadline) {
-        try {
-          const state = await runtimeEvaluate(client, '({ready:document.readyState,url:location.href})');
-          if (isPageUrl(state?.url) && (state.ready === 'complete' || state.ready === 'interactive')) {documentReady=true;break;}
-        } catch { /* navigation in progress */ }
-        await sleep(50);
-      }
-      if(!documentReady)throw new Error('BROWSER_CONTROL_NAVIGATION_NOT_READY');
-      const session: BrowserSession = {
-        id, process: child, runtimeDir, profileDir, port, client, headless,
-        executable, actionCount: 0, observationCount: 0, openedAt: new Date().toISOString(),
-        targetId:target.id, tabs:new OwnedTabs(), canvas:new CanvasObserver(), keyboard:new KeyboardActions(),
-        interactionCapabilities, actionInFlight:false,
-      };
-      this.bindEvents(session,client);
-      this.sessions.set(id, session);
-      child.once('exit', () => {
-        if (this.sessions.get(id)?.process === child) this.sessions.delete(id);
-      });
-      return {
-        sessionId: id,
-        url: url.toString(),
-        headless,
-        pid: child.pid ?? null,
-        browser: path.basename(executable),
-        maxActions: this.maxActions,
-        maxObservations: this.maxObservations,
-      };
-    } catch (error) {
-      client?.close();
-      try { child.kill(); } catch { /* best effort */ }
-      await rm(runtimeDir, { recursive: true, force: true }).catch(() => undefined);
-      throw error;
-    }
+    throw new Error('BROWSER_CONTROL_TRANSPORT_UNSUPPORTED');
   }
 
   private bindEvents(session:BrowserSession,client:BrowserTransport):void {
@@ -737,25 +474,11 @@ export class BrowserControlService {
     const session = this.sessions.get(id);
     if (!session) throw new Error('BROWSER_CONTROL_SESSION_NOT_FOUND');
     if (session.openBrowserUse?.closed) { session.openBrowserUse.close(); throw new Error('BROWSER_CONTROL_SESSION_CLOSED'); }
-    if (session.extension) {
-      if (session.extension.expired()) session.extension.close();
-      if (session.extension.state !== 'attached') throw new Error(session.extension.state === 'closed'
-        ? 'BROWSER_CONTROL_SESSION_CLOSED' : 'BROWSER_BRIDGE_PAIRING_PENDING');
-    }
-    if (session.process && session.process.exitCode !== null) {
-      this.sessions.delete(id);
-      throw new Error('BROWSER_CONTROL_SESSION_CLOSED');
-    }
     return session;
   }
 
   async observe(sessionId: string, options: BrowserObserveOptions = {}): Promise<Record<string, unknown>> {
     const session = this.session(sessionId);
-    if (session.extension && !session.initialized) {
-      await session.client.send('Page.enable');
-      await session.client.send('Runtime.enable');
-      session.initialized = true;
-    }
     const canvasOptions=options.canvas===undefined?undefined:canvasOptionsSchema.parse(options.canvas);
     if (session.observationCount >= this.maxObservations) throw new Error('BROWSER_CONTROL_OBSERVATION_BUDGET_EXCEEDED');
     if (session.actionInFlight) throw new Error('BROWSER_CONTROL_ACTION_IN_FLIGHT');
@@ -765,20 +488,13 @@ export class BrowserControlService {
         remainingObservations:this.maxObservations-session.observationCount};
     }
     const page = await runtimeEvaluate(session.client, session.openBrowserUse ? PANEL_SNAPSHOT_SCRIPT : SNAPSHOT_SCRIPT) as RawPage;
+    if ((page as any)?.error === 'BROWSER_CONTROL_SNAPSHOT_TOO_LARGE') throw new Error('BROWSER_CONTROL_SNAPSHOT_TOO_LARGE');
     if (!page || !Array.isArray(page.actions)) throw new Error('BROWSER_CONTROL_OBSERVATION_INVALID');
     if (!isPageUrl(page.url)) throw new Error('BROWSER_CONTROL_URL_SCHEME_REFUSED');
     if (page.actions.length > MAX_CANDIDATES) throw new Error('BROWSER_CONTROL_CANDIDATE_BUDGET_EXCEEDED');
-    const extras:RawAction[]=[];let tabs:any;
-    if (session.extension || session.openBrowserUse) {
-      tabs = { state: 'available', scope: session.openBrowserUse ? 'task-created-tab' : 'user-connected-tab', items: [{ id: session.targetId, active: true,
-        title: redactSensitiveString(page.title).slice(0,200), url: redactSensitiveString(page.url).slice(0,4000) }] };
-    } else try {
-      const listed=await session.tabs.inventory(session.port,session.targetId);tabs=listed.public;
-      for(const entry of listed.entries)if(!entry.active&&!entry.pending)extras.push({
-        id:'tab-'+entry.id,kind:'switch_tab',label:'Switch tab: '+redactSensitiveString(entry.target.title).slice(0,200),
-        targetId:entry.target.id,targetUrl:entry.target.url,tabId:entry.id,
-      });
-    }catch{tabs={state:'unavailable',items:[],reason:'owned-target-list-unavailable'};}
+    const extras:RawAction[]=[];
+    const tabs = { state: 'available', scope: session.openBrowserUse ? 'task-created-tab' : 'user-connected-tab', items: [{ id: session.targetId, active: true,
+      title: redactSensitiveString(page.title).slice(0,200), url: redactSensitiveString(page.url).slice(0,4000) }] };
     let history:any={state:'disabled'};
     if(session.interactionCapabilities.includes('history')) {
       try {
@@ -804,7 +520,7 @@ export class BrowserControlService {
     const selectedExtras=extras.slice(0,extraLimit);
     const selectedDom=dom.slice(0,MAX_CANDIDATES-fixed.length-selectedExtras.length);
     const omittedByCategory={dom:page.omitted_actions+dom.length-selectedDom.length,
-      tabs:tabs.omitted??0,additionalActions:extras.length-selectedExtras.length};
+      tabs:0,additionalActions:extras.length-selectedExtras.length};
     page.actions=[...selectedDom,...fixed,...selectedExtras];
     const observedBinding = browserBinding(options.host);
     const observation: Observation = { id: randomUUID(), page, targetId:session.targetId,
@@ -910,20 +626,20 @@ export class BrowserControlService {
       // Focus handlers may mutate the document while the owned target is activated.
       await this.assertFresh(session, observation, action);
     }
-    if(action.kind==='switch_tab'){
-      const target=await session.tabs.resolve(session.port,action.targetId!,action.targetUrl!);
-      const next=await CdpClient.connect(target.webSocketDebuggerUrl);
-      try {
-        await next.send('Page.enable');await next.send('Runtime.enable');
-        if(await runtimeEvaluate(next,'location.href')!==action.targetUrl)throw new Error('BROWSER_CONTROL_TAB_CHANGED');
-        session.actionCount++;
-        await next.send('Page.bringToFront');
-      }catch(error){next.close();throw error;}
-      session.client.close();session.client=next;session.targetId=target.id;session.canvas.clear();session.dialog=undefined;
-      this.bindEvents(session,next);
-    }else if(action.kind==='press_key'||action.kind==='hold_key'){
+    if(action.kind==='press_key'||action.kind==='hold_key'){
       session.actionCount++;
-      await session.keyboard.execute(session.client,action.key!,action.kind==='hold_key'?action.durationMs!:0);
+      const background = session.openBrowserUse?.background;
+      if (background) {
+        // CDP focus emulation delivers keys to the owned hidden tab without OS activation.
+        await session.client.send('Emulation.setFocusEmulationEnabled', {enabled:true});
+      }
+      try {
+        if (background) await this.assertFresh(session, observation, action);
+        await session.keyboard.execute(session.client,action.key!,action.kind==='hold_key'?action.durationMs!:0);
+      } finally {
+        if (background && !session.openBrowserUse?.closed)
+          await session.client.send('Emulation.setFocusEmulationEnabled', {enabled:false});
+      }
     }else if(action.kind==='back'){
       const h=await session.client.send('Page.getNavigationHistory'),current=h.entries?.[h.currentIndex],prior=h.entries?.[h.currentIndex-1];
       if(!action.history||current?.id!==action.history.currentId||prior?.id!==action.history.entryId||prior?.url!==action.history.url||!isPageUrl(prior.url))throw new Error('BROWSER_CONTROL_HISTORY_CHANGED');
@@ -1059,7 +775,7 @@ export class BrowserControlService {
     const bound = browserBinding(host);
     if (!bound) return {status:'unknown',reason:'host-task-unbound'};
     const session = this.sessions.get(selector.sessionId);
-    if (!session || session.openBrowserUse?.closed || session.extension?.expired() || (session.process && session.process.exitCode !== null))
+    if (!session || session.openBrowserUse?.closed)
       return {status:'unknown',reason:'session-unavailable'};
     if (session.actionInFlight || session.dialog)
       return {status:'unknown',reason:'observation-in-flight-or-dialog'};
@@ -1072,28 +788,22 @@ export class BrowserControlService {
       freshness:'last-observed-not-revalidated'};
   }
 
-  async conversation(sessionId: string, action: ConversationAction, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  async conversation(sessionId: string, params: { read?: OwnedConversationRead } = {}): Promise<Record<string, unknown>> {
     const session = this.sessions.get(sessionId);
     if(!session)throw new Error('BROWSER_CONTROL_SESSION_NOT_FOUND');
-    if(session.openBrowserUse) {
-      this.session(sessionId);
-      if(action!=='conversation_read')throw new Error('BROWSER_OBU_CONVERSATION_READ_ONLY');
-      if(params.sinceRevision!==undefined)throw new Error('BROWSER_OBU_CONVERSATION_USE_READ_SELECTOR');
-      if(session.actionInFlight)throw new Error('BROWSER_CONTROL_ACTION_IN_FLIGHT');
-      if(session.dialog)throw new Error('BROWSER_CONTROL_DIALOG_BLOCKED');
-      if(session.observationCount>=this.maxObservations)throw new Error('BROWSER_CONTROL_OBSERVATION_BUDGET_EXCEEDED');
-      session.actionInFlight=true;
-      session.observationCount++;
-      try {
-        session.conversationReader??=new OwnedConversationReader((expression,awaitPromise)=>runtimeEvaluate(session.client,expression,awaitPromise));
-        const value=await session.conversationReader.read(params.read as Parameters<OwnedConversationReader['read']>[0]);
-        return {sessionId,transport:'open-browser-use',background:session.openBrowserUse.background,...value,
-          observationCount:session.observationCount,remainingObservations:this.maxObservations-session.observationCount};
-      }finally{session.actionInFlight=false;}
-    }
-    if (!session.extension) throw new Error('BROWSER_CONVERSATION_EXTENSION_REQUIRED');
-    if(params.read!==undefined)throw new Error('BROWSER_CONVERSATION_PAGED_READ_REQUIRES_OBU');
-    return { sessionId, ...(await session.extension.conversation(action, params)) };
+    if(!session.openBrowserUse) throw new Error('BROWSER_CONTROL_TRANSPORT_UNSUPPORTED');
+    this.session(sessionId);
+    if(session.actionInFlight)throw new Error('BROWSER_CONTROL_ACTION_IN_FLIGHT');
+    if(session.dialog)throw new Error('BROWSER_CONTROL_DIALOG_BLOCKED');
+    if(session.observationCount>=this.maxObservations)throw new Error('BROWSER_CONTROL_OBSERVATION_BUDGET_EXCEEDED');
+    session.actionInFlight=true;
+    session.observationCount++;
+    try {
+      session.conversationReader??=new OwnedConversationReader((expression,awaitPromise)=>runtimeEvaluate(session.client,expression,awaitPromise));
+      const value=await session.conversationReader.read(params.read);
+      return {sessionId,transport:'open-browser-use',background:session.openBrowserUse.background,...value,
+        observationCount:session.observationCount,remainingObservations:this.maxObservations-session.observationCount};
+    }finally{session.actionInFlight=false;}
   }
 
   async close(sessionId: string): Promise<Record<string, unknown>> {
@@ -1105,31 +815,8 @@ export class BrowserControlService {
     let inputRelease: string = 'confirmed';
     await session.keyboard.close().catch(()=>{inputRelease='uncertain';});
     if (session.openBrowserUse) return { sessionId, closed: true, inputRelease, ...(await session.openBrowserUse.dispose()) };
-    if (session.extension) {
-      const detached = await session.extension.detach();
-      return { sessionId, closed: true, inputRelease, detach: detached, tabRetained: true, browserRetained: true };
-    }
     session.client.close();
 
-    const child = session.process!;
-    const pid = child.pid;
-    if (pid && Number.isSafeInteger(pid) && pid > 0) {
-      const descendants = await snapshotDescendantPids(pid).catch(() => []);
-      await terminateOwnedProcessTree(pid, descendants, true).catch(() => {
-        try { child.kill(); } catch { /* best effort fallback */ }
-      });
-    } else {
-      try { child.kill(); } catch { /* best effort */ }
-    }
-
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      try {
-        await rm(session.runtimeDir, { recursive: true, force: true });
-        break;
-      } catch {
-        await sleep(50);
-      }
-    }
     return { sessionId, closed: true, inputRelease };
   }
 
@@ -1141,30 +828,26 @@ export class BrowserControlService {
         await this.close(id);
         closed += 1;
       } catch {
-        const session = this.sessions.get(id);
         this.sessions.delete(id);
-        if (session?.process?.pid) {
-          const descendants = await snapshotDescendantPids(session.process.pid).catch(() => []);
-          await terminateOwnedProcessTree(session.process.pid, descendants, true).catch(() => undefined);
-        }
       }
     }
     return { requested: ids.length, closed, remaining: this.sessions.size };
   }
 
-  isOpenBrowserUseSession(sessionId: string): boolean { return Boolean(this.sessions.get(sessionId)?.openBrowserUse); }
+  assertOwner(sessionId: string, owner?: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.owner !== owner) throw new Error('BROWSER_CONTROL_SESSION_NOT_FOUND');
+  }
 
-  status(includeOpenBrowserUse = true): Record<string, unknown> {
+  status(owner?: string): Record<string, unknown> {
     return {
-      sessions: [...this.sessions.values()].filter(session => includeOpenBrowserUse || !session.openBrowserUse).map(session => ({
+      sessions: [...this.sessions.values()].filter(session => owner === undefined || session.owner === owner).map(session => ({
         sessionId: session.id,
-        pid: session.process?.pid ?? null,
-        transport: session.openBrowserUse ? 'open-browser-use' : session.extension ? 'extension' : 'isolated',
+        pid: null,
+        transport: 'open-browser-use',
         ...(session.openBrowserUse ? { state: session.openBrowserUse.closed ? 'closed' : 'attached',
           tabId: session.openBrowserUse.tabId, extensionVersion: session.openBrowserUse.info.version,
           background: session.openBrowserUse.background } : {}),
-        ...(session.extension ? { state: session.extension.state,
-          ...(session.extension.mode === 'conversation' ? { mode: 'conversation', modeConfirmed: session.extension.modeConfirmed } : {}) } : {}),
         headless: session.headless,
         browser: path.basename(session.executable),
         actionCount: session.actionCount,

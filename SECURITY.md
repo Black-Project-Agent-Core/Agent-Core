@@ -12,7 +12,7 @@ Include the affected Agent Core version, subsystem, reproduction conditions, imp
 
 Agent Core is a local machine bridge, not an autonomous agent framework.
 
-The listener is loopback-bound by default. Remote ChatGPT access uses the existing authenticated MCP tunnel rather than exposing the local port directly.
+The listener is loopback-bound by default. Remote ChatGPT access uses the existing authenticated MCP tunnel rather than exposing the local port directly. A Cloudflare named tunnel is the supported second public path (`docs/Cloudflare-Tunnel.md`); only `/mcp` and the OAuth routes may be published on it, because tunnel traffic appears as loopback to the listener.
 
 API-key hashes and OAuth state are stored in the effective Agent Core data directory (default `runtime/bridge-auth`, override `AGENT_CORE_DATA_DIR`); raw secrets must not be committed or printed. The MCP endpoint requires a valid Agent Core API key or OAuth access token.
 
@@ -24,7 +24,7 @@ Filesystem access follows the Agent Core machine-control `allowedDirectories` co
 
 External MCP access requires valid authentication, the credential's effective tool grants, and a current `controller_contract` acknowledgement before ordinary tools run. Existing filesystem/process controls and task/workspace-bound Memory and Learning admission remain enforced by their owners. Memory and Learning retain scoped knowledge and continuity; they do not grant machine-control permissions.
 
-The `src/memory` owner resolves canonical Memory through the validated activation under `<PROJECT_ROOT>/runtime/memory`. Fresh initialization, migration and recovery must use that owner's documented workflow. Native-specific development is frozen under repository governance; that freeze is not an operating-system sandbox or proof of controller compliance.
+The `src/memory` owner resolves canonical Memory through the validated activation under `<PROJECT_ROOT>/runtime/memory`. Fresh initialization, migration and recovery must use that owner's documented workflow. Native and external development use the same authenticated, task-scoped authority and protected-path requirements; development status is not an operating-system sandbox or proof of controller compliance.
 
 The Agent Core machine-control layer under `src/rdc` is vendored RDC-derived code and has upstream cloud telemetry disabled. External Remote Desktop Commander—including its hosted remote-device service, Device ID/session/channel state, launcher checks, and external profile—is a separate operator tool and is not an Agent Core subsystem.
 

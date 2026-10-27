@@ -6,14 +6,24 @@ import {
   AgentProviderRequestError,
   classifyAgentProviderFailure,
   observeProviderResponse,
+  type AgentProviderFailureClass,
+  type AgentProviderFailureScope,
   type AgentProviderResponseObservation,
 } from './agent-provider-errors.js';
 import {
   PersistentCredentialScheduler,
+  type ProviderRouteStatus,
   type ProviderSchedulerCredential,
+  type ProviderSelectionDiagnostics,
+  type ProviderSkipReason,
 } from './agent-provider-scheduler.js';
 import type { AgentCapabilityFamily } from './agent-capability-catalog.js';
 import type { AgentCapabilityPolicyMode } from './agent-capability-resolver.js';
+import { MODEL_CONTEXT_INSUFFICIENT_FOR_REQUEST, ProviderModelReadinessService } from './agent-provider-readiness.js';
+import type { ProviderModelReadiness } from './agent-provider-state.js';
+import {
+  accountContext, completionCap, contextBytes, contextRefusal, type ContextAccounting, type ObservedContextUsage,
+} from './agent-context-accounting.js';
 
 export interface AgentProviderCredentialConfig {
   id: string;
@@ -83,7 +93,11 @@ export interface AgentModelResponse {
   toolCalls: AgentModelToolCall[];
   finishReason: string | null;
   providerId?: string;
+  /** Requested model/alias used for continuation; resolvedModel comes from the response. */
   model?: string;
+  resolvedModel?: string | null;
+  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number; costUsd?: number };
+  elapsedMs?: number;
 }
 
 export interface AgentProviderRouteHealth {
@@ -99,6 +113,7 @@ export interface AgentProviderRouteHealth {
   breakerState?: 'CLOSED' | 'OPEN' | 'HALF_OPEN';
   nextAvailableAt?: string;
   issue?: string;
+  modelReadiness?: { ready: number; pending: number; unavailable: number; models: string[] };
 }
 
 export interface AgentProviderHealth {
@@ -133,7 +148,75 @@ export interface AgentProviderContinuationRequirement {
   toolCallFormat: 'openai-chat-tool-calls-v1';
 }
 
+/** How this attempt relates to the persisted sticky cursor. */
+export type AgentProviderRouteTransition = 'initial' | 'keep' | 'sibling-key' | 'provider-switch';
+export interface AgentProviderRoutingKey {
+  providerId: string;
+  /** Configured credential alias (for example openrouter:02); never the secret. */
+  credentialId: string;
+  model: string | null;
+}
+export interface AgentProviderRoutingRoute {
+  providerId: string;
+  configured: number;
+  eligible: number;
+  skipped: ProviderSelectionDiagnostics['skipped'];
+  status: ProviderRouteStatus;
+  /** Network attempts made against this route in the current window. */
+  attempts: number;
+}
+/**
+ * Secret-free routing evidence. Every attempt ends in exactly one of success, failure or
+ * skip; a window that cannot continue ends in paused with fresh per-route eligibility.
+ */
+export type AgentProviderRoutingEvent =
+  | {
+      type: 'attempt';
+      attempt: number;
+      attemptLimit: number;
+      transition: AgentProviderRouteTransition;
+      cause: AgentProviderFailureClass | null;
+      from: { providerId: string; credentialId: string } | null;
+      to: AgentProviderRoutingKey;
+      selection: ProviderSelectionDiagnostics;
+      left?: {
+        providerId: string;
+        reason: 'siblings-unavailable' | 'provider-open' | 'model-scope';
+        diagnostics: ProviderSelectionDiagnostics | null;
+      };
+    }
+  | {
+      type: 'failure';
+      attempt: number;
+      key: AgentProviderRoutingKey;
+      failureClass: AgentProviderFailureClass;
+      scope: AgentProviderFailureScope;
+      httpStatus: number | null;
+      retryAtMs: number | null;
+      failover: boolean;
+    }
+  | { type: 'success'; attempt: number; key: AgentProviderRoutingKey }
+  | {
+      type: 'skip';
+      attempt: number;
+      key: AgentProviderRoutingKey;
+      reason: 'readiness' | 'context' | 'model-replaced';
+    }
+  | {
+      type: 'paused';
+      reason: 'attempt-budget' | 'unavailable' | 'contention';
+      retryAtMs: number | null;
+      attempt: number;
+      attemptLimit: number;
+      routes: AgentProviderRoutingRoute[];
+    };
+
 export interface AgentProviderCompletionOptions {
+  /**
+   * User-chosen route. Only this route is used: it is never rotated away from on failure, so an
+   * unavailable choice pauses the turn instead of silently answering from another model.
+   */
+  routeId?: string;
   continuation?: AgentProviderContinuationRequirement;
   attemptLimit?: number;
   onAttempt?: (observation: {
@@ -141,6 +224,19 @@ export interface AgentProviderCompletionOptions {
     model: string | null;
     attempt: number;
   }) => void | Promise<void>;
+  /** Observability only: a throwing sink never changes routing. */
+  onRouting?: (event: AgentProviderRoutingEvent) => void | Promise<void>;
+}
+
+export class AgentProviderPoolPausedError extends Error {
+  constructor(
+    readonly reason: 'attempt-budget' | 'unavailable' | 'contention',
+    readonly retryAtMs: number | null,
+    detail = '',
+  ) {
+    super(`AGENT_RUNTIME_CONTINUATION_PROVIDER_WAIT:${reason}${detail ? ': ' + detail : ''}`);
+    this.name = 'AgentProviderPoolPausedError';
+  }
 }
 const MAX_PROVIDER_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_PROVIDER_POOL_ATTEMPTS = 18;
@@ -217,7 +313,9 @@ export class OpenAICompatibleProvider {
     messages: AgentModelMessage[],
     tools: AgentModelTool[] = [],
     signal?: AbortSignal,
+    probeMaxTokens?: number,
   ): Promise<AgentModelResponse> {
+    const startedAt = performance.now();
     const health = this.health();
     if (!health.configured || !this.config.model) {
       throw new Error(health.issue ?? 'AGENT_RUNTIME_PROVIDER_NOT_CONFIGURED');
@@ -232,6 +330,7 @@ export class OpenAICompatibleProvider {
         messages,
         ...(tools.length ? { tools, tool_choice: 'auto' } : {}),
         stream: false,
+        ...(probeMaxTokens ? { max_tokens: probeMaxTokens } : {}),
       }),
       ...(signal ? { signal } : {}),
     }, {
@@ -279,12 +378,24 @@ export class OpenAICompatibleProvider {
     const content = message.content === null || message.content === undefined
       ? null
       : String(message.content).slice(0, 200_000);
+    const reportedModel = typeof payload.model === 'string' ? payload.model.trim() : '';
     return {
       content,
       toolCalls,
+      model: this.config.model,
+      resolvedModel: reportedModel && reportedModel !== 'openrouter/free'
+        && reportedModel.length <= 240 && !/[\u0000-\u001f\u007f]/.test(reportedModel)
+        ? reportedModel : null,
       finishReason: choice?.finish_reason === undefined || choice.finish_reason === null
         ? null
         : String(choice.finish_reason).slice(0, 100),
+      elapsedMs: Math.max(0, performance.now() - startedAt),
+      ...(payload.usage && typeof payload.usage === 'object' ? { usage: {
+        ...(Number.isFinite(payload.usage.prompt_tokens) && payload.usage.prompt_tokens >= 0 ? { inputTokens: payload.usage.prompt_tokens } : {}),
+        ...(Number.isFinite(payload.usage.completion_tokens) && payload.usage.completion_tokens >= 0 ? { outputTokens: payload.usage.completion_tokens } : {}),
+        ...(Number.isFinite(payload.usage.total_tokens) && payload.usage.total_tokens >= 0 ? { totalTokens: payload.usage.total_tokens } : {}),
+        ...(Number.isFinite(payload.usage.cost) && payload.usage.cost >= 0 ? { costUsd: payload.usage.cost } : {}),
+      } } : {}),
     };
   }
 }
@@ -410,7 +521,11 @@ function isoOrUndefined(ms: number | null): string | undefined {
 export class OpenAICompatibleProviderPool {
   private readonly routes: NormalizedProviderRoute[];
   private readonly affinity = new Map<string, string>();
+  /** Last provider-reported input tokens per route/model. shortcut: in-memory, lost on restart; persist if cold-start estimates matter. */
+  private readonly observedInput = new Map<string, ObservedContextUsage>();
   private readonly scheduler: PersistentCredentialScheduler;
+  private readonly readiness: ProviderModelReadinessService;
+  private readinessPreparation?: Promise<void>;
 
   constructor(
     readonly config: AgentProviderConfig,
@@ -418,6 +533,39 @@ export class OpenAICompatibleProviderPool {
   ) {
     this.routes = configuredRoutes(config);
     this.scheduler = new PersistentCredentialScheduler(providerStatePath);
+    this.readiness = new ProviderModelReadinessService(this.scheduler.state, config.requestTimeoutMs);
+  }
+
+  private validateModel(route: NormalizedProviderRoute, credential: { id: string; secret: string }, signal?: AbortSignal, minimumContextTokens?: number): Promise<ProviderModelReadiness> {
+    return this.readiness.ensure(route, credential, async (model, messages, tools, probeSignal) => {
+      const provider = new OpenAICompatibleProvider({ ...this.config, baseUrl: route.baseUrl, model, apiKey: credential.secret }, observation => {
+        this.scheduler.recordObservation({ providerId: route.id, credentialId: credential.id, model, observation });
+      });
+      return provider.complete(messages, tools, probeSignal, 1_024);
+    }, signal, minimumContextTokens);
+  }
+
+  /** Configuration onboarding never selects a task cursor or creates another state owner. */
+  prepareReadiness(): Promise<void> {
+    if (this.readinessPreparation) return this.readinessPreparation;
+    const work = this.prepareConfiguredModels().finally(() => { this.readinessPreparation = undefined; });
+    this.readinessPreparation = work;
+    return work;
+  }
+
+  private async prepareConfiguredModels(): Promise<void> {
+    if (!this.config.enabled) return;
+    const work = this.routes.flatMap(route => endpointHealth(route).configured
+      ? route.credentials.filter(credential => credential.secret).map(credential => ({ route, credential })) : []);
+    let index = 0;
+    const results = await Promise.allSettled(Array.from({ length: Math.min(2, work.length) }, async () => {
+      while (index < work.length) {
+        const item = work[index++]!;
+        await this.validateModel(item.route, item.credential);
+      }
+    }));
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure) throw failure.reason;
   }
 
   health(): AgentProviderHealth {
@@ -435,6 +583,8 @@ export class OpenAICompatibleProviderPool {
       const base = endpointHealth(route);
       if (!base.configured) return base;
       const operational = this.scheduler.health(route.id, route.credentials);
+      const readiness = this.readiness.readForHealth(route, route.credentials.filter(credential => credential.secret))
+        .map(metadata => metadata && metadata.retryAtMs > Date.now() ? metadata : null);
       return {
         ...base,
         activeKeyCount: route.keyCount > 0 ? operational.activeCount : 0,
@@ -442,6 +592,12 @@ export class OpenAICompatibleProviderPool {
         quotaBlockedKeyCount: route.keyCount > 0 ? operational.quotaBlockedCount : 0,
         invalidKeyCount: route.keyCount > 0 ? operational.invalidCount : 0,
         breakerState: operational.breakerState,
+        modelReadiness: {
+          ready: readiness.filter(item => item?.status === 'ready').length,
+          pending: readiness.filter(item => !item || item.status === 'pending').length,
+          unavailable: readiness.filter(item => item?.status === 'unavailable').length,
+          models: [...new Set(readiness.filter(item => item?.status === 'ready').map(item => item!.model!))].slice(0, 12),
+        },
         ...(isoOrUndefined(operational.nextAvailableAtMs)
           ? { nextAvailableAt: isoOrUndefined(operational.nextAvailableAtMs)! }
           : {}),
@@ -449,7 +605,10 @@ export class OpenAICompatibleProviderPool {
       };
     });
     const endpointConfigured = routes.filter(route => route.configured);
-    const operationalIssue = routes.find(route => route.issue?.startsWith('AGENT_RUNTIME_PROVIDER_STATE_'))?.issue;
+    const operationalIssue = this.scheduler.issue()
+      ?? routes.find(route => route.issue?.startsWith('AGENT_RUNTIME_PROVIDER_STATE_'))?.issue;
+    const readinessPending = endpointConfigured.length > 0 && !this.routes.some(route => route.keyCount === 0)
+      && !routes.some(route => 'modelReadiness' in route && route.modelReadiness?.ready);
     return {
       provider: 'openai-compatible',
       configured: endpointConfigured.length > 0,
@@ -460,10 +619,30 @@ export class OpenAICompatibleProviderPool {
       routes,
       ...(operationalIssue
         ? { issue: operationalIssue }
+        : readinessPending ? { issue: 'AGENT_RUNTIME_MODEL_READINESS_PENDING' }
         : endpointConfigured.length === 0
           ? { issue: 'AGENT_RUNTIME_PROVIDER_CONFIGURATION_INCOMPLETE' }
           : {}),
     };
+  }
+
+  /**
+   * Context window the pool knows for a route: the configured contract, else the lowest window a credential
+   * of that route was qualified with. Without a route, the lowest known across routes. Null when nothing is known.
+   */
+  knownContextWindow(providerId?: string): number | null {
+    const id = providerId ? normalizeProviderId(providerId) : undefined;
+    const windows: number[] = [];
+    for (const route of this.routes) {
+      if (id && route.id !== id) continue;
+      const qualified = route.credentials.flatMap(credential => {
+        const ready = credential.secret ? this.readiness.read(route, credential) : null;
+        return ready?.status === 'ready' && ready.contextWindowTokens ? [ready.contextWindowTokens] : [];
+      });
+      const known = route.continuation?.contextWindowTokens ?? (qualified.length ? Math.min(...qualified) : undefined);
+      if (known) windows.push(known);
+    }
+    return windows.length ? Math.min(...windows) : null;
   }
 
   releaseAffinity(affinityKey: string): void {
@@ -485,8 +664,7 @@ export class OpenAICompatibleProviderPool {
     route: NormalizedProviderRoute,
     requirement: AgentProviderContinuationRequirement,
   ): boolean {
-    if (route.model !== requirement.model) return false;
-    if (route.id === requirement.sourceProviderId) return true;
+    if (route.model === requirement.model && route.id === requirement.sourceProviderId) return true;
     const contract = route.continuation;
     if (!contract || contract.supportsTools !== true) return false;
     if (!contract.modalities.includes('text')) return false;
@@ -501,12 +679,15 @@ export class OpenAICompatibleProviderPool {
   private orderedRoutes(
     affinityKey?: string,
     continuation?: AgentProviderContinuationRequirement,
+    activeProviderId?: string,
+    pinnedRouteId?: string,
   ): NormalizedProviderRoute[] {
     const available = this.routes.filter(route =>
       endpointHealth(route).configured
-      && (!continuation || this.routeCompatibleWithContinuation(route, continuation)));
-    if (!affinityKey) return available;
-    const preferred = this.affinity.get(affinityKey);
+      && (!pinnedRouteId || route.id === pinnedRouteId)
+      && (!continuation || route.keyCount > 0 || this.routeCompatibleWithContinuation(route, continuation)));
+    if (pinnedRouteId) return available;
+    const preferred = activeProviderId ?? (affinityKey ? this.affinity.get(affinityKey) : undefined);
     if (!preferred) return available;
     const route = available.find(item => item.id === preferred);
     if (!route) return available;
@@ -520,6 +701,10 @@ export class OpenAICompatibleProviderPool {
     signal?: AbortSignal,
     options: AgentProviderCompletionOptions = {},
   ): Promise<AgentModelResponse> {
+    signal?.throwIfAborted();
+    // Recovery belongs to a real task and also supports keyless local providers.
+    // It validates the existing store without selecting or qualifying a credential.
+    this.scheduler.state.recoverAvailability();
     const health = this.health();
     if (!health.enabled || !health.configured) {
       throw new Error(health.issue ?? 'AGENT_RUNTIME_PROVIDER_NOT_CONFIGURED');
@@ -528,9 +713,12 @@ export class OpenAICompatibleProviderPool {
       throw new Error(health.issue);
     }
 
-    const routes = this.orderedRoutes(affinityKey, options.continuation);
-    if (!routes.length) {
-      throw new Error(options.continuation
+    const pinned = options.routeId ? normalizeProviderId(options.routeId) : undefined;
+    if (pinned && !this.routes.some(route => route.id === pinned && endpointHealth(route).configured)) {
+      throw new Error('AGENT_RUNTIME_PROVIDER_ROUTE_UNAVAILABLE');
+    }
+    if (!this.orderedRoutes(affinityKey, options.continuation, undefined, pinned).length) {
+      throw new Error(pinned ? 'AGENT_RUNTIME_CONTINUATION_ROUTE_INCOMPATIBLE' : options.continuation
         ? 'AGENT_RUNTIME_CONTINUATION_ROUTE_INCOMPATIBLE'
         : 'AGENT_RUNTIME_PROVIDER_NOT_CONFIGURED');
     }
@@ -538,35 +726,120 @@ export class OpenAICompatibleProviderPool {
       1,
       Math.min(
         MAX_PROVIDER_POOL_ATTEMPTS,
-        this.config.maxProviderAttempts ?? Math.min(6, Math.max(1, routes.length * 2)),
+        this.config.maxProviderAttempts ?? Math.min(6, Math.max(1, this.routes.length * 2)),
       ),
     );
     const maxAttempts = options.attemptLimit === undefined
       ? configuredMaxAttempts
       : Math.min(configuredMaxAttempts, Math.max(0, Math.trunc(options.attemptLimit)));
     if (maxAttempts < 1) throw new Error('AGENT_RUNTIME_PROVIDER_ATTEMPT_BUDGET_EXHAUSTED');
-    const baseBudget = Math.floor(maxAttempts / routes.length);
-    let remainder = maxAttempts % routes.length;
+    const wireBytes = contextBytes(messages, tools);
     let networkAttempts = 0;
+    let cursorConflicts = 0;
     const failures: string[] = [];
     const nextAvailable: number[] = [];
-    for (const route of routes) {
-      if (networkAttempts >= maxAttempts) break;
-      const routeBudget = Math.max(1, baseBudget + (remainder > 0 ? 1 : 0));
-      if (remainder > 0) remainder -= 1;
-      const excluded = new Set<string>();
-      let routeAttempts = 0;
-
-      while (routeAttempts < routeBudget && networkAttempts < maxAttempts) {
+    const exhausted = new Set<string>();
+    const excluded = new Map<string, Set<string>>();
+    const excludedWhy = new Map<string, Map<string, ProviderSkipReason>>();
+    const routeAttempts = new Map<string, number>();
+    const leftRoutes = new Map<string, NonNullable<Extract<AgentProviderRoutingEvent, { type: 'attempt' }>['left']>>();
+    let lastFailureClass: AgentProviderFailureClass | null = null;
+    const emitRouting = async (event: AgentProviderRoutingEvent): Promise<void> => {
+      if (!options.onRouting) return;
+      try { await options.onRouting(event); } catch { /* observability must never become routing authority */ }
+    };
+    const markWhy = (routeId: string, credentialId: string, reason: ProviderSkipReason): void => {
+      const reasons = excludedWhy.get(routeId) ?? new Map<string, ProviderSkipReason>();
+      reasons.set(credentialId, reason);
+      excludedWhy.set(routeId, reasons);
+    };
+    const qualifiedFor = (route: NormalizedProviderRoute): Map<string, ProviderModelReadiness> => {
+      const qualified = new Map<string, ProviderModelReadiness>();
+      for (const credential of route.credentials) {
+        const ready = credential.secret ? this.readiness.read(route, credential) : null;
+        if (ready?.status === 'ready') qualified.set(credential.id, ready);
+      }
+      return qualified;
+    };
+    const diagnoseRoute = (route: NormalizedProviderRoute): ProviderSelectionDiagnostics | null =>
+      this.scheduler.diagnose({
+        providerId: route.id,
+        model: route.model,
+        credentials: route.credentials,
+        excludedCredentialIds: excluded.get(route.id) ?? new Set<string>(),
+        excludedReasons: excludedWhy.get(route.id),
+        qualifiedModels: qualifiedFor(route),
+      });
+    const pausedError = async (
+      reason: 'attempt-budget' | 'unavailable' | 'contention',
+      retryAtMs: number | null,
+      detail = '',
+    ): Promise<AgentProviderPoolPausedError> => {
+      if (options.onRouting) {
+        const routes: AgentProviderRoutingRoute[] = [];
+        for (const route of this.orderedRoutes(affinityKey, options.continuation, undefined, pinned)) {
+          const diagnostics = diagnoseRoute(route);
+          if (!diagnostics) continue;
+          routes.push({
+            providerId: route.id,
+            configured: diagnostics.configured,
+            eligible: diagnostics.eligible,
+            skipped: diagnostics.skipped,
+            status: diagnostics.status,
+            attempts: routeAttempts.get(route.id) ?? 0,
+          });
+        }
+        await emitRouting({ type: 'paused', reason, retryAtMs, attempt: networkAttempts, attemptLimit: maxAttempts, routes });
+      }
+      return new AgentProviderPoolPausedError(reason, retryAtMs, detail);
+    };
+    while (networkAttempts < maxAttempts) {
+        signal?.throwIfAborted();
+        const cursor = this.scheduler.readPoolCursor(this.routes.map(route => route.id));
+        const route = this.orderedRoutes(affinityKey, options.continuation, cursor?.providerId, pinned)
+          .find(candidate => !exhausted.has(candidate.id));
+        if (!route) break;
+        const skipped = excluded.get(route.id) ?? new Set<string>();
+        excluded.set(route.id, skipped);
+        const qualifiedModels = new Map<string, ProviderModelReadiness>();
+        for (const credential of route.credentials) {
+          if (!credential.secret || skipped.has(credential.id)) continue;
+          const ready = this.readiness.read(route, credential);
+          if (ready?.status === 'ready') qualifiedModels.set(credential.id, ready);
+          if (ready && ready.status !== 'ready') {
+            skipped.add(credential.id);
+            markWhy(route.id, credential.id, 'readiness');
+            if (ready.retryAtMs <= Date.now()) {
+              // Expired qualification is still unproven. Refresh with the existing
+              // bounded workers; selecting it again must not stall a ready route.
+              void this.prepareReadiness().catch(() => {});
+              nextAvailable.push(Date.now() + 1_000);
+            } else nextAvailable.push(ready.retryAtMs);
+          }
+        }
         const scheduled = await this.scheduler.select({
           providerId: route.id,
           model: route.model,
           credentials: route.credentials,
-          excludedCredentialIds: excluded,
+          excludedCredentialIds: skipped,
+          excludedReasons: excludedWhy.get(route.id),
+          qualifiedModels,
+          trackPool: true,
+          expectedPoolRevision: cursor?.revision ?? 0,
         });
+        if (scheduled.reason === 'pool-changed') {
+          if (++cursorConflicts >= 32) throw await pausedError('contention', Date.now() + 1_000);
+          continue;
+        }
         if (!scheduled.credential) {
           if (scheduled.nextAvailableAtMs !== null) nextAvailable.push(scheduled.nextAvailableAtMs);
-          break;
+          leftRoutes.set(route.id, {
+            providerId: route.id,
+            reason: scheduled.reason === 'provider-open' ? 'provider-open' : 'siblings-unavailable',
+            diagnostics: scheduled.diagnostics ?? null,
+          });
+          exhausted.add(route.id);
+          continue;
         }
 
         const selected = scheduled.credential;
@@ -575,10 +848,84 @@ export class OpenAICompatibleProviderPool {
           model: route.model,
           attempt: networkAttempts + 1,
         });
+        networkAttempts += 1;
+        routeAttempts.set(route.id, (routeAttempts.get(route.id) ?? 0) + 1);
+        const attemptNumber = networkAttempts;
+        const attemptKey = (model: string | null): AgentProviderRoutingKey => ({
+          providerId: route.id, credentialId: selected.id, model,
+        });
+        if (options.onRouting) {
+          const from = cursor ? { providerId: cursor.providerId, credentialId: cursor.credentialId } : null;
+          const transition: AgentProviderRouteTransition = !from ? 'initial'
+            : from.providerId !== route.id ? 'provider-switch'
+              : from.credentialId !== selected.id ? 'sibling-key' : 'keep';
+          const left = transition === 'provider-switch' && from ? leftRoutes.get(from.providerId) : undefined;
+          await emitRouting({
+            type: 'attempt',
+            attempt: attemptNumber,
+            attemptLimit: maxAttempts,
+            transition,
+            cause: lastFailureClass,
+            from,
+            to: attemptKey(route.model),
+            selection: scheduled.diagnostics ?? {
+              configured: route.credentials.length, eligible: 1, skipped: {}, breaker: 'CLOSED', status: 'available',
+            },
+            ...(left ? { left } : {}),
+          });
+        }
+        let effectiveModel = route.model;
+        let capacity = route.continuation;
+        if (selected.secret) {
+          const ready = await this.validateModel(route, selected, signal,
+            Math.max(options.continuation?.minContextTokens ?? 0, accountContext(messages, tools, { bytes: wireBytes }).requiredTokens));
+          if (ready.status !== 'ready') {
+            skipped.add(selected.id);
+            // A size shortfall cannot be waited out: no retry time, and the reason carries the accounting.
+            const tooLarge = ready.reason === MODEL_CONTEXT_INSUFFICIENT_FOR_REQUEST;
+            markWhy(route.id, selected.id, tooLarge ? 'context' : 'readiness');
+            if (!tooLarge) nextAvailable.push(ready.retryAtMs);
+            failures.push(`${route.id}:${(tooLarge
+              && contextRefusal(accountContext(messages, tools, { bytes: wireBytes }), ready.contextWindowTokens ?? 0))
+              || ready.reason}`);
+            await emitRouting({ type: 'skip', attempt: attemptNumber, key: attemptKey(route.model), reason: tooLarge ? 'context' : 'readiness' });
+            continue;
+          }
+          // Qualification may replace a model to satisfy this task's context.
+          // Re-select so the replacement's own blocks and quota are checked.
+          if ((selected.selection.model ?? route.model) !== ready.model) {
+            await emitRouting({ type: 'skip', attempt: attemptNumber, key: attemptKey(route.model), reason: 'model-replaced' });
+            continue;
+          }
+          effectiveModel = ready.model;
+          capacity = { supportsTools: true, modalities: ['text'], contextWindowTokens: ready.contextWindowTokens!,
+            maxOutputTokens: ready.maxOutputTokens!, toolCallFormat: 'openai-chat-tool-calls-v1' };
+        }
+        if (options.continuation && capacity && (capacity.contextWindowTokens < options.continuation.minContextTokens
+          || capacity.maxOutputTokens < options.continuation.minOutputTokens)) {
+          skipped.add(selected.id);
+          markWhy(route.id, selected.id, 'context');
+          await emitRouting({ type: 'skip', attempt: attemptNumber, key: attemptKey(effectiveModel), reason: 'context' });
+          continue;
+        }
+        // shortcut: JSON bytes conservatively bound input tokens; use a provider tokenizer if tighter packing is needed.
+        const observedKey = `${route.id}::${effectiveModel}`;
+        const accounting: ContextAccounting | null = capacity
+          ? accountContext(messages, tools, { bytes: wireBytes, maxOutputTokens: capacity.maxOutputTokens,
+              observed: this.observedInput.get(observedKey) })
+          : null;
+        const refusal = capacity && accounting ? contextRefusal(accounting, capacity.contextWindowTokens) : null;
+        if (refusal) {
+          skipped.add(selected.id);
+          markWhy(route.id, selected.id, 'context');
+          failures.push(`${route.id}:${refusal}`);
+          await emitRouting({ type: 'skip', attempt: attemptNumber, key: attemptKey(effectiveModel), reason: 'context' });
+          continue;
+        }
         const provider = new OpenAICompatibleProvider({
           enabled: true,
           baseUrl: route.baseUrl,
-          model: route.model,
+          model: effectiveModel,
           apiKey: selected.secret || null,
           requestTimeoutMs: this.config.requestTimeoutMs,
           maxToolIterations: this.config.maxToolIterations,
@@ -586,22 +933,27 @@ export class OpenAICompatibleProviderPool {
           this.scheduler.recordObservation({
             providerId: route.id,
             credentialId: selected.id,
-            model: route.model,
+            model: effectiveModel,
             observation,
           });
         });
-        routeAttempts += 1;
-        networkAttempts += 1;
         try {
-          const response = await provider.complete(messages, tools, signal);
+          const response = await provider.complete(messages, tools, signal,
+            capacity && accounting ? completionCap(accounting, capacity) : undefined);
+          if (response.usage?.inputTokens) {
+            this.observedInput.set(observedKey, { inputTokens: response.usage.inputTokens, bytes: wireBytes });
+          }
           this.scheduler.recordSuccess(selected.selection);
+          await emitRouting({ type: 'success', attempt: attemptNumber, key: attemptKey(effectiveModel) });
           if (affinityKey) this.affinity.set(affinityKey, route.id);
           return {
             ...response,
             providerId: route.id,
-            ...(route.model ? { model: route.model } : {}),
+            resolvedModel: response.resolvedModel ?? null,
+            ...(effectiveModel ? { model: effectiveModel } : {}),
           };
         } catch (error) {
+          signal?.throwIfAborted();
           const decision = classifyAgentProviderFailure(error);
           const status = error instanceof AgentProviderRequestError ? error.status : null;
           let persistedRetryAt: number | null = null;
@@ -609,7 +961,7 @@ export class OpenAICompatibleProviderPool {
             persistedRetryAt = this.scheduler.recordFailure({
               selection: selected.selection,
               decision,
-              model: route.model,
+              model: effectiveModel,
               httpStatus: status,
             });
           } catch (stateError) {
@@ -620,18 +972,37 @@ export class OpenAICompatibleProviderPool {
           failures.push(
             `${route.id}/${selected.id}:${decision.failureClass}:${safeFailureSummary(route.id, error)}`,
           );
+          lastFailureClass = decision.failureClass;
+          await emitRouting({
+            type: 'failure',
+            attempt: attemptNumber,
+            key: attemptKey(effectiveModel),
+            failureClass: decision.failureClass,
+            scope: decision.scope,
+            httpStatus: status,
+            retryAtMs: persistedRetryAt,
+            failover: decision.shouldFailover,
+          });
           if (!decision.shouldFailover) throw error;
-          excluded.add(selected.id);
+          skipped.add(selected.id);
+          // Transient outages leave no persisted per-key verdict; keep the cause for evidence.
+          if (decision.failureClass === 'PROVIDER_TRANSIENT' || decision.failureClass === 'TRANSPORT_TRANSIENT') {
+            markWhy(route.id, selected.id, 'transient');
+          }
           if (persistedRetryAt !== null) nextAvailable.push(persistedRetryAt);
-          if (decision.scope === 'provider' || decision.scope === 'model-provider') break;
+          if (decision.scope === 'model-provider') {
+            leftRoutes.set(route.id, { providerId: route.id, reason: 'model-scope', diagnostics: diagnoseRoute(route) });
+            exhausted.add(route.id);
+          }
         }
-      }
     }
 
     const earliest = nextAvailable.filter(value => value > Date.now()).sort((a, b) => a - b)[0];
-    const retry = earliest ? `; nextAvailableAt=${new Date(earliest).toISOString()}` : '';
-    throw new Error(
-      `AGENT_RUNTIME_PROVIDER_POOL_EXHAUSTED${retry}: ${failures.slice(-maxAttempts).join(' | ')}`,
+    const budgetReached = networkAttempts >= maxAttempts;
+    throw await pausedError(
+      budgetReached ? 'attempt-budget' : 'unavailable',
+      budgetReached ? Date.now() + 1_000 : earliest ?? null,
+      failures.slice(-maxAttempts).join(' | '),
     );
   }
 

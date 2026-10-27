@@ -376,20 +376,21 @@ export class MemoryRetrievalLedger {
   /** Read-only canonical handoff check for idempotent external episode reconciliation.
    * A caller's statement is not enough: the exact task/workspace/exposure/digest must
    * already be durable in this ledger. No new attempt or access count is created. */
+  async readAttempt(attemptId: string): Promise<MemoryRetrievalAttempt | undefined> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(attemptId)) throw new Error('MEMORY_RETRIEVAL_ATTEMPT_ID_INVALID');
+    const archived = await preservesMemoryHistory(this.paths) ? await readRetainedTelemetry(this.paths, 'retrieval-attempt', attemptId) : undefined;
+    const retained = archived === undefined ? undefined : normalizeAttempt(archived as MemoryRetrievalAttempt);
+    const recent = this.readAll().find(row => row.attemptId === attemptId);
+    if (retained && recent && stableDigest(retained) !== stableDigest(recent)) throw new Error('MEMORY_RETRIEVAL_ATTEMPT_CONFLICT');
+    return retained ?? recent;
+  }
   async confirmedDelivery(input: {
     taskId: string; workspace: string; retrievalAttemptId: string;
     memoryId: string; contentDigest: string;
   }): Promise<boolean> {
     if (!input.taskId?.trim() || !input.workspace?.trim() || !input.retrievalAttemptId?.trim()
       || !input.memoryId?.trim() || !/^sha256:[a-f0-9]{64}$/.test(input.contentDigest)) return false;
-    const archived = await preservesMemoryHistory(this.paths)
-      ? await readRetainedTelemetry(this.paths, 'retrieval-attempt', input.retrievalAttemptId)
-      : undefined;
-    const retained = archived === undefined ? undefined : normalizeAttempt(archived as MemoryRetrievalAttempt);
-    const recent = this.readAll().find(row => row.attemptId === input.retrievalAttemptId);
-    if (retained && recent && stableDigest(retained) !== stableDigest(recent))
-      throw new Error('MEMORY_RETRIEVAL_ATTEMPT_CONFLICT');
-    const attempt = retained ?? recent;
+    const attempt = await this.readAttempt(input.retrievalAttemptId);
     if (!attempt || attempt.taskId !== input.taskId || attempt.workspace !== input.workspace
       || attempt.retrievalStatus !== 'succeeded' || attempt.selectedCount < 1
       || attempt.deliveryStatus !== 'returned-to-controller'

@@ -67,9 +67,10 @@ describe('Native and external usage delivery',()=>{
  });
 });
 
-it('external inspect delivers an unranked Skill; only an applied receipt emits a notice, even without benefit verification',async()=>{
+it('external inspect cannot authorize application; complete read fragments persist across reopen and stale revisions fail',async()=>{
  const f=await fixture();const {mkdir,writeFile}=await import('node:fs/promises');const dir=path.join(f.root,'unranked');await mkdir(dir);
- await writeFile(path.join(dir,'SKILL.md'),'---\nname: spectral-helper\ndescription: Spectral reasoning recipe\nallowed-tools: ["get_config"]\n---\n\n# Recipe\nInspect configuration.\n');
+ const markdown='---\nname: spectral-helper\ndescription: Spectral reasoning recipe\nallowed-tools: ["get_config"]\n---\n\n# Recipe\nInspect configuration.\n'+'Read exact source evidence.\n'.repeat(50);
+ await writeFile(path.join(dir,'SKILL.md'),markdown);
  const skill=await f.skills.import(dir);
  const e=await ExternalControllerLearningService.initialize({stateDir:path.join(f.root,'runtime/learning'),memory:f.memory,learning:f.learning,skills:f.skills});
  const episode=await e.startEpisode('late',{workspace:'agent-core',taskKey:'unranked'},binding(f));
@@ -80,9 +81,22 @@ it('external inspect delivers an unranked Skill; only an applied receipt emits a
   const inspected=await client.callTool({name:'skills',arguments:{action:'inspect',name:skill.name}});
   expect(JSON.stringify(inspected)).not.toContain('CAPABILITY USAGE NOTICE');
   expect((await e.getEpisode('late'))?.deliveredArtifacts?.['skill:'+skill.name]).toBe(skill.digest);
-  const receipt=await e.artifactReceipt('late',{taskId:episode.id,kind:'skill',artifactId:skill.name,contentDigest:skill.digest,applicability:'applied',result:'unavailable',reasonCode:'inspected-recipe'},await capture(e,'late'));
+  const input={taskId:episode.id,kind:'skill' as const,artifactId:skill.name,contentDigest:skill.digest,applicability:'applied' as const,result:'unavailable' as const,reasonCode:'read-recipe'};
+  await expect(e.artifactReceipt('late',input,await capture(e,'late'))).rejects.toThrow('SKILL_INSTRUCTIONS_NOT_FULLY_READ');
+  expect(await e.artifactReceipt('late',{...input,applicability:'rejected',reasonCode:'not-yet-applicable'},await capture(e,'late'))).toMatchObject({recorded:true,trustChanged:false});
+  const read=async(offset:number)=>{const result=await client.callTool({name:'skills',arguments:{action:'read',name:skill.name,expectedActiveDigest:skill.digest,offset,maxBytes:512}});expect(result.isError).not.toBe(true);return JSON.parse((result.content as any[])[0].text);};
+  const first=await read(0);expect(first.nextOffset).not.toBeNull();
+  await expect(e.artifactReceipt('late',input,await capture(e,'late'))).rejects.toThrow('SKILL_INSTRUCTIONS_NOT_FULLY_READ');
+  await read(first.nextOffset+10);
+  await expect(e.artifactReceipt('late',input,await capture(e,'late'))).rejects.toThrow('SKILL_INSTRUCTIONS_NOT_FULLY_READ');
+  let offset=first.nextOffset;while(offset!==null)offset=(await read(offset)).nextOffset;
+  expect((await e.getEpisode('late'))?.capabilityUses??[]).toEqual([]);
+  const reopened=await ExternalControllerLearningService.initialize({stateDir:path.join(f.root,'runtime/learning'),memory:f.memory,learning:f.learning,skills:f.skills});
+  const receipt=await reopened.artifactReceipt('late',input,await capture(reopened,'late'));
   expect(receipt.trustChanged).toBe(false);
-  expect(await (e as any).takeCapabilityUsageNotice('late',await capture(e,'late'))).toContain('Skill spectral-helper');
+  expect(await reopened.takeCapabilityUsageNotice('late',await capture(reopened,'late'))).toContain('Skill spectral-helper');
+  await writeFile(path.join(f.root,'runtime/skills/catalog',skill.name,'SKILL.md'),markdown+'\nNew revision.');
+  await expect(reopened.artifactReceipt('late',input,await capture(reopened,'late'))).rejects.toThrow('SKILL_ACTIVE_REVISION_CHANGED');
  }finally{await client.close();await server.close();}
 });
 

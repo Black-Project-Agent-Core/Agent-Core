@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto';
 import type { AgentCapabilityFamily } from './agent-capability-catalog.js';
 import type { AgentModelMessage, AgentModelToolCall } from './agent-provider.js';
 import { redactSensitiveString } from './security/redaction.js';
+import { boundedMessages, type AgentCompactionRecord } from './agent-context-compaction.js';
+import { normalizeMemoryUse, type AgentMemoryUse } from './agent-memory-use.js';
+import { nativeMemoryEvaluationSchema, normalizeNativeResultMetadata,
+  type NativeMemoryEvaluation, type NativeMemoryResultMetadata } from './agent-memory-evaluation.js';
 import {
   readVerifiedResultBytes,
   RESULT_ARTIFACT_TTL_MS,
@@ -15,6 +19,7 @@ export const AGENT_TURN_CHECKPOINT_TTL_MS = RESULT_ARTIFACT_TTL_MS;
 export type AgentTurnCheckpointPhase =
   | 'model-ready'
   | 'provider-dispatch'
+  | 'provider-wait'
   | 'model-received'
   | 'tool-planned'
   | 'tool-dispatching'
@@ -44,7 +49,7 @@ export interface AgentTurnMemoryEvidence {
   contentDigest: string;
 }
 
-export interface AgentTurnFinalResult {
+export interface AgentTurnFinalResult extends NativeMemoryResultMetadata {
   response: string;
   learningStatus?: 'complete' | 'failed';
   jobVerification?: 'pass' | 'fail' | 'unavailable';
@@ -52,6 +57,7 @@ export interface AgentTurnFinalResult {
   model?: string;
   iterations: number;
   retrievalAttemptIds: string[];
+  memoryUse?: AgentMemoryUse[];
 }
 export interface AgentTurnCheckpointState {
   schemaVersion: typeof AGENT_TURN_CHECKPOINT_SCHEMA_VERSION;
@@ -61,10 +67,19 @@ export interface AgentTurnCheckpointState {
   runtimeSessionId: string;
   prompt: string;
   workspace?: string;
+  /** Route the owner chose for this turn; absent means automatic rotation. A resumed turn stays on it. */
+  providerRoute?: string;
+  memoryEvaluation?: NativeMemoryEvaluation;
+  providerWait?: { reason: 'attempt-budget' | 'unavailable' | 'contention'; retryAtMs: number | null; pausedAtMs: number };
+  /** Bounded, secret-free provider routing evidence (JSON lines) that survives attempt windows and restarts. */
+  routeTrail?: string[];
   messages: AgentModelMessage[];
+  /** Derived digests that replaced earlier context; the exact sources are archived with the turn. */
+  compactions?: AgentCompactionRecord[];
   nextIteration: number;
   maxIterations: number;
   providerAttemptsConsumed: number;
+  iterationLimitReport?: { attempted: true; response?: string };
   maxProviderAttempts: number;
   approvedCapabilities: AgentCapabilityFamily[];
   historicalGrantedTools: string[];
@@ -107,6 +122,21 @@ function validateToolCall(raw: unknown): AgentModelToolCall {
   const args = safeString(value.function?.arguments, 200_000);
   if (!id || !name) throw new Error('AGENT_CHAT_CHECKPOINT_TOOL_CALL_INVALID');
   return { id, type: 'function', function: { name, arguments: args } };
+}
+
+function validateCompaction(raw: unknown): AgentCompactionRecord {
+  const value = raw as AgentCompactionRecord;
+  const count = (item: unknown) => Number.isSafeInteger(item) && (item as number) >= 0 ? item as number : -1;
+  const record = {
+    id: safeString(value?.id, 40), scope: value?.scope === 'conversation' ? 'conversation' as const : 'turn' as const,
+    replacedMessages: count(value?.replacedMessages), range: { from: count(value?.range?.from), to: count(value?.range?.to) },
+    sourceDigest: safeString(value?.sourceDigest, 80).toLowerCase(), bytesBefore: count(value?.bytesBefore),
+    bytesAfter: count(value?.bytesAfter), createdAtMs: count(value?.createdAtMs),
+  };
+  if (!/^cmp-[0-9a-f]{16}$/.test(record.id) || !/^sha256:[0-9a-f]{64}$/.test(record.sourceDigest)
+    || [record.replacedMessages, record.range.from, record.range.to, record.bytesBefore, record.bytesAfter, record.createdAtMs]
+      .some(item => item < 0)) throw new Error('AGENT_CHAT_CHECKPOINT_COMPACTION_INVALID');
+  return record;
 }
 
 function validateMessage(raw: unknown): AgentModelMessage {
@@ -202,6 +232,10 @@ export function normalizeAgentTurnCheckpoint(raw: unknown): AgentTurnCheckpointS
     throw new Error('AGENT_CHAT_CHECKPOINT_BUDGET_INVALID');
   }
   const toolContractDigest = safeString(value.toolContractDigest, 80).toLowerCase();
+  const report = value.iterationLimitReport;
+  if (report !== undefined && (!report || report.attempted !== true
+    || (report.response !== undefined && (typeof report.response !== 'string' || report.response.length > 4_000))))
+    throw new Error('AGENT_CHAT_CHECKPOINT_LIMIT_REPORT_INVALID');
   if (!/^sha256:[0-9a-f]{64}$/.test(toolContractDigest)) {
     throw new Error('AGENT_CHAT_CHECKPOINT_TOOL_CONTRACT_INVALID');
   }
@@ -230,6 +264,7 @@ export function normalizeAgentTurnCheckpoint(raw: unknown): AgentTurnCheckpointS
     throw new Error('AGENT_CHAT_CHECKPOINT_PENDING_TOOL_INVALID');
   }
   const finalResult = value.finalResult ? {
+    ...normalizeNativeResultMetadata(value.finalResult),
     response: safeString(value.finalResult.response, 200_000),
     ...(value.finalResult.learningStatus ? { learningStatus: value.finalResult.learningStatus } : {}),
     ...(value.finalResult.jobVerification ? { jobVerification: value.finalResult.jobVerification } : {}),
@@ -238,14 +273,30 @@ export function normalizeAgentTurnCheckpoint(raw: unknown): AgentTurnCheckpointS
     ...(value.finalResult.model ? { model: safeString(value.finalResult.model, 200) } : {}),
     iterations: Math.max(0, Number(value.finalResult.iterations) || 0),
     retrievalAttemptIds: safeStrings(value.finalResult.retrievalAttemptIds, 64, 200),
+    ...(value.finalResult.memoryUse ? { memoryUse: normalizeMemoryUse(value.finalResult.memoryUse) } : {}),
   } : undefined;
 
   return {
     schemaVersion: AGENT_TURN_CHECKPOINT_SCHEMA_VERSION,
     conversationId, turnId, runtimeTaskId, runtimeSessionId, prompt,
     ...(value.workspace ? { workspace: safeString(value.workspace, 200) } : {}),
-    messages: Array.isArray(value.messages) ? value.messages.slice(-256).map(validateMessage) : [],
+    ...(value.providerRoute ? { providerRoute: safeString(value.providerRoute, 100) } : {}),
+    ...(value.memoryEvaluation ? { memoryEvaluation: nativeMemoryEvaluationSchema.parse(value.memoryEvaluation) } : {}),
+    ...(value.providerWait ? { providerWait: {
+      reason: ['attempt-budget', 'unavailable', 'contention'].includes(value.providerWait.reason)
+        ? value.providerWait.reason : 'unavailable' as const,
+      retryAtMs: typeof value.providerWait.retryAtMs === 'number' && Number.isSafeInteger(value.providerWait.retryAtMs)
+        ? value.providerWait.retryAtMs : null,
+      pausedAtMs: Number.isSafeInteger(value.providerWait.pausedAtMs) ? value.providerWait.pausedAtMs : updatedAtMs,
+    } } : {}),
+    ...(Array.isArray(value.routeTrail) && value.routeTrail.length
+      ? { routeTrail: safeStrings(value.routeTrail, 32, 1_000) } : {}),
+    messages: Array.isArray(value.messages) ? boundedMessages(value.messages as AgentModelMessage[]).map(validateMessage) : [],
+    ...(Array.isArray(value.compactions) && value.compactions.length
+      ? { compactions: value.compactions.slice(-16).map(validateCompaction) } : {}),
     nextIteration, maxIterations, providerAttemptsConsumed, maxProviderAttempts,
+    ...(report ? { iterationLimitReport: { attempted: true as const,
+      ...(report.response !== undefined ? { response: redactSensitiveString(report.response).slice(0, 4_000) } : {}) } } : {}),
     approvedCapabilities: safeStrings(value.approvedCapabilities, 32, 100) as AgentCapabilityFamily[],
     historicalGrantedTools: safeStrings(value.historicalGrantedTools, 128, 200),
     toolContractDigest,

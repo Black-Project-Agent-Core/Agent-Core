@@ -48,6 +48,8 @@ export interface ControllerMemoryCapabilities {
   budgets: { defaultBytes: 8192; minBytes: 512; maxBytes: 65536 };
   writeMode: 'legacy-read' | 'experience-v2'; temporalAsOf: boolean; temporalKnownAt?:true; advisory: true;
   claimReview?:ReturnType<typeof import('./claim-review.js').externalClaimReviewGuide>;
+  recallRepair?:typeof import('./recall-repair.js').RECALL_REPAIR_GUIDE;
+  derivation?:typeof import('./derivations.js').DERIVATION_GUIDE;
 }
 export type MemoryControllerErrorCode = 'MEMORY_INPUT_INVALID' | 'MEMORY_SCOPE_MISMATCH' | 'MEMORY_SOURCE_UNAVAILABLE'
   | 'MEMORY_REVISION_CONFLICT' | 'MEMORY_CURSOR_STALE' | 'MEMORY_CURSOR_INVALID'

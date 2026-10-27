@@ -131,6 +131,24 @@ describe('external artifact task freshness', () => {
     expect(result.coverage).toMatchObject({ returnedFindings: 0, droppedFindings: 0, findingsTruncated: false });
   });
 
+  it('registers the same artifact facade for a current Native task without inventing external context', async () => {
+    const f = await prepared();
+    const native = { ownerId: 'agent-runtime:fixture', taskId: 'native-fixture-task', workspace: 'agent-core' };
+    let handler!: (args: any) => Promise<any>;
+    registerArtifactInspectTool({ registerTool: (_name: string, _schema: any, callback: typeof handler) =>
+      handler = callback } as any, f.authorization, undefined, native);
+    const makeRequest = (taskId: string): any => ({
+      tool: 'artifact_inspect', identity: createToolInvocationIdentity(),
+      mutationContext: { taskId }, checkpointReceipt: () => undefined,
+    });
+    const payload = { action: 'prepare', path: f.target, format: 'directory-js',
+      rightsEvidenceRef: 'source:fixture', disclosureAudience: 'test' };
+    const result = await withToolInvocationRequest(makeRequest(native.taskId), () => handler(payload));
+    expect(JSON.parse(result.content[0].text)).toMatchObject({ status: 'pending' });
+    await expect(withToolInvocationRequest(makeRequest('wrong-task'), () => handler(payload)))
+      .rejects.toThrow('ARTIFACT_SCOPE_NOT_AUTHORIZED');
+  });
+
   it('facade refuses a missing or obsolete host validator before preparing target metadata', async () => {
     const f = await prepared(); await f.replace();
     for (const validator of [undefined, (context: typeof f.context) => f.external.invocationTaskCurrent(context)]) {

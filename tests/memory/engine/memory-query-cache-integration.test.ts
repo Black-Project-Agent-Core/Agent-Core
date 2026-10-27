@@ -113,7 +113,7 @@ async function isolatedHostClose(experience?: { dispose: () => void }) {
     mutationSafety: { beginDraining() {}, waitForDrain: async () => true, status: () => ({}) },
     workflows: { close: async () => undefined }, server: {}, closeServer: async () => undefined,
     browserControlService: { closeAll: async () => undefined }, terminalManager: { shutdownAll: async () => undefined },
-    semanticIde: undefined, codeIntelligence: undefined, toolHistory: { cleanup: async () => undefined },
+    agentChat: undefined, semanticIde: undefined, codeIntelligence: undefined, toolHistory: { cleanup: async () => undefined },
     configManager: { close: laterCleanup } };
   const close: () => Promise<void> = new Function(...Object.keys(bindings), `return (${arrow});`)(...Object.values(bindings));
   return { close, tracker, legacy, laterCleanup };

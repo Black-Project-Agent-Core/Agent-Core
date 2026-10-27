@@ -9,7 +9,7 @@ afterEach(async () => {
 },30000);
 async function page(html:(url:string)=>string) {
   const s=createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end(html(req.url??'/'));});
-  await new Promise<void>(resolve=>s.listen(0,'127.0.0.1',resolve)); servers.push(s);
+  await new Promise<void>(resolve=>s.listen(Number(process.env.AGENT_CORE_BROWSER_TEST_PORT ?? 0),'127.0.0.1',resolve)); servers.push(s);
   return 'http://127.0.0.1:'+(s.address() as any).port;
 }
 async function opened(url:string, capabilities:string[]=[]) {
@@ -23,16 +23,16 @@ async function evaluate(s:any,id:string,expression:string) {
 const choose=(o:any,op:string,predicate:(a:any)=>boolean=()=>true)=>{
   const a=o.actions.find((a:any)=>a.operation===op&&predicate(a));expect(a,'observed '+op).toBeTruthy();return a;
 };
-const canvasPage='<!doctype html><body><canvas id="picture" width="640" height="320"></canvas><canvas hidden width="10" height="10"></canvas><script>const c=picture.getContext("2d");c.fillStyle="#5599ff";c.fillRect(0,0,640,320);c.fillStyle="#cc4400";c.fillRect(0,240,640,80);c.fillStyle="#ff0000";c.fillRect(100,200,40,40);</script></body>';
+const canvasPage='<!doctype html><body><canvas id="picture" width="640" height="320"></canvas><canvas hidden width="10" height="10"></canvas></body>';
 describe('SystemOne native browser adoption',()=>{
   it('P1 independently observes selected-only/readonly/disabled controls without secret values',async()=>{
     const url=await page(()=>`<!doctype html><body><select aria-label="Only"><option selected>Only selection</option></select>
       <input aria-label="Read only" readonly value="readable"><input aria-label="Disabled" disabled value="visible disabled">
       <input aria-label="Duplicate" value="one"><input aria-label="Duplicate" value="two">
-      <input id="mixed" type="checkbox" aria-label="Mixed"><script>mixed.indeterminate=true</script>
+      <input id="mixed" type="checkbox" aria-label="Mixed">
       <input type="password" value="never-leak-password"><input type="hidden" value="never-leak-hidden">
       <textarea hidden>never-leak-hidden-text</textarea><input type="file" aria-label="File"></body>`);
-    const {s,id}=await opened(url); const o=await s.observe(id);
+    const {s,id}=await opened(url); await evaluate(s,id,'mixed.indeterminate=true'); const o=await s.observe(id);
     expect(o.controlStates).toBeDefined(); const items=o.controlStates.items;
     expect(items.find((x:any)=>x.label==='Only')).toMatchObject({selectedLabels:['Only selection']});
     expect(items.find((x:any)=>x.label==='Read only')).toMatchObject({value:'readable',readOnly:true});
@@ -52,6 +52,7 @@ describe('SystemOne native browser adoption',()=>{
   },30000);
   it('P2 samples only a previously inventoried canvas and preserves named rare colors',async()=>{
     const url=await page(()=>canvasPage); const {s,id}=await opened(url);
+    await evaluate(s,id,'const c=picture.getContext("2d");c.fillStyle="#5599ff";c.fillRect(0,0,640,320);c.fillStyle="#cc4400";c.fillRect(0,240,640,80);c.fillStyle="#ff0000";c.fillRect(100,200,40,40);');
     const normal=await s.observe(id); expect(normal.canvas).toBeUndefined();
     const inv=await s.observe(id,{canvas:{mode:'inventory'}});
     expect(inv.canvas?.state).toBe('available');expect(inv.canvas.items).toHaveLength(1);
@@ -75,21 +76,19 @@ describe('SystemOne native browser adoption',()=>{
     expect(sample.canvas.palette.some((p:any)=>p.alpha===0)).toBe(true);
     await expect(a.s.observe(a.id,{canvas:{mode:'sample',canvasId:inv.canvas.items[0].id,columns:129}})).rejects.toThrow();
   },30000);
-  it('P3 switches only an observed owned tab and invalidates consumed observations',async()=>{
-    const url=await page(u=>u.includes('child')?'<title>Same title</title><body>CHILD</body>':'<title>Same title</title><body>PARENT<button onclick="window.open(\'/child\',\'_blank\')">Open child</button></body>');
-    const {s,id}=await opened(url);let o=await s.observe(id);
-    await s.act(id,o.observationId,choose(o,'CLICK',a=>a.label==='Open child').id);
-    o=await s.observe(id);expect(o.tabs?.items.length).toBe(2);
-    expect(new Set(o.tabs.items.map((t:any)=>t.id)).size).toBe(2);
-    const a=choose(o,'SWITCH_TAB');await s.act(id,o.observationId,a.id);
-    await expect(s.act(id,o.observationId,a.id)).rejects.toThrow(/OBSERVATION/);
-    const child=await s.observe(id);expect(child.text).toContain('CHILD');
-    expect(child.tabs.items.filter((t:any)=>t.active)).toHaveLength(1);
+  it('P3 scopes observations to one task-created tab and refuses foreign action IDs',async()=>{
+    const url=await page(()=>'<body>Task<button>Continue</button></body>');
+    const a=await opened(url),b=await opened(url);
+    const first=await a.s.observe(a.id),second=await b.s.observe(b.id);
+    expect(first.tabs.scope).toBe('task-created-tab');expect(first.tabs.items).toHaveLength(1);
+    expect(second.tabs.items[0].id).not.toBe(first.tabs.items[0].id);
+    expect(first.actions.some((x:any)=>x.operation==='SWITCH_TAB')).toBe(false);
+    await expect(a.s.act(a.id,second.observationId,choose(second,'CLICK').id)).rejects.toThrow(/OBSERVATION/);
   },30000);
   it('P4 is opt-in, binds key actions to focus and releases a bounded held key',async()=>{
-    const url=await page(()=>'<body><input id="field"><input id="other"><input id="secret" type="password"><p id="out"></p><script>document.addEventListener("keydown",e=>out.textContent+="down:"+e.key+";");document.addEventListener("keyup",e=>out.textContent+="up:"+e.key+";");</script></body>');
+    const url=await page(()=>'<body><input id="field"><input id="other"><input id="secret" type="password"><p id="out"></p></body>');
     const off=await opened(url);let o=await off.s.observe(off.id);expect(o.actions.some((a:any)=>/KEY/.test(a.operation))).toBe(false);
-    const {s,id}=await opened(url,['keyboard','held-key','history']);await evaluate(s,id,'field.focus()');
+    const {s,id}=await opened(url,['keyboard','held-key','history']);await evaluate(s,id,'out.textContent="";document.addEventListener("keydown",e=>out.textContent+="down:"+e.key+";");document.addEventListener("keyup",e=>out.textContent+="up:"+e.key+";");field.focus()');
     o=await s.observe(id);const key=choose(o,'PRESS_KEY',a=>a.key==='Escape');
     await evaluate(s,id,'other.focus()');await expect(s.act(id,o.observationId,key.id)).rejects.toThrow(/STALE|FOCUS/);
     o=await s.observe(id);await s.act(id,o.observationId,choose(o,'PRESS_KEY',a=>a.key==='Escape').id);
@@ -111,7 +110,6 @@ describe('SystemOne native browser adoption',()=>{
 import { vi } from 'vitest';
 import { KeyboardActions, PRESS_KEYS, HOLD_KEYS, HOLD_DURATIONS } from '../src/rdc/browser-control/keyboard-actions.js';
 import { CanvasObserver, canvasOptionsSchema, projectRaster } from '../src/rdc/browser-control/canvas-observation.js';
-import { OwnedTabs } from '../src/rdc/browser-control/owned-tabs.js';
 import { browserControl } from '../src/mcp/rdc-schemas.js';
 import { BrowserControlArgsSchema } from '../src/rdc/tools/schemas.js';
 import { handleBrowserControl } from '../src/rdc/handlers/browser-control-handlers.js';
@@ -173,26 +171,14 @@ it('public and handler schemas agree on browser option validity',()=>{
 it('actual handler passes new options to the existing singleton',async()=>{
   const open=vi.spyOn(browserControlService,'open').mockResolvedValue({sessionId:'fixture'});
   const observe=vi.spyOn(browserControlService,'observe').mockResolvedValue({canvas:{state:'available'}});
+  const assertOwner=vi.spyOn(browserControlService,'assertOwner').mockReturnValue();
   try{
     const a=await handleBrowserControl({action:'open',url:'http://fixture',interactionCapabilities:['keyboard']});
     expect(a.isError).not.toBe(true);expect(open).toHaveBeenCalledWith('http://fixture',true,{interactionCapabilities:['keyboard']});
     const b=await handleBrowserControl({action:'observe',sessionId:'fixture',canvas:{mode:'inventory'}});
     expect(b.isError).not.toBe(true);expect(observe).toHaveBeenCalledWith('fixture',{canvas:{mode:'inventory'}});
-  }finally{open.mockRestore();observe.mockRestore();}
+  }finally{open.mockRestore();observe.mockRestore();assertOwner.mockRestore();}
 });
-it('P3 full target IDs remain distinct and closed/changed tabs are rejected',async()=>{
-  const tabs=new OwnedTabs(),port=23456;
-  const target=(id:string,url='http://fixture/')=>({id,type:'page',title:'duplicate',url,webSocketDebuggerUrl:`ws://127.0.0.1:${port}/devtools/page/${id}`});
-  const original=globalThis.fetch;
-  let targets=[target('first-xxxx'),target('second-xxxx')];
-  globalThis.fetch=vi.fn(async()=>new Response(JSON.stringify(targets))) as any;
-  try{
-    const inv=await tabs.inventory(port,'first-xxxx');expect(new Set(inv.public.items.map(t=>t.id)).size).toBe(2);
-    targets=[target('first-xxxx')];await expect(tabs.resolve(port,'second-xxxx','http://fixture/')).rejects.toThrow('TAB_CLOSED');
-    targets=[target('second-xxxx','http://changed/')];await expect(tabs.resolve(port,'second-xxxx','http://fixture/')).rejects.toThrow('TAB_CHANGED');
-  }finally{globalThis.fetch=original;}
-});
-
 it('P4 timing boundary releases at the hold deadline even while keyDown acknowledgement is delayed',async()=>{
   vi.useFakeTimers();let finishDown!:(v:any)=>void;
   const send=vi.fn((_method:string,params:any)=>params.type==='keyDown'?new Promise(resolve=>{finishDown=resolve;}):Promise.resolve({}));

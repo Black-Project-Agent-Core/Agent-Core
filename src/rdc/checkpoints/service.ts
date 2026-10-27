@@ -5,7 +5,7 @@ import { assertSameFileIdentity } from '../../security/file-identity.js';
 import { assertEvidenceLocalPath } from '../../verification/evidence-snapshot.js';
 import { decideToolEvidenceCapture } from '../../security/evidence-capture-policy.js';
 import { isSensitiveKey, redactSensitiveString } from '../../security/redaction.js';
-import { fileMutationCoordinator, nativeDevelopmentFreeze, type AutoCheckpointReceipt, type AutoCheckpointReason, type MutationExecutionContext } from '../mutation-coordinator.js';
+import { fileMutationCoordinator, type AutoCheckpointReceipt, type AutoCheckpointReason, type MutationExecutionContext } from '../mutation-coordinator.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeOwnedFileAtomic } from '../../persistence/atomic-file.js';
@@ -41,6 +41,14 @@ interface FileCheckpointState {
   head: string;
   baseline: Record<string, FileCheckpointSnapshot>;
   nodes: Record<string, FileCheckpointNode>;
+}
+/** Pre-mutation snapshots of one automatic checkpoint, for the read-only task-changes view. */
+export interface AutomaticCheckpointRecord {
+  id: string;
+  invocationId: string;
+  taskId?: string;
+  createdAt: string;
+  captured: FileCheckpointSnapshot[];
 }
 export interface RestorePreview {
   checkpointId: string;
@@ -406,6 +414,55 @@ export class FileCheckpointService {
     });
   }
 
+  /** Root every checkpointed path is confined to. */
+  get workspaceRoot(): string { return this.root; }
+
+  /**
+   * Read-only projection for presentation. Never creates, rebases on disk or publishes state;
+   * a missing store is an empty list, not a new checkpoint owner.
+   */
+  async readAutomaticCheckpoints(): Promise<AutomaticCheckpointRecord[]> {
+    return this.withState(async () => {
+      let state = this.state;
+      if (!state) {
+        let parsed: FileCheckpointState;
+        try { parsed = JSON.parse(await readFile(this.statePath, 'utf8')) as FileCheckpointState; }
+        catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+          throw error;
+        }
+        if (parsed.version !== STATE_VERSION) throw new Error('CHECKPOINT_STATE_VERSION_UNSUPPORTED');
+        const rootReal = await realpath(this.root);
+        state = path.resolve(parsed.root) === path.resolve(rootReal) ? parsed : this.rebaseState(parsed, rootReal);
+      }
+      return Object.values(state.nodes)
+        .filter(node => node.origin === 'automatic' && typeof node.invocationId === 'string' && Array.isArray(node.capturedPaths))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .map(node => ({
+          id: node.id, invocationId: node.invocationId!, createdAt: node.createdAt,
+          ...(node.taskId ? { taskId: node.taskId } : {}),
+          captured: node.capturedPaths!.flatMap(file => {
+            const snapshot = node.files[this.key(file)];
+            return snapshot ? [cloneSnapshot(snapshot)] : [];
+          }),
+        }));
+    });
+  }
+
+  /** Read-only blob access: only a regular file whose bytes still match the requested digest. */
+  async readBlob(sha256: string, maxBytes: number): Promise<Buffer | null> {
+    if (!/^[a-f0-9]{64}$/.test(sha256)) return null;
+    try {
+      const target = this.blobPath(sha256), info = await lstat(target);
+      if (!info.isFile() || info.size > maxBytes) return null;
+      const bytes = await readFile(target);
+      return digest(bytes) === sha256 ? bytes : null;
+    } catch { return null; }
+  }
+
+  /** Path of a stored blob for read-only consumers; callers must verify content with readBlob first. */
+  blobFilePath(sha256: string): string { return this.blobPath(sha256); }
+
   private targetFiles(state: FileCheckpointState, node: FileCheckpointNode): Record<string, FileCheckpointSnapshot> {
     const merged: Record<string, FileCheckpointSnapshot> = {};
     for (const [key, value] of Object.entries(state.baseline)) merged[key] = cloneSnapshot(value);
@@ -461,8 +518,6 @@ export class FileCheckpointService {
       if (preview.previewDigest !== previewDigest) throw new Error('CHECKPOINT_RESTORE_PREVIEW_STALE');
       const target = this.targetFiles(state, state.nodes[checkpointId]);
       const rollback = new Map<string, FileCheckpointSnapshot>();
-      // Check every target before the first restore; checkpoint capture remains read-only.
-      for (const item of preview.changes) await nativeDevelopmentFreeze.assertWritable(item.path);
       try {
         for (const item of preview.changes) rollback.set(this.key(item.path), await this.snapshotCanonical(item.path));
         for (const item of preview.changes) {

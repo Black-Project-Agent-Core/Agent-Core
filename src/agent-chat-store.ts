@@ -2,6 +2,11 @@ import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { normalizeMemoryUse, type AgentMemoryUse } from './agent-memory-use.js';
+import { normalizeNativeResultMetadata, type NativeMemoryResultMetadata } from './agent-memory-evaluation.js';
+import {
+  compactionEnabled, summarizeConversationPrefix, type AgentCompactionRecord,
+} from './agent-context-compaction.js';
 
 export type AgentChatConversationStatus = 'active' | 'archived';
 export type AgentChatTurnStatus =
@@ -25,7 +30,7 @@ export interface AgentChatConversation {
   updatedAtMs: number;
   lastTurnId?: string;
 }
-export interface AgentChatTurn {
+export interface AgentChatTurn extends NativeMemoryResultMetadata {
   id: string;
   conversationId: string;
   clientRequestId: string;
@@ -35,7 +40,9 @@ export interface AgentChatTurn {
   model?: string;
   iterations?: number;
   retrievalCount?: number;
+  memoryUse?: AgentMemoryUse[];
   errorCode?: string;
+  messageOrigin?: 'local-operator' | 'external-controller';
   createdAtMs: number;
   startedAtMs: number;
   completedAtMs?: number;
@@ -97,7 +104,14 @@ function mapConversation(row: Record<string, unknown>): AgentChatConversation {
   };
 }
 function mapTurn(row: Record<string, unknown>): AgentChatTurn {
+  let memoryUse: AgentMemoryUse[] = [];
+  try { memoryUse = normalizeMemoryUse(JSON.parse(String(row.memory_use_json ?? '[]'))); } catch {}
+  let metadata: NativeMemoryResultMetadata = {};
+  try { metadata = normalizeNativeResultMetadata(JSON.parse(String(row.result_metadata_json ?? '{}'))); } catch {}
   return {
+    ...metadata,
+    ...(['local-operator', 'external-controller'].includes(String(row.turn_origin))
+      ? { messageOrigin: row.turn_origin as 'local-operator' | 'external-controller' } : {}),
     id: String(row.turn_id),
     conversationId: String(row.conversation_id),
     clientRequestId: String(row.client_request_id),
@@ -109,6 +123,7 @@ function mapTurn(row: Record<string, unknown>): AgentChatTurn {
     ...(row.retrieval_count !== null && row.retrieval_count !== undefined
       ? { retrievalCount: Number(row.retrieval_count) } : {}),
     ...(row.error_code ? { errorCode: String(row.error_code) } : {}),
+    ...(memoryUse.length ? { memoryUse } : {}),
     createdAtMs: Number(row.created_at_ms),
     startedAtMs: Number(row.started_at_ms),
     ...(row.completed_at_ms ? { completedAtMs: Number(row.completed_at_ms) } : {}),
@@ -237,6 +252,16 @@ export class AgentChatStore {
           updated_at_ms INTEGER NOT NULL,
           FOREIGN KEY(turn_id) REFERENCES chat_turns(turn_id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS chat_compaction_sources (
+          turn_id TEXT NOT NULL,
+          compaction_id TEXT NOT NULL,
+          source_json TEXT NOT NULL,
+          source_digest TEXT NOT NULL,
+          created_at_ms INTEGER NOT NULL,
+          PRIMARY KEY(turn_id, compaction_id),
+          FOREIGN KEY(turn_id) REFERENCES chat_turns(turn_id) ON DELETE CASCADE
+        );
       `);
       db.exec(`
         CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated
@@ -248,6 +273,17 @@ export class AgentChatStore {
         CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation
           ON chat_messages(conversation_id, created_at_ms);
       `);
+      const turnColumns = db.prepare('PRAGMA table_info(chat_turns)').all() as unknown as Array<{ name: string }>;
+      if (!turnColumns.some(column => column.name === 'memory_use_json')) {
+        db.exec('ALTER TABLE chat_turns ADD COLUMN memory_use_json TEXT');
+      }
+      if (!turnColumns.some(column => column.name === 'result_metadata_json')) {
+        db.exec('ALTER TABLE chat_turns ADD COLUMN result_metadata_json TEXT');
+      }
+      // Old messages have unknown provenance; never relabel history as human approval.
+      if (!turnColumns.some(column => column.name === 'turn_origin')) {
+        db.exec('ALTER TABLE chat_turns ADD COLUMN turn_origin TEXT');
+      }
       const version = db.prepare(
         "SELECT value FROM chat_meta WHERE key='schema_version'",
       ).get() as { value?: string } | undefined;
@@ -311,6 +347,14 @@ export class AgentChatStore {
     });
   }
 
+  healthCounts(): { conversationCount: number; activeConversationCount: number; resumableTurnCount: number } {
+    return this.withDb(db => db.prepare(`SELECT
+      (SELECT COUNT(*) FROM chat_conversations) AS conversationCount,
+      (SELECT COUNT(*) FROM chat_conversations WHERE status='active') AS activeConversationCount,
+      (SELECT COUNT(*) FROM chat_turns WHERE status='resumable') AS resumableTurnCount
+    `).get() as { conversationCount: number; activeConversationCount: number; resumableTurnCount: number });
+  }
+
   getTurn(turnId: string): AgentChatTurn | null {
     return this.withDb(db => {
       const row = db.prepare(
@@ -328,6 +372,30 @@ export class AgentChatStore {
       return row ? mapTurn(row) : null;
     });
   }
+  /**
+   * Turns that ended without a result and can never resume. Their runtime task must not stay open,
+   * because an open task makes the whole session impossible to close or reuse.
+   */
+  listEndedTurnTasks(conversationId?: string): Array<{ turnId: string; runtimeTaskId: string; status: AgentChatTurnStatus }> {
+    return this.withDb(db => {
+      // A turn recorded without a runtime task id has nothing to settle; looking it up would only raise noise.
+      const ended = "t.status IN ('stopped','failed','interrupted') AND t.runtime_task_id <> ''";
+      const rows = (conversationId
+        ? db.prepare(`SELECT t.turn_id, t.runtime_task_id, t.status FROM chat_turns t
+            WHERE t.conversation_id=? AND ${ended} ORDER BY t.created_at_ms`).all(conversationId)
+        : db.prepare(`SELECT t.turn_id, t.runtime_task_id, t.status FROM chat_turns t
+            JOIN chat_conversations c ON c.conversation_id=t.conversation_id
+            WHERE c.status='active' AND ${ended} ORDER BY t.created_at_ms`).all()) as unknown as Record<string, unknown>[];
+      return rows
+        .map(row => ({
+          turnId: String(row.turn_id),
+          runtimeTaskId: String(row.runtime_task_id ?? '').trim(),
+          status: String(row.status) as AgentChatTurnStatus,
+        }))
+        .filter(turn => turn.runtimeTaskId !== '');
+    });
+  }
+
   beginTurn(input: {
     conversationId: string;
     turnId: string;
@@ -336,6 +404,7 @@ export class AgentChatStore {
     userMessageId: string;
     prompt: string;
     executorToken?: string;
+    messageOrigin?: 'local-operator' | 'external-controller';
     startedAtMs?: number;
   }): { turn: AgentChatTurn; created: boolean; claim?: AgentChatExecutionClaim } {
     const startedAtMs = input.startedAtMs ?? Date.now();
@@ -364,8 +433,8 @@ export class AgentChatStore {
       db.prepare(`
         INSERT INTO chat_turns (
           turn_id, conversation_id, client_request_id, runtime_task_id,
-          status, created_at_ms, started_at_ms
-        ) VALUES (?, ?, ?, ?, 'running', ?, ?)
+          status, created_at_ms, started_at_ms, turn_origin
+        ) VALUES (?, ?, ?, ?, 'running', ?, ?, ?)
       `).run(
         input.turnId,
         input.conversationId,
@@ -373,6 +442,7 @@ export class AgentChatStore {
         input.runtimeTaskId,
         startedAtMs,
         startedAtMs,
+        input.messageOrigin ?? null,
       );
       db.prepare(`
         INSERT INTO chat_turn_execution (
@@ -445,6 +515,18 @@ export class AgentChatStore {
     });
   }
 
+  /** The exact messages a compaction replaced; null when absent or when the stored text no longer matches its digest. */
+  getCompactionSource(turnId: string, compactionId: string): { sourceJson: string; sourceDigest: string } | null {
+    return this.withDb(db => {
+      const row = db.prepare('SELECT source_json, source_digest FROM chat_compaction_sources WHERE turn_id=? AND compaction_id=?')
+        .get(turnId, compactionId) as { source_json?: string; source_digest?: string } | undefined;
+      if (!row?.source_json || !row.source_digest) return null;
+      const actual = createHash('sha256').update(row.source_json, 'utf8').digest('hex');
+      return actual === row.source_digest.replace(/^sha256:/, '')
+        ? { sourceJson: row.source_json, sourceDigest: row.source_digest } : null;
+    });
+  }
+
   saveCheckpoint(input: {
     turnId: string;
     claim: AgentChatExecutionClaim;
@@ -454,10 +536,21 @@ export class AgentChatStore {
     payloadJson: string;
     payloadDigest: string;
     updatedAtMs?: number;
+    /** Archived in the same transaction as the checkpoint that no longer carries these messages. */
+    compactionSources?: Array<{ id: string; sourceJson: string; sourceDigest: string }>;
   }): AgentChatCheckpointRecord {
     const updatedAtMs = input.updatedAtMs ?? Date.now();
     return this.withDb(db => this.transaction(db, () => {
       this.assertExecutionWithDb(db, input.turnId, input.claim);
+      for (const source of input.compactionSources ?? []) {
+        if (createHash('sha256').update(source.sourceJson, 'utf8').digest('hex') !== source.sourceDigest.replace(/^sha256:/, '')) {
+          throw new Error('AGENT_CHAT_COMPACTION_SOURCE_DIGEST_MISMATCH');
+        }
+        db.prepare(`
+          INSERT OR IGNORE INTO chat_compaction_sources (turn_id, compaction_id, source_json, source_digest, created_at_ms)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(input.turnId, source.id, source.sourceJson, source.sourceDigest, updatedAtMs);
+      }
       const turn = db.prepare(
         'SELECT status FROM chat_turns WHERE turn_id=?',
       ).get(input.turnId) as { status?: string } | undefined;
@@ -548,6 +641,10 @@ export class AgentChatStore {
         SET status='running', error_code=NULL, completed_at_ms=NULL
         WHERE turn_id=?
       `).run(input.turnId);
+      db.prepare(`
+        UPDATE chat_conversations SET updated_at_ms=MAX(updated_at_ms+1,?)
+        WHERE conversation_id=(SELECT conversation_id FROM chat_turns WHERE turn_id=?)
+      `).run(Date.now(), input.turnId);
       return { executorToken: input.executorToken, executionEpoch };
     }));
   }
@@ -594,6 +691,20 @@ export class AgentChatStore {
         }
       }
       return { resumable, interrupted };
+    }));
+  }
+
+  noteResumeIssue(turnId: string, expectedRevision: number, errorCode: string): void {
+    this.withDb(db => this.transaction(db, () => {
+      const changed = db.prepare(`
+        UPDATE chat_turns SET error_code=?
+        WHERE turn_id=? AND status='resumable'
+          AND EXISTS (SELECT 1 FROM chat_turn_checkpoints WHERE turn_id=? AND revision=?)
+      `).run(cleanText(errorCode, MAX_ERROR_CODE), turnId, turnId, expectedRevision);
+      if (changed.changes) db.prepare(`
+        UPDATE chat_conversations SET updated_at_ms=MAX(updated_at_ms+1,?)
+        WHERE conversation_id=(SELECT conversation_id FROM chat_turns WHERE turn_id=?)
+      `).run(Date.now(), turnId);
     }));
   }
 
@@ -659,6 +770,8 @@ export class AgentChatStore {
     model?: string;
     iterations: number;
     retrievalCount: number;
+    memoryUse?: AgentMemoryUse[];
+    metadata?: NativeMemoryResultMetadata;
     claim?: AgentChatExecutionClaim;
     completedAtMs?: number;
   }): AgentChatTurn {
@@ -676,7 +789,7 @@ export class AgentChatStore {
         UPDATE chat_turns
         SET status='finalized', provider_id=?, model=?,
             iterations=?, retrieval_count=?, error_code=NULL,
-            completed_at_ms=?
+            completed_at_ms=?, memory_use_json=?, result_metadata_json=?
         WHERE turn_id=?
       `).run(
         input.providerId ?? null,
@@ -684,6 +797,8 @@ export class AgentChatStore {
         input.iterations,
         input.retrievalCount,
         completedAtMs,
+        JSON.stringify(normalizeMemoryUse(input.memoryUse)),
+        JSON.stringify(normalizeNativeResultMetadata(input.metadata ?? {})),
         input.turnId,
       );
       db.prepare(`
@@ -747,6 +862,7 @@ export class AgentChatStore {
     turnId: string;
     status: Extract<AgentChatTurnStatus, 'failed' | 'interrupted' | 'stopped'>;
     errorCode?: string;
+    failureResponse?: string;
     claim?: AgentChatExecutionClaim;
     completedAtMs?: number;
   }): AgentChatTurn {
@@ -758,7 +874,10 @@ export class AgentChatStore {
       if (!existing) throw new Error('AGENT_CHAT_TURN_NOT_FOUND');
       this.assertExecutionWithDb(db, input.turnId, input.claim);
       const turn = mapTurn(existing);
-      if (turn.status === 'finalized') return turn;
+      if (['finalized', 'failed', 'interrupted', 'stopped'].includes(turn.status)) return turn;
+      if (input.failureResponse !== undefined
+        && (input.status !== 'failed' || input.errorCode !== 'AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED'))
+        throw new Error('AGENT_CHAT_FAILURE_REPORT_NOT_ALLOWED');
       db.prepare(`
         UPDATE chat_turns
         SET status=?, error_code=?, completed_at_ms=?
@@ -769,6 +888,14 @@ export class AgentChatStore {
         completedAtMs,
         input.turnId,
       );
+      if (input.failureResponse?.trim()) {
+        const report = cleanText('Incomplete tool-limit report; task remains failed and unverified.\n\n'
+          + input.failureResponse, 4_000).match(/\S+\s*/g)?.slice(0, 250).join('').trim() ?? '';
+        db.prepare(`INSERT OR IGNORE INTO chat_messages
+          (message_id, conversation_id, turn_id, role, content, created_at_ms)
+          VALUES (?, ?, ?, 'assistant', ?, ?)`)
+          .run(turn.id + ':iteration-limit-report', turn.conversationId, turn.id, report, completedAtMs);
+      }
       db.prepare(`
         UPDATE chat_conversations
         SET updated_at_ms=?
@@ -833,7 +960,8 @@ export class AgentChatStore {
         WHERE m.conversation_id=?
           AND (
             m.role='user'
-            OR (m.role='assistant' AND t.status='finalized')
+            OR (m.role='assistant' AND (t.status='finalized'
+              OR (t.status='failed' AND t.error_code='AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED')))
           )
         ORDER BY m.created_at_ms ASC, m.message_id ASC
       `).all(conversationId) as unknown as Record<string, unknown>[];
@@ -847,25 +975,46 @@ export class AgentChatStore {
     maxMessages?: number;
     maxChars?: number;
   }): Array<{ role: AgentChatMessageRole; content: string }> {
+    return this.boundedContext(input).messages;
+  }
+
+  /** The verbatim history window plus a derived digest of what no longer fits it (null when nothing was cut). */
+  boundedContext(input: {
+    conversationId: string;
+    excludeTurnId?: string;
+    maxMessages?: number;
+    maxChars?: number;
+  }): {
+    messages: Array<{ role: AgentChatMessageRole; content: string }>;
+    summary: { text: string; record: AgentCompactionRecord } | null;
+  } {
     const maxMessages = Math.max(1, Math.min(48, input.maxMessages ?? 24));
     const maxChars = Math.max(1_000, Math.min(80_000, input.maxChars ?? 48_000));
     const messages = this.messagesForConversation(input.conversationId)
       .filter(message => !input.excludeTurnId || message.turnId !== input.excludeTurnId);
     const selected: AgentChatMessage[] = [];
     let chars = 0;
+    let truncatedHead: string | undefined;
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index]!;
       if (selected.length >= maxMessages) break;
       const remaining = maxChars - chars;
       if (remaining <= 0) break;
       const content = message.content.slice(Math.max(0, message.content.length - remaining));
+      if (content.length < message.content.length) truncatedHead = message.content.slice(0, message.content.length - content.length);
       selected.push({ ...message, content });
       chars += content.length;
     }
-    return selected.reverse().map(message => ({
-      role: message.role,
-      content: message.content,
-    }));
+    const older = messages.slice(0, messages.length - selected.length);
+    const summary = compactionEnabled()
+      ? summarizeConversationPrefix(older.map(message => ({
+        role: message.role as 'user' | 'assistant', content: message.content, createdAtMs: message.createdAtMs,
+      })), { firstOrdinal: 1, ...(truncatedHead ? { truncatedHead } : {}) })
+      : null;
+    return {
+      messages: selected.reverse().map(message => ({ role: message.role, content: message.content })),
+      summary,
+    };
   }
 
   detail(conversationId: string): AgentChatConversationDetail | null {

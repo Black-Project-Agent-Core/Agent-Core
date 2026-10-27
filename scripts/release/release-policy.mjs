@@ -39,7 +39,9 @@ function validatePattern(raw) {
   }
   const supported = body === "package.json"
     || body === "package-lock.json"
-    || body.startsWith("src/") || body.startsWith("bundled-skills/");
+    || body.startsWith("src/")
+    || body.startsWith("runtime/skills/capability-packs/")
+    || body === "runtime/skills/README.md";
   if (!supported) {
     throw new Error("changedFilePatterns supports only Agent Core product/source paths: " + raw);
   }
@@ -142,8 +144,13 @@ export function releaseBaselinePathspecs() {
     ".changeset",
     "docs/memory/release-intents",
     "src",
-    "bundled-skills",
-    ":(exclude)bundled-skills/**/node_modules/**",
+    "runtime/skills/capability-packs",
+    "runtime/skills/README.md",
+    ":(exclude)runtime/skills/capability-packs/**/node_modules/**",
+    ":(exclude)runtime/skills/capability-packs/**/node_modules.partial-*/**",
+    ":(exclude)runtime/skills/capability-packs/**/bin/**",
+    ":(exclude)runtime/skills/capability-packs/**/obj/**",
+    ":(exclude)runtime/skills/capability-packs/**/dist/**",
     ":(exclude)src/**/bin/**",
     ":(exclude)src/**/obj/**",
     ":(exclude)src/**/node_modules/**",
@@ -153,5 +160,6 @@ export function releaseBaselinePathspecs() {
 }
 
 export function releaseChangeScanPathspecs() {
-  return ["package.json", "package-lock.json", "scripts/release", ".changeset", "docs/memory/release-intents", "src", "bundled-skills"];
+  return ["package.json", "package-lock.json", "scripts/release", ".changeset", "docs/memory/release-intents", "src",
+    "runtime/skills/capability-packs", "runtime/skills/README.md"];
 }

@@ -40,7 +40,30 @@ Kartu tidak merekam persetujuan, membangun, menjalankan atau mengaktifkan apa pu
 Keputusan tetap memakai alur pengguna existing dengan bukti pesan asli dan revisi
 tepat. Membaca dokumen bukan persetujuan; Markdown adalah data untuk ditinjau.
 
+## Antrian proposal aktif — urutan prioritas (2026-10-26)
+
+Urutan ini disusun controller atas permintaan pengguna ("promote proposal yang harus di duluin atau proposal penting").
+Urutan bukan persetujuan implementasi: hanya baris berstatus **DITERIMA** yang sudah memperoleh keputusan, dan hanya untuk
+scope yang tertulis di dokumennya. Semua angka diukur hanya-baca pada 2026-10-26.
+
+| # | Proposal dan scope | Status keputusan | Alasan prioritas |
+| --- | --- | --- | --- |
+| 1 | [Harness2 Donor Proposals](Harness2-Donor-Proposals.md) — **P1 Fase 0**: ukur anggaran teks always-on (hanya baca) | **DITERIMA dan SELESAI** (Fase 0, [laporan](../research/Always-On-Text-Budget-Phase0-20261026.md)); F1-A dan F1-A2 diterima (baris 3); F1-B dan F1-C menunggu keputusan | Satu `controller_contract(read)` 78.493 karakter; `AGENTS.md` 78.135 byte; bagian "Historical Hermes … RETIRED" 3.609 byte tetap dimuat. Risiko hampir nol, tanpa ketergantungan. |
+| 2 | [Evidence-Gated Harness Lab](Evidence-Gated-Harness-Self-Improvement-Lab.md) — **R8 (re-scope R6-D), Revisi 10**: R8-S0 (dry-run pada salinan) **SELESAI** ([laporan](../research/Learning-State-Closure-R8-S0-20261026.md)); penutupan episode aturan A/B **HOLD**; **R8-S1a** (state ditulis tanpa indentasi) **DIIMPLEMENTASIKAN DAN AKTIF** 2026-10-26 (bagian 18.10) | R8-S1b (arsip tanpa `closedAt`) dan R8-S2 (pembersihan `.tmp-*`) menunggu keputusan masing-masing | State live 8.728.739 → 6.118.840 byte (−29,9%), satu baris JSON valid, nol episode hilang; mikrobenchmark `writeStateFile` asli 578 → 420 ms per mutasi (bukan latensi permintaan). Restart aktivasi juga memperbaiki skrip restart yang menunggu bridge stdio Claude Desktop. |
+| 3 | Harness2 Donor Proposals — **P1 Fase 1, kandidat F1-A dan F1-A2**: beri ruang bagi baris dinamis kapsul bootstrap (perbaikan fungsional kecil; teks kontrak tidak berubah) | **DITERIMA dan DIIMPLEMENTASIKAN di source** (build, tes dan path policy lulus; AKTIF sejak restart resmi 2026-10-26 10:36 WIB, diverifikasi pada respons acknowledge hidup) | Kapsul dipotong di 7.000 karakter dan bagian statisnya 6.579, sehingga baris jumlah review dan episode Learning yang tertunda tidak sampai ([laporan](../research/Always-On-Text-Budget-Phase0-20261026.md)). Kini batasnya 7.600 dengan dua hitungan di depan. F1-A2 (temuan terpisah: jumlah episode tertunda dicetak paling tinggi 5) juga DITERIMA dan DIIMPLEMENTASIKAN di source: hitungan kini jumlah sebenarnya, daftar tetap lima baris. |
+| 4 | Harness2 Donor Proposals — **P3**: peringatan struktural pada validasi Skill | Menunggu keputusan | Celah terkonfirmasi di `scanDirectory`; belum ada bukti referensi menggantung nyata pada Skill terpasang. |
+| 5 | Harness2 Donor Proposals — **P5**, lalu **P4** (angka P1 kini tersedia), lalu **P2** (bersama paket evaluasi A/B/C) | Menunggu keputusan | Nilai lebih kecil atau bergantung pada hasil item di atasnya. |
+
+Tidak diprioritaskan sekarang: Evidence-Gated R5-P2, R6-E, R6-F dan R7/AR-P1 (menunggu hipotesis nyata dan
+sumber observasi host yang independen). [Integrasi Arsitektur Native Agent Core](Integrasi-Arsitektur-Native-Agent-Core.md)
+R4 sudah **CLOSED BY USER DECISION** dan tidak dilanjutkan tanpa permintaan baru.
+
 ## Proposal yang selesai
+
+- **COMPLETED 2026-10-27:** [Native Final Report R3](../history-agent-core/Native-Final-Report-At-Tool-Iteration-Limit.md), termasuk persistensi/replay/next context dan durable single-attempt recovery.
+- **COMPLETED 2026-10-27:** [External Native Chat Bridge R3](../history-agent-core/External-Native-Chat-Bridge.md), termasuk R1 adapter, R2 UI refresh dan Phase B facade/provenance/packaging. [Bukti integrasi](../verification/Native-Final-Report-and-Chat-Bridge-Completion.md):120 scoped tests,11 UI tests, build/EXE/satu restart dan real resident MCP send/replay/read lulus. Cache tool pada chat host masih belum memuat facade; protokol MCP resident83-tool teruji langsung.
+
+**Pengecualian penutupan berbasis keputusan scope pengguna (2026-10-24):** [Native AI Agent Core R4](Integrasi-Arsitektur-Native-Agent-Core.md) berstatus **CLOSED BY USER DECISION**, bukan proposal aktif, walaupun file roadmap dipertahankan di `docs/proposals/` demi kompatibilitas tautan dan provenance. [Laporan penutupan](../history-agent-core/Native-Architecture-Integration-Revision-4-Execution.md) merupakan status terkini; uji benchmark Memory yang dihentikan tidak otomatis menjadi pekerjaan yang tertunda. Jangan memulai ulang dari kata PENDING/IN PROGRESS historis tanpa permintaan pengguna baru.
 
 Setelah revisi/scope disetujui dan seluruh pekerjaan serta validasinya selesai,
 pindahkan `.md` ke **`<PROJECT_ROOT>/docs/history-agent-core`** (saat ini

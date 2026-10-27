@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/Jakeschincariol/replica-skill",
+  "commit": "77c9436fb3d18c3d58169efb8caf4fe906b0dc51",
+  "path": "replica-brand",
+  "skillSha256": "3838f17043dc395f75cf3c4f615f2a64455f15e1e9693f499b8b5b0d28711ead",
+  "license": "MIT",
+  "adapter": "frontmatter, applicability, tool mapping, local reference paths; upstream workflow retained"
+}

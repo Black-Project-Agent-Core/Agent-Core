@@ -237,7 +237,8 @@ describe('AI-Memory residual adoptions', () => {
     const rejected: LearningReviewOutcome[] = [{
       kind: 'durable-fact', status: 'rejected', reasonCode: 'candidate-invalid', reason: 'fixture', decision: baseDecision,
     }];
-    const stored = withRejectionHistory(state, rejected, new Date('2026-09-27T00:00:00.000Z'));
+    // Relative to now: rejection history expires after 30 days, so a fixed date makes this test fail once it is older.
+    const stored = withRejectionHistory(state, rejected, new Date(Date.now() - 24 * 60 * 60 * 1000));
     expect(stored.recentRejections).toHaveLength(1);
 
     const same: LearningReviewOutcome[] = [{

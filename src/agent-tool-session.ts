@@ -26,6 +26,19 @@ function principal(sessionId: string, allowedTools: string[]): VerifiedKey {
   };
 }
 
+/**
+ * Tools whose handler consumes the MCP request signal (`ctx.mcpReq.signal` or the mutation context
+ * signal) and stops its own work on Stop. Every other tool only has its late result discarded, and a
+ * child process or an in-progress write may still finish. Keep in step with the handlers' signal use.
+ */
+const STOP_OBSERVING_TOOLS: ReadonlySet<string> = new Set([
+  'read_file', 'read_multiple_files', 'web_search', 'web_open', 'browser_control',
+  'native_chat_bridge', 'artifact_inspect', 'reconstruction_harness', 'memory_v2_read', 'memory_v2_write',
+]);
+export function toolObservesStop(name: string): boolean {
+  return STOP_OBSERVING_TOOLS.has(name);
+}
+
 function toolText(result: any): string {
   if (!Array.isArray(result?.content)) return JSON.stringify(result);
   return result.content
@@ -132,27 +145,37 @@ export class AgentRuntimeToolSession {
     return tool?.annotations?.readOnlyHint !== true;
   }
 
+  /** Pure local admission check. Must run before a mutating dispatch is checkpointed. */
+  admissionIssue(name: string, args: Record<string, unknown>): string | null {
+    if (!this.allowedTools.includes(name)) return 'AGENT_RUNTIME_TOOL_NOT_GRANTED';
+    const restriction = this.restrictions[name];
+    if (restriction?.allowedActions?.length) {
+      const action = typeof args.action === 'string' ? args.action : '';
+      if (!restriction.allowedActions.includes(action)) return 'AGENT_RUNTIME_TOOL_ACTION_NOT_GRANTED';
+    }
+    if (restriction?.forbidUrlRead && args.isUrl === true) return 'AGENT_RUNTIME_TOOL_ARGUMENT_NOT_GRANTED';
+    return null;
+  }
+
+  /**
+   * `signal` is the turn's Stop signal. Aborting it before dispatch makes no tool call; aborting it
+   * mid-call makes the MCP client send `notifications/cancelled`, so only handlers that consume
+   * `ctx.mcpReq.signal` actually stop. A late result of a handler that ignores it is discarded.
+   */
   async call(
     name: string,
     args: Record<string, unknown>,
     invocationId?: string,
+    signal?: AbortSignal,
   ): Promise<AgentToolResult> {
-    if (!this.allowedTools.includes(name)) throw new Error('AGENT_RUNTIME_TOOL_NOT_GRANTED');
-    const restriction = this.restrictions[name];
-    if (restriction?.allowedActions?.length) {
-      const action = typeof args.action === 'string' ? args.action : '';
-      if (!restriction.allowedActions.includes(action)) {
-        throw new Error('AGENT_RUNTIME_TOOL_ACTION_NOT_GRANTED');
-      }
-    }
-    if (restriction?.forbidUrlRead && args.isUrl === true) {
-      throw new Error('AGENT_RUNTIME_TOOL_ARGUMENT_NOT_GRANTED');
-    }
+    const admissionIssue = this.admissionIssue(name, args);
+    if (admissionIssue) throw new Error(admissionIssue);
+    if (signal?.aborted) throw new Error('AGENT_RUNTIME_TURN_STOPPED');
     const request: any = { name, arguments: args };
     if (invocationId) {
       request._meta = { 'io.agentcore/invocation-id': invocationId };
     }
-    const raw: any = await this.client.callTool(request);
+    const raw: any = await this.client.callTool(request, signal ? { signal } : undefined);
     return {
       name,
       isError: raw?.isError === true,

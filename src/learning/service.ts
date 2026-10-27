@@ -2,6 +2,7 @@ import { curationCandidateId, curationCandidates, curationEntryFingerprint } fro
 import { updateDecisionReview, reviewDecisions, type DecisionRequest } from './decision-review.js';
 import { evaluateDecisionCalibration } from './decision-calibration.js';
 import { improvementHandoff } from './improvement-handoff.js';
+import { externalImprovement, type ExternalImprovementScope } from './external-improvements.js';
 import { memorySemanticRevision } from '../memory/disclosure.js';
 import { createLearningDecision } from './decision-evidence.js';
 import type { CurationBinding, CurationDelta } from './types.js';
@@ -38,7 +39,8 @@ import { validBrowserReceipt } from '../rdc/browser-control/procedure-context.js
 import type { LearningReviewSummary } from './types.js';
 import { LearningSinkManager } from './sink-manager.js';
 import { LearningStateStore } from './state.js';
-import { applyCheckpoint, isCuratorDue, markCurated, markReviewed } from './triggers.js';
+import { applyCheckpoint, isCuratorDue, isStalePendingReview, markCurated, markReviewed } from './triggers.js';
+import { compactStatus, pendingBacklog } from './status-view.js';
 import type {
   LearningCandidate,
   LearningCheckpointInput,
@@ -50,10 +52,19 @@ import type {
   LearningState,
   LearningRejectionFingerprint,
   LearningReviewOptions,
+  PendingLearningReview,
 } from './types.js';
 
 const REJECTION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_REJECTION_HISTORY = 128;
+
+/** Keeps a checkpoint summary only when it is bounded and would pass the durable-text safety scan. */
+function checkpointSummary(value: string | undefined): { text?: string; dropped: boolean } {
+  const text = value?.trim().slice(0, 500);
+  if (!text) return { dropped: false };
+  try { assertLearningTextSafe(text); return { text, dropped: false }; }
+  catch { return { dropped: true }; }
+}
 
 function checkpointEvidence(refs: string[] | undefined): { refs: string[]; dropped: number } {
   const input = [...new Set((refs ?? []).map((value) => value.trim()).filter(Boolean))].slice(0, 32);
@@ -153,6 +164,11 @@ export class LearningService {
     const coordinator = this.requireProposals();
     return createProposalDocuments(coordinator.skills.proposalProjectRoot(), { listSkills: () => coordinator.listForReview() });
   }
+  async externalImprovement(scope: ExternalImprovementScope, input: unknown, assertCurrent: () => Promise<void>) {
+    const identity = this.memory.registeredWorkspaceIdentity(scope.workspace);
+    if (identity.key !== scope.workspaceIdentity) throw new Error('IMPROVEMENT_WORKSPACE_CHANGED');
+    return externalImprovement(this.stateStore, this.proposalDocuments(), scope, input, assertCurrent);
+  }
   proposalReviewGuide() { return proposalReviewGuide(this.requireProposals().skills.proposalProjectRoot()); }
   async selfAwareness(workspace: string, questionType: SelfAwarenessQuestion = 'capabilities') {
     return buildSelfAwarenessView({ workspace, questionType, memory: this.memory, proposals: this.requireProposals(), learningHealth: () => this.health() });
@@ -233,7 +249,8 @@ export class LearningService {
     name: string; description: string; steps: string[]; allowedTools?: string[]; reuseCondition?: string;
     evidenceRefs: string[]; outcome: 'verified' | 'failed'; expectedContractDigest?: string;
     browserBinding?: {taskId:string;ownerId:string;workspace:string;workspaceIdentityKey:string};
-  }): Promise<AgentProcedureCandidate & { materialization: { status: 'completed' | 'unavailable'; reason?: string }; browserContextStatus?: string }> {
+  }, assertExternalCurrent?:()=>Promise<void>): Promise<AgentProcedureCandidate & { materialization: { status: 'completed' | 'unavailable'; reason?: string }; browserContextStatus?: string }> {
+    if(assertExternalCurrent){if(input.origin!=='external')throw new Error('LEARNING_PROCEDURE_INVALID');await assertExternalCurrent();}
     if (!input.taskId.trim() || input.taskId.length > 200 || !input.name.trim() || input.name.length > 160
       || !input.description.trim() || input.description.length > 2000 || !input.steps.length || input.steps.length > 50
       || input.steps.some(step => !step.trim() || step.length > 2000)) throw new Error('LEARNING_PROCEDURE_INVALID');
@@ -252,7 +269,8 @@ export class LearningService {
     const browserAssociation = supported && input.outcome === 'verified'
       ? resolveBrowserObservationUse(input.evidenceRefs,
           input.browserBinding?.taskId===input.taskId ? input.browserBinding : undefined) : undefined;
-    const result = await this.stateStore.mutate('procedures', state => {
+    const result = await this.stateStore.mutate('procedures', async state => {
+      if(assertExternalCurrent)await assertExternalCurrent();
       const procedures = [...(state.procedures ?? [])];
       let item = procedures.find(value => value.fingerprint === fingerprint && value.workspace === workspace);
       if (item) assertProcedureCompatible(item, contract);
@@ -397,28 +415,45 @@ export class LearningService {
     };
   }
 
-  async status(): Promise<unknown> {
+  /**
+   * `reviewDue` counts only reviews younger than a week: an older one is backlog that nobody can judge
+   * any more, and treating it as due made every later checkpoint look due too. `pendingReviewCount`
+   * is still the total. `view: 'compact'` returns the backlog and the latest decisions without the
+   * whole history; the default stays the full state.
+   */
+  async status(options: { now?: Date; view?: 'compact' | 'full' } = {}): Promise<unknown> {
     const state = await this.stateStore.load();
     const health = await this.health();
+    const now = (options.now ?? new Date()).getTime();
     const pendingReviews = state.pendingReviews ?? [];
-    const immediate = pendingReviews.find((item) => item.reason === 'user-correction'
+    const fresh = pendingReviews.filter((item) => !isStalePendingReview(item, now));
+    const immediate = fresh.find((item) => item.reason === 'user-correction'
       || item.reason === 'verified-recovery' || item.reason === 'explicit-learn');
-    return {
+    const summary = {
       health,
-      state,
-      pendingReviewCount: pendingReviews.length,
-      reviewDue: this.config.enabled && pendingReviews.length > 0,
-      reviewReason: immediate?.reason ?? pendingReviews[0]?.reason ?? null,
+      ...pendingBacklog(pendingReviews, now),
+      reviewDue: this.config.enabled && fresh.length > 0,
+      reviewReason: immediate?.reason ?? fresh[0]?.reason ?? null,
       curatorDue: isCuratorDue(state, this.config),
     };
+    if (options.view === 'compact') return compactStatus(state, now, summary);
+    return { state, ...summary };
+  }
+
+  /** The pending reviews named by `keys`, in their stored form; keys that are not pending are omitted. */
+  async pendingReviewsFor(keys: string[]): Promise<PendingLearningReview[]> {
+    const wanted = new Set(keys);
+    return ((await this.stateStore.load()).pendingReviews ?? []).filter((item) => wanted.has(item.idempotencyKey));
   }
 
   async checkpoint(input: LearningCheckpointInput): Promise<unknown> {
     this.assertEnabled();
     const evidence = checkpointEvidence(input.evidenceRefs);
+    const summary = checkpointSummary(input.summary);
     const normalizedInput: LearningCheckpointInput = {
       ...input,
       ...(input.workspace ? { workspace: this.memory.resolveWorkspace(input.workspace) } : {}),
+      summary: summary.text,
       evidenceRefs: evidence.refs,
     };
     const committed = await this.stateStore.mutate('checkpoint', (current) => {
@@ -461,7 +496,12 @@ export class LearningService {
       },
     );
     const handoff = improvementHandoff(normalizedInput, transition.result);
-    return { ...transition.result, ...(curation ? { curation } : {}), ...(handoff ? { improvementHandoff: handoff } : {}) };
+    return {
+      ...transition.result,
+      ...(summary.dropped ? { summaryDropped: true as const } : {}),
+      ...(curation ? { curation } : {}),
+      ...(handoff ? { improvementHandoff: handoff } : {}),
+    };
   }
 
   /** Binding comes from the host's active task, never from the delta being reviewed. */
@@ -504,16 +544,25 @@ export class LearningService {
         const decisions: NonNullable<LearningState['reviewDecisions']> = Object.assign(Object.create(null), state.reviewDecisions ?? {});
         const allOutcomes: LearningReviewOutcome[] = [];
         const cleared: string[] = [];
+        const orphan = options.orphanResolution;
+        if (orphan) {
+          // Narrow by construction: disposition only, and only for pending checkpoints that are already stale.
+          if (candidates.length || !options.disposition || !options.taskId || options.curation) throw new Error('LEARNING_ORPHAN_RESOLUTION_INVALID');
+          for (const key of keys) {
+            const pending = state.pendingReviews?.find(item => item.idempotencyKey === key);
+            if (!pending || !isStalePendingReview(pending)) throw new Error('LEARNING_ORPHAN_RESOLUTION_NOT_STALE:' + key);
+          }
+        }
         for (const key of keys) {
           const prior = state.pendingReviews?.find(item => item.idempotencyKey === key) ?? decisions[key];
           if (!prior) throw new Error('LEARNING_CHECKPOINT_NOT_FOUND:' + key);
-          if (options.taskId && prior.taskId && options.taskId !== prior.taskId) throw new Error('LEARNING_REVIEW_TASK_MISMATCH');
+          if (!orphan && options.taskId && prior.taskId && options.taskId !== prior.taskId) throw new Error('LEARNING_REVIEW_TASK_MISMATCH');
         }
         for (const key of keys) {
           const pending = state.pendingReviews?.find(item => item.idempotencyKey === key);
           const previous = decisions[key];
           if (!pending && !previous) throw new Error('LEARNING_CHECKPOINT_NOT_FOUND:' + key);
-          if (options.taskId && (pending?.taskId ?? previous?.taskId) && options.taskId !== (pending?.taskId ?? previous?.taskId)) {
+          if (!orphan && options.taskId && (pending?.taskId ?? previous?.taskId) && options.taskId !== (pending?.taskId ?? previous?.taskId)) {
             throw new Error('LEARNING_REVIEW_TASK_MISMATCH');
           }
           const curationOperations: Record<string, string[]> = Object.assign(Object.create(null), previous?.curationOperations ?? {});
@@ -583,6 +632,9 @@ export class LearningService {
             ...(Object.keys(curationOperations).length ? { curationOperations } : {}),
             ...(pending?.taskId ?? options.taskId ? { taskId: pending?.taskId ?? options.taskId } : {}),
             candidateResults,
+            ...(orphan ? { resolution: {
+              kind: 'stale-orphan' as const, resolvedByTaskId: options.taskId!, note: orphan.note.slice(0, 500), at: new Date().toISOString(),
+            } } : {}),
           };
           if (complete) cleared.push(key);
           allOutcomes.push(...outcomes);
@@ -639,9 +691,9 @@ export class LearningService {
     return this.memory.recordUseReceipt(input);
   }
 
-  async curate(workspace?: string): Promise<LearningCuratorProposal[]> {
+  async curate(workspace?: string, externalFeatureProposals?:LearningCuratorProposal[]): Promise<LearningCuratorProposal[]> {
     this.assertEnabled();
-    const proposals = await this.curator.propose(workspace);
+    const proposals = await this.curator.propose(workspace,externalFeatureProposals);
     await this.stateStore.mutate('curator', (state) => ({
       state: markCurated(state),
       result: null,

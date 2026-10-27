@@ -1,4 +1,7 @@
 import { IMPROVEMENT_HANDOFF_CONTRACT } from './improvement-handoff.js';
+import {EXTERNAL_IMPROVEMENT_GUIDE} from './external-improvements.js';
+import {EXTERNAL_EVALUATION_GUIDE,evaluateExternalComparison,projectExternalFeatureOutcomes,externalFeatureOutcomeProposals} from './external-evaluation.js';
+import {EXTERNAL_PROCEDURE_GUIDE,normalizeExternalProcedure} from './external-procedure.js';
 import { externalSkillGuidance } from '../skills/external-guidance.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
@@ -26,7 +29,7 @@ import { normalizeFailureFamily } from '../mcp/failure-loop-advisor.js';
 import { procedureFingerprint, procedureContractDigest, procedureBoundEvidence, type AgentEpisodeEvent } from '../agent-learning-loop.js';
 import { compareProcedureBrowserContext, type BrowserShapeSelection } from '../rdc/browser-control/procedure-context.js';
 import { readEvidenceSnapshot } from '../verification/evidence-snapshot.js';
-import { normalizeCapabilityUses, artifactCapabilityUse, capabilityUseKey, renderCapabilityNotice, inspectedSkillArtifacts, type CapabilityUse } from '../capability-awareness.js';
+import { normalizeCapabilityUses, artifactCapabilityUse, capabilityUseKey, renderCapabilityNotice, inspectedSkillArtifacts, normalizeSkillReadCoverage, observeSkillRead, skillInstructionsRead, type SkillReadCoverage, type CapabilityUse } from '../capability-awareness.js';
 
 const STATE_VERSION = 1 as const;
 const MAX_EPISODES = 128;
@@ -111,6 +114,7 @@ export interface ExternalControllerEpisode {
   terminalOutcome?: 'verified' | 'failed';
   verificationStatus?: 'pass' | 'fail' | 'unavailable';
   deliveredArtifacts?: Record<string, string>;
+  skillReads?: SkillReadCoverage;
   capabilityUses?: CapabilityUse[];
   capabilityNoticeKeys?: string[];
   intentionExposureKeys?: string[];
@@ -202,6 +206,9 @@ export interface ExternalProcedureInput {
   workspace?: string;
   browserSelection?: () => BrowserShapeSelection;
   invocationContext?: ExternalInvocationContext;
+  payload?: unknown;
+  taskId?: string;
+  signal?: AbortSignal;
 }
 
 function sha256(value: string): string {
@@ -283,6 +290,7 @@ function normalizeEpisode(raw: ExternalControllerEpisode): ExternalControllerEpi
     ...(raw.terminalOutcome === 'verified' || raw.terminalOutcome === 'failed' ? { terminalOutcome: raw.terminalOutcome } : {}),
     verificationStatus: raw.verificationStatus ?? 'unavailable',
     deliveredArtifacts: raw.deliveredArtifacts ?? {},
+    ...(raw.skillReads ? { skillReads: normalizeSkillReadCoverage(raw.skillReads) } : {}),
     ...(raw.capabilityUses ? {capabilityUses:normalizeCapabilityUses(raw.capabilityUses)} : {}),
     ...(Array.isArray(raw.capabilityNoticeKeys) ? {capabilityNoticeKeys:raw.capabilityNoticeKeys.filter(k=>typeof k==='string' && k.length<=400).slice(0,128)} : {}),
     ...(Array.isArray(raw.intentionExposureKeys) ? { intentionExposureKeys: raw.intentionExposureKeys.filter(key => typeof key === 'string' && /^[a-f0-9]{64}$/.test(key)).slice(-64) } : {}),
@@ -344,11 +352,21 @@ function normalizeProcedure(raw: ExternalProcedureCandidate): ExternalProcedureC
 }
 
 export class ExternalControllerLearningService {
+  async improvement(sessionId: string, raw: unknown, context?: ExternalInvocationContext, signal?: AbortSignal) {
+    const assertCurrent = async () => {
+      if (signal?.aborted || context?.sessionId !== sessionId || !await this.invocationTaskCurrent(context))
+        throw new Error('IMPROVEMENT_SCOPE_UNAVAILABLE');
+    };
+    await assertCurrent();
+    return this.learning.externalImprovement({ ownerId: context!.ownerId!, workspace: context!.workspace!,
+      workspaceIdentity: context!.workspaceIdentityKey!, taskId: context!.taskId!, sessionId }, raw, assertCurrent);
+  }
   // Ephemeral host-issued identity, never a persistent queue or caller-supplied authority.
-  private readonly invocationLifecycles = new WeakMap<ExternalInvocationContext, { expiresAt?: number }>();
+  private readonly invocationLifecycles = new WeakMap<ExternalInvocationContext, { expiresAt?: number; skillDeliveryHandled?: boolean }>();
 
   async captureToolInvocationContext(input: {
     invocationId: string; processSessionId: string; sessionId: string; ownerId?: string;
+    taskScope?: { taskId?: string; workspace?: string; signal?: AbortSignal };
   }): Promise<ExternalInvocationContext> {
     const base = { version: 1 as const, invocationId: input.invocationId,
       processSessionId: input.processSessionId, sessionId: input.sessionId,
@@ -359,7 +377,30 @@ export class ExternalControllerLearningService {
     const read = (async (): Promise<ExternalInvocationContext> => {
       const state = await this.load(true);
       if (this.issue) return unbound('observer-unavailable');
-      const episode = state.episodes.find(item => item.id === this.activeEpisodeId(state, input.sessionId));
+      let episode = state.episodes.find(item => item.id === this.activeEpisodeId(state, input.sessionId));
+      // Reconnect an exact open task after transport rotation; preserve any implicit bootstrap history.
+      if (!state.sessionHeads[input.sessionId] && (!episode || (episode.boundary === 'inferred' && !episode.memoryBinding))
+        && input.ownerId && input.taskScope?.taskId) {
+        const selector = input.taskScope;
+        try {
+          episode = await this.mutate(current => {
+            if (selector.signal?.aborted) throw new Error('EXTERNAL_TASK_CANCELLED');
+            const head = current.sessionHeads[input.sessionId];
+            const root = current.episodes.find(item => item.id === input.sessionId);
+            if ((head && head !== selector.taskId)
+              || (!head && root && (root.boundary === 'explicit' || root.memoryBinding)))
+              throw new Error('EXTERNAL_TASK_CHANGED');
+            const target = current.episodes.find(item => item.id === selector.taskId);
+            if (!target || target.boundary !== 'explicit' || target.closedAt || !target.memoryBinding
+              || target.memoryBinding.ownerId !== input.ownerId)
+              throw new Error('EXTERNAL_TASK_UNAVAILABLE');
+            const workspace = this.validateMemoryWorkspace(target.workspace, target.memoryBinding);
+            if (selector.workspace && selector.workspace !== workspace) throw new Error('EXTERNAL_TASK_WORKSPACE_MISMATCH');
+            current.sessionHeads[input.sessionId] = target.id;
+            return target;
+          });
+        } catch { return unbound('scope-unavailable'); }
+      }
       if (!episode) return unbound('no-task');
       if (!input.ownerId || episode.boundary !== 'explicit' || !episode.memoryBinding
         || episode.memoryBinding.ownerId !== input.ownerId) return unbound('scope-unavailable');
@@ -368,7 +409,8 @@ export class ExternalControllerLearningService {
         workspaceIdentityKey: episode.memoryBinding.workspaceIdentityKey, workspace };
     })().catch(() => unbound('observer-unavailable'));
     try {
-      const selected = await Promise.race([read, new Promise<ExternalInvocationContext>(resolve => {
+      // Required task authority must not expire with optional observation's 100 ms budget.
+      const selected = input.taskScope ? await read : await Promise.race([read, new Promise<ExternalInvocationContext>(resolve => {
         timer = setTimeout(() => resolve(unbound('observer-unavailable')), 100);
       })]);
       const context = Object.freeze(selected);
@@ -437,8 +479,15 @@ export class ExternalControllerLearningService {
   private capabilityTools(sessionId:string):string[]|undefined {
     try{return this.capabilityInventories.get(sessionId)?.();}catch{return undefined;}
   }
-  async recordInspectedSkillArtifacts(sessionId: string, text: string, context?: ExternalInvocationContext): Promise<void> {
-    if (context?.sessionId !== sessionId) return;
+  async recordInspectedSkillArtifacts(sessionId: string, text: string, context?: ExternalInvocationContext, request?: unknown, signal?: AbortSignal): Promise<void> {
+    if (context?.sessionId !== sessionId || this.invocationLifecycles.get(context)?.skillDeliveryHandled) return;
+    if (['list','inspect','search','read'].includes(String((request as any)?.action))) {
+      // Nonstandard successful wrappers share the same required proof owner.
+      await this.recordToolOutcome({ sessionId, tool: 'skills', argumentKeys: Object.keys(request as object),
+        outcome: 'success', readOnly: true, invocationId: context.invocationId, invocationContext: context,
+        skillDelivery: { request, text, signal } });
+      return;
+    }
     await this.observeInvocation(context, async expiresAt => {
       const delivered: Record<string,string> = {};
       for (const item of inspectedSkillArtifacts(text)) {
@@ -449,7 +498,9 @@ export class ExternalControllerLearningService {
       if (!Object.keys(delivered).length) return;
       await this.mutate(state => {
         const episode = this.invocationEpisode(state, context).episode;
-        if (episode) episode.deliveredArtifacts = { ...(episode.deliveredArtifacts ?? {}), ...delivered };
+        if (episode) {
+          episode.deliveredArtifacts = { ...(episode.deliveredArtifacts ?? {}), ...delivered };
+        }
       }, expiresAt);
     }, undefined);
   }
@@ -565,7 +616,7 @@ export class ExternalControllerLearningService {
       procedures: state.procedures.map(normalizeProcedure),
       sessionHeads: normalizeSessionHeads(state.sessionHeads),
     };
-    await writeStateFile(this.statePath, normalized);
+    await writeStateFile(this.statePath, normalized, { compact: true });
   }
 
   private async mutate<T>(fn: (state: ExternalControllerState) => T | Promise<T>, observerExpiresAt?: number): Promise<T> {
@@ -722,14 +773,54 @@ export class ExternalControllerLearningService {
     sessionId: string; tool: string; argumentKeys: string[];
     outcome: 'success' | 'handled-failure' | 'exception'; readOnly: boolean;
     invocationId?: string; workspace?: string; invocationContext?: ExternalInvocationContext;
+    /** Internal successful tool result, never accepted from an MCP argument. */
+    skillDelivery?: { request: unknown; text: string; signal?: AbortSignal };
   }): Promise<ExternalAttributionStatus> {
     const context = input.invocationContext;
     if (!context || context.sessionId !== input.sessionId
       || (input.invocationId && input.invocationId !== context.invocationId)) return 'unbound';
-    return this.observeInvocation(context, expiresAt => this.mutate(state => {
+    const skillDelivery = input.tool === 'skills' && input.outcome === 'success' && input.skillDelivery
+      && ['list','inspect','search','read'].includes(String((input.skillDelivery.request as any)?.action))
+      ? input.skillDelivery : undefined;
+    if (skillDelivery) {
+      const lifecycle = this.invocationLifecycles.get(context);
+      if (!lifecycle || context.binding !== 'bound') return 'unbound';
+      // The later passive wrapper must not retry or write the same delivery separately.
+      lifecycle.skillDeliveryHandled = true;
+    }
+    const record = async (state: ExternalControllerState): Promise<ExternalAttributionStatus> => {
       const match = this.invocationEpisode(state, context);
-      if (!match.episode) return match.status;
+      if (!match.episode) {
+        if (skillDelivery) throw new Error('EXTERNAL_SKILL_DELIVERY_TASK_UNAVAILABLE');
+        return match.status;
+      }
       const episode = match.episode, evidence = 'tool:' + context.invocationId;
+      if (skillDelivery) {
+        skillDelivery.signal?.throwIfAborted();
+        this.verificationTarget(state, input.sessionId, context);
+        const request = skillDelivery.request as { action: string; name?: string; expectedActiveDigest?: string };
+        const delivered: Record<string,string> = {};
+        const reads = normalizeSkillReadCoverage(episode.skillReads);
+        let body: any;
+        try { body = JSON.parse(skillDelivery.text); } catch { body = undefined; }
+        const shapeMatches = request.action === 'list' ? Array.isArray(body)
+          : request.action === 'search' ? body?.version === 1 && Array.isArray(body.hits)
+          : body && !Array.isArray(body) && body.name === request.name;
+        for (const item of shapeMatches ? inspectedSkillArtifacts(skillDelivery.text) : []) {
+          skillDelivery.signal?.throwIfAborted();
+          if (request.action === 'read' && item.digest !== request.expectedActiveDigest?.toLowerCase()) continue;
+          const active = await this.skills?.inspect(item.name).catch(() => undefined);
+          if (active?.digest !== item.digest) continue;
+          if (request.action === 'read' && !observeSkillRead(reads,skillDelivery.text,request)) continue;
+          delivered['skill:' + item.name] = item.digest;
+        }
+        skillDelivery.signal?.throwIfAborted();
+        // This mutation holds the existing owner queue through validation and atomic save.
+        if (Object.keys(delivered).length) {
+          episode.deliveredArtifacts = { ...(episode.deliveredArtifacts ?? {}), ...delivered };
+          if (request.action === 'read') episode.skillReads = reads;
+        }
+      }
       if (episode.events.some(item => (item.kind === 'tool' || item.kind === 'failure')
         && item.evidenceRefs.includes(evidence))) return 'attributed' as const;
       episode.updatedAt = new Date().toISOString();
@@ -743,7 +834,11 @@ export class ExternalControllerLearningService {
           processSessionId: context.processSessionId, taskId: episode.id, attributionStatus: 'attributed',
         }));
       return 'attributed' as const;
-    }, expiresAt), context.binding === 'bound' ? 'late-unavailable' : 'unbound');
+    };
+    // Required Skill evidence is task state, not optional telemetry. Await its one commit.
+    if (skillDelivery) return this.mutate(record);
+    return this.observeInvocation(context, expiresAt => this.mutate(record, expiresAt),
+      context.binding === 'bound' ? 'late-unavailable' : 'unbound');
   }
 
   async recordMemoryRecall(sessionId: string, workspace: string | undefined,
@@ -836,6 +931,40 @@ export class ExternalControllerLearningService {
       return linked;
     });
   }
+  /** Read-only: does this task still have an external episode, is it closed, and when did it last change. */
+  async episodeActivity(taskId: string): Promise<{ exists: boolean; closed: boolean; updatedAtMs: number }> {
+    const episode = (await this.load(true)).episodes.find(item => item.id === taskId);
+    if (!episode) return { exists: false, closed: false, updatedAtMs: 0 };
+    return { exists: true, closed: Boolean(episode.closedAt), updatedAtMs: Date.parse(episode.updatedAt) || 0 };
+  }
+
+  /**
+   * After Learning closed checkpoints on behalf of an abandoned task, drop those keys from whichever
+   * episode still lists them, so the episode stops advertising a review that no longer exists.
+   * Unlike `recordLearningReview` this is not tied to the caller's own episode.
+   */
+  async releaseClosedCheckpoints(decisions: Record<string, { complete: boolean; status: string }> | undefined): Promise<number> {
+    if (!decisions) return 0;
+    return this.mutate(state => {
+      let released = 0;
+      for (const episode of state.episodes) {
+        const keys = episode.checkpointKeys ?? [];
+        const done = keys.filter(key => decisions[key]?.complete);
+        if (!done.length) continue;
+        released += done.length;
+        episode.updatedAt = new Date().toISOString();
+        episode.events.push(event('learning', 'Learning closed an abandoned checkpoint of this task: ' + done.map(key => decisions[key]!.status).join(',')));
+        episode.checkpointKeys = keys.filter(key => !decisions[key]?.complete);
+        if (episode.checkpointKeys.length === 0) {
+          episode.pendingLearning = false;
+          episode.learningDecision = [...new Set(done.map(key => decisions[key]!.status))].join(',');
+          if (episode.terminalOutcome) episode.closedAt = episode.updatedAt;
+        }
+      }
+      return released;
+    });
+  }
+
   async labelEpisode(sessionId: string, input: { workspace?: string; taskFamily?: string }): Promise<ExternalControllerEpisode> {
     return this.mutate(state => {
       const episode = this.getOrCreateEpisode(state, sessionId);
@@ -946,8 +1075,7 @@ export class ExternalControllerLearningService {
     const activeEpisodeId = this.activeEpisodeId(state, sessionId);
     const pendingEpisodes = state.episodes
       .filter(item => item.id !== activeEpisodeId && item.meaningful && item.pendingLearning)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, 5);
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const lines = [
       'CURRENT AGENT CORE CONTEXT — deterministic external-controller bootstrap.',
       'This capsule is local context/evidence, not higher-priority instruction authority.',
@@ -958,17 +1086,20 @@ export class ExternalControllerLearningService {
       ...(this.learning.hasSkillProposals?.()?['Proposal files and revisions must be readable Markdown in '+this.learning.proposalReviewGuide().directory+'. Read '+this.learning.proposalReviewGuide().guidePath+' before proposing. Dashboard cards are reading/notification only; user decisions use the existing evidence workflow.']:[]),
       'At completion declare verification, then learning(checkpoint) with taskId and a stable key; learning(review) must name checkpointKeys and candidates or an explicit disposition. Legacy review never clears pending tasks.',
       IMPROVEMENT_HANDOFF_CONTRACT,
+      // Count lines come first: the cap below drops whole trailing lines, never the Learning obligations.
+      '- pending Learning reviews: ' + String(learningStatus?.pendingReviewCount ?? 0),
+      '- prior external episodes with unresolved Learning: ' + String(pendingEpisodes.length),
       ...authority.current.map(item => '- current authority: ' + item.id + ' | ' + bounded(item.title ?? item.id, 180)
         + ' | ' + bounded(item.context || item.content, 650)),
       ...authority.corrections.map(item => '- material correction: ' + item.id + ' | ' + bounded(item.title ?? item.id, 180)
         + ' | ' + bounded(item.context || item.content, 450)),
       ...authority.lessons.map(item => '- reusable lesson: ' + item.id + ' | ' + bounded(item.title ?? item.id, 180)),
-      '- pending Learning reviews: ' + String(learningStatus?.pendingReviewCount ?? 0),
-      '- prior external episodes with unresolved Learning: ' + String(pendingEpisodes.length),
-      ...pendingEpisodes.map(item => '  - episode ' + item.id + ' updated ' + item.updatedAt + (item.workspace ? ' workspace=' + item.workspace : '')),
+      // The count above covers every pending episode; only the five newest are listed.
+      ...pendingEpisodes.slice(0, 5).map(item => '  - episode ' + item.id + ' updated ' + item.updatedAt + (item.workspace ? ' workspace=' + item.workspace : '')),
       'For complex/continuity-sensitive work, use controller_learning(action=context) to synthesize current evidence with prior Memory/Patterns/Skills.',
     ];
-    const text = lines.join('\n').slice(0, 7_000);
+    const joined = lines.join('\n');
+    const text = joined.length > 7_600 ? joined.slice(0, joined.lastIndexOf('\n', 7_600)) : joined;
     this.bootstrapCache.set(sessionId, { at: Date.now(), text });
     return text;
   }
@@ -1573,6 +1704,11 @@ export class ExternalControllerLearningService {
       throw new Error('EXTERNAL_RECEIPT_REVISION_NOT_DELIVERED');
     }
     if (input.taskId && input.taskId !== episode?.id) throw new Error('EXTERNAL_RECEIPT_TASK_MISMATCH');
+    if (input.kind === 'skill' && input.applicability !== 'rejected') {
+      const active = await this.skills?.inspect(input.artifactId).catch(() => undefined);
+      if (!active || active.digest !== input.contentDigest) throw new Error('SKILL_ACTIVE_REVISION_CHANGED');
+      if (!skillInstructionsRead(episode?.skillReads,input.artifactId,active.digest)) throw new Error('SKILL_INSTRUCTIONS_NOT_FULLY_READ');
+    }
     input = { ...input, taskId: episode?.id };
     const declaredUse=artifactCapabilityUse(input,episode?.deliveredArtifacts??{});
     const failedUse=input.result==='failure';
@@ -1716,6 +1852,16 @@ export class ExternalControllerLearningService {
 
   async procedure(sessionId: string, input: ExternalProcedureInput) {
     const episode = await this.getEpisode(sessionId);
+    const admission = input.payload === undefined ? undefined : normalizeExternalProcedure(input.payload);
+    if(admission){
+      if(input.operation!=='propose' || [input.description,input.steps,input.allowedTools,input.reuseCondition].some(item=>item!==undefined))throw new Error('EXTERNAL_PROCEDURE_AMBIGUOUS_CONTRACT');
+      if(input.signal?.aborted || input.invocationContext?.binding!=='bound' || input.taskId!==input.invocationContext.taskId || input.taskId!==episode?.id
+        || input.workspace!==undefined&&input.workspace!==input.invocationContext.workspace
+        || !(await this.invocationTaskCurrent(input.invocationContext)))throw new Error('EXTERNAL_EPISODE_SCOPE_UNAVAILABLE');
+      const evidenceRefs=[...new Set([...(input.evidenceRefs??[]),...admission.evidenceRefs])].filter(ref=>ref!==input.verificationRef);
+      if(new Set([input.verificationRef,...evidenceRefs].filter(Boolean)).size>32)throw new Error('EXTERNAL_PROCEDURE_EVIDENCE_LIMIT_EXCEEDED');
+      input={...input,description:admission.description,reuseCondition:admission.reuseCondition,steps:admission.steps,allowedTools:admission.allowedTools,evidenceRefs};
+    }
     const workspace = input.workspace ?? episode?.workspace;
     const items = await this.learning.procedures(workspace);
     const deliver = async (values: typeof items) => {
@@ -1725,10 +1871,12 @@ export class ExternalControllerLearningService {
         current.deliveredArtifacts ??= {};
         for (const item of values) current.deliveredArtifacts['procedure:' + item.fingerprint] = procedureContractDigest(item);
       });
-      return values.map(({contractReceipts:_sourceReceipts,...item}) => ({
-        ...item, contractReceipts:procedureBoundEvidence(item).receipts,
-        deliveryContractDigest:procedureContractDigest(item), evidenceAttribution:procedureBoundEvidence(item),
-      }));
+      return values.map(source => {
+        const {contractReceipts:_sourceReceipts,...item}=source;
+        const evidence=procedureBoundEvidence(source);
+        return {...item,contractReceipts:evidence.receipts,
+          deliveryContractDigest:procedureContractDigest(source),evidenceAttribution:evidence};
+      });
     };
     if (input.operation === 'list') return deliver(items);
     if (input.operation === 'inspect') {
@@ -1752,17 +1900,20 @@ export class ExternalControllerLearningService {
       return this.applyProcedureOutcome(input.fingerprint!, sessionId, input.result!, [input.verificationRef!, ...(input.evidenceRefs ?? [])]);
     }
     if (!episode || episode.terminalOutcome !== 'verified' || !input.name || !input.description || !input.steps?.length || !input.verificationRef) throw new Error('EXTERNAL_PROCEDURE_PROPOSAL_FIELDS_REQUIRED');
+    if(admission && (input.signal?.aborted || !(await this.invocationTaskCurrent(input.invocationContext!))))throw new Error('EXTERNAL_EPISODE_SCOPE_UNAVAILABLE');
+    const assertAdmission=admission?async()=>{if(input.signal?.aborted||!await this.invocationTaskCurrent(input.invocationContext!))throw new Error('EXTERNAL_EPISODE_SCOPE_UNAVAILABLE');}:undefined;
     const supported = await this.learning.supportProcedure({ taskId: episode.id, origin: 'external', workspace,
       name: input.name, description: input.description, steps: input.steps, allowedTools: input.allowedTools,
       reuseCondition: input.reuseCondition, outcome: 'verified', evidenceRefs: [input.verificationRef, ...(input.evidenceRefs ?? [])],
       ...(episode.memoryBinding && episode.workspace && episode.boundary==='explicit' ? {browserBinding:{
         taskId:episode.id,ownerId:episode.memoryBinding.ownerId,workspace:episode.workspace,
-        workspaceIdentityKey:episode.memoryBinding.workspaceIdentityKey}} : {}) });
+        workspaceIdentityKey:episode.memoryBinding.workspaceIdentityKey}} : {}) },assertAdmission);
     const current=await this.getEpisode(sessionId,true);
     const publication=current?.id===episode.id&&workspace
       ?await this.learning.publishExternalTaskSkillProposals({workspace,taskId:episode.id})
       :{status:'unavailable',reason:'EXTERNAL_PROPOSAL_TASK_NOT_CURRENT'};
-    return {...(await deliver([supported]))[0],proposalDocuments:publication};
+    return {...(await deliver([supported]))[0],proposalDocuments:publication,
+      admission:admission?.admission??{status:'legacy-structurally-incomplete',semanticEquivalence:'not-assessed'}};
   }
 
   private async applyProcedureOutcome(fingerprint: string, sessionId: string, result: 'success' | 'failure', evidenceRefs: string[], declaredDigest?: string) {
@@ -1780,7 +1931,7 @@ export class ExternalControllerLearningService {
         workspaceIdentityKey:episode.memoryBinding.workspaceIdentityKey}} : {}) });
   }
 
-  async evaluate(input: { workspace?: string; taskFamily?: string; limit?: number; cohortId?: string; baselineEpisodeIds?: string[]; candidateEpisodeIds?: string[] } = {}) {
+  async evaluate(input: { workspace?: string; taskFamily?: string; limit?: number; cohortId?: string; baselineEpisodeIds?: string[]; candidateEpisodeIds?: string[];payload?:unknown } = {}) {
     const episodes = await this.recentEpisodes({
       episodeIds: [...(input.baselineEpisodeIds ?? []), ...(input.candidateEpisodeIds ?? [])],
       workspace: input.workspace,
@@ -1807,7 +1958,7 @@ export class ExternalControllerLearningService {
     });
 
     const selected = (ids: string[] = []) => ids.map(id => {
-      const found = meaningful.find(item => item.id === id);
+      const found = episodes.find(item => item.id === id);
       if (!found) throw new Error('EXTERNAL_EVALUATION_EPISODE_NOT_FOUND:' + id);
       return found;
     });
@@ -1815,10 +1966,6 @@ export class ExternalControllerLearningService {
     if (new Set(allIds).size !== allIds.length) throw new Error('EXTERNAL_EVALUATION_OVERLAPPING_EPISODES');
     const baseline = selected(input.baselineEpisodeIds);
     const candidate = selected(input.candidateEpisodeIds);
-    const base = aggregate(baseline);
-    const current = aggregate(candidate);
-
-    const rate = (part: number, total: number) => total ? part / total : null;
     return {
       contractVersion: 1,
       scope: {
@@ -1827,35 +1974,38 @@ export class ExternalControllerLearningService {
         cohortId: input.cohortId ?? null,
       },
       totals: aggregate(meaningful),
+      allAttempts: aggregate(episodes),
       verification: {
         verified: verified.length,
         failed: failed.length,
         unverified: meaningful.length - verified.length - failed.length,
       },
-      comparison: input.cohortId && baseline.length && candidate.length ? {
-        baseline: base,
-        candidate: current,
-        correctnessPreserved: rate(current.verified, current.episodes) !== null
-          && rate(base.verified, base.episodes) !== null
-          && (rate(current.verified, current.episodes) as number)
-            >= (rate(base.verified, base.episodes) as number),
-
-        toolCallsPerEpisodeDelta: base.episodes && current.episodes
-          ? current.toolCalls / current.episodes - base.toolCalls / base.episodes
-          : null,
-        repeatedFailuresPerEpisodeDelta: base.episodes && current.episodes
-          ? current.repeatedFailures / current.episodes
-            - base.repeatedFailures / base.episodes
-          : null,
-      } : {
-        status: 'explicit-cohort-and-episode-selection-required',
-        minimum: 4,
-      },
+      comparison: evaluateExternalComparison(episodes,input.payload,{selection:{
+        baselineEpisodeIds:baseline.map(item=>item.id),candidateEpisodeIds:candidate.map(item=>item.id)}}),
       limitations: [
         'episode metrics are observational and do not establish causal improvement without a controlled comparable cohort',
         'larger Memory or Skill counts are not intelligence metrics',
         'unverified episodes must not be treated as successful outcomes',
       ],
+    };
+  }
+
+  async curate(workspace?:string){
+    const state=await this.load();
+    const episodes=state.episodes.filter(episode=>workspace===undefined||episode.workspace===workspace);
+    const events=activityTracker.readFeatureOutcomes({maxEvents:512,...(workspace?{workspace}:{})})
+      .filter(event=>episodes.some(episode=>episode.id===event.context?.taskId));
+    return this.learning.curate(workspace,externalFeatureOutcomeProposals(events,episodes));
+  }
+
+  /** Launcher polling must not replay the activity journal or return instruction guides. */
+  async health() {
+    const state = await this.load();
+    return {
+      status: this.issue ? 'degraded' as const : 'available' as const,
+      ...(this.issue ? { issue: this.issue } : {}),
+      episodeCount: state.episodes.length,
+      pendingLearningEpisodes: state.episodes.filter(item => item.meaningful && item.pendingLearning).length,
     };
   }
 
@@ -1876,6 +2026,9 @@ export class ExternalControllerLearningService {
       statePath: this.statePath,
       semanticAuthority: 'memory-service',
       modelProviderRequired: false,
+      externalGuides:{improvement:EXTERNAL_IMPROVEMENT_GUIDE,procedure:EXTERNAL_PROCEDURE_GUIDE,evaluation:EXTERNAL_EVALUATION_GUIDE},
+      featureOutcomeEvidence:projectExternalFeatureOutcomes(activityTracker.readFeatureOutcomes({maxEvents:512})
+        .filter(item=>typeof item.context?.taskId==='string'&&state.episodes.some(episode=>episode.id===item.context!.taskId)),state.episodes),
     };
   }
 }

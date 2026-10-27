@@ -26,14 +26,61 @@ export interface ProviderCredentialDescriptor {
 export interface ProviderSelectionRecord {
   providerId: string;
   credentialId: string;
+  model?: string | null;
   ordinal: number;
   stateRevision: number;
   startedAtMs: number;
 }
+export interface ProviderPoolCursor {
+  providerId: string;
+  credentialId: string;
+  revision: number;
+}
+export interface ProviderModelReadiness {
+  status: 'ready' | 'pending' | 'unavailable';
+  model: string | null;
+  contextWindowTokens: number | null;
+  maxOutputTokens: number | null;
+  checkedAtMs: number;
+  retryAtMs: number;
+  reason: string;
+  source: 'provider-catalog-and-tool-probe';
+}
+/**
+ * Why a configured credential cannot serve right now. Persisted failure classes win over
+ * the per-request exclusion so evidence names the real cause (a rate-limited key that was
+ * also tried in this request is reported as rate-limit, not as a generic exclusion).
+ */
+export type ProviderSkipReason =
+  | 'excluded'
+  | 'invalid'
+  | 'disabled'
+  | 'rate-limit'
+  | 'quota'
+  | 'model-unavailable'
+  | 'cooldown'
+  | 'readiness'
+  | 'context'
+  | 'transient';
+/**
+ * all-limit-or-quota is the only status that may be reported as "every key is limited":
+ * it requires every configured credential to be a rate-limit or quota case. Any other
+ * mixture of causes is mixed.
+ */
+export type ProviderRouteStatus = 'available' | 'all-limit-or-quota' | 'mixed' | 'provider-open';
+export interface ProviderSelectionDiagnostics {
+  configured: number;
+  /** Credentials individually eligible at decision time (the breaker is reported in status). */
+  eligible: number;
+  skipped: Partial<Record<ProviderSkipReason, number>>;
+  breaker: ProviderBreakerState;
+  status: ProviderRouteStatus;
+}
 export interface ProviderSelectionResult {
   selection: ProviderSelectionRecord | null;
   nextAvailableAtMs: number | null;
-  reason: 'selected' | 'provider-open' | 'no-eligible-credential';
+  reason: 'selected' | 'provider-open' | 'no-eligible-credential' | 'pool-changed';
+  diagnostics?: ProviderSelectionDiagnostics;
 }
 
 export interface ProviderOperationalHealth {
@@ -57,6 +104,8 @@ type CredentialRow = {
   state_revision: number;
   state: ProviderCredentialOperationalState;
   cooldown_until_ms: number | null;
+  cooldown_reason: string | null;
+  secret_revision_digest: string;
   backoff_level: number;
   last_error_at_ms: number | null;
 };
@@ -99,6 +148,103 @@ function minFuture(values: Array<number | null | undefined>, now: number): numbe
   return future.length ? Math.min(...future) : null;
 }
 
+type ScopeBlockRow = {
+  credential_id: string; model: string; scope_kind: string; scope_key: string;
+  reason: string; expires_at_ms: number | null; updated_at_ms: number;
+};
+type QuotaRow = {
+  credential_id: string; quota_scope_key: string;
+  remaining_value: number | null; reset_at_ms: number | null;
+};
+interface EvaluationContext {
+  rows: CredentialRow[];
+  byId: Map<string, CredentialRow>;
+  blocks: ScopeBlockRow[];
+  quotas: QuotaRow[];
+}
+interface EvaluationOptions {
+  model: string | null;
+  excluded: ReadonlySet<string>;
+  excludedReasons?: ReadonlyMap<string, ProviderSkipReason>;
+  qualifiedModels?: ReadonlyMap<string, ProviderModelReadiness>;
+  now: number;
+}
+
+function skipReasonForClass(value: string | null | undefined): ProviderSkipReason {
+  switch (value) {
+    case 'RATE_LIMIT': return 'rate-limit';
+    case 'QUOTA_EXHAUSTED':
+    case 'CREDIT_EXHAUSTED': return 'quota';
+    case 'AUTH_INVALID': return 'invalid';
+    case 'MODEL_ACCESS':
+    case 'MODEL_NOT_FOUND':
+    case 'MODEL_CAPACITY': return 'model-unavailable';
+    default: return 'cooldown';
+  }
+}
+
+/** One eligibility rule shared by selection and read-only diagnosis. */
+function evaluateCredential(
+  ctx: EvaluationContext,
+  credential: { id: string },
+  options: EvaluationOptions,
+): { reason: ProviderSkipReason | null; model: string | null } {
+  const { now } = options;
+  const row = ctx.byId.get(credential.id);
+  const metadata = options.qualifiedModels?.get(credential.id);
+  const qualified = metadata?.status === 'ready' && metadata.model && metadata.retryAtMs > now
+    && metadata.reason === 'MODEL_TOOL_PROBE_VERIFIED' ? metadata : undefined;
+  const model = qualified?.model ?? options.model;
+  if (row?.state === 'invalid') return { reason: 'invalid', model };
+  if (row?.state === 'disabled') return { reason: 'disabled', model };
+  if (row && (row.state === 'cooldown' || row.state === 'quota_blocked')
+    && row.cooldown_until_ms !== null && row.cooldown_until_ms > now) {
+    return {
+      reason: row.cooldown_reason ? skipReasonForClass(row.cooldown_reason)
+        : row.state === 'quota_blocked' ? 'quota' : 'cooldown',
+      model,
+    };
+  }
+  const block = ctx.blocks.find(candidate =>
+    (candidate.expires_at_ms === null || candidate.expires_at_ms > now)
+    && (!candidate.credential_id || candidate.credential_id === credential.id)
+    && (!candidate.model || candidate.model === (model ?? ''))
+    // A later exact-key/model probe supersedes an old entitlement failure,
+    // but never quota, capacity, authentication or a newer failure.
+    && !(qualified && candidate.model === qualified.model
+      && ['MODEL_NOT_FOUND', 'MODEL_ACCESS'].includes(candidate.reason)
+      && qualified.checkedAtMs > candidate.updated_at_ms));
+  if (block) return { reason: skipReasonForClass(block.reason), model };
+  const windowExhausted = ctx.quotas.some(quota =>
+    quota.credential_id === credential.id
+    && quota.remaining_value !== null && quota.remaining_value <= 0
+    && quota.reset_at_ms !== null && quota.reset_at_ms > now
+    && (quota.quota_scope_key === '*' || quota.quota_scope_key === (model ?? '*')));
+  if (windowExhausted) return { reason: 'rate-limit', model };
+  if (options.excluded.has(credential.id)) {
+    return { reason: options.excludedReasons?.get(credential.id) ?? 'excluded', model };
+  }
+  return { reason: null, model };
+}
+
+export function summarizeCredentialVerdicts(
+  reasons: Array<ProviderSkipReason | null>,
+  breaker: ProviderBreakerState,
+  providerOpen: boolean,
+): ProviderSelectionDiagnostics {
+  const skipped: Partial<Record<ProviderSkipReason, number>> = {};
+  let eligible = 0;
+  for (const reason of reasons) {
+    if (reason === null) eligible += 1;
+    else skipped[reason] = (skipped[reason] ?? 0) + 1;
+  }
+  const limited = (skipped['rate-limit'] ?? 0) + (skipped.quota ?? 0);
+  const status: ProviderRouteStatus = providerOpen ? 'provider-open'
+    : eligible > 0 ? 'available'
+      : reasons.length > 0 && limited === reasons.length ? 'all-limit-or-quota' : 'mixed';
+  return { configured: reasons.length, eligible, skipped, breaker, status };
+}
+
 export class ProviderStateStore {
   private issue: string | null = null;
 
@@ -122,16 +268,7 @@ export class ProviderStateStore {
   }
 
   private withDb<T>(fn: (db: DatabaseSync) => T): T {
-    if (this.issue) {
-      const priorIssue = this.issue;
-      try {
-        const probe = this.open();
-        probe.close();
-        this.issue = null;
-      } catch {
-        throw new Error(priorIssue);
-      }
-    }
+    this.recoverAvailability();
     const db = this.open();
     try {
       const value = fn(db);
@@ -140,6 +277,18 @@ export class ProviderStateStore {
     } catch (error) {
       this.issue = this.safeIssue(error);
       throw error;
+    } finally {
+      db.close();
+    }
+  }
+
+  private withSnapshot<T>(fn: (db: DatabaseSync) => T): T {
+    this.assertAvailable();
+    const db = new DatabaseSync(this.dbPath, { readOnly: true });
+    try {
+      // Diagnostic reads must not wait for a writer or acquire the scheduler's write lock.
+      db.exec('PRAGMA busy_timeout=0; BEGIN');
+      return fn(db);
     } finally {
       db.close();
     }
@@ -172,6 +321,22 @@ export class ProviderStateStore {
           last_credential_id TEXT,
           rotation_sequence INTEGER NOT NULL DEFAULT 0,
           updated_at_ms INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS provider_pool_state (
+          pool_id TEXT PRIMARY KEY CHECK (pool_id = 'native'),
+          provider_id TEXT NOT NULL,
+          credential_id TEXT NOT NULL,
+          revision INTEGER NOT NULL,
+          updated_at_ms INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS provider_model_readiness (
+          provider_id TEXT NOT NULL,
+          credential_id TEXT NOT NULL,
+          configuration_digest TEXT NOT NULL,
+          metadata_json TEXT NOT NULL,
+          PRIMARY KEY (provider_id, credential_id)
         );
 
         CREATE TABLE IF NOT EXISTS provider_credential_state (
@@ -260,9 +425,102 @@ export class ProviderStateStore {
     return this.issue;
   }
 
+  /** Real operations may recheck a transient issue; passive health reads must not. */
+  recoverAvailability(): void {
+    if (!this.issue) return;
+    const priorIssue = this.issue;
+    try {
+      const probe = new DatabaseSync(this.dbPath, { readOnly: true });
+      try {
+        probe.exec('PRAGMA busy_timeout=0; BEGIN');
+        const version = probe.prepare("SELECT value FROM provider_state_meta WHERE key = 'schema_version'").get() as { value?: string } | undefined;
+        if (version?.value !== '1') throw new Error('AGENT_RUNTIME_PROVIDER_STATE_SCHEMA_UNSUPPORTED');
+      } finally { probe.close(); }
+      this.issue = null;
+    } catch {
+      throw new Error(priorIssue);
+    }
+  }
+
   assertAvailable(): void {
     if (this.issue) throw new Error(this.issue);
   }
+
+  readModelReadiness(providerId: string, credentialId: string, configurationDigest: string): ProviderModelReadiness | null {
+    return this.withDb(db => this.readModelReadinessInDb(db, providerId, credentialId, configurationDigest));
+  }
+
+  readModelReadinessSnapshot(providerId: string, credentials: Array<{ id: string; configurationDigest: string }>): Map<string, ProviderModelReadiness | null> {
+    return this.withSnapshot(db => new Map(credentials.map(credential => {
+      try {
+        return [credential.id, this.readModelReadinessInDb(db, providerId, credential.id, credential.configurationDigest)] as const;
+      } catch { return [credential.id, null] as const; }
+    })));
+  }
+
+  private readModelReadinessInDb(db: DatabaseSync, providerId: string, credentialId: string, configurationDigest: string): ProviderModelReadiness | null {
+    const row = db.prepare(`SELECT metadata_json FROM provider_model_readiness
+      WHERE provider_id = ? AND credential_id = ? AND configuration_digest = ?`)
+      .get(providerId, credentialId, configurationDigest) as { metadata_json: string } | undefined;
+    if (!row) return null;
+    const metadata = JSON.parse(row.metadata_json) as ProviderModelReadiness;
+    if (metadata.status !== 'ready' || !metadata.model) return metadata;
+    const failure = db.prepare(`SELECT MAX(updated_at_ms) AS updated_at_ms FROM provider_scope_blocks
+      WHERE provider_id = ? AND (credential_id = '' OR credential_id = ?) AND model = ?
+        AND reason IN ('MODEL_NOT_FOUND', 'MODEL_ACCESS')
+        AND (expires_at_ms IS NULL OR expires_at_ms > ?)`)
+      .get(providerId, credentialId, metadata.model, Date.now()) as { updated_at_ms: number | null };
+    // Keep the successful probe and failure history intact. A later model
+    // rejection makes that cached entitlement unproven until a new probe.
+    return failure.updated_at_ms !== null && failure.updated_at_ms >= metadata.checkedAtMs
+      ? { ...metadata, status: 'pending', reason: 'MODEL_REQUALIFICATION_REQUIRED', retryAtMs: failure.updated_at_ms + 60_000 }
+      : metadata;
+  }
+
+  saveModelReadiness(providerId: string, credentialId: string, configurationDigest: string, metadata: ProviderModelReadiness): void {
+    this.withDb(db => {
+      db.prepare(`INSERT INTO provider_model_readiness (provider_id, credential_id, configuration_digest, metadata_json)
+        VALUES (?, ?, ?, ?) ON CONFLICT(provider_id, credential_id) DO UPDATE SET
+        configuration_digest = excluded.configuration_digest, metadata_json = excluded.metadata_json`)
+        .run(providerId, credentialId, configurationDigest, JSON.stringify(metadata));
+    });
+  }
+  private poolCursorInDb(db: DatabaseSync): ProviderPoolCursor | null {
+    return db.prepare(`
+      SELECT provider_id AS providerId, credential_id AS credentialId, revision
+      FROM provider_pool_state WHERE pool_id = 'native'
+    `).get() as ProviderPoolCursor | undefined ?? null;
+  }
+
+  readPoolCursor(providerIds: string[]): ProviderPoolCursor | null {
+    return this.withDb(db => this.inTransaction(db, () => {
+      const cursor = this.poolCursorInDb(db);
+      if (cursor) return cursor;
+      const lookup = db.prepare(`
+        SELECT provider_id, last_credential_id, updated_at_ms
+        FROM provider_rotation_state WHERE provider_id = ?
+      `);
+      let latest: {
+        provider_id: string; last_credential_id: string; updated_at_ms: number;
+      } | null = null;
+      for (const providerId of new Set(providerIds.map(normalizeProviderId))) {
+        const row = lookup.get(providerId) as {
+          provider_id: string; last_credential_id: string; updated_at_ms: number;
+        } | undefined;
+        if (row?.last_credential_id && (!latest || row.updated_at_ms > latest.updated_at_ms)) {
+          latest = row;
+        }
+      }
+      if (!latest) return null;
+      db.prepare(`
+        INSERT INTO provider_pool_state (
+          pool_id, provider_id, credential_id, revision, updated_at_ms
+        ) VALUES ('native', ?, ?, 1, ?)
+      `).run(latest.provider_id, latest.last_credential_id, latest.updated_at_ms);
+      return this.poolCursorInDb(db);
+    }));
+  }
+
   private reconcileCredentials(
     db: DatabaseSync,
     providerId: string,
@@ -361,17 +619,96 @@ export class ProviderStateStore {
     return row;
   }
 
+  private loadEvaluationContext(db: DatabaseSync, providerId: string): EvaluationContext {
+    const rows = db.prepare(`
+      SELECT credential_id, configured_ordinal, last_used_at_ms, consecutive_use_count,
+             state_revision, state, cooldown_until_ms, cooldown_reason, secret_revision_digest,
+             backoff_level, last_error_at_ms
+      FROM provider_credential_state WHERE provider_id = ?
+    `).all(providerId) as unknown as CredentialRow[];
+    const blocks = db.prepare(`
+      SELECT credential_id, model, scope_kind, scope_key, reason, expires_at_ms, updated_at_ms
+      FROM provider_scope_blocks WHERE provider_id = ?
+    `).all(providerId) as unknown as ScopeBlockRow[];
+    const quotas = db.prepare(`
+      SELECT credential_id, quota_scope_key, remaining_value, reset_at_ms
+      FROM provider_quota_state
+      WHERE provider_id = ? AND metric = 'requests'
+    `).all(providerId) as unknown as QuotaRow[];
+    return { rows, byId: new Map(rows.map(row => [row.credential_id, row])), blocks, quotas };
+  }
+
+  private diagnoseInDb(
+    db: DatabaseSync,
+    providerId: string,
+    credentials: ProviderCredentialDescriptor[],
+    options: EvaluationOptions,
+    breaker: ProviderBreakerState,
+    providerOpen: boolean,
+  ): ProviderSelectionDiagnostics {
+    const ctx = this.loadEvaluationContext(db, providerId);
+    // A replaced secret starts clean in selection; a read-only diagnosis must agree.
+    for (const credential of credentials) {
+      const row = ctx.byId.get(credential.id);
+      if (row && row.secret_revision_digest !== credential.secretRevisionDigest) ctx.byId.delete(credential.id);
+    }
+    return summarizeCredentialVerdicts(
+      credentials.map(credential => evaluateCredential(ctx, credential, options).reason),
+      breaker, providerOpen,
+    );
+  }
+
+  /** Read-only view of the same eligibility rule selection uses; null when state is unreadable. */
+  diagnoseCredentials(input: {
+    providerId: string;
+    credentials: ProviderCredentialDescriptor[];
+    model: string | null;
+    excludedCredentialIds?: ReadonlySet<string>;
+    excludedReasons?: ReadonlyMap<string, ProviderSkipReason>;
+    qualifiedModels?: ReadonlyMap<string, ProviderModelReadiness>;
+    now?: number;
+  }): ProviderSelectionDiagnostics | null {
+    const providerId = normalizeProviderId(input.providerId);
+    const now = input.now ?? Date.now();
+    try {
+      return this.withSnapshot(db => {
+        const row = this.breakerRow(db, providerId);
+        const expired = row.state === 'OPEN' && row.retry_at_ms !== null && row.retry_at_ms <= now;
+        const breaker: ProviderBreakerState = expired ? 'HALF_OPEN' : row.state;
+        const providerOpen = breaker === 'OPEN'
+          || (breaker === 'HALF_OPEN' && !expired && row.half_open_probe_count >= 1);
+        return this.diagnoseInDb(db, providerId, input.credentials, {
+          model: input.model,
+          excluded: input.excludedCredentialIds ?? new Set<string>(),
+          ...(input.excludedReasons ? { excludedReasons: input.excludedReasons } : {}),
+          ...(input.qualifiedModels ? { qualifiedModels: input.qualifiedModels } : {}),
+          now,
+        }, breaker, providerOpen);
+      });
+    } catch {
+      return null;
+    }
+  }
+
   selectCredential(input: {
     providerId: string;
     credentials: ProviderCredentialDescriptor[];
     model: string | null;
     excludedCredentialIds?: Set<string>;
+    excludedReasons?: ReadonlyMap<string, ProviderSkipReason>;
+    qualifiedModels?: ReadonlyMap<string, ProviderModelReadiness>;
+    trackPool?: boolean;
+    expectedPoolRevision?: number;
     now?: number;
   }): ProviderSelectionResult {
     const providerId = normalizeProviderId(input.providerId);
     const now = input.now ?? Date.now();
     const excluded = input.excludedCredentialIds ?? new Set<string>();
     return this.withDb(db => this.inTransaction(db, () => {
+      const pool = input.trackPool ? this.poolCursorInDb(db) : null;
+      if (input.trackPool && (pool?.revision ?? 0) !== (input.expectedPoolRevision ?? 0)) {
+        return { selection: null, nextAvailableAtMs: null, reason: 'pool-changed' as const };
+      }
       this.reconcileCredentials(db, providerId, input.credentials, now);
       this.cleanupExpired(db, providerId, now);
       const breaker = this.refreshBreaker(db, providerId, now);
@@ -381,66 +718,41 @@ export class ProviderStateStore {
           selection: null,
           nextAvailableAtMs: breaker.retry_at_ms,
           reason: 'provider-open' as const,
+          diagnostics: this.diagnoseInDb(db, providerId, input.credentials, {
+            model: input.model,
+            excluded,
+            ...(input.excludedReasons ? { excludedReasons: input.excludedReasons } : {}),
+            ...(input.qualifiedModels ? { qualifiedModels: input.qualifiedModels } : {}),
+            now,
+          }, breaker.state, true),
         };
       }
-      const rows = db.prepare(`
-        SELECT credential_id, configured_ordinal, last_used_at_ms, consecutive_use_count,
-               state_revision, state, cooldown_until_ms, backoff_level, last_error_at_ms
-        FROM provider_credential_state WHERE provider_id = ?
-      `).all(providerId) as unknown as CredentialRow[];
-      const byId = new Map(rows.map(row => [row.credential_id, row]));
+      const ctx = this.loadEvaluationContext(db, providerId);
+      const { rows, byId, blocks, quotas } = ctx;
       const configured = [...input.credentials].sort((a, b) =>
         a.ordinal - b.ordinal || a.id.localeCompare(b.id));
       const rotation = db.prepare(`
         SELECT last_credential_id FROM provider_rotation_state WHERE provider_id = ?
       `).get(providerId) as { last_credential_id: string | null } | undefined;
-      const lastId = rotation?.last_credential_id ?? null;
+      const lastId = input.trackPool
+        ? pool?.providerId === providerId ? pool.credentialId : null
+        : rotation?.last_credential_id ?? null;
 
-      const blocks = db.prepare(`
-        SELECT credential_id, model, scope_kind, scope_key, expires_at_ms
-        FROM provider_scope_blocks WHERE provider_id = ?
-      `).all(providerId) as unknown as Array<{
-        credential_id: string; model: string; scope_kind: string;
-        scope_key: string; expires_at_ms: number | null;
-      }>;
-      const quotas = db.prepare(`
-        SELECT credential_id, quota_scope_key, remaining_value, reset_at_ms
-        FROM provider_quota_state
-        WHERE provider_id = ? AND metric = 'requests'
-      `).all(providerId) as unknown as Array<{
-        credential_id: string; quota_scope_key: string;
-        remaining_value: number | null; reset_at_ms: number | null;
-      }>;
-      const eligible = (credential: ProviderCredentialDescriptor): boolean => {
-        if (excluded.has(credential.id)) return false;
-        const row = byId.get(credential.id);
-        if (!row || row.state === 'invalid' || row.state === 'disabled') return false;
-        if ((row.state === 'cooldown' || row.state === 'quota_blocked')
-          && row.cooldown_until_ms !== null && row.cooldown_until_ms > now) return false;
-        const blocked = blocks.some(block =>
-          (block.expires_at_ms === null || block.expires_at_ms > now)
-          && (!block.credential_id || block.credential_id === credential.id)
-          && (!block.model || block.model === (input.model ?? '')));
-        if (blocked) return false;
-        const exhausted = quotas.some(quota =>
-          quota.credential_id === credential.id
-          && quota.remaining_value !== null && quota.remaining_value <= 0
-          && quota.reset_at_ms !== null && quota.reset_at_ms > now
-          && (quota.quota_scope_key === '*' || quota.quota_scope_key === (input.model ?? '*')));
-        return !exhausted;
-      };
+      const verdicts = new Map(configured.map(credential => [credential.id, evaluateCredential(ctx, credential, {
+        model: input.model,
+        excluded,
+        ...(input.excludedReasons ? { excludedReasons: input.excludedReasons } : {}),
+        ...(input.qualifiedModels ? { qualifiedModels: input.qualifiedModels } : {}),
+        now,
+      })]));
+      const diagnostics = summarizeCredentialVerdicts(
+        configured.map(credential => verdicts.get(credential.id)!.reason), breaker.state, false);
 
       const lastIndex = lastId ? configured.findIndex(item => item.id === lastId) : -1;
       const ring = lastIndex >= 0
-        ? [...configured.slice(lastIndex + 1), ...configured.slice(0, lastIndex + 1)]
-        : [...configured].sort((a, b) => {
-            const ar = byId.get(a.id);
-            const br = byId.get(b.id);
-            const au = ar?.last_used_at_ms ?? Number.NEGATIVE_INFINITY;
-            const bu = br?.last_used_at_ms ?? Number.NEGATIVE_INFINITY;
-            return au - bu || a.ordinal - b.ordinal || a.id.localeCompare(b.id);
-          });
-      const chosen = ring.find(eligible);
+        ? [...configured.slice(lastIndex), ...configured.slice(0, lastIndex)]
+        : configured;
+      const chosen = ring.find(credential => verdicts.get(credential.id)!.reason === null);
       if (!chosen) {
         const nextCredential = minFuture(
           rows.map(row => row.cooldown_until_ms),
@@ -452,6 +764,7 @@ export class ProviderStateStore {
           selection: null,
           nextAvailableAtMs: minFuture([nextCredential, nextBlock, nextQuota, breaker.retry_at_ms], now),
           reason: 'no-eligible-credential' as const,
+          diagnostics,
         };
       }
 
@@ -466,6 +779,16 @@ export class ProviderStateStore {
           rotation_sequence = provider_rotation_state.rotation_sequence + 1,
           updated_at_ms = excluded.updated_at_ms
       `).run(providerId, chosen.id, now);
+      if (input.trackPool && (pool?.providerId !== providerId || pool.credentialId !== chosen.id)) {
+        db.prepare(`
+          INSERT INTO provider_pool_state (
+            pool_id, provider_id, credential_id, revision, updated_at_ms
+          ) VALUES ('native', ?, ?, 1, ?)
+          ON CONFLICT(pool_id) DO UPDATE SET
+            provider_id = excluded.provider_id, credential_id = excluded.credential_id,
+            revision = provider_pool_state.revision + 1, updated_at_ms = excluded.updated_at_ms
+        `).run(providerId, chosen.id, now);
+      }
       db.prepare(`
         UPDATE provider_credential_state
         SET last_used_at_ms = ?, consecutive_use_count = ?, updated_at_ms = ?
@@ -482,12 +805,14 @@ export class ProviderStateStore {
         selection: {
           providerId,
           credentialId: chosen.id,
+          model: verdicts.get(chosen.id)!.model ?? input.model,
           ordinal: chosen.ordinal,
           stateRevision: row.state_revision,
           startedAtMs: now,
         },
         nextAvailableAtMs: null,
         reason: 'selected' as const,
+        diagnostics,
       };
     }));
   }
@@ -735,19 +1060,27 @@ export class ProviderStateStore {
       };
     }
     try {
-      return this.withDb(db => this.inTransaction(db, () => {
-        this.reconcileCredentials(db, providerId, credentials, now);
-        this.cleanupExpired(db, providerId, now);
-        const configuredIds = new Set(credentials.map(item => item.id));
-        const rows = (db.prepare(`
-          SELECT credential_id, state, cooldown_until_ms
+      return this.withSnapshot(db => {
+        const stored = new Map((db.prepare(`
+          SELECT credential_id, state, cooldown_until_ms, secret_revision_digest
           FROM provider_credential_state WHERE provider_id = ?
         `).all(providerId) as unknown as Array<{
           credential_id: string;
           state: ProviderCredentialOperationalState;
           cooldown_until_ms: number | null;
-        }>).filter(row => configuredIds.has(row.credential_id));
-        const breaker = this.refreshBreaker(db, providerId, now);
+          secret_revision_digest: string;
+        }>).map(row => [row.credential_id, row]));
+        const rows = [...new Map(credentials.map(item => [item.id, item])).values()].map(credential => {
+          const row = stored.get(credential.id);
+          const replaced = !row || row.secret_revision_digest !== credential.secretRevisionDigest;
+          const expired = row && ['cooldown', 'quota_blocked'].includes(row.state)
+            && row.cooldown_until_ms !== null && row.cooldown_until_ms <= now;
+          return replaced || expired
+            ? { state: 'active' as const, cooldown_until_ms: null }
+            : row!;
+        });
+        const breaker = this.breakerRow(db, providerId);
+        const breakerExpired = breaker.state === 'OPEN' && breaker.retry_at_ms !== null && breaker.retry_at_ms <= now;
         const nextCredential = minFuture(rows.map(row => row.cooldown_until_ms), now);
         return {
           available: true,
@@ -758,10 +1091,10 @@ export class ProviderStateStore {
           cooldownCount: rows.filter(row => row.state === 'cooldown').length,
           quotaBlockedCount: rows.filter(row => row.state === 'quota_blocked').length,
           invalidCount: rows.filter(row => row.state === 'invalid').length,
-          breakerState: breaker.state,
-          nextAvailableAtMs: minFuture([nextCredential, breaker.retry_at_ms], now),
+          breakerState: breakerExpired ? 'HALF_OPEN' : breaker.state,
+          nextAvailableAtMs: minFuture([nextCredential, breakerExpired ? null : breaker.retry_at_ms], now),
         };
-      }));
+      });
     } catch (error) {
       return {
         available: false, issue: this.safeIssue(error), providerId,

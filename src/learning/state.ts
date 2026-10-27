@@ -6,6 +6,7 @@ import type { LearningPaths } from './paths.js';
 import { procedureContractDigest } from '../agent-learning-loop.js';
 import { safeEvidenceRefSchema } from './evaluation.js';
 import { decisionRecordSchema } from './decision-review.js';
+import { externalImprovementRecords } from './external-improvements.js';
 
 const MAX_IDEMPOTENCY = 64;
 const MAX_REJECTIONS = 128;
@@ -15,7 +16,7 @@ const STATE_MUTATION_TAILS = new Map<string, Promise<void>>();
 export type LearningStateOwner = 'checkpoint' | 'review' | 'curator' | 'procedures' | 'verification' | 'proposals' | 'decisions';
 const OWNER_FIELDS: Record<LearningStateOwner, ReadonlySet<keyof LearningState>> = {
   decisions: new Set(['decisionReviews']),
-  proposals: new Set(['skillProposals']),
+  proposals: new Set(['skillProposals', 'externalImprovements']),
   verification: new Set(['verificationManifests']),
   procedures: new Set(['procedures']),
   checkpoint: new Set(['checkpointCount', 'sinceReview', 'lastCheckpointAt', 'recentIdempotency', 'pendingReviews']),
@@ -48,6 +49,7 @@ function normalizeState(value: unknown): LearningState {
   const raw = value as Partial<LearningState>;
   if (raw.version !== 1) throw new Error('Unsupported learning state version');
   if (raw.workflowVersion !== undefined && raw.workflowVersion !== 2) throw new Error('Unsupported learning workflow version');
+  if (raw.externalImprovements !== undefined && !externalImprovementRecords.safeParse(raw.externalImprovements).success) throw new Error('Invalid external improvement state');
   if (raw.decisionReviews !== undefined && (!Array.isArray(raw.decisionReviews) || raw.decisionReviews.length > 256
     || raw.decisionReviews.some(item => !decisionRecordSchema.safeParse(item).success))) throw new Error('Invalid learning decision review');
   for (const key of ['pendingReviews', 'procedures', 'verificationManifests', 'skillProposals'] as const) {
@@ -158,6 +160,7 @@ function normalizeState(value: unknown): LearningState {
         ...(workspace ? { workspace } : {}),
         createdAt: nullableIso(record.createdAt, 'pending review timestamp')!,
         ...(typeof record.taskId === 'string' ? { taskId: record.taskId.slice(0, 200) } : {}),
+        ...(typeof record.summary === 'string' && record.summary.trim() ? { summary: record.summary.trim().slice(0, 500) } : {}),
       };
     })
     : [];
@@ -177,6 +180,7 @@ function normalizeState(value: unknown): LearningState {
     procedures: Array.isArray(raw.procedures) ? raw.procedures : [],
     skillProposals: Array.isArray(raw.skillProposals) ? raw.skillProposals : [],
     decisionReviews: raw.decisionReviews ?? [],
+    ...(raw.externalImprovements ? { externalImprovements: raw.externalImprovements } : {}),
     verificationManifests: Array.isArray(raw.verificationManifests) ? raw.verificationManifests : [],
     workflowVersion: 2,
   };

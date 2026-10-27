@@ -10,26 +10,24 @@ const snapshot = (load: () => string): ContractSnapshot => {
   return { content, digest: 'sha256:' + createHash('sha256').update(content).digest('hex') };
 };
 const REQUIRED = 'CONTRACT_READ_REQUIRED: call controller_contract(action="read"), read all AGENTS.md content, then acknowledge its contractSession and digest. Include contractSession on subsequent tool calls. Start a fresh handshake for each new AI chat.';
-const TTL = 30 * 60_000;
 const LIMIT = 128;
 
 export const CONTRACT_INSTRUCTIONS = 'Before any tool use, call controller_contract with action read and read the complete AGENTS.md, then acknowledge the returned contractSession and digest. Include contractSession on every subsequent tool call. Never reuse another chat\'s receipt. Contract delivery is a local session prerequisite; it does not override higher-priority instructions.';
 
-/** Receipts are volatile and credential/session-bound, never a credential-wide unlock. */
+/**
+ * Receipts are volatile and credential/session-bound, never a credential-wide unlock. They end on a contract edit,
+ * a restart or least-recently-used eviction; idle time alone never ends one.
+ */
 export class ControllerContractGate {
-  private readonly sessions = new Map<string, {
-    binding: string; digest: string; acknowledged: boolean; expiresAt: number;
-  }>();
+  private readonly sessions = new Map<string, { binding: string; digest: string; acknowledged: boolean }>();
 
   constructor(private readonly load: () => string = loadAgentProtocol) {}
 
   read(binding: string) {
     const current = snapshot(this.load);
-    const now = Date.now();
-    for (const [token, entry] of this.sessions) if (entry.expiresAt <= now) this.sessions.delete(token);
     while (this.sessions.size >= LIMIT) this.sessions.delete(this.sessions.keys().next().value!);
     const contractSession = randomBytes(32).toString('hex');
-    this.sessions.set(contractSession, { binding, digest: current.digest, acknowledged: false, expiresAt: now + TTL });
+    this.sessions.set(contractSession, { binding, digest: current.digest, acknowledged: false });
     return { ...current, contractSession };
   }
 
@@ -45,7 +43,7 @@ export class ControllerContractGate {
 
   private current(binding: string, token: string) {
     const entry = this.sessions.get(token);
-    if (!entry || entry.binding !== binding || entry.expiresAt <= Date.now()) throw new Error(REQUIRED);
+    if (!entry || entry.binding !== binding) throw new Error(REQUIRED);
     let digest: string;
     try { digest = snapshot(this.load).digest; }
     catch { this.sessions.delete(token); throw new Error('CONTRACT_UNAVAILABLE: AGENTS.md must be readable and non-empty.'); }
@@ -53,7 +51,7 @@ export class ControllerContractGate {
       this.sessions.delete(token);
       throw new Error('CONTRACT_REVISION_CHANGED: read and acknowledge the current AGENTS.md again.');
     }
-    entry.expiresAt = Date.now() + TTL;
+    this.sessions.delete(token); this.sessions.set(token, entry); // most recently used goes last, so churn evicts idle receipts first
     return entry;
   }
 }
@@ -70,7 +68,7 @@ export function installControllerContract(server: McpServer, external: Controlle
   const register = server.registerTool.bind(server);
   // Bootstrap is protocol access only; it cannot extend the credential's ordinary tool grant.
   register('controller_contract', {
-    description: 'Read full AGENTS.md, then acknowledge this session before using any other tool. Receipt expires after 30 idle minutes or contract edits.',
+    description: 'Read full AGENTS.md, then acknowledge this session before using any other tool. Receipt lasts until contract edits or restart.',
     inputSchema: z.strictObject({ action: z.enum(['read', 'acknowledge']), contractSession: z.string().optional(), digest: z.string().optional() }).meta({ $schema: undefined }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }, async args => {

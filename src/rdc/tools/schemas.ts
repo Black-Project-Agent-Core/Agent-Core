@@ -150,7 +150,7 @@ const browserCanvas = z.object({
 });
 export const BrowserControlArgsSchema = z.object({
   action: z.enum(['open', 'observe', 'act', 'close', 'status']),
-  transport: z.enum(['isolated', 'extension']).optional(),
+  transport: z.enum(['open-browser-use']).optional(),
   sessionId: z.string().uuid().optional(),
   url: z.string().url().max(4000).optional(),
   observationId: z.string().uuid().optional(),

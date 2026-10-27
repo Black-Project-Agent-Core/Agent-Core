@@ -1,0 +1,377 @@
+{
+  "date": "2026-10-27",
+  "discovered": true,
+  "transport": "authenticated resident MCP",
+  "conversationId": "c9f1cb50-fed2-40e6-92ac-b314732020de",
+  "requestId": "native-bridge-full-acceptance-20261027",
+  "firstSend": {
+    "records": [
+      {
+        "type": "send-start",
+        "conversationId": "c9f1cb50-fed2-40e6-92ac-b314732020de",
+        "clientRequestId": "native-bridge-full-acceptance-20261027",
+        "promptChars": 144
+      },
+      {
+        "type": "event",
+        "event": {
+          "type": "turn.accepted",
+          "at": "2026-10-26T21:05:01.703Z",
+          "requestId": "native-bridge-full-acceptance-20261027"
+        }
+      },
+      {
+        "type": "event",
+        "event": {
+          "type": "memory.recall.started",
+          "at": "2026-10-26T21:05:02.199Z",
+          "requestId": "native-bridge-full-acceptance-20261027"
+        }
+      },
+      {
+        "type": "event",
+        "event": {
+          "type": "memory.recall.completed",
+          "at": "2026-10-26T21:05:13.389Z",
+          "itemCount": 2,
+          "requestId": "native-bridge-full-acceptance-20261027"
+        }
+      },
+      {
+        "type": "event",
+        "event": {
+          "type": "agent.planning",
+          "at": "2026-10-26T21:05:25.460Z",
+          "requestId": "native-bridge-full-acceptance-20261027"
+        }
+      },
+      {
+        "type": "event",
+        "event": {
+          "type": "provider.route.decision",
+          "at": "2026-10-26T21:05:26.886Z",
+          "routing": {
+            "type": "attempt",
+            "attempt": 1,
+            "attemptLimit": 18,
+            "transition": "keep",
+            "cause": null,
+            "from": {
+              "providerId": "openrouter",
+              "credentialId": "openrouter:06"
+            },
+            "to": {
+              "providerId": "openrouter",
+              "credentialId": "openrouter:06",
+              "model": "nvidia/nemotron-3-ultra-550b-a55b:free"
+            },
+            "selection": {
+              "configured": 20,
+              "eligible": 20,
+              "skipped": {},
+              "breaker": "CLOSED",
+              "status": "available"
+            },
+            "taskId": "0b51e409-195c-46ae-96ac-ec9d811f6bf9",
+            "totalAttempts": 1,
+            "maxTotalAttempts": 432
+          },
+          "requestId": "native-bridge-full-acceptance-20261027"
+        }
+      },
+      {
+        "type": "event",
+        "event": {
+          "type": "verification.started",
+          "at": "2026-10-26T21:05:31.833Z",
+          "requestId": "native-bridge-full-acceptance-20261027"
+        }
+      },
+      {
+        "type": "event",
+        "event": {
+          "type": "learning.finalization.started",
+          "at": "2026-10-26T21:05:32.880Z",
+          "requestId": "native-bridge-full-acceptance-20261027"
+        }
+      },
+      {
+        "type": "event",
+        "event": {
+          "type": "verification.completed",
+          "at": "2026-10-26T21:05:36.278Z",
+          "requestId": "native-bridge-full-acceptance-20261027"
+        }
+      },
+      {
+        "type": "event",
+        "event": {
+          "type": "learning.finalization.completed",
+          "at": "2026-10-26T21:05:36.279Z",
+          "requestId": "native-bridge-full-acceptance-20261027"
+        }
+      },
+      {
+        "type": "event",
+        "event": {
+          "type": "assistant.final",
+          "at": "2026-10-26T21:05:37.384Z",
+          "requestId": "native-bridge-full-acceptance-20261027",
+          "response": "BRIDGE_PHASE_B_OK"
+        }
+      },
+      {
+        "type": "result",
+        "result": {
+          "conversationId": "c9f1cb50-fed2-40e6-92ac-b314732020de",
+          "turnId": "0233c066-dec8-4a93-baaa-05ab74b79c5e",
+          "taskId": "0b51e409-195c-46ae-96ac-ec9d811f6bf9",
+          "status": "finalized",
+          "response": "BRIDGE_PHASE_B_OK",
+          "providerId": "openrouter",
+          "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+          "iterations": 1,
+          "replayed": false,
+          "learningStatus": "complete",
+          "jobVerification": "unavailable",
+          "metrics": {
+            "startedAt": "2026-10-26T21:05:01.251Z",
+            "toolCalls": 0,
+            "toolFailures": 0,
+            "adaptiveRecalls": 0,
+            "strategyChanges": 0,
+            "blockedEquivalentRetries": 0,
+            "hypotheses": 0,
+            "verifications": 0,
+            "knowledgeUseReceipts": 0,
+            "artifactUseOutcomes": 0,
+            "recallMs": 10754,
+            "modelMs": 4198,
+            "modelCalls": 1,
+            "providerAttempts": 1,
+            "usageObservedCalls": 1,
+            "costObservedCalls": 1,
+            "inputTokens": 12881,
+            "outputTokens": 157,
+            "totalTokens": 13038,
+            "costUsd": 0
+          },
+          "modelIdentity": {
+            "observedCalls": 1,
+            "identities": [
+              {
+                "providerId": "openrouter",
+                "model": "nvidia/nemotron-3-ultra-550b-a55b:free"
+              }
+            ]
+          },
+          "retrievalAttemptIds": [
+            "9c1f2abddecd46d79d78534d8d98cf8a",
+            "7783829998a2420587b58451ae11264a"
+          ]
+        }
+      }
+    ],
+    "metrics": {
+      "elapsedMs": 37434,
+      "outputBytes": 3127
+    }
+  },
+  "replay": {
+    "records": [
+      {
+        "type": "send-start",
+        "conversationId": "c9f1cb50-fed2-40e6-92ac-b314732020de",
+        "clientRequestId": "native-bridge-full-acceptance-20261027",
+        "promptChars": 144
+      },
+      {
+        "type": "result",
+        "result": {
+          "conversationId": "c9f1cb50-fed2-40e6-92ac-b314732020de",
+          "turnId": "0233c066-dec8-4a93-baaa-05ab74b79c5e",
+          "taskId": "0b51e409-195c-46ae-96ac-ec9d811f6bf9",
+          "status": "finalized",
+          "response": "BRIDGE_PHASE_B_OK",
+          "providerId": "openrouter",
+          "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+          "iterations": 1,
+          "replayed": true,
+          "learningStatus": "complete",
+          "jobVerification": "unavailable",
+          "metrics": {
+            "startedAt": "2026-10-26T21:05:01.251Z",
+            "toolCalls": 0,
+            "toolFailures": 0,
+            "adaptiveRecalls": 0,
+            "strategyChanges": 0,
+            "blockedEquivalentRetries": 0,
+            "hypotheses": 0,
+            "verifications": 0,
+            "knowledgeUseReceipts": 0,
+            "artifactUseOutcomes": 0,
+            "recallMs": 10754,
+            "modelMs": 4198,
+            "modelCalls": 1,
+            "providerAttempts": 1,
+            "usageObservedCalls": 1,
+            "costObservedCalls": 1,
+            "inputTokens": 12881,
+            "outputTokens": 157,
+            "totalTokens": 13038,
+            "costUsd": 0
+          },
+          "modelIdentity": {
+            "observedCalls": 1,
+            "identities": [
+              {
+                "providerId": "openrouter",
+                "model": "nvidia/nemotron-3-ultra-550b-a55b:free"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "metrics": {
+      "elapsedMs": 254,
+      "outputBytes": 1099
+    }
+  },
+  "readback": {
+    "records": [
+      {
+        "type": "conversation",
+        "conversation": {
+          "id": "c9f1cb50-fed2-40e6-92ac-b314732020de",
+          "runtimeSessionId": "a68fd69a-6570-4c1e-92e3-964cd8b00286",
+          "workspace": "agent-core",
+          "title": "Native Bridge Acceptance 2026-10-27",
+          "status": "active",
+          "preferredProviderId": "openrouter",
+          "preferredModel": "nvidia/nemotron-3-ultra-550b-a55b:free",
+          "createdAtMs": 1793048699380,
+          "updatedAtMs": 1793048736635,
+          "lastTurnId": "0233c066-dec8-4a93-baaa-05ab74b79c5e"
+        },
+        "turns": [
+          {
+            "learningStatus": "complete",
+            "jobVerification": "unavailable",
+            "metrics": {
+              "startedAt": "2026-10-26T21:05:01.251Z",
+              "toolCalls": 0,
+              "toolFailures": 0,
+              "adaptiveRecalls": 0,
+              "strategyChanges": 0,
+              "blockedEquivalentRetries": 0,
+              "hypotheses": 0,
+              "verifications": 0,
+              "knowledgeUseReceipts": 0,
+              "artifactUseOutcomes": 0,
+              "recallMs": 10754,
+              "modelMs": 4198,
+              "modelCalls": 1,
+              "providerAttempts": 1,
+              "usageObservedCalls": 1,
+              "costObservedCalls": 1,
+              "inputTokens": 12881,
+              "outputTokens": 157,
+              "totalTokens": 13038,
+              "costUsd": 0
+            },
+            "modelIdentity": {
+              "observedCalls": 1,
+              "identities": [
+                {
+                  "providerId": "openrouter",
+                  "model": "nvidia/nemotron-3-ultra-550b-a55b:free"
+                }
+              ]
+            },
+            "messageOrigin": "external-controller",
+            "id": "0233c066-dec8-4a93-baaa-05ab74b79c5e",
+            "conversationId": "c9f1cb50-fed2-40e6-92ac-b314732020de",
+            "clientRequestId": "native-bridge-full-acceptance-20261027",
+            "runtimeTaskId": "0b51e409-195c-46ae-96ac-ec9d811f6bf9",
+            "status": "finalized",
+            "providerId": "openrouter",
+            "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "iterations": 1,
+            "retrievalCount": 2,
+            "createdAtMs": 1793048700609,
+            "startedAtMs": 1793048700609,
+            "completedAtMs": 1793048736635
+          }
+        ],
+        "messages": [
+          {
+            "id": "d198a991-2bd2-42dc-8564-c37e6d60cd4e",
+            "conversationId": "c9f1cb50-fed2-40e6-92ac-b314732020de",
+            "turnId": "0233c066-dec8-4a93-baaa-05ab74b79c5e",
+            "role": "user",
+            "content": "This is a simple conversation transport check. Reply exactly BRIDGE_PHASE_B_OK. No tools, code changes, research or verification work is needed.",
+            "createdAtMs": 1793048700609
+          },
+          {
+            "id": "dd07a1dd-e76f-4c41-a67c-21508a4f9c80",
+            "conversationId": "c9f1cb50-fed2-40e6-92ac-b314732020de",
+            "turnId": "0233c066-dec8-4a93-baaa-05ab74b79c5e",
+            "role": "assistant",
+            "content": "BRIDGE_PHASE_B_OK",
+            "createdAtMs": 1793048736635
+          }
+        ]
+      }
+    ],
+    "metrics": {
+      "elapsedMs": 112,
+      "outputBytes": 2107
+    }
+  },
+  "status": "pass",
+  "checkedAt": "2026-10-26T21:08:41.415Z",
+  "discovery": {
+    "toolCount": 83,
+    "nativeChatBridge": true,
+    "checkedAt": "2026-10-26T21:08:37.810Z"
+  },
+  "list": {
+    "count": 7,
+    "matchedConversationId": "c9f1cb50-fed2-40e6-92ac-b314732020de",
+    "metrics": {
+      "elapsedMs": 125,
+      "outputBytes": 2710
+    }
+  },
+  "negative": [
+    {
+      "action": "read",
+      "isError": true,
+      "records": [
+        {
+          "type": "error",
+          "error": "agent_chat_conversation_not_found"
+        }
+      ],
+      "metrics": {
+        "elapsedMs": 104,
+        "outputBytes": 61
+      }
+    },
+    {
+      "action": "cancel",
+      "isError": true,
+      "records": [
+        {
+          "type": "error",
+          "error": "HTTP_404"
+        }
+      ],
+      "metrics": {
+        "elapsedMs": 107,
+        "outputBytes": 36
+      }
+    }
+  ]
+}

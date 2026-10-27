@@ -21,8 +21,11 @@ async function launchOnce() {
   const output = openSync(logPath, 'wx');
   try {
     // The existing Scheduled Task escapes launcher ownership; detaching this requester alone does not.
-    const child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'Restart-Agent-Core.cmd'], {
-      cwd: root, windowsHide: true, detached: true, stdio: ['ignore', output, output],
+    // Absolute and quoted: cmd does not search the working folder when NoDefaultCurrentDirectoryInExePath is set,
+    // and a launcher started from a developer shell inherits that variable.
+    const script = path.join(root, 'Restart-Agent-Core.cmd');
+    const child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${script}"`], {
+      cwd: root, windowsHide: true, detached: true, stdio: ['ignore', output, output], windowsVerbatimArguments: true,
     });
     await new Promise<void>((resolve, reject) => {
       child.once('error', reject);
@@ -46,7 +49,7 @@ export async function requestAgentCoreRestart(capabilitiesChanged: boolean) {
     scriptPath: path.join(root, 'Restart-Agent-Core.cmd'),
     refreshToolsRequired: capabilitiesChanged,
     next: capabilitiesChanged
-      ? 'After Agent Core returns, use browser use: https://chatgpt.com/settings/plugins-settings/plugin_asdk_app_6ad1239cdf308191a3ccb8ba0cd49503 → scroll down; if Refresh tools is not visible, scroll down again → click the visible Refresh tools text. Reconnect, read/acknowledge AGENTS.md and verify discovery. Do not restart again for cached tools.'
+      ? 'After Agent Core returns, the client must refresh tools. ChatGPT controller: use browser use on https://chatgpt.com/settings/plugins-settings/plugin_asdk_app_6ad1239cdf308191a3ccb8ba0cd49503, scroll down until Refresh tools is visible, click it. Claude controller: do not open ChatGPT; the user refreshes the Claude Desktop connector, then verify the new schema in your own tool list. Reconnect, read/acknowledge AGENTS.md and verify discovery. Do not restart again for cached tools.'
       : 'After Agent Core returns: reconnect and read/acknowledge AGENTS.md again. No Refresh tools is required for an ordinary build without exposed tool/skill/capability/plugin changes.',
     evidence: 'Request started, not proof of restart completion or Core/tunnel health. If disconnected or uncertain, inspect this log and runtime/restart receipts; never blindly repeat the CMD.',
   };
@@ -54,7 +57,7 @@ export async function requestAgentCoreRestart(capabilitiesChanged: boolean) {
 
 export function registerRestartTool(server: McpServer) {
   server.registerTool('restart_agent_core', {
-    description: 'After successful build, restart once. capabilitiesChanged=true requires browser use → https://chatgpt.com/settings/plugins-settings/plugin_asdk_app_6ad1239cdf308191a3ccb8ba0cd49503 → scroll down until Refresh tools is visible → click it. Unknown/disconnect: inspect runtime/restart; never retry blindly. Request is not health proof.',
+    description: 'After successful build, restart once. capabilitiesChanged=true needs a client tool refresh (steps in result.next): a ChatGPT controller clicks Refresh tools; a Claude controller never opens ChatGPT, the user refreshes the Claude Desktop connector. Unknown/disconnect: inspect runtime/restart; never retry blindly. Request is not health proof.',
     inputSchema: z.strictObject({ capabilitiesChanged: z.boolean() }),
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   }, async args => {

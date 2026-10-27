@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fixture } from './skill-proposal-fixture.js';
 import { ExternalControllerLearningService } from '../src/learning/external-controller.js';
+import { taskSkillGuidance } from '../src/skills/external-guidance.js';
 
 async function setup(installed=true){
  const f=await fixture();
@@ -14,7 +15,7 @@ async function setup(installed=true){
  const service=await ExternalControllerLearningService.initialize({stateDir:path.join(f.root,'external'),memory:f.memory,learning:f.learning,skills:f.skills});
  return {...f,service};
 }
-it('external bootstrap supplies a relevance reminder and exact digest-bound Skill read, without granting execution',async()=>{
+it('external bootstrap supplies capability consideration and an exact digest-bound Skill read, without granting execution',async()=>{
  const f=await setup();const artifact=await f.skills.inspect('performance-oriented-software-engineering');
  const text=await f.service.bootstrapInstructions('hook-fixture');
  expect(text).toContain('EXTERNAL SKILL GUIDANCE');expect(text).toContain(artifact.digest);
@@ -31,4 +32,32 @@ it('task context refreshes guidance from the current catalog without calling a m
  const f=await setup();const context:any=await f.service.context('hook-context',{query:'software throughput',workspace:'agent-core'});
  expect(context.skillGuidance).toMatchObject({advisory:true,executionAuthority:false});
  expect(context.skillGuidance.entries.find((row:any)=>row.name==='performance-oriented-software-engineering')).toMatchObject({status:'available'});
+});
+it('always exposes the installed capability index outside lexical selection without loading child instructions',async()=>{
+ const f=await setup();const source=path.join(f.root,'index-source');await mkdir(source);
+ await writeFile(path.join(source,'SKILL.md'),'---\nname: agent-core-capability-index\ndescription: Installed capability routes\n---\nCHILD-INSTRUCTIONS-MUST-NOT-BE-INLINED\n');
+ const index=await f.skills.import(source);
+ const bootstrap=await f.service.bootstrapInstructions('index');
+ const context:any=await f.service.context('index',{query:'unmatched astronomy question',workspace:'agent-core'});
+ for(const text of [bootstrap,context.skillGuidance.text]){
+  expect(text).toContain('agent-core-capability-index');expect(text).toContain(index.digest);
+  expect(text).toContain('a task that needs tools, code, evidence or multi-step judgment');expect(text).toContain('material change');expect(text).toContain('Simple conversation or a simple question');expect(text).toContain('coding work, including standard coding, still is');
+  expect(text).toContain('nextOffset');expect(text).toContain('apply');
+  expect(text).not.toContain('CHILD-INSTRUCTIONS-MUST-NOT-BE-INLINED');
+ }
+});
+it('auto-advertises scientific critical thinking across sessions without inlining its body',async()=>{
+ const f=await setup();const source=path.join(f.root,'scientific-source');await mkdir(source);
+ await writeFile(path.join(source,'SKILL.md'),'---\nname: mind-control\ndescription: Evidence appraisal.\n---\nSCIENTIFIC-BODY-MUST-NOT-BE-INLINED\n');
+ const scientific=await f.skills.import(source);
+ const bootstrap=await f.service.bootstrapInstructions('scientific-auto');
+ const context:any=await f.service.context('scientific-auto',{query:'routine deterministic task',workspace:'agent-core'});
+ const native=(await taskSkillGuidance(f.skills,'native')).text;
+ for(const text of [bootstrap,context.skillGuidance.text,native]){
+  expect(text).toContain('mind-control');expect(text).toContain(scientific.digest);
+  expect(text).toContain('activation gate');expect(text).toContain('every coding task');
+  expect(text).toContain('standard');expect(text).toContain('Skip only non-coding');
+  expect(text).not.toContain('first-priority relevance candidate');
+  expect(text).not.toContain('SCIENTIFIC-BODY-MUST-NOT-BE-INLINED');
+ }
 });

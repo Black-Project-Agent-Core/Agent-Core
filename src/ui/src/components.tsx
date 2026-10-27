@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AGENT_CORE_VERSION } from '../../version';
 import {
   Activity, AlertTriangle, ArrowRight, BookOpen, Boxes, BrainCircuit, ChevronDown, ChevronLeft, ChevronRight,
@@ -142,26 +142,20 @@ export function ProcessCard({snapshot}:{snapshot?:DesktopSnapshot}) {
   </div>;
 }
 
-export function TopBar({page,snapshot,query,setQuery,setPage}:{page:PageId;snapshot?:DesktopSnapshot;query:string;setQuery:(v:string)=>void;setPage:(p:PageId)=>void}) {
-  const now=new Date();
-  const placeholders:Record<PageId,string>={
-    chat:'Search systems, components, logs...',
-    dashboard:'Search systems, components, logs...',
-    core:'Search systems, components, logs...',
-    systems:'Search systems, components, dependencies...',
-    workflows:'Search systems, components, dependencies...',
-    activity:'Search systems, components, logs, commands...',
-    diagnostics:'Search systems, components, logs, commands...',
-    settings:'Search systems, settings, components...',
-  };
-  return <header className="topbar">
-    <div className="brand"><span className="brand-logo-frame"><img src="./agent-core.png" alt="Agent Core"/></span><div><div className="brand-line"><b>AGENT CORE</b><span>v{snapshot?.version ?? AGENT_CORE_VERSION}</span></div><p><span>Local AI Runtime</span><i className="brand-separator"/><span>Your Machine. Your AI Partner.</span></p></div></div>
-    <label className="global-search"><Search size={19}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={placeholders[page]}/><kbd>Ctrl + K</kbd></label>
-    <div className="top-right"><span className={`online-pill ${!snapshot||snapshot.status.overall==='offline'?'offline':''}`}><i/> {!snapshot?'CONNECTING':snapshot.status.overall==='offline'?'OFFLINE':snapshot.status.overall==='degraded'?'DEGRADED':'ONLINE'}</span><div className="date-block"><span>{now.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</span><b>{now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</b></div><span className="user-pill">AC</span><button type="button" className="top-icon-button" onClick={()=>setPage('settings')} aria-label="Settings"><Settings size={20}/></button></div>
-  </header>;
-}
-
-export function Sidebar({page,setPage,snapshot,onAction}:{page:PageId;setPage:(p:PageId)=>void;snapshot?:DesktopSnapshot;onAction:(id:string)=>void}) {
+export function Sidebar({page,setPage,snapshot,onAction,onNewChat}:{page:PageId;setPage:(p:PageId)=>void;snapshot?:DesktopSnapshot;onAction:(id:string)=>void;onNewChat?:()=>void}) {
+  const [menuOpen,setMenuOpen]=useState(false);
+  const footRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    if(!menuOpen)return;
+    const onDown=(event:MouseEvent)=>{if(!footRef.current?.contains(event.target as Node))setMenuOpen(false);};
+    const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMenuOpen(false);};
+    document.addEventListener('mousedown',onDown);
+    document.addEventListener('keydown',onKey);
+    return()=>{
+      document.removeEventListener('mousedown',onDown);
+      document.removeEventListener('keydown',onKey);
+    };
+  },[menuOpen]);
   const shared={enabled:true} as const;
   const quickByPage:Record<PageId,Array<{id:string;label:string;icon:LucideIcon;enabled:boolean}>>={
     workflows:[],
@@ -214,18 +208,26 @@ export function Sidebar({page,setPage,snapshot,onAction}:{page:PageId;setPage:(p
     ],
   };
   const quick=quickByPage[page];
-  return <aside className="sidebar">
-    <nav><button type="button" className={`new-chat-placeholder ${page==='chat'?'active':''}`} onClick={()=>setPage('chat')} title="Native Agent Core Chat"><MessageSquarePlus size={20}/><span>New Chat</span></button>{navItems.map(({id,label,icon:Icon})=><button type="button" key={id} onClick={()=>setPage(id)} className={page===id?'active':''}><Icon size={20}/><span>{label}</span></button>)}</nav>
-    <div className="sidebar-divider"/>
-    <small className="sidebar-label">Quick Actions</small>
-    <div className="quick-actions">{quick.map(({id,label,icon:Icon,enabled})=><button type="button" key={id} disabled={!enabled} onClick={()=>enabled&&onAction(id)}><Icon size={18}/><span>{label}</span></button>)}</div>
-    <ProcessCard snapshot={snapshot}/>
+  const state=!snapshot?'CONNECTING':snapshot.status.overall==='offline'?'OFFLINE':snapshot.status.overall==='degraded'?'DEGRADED':'ONLINE';
+  return <aside className="rail">
+    <img className="rail-logo" src="./agent-core.png" alt="Agent Core" title={`Agent Core v${snapshot?.version ?? AGENT_CORE_VERSION}`}/>
+    <nav aria-label="Agent Core pages">
+      <button type="button" className={`rail-button ${page==='chat'?'active':''}`} aria-label="New Chat" title="New Chat" onClick={()=>{onNewChat?.();setPage('chat');}}><MessageSquarePlus size={18}/></button>
+      {navItems.map(({id,label,icon:Icon})=><button type="button" key={id} className={`rail-button ${page===id?'active':''}`} aria-label={label} title={label} aria-current={page===id?'page':undefined} onClick={()=>setPage(id)}><Icon size={18}/></button>)}
+    </nav>
+    <div className="rail-foot" ref={footRef}>
+      <span className={`rail-status ${state.toLowerCase()}`} title={`${state} · Agent Core.exe ${snapshot?.core.httpHealthy?'running':'unavailable'}`}><i aria-hidden="true"/><span className="sr-only">{state}</span></span>
+      <button type="button" className={`rail-button ${menuOpen?'active':''}`} aria-label="Quick Actions" title="Quick Actions" aria-haspopup="true" aria-expanded={menuOpen} onClick={()=>setMenuOpen(open=>!open)}><MoreHorizontal size={18}/></button>
+      {menuOpen&&<div className="rail-menu">
+        <ProcessCard snapshot={snapshot}/>
+        {quick.map(({id,label,icon:Icon,enabled})=><button type="button" key={id} disabled={!enabled} onClick={()=>{if(enabled){onAction(id);setMenuOpen(false);}}}><Icon size={16}/><span>{label}</span></button>)}
+      </div>}
+    </div>
   </aside>;
 }
 
-export function AppShell({page,setPage,snapshot,onAction,children}:{page:PageId;setPage:(p:PageId)=>void;snapshot?:DesktopSnapshot;onAction:(id:string)=>void;children:React.ReactNode}) {
-  const [query,setQuery]=useState('');
-  return <div className="app-shell"><TopBar page={page} snapshot={snapshot} query={query} setQuery={setQuery} setPage={setPage}/><div className="app-body"><Sidebar page={page} setPage={setPage} snapshot={snapshot} onAction={onAction}/><main className="main-content">{children}</main></div></div>;
+export function AppShell({page,setPage,snapshot,onAction,onNewChat,children}:{page:PageId;setPage:(p:PageId)=>void;snapshot?:DesktopSnapshot;onAction:(id:string)=>void;onNewChat?:()=>void;children:React.ReactNode}) {
+  return <div className="app-shell"><Sidebar page={page} setPage={setPage} snapshot={snapshot} onAction={onAction} onNewChat={onNewChat}/><main className="main-content">{children}</main></div>;
 }
 
 export function PageHero({icon:Icon,title,subtitle,children}:{icon:LucideIcon;title:string;subtitle:string;children?:React.ReactNode}) {

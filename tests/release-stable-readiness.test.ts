@@ -15,22 +15,57 @@ const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 async function fixture(){const root=await mkdtemp(path.join(os.tmpdir(),'stable-release-'));roots.push(root);return root;}
 async function put(root:string,name:string,body:string){const file=path.join(root,name);await mkdir(path.dirname(file),{recursive:true});await writeFile(file,body);}
 
-it('tracks bundled product Skill changes in release relevance, scans and baselines',async()=>{
- const root=await fixture();await put(root,'.changeset/config.json',JSON.stringify({changedFilePatterns:['src/**','bundled-skills/**']}));
+it('tracks canonical runtime Skill source changes in release relevance, scans and baselines',async()=>{
+ const root=await fixture();await put(root,'.changeset/config.json',JSON.stringify({changedFilePatterns:['src/**','runtime/skills/capability-packs/**','runtime/skills/README.md']}));
  const {loadReleasePolicy,isReleaseRelevantPath,releaseChangeScanPathspecs,releaseBaselinePathspecs}=await import('../scripts/release/release-policy.mjs');
  const policy=await loadReleasePolicy(root);
- expect(isReleaseRelevantPath('bundled-skills/example/SKILL.md',policy)).toBe(true);
- expect(isReleaseRelevantPath('bundled-skills/example/tooling/rea/node_modules/rea-agents/index.js',policy)).toBe(false);
- expect(releaseChangeScanPathspecs()).toContain('bundled-skills');expect(releaseBaselinePathspecs()).toContain('bundled-skills');
+ expect(isReleaseRelevantPath('runtime/skills/capability-packs/example/SKILL.md',policy)).toBe(true);
+ expect(isReleaseRelevantPath('runtime/skills/README.md',policy)).toBe(true);
+ expect(isReleaseRelevantPath('runtime/skills/capability-packs/example/references/guide.md',policy)).toBe(true);
+ expect(isReleaseRelevantPath('runtime/skills/capability-packs/example/tooling/rea/node_modules/rea-agents/index.js',policy)).toBe(false);
+ for(const file of ['runtime/skills/catalog/example/SKILL.md','runtime/skills/revisions/example/history/a/SKILL.md',
+   'runtime/skills/tooling/local.json','runtime/skills/capability-packs-copy/example/SKILL.md','runtime/memory/state.json'])
+   expect(isReleaseRelevantPath(file,policy),file).toBe(false);
+ for(const paths of [releaseChangeScanPathspecs(),releaseBaselinePathspecs()]) {
+   expect(paths).toContain('runtime/skills/capability-packs');
+   expect(paths).toContain('runtime/skills/README.md');
+   expect(paths).not.toContain('runtime/skills');expect(paths).not.toContain('runtime');expect(paths).not.toContain('bundled-skills');
+ }
+ expect(releaseBaselinePathspecs()).toContain(':(exclude)runtime/skills/capability-packs/**/node_modules/**');
 });
 
-it('seals bundled Skill seeds while leaving the active revision catalog mutable',async()=>{
- const root=await fixture();await put(root,'bundled-skills/review/SKILL.md','immutable seed');
- await put(root,'runtime/skills/catalog/review/SKILL.md','active revision');
+it('seals only the canonical Skill source subtree while leaving runtime state mutable',async()=>{
+ const root=await fixture();await put(root,'runtime/skills/capability-packs/review/SKILL.md','immutable seed');
+ await put(root,'runtime/skills/README.md','immutable home guide');
+ await put(root,'runtime/skills/capability-packs/README.md','source guide');
+ for(const relative of ['catalog/review/SKILL.md','revisions/review/history/a/SKILL.md','.staging/temporary.md',
+   'packages/review.skill','exports/codex/example.md','proposals/agent-core/review.md','tooling/local.json',
+   'future-role/state.json','capability-packs-copy/review/SKILL.md']) await put(root,'runtime/skills/'+relative,'mutable fixture');
+ await put(root,'runtime/memory/private.json','private fixture');
+ await put(root,'tunnel-client/agent-core.yaml','local config fixture');
  const {buildIntegrityManifest}=await import('../scripts/release/integrity-manifest.mjs');
  const manifest=await buildIntegrityManifest(root,{product:'fixture',version:'0.15.0'});
- expect(manifest.files.map((file:any)=>file.path)).toEqual(['bundled-skills/review/SKILL.md']);
+ expect(manifest.files.map((file:any)=>file.path)).toEqual(['runtime/skills/capability-packs/README.md','runtime/skills/capability-packs/review/SKILL.md','runtime/skills/README.md']);
+ expect(manifest.files.find((file:any)=>file.path.endsWith('/review/SKILL.md'))?.sha256).toBe(hash('immutable seed'));
  expect(manifest.policy.mutableExclusions).toContain('runtime/skills/');
+ expect(manifest.policy.immutableInclusions).toEqual(['runtime/skills/capability-packs/','runtime/skills/README.md']);
+});
+
+it('refuses release patterns that admit mutable runtime Skill state or an alternate source home',async()=>{
+ const {loadReleasePolicy}=await import('../scripts/release/release-policy.mjs');
+ const root=await fixture();
+ for(const pattern of ['runtime/**','runtime/skills/**','runtime/skills/catalog/**','runtime/skills/README.md.bak','runtime/skills/capability-packs-copy/**','bundled-skills/**']) {
+   await put(root,'.changeset/config.json',JSON.stringify({changedFilePatterns:[pattern]}));
+   await expect(loadReleasePolicy(root),pattern).rejects.toThrow(/product\/source paths/);
+ }
+});
+
+it('refuses new integrity manifests containing the legacy bundled-skills home',async()=>{
+ const {buildIntegrityManifest}=await import('../scripts/release/integrity-manifest.mjs');
+ for(const relative of ['bundled-skills','bundled-skills/review/SKILL.md']) {
+   const root=await fixture();await put(root,relative,'legacy source');
+   await expect(buildIntegrityManifest(root,{product:'fixture',version:'0.15.0'})).rejects.toThrow(/legacy.*bundled-skills.*targeted migration/i);
+ }
 });
 
 it('leaves fresh portable Memory absent until explicit activation by its existing owner',async()=>{
@@ -97,8 +132,12 @@ it('stages readable guides and only the hash-bound browser transport, excluding 
   await put(root,transport+'/build.json',JSON.stringify({version:1,target:'win32-x64',binary,binarySha256:hash('fixture-transport'),sourceSha256:hash('fixture-go-source')}));
   await put(root,transport+'/private-state.json','must not copy');
   await put(root,'runtime/rdc/browser-control/profile/History','must not copy');
+  await put(root,'scripts/external/native-chat-bridge.mjs','fixture native chat adapter');
+  await put(root,'scripts/external/private.log','must not copy');
   expect(packaging.stageExternalReleaseSupport).toBeTypeOf('function');
   await packaging.stageExternalReleaseSupport(root,destination);
+  expect(await readFile(path.join(destination,'scripts/external/native-chat-bridge.mjs'),'utf8')).toBe('fixture native chat adapter');
+  await expect(access(path.join(destination,'scripts/external/private.log'))).rejects.toThrow();
   expect(await readFile(path.join(destination,'docs/proposals/REVIEW-GUIDE.md'),'utf8')).toContain('fixture');
   expect(await readFile(path.join(destination,'README.md'),'utf8')).toContain('fixture');
   expect(await readFile(path.join(destination,'Restart-Agent-Core.cmd'),'utf8')).toBe('fixture Restart-Agent-Core.cmd');

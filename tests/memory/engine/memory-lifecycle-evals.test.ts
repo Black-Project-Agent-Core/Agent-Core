@@ -1,5 +1,6 @@
 import {afterAll, afterEach, expect, test} from 'vitest';
 import {mkdtemp, rm, writeFile, readFile, mkdir} from 'node:fs/promises';
+import {existsSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -7,7 +8,7 @@ import {initializeMemoryRoot, MemoryService} from '../../../src/memory/facade.js
 import {legacyExperience} from '../../../src/memory/experience-types.js';
 import {corpus, cases, fixtureSeals, sha256, expectedItems, bindGoalId, judgeItems, judgeEvidence, Meter, timed, distribution, compareLatency, storage, resolveCases, repeatedLabeledBytes} from './helpers/memory-eval.js';
 
-const engineSourceDigests=Object.fromEntries(await Promise.all(execFileSync('git',['ls-files','src'],{encoding:'utf8'}).trim().split('\n').map(async file=>[file,sha256(await readFile(file))])));
+const engineSourceDigests=Object.fromEntries(await Promise.all(execFileSync('git',['ls-files','src'],{encoding:'utf8'}).trim().split('\n').filter(file=>existsSync(file)).map(async file=>[file,sha256(await readFile(file))])));
 const engineSourceTreeDigest=sha256(JSON.stringify(engineSourceDigests));
 const roots: string[] = [];
 const results: any = {schemaVersion: 1, engineCommit: execFileSync('git', ['rev-parse', 'HEAD'], {encoding:'utf8'}).trim(), datasetRevision:corpus.datasetRevision,

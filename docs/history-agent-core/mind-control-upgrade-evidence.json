@@ -1,0 +1,78 @@
+{
+  "date": "2026-10-27",
+  "taskId": "ext-92fc11fb47044a58905e11bdb48c82e0",
+  "proposalId": "skill-proposal:a9a893d32b83c0aa4fc8130cb378ae42",
+  "proposalRevision": "sha256:1859227f7f555daa339994b583c3e25567e4225cd1d766f5e116ab930c6be900",
+  "activeDigest": "sha256:4c4649bf58044de3d3ccabd1ed6906afa8cd61612b400d7667a7487c5f19af04",
+  "priorDigest": "sha256:15553bddf5b1bad3fee25d0655bb2217ed678dc135d8f897f7b90f39ef33346a",
+  "freshHandshakeContractDigest": "sha256:263fbaefeabf40b55264a771d1a37743f8d966655d208fafa38a0ee2012a0302",
+  "residentSkillRead": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"name\":\"mind-control\",\"digest\":\"sha256:4c4649bf58044de3d3ccabd1ed6906afa8cd61612b400d7667a7487c5f19af04\",\"source\":\"SKILL.md\",\"content\":\"---\\nname: mind-control\\ndescription: Default reasoning capability for every coding task and any other task that needs thought, judgment, inference, evidence appraisal, tradeoffs, planning, or uncertainty handling. Skip only non-coding work that is routine, deterministic, and requires no reasoning.\\nlicense: MIT\\ncompatibility: Agent Core adapter with existing task grants. Local appraisal requires no network.\\nmetadata:\\n  upstream-version: \\\"1.5\\\"\\n  origin: \\\"K-Dense-AI/scientific-agent-skills\\\"\\n  adapter-revision: \\\"10\\\"\\n  owner: \\\"Ikbal and Claude Code (AI assistant)\\\"\\n  author: \\\"Ikbal and Claude Code (AI assistant)\\\"\\n  copyright: \\\"2026 Ikbal and Claude Code (AI assistant) for the adaptation and additions; 2025 K-Dense Inc. for upstream-derived material (MIT)\\\"\\n  origin-proposal-id: \\\"skill-proposal:a9a893d32b83c0aa4fc8130cb378ae42\\\"\\n  origin-proposal-revision: \\\"sha256:1859227f7f555daa339994b583c3e25567e4225cd1d766f5e116ab930c6be900\\\"\\n---\\n\\n# Mind-Control\\n\\n## Triggers\\n- Every coding task.\\n- Any other task that needs reasoning, judgment, inference, tradeoffs, planning, debugging, evidence assessment, or uncertainty handling.\\n\\n## Non-triggers\\n- Only non-coding work that is routine, mechanical, deterministic, and requires no reasoning or judgment.\\n\\n## Procedure\\nEvaluate activation before topical relevance; choose depth below. Fix goal, scope and claim.\\nSource, tool observations, benchmarks, controlled failures and independently checked outcomes outrank\\ndocumentation and intuition. Separate facts, interpretations, assumptions and unknowns;\\nscoped validation from causal benefit; unavailable from negative evidence.\\n\\nRun the user's five questions in order for non-trivial judgments:\\n1. **What do I actually know?** Separate verified fact, interpretation, assumption and unknown.\\n2. **What supports it, and what opposes it?** Actively seek evidence against my belief.\\n3. **What else could explain it?** Compare plausible rivals by the same standard.\\n4. **How can I test whether I am right?** Name the observation separating possibilities.\\n5. **What would change my mind?** State the falsifier and revise openly when it appears.\\n\\n**Self-audit:** my own conclusion first: truth or justification?\\n**Frame:** right problem, goal and approach; could a simpler design work?\\n\\\"It works\\\" is not completeness: unexercised paths, real-use tests, instability?\\nConclude clearly with reasons, fair contrary evidence, consistent comparisons,\\nuncertainty/boundaries and a testable, revisable conclusion.\\n\\nReuse Learning, Memory, decision review, verifier and SkillService. Reading is neither use\\nnor permission. Keep digest-bound read evidence; load references selectively. GRADE/RoB\\nare for research/clinical/statistical appraisal, not software. Narrative is not certainty.\\n\\n## Proportionality and evidence record\\nChoose by stakes, uncertainty and reversibility (evidence_links_and_decisions.md section 6).\\nEscalate if a rival or consequence changes the decision.\\n\\n| Tier | Use and output |\\n| --- | --- |\\n| T0 | Small, reversible, settled task: quick five-question check; no written record required. |\\n| T1 | Bug diagnosis, uncertain inference or design tradeoff: all six fields below, in order. |\\n| T2 | Contested claim carrying a material decision or irreversible/security-relevant action: T1 plus numbered reconstruction, explicit `#aux` premises and conclusion/objections. |\\n\\nT0 changes record depth only; activation, authorization and required verification still apply.\\nWrite concise evidence/decision summaries, never private reasoning or hidden scratchpads.\\nUse Native strategy/hypothesis or schema-valid `learning(action=decision)`, else the response.\\nLater answers may reference it. No new API fields or required tools. T2 appends reconstruction\\nafter the six fields.\\n\\n```text\\nClaim: decision and scope.\\nObserved: available facts and source.\\nInferred: interpretation and missing assumptions.\\nRival: strongest alternative and discriminating evidence.\\nTest: executed + result, or proposed + expected discriminator.\\nFlip condition: observation that changes the decision; confidence strong/moderate/weak/unknown with a reason.\\n```\\n\\nT1 example; checks proposed, not executed:\\n```text\\nSymptom: tenant B sees tenant A's settings for the same account id.\\nClaim: the cache key likely omits tenant identity.\\nObserved: key=accountId; shared ids; wrong data clears after 60-second TTL.\\nInferred: cross-tenant reuse fits; reproduction is not established.\\nRival: a late asynchronous response overwrites the current tenant view.\\nTest: proposed A then B within TTL; inspect key/tenant, then reverse response order.\\nDiscriminator: failure without overlap supports collision; reversed completion supports race.\\nAction: tenantId+accountId key; isolate namespace; cross-tenant regression check.\\nFlip condition: isolated keys fail only on reversed completion.\\nConfidence: moderate; collision fits, but a separate race remains possible.\\n```\\n\\n## Argument reconstruction\\nFor contested claims, rivals or multi-step inferences carrying a decision:\\n1. Sketch central claims and supports/objections, one sentence each.\\n2. Number premises, inference and conclusion; expose hidden premises as `#aux`.\\n   Separate intermediate/main conclusions, joint premises (all needed) and independent\\n   supports. Evidence sharing a source or flaw counts once.\\n3. Type objections: rebut the conclusion, undermine a premise, or undercut the warrant.\\n   Each needs a different check.\\n4. Check validity and premise truth separately. Fairly state the hidden warrant and test\\n   its rival; evidence fitting both does not establish the inference. Naming a fallacy\\n   points at verification; it does not refute a claim.\\n5. Compare hypotheses against evidence: consistent, inconsistent or not diagnostic.\\n   A comparison table is bookkeeping, not proof.\\n6. Judge links before the whole argument. Count unrefuted attackers, not objections;\\n   a claim stands only when attackers are defeated. Cycles stay undecided, not false.\\n   Check the disputed attack that would decide the issue first.\\n7. Name the flip condition and whether its test ran or is proposed. Stop checking and act\\n   when no cheaply checkable unknown would change the decision. Distinguish could/must/never;\\n   set the proof standard for exploration, reversible or irreversible action.\\n   Use ordinal confidence labels, not invented numbers.\\n\\n## References and boundaries\\nRead relevant sections under `references/` only. No cited source tests this procedure on\\nLLM coding outcomes; measure benefit rather than assuming it.\\n- `question_map.md`: user's fifteen-question map, self-audit and frame checklist.\\n- `argument_reconstruction.md`: notation, labelling, flaky-test example and source strength.\\n- `fallacies_and_form.md`: validity/truth, fallacies, Mill's debugging methods, definitions.\\n- `evidence_links_and_decisions.md`: warrants, support independence, cycles and proof stakes.\\n- `scientific_appraisal.md`: upstream PICO/GRADE/RoB/ROBINS-I/QUADAS-3, critique, diagrams and\\n  citation request; only for research, clinical or statistical claims.\\n- Upstream detail: `scientific_method.md`, `common_biases.md`, `statistical_pitfalls.md`,\\n  `evidence_hierarchy.md`, `logical_fallacies.md`, `experimental_design.md`, `review_sources.md`.\\n\\nNo automated people scoring, unsupported clinical/policy advice, arbitrary Skill installation,\\nor unauthorized data collection/transmission.\\n\\n## Ownership and attribution\\nMind-Control's adaptation, procedure, Core questions and four added references belong to\\n**Ikbal and Claude Code (AI assistant)**, MIT. Appraisal text and eight upstream references\\nremain copyright 2025 K-Dense Inc., MIT; see unchanged `LICENSE` and `UPSTREAM.json`.\\n\",\"offset\":0,\"nextOffset\":null,\"totalContentBytes\":7689,\"truncated\":false,\"delivery\":\"instruction-fragment\",\"executionAuthority\":false}"
+      }
+    ],
+    "structuredContent": null,
+    "isError": false
+  },
+  "residentScopeRejection": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Error: MEMORY_CONTROLLER_SCOPE_UNAVAILABLE: workspace-required. Start controller_learning action=episode episodeOperation=start with a stable taskKey and registered workspace. Host owner must be available; do not substitute an unrelated workspace."
+      }
+    ],
+    "structuredContent": {
+      "error_code": "INVALID_ARGUMENT"
+    },
+    "isError": true
+  },
+  "taskAfterRejectedStart": "ext-92fc11fb47044a58905e11bdb48c82e0",
+  "tests": {
+    "files": 5,
+    "passed": 56,
+    "failed": 0,
+    "report": "runtime/build/mind-control-cd-20261026/completion-targeted-tests.json"
+  },
+  "referenceAudit": "runtime/build/mind-control-cd-20261026/completion-measurements.json",
+  "evaluation": "runtime/skills/capability-packs/mind-control/evals/revision10-results.json",
+  "build": "npm run build exited 0; path/structure policy passed; diagnostic source built",
+  "restart": {
+    "requestPid": 11528,
+    "logPath": "runtime/restart/mcp-91de0af7-51f1-44c5-bfed-7b9d3a8c4f1c.log",
+    "observedHealth": {
+      "status": "ok",
+      "pid": 16472,
+      "startedAt": "2026-10-26T20:15:46.099Z",
+      "buildStale": false
+    },
+    "receiptId": "6f2833c1b5cd4a3b82f245e8f0d098f9",
+    "exitCode": 0
+  },
+  "learning": {
+    "status": "no-new-knowledge",
+    "taskId": "ext-92fc11fb47044a58905e11bdb48c82e0",
+    "complete": true,
+    "checkpoint": "mind-control-upgrade-and-learning-scope-20261027-complete",
+    "reviewedAt": "2026-10-26T20:19:25.876Z"
+  },
+  "limitations": [
+    "No general reasoning-quality, Native-provider or causal/latency benefit established.",
+    "Provider tokens unavailable; historical benchmark and reused-agent regression are distinguished.",
+    "No Native user-message decision proof was invented; fulfillment is active-artifact reconciliation."
+  ],
+  "archive": {
+    "path": "docs/history-agent-core/mind-control-upgrade.md",
+    "sha256": "8b69dd9dc34371c327a36b45183217da46372179bd23f46f0e169a9aafdd67af",
+    "sourceAbsent": true
+  },
+  "finalAudit": {
+    "status": "pass",
+    "checkedAt": "2026-10-26T20:21:08.950Z",
+    "serializedSkillResponseBytes": 8106,
+    "testsPassed": 56,
+    "testsFailed": 0,
+    "archiveLinksExist": true
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/addyosmani/agent-skills",
+  "commit": "aeac41d4d005999432bb7312f7ff06383a91d59d",
+  "path": "skills/doubt-driven-development",
+  "skillSha256": "6fa1fcd8420c28daf7e53c5b08b0f20b907911efd2a6d9bce0b9740da20a4008",
+  "license": "MIT",
+  "adapter": "frontmatter, applicability, tool mapping, local reference paths; upstream workflow retained"
+}

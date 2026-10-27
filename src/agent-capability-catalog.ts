@@ -14,8 +14,11 @@ export type AgentCapabilityFamily =
   | 'phone.observe'
   | 'phone.act'
   | 'skills.inspect'
+  | 'skills.manage'
   | 'memory.read'
   | 'memory.write'
+  | 'learning.manage'
+  | 'feedback.send'
   | 'admin.config'
   | 'web.research'
   | 'artifact.inspect'
@@ -56,6 +59,7 @@ export const AGENT_CAPABILITY_CATALOG: readonly AgentCapabilityDescriptor[] = [
     tools: [
       t('get_config'),
       t('read_file', { forbidUrlRead: true }),
+      t('image_inspect'),
       t('read_multiple_files'),
       t('list_directory'),
       t('get_file_info'),
@@ -111,7 +115,7 @@ export const AGENT_CAPABILITY_CATALOG: readonly AgentCapabilityDescriptor[] = [
   {
     family: 'browser.navigate',
     risk: 1,
-    description: 'Open/observe/status/close isolated browser sessions and read public URLs.',
+    description: 'Open/observe/status/close Open Browser Use task tabs or paired extension sessions, and read public URLs.',
     tools: [
       t('browser_control', { allowedActions: ['open', 'observe', 'status', 'close'] }),
       t('read_file', { forbidUrlRead: false }),
@@ -120,7 +124,7 @@ export const AGENT_CAPABILITY_CATALOG: readonly AgentCapabilityDescriptor[] = [
   {
     family: 'browser.act',
     risk: 3,
-    description: 'Act on an already observed isolated browser session.',
+    description: 'Act on an already observed Open Browser Use task tab or paired extension session.',
     tools: [
       t('browser_control', {
         allowedActions: ['open', 'observe', 'status', 'close', 'act'],
@@ -138,6 +142,7 @@ export const AGENT_CAPABILITY_CATALOG: readonly AgentCapabilityDescriptor[] = [
       t('code_analysis'),
       t('code_workspace', { allowedActions: ['list', 'resolve', 'status', 'refs'] }),
       t('code_patterns', { allowedActions: ['query', 'list', 'get'] }),
+      t('code_repair', { allowedActions: ['list', 'inspect'] }),
     ],
   },
   {
@@ -146,6 +151,7 @@ export const AGENT_CAPABILITY_CATALOG: readonly AgentCapabilityDescriptor[] = [
     description: 'Transactional semantic source refactoring and explicit Grafel reindex for user-authorized code changes.',
     tools: [
       t('code_refactor'),
+      t('code_repair', { allowedActions: ['submit', 'abandon'] }),
       t('code_workspace', { allowedActions: ['status', 'index', 'refs'] }),
     ],
   },
@@ -205,6 +211,12 @@ export const AGENT_CAPABILITY_CATALOG: readonly AgentCapabilityDescriptor[] = [
     ],
   },
   {
+    family: 'skills.manage',
+    risk: 3,
+    description: 'Proposal, revision and review operations through the existing SkillService.',
+    tools: [t('skills')],
+  },
+  {
     family: 'memory.read',
     risk: 0,
     description: 'Targeted read-only canonical Memory retrieval beyond controller-managed Memory-first recall.',
@@ -217,6 +229,7 @@ export const AGENT_CAPABILITY_CATALOG: readonly AgentCapabilityDescriptor[] = [
       t('memory_retirement_review'),
       t('memory_status'),
       t('memory_consolidate'),
+      t('memory_export'),
       t('memory_v2_read'),
     ],
   },
@@ -225,6 +238,18 @@ export const AGENT_CAPABILITY_CATALOG: readonly AgentCapabilityDescriptor[] = [
     risk: 3,
     description: 'Host-scoped task episodes and reviewed Memory v2 mutations.',
     tools: [t('memory_v2_write')],
+  },
+  {
+    family: 'learning.manage',
+    risk: 3,
+    description: 'Shared Learning checkpoints, review, decisions and reuse receipts.',
+    tools: [t('learning')],
+  },
+  {
+    family: 'feedback.send',
+    risk: 2,
+    description: 'Operational feedback through the existing registered tool.',
+    tools: [t('give_feedback_to_desktop_commander')],
   },
   {
     family: 'admin.config',

@@ -20,24 +20,24 @@ describe('Native Agent capability execution parity', () => {
     roots.push(root);
     const nativeRuntime = { nativeTaskId: 'nacp-fixture-task', nativeWorkspace: 'agent-core' };
     const availableTools = await AgentRuntimeToolSession.discoverAvailableTools(nativeRuntime);
+    // Dynamic mode grants the registered surface at task start; the operator's tool ceiling is the boundary.
     const resolver = new AgentCapabilityResolver({
       mode: 'dynamic',
-      allowedTools: [],
-      allowedCapabilities: ['observe.local', 'files.mutate', 'process.execute'],
+      allowedTools: ['read_file', 'write_file', 'start_process'],
+      allowedCapabilities: [],
     });
     const grant = resolver.resolve({
       requestedFamilies: ['observe.local', 'files.mutate', 'process.execute'],
       userPrompt: 'inspect, create a temporary file, then run a harmless command',
       availableTools,
     });
-    expect(grant.approvedFamilies).toEqual([
+    expect(grant.approvedFamilies).toEqual(expect.arrayContaining([
       'observe.local',
       'files.mutate',
       'process.execute',
-    ]);
-    expect(grant.tools).toEqual(expect.arrayContaining([
-      'read_file', 'write_file', 'start_process',
     ]));
+    expect(grant.denied).toEqual([]);
+    expect([...grant.tools].sort()).toEqual(['read_file', 'start_process', 'write_file']);
 
     const session = await AgentRuntimeToolSession.open(
       'nacp-execution-parity',

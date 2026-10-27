@@ -3,15 +3,20 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { BrowserTransport } from './extension-bridge.js';
 import { OpenBrowserUseRpc, type ObuPipe } from './open-browser-use-rpc.js';
 import { managedBrowserUseRuntime, obuManagedDirectory, OBU_MANAGED_HOST, selectObuConnection } from './open-browser-use-runtime.js';
+
+export interface BrowserTransport {
+  send(method: string, params?: Record<string, unknown>): Promise<any>;
+  close(): void;
+  onEvent?: (method: string, params: any) => void;
+}
 
 const HOST = 'com.ifuryst.open_browser_use.extension';
 const EXTENSION_ID = 'bgjoihaepiejlfjinojjfgokghnodnhd';
 const CDP_METHODS = new Set(['Page.enable', 'Runtime.enable', 'Page.navigate', 'Page.bringToFront', 'Runtime.evaluate',
   'Page.getNavigationHistory', 'Page.navigateToHistoryEntry', 'Input.dispatchMouseEvent',
-  'Input.dispatchKeyEvent', 'Input.insertText']);
+  'Input.dispatchKeyEvent', 'Input.insertText', 'Emulation.setFocusEmulationEnabled']);
 const EVENTS = new Set(['Page.javascriptDialogOpening', 'Page.javascriptDialogClosed']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH = /^[0-9a-f]{64}$/;
@@ -114,16 +119,20 @@ function validInfo(value: any): value is Info {
 export class OpenBrowserUseTransport implements BrowserTransport {
   onEvent?: (method: string, params: any) => void;
   tabId?: number;
+  url?: string;
   private readonly expiresAt = Date.now() + 30 * 60_000;
   private readonly expiryTimer: ReturnType<typeof setTimeout>;
   private phase: 'connected' | 'opening' | 'open' | 'disposing' | 'closed' = 'connected';
   private createAttempted = false;
   private backgroundMode = false;
   get background(): boolean { return this.backgroundMode; }
+  /** The owned tab is open and usable for reuse; never creates a tab. */
+  get usable(): boolean { return this.phase === 'open' && !this.closed; }
   private disposed?: Promise<Record<string, unknown>>;
   get closed(): boolean { return this.phase === 'closed' || this.rpc.closed || Date.now() >= this.expiresAt; }
   private constructor(private readonly rpc: OpenBrowserUseRpc, readonly info: Info, readonly socketIdentity: string) {
-    this.expiryTimer = setTimeout(() => this.close(), 30 * 60_000);
+    // Expiry must close the owned tab too, not only drop the RPC connection.
+    this.expiryTimer = setTimeout(() => { void this.dispose(); }, 30 * 60_000);
     this.expiryTimer.unref();
     rpc.onNotification = (method, event) => {
       // Relay events are broadcast, including activity from other clients and tabs.
@@ -200,6 +209,21 @@ export class OpenBrowserUseTransport implements BrowserTransport {
     await this.rpc.request('attach', { tabId: this.tabId });
     await this.send('Page.enable');
     await this.send('Runtime.enable');
+    await this.navigateOwnedTab(target, background);
+    if (this.phase !== 'opening' || this.closed) throw new Error('BROWSER_OBU_SESSION_CLOSED');
+    this.phase = 'open';
+  }
+
+  /** Moves the already-owned task tab to another URL. Never creates a tab. */
+  async navigate(url: string): Promise<void> {
+    if (!this.usable) throw new Error('BROWSER_OBU_SESSION_CLOSED');
+    const target = new URL(url);
+    if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password)
+      throw new Error('BROWSER_CONTROL_URL_SCHEME_REFUSED');
+    await this.navigateOwnedTab(target, this.backgroundMode);
+  }
+
+  private async navigateOwnedTab(target: URL, background: boolean): Promise<void> {
     const navigation = await this.send('Page.navigate', { url: target.toString() });
     if (!navigation || navigation.errorText) throw new Error('BROWSER_CONTROL_NAVIGATION_FAILED');
     if (!background) await this.send('Page.bringToFront');
@@ -209,8 +233,8 @@ export class OpenBrowserUseTransport implements BrowserTransport {
       const state = response?.result?.value;
       if (!response?.exceptionDetails && typeof state?.url === 'string' && /^https?:\/\//.test(state.url)
         && (background || (state.visible === true && state.focused === true)) && ['complete', 'interactive'].includes(state.ready)) {
-        if (this.phase !== 'opening' || this.closed) throw new Error('BROWSER_OBU_SESSION_CLOSED');
-        this.phase = 'open'; return;
+        this.url = target.toString();
+        return;
       }
       await new Promise(resolve => setTimeout(resolve, 50));
     }

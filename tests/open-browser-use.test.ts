@@ -281,6 +281,31 @@ describe('Installed extension identity and tab ownership', () => {
 });
 
 describe('Existing external browser owner integration', () => {
+  it('emulates focus only around keys on its owned background tab and restores it after release', async () => {
+    const focus = ['doc', PAGE.url, 1, 'textbox', 'text', false, false, null, 'value'];
+    let emulated = false;
+    const page = {...PAGE,focus_key:focus,keyboard_safe:true};
+    const t = await transport(r => {
+      const method = r.params.method, params = r.params.commandParams;
+      if (method === 'Emulation.setFocusEmulationEnabled') {emulated=params.enabled;return {};}
+      if (method === 'Input.dispatchKeyEvent') {expect(emulated).toBe(true);return {};}
+      if (params?.expression === 'window.__agentCoreBrowser?.focusKey() ?? null') return {result:{value:focus}};
+      if (params?.expression?.includes('ready:document.readyState'))
+        return {result:{value:{ready:'complete',url:PAGE.url,visible:false,focused:false}}};
+      if (method === 'Runtime.evaluate') return {result:{value:page}};
+      return browser(r);
+    });
+    vi.spyOn(OpenBrowserUseTransport,'connect').mockResolvedValueOnce(t.client);
+    const service = new BrowserControlService();
+    const opened:any = await service.open(PAGE.url,true,{interactionCapabilities:['keyboard']});
+    const observed:any = await service.observe(opened.sessionId);
+    await service.act(opened.sessionId,observed.observationId,'key-Escape');
+    expect(emulated).toBe(false);
+    expect(t.h.requests.filter(r=>r.params.method==='Emulation.setFocusEmulationEnabled').map(r=>r.params.commandParams.enabled)).toEqual([true,false]);
+    expect(t.h.requests.filter(r=>r.params.method==='Input.dispatchKeyEvent').map(r=>r.params.commandParams.type)).toEqual(['keyDown','keyUp']);
+    expect(t.h.requests.some(r=>r.params.method==='Page.bringToFront')).toBe(false);
+    await service.close(opened.sessionId);
+  });
   it('activates the observed HTML control in background without ineffective foreground mouse input', async () => {
     let submitted = false;
     class HtmlControl {
@@ -397,26 +422,29 @@ describe('Existing external browser owner integration', () => {
     expect(t.h.requests.some(r => String(r.params.method).startsWith('Input.'))).toBe(false);
     await service.close(result.sessionId);
   });
-  it('reports an uncertain open and retains the four-session admission bound during concurrent connects', async () => {
+  it('reports an uncertain open and keeps the four-session admission bound across owners', async () => {
     const t = await transport(r => r.method === 'createTab' ? new Error('unknown tab creation') : browser(r));
     vi.spyOn(OpenBrowserUseTransport, 'connect').mockResolvedValueOnce(t.client);
     const service = new BrowserControlService();
     await expect(service.open(PAGE.url, true, { transport: 'open-browser-use' })).rejects.toThrow('OPEN_OUTCOME_UNCERTAIN');
     expect(service.status().sessions).toEqual([]); expect(t.h.stop).toHaveBeenCalledTimes(1);
-    const deferred: Array<(c: OpenBrowserUseTransport) => void> = [];
-    vi.mocked(OpenBrowserUseTransport.connect).mockImplementation(() => new Promise(resolve => deferred.push(resolve)));
-    const attempts = Array.from({ length: 4 }, () => service.open(PAGE.url, true, { transport: 'open-browser-use' }).catch(e => e.message));
-    await expect(service.open(PAGE.url, true, { transport: 'open-browser-use' })).rejects.toThrow('SESSION_LIMIT');
-    for (const resolve of deferred) resolve(t.client);
-    await Promise.all(attempts);
+    // Opens are serialized per service and one owner reuses its tab, so the bound is reached with four owners, one after another.
+    for (const owner of ['a', 'b', 'c', 'd']) {
+      const healthy = await transport(browser);
+      vi.mocked(OpenBrowserUseTransport.connect).mockResolvedValueOnce(healthy.client);
+      await service.open(PAGE.url, true, { transport: 'open-browser-use', owner });
+    }
+    expect(service.status().sessions).toHaveLength(4);
+    await expect(service.open(PAGE.url, true, { transport: 'open-browser-use', owner: 'e' })).rejects.toThrow('SESSION_LIMIT');
+    for (const session of service.status().sessions as Array<{ sessionId: string }>) await service.close(session.sessionId);
+    expect(service.status().sessions).toEqual([]);
   });
   it('reuses observe/act budgets and closes only the transport, without an isolated browser process', async () => {
     const t = await transport(browser); vi.spyOn(OpenBrowserUseTransport, 'connect').mockResolvedValueOnce(t.client);
     const service = new BrowserControlService({ maxActions: 1, maxObservations: 2 });
     const opened: any = await service.open(PAGE.url, true, { transport: 'open-browser-use' });
     expect(opened).toMatchObject({ transport: 'open-browser-use', status: 'attached', headless: false, pid: null, tabId: 42 });
-    expect(service.status(false).sessions).toEqual([]);
-    expect(service.isOpenBrowserUseSession(opened.sessionId)).toBe(true);
+    expect(service.status().sessions).toHaveLength(1);
     const observation: any = await service.observe(opened.sessionId);
     expect(observation.tabs.scope).toBe('task-created-tab'); expect(observation.text).toBe(PAGE.text);
     await expect(service.act(opened.sessionId, observation.observationId, 'not-observed')).rejects.toThrow('ACTION_NOT_OBSERVED');
@@ -425,19 +453,26 @@ describe('Existing external browser owner integration', () => {
     expect(await service.close(opened.sessionId)).toMatchObject({ closed: true, cleanup: 'acknowledged', browserRetained: true });
     expect(service.status().sessions).toEqual([]);
   });
-  it('adds only external discovery and denies conversation/general-schema bypasses', async () => {
+  it('exposes OBU to both controllers while keeping conversation/general-schema boundaries', async () => {
     const args = { action: 'open', transport: 'open-browser-use', url: PAGE.url };
     expect(externalBrowserControl.safeParse(args).success).toBe(true);
-    expect(browserControl.safeParse(args).success).toBe(false);
+    expect(browserControl.safeParse(args).success).toBe(true);
     for (const extra of [{ mode: 'conversation' }, { mode: 'browser' }, { socketPath: '/x.sock' }, { tabId: 42 }])
       expect(externalBrowserControl.safeParse({ ...args, ...extra }).success).toBe(false);
     expect(externalBrowserControl.safeParse({ ...args, action: 'status' }).success).toBe(false);
     expect(externalBrowserControl.safeParse({ action: 'act', sessionId: SESSION, observationId: SESSION, actionId: 'x', text: 'x'.repeat(2001) }).success).toBe(false);
-    expect((await handleBrowserControl(args, undefined, false)).isError).toBe(true);
+    const t = await transport(browser); vi.spyOn(OpenBrowserUseTransport, 'connect').mockResolvedValueOnce(t.client);
+    const opened = await handleBrowserControl(args, undefined, false);
+    expect(opened.isError).not.toBe(true);
+    const id = String(opened.structuredContent?.sessionId);
+    expect((await handleBrowserControl({ action: 'observe', sessionId: id })).isError).not.toBe(true);
+    expect((await handleBrowserControl({ action: 'status' })).structuredContent?.sessions).toEqual(expect.arrayContaining([expect.objectContaining({sessionId: id})]));
+    expect((await handleBrowserControl({ action: 'conversation_read', sessionId: id })).isError).toBe(true);
+    expect((await handleBrowserControl({ action: 'close', sessionId: id })).isError).not.toBe(true);
     const input = { availableTools: ['browser_control'], artifacts: [], owners: {} };
     const external = buildCapabilityExposure({ ...input, externalController: true });
     const native = buildCapabilityExposure(input);
     expect(external.inventory.find(i => i.capabilityId === 'family:browser.navigate')?.description).toContain('Open Browser Use');
-    expect(native.inventory.find(i => i.capabilityId === 'family:browser.navigate')?.description).not.toContain('Open Browser Use');
+    expect(native.inventory.find(i => i.capabilityId === 'family:browser.navigate')?.description).toContain('Open Browser Use');
   });
 });

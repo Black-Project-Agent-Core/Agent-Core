@@ -166,6 +166,33 @@ function errorMessage(error: unknown): string {
 function containsAny(text: string, patterns: string[]): boolean {
   return patterns.some(pattern => text.includes(pattern));
 }
+
+/** Matches provider error codes as whole tokens, so `tpm_quota_exceeded` is not read as `quota_exceeded`. */
+function containsToken(text: string, tokens: string[]): boolean {
+  return tokens.some(token => new RegExp(`(?<![a-z0-9_])${token}(?![a-z0-9_])`).test(text));
+}
+
+// A response can fail after fetch returned its headers. Undici then throws an
+// opaque TypeError("terminated") with the useful transport code in its cause.
+// Preserve that boundary without treating every opaque/JSON/size error as retryable.
+const TRANSPORT_ERROR_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'EAI_AGAIN', 'ENETDOWN', 'ENETRESET',
+  'ENETUNREACH', 'EHOSTUNREACH', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET',
+  'UND_ERR_RES_CONTENT_LENGTH_MISMATCH',
+]);
+function hasTransientTransportCause(error: unknown): boolean {
+  const seen = new Set<object>();
+  let current = error;
+  for (let depth = 0; depth < 8 && typeof current === 'object' && current !== null; depth += 1) {
+    if (seen.has(current)) break;
+    seen.add(current);
+    const value = current as { code?: unknown; cause?: unknown };
+    if (typeof value.code === 'string' && TRANSPORT_ERROR_CODES.has(value.code)) return true;
+    current = value.cause;
+  }
+  return false;
+}
 function retryAt(error: AgentProviderRequestError, fallbackMs: number, now: number): {
   cooldownMs: number;
   retryAtMs: number;
@@ -190,7 +217,11 @@ export function classifyAgentProviderFailure(
     const status = error.status;
     const quotaText = containsAny(text, [
       'quota exceeded', 'quota exhausted', 'usage limit', 'resource_exhausted',
-      'insufficient_quota', 'daily limit', 'monthly limit',
+      'daily limit', 'monthly limit',
+    ]) || containsToken(text, [
+      // Duanyan TokenPlan answers "credit exhausted" with 429 + quota_exceeded; "too fast" is rate_limit_exceeded.
+      // A prefixed code (tpm_, rpm_, concurrency_quota_exceeded) names a rate window, not spent credit.
+      'quota_exceeded', 'insufficient_quota',
     ]);
     const creditText = containsAny(text, [
       'payment required', 'insufficient credit', 'insufficient balance', 'out of credits',
@@ -199,6 +230,37 @@ export function classifyAgentProviderFailure(
       'invalid api key', 'invalid key', 'unauthorized', 'authentication failed',
       'revoked', 'expired api key',
     ]);
+    const contextText = containsAny(text, [
+      'context_length_exceeded', 'context window', 'maximum context', 'max_model_len',
+      'too many tokens', 'input too long',
+    ]);
+    const modelText = containsAny(text, [
+      'model_not_found', 'model not found', 'model_access', 'model access', 'model is not available',
+      'does not have access to model', 'not entitled', 'subscription plan', 'model not supported',
+      'tool calling not supported', 'does not support tools',
+    ]);
+    if (contextText || status === 413) {
+      return {
+        failureClass: 'MODEL_CAPACITY', scope: 'model-provider', shouldFailover: true,
+        terminalCredential: false, affectsProviderBreaker: false,
+        cooldownMs: 10 * MINUTE, retryAtMs: now + 10 * MINUTE,
+      };
+    }
+    const credentialInvalid = containsAny(text, ['invalid api key', 'invalid key', 'authentication failed', 'revoked', 'expired api key']);
+    if (status !== 401 && !credentialInvalid && containsAny(text, ['model_not_found', 'model not found', 'model is not available'])) {
+      return {
+        failureClass: 'MODEL_NOT_FOUND', scope: 'model-provider', shouldFailover: true,
+        terminalCredential: false, affectsProviderBreaker: false,
+        cooldownMs: DAY, retryAtMs: now + DAY,
+      };
+    }
+    if (modelText && !credentialInvalid) {
+      return {
+        failureClass: 'MODEL_ACCESS', scope: 'model-credential', shouldFailover: true,
+        terminalCredential: false, affectsProviderBreaker: false,
+        cooldownMs: DAY, retryAtMs: now + DAY,
+      };
+    }
     if (authText || status === 401) {
       return {
         failureClass: 'AUTH_INVALID', scope: 'credential', shouldFailover: true,
@@ -241,18 +303,22 @@ export function classifyAgentProviderFailure(
         cooldownMs: DAY, retryAtMs: now + DAY,
       };
     }
-    if (status === 413) {
-      return {
-        failureClass: 'MODEL_CAPACITY', scope: 'model-provider', shouldFailover: true,
-        terminalCredential: false, affectsProviderBreaker: false,
-        cooldownMs: 10 * MINUTE, retryAtMs: now + 10 * MINUTE,
-      };
-    }
     if (status === 408 || status >= 500) {
       return {
         failureClass: 'PROVIDER_TRANSIENT', scope: 'provider', shouldFailover: true,
         terminalCredential: false, affectsProviderBreaker: true,
         cooldownMs: 30 * SECOND, retryAtMs: now + 30 * SECOND,
+      };
+    }
+    if (status === 400 && text.includes('provider returned error')) {
+      // The upstream provided no actionable request-validation detail. Do not
+      // declare a malformed caller payload or strand the whole Native turn on
+      // one tool-qualified model/key. Retry another eligible route, bounded by
+      // the existing pool attempt budget; explicit invalid requests still stop.
+      const wait = retryAt(error, 20 * SECOND, now);
+      return {
+        failureClass: 'PROVIDER_TRANSIENT', scope: 'model-credential', shouldFailover: true,
+        terminalCredential: false, affectsProviderBreaker: false, ...wait,
       };
     }
     if (status >= 400 && status < 500) {
@@ -264,7 +330,8 @@ export function classifyAgentProviderFailure(
     }
   }
 
-  if (containsAny(text, ['fetch failed', 'econnreset', 'econnrefused', 'etimedout', 'timeout', 'socket'])) {
+  if (hasTransientTransportCause(error)
+    || containsAny(text, ['fetch failed', 'econnreset', 'econnrefused', 'etimedout', 'timeout', 'socket'])) {
     return {
       failureClass: 'TRANSPORT_TRANSIENT', scope: 'provider', shouldFailover: true,
       terminalCredential: false, affectsProviderBreaker: true,

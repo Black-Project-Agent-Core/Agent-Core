@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/addyosmani/agent-skills",
+  "commit": "aeac41d4d005999432bb7312f7ff06383a91d59d",
+  "path": "skills/idea-refine",
+  "skillSha256": "21ef828e3a2144245b67f840cc3805f761e98c9acce9a96670b7cd7441353463",
+  "license": "MIT",
+  "adapter": "frontmatter, applicability, tool mapping, local reference paths; upstream workflow retained"
+}

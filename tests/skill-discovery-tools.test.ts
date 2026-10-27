@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { skills } from '../src/mcp/skills-schemas.js';
 import { controllerLearning } from '../src/mcp/controller-learning-schemas.js';
@@ -66,6 +67,23 @@ describe('Skill discovery MCP surface', () => {
     expect(received[1]).toEqual({ name: hit.name, expectedActiveDigest: digest, offset: 0, maxBytes: 512 });
     expect(outcomes.map(item => item.readOnly)).toEqual([true, true]);
     expect(tool.config.annotations.readOnlyHint).toBe(false);
+  });
+
+  it('records bounded host-prepared delivery metadata for a read without retaining instruction text', async () => {
+    const { activityTracker } = await import('../src/tracker/activity-tracker.js');
+    vi.mocked(activityTracker.record).mockClear();
+    const f = facade();
+    registerSkillsTools(f.server, { read: async () => read } as any, undefined, undefined);
+    const delivered = await f.tools.get('skills')!.call({ action: 'read', name: hit.name, expectedActiveDigest: digest });
+    const text = delivered.content[0].text as string;
+    const recorded = vi.mocked(activityTracker.record).mock.calls.find(call => call[2] === 'skills operation completed')!;
+    expect(recorded[4]).toMatchObject({ action: 'read', basis: 'host-prepared', skill: hit.name, source: 'SKILL.md', digest,
+      offset: 0, nextOffset: null, contentBytes: 15, resultBytes: Buffer.byteLength(text, 'utf8'),
+      resultSha256: createHash('sha256').update(text).digest('hex') });
+    expect(JSON.stringify(recorded[4])).not.toContain('Read the code');
+    vi.mocked(activityTracker.record).mockClear();
+    await f.tools.get('skills')!.call({ action: 'status' }).catch(() => undefined);
+    expect(JSON.stringify(vi.mocked(activityTracker.record).mock.calls)).not.toContain('resultSha256');
   });
 
   it('forwards explicit context mode and signal without adding a default hybrid request', async () => {

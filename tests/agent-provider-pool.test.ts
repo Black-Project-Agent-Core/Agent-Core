@@ -1,16 +1,23 @@
 import { mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   OpenAICompatibleProviderPool,
+  AgentProviderPoolPausedError,
   type AgentProviderConfig,
+  type AgentProviderRoutingEvent,
 } from '../src/agent-provider.js';
 import { loadConfig } from '../src/config.js';
+import { ProviderStateStore } from '../src/agent-provider-state.js';
+import { AgentProviderRequestError, classifyAgentProviderFailure } from '../src/agent-provider-errors.js';
+import { PersistentCredentialScheduler } from '../src/agent-provider-scheduler.js';
 
 const roots: string[] = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   for (const root of roots.splice(0)) {
     await rm(root, { recursive: true, force: true });
@@ -58,6 +65,21 @@ function auth(init: RequestInit | undefined): string | null {
   return ((init?.headers ?? {}) as Record<string, string>).authorization ?? null;
 }
 
+// Protocol fixtures prove routing independently of live provider entitlement.
+function fixtureFetch(handler: (url: URL, init?: RequestInit) => Promise<Response>) {
+  vi.stubGlobal('fetch', vi.fn(async (url: URL, init?: RequestInit) => {
+    if (String(url).endsWith('/models')) return new Response(JSON.stringify({ data: [{
+      id: 'fixture-model', context_length: 131_072, supported_parameters: ['tools'], max_output_tokens: 4_096,
+    }] }), { headers: { 'content-type': 'application/json' } });
+    const body = JSON.parse(String(init?.body ?? '{}'));
+    if (body.tools?.[0]?.function?.name === 'agent_core_model_probe') return new Response(JSON.stringify({ choices: [{
+      finish_reason: 'tool_calls', message: { content: null, tool_calls: [{ id: 'probe', type: 'function',
+        function: { name: 'agent_core_model_probe', arguments: JSON.stringify({ nonce: body.tools[0].function.parameters.properties.nonce.enum[0] }) } }] },
+    }] }), { headers: { 'content-type': 'application/json' } });
+    return handler(url, init);
+  }));
+}
+
 describe('OpenAICompatibleProviderPool persistent routing', () => {
   it('preserves numbered credential IDs from configuration', () => {
     const loaded = loadConfig({
@@ -72,18 +94,18 @@ describe('OpenAICompatibleProviderPool persistent routing', () => {
       ['openrouter:02', 2],
     ]);
   });
-  it('continues the real provider-pool rotation after reconstruction', async () => {
+  it('keeps the successful global credential across sessions and reconstruction', async () => {
     const { statePath } = await fixturePath();
     const seen: string[] = [];
-    vi.stubGlobal('fetch', vi.fn(async (_url: URL, init?: RequestInit) => {
+    fixtureFetch(async (_url: URL, init?: RequestInit) => {
       seen.push(auth(init) ?? '');
       return success();
-    }));
+    });
 
     const providerConfig = config(['secret-1', 'secret-2', 'secret-3', 'secret-4']);
     const first = new OpenAICompatibleProviderPool(providerConfig, statePath);
     for (let i = 0; i < 3; i += 1) {
-      await first.complete([{ role: 'user', content: 'hello' }]);
+      await first.complete([{ role: 'user', content: 'hello' }], [], `session-${i}`);
     }
 
     const reopened = new OpenAICompatibleProviderPool(providerConfig, statePath);
@@ -91,16 +113,16 @@ describe('OpenAICompatibleProviderPool persistent routing', () => {
 
     expect(seen).toEqual([
       'Bearer secret-1',
-      'Bearer secret-2',
-      'Bearer secret-3',
-      'Bearer secret-4',
+      'Bearer secret-1',
+      'Bearer secret-1',
+      'Bearer secret-1',
     ]);
   });
 
   it('rotates to a sibling credential on 429 and keeps the cooldown after reconstruction', async () => {
     const { statePath } = await fixturePath();
     const seen: string[] = [];
-    vi.stubGlobal('fetch', vi.fn(async (_url: URL, init?: RequestInit) => {
+    fixtureFetch(async (_url: URL, init?: RequestInit) => {
       const header = auth(init) ?? '';
       seen.push(header);
       if (header === 'Bearer secret-1') {
@@ -110,7 +132,7 @@ describe('OpenAICompatibleProviderPool persistent routing', () => {
         });
       }
       return success('fallback-ok');
-    }));
+    });
     const providerConfig = config(['secret-1', 'secret-2'], 2);
     const first = new OpenAICompatibleProviderPool(providerConfig, statePath);
     const result = await first.complete([{ role: 'user', content: 'rate test' }]);
@@ -122,10 +144,10 @@ describe('OpenAICompatibleProviderPool persistent routing', () => {
     expect(seen.at(-1)).toBe('Bearer secret-2');
   });
 
-  it('moves to the next provider on provider-scoped failure', async () => {
+  it('moves to the next provider on provider-scoped failure and retains it for a new session', async () => {
     const { statePath } = await fixturePath();
     const seen: string[] = [];
-    vi.stubGlobal('fetch', vi.fn(async (_url: URL, init?: RequestInit) => {
+    fixtureFetch(async (_url: URL, init?: RequestInit) => {
       const header = auth(init) ?? '';
       seen.push(header);
       if (header === 'Bearer route-a') {
@@ -135,7 +157,7 @@ describe('OpenAICompatibleProviderPool persistent routing', () => {
         });
       }
       return success('route-b-ok');
-    }));
+    });
 
     const providerConfig: AgentProviderConfig = {
       ...config([], 2),
@@ -155,8 +177,56 @@ describe('OpenAICompatibleProviderPool persistent routing', () => {
     const result = await pool.complete([{ role: 'user', content: 'provider failover' }]);
     expect(result.content).toBe('route-b-ok');
     expect(seen).toEqual(['Bearer route-a', 'Bearer route-b']);
+    const reopened = new OpenAICompatibleProviderPool(providerConfig, statePath);
+    await reopened.complete([{ role: 'user', content: 'new session' }], [], 'session-b');
+    expect(seen.at(-1)).toBe('Bearer route-b');
   });
 
+
+  describe('user-pinned route', () => {
+    const twoRoutes = (): AgentProviderConfig => ({
+      ...config([], 2),
+      providerOrder: ['a', 'b'],
+      providers: [
+        { id: 'a', baseUrl: 'http://127.0.0.1:12345/v1', model: 'fixture-model', credentials: [{ id: 'a:01', secret: 'route-a', ordinal: 1 }] },
+        { id: 'b', baseUrl: 'http://127.0.0.1:12346/v1', model: 'fixture-model', credentials: [{ id: 'b:01', secret: 'route-b', ordinal: 1 }] },
+      ],
+    });
+
+    it('sends the request to the chosen route even when another route is first in order', async () => {
+      const { statePath } = await fixturePath();
+      const seen: string[] = [];
+      fixtureFetch(async (_url: URL, init?: RequestInit) => { seen.push(auth(init) ?? ''); return success('from-b'); });
+      const pool = new OpenAICompatibleProviderPool(twoRoutes(), statePath);
+      const result = await pool.complete([{ role: 'user', content: 'pin b' }], [], 'session-pin', undefined, { routeId: 'b' });
+      expect(result).toMatchObject({ content: 'from-b', providerId: 'b' });
+      expect(seen).toEqual(['Bearer route-b']);
+    });
+
+    it('never rotates away from the chosen route when it fails', async () => {
+      const { statePath } = await fixturePath();
+      const seen: string[] = [];
+      fixtureFetch(async (_url: URL, init?: RequestInit) => {
+        seen.push(auth(init) ?? '');
+        return new Response(JSON.stringify({ error: { message: 'service unavailable' } }), { status: 503, headers: { 'content-type': 'application/json' } });
+      });
+      const pool = new OpenAICompatibleProviderPool(twoRoutes(), statePath);
+      await expect(pool.complete([{ role: 'user', content: 'pin b fails' }], [], undefined, undefined, { routeId: 'b' }))
+        .rejects.toBeInstanceOf(AgentProviderPoolPausedError);
+      expect(seen.length).toBeGreaterThan(0);
+      expect(new Set(seen)).toEqual(new Set(['Bearer route-b']));
+    });
+
+    it('rejects an unknown route before any provider request', async () => {
+      const { statePath } = await fixturePath();
+      const calls = vi.fn(async () => success());
+      fixtureFetch(calls);
+      const pool = new OpenAICompatibleProviderPool(twoRoutes(), statePath);
+      await expect(pool.complete([{ role: 'user', content: 'pin nowhere' }], [], undefined, undefined, { routeId: 'nowhere' }))
+        .rejects.toThrow('AGENT_RUNTIME_PROVIDER_ROUTE_UNAVAILABLE');
+      expect(calls).not.toHaveBeenCalled();
+    });
+  });
 
   it('reports degraded scheduler health instead of silently resetting state', async () => {
     const { root } = await fixturePath();
@@ -171,7 +241,7 @@ describe('OpenAICompatibleProviderPool persistent routing', () => {
 
   it('never writes raw credential secrets into operational state or health', async () => {
     const { root, statePath } = await fixturePath();
-    vi.stubGlobal('fetch', vi.fn(async () => success('secure')));
+    fixtureFetch(async () => success('secure'));
     const secrets = ['ultra-secret-one', 'ultra-secret-two'];
     const pool = new OpenAICompatibleProviderPool(config(secrets), statePath);
 
@@ -185,5 +255,451 @@ describe('OpenAICompatibleProviderPool persistent routing', () => {
     ));
     const text = bytes.toString('latin1');
     for (const secret of secrets) expect(text).not.toContain(secret);
+  });
+
+  it('pauses an incomplete provider scan without claiming all keys are exhausted or jumping provider', async () => {
+    const { statePath } = await fixturePath();
+    const seen: string[] = [];
+    fixtureFetch(async (_url, init) => {
+      seen.push(auth(init) ?? '');
+      if (auth(init) === 'Bearer a3') return success('last sibling');
+      return new Response(JSON.stringify({ error: { message: 'rate limit' } }), { status: 429 });
+    });
+    const cfg = config(['a1', 'a2', 'a3'], 2);
+    cfg.providers!.push({ id: 'b', baseUrl: 'http://127.0.0.1:12346/v1', model: 'fixture-model', apiKeys: ['b1'] });
+    const pool = new OpenAICompatibleProviderPool(cfg, statePath);
+    await expect(pool.complete([{ role: 'user', content: 'test' }])).rejects.toMatchObject({ reason: 'attempt-budget' });
+    expect(seen).toEqual(['Bearer a1', 'Bearer a2']);
+    expect((await pool.complete([{ role: 'user', content: 'resume' }])).content).toBe('last sibling');
+    expect(seen.at(-1)).toBe('Bearer a3');
+  });
+
+  it('checks a sibling first during an outage and does not mark either credential quota exhausted', async () => {
+    const { statePath } = await fixturePath();
+    const seen: string[] = [];
+    fixtureFetch(async (_url, init) => {
+      seen.push(auth(init) ?? '');
+      return auth(init) === 'Bearer a1' ? new Response('{}', { status: 503 }) : success();
+    });
+    const pool = new OpenAICompatibleProviderPool(config(['a1', 'a2']), statePath);
+    await pool.complete([{ role: 'user', content: 'outage' }]);
+    expect(seen).toEqual(['Bearer a1', 'Bearer a2']);
+    expect(pool.health().routes?.[0]).toMatchObject({ invalidKeyCount: 0, quotaBlockedKeyCount: 0 });
+  });
+
+  it('skips cached readiness waits across attempt windows and reaches a compatible provider', async () => {
+    const { statePath } = await fixturePath();
+    const cfg = config(['a1', 'a2', 'a3'], 2);
+    cfg.providers!.push({ id: 'b', baseUrl: 'http://127.0.0.1:12346/v1', model: 'fixture-model', apiKeys: ['b1'] });
+    const seen: string[] = [];
+    fixtureFetch(async (_url, init) => { seen.push(auth(init) ?? ''); return success(); });
+    const qualifiedFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+      if (String(url).endsWith('/models') && auth(init)?.startsWith('Bearer a')) return new Response('{}', { status: 503 });
+      return qualifiedFetch(url, init);
+    }));
+    const pool = new OpenAICompatibleProviderPool(cfg, statePath);
+    await expect(pool.complete([{ role: 'user', content: 'initial incomplete scan' }])).rejects.toMatchObject({ reason: 'attempt-budget' });
+    expect(seen).toEqual([]);
+    expect((await pool.complete([{ role: 'user', content: 'resume scan' }])).content).toBe('ok');
+    expect(seen).toEqual(['Bearer b1']);
+    await new OpenAICompatibleProviderPool(cfg, statePath).complete([{ role: 'user', content: 'new session' }]);
+    expect(seen).toEqual(['Bearer b1', 'Bearer b1']);
+    expect(pool.health().routes?.[0]).toMatchObject({ invalidKeyCount: 0, quotaBlockedKeyCount: 0 });
+  });
+
+  it('refreshes expired unproven readiness without blocking a ready route or changing its cursor', async () => {
+    const { statePath } = await fixturePath();
+    const cfg = config(['a1', 'a2', 'a3'], 2);
+    cfg.providers!.push({ id: 'b', baseUrl: 'http://127.0.0.1:12346/v1', model: 'fixture-model', apiKeys: ['b1'] });
+    const seen: string[] = [];
+    fixtureFetch(async (_url, init) => { seen.push(auth(init) ?? ''); return success(); });
+    const qualifiedFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+      if (String(url).endsWith('/models') && auth(init)?.startsWith('Bearer a')) return new Response('{}', { status: 503 });
+      return qualifiedFetch(url, init);
+    }));
+    const pool = new OpenAICompatibleProviderPool(cfg, statePath);
+    await pool.prepareReadiness();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 61_000);
+    expect((await pool.complete([{ role: 'user', content: 'old negative result' }])).content).toBe('ok');
+    await pool.prepareReadiness();
+    expect(seen).toEqual(['Bearer b1']);
+    expect((await pool.complete([{ role: 'user', content: 'sticky success' }])).content).toBe('ok');
+    expect(seen).toEqual(['Bearer b1', 'Bearer b1']);
+  });
+
+  it('keeps readiness preparation coalesced until every worker settles after a failure', async () => {
+    const { statePath } = await fixturePath();
+    fixtureFetch(async () => success());
+    const qualifiedFetch = globalThis.fetch;
+    const siblingGate = Promise.withResolvers<void>();
+    const siblingSaved = Promise.withResolvers<void>();
+    const failed = Promise.withResolvers<void>();
+    const failure = new Error('fixture-readiness-write-failed');
+    const originalSave = ProviderStateStore.prototype.saveModelReadiness;
+    const save = vi.spyOn(ProviderStateStore.prototype, 'saveModelReadiness').mockImplementation(function (this: ProviderStateStore, ...args) {
+      if (args[1] === 'openrouter:01') {
+        failed.resolve();
+        throw failure;
+      }
+      originalSave.call(this, ...args);
+      siblingSaved.resolve();
+    });
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+      if (String(url).endsWith('/models') && auth(init) === 'Bearer a2') await siblingGate.promise;
+      return qualifiedFetch(url, init);
+    }));
+    const pool = new OpenAICompatibleProviderPool(config(['a1', 'a2']), statePath);
+    const preparation = pool.prepareReadiness();
+    let settled = false;
+    const outcome = preparation.then(() => { settled = true; return null; }, error => { settled = true; return error; });
+    try {
+      await failed.promise;
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(settled).toBe(false);
+      expect(pool.prepareReadiness()).toBe(preparation);
+      siblingGate.resolve();
+      expect(await outcome).toBe(failure);
+      save.mockRestore();
+      const retry = pool.prepareReadiness();
+      expect(retry).not.toBe(preparation);
+      await retry;
+      expect(pool.health().routes?.[0]?.modelReadiness?.ready).toBe(2);
+    } finally {
+      siblingGate.resolve();
+      await siblingSaved.promise;
+      await outcome;
+      save.mockRestore();
+    }
+  });
+
+  it('routes after actual model qualification supersedes a historical model block without erasing it', async () => {
+    const { statePath } = await fixturePath();
+    const cfg = config(['qualified-key']);
+    const scheduler = new PersistentCredentialScheduler(statePath);
+    const failedAt = Date.now() - 1_000;
+    const selected = (await scheduler.select({ providerId: 'openrouter', model: 'fixture-model',
+      credentials: cfg.providers![0]!.credentials!, now: failedAt - 1 })).credential!;
+    scheduler.recordFailure({ selection: selected.selection, model: 'fixture-model', httpStatus: 404,
+      completedAtMs: failedAt, decision: classifyAgentProviderFailure(
+        new AgentProviderRequestError({ status: 404, message: 'missing endpoint' }), failedAt) });
+    const readBlocks = () => {
+      const db = new DatabaseSync(statePath, { readOnly: true });
+      try { return db.prepare('SELECT * FROM provider_scope_blocks').all(); }
+      finally { db.close(); }
+    };
+    const historical = readBlocks();
+    expect(historical).toEqual([expect.objectContaining({ model: 'fixture-model', reason: 'MODEL_NOT_FOUND' })]);
+    const seen: string[] = [];
+    fixtureFetch(async (_url, init) => { seen.push(auth(init) ?? ''); return success('qualified-route'); });
+    const pool = new OpenAICompatibleProviderPool(cfg, statePath);
+    const onAttempt = vi.fn();
+    const task = () => pool.complete([{ role: 'user', content: 'use the qualified model' }], [], undefined, undefined, { onAttempt });
+    await expect(task()).rejects.toMatchObject({ reason: 'unavailable' });
+    expect(onAttempt).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    await pool.prepareReadiness();
+    expect(pool.health().routes?.[0]?.modelReadiness?.ready).toBe(1);
+    expect(seen).toEqual([]);
+    expect(await task()).toMatchObject({ content: 'qualified-route', model: 'fixture-model' });
+    expect(onAttempt).toHaveBeenCalledOnce();
+    expect(seen).toEqual(['Bearer qualified-key']);
+    expect(readBlocks()).toEqual(historical);
+  });
+
+  it('does not silently upgrade a pinned OpenRouter model for a larger task', async () => {
+    const { statePath } = await fixturePath();
+    const cfg = config(['qualified-key']);
+    const probes: string[] = [], tasks: string[] = [];
+    fixtureFetch(async (_url, init) => { tasks.push(JSON.parse(String(init?.body)).model); return success(); });
+    const baseFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+      if (String(url).endsWith('/models')) return new Response(JSON.stringify({ data: [
+        { id: 'fixture-model', context_length: 4_096, max_output_tokens: 1_024, supported_parameters: ['tools'] },
+        { id: 'larger-model', context_length: 131_072, max_output_tokens: 4_096, supported_parameters: ['tools'] },
+      ] }), { headers: { 'content-type': 'application/json' } });
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      if (body.tools?.[0]?.function?.name === 'agent_core_model_probe') probes.push(body.model);
+      return baseFetch(url, init);
+    }));
+    const pool = new OpenAICompatibleProviderPool(cfg, statePath);
+    await pool.prepareReadiness();
+    await expect(pool.complete([{ role: 'user', content: 'x'.repeat(6_000) }])).rejects.toMatchObject({ reason: 'unavailable' });
+    expect(probes.length).toBeGreaterThan(0);
+    expect(probes.every(model => model === 'fixture-model')).toBe(true);
+    expect(tasks).toEqual([]);
+    expect(pool.health().routes?.[0]?.modelReadiness?.models ?? []).not.toContain('larger-model');
+  });
+
+  it('rechecks replacement protection on a provider route that permits alternatives', async () => {
+    const { statePath } = await fixturePath();
+    const cfg = config(['qualified-key']);
+    cfg.providers![0]!.id = 'sandbox';
+    cfg.providers![0]!.credentials = cfg.providers![0]!.credentials!.map(item => ({ ...item,
+      id: item.id.replace(/^openrouter:/, 'sandbox:') }));
+    cfg.providerOrder = ['sandbox'];
+    const scheduler = new PersistentCredentialScheduler(statePath);
+    const failedAt = Date.now() - 1_000;
+    const selected = (await scheduler.select({ providerId: 'sandbox', model: 'larger-model',
+      credentials: cfg.providers![0]!.credentials!, now: failedAt - 1 })).credential!;
+    scheduler.recordFailure({ selection: selected.selection, model: 'larger-model', httpStatus: 413,
+      completedAtMs: failedAt, decision: classifyAgentProviderFailure(
+        new AgentProviderRequestError({ status: 413, message: 'context window exceeded' }), failedAt) });
+    const tasks: string[] = [];
+    const probes: string[] = [];
+    fixtureFetch(async (_url, init) => { tasks.push(JSON.parse(String(init?.body)).model); return success(); });
+    const qualifiedFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => {
+      if (String(url).endsWith('/models')) return new Response(JSON.stringify({ data: [
+        { id: 'fixture-model', context_length: 4_096, max_output_tokens: 1_024, supported_parameters: ['tools'] },
+        { id: 'larger-model', context_length: 131_072, max_output_tokens: 4_096, supported_parameters: ['tools'] },
+      ] }), { headers: { 'content-type': 'application/json' } });
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      if (body.tools?.[0]?.function?.name === 'agent_core_model_probe') probes.push(body.model);
+      return qualifiedFetch(url, init);
+    }));
+    const pool = new OpenAICompatibleProviderPool(cfg, statePath);
+    await pool.prepareReadiness();
+    expect(pool.health().routes?.[0]?.modelReadiness?.models).toEqual(['fixture-model']);
+    await expect(pool.complete([{ role: 'user', content: 'x'.repeat(6_000) }])).rejects.toMatchObject({ reason: 'unavailable' });
+    expect(probes).toEqual(['fixture-model', 'larger-model']);
+    expect(pool.health().routes?.[0]?.modelReadiness?.models).toEqual(['larger-model']);
+    expect(tasks).toEqual([]);
+  });
+
+  it('exhausts sibling keys on a pinned provider before selecting a different provider', async () => {
+    const { statePath } = await fixturePath();
+    const cfg = config(['primary-1', 'primary-2'], 3);
+    cfg.providerOrder = ['openrouter', 'secondary'];
+    cfg.providers!.push({
+      id: 'secondary', baseUrl: 'http://127.0.0.1:12346/v1', model: 'fixture-model',
+      credentials: [{ id: 'secondary:01', secret: 'secondary-1', ordinal: 1 }],
+    });
+    const seen: Array<{ url: string; key: string; model: string }> = [];
+    fixtureFetch(async (url, init) => {
+      const key = auth(init) ?? '';
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      seen.push({ url: String(url), key, model: body.model });
+      if (key === 'Bearer primary-1' || key === 'Bearer primary-2') {
+        return new Response(JSON.stringify({ error: { message: 'temporary rate limit' } }), {
+          status: 429, headers: { 'content-type': 'application/json', 'retry-after': '120' },
+        });
+      }
+      return success('secondary-success');
+    });
+    const pool = new OpenAICompatibleProviderPool(cfg, statePath);
+    expect((await pool.complete([{ role: 'user', content: 'fixture only' }])).content).toBe('secondary-success');
+    expect(seen.map(item => item.key)).toEqual([
+      'Bearer primary-1', 'Bearer primary-2', 'Bearer secondary-1',
+    ]);
+    expect(seen.map(item => item.model)).toEqual(['fixture-model', 'fixture-model', 'fixture-model']);
+    expect(seen[0]!.url).toContain(':12345/');
+    expect(seen[1]!.url).toContain(':12345/');
+    expect(seen[2]!.url).toContain(':12346/');
+    expect(pool.health().routes?.find(route => route.id === 'openrouter')).toMatchObject({
+      invalidKeyCount: 0, quotaBlockedKeyCount: 0,
+    });
+  });
+
+  it('separates limit, quota, authentication, model access, provider outage and attempt budget', () => {
+    const cases: Array<[number, string, string, string]> = [
+      [429, 'temporary rate limit', 'RATE_LIMIT', 'model-credential'],
+      [429, 'daily quota exceeded', 'QUOTA_EXHAUSTED', 'credential'],
+      [402, 'insufficient credit', 'CREDIT_EXHAUSTED', 'credential'],
+      [401, 'invalid api key', 'AUTH_INVALID', 'credential'],
+      [403, 'model access denied', 'MODEL_ACCESS', 'model-credential'],
+      [404, 'model not found', 'MODEL_NOT_FOUND', 'model-provider'],
+      [503, 'service unavailable', 'PROVIDER_TRANSIENT', 'provider'],
+    ];
+    for (const [status, message, kind, scope] of cases) {
+      const decision = classifyAgentProviderFailure(new AgentProviderRequestError({ status, message }));
+      expect(decision.failureClass).toBe(kind);
+      expect(decision.scope).toBe(scope);
+      expect(decision.shouldFailover).toBe(true);
+    }
+    const invalid = classifyAgentProviderFailure(new AgentProviderRequestError({
+      status: 400, message: 'invalid request payload',
+    }));
+    expect(invalid).toMatchObject({ failureClass: 'REQUEST_INVALID', shouldFailover: false });
+    expect(classifyAgentProviderFailure(new AgentProviderRequestError({
+      status: 400, message: 'opaque provider response', safeCode: 'model_not_found',
+    }))).toMatchObject({ failureClass: 'MODEL_NOT_FOUND', scope: 'model-provider' });
+    expect(new AgentProviderPoolPausedError('attempt-budget', null).reason).toBe('attempt-budget');
+  });
+});
+
+function limited(message = 'temporary rate limit', retryAfter = '120') {
+  return new Response(JSON.stringify({ error: { message } }), {
+    status: 429, headers: { 'content-type': 'application/json', 'retry-after': retryAfter },
+  });
+}
+function httpFailure(status: number, message: string) {
+  return new Response(JSON.stringify({ error: { message } }), {
+    status, headers: { 'content-type': 'application/json' },
+  });
+}
+function twoRoutes(primaryKeys: string[], maxProviderAttempts = 6): AgentProviderConfig {
+  const cfg = config(primaryKeys, maxProviderAttempts);
+  cfg.providerOrder = ['openrouter', 'secondary'];
+  cfg.providers!.push({
+    id: 'secondary', baseUrl: 'http://127.0.0.1:12346/v1', model: 'fixture-model',
+    credentials: [{ id: 'secondary:01', secret: 'secondary-1', ordinal: 1 }],
+  });
+  return cfg;
+}
+async function routed(
+  pool: OpenAICompatibleProviderPool,
+  events: AgentProviderRoutingEvent[],
+  attemptLimit?: number,
+) {
+  return pool.complete([{ role: 'user', content: 'fixture only' }], [], undefined, undefined, {
+    ...(attemptLimit === undefined ? {} : { attemptLimit }),
+    onRouting: event => { events.push(event); },
+  });
+}
+
+describe('OpenAICompatibleProviderPool routing evidence', () => {
+  it('records key rotation inside a provider with cause, retry time and sibling counts', async () => {
+    const { statePath } = await fixturePath();
+    const seen: string[] = [];
+    fixtureFetch(async (_url, init) => {
+      const key = auth(init) ?? '';
+      seen.push(key);
+      return key === 'Bearer primary-1' ? limited() : success('primary-2-success');
+    });
+    const events: AgentProviderRoutingEvent[] = [];
+    const before = Date.now();
+    const pool = new OpenAICompatibleProviderPool(twoRoutes(['primary-1', 'primary-2'], 4), statePath);
+    expect((await routed(pool, events)).content).toBe('primary-2-success');
+
+    expect(seen).toEqual(['Bearer primary-1', 'Bearer primary-2']);
+    expect(events.map(event => event.type)).toEqual(['attempt', 'failure', 'attempt', 'success']);
+    const [first, failed, second, done] = events as any[];
+    expect(first).toMatchObject({
+      attempt: 1, attemptLimit: 4, transition: 'initial', cause: null, from: null,
+      to: { providerId: 'openrouter', credentialId: 'openrouter:01', model: 'fixture-model' },
+      selection: { configured: 2, eligible: 2, status: 'available' },
+    });
+    expect(first.selection.skipped).toEqual({});
+    expect(failed).toMatchObject({
+      attempt: 1, failureClass: 'RATE_LIMIT', scope: 'model-credential', httpStatus: 429, failover: true,
+      key: { providerId: 'openrouter', credentialId: 'openrouter:01', model: 'fixture-model' },
+    });
+    expect(failed.retryAtMs).toBeGreaterThanOrEqual(before + 100_000);
+    expect(second).toMatchObject({
+      attempt: 2, transition: 'sibling-key', cause: 'RATE_LIMIT',
+      from: { providerId: 'openrouter', credentialId: 'openrouter:01' },
+      to: { providerId: 'openrouter', credentialId: 'openrouter:02', model: 'fixture-model' },
+      selection: { configured: 2, eligible: 1, status: 'available' },
+    });
+    expect(second.selection.skipped).toEqual({ 'rate-limit': 1 });
+    expect(done).toMatchObject({ attempt: 2, key: { providerId: 'openrouter', credentialId: 'openrouter:02' } });
+    expect(events.some(event => (event as any).to?.providerId === 'secondary')).toBe(false);
+    expect(JSON.stringify(events)).not.toMatch(/primary-[12]|secondary-1|Bearer/i);
+  });
+
+  it('leaves a provider only after every sibling is limited and states why in the switch', async () => {
+    const { statePath } = await fixturePath();
+    const seen: string[] = [];
+    fixtureFetch(async (_url, init) => {
+      const key = auth(init) ?? '';
+      seen.push(key);
+      return key.startsWith('Bearer primary-') ? limited() : success('secondary-success');
+    });
+    const events: AgentProviderRoutingEvent[] = [];
+    const pool = new OpenAICompatibleProviderPool(twoRoutes(['primary-1', 'primary-2'], 4), statePath);
+    expect((await routed(pool, events)).content).toBe('secondary-success');
+
+    expect(seen).toEqual(['Bearer primary-1', 'Bearer primary-2', 'Bearer secondary-1']);
+    const attempts = events.filter(event => event.type === 'attempt') as any[];
+    expect(attempts.map(event => [event.to.providerId, event.to.credentialId, event.transition])).toEqual([
+      ['openrouter', 'openrouter:01', 'initial'],
+      ['openrouter', 'openrouter:02', 'sibling-key'],
+      ['secondary', 'secondary:01', 'provider-switch'],
+    ]);
+    expect(attempts[2]).toMatchObject({
+      attempt: 3, cause: 'RATE_LIMIT',
+      from: { providerId: 'openrouter', credentialId: 'openrouter:02' },
+      left: { providerId: 'openrouter', reason: 'siblings-unavailable',
+        diagnostics: { configured: 2, eligible: 0, status: 'all-limit-or-quota' } },
+    });
+    expect(attempts[2].left.diagnostics.skipped).toEqual({ 'rate-limit': 2 });
+    expect(attempts[2].selection).toMatchObject({ configured: 1, eligible: 1, status: 'available' });
+  });
+
+  it('reports mixed key states as mixed and never as all limited', async () => {
+    const { statePath } = await fixturePath();
+    fixtureFetch(async (_url, init) => {
+      const key = auth(init) ?? '';
+      if (key === 'Bearer k1') return httpFailure(401, 'invalid api key');
+      if (key === 'Bearer k2') return limited();
+      return httpFailure(503, 'service unavailable');
+    });
+    const events: AgentProviderRoutingEvent[] = [];
+    const pool = new OpenAICompatibleProviderPool(config(['k1', 'k2', 'k3'], 6), statePath);
+    await expect(routed(pool, events)).rejects.toMatchObject({ name: 'AgentProviderPoolPausedError', reason: 'unavailable' });
+
+    const failures = events.filter(event => event.type === 'failure') as any[];
+    expect(failures.map(event => [event.key.credentialId, event.failureClass, event.scope])).toEqual([
+      ['openrouter:01', 'AUTH_INVALID', 'credential'],
+      ['openrouter:02', 'RATE_LIMIT', 'model-credential'],
+      ['openrouter:03', 'PROVIDER_TRANSIENT', 'provider'],
+    ]);
+    const paused = events.at(-1) as any;
+    expect(paused).toMatchObject({ type: 'paused', reason: 'unavailable', attempt: 3, attemptLimit: 6 });
+    const route = paused.routes.find((item: any) => item.providerId === 'openrouter');
+    expect(route).toMatchObject({ configured: 3, eligible: 0, status: 'mixed' });
+    expect(route.skipped).toEqual({ invalid: 1, 'rate-limit': 1, transient: 1 });
+    expect(paused.routes.some((item: any) => item.status === 'all-limit-or-quota')).toBe(false);
+  });
+
+  it('reports all-limit-or-quota only when every key is a limit or quota', async () => {
+    const { statePath } = await fixturePath();
+    fixtureFetch(async (_url, init) => (auth(init) === 'Bearer k1'
+      ? limited() : httpFailure(429, 'daily quota exceeded')));
+    const events: AgentProviderRoutingEvent[] = [];
+    const pool = new OpenAICompatibleProviderPool(config(['k1', 'k2'], 6), statePath);
+    await expect(routed(pool, events)).rejects.toBeInstanceOf(AgentProviderPoolPausedError);
+    const paused = events.at(-1) as any;
+    const route = paused.routes.find((item: any) => item.providerId === 'openrouter');
+    expect(route).toMatchObject({ configured: 2, eligible: 0, status: 'all-limit-or-quota' });
+    expect(route.skipped).toEqual({ 'rate-limit': 1, quota: 1 });
+  });
+
+  it('does not claim exhaustion when the attempt window ends with an untried sibling', async () => {
+    const { statePath } = await fixturePath();
+    fixtureFetch(async () => limited());
+    const events: AgentProviderRoutingEvent[] = [];
+    const pool = new OpenAICompatibleProviderPool(config(['k1', 'k2', 'k3'], 2), statePath);
+    await expect(routed(pool, events)).rejects.toMatchObject({ reason: 'attempt-budget' });
+    const paused = events.at(-1) as any;
+    expect(paused).toMatchObject({ type: 'paused', reason: 'attempt-budget', attempt: 2, attemptLimit: 2 });
+    const route = paused.routes.find((item: any) => item.providerId === 'openrouter');
+    expect(route).toMatchObject({ configured: 3, eligible: 1, status: 'available' });
+    expect(route.skipped).toEqual({ 'rate-limit': 2 });
+  });
+
+  it('keeps a request-scoped failure from rotating or cooling any key', async () => {
+    const { statePath } = await fixturePath();
+    let call = 0;
+    const seen: string[] = [];
+    fixtureFetch(async (_url, init) => {
+      seen.push(auth(init) ?? '');
+      call += 1;
+      return call === 1 ? httpFailure(400, 'invalid request payload') : success('after-payload');
+    });
+    const events: AgentProviderRoutingEvent[] = [];
+    const pool = new OpenAICompatibleProviderPool(config(['k1', 'k2'], 4), statePath);
+    await expect(routed(pool, events)).rejects.toMatchObject({ status: 400 });
+    expect(events.map(event => event.type)).toEqual(['attempt', 'failure']);
+    expect(events[1]).toMatchObject({ failureClass: 'REQUEST_INVALID', scope: 'request', failover: false, retryAtMs: null });
+    expect(pool.health().routes?.[0]).toMatchObject({ cooldownKeyCount: 0, quotaBlockedKeyCount: 0, invalidKeyCount: 0 });
+
+    const next: AgentProviderRoutingEvent[] = [];
+    expect((await routed(pool, next)).content).toBe('after-payload');
+    expect(seen).toEqual(['Bearer k1', 'Bearer k1']);
+    expect(next[0]).toMatchObject({ type: 'attempt', transition: 'keep', to: { credentialId: 'openrouter:01' } });
   });
 });

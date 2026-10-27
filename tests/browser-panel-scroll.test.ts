@@ -6,20 +6,21 @@ const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => { while (cleanup.length) await cleanup.pop()!(); });
 
 async function fixture(extra = '') {
-  const server: Server = createServer((_req, res) => res.end(`<!doctype html><style>
+  const server: Server = createServer((req, res) => {
+    res.setHeader('content-type','text/html; charset=utf-8');
+    res.end(req.url === '/refreshed' ? '<p>Refreshed</p>' : `<!doctype html><style>
     body{margin:0;overflow:hidden}main{position:fixed;left:12%;top:12%;width:76%;height:260px;overflow:auto}
     .space{height:1350px}button{height:36px}
     </style><main aria-label="Plugin settings"><p>Development settings</p>${extra}
-    <div class="space"></div><button onclick="this.textContent='Refreshed'">Refresh tools</button></main>`));
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    <div class="space"></div><form action="/refreshed" method="POST"><button>Refresh tools</button></form></main>`);
+  });
+  await new Promise<void>(resolve => server.listen(Number(process.env.AGENT_CORE_BROWSER_TEST_PORT ?? 0), '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => server.close(() => resolve())));
   const service = new BrowserControlService();
   const opened = await service.open(`http://127.0.0.1:${(server.address() as any).port}`, true);
   const id = String(opened.sessionId);
   const session = (service as any).sessions.get(id);
-  // Real Chromium/CDP; select the installed-browser branch without a real user browser.
-  session.openBrowserUse = { background: true, closed: false, assertForeground: async () => {} };
-  cleanup.push(async () => { delete session.openBrowserUse; await service.close(id); });
+  cleanup.push(() => service.close(id));
   const commands: string[] = [];
   const send = session.client.send.bind(session.client);
   session.client.send = (method: string, params: any) => { commands.push(method); return send(method, params); };
@@ -44,7 +45,7 @@ it('scrolls an observed clipped panel in background and reveals an actionable Re
   expect(await evaluate('scrollY')).toBe(0);
   expect(await evaluate('document.querySelector("main").scrollTop')).toBeGreaterThan(100);
   await service.act(id, observed.observationId, refresh.id);
-  expect((await service.observe(id) as any).text).toContain('Refreshed');
+  await expect.poll(async () => (await service.observe(id) as any).text, {timeout:3000}).toContain('Refreshed');
   expect(commands).not.toContain('Page.bringToFront');
   expect(commands.some(m => m.startsWith('Input.'))).toBe(false);
 }, 30_000);

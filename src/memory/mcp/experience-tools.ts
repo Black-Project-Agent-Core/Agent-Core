@@ -9,6 +9,7 @@ const readonlyActions = {
   capabilities:'memory_capabilities', recall:'memory_recall',
   expand:'memory_expand', task_context:'memory_task_context', ingestion_cursor:'memory_ingestion_cursor',
   claim_review:'memory_claim_review_read',
+  recall_repair:'memory_recall_repair_read',derivation:'memory_derivation_read',
 } as const;
 const mutatingActions = {
   task_start:'memory_task_start', event_append:'memory_event_append',
@@ -16,6 +17,7 @@ const mutatingActions = {
   consolidation_preview:'memory_consolidation_preview', consolidation_apply:'memory_consolidation_apply',
   retention_set:'memory_retention_set', episode_status:'memory_episode_status',
   claim_review:'memory_claim_review_write',
+  recall_repair:'memory_recall_repair_write',derivation:'memory_derivation_write',
 } as const;
 const input = z.strictObject({action:z.string().min(1).max(48),scope:z.strictObject({taskId:z.string().min(1).max(128)}).optional(),payload:z.record(z.string(),z.unknown()).optional()});
 const forbiddenPayloadScope = new Set(['taskId','workspaceKey','ownerId','controllerId','sessionId','workspace','scope']);
@@ -36,7 +38,8 @@ export function registerMemoryExperienceTools(
   const externalClaimReviews=Boolean(assertExternalRecallScope&&assertExternalWriteScope);
   async function dispatch(action:string,payload:Record<string,unknown>,mode:'read'|'write',selector?:MemoryTaskSelector,signal?:AbortSignal,wait?:ExternalRecallWait){
     const deadlineMs=Date.now()+15_000;
-    if(action==='claim_review'&&!externalClaimReviews)throw new Error('MEMORY_INPUT_INVALID');
+    const externalAction=['claim_review','recall_repair','derivation'].includes(action);
+    if(externalAction&&!externalClaimReviews)throw new Error('MEMORY_INPUT_INVALID');
     const group=mode==='read'?readonlyActions:mutatingActions;
     if(!Object.hasOwn(group,action))throw new Error('MEMORY_INPUT_INVALID');
     if(Object.keys(payload).some(key=>forbiddenPayloadScope.has(key)))throw new Error('MEMORY_INPUT_INVALID');
@@ -57,11 +60,11 @@ export function registerMemoryExperienceTools(
       try {currentIdentity=memory.registeredWorkspaceIdentity(fresh.workspaceKey);}
       catch {throw new Error('MEMORY_SCOPE_MISMATCH');}
       if(currentIdentity.key!==identity.key)throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
-      if(mode==='read'&&(action==='recall'||action==='claim_review'))await assertExternalRecallScope?.(scope.taskId,scope.workspaceKey);
-      if(mode==='write'&&action==='claim_review')await assertExternalWriteScope?.(scope.taskId,scope.workspaceKey);
+      if(mode==='read'&&(action==='recall'||externalAction))await assertExternalRecallScope?.(scope.taskId,scope.workspaceKey);
+      if(mode==='write'&&externalAction)await assertExternalWriteScope?.(scope.taskId,scope.workspaceKey);
     };
     if(mode==='read'&&action==='recall')await assertExternalRecallScope?.(scope.taskId,scope.workspaceKey);
-    if(action==='claim_review')await assertCurrent();
+    if(externalAction)await assertCurrent();
     const pending:MemoryRetrievalAttempt[]=[];
     const defer=mode==='read'&&action==='recall'
       ? async (attempt:MemoryRetrievalAttempt)=>{

@@ -45,6 +45,12 @@ describe('OpenAI-compatible native agent provider', () => {
     expect(configured.agentUiToken).toBe('fixture-ui-token');
   });
 
+  it('keeps a patient request budget by default and still honours an explicit override', () => {
+    // A timeout is a failure that feeds the route breaker, so slow reasoning completions must not be mistaken for an outage.
+    expect(loadConfig({}, process.cwd()).agentRuntime.requestTimeoutMs).toBe(180_000);
+    expect(loadConfig({ AGENT_CORE_AI_REQUEST_TIMEOUT_MS: '45000' }, process.cwd()).agentRuntime.requestTimeoutMs).toBe(45_000);
+  });
+
   it('rejects insecure non-loopback provider endpoints', () => {
     const health = new OpenAICompatibleProvider({
       ...baseConfig,
@@ -83,7 +89,7 @@ describe('OpenAI-compatible native agent provider', () => {
       }],
     );
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       content: null,
       toolCalls: [{
         id: 'call-1', type: 'function',
@@ -91,9 +97,26 @@ describe('OpenAI-compatible native agent provider', () => {
       }],
       finishReason: 'tool_calls',
     });
+    expect(result.elapsedMs).toBeGreaterThanOrEqual(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
     expect(String(url)).toBe('http://127.0.0.1:12345/v1/chat/completions');
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer fixture-secret');
+  });
+
+  it.each([
+    [' vendor/resolved-model ', 'vendor/resolved-model'],
+    [undefined, null], [null, null], [123, null], [{ model: 'nested' }, null],
+    ['', null], ['openrouter/free', null], ['x'.repeat(241), null], ['model\nother', null],
+  ])('keeps requested model distinct from reported identity: %j', async (model, resolvedModel) => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ model,
+      choices: [{ finish_reason: 'stop', message: { content: 'done' } }],
+    }), { headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await new OpenAICompatibleProvider({ ...baseConfig, model: 'openrouter/free' })
+      .complete([{ role: 'user', content: 'identity check' }]);
+    expect(result).toMatchObject({ model: 'openrouter/free', resolvedModel });
+    const request = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1].body));
+    expect(request.model).toBe('openrouter/free');
   });
 });

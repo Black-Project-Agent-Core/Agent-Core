@@ -1,0 +1,169 @@
+{
+  "note": "Produced by a read-only analysis agent from the working-tree source on 2026-10-26; the controller re-read only the decisive lines (see the R8-S0 report); entries are not individually audited.",
+  "mutateCallSites": [
+    {
+      "method": "captureToolInvocationContext (reconnect branch)",
+      "line": 386,
+      "trigger": "Runs inside the per-call context capture (src/mcp/external-controller-tool-support.ts:50), but mutates only when the call has a taskScope (learning checkpoint/review/receipt, controller_learning improvement or procedure-with-payload, skills list/inspect/search/read), carries a taskId, and the session has no sessionHead. That is a task re-attach after transport rotation. No observer budget, so it always saves when reached. The load(true) at line 378 runs on every external call.",
+      "frequency": "per-session"
+    },
+    {
+      "method": "recordInspectedSkillArtifacts (delivered-artifacts branch)",
+      "line": 499,
+      "trigger": "Only call site is src/mcp/capability-observation.ts:23, which fires only for skills list/inspect/search/read. The function routes exactly those actions to recordToolOutcome (line 486) and returns, so this mutate (observer-bounded) is reachable only for other actions. Inference: effectively unreachable from the current call site.",
+      "frequency": "rare"
+    },
+    {
+      "method": "recordCapabilityUse",
+      "line": 511,
+      "trigger": "capability-observation.ts:26 after every non-error external call whose tool maps to a capability family (process execute, code intelligence, web, browser, phone, harness). Observer-bounded: the mutate (load plus 2 JSON.stringify) runs every call, but save happens only the first time a family is recorded per episode.",
+      "frequency": "per-tool-call"
+    },
+    {
+      "method": "takeCapabilityUsageNotice",
+      "line": 527,
+      "trigger": "capability-observation.ts:27 after EVERY successful external tool call (all tools registered after installCapabilityObservation), including memory_*, learning and controller_learning. Observer-bounded: load plus 2 JSON.stringify every call; save only when a fresh capability use exists to announce.",
+      "frequency": "per-tool-call"
+    },
+    {
+      "method": "touchSession",
+      "line": 677,
+      "trigger": "Only caller is bootstrapInstructions (line 1069), reached by controller_contract action=acknowledge (src/mcp/controller-contract.ts:84), unless the 15 s bootstrapCache hits. No observer, so it always saves.",
+      "frequency": "per-session"
+    },
+    {
+      "method": "startEpisode",
+      "line": 701,
+      "trigger": "controller_learning action=episode episodeOperation=start (src/mcp/controller-learning-tools.ts:71). Always saves (also on reconnect to an existing episode). Preceded by recentEpisodes at line 700 when taskKey is set.",
+      "frequency": "per-task-milestone"
+    },
+    {
+      "method": "recordToolOutcome (skills delivery branch, mutate(record))",
+      "line": 839,
+      "trigger": "skills tool, actions list/inspect/search/read, success, bound context, via externalControllerToolResult (skills-tools.ts:73,87). Deliberately awaited outside the 250 ms observer budget and without the unchanged-state check, so it saves unconditionally on every such call, including digest-bound read fragments paged through nextOffset.",
+      "frequency": "per-tool-call"
+    },
+    {
+      "method": "recordToolOutcome (observer branch)",
+      "line": 840,
+      "trigger": "Tool completion for the ~29 base tools in src/mcp/server.ts (server.ts:170 success, :236 exception), for skills/reconstruction_harness/phone_*/code_* via externalControllerToolResult (external-controller-tool-support.ts:160), web_search/web_open (web-research-tools.ts:83) and exceptions from any tool (external-controller-tool-support.ts:104). Bound context: each new invocation changes updatedAt, metrics.toolCalls and pushes an event, so the whole file is saved. Unbound context or an already-recorded invocation leaves the state unchanged and the save is skipped. NOT called on success for memory_*, learning, controller_learning, artifact_inspect, phone_game_*, restart_agent_core, controller_contract.",
+      "frequency": "per-tool-call"
+    },
+    {
+      "method": "recordMemoryRecall",
+      "line": 847,
+      "trigger": "memory_search with results (src/memory/mcp/tools.ts:195), failure-recall delivery (server.ts:199,261; external-controller-tool-support.ts:174), and contextCore (line 1476). Observer-bounded; saves when a new recall event is added.",
+      "frequency": "per-tool-call"
+    },
+    {
+      "method": "recordV2MemoryRecall",
+      "line": 873,
+      "trigger": "memory_v2_read hits via the callback in src/mcp/server.ts:394. Observer-bounded; saves when it adds deliveredMemories, an event and a metric.",
+      "frequency": "per-tool-call"
+    },
+    {
+      "method": "recordLearningCheckpoint",
+      "line": 897,
+      "trigger": "learning action=checkpoint (src/mcp/learning-tools.ts:106). No observer, so it always saves, even on the early-return duplicate-key path.",
+      "frequency": "per-task-milestone"
+    },
+    {
+      "method": "recordLearningReview",
+      "line": 915,
+      "trigger": "learning action=review (src/mcp/learning-tools.ts:193). Always saves.",
+      "frequency": "per-task-milestone"
+    },
+    {
+      "method": "releaseClosedCheckpoints",
+      "line": 948,
+      "trigger": "learning action=review on the abandoned-checkpoint orphan-resolution path only (learning-tools.ts:190).",
+      "frequency": "rare"
+    },
+    {
+      "method": "labelEpisode",
+      "line": 969,
+      "trigger": "controller_learning episode label (controller-learning-tools.ts:78) and contextCore line 1439 whenever a non-planned context call has a workspace or taskFamily (workspace defaults to the active episode's). Always saves.",
+      "frequency": "per-task-milestone"
+    },
+    {
+      "method": "verifyEpisode",
+      "line": 1017,
+      "trigger": "controller_learning episode verify (controller-learning-tools.ts:83). Always saves when the target episode is not already closed.",
+      "frequency": "per-task-milestone"
+    },
+    {
+      "method": "failureContext (recall event mutate)",
+      "line": 1125,
+      "trigger": "Any external tool call that returned isError or threw (server.ts:189,251; external-controller-tool-support.ts:170). Observer-bounded; saves when it adds the failure-recall event. Persisted failure events: 237 of 18,189.",
+      "frequency": "per-tool-call"
+    },
+    {
+      "method": "recoverHistory (apply=true)",
+      "line": 1274,
+      "trigger": "controller_learning episode recover with applyRecovery=true (controller-learning-tools.ts:60); manual recovery from a .corrupt snapshot.",
+      "frequency": "rare"
+    },
+    {
+      "method": "contextCore (planned-scope touch)",
+      "line": 1434,
+      "trigger": "controller_learning action=context with a retrievalPlan (planned Memory). Always saves.",
+      "frequency": "per-task-milestone"
+    },
+    {
+      "method": "contextCore (final intention/delivery commit)",
+      "line": 1545,
+      "trigger": "Every controller_learning action=context call (planned or not) ends with this unconditional save. A plain context call therefore costs 2 saves (label plus final), 3 when Memory hits trigger recordMemoryRecall.",
+      "frequency": "per-task-milestone"
+    },
+    {
+      "method": "artifactReceipt (missed delivery mirror)",
+      "line": 1742,
+      "trigger": "controller_learning artifact_receipt for kind=memory only when deliveredMemories lacks the key and confirmedMemoryDelivery succeeds.",
+      "frequency": "rare"
+    },
+    {
+      "method": "recordArtifactEvent",
+      "line": 1836,
+      "trigger": "controller_learning artifact_receipt (every kind, via line 1770 or 1826). Always saves.",
+      "frequency": "per-task-milestone"
+    },
+    {
+      "method": "procedure deliver()",
+      "line": 1868,
+      "trigger": "controller_learning action=procedure list/inspect/propose with an active episode. Always saves.",
+      "frequency": "rare"
+    }
+  ],
+  "saveWritesPerMutation": "\"writeOwnedFileAtomic (src/persistence/atomic-file.ts:45-86): mkdir -p, lstat (symlink refusal), open a temp file in the same directory with flag wx and mode 0600, writeFile, handle.sync() (fsync), close, rename over the destination with up to 10 retries on EPERM/EACCES/EBUSY, then a best-effort directory open+fsync (errors swallowed), then rm of the temp. Per mutate()+save() with current S = 8,721,300 bytes: reads = load() S, writeStateFile reads previous S (and JSON.parses it), readback S = 3S; writes = .last-good copy of the previous generation (S_old, one fsync+rename) plus the new file (S_new, pretty-printed with 2-space indent, one fsync+rename) = 2S; total 5S, about 43.6 MB, plus 2 fsyncs, 2 renames, and 2 temp files. CPU on the main thread: 2 JSON.parse, 1 pretty JSON.stringify, 2 passes of normalizeEpisode over all 603 episodes and 18,189 events, and on the observer path 2 more compact JSON.stringify of the whole state plus an 8.7 MB string compare. Pretty printing costs about 2.6 MB per copy (compact state is 6,113,981 bytes), so about 5.2 MB of whitespace is written per save. Archive writes (writeStateFile per newly archived episode, median about 10 KB) occur only when save() finds closed, non-pending episodes beyond MAX_EPISODES=128; none qualify now. Measured on a copy in the work directory on drive C: using the real dist/persistence writeStateFile: median 692 ms per call (min 480, max 1053); breakdown medians: each atomic write about 206 ms, pretty stringify 64 ms, parse 28 ms, read 8.5 ms, readback 17 ms. Live E: write latency not measured (read-only rule).\"",
+  "recentEpisodesCallers": [
+    {
+      "file": "src/learning/external-controller.ts",
+      "line": 700,
+      "trigger": "startEpisode when taskKey is supplied (host-bound starts require a taskKey): limit 1 lookup for a prior episode with the same taskKey/workspace. Scans all of episodes-archive on every start.",
+      "frequency": "per-task-milestone (about 9 to 10 explicit episodes per day in the live file: 246 explicit over 26 days)"
+    },
+    {
+      "file": "src/mcp/controller-learning-tools.ts",
+      "line": 95,
+      "trigger": "controller_learning action=episode with the default/status operation (also any operation not recover/start/label/verify). Controllers use it to read current.events evidenceRefs (tool:<invocationId>) for receipts and the reconstruction harness.",
+      "frequency": "per-task-milestone (call rate unknown)"
+    },
+    {
+      "file": "src/learning/external-controller.ts",
+      "line": 1935,
+      "trigger": "evaluate(), reached by controller_learning action=evaluate.",
+      "frequency": "rare"
+    }
+  ],
+  "recentEpisodesReadsWholeArchive": true,
+  "loadCaching": "\"No. load() (external-controller.ts:583-604) does readFile + JSON.parse + normalizeEpisode/normalizeProcedure on every call; the only retained field is this.issue. No mtime check, no memo, no in-memory state copy. bootstrapCache (lines 40, 545, 638, 1067-1068, 1103) caches only the rendered bootstrap text per session for 15 s, is consulted solely by bootstrapInstructions (once per controller_contract acknowledge), and is cleared wholesale after any successful save in mutate (line 638), so it does not reduce per-tool-call load/save work. load() callers per external tool call: captureToolInvocationContext line 378 (every call; for non-scoped calls raced against a 100 ms timer), mutate line 629 for every observer mutate (recordToolOutcome, takeCapabilityUsageNotice on every successful call, recordCapabilityUse), invocationDisclosureCurrent line 455 and skillProposalNotices line 1686 (2 to 3 times per call for skills/phone/code/harness tools and each controller_learning call), failureContext line 1113 (failing calls), resolveMemoryTask line 1167 and getEpisode line 1177 (3 loads per memory_v2_read/write call via scope resolver and admission, scope.ts:35,62-63). Also contextEpisodeSnapshot (line 1383) does a direct readFile+JSON.parse, twice per context call. Per-task or rarer: invocationTaskCurrent 468, verifyEpisode 1012, artifactReceipt 1699/1752, curate 1994, status 2013. health() line 2003 runs on /health polling through boundedHealthProbe with a 5 s cache (src/index.ts:261). initialize line 570 runs once. A typical bound tool() call does about 3 full loads plus one save; externalControllerToolResult tools do about 6 to 7 loads plus one save.\"",
+  "summary": "Write amplification is real and per-tool-call. In the live state (8,721,300 bytes, 603 episodes, 18,189 events, 16,802 of them tool or failure events recorded 2026-10-01 to 2026-10-26, peak 3,013 in one day) every bound tool completion makes recordToolOutcome change updatedAt, metrics and events, so mutate runs a full save of about 5S disk I/O (3S read, 2S written with two fsyncs) and 0.25 to 0.3 s of synchronous parse/stringify CPU; about 0.7 s median wall time measured on a scratch copy, against a 250 ms observer budget (inference: acknowledgements and later observers fall back to late-unavailable). The observerBefore skip applies only to observer-bounded mutates (lines 499, 511, 527, 840, 847, 873, 1125); every other mutate, including the skills-delivery path at 839, saves unconditionally. recentEpisodes is not on a per-call hot path: callers are startEpisode, episode status and evaluate (per task milestone or rarer), and the current archive is only 50 entries and 822,759 bytes (6.4 ms warm read), against a load() that costs about 50 to 100 ms; moving episodes to the archive would roughly shift, not add, bytes read per recentEpisodes call plus per-file open overhead. Caveat for the proposal: 0 of 603 live episodes have closedAt and 0 satisfy closedAt && !pendingLearning, so save() would archive nothing today, and MAX_EVENTS=160 is declared but never applied, so events (about 77% of file bytes) keep growing inside open episodes.",
+  "unknowns": [
+    "Write latency on drive E: (where runtime/learning lives) was not measured because the task is read-only there; the 0.48 to 1.05 s per save figure comes from a copy on drive C: under the work directory, with fsync dominating.",
+    "Cold-cache cost of a recentEpisodes scan over many archive files, and the number of controller_learning episode status calls per day, are unknown; only warm-cache timings and static call sites were available.",
+    "Whether the 250 ms observer budget actually expires on E: in production (yielding late-unavailable attribution or dropped events) is inference from measured component timings; the persisted file cannot show dropped events.",
+    "Seven orphan temp files remain in runtime/learning (.external-controller.json*.tmp-*, 0 to 6.3 MB, dated 2026-10-09 to 2026-10-21), which indicates writes interrupted mid-flight at least that often; the cause (restart, kill) was not determined.",
+    "The estimate of cumulative bytes written since 2026-10-01 (roughly 0.15 to 0.3 TB if each of the 16.8K tool events caused one 2S write with S growing linearly to 8.7 MB) assumes one save per event and ignores archived episodes and non-event saves.",
+    "Why only 3 episodes have terminalOutcome and none are closed (closure requires episode verify plus all checkpoint keys reviewed) was not investigated; it determines how many episodes an archive-closed-episodes change could ever move."
+  ]
+}

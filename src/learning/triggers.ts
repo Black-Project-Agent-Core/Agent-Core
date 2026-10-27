@@ -19,6 +19,17 @@ export function isCuratorDue(state: LearningState, config: LearningConfig, now =
   return elapsed >= config.curatorIntervalHours * 60 * 60 * 1000;
 }
 
+/**
+ * A pending review older than this is backlog, not an invitation: the context that would let anyone
+ * judge it has usually gone, and counting it as "due" makes every later checkpoint look due as well.
+ */
+export const PENDING_REVIEW_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function isStalePendingReview(item: { createdAt: string }, now = Date.now()): boolean {
+  const created = Date.parse(item.createdAt);
+  return Number.isFinite(created) && now - created > PENDING_REVIEW_STALE_MS;
+}
+
 export function applyCheckpoint(
   state: LearningState,
   input: LearningCheckpointInput,
@@ -61,6 +72,7 @@ export function applyCheckpoint(
     ...(input.workspace?.trim() ? { workspace: input.workspace.trim().slice(0, 200) } : {}),
     createdAt,
     ...(input.taskId ? { taskId: input.taskId } : {}),
+    ...(input.summary?.trim() ? { summary: input.summary.trim().slice(0, 500) } : {}),
   } : undefined;
   const nextPendingReviews = pendingReview
     ? [...pendingReviews, pendingReview]

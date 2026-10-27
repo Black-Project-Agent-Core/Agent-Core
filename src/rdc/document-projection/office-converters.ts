@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import PizZip from 'pizzip';
 import ExcelJS from 'exceljs';
 import * as XLS from '@e965/xlsx';
@@ -12,11 +13,18 @@ import {
   directChild,
   localName,
   markdownTable,
+  escapeMarkdownTableCell,
+  DOCUMENT_OUTPUT_MAX_BYTES,
   parseXml,
   resolveArchiveTarget,
   textContent,
 } from './helpers.js';
 import { parsePdfBytesToMarkdown } from '../tools/pdf/index.js';
+import {
+  XLSX_MAX_SHEETS, XLSX_MAX_ROWS_PER_SHEET, XLSX_MAX_COLUMNS, XLSX_MAX_RENDERED_CELLS,
+  XLSX_MAX_CELL_CODEPOINTS, XLSX_EVIDENCE_MAX_CELLS, XLSX_EVIDENCE_MAX_EXCERPT_CODEPOINTS,
+  finalizeXlsxEvidence, xlsxTextPrefix, xlsxTextDigest, type XlsxCellEvidence, type XlsxEvidence,
+} from './xlsx-evidence.js';
 
 function semanticRequested(input: ProjectionInput): boolean {
   return input.profile === 'markdown' || input.depth > 0;
@@ -288,31 +296,116 @@ export const xlsxConverter: ProjectionConverter = {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(input.bytes as any);
     const out: string[] = [];
-    let omitted = 0;
-    for (const sheet of workbook.worksheets) {
-      out.push('## ' + sheet.name);
-      const rows: string[][] = [];
-      const maxRows = Math.min(sheet.actualRowCount || 0, 5000);
-      for (let rowIndex = 1; rowIndex <= maxRows; rowIndex += 1) {
-        const row = sheet.getRow(rowIndex);
-        const values: string[] = [];
-        const width = sheet.actualColumnCount || row.cellCount || 1;
+    const marker = '\n\n[Content omitted by XLSX projection limits]';
+    const availableBytes = DOCUMENT_OUTPUT_MAX_BYTES - Buffer.byteLength(marker, 'utf8');
+    let bytes = 0;
+    let points = 0;
+    let slots = 0;
+    let emittedCells = 0;
+    let omittedRows = 0;
+    let contentPartial = false;
+    let locationsPartial = false;
+    const reasons = new Set<string>();
+    const cells: XlsxCellEvidence[] = [];
+    const omit = (reason: string) => { reasons.add(reason); contentPartial = true; };
+    const append = (text: string): boolean => {
+      const size = Buffer.byteLength(text, 'utf8');
+      if (bytes + size > availableBytes) { omit('output-byte-limit'); return false; }
+      out.push(text); bytes += size; points += Array.from(text).length; return true;
+    };
+    if (workbook.worksheets.length > XLSX_MAX_SHEETS) omit('sheet-limit');
+    sheetLoop: for (const sheet of workbook.worksheets.slice(0, XLSX_MAX_SHEETS)) {
+      // eachRow exposes real row numbers. Keep only bounded references; never
+      // allocate empty physical rows up to a sparse sheet's highest index.
+      const rows: ExcelJS.Row[] = [];
+      let width = 1;
+      sheet.eachRow(row => {
+        if (rows.length === XLSX_MAX_ROWS_PER_SHEET) { omittedRows += 1; omit('row-limit'); return; }
+        rows.push(row);
+        if (row.cellCount > XLSX_MAX_COLUMNS) omit('column-limit');
+        width = Math.max(width, Math.min(XLSX_MAX_COLUMNS, row.cellCount));
+      });
+      if (!append((out.length ? '\n\n' : '') + '## ' + xlsxTextPrefix(sheet.name, XLSX_MAX_CELL_CODEPOINTS).text)) break;
+      let first = true;
+      for (const row of rows) {
+        if (slots + width > XLSX_MAX_RENDERED_CELLS) { omit('cell-limit'); break sheetLoop; }
+        const rowParts = [first ? '\n\n| ' : '\n| '];
+        let rowBytes = Buffer.byteLength(rowParts[0]!, 'utf8');
+        let rowPoints = rowParts[0]!.length;
+        const rowCells: XlsxCellEvidence[] = [];
+        let rowEmittedCells = 0;
+        // Reserve synthetic table suffix/separator before admitting any cell.
+        const suffix = ' |' + (first ? '\n| ' + Array.from({ length: width }, () => '---').join(' | ') + ' |' : '');
+        const suffixBytes = Buffer.byteLength(suffix, 'utf8');
         for (let column = 1; column <= width; column += 1) {
-          values.push(row.getCell(column).text ?? '');
+          const cell = row.findCell(column);
+          const source = cell?.isMerged ? cell.master : cell;
+          const formula = source?.type === ExcelJS.ValueType.Formula;
+          if (formula && (source!.value as ExcelJS.CellFormulaValue).result == null) omit('formula-cache-missing');
+          const bounded = xlsxTextPrefix(cell?.text ?? '', XLSX_MAX_CELL_CODEPOINTS);
+          if (bounded.truncated) omit('cell-text-limit');
+          const text = escapeMarkdownTableCell(bounded.text);
+          const separator = column === 1 ? '' : ' | ';
+          const partBytes = Buffer.byteLength(separator, 'utf8') + Buffer.byteLength(text, 'utf8');
+          if (bytes + rowBytes + partBytes + suffixBytes > availableBytes) {
+            omit('output-byte-limit'); break sheetLoop;
+          }
+          rowParts.push(separator, text);
+          rowPoints += separator.length;
+          if (cell && text) {
+            rowEmittedCells += 1;
+            if (cells.length + rowCells.length < XLSX_EVIDENCE_MAX_CELLS) {
+              const excerpt = xlsxTextPrefix(text, XLSX_EVIDENCE_MAX_EXCERPT_CODEPOINTS).text;
+              const start = points + rowPoints;
+              rowCells.push({
+                sheetId: sheet.id, sheet: sheet.name, row: row.number, column, address: cell.address,
+                excerpt, span: { start, end: start + Array.from(excerpt).length },
+                valueKind: formula ? 'cached-formula' : 'cell-text',
+                hidden: sheet.state !== 'visible' || !!row.hidden || !!sheet.getColumn(column).hidden,
+                ...(cell.isMerged && cell.master.address !== cell.address ? { mergedMaster: cell.master.address } : {}),
+              });
+            }
+          }
+          rowBytes += partBytes;
+          rowPoints += Array.from(text).length;
         }
-        rows.push(values);
-      }
-      if (rows.length > 0) out.push(markdownTable(rows));
-      if ((sheet.actualRowCount || 0) > maxRows) {
-        omitted += (sheet.actualRowCount || 0) - maxRows;
-        out.push('[Rows omitted by semantic projection limit]');
+        // Only one bounded row is held temporarily. Commit its pointers only
+        // after the complete row and synthetic separator have been admitted.
+        rowParts.push(suffix);
+        if (!append(rowParts.join(''))) break sheetLoop;
+        cells.push(...rowCells);
+        emittedCells += rowEmittedCells;
+        slots += width;
+        first = false;
       }
     }
+    if (emittedCells > cells.length) { locationsPartial = true; reasons.add('evidence-cell-limit'); }
+    if (contentPartial) out.push(marker);
+    const markdown = out.join('');
+    const evidence: XlsxEvidence = {
+      version: 1, sourceSha256: createHash('sha256').update(input.bytes).digest('hex'), sourceBytes: input.bytes.length,
+      extractor: 'exceljs-cell-text/v1',
+      output: { sha256: xlsxTextDigest(markdown), unit: 'unicode-codepoint', binding: 'exact' },
+      coverage: {
+        content: contentPartial ? 'partial' : emittedCells ? 'complete' : 'empty',
+        locations: contentPartial || locationsPartial ? 'partial' : emittedCells ? 'complete' : 'empty',
+        stopReasons: [...reasons],
+      }, cells,
+      limitations: [
+        'Addresses refer to ExcelJS-decoded cells, not source ZIP/XML byte offsets. Shared strings and rich text are decoded.',
+        'Formula results are cached and may be stale; no recalculation, macros or external links are executed.',
+        'Hidden content is disclosed, not an access-control boundary. Merged slaves reference their master, not independent facts.',
+        'Excerpts may be prefixes of escaped rendered cell text. Parser memory before rendering is not bounded by output limits.',
+      ],
+    };
     return {
-      markdown: out.join('\n\n'),
+      markdown,
       format: input.extension === '.xlsm' ? 'xlsm' : 'xlsx',
       converter: this.id,
-      omittedEntries: omitted || undefined,
+      // Preserve the existing row-omission signal only for actually enumerated
+      // excess data-bearing rows. Other limits do not establish omitted totals.
+      omittedEntries: omittedRows || undefined,
+      xlsxEvidence: finalizeXlsxEvidence(evidence),
     };
   },
 };

@@ -5,6 +5,7 @@ Raka adalah partner serbaguna bagi AI utama (Main) yang memakai Agent Core. Iden
 ## Panduan yang dibaca seperlunya
 
 - [Profil dan kontrak kerja Raka](raka.md): baca saat membuat instance atau ketika profil berubah.
+- [Raka di host Claude Code dan model Anthropic](CLAUDE_CODE_HOST.md): baca saat Main berjalan di Claude Code, Claude Agent SDK, atau sesi Cowork dan cloud yang tertaut, dan host tidak punya `collaboration.*`. Panduan itu membuat subagen generik dengan tool `Agent` dan menempelkan isi `raka.md` ke brief.
 - [Memory Cortex bersama](CORTEX_MEMORY.md): baca saat memakai atau memulihkan memory.
 - [Bukti setup dan batas verifikasi](VERIFICATION.md): rujukan historis; periksa kapabilitas host saat ini.
 - Root dokumen adalah `<PROJECT_ROOT>\subagents`. Root aktif diperoleh melalui Agent Core; workspace task dapat berada di proyek lain.
@@ -18,6 +19,8 @@ Setelah bootstrap, inspeksi Memory, dan pemilihan task, AI eksternal dapat memak
 ## Cara memanggil dan memakai ulang
 
 Gunakan API lifecycle subagent milik host saat ini. Nama tool dan argumen di bawah merupakan contoh untuk host dengan schema yang sesuai; sesuaikan dengan fasilitas yang benar-benar tersedia.
+
+> **Host Claude Code atau model Anthropic tanpa `collaboration.*`:** jangan berhenti di contoh `collaboration.*` di bawah. Ikuti [CLAUDE_CODE_HOST.md](CLAUDE_CODE_HOST.md): buat subagen generik dengan tool `Agent`, tempel isi `raka.md` ke brief, lalu pakai `SendMessage` dan `TaskStop` untuk mengarahkan atau menghentikannya. Langkah 1 sampai 7 di bawah tetap menjadi lifecycle-nya; yang berbeda hanya nama tool.
 
 1. Selesaikan bootstrap Agent Core dan inspeksi Memory kanonis sesuai `AGENTS.md`. Tentukan satu bagian task yang bermanfaat untuk Raka; Main mengerjakan bagian lain secara paralel.
 2. Periksa inventory host dengan `collaboration.list_agents()`. Gunakan nama kanonis yang benar-benar dikembalikan host; contoh pada Main root adalah `/root/raka`.
@@ -47,6 +50,8 @@ Ganti teks contoh dengan instruksi nyata sebelum memanggil. Jangan menjalankan k
 
 Sertakan tujuan dan definisi selesai; workspace/root yang benar; task key; temuan terkini; sumber/path yang perlu dibaca; izin tindakan dan file yang boleh diedit; larangan yang relevan; hasil yang diminta; serta pemeriksaan yang diperlukan. Mulai dengan ringkasan dan pointer yang dapat diakses, lalu tambah detail sesuai kebutuhan. Path Windows membutuhkan akses Agent Core; path itu tidak otomatis tersedia pada filesystem host.
 
+Untuk setiap task Agent Core, sertakan [docs/PROJECT-STRUCTURE.md](../docs/PROJECT-STRUCTURE.md), bagian root/owner relevan, dan larangan rumah paralel dalam brief. Main dan Raka wajib memeriksa peta serta filesystem sebelum membuat folder. Rumah pertama Skill adalah `runtime/skills`; sumber hanya `runtime/skills/capability-packs`. Folder baru untuk tujuan existing dilarang. Profil Raka memuat aturan yang sama agar ikut terbawa saat profil ditempel ke host lain.
+
 Batasi satu penugasan utama Raka pada satu waktu. Tentukan pemilik setiap file. Main dan Raka tidak mengedit file yang sama secara bersamaan; untuk area bertumpang tindih, minta analisis atau patch usulan dan biarkan Main mengintegrasikannya. Setelah perubahan material, validasi kondisi sumber terkini.
 
 Contoh tugas pengguna: "Panggil Raka untuk meninjau risiko perubahan ini; kamu kerjakan implementasinya." Contoh lain: "Minta Raka mencari sumber, lalu kamu susun laporannya." Main juga dapat memakai Raka tanpa pengguna mengulang namanya jika task memiliki bagian mandiri dan tidak ada larangan khusus.
@@ -59,4 +64,4 @@ Baca discovery secara ringkas, ambil detail terpilih, dan jangan menyalin seluru
 
 Jika pengguna meminta tunda, hentikan pekerjaan terkait dan simpan status faktual. Jika ada Raka aktif pada pekerjaan itu, kirim penghentian melalui host; hentikan proses eksternal secara terarah hanya bila proses tersebut benar-benar dibuat oleh task. Jangan mengaktifkan task pending dari memory tanpa instruksi pengguna.
 
-Jika tool kolaborasi tidak tersedia, gunakan panduan sebagai referensi dan laporkan bahwa partner tidak bisa dijalankan pada host itu. Jangan mengklaim ada agent aktif atau menginstal layanan pengganti secara otomatis.
+Jika `collaboration.*` tidak tersedia tetapi host punya tool subagen generik (misalnya `Agent` di Claude Code), ikuti [CLAUDE_CODE_HOST.md](CLAUDE_CODE_HOST.md). Jika host tidak punya fasilitas subagen sama sekali, gunakan panduan sebagai referensi dan laporkan bahwa partner tidak bisa dijalankan pada host itu. Jangan mengklaim ada agent aktif atau menginstal layanan pengganti secara otomatis.

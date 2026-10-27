@@ -29,10 +29,23 @@ function Convert-ToSafeRelativePath([string]$Relative) {
     return $value
 }
 
+function Assert-CurrentSkillSourcePath([string]$Relative) {
+    $path = (Convert-ToSafeRelativePath $Relative).ToLowerInvariant()
+    if ($path -eq 'bundled-skills' -or $path.StartsWith('bundled-skills\')) {
+        throw "Legacy bundled-skills layout requires a targeted migration; recovery will not recreate it: $Relative"
+    }
+}
+
 function Test-ProtectedRelativePath([string]$Relative) {
+    Assert-CurrentSkillSourcePath $Relative
     $path = (Convert-ToSafeRelativePath $Relative).ToLowerInvariant()
     if ($path -eq '.env' -or ($path.StartsWith('.env.') -and $path -ne '.env.example')) { return $true }
     if ($path -eq 'tunnel-client\agent-core.yaml') { return $true }
+    # The live folder map is synchronized locally; preserve it during repair.
+    if ($path -eq 'docs\project-structure.md') { return $true }
+    # Only canonical source and its home guide are immutable inside Skills.
+    # Match a complete subtree segment, never capability-packs-copy or other roles.
+    if ($path.StartsWith('runtime\skills\capability-packs\') -or $path -eq 'runtime\skills\readme.md') { return $false }
     foreach ($prefix in @(
         '.git\',
         'secrets\',
@@ -289,9 +302,11 @@ function New-DerivedManifest([string]$Root, [string]$Version) {
             mutableExclusions = @(
                 $IntegrityManifestName,
                 'tunnel-client/agent-core.yaml',
+                'docs/PROJECT-STRUCTURE.md',
                 'runtime/memory/',
                 'runtime/skills/'
             )
+            immutableInclusions = @('runtime/skills/capability-packs/', 'runtime/skills/README.md')
         }
         fileCount = $files.Count
         totalBytes = $total
@@ -300,6 +315,10 @@ function New-DerivedManifest([string]$Root, [string]$Version) {
 }
 
 function Get-CandidateManifest([string]$CandidateRoot, [string]$Version) {
+    # Even unlisted legacy payload must not reach Bootstrap's package copy.
+    if (Test-Path -LiteralPath (Join-Path $CandidateRoot 'bundled-skills')) {
+        Assert-CurrentSkillSourcePath 'bundled-skills'
+    }
     $manifest = Read-IntegrityManifest $CandidateRoot
     if ($manifest) {
         if ([string]$manifest.version -ne $Version) {

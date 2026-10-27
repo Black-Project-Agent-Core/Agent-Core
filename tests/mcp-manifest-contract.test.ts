@@ -64,17 +64,19 @@ describe('MCP public manifest contract', () => {
     const names = tools instanceof Map ? [...tools.keys()] : Object.keys(tools);
     expect(names).not.toContain('restart_agent_core');
     expect(names).not.toContain('controller_contract');
+    expect(names).not.toContain('native_chat_bridge');
   });
   it('keeps the complete production tool surface deterministic and schema-fingerprintable', () => {
     const entries = registeredTools();
-    expect(entries).toHaveLength(78);
+    expect(entries).toHaveLength(79);
     const fingerprints = entries.map(([name, tool]) => fingerprint(name, tool));
-    expect(new Set(entries.map(([name]) => name)).size).toBe(78);
-    expect(fingerprints).toHaveLength(78);
+    expect(new Set(entries.map(([name]) => name)).size).toBe(79);
+    expect(fingerprints).toHaveLength(79);
 
     expect(entries.map(([name]) => name)).toEqual(expect.arrayContaining([
       'image_inspect',
       'restart_agent_core',
+      'native_chat_bridge',
       'reconstruction_harness',
       'memory_feedback',
       'memory_retirement_review',
@@ -128,7 +130,7 @@ describe('MCP public manifest contract', () => {
     expect(entries.map(([name]) => name)).toEqual(expect.arrayContaining([
       'memory_v2_read', 'memory_v2_write', 'controller_learning',
     ]));
-    expect(entries).toHaveLength(82);
+    expect(entries).toHaveLength(83);
     const bytes = Buffer.byteLength(JSON.stringify(wireManifest(entries)), 'utf8');
     expect(bytes).toBeLessThanOrEqual(MANIFEST_BYTE_BUDGET);
     expect(Math.ceil(bytes / 4)).toBeLessThanOrEqual(APPROX_TOKEN_BUDGET);

@@ -1,5 +1,4 @@
 import * as z from 'zod/v4';
-import { conversationDraftParams, conversationRevision, conversationUrl } from '../rdc/browser-control/conversation-contract.js';
 
 export const getConfig = z.object({ origin: z.enum(['ui', 'llm']).optional() });
 export const setConfigValue = z.object({
@@ -99,7 +98,7 @@ const browserCanvas = z.object({
 });
 export const browserControl = z.object({
   action: z.enum(['open', 'observe', 'act', 'close', 'status']),
-  transport: z.enum(['isolated', 'extension']).optional(),
+  transport: z.enum(['open-browser-use']).optional(),
   sessionId: z.string().uuid().optional(),
   url: z.string().url().max(4000).optional(),
   observationId: z.string().uuid().optional(),
@@ -123,7 +122,7 @@ export const browserControl = z.object({
     if (!value.actionId) ctx.addIssue({ code: 'custom', message: 'actionId required' });
   }
 });
-// External discovery only. The original browserControl schema remains Native-compatible.
+// Conversation read is external-only and served by Open Browser Use; basic browser operations share one schema.
 const ownedConversationRead=z.object({
   kind:z.enum(['index','message']),cursor:z.string().min(1).max(256).optional(),
   messageRef:z.string().min(1).max(256).optional(),offset:z.number().int().min(0).max(2097152).optional(),
@@ -133,34 +132,19 @@ const ownedConversationRead=z.object({
 });
 export const externalBrowserControl = z.object({
   ...browserControl.shape,
-  transport: z.enum(['isolated', 'extension', 'open-browser-use']).optional(),
-  action: z.enum(['open', 'observe', 'act', 'close', 'status', 'conversation_read', 'conversation_draft', 'conversation_status']),
+  transport: z.enum(['open-browser-use']).optional(),
+  action: z.enum(['open', 'observe', 'act', 'close', 'status', 'conversation_read']),
   text: z.string().max(6000).optional(),
-  mode: z.enum(['browser', 'conversation']).optional(),
-  sinceRevision: conversationRevision.optional(),
-  revision: conversationRevision.optional(),
   read:ownedConversationRead.optional(),
 }).strict().superRefine((value, ctx) => {
   const issue = (message: string) => ctx.addIssue({ code: 'custom', message });
   if (!value.action.startsWith('conversation_')) {
     if(value.read!==undefined)issue('read is conversation_read-only');
-    if (!browserControl.safeParse({ ...value, transport: value.transport === 'open-browser-use' ? 'isolated' : value.transport }).success) issue('Invalid browser action arguments');
-    if (value.sinceRevision !== undefined || value.revision !== undefined) issue('Revision is conversation-only');
-    if (value.mode !== undefined && (value.action !== 'open' || value.transport !== 'extension')) issue('mode requires extension open');
-    if (value.mode === 'conversation') {
-      try { conversationUrl(value.url!); } catch { issue('An exact ChatGPT conversation URL is required'); }
-      if (value.interactionCapabilities?.length) issue('Generic interaction capabilities are refused in conversation mode');
-    }
+    if (!browserControl.safeParse(value).success) issue('Invalid browser action arguments');
     return;
   }
   if (!value.sessionId) issue('sessionId required');
-  const allowed = new Set(['action', 'sessionId', 'origin', 'contractSession',
-    ...(value.action === 'conversation_read' ? ['sinceRevision','read'] : []),
-    ...(value.action === 'conversation_draft' ? ['url', 'revision', 'text'] : [])]);
+  const allowed = new Set(['action', 'sessionId', 'origin', 'contractSession', 'read']);
   if (Object.keys(value).some(key => !allowed.has(key))) issue('Unexpected conversation argument');
-  if(value.read!==undefined&&value.sinceRevision!==undefined)issue('read and sinceRevision are separate transport selectors');
-  if (value.action === 'conversation_draft'
-    && !conversationDraftParams.safeParse({url:value.url,revision:value.revision,text:value.text}).success)
-    issue('Draft requires url, revision and 1-6000 nonblank characters');
 });
 export const getPrompts = z.object({ action: z.literal('get_prompt'), promptId: z.string() });

@@ -23,7 +23,7 @@
       <Reference Remove="@(Reference)" Condition="'%(Reference.Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
     </ItemGroup>
   </Target>
-  <Target Name="CheckNativeDevelopmentFreeze" BeforeTargets="BeforeBuild">
-    <Exec Command="node &quot;$(MSBuildThisFileDirectory)..\..\scripts\governance\check-native-freeze.mjs&quot;" WorkingDirectory="$(MSBuildThisFileDirectory)..\.." />
+  <Target Name="CheckProjectPathPolicy" BeforeTargets="BeforeBuild">
+    <Exec Command="node &quot;$(MSBuildThisFileDirectory)..\..\scripts\portability\check-path-policy.mjs&quot;" WorkingDirectory="$(MSBuildThisFileDirectory)..\.." />
   </Target>
 </Project>

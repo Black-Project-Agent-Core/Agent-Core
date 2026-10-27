@@ -107,7 +107,7 @@ export class FileMemoryStore {
       return {manifest,fingerprint:fingerprintText(bytes)};
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        for (const dir of [this.paths.archiveObjects,this.paths.archiveManifests,...['episodes','episode-tasks','capsules','operations','consolidation','claim-reviews'].map(name=>path.join(this.paths.state,name))]) {
+        for (const dir of [this.paths.archiveObjects,this.paths.archiveManifests,...['episodes','episode-tasks','capsules','operations','consolidation','claim-reviews','recall-repairs'].map(name=>path.join(this.paths.state,name))]) {
           await assertContainedPath(this.paths.root,dir);
           const names = await readdir(dir).catch(error=>{if(error.code==='ENOENT')return [];throw error;});
           if (names.length) throw new Error('MEMORY_EXPERIENCE_MANIFEST_REQUIRED');
@@ -275,7 +275,7 @@ export class FileMemoryStore {
     if (key === 'feedback.json') return {path:path.join(this.paths.state,key),immutable:false,readOnly:true};
     const id = '[A-Za-z0-9][A-Za-z0-9._-]{2,127}', digest = '[a-f0-9]{64}';
     if (new RegExp(`^episode-tasks/${digest}\\.json$`).test(key)) return {path:path.join(this.paths.state,key),immutable:false};
-    if (new RegExp(`^claim-reviews/${digest}\\.json$`).test(key)) return {path:path.join(this.paths.state,key),immutable:false};
+    if (new RegExp(`^(?:claim-reviews|recall-repairs)/${digest}\\.json$`).test(key)) return {path:path.join(this.paths.state,key),immutable:false};
     if (new RegExp(`^episodes/${id}/manifest\\.json$`).test(key)) return {path:path.join(this.paths.state,key),immutable:false};
     if (new RegExp(`^(?:episodes/${id}/events/[0-9]+-${id}\\.json|capsules/${id}/${digest}\\.json|operations/${digest}\\.json|consolidation/${id}\\.json)$`).test(key)) {
       return {path:path.join(this.paths.state,key),immutable:!key.startsWith('consolidation/')};

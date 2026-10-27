@@ -37,6 +37,17 @@ export interface AgentTaskMetrics {
   knowledgeUseReceipts: number;
   artifactUseOutcomes: number;
   firstHypothesisAt?: string;
+  recallMs?: number;
+  modelMs?: number;
+  toolMs?: number;
+  modelCalls?: number;
+  providerAttempts?: number;
+  usageObservedCalls?: number;
+  costObservedCalls?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  costUsd?: number;
 }
 
 export interface AgentKnowledgeUseDeclaration {

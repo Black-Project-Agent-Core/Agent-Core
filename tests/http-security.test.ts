@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import type { HttpSecurityConfig } from '../src/config.js';
 import { HttpSecurityPolicy } from '../src/http/security-policy.js';
+import { loadConfig } from '../src/config.js';
 
 function request(
   headers: Record<string, string> = {},
@@ -114,5 +115,63 @@ describe('HTTP trust boundary policy', () => {
     const security = policy({ publicBaseUrl: 'https://agent-core.example.test' });
     const headers = origin === undefined ? {} : { origin };
     expect(security.validateMcpOrigin(request(headers))).toEqual(expected);
+  });
+});
+
+describe('additional OAuth resource identity (Cloudflare Tunnel)', () => {
+  const openai = 'https://tunnel-service.gateway.example/v1/mcp/tunnel_test';
+  const cloudflare = 'https://agent-core.example.test/mcp';
+  const multi = (overrides: Partial<HttpSecurityConfig> = {}) => policy({
+    protectedResourceUrl: openai,
+    additionalProtectedResourceUrls: [cloudflare],
+    ...overrides,
+  });
+
+  it('selects the additional resource by Host and keeps the default for every other host', () => {
+    const security = multi();
+    const viaCloudflare = request({ host: 'Agent-Core.Example.Test:443' });
+    expect(security.protectedResource(viaCloudflare)).toBe(cloudflare);
+    expect(security.externalBaseUrl(viaCloudflare)).toBe('https://agent-core.example.test');
+    const local = request({ host: '127.0.0.1:8765' });
+    expect(security.protectedResource(local)).toBe(openai);
+    expect(security.externalBaseUrl(local)).toBe('http://127.0.0.1:8765');
+  });
+
+  it('reads the forwarded host only in trusted-proxy mode', () => {
+    const spoofed = request({ host: '127.0.0.1:8765', 'x-forwarded-host': 'agent-core.example.test' });
+    expect(multi().protectedResource(spoofed)).toBe(openai);
+    expect(multi({ trustProxy: true }).protectedResource(spoofed)).toBe(cloudflare);
+  });
+
+  it('allows the additional hostname as MCP Origin', () => {
+    expect(multi().validateMcpOrigin(request({ origin: 'https://agent-core.example.test' }))).toEqual({ ok: true });
+    expect(multi().validateMcpOrigin(request({ origin: 'https://evil.example' }))).toEqual({ ok: false, code: 'origin_not_allowed' });
+  });
+
+  it.each(['http://agent-core.example.test/mcp', 'not a url', 'https://u:p@agent-core.example.test/mcp'])(
+    'rejects invalid additional resource %s at construction',
+    (value) => {
+      expect(() => policy({ additionalProtectedResourceUrls: [value] })).toThrow(/additional oauth resource/i);
+    },
+  );
+});
+
+describe('Cloudflare Tunnel hostname setting', () => {
+  const urls = (env: Record<string, string>) => loadConfig(env, process.cwd()).httpSecurity.additionalProtectedResourceUrls;
+
+  it('derives the public MCP resource from the hostname and keeps explicit URLs', () => {
+    expect(urls({ CLOUDFLARE_TUNNEL_HOSTNAME: 'Agent-Core.Example.com' })).toEqual(['https://agent-core.example.com/mcp']);
+    expect(urls({
+      AGENT_CORE_OAUTH_ADDITIONAL_RESOURCE_URLS: 'https://other.example.test/mcp',
+      CLOUDFLARE_TUNNEL_HOSTNAME: 'agent-core.example.com',
+    })).toEqual(['https://other.example.test/mcp', 'https://agent-core.example.com/mcp']);
+  });
+
+  it.each([['https://agent-core.example.com/mcp'], ['  agent-core.example.com/  ']])('tolerates a pasted scheme or path: %s', (value) => {
+    expect(urls({ CLOUDFLARE_TUNNEL_HOSTNAME: value })).toEqual(['https://agent-core.example.com/mcp']);
+  });
+
+  it.each([[''], ['localhost'], ['not a host'], ['-bad.example.com']])('adds nothing for an empty or invalid hostname %j', (value) => {
+    expect(urls({ CLOUDFLARE_TUNNEL_HOSTNAME: value })).toEqual([]);
   });
 });

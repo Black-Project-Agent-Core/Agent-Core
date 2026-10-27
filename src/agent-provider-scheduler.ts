@@ -6,7 +6,17 @@ import {
   ProviderStateStore,
   secretRevisionDigest,
   type ProviderOperationalHealth,
+  type ProviderPoolCursor,
+  type ProviderModelReadiness,
+  type ProviderSelectionDiagnostics,
   type ProviderSelectionRecord,
+  type ProviderSkipReason,
+} from './agent-provider-state.js';
+export type {
+  ProviderPoolCursor,
+  ProviderRouteStatus,
+  ProviderSelectionDiagnostics,
+  ProviderSkipReason,
 } from './agent-provider-state.js';
 
 export interface ProviderSchedulerCredential {
@@ -24,7 +34,8 @@ export interface ScheduledProviderCredential {
 export interface SchedulerSelectionResult {
   credential: ScheduledProviderCredential | null;
   nextAvailableAtMs: number | null;
-  reason: 'selected' | 'provider-open' | 'no-eligible-credential';
+  reason: 'selected' | 'provider-open' | 'no-eligible-credential' | 'pool-changed';
+  diagnostics?: ProviderSelectionDiagnostics;
 }
 
 const PROVIDER_LOCKS = new Map<string, Promise<void>>();
@@ -65,11 +76,38 @@ export class PersistentCredentialScheduler {
   ): ProviderOperationalHealth {
     return this.state.providerHealth(providerId, descriptors(credentials), now);
   }
+  readPoolCursor(providerIds: string[]): ProviderPoolCursor | null {
+    return this.state.readPoolCursor(providerIds);
+  }
+  /** Read-only eligibility counts for evidence; never selects or records anything. */
+  diagnose(input: {
+    providerId: string;
+    model: string | null;
+    credentials: ProviderSchedulerCredential[];
+    excludedCredentialIds?: ReadonlySet<string>;
+    excludedReasons?: ReadonlyMap<string, ProviderSkipReason>;
+    qualifiedModels?: ReadonlyMap<string, ProviderModelReadiness>;
+    now?: number;
+  }): ProviderSelectionDiagnostics | null {
+    return this.state.diagnoseCredentials({
+      providerId: input.providerId,
+      credentials: descriptors(input.credentials),
+      model: input.model,
+      excludedCredentialIds: input.excludedCredentialIds,
+      excludedReasons: input.excludedReasons,
+      qualifiedModels: input.qualifiedModels,
+      now: input.now,
+    });
+  }
   async select(input: {
     providerId: string;
     model: string | null;
     credentials: ProviderSchedulerCredential[];
     excludedCredentialIds?: Set<string>;
+    excludedReasons?: ReadonlyMap<string, ProviderSkipReason>;
+    qualifiedModels?: ReadonlyMap<string, ProviderModelReadiness>;
+    trackPool?: boolean;
+    expectedPoolRevision?: number;
     now?: number;
   }): Promise<SchedulerSelectionResult> {
     return withProviderLock(input.providerId, () => {
@@ -78,12 +116,17 @@ export class PersistentCredentialScheduler {
         credentials: descriptors(input.credentials),
         model: input.model,
         excludedCredentialIds: input.excludedCredentialIds,
+        excludedReasons: input.excludedReasons,
+        qualifiedModels: input.qualifiedModels,
+        trackPool: input.trackPool,
+        expectedPoolRevision: input.expectedPoolRevision,
         now: input.now,
       });
       if (!result.selection) return {
         credential: null,
         nextAvailableAtMs: result.nextAvailableAtMs,
         reason: result.reason,
+        ...(result.diagnostics ? { diagnostics: result.diagnostics } : {}),
       };
       const configured = input.credentials.find(item => item.id === result.selection!.credentialId);
       if (!configured) {
@@ -97,6 +140,7 @@ export class PersistentCredentialScheduler {
         },
         nextAvailableAtMs: null,
         reason: 'selected' as const,
+        ...(result.diagnostics ? { diagnostics: result.diagnostics } : {}),
       };
     });
   }

@@ -1,0 +1,15 @@
+{
+  "repo": "K-Dense-AI/scientific-agent-skills",
+  "commit": "593377bb048752abb0152deab9fbb1083a6087df",
+  "path": "skills/scientific-critical-thinking",
+  "originalSkillSha256": "cd80217c03ac740b6c835b826f8d98d016b157e8cedd96419c84072b7225fa43",
+  "sourceLicense": "MIT",
+  "adaptation": "Agent Core strict-subset frontmatter and concise relevance/non-triggers; complete scientific reference files copied byte-for-byte; original protected repository is unmodified; adapter revision 6 adds Agent Core sections to SKILL.md and references/argument_reconstruction.md, references/fallacies_and_form.md, references/evidence_links_and_decisions.md and references/question_map.md (not upstream files; the fifteen-question framework in question_map.md is the user's own, not an external source), derived from the Argdown documentation (argdown.org, MIT), PyArg 2.0.2 (MIT), Logika at commit 8bf28c4 (MIT, after Chelpanov, public domain), SciArgGraph, ArgBlazer, AF-XRAY and GRASP (MIT), ARCT (Apache-2.0), the Carneades literature, and the ideas and class names of Jin et al. 2022 (no licence file in its repository; no text or data copied); AGPL-3.0 projects (OpenDebate, AMTM) were reviewed for concepts only; source-strength caveats are in the references; adapter revision 7 records ownership of the adaptation and additions by Ikbal and Claude Code (AI assistant) and keeps the K-Dense Inc. copyright notice for upstream-derived material; adapter revision 8 (2026-10-26, user-approved packages A and B of proposal mind-control-upgrade) moves the upstream-derived body sections Overview, When to Use This Skill, Appraisal Workflow, Visual Aids, Core Capabilities, Application Guidelines, Remember and Citing Scientific Agent Skills unchanged into references/scientific_appraisal.md, keeps one trigger definition (frontmatter description plus the Triggers and Non-triggers sections) and condenses the reference list; no upstream reference file changed; adapter revision 9 (2026-10-26, user-approved packages C and D) consolidates T0/T1/T2 proportionality, adds a compact six-field evidence/decision record and debugging example, and includes three frozen coding evaluation cases with separate substance and format grading; upstream reference text and LICENSE remain unchanged; adapter revision 10 (2026-10-27, explicit user request to complete mind-control-upgrade) compacts the complete reasoning procedure, tiers, evidence record, debugging example and argument checks into one default-budget response; binds origin proposal provenance for existing reconciliation; trigger strings, all 13 references and LICENSE remain unchanged",
+  "owners": [
+    "Ikbal",
+    "Claude Code (AI assistant)"
+  ],
+  "ownershipScope": "Agent Core adaptation, restructured procedure, Core questions, and references/argument_reconstruction.md, references/fallacies_and_form.md, references/evidence_links_and_decisions.md, references/question_map.md",
+  "upstreamCopyrightRetained": "Copyright (c) 2025 K-Dense Inc. (MIT) for the appraisal workflow text and the eight upstream reference files",
+  "adapterRevision": 10
+}

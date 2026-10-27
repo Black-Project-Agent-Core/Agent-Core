@@ -63,7 +63,7 @@ export interface SkillDiscoverInput {
 export interface SkillReadResult {
   name: string;
   digest: string;
-  source: 'SKILL.md';
+  source: string; // 'SKILL.md' or a bounded packaged references/... resource
   content: string;
   offset: number;
   nextOffset: number | null;

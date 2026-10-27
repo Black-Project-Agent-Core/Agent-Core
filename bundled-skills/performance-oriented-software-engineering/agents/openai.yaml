@@ -1,7 +1,0 @@
-interface:
-  display_name: "Performance-Oriented Software Engineering"
-  short_description: "Workload-first design and measured optimization"
-  default_prompt: "Use $performance-oriented-software-engineering to analyze this workload before choosing and verifying the simplest suitable implementation strategy."
-
-policy:
-  allow_implicit_invocation: true

@@ -1,0 +1,484 @@
+{
+  "note": "Produced by a read-only analysis agent from the working-tree source on 2026-10-26; the controller re-read only the decisive lines (see the R8-S0 report); entries are not individually audited.",
+  "consumers": [
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 605,
+      "symbol": "save() archive step",
+      "reads": "both",
+      "behaviorIfClosedInState": "Selects episodes with closedAt && !pendingLearning, takes the first min(count, episodes.length-128) in array order. Live state has 603 episodes and 204 pending, so excess is always positive (inference from code plus live counts): every closed non-pending episode is archived in the same save. 'Closed but still in state' is therefore transient, not a stable condition.",
+      "behaviorIfMovedToArchive": "Writes episodes-archive/<sha256(id)>.json (plus .last-good) and drops it from state.episodes. sessionHeads entries are NOT cleaned, so a head can dangle. Live state already has 29 of 191 sessionHeads dangling to archive-only episodes.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 633,
+      "symbol": "mutate() closedMetrics freeze",
+      "reads": "closedAt",
+      "behaviorIfClosedInState": "Metrics of episodes already closed at mutate start are restored after fn runs, so later metric increments on a closed episode are silently reverted. Events and deliveredArtifacts can still be appended.",
+      "behaviorIfMovedToArchive": "Not applicable, episode absent from state.",
+      "impact": "benign-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 367,
+      "symbol": "captureToolInvocationContext (head lookup 380, reconnect 382-403, closedAt 394)",
+      "reads": "both",
+      "behaviorIfClosedInState": "Head episode found and, if explicit with memoryBinding, the context is still returned binding='bound' (405-409 has no closedAt check). Reconnect-by-taskScope path refuses a closed target (394 -> unbound 'scope-unavailable').",
+      "behaviorIfMovedToArchive": "Head exists but episode absent -> unbound('no-task'). The reconnect branch is skipped because it requires !sessionHeads[sessionId] (382), so a dangling head blocks task reattachment until a new controller_learning start.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 422,
+      "symbol": "invocationEpisode (late-closed / late-unavailable)",
+      "reads": "both",
+      "behaviorIfClosedInState": "closedAt -> {status:'late-closed'} with no episode (434). Every recorder (tool outcome, recall, capability use, notices, failure context, skill delivery) becomes a no-op for that call.",
+      "behaviorIfMovedToArchive": "Episode absent -> {status:'late-unavailable'} (427). Normally only reachable if archival happens between capture and record; a dangling head is already unbound at capture.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 453,
+      "symbol": "invocationDisclosureCurrent",
+      "reads": "both",
+      "behaviorIfClosedInState": "Returns false (invocationEpisode yields no episode). Suppresses failure-recall capsule, skill-proposal reminder, capability usage notice, memory synthesis assertScopeCurrent, browser-use admission and the workflowNext gate.",
+      "behaviorIfMovedToArchive": "Returns false as well.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 465,
+      "symbol": "invocationTaskCurrent (closedAt at 470)",
+      "reads": "both",
+      "behaviorIfClosedInState": "verificationTarget(...).closedAt -> returns false. This is the admission check for learning checkpoint/review/receipt, controller_learning improvement and procedure admission, reconstruction_harness and artifact_inspect.",
+      "behaviorIfMovedToArchive": "verificationTarget throws (head/episode mismatch), caught, returns false. Same refusal.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 482,
+      "symbol": "recordInspectedSkillArtifacts / recordCapabilityUse (508) / takeCapabilityUsageNotice (525)",
+      "reads": "both",
+      "behaviorIfClosedInState": "invocationEpisode gives no episode: skill delivery evidence, capability use and usage notices are silently not recorded or returned (skill delivery from recordToolOutcome throws EXTERNAL_SKILL_DELIVERY_TASK_UNAVAILABLE at 794).",
+      "behaviorIfMovedToArchive": "Same, via unbound or late-unavailable.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 649,
+      "symbol": "getOrCreateEpisode (callers: touchSession 676, labelEpisode 968, contextCore 1546)",
+      "reads": "episodes-array-membership",
+      "behaviorIfClosedInState": "No closedAt check: the closed episode is reused and mutated (updatedAt, taskFamily, events, deliveredArtifacts); metrics are frozen by mutate.",
+      "behaviorIfMovedToArchive": "Head set but episode absent -> mints a new random ext- inferred episode and silently repoints sessionHeads[sessionId] (655). The explicit task head is lost for that session. If no head (root id == sessionId) a fresh episode with the same id is created, shadowing the archived one; a later re-archive overwrites the archive file.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1066,
+      "symbol": "bootstrapInstructions -> touchSession (called from mcp/handler.ts:177 via mcp/controller-contract.ts:84 on contract acknowledge)",
+      "reads": "episodes-array-membership",
+      "behaviorIfClosedInState": "touchSession bumps updatedAt on the closed head (no closedAt check). Pending-episode count at 1076 only counts pendingLearning episodes, which neither rule nor archive touches.",
+      "behaviorIfMovedToArchive": "A session reusing the same mcp-session-id after its head was archived gets a new inferred episode and a repointed head at acknowledge time (see getOrCreateEpisode). Fresh sessions are unaffected (handler.ts:67-79: header-less clients rotate hourly).",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 693,
+      "symbol": "startEpisode (existing lookup 704, rehydrate 705, head set 706, prior via recentEpisodes 700)",
+      "reads": "both",
+      "behaviorIfClosedInState": "Same taskKey+workspace+binding finds the closed episode; there is no closedAt check, no reopen and no successor. Head is set to it and normalizeEpisode(existing) is returned with closedAt set. No event is appended.",
+      "behaviorIfMovedToArchive": "prior is read from the archive, pushed back into state.episodes (705), head set; the returned body shows closedAt. The same mutate's save() then re-archives it (closed, !pending, length>128), so the head dangles again and the archive file is rewritten. No new episode is ever created for that taskKey.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 741,
+      "symbol": "linkMemoryTask (getEpisode 746, closedAt 757)",
+      "reads": "both",
+      "behaviorIfClosedInState": "assertCurrent passes. On MEMORY_TASK_NOT_FOUND it refuses to start a Memory episode for a closed task (757) and rethrows -> memoryTask {status:'unavailable'}.",
+      "behaviorIfMovedToArchive": "getEpisode returns null because the head was re-archived -> EXTERNAL_CONTINUITY_STALE_TASK -> memoryTask unavailable (only when description was supplied).",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 772,
+      "symbol": "recordToolOutcome",
+      "reads": "both",
+      "behaviorIfClosedInState": "Returns 'late-closed'; no event, no metric. Persisted events never carry late-closed; only the tracker event does.",
+      "behaviorIfMovedToArchive": "Context unbound -> 'unbound', or 'late-unavailable' if archived after capture.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 844,
+      "symbol": "recordMemoryRecall (844) / recordV2MemoryRecall (867, closedAt 875)",
+      "reads": "both",
+      "behaviorIfClosedInState": "No-op / returns false; delivery ledger on the episode is not updated.",
+      "behaviorIfMovedToArchive": "No-op / false.",
+      "impact": "benign-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 896,
+      "symbol": "recordLearningCheckpoint (not-found 899, closedAt 900)",
+      "reads": "both",
+      "behaviorIfClosedInState": "Returns false -> caller reports externalEpisodeLinkage 'unavailable' while Learning's own checkpoint is already durable. Normally unreachable because boundExternalTask refuses a closed task first.",
+      "behaviorIfMovedToArchive": "Throws EXTERNAL_CHECKPOINT_TASK_NOT_FOUND, caught at mcp/learning-tools.ts:108 -> 'unavailable'. Reachable only by a race between capture and write.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 913,
+      "symbol": "recordLearningReview (sets learningDecision 927, closes on terminalOutcome 928)",
+      "reads": "episodes-array-membership",
+      "behaviorIfClosedInState": "No closedAt check. This is where learningDecision and pendingLearning=false are written, i.e. the trigger for rule A.",
+      "behaviorIfMovedToArchive": "Iterates state.episodes only; archived episode is never matched (linked=false). Cannot normally occur: archive excludes pendingLearning episodes.",
+      "impact": "benign-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 935,
+      "symbol": "episodeActivity (sole caller mcp/learning-tools.ts:128)",
+      "reads": "both",
+      "behaviorIfClosedInState": "{exists:true, closed:true}; the orphan-checkpoint release path accepts it.",
+      "behaviorIfMovedToArchive": "{exists:false}. learning-tools.ts:129 requires exists && (closed || stale), and its comment says a pruned episode is never assumed abandoned, so an orphan Learning checkpoint of an archived task can never be released. Since closed implies archived at the next save, the 'closed' branch becomes effectively dead.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 946,
+      "symbol": "releaseClosedCheckpoints (closes on terminalOutcome 961)",
+      "reads": "episodes-array-membership",
+      "behaviorIfClosedInState": "No closedAt check; writes learningDecision on a foreign episode, which rule A would then close immediately.",
+      "behaviorIfMovedToArchive": "State-only scan; archived episodes unreachable (they have no checkpointKeys by construction).",
+      "impact": "benign-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 979,
+      "symbol": "verificationTarget (head 987, membership 989)",
+      "reads": "episodes-array-membership",
+      "behaviorIfClosedInState": "No closedAt check, returns the episode. Callers check closedAt themselves (verifyEpisode 1015, artifactReceipt 1701/1744, invocationTaskCurrent 470).",
+      "behaviorIfMovedToArchive": "Throws EXTERNAL_EPISODE_VERIFICATION_STALE_TASK / _SCOPE_UNAVAILABLE.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1000,
+      "symbol": "verifyEpisode (closedAt 1015, 1019; close-after-verify 1026)",
+      "reads": "both",
+      "behaviorIfClosedInState": "Silent no-op: returns the episode with no terminalOutcome and no verification recorded, and no error. Line 1026 shows verify-after-review is a supported order; rule A closing reviewed-but-unverified episodes removes it.",
+      "behaviorIfMovedToArchive": "Context unbound -> throws EXTERNAL_EPISODE_VERIFICATION_SCOPE_UNAVAILABLE.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1106,
+      "symbol": "failureContext",
+      "reads": "both",
+      "behaviorIfClosedInState": "Returns an empty capsule; the PRIOR EXPERIENCE recall is not delivered.",
+      "behaviorIfMovedToArchive": "Same.",
+      "impact": "benign-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1163,
+      "symbol": "resolveMemoryTask",
+      "reads": "both",
+      "behaviorIfClosedInState": "Resolves normally; no closedAt check.",
+      "behaviorIfMovedToArchive": "Falls back to episodes-archive/<sha256(taskId)>.json (1170) and resolves. Fails (MEMORY_CONTROLLER_SCOPE_UNAVAILABLE) only if the file is missing or corrupt. Used read-only by mcp/learning-tools.ts decision/scope, memory scope resolver and linkMemoryTask.",
+      "impact": "none"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1176,
+      "symbol": "getEpisode (head-based, state only)",
+      "reads": "both",
+      "behaviorIfClosedInState": "Returns the episode with closedAt.",
+      "behaviorIfMovedToArchive": "Returns null for a dangling head. Every caller treats null as 'no current task' (see the per-caller entries below).",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1184,
+      "symbol": "workflowNext (gate 1188-1189, closed branch 1196)",
+      "reads": "both",
+      "behaviorIfClosedInState": "invocationDisclosureCurrent fails first, so the status:'closed' branch (1196) is not reached on the normal path. The caller instead gets scope-unavailable with 'Start a host-bound episode with stable taskKey', which re-adopts the same closed episode (loop).",
+      "behaviorIfMovedToArchive": "Same scope-unavailable advisory.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1215,
+      "symbol": "recentEpisodes",
+      "reads": "both",
+      "behaviorIfClosedInState": "Included; no closedAt filter.",
+      "behaviorIfMovedToArchive": "Included: reads and normalizes every episodes-archive/*.json on every call, merged by id with state winning. Cost is O(archive size) per startEpisode(taskKey), episode status and evaluate. Any non-ENOENT read/parse error in one file (1224) fails the whole call.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1236,
+      "symbol": "recoverHistory (prior check 1260-1262, workspace derivation 1277)",
+      "reads": "both",
+      "behaviorIfClosedInState": "Treated as an existing prior episode (conflict if recoverySource differs).",
+      "behaviorIfMovedToArchive": "Archive file consulted for the prior check (good); procedure workspace derivation at 1277 uses state.episodes only.",
+      "impact": "benign-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 572,
+      "symbol": "initialize -> learning.migrateProcedures workspace derivation",
+      "reads": "episodes-array-membership",
+      "behaviorIfClosedInState": "Support/failure episode workspaces resolved from state.episodes.",
+      "behaviorIfMovedToArchive": "Archived support episodes would give workspace undefined and a duplicate 'unknown'-workspace procedure. Dormant: live state.procedures is empty (0), and only recoverHistory ever populates it.",
+      "impact": "none"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1298,
+      "symbol": "validatePlannedScope (getEpisode 1299, closedAt 1300) / activePlannedEpisode (1331)",
+      "reads": "both",
+      "behaviorIfClosedInState": "Throws MEMORY_CONTROLLER_SCOPE_UNAVAILABLE; planned context returns blockedPlannedMemory 'scope-unavailable' (1402).",
+      "behaviorIfMovedToArchive": "Same (active null).",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1381,
+      "symbol": "contextEpisodeSnapshot (raw state read)",
+      "reads": "episodes-array-membership",
+      "behaviorIfClosedInState": "Returns the closed episode; projectionBound can still be true.",
+      "behaviorIfMovedToArchive": "episode undefined -> projectionBound false, episode:null, memoryTaskContext skipped, task evidence 'unknown'.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1423,
+      "symbol": "contextCore (getEpisode 1429, getOrCreateEpisode 1546, final-head recheck 1582-1587)",
+      "reads": "both",
+      "behaviorIfClosedInState": "Non-planned context mutates the closed episode (events, deliveredArtifacts, intentionExposureKeys). Planned context is blocked at 1402.",
+      "behaviorIfMovedToArchive": "Workspace default from active?.workspace is lost, so memory search runs unscoped. getOrCreateEpisode (1546) mints a new inferred episode and repoints the head.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1683,
+      "symbol": "skillProposalNotices (invocationEpisode 1687) <- mcp/external-controller-tool-support.ts:121-143 appendSkillReminderCapsule",
+      "reads": "both",
+      "behaviorIfClosedInState": "No notices: the SKILL PROPOSAL REMINDER that AGENTS.md requires to be relayed to the user is suppressed.",
+      "behaviorIfMovedToArchive": "Same.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1695,
+      "symbol": "artifactReceipt (memory kind: verificationTarget 1699 + closedAt 1701/1744; other kinds: getEpisode 1700)",
+      "reads": "both",
+      "behaviorIfClosedInState": "memory kind -> EXTERNAL_RECEIPT_SCOPE_UNAVAILABLE. Non-memory kinds have no closedAt check: Learning.recordSkillOutcome still counts trust, but recordArtifactEvent (1837-1838) and capability-use recording silently skip.",
+      "behaviorIfMovedToArchive": "memory kind -> verificationTarget throws. Non-memory -> episode null -> misleading EXTERNAL_RECEIPT_REVISION_NOT_DELIVERED (1703).",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1853,
+      "symbol": "procedure (getEpisode 1854, deliver mutate closedAt 1870) / applyProcedureOutcome (1920)",
+      "reads": "both",
+      "behaviorIfClosedInState": "list/inspect/propose throw EXTERNAL_EPISODE_REQUIRED at 1870 (even read-only list). Payload admission needs invocationTaskCurrent (1860) -> EXTERNAL_EPISODE_SCOPE_UNAVAILABLE.",
+      "behaviorIfMovedToArchive": "list/inspect succeed with no delivery record (episode null); outcome throws EXTERNAL_EPISODE_REQUIRED; propose throws EXTERNAL_PROCEDURE_PROPOSAL_FIELDS_REQUIRED.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1934,
+      "symbol": "evaluate (recentEpisodes 1935)",
+      "reads": "archive-dir",
+      "behaviorIfClosedInState": "Included; closedAt not read.",
+      "behaviorIfMovedToArchive": "Included via recentEpisodes (state plus archive dir), capped by limit 4-100 (default 40) or exactly episodeIds.length; selected() throws EXTERNAL_EVALUATION_EPISODE_NOT_FOUND only if the id is in neither source or filtered out by workspace/taskFamily.",
+      "impact": "none"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 1993,
+      "symbol": "curate (state.episodes 1994)",
+      "reads": "episodes-array-membership",
+      "behaviorIfClosedInState": "Included.",
+      "behaviorIfMovedToArchive": "Archived episodes and their feature-outcome events are dropped (events are filtered by membership in state.episodes at 1997). externalFeatureOutcomeProposals needs total>=2 and |score|>=0.25, so curator proposals can silently disappear.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-controller.ts",
+      "line": 2002,
+      "symbol": "health (2002) / status (2012, featureOutcomeEvidence 2030-2031)",
+      "reads": "episodes-array-membership",
+      "behaviorIfClosedInState": "Counted in episodeCount; pendingLearningEpisodes unaffected.",
+      "behaviorIfMovedToArchive": "episodeCount = state.episodes.length drops; featureOutcomeEvidence groups lose archived tasks (state-only membership). Feeds /health (src/index.ts:261,308), launcher AgentCoreRuntime.cs:947-956, UI src/ui/src/systems.ts:105 and host.ts:20 as display-only counts.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/learning/external-evaluation.ts",
+      "line": 76,
+      "symbol": "evaluateExternalComparison / projectExternalFeatureOutcomes (149) / externalFeatureOutcomeProposals (179)",
+      "reads": "episodes-array-membership",
+      "behaviorIfClosedInState": "Pure functions over the array passed in; read only id, startedAt, terminalOutcome, verificationStatus. closedAt is never read and rules A/B leave terminalOutcome unset and verificationStatus 'unavailable', so outcomes are unchanged.",
+      "behaviorIfMovedToArchive": "Lost only for callers that pass state.episodes (status, curate). An absent episode scores 'unknown', a present unverified one 'evidence-unavailable'; evaluate() passes state plus archive so it loses nothing.",
+      "impact": "none"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/mcp/learning-tools.ts",
+      "line": 44,
+      "symbol": "boundExternalTask (invocationTaskCurrent 57, 67) for learning checkpoint/review/receipt",
+      "reads": "both",
+      "behaviorIfClosedInState": "Throws LEARNING_EXTERNAL_SCOPE_UNAVAILABLE ('task-changed-closed-or-cancelled') before any Learning write. A reviewed-but-unverified task can no longer be checkpointed again (user-correction, explicit-learn) once closed.",
+      "behaviorIfMovedToArchive": "Dangling head -> unbound 'no-task' -> same error.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/mcp/learning-tools.ts",
+      "line": 121,
+      "symbol": "abandonedCheckpointNote (episodeActivity 128-129)",
+      "reads": "both",
+      "behaviorIfClosedInState": "closed=true qualifies a >7-day-stale pending checkpoint for orphan release.",
+      "behaviorIfMovedToArchive": "exists=false -> verdict false -> LEARNING_EXTERNAL_CHECKPOINT_NOT_BOUND; the orphan can never be released. Real only if Learning holds a pending review for a task whose episode mirror failed (externalEpisodeLinkage 'unavailable', lines 108-110) and rule A/B archived it.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/mcp/learning-tools.ts",
+      "line": 139,
+      "symbol": "review: getEpisode(externalSessionId) + checkpointKeys membership; recordLearningCheckpoint (106), releaseClosedCheckpoints (190), recordLearningReview (193), curate (219)",
+      "reads": "episodes-array-membership",
+      "behaviorIfClosedInState": "Review needs current.id===bound.taskId and keys present in current.checkpointKeys; closed tasks never reach it (boundExternalTask fails). curate is state-only (see curate entry).",
+      "behaviorIfMovedToArchive": "current null -> LEARNING_EXTERNAL_CHECKPOINT_NOT_BOUND.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/mcp/controller-learning-tools.ts",
+      "line": 71,
+      "symbol": "episode start/verify/status (startEpisode 71, verifyEpisode 83, getEpisode 94, recentEpisodes 95) and workflowNext attach (150-167)",
+      "reads": "both",
+      "behaviorIfClosedInState": "start re-adopts the closed episode; start result gets a hard-coded workflowNext status:'active' (150-158) even though closedAt is set. verify silently no-ops. status shows current with closedAt.",
+      "behaviorIfMovedToArchive": "start returns the archived episode's id but the head dangles after save; status shows current:null and recent from state plus archive. The advisory still says active.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/mcp/controller-learning-tools.ts",
+      "line": 123,
+      "symbol": "improvement (123) / procedure (125) / artifact_receipt (103) / evaluate (142) / context (46) / status (44)",
+      "reads": "both",
+      "behaviorIfClosedInState": "improvement -> IMPROVEMENT_SCOPE_UNAVAILABLE via assertCurrent (external-controller.ts:357); register/feedback/progress follow-ups after a user decision (which can take days) are refused. procedure, receipt and planned context as in the service entries above. evaluate and status are unaffected.",
+      "behaviorIfMovedToArchive": "Same refusals via unbound context; status() loses archived feature-outcome evidence.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/memory/mcp/scope.ts",
+      "line": 35,
+      "symbol": "createMemoryScopeResolver -> resolveMemoryTask",
+      "reads": "archive-dir",
+      "behaviorIfClosedInState": "Resolves; no closedAt check.",
+      "behaviorIfMovedToArchive": "Resolves from the archive file. This is the read path for memory_v2_read by explicit taskId and learning decision.",
+      "impact": "none"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/memory/mcp/scope.ts",
+      "line": 62,
+      "symbol": "createExternalMemoryRecallAdmission (getEpisode 63, closedAt 65) used for memory_v2_read and memory_v2_write (mcp/server.ts:397-400)",
+      "reads": "both",
+      "behaviorIfClosedInState": "Throws MEMORY_CONTROLLER_SCOPE_UNAVAILABLE: Memory v2 reads and writes bound to that task are refused.",
+      "behaviorIfMovedToArchive": "getEpisode null -> same refusal, even though resolveMemoryTask succeeded.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/memory/mcp/tools.ts",
+      "line": 186,
+      "symbol": "memory_search assertScopeCurrent (invocationDisclosureCurrent 186) and recordMemoryRecall (195)",
+      "reads": "both",
+      "behaviorIfClosedInState": "Synthesis is withheld (scope check throws and is swallowed at 189); ordinary recall still works; recall not recorded on the episode.",
+      "behaviorIfMovedToArchive": "Same.",
+      "impact": "benign-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/mcp/external-reconstruction-harness-tools.ts",
+      "line": 48,
+      "symbol": "reconstruction_harness active() (invocationTaskCurrent 48; getEpisode 52; closedAt 53)",
+      "reads": "both",
+      "behaviorIfClosedInState": "HARNESS_HOST_SCOPE_UNAVAILABLE.",
+      "behaviorIfMovedToArchive": "Same.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/mcp/skill-proposal-actions.ts",
+      "line": 12,
+      "symbol": "runSkillProposalAction (getEpisode 12; workspace default 13; propose taskId 41)",
+      "reads": "episodes-array-membership",
+      "behaviorIfClosedInState": "No closedAt check: continues with the closed episode's id and workspace.",
+      "behaviorIfMovedToArchive": "episode null -> workspace silently falls back to 'agent-core' for proposals/self_awareness/explain_improvement/review_outcomes (wrong-workspace read for any other workspace), and 'propose' throws SKILL_PROPOSAL_TASK_IDENTITY_REQUIRED.",
+      "impact": "risk"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/mcp/server.ts",
+      "line": 170,
+      "symbol": "tool wrapper (recordToolOutcome 170/236, failureContext 189-201, browserUseAdmitted 220-223, recordV2MemoryRecall 394, artifact_inspect gate 446)",
+      "reads": "both",
+      "behaviorIfClosedInState": "attributionStatus 'late-closed' is stored on the tracker event. Browser observation use is dropped (requires 'attributed' plus disclosure current). artifact_inspect is refused (invocationTaskCurrent false). No failure-recall capsule.",
+      "behaviorIfMovedToArchive": "attributionStatus 'unbound'; same drops.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/mcp/external-controller-tool-support.ts",
+      "line": 50,
+      "symbol": "installInvocationContext (capture 50, exception outcome 104) and externalControllerToolResult (outcome 160, failureContext 170, reminder 125)",
+      "reads": "both",
+      "behaviorIfClosedInState": "Shared by code-intelligence, phone, semantic-ide, skills tools. Same recorder no-ops and suppressed capsules; scopedLearning/scopedController calls pass taskScope so a closed target blocks reconnect.",
+      "behaviorIfMovedToArchive": "Unbound capture; recorders return 'unbound'.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/mcp/capability-observation.ts",
+      "line": 23,
+      "symbol": "installCapabilityObservation (recordInspectedSkillArtifacts 23, recordCapabilityUse 26, takeCapabilityUsageNotice 27, disclosure 28)",
+      "reads": "both",
+      "behaviorIfClosedInState": "Capability usage and the CAPABILITY USAGE NOTICE are not recorded or appended.",
+      "behaviorIfMovedToArchive": "Same.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/mcp/web-research-tools.ts",
+      "line": 83,
+      "symbol": "observedCall (recordToolOutcome 83; attributionStatus type 72)",
+      "reads": "closedAt",
+      "behaviorIfClosedInState": "Stores 'late-closed' on the tracker event; no failure for the web call.",
+      "behaviorIfMovedToArchive": "Stores 'unbound' or 'late-unavailable'.",
+      "impact": "benign-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/harness/reconstruction/receipt-adapter.ts",
+      "line": 34,
+      "symbol": "external receipt resolution (requires ctx.attributionStatus==='attributed'); same rule at src/learning/workflow-evidence.ts:24",
+      "reads": "closedAt",
+      "behaviorIfClosedInState": "Tool calls made while the task is closed are stamped late-closed and can never count as reconstruction or browser-workflow proof (tests/external-reconstruction-harness.test.ts:272).",
+      "behaviorIfMovedToArchive": "Stamped unbound/late-unavailable, same exclusion. Calls made before closure remain valid proof; they live in the tracker, not the episode.",
+      "impact": "behavior-change"
+    },
+    {
+      "file": "E:/Projects/Agent-Core/src/launcher/AgentCoreRuntime.cs",
+      "line": 947,
+      "symbol": "/health externalControllerLearning snapshot (also src/ui/src/systems.ts:105, src/ui/src/host.ts:20, src/ui/src/systems.test.ts:30)",
+      "reads": "episodes-array-membership",
+      "behaviorIfClosedInState": "Display-only counts (episodeCount, pendingLearningEpisodes). No consumer reads closedAt or episode ids.",
+      "behaviorIfMovedToArchive": "Displayed 'Episodes' falls with state.episodes.length; no logic depends on it.",
+      "impact": "benign-change"
+    }
+  ],
+  "resumeByTaskKey": "Same taskKey, closed episode still in state: startEpisode (external-controller.ts:704) finds it with no closedAt check, sets sessionHeads[session] to it and returns it with closedAt set. No new episode, no reopen, no successor, no event. workflowNext on the start result is hard-coded status 'active' (controller-learning-tools.ts:150-158). Afterwards every task-bound write is refused or dropped: learning checkpoint/review/receipt throw LEARNING_EXTERNAL_SCOPE_UNAVAILABLE (invocationTaskCurrent false), memory_v2 admission throws MEMORY_CONTROLLER_SCOPE_UNAVAILABLE, planned context returns scope-unavailable, tool events become late-closed, and episode verify silently returns without recording anything. Same taskKey, archived episode: recentEpisodes supplies it as 'prior' (line 700), it is pushed back into state (705), the head is set (706) and the closed body is returned; the same mutate's save() re-archives it (closed, !pending, length>128), so the head dangles and linkMemoryTask reports EXTERNAL_CONTINUITY_STALE_TASK. Later calls are unbound ('no-task'), and the reconnect path is blocked because the head exists. Repeating start with the same taskKey loops; only a new taskKey creates a working episode, and the old one becomes its predecessor. This is already how legitimately closed (terminalOutcome) episodes behave today (99 of 100 current archive files have terminalOutcome); live state shows 29 of 191 sessionHeads already pointing at archive-only episodes. Tests cover archive reconnect only for NON-closed episodes with fewer than 128 episodes (tests/memory/memory-task-binding.test.ts:86,105).",
+  "evaluatorInputs": "evaluateExternalComparison, projectExternalFeatureOutcomes and externalFeatureOutcomeProposals (src/learning/external-evaluation.ts) are pure functions of the arrays their caller passes; they never touch disk and never read closedAt. They use only id, startedAt, terminalOutcome and verificationStatus, so rules A/B (terminalOutcome unset, verificationStatus 'unavailable') do not change their outcome classification. The callers differ. evaluate() (external-controller.ts:1935) uses recentEpisodes, which unions state.episodes with every episodes-archive/*.json, so it loses nothing; only the limit cap (4-100, default 40) applies. status().featureOutcomeEvidence (2030-2031) and curate() (1994-1998) use state.episodes only and also filter tracker events to tasks present in state, so archived episodes and their feature-outcome events vanish: groups shrink and curator proposals (need total>=2 and |score|>=0.25) can disappear. Also lost on archive: the health/status episodeCount (display only), and any state-only scan (releaseClosedCheckpoints, recordLearningReview, procedure migration workspace derivation). Procedure support/failure episode ids live in LearningService as plain strings with no lookup into the external state (procedureBoundEvidence is receipt-based), so they are unaffected; live state.procedures is empty.",
+  "verdict": "Yes: rules A/B change externally observable behavior well beyond file size, mainly rule A. Closure has no reopen path, and MEMORY_EPISODES=128 never binds for closed episodes here (603 episodes, 204 pending), so every closed non-pending episode is archived at the same save; 'closed in state' is transient. Live counts (inference, using updatedAt as the activity proxy): about 152 episodes with learningDecision and no terminalOutcome would close, of which 85 explicit ones were updated within 7 days and 134 are explicit taskKey-bound; rule B adds 107 inferred episodes at 7 days idle (12 at 14, 0 at 30), which no bound consumer uses. Today reviewed-but-unverified episodes stay open and resumable. After the rule, an old taskKey cannot be resumed (start re-adopts the closed episode and then re-archives it, leaving a dangling head), episode verify after review silently no-ops, a second checkpoint/review cycle is refused, improvement register/feedback/progress follow-ups, procedure list/inspect, Memory v2 read/write admission, planned context, reconstruction_harness and artifact_inspect are refused, and skill-proposal reminders and capability notices are suppressed. skill-proposal-actions also falls back to workspace 'agent-core' for a dangling head, and an orphan Learning checkpoint of an archived task becomes unreleasable. Archive also drops episodes from status().featureOutcomeEvidence, curate() and health episodeCount, while evaluate() and resolveMemoryTask() still see them via the archive. Callers at risk: controllers that reuse a taskKey across chats or days, long-lived mcp-session-id sessions idle over 24h, and any user-decision follow-up on an improvement or proposal. Low risk: rule B alone and display-only consumers. An unwanted-exposure fix would be to make startEpisode treat a closed match as a predecessor of a fresh episode (or reopen it) and to skip session heads when archiving; this is a suggestion, not verified.",
+  "openQuestions": [
+    "Where would the rule run (every save() or a separate sweep) and how is 'session active within 24h' measured? sessionHeads has no timestamps; updatedAt of the head episode is the only available proxy. Live: 191 heads (164 distinct), 15 point to episodes updated within 24h, 29 already dangle to archive-only episodes.",
+    "Do real clients reuse one mcp-session-id for more than 24h? Header present gives a stable session id (mcp/handler.ts:67-79); header-less clients rotate hourly. This decides how often an idle-then-resumed session hits the dangling-head path.",
+    "One current open episode (id starting ext-031299db, explicit, taskKey set, a session head) also has an archive file without closedAt; it is unknown which build wrote that file. It is consistent with startEpisode rehydration but not proven.",
+    "A rehydrated episode leaves its archive file in place and re-archive overwrites it (with .last-good), so the archive can hold stale duplicates. recentEpisodes resolves duplicates by letting state win.",
+    "Existing tests encode only terminalOutcome-based closure (tests/cumulative-workflow.test.ts:118, tests/memory/memory-task-reconnect.test.ts:411, tests/batch16-exact-task-verification.test.ts:79, tests/learning-external-scope.test.ts:89, tests/external-reconstruction-harness.test.ts:244,272). None covers startEpisode on a closed or archived taskKey with more than 128 episodes, nor rule A/B closure.",
+    "recentEpisodes scans the whole archive directory per call and fails entirely on one unreadable file (line 1224); archive count would go from 100 to roughly 350 on the live data. Not measured; cost estimate is 10 KB average per episode (measured on state: about 10,108 bytes)."
+  ]
+}

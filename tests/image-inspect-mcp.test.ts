@@ -87,11 +87,14 @@ describe('image_inspect transport and permission boundary', () => {
     await expect((denied.server as any)._registeredTools.image_inspect.executor({ action: 'overview', path: '/never-read', contractSession: denied.contractSession }, {})).rejects.toThrow(/GRANT_DENIED/);
   });
 
-  it('does not register image_inspect in Native tasks or the Native executable capability catalog', async () => {
+  it('registers image_inspect in Native tasks and lists it in the Native executable capability catalog', async () => {
     const { client } = await connected(undefined, { nativeTaskId: 'native-test' });
-    expect((await client.listTools()).tools.map(tool => tool.name)).not.toContain('image_inspect');
-    await expect(client.callTool({ name: 'image_inspect', arguments: { action: 'overview', path: '/never-read' } })).rejects.toThrow();
-    expect(AGENT_CAPABILITY_CATALOG.flatMap(family => family.tools.map(tool => tool.name))).not.toContain('image_inspect');
+    expect((await client.listTools()).tools.map(tool => tool.name)).toContain('image_inspect');
+    // An unreadable path still fails, either as a protocol rejection or as a tool error result.
+    const failed = await client.callTool({ name: 'image_inspect', arguments: { action: 'overview', path: '/never-read' } })
+      .then(result => (result as any).isError === true, () => true);
+    expect(failed).toBe(true);
+    expect(AGENT_CAPABILITY_CATALOG.flatMap(family => family.tools.map(tool => tool.name))).toContain('image_inspect');
   });
 
   it('preserves real image bytes larger than the ordinary 256 KiB budget through SDK dispatch', async () => {

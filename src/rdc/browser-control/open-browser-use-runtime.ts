@@ -7,6 +7,7 @@ export const OBU_MANAGED_HOST = 'com.agent_core.browser_use';
 export const OBU_EXTERNAL_HOST = 'com.ifuryst.open_browser_use.extension';
 const EXTENSION_ID = 'bgjoihaepiejlfjinojjfgokghnodnhd';
 const run = promisify(execFile);
+const ownerStartedAt = Date.now();
 export const obuManagedDirectory = (root: string): string => path.join(root, 'runtime', 'rdc', 'browser-control', 'managed');
 
 /** Never use a filename, last-used file, or enumeration order as a profile identity. */
@@ -83,6 +84,11 @@ async function registerBrowserUseHosts(root: string): Promise<void> {
   if (process.platform !== 'win32') throw new Error('BROWSER_OBU_MANAGED_WINDOWS_ONLY');
   const executable = path.join(root, 'Agent Core.exe'); await access(executable);
   const directory = obuManagedDirectory(root); await mkdir(directory, { recursive: true });
+  // Existing relays need the current owner even when optional registration fails; retries keep its identity.
+  const ownerFile = path.join(directory, 'core-owner.json');
+  const staging = ownerFile + '.' + process.pid;
+  await writeFile(staging, JSON.stringify({ pid: process.pid, startedAt: ownerStartedAt }));
+  await rename(staging, ownerFile);
   const browsers = ['Google\\Chrome', 'Chromium', 'BraveSoftware\\Brave-Browser', 'Microsoft\\Edge'];
   for (const host of [OBU_MANAGED_HOST, OBU_EXTERNAL_HOST]) {
     const manifest = path.join(directory, host + '.json');
@@ -109,10 +115,6 @@ async function registerBrowserUseHosts(root: string): Promise<void> {
         { windowsHide: true, timeout: 3000 });
     }
   }
-  const ownerFile = path.join(directory, 'core-owner.json');
-  const staging = ownerFile + '.' + process.pid;
-  await writeFile(staging, JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
-  await rename(staging, ownerFile);
 }
 
 async function registryValue(key: string, view: '32' | '64'): Promise<string | undefined> {

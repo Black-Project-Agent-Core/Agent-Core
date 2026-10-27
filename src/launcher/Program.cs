@@ -11,7 +11,20 @@ internal static class Program
         // Own the single-instance boundary before any WinForms initialization can hang.
         // Helper mode is intentionally exempt because it is a launcher-owned child role.
         using var mutex = new Mutex(initiallyOwned: true, name: @"Local\AgentCoreDesktop", createdNew: out var createdNew);
-        if (!createdNew) return;
+        if (!createdNew)
+        {
+            // The running launcher may be hidden in the tray; ask it to show its window.
+            try
+            {
+                using var show = EventWaitHandle.OpenExisting(MainForm.ShowSignalName);
+                show.Set();
+            }
+            catch (Exception error) when (error is WaitHandleCannotBeOpenedException or UnauthorizedAccessException)
+            {
+                // The first instance is still starting and has no window to show yet.
+            }
+            return;
+        }
 
         ApplicationConfiguration.Initialize();
         var root = RootLocator.Find();

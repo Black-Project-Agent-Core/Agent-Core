@@ -692,7 +692,8 @@ export class MemoryEpisodes {
         });
         return committed.result;
     }
-    async captureEvidence(scope: ControllerScope, raw: CaptureEvidenceInput): Promise<ArtifactReceipt> {
+    async captureEvidence(scope: ControllerScope, raw: CaptureEvidenceInput, assertExternalCurrent?:()=>void|Promise<void>): Promise<ArtifactReceipt> {
+        if(assertExternalCurrent){if(scope.controllerId!=='agent-core-external')fail('MEMORY_SCOPE_MISMATCH');await assertExternalCurrent();}
         const input = parseControllerInput(captureEvidenceInputSchema, raw);
         this.safe(input.operationId);
         const payload = disclosureDigest(['captureEvidence/v1', input]);
@@ -789,7 +790,9 @@ export class MemoryEpisodes {
             if (replay)
                 return { records: snapshot.records, touchedIds: [], stateWrites: [], result: { ...replay, duplicate: true } };
             this.assertDependencies(p, snapshot);
-            return { records: snapshot.records, touchedIds: [], stateWrites: writes, result, ...(file && fileSnapshot && text !== undefined ? { validateSources: async () => {
+            return { records: snapshot.records, touchedIds: [], stateWrites: writes, result, ...(file && fileSnapshot && text !== undefined || assertExternalCurrent ? { validateSources: async () => {
+                        await assertExternalCurrent?.();
+                        if(!file || !fileSnapshot || text===undefined)return;
                         try {
                             if (this.host.workspaceRoot(scope.workspaceKey) !== captureRoot)
                                 fail('MEMORY_REVISION_CONFLICT');

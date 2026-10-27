@@ -24,7 +24,7 @@ const learningCandidate = z.object({
 });
 
 export const learning = z.object({
-  action: z.enum(['status', 'checkpoint', 'review', 'curate', 'journey', 'receipt', 'decision']),
+  action: z.enum(['status', 'backlog', 'checkpoint', 'review', 'curate', 'journey', 'receipt', 'decision']),
   decision: decisionRequestSchema.optional(),
   idempotencyKey: z.string().min(1).max(200).optional(),
   taskId: z.string().min(1).max(200).optional(),

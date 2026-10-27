@@ -9,7 +9,11 @@ Use -WhatIf to inspect the target without closing or launching anything.
 The script requests normal window close. The launcher's existing shutdown code
 owns graceful shutdown and its own bounded forced-cleanup fallback.
 No force-kill, scheduler changes, automatic elevation, or launch retries here.
-Success means one launcher window is open; Core/tunnel readiness is not tested.
+Success means one launcher window is open. After that the script asks GET /health once a second
+(up to -ReadinessTimeoutSeconds) and prints one 'Kesiapan: <state> (<detail>)' line, where state is
+'siap', 'belum menjawab' or 'menjawab tidak sesuai'. That line is a report only: it never changes the
+exit code, never retries a launch and never rolls anything back. The tunnel is not tested.
+The output always ends with 'Selesai: ok' or 'Selesai: gagal'; a failure also prints 'GAGAL: <reason>'.
 Serialization covers this script. The app mutex covers one Windows session;
 do not manually launch another copy in a different session during the restart.
 #>
@@ -18,7 +22,9 @@ param(
     [ValidateRange(30, 600)]
     [int]$StopTimeoutSeconds = 120,
     [ValidateRange(10, 600)]
-    [int]$StartTimeoutSeconds = 180
+    [int]$StartTimeoutSeconds = 180,
+    [ValidateRange(5, 300)]
+    [int]$ReadinessTimeoutSeconds = 60
 )
 
 Set-StrictMode -Version Latest
@@ -38,6 +44,15 @@ $profilePaths = @(
     (Join-Path $root 'runtime\webview2')
 )
 $knownOwned = @{}
+
+function Request-LauncherExit {
+    param([string]$Name = 'Local\AgentCoreDesktop.Exit')
+    $signal = $null
+    try { $signal = [Threading.EventWaitHandle]::OpenExisting($Name) }
+    catch [Threading.WaitHandleCannotBeOpenedException] { return $false }
+    try { return $signal.Set() }
+    finally { $signal.Dispose() }
+}
 
 function Install-PendingLauncher {
     param([Parameter(Mandatory = $true)][string]$ProjectRoot)
@@ -65,6 +80,19 @@ function Install-PendingLauncher {
         (& $hashFile $candidate) -cne $expected) {
         throw 'Pending launcher checksum mismatch; original launcher preserved.'
     }
+    # Process enumeration can settle before Windows releases the executable mapping.
+    $unlockDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        try {
+            $probe = [IO.File]::Open($destination, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+            $probe.Dispose()
+            break
+        }
+        catch [IO.IOException] {
+            if ([DateTime]::UtcNow -ge $unlockDeadline) { throw 'Launcher file is still locked; original and pending build preserved.' }
+            Start-Sleep -Milliseconds 200
+        }
+    } while ($true)
     $backupDirectory = Join-Path $project 'runtime\launcher\backups'
     [IO.Directory]::CreateDirectory($backupDirectory) | Out-Null
     $backup = Join-Path $backupDirectory ('launcher-' + [Guid]::NewGuid().ToString('N') + '.exe')
@@ -83,9 +111,21 @@ function Install-PendingLauncher {
     Write-Host "Verified launcher build activated; original retained at $backup"
 }
 
+# The bundled Node running a script outside this checkout (the Claude Desktop stdio bridge is one) is an
+# HTTP client of Core, not part of its runtime, and never exits on a launcher close; waiting for it would
+# block every restart. Only a rooted first argument outside the root qualifies; anything unclear stays owned.
+function Test-ExternalNodeScript([string]$Command) {
+    if ($Command -notmatch '^(?:"[^"]+"|\S+)\s+(?:"(?<arg>[^"]+)"|(?<arg>\S+))') { return $false }
+    $script = $Matches['arg']
+    if ($script.StartsWith('-') -or -not [IO.Path]::IsPathRooted($script)) { return $false }
+    try { $full = [IO.Path]::GetFullPath($script) } catch { return $false }
+    return -not $full.StartsWith($root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)
+}
+
 function Test-ProjectProcess($Process) {
     $path = [string]$Process.ExecutablePath
     $command = [string]$Process.CommandLine
+    if ($path -ieq $nodePath -and (Test-ExternalNodeScript $command)) { return $false }
     if ($path -ieq $exePath -or $path -ieq $tunnelPath -or $path -ieq $nodePath) { return $true }
     foreach ($prefix in $runtimePrefixes) {
         if ($path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { return $true }
@@ -157,7 +197,7 @@ function Get-RestartState {
         $browserUseHelper = $command -match '(?:^|\s)"?chrome-extension://bgjoihaepiejlfjinojjfgokghnodnhd/"?(?:\s|$)' -or
             $command -match '^(?:"[^"]+"|\S+)\s+--browser-use-transport\s+(?:"[^"]+"|\S+)\s*$'
         if ($path -ieq $exePath -and -not $browserUseHelper -and
-            $command -cnotmatch '^(?:"[^"]+"|\S+)\s+--native-dump-helper\s+\d+\s+(?:"[^"]+"|\S+)\s+\S+\s*$') {
+            $command -cnotmatch '^(?:"[^"]+"|\S+)\s+"?--native-dump-helper"?\s+"?\d+"?\s+(?:"[^"]+"|\S+)\s+\S+\s*$') {
             $launchers += $item
         }
     }
@@ -186,6 +226,97 @@ function Assert-IndependentTerminal($State) {
         if ($parent.Count -ne 1 -or $parent[0].CreationDate -gt $ancestor[0].CreationDate) { break }
         $ancestorId = $parentId
     }
+}
+
+# One GET /health, reduced to what the verdict needs. Never throws: an unreachable server is an answer.
+function Get-HealthReply {
+    param([string]$Url, [int]$RequestTimeoutSeconds = 3)
+    $status = 0
+    $body = ''
+    try {
+        $request = [Net.HttpWebRequest]::Create($Url)
+        $request.Method = 'GET'
+        $request.Proxy = $null
+        $request.Timeout = $RequestTimeoutSeconds * 1000
+        $request.ReadWriteTimeout = $RequestTimeoutSeconds * 1000
+        $response = $request.GetResponse()
+    }
+    catch [Net.WebException] {
+        $response = $_.Exception.Response
+        # No response at all: refused, reset or timed out. The status names which.
+        if ($null -eq $response) {
+            return [pscustomobject]@{ Reached = $false; Status = 0; Body = ''; Error = [string]$_.Exception.Status }
+        }
+    }
+    catch { return [pscustomobject]@{ Reached = $false; Status = 0; Body = ''; Error = $_.Exception.Message } }
+    try {
+        $status = [int]$response.StatusCode
+        $reader = New-Object IO.StreamReader($response.GetResponseStream(), [Text.Encoding]::UTF8)
+        try { $body = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    }
+    catch { $body = '' }
+    finally { $response.Dispose() }
+    [pscustomobject]@{ Reached = $true; Status = $status; Body = $body; Error = '' }
+}
+
+function ConvertTo-UtcDateTime($Value) {
+    # Windows PowerShell 5.1 leaves ISO-8601 strings as strings; newer hosts return DateTime.
+    if ($Value -is [DateTime]) { return $Value.ToUniversalTime() }
+    [DateTimeOffset]::Parse([string]$Value, [Globalization.CultureInfo]::InvariantCulture,
+        [Globalization.DateTimeStyles]::AssumeUniversal).UtcDateTime
+}
+
+# The verdict reads only what a restart can be blamed for: does something answer, does it say status ok, and
+# is it the process just launched. The memory, phone and web blocks of /health describe other services; a
+# down embedding provider must not make a good restart look failed, so they are never read here.
+function Get-ReadinessVerdict {
+    param($Reply, [DateTime]$LaunchedAtUtc = [DateTime]::MinValue)
+    $verdict = { param($State, $Detail) [pscustomobject]@{ State = $State; Detail = $Detail } }
+    if (-not $Reply.Reached) { return & $verdict 'belum menjawab' ([string]$Reply.Error) }
+    if ($Reply.Status -ne 200) { return & $verdict 'menjawab tidak sesuai' "HTTP $($Reply.Status)" }
+    try { $json = $Reply.Body | ConvertFrom-Json -ErrorAction Stop } catch { $json = $null }
+    if ($null -eq $json -or $null -eq $json.PSObject.Properties['status']) {
+        return & $verdict 'menjawab tidak sesuai' 'isi jawaban tidak terbaca'
+    }
+    if ([string]$json.status -cne 'ok') { return & $verdict 'menjawab tidak sesuai' "status $($json.status)" }
+    $processProperty = $json.PSObject.Properties['process']
+    if ($null -eq $processProperty -or $null -eq $processProperty.Value) {
+        return & $verdict 'siap' 'identitas proses tidak tersedia (build lama)'
+    }
+    $identity = $processProperty.Value
+    $pidProperty = $identity.PSObject.Properties['pid']
+    $startedProperty = $identity.PSObject.Properties['startedAt']
+    $pidText = if ($null -ne $pidProperty) { "PID $($pidProperty.Value)" } else { 'PID ?' }
+    if ($null -eq $startedProperty) { return & $verdict 'siap' "$pidText; waktu mulai tidak dilaporkan" }
+    try { $startedAt = ConvertTo-UtcDateTime $startedProperty.Value }
+    catch { return & $verdict 'menjawab tidak sesuai' 'waktu mulai proses tidak terbaca' }
+    $startedText = $startedAt.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    # Two seconds of clock slack. An answer from a process older than the launch is not the one just started.
+    if ($LaunchedAtUtc -gt [DateTime]::MinValue -and $startedAt -lt $LaunchedAtUtc.AddSeconds(-2)) {
+        return & $verdict 'menjawab tidak sesuai' "jawaban dari proses yang lebih tua dari peluncuran ($pidText mulai $startedText)"
+    }
+    $buildProperty = $json.PSObject.Properties['build']
+    $stale = 'tidak diketahui'
+    if ($null -ne $buildProperty -and $null -ne $buildProperty.Value) {
+        $staleProperty = $buildProperty.Value.PSObject.Properties['stale']
+        if ($null -ne $staleProperty -and $staleProperty.Value -is [bool]) { $stale = if ($staleProperty.Value) { 'ya' } else { 'tidak' } }
+    }
+    & $verdict 'siap' "$pidText mulai $startedText; dist basi: $stale"
+}
+
+# Polls until the verdict is 'siap' or the time is up; the last verdict stands. Report only.
+function Wait-CoreReadiness {
+    param([string]$Url, [int]$TimeoutSeconds, [DateTime]$LaunchedAtUtc = [DateTime]::MinValue,
+        [int]$RequestTimeoutSeconds = 3, [int]$PollMilliseconds = 1000)
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        $verdict = Get-ReadinessVerdict -Reply (Get-HealthReply -Url $Url -RequestTimeoutSeconds $RequestTimeoutSeconds) `
+            -LaunchedAtUtc $LaunchedAtUtc
+        if ($verdict.State -eq 'siap' -or $timer.Elapsed.TotalSeconds -ge $TimeoutSeconds) { break }
+        Start-Sleep -Milliseconds $PollMilliseconds
+    } while ($true)
+    $seconds = [int][Math]::Round($timer.Elapsed.TotalSeconds)
+    [pscustomobject]@{ State = $verdict.State; Line = "Kesiapan: $($verdict.State) ($($verdict.Detail); $seconds dtk)" }
 }
 
 $restartMutex = $null
@@ -231,27 +362,50 @@ try {
                 $oldProcess.MainModule.FileName -ine $exePath) {
                 throw 'Identitas launcher berubah. Restart dibatalkan; periksa kondisi aplikasi.'
             }
-            if ($oldProcess.MainWindowHandle -eq [IntPtr]::Zero) {
-                throw 'Jendela launcher tidak tersedia atau sedang ditutup. Tidak melakukan force-kill.'
-            }
             Write-Host "Meminta shutdown normal PID $($old.ProcessId)..."
             if ($oldProcess.HasExited) { throw 'Launcher sudah keluar sebelum permintaan tutup. Periksa kondisi aplikasi.' }
-            if (-not $oldProcess.CloseMainWindow()) { throw 'Permintaan tutup ditolak. Tidak meluncurkan proses baru.' }
+            # A launcher that hides in the tray ignores the window close button, so ask it to exit
+            # through its signal first. A launcher build without the signal still gets a window close.
+            if (Request-LauncherExit) {
+                Write-Host 'Permintaan keluar dikirim lewat event Local\AgentCoreDesktop.Exit.'
+            }
+            else {
+                # A build without the exit event: a hidden launcher ignores the close button, so the
+                # wait below must fail instead of copying over a locked executable.
+                if ($oldProcess.MainWindowHandle -eq [IntPtr]::Zero) {
+                    throw 'Jendela launcher tidak tersedia atau sedang ditutup. Tidak melakukan force-kill.'
+                }
+                if (-not $oldProcess.CloseMainWindow()) { throw 'Permintaan tutup ditolak. Tidak meluncurkan proses baru.' }
+                Write-Host 'Event exit tidak tersedia; meminta tutup jendela biasa.'
+            }
         }
         finally { $oldProcess.Dispose() }
 
+        # The launcher process itself must exit, not just its children: it keeps Agent Core.exe locked.
+        $oldPid = [int]$old.ProcessId
+        $launcherAlive = {
+            try { return -not ([Diagnostics.Process]::GetProcessById($oldPid)).HasExited }
+            catch [ArgumentException] { return $false }
+        }
         $timer = [Diagnostics.Stopwatch]::StartNew()
         $reportedUnresolved = $false
+        $reportedLauncher = $false
         do {
             $state = Get-RestartState
-            if ($state.Owned.Count -eq 0 -and $state.Unresolved.Count -eq 0) { break }
+            $alive = & $launcherAlive
+            if ($state.Owned.Count -eq 0 -and $state.Unresolved.Count -eq 0 -and -not $alive) { break }
             if ($state.Unresolved.Count -gt 0 -and -not $reportedUnresolved) {
                 Write-Host "Menunggu proses keluar/metadata terbaca: $($state.Unresolved.Detail -join '; ')..."
                 $reportedUnresolved = $true
             }
+            if ($alive -and -not $reportedLauncher) {
+                Write-Host "Menunggu launcher lama PID $oldPid keluar sepenuhnya..."
+                $reportedLauncher = $true
+            }
             if ($timer.Elapsed.TotalSeconds -ge $StopTimeoutSeconds) {
                 $remaining = @($state.Owned | ForEach-Object { "PID $($_.ProcessId) ($($_.Name))" }) +
                     @($state.Unresolved | ForEach-Object { $_.Detail })
+                if ($alive) { $remaining += "launcher PID $oldPid masih berjalan" }
                 throw "Batas tunggu shutdown habis. Proses tersisa/belum pasti: $($remaining -join '; '). Tidak meluncurkan proses baru."
             }
             Start-Sleep -Milliseconds 500
@@ -272,6 +426,7 @@ try {
     }
     Install-PendingLauncher -ProjectRoot $root
     Write-Host 'Membuka Agent Core satu kali...'
+    $launchedAtUtc = [DateTime]::UtcNow
     $started = Start-Process -FilePath $exePath -WorkingDirectory $root -PassThru
     $timer = [Diagnostics.Stopwatch]::StartNew()
     do {
@@ -282,7 +437,7 @@ try {
         if ($state.Unresolved.Count -eq 0 -and $state.Launchers.Count -eq 1 -and [int]$state.Launchers[0].ProcessId -eq $started.Id -and
             $started.MainWindowHandle -ne [IntPtr]::Zero) {
             Write-Host "Satu jendela Agent Core terbuka (PID $($started.Id))." -ForegroundColor Green
-            Write-Host 'Proses native-dump-helper tambahan adalah normal. Kesiapan Core/tunnel belum diuji; lihat status aplikasi.'
+            Write-Host 'Proses native-dump-helper tambahan adalah normal. Tunnel tidak diuji; lihat status aplikasi.'
             break
         }
         if ($timer.Elapsed.TotalSeconds -ge $StartTimeoutSeconds) {
@@ -291,14 +446,36 @@ try {
         }
         Start-Sleep -Milliseconds 500
     } while ($true)
+
+    # Report only. The window is open, so ask whether Core itself answers; whatever the answer, the exit
+    # code and the launched process are left alone. Reading the port from .env is deliberately not done.
+    try {
+        $port = 8765
+        if ($env:AGENT_CORE_PORT -match '^\d{1,5}$' -and [int]$env:AGENT_CORE_PORT -ge 1 -and [int]$env:AGENT_CORE_PORT -le 65535) {
+            $port = [int]$env:AGENT_CORE_PORT
+        }
+        $readiness = Wait-CoreReadiness -Url "http://127.0.0.1:$port/health" `
+            -TimeoutSeconds $ReadinessTimeoutSeconds -LaunchedAtUtc $launchedAtUtc
+        Write-Host $readiness.Line -ForegroundColor $(if ($readiness.State -eq 'siap') { 'Green' } else { 'Yellow' })
+    }
+    catch { Write-Host "Kesiapan: tidak diketahui ($($_.Exception.Message))" -ForegroundColor Yellow }
 }
 catch {
     $exitCode = 1
     Write-Host "GAGAL: $($_.Exception.Message)" -ForegroundColor Red
 }
 finally {
-    if ($null -ne $started) { $started.Dispose() }
-    if ($lockTaken) { $restartMutex.ReleaseMutex() }
-    if ($null -ne $restartMutex) { $restartMutex.Dispose() }
+    try {
+        if ($null -ne $started) { $started.Dispose() }
+        if ($lockTaken) { $restartMutex.ReleaseMutex() }
+        if ($null -ne $restartMutex) { $restartMutex.Dispose() }
+    }
+    catch {
+        $exitCode = 1
+        Write-Host "GAGAL: pembersihan akhir: $($_.Exception.Message)" -ForegroundColor Red
+    }
+    # Always the last line. Invoke-Agent-Core-Restart.ps1 reads it to tell a run that ended from one
+    # that was cut off, so a failure never leaves a receipt without a reason.
+    Write-Host ('Selesai: ' + $(if ($exitCode -eq 0) { 'ok' } else { 'gagal' }))
 }
 exit $exitCode

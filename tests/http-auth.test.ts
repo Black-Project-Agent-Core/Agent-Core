@@ -3,10 +3,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { HttpSecurityPolicy } from '../src/http/security-policy.js';
+import { boundedHealthProbe } from '../src/http/health.js';
 
 const roots: string[] = [];
 const servers: Server[] = [];
@@ -22,6 +23,23 @@ afterEach(async () => {
 });
 
 describe('bridge HTTP authentication', () => {
+  it('keeps liveness and execution available during idle polling when a diagnostic owner stalls', async () => {
+    const dir = await root();
+    const collect = vi.fn(async () => new Promise<Record<string, unknown>>(() => {}));
+    const memory = boundedHealthProbe(collect, { timeoutMs: 30 });
+    const base = await listen(createServer(createHttpHandler({
+      keyStore: new FileKeyStore(path.join(dir, 'data')),
+      mcpHandler: async () => { throw new Error('must not dispatch'); },
+      healthProvider: async () => ({ memory: await memory(), execution: { status: 'available', mode: 'rdc-direct' } }),
+    })));
+    for (let i = 0; i < 4; i++) {
+      const response = await fetch(`${base}/health`, { signal: AbortSignal.timeout(1_000) });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ status: 'ok', execution: { status: 'available' },
+        memory: { status: 'unavailable', issue: 'HEALTH_PROBE_TIMEOUT' } });
+    }
+    expect(collect).toHaveBeenCalledTimes(1);
+  });
   it('serves health without authentication', async () => {
     const dir = await root();
     const base = await listen(createServer(createHttpHandler({

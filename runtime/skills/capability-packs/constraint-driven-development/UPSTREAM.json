@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/addyosmani/agent-skills",
+  "commit": "aeac41d4d005999432bb7312f7ff06383a91d59d",
+  "path": "skills/constraint-driven-development",
+  "skillSha256": "06479d4305f286d23cfb99f5dc85695896785269664e1f6a8d800e3b71e70c10",
+  "license": "MIT",
+  "adapter": "frontmatter, applicability, tool mapping, local reference paths; upstream workflow retained"
+}

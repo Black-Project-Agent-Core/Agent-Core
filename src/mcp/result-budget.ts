@@ -7,6 +7,7 @@ import { writeOwnedFileAtomic } from '../persistence/atomic-file.js';
 import { resolveProjectRoot } from '../portability/paths.js';
 import { redactSensitiveString, redactSensitiveValue } from '../security/redaction.js';
 import { finalizePdfEvidence, PDF_EVIDENCE_BLOCK, type PdfEvidence } from '../rdc/tools/pdf/lib/evidence.js';
+import { finalizeXlsxEvidence, XLSX_EVIDENCE_BLOCK, type XlsxEvidence } from '../rdc/document-projection/xlsx-evidence.js';
 
 const DEFAULT_BUDGET = 256 * 1024;
 const DEFAULT_PREVIEW = 24 * 1024;
@@ -91,6 +92,54 @@ function pdfBlock(evidence: PdfEvidence): ResultContent {
   return { type: 'text', text: JSON.stringify({ pdfEvidence: evidence }) };
 }
 
+function xlsxBlock(evidence: XlsxEvidence): ResultContent {
+  return { type: 'text', text: JSON.stringify({ xlsxEvidence: evidence }) };
+}
+
+/** Invocation-local XLSX delivery. Unmarked/serialized JSON is ordinary text. */
+function budgetXlsxDelivery<T extends BudgetableToolResult>(
+  result: T, index: number, original: XlsxEvidence, budgetBytes: number, previewBytes: number,
+): T {
+  const safe = redactSensitiveValue(result) as BudgetableToolResult;
+  const sanitized = redactSensitiveValue(original) as XlsxEvidence;
+  const body = typeof safe.content[0]?.text === 'string' ? safe.content[0].text : '';
+  const evidence = finalizeXlsxEvidence(sanitized, {
+    deliveredText: body, outputTransformed: JSON.stringify(sanitized) !== JSON.stringify(original),
+  });
+  const base = { ...safe, content: safe.content.filter((_, i) => i !== index) };
+  const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value), 'utf8');
+  const fitEvidence = (output: BudgetableToolResult, source: XlsxEvidence | undefined, transformed: boolean): T => {
+    let available = Math.min(16_384, budgetBytes - size(output));
+    while (source && available > 0) {
+      const bounded = finalizeXlsxEvidence(source, { maxBytes: available, outputTransformed: transformed });
+      if (!bounded) break;
+      const candidate = { ...output, content: [...output.content, xlsxBlock(bounded)] };
+      const overflow = size(candidate) - budgetBytes;
+      if (overflow <= 0) return candidate as T;
+      // JSON inside a text block is escaped a second time: count the envelope.
+      available -= Math.max(1, overflow);
+    }
+    // Optional metadata must never evict an otherwise admissible body.
+    return output as T;
+  };
+  if (size(base) <= budgetBytes) return fitEvidence(base, evidence, false);
+
+  const suffix = '\n\n[Truncated: oversized sensitive-capable tool result was not persisted. Use the tool pagination/range controls.]';
+  const projection = textProjection(base);
+  let textBytes = Math.min(previewBytes, Math.floor(budgetBytes / 2));
+  for (;;) {
+    const output: BudgetableToolResult = {
+      ...base,
+      content: [{ type: 'text', text: boundedPreview(projection, textBytes) + suffix }],
+      structuredContent: undefined,
+      _meta: { ...base._meta, resultBudget: { spilled: false, reason: 'non-persistable-tool', originalBytes: size(safe) } },
+    };
+    if (size(output) <= budgetBytes) return fitEvidence(output, evidence, true);
+    if (textBytes <= 128) return { content: [{ type: 'text', text: '[XLSX output omitted by response byte budget]' }] } as unknown as T;
+    textBytes = Math.max(128, Math.floor(textBytes / 2));
+  }
+}
+
 function preservePdfDelivery<T extends BudgetableToolResult>(
   output: T, delivery: PdfDelivery | undefined, budgetBytes: number, previewBytes: number,
 ): T {
@@ -169,6 +218,14 @@ export async function applyResultBudget<T extends BudgetableToolResult>(
   }
   const budgetBytes = Math.max(16 * 1024, options.budgetChars ?? DEFAULT_BUDGET);
   const previewBytes = Math.max(2 * 1024, Math.min(options.previewChars ?? DEFAULT_PREVIEW, budgetBytes));
+  if (toolName === 'read_file') {
+    const index = result.content.findIndex(item => XLSX_EVIDENCE_BLOCK in item);
+    if (index >= 0) {
+      const marked = result.content[index] as ResultContent & { [XLSX_EVIDENCE_BLOCK]: XlsxEvidence };
+      const evidence = finalizeXlsxEvidence(marked[XLSX_EVIDENCE_BLOCK]);
+      if (evidence) return budgetXlsxDelivery(result, index, evidence, budgetBytes, previewBytes);
+    }
+  }
   const delivery = pdfDelivery(toolName, result);
   const safeResult = redactSensitiveValue(result) as BudgetableToolResult;
   if (delivery) safeResult.content[delivery.index] = pdfBlock(delivery.evidence);

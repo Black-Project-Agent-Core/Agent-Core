@@ -12,6 +12,8 @@ import { ArtifactAuthorization } from './auth/artifact-authorization.js';
 import { CodeIntelligenceService } from './code-intelligence/service.js';
 import { loadConfig, type AppConfig } from './config.js';
 import { createHttpHandler } from './http/app.js';
+import { boundedHealthProbe } from './http/health.js';
+import { createProcessIdentityReader } from './http/process-identity.js';
 import { HttpSecurityPolicy } from './http/security-policy.js';
 import { LearningService } from './learning/service.js';
 import { ExternalControllerLearningService } from './learning/external-controller.js';
@@ -30,7 +32,6 @@ import { preparePortableRuntime } from './portability/runtime-relocation.js';
 import { browserControlService } from './rdc/browser-control/service.js';
 import { OpenBrowserUseTransport, readObuConfiguration } from './rdc/browser-control/open-browser-use.js';
 import { managedBrowserUseRuntime } from './rdc/browser-control/open-browser-use-runtime.js';
-import { browserExtensionBridge } from './rdc/browser-control/extension-bridge.js';
 import { configManager } from './rdc/config-manager.js';
 import { terminalManager } from './rdc/terminal-manager.js';
 import { toolHistory } from './rdc/utils/toolHistory.js';
@@ -246,10 +247,22 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
   }
 
   const workflows = new WorkflowService(config.projectRoot);
+  // Polling is diagnostic only; keep each owner independent and coalesce slow probes.
+  // Captured here, once, so `startedAt` is this process's own start and the dist comparison has a fixed baseline.
+  const processIdentity = createProcessIdentityReader(config.projectRoot);
+  const memoryProbe = boundedHealthProbe(() => memoryService.refreshHealth(), { cacheMs: 0 });
+  const executionProbe = boundedHealthProbe(() => configManager.health(), { cacheMs: 0 });
+  const phoneProbe = phoneController && boundedHealthProbe(() => phoneController.health());
+  const codeProbe = codeIntelligence && boundedHealthProbe(() => codeIntelligence.health());
+  const semanticProbe = semanticIde && boundedHealthProbe(() => semanticIde.health());
+  const learningProbe = learningService && boundedHealthProbe(() => learningService.health());
+  const skillsProbe = skillsService && boundedHealthProbe(() => skillsService.status());
+  const externalProbe = externalControllerLearning && boundedHealthProbe(() => externalControllerLearning.health());
+  let observedSkillCount = 0;
+  const runtimeProbe = agentRuntime && boundedHealthProbe(() => agentRuntime.health(observedSkillCount));
   const server = createServer(createHttpHandler({
     workflows: () => workflows.snapshot(),
     ...(learningService?.hasSkillProposals() ? {proposals: learningService.proposalDocuments()} : {}),
-    browserBridge: browserExtensionBridge,
     keyStore,
     oauthService,
     security,
@@ -258,20 +271,22 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     ...(agentChat ? { agentChat } : {}),
     healthProvider: async () => {
       const [liveMemoryHealth, liveRdcHealth, livePhoneHealth, liveCodeIntelligenceHealth, liveSemanticIdeHealth, liveLearningHealth, liveSkillsHealth, liveExternalControllerHealth] = await Promise.all([
-        memoryService.refreshHealth(),
-        configManager.health(),
-        phoneController ? phoneController.health() : Promise.resolve(undefined),
-        codeIntelligence ? codeIntelligence.health() : Promise.resolve(undefined),
-        semanticIde ? semanticIde.health() : Promise.resolve(undefined),
-        learningService ? learningService.health() : Promise.resolve(undefined),
-        skillsService ? skillsService.status() : Promise.resolve(undefined),
-        externalControllerLearning ? externalControllerLearning.status() : Promise.resolve(undefined),
+        memoryProbe(),
+        executionProbe(),
+        phoneProbe?.(),
+        codeProbe?.(),
+        semanticProbe?.(),
+        learningProbe?.(),
+        skillsProbe?.(),
+        externalProbe?.(),
       ]);
-      const liveAgentRuntimeHealth = agentRuntime
-        ? await agentRuntime.health(liveSkillsHealth?.skillCount ?? 0)
-        : undefined;
+      if (liveSkillsHealth && 'skillCount' in liveSkillsHealth) observedSkillCount = liveSkillsHealth.skillCount;
+      const liveAgentRuntimeHealth = await runtimeProbe?.();
+      const identity = await processIdentity();
       return {
         version: SERVER_VERSION,
+        process: identity.process,
+        build: identity.build,
         bridge: 'rdc-local',
         toolSurface: 'desktop-commander-0.2.50-local',
         memory: liveMemoryHealth,
@@ -342,6 +357,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     ...(agentChat ? { agentChat } : {}),
     close: async () => {
       activityTracker.record('SYSTEM', 'info', 'Agent Core service is closing', 'service-stop');
+      agentChat?.pauseAutomaticRecovery();
       const failures: string[] = [];
       mutationSafety.beginDraining();
       const mutationsDrained = await mutationSafety.waitForDrain(5_000);

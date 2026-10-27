@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { AgentProviderCredentialConfig, AgentRuntimeConfig } from './agent-provider.js';
+import type { AgentProviderContinuationMetadata, AgentProviderCredentialConfig, AgentRuntimeConfig } from './agent-provider.js';
 import { isAgentCapabilityFamily, type AgentCapabilityFamily } from './agent-capability-catalog.js';
 import type { WebResearchConfig } from './web-research/service.js';
 import type { CodeIntelligenceConfig } from './code-intelligence/types.js';
@@ -13,6 +13,8 @@ export type McpProtocolMode = 'dual' | 'legacy';
 export interface HttpSecurityConfig {
   publicBaseUrl: string | null;
   protectedResourceUrl: string | null;
+  /** Extra https MCP resource URLs, selected by request host (for example a Cloudflare Tunnel hostname). */
+  additionalProtectedResourceUrls?: string[];
   trustProxy: boolean;
   allowedOrigins: string[];
 }
@@ -46,6 +48,11 @@ export interface AppConfig {
 const bool = (value: string | undefined, fallback: boolean) => value === undefined
   ? fallback : ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
 const list = (value: string | undefined) => (value ?? '').split(/[;,]/).map(v => v.trim()).filter(Boolean);
+/** Public MCP resource URL for a Cloudflare Tunnel hostname. A pasted scheme or path is tolerated; an invalid value adds nothing, so a typo cannot stop startup. */
+const tunnelResourceUrl = (value: string | undefined) => {
+  const host = (value ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/[/?#].*$/, '');
+  return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(host) ? [`https://${host}/mcp`] : [];
+};
 const numberedCredentials = (
   env: NodeJS.ProcessEnv,
   prefix: string,
@@ -66,6 +73,14 @@ const numberedCredentials = (
 const positiveInt = (value: string | undefined, fallback: number) => {
   const parsed = Number.parseInt(value ?? '', 10);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+// Owner-declared capacity for a pinned model whose /models entry has no limits (gonkarouter lists only the id).
+// Readiness still requires a live tool probe per key; both values are needed or nothing is declared.
+const declaredCapacity = (env: NodeJS.ProcessEnv, prefix: string): { continuation?: AgentProviderContinuationMetadata } => {
+  const contextWindowTokens = positiveInt(env[`${prefix}_CONTEXT_WINDOW_TOKENS`], 0);
+  const maxOutputTokens = positiveInt(env[`${prefix}_MAX_OUTPUT_TOKENS`], 0);
+  return contextWindowTokens && maxOutputTokens ? { continuation: { supportsTools: true, modalities: ['text'],
+    contextWindowTokens, maxOutputTokens, toolCallFormat: 'openai-chat-tool-calls-v1' } } : {};
 };
 const optionalNonNegativeInt = (value: string | undefined): number | undefined => {
   if (value === undefined || value.trim() === '') return undefined;
@@ -143,18 +158,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
       id: 'atria',
       baseUrl: env.ATRIA_BASE_URL?.trim() || null,
       model: env.ATRIA_MODEL?.trim() || null,
+      ...declaredCapacity(env, 'ATRIA'),
       credentials: numberedCredentials(env, 'ATRIA', 'atria'),
     },
     {
       id: 'gonka',
       baseUrl: env.GONKA_BASE_URL?.trim() || null,
       model: env.GONKA_MODEL?.trim() || null,
+      ...declaredCapacity(env, 'GONKA'),
       credentials: numberedCredentials(env, 'GONKA', 'gonka'),
     },
     {
       id: 'openrouter',
       baseUrl: env.OPENROUTER_BASE_URL?.trim() || null,
       model: env.OPENROUTER_MODEL?.trim() || null,
+      ...declaredCapacity(env, 'OPENROUTER'),
       credentials: numberedCredentials(env, 'OPENROUTER', 'openrouter'),
     },
   ].filter(provider => provider.baseUrl || provider.model || provider.credentials.length > 0);
@@ -186,6 +204,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
     httpSecurity: {
       publicBaseUrl: env.AGENT_CORE_PUBLIC_BASE_URL?.trim() || null,
       protectedResourceUrl: (env.AGENT_CORE_OAUTH_PROTECTED_RESOURCE_URL ?? env.AGENT_CORE_PROTECTED_RESOURCE_URL)?.trim() || null,
+      additionalProtectedResourceUrls: [
+        ...list(env.AGENT_CORE_OAUTH_ADDITIONAL_RESOURCE_URLS),
+        ...tunnelResourceUrl(env.CLOUDFLARE_TUNNEL_HOSTNAME),
+      ],
       trustProxy: bool(env.AGENT_CORE_TRUST_PROXY, false),
       allowedOrigins: list(env.AGENT_CORE_MCP_ALLOWED_ORIGINS ?? env.AGENT_CORE_ALLOWED_ORIGINS),
     },
@@ -234,7 +256,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
         ? configuredProviderOrder
         : ['atria', 'gonka', 'openrouter'],
       maxProviderAttempts: positiveInt(env.AGENT_CORE_AI_MAX_PROVIDER_ATTEMPTS, 6),
-      requestTimeoutMs: positiveInt(env.AGENT_CORE_AI_REQUEST_TIMEOUT_MS, 60_000),
+      // Patient on purpose: reasoning models answer non-streaming requests slowly and unevenly (3.5-26.5 s for tiny
+      // outputs on Duanyan), and a timeout counts as a transport failure that feeds the route breaker.
+      requestTimeoutMs: positiveInt(env.AGENT_CORE_AI_REQUEST_TIMEOUT_MS, 180_000),
       maxToolIterations: positiveInt(env.AGENT_CORE_AI_MAX_TOOL_ITERATIONS, 24),
       allowedTools: [...new Set(list(env.AGENT_CORE_AI_ALLOWED_TOOLS))].slice(0, 128),
       capabilityPolicy: capabilityPolicy(env.AGENT_CORE_AI_CAPABILITY_POLICY),

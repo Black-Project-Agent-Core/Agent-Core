@@ -1,0 +1,239 @@
+import { createHash } from 'node:crypto';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AgentChatService } from '../src/agent-chat-service.js';
+import { AgentChatStore } from '../src/agent-chat-store.js';
+import { parseAgentTurnCheckpoint, serializeAgentTurnCheckpoint, type AgentTurnCheckpointState } from '../src/agent-turn-checkpoint.js';
+
+const parent = fileURLToPath(new URL('../runtime/tmp/', import.meta.url));
+const roots: string[] = [];
+afterEach(async () => {
+  vi.restoreAllMocks();
+  for (const root of roots.splice(0)) {
+    if (!path.resolve(root).startsWith(path.resolve(parent) + path.sep)) throw new Error('fixture root escaped');
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function fixture() {
+  await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(path.join(parent, 'native-chat-reliability-'));
+  roots.push(root);
+  const store = new AgentChatStore(path.join(root, 'runtime', 'agent-runtime', 'chat.sqlite'));
+  store.createConversation({ conversationId: 'chat-1', runtimeSessionId: 'session-1', workspace: 'fixture', title: 'Fixture' });
+  const runtime = {
+    ensureActiveSession: vi.fn(), setProviderAffinity: vi.fn(),
+    getTask: vi.fn(async () => ({ id: 'task-1', status: 'running' })),
+    markTerminal: vi.fn(async () => ({})), finalizeTask: vi.fn(async () => ({})),
+  };
+  const result = { sessionId: 'session-1', taskId: 'task-1', response: 'Saved result', status: 'finalized',
+    learningStatus: 'complete', jobVerification: 'pass', iterations: 2, retrievalAttemptIds: [] };
+  const controller = { runConversationTurn: vi.fn(async () => ({ ...result })) };
+  const chat = new (AgentChatService as any)(store, runtime, controller, root) as AgentChatService;
+  return { root, store, runtime, controller, chat, result };
+}
+
+function seed(store: AgentChatStore, overrides: Partial<AgentTurnCheckpointState> = {}) {
+  const now = Date.now();
+  const state: AgentTurnCheckpointState = {
+    schemaVersion: 1, conversationId: 'chat-1', runtimeSessionId: 'session-1',
+    runtimeTaskId: 'task-1', turnId: 'turn-1', prompt: 'Continue fixture', workspace: 'fixture',
+    messages: [{ role: 'user', content: 'Continue fixture' }],
+    nextIteration: 2, maxIterations: 6, providerAttemptsConsumed: 2, maxProviderAttempts: 8,
+    approvedCapabilities: [], historicalGrantedTools: [],
+    toolContractDigest: 'sha256:' + createHash('sha256').update('fixture').digest('hex'),
+    hasStrategy: true, needsStrategy: false, lastStrategyText: 'fixture', currentStrategySummary: 'fixture',
+    failedFingerprints: [], memoryEvidence: [], artifactRefs: [],
+    createdAtMs: now, updatedAtMs: now, expiresAtMs: now + 60_000, ...overrides,
+  };
+  const begun = store.beginTurn({ conversationId: state.conversationId, turnId: state.turnId,
+    clientRequestId: 'request-' + state.turnId, runtimeTaskId: state.runtimeTaskId,
+    userMessageId: 'user-' + state.turnId, prompt: state.prompt, executorToken: 'old-executor' });
+  const serialized = serializeAgentTurnCheckpoint(state);
+  store.saveCheckpoint({ turnId: state.turnId, claim: begun.claim!, expectedRevision: 0,
+    schemaVersion: 1, phase: 'model-ready', payloadJson: serialized.json, payloadDigest: serialized.digest });
+  return state;
+}
+
+describe('Native chat durable response ownership', () => {
+  it('publishes one final only after commit and returns the exact sanitized stored text', async () => {
+    const f = await fixture();
+    f.controller.runConversationTurn.mockImplementation(async (input: any) => {
+      await input.eventSink({ type: 'assistant.final', at: new Date().toISOString(), response: 'provisional' });
+      expect(f.store.detail('chat-1')!.messages.filter(m => m.role === 'assistant')).toHaveLength(0);
+      return { ...f.result, response: '  Saved\u0000 result\n' };
+    });
+    const finals: string[] = [];
+    const result = await f.chat.runTurn({ conversationId: 'chat-1', clientRequestId: 'request-1', prompt: 'Fixture',
+      eventSink: event => {
+        if (event.type !== 'assistant.final') return;
+        expect(f.store.getTurn(event.turnId)?.status).toBe('finalized');
+        expect(f.store.detail('chat-1')!.messages.at(-1)?.content).toBe(event.response);
+        finals.push(event.response!);
+      } });
+    expect(finals).toEqual(['Saved result']);
+    expect(result.response).toBe('Saved result');
+    const replay = await f.chat.runTurn({ conversationId: 'chat-1', clientRequestId: 'request-1', prompt: 'Duplicate' });
+    expect(replay.response).toBe(result.response);
+    expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not publish a final or invent an assistant message when persistence fails', async () => {
+    const f = await fixture();
+    f.controller.runConversationTurn.mockImplementation(async (input: any) => {
+      await input.eventSink({ type: 'assistant.final', at: new Date().toISOString(), response: 'not committed' });
+      return f.result;
+    });
+    vi.spyOn(f.store, 'finalizeTurn').mockImplementation(() => { throw new Error('fixture disk full'); });
+    const events: string[] = [];
+    await expect(f.chat.runTurn({ conversationId: 'chat-1', clientRequestId: 'request-1', prompt: 'Fixture',
+      eventSink: event => { events.push(event.type); } })).rejects.toThrow('fixture disk full');
+    expect(events).not.toContain('assistant.final');
+    expect(f.store.detail('chat-1')!.messages.filter(m => m.role === 'assistant')).toHaveLength(0);
+  });
+
+  describe('user-chosen provider route', () => {
+    const routes = [{ id: 'atria', model: 'Atria-Dawn', configured: true, keyCount: 1, activeKeyCount: 1, breakerState: 'CLOSED' },
+      { id: 'gonka', model: 'DeepSeek-V4-Flash', configured: true, keyCount: 1, activeKeyCount: 0, breakerState: 'OPEN', nextAvailableAt: '2026-10-25T09:00:00.000Z' },
+      { id: 'half', model: null, configured: false, keyCount: 0, issue: 'AGENT_RUNTIME_PROVIDER_CONFIGURATION_INCOMPLETE' }];
+
+    it('lists only what the owner needs to choose a route: id, model and availability', async () => {
+      const f = await fixture();
+      (f.runtime as any).providerHealth = vi.fn(() => ({ configured: true, routes }));
+      expect(f.chat.listProviders()).toEqual([
+        { id: 'atria', model: 'Atria-Dawn', configured: true, available: true },
+        { id: 'gonka', model: 'DeepSeek-V4-Flash', configured: true, available: false, retryAt: '2026-10-25T09:00:00.000Z' },
+        { id: 'half', model: null, configured: false, available: false, issue: 'AGENT_RUNTIME_PROVIDER_CONFIGURATION_INCOMPLETE' },
+      ]);
+    });
+
+    it('passes the chosen route to the controller and keeps automatic rotation when none is chosen', async () => {
+      const f = await fixture();
+      (f.runtime as any).providerHealth = vi.fn(() => ({ configured: true, routes }));
+      await f.chat.runTurn({ conversationId: 'chat-1', clientRequestId: 'request-pin', prompt: 'Fixture', providerRoute: 'atria' });
+      expect((f.controller.runConversationTurn.mock.calls[0] as any[])[0]).toMatchObject({ providerRoute: 'atria' });
+      await f.chat.runTurn({ conversationId: 'chat-1', clientRequestId: 'request-auto', prompt: 'Fixture' });
+      expect((f.controller.runConversationTurn.mock.calls[1] as any[])[0]).not.toHaveProperty('providerRoute');
+    });
+
+    it('rejects an unknown or unconfigured route before a turn is stored', async () => {
+      const f = await fixture();
+      (f.runtime as any).providerHealth = vi.fn(() => ({ configured: true, routes }));
+      for (const providerRoute of ['nowhere', 'half']) {
+        await expect(f.chat.runTurn({ conversationId: 'chat-1', clientRequestId: 'request-' + providerRoute, prompt: 'Fixture', providerRoute }))
+          .rejects.toThrow('AGENT_CHAT_PROVIDER_ROUTE_UNKNOWN');
+      }
+      expect(f.controller.runConversationTurn).not.toHaveBeenCalled();
+      expect(f.store.detail('chat-1')!.messages).toHaveLength(0);
+    });
+  });
+
+  it('keeps the chosen route in the durable checkpoint so a resumed turn stays on it', async () => {
+    const state = seed((await fixture()).store, { providerRoute: 'atria' });
+    const serialized = serializeAgentTurnCheckpoint(state);
+    expect(parseAgentTurnCheckpoint(serialized.json, serialized.digest).providerRoute).toBe('atria');
+  });
+
+  it('finishes after observer disconnection, including operator command progress', async () => {
+    const f = await fixture();
+    const operator = { isOperatorCommand: () => true, operatorCommand: async () => 'Operator result' };
+    const chat = new (AgentChatService as any)(f.store, f.runtime, f.controller, f.root, operator) as AgentChatService;
+    const result = await chat.runTurn({ conversationId: 'chat-1', clientRequestId: 'operator-1', prompt: '/fixture',
+      eventSink: () => { throw new Error('UI disconnected'); } });
+    expect(result.response).toBe('Operator result');
+    expect(f.store.detail('chat-1')!.turns[0]?.status).toBe('finalized');
+    expect(f.controller.runConversationTurn).not.toHaveBeenCalled();
+  });
+
+  it('does not turn a persisted response into a failed task when notice attribution is unavailable', async () => {
+    const f = await fixture();
+    Object.assign(f.runtime, { recordNativeSkillNoticeInclusion: async () => { throw new Error('receipt unavailable'); } });
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const result = await f.chat.runTurn({ conversationId: 'chat-1', clientRequestId: 'request-1', prompt: 'Fixture' });
+    expect(result.status).toBe('finalized');
+    expect(diagnostic).toHaveBeenCalledWith('AGENT_CHAT_NOTICE_RECEIPT_FAILED:receipt-unavailable');
+    expect(f.store.getTurn(result.turnId)?.status).toBe('finalized');
+  });
+});
+
+describe('Native startup checkpoint recovery', () => {
+  it('continues the same safe turn with consumed budgets and publishes a single committed result', async () => {
+    const f = await fixture();
+    const state = seed(f.store);
+    f.controller.runConversationTurn.mockImplementation(async (input: any) => {
+      expect(input.continuation.state.runtimeTaskId).toBe(state.runtimeTaskId);
+      expect(input.continuation.state.providerAttemptsConsumed).toBe(2);
+      expect(input.continuation.state.nextIteration).toBe(2);
+      return f.result;
+    });
+    const chat = await AgentChatService.initialize(f.root, f.runtime as any, f.controller as any);
+    await vi.waitFor(() => expect(chat.store.getTurn('turn-1')?.status).toBe('finalized'));
+    expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(1);
+    expect(chat.getConversation('chat-1')!.messages.filter(m => m.role === 'assistant')).toHaveLength(1);
+    const replay = await chat.runTurn({ conversationId: 'chat-1', clientRequestId: 'request-turn-1', prompt: 'Duplicate' });
+    expect(replay.replayed).toBe(true);
+    expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an uncertain mutating dispatch paused with a durable reason and does not retry it on the next startup', async () => {
+    const f = await fixture();
+    seed(f.store, { pendingTool: { callId: 'write-1', name: 'write_file', arguments: '{}',
+      invocationId: 'write-1', mutating: true, phase: 'dispatching' } });
+    const chat = await AgentChatService.initialize(f.root, f.runtime as any, f.controller as any);
+    await vi.waitFor(() => expect(chat.store.getTurn('turn-1')?.errorCode).toBe('AGENT_CHAT_RESUME_SIDE_EFFECT_RESULT_UNAVAILABLE'));
+    expect(chat.store.getTurn('turn-1')?.status).toBe('resumable');
+    const revision = chat.store.getCheckpoint('turn-1')!.revision;
+    await AgentChatService.initialize(f.root, f.runtime as any, f.controller as any);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(chat.store.getCheckpoint('turn-1')!.revision).toBe(revision);
+    expect(f.controller.runConversationTurn).not.toHaveBeenCalled();
+    // A resumable turn still owns its task: the startup sweep must leave it running for a later resume.
+    expect(f.runtime.markTerminal).not.toHaveBeenCalled();
+  });
+
+  it('leaves cancelled turns stopped and refuses stale recovery annotations', async () => {
+    const f = await fixture();
+    seed(f.store);
+    f.store.cancelTurn('turn-1');
+    const chat = await AgentChatService.initialize(f.root, f.runtime as any, f.controller as any);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    chat.store.noteResumeIssue('turn-1', 1, 'stale reason');
+    expect(chat.store.getTurn('turn-1')?.status).toBe('stopped');
+    expect(chat.store.getTurn('turn-1')?.errorCode).toBe('AGENT_RUNTIME_TURN_STOPPED');
+    expect(f.controller.runConversationTurn).not.toHaveBeenCalled();
+    // A stopped turn can never resume, so the startup sweep ends the task it left running, once, through the runtime owner.
+    expect(f.runtime.markTerminal).toHaveBeenCalledTimes(1);
+    expect(f.runtime.markTerminal).toHaveBeenCalledWith({ taskId: 'task-1', outcome: 'failed', reason: 'task-complete' });
+    expect(f.runtime.finalizeTask).toHaveBeenCalledWith({ taskId: 'task-1', disposition: 'awaiting-verification' });
+  });
+
+  it('ignores ended turns that carry no runtime task id when sweeping for orphaned tasks', async () => {
+    const f = await fixture();
+    f.store.beginTurn({ conversationId: 'chat-1', turnId: 'blank-turn', clientRequestId: 'blank-request',
+      runtimeTaskId: '', userMessageId: 'blank-user', prompt: 'No task was ever recorded.' });
+    f.store.cancelTurn('blank-turn');
+    expect(f.store.listEndedTurnTasks().map(item => item.turnId)).not.toContain('blank-turn');
+    await AgentChatService.initialize(f.root, f.runtime as any, f.controller as any);
+    expect(f.runtime.getTask).not.toHaveBeenCalledWith('');
+  });
+
+  it('commits a recovered work result with failed Learning without rerunning the model', async () => {
+    const f = await fixture();
+    const modelIdentity = { observedCalls: 2, identities: [{ providerId: 'fixture', model: 'resolved-fixture' }] };
+    seed(f.store, { finalResult: { response: 'Work complete; Learning unavailable', learningStatus: 'failed',
+      jobVerification: 'pass', iterations: 2, retrievalAttemptIds: [], modelIdentity } });
+    f.store.recoverRunningTurns();
+    f.runtime.getTask.mockResolvedValue({ id: 'task-1', status: 'finalization-failed', modelIdentity } as any);
+    const events: string[] = [];
+    const result = await f.chat.resumeTurn({ turnId: 'turn-1', eventSink: event => { events.push(event.type); } });
+    expect(result.learningStatus).toBe('failed');
+    expect(result.jobVerification).toBe('pass');
+    expect(result.status).toBe('finalized');
+    expect(result.modelIdentity).toEqual(modelIdentity);
+    expect(f.store.getTurn('turn-1')?.modelIdentity).toEqual(modelIdentity);
+    expect(events).toEqual(['assistant.final']);
+    expect(f.controller.runConversationTurn).not.toHaveBeenCalled();
+  });
+});

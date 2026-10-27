@@ -1,3 +1,6 @@
+import type { AgentMemoryUse } from './agent-memory-use.js';
+import type { AgentProviderRoutingEvent } from './agent-provider.js';
+
 export type AgentTurnEventType =
   | 'turn.accepted'
   | 'memory.recall.started'
@@ -10,9 +13,21 @@ export type AgentTurnEventType =
   | 'learning.finalization.started'
   | 'learning.finalization.completed'
   | 'provider.route.changed'
+  | 'provider.route.decision'
+  | 'provider.waiting'
   | 'assistant.final'
   | 'turn.failed'
   | 'turn.cancelled';
+
+/**
+ * Secret-free routing evidence for one provider/key decision. totalAttempts spans every
+ * attempt window of the turn; the pool's own attempt/attemptLimit describe the window.
+ */
+export type AgentTurnRoutingEvidence = AgentProviderRoutingEvent & {
+  taskId: string;
+  totalAttempts: number;
+  maxTotalAttempts: number;
+};
 
 export interface AgentTurnEvent {
   type: AgentTurnEventType;
@@ -23,7 +38,11 @@ export interface AgentTurnEvent {
   providerId?: string;
   model?: string;
   response?: string;
+  memoryUse?: AgentMemoryUse[];
+  modelIdentity?: import('./agent-memory-evaluation.js').NativeMemoryResultMetadata['modelIdentity'];
   code?: string;
+  retryAtMs?: number | null;
+  routing?: AgentTurnRoutingEvidence;
 }
 export type AgentTurnEventSink = (event: AgentTurnEvent) => void | Promise<void>;
 

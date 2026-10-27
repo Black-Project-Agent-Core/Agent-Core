@@ -82,6 +82,14 @@ function configIntent(text: string): boolean {
   return /\b(set config|change config|configuration|setting|environment setting|ubah konfigurasi|ubah setting|setelan)\b/i.test(text);
 }
 
+function memoryWriteIntent(text: string): boolean {
+  return /\b(remember|memorize|save (?:a )?(?:memory|lesson|knowledge)|record (?:a )?(?:memory|lesson)|learn from|ingat|simpan|catat|pelajari|rekam pembelajaran)\b/i.test(text);
+}
+
+function artifactInspectIntent(text: string): boolean {
+  return /\b(inspect|analy[sz]e|audit|examine|reverse.engineer|periksa|analisis|inspeksi|analisa|audit artefak)\b/i.test(text);
+}
+
 function webIntent(text: string): boolean {
   return /\b(web|internet|online|website|site|url|search the web|latest|current|research|browser|cari web|internet|situs|terbaru|riset|browser)\b/i.test(text);
 }
@@ -93,8 +101,8 @@ function phoneActIntent(text: string): boolean {
 export function inferUserRiskCeiling(prompt: string): AgentCapabilityRisk {
   const text = prompt.trim();
   if (configIntent(text)) return 4;
-  if (processAdminIntent(text) || browserActIntent(text) || phoneActIntent(text)) return 3;
-  if (mutationIntent(text) || processIntent(text)) return 2;
+  if (processAdminIntent(text) || browserActIntent(text) || phoneActIntent(text) || memoryWriteIntent(text)) return 3;
+  if (mutationIntent(text) || processIntent(text) || artifactInspectIntent(text)) return 2;
   if (webIntent(text)) return 1;
   return 0;
 }
@@ -125,6 +133,8 @@ function familyAllowedByIntent(
   const risk = capabilityRisk(family);
   if (risk <= 1) return risk <= riskCeiling || risk === 0;
   if (risk > riskCeiling) return false;
+  if (family === 'memory.write') return memoryWriteIntent(userPrompt);
+  if (family === 'artifact.inspect') return artifactInspectIntent(userPrompt);
   if (family === 'files.mutate' || family === 'code.modify') return mutationIntent(userPrompt);
   if (family === 'process.execute') return processIntent(userPrompt);
   if (family === 'process.admin') return processAdminIntent(userPrompt);
@@ -146,7 +156,7 @@ export class AgentCapabilityResolver {
     this.familyCeiling = families.length ? new Set(families) : null;
   }
 
-  initialGrant(availableTools: string[]): AgentCapabilityResolution {
+  initialGrant(availableTools: string[], userPrompt = ''): AgentCapabilityResolution {
     const available = new Set(availableTools);
     if (this.mode === 'explicit') {
       const tools = this.toolCeiling
@@ -159,6 +169,25 @@ export class AgentCapabilityResolver {
         tools,
         restrictions: {},
         riskCeiling: 0,
+      };
+    }
+
+    if (this.mode === 'dynamic') {
+      // Creator-delegated Native has the same currently registered MCP surface
+      // at task start. Catalog families are discovery metadata, not a second
+      // authorization gate. A nonempty explicit tool ceiling still applies.
+      const tools = availableTools.filter(tool => !this.toolCeiling || this.toolCeiling.has(tool));
+      const accessible = new Set(tools);
+      const families = AGENT_CAPABILITY_CATALOG
+        .filter(item => item.tools.some(tool => accessible.has(tool.name)))
+        .map(item => item.family);
+      return {
+        requestedFamilies: families,
+        approvedFamilies: families,
+        denied: [],
+        tools,
+        restrictions: {},
+        riskCeiling: 4,
       };
     }
 
@@ -186,6 +215,13 @@ export class AgentCapabilityResolver {
     };
   }
   resolve(input: AgentCapabilityRequest): AgentCapabilityResolution {
+    if (this.mode === 'dynamic') {
+      // Dynamic describes the discovered runtime surface, not a model-selected
+      // permission gate. The creator's configured tool ceiling and each
+      // underlying tool's own admission contract remain authoritative.
+      return { ...this.initialGrant(input.availableTools, input.userPrompt),
+        requestedFamilies: unique(input.requestedFamilies.filter(isAgentCapabilityFamily)) };
+    }
     const available = new Set(input.availableTools);
     const current = unique((input.currentFamilies ?? []).filter(isAgentCapabilityFamily));
     const requested = unique(input.requestedFamilies.filter(isAgentCapabilityFamily));

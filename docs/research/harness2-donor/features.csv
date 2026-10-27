@@ -1,0 +1,30 @@
+feature,area,priority,original,clone,notes
+Propose-Probe-Compose on the same task (k candidate harnesses executed then composed from contrasts),recursion,could,yes,no,not donated for production: re-executes real tasks with side effects and its gate is structural only
+Parallel (width) and sequential (depth) recursion modes,recursion,could,yes,no,research only
+Validate every proposal structurally before probing (always-on cap, skill triggers, script references),validation,should,yes,partial,SkillService checks file hygiene and digest only (src/skills/service.ts:208-249)
+Retry with the verbatim rejection then fall back to the inherited state,validation,should,yes,partial,Native returns validation errors to the model; skill and procedure admission throws to the caller
+No-op or keep-base is a valid proposal,validation,should,yes,yes,improvement handoff allows no proposal; disposition no-new-knowledge
+Persistent improvement library of adopted changes and lessons,library,must,yes,partial,Memory + Learning + procedures exist; no per-task snapshot of an adopted configuration
+Lesson admission requires cue + lesson + evidence,library,must,yes,yes,candidate evidenceRefs and verified flag; procedure contract cases
+Confound-aware per-edit attribution (helped/hurt/no effect/confounded),evidence,should,yes,partial,assessment.attribution is supported or unknown only; no per-component verdict
+A lesson resting only on confounded evidence is treated as a guess,evidence,should,yes,partial,effectEvidence not-exercised stays proposal-only; multi-change confounding not stated
+Budget identity ledger (counts match and duplicate labels checked first),evidence,should,yes,no,external-evaluation.ts compares declared metadata and coverage; no per-arm effort parity (HG-1)
+Leak guards: answer-key paths and grader verdicts never reach model context,evidence,should,yes,yes,evaluation tool targets are limited to the input and answer path (src/agent-controller.ts:672-683) and the oracle is digest-checked; no content scan is needed while the oracle is unreadable
+Digest or fingerprint verified resume,resilience,must,yes,yes,turn checkpoint integrity digest; digest-bound skill reads
+Atomic state writes and completion markers,resilience,should,yes,yes,writeStateFile is atomic and Windows-safe
+Content-addressed cache of improver calls,resilience,could,yes,no,not needed: no repeated improver runs
+Blind seeded-shuffle selection with an adoption map,selection,could,yes,no,Harness2 has no abstention; not wanted
+Noise-floor warnings (k=1) and ungraded rows excluded from the score,reporting,could,yes,partial,minimumSamples and benefitVerdict withheld
+Eight editable components model (prompt guardrails memory tool-guidance subagents skills scripts plugins),surface,should,yes,partial,all exist under separate owners; no unified inventory
+Lever cost order and a cap on always-on text,surface,should,yes,no,AGENTS.md is 78.1 KB and one contract read returns 78.5k characters; Harness2 caps are 24k and 8k
+On-demand skills with trigger lines as the default form for new instruction,surface,must,yes,yes,SkillService progressive read and the capability index
+Scripts as first-class harness components,surface,could,yes,partial,procedures and bundled skill scripts; no script catalog
+Subagents as a harness component,surface,could,yes,partial,external partner Raka only; Native has none
+In-loop plugins or hooks (trim noisy output; hint after a repeated error),surface,could,yes,partial,result budget and the PRIOR EXPERIENCE failure capsule exist
+Executor abstraction (OpenCode and Codex),substrate,could,yes,skip,Agent Core is the executor; the provider pool already owns routing
+Benchmark adapters (JobBench LAB WorkBuddy),substrate,could,yes,skip,external datasets with Docker and Linux requirements
+Concurrency and per-domain scheduling,substrate,could,yes,partial,credential scheduler and provider pool; single-owner use
+Independent oracle gate on verification claims,evidence,must,no,yes,Agent Core strength: Harness2 has no ground truth at task time
+Tool grants and task-scoped permissions,safety,must,no,yes,Agent Core strength: Harness2 executors run unsandboxed with open network
+Secret and unsafe-text scanning before persistence,safety,must,no,yes,Agent Core strength: Harness2 has no redaction
+Native Windows operation,platform,should,no,yes,Agent Core strength: Harness2 uses POSIX-only locking

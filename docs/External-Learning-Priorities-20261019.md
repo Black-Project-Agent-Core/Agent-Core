@@ -2,7 +2,7 @@
 
 Status: source, build, aktivasi resident dan operasi UI Refresh tools selesai;
 batas descriptor cache dicatat di bawah. Permintaan menyetujui urutan
-P08 → P01 → P02, owner existing, Native frozen serta proposal Markdown/card.
+P08 → P01 → P02, owner existing, Native tersedia untuk pengembangan dan operasi, serta proposal Markdown/card.
 P03–P07 tetap usulan.
 
 ## Perubahan dan owner
@@ -60,7 +60,7 @@ fungsional membuktikan kontrak yang diuji saja.
   berhasil. SDK sistem tidak tersedia; recovery memakai SDK lokal existing
   `runtime/dotnet-sdk`, tanpa instalasi. Release intent minor ditambahkan;
   release apply/version bump/commit/push/publish tidak dijalankan.
-- Native freeze **31 wholefiles/78 shared sections PASS**, path policy **450
+- Historical governance check **31 wholefiles/78 shared sections PASS**, path policy **450
   authored files/0 exceptions PASS**, release-intent check `ok=true`. Baseline
   Native tidak diubah.
 - Restart resmi pertama `95613e38cb8e4d6896c38ee13719486b`, exit 0. Pending launcher

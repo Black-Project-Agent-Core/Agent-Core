@@ -10,6 +10,8 @@ const methods = {
  memory_task_start:'startEpisode',memory_event_append:'appendEvent',memory_task_context:'getTaskContext',memory_ingestion_cursor:'getIngestionCursor',memory_checkpoint:'checkpoint',
  memory_consolidation_preview:'prepareConsolidation',memory_consolidation_apply:'applyConsolidation',memory_retention_set:'setRetention',memory_episode_status:'setEpisodeStatus',
  memory_claim_review_read:'readClaimReview',memory_claim_review_write:'writeClaimReview',
+ memory_recall_repair_read:'readRecallRepair',memory_recall_repair_write:'writeRecallRepair',
+ memory_derivation_read:'readDerivation',memory_derivation_write:'writeDerivation',
 } as const;
 export type ControllerMemoryMethod = keyof typeof methods;
 type SessionMethod<M extends ControllerMemoryMethod> = typeof methods[M];

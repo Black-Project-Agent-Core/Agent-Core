@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -11,8 +13,11 @@ public sealed class AgentCoreRuntime : IDisposable
 {
     private const int CorePort = 8765;
     private const int TunnelPort = 8787;
+    private const int PublicGatewayPort = 8788;
     private static readonly TimeSpan CoreColdStartTimeout = TimeSpan.FromSeconds(180);
     private static readonly TimeSpan TunnelStartTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan PublicGatewayStartTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan WatchdogInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan StatusProbeGrace = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ProcessSnapshotProbeTimeout = TimeSpan.FromSeconds(2);
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
@@ -28,13 +33,15 @@ public sealed class AgentCoreRuntime : IDisposable
     private TimeSpan _lastCpuTotal;
     private DateTimeOffset _lastCpuAt;
     private string? _lastHealthyCoreJson;
-    private DateTimeOffset _lastHealthyCoreAt;
-    private DateTimeOffset _lastTunnelReadyAt;
-    private DateTimeOffset _lastExecutionAvailableAt;
-    private DateTimeOffset _lastGameModeOnAt;
+    private readonly PassiveStatusGrace _coreStatusGrace = new();
+    private readonly PassiveStatusGrace _tunnelStatusGrace = new();
+    private readonly PassiveStatusGrace _executionStatusGrace = new();
+    private readonly PassiveStatusGrace _gameModeStatusGrace = new();
     private DateTimeOffset _lastProcessSnapshotWarningAt;
     private bool _shutdownCompleted;
     private bool _shutdownRequested;
+    private bool _coreStoppedByUser;
+    private readonly CancellationTokenSource _watchdogCancellation = new();
     private bool _disposed;
 
     public AgentCoreRuntime(string root)
@@ -54,6 +61,8 @@ public sealed class AgentCoreRuntime : IDisposable
     public event Action<ActivityEntry>? LogAdded;
 
     public IReadOnlyList<ActivityEntry> Logs => _journal.ReadRecent(200, _visibleAfter);
+    public ActivityDetailPage GetActivityDetail(string invocationId, string phase, int offset)
+        => _journal.ReadDetail(invocationId, phase, offset, _visibleAfter);
 
     public async Task InitializeAsync()
     {
@@ -65,13 +74,16 @@ public sealed class AgentCoreRuntime : IDisposable
             // Tunnel performs OAuth discovery at startup and retains a failed result.
             // Keep the cold-start allowance, but start discovery only after Core is ready.
             await EnsureCoreAsync();
+            await EnsurePublicGatewayAsync();
             await EnsureTunnelAsync();
 
             AddLog(
                 "CONNECTION",
                 "success",
-                "Agent Core HTTP endpoint and tunnel are reachable; Execution readiness is reported by /health");
+                "Agent Core HTTP endpoint, public MCP gateway and tunnel are reachable; Execution readiness is reported by /health");
         });
+        // Started only after a successful bring-up, so a failed startup is reported instead of retried silently.
+        _ = Task.Run(() => WatchdogLoopAsync(_watchdogCancellation.Token));
         // Fixed fixture setup is fail-soft and runs after ordinary services start.
         await SymlinkFixtureSetup.EnsureAsync(Root, (level, message) => AddLog("FIXTURE", level, message));
     }
@@ -164,6 +176,33 @@ public sealed class AgentCoreRuntime : IDisposable
         return document.RootElement.Clone();
     }
 
+    /// <summary>Read-only actual-changes report for one task; the only input is a validated task id.</summary>
+    public async Task<JsonElement> GetTaskChangesAsync(string taskId)
+    {
+        const int maxBytes = 2 * 1024 * 1024;
+        if (!System.Text.RegularExpressions.Regex.IsMatch(taskId, @"^[A-Za-z0-9._:-]{1,200}$"))
+            throw new InvalidOperationException("TASK_CHANGES_INPUT_INVALID");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(22));
+        using var request = CreateAgentChatRequest(HttpMethod.Get, "/agent/task-changes?taskId=" + Uri.EscapeDataString(taskId));
+        using var response = await _agentHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"TASK_CHANGES_UNAVAILABLE ({(int)response.StatusCode})");
+        if (response.Content.Headers.ContentLength > maxBytes)
+            throw new InvalidOperationException("TASK_CHANGES_SIZE_LIMIT");
+        await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[65536];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, timeout.Token)) > 0)
+        {
+            if (buffer.Length + read > maxBytes) throw new InvalidOperationException("TASK_CHANGES_SIZE_LIMIT");
+            buffer.Write(chunk, 0, read);
+        }
+        buffer.Position = 0;
+        using var document = await JsonDocument.ParseAsync(buffer, cancellationToken: timeout.Token);
+        return document.RootElement.Clone();
+    }
+
     public Task<JsonElement> GetProposalDocumentsAsync() => ReadProposalJsonAsync("/agent/proposals");
 
     public Task<JsonElement> ReadProposalDocumentAsync(string id, string revisionDigest, string documentDigest)
@@ -207,6 +246,12 @@ public sealed class AgentCoreRuntime : IDisposable
         return await SendAgentChatJsonAsync(request);
     }
 
+    public async Task<JsonElement> ListAgentProvidersAsync()
+    {
+        using var request = CreateAgentChatRequest(HttpMethod.Get, "/agent/chat/providers");
+        return await SendAgentChatJsonAsync(request);
+    }
+
     public async Task<JsonElement> CreateAgentConversationAsync(string? workspace = null)
     {
         using var request = CreateAgentChatRequest(HttpMethod.Post, "/agent/chat/conversations");
@@ -229,12 +274,16 @@ public sealed class AgentCoreRuntime : IDisposable
         string clientRequestId,
         string prompt,
         Action<JsonElement> onEnvelope,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? providerId = null)
     {
         var id = Uri.EscapeDataString(conversationId);
         using var request = CreateAgentChatRequest(HttpMethod.Post, $"/agent/chat/conversations/{id}/turns");
+        // providerId is a route chosen in the UI; omitted or "auto" keeps automatic rotation on the Core side.
+        var payload = new Dictionary<string, object?> { ["clientRequestId"] = clientRequestId, ["prompt"] = prompt.Trim() };
+        if (!string.IsNullOrWhiteSpace(providerId)) payload["providerId"] = providerId.Trim();
         request.Content = new StringContent(
-            JsonSerializer.Serialize(new { clientRequestId, prompt = prompt.Trim() }),
+            JsonSerializer.Serialize(payload),
             Encoding.UTF8,
             "application/json");
         using var response = await _agentHttp.SendAsync(
@@ -360,11 +409,15 @@ public sealed class AgentCoreRuntime : IDisposable
             case "open-runtime-folder": OpenPath(Path.Combine(Root, "runtime")); break;
             case "open-memory-folder": OpenPath(Path.Combine(Root, "runtime", "memory")); break;
             case "open-logs": OpenPath(Path.Combine(Root, "runtime", "tracker")); break;
-            case "start-core": await EnsureCoreAsync(); break;
-            case "stop-core": await StopCoreProcessesAsync(); AddLog("SYSTEM", "warn", "Agent Core stopped from the desktop UI"); break;
-            case "restart-core": await RestartCoreAsync(); break;
+            case "start-core": _coreStoppedByUser = false; await EnsureCoreAsync(); break;
+            case "stop-core":
+                _coreStoppedByUser = true;
+                await StopCoreProcessesAsync();
+                AddLog("SYSTEM", "warn", "Agent Core stopped from the desktop UI; watchdog will not restart it until started again");
+                break;
+            case "restart-core": _coreStoppedByUser = false; await RestartCoreAsync(); break;
             case "restart-tunnel": await RestartTunnelAsync(); break;
-            case "restart-all": await RestartAllAsync(); break;
+            case "restart-all": _coreStoppedByUser = false; await RestartAllAsync(); break;
             case "view-process-details":
                 var processSnapshot = await GetSnapshotAsync();
                 AddLog("SYSTEM", "info", $"Core PID {processSnapshot.Core.Pid?.ToString() ?? "—"} | {processSnapshot.Core.WorkingSetBytes.GetValueOrDefault() / 1024 / 1024} MB | port {CorePort}", "process-details");
@@ -394,6 +447,8 @@ public sealed class AgentCoreRuntime : IDisposable
     public async Task ShutdownAsync()
     {
         _shutdownRequested = true;
+        _watchdogCancellation.Cancel();
+        ResetStatusGrace();
         await _shutdownGate.WaitAsync();
         try
         {
@@ -403,6 +458,8 @@ public sealed class AgentCoreRuntime : IDisposable
             var issues = new List<string>();
             var coreEntry = Path.Combine(Root, "dist", "index.js");
             var tunnelExecutable = Path.Combine(Root, "tunnel-client", "tunnel-client.exe");
+            var nodeExecutable = Path.Combine(Root, "runtime", "node", "node.exe");
+            var publicGatewayEntry = Path.Combine(Root, "scripts", "tunnel", "public-mcp-gateway.mjs");
 
             try
             {
@@ -459,6 +516,16 @@ public sealed class AgentCoreRuntime : IDisposable
                 CaptureFailure("TUNNEL", error, "launcher-close-tunnel-stop");
             }
 
+            try
+            {
+                await StopServiceProcessesAsync(PublicGatewayPort, nodeExecutable, publicGatewayEntry);
+            }
+            catch (Exception error)
+            {
+                issues.Add("gateway-stop");
+                CaptureFailure("GATEWAY", error, "launcher-close-gateway-stop");
+            }
+
             IReadOnlyList<OwnedProcessInfo> residual = [];
             for (var attempt = 0; attempt < 3; attempt += 1)
             {
@@ -509,6 +576,34 @@ public sealed class AgentCoreRuntime : IDisposable
         finally
         {
             _shutdownGate.Release();
+        }
+    }
+
+    // Detects a dead Core or public gateway and starts it again, under the same lifecycle lock as user actions.
+    private async Task WatchdogLoopAsync(CancellationToken token)
+    {
+        while (!_shutdownRequested)
+        {
+            try { await Task.Delay(WatchdogInterval, token); }
+            catch (OperationCanceledException) { return; }
+            try
+            {
+                await RunLifecycleAsync(async () =>
+                {
+                    if (!_coreStoppedByUser && !await IsCoreReadyAsync())
+                    {
+                        AddLog("WATCHDOG", "warn", "Agent Core is not responding; starting it again", "watchdog-core-restart");
+                        await EnsureCoreAsync();
+                    }
+                    if (!await IsPublicGatewayReadyAsync())
+                    {
+                        AddLog("WATCHDOG", "warn", $"Public MCP gateway is not listening on {PublicGatewayPort}; starting it again", "watchdog-gateway-restart");
+                        await EnsurePublicGatewayAsync();
+                    }
+                });
+            }
+            catch (OperationCanceledException) when (_shutdownRequested) { return; }
+            catch (Exception error) { CaptureFailure("WATCHDOG", error, "watchdog-restart-failed"); }
         }
     }
 
@@ -567,6 +662,29 @@ public sealed class AgentCoreRuntime : IDisposable
             throw new InvalidOperationException(
                 $"Tunnel did not become ready within {TunnelStartTimeout.TotalSeconds:0} seconds.");
         AddLog("TUNNEL", "success", "Secure tunnel is ready");
+    }
+
+    // The public Cloudflare VPC service reaches this loopback gateway, which forwards only MCP and OAuth routes to Core.
+    private async Task EnsurePublicGatewayAsync()
+    {
+        ThrowIfShutdownRequested();
+        var node = Path.Combine(Root, "runtime", "node", "node.exe");
+        var script = Path.Combine(Root, "scripts", "tunnel", "public-mcp-gateway.mjs");
+        if (!File.Exists(node)) throw new FileNotFoundException("Bundled Node runtime is missing.", node);
+        if (!File.Exists(script)) throw new FileNotFoundException("Public MCP gateway script is missing.", script);
+        var owner = await GetPortProcessInfoAsync(PublicGatewayPort);
+        if (owner is not null && !IsOwnedService(owner, node, script))
+            throw new InvalidOperationException($"Port {PublicGatewayPort} is already owned by a different process (PID {owner.ProcessId}).");
+        if (await IsPublicGatewayReadyAsync()) return;
+
+        // A stale gateway from an earlier launcher or manual start is replaced by this launcher's owned child.
+        await StopServiceProcessesAsync(PublicGatewayPort, node, script);
+        ThrowIfShutdownRequested();
+        StartHidden(node, [script], Root, "GATEWAY");
+        if (!await WaitForStartupAsync(IsPublicGatewayReadyAsync, PublicGatewayStartTimeout))
+            throw new InvalidOperationException(
+                $"Public MCP gateway did not listen on {PublicGatewayPort} within {PublicGatewayStartTimeout.TotalSeconds:0} seconds.");
+        AddLog("GATEWAY", "success", $"Public MCP gateway is listening on internal port {PublicGatewayPort}");
     }
 
     private async Task RestartCoreAsync()
@@ -645,6 +763,21 @@ public sealed class AgentCoreRuntime : IDisposable
 
     private async Task<bool> IsCoreReadyAsync() => await TryGetStringAsync($"http://127.0.0.1:{CorePort}/health") is not null;
 
+    // A loopback TCP connect proves the owned gateway listens without sending an HTTP request into Core's journal.
+    private static async Task<bool> IsPublicGatewayReadyAsync()
+    {
+        using var client = new TcpClient();
+        try
+        {
+            await client.ConnectAsync(IPAddress.Loopback, PublicGatewayPort).WaitAsync(TimeSpan.FromSeconds(2));
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private async Task<bool> IsTunnelEndpointReadyAsync()
     {
         try
@@ -666,12 +799,8 @@ public sealed class AgentCoreRuntime : IDisposable
 
     private async Task<bool> IsTunnelReadyForStatusAsync()
     {
-        if (await IsTunnelEndpointReadyAsync())
-        {
-            _lastTunnelReadyAt = DateTimeOffset.UtcNow;
-            return true;
-        }
-        return _lastTunnelReadyAt != default && DateTimeOffset.UtcNow - _lastTunnelReadyAt <= StatusProbeGrace;
+        var ready = await IsTunnelEndpointReadyAsync();
+        return _tunnelStatusGrace.Observe(ready, DateTimeOffset.UtcNow, StatusProbeGrace);
     }
 
     private async Task<bool> IsTunnelReadyAsync()
@@ -701,10 +830,8 @@ public sealed class AgentCoreRuntime : IDisposable
         if (!string.IsNullOrWhiteSpace(current))
         {
             _lastHealthyCoreJson = current;
-            _lastHealthyCoreAt = DateTimeOffset.UtcNow;
-            return current;
         }
-        return _lastHealthyCoreJson is not null && DateTimeOffset.UtcNow - _lastHealthyCoreAt <= StatusProbeGrace
+        return _coreStatusGrace.Observe(!string.IsNullOrWhiteSpace(current), DateTimeOffset.UtcNow, StatusProbeGrace)
             ? _lastHealthyCoreJson
             : null;
     }
@@ -715,15 +842,15 @@ public sealed class AgentCoreRuntime : IDisposable
         var execution = status.Execution;
         var gameMode = status.GameMode;
 
-        if (execution == "available") _lastExecutionAvailableAt = now;
-        else if (_lastExecutionAvailableAt != default && now - _lastExecutionAvailableAt <= StatusProbeGrace)
-            execution = "available";
+        if (status.Connection == "off")
+        {
+            _executionStatusGrace.Reset();
+            _gameModeStatusGrace.Reset();
+        }
+        if (_executionStatusGrace.Observe(execution == "available", now, StatusProbeGrace)) execution = "available";
+        if (_gameModeStatusGrace.Observe(gameMode == "on", now, StatusProbeGrace)) gameMode = "on";
 
-        if (gameMode == "on") _lastGameModeOnAt = now;
-        else if (_lastGameModeOnAt != default && now - _lastGameModeOnAt <= StatusProbeGrace)
-            gameMode = "on";
-
-        var memoryDegraded = status.Memory is "degraded" or "error";
+        var memoryDegraded = status.Memory is "degraded" or "error" or "unavailable";
         var overall = status.Connection == "off" && status.Tunnel == "off"
             ? "offline"
             : status.Connection == "off" || status.Tunnel == "off" || memoryDegraded || execution != "available"
@@ -733,13 +860,22 @@ public sealed class AgentCoreRuntime : IDisposable
         return status with { Overall = overall, Execution = execution, GameMode = gameMode };
     }
 
+    private void ResetStatusGrace()
+    {
+        _lastHealthyCoreJson = null;
+        _coreStatusGrace.Reset();
+        _tunnelStatusGrace.Reset();
+        _executionStatusGrace.Reset();
+        _gameModeStatusGrace.Reset();
+    }
+
     private async Task<string?> TryGetStringAsync(string url)
     {
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.ConnectionClose = true;
-            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            using var response = await _http.SendAsync(request);
             if (!response.IsSuccessStatusCode) return null;
             return await response.Content.ReadAsStringAsync();
         }
@@ -1134,9 +1270,9 @@ public sealed class AgentCoreRuntime : IDisposable
     private async Task StopCoreProcessesAsync()
     {
         _lastHealthyCoreJson = null;
-        _lastHealthyCoreAt = default;
-        _lastExecutionAvailableAt = default;
-        _lastGameModeOnAt = default;
+        _coreStatusGrace.Reset();
+        _executionStatusGrace.Reset();
+        _gameModeStatusGrace.Reset();
         await StopServiceProcessesAsync(
             CorePort,
             Path.Combine(Root, "runtime", "node", "node.exe"),
@@ -1145,7 +1281,7 @@ public sealed class AgentCoreRuntime : IDisposable
 
     private async Task StopTunnelProcessesAsync()
     {
-        _lastTunnelReadyAt = default;
+        _tunnelStatusGrace.Reset();
         await StopServiceProcessesAsync(
             TunnelPort,
             Path.Combine(Root, "tunnel-client", "tunnel-client.exe"));
@@ -1179,6 +1315,7 @@ public sealed class AgentCoreRuntime : IDisposable
             @"$launcher=Join-Path $root 'Agent Core.exe'",
             @"$node=Join-Path $root 'runtime\node\node.exe'",
             @"$coreEntry=Join-Path $root 'dist\index.js'",
+            @"$gatewayEntry=Join-Path $root 'scripts\tunnel\public-mcp-gateway.mjs'",
             @"$tunnel=Join-Path $root 'tunnel-client\tunnel-client.exe'",
             @"$grafelRoot=(Join-Path $root 'runtime\grafel')+'\'",
             @"$semanticRoot=(Join-Path $root 'runtime\semantic-ide')+'\'",
@@ -1191,6 +1328,7 @@ public sealed class AgentCoreRuntime : IDisposable
                     "($ep -and $ep.StartsWith($grafelRoot,[StringComparison]::OrdinalIgnoreCase)) -or " +
                     "($ep -and $ep.StartsWith($semanticRoot,[StringComparison]::OrdinalIgnoreCase)) -or " +
                     "($ep -and $ep.Equals($node,[StringComparison]::OrdinalIgnoreCase) -and $cl.IndexOf($coreEntry,[StringComparison]::OrdinalIgnoreCase) -ge 0) -or " +
+                    "($ep -and $ep.Equals($node,[StringComparison]::OrdinalIgnoreCase) -and $cl.IndexOf($gatewayEntry,[StringComparison]::OrdinalIgnoreCase) -ge 0) -or " +
                     "($ep -and $ep.Equals($launcher,[StringComparison]::OrdinalIgnoreCase) -and $cl.IndexOf('--native-dump-helper',[StringComparison]::OrdinalIgnoreCase) -ge 0) -or " +
                     "($cl -and $cl.IndexOf($browserRoot,[StringComparison]::OrdinalIgnoreCase) -ge 0) -or " +
                     "($cl -and $cl.IndexOf($webViewRoot,[StringComparison]::OrdinalIgnoreCase) -ge 0)" +
@@ -1366,6 +1504,9 @@ public sealed class AgentCoreRuntime : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _watchdogCancellation.Cancel();
+        _watchdogCancellation.Dispose();
+        ResetStatusGrace();
         TryDeleteLauncherControlFile();
         _ownedProcessJob.Dispose();
         _http.Dispose();

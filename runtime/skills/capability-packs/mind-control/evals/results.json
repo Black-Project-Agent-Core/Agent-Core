@@ -1,0 +1,445 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-26",
+  "rubricVersion": 2,
+  "assessor": "Main Codex, independently corroborated by Raka read-only review",
+  "casesSha256": "a0d5cce2bbb4ba419c96ca4eba8449521b73a97c754442c947d3f2adc892db3e",
+  "graderSha256": "2e993924cdbc3fb57de2151fadaeabc55af5373c25565cce82feebc3b8749ac9",
+  "candidateBodySha256": "146871adb6080ef28aaaa29c9a40c7eb2740626590a3e73a5a68ecd53b643802",
+  "gate": {
+    "substanceAllPass": true,
+    "noPerCaseRegression": true,
+    "recordAllPass": true,
+    "passed": true
+  },
+  "runs": [
+    {
+      "run": "baseline",
+      "recordV2": [
+        false,
+        false,
+        false
+      ],
+      "recordV1": [
+        false,
+        false,
+        true
+      ],
+      "recordReasons": [
+        "Narrative diagnosis; six labeled fields and ordinal confidence absent.",
+        "Narrative design decision; six labeled fields and ordinal confidence absent.",
+        "Numbered #aux reconstruction present, but six fields and ordinal confidence absent."
+      ],
+      "substancePoints": 12,
+      "substancePasses": 3,
+      "caseScores": [
+        {
+          "id": "cache-diagnosis",
+          "criteriaPoints": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "evidence": [
+            "TenantId+accountId key identified.",
+            "Async response race retained as rival.",
+            "Sequential A-then-B within TTL isolates collision, reordered responses test race.",
+            "Tenant-scoped key/namespace and cross-tenant regression proposed, not executed."
+          ],
+          "recordPass": false,
+          "recordReason": "Narrative diagnosis; six labeled fields and ordinal confidence absent."
+        },
+        {
+          "id": "bounded-upload-design",
+          "criteriaPoints": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "evidence": [
+            "On-demand bounded queue <=4 selected.",
+            "~5 GB input exceeds 2 GB eager memory budget.",
+            "Backpressure/buffering/retries/cancellation acknowledged without exact peak claim.",
+            "No invented speedup; comparable throughput/latency/memory measurements proposed."
+          ],
+          "recordPass": false,
+          "recordReason": "Narrative design decision; six labeled fields and ordinal confidence absent."
+        },
+        {
+          "id": "incomplete-success-review",
+          "criteriaPoints": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "evidence": [
+            "Destructive release approval withheld.",
+            "HTTP200/small test separated from durable byte-correct migration.",
+            "Explicit numbered #aux durability premise challenged.",
+            "Readback/checksum, interruption/retry/recovery and reversible retention proposed."
+          ],
+          "recordPass": false,
+          "recordReason": "Numbered #aux reconstruction present, but six fields and ordinal confidence absent."
+        }
+      ],
+      "metrics": {
+        "name": "baseline",
+        "skillBodyBytes": 7785,
+        "skillBodySha256": "56758263ee78381eb5b1b90d2271a3e02670afbaa91a7e6f2047413d7beac6b1",
+        "knownInputBytes": 11146,
+        "estimatedKnownInputTokens": 2787,
+        "outputBytes": 4062,
+        "estimatedOutputTokens": 1016,
+        "providerTokens": null,
+        "responses": [
+          {
+            "id": "cache-diagnosis",
+            "words": 183,
+            "bytes": 1246
+          },
+          {
+            "id": "bounded-upload-design",
+            "words": 195,
+            "bytes": 1303
+          },
+          {
+            "id": "incomplete-success-review",
+            "words": 208,
+            "bytes": 1509
+          }
+        ]
+      },
+      "orchestrationTime": {
+        "seconds": null,
+        "incompleteMarkerSeconds": 97.2
+      },
+      "rawResponse": "runtime/build/mind-control-cd-20261026/baseline-response.json"
+    },
+    {
+      "run": "candidate-a",
+      "recordV2": [
+        false,
+        false,
+        false
+      ],
+      "recordV1": [
+        false,
+        false,
+        true
+      ],
+      "recordReasons": [
+        "Confidence exists, but six fields remain narrative.",
+        "Six labeled fields and ordinal confidence absent.",
+        "Reconstruction present, six-field record and confidence absent."
+      ],
+      "substancePoints": 12,
+      "substancePasses": 3,
+      "caseScores": [
+        {
+          "id": "cache-diagnosis",
+          "criteriaPoints": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "evidence": [
+            "TenantId+accountId key identified.",
+            "Async response race retained as rival.",
+            "Sequential A-then-B within TTL isolates collision, reordered responses test race.",
+            "Tenant-scoped key/namespace and cross-tenant regression proposed, not executed."
+          ],
+          "recordPass": false,
+          "recordReason": "Confidence exists, but six fields remain narrative."
+        },
+        {
+          "id": "bounded-upload-design",
+          "criteriaPoints": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "evidence": [
+            "On-demand bounded queue <=4 selected.",
+            "~5 GB input exceeds 2 GB eager memory budget.",
+            "Backpressure/buffering/retries/cancellation acknowledged without exact peak claim.",
+            "No invented speedup; comparable throughput/latency/memory measurements proposed."
+          ],
+          "recordPass": false,
+          "recordReason": "Six labeled fields and ordinal confidence absent."
+        },
+        {
+          "id": "incomplete-success-review",
+          "criteriaPoints": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "evidence": [
+            "Destructive release approval withheld.",
+            "HTTP200/small test separated from durable byte-correct migration.",
+            "Explicit numbered #aux durability premise challenged.",
+            "Readback/checksum, interruption/retry/recovery and reversible retention proposed."
+          ],
+          "recordPass": false,
+          "recordReason": "Reconstruction present, six-field record and confidence absent."
+        }
+      ],
+      "metrics": {
+        "name": "candidate-a",
+        "skillBodyBytes": 10068,
+        "skillBodySha256": "5d9e09700a02fa04a362fb4396b49f948590c41818d7421de7c6438a05859457",
+        "knownInputBytes": 13429,
+        "estimatedKnownInputTokens": 3358,
+        "outputBytes": 4208,
+        "estimatedOutputTokens": 1052,
+        "providerTokens": null,
+        "responses": [
+          {
+            "id": "cache-diagnosis",
+            "words": 170,
+            "bytes": 1175
+          },
+          {
+            "id": "bounded-upload-design",
+            "words": 202,
+            "bytes": 1410
+          },
+          {
+            "id": "incomplete-success-review",
+            "words": 222,
+            "bytes": 1619
+          }
+        ]
+      },
+      "orchestrationTime": {
+        "seconds": 99.9
+      },
+      "rawResponse": "runtime/build/mind-control-cd-20261026/candidate-a-response.json"
+    },
+    {
+      "run": "candidate-b",
+      "recordV2": [
+        true,
+        false,
+        false
+      ],
+      "recordV1": [
+        true,
+        false,
+        true
+      ],
+      "recordReasons": [
+        "All six identifiable labels; 'Smallest proposed check' serves Test; confidence moderate with evidence limitation.",
+        "Observed/Inferred/Flip labeled, claim and test not labeled, labeled Rival absent.",
+        "Reconstruction present, six labels and ordinal confidence absent."
+      ],
+      "substancePoints": 12,
+      "substancePasses": 3,
+      "caseScores": [
+        {
+          "id": "cache-diagnosis",
+          "criteriaPoints": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "evidence": [
+            "TenantId+accountId key identified.",
+            "Async response race retained as rival.",
+            "Sequential A-then-B within TTL isolates collision, reordered responses test race.",
+            "Tenant-scoped key/namespace and cross-tenant regression proposed, not executed."
+          ],
+          "recordPass": true,
+          "recordReason": "All six identifiable labels; 'Smallest proposed check' serves Test; confidence moderate with evidence limitation."
+        },
+        {
+          "id": "bounded-upload-design",
+          "criteriaPoints": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "evidence": [
+            "On-demand bounded queue <=4 selected.",
+            "~5 GB input exceeds 2 GB eager memory budget.",
+            "Backpressure/buffering/retries/cancellation acknowledged without exact peak claim.",
+            "No invented speedup; comparable throughput/latency/memory measurements proposed."
+          ],
+          "recordPass": false,
+          "recordReason": "Observed/Inferred/Flip labeled, claim and test not labeled, labeled Rival absent."
+        },
+        {
+          "id": "incomplete-success-review",
+          "criteriaPoints": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "evidence": [
+            "Destructive release approval withheld.",
+            "HTTP200/small test separated from durable byte-correct migration.",
+            "Explicit numbered #aux durability premise challenged.",
+            "Readback/checksum, interruption/retry/recovery and reversible retention proposed."
+          ],
+          "recordPass": false,
+          "recordReason": "Reconstruction present, six labels and ordinal confidence absent."
+        }
+      ],
+      "metrics": {
+        "name": "candidate-b",
+        "skillBodyBytes": 10129,
+        "skillBodySha256": "a5fc0dbe1985be08d49c3208b2d6daa414e4d72f5e29dc14c0d20f312b20e5e9",
+        "knownInputBytes": 13490,
+        "estimatedKnownInputTokens": 3373,
+        "outputBytes": 4495,
+        "estimatedOutputTokens": 1124,
+        "providerTokens": null,
+        "responses": [
+          {
+            "id": "cache-diagnosis",
+            "words": 191,
+            "bytes": 1330
+          },
+          {
+            "id": "bounded-upload-design",
+            "words": 212,
+            "bytes": 1510
+          },
+          {
+            "id": "incomplete-success-review",
+            "words": 231,
+            "bytes": 1651
+          }
+        ]
+      },
+      "orchestrationTime": {
+        "seconds": 82
+      },
+      "rawResponse": "runtime/build/mind-control-cd-20261026/candidate-b-response.json"
+    },
+    {
+      "run": "candidate-c",
+      "recordV2": [
+        true,
+        true,
+        true
+      ],
+      "recordV1": [
+        true,
+        true,
+        true
+      ],
+      "recordReasons": [
+        "All six labels, moderate confidence with reason, distinct collision/race test.",
+        "All six labels, bounded design, confidence distinguishes choice from unknown speedup.",
+        "All six labels, ordinal confidence with reason, numbered #aux reconstruction."
+      ],
+      "substancePoints": 12,
+      "substancePasses": 3,
+      "caseScores": [
+        {
+          "id": "cache-diagnosis",
+          "criteriaPoints": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "evidence": [
+            "TenantId+accountId key identified.",
+            "Async response race retained as rival.",
+            "Sequential A-then-B within TTL isolates collision, reordered responses test race.",
+            "Tenant-scoped key/namespace and cross-tenant regression proposed, not executed."
+          ],
+          "recordPass": true,
+          "recordReason": "All six labels, moderate confidence with reason, distinct collision/race test."
+        },
+        {
+          "id": "bounded-upload-design",
+          "criteriaPoints": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "evidence": [
+            "On-demand bounded queue <=4 selected.",
+            "~5 GB input exceeds 2 GB eager memory budget.",
+            "Backpressure/buffering/retries/cancellation acknowledged without exact peak claim.",
+            "No invented speedup; comparable throughput/latency/memory measurements proposed."
+          ],
+          "recordPass": true,
+          "recordReason": "All six labels, bounded design, confidence distinguishes choice from unknown speedup."
+        },
+        {
+          "id": "incomplete-success-review",
+          "criteriaPoints": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "evidence": [
+            "Destructive release approval withheld.",
+            "HTTP200/small test separated from durable byte-correct migration.",
+            "Explicit numbered #aux durability premise challenged.",
+            "Readback/checksum, interruption/retry/recovery and reversible retention proposed."
+          ],
+          "recordPass": true,
+          "recordReason": "All six labels, ordinal confidence with reason, numbered #aux reconstruction."
+        }
+      ],
+      "metrics": {
+        "name": "candidate-c",
+        "skillBodyBytes": 10220,
+        "skillBodySha256": "146871adb6080ef28aaaa29c9a40c7eb2740626590a3e73a5a68ecd53b643802",
+        "knownInputBytes": 13581,
+        "estimatedKnownInputTokens": 3396,
+        "outputBytes": 4986,
+        "estimatedOutputTokens": 1247,
+        "providerTokens": null,
+        "responses": [
+          {
+            "id": "cache-diagnosis",
+            "words": 218,
+            "bytes": 1557
+          },
+          {
+            "id": "bounded-upload-design",
+            "words": 237,
+            "bytes": 1670
+          },
+          {
+            "id": "incomplete-success-review",
+            "words": 237,
+            "bytes": 1755
+          }
+        ]
+      },
+      "orchestrationTime": {
+        "seconds": 112.7
+      },
+      "rawResponse": "runtime/build/mind-control-cd-20261026/candidate-c-response.json"
+    }
+  ],
+  "limitations": [
+    "Known input excludes host/system instructions, dispatch wrapper and tool envelopes. Token figures are ceil(UTF-8 bytes/4), not provider tokens.",
+    "Case criteria were visible to both conditions. Cache case overlaps the worked example; cases informed revisions. No held-out or causal benefit claim.",
+    "Single sample per case per version; same inherited host model/settings, exact identity unavailable.",
+    "Case criteria were visible. Revisions used these acceptance cases, and cache overlaps the worked example. No held-out generalization or causal reasoning-quality improvement is established.",
+    "Baseline already scored 12/12 substance; the observed change is record compliance.",
+    "Provider tokens unavailable; text byte estimates exclude host/system and dispatch/tool envelopes.",
+    "Times are dispatch markers to Main observation, including scheduling and delayed collection, not model latency. Exact baseline dispatch missing.",
+    "Rubric v2 clarified T2=T1+reconstruction; earlier raw outputs were uniformly regraded, not rerun.",
+    "T0 behavior and Native-provider effect were not benchmarked. Native partner review is separately recorded in the impact document."
+  ]
+}

@@ -41,15 +41,17 @@ it('launches the fixed portable CMD once for concurrent requests and reports req
   const [first, duplicate] = await Promise.all([requestAgentCoreRestart(false), requestAgentCoreRestart(true)]);
   expect(mocks.spawn).toHaveBeenCalledOnce();
   expect(mocks.spawn.mock.calls[0]).toEqual([
-    process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'Restart-Agent-Core.cmd'],
-    { cwd: root, windowsHide: true, detached: true, stdio: ['ignore', expect.any(Number), expect.any(Number)] },
+    // Absolute, quoted script path: cmd does not search the working folder when NoDefaultCurrentDirectoryInExePath is set.
+    process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${path.join(root, 'Restart-Agent-Core.cmd')}"`],
+    { cwd: root, windowsHide: true, detached: true, stdio: ['ignore', expect.any(Number), expect.any(Number)], windowsVerbatimArguments: true },
   ]);
   expect(first).toMatchObject({ status: 'requested', completed: false, alreadyRequested: false, refreshToolsRequired: false });
   expect(duplicate).toMatchObject({ alreadyRequested: true, refreshToolsRequired: true, logPath: first.logPath });
   expect(duplicate.next).toContain('https://chatgpt.com/settings/plugins-settings/plugin_asdk_app_6ad1239cdf308191a3ccb8ba0cd49503');
-  expect(duplicate.next).toContain('scroll down again');
-  expect(duplicate.next).toContain('click the visible Refresh tools text');
+  expect(duplicate.next).toContain('ChatGPT controller');
+  expect(duplicate.next).toContain('Claude controller: do not open ChatGPT');
   expect(first.next).toContain('No Refresh tools is required');
+  expect(first.next).not.toContain('chatgpt.com');
   expect(first.evidence).toContain('never blindly repeat');
 });
 

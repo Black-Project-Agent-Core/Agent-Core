@@ -11,7 +11,9 @@ import { LearningService } from '../src/learning/service.js';
 import { SkillService } from '../src/skills/service.js';
 import { WORKFLOW_VERIFIER_REVISION, registerWorkflowVerification } from '../src/memory/workflow-verifier.js';
 const roots: string[] = [];
-afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
+// A bounded external observer (250 ms) can return while its Memory recall still appends retrieval-ledger.jsonl,
+// so removal can meet a just-created file; Node retries ENOTEMPTY/EBUSY with linear backoff (about 1.5 s in total).
+afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 export async function fixture() {
   const parent = fileURLToPath(new URL('../runtime/tmp', import.meta.url)); await mkdir(parent, { recursive: true });
   const root = await mkdtemp(path.join(parent, 'skill-proposal-test-')); roots.push(root);

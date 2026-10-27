@@ -1,0 +1,71 @@
+{
+  "completedVerificationAt": "2026-10-26 17:43:09 UTC",
+  "task": "performance-skill-upgrade-promote-20261027",
+  "initialTaskId": "ext-7756183d9f4c4ad298ac26840ca9bf5b",
+  "authorization": {
+    "source": "Current Codex user message in thread 01a178b3-4979-7f11-8eff-8c9d22065bc0",
+    "request": "promote proposal upgrade ini E:\\Projects\\Agent-Core\\docs\\proposals\\skills\\agent-core\\performance-oriented-software-engineering-upgrade.md sebagai goals utama kamu sekarang",
+    "scope": "Activate the existing performance Skill upgrade and complete its verification/documentation; no Native user-message decision was fabricated."
+  },
+  "proposal": {
+    "id": "skill-proposal:c354a95b6f295cda0dcc0011e1cb9153",
+    "originalRevision": "sha256:34e953d2b0cbb2b12d1faaa7ec6f3660bafb757a88a8dfd23c0301ea08b4bd2a",
+    "completionEvidenceRevision": "sha256:00b8a7430844509b7c7ffc67e4883f986acf28d8828cf9ba32505b4372407377",
+    "status": "implemented",
+    "artifactStatus": "catalog-active",
+    "artifactDigest": "sha256:ad530ab0a8350ddb9a82fd2ceedfcc74a4d778e060a9fe9cb90554cf4ae9115a",
+    "fulfillment": {
+      "revisionDigest": "sha256:00b8a7430844509b7c7ffc67e4883f986acf28d8828cf9ba32505b4372407377",
+      "kind": "active-artifact-reconciliation",
+      "artifactDigest": "sha256:ad530ab0a8350ddb9a82fd2ceedfcc74a4d778e060a9fe9cb90554cf4ae9115a",
+      "evidenceRef": "source:active-skill-provenance:performance-oriented-software-engineering:sha256:ad530ab0a8350ddb9a82fd2ceedfcc74a4d778e060a9fe9cb90554cf4ae9115a",
+      "at": "2026-10-26T17:39:32.691Z"
+    },
+    "projectionDigestBeforeArchival": "sha256:8d93e9ed5e5f9fc2ac0b316d67489b86f0ffd68542439058616810361acfecc5"
+  },
+  "skill": {
+    "name": "performance-oriented-software-engineering",
+    "sourceValidatedDigest": "sha256:ad530ab0a8350ddb9a82fd2ceedfcc74a4d778e060a9fe9cb90554cf4ae9115a",
+    "activeDigest": "sha256:ad530ab0a8350ddb9a82fd2ceedfcc74a4d778e060a9fe9cb90554cf4ae9115a",
+    "fileCount": 8,
+    "totalBytes": 22535,
+    "originalEntrypointBytes": 9746,
+    "finalEntrypointBytes": 7650,
+    "reductionBytes": 2096,
+    "reductionPercent": 21.5,
+    "activeRead": {
+      "maxBytes": 8192,
+      "offset": 0,
+      "nextOffset": null,
+      "truncated": false
+    },
+    "originalActiveDigest": "sha256:157edb537eeb46130bd3023efcef8ed091517cae3dc493767bb02377df212639",
+    "intermediateHistory": [
+      "sha256:e5f115afc54c04edff04674c676d1bfd93f4eba87ae8f62d4a3937237068826d",
+      "sha256:8578f7f8bb2d29c6c0628068614823915ce00b04459f6c33e80408904b071b03"
+    ],
+    "references": [
+      "references/tooling-and-host-integration.md",
+      "references/hardware-acceleration.md"
+    ]
+  },
+  "recovery": {
+    "observed": "The 8,037-byte intermediate entrypoint was split at offset 7716 under maxBytes=8192.",
+    "confirmedCause": "src/skills/service.ts read() budgets Buffer.byteLength(JSON.stringify(response),'utf8'), including the response envelope.",
+    "correction": "Compact four repeated prose paragraphs, preserving triggers, techniques, guardrails and evidence requirements.",
+    "observedResult": "Final 7,650-byte entrypoint returned nextOffset=null and truncated=false at maxBytes=8192."
+  },
+  "runtimeScope": "Live SkillService catalog-data revision; no application-source, executable, build, restart, new dependency, release application or Git publication.",
+  "benefitLimit": "Read delivery and active provenance are observed; no with-skill task-quality or application-performance benefit was measured.",
+  "reproduce": [
+    "skills(validate, sourcePath=runtime/skills/capability-packs/performance-oriented-software-engineering) must return the final digest.",
+    "skills(inspect/list_revisions, name=performance-oriented-software-engineering) must report the same active digest and preserved rollback history.",
+    "skills(read, expectedActiveDigest=final digest, offset=0, maxBytes=8192) must return nextOffset=null and truncated=false.",
+    "Read both references at the same active digest and inspect the proposal registry artifactDigest."
+  ],
+  "sourceLocatorCorrection": {
+    "date": "2026-10-27",
+    "currentSource": "runtime/skills/capability-packs/performance-oriented-software-engineering",
+    "note": "Only the reproduction locator was updated after source relocation. All recorded observations, proposal revisions and digests retain their original event meaning."
+  }
+}

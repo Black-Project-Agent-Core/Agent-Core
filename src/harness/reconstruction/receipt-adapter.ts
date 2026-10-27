@@ -4,6 +4,8 @@ import { activityTracker } from '../../tracker/activity-tracker.js';
 import type { HostProof,HostScope,ReceiptResolver } from './contracts.js';
 
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+// Same terminal kinds the tracker reader returns; auxiliary records (start, request/response detail) are not terminals.
+const TERMINAL_KINDS = new Set(['tool-call','handled-tool-failure','tool-exception','tool-invocation-interrupted']);
 const REF = /^tool:([a-f0-9]{32})$/;
 const exact = (value:unknown, expected:string|undefined):boolean =>
   typeof value==='string' && !!expected && value===expected;
@@ -22,7 +24,7 @@ export function resolveToolTerminals(
   }
   const proofs=new Map<string,HostProof>();
   for(const ref of wanted){
-    const terminal=(grouped.get(ref)??[]).filter(e=>e.kind!=='tool-invocation-start');
+    const terminal=(grouped.get(ref)??[]).filter(e=>TERMINAL_KINDS.has(e.kind));
     if(terminal.length!==1)continue; // ambiguous or absent
     const event=terminal[0]!,ctx=event.context;
     const at=Date.parse(event.timestamp);

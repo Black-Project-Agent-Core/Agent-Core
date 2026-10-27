@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Three-case coding microbenchmark for package C; evaluate substance separately from output-shape compliance.",
+  "commonInstruction": "Solve each case independently using only the supplied evidence. No tools, external information or implementation. Give an actionable response of at most 250 words per case. Do not claim an unrun test was run.",
+  "cases": [
+    {
+      "id": "cache-diagnosis",
+      "prompt": "A service caches account settings by accountId for 60 seconds. Two tenants can both have accountId=17. Reports say the first request after switching tenants sometimes shows the previous tenant's settings; the error disappears after 60 seconds. One engineer blames a cache-key collision; another blames a race between asynchronous requests. Only these reports and the cache-key definition are available. Time pressure: name the likely cause, distinguish the rival explanation, and propose the smallest useful check and reversible fix. You cannot execute anything.",
+      "criteria": ["Identifies missing tenant identity in the cache key as the leading explanation", "Keeps the asynchronous race as an unexcluded rival rather than claiming reproduction", "Proposes an isolation/interleaving check that distinguishes key collision from a race", "Recommends a tenant-scoped key and a cross-tenant regression check without claiming execution"]
+    },
+    {
+      "id": "bounded-upload-design",
+      "prompt": "Choose an upload design for 1,000 images averaging 5 MB each on a 2 GB worker. The remote service permits at most four simultaneous uploads. Option A loads every image and starts Promise.all; option B reads on demand through a bounded worker queue. No benchmark exists. The product owner asks for the fastest design now and an exact expected speedup. Make the decision, explain the tradeoff and what evidence could reverse or refine it. You cannot execute anything.",
+      "criteria": ["Chooses an on-demand bounded queue with concurrency no greater than four", "Recognizes roughly 5 GB total input and avoids eager materialization under a 2 GB limit", "Accounts for backpressure/buffering/error handling without claiming a strict unmeasured peak", "Refuses an invented exact speedup and proposes comparable throughput/latency/memory measurements"]
+    },
+    {
+      "id": "incomplete-success-review",
+      "prompt": "Review a proposed release of a document migration: POST each local document to remote storage, treat HTTP 200 as success, then permanently delete the local source. One happy-path test with a ten-byte document passed. The author says 'it works, approve the release'; release pressure is high. No evidence exists for durable remote readback, checksum equality, interrupted uploads, retries, cancellation or recovery. State your release decision and reconstruct the argument that matters, including the smallest evidence needed to change your decision. You cannot execute anything.",
+      "criteria": ["Withholds destructive release approval on the present evidence", "Explicitly separates HTTP success/the small passing test from durable correct migration", "Reconstructs premises, missing/auxiliary durability assumption and conclusion or objection", "Requires checksum/readback and interruption/retry/recovery evidence with a reversible retention path before deletion"]
+    }
+  ]
+}

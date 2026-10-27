@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { NativeAgentController } from '../src/agent-controller.js';
 import { AgentRuntimeService } from '../src/agent-runtime.js';
 import type { AgentRuntimeConfig } from '../src/agent-provider.js';
+import { parseAgentTurnCheckpoint, serializeAgentTurnCheckpoint } from '../src/agent-turn-checkpoint.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -96,21 +97,17 @@ function finalizeChoice(finalResponse = 'done') {
   };
 }
 
-function capabilityChoice() {
+function toolboxChoice(names: string[]) {
   return {
     finish_reason: 'tool_calls',
     message: {
       content: null,
       tool_calls: [{
-        id: 'capability-1',
+        id: 'toolbox-1',
         type: 'function',
         function: {
-          name: 'agent_core_request_capabilities',
-          arguments: JSON.stringify({
-            families: ['observe.local'],
-            reason: 'Inspect local runtime usage for the user-requested analysis.',
-            expectedActions: ['get_usage_stats'],
-          }),
+          name: 'agent_core_toolbox',
+          arguments: JSON.stringify({ action: 'load', names }),
         },
       }],
     },
@@ -135,6 +132,47 @@ function usageChoice() {
 }
 
 describe('native Agent Core controller lifecycle', () => {
+  it.each([
+    ['delivers', { finish_reason: 'stop', message: { content: 'Observed: config read. Inferred: nothing else. Not checked: tests.' } }],
+    ['keeps the old failure when the report call fails', undefined],
+  ])('%s a no-tool report on turn.failed at the tool-iteration limit', async (_name, reportChoice) => {
+    const responses: any[] = [strategyChoice(), toolboxChoice(['get_config'])];
+    if (reportChoice) responses.push(reportChoice);
+    const { controller, runtime, fetchMock } = await fixture(responses, [], undefined, { maxToolIterations: 2 });
+    const session = await runtime.startSession({ sessionId: 'limit-session', provider: 'openai-compatible', model: 'fixture-model' });
+    const events: any[] = [];
+    await expect(controller.runConversationTurn({ sessionId: session.id, prompt: 'investigate', eventSink: event => { events.push(event); } }))
+      .rejects.toThrow('AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const reportRequest = JSON.parse((fetchMock.mock.calls[2] as any)[1].body);
+    expect(reportRequest.tools).toBeUndefined();
+    const failed = events.filter(event => event.type === 'turn.failed');
+    expect(failed).toHaveLength(1);
+    expect(failed[0].code).toBe('AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED');
+    if (reportChoice) expect(failed[0].response).toBe(reportChoice.message.content);
+    else expect(failed[0].response).toBeUndefined();
+  });
+
+  it('never redispatches a report after recovery past its durable attempt and response', async () => {
+    const { controller, runtime, fetchMock } = await fixture([strategyChoice(), toolboxChoice([]),
+      { finish_reason: 'stop', message: { content: 'Observed: bounded work. Unchecked: validation.' } }], [], undefined, { maxToolIterations: 2 });
+    const session = await runtime.startSession({ sessionId: 'report-recovery' });
+    let saved: any;
+    const save = async (state: any) => { const record = serializeAgentTurnCheckpoint(state);
+      saved = parseAgentTurnCheckpoint(record.json, record.digest); };
+    vi.spyOn(runtime, 'markTerminal').mockRejectedValueOnce(new Error('AGENT_RUNTIME_CONTINUATION_SIMULATED_CRASH'));
+    const input = { sessionId: session.id, taskId: 'report-recovery-task', prompt: 'Investigate',
+      continuation: { conversationId: 'recovery-chat', turnId: 'recovery-turn', save } };
+    await expect(controller.runConversationTurn(input)).rejects.toThrow('AGENT_RUNTIME_CONTINUATION_SIMULATED_CRASH');
+    expect(saved.iterationLimitReport).toEqual({ attempted: true, response: 'Observed: bounded work. Unchecked: validation.' });
+    expect(saved.providerAttemptsConsumed).toBe(3);
+    const events: any[] = [];
+    await expect(controller.runConversationTurn({ ...input, continuation: { ...input.continuation, state: saved },
+      eventSink: event => { events.push(event); } })).rejects.toThrow('AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(events.find(event => event.type === 'turn.failed')?.response).toContain('Observed: bounded work');
+  });
+
   it('returns invalid finalization arguments to the model for bounded correction', async () => {
     const invalid = finalizeChoice();
     const call = invalid.message.tool_calls[0].function;
@@ -183,6 +221,72 @@ describe('native Agent Core controller lifecycle', () => {
     expect((await runtime.health()).runningSessionCount).toBe(0);
   });
 
+  function conversationFinalize(extra: Record<string, unknown> = {}) {
+    return { finish_reason: 'tool_calls', message: { content: null, tool_calls: [{
+      id: 'finalize-conversation', type: 'function', function: { name: 'agent_core_finalize', arguments: JSON.stringify({
+        outcome: 'verified', finalResponse: 'Halo!', learningDecision: 'no-new-knowledge', ...extra }) } }] } };
+  }
+
+  it.each([
+    ['no evidence reference', {}],
+    ['an evidence reference the runtime rejects', { evidenceRefs: ['conversation:halo'] }],
+  ])('completes a conversation-only turn with %s instead of failing the task', async (_name, extra) => {
+    const { controller, runtime, fetchMock } = await fixture([conversationFinalize(extra)]);
+    const result = await controller.runTask({ prompt: 'halo' });
+    expect(result.status).toBe('finalized');
+    expect(result.response).toContain('Halo!');
+    expect(result.jobVerification).toBe('unavailable');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const task = await runtime.getTask(result.taskId);
+    expect(task).toEqual(expect.objectContaining({ status: 'finalized', terminalOutcome: 'verified',
+      evidenceRefs: [`activity:native-turn:${result.taskId}`] }));
+    expect(task!.episodes.some(episode => /Conversation-only turn/.test(episode.summary))).toBe(true);
+  });
+
+  it('returns a verified claim after tool work without usable evidence to the model for correction', async () => {
+    const toolChoice = { finish_reason: 'tool_calls', message: { content: null,
+      tool_calls: [{ id: 'tool-1', type: 'function', function: { name: 'get_config', arguments: '{}' } }] } };
+    const unproven = conversationFinalize({ evidenceRefs: ['conversation:halo'], finalResponse: 'claimed' });
+    const { controller, fetchMock } = await fixture([strategyChoice(), toolChoice, unproven, finalizeChoice('corrected')], ['get_config']);
+    const result = await controller.runTask({ prompt: 'inspect config then finish' });
+    expect(result.status).toBe('finalized');
+    expect(result.response).toBe('corrected');
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    const fourth = JSON.parse(String((fetchMock.mock.calls[3] as any)[1]?.body ?? '{}'));
+    const blocked = fourth.messages.find((message: any) => message.role === 'tool' && message.name === 'agent_core_finalize');
+    expect(blocked.content).toContain('FINALIZATION_BLOCKED');
+    expect(blocked.content).toContain('tool:');
+  });
+
+  it('does not let a conversation-only turn carry a lesson without evidence', async () => {
+    const withLesson = conversationFinalize({ learningDecision: undefined,
+      candidates: [{ kind: 'durable-fact', content: 'A claim nobody checked', verified: true }] });
+    const { controller, fetchMock } = await fixture([withLesson, finalizeChoice('corrected')]);
+    const result = await controller.runTask({ prompt: 'halo' });
+    expect(result.response).toBe('corrected');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('tells the model to stay concise, to separate depth from plain language, and not to force Skills on a simple turn', async () => {
+    const { controller, fetchMock } = await fixture([conversationFinalize()]);
+    await controller.runTask({ prompt: 'halo' });
+    const request = JSON.parse(String((fetchMock.mock.calls[0] as any)[1]?.body ?? '{}'));
+    const system = request.messages.filter((message: any) => message.role === 'system').map((message: any) => message.content).join('\n');
+    expect(system).toContain('RESPONSE STYLE (default: concise');
+    for (const word of ['jelaskan', 'perinci', 'rinci', 'detail', 'sederhana', 'simple', 'singkat']) expect(system).toContain(word);
+    expect(system).toContain('about easy language, not length');
+    expect(system).toContain('Length changes ONLY on explicit words');
+    expect(system).toContain('Without such a word stay short');
+    expect(system).toContain('PROPORTIONALITY');
+    expect(system).toContain('MEMORY ACCESS: you do have persistent Memory');
+    expect(system).toContain('Never say you have no memory');
+    expect(system).toContain('never force them on a simple turn');
+    const guidance = request.messages.find((message: any) => message.content?.startsWith('NATIVE SKILL GUIDANCE'))?.content ?? '';
+    expect(guidance).toContain('Simple conversation');
+    expect(guidance).toContain('Skipping is correct there, never a violation');
+    expect(guidance).not.toContain('At each task and material change');
+  });
+
   it('rejects a plain assistant answer as terminal and forces the synthetic finalization tool', async () => {
     const first = {
       finish_reason: 'stop',
@@ -224,10 +328,10 @@ describe('native Agent Core controller lifecycle', () => {
     expect(localToolMessage.content).toContain('when this result supports the claim');
   });
 
-  it('expands a dynamic task-scoped grant in the same turn before ordinary tool use', async () => {
+  it('loads a granted dynamic tool schema on demand in the same turn before ordinary tool use', async () => {
     const { controller, fetchMock, runtime } = await fixture([
-      capabilityChoice(),
-      strategyChoice('Inspect local usage statistics after capability approval'),
+      toolboxChoice(['get_usage_stats']),
+      strategyChoice('Inspect local usage statistics after loading the tool schema'),
       usageChoice(),
       finalizeChoice('dynamic-tool-result'),
     ], [], undefined, {
@@ -246,14 +350,19 @@ describe('native Agent Core controller lifecycle', () => {
     const secondRequest = JSON.parse(String((fetchMock.mock.calls[1] as any)[1]?.body ?? '{}'));
     const firstTools = firstRequest.tools.map((tool: any) => tool.function?.name);
     const secondTools = secondRequest.tools.map((tool: any) => tool.function?.name);
+    // Dynamic mode grants the registered surface immediately and never presents the capability-request tool.
+    expect(firstTools).not.toContain('agent_core_request_capabilities');
+    expect(firstTools).toContain('agent_core_toolbox');
     expect(firstTools).not.toContain('get_usage_stats');
-    expect(firstTools).toContain('agent_core_request_capabilities');
     expect(secondTools).toContain('get_usage_stats');
+    const toolboxResult = secondRequest.messages.find((message: any) =>
+      message.role === 'tool' && message.name === 'agent_core_toolbox');
+    expect(String(toolboxResult?.content ?? '')).toMatch(/^TOOLBOX_LOADED: get_usage_stats/);
 
     const task = await runtime.getTask(result.taskId);
     expect(task?.episodes.some(episode =>
-      episode.summary.includes('Capability request approved=[observe.local]')
-      && episode.summary.includes('grantedTools='))).toBe(true);
+      episode.summary.includes('Native MCP tool authority=')
+      && episode.summary.includes('schema loading=on-demand'))).toBe(true);
   });
 
   it('preserves the work response and reports Learning failure separately', async () => {

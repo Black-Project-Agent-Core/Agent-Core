@@ -14,7 +14,7 @@ import type {
   WorkspaceEdit,
 } from './types.js';
 
-import { fileMutationCoordinator, nativeDevelopmentFreeze, type MutationExecutionContext } from '../rdc/mutation-coordinator.js';
+import { fileMutationCoordinator, type MutationExecutionContext } from '../rdc/mutation-coordinator.js';
 import { fileCheckpointService } from '../rdc/checkpoints/service.js';
 export interface TextFilePlan {
   kind: 'text';
@@ -252,14 +252,11 @@ export async function applyWorkspacePlans(
   return fileMutationCoordinator.run(targets, async () => {
     // Validate every planned source/destination before capture or the first mutation.
     for (const plan of textPlans) {
-      await nativeDevelopmentFreeze.assertWritable(plan.absolutePath, plan.staged);
       await authorizedExistingPath(plan.root, plan.absolutePath);
       const current = await readSemanticSource(plan.root, plan.absolutePath, plan.source.encoding);
       if (current.fingerprint !== plan.fingerprint) throw new Error('SEMANTIC_SOURCE_DRIFT: ' + plan.relativePath);
     }
     for (const plan of renamePlans) {
-      await nativeDevelopmentFreeze.assertWritable(plan.oldAbsolutePath);
-      await nativeDevelopmentFreeze.assertWritable(plan.newAbsolutePath);
       await authorizedExistingPath(plan.root, plan.oldAbsolutePath);
       await authorizedDestinationPath(plan.root, plan.newAbsolutePath);
       if (fingerprintBytes(await readFile(plan.oldAbsolutePath)) !== plan.fingerprint

@@ -1,0 +1,70 @@
+{
+  "date": "2026-10-27",
+  "candidateRevision": 10,
+  "rawResponse": "runtime/build/mind-control-cd-20261026/revision10-response.md",
+  "assessor": "Main Codex, direct reading against frozen cases and rubric v2",
+  "condition": "Raka reused after independent Learning diagnosis; candidate and cases only during solve; not a fresh blinded baseline",
+  "solveStartUtc": "2026-10-26T20:11:52Z",
+  "solveEndUtc": "2026-10-26T20:12:17Z",
+  "solveWallSeconds": 25,
+  "providerTokens": null,
+  "cases": [
+    {
+      "id": "cache-diagnosis",
+      "substancePoints": 4,
+      "recordPass": true,
+      "evidence": [
+        "Missing tenant identity is the leading explanation",
+        "reports do not exclude that race or both defects",
+        "request A then B sequentially within the TTL without overlap",
+        "tenantId+accountId ... cross-tenant regression check"
+      ],
+      "reason": "Identifies collision while retaining race, discriminates sequential reuse from response ordering, and recommends tenant isolation and regression without claiming execution; all six labels and moderate confidence with reason."
+    },
+    {
+      "id": "bounded-upload-design",
+      "substancePoints": 4,
+      "recordPass": true,
+      "evidence": [
+        "bounded worker queue with concurrency no greater than four",
+        "roughly 5 GB overall, exceeding a 2 GB worker",
+        "does not establish a strict peak ... bounded buffers ... retry limits",
+        "do not promise an exact speedup ... compare concurrency 1–4"
+      ],
+      "reason": "Chooses feasible bounded lazy loading, handles backpressure/error limits, refuses invented speed and proposes comparable throughput/latency/RSS checks; all six labels and justified ordinal confidence."
+    },
+    {
+      "id": "incomplete-success-review",
+      "substancePoints": 4,
+      "recordPass": true,
+      "evidence": [
+        "Withhold destructive release approval",
+        "one successful response path, not durable, complete, recoverable migration",
+        "#aux: the proposed workflow guarantees these properties",
+        "compare its checksum ... interruption, cancellation and retry/idempotency ... deletion disabled"
+      ],
+      "reason": "Withholds destructive approval, separates HTTP/test success from durability, numbers premises and missing auxiliary warrant, and requires readback/checksum plus interruption/recovery with retention; six labels precede T2 reconstruction and justified ordinal confidence."
+    }
+  ],
+  "gate": {
+    "substancePoints": 12,
+    "substancePasses": 3,
+    "recordPasses": 3,
+    "passed": true
+  },
+  "limitations": [
+    "Historical revision-8 baseline and revision-9 comparisons remain in results.json; this is candidate regression acceptance, not a new matched experiment.",
+    "Case criteria are visible; the cache case overlaps the worked example; no held-out, causal, Native-provider or latency benefit is established.",
+    "After the solve Main restored three explicit qualifiers: independently checked outcomes, ordered questions and T2 reconstruction after the fields. No decision rule was removed or weakened.",
+    "Provider tokens unavailable; input/output byte estimates are computed separately and exclude host/system/dispatch overhead."
+  ],
+  "measurements": {
+    "skillBodyBytes": 7689,
+    "knownInputBytes": 11050,
+    "estimatedKnownInputTokens": 2763,
+    "outputBytes": 4598,
+    "estimatedOutputTokens": 1150,
+    "providerTokens": null,
+    "boundary": "Selected Skill+cases input and response body only; excludes host/system/dispatch/tool overhead; final qualifier-only edits followed solve."
+  }
+}

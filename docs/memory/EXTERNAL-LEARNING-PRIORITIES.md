@@ -2,7 +2,7 @@
 
 Status: source implemented, aktivasi dan penerimaan resident dicatat terpisah
 di `docs/External-Learning-Priorities-20261019.md`. Scope hanya external AI;
-Native tetap frozen. Owner tetap `src/memory`, Learning dan Skills existing.
+Native AI Agent Core tersedia untuk pengembangan dan operasi sejak keputusan pengguna 2026-10-24. Owner tetap `src/memory`, Learning dan Skills existing.
 
 ## Recall dengan batas waktu
 

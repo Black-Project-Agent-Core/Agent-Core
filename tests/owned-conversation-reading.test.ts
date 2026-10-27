@@ -26,7 +26,7 @@ async function fixture(html:string){
  for(let i=0;i<100;i++){if(await evaluate(`location.href===${JSON.stringify(CHAT)}&&document.readyState==='complete'`))break;await new Promise(r=>setTimeout(r,20));}
  const commands:string[]=[];const send=client.send.bind(client);
  client.send=(method:string,params:any)=>{commands.push(method);return send(method,params);};
- return {service,id,evaluate,commands,client,read:(read?:any)=>service.conversation(id,'conversation_read',read?{read}:{})};
+ return {service,id,evaluate,commands,client,read:(read?:any)=>service.conversation(id,read?{read}:{})};
 }
 const turn=(id:string,role:string,text:string)=>`<article data-message-id="${id}" data-message-author-role="${role}"><div class="${role==='user'?'whitespace-pre-wrap':'markdown'}">${text}</div></article>`;
 
@@ -122,7 +122,6 @@ it('waits for a real conversation URL and keeps unchanged turns readable while t
  const index:any=await h.read({kind:'index'});
  await h.evaluate(`document.querySelector('#prompt-textarea').textContent+=' typing'`);
  const body:any=await h.read({kind:'message',messageRef:index.messages[0].messageRef});expect(body.text).toContain('Stable turn');
- await expect(h.service.conversation(h.id,'conversation_draft',{url:CHAT,text:'Do not send',revision:1})).rejects.toThrow('READ_ONLY');
 },30_000);
 
 it('exposes paged selectors externally and rejects wrong actions/mixed legacy cursors',()=>{

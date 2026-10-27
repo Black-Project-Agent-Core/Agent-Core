@@ -9,8 +9,16 @@ export const INTEGRITY_MANIFEST_FILENAME = "INTEGRITY-MANIFEST.json";
 export const INTEGRITY_MUTABLE_EXCLUSIONS = Object.freeze([
   "INTEGRITY-MANIFEST.json",
   "tunnel-client/agent-core.yaml",
+  "docs/PROJECT-STRUCTURE.md",
   "runtime/memory/",
   "runtime/skills/",
+]);
+
+// These are product source/docs inside the otherwise mutable Skill home.
+// Keep every other current or future runtime role excluded by default.
+export const INTEGRITY_IMMUTABLE_INCLUSIONS = Object.freeze([
+  "runtime/skills/capability-packs/",
+  "runtime/skills/README.md",
 ]);
 
 function normalizeRelative(relative) {
@@ -19,6 +27,8 @@ function normalizeRelative(relative) {
 
 function excluded(relative) {
   const normalized = normalizeRelative(relative);
+  if (INTEGRITY_IMMUTABLE_INCLUSIONS.some(rule => rule.endsWith("/")
+    ? normalized === rule.slice(0, -1) || normalized.startsWith(rule) : normalized === rule)) return false;
   return INTEGRITY_MUTABLE_EXCLUSIONS.some(rule =>
     rule.endsWith("/") ? normalized.startsWith(rule) : normalized === rule,
   );
@@ -36,6 +46,9 @@ async function collectFiles(root, current = root, output = []) {
   for (const entry of entries) {
     const absolute = path.join(current, entry.name);
     const relative = normalizeRelative(path.relative(root, absolute));
+    if (relative.split('/')[0].toLowerCase() === 'bundled-skills') {
+      throw new Error(`Legacy bundled-skills layout requires a targeted migration before creating a new integrity manifest: ${relative}`);
+    }
     if (excluded(relative)) continue;
     if (entry.isSymbolicLink()) {
       throw new Error(`Release integrity manifest refuses symbolic links: ${relative}`);
@@ -69,6 +82,7 @@ export async function buildIntegrityManifest(root, { product, version, generated
       mode: "immutable-release-files",
       unexpectedFiles: "preserve",
       mutableExclusions: [...INTEGRITY_MUTABLE_EXCLUSIONS],
+      immutableInclusions: [...INTEGRITY_IMMUTABLE_INCLUSIONS],
     },
     fileCount: files.length,
     totalBytes: files.reduce((sum, file) => sum + file.bytes, 0),

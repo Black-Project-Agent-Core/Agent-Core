@@ -497,8 +497,15 @@ export class TerminalManager {
       });
 
       // Periodic comprehensive check every 100ms
+      // The exit handler finalizes the ledger and moves the session to the completed list before it resolves, so an
+      // observed exit gets a short grace period; otherwise a slow disk lets this check return while the session still looks active.
+      let exitGraceDeadline = 0;
       periodicCheck = setInterval(() => {
         const observation = this.observeProcess(session.pid, session.startTime.getTime());
+        if (observation.state === 'exit-observed') {
+          exitGraceDeadline ||= Date.now() + 2_000;
+          if (Date.now() < exitGraceDeadline) return;
+        }
         if (observation.state !== 'managed') {
           exitReason = observation.state === 'exit-observed' ? 'process_exit' : 'process_unavailable';
           resolveOnce({ pid: session.pid, output, isBlocked: false, processObservation: observation });

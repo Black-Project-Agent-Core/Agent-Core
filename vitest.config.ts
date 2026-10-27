@@ -7,7 +7,7 @@ export default defineConfig({
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
-      '**/runtime/**',
+      '**/runtime/**', // Includes portable Skill payloads with their own test runners.
       '**/reports/**',
       '**/.worktrees/**',
       '**/stable-release/**',
@@ -15,8 +15,6 @@ export default defineConfig({
       '**/DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/**',
       '**/src/ui/**',
       '**/referensi/**',
-      // Portable Skill payloads keep their own Node/Python test runners.
-      '**/bundled-skills/**',
     ],
   },
 });

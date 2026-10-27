@@ -42,19 +42,46 @@ function normalizedRemoteAddress(address: string | undefined): string | null {
   return normalized;
 }
 
+function additionalResource(value: string): URL {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`Additional OAuth resource URL is invalid: ${value}`);
+  }
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+    throw new Error(`Additional OAuth resource URL must be a plain https URL: ${value}`);
+  }
+  return url;
+}
+
 export class HttpSecurityPolicy {
   readonly config: HttpSecurityConfig;
+  private readonly additionalResources: URL[];
 
   constructor(config: HttpSecurityConfig) {
     this.config = {
       publicBaseUrl: config.publicBaseUrl,
       protectedResourceUrl: config.protectedResourceUrl ?? null,
+      additionalProtectedResourceUrls: [...(config.additionalProtectedResourceUrls ?? [])],
       trustProxy: config.trustProxy,
       allowedOrigins: [...config.allowedOrigins],
     };
+    this.additionalResources = this.config.additionalProtectedResourceUrls!.map(additionalResource);
+  }
+
+  /** The additional resource whose hostname the request addresses, if any. Tokens stay bound to the resource they were issued for. */
+  private matchedAdditionalResource(request: IncomingMessage): URL | null {
+    if (!this.additionalResources.length) return null;
+    const raw = (this.config.trustProxy ? firstHeaderValue(request.headers['x-forwarded-host']) : undefined)
+      ?? firstHeaderValue(request.headers.host);
+    const hostname = raw?.toLowerCase().replace(/:\d+$/, '');
+    return (hostname && this.additionalResources.find(url => url.hostname === hostname)) || null;
   }
 
   externalBaseUrl(request: IncomingMessage): string {
+    const additional = this.matchedAdditionalResource(request);
+    if (additional) return additional.origin;
     if (this.config.publicBaseUrl) return this.config.publicBaseUrl;
 
     if (this.config.trustProxy) {
@@ -73,6 +100,8 @@ export class HttpSecurityPolicy {
   }
 
   protectedResource(request: IncomingMessage): string {
+    const additional = this.matchedAdditionalResource(request);
+    if (additional) return additional.href;
     return this.config.protectedResourceUrl ?? `${this.externalBaseUrl(request)}/mcp`;
   }
 
@@ -126,7 +155,11 @@ export class HttpSecurityPolicy {
   }
 
   allowedOriginHostnames(): string[] {
-    const allowed = new Set<string>([...LOOPBACK_HOSTNAMES, ...this.config.allowedOrigins]);
+    const allowed = new Set<string>([
+      ...LOOPBACK_HOSTNAMES,
+      ...this.config.allowedOrigins,
+      ...this.additionalResources.map(url => url.hostname),
+    ]);
     if (this.config.publicBaseUrl) {
       allowed.add(new URL(this.config.publicBaseUrl).hostname.replace(/^\[|\]$/g, '').toLowerCase());
     }

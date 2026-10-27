@@ -105,7 +105,7 @@ it('round-trips the selected learning tool over real SDK client/server transport
     await server.connect(ends[0]);await client.connect(ends[1]);
     const listed=await client.listTools();expect(listed.tools.map(t=>t.name)).toEqual(['learning']);
     const properties:any=listed.tools[0].inputSchema.properties;
-    expect(properties.action.enum).toEqual(['status','checkpoint','review','curate','journey','receipt','decision']);
+    expect(properties.action.enum).toEqual(['status','backlog','checkpoint','review','curate','journey','receipt','decision']);
     expect(properties.candidates.items.properties.evaluation).toBeTruthy();
     const good:any=await client.callTool({name:'learning',arguments:{action:'review',candidates:[candidate(envelope())]}});
     const decoded=JSON.parse(good.content[0].text);expect(decoded.summary.status).toBe('captured');

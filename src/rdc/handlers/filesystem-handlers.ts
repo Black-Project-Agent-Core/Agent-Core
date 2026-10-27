@@ -13,6 +13,7 @@ import {
 } from '../tools/filesystem.js';
 import type { ReadOptions } from '../utils/files/base.js';
 import { finalizePdfEvidence, PDF_EVIDENCE_BLOCK } from '../tools/pdf/index.js';
+import { finalizeXlsxEvidence, XLSX_EVIDENCE_BLOCK } from '../document-projection/xlsx-evidence.js';
 import { expectedResultIntegritySchema } from '../../security/verified-result-artifact.js';
 
 import { ServerResult } from '../types.js';
@@ -246,8 +247,12 @@ export async function handleReadFile(args: unknown, context?: MutationExecutionC
             if (parsed.origin === 'ui' && fileType === 'directory') {
                 textContent = textContent.replace(/^This is a directory, not a file\.[^\n]*\n+/, '');
             }
+            const xlsxEvidence = parsed.origin !== 'ui' && !parsed.isUrl && fileResult.metadata?.xlsxEvidence
+                ? finalizeXlsxEvidence(fileResult.metadata.xlsxEvidence, { deliveredText: networkSummary + textContent }) : undefined;
+            const xlsxEvidenceBlocks = xlsxEvidence ? [{ type: 'text' as const,
+                text: JSON.stringify({ xlsxEvidence }), [XLSX_EVIDENCE_BLOCK]: xlsxEvidence }] : [];
             return {
-                content: [{ type: "text", text: networkSummary + textContent }, ...pdfEvidenceBlocks],
+                content: [{ type: "text", text: networkSummary + textContent }, ...pdfEvidenceBlocks, ...xlsxEvidenceBlocks],
                 ...(parsed.origin === 'ui' ? {
                     structuredContent: {
                         fileName: path.basename(resolvedFilePath),
@@ -479,7 +484,7 @@ export async function handleMoveFile(args: unknown, execution?: MutationExecutio
             await moveFile(source, destination, parsed.autoCheckpoint ? async (from, to, reason) => {
                 if (reason) execution?.reportAutoCheckpoint({ status: 'not-captured', reason });
                 else await fileCheckpointService.createAutomatic([from, to], execution);
-            } : undefined);
+            } : undefined, { source: parsed.source, destination: parsed.destination });
             return {
                 content: [{ type: "text", text: `Successfully moved ${parsed.source} to ${parsed.destination}` }],
             };

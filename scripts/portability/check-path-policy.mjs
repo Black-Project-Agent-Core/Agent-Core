@@ -1,6 +1,8 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inspectSkillStorageLayout } from './skill-storage-layout.mjs';
+import { inspectProjectStructure } from './project-structure.mjs';
 
 const scriptFile = fileURLToPath(import.meta.url);
 const scriptDir = path.dirname(scriptFile);
@@ -236,6 +238,15 @@ for (const exception of policy.exceptions) {
   if (!usedExceptions.has(exception.id)) registryErrors.push('stale exception: ' + exception.id);
 }
 
+const skillStorage = await inspectSkillStorageLayout(root);
+for (const issue of skillStorage.issues) {
+  unresolved.push({ rule: 'skill-storage-ownership', file: issue.path, line: 1, snippet: issue.message });
+}
+const projectStructure = await inspectProjectStructure(root);
+for (const issue of projectStructure.issues) {
+  unresolved.push({ rule: 'project-structure', file: 'docs/PROJECT-STRUCTURE.md', line: 1, snippet: issue });
+}
+
 if (unresolved.length || registryErrors.length) {
   console.error('PATH POLICY FAIL');
   for (const issue of unresolved) {
@@ -250,6 +261,9 @@ if (unresolved.length || registryErrors.length) {
     'PATH POLICY PASS — ' + fileSet.size + ' authored files scanned; '
       + policy.exceptions.length + ' documented exceptions',
   );
+  console.log('Skill storage ownership PASS — ' + skillStorage.sourceSkillCount + ' sources; '
+    + skillStorage.catalogSkillCount + ' managed catalog artifacts');
+  console.log('Project structure PASS — ' + projectStructure.directoryCount + ' directories; map matches filesystem');
   if (report) {
     if (!policy.exceptions.length) {
       console.log('Active path exceptions: none');

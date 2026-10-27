@@ -105,6 +105,28 @@ export type ActivityEntry = {
   module: string;
   level: 'info' | 'success' | 'warn' | 'error' | 'sys';
   message: string;
+  timestamp?: string;
+  kind?: string;
+  invocationId?: string;
+  tool?: string;
+  target?: string;
+  status?: 'running' | 'success' | 'error' | 'cancelled' | 'unknown';
+  /** Lifecycle is separate from the terminal tool outcome. */
+  lifecycle?: 'complete' | 'incomplete' | 'start-only' | null;
+  startedAt?: string | null;
+  terminalAt?: string | null;
+  durationMs?: number | null;
+};
+
+export type ActivityDetailPage = {
+  invocationId: string;
+  phase: 'request' | 'response';
+  state: 'complete' | 'truncated' | 'redacted' | 'omitted' | 'expired' | 'unavailable';
+  redacted: boolean;
+  text: string;
+  offset: number;
+  nextOffset: number | null;
+  totalChars: number;
 };
 
 export type AgentRunResult = {
@@ -141,15 +163,24 @@ export type AgentChatTurn = {
   conversationId: string;
   clientRequestId: string;
   runtimeTaskId: string;
-  status: 'running' | 'finalized' | 'failed' | 'interrupted' | 'stopped';
+  status: 'running' | 'resumable' | 'finalized' | 'failed' | 'interrupted' | 'stopped';
   providerId?: string;
   model?: string;
   iterations?: number;
   retrievalCount?: number;
+  memoryUse?: AgentMemoryUse[];
   errorCode?: string;
   createdAtMs: number;
   startedAtMs: number;
   completedAtMs?: number;
+};
+
+export type AgentMemoryUse = {
+  memoryId: string;
+  title: string;
+  applicability: 'applied' | 'adapted' | 'rejected';
+  evidenceRefs: string[];
+  verification: 'pass' | 'fail' | 'unavailable';
 };
 
 export type AgentChatMessage = {
@@ -178,11 +209,26 @@ export type AgentChatEvent = {
   providerId?: string;
   model?: string;
   response?: string;
+  memoryUse?: AgentMemoryUse[];
   code?: string;
+  retryAtMs?: number | null;
+};
+
+export type AgentChatProvider = {
+  id: string;
+  model: string | null;
+  configured: boolean;
+  available: boolean;
+  retryAt?: string;
+  issue?: string;
 };
 
 export type AgentChatUiState = {
   conversations: AgentChatConversation[];
+  /** Routes the owner can pin for a message; absent until the host answers. */
+  providers?: AgentChatProvider[];
+  /** "auto" keeps automatic rotation; otherwise a route id from providers. */
+  providerChoice?: string;
   active?: AgentChatDetail;
   runningRequestId?: string;
   lastEvent?: AgentChatEvent;
@@ -213,7 +259,34 @@ export type ProposalDocumentItem = {
 export type ProposalDocumentList = { items: ProposalDocumentItem[]; guides: ProposalDocumentItem[]; warnings: string[] };
 export type ProposalDocumentRead = ProposalDocumentItem & { text: string; decisionGuidance: string };
 
+/** Mirrors the read-only /agent/task-changes response (src/rdc/checkpoints/task-changes.ts). */
+export type TaskChangesDiff = {
+  state: 'text' | 'truncated' | 'none' | 'binary' | 'too-large' | 'sensitive-not-shown' | 'budget' | 'unavailable';
+  text?: string; additions?: number | null; deletions?: number | null; reason?: string;
+};
+export type TaskChangesApplied = {
+  path: string; oldPath?: string; state: 'added' | 'modified' | 'deleted' | 'renamed' | 'unverified';
+  attribution: 'checkpoint-baseline'; checkpointIds: string[]; invocationIds: string[]; otherCheckpointTasks: string[];
+  before: { exists: boolean; size: number }; after: { exists: boolean; size: number | null }; diff: TaskChangesDiff;
+};
+export type TaskChangesExternal = {
+  path: string; oldPath?: string; state: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked' | 'conflicted' | 'other';
+  binary: boolean | null; additions: number | null; deletions: number | null;
+  modifiedAfterTaskStart: boolean | null; attribution: 'unattributed';
+};
+export type TaskChangesRequest = {
+  checkpointId: string; invocationId: string; at: string;
+  paths: Array<{ path: string; afterwards: 'differs' | 'same' | 'unknown' }>;
+};
+export type TaskChanges = {
+  taskId: string; generatedAt: string; checkpointCount: number; requests: TaskChangesRequest[];
+  applied: { items: TaskChangesApplied[]; unchanged: number; truncated: boolean };
+  external: { state: 'ok' | 'unavailable'; reason?: string; items: TaskChangesExternal[]; total: number; truncated: boolean };
+};
+
 type HostEnvelope =
+  | { type: 'task-changes-result'; requestId: string; result: TaskChanges }
+  | { type: 'task-changes-error'; requestId: string; error: string }
   | { type: 'proposals-result'; requestId: string; result: ProposalDocumentList }
   | { type: 'proposals-error'; requestId: string; error: string }
   | { type: 'proposal-read-result'; requestId: string; result: ProposalDocumentRead }
@@ -224,8 +297,10 @@ type HostEnvelope =
   | { type: 'snapshot'; snapshot: DesktopSnapshot }
   | { type: 'log'; entry: ActivityEntry }
   | { type: 'logs'; entries: ActivityEntry[] }
+  | { type: 'activity-detail-result'; result: ActivityDetailPage }
   | { type: 'agent-result'; requestId: string; result?: AgentRunResult; error?: string }
   | { type: 'agent-chat-list-result'; result: { conversations?: AgentChatConversation[] } }
+  | { type: 'agent-chat-providers-result'; result: { providers?: AgentChatProvider[] } }
   | { type: 'agent-chat-state'; result: AgentChatDetail }
   | { type: 'agent-chat-event'; requestId: string; envelope: { type: string; event?: AgentChatEvent; result?: unknown; error?: string } }
   | { type: 'agent-chat-cancel-result'; turnId: string; stopped: boolean }

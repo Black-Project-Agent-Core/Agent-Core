@@ -2,6 +2,7 @@ import { activityTracker } from '../../tracker/activity-tracker.js';
 import { readRegularFileBounded } from '../utils/files/safe-regular-file.js';
 import { assertReadActive, isReadCancelled } from '../utils/withTimeout.js';
 import { finalizePdfEvidence, type PageRange } from '../tools/pdf/index.js';
+import { finalizeXlsxEvidence } from './xlsx-evidence.js';
 import {
   boundMarkdown,
   DOCUMENT_INPUT_MAX_BYTES,
@@ -166,6 +167,8 @@ export class DocumentProjectionService {
           markdown,
           ...(result.pdfEvidence ? { pdfEvidence: finalizePdfEvidence(result.pdfEvidence,
             { outputTruncated }) } : {}),
+          ...(result.xlsxEvidence ? { xlsxEvidence: finalizeXlsxEvidence(result.xlsxEvidence,
+            { deliveredText: markdown, outputTransformed: outputTruncated }) } : {}),
           evidence: {
             extension: input.extension,
             mimeType: input.mimeType,

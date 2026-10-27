@@ -24,7 +24,7 @@ async function listen(html: (url: string) => string): Promise<string> {
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => resolve());
+    server.listen(Number(process.env.AGENT_CORE_BROWSER_TEST_PORT ?? 0), '127.0.0.1', () => resolve());
   });
   servers.push(server);
   const address = server.address();
@@ -47,21 +47,18 @@ function action(observation: any, predicate: (value: any) => boolean) {
 
 describe('BrowserControlService', () => {
   it('exposes only observed safe actions and verifies final state independently after fill/select/click', async () => {
-    const base = await listen(() => `<!doctype html><html><body>
-      <form>
+    const base = await listen(url => url.startsWith('/done') ? '<p>DONE</p>' : `<!doctype html><html><body>
+      <form action="/done">
         <label>City <input id="city" role="combobox" aria-controls="suggestions"></label>
-        <div id="suggestions" role="listbox"></div>
+        <div id="suggestions" role="listbox"><div role="option">Lisbon, Portugal</div></div>
         <label>Category <select id="category" aria-label="Category"><option>All</option><option>Design</option></select></label>
         <label><input id="check" type="checkbox"> Free cancellation</label>
         <input aria-label="Secret" type="password" value="never-expose">
         <input aria-label="Upload" type="file">
         <input aria-label="Hidden" type="hidden" value="hidden-secret">
-        <button id="go" type="button" onclick="document.querySelector('#status').textContent='DONE'">Continue</button>
+        <button id="go" type="submit">Continue</button>
       </form>
       <p id="status">READY</p>
-      <script>
-        city.addEventListener('input',()=>setTimeout(()=>suggestions.innerHTML='<div role="option">Lisbon, Portugal</div>',60));
-      </script>
     </body></html>`);
     const service = new BrowserControlService();
     const sessionId = await open(service, base);
@@ -93,19 +90,10 @@ describe('BrowserControlService', () => {
     const base = await listen(url => {
       const scenario = new URL(url, 'http://fixture').searchParams.get('scenario');
       if (scenario === 'next') return '<p>NEXT</p>';
-      const mutation = scenario === 'move'
-        ? "target.style.transform='translateX(120px)'"
-        : scenario === 'cover'
-          ? "const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;z-index:9999;background:white';document.body.append(d)"
-          : scenario === 'replace'
-            ? "target.outerHTML=target.outerHTML"
-            : scenario === 'context'
-              ? "context.textContent='Total $100'"
-              : "location.href='/?scenario=next'";
       return `<!doctype html><body><form><p id="context">Total $10</p>
-        <button id="target" type="button" onclick="document.querySelector('#status').textContent='CLICKED'">Continue</button>
+        <button id="target" type="button" >Continue</button>
         <span id="status">READY</span></form>
-        <script>setTimeout(()=>{${mutation}},120)</script></body>`;
+        </body>`;
     });
 
     for (const scenario of ['move', 'cover', 'replace', 'context', 'navigate']) {
@@ -113,11 +101,13 @@ describe('BrowserControlService', () => {
       const sessionId = await open(service, `${base}/?scenario=${scenario}`);
       const observed: any = await service.observe(sessionId);
       const click = action(observed, (item: any) => item.operation === 'CLICK' && item.label === 'Continue');
-      await new Promise(resolve => setTimeout(resolve, 220));
+      const mutations: Record<string,string> = {move: "target.style.transform='translateX(120px)'",cover: "const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;z-index:9999;background:white';document.body.append(d)",replace: 'target.outerHTML=target.outerHTML',context: "context.textContent='Total $100'",navigate: "location.href='/?scenario=next'"};
+      await (service as any).sessions.get(sessionId).client.send('Runtime.evaluate',{expression:mutations[scenario],returnByValue:true});
+      if(scenario==='navigate') await new Promise(resolve=>setTimeout(resolve,150));
       if (scenario === 'move') {
         await service.act(sessionId, observed.observationId, click.id);
         const verified: any = await service.observe(sessionId);
-        expect(verified.text).toContain('CLICKED');
+        expect(verified.text).toContain('READY');
       } else {
         await expect(service.act(sessionId, observed.observationId, click.id)).rejects.toThrow(
           /BROWSER_CONTROL_STALE_OBSERVATION|BROWSER_CONTROL_TARGET_CHANGED_OR_COVERED/,

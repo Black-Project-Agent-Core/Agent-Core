@@ -121,7 +121,7 @@ fs.rename=async(from,to)=>{
   expect(JSON.parse(await readFile(path.join(fixture,'package.json'),'utf8')).version).toBe('0.1.0');
 });
 
-async function skillRecoveryFixture(withMutableManifest = false) {
+async function skillRecoveryFixture(manifestRelative?: string, legacySource = false) {
   const fixture = await mkdtemp(path.join(os.tmpdir(), 'release-skill-recovery-')); roots.push(fixture);
   const candidate = path.join(fixture, 'trusted'), local = path.join(fixture, 'installed'), zip = path.join(fixture, 'trusted.zip');
   const put = async (base: string, relative: string, content: string) => {
@@ -130,14 +130,29 @@ async function skillRecoveryFixture(withMutableManifest = false) {
   for (const base of [candidate, local]) await put(base, 'package.json', JSON.stringify({ name: 'agent-core', version: '0.15.0' }));
   await mkdir(path.join(local, 'scripts/windows'), { recursive: true });
   await put(local, 'source/README.md', 'Packaged fixture marker.');
-  for (const [relative, pristine, existing] of [
+  const fixtureFiles = [
     ['bin/app.txt', 'trusted app', 'damaged app'],
-    ['bundled-skills/review/SKILL.md', 'immutable seed', 'damaged seed'],
+    ['runtime/skills/capability-packs/review/SKILL.md', 'immutable seed', 'damaged seed'],
+    ['runtime/skills/README.md', 'immutable home guide', 'damaged home guide'],
     ['runtime/skills/catalog/review/SKILL.md', 'archive active seed', 'approved local revision'],
-    ['runtime/skills/history/review/r1.md', 'archive history', 'retained local history'],
-  ]) { await put(candidate, relative, pristine); await put(local, relative, existing); }
-  if (withMutableManifest) {
-    const content = 'archive active seed', relative = 'runtime/skills/catalog/review/SKILL.md';
+    ['runtime/skills/revisions/review/history/' + 'a'.repeat(64) + '/SKILL.md', 'archive history', 'retained local history'],
+    ['runtime/skills/revisions/review/staged/' + 'b'.repeat(64) + '/SKILL.md', 'archive candidate', 'retained local candidate'],
+    ['runtime/skills/.staging/transaction.txt', 'archive transaction', 'local transaction'],
+    ['runtime/skills/tooling/local.json', 'archive tooling', 'local tooling config'],
+    ['runtime/skills/packages/review.skill', 'archive export', 'local export'],
+    ['runtime/skills/exports/codex/export.txt', 'archive host export', 'local host export'],
+    ['runtime/skills/proposals/agent-core/review.md', 'archive proposal', 'local proposal'],
+    ['runtime/skills/future-role/state.json', 'archive future state', 'local future state'],
+    ['runtime/skills/capability-packs-copy/review/SKILL.md', 'archive alternate', 'local alternate'],
+    ['runtime/memory/state.json', 'archive memory', 'local memory'],
+    ['tunnel-client/agent-core.yaml', 'archive config', 'local config'],
+    ['docs/PROJECT-STRUCTURE.md', 'archive generated map', 'local synchronized map'],
+  ];
+  for (const [relative, pristine, existing] of fixtureFiles) { await put(candidate, relative, pristine); await put(local, relative, existing); }
+  if (legacySource || manifestRelative?.startsWith('bundled-skills/'))
+    await put(candidate,'bundled-skills/review/SKILL.md','legacy immutable seed');
+  if (manifestRelative) {
+    const relative = manifestRelative, content = fixtureFiles.find(entry => entry[0] === relative)?.[1] ?? 'legacy immutable seed';
     await put(candidate, 'INTEGRITY-MANIFEST.json', JSON.stringify({ schemaVersion: 1, product: 'Agent Core', version: '0.15.0',
       hashAlgorithm: 'sha256', files: [{ path: relative, bytes: Buffer.byteLength(content), sha256: createHash('sha256').update(content).digest('hex') }] }));
   }
@@ -157,7 +172,7 @@ Import-Module -Name (Join-Path $PSHOME 'Modules\\Microsoft.PowerShell.Utility\\M
   const repair = () => spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
     '-File', wrapper, '-Script', path.join(root, 'scripts/windows/Recover-Agent-Core.ps1'), '-Project', local, '-Zip', zip, '-Digest', sha256],
   { encoding: 'utf8', windowsHide: true, timeout: 30_000, env: childEnv });
-  return { local, repair };
+  return { local, repair, fixtureFiles, zip };
 }
 
 it.skipIf(process.platform !== 'win32')('derived recovery preserves active Skills and history while repairing immutable seeds', async () => {
@@ -165,17 +180,49 @@ it.skipIf(process.platform !== 'win32')('derived recovery preserves active Skill
   expect(repaired.status, repaired.stdout + repaired.stderr).toBe(0);
   expect(JSON.parse(repaired.stdout).manifestSource).toBe('trusted-archive-derived');
   expect(await readFile(path.join(f.local, 'bin/app.txt'), 'utf8')).toBe('trusted app');
-  expect(await readFile(path.join(f.local, 'bundled-skills/review/SKILL.md'), 'utf8')).toBe('immutable seed');
-  expect(await readFile(path.join(f.local, 'runtime/skills/catalog/review/SKILL.md'), 'utf8')).toBe('approved local revision');
-  expect(await readFile(path.join(f.local, 'runtime/skills/history/review/r1.md'), 'utf8')).toBe('retained local history');
+  expect(await readFile(path.join(f.local, 'runtime/skills/capability-packs/review/SKILL.md'), 'utf8')).toBe('immutable seed');
+  expect(await readFile(path.join(f.local,'runtime/skills/README.md'),'utf8')).toBe('immutable home guide');
+  expect(await readFile(path.join(f.local,'docs/PROJECT-STRUCTURE.md'),'utf8')).toBe('local synchronized map');
+  for(const [relative,,existing] of f.fixtureFiles.filter(([relative])=>relative.startsWith('runtime/')&&!relative.startsWith('runtime/skills/capability-packs/')&&relative!=='runtime/skills/README.md'))
+    expect(await readFile(path.join(f.local,relative),'utf8'),relative).toBe(existing);
+  expect(await readFile(path.join(f.local,'tunnel-client/agent-core.yaml'),'utf8')).toBe('local config');
   const manifest = JSON.parse(await readFile(path.join(f.local, 'INTEGRITY-MANIFEST.json'), 'utf8'));
-  expect(manifest.files.some((entry: any) => entry.path.startsWith('runtime/skills/'))).toBe(false);
+  expect(manifest.files.filter((entry: any) => entry.path.startsWith('runtime/skills/')).map((entry:any)=>entry.path))
+    .toEqual(['runtime/skills/capability-packs/review/SKILL.md','runtime/skills/README.md']);
   expect(manifest.policy.mutableExclusions).toContain('runtime/skills/');
+  expect(manifest.policy.mutableExclusions).toContain('docs/PROJECT-STRUCTURE.md');
+  expect(manifest.policy.immutableInclusions).toEqual(['runtime/skills/capability-packs/','runtime/skills/README.md']);
 }, 60_000);
 
-it.skipIf(process.platform !== 'win32')('recovery rejects a trusted manifest that tries to govern mutable Skill revisions', async () => {
-  const f = await skillRecoveryFixture(true), repaired = f.repair();
+it.skipIf(process.platform !== 'win32').each(['runtime/skills/capability-packs/review/SKILL.md','runtime/skills/README.md'])('recovery accepts a source manifest for the canonical runtime path %s', async (relative) => {
+  const f = await skillRecoveryFixture(relative), repaired = f.repair();
+  expect(repaired.status,repaired.stdout+repaired.stderr).toBe(0);
+  expect(JSON.parse(repaired.stdout).manifestSource).toBe('release-manifest');
+  expect(await readFile(path.join(f.local,relative),'utf8')).toBe(relative.endsWith('README.md')?'immutable home guide':'immutable seed');
+  expect(await readFile(path.join(f.local,'runtime/skills/catalog/review/SKILL.md'),'utf8')).toBe('approved local revision');
+},60_000);
+
+it.skipIf(process.platform !== 'win32').each([
+  'runtime/skills/catalog/review/SKILL.md', 'runtime/skills/tooling/local.json',
+  'runtime/skills/capability-packs-copy/review/SKILL.md','runtime/memory/state.json','tunnel-client/agent-core.yaml',
+  'docs/PROJECT-STRUCTURE.md',
+])('recovery rejects a trusted manifest governing protected runtime/config path %s', async (relative) => {
+  const f = await skillRecoveryFixture(relative), repaired = f.repair();
   expect(repaired.status).not.toBe(0);
   expect(repaired.stdout + repaired.stderr).toContain('protected/mutable');
   expect(await readFile(path.join(f.local, 'runtime/skills/catalog/review/SKILL.md'), 'utf8')).toBe('approved local revision');
 }, 60_000);
+
+it.skipIf(process.platform !== 'win32').each(['legacy-manifest','derived-manifest','unlisted-legacy-payload'])('recovery refuses %s without recreating the legacy source home',async(mode)=>{
+  const manifestRelative=mode==='legacy-manifest'?'bundled-skills/review/SKILL.md'
+    :mode==='unlisted-legacy-payload'?'runtime/skills/capability-packs/review/SKILL.md':undefined;
+  const f=await skillRecoveryFixture(manifestRelative,mode!=='legacy-manifest');
+  const before=createHash('sha256').update(await readFile(f.zip)).digest('hex');
+  const repaired=f.repair();
+  expect(repaired.status).not.toBe(0);
+  expect(repaired.stdout+repaired.stderr).toMatch(/legacy.*bundled-skills.*targeted migration/i);
+  await expect(access(path.join(f.local,'bundled-skills'))).rejects.toThrow();
+  expect(await readFile(path.join(f.local,'runtime/skills/capability-packs/review/SKILL.md'),'utf8')).toBe('damaged seed');
+  expect(await readFile(path.join(f.local,'bin/app.txt'),'utf8')).toBe('damaged app');
+  expect(createHash('sha256').update(await readFile(f.zip)).digest('hex')).toBe(before);
+},60_000);

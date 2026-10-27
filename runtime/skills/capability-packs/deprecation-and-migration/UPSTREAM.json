@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/addyosmani/agent-skills",
+  "commit": "aeac41d4d005999432bb7312f7ff06383a91d59d",
+  "path": "skills/deprecation-and-migration",
+  "skillSha256": "6a624f942e09c69863a4219b9bd5d56975026b67b0c70bc83385ffd2120b6142",
+  "license": "MIT",
+  "adapter": "frontmatter, applicability, tool mapping, local reference paths; upstream workflow retained"
+}

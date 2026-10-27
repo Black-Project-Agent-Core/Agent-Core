@@ -22,6 +22,8 @@ import type { MemoryRecord } from './types.js';
 import {searchMemories,type MemorySearchResult} from './retrieval.js';
 import {assessMemoryRelevance,type RelevanceInput,type RelevancePolicy} from './relevance.js';
 import {externalClaimReviewGuide,type MemoryClaimReviews} from './claim-review.js';
+import {RECALL_REPAIR_GUIDE,type MemoryRecallRepairs} from './recall-repair.js';
+import {DERIVATION_GUIDE,type MemoryDerivations} from './derivations.js';
 
 /** Internal host-owned read/telemetry ports. Never exported from the package root. */
 export interface ControllerRankedSnapshot {
@@ -37,6 +39,8 @@ export interface ControllerMemoryBackend {
   experienceEnabled?:boolean;
   episodes?:MemoryEpisodes;
   claimReviews?:MemoryClaimReviews;
+  recallRepairs?:MemoryRecallRepairs;
+  derivations?:MemoryDerivations;
   assertScopeCurrent?:()=>void|Promise<void>;
   promotion?:MemoryPromotion;
   resolveWorkspace(value: string): string;
@@ -81,7 +85,8 @@ export class ControllerMemorySession {
 
   capabilities(): ControllerMemoryCapabilities {
     return { contractVersion: 1, views: this.#backend.experienceEnabled ? ['map','abstract','record','episode','evidence'] : ['map','abstract','record'],
-      budgets: { defaultBytes:8192,minBytes:512,maxBytes:65536 }, writeMode:this.#backend.experienceEnabled ? 'experience-v2' : 'legacy-read',temporalAsOf:Boolean(this.#backend.experienceEnabled),...(this.#backend.experienceEnabled&&this.#backend.historicalSnapshot&&this.#backend.rankHistorical?{temporalKnownAt:true as const}:{}),...(this.#backend.experienceEnabled&&this.#backend.claimReviews?{claimReview:externalClaimReviewGuide()}:{}),advisory:true };
+      budgets: { defaultBytes:8192,minBytes:512,maxBytes:65536 }, writeMode:this.#backend.experienceEnabled ? 'experience-v2' : 'legacy-read',temporalAsOf:Boolean(this.#backend.experienceEnabled),...(this.#backend.experienceEnabled&&this.#backend.historicalSnapshot&&this.#backend.rankHistorical?{temporalKnownAt:true as const}:{}),...(this.#backend.experienceEnabled&&this.#backend.claimReviews?{claimReview:externalClaimReviewGuide()}:{}),
+      ...(this.#backend.experienceEnabled&&this.#backend.recallRepairs?{recallRepair:RECALL_REPAIR_GUIDE,derivation:DERIVATION_GUIDE}:{}),advisory:true };
   }
 
   private async snapshot(options?:{historical?:boolean;referenceTime?:number}): Promise<MemoryRecord[]> {
@@ -362,5 +367,21 @@ export class ControllerMemorySession {
   async writeClaimReview(input:unknown){
     if(!this.#backend.claimReviews)throw new MemoryControllerError('MEMORY_SCOPE_MISMATCH');
     return this.#backend.claimReviews.write(this.#scope,input,this.#backend.assertScopeCurrent);
+  }
+  async readRecallRepair(input:unknown){
+    if(!this.#backend.recallRepairs)throw new MemoryControllerError('MEMORY_SCOPE_MISMATCH');
+    return this.#backend.recallRepairs.read(this.#scope,input,this.#backend.assertScopeCurrent);
+  }
+  async writeRecallRepair(input:unknown){
+    if(!this.#backend.recallRepairs)throw new MemoryControllerError('MEMORY_SCOPE_MISMATCH');
+    return this.#backend.recallRepairs.write(this.#scope,input,this.#backend.assertScopeCurrent);
+  }
+  async readDerivation(input:unknown){
+    if(!this.#backend.derivations)throw new MemoryControllerError('MEMORY_SCOPE_MISMATCH');
+    return this.#backend.derivations.read(this.#scope,input,this.#backend.assertScopeCurrent);
+  }
+  async writeDerivation(input:unknown){
+    if(!this.#backend.derivations)throw new MemoryControllerError('MEMORY_SCOPE_MISMATCH');
+    return this.#backend.derivations.write(this.#scope,input,this.#backend.assertScopeCurrent);
   }
 }

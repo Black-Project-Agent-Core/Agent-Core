@@ -71,6 +71,7 @@ async function setup() {
         replayed: false,
       };
     }),
+    listProviders: vi.fn(() => [{ id: 'atria', model: 'Atria-Dawn', configured: true, available: true }]),
     stopTurn: vi.fn(() => true),
     archiveConversation: vi.fn(async () => undefined),
   };
@@ -92,6 +93,19 @@ async function setup() {
 }
 
 describe('launcher-only native agent HTTP transport', () => {
+  it('binds the external origin header and rejects callers claiming local operator origin', async () => {
+    const { baseUrl, agentChat } = await setup();
+    const send = (origin: string) => fetch(`${baseUrl}/agent/chat/conversations/conversation-1/turns`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-agent-core-ui-token': 'fixture-ui-token',
+        'x-agent-core-chat-origin': origin }, body: JSON.stringify({ clientRequestId: 'origin-test', prompt: '/skill approve test' }),
+    });
+    const external = await send('external-controller');
+    expect(external.status).toBe(200); await external.text();
+    expect(agentChat.runTurn).toHaveBeenCalledWith(expect.objectContaining({ messageOrigin: 'external-controller' }));
+    const spoof = await send('local-operator');
+    expect(spoof.status).toBe(400);
+    expect(agentChat.runTurn).toHaveBeenCalledTimes(1);
+  });
   it('requires the ephemeral UI token and forwards a bounded loopback request', async () => {
     const { baseUrl, agentRun } = await setup();
     const missing = await fetch(`${baseUrl}/agent/run`, {
@@ -219,5 +233,26 @@ describe('launcher-only native agent HTTP transport', () => {
       clientRequestId: 'request-chat-1',
       prompt: 'Inspect the fixture.',
     }));
+    expect(agentChat.runTurn.mock.calls[0]![0]).not.toHaveProperty('providerRoute');
+  });
+
+  it('lists selectable provider routes behind the UI token and forwards a chosen route per turn', async () => {
+    const { baseUrl, agentChat } = await setup();
+    expect((await fetch(`${baseUrl}/agent/chat/providers`)).status).toBe(401);
+    const listed = await fetch(`${baseUrl}/agent/chat/providers`, { headers: { 'x-agent-core-ui-token': 'fixture-ui-token' } });
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toEqual({ providers: [{ id: 'atria', model: 'Atria-Dawn', configured: true, available: true }] });
+
+    const turn = (providerId: unknown) => fetch(`${baseUrl}/agent/chat/conversations/conversation-1/turns`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-agent-core-ui-token': 'fixture-ui-token' },
+      body: JSON.stringify({ clientRequestId: 'request-pin-' + String(providerId).length, prompt: 'Halo', providerId }),
+    });
+    expect((await turn('atria')).status).toBe(200);
+    expect(agentChat.runTurn).toHaveBeenLastCalledWith(expect.objectContaining({ providerRoute: 'atria' }));
+    await (await turn('auto')).text();
+    expect(agentChat.runTurn.mock.calls.at(-1)![0]).not.toHaveProperty('providerRoute');
+    expect((await turn('bad route!')).status).toBe(400);
+    expect((await turn(42)).status).toBe(400);
   });
 });

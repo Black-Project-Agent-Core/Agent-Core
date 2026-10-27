@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import type { ExternalControllerLearningService } from '../learning/external-controller.js';
-import { currentExternalInvocationContext } from '../tracker/tool-invocation.js';
+import { currentExternalInvocationContext, currentToolInvocationRequest } from '../tracker/tool-invocation.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import * as schemas from './controller-learning-schemas.js';
 import { appendSkillReminderCapsule } from './external-controller-tool-support.js';
@@ -22,7 +22,7 @@ export function registerControllerLearningTools(
 ): void {
   server.registerTool('controller_learning', {
     title: 'External Controller Learning',
-    description: 'Host-bound episodes, context and receipts. Start with stable taskKey, registered workspace and description(goal) to link resumable Memory; use returned taskId. Memory working-state/checkpoint via memory_v2_write is separate from Learning finalization. episode/verify needs exact taskId; stale targets refused. Planned retrieval: matching query/rootQuery, active taskId, 2–4 q1–q4 questions, limit 1–8. Embeds may receive queries; deadline stops local waiting only. Skill hybrid sends descriptors to Cloudflare AI only with consent. Artifact receipts require actual use; helpfulness needs verification. procedure/evaluate grant no permissions. browserObservation selects a grant-gated host snapshot for context/procedure inspect: advisory, not page identity or authority. Refresh after schema updates.',
+    description: 'Host-bound episodes, context and receipts. Start with stable taskKey, registered workspace and description(goal) to link resumable Memory; use returned taskId. Memory checkpoints are separate from Learning finalization. episode/verify needs exact taskId. Planned context: matching query/rootQuery, active taskId, 2–4 q1–q4 questions, limit 1–8. Embeds may receive queries; deadline stops local waiting only. Skill hybrid requires consent. Artifact receipts require actual use. status exposes structured payload guides for improvement, procedure and evaluate; none grants permissions. browserObservation selects a grant-gated advisory snapshot for context/procedure inspect. Refresh after schema updates.',
     inputSchema: schemas.controllerLearning,
     annotations: {
       readOnlyHint: false,
@@ -62,11 +62,17 @@ export function registerControllerLearningTools(
           let binding: { ownerId: string; workspaceIdentityKey: string } | undefined;
           let workspace = input.workspace;
           if (host) {
+            const unavailable = (reason: string): never => {
+              throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE: ' + reason
+                + '. Start controller_learning action=episode episodeOperation=start with a stable taskKey and registered workspace. Host owner must be available; do not substitute an unrelated workspace.');
+            };
+            if (!host.ownerId) unavailable('owner-unavailable');
+            if (!input.taskKey?.trim()) unavailable('task-key-required');
+            if (!workspace?.trim()) unavailable('workspace-required');
             try {
-              if (!host.ownerId || !input.taskKey?.trim() || !workspace?.trim()) throw new Error('missing task binding');
-              const identity = host.workspaceIdentity(workspace);
+              const identity = host.workspaceIdentity(workspace!);
               workspace = identity.name; binding = { ownerId: host.ownerId, workspaceIdentityKey: identity.key };
-            } catch { throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE'); }
+            } catch { unavailable('workspace-unregistered-or-unavailable'); }
           }
           result = await service.startEpisode(sessionId, {
             ...(input.taskKey ? { taskKey: input.taskKey } : {}),
@@ -116,9 +122,15 @@ export function registerControllerLearningTools(
           ...(input.memoryFeedback ? { memoryFeedback: input.memoryFeedback } : {}),
           ...(input.workspace ? { workspace: input.workspace } : {}),
         }, invocationContext);
+      } else if (input.action === 'improvement') {
+        if (invocationContext?.binding !== 'bound' || input.taskId !== invocationContext.taskId
+          || currentToolInvocationRequest()?.identity.id !== invocationContext.invocationId)
+          throw new Error('IMPROVEMENT_SCOPE_UNAVAILABLE');
+        result = await service.improvement(sessionId, input.payload, invocationContext, ctx?.mcpReq?.signal);
       } else if (input.action === 'procedure') {
         result = await service.procedure(sessionId, {
           operation: input.procedureOperation ?? 'list',
+          ...(input.payload ? {payload:input.payload,taskId:input.taskId,signal:ctx?.mcpReq?.signal} : {}),
           ...(selectBrowser ? {browserSelection:selectBrowser} : {}),
           ...(invocationContext?.binding === 'bound' ? {invocationContext} : {}),
           ...(input.fingerprint ? { fingerprint: input.fingerprint } : {}),
@@ -135,6 +147,7 @@ export function registerControllerLearningTools(
       } else {
         result = await service.evaluate({
           cohortId: input.cohortId, baselineEpisodeIds: input.baselineEpisodeIds, candidateEpisodeIds: input.candidateEpisodeIds,
+          ...(input.payload ? {payload:input.payload} : {}),
           ...(input.workspace ? { workspace: input.workspace } : {}),
           ...(input.taskFamily ? { taskFamily: input.taskFamily } : {}),
           ...(input.limit ? { limit: input.limit } : {}),

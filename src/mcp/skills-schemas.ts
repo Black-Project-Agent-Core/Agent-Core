@@ -34,6 +34,7 @@ export const skills = z.object({
   name: z.string().min(1).max(64).optional(),
   profile: z.enum(['claude', 'codex']).optional(),
   sourcePath: z.string().min(1).max(4000).optional(),
+  resourcePath: z.string().min(1).max(400).optional(), // read-only packaged references/ path
   evidenceRefs: evidenceRefs.optional(),
   candidateDigest: digest.optional(),
   targetDigest: digest.optional(),
@@ -53,6 +54,12 @@ export const skills = z.object({
     if (value.action !== 'read' && value[key] !== undefined) {
       ctx.addIssue({ code: 'custom', path: [key], message: key + ' is only valid for read' });
     }
+  }
+  if (value.action !== 'read' && value.resourcePath !== undefined) {
+    ctx.addIssue({ code: 'custom', path: ['resourcePath'], message: 'resourcePath is only valid for read' });
+  }
+  if (value.action === 'read' && value.sourcePath !== undefined) {
+    ctx.addIssue({ code: 'custom', path: ['sourcePath'], message: 'Use resourcePath for packaged reference reads' });
   }
   if (value.action === 'read' && !value.expectedActiveDigest) {
     ctx.addIssue({ code: 'custom', path: ['expectedActiveDigest'], message: 'Selected active digest required for read' });

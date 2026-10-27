@@ -79,6 +79,7 @@ function startProvider(requests: any[]) {
         };
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify({
+      ...(turn === 2 ? {} : { model: turn === 1 ? 'resolved-fixture-one' : 'resolved-fixture-two' }),
       choices: [{ finish_reason: 'tool_calls', message }],
     }));
   });
@@ -133,6 +134,12 @@ describe('native Agent Runtime integrated provider loop', () => {
     expect(result.status).toBe('finalized');
     expect(result.response).toBe('integration complete');
     expect(result.iterations).toBe(3);
+    const modelIdentity = { observedCalls: 2, identities: [
+      { providerId: result.providerId!, model: 'resolved-fixture-one' },
+      { providerId: result.providerId!, model: 'resolved-fixture-two' },
+    ] };
+    expect(result.metrics?.modelCalls).toBe(3);
+    expect(result.modelIdentity).toEqual(modelIdentity);
     expect(result.retrievalAttemptIds.length).toBeGreaterThan(0);
     expect(requests).toHaveLength(3);
     expect(JSON.stringify(requests[0].messages)).toContain('LOCAL MEMORY CONTEXT');
@@ -155,6 +162,7 @@ describe('native Agent Runtime integrated provider loop', () => {
       status: 'finalized',
       terminalOutcome: 'verified',
       verificationRef: 'verification:integration-pass',
+      modelIdentity,
       finalization: expect.objectContaining({
         status: 'complete',
         reason: 'verified-recovery',
@@ -171,6 +179,7 @@ describe('native Agent Runtime integrated provider loop', () => {
     expect(await reopened.getTask('integration-task')).toEqual(expect.objectContaining({
       status: 'finalized',
       terminalOutcome: 'verified',
+      modelIdentity,
     }));
     expect((await reopened.health()).pendingFinalizationCount).toBe(0);
   });

@@ -17,10 +17,10 @@ import { isPdfFile } from "./mime-types.js";
 import { parsePdfBytesToMarkdown, editPdf, PdfOperations, PdfMetadata, parseMarkdownToPdf } from './pdf/index.js';
 import { isBinaryFile } from 'isbinaryfile';
 import { resolveModuleProjectRoot } from '../../portability/paths.js';
+import { withProjectStructureMutation } from '../../portability/project-structure.js';
 import { documentProjectionService } from '../document-projection/service.js';
 import { decodeText } from '../document-projection/helpers.js';
 import { DocumentProjectionError, type ProjectionResult } from '../document-projection/types.js';
-import { nativeDevelopmentFreeze } from '../mutation-coordinator.js';
 
 const MACHINE_CONTROL_PROJECT_ROOT = resolveModuleProjectRoot(import.meta.url);
 
@@ -360,7 +360,7 @@ type PdfPayload = {
 
 type FileResultPayloads = PdfPayload;
 
-function projectionToFileResult(result: ProjectionResult): FileResult {
+function projectionToFileResult(result: ProjectionResult, options?: { includeXlsxEvidence?: boolean }): FileResult {
     return {
         content: result.markdown,
         mimeType: 'text/markdown',
@@ -373,7 +373,8 @@ function projectionToFileResult(result: ProjectionResult): FileResult {
             sourceExtension: result.evidence?.extension,
             omittedEntries: result.omittedEntries,
             title: result.title,
-            pdfEvidence: result.pdfEvidence
+            pdfEvidence: result.pdfEvidence,
+            ...(options?.includeXlsxEvidence && result.xlsxEvidence ? { xlsxEvidence: result.xlsxEvidence } : {})
         }
     };
 }
@@ -581,7 +582,7 @@ export async function readFileFromDisk(
             signal
         );
         assertReadActive(signal);
-        if (projected) return projectionToFileResult(projected);
+        if (projected) return projectionToFileResult(projected, { includeXlsxEvidence: true });
 
         // Get appropriate handler for this file type (async - includes binary detection)
         const handler = await getFileHandler(validPath);
@@ -722,10 +723,6 @@ export async function readFileInternal(filePath: string, offset: number = 0, len
 export async function writeFile(filePath: string, content: string, mode: 'rewrite' | 'append' = 'rewrite',
     beforeWrite?: (canonicalPath: string, changed: boolean) => Promise<void>): Promise<void> {
     const validPath = await validatePath(filePath);
-    // Appends to shared Native owners require checking the complete resulting source.
-    await nativeDevelopmentFreeze.assertWritable(validPath, mode === 'append'
-        ? async () => await fs.readFile(validPath, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; }) + content
-        : content);
 
     // Get file extension for telemetry
     const fileExtension = getFileExtension(validPath);
@@ -826,9 +823,12 @@ export async function readMultipleFiles(paths: string[], options?: Pick<ReadOpti
 
 export async function createDirectory(dirPath: string): Promise<void> {
     const validPath = await validatePath(dirPath);
-    if ((await fs.stat(validPath).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; }))?.isDirectory()) return;
-    await nativeDevelopmentFreeze.assertWritable(validPath);
-    await fs.mkdir(validPath, { recursive: true });
+    await withProjectStructureMutation(MACHINE_CONTROL_PROJECT_ROOT,
+        { kind: 'create-directory', destination: validPath,
+            requestedDestination: path.resolve(MACHINE_CONTROL_PROJECT_ROOT, expandHome(dirPath)) }, async () => {
+            if ((await fs.stat(validPath).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; }))?.isDirectory()) return;
+            await fs.mkdir(validPath, { recursive: true });
+        });
 }
 
 export async function listDirectory(dirPath: string, depth: number = 2): Promise<string[]> {
@@ -900,24 +900,28 @@ export async function listDirectory(dirPath: string, depth: number = 2): Promise
 }
 
 export async function moveFile(sourcePath: string, destinationPath: string,
-    beforeMove?: (source: string, destination: string, reason?: 'unsupported-operation' | 'no-change' | 'path-not-eligible') => Promise<void>): Promise<void> {
+    beforeMove?: (source: string, destination: string, reason?: 'unsupported-operation' | 'no-change' | 'path-not-eligible') => Promise<void>,
+    requestedPaths?: { source: string; destination: string }): Promise<void> {
     const validSourcePath = await validatePath(sourcePath);
     const validDestPath = await validatePath(destinationPath);
-    await nativeDevelopmentFreeze.assertWritable(validSourcePath);
-    await nativeDevelopmentFreeze.assertWritable(validDestPath);
-    if (beforeMove) {
-        let reason: 'unsupported-operation' | 'no-change' | 'path-not-eligible' | undefined;
-        const key = (value: string) => process.platform === 'win32' ? value.toLowerCase() : value;
-        try {
-            const source = await fs.lstat(validSourcePath);
-            const destination = await fs.lstat(validDestPath).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; });
-            if (!source.isFile() || source.isSymbolicLink() || destination && (!destination.isFile() || destination.isSymbolicLink())) reason = 'unsupported-operation';
-            else if (key(validSourcePath) === key(validDestPath)) reason = 'no-change';
-        } catch { reason = 'path-not-eligible'; }
-        await beforeMove(validSourcePath, validDestPath, reason);
-        if (reason === 'no-change') return;
-    }
-    await fs.rename(validSourcePath, validDestPath);
+    await withProjectStructureMutation(MACHINE_CONTROL_PROJECT_ROOT,
+        { kind: 'move', source: validSourcePath, destination: validDestPath,
+            requestedSource: path.resolve(MACHINE_CONTROL_PROJECT_ROOT, expandHome(requestedPaths?.source ?? sourcePath)),
+            requestedDestination: path.resolve(MACHINE_CONTROL_PROJECT_ROOT, expandHome(requestedPaths?.destination ?? destinationPath)) }, async () => {
+            if (beforeMove) {
+                let reason: 'unsupported-operation' | 'no-change' | 'path-not-eligible' | undefined;
+                const key = (value: string) => process.platform === 'win32' ? value.toLowerCase() : value;
+                try {
+                    const source = await fs.lstat(validSourcePath);
+                    const destination = await fs.lstat(validDestPath).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; });
+                    if (!source.isFile() || source.isSymbolicLink() || destination && (!destination.isFile() || destination.isSymbolicLink())) reason = 'unsupported-operation';
+                    else if (key(validSourcePath) === key(validDestPath)) reason = 'no-change';
+                } catch { reason = 'path-not-eligible'; }
+                await beforeMove(validSourcePath, validDestPath, reason);
+                if (reason === 'no-change') return;
+            }
+            await fs.rename(validSourcePath, validDestPath);
+        });
 }
 
 export async function searchFiles(rootPath: string, pattern: string): Promise<string[]> {
@@ -1140,7 +1144,6 @@ export async function writePdf(
 ): Promise<void> {
     const validPath = await validatePath(filePath);
     const fileExtension = getFileExtension(validPath);
-    await nativeDevelopmentFreeze.assertWritable(outputPath ? await validatePath(outputPath) : validPath);
 
     if (typeof content === 'string') {
         // --- PDF CREATION MODE ---

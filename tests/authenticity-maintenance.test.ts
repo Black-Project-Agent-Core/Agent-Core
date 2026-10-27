@@ -84,7 +84,7 @@ describe('Agent Core authenticity maintenance', () => {
       await service.close();
       await rm(root, { recursive: true, force: true });
     }
-  }, process.platform === 'win32' ? 60_000 : 15_000);
+  }, process.platform === 'win32' ? 180_000 : 15_000); // boots the whole service; module loading alone exceeds 60 s on a slow Windows machine
   it('ships get_prompts with all production runtime data', async () => {
     buildProduction();
     const moduleUrl = `${pathToFileURL(path.join(compiledFixture, 'rdc', 'tools', 'prompts.js')).href}?audit=${Date.now()}`;

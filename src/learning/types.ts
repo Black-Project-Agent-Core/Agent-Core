@@ -65,6 +65,8 @@ export interface PendingLearningReview {
   workspace?: string;
   createdAt: string;
   taskId?: string;
+  /** What the checkpoint was about, kept so a later reader can still judge it; bounded and safety-scanned. */
+  summary?: string;
 }
 
 export interface CurationDelta {
@@ -91,6 +93,18 @@ export interface LearningReviewOptions {
   checkpointKeys?: string[];
   taskId?: string;
   disposition?: 'no-new-knowledge' | 'rejected' | 'awaiting-verification';
+  /**
+   * Closes checkpoints that no live task can still review. Only for disposition-only reviews of
+   * pending checkpoints older than the stale threshold; the caller proves nothing owns them.
+   */
+  orphanResolution?: { note: string };
+}
+/** Why a checkpoint was closed by someone other than the task that made it. */
+export interface LearningOrphanResolution {
+  kind: 'stale-orphan';
+  resolvedByTaskId: string;
+  note: string;
+  at: string;
 }
 export interface LearningCheckpointDecision {
   workspace?: string;
@@ -100,10 +114,12 @@ export interface LearningCheckpointDecision {
   reviewedAt: string;
   taskId?: string;
   candidateResults: Record<string, LearningReviewOutcome>;
+  resolution?: LearningOrphanResolution;
 }
 
 export interface LearningState {
   version: 1;
+  externalImprovements?: import('./external-improvements.js').ExternalImprovementRecord[];
   decisionReviews?: import('./decision-review.js').DecisionRecord[];
   skillProposals?: import('./skill-proposal-types.js').SkillProposalRecord[];
   workflowVersion?: 2;
@@ -127,6 +143,7 @@ export interface LearningCheckpointInput {
   reason?: LearningTriggerReason;
   evidenceRefs?: string[];
   workspace?: string;
+  summary?: string;
 }
 
 export interface LearningCheckpointResult {
@@ -139,6 +156,8 @@ export interface LearningCheckpointResult {
   curatorDue: boolean;
   pendingReviewCount?: number;
   pendingReview?: PendingLearningReview;
+  /** The summary looked like a secret or private reasoning and was not stored; the checkpoint was. */
+  summaryDropped?: true;
 }
 
 export interface LearningReviewOutcome {

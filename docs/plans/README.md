@@ -28,6 +28,8 @@ No new public tool names, provider, memory store or automatic evaluation. Histor
 
 ## Proposed, not implemented
 
+**Closed scope, not an active proposal:** the [Native Agent Core architecture integration roadmap (Revision 4)](../proposals/Integrasi-Arsitektur-Native-Agent-Core.md) was **CLOSED BY USER DECISION on 2026-10-24**. Native and authenticated external MCP remain available for authorized operational use based on prior resident/source evidence. Model/Memory benchmarks and later performance waves are **not active acceptance tasks**. Historically inconclusive Memory-benefit results are preserved in the [R4 execution report](../history-agent-core/Native-Architecture-Integration-Revision-4-Execution.md), without claiming PASS. Older Revision 1 PROPOSED and open-wave wording is history, not the current status.
+
 | Plan | Intended change |
 | --- | --- |
 | [Memory 06](../memory/plans/2026-10-09-memory-06-query-evidence-excerpts.md) | Query-focused evidence excerpts |

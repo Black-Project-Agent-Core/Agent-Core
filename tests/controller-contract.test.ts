@@ -61,14 +61,13 @@ describe('controller contract receipts', () => {
     expect(() => gate.assertReady('a', second.contractSession)).toThrow('CONTRACT_READ_REQUIRED');
   });
 
-  it('expires idle receipts, renews active ones and bounds retained sessions', () => {
+  it('keeps receipts across idle time, retains active ones under churn and bounds retained sessions', () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(0);
     const gate = new ControllerContractGate(() => '# Rules');
     const first = gate.read('a'); gate.acknowledge('a', first.contractSession, first.digest);
-    now.mockReturnValue(29 * 60_000); gate.assertReady('a', first.contractSession);
-    now.mockReturnValue(58 * 60_000); gate.assertReady('a', first.contractSession);
-    now.mockReturnValue(88 * 60_000);
-    expect(() => gate.assertReady('a', first.contractSession)).toThrow('CONTRACT_READ_REQUIRED');
+    now.mockReturnValue(31 * 60_000); expect(() => gate.assertReady('a', first.contractSession)).not.toThrow();
+    now.mockReturnValue(3 * 24 * 60 * 60_000); expect(() => gate.assertReady('a', first.contractSession)).not.toThrow();
+    for (let i = 0; i < 300; i++) { gate.read('a'); gate.assertReady('a', first.contractSession); }
     const oldest = gate.read('a'); gate.acknowledge('a', oldest.contractSession, oldest.digest);
     for (let i = 0; i < 128; i++) gate.read('a');
     expect(() => gate.assertReady('a', oldest.contractSession)).toThrow('CONTRACT_READ_REQUIRED');

@@ -12,6 +12,36 @@ describe('non-executing engineering artifact oracle',()=>{
   expect(evaluateEngineeringArtifact('(x) => (x + 3) * -2',2)).toBe(-10);
   expect(evaluateEngineeringArtifact('x => x * 3',2)).toBe(6);
  });
+ it.each([
+  '(x => (x - 3) * 3 + 4)',
+  '((x => (x - 3) * 3 + 4))',
+  ' ( (x) => (x - 3) * 3 + 4 ) ; ',
+  '(\n x => (x - 3) * 3 + 4\n)',
+ ])('accepts balanced whole-arrow grouping: %s',code=>{
+  expect(evaluateEngineeringArtifact(code,5)).toBe(10);
+  expect(verifyWorkflowAnswer({domain:'engineering',tests:[{input:5,expected:10},{input:0,expected:-5}]},code).verdict).toBe('pass');
+ });
+ it('shares the existing depth limit between outer grouping and numeric expression nesting',()=>{
+  const grouped=(outer:number,inner:number)=>'('.repeat(outer)+'x => '+'('.repeat(inner)+'x'+')'.repeat(inner)+')'.repeat(outer);
+  expect(evaluateEngineeringArtifact(grouped(32,0),2)).toBe(2);
+  expect(evaluateEngineeringArtifact(grouped(16,16),2)).toBe(2);
+  for(const code of [grouped(33,0),grouped(16,17)])expect(()=>evaluateEngineeringArtifact(code,2)).toThrow(/UNSUPPORTED_ENGINEERING_ARTIFACT/);
+ });
+ it('retains the original length bound before removing whole-arrow grouping',()=>{
+  const code='(x => x * 2)'.padEnd(8192,' ');
+  expect(evaluateEngineeringArtifact(code,2)).toBe(4);
+  expect(()=>evaluateEngineeringArtifact(code+' ',2)).toThrow(/UNSUPPORTED_ENGINEERING_ARTIFACT/);
+ });
+ it.each([
+  '(x => x * 2', '(x => x * 2))', '((x => x * 2)',
+  '(x => x * 2) trailing', '(x => x * 2)(2)', '(x => x * 2) + 0',
+  '(x => x * 2;)', '((x => x * 2);)', '(x => {return x * 2})',
+  '(x => Math.imul(x,2))', '(x => (x, x * 2))', '((x)\n=> x * 2)',
+  "(() => this.constructor.constructor('return process')())",
+  "(() => import('node:fs'))", '(x => x * 2 /* comment */)',
+ ])('rejects malformed or unsupported wrapped syntax: %s',code=>{
+  expect(()=>evaluateEngineeringArtifact(code,2)).toThrow(/UNSUPPORTED_ENGINEERING_ARTIFACT/);
+ });
  it('rejects unknown JavaScript even when it would return an expected result',()=>{
   expect(()=>evaluateEngineeringArtifact('x => Math.imul(x,2)',2)).toThrow(/UNSUPPORTED_ENGINEERING_ARTIFACT/);
   expect(()=>evaluateEngineeringArtifact('x => {return x*2}',2)).toThrow(/UNSUPPORTED_ENGINEERING_ARTIFACT/);

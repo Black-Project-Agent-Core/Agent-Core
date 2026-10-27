@@ -31,6 +31,8 @@ import { FUSION_DIVERSITY_POLICY, searchMemories, type MemorySearchOptions, type
 import { projectMemorySearchResults, type DeliveredMemorySearchResult } from './search-projection.js';
 import { FileMemoryStore } from './store.js';
 import {MemoryClaimReviews} from './claim-review.js';
+import {MemoryRecallRepairs} from './recall-repair.js';
+import {MemoryDerivations} from './derivations.js';
 import { isMemoryExpired, normalizeMemoryExpiresAt } from './visibility.js';
 import { MEMORY_SCHEMA_VERSION, type EvolutionEvent, type MemoryHealth, type MemoryIssue, type MemoryLink, type MemoryProvenance, type MemoryRecord } from './types.js';
 
@@ -314,7 +316,9 @@ export class MemoryService {
     const episodes=this.controllerEpisodes();
     return new ControllerMemorySession({
       root:this.store.paths.root,experienceEnabled:this.experienceEnabled,episodes,
-      ...(scope.controllerId==='agent-core-external'?{claimReviews:new MemoryClaimReviews(this.store,episodes),assertScopeCurrent:hostContext?.assertScopeCurrent}:{}),
+      ...(scope.controllerId==='agent-core-external'?{claimReviews:new MemoryClaimReviews(this.store,episodes),
+        recallRepairs:new MemoryRecallRepairs(this.store,episodes,this.retrievalLedger,async()=>{await this.refreshIndex();if(this.indexStatus!=='available')throw new MemoryControllerError('MEMORY_SOURCE_UNAVAILABLE');}),
+        derivations:new MemoryDerivations(episodes),assertScopeCurrent:hostContext?.assertScopeCurrent}:{}),
       ...(this.controllerRelevancePolicy ? {relevancePolicy:this.controllerRelevancePolicy} : {}),
       promotion:new MemoryPromotion(this.store,episodes,this.index,this.consolidation,async()=>{await this.refreshIndex();return this.indexStatus==='available'?'current':'degraded';}),
       resolveWorkspace: value => this.resolveWorkspace(value),
@@ -1324,6 +1328,10 @@ export class MemoryService {
 
   async search(query: string, options: MemorySearchOptions = {},hostContext?:MemorySearchHostContext): Promise<DeliveredMemorySearchResult[]> {
     this.assertOperational();
+    if ((options.excludeMemoryIds?.length ?? 0) > 12 || (options.excludeMemoryIds?.length && !options.taskId)) {
+      throw new Error('MEMORY_SEARCH_EXCLUSIONS_INVALID');
+    }
+    const excludedIds = new Set((options.excludeMemoryIds ?? []).map(validateMemoryId));
     options = { ...options, ...(options.workspace ? { workspace: this.resolveWorkspace(options.workspace) } : {}) };
     const normalizedQuery = query.trim();
     if (!normalizedQuery) throw new Error('Memory search query is required');
@@ -1349,7 +1357,9 @@ export class MemoryService {
         .forgottenIds(new Set(currentRecords.map(record => record.id)))
         .catch(() => new Set<string>());
       const scopeRecords = canonicalRecords.filter(record => !options.workspace || record.pinned
-        || (record.provenance?.workspace && this.resolveWorkspace(record.provenance.workspace) === options.workspace));
+        || (record.provenance?.workspace && this.resolveWorkspace(record.provenance.workspace) === options.workspace)
+        || (options.includeGeneral && record.category === 'general'
+          && !record.provenance?.workspace && !record.provenance?.repo));
       // Filter before supersession as well as ranking: a withheld derivative must
       // not hide ordinary memory through a link. Ordinary visibility rules stay intact.
       const eligibleScopeRecords=await synthesisEligibility.filter(scopeRecords);
@@ -1357,7 +1367,7 @@ export class MemoryService {
         .filter(link => link.type === 'supersedes' && isMemoryLinkActive(link, Date.now())).map(link => link.targetId)));
       const workspace = options.workspace ? this.resolveWorkspace(options.workspace) : undefined;
       const semanticEligible = eligibleScopeRecords.filter(record =>
-        !supersededIds.has(record.id) && (record.pinned || (!isMemoryExpired(record) && !forgottenIds.has(record.id) && (record.version!==2||record.experience.retention!=='archive'))));
+        !excludedIds.has(record.id) && !supersededIds.has(record.id) && (record.pinned || (!isMemoryExpired(record) && !forgottenIds.has(record.id) && (record.version!==2||record.experience.retention!=='archive'))));
       candidateCount=semanticEligible.length;
       let semanticContext;
       if (this.embedder && this.indexStatus === 'available' && this.embeddingStatus !== 'not-configured') {

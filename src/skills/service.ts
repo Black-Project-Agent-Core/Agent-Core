@@ -11,6 +11,9 @@ import type { MemoryRepositoryIdentity } from '../memory/types.js';
 import type { SkillProposalRecord, SkillProposalDecision } from '../learning/skill-proposal-types.js';
 import { cosineSimilarity, type MemoryEmbedder } from '../memory/embedder.js';
 import { redactSensitiveString } from '../security/redaction.js';
+import { normalizeSkillReadResource } from './resource-path.js';
+import { adaptClaudeSkill, inventoryClaudePlugin, isClaudePluginRoot, reasonCode, reportLabel,
+  type ClaudePluginPreview, type ClaudePluginSkillComponent, type SkillAdaptationReport } from './claude-plugin.js';
 import { boundSkillSearchResult, describeSkill, positiveSkillDescriptor, rankSkillDescriptors,
   SKILL_DESCRIPTOR_VERSION, truncateSkillEmbeddingText,
   type SkillCatalogCoverage, type SkillDiscoverInput, type SkillDiscoveryDescriptor,
@@ -204,7 +207,8 @@ function updateDigest(hash: ReturnType<typeof createHash>, relative: string, con
   hash.update(content);
   hash.update('\0');
 }
-async function scanDirectory(sourceRoot: string): Promise<ScannedSkill> {
+/** Guarded listing shared by Skill scans and the Claude plugin adapter: no symlinks, regular files, size and count limits. */
+async function walkSkillFiles(sourceRoot: string): Promise<ScannedFile[]> {
   const root = await realpath(sourceRoot);
   const files: ScannedFile[] = [];
   let totalBytes = 0;
@@ -228,22 +232,37 @@ async function scanDirectory(sourceRoot: string): Promise<ScannedSkill> {
     }
   };
   await walk(root);
-  const skillFile = files.find(file => file.relative === 'SKILL.md');
-  if (!skillFile?.absolute) throw new Error('SKILL_MD_NOT_FOUND');
-  // Retain only SKILL.md. Metadata, descriptor, digest and selected read share these bytes.
-  skillFile.content = await readFile(skillFile.absolute);
-  const metadata = parseSkillMarkdown(skillFile.content.toString('utf8'));
-  const hash = createHash('sha256');
-  totalBytes = 0;
+  return files;
+}
+async function loadSkillContents(files: ScannedFile[]): Promise<number> {
+  let totalBytes = 0;
   for (const file of files) {
     const content = file.content ?? await readFile(file.absolute!);
+    file.content = content; // Preserve the exact bytes hashed for digest-bound reading.
     if (content.length > MAX_FILE_BYTES) throw new Error('SKILL_FILE_TOO_LARGE');
     file.size = content.length;
     totalBytes += content.length;
     if (totalBytes > MAX_TOTAL_BYTES) throw new Error('SKILL_TOTAL_BYTES_LIMIT');
-    updateDigest(hash, file.relative, content);
   }
-  return { metadata, files, digest: 'sha256:' + hash.digest('hex'), totalBytes };
+  return totalBytes;
+}
+function digestFiles(files: ScannedFile[]): string {
+  const hash = createHash('sha256');
+  for (const file of files) updateDigest(hash, file.relative, file.content!);
+  return 'sha256:' + hash.digest('hex');
+}
+function fileRecords(files: ScannedFile[]): SkillAdaptationReport['filesBefore'] {
+  return files.map(file => ({ path: file.relative, sha256: 'sha256:' + createHash('sha256').update(file.content!).digest('hex'), size: file.size }));
+}
+async function scanDirectory(sourceRoot: string): Promise<ScannedSkill> {
+  const files = await walkSkillFiles(sourceRoot);
+  const skillFile = files.find(file => file.relative === 'SKILL.md');
+  if (!skillFile?.absolute) throw new Error('SKILL_MD_NOT_FOUND');
+  // The exact scan bytes anchor both metadata and every selected reference read.
+  skillFile.content = await readFile(skillFile.absolute);
+  const metadata = parseSkillMarkdown(skillFile.content.toString('utf8'));
+  const totalBytes = await loadSkillContents(files);
+  return { metadata, files, digest: digestFiles(files), totalBytes };
 }
 
 export function sanitizeSkillArchivePath(raw: string): string {
@@ -812,7 +831,7 @@ export class SkillService {
         : catalog.valid === 0 ? 'no-valid-descriptors' as const : 'no-match' as const } : {}),
     }, limit) };
   }
-  async read(name: string, input: { expectedActiveDigest: string; offset?: number; maxBytes?: number }): Promise<SkillReadResult> {
+  async read(name: string, input: { expectedActiveDigest: string; offset?: number; maxBytes?: number; resourcePath?: string }): Promise<SkillReadResult> {
     const expected = normalizeSkillDigest(input.expectedActiveDigest ?? '');
     const offset = input.offset ?? 0, maxBytes = input.maxBytes ?? 8_192;
     if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('SKILL_READ_OFFSET_INVALID');
@@ -820,7 +839,9 @@ export class SkillService {
     await this.checkActiveCatalog();
     const scanned = await this.scanActive(name);
     if (scanned.digest !== expected) throw new Error('SKILL_ACTIVE_REVISION_CHANGED');
-    const content = scanned.files.find(file => file.relative === 'SKILL.md')!.content!;
+    const resource = normalizeSkillReadResource(input.resourcePath);
+    const content = scanned.files.find(file => file.relative === resource)?.content;
+    if (!content) throw new Error('SKILL_READ_RESOURCE_NOT_FOUND');
     try { new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(content); }
     catch { throw new Error('SKILL_READ_UTF8_INVALID'); }
     if (offset > content.length || offset < content.length && (content[offset]! & 0xc0) === 0x80) throw new Error('SKILL_READ_OFFSET_INVALID');
@@ -829,7 +850,7 @@ export class SkillService {
       return end;
     };
     const result = (end: number): SkillReadResult => ({ name: scanned.metadata.name, digest: scanned.digest,
-      source: 'SKILL.md', content: content.subarray(offset, end).toString('utf8'), offset,
+      source: resource, content: content.subarray(offset, end).toString('utf8'), offset,
       nextOffset: end < content.length ? end : null, totalContentBytes: content.length,
       truncated: end < content.length, delivery: 'instruction-fragment', executionAuthority: false });
     let low = offset, high = Math.min(content.length, offset + maxBytes);
@@ -852,11 +873,94 @@ export class SkillService {
     const sourceProvenance = await captureSkillSourceProvenance(validated, sourceKind, scanned);
     return summary(scanned, sourceProvenance);
   }
-  async import(sourcePath: string, approvedProposalRevision?: string): Promise<SkillArtifactSummary & { status: 'imported' | 'duplicate' }> {
+  /** Read-only. A Claude plugin directory gets a compatibility preview; any other source is validated as before. */
+  async validateSource(sourcePath: string): Promise<SkillArtifactSummary | ClaudePluginPreview> {
+    const validated = await this.sourceValidator(sourcePath);
+    if ((await stat(validated)).isDirectory() && await isClaudePluginRoot(validated)) {
+      return (await this.analyzeClaudePlugin(validated)).preview;
+    }
+    return this.validate(sourcePath);
+  }
+  private async analyzeClaudePlugin(root: string, keep?: string): Promise<{
+    preview: ClaudePluginPreview; kept?: { scanned: ScannedSkill; report: SkillAdaptationReport };
+  }> {
+    const inventory = await inventoryClaudePlugin(root);
+    const catalog = new Map((await this.list()).map(item => [item.name, item.digest]));
+    const skills: ClaudePluginSkillComponent[] = [];
+    const kept = new Map<string, { scanned: ScannedSkill; report: SkillAdaptationReport }>();
+    for (const entry of inventory.skills) {
+      const base = { type: 'skill' as const, path: entry.path, directory: entry.directory, changes: [], missingReferences: [] };
+      if (entry.error) { skills.push({ ...base, status: 'unsupported', reason: entry.error }); continue; }
+      try {
+        const original = await walkSkillFiles(path.join(root, 'skills', entry.directory));
+        await loadSkillContents(original);
+        const digestBefore = digestFiles(original);
+        const result = adaptClaudeSkill(original.map(file => ({ relative: file.relative, content: file.content! })), entry.directory, parseSkillMarkdown);
+        if (result.status === 'unsupported') {
+          skills.push({ ...base, status: 'unsupported', reason: result.reason, missingReferences: result.missingReferences });
+          continue;
+        }
+        const files: ScannedFile[] = result.files.map(file => ({ relative: file.relative, content: file.content, size: file.content.length }));
+        if (files.length > MAX_FILES) throw new Error('SKILL_FILE_COUNT_LIMIT');
+        const totalBytes = await loadSkillContents(files);
+        const metadata = parseSkillMarkdown(files.find(file => file.relative === 'SKILL.md')!.content!.toString('utf8'));
+        const scanned: ScannedSkill = { metadata, files, digest: digestFiles(files), totalBytes };
+        if (entry.directory === keep) {
+          kept.set(entry.directory, { scanned, report: {
+            version: 1,
+            source: { kind: 'claude-plugin-skill', path: entry.path,
+              ...(result.sourceName ? { originalName: reportLabel(result.sourceName) } : {}),
+              ...(result.originalSha256 ? { originalSkillMdSha256: result.originalSha256 } : {}) },
+            mappedName: metadata.name, changes: result.changes, missingReferences: result.missingReferences,
+            digestBefore, digestAfter: scanned.digest, filesBefore: fileRecords(original), filesAfter: fileRecords(files),
+          } });
+        }
+        skills.push({ ...base, status: result.status, mappedName: metadata.name, changes: result.changes,
+          missingReferences: result.missingReferences, fileCount: files.length, digestBefore, digestAfter: scanned.digest });
+      } catch (error) { skills.push({ ...base, status: 'unsupported', reason: reasonCode(error) }); }
+    }
+    // Two plugin skills mapping to one identifier stop the adapter for both; an existing catalog entry is reported only.
+    const collisions: ClaudePluginPreview['collisions'] = [];
+    const byName = new Map<string, ClaudePluginSkillComponent[]>();
+    for (const skill of skills) {
+      if (skill.status !== 'unsupported' && skill.mappedName) byName.set(skill.mappedName, [...(byName.get(skill.mappedName) ?? []), skill]);
+    }
+    for (const [name, group] of byName) {
+      if (group.length > 1) {
+        collisions.push({ name, kind: 'mapping', blocking: true, sources: group.map(item => item.path) });
+        for (const skill of group) { skill.status = 'unsupported'; skill.reason = 'SKILL_PLUGIN_MAPPING_COLLISION'; kept.delete(skill.directory); }
+        continue;
+      }
+      const skill = group[0]!, active = catalog.get(name);
+      skill.catalog = active === undefined ? 'absent' : active === skill.digestAfter ? 'same-digest' : 'different-digest';
+      skill.stageable = skill.catalog === 'different-digest';
+      if (active !== undefined) collisions.push({ name, kind: 'catalog', blocking: false, sources: [skill.path] });
+    }
+    const components = [...skills, ...inventory.others];
+    const summary = { compatible: 0, adaptable: 0, unsupported: 0 };
+    for (const component of components) summary[component.status]++;
+    return {
+      preview: { kind: 'claude-plugin-preview', readOnly: true, executionAuthority: false, plugin: inventory.plugin,
+        components, collisions, summary, omitted: { skills: inventory.skillsOmitted } },
+      kept: keep ? kept.get(keep) : undefined,
+    };
+  }
+  private async adaptPluginSkill(root: string, directory?: string) {
+    if (!directory) throw new Error('SKILL_PLUGIN_SKILL_REQUIRED');
+    const { preview, kept } = await this.analyzeClaudePlugin(root, directory);
+    const component = preview.components.find((item): item is ClaudePluginSkillComponent => item.type === 'skill' && item.directory === directory);
+    if (!component) throw new Error('SKILL_PLUGIN_SKILL_NOT_FOUND');
+    if (component.status === 'unsupported' || !kept) throw new Error('SKILL_PLUGIN_SKILL_UNSUPPORTED: ' + (component.reason ?? 'UNKNOWN'));
+    return kept;
+  }
+  async import(sourcePath: string, approvedProposalRevision?: string, pluginSkill?: string): Promise<SkillArtifactSummary & { status: 'imported' | 'duplicate'; adaptation?: SkillAdaptationReport }> {
     const validated = await this.sourceValidator(sourcePath);
     const info = await stat(validated);
     const sourceKind: SkillSourceProvenance['sourceKind'] = info.isDirectory() ? 'directory' : 'archive';
-    const scanned = sourceKind === 'directory' ? await scanDirectory(validated) : await scanArchive(validated);
+    // Same adapter as stage_revision; importing stays the explicit, separate act that installs a new name.
+    const plugin = sourceKind === 'directory' && await isClaudePluginRoot(validated)
+      ? await this.adaptPluginSkill(validated, pluginSkill) : undefined;
+    const scanned = plugin?.scanned ?? (sourceKind === 'directory' ? await scanDirectory(validated) : await scanArchive(validated));
     const sourceProvenance = await captureSkillSourceProvenance(validated, sourceKind, scanned);
     if (scanned.metadata.metadata['proposal-id'] && scanned.metadata.metadata['proposal-revision'] !== approvedProposalRevision) throw new Error('SKILL_PROPOSAL_APPROVAL_REQUIRED');
     return this.withRevisionLock(scanned.metadata.name, async () => {
@@ -864,7 +968,8 @@ export class SkillService {
       try {
         const existing = await scanDirectory(destination);
         if (existing.digest === scanned.digest) {
-          return { ...summary(existing, await readSkillSourceProvenance(destination)), status: 'duplicate' as const };
+          return { ...summary(existing, await readSkillSourceProvenance(destination)), status: 'duplicate' as const,
+            ...(plugin ? { adaptation: plugin.report } : {}) };
         }
         throw new Error('SKILL_NAME_COLLISION');
       } catch (error) {
@@ -879,7 +984,7 @@ export class SkillService {
       } finally {
         await rm(staging, { recursive: true, force: true }).catch(() => undefined);
       }
-      return { ...summary(scanned, sourceProvenance), status: 'imported' as const };
+      return { ...summary(scanned, sourceProvenance), status: 'imported' as const, ...(plugin ? { adaptation: plugin.report } : {}) };
     });
   }
 
@@ -970,11 +1075,15 @@ export class SkillService {
     sourcePath: string,
     evidenceRefs: string[],
     approvedProposalRevision?: string,
-  ): Promise<SkillArtifactSummary & { status: 'staged' | 'duplicate-staged'; evidenceRefs: string[] }> {
+    pluginSkill?: string,
+  ): Promise<SkillArtifactSummary & { status: 'staged' | 'duplicate-staged'; evidenceRefs: string[]; adaptation?: SkillAdaptationReport }> {
     const validated = await this.sourceValidator(sourcePath);
     const info = await stat(validated);
     const sourceKind: SkillSourceProvenance['sourceKind'] = info.isDirectory() ? 'directory' : 'archive';
-    const scanned = sourceKind === 'directory' ? await scanDirectory(validated) : await scanArchive(validated);
+    // A Claude plugin directory is adapted into the strict subset first; staging itself is unchanged and never promotes.
+    const plugin = sourceKind === 'directory' && await isClaudePluginRoot(validated)
+      ? await this.adaptPluginSkill(validated, pluginSkill) : undefined;
+    const scanned = plugin?.scanned ?? (sourceKind === 'directory' ? await scanDirectory(validated) : await scanArchive(validated));
     const sourceProvenance = await captureSkillSourceProvenance(validated, sourceKind, scanned);
     if (scanned.metadata.metadata['proposal-id'] && scanned.metadata.metadata['proposal-revision'] !== approvedProposalRevision) throw new Error('SKILL_PROPOSAL_APPROVAL_REQUIRED');
     const paths = this.revisionPaths(scanned.metadata.name);
@@ -988,7 +1097,8 @@ export class SkillService {
       if (existing.digest !== scanned.digest) throw new Error('SKILL_REVISION_STAGE_COLLISION');
       const metadata = await readRevisionMetadata(destination);
       if (!metadata || metadata.previousDigest !== active.digest) throw new Error('SKILL_REVISION_BASELINE_CONFLICT');
-      return { ...summary(existing, await readSkillSourceProvenance(destination)), status: 'duplicate-staged', evidenceRefs: evidence };
+      return { ...summary(existing, await readSkillSourceProvenance(destination)), status: 'duplicate-staged', evidenceRefs: evidence,
+        ...(plugin ? { adaptation: plugin.report } : {}) };
     }
 
     const temporary = path.join(this.stagingRoot, `revision-${paths.normalized}-${randomUUID()}`);
@@ -1006,7 +1116,7 @@ export class SkillService {
     } finally {
       await rm(temporary, { recursive: true, force: true }).catch(() => undefined);
     }
-    return { ...summary(scanned, sourceProvenance), status: 'staged', evidenceRefs: evidence };
+    return { ...summary(scanned, sourceProvenance), status: 'staged', evidenceRefs: evidence, ...(plugin ? { adaptation: plugin.report } : {}) };
   }
 
   async listRevisions(name: string): Promise<{

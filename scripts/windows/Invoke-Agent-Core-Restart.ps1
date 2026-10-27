@@ -8,8 +8,12 @@ consent to register one persistent task for the same interactive Windows user.
 Subsequent clicks reuse it. There are no time, login, or startup triggers.
 Install mode registers only; Run mode requests one restart. WhatIf does neither.
 Task mode is an internal fixed action, not a general privileged command runner.
-Results and worker output are saved under runtime/restart. A timeout is unknown
-outcome, not permission to retry or terminate a running task.
+Results and worker output are saved under runtime/restart. A failed run's receipt
+carries the reason in `error`: the worker log's last GAGAL line, or a note that the
+worker ended without a final line. The receipt's `readiness` is the worker's last
+'Kesiapan:' line (whether Core answered /health after the window opened), or null; it never
+changes the exit code. A timeout is unknown outcome, not permission to retry or terminate a
+running task.
 #>
 [CmdletBinding()]
 param(
@@ -84,6 +88,44 @@ function Assert-RestartTask($Task) {
         $action.WorkingDirectory -ine $root -or $action.Arguments -cne $taskArguments) {
         throw 'Aksi task tidak cocok dengan skrip proyek ini. Tidak menjalankannya.'
     }
+}
+
+# The reason a worker run failed, read from its own log. The worker (Restart-Agent-Core.ps1) prints
+# 'GAGAL: <reason>' for a failure it understood and always ends with 'Selesai: ok' or 'Selesai: gagal'.
+# A failed run with no 'Selesai:' line ended abruptly (killed, or died before its final block), and the
+# receipt says so rather than leaving `error` empty. Returns $null for a successful run.
+function Get-WorkerFailureReason {
+    param([string]$LogPath, [int]$ExitCode)
+    if ($ExitCode -eq 0) { return $null }
+    $lines = @()
+    if ($LogPath -and (Test-Path -LiteralPath $LogPath -PathType Leaf)) {
+        # Windows PowerShell writes `*>` redirects as UTF-16 with a BOM; Get-Content reads either.
+        try { $lines = @(Get-Content -LiteralPath $LogPath -ErrorAction Stop) } catch { $lines = @() }
+    }
+    $failure = @($lines | Where-Object { ([string]$_).StartsWith('GAGAL:', [StringComparison]::Ordinal) })
+    if ($failure.Count -gt 0) {
+        $reason = ([string]$failure[$failure.Count - 1]).Substring(6).Trim()
+        if ($reason) { return $reason }
+        return "worker melaporkan GAGAL tanpa pesan (exit $ExitCode)"
+    }
+    $ended = @($lines | Where-Object { ([string]$_).StartsWith('Selesai:', [StringComparison]::Ordinal) })
+    if ($ended.Count -gt 0) { return "worker melaporkan gagal tanpa baris GAGAL (exit $ExitCode)" }
+    return "worker berakhir tanpa baris akhir (exit $ExitCode)"
+}
+
+# The worker's last 'Kesiapan: <state> (<detail>)' line, without the prefix, or $null when it printed none
+# (a run that failed before the window opened, or an older worker). It is the worker's report of whether
+# Core answered /health after the window opened; the receipt carries it beside the exit code and never
+# lets it change that code.
+function Get-WorkerReadiness {
+    param([string]$LogPath)
+    if (-not $LogPath -or -not (Test-Path -LiteralPath $LogPath -PathType Leaf)) { return $null }
+    try { $lines = @(Get-Content -LiteralPath $LogPath -ErrorAction Stop) } catch { return $null }
+    $found = @($lines | Where-Object { ([string]$_).StartsWith('Kesiapan:', [StringComparison]::Ordinal) })
+    if ($found.Count -eq 0) { return $null }
+    $text = ([string]$found[$found.Count - 1]).Substring(9).Trim()
+    if ($text) { return $text }
+    return $null
 }
 
 function Install-RestartTask {
@@ -179,10 +221,17 @@ try {
         }
         catch { $workerError = $_.Exception.Message }
         finally {
+            if ($null -eq $workerError) {
+                # Never let reading the log stop the receipt from being written.
+                try { $workerError = Get-WorkerFailureReason -LogPath $logPath -ExitCode ([int]$workerExit) }
+                catch { if ([int]$workerExit -ne 0) { $workerError = "alasan kegagalan tidak dapat dibaca dari log (exit $workerExit)" } }
+            }
+            $workerReadiness = $null
+            try { $workerReadiness = Get-WorkerReadiness -LogPath $logPath } catch { $workerReadiness = $null }
             $receipt = [ordered]@{
                 runId = $runKey; userSid = $userSid; sessionId = $sessionId
                 completedAt = [DateTimeOffset]::UtcNow.ToString('o')
-                exitCode = $workerExit; error = $workerError; logPath = $logPath
+                exitCode = $workerExit; error = $workerError; readiness = $workerReadiness; logPath = $logPath
             }
             $temporaryReceipt = $receiptPath + '.tmp'
             $receipt | ConvertTo-Json | Set-Content -LiteralPath $temporaryReceipt -Encoding UTF8
@@ -223,8 +272,11 @@ try {
         $null = $task.RunEx([string[]]@($runKey, $sessionId.ToString(),
             $StopTimeoutSeconds.ToString(), $StartTimeoutSeconds.ToString()), 4, $sessionId, $null)
         $timer = [Diagnostics.Stopwatch]::StartNew()
+        # Stop and start budgets, the worker's readiness poll (its 60 s default plus one 3 s request and
+        # one 1 s sleep, rounded up), and 90 s for the rest of the worker's own work.
+        $readinessBudgetSeconds = 65
         while (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) {
-            if ($timer.Elapsed.TotalSeconds -ge ($StopTimeoutSeconds + $StartTimeoutSeconds + 90)) {
+            if ($timer.Elapsed.TotalSeconds -ge ($StopTimeoutSeconds + $StartTimeoutSeconds + $readinessBudgetSeconds + 90)) {
                 throw "Hasil restart belum diketahui. Tidak mengulang atau menghentikan task. Periksa $resultDirectory; ID $runKey."
             }
             Start-Sleep -Milliseconds 500

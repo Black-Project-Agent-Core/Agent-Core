@@ -8,7 +8,11 @@ logs/
 *.log
 coverage/
 .vitest/
-/runtime/
+/runtime/*
+!/runtime/skills/
+/runtime/skills/*
+!/runtime/skills/README.md
+!/runtime/skills/capability-packs/
 /.grafel/
 
 # GitHub backup boundary: keep authoritative source/config/docs, exclude local/private/generated state.
@@ -50,3 +54,6 @@ SubProject/Agent-Code/*.WebView2/
 # Accidental zero-byte PowerShell fragments: local artifacts, not sources.
 /[{]console.error(e)
 /[{]try[{]const
+
+# Third-party Claude executable cache (see docs/PROJECT-STRUCTURE.md); a 216 MB binary is not source and exceeds the GitHub file limit.
+/claude.exe

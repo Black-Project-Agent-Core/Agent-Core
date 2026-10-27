@@ -17,6 +17,16 @@ public sealed class MainForm : Form
     private bool _shutdownStarted;
     private bool _shutdownComplete;
     private int _statusRefreshInFlight;
+    private NotifyIcon? _tray;
+    private readonly List<(EventWaitHandle Signal, RegisteredWaitHandle Wait)> _signals = new();
+    private bool _exitRequested;
+    private bool _trayHintShown;
+    private bool _trayReleased;
+
+    // A second launch signals the show event so a launcher hidden in the tray shows its window.
+    // The official restart signals the exit event because a hidden launcher has no window to close.
+    internal const string ShowSignalName = @"Local\AgentCoreDesktop.Show";
+    internal const string ExitSignalName = @"Local\AgentCoreDesktop.Exit";
 
     public MainForm(string root, NativeDumpDiagnostics? nativeDiagnostics)
     {
@@ -34,12 +44,16 @@ public sealed class MainForm : Form
         BackColor = Color.FromArgb(6, 16, 27);
         HandleCreated += (_, _) => ApplyDarkTitleBar();
         Controls.Add(_webView);
+        CreateTray();
+        ListenForSignal(ShowSignalName, ShowFromTray);
+        ListenForSignal(ExitSignalName, ExitFromTray);
 
         Shown += OnShownAsync;
         FormClosing += OnFormClosingAsync;
         FormClosed += (_, _) =>
         {
             _statusTimer.Stop();
+            ReleaseTray();
             _runtime.Dispose();
         };
         _statusTimer.Tick += async (_, _) =>
@@ -84,12 +98,23 @@ public sealed class MainForm : Form
     {
         if (_shutdownComplete) return;
 
+        // The window close button only hides the launcher; Agent Core keeps running in the
+        // tray until the tray menu's Exit item (or a Windows shutdown) ends it.
+        if (e.CloseReason == CloseReason.UserClosing && !_exitRequested && !_shutdownStarted)
+        {
+            e.Cancel = true;
+            Hide();
+            ShowTrayHint();
+            return;
+        }
+
         _statusTimer.Stop();
         _nativeDiagnostics?.DisarmHangWatchdog();
 
         if (e.CloseReason is CloseReason.WindowsShutDown or CloseReason.TaskManagerClosing)
         {
             _shutdownComplete = true;
+            ReleaseTray();
             _nativeDiagnostics?.Dispose();
             _runtime.Dispose();
             return;
@@ -110,10 +135,91 @@ public sealed class MainForm : Form
         }
         finally
         {
+            ReleaseTray();
             _nativeDiagnostics?.Dispose();
             _shutdownComplete = true;
             if (!IsDisposed) Close();
         }
+    }
+
+    private void CreateTray()
+    {
+        var show = new ToolStripMenuItem("Show App") { Font = new Font(SystemFonts.MenuFont ?? Font, FontStyle.Bold) };
+        show.Click += (_, _) => ShowFromTray();
+        var exit = new ToolStripMenuItem("Exit");
+        exit.Click += (_, _) => ExitFromTray();
+        var menu = new ContextMenuStrip();
+        menu.Items.Add(show);
+        menu.Items.Add(exit);
+
+        _tray = new NotifyIcon { Icon = Icon, Text = "Agent Core", ContextMenuStrip = menu, Visible = true };
+        _tray.MouseClick += (_, args) =>
+        {
+            if (args.Button == MouseButtons.Left) ShowFromTray();
+        };
+    }
+
+    private void ShowFromTray()
+    {
+        if (_shutdownStarted || IsDisposed || Disposing) return;
+        if (!Visible) Show();
+        if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+        Activate();
+    }
+
+    private void ExitFromTray()
+    {
+        if (_shutdownStarted || IsDisposed || Disposing) return;
+        _exitRequested = true;
+        Close();
+    }
+
+    private void ShowTrayHint()
+    {
+        if (_trayHintShown || _tray is null) return;
+        _trayHintShown = true;
+        _tray.ShowBalloonTip(2500, "Agent Core", "Still running in the tray. Right-click the icon for Show App or Exit.", ToolTipIcon.Info);
+    }
+
+    private void ListenForSignal(string name, Action onSignal)
+    {
+        try
+        {
+            var signal = new EventWaitHandle(false, EventResetMode.AutoReset, name);
+            var wait = ThreadPool.RegisterWaitForSingleObject(signal, (_, timedOut) =>
+            {
+                if (timedOut || _shutdownStarted || IsDisposed || !IsHandleCreated) return;
+                try
+                {
+                    BeginInvoke(onSignal);
+                }
+                catch (InvalidOperationException)
+                {
+                    // The window handle is being created or destroyed; the sender can signal again.
+                }
+            }, null, Timeout.Infinite, executeOnlyOnce: false);
+            _signals.Add((signal, wait));
+        }
+        catch (Exception error)
+        {
+            _runtime.CaptureFailure("LAUNCHER", error, "tray-signal");
+        }
+    }
+
+    private void ReleaseTray()
+    {
+        if (_trayReleased) return;
+        _trayReleased = true;
+        foreach (var (signal, wait) in _signals)
+        {
+            wait.Unregister(null);
+            signal.Dispose();
+        }
+        _signals.Clear();
+        if (_tray is null) return;
+        _tray.Visible = false;
+        _tray.ContextMenuStrip?.Dispose();
+        _tray.Dispose();
     }
 
     private async void OnShownAsync(object? sender, EventArgs e)
@@ -237,6 +343,17 @@ public sealed class MainForm : Form
                 Send(new { type = "logs", entries = _runtime.Logs });
                 return;
             }
+            if (type == "activity-detail-get")
+            {
+                var id = root.TryGetProperty("invocationId", out var idNode) && idNode.ValueKind == JsonValueKind.String
+                    ? idNode.GetString() ?? string.Empty : string.Empty;
+                var phase = root.TryGetProperty("phase", out var phaseNode) && phaseNode.ValueKind == JsonValueKind.String
+                    ? phaseNode.GetString() ?? string.Empty : string.Empty;
+                var offset = root.TryGetProperty("offset", out var offsetNode) && offsetNode.TryGetInt32(out var value) ? value : 0;
+                var result = _runtime.GetActivityDetail(id, phase, offset);
+                Send(new { type = "activity-detail-result", result });
+                return;
+            }
             if (type == "workflows-get")
             {
                 var requestId = root.TryGetProperty("requestId", out var requestIdNode)
@@ -250,6 +367,24 @@ public sealed class MainForm : Form
                 catch (Exception error)
                 {
                     Send(new { type = "workflows-error", requestId, error = error.Message });
+                }
+                return;
+            }
+            if (type == "task-changes-get")
+            {
+                var changesRequestId = root.TryGetProperty("requestId", out var changesRequestIdNode)
+                    && changesRequestIdNode.ValueKind == JsonValueKind.String ? changesRequestIdNode.GetString() : null;
+                if (string.IsNullOrWhiteSpace(changesRequestId) || changesRequestId.Length > 128) return;
+                try
+                {
+                    var changesTaskId = root.TryGetProperty("taskId", out var changesTaskIdNode)
+                        && changesTaskIdNode.ValueKind == JsonValueKind.String ? changesTaskIdNode.GetString() : null;
+                    var result = await _runtime.GetTaskChangesAsync(changesTaskId ?? string.Empty);
+                    Send(new { type = "task-changes-result", requestId = changesRequestId, result });
+                }
+                catch (Exception error)
+                {
+                    Send(new { type = "task-changes-error", requestId = changesRequestId, error = error.Message });
                 }
                 return;
             }
@@ -283,6 +418,19 @@ public sealed class MainForm : Form
                 {
                     var result = await _runtime.ListAgentConversationsAsync();
                     Send(new { type = "agent-chat-list-result", result });
+                }
+                catch (Exception error)
+                {
+                    Send(new { type = "agent-chat-error", error = error.Message });
+                }
+                return;
+            }
+            if (type == "agent-chat-providers")
+            {
+                try
+                {
+                    var result = await _runtime.ListAgentProvidersAsync();
+                    Send(new { type = "agent-chat-providers-result", result });
                 }
                 catch (Exception error)
                 {
@@ -338,6 +486,10 @@ public sealed class MainForm : Form
                 var prompt = root.TryGetProperty("prompt", out var promptNode)
                     ? promptNode.GetString() ?? string.Empty
                     : string.Empty;
+                var providerId = root.TryGetProperty("providerId", out var providerNode)
+                    && providerNode.ValueKind == JsonValueKind.String
+                    ? providerNode.GetString()
+                    : null;
                 try
                 {
                     await _runtime.RunAgentTurnStreamAsync(
@@ -348,7 +500,8 @@ public sealed class MainForm : Form
                             type = "agent-chat-event",
                             requestId,
                             envelope
-                        }));
+                        }),
+                        providerId: providerId);
                     var result = await _runtime.ReadAgentConversationAsync(conversationId);
                     Send(new { type = "agent-chat-state", result });
                     await PushStatusAsync();

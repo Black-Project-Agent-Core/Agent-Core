@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import { AGENT_CAPABILITY_CATALOG } from './agent-capability-catalog.js';
 import { redactSensitiveString } from './security/redaction.js';
+import { normalizeSkillReadResource, skillReadCoverageKey } from './skills/resource-path.js';
 import type { ExternalPartnerCapability } from './external-partner-capability.js';
+import type { AgentModelMessage } from './agent-provider.js';
 export type CapabilityDisclosurePolicy = 'silent-internal' | 'grouped-family' | 'announce-on-material-use';
 export type CapabilityKind = 'tool-family' | 'skill' | 'pattern' | 'procedure' | 'helper' | 'external';
 export interface CapabilityDescriptor {
@@ -27,7 +29,7 @@ export function buildCapabilityExposure(input: { availableTools?: readonly strin
   const definition = input.externalController && f.family === 'reconstruction.harness'
    ? {...f, description:'External task-bound REA proof obligations; schema discovery and host receipt assessment. Tool completion is not goal correctness.'}
    : input.externalController && (f.family === 'browser.navigate' || f.family === 'browser.act')
-    ? {...f, description:'Browser Control: isolated Chromium, paired Browser Bridge, or task-created tabs through the installed Open Browser Use extension/native host; observed actions and bounded evidence.'} : f;
+    ? {...f, description:'Browser Control: task-created tabs through the installed Open Browser Use extension/native host (default); observed actions and bounded evidence.'} : f;
   return { capabilityId:'family:'+f.family, kind:'tool-family', displayName:CAPABILITY_LABELS[f.family] ?? f.family,
    description:definition.description, revision:hash([definition,memberTools]), availability:known ? memberTools.length ? 'available' : 'unavailable' : 'unknown',
    availabilityBasis:'registered-tools-only; connection/effectiveness not established', memberTools,
@@ -134,12 +136,95 @@ export function inspectedSkillArtifacts(text:string):Array<{name:string;digest:s
    values=value.hits.slice(0,8).filter((hit:any)=>hit?.scoreKind==='rank-fusion' && hit.executionAuthority===false
     && Number.isInteger(hit.rank) && hit.rank>=1 && hit.rank<=8);
   } else if(value && !Array.isArray(value) && ('delivery' in value || 'content' in value)) {
-   if(value.source!=='SKILL.md' || value.delivery!=='instruction-fragment' || value.executionAuthority!==false
-    || typeof value.content!=='string')return [];
+   if(value.delivery!=='instruction-fragment' || value.executionAuthority!==false
+    || typeof value.content!=='string' || typeof value.source!=='string')return [];
+   // This descriptor filter must admit the same packaged resources as observeSkillRead.
+   // The receipt observer separately binds the source to the requested resourcePath.
+   try { if(normalizeSkillReadResource(value.source)!==value.source)return []; } catch { return []; }
    values=[value];
   } else values=Array.isArray(value)?value:[value];
   return values.slice(0,500).filter((v:any)=>v && typeof v.name==='string' && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v.name)
    && v.name.length<=64 && typeof v.digest==='string' && /^sha256:[a-f0-9]{64}$/.test(v.digest))
    .map((v:any)=>({name:v.name,digest:v.digest}));
  }catch{return [];}
+}
+
+export interface SkillReadCoverageEntry { digest: string; readBytes: number; totalBytes: number; complete: boolean }
+export type SkillReadCoverage = Record<string, SkillReadCoverageEntry>;
+const skillName = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const skillDigest = /^sha256:[a-f0-9]{64}$/;
+function recognizedSkillCoverageKey(key: string): boolean {
+ const split = key.indexOf('#');
+ const name = split < 0 ? key : key.slice(0, split);
+ if (!skillName.test(name) || name.length > 64) return false;
+ if (split < 0) return true;
+ try {
+  const resource = normalizeSkillReadResource(key.slice(split + 1));
+  return resource !== 'SKILL.md' && skillReadCoverageKey(name, resource) === key;
+ } catch { return false; }
+}
+/** Existing episode metadata only: never retain instruction text or infer reading from inventory. */
+export function normalizeSkillReadCoverage(raw: unknown): SkillReadCoverage {
+ const result: SkillReadCoverage = Object.create(null);
+ if(!raw || typeof raw!=='object' || Array.isArray(raw))return result;
+ for(const [name,value] of Object.entries(raw).slice(-128)) {
+  const v=value as SkillReadCoverageEntry;
+  if(!recognizedSkillCoverageKey(name)||!v||!skillDigest.test(v.digest)
+    ||!Number.isSafeInteger(v.readBytes)||!Number.isSafeInteger(v.totalBytes)
+    ||v.readBytes<0||v.totalBytes<0||v.totalBytes>2*1024*1024||v.readBytes>v.totalBytes
+    ||typeof v.complete!=='boolean'||v.complete!==(v.readBytes===v.totalBytes))continue;
+  result[name]={digest:v.digest,readBytes:v.readBytes,totalBytes:v.totalBytes,complete:v.complete};
+ }
+ return result;
+}
+/** Successful reads only. Returns envelope validity; only contiguous fragments advance coverage. */
+export function observeSkillRead(coverage: SkillReadCoverage, text: string, request: unknown): boolean {
+ try {
+  const args=request as {action?:string;name?:string;expectedActiveDigest?:string;offset?:number;resourcePath?:string};
+  const source = normalizeSkillReadResource(args?.resourcePath);
+  const v=JSON.parse(text.split('\n\nAGENT_CORE_EVIDENCE_REF=')[0]);
+  if(args?.action!=='read'||v?.name!==args.name||v.digest!==args.expectedActiveDigest?.toLowerCase()
+    ||!skillName.test(v.name)||v.name.length>64||!skillDigest.test(v.digest)
+    ||v.source!==source||v.delivery!=='instruction-fragment'||v.executionAuthority!==false
+    ||typeof v.content!=='string'||!Number.isSafeInteger(v.offset)||v.offset<0||v.offset!==(args.offset??0)
+    ||!Number.isSafeInteger(v.totalContentBytes)||v.totalContentBytes<0||v.totalContentBytes>2*1024*1024)return false;
+  const end=v.offset+Buffer.byteLength(v.content,'utf8');
+  if(end>v.totalContentBytes||end===v.offset&&end!==v.totalContentBytes
+    ||v.nextOffset!==(end===v.totalContentBytes?null:end)||v.truncated!==(end<v.totalContentBytes))return false;
+  const key = skillReadCoverageKey(v.name,source);
+  const previous=Object.hasOwn(coverage,key)?coverage[key]:undefined;
+  if(previous&&previous.digest===v.digest&&previous.totalBytes===v.totalContentBytes&&previous.readBytes>=end)return true;
+  if(v.offset!==0&&(!previous||previous.digest!==v.digest||previous.totalBytes!==v.totalContentBytes||previous.readBytes!==v.offset))return true;
+  coverage[key]={digest:v.digest,readBytes:end,totalBytes:v.totalContentBytes,complete:end===v.totalContentBytes};
+  for(const name of Object.keys(coverage).slice(0,-128))delete coverage[name];
+  return true;
+ }catch{return false;/* Malformed or error tool results cannot prove instruction delivery. */}
+}
+export function skillInstructionsRead(coverage: SkillReadCoverage | undefined, name: string, digest: string): boolean {
+ const value=coverage&&Object.hasOwn(coverage,name)?coverage[name]:undefined;
+ return Boolean(value?.complete&&value.digest===digest&&value.readBytes===value.totalBytes);
+}
+/** Reference receipt is independent of the primary SKILL.md instruction admission. */
+export function skillReferenceRead(coverage: SkillReadCoverage | undefined, name: string, reference: string, digest: string): boolean {
+ try {
+  const source = normalizeSkillReadResource(reference);
+  if (source === 'SKILL.md') return false;
+  const key = skillReadCoverageKey(name, source);
+  const entry = coverage && Object.hasOwn(coverage, key) ? coverage[key] : undefined;
+  return Boolean(entry?.complete && entry.digest === digest && entry.readBytes === entry.totalBytes);
+ } catch { return false; }
+}
+/** Reconstruct from the existing durable call/result transcript; no checkpoint schema extension. */
+export function skillReadCoverageFromMessages(messages: readonly AgentModelMessage[]): SkillReadCoverage {
+ const coverage: SkillReadCoverage=Object.create(null), pending=new Map<string,unknown>();
+ for(const message of messages){
+  if(message.role==='assistant')for(const call of message.tool_calls??[])if(call.function.name==='skills'){
+   try{pending.set(call.id,JSON.parse(call.function.arguments));}catch{pending.delete(call.id);}
+  }
+  if(message.role==='tool'&&message.name==='skills'&&message.tool_call_id){
+   if(typeof message.content==='string')observeSkillRead(coverage,message.content,pending.get(message.tool_call_id));
+   pending.delete(message.tool_call_id);
+  }
+ }
+ return coverage;
 }

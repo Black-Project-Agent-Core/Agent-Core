@@ -43,6 +43,20 @@ const episodeStart = { startKey: 'memory-start', goal: 'Synthetic continuation',
 function append(header: any, operationId: string, text: string) { return { episodeId: header.id, expectedRevision: header.revision, operationId, event: { kind: 'observation', summary: text, sourceRefs: [], stateChanges: [{ op: 'upsert', item: { id: operationId, kind: 'next-action', text, critical: true, state: 'active', sourceRefs: [], verification: { status: 'unverified', evidence: [] } } }] } }; }
 function checkpoint(header: any) { return { episodeId: header.id, expectedRevision: header.revision, operationId: 'memory-checkpoint', trigger: 'explicit' }; }
 describe('explicit Memory task continuation', () => {
+  it('finalizes the exact Learning task across a headerless hour boundary without another episode start', async () => {
+    const f = await memoryTaskFixture(); roots.push(f.root); const call = await httpFixture(f);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-09T00:59:59Z'));
+    const task = await start(call, 'hour-boundary-learning');
+    clock.mockReturnValue(Date.parse('2026-10-09T01:00:01Z'));
+    const response = await call('learning', { action: 'checkpoint', taskId: task.id, workspace: 'agent-core',
+      idempotencyKey: 'hour-boundary-learning', reason: 'task-complete', evidenceRefs: ['source:hour-boundary-fixture'] });
+    expect(response.isError, JSON.stringify(response)).not.toBe(true);
+    expect((await f.external.getEpisode(namespace('owner-a', undefined, Date.now())))?.id).toBe(task.id);
+    const review = await call('learning', { action: 'review', taskId: task.id, workspace: 'agent-core',
+      checkpointKeys: ['hour-boundary-learning'], candidates: [], disposition: 'no-new-knowledge' });
+    expect(review.isError, JSON.stringify(review)).not.toBe(true);
+    expect((await f.learning.status()).pendingReviewCount).toBe(0);
+  });
   it('preserves task, episode and checkpoint idempotency across headerless hourly rotation, changed header and restart', async () => {
     let f = await memoryTaskFixture(); roots.push(f.root); let call = await httpFixture(f);
     const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-09T00:59:59Z'));

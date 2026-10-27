@@ -74,6 +74,10 @@ export interface MemorySearchOptions {
   sourceFiles?: string[];
   rankingProfile?: 'legacy' | 'bm25' | 'fusion';
   workspace?: string;
+  /** Include explicitly general, unscoped records alongside a workspace. */
+  includeGeneral?: boolean;
+  /** Internal task-bound evaluation intervention, applied before disclosure. */
+  excludeMemoryIds?: string[];
   asOf?: string;
   feedbackSalience?: ReadonlyMap<string, number>;
 }
@@ -321,7 +325,7 @@ function fusionChannelScores(components: RetrievalComponents): Record<FusionChan
 function concreteIdentifiers(query: string): string[] {
   const matches = query.match(/[A-Za-z0-9][A-Za-z0-9_.:/\\-]{7,}/g) ?? [];
   return [...new Set(matches
-    .map((value) => value.toLowerCase().replaceAll('\\', '/'))
+    .map((value) => value.toLowerCase().replaceAll('\\', '/').replace(/\.+$/, ''))
     .filter((value) => /[0-9_.:/-]/.test(value)))]
     .slice(0, 16);
 }

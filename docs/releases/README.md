@@ -8,7 +8,7 @@ The [latest accepted stable release](https://github.com/Black-Project-Agent-Core
 
 ## Prepare the exact source
 
-Use a reviewed checkout at a known commit. Preserve unrelated changes and existing installations. Follow [AGENTS.md](../../AGENTS.md), including the external-controller contract and canonical Memory inspection when operating through Agent Core. Native-specific code remains frozen except for an explicitly authorized, narrowly recorded exception.
+Use a reviewed checkout at a known commit. Preserve unrelated changes and existing installations. Follow [AGENTS.md](../../AGENTS.md), including the external-controller contract and canonical Memory inspection when operating through Agent Core. Native and external development are active; runtime grants, path validation and verified task scope remain authoritative.
 
 Every completed change receives a version assessment. Changes to user-visible behavior, compatibility, security, persistent state or release semantics require a factual changeset with an appropriate impact. Documentation-only or test-only work may record no product bump with its reason. Do not increment versions arbitrarily.
 

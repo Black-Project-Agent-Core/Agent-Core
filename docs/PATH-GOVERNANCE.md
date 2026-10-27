@@ -6,6 +6,8 @@ This is the authoritative implementation policy for path portability in Agent Co
 
 Current policy state: **live-activated; no active hardcoded-path exceptions**.
 
+Project-wide folder ownership and the generated directory snapshot live together in [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md). `npm run structure:check` compares the map with the actual tree; `npm run structure:sync` updates only its generated block after validating ownership declarations. `path:check` and build include that comparison. The shared filesystem owner admits directory creation/moves before side effects and synchronizes accepted changes for Native, external controllers and Raka. Shell/editor changes remain outside interception and must follow the same declarations and checks. See `src/portability/project-structure.ts` and `scripts/portability/project-structure.mjs`.
+
 Machine-readable exception registry:
 
 `scripts/portability/path-exceptions.json`
@@ -19,6 +21,8 @@ Human-readable report:
 `npm run path:report`
 
 The normal TypeScript build invokes the path-policy check before compilation.
+
+Skill storage ownership is checked by the same command through `scripts/portability/skill-storage-layout.mjs`. Respect the original parent `runtime/skills`: maintained source belongs in its `capability-packs` child, alongside the existing catalog/state roles. Recreating `bundled-skills` or another known parallel home, unregistered roles, malformed artifact/revision locations and storage links fails without path exceptions. Only the maintained source subtree and parent README are included in Git/package inputs; private runtime state remains excluded. The bounded checker reads structure and entrypoint owner metadata; it never moves/deletes artifacts or replaces SkillService validation. See [the ownership map](External-Engineering-Skills.md#storage-ownership) and `AGENTS.md` before creating a directory.
 
 ## Objective
 

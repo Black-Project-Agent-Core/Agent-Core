@@ -11,7 +11,7 @@ The human talks to A in the same ChatGPT tab created by B with Agent Core Open B
 3. Select an observed `messageRef`, then call `conversation_read` with `read:{kind:'message',messageRef,offset:0}`. Continue at each `nextOffset` until `eof:true`. This can retrieve the tail beyond the former6,000-character limit.
 4. Start a fresh index when new messages or revisions are needed. Edited/streaming bodies, branch changes, navigation and reload can invalidate references; never append chunks belonging to different versions. A fresh index explicitly starts from the current conversation in this same owned tab.
 
-The `read` selector belongs only to external OBU `conversation_read`. The legacy paired Bridge retains its separate `sinceRevision` interface and existing popup-only draft/send policy. Native browser behavior and grants stay frozen. This feature adds no sending or composer permission.
+The `read` selector belongs only to external OBU `conversation_read`. `conversation_read` is served only by OBU and is read-only: `conversation_draft`, `conversation_status`, the `sinceRevision` interface and the `extension` transport do not exist. This external feature leaves Native browser behavior and grants unchanged; Native development is available. This feature adds no sending or composer permission.
 
 ## What completeness means
 

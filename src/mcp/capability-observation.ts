@@ -20,7 +20,7 @@ export function installCapabilityObservation(server:McpServer,principal:unknown,
    try {
     if(name==='skills' && ['list','inspect','search','read'].includes(String(args?.action))) {
       const payload=(result?.content??[]).find((part:any)=>part?.type==='text')?.text;
-      if(typeof payload==='string')await external.recordInspectedSkillArtifacts?.(sessionId,payload,invocationContext);
+      if(typeof payload==='string')await external.recordInspectedSkillArtifacts?.(sessionId,payload,invocationContext,args,ctx?.mcpReq?.signal);
     }
     const use=toolCapabilityUse(name,args??{},true,'source:host-capability-observation');
     if(use)await external.recordCapabilityUse?.(sessionId,use,invocationContext);

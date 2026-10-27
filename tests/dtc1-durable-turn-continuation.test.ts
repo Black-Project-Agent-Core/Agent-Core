@@ -21,6 +21,7 @@ import {
 } from '../src/agent-turn-checkpoint.js';
 import {
   OpenAICompatibleProviderPool,
+  type AgentModelMessage,
   type AgentProviderConfig,
 } from '../src/agent-provider.js';
 import { resultArtifactIntegrity } from '../src/security/verified-result-artifact.js';
@@ -276,8 +277,22 @@ function okProviderResponse(model = 'fixture-model') {
   });
 }
 
+function qualifiedFixtureFetch(handler: (url: unknown, init?: RequestInit) => Promise<Response>, model = 'fixture-model') {
+  vi.stubGlobal('fetch', vi.fn(async (url: unknown, init?: RequestInit) => {
+    if (String(url).endsWith('/models')) return new Response(JSON.stringify({ data: [{ id: model,
+      context_length: 128_000, max_output_tokens: 8_192, supported_parameters: ['tools'] }] }));
+    const body = JSON.parse(String(init?.body ?? '{}'));
+    if (body.tools?.[0]?.function?.name === 'agent_core_model_probe') return new Response(JSON.stringify({ choices: [{
+      message: { content: null, tool_calls: [{ id: 'probe', type: 'function', function: {
+        name: 'agent_core_model_probe', arguments: JSON.stringify({ nonce: body.tools[0].function.parameters.properties.nonce.enum[0] }),
+      } }] }, finish_reason: 'tool_calls',
+    }] }));
+    return handler(url, init);
+  }));
+}
+
 describe('DTC-1 continuation provider compatibility', () => {
-  it('blocks a same-model route when the minimum continuation contract is incompatible', async () => {
+  it('pauses before task inference when no compatible model can be qualified', async () => {
     const root = await rootFixture('dtc1-provider-');
     const pool = new OpenAICompatibleProviderPool(providerConfig([{
       id: 'provider-b',
@@ -292,7 +307,8 @@ describe('DTC-1 continuation provider compatibility', () => {
       },
       credentials: [{ id: 'b:1', secret: 'fixture-secret', ordinal: 1 }],
     }]), path.join(root, 'provider-state.json'));
-    const fetchSpy = vi.fn();
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ data: [{ id: 'fixture-model',
+      context_length: 128_000, supports_tools: false }] })));
     vi.stubGlobal('fetch', fetchSpy);
 
     await expect(pool.complete(
@@ -309,11 +325,12 @@ describe('DTC-1 continuation provider compatibility', () => {
           toolCallFormat: 'openai-chat-tool-calls-v1',
         },
       },
-    )).rejects.toThrow('AGENT_RUNTIME_CONTINUATION_ROUTE_INCOMPATIBLE');
-    expect(fetchSpy).not.toHaveBeenCalled();
+    )).rejects.toThrow('AGENT_RUNTIME_CONTINUATION_PROVIDER_WAIT');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain('/models');
   });
 
-  it('blocks a different model before any provider request is sent', async () => {
+  it('allows a different model only after its compatible tool and context contract is qualified', async () => {
     const root = await rootFixture('dtc1-provider-model-');
     const pool = new OpenAICompatibleProviderPool(providerConfig([{
       id: 'provider-b',
@@ -328,8 +345,8 @@ describe('DTC-1 continuation provider compatibility', () => {
       },
       credentials: [{ id: 'b:1', secret: 'fixture-secret', ordinal: 1 }],
     }]), path.join(root, 'provider-state.json'));
-    const fetchSpy = vi.fn();
-    vi.stubGlobal('fetch', fetchSpy);
+    const fetchSpy = vi.fn(async () => okProviderResponse('different-model'));
+    qualifiedFixtureFetch(fetchSpy, 'different-model');
 
     await expect(pool.complete(
       [{ role: 'user', content: 'continue' }],
@@ -345,8 +362,8 @@ describe('DTC-1 continuation provider compatibility', () => {
           toolCallFormat: 'openai-chat-tool-calls-v1',
         },
       },
-    )).rejects.toThrow('AGENT_RUNTIME_CONTINUATION_ROUTE_INCOMPATIBLE');
-    expect(fetchSpy).not.toHaveBeenCalled();
+    )).resolves.toMatchObject({ providerId: 'provider-b', model: 'different-model' });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it('allows a compatible same-model cross-provider route and charges one attempt', async () => {
@@ -365,7 +382,7 @@ describe('DTC-1 continuation provider compatibility', () => {
       credentials: [{ id: 'b:1', secret: 'fixture-secret', ordinal: 1 }],
     }]), path.join(root, 'provider-state.json'));
     const fetchSpy = vi.fn(async () => okProviderResponse());
-    vi.stubGlobal('fetch', fetchSpy);
+    qualifiedFixtureFetch(fetchSpy);
     const attempts: number[] = [];
 
     const result = await pool.complete(
@@ -509,7 +526,7 @@ describe('DTC-A3 provider key rotation preserves one continuation context', () =
       }
       return okProviderResponse();
     });
-    vi.stubGlobal('fetch', fetchSpy);
+    qualifiedFixtureFetch(fetchSpy);
 
     const messages = [{ role: 'user' as const, content: 'same context' }];
     const result = await pool.complete(messages, [], 'session-1');
@@ -862,7 +879,7 @@ describe('DTC-1 current-authority and budget invariants', () => {
         state,
         save: vi.fn(async () => undefined),
       },
-    })).rejects.toThrow('AGENT_RUNTIME_PROVIDER_ATTEMPT_BUDGET_EXHAUSTED');
+    })).rejects.toMatchObject({ reason: 'attempt-budget', retryAtMs: null });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
@@ -928,5 +945,177 @@ describe('DTC-1 crash-boundary and cancellation races', () => {
     expect(detail.turns[0]?.status).toBe('stopped');
     expect(detail.messages.filter(message => message.role === 'assistant'))
       .toHaveLength(0);
+  });
+});
+
+describe('DTC-1 Stop reaches an in-flight tool call', () => {
+  async function stoppedToolFixture(mutating: boolean) {
+    const root = await rootFixture('dtc1-stop-tool-');
+    const config = {
+      ...providerConfig([{
+        id: 'provider-a',
+        baseUrl: 'http://127.0.0.1:65530/v1',
+        model: 'fixture-model',
+        credentials: [{ id: 'a:1', secret: 'fixture-secret', ordinal: 1 }],
+      }]),
+      allowedTools: ['get_config'],
+    };
+    const { runtime, controller } = await continuationControllerFixture(root, config);
+    const contract = await AgentRuntimeToolSession.open(
+      'stop-contract', ['get_config'], { nativeTaskId: 'task-1', nativeWorkspace: 'fixture' },
+    );
+    const toolContractDigest = await contract.contractDigest();
+    await contract.close();
+    if (mutating) vi.spyOn(AgentRuntimeToolSession.prototype, 'isMutating').mockResolvedValue(true);
+    vi.spyOn(runtime, 'complete').mockResolvedValue({
+      content: null,
+      toolCalls: [{ id: 'call-1', type: 'function', function: { name: 'get_config', arguments: '{}' } }],
+      providerId: 'provider-a',
+      resolvedModel: null,
+      model: 'fixture-model',
+    } as any);
+    const stop = new AbortController();
+    const dispatched = vi.spyOn(AgentRuntimeToolSession.prototype, 'call')
+      .mockImplementation((_name, _args, _invocationId, signal) => new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+        stop.abort();
+      }));
+    const state = checkpoint({
+      hasStrategy: true,
+      toolContractDigest,
+      providerId: 'provider-a',
+      model: 'fixture-model',
+      historicalGrantedTools: ['get_config'],
+      messages: [{ role: 'user', content: 'continue fixture' }],
+    });
+    const phases: string[] = [];
+    const events: string[] = [];
+    const episodes = vi.spyOn(runtime, 'recordEpisode');
+    const run = () => controller.runConversationTurn({
+      sessionId: state.runtimeSessionId,
+      taskId: state.runtimeTaskId,
+      prompt: state.prompt,
+      workspace: 'fixture',
+      signal: stop.signal,
+      eventSink: event => { events.push(event.type); },
+      continuation: {
+        conversationId: state.conversationId,
+        turnId: state.turnId,
+        state,
+        save: vi.fn(async (_state, phase) => { phases.push(phase); }),
+      },
+    });
+    return { run, dispatched, phases, events, episodes };
+  }
+
+  it('ends a read-only call as stopped: no tool failure, no retry, no durable result', async () => {
+    const fixture = await stoppedToolFixture(false);
+    await expect(fixture.run()).rejects.toThrow('AGENT_RUNTIME_TURN_STOPPED');
+    expect(fixture.dispatched).toHaveBeenCalledTimes(1);
+    expect(fixture.dispatched.mock.calls[0]?.[3]).toBeInstanceOf(AbortSignal);
+    expect(fixture.events).toContain('turn.cancelled');
+    expect(fixture.events).not.toContain('tool.completed');
+    expect(fixture.phases).not.toContain('tool-result-durable');
+    const kinds = fixture.episodes.mock.calls.map(call => (call[1] as any).kind);
+    expect(kinds).not.toContain('failure');
+    expect(fixture.episodes.mock.calls.some(call => String((call[1] as any).summary)
+      .includes('Stop reached tool get_config in flight'))).toBe(true);
+  });
+
+  it('leaves a mutating call at its durable dispatching checkpoint with an unknown result', async () => {
+    const fixture = await stoppedToolFixture(true);
+    await expect(fixture.run()).rejects.toThrow('AGENT_RUNTIME_TURN_STOPPED');
+    expect(fixture.phases).toContain('tool-dispatching');
+    expect(fixture.phases).not.toContain('tool-result-durable');
+    expect(fixture.episodes.mock.calls.some(call => String((call[1] as any).summary)
+      .includes('result unknown'))).toBe(true);
+  });
+});
+
+describe('DTC-1 context compaction inside a turn', () => {
+  async function compactionFixture(window: number | null) {
+    const root = await rootFixture('dtc1-compaction-');
+    const config = {
+      ...providerConfig([{
+        id: 'provider-a',
+        baseUrl: 'http://127.0.0.1:65530/v1',
+        model: 'fixture-model',
+        credentials: [{ id: 'a:1', secret: 'fixture-secret', ordinal: 1 }],
+      }]),
+      allowedTools: ['get_config'],
+    };
+    const { runtime, controller } = await continuationControllerFixture(root, config);
+    const contract = await AgentRuntimeToolSession.open(
+      'compaction-contract', ['get_config'], { nativeTaskId: 'task-1', nativeWorkspace: 'fixture' },
+    );
+    const toolContractDigest = await contract.contractDigest();
+    await contract.close();
+    vi.spyOn(runtime, 'knownContextWindow').mockReturnValue(window);
+    const stop = new AbortController();
+    const seen: Array<AgentModelMessage[]> = [];
+    vi.spyOn(runtime, 'complete').mockImplementation(async messages => {
+      seen.push(structuredClone(messages));
+      stop.abort();
+      throw new Error('AGENT_RUNTIME_TURN_STOPPED');
+    });
+    const groups = Array.from({ length: 20 }, (_, index) => [
+      { role: 'assistant' as const, content: null, tool_calls: [{ id: 'g-' + index, type: 'function' as const,
+        function: { name: 'get_config', arguments: '{}' } }] },
+      { role: 'tool' as const, name: 'get_config', tool_call_id: 'g-' + index,
+        content: 'result ' + index + ' ' + 'y'.repeat(600) + '\n\nAGENT_CORE_EVIDENCE_REF=tool:get_config:g-' + index },
+    ]).flat();
+    const state = checkpoint({
+      hasStrategy: true,
+      toolContractDigest,
+      providerId: 'provider-a',
+      model: 'fixture-model',
+      historicalGrantedTools: ['get_config'],
+      messages: [{ role: 'system', content: 'fixture system' }, { role: 'user', content: 'continue fixture' }, ...groups],
+    });
+    const saves: Array<{ state: AgentTurnCheckpointState; phase: string; extras: any }> = [];
+    const run = () => controller.runConversationTurn({
+      sessionId: state.runtimeSessionId,
+      taskId: state.runtimeTaskId,
+      prompt: state.prompt,
+      workspace: 'fixture',
+      signal: stop.signal,
+      continuation: {
+        conversationId: state.conversationId,
+        turnId: state.turnId,
+        state,
+        save: vi.fn(async (next, phase, extras) => { saves.push({ state: next, phase, extras }); }),
+      },
+    });
+    return { run, seen, saves };
+  }
+
+  it('compacts before the provider call and commits the source with the compacted checkpoint', async () => {
+    const fixture = await compactionFixture(10_000);
+    await expect(fixture.run()).rejects.toThrow('AGENT_RUNTIME_TURN_STOPPED');
+    const sent = fixture.seen[0]!;
+    expect(sent.filter(message => message.content?.startsWith('NATIVE CONTEXT SUMMARY'))).toHaveLength(1);
+    expect(sent.length).toBeLessThan(2 + 40);
+    expect(sent.at(-1)!.role).toBe('tool');
+    const commits = fixture.saves.filter(save => save.extras?.compactionSources?.length);
+    const committed = commits.at(-1)!;
+    expect(committed.phase).toBe('model-ready');
+    expect(committed.state.compactions).toHaveLength(commits.length);
+    const [source] = committed.extras.compactionSources;
+    expect(committed.state.compactions!.at(-1)).toMatchObject({ id: source.id, scope: 'turn', sourceDigest: source.sourceDigest });
+    expect(committed.state.messages.length).toBe(sent.length);
+    // The compacted checkpoint is still a valid, resumable checkpoint.
+    expect(serializeAgentTurnCheckpoint(committed.state).state.compactions).toHaveLength(commits.length);
+  });
+
+  it('leaves the context alone when the window is unknown or the flag is off', async () => {
+    const unknown = await compactionFixture(null);
+    await expect(unknown.run()).rejects.toThrow('AGENT_RUNTIME_TURN_STOPPED');
+    expect(unknown.seen[0]!.some(message => message.content?.startsWith('NATIVE CONTEXT SUMMARY'))).toBe(false);
+    process.env.AGENT_CORE_AI_COMPACTION = 'off';
+    try {
+      const off = await compactionFixture(10_000);
+      await expect(off.run()).rejects.toThrow('AGENT_RUNTIME_TURN_STOPPED');
+      expect(off.seen[0]!.some(message => message.content?.startsWith('NATIVE CONTEXT SUMMARY'))).toBe(false);
+    } finally { delete process.env.AGENT_CORE_AI_COMPACTION; }
   });
 });

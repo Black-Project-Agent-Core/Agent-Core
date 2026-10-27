@@ -6,7 +6,8 @@ const evidenceRef = safeEvidenceRefSchema();
 const evidenceRefs = z.array(evidenceRef).max(24);
 
 export const controllerLearning = z.object({
-  action: z.enum(['status', 'context', 'episode', 'artifact_receipt', 'procedure', 'evaluate']),
+  action: z.enum(['status', 'context', 'episode', 'artifact_receipt', 'procedure', 'evaluate', 'improvement']),
+  payload: z.record(z.string(), z.unknown()).optional(),
   workspace: z.string().min(1).max(120).optional(),
   query: z.string().min(1).max(4000).optional(),
   skillSearchMode: z.enum(['lexical', 'hybrid']).optional(),
@@ -47,6 +48,10 @@ export const controllerLearning = z.object({
   allowedTools: z.array(z.string().min(1).max(120)).max(64).optional(),
   reuseCondition: z.string().min(1).max(2000).optional(),
 }).superRefine((value, ctx) => {
+  if (value.payload !== undefined && !['improvement', 'evaluate', 'procedure'].includes(value.action))
+    ctx.addIssue({ code: 'custom', path: ['payload'], message: 'payload only valid for improvement, evaluate or procedure' });
+  if (value.action === 'improvement' && (!value.taskId?.trim() || !value.payload))
+    ctx.addIssue({ code: 'custom', path: ['payload'], message: 'improvement requires payload and host taskId' });
   if (value.browserObservation !== undefined && !(value.action === 'context'
     || value.action === 'procedure' && value.procedureOperation === 'inspect')) {
     ctx.addIssue({ code:'custom',path:['browserObservation'],
@@ -111,6 +116,10 @@ export const controllerLearning = z.object({
 
   if (value.action === 'procedure') {
     const operation = value.procedureOperation ?? 'list';
+    if (value.payload !== undefined && (operation !== 'propose' || !value.taskId?.trim()))
+      ctx.addIssue({code:'custom',path:['payload'],message:'structured procedure requires propose and host taskId'});
+    if (value.payload !== undefined && [value.description,value.steps,value.allowedTools,value.reuseCondition].some(item=>item!==undefined))
+      ctx.addIssue({code:'custom',path:['payload'],message:'structured payload cannot be mixed with legacy contract fields'});
     if (operation === 'inspect' && !value.fingerprint) {
       ctx.addIssue({
         code: 'custom',
@@ -128,7 +137,7 @@ export const controllerLearning = z.object({
       });
     }
     if (operation === 'propose') {
-      if (!value.name || !value.description || !value.steps?.length || !value.verificationRef) {
+      if (!value.name || (!value.payload && (!value.description || !value.steps?.length)) || !value.verificationRef) {
         ctx.addIssue({
           code: 'custom',
           message: 'procedure propose requires name, description, steps, and verificationRef',

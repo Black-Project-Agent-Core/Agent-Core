@@ -76,8 +76,8 @@ describe('RDC-compatible local bridge runtime', () => {
     });
     expect(initialized.result?.serverInfo?.name).toBe('agent-core');
     const listed = await rpc('tools/list', {});
-    expect(listed.result.tools).toHaveLength(66);
-    for (const name of ['controller_contract', 'learning', 'skills', 'image_inspect', 'reconstruction_harness'])
+    expect(listed.result.tools).toHaveLength(67);
+    for (const name of ['controller_contract', 'learning', 'skills', 'image_inspect', 'reconstruction_harness', 'native_chat_bridge'])
       expect(listed.result.tools.some((tool: any) => tool.name === name)).toBe(true);
     expect(listed.result.tools.some((tool: any) => tool.name === 'memory_search')).toBe(true);
     expect(listed.result.tools.some((tool: any) => tool.name === 'capability_route')).toBe(false);

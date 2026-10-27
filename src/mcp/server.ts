@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/server';
 import { installCredentialToolGrant, credentialAllowsTool } from '../auth/tool-grant.js';
 import { installCapabilityObservation } from './capability-observation.js';
@@ -38,6 +39,7 @@ import { registerMemoryTools } from '../memory/mcp/tools.js';
 import { registerSemanticIdeTools } from './semantic-ide-tools.js';
 import { registerSkillsTools } from './skills-tools.js';
 import { registerPhoneTools } from './phone-tools.js';
+import { registerNativeChatBridgeTool } from './native-chat-bridge-tools.js';
 import { PHONE_SKILL_INSTRUCTIONS } from './phone-protocol.js';
 import type { PhoneController } from '../phone/controller.js';
 import * as schemas from './rdc-schemas.js';
@@ -281,6 +283,9 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
 
 export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRuntime = {}): McpServer {
   const memoryOwner = memoryCredentialOwner(key);
+  const browserCaller = JSON.stringify(runtime.nativeTaskId
+    ? ['native', runtime.nativeTaskId, runtime.nativeWorkspace]
+    : ['external', memoryOwner ?? randomUUID(), runtime.controllerSessionId ?? randomUUID()]);
   // Every observer and Learning tool uses the same owner-scoped namespace.
   // Keep the transport helper unchanged: only explicit episodes identify tasks.
   if (runtime.memoryExperience && !runtime.nativeTaskId && runtime.controllerSessionId && memoryOwner) {
@@ -326,9 +331,8 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
   tool(server, 'get_config', 'Get Configuration', schemas.getConfig, async () => getConfig() as any, true);
   tool(server, 'set_config_value', 'Set Configuration Value', schemas.setConfigValue, setConfigValue as any);
   tool(server, 'read_file', 'Read File or URL', schemas.readFile, handlers.handleReadFile as any, true);
-  if (!runtime.nativeTaskId) {
-    tool(server, 'image_inspect', 'Inspect Local Image', imageInspectSchema, runtime.imageInspector ?? createImageInspector(), true);
-  }
+  tool(server, 'image_inspect', 'Inspect Local Image', imageInspectSchema,
+    runtime.imageInspector ?? createImageInspector(), true);
   tool(server, 'read_multiple_files', 'Read Multiple Files', schemas.readMultipleFiles, handlers.handleReadMultipleFiles as any, true);
   tool(server, 'write_file', 'Write File', schemas.writeFile, handlers.handleWriteFile as any);
   tool(server, 'write_pdf', 'Write/Modify PDF', schemas.writePdf, handlers.handleWritePdf as any);
@@ -338,7 +342,9 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
   tool(server, 'file_checkpoint', 'File Checkpoint', schemas.fileCheckpoint, handlers.handleFileCheckpoint as any);
   tool(server, 'browser_control', 'Browser Control',
     runtime.nativeTaskId ? schemas.browserControl : schemas.externalBrowserControl,
-    async (args, context) => handlers.handleBrowserControl(args, context, !runtime.nativeTaskId) as any,
+    async (args, context) => handlers.handleBrowserControl(args, context, !runtime.nativeTaskId,
+      JSON.stringify([browserCaller, context?.taskId, context?.invocationContext?.workspaceIdentityKey,
+        context?.invocationContext?.processSessionId])) as any,
     false, runtime.nativeTaskId ? undefined : EXTERNAL_BROWSER_DESCRIPTION);
 
   tool(server, 'start_search', 'Start Search', schemas.startSearch, handlers.handleStartSearch as any, true);
@@ -432,9 +438,17 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.externalControllerLearning,
     runtime.controllerSessionId,
   );
-  if (runtime.artifactAuthorization && !runtime.nativeTaskId) registerArtifactInspectTool(server, runtime.artifactAuthorization,
-    context => runtime.externalControllerLearning?.invocationTaskCurrent(context) ?? Promise.resolve(false));
+  if (runtime.artifactAuthorization) {
+    if (runtime.nativeTaskId && runtime.nativeWorkspace) {
+      registerArtifactInspectTool(server, runtime.artifactAuthorization, undefined,
+        { ownerId: memoryOwner ?? '', taskId: runtime.nativeTaskId, workspace: runtime.nativeWorkspace });
+    } else if (!runtime.nativeTaskId) {
+      registerArtifactInspectTool(server, runtime.artifactAuthorization,
+        context => runtime.externalControllerLearning?.invocationTaskCurrent(context) ?? Promise.resolve(false));
+    }
+  }
   if (!runtime.nativeTaskId) registerRestartTool(server);
+  registerNativeChatBridgeTool(server, runtime.nativeTaskId);
   if (!runtime.nativeTaskId) registerExternalReconstructionHarnessTool(server, {
     principal: key, ownerId: memoryOwner, sessionId: runtime.controllerSessionId,
     externalLearning: runtime.externalControllerLearning,

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import type { AgentModelMessage } from './agent-provider.js';
+import { AgentProviderPoolPausedError, type AgentModelMessage } from './agent-provider.js';
+import { normalizeNativeResultMetadata } from './agent-memory-evaluation.js';
 import {
   parseAgentTurnCheckpoint,
   serializeAgentTurnCheckpoint,
@@ -20,11 +21,14 @@ import {
   type AgentChatExecutionClaim,
   type AgentChatTurn,
 } from './agent-chat-store.js';
-import type { AgentTurnEvent } from './agent-turn-events.js';
+import { emitAgentTurnEvent, type AgentTurnEvent } from './agent-turn-events.js';
+import { redactSensitiveString } from './security/redaction.js';
 
 export interface AgentChatEventEnvelope extends AgentTurnEvent {
   conversationId: string;
   turnId: string;
+  /** The idempotent client request that created the turn. */
+  requestId?: string;
 }
 
 export type AgentChatEventSink = (
@@ -43,11 +47,39 @@ export interface AgentChatTurnResult {
   model?: string;
   iterations?: number;
   retrievalAttemptIds?: string[];
+  memoryUse?: NativeAgentTaskResult['memoryUse'];
+  evaluation?: NativeAgentTaskResult['evaluation'];
+  metrics?: NativeAgentTaskResult['metrics'];
+  modelIdentity?: NativeAgentTaskResult['modelIdentity'];
+  learnedLesson?: NativeAgentTaskResult['learnedLesson'];
+  settingsDigest?: string;
+  toolContractDigest?: string;
   replayed: boolean;
 }
 function titleFromPrompt(prompt: string): string {
   const compact = prompt.replace(/\s+/g, ' ').trim();
   return compact.slice(0, 160) || 'New Chat';
+}
+
+function isRunningTaskConflict(error: unknown): boolean {
+  return error instanceof Error && error.message === 'AGENT_RUNTIME_SESSION_HAS_RUNNING_TASK';
+}
+
+/** How long a user-facing path (turn end, send, archive) waits for a task settle before it moves on. */
+const SETTLE_WAIT_MS = 10_000;
+
+/** Waits for a promise at most `ms`; the work keeps running and later callers can still join it. */
+async function waitAtMost<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const expired = new Promise<T>(resolve => {
+    timer = setTimeout(() => resolve(fallback), ms);
+    timer.unref();
+  });
+  try {
+    return await Promise.race([work, expired]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function safeErrorCode(error: unknown): string {
@@ -87,6 +119,11 @@ function historyMessages(
 export class AgentChatService {
   readonly store: AgentChatStore;
   private readonly activeTurns = new Map<string, AbortController>();
+  /** One settle per runtime task, shared by every caller that races for it. */
+  private readonly settlingTasks = new Map<string, Promise<boolean>>();
+  private settleWaitMs = SETTLE_WAIT_MS;
+  private readonly providerWaitTimers = new Map<string, NodeJS.Timeout>();
+  private automaticRecoveryPaused = false;
 
   private constructor(
     store: AgentChatStore,
@@ -113,37 +150,75 @@ export class AgentChatService {
       projectRoot,
       artifactAuthorization,
     );
-    await service.reconcileInterruptedTurns();
+    const recovered = await service.reconcileInterruptedTurns();
+    if (recovered.length) setImmediate(() => {
+      void service.resumeRecoveredTurns(recovered).catch(error => {
+        console.error('AGENT_CHAT_RECOVERY_FAILED:' + safeErrorCode(error));
+      });
+    });
     return service;
   }
 
-  private async reconcileInterruptedTurns(): Promise<void> {
+  private async reconcileInterruptedTurns(): Promise<AgentChatTurn[]> {
     const recovered = this.store.recoverRunningTurns();
-    for (const turn of recovered.interrupted) {
-      const task = await this.runtime.getTask(turn.runtimeTaskId).catch(() => null);
-      if (!task || task.status !== 'running') continue;
-      await this.runtime.markTerminal({
-        taskId: task.id,
-        outcome: 'failed',
-        reason: 'task-complete',
-      }).catch(() => undefined);
-      await this.runtime.finalizeTask({
-        taskId: task.id,
-        disposition: 'awaiting-verification',
-      }).catch(() => undefined);
+    // The turns interrupted just above, and any stopped or failed turn an earlier build left with a running
+    // task, can never resume; settle those tasks so their sessions can be closed again.
+    await this.settleOrphanedTasks();
+    const waiting = this.store.listConversations(true).flatMap(conversation =>
+      this.store.detail(conversation.id)?.turns.filter(turn => turn.status === 'resumable'
+        && this.store.getCheckpoint(turn.id)?.phase === 'provider-wait') ?? []);
+    return [...new Map([...recovered.resumable, ...waiting].map(turn => [turn.id, turn])).values()];
+  }
+
+  private scheduleProviderResume(turnId: string, state: AgentTurnCheckpointState): void {
+    const prior = this.providerWaitTimers.get(turnId);
+    if (prior) clearTimeout(prior);
+    this.providerWaitTimers.delete(turnId);
+    if (this.automaticRecoveryPaused || !state.providerWait?.retryAtMs || state.providerAttemptsConsumed >= state.maxProviderAttempts
+      || state.expiresAtMs <= Date.now() || (state.pendingTool?.mutating && state.pendingTool.phase === 'dispatching')) return;
+    const timer = setTimeout(() => {
+      this.providerWaitTimers.delete(turnId);
+      void (async () => {
+        if (this.automaticRecoveryPaused || this.store.getTurn(turnId)?.status !== 'resumable' || this.activeTurns.has(turnId)) return;
+        await this.resumeTurn({ turnId });
+      })().catch(error => {
+        console.error('AGENT_CHAT_PROVIDER_RESUME_FAILED:' + safeErrorCode(error));
+      });
+    }, Math.max(1_000, Math.min(2_147_000_000, state.providerWait.retryAtMs - Date.now())));
+    timer.unref();
+    this.providerWaitTimers.set(turnId, timer);
+  }
+
+  private async resumeRecoveredTurns(turns: AgentChatTurn[]): Promise<void> {
+    // One startup pass, one turn at a time; unknown effects remain available for reconciliation.
+    for (const turn of turns) {
+      if (this.automaticRecoveryPaused) return;
+      const revision = this.store.getCheckpoint(turn.id)?.revision;
+      try {
+        const checkpoint = this.store.getCheckpoint(turn.id);
+        if (checkpoint?.phase === 'provider-wait') {
+          const state = parseAgentTurnCheckpoint(checkpoint.payloadJson, checkpoint.payloadDigest);
+          this.scheduleProviderResume(turn.id, state);
+          continue;
+        }
+        await this.resumeTurn({ turnId: turn.id });
+      } catch (error) {
+        if (revision !== undefined) {
+          this.store.noteResumeIssue(turn.id, revision, safeErrorCode(error));
+        }
+      }
     }
   }
+  pauseAutomaticRecovery(): void {
+    this.automaticRecoveryPaused = true;
+    for (const timer of this.providerWaitTimers.values()) clearTimeout(timer);
+    this.providerWaitTimers.clear();
+  }
   health() {
-    const conversations = this.store.listConversations(true);
     return {
       status: 'available' as const,
-      conversationCount: conversations.length,
-      activeConversationCount: conversations.filter(item => item.status === 'active').length,
+      ...this.store.healthCounts(),
       runningTurnCount: this.activeTurns.size,
-      resumableTurnCount: conversations.reduce((count, conversation) => {
-        const detail = this.store.detail(conversation.id);
-        return count + (detail?.turns.filter(turn => turn.status === 'resumable').length ?? 0);
-      }, 0),
     };
   }
 
@@ -186,10 +261,12 @@ export class AgentChatService {
       turnId: turn.id,
       taskId: turn.runtimeTaskId,
       status: turn.status,
-      ...(response ? { response } : {}),
+      ...normalizeNativeResultMetadata(turn),
+      ...(response !== undefined ? { response } : {}),
       ...(turn.providerId ? { providerId: turn.providerId } : {}),
       ...(turn.model ? { model: turn.model } : {}),
       ...(turn.iterations !== undefined ? { iterations: turn.iterations } : {}),
+      ...(turn.memoryUse ? { memoryUse: turn.memoryUse } : {}),
       replayed: true,
     };
   }
@@ -205,12 +282,14 @@ export class AgentChatService {
       conversationId: string;
       turnId: string;
       state?: AgentTurnCheckpointState;
-      save: (state: AgentTurnCheckpointState, phase: any) => Promise<void>;
+      save: (state: AgentTurnCheckpointState, phase: any, extras?: {
+        compactionSources?: Array<{ id: string; sourceJson: string; sourceDigest: string }>;
+      }) => Promise<void>;
     } = {
       conversationId: input.conversationId,
       turnId: input.turnId,
       ...(input.state ? { state: input.state } : {}),
-      save: async (state, phase) => {
+      save: async (state, phase, extras) => {
         const serialized = serializeAgentTurnCheckpoint(state);
         const saved = this.store.saveCheckpoint({
           turnId: input.turnId,
@@ -220,6 +299,7 @@ export class AgentChatService {
           phase: String(phase),
           payloadJson: serialized.json,
           payloadDigest: serialized.digest,
+          ...(extras?.compactionSources?.length ? { compactionSources: extras.compactionSources } : {}),
         });
         revision = saved.revision;
         hooks.state = serialized.state;
@@ -254,16 +334,37 @@ export class AgentChatService {
     this.store.finalizeTurn(input);
     const turn = this.store.getTurn(input.turnId);
     if (turn && !skipRuntimeNotice) {
-      await this.runtime.recordNativeSkillNoticeInclusion?.(turn.runtimeTaskId, input.response);
-      await this.runtime.recordNativeCapabilityNoticeInclusion?.(turn.runtimeTaskId,input.response);
+      try {
+        await this.runtime.recordNativeSkillNoticeInclusion?.(turn.runtimeTaskId, input.response);
+        await this.runtime.recordNativeCapabilityNoticeInclusion?.(turn.runtimeTaskId,input.response);
+      } catch (error) {
+        console.error('AGENT_CHAT_NOTICE_RECEIPT_FAILED:' + safeErrorCode(error));
+      }
     }
+  }
+
+  /** What the owner needs to pick a route: stable id, model and whether it can answer now. Never keys or URLs. */
+  listProviders(): Array<{ id: string; model: string | null; configured: boolean; available: boolean; retryAt?: string; issue?: string }> {
+    const routes = (this.runtime as any).providerHealth?.()?.routes ?? [];
+    return routes.map((route: any) => ({
+      id: String(route.id),
+      model: typeof route.model === 'string' ? route.model : null,
+      configured: route.configured === true,
+      available: route.configured === true && (route.activeKeyCount ?? route.keyCount ?? 0) > 0 && route.breakerState !== 'OPEN',
+      ...(typeof route.nextAvailableAt === 'string' && route.configured === true && route.breakerState === 'OPEN' ? { retryAt: route.nextAvailableAt } : {}),
+      ...(typeof route.issue === 'string' && route.configured !== true ? { issue: route.issue } : {}),
+    }));
   }
 
   async runTurn(input: {
     conversationId: string;
     clientRequestId: string;
     prompt: string;
+    messageOrigin?: 'local-operator' | 'external-controller';
+    /** Owner-chosen route id from listProviders(); omitted means automatic rotation. */
+    providerRoute?: string;
     eventSink?: AgentChatEventSink;
+    evaluation?: NativeAgentTaskResult['evaluation'];
   }): Promise<AgentChatTurnResult> {
     const existing = this.store.getTurnByClientRequestId(input.clientRequestId);
     if (existing) {
@@ -272,6 +373,10 @@ export class AgentChatService {
       }
       return this.replayResult(existing);
     }
+    const providerRoute = input.providerRoute?.trim() || undefined;
+    if (providerRoute && !this.listProviders().some(route => route.id === providerRoute && route.configured)) {
+      throw new Error('AGENT_CHAT_PROVIDER_ROUTE_UNKNOWN');
+    }
 
     const conversation = this.store.getConversation(input.conversationId);
     if (!conversation || conversation.status !== 'active') {
@@ -279,8 +384,9 @@ export class AgentChatService {
     }
     // Explicit artifact decisions are authenticated local-chat commands, not model tasks.
     // Do not make a Native model/provider session a prerequisite to operator approval.
-    const artifactOperatorCommand = this.artifactAuthorization?.isOperatorCommand(input.prompt) === true;
-    if (!artifactOperatorCommand) await this.runtime.ensureActiveSession(conversation.runtimeSessionId);
+    const localOperator = (input.messageOrigin ?? 'local-operator') === 'local-operator';
+    const artifactOperatorCommand = localOperator && this.artifactAuthorization?.isOperatorCommand(input.prompt) === true;
+    if (!artifactOperatorCommand) await this.ensureConversationSession(conversation.id, conversation.runtimeSessionId);
     if (!artifactOperatorCommand && conversation.preferredProviderId) {
       this.runtime.setProviderAffinity(
         conversation.runtimeSessionId,
@@ -300,6 +406,7 @@ export class AgentChatService {
       userMessageId,
       prompt: input.prompt,
       executorToken,
+      messageOrigin: localOperator ? 'local-operator' : 'external-controller',
     });
     if (!begun.created) return this.replayResult(begun.turn);
     if (!begun.claim) throw new Error('AGENT_CHAT_EXECUTION_STATE_MISSING');
@@ -311,21 +418,26 @@ export class AgentChatService {
       revision: 0,
     });
     this.store.setTitleFromPrompt(conversation.id, titleFromPrompt(input.prompt));
-    const history = this.store.boundedContextMessages({
+    const boundedContext = this.store.boundedContext({
       conversationId: conversation.id,
       excludeTurnId: turnId,
       maxMessages: 24,
       maxChars: 48_000,
     });
+    const history = boundedContext.messages;
     const controller = new AbortController();
     this.activeTurns.set(turnId, controller);
 
-    const emit = async (event: AgentTurnEvent) => {
-      await input.eventSink?.({
-        ...event,
+    let iterationLimitReport: string | undefined;
+    const emit = (event: AgentTurnEvent) => {
+      if (event.type === 'turn.failed' && event.code === 'AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED'
+        && typeof event.response === 'string') iterationLimitReport = redactSensitiveString(event.response.slice(0, 4_000));
+      return emitAgentTurnEvent(value => input.eventSink?.({
+        ...value,
         conversationId: conversation.id,
         turnId,
-      });
+        requestId: input.clientRequestId,
+      }), event);
     };
 
     let result: NativeAgentTaskResult;
@@ -333,11 +445,11 @@ export class AgentChatService {
       // The user message was persisted by beginTurn above. Tool output cannot enter this host-only path.
       // Only a freshly persisted real user message enters artifact operator commands.
       // No MCP tool, Memory record, or model output may invoke this host authority.
-      const artifactReply = await this.artifactAuthorization?.operatorCommand(input.prompt, {
+      const artifactReply = localOperator ? await this.artifactAuthorization?.operatorCommand(input.prompt, {
         workspace: conversation.workspace ?? 'agent-core', conversationId: conversation.id,
         userMessageId, persistedUserMessage: true,
-      });
-      const skillDecision = artifactReply === undefined ? await this.runtime.applyUserSkillCommand?.({ workspace: conversation.workspace ?? 'agent-core',
+      }) : undefined;
+      const skillDecision = localOperator && artifactReply === undefined ? await this.runtime.applyUserSkillCommand?.({ workspace: conversation.workspace ?? 'agent-core',
         sessionId: conversation.runtimeSessionId, taskId, userEvidenceRef: 'user-message:' + userMessageId, prompt: input.prompt }) : undefined;
       result = artifactReply !== undefined ? {
         sessionId: conversation.runtimeSessionId, taskId, response: artifactReply,
@@ -348,13 +460,15 @@ export class AgentChatService {
         taskId,
         prompt: input.prompt,
         workspace: conversation.workspace,
+        ...(providerRoute ? { providerRoute } : {}),
         history: historyMessages(history),
+        ...(boundedContext.summary ? { historySummary: boundedContext.summary } : {}),
         memoryQuery: buildMemoryQuery(input.prompt, history),
-        eventSink: emit,
+        eventSink: event => event.type === 'assistant.final' ? undefined : emit(event),
         signal: controller.signal,
         continuation,
+        ...(input.evaluation ? { evaluation: input.evaluation } : {}),
       });
-      if (skillDecision || artifactReply !== undefined) await emit({ type: 'assistant.final', at: new Date().toISOString(), response: result.response }).catch(() => undefined);
       if (continuation.state?.finalResult) {
         await continuation.save(continuation.state, 'chat-commit-pending');
       }
@@ -372,27 +486,21 @@ export class AgentChatService {
         ...(result.model ? { model: result.model } : {}),
         iterations: result.iterations,
         retrievalCount: result.retrievalAttemptIds.length,
+        memoryUse: result.memoryUse,
+        metadata: result,
         claim,
       });
-      if (result.providerId || result.model) {
-        this.store.updatePreferredRoute(
-          conversation.id,
-          result.providerId,
-          result.model,
-        );
-      }
+      const persisted = this.replayResult(this.store.getTurn(turnId)!);
+      await emit({ type: 'assistant.final', at: new Date().toISOString(), response: persisted.response, memoryUse: persisted.memoryUse, modelIdentity: persisted.modelIdentity });
       return {
-        conversationId: conversation.id,
-        turnId,
-        taskId,
-        status: 'finalized',
-        response: result.response,
+        ...persisted,
         learningStatus: result.learningStatus,
         jobVerification: result.jobVerification,
-        ...(result.providerId ? { providerId: result.providerId } : {}),
-        ...(result.model ? { model: result.model } : {}),
-        iterations: result.iterations,
         retrievalAttemptIds: result.retrievalAttemptIds,
+        ...(result.evaluation ? { evaluation: result.evaluation } : {}),
+        ...(result.metrics ? { metrics: result.metrics } : {}),
+        ...(result.learnedLesson ? { learnedLesson: result.learnedLesson } : {}),
+        ...(result.settingsDigest ? { settingsDigest: result.settingsDigest, toolContractDigest: result.toolContractDigest } : {}),
         replayed: false,
       };
     } catch (error) {
@@ -408,13 +516,25 @@ export class AgentChatService {
             turnId,
             status: stopped ? 'stopped' : 'failed',
             errorCode: stopped ? 'AGENT_RUNTIME_TURN_STOPPED' : safeErrorCode(error),
+            ...(!stopped && message === 'AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED' && iterationLimitReport
+              ? { failureResponse: iterationLimitReport } : {}),
             claim,
           });
+          if (!stopped && message === 'AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED' && iterationLimitReport) {
+            await emit({ type: 'assistant.final', at: new Date().toISOString(), success: false,
+              code: message, response: this.replayResult(this.store.getTurn(turnId)!).response });
+          }
         }
+      }
+      if (!stopped && error instanceof AgentProviderPoolPausedError && continuation.state) {
+        this.scheduleProviderResume(turnId, continuation.state);
+        return { ...this.replayResult(this.store.getTurn(turnId)!), replayed: false };
       }
       throw error;
     } finally {
-      this.activeTurns.delete(turnId);
+      // Only drop the registration this executor made; a newer executor of the same turn keeps its own.
+      if (this.activeTurns.get(turnId) === controller) this.activeTurns.delete(turnId);
+      await this.settleIfEnded(turnId);
     }
   }
 
@@ -441,6 +561,8 @@ export class AgentChatService {
             ...(state.model ? { model: state.model } : {}),
             iterations: Math.max(1, Math.min(state.maxIterations, state.nextIteration)),
             retrievalAttemptIds: [...task.retrievalAttemptIds],
+            memoryUse: task.memoryUse,
+            modelIdentity: task.modelIdentity,
           };
         } catch {
           continue;
@@ -457,12 +579,22 @@ export class AgentChatService {
     const turn = this.store.getTurn(input.turnId);
     if (!turn) throw new Error('AGENT_CHAT_TURN_NOT_FOUND');
     if (turn.status !== 'resumable') throw new Error('AGENT_CHAT_TURN_NOT_RESUMABLE');
+    if (this.automaticRecoveryPaused) return { ...this.replayResult(turn), replayed: false };
     const conversation = this.store.getConversation(turn.conversationId);
     if (!conversation || conversation.status !== 'active') {
       throw new Error('AGENT_CHAT_CONVERSATION_NOT_ACTIVE');
     }
 
     const loaded = await this.loadResumableCheckpoint(turn);
+    if (this.automaticRecoveryPaused) return { ...this.replayResult(turn), replayed: false };
+    if (loaded.state.providerWait && (loaded.state.providerAttemptsConsumed >= loaded.state.maxProviderAttempts
+      || (loaded.state.providerWait.retryAtMs !== null && loaded.state.providerWait.retryAtMs > Date.now()))) {
+      this.scheduleProviderResume(turn.id, loaded.state);
+      return { ...this.replayResult(turn), replayed: false };
+    }
+    const pendingTimer = this.providerWaitTimers.get(turn.id);
+    if (pendingTimer) clearTimeout(pendingTimer);
+    this.providerWaitTimers.delete(turn.id);
     const executorToken = randomUUID();
     const claim = this.store.claimResumableTurn({
       turnId: turn.id,
@@ -485,18 +617,26 @@ export class AgentChatService {
 
     const controller = new AbortController();
     this.activeTurns.set(turn.id, controller);
-    const emit = async (event: AgentTurnEvent) => {
-      await input.eventSink?.({
-        ...event,
+    let iterationLimitReport: string | undefined;
+    const emit = (event: AgentTurnEvent) => {
+      if (event.type === 'turn.failed' && event.code === 'AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED'
+        && typeof event.response === 'string') iterationLimitReport = redactSensitiveString(event.response.slice(0, 4_000));
+      return emitAgentTurnEvent(value => input.eventSink?.({
+        ...value,
         conversationId: conversation.id,
         turnId: turn.id,
-      });
+        requestId: turn.clientRequestId,
+      }), event);
     };
 
     try {
       const runtimeTask = await this.runtime.getTask(turn.runtimeTaskId);
+      if (this.automaticRecoveryPaused) {
+        this.store.releaseResumeClaim(turn.id, claim, 'AGENT_CHAT_AUTOMATIC_RECOVERY_PAUSED');
+        return { ...this.replayResult(this.store.getTurn(turn.id)!), replayed: false };
+      }
       const recovered = this.recoveredFinalResult(loaded.state, runtimeTask);
-      if (recovered && runtimeTask?.status === 'finalized') {
+      if (recovered && runtimeTask && ['finalized', 'finalization-failed'].includes(runtimeTask.status)) {
         recovered.response=await this.runtime.appendNativeCapabilityNotice?.(turn.runtimeTaskId,recovered.response) ?? recovered.response;
         const commitState: AgentTurnCheckpointState = {
           ...loaded.state,
@@ -513,25 +653,20 @@ export class AgentChatService {
           ...(recovered.model ? { model: recovered.model } : {}),
           iterations: recovered.iterations,
           retrievalCount: recovered.retrievalAttemptIds.length,
+          memoryUse: recovered.memoryUse,
+          metadata: { ...recovered, metrics: runtimeTask.metrics, modelIdentity: runtimeTask.modelIdentity,
+            ...(loaded.state.memoryEvaluation ? { evaluation: loaded.state.memoryEvaluation } : {}) },
           claim,
         });
-        if (recovered.providerId || recovered.model) {
-          this.store.updatePreferredRoute(
-            conversation.id,
-            recovered.providerId,
-            recovered.model,
-          );
-        }
+        const persisted = this.replayResult(this.store.getTurn(turn.id)!);
+        await emit({ type: 'assistant.final', at: new Date().toISOString(), response: persisted.response, memoryUse: persisted.memoryUse, modelIdentity: persisted.modelIdentity });
         return {
-          conversationId: conversation.id,
-          turnId: turn.id,
-          taskId: turn.runtimeTaskId,
-          status: 'finalized',
-          response: recovered.response,
-          ...(recovered.providerId ? { providerId: recovered.providerId } : {}),
-          ...(recovered.model ? { model: recovered.model } : {}),
-          iterations: recovered.iterations,
+          ...persisted,
+          learningStatus: recovered.learningStatus,
+          jobVerification: recovered.jobVerification,
           retrievalAttemptIds: recovered.retrievalAttemptIds,
+          ...(loaded.state.memoryEvaluation ? { evaluation: loaded.state.memoryEvaluation } : {}),
+          metrics: runtimeTask.metrics,
           replayed: false,
         };
       }
@@ -541,9 +676,10 @@ export class AgentChatService {
         taskId: turn.runtimeTaskId,
         prompt: loaded.state.prompt,
         workspace: loaded.state.workspace ?? conversation.workspace,
-        eventSink: emit,
+        eventSink: event => event.type === 'assistant.final' ? undefined : emit(event),
         signal: controller.signal,
         continuation,
+        ...(loaded.state.memoryEvaluation ? { evaluation: loaded.state.memoryEvaluation } : {}),
       });
       if (continuation.state?.finalResult) {
         await continuation.save(continuation.state, 'chat-commit-pending');
@@ -556,25 +692,21 @@ export class AgentChatService {
         ...(result.model ? { model: result.model } : {}),
         iterations: result.iterations,
         retrievalCount: result.retrievalAttemptIds.length,
+        memoryUse: result.memoryUse,
+        metadata: result,
         claim,
       });
-      if (result.providerId || result.model) {
-        this.store.updatePreferredRoute(
-          conversation.id,
-          result.providerId,
-          result.model,
-        );
-      }
+      const persisted = this.replayResult(this.store.getTurn(turn.id)!);
+      await emit({ type: 'assistant.final', at: new Date().toISOString(), response: persisted.response, memoryUse: persisted.memoryUse, modelIdentity: persisted.modelIdentity });
       return {
-        conversationId: conversation.id,
-        turnId: turn.id,
-        taskId: turn.runtimeTaskId,
-        status: 'finalized',
-        response: result.response,
-        ...(result.providerId ? { providerId: result.providerId } : {}),
-        ...(result.model ? { model: result.model } : {}),
-        iterations: result.iterations,
+        ...persisted,
+        learningStatus: result.learningStatus,
+        jobVerification: result.jobVerification,
         retrievalAttemptIds: result.retrievalAttemptIds,
+        ...(result.evaluation ? { evaluation: result.evaluation } : {}),
+        ...(result.metrics ? { metrics: result.metrics } : {}),
+        ...(result.learnedLesson ? { learnedLesson: result.learnedLesson } : {}),
+        ...(result.settingsDigest ? { settingsDigest: result.settingsDigest, toolContractDigest: result.toolContractDigest } : {}),
         replayed: false,
       };
     } catch (error) {
@@ -590,36 +722,119 @@ export class AgentChatService {
             errorCode: controller.signal.aborted
               ? 'AGENT_RUNTIME_TURN_STOPPED'
               : safeErrorCode(error),
+            ...(!controller.signal.aborted && message === 'AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED' && iterationLimitReport
+              ? { failureResponse: iterationLimitReport } : {}),
             claim,
           });
+          if (!controller.signal.aborted && message === 'AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED' && iterationLimitReport) {
+            await emit({ type: 'assistant.final', at: new Date().toISOString(), success: false,
+              code: message, response: this.replayResult(this.store.getTurn(turn.id)!).response });
+          }
         }
+      }
+      if (!controller.signal.aborted && error instanceof AgentProviderPoolPausedError && continuation.state) {
+        this.scheduleProviderResume(turn.id, continuation.state);
+        return { ...this.replayResult(this.store.getTurn(turn.id)!), replayed: false };
       }
       throw error;
     } finally {
-      this.activeTurns.delete(turn.id);
+      // Same identity check as above: never remove another executor's registration.
+      if (this.activeTurns.get(turn.id) === controller) this.activeTurns.delete(turn.id);
+      await this.settleIfEnded(turn.id);
+    }
+  }
+
+  /**
+   * A turn that stopped, failed or was interrupted can never resume. A runtime task it left running has no
+   * executor, and an open task blocks closing or reusing the session (AGENT_RUNTIME_SESSION_HAS_RUNNING_TASK).
+   * This reuses the existing terminal and finalization path and never selects a turn that may still resume.
+   */
+  private settleEndedTurnTask(turnId: string, runtimeTaskId: string): Promise<boolean> {
+    if (this.activeTurns.has(turnId)) return Promise.resolve(false);
+    // A stop, an unwinding executor, a send and an archive can all arrive for the same task; they share one settle.
+    const inFlight = this.settlingTasks.get(runtimeTaskId);
+    if (inFlight) return inFlight;
+    const settling: Promise<boolean> = this.settleTaskOnce(runtimeTaskId).finally(() => {
+      if (this.settlingTasks.get(runtimeTaskId) === settling) this.settlingTasks.delete(runtimeTaskId);
+    });
+    this.settlingTasks.set(runtimeTaskId, settling);
+    return settling;
+  }
+
+  /** Never rejects: this runs on startup, stop, archive and send, and none of them may fail because of it. */
+  private async settleTaskOnce(runtimeTaskId: string): Promise<boolean> {
+    try {
+      const task = await this.runtime.getTask(runtimeTaskId).catch(() => null);
+      if (!task || task.status !== 'running') return false;
+      // Only the settler that really ended the task finalizes it; a settler that lost a race leaves that to the winner.
+      const ended = await this.runtime.markTerminal({
+        taskId: task.id,
+        outcome: 'failed',
+        reason: 'task-complete',
+      }).then(() => true, () => false);
+      if (!ended) return false;
+      await this.runtime.finalizeTask({
+        taskId: task.id,
+        disposition: 'awaiting-verification',
+      }).catch(error => {
+        // The task no longer runs, so its session can be closed; finalization stays pending for a later attempt.
+        console.error('AGENT_CHAT_TASK_FINALIZE_FAILED:' + safeErrorCode(error));
+      });
+      return true;
+    } catch (error) {
+      console.error('AGENT_CHAT_TASK_SETTLE_FAILED:' + safeErrorCode(error));
+      return false;
+    }
+  }
+
+  private async settleIfEnded(turnId: string): Promise<void> {
+    try {
+      const turn = this.store.getTurn(turnId);
+      if (turn && (turn.status === 'stopped' || turn.status === 'failed' || turn.status === 'interrupted')) {
+        // The end of a turn must not wait on runtime I/O without limit; the settle keeps running and later callers join it.
+        await waitAtMost(this.settleEndedTurnTask(turn.id, turn.runtimeTaskId), this.settleWaitMs, false);
+      }
+    } catch (error) {
+      console.error('AGENT_CHAT_TASK_SETTLE_FAILED:' + safeErrorCode(error));
+    }
+  }
+
+  private async settleOrphanedTasks(conversationId?: string): Promise<number> {
+    let settled = 0;
+    try {
+      for (const turn of this.store.listEndedTurnTasks(conversationId)) {
+        if (await waitAtMost(this.settleEndedTurnTask(turn.turnId, turn.runtimeTaskId), this.settleWaitMs, false)) settled += 1;
+      }
+    } catch (error) {
+      // A failing query must not fail startup, a send or an archive; the caller still reports its own conflict.
+      console.error('AGENT_CHAT_TASK_SWEEP_FAILED:' + safeErrorCode(error));
+    }
+    return settled;
+  }
+
+  private async ensureConversationSession(conversationId: string, runtimeSessionId: string): Promise<void> {
+    try {
+      await this.runtime.ensureActiveSession(runtimeSessionId);
+    } catch (error) {
+      if (!isRunningTaskConflict(error)) throw error;
+      // A turn that ended abnormally can leave its task running. Settle what is left, or join a settle that is
+      // already running, then retry once whatever the sweep found: a stop may have settled the task between the
+      // refused call and the sweep.
+      await this.settleOrphanedTasks(conversationId);
+      await this.runtime.ensureActiveSession(runtimeSessionId);
     }
   }
 
   stopTurn(turnId: string): boolean {
+    const timer = this.providerWaitTimers.get(turnId);
+    if (timer) clearTimeout(timer);
+    this.providerWaitTimers.delete(turnId);
     const cancelled = this.store.cancelTurn(turnId);
     if (!cancelled) return false;
     const controller = this.activeTurns.get(turnId);
     controller?.abort();
-    if (!controller) {
-      void (async () => {
-        const task = await this.runtime.getTask(cancelled.runtimeTaskId).catch(() => null);
-        if (!task || task.status !== 'running') return;
-        await this.runtime.markTerminal({
-          taskId: task.id,
-          outcome: 'failed',
-          reason: 'task-complete',
-        }).catch(() => undefined);
-        await this.runtime.finalizeTask({
-          taskId: task.id,
-          disposition: 'awaiting-verification',
-        }).catch(() => undefined);
-      })();
-    }
+    // With a live executor its own catch and finally settle the task; without one nothing else will.
+    if (!controller) void this.settleEndedTurnTask(turnId, cancelled.runtimeTaskId);
     return true;
   }
 
@@ -630,7 +845,14 @@ export class AgentChatService {
       turn.status === 'running' || turn.status === 'resumable')) {
       throw new Error('AGENT_CHAT_CONVERSATION_BUSY');
     }
-    await this.runtime.closeSession(detail.conversation.runtimeSessionId);
+    try {
+      await this.runtime.closeSession(detail.conversation.runtimeSessionId);
+    } catch (error) {
+      if (!isRunningTaskConflict(error)) throw error;
+      // Same as sending: settle or join, then retry once whatever the sweep found.
+      await this.settleOrphanedTasks(conversationId);
+      await this.runtime.closeSession(detail.conversation.runtimeSessionId);
+    }
     this.store.archiveConversation(conversationId);
   }
 }

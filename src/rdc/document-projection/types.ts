@@ -1,4 +1,5 @@
 import type { PageRange, PdfEvidence } from '../tools/pdf/index.js';
+import type { XlsxEvidence } from './xlsx-evidence.js';
 
 export type ProjectionProfile = 'auto' | 'native' | 'markdown';
 
@@ -36,6 +37,7 @@ export interface ProjectionResult {
   omittedEntries?: number;
   evidence?: ProjectionEvidence;
   pdfEvidence?: PdfEvidence;
+  xlsxEvidence?: XlsxEvidence;
   /** Internal signal; page labels alone do not establish extracted text. */
   pdfTextAvailable?: boolean;
 }

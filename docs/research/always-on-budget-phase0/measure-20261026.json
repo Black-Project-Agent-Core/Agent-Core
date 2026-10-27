@@ -1,0 +1,1151 @@
+{
+ "measuredAt": "2026-10-26T00:36:56.119Z",
+ "method": "estTokens = ceil(utf8 bytes / 4)",
+ "agents": {
+  "fileBytes": 78135,
+  "lines": 475,
+  "sumSegmentBytes": 78135,
+  "estTokensWhole": 19534,
+  "aggregateByClass": {
+   "A": {
+    "segments": 24,
+    "bytes": 32361,
+    "estTokens": 8096
+   },
+   "S": {
+    "segments": 20,
+    "bytes": 40678,
+    "estTokens": 10176
+   },
+   "H": {
+    "segments": 2,
+    "bytes": 5096,
+    "estTokens": 1275
+   }
+  },
+  "aggregateByTier": {
+   "A": {
+    "segments": 24,
+    "bytes": 32361,
+    "estTokens": 8096
+   },
+   "S1": {
+    "segments": 13,
+    "bytes": 26140,
+    "estTokens": 6540
+   },
+   "S2": {
+    "segments": 7,
+    "bytes": 14538,
+    "estTokens": 3636
+   },
+   "H": {
+    "segments": 2,
+    "bytes": 5096,
+    "estTokens": 1275
+   }
+  },
+  "rows": [
+   {
+    "title": "Agent Core — Local AI Operating Contract",
+    "level": 1,
+    "startLine": 1,
+    "endLine": 2,
+    "lines": 2,
+    "bytes": 46,
+    "chars": 44,
+    "estTokens": 12,
+    "cls": "A",
+    "tier": "A",
+    "note": "Judul dokumen",
+    "dupShare": 0
+   },
+   {
+    "title": "Top-level directives",
+    "level": 2,
+    "startLine": 3,
+    "endLine": 6,
+    "lines": 4,
+    "bytes": 344,
+    "chars": 342,
+    "estTokens": 86,
+    "cls": "A",
+    "tier": "A",
+    "note": "Izin kerja Agent Core; pendek",
+    "dupShare": 0
+   },
+   {
+    "title": "Codex-Design: blocked unless the user names it",
+    "level": 1,
+    "startLine": 7,
+    "endLine": 8,
+    "lines": 2,
+    "bytes": 50,
+    "chars": 50,
+    "estTokens": 13,
+    "cls": "A",
+    "tier": "A",
+    "note": "Judul sisa; tanpa isi sendiri",
+    "dupShare": 0
+   },
+   {
+    "title": "NATIVE AI AGENT CORE — ACTIVE DEVELOPMENT AND OPERATION.",
+    "level": 4,
+    "startLine": 9,
+    "endLine": 15,
+    "lines": 7,
+    "bytes": 1052,
+    "chars": 1050,
+    "estTokens": 263,
+    "cls": "S",
+    "tier": "S1",
+    "note": "Hanya untuk tugas yang menyentuh Native; ringkasan satu baris cukup di inti",
+    "dupShare": 0
+   },
+   {
+    "title": "EXTERNAL CONTROLLER SESSION BOOTSTRAP FIRST.",
+    "level": 4,
+    "startLine": 16,
+    "endLine": 22,
+    "lines": 7,
+    "bytes": 1123,
+    "chars": 1123,
+    "estTokens": 281,
+    "cls": "A",
+    "tier": "A",
+    "note": "Aturan handshake; dibutuhkan di awal setiap sesi",
+    "dupShare": 0
+   },
+   {
+    "title": "ALWAYS VIEW YOUR MEMORY DIRECTORY BEFORE DOING ANYTHING ELSE.",
+    "level": 4,
+    "startLine": 23,
+    "endLine": 33,
+    "lines": 11,
+    "bytes": 1697,
+    "chars": 1697,
+    "estTokens": 425,
+    "cls": "A",
+    "tier": "A",
+    "note": "Memory-first; setiap sesi",
+    "dupShare": 0
+   },
+   {
+    "title": "MANDATORY LEARNING FINALIZATION AFTER MEANINGFUL WORK.",
+    "level": 4,
+    "startLine": 34,
+    "endLine": 45,
+    "lines": 12,
+    "bytes": 2552,
+    "chars": 2552,
+    "estTokens": 638,
+    "cls": "A",
+    "tier": "A",
+    "note": "Finalisasi Learning; setiap tugas bermakna",
+    "dupShare": 0
+   },
+   {
+    "title": "External Memory v2 task selection",
+    "level": 2,
+    "startLine": 46,
+    "endLine": 53,
+    "lines": 8,
+    "bytes": 1000,
+    "chars": 1000,
+    "estTokens": 250,
+    "cls": "A",
+    "tier": "A",
+    "note": "Pengikatan task untuk memory_v2; setiap tugas bermakna",
+    "dupShare": 0
+   },
+   {
+    "title": "Mandatory capability routing — Native and external",
+    "level": 2,
+    "startLine": 54,
+    "endLine": 68,
+    "lines": 15,
+    "bytes": 5010,
+    "chars": 5008,
+    "estTokens": 1253,
+    "cls": "A",
+    "tier": "A",
+    "note": "Routing capability; inti, tetapi memuat rincian per-skill yang situasional",
+    "dupShare": 0
+   },
+   {
+    "title": "Reusable external partner Raka",
+    "level": 2,
+    "startLine": 69,
+    "endLine": 79,
+    "lines": 11,
+    "bytes": 2249,
+    "chars": 2249,
+    "estTokens": 563,
+    "cls": "S",
+    "tier": "S1",
+    "note": "Hanya saat mendelegasikan subtask",
+    "dupShare": 0
+   },
+   {
+    "title": "Purpose and scope",
+    "level": 2,
+    "startLine": 80,
+    "endLine": 88,
+    "lines": 9,
+    "bytes": 775,
+    "chars": 775,
+    "estTokens": 194,
+    "cls": "A",
+    "tier": "A",
+    "note": "Cakupan kontrak; pendek",
+    "dupShare": 0
+   },
+   {
+    "title": "Cumulative workflow contract — 2026-10-06",
+    "level": 2,
+    "startLine": 89,
+    "endLine": 94,
+    "lines": 6,
+    "bytes": 1240,
+    "chars": 1238,
+    "estTokens": 310,
+    "cls": "S",
+    "tier": "S2",
+    "note": "Latar kualifikasi prosedur/Skill",
+    "dupShare": 0
+   },
+   {
+    "title": "Historical product direction context — confirmed 2026-10-03, current development scope updated 2026-10-24",
+    "level": 2,
+    "startLine": 95,
+    "endLine": 102,
+    "lines": 8,
+    "bytes": 1486,
+    "chars": 1484,
+    "estTokens": 372,
+    "cls": "H",
+    "tier": "H",
+    "note": "Konteks arah produk; latar belakang",
+    "dupShare": 0
+   },
+   {
+    "title": "Cross-controller cumulative-learning baseline — current operating path",
+    "level": 3,
+    "startLine": 103,
+    "endLine": 116,
+    "lines": 14,
+    "bytes": 3315,
+    "chars": 3309,
+    "estTokens": 829,
+    "cls": "A",
+    "tier": "A",
+    "note": "Jalur operasi lintas controller; memory-first, koreksi, receipt",
+    "dupShare": 0
+   },
+   {
+    "title": "Skill proposal and reminder protocol — 2026-10-07",
+    "level": 2,
+    "startLine": 117,
+    "endLine": 127,
+    "lines": 11,
+    "bytes": 2433,
+    "chars": 2431,
+    "estTokens": 609,
+    "cls": "S",
+    "tier": "S2",
+    "note": "Saat menulis atau menyampaikan proposal Skill",
+    "dupShare": 0
+   },
+   {
+    "title": "Capability awareness and usage disclosure — 2026-10-07",
+    "level": 2,
+    "startLine": 128,
+    "endLine": 129,
+    "lines": 2,
+    "bytes": 61,
+    "chars": 59,
+    "estTokens": 16,
+    "cls": "A",
+    "tier": "A",
+    "note": "Judul bagian; pendek",
+    "dupShare": 0
+   },
+   {
+    "title": "External continuity, claim review and proposal documents — 2026-10-19",
+    "level": 3,
+    "startLine": 130,
+    "endLine": 140,
+    "lines": 11,
+    "bytes": 3152,
+    "chars": 3148,
+    "estTokens": 788,
+    "cls": "S",
+    "tier": "S2",
+    "note": "Saat memakai memory_v2 lanjutan atau menulis dokumen proposal",
+    "dupShare": 0
+   },
+   {
+    "title": "Capability inventory and usage notice (paragraf)",
+    "level": 4,
+    "startLine": 141,
+    "endLine": 146,
+    "lines": 6,
+    "bytes": 1172,
+    "chars": 1172,
+    "estTokens": 293,
+    "cls": "A",
+    "tier": "A",
+    "note": "Pengungkapan penggunaan capability; pendek",
+    "dupShare": 0
+   },
+   {
+    "title": "Creator partnership and decision autonomy",
+    "level": 2,
+    "startLine": 147,
+    "endLine": 159,
+    "lines": 13,
+    "bytes": 1923,
+    "chars": 1923,
+    "estTokens": 481,
+    "cls": "A",
+    "tier": "A",
+    "note": "Cara kerja dasar",
+    "dupShare": 0
+   },
+   {
+    "title": "Identity",
+    "level": 2,
+    "startLine": 160,
+    "endLine": 165,
+    "lines": 6,
+    "bytes": 492,
+    "chars": 492,
+    "estTokens": 123,
+    "cls": "A",
+    "tier": "A",
+    "note": "Peran",
+    "dupShare": 0
+   },
+   {
+    "title": "Personality",
+    "level": 2,
+    "startLine": 166,
+    "endLine": 175,
+    "lines": 10,
+    "bytes": 636,
+    "chars": 636,
+    "estTokens": 159,
+    "cls": "A",
+    "tier": "A",
+    "note": "Gaya",
+    "dupShare": 0
+   },
+   {
+    "title": "Operating doctrine",
+    "level": 2,
+    "startLine": 176,
+    "endLine": 191,
+    "lines": 16,
+    "bytes": 988,
+    "chars": 980,
+    "estTokens": 247,
+    "cls": "A",
+    "tier": "A",
+    "note": "Alur kerja dasar",
+    "dupShare": 0
+   },
+   {
+    "title": "Tool model",
+    "level": 2,
+    "startLine": 192,
+    "endLine": 202,
+    "lines": 11,
+    "bytes": 964,
+    "chars": 956,
+    "estTokens": 241,
+    "cls": "A",
+    "tier": "A",
+    "note": "Model tool; pendek",
+    "dupShare": 0
+   },
+   {
+    "title": "Code Intelligence protocol",
+    "level": 2,
+    "startLine": 203,
+    "endLine": 225,
+    "lines": 23,
+    "bytes": 3774,
+    "chars": 3774,
+    "estTokens": 944,
+    "cls": "S",
+    "tier": "S1",
+    "note": "Hanya pekerjaan kode terstruktur",
+    "dupShare": 0
+   },
+   {
+    "title": "Semantic IDE / LSP protocol",
+    "level": 3,
+    "startLine": 226,
+    "endLine": 238,
+    "lines": 13,
+    "bytes": 3008,
+    "chars": 3008,
+    "estTokens": 752,
+    "cls": "S",
+    "tier": "S1",
+    "note": "Hanya pekerjaan kode semantik",
+    "dupShare": 0
+   },
+   {
+    "title": "Structural review protocol",
+    "level": 3,
+    "startLine": 239,
+    "endLine": 248,
+    "lines": 10,
+    "bytes": 742,
+    "chars": 742,
+    "estTokens": 186,
+    "cls": "S",
+    "tier": "S1",
+    "note": "Hanya review diff struktural",
+    "dupShare": 0
+   },
+   {
+    "title": "Graph-quality calibration protocol",
+    "level": 3,
+    "startLine": 249,
+    "endLine": 254,
+    "lines": 6,
+    "bytes": 728,
+    "chars": 728,
+    "estTokens": 182,
+    "cls": "S",
+    "tier": "S1",
+    "note": "Hanya kalibrasi graf",
+    "dupShare": 0
+   },
+   {
+    "title": "External REA Reconstruction Harness",
+    "level": 2,
+    "startLine": 255,
+    "endLine": 262,
+    "lines": 8,
+    "bytes": 1542,
+    "chars": 1542,
+    "estTokens": 386,
+    "cls": "S",
+    "tier": "S1",
+    "note": "Hanya rekonstruksi/REA",
+    "dupShare": 2
+   },
+   {
+    "title": "Release intent / version integrity protocol",
+    "level": 2,
+    "startLine": 263,
+    "endLine": 264,
+    "lines": 2,
+    "bytes": 48,
+    "chars": 48,
+    "estTokens": 12,
+    "cls": "S",
+    "tier": "S1",
+    "note": "Hanya saat mengubah perilaku yang dikirim",
+    "dupShare": 0
+   },
+   {
+    "title": "External-controller build activation and tool refresh",
+    "level": 3,
+    "startLine": 265,
+    "endLine": 291,
+    "lines": 27,
+    "bytes": 6010,
+    "chars": 6000,
+    "estTokens": 1503,
+    "cls": "S",
+    "tier": "S1",
+    "note": "Hanya setelah build/restart",
+    "dupShare": 0
+   },
+   {
+    "title": "Git repository — active current-line publication boundary",
+    "level": 2,
+    "startLine": 292,
+    "endLine": 303,
+    "lines": 12,
+    "bytes": 1661,
+    "chars": 1659,
+    "estTokens": 416,
+    "cls": "S",
+    "tier": "S1",
+    "note": "Hanya saat commit/publikasi",
+    "dupShare": 0
+   },
+   {
+    "title": "Remote Desktop Commander boundary",
+    "level": 2,
+    "startLine": 304,
+    "endLine": 312,
+    "lines": 9,
+    "bytes": 1333,
+    "chars": 1333,
+    "estTokens": 334,
+    "cls": "S",
+    "tier": "S1",
+    "note": "Hanya saat menyentuh RDC",
+    "dupShare": 0
+   },
+   {
+    "title": "Dynamic path / portability protocol",
+    "level": 2,
+    "startLine": 313,
+    "endLine": 328,
+    "lines": 16,
+    "bytes": 2591,
+    "chars": 2591,
+    "estTokens": 648,
+    "cls": "S",
+    "tier": "S1",
+    "note": "Hanya saat menulis kode/skrip proyek",
+    "dupShare": 0
+   },
+   {
+    "title": "Local machine rules",
+    "level": 2,
+    "startLine": 329,
+    "endLine": 339,
+    "lines": 11,
+    "bytes": 1087,
+    "chars": 1087,
+    "estTokens": 272,
+    "cls": "A",
+    "tier": "A",
+    "note": "Aturan keselamatan mesin",
+    "dupShare": 0
+   },
+   {
+    "title": "Verification rule",
+    "level": 2,
+    "startLine": 340,
+    "endLine": 343,
+    "lines": 4,
+    "bytes": 83,
+    "chars": 83,
+    "estTokens": 21,
+    "cls": "A",
+    "tier": "A",
+    "note": "Aturan verifikasi",
+    "dupShare": 0
+   },
+   {
+    "title": "User-authorized task-scoped auto-trust — 2026-09-30",
+    "level": 3,
+    "startLine": 344,
+    "endLine": 360,
+    "lines": 17,
+    "bytes": 4250,
+    "chars": 4246,
+    "estTokens": 1063,
+    "cls": "A",
+    "tier": "A",
+    "note": "Cakupan izin kerja",
+    "dupShare": 2
+   },
+   {
+    "title": "User intent and safety",
+    "level": 2,
+    "startLine": 361,
+    "endLine": 366,
+    "lines": 6,
+    "bytes": 503,
+    "chars": 503,
+    "estTokens": 126,
+    "cls": "A",
+    "tier": "A",
+    "note": "Keselamatan",
+    "dupShare": 3
+   },
+   {
+    "title": "Feedback and continuity",
+    "level": 2,
+    "startLine": 367,
+    "endLine": 374,
+    "lines": 8,
+    "bytes": 611,
+    "chars": 611,
+    "estTokens": 153,
+    "cls": "A",
+    "tier": "A",
+    "note": "Koreksi pengguna",
+    "dupShare": 0
+   },
+   {
+    "title": "Failure-learning / Reflexion protocol",
+    "level": 2,
+    "startLine": 375,
+    "endLine": 388,
+    "lines": 14,
+    "bytes": 2892,
+    "chars": 2886,
+    "estTokens": 723,
+    "cls": "S",
+    "tier": "S2",
+    "note": "Hanya saat ada bukti kegagalan",
+    "dupShare": 0
+   },
+   {
+    "title": "Memory capture protocol",
+    "level": 2,
+    "startLine": 389,
+    "endLine": 397,
+    "lines": 9,
+    "bytes": 1664,
+    "chars": 1664,
+    "estTokens": 416,
+    "cls": "S",
+    "tier": "S2",
+    "note": "Hanya saat menulis Memory",
+    "dupShare": 0
+   },
+   {
+    "title": "Self-learning / Hermes-adapted learning protocol",
+    "level": 2,
+    "startLine": 398,
+    "endLine": 414,
+    "lines": 17,
+    "bytes": 3347,
+    "chars": 3347,
+    "estTokens": 837,
+    "cls": "A",
+    "tier": "A",
+    "note": "Checkpoint/review; tumpang tindih konsep dengan blok MANDATORY LEARNING FINALIZATION",
+    "dupShare": 3
+   },
+   {
+    "title": "Explicit learn / distillation protocol",
+    "level": 3,
+    "startLine": 415,
+    "endLine": 418,
+    "lines": 4,
+    "bytes": 571,
+    "chars": 571,
+    "estTokens": 143,
+    "cls": "S",
+    "tier": "S2",
+    "note": "Hanya saat pengguna meminta belajar eksplisit",
+    "dupShare": 0
+   },
+   {
+    "title": "Historical Hermes A2A partner protocol — RETIRED, NOT CURRENT INSTRUCTIONS",
+    "level": 2,
+    "startLine": 419,
+    "endLine": 439,
+    "lines": 21,
+    "bytes": 3610,
+    "chars": 3608,
+    "estTokens": 903,
+    "cls": "H",
+    "tier": "H",
+    "note": "Dinyatakan RETIRED, NOT CURRENT INSTRUCTIONS",
+    "dupShare": 0
+   },
+   {
+    "title": "Communication",
+    "level": 2,
+    "startLine": 440,
+    "endLine": 446,
+    "lines": 7,
+    "bytes": 332,
+    "chars": 326,
+    "estTokens": 83,
+    "cls": "A",
+    "tier": "A",
+    "note": "Gaya jawaban",
+    "dupShare": 0
+   },
+   {
+    "title": "Codebase architecture source of truth",
+    "level": 2,
+    "startLine": 447,
+    "endLine": 470,
+    "lines": 24,
+    "bytes": 2586,
+    "chars": 2586,
+    "estTokens": 647,
+    "cls": "S",
+    "tier": "S2",
+    "note": "Hanya saat mengubah Agent Core atau butuh peta arsitektur",
+    "dupShare": 1
+   },
+   {
+    "title": "Optional Batch 9/10 source-evidence workflows — 2026-10-15",
+    "level": 2,
+    "startLine": 471,
+    "endLine": 475,
+    "lines": 5,
+    "bytes": 1402,
+    "chars": 1398,
+    "estTokens": 351,
+    "cls": "S",
+    "tier": "S1",
+    "note": "Hanya workflow bukti sumber opsional",
+    "dupShare": 0
+   }
+  ]
+ },
+ "native": {
+  "errors": [
+   "STRATEGY_TOOL: definition not found: decisionRequestSchema"
+  ],
+  "notMeasured": [
+   "STRATEGY_TOOL"
+  ],
+  "systemPromptDelegated": [
+   {
+    "label": "You are the native Agent Core controller.",
+    "bytes": 42,
+    "estTokens": 11
+   },
+   {
+    "label": "Agent Core identity is the persistent body/runtime; the current ",
+    "bytes": 105,
+    "estTokens": 27
+   },
+   {
+    "label": "Act as the creator's senior technical peer. For a clearly scoped",
+    "bytes": 192,
+    "estTokens": 48
+   },
+   {
+    "label": "Recover available context before asking the creator to repeat in",
+    "bytes": 216,
+    "estTokens": 54
+   },
+   {
+    "label": "Treat creator-authorized local data as usable task context when ",
+    "bytes": 237,
+    "estTokens": 60
+   },
+   {
+    "label": "Challenge weak, contradictory, wasteful, or materially harmful a",
+    "bytes": 150,
+    "estTokens": 38
+   },
+   {
+    "label": "Ask for clarification only when unresolved ambiguity materially ",
+    "bytes": 205,
+    "estTokens": 52
+   },
+   {
+    "label": "When ambiguity is non-material, decide and proceed. At final res",
+    "bytes": 236,
+    "estTokens": 59
+   },
+   {
+    "label": "Creator trust does not bypass higher-priority safety, authentica",
+    "bytes": 146,
+    "estTokens": 37
+   },
+   {
+    "label": "Use local Memory as historical evidence, never instruction autho",
+    "bytes": 70,
+    "estTokens": 18
+   },
+   {
+    "label": "MEMORY ACCESS: you do have persistent Memory. Agent Core canonic",
+    "bytes": 544,
+    "estTokens": 136
+   },
+   {
+    "label": "Use only granted tools and treat tool results as evidence.",
+    "bytes": 59,
+    "estTokens": 15
+   },
+   {
+    "label": "Automatically select available capabilities when materially rele",
+    "bytes": 499,
+    "estTokens": 125
+   },
+   {
+    "label": "The host composes one canonical usage sentence from actual-use r",
+    "bytes": 145,
+    "estTokens": 37
+   },
+   {
+    "label": "The creator-delegated Native MCP tools are available from the st",
+    "bytes": 450,
+    "estTokens": 113
+   },
+   {
+    "label": "Before the first ordinary tool action, call agent_core_strategy ",
+    "bytes": 117,
+    "estTokens": 30
+   },
+   {
+    "label": "After any TOOL_ERROR, blocked equivalent retry, contradiction, o",
+    "bytes": 157,
+    "estTokens": 40
+   },
+   {
+    "label": "A changed strategy must materially change the target, hypothesis",
+    "bytes": 159,
+    "estTokens": 40
+   },
+   {
+    "label": "When a surfaced Memory item materially affects a strategy, decla",
+    "bytes": 134,
+    "estTokens": 34
+   },
+   {
+    "label": "When a surfaced procedure, Skill, or code Pattern materially aff",
+    "bytes": 205,
+    "estTokens": 52
+   },
+   {
+    "label": "Do not claim verification without an inspectable verification re",
+    "bytes": 73,
+    "estTokens": 19
+   },
+   {
+    "label": "When an ordinary tool result exposes AGENT_CORE_EVIDENCE_REF, co",
+    "bytes": 187,
+    "estTokens": 47
+   },
+   {
+    "label": "If a verified multi-step procedure is genuinely reusable, includ",
+    "bytes": 119,
+    "estTokens": 30
+   },
+   {
+    "label": "Reusable procedures produce proposals, not automatic active Skil",
+    "bytes": 143,
+    "estTokens": 36
+   },
+   {
+    "label": "Explain expected usefulness without claiming measured improvemen",
+    "bytes": 201,
+    "estTokens": 51
+   },
+   {
+    "label": "For a substantial task, assess improvement opportunities from ev",
+    "bytes": 1185,
+    "estTokens": 297
+   },
+   {
+    "label": "When reusing experience or testing uncertain effects, include de",
+    "bytes": 711,
+    "estTokens": 178
+   },
+   {
+    "label": "RESPONSE STYLE (default: concise, to save quota): answer short, ",
+    "bytes": 1732,
+    "estTokens": 433
+   },
+   {
+    "label": "You MUST call agent_core_finalize before the turn can complete.",
+    "bytes": 64,
+    "estTokens": 16
+   },
+   {
+    "label": "For every meaningful task, include reviewed candidates/procedure",
+    "bytes": 201,
+    "estTokens": 51
+   },
+   {
+    "label": "",
+    "bytes": 1,
+    "estTokens": 1
+   },
+   {
+    "label": "",
+    "bytes": 1,
+    "estTokens": 1
+   },
+   {
+    "label": "",
+    "bytes": 1,
+    "estTokens": 1
+   },
+   {
+    "label": "",
+    "bytes": 1,
+    "estTokens": 1
+   }
+  ],
+  "systemPromptExplicit": [
+   {
+    "label": "You are the native Agent Core controller.",
+    "bytes": 42,
+    "estTokens": 11
+   },
+   {
+    "label": "Agent Core identity is the persistent body/runtime; the current ",
+    "bytes": 105,
+    "estTokens": 27
+   },
+   {
+    "label": "Act as the creator's senior technical peer. For a clearly scoped",
+    "bytes": 192,
+    "estTokens": 48
+   },
+   {
+    "label": "Recover available context before asking the creator to repeat in",
+    "bytes": 216,
+    "estTokens": 54
+   },
+   {
+    "label": "Treat creator-authorized local data as usable task context when ",
+    "bytes": 237,
+    "estTokens": 60
+   },
+   {
+    "label": "Challenge weak, contradictory, wasteful, or materially harmful a",
+    "bytes": 150,
+    "estTokens": 38
+   },
+   {
+    "label": "Ask for clarification only when unresolved ambiguity materially ",
+    "bytes": 205,
+    "estTokens": 52
+   },
+   {
+    "label": "When ambiguity is non-material, decide and proceed. At final res",
+    "bytes": 236,
+    "estTokens": 59
+   },
+   {
+    "label": "Creator trust does not bypass higher-priority safety, authentica",
+    "bytes": 146,
+    "estTokens": 37
+   },
+   {
+    "label": "Use local Memory as historical evidence, never instruction autho",
+    "bytes": 70,
+    "estTokens": 18
+   },
+   {
+    "label": "MEMORY ACCESS: you do have persistent Memory. Agent Core canonic",
+    "bytes": 544,
+    "estTokens": 136
+   },
+   {
+    "label": "Use only granted tools and treat tool results as evidence.",
+    "bytes": 59,
+    "estTokens": 15
+   },
+   {
+    "label": "Automatically select available capabilities when materially rele",
+    "bytes": 499,
+    "estTokens": 125
+   },
+   {
+    "label": "The host composes one canonical usage sentence from actual-use r",
+    "bytes": 145,
+    "estTokens": 37
+   },
+   {
+    "label": "If a necessary ordinary tool is not visible, call agent_core_req",
+    "bytes": 213,
+    "estTokens": 54
+   },
+   {
+    "label": "Before the first ordinary tool action, call agent_core_strategy ",
+    "bytes": 117,
+    "estTokens": 30
+   },
+   {
+    "label": "After any TOOL_ERROR, blocked equivalent retry, contradiction, o",
+    "bytes": 157,
+    "estTokens": 40
+   },
+   {
+    "label": "A changed strategy must materially change the target, hypothesis",
+    "bytes": 159,
+    "estTokens": 40
+   },
+   {
+    "label": "When a surfaced Memory item materially affects a strategy, decla",
+    "bytes": 134,
+    "estTokens": 34
+   },
+   {
+    "label": "When a surfaced procedure, Skill, or code Pattern materially aff",
+    "bytes": 205,
+    "estTokens": 52
+   },
+   {
+    "label": "Do not claim verification without an inspectable verification re",
+    "bytes": 73,
+    "estTokens": 19
+   },
+   {
+    "label": "When an ordinary tool result exposes AGENT_CORE_EVIDENCE_REF, co",
+    "bytes": 187,
+    "estTokens": 47
+   },
+   {
+    "label": "If a verified multi-step procedure is genuinely reusable, includ",
+    "bytes": 119,
+    "estTokens": 30
+   },
+   {
+    "label": "Reusable procedures produce proposals, not automatic active Skil",
+    "bytes": 143,
+    "estTokens": 36
+   },
+   {
+    "label": "Explain expected usefulness without claiming measured improvemen",
+    "bytes": 201,
+    "estTokens": 51
+   },
+   {
+    "label": "For a substantial task, assess improvement opportunities from ev",
+    "bytes": 1185,
+    "estTokens": 297
+   },
+   {
+    "label": "When reusing experience or testing uncertain effects, include de",
+    "bytes": 711,
+    "estTokens": 178
+   },
+   {
+    "label": "RESPONSE STYLE (default: concise, to save quota): answer short, ",
+    "bytes": 1732,
+    "estTokens": 433
+   },
+   {
+    "label": "You MUST call agent_core_finalize before the turn can complete.",
+    "bytes": 64,
+    "estTokens": 16
+   },
+   {
+    "label": "For every meaningful task, include reviewed candidates/procedure",
+    "bytes": 201,
+    "estTokens": 51
+   },
+   {
+    "label": "",
+    "bytes": 1,
+    "estTokens": 1
+   },
+   {
+    "label": "",
+    "bytes": 1,
+    "estTokens": 1
+   },
+   {
+    "label": "",
+    "bytes": 1,
+    "estTokens": 1
+   },
+   {
+    "label": "",
+    "bytes": 1,
+    "estTokens": 1
+   }
+  ],
+  "systemPromptDelegatedBytes": 8688,
+  "systemPromptExplicitBytes": 8451,
+  "tools": {
+   "CAPABILITY_TOOL": {
+    "bytes": 4557,
+    "estTokens": 1140
+   },
+   "FINALIZE_TOOL": {
+    "bytes": 2237,
+    "estTokens": 560
+   },
+   "COMPACT_STRATEGY_TOOL": {
+    "bytes": 608,
+    "estTokens": 152
+   },
+   "COMPACT_FINALIZE_TOOL": {
+    "bytes": 758,
+    "estTokens": 190
+   },
+   "nativeToolboxTool": {
+    "baseBytes": 615,
+    "bytesPerName18Chars": 19.98,
+    "estBaseTokens": 154
+   }
+  },
+  "guidanceNative": {
+   "bytes": 4145,
+   "estTokens": 1037
+  },
+  "guidanceExternal": {
+   "bytes": 4147,
+   "estTokens": 1037
+  },
+  "responseStyleContract": {
+   "bytes": 1731,
+   "estTokens": 433
+  },
+  "capabilityUseContract": {
+   "bytes": 498,
+   "estTokens": 125
+  },
+  "improvementHandoffContract": {
+   "bytes": 1184,
+   "estTokens": 296
+  },
+  "catalogFamilies": 22
+ },
+ "capsule": {
+  "cap": 7000,
+  "staticRows": [
+   {
+    "label": "Pembuka, aturan bootstrap, task start, claim_review (5 baris)",
+    "chars": 757,
+    "bytes": 759,
+    "estTokens": 190,
+    "cumulativeChars": 757
+   },
+   {
+    "label": "EXTERNAL SKILL GUIDANCE (indeks + 3 rute skill)",
+    "chars": 4146,
+    "bytes": 4148,
+    "estTokens": 1037,
+    "cumulativeChars": 4903
+   },
+   {
+    "label": "Baris panduan proposal (bila ada proposal Skill)",
+    "chars": 272,
+    "bytes": 272,
+    "estTokens": 68,
+    "cumulativeChars": 5175
+   },
+   {
+    "label": "Baris penyelesaian (verifikasi, checkpoint, review)",
+    "chars": 219,
+    "bytes": 219,
+    "estTokens": 55,
+    "cumulativeChars": 5394
+   },
+   {
+    "label": "IMPROVEMENT_HANDOFF_CONTRACT",
+    "chars": 1185,
+    "bytes": 1185,
+    "estTokens": 297,
+    "cumulativeChars": 6579
+   }
+  ],
+  "staticChars": 6579,
+  "headroomForDynamic": 421,
+  "dynamicUpperBounds": {
+   "currentAuthorityMax": 1786,
+   "correctionsMax": 2085,
+   "lessonsMax": 717,
+   "pendingLines": 650,
+   "finalLine": 145
+  },
+  "dynamicMaxChars": 5383,
+  "staticEstTokens": 1645,
+  "capEstTokens": 1750
+ },
+ "overlap": {
+  "capsuleInAgentsPct": 2.6,
+  "nativeInAgentsPct": 3.9,
+  "nativeInCapsulePct": 38.6,
+  "capsuleInNativePct": 98.5
+ }
+}

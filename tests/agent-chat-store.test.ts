@@ -1,7 +1,8 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { DatabaseSync } from 'node:sqlite';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AgentChatStore } from '../src/agent-chat-store.js';
 
 const roots: string[] = [];
@@ -28,6 +29,32 @@ function createConversation(store: AgentChatStore, id = 'conversation-1') {
   });
 }
 describe('AgentChatStore', () => {
+  it('aggregates health across all conversations without reading transcripts or turn metadata', async () => {
+    const store = new AgentChatStore(await fixture());
+    const db = new DatabaseSync(store.dbPath);
+    try {
+      db.exec(`WITH RECURSIVE ids(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM ids WHERE n<501)
+        INSERT INTO chat_conversations(conversation_id,runtime_session_id,workspace,title,status,created_at_ms,updated_at_ms)
+        SELECT 'conversation-'||n,'session-'||n,'fixture','Fixture',CASE WHEN n%2=0 THEN 'archived' ELSE 'active' END,1000,1000 FROM ids;
+        INSERT INTO chat_turns(turn_id,conversation_id,client_request_id,runtime_task_id,status,created_at_ms,started_at_ms) VALUES
+        ('turn-1','conversation-1','request-1','task-1','resumable',1000,1000),
+        ('turn-2','conversation-2','request-2','task-2','resumable',1000,1000),
+        ('turn-3','conversation-3','request-3','task-3','running',1000,1000),
+        ('turn-4','conversation-4','request-4','task-4','finalized',1000,1000)`);
+    } finally { db.close(); }
+    const originalPrepare = DatabaseSync.prototype.prepare;
+    const statements: string[] = [];
+    const prepare = vi.spyOn(DatabaseSync.prototype, 'prepare').mockImplementation(function (this: DatabaseSync, sql: string) {
+      if (/chat_messages|result_metadata_json|memory_use_json|SELECT\s+\*/i.test(sql)) throw new Error('health read transcript or metadata');
+      statements.push(sql);
+      return originalPrepare.call(this, sql);
+    });
+    try {
+      expect(store.healthCounts()).toEqual({ conversationCount: 501, activeConversationCount: 251, resumableTurnCount: 2 });
+      expect(statements).toHaveLength(1);
+    } finally { prepare.mockRestore(); }
+  });
+
   it('persists a conversation and committed transcript across reconstruction', async () => {
     const dbPath = await fixture();
     const store = new AgentChatStore(dbPath);
@@ -48,6 +75,7 @@ describe('AgentChatStore', () => {
       response: 'Turn completed.',
       providerId: 'atria',
       model: 'fixture-model',
+      metadata: { modelIdentity: { observedCalls: 2, identities: [{ providerId: 'atria', model: 'resolved-fixture' }] } },
       iterations: 2,
       retrievalCount: 1,
       completedAtMs: 3_000,
@@ -55,6 +83,8 @@ describe('AgentChatStore', () => {
 
     const reopened = new AgentChatStore(dbPath);
     const detail = reopened.detail('conversation-1');
+    expect(reopened.getTurn('turn-1')?.modelIdentity).toEqual({ observedCalls: 2,
+      identities: [{ providerId: 'atria', model: 'resolved-fixture' }] });
     expect(detail?.conversation).toEqual(expect.objectContaining({
       id: 'conversation-1',
       runtimeSessionId: 'session-conversation-1',

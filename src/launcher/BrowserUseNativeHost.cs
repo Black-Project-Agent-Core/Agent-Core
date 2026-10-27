@@ -353,7 +353,7 @@ public static class BrowserUseNativeHost
                         if (id.ValueKind == JsonValueKind.String && pending.Remove(id.GetString()!, out match)) match.Client.Pending--;
                     }
                     // Unknown, late and disconnected-client responses are never broadcast.
-                    if (match is not null && !match.Client.Outgoing.Writer.TryWrite(RewriteId(message, match.OriginalId))) Drop(match.Client);
+                    if (match is not null) await Enqueue(match.Client, RewriteId(message, match.OriginalId));
                 }
                 else
                 {
@@ -361,9 +361,19 @@ public static class BrowserUseNativeHost
                         throw new InvalidDataException("BROWSER_OBU_NOTIFICATION_INVALID");
                     Client[] targets;
                     lock (gate) targets = clients.Values.ToArray();
-                    foreach (var client in targets) if (!client.Outgoing.Writer.TryWrite(bytes)) Drop(client);
+                    await Task.WhenAll(targets.Select(client => Enqueue(client, bytes)));
                 }
             }
+        }
+
+        private async Task Enqueue(Client client, byte[] bytes)
+        {
+            if (client.Outgoing.Writer.TryWrite(bytes)) return;
+            // Allow a healthy reader to drain a burst; a stalled peer still has a bounded lifetime.
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stopping.Token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(1));
+            try { await client.Outgoing.Writer.WriteAsync(bytes, deadline.Token); }
+            catch { Drop(client); }
         }
 
         private void Drop(Client client)

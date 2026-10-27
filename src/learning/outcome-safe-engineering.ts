@@ -31,7 +31,7 @@ function eventReduction(input: unknown, locale: boolean): unknown {
  const keys=[...latest.keys()].sort(locale?(a,b)=>a.localeCompare(b):undefined);
  return keys.flatMap(key=>{const item=latest.get(key)!;return item.deleted?[]:[{key,value:item.value}];});
 }
-function numericExpression(expression:string,parameter:string|undefined,input:unknown):number{
+function numericExpression(expression:string,parameter:string|undefined,input:unknown,outerDepth=0):number{
  if(/\+\+|--/.test(expression))unsupported();
  const tokens:string[]=[];let offset=0;
  while(offset<expression.length){const match=/^(?:\s+|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_$][\w$]*|[()+\-*/%])/.exec(expression.slice(offset));if(!match)unsupported();offset+=match[0].length;if(match[0].trim())tokens.push(match[0]);if(tokens.length>1024)unsupported();}
@@ -44,14 +44,33 @@ function numericExpression(expression:string,parameter:string|undefined,input:un
  };
  const product=(depth:number):number=>{let value=primary(depth);while(['*','/','%'].includes(tokens[position]??'')){tick();const op=tokens[position++],right=primary(depth);value=op==='*'?value*right:op==='/'?value/right:value%right;}return value;};
  const sum=(depth:number):number=>{let value=product(depth);while(['+','-'].includes(tokens[position]??'')){tick();const op=tokens[position++],right=product(depth);value=op==='+'?value+right:value-right;}return value;};
- const result=sum(0);if(position!==tokens.length||!Number.isFinite(result))unsupported();return result;
+ const result=sum(outerDepth);if(position!==tokens.length||!Number.isFinite(result))unsupported();return result;
+}
+function unwrapWholeArrow(source:string):{syntax:string;outerDepth:number}{
+ let syntax=compact(source).trim(),outerDepth=0;
+ while(syntax.startsWith('(')&&syntax.endsWith(')')){
+  let balance=0,matchingClose=-1;
+  for(let i=0;i<syntax.length;i++){
+   if(syntax[i]==='(')balance++;
+   else if(syntax[i]===')'){
+    if(--balance<0)unsupported();
+    if(balance===0){matchingClose=i;break;}
+   }
+  }
+  if(matchingClose!==syntax.length-1)break;
+  if(++outerDepth>32)unsupported();
+  syntax=syntax.slice(1,-1).trim();
+ }
+ return {syntax,outerDepth};
 }
 export function evaluateEngineeringArtifact(answer:string,input:unknown):unknown{
  if(typeof answer!=='string'||answer.length>8192)unsupported();
  const normalized=compact(answer);const template=eventTemplates.indexOf(normalized);
  if(template>=0)return eventReduction(input,template===2);
- const arrow=/^\s*(?:\(\s*([A-Za-z_$][\w$]*)?\s*\)|([A-Za-z_$][\w$]*))[ \t]*=>\s*([\s\S]+?)\s*;?\s*$/.exec(answer);
+ const {syntax,outerDepth}=unwrapWholeArrow(answer);
+ if(outerDepth>0&&syntax.includes(';'))unsupported();
+ const arrow=/^\s*(?:\(\s*([A-Za-z_$][\w$]*)?\s*\)|([A-Za-z_$][\w$]*))[ \t]*=>\s*([\s\S]+?)\s*;?\s*$/.exec(syntax);
  if(!arrow)unsupported();const parameter=arrow[1]??arrow[2];if(parameter&&reserved.has(parameter))unsupported();const expression=arrow[3]!.trim().replace(/;+\s*$/,'');
  if(expression==='[]')return [];
- return numericExpression(expression,parameter,input);
+ return numericExpression(expression,parameter,input,outerDepth);
 }

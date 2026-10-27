@@ -12,6 +12,31 @@ public sealed record DesktopStatus(
     bool Autostart,
     string Root);
 
+public sealed class PassiveStatusGrace
+{
+    private bool _hasSucceeded;
+    private DateTimeOffset? _firstFailureAt;
+
+    public bool Observe(bool available, DateTimeOffset now, TimeSpan grace)
+    {
+        if (available)
+        {
+            _hasSucceeded = true;
+            _firstFailureAt = null;
+            return true;
+        }
+        if (!_hasSucceeded) return false;
+        _firstFailureAt ??= now;
+        return now - _firstFailureAt.Value <= grace;
+    }
+
+    public void Reset()
+    {
+        _hasSucceeded = false;
+        _firstFailureAt = null;
+    }
+}
+
 public static class DesktopStatusMapper
 {
     public static DesktopStatus FromHealth(string? healthJson, bool tunnelReady, bool autostart, string root)
@@ -37,7 +62,7 @@ public static class DesktopStatusMapper
                 gameMode = phoneStatus.GetString() == "available" ? "on" : "off";
         }
 
-        var memoryDegraded = memory is "degraded" or "error";
+        var memoryDegraded = memory is "degraded" or "error" or "unavailable";
         var executionUnavailable = execution != "available";
         var overall = !bridgeReady && !tunnelReady
             ? "offline"

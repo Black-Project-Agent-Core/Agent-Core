@@ -7,10 +7,10 @@ import { authenticateRequest } from './auth.js';
 import { HttpSecurityPolicy } from './security-policy.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import type { AgentChatService } from '../agent-chat-service.js';
-import type { BrowserExtensionBridge } from '../rdc/browser-control/extension-bridge.js';
-import { handleBrowserBridge } from './browser-bridge.js';
 import { handleProposalDocuments } from './proposals.js';
 import type { ProposalDocumentReader } from '../learning/proposal-documents.js';
+import { nativeMemoryEvaluationSchema } from '../agent-memory-evaluation.js';
+import { defaultTaskChangesReader, handleTaskChanges, type TaskChangesReader } from './task-changes.js';
 
 export type McpHttpHandler = (
   request: IncomingMessage,
@@ -27,9 +27,10 @@ export interface HttpHandlerOptions {
   agentUiToken?: string | null;
   agentRun?: (input: { prompt: string; workspace?: string }) => Promise<unknown>;
   agentChat?: AgentChatService;
-  browserBridge?: BrowserExtensionBridge;
   workflows?: () => import('../workflows/service.js').WorkflowSnapshot;
   proposals?: ProposalDocumentReader;
+  /** Read-only actual-changes reader; defaults to the checkpoint service plus Git. */
+  taskChanges?: TaskChangesReader;
 }
 
 function sendJson(
@@ -109,12 +110,6 @@ async function handleRequest(
   const route = requestUrl.pathname;
   const security = options.security ?? DEFAULT_SECURITY;
 
-  if (route.startsWith('/browser-bridge/')) {
-    if (!options.browserBridge) { sendJson(response, 503, { error: 'BROWSER_BRIDGE_UNAVAILABLE' }); return; }
-    await handleBrowserBridge(request, response, options.browserBridge, route);
-    return;
-  }
-
   if (request.method === 'GET' && route === '/health') {
     const diagnostics = options.healthProvider ? await options.healthProvider() : {};
     sendJson(response, 200, { status: 'ok', service: 'agent-core-rdc-bridge', ...diagnostics });
@@ -132,6 +127,12 @@ async function handleRequest(
   if (route === '/agent/proposals' || route === '/agent/proposals/read') {
     if (!authorizeAgentUi(request, response, options, security)) return;
     await handleProposalDocuments(request, response, options.proposals, requestUrl);
+    return;
+  }
+
+  if (route === '/agent/task-changes') {
+    if (!authorizeAgentUi(request, response, options, security)) return;
+    await handleTaskChanges(request, response, options.taskChanges ?? defaultTaskChangesReader, requestUrl);
     return;
   }
 
@@ -172,6 +173,15 @@ async function handleRequest(
       return;
     }
 
+    if (route === '/agent/chat/providers') {
+      if (request.method !== 'GET') {
+        sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'GET' });
+        return;
+      }
+      sendJson(response, 200, { providers: chat.listProviders() });
+      return;
+    }
+
     const detailMatch = route.match(/^\/agent\/chat\/conversations\/([^/]+)$/);
     if (detailMatch && request.method === 'GET') {
       const detail = chat.getConversation(decodeURIComponent(detailMatch[1]!));
@@ -185,6 +195,10 @@ async function handleRequest(
 
     const turnMatch = route.match(/^\/agent\/chat\/conversations\/([^/]+)\/turns$/);
     if (turnMatch && request.method === 'POST') {
+      const originHeader = firstHeader(request.headers['x-agent-core-chat-origin']);
+      if (originHeader && originHeader !== 'external-controller') {
+        sendJson(response, 400, { error: 'invalid_agent_chat_origin' }); return;
+      }
       let body: Record<string, unknown>;
       try { body = await readJsonBody(request); }
       catch { sendJson(response, 400, { error: 'invalid_json' }); return; }
@@ -195,6 +209,18 @@ async function handleRequest(
       if (!prompt || prompt.length > 200_000
         || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(clientRequestId)) {
         sendJson(response, 400, { error: 'invalid_agent_chat_turn' });
+        return;
+      }
+      // A route id chosen in the UI; "auto" or absent keeps automatic rotation.
+      const providerId = body.providerId === undefined || body.providerId === null ? ''
+        : typeof body.providerId === 'string' ? body.providerId.trim() : null;
+      if (providerId === null || (providerId && providerId !== 'auto' && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/.test(providerId))) {
+        sendJson(response, 400, { error: 'invalid_agent_chat_provider' });
+        return;
+      }
+      const evaluation = body.evaluation === undefined ? undefined : nativeMemoryEvaluationSchema.safeParse(body.evaluation);
+      if (evaluation && !evaluation.success) {
+        sendJson(response, 400, { error: 'invalid_agent_memory_evaluation' });
         return;
       }
       response.writeHead(200, {
@@ -209,6 +235,9 @@ async function handleRequest(
           conversationId,
           clientRequestId,
           prompt,
+          ...(originHeader === 'external-controller' ? { messageOrigin: 'external-controller' as const } : {}),
+          ...(providerId && providerId !== 'auto' ? { providerRoute: providerId } : {}),
+          ...(evaluation?.success ? { evaluation: evaluation.data } : {}),
           eventSink: async event => { writeLine({ type: 'event', event }); },
         });
         writeLine({ type: 'result', result });

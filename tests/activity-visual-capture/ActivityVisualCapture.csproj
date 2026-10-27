@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Agent Core"><HintPath>..\..\src\launcher\bin\Debug\net8.0-windows\Agent Core.dll</HintPath></Reference>
+    <Reference Include="Microsoft.Web.WebView2.Core"><HintPath>..\..\src\launcher\bin\Debug\net8.0-windows\Microsoft.Web.WebView2.Core.dll</HintPath></Reference>
+    <Reference Include="Microsoft.Web.WebView2.WinForms"><HintPath>..\..\src\launcher\bin\Debug\net8.0-windows\Microsoft.Web.WebView2.WinForms.dll</HintPath></Reference>
+    <Content Include="..\..\runtime\nuget-packages\microsoft.web.webview2\1.0.4191.47\runtimes\win-x64\native\WebView2Loader.dll" Link="WebView2Loader.dll" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+</Project>

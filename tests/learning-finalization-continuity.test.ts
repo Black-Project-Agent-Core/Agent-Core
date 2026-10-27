@@ -80,7 +80,9 @@ describe('natural learning finalization continuity', () => {
       health: async () => ({ status: 'available', enabled: true, issueCount: 0,
         reviewInterval: 10, curatorIntervalHours: 168, sinkStatus: [] }),
     };
-    const result: any = await LearningService.prototype.status.call(self as any);
+    // Observed hours after the checkpoint: still a live obligation. A review older than a week is backlog
+    // and no longer counts as due (tests/learning-pending-review-health.test.ts).
+    const result: any = await LearningService.prototype.status.call(self as any, { now: new Date('2026-09-30T18:00:00Z') });
     expect(result.pendingReviewCount).toBe(1);
     expect(result.reviewDue).toBe(true);
     expect(result.reviewReason).toBe('verified-recovery');

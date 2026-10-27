@@ -1,0 +1,38 @@
+{
+  "taskId": "ext-12be7cffc1ac43d6b8fd6bdff69c5750",
+  "checkpointKey": "native-report-bridge-full-completion-20261027",
+  "checkpointAdvanced": true,
+  "checkpointDecisions": {
+    "native-report-bridge-full-completion-20261027": {
+      "status": "no-new-knowledge",
+      "complete": true,
+      "reviewedAt": "2026-10-26T21:13:09.571Z",
+      "workspace": "agent-core",
+      "taskId": "ext-12be7cffc1ac43d6b8fd6bdff69c5750",
+      "candidateResults": {}
+    }
+  },
+  "summary": {
+    "status": "no-new-knowledge",
+    "complete": true,
+    "counts": {
+      "captured": 0,
+      "proposal": 0,
+      "duplicate": 0,
+      "rejected": 0,
+      "sink-unavailable": 0,
+      "sink-failed": 0
+    }
+  },
+  "externalEpisodeLinkage": "recorded",
+  "episodeVerification": {
+    "status": "unavailable",
+    "error": "EXTERNAL_EPISODE_VERIFICATION_SCOPE_UNAVAILABLE",
+    "notCountedAsPass": true
+  },
+  "performanceSkillReceipt": {
+    "recorded": true,
+    "result": "unavailable",
+    "reason": "Applied workload/bounds workflow; comparative benefit not measured"
+  }
+}

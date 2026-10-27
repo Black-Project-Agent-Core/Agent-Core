@@ -45,6 +45,18 @@ public sealed class DesktopStatusMapperTests
     }
 
     [Fact]
+    public void TimedOutMemoryDiagnosticDoesNotTurnOffResponsiveBridgeOrExecution()
+    {
+        const string health = """{"status":"ok","execution":{"status":"available"},"memory":{"status":"unavailable","issue":"HEALTH_PROBE_TIMEOUT"},"phone":{"status":"available"}}""";
+        var status = DesktopStatusMapper.FromHealth(health, tunnelReady: true, autostart: false, root: @"C:\AgentCoreTest");
+        Assert.Equal("degraded", status.Overall);
+        Assert.Equal("on", status.Connection);
+        Assert.Equal("available", status.Execution);
+        Assert.Equal("on", status.GameMode);
+        Assert.Equal("unavailable", status.Memory);
+    }
+
+    [Fact]
     public void PhoneControllerAvailableTurnsGameModeOn()
     {
         const string health = """{"status":"ok","execution":{"status":"available"},"memory":{"status":"available"},"phone":{"status":"available"}}""";

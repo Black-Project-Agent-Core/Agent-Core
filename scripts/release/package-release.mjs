@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { parseChangesetFile } from "@changesets/parse";
 import { ROOT, readJson, validateStableSemver } from "./release-lib.mjs";
 import { isGeneratedReleasePath } from "./release-policy.mjs";
-import { packageCopyAllowed, writePackagedSetup, stageExternalReleaseSupport, assertReleaseSource } from "./packaging-policy.mjs";
+import { PACKAGED_CAPABILITY_SEEDS, packageCopyAllowed, writePackagedSetup, stageExternalReleaseSupport, assertReleaseSource, finalizePackagedStructure } from "./packaging-policy.mjs";
 import {
   INTEGRITY_MANIFEST_FILENAME,
   INTEGRITY_MUTABLE_EXCLUSIONS,
@@ -177,14 +177,15 @@ await copyIfExists("runtime/grafel/provider.json", packageRoot);
 await copyIfExists("docs/memory", packageRoot);
 await copyIfExists("scripts/memory", packageRoot);
 await writePackagedSetup(packageRoot);
-await copyIfExists("bundled-skills", packageRoot, { filter: sourceFilter });
-// Ship only the two user-approved portable artifacts, through the existing owner.
+await copyIfExists("runtime/skills/capability-packs", packageRoot, { filter: sourceFilter });
+await copyIfExists("runtime/skills/README.md", packageRoot);
+// Seed the compact capability router and the three user-approved portable artifacts.
 const { SkillService } = await import(pathToFileURL(path.join(ROOT,'dist/skills/service.js')).href);
 const packagedSkills = await SkillService.initialize(packageRoot,async source=>source);
-for(const name of ['performance-oriented-software-engineering','reverse-engineer-anything'])
-  await packagedSkills.import(path.join(ROOT,'bundled-skills',name));
+for(const name of PACKAGED_CAPABILITY_SEEDS)
+  await packagedSkills.import(path.join(ROOT,'runtime','skills','capability-packs',name));
 await copyIfExists("scripts/windows", packageRoot);
-await copyIfExists("scripts/governance/native-freeze.json", packageRoot);
+await copyIfExists("scripts/portability", packageRoot);
 
 const distSource = path.join(ROOT, "dist");
 const distTarget = path.join(packageRoot, "dist");
@@ -217,7 +218,10 @@ await copyIfExists("docs/memory", sourceRoot);
 await copyIfExists("scripts/memory", sourceRoot);
 await copyIfExists("scripts/governance", sourceRoot);
 await copyIfExists("scripts/browser-control", sourceRoot);
-await copyIfExists("bundled-skills", sourceRoot, { filter: sourceFilter });
+await copyIfExists("scripts/portability", sourceRoot);
+await copyIfExists("scripts/external/native-chat-bridge.mjs", sourceRoot);
+await copyIfExists("runtime/skills/capability-packs", sourceRoot, { filter: sourceFilter });
+await copyIfExists("runtime/skills/README.md", sourceRoot);
 await fs.cp(path.join(ROOT, "scripts", "release"), path.join(sourceRoot, "scripts", "release"), {
   recursive: true,
   force: true,
@@ -228,6 +232,8 @@ for (const relative of ["tsconfig.json", "vitest.config.ts"]) {
 await fs.mkdir(path.join(sourceRoot, "docs"), { recursive: true });
 for (const doc of [
   "CODEBASE.md",
+  "PROJECT-STRUCTURE.md",
+  "PATH-GOVERNANCE.md",
   "Changesets-Release-Intent-Version-Integrity-Integration-Plan.md",
 ]) {
   const source = path.join(ROOT, "docs", doc);
@@ -302,6 +308,8 @@ for(const relative of ['.changeset/applied','docs/memory/release-intents/applied
   }
 }
 
+await finalizePackagedStructure(sourceRoot);
+await finalizePackagedStructure(packageRoot);
 const integrityManifest = await buildIntegrityManifest(packageRoot, {
   product: "Agent Core",
   version,

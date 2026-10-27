@@ -19,7 +19,7 @@ export class LearningCurator {
   /** Controller-supplied delta remains a proposal; this method has no sink side effects. */
   proposeDelta(value: unknown) { return validateCurationDelta(value); }
 
-  async propose(workspace?: string): Promise<LearningCuratorProposal[]> {
+  async propose(workspace?: string, externalFeatureProposals?:LearningCuratorProposal[]): Promise<LearningCuratorProposal[]> {
     const proposals: LearningCuratorProposal[] = [];
     const stale: RankedStale[] = [];
     const records = await this.memory.list(workspace);
@@ -58,11 +58,11 @@ export class LearningCurator {
     stale.sort((a, b) => a.score - b.score || a.id.localeCompare(b.id));
     proposals.unshift(...stale.map((item) => item.proposal));
 
-    proposals.push(...buildFeatureOutcomeProposals(activityTracker.readFeatureOutcomes({
+    proposals.push(...(externalFeatureProposals??buildFeatureOutcomeProposals(activityTracker.readFeatureOutcomes({
       maxEvents: 512,
       maxAgeMs: 90 * 24 * 60 * 60 * 1000,
       ...(workspace ? { workspace } : {}),
-    })));
+    }))));
 
     for (const candidate of await this.memory.consolidate({ limit: 20 })) {
       proposals.push({
