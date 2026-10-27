@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.1.0 - 2026-10-27
+
+- [minor] The Claude plugin preview (`skills` validate, stage_revision, import on a plugin directory) now reports what real plugins contain. A marketplace root is listed as plugins to validate one by one instead of looking like an empty plugin. A description with `<` or `>` is adapted (the strict parser is unchanged) and the change is recorded. Adapted skills carry a `source-plugin` provenance key, and a same-named revision from another plugin is blocked as `name-conflict-other-origin` instead of appearing stageable. The preview also reports manifest and LICENSE license markers, manifest-declared component paths (validated, never followed), hook handler kinds, MCP transports, command skill candidates with `$ARGUMENTS` placeholders, `${CLAUDE_PLUGIN_ROOT}` use and links that leave the skill, without echoing commands. A UTF-8 BOM is stripped, and UTF-16 or invalid UTF-8 is reported as an encoding problem instead of a missing frontmatter. All additions are optional preview fields; no tool schema changed.
+
 ## 1.0.0 - 2026-10-27
 
 - [minor] Add Cloudflare Tunnel public access: additional OAuth resource identities selected by Host (AGENT_CORE_OAUTH_ADDITIONAL_RESOURCE_URLS), project-local cloudflared installer/runner/verifier script, and path-allowlist documentation.

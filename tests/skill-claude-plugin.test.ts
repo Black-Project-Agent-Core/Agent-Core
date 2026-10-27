@@ -104,8 +104,8 @@ it('reports hooks, commands, agents and MCP config without installing them or ec
     ['hook', 'hooks/hooks.json', 'unsupported', 'REPORTED_ONLY_NOT_INSTALLED'],
     ['mcp', '.mcp.json', 'unsupported', 'REPORTED_ONLY_NOT_INSTALLED'],
   ]);
-  expect(others.find((item: any) => item.type === 'hook').items).toEqual(['PreToolUse (1)']);
-  expect(others.find((item: any) => item.type === 'mcp').items).toEqual(['demo']);
+  expect(others.find((item: any) => item.type === 'hook').items).toEqual(['PreToolUse (1: command 1)']);
+  expect(others.find((item: any) => item.type === 'mcp').items).toEqual(['demo (stdio)']);
   const text = JSON.stringify(preview);
   for (const secret of ['secret-value', 'python3', 'server.js', 'IGNORE ALL RULES']) expect(text).not.toContain(secret);
 });
@@ -229,7 +229,12 @@ it('adapts frontmatter conservatively and refuses what it cannot map exactly', (
     allowedTools: ['Read', 'Bash(git add:*)', 'Grep'], metadata: { 'claude-argument-hint': '<file>', version: '1.2' } });
 
   expect(adapt('description: Name comes from the directory', '', 'From Dir')).toMatchObject({ status: 'adaptable', mappedName: 'from-dir' });
-  expect(adapt('name: x\ndescription: has <tags>')).toMatchObject({ status: 'unsupported', reason: 'SKILL_DESCRIPTION_INVALID' });
+  // The strict parser keeps rejecting `<` and `>`; the adapter normalizes them and says so.
+  expect(() => parseSkillMarkdown('---\nname: x\ndescription: has <tags>\n---\nBody\n')).toThrow('SKILL_DESCRIPTION_INVALID');
+  const angle = adapt('name: x\ndescription: has <tags>');
+  expect(angle).toMatchObject({ status: 'adaptable' });
+  expect(angle.changes).toContainEqual({ field: 'description', action: 'angle-brackets-normalized' });
+  expect(parseSkillMarkdown(angle.files.find(file => file.relative === 'SKILL.md')!.content.toString('utf8')).description).toBe('has ‹tags›');
   expect(adapt('name: x\ndescription: ok\nmodel: ' + 'm'.repeat(600))).toMatchObject({ status: 'unsupported', reason: 'SKILL_PLUGIN_ROUNDTRIP_MISMATCH' });
   expect(adapt('name: x\ndescription: ok\nmetadata:\n  version: 1\nversion: 2')).toMatchObject({ status: 'unsupported', reason: 'SKILL_PLUGIN_METADATA_CONFLICT: version' });
   expect(adapt('name: x')).toMatchObject({ status: 'unsupported', reason: 'SKILL_PLUGIN_DESCRIPTION_MISSING' });
@@ -237,6 +242,88 @@ it('adapts frontmatter conservatively and refuses what it cannot map exactly', (
     .toMatchObject({ status: 'unsupported', reason: 'SKILL_MD_NOT_FOUND' });
   expect(adaptClaudeSkill([{ relative: 'SKILL.md', content: Buffer.from('no frontmatter') }], 'd', parseSkillMarkdown))
     .toMatchObject({ status: 'unsupported', reason: 'SKILL_FRONTMATTER_MISSING' });
+});
+
+it('names the real encoding problem instead of reporting a missing frontmatter, and strips a UTF-8 BOM', () => {
+  const adapt = (content: Buffer) => adaptClaudeSkill([{ relative: 'SKILL.md', content }], 'enc', parseSkillMarkdown);
+  const bom = adapt(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('---\nname: Bom Skill\ndescription: ok\n---\nBody\n')]));
+  expect(bom).toMatchObject({ status: 'adaptable', mappedName: 'bom-skill' });
+  expect(bom.changes).toContainEqual({ field: 'SKILL.md', action: 'bom-stripped' });
+  expect(adapt(Buffer.from('﻿---\nname: x\ndescription: y\nversion: 1\n---\n', 'utf16le')))
+    .toMatchObject({ status: 'unsupported', reason: 'SKILL_PLUGIN_ENCODING_UNSUPPORTED: utf-16' });
+  expect(adapt(Buffer.from('---\nname: x\ndescription: caf\xe9\nversion: 1\n---\nBody\n', 'latin1')))
+    .toMatchObject({ status: 'unsupported', reason: 'SKILL_PLUGIN_ENCODING_UNSUPPORTED: not valid utf-8' });
+});
+
+it('reports a marketplace root as a list of plugins instead of an empty plugin', async () => {
+  const market = await temp();
+  await put(market, '.claude-plugin/marketplace.json', JSON.stringify({ name: 'demo-market', plugins: [
+    { name: 'local-one', source: './plugins/one' },
+    { name: 'remote-one', source: { source: 'github', repo: 'owner/repo' } },
+    { name: 'escape', source: './../elsewhere' },
+  ] }));
+  const { service: svc } = await service();
+  const preview: any = await svc.validateSource(market);
+  expect(preview.plugin).toMatchObject({ manifest: 'absent' });
+  expect(preview.components).toEqual([]);
+  expect(preview.warnings).toContain('MARKETPLACE_ROOT_VALIDATE_EACH_PLUGIN_FOLDER');
+  expect(preview.marketplace).toEqual({ name: 'demo-market', hint: 'MARKETPLACE_ROOT_VALIDATE_EACH_PLUGIN_FOLDER', plugins: [
+    { name: 'local-one', source: 'local', path: './plugins/one' },
+    { name: 'remote-one', source: 'remote' },
+    { name: 'escape', source: 'unknown' },
+  ] });
+});
+
+async function namedPlugin(name: string, body: string) {
+  const plugin = await temp();
+  await put(plugin, '.claude-plugin/plugin.json', JSON.stringify({ name }));
+  await put(plugin, 'skills/shared/SKILL.md', `---\nname: Shared Skill\ndescription: from ${name}\nversion: 1\n---\n${body}\n`);
+  return plugin;
+}
+it('blocks a same-named revision from another plugin and stages one from the plugin that wrote the active skill', async () => {
+  const { service: svc } = await service();
+  const first = await namedPlugin('plugin-a', 'A one');
+  await svc.import(first, undefined, 'shared');
+  expect(parseSkillMarkdown(await readFile(path.join(svc['catalogRoot'] as string, 'shared-skill', 'SKILL.md'), 'utf8')).metadata['source-plugin']).toBe('plugin-a');
+
+  const other = await namedPlugin('plugin-b', 'B body');
+  const blocked: any = await svc.validateSource(other);
+  expect(skillComponent(blocked, 'shared')).toMatchObject({ status: 'unsupported', reason: 'SKILL_PLUGIN_NAME_CONFLICT_OTHER_ORIGIN', origin: 'other-plugin', stageable: false });
+  expect(blocked.collisions).toContainEqual({ name: 'shared-skill', kind: 'catalog', blocking: true, sources: ['skills/shared'], reason: 'name-conflict-other-origin' });
+  await expect(svc.stageRevision(other, ['user-message:t'], undefined, 'shared'))
+    .rejects.toThrow('SKILL_PLUGIN_SKILL_UNSUPPORTED: SKILL_PLUGIN_NAME_CONFLICT_OTHER_ORIGIN');
+
+  await put(first, 'skills/shared/SKILL.md', '---\nname: Shared Skill\ndescription: from plugin-a\nversion: 1\n---\nA two\n');
+  const same: any = await svc.validateSource(first);
+  expect(skillComponent(same, 'shared')).toMatchObject({ origin: 'same-plugin', stageable: true });
+});
+
+it('reports licenses, declared paths, hook kinds, MCP transports and command candidates without echoing commands', async () => {
+  const rich = await temp();
+  await put(rich, '.claude-plugin/plugin.json', JSON.stringify({ name: 'rich', license: 'MIT', skills: './custom-skills', commands: ['./cmds', '../outside'] }));
+  await put(rich, 'LICENSE', 'Proprietary. Use outside the vendor is not permitted.');
+  await put(rich, 'skills/lic/SKILL.md', '---\nname: lic\ndescription: Has its own license\nlicense: Apache-2.0\n---\nUses ${CLAUDE_PLUGIN_ROOT}/x and [shared](../sibling/guide.md)\n');
+  await put(rich, 'commands/deploy.md', '---\ndescription: Deploy it\n---\nRun $ARGUMENTS\n');
+  await put(rich, 'commands/bare.md', 'no frontmatter $1\n');
+  await put(rich, 'hooks/hooks.json', JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'run-secret-tool' }, { type: 'prompt', prompt: 'p' }] }] } }));
+  await put(rich, '.mcp.json', JSON.stringify({ mcpServers: { a: { command: 'node' }, b: { url: 'https://x.invalid' }, c: { type: 'sse', url: 'https://y.invalid' }, d: 'oops' } }));
+  const { service: svc } = await service();
+  const preview: any = await svc.validateSource(rich);
+
+  expect(preview.plugin.license).toEqual({ manifest: 'MIT', file: 'proprietary-markers' });
+  expect(preview.warnings).toEqual(expect.arrayContaining(['LICENSE_PROPRIETARY_MARKERS', 'LICENSE_SKILL_DIFFERS_FROM_PLUGIN', 'DECLARED_COMPONENT_PATH_INVALID']));
+  expect(preview.declared).toContainEqual({ key: 'skills', status: 'not-scanned', paths: ['./custom-skills'] });
+  expect(preview.declared).toContainEqual({ key: 'commands', status: 'not-scanned', paths: ['./cmds', '../outside'], invalid: ['../outside'] });
+  expect(skillComponent(preview, 'lic')).toMatchObject({ license: 'Apache-2.0', notes: ['uses-CLAUDE_PLUGIN_ROOT', 'references-outside-skill-directory'] });
+
+  const others = preview.components.filter((item: any) => item.type !== 'skill');
+  const kind = (type: string) => others.find((item: any) => item.type === type);
+  expect(kind('command').items).toEqual(['bare.md [args] [no-description]', 'deploy.md [args]']);
+  expect(kind('command').candidates).toBe(1);
+  expect(kind('hook').items).toEqual(['PreToolUse (2: command 1, prompt 1)']);
+  expect(kind('mcp').items).toEqual(['a (stdio)', 'b (http)', 'c (sse)', 'd (not-a-server)']);
+  const text = JSON.stringify(preview);
+  for (const secret of ['run-secret-tool', 'x.invalid', 'y.invalid']) expect(text).not.toContain(secret);
 });
 
 it('adds no schema surface: the existing validate and stage_revision actions carry the plugin source', () => {

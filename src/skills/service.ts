@@ -895,9 +895,11 @@ export class SkillService {
         const original = await walkSkillFiles(path.join(root, 'skills', entry.directory));
         await loadSkillContents(original);
         const digestBefore = digestFiles(original);
-        const result = adaptClaudeSkill(original.map(file => ({ relative: file.relative, content: file.content! })), entry.directory, parseSkillMarkdown);
+        const result = adaptClaudeSkill(original.map(file => ({ relative: file.relative, content: file.content! })), entry.directory, parseSkillMarkdown,
+          { pluginName: inventory.plugin.name });
         if (result.status === 'unsupported') {
-          skills.push({ ...base, status: 'unsupported', reason: result.reason, missingReferences: result.missingReferences });
+          skills.push({ ...base, status: 'unsupported', reason: result.reason, missingReferences: result.missingReferences,
+            ...(result.notes.length ? { notes: result.notes } : {}) });
           continue;
         }
         const files: ScannedFile[] = result.files.map(file => ({ relative: file.relative, content: file.content, size: file.content.length }));
@@ -916,7 +918,9 @@ export class SkillService {
           } });
         }
         skills.push({ ...base, status: result.status, mappedName: metadata.name, changes: result.changes,
-          missingReferences: result.missingReferences, fileCount: files.length, digestBefore, digestAfter: scanned.digest });
+          ...(metadata.license ? { license: reportLabel(metadata.license, 64) } : {}),
+          missingReferences: result.missingReferences, ...(result.notes.length ? { notes: result.notes } : {}),
+          fileCount: files.length, digestBefore, digestAfter: scanned.digest });
       } catch (error) { skills.push({ ...base, status: 'unsupported', reason: reasonCode(error) }); }
     }
     // Two plugin skills mapping to one identifier stop the adapter for both; an existing catalog entry is reported only.
@@ -933,14 +937,32 @@ export class SkillService {
       }
       const skill = group[0]!, active = catalog.get(name);
       skill.catalog = active === undefined ? 'absent' : active === skill.digestAfter ? 'same-digest' : 'different-digest';
-      skill.stageable = skill.catalog === 'different-digest';
-      if (active !== undefined) collisions.push({ name, kind: 'catalog', blocking: false, sources: [skill.path] });
+      // Only skills the adapter wrote carry `source-plugin`; an active skill from another plugin must not be replaced by a same-named revision.
+      let otherOrigin = false;
+      if (skill.catalog === 'different-digest') {
+        const activeOrigin = (await this.inspect(name).catch(() => undefined))?.metadata.metadata['source-plugin'];
+        skill.origin = activeOrigin === undefined ? 'unverified' : activeOrigin === inventory.plugin.name ? 'same-plugin' : 'other-plugin';
+        otherOrigin = skill.origin === 'other-plugin';
+        if (otherOrigin) { skill.status = 'unsupported'; skill.reason = 'SKILL_PLUGIN_NAME_CONFLICT_OTHER_ORIGIN'; kept.delete(skill.directory); }
+      }
+      skill.stageable = skill.catalog === 'different-digest' && !otherOrigin;
+      if (active !== undefined) {
+        collisions.push({ name, kind: 'catalog', blocking: otherOrigin, sources: [skill.path],
+          ...(otherOrigin ? { reason: 'name-conflict-other-origin' as const } : {}) });
+      }
     }
     const components = [...skills, ...inventory.others];
     const summary = { compatible: 0, adaptable: 0, unsupported: 0 };
     for (const component of components) summary[component.status]++;
+    const warnings: string[] = [];
+    if (inventory.plugin.license?.file === 'proprietary-markers') warnings.push('LICENSE_PROPRIETARY_MARKERS');
+    const pluginLicense = inventory.plugin.license?.manifest?.toLowerCase();
+    if (pluginLicense && skills.some(skill => skill.license && skill.license.toLowerCase() !== pluginLicense)) warnings.push('LICENSE_SKILL_DIFFERS_FROM_PLUGIN');
+    if (inventory.declared.some(item => item.invalid?.length)) warnings.push('DECLARED_COMPONENT_PATH_INVALID');
+    if (inventory.marketplace && inventory.plugin.manifest === 'absent') warnings.push(inventory.marketplace.hint);
     return {
       preview: { kind: 'claude-plugin-preview', readOnly: true, executionAuthority: false, plugin: inventory.plugin,
+        ...(inventory.marketplace ? { marketplace: inventory.marketplace } : {}), declared: inventory.declared, warnings,
         components, collisions, summary, omitted: { skills: inventory.skillsOmitted } },
       kept: keep ? kept.get(keep) : undefined,
     };

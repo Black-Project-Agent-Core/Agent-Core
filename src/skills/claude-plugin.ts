@@ -26,6 +26,8 @@ export interface ClaudeSkillAnalysis {
   mappedName?: string;
   changes: SkillAdaptationChange[];
   missingReferences: string[];
+  /** Facts about the body that the adapter reports but never acts on (plugin-root variable, links leaving the skill). */
+  notes: string[];
   /** Adapted tree in directory-walk order; the unchanged input when the skill is already compatible. */
   files: PluginFile[];
   originalSha256?: string;
@@ -37,6 +39,21 @@ export interface ClaudePluginOtherComponent {
   reason: string;
   items: string[];
   itemsTruncated?: boolean;
+  /** Commands only: how many look like skill candidates (they have a description). Never activated. */
+  candidates?: number;
+}
+export interface ClaudeMarketplace {
+  name?: string;
+  plugins: Array<{ name: string; source: 'local' | 'remote' | 'unknown'; path?: string }>;
+  pluginsTruncated?: boolean;
+  /** A marketplace lists plugins; it is not one. Validate each plugin folder instead. */
+  hint: 'MARKETPLACE_ROOT_VALIDATE_EACH_PLUGIN_FOLDER';
+}
+export interface ClaudeDeclaredComponent {
+  key: string;
+  status: 'not-scanned';
+  paths: string[];
+  invalid?: string[];
 }
 export interface ClaudePluginSkillComponent {
   type: 'skill';
@@ -45,13 +62,22 @@ export interface ClaudePluginSkillComponent {
   status: ClaudeSkillStatus;
   reason?: string;
   mappedName?: string;
+  /** License the skill itself declares (frontmatter), after adaptation. */
+  license?: string;
   changes: SkillAdaptationChange[];
   missingReferences: string[];
+  notes?: string[];
   fileCount?: number;
   digestBefore?: string;
   digestAfter?: string;
   catalog?: 'absent' | 'same-digest' | 'different-digest';
-  /** True when an active skill with this identifier exists and differs, i.e. stage_revision can take it. */
+  /**
+   * Who wrote the active skill that has this identifier. `same-plugin` and `other-plugin` come from the
+   * `source-plugin` provenance key the adapter writes; `unverified` means the active skill has no such key
+   * (it was not adapted, so nothing records its origin).
+   */
+  origin?: 'same-plugin' | 'other-plugin' | 'unverified';
+  /** True when an active skill with this identifier exists, differs, and is not known to come from another plugin. */
   stageable?: boolean;
 }
 export interface ClaudePluginPreview {
@@ -59,8 +85,12 @@ export interface ClaudePluginPreview {
   readOnly: true;
   executionAuthority: false;
   plugin: PluginInventory['plugin'];
+  marketplace?: ClaudeMarketplace;
+  /** Component paths a manifest declares: validated and listed, never followed. */
+  declared: ClaudeDeclaredComponent[];
+  warnings: string[];
   components: Array<ClaudePluginSkillComponent | ClaudePluginOtherComponent>;
-  collisions: Array<{ name: string; kind: 'mapping' | 'catalog'; blocking: boolean; sources: string[] }>;
+  collisions: Array<{ name: string; kind: 'mapping' | 'catalog'; blocking: boolean; sources: string[]; reason?: 'name-conflict-other-origin' }>;
   summary: Record<ClaudeSkillStatus, number>;
   omitted: { skills: number };
 }
@@ -76,7 +106,13 @@ export interface SkillAdaptationReport {
   filesAfter: Array<{ path: string; sha256: string; size: number }>;
 }
 export interface PluginInventory {
-  plugin: { name?: string; version?: string; manifest: 'absent' | 'present' | 'invalid'; declares: string[] };
+  plugin: {
+    name?: string; version?: string; manifest: 'absent' | 'present' | 'invalid'; declares: string[];
+    /** License string the manifest declares, and what a root LICENSE file looks like (`proprietary-markers` is a heuristic). */
+    license?: { manifest?: string; file: 'absent' | 'present' | 'proprietary-markers' };
+  };
+  marketplace?: ClaudeMarketplace;
+  declared: ClaudeDeclaredComponent[];
   skills: Array<{ directory: string; path: string; error?: string }>;
   skillsOmitted: number;
   others: ClaudePluginOtherComponent[];
@@ -213,13 +249,35 @@ export function findMissingReferences(markdown: string, relatives: string[]): st
   return [...missing].sort().slice(0, MAX_REFERENCES);
 }
 
-function adaptFrontmatter(skill: PluginFile, files: PluginFile[], directory: string, parse: StrictSkillParser) {
-  const original = skill.content.toString('utf8');
+/**
+ * A UTF-8 BOM is stripped and reported; UTF-16 and invalid UTF-8 are named as such instead of surfacing as a
+ * misleading "frontmatter missing". The untouched bytes are preserved in the original copy either way.
+ */
+function decodeSkill(buffer: Buffer, changes: SkillAdaptationChange[]): string {
+  if ((buffer[0] === 0xff && buffer[1] === 0xfe) || (buffer[0] === 0xfe && buffer[1] === 0xff)) fail('SKILL_PLUGIN_ENCODING_UNSUPPORTED', 'utf-16');
+  let text: string;
+  try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer); }
+  catch { return fail('SKILL_PLUGIN_ENCODING_UNSUPPORTED', 'not valid utf-8'); }
+  if (text.startsWith('﻿')) { changes.push({ field: 'SKILL.md', action: 'bom-stripped' }); return text.slice(1); }
+  return text;
+}
+
+/** Facts about the body that are reported but never acted on. Bounded like the link scan. */
+function skillNotes(markdown: string): string[] {
+  const text = markdown.slice(0, MAX_LINK_SCAN_CHARS);
+  const notes: string[] = [];
+  if (text.includes('${CLAUDE_PLUGIN_ROOT}')) notes.push('uses-CLAUDE_PLUGIN_ROOT');
+  if (/(?:\]\(|`)(?:\.\.\/){1,3}[A-Za-z0-9._-]+\//.test(text)) notes.push('references-outside-skill-directory');
+  return notes;
+}
+
+function adaptFrontmatter(skill: PluginFile, files: PluginFile[], directory: string, parse: StrictSkillParser, pluginName?: string) {
+  const changes: SkillAdaptationChange[] = [];
+  const original = decodeSkill(skill.content, changes);
   const match = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(original);
   if (!match) fail('SKILL_FRONTMATTER_MISSING');
   const fields = readFields(match![1]!);
   const body = original.slice(match![0].length);
-  const changes: SkillAdaptationChange[] = [];
   const text = (key: string): string | undefined => {
     const value = fields.get(key);
     if (!value) return undefined;
@@ -234,8 +292,13 @@ function adaptFrontmatter(skill: PluginFile, files: PluginFile[], directory: str
   const mappedName = skillIdentifier(display);
   if (!mappedName) fail('SKILL_PLUGIN_NAME_UNMAPPABLE');
   if (mappedName !== display) changes.push({ field: 'name', action: 'name-mapped', from: reportLabel(display), to: mappedName });
-  const description = text('description');
+  let description = text('description');
   if (!description) fail('SKILL_PLUGIN_DESCRIPTION_MISSING');
+  // The strict parser rejects `<` and `>` in a description (it stays strict); the adapter swaps look-alike single quotation marks.
+  if (/[<>]/.test(description!)) {
+    description = description!.replaceAll('<', '‹').replaceAll('>', '›');
+    changes.push({ field: 'description', action: 'angle-brackets-normalized' });
+  }
   const license = text('license') || undefined, compatibility = text('compatibility') || undefined;
 
   let tools: string[] = [];
@@ -272,7 +335,9 @@ function adaptFrontmatter(skill: PluginFile, files: PluginFile[], directory: str
   put('source-format', 'claude-plugin-skill');
   if (mappedName !== display && sourceName) put('source-name', sourceName);
   put('source-sha256', originalSha256.slice('sha256:'.length));
-  changes.push({ field: 'metadata', action: 'provenance-added', to: 'source-format, source-sha256' + (metadata.has('source-name') ? ', source-name' : '') });
+  if (pluginName) put('source-plugin', pluginName);
+  changes.push({ field: 'metadata', action: 'provenance-added', to: 'source-format, source-sha256'
+    + (metadata.has('source-name') ? ', source-name' : '') + (pluginName ? ', source-plugin' : '') });
   if (files.some(file => file.relative === ORIGINAL_PATH)) fail('SKILL_PLUGIN_ORIGINAL_PATH_OCCUPIED');
   changes.push({ field: ORIGINAL_PATH, action: 'original-preserved' });
 
@@ -297,26 +362,30 @@ function adaptFrontmatter(skill: PluginFile, files: PluginFile[], directory: str
 }
 
 /** Pure analysis of one skill directory (already read through the guarded walk). */
-export function adaptClaudeSkill(files: PluginFile[], directory: string, parse: StrictSkillParser): ClaudeSkillAnalysis {
+export function adaptClaudeSkill(
+  files: PluginFile[], directory: string, parse: StrictSkillParser, options: { pluginName?: string } = {},
+): ClaudeSkillAnalysis {
   const skill = files.find(file => file.relative === 'SKILL.md');
   const failed = (error: unknown): ClaudeSkillAnalysis => ({
-    status: 'unsupported', reason: reasonCode(error), changes: [], missingReferences: [], files,
+    status: 'unsupported', reason: reasonCode(error), changes: [], missingReferences: [], notes: [], files,
   });
   if (!skill) return failed(new Error('SKILL_MD_NOT_FOUND'));
-  const missingReferences = findMissingReferences(skill.content.toString('utf8'), files.map(file => file.relative));
+  const markdown = skill.content.toString('utf8');
+  const missingReferences = findMissingReferences(markdown, files.map(file => file.relative));
+  const notes = skillNotes(markdown);
   try {
-    const strict = parse(skill.content.toString('utf8'));
-    return { status: 'compatible', sourceName: strict.name, mappedName: strict.name, changes: [], missingReferences, files };
+    const strict = parse(markdown);
+    return { status: 'compatible', sourceName: strict.name, mappedName: strict.name, changes: [], missingReferences, notes, files };
   } catch { /* not strict-valid: try the adapter below */ }
   try {
-    const adapted = adaptFrontmatter(skill, files, directory, parse);
+    const adapted = adaptFrontmatter(skill, files, directory, parse, options.pluginName);
     const output = files.map(file => file.relative === 'SKILL.md'
       ? { relative: 'SKILL.md', content: Buffer.from(adapted.rewritten, 'utf8') } : file);
     output.push({ relative: ORIGINAL_PATH, content: skill.content });
     output.sort((a, b) => walkOrder(a.relative, b.relative));
     return { status: 'adaptable', sourceName: adapted.sourceName, mappedName: adapted.mappedName,
-      changes: adapted.changes, missingReferences, files: output, originalSha256: adapted.originalSha256 };
-  } catch (error) { return { ...failed(error), missingReferences }; }
+      changes: adapted.changes, missingReferences, notes, files: output, originalSha256: adapted.originalSha256 };
+  } catch (error) { return { ...failed(error), missingReferences, notes }; }
 }
 
 async function entryInfo(target: string) {
@@ -351,6 +420,83 @@ async function collectMarkdown(directory: string, prefix: string, out: string[],
   }
 }
 
+// Heuristic only: "All rights reserved" is deliberately absent because MIT and Apache copyright lines carry it.
+const PROPRIETARY_LICENSE = /\bproprietary\b|\bnon-?commercial\b|\bmay not be (?:used|copied|redistributed|reproduced)\b|\bcommercial terms\b/i;
+async function licenseFileState(root: string): Promise<'absent' | 'present' | 'proprietary-markers'> {
+  for (const name of ['LICENSE', 'LICENSE.md', 'LICENSE.txt']) {
+    const info = await entryInfo(path.join(root, name));
+    if (!info) continue;
+    if (info.isSymbolicLink() || !info.isFile() || info.size > MAX_CONFIG_BYTES) return 'present';
+    const text = await readFile(path.join(root, name), 'utf8');
+    return PROPRIETARY_LICENSE.test(text.slice(0, 64 * 1024)) ? 'proprietary-markers' : 'present';
+  }
+  return 'absent';
+}
+function unsafeDeclaredPath(value: string): boolean {
+  return path.isAbsolute(value) || /^[A-Za-z]:/.test(value) || value.replaceAll('\\', '/').split('/').includes('..');
+}
+function declaredComponents(keys: string[], data: Record<string, unknown>): ClaudeDeclaredComponent[] {
+  return keys.map(key => {
+    const raw = data[key];
+    const paths = (typeof raw === 'string' ? [raw] : Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string') : []).slice(0, 16);
+    const invalid = paths.filter(unsafeDeclaredPath);
+    return { key, status: 'not-scanned' as const, paths: paths.map(item => reportLabel(item, 120)),
+      ...(invalid.length ? { invalid: invalid.map(item => reportLabel(item, 120)) } : {}) };
+  });
+}
+/** A marketplace root lists plugins and has no plugin manifest of its own; entries are reported, never followed. */
+async function readMarketplace(root: string): Promise<ClaudeMarketplace | undefined> {
+  const file = await readJson(path.join(root, '.claude-plugin', 'marketplace.json'));
+  if (!file || file.error) return undefined;
+  const data = record(file.value);
+  const entries = Array.isArray(data.plugins) ? data.plugins : [];
+  return {
+    ...(typeof data.name === 'string' ? { name: reportLabel(data.name, 64) } : {}),
+    plugins: entries.slice(0, MAX_ITEMS).map(entry => {
+      const item = record(entry), source = item.source;
+      const name = reportLabel(typeof item.name === 'string' ? item.name : '?', 64);
+      if (typeof source === 'string') {
+        return source.startsWith('./') && !unsafeDeclaredPath(source)
+          ? { name, source: 'local' as const, path: reportLabel(source, 120) } : { name, source: 'unknown' as const };
+      }
+      return { name, source: source && typeof source === 'object' ? 'remote' as const : 'unknown' as const };
+    }),
+    ...(entries.length > MAX_ITEMS ? { pluginsTruncated: true } : {}),
+    hint: 'MARKETPLACE_ROOT_VALIDATE_EACH_PLUGIN_FOLDER',
+  };
+}
+async function commandFacts(file: string): Promise<{ hasDescription: boolean; placeholders: boolean }> {
+  const info = await entryInfo(file);
+  if (!info || info.isSymbolicLink() || !info.isFile() || info.size > MAX_CONFIG_BYTES) return { hasDescription: false, placeholders: false };
+  const text = (await readFile(file, 'utf8')).slice(0, 64 * 1024);
+  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text.slice(0, 8000));
+  return {
+    hasDescription: Boolean(frontmatter && /^description:[ \t]*\S/m.test(frontmatter[1]!)),
+    placeholders: /\$ARGUMENTS\b|\$[1-9]\b/.test(text),
+  };
+}
+/** Handler kinds per event, never the commands themselves. */
+function hookSummary(event: string, handlers: unknown): string {
+  const kinds = new Map<string, number>();
+  if (Array.isArray(handlers)) {
+    for (const item of handlers) {
+      const inner = record(item).hooks;
+      for (const hook of Array.isArray(inner) ? inner : [item]) {
+        const kind = reportLabel(record(hook).type ?? 'unknown', 16);
+        kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
+      }
+    }
+  }
+  const total = [...kinds.values()].reduce((sum, count) => sum + count, 0);
+  return `${event} (${total}${total ? ': ' + [...kinds].map(([kind, count]) => `${kind} ${count}`).join(', ') : ''})`;
+}
+function mcpTransport(definition: unknown): string {
+  const item = record(definition);
+  if (!Object.keys(item).length) return 'not-a-server';
+  if (typeof item.type === 'string') return reportLabel(item.type, 12);
+  return item.url ? 'http' : item.command ? 'stdio' : 'unknown';
+}
+
 export async function isClaudePluginRoot(directory: string): Promise<boolean> {
   const names = new Set(await readdir(directory));
   return !names.has('SKILL.md') && ['.claude-plugin', 'skills', 'commands', 'agents', 'hooks', '.mcp.json'].some(name => names.has(name));
@@ -366,6 +512,12 @@ export async function inventoryClaudePlugin(root: string): Promise<PluginInvento
     ...(typeof data.name === 'string' ? { name: reportLabel(data.name, 64) } : {}),
     ...(typeof data.version === 'string' ? { version: reportLabel(data.version, 64) } : {}),
   };
+  plugin.license = {
+    ...(typeof data.license === 'string' ? { manifest: reportLabel(data.license, 64) } : {}),
+    file: await licenseFileState(root),
+  };
+  const declared = declaredComponents(plugin.declares, data);
+  const marketplace = await readMarketplace(root);
 
   const skills: PluginInventory['skills'] = [];
   let skillsOmitted = 0;
@@ -388,19 +540,29 @@ export async function inventoryClaudePlugin(root: string): Promise<PluginInvento
     if (info.isSymbolicLink() || !info.isDirectory()) { others.push(other(type, folder, [], 'SKILL_SYMLINK_REFUSED')); continue; }
     const names: string[] = [];
     await collectMarkdown(path.join(root, folder), '', names);
-    others.push(other(type, folder, names));
+    if (type === 'command') {
+      // Commands are skill candidates when they describe themselves; they are listed, never converted or activated.
+      const labels: string[] = [];
+      let candidates = 0;
+      for (const name of names.slice(0, MAX_ITEMS)) {
+        const facts = await commandFacts(path.join(root, folder, ...name.split('/')));
+        if (facts.hasDescription) candidates++;
+        labels.push(name + (facts.placeholders ? ' [args]' : '') + (facts.hasDescription ? '' : ' [no-description]'));
+      }
+      others.push({ ...other(type, folder, labels), candidates });
+    } else others.push(other(type, folder, names));
   }
   const hooks = await readJson(path.join(root, 'hooks', 'hooks.json'));
   if (hooks || await entryInfo(path.join(root, 'hooks'))) {
     const config = record(hooks?.value);
-    const events = Object.entries(record(config.hooks ?? config)).map(([event, handlers]) =>
-      `${event} (${Array.isArray(handlers) ? handlers.reduce((total, item) => total + (Array.isArray(record(item).hooks) ? (record(item).hooks as unknown[]).length : 1), 0) : 0})`);
+    const events = Object.entries(record(config.hooks ?? config)).map(([event, handlers]) => hookSummary(event, handlers));
     others.push(other('hook', hooks ? 'hooks/hooks.json' : 'hooks', events, hooks?.error));
   }
   const mcp = await readJson(path.join(root, '.mcp.json'));
   if (mcp) {
     const config = record(mcp.value);
-    others.push(other('mcp', '.mcp.json', Object.keys(record(config.mcpServers ?? config)), mcp.error));
+    const servers = Object.entries(record(config.mcpServers ?? config)).map(([name, definition]) => `${name} (${mcpTransport(definition)})`);
+    others.push(other('mcp', '.mcp.json', servers, mcp.error));
   }
-  return { plugin, skills, skillsOmitted, others };
+  return { plugin, ...(marketplace ? { marketplace } : {}), declared, skills, skillsOmitted, others };
 }
