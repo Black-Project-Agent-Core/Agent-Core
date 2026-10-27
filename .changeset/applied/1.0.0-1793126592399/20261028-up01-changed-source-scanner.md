@@ -1,0 +1,5 @@
+---
+"agent-core": minor
+---
+
+The `code_analysis` security `changed_source` scanner is now truthful and tested. A finding is reported resolved only when its file was scanned again; skipped, missing or oversized files keep their history, the result carries `status` (`complete`, `partial`, `nothing-scanned`), `filesRequested`, `filesDropped`, `truncated` and `limits`, and the Activity Tracker records `partial` instead of `clean` when files were skipped. Findings get a stable `key` that survives line shifts, an `introducedByChange` flag from `git diff -U0 HEAD`, and notebook code cells are scanned with a `cell` index. The `exec(` and TLS rules no longer match `RegExp.exec(` or a TLS variable set to `1`, project rules with a quantified alternation are rejected as ReDoS-prone, a file name such as `..cache` no longer aborts the scan, and nine curated rules were added with extension gating. The scanner gains its first tests. New fields are additive; existing fields keep their meaning except that `filesRequested` now counts the unique files before the 128-file cap.

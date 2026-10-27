@@ -348,6 +348,11 @@ Blok JSON ini adalah deklarasi pada peta yang sama, bukan registry terpisah. `ow
       "path": "docs/research/claude-ecosystem-donor",
       "purpose": "claude-ecosystem-donor-evidence",
       "owner": "docs"
+    },
+    {
+      "path": ".changeset/applied",
+      "purpose": "applied-release-intent-archive",
+      "owner": ".changeset"
     }
   ]
 }
@@ -360,7 +365,7 @@ Contoh intent untuk tujuan baru yang benar-benar diperlukan task: `{"path":"docs
 
 <!-- DIRECTORY-SNAPSHOT:START -->
 
-Daftar otomatis: **446 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
+Daftar otomatis: **447 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
 
 ```text
 <PROJECT_ROOT>/
@@ -373,7 +378,8 @@ Daftar otomatis: **446 direktori/boundary**. Subtree privat, dependency, generat
 |       |-- 0.14.0-1790585693322/
 |       |-- 0.15.0-1792358684619/
 |       |-- 0.8.1-1789707493393/
-|       `-- 0.9.0-1789732259531/
+|       |-- 0.9.0-1789732259531/
+|       `-- 1.0.0-1793126592399/
 |-- .git/  [metadata Git; tidak ditelusuri]
 |-- .github/
 |   `-- ISSUE_TEMPLATE/

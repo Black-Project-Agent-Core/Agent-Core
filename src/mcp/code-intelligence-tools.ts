@@ -440,8 +440,9 @@ export function registerCodeIntelligenceTools(
         });
         activityTracker.recordOutcome('CODE_INTELLIGENCE', 'success', 'Deterministic changed-source security advisory completed', {
           featureId: 'code.security.changed-source',
-          outcome: scan.findings.length ? 'findings' : 'clean',
-          properties: { filesScanned: scan.filesScanned, findings: scan.findings.length, resolved: scan.resolved.length },
+          // 'clean' only when every requested file was actually scanned; skipped or dropped files make it 'partial'.
+          outcome: scan.findings.length ? 'findings' : scan.status === 'complete' ? 'clean' : scan.status,
+          properties: { filesScanned: scan.filesScanned, findings: scan.findings.length, resolved: scan.resolved.length, skipped: scan.skipped.length },
         }, 'code-security-advisory', { workspace: context.workspace ?? '', ref: context.ref ?? '' });
         return textResult(scan);
       } catch (error) {
