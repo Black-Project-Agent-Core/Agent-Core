@@ -2,6 +2,7 @@ import path from 'node:path';
 import {lstat,readFile} from 'node:fs/promises';
 import type {MemoryEmbedder} from './embedder.js';
 import {MemoryService} from './service.js';
+import {cognitiveOptionsFromEnv} from './cognitive-config.js';
 import {withMemoryProcessLock} from './lock.js';
 import {experienceManifestSchema} from './experience-types.js';
 import {redactSensitiveString} from '../security/redaction.js';
@@ -90,7 +91,8 @@ export async function initializeAgentCoreMemory(projectRoot:string,memoryDir:str
     await readMemoryActivation(projectRoot);
     const {createLearningConsolidationHost}=await import('./learning-sink.js');
     const learningHost=createLearningConsolidationHost(projectRoot);
-    const service=await MemoryService.initialize(projectRoot,root,embedder,{experience:{enabled:true},consolidation:learningHost.policy});
+    // Cognitive upgrades stay off unless AGENT_CORE_MEMORY_COGNITIVE names them (unknown names are ignored).
+    const service=await MemoryService.initialize(projectRoot,root,embedder,{experience:{enabled:true},consolidation:learningHost.policy,cognitive:cognitiveOptionsFromEnv(process.env).options});
     if(service.health().canonicalStore==='error'||!service.health().canonicalComplete
       ||service.controller({workspaceKey:'agent-core',taskId:'activation-status',controllerId:'agent-core-host'}).capabilities().writeMode!=='experience-v2'){
       const detail=redactSensitiveString(service.getIssues().slice(0,3).map(issue=>issue.message).join('; ')).slice(0,1000);

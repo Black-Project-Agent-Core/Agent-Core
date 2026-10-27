@@ -4,7 +4,9 @@ import { buildSemanticDocument } from './semantic-document.js';
 import { memorySemanticRevision } from './disclosure.js';
 import { flattenRetrievalTokens, lexicalRetrievalTokens, tokenizeRetrievalText } from './identifier-tokenizer.js';
 import { normalizeMemorySourceFile, normalizeMemoryWorkspace } from './provenance.js';
-import { isMemoryLinkActive } from './relations.js';
+import { traverseRelations } from './graph-traversal.js';
+import { concreteIdentifiers, normalizeFusionWeights, type FusionChannelWeights } from './query-intent.js';
+import type { MemoryTier } from './memory-tiers.js';
 import type { SemanticSearchContext } from './index.js';
 import type { MemoryRecord } from './types.js';
 
@@ -25,6 +27,8 @@ export interface RetrievalComponents {
   feedbackInfluence: number;
   recency: number;
   linkBoost: number;
+  /** Optional bounded epistemic-confidence term; absent unless the host enabled it. */
+  epistemicInfluence?: number;
 }
 
 export const FUSION_DIVERSITY_POLICY = {
@@ -61,6 +65,11 @@ export interface MemorySearchResult {
   matchType: 'direct' | 'linked';
   viaMemoryId?: string;
   viaLinkType?: string;
+  /** Traversal depth of a linked result; 1 is a direct neighbor of a direct result. */
+  hops?: number;
+  /** Ids from the originating direct result to this linked result, exclusive. */
+  viaPath?: string[];
+  tier?: MemoryTier;
   suppressedDuplicateIds?: string[];
   selection?: FusionSelectionDiagnostics;
 }
@@ -80,6 +89,12 @@ export interface MemorySearchOptions {
   excludeMemoryIds?: string[];
   asOf?: string;
   feedbackSalience?: ReadonlyMap<string, number>;
+  /** Host-selected relation traversal depth; 1 (default) is the original single hop. */
+  maxHops?: number;
+  /** Host-selected per-channel multipliers for the fusion profile; neutral when omitted. */
+  channelWeights?: Partial<FusionChannelWeights>;
+  /** Host-computed bounded epistemic influence per record id for the fusion profile. */
+  epistemicInfluence?: ReadonlyMap<string, number>;
 }
 
 const zero = (): RetrievalComponents => ({
@@ -249,30 +264,7 @@ export function searchMemories(
     matchType: 'direct',
     ...(suppressed.get(item.record.id)?.length ? { suppressedDuplicateIds: suppressed.get(item.record.id) } : {}),
   }));
-  const seen = new Set(output.map((item) => item.record.id));
-
-  for (const item of direct) {
-    let expanded = 0;
-    for (const link of item.record.links.slice().sort((a, b) => b.strength - a.strength)) {
-      if (expanded >= maxNeighbors || output.length >= limit + maxNeighbors * limit) break;
-      if (!isMemoryLinkActive(link, referenceTime)) continue;
-      if (seen.has(link.targetId)) continue;
-      const neighbor = byId.get(link.targetId);
-      if (!neighbor) continue;
-      const components = zero();
-      components.linkBoost = 0.5 + link.strength;
-      output.push({
-        record: neighbor,
-        score: Math.max(0.01, item.score * 0.35 + components.linkBoost),
-        components,
-        matchType: 'linked',
-        viaMemoryId: item.record.id,
-        viaLinkType: link.type,
-      });
-      seen.add(neighbor.id);
-      expanded++;
-    }
-  }
+  appendLinkedResults(output, direct, byId, limit, maxNeighbors, options.maxHops, referenceTime);
 
   output.sort((a, b) => b.score - a.score || a.record.id.localeCompare(b.record.id));
   return output.slice(0, limit + maxNeighbors * limit);
@@ -306,6 +298,39 @@ function resolveReferenceTime(asOf?: string): number {
   return parsed;
 }
 
+/** Appends relation-linked results; hop 1 is the original single-hop expansion. */
+function appendLinkedResults(
+  output: MemorySearchResult[],
+  seeds: Array<{ record: MemoryRecord; score: number }>,
+  byId: ReadonlyMap<string, MemoryRecord>,
+  limit: number,
+  maxNeighbors: number,
+  maxHops: number | undefined,
+  referenceTime: number,
+): void {
+  const hits = traverseRelations(seeds, byId, {
+    maxHops: maxHops ?? 1,
+    maxNeighbors,
+    capacity: limit + maxNeighbors * limit,
+    initialCount: output.length,
+    referenceTime,
+    seen: new Set(output.map((item) => item.record.id)),
+  });
+  for (const hit of hits) {
+    const components = zero();
+    components.linkBoost = hit.linkBoost;
+    output.push({
+      record: hit.record,
+      score: hit.score,
+      components,
+      matchType: 'linked',
+      viaMemoryId: hit.viaMemoryId,
+      viaLinkType: hit.viaLinkType,
+      ...(hit.hops > 1 ? { hops: hit.hops, viaPath: hit.path } : {}),
+    });
+  }
+}
+
 function feedbackInfluence(salience: number | undefined): number {
   if (!Number.isFinite(salience)) return 0;
   const raw = (Number(salience) - 1) * 0.08;
@@ -322,14 +347,6 @@ function fusionChannelScores(components: RetrievalComponents): Record<FusionChan
     source: components.sourceFileMatch,
   };
 }
-function concreteIdentifiers(query: string): string[] {
-  const matches = query.match(/[A-Za-z0-9][A-Za-z0-9_.:/\\-]{7,}/g) ?? [];
-  return [...new Set(matches
-    .map((value) => value.toLowerCase().replaceAll('\\', '/').replace(/\.+$/, ''))
-    .filter((value) => /[0-9_.:/-]/.test(value)))]
-    .slice(0, 16);
-}
-
 function identifierHaystack(record: MemoryRecord): string {
   return [
     buildSemanticDocument(record),
@@ -420,7 +437,8 @@ function selectFusionCandidates(
       }
       const score = FUSION_MMR_LAMBDA * candidate.relativeScore
         + (1 - FUSION_MMR_LAMBDA) * (1 - candidate.redundancy)
-        + candidate.components.feedbackInfluence;
+        + candidate.components.feedbackInfluence
+        + (candidate.components.epistemicInfluence ?? 0);
       const currentBest = bestIndex >= 0 ? pool[bestIndex]! : undefined;
       if (
         score > bestScore
@@ -460,6 +478,7 @@ function searchMemoriesFusion(
     : records;
   const bm25 = buildBm25Profile(scopedRecords, query);
   const identifiers = concreteIdentifiers(query);
+  const channelWeights = normalizeFusionWeights(options.channelWeights);
 
   let candidates: FusionCandidate[] = scopedRecords.map((record) => {
     const { components } = scoreRecord(
@@ -472,6 +491,8 @@ function searchMemoriesFusion(
       rankingTime,
     );
     components.feedbackInfluence = feedbackInfluence(options.feedbackSalience?.get(record.id));
+    const epistemic = options.epistemicInfluence?.get(record.id);
+    if (epistemic !== undefined && Number.isFinite(epistemic)) components.epistemicInfluence = epistemic;
     return {
       record,
       components,
@@ -497,7 +518,7 @@ function searchMemoriesFusion(
         || left.record.id.localeCompare(right.record.id),
       );
     ranked.forEach((candidate, index) => {
-      candidate.rrf += 1 / (FUSION_RRF_K + index + 1);
+      candidate.rrf += channelWeights[channel] / (FUSION_RRF_K + index + 1);
       candidate.channels.push(channel);
     });
   }
@@ -555,31 +576,8 @@ function searchMemoriesFusion(
       lexicalCoverage: lexicalPairsSkipped > 0 ? 'bounded' : 'complete',
     },
   }));
-  const seen = new Set(output.map((item) => item.record.id));
   const byId = new Map(scopedRecords.map((record) => [record.id, record]));
-
-  for (const parent of selected) {
-    let expanded = 0;
-    for (const link of parent.record.links.slice().sort((a, b) => b.strength - a.strength)) {
-      if (expanded >= maxNeighbors || output.length >= limit + maxNeighbors * limit) break;
-      if (!isMemoryLinkActive(link, referenceTime)) continue;
-      if (seen.has(link.targetId)) continue;
-      const neighbor = byId.get(link.targetId);
-      if (!neighbor) continue;
-      const components = zero();
-      components.linkBoost = 0.5 + link.strength;
-      output.push({
-        record: neighbor,
-        score: Math.max(0.01, parent.score * 0.35 + components.linkBoost),
-        components,
-        matchType: 'linked',
-        viaMemoryId: parent.record.id,
-        viaLinkType: link.type,
-      });
-      seen.add(neighbor.id);
-      expanded += 1;
-    }
-  }
+  appendLinkedResults(output, selected, byId, limit, maxNeighbors, options.maxHops, referenceTime);
 
   output.sort((left, right) => right.score - left.score || left.record.id.localeCompare(right.record.id));
   return output.slice(0, limit + maxNeighbors * limit);

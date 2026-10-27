@@ -87,6 +87,10 @@ function shape(item: MemorySearchResult & { retrievalEvidence?: MemorySearchRetr
     ...(item.retrievalEvidence ? { retrievalEvidence: item.retrievalEvidence } : {}),
     ...(item.viaMemoryId ? { viaMemoryId: item.viaMemoryId } : {}),
     ...(item.viaLinkType ? { viaLinkType: item.viaLinkType } : {}),
+    // Present only for results reached beyond the first hop or served by a tier.
+    ...(item.hops ? { hops: item.hops } : {}),
+    ...(item.viaPath ? { viaPath: item.viaPath } : {}),
+    ...(item.tier ? { tier: item.tier } : {}),
     delivery: {
       detail: delivery.detail,
       truncated: delivery.truncated,

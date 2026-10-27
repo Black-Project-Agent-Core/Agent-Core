@@ -1,0 +1,291 @@
+id	package	title	source
+CHG-01	UP-06	Audit anggaran teks selalu-dimuat (prompt-audit untuk AGENTS.md)	W1-claude-code-changelog
+CHG-02	UP-06	Kapsul instruksi MCP harus muat batas karakter klien	W1-claude-code-changelog
+CHG-03	UP-05	Taksonomi hasil tool: ditolak-kebijakan, tanpa-jawaban, dibatalkan, gagal; plus catatan keputusan lokal	W1-claude-code-changelog
+CHG-04	UP-03	Korpus uji bypass untuk pemeriksa perintah (command-manager) di PowerShell/cmd/Git Bash	W1-claude-code-changelog
+CHG-05	UP-03	Penjaga penghapusan katastropik deterministik untuk Windows	W1-claude-code-changelog
+CHG-06	UP-04	Edit/Write: tolak file non-UTF-8, jaga BOM/CRLF, hindari "file modified" palsu	W1-claude-code-changelog
+CHG-07	UP-04	Rewind/checkpoint: verifikasi sebelum lapor sukses, batas disk, hard link, reset pelacakan baca	W1-claude-code-changelog
+CHG-08	UP-03	Jalur Windows berbahaya: namespace NT, UNC/NTLM, junction, panjang jalur, drive-letter case	W1-claude-code-changelog
+CHG-09	UP-05	Invarian kompaksi: mode kegagalan yang harus diuji	W1-claude-code-changelog
+CHG-10	UP-05	Integritas riwayat chat saat dimuat ulang (self-heal, bukan crash)	W1-claude-code-changelog
+CHG-11	UP-05	Batas loop, retry, idle, dan penolakan beruntun	W1-claude-code-changelog
+CHG-12	UP-07	Higiene injeksi prompt dan provenansi pesan	W1-claude-code-changelog
+CHG-13	UP-07	Redaksi rahasia: perluas pola dan jaga performa/validitas	W1-claude-code-changelog
+CHG-14	UP-05	Nama bertabrakan dengan properti prototipe (`constructor`, `__proto__`, `toString`)	W1-claude-code-changelog
+CHG-15	UP-07	Pemindai berkas kredensial: nama varian (swap, cadangan, titik dua)	W1-claude-code-changelog
+CHG-16	UP-03	Keluaran proses yang bersih: ANSI/warna dan variabel lingkungan yang diwarisi	W1-claude-code-changelog
+CHG-17	UP-07	Kredensial hanya dikirim ke hostnya sendiri (router penyedia)	W1-claude-code-changelog
+CHG-18	UP-03	Siklus hidup proses latar: tenggat, kebuntuan interaktif, pohon proses, batas keluaran	W1-claude-code-changelog
+CHG-19	UP-03	Penjaga internal harus fail-closed	W1-claude-code-changelog
+CHG-20	UP-08	Skill konten: bahaya host Windows/PowerShell (daftar periksa on-demand)	W1-claude-code-changelog
+CHG-21	UP-05	Validasi konfigurasi: gagal-tutup parsial, satu entri buruk tidak membuang file, penulis bersamaan	W1-claude-code-changelog
+CHG-22	UP-06	Rincian konteks/biaya per sumber dan laporan Skill tak terpakai	W1-claude-code-changelog
+CHG-23	UP-10	Siklus hidup Skill/plugin: validasi, tabrakan ID, path, uninstall, rekaman	W1-claude-code-changelog
+CHG-24	UP-05	Profil terbatas dan mode aman untuk pemulihan	W1-claude-code-changelog
+CHG-25	UP-12	Kriteria penerimaan untuk instruksi workspace bertingkat (item BERSYARAT)	W1-claude-code-changelog
+CHG-26	UP-12	Kontrak child-task Native dan pelajaran subagen (item BERSYARAT)	W1-claude-code-changelog
+CHG-27	UP-05	Heartbeat progres untuk tool panjang dan batas waktu klien	W1-claude-code-changelog
+CHG-28	UP-05	Tidak ada pemotongan atau "tanpa hasil" diam-diam	W1-claude-code-changelog
+CHG-29	REF	Bukti bahwa beberapa desain Agent Core sudah selaras dengan pengalaman Claude Code	W1-claude-code-changelog
+GCG-01	UP-04	`git diff` pada pemanggil AC menulis ulang `.git/index` asli meski `--no-optional-locks` (terukur)	W10a-official-plugins-final-closure
+GCG-02	UP-04	`attachPatchHunks` diam-diam kehilangan hunk untuk path non-ASCII dan konfigurasi prefiks diff pengguna (teruk	W10a-official-plugins-final-closure
+GCG-03	UP-04	Rincian pengerasan git yang melengkapi OFA-22: opsi CLI vs konfigurasi, submodul tercatat, `safe.directory`	W10a-official-plugins-final-closure
+GCG-04	UP-01	Scanner `changed_source`: nama berawalan `..` dianggap lolos dari akar dan membatalkan seluruh scan	W10a-official-plugins-final-closure
+GCG-05	UP-01	Scanner `changed_source`: klasifikasi "diperkenalkan" vs "sudah ada" terhadap baseline git	W10a-official-plugins-final-closure
+GCG-06	UP-01	Scanner `changed_source`: berkas notebook `.ipynb` sebaiknya dipindai per sel kode, bukan teks JSON mentah	W10a-official-plugins-final-closure
+GCG-07	UP-01	Kejujuran cakupan scanner: pemotongan bertanda, daftar "yang tidak dideteksi", dan satu-temuan-per-aturan-per-	W10a-official-plugins-final-closure
+GCG-08	UP-02	Pratinjau plugin: akar marketplace dibaca sebagai plugin kosong tanpa petunjuk	W10a-official-plugins-final-closure
+GCG-09	UP-02	Inventaris MCP/hook plugin: kunci non-server, kunci yang memuat perintah, dan prevalensi bentuk manifest	W10a-official-plugins-final-closure
+GCG-10	REF	Ketepatan `missingReferences` terukur di korpus resmi; jangan diperluas ke "referensi di luar references/"	W10a-official-plugins-final-closure
+GCG-11	REF	Paritas validator Skill resmi, identitas plugin, dan nama yang tidak sama dengan direktori	W10a-official-plugins-final-closure
+GCG-12	UP-04	`change_review`: sinyal tes dihapus/berubah dari `uplift_checks`	W10a-official-plugins-final-closure
+GCG-13	REF	Pola eval/grader Skill: apa yang sudah dimiliki AC, apa yang tidak, dan cacat harness donor yang dihindari AC	W10a-official-plugins-final-closure
+GCG-14	REF	Penghapusan direktori berpagar (pola donor) dan pelajaran Windows	W10a-official-plugins-final-closure
+GCH-01	UP-13	`featureId` Skill (`skill:<nama>`) tidak lolos sanitizer tracker; uji memock penghalangnya	W10b-claude-code-mods-final-closure
+GCH-02	UP-13	Kontrak skema outcome lokal: penolakan harus jujur, tidak boleh melempar ke pemanggil, dan harus diuji	W10b-claude-code-mods-final-closure
+GCH-03	UP-03	`command-manager.ts`: daftar blokir perintah tanpa uji, tanpa normalisasi `.exe`, kutip, dan baris baru	W10b-claude-code-mods-final-closure
+GCH-04	UP-13	Pembaca jurnal tracker menyamakan "tidak terbaca" dengan "kosong"; penanda `activity.corrupt.*` tidak dipangka	W10b-claude-code-mods-final-closure
+GCH-05	UP-12	`agents-md`: invarian dari kode (bukan README) dan daftar uji siap pakai bila resolver instruksi bertingkat ke	W10b-claude-code-mods-final-closure
+GCH-06	REF	Koreksi atas GCD-10 dan kasus uji nama/id plugin dari `sec-default` (hanya yang belum ada)	W10b-claude-code-mods-final-closure
+GCH-07	REF	Anggaran payload diff: header hunk setelah pemotongan dan batas total lintas berkas	W10b-claude-code-mods-final-closure
+GCI-01	UP-09	Engineering vs Addy: delta konkret per Skill (mengoreksi KWA-14)	W10c-kw-engineering-final-closure
+GCI-02	UP-09	Pengerasan workflow GitHub Actions: paket `ci-cd-and-automation` tidak memilikinya	W10c-kw-engineering-final-closure
+GCI-03	UP-10	Kalibrasi daftar periksa tinjauan impor: verdik turunan aturan dan daftar "jangan tandai"	W10c-kw-engineering-final-closure
+GCI-04	REF	Design: a11y sudah tercakup; empat pola kecil handoff dan audit token	W10c-kw-engineering-final-closure
+GCI-05	REF	`marketplace.json`: tiga bentuk `source` dan disiplin pin	W10c-kw-engineering-final-closure
+GCI-06	UP-09	Aturan verifikasi kecil dari tujuh referensi small-business: bidang opt-in, paginasi, label asal angka, ambang	W10c-kw-engineering-final-closure
+CHB-01	UP-03	kill_process tanpa penjaga diri sendiri dan tanpa validasi PID	W1b-claude-code-changelog-rest
+CHB-02	UP-03	Pipa UTF-8 untuk keluaran proses di Windows (decoder per-chunk, encoding konsol, Python)	W1b-claude-code-changelog-rest
+CHB-03	UP-05	`finish_reason` hanya direkam, tidak dibaca (jawaban terpotong tampil sebagai jawaban final)	W1b-claude-code-changelog-rest
+CHB-04	UP-02	Adapter Skill plugin: BOM UTF-8 dan encoding non-UTF-8 menghasilkan galat menyesatkan	W1b-claude-code-changelog-rest
+CHB-05	UP-06	Laporan byte per-tool pada manifest MCP dan pola "pindahkan teks acuan ke Skill"	W1b-claude-code-changelog-rest
+CHB-06	UP-03	Daftar target "persistensi eksekusi" sebagai catatan penasihat pada hasil tulis dan pemindai CC-P2	W1b-claude-code-changelog-rest
+CHB-07	UP-04	Satu helper pemotongan teks yang aman terhadap pasangan pengganti Unicode	W1b-claude-code-changelog-rest
+CHB-08	UP-07	Penetralan karakter tak terlihat butuh daftar kecuali, dan label asal bisa membuat tugas dilewati (tambahan un	W1b-claude-code-changelog-rest
+CHB-09	UP-05	Klasifikasi galat penyedia: dahulukan kolom terstruktur, uji bahwa isi pengguna tidak memicu cooldown	W1b-claude-code-changelog-rest
+CHB-10	UP-03	Penjelasan kode keluar NTSTATUS Windows pada hasil proses dan pada Skill host Windows	W1b-claude-code-changelog-rest
+CHB-11	UP-10	Lint tumpang-tindih `## Triggers` antar capability pack	W1b-claude-code-changelog-rest
+CHB-12	UP-03	Koreksi desain penjaga teks-shell untuk CHG-04/05 (false positive dan jalur berlapis)	W1b-claude-code-changelog-rest
+CHB-13	UP-12	Tambahan bukti untuk kontrak child-task Native (CHG-26)	W1b-claude-code-changelog-rest
+CHB-14	UP-13	Kolom korelasi untuk Activity Tracker lokal (diturunkan dari kolom telemetri)	W1b-claude-code-changelog-rest
+MOD-01	UP-12	`agents-md`: resolver instruksi proyek untuk Native — evaluasi ulang disposisi BERSYARAT	W2-claude-code-mods
+MOD-02	UP-12	`agents-md`: lampiran bersarang malas saat `Read`, per loop — spesifikasi dan katalog kegagalan	W2-claude-code-mods
+MOD-03	UP-07	Aturan otoritas teks buatan-repo: boleh menahan, tidak boleh memberi grant	W2-claude-code-mods
+MOD-04	UP-05	Alasan henti model (`finish_reason`) belum dipakai Native	W2-claude-code-mods
+MOD-05	UP-05	Pemberitahuan dan jejak kompaksi konteks (event + baris batas transkrip)	W2-claude-code-mods
+MOD-06	UP-06	Buku besar biaya konteks per sumber (menjawab masalah teks selalu-dimuat)	W2-claude-code-mods
+MOD-07	UP-07	Provenans masukan sebagai himpunan tertutup, dan label satu-baris yang disanitasi	W2-claude-code-mods
+MOD-08	UP-03	Interpretasi semantik kode keluar perintah (khusus Windows)	W2-claude-code-mods
+MOD-09	UP-04	Registri status-baca: dedup `file_unchanged`, petunjuk basi pasca-perintah, penjaga tulis-tanpa-baca	W2-claude-code-mods
+MOD-10	UP-03	Pekerjaan latar yang masih berjalan saat turn berakhir; ikat proses ke task	W2-claude-code-mods
+MOD-11	UP-12	Kontrak child-task / subagen (disposisi BERSYARAT dipertahankan, spesifikasi diperkaya)	W2-claude-code-mods
+MOD-12	UP-12	Peta kontrak event/izin donor ke owner Agent Core (nilai per kelompok)	W2-claude-code-mods
+MOD-13	UP-04	Hardening git untuk panel perubahan task dan fingerprint; katalog uji tepi	W2-claude-code-mods
+MOD-14	UP-11	Skema temuan review: skenario kegagalan konkret, verdict verifikasi, hasil pasca-perbaikan	W2-claude-code-mods
+MOD-15	REF	Tata letak prompt ramah-cache dan pencatatan token ter-cache	W2-claude-code-mods
+MOD-16	UP-11	Pola uji: dunia di bawah mod, panggilan tak terjawab melempar, jam tiruan dengan `settle()`	W2-claude-code-mods
+MOD-17	UP-12	Prinsip kebijakan dari `sec-default` yang layak dipinjam tanpa mesin tier	W2-claude-code-mods
+MOD-18	UP-06	Bukti kelengkapan pengiriman instruksi bootstrap (dari pelajaran "Read terpotong")	W2-claude-code-mods
+MOD-19	UP-13	UI diff: lampirkan hunk ke pesan berikut dengan catatan potong; buka panel hanya setelah ada isi	W2-claude-code-mods
+CCP-01	UP-01	Presisi aturan bawaan `changed_source`: false positive tinggi pada `RegExp.exec(`	W3-claude-code-plugins-examples
+CCP-02	UP-01	Perluas katalog aturan bawaan dan tambah gerbang path/ekstensi	W3-claude-code-plugins-examples
+CCP-03	UP-01	Kejujuran hasil scanner: berkas melewati batas 128 dipotong diam-diam, dan "resolved" palsu untuk berkas yang 	W3-claude-code-plugins-examples
+CCP-04	UP-01	Pisahkan temuan "diperkenalkan perubahan ini" dari "sudah ada di berkas"	W3-claude-code-plugins-examples
+CCP-05	UP-08	Skill baru `security-change-review`: metode investigasi→sanggahan untuk diff	W3-claude-code-plugins-examples
+CCP-06	UP-04	Perkuat pemanggilan `git` pada repo asing (fsmonitor, `safe.directory`, resolusi biner)	W3-claude-code-plugins-examples
+CCP-07	UP-07	Katalog jalur dan variabel kredensial terpusat	W3-claude-code-plugins-examples
+CCP-08	UP-02	Preview Skill harus mengenali akar marketplace (`.claude-plugin/marketplace.json`)	W3-claude-code-plugins-examples
+CCP-09	UP-02	Referensi relatif-plugin di badan Skill tidak dilaporkan (`${CLAUDE_PLUGIN_ROOT}`, `../skill-lain/`)	W3-claude-code-plugins-examples
+CCP-10	UP-02	Kontinuitas lisensi dan provenance saat mengadaptasi Skill dari plugin	W3-claude-code-plugins-examples
+CCP-11	UP-02	Lint manifest ringan dan itemisasi hooks/MCP inline (hanya melapor)	W3-claude-code-plugins-examples
+CCP-12	UP-08	Skill baru untuk proses desain orisinal (bukan klon, bukan sekadar rekayasa UI)	W3-claude-code-plugins-examples
+CCP-13	UP-09	Disiplin tinjauan sinyal-tinggi dan lensa tinjauan tambahan	W3-claude-code-plugins-examples
+CCP-14	UP-14	`.gitattributes` untuk normalisasi EOL yang tidak bergantung pada konfigurasi per-pengguna	W3-claude-code-plugins-examples
+CCP-15	UP-01	Perketat penyaring ReDoS aturan proyek dengan cek tumpang-tindih alternasi	W3-claude-code-plugins-examples
+CCP-16	UP-14	Formulir isu perilaku agen + bidang diagnostik terisi otomatis	W3-claude-code-plugins-examples
+CCP-17	UP-14	Pola kebijakan-sebagai-kode: aturan tertulis + pemeriksa mekanis + tabel pengecualian beralasan	W3-claude-code-plugins-examples
+CCP-18	UP-14	Pertahanan injeksi prompt untuk agen yang dipicu teks pihak luar (triage/dedupe) — jawaban untuk "pola proses 	W3-claude-code-plugins-examples
+CCP-19	UP-05	Batas panggilan per-alat per-run untuk alat berefek samping	W3-claude-code-plugins-examples
+CCP-20	UP-14	Pola dokumen keamanan "apa yang TIDAK dicakup" dan katalog tool yang mengirim isi keluar mesin	W3-claude-code-plugins-examples
+OFA-01	UP-01	Tiga cacat nyata pada scanner CC-P2 yang dapat ditutup dengan teknik donor	W4-official-plugins-A
+OFA-02	UP-01	Tabel aturan bawaan terkurasi: gerbang ekstensi/path, pengecualian aman, CWE, dan confidence	W4-official-plugins-A
+OFA-03	UP-01	Sidik jari temuan stabil terhadap pergeseran baris	W4-official-plugins-A
+OFA-04	UP-11	Laporan temuan yang jujur-cakupan, bertanda revisi, dan tidak pernah mengklaim yang tidak dijalankan	W4-official-plugins-A
+OFA-05	UP-09	Protokol validasi temuan keamanan: tiga lensa, bawaan FALSE_POSITIVE, penyerang dan keuntungan, mitigasi harus	W4-official-plugins-A
+OFA-06	UP-09	Metodologi berburu kerentanan dan pola "sering terlewat" sebagai referensi Skill	W4-official-plugins-A
+OFA-07	UP-09	Perbaikan keamanan dengan tiga klaim terukur dan penolakan yang jujur	W4-official-plugins-A
+OFA-08	UP-11	Vonis bukti dihitung skrip: PROVEN / PARTLY PROVEN / NOT PROVEN dan "apa yang tidak dibuktikan"	W4-official-plugins-A
+OFA-09	UP-11	Pembaca bukti hasil tes (skrip lokal) yang menolak "0 dieksekusi", "semua dilewati", dan angka ketikan	W4-official-plugins-A
+OFA-10	UP-09	Pengujian karakterisasi dan kesetaraan: legacy sebagai oracle, perbandingan yang tak bisa jalan = gagal, canar	W4-official-plugins-A
+OFA-11	UP-09	Alur migrasi/uplift terverifikasi: INTENT, preflight manusia, scope boundary, pilot→playbook, batch, gerbang m	W4-official-plugins-A
+OFA-12	UP-09	Katalog delta versi: empat kategori, "senyap-perilaku", dan sinyal uplift-vs-rewrite	W4-official-plugins-A
+OFA-13	UP-09	Kalibrasi review: skor kepercayaan, katalog false-positive, ambang, dan kepatuhan pada berkas instruksi	W4-official-plugins-A
+OFA-14	UP-09	Lensa review spesialis: silent-failure, comment-rot, kualitas tes, invarian tipe	W4-official-plugins-A
+OFA-15	UP-07	Disiplin "isi yang dianalisis adalah data" dan pembersih karakter tak terlihat untuk teks turunan sumber tak t	W4-official-plugins-A
+OFA-16	UP-09	Git: pembersihan cabang `[gone]` yang aman dan perbaikan contoh pemeriksaan rahasia	W4-official-plugins-A
+OFA-17	UP-09	Ekstraksi aturan bisnis dari kode: kartu Given/When/Then, referee sitasi, panel P0, konsolidasi, buku tinjauan	W4-official-plugins-A
+OFA-18	UP-12	Pola fan-out terbatas: kapasitas, circuit breaker, daftar celah yang dapat diteruskan, resume bukan restart	W4-official-plugins-A
+OFA-19	UP-13	Ide UI/dashboard: chip vonis, "berubah sejak diverifikasi", deck tinjauan, tombol "taruh di prompt"	W4-official-plugins-A
+OFA-20	UP-12	ralph-loop dan pola penghentian: tidak ada bukti baru untuk membuka kembali	W4-official-plugins-A
+OFA-21	REF	hookify: aturan dari koreksi sudah dimiliki Learning; hanya heuristik analisis percakapan yang layak diingat	W4-official-plugins-A
+OFA-22	UP-04	Satu pembantu git baca-saja yang diperkeras, menggantikan tujuh pemanggilan dengan argumen berbeda-beda	W4-official-plugins-A
+OFB-01	UP-02	Adapter plugin menolak deskripsi Skill yang memuat `<` atau `>`	W5-official-plugins-B
+OFB-02	UP-02	Identitas plugin tidak tercatat pada provenance: nama skill bentrok lintas plugin dan `stageable` salah sasara	W5-official-plugins-B
+OFB-03	UP-02	`commands/*.md` sebagai kandidat Skill pada preview/adapter	W5-official-plugins-B
+OFB-04	UP-02	Laporan adapter: placeholder yang tak terselesaikan dan mode invokasi	W5-official-plugins-B
+OFB-05	UP-02	Format katalog marketplace: skill-bundle `strict:false`, `lspServers`, `renames`	W5-official-plugins-B
+OFB-06	UP-10	Lint Skill advisory (ukuran badan, Trigger/Non-trigger, tautan mati, contoh bash)	W5-official-plugins-B
+OFB-07	UP-10	Lapisan asersi pada evaluasi efektivitas Skill (grading + catatan analis deterministik)	W5-official-plugins-B
+OFB-08	UP-10	Panduan penyusunan fixture routing (trigger eval)	W5-official-plugins-B
+OFB-09	REF	Halaman review hasil eval statis (hanya sebagai referensi, dengan jebakan)	W5-official-plugins-B
+OFB-10	UP-09	Isolasi verifikasi ganda dan pola serangan untuk tinjauan adversarial	W5-official-plugins-B
+OFB-11	UP-06	Audit anggaran instruksi (AGENTS.md 84 KB) dengan rubrik claude-md-improver	W5-official-plugins-B
+OFB-12	UP-06	Permukaan selalu-dimuat harus pendek; laporan byte per-tool manifest	W5-official-plugins-B
+OFB-13	UP-10	Kebijakan admisi payload Skill (aturan deterministik advisory + daftar periksa)	W5-official-plugins-B
+OFB-14	UP-11	Pola cache verdict, status unknown≠gagal, sink ternetralkan, loop terbatas	W5-official-plugins-B
+OFB-15	UP-10	Pemeriksa drift upstream untuk `UPSTREAM.json`	W5-official-plugins-B
+OFB-16	UP-07	Elisitasi MCP sebagai konfirmasi yang tidak dapat dipalsukan model	W5-official-plugins-B
+OFB-17	UP-07	Pengerasan OAuth: registrasi klien dinamis tanpa batas dan opsi CIMD	W5-official-plugins-B
+OFB-18	UP-05	Notifikasi progres/logging MCP untuk tool panjang	W5-official-plugins-B
+OFB-19	UP-06	Pola search+execute dan disiplin deskripsi tool	W5-official-plugins-B
+OFB-20	UP-05	Batas ukuran hasil tool di sisi host	W5-official-plugins-B
+OFB-21	UP-14	Matriks troubleshooting tunnel terurut dan semantik probe liveness	W5-official-plugins-B
+OFB-22	EXCL-APP	Model kepercayaan kanal masuk (pairing, allowlist, gerbang keluar) sebagai pola siap pakai	W5-official-plugins-B
+OFB-23	UP-14	Paket konfigurasi LSP tambahan (hanya konfigurasi)	W5-official-plugins-B
+OFB-24	REF	Referensi proses dan "tell" desain generik	W5-official-plugins-B
+OFB-25	UP-13	Laporan dampak kerja lokal dengan aturan kejujuran metrik	W5-official-plugins-B
+OFB-26	UP-13	Analisis biaya sesi (dedup, jeda idle, prompt termahal)	W5-official-plugins-B
+OFB-27	EXCL-NONCODE	Skill "playground" (HTML satu berkas dengan keluaran prompt)	W5-official-plugins-B
+OFB-28	REF	Refresh berbasis delta dengan blok state tertanam	W5-official-plugins-B
+OFB-29	UP-11	Gerbang mekanis, sentinel akhir, dan resume dari berkas (math-proof)	W5-official-plugins-B
+OFB-30	UP-11	Buku besar klaim sensitif-versi untuk Skill/dokumen	W5-official-plugins-B
+KWA-01	UP-07	Gerbang "aksi berasal dari konten" dan aturan data-bukan-instruksi lintas sumber	W6-knowledge-work-core
+KWA-02	UP-07	Protokol tulis-aman: cek akses → baca → tampilkan sebelum/sesudah → tulis hanya yang diminta → baca ulang	W6-knowledge-work-core
+KWA-03	UP-10	Struktur Skill bertingkat (Tools used, Ground, tiers) dan kosakata kategori `~~`	W6-knowledge-work-core
+KWA-04	UP-10	Simulasi kesiapan impor 131 skill dan jebakan blok aturan duplikat	W6-knowledge-work-core
+KWA-05	EXCL-NONCODE	Skill `analysis-validation`: QA pra-pengiriman analisis dan data	W6-knowledge-work-core
+KWA-06	REF	Referensi SQL, visualisasi, dan dashboard HTML (data)	W6-knowledge-work-core
+KWA-07	REF	Meta-skill konteks-domain (`data-context-extractor`) dan lint placeholder tak terisi	W6-knowledge-work-core
+KWA-08	UP-08	Skill `multi-source-research`: pencarian lintas-sumber, sintesis, atribusi, tingkat kepercayaan	W6-knowledge-work-core
+KWA-09	EXCL-NONCODE	Digest aktivitas harian/mingguan (dikelompokkan per topik)	W6-knowledge-work-core
+KWA-10	EXCL-NONCODE	Memori dua-tingkat (hot cache + penyimpanan dalam) dan dekode singkatan	W6-knowledge-work-core
+KWA-11	EXCL-NONCODE	Daftar tugas dan ledger komitmen (TASKS.md, `/update`)	W6-knowledge-work-core
+KWA-12	UP-08	Skill `incident-postmortem` (insiden, status, postmortem, runbook)	W6-knowledge-work-core
+KWA-13	EXCL-NONCODE	Templat operasi lain: change-request, status-report, risk matrix, process-doc, vendor-review, capacity-plan, e	W6-knowledge-work-core
+KWA-14	UP-09	Engineering vs paket Addy: delta konkret per Skill	W6-knowledge-work-core
+KWA-15	EXCL-NONCODE	Product management: kerangka prioritisasi, delta spesifikasi, status RAG, ROAM	W6-knowledge-work-core
+KWA-16	UP-10	Daftar periksa review keamanan/privasi plugin (`.github/policy`) untuk Skill `skill-authoring`	W6-knowledge-work-core
+KWA-17	UP-14	Pola otomasi repositori (marketplace, bump SHA, cache verdik, revert, liveness)	W6-knowledge-work-core
+KWA-18	UP-08	Skill `skill-authoring`: panduan penulisan Skill dan review impor	W6-knowledge-work-core
+KWA-19	REF	Skill customizer dan penemuan MCP lewat registri	W6-knowledge-work-core
+KWA-20	EXCL-NONCODE	PDF viewer: pola anotasi-dengan-verifikasi-visual	W6-knowledge-work-core
+KWA-21	EXCL-NONCODE	Design: critique, handoff, design system, research, ux-copy	W6-knowledge-work-core
+KWA-22	EXCL-FIN	Domain teregulasi (legal/finance/HR): disclaimer, trigger eskalasi, standar bukti, rekonsiliasi	W6-knowledge-work-core
+KWA-23	UP-02	Catatan lisensi dan anomali berkas	W6-knowledge-work-core
+KWA-24	UP-10	Klaim README tidak selalu cocok dengan isi (inventaris harus dari berkas)	W6-knowledge-work-core
+KWB-01	UP-07	Doktrin "isi adalah data" yang terkonsolidasi untuk loop Native	W7-knowledge-work-bio-smallbiz
+KWB-02	UP-09	Daftar periksa "kepercayaan keluaran tool" (kosong, nol, terpotong, ringkasan)	W7-knowledge-work-bio-smallbiz
+KWB-03	UP-02	Celah deteksi rujukan dan "applicability" pada adapter plugin Claude	W7-knowledge-work-bio-smallbiz
+KWB-04	UP-10	Non-triggers yang diskriminatif untuk capability pack yang tumpang-tindih	W7-knowledge-work-bio-smallbiz
+KWB-05	EXCL-NONCODE	Skill baru on-demand: audit keterbacaan situs untuk mesin pencari dan asisten AI	W7-knowledge-work-bio-smallbiz
+KWB-06	UP-10	Lint statis lintas-pack sebagai penjaga regresi (bukan pembersih)	W7-knowledge-work-bio-smallbiz
+KWB-07	UP-10	Standar penulisan Skill (distilasi `build-agent/skill_authoring` + pola gotchas)	W7-knowledge-work-bio-smallbiz
+KWB-08	REF	Templat rantai Skill: In / Out / Gate, pemilik angka, bawa-maju	W7-knowledge-work-bio-smallbiz
+KWB-09	EXCL-NONCODE	Klaim jujur tentang jadwal dan zona waktu	W7-knowledge-work-bio-smallbiz
+KWB-10	UP-14	"Satu produk, dua registrasi": aturan untuk server yang sama di dua prefiks	W7-knowledge-work-bio-smallbiz
+KWB-11	UP-11	Rubrik berbukti-kutipan dengan status "tidak dapat dinilai" dan penjaga skor datar	W7-knowledge-work-bio-smallbiz
+KWB-12	EXCL-NONCODE	Pola pendamping bio-research: envelope provenance, validator lunak/ketat, preflight terstruktur	W7-knowledge-work-bio-smallbiz
+KWB-13	EXCL-NONCODE	`scientific-problem-selection`: kerangka pemilihan masalah riset	W7-knowledge-work-bio-smallbiz
+KWB-14	REF	`build-agent`, `build-connector`, dan pustaka jebakan konektor	W7-knowledge-work-bio-smallbiz
+KWP-01	UP-02	Dokumen tertaut di luar `references/` tidak dapat dibaca lewat `skills(read)`, tetapi pratinjau adapter mengan	W8-knowledge-work-partner-built
+KWP-02	EXCL-ZOOM	Frontmatter `triggers:` berbentuk daftar membuat skill Zoom berstatus unsupported	W8-knowledge-work-partner-built
+KWP-03	EXCL-ZOOM	Tautan antar-skill bersaudara dan tautan keluar akar dilaporkan sebagai "missing reference" dan menjenuhkan ba	W8-knowledge-work-partner-built
+KWP-04	EXCL-ZOOM	Referensi massal (tabel data) tidak cocok dibaca per fragmen; pola "peta + snapshot crawl" menghindari menyali	W8-knowledge-work-partner-built
+KWP-05	EXCL-ZOOM	Arsitektur routing berlapis dan navigasi di fragmen pertama (standar penulisan hub); jalur tumbuh indeks capab	W8-knowledge-work-partner-built
+KWP-06	UP-10	Lint struktur Skill baca-saja (graf tautan, nama, ukuran, stub, rujukan nama)	W8-knowledge-work-partner-built
+KWP-07	UP-06	AGENTS.md sebagai penunjuk, bukan tempat prosedur kondisional (ukuran terukur)	W8-knowledge-work-partner-built
+KWP-08	UP-01	Aturan pemindai keamanan: perbandingan tanda tangan/HMAC/token tidak konstan-waktu	W8-knowledge-work-partner-built
+KWP-09	UP-10	Matriks "jangan rute ke" sebagai korpus negatif keras untuk eval routing	W8-knowledge-work-partner-built
+KWP-10	EXCL-APP	Templat runbook 5 menit, intake "tanyakan dulu", FAQ forum, dan alur upgrade per jalur versi	W8-knowledge-work-partner-built
+KWP-11	EXCL-APP	Dokumen berlabel bukti: validasi sampel, peta sumber, pemicu tinjau ulang, urutan penyelesaian konflik	W8-knowledge-work-partner-built
+KWP-12	EXCL-APP	Kebijakan tulis-vs-baca konektor: draf dulu, kelas efek, pengungkapan biaya, pratinjau sebelum bulk	W8-knowledge-work-partner-built
+KWP-13	EXCL-APP	Keluaran riset yang jujur: jejak ke tool, templat data-jarang, sumber sekunder bersyarat	W8-knowledge-work-partner-built
+KWP-14	EXCL-APP	Placeholder kategori konektor `~~category` dan mode standalone vs supercharged	W8-knowledge-work-partner-built
+KWP-15	EXCL-APP	Brand-voice: pola konsistensi suara, pemuatan pedoman, pertanyaan terbuka berrekomendasi	W8-knowledge-work-partner-built
+KWP-16	EXCL-APP	Permukaan MCP: nama mentah otoritatif, daftar negatif hasil probe, satu server per permukaan, hand-off ke REST	W8-knowledge-work-partner-built
+KWP-17	EXCL-APP	Tingkatan penyamaran PII untuk pembacaan layar/DOM oleh agen	W8-knowledge-work-partner-built
+KWP-18	EXCL-APP	Menolak kredensial placeholder sebelum memanggil layanan; dokumentasi variabel lingkungan hanya nama	W8-knowledge-work-partner-built
+GCA-01	UP-04	Katalog uji tepi pembaca git untuk panel perubahan task (menguatkan MOD-13)	W9a-claude-code-gap-closure
+GCA-02	UP-04	Taksonomi alasan `external.unavailable` dan penanda degradasi (menguatkan MOD-13 dan CCP-03)	W9a-claude-code-gap-closure
+GCA-03	UP-03	Ejaan jalur Windows dan pemeriksaan segmen "protected" yang leksikal	W9a-claude-code-gap-closure
+GCA-04	UP-04	Deteksi gerakan HEAD tak terduga selama task dari sidik jari + reflog	W9a-claude-code-gap-closure
+GCA-05	UP-04	Catatan delta berkas yang berubah di luar dan peta jenis lampiran engine tertutup (menguatkan MOD-09)	W9a-claude-code-gap-closure
+GCA-06	UP-05	Pesan `TOOLBOX_UNKNOWN` yang membedakan sebab	W9a-claude-code-gap-closure
+GCA-07	UP-04	Pin `LC_ALL=C` untuk teks git yang diurai	W9a-claude-code-gap-closure
+GCA-08	UP-05	Amplop hasil tracker: menolak, bukan menjatuhkan diam-diam; kosakata ok/sad/bad (menguatkan CC-P3)	W9a-claude-code-gap-closure
+GCA-09	UP-11	Katalog uji "pengakuan-diri bukan bukti" untuk resolver kapabilitas (menguatkan MOD-03 dan MOD-17)	W9a-claude-code-gap-closure
+GCA-10	REF	Kunci perubahan murah tanpa proses git (hanya bila panel perlu penyegaran hidup)	W9a-claude-code-gap-closure
+GCA-11	REF	Disiplin skrip setup dari `gateway/aws/setup.sh` dan contoh konfigurasi	W9a-claude-code-gap-closure
+GCA-12	UP-04	Identitas repositori Memory bergantung pada ejaan mentah URL `origin`	W9a-claude-code-gap-closure
+GCA-13	UP-11	Langkah uji yang dilewati tidak boleh tampak lulus	W9a-claude-code-gap-closure
+GCB-01	UP-01	Scanner `changed_source`: laporan cakupan tidak jujur (batas 128 senyap, "clean" palsu, satu file tak terbaca 	W9b-official-plugins-gap-closure
+GCB-02	UP-01	False positive `exec(`/`eval(`/TLS terukur: 80 baris → 3 pada kode AC sendiri; aturan perlu gerbang jalur dan 	W9b-official-plugins-gap-closure
+GCB-03	UP-01	ReDoS pada scanner: penjaga aturan proyek meloloskan alternasi tumpang-tindih, dan glob `include/exclude` menj	W9b-official-plugins-gap-closure
+GCB-04	UP-02	Adapter plugin Claude: ReDoS dari `SKILL.md` tak tepercaya (regex tautan kuadratik 16 detik per 100 KB), regex	W9b-official-plugins-gap-closure
+GCB-05	UP-01	Katalog kasus uji untuk scanner dan parser hostile (dari tes donor)	W9b-official-plugins-gap-closure
+GCB-06	UP-01	Sidik jari temuan berbasis konteks, ditahan dekat kredensial, dan satu catatan per situs (memperkuat OFA-03)	W9b-official-plugins-gap-closure
+GCB-07	UP-01	Kebijakan klasifikasi berkas untuk scanner: kelas sumber, biner, vendored/generated, nama bentuk-rahasia, prio	W9b-official-plugins-gap-closure
+GCB-08	UP-01	Aturan dan pengecualian tambahan dari rubrik review (deterministik, tanpa model)	W9b-official-plugins-gap-closure
+GCB-09	UP-11	Kontrak "blok cakupan" lintas-alat dan taksonomi alasan tertutup (memperluas OFA-04)	W9b-official-plugins-gap-closure
+GCB-10	UP-11	Invarian lintas-bidang pada rekaman hasil/vonis, penghitung percobaan milik skrip, gagal-tertutup	W9b-official-plugins-gap-closure
+GCB-11	UP-11	Verifier yang membuktikan dirinya bisa gagal: kontrol negatif, "tidak bisa jalan = gagal", "semua keluaran kos	W9b-official-plugins-gap-closure
+GCB-12	UP-11	Spesifikasi konkret `scripts/verify/test-run-evidence.mjs` dan heuristik "tes menyebut aturan" (melengkapi OFA	W9b-official-plugins-gap-closure
+GCB-13	UP-02	Adapter plugin: jalur komponen yang dideklarasikan dilaporkan sebagai "tidak dipindai" dengan validasi aturan 	W9b-official-plugins-gap-closure
+GCB-14	UP-02	Adapter plugin: ringkasan hook per jenis/matcher dan konfigurasi MCP per transport, tanpa menggemakan perintah	W9b-official-plugins-gap-closure
+GCB-15	UP-02	Adapter plugin: kunci pembatas yang jatuh ke metadata inert dan sintaks eksekusi-substitusi pada badan perinta	W9b-official-plugins-gap-closure
+GCB-16	UP-10	Pemetaan konvensi penulisan Skill resmi vs Agent Core untuk lint advisory (memperkuat OFB-06 dan Bagian D W5 #	W9b-official-plugins-gap-closure
+GCB-17	UP-13	Uji kontrak halaman/UI otomatis: kontras WCAG dari token CSS, tanpa URL eksternal/API berbahaya, korpus URL, d	W9b-official-plugins-gap-closure
+GCB-18	UP-11	Pola jalankan-panjang yang dapat dilanjutkan: sentinel akhir, berkas parsial tak pernah dihapus, penghitung mi	W9b-official-plugins-gap-closure
+GCB-19	EXCL-NONCODE	Catatan kewaspadaan bila skill playground / project-artifact / LaTeX diadopsi	W9b-official-plugins-gap-closure
+GCB-20	UP-14	Daftar periksa server MCP HTTP jarak jauh dan primitif resource/prompt	W9b-official-plugins-gap-closure
+GCC-01	UP-10	Audit keterbacaan pohon Skill: 22–30% terbaca di plugin nyata, dan 12 pack Agent Core terdampak	W9c-knowledge-work-gap-closure
+GCC-02	EXCL-ZOOM	Frontmatter adapter diukur pada 225 skill: satu-satunya penghalang adalah `triggers:` berbentuk daftar di Zoom	W9c-knowledge-work-gap-closure
+GCC-03	EXCL-ZOOM	Laporan "missing reference" didominasi tautan bukan-kehilangan (224 dari 231)	W9c-knowledge-work-gap-closure
+GCC-04	EXCL-ZOOM	Pemeriksa tautan yang hanya menguji keberadaan berkas memberi rasa aman palsu (stub, anchor, tautan akar-situs	W9c-knowledge-work-gap-closure
+GCC-05	EXCL-ZOOM	Angka acuan ukuran dan rasio hub untuk standar penulisan (data nyata Zoom)	W9c-knowledge-work-gap-closure
+GCC-06	EXCL-NONCODE	Aturan estimator dan diff: yang hilang bukan nol, selisih bukan hasil, sebut angka mana yang dipakai	W9c-knowledge-work-gap-closure
+GCC-07	UP-11	Inventaris klaim, gerbang outline murah, gerbang audiens, dan tanda kutipan-vs-parafrasa untuk keluaran yang d	W9c-knowledge-work-gap-closure
+GCC-08	EXCL-ZOOM	Set fixture sintetis dari bentuk Zoom/small-business yang terukur	W9c-knowledge-work-gap-closure
+GCC-09	REF	Pola kecil lain yang layak dicatat (tanpa tindakan terpisah)	W9c-knowledge-work-gap-closure
+GCD-01	UP-04	Argumen `base` pada `change-review.ts` masuk argv git tanpa pagar opsi	W9d-claude-code-mods-source-closure
+GCD-02	UP-04	`workspace-fingerprint.mjs`: kunci indeks, batas 256 senyap, dan `resolved` palsu pada `compare`	W9d-claude-code-mods-source-closure
+GCD-03	UP-01	Identitas temuan scanner dan semantik "sudah ditinjau/resolved" (menguatkan CCP-03/04)	W9d-claude-code-mods-source-closure
+GCD-04	UP-04	`task-changes.ts`: enam cacat kecil yang terlihat setelah membandingkan dengan pengurai donor (menguatkan MOD-	W9d-claude-code-mods-source-closure
+GCD-05	REF	Atribusi "pra-sesi": aturan donor agar pekerjaan nyata tidak tersembunyi	W9d-claude-code-mods-source-closure
+GCD-06	UP-04	Klasifikasi noise/generated: `noiseClass` hanya sebagian dari daftar donor (koreksi atas catatan "SUDAH-ADA" W	W9d-claude-code-mods-source-closure
+GCD-07	UP-04	Mekanik deteksi gerakan HEAD dikonfirmasi oleh kode hook (menguatkan GCA-04)	W9d-claude-code-mods-source-closure
+GCD-08	UP-07	Sanitasi label dan pemotongan Unicode: himpunan karakter yang tepat (menguatkan MOD-07)	W9d-claude-code-mods-source-closure
+GCD-09	UP-11	Matriks kasus uji untuk tiga modul dan resolver (permintaan utama putaran ini)	W9d-claude-code-mods-source-closure
+GCD-10	REF	Lipat nama gagal-tertutup dan pencocokan lookalike	W9d-claude-code-mods-source-closure
+GCD-11	UP-13	Kejujuran keadaan kosong, degradasi, dan aturan refresh panel	W9d-claude-code-mods-source-closure
+GCE-01	UP-07	Definisi lengkap "aksi bersumber-konten" beserta dua pengecualian, daftar teks-mirip-perintah, dan klausa tanp	W9e-kw-sales-marketing-support
+GCE-02	REF	Kontrak tulis sempit: kalimat-kalimat kecil yang belum tertulis di KWA-02	W9e-kw-sales-marketing-support
+GCE-03	UP-05	Kosakata hasil pencarian: "ditemukan / dicari-dan-kosong / tidak-tercakup / ditolak" dan aturan "temuan negati	W9e-kw-sales-marketing-support
+GCE-04	EXCL-NONCODE	Audit rubrik skor: semuanya heuristik buatan tangan, tidak satu pun berbukti	W9e-kw-sales-marketing-support
+GCE-05	EXCL-NONCODE	PII dan data CRM: tidak ada kebijakan; yang ada hanya batas visibilitas dan satu bucket "sensitif"	W9e-kw-sales-marketing-support
+GCE-06	REF	Tiga tingkat degradasi dan graf serah-terima: skill pembaca tidak pernah menulis, satu skill penulis per jenis	W9e-kw-sales-marketing-support
+GCE-07	EXCL-NONCODE	Pola pembukaan-pertama (`setup`): tampilkan sebelum bertanya, baca murah diam-diam, dua tool satu tugas, tanya	W9e-kw-sales-marketing-support
+GCE-08	UP-10	Lensa intake: skill pemroses konten luar tanpa klausa data-bukan-perintah (0 dari 13 di marketing dan support,	W9e-kw-sales-marketing-support
+GCE-09	UP-10	Aturan penulisan konten Skill: angka berlabel, kata kunci dari kata pengguna, dan "konten salah lebih buruk da	W9e-kw-sales-marketing-support
+GCE-10	EXCL-NONCODE	Keluaran dua-audiens dan permintaan berjenis (support): "jangan kirim" terpisah, minta investigate / fix / dec	W9e-kw-sales-marketing-support
+GCE-11	EXCL-NONCODE	Format atribut perilaku empat-bidang, severity tiga tingkat, dan fallback review generik (brand-review)	W9e-kw-sales-marketing-support
+GCF-01	UP-09	Empat aturan keluaran-tool yang belum ada di daftar KWB-02: parameter yang diabaikan, rasio cakupan, tool saud	W9f-kw-regulated-ops-shared
+GCF-02	UP-07	Pemindai keamanan Memory tidak memiliki kelas pengenal pribadi (kartu, NIK, paspor)	W9f-kw-regulated-ops-shared
+GCF-03	UP-07	Aturan perilaku: materi autentikasi tidak keluar dari sumbernya; konten tak tepercaya yang dirender di-escape	W9f-kw-regulated-ops-shared
+GCF-04	UP-10	Konvensi verdik asimetris dan baris "dasar tinjauan" untuk tinjauan impor dan lint (bukan domain hukum)	W9f-kw-regulated-ops-shared
+GCF-05	REF	Mode berjalan tanpa pengawasan: daftar "tidak boleh sendiri", cap waktu run, laporan dibuka dengan "butuh Anda	W9f-kw-regulated-ops-shared
+GCF-06	REF	Daftar seleksi dependensi dan layanan (TCO, risiko, exit cost) dari `vendor-review`	W9f-kw-regulated-ops-shared
+GCF-07	REF	Konfirmasi akun aktif sebelum membaca/menulis di penyimpanan atau sesi yang terhubung	W9f-kw-regulated-ops-shared
+GCF-08	REF	Panduan penulisan Skill: detail yang belum tertulis di KWB-07 (hanya yang terverifikasi pada berkas ini)	W9f-kw-regulated-ops-shared
+GCF-09	REF	Cakupan persetujuan batch, penjaga volume, dan keranjang konservatif untuk yang tak terklasifikasi	W9f-kw-regulated-ops-shared

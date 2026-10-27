@@ -13,7 +13,7 @@ import { applyEvolutionProposal } from './evolution.js';
 import { MemoryFeedbackStore, type MemoryFeedbackKind, type MemoryFeedbackResult, type MemoryLifecycleAction } from './feedback.js';
 import { assertMemoryFeedbackDigest, memoryFeedbackContentDigest } from './feedback-target.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
-import { MemoryIndex, type MemoryIndexResult } from './index.js';
+import { MemoryIndex, type MemoryIndexResult, type SemanticSearchContext } from './index.js';
 import type { QueryCacheLimits } from './query-embedding-cache.js';
 import {validateRelevancePolicy,type RelevancePolicy} from './relevance.js';
 import { EmbeddingMemoryIntelligence, enrichMemoryMetadata, type MemoryEvolutionPreview, type MemoryEvolutionProposal, type MemoryIntelligence } from './intelligence.js';
@@ -34,6 +34,13 @@ import {MemoryClaimReviews} from './claim-review.js';
 import {MemoryRecallRepairs} from './recall-repair.js';
 import {MemoryDerivations} from './derivations.js';
 import { isMemoryExpired, normalizeMemoryExpiresAt } from './visibility.js';
+import { resolveMemoryCognitiveConfig, type MemoryCognitiveConfig, type MemoryCognitiveOptions } from './cognitive-config.js';
+import { MemoryCognitiveEngine, type CognitiveHost } from './cognitive-maintenance.js';
+import { assessEpistemicConfidence, buildEpistemicLinkIndex } from './epistemic-confidence.js';
+import { FORGETTING_PARAMS, scoreMemoryForgetting } from './forgetting-curve.js';
+import { searchByTier } from './memory-tiers.js';
+import { maskMemoryInput, summarizeRedactions, type MaskableMemoryInput, type SecretRedaction } from './privacy-masking.js';
+import { classifyQueryIntent, QUERY_INTENT_VERSION } from './query-intent.js';
 import { MEMORY_SCHEMA_VERSION, type EvolutionEvent, type MemoryHealth, type MemoryIssue, type MemoryLink, type MemoryProvenance, type MemoryRecord } from './types.js';
 
 /** Internal, host-authenticated context. Never populate from public/model search options. */
@@ -46,7 +53,9 @@ export interface MemorySearchHostContext {
   onSynthesisEligibility?:(summary:SynthesisEligibilitySummary)=>void;
 }
 
-export interface MemoryServiceOptions {hostActivation?:boolean;experience?:{enabled:true};consolidation?:ConsolidationPolicy;indexGranularity?:'record'|'passage';queryCache?:QueryCacheLimits;controllerRelevancePolicy?:RelevancePolicy}
+export interface MemoryServiceOptions {hostActivation?:boolean;experience?:{enabled:true};consolidation?:ConsolidationPolicy;indexGranularity?:'record'|'passage';queryCache?:QueryCacheLimits;controllerRelevancePolicy?:RelevancePolicy;
+  /** Optional cognitive upgrades; every feature is disabled unless enabled here. */
+  cognitive?:MemoryCognitiveOptions}
 
 /** Host-owned rollout policy; public recall input cannot select ranking or feedback. */
 export type ControllerRetrievalPolicy = 'baseline-v1' | 'fusion-feedback-v1';
@@ -166,6 +175,8 @@ export class MemoryService {
   private readonly workspaceAliases = new Map<string, string>();
   private readonly workspaceRoots = new Map<string,string>();
   private experienceEnabled = false;
+  private readonly cognitiveConfig: MemoryCognitiveConfig;
+  private readonly cognitive: MemoryCognitiveEngine;
 
   resolveWorkspace(value: string): string {
     const normalized = normalizeMemoryWorkspace(value, this.projectRoot);
@@ -210,7 +221,10 @@ export class MemoryService {
     indexGranularity: 'record' | 'passage' = 'record',
     queryCache?: QueryCacheLimits,
     private readonly controllerRelevancePolicy?:Readonly<RelevancePolicy>,
+    cognitiveOptions?: MemoryCognitiveOptions,
   ) {
+    this.cognitiveConfig = resolveMemoryCognitiveConfig(cognitiveOptions);
+    this.cognitive = new MemoryCognitiveEngine(this.cognitiveHost(), this.cognitiveConfig);
     this.index = new MemoryIndex(store.paths, embedder, { granularity: indexGranularity,
       ...(queryCache ? { queryCache: { ...queryCache } } : {}) });
     this.feedbackStore = new MemoryFeedbackStore(store.paths);
@@ -222,7 +236,31 @@ export class MemoryService {
 
   /** Release owner-local query waiters and volatile vectors. No provider abort is implied. */
   dispose(): void {
+    this.cognitive.stopLoop();
     this.index.dispose();
+  }
+
+  /** Narrow capability surface for the cognitive engine; arrows run only after construction. */
+  private cognitiveHost(): CognitiveHost {
+    return {
+      snapshot: async () => {
+        this.assertOperational();
+        await this.reload();
+        this.assertOperational();
+        return [...this.records.values()];
+      },
+      canonicalComplete: () => this.canonicalComplete,
+      mutate: async (id, mutation) => {
+        const next = await this.store.mutate(id, mutation);
+        this.records.set(next.id, next);
+        return next;
+      },
+      refreshIndex: () => this.refreshIndex(),
+      inspectIndex: records => this.index.inspect(records),
+      repairSummary: () => this.index.repairSummary(),
+      remember: input => this.remember(input),
+      feedbackSalience: () => this.feedbackSalienceMap(),
+    };
   }
 
   private controllerInScope(record:MemoryRecord,workspace:string):boolean {
@@ -398,14 +436,17 @@ export class MemoryService {
             .sort(([a], [b]) => a.localeCompare(b));
           options.rankingProfile = 'fusion';
           options.feedbackSalience = new Map(salienceEntries);
+          Object.assign(options, this.cognitiveSearchOptions(query, records, options));
         }
+        const cognitiveRanking = retrievalPolicy === 'fusion-feedback-v1' ? this.cognitiveRankingRevision() : undefined;
         return {
           results: searchMemories(records, query, options, semantic, Math.max(1, records.length), rankingTime),
           invalidatedSynthesisIds,
           relevanceContext:{semanticStatus:!this.embedder ? 'disabled' : semantic ? 'available' : 'unavailable'},
           rankingRevision: disclosureDigest(['controller-ranking/v1', retrievalPolicy, IDENTIFIER_TOKENIZER_VERSION,
             semantic?.revision ?? 'semantic-unavailable/v1', salienceEntries,
-            ...(retrievalPolicy === 'fusion-feedback-v1' ? [FUSION_DIVERSITY_POLICY] : [])]),
+            ...(retrievalPolicy === 'fusion-feedback-v1' ? [FUSION_DIVERSITY_POLICY] : []),
+            ...(cognitiveRanking ? [cognitiveRanking] : [])]),
         };
       },
       read: id => this.read(id, false),
@@ -428,6 +469,7 @@ export class MemoryService {
       options.indexGranularity,
       options.queryCache,
       relevancePolicy,
+      options.cognitive,
     );
     try {
       const loaded = await service.store.initialize();
@@ -442,6 +484,7 @@ export class MemoryService {
       }
       await service.feedbackStore.reconcile(new Set(loaded.records.map(record => record.id))).catch(() => undefined);
       if (service.canonicalStatus !== 'error') await service.ensureIndex(loaded.records);
+      if (service.canonicalStatus !== 'error') service.cognitive.startLoop();
     } catch (error) {
       service.canonicalStatus = 'error';
       service.canonicalIssues = [{
@@ -740,9 +783,11 @@ export class MemoryService {
     const salienceByMemory = await this.feedbackSalienceMap();
     const forgottenIds = await this.feedbackStore.forgottenIds(new Set(this.records.keys())).catch(() => new Set<string>());
     const now = Date.now();
+    const forgetting = this.cognitiveConfig.features.forgettingCurve;
+    const epistemicLinks = forgetting ? buildEpistemicLinkIndex([...this.records.values()], now) : undefined;
     const threshold = typeof options.retentionThreshold === 'number' && Number.isFinite(options.retentionThreshold)
       ? Math.max(0, Math.min(5, options.retentionThreshold))
-      : RETENTION_PARAMS.reviewThreshold;
+      : forgetting ? FORGETTING_PARAMS.reviewThreshold : RETENTION_PARAMS.reviewThreshold;
     const limit = Math.max(1, Math.min(100, options.limit ?? 20));
     const workspace = options.workspace ? this.resolveWorkspace(options.workspace) : undefined;
     const staleAgeMs = 30 * 24 * 60 * 60 * 1000;
@@ -753,7 +798,12 @@ export class MemoryService {
       if (workspace && (!record.provenance?.workspace
         || this.resolveWorkspace(record.provenance.workspace) !== workspace)) continue;
       const salience = salienceByMemory.get(record.id) ?? 1;
-      const retention = scoreMemoryRetention(record, now, salience);
+      const retention = forgetting
+        ? scoreMemoryForgetting(record, now, {
+          salience,
+          confidence: assessEpistemicConfidence(record, epistemicLinks?.get(record.id)).confidence,
+        })
+        : scoreMemoryRetention(record, now, salience);
       const reasons: string[] = [];
       if (retention && retention.score < threshold) reasons.push('low-retention');
       if (salience <= 0.25) reasons.push('explicit-stale-or-wrong-feedback');
@@ -994,10 +1044,16 @@ export class MemoryService {
     return this.store.revisions(normalized, limit);
   }
 
-  async remember(input: RememberInput): Promise<MemoryRecord> {
+  /** Pre-flight secret masking; a no-op unless the feature is on. The safety scan stays the backstop. */
+  private maskInput<T extends MaskableMemoryInput>(input: T): { value: T; redactions: SecretRedaction[] } {
+    return this.cognitiveConfig.features.secretMasking ? maskMemoryInput(input) : { value: input, redactions: [] };
+  }
+
+  async remember(rawInput: RememberInput): Promise<MemoryRecord> {
     this.assertOperational();
     await this.reload();
     this.assertOperational();
+    const { value: input, redactions } = this.maskInput(rawInput);
     const content = input.content.trim();
     if (!content) throw new Error('Memory content is required');
 
@@ -1027,7 +1083,8 @@ export class MemoryService {
       ...(expiresAt ? { expiresAt } : {}),
       lastAccessedAt: null,
       retrievalCount: 0,
-      evolutionHistory: [event('created', 'controller', ['content', 'metadata'])],
+      evolutionHistory: [event('created', 'controller', ['content', 'metadata'],
+        redactions.length ? { redactions: summarizeRedactions(redactions) } : undefined)],
       pinned: false,
       ...(input.source ? { source: input.source } : {}),
       ...(provenance ? { provenance } : {}),
@@ -1048,10 +1105,11 @@ export class MemoryService {
     return (await this.read(record.id, false)) ?? record;
   }
 
-  async update(id: string, patch: UpdateInput): Promise<MemoryRecord> {
+  async update(id: string, rawPatch: UpdateInput): Promise<MemoryRecord> {
     this.assertOperational();
     await this.reload();
     this.assertOperational();
+    const { value: patch, redactions } = this.maskInput(rawPatch);
     const normalized = validateMemoryId(id);
     const record = this.records.get(normalized);
     if (!record) throw new Error(`Memory not found: ${id}`);
@@ -1115,7 +1173,7 @@ export class MemoryService {
             : 'updated';
       candidate.evolutionHistory = boundedHistory(
         current.evolutionHistory,
-        event(kind, 'controller', changed),
+        event(kind, 'controller', changed, redactions.length ? { redactions: summarizeRedactions(redactions) } : undefined),
       );
       return candidate;
     });
@@ -1154,10 +1212,30 @@ export class MemoryService {
     return deleted;
   }
 
-  async batch(operations: MemoryBatchOperation[]): Promise<MemoryBatchResult> {
+  async batch(rawOperations: MemoryBatchOperation[]): Promise<MemoryBatchResult> {
     this.assertOperational();
-    if (!operations.length) throw new Error('memory_batch requires at least one operation');
-    if (operations.length > 100) throw new Error('memory_batch supports at most 100 operations');
+    if (!rawOperations.length) throw new Error('memory_batch requires at least one operation');
+    if (rawOperations.length > 100) throw new Error('memory_batch supports at most 100 operations');
+
+    const operationRedactions: SecretRedaction[][] = [];
+    const operations = rawOperations.map((operation): MemoryBatchOperation => {
+      if (operation.op === 'remember') {
+        const masked = this.maskInput(operation.value);
+        operationRedactions.push(masked.redactions);
+        return { ...operation, value: masked.value };
+      }
+      if (operation.op === 'update') {
+        const masked = this.maskInput(operation.patch);
+        operationRedactions.push(masked.redactions);
+        return { ...operation, patch: masked.value };
+      }
+      operationRedactions.push([]);
+      return operation;
+    });
+    const redactionDetails = (index: number): Record<string, unknown> | undefined => {
+      const redactions = operationRedactions[index] ?? [];
+      return redactions.length ? { redactions: summarizeRedactions(redactions) } : undefined;
+    };
 
     await this.reload();
     this.assertOperational();
@@ -1210,7 +1288,7 @@ export class MemoryService {
             ...(normalizeMemoryExpiresAt(input.expiresAt) ? { expiresAt: normalizeMemoryExpiresAt(input.expiresAt) } : {}),
             lastAccessedAt: null,
             retrievalCount: 0,
-            evolutionHistory: [event('created', 'controller', ['content', 'metadata'])],
+            evolutionHistory: [event('created', 'controller', ['content', 'metadata'], redactionDetails(operationIndex))],
             pinned: false,
             ...(input.source ? { source: input.source } : {}),
             ...(operationProvenance ? { provenance: operationProvenance } : {}),
@@ -1299,7 +1377,7 @@ export class MemoryService {
           candidate.updatedAt = now;
           candidate.evolutionHistory = boundedHistory(
             current.evolutionHistory,
-            event('updated', 'controller', changed),
+            event('updated', 'controller', changed, redactionDetails(operationIndex)),
           );
           byId.set(current.id, candidate);
           touched.add(current.id);
@@ -1369,7 +1447,7 @@ export class MemoryService {
       const semanticEligible = eligibleScopeRecords.filter(record =>
         !excludedIds.has(record.id) && !supersededIds.has(record.id) && (record.pinned || (!isMemoryExpired(record) && !forgottenIds.has(record.id) && (record.version!==2||record.experience.retention!=='archive'))));
       candidateCount=semanticEligible.length;
-      let semanticContext;
+      let semanticContext: SemanticSearchContext | undefined;
       if (this.embedder && this.indexStatus === 'available' && this.embeddingStatus !== 'not-configured') {
         try {
           semanticContext = await this.index.semanticContext(normalizedQuery, canonicalRecords, semanticEligible) ?? undefined;
@@ -1379,12 +1457,19 @@ export class MemoryService {
         }
       }
 
-      const searchOptions: MemorySearchOptions = options.rankingProfile === 'fusion'
-        ? { ...options, feedbackSalience: await this.feedbackSalienceMap() }
-        : options;
+      const searchOptions: MemorySearchOptions = {
+        ...(options.rankingProfile === 'fusion'
+          ? { ...options, feedbackSalience: await this.feedbackSalienceMap() }
+          : options),
+        ...this.cognitiveSearchOptions(normalizedQuery, semanticEligible, options),
+      };
       // Scope was resolved against the host alias registry above. Rank canonical
       // records so exact passage revisions are not changed by display normalization.
-      let rankedResults = searchMemories(semanticEligible, normalizedQuery, { ...searchOptions, workspace: undefined }, semanticContext);
+      const runSearch = (pool: MemoryRecord[]) =>
+        searchMemories(pool, normalizedQuery, { ...searchOptions, workspace: undefined }, semanticContext);
+      let rankedResults = this.cognitiveConfig.features.tiering
+        ? this.searchTiered(semanticEligible, runSearch, Math.max(1, Math.min(50, options.limit ?? 5)))
+        : runSearch(semanticEligible);
       let deliveryIds=new Set((await synthesisEligibility.validateDelivery(rankedResults.map(result=>result.record))).map(record=>record.id));
       rankedResults=rankedResults.filter(result=>deliveryIds.has(result.record.id));
       for (const result of rankedResults) {
@@ -1696,5 +1781,71 @@ export class MemoryService {
     this.assertOperational();
     await this.ensureCurrentIndex();
     return findConsolidationCandidates([...this.records.values()], this.index, options);
+  }
+
+  /** Read-path cognitive options; every failure falls back to the base ranking. */
+  private cognitiveSearchOptions(query: string, eligible: MemoryRecord[], options: MemorySearchOptions): Partial<MemorySearchOptions> {
+    const { features, maxHops } = this.cognitiveConfig;
+    const extra: Partial<MemorySearchOptions> = {};
+    try {
+      if (features.multiHop && options.maxHops === undefined) extra.maxHops = maxHops;
+      if (options.rankingProfile === 'fusion') {
+        if (features.adaptiveFusion && !options.channelWeights) {
+          extra.channelWeights = classifyQueryIntent(query, { sourceFiles: options.sourceFiles }).weights;
+        }
+        if (features.epistemicConfidence && !options.epistemicInfluence) {
+          extra.epistemicInfluence = this.cognitive.epistemicInfluence(eligible);
+        }
+      }
+    } catch { /* Cognitive enhancements are advisory and must never fail recall. */ }
+    return extra;
+  }
+
+  private searchTiered(records: MemoryRecord[], search: (pool: MemoryRecord[]) => MemorySearchResult[], limit: number): MemorySearchResult[] {
+    return searchByTier(records, search, { limit, now: Date.now(), policy: this.cognitiveConfig.tier }).results;
+  }
+
+  /** Part of the controller ranking digest only when a ranking-affecting feature is on. */
+  private cognitiveRankingRevision(): string | undefined {
+    const { adaptiveFusion, epistemicConfidence } = this.cognitiveConfig.features;
+    return adaptiveFusion || epistemicConfidence
+      ? `cognitive-ranking/v1:${adaptiveFusion ? QUERY_INTENT_VERSION : 'neutral'}:${epistemicConfidence ? 'epistemic' : 'neutral'}`
+      : undefined;
+  }
+
+  /** Enabled features, loop state and the last maintenance report. */
+  cognitiveStatus() {
+    return this.cognitive.status();
+  }
+
+  async epistemicAssessment(id: string) {
+    this.assertOperational();
+    await this.reload();
+    this.assertOperational();
+    const record = this.records.get(validateMemoryId(id));
+    if (!record) throw new Error(`Memory not found: ${id}`);
+    return this.cognitive.epistemicAssessment(record, [...this.records.values()]);
+  }
+
+  /** Preview by default; `apply` hides each resolved loser through the existing supersedes semantics. */
+  async resolveContradictions(options: { apply?: boolean; limit?: number } = {}) {
+    this.assertOperational();
+    return this.cognitive.resolveContradictions(options);
+  }
+
+  async scanIntegrity() {
+    this.assertOperational();
+    return this.cognitive.scanIntegrity();
+  }
+
+  async repairIntegrity(options: { apply?: boolean } = {}) {
+    this.assertOperational();
+    return this.cognitive.repairIntegrity(options);
+  }
+
+  /** One cycle over the enabled features; `apply` is required for any mutation. */
+  async runCognitiveMaintenance(options: { apply?: boolean } = {}) {
+    this.assertOperational();
+    return this.cognitive.runCycle(options);
   }
 }

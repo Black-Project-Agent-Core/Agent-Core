@@ -343,7 +343,13 @@ Blok JSON ini adalah deklarasi pada peta yang sama, bukan registry terpisah. `ow
       "path": "runtime/recovery"
     }
   ],
-  "directoryIntents": []
+  "directoryIntents": [
+    {
+      "path": "docs/research/claude-ecosystem-donor",
+      "purpose": "claude-ecosystem-donor-evidence",
+      "owner": "docs"
+    }
+  ]
 }
 ```
 <!-- DIRECTORY-POLICY:END -->
@@ -354,7 +360,7 @@ Contoh intent untuk tujuan baru yang benar-benar diperlukan task: `{"path":"docs
 
 <!-- DIRECTORY-SNAPSHOT:START -->
 
-Daftar otomatis: **445 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
+Daftar otomatis: **446 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
 
 ```text
 <PROJECT_ROOT>/
@@ -406,6 +412,7 @@ Daftar otomatis: **445 direktori/boundary**. Subtree privat, dependency, generat
 |   |-- releases/
 |   |-- research/
 |   |   |-- always-on-budget-phase0/
+|   |   |-- claude-ecosystem-donor/
 |   |   |-- harness2-donor/
 |   |   |-- learning-state-closure-r8s0/
 |   |   `-- weknora-donor/

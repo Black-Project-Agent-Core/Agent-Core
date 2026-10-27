@@ -15,7 +15,7 @@ export async function handleProposalDocuments(request: IncomingMessage, response
     send(response, 400, { error: 'PROPOSAL_DOCUMENT_INPUT_INVALID' }); return;
   }
   try {
-    if (url.pathname === '/agent/proposals') { send(response, 200, await documents.list()); return; }
+    if (url.pathname === '/agent/proposals') { send(response, 200, await documents.listForReview()); return; }
     const id = url.searchParams.get('id') ?? '', revisionDigest = url.searchParams.get('revisionDigest') ?? '', documentDigest = url.searchParams.get('documentDigest') ?? '';
     if (!/^(?:doc|skill-proposal):[a-f0-9]{32}$/.test(id) || !/^sha256:[a-f0-9]{64}$/.test(revisionDigest)
       || !/^sha256:[a-f0-9]{64}$/.test(documentDigest)) { send(response, 400, { error: 'PROPOSAL_DOCUMENT_INPUT_INVALID' }); return; }

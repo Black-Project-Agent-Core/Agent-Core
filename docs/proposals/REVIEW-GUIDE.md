@@ -47,8 +47,17 @@ Belum ada keputusan; menunggu APPROVE / REVISE / HOLD / REJECT.
 
 ## Membaca dan memberi keputusan
 
-1. Buka **Dashboard → Proposals to review**. Periksa jenis proposal, lokasi,
-   status dan revision digest pada kartu.
+1. Buka **Dashboard → Proposals to review**. Daftar ini hanya memuat proposal
+   yang masih menunggu pengguna: belum diputuskan (`PROPOSED`, `DRAFT`,
+   `AWAITING`), ditahan (`HOLD`, `DEFERRED`) atau perlu revisi (`REVISE`).
+   Proposal yang sudah disetujui, diimplementasikan, selesai, ditutup,
+   digantikan, diarsipkan, ditarik atau ditolak tidak ditampilkan; Skill
+   proposal berstatus `approved`, `implemented` atau `rejected` juga tidak.
+   Status yang tidak dikenali tetap tampil sebagai `unknown` agar proposal yang
+   belum jelas tidak hilang. Status dibaca dari kata pertama pada baris
+   `Status:`, jadi dokumen campuran yang masih punya paket terbuka harus
+   diawali `PROPOSED`. Periksa jenis proposal, lokasi, status dan revision
+   digest pada kartu.
 2. Pilih **Read proposal**. Baca tujuan, perubahan, evidence, keterbatasan,
    acceptance dan dampak terhadap sistem lain. Reader mempertahankan teks,
    Markdown dan blok kode sebagai teks; tidak menjalankan HTML atau perintah.

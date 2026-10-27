@@ -34,5 +34,6 @@ export async function initializeMemoryRoot(
   });
   return MemoryService.initialize(baseDir, paths.root, options.embedder, {hostActivation:options.hostActivation,experience:options.experience,consolidation:options.consolidation,indexGranularity:options.indexGranularity,
     ...(options.queryCache ? { queryCache: { ...options.queryCache } } : {}),
+    ...(options.cognitive ? { cognitive: options.cognitive } : {}),
     ...(relevancePolicy ? {controllerRelevancePolicy:relevancePolicy} : {})});
 }

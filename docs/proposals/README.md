@@ -26,8 +26,11 @@ Setelah keputusan diterima, perbarui status dokumen dan memory yang relevan.
 
 ## Membaca proposal di dashboard
 
-Dashboard **Proposals to review** menampilkan jenis, lokasi Markdown, status dan
-revisi. Pilih **Read proposal** untuk membuka isi lengkap sebelum meminta
+Dashboard **Proposals to review** hanya menampilkan proposal yang masih menunggu
+keputusan (belum diputuskan, ditahan atau perlu revisi; status tidak dikenal
+tetap tampil). Proposal yang sudah disetujui, diimplementasikan, selesai,
+ditutup atau ditolak tidak ditampilkan lagi. Kartu menampilkan jenis, lokasi
+Markdown, status dan revisi. Pilih **Read proposal** untuk membuka isi lengkap sebelum meminta
 keputusan. Panduan: [Review proposal](REVIEW-GUIDE.md).
 
 Proposal Skill yang dipublikasikan melalui adapter eksternal mempunyai proyeksi
@@ -62,6 +65,8 @@ R4 sudah **CLOSED BY USER DECISION** dan tidak dilanjutkan tanpa permintaan baru
 
 - **COMPLETED 2026-10-27:** [Native Final Report R3](../history-agent-core/Native-Final-Report-At-Tool-Iteration-Limit.md), termasuk persistensi/replay/next context dan durable single-attempt recovery.
 - **COMPLETED 2026-10-27:** [External Native Chat Bridge R3](../history-agent-core/External-Native-Chat-Bridge.md), termasuk R1 adapter, R2 UI refresh dan Phase B facade/provenance/packaging. [Bukti integrasi](../verification/Native-Final-Report-and-Chat-Bridge-Completion.md):120 scoped tests,11 UI tests, build/EXE/satu restart dan real resident MCP send/replay/read lulus. Cache tool pada chat host masih belum memuat facade; protokol MCP resident83-tool teruji langsung.
+
+- **COMPLETED 2026-10-27:** [Advanced Memory Cognitive Upgrades R2](../history-agent-core/Advanced-Memory-Cognitive-Upgrades.md) — kesembilan pilar (fusion adaptif, kontradiksi, konsolidasi REM, keyakinan epistemik, kurva lupa, tier L1/L2/L3, multi-hop, self-repair, masker rahasia) diimplementasikan sebagai ekstensi opt-in di `src/memory/`; 74 tes baru dan 94 file tes terkait lulus. `npm run build` resmi (path:check PASS) dan satu restart selesai 2026-10-27; resident memuat build baru. **Aktif di produksi: lima fitur (Paket A: adaptiveFusion, epistemicConfidence, multiHop, forgettingCurve, secretMasking) atas pilihan pengguna**, divalidasi sebelum/sesudah di resident; empat lainnya (kontradiksi, REM, self-repair, tiering) tetap mati dan dikendalikan lewat `AGENT_CORE_MEMORY_COGNITIVE`.
 
 **Pengecualian penutupan berbasis keputusan scope pengguna (2026-10-24):** [Native AI Agent Core R4](Integrasi-Arsitektur-Native-Agent-Core.md) berstatus **CLOSED BY USER DECISION**, bukan proposal aktif, walaupun file roadmap dipertahankan di `docs/proposals/` demi kompatibilitas tautan dan provenance. [Laporan penutupan](../history-agent-core/Native-Architecture-Integration-Revision-4-Execution.md) merupakan status terkini; uji benchmark Memory yang dihentikan tidak otomatis menjadi pekerjaan yang tertunda. Jangan memulai ulang dari kata PENDING/IN PROGRESS historis tanpa permintaan pengguna baru.
 

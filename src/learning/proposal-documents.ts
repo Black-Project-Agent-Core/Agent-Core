@@ -20,8 +20,25 @@ export interface ProposalDocumentList { items: ProposalDocumentItem[]; guides: P
 export interface ProposalDocumentReadInput { id: string; revisionDigest: string; documentDigest: string; }
 export interface ProposalDocumentRead extends ProposalDocumentItem { text: string; decisionGuidance: string; }
 export interface ProposalDocumentReader {
+  /** Every readable proposal, decided or not. Used by lookups that must find a card by id. */
   list(): Promise<ProposalDocumentList>;
+  /** Only proposals still waiting for the user: undecided, on hold or needing revision. Used by the dashboard. */
+  listForReview(): Promise<ProposalDocumentList>;
   read(input: ProposalDocumentReadInput): Promise<ProposalDocumentRead>;
+}
+// A document status is its first keyword. Open = the user still has to decide; closed = decided or finished.
+const OPEN_DOCUMENT_STATUS = 'PROPOSED|HOLD|REVISE|DEFERRED|DRAFT|AWAITING';
+const CLOSED_DOCUMENT_STATUS = 'APPROVED|APPROVE|REJECTED|REJECT|IMPLEMENTED|COMPLETED|COMPLETE|CLOSED|SUPERSEDED|ARCHIVED|WITHDRAWN';
+const knownDocumentStatus = new RegExp(`^(?:${OPEN_DOCUMENT_STATUS}|${CLOSED_DOCUMENT_STATUS})\\b`, 'i');
+const closedDocumentStatus = new RegExp(`^(?:${CLOSED_DOCUMENT_STATUS})\\b`, 'i');
+const closedSkillStatus = new Set<string>(['approved', 'implemented', 'rejected']);
+/**
+ * False once the user has already decided or the work is finished. An unrecognized status stays visible:
+ * hiding a proposal that nobody could classify would lose it, showing one extra is recoverable.
+ */
+export function needsUserDecision(item: Pick<ProposalDocumentItem, 'kind' | 'status'>): boolean {
+  if (item.kind === 'skill' || item.kind === 'skill-revision') return !closedSkillStatus.has(item.status);
+  return !closedDocumentStatus.test(item.status.trim());
 }
 /** Structured discovery for external bootstrap/facades; this is guidance, never decision authority. */
 export function proposalReviewGuide(projectRoot: string) {
@@ -99,8 +116,7 @@ function metadata(text: string): { title: string; status: string } {
   // An unformatted mention of "Status:" in prose is not an authoritative status.
   const value = lines.map(line => line.match(/\*\*Status\s*:\s*([^\r\n]*?)\*\*/i)?.[1]
     ?? line.trim().match(/^Status\s*:\s*(.*)$/i)?.[1]).find(value => value !== undefined)?.trim();
-  const status = value && /^(?:PROPOSED|HOLD|APPROVED|APPROVE|REVISE|REJECTED|REJECT|DEFERRED|IMPLEMENTED|COMPLETED|DRAFT|AWAITING)\b/i.test(value)
-    ? value.slice(0, 160) : 'unknown';
+  const status = value && knownDocumentStatus.test(value) ? value.slice(0, 160) : 'unknown';
   return { title, status };
 }
 
@@ -171,6 +187,10 @@ export function createProposalDocuments(projectRoot: string, options: { listSkil
   }
   return {
     async list() { const { documents: _documents, ...result } = await catalog(); return result; },
+    async listForReview() {
+      const { documents: _documents, ...result } = await catalog();
+      return { ...result, items: result.items.filter(needsUserDecision) };
+    },
     async read(input) {
       if (!input || !/^(?:doc|skill-proposal):[a-f0-9]{32}$/.test(input.id)
         || !digestPattern.test(input.revisionDigest) || !digestPattern.test(input.documentDigest)

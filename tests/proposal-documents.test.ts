@@ -41,6 +41,33 @@ test('lists readable documents and exact revisions without changing disk', async
   expect(await readdir(path.join(root, 'docs/proposals'))).toEqual(before);
 });
 
+test('dashboard list keeps only documents that still need the user, while list and read stay complete', async () => {
+  const { root } = await documentFixture(); // improve-recall.md is HOLD
+  const statuses: Record<string, string> = { proposed: 'PROPOSED — awaiting review', revise: 'REVISE — needs changes', deferred: 'DEFERRED', draft: 'DRAFT',
+    approved: 'APPROVED — building', rejected: 'REJECTED', implemented: 'IMPLEMENTED', completed: 'COMPLETED — archived', complete: 'COMPLETE',
+    closed: 'CLOSED BY USER DECISION', superseded: 'SUPERSEDED by another proposal' };
+  for (const [name, status] of Object.entries(statuses)) await writeFile(path.join(root, 'docs/proposals', `${name}.md`), `# ${name}\n\nStatus: ${status}\n`);
+  await writeFile(path.join(root, 'docs/proposals/unclassified.md'), '# Unclassified\n\nStatus: R8-S1a done, other parts still pending\n');
+  const docs = await reader(root);
+  const titles = (value: any) => value.items.map((item: any) => item.title).sort();
+  const review = await docs.listForReview(), all = await docs.list();
+  expect(titles(review)).toEqual(['Improve recall', 'Unclassified', 'deferred', 'draft', 'proposed', 'revise'].sort());
+  expect(all.items).toHaveLength(13);
+  const hidden = all.items.find((item: any) => item.title === 'completed');
+  expect((await docs.read({ id: hidden.id, revisionDigest: hidden.revisionDigest, documentDigest: hidden.documentDigest })).title).toBe('completed');
+});
+
+test('dashboard list hides Skill proposals that are approved, implemented or rejected', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'proposal-skill-status-')); roots.push(root);
+  const states = ['proposed', 'notified', 'changes-requested', 'deferred', 'approved', 'implemented', 'rejected'];
+  const record = (status: string, index: number) => ({ id: 'skill-proposal:' + String(index).repeat(32), workspace: 'agent-core', name: 'skill-' + status,
+    action: 'create', status, revisionDigest: hash(status), updatedAt: '2026-10-27T00:00:00.000Z' });
+  const docs = await reader(root, async () => states.map(record));
+  const names = (await docs.listForReview()).items.map((item: any) => item.title).sort();
+  expect(names).toEqual(['skill-changes-requested', 'skill-deferred', 'skill-notified', 'skill-proposed']);
+  expect((await docs.list()).items).toHaveLength(7);
+});
+
 test('refuses a changed document and never resolves caller-controlled paths', async () => {
   const { root, text } = await documentFixture(); const docs = await reader(root);
   const item = (await docs?.list())?.items[0]; expect(item).toBeDefined();
