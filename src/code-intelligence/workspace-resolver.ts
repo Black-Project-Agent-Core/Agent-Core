@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { readOnlyGitArgs, readOnlyGitEnv } from '../process/readonly-git.js';
 import { createHash } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -160,10 +161,11 @@ export class WorkspaceResolver {
   async currentGitRef(worktreePath: string): Promise<string | null> {
     const cwd = await this.normalizeExistingPath(worktreePath, false);
     return new Promise((resolve, reject) => {
-      execFile('git', ['-c', `safe.directory=${cwd.replaceAll('\\', '/')}`, '-C', cwd, 'branch', '--show-current'], {
+      execFile('git', readOnlyGitArgs(cwd, ['branch', '--show-current']), {
         windowsHide: true,
         timeout: 10_000,
         encoding: 'utf8',
+        env: readOnlyGitEnv(),
       }, (error, stdout, stderr) => {
         if (error) {
           const message = [error.message, stderr.trim()].filter(Boolean).join(' | ');

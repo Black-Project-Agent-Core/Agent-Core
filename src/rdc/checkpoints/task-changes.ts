@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { readOnlyGit, readOnlyGitEnv } from '../../process/readonly-git.js';
 import { decideToolEvidenceCapture } from '../../security/evidence-capture-policy.js';
 import { isSensitiveKey, redactSensitiveString } from '../../security/redaction.js';
 import { authorizedExistingPath, comparable, inside, isProtectedPath } from '../../semantic-ide/path-safety.js';
@@ -99,13 +100,11 @@ async function hashFile(file: string): Promise<string | null> {
   } catch { return null; }
 }
 
-async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync('git', ['-c', `safe.directory=${cwd.replaceAll('\\', '/')}`, '-c', 'core.fsmonitor=false',
-    '--no-optional-locks', '-C', cwd, ...args], {
-    cwd, windowsHide: true, timeout: LIMITS.gitMilliseconds, maxBuffer: LIMITS.gitBufferBytes, encoding: 'utf8',
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-  });
-  return String(stdout ?? '');
+/** Every git call here shares the task deadline; once it is spent the external listing is reported as unavailable, not run late. */
+async function git(cwd: string, args: string[], deadline: number): Promise<string> {
+  const remaining = deadline - performance.now();
+  if (remaining <= 0) throw new Error('TASK_CHANGES_TIME_BUDGET');
+  return readOnlyGit(cwd, args, { timeoutMs: Math.min(LIMITS.gitMilliseconds, Math.max(500, Math.floor(remaining))), maxBuffer: LIMITS.gitBufferBytes });
 }
 
 /** Fixed argv, no shell. `--no-index` exits 1 when the files differ; that is the normal result. */
@@ -114,7 +113,7 @@ async function gitDiffNoIndex(cwd: string, before: string, after: string): Promi
     const { stdout } = await execFileAsync('git', ['-c', 'core.quotepath=false', '-c', 'core.autocrlf=false', 'diff', '--no-index',
       '--no-color', '--no-ext-diff', '--no-textconv', '-U3', '--', before, after], {
       cwd, windowsHide: true, timeout: LIMITS.gitMilliseconds, maxBuffer: LIMITS.diffOutputBytes * 4, encoding: 'utf8',
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      env: readOnlyGitEnv(),
     });
     return { text: String(stdout ?? ''), overflow: false };
   } catch (error) {
@@ -225,21 +224,24 @@ function parseStatus(raw: string, top: string, root: string) {
   return out;
 }
 
-async function externalChanges(root: string, claimed: Set<string>, taskStart: number | null): Promise<TaskChanges['external']> {
+async function externalChanges(root: string, claimed: Set<string>, taskStart: number | null, deadline: number): Promise<TaskChanges['external']> {
   let top: string, raw: string;
   try {
-    top = (await git(root, ['rev-parse', '--show-toplevel'])).trim();
-    raw = await git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
+    top = (await git(root, ['rev-parse', '--show-toplevel'], deadline)).trim();
+    raw = await git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=all'], deadline);
   } catch (error) {
     const missing = (error as NodeJS.ErrnoException).code === 'ENOENT';
-    return { state: 'unavailable', reason: missing ? 'git-not-installed' : 'not-a-git-repository-or-status-failed', items: [], total: 0, truncated: false };
+    const late = error instanceof Error && error.message === 'TASK_CHANGES_TIME_BUDGET';
+    return { state: 'unavailable', reason: late ? 'time-budget' : missing ? 'git-not-installed' : 'not-a-git-repository-or-status-failed', items: [], total: 0, truncated: false };
   }
   const stats = new Map<string, { additions: number | null; deletions: number | null; binary: boolean }>();
   try { // Untracked files and repositories without HEAD simply have no line counts.
-    const numstat = (await git(root, ['diff', '--numstat', '-z', 'HEAD', '--'])).split('\0');
+    const numstat = (await git(root, ['diff', '--numstat', '-z', '--ignore-submodules=all', 'HEAD', '--'], deadline)).split('\0');
     for (let index = 0; index < numstat.length; index += 1) {
-      const [added, removed, name] = numstat[index].split('\t');
-      if (added === undefined || removed === undefined) continue;
+      // A file name may itself contain a tab, so split on the first two tabs only.
+      const first = numstat[index].indexOf('\t'), second = first < 0 ? -1 : numstat[index].indexOf('\t', first + 1);
+      if (second < 0) continue;
+      const added = numstat[index].slice(0, first), removed = numstat[index].slice(first + 1, second), name = numstat[index].slice(second + 1);
       const target = name === '' ? numstat[index += 2] : name;
       if (target) stats.set(comparable(path.resolve(top, target)), { binary: added === '-', additions: added === '-' ? null : Number(added), deletions: removed === '-' ? null : Number(removed) });
     }
@@ -297,7 +299,7 @@ export async function computeTaskChanges(service: FileCheckpointService, taskId:
   }
   const applied = await appliedChanges(service, root, mine, byPath, deadline);
   const starts = mine.map(entry => Date.parse(entry.at)).filter(Number.isFinite);
-  const external = await externalChanges(root, applied.claimed, starts.length ? Math.min(...starts) : null);
+  const external = await externalChanges(root, applied.claimed, starts.length ? Math.min(...starts) : null, deadline);
   const { claimed: _claimed, ...visible } = applied;
   return { taskId, generatedAt: new Date().toISOString(), checkpointCount: byRecord.size, requests, applied: visible, external };
 }

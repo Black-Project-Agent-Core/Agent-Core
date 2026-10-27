@@ -1,6 +1,7 @@
 import { access, lstat, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { readOnlyGitArgs, readOnlyGitEnv } from '../process/readonly-git.js';
 import { inside, isProtectedPath, authorizedExistingPath } from './path-safety.js';
 import { readSemanticDigest, semanticFileIdentity, type SemanticFileIdentity } from './source-io.js';
 
@@ -26,9 +27,10 @@ function hardIgnored(relativePath: string, extraIgnored: readonly string[] = [])
 async function runGitCheckIgnoreBatch(root: string, relativePaths: string[]): Promise<Set<string>> {
   if (!relativePaths.length) return new Set();
   return new Promise(resolve => {
-    const child = spawn('git', ['-C', root, 'check-ignore', '-z', '--stdin'], {
+    const child = spawn('git', readOnlyGitArgs(path.resolve(root), ['check-ignore', '-z', '--stdin']), {
       stdio: ['pipe', 'pipe', 'ignore'],
       windowsHide: true,
+      env: readOnlyGitEnv(),
     });
     const chunks: Buffer[] = [];
     let settled = false;
@@ -71,18 +73,10 @@ interface GitSourceListing { files: string[]; ioWarning: boolean }
 
 async function runGitListFiles(root: string): Promise<GitSourceListing | null> {
   return new Promise(resolve => {
-    const safeRoot = path.resolve(root).replace(/\\/g, '/');
-    const child = spawn('git', [
-      '-c', `safe.directory=${safeRoot}`,
-      '-C', root,
-      'ls-files',
-      '-z',
-      '--cached',
-      '--others',
-      '--exclude-standard',
-    ], {
+    const child = spawn('git', readOnlyGitArgs(path.resolve(root), ['ls-files', '-z', '--cached', '--others', '--exclude-standard']), {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      env: readOnlyGitEnv(),
     });
     const chunks: Buffer[] = [];
     let total = 0;

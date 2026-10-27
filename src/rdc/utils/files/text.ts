@@ -19,6 +19,7 @@ import { createReadStream } from 'fs';
 import { assertRegularFile, openRegularFile, readRegularFileBounded } from './safe-regular-file.js';
 import { createInterface } from 'readline';
 import { assertReadActive, isReadCancelled } from '../withTimeout.js';
+import { encodeText, sniffEncoding, type TextEncoding } from './text-encoding.js';
 import {
     FileHandler,
     ReadOptions,
@@ -78,12 +79,36 @@ export class TextFileHandler implements FileHandler {
         return this.readFileWithSmartPositioning(filePath, offset, length, 'text/plain', includeStatusMessage, options?.signal);
     }
 
-    async write(path: string, content: string, mode: 'rewrite' | 'append' = 'rewrite'): Promise<void> {
-        if (mode === 'append') {
-            await fs.appendFile(path, content);
-        } else {
-            await fs.writeFile(path, content);
+    /** The byte order mark of an existing file decides how new content is encoded; a new file is plain UTF-8. */
+    private async existingEncoding(filePath: string): Promise<TextEncoding> {
+        let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+        try {
+            handle = await fs.open(filePath, 'r');
+            const head = Buffer.alloc(3);
+            const { bytesRead } = await handle.read(head, 0, 3, 0);
+            return sniffEncoding(head.subarray(0, bytesRead));
+        } catch {
+            return 'utf8'; // missing or unreadable: the write itself reports a real problem
+        } finally {
+            await handle?.close().catch(() => undefined);
         }
+    }
+
+    async write(path: string, content: string, mode: 'rewrite' | 'append' = 'rewrite'): Promise<void> {
+        const encoding = await this.existingEncoding(path);
+        if (encoding === 'utf8') {
+            if (mode === 'append') {
+                await fs.appendFile(path, content);
+            } else {
+                await fs.writeFile(path, content);
+            }
+            return;
+        }
+        // The file already carries a BOM (or is UTF-16): keep its encoding, and never double the BOM when the
+        // caller's text still starts with one.
+        const body = content.startsWith('﻿') ? content.slice(1) : content;
+        if (mode === 'append') await fs.appendFile(path, encodeText(body, encoding, false));
+        else await fs.writeFile(path, encodeText(body, encoding));
     }
 
     async getInfo(path: string): Promise<FileInfo> {

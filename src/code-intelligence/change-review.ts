@@ -1,7 +1,7 @@
-import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { promisify } from 'node:util';
+import { readOnlyGit } from '../process/readonly-git.js';
+import { truncateText } from '../text-bounds.js';
 import { parseCallToolResultJson } from '../mcp/call-tool-result.js';
 import { redactSensitiveString } from '../security/redaction.js';
 import type { SemanticIdeService } from '../semantic-ide/service.js';
@@ -9,7 +9,6 @@ import type { SemanticSymbol } from '../semantic-ide/types.js';
 import type { CodeIntelligenceService } from './service.js';
 import type { CodeWorkspaceContext } from './types.js';
 
-const execFileAsync = promisify(execFile);
 const MAX_CHANGED_FILES = 64;
 const MAX_SEEDS = 24;
 const MAX_DEPENDENTS = 8;
@@ -58,20 +57,9 @@ export interface ChangedSymbolReview {
   sourceAuthority: 'exact-source+semantic-ide+grafel';
 }
 
-function safeRoot(root: string): string {
-  return root.replaceAll('\\', '/');
-}
 async function git(root: string, args: string[], allowFailure = false): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync('git', [
-      '-c', `safe.directory=${safeRoot(root)}`, '--no-optional-locks', '-C', root, ...args,
-    ], {
-      windowsHide: true,
-      timeout: 12_000,
-      maxBuffer: 32 * 1024 * 1024,
-      encoding: 'utf8',
-    });
-    return String(stdout ?? '');
+    return await readOnlyGit(root, args);
   } catch (error) {
     if (allowFailure) return null;
     throw error;
@@ -154,7 +142,7 @@ function attachPatchHunks(files: ReviewChangedFile[], patch: string): void {
     }
     if (!hunk) continue;
     if ((line.startsWith('+') || line.startsWith('-')) && hunk.lines.length < MAX_HUNK_LINES) {
-      hunk.lines.push(line.slice(0, 800));
+      hunk.lines.push(truncateText(line, 800));
     }
   }
 }

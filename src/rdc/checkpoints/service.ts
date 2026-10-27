@@ -524,6 +524,11 @@ export class FileCheckpointService {
           if (this.key(await this.resolveCandidate(item.path)) !== this.key(item.path)) throw new Error('CHECKPOINT_PATH_CHANGED');
           await this.applySnapshot(target[this.key(item.path)]);
         }
+        // Success is reported only after every restored file reads back as the checkpoint says; otherwise roll back.
+        for (const item of preview.changes) {
+          const wanted = target[this.key(item.path)], now = await this.snapshotCanonical(item.path, false);
+          if (now.exists !== wanted.exists || now.sha256 !== wanted.sha256) throw new Error('CHECKPOINT_RESTORE_VERIFICATION_FAILED');
+        }
         const next = structuredClone(state); next.head = checkpointId;
         await this.publish(next);
       } catch (error) {

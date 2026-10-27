@@ -1,20 +1,14 @@
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
 import { realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { promisify } from 'node:util';
+import { readOnlyGit } from '../process/readonly-git.js';
 import type { MemoryRepositoryIdentity } from './types.js';
 
-const execFileAsync = promisify(execFile);
 const sha256 = (value: string | Buffer): string => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 
 async function git(root: string, args: string[], allowFailure = false): Promise<{ ok: boolean; stdout: string }> {
   try {
-    const safe = root.replace(/\\/g, '/');
-    const { stdout } = await execFileAsync('git', ['-c', `safe.directory=${safe}`, '--no-optional-locks', '-C', root, ...args], {
-      windowsHide: true, timeout: 10_000, maxBuffer: 4_000_000, encoding: 'utf8',
-    });
-    return { ok: true, stdout: String(stdout ?? '') };
+    return { ok: true, stdout: await readOnlyGit(root, args, { timeoutMs: 10_000, maxBuffer: 4_000_000 }) };
   } catch (error) {
     if (allowFailure) return { ok: false, stdout: '' };
     throw error;

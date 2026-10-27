@@ -18,6 +18,7 @@ import { parsePdfBytesToMarkdown, editPdf, PdfOperations, PdfMetadata, parseMark
 import { isBinaryFile } from 'isbinaryfile';
 import { resolveModuleProjectRoot } from '../../portability/paths.js';
 import { hazardousWindowsPath } from '../../semantic-ide/path-safety.js';
+import { decodeTextBuffer } from '../utils/files/text-encoding.js';
 import { withProjectStructureMutation } from '../../portability/project-structure.js';
 import { documentProjectionService } from '../document-projection/service.js';
 import { decodeText } from '../document-projection/helpers.js';
@@ -721,7 +722,8 @@ export async function readFileInternal(filePath: string, offset: number = 0, len
     if (bounded.truncated) {
         throw new Error(`Internal read exceeded ${INTERNAL_TEXT_MAX_BYTES} bytes: ${filePath}`);
     }
-    const content = bounded.buffer.toString('utf8');
+    // Strict decode: a file that is not valid UTF-8 is refused instead of being edited lossily; BOMs are re-applied on write.
+    const content = decodeTextBuffer(bounded.buffer).text;
     if (offset === 0 && length >= Number.MAX_SAFE_INTEGER) return content;
     const lines = TextFileHandler.splitLinesPreservingEndings(content);
     return lines.slice(offset, offset + length).join('');

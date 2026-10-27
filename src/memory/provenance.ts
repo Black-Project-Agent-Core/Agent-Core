@@ -1,11 +1,9 @@
-import { execFile } from 'node:child_process';
 import path from 'node:path';
-import { promisify } from 'node:util';
+import { readOnlyGit } from '../process/readonly-git.js';
 import type { MemoryProvenance, MemoryRecord, MemoryRepositoryIdentity } from './types.js';
 import { captureRepositoryIdentity } from './repository-identity.js';
 import { captureMemorySourceSnapshot, compareMemorySourceSnapshot, memorySourcePathAllowed, normalizeMemorySourceSnapshot } from './source-snapshot.js';
 
-const execFileAsync = promisify(execFile);
 const MAX_PROVENANCE_FILES = 64;
 const MAX_FILE_REF_LENGTH = 500;
 
@@ -94,12 +92,7 @@ export function normalizeMemoryProvenance(input: MemoryProvenance): MemoryProven
 }
 
 async function git(projectRoot: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync(
-    'git',
-    ['-c', `safe.directory=${path.resolve(projectRoot).replaceAll('\\', '/')}`, '--no-optional-locks', '-C', projectRoot, ...args],
-    { windowsHide: true, timeout: 10_000, maxBuffer: 1_000_000, encoding: 'utf8' },
-  );
-  return String(stdout ?? '').trim();
+  return (await readOnlyGit(path.resolve(projectRoot), args, { timeoutMs: 10_000, maxBuffer: 1_000_000 })).trim();
 }
 
 function supportsLocalWorkspace(provenance: MemoryProvenance): boolean {

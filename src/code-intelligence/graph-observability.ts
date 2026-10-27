@@ -1,11 +1,9 @@
-import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { promisify } from 'node:util';
+import { readOnlyGit } from '../process/readonly-git.js';
 import { captureRepositoryIdentity } from '../memory/repository-identity.js';
 import { writeOwnedFileAtomic } from '../persistence/atomic-file.js';
 
-const execFileAsync = promisify(execFile);
 const OBSERVABILITY_VERSION = 1;
 const DEFAULT_SOURCE_LIMIT = 64;
 
@@ -290,10 +288,7 @@ function isProviderIgnored(relativePath: string, rules: ProviderIgnoreRule[]): b
 
 async function gitFiles(root: string): Promise<string[] | null> {
   try {
-    const { stdout } = await execFileAsync('git', [
-      '-c', `safe.directory=${root.replaceAll('\\', '/')}`, '--no-optional-locks',
-      '-C', root, 'ls-files', '-co', '--exclude-standard', '-z',
-    ], { windowsHide: true, timeout: 12_000, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' });
+    const stdout = await readOnlyGit(root, ['ls-files', '-co', '--exclude-standard', '-z'], { maxBuffer: 16 * 1024 * 1024 });
     return String(stdout ?? '').split('\0').filter(Boolean).map(value => value.replaceAll('\\', '/'));
   } catch {
     return null;

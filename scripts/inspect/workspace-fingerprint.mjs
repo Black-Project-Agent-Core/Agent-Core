@@ -15,8 +15,10 @@ const stableBytes=value=>Buffer.from(JSON.stringify(value),'utf8');
 async function git(root,args,{allowFailure=false}={}){
   const safe=normalizeRoot(root).replace(/\\/g,'/');
   return new Promise((resolve,reject)=>{
-    const child=spawn('git',['-c',`safe.directory=${safe}`,'-C',root,...args],{
-      stdio:['ignore','pipe','pipe'],windowsHide:true,
+    // Same read-only flags as src/process/readonly-git.ts: no optional locks, no fsmonitor, no stat-only index refresh.
+    const child=spawn('git',['-c',`safe.directory=${safe}`,'-c','core.fsmonitor=false','-c','core.quotePath=false','-c','diff.autoRefreshIndex=false',
+      '-c','diff.mnemonicPrefix=false','-c','diff.noprefix=false','--no-optional-locks','-C',root,...args],{
+      stdio:['ignore','pipe','pipe'],windowsHide:true,env:{...process.env,LC_ALL:'C',GIT_TERMINAL_PROMPT:'0'},
     });
     const out=[],err=[];let bytes=0,settled=false;
     const finish=(error,value)=>{if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve(value);};
@@ -51,6 +53,8 @@ function noiseClass(file){
   if(/(^|\/)(node_modules|vendor|dist|build|coverage)\//.test(value))return 'generated-or-vendor';
   if(/(^|\/)(__tests__|tests?|specs?)\//.test(value)||/\.(test|spec)\.[^.]+$/.test(value))return 'test';
   if(/\.(map|min\.js|min\.css|lock)$/.test(value)||/(^|\/)(generated|gen)\//.test(value))return 'generated';
+  if(/(^|\/)(package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|cargo\.lock|go\.sum|composer\.lock)$/.test(value)
+    ||/\.(generated\.[a-z]+|g\.[a-z]+|pb\.go|pb\.cc|pb\.h|d\.ts)$/.test(value))return 'generated';
   return 'source';
 }
 async function pathEvidence(root,pathStates){
@@ -73,10 +77,12 @@ export async function fingerprintWorkspace(repoRoot){
   if(isProtected(resolvedRoot))throw new Error('WORKSPACE_FINGERPRINT_PROTECTED_PATH');
   const headResult=await git(resolvedRoot,['rev-parse','--verify','HEAD'],{allowFailure:true});
   const head=headResult.code===0?headResult.stdout.toString('utf8').trim():null;
-  const status=await git(resolvedRoot,['status','--porcelain=v1','-z','--untracked-files=all','--no-renames']);
-  const diff=await git(resolvedRoot,['diff','--no-ext-diff','--no-textconv','HEAD'],{allowFailure:head===null});
+  const status=await git(resolvedRoot,['status','--porcelain=v1','-z','--untracked-files=all','--no-renames','--ignore-submodules=all']);
+  const diff=await git(resolvedRoot,['diff','--no-ext-diff','--no-textconv','--ignore-submodules=all','HEAD'],{allowFailure:head===null});
   const statusInfo=parseStatus(status.stdout);
   const paths=await pathEvidence(resolvedRoot,statusInfo.pathStates);
+  // Content is hashed for the first MAX_PATH_EVIDENCE paths only; say so instead of letting the cut look like completeness.
+  const pathEvidenceOmitted=Math.max(0,statusInfo.pathStates.length-MAX_PATH_EVIDENCE);
   const dimensions={
     head,
     statusDigest:sha256(status.stdout),
@@ -90,8 +96,10 @@ export async function fingerprintWorkspace(repoRoot){
     schemaVersion:1,kind:'workspace-session-fingerprint',resolvedRoot,...dimensions,
     fingerprint:sha256(stableBytes(dimensions)),
     pathEvidence:paths,
+    pathEvidenceOmitted,
     untrackedPathEvidence:statusInfo.untrackedPaths,
-    limitations:['path-content-is-hashed-not-emitted','fingerprint-change-does-not-establish-causality'],
+    limitations:['path-content-is-hashed-not-emitted','fingerprint-change-does-not-establish-causality',
+      ...(pathEvidenceOmitted?['path-evidence-truncated']:[])],
     sourceMutated:false,
   };
 }
@@ -108,9 +116,12 @@ export function compareWorkspaceFingerprints(before,after){
   const preExisting=[...beforePaths.values()].sort((a,b)=>a.path.localeCompare(b.path));
   const introduced=[...afterPaths.values()].filter(item=>!beforePaths.has(item.path)).sort((a,b)=>a.path.localeCompare(b.path));
   const modifiedSinceBaseline=[...afterPaths.values()].filter(item=>{const prior=beforePaths.get(item.path);return prior&&(prior.status!==item.status||prior.contentHash!==item.contentHash);}).sort((a,b)=>a.path.localeCompare(b.path));
-  const resolved=[...beforePaths.values()].filter(item=>!afterPaths.has(item.path)).sort((a,b)=>a.path.localeCompare(b.path));
+  // A path missing from a truncated list may only have fallen past the cut, so "resolved" cannot be claimed then.
+  const partial=(before.pathEvidenceOmitted??0)>0||(after.pathEvidenceOmitted??0)>0;
+  const resolved=partial?[]:[...beforePaths.values()].filter(item=>!afterPaths.has(item.path)).sort((a,b)=>a.path.localeCompare(b.path));
   const untracked=[...afterPaths.values()].filter(item=>item.status==='??').sort((a,b)=>a.path.localeCompare(b.path));
-  return {status:changedDimensions.length?'changed':'unchanged',changedDimensions,preExisting,introduced,modifiedSinceBaseline,resolved,untracked,limitations:['task-local-path-evidence-does-not-establish-causality']};
+  return {status:changedDimensions.length?'changed':'unchanged',coverage:partial?'partial':'complete',changedDimensions,preExisting,introduced,modifiedSinceBaseline,resolved,untracked,
+    limitations:['task-local-path-evidence-does-not-establish-causality',...(partial?['path-evidence-truncated-resolved-unknown']:[])]};
 }
 export async function fingerprintWorkspaces(roots){
   if(!Array.isArray(roots)||roots.length<1||roots.length>MAX_REPOS)throw new Error('WORKSPACE_FINGERPRINT_REPO_LIMIT');

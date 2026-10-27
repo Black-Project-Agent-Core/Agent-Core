@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { readOnlyGit } from './git-readonly.js';
+import { readOnlyGit } from '../process/readonly-git.js';
 
 export type AdvisorySeverity = 'info' | 'low' | 'medium' | 'high';
 
