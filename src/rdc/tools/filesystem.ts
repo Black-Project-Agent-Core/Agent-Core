@@ -17,6 +17,7 @@ import { isPdfFile } from "./mime-types.js";
 import { parsePdfBytesToMarkdown, editPdf, PdfOperations, PdfMetadata, parseMarkdownToPdf } from './pdf/index.js';
 import { isBinaryFile } from 'isbinaryfile';
 import { resolveModuleProjectRoot } from '../../portability/paths.js';
+import { hazardousWindowsPath } from '../../semantic-ide/path-safety.js';
 import { withProjectStructureMutation } from '../../portability/project-structure.js';
 import { documentProjectionService } from '../document-projection/service.js';
 import { decodeText } from '../document-projection/helpers.js';
@@ -238,6 +239,12 @@ async function isPathAllowed(pathToCheck: string): Promise<boolean> {
  */
 export async function validatePath(requestedPath: string): Promise<string> {
     const validationOperation = async (): Promise<string> => {
+        const hazard = hazardousWindowsPath(requestedPath);
+        if (hazard) {
+            throw new Error(`Path not allowed (${hazard}): ${hazard === 'unc-share'
+                ? 'UNC shares are refused because opening one sends your Windows credentials to that host; map the share to a drive letter instead.'
+                : hazard === 'nt-namespace' ? 'NT namespace and device paths are refused.' : 'alternate data streams are refused.'}`);
+        }
         // Expand home directory if present
         const expandedPath = expandHome(requestedPath);
 

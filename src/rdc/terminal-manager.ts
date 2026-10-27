@@ -10,8 +10,12 @@ import { analyzeProcessState } from './utils/process-detection.js';
 import { processLedger, type ProcessLedgerRecord } from './process-ledger.js';
 import { snapshotDescendantPids, terminateOwnedProcessTree } from '../process/owned-process-tree.js';
 import { resolveModuleProjectRoot } from '../portability/paths.js';
+import { StringDecoder } from 'node:string_decoder';
+import { describeExitCode, stripAnsi } from './terminal-output.js';
+import { currentToolInvocationRequest } from '../tracker/tool-invocation.js';
 
 const MACHINE_CONTROL_PROJECT_ROOT = resolveModuleProjectRoot(import.meta.url);
+
 
 /**
  * Standard Windows PATHEXT value, used to repair a corrupted PATHEXT before
@@ -238,7 +242,7 @@ export class TerminalManager {
       spawnConfig = getShellSpawnArgs(shellToUse, enhancedCommand);
       spawnOptions = {
         cwd: MACHINE_CONTROL_PROJECT_ROOT,
-        env: buildMachineShellEnv({ TERM: 'xterm-256color' }),
+        env: buildMachineShellEnv({ TERM: 'xterm-256color', NO_COLOR: process.env.NO_COLOR ?? '1' }),
         windowsHide: true  // Prevent visible console windows on Windows
       };
 
@@ -256,7 +260,7 @@ export class TerminalManager {
       spawnOptions = {
         shell: shellToUse,
         cwd: MACHINE_CONTROL_PROJECT_ROOT,
-        env: buildMachineShellEnv({ TERM: 'xterm-256color' }),
+        env: buildMachineShellEnv({ TERM: 'xterm-256color', NO_COLOR: process.env.NO_COLOR ?? '1' }),
         windowsHide: true  // Prevent visible console windows on Windows
       };
     }
@@ -286,6 +290,7 @@ export class TerminalManager {
         enhancedCommand,
         typeof shellToUse === 'string' ? shellToUse : 'default',
         MACHINE_CONTROL_PROJECT_ROOT,
+        currentToolInvocationRequest()?.mutationContext.taskId,
       );
     } catch (error) {
       console.warn('Process ledger pending write failed:', error);
@@ -294,6 +299,9 @@ export class TerminalManager {
     // Spawn the process with appropriate arguments
     const childProcess = spawn(spawnConfig.executable, spawnConfig.args, spawnOptions);
     let output = '';
+    // A chunk can end in the middle of a multi-byte character; the decoder carries the rest into the next chunk.
+    const stdoutDecoder = new StringDecoder('utf8');
+    const stderrDecoder = new StringDecoder('utf8');
 
     // spawn() reports failure asynchronously via an 'error' event; it does not
     // throw. Node rethrows an 'error' that has no listener as an uncaught
@@ -421,7 +429,7 @@ export class TerminalManager {
       }
 
       childProcess.stdout.on('data', (data: any) => {
-        const text = data.toString();
+        const text = stripAnsi(typeof data === 'string' ? data : stdoutDecoder.write(data));
         this.captureSpillChunk(childProcess.pid!, 'stdout', text);
         const now = Date.now();
 
@@ -468,7 +476,7 @@ export class TerminalManager {
       });
 
       childProcess.stderr.on('data', (data: any) => {
-        const text = data.toString();
+        const text = stripAnsi(typeof data === 'string' ? data : stderrDecoder.write(data));
         this.captureSpillChunk(childProcess.pid!, 'stderr', text);
         const now = Date.now();
 
@@ -807,9 +815,9 @@ export class TerminalManager {
         ? `\nRuntime: ${(result.runtimeMs / 1000).toFixed(2)}s` 
         : '';
       if (output) {
-        return `${output}\n\nProcess completed with exit code ${result.exitCode}${runtimeStr}`;
+        return `${output}\n\nProcess completed with exit code ${result.exitCode}${describeExitCode(result.exitCode)}${runtimeStr}`;
       } else {
-        return `Process completed with exit code ${result.exitCode}${runtimeStr}\n(No output produced)`;
+        return `Process completed with exit code ${result.exitCode}${describeExitCode(result.exitCode)}${runtimeStr}\n(No output produced)`;
       }
     }
 
@@ -942,6 +950,7 @@ export class TerminalManager {
 
     try {
         void processLedger.markCancelling(pid).catch(() => undefined);
+        try { session.process.stdin?.end(); } catch { /* already closed */ } // a child blocked on input can then see EOF
         session.process.kill('SIGINT');
         setTimeout(() => {
           if (this.sessions.has(pid)) {

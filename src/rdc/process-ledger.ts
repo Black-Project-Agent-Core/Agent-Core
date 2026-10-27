@@ -26,6 +26,8 @@ export interface ProcessLedgerRecord {
   updatedAt: string;
   exitCode: number | null;
   error: string | null;
+  /** Task whose tool call started the process (host-bound), when there was one. Informational: it never authorizes or stops anything. */
+  ownerTaskId?: string;
 }
 
 interface ProcessLedgerState {
@@ -134,13 +136,14 @@ export class ProcessLedger {
     this.state.records = keep.slice(0, MAX_RECORDS);
   }
 
-  async createPending(command: string, shell: string, cwd: string): Promise<string> {
+  async createPending(command: string, shell: string, cwd: string, ownerTaskId?: string): Promise<string> {
     const now = new Date().toISOString();
     const id = randomUUID();
     this.state.records.push({
       id, pid: null, status: 'pending', commandDigest: processCommandDigest(command),
       shell, cwd: path.resolve(cwd), expectedExecutable: '', identity: null,
       createdAt: now, updatedAt: now, exitCode: null, error: null,
+      ...(ownerTaskId ? { ownerTaskId: ownerTaskId.slice(0, 200) } : {}),
     });
     await this.persist();
     return id;
@@ -190,6 +193,16 @@ export class ProcessLedger {
       record.updatedAt = new Date().toISOString();
       await this.persist();
     });
+  }
+
+  /**
+   * Processes the ledger still records as running for a task, so Stop can name them. It never stops them, and it does
+   * not probe the OS (that would spawn a shell per record on the Stop path): the status is what the ledger last saw.
+   */
+  activeForTask(taskId: string): Array<{ pid: number; status: 'running' | 'cancelling' }> {
+    return this.state.records.flatMap(record => record.ownerTaskId === taskId && record.pid !== null
+      && (record.status === 'running' || record.status === 'cancelling')
+      ? [{ pid: record.pid, status: record.status }] : []);
   }
 
   private findByPid(pid: number): ProcessLedgerRecord | undefined {

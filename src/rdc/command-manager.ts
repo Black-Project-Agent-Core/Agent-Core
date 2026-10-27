@@ -1,6 +1,7 @@
 import path from 'path';
 import {configManager} from './config-manager.js';
 import {capture} from "./utils/capture.js";
+import { normalizeCommandName } from './command-guards.js';
 
 class CommandManager {
 
@@ -14,7 +15,8 @@ class CommandManager {
             commandString = commandString.trim();
 
             // Define command separators - these are the operators that can chain commands
-            const separators = [';', '&&', '||', '|', '&'];
+            // A newline separates commands in every shell this server starts, so it is a separator too.
+            const separators = [';', '&&', '||', '|', '&', '\n', '\r'];
 
             // This will store our extracted commands
             const commands: string[] = [];
@@ -199,6 +201,12 @@ class CommandManager {
                 }
                 
                 firstToken = token;
+                // A quoted path may contain spaces ("C:\Program Files\x\reg.exe"): take everything up to the closing quote.
+                if (/^["']/.test(token) && !(token.length > 1 && token.endsWith(token[0]))) {
+                    const rest = tokens.slice(i).join(' ');
+                    const end = rest.indexOf(token[0], 1);
+                    if (end > 0) firstToken = rest.slice(0, end + 1);
+                }
                 break;
             }
 
@@ -212,14 +220,14 @@ class CommandManager {
                 const inner = firstToken.slice(2, -1).trim();
                 if (inner) {
                     const innerTokens = inner.split(/\s+/);
-                    return path.basename(innerTokens[0]).toLowerCase();
+                    return normalizeCommandName(innerTokens[0]);
                 }
                 return null;
             }
 
-            // strip path prefix so /usr/bin/sudo gets caught as "sudo"
-            const baseName = path.basename(firstToken);
-            return baseName.toLowerCase();
+            // strip quotes, the path prefix and a Windows executable extension so /usr/bin/sudo and reg.exe
+            // are caught as "sudo" and "reg"
+            return normalizeCommandName(firstToken);
         } catch (error) {
             capture('Error extracting base command');
             return null;

@@ -43,6 +43,8 @@ export interface AgentTurnEvent {
   code?: string;
   retryAtMs?: number | null;
   routing?: AgentTurnRoutingEvidence;
+  /** `turn.cancelled` only: processes this task started that the ledger still records as running. Reported, never stopped. */
+  ownedProcesses?: Array<{ pid: number; status: 'running' | 'cancelling' }>;
 }
 export type AgentTurnEventSink = (event: AgentTurnEvent) => void | Promise<void>;
 

@@ -18,6 +18,7 @@ import type {
 } from './agent-provider.js';
 import { AgentRuntimeService } from './agent-runtime.js';
 import { AgentProviderPoolPausedError } from './agent-provider.js';
+import { processLedger } from './rdc/process-ledger.js';
 import { AgentRuntimeToolSession, toolObservesStop } from './agent-tool-session.js';
 import { accountContext } from './agent-context-accounting.js';
 import {
@@ -1787,10 +1788,12 @@ export class NativeAgentController {
           disposition: 'awaiting-verification',
         }).catch(() => undefined);
       }
+      // Stop ends the turn, not the processes it started; name the ones still running so the user can decide.
+      const ownedProcesses = stopped ? processLedger.activeForTask(task.id) : [];
       await emitAgentTurnEvent(input.eventSink, error instanceof AgentProviderPoolPausedError
         ? { type: 'provider.waiting', code: error.reason, retryAtMs: providerWait?.retryAtMs ?? null }
         : stopped
-        ? { type: 'turn.cancelled', code: 'AGENT_RUNTIME_TURN_STOPPED' }
+        ? { type: 'turn.cancelled', code: 'AGENT_RUNTIME_TURN_STOPPED', ...(ownedProcesses.length ? { ownedProcesses } : {}) }
         : { type: 'turn.failed', code: boundedSummary(code, 160),
           ...(code === 'AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED' && limitReport ? { response: limitReport } : {}) });
       await closeOwnedSession();

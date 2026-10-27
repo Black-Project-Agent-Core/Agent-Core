@@ -30,6 +30,22 @@ describe('process ledger', () => {
     ]);
   });
 
+  it('records the owning task and lists only its still-running processes, without stopping them', async () => {
+    const { ledger } = await fixture();
+    const mine = await ledger.createPending('echo a', 'powershell.exe', process.cwd(), 'task-one');
+    const other = await ledger.createPending('echo b', 'powershell.exe', process.cwd(), 'task-two');
+    const anonymous = await ledger.createPending('echo c', 'powershell.exe', process.cwd());
+    await ledger.attachRunning(mine, 101, 'node.exe');
+    await ledger.attachRunning(other, 102, 'node.exe');
+    await ledger.attachRunning(anonymous, 103, 'node.exe');
+    expect(ledger.activeForTask('task-one')).toEqual([{ pid: 101, status: 'running' }]);
+    expect(ledger.activeForTask('task-none')).toEqual([]);
+    await ledger.markCancelling(101);
+    expect(ledger.activeForTask('task-one')).toEqual([{ pid: 101, status: 'cancelling' }]);
+    await ledger.finalizeExit(101, 0);
+    expect(ledger.activeForTask('task-one')).toEqual([]); // finished processes are not reported
+  });
+
   it('rejects stale PID identity on recovery', async () => {
     const original = { image: 'node.exe', created: 'first-start' };
     const { file, ledger } = await fixture(original);

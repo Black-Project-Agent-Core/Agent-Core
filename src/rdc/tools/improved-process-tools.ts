@@ -1,5 +1,7 @@
 import { terminalManager, MAX_BUFFERED_OUTPUT_CHARS } from '../terminal-manager.js';
+import { describeExitCode } from '../terminal-output.js';
 import { commandManager } from '../command-manager.js';
+import { catastrophicDeleteTarget, persistenceAdvisory } from '../command-guards.js';
 import { StartProcessArgsSchema, ReadProcessOutputArgsSchema, InteractWithProcessArgsSchema, ForceTerminateArgsSchema, ListSessionsArgsSchema } from './schemas.js';
 import { capture } from "../utils/capture.js";
 import { ServerResult, type ProcessObservation } from '../types.js';
@@ -125,7 +127,24 @@ export async function startProcess(args: unknown): Promise<ServerResult> {
     };
   }
 
+  // Refusal-only: a guard that cannot inspect the command refuses it instead of letting it through.
+  try {
+    const catastrophic = catastrophicDeleteTarget(parsed.data.command);
+    if (catastrophic) {
+      return {
+        content: [{ type: "text", text: `Error: Refusing to run this command because it would delete ${catastrophic.label} (${catastrophic.target}). Agent Core never runs a catastrophic delete on its own; if you really mean it, run it yourself in your own terminal.` }],
+        isError: true,
+      };
+    }
+  } catch {
+    return {
+      content: [{ type: "text", text: 'Error: Command refused because the deletion guard could not inspect it.' }],
+      isError: true,
+    };
+  }
+
   const commandToRun = parsed.data.command;
+  const advisory = persistenceAdvisory(commandToRun);
 
   // Handle node:local - runs Node.js code directly on MCP server
   if (commandToRun.trim() === 'node:local') {
@@ -210,7 +229,7 @@ export async function startProcess(args: unknown): Promise<ServerResult> {
   return {
     content: [{
       type: "text",
-      text: `Process started with PID ${result.pid} (shell: ${shellUsed})\nInitial output:\n${result.output}${statusMessage}${timingMessage}`
+      text: `Process started with PID ${result.pid} (shell: ${shellUsed})\nInitial output:\n${result.output}${statusMessage}${timingMessage}${advisory ? `\n\n${advisory}` : ''}`
     }],
   };
 }
@@ -218,7 +237,7 @@ export async function startProcess(args: unknown): Promise<ServerResult> {
 function formatObservedExit(pid: number, exitCode: number | null | undefined): string {
   return exitCode === null || exitCode === undefined
     ? `Process ${pid} exited; exit code unavailable.`
-    : `Process ${pid} exited with code ${exitCode}.`;
+    : `Process ${pid} exited with code ${exitCode}${describeExitCode(exitCode)}.`;
 }
 
 function formatTimingInfo(timing: any): string {
