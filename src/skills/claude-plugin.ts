@@ -182,6 +182,11 @@ function toolTokens(text: string): string[] {
   return tokens;
 }
 
+// SKILL.md comes from a third-party plugin and the service accepts up to 2 MiB. Unbounded link quantifiers
+// backtrack quadratically on repeated `](`, so both the scanned text and every quantifier are capped.
+// shortcut: links after the first 256 KiB or with a target over 256 chars are not checked, raise if a real pack needs it.
+const MAX_LINK_SCAN_CHARS = 256 * 1024;
+
 /** Relative targets (markdown links and `references/`-style code spans) that do not resolve inside the skill tree. */
 export function findMissingReferences(markdown: string, relatives: string[]): string[] {
   const known = new Set(relatives);
@@ -190,9 +195,9 @@ export function findMissingReferences(markdown: string, relatives: string[]): st
     const parts = relative.split('/');
     for (let size = 1; size < parts.length; size++) directories.add(parts.slice(0, size).join('/'));
   }
-  const text = markdown.replace(/^(```|~~~)[\s\S]*?^\1/gm, '');
+  const text = markdown.slice(0, MAX_LINK_SCAN_CHARS).replace(/^(```|~~~)[\s\S]*?^\1/gm, '');
   const targets = new Set<string>();
-  for (const match of text.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+["'][^)]*["'])?\s*\)/g)) targets.add(match[1]!);
+  for (const match of text.matchAll(/\]\(\s{0,16}<?([^)\s>]{1,256})>?(?:\s{1,16}["'][^)]{0,256}["'])?\s{0,16}\)/g)) targets.add(match[1]!);
   for (const match of text.matchAll(/`((?:references|examples|scripts|assets)\/[^`\s]+)`/g)) targets.add(match[1]!);
   const missing = new Set<string>();
   for (const target of targets) {

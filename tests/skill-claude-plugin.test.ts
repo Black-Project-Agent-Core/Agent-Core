@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:
 import os from 'node:os';
 import path from 'node:path';
 import { SkillService, parseSkillMarkdown } from '../src/skills/service.js';
-import { adaptClaudeSkill, skillIdentifier, walkOrder } from '../src/skills/claude-plugin.js';
+import { adaptClaudeSkill, findMissingReferences, skillIdentifier, walkOrder } from '../src/skills/claude-plugin.js';
 import { skills as skillSchema } from '../src/mcp/skills-schemas.js';
 
 const roots: string[] = [];
@@ -81,6 +81,16 @@ it('keeps the strict parser unchanged: the Claude skill is rejected as-is and di
   expect(await readdir(path.join(root, 'runtime', 'skills', 'catalog'))).toEqual([]);
   expect(await readdir(path.join(root, 'runtime', 'skills', 'revisions'))).toEqual([]);
   expect(await readdir(path.join(root, 'runtime', 'skills', '.staging'))).toEqual([]);
+});
+
+it('scans hostile SKILL.md link text in bounded work and keeps reporting real missing references', () => {
+  // 2 MiB of `](` with no closing `)` is the largest hostile body the service accepts; the old unbounded regex backtracked quadratically on it.
+  const hostile = ']('.repeat(1024 * 1024);
+  expect(findMissingReferences(hostile, [])).toEqual([]);
+  expect(findMissingReferences(`[gone](references/gone.md)\n${hostile}`, [])).toEqual(['references/gone.md']);
+  expect(findMissingReferences('[ok](references/ok.md "title") and [bad](references/bad.md)', ['references/ok.md'])).toEqual(['references/bad.md']);
+  // Known limit (see the shortcut comment in claude-plugin.ts): text after the first 256 KiB is not checked.
+  expect(findMissingReferences(`${'a'.repeat(256 * 1024)}[late](references/late.md)`, [])).toEqual([]);
 });
 
 it('reports hooks, commands, agents and MCP config without installing them or echoing their contents', async () => {

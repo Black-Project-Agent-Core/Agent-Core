@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import type { CallToolResult } from '@modelcontextprotocol/client';
 import type { CodeIntelligenceService } from '../code-intelligence/service.js';
-import { buildChangedSymbolReview } from '../code-intelligence/change-review.js';
+import { buildChangedSymbolReview, revisionOptionError } from '../code-intelligence/change-review.js';
 import { scanChangedSourceSecurity } from '../code-intelligence/changed-source-security.js';
 import type { SemanticIdeService } from '../semantic-ide/service.js';
 import type { ExternalControllerLearningService } from '../learning/external-controller.js';
@@ -319,6 +319,8 @@ export function registerCodeIntelligenceTools(
     }
     if (input.action === 'impact') {
       const scope = input.scope ?? (input.entityId ? 'entity' : 'changeset');
+      const revisionError = revisionOptionError(input.base, input.head);
+      if (revisionError) return errorResult(revisionError);
       if (scope === 'entity' && !input.entityId) return errorResult('entityId is required for entity impact');
       if (scope === 'changeset' && !input.repo) return errorResult('repo is required for changeset impact');
       const providerResult = await runProvider(
@@ -376,6 +378,8 @@ export function registerCodeIntelligenceTools(
       const refA = input.refA ?? input.base;
       const refB = input.refB ?? input.head;
       if (!input.repo || !refA || !refB) return errorResult('repo plus refA/refB (or base/head) are required for diff aspect=refs');
+      const refError = revisionOptionError(refA, refB);
+      if (refError) return errorResult(refError);
       return providerCall(service, 'code_surface', input.action, 'grafel_diff', providerArgs(input.params, {
         aspect,
         repo: input.repo,

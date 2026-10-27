@@ -72,11 +72,29 @@ export async function listProcesses(): Promise<ServerResult> {
   }
 }
 
+// The tool schema stays `pid: number` (the MCP manifest has almost no byte budget left), so the guard lives here.
+// shortcut: only this process and its direct parent are protected; the wider launcher tree needs a process-table
+// query, add it when another owner of Agent Core turns out to be killable.
+function killRefusal(pid: number): string | undefined {
+  if (!Number.isInteger(pid) || pid <= 0) return 'pid must be a positive integer';
+  if (pid === process.pid) return 'it is the Agent Core process itself';
+  if (pid === process.ppid) return 'it is the parent of the Agent Core process';
+  return undefined;
+}
+
 export async function killProcess(args: unknown): Promise<ServerResult> {
   const parsed = KillProcessArgsSchema.safeParse(args);
   if (!parsed.success) {
     return {
       content: [{ type: "text", text: `Error: Invalid arguments for kill_process: ${parsed.error}` }],
+      isError: true,
+    };
+  }
+
+  const refusal = killRefusal(parsed.data.pid);
+  if (refusal) {
+    return {
+      content: [{ type: "text", text: `Error: Refusing to kill process ${parsed.data.pid}: ${refusal}` }],
       isError: true,
     };
   }

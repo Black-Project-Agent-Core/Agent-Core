@@ -82,7 +82,16 @@ function normalizePath(value: string): string {
   return value.replaceAll('\\', '/').replace(/^\.\//, '');
 }
 
+/** Git refnames cannot start with `-`, so a leading dash is always an option smuggled into argv (e.g. `--output=`). */
+export function revisionOptionError(...revisions: Array<string | undefined>): string | undefined {
+  return revisions.some(revision => revision?.startsWith('-'))
+    ? 'git revisions (base/head/refA/refB) must not start with "-"; a leading "-" would be read as a git option'
+    : undefined;
+}
+
 function changeRange(base?: string, head?: string): { args: string[]; basis: string } {
+  const optionError = revisionOptionError(base, head);
+  if (optionError) throw new Error(optionError);
   if (base && head) return { args: [`${base}...${head}`], basis: `${base}...${head}` };
   if (base) return { args: [`${base}...HEAD`], basis: `${base}...HEAD` };
   if (head) return { args: [`HEAD...${head}`], basis: `HEAD...${head}` };

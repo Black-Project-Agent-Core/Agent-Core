@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/server';
@@ -321,5 +321,32 @@ describe('GRAFT-P1 changed-symbol review evidence', () => {
       sourceAuthority: 'exact-source+semantic-ide+grafel',
     });
     expect(payload.reviewEvidence.seeds.some((seed: any) => seed.name === 'target')).toBe(true);
+  });
+
+  it('rejects option-like revisions before any git or provider call, so --output cannot write a file', async () => {
+    const repo = await reviewRepo();
+    const planted = path.join(repo, 'planted.txt');
+    const service = providerFixture(repo);
+    const context = { workspace: 'w', group: 'w', cwd: repo, repo: 'agent-core', worktreePath: repo };
+    for (const range of [{ base: `--output=${planted}` }, { head: '-x' }, { base: 'HEAD', head: '--stat' }]) {
+      await expect(buildChangedSymbolReview({ service: service as any, context, repo: 'agent-core', root: repo, ...range }))
+        .rejects.toThrow('must not start with "-"');
+    }
+    await expect(stat(planted)).rejects.toThrow();
+
+    const server = new McpServer({ name: 'test', version: '1.0.0' });
+    registerCodeIntelligenceTools(server, service as any, semanticFixture() as any);
+    const registered = (server as any)._registeredTools ?? (server as any).registeredTools;
+    const entry = registered instanceof Map ? registered.get('code_surface') : registered.code_surface;
+    for (const args of [
+      { action: 'impact', scope: 'changeset', repo: 'agent-core', worktreePath: repo, base: `--output=${planted}` },
+      { action: 'diff', aspect: 'refs', repo: 'agent-core', worktreePath: repo, refA: 'HEAD', refB: '--stat' },
+    ]) {
+      const result = await entry.handler(args);
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('must not start with "-"');
+    }
+    expect(service.callProviderTool).not.toHaveBeenCalled();
+    await expect(stat(planted)).rejects.toThrow();
   });
 });
