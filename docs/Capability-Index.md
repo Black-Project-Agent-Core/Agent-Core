@@ -72,6 +72,17 @@ Pemeriksaan relevansi semantik adalah kewajiban instruksi. Runtime memeriksa kel
 | [test-driven-development](../runtime/skills/catalog/test-driven-development/SKILL.md) | Buktikan bug/perilaku dengan tes gagal, lalu perbaikan terfokus. |
 | [using-agent-skills](../runtime/skills/catalog/using-agent-skills/SKILL.md) | Pilih workflow engineering dan urutan skill yang relevan. |
 
+## Satu produk, dua registrasi
+
+Agent Core dapat terdaftar dua kali pada satu klien Claude: sebagai server MCP lokal milik pengguna (tool bernama `mcp__agent-core__*`) dan sebagai konektor Claude Desktop (tool bernama `mcp__<uuid>__*`; awalan UUID dapat berbeda per instalasi). Keduanya satu produk, tetapi dua identitas dengan kredensial, `contractSession`, pemilik Memory dan episode Learning masing-masing.
+
+1. Pilih satu bentuk per sesi dan jangan berpindah di tengah task.
+2. Lakukan satu jabat tangan `controller_contract` untuk bentuk itu. Jangan memberikan `contractSession` dari satu bentuk ke bentuk lain.
+3. Dalam laporan dan pesan ke pengguna sebut produknya "Agent Core" beserta bentuk yang dipakai (lokal atau konektor), bukan awalan nama tool.
+4. Kode Agent Core tidak boleh mencocokkan tool lewat awalan klien. Pemeriksaan 2026-10-28 tidak menemukan `mcp__` di `src`; server hanya mengenali nama polos seperti `controller_contract`.
+
+Aturan ini disimpan di sini, bukan di `AGENTS.md`, supaya teks yang selalu dimuat tidak bertambah.
+
 ## Sumber dan kompatibilitas
 
 - [Replica](https://github.com/Jakeschincariol/replica-skill), commit `77c9436fb3d18c3d58169efb8caf4fe906b0dc51`, MIT; 11 capability.

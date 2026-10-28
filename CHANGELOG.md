@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.5.10 - 2026-10-28
+
+- [patch] Documentation: the capability index gains a short section, "Satu produk, dua registrasi", for the case where Agent Core is registered both as a local MCP server and as a Claude Desktop connector. It says to pick one form per session, do one contract handshake for it, never pass a contract session to the other form, name the product "Agent Core" in reports, and not to match tools by client prefix (no `mcp__` appears in `src`). It lives in the on-demand index, not in `AGENTS.md`, so the always-loaded text does not grow.
+
 ## 1.5.9 - 2026-10-28
 
 - [patch] The Skill pack lint now reports where the Triggers of different packs say the same thing: bullets shared by five or more packs, pairs of packs with near-identical Triggers, and a Non-triggers entry that is another pack's Trigger. It also accepts `--packs <folder>` to lint another folder. A new explicit, read-only script `scripts/research/skill-upstream-drift.mjs` asks the public GitHub compare API, anonymously, whether any file under a pack's pinned upstream path changed since the pinned commit; it reports changed, unchanged or unknown, stops at a rate limit, and writes a file only under `runtime/tmp`. It is not part of any build and never changes a pin.
