@@ -44,6 +44,28 @@ describe('Skill reference deltas (UP-09)', () => {
     expect(text).not.toMatch(/git diff --staged \| grep/);
   });
 
+  // UP-08: two Skills built as validated sources (not imported into the catalog).
+  const built = ['windows-powershell-host', 'skill-authoring'];
+  const allowedKeys = new Set(['name', 'description', 'license', 'compatibility', 'allowed-tools', 'metadata']);
+  it.each(built)('built Skill %s is one fragment with the strict frontmatter and the required sections', pack => {
+    const file = `${packs}${pack}/SKILL.md`;
+    expect(statSync(file).size).toBeLessThanOrEqual(8192);
+    const bytes = readFileSync(file);
+    expect(bytes.some(byte => byte > 127 || byte === 13)).toBe(false);
+    const text = bytes.toString('utf8');
+    expect(text.startsWith(`---\nname: ${pack}\n`)).toBe(true);
+    const frontmatter = text.slice(4, text.indexOf('\n---\n', 4));
+    const keys = frontmatter.split('\n').filter(line => /^[A-Za-z]/.test(line)).map(line => line.split(':')[0]);
+    expect(keys.filter(key => !allowedKeys.has(key))).toEqual([]);
+    expect(frontmatter).not.toMatch(/description:.*[<>]/);
+    for (const heading of ['## Triggers', '## Non-triggers', '## Tools used', '## Verification']) expect(text).toContain(`\n${heading}\n`);
+  });
+
+  it('skill-authoring points to its intake review, which fits one fragment', () => {
+    expect(readFileSync(`${packs}skill-authoring/SKILL.md`, 'utf8')).toContain('](references/intake-review.md)');
+    expect(statSync(`${packs}skill-authoring/references/intake-review.md`).size).toBeLessThanOrEqual(8192);
+  });
+
   it('the verdict reference points to a script that exists and refuses a bad input', () => {
     const verdict = readFileSync(`${packs}code-review-and-quality/references/verification-verdict.md`, 'utf8');
     expect(verdict).toContain('scripts/verify/test-run-evidence.mjs');

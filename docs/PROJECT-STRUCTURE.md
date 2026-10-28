@@ -353,6 +353,16 @@ Blok JSON ini adalah deklarasi pada peta yang sama, bukan registry terpisah. `ow
       "path": ".changeset/applied",
       "purpose": "applied-release-intent-archive",
       "owner": ".changeset"
+    },
+    {
+      "path": "runtime/skills/capability-packs/windows-powershell-host",
+      "purpose": "skill-source-windows-powershell-host",
+      "owner": "runtime/skills/capability-packs"
+    },
+    {
+      "path": "runtime/skills/capability-packs/skill-authoring",
+      "purpose": "skill-source-skill-authoring",
+      "owner": "runtime/skills/capability-packs"
     }
   ]
 }
@@ -365,7 +375,7 @@ Contoh intent untuk tujuan baru yang benar-benar diperlukan task: `{"path":"docs
 
 <!-- DIRECTORY-SNAPSHOT:START -->
 
-Daftar otomatis: **464 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
+Daftar otomatis: **468 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
 
 ```text
 <PROJECT_ROOT>/
@@ -389,6 +399,7 @@ Daftar otomatis: **464 direktori/boundary**. Subtree privat, dependency, generat
 |       |-- 1.5.1-1793169263926/
 |       |-- 1.5.10-1793172437148/
 |       |-- 1.5.11-1793173173940/
+|       |-- 1.5.12-1793175293549/
 |       |-- 1.5.2-1793169389146/
 |       |-- 1.5.3-1793169475349/
 |       |-- 1.5.4-1793169573453/
@@ -576,6 +587,8 @@ Daftar otomatis: **464 direktori/boundary**. Subtree privat, dependency, generat
 |   |   |   |-- shipping-and-launch/
 |   |   |   |   `-- references/
 |   |   |   |       `-- upstream-shared/
+|   |   |   |-- skill-authoring/
+|   |   |   |   `-- references/
 |   |   |   |-- source-driven-development/
 |   |   |   |   `-- references/
 |   |   |   |       `-- upstream-shared/
@@ -585,9 +598,10 @@ Daftar otomatis: **464 direktori/boundary**. Subtree privat, dependency, generat
 |   |   |   |-- test-driven-development/
 |   |   |   |   `-- references/
 |   |   |   |       `-- upstream-shared/
-|   |   |   `-- using-agent-skills/
-|   |   |       `-- references/
-|   |   |           `-- upstream-shared/
+|   |   |   |-- using-agent-skills/
+|   |   |   |   `-- references/
+|   |   |   |       `-- upstream-shared/
+|   |   |   `-- windows-powershell-host/
 |   |   |-- catalog/  [artifact/state SkillService; lihat pola role]
 |   |   |-- exports/  [artifact/state SkillService; lihat pola role]
 |   |   |-- packages/  [artifact/state SkillService; lihat pola role]

@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.5.12 - 2026-10-28
+
+- [patch] Two new Skills are built as validated sources in the Skill home, not imported into the active catalog. `windows-powershell-host` is a checklist of Windows PowerShell 5.1 hazards (exit codes that mean success, encoding and byte order marks, quoting, prompts that wait forever, long and cloud-placeholder paths, programs missing from PATH, missing 5.1 syntax) with a PowerShell example for each. `skill-authoring` explains the strict Skill format, size and routing rules, tool declarations and the single source home, and carries an intake-review reference with a three-level verdict for imported Skills. Neither is active; importing a folder is a separate step the owner asks for.
+
 ## 1.5.11 - 2026-10-28
 
 - [patch] Two of the four proposed new Skills are merged into the reference deltas for existing Skills instead of becoming separate Skills. The unique parts of the security-change-review proposal (trust-boundary scope, extra commonly missed patterns, evidence levels, review kept separate from repair) now live in the security-and-hardening references, and the unique parts of the incident-postmortem proposal (declare, stabilize, timeline, contributing causes, impact, actions, verified close, by kind of incident) are a new incident-handling reference of the debugging Skill that points to the runbook reference instead of repeating it. Both are staged as candidates; nothing is promoted or activated.
