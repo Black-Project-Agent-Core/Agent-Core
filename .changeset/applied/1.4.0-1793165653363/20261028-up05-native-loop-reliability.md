@@ -1,0 +1,5 @@
+---
+"agent-core": minor
+---
+
+Native loop reliability. The loop now reads the provider's finish reason: a reply cut at the output token limit does not run its last tool call (the only one that can be damaged), tells the model why with `FINISH_TRUNCATED_BY_LIMIT`, and records an observation instead of a failure, so it no longer counts as a failed strategy; a reply with no tool call that was refused by the provider or overflowed the context says so as well. Tool errors now end with one sentence per cause (`denied-by-policy`, `no-answer`, `technical-failure`), and a tool that succeeds with no text is shown as an empty result instead of a missing one. Provider failure classification leads with the HTTP status: a 408 or 5xx body that says "unauthorized" or "model not found" no longer retires a credential or model, and a plain 429 stays a rate window unless the body reports spent quota or credit. Tool restriction tables no longer have a prototype, so a tool named like an object member stays an ordinary key. One invalid entry in the semantic provider `servers.json` is skipped and reported instead of discarding the whole file.

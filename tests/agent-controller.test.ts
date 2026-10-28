@@ -365,6 +365,39 @@ describe('native Agent Core controller lifecycle', () => {
       && episode.summary.includes('schema loading=on-demand'))).toBe(true);
   });
 
+  it('does not run a tool call that the output token limit cut off, and says why', async () => {
+    const cutOff = {
+      finish_reason: 'length',
+      message: { content: null, tool_calls: [{ id: 'tool-cut', type: 'function', function: { name: 'get_config', arguments: '{}' } }] },
+    };
+    const { controller, fetchMock, runtime } = await fixture([strategyChoice(), cutOff, finalizeChoice('after the cut')], ['get_config']);
+    const result = await controller.runTask({ prompt: 'inspect config then finish' });
+    expect(result.status).toBe('finalized');
+    const thirdRequest = JSON.parse(String((fetchMock.mock.calls[2] as any)[1]?.body ?? '{}'));
+    const toolMessage = thirdRequest.messages.find((message: any) => message.role === 'tool' && message.name === 'get_config');
+    expect(toolMessage.content).toContain('FINISH_TRUNCATED_BY_LIMIT');
+    expect(JSON.stringify(thirdRequest.messages)).not.toContain('allowedDirectories');
+    const task = await runtime.getTask(result.taskId);
+    expect(task?.episodes.some(episode => episode.kind === 'failure' && episode.summary.includes('get_config'))).toBe(false);
+    expect(task?.episodes.some(episode => episode.kind === 'observation' && episode.summary.includes('output token limit'))).toBe(true);
+  });
+
+  it('names a tool call to an ungranted tool as denied by policy', async () => {
+    const denied = {
+      finish_reason: 'tool_calls',
+      message: { content: null, tool_calls: [{ id: 'tool-denied', type: 'function', function: { name: 'get_usage_stats', arguments: '{}' } }] },
+    };
+    const { controller, fetchMock } = await fixture([
+      strategyChoice(), denied, strategyChoice('Choose another route after the denial'), finalizeChoice('after the denial'),
+    ], ['get_config']);
+    const result = await controller.runTask({ prompt: 'inspect usage then finish' });
+    expect(result.status).toBe('finalized');
+    const thirdRequest = JSON.parse(String((fetchMock.mock.calls[2] as any)[1]?.body ?? '{}'));
+    const toolMessage = thirdRequest.messages.find((message: any) => message.role === 'tool' && message.name === 'get_usage_stats');
+    expect(toolMessage.content).toContain('TOOL_ERROR');
+    expect(toolMessage.content).toContain('TOOL_OUTCOME: denied-by-policy');
+  });
+
   it('preserves the work response and reports Learning failure separately', async () => {
     const learning = {
       checkpoint: vi.fn(async () => { throw new Error('LEARNING_TEMPORARY_FAILURE'); }),

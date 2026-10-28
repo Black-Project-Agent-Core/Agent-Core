@@ -260,7 +260,8 @@ export class AgentCapabilityResolver {
     }
 
     const tools = new Set<string>();
-    const restrictions: Record<string, AgentToolRestriction> = {};
+    // No prototype: a tool named `constructor` or `__proto__` must stay an ordinary key.
+    const restrictions: Record<string, AgentToolRestriction> = Object.create(null);
     if (available.has('get_config') && (!this.toolCeiling || this.toolCeiling.has('get_config'))) {
       tools.add('get_config');
     }

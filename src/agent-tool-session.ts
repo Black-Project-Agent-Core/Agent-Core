@@ -92,6 +92,11 @@ export class AgentRuntimeToolSession {
     }
   }
 
+  /** Own keys only: restrictions can arrive as a plain object, whose prototype members are not tool names. */
+  private restrictionFor(name: string): AgentToolRestriction | undefined {
+    return Object.hasOwn(this.restrictions, name) ? this.restrictions[name] : undefined;
+  }
+
   private async listedTools(): Promise<any[]> {
     const listed = await this.client.listTools();
     return listed.tools as any[];
@@ -100,7 +105,7 @@ export class AgentRuntimeToolSession {
   async modelTools(): Promise<AgentModelTool[]> {
     const tools = await this.listedTools();
     return tools.map((tool: any) => {
-      const restriction = this.restrictions[String(tool.name)];
+      const restriction = this.restrictionFor(String(tool.name));
       const schema = tool.inputSchema && typeof tool.inputSchema === 'object'
         ? structuredClone(tool.inputSchema)
         : { type: 'object', properties: {} };
@@ -148,7 +153,7 @@ export class AgentRuntimeToolSession {
   /** Pure local admission check. Must run before a mutating dispatch is checkpointed. */
   admissionIssue(name: string, args: Record<string, unknown>): string | null {
     if (!this.allowedTools.includes(name)) return 'AGENT_RUNTIME_TOOL_NOT_GRANTED';
-    const restriction = this.restrictions[name];
+    const restriction = this.restrictionFor(name);
     if (restriction?.allowedActions?.length) {
       const action = typeof args.action === 'string' ? args.action : '';
       if (!restriction.allowedActions.includes(action)) return 'AGENT_RUNTIME_TOOL_ACTION_NOT_GRANTED';

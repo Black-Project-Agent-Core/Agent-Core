@@ -246,6 +246,23 @@ export function classifyAgentProviderFailure(
         cooldownMs: 10 * MINUTE, retryAtMs: now + 10 * MINUTE,
       };
     }
+    // The status line is the structured field. A gateway or overloaded host can put any words in a 408/5xx body
+    // ("unauthorized", "model not found"), and those words must not retire a healthy credential or model.
+    if (status === 408 || status >= 500) {
+      return {
+        failureClass: 'PROVIDER_TRANSIENT', scope: 'provider', shouldFailover: true,
+        terminalCredential: false, affectsProviderBreaker: true,
+        cooldownMs: 30 * SECOND, retryAtMs: now + 30 * SECOND,
+      };
+    }
+    // A 429 is a rate window unless the body says credit or quota is spent.
+    if (status === 429 && !quotaText && !creditText) {
+      const wait = retryAt(error, 90 * SECOND, now);
+      return {
+        failureClass: 'RATE_LIMIT', scope: 'model-credential', shouldFailover: true,
+        terminalCredential: false, affectsProviderBreaker: false, ...wait,
+      };
+    }
     const credentialInvalid = containsAny(text, ['invalid api key', 'invalid key', 'authentication failed', 'revoked', 'expired api key']);
     if (status !== 401 && !credentialInvalid && containsAny(text, ['model_not_found', 'model not found', 'model is not available'])) {
       return {
@@ -282,13 +299,6 @@ export function classifyAgentProviderFailure(
         terminalCredential: false, affectsProviderBreaker: false, ...wait,
       };
     }
-    if (status === 429) {
-      const wait = retryAt(error, 90 * SECOND, now);
-      return {
-        failureClass: 'RATE_LIMIT', scope: 'model-credential', shouldFailover: true,
-        terminalCredential: false, affectsProviderBreaker: false, ...wait,
-      };
-    }
     if (status === 403) {
       return {
         failureClass: 'MODEL_ACCESS', scope: 'model-credential', shouldFailover: true,
@@ -301,13 +311,6 @@ export function classifyAgentProviderFailure(
         failureClass: 'MODEL_NOT_FOUND', scope: 'model-provider', shouldFailover: true,
         terminalCredential: false, affectsProviderBreaker: false,
         cooldownMs: DAY, retryAtMs: now + DAY,
-      };
-    }
-    if (status === 408 || status >= 500) {
-      return {
-        failureClass: 'PROVIDER_TRANSIENT', scope: 'provider', shouldFailover: true,
-        terminalCredential: false, affectsProviderBreaker: true,
-        cooldownMs: 30 * SECOND, retryAtMs: now + 30 * SECOND,
       };
     }
     if (status === 400 && text.includes('provider returned error')) {

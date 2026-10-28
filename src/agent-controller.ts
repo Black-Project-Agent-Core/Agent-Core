@@ -22,6 +22,14 @@ import { processLedger } from './rdc/process-ledger.js';
 import { AgentRuntimeToolSession, toolObservesStop } from './agent-tool-session.js';
 import { accountContext } from './agent-context-accounting.js';
 import {
+  classifyFinishReason,
+  classifyToolFailure,
+  finishReasonNote,
+  toolOutcomeNote,
+  visibleToolText,
+  type FinishCategory,
+} from './agent-turn-outcomes.js';
+import {
   compactionEnabled, compactTurnMessages, COMPACTION_TRIGGER_RATIO, presentedToolsFromSummary,
   type AgentCompactionRecord,
 } from './agent-context-compaction.js';
@@ -443,7 +451,7 @@ function safeToolRef(name: string, id: string): string {
 function modelVisibleToolResult(_name: string, text: string, evidenceRef: string): string {
   // Successful local and Skill calls already have stored receipts, just like web calls.
   // Expose their identity without selecting a verdict or adding evidence to finalization.
-  return text + '\n\nAGENT_CORE_EVIDENCE_REF=' + evidenceRef
+  return visibleToolText(text) + '\n\nAGENT_CORE_EVIDENCE_REF=' + evidenceRef
     + '\nFor verified finalization, copy this exact ref into agent_core_finalize evidenceRefs or verificationRef when this result supports the claim.';
 }
 
@@ -1054,6 +1062,7 @@ export class NativeAgentController {
           });
         }
         let reply: AgentModelResponse;
+        let finish: FinishCategory = 'completed';
         if (replayingPending) {
           reply = {
             content: null,
@@ -1122,11 +1131,14 @@ export class NativeAgentController {
             lastProviderId = reply.providerId;
             lastModel = reply.model ?? lastModel;
           }
+          finish = classifyFinishReason(reply.finishReason);
+          const finishNote = finishReasonNote(finish);
           if (reply.toolCalls.length === 0) {
             messages.push({ role: 'assistant', content: reply.content ?? '' });
             messages.push({
               role: 'user',
-              content: 'The turn is not complete. Declare strategy before tool action when required, or call agent_core_finalize with the verified/failed outcome and Learning disposition.',
+              content: 'The turn is not complete. Declare strategy before tool action when required, or call agent_core_finalize with the verified/failed outcome and Learning disposition.'
+                + (finishNote ? '\n' + finishNote : ''),
             });
             nextIteration = iteration + 1;
             await persistCheckpoint('model-ready');
@@ -1137,7 +1149,20 @@ export class NativeAgentController {
           await persistCheckpoint('model-received');
         }
 
+        // A reply cut at the token limit can only damage its last call; calls before it arrived whole.
+        const cutOffCall = finish === 'truncated-by-limit' ? reply.toolCalls.at(-1) : undefined;
         for (const call of reply.toolCalls) {
+          if (call === cutOffCall) {
+            const note = finishReasonNote('truncated-by-limit')!;
+            // Observation, not failure: the model did not err in strategy, and no tool was dispatched.
+            await this.runtime.recordEpisode(task.id, {
+              kind: 'observation', evidenceRefs: [], toolName: call.function.name,
+              summary: 'Tool call ' + call.function.name + ' not run: the reply reached the output token limit.',
+            });
+            messages.push({ role: 'tool', name: call.function.name, tool_call_id: call.id, content: note });
+            await persistCheckpoint('tool-result-durable');
+            continue;
+          }
           let callArgs: Record<string, unknown>;
           try {
             const args = expandControlArguments(call.function.name, parseArguments(call.function.arguments));
@@ -1575,7 +1600,7 @@ export class NativeAgentController {
               failureClass: 'tool-runtime',
             });
             messages.push({ role: 'tool', name: call.function.name, tool_call_id: call.id,
-              content: 'TOOL_ERROR\n' + summary });
+              content: 'TOOL_ERROR\n' + summary + '\n' + toolOutcomeNote('denied-by-policy') });
             await persistCheckpoint('tool-result-durable');
             continue;
           }
@@ -1667,6 +1692,7 @@ export class NativeAgentController {
             messages.push({
               role: 'tool', name: call.function.name, tool_call_id: call.id,
               content: 'TOOL_ERROR\n' + result.text
+                + '\n' + toolOutcomeNote(classifyToolFailure(result.text))
                 + '\n\nADAPTIVE_MEMORY_CONTEXT\n' + recalled
                 + '\n\nSTRATEGY_REQUIRED: call agent_core_strategy before another ordinary tool action.',
             });

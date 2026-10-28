@@ -386,10 +386,15 @@ async function loadSemanticProviderSet(config: SemanticIdeConfig): Promise<{
   if (config.serversFile) {
     try {
       const parsed = JSON.parse(await readFile(config.serversFile, 'utf8')) as unknown;
-      if (!Array.isArray(parsed) || !parsed.every(validServerDefinition)) {
-        throw new Error('SEMANTIC_SERVER_CONFIG_INVALID');
+      if (!Array.isArray(parsed)) throw new Error('SEMANTIC_SERVER_CONFIG_INVALID');
+      // One bad entry must not discard the valid ones (the inline list above already works this way).
+      fileDefinitions = parsed.filter(validServerDefinition);
+      if (fileDefinitions.length !== parsed.length) {
+        issues.push({
+          code: 'SEMANTIC_SERVER_CONFIG_INVALID',
+          message: `${parsed.length - fileDefinitions.length} of ${parsed.length} entries in the servers file are invalid and were skipped.`,
+        });
       }
-      fileDefinitions = parsed;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
         issues.push({
