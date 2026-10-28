@@ -5,6 +5,7 @@ import { assertSameFileIdentity } from '../../security/file-identity.js';
 import { assertEvidenceLocalPath } from '../../verification/evidence-snapshot.js';
 import { decideToolEvidenceCapture } from '../../security/evidence-capture-policy.js';
 import { isSensitiveKey, redactSensitiveString } from '../../security/redaction.js';
+import { isCredentialFileName } from '../../security/credential-names.js';
 import { fileMutationCoordinator, type AutoCheckpointReceipt, type AutoCheckpointReason, type MutationExecutionContext } from '../mutation-coordinator.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -277,8 +278,7 @@ export class FileCheckpointService {
         const lexical = path.resolve(this.root, file);
         if (!inside(lexical, this.root) || isProtectedPath(lexical) || inside(lexical, this.storageDir)) refuseAuto('path-not-eligible');
         const parts = path.relative(this.root, lexical).split(/[\\/]+/);
-        if (parts.some(part => isSensitiveKey(part) || /^(?:\.env(?:\..*)?|\.git|\.ssh|\.aws|\.npmrc|\.pypirc|id_rsa|id_ed25519)$/i.test(part))
-          || /\.(?:pem|key|pfx|p12|jks|keystore)$/i.test(lexical)) refuseAuto('path-not-eligible');
+        if (parts.some(part => isSensitiveKey(part) || isCredentialFileName(part))) refuseAuto('path-not-eligible');
         try { await assertEvidenceLocalPath(lexical); }
         catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') refuseAuto('path-not-eligible');

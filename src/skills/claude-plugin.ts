@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { lstat, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { oneLineLabel } from '../security/untrusted-text.js';
 
 /**
  * Claude plugin compatibility layer: a read-only component inventory and a SKILL.md frontmatter adapter.
@@ -271,6 +272,11 @@ function skillNotes(markdown: string): string[] {
   return notes;
 }
 
+/** True when cleaning would remove more than whitespace differences. */
+function hasHiddenText(value: string): boolean {
+  return oneLineLabel(value, Infinity) !== value.replace(/\s+/g, ' ').trim();
+}
+
 function adaptFrontmatter(skill: PluginFile, files: PluginFile[], directory: string, parse: StrictSkillParser, pluginName?: string) {
   const changes: SkillAdaptationChange[] = [];
   const original = decodeSkill(skill.content, changes);
@@ -298,6 +304,12 @@ function adaptFrontmatter(skill: PluginFile, files: PluginFile[], directory: str
   if (/[<>]/.test(description!)) {
     description = description!.replaceAll('<', '‹').replaceAll('>', '›');
     changes.push({ field: 'description', action: 'angle-brackets-normalized' });
+  }
+  // The description reaches the model through the Skill index: invisible characters and bidi overrides stay out of it.
+  const visibleDescription = oneLineLabel(description, 4_000);
+  if (visibleDescription !== description) {
+    description = visibleDescription;
+    changes.push({ field: 'description', action: 'invisible-characters-removed' });
   }
   const license = text('license') || undefined, compatibility = text('compatibility') || undefined;
 
@@ -375,7 +387,10 @@ export function adaptClaudeSkill(
   const notes = skillNotes(markdown);
   try {
     const strict = parse(markdown);
-    return { status: 'compatible', sourceName: strict.name, mappedName: strict.name, changes: [], missingReferences, notes, files };
+    // A strict-valid skill is installed as is, unless its description hides characters the adapter would remove.
+    if (!hasHiddenText(strict.description)) {
+      return { status: 'compatible', sourceName: strict.name, mappedName: strict.name, changes: [], missingReferences, notes, files };
+    }
   } catch { /* not strict-valid: try the adapter below */ }
   try {
     const adapted = adaptFrontmatter(skill, files, directory, parse, options.pluginName);

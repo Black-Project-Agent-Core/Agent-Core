@@ -1,8 +1,45 @@
 import type { MemoryRecord } from './types.js';
 
 export interface MemorySafetyFinding {
-  code: 'credential' | 'instruction-poisoning' | 'private-reasoning';
+  code: 'credential' | 'instruction-poisoning' | 'private-reasoning' | 'personal-identifier';
   message: string;
+}
+
+// Narrow on purpose: a number alone proves nothing, so each shape also needs its own keyword nearby.
+const CARD_KEYWORD = /\b(?:card|credit|debit|visa|mastercard|amex|cvv|cvc|kartu)\b/i;
+const CARD_CANDIDATE = /(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)/g;
+const NATIONAL_ID_PATTERNS: RegExp[] = [
+  /\b(?:nik|ktp)\b[^\d]{0,20}\d{16}(?!\d)/i,
+  /\b(?:ssn|social security(?: number)?)\b[^\d]{0,20}\d{3}-?\d{2}-?\d{4}(?!\d)/i,
+  /\bpassport(?:\s{0,3}(?:no\.?|number|num\.?|#))?[^A-Za-z0-9]{0,15}(?=[A-Z0-9]{0,8}\d)[A-Z0-9]{6,9}\b/i,
+];
+// Published test numbers of payment providers are fixtures, not people.
+const PROVIDER_TEST_CARDS = new Set([
+  '4111111111111111', '4242424242424242', '4012888888881881', '5555555555554444', '5105105105105100',
+  '378282246310005', '371449635398431', '6011111111111117', '6011000990139424', '30569309025904',
+  '38520000023237', '3530111333300000', '3566002020360505', '4000056655665556', '5200828282828210',
+  '2223003122003222', '4000000000000002', '4000000000009995',
+]);
+
+function luhnValid(digits: string): boolean {
+  let sum = 0;
+  for (let index = 0; index < digits.length; index += 1) {
+    let digit = digits.charCodeAt(digits.length - 1 - index) - 48;
+    if (index % 2 === 1) { digit *= 2; if (digit > 9) digit -= 9; }
+    sum += digit;
+  }
+  return sum % 10 === 0;
+}
+
+function containsPersonalIdentifier(value: string): boolean {
+  if (NATIONAL_ID_PATTERNS.some(pattern => pattern.test(value))) return true;
+  for (const match of value.matchAll(CARD_CANDIDATE)) {
+    const digits = match[0].replace(/\D/g, '');
+    if (digits.length < 13 || digits.length > 19 || PROVIDER_TEST_CARDS.has(digits) || !luhnValid(digits)) continue;
+    const start = match.index ?? 0;
+    if (CARD_KEYWORD.test(value.slice(Math.max(0, start - 40), start + match[0].length + 40))) return true;
+  }
+  return false;
 }
 
 const CREDENTIAL_PATTERNS: RegExp[] = [
@@ -35,6 +72,9 @@ export function scanMemorySafety(text: string): MemorySafetyFinding[] {
   }
   if (PRIVATE_REASONING_PATTERNS.some((pattern) => pattern.test(value))) {
     findings.push({ code: 'private-reasoning', message: 'raw/private reasoning is not allowed in durable memory' });
+  }
+  if (containsPersonalIdentifier(value)) {
+    findings.push({ code: 'personal-identifier', message: 'card, national id or passport numbers are not allowed in durable memory' });
   }
   return findings;
 }

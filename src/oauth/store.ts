@@ -4,6 +4,17 @@ import path from 'node:path';
 import { readSensitiveJsonFile } from '../security/sensitive-file.js';
 import { persistOAuthSnapshot } from './atomic-file.js';
 import { withOAuthProcessLock } from './file-lock.js';
+import { oneLineLabel } from '../security/untrusted-text.js';
+
+/** Registration is open to anyone who can reach the endpoint, so clients that never authorized are bounded. */
+export const MAX_UNAUTHORIZED_CLIENTS = 50;
+const UNAUTHORIZED_CLIENT_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_REDIRECT_URIS = 10;
+
+/** Too many registered clients are still waiting for their first authorization. */
+export class OAuthRegistrationLimitError extends Error {
+  constructor() { super('oauth_registration_limit'); this.name = 'OAuthRegistrationLimitError'; }
+}
 
 const CLIENT_ID_PREFIX = 'agent_core_client_';
 const CLIENT_SECRET_PREFIX = 'agent_core_secret_';
@@ -28,6 +39,8 @@ interface ClientRecord {
   tokenEndpointAuthMethod: string;
   secretHash: string;
   recoveryPending?: boolean;
+  /** Set on a freshly registered client until its first authorization code; legacy records lack it and count as used. */
+  unauthorized?: true;
   createdAt: string;
 }
 
@@ -160,15 +173,22 @@ export class FileOAuthStore {
       const now = new Date();
       const record: ClientRecord = {
         clientId: `${CLIENT_ID_PREFIX}${randomUUID()}`,
-        clientName: input.clientName,
-        redirectUris: [...input.redirectUris],
+        clientName: oneLineLabel(input.clientName, 100) || 'MCP Client',
+        redirectUris: input.redirectUris.slice(0, MAX_REDIRECT_URIS),
         grantTypes: [...input.grantTypes],
         responseTypes: [...input.responseTypes],
         tokenEndpointAuthMethod: input.tokenEndpointAuthMethod,
         secretHash: hashSecret(secret),
+        unauthorized: true,
         createdAt: now.toISOString(),
       };
       const file = await this.load();
+      // A client that registered but never authorized and is a day old is dropped; used clients are never touched.
+      const cutoff = now.getTime() - UNAUTHORIZED_CLIENT_TTL_MS;
+      file.clients = file.clients.filter(client => !client.unauthorized || Date.parse(client.createdAt) > cutoff);
+      if (file.clients.filter(client => client.unauthorized).length >= MAX_UNAUTHORIZED_CLIENTS) {
+        throw new OAuthRegistrationLimitError();
+      }
       file.clients.push(record);
       await this.save(file);
       return {
@@ -228,6 +248,8 @@ export class FileOAuthStore {
     return withOAuthFile(this.filePath, async () => {
       const raw = freshSecret(CODE_PREFIX);
       const file = await this.load();
+      const client = file.clients.find(item => item.clientId === input.clientId);
+      if (client) delete client.unauthorized;
       file.codes.push({
         ...input,
         hash: hashSecret(raw),

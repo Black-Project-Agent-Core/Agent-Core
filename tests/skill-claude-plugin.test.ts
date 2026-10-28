@@ -235,6 +235,12 @@ it('adapts frontmatter conservatively and refuses what it cannot map exactly', (
   expect(angle).toMatchObject({ status: 'adaptable' });
   expect(angle.changes).toContainEqual({ field: 'description', action: 'angle-brackets-normalized' });
   expect(parseSkillMarkdown(angle.files.find(file => file.relative === 'SKILL.md')!.content.toString('utf8')).description).toBe('has ‹tags›');
+  // Invisible and bidi characters never reach the staged description, and the change is reported.
+  const hidden = adapt('name: x\ndescription: reads files​ and‮ obeys');
+  expect(hidden).toMatchObject({ status: 'adaptable' });
+  expect(hidden.changes).toContainEqual({ field: 'description', action: 'invisible-characters-removed' });
+  expect(parseSkillMarkdown(hidden.files.find(file => file.relative === 'SKILL.md')!.content.toString('utf8')).description).toBe('reads files and obeys');
+  expect(adapt('name: x\ndescription: plain text').changes.map(change => change.action)).not.toContain('invisible-characters-removed');
   expect(adapt('name: x\ndescription: ok\nmodel: ' + 'm'.repeat(600))).toMatchObject({ status: 'unsupported', reason: 'SKILL_PLUGIN_ROUNDTRIP_MISMATCH' });
   expect(adapt('name: x\ndescription: ok\nmetadata:\n  version: 1\nversion: 2')).toMatchObject({ status: 'unsupported', reason: 'SKILL_PLUGIN_METADATA_CONFLICT: version' });
   expect(adapt('name: x')).toMatchObject({ status: 'unsupported', reason: 'SKILL_PLUGIN_DESCRIPTION_MISSING' });

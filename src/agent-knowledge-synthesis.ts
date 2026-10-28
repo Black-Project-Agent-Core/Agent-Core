@@ -8,6 +8,7 @@ import type { MergedRetrieval } from './memory/subquestion-retrieval.js';
 import { createHash } from 'node:crypto';
 import { buildCapabilityExposure, type CapabilityExposure, type CapabilityArtifact } from './capability-awareness.js';
 import { readRakaCapability } from './external-partner-capability.js';
+import { oneLineLabel } from './security/untrusted-text.js';
 
 export const knowledgeRevision = procedureContractDigest;
 
@@ -87,9 +88,10 @@ export async function buildKnowledgeSynthesisPacket(input: {
 }): Promise<AgentKnowledgePacket> {
   const truncated = new Set<KnowledgeSection>();
   const detail = (section: KnowledgeSection, value: unknown, max: number) => {
-    const normalized = String(value ?? '').trim().replace(/\s+/g, ' ');
-    if (normalized.length > max) truncated.add(section);
-    return normalized.slice(0, max);
+    // Recalled notes, graph labels and plugin text are data: invisible and bidi characters are dropped before they are read.
+    const points = Array.from(oneLineLabel(value == null ? '' : String(value), Infinity));
+    if (points.length > max) truncated.add(section);
+    return points.slice(0, max).join('');
   };
   const memoryIds = new Set(input.memoryDisclosure
     ? input.memoryDisclosure.hits.map(item => item.hit.id)

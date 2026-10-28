@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { FileKeyStore } from '../auth/key-store.js';
 import type { VerifiedKey } from '../auth/key-types.js';
 import type { HttpSecurityPolicy } from '../http/security-policy.js';
-import { ACCESS_TOKEN_PREFIX, FileOAuthStore, type OAuthTokens } from './store.js';
+import { ACCESS_TOKEN_PREFIX, FileOAuthStore, OAuthRegistrationLimitError, type OAuthTokens } from './store.js';
 type MetricSink = { increment(name:string, amount?:number): unknown; failure(name:string, code:string): void; observe(name:string, value:number): void };
 type OAuthAuditSink = (context: Record<string, unknown>) => void;
 
@@ -72,7 +72,19 @@ function authorizationError(response: ServerResponse, status: number, message: s
   sendHtml(response, status, `<!doctype html><html><body><h1>Agent Core OAuth</h1><p>${escapeHtml(message)}</p></body></html>`);
 }
 
+/** `/oauth/register` runs before any authentication and rewrites the whole store, so it gets one shared window. */
+const REGISTRATION_WINDOW_MS = 60_000;
+const REGISTRATIONS_PER_WINDOW = 20;
+
 export class OAuthService {
+  private registrationWindow = { startedAt: 0, count: 0 };
+
+  private registrationAllowed(now = Date.now()): boolean {
+    if (now - this.registrationWindow.startedAt >= REGISTRATION_WINDOW_MS) this.registrationWindow = { startedAt: now, count: 0 };
+    this.registrationWindow.count += 1;
+    return this.registrationWindow.count <= REGISTRATIONS_PER_WINDOW;
+  }
+
   constructor(
     private readonly keyStore: FileKeyStore,
     readonly store: FileOAuthStore,
@@ -135,6 +147,11 @@ export class OAuthService {
       return true;
     }
     if (request.method === 'POST' && route === '/oauth/register') {
+      if (!this.registrationAllowed()) {
+        response.setHeader('retry-after', String(REGISTRATION_WINDOW_MS / 1000));
+        sendJson(response, 429, { error: 'rate_limited' });
+        return true;
+      }
       let body: Record<string, unknown>;
       try {
         body = JSON.parse(await readBody(request)) as Record<string, unknown>;
@@ -149,14 +166,20 @@ export class OAuthService {
         sendJson(response, 400, { error: 'invalid_redirect_uri' });
         return true;
       }
-      const registered = await this.store.registerClient({
-        clientName: typeof body.client_name === 'string' ? body.client_name : 'MCP Client',
-        redirectUris,
-        grantTypes: ['authorization_code', 'refresh_token'],
-        responseTypes: ['code'],
-        tokenEndpointAuthMethod: 'client_secret_post',
-      });
-      sendJson(response, 201, registered);
+      try {
+        const registered = await this.store.registerClient({
+          clientName: typeof body.client_name === 'string' ? body.client_name : 'MCP Client',
+          redirectUris,
+          grantTypes: ['authorization_code', 'refresh_token'],
+          responseTypes: ['code'],
+          tokenEndpointAuthMethod: 'client_secret_post',
+        });
+        sendJson(response, 201, registered);
+      } catch (error) {
+        if (!(error instanceof OAuthRegistrationLimitError)) throw error;
+        response.setHeader('retry-after', '3600');
+        sendJson(response, 429, { error: 'rate_limited' });
+      }
       return true;
     }
 

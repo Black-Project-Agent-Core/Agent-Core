@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { readOnlyGit, readOnlyGitEnv } from '../../process/readonly-git.js';
 import { decideToolEvidenceCapture } from '../../security/evidence-capture-policy.js';
 import { isSensitiveKey, redactSensitiveString } from '../../security/redaction.js';
+import { isCredentialFileName } from '../../security/credential-names.js';
 import { authorizedExistingPath, comparable, inside, isProtectedPath } from '../../semantic-ide/path-safety.js';
 import type { AutomaticCheckpointRecord, FileCheckpointService, FileCheckpointSnapshot } from './service.js';
 
@@ -68,15 +69,13 @@ export interface TaskChanges {
 type Current = { exists: false } | { exists: true; size: number } | { error: string };
 interface Entry { rel: string; abs: string; key: string; at: string; record: AutomaticCheckpointRecord; snapshot: FileCheckpointSnapshot }
 
-const SECRET_NAME = /^(?:\.env(?:\..*)?|\.git|\.ssh|\.aws|\.npmrc|\.pypirc|id_rsa|id_ed25519)$/i;
-const SECRET_EXTENSION = /\.(?:pem|key|pfx|p12|jks|keystore)$/i;
 const rel = (root: string, file: string) => path.relative(root, file).split(path.sep).join('/');
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 /** Same eligibility the checkpoint service applies at capture; content is withheld otherwise. */
 function contentEligible(root: string, file: string): boolean {
   const parts = path.relative(root, file).split(/[\\/]+/);
-  if (parts.some(part => isSensitiveKey(part) || SECRET_NAME.test(part)) || SECRET_EXTENSION.test(file) || isProtectedPath(file)) return false;
+  if (parts.some(part => isSensitiveKey(part) || isCredentialFileName(part)) || isProtectedPath(file)) return false;
   return decideToolEvidenceCapture('file_checkpoint', { paths: [file] }).disposition === 'full';
 }
 
