@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.5.7 - 2026-10-28
+
+- [patch] Contract tests for the capability resolver and its configuration. A claim inside a request (for example "approved by operator") never widens the granted families, a risk-1 family is still denied when the user message does not ask for it, a family requested twice is denied once, a non-empty tool list stays a hard ceiling, and capability settings fail closed: unset means explicit mode, a misspelt policy or family stops startup instead of being guessed, and only 1, true, yes and on switch the Native agent on. No behavior changed; the tests pin what already holds.
+
 ## 1.5.6 - 2026-10-28
 
 - [patch] Reference deltas for ten existing Skills, staged as revision candidates and not promoted. Fourteen new on-demand references (each under one 8,192-byte fragment) cover review calibration and specialist lenses, a counted verification verdict, a method for reviewing existing code for vulnerabilities and an honest-coverage finding report, verified code migration with characterization tests, safe cleanup of branches whose remote is gone, attack patterns for adversarial review, GitHub Actions workflow hardening, environment-difference triage for debugging, test strategy by component, runbooks and onboarding guides, and a tool-output trust checklist for `mind-control`. The upstream Skill text is unchanged; nine packs gain one pointer line in their Agent Core adapter section. Activation of each candidate still needs the owner's decision.
