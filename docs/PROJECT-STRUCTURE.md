@@ -365,7 +365,7 @@ Contoh intent untuk tujuan baru yang benar-benar diperlukan task: `{"path":"docs
 
 <!-- DIRECTORY-SNAPSHOT:START -->
 
-Daftar otomatis: **461 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
+Daftar otomatis: **462 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
 
 ```text
 <PROJECT_ROOT>/
@@ -393,7 +393,8 @@ Daftar otomatis: **461 direktori/boundary**. Subtree privat, dependency, generat
 |       |-- 1.5.5-1793169692079/
 |       |-- 1.5.6-1793170895506/
 |       |-- 1.5.7-1793172246996/
-|       `-- 1.5.8-1793172297306/
+|       |-- 1.5.8-1793172297306/
+|       `-- 1.5.9-1793172401547/
 |-- .git/  [metadata Git; tidak ditelusuri]
 |-- .github/
 |   `-- ISSUE_TEMPLATE/

@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.5.9 - 2026-10-28
+
+- [patch] The Skill pack lint now reports where the Triggers of different packs say the same thing: bullets shared by five or more packs, pairs of packs with near-identical Triggers, and a Non-triggers entry that is another pack's Trigger. It also accepts `--packs <folder>` to lint another folder. A new explicit, read-only script `scripts/research/skill-upstream-drift.mjs` asks the public GitHub compare API, anonymously, whether any file under a pack's pinned upstream path changed since the pinned commit; it reports changed, unchanged or unknown, stops at a rate limit, and writes a file only under `runtime/tmp`. It is not part of any build and never changes a pin.
+
 ## 1.5.8 - 2026-10-28
 
 - [patch] A read-only work receipt and a theme contract test. `node scripts/inspect/work-receipt.mjs` summarizes what the local Activity Tracker recorded over the last N days (tool calls, failures kept as their own stream, Learning checkpoints and reviews, Memory tool calls, active days) plus commit and distinct-file counts for repositories you name. It shows `?` instead of 0 when something cannot be read, reports no money, hours saved or per-project attribution (the journal has no project field), and writes a file only under `runtime/tmp`. The UI gains `theme-contract.test.ts`: every text colour token keeps at least 4.5:1 contrast on every surface, the focus ring keeps 3:1, the two weaker tokens are never used as text, and the stylesheet loads nothing from outside.
