@@ -64,6 +64,20 @@ OAuth tokens are bound to one resource URL. `AGENT_CORE_OAUTH_PROTECTED_RESOURCE
 - Log: `runtime\tools\cloudflared\cloudflared.log`. Do not raise the log level to `debug`: it records request headers, including credentials.
 - Optional hardening in Cloudflare: a rate-limiting rule on `/oauth/*` and `/mcp`; an Access policy with a service token for non-OAuth clients (an Access login in front of the OAuth paths breaks OAuth connectors).
 
+## Reading a probe result
+
+Agent Core answers with JSON (`{"error": "..."}`); an HTML page comes from Cloudflare, not from Agent Core. These answers come from `src/http/app.ts` and `src/oauth/service.ts`:
+
+| Probe | Answer | Meaning |
+|---|---|---|
+| `/mcp` without credentials | `401` with a `WWW-Authenticate` challenge | The tunnel and the listener are alive. This is the expected answer of a healthy endpoint, not a failure. |
+| `/mcp` from a browser origin the policy refuses | `403 forbidden_origin` | The listener was reached; the `Origin` header is refused. Alive, but the client or the allowed-origins setting needs a change. |
+| `/health` or `/agent/*` on the public hostname | `404 not_found` | Expected: these paths must not be published (`-Action Verify` checks it). |
+| `/oauth/register` more than 20 times a minute, or while 50 registered clients have never authorized | `429` with `Retry-After` | Registration limit, not an outage. |
+| An HTML Cloudflare error page (for example `502`, or `530` with error `1033`) or a timeout | not an Agent Core answer | The tunnel or the listener is down. Check `-Action Status` and the local listener on `127.0.0.1:8765`. |
+
+A probe that expects `200` from `/mcp` without credentials will report a healthy endpoint as dead.
+
 ## Limits
 
 The tunnel runs only while this PC and cloudflared run. Compatibility of a specific third-party connector with Agent Core's OAuth (public dynamic registration, `client_secret_post`, S256 PKCE) is not guaranteed by this document.

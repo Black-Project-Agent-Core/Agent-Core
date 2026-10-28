@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.5.5 - 2026-10-28
+
+- [patch] Repository process and developer documentation. A new `agent_behavior` issue form asks which controller acted, the tool grant in effect, what was changed versus only read and whether AGENTS.md was broken, with no link that puts data into a query string. `.gitattributes` now marks `runtime/skills/**` as `-text`, because Skill artifacts are identified by the digest of their exact bytes and 24 tracked files carry CRLF; a repository-wide line-ending normalization was checked and is not safe. The Cloudflare tunnel guide gains a table for reading probe results (a `401` from `/mcp` is a healthy endpoint), and a new guide explains the `servers.json` format for extra language servers with its Windows limits.
+
 ## 1.5.4 - 2026-10-28
 
 - [patch] Three Activity Tracker defects. A Skill outcome could never be recorded because its feature id (`skill:<name>`) did not match the tracker's id rule and recording threw; it is now `skill.<name>`. `recordOutcome` no longer throws into its caller: an outcome that fails validation is kept as a plain `feature-outcome-rejected` event whose context says why. Outcome properties are validated before the cap of sixteen is applied, so invalid keys listed first no longer push valid ones out. A journal that cannot be read now sets the tracker's journal issue instead of reading as an empty journal.

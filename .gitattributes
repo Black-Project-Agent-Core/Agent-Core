@@ -1,3 +1,6 @@
 # These independent oracles are sealed by exact byte digest.
 tests/memory/engine/fixtures/memory-lifecycle/corpus.json text eol=lf
 tests/memory/engine/fixtures/memory-lifecycle/cases.json text eol=lf
+# Skill artifacts are identified by the digest of their exact bytes (24 tracked files carry CRLF), so no tool or
+# checkout setting may rewrite their line endings.
+runtime/skills/** -text

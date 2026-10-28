@@ -1,0 +1,68 @@
+name: Agent behavior report
+description: An AI controller or the Native agent did something unexpected while using Agent Core.
+title: "[Behavior] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include API keys, OAuth tokens, passwords, private memory, or raw credential files. Quote only the shortest exact lines that show the behavior.
+  - type: dropdown
+    id: controller
+    attributes:
+      label: Controller
+      options:
+        - Claude Code or Claude Desktop (external controller)
+        - ChatGPT (external controller)
+        - Native Agent (Agent Core chat)
+        - Another external controller
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Agent Core version
+    validations:
+      required: true
+  - type: textarea
+    id: grant
+    attributes:
+      label: Tool grant in effect
+      description: Which tools or capability families the controller was allowed to use, and whether the contract handshake was done.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you asked for
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What the agent did
+      description: Say which files or settings were changed and which were only read. Include the exact tool calls or errors if you have them, sanitized.
+    validations:
+      required: true
+  - type: dropdown
+    id: contract
+    attributes:
+      label: Did it break a rule in AGENTS.md?
+      options:
+        - "Yes"
+        - "No"
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: rule
+    attributes:
+      label: Which rule (section name), if you know
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed credentials, tokens, passwords, private memory, and device identifiers.
+          required: true
+        - label: This happened through Agent Core and not through an unrelated tool.
+          required: true
