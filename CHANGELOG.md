@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.5.14 - 2026-10-28
+
+- [patch] Housekeeping: the owner's two pending local changes are committed so the repository mirrors the working folder. The root file `link.txt`, which only held saved chat links and which the owner deleted, is removed from the repository, and the archived Memory cognitive upgrades document records that all nine features were activated on 2026-10-28.
+
 ## 1.5.13 - 2026-10-28
 
 - [patch] The two newly built Skills, `windows-powershell-host` and `skill-authoring`, are activated in the Skill catalog on the owner's instruction. They were imported from their source folders with the SkillService import path, so the active digests equal the source digests, a lexical search for a PowerShell exit-code question ranks `windows-powershell-host` first, and the catalog scans 45 valid Skills with none invalid. The capability index was not changed.
