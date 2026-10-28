@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.5.4 - 2026-10-28
+
+- [patch] Three Activity Tracker defects. A Skill outcome could never be recorded because its feature id (`skill:<name>`) did not match the tracker's id rule and recording threw; it is now `skill.<name>`. `recordOutcome` no longer throws into its caller: an outcome that fails validation is kept as a plain `feature-outcome-rejected` event whose context says why. Outcome properties are validated before the cap of sixteen is applied, so invalid keys listed first no longer push valid ones out. A journal that cannot be read now sets the tracker's journal issue instead of reading as an empty journal.
+
 ## 1.5.3 - 2026-10-28
 
 - [patch] A test run verdict that a script computes. `scripts/verify/test-run-evidence.mjs` reads a vitest text log, a vitest JSON report or a JUnit file and prints PROVEN, PARTLY or NOT from the counts alone: nothing executed, everything skipped, a failure, or a result older than the code it covers (`--code`, `--max-age-minutes`) is NOT and exits 1. `--self-check` runs built-in known-bad runs and fails unless each is seen as bad. Read-only, no dependencies, no gate.

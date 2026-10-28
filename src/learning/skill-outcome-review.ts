@@ -12,7 +12,7 @@ export async function recordSkillOutcome(coordinator: SkillProposalCoordinator, 
   const proof = await validateWorkflowUse(input);
   if (proof.status !== 'resolved' || proof.verification !== (input.outcome === 'success' ? 'pass' : 'fail')) throw new Error('SKILL_OUTCOME_EVIDENCE_REQUIRED');
   activityTracker.recordOutcome('LEARNING', input.outcome === 'success' ? 'success' : 'warn', 'Verified task outcome using a Skill revision',
-    { featureId: 'skill:' + input.skillName, outcome: input.outcome, properties: { kind: 'skill', applicability: input.applicability } },
+    { featureId: 'skill.' + input.skillName, outcome: input.outcome, properties: { kind: 'skill', applicability: input.applicability } },
     'skill-proposal-use-outcome', { workspace: input.workspace, taskId: input.taskId, artifactKind: 'skill', artifactId: input.skillName,
       contentDigest: input.revisionDigest, evidenceValidation: proof.status, semanticSupport: 'not-established',
       actionRefs: input.actionRefs, verificationRef: input.verificationRef });

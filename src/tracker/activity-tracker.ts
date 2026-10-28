@@ -69,8 +69,9 @@ function sanitizeFeatureOutcome(input: TrackerFeatureOutcome): TrackerFeatureOut
   if (!/^[a-z0-9][a-z0-9._-]{0,79}$/.test(featureId)) throw new Error('TRACKER_FEATURE_ID_INVALID');
   if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(outcome)) throw new Error('TRACKER_OUTCOME_INVALID');
   const properties: Record<string, TrackerOutcomeProperty> = {};
-  for (const [key, raw] of Object.entries(input.properties ?? {}).slice(0, 16)) {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(key)) continue;
+  // Validate before limiting, so invalid keys listed first cannot push valid ones past the cap.
+  const validKeys = Object.entries(input.properties ?? {}).filter(([key]) => /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(key));
+  for (const [key, raw] of validKeys.slice(0, 16)) {
     if (typeof raw === 'number' && !Number.isFinite(raw)) continue;
     if (typeof raw === 'string') properties[key] = truncate(raw).slice(0, 200);
     else if (typeof raw === 'number' || typeof raw === 'boolean' || raw === null) properties[key] = raw;
@@ -145,6 +146,11 @@ export class ActivityTracker {
     context?: Record<string, unknown>,
   ): TrackerEvent {
     const now = new Date();
+    // The tracker never throws into a caller: an outcome that fails validation is kept as a plain event that says why.
+    let sanitized: TrackerFeatureOutcome | undefined;
+    let rejected: string | undefined;
+    try { sanitized = sanitizeFeatureOutcome(featureOutcome); } catch (error) { rejected = truncate(error); }
+    const safeContext = sanitizeContext(rejected ? { ...context, trackerIssue: rejected } : context);
     const event: TrackerEvent = {
       id: randomUUID().replaceAll('-', ''),
       timestamp: now.toISOString(),
@@ -153,9 +159,9 @@ export class ActivityTracker {
       level,
       message: truncate(message),
       source: 'node',
-      kind,
-      featureOutcome: sanitizeFeatureOutcome(featureOutcome),
-      ...(sanitizeContext(context) ? { context: sanitizeContext(context) } : {}),
+      kind: rejected ? 'feature-outcome-rejected' : kind,
+      ...(sanitized ? { featureOutcome: sanitized } : {}),
+      ...(safeContext ? { context: safeContext } : {}),
     };
     this.persist(event);
     return event;
@@ -208,7 +214,9 @@ export class ActivityTracker {
         if (output.length > maxEvents) output.shift();
       }
       return output;
-    } catch {
+    } catch (error) {
+      // Still fail-soft, but "could not read" must not look like "nothing happened".
+      this.journalIssue = truncate('Tracker journal unreadable: ' + (error instanceof Error ? error.message : String(error)));
       return [];
     }
   }
@@ -233,7 +241,8 @@ export class ActivityTracker {
           return Number.isFinite(timestamp) && timestamp >= cutoff;
         })
         .slice(-maxEvents);
-    } catch {
+    } catch (error) {
+      this.journalIssue = truncate('Tracker journal unreadable: ' + (error instanceof Error ? error.message : String(error)));
       return [];
     }
   }
