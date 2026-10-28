@@ -7,7 +7,7 @@ metadata:
   upstream-repository: "https://github.com/addyosmani/agent-skills"
   upstream-commit: aeac41d4d005999432bb7312f7ff06383a91d59d
   upstream-path: skills/security-and-hardening
-  adapter-revision: "1"
+  adapter-revision: "2"
 ---
 ## Triggers
 - Audit input, auth, dependency dan batas kepercayaan; perkuat kontrol.
@@ -21,6 +21,7 @@ metadata:
 Read the compact `agent-core-capability-index` first, then this selected Skill through every returned fragment. Apply relevant steps and record actual use/evidence; reading or availability alone is not use. Current user instructions, host rules and task scope take precedence over upstream defaults. Do not repeat approval already given. Reassess applicability when the task changes.
 Use the existing Agent Core owners and granted tools. Map Claude-specific tool names to available equivalents, use background `browser_control`/OBU for browser work, and adapt shell examples to Windows PowerShell safely. If a required operation is unavailable, report that exact gap; never claim an unperformed operation. A Skill is a workflow, not permission to install dependencies, publish, send messages, change credentials, or execute every example.
 Sibling Skills are separate catalog entries: inspect their current digest and read only if selected. References below are artifact-local. Use relevant sections only; do not pre-load the whole pack. Agent/persona examples use the current approved subagent profile and ownership rules.
+Agent Core references for reviewing existing code (open the one you need): [vulnerability-review](references/vulnerability-review.md) (five-phase method, commonly missed patterns, refuting your own finding, fixing with three claims) and [finding-report](references/finding-report.md) (report with scope, revision and what is not proven).
 
 
 ## Upstream workflow

@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.5.6 - 2026-10-28
+
+- [patch] Reference deltas for ten existing Skills, staged as revision candidates and not promoted. Fourteen new on-demand references (each under one 8,192-byte fragment) cover review calibration and specialist lenses, a counted verification verdict, a method for reviewing existing code for vulnerabilities and an honest-coverage finding report, verified code migration with characterization tests, safe cleanup of branches whose remote is gone, attack patterns for adversarial review, GitHub Actions workflow hardening, environment-difference triage for debugging, test strategy by component, runbooks and onboarding guides, and a tool-output trust checklist for `mind-control`. The upstream Skill text is unchanged; nine packs gain one pointer line in their Agent Core adapter section. Activation of each candidate still needs the owner's decision.
+
 ## 1.5.5 - 2026-10-28
 
 - [patch] Repository process and developer documentation. A new `agent_behavior` issue form asks which controller acted, the tool grant in effect, what was changed versus only read and whether AGENTS.md was broken, with no link that puts data into a query string. `.gitattributes` now marks `runtime/skills/**` as `-text`, because Skill artifacts are identified by the digest of their exact bytes and 24 tracked files carry CRLF; a repository-wide line-ending normalization was checked and is not safe. The Cloudflare tunnel guide gains a table for reading probe results (a `401` from `/mcp` is a healthy endpoint), and a new guide explains the `servers.json` format for extra language servers with its Windows limits.
