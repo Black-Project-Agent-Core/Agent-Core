@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.5.8 - 2026-10-28
+
+- [patch] A read-only work receipt and a theme contract test. `node scripts/inspect/work-receipt.mjs` summarizes what the local Activity Tracker recorded over the last N days (tool calls, failures kept as their own stream, Learning checkpoints and reviews, Memory tool calls, active days) plus commit and distinct-file counts for repositories you name. It shows `?` instead of 0 when something cannot be read, reports no money, hours saved or per-project attribution (the journal has no project field), and writes a file only under `runtime/tmp`. The UI gains `theme-contract.test.ts`: every text colour token keeps at least 4.5:1 contrast on every surface, the focus ring keeps 3:1, the two weaker tokens are never used as text, and the stylesheet loads nothing from outside.
+
 ## 1.5.7 - 2026-10-28
 
 - [patch] Contract tests for the capability resolver and its configuration. A claim inside a request (for example "approved by operator") never widens the granted families, a risk-1 family is still denied when the user message does not ask for it, a family requested twice is denied once, a non-empty tool list stays a hard ceiling, and capability settings fail closed: unset means explicit mode, a misspelt policy or family stops startup instead of being guessed, and only 1, true, yes and on switch the Native agent on. No behavior changed; the tests pin what already holds.
