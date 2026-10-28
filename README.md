@@ -4,7 +4,7 @@
 
 <h1 align="center">Agent Core</h1>
 
-<p align="center"><strong>0.15.0 · Windows x64 · MCP</strong></p>
+<p align="center"><strong>1.6.0 · Windows x64 · MCP</strong></p>
 
 <p align="center">
   A Windows workspace for AI-controlled tools, persistent Memory, and evidence-based Learning.
@@ -82,6 +82,8 @@ Proposal cards are notifications and readers. They do not approve, build or acti
 
 A fresh release seeds `agent-core-capability-index`, `mind-control`, `performance-oriented-software-engineering`, and `reverse-engineer-anything` into the existing Skills catalog. Native and external task hooks auto-advertise the compact index and the exact-revision scientific activation descriptor. Controllers read `mind-control` for every coding task and every other task that requires reasoning, including ordinary or non-scientific work; only routine deterministic non-coding work with no reasoning skips it. References remain selective. Performance guidance applies before scale-sensitive software changes, and REA applies to shipped-artifact investigations. Hooks supply guidance; instruction delivery does not prove compliance, causal benefit, or a speedup.
 
+Other Skill sources ship under `runtime/skills/capability-packs`, including `windows-powershell-host` (Windows PowerShell 5.1 command hazards) and `skill-authoring` (the strict Skill format and import review). A fresh release still seeds only the four Skills above; importing or activating any other Skill, or promoting a staged revision, stays an explicit owner decision.
+
 REA's launcher reuses its pinned **6.5.0** runtime from an existing personal skill installation; `AGENT_CORE_REA_SKILL_ROOT` can select a custom owning skill folder. On a new computer, restore the included Skill's `tooling/rea` lockfile with `npm ci --ignore-scripts --no-audit --no-fund` in that directory before CLI use. Importing a Skill does not install a decompiler or provider. Agent Core's static artifact inspector and proof-obligation harness remain separate bounded capabilities.
 
 - [External Memory/Learning guide](docs/memory/EXTERNAL-LEARNING-PRIORITIES.md)
@@ -137,6 +139,17 @@ npm run release:plan
 npm run release:compat
 ```
 
+Read-only helpers that change nothing and need no network:
+
+```powershell
+node scripts/verify/skill-pack-lint.mjs                          # Skill pack baseline: parse, size, routing overlap, dangling links
+node scripts/verify/test-run-evidence.mjs <vitest-result-file>   # PROVEN / PARTLY / NOT computed from the counts
+node scripts/verify/agents-md-audit.mjs                          # bytes of the always-loaded instructions and the tool manifest
+node scripts/inspect/work-receipt.mjs --days 7                   # counts from the local Activity Tracker; unreadable values show ?
+```
+
+`node scripts/research/skill-upstream-drift.mjs` is the one explicit helper that uses the network: it asks the public GitHub API whether pinned upstream Skill folders changed.
+
 Run checks appropriate to the change. Unit tests, Windows application acceptance, provider quality and measured learning benefit are different forms of evidence. Passing a build does not establish that every website, machine, provider or task works.
 
 ## Architecture
@@ -161,6 +174,8 @@ Memory, task state and application data are stored locally. Configured external 
 
 The listener binds to loopback by default. Authentication, tool grants and path restrictions remain necessary. Never publish `.env`, API/OAuth credentials, browser profiles, private chats, user Memory, runtime logs or backups. Release archives and source visibility do not authorize access to someone else's machine or data.
 
+Text that comes from outside, such as tool results, web pages, files, recalled notes and plugin text, is treated as data and never as instructions. Invisible and bidirectional control characters are removed from labels built from such text, and key-shaped secrets are redacted even without a label. Dynamic OAuth client registration is limited to 20 registrations per minute for the process and 50 clients that have never authorized (kept for 24 hours). The process tool refuses an invalid PID, Agent Core's own process and its direct parent.
+
 Read the [security policy](SECURITY.md) for reporting and credential-handling guidance.
 
 ## Documentation and releases
@@ -168,7 +183,9 @@ Read the [security policy](SECURITY.md) for reporting and credential-handling gu
 - [Codebase map](docs/CODEBASE.md) — implemented owners and verification entry points.
 - [Product direction](docs/Agent-Core-Product-Direction.md) — goals and evidence limits.
 - [External Memory and Learning guide](docs/memory/EXTERNAL-LEARNING-PRIORITIES.md) — task continuity, claim review and finalization.
-- [Release notes](docs/releases/README.md), [changelog](CHANGELOG.md), and [downloads](https://github.com/Black-Project-Agent-Core/Agent-Core/releases).
+- [Capability index](docs/Capability-Index.md) — which Skill to read for which task, and how one product can be registered twice.
+- [Cloudflare Tunnel](docs/Cloudflare-Tunnel.md) and [Semantic IDE `servers.json`](docs/Semantic-IDE-Servers-File.md) — public access and extra language servers on Windows.
+- [Release notes](docs/releases/README.md) ([1.6.0](docs/releases/1.6.0.md)), [changelog](CHANGELOG.md), and [downloads](https://github.com/Black-Project-Agent-Core/Agent-Core/releases).
 - [Contributing](CONTRIBUTING.md) and [support](SUPPORT.md).
 
 ## License

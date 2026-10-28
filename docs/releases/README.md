@@ -2,7 +2,7 @@
 
 ## Current release state
 
-The current source line is **Agent Core 0.15.0 for Windows x64**. Read [0.15.0 release notes](0.15.0.md) for its scope and source-verification evidence. Accepted distribution identities and package receipts belong to the [versioned GitHub Release](https://github.com/Black-Project-Agent-Core/Agent-Core/releases/tag/v0.15.0). Verify the source commit, package manifest and installed runtime separately.
+The current source line is **Agent Core 1.6.0 for Windows x64**. Read [1.6.0 release notes](1.6.0.md) for its scope, limits and source-verification evidence; [0.15.0](0.15.0.md) is the previous accepted stable release. Accepted distribution identities and package receipts belong to the [versioned GitHub Release](https://github.com/Black-Project-Agent-Core/Agent-Core/releases/tag/v0.15.0). Verify the source commit, package manifest and installed runtime separately.
 
 The [latest accepted stable release](https://github.com/Black-Project-Agent-Core/Agent-Core/releases/latest) is the download baseline. A source push, tag or successful build does not prove that a Windows package was accepted or activated. Publication is a separate, explicitly authorized action.
 
