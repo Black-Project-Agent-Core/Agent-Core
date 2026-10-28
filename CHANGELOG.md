@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.5.11 - 2026-10-28
+
+- [patch] Two of the four proposed new Skills are merged into the reference deltas for existing Skills instead of becoming separate Skills. The unique parts of the security-change-review proposal (trust-boundary scope, extra commonly missed patterns, evidence levels, review kept separate from repair) now live in the security-and-hardening references, and the unique parts of the incident-postmortem proposal (declare, stabilize, timeline, contributing causes, impact, actions, verified close, by kind of incident) are a new incident-handling reference of the debugging Skill that points to the runbook reference instead of repeating it. Both are staged as candidates; nothing is promoted or activated.
+
 ## 1.5.10 - 2026-10-28
 
 - [patch] Documentation: the capability index gains a short section, "Satu produk, dua registrasi", for the case where Agent Core is registered both as a local MCP server and as a Claude Desktop connector. It says to pick one form per session, do one contract handshake for it, never pass a contract session to the other form, name the product "Agent Core" in reports, and not to match tools by client prefix (no `mcp__` appears in `src`). It lives in the on-demand index, not in `AGENTS.md`, so the always-loaded text does not grow.

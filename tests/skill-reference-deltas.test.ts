@@ -12,7 +12,7 @@ const deltas: Record<string, string[]> = {
   'git-workflow-and-versioning': ['branch-cleanup'],
   'doubt-driven-development': ['attack-patterns'],
   'ci-cd-and-automation': ['workflow-hardening'],
-  'debugging-and-error-recovery': ['environment-differences'],
+  'debugging-and-error-recovery': ['environment-differences', 'incident-handling'],
   'test-driven-development': ['component-strategies'],
   'documentation-and-adrs': ['runbooks-and-onboarding'],
   'mind-control': ['tool_output_trust'],
