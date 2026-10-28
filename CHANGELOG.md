@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.5.3 - 2026-10-28
+
+- [patch] A test run verdict that a script computes. `scripts/verify/test-run-evidence.mjs` reads a vitest text log, a vitest JSON report or a JUnit file and prints PROVEN, PARTLY or NOT from the counts alone: nothing executed, everything skipped, a failure, or a result older than the code it covers (`--code`, `--max-age-minutes`) is NOT and exits 1. `--self-check` runs built-in known-bad runs and fails unless each is seen as bad. Read-only, no dependencies, no gate.
+
 ## 1.5.2 - 2026-10-28
 
 - [patch] A read-only lint for the Skill pack sources. `scripts/verify/skill-pack-lint.mjs` parses every pack in runtime/skills/capability-packs with the strict SkillService parser and reports a baseline: parse and name errors, packs over the 8192-byte page size, Non-triggers text shared by many packs, dangling links, files a pack carries outside references/ that `skills(read)` cannot deliver, bash examples without a PowerShell equivalent and incomplete UPSTREAM.json provenance. `--strict` exits 1 on an error; `--remote` additionally compares each pinned upstream commit with the upstream HEAD and is the only mode that uses the network. Nothing is written and no Skill changed.

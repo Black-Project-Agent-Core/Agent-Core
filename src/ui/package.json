@@ -1,7 +1,7 @@
 {
   "name": "agent-core-ui",
   "private": true,
-  "version": "1.5.2",
+  "version": "1.5.3",
   "type": "module",
   "scripts": {
     "build": "node ../../scripts/portability/check-path-policy.mjs && vite build",
