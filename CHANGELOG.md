@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.5.13 - 2026-10-28
+
+- [patch] The two newly built Skills, `windows-powershell-host` and `skill-authoring`, are activated in the Skill catalog on the owner's instruction. They were imported from their source folders with the SkillService import path, so the active digests equal the source digests, a lexical search for a PowerShell exit-code question ranks `windows-powershell-host` first, and the catalog scans 45 valid Skills with none invalid. The capability index was not changed.
+
 ## 1.5.12 - 2026-10-28
 
 - [patch] Two new Skills are built as validated sources in the Skill home, not imported into the active catalog. `windows-powershell-host` is a checklist of Windows PowerShell 5.1 hazards (exit codes that mean success, encoding and byte order marks, quoting, prompts that wait forever, long and cloud-placeholder paths, programs missing from PATH, missing 5.1 syntax) with a PowerShell example for each. `skill-authoring` explains the strict Skill format, size and routing rules, tool declarations and the single source home, and carries an intake-review reference with a three-level verdict for imported Skills. Neither is active; importing a folder is a separate step the owner asks for.
