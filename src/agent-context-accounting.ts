@@ -30,6 +30,16 @@ export function contextBytes(messages: AgentModelMessage[], tools: AgentModelToo
   return Buffer.byteLength(JSON.stringify({ messages, tools }), 'utf8');
 }
 
+export type ContextSource = 'system' | 'user' | 'assistant' | 'tool' | 'tools';
+
+/** Where the bytes of a request come from: one entry per message role plus the tool schemas. Measures only. */
+export function contextBytesBySource(messages: AgentModelMessage[], tools: AgentModelTool[]): Record<ContextSource, number> {
+  const bySource: Record<ContextSource, number> = { system: 0, user: 0, assistant: 0, tool: 0, tools: 0 };
+  for (const message of messages) bySource[message.role] += Buffer.byteLength(JSON.stringify(message), 'utf8');
+  bySource.tools = Buffer.byteLength(JSON.stringify(tools), 'utf8');
+  return bySource;
+}
+
 /**
  * One accounting for continuation requirements, route admission and compaction triggers.
  * `bytes` may be passed when the caller already serialized the same request.

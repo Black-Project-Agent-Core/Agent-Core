@@ -1,5 +1,9 @@
 # Agent Core Changelog
 
+## 1.4.1 - 2026-10-28
+
+- [patch] Measure the always-loaded text before anyone trims it. A read-only script, `scripts/verify/agents-md-audit.mjs`, reports the size of AGENTS.md by section, repeated lines, paths and tool names it cites that do not exist, the cost of the capability pack descriptors, the bytes of each tool in the manifest (largest first, with the headroom left under the 128 KiB budget) and where the first `controller_contract` instruction sits in the assembled server instructions. A test pins that instruction near the start of the assembled text. A compaction record now lists the request bytes by source (system, user, assistant, tool results, tool schemas). No contract wording changed and nothing is trimmed.
+
 ## 1.4.0 - 2026-10-28
 
 - [minor] Native loop reliability. The loop now reads the provider's finish reason: a reply cut at the output token limit does not run its last tool call (the only one that can be damaged), tells the model why with `FINISH_TRUNCATED_BY_LIMIT`, and records an observation instead of a failure, so it no longer counts as a failed strategy; a reply with no tool call that was refused by the provider or overflowed the context says so as well. Tool errors now end with one sentence per cause (`denied-by-policy`, `no-answer`, `technical-failure`), and a tool that succeeds with no text is shown as an empty result instead of a missing one. Provider failure classification leads with the HTTP status: a 408 or 5xx body that says "unauthorized" or "model not found" no longer retires a credential or model, and a plain 429 stays a rate window unless the body reports spent quota or credit. Tool restriction tables no longer have a prototype, so a tool named like an object member stays an ordinary key. One invalid entry in the semantic provider `servers.json` is skipped and reported instead of discarding the whole file.

@@ -20,7 +20,7 @@ import { AgentRuntimeService } from './agent-runtime.js';
 import { AgentProviderPoolPausedError } from './agent-provider.js';
 import { processLedger } from './rdc/process-ledger.js';
 import { AgentRuntimeToolSession, toolObservesStop } from './agent-tool-session.js';
-import { accountContext } from './agent-context-accounting.js';
+import { accountContext, contextBytesBySource } from './agent-context-accounting.js';
 import {
   classifyFinishReason,
   classifyToolFailure,
@@ -1045,6 +1045,7 @@ export class NativeAgentController {
         for (const keepRecent of knownWindow ? [8, 4] : []) {
           const before = accountContext(messages, modelTools);
           if (before.requiredTokens <= knownWindow! * COMPACTION_TRIGGER_RATIO) break;
+          const beforeSources = contextBytesBySource(messages, modelTools);
           const compacted = compactTurnMessages(messages, { prompt: input.prompt, keepRecent });
           if (!compacted) continue;
           messages.splice(0, messages.length, ...compacted.messages);
@@ -1058,7 +1059,8 @@ export class NativeAgentController {
             kind: 'observation', evidenceRefs: [],
             summary: 'Context compacted ' + compacted.record.id + ': replaced ' + compacted.record.replacedMessages
               + ' messages (' + compacted.record.bytesBefore + ' to ' + compacted.record.bytesAfter + ' bytes); request bound '
-              + before.requiredTokens + ' to ' + after.requiredTokens + ' of window ' + knownWindow + '.',
+              + before.requiredTokens + ' to ' + after.requiredTokens + ' of window ' + knownWindow
+              + '. Bytes by source before: ' + JSON.stringify(beforeSources) + '.',
           });
         }
         let reply: AgentModelResponse;
