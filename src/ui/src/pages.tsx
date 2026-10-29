@@ -454,18 +454,22 @@ export function ChatPage(props:SharedProps) {
   const runningTurnId=runningTurn?.id
     ?? pausedTurn?.id
     ?? (props.agentChat.runningRequestId ? event?.turnId : undefined);
+  const latestNarration=[...(props.agentChat.activity??[])].reverse().find(item=>item.kind==='note')?.text;
+  const budgetWarning=props.agentChat.activity?.find(item=>item.kind==='budget');
   const progressLabels:Record<string,string>={
     'turn.accepted':'Task accepted',
     'memory.recall.started':'Finding relevant context',
     'memory.recall.completed':'Context ready',
     'agent.planning':'Planning the next action',
+    'agent.budget':'Planning the next action',
+    'assistant.progress':event?.text||'Working',
     'tool.started':event?.toolName
       ?`Using ${event.toolName}`+(event.iteration&&event.maxIterations?` · langkah ${event.iteration}/${event.maxIterations}`:'')
       :'Using a tool',
     'tool.completed':event?.toolName
       ?(event.success===false
-        ?`Tool failed · ${event.toolName}`
-        :`Tool finished · ${event.toolName}`+(event.durationMs!==undefined?` · ${formatStepDuration(event.durationMs)}`:''))
+        ?`Tool failed · ${event.toolName}`+(event.resultSummary?` · ${event.resultSummary}`:'')
+        :`Tool finished · ${event.toolName}`+(event.resultSummary?` · ${event.resultSummary}`:'')+(event.durationMs!==undefined?` · ${formatStepDuration(event.durationMs)}`:''))
       :(event?.success===false?'Tool failed; checking recovery':'Tool finished'),
     'verification.started':'Checking the result',
     'verification.completed':'Result check finished',
@@ -596,6 +600,8 @@ export function ChatPage(props:SharedProps) {
         {(props.agentChat.activity?.length??0)>0&&<ActivityList items={props.agentChat.activity!}/>}
         {running&&<div className="chat-message assistant pending">
           <div className="chat-message-role">Agent Core</div>
+          {event?.type!=='assistant.progress'&&latestNarration&&<p className="chat-narration">{latestNarration}</p>}
+          {budgetWarning&&<div className="chat-progress chat-budget" role="status"><span>Mendekati batas langkah ({budgetWarning.iteration}/{budgetWarning.maxIterations})</span></div>}
           <div className="chat-progress"><RefreshCw className="spin" size={17}/><span>{progressLabels[event?.type??'turn.accepted']??'Working'}</span>{event?.toolName&&!event.type.startsWith('tool.')&&<b>{event.toolName}</b>}{event?.type==='tool.started'&&<ElapsedSeconds since={event.at}/>}</div>
         </div>}
         {!running&&latestTurn&&<div className="chat-progress" role="status">

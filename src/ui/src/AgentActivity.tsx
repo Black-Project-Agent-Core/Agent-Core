@@ -22,13 +22,17 @@ const FILE_CHANGING_TOOLS = new Set(['write_file', 'edit_block', 'move_file', 'c
 
 /** Collapsible, bounded list of recent tool steps. File changes are reviewed in the existing task changes panel. */
 export function ActivityList({ items }: { items: AgentChatActivity[] }) {
+  const steps = items.filter(item => !item.kind).length;
   return <details className="chat-activity">
-    <summary>Activity · {items.length} {items.length === 1 ? 'step' : 'steps'}</summary>
-    <ul>{items.map(item => <li key={item.id} className={'chat-activity-' + item.status}>
+    <summary>Activity · {steps} {steps === 1 ? 'step' : 'steps'}</summary>
+    <ul>{items.filter(item => item.kind !== 'budget').map(item => item.kind === 'note'
+      ? <li key={item.id} className="chat-activity-note"><p>{item.text}</p></li>
+      : <li key={item.id} className={'chat-activity-' + item.status}>
       <b>{item.toolName}</b>
       <span>{item.status}{item.durationMs !== undefined && ' · ' + formatStepDuration(item.durationMs)}</span>
       {item.iteration !== undefined && <small>step {item.iteration}{item.maxIterations ? '/' + item.maxIterations : ''}</small>}
       {item.argsSummary && <code>{item.argsSummary}</code>}
+      {item.resultSummary && <em className="chat-activity-result">{item.resultSummary}</em>}
       {FILE_CHANGING_TOOLS.has(item.toolName) && <small>Review the actual changes with the task changes action on the result.</small>}
     </li>)}</ul>
   </details>;

@@ -8,6 +8,8 @@ export type AgentTurnEventType =
   | 'agent.planning'
   | 'tool.started'
   | 'tool.completed'
+  | 'assistant.progress'
+  | 'agent.budget'
   | 'verification.started'
   | 'verification.completed'
   | 'learning.finalization.started'
@@ -42,6 +44,10 @@ export interface AgentTurnEvent {
   durationMs?: number;
   /** tool.started / tool.completed: one-line argument summary (<= 80 chars, secret-keyed values masked). */
   argsSummary?: string;
+  /** tool.completed only: one-line outcome (<= 80 chars, counts/exit code/error excerpt, never file content or secrets). */
+  resultSummary?: string;
+  /** assistant.progress only: the assistant's short narration for this iteration (<= 280 chars). */
+  text?: string;
   itemCount?: number;
   providerId?: string;
   model?: string;
@@ -73,6 +79,75 @@ export function summarizeToolArgs(args: unknown, maxLength = 80): string {
       .join(' ')
     : stringifyArg(args)).replace(/\s+/g, ' ').trim();
   return text.length > maxLength ? text.slice(0, maxLength - 1) + '…' : text;
+}
+
+const SECRET_ASSIGNMENT = /\b([\w-]*(?:key|token|secret|password|authorization|cookie)[\w-]*)\s*[:=]\s*(?:Bearer\s+)?\S+/gi;
+
+/** Masks secret-keyed assignments and well-known token shapes in free text bound for the transcript. */
+function maskSecretLikeText(text: string): string {
+  return text
+    .replace(SECRET_ASSIGNMENT, '$1=***')
+    .replace(/\bBearer\s+[\w.~+/=-]{6,}/gi, 'Bearer ***')
+    .replace(/\bsk-[A-Za-z0-9_-]{10,}/g, '***');
+}
+
+function boundedLine(text: string, maxLength: number): string {
+  const line = maskSecretLikeText(text).replace(/\s+/g, ' ').trim();
+  return line.length > maxLength ? line.slice(0, maxLength - 1) + '…' : line;
+}
+
+const PROCESS_TOOLS = new Set(['start_process', 'interact_with_process', 'read_process_output', 'force_terminate']);
+
+function plural(count: number, one: string, many: string): string {
+  return count + ' ' + (count === 1 ? one : many);
+}
+
+/**
+ * One-line (<= 80 chars) outcome of a tool call for the transcript, derived from the result shape only.
+ * It reports counts, exit codes and error excerpts; file content is never copied and secret-like values are masked.
+ */
+export function summarizeToolResult(
+  toolName: string,
+  result: { isError?: boolean; text?: string } | undefined,
+  args?: unknown,
+): string {
+  const text = typeof result?.text === 'string' ? result.text : '';
+  if (result?.isError) return boundedLine('error: ' + boundedLine(text, 60), 80);
+  let summary: string | undefined;
+  if (toolName === 'start_search' || toolName === 'get_more_search_results') {
+    const hits = [...text.matchAll(/^\s*📄\s+(.+?):\d+\b/gm)];
+    const declared = /\((\d+) match(?:es)?\)/.exec(text);
+    const matches = declared ? Number(declared[1]) : hits.length;
+    if (matches > 0 && hits.length > 0) {
+      summary = plural(matches, 'match', 'matches') + ' in ' + plural(new Set(hits.map(hit => hit[1])).size, 'file', 'files');
+    } else if (hits.length === 0 && /Total results/i.test(text)) {
+      summary = plural(Number(/Total results(?: found)?:\s*(\d+)/i.exec(text)?.[1] ?? 0), 'result', 'results');
+    }
+  } else if (toolName === 'read_file') {
+    const read = /\[Reading (\d+) lines?/.exec(text);
+    if (read) summary = 'read ' + plural(Number(read[1]), 'line', 'lines');
+  } else if (toolName === 'list_directory') {
+    const entries = text.split('\n').filter(line => /^\[[A-Z_]+\]\s/.test(line)).length;
+    if (entries > 0) summary = plural(entries, 'entry', 'entries');
+  } else if (PROCESS_TOOLS.has(toolName)) {
+    const exit = /\bexit(?:ed)?(?: with)?(?: code)?[:= ]+(-?\d+)/i.exec(text);
+    if (exit) summary = 'exit ' + exit[1];
+  } else if (toolName === 'write_file' || toolName === 'edit_block') {
+    const record = args && typeof args === 'object' ? args as Record<string, unknown> : {};
+    const target = [record.path, record.file_path].find((value): value is string => typeof value === 'string' && value.length > 0);
+    summary = 'edited ' + (target ?? 'file');
+  }
+  return boundedLine(summary ?? 'ok · ' + plural(text.length, 'char', 'chars'), 80);
+}
+
+/** Assistant narration for the transcript: one masked line, at most 280 characters; empty when there is nothing to say. */
+export function summarizeAssistantProgress(text: string | null | undefined): string {
+  return typeof text === 'string' ? boundedLine(text, 280) : '';
+}
+
+/** Iteration at which the one-time "approaching the step limit" warning fires: ceil(75%) of the limit. */
+export function iterationBudgetThreshold(maxIterations: number): number {
+  return Math.ceil(0.75 * maxIterations);
 }
 
 export type AgentTurnEventSink = (event: AgentTurnEvent) => void | Promise<void>;

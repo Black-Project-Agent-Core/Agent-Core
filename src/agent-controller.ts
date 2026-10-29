@@ -53,6 +53,9 @@ import {
   type AgentTurnEventSink,
   type AgentTurnRoutingEvidence,
   summarizeToolArgs,
+  summarizeToolResult,
+  summarizeAssistantProgress,
+  iterationBudgetThreshold,
 } from './agent-turn-events.js';
 import {
   AGENT_TURN_CHECKPOINT_SCHEMA_VERSION,
@@ -495,6 +498,7 @@ function systemPrompt(delegatedTools: boolean, guidance: string): string {
       ? 'The creator-delegated Native MCP tools are available from the start. Their schemas are shown selectively to reduce provider request size. For a needed tool not yet visible, call agent_core_toolbox action=load with names=[tool_name]; on the next model call its full schema becomes visible. This is metadata loading, NOT a permission or grant request. action=list finds registered tool names. Follow each tool\'s existing task scope and input contract.'
       : 'If a necessary ordinary tool is not visible, call agent_core_request_capabilities with the smallest relevant capability families. Capability requests never override user intent, operator ceilings, or risk policy.',
     'Before the first ordinary tool action, call agent_core_strategy with a testable hypothesis and expected observation.',
+    'Sebelum memanggil tool, tulis satu kalimat pendek dalam bahasa pengguna tentang apa yang akan kamu cek dan kenapa.',
     'After any TOOL_ERROR, blocked equivalent retry, contradiction, or verification mismatch, call agent_core_strategy again before another ordinary tool action.',
     'A changed strategy must materially change the target, hypothesis, diagnostic method, or evidence premise. Paraphrasing the same failed action is not progress.',
     'When a surfaced Memory item materially affects a strategy, declare it in agent_core_strategy. Retrieval alone is not evidence of use.',
@@ -1052,8 +1056,14 @@ export class NativeAgentController {
       // Outside it the task stayed running with no executor and the session could no longer be closed.
       ensureNotStopped();
       if (!resumedState) await persistCheckpoint('model-ready');
+      let budgetWarned = false;
       for (let iteration = nextIteration; iteration <= maxIterations; iteration += 1) {
         ensureNotStopped();
+        // Warning only: the limit and its failure semantics are unchanged.
+        if (!budgetWarned && iteration >= iterationBudgetThreshold(maxIterations)) {
+          budgetWarned = true;
+          await emitAgentTurnEvent(input.eventSink, { type: 'agent.budget', iteration, maxIterations });
+        }
         const pendingCalls = unresolvedToolCalls(messages);
         const replayingPending = pendingCalls.length > 0;
         // Compact before the conservative request bound reaches the provider's window; admission stays unchanged.
@@ -1171,6 +1181,9 @@ export class NativeAgentController {
           }
           messages.push({ role: 'assistant', content: reply.content, tool_calls: reply.toolCalls,
             ...(reply.anthropicContent ? { anthropicContent: reply.anthropicContent } : {}) });
+          // Once per iteration: the assistant's own short narration of what it is about to check.
+          const narration = summarizeAssistantProgress(reply.content);
+          if (narration) await emitAgentTurnEvent(input.eventSink, { type: 'assistant.progress', text: narration, iteration, maxIterations });
           nextIteration = iteration;
           await persistCheckpoint('model-received');
         }
@@ -1705,6 +1718,7 @@ export class NativeAgentController {
               maxIterations,
               durationMs: Date.now() - toolStarted,
               argsSummary: summarizeToolArgs(args),
+              resultSummary: summarizeToolResult(call.function.name, result, args),
             });
             failedFingerprints.add(fingerprint);
             needsStrategy = true;
@@ -1770,6 +1784,7 @@ export class NativeAgentController {
             maxIterations,
             durationMs: Date.now() - toolStarted,
             argsSummary: summarizeToolArgs(args),
+            resultSummary: summarizeToolResult(call.function.name, result, args),
           });
           messages.push({
             role: 'tool',

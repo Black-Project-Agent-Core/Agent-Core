@@ -88,3 +88,60 @@ describe('Native chat tool activity transcript', () => {
     expect(reduceAgentActivity(list, ev({ type: 'agent.planning' }))).toBe(list);
   });
 });
+
+describe('Native chat narration, result summaries and budget warning', () => {
+  it('shows the result summary in the finished label and in the failed label', () => {
+    const input = props();
+    input.agentChat.lastEvent = ev({ type: 'tool.completed', toolName: 'start_search', success: true, durationMs: 1234,
+      resultSummary: '8 matches in 1 file' });
+    const view = render(<ChatPage {...input}/>);
+    expect(screen.getByText('Tool finished · start_search · 8 matches in 1 file · 1,2 s')).toBeInTheDocument();
+    input.agentChat.lastEvent = ev({ type: 'tool.completed', toolName: 'start_search', success: false, durationMs: 50,
+      resultSummary: 'error: ENOENT' });
+    view.rerender(<ChatPage {...input}/>);
+    expect(screen.getByText('Tool failed · start_search · error: ENOENT')).toBeInTheDocument();
+  });
+
+  it('uses the assistant narration as the main status text', () => {
+    const input = props();
+    input.agentChat.lastEvent = ev({ type: 'assistant.progress', text: 'Saya cek dulu file konfigurasinya.', iteration: 2, maxIterations: 24 });
+    render(<ChatPage {...input}/>);
+    expect(screen.getByText('Saya cek dulu file konfigurasinya.')).toBeInTheDocument();
+  });
+
+  it('shows the budget warning in the status area while running', () => {
+    const input = props();
+    input.agentChat.activity = [{ id: 'b1', kind: 'budget', toolName: '', status: 'done', iteration: 18, maxIterations: 24 }];
+    input.agentChat.lastEvent = ev({ type: 'tool.started', toolName: 'read_file', iteration: 18, maxIterations: 24 });
+    render(<ChatPage {...input}/>);
+    expect(screen.getByText('Mendekati batas langkah (18/24)')).toBeInTheDocument();
+  });
+
+  it('lists narration as a chat line above its steps with the result summary, counting only steps', () => {
+    const input = props('finalized');
+    input.agentChat.activity = [
+      { id: 'n1', kind: 'note', toolName: '', status: 'done', text: 'Saya cek hasil pencarian dulu.', iteration: 1 },
+      { id: 'a1', toolName: 'start_search', iteration: 1, status: 'done', durationMs: 1200, argsSummary: 'pattern="x"', resultSummary: '8 matches in 1 file' },
+    ];
+    render(<ChatPage {...input}/>);
+    const summary = screen.getByText('Activity · 1 step');
+    fireEvent.click(summary);
+    const note = screen.getByText('Saya cek hasil pencarian dulu.');
+    expect(note).toBeVisible();
+    expect(note.closest('li')).toHaveClass('chat-activity-note');
+    expect(screen.getByText('8 matches in 1 file')).toBeVisible();
+  });
+
+  it('folds progress, budget and result summary events into the activity list once each', () => {
+    let list = reduceAgentActivity([], ev({ type: 'turn.accepted' }));
+    list = reduceAgentActivity(list, ev({ type: 'assistant.progress', text: 'Mulai cek.', iteration: 1, maxIterations: 24 }));
+    list = reduceAgentActivity(list, ev({ type: 'tool.started', toolName: 'read_file', iteration: 1, maxIterations: 24 }));
+    list = reduceAgentActivity(list, ev({ type: 'tool.completed', toolName: 'read_file', success: true, durationMs: 5, resultSummary: 'read 10 lines' }));
+    list = reduceAgentActivity(list, ev({ type: 'agent.budget', iteration: 18, maxIterations: 24 }));
+    list = reduceAgentActivity(list, ev({ type: 'agent.budget', iteration: 18, maxIterations: 24 }));
+    expect(list.map(item => item.kind ?? 'step')).toEqual(['note', 'step', 'budget']);
+    expect(list[0]).toMatchObject({ text: 'Mulai cek.' });
+    expect(list[1]).toMatchObject({ toolName: 'read_file', resultSummary: 'read 10 lines' });
+    expect(list[2]).toMatchObject({ iteration: 18, maxIterations: 24 });
+  });
+});

@@ -219,6 +219,9 @@ export type AgentChatEvent = {
   maxIterations?: number;
   durationMs?: number;
   argsSummary?: string;
+  resultSummary?: string;
+  /** assistant.progress: the assistant's short narration for the iteration. */
+  text?: string;
   itemCount?: number;
   providerId?: string;
   model?: string;
@@ -262,6 +265,10 @@ export type AgentChatUiState = {
 
 export type AgentChatActivity = {
   id: string;
+  /** Absent for a tool step; 'note' is assistant narration shown as a chat line, 'budget' the one-time step-limit warning. */
+  kind?: 'note' | 'budget';
+  text?: string;
+  resultSummary?: string;
   toolName: string;
   iteration?: number;
   maxIterations?: number;
@@ -276,6 +283,15 @@ let activitySequence = 0;
 /** Folds one live turn event into the bounded Activity list; unrelated events return the same list. */
 export function reduceAgentActivity(list: AgentChatActivity[], event: AgentChatEvent): AgentChatActivity[] {
   if (event.type === 'turn.accepted') return [];
+  if (event.type === 'assistant.progress' && event.text) {
+    return [...list, { id: 'step-' + (activitySequence += 1), kind: 'note' as const, text: event.text, toolName: '',
+      iteration: event.iteration, maxIterations: event.maxIterations, status: 'done' as const }].slice(-AGENT_ACTIVITY_LIMIT);
+  }
+  if (event.type === 'agent.budget') {
+    if (list.some(item => item.kind === 'budget')) return list;
+    return [...list, { id: 'step-' + (activitySequence += 1), kind: 'budget' as const, toolName: '',
+      iteration: event.iteration, maxIterations: event.maxIterations, status: 'done' as const }].slice(-AGENT_ACTIVITY_LIMIT);
+  }
   if (event.type === 'tool.started' && event.toolName) {
     return [...list, { id: 'step-' + (activitySequence += 1), toolName: event.toolName, iteration: event.iteration,
       maxIterations: event.maxIterations, status: 'running' as const, argsSummary: event.argsSummary }]
@@ -288,7 +304,8 @@ export function reduceAgentActivity(list: AgentChatActivity[], event: AgentChatE
     }
     if (index < 0) return list;
     const next = [...list];
-    next[index] = { ...next[index]!, status: event.success === false ? 'failed' : 'done', durationMs: event.durationMs };
+    next[index] = { ...next[index]!, status: event.success === false ? 'failed' : 'done', durationMs: event.durationMs,
+      ...(event.resultSummary ? { resultSummary: event.resultSummary } : {}) };
     return next;
   }
   return list;
