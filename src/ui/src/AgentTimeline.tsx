@@ -135,3 +135,8 @@ export function InvocationCards({ steps }: { steps: AgentChatStepMeta[] }) {
     {n > MAX_CARDS && <li className="chat-invocations-more">+{n - MAX_CARDS} lainnya</li>}</ul>
   </section>;
 }
+
+/** Stored steps win when they are at least as complete as the live ones; live steps have no stored Input/Output, so they stay read-only. */
+export function pickTurnSteps(stored: AgentChatStepMeta[], live: AgentChatStepMeta[]): { steps: AgentChatStepMeta[]; readOnly: boolean } {
+  return stored.length >= live.length ? { steps: stored, readOnly: false } : { steps: live, readOnly: true };
+}

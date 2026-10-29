@@ -1,9 +1,9 @@
 import type { ComponentProps } from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChatPage } from './pages';
 import { reduceAgentActivity } from './host';
-import type { AgentChatEvent, AgentChatTurn, DesktopSnapshot } from './host';
+import type { AgentChatEvent, AgentChatStepMeta, AgentChatTurn, DesktopSnapshot } from './host';
 
 function props(status: AgentChatTurn['status'] = 'running'): ComponentProps<typeof ChatPage> {
   const conversation = { id: 'chat-1', runtimeSessionId: 'session-1', workspace: 'fixture', title: 'Fixture',
@@ -57,24 +57,6 @@ describe('Native chat tool activity transcript', () => {
     expect(screen.queryByText(/^\d+ s$/)).not.toBeInTheDocument();
   });
 
-  it('lists recent activity in a collapsed section with status, duration and argument summary', () => {
-    const input = props('finalized');
-    input.agentChat.activity = [
-      { id: 'a1', toolName: 'start_search', iteration: 1, status: 'done', durationMs: 1200, argsSummary: 'pattern="x"' },
-      { id: 'a2', toolName: 'read_file', iteration: 2, status: 'failed', durationMs: 30, argsSummary: 'path="src/a.ts"' },
-      { id: 'a3', toolName: 'write_file', iteration: 3, status: 'done', durationMs: 90, argsSummary: 'path="src/b.ts"' },
-    ];
-    render(<ChatPage {...input}/>);
-    const summary = screen.getByText('Activity · 3 steps');
-    expect(summary.closest('details')).not.toHaveAttribute('open');
-    fireEvent.click(summary);
-    expect(screen.getByText('start_search')).toBeVisible();
-    expect(screen.getByText('pattern="x"')).toBeVisible();
-    expect(screen.getByText('failed · 30 ms')).toBeVisible();
-    expect(screen.getByText('done · 1,2 s')).toBeVisible();
-    expect(screen.getByText(/actual changes/i)).toBeVisible();
-  });
-
   it('keeps at most the last 30 steps and resets on a new turn', () => {
     let list = reduceAgentActivity([], ev({ type: 'turn.accepted' }));
     for (let i = 1; i <= 35; i += 1) {
@@ -117,21 +99,6 @@ describe('Native chat narration, result summaries and budget warning', () => {
     expect(screen.getByText('Mendekati batas langkah (18/24)')).toBeInTheDocument();
   });
 
-  it('lists narration as a chat line above its steps with the result summary, counting only steps', () => {
-    const input = props('finalized');
-    input.agentChat.activity = [
-      { id: 'n1', kind: 'note', toolName: '', status: 'done', text: 'Saya cek hasil pencarian dulu.', iteration: 1 },
-      { id: 'a1', toolName: 'start_search', iteration: 1, status: 'done', durationMs: 1200, argsSummary: 'pattern="x"', resultSummary: '8 matches in 1 file' },
-    ];
-    render(<ChatPage {...input}/>);
-    const summary = screen.getByText('Activity · 1 step');
-    fireEvent.click(summary);
-    const note = screen.getByText('Saya cek hasil pencarian dulu.');
-    expect(note).toBeVisible();
-    expect(note.closest('li')).toHaveClass('chat-activity-note');
-    expect(screen.getByText('8 matches in 1 file')).toBeVisible();
-  });
-
   it('folds progress, budget and result summary events into the activity list once each', () => {
     let list = reduceAgentActivity([], ev({ type: 'turn.accepted' }));
     list = reduceAgentActivity(list, ev({ type: 'assistant.progress', text: 'Mulai cek.', iteration: 1, maxIterations: 24 }));
@@ -143,5 +110,40 @@ describe('Native chat narration, result summaries and budget warning', () => {
     expect(list[0]).toMatchObject({ text: 'Mulai cek.' });
     expect(list[1]).toMatchObject({ toolName: 'read_file', resultSummary: 'read 10 lines' });
     expect(list[2]).toMatchObject({ iteration: 18, maxIterations: 24 });
+  });
+});
+
+describe('Native chat per-turn timeline', () => {
+  const step = (seq: number, over: Partial<AgentChatStepMeta> = {}): AgentChatStepMeta => ({
+    turnId: 'turn-1', seq, toolName: 'read_file', status: 'ok', startedAtMs: 0, durationMs: 100, resultSummary: 'r' + seq, ...over });
+  const note = (seq: number, text: string): AgentChatStepMeta =>
+    ({ turnId: 'turn-1', seq, kind: 'note', toolName: '', status: 'ok', startedAtMs: 0, resultSummary: text });
+  const assistant = { id: 'm2', conversationId: 'chat-1', turnId: 'turn-1', role: 'assistant' as const, content: 'Selesai.', createdAtMs: 3 };
+
+  it('renders narration, grouped steps and invocation cards under the assistant message instead of the activity list', () => {
+    const input = props('finalized');
+    input.agentChat.active!.messages = [assistant];
+    input.agentChat.active!.steps = [
+      note(1, 'Saya cek berkasnya dulu.'), step(2), step(3, { toolName: 'start_search' }),
+      note(4, 'Sekarang saya ubah.'), step(5, { toolName: 'edit_block' }),
+    ];
+    const view = render(<ChatPage {...input}/>);
+    expect(screen.getByText('Saya cek berkasnya dulu.')).toBeInTheDocument();
+    expect(screen.getByText('Sekarang saya ubah.')).toBeInTheDocument();
+    expect(screen.getByText(/· 2 langkah/)).toBeInTheDocument();
+    expect(screen.getByText('EXECUTED INVOCATIONS (3)')).toBeInTheDocument();
+    expect(view.container.querySelector('.chat-message-timeline .chat-timeline')).not.toBeNull();
+    expect(screen.queryByText(/Activity ·/)).toBeNull();
+  });
+
+  it('renders neither timeline nor cards for a turn without steps', () => {
+    const input = props('finalized');
+    input.agentChat.active!.messages = [assistant];
+    input.agentChat.active!.steps = [];
+    const view = render(<ChatPage {...input}/>);
+    expect(screen.getByText('Selesai.')).toBeInTheDocument();
+    expect(view.container.querySelector('.chat-message-timeline')).toBeNull();
+    expect(screen.queryByText(/EXECUTED INVOCATIONS/)).toBeNull();
+    expect(screen.queryByText(/Activity ·/)).toBeNull();
   });
 });

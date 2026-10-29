@@ -9,7 +9,7 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
   open: boolean; onToggle: () => void; onArtifacts?: () => void;
 }) {
   const turn = chat?.active?.turns.at(-1);
-  const calls = (chat?.active?.steps ?? []).filter(step => step.turnId === turn?.id);
+  const calls = (chat?.active?.steps ?? []).filter(step => step.turnId === turn?.id && step.kind !== 'note');
   const usage = selectContextUsage(chat);
   const stepText = turn?.status === 'running' && usage?.iteration !== undefined && usage.maxIterations !== undefined
     ? `${usage.iteration}/${usage.maxIterations}` : undefined;

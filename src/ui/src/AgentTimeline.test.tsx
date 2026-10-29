@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { InvocationCards, TurnTimeline, activityToSteps, buildTimeline, stepCategory, summarizeSteps } from './AgentTimeline';
+import { InvocationCards, TurnTimeline, activityToSteps, buildTimeline, pickTurnSteps, stepCategory, summarizeSteps } from './AgentTimeline';
 import type { AgentChatActivity, AgentChatStepMeta } from './host';
 
 const meta = (over: Partial<AgentChatStepMeta> = {}): AgentChatStepMeta => ({
@@ -72,6 +72,23 @@ describe('activityToSteps', () => {
     expect(steps[1]).toEqual({ turnId: 'turn-9', seq: 2, kind: 'note', toolName: '', status: 'ok', resultSummary: 'Reading first', startedAtMs: 0 });
     expect(steps[2].status).toBe('running');
     expect(steps[3].status).toBe('error');
+  });
+});
+
+describe('pickTurnSteps', () => {
+  it('prefers stored steps when they are at least as long as the live ones', () => {
+    const stored = [meta({ seq: 1 }), meta({ seq: 2 })];
+    expect(pickTurnSteps(stored, [meta({ seq: 1 })])).toEqual({ steps: stored, readOnly: false });
+    expect(pickTurnSteps(stored, [meta({ seq: 1 }), meta({ seq: 2, toolName: 'x' })])).toEqual({ steps: stored, readOnly: false });
+  });
+
+  it('falls back to live steps as read-only when they are longer', () => {
+    const live = [meta({ seq: 1 }), meta({ seq: 2 }), note(3, 'n')];
+    expect(pickTurnSteps([meta({ seq: 1 })], live)).toEqual({ steps: live, readOnly: true });
+  });
+
+  it('returns an empty list when both are empty', () => {
+    expect(pickTurnSteps([], [])).toEqual({ steps: [], readOnly: false });
   });
 });
 

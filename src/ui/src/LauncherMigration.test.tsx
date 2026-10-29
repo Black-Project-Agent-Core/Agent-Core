@@ -84,6 +84,17 @@ it('does not invent a context budget or attribute global desktop activity to the
   expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
 });
 
+it('counts only tool steps of the latest turn as tool calls, not narration notes', () => {
+  const withSteps: AgentChatUiState = { ...chat, active: { ...chat.active!, steps: [
+    { turnId: 't1', seq: 1, toolName: 'read_file', status: 'ok', startedAtMs: 0, durationMs: 10 },
+    { turnId: 't1', seq: 2, kind: 'note', toolName: '', status: 'ok', startedAtMs: 0, resultSummary: 'Saya cek dulu.' },
+    { turnId: 't1', seq: 3, toolName: 'start_search', status: 'ok', startedAtMs: 0, durationMs: 20 },
+  ] } };
+  const view = render(<LauncherInspector chat={withSteps} logs={[]} open onToggle={vi.fn()}/>);
+  expect(view.container).toHaveTextContent('Tool Calls (2)');
+  expect(view.container).not.toHaveTextContent('Saya cek dulu.');
+});
+
 it('keeps prototype upgrade controls visible without dispatching fake backend work', () => {
   render(<LearningPage {...props}/>);
   expect(screen.getByRole('button', { name: 'Run Dreaming Now' })).toBeDisabled();

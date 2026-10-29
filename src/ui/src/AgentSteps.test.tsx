@@ -105,20 +105,22 @@ function chatProps(steps?: AgentChatStepMeta[]): ComponentProps<typeof ChatPage>
 
 afterEach(() => { vi.restoreAllMocks(); });
 
-describe('ActivityList with stored steps', () => {
-  it('lists persisted steps, opens one to request its detail, and keeps live notes without duplicate live tools', () => {
-    const input = chatProps([meta(), meta({ seq: 2, toolName: 'read_file', status: 'error', argsSummary: 'path="a.ts"', durationMs: 30 })]);
+/** A finalized turn whose assistant message sits after the persisted steps of that turn. */
+function finishedTurn(steps: AgentChatStepMeta[]): ReturnType<typeof chatProps> {
+  const input = chatProps(steps);
+  input.agentChat.active!.messages = [{ id: 'm1', conversationId: 'chat-1', turnId: 'turn-1', role: 'assistant', content: 'Selesai.', createdAtMs: 2 }];
+  return input;
+}
+
+describe('Turn timeline with stored steps', () => {
+  it('groups persisted steps, opens one to request its detail and shows no live-only tools', () => {
+    const input = finishedTurn([meta(), meta({ seq: 2, toolName: 'read_file', status: 'error', argsSummary: 'path="a.ts"', durationMs: 30 })]);
     input.onStepDetail = vi.fn();
-    input.agentChat.activity = [
-      { id: 'n1', kind: 'note', toolName: '', status: 'done', text: 'Saya cek dulu.' },
-      { id: 'a1', toolName: 'live_only_tool', status: 'done', durationMs: 5 },
-    ];
+    input.agentChat.activity = [{ id: 'a1', toolName: 'live_only_tool', status: 'done', durationMs: 5 }];
     render(<ChatPage {...input}/>);
-    const summary = screen.getByText('Activity · 2 steps');
-    fireEvent.click(summary);
+    fireEvent.click(screen.getByText(/2 langkah/));
     expect(screen.getByText('Used start_search')).toBeVisible();
     expect(screen.getByText('Used read_file')).toBeVisible();
-    expect(screen.getByText('Saya cek dulu.')).toBeVisible();
     expect(screen.queryByText('live_only_tool')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Used read_file/ }));
     expect(input.onStepDetail).toHaveBeenCalledTimes(1);
@@ -126,11 +128,10 @@ describe('ActivityList with stored steps', () => {
   });
 
   it('passes the stored detail of the opened step to the row', () => {
-    const input = chatProps([meta()]);
+    const input = finishedTurn([meta()]);
     input.onStepDetail = vi.fn();
     input.agentChat.stepDetails = { [stepKey('turn-1', 1)]: { status: 'ready', ...result } };
     render(<ChatPage {...input}/>);
-    fireEvent.click(screen.getByText('Activity · 1 step'));
     fireEvent.click(screen.getByRole('button', { name: /Used start_search/ }));
     expect(screen.getByText('a.ts:1 x')).toBeInTheDocument();
   });

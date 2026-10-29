@@ -3,7 +3,8 @@ import { WorkflowsPage } from './WorkflowsPage';
 import { ProposalCards } from './ProposalCards';
 import { ToolExecutionDetail } from './ToolExecutionDetail';
 import { TaskChangesPanel } from './TaskChangesPanel';
-import { ActivityList, ElapsedSeconds, formatStepDuration } from './AgentActivity';
+import { ElapsedSeconds, formatStepDuration } from './AgentActivity';
+import { InvocationCards, TurnTimeline, activityToSteps, pickTurnSteps } from './AgentTimeline';
 import { Plus, Paperclip, FolderOpen, Target, ListTodo, Wrench, Send, Shield, Pause } from 'lucide-react';
 import { PrototypeDashboard, PrototypeTools, PrototypeRuntime, PrototypeDiagnostics, PrototypeSettings, PrototypeSetup, PrototypeActivity } from './PrototypePages';
 import { ArtifactsPage, GoalsPage, LearningPage, MemoryPage, ModelsPage } from './LauncherPages';
@@ -463,7 +464,9 @@ export function ChatPage(props:SharedProps) {
   const runningTurnId=runningTurn?.id
     ?? pausedTurn?.id
     ?? (props.agentChat.runningRequestId ? event?.turnId : undefined);
-  const latestNarration=[...(props.agentChat.activity??[])].reverse().find(item=>item.kind==='note')?.text;
+  const stepsOfTurn=(turnId:string)=>(active?.steps??[]).filter(step=>step.turnId===turnId);
+  // While running, stored steps win once they catch up with the live activity; live steps cannot open Input/Output yet.
+  const livePicked=running&&latestTurn?pickTurnSteps(stepsOfTurn(latestTurn.id),activityToSteps(latestTurn.id,props.agentChat.activity??[])):undefined;
   const budgetWarning=props.agentChat.activity?.find(item=>item.kind==='budget');
   const progressLabels:Record<string,string>={
     'turn.accepted':'Task accepted',
@@ -588,10 +591,12 @@ export function ChatPage(props:SharedProps) {
         {active.messages.map(message=>{
           const messageTurn=message.role==='assistant'?active.turns.find(turn=>turn.id===message.turnId):undefined;
           const memoryUse=messageTurn?.memoryUse??[];
-          return <React.Fragment key={message.id}><div className={'chat-message '+message.role}>
+          const turnSteps=messageTurn?stepsOfTurn(messageTurn.id):[];
+          return <React.Fragment key={message.id}>{turnSteps.length>0&&<div className="chat-message-timeline"><TurnTimeline steps={turnSteps} stepDetails={props.agentChat.stepDetails} onStepDetail={props.onStepDetail}/></div>}<div className={'chat-message '+message.role}>
             <div className="chat-message-avatar" aria-label={message.role==='user'?'You':'Agent Core'}>{message.role==='user'?<UserRound size={16}/>:<img src="./agent-core.png" alt=""/>}</div>
             <div className="chat-message-body">
             <pre>{message.content}</pre>
+            {messageTurn&&<InvocationCards steps={turnSteps}/>}
             {messageTurn&&<small className="chat-turn-reasoning">Reasoning · {messageTurn.reasoningEffort??'auto'}</small>}
             {memoryUse.length>0&&<details className="chat-memory-use">
               <summary>Memory use · {memoryUse.length} {memoryUse.length===1?'record':'records'}</summary>
@@ -606,11 +611,9 @@ export function ChatPage(props:SharedProps) {
             </div>
           </div>{messageTurn?.runtimeTaskId&&<div className="chat-message-changes"><TaskChangesPanel key={messageTurn.runtimeTaskId} taskId={messageTurn.runtimeTaskId} presentation="popover"/></div>}</React.Fragment>;
         })}
-        {((props.agentChat.activity?.length??0)>0||(active?.steps?.length??0)>0)&&<ActivityList items={props.agentChat.activity??[]}
-          steps={active?.steps} stepDetails={props.agentChat.stepDetails} onStepDetail={props.onStepDetail} currentTurnId={latestTurn?.id}/>}
         {running&&<div className="chat-message assistant pending">
           <div className="chat-message-role">Agent Core</div>
-          {event?.type!=='assistant.progress'&&latestNarration&&<p className="chat-narration">{latestNarration}</p>}
+          {livePicked&&<TurnTimeline steps={livePicked.steps} readOnly={livePicked.readOnly} stepDetails={props.agentChat.stepDetails} onStepDetail={props.onStepDetail}/>}
           {budgetWarning&&<div className="chat-progress chat-budget" role="status"><span>Mendekati batas langkah ({budgetWarning.iteration}/{budgetWarning.maxIterations})</span></div>}
           <div className="chat-progress"><RefreshCw className="spin" size={17}/><span>{progressLabels[event?.type??'turn.accepted']??'Working'}</span>{event?.toolName&&!event.type.startsWith('tool.')&&<b>{event.toolName}</b>}{event?.type==='tool.started'&&<ElapsedSeconds since={event.at}/>}</div>
         </div>}
