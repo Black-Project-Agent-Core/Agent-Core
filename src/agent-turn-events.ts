@@ -1,3 +1,4 @@
+import type { ContextBreakdown } from './agent-context-usage.js';
 import type { AgentMemoryUse } from './agent-memory-use.js';
 import type { AgentProviderRoutingEvent } from './agent-provider.js';
 
@@ -44,6 +45,8 @@ export interface AgentTurnEvent {
   /** context.usage only: size of the full prompt of the LAST provider call (not cumulative), and the known window if any. */
   contextTokens?: number;
   contextWindow?: number;
+  /** context.usage only: estimated (chars/4) split of that prompt by category; the UI scales it to contextTokens. */
+  contextBreakdown?: ContextBreakdown;
   /** tool.completed only: wall-clock duration of the tool call. */
   durationMs?: number;
   /** tool.started / tool.completed: one-line argument summary (<= 80 chars, secret-keyed values masked). */

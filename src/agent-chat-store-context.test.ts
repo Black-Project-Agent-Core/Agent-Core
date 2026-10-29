@@ -30,7 +30,7 @@ describe('chat turn context usage persistence', () => {
     const columns = (db.prepare('PRAGMA table_info(chat_turns)').all() as Array<{ name: string; notnull: number }>)
       .filter(column => column.name.startsWith('context_'));
     db.close();
-    expect(columns.map(column => column.name).sort()).toEqual(['context_tokens', 'context_window']);
+    expect(columns.map(column => column.name).sort()).toEqual(['context_breakdown', 'context_tokens', 'context_window']);
     expect(columns.every(column => column.notnull === 0)).toBe(true);
   });
 
@@ -77,5 +77,35 @@ describe('chat turn context usage persistence', () => {
     store.recordContextUsage('t1', 1.5, 10);
     store.recordContextUsage('missing', 10, 100);
     expect(store.getTurn('t1')?.contextTokens).toBeUndefined();
+  });
+
+  it('stores the estimated breakdown with the usage and omits it when none was given', () => {
+    const { store } = fixture();
+    const breakdown = { system: 1200, tools: 3400, conversation: 560, memory: 78 };
+    store.recordContextUsage('t1', 5_238, 200_000, undefined, breakdown);
+    expect(store.getTurn('t1')?.contextBreakdown).toEqual(breakdown);
+    store.recordContextUsage('t1', 6_000, 200_000);
+    expect(store.getTurn('t1')?.contextTokens).toBe(6_000);
+    expect(store.getTurn('t1')).not.toHaveProperty('contextBreakdown');
+  });
+
+  it('rejects a breakdown with non-integer or negative parts', () => {
+    const { store } = fixture();
+    store.recordContextUsage('t1', 10, 100, undefined, { system: 1.5, tools: 0, conversation: 0, memory: 0 });
+    store.recordContextUsage('t1', 10, 100, undefined, { system: 1, tools: -1, conversation: 0, memory: 0 });
+    store.recordContextUsage('t1', 10, 100, undefined, { system: 1, tools: 0, conversation: 0 } as any);
+    expect(store.getTurn('t1')?.contextTokens).toBe(10);
+    expect(store.getTurn('t1')).not.toHaveProperty('contextBreakdown');
+  });
+
+  it('omits the breakdown without throwing when the stored JSON is broken or incomplete', () => {
+    const { dbPath, store } = fixture();
+    const db = new DatabaseSync(dbPath);
+    db.prepare(`UPDATE chat_turns SET context_breakdown = '{not json' WHERE turn_id = 't1'`).run();
+    expect(() => store.getTurn('t1')).not.toThrow();
+    expect(store.getTurn('t1')).not.toHaveProperty('contextBreakdown');
+    db.prepare(`UPDATE chat_turns SET context_breakdown = '{"system":1,"tools":"2","conversation":3,"memory":4}' WHERE turn_id = 't1'`).run();
+    expect(store.getTurn('t1')).not.toHaveProperty('contextBreakdown');
+    db.close();
   });
 });

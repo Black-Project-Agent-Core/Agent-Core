@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import type { ContextBreakdown } from './agent-context-usage.js';
 import { normalizeMemoryUse, type AgentMemoryUse } from './agent-memory-use.js';
 import { boundedMaskedText, type AgentTurnEvent } from './agent-turn-events.js';
 import { normalizeNativeResultMetadata, type NativeMemoryResultMetadata } from './agent-memory-evaluation.js';
@@ -56,6 +57,8 @@ export interface AgentChatTurn extends NativeMemoryResultMetadata {
   /** Last observed full-prompt size and known window of this turn; absent when the provider reported none. */
   contextTokens?: number;
   contextWindow?: number;
+  /** Estimated (chars/4) per-category split of that prompt; absent when none was recorded or the stored JSON is invalid. */
+  contextBreakdown?: ContextBreakdown;
   memoryUse?: AgentMemoryUse[];
   errorCode?: string;
   messageOrigin?: 'local-operator' | 'external-controller';
@@ -151,9 +154,20 @@ function mapConversation(row: Record<string, unknown>): AgentChatConversation {
     ...(row.last_turn_id ? { lastTurnId: String(row.last_turn_id) } : {}),
   };
 }
+/** Four safe non-negative integers, else undefined (the split is an estimate and never worth failing a read or write). */
+function validContextBreakdown(value: unknown): ContextBreakdown | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const parts = value as Record<string, unknown>;
+  const keys: Array<keyof ContextBreakdown> = ['system', 'tools', 'conversation', 'memory'];
+  if (!keys.every(key => typeof parts[key] === 'number' && Number.isSafeInteger(parts[key]) && (parts[key] as number) >= 0)) return undefined;
+  return { system: parts.system as number, tools: parts.tools as number, conversation: parts.conversation as number, memory: parts.memory as number };
+}
+
 function mapTurn(row: Record<string, unknown>): AgentChatTurn {
   let memoryUse: AgentMemoryUse[] = [];
   try { memoryUse = normalizeMemoryUse(JSON.parse(String(row.memory_use_json ?? '[]'))); } catch {}
+  let contextBreakdown: ContextBreakdown | undefined;
+  try { if (typeof row.context_breakdown === 'string') contextBreakdown = validContextBreakdown(JSON.parse(row.context_breakdown)); } catch {}
   let metadata: NativeMemoryResultMetadata = {};
   try { metadata = normalizeNativeResultMetadata(JSON.parse(String(row.result_metadata_json ?? '{}'))); } catch {}
   return {
@@ -177,6 +191,7 @@ function mapTurn(row: Record<string, unknown>): AgentChatTurn {
     ...(row.error_code ? { errorCode: String(row.error_code) } : {}),
     ...(row.context_tokens !== null && row.context_tokens !== undefined ? { contextTokens: Number(row.context_tokens) } : {}),
     ...(row.context_window !== null && row.context_window !== undefined ? { contextWindow: Number(row.context_window) } : {}),
+    ...(contextBreakdown ? { contextBreakdown } : {}),
     ...(memoryUse.length ? { memoryUse } : {}),
     createdAtMs: Number(row.created_at_ms),
     startedAtMs: Number(row.started_at_ms),
@@ -369,6 +384,9 @@ export class AgentChatStore {
       }
       if (!turnColumns.some(column => column.name === 'context_window')) {
         db.exec('ALTER TABLE chat_turns ADD COLUMN context_window INTEGER');
+      }
+      if (!turnColumns.some(column => column.name === 'context_breakdown')) {
+        db.exec('ALTER TABLE chat_turns ADD COLUMN context_breakdown TEXT');
       }
       // Live loop ceiling, written with the per-iteration progress (iterations/retrieval_count already exist).
       if (!turnColumns.some(column => column.name === 'max_iterations')) {
@@ -905,18 +923,21 @@ export class AgentChatStore {
 
   /** Latest full-prompt size of a turn. Ancillary telemetry: invalid input is ignored and a write failure never reaches the turn. */
   recordContextUsage(turnId: string, contextTokens: number, contextWindow?: number | null,
-    progress?: { iteration?: number; maxIterations?: number }): void {
+    progress?: { iteration?: number; maxIterations?: number }, breakdown?: ContextBreakdown): void {
     if (!Number.isSafeInteger(contextTokens) || contextTokens < 0) return;
     const window = typeof contextWindow === 'number' && Number.isSafeInteger(contextWindow) && contextWindow > 0 ? contextWindow : null;
+    // Estimated split travels with the size it was computed for; an invalid or missing breakdown clears the old one.
+    const validBreakdown = validContextBreakdown(breakdown);
+    const breakdownJson = validBreakdown ? JSON.stringify(validBreakdown) : null;
     const iteration = Number.isSafeInteger(progress?.iteration) && progress!.iteration! >= 0 ? progress!.iteration! : null;
     const maxIterations = Number.isSafeInteger(progress?.maxIterations) && progress!.maxIterations! > 0 ? progress!.maxIterations! : null;
     try {
       this.withDb(db => {
         // Live progress is monotonic (MAX) and COALESCE keeps an earlier value when this event carries none.
-        db.prepare(`UPDATE chat_turns SET context_tokens=?, context_window=?,
+        db.prepare(`UPDATE chat_turns SET context_tokens=?, context_window=?, context_breakdown=?,
           iterations=CASE WHEN ? IS NULL THEN iterations ELSE MAX(COALESCE(iterations, 0), ?) END,
           max_iterations=COALESCE(?, max_iterations) WHERE turn_id=?`)
-          .run(contextTokens, window, iteration, iteration, maxIterations, turnId);
+          .run(contextTokens, window, breakdownJson, iteration, iteration, maxIterations, turnId);
       });
     } catch { /* observability must not become execution authority */ }
   }

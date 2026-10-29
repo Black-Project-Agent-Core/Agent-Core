@@ -59,7 +59,7 @@ import {
   summarizeAssistantProgress,
   iterationBudgetThreshold,
 } from './agent-turn-events.js';
-import { contextTokensFromUsage } from './agent-context-usage.js';
+import { contextTokensFromUsage, estimateContextBreakdown } from './agent-context-usage.js';
 import {
   AGENT_TURN_CHECKPOINT_SCHEMA_VERSION,
   AGENT_TURN_USER_PAUSED,
@@ -1161,6 +1161,7 @@ export class NativeAgentController {
           if (observedContext !== undefined) {
             const contextWindow = this.runtime.knownContextWindow?.(reply.providerId ?? lastProviderId) ?? null;
             await emitAgentTurnEvent(input.eventSink, { type: 'context.usage', contextTokens: observedContext, iteration, maxIterations,
+              contextBreakdown: estimateContextBreakdown(messages, modelTools),
               ...(contextWindow ? { contextWindow } : {}) });
           }
           if (reply.providerId && reply.providerId !== lastProviderId) {
