@@ -271,12 +271,13 @@ export class AgentChatService {
     this.store.recordContextUsage(turnId, event.contextTokens, event.contextWindow,
       { iteration: event.iteration, maxIterations: event.maxIterations });
   }
-  /** Persists tool steps (Input/Output) for any turn; ancillary, so a write failure is logged briefly and never fails the turn. */
+  /** Persists tool steps (Input/Output) and assistant narration for any turn; ancillary, so a write failure is logged briefly and never fails the turn. */
   private recordStep(turnId: string, event: AgentTurnEvent): void {
-    if (event.type !== 'tool.started' && event.type !== 'tool.completed') return;
+    if (event.type !== 'tool.started' && event.type !== 'tool.completed' && event.type !== 'assistant.progress') return;
     try {
       if (event.type === 'tool.started') this.store.startStep(turnId, event);
-      else this.store.completeStep(turnId, event);
+      else if (event.type === 'tool.completed') this.store.completeStep(turnId, event);
+      else this.store.recordNarration(turnId, event);
     } catch (error) {
       console.error('[agent-chat] step record failed:', error instanceof Error ? error.message : 'unknown');
     }

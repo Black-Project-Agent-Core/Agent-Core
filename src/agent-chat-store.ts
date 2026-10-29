@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { normalizeMemoryUse, type AgentMemoryUse } from './agent-memory-use.js';
-import type { AgentTurnEvent } from './agent-turn-events.js';
+import { boundedMaskedText, type AgentTurnEvent } from './agent-turn-events.js';
 import { normalizeNativeResultMetadata, type NativeMemoryResultMetadata } from './agent-memory-evaluation.js';
 import {
   compactionEnabled, summarizeConversationPrefix, type AgentCompactionRecord,
@@ -84,7 +84,12 @@ export interface AgentChatStepMeta {
   durationMs?: number;
   argsSummary?: string;
   resultSummary?: string;
+  /** 'note' marks a persisted assistant narration row (toolName '', text in resultSummary) ordered among tool steps. */
+  kind?: 'note';
 }
+
+/** tool_name of a narration row in chat_turn_steps; never matched by completeStep (status is 'ok', not 'running'). */
+export const NARRATION_STEP_TOOL = '';
 
 export interface AgentChatStepDetail {
   inputText: string;
@@ -1211,6 +1216,19 @@ export class AgentChatStore {
     });
   }
 
+  /** Assistant narration (`assistant.progress`) as the next ordered row of the turn; empty/non-string text writes nothing. */
+  recordNarration(turnId: string, event: AgentTurnEvent): void {
+    if (typeof event.text !== 'string' || event.text.trim() === '') return;
+    const text = boundedMaskedText(event.text, 400).text;
+    const startedAtMs = Number.isFinite(Date.parse(event.at)) ? Date.parse(event.at) : Date.now();
+    this.withDb(db => {
+      db.prepare(`INSERT INTO chat_turn_steps
+        (turn_id, seq, iteration, tool_name, status, started_at_ms, result_summary, input_text, output_text, input_truncated, output_truncated)
+        SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, 'ok', ?, ?, '', '', 0, 0 FROM chat_turn_steps WHERE turn_id=?`)
+        .run(turnId, event.iteration ?? null, NARRATION_STEP_TOOL, startedAtMs, text, turnId);
+    });
+  }
+
   /** Completes the latest still-running step of the same tool; false when none matches. */
   completeStep(turnId: string, event: AgentTurnEvent): boolean {
     const toolName = event.toolName ?? 'unknown';
@@ -1241,6 +1259,7 @@ export class AgentChatStore {
       ...(row.duration_ms !== null ? { durationMs: Number(row.duration_ms) } : {}),
       ...(typeof row.args_summary === 'string' ? { argsSummary: row.args_summary } : {}),
       ...(typeof row.result_summary === 'string' ? { resultSummary: row.result_summary } : {}),
+      ...(row.tool_name === NARRATION_STEP_TOOL ? { kind: 'note' as const } : {}),
     }));
   }
 

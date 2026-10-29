@@ -119,3 +119,58 @@ describe('chat_turn_steps persistence', () => {
     expect(store.listStepMeta('t1', 200)).toEqual([]);
   });
 });
+
+const narration = (text: unknown, atMs: number, iteration = 1): AgentTurnEvent => ({
+  type: 'assistant.progress', at: new Date(atMs).toISOString(), iteration, maxIterations: 24, text,
+} as AgentTurnEvent);
+
+describe('assistant narration persisted as ordered note steps (WP-B3a)', () => {
+  it('interleaves narration and tool steps in original order with kind note on narration rows', () => {
+    const { store } = fixture();
+    const now = Date.now();
+    store.recordNarration('t1', narration('Saya akan membaca berkas.', now, 1));
+    store.startStep('t1', started('read_file', now + 1));
+    expect(store.completeStep('t1', completed('read_file', now + 2))).toBe(true);
+    store.recordNarration('t1', narration('Berkas sudah dibaca.', now + 3, 2));
+    const meta = store.listStepMeta('t1', 200);
+    expect(meta.map(step => step.seq)).toEqual([1, 2, 3]);
+    expect(meta[0]).toMatchObject({ seq: 1, kind: 'note', toolName: '', status: 'ok', iteration: 1, startedAtMs: now, resultSummary: 'Saya akan membaca berkas.' });
+    expect(meta[1]).toMatchObject({ seq: 2, toolName: 'read_file', status: 'ok' });
+    expect(meta[1]).not.toHaveProperty('kind');
+    expect(meta[2]).toMatchObject({ seq: 3, kind: 'note', toolName: '', status: 'ok', iteration: 2, resultSummary: 'Berkas sudah dibaca.' });
+    expect(store.getStepDetail('t1', 1)).toEqual({ inputText: '', outputText: '', inputTruncated: false, outputTruncated: false });
+  });
+
+  it('completeStep never touches narration rows and still completes the right running tool step', () => {
+    const { store } = fixture();
+    const now = Date.now();
+    store.startStep('t1', started('read_file', now));
+    store.recordNarration('t1', narration('Lanjut.', now + 1));
+    expect(store.completeStep('t1', completed('', now + 2, { resultSummary: 'HIJACK' }))).toBe(false);
+    expect(store.completeStep('t1', completed('read_file', now + 3))).toBe(true);
+    const meta = store.listStepMeta('t1', 200);
+    expect(meta[0]).toMatchObject({ seq: 1, toolName: 'read_file', status: 'ok', resultSummary: '3 matches' });
+    expect(meta[1]).toMatchObject({ seq: 2, kind: 'note', status: 'ok', resultSummary: 'Lanjut.' });
+    expect(meta[1]).not.toHaveProperty('durationMs');
+  });
+
+  it('writes nothing for empty, whitespace-only or non-string text', () => {
+    const { store } = fixture();
+    const now = Date.now();
+    store.recordNarration('t1', narration('', now));
+    store.recordNarration('t1', narration('   \n\t ', now + 1));
+    store.recordNarration('t1', narration(undefined, now + 2));
+    store.recordNarration('t1', narration(42, now + 3));
+    expect(store.listStepMeta('t1', 200)).toEqual([]);
+  });
+
+  it('includes narration rows in detail().steps', () => {
+    const { store } = fixture();
+    const now = Date.now();
+    store.recordNarration('t1', narration('Catatan untuk UI.', now));
+    store.startStep('t1', started('read_file', now + 1));
+    const steps = store.detail('c1')!.steps!;
+    expect(steps.map(step => [step.seq, step.kind ?? null, step.toolName])).toEqual([[1, 'note', ''], [2, null, 'read_file']]);
+    expect(steps[0].resultSummary).toBe('Catatan untuk UI.');
+  });
+});

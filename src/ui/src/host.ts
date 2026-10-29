@@ -211,6 +211,8 @@ export type AgentChatStepMeta = {
   durationMs?: number;
   argsSummary?: string;
   resultSummary?: string;
+  /** 'note' marks a persisted assistant narration row (toolName '', text in resultSummary) ordered among tool steps. */
+  kind?: 'note';
 };
 
 export type StepDetailState = {
