@@ -2,13 +2,14 @@ import { Activity, BrainCircuit, ChevronRight, FileText, Paperclip, Folder, Gaug
 import type { ActivityEntry, AgentChatUiState, DesktopSnapshot } from './host';
 import { selectContextUsage } from './host';
 import { ContextMeter, contextMeterModel, formatTokenCount } from './ContextMeter';
+import { STEP_GLYPH, formatStepDuration } from './AgentSteps';
 
 export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArtifacts }: {
   snapshot?: DesktopSnapshot; chat?: AgentChatUiState; logs: ActivityEntry[];
   open: boolean; onToggle: () => void; onArtifacts?: () => void;
 }) {
   const turn = chat?.active?.turns.at(-1);
-  const calls = logs.filter(entry => entry.tool).slice(-6).reverse();
+  const calls = (chat?.active?.steps ?? []).filter(step => step.turnId === turn?.id);
   const usage = selectContextUsage(chat);
   const stepText = turn?.status === 'running' && usage?.iteration !== undefined && usage.maxIterations !== undefined
     ? `${usage.iteration}/${usage.maxIterations}` : undefined;
@@ -37,12 +38,12 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
         <dt>Iterations</dt><dd>{iterationText ?? stepText ?? 'Not recorded'}</dd>
         <dt>Context recall</dt><dd>{turn?.retrievalCount ?? 'Not recorded'}</dd>
       </dl>{!usage&&<p>Token usage and capacity are not reported by this desktop bridge.</p>}</details>
-      <details open><summary><Activity size={15}/>Desktop tool activity <span>{calls.length}</span></summary>
-        <p>Recent desktop activity; association with this chat is not established.</p>
-        {calls.length ? <ul className="inspector-call-list">{calls.map(entry => <li key={entry.id}>
-          <div><b>{entry.tool}</b><span>{entry.status ?? entry.level}</span></div>
-          <small>{entry.durationMs == null ? 'Duration unavailable' : `${Math.round(entry.durationMs)} ms`}</small>
-        </li>)}</ul> : <p>No desktop tool activity recorded.</p>}
+      <details open><summary><Activity size={15}/>Tool Calls ({calls.length})</summary>
+        {calls.length ? <ul className="inspector-call-list">{calls.map(step => <li key={step.turnId + ':' + step.seq}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><b>{step.toolName}</b>
+            <span aria-label={STEP_GLYPH[step.status].label}>{STEP_GLYPH[step.status].glyph}{step.durationMs !== undefined && ' ' + formatStepDuration(step.durationMs)}</span></div>
+          {step.argsSummary && <small style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.argsSummary}</small>}
+        </li>)}</ul> : <p>Belum ada tool call di percakapan ini</p>}
       </details>
       <details open><summary><Paperclip size={15}/>Imported Files</summary><p>File and folder attachments are a planned upgrade. No files are imported by the composer.</p></details>
       <details open><summary><FileText size={15}/>Workspace Artifacts</summary><p>{turn?'Inspect the actual changes recorded for this task.':'Select a conversation to inspect task changes.'}</p><button className="prototype-link" disabled={!onArtifacts} onClick={onArtifacts}>Open Artifacts →</button><dl><dt>Memory records used</dt><dd>{turn?.memoryUse?.length ?? 'Not recorded'}</dd></dl></details>

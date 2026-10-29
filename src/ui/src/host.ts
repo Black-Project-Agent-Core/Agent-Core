@@ -200,10 +200,55 @@ export type AgentChatMessage = {
   createdAtMs: number;
 };
 
+/** Persisted per-step metadata (no Input/Output text; that is fetched per step on demand). */
+export type AgentChatStepMeta = {
+  turnId: string;
+  seq: number;
+  iteration?: number;
+  toolName: string;
+  status: 'running' | 'ok' | 'error';
+  startedAtMs: number;
+  durationMs?: number;
+  argsSummary?: string;
+  resultSummary?: string;
+};
+
+export type StepDetailState = {
+  status: 'loading' | 'ready' | 'error';
+  inputText?: string;
+  outputText?: string;
+  inputTruncated?: boolean;
+  outputTruncated?: boolean;
+  error?: string;
+};
+
+export type StepDetailResult = { inputText: string; outputText: string; inputTruncated: boolean; outputTruncated: boolean };
+export type StepDetailAction =
+  | { type: 'loading'; turnId: string; seq: number }
+  | { type: 'ready'; turnId: string; seq: number; result: StepDetailResult }
+  | { type: 'error'; turnId: string; seq: number; error: string };
+
+export const stepKey = (turnId: string, seq: number) => `${turnId}:${seq}`;
+
+/** Pure reducer for the on-demand step Input/Output cache; loading never replaces loading/ready (no duplicate request). */
+export function reduceStepDetail(prev: Record<string, StepDetailState> | undefined, action: StepDetailAction): Record<string, StepDetailState> {
+  const map = prev ?? {};
+  const key = stepKey(action.turnId, action.seq);
+  const current = map[key];
+  if (action.type === 'loading') {
+    if (current && current.status !== 'error') return map;
+    return { ...map, [key]: { status: 'loading' } };
+  }
+  if (action.type === 'ready') return { ...map, [key]: { status: 'ready', ...action.result } };
+  return { ...map, [key]: { status: 'error', error: action.error } };
+}
+
 export type AgentChatDetail = {
   conversation: AgentChatConversation;
   turns: AgentChatTurn[];
   messages: AgentChatMessage[];
+  /** Persisted tool steps of the newest turns (metadata only). */
+  steps?: AgentChatStepMeta[];
   decisionEvidence?: {
     status: 'available' | 'unavailable'; taskId: string; truncated: boolean;
     attribution: 'controller-declared'; goalVerification: 'not-established';
@@ -271,6 +316,8 @@ export type AgentChatUiState = {
   activity?: AgentChatActivity[];
   /** Latest live context.usage of the active conversation (replaced by the persisted turn value after reload). */
   contextUsage?: AgentContextUsage;
+  /** On-demand Input/Output of persisted steps, keyed `${turnId}:${seq}`. */
+  stepDetails?: Record<string, StepDetailState>;
   error?: string;
 };
 
@@ -414,6 +461,7 @@ type HostEnvelope =
   | { type: 'agent-chat-providers-result'; result: { providers?: AgentChatProvider[]; /** Server-side last-used {providerId, model, reasoningEffort, updatedAtMs}. */ selection?: unknown } }
   | { type: 'agent-chat-state'; requestId?: string; result: AgentChatDetail }
   | { type: 'agent-chat-event'; requestId: string; conversationId?: string; envelope: { type: string; event?: AgentChatEvent; result?: unknown; error?: string } }
+  | { type: 'agent-chat-step-result'; requestId: string; turnId: string; seq: number; result: StepDetailResult }
   | { type: 'agent-chat-cancel-result'; turnId: string; stopped: boolean }
   | { type: 'agent-chat-pause-result'; turnId: string; paused: boolean }
   | { type: 'agent-chat-error'; requestId?: string; conversationId?: string; error: string }

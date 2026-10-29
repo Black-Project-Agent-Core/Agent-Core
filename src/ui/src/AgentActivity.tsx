@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import type { AgentChatActivity } from './host';
+import { stepKey } from './host';
+import type { AgentChatActivity, AgentChatStepMeta, StepDetailState } from './host';
+import { AgentStepRow, formatStepDuration } from './AgentSteps';
 
-/** 1,2 s style for >= 1 s (comma decimal, as in the product copy); whole ms below that. */
-export function formatStepDuration(ms: number): string {
-  return ms < 1000 ? Math.max(0, Math.round(ms)) + ' ms' : (ms / 1000).toFixed(1).replace('.', ',') + ' s';
-}
+export { formatStepDuration };
 
 /** Ticks once per second; mounted only while the turn is running, so it never runs in the background. */
 export function ElapsedSeconds({ since }: { since: string }) {
@@ -21,11 +20,19 @@ export function ElapsedSeconds({ since }: { since: string }) {
 const FILE_CHANGING_TOOLS = new Set(['write_file', 'edit_block', 'move_file', 'create_directory', 'code_refactor']);
 
 /** Collapsible, bounded list of recent tool steps. File changes are reviewed in the existing task changes panel. */
-export function ActivityList({ items }: { items: AgentChatActivity[] }) {
-  const steps = items.filter(item => !item.kind).length;
+export function ActivityList({ items, steps: stored = [], stepDetails, onStepDetail, currentTurnId }: {
+  items: AgentChatActivity[]; steps?: AgentChatStepMeta[]; stepDetails?: Record<string, StepDetailState>;
+  onStepDetail?: (turnId: string, seq: number) => void; currentTurnId?: string;
+}) {
+  // Persisted steps win for a turn that has them; live tool events stay for a turn without (narration always stays).
+  const currentStored = currentTurnId !== undefined && stored.some(step => step.turnId === currentTurnId);
+  const live = items.filter(item => item.kind !== 'budget' && (!currentStored || item.kind === 'note'));
+  const steps = stored.length + live.filter(item => !item.kind).length;
   return <details className="chat-activity">
     <summary>Activity · {steps} {steps === 1 ? 'step' : 'steps'}</summary>
-    <ul>{items.filter(item => item.kind !== 'budget').map(item => item.kind === 'note'
+    <ul>{stored.map(step => <AgentStepRow key={stepKey(step.turnId, step.seq)} step={step}
+      detail={stepDetails?.[stepKey(step.turnId, step.seq)]} onOpen={onStepDetail}/>)}
+    {live.map(item => item.kind === 'note'
       ? <li key={item.id} className="chat-activity-note"><p>{item.text}</p></li>
       : <li key={item.id} className={'chat-activity-' + item.status}>
       <b>{item.toolName}</b>

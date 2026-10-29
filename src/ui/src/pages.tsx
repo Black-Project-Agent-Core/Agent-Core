@@ -44,6 +44,8 @@ type SharedProps = {
   onChatCancel:(turnId:string)=>void;
   onChatResume?:(conversationId:string,turnId:string)=>void;
   onChatPause?:(conversationId:string,turnId:string)=>void;
+  /** Loads the exact Input/Output of one persisted tool step (answered via agentChat.stepDetails). */
+  onStepDetail?:(turnId:string,seq:number)=>void;
   onChatArchive:(conversationId:string)=>void;
   onChatProvider?:(choice:string)=>void;
   onChatModel?:(choice:string)=>void;
@@ -604,7 +606,8 @@ export function ChatPage(props:SharedProps) {
             </div>
           </div>{messageTurn?.runtimeTaskId&&<div className="chat-message-changes"><TaskChangesPanel key={messageTurn.runtimeTaskId} taskId={messageTurn.runtimeTaskId} presentation="popover"/></div>}</React.Fragment>;
         })}
-        {(props.agentChat.activity?.length??0)>0&&<ActivityList items={props.agentChat.activity!}/>}
+        {((props.agentChat.activity?.length??0)>0||(active?.steps?.length??0)>0)&&<ActivityList items={props.agentChat.activity??[]}
+          steps={active?.steps} stepDetails={props.agentChat.stepDetails} onStepDetail={props.onStepDetail} currentTurnId={latestTurn?.id}/>}
         {running&&<div className="chat-message assistant pending">
           <div className="chat-message-role">Agent Core</div>
           {event?.type!=='assistant.progress'&&latestNarration&&<p className="chat-narration">{latestNarration}</p>}
@@ -697,8 +700,8 @@ function SettingToggle({title,text,on,disabled,onChange}:{title:string;text:stri
   return <div className="setting-toggle"><div><b>{title}</b><span>{text}</span></div><Toggle on={on} disabled={disabled} onChange={onChange}/></div>;
 }
 
-export function ReferenceUi({page,setPage,snapshot,logs,onAction,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatResume,onChatPause,onChatArchive,onChatProvider,onChatModel,onChatReasoning,onChatDraft}:SharedProps & {page:PageId;onChatDraft?:()=>void}) {
-  const props={snapshot,logs,onAction,setPage,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatResume,onChatPause,onChatArchive,onChatProvider,onChatModel,onChatReasoning};
+export function ReferenceUi({page,setPage,snapshot,logs,onAction,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning,onChatDraft}:SharedProps & {page:PageId;onChatDraft?:()=>void}) {
+  const props={snapshot,logs,onAction,setPage,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning};
   const content=page==='workflows'?<WorkflowsPage/>:page==='chat'?<ChatPage {...props}/>:page==='dashboard'?<PrototypeDashboard {...props}/>:page==='core'?<PrototypeRuntime {...props}/>:page==='systems'?<PrototypeTools {...props}/>:page==='models'?<ModelsPage {...props}/>:page==='memory'?<MemoryPage {...props}/>:page==='learning'?<LearningPage {...props}/>:page==='goals'?<GoalsPage {...props}/>:page==='artifacts'?<ArtifactsPage {...props}/>:page==='activity'?<PrototypeActivity {...props}/>:page==='diagnostics'?<PrototypeDiagnostics {...props}/>:page==='wizard'?<PrototypeSetup {...props}/>:<PrototypeSettings {...props}/>;
   return <AppShell page={page} setPage={setPage} snapshot={snapshot} onAction={onAction} onNewChat={onChatDraft} agentChat={agentChat} logs={logs}>{content}</AppShell>;
 }

@@ -78,9 +78,10 @@ it('opens Goals from a new draft without crashing and lets the user return to ch
 it('does not invent a context budget or attribute global desktop activity to the chat', () => {
   const view = render(<LauncherInspector chat={chat} logs={[{ id: 'log1', time: '12:00', module: 'MCP', level: 'success', message: 'Observed', tool: 'read_file', status: 'success' }]} open onToggle={vi.fn()}/>);
   expect(view.container).not.toHaveTextContent('18,450');
-  expect(view.container).toHaveTextContent('association with this chat is not established');
+  expect(view.container).toHaveTextContent('Tool Calls (0)');
+  expect(view.container).toHaveTextContent('Belum ada tool call di percakapan ini');
+  expect(view.container).not.toHaveTextContent('read_file');
   expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
-  expect(view.container).toHaveTextContent('Duration unavailable');
 });
 
 it('keeps prototype upgrade controls visible without dispatching fake backend work', () => {

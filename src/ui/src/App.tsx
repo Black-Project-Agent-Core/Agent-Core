@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   postHost,
-  reduceAgentActivity,reduceContextUsage,
+  reduceAgentActivity,reduceContextUsage,reduceStepDetail,stepKey,
   subscribeHost,
   type ActivityEntry,
   type AgentChatUiState,
@@ -43,6 +43,8 @@ export default function App() {
   const desiredChatIdRef=useRef<string | null | undefined>(undefined);
   const pendingChatRequestsRef=useRef(new Map<string,string>());
   const creatingRequestIdRef=useRef<string | undefined>(undefined);
+  // requestId -> `${turnId}:${seq}` of in-flight step Input/Output requests (so their errors never reach the chat error).
+  const stepRequestsRef=useRef(new Map<string,string>());
   // Persist an owner pick locally right away; the server records the values actually sent with each turn.
   useEffect(()=>{
     if(!agentChat.selectionSaved)return;
@@ -154,6 +156,18 @@ export default function App() {
             error:message.envelope.error??'Agent chat turn failed',
           }));
         }
+        return;
+      }
+      if(message.type==='agent-chat-step-result'){
+        stepRequestsRef.current.delete(message.requestId);
+        setAgentChat(prev=>({...prev,stepDetails:reduceStepDetail(prev.stepDetails,{type:'ready',turnId:message.turnId,seq:message.seq,result:message.result})}));
+        return;
+      }
+      if(message.type==='agent-chat-error'&&message.requestId&&stepRequestsRef.current.has(message.requestId)){
+        const key=stepRequestsRef.current.get(message.requestId)!;
+        stepRequestsRef.current.delete(message.requestId);
+        const at=key.lastIndexOf(':');
+        setAgentChat(prev=>({...prev,stepDetails:reduceStepDetail(prev.stepDetails,{type:'error',turnId:key.slice(0,at),seq:Number(key.slice(at+1)),error:message.error})}));
         return;
       }
       if(message.type==='agent-chat-error'){
@@ -313,6 +327,18 @@ export default function App() {
     postHost({type:'agent-chat-cancel',turnId,conversationId:agentChat.active?.conversation.id});
   };
 
+  // Asks the host for the exact Input/Output of one persisted step; never re-asks while loading/ready.
+  const requestStepDetail=(turnId:string,seq:number)=>{
+    const key=stepKey(turnId,seq);
+    const state=agentChat.stepDetails?.[key];
+    if(state&&state.status!=='error')return;
+    if([...stepRequestsRef.current.values()].includes(key))return;
+    const requestId=globalThis.crypto?.randomUUID?.() ?? `step-${Date.now()}-${key}`;
+    stepRequestsRef.current.set(requestId,key);
+    setAgentChat(prev=>({...prev,stepDetails:reduceStepDetail(prev.stepDetails,{type:'loading',turnId,seq})}));
+    postHost({type:'agent-chat-step',requestId,turnId,seq});
+  };
+
   const onChatPause=(conversationId:string,turnId:string)=>{
     const requestId=globalThis.crypto?.randomUUID?.() ?? `pause-${Date.now()}`;
     postHost({type:'agent-chat-pause',requestId,conversationId,turnId});
@@ -365,6 +391,7 @@ export default function App() {
     onChatCancel={onChatCancel}
     onChatResume={onChatResume}
     onChatPause={onChatPause}
+    onStepDetail={requestStepDetail}
     onChatArchive={archiveTrackedChat}
     onChatProvider={onChatProvider}
     onChatModel={onChatModel}
