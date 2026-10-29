@@ -108,6 +108,10 @@ function Install-PendingLauncher {
         throw
     }
     Write-Host "Verified launcher build activated; original retained at $backup"
+    # Every activation leaves one rollback copy of the previous launcher (about 160 MB); only the newest few stay useful.
+    Get-ChildItem -LiteralPath $backupDirectory -Filter 'launcher-*.exe' -File |
+        Sort-Object LastWriteTimeUtc -Descending | Select-Object -Skip 3 |
+        Remove-Item -Force -ErrorAction SilentlyContinue
 }
 
 # The bundled Node running a script outside this checkout (the Claude Desktop stdio bridge is one) is an

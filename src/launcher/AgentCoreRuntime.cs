@@ -313,10 +313,12 @@ public sealed class AgentCoreRuntime : IDisposable
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream, Encoding.UTF8);
-        while (!reader.EndOfStream)
+        // This loop runs on the UI thread. EndOfStream reads the socket synchronously, so every quiet
+        // stretch of a turn (tool or model call in flight) froze the window; only ReadLineAsync may wait.
+        string? line;
+        while ((line = await reader.ReadLineAsync(cancellationToken)) is not null)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var line = await reader.ReadLineAsync(cancellationToken);
             if (string.IsNullOrWhiteSpace(line)) continue;
             using var document = JsonDocument.Parse(line);
             var envelope = document.RootElement.Clone();
