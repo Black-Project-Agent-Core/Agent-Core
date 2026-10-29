@@ -1,0 +1,22 @@
+[
+  {
+    "status": "fulfilled",
+    "value": {
+      "path": "runtime/skills/capability-packs",
+      "exit": 0,
+      "packs": 42,
+      "errors": 0,
+      "dangling": 0
+    }
+  },
+  {
+    "status": "fulfilled",
+    "value": {
+      "path": "runtime/skills/catalog",
+      "exit": 0,
+      "packs": 47,
+      "errors": 0,
+      "dangling": 0
+    }
+  }
+]

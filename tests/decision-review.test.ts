@@ -15,8 +15,45 @@ import * as evidenceSnapshots from '../src/verification/evidence-snapshot.js';
 import { registerWorkflowVerification, WORKFLOW_VERIFIER_REVISION } from '../src/memory/workflow-verifier.js';
 import { registerLearningTools } from '../src/mcp/learning-tools.js';
 import { learning as learningSchema } from '../src/mcp/learning-schemas.js';
+import { decisionDeclarationSchema } from '../src/learning/decision-review.js';
 
 const roots: string[] = [];
+const inquiry = () => ({ schemaVersion: 1 as const, question: 'Which transport lost the callback?',
+  assumptions: [{ id: 'scope', statement: 'Credential is current', basis: 'observed' as const, evidenceRefs: [] }],
+  alternatives: [{ id: 'callback', claim: 'Factory dropped callback', distinguishingObservation: 'Direct works, HTTP fails',
+    falsifier: 'Both paths forward the same callback', evidenceRefs: [] }] });
+
+it('keeps inquiry optional, strict, unique and bounded by UTF-8 bytes', async () => {
+  const f = await fixture();
+  expect(decisionDeclarationSchema.safeParse(f.declaration).success).toBe(true);
+  const value = { ...f.declaration, inquiry: inquiry() };
+  expect(decisionDeclarationSchema.safeParse(value).success).toBe(true);
+  value.inquiry.alternatives[0]!.id = 'scope';
+  expect(decisionDeclarationSchema.safeParse(value).success).toBe(false);
+  const oversized = { ...inquiry(), assumptions: Array.from({ length: 4 }, (_, i) => ({ id: 'a' + i,
+    statement: '😀'.repeat(300), basis: 'unknown', evidenceRefs: [] })) };
+  expect(decisionDeclarationSchema.safeParse({ ...f.declaration, inquiry: oversized }).success).toBe(false);
+  expect(decisionDeclarationSchema.safeParse({ ...f.declaration, inquiry: { ...inquiry(), execute: true } }).success).toBe(false);
+});
+
+it('binds inquiry parents and findings to the same task and preserves immutable declarations', async () => {
+  const f = await fixture();
+  await f.declare();
+  const declaration = { ...f.declaration, id: 'followup', inquiry: { ...inquiry(), parentDecisionId: 'attempt' } };
+  const saved = await f.declare(declaration);
+  expect(saved.declaration.inquiry).toEqual(declaration.inquiry);
+  await expect(f.declare({ ...declaration, inquiry: { ...declaration.inquiry, question: 'Changed question' } }))
+    .rejects.toThrow('LEARNING_DECISION_FORECAST_IMMUTABLE');
+  await expect(updateReview(f.store, { taskId: 'foreign', workspace: 'fixture' }, { operation: 'declare', declaration }))
+    .rejects.toThrow('LEARNING_INQUIRY_PARENT_SCOPE_INVALID');
+  await expect(f.declare({ ...declaration, id: 'unknown-parent', inquiry: { ...inquiry(), parentDecisionId: 'absent' } }))
+    .rejects.toThrow('LEARNING_INQUIRY_PARENT_SCOPE_INVALID');
+  await expect(updateReview(f.store, f.binding, { operation: 'assess', assessment: { id: 'followup',
+    observationRefs: [], actionRefs: [], attribution: 'unknown', sideEffects: 'unknown',
+    inquiryFindings: [{ alternativeId: 'foreign', status: 'supported', evidenceRefs: [] }] } }))
+    .rejects.toThrow('LEARNING_INQUIRY_FINDING_INVALID');
+  expect((await evaluateDecisionRecord(saved)).goal).toBe('unknown');
+});
 const hash = (text: string) => 'sha256:' + createHash('sha256').update(text).digest('hex');
 const updateDecisionReview = (store: LearningStateStore, binding: {taskId:string;workspace:string}, request:DecisionRequest) => updateReview(store, binding, request, { readFiles: true });
 const evaluateDecisionRecord = (record: DecisionRecord) => evaluateRecord(record, { readFiles: true });

@@ -18,6 +18,33 @@ function props(status: AgentChatTurn['status'] = 'finalized'): ComponentProps<ty
 }
 
 describe('Native chat progress and durable states', () => {
+  it('keeps decision evidence collapsed and scoped to the latest task, with source text inert', () => {
+    const input = props();
+    input.agentChat.active!.decisionEvidence = { status: 'available', taskId: 'task-1', truncated: true,
+      attribution: 'controller-declared', goalVerification: 'not-established', records: [{ id: 'd1', question: 'Why did HTTP fail?',
+        assumptions: [{ statement: 'Credential current', basis: 'observed' }],
+        alternatives: [{ id: 'a1', claim: 'Callback missing', check: 'Direct versus HTTP', falsifier: 'Both forward callback', status: 'supported' }],
+        summary: 'Transport omission reproduced.', evidenceRefs: ['source:<script>unexpected()</script>'] }] };
+    const view = render(<ChatPage {...input}/>);
+    const summary = screen.getByText('Decision evidence');
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByText('Declared finding: supported')).toBeInTheDocument();
+    expect(screen.getByText('source:<script>unexpected()</script>')).toBeInTheDocument();
+    expect(view.container.querySelector('script')).toBeNull();
+    expect(input.onChatSend).not.toHaveBeenCalled();
+    input.agentChat.active!.decisionEvidence.taskId = 'foreign-task';
+    view.rerender(<ChatPage {...input}/>);
+    expect(screen.queryByText('Decision evidence')).not.toBeInTheDocument();
+  });
+
+  it.each(['running', 'resumable', 'stopped'] as const)('reports unavailable evidence for %s without invented results', status => {
+    const input = props(status);
+    input.agentChat.active!.decisionEvidence = { status: 'unavailable', taskId: 'task-1', truncated: false, records: [],
+      attribution: 'controller-declared', goalVerification: 'not-established' };
+    render(<ChatPage {...input}/>);
+    expect(screen.getByText(/evidence is not yet available|No decision evidence is available/)).toBeInTheDocument();
+    expect(screen.queryByText(/Declared finding/)).not.toBeInTheDocument();
+  });
   it.each(['running','resumable'] as const)('locks the Anthropic model picker during %s turns', status => {
     const input=props(status);
     input.agentChat.providerChoice='anthropic';

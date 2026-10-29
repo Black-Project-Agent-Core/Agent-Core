@@ -65,7 +65,12 @@ export const skills = z.object({
     ctx.addIssue({ code: 'custom', path: ['expectedActiveDigest'], message: 'Selected active digest required for read' });
   }
   if (value.action === 'propose' && !value.proposal) ctx.addIssue({ code: 'custom', message: 'proposal draft required' });
-  if (value.action === 'decide_proposal' && (!value.proposalId || !value.proposalDigest || !value.decision || !value.decisionScope || !value.userEvidenceRef)) ctx.addIssue({ code: 'custom', message: 'Exact proposal revision, decision scope and host-recorded userEvidenceRef required; model claims are not consent.' });
+  if (value.action === 'decide_proposal') {
+    const delegated = value.confirmation === 'APPROVE_SKILL_PROPOSAL';
+    if (!value.proposalId || !value.proposalDigest || !value.decision || !value.decisionScope
+      || (!delegated && !value.userEvidenceRef) || (delegated && (value.userEvidenceRef !== undefined || value.decision !== 'approve')))
+      ctx.addIssue({ code: 'custom', message: 'Exact revision/scope and Native user proof or APPROVE_SKILL_PROPOSAL from an allowlisted controller required.' });
+  }
   if (value.action === 'explain_improvement' && !value.proposalId && !value.name) ctx.addIssue({ code: 'custom', message: 'proposalId or name required' });
   if (['inspect', 'read', 'package', 'render_export', 'list_revisions', 'promote_revision', 'rollback_revision'].includes(value.action) && !value.name) {
     ctx.addIssue({ code: 'custom', message: 'name required for this action' });

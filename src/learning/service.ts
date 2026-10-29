@@ -1,5 +1,6 @@
 import { curationCandidateId, curationCandidates, curationEntryFingerprint } from './curation-delta.js';
 import { updateDecisionReview, reviewDecisions, type DecisionRequest } from './decision-review.js';
+import { projectDecisionEvidence } from './decision-projection.js';
 import { evaluateDecisionCalibration } from './decision-calibration.js';
 import { improvementHandoff } from './improvement-handoff.js';
 import { externalImprovement, type ExternalImprovementScope } from './external-improvements.js';
@@ -18,7 +19,7 @@ import { createProposalDocuments, proposalReviewGuide } from './proposal-documen
 import { buildSelfAwarenessView, type SelfAwarenessQuestion } from './self-awareness.js';
 import { explainImprovement } from './improvement-explanation.js';
 import { recordSkillOutcome, reviewSkillOutcomes, type SkillOutcomeInput } from './skill-outcome-review.js';
-import { recordUserSkillDecision, decideSkillProposal, applyUserSkillCommand, isUserSkillCommand, type SkillDecisionInput } from './skill-proposal-decisions.js';
+import { recordUserSkillDecision, recordControllerSkillDecision, decideSkillProposal, applyUserSkillCommand, isUserSkillCommand, type SkillDecisionInput } from './skill-proposal-decisions.js';
 import { pendingSkillNotices, recordSkillNoticeDelivery } from './skill-proposal-notification.js';
 import type { SkillProposalInput, SkillNoticeScope, SkillNoticeDeliveryInput } from './skill-proposal-types.js';
 import { recheckWorkflowReport, registerWorkflowVerification, type WorkflowVerificationManifest } from '../memory/workflow-verifier.js';
@@ -115,6 +116,12 @@ export function withRejectionHistory(state: LearningState, outcomes: LearningRev
 }
 
 export class LearningService {
+  async decisionEvidence(binding: { taskId: string; workspace: string }) {
+    const workspace = this.memory.registeredWorkspaceIdentity(binding.workspace).name;
+    const state = await this.stateStore.load();
+    if (this.stateStore.getIssue()) throw new Error('LEARNING_DECISION_STATE_UNAVAILABLE');
+    return projectDecisionEvidence(state.decisionReviews ?? [], { ...binding, workspace });
+  }
   async decisionReview(binding: { taskId: string; workspace: string }, request: DecisionRequest, access = { readFiles: false }) {
     const workspace = this.memory.registeredWorkspaceIdentity(binding.workspace).name;
     const records = await updateDecisionReview(this.stateStore, { taskId: binding.taskId, workspace }, request, access);
@@ -196,6 +203,7 @@ export class LearningService {
   }
   /** Host-only entry; called only after the actual user message is persisted. */
   async recordUserSkillDecision(input: SkillDecisionInput) { return recordUserSkillDecision(this.requireProposals(), input); }
+  async recordControllerSkillDecision(input: SkillDecisionInput) { return recordControllerSkillDecision(this.requireProposals(), input); }
   async decideSkillProposal(input: SkillDecisionInput) { return decideSkillProposal(this.requireProposals(), input); }
   async applyUserSkillCommand(input: { workspace: string; sessionId: string; taskId: string; userEvidenceRef: string; prompt: string }) {
     if (!isUserSkillCommand(input.prompt)) return null;

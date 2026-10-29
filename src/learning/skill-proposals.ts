@@ -194,7 +194,8 @@ export class SkillProposalCoordinator {
       if (!old || old.revisionDigest !== input.expectedProposalDigest) throw new Error('SKILL_PROPOSAL_REVISION_CONFLICT');
       const proof = old.decisions.filter(d => d.revisionDigest === old.revisionDigest).at(-1);
       if (!proof || proof.decision !== 'approve' || proof.decision !== input.decision || proof.scope !== input.scope
-        || proof.userEvidenceRef !== input.userEvidenceRef || proof.sessionId !== input.sessionId || proof.taskId !== input.taskId) throw new Error('SKILL_PROPOSAL_USER_EVIDENCE_REQUIRED');
+        || proof.userEvidenceRef !== input.userEvidenceRef || proof.sessionId !== input.sessionId || proof.taskId !== input.taskId
+        || proof.controllerId !== input.controllerId) throw new Error('SKILL_PROPOSAL_USER_EVIDENCE_REQUIRED');
       const item = this.project(old);
       try { Object.assign(item, await this.skills.inspectBuiltProposal(item, proof)); }
       catch { throw new Error('SKILL_PROPOSAL_FILE_DRIFT'); }

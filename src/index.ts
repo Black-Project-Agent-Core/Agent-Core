@@ -206,6 +206,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     { ...webResearch.health() },
   );
   const controllerMcpRuntime = {
+    proposalDecisionAuthorizer: (principalId: string, workspace: string) => keyStore.canApproveSkillProposal(principalId, workspace),
     memoryService,
     memoryExperience: memoryRuntime.experience,
     learningService,

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "baselineBytes": 4145,
+  "candidateBytes": 3041,
+  "descriptorsAndReadRequestsEqual": true,
+  "measurement": "all four descriptors available; fixed-length SHA256 digests; guidance bytes only, no latency/model-quality claim",
+  "reductionFraction": 0.26634499396863687
+}

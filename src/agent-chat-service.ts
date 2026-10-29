@@ -207,6 +207,21 @@ export class AgentChatService {
     return detail;
   }
 
+  async readConversation(conversationId: string): Promise<AgentChatConversationDetail | null> {
+    const detail = this.getConversation(conversationId);
+    if (!detail) return null;
+    const turn = detail.turns.find(item => item.id === detail.conversation.lastTurnId);
+    if (!turn) return detail;
+    try {
+      detail.decisionEvidence = await this.runtime.getDecisionEvidence(turn.runtimeTaskId,
+        detail.conversation.runtimeSessionId, detail.conversation.workspace);
+    } catch {
+      detail.decisionEvidence = { status: 'unavailable', taskId: turn.runtimeTaskId, records: [], truncated: false,
+        attribution: 'controller-declared', goalVerification: 'not-established' };
+    }
+    return detail;
+  }
+
   async createConversation(input: {
     workspace?: string;
     title?: string;

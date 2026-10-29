@@ -12,6 +12,19 @@ import type { WorkflowEvidence } from './workflow-evidence.js';
 
 const identity = safeMetadataSchema(160);
 const refs = z.array(safeEvidenceRefSchema()).max(8);
+const inquirySchema = z.strictObject({
+  schemaVersion: z.literal(1), question: safeMetadataSchema(500), parentDecisionId: identity.optional(),
+  assumptions: z.array(z.strictObject({ id: identity, statement: safeMetadataSchema(300),
+    basis: z.enum(['observed', 'inferred', 'unknown']), evidenceRefs: refs.max(4) })).max(4),
+  alternatives: z.array(z.strictObject({ id: identity, claim: safeMetadataSchema(300),
+    distinguishingObservation: safeMetadataSchema(300), falsifier: safeMetadataSchema(300), evidenceRefs: refs.max(4) })).max(2),
+  criterionRef: z.strictObject({ revision: identity, digest: z.string().regex(/^sha256:[a-f0-9]{64}$/) }).optional(),
+}).superRefine((value, ctx) => {
+  if (Buffer.byteLength(JSON.stringify(value), 'utf8') > 4096)
+    ctx.addIssue({ code: 'custom', message: 'LEARNING_INQUIRY_BYTES_LIMIT' });
+  const ids = [...value.assumptions, ...value.alternatives].map(item => item.id);
+  if (new Set(ids).size !== ids.length) ctx.addIssue({ code: 'custom', message: 'LEARNING_INQUIRY_DUPLICATE_ID' });
+});
 export const decisionDeclarationSchema = z.strictObject({
   id: identity, strategyId: identity, goal: safeMetadataSchema(2000),
   goalCheckIndexes: z.array(z.number().int().min(0).max(99)).min(1).max(8).optional(),
@@ -21,6 +34,7 @@ export const decisionDeclarationSchema = z.strictObject({
   })).max(12),
   authority: z.enum(['authorized', 'denied', 'unknown']), risk: z.enum(['low', 'high']),
   control: z.enum(['proceed', 'inspect', 'abstain']),
+  inquiry: inquirySchema.optional(),
   predictions: z.array(z.strictObject({
     id: identity, expected: safeMetadataSchema(1000), probability: z.number().min(0).max(1).optional(),
     checkIndex: z.number().int().min(0).max(99).optional(),
@@ -31,6 +45,8 @@ export const decisionAssessmentSchema = z.strictObject({
   id: identity, verificationRef: safeEvidenceRefSchema().optional(), observationRefs: refs, actionRefs: refs,
   attribution: z.enum(['supported', 'unknown']), sideEffects: z.enum(['observed', 'unknown']),
   summary: safeMetadataSchema(2000).optional(),
+  inquiryFindings: z.array(z.strictObject({ alternativeId: identity,
+    status: z.enum(['supported', 'contradicted', 'unresolved']), evidenceRefs: refs.max(4) })).max(2).optional(),
 });
 export const decisionRequestSchema = z.discriminatedUnion('operation', [
   z.strictObject({ operation: z.literal('declare'), declaration: decisionDeclarationSchema }),
@@ -216,6 +232,12 @@ export async function updateDecisionReview(store: LearningStateStore, binding: {
     let record = records.find(row => row.taskId === binding.taskId && row.workspace === binding.workspace && row.declaration.id === id);
     if (request.operation === 'declare') {
       const declaration = request.declaration;
+      const inquiry = declaration.inquiry;
+      if (inquiry?.parentDecisionId && (inquiry.parentDecisionId === declaration.id || !records.some(row =>
+        row.taskId === binding.taskId && row.workspace === binding.workspace && row.declaration.id === inquiry.parentDecisionId)))
+        throw new Error('LEARNING_INQUIRY_PARENT_SCOPE_INVALID');
+      if (inquiry?.criterionRef && inquiry.criterionRef.digest !== verifier?.case.digest)
+        throw new Error('LEARNING_INQUIRY_CRITERION_UNAVAILABLE');
       if (new Set(declaration.context.map(item => item.attribute)).size !== declaration.context.length
         || new Set(declaration.predictions.map(item => item.id)).size !== declaration.predictions.length) throw new Error('LEARNING_DECISION_DUPLICATE_ATTRIBUTE');
       const checkIndexes = declaration.predictions.flatMap(item => item.checkIndex === undefined ? [] : [item.checkIndex]);
@@ -232,6 +254,11 @@ export async function updateDecisionReview(store: LearningStateStore, binding: {
       }
     } else {
       if (!record) throw new Error('LEARNING_DECISION_NOT_FOUND');
+      const findings = request.assessment.inquiryFindings;
+      const alternatives = record.declaration.inquiry?.alternatives;
+      if (findings && (new Set(findings.map(item => item.alternativeId)).size !== findings.length
+        || findings.some(item => !alternatives?.some(alternative => alternative.id === item.alternativeId))))
+        throw new Error('LEARNING_INQUIRY_FINDING_INVALID');
       const last = record.assessments.at(-1);
       const same = last && JSON.stringify({ ...last, assessedAt: undefined }) === JSON.stringify(request.assessment);
       if (!same) {

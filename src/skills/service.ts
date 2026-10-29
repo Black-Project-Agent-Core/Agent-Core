@@ -62,6 +62,7 @@ export interface SkillArtifactSummary {
   compatibility?: string;
   allowedTools: string[];
   sourceProvenance?: SkillSourceProvenance;
+  warnings?: string[];
 }
 
 export interface SkillExportResult extends SkillArtifactSummary {
@@ -425,7 +426,27 @@ function sameSkillSourceLineage(
   return true;
 }
 
+function structuralWarnings(scanned: ScannedSkill): string[] {
+  const text = scanned.files.find(file => file.relative === 'SKILL.md')?.content?.toString('utf8') ?? '';
+  const present = new Set(scanned.files.map(file => file.relative));
+  const missing = new Set<string>();
+  // Check only literal artifact-local paths, using the bytes already admitted by the scan.
+  const pattern = /\]\(([^\s)]+)\)|`((?:\.\/)?(?:references|scripts)\/[^`\s]+)`/g;
+  for (const match of text.matchAll(pattern)) {
+    let target = (match[1] ?? match[2]!).split('#')[0]!;
+    if (!target || /^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('/') || /[{}<>*?\\]/.test(target)) continue;
+    try { target = decodeURIComponent(target); } catch { continue; }
+    target = path.posix.normalize(target);
+    if (target === '..' || target.startsWith('../') || target.startsWith('/') || /[\x00-\x1f\x7f]/.test(target)) continue;
+    const directory = target.replace(/\/+$/, '') + '/';
+    if (target !== '.' && !present.has(target) && !scanned.files.some(file => file.relative.startsWith(directory)))
+      missing.add(`SKILL_REFERENCE_MISSING: ${target.slice(0, 240)}`);
+    if (missing.size === 32) break;
+  }
+  return [...missing];
+}
 function summary(scanned: ScannedSkill, sourceProvenance?: SkillSourceProvenance): SkillArtifactSummary {
+  const warnings = structuralWarnings(scanned);
   return {
     name: scanned.metadata.name,
     description: scanned.metadata.description,
@@ -436,6 +457,7 @@ function summary(scanned: ScannedSkill, sourceProvenance?: SkillSourceProvenance
     ...(scanned.metadata.compatibility ? { compatibility: scanned.metadata.compatibility } : {}),
     allowedTools: scanned.metadata.allowedTools,
     ...(sourceProvenance ? { sourceProvenance } : {}),
+    ...(warnings.length ? { warnings } : {}),
   };
 }
 

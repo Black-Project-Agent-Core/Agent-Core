@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-28T20:02:44.358Z",
+  "health": {
+    "status": "ok",
+    "process": {
+      "pid": 5748,
+      "startedAt": "2026-10-28T19:44:42.709Z",
+      "uptimeSeconds": 1081,
+      "entry": "dist/index.js"
+    },
+    "build": {
+      "distNewestModifiedAt": "2026-10-28T19:36:46.000Z",
+      "stale": false
+    },
+    "memoryStatus": "unavailable"
+  },
+  "native": {
+    "conversationId": "f95d1b42-ef97-40b6-832e-abee637830a8",
+    "turnId": "d17ae8e4-612f-435e-ab36-93d1c98cf3df",
+    "taskId": "179816cc-fc96-4a9b-ad41-436cf58fd0e3",
+    "turnStatus": "running",
+    "requestedModel": "claude-opus-5-5",
+    "reasoningEffort": "max",
+    "modelIdentity": {
+      "observedCalls": 7,
+      "identities": [
+        {
+          "providerId": "anthropic",
+          "model": "claude-opus-5-5"
+        }
+      ]
+    },
+    "finalTurnStatus": "finalized",
+    "taskStatus": "finalized",
+    "verificationStatus": "unavailable",
+    "finalization": {
+      "status": "complete",
+      "decision": "no-new-knowledge",
+      "reason": "task-complete",
+      "checkpointAt": "2026-10-28T20:03:27.407Z",
+      "reviewAt": "2026-10-28T20:03:29.322Z",
+      "reviewDue": true,
+      "reviewReason": "task-complete"
+    },
+    "metrics": {
+      "modelCalls": 8,
+      "toolCalls": 5,
+      "toolFailures": 0
+    }
+  },
+  "decisionEvidence": {
+    "status": "available",
+    "taskId": "179816cc-fc96-4a9b-ad41-436cf58fd0e3",
+    "records": [
+      {
+        "id": "inquiry-resident-20261029",
+        "question": "Can the resident preserve an unresolved alternative without claiming goal success?",
+        "assumptions": [
+          {
+            "statement": "Main reports a rebuilt resident",
+            "basis": "inferred"
+          }
+        ],
+        "alternatives": [
+          {
+            "id": "h1",
+            "claim": "The shared owner accepts inquiry",
+            "check": "The declaration is accepted by the existing strategy tool",
+            "falsifier": "The resident rejects the optional inquiry",
+            "status": "supported"
+          },
+          {
+            "id": "h2",
+            "claim": "The resident schema is stale",
+            "check": "The existing strategy tool rejects inquiry as unknown",
+            "falsifier": "The declaration succeeds",
+            "status": "contradicted"
+          }
+        ],
+        "summary": "Resident accepted inquiry; projection and UI must be independently checked by Main",
+        "evidenceRefs": [],
+        "assessedAt": "2026-10-28T19:58:17.163Z"
+      }
+    ],
+    "truncated": false,
+    "attribution": "controller-declared",
+    "goalVerification": "not-established"
+  },
+  "hashes": {
+    "dist/learning/decision-review.js": "894a8a7696a9c32c3a9bc8f23db2b4cf82b6bf4c266ffc7b624a0e56cd06bb0c",
+    "dist/learning/decision-projection.js": "1e5fc2633d8f545d2eb8b626836caacd538fe7f0182dbd4c6916a571cf77ff5f",
+    "dist/skills/service.js": "c436c2dd15ba23ad46702e62b5b7d068276cbcfb931814410c5b0be351432492",
+    "dist/skills/external-guidance.js": "4d3b82c6effa963e4adef5438882ab3a8cbcb9960a55964a6cc909a9b80b8661",
+    "dist/ui/index.html": "8c769dfbd0be76cd5428222d49f487b429a8d723c7aa272bf26ab6ddb5efe0ec",
+    "Agent Core.exe": "b93566b06b54d8c9e379e0377065cbc16d491d58e640e37dccdd067f17c8b78f"
+  },
+  "assertionsPassed": true,
+  "limits": [
+    "Field presence/compatibility and task binding are verified; declared findings are not semantic truth or general reasoning benefit.",
+    "UI DOM behavior is covered by focused tests; a visual WebView interaction is not claimed."
+  ],
+  "finalReadbackAt": "2026-10-28T20:08:44.731Z"
+}

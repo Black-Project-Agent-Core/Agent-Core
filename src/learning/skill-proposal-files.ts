@@ -37,8 +37,8 @@ export function renderSkillProposal(item: SkillProposalRecord): string {
     ...(item.procedureContractDigest ? [section('Kontrak bukti prosedur', ['Version: 1', 'Digest: ' + item.procedureContractDigest, 'Hanya receipt contract-bound yang replayable menyumbang kualifikasi; bukti legacy tetap historical/unknown.'])] : []),
     section('Keterbatasan', p.limitations), section('Kebutuhan implementasi', [p.implementation]),
     section('Acceptance yang direncanakan', p.acceptance),
-    section('Keputusan pengguna', item.decisions.filter(d => d.revisionDigest === item.revisionDigest)
-      .map(d => d.decision + ' / ' + d.scope + ' / ' + d.userEvidenceRef).concat(
+    section(item.decisions.some(d => d.controllerId) ? 'Keputusan dan asal otorisasi' : 'Keputusan pengguna', item.decisions.filter(d => d.revisionDigest === item.revisionDigest)
+      .map(d => d.decision + ' / ' + d.scope + ' / ' + d.userEvidenceRef + (d.controllerId ? ' / trusted-controller: ' + d.controllerId : '')).concat(
         item.decisions.some(d => d.revisionDigest === item.revisionDigest) || item.fulfillment
           ? [] : ['Belum ada keputusan atas revisi ini.'])),
     ...(item.fulfillment && item.fulfillment.revisionDigest === item.revisionDigest

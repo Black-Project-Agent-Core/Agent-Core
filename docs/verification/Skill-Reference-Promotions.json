@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "authorization": "User 2026-10-29: finish all important proposals; Agent Core standing task-scoped trust; no grant expansion.",
+  "revisions": [
+    {
+      "name": "code-review-and-quality",
+      "baseline": "sha256:712d3944f2de13ae6f5ca913f098d3ed46cebf92bb4d945491551afe505e82bc",
+      "candidate": "sha256:285252c8902cca2f36869f938f3deb94f80d10793ef9cc4529e4d975a6d3b227"
+    },
+    {
+      "name": "security-and-hardening",
+      "baseline": "sha256:189b043274796bf0c7542663232d592ca252ff47fefa50e5224cc4a7c336e3d6",
+      "candidate": "sha256:dbedde67c8be222c97d926bc00aa8cd491ac221b8bba5880d36e6d349720f8e8"
+    },
+    {
+      "name": "deprecation-and-migration",
+      "baseline": "sha256:c9956ada3acefc8401b3dd2d4b4f55653508e313caa45fc4ce854d5facae39e6",
+      "candidate": "sha256:aae0317652a99a6e51e07b0e0ac27da0cc362fd3c53f32de1088c13758ca741a"
+    },
+    {
+      "name": "git-workflow-and-versioning",
+      "baseline": "sha256:7fbab1e077912861bbeaacf3fb7e4982e8a7e4f1476a459a1b272369ba5b9a10",
+      "candidate": "sha256:778b68dd7527be4d1d563217f9c01f1e5955cc79a95c4bcad50776572c43a7fa"
+    },
+    {
+      "name": "doubt-driven-development",
+      "baseline": "sha256:a950d31f89a25bf8c23f6d995999e36d2c983f2ac2ef1fd982fc76edbf97287b",
+      "candidate": "sha256:45a4ff137212531809d52177a262f9630e2c03b0391f27faa0dab5607772e3a3"
+    },
+    {
+      "name": "mind-control",
+      "baseline": "sha256:432f55d28b1f2f45eae0e3a3428fbd3b985c5cbe36650f6b4f2186dfd35bd905",
+      "candidate": "sha256:c6968e2f293ba76c1359f929d5c670d1f1541c9513d9caddbd40b9ed92c90082"
+    },
+    {
+      "name": "ci-cd-and-automation",
+      "baseline": "sha256:c0c5228578dba5906407205237edb6c22e55364b9cfc05bc0bd4c23caf615daf",
+      "candidate": "sha256:d7bfbaf9ba17ab4dab270c26032464e8514d570b48f6fb6bb55640d4460fd15c"
+    },
+    {
+      "name": "debugging-and-error-recovery",
+      "baseline": "sha256:d166a2689ed9d46419e98da3a174b8da9eca4c2f77804f4c03767e435d8004dd",
+      "candidate": "sha256:88202c354d62c0485589df2a6a9868b55d0dba127bf4f48fcd588a5026288353"
+    },
+    {
+      "name": "test-driven-development",
+      "baseline": "sha256:1cca1eb4b2f52c0ab690ca6b572cde3edb4098601a3863bc4c94b70936b39eef",
+      "candidate": "sha256:548f0892a0bd581a4fadcf6fdaa785335ea6d07665660830844e633e0580b4b7"
+    },
+    {
+      "name": "documentation-and-adrs",
+      "baseline": "sha256:85d4953ce41751f0a9843baaf79111da71be88ef5b974ad079b02fd1185dbdfa",
+      "candidate": "sha256:b527918092ea0870391a378ffbac5eace24286fc13ceee22dfa118cb56bb0682"
+    }
+  ],
+  "sourceEntrypointCheckpoint": "bf881e92-153e-41e0-ba84-e6541b7c03e5",
+  "limits": [
+    "Activated reference-only content is not measured benefit.",
+    "Superseded stage/history state is preserved; no purge."
+  ],
+  "readbackAt": "2026-10-28T20:11:53.896Z",
+  "readback": [
+    {
+      "name": "code-review-and-quality",
+      "activeDigest": "sha256:285252c8902cca2f36869f938f3deb94f80d10793ef9cc4529e4d975a6d3b227",
+      "matchesCandidate": true
+    },
+    {
+      "name": "security-and-hardening",
+      "activeDigest": "sha256:dbedde67c8be222c97d926bc00aa8cd491ac221b8bba5880d36e6d349720f8e8",
+      "matchesCandidate": true
+    },
+    {
+      "name": "deprecation-and-migration",
+      "activeDigest": "sha256:aae0317652a99a6e51e07b0e0ac27da0cc362fd3c53f32de1088c13758ca741a",
+      "matchesCandidate": true
+    },
+    {
+      "name": "git-workflow-and-versioning",
+      "activeDigest": "sha256:778b68dd7527be4d1d563217f9c01f1e5955cc79a95c4bcad50776572c43a7fa",
+      "matchesCandidate": true
+    },
+    {
+      "name": "doubt-driven-development",
+      "activeDigest": "sha256:45a4ff137212531809d52177a262f9630e2c03b0391f27faa0dab5607772e3a3",
+      "matchesCandidate": true
+    },
+    {
+      "name": "mind-control",
+      "activeDigest": "sha256:c6968e2f293ba76c1359f929d5c670d1f1541c9513d9caddbd40b9ed92c90082",
+      "matchesCandidate": true
+    },
+    {
+      "name": "ci-cd-and-automation",
+      "activeDigest": "sha256:d7bfbaf9ba17ab4dab270c26032464e8514d570b48f6fb6bb55640d4460fd15c",
+      "matchesCandidate": true
+    },
+    {
+      "name": "debugging-and-error-recovery",
+      "activeDigest": "sha256:88202c354d62c0485589df2a6a9868b55d0dba127bf4f48fcd588a5026288353",
+      "matchesCandidate": true
+    },
+    {
+      "name": "test-driven-development",
+      "activeDigest": "sha256:548f0892a0bd581a4fadcf6fdaa785335ea6d07665660830844e633e0580b4b7",
+      "matchesCandidate": true
+    },
+    {
+      "name": "documentation-and-adrs",
+      "activeDigest": "sha256:b527918092ea0870391a378ffbac5eace24286fc13ceee22dfa118cb56bb0682",
+      "matchesCandidate": true
+    }
+  ],
+  "catalogCount": 47,
+  "structuralWarnings": [],
+  "followup": {
+    "name": "mind-control",
+    "baseline": "sha256:c6968e2f293ba76c1359f929d5c670d1f1541c9513d9caddbd40b9ed92c90082",
+    "candidate": "sha256:8c201ebf5425fac94871de2bd9a81eae76a75e0d90a70e83d209013aebaa4795",
+    "status": "promoted",
+    "reason": "Restore strict discovery gates on preserved v13 body, canonical source/catalog reconciliation, complete bounded paged delivery.",
+    "fileCount": 20,
+    "allowedTools": [],
+    "tests": {
+      "suites": 3,
+      "passed": 33,
+      "failed": 0
+    },
+    "residentDiscovery": {
+      "applicability": "declared",
+      "exactTriggers": 2,
+      "exactNonTriggers": 1
+    },
+    "deliveredFragments": [
+      {
+        "offset": 0,
+        "nextOffset": 7814
+      },
+      {
+        "offset": 7814,
+        "nextOffset": null
+      }
+    ],
+    "bodyBytes": 9389,
+    "rejectedStage": "sha256:528c52df1b6c0a6bb252cb6d7311643d11d732f52ac882577f0e2516c300a92c",
+    "historyPreserved": true
+  }
+}

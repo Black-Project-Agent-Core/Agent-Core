@@ -5,6 +5,26 @@ import { fixture } from './skill-proposal-fixture.js';
 import { ExternalControllerLearningService } from '../src/learning/external-controller.js';
 import { taskSkillGuidance } from '../src/skills/external-guidance.js';
 
+it('compresses Native guidance while preserving descriptors, exact read requests and the reasoning gate', async () => {
+ const skills = { inspect: async () => ({ digest: 'sha256:' + 'a'.repeat(64) }) } as any;
+ const native = await taskSkillGuidance(skills, 'native');
+ const external = await taskSkillGuidance(skills, 'external');
+ expect(native.entries).toEqual(external.entries);
+ expect(Buffer.byteLength(native.text)).toBeLessThan(Buffer.byteLength(external.text) * 0.8);
+ for (const entry of native.entries) {
+  expect(native.text).toContain(entry.name + ': available');
+  expect(native.text).toContain(JSON.stringify(entry.read));
+ }
+ for (const clause of ['nextOffset', 'no tool', 'every coding task', 'Skip only non-coding',
+  'standard', 'activation gate', 'not actual use', 'evidence', 'does not grant execution authority']) {
+  // The shared contract uses equivalent wording for tool avoidance, actual use and authority.
+  if (clause === 'no tool') expect(native.text).toContain('needs no tool');
+  else if (clause === 'not actual use') expect(native.text).toContain('not application');
+  else if (clause === 'does not grant execution authority') expect(native.text).toContain('does not grant execution authority');
+  else expect(native.text).toContain(clause);
+ }
+});
+
 async function setup(installed=true){
  const f=await fixture();
  if(installed){

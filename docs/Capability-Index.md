@@ -1,5 +1,21 @@
 # Indeks Capability Agent Core
 
+## Permukaan harness dan owner
+
+Inventaris berikut memenuhi Harness2 P5. Otorisasi berasal dari tugas pengguna dan
+kontrak aktif; membaca atau memilih capability tidak memberi grant baru.
+
+| Permukaan | Owner dan lokasi existing | Batas perubahan |
+| --- | --- | --- |
+| System prompt | `src/agent-controller.ts`; bootstrap `src/learning/external-controller.ts` | Perubahan source dalam scope task, dengan verifikasi dan aktivasi build. |
+| Guardrails | Auth, grants, path policy, `AGENTS.md` | Pertahankan batas keamanan; keputusan task tidak menghapus autentikasi. |
+| Memory | `src/memory`, canonical `runtime/memory` | Mutasi melalui owner Memory, revision/checkpoint; tanpa store paralel. |
+| Tool guidance | Schema dan handler `src/mcp` serta capability catalog | Validasi kontrak; build/activation dan refresh discovery bila berubah. |
+| Partner/subagents | Native runtime/chat; profil external `subagents/` | Assignment jelas, satu penulis per file; hasil partner diverifikasi Main. |
+| Skills | SkillService; `runtime/skills` | Proposal/revisi/aktivasi exact digest melalui lifecycle owner; grant tetap. |
+| Scripts | `scripts/` menurut owner build/verify/release existing | Jalankan hanya untuk scope task; script terpasang tidak otomatis dieksekusi. |
+| Plugins | Adapter SkillService dan host connector terdaftar | Provenance/lisensi serta scope import diperiksa; instalasi bukan izin eksekusi. |
+
 Status pembacaan katalog 2026-10-25: **43 artifact valid** (36 Replica/Addy, 3 capability khusus termasuk `mind-control`, 1 indeks, 2 Skill operasional existing, dan 1 entri lama `scientific-critical-thinking` yang tersisa setelah pergantian nama karena SkillService tidak memiliki fungsi hapus). Indeks ringkas aktif berukuran **6.896 byte**; full body dan referensi setiap skill hanya dimuat saat terpilih. Bukti import/revisi/digest/search katalog tersedia; keberhasilan penggunaan ilmiah atau manfaat kinerja belum dievaluasi pada task ini.
 
 ## Capability khusus aktif dan kandidat improvement terpisah

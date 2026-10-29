@@ -1360,6 +1360,13 @@ export class AgentRuntimeService {
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
   }
 
+  async getDecisionEvidence(taskId: string, sessionId: string, workspace: string) {
+    const task = await this.getTask(taskId);
+    if (!task || task.sessionId !== sessionId || task.workspace !== workspace)
+      throw new Error('AGENT_DECISION_SCOPE_UNAVAILABLE');
+    return this.learning.decisionEvidence({ taskId, workspace });
+  }
+
   async finalizeTask(input: FinalizeTaskInput): Promise<{
     task: AgentRuntimeTask;
     checkpoint?: unknown;

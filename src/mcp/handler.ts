@@ -21,7 +21,7 @@ import type { McpHttpHandler } from '../http/app.js';
 import type { PhoneController } from '../phone/controller.js';
 import { FailureLoopAdvisor } from './failure-loop-advisor.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
-import { createAgentCoreMcpServer } from './server.js';
+import { createAgentCoreMcpServer, type AgentCoreMcpRuntime } from './server.js';
 import { ControllerContractGate } from './controller-contract.js';
 import { memoryCredentialOwner, ownerScopedLearningSession } from '../memory/mcp/scope.js';
 import { createImageInspector } from '../rdc/tools/image-inspect.js';
@@ -40,6 +40,7 @@ export interface BridgeMcpHttpOptions {
   webResearch?: WebResearchService;
   mutationSafety?: McpMutationSafety;
   artifactAuthorization?: ArtifactAuthorization;
+  proposalDecisionAuthorizer?: AgentCoreMcpRuntime['proposalDecisionAuthorizer'];
 }
 
 function sendProtocolError(
@@ -192,6 +193,7 @@ export function createMcpHttpHandler(options: BridgeMcpHttpOptions = {}): McpHtt
       failureLoopAdvisor,
       mutationSafety: options.mutationSafety,
       artifactAuthorization: options.artifactAuthorization,
+      proposalDecisionAuthorizer: options.proposalDecisionAuthorizer,
     });
     const webHandler = protocolHandler(factory, protocolMode);
     try {

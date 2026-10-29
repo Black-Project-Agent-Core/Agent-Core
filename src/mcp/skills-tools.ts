@@ -35,10 +35,11 @@ export function registerSkillsTools(
   learning?: LearningService,
   nativeTaskId?: string,
   nativeWorkspace?: string,
+  proposalApprover?: { principalId: string; authorize: (workspace: string) => Promise<boolean> },
 ): void {
   server.registerTool('skills', {
     title: 'Skill Artifacts',
-    description: 'Manage Skill artifacts and proposals. search(query) defaults local; read(name,expectedActiveDigest) returns bounded SKILL.md or selected packaged references/ fragments via resourcePath. Explicit hybrid sends query/positive descriptors to configured Cloudflare Workers AI; obtain user sharing consent first. proposals/self_awareness/explain_improvement read evidence. propose/review_outcomes never activate. decide_proposal needs a host-recorded user message for exact revision/scope. Relay reminders in this session. Declared tools never grant execution authority.',
+    description: 'Manage Skill artifacts/proposals. search defaults local; read requires active digest. Hybrid shares query/descriptors with configured Cloudflare AI; obtain consent. propose/review_outcomes never activate. decide_proposal requires exact revision/scope and Native user proof, or APPROVE_SKILL_PROPOSAL confirmation from an operator-allowlisted authenticated controller with a bound task/workspace. Relay reminders. Skills never widen tool grants.',
     inputSchema: schemas.skills,
     annotations: { readOnlyHint: false, destructiveHint: false },
   }, async (args: any, ctx) => {
@@ -48,7 +49,7 @@ export function registerSkillsTools(
     try {
       let result: unknown;
       if (PROPOSAL_ACTIONS.has(input.action)) {
-        result = await runSkillProposalAction(input, { learning, external: externalController, sessionId: externalSessionId, nativeTaskId, nativeWorkspace });
+        result = await runSkillProposalAction(input, { learning, external: externalController, sessionId: externalSessionId, nativeTaskId, nativeWorkspace, proposalApprover });
       } else switch (input.action) {
         case 'status': result = await service.status(); break;
         case 'list': result = await service.list(); break;

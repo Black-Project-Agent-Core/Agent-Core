@@ -29,6 +29,7 @@ Peta tidak memberi izin membuka data terlindungi, mengedit artifact/state owner,
 | `runtime/` | Induk state, toolchain, cache dan output proyek yang dikelola owner existing; bukan tempat membuat engine/store tandingan. |
 | `runtime/skills/` | **Rumah pertama dan satu-satunya induk penyimpanan Skill proyek.** Rincian role di bawah. |
 | `runtime/memory/` | Satu store Memory canonical; owner `src/memory/`. Tidak ditelusuri pada peta ini. |
+| `runtime/bridge-auth/` | Metadata autentikasi existing; owner `src/auth/key-store.ts`. `proposal-approvers.json` menyimpan allowance controller per key ID/workspace untuk proposal Skill; hanya provisioning operator, tanpa secret atau grant tool baru. Mutasi memakai lock/atomic write owner auth. |
 | `runtime/learning/` | State Learning owner existing `src/learning/`; bukan salinan Memory. |
 | `runtime/build/`, `runtime/checkpoints/`, `runtime/tmp/` | Output/bukti/checkpoint existing sesuai lifecycle owner; bukan authoring Skill atau backup ad hoc. |
 | `assets/` | Aset proyek existing. |

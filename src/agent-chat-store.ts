@@ -65,6 +65,7 @@ export interface AgentChatConversationDetail {
   conversation: AgentChatConversation;
   turns: AgentChatTurn[];
   messages: AgentChatMessage[];
+  decisionEvidence?: import('./learning/decision-projection.js').DecisionEvidence;
 }
 
 export interface AgentChatExecutionClaim {

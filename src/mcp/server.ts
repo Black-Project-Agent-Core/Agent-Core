@@ -78,6 +78,7 @@ export interface AgentCoreMcpRuntime {
   failureLoopAdvisor?: FailureLoopAdvisor;
   mutationSafety?: McpMutationSafety;
   artifactAuthorization?: ArtifactAuthorization;
+  proposalDecisionAuthorizer?: (principalId: string, workspace: string) => Promise<boolean>;
 }
 
 type ToolResult = { content: Array<Record<string, unknown>>; isError?: boolean; [key: string]: unknown };
@@ -424,6 +425,8 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.learningService,
     runtime.nativeTaskId,
     runtime.nativeWorkspace,
+    !runtime.nativeTaskId && memoryOwner && runtime.proposalDecisionAuthorizer
+      ? { principalId: memoryOwner, authorize: workspace => runtime.proposalDecisionAuthorizer!(memoryOwner, workspace) } : undefined,
   );
   if (runtime.phoneController) registerPhoneTools(
     server,

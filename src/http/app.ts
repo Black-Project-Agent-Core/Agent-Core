@@ -185,7 +185,7 @@ async function handleRequest(
 
     const detailMatch = route.match(/^\/agent\/chat\/conversations\/([^/]+)$/);
     if (detailMatch && request.method === 'GET') {
-      const detail = chat.getConversation(decodeURIComponent(detailMatch[1]!));
+      const detail = await chat.readConversation(decodeURIComponent(detailMatch[1]!));
       if (!detail) {
         sendJson(response, 404, { error: 'agent_chat_conversation_not_found' });
         return;

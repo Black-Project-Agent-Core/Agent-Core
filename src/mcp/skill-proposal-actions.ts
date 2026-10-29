@@ -3,9 +3,11 @@ import type { LearningService } from '../learning/service.js';
 import type { ExternalControllerLearningService } from '../learning/external-controller.js';
 import type { skills } from './skills-schemas.js';
 import type { SkillProposalRecord } from '../learning/skill-proposal-types.js';
+import { createHash } from 'node:crypto';
 export const PROPOSAL_ACTIONS = new Set(['proposals', 'propose', 'decide_proposal', 'self_awareness', 'explain_improvement', 'review_outcomes']);
 export async function runSkillProposalAction(input: z.infer<typeof skills>, context: {
   learning?: LearningService; external?: ExternalControllerLearningService; sessionId?: string; nativeTaskId?: string; nativeWorkspace?: string;
+  proposalApprover?: { principalId: string; authorize: (workspace: string) => Promise<boolean> };
 }) {
   const learning = context.learning;
   if (!learning) throw new Error('SKILL_PROPOSALS_UNAVAILABLE');
@@ -44,6 +46,25 @@ export async function runSkillProposalAction(input: z.infer<typeof skills>, cont
       sessionId: context.sessionId, expectedProposalDigest: input.proposalDigest }));
   }
   if (input.action === 'decide_proposal') {
+    if (input.confirmation === 'APPROVE_SKILL_PROPOSAL') {
+      const authority = context.proposalApprover;
+      if (context.nativeTaskId || !authority || !context.external || !context.sessionId || !episode
+        || input.userEvidenceRef !== undefined || input.decision !== 'approve'
+        || workspace !== episode.workspace) throw new Error('SKILL_PROPOSAL_CONTROLLER_NOT_AUTHORIZED');
+      const scope = await context.external.resolveMemoryTask(authority.principalId, episode.id);
+      if (scope.workspaceKey !== workspace || !(await authority.authorize(workspace))) throw new Error('SKILL_PROPOSAL_CONTROLLER_NOT_AUTHORIZED');
+      const proposal = (await learning.skillProposals(workspace)).find(item => item.id === input.proposalId);
+      if (!proposal || proposal.revisionDigest !== input.proposalDigest) throw new Error('SKILL_PROPOSAL_REVISION_CONFLICT');
+      if (['rejected', 'deferred', 'changes-requested'].includes(proposal.status)) throw new Error('SKILL_PROPOSAL_APPROVAL_INACTIVE');
+      const userEvidenceRef = 'controller-decision:' + createHash('sha256').update(JSON.stringify([
+        authority.principalId, context.sessionId, episode.id, workspace, input.proposalId, input.proposalDigest, input.decision, input.decisionScope,
+      ])).digest('hex');
+      const decision = { workspace, proposalId: input.proposalId!, expectedProposalDigest: input.proposalDigest!,
+        decision: input.decision!, scope: input.decisionScope!, userEvidenceRef, sessionId: context.sessionId,
+        taskId: episode.id, controllerId: authority.principalId };
+      await learning.recordControllerSkillDecision(decision);
+      return publishExternal(await learning.decideSkillProposal(decision));
+    }
     const item = (await learning.skillProposals(workspace)).find(p => p.id === input.proposalId);
     const proof = item?.decisions.find(d => d.userEvidenceRef === input.userEvidenceRef && d.revisionDigest === input.proposalDigest);
     if (!proof) throw new Error('SKILL_PROPOSAL_USER_EVIDENCE_REQUIRED: use an actual Native user message for this exact proposal revision.');

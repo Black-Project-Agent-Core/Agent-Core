@@ -30,7 +30,7 @@ describe('Skill reference deltas (UP-09)', () => {
     }
   }
 
-  // mind-control's pointer lives only in the staged candidate: its source folder is an older lineage than the active Skill.
+  // mind-control retains its separate v13 metadata; its pointer is checked by the paged-delivery test.
   it.each(Object.entries(deltas).filter(([pack]) => pack !== 'mind-control'))('%s SKILL.md points to every new reference and keeps the upstream pin', (pack, names) => {
     const skill = readFileSync(`${packs}${pack}/SKILL.md`, 'utf8');
     for (const name of names) expect(skill).toContain(`](references/${name}.md)`);

@@ -15,6 +15,8 @@ export interface SkillProposalDecision {
   revisionDigest: string; decision: 'approve' | 'revise' | 'reject' | 'defer';
   scope: 'build' | 'build-and-activate'; userEvidenceRef: string;
   sessionId: string; taskId: string; at: string;
+  /** Absent for real Native user messages; host-bound delegated decisions retain their own provenance. */
+  controllerId?: string;
 }
 export interface SkillProposalFulfillment {
   revisionDigest: string;

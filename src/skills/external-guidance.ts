@@ -16,11 +16,19 @@ export async function taskSkillGuidance(skills?: Pick<SkillService,'inspect'>, a
       return {...route,status:'available' as const,read:{action:'read' as const,name:route.name,expectedActiveDigest:artifact.digest,maxBytes:8192},instruction:'Read all returned fragments using nextOffset before applying; re-inspect if the revision changes.'};
     } catch { return {...route,status:'unavailable' as const,instruction:'Installation could not be verified; do not claim this Skill was loaded or used.'}; }
   }));
+  const nativePurpose: Record<string, string> = {
+    'agent-core-capability-index': 'Assess the actual goal and material changes; read the compact index, select relevant workflows, fully read and apply them with action/verification evidence. Do not bulk-load child Skills.',
+    'performance-oriented-software-engineering': 'Select when scale, latency, throughput, CPU/I/O or memory affects design. Characterize the workload before implementation and verify performance claims; skip unrelated or trivial work.',
+    'reverse-engineer-anything': 'Select for shipped artifacts or packaged applications; ground format identity in bytes, use bounded probes and only relevant references. Respect permits; distinguish observed, inferred and unknown.',
+  };
   return {advisory:true as const,executionAuthority:false as const,entries,text:[
     (audience === 'native' ? 'NATIVE' : 'EXTERNAL') + ' SKILL GUIDANCE — mandatory capability consideration workflow for tasks that need tools, code, evidence or multi-step judgment; this hook does not grant execution authority or prove compliance.',
     'Simple conversation or a simple question (a greeting, thanks, small talk, or a short factual answer that needs no tool, file, code or multi-step judgment) needs none of this: answer directly without reading the index or any Skill. Skipping is correct there, never a violation.',
     'Follow every nextOffset from zero through the final fragment for the same active digest before declaring applied/adapted Skill use. Search, inspect, partial reading and index exposure are not application. Reading alone never earns a use receipt. Request only existing scoped capabilities when needed; unavailable instructions remain explicitly unavailable.',
-    ...entries.map(entry=>entry.name+': '+entry.status+'. '+entry.when+' '+entry.instruction+('read' in entry?' skills('+JSON.stringify(entry.read)+')':'')),
+    ...entries.map(entry=>entry.name+': '+entry.status+'. '
+      +(audience==='native'?(nativePurpose[entry.name]??entry.when):entry.when)
+      +(audience==='native'?(entry.status==='unavailable'?' '+entry.instruction:''):' '+entry.instruction)
+      +('read' in entry?' skills('+JSON.stringify(entry.read)+')':'')),
   ].join('\n')};
 }
 export const externalSkillGuidance = (skills?: Pick<SkillService,'inspect'>) => taskSkillGuidance(skills, 'external');

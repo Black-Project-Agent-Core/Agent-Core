@@ -9,6 +9,7 @@ export const IMPROVEMENT_HANDOFF_CONTRACT = [
   'In the same user response state the observation and evidence limits, existing owner, smallest change, expected benefit, scope, risks and verification plan; link the proposal and request APPROVE / REVISE / HOLD / REJECT for the exact scope.',
   'Proposal delivery is not implementation, verified benefit or permission. Preserve HOLD and REJECT decisions. Do not scan, benchmark, modify source, activate a Skill or start background work merely to find or execute an improvement.',
   'Use existing Skill proposals for Skill work. This completion review does not implement the deferred Invocate questionnaire or add another Memory/Learning owner.',
+  'Without an isolated contrast, simultaneous component changes have confounded attribution; lessons relying only on that evidence remain awaiting-verification.',
 ].join('\n');
 
 export function improvementHandoff(input: LearningCheckpointInput, result: LearningCheckpointResult) {

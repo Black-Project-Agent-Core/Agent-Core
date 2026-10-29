@@ -48,7 +48,7 @@ async function setup() {
     createConversation: vi.fn(async () => ({
       conversation, turns: [], messages: [],
     })),
-    getConversation: vi.fn(() => ({
+    readConversation: vi.fn(async () => ({
       conversation, turns: [], messages: [],
     })),
     runTurn: vi.fn(async (input: any) => {
@@ -204,6 +204,15 @@ describe('launcher-only native agent HTTP transport', () => {
     expect(agentChat.createConversation).toHaveBeenCalledWith({
       workspace: 'agent-core',
     });
+
+    const evidence = { status: 'unavailable', taskId: 'task-chat-1', records: [], truncated: false,
+      attribution: 'controller-declared', goalVerification: 'not-established' };
+    agentChat.readConversation.mockResolvedValueOnce({ conversation: { id: 'conversation-1' }, turns: [], messages: [], decisionEvidence: evidence } as any);
+    const detail = await fetch(`${baseUrl}/agent/chat/conversations/conversation-1`, {
+      headers: { 'x-agent-core-ui-token': 'fixture-ui-token' },
+    });
+    expect((await detail.json()).decisionEvidence).toEqual(evidence);
+    expect(agentChat.readConversation).toHaveBeenCalledWith('conversation-1');
 
     const proxied = await fetch(`${baseUrl}/agent/chat/conversations`, {
       headers: {

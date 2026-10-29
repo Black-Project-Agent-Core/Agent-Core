@@ -59,6 +59,56 @@ function seed(store: AgentChatStore, overrides: Partial<AgentTurnCheckpointState
 }
 
 describe('Native chat durable response ownership', () => {
+  it('reads decision evidence for the exact durable task without another model call', async () => {
+    const f = await fixture(); seed(f.store);
+    const evidence = { status: 'available', taskId: 'task-1', records: [], truncated: false,
+      attribution: 'controller-declared', goalVerification: 'not-established' };
+    const reader = vi.fn(async () => evidence);
+    (f.runtime as any).getDecisionEvidence = reader;
+    expect((await f.chat.readConversation('chat-1'))?.decisionEvidence).toEqual(evidence);
+    expect(reader).toHaveBeenCalledWith('task-1', 'session-1', 'fixture');
+    expect(f.controller.runConversationTurn).not.toHaveBeenCalled();
+    reader.mockRejectedValueOnce(new Error('AGENT_DECISION_SCOPE_UNAVAILABLE'));
+    expect((await f.chat.readConversation('chat-1'))?.decisionEvidence).toMatchObject({ status: 'unavailable', records: [] });
+    expect(await f.chat.readConversation('foreign-chat')).toBeNull();
+  });
+  it('binds the requested model to the turn and rejects changed-model retries before another call', async () => {
+    const f = await fixture();
+    (f.runtime as any).providerHealth = () => ({ routes: [{ id: 'anthropic', configured: true, model: 'claude-sonnet-5-5',
+      reasoningEfforts: ['low', 'high'], models: [{ id: 'claude-sonnet-5-5', reasoningEfforts: ['low', 'high'] },
+        { id: 'claude-opus-5-5', reasoningEfforts: ['low'] }] }] });
+    const input = { conversationId: 'chat-1', clientRequestId: 'model-1', prompt: 'Fixture', providerRoute: 'anthropic',
+      providerModel: 'claude-opus-5-5', reasoningEffort: 'low' as const };
+    const result = await f.chat.runTurn(input);
+    expect(f.controller.runConversationTurn).toHaveBeenCalledWith(expect.objectContaining({ providerModel: input.providerModel }));
+    expect(f.store.getTurn(result.turnId)?.requestedModel).toBe(input.providerModel);
+    expect(new AgentChatStore(f.store.dbPath).getTurn(result.turnId)?.requestedModel).toBe(input.providerModel);
+    expect((await f.chat.runTurn(input)).replayed).toBe(true);
+    await expect(f.chat.runTurn({ ...input, providerModel: 'claude-sonnet-5-5' })).rejects.toThrow('AGENT_CHAT_CLIENT_REQUEST_CONFLICT');
+    await expect(f.chat.runTurn({ ...input, clientRequestId: 'unknown-model', providerModel: 'unknown' })).rejects.toThrow('AGENT_CHAT_MODEL_UNAVAILABLE');
+    await expect(f.chat.runTurn({ ...input, clientRequestId: 'wrong-effort', reasoningEffort: 'high' })).rejects.toThrow('AGENT_CHAT_REASONING_EFFORT_UNSUPPORTED');
+    expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(1);
+    expect(f.store.getTurnByClientRequestId('unknown-model')).toBeNull();
+  });
+
+  it('validates and persists explicit effort and rejects a changed retry without making another model call', async () => {
+    const f = await fixture();
+    (f.runtime as any).providerHealth = () => ({ routes: [{ id: 'anthropic', configured: true, reasoningEfforts: ['low', 'high'] }] });
+    const input = { conversationId: 'chat-1', clientRequestId: 'effort-1', prompt: 'Fixture', providerRoute: 'anthropic', reasoningEffort: 'low' as const };
+    const result = await f.chat.runTurn(input);
+    expect(f.store.getTurn(result.turnId)?.reasoningEffort).toBe('low');
+    expect((f.controller.runConversationTurn.mock.calls[0] as any[])[0]).toMatchObject({ providerRoute: 'anthropic', reasoningEffort: 'low' });
+    expect((await f.chat.runTurn(input)).replayed).toBe(true);
+    for (const reasoningEffort of [undefined, 'high'] as const) {
+      await expect(f.chat.runTurn({ ...input, reasoningEffort })).rejects.toThrow('AGENT_CHAT_CLIENT_REQUEST_CONFLICT');
+      expect(()=>f.store.beginTurn({ conversationId: 'chat-1', clientRequestId: 'effort-1', turnId:'duplicate', runtimeTaskId:'duplicate', userMessageId:'duplicate', prompt:'Fixture', reasoningEffort })).toThrow('AGENT_CHAT_CLIENT_REQUEST_CONFLICT');
+    }
+    for (const change of [{ reasoningEffort: 'max' }, { reasoningEffort: 'auto' }, { reasoningEffort: null }, { providerRoute: undefined }, { providerRoute: 'atria' }]) {
+      await expect(f.chat.runTurn({ ...input, ...change, clientRequestId: 'invalid' } as any)).rejects.toThrow(/AGENT_CHAT_REASONING_/);
+    }
+    expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(1);
+    expect(f.store.detail('chat-1')?.turns).toHaveLength(1);
+  });
   it('publishes one final only after commit and returns the exact sanitized stored text', async () => {
     const f = await fixture();
     f.controller.runConversationTurn.mockImplementation(async (input: any) => {

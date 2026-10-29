@@ -4,20 +4,32 @@ export interface SkillDecisionInput {
   workspace: string; proposalId: string; expectedProposalDigest: string;
   decision: SkillProposalDecision['decision']; scope: SkillProposalDecision['scope'];
   userEvidenceRef: string; sessionId: string; taskId: string;
+  controllerId?: string;
 }
 function checkDecision(input: SkillDecisionInput): void {
   if (!['approve', 'revise', 'reject', 'defer'].includes(input.decision)
     || !['build', 'build-and-activate'].includes(input.scope)
-    || !/^user-message:[a-zA-Z0-9._:-]{1,200}$/.test(input.userEvidenceRef)
+    || !(input.controllerId ? /^controller-decision:[a-f0-9]{64}$/ : /^user-message:[a-zA-Z0-9._:-]{1,200}$/).test(input.userEvidenceRef)
+    || (input.controllerId !== undefined && (!input.controllerId.trim() || input.controllerId.length > 128 || /[\x00-\x1f\x7f]/.test(input.controllerId)))
     || !input.sessionId || input.sessionId.length > 200 || !input.taskId || input.taskId.length > 200) throw new Error('SKILL_PROPOSAL_USER_EVIDENCE_INVALID');
 }
 /** Host-only. Caller must have persisted this actual user message; never expose as an MCP action. */
 export async function recordUserSkillDecision(coordinator: SkillProposalCoordinator, input: SkillDecisionInput): Promise<SkillProposalRecord> {
+  if (input.controllerId !== undefined) throw new Error('SKILL_PROPOSAL_USER_EVIDENCE_INVALID');
+  return recordDecision(coordinator, input);
+}
+/** Host-only: the authenticated MCP ingress checks the live approver allowlist before calling this. */
+export async function recordControllerSkillDecision(coordinator: SkillProposalCoordinator, input: SkillDecisionInput): Promise<SkillProposalRecord> {
+  if (!input.controllerId) throw new Error('SKILL_PROPOSAL_CONTROLLER_IDENTITY_REQUIRED');
+  return recordDecision(coordinator, input);
+}
+async function recordDecision(coordinator: SkillProposalCoordinator, input: SkillDecisionInput): Promise<SkillProposalRecord> {
   checkDecision(input);
   return coordinator.update(input.workspace, input.proposalId, input.expectedProposalDigest, item => {
     const existing = item.decisions.find(d => d.userEvidenceRef === input.userEvidenceRef);
     const next: SkillProposalDecision = { revisionDigest: input.expectedProposalDigest, decision: input.decision,
-      scope: input.scope, userEvidenceRef: input.userEvidenceRef, sessionId: input.sessionId, taskId: input.taskId, at: new Date().toISOString() };
+      scope: input.scope, userEvidenceRef: input.userEvidenceRef, sessionId: input.sessionId, taskId: input.taskId, at: new Date().toISOString(),
+      ...(input.controllerId ? { controllerId: input.controllerId } : {}) };
     if (existing) {
       if (Object.keys(next).some(k => k !== 'at' && existing[k as keyof SkillProposalDecision] !== next[k as keyof SkillProposalDecision])) throw new Error('SKILL_PROPOSAL_USER_EVIDENCE_CONFLICT');
       return;
@@ -31,14 +43,15 @@ export async function decideSkillProposal(coordinator: SkillProposalCoordinator,
   try { return await coordinator.update(input.workspace, input.proposalId, input.expectedProposalDigest, async item => {
     const latest = item.decisions.filter(d => d.revisionDigest === item.revisionDigest).at(-1);
     if (!latest || latest.userEvidenceRef !== input.userEvidenceRef || latest.decision !== input.decision
-      || latest.scope !== input.scope || latest.sessionId !== input.sessionId || latest.taskId !== input.taskId) throw new Error('SKILL_PROPOSAL_USER_EVIDENCE_REQUIRED');
+      || latest.scope !== input.scope || latest.sessionId !== input.sessionId || latest.taskId !== input.taskId
+      || latest.controllerId !== input.controllerId) throw new Error('SKILL_PROPOSAL_USER_EVIDENCE_REQUIRED');
     if (input.decision !== 'approve') return;
-    if (item.status !== 'approved') throw new Error('SKILL_PROPOSAL_APPROVAL_INACTIVE');
     if (item.artifactStatus === 'catalog-active') {
       const active = await coordinator.skills.inspect(item.targetSkillName);
       if (active.digest !== item.artifactDigest) throw new Error('SKILL_PROPOSAL_ACTIVE_DRIFT');
       return;
     }
+    if (item.status !== 'approved') throw new Error('SKILL_PROPOSAL_APPROVAL_INACTIVE');
     const artifact = await coordinator.skills.buildApprovedProposal(item, latest);
     Object.assign(item, artifact);
   }); } catch (error) {
