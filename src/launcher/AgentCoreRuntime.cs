@@ -269,6 +269,23 @@ public sealed class AgentCoreRuntime : IDisposable
         return await SendAgentChatJsonAsync(request);
     }
 
+    public async Task<JsonElement> SelectAgentChatAsync(string providerId, string model, string reasoningEffort)
+    {
+        using var request = CreateAgentChatRequest(HttpMethod.Put, "/agent/chat/selection");
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new { providerId, model, reasoningEffort }),
+            Encoding.UTF8,
+            "application/json");
+        return await SendAgentChatJsonAsync(request);
+    }
+
+    public async Task<JsonElement> ReadAgentStepAsync(string turnId, int seq)
+    {
+        var id = Uri.EscapeDataString(turnId);
+        using var request = CreateAgentChatRequest(HttpMethod.Get, $"/agent/chat/steps/{id}/{seq}");
+        return await SendAgentChatJsonAsync(request);
+    }
+
     public async Task RunAgentTurnStreamAsync(
         string conversationId,
         string clientRequestId,

@@ -513,6 +513,41 @@ public sealed class MainForm : Form
                 }
                 return;
             }
+            if (type == "agent-chat-select")
+            {
+                string ReadSelectionField(string name) => root.TryGetProperty(name, out var node)
+                    && node.ValueKind == JsonValueKind.String ? node.GetString() ?? string.Empty : string.Empty;
+                try
+                {
+                    await _runtime.SelectAgentChatAsync(
+                        ReadSelectionField("providerId"), ReadSelectionField("model"), ReadSelectionField("reasoningEffort"));
+                }
+                catch (Exception error)
+                {
+                    // Complementary persistence only; the UI's localStorage keeps the selection.
+                    System.Diagnostics.Debug.WriteLine("agent-chat-select failed: " + error.Message);
+                }
+                return;
+            }
+            if (type == "agent-chat-step")
+            {
+                var requestId = root.TryGetProperty("requestId", out var stepRequestNode)
+                    && stepRequestNode.ValueKind == JsonValueKind.String ? stepRequestNode.GetString() : null;
+                var turnId = root.TryGetProperty("turnId", out var turnNode)
+                    && turnNode.ValueKind == JsonValueKind.String ? turnNode.GetString() ?? string.Empty : string.Empty;
+                var seq = root.TryGetProperty("seq", out var seqNode)
+                    && seqNode.ValueKind == JsonValueKind.Number && seqNode.TryGetInt32(out var seqValue) ? seqValue : -1;
+                try
+                {
+                    var result = await _runtime.ReadAgentStepAsync(turnId, seq);
+                    Send(new { type = "agent-chat-step-result", requestId, turnId, seq, result });
+                }
+                catch (Exception error)
+                {
+                    Send(new { type = "agent-chat-error", requestId, error = error.Message });
+                }
+                return;
+            }
             if (type is "agent-chat-send" or "agent-chat-resume")
             {
                 var requestId = root.TryGetProperty("requestId", out var requestNode)
