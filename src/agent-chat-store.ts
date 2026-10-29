@@ -50,7 +50,7 @@ export interface AgentChatTurn extends NativeMemoryResultMetadata {
   requestedModel?: string;
   goalMode?: boolean;
   pauseRequested?: boolean;
-  iterations?: number;
+  iterations?: number; maxIterations?: number;
   retrievalCount?: number;
   /** Last observed full-prompt size and known window of this turn; absent when the provider reported none. */
   contextTokens?: number;
@@ -139,6 +139,7 @@ function mapTurn(row: Record<string, unknown>): AgentChatTurn {
     ...(row.requested_model ? { requestedModel: String(row.requested_model) } : {}),
     ...(row.goal_mode ? { goalMode: true } : {}),
     ...(row.iterations !== null && row.iterations !== undefined ? { iterations: Number(row.iterations) } : {}),
+    ...(row.max_iterations !== null && row.max_iterations !== undefined ? { maxIterations: Number(row.max_iterations) } : {}),
     ...(row.retrieval_count !== null && row.retrieval_count !== undefined
       ? { retrievalCount: Number(row.retrieval_count) } : {}),
     ...(row.error_code ? { errorCode: String(row.error_code) } : {}),
@@ -316,6 +317,10 @@ export class AgentChatStore {
       }
       if (!turnColumns.some(column => column.name === 'context_window')) {
         db.exec('ALTER TABLE chat_turns ADD COLUMN context_window INTEGER');
+      }
+      // Live loop ceiling, written with the per-iteration progress (iterations/retrieval_count already exist).
+      if (!turnColumns.some(column => column.name === 'max_iterations')) {
+        db.exec('ALTER TABLE chat_turns ADD COLUMN max_iterations INTEGER');
       }
       // Old messages have unknown provenance; never relabel history as human approval.
       if (!turnColumns.some(column => column.name === 'turn_origin')) {
@@ -847,11 +852,28 @@ export class AgentChatStore {
   }
 
   /** Latest full-prompt size of a turn. Ancillary telemetry: invalid input is ignored and a write failure never reaches the turn. */
-  recordContextUsage(turnId: string, contextTokens: number, contextWindow?: number | null): void {
+  recordContextUsage(turnId: string, contextTokens: number, contextWindow?: number | null,
+    progress?: { iteration?: number; maxIterations?: number }): void {
     if (!Number.isSafeInteger(contextTokens) || contextTokens < 0) return;
     const window = typeof contextWindow === 'number' && Number.isSafeInteger(contextWindow) && contextWindow > 0 ? contextWindow : null;
+    const iteration = Number.isSafeInteger(progress?.iteration) && progress!.iteration! >= 0 ? progress!.iteration! : null;
+    const maxIterations = Number.isSafeInteger(progress?.maxIterations) && progress!.maxIterations! > 0 ? progress!.maxIterations! : null;
     try {
-      this.withDb(db => { db.prepare('UPDATE chat_turns SET context_tokens=?, context_window=? WHERE turn_id=?').run(contextTokens, window, turnId); });
+      this.withDb(db => {
+        // Live progress is monotonic (MAX) and COALESCE keeps an earlier value when this event carries none.
+        db.prepare(`UPDATE chat_turns SET context_tokens=?, context_window=?,
+          iterations=CASE WHEN ? IS NULL THEN iterations ELSE MAX(COALESCE(iterations, 0), ?) END,
+          max_iterations=COALESCE(?, max_iterations) WHERE turn_id=?`)
+          .run(contextTokens, window, iteration, iteration, maxIterations, turnId);
+      });
+    } catch { /* observability must not become execution authority */ }
+  }
+
+  /** Live recall size, written when memory recall completes; monotonic, finalizeTurn stays the authoritative final value. */
+  recordRecallCount(turnId: string, count: number): void {
+    if (!Number.isSafeInteger(count) || count < 0) return;
+    try {
+      this.withDb(db => { db.prepare('UPDATE chat_turns SET retrieval_count=MAX(COALESCE(retrieval_count, 0), ?) WHERE turn_id=?').run(count, turnId); });
     } catch { /* observability must not become execution authority */ }
   }
 

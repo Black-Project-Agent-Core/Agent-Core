@@ -30,7 +30,8 @@ export function contextMeterModel(tokens: number, capacity?: number | null): Con
 
 const COLORS = { ok: '#3fb68b', warn: '#f5a524', critical: '#ef4444', unknown: '#8a8f98' } as const;
 
-export function ContextMeter({ tokens, capacity }: { tokens?: number; capacity?: number | null }) {
+/** hideLabel: the host already shows "used / capacity" (Inspector card), so only the bar and its caption render. */
+export function ContextMeter({ tokens, capacity, hideLabel }: { tokens?: number; capacity?: number | null; hideLabel?: boolean }) {
   if (tokens === undefined) return null;
   const model = contextMeterModel(tokens, capacity);
   return <div className={'context-meter context-meter-' + model.level} data-level={model.level}
@@ -44,7 +45,7 @@ export function ContextMeter({ tokens, capacity }: { tokens?: number; capacity?:
           background: 'currentColor', opacity: 0.7 }}/>}
     </div>
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 3 }}>
-      <span>{model.label}</span>
+      <span>{hideLabel ? '' : model.label}</span>
       <span style={{ color: COLORS[model.level] }}>{model.hint || (model.known ? 'compact manual paling pas ~70%' : '')}</span>
     </div>
   </div>;

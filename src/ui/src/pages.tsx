@@ -409,8 +409,6 @@ function ReasoningMenu({choice,levels,disabled,onChange}:{choice:ReasoningChoice
   </div>;
 }
 
-import { ContextMeter } from './ContextMeter';
-import { selectContextUsage } from './host';
 import { resolveSelection } from './chatSelection';
 
 export function ChatPage(props:SharedProps) {
@@ -633,7 +631,6 @@ export function ChatPage(props:SharedProps) {
         <button type="button" aria-label="Expand goal" title="Expand goal" aria-expanded={goalExpanded} onClick={()=>setGoalExpanded(value=>!value)}><ChevronDown size={14}/></button>
       </div>{goalExpanded&&<p className="launcher-goal-detail">{goalMessage?.content??'Goal task'}</p>}
     </section>}
-    {active&&<ContextMeter tokens={selectContextUsage(props.agentChat)?.contextTokens} capacity={selectContextUsage(props.agentChat)?.contextWindow}/>}
     <div className="chat-composer">
       <textarea
         value={prompt}

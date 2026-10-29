@@ -1,7 +1,7 @@
 import { Activity, BrainCircuit, ChevronRight, FileText, Paperclip, Folder, Gauge } from 'lucide-react';
 import type { ActivityEntry, AgentChatUiState, DesktopSnapshot } from './host';
 import { selectContextUsage } from './host';
-import { contextMeterModel } from './ContextMeter';
+import { ContextMeter, contextMeterModel, formatTokenCount } from './ContextMeter';
 
 export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArtifacts }: {
   snapshot?: DesktopSnapshot; chat?: AgentChatUiState; logs: ActivityEntry[];
@@ -13,6 +13,10 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
   const stepText = turn?.status === 'running' && usage?.iteration !== undefined && usage.maxIterations !== undefined
     ? `${usage.iteration}/${usage.maxIterations}` : undefined;
   const model = turn?.model ?? chat?.active?.conversation.preferredModel ?? chat?.modelChoice;
+  const meter = usage ? contextMeterModel(usage.contextTokens, usage.contextWindow) : undefined;
+  const usedOfCapacity = usage && meter ? (meter.known ? `${formatTokenCount(usage.contextTokens)} / ${formatTokenCount(usage.contextWindow!)}` : meter.label) : undefined;
+  const iterationText = turn?.iterations === undefined ? undefined
+    : turn.maxIterations === undefined ? String(turn.iterations) : `${turn.iterations} / ${turn.maxIterations}`;
   const provider = chat?.providers?.find(item => item.id === chat.providerChoice);
   if (!open) return <aside className="launcher-inspector collapsed" aria-label="Context inspector">
     <button type="button" className="inspector-toggle" aria-label="Open context inspector" onClick={onToggle}><Gauge size={17}/></button>
@@ -22,12 +26,15 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
       <button type="button" className="inspector-toggle" aria-label="Collapse context inspector" onClick={onToggle}><ChevronRight size={16}/></button>
     </div>
     <div className="launcher-inspector-content">
-      <details open><summary><BrainCircuit size={15}/>Context Window</summary><dl>
-        <dt>Model</dt><dd>{model || provider?.model || 'Automatic routing'}</dd>
+      <details open><summary><BrainCircuit size={15}/>Context Window{meter?.known ? ` (${Math.round(meter.fillPercent)}%)` : ''}</summary>
+        <div className="inspector-context-head" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+          <span>Model: {model || provider?.model || 'Automatic routing'}</span><span>{usedOfCapacity ?? 'Not recorded'}</span>
+        </div>
+        {usage && <ContextMeter tokens={usage.contextTokens} capacity={usage.contextWindow} hideLabel/>}
+        <dl>
         <dt>Reasoning</dt><dd>{turn?.reasoningEffort ?? chat?.reasoningChoice ?? 'auto'}</dd>
         <dt>State</dt><dd>{turn?.status ?? 'New conversation'}</dd>
-        <dt>Context</dt><dd>{usage ? contextMeterModel(usage.contextTokens, usage.contextWindow).label : 'Not recorded'}</dd>
-        <dt>Iterations</dt><dd>{stepText ?? turn?.iterations ?? 'Not recorded'}</dd>
+        <dt>Iterations</dt><dd>{iterationText ?? stepText ?? 'Not recorded'}</dd>
         <dt>Context recall</dt><dd>{turn?.retrievalCount ?? 'Not recorded'}</dd>
       </dl>{!usage&&<p>Token usage and capacity are not reported by this desktop bridge.</p>}</details>
       <details open><summary><Activity size={15}/>Desktop tool activity <span>{calls.length}</span></summary>

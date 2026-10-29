@@ -45,6 +45,32 @@ describe('chat turn context usage persistence', () => {
     expect(turn.contextWindow).toBeUndefined();
   });
 
+  it('adds a nullable max_iterations column and exposes live progress while the turn is still running', () => {
+    const { dbPath, store } = fixture();
+    const db = new DatabaseSync(dbPath);
+    const column = (db.prepare('PRAGMA table_info(chat_turns)').all() as Array<{ name: string; notnull: number }>)
+      .find(item => item.name === 'max_iterations');
+    db.close();
+    expect(column?.notnull).toBe(0);
+    expect(store.getTurn('t1')).toMatchObject({ status: 'running' });
+    expect(store.getTurn('t1')?.iterations).toBeUndefined();
+    store.recordContextUsage('t1', 10_000, 100_000, { iteration: 2, maxIterations: 24 });
+    store.recordContextUsage('t1', 12_000, 100_000, { iteration: 3, maxIterations: 24 });
+    store.recordRecallCount('t1', 4);
+    expect(store.getTurn('t1')).toMatchObject({ status: 'running', iterations: 3, maxIterations: 24, retrievalCount: 4, contextTokens: 12_000 });
+  });
+
+  it('never moves live progress backwards and ignores invalid progress', () => {
+    const { store } = fixture();
+    store.recordContextUsage('t1', 10, 100, { iteration: 5, maxIterations: 24 });
+    store.recordContextUsage('t1', 10, 100, { iteration: 2, maxIterations: 24 });
+    store.recordRecallCount('t1', 7);
+    store.recordRecallCount('t1', 3);
+    store.recordRecallCount('t1', -1);
+    store.recordContextUsage('t1', 10, 100, { iteration: -1, maxIterations: 1.5 });
+    expect(store.getTurn('t1')).toMatchObject({ iterations: 5, maxIterations: 24, retrievalCount: 7 });
+  });
+
   it('ignores invalid values and unknown turns without throwing', () => {
     const { store } = fixture();
     store.recordContextUsage('t1', -5, 10);

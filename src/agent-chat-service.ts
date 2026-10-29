@@ -263,8 +263,13 @@ export class AgentChatService {
     };
   }
   private recordContextUsage(turnId: string, event: AgentTurnEvent): void {
+    if (event.type === 'memory.recall.completed' && typeof event.itemCount === 'number') {
+      this.store.recordRecallCount(turnId, event.itemCount);
+      return;
+    }
     if (event.type !== 'context.usage' || typeof event.contextTokens !== 'number') return;
-    this.store.recordContextUsage(turnId, event.contextTokens, event.contextWindow);
+    this.store.recordContextUsage(turnId, event.contextTokens, event.contextWindow,
+      { iteration: event.iteration, maxIterations: event.maxIterations });
   }
   private continuationHooks(input: {
     conversationId: string;

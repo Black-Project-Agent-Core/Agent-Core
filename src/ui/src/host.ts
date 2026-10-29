@@ -170,6 +170,8 @@ export type AgentChatTurn = {
   model?: string;
   reasoningEffort?: ReasoningEffort;
   iterations?: number;
+  /** Loop ceiling written live with iterations; absent for turns that have not reported it. */
+  maxIterations?: number;
   retrievalCount?: number;
   /** Last observed prompt size and known window for this turn; absent when the provider reported none. */
   contextTokens?: number;
