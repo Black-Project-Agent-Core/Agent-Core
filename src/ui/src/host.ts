@@ -171,6 +171,9 @@ export type AgentChatTurn = {
   reasoningEffort?: ReasoningEffort;
   iterations?: number;
   retrievalCount?: number;
+  /** Last observed prompt size and known window for this turn; absent when the provider reported none. */
+  contextTokens?: number;
+  contextWindow?: number;
   memoryUse?: AgentMemoryUse[];
   errorCode?: string;
   createdAtMs: number;
@@ -229,6 +232,9 @@ export type AgentChatEvent = {
   memoryUse?: AgentMemoryUse[];
   code?: string;
   retryAtMs?: number | null;
+  /** context.usage: full prompt size of the last provider call and the known window. */
+  contextTokens?: number;
+  contextWindow?: number;
 };
 
 export type AgentChatProvider = {
@@ -260,6 +266,8 @@ export type AgentChatUiState = {
   lastEvent?: AgentChatEvent;
   /** Last tool steps of the current turn, built from the live event stream only (lost on reload). */
   activity?: AgentChatActivity[];
+  /** Latest live context.usage of the active conversation (replaced by the persisted turn value after reload). */
+  contextUsage?: AgentContextUsage;
   error?: string;
 };
 
@@ -309,6 +317,26 @@ export function reduceAgentActivity(list: AgentChatActivity[], event: AgentChatE
     return next;
   }
   return list;
+}
+
+export type AgentContextUsage = { conversationId: string; contextTokens: number; contextWindow?: number; iteration?: number; maxIterations?: number };
+
+/** Context size to show for the active conversation: the live event if it belongs to it, else the last persisted turn value. */
+export function selectContextUsage(chat?: AgentChatUiState): { contextTokens: number; contextWindow?: number; iteration?: number; maxIterations?: number } | undefined {
+  const active = chat?.active;
+  if (!chat || !active) return undefined;
+  if (chat.contextUsage && chat.contextUsage.conversationId === active.conversation.id) return chat.contextUsage;
+  const last = [...active.turns].reverse().find(turn => turn.contextTokens !== undefined);
+  return last ? { contextTokens: last.contextTokens!, ...(last.contextWindow !== undefined ? { contextWindow: last.contextWindow } : {}) } : undefined;
+}
+
+/** Keeps the last context.usage (a snapshot of the latest prompt, not an accumulation); other events leave it unchanged. */
+export function reduceContextUsage(prev: AgentContextUsage | undefined, event: AgentChatEvent): AgentContextUsage | undefined {
+  if (event.type !== 'context.usage' || typeof event.contextTokens !== 'number') return prev;
+  return { conversationId: event.conversationId, contextTokens: event.contextTokens,
+    ...(typeof event.contextWindow === 'number' ? { contextWindow: event.contextWindow } : {}),
+    ...(event.iteration !== undefined ? { iteration: event.iteration } : {}),
+    ...(event.maxIterations !== undefined ? { maxIterations: event.maxIterations } : {}) };
 }
 
 export type WorkflowsSnapshot = {

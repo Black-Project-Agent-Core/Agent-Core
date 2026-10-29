@@ -10,6 +10,7 @@ export type AgentTurnEventType =
   | 'tool.completed'
   | 'assistant.progress'
   | 'agent.budget'
+  | 'context.usage'
   | 'verification.started'
   | 'verification.completed'
   | 'learning.finalization.started'
@@ -40,6 +41,9 @@ export interface AgentTurnEvent {
   /** tool.started / tool.completed: 1-based loop iteration and its configured limit. */
   iteration?: number;
   maxIterations?: number;
+  /** context.usage only: size of the full prompt of the LAST provider call (not cumulative), and the known window if any. */
+  contextTokens?: number;
+  contextWindow?: number;
   /** tool.completed only: wall-clock duration of the tool call. */
   durationMs?: number;
   /** tool.started / tool.completed: one-line argument summary (<= 80 chars, secret-keyed values masked). */

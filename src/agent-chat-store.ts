@@ -44,6 +44,9 @@ export interface AgentChatTurn extends NativeMemoryResultMetadata {
   pauseRequested?: boolean;
   iterations?: number;
   retrievalCount?: number;
+  /** Last observed full-prompt size and known window of this turn; absent when the provider reported none. */
+  contextTokens?: number;
+  contextWindow?: number;
   memoryUse?: AgentMemoryUse[];
   errorCode?: string;
   messageOrigin?: 'local-operator' | 'external-controller';
@@ -131,6 +134,8 @@ function mapTurn(row: Record<string, unknown>): AgentChatTurn {
     ...(row.retrieval_count !== null && row.retrieval_count !== undefined
       ? { retrievalCount: Number(row.retrieval_count) } : {}),
     ...(row.error_code ? { errorCode: String(row.error_code) } : {}),
+    ...(row.context_tokens !== null && row.context_tokens !== undefined ? { contextTokens: Number(row.context_tokens) } : {}),
+    ...(row.context_window !== null && row.context_window !== undefined ? { contextWindow: Number(row.context_window) } : {}),
     ...(memoryUse.length ? { memoryUse } : {}),
     createdAtMs: Number(row.created_at_ms),
     startedAtMs: Number(row.started_at_ms),
@@ -296,6 +301,13 @@ export class AgentChatStore {
       }
       if (!turnColumns.some(column => column.name === 'result_metadata_json')) {
         db.exec('ALTER TABLE chat_turns ADD COLUMN result_metadata_json TEXT');
+      }
+      // Additive nullable telemetry: last observed prompt size and known window.
+      if (!turnColumns.some(column => column.name === 'context_tokens')) {
+        db.exec('ALTER TABLE chat_turns ADD COLUMN context_tokens INTEGER');
+      }
+      if (!turnColumns.some(column => column.name === 'context_window')) {
+        db.exec('ALTER TABLE chat_turns ADD COLUMN context_window INTEGER');
       }
       // Old messages have unknown provenance; never relabel history as human approval.
       if (!turnColumns.some(column => column.name === 'turn_origin')) {
@@ -792,6 +804,15 @@ export class AgentChatStore {
         completedAtMs,
       };
     }));
+  }
+
+  /** Latest full-prompt size of a turn. Ancillary telemetry: invalid input is ignored and a write failure never reaches the turn. */
+  recordContextUsage(turnId: string, contextTokens: number, contextWindow?: number | null): void {
+    if (!Number.isSafeInteger(contextTokens) || contextTokens < 0) return;
+    const window = typeof contextWindow === 'number' && Number.isSafeInteger(contextWindow) && contextWindow > 0 ? contextWindow : null;
+    try {
+      this.withDb(db => { db.prepare('UPDATE chat_turns SET context_tokens=?, context_window=? WHERE turn_id=?').run(contextTokens, window, turnId); });
+    } catch { /* observability must not become execution authority */ }
   }
 
   finalizeTurn(input: {

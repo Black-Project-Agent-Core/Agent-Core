@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   postHost,
-  reduceAgentActivity,
+  reduceAgentActivity,reduceContextUsage,
   subscribeHost,
   type ActivityEntry,
   type AgentChatUiState,
@@ -142,6 +142,7 @@ export default function App() {
             ...prev,
             lastEvent:message.envelope.event,
             activity:reduceAgentActivity(prev.activity??[],message.envelope.event!),
+            contextUsage:reduceContextUsage(prev.contextUsage,message.envelope.event!),
             error:undefined,
           }));
         }

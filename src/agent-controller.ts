@@ -57,6 +57,7 @@ import {
   summarizeAssistantProgress,
   iterationBudgetThreshold,
 } from './agent-turn-events.js';
+import { contextTokensFromUsage } from './agent-context-usage.js';
 import {
   AGENT_TURN_CHECKPOINT_SCHEMA_VERSION,
   AGENT_TURN_USER_PAUSED,
@@ -1153,6 +1154,13 @@ export class NativeAgentController {
             ...(reply.usage?.cacheReadInputTokens !== undefined ? { cacheReadObservedCalls: 1 } : {}),
             ...(reply.usage?.cacheWriteInputTokens !== undefined ? { cacheWriteObservedCalls: 1 } : {}),
             ...(reply.usage?.costUsd !== undefined ? { costObservedCalls: 1 } : {}) });
+          // Size of THIS call's full prompt (not the cumulative turn metric); the window comes from the cached catalog.
+          const observedContext = contextTokensFromUsage(reply.usage);
+          if (observedContext !== undefined) {
+            const contextWindow = this.runtime.knownContextWindow?.(reply.providerId ?? lastProviderId) ?? null;
+            await emitAgentTurnEvent(input.eventSink, { type: 'context.usage', contextTokens: observedContext, iteration, maxIterations,
+              ...(contextWindow ? { contextWindow } : {}) });
+          }
           if (reply.providerId && reply.providerId !== lastProviderId) {
             lastProviderId = reply.providerId;
             lastModel = reply.model ?? lastModel;

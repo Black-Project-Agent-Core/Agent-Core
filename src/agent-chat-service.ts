@@ -262,6 +262,10 @@ export class AgentChatService {
       replayed: true,
     };
   }
+  private recordContextUsage(turnId: string, event: AgentTurnEvent): void {
+    if (event.type !== 'context.usage' || typeof event.contextTokens !== 'number') return;
+    this.store.recordContextUsage(turnId, event.contextTokens, event.contextWindow);
+  }
   private continuationHooks(input: {
     conversationId: string;
     turnId: string;
@@ -497,7 +501,7 @@ export class AgentChatService {
         history: historyMessages(history),
         ...(boundedContext.summary ? { historySummary: boundedContext.summary } : {}),
         memoryQuery: buildMemoryQuery(input.prompt, history),
-        eventSink: event => event.type === 'assistant.final' ? undefined : emit(event),
+        eventSink: event => { this.recordContextUsage(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,
         continuation,
         ...(input.evaluation ? { evaluation: input.evaluation } : {}),
@@ -719,7 +723,7 @@ export class AgentChatService {
         taskId: turn.runtimeTaskId,
         prompt: loaded.state.prompt,
         workspace: loaded.state.workspace ?? conversation.workspace,
-        eventSink: event => event.type === 'assistant.final' ? undefined : emit(event),
+        eventSink: event => { this.recordContextUsage(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,
         continuation,
         ...(loaded.state.memoryEvaluation ? { evaluation: loaded.state.memoryEvaluation } : {}),
