@@ -41,6 +41,69 @@ function credentials(count = 4, prefix = 'secret'): ProviderSchedulerCredential[
   }));
 }
 describe('PersistentCredentialScheduler', () => {
+  it('provider probe recovery rejects invalid lease budgets before claiming', async () => {
+    const scheduler=new PersistentCredentialScheduler(await fixture());
+    const keys=credentials(1);
+    for(const probeLeaseMs of [0,NaN,0.5,2_147_483_648]){
+      await expect(scheduler.select({providerId:'openrouter',model:'fixture-model',credentials:keys,probeLeaseMs})).rejects.toThrow('AGENT_RUNTIME_PROVIDER_PROBE_LEASE_INVALID');
+    }
+    expect(scheduler.health('openrouter',keys).breakerState).toBe('CLOSED');
+  });
+
+  it('provider probe recovery bounds abandoned claims and fences late outcomes', async () => {
+    const scheduler = new PersistentCredentialScheduler(await fixture());
+    const keys = credentials(1);
+    const base = 50_000_000;
+    const ordinary = (await scheduler.select({providerId:'openrouter', model:'fixture-model', credentials:keys, now:base-1})).credential!;
+    const failure = classifyAgentProviderFailure(new AgentProviderRequestError({status:503,message:'unavailable'}), base);
+    for (let i=0;i<3;i++) {
+      const picked = await scheduler.select({providerId:'openrouter',model:'fixture-model',credentials:keys,now:base+i});
+      scheduler.recordFailure({selection:picked.credential!.selection,decision:failure,model:'fixture-model',completedAtMs:base+i});
+    }
+    const started = base+30_003;
+    const probe = await scheduler.select({providerId:'openrouter',model:'fixture-model',credentials:keys,now:started,probeLeaseMs:1_000});
+    expect(probe.credential).not.toBeNull();
+    const reopened = new PersistentCredentialScheduler(scheduler.state.dbPath);
+    const blocked = await reopened.select({providerId:'openrouter',model:'fixture-model',credentials:keys,now:started+1});
+    expect(blocked.nextAvailableAtMs).toBe(started+1_000);
+    expect(blocked.credential).toBeNull();
+    expect(reopened.health('openrouter',keys,started+1).nextAvailableAtMs).toBe(started+1_000);
+    const replacement = await reopened.select({providerId:'openrouter',model:'fixture-model',credentials:keys,now:started+1_000,probeLeaseMs:1_000});
+    expect(replacement.credential).not.toBeNull();
+    scheduler.recordSuccess(probe.credential!.selection,started+1_001);
+    scheduler.recordSuccess(ordinary.selection,started+1_001);
+    scheduler.recordFailure({selection:probe.credential!.selection,decision:failure,model:'fixture-model',completedAtMs:started+1_001});
+    scheduler.recordFailure({selection:ordinary.selection,decision:failure,model:'fixture-model',completedAtMs:started+1_001});
+    scheduler.releaseProbe(probe.credential!.selection,started+1_001);
+    expect((await reopened.select({providerId:'openrouter',model:'fixture-model',credentials:keys,now:started+1_002})).credential).toBeNull();
+    reopened.releaseProbe(replacement.credential!.selection,started+1_003);
+    expect(reopened.health('openrouter',keys,started+1_004).breakerState).toBe('HALF_OPEN');
+    const retry = await reopened.select({providerId:'openrouter',model:'fixture-model',credentials:keys,now:started+1_004});
+    expect(retry.credential).not.toBeNull();
+    reopened.recordSuccess(retry.credential!.selection,started+1_005);
+    expect(reopened.health('openrouter',keys,started+1_006).breakerState).toBe('CLOSED');
+  });
+
+  it('provider probe recovery reclaims old deadline-less state without discarding failure history', async () => {
+    const dbPath=await fixture();
+    const scheduler=new PersistentCredentialScheduler(dbPath);
+    const keys=credentials(1);
+    const now=50_000_000;
+    await scheduler.select({providerId:'openrouter',model:'fixture-model',credentials:keys,now:now-1});
+    const db=new DatabaseSync(dbPath);
+    db.prepare(`INSERT INTO provider_breaker_state(provider_id,state,failure_count,half_open_probe_count,state_revision,updated_at_ms)
+      VALUES ('openrouter','HALF_OPEN',3,1,4,?)`).run(now-1_000_000);
+    db.close();
+    expect(scheduler.diagnose({providerId:'openrouter',model:'fixture-model',credentials:keys,now})?.status).toBe('available');
+    const probe=await scheduler.select({providerId:'openrouter',model:'fixture-model',credentials:keys,now});
+    expect(probe.credential).not.toBeNull();
+    scheduler.recordFailure({selection:probe.credential!.selection,decision:classifyAgentProviderFailure(new Error('fixture internal contract'),now),model:'fixture-model',completedAtMs:now});
+    scheduler.releaseProbe(probe.credential!.selection,now+1);
+    const inspect=new DatabaseSync(dbPath,{readOnly:true});
+    expect(inspect.prepare('SELECT failure_count,half_open_probe_count FROM provider_breaker_state').get()).toMatchObject({failure_count:3,half_open_probe_count:0});
+    inspect.close();
+  });
+
   it('uses newer exact model qualification without erasing historical blocks or ignoring later failures', async () => {
     const dbPath = await fixture();
     const scheduler = new PersistentCredentialScheduler(dbPath);

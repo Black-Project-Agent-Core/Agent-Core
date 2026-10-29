@@ -30,6 +30,8 @@ export interface ProviderSelectionRecord {
   ordinal: number;
   stateRevision: number;
   startedAtMs: number;
+  halfOpenProbeRevision?: number;
+  probeExpiresAtMs?: number;
 }
 export interface ProviderPoolCursor {
   providerId: string;
@@ -118,12 +120,19 @@ type BreakerRow = {
   half_open_probe_count: number;
   open_cycle_count: number;
   state_revision: number;
+  updated_at_ms: number;
 };
 const BREAKER_THRESHOLD = 3;
 const BREAKER_BASE_MS = 30_000;
 const BREAKER_MAX_MS = 10 * 60_000;
+const DEFAULT_PROBE_LEASE_MS = 15_000 + 4 * 180_000 + 1_000;
 const RATE_LIMIT_BASE_MS = 90_000;
 const RATE_LIMIT_MAX_MS = 30 * 60_000;
+
+function probeDeadline(row: BreakerRow): number | null {
+  return row.state === 'HALF_OPEN' && row.half_open_probe_count >= 1
+    ? row.retry_at_ms ?? row.updated_at_ms + DEFAULT_PROBE_LEASE_MS : null;
+}
 
 export function secretRevisionDigest(secret: string): string {
   return createHash('sha256')
@@ -590,18 +599,19 @@ export class ProviderStateStore {
   private breakerRow(db: DatabaseSync, providerId: string): BreakerRow {
     const row = db.prepare(`
       SELECT state, failure_count, last_failure_at_ms, retry_at_ms,
-             half_open_probe_count, open_cycle_count, state_revision
+             half_open_probe_count, open_cycle_count, state_revision, updated_at_ms
       FROM provider_breaker_state WHERE provider_id = ?
     `).get(providerId) as BreakerRow | undefined;
     return row ?? {
       state: 'CLOSED', failure_count: 0, last_failure_at_ms: null,
       retry_at_ms: null, half_open_probe_count: 0, open_cycle_count: 0,
-      state_revision: 0,
+      state_revision: 0, updated_at_ms: 0,
     };
   }
   private refreshBreaker(db: DatabaseSync, providerId: string, now: number): BreakerRow {
     let row = this.breakerRow(db, providerId);
-    if (row.state === 'OPEN' && row.retry_at_ms !== null && row.retry_at_ms <= now) {
+    if ((row.state === 'OPEN' && row.retry_at_ms !== null && row.retry_at_ms <= now)
+      || (probeDeadline(row) !== null && probeDeadline(row)! <= now)) {
       db.prepare(`
         INSERT INTO provider_breaker_state (
           provider_id, state, failure_count, last_failure_at_ms, retry_at_ms,
@@ -675,8 +685,7 @@ export class ProviderStateStore {
         const row = this.breakerRow(db, providerId);
         const expired = row.state === 'OPEN' && row.retry_at_ms !== null && row.retry_at_ms <= now;
         const breaker: ProviderBreakerState = expired ? 'HALF_OPEN' : row.state;
-        const providerOpen = breaker === 'OPEN'
-          || (breaker === 'HALF_OPEN' && !expired && row.half_open_probe_count >= 1);
+        const providerOpen = breaker === 'OPEN' || (probeDeadline(row) ?? 0) > now;
         return this.diagnoseInDb(db, providerId, input.credentials, {
           model: input.model,
           excluded: input.excludedCredentialIds ?? new Set<string>(),
@@ -699,10 +708,13 @@ export class ProviderStateStore {
     qualifiedModels?: ReadonlyMap<string, ProviderModelReadiness>;
     trackPool?: boolean;
     expectedPoolRevision?: number;
+    probeLeaseMs?: number;
     now?: number;
   }): ProviderSelectionResult {
     const providerId = normalizeProviderId(input.providerId);
     const now = input.now ?? Date.now();
+    const probeLeaseMs = input.probeLeaseMs ?? DEFAULT_PROBE_LEASE_MS;
+    if (!Number.isSafeInteger(probeLeaseMs) || probeLeaseMs <= 0 || probeLeaseMs > 2_147_483_647) throw new Error('AGENT_RUNTIME_PROVIDER_PROBE_LEASE_INVALID');
     const excluded = input.excludedCredentialIds ?? new Set<string>();
     return this.withDb(db => this.inTransaction(db, () => {
       const pool = input.trackPool ? this.poolCursorInDb(db) : null;
@@ -716,7 +728,7 @@ export class ProviderStateStore {
         || (breaker.state === 'HALF_OPEN' && breaker.half_open_probe_count >= 1)) {
         return {
           selection: null,
-          nextAvailableAtMs: breaker.retry_at_ms,
+          nextAvailableAtMs: probeDeadline(breaker) ?? breaker.retry_at_ms,
           reason: 'provider-open' as const,
           diagnostics: this.diagnoseInDb(db, providerId, input.credentials, {
             model: input.model,
@@ -797,9 +809,9 @@ export class ProviderStateStore {
       if (breaker.state === 'HALF_OPEN') {
         db.prepare(`
           UPDATE provider_breaker_state
-          SET half_open_probe_count = 1, updated_at_ms = ?
+          SET half_open_probe_count = 1, retry_at_ms = ?, state_revision = state_revision + 1, updated_at_ms = ?
           WHERE provider_id = ?
-        `).run(now, providerId);
+        `).run(now + probeLeaseMs, now, providerId);
       }
       return {
         selection: {
@@ -809,12 +821,37 @@ export class ProviderStateStore {
           ordinal: chosen.ordinal,
           stateRevision: row.state_revision,
           startedAtMs: now,
+          ...(breaker.state === 'HALF_OPEN' ? {
+            halfOpenProbeRevision: breaker.state_revision + 1, probeExpiresAtMs: now + probeLeaseMs,
+          } : {}),
         },
         nextAvailableAtMs: null,
         reason: 'selected' as const,
         diagnostics,
       };
     }));
+  }
+
+  private ownsBreaker(db: DatabaseSync, selection: ProviderSelectionRecord, now: number): boolean {
+    const row = this.breakerRow(db, selection.providerId);
+    return selection.halfOpenProbeRevision === undefined ? row.state !== 'HALF_OPEN'
+      : row.state === 'HALF_OPEN' && row.half_open_probe_count === 1
+        && row.state_revision === selection.halfOpenProbeRevision && (probeDeadline(row) ?? 0) > now;
+  }
+
+  probeIsCurrent(selection: ProviderSelectionRecord, now = Date.now()): boolean {
+    return selection.halfOpenProbeRevision === undefined || this.withSnapshot(db => this.ownsBreaker(db, selection, now));
+  }
+
+  releaseProbe(selection: ProviderSelectionRecord, now = Date.now()): void {
+    const revision = selection.halfOpenProbeRevision;
+    if (revision === undefined) return;
+    this.withDb(db => {
+      db.prepare(`UPDATE provider_breaker_state SET half_open_probe_count=0, retry_at_ms=NULL,
+        state_revision=state_revision+1, updated_at_ms=?
+        WHERE provider_id=? AND state='HALF_OPEN' AND half_open_probe_count=1 AND state_revision=?`)
+        .run(now, selection.providerId, revision);
+    });
   }
 
   recordSuccess(selection: ProviderSelectionRecord, completedAtMs = Date.now()): void {
@@ -845,7 +882,7 @@ export class ProviderStateStore {
         selection.startedAtMs, selection.startedAtMs, completedAtMs,
         selection.providerId, selection.credentialId,
       );
-      this.recordProviderSuccessInDb(db, selection.providerId, completedAtMs);
+      if (this.ownsBreaker(db, selection, completedAtMs)) this.recordProviderSuccessInDb(db, selection.providerId, completedAtMs);
     }));
   }
   private scopeKey(
@@ -873,7 +910,7 @@ export class ProviderStateStore {
     if (decision.scope === 'request') {
       if (decision.failureClass === 'REQUEST_INVALID') {
         this.withDb(db => this.inTransaction(db, () => {
-          this.recordProviderSuccessInDb(db, selection.providerId, completedAtMs);
+          if (this.ownsBreaker(db, selection, completedAtMs)) this.recordProviderSuccessInDb(db, selection.providerId, completedAtMs);
         }));
       }
       return null;
@@ -947,11 +984,11 @@ export class ProviderStateStore {
         );
       }
 
-      if (decision.affectsProviderBreaker) {
+      if (decision.affectsProviderBreaker && this.ownsBreaker(db, selection, completedAtMs)) {
         this.recordProviderFailureInDb(
           db, selection.providerId, decision.failureClass, completedAtMs,
         );
-      } else {
+      } else if (this.ownsBreaker(db, selection, completedAtMs)) {
         this.recordProviderSuccessInDb(db, selection.providerId, completedAtMs);
       }
       return effectiveRetryAt;
@@ -1092,7 +1129,7 @@ export class ProviderStateStore {
           quotaBlockedCount: rows.filter(row => row.state === 'quota_blocked').length,
           invalidCount: rows.filter(row => row.state === 'invalid').length,
           breakerState: breakerExpired ? 'HALF_OPEN' : breaker.state,
-          nextAvailableAtMs: minFuture([nextCredential, breakerExpired ? null : breaker.retry_at_ms], now),
+          nextAvailableAtMs: minFuture([nextCredential, probeDeadline(breaker), breakerExpired ? null : breaker.retry_at_ms], now),
         };
       });
     } catch (error) {

@@ -1,0 +1,92 @@
+{
+  "coreArtifacts": 6,
+  "activatedAt": "2026-10-29T09:24:11.9451956+00:00",
+  "uiBundle": "index-_rrOjgUb.js",
+  "nativeSha256": "86db3fcd843a78146c38d84d5752c3996d30c7f56b05e72aec4e36793f577af8",
+  "status": "active",
+  "restartAttempts": 1,
+  "observedAt": "2026-10-29T09:25:52.679Z",
+  "launcherPid": 17188,
+  "corePid": 6300,
+  "coreStatus": "ok",
+  "staleDist": false,
+  "chat": {
+    "status": "available",
+    "conversationCount": 86,
+    "activeConversationCount": 25,
+    "resumableTurnCount": 1,
+    "runningTurnCount": 0
+  },
+  "operationalProjection": [
+    {
+      "providerId": "anthropic",
+      "persistedState": "HALF_OPEN",
+      "persistedProbeCount": 1,
+      "persistedDeadline": null,
+      "lastFailureClass": "TRANSPORT_TRANSIENT",
+      "diagnosis": {
+        "configured": 3,
+        "eligible": 3,
+        "skipped": {},
+        "breaker": "HALF_OPEN",
+        "status": "available"
+      }
+    },
+    {
+      "providerId": "gonka",
+      "persistedState": "HALF_OPEN",
+      "persistedProbeCount": 1,
+      "persistedDeadline": null,
+      "lastFailureClass": "PROVIDER_TRANSIENT",
+      "diagnosis": {
+        "configured": 18,
+        "eligible": 18,
+        "skipped": {},
+        "breaker": "HALF_OPEN",
+        "status": "available"
+      }
+    }
+  ],
+  "projectionScope": "existing persisted credential descriptors; readonly diagnosis, not a live provider response",
+  "artifacts": [
+    {
+      "path": "E:\\Projects\\Agent-Core\\dist\\agent-provider.js",
+      "sha256": "7cb96c95d3bff41a55f3fd42ec8b6b803ec41b676722e027a89fd6cd690208d4",
+      "matches": true
+    },
+    {
+      "path": "E:\\Projects\\Agent-Core\\dist\\agent-provider.js.map",
+      "sha256": "a5b7d25ecf40be9826928615a5102b2647c1a72dfdd04941586c35e2e967f24b",
+      "matches": true
+    },
+    {
+      "path": "E:\\Projects\\Agent-Core\\dist\\agent-provider-state.js",
+      "sha256": "017163e4db7525577b45190ba6e2228295728b3e0954b69cb7e5611f754c0f3e",
+      "matches": true
+    },
+    {
+      "path": "E:\\Projects\\Agent-Core\\dist\\agent-provider-state.js.map",
+      "sha256": "9c8830ea46ee9bdb5055e2842222bcd6a67a6014609dbe287756f5692f6696a1",
+      "matches": true
+    },
+    {
+      "path": "E:\\Projects\\Agent-Core\\dist\\agent-provider-scheduler.js",
+      "sha256": "3fe625e72d7e1e206a1b7d6caf58f43c3d6246a0b0f23eeda76bad2e1cf6d3f7",
+      "matches": true
+    },
+    {
+      "path": "E:\\Projects\\Agent-Core\\dist\\agent-provider-scheduler.js.map",
+      "sha256": "751a46e2b968cde88b4118aa52aff401f1a36596f8f13c06cff419b1cccaee61",
+      "matches": true
+    }
+  ],
+  "functionalTestInvocations": 2,
+  "green": {
+    "files": 6,
+    "passed": 208,
+    "durationSeconds": 18.02
+  },
+  "nativeTaskSubmitted": false,
+  "modelChanged": false,
+  "dependenciesInstalled": []
+}

@@ -81,6 +81,44 @@ function fixtureFetch(handler: (url: URL, init?: RequestInit) => Promise<Respons
 }
 
 describe('OpenAICompatibleProviderPool persistent routing', () => {
+  it.each(['cancel','checkpoint-error','expired-callback','provider-error'] as const)('provider probe recovery releases %s without reporting provider success', async mode => {
+    const {statePath}=await fixturePath();
+    const settings=config(['fixture-secret']);
+    let completionCalls=0;
+    fixtureFetch(async () => {completionCalls++;return mode==='provider-error'
+      ? new Response(JSON.stringify({choices:[]}),{status:200,headers:{'content-type':'application/json'}})
+      : success();});
+    const pool=new OpenAICompatibleProviderPool(settings,statePath);
+    await pool.prepareReadiness();
+    const db=new DatabaseSync(statePath);
+    db.prepare(`INSERT INTO provider_breaker_state(provider_id,state,failure_count,half_open_probe_count,state_revision,updated_at_ms)
+      VALUES ('openrouter','HALF_OPEN',3,0,4,?)`).run(Date.now());
+    db.close();
+    const controller=new AbortController();
+    await expect(pool.complete([{role:'user',content:'fixture'}],[],undefined,controller.signal,{
+      onAttempt:()=>{
+        if(mode==='cancel')controller.abort(new Error('fixture cancel'));
+        if(mode==='checkpoint-error')throw new Error('fixture checkpoint failure');
+        if(mode==='expired-callback'){
+          const read=new DatabaseSync(statePath,{readOnly:true});
+          const deadline=read.prepare('SELECT retry_at_ms FROM provider_breaker_state WHERE provider_id=?').get('openrouter')!.retry_at_ms as number;
+          read.close();
+          vi.useFakeTimers();vi.setSystemTime(deadline+1);
+        }
+      },
+    })).rejects.toBeInstanceOf(Error);
+    const inspect=new DatabaseSync(statePath,{readOnly:true});
+    const breaker=inspect.prepare('SELECT state,failure_count,half_open_probe_count FROM provider_breaker_state WHERE provider_id=?').get('openrouter');
+    inspect.close();
+    expect(breaker).toMatchObject(mode==='provider-error'
+      ? {state:'OPEN',failure_count:4,half_open_probe_count:0}
+      : {state:'HALF_OPEN',failure_count:3,half_open_probe_count:0});
+    const next=await new PersistentCredentialScheduler(statePath).select({providerId:'openrouter',model:'fixture-model',credentials:settings.providers![0]!.credentials!});
+    if(mode==='provider-error')expect(next.credential).toBeNull();
+    else expect(next.credential).not.toBeNull();
+    expect(completionCalls).toBe(mode==='provider-error'?1:0);
+  });
+
   it('preserves numbered credential IDs from configuration', () => {
     const loaded = loadConfig({
       OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1',

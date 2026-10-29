@@ -108,6 +108,7 @@ export class PersistentCredentialScheduler {
     qualifiedModels?: ReadonlyMap<string, ProviderModelReadiness>;
     trackPool?: boolean;
     expectedPoolRevision?: number;
+    probeLeaseMs?: number;
     now?: number;
   }): Promise<SchedulerSelectionResult> {
     return withProviderLock(input.providerId, () => {
@@ -120,6 +121,7 @@ export class PersistentCredentialScheduler {
         qualifiedModels: input.qualifiedModels,
         trackPool: input.trackPool,
         expectedPoolRevision: input.expectedPoolRevision,
+        probeLeaseMs: input.probeLeaseMs,
         now: input.now,
       });
       if (!result.selection) return {
@@ -156,6 +158,14 @@ export class PersistentCredentialScheduler {
     completedAtMs?: number;
   }): number | null {
     return this.state.recordFailure(input);
+  }
+
+  probeIsCurrent(selection: ProviderSelectionRecord): boolean {
+    return this.state.probeIsCurrent(selection);
+  }
+
+  releaseProbe(selection: ProviderSelectionRecord, now = Date.now()): void {
+    this.state.releaseProbe(selection, now);
   }
 
   recordObservation(input: {

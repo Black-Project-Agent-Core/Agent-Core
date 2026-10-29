@@ -826,6 +826,7 @@ export class OpenAICompatibleProviderPool {
           qualifiedModels,
           trackPool: true,
           expectedPoolRevision: cursor?.revision ?? 0,
+          probeLeaseMs: Math.min(this.config.requestTimeoutMs, 15_000) + 4 * this.config.requestTimeoutMs + 1_000,
         });
         if (scheduled.reason === 'pool-changed') {
           if (++cursorConflicts >= 32) throw await pausedError('contention', Date.now() + 1_000);
@@ -843,157 +844,175 @@ export class OpenAICompatibleProviderPool {
         }
 
         const selected = scheduled.credential;
-        await options.onAttempt?.({
-          providerId: route.id,
-          model: route.model,
-          attempt: networkAttempts + 1,
-        });
-        networkAttempts += 1;
-        routeAttempts.set(route.id, (routeAttempts.get(route.id) ?? 0) + 1);
-        const attemptNumber = networkAttempts;
-        const attemptKey = (model: string | null): AgentProviderRoutingKey => ({
-          providerId: route.id, credentialId: selected.id, model,
-        });
-        if (options.onRouting) {
-          const from = cursor ? { providerId: cursor.providerId, credentialId: cursor.credentialId } : null;
-          const transition: AgentProviderRouteTransition = !from ? 'initial'
-            : from.providerId !== route.id ? 'provider-switch'
-              : from.credentialId !== selected.id ? 'sibling-key' : 'keep';
-          const left = transition === 'provider-switch' && from ? leftRoutes.get(from.providerId) : undefined;
-          await emitRouting({
-            type: 'attempt',
-            attempt: attemptNumber,
-            attemptLimit: maxAttempts,
-            transition,
-            cause: lastFailureClass,
-            from,
-            to: attemptKey(route.model),
-            selection: scheduled.diagnostics ?? {
-              configured: route.credentials.length, eligible: 1, skipped: {}, breaker: 'CLOSED', status: 'available',
-            },
-            ...(left ? { left } : {}),
-          });
-        }
-        let effectiveModel = route.model;
-        let capacity = route.continuation;
-        if (selected.secret) {
-          const ready = await this.validateModel(route, selected, signal,
-            Math.max(options.continuation?.minContextTokens ?? 0, accountContext(messages, tools, { bytes: wireBytes }).requiredTokens));
-          if (ready.status !== 'ready') {
-            skipped.add(selected.id);
-            // A size shortfall cannot be waited out: no retry time, and the reason carries the accounting.
-            const tooLarge = ready.reason === MODEL_CONTEXT_INSUFFICIENT_FOR_REQUEST;
-            markWhy(route.id, selected.id, tooLarge ? 'context' : 'readiness');
-            if (!tooLarge) nextAvailable.push(ready.retryAtMs);
-            failures.push(`${route.id}:${(tooLarge
-              && contextRefusal(accountContext(messages, tools, { bytes: wireBytes }), ready.contextWindowTokens ?? 0))
-              || ready.reason}`);
-            await emitRouting({ type: 'skip', attempt: attemptNumber, key: attemptKey(route.model), reason: tooLarge ? 'context' : 'readiness' });
-            continue;
-          }
-          // Qualification may replace a model to satisfy this task's context.
-          // Re-select so the replacement's own blocks and quota are checked.
-          if ((selected.selection.model ?? route.model) !== ready.model) {
-            await emitRouting({ type: 'skip', attempt: attemptNumber, key: attemptKey(route.model), reason: 'model-replaced' });
-            continue;
-          }
-          effectiveModel = ready.model;
-          capacity = { supportsTools: true, modalities: ['text'], contextWindowTokens: ready.contextWindowTokens!,
-            maxOutputTokens: ready.maxOutputTokens!, toolCallFormat: 'openai-chat-tool-calls-v1' };
-        }
-        if (options.continuation && capacity && (capacity.contextWindowTokens < options.continuation.minContextTokens
-          || capacity.maxOutputTokens < options.continuation.minOutputTokens)) {
-          skipped.add(selected.id);
-          markWhy(route.id, selected.id, 'context');
-          await emitRouting({ type: 'skip', attempt: attemptNumber, key: attemptKey(effectiveModel), reason: 'context' });
-          continue;
-        }
-        // shortcut: JSON bytes conservatively bound input tokens; use a provider tokenizer if tighter packing is needed.
-        const observedKey = `${route.id}::${effectiveModel}`;
-        const accounting: ContextAccounting | null = capacity
-          ? accountContext(messages, tools, { bytes: wireBytes, maxOutputTokens: capacity.maxOutputTokens,
-              observed: this.observedInput.get(observedKey) })
-          : null;
-        const refusal = capacity && accounting ? contextRefusal(accounting, capacity.contextWindowTokens) : null;
-        if (refusal) {
-          skipped.add(selected.id);
-          markWhy(route.id, selected.id, 'context');
-          failures.push(`${route.id}:${refusal}`);
-          await emitRouting({ type: 'skip', attempt: attemptNumber, key: attemptKey(effectiveModel), reason: 'context' });
-          continue;
-        }
-        const provider = new OpenAICompatibleProvider({
-          enabled: true,
-          baseUrl: route.baseUrl,
-          model: effectiveModel,
-          apiKey: selected.secret || null,
-          requestTimeoutMs: this.config.requestTimeoutMs,
-          maxToolIterations: this.config.maxToolIterations,
-        }, observation => {
-          this.scheduler.recordObservation({
-            providerId: route.id,
-            credentialId: selected.id,
-            model: effectiveModel,
-            observation,
-          });
-        });
+        let attemptSignal = signal;
         try {
-          const response = await provider.complete(messages, tools, signal,
-            capacity && accounting ? completionCap(accounting, capacity) : undefined);
-          if (response.usage?.inputTokens) {
-            this.observedInput.set(observedKey, { inputTokens: response.usage.inputTokens, bytes: wireBytes });
-          }
-          this.scheduler.recordSuccess(selected.selection);
-          await emitRouting({ type: 'success', attempt: attemptNumber, key: attemptKey(effectiveModel) });
-          if (affinityKey) this.affinity.set(affinityKey, route.id);
-          return {
-            ...response,
+          if (selected.selection.probeExpiresAtMs !== undefined) attemptSignal = AbortSignal.any([
+            ...(signal ? [signal] : []), AbortSignal.timeout(Math.max(1, selected.selection.probeExpiresAtMs - Date.now())),
+          ]);
+          await options.onAttempt?.({
             providerId: route.id,
-            resolvedModel: response.resolvedModel ?? null,
-            ...(effectiveModel ? { model: effectiveModel } : {}),
-          };
+            model: route.model,
+            attempt: networkAttempts + 1,
+          });
+          if (!this.scheduler.probeIsCurrent(selected.selection)) throw await pausedError('contention', Date.now() + 1_000);
+          attemptSignal?.throwIfAborted();
+          networkAttempts += 1;
+          routeAttempts.set(route.id, (routeAttempts.get(route.id) ?? 0) + 1);
+          const attemptNumber = networkAttempts;
+          const attemptKey = (model: string | null): AgentProviderRoutingKey => ({
+            providerId: route.id, credentialId: selected.id, model,
+          });
+          if (options.onRouting) {
+            const from = cursor ? { providerId: cursor.providerId, credentialId: cursor.credentialId } : null;
+            const transition: AgentProviderRouteTransition = !from ? 'initial'
+              : from.providerId !== route.id ? 'provider-switch'
+                : from.credentialId !== selected.id ? 'sibling-key' : 'keep';
+            const left = transition === 'provider-switch' && from ? leftRoutes.get(from.providerId) : undefined;
+            await emitRouting({
+              type: 'attempt',
+              attempt: attemptNumber,
+              attemptLimit: maxAttempts,
+              transition,
+              cause: lastFailureClass,
+              from,
+              to: attemptKey(route.model),
+              selection: scheduled.diagnostics ?? {
+                configured: route.credentials.length, eligible: 1, skipped: {}, breaker: 'CLOSED', status: 'available',
+              },
+              ...(left ? { left } : {}),
+            });
+          }
+          if (!this.scheduler.probeIsCurrent(selected.selection)) throw await pausedError('contention', Date.now() + 1_000);
+          attemptSignal?.throwIfAborted();
+          let effectiveModel = route.model;
+          let capacity = route.continuation;
+          if (selected.secret) {
+            const ready = await this.validateModel(route, selected, attemptSignal,
+              Math.max(options.continuation?.minContextTokens ?? 0, accountContext(messages, tools, { bytes: wireBytes }).requiredTokens));
+            if (ready.status !== 'ready') {
+              skipped.add(selected.id);
+              // A size shortfall cannot be waited out: no retry time, and the reason carries the accounting.
+              const tooLarge = ready.reason === MODEL_CONTEXT_INSUFFICIENT_FOR_REQUEST;
+              markWhy(route.id, selected.id, tooLarge ? 'context' : 'readiness');
+              if (!tooLarge) nextAvailable.push(ready.retryAtMs);
+              failures.push(`${route.id}:${(tooLarge
+                && contextRefusal(accountContext(messages, tools, { bytes: wireBytes }), ready.contextWindowTokens ?? 0))
+                || ready.reason}`);
+              await emitRouting({ type: 'skip', attempt: attemptNumber, key: attemptKey(route.model), reason: tooLarge ? 'context' : 'readiness' });
+              continue;
+            }
+            // Qualification may replace a model to satisfy this task's context.
+            // Re-select so the replacement's own blocks and quota are checked.
+            if ((selected.selection.model ?? route.model) !== ready.model) {
+              await emitRouting({ type: 'skip', attempt: attemptNumber, key: attemptKey(route.model), reason: 'model-replaced' });
+              continue;
+            }
+            effectiveModel = ready.model;
+            capacity = { supportsTools: true, modalities: ['text'], contextWindowTokens: ready.contextWindowTokens!,
+              maxOutputTokens: ready.maxOutputTokens!, toolCallFormat: 'openai-chat-tool-calls-v1' };
+          }
+          if (options.continuation && capacity && (capacity.contextWindowTokens < options.continuation.minContextTokens
+            || capacity.maxOutputTokens < options.continuation.minOutputTokens)) {
+            skipped.add(selected.id);
+            markWhy(route.id, selected.id, 'context');
+            await emitRouting({ type: 'skip', attempt: attemptNumber, key: attemptKey(effectiveModel), reason: 'context' });
+            continue;
+          }
+          // shortcut: JSON bytes conservatively bound input tokens; use a provider tokenizer if tighter packing is needed.
+          const observedKey = `${route.id}::${effectiveModel}`;
+          const accounting: ContextAccounting | null = capacity
+            ? accountContext(messages, tools, { bytes: wireBytes, maxOutputTokens: capacity.maxOutputTokens,
+                observed: this.observedInput.get(observedKey) })
+            : null;
+          const refusal = capacity && accounting ? contextRefusal(accounting, capacity.contextWindowTokens) : null;
+          if (refusal) {
+            skipped.add(selected.id);
+            markWhy(route.id, selected.id, 'context');
+            failures.push(`${route.id}:${refusal}`);
+            await emitRouting({ type: 'skip', attempt: attemptNumber, key: attemptKey(effectiveModel), reason: 'context' });
+            continue;
+          }
+          if (!this.scheduler.probeIsCurrent(selected.selection)) throw await pausedError('contention', Date.now() + 1_000);
+          attemptSignal?.throwIfAborted();
+          const provider = new OpenAICompatibleProvider({
+            enabled: true,
+            baseUrl: route.baseUrl,
+            model: effectiveModel,
+            apiKey: selected.secret || null,
+            requestTimeoutMs: this.config.requestTimeoutMs,
+            maxToolIterations: this.config.maxToolIterations,
+          }, observation => {
+            this.scheduler.recordObservation({
+              providerId: route.id,
+              credentialId: selected.id,
+              model: effectiveModel,
+              observation,
+            });
+          });
+          try {
+            const response = await provider.complete(messages, tools, attemptSignal,
+              capacity && accounting ? completionCap(accounting, capacity) : undefined);
+            if (response.usage?.inputTokens) {
+              this.observedInput.set(observedKey, { inputTokens: response.usage.inputTokens, bytes: wireBytes });
+            }
+            this.scheduler.recordSuccess(selected.selection);
+            await emitRouting({ type: 'success', attempt: attemptNumber, key: attemptKey(effectiveModel) });
+            if (affinityKey) this.affinity.set(affinityKey, route.id);
+            return {
+              ...response,
+              providerId: route.id,
+              resolvedModel: response.resolvedModel ?? null,
+              ...(effectiveModel ? { model: effectiveModel } : {}),
+            };
+          } catch (error) {
+            attemptSignal?.throwIfAborted();
+            const decision = classifyAgentProviderFailure(error);
+            const status = error instanceof AgentProviderRequestError ? error.status : null;
+            let persistedRetryAt: number | null = null;
+            try {
+              persistedRetryAt = this.scheduler.recordFailure({
+                selection: selected.selection,
+                decision,
+                model: effectiveModel,
+                httpStatus: status,
+              });
+            } catch (stateError) {
+              throw new Error(
+                `AGENT_RUNTIME_PROVIDER_STATE_UPDATE_FAILED: ${safeFailureSummary(route.id, stateError)}`,
+              );
+            }
+            failures.push(
+              `${route.id}/${selected.id}:${decision.failureClass}:${safeFailureSummary(route.id, error)}`,
+            );
+            lastFailureClass = decision.failureClass;
+            await emitRouting({
+              type: 'failure',
+              attempt: attemptNumber,
+              key: attemptKey(effectiveModel),
+              failureClass: decision.failureClass,
+              scope: decision.scope,
+              httpStatus: status,
+              retryAtMs: persistedRetryAt,
+              failover: decision.shouldFailover,
+            });
+            if (!decision.shouldFailover) throw error;
+            skipped.add(selected.id);
+            // Transient outages leave no persisted per-key verdict; keep the cause for evidence.
+            if (decision.failureClass === 'PROVIDER_TRANSIENT' || decision.failureClass === 'TRANSPORT_TRANSIENT') {
+              markWhy(route.id, selected.id, 'transient');
+            }
+            if (persistedRetryAt !== null) nextAvailable.push(persistedRetryAt);
+            if (decision.scope === 'model-provider') {
+              leftRoutes.set(route.id, { providerId: route.id, reason: 'model-scope', diagnostics: diagnoseRoute(route) });
+              exhausted.add(route.id);
+            }
+          }
         } catch (error) {
           signal?.throwIfAborted();
-          const decision = classifyAgentProviderFailure(error);
-          const status = error instanceof AgentProviderRequestError ? error.status : null;
-          let persistedRetryAt: number | null = null;
-          try {
-            persistedRetryAt = this.scheduler.recordFailure({
-              selection: selected.selection,
-              decision,
-              model: effectiveModel,
-              httpStatus: status,
-            });
-          } catch (stateError) {
-            throw new Error(
-              `AGENT_RUNTIME_PROVIDER_STATE_UPDATE_FAILED: ${safeFailureSummary(route.id, stateError)}`,
-            );
-          }
-          failures.push(
-            `${route.id}/${selected.id}:${decision.failureClass}:${safeFailureSummary(route.id, error)}`,
-          );
-          lastFailureClass = decision.failureClass;
-          await emitRouting({
-            type: 'failure',
-            attempt: attemptNumber,
-            key: attemptKey(effectiveModel),
-            failureClass: decision.failureClass,
-            scope: decision.scope,
-            httpStatus: status,
-            retryAtMs: persistedRetryAt,
-            failover: decision.shouldFailover,
-          });
-          if (!decision.shouldFailover) throw error;
-          skipped.add(selected.id);
-          // Transient outages leave no persisted per-key verdict; keep the cause for evidence.
-          if (decision.failureClass === 'PROVIDER_TRANSIENT' || decision.failureClass === 'TRANSPORT_TRANSIENT') {
-            markWhy(route.id, selected.id, 'transient');
-          }
-          if (persistedRetryAt !== null) nextAvailable.push(persistedRetryAt);
-          if (decision.scope === 'model-provider') {
-            leftRoutes.set(route.id, { providerId: route.id, reason: 'model-scope', diagnostics: diagnoseRoute(route) });
-            exhausted.add(route.id);
-          }
+          if (attemptSignal?.aborted) throw await pausedError('contention', Date.now() + 1_000);
+          throw error;
+        } finally {
+          this.scheduler.releaseProbe(selected.selection);
         }
     }
 
