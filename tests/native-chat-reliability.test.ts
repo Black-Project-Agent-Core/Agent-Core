@@ -159,7 +159,7 @@ describe('Native chat durable response ownership', () => {
 });
 
 describe('Native startup checkpoint recovery', () => {
-  it('continues the same safe turn with consumed budgets and publishes a single committed result', async () => {
+  it('parks the safe turn at startup, then continues it on explicit Continue with consumed budgets and publishes a single committed result', async () => {
     const f = await fixture();
     const state = seed(f.store);
     f.controller.runConversationTurn.mockImplementation(async (input: any) => {
@@ -169,7 +169,15 @@ describe('Native startup checkpoint recovery', () => {
       return f.result;
     });
     const chat = await AgentChatService.initialize(f.root, f.runtime as any, f.controller as any);
-    await vi.waitFor(() => expect(chat.store.getTurn('turn-1')?.status).toBe('finalized'));
+    await new Promise<void>(resolve => setImmediate(resolve));
+    // Startup never spends provider quota: the turn waits, resumable, until the owner presses Continue.
+    expect(chat.store.getTurn('turn-1')?.status).toBe('resumable');
+    expect(chat.store.getTurn('turn-1')?.errorCode).toBe('AGENT_CHAT_TURN_RESUMABLE');
+    expect(f.controller.runConversationTurn).not.toHaveBeenCalled();
+    expect(chat.getConversation('chat-1')!.messages.filter(m => m.role === 'assistant')).toHaveLength(0);
+    const resumed = await chat.resumeTurn({ turnId: 'turn-1' });
+    expect(resumed.status).toBe('finalized');
+    expect(chat.store.getTurn('turn-1')?.status).toBe('finalized');
     expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(1);
     expect(chat.getConversation('chat-1')!.messages.filter(m => m.role === 'assistant')).toHaveLength(1);
     const replay = await chat.runTurn({ conversationId: 'chat-1', clientRequestId: 'request-turn-1', prompt: 'Duplicate' });
@@ -177,14 +185,18 @@ describe('Native startup checkpoint recovery', () => {
     expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps an uncertain mutating dispatch paused with a durable reason and does not retry it on the next startup', async () => {
+  it('keeps an uncertain mutating dispatch paused, refuses an explicit Continue and does not retry it on the next startup', async () => {
     const f = await fixture();
     seed(f.store, { pendingTool: { callId: 'write-1', name: 'write_file', arguments: '{}',
       invocationId: 'write-1', mutating: true, phase: 'dispatching' } });
     const chat = await AgentChatService.initialize(f.root, f.runtime as any, f.controller as any);
-    await vi.waitFor(() => expect(chat.store.getTurn('turn-1')?.errorCode).toBe('AGENT_CHAT_RESUME_SIDE_EFFECT_RESULT_UNAVAILABLE'));
+    await new Promise<void>(resolve => setImmediate(resolve));
     expect(chat.store.getTurn('turn-1')?.status).toBe('resumable');
+    expect(chat.store.getTurn('turn-1')?.errorCode).toBe('AGENT_CHAT_TURN_RESUMABLE');
     const revision = chat.store.getCheckpoint('turn-1')!.revision;
+    // Continue must not replay a write whose outcome is unknown, and the refusal leaves the turn parked.
+    await expect(chat.resumeTurn({ turnId: 'turn-1' })).rejects.toThrow('AGENT_CHAT_RESUME_SIDE_EFFECT_RESULT_UNAVAILABLE');
+    expect(chat.store.getTurn('turn-1')?.status).toBe('resumable');
     await AgentChatService.initialize(f.root, f.runtime as any, f.controller as any);
     await new Promise<void>(resolve => setImmediate(resolve));
     expect(chat.store.getCheckpoint('turn-1')!.revision).toBe(revision);
