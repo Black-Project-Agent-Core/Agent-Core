@@ -1,4 +1,26 @@
 # Harness2 donor proposals
+
+## Penutupan scope — 2026-10-29
+
+Status: COMPLETED — implementasi terpilih aktif; paket bersyarat diputuskan dengan falsifier, tanpa sisa permintaan aktif.
+
+Instruksi pengguna 2026-10-29 menuntaskan seluruh proposal penting bersama Native Opus 5.5/max menjadi otorisasi scope ini. Bagian lama di bawah dipertahankan sebagai sejarah revisi, bukan antrean baru.
+
+| Paket | Hasil akhir | Bukti dan batas |
+| --- | --- | --- |
+| P1 Fase 0, F1-A/A2 | Selesai sebelumnya; dipertahankan | Bukti bertanggal di bagian asal. |
+| F1-B | ADAPTED / aktif | Panduan Native 4.145→3.041 byte (−26,63%); descriptor/read request identik; gate reasoning dan grant utuh. Bukan klaim penurunan latency. |
+| F1-C | NO-OP / tidak dipilih | Kandidat pemecahan belum menjadi spesifikasi implementasi; kontrak kini mewajibkan pengiriman penuh. Tidak memotong instruksi untuk mengejar byte. |
+| P2 | NO-OP / falsifier terpenuhi | Coordinator tidak memasok observasi host independen per-arm; angka manifest tidak boleh menyamar sebagai observasi. Verdict manfaat tetap withheld. |
+| P3 | IMPLEMENTED / resident | Warning referensi pada summary SkillService; batas 32, tanpa eksekusi/akses referensi. Tes lifecycle dan katalog 47 Skill dengan nol warning. |
+| P4 | IMPLEMENTED / resident | Handoff dan panduan review mempertahankan atribusi confounded/awaiting-verification. Regresi bootstrap/handoff lulus. |
+| P5 | COMPLETED | Peta delapan permukaan, owner dan otorisasi pada Capability-Index. |
+
+Verifikasi dan kegagalan/pemulihan: [Proposal-Completion.md](../verification/Proposal-Completion.md), [Native-Guidance-Budget.json](../verification/Native-Guidance-Budget.json), [Native-Proposal-Review.md](../verification/Native-Proposal-Review.md). Satu restart resmi; health baru sehat/stale=false. Tidak ada rilis, commit, push atau dependency baru. Manfaat kausal belum diukur. Revisi penutupan: 4.
+
+Path asal: `docs/proposals/Harness2-Donor-Proposals.md`. Path arsip setelah finalisasi Learning: `docs/history-agent-core/Harness2-Donor-Proposals.md`.
+
+## Riwayat sebelum penutupan
 Tanggal: 2026-10-25
 Revisi: 3
 Status: PROPOSED — P1 Fase 0 DITERIMA dan SELESAI 2026-10-26 (laporan hanya-baca); P1 Fase 1 kandidat F1-A DITERIMA 2026-10-26, DIIMPLEMENTASIKAN di source (build, tes dan path policy lulus) dan AKTIF di resident sejak restart resmi 2026-10-26 10:36 WIB (diverifikasi pada respons acknowledge hidup); kandidat F1-A2 DITERIMA 2026-10-26, DIIMPLEMENTASIKAN di source (tes, build dan path policy lulus) dan AKTIF sejak restart yang sama; F1-B, F1-C dan P2–P5 belum diputuskan

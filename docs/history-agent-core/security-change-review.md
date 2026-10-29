@@ -1,11 +1,11 @@
 # security-change-review
 
 Nama: security-change-review
-Status: proposed
+Status: COMPLETED
 Aksi: create
-Artifact: not-built
+Artifact: catalog-active
 Workspace: agent-core
-Artifact digest: unavailable
+Artifact digest: sha256:3f53d5dd66cd69dd0a1d508377ff985077f4f272d2be37e39f1377d203d30499
 Target active digest: none
 Proposal ID: skill-proposal:7139318df258635fa966e6dd52eec98c
 Revisi: sha256:3340e246653231cef3af36daad8d24bce4d5acf0d7fe0db59e58433f0db87952
@@ -58,7 +58,22 @@ SKILL.md passes the strict parser and node scripts/verify/skill-pack-lint.mjs re
 A review of a known vulnerable fixture change names the traced path and an evidence level.
 Activation happens only after a user decision recorded by the host for the exact revision.
 
-## Keputusan pengguna
-Belum ada keputusan atas revisi ini.
+## Keputusan dan asal otorisasi
+approve / build-and-activate / controller-decision:fb6e44f4d2f233f683298b932439d2e361d84a2c763ba8bf24fc084f4b388aca / trusted-controller: 59a9447b-06fc-4961-a533-1bdc03213222
+
+## Penyelesaian scope yang disetujui
+Tanggal selesai: 2026-10-28
+State canonical tetap: approved / catalog-active. Status COMPLETED di dokumen ini hanya status penyelesaian proyeksi manusia-baca.
+Revisi final: sha256:3340e246653231cef3af36daad8d24bce4d5acf0d7fe0db59e58433f0db87952
+Artifact aktif terverifikasi: sha256:3f53d5dd66cd69dd0a1d508377ff985077f4f272d2be37e39f1377d203d30499
+
+Paket baru diaktifkan dari revisi proposal asli melalui keputusan controller yang diautentikasi. Uji penerapan mereview fixture race pencabutan key: jalur verify/scrypt/stale write, reachability, dampak dan bukti gagal-sebelum/lulus-sesudah tercatat di laporan. allowedTools=[]; pencarian positif menempatkannya di peringkat 1.
+
+Ketiga paket lulus validasi strict; 48 tes regresi gabungan lulus. Lint katalog 46 paket melaporkan 0 galat parse/nama. Renderer memakai Trigger/Non-trigger singular yang sah menurut discovery owner; catatan linter plural dan metadata lokal dipertahankan sebagai keterbatasan, bukan disembunyikan. Tidak ada grant baru. Manfaat belum diukur; rollback produksi tidak dijalankan.
+
+Bukti: [laporan implementasi, keputusan, validasi dan review Native](../verification/native-chat-reasoning-effort.md).
+Path asal: docs/proposals/skills/agent-core/security-change-review.md
+Path arsip: docs/history-agent-core/security-change-review.md
+Proyeksi ini diarsip setelah finalisasi Learning. Record canonical, keputusan dan katalog aktif tidak dipindahkan.
 
 ## Riwayat revisi

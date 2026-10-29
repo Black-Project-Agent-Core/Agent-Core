@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-28T20:23:26.4422978Z",
+  "learningCheckpoint": "complete-all-proposals-20261029-final-recovery",
+  "learningReview": "complete/no-new-knowledge",
+  "entries": [
+    {
+      "source": "E:\\Projects\\Agent-Core\\docs\\proposals\\Harness2-Donor-Proposals.md",
+      "target": "E:\\Projects\\Agent-Core\\docs\\history-agent-core\\Harness2-Donor-Proposals.md",
+      "sourceSha256": "29da72c6393177af5e2e65fa73f06966e41809d80eaea9b03acffde017f28f40",
+      "bytes": 29846,
+      "status": "moved-verified",
+      "archiveSha256": "29da72c6393177af5e2e65fa73f06966e41809d80eaea9b03acffde017f28f40",
+      "finalSha256": "29da72c6393177af5e2e65fa73f06966e41809d80eaea9b03acffde017f28f40",
+      "linkRepairChanged": false
+    },
+    {
+      "source": "E:\\Projects\\Agent-Core\\docs\\proposals\\Evidence-Gated-Harness-Self-Improvement-Lab.md",
+      "target": "E:\\Projects\\Agent-Core\\docs\\history-agent-core\\Evidence-Gated-Harness-Self-Improvement-Lab.md",
+      "sourceSha256": "9ffd0f2410d438e039fdb7618b96dba42841952ec3a41a0b070a19cfab478292",
+      "bytes": 115913,
+      "status": "moved-verified",
+      "archiveSha256": "9ffd0f2410d438e039fdb7618b96dba42841952ec3a41a0b070a19cfab478292",
+      "finalSha256": "9ffd0f2410d438e039fdb7618b96dba42841952ec3a41a0b070a19cfab478292",
+      "linkRepairChanged": false
+    },
+    {
+      "source": "E:\\Projects\\Agent-Core\\docs\\proposals\\Kualitas-Investigasi-dan-Keputusan-Agent-Core.md",
+      "target": "E:\\Projects\\Agent-Core\\docs\\history-agent-core\\Kualitas-Investigasi-dan-Keputusan-Agent-Core.md",
+      "sourceSha256": "04b2216b340defa4aa6f7d922f48241e3ab0d66c414ea98451c6ec0ccae9ee0c",
+      "bytes": 53155,
+      "status": "moved-verified",
+      "archiveSha256": "04b2216b340defa4aa6f7d922f48241e3ab0d66c414ea98451c6ec0ccae9ee0c",
+      "finalSha256": "d532a7ccd37b164bb8e6a0dd3d1ac0daa6b2ab584e23afd7e42520468fda64b4",
+      "linkRepairChanged": true
+    },
+    {
+      "source": "E:\\Projects\\Agent-Core\\docs\\proposals\\Memory-Retention-Outcome-Weighted-Review.md",
+      "target": "E:\\Projects\\Agent-Core\\docs\\history-agent-core\\Memory-Retention-Outcome-Weighted-Review.md",
+      "sourceSha256": "2efb96ac18308494eba60220a6dfb2b5bfb8b4b240997b16db1c539246a83c2c",
+      "bytes": 3453,
+      "status": "moved-verified",
+      "archiveSha256": "2efb96ac18308494eba60220a6dfb2b5bfb8b4b240997b16db1c539246a83c2c",
+      "finalSha256": "2efb96ac18308494eba60220a6dfb2b5bfb8b4b240997b16db1c539246a83c2c",
+      "linkRepairChanged": false
+    },
+    {
+      "source": "E:\\Projects\\Agent-Core\\docs\\proposals\\Claude-Ecosystem-Donor-Proposals.md",
+      "target": "E:\\Projects\\Agent-Core\\docs\\history-agent-core\\Claude-Ecosystem-Donor-Proposals.md",
+      "sourceSha256": "476346851d827936881b30af95de51e0ef373ba9d2a34a54274f1054834f46e9",
+      "bytes": 102740,
+      "status": "moved-verified",
+      "archiveSha256": "476346851d827936881b30af95de51e0ef373ba9d2a34a54274f1054834f46e9",
+      "finalSha256": "37a5ce3e4d5e15564227d8cc44465e5053c773c2cebbdbf1b6f824f1c3198058",
+      "linkRepairChanged": true
+    },
+    {
+      "source": "E:\\Projects\\Agent-Core\\docs\\proposals\\Integrasi-Arsitektur-Native-Agent-Core.md",
+      "target": "E:\\Projects\\Agent-Core\\docs\\history-agent-core\\Integrasi-Arsitektur-Native-Agent-Core.md",
+      "sourceSha256": "94399263fe0cbd2d6c7235b93e4cf14d24001c72b25afe74a7671252b0c0493c",
+      "bytes": 38083,
+      "status": "moved-verified",
+      "archiveSha256": "94399263fe0cbd2d6c7235b93e4cf14d24001c72b25afe74a7671252b0c0493c",
+      "finalSha256": "0200394467a9ff9d801d4aa61b7fa7f16b4efe733ef18aad31a219d7a719cce7",
+      "linkRepairChanged": true
+    },
+    {
+      "source": "E:\\Projects\\Agent-Core\\docs\\proposals\\skills\\agent-core\\incident-postmortem.md",
+      "target": "E:\\Projects\\Agent-Core\\docs\\history-agent-core\\incident-postmortem.md",
+      "sourceSha256": "70ac12922b6207bef51fce00b3bc0cfb82ed857b4ce73687e8410cd87787c3c9",
+      "bytes": 5760,
+      "status": "moved-verified",
+      "archiveSha256": "70ac12922b6207bef51fce00b3bc0cfb82ed857b4ce73687e8410cd87787c3c9",
+      "finalSha256": "bf51f55ee3d4be96f34e2124d362c59e2b34acf8f4b7ade0dec0d2644cf83837",
+      "linkRepairChanged": true
+    }
+  ],
+  "historicalGuide": {
+    "source": "E:\\Projects\\Agent-Core\\docs\\proposals\\README.md",
+    "target": "E:\\Projects\\Agent-Core\\docs\\history-agent-core\\Proposal-Review-Queue-History.md",
+    "sourceSha256": "cc95cec3a9211680c0bb8101b6f18ed6d48428dfeae16f372e01a738e3dacbea",
+    "archiveSha256": "cc95cec3a9211680c0bb8101b6f18ed6d48428dfeae16f372e01a738e3dacbea",
+    "status": "copied-verified",
+    "finalSha256": "5c2d6012d8233dd93ada906c667a6e6e04e441159a77562300f54dc64edc058a"
+  },
+  "linkRepairs": [
+    {
+      "path": "docs/history-agent-core/Native-Architecture-Integration-Execution-20261023.md",
+      "links": 1
+    },
+    {
+      "path": "docs/history-agent-core/Native-Architecture-Integration-Handoff-20261023.md",
+      "links": 1
+    },
+    {
+      "path": "docs/history-agent-core/Proposal-Review-Queue-History.md",
+      "links": 7
+    },
+    {
+      "path": "docs/history-agent-core/Kualitas-Investigasi-dan-Keputusan-Agent-Core.md",
+      "links": 2
+    },
+    {
+      "path": "docs/history-agent-core/Claude-Ecosystem-Donor-Proposals.md",
+      "links": 4
+    },
+    {
+      "path": "docs/history-agent-core/Integrasi-Arsitektur-Native-Agent-Core.md",
+      "links": 6
+    },
+    {
+      "path": "docs/history-agent-core/incident-postmortem.md",
+      "links": 2
+    },
+    {
+      "path": "docs/plans/README.md",
+      "links": 1
+    },
+    {
+      "path": "docs/README.md",
+      "links": 1
+    },
+    {
+      "path": "docs/releases/1.6.0.md",
+      "links": 1
+    },
+    {
+      "path": "docs/research/Harness2-Donor-Audit-20261025.md",
+      "links": 2
+    },
+    {
+      "path": "docs/research/Always-On-Text-Budget-Phase0-20261026.md",
+      "links": 1
+    },
+    {
+      "path": "docs/research/Learning-State-Closure-R8-S0-20261026.md",
+      "links": 1
+    },
+    {
+      "path": "docs/research/Claude-Ecosystem-Donor-Audit-20261027.md",
+      "links": 1
+    },
+    {
+      "path": "docs/Open-Browser-Use.md",
+      "links": 1
+    },
+    {
+      "path": "docs/CODEBASE.md",
+      "links": 10
+    }
+  ],
+  "note": "All seven files were first read back byte-identical after move; later changes only repair Markdown destinations. Original event/proposal prose is retained."
+}

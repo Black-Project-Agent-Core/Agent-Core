@@ -2,7 +2,7 @@
 
 Status: **R8-S0 selesai** (dry-run pada salinan state, ditambah peta konsumen dan peta frekuensi tulis yang dibaca dari source). Tidak ada perubahan source, tes produk, build, restart, maupun penulisan ke `runtime/learning`. Keputusan R8-S1 menunggu pengguna.
 
-Sumber keputusan: [Evidence-Gated-Harness-Self-Improvement-Lab.md](../proposals/Evidence-Gated-Harness-Self-Improvement-Lab.md) bagian 18 (Revisi 8). Persetujuan R8-S0 dicatat controller dari pesan chat pengguna 2026-10-26 ("you decide for me with your recommendation choice and i accepted your advices", jawaban atas pertanyaan keputusan berikutnya yang merekomendasikan R8-S0). Itu pembacaan controller, bukan atestasi pesan-pengguna dari host dan bukan grant eksekusi; cakupannya hanya R8-S0.
+Sumber keputusan: [Evidence-Gated-Harness-Self-Improvement-Lab.md](../history-agent-core/Evidence-Gated-Harness-Self-Improvement-Lab.md) bagian 18 (Revisi 8). Persetujuan R8-S0 dicatat controller dari pesan chat pengguna 2026-10-26 ("you decide for me with your recommendation choice and i accepted your advices", jawaban atas pertanyaan keputusan berikutnya yang merekomendasikan R8-S0). Itu pembacaan controller, bukan atestasi pesan-pengguna dari host dan bukan grant eksekusi; cakupannya hanya R8-S0.
 
 ## 1. Kesimpulan
 

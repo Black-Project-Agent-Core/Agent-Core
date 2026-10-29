@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-10-28T20:25:30.856Z",
+  "root": "E:\\Projects\\Agent-Core",
+  "folder": {
+    "allFiles": [
+      "docs/proposals/REVIEW-GUIDE.md",
+      "docs/proposals/README.md"
+    ],
+    "proposalCount": 0,
+    "guideCount": 2
+  },
+  "dashboard": {
+    "status": 200,
+    "proposalCount": 0,
+    "guideCount": 2,
+    "warnings": []
+  },
+  "archives": [
+    {
+      "path": "docs/history-agent-core/Harness2-Donor-Proposals.md",
+      "sha256": "29da72c6393177af5e2e65fa73f06966e41809d80eaea9b03acffde017f28f40",
+      "bytes": 29846,
+      "status": "Status: COMPLETED — implementasi terpilih aktif; paket bersyarat diputuskan dengan falsifier, tanpa sisa permintaan aktif."
+    },
+    {
+      "path": "docs/history-agent-core/Evidence-Gated-Harness-Self-Improvement-Lab.md",
+      "sha256": "9ffd0f2410d438e039fdb7618b96dba42841952ec3a41a0b070a19cfab478292",
+      "bytes": 115913,
+      "status": "Status: COMPLETED — engineering terpilih selesai; eksperimen kondisional berhenti pada gate bukti. Tidak ada optimizer atau klaim manfaat model."
+    },
+    {
+      "path": "docs/history-agent-core/Kualitas-Investigasi-dan-Keputusan-Agent-Core.md",
+      "sha256": "d532a7ccd37b164bb8e6a0dd3d1ac0daa6b2ab584e23afd7e42520468fda64b4",
+      "bytes": 53150,
+      "status": "Status: COMPLETED — extension opsional dan proyeksi chat aktif; manfaat reasoning masih insufficient/unknown."
+    },
+    {
+      "path": "docs/history-agent-core/Memory-Retention-Outcome-Weighted-Review.md",
+      "sha256": "2efb96ac18308494eba60220a6dfb2b5bfb8b4b240997b16db1c539246a83c2c",
+      "bytes": 3453,
+      "status": "Status: COMPLETED — pengukuran selesai; penggantian skor NO-OP karena bias berbahaya belum terbukti."
+    },
+    {
+      "path": "docs/history-agent-core/Claude-Ecosystem-Donor-Proposals.md",
+      "sha256": "37a5ce3e4d5e15564227d8cc44465e5053c773c2cebbdbf1b6f824f1c3198058",
+      "bytes": 102673,
+      "status": "Status: COMPLETED — scope penting yang dipilih selesai; sejarah keputusan tetap utuh."
+    },
+    {
+      "path": "docs/history-agent-core/Integrasi-Arsitektur-Native-Agent-Core.md",
+      "sha256": "0200394467a9ff9d801d4aa61b7fa7f16b4efe733ef18aad31a219d7a719cce7",
+      "bytes": 37951,
+      "status": "Status: COMPLETED — administrasi scope R4 yang telah CLOSED BY USER DECISION; bukan klaim semua rancangan historis lulus benchmark."
+    },
+    {
+      "path": "docs/history-agent-core/incident-postmortem.md",
+      "sha256": "bf51f55ee3d4be96f34e2124d362c59e2b34acf8f4b7ade0dec0d2644cf83837",
+      "bytes": 5748,
+      "status": "Status: COMPLETED — approved/build-and-activated artifact; scoped acceptance verified."
+    }
+  ],
+  "health": {
+    "status": "ok",
+    "pid": 5748,
+    "startedAt": "2026-10-28T19:44:42.709Z",
+    "buildStale": false
+  },
+  "learning": {
+    "checkpointKey": "complete-all-proposals-20261029-final-recovery",
+    "review": "complete/no-new-knowledge"
+  },
+  "assertionsPassed": true,
+  "limits": [
+    "Zero is the observed proposal folder/review-card state, not deletion of canonical historical proposal records.",
+    "Conditional no-op and historical closure decisions are preserved in each archive; general benefit and full-suite coverage are not claimed."
+  ]
+}

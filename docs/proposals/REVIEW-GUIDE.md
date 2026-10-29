@@ -66,9 +66,17 @@ Belum ada keputusan; menunggu APPROVE / REVISE / HOLD / REJECT.
    bukti keputusan. Jangan menebak bahwa status unknown berarti disetujui.
 4. Sampaikan keputusan atas **path dan revisi yang tepat** melalui alur pengguna
    existing: setujui scope tertentu, minta revisi, tunda atau tolak. Untuk Skill,
-   bukti keputusan harus merupakan pesan pengguna yang benar-benar dipersist
-   oleh host. Bila jalur itu tidak tersedia, laporkan keterbatasannya; jangan
-   mengarang `user-message` reference.
+   bukti keputusan Native harus merupakan pesan pengguna yang benar-benar
+   dipersist oleh host. Controller eksternal yang credential-nya secara eksplisit
+   didaftarkan operator untuk workspace terkait boleh memakai
+   `skills(action=decide_proposal, confirmation=APPROVE_SKILL_PROPOSAL)` untuk
+   approve/build atau approve/build-and-activate pada ID dan digest yang tepat.
+   Host memverifikasi principal autentik, task/workspace, allowance yang masih
+   berlaku dan veto keputusan terkini, lalu mencatat `controller-decision:`
+   beserta controller/task/session; caller tidak mengirim `userEvidenceRef`.
+   Jalur ini tidak membuat pesan pengguna Native atau memberi grant tool baru.
+   Bila kedua jalur tidak tersedia, laporkan keterbatasannya; jangan mengarang
+   `user-message` reference.
 5. Catat hasil terpisah: membaca, meminta keputusan, keputusan diterima,
    implementasi, validasi, aktivasi dan manfaat adalah keadaan berbeda.
 
@@ -134,4 +142,8 @@ direktori. Direktori dalam tidak dipindai bebas; symlink ditolak. Peringatan
 menjelaskan hasil parsial. Direktori ini tidak untuk secrets atau log privat.
 
 Manfaat yang tertulis adalah harapan sampai bukti tugas yang relevan tersedia.
+Jika beberapa komponen berubah bersamaan tanpa perbandingan yang mengisolasi satu
+komponen, catat atribusinya sebagai `confounded`. Outcome yang terverifikasi tetap
+dicatat, tetapi pelajaran yang hanya didukung bukti tersebut berstatus
+`awaiting-verification`; outcome bukan bukti kontribusi kausal tiap komponen.
 Persetujuan satu revisi tidak menyetujui revisi berikutnya atau scope tambahan.

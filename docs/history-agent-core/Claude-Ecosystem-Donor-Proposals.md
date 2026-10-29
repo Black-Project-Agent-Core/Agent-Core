@@ -1,9 +1,45 @@
 # Claude ecosystem donor proposals
+
+## Rekonsiliasi akhir — 2026-10-29
+
+Status: COMPLETED — scope penting yang dipilih selesai; sejarah keputusan tetap utuh.
+
+Revisi 5: instruksi pengguna 2026-10-29 meminta penuntasan antrean bersama Native Opus 5.5/max. Penutupan induk 2026-10-28 tidak dibaca sebagai klaim bahwa semua gagasan donor telah diimplementasikan. Scope akhir dan batasnya:
+
+- **UP-08:** empat proposal telah direkonsiliasi melalui owner Skill; Windows, security dan authoring aktif dari pekerjaan sebelumnya, incident kini approved/catalog-active dan postmortem nyata ditulis. Canonical proposal/decision/history dipertahankan.
+- **UP-09:** sepuluh kandidat referensi terbaru dipromosikan melalui SkillService pada exact baseline/candidate digests. Setiap delta hanya mengubah penunjuk/metadata adapter pada SKILL.md dan menambah referensi; nol file dihapus, lisensi existing dipertahankan, allowedTools tetap kosong. Dua kandidat lama yang superseded disimpan sebagai sejarah stage, bukan permintaan promosi tersisa. Digest/readback ada pada laporan dan ledger.
+- **D9:** sumber dan artifact aktif direkonsiliasi pada digest `sha256:8c201ebf5425fac94871de2bd9a81eae76a75e0d90a70e83d209013aebaa4795`. Satu promosi korektif sesudah sepuluh promosi awal memulihkan heading routing v13, dua trigger wajib dan satu pengecualian rutin; isi reasoning tetap dipertahankan. Tes source/package/reference33/33, discovery resident declared, delivery lengkap dua fragmen. Checkpoint `bf881e92-153e-41e0-ba84-e6541b7c03e5` mempertahankan entrypoint sumber lama; history dan kandidat yang gagal tidak dihapus. Validasi source dan digest artifact cocok; metadata lifecycle tetap milik SkillService.
+- **D2:** NO-OP. Tidak ditemukan konsumen task ini yang membutuhkan perubahan identitas URL origin; migrasi tanpa kebutuhan justru berisiko memisahkan Memory. Identitas tersimpan dipertahankan.
+- **D3:** NO-OP untuk pemecahan kontrak. Handshake penuh tetap berlaku; pengurangan redundansi yang aman diselesaikan pada panduan Native di Harness2 F1-B.
+- **D5:** NO-OP untuk perluasan reader/relokasi massal. Batas references existing dipertahankan. File di luar jalur itu tetap advisory lint; tidak dianggap telah dikirim melalui skills(read). Peringatan struktural Harness2 menutup celah referensi tidak ada, bukan memperluas akses.
+- **D6:** NO-OP. Tidak ada kegagalan profil shell yang diverifikasi pada task ini; semantik PowerShell existing dipertahankan.
+- **D8:** keputusan pengguna yang menutup/menahan instruksi workspace bertingkat dipertahankan sebagai keputusan desain historis, bukan request aktif. Tidak dibalik oleh asumsi controller.
+- **Butir lain yang dahulu tidak dikerjakan:** opsi baru tanpa konsumen terverifikasi (event heartbeat, assertion/admission format, cache verdict, claim ledger), perluasan UI prioritas rendah, matriks tambahan dan mekanisme keamanan referensi tetap tidak dipilih. Batas penjaga shell/proses yang tercatat di kronologi tetap batas aktual; tidak diklaim hilang. Tidak ada implementasi terselubung atau benchmark lama yang dibuka kembali hanya untuk mengosongkan daftar.
+
+Verifikasi: 29/29 tes delta referensi, readback digest sepuluh promosi, lint/parser dan katalog; [laporan akhir](../verification/Proposal-Completion.md), [ledger promosi](../verification/Skill-Reference-Promotions.json), [postmortem incident](../verification/Incident-Postmortem.md). Aktivasi bukan bukti manfaat kausal Skill. Tidak ada commit, push, rilis atau dependency baru pada tugas penuntasan ini.
+
+Semua keputusan yang dulu HOLD/ditunda tetap terlihat di riwayat di bawah; tidak ada scope implementasi yang masih disetujui-terbuka dalam antrean ini. Dokumen kini boleh diarsipkan berdasarkan keputusan penuntasan pengguna, dengan keterbatasan di atas. Asal `docs/proposals/Claude-Ecosystem-Donor-Proposals.md`; arsip setelah Learning `docs/history-agent-core/Claude-Ecosystem-Donor-Proposals.md`.
+
+## Riwayat sebelum rekonsiliasi
 Tanggal: 2026-10-27 (Revisi 2 dan 3: 2026-10-28)
 Revisi: 4
 Status: CLOSED BY USER DECISION (2026-10-28) — keempat belas paket sudah ditangani dan dirilis dalam Agent Core 1.6.0 (cabang `feature/claude-donor-up01-up14` dan `main` di GitHub). Beberapa paket hanya selesai sebagian, dan sisanya (keputusan D2, D3, D5, D6, D8, D9, status empat proposal Skill UP-08, promosi sepuluh kandidat UP-09 dan butir "tidak dikerjakan" pada tiap paket) DITUNDA tanpa perubahan perilaku; lihat "Disposisi penutupan" dan "Penutupan, 2026-10-28". Dokumen tetap di `docs/proposals` dan tidak diarsipkan sebagai COMPLETED karena scope-nya belum selesai seluruhnya (aturan `REVIEW-GUIDE.md`), mengikuti preseden R4. Status sebelumnya (Revisi 3): PROPOSED, Gelombang 0 (UP-02A, UP-03 butir a, UP-04 butir c) DITERIMA dan DIIMPLEMENTASIKAN 2026-10-28.
 Jenis: Improvement (14 paket terpisah, keputusan per paket)
-Asal dan bukti: [Claude-Ecosystem-Donor-Audit-20261027](../research/Claude-Ecosystem-Donor-Audit-20261027.md), folder bukti [claude-ecosystem-donor](../research/claude-ecosystem-donor/) (temuan lengkap per irisan, `traceability.tsv`, `ATTRIBUTION.md`), source Agent Core yang disebut per paket. Donor: `E:\Projects\Side-Project-Dont-Touch\claude-code` (HEAD `a5b0f2e`, 2026-10-26, 1.615 file terlacak), `claude-plugins-official` (HEAD `5826794`, 2026-10-23, 591 file), `knowledge-work-plugins` (HEAD `33d3dea`, 2026-10-21, 1.285 file).
+Asal dan bukti: [Claude-Ecosystem-Donor-Audit-20261027](../research/Claude-Ecosystem-Donor-Audit-20261027.md), folder bukti [claude-ecosystem-donor](../research/claude-ecosystem-donor) (temuan lengkap per irisan, `traceability.tsv`, `ATTRIBUTION.md`), source Agent Core yang disebut per paket. Donor: `E:\Projects\Side-Project-Dont-Touch\claude-code` (HEAD `a5b0f2e`, 2026-10-26, 1.615 file terlacak), `claude-plugins-official` (HEAD `5826794`, 2026-10-23, 591 file), `knowledge-work-plugins` (HEAD `33d3dea`, 2026-10-21, 1.285 file).
+
+## Pembaruan terpisah UP-08 — 2026-10-28
+
+Setelah penutupan scope induk, pengguna meminta promosi tiga proposal dan
+mengizinkan credential controller yang didaftarkan operator memberi keputusan
+khusus. Ketiga Skill kini `approved / catalog-active`: Windows dan authoring
+direkonsiliasi menjadi revisi terhadap paket yang sudah ada; security memakai
+revisi proposal asal. Digest, keputusan, history dan pengujian tercatat dalam
+[laporan verifikasi](../verification/native-chat-reasoning-effort.md). Proyeksi
+selesai diarsipkan per Skill: [windows-powershell-host](windows-powershell-host.md),
+[security-change-review](security-change-review.md),
+[skill-authoring](skill-authoring.md). Catatan lama di bawah
+tetap historis; `incident-postmortem` dan scope lain tidak dipromosikan oleh task
+ini. Dokumen induk tetap di tempat karena masih memuat scope tertunda.
 
 ## Masalah dan tujuan
 Pengguna memerintahkan (`/goal`, 2026-10-27) agar ketiga folder referensi dipelajari sedalam mungkin dan setiap bagian yang dapat memperkuat Agent Core dicari, lalu hasilnya menjadi satu proposal upgrade. Dokumen ini adalah proposal itu. Isinya **apa** yang layak diambil, **di mana** menguntungkan Agent Core, dan **bagian mana** yang diperkuat. Tidak ada yang dikerjakan sebelum pengguna memutuskan tiap paket.

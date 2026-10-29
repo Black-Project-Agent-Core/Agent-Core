@@ -1,7 +1,7 @@
 # Audit donor Harness2 terhadap Agent Core (2026-10-25)
 
 Status: RISET / READ-ONLY. Tidak ada source Agent Core yang diubah. Usulan ada di
-[Harness2-Donor-Proposals](../proposals/Harness2-Donor-Proposals.md) dan menunggu keputusan pemilik per item.
+[Harness2-Donor-Proposals](../history-agent-core/Harness2-Donor-Proposals.md) dan menunggu keputusan pemilik per item.
 
 ## 1. Lingkup dan metode
 
@@ -88,7 +88,7 @@ Empat baris tambahan yang tidak dimiliki donor (gate oracle independen, tool gra
 ## 5. Yang sengaja tidak didonorkan
 - Loop Propose-Probe-Compose pada tugas produksi (mengeksekusi ulang tugas dengan efek samping nyata, gate hanya struktural,
   biaya 4k rollout + 3k sesi per tugas). Bentuk aman, bila pernah: di laboratorium fixture ber-oracle yang sudah ada di proposal
-  [Evidence-Gated-Harness-Self-Improvement-Lab](../proposals/Evidence-Gated-Harness-Self-Improvement-Lab.md) (HG-6 / R6-D..F, HOLD).
+  [Evidence-Gated-Harness-Self-Improvement-Lab](../history-agent-core/Evidence-Gated-Harness-Self-Improvement-Lab.md) (HG-6 / R6-D..F, HOLD).
 - Seleksi buta tanpa abstain, adapter executor/benchmark, cache improver, default eksekusi tanpa sandbox, penguncian POSIX.
 - Salinan kode atau prompt: Harness2 berlisensi Apache-2.0; ide diimplementasikan ulang dengan kata-kata sendiri. Adaptasi substansial
   memerlukan atribusi repositori+commit dan pelestarian NOTICE.

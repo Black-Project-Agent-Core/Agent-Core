@@ -1,4 +1,24 @@
 # Evidence-Gated Harness Self-Improvement Lab
+
+## Penutupan scope — 2026-10-29
+
+Status: COMPLETED — engineering terpilih selesai; eksperimen kondisional berhenti pada gate bukti. Tidak ada optimizer atau klaim manfaat model.
+
+Instruksi pengguna 2026-10-29 mengizinkan penuntasan scope penting bersama Native Opus 5.5/max. Revisi 11 ini menyupersesi status antrean di kronologi berikut tanpa menghapus keputusan atau kegagalan lama.
+
+| Paket | Disposisi akhir | Bukti |
+| --- | --- | --- |
+| R6-A/B/C | Implementasi sebelumnya dipertahankan | Status/backlog ringkas dan scaffold verified-recovery existing; tidak mengklaim prosedur positif atau yield baru. |
+| R8-S0/S1a | Selesai sebelumnya, tetap aktif | Dry-run dan compact serialization pada §18.8–18.10. |
+| R8-S1b dan aturan penutupan A/B | NO-OP / scope ditutup | Kandidat aman 25 episode/226.924 byte =3,49%, di bawah gate 10%. Melindungi semua session head dan pending episode. Native menguji argumen tandingan lalu merekomendasikan NO-OP. Tidak menutup episode agar angka tampak baik. |
+| R8-S2 | COMPLETED | Tujuh file temp yatim, 20.528.749 byte, owner PID tidak hidup. Checkpoint semua byte, verifikasi hash/blob, hapus tujuh path literal nonrekursif; nol tersisa. Backup tetap ada. |
+| R6-E | NO-OP / tidak dipilih | Keluarga kegagalan terpilih tidak menyediakan dua task independen dengan oracle cocok untuk membenarkan lensa DARC baru. Advisor existing dipertahankan. |
+| R6-F/R7 AR-P1 | Desain dan aplikasi disiplin verifikasi selesai; perluasan eksperimen STOP | Delapan aturan dipetakan ke owner existing; lineage/checkpoint, baseline/fixture, bounded budget dan hasil negatif dipertahankan. Tidak mengklaim 12 paired opportunities atau eksperimen model A/B/C telah dijalankan. |
+| HS-P0–P3 dan framing R1–R5 | STOP / insufficient evidence sesuai gate P0 | Tidak ada keluarga terpilih yang lolos syarat dua task/oracle independen; kandidat optimizer, self-edit runtime, dan training tidak dibuat. Kronologi tetap historical. |
+
+[Laporan penutupan dan kontrak performa](../verification/Proposal-Completion.md), [review Native beserta batas sumbernya](../verification/Native-Proposal-Review.md). Stop/NO-OP adalah keputusan final scope ini, bukan HOLD aktif atau job masa depan. Eksperimen baru membutuhkan tujuan konkret dan bukti baru; tidak dijadwalkan otomatis. Benefit tetap UNPROVEN. Path asal `docs/proposals/Evidence-Gated-Harness-Self-Improvement-Lab.md`; arsip setelah Learning `docs/history-agent-core/Evidence-Gated-Harness-Self-Improvement-Lab.md`.
+
+## Riwayat sebelum penutupan
 Tanggal: 2026-10-23
 Revisi: 10
 Status: R8-S1a DIIMPLEMENTASIKAN DAN AKTIF 2026-10-26 (state controller eksternal ditulis tanpa indentasi; bagian 18.10). R8-S0 SELESAI 2026-10-26 (dry-run pada salinan; penutupan episode aturan A/B HOLD). R8-S1b dan R8-S2 menunggu keputusan masing-masing — R7 PROPOSED dan R6-A/B/C tetap seperti catatan implementasi di bawah — NOT IMPLEMENTED

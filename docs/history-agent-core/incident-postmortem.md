@@ -1,11 +1,23 @@
 # incident-postmortem
 
+## Completion record — 2026-10-29
+
+Status: COMPLETED — approved/build-and-activated artifact; scoped acceptance verified.
+
+The user's 2026-10-29 proposal-completion request authorizes this scope. SkillService accepted the exact proposal revision below through the authenticated allowlisted controller. Resident inspect/read/validate confirmed artifact `sha256:479334c2c90b1bbb16c6be2ef81af60ada010c3e52768fecc315e561c245dc74`, one3,308-byte file and empty allowedTools. Discovery ranked the incident query first; parser/lint and focused regressions passed. [Incident-Postmortem.md](../verification/Incident-Postmortem.md) applies the workflow to the historical HTTP authorizer incident, with sourced/unknown chronology, contributing conditions, impact, actions and runbook. Its later authorship is not credited with causing the earlier recovery. Benefit remains unmeasured.
+
+Main's Learning checkpoint `complete-all-proposals-20261029-final-recovery` is reviewed complete/no-new-knowledge. [Completion evidence](../verification/Proposal-Completion.md) retains the initial task-scope authorization failure/recovery and exact activation evidence. The canonical proposal ID/revision/decision and active artifact remain managed by their original owners. Only this readable projection is archived; no rebuild/republish or catalog mutation is performed by moving it.
+
+Original path: `docs/proposals/skills/agent-core/incident-postmortem.md`. Archive: `docs/history-agent-core/incident-postmortem.md`. Original generated projection is preserved below as historical evidence.
+
+## Original projection
+
 Nama: incident-postmortem
-Status: proposed
+Status: approved
 Aksi: create
-Artifact: not-built
+Artifact: catalog-active
 Workspace: agent-core
-Artifact digest: unavailable
+Artifact digest: sha256:479334c2c90b1bbb16c6be2ef81af60ada010c3e52768fecc315e561c245dc74
 Target active digest: none
 Proposal ID: skill-proposal:66f03991dc32f37714f8088d98a5a4f6
 Revisi: sha256:e64a9f46c3598399625d71cba2acdc23db7611470eecfc1e007e4565651e4ef7
@@ -60,7 +72,7 @@ SKILL.md passes the strict parser and node scripts/verify/skill-pack-lint.mjs re
 A postmortem drafted from a past incident contains the timeline, several contributing factors, impact and verified actions.
 Activation happens only after a user decision recorded by the host for the exact revision.
 
-## Keputusan pengguna
-Belum ada keputusan atas revisi ini.
+## Keputusan dan asal otorisasi
+approve / build-and-activate / controller-decision:799325f69573d68d774d6978d20770fc2cbaf0e701262ec24b1134581eb86b36 / trusted-controller: 59a9447b-06fc-4961-a533-1bdc03213222
 
 ## Riwayat revisi

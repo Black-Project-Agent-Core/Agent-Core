@@ -25,7 +25,7 @@ Status: **PAUSED atas permintaan pengguna**, 2026-10-23 11:22 UTC (18:22 Asia/To
 
 ## Hasil source yang sudah ditulis
 
-1. [Rencana induk revisi 1](../proposals/Integrasi-Arsitektur-Native-Agent-Core.md), status PROPOSED sebagai roadmap; keenam dokumen sumber tidak diubah. Link ditambahkan pada `docs/plans/README.md` dan bagian terkait CODEBASE. Tabel bukti pelaksanaan pada rencana masih perlu diperbarui.
+1. [Rencana induk revisi 1](Integrasi-Arsitektur-Native-Agent-Core.md), status PROPOSED sebagai roadmap; keenam dokumen sumber tidak diubah. Link ditambahkan pada `docs/plans/README.md` dan bagian terkait CODEBASE. Tabel bukti pelaksanaan pada rencana masih perlu diperbarui.
 2. `src/agent-chat-service.ts`: satu recovery startup asynchronous/sequential untuk turn yang baru terinterupsi, melalui validator DTC existing; turn resumable lama tidak diulang otomatis tiap restart. Event chat `assistant.final` ditahan sampai commit, lalu teks final dibaca dari hasil tersimpan. Disconnect observer/notice failure terpisah dari keberhasilan hasil. Learning failure tetap metadata terpisah.
 3. `src/agent-chat-store.ts`: alasan recovery terjeda ditulis dengan checkpoint revision, tidak menimpa pembatalan/claim baru; timestamp conversation meningkat. `src/ui/src/host.ts` dan ChatPage `pages.tsx` menampilkan status progres/saved/failed/stopped/interrupted/recovery serta existing cancel.
 4. `src/memory/retrieval.ts`: satu baris membuang titik terminal sebelum klasifikasi concrete identifier; kalimat natural dengan `contract.` sebelumnya salah diperlakukan sebagai identifier literal. Regression RED sebelum/GREEN sesudah; path/simbol dan isolasi workspace tetap diuji.

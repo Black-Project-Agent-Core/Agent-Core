@@ -191,7 +191,7 @@ Helper milik sesi dihentikan pada penutupan; proses browser, extension, dan nati
 ## Learning dan kontinuitas
 
 Checkpoint OBU `421` dan review task-scoped `1944f32f-ecbb-4cea-93e3-33b61cf22ca4` selesai; pendingLearning=false. Reflection tetap proposal/awaiting-verification karena keberhasilan task belum membuktikan peningkatan perilaku agen. `learning-closeout.json` mencatat linkage dan batas tersebut.
-Saat penutupan, handler existing episode/verify mengabaikan taskId dan sempat menutup episode Browser Bridge dengan deklarasi OBU. Salah atribusi diperbaiki pada satu record dengan backup, exclusive file access, full byte readback dan canonical start; Browser Bridge kembali tanpa closedAt/terminalOutcome, verificationStatus=unavailable, metrics.verifications=0. Semua event lama serta correction event dipertahankan. Receipt ada di `learning-attribution-repair-receipt.json`; source Learning belum diubah. [Usulan terpisah](proposals/external-episode-verification-task-selection-20261018.md) memuat perubahan terkecil dan pemeriksaannya.
+Saat penutupan, handler existing episode/verify mengabaikan taskId dan sempat menutup episode Browser Bridge dengan deklarasi OBU. Salah atribusi diperbaiki pada satu record dengan backup, exclusive file access, full byte readback dan canonical start; Browser Bridge kembali tanpa closedAt/terminalOutcome, verificationStatus=unavailable, metrics.verifications=0. Semua event lama serta correction event dipertahankan. Receipt ada di `learning-attribution-repair-receipt.json`; source Learning belum diubah. [Usulan terpisah](history-agent-core/external-episode-verification-task-selection-20261018.md) memuat perubahan terkecil dan pemeriksaannya.
 
 ## Sumber dan lisensi
 

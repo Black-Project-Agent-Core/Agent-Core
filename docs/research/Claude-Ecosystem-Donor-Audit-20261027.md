@@ -2,7 +2,7 @@
 
 Tanggal: 2026-10-27
 Status: laporan riset hanya-baca; tidak ada source, Skill, konfigurasi, atau layanan yang diubah oleh studi ini
-Proposal turunan: [Claude-Ecosystem-Donor-Proposals](../proposals/Claude-Ecosystem-Donor-Proposals.md)
+Proposal turunan: [Claude-Ecosystem-Donor-Proposals](../history-agent-core/Claude-Ecosystem-Donor-Proposals.md)
 Folder bukti: [claude-ecosystem-donor](claude-ecosystem-donor/) (temuan lengkap per irisan, `traceability.tsv`, `ATTRIBUTION.md`, laporan pemeriksa independen)
 
 ## Tujuan

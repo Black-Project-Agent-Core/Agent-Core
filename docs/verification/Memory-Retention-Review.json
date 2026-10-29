@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-10-28T19:11:30.579Z",
+  "sourceDigest": "sha256:4e885adbb3ddd3d254f64a8a5ff6249111f88c15d9e3f5f31b2592925868339b",
+  "mode": "read-only-aggregate",
+  "records": 256,
+  "pinned": 0,
+  "retrievals": 4697,
+  "retrievedRecords": 243,
+  "topTenRetrievalShare": 0.23845007451564829,
+  "explicitCurrentRevisionFeedback": {
+    "records": 0,
+    "helpful": 0,
+    "negative": 0,
+    "topTenWithFeedback": 0
+  },
+  "counterfactual": {
+    "policy": "helpful-feedback-count replaces per-read count; no production mutation",
+    "legacyStaleMembershipChanges": 0,
+    "forgettingStaleMembershipChanges": 26,
+    "limits": "Forgetting confidence held at the function default 0.5 in both arms; helpful feedback is not independent verified causal outcome."
+  },
+  "decision": "Keep existing scoring: retrieval concentration is observational; feedback coverage cannot establish harmful bias or justify outcome-weight replacement.",
+  "safety": {
+    "canonicalWrites": 0,
+    "noteContentsDisclosed": false,
+    "identitiesDisclosed": false,
+    "truthOrConfidenceInferredFromRetrieval": false
+  }
+}

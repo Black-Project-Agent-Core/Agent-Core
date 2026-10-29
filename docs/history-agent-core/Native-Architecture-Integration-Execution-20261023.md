@@ -48,7 +48,7 @@ Five existing entries in `scripts/governance/native-freeze.json` were narrowly r
 
 Restore only task-owned changed Native entries and their matching source/section bytes using the appropriate pre-edit checkpoint after previewing current drift. Restore the corresponding UI build/Core build through the normal guarded build and official restart. Keep unrelated local changes, chat.sqlite, canonical Memory/Learning, receipts and task history intact. Do not reset Git or delete runtime state.
 
-The master proposal stays active while later waves remain open: [Integrasi Arsitektur Native Agent Core](../proposals/Integrasi-Arsitektur-Native-Agent-Core.md).
+The master proposal stays active while later waves remain open: [Integrasi Arsitektur Native Agent Core](Integrasi-Arsitektur-Native-Agent-Core.md).
 
 ## Resumed source and verification
 

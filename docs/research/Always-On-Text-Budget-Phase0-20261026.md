@@ -1,7 +1,7 @@
 # Anggaran teks always-on — laporan Fase 0
 Tanggal: 2026-10-26
 Status: SELESAI — hanya baca terhadap kontrak, source, konfigurasi, dan runtime. Tidak ada kata kontrak yang diubah; tidak ada build, tes produk, atau restart. Berkas baru hanya laporan ini dan alat ukurnya di `docs/research`.
-Asal: [Harness2 Donor Proposals](../proposals/Harness2-Donor-Proposals.md), usulan P1, scope Fase 0 saja. Keputusan penerimaan 2026-10-26 dicatat controller dari pesan pengguna; itu bukan atestasi pesan-pengguna dari host dan bukan grant eksekusi.
+Asal: [Harness2 Donor Proposals](../history-agent-core/Harness2-Donor-Proposals.md), usulan P1, scope Fase 0 saja. Keputusan penerimaan 2026-10-26 dicatat controller dari pesan pengguna; itu bukan atestasi pesan-pengguna dari host dan bukan grant eksekusi.
 Alat ukur dan data mentah: [measure-always-on.mjs](always-on-budget-phase0/measure-always-on.mjs) dan [measure-20261026.json](always-on-budget-phase0/measure-20261026.json).
 
 ## 1. Hasil singkat

@@ -1,5 +1,15 @@
 # Integrasi Arsitektur Native Agent Core
 
+## Rekonsiliasi arsip — 2026-10-29
+
+Status: COMPLETED — administrasi scope R4 yang telah CLOSED BY USER DECISION; bukan klaim semua rancangan historis lulus benchmark.
+
+Instruksi pengguna 2026-10-29 meminta tidak ada dokumen proposal/antrean dashboard tersisa. Keputusan eksplisit 2026-10-24 bahwa R4 selesai dan benchmark lanjutan bukan syarat tetap berlaku. Catatan PENDING lama adalah sejarah yang sudah disupersesi, bukan pekerjaan aktif yang dipindahkan diam-diam. Tidak ada benchmark yang dibuka ulang atau hasil inconclusive diubah menjadi PASS.
+
+Native dipakai sebagai partner nyata dalam task penuntasan: observed Opus5.5/max menyelesaikan review retensi dan uji inquiry; build/resident diperiksa terpisah. [Bukti penuntasan](../verification/Proposal-Completion.md), [review Native](../verification/Native-Proposal-Review.md), [uji resident](../verification/Native-Inquiry-Resident-Review.md). Otorisasi arsip berasal dari permintaan antrean nol saat ini; scope R4 tidak diperluas. Revisi administratif 5. Path asal `docs/proposals/Integrasi-Arsitektur-Native-Agent-Core.md`; arsip setelah Learning `docs/history-agent-core/Integrasi-Arsitektur-Native-Agent-Core.md`.
+
+## Riwayat keputusan R4
+
 Tanggal: 2026-10-23 (Asia/Tomsk)  
 Revisi: 4  
 Status: CLOSED BY USER DECISION (2026-10-24) — scope R4 ditutup; Native dan External Agent Core tersedia untuk operasi; benchmark tambahan tidak menjadi syarat penutupan  
@@ -19,11 +29,11 @@ Dokumen ini menyatukan rancangan, keputusan, batas implementasi, dan acceptance.
 
 **Prioritas ke depan:** gunakan Agent Core untuk tugas nyata dan lakukan peningkatan yang relevan dengan kebutuhan pengguna, bukan membuka kembali R4 berdasarkan checklist historis. Semua bagian berlabel PENDING/IN PROGRESS dalam kronologi, tabel lama atau rencana paket berikutnya di bawah adalah **catatan historis yang disupersesi keputusan ini**, bukan pekerjaan menunggu eksekusi.
 
-[Laporan penutupan dan bukti historis R4](../history-agent-core/Native-Architecture-Integration-Revision-4-Execution.md).
+[Laporan penutupan dan bukti historis R4](Native-Architecture-Integration-Revision-4-Execution.md).
 
-**Checkpoint terverifikasi 2026-10-24:** koreksi admission browser pre-dispatch telah melewati **74/74 tes terarah**, pemeriksaan path **467/0**, kompilasi TypeScript, runner self-check tanpa provider, serta restart resmi `exitCode=0`; Core baru PID `10648` dan `/health ok` membuktikan aktivasi resident. Lihat [laporan R4 terkini](../history-agent-core/Native-Architecture-Integration-Revision-4-Execution.md). Pada checkpoint eksperimen **sebelum keputusan penutupan**, R4 pernah berstatus **PARTIAL** akibat HTTP 400 dan eksperimen Memory yang tidak konklusif. **Status aktif sekarang adalah CLOSED atas keputusan pengguna**, tanpa mengubah fakta bahwa manfaat kausal Memory belum terbukti. Hasil fixture dan uptime bukan bukti kausal manfaat Memory; cohort sebelumnya tidak diulang.
+**Checkpoint terverifikasi 2026-10-24:** koreksi admission browser pre-dispatch telah melewati **74/74 tes terarah**, pemeriksaan path **467/0**, kompilasi TypeScript, runner self-check tanpa provider, serta restart resmi `exitCode=0`; Core baru PID `10648` dan `/health ok` membuktikan aktivasi resident. Lihat [laporan R4 terkini](Native-Architecture-Integration-Revision-4-Execution.md). Pada checkpoint eksperimen **sebelum keputusan penutupan**, R4 pernah berstatus **PARTIAL** akibat HTTP 400 dan eksperimen Memory yang tidak konklusif. **Status aktif sekarang adalah CLOSED atas keputusan pengguna**, tanpa mengubah fakta bahwa manfaat kausal Memory belum terbukti. Hasil fixture dan uptime bukan bukti kausal manfaat Memory; cohort sebelumnya tidak diulang.
 
-**KEPUTUSAN EVALUASI HISTORIS SEBELUM PENUTUPAN (2026-10-24; TIDAK LAGI AKTIF):** uji ketiga provider terlebih dahulu; maksimum 120 panggilan model hanya pada jalur free-tier; pakai key aktif hingga terkena limit lalu pilih key lain provider yang sama dan baru provider berikutnya jika perlu; evaluasi Memory **coding/research lebih dulu**, browser nanti. Konfigurasi runtime sudah memuat 18 key Atria, 18 Gonka, 20 OpenRouter dari akun terpisah (angka hanya metadata), dan regresi scheduler/readiness **22/22 PASS**. Uji model gratis OpenRouter Nemotron 3 Ultra menggunakan **5 model requests** dan berhasil melakukan pergantian key pada 429 serta mengembalikan nonce tool yang tepat; status katalog Atria401 dan Gonka200 namun metadata kurang lengkap. Rincian serta keterbatasan uji coding/research dicatat pada [execution record R4](../history-agent-core/Native-Architecture-Integration-Revision-4-Execution.md). Tidak ada model, API key, cursor produksi, ataupun grants yang diganti.
+**KEPUTUSAN EVALUASI HISTORIS SEBELUM PENUTUPAN (2026-10-24; TIDAK LAGI AKTIF):** uji ketiga provider terlebih dahulu; maksimum 120 panggilan model hanya pada jalur free-tier; pakai key aktif hingga terkena limit lalu pilih key lain provider yang sama dan baru provider berikutnya jika perlu; evaluasi Memory **coding/research lebih dulu**, browser nanti. Konfigurasi runtime sudah memuat 18 key Atria, 18 Gonka, 20 OpenRouter dari akun terpisah (angka hanya metadata), dan regresi scheduler/readiness **22/22 PASS**. Uji model gratis OpenRouter Nemotron 3 Ultra menggunakan **5 model requests** dan berhasil melakukan pergantian key pada 429 serta mengembalikan nonce tool yang tepat; status katalog Atria401 dan Gonka200 namun metadata kurang lengkap. Rincian serta keterbatasan uji coding/research dicatat pada [execution record R4](Native-Architecture-Integration-Revision-4-Execution.md). Tidak ada model, API key, cursor produksi, ataupun grants yang diganti.
 
 ## Masalah dan tujuan
 
@@ -75,7 +85,7 @@ Instruksi eksplisit pengguna adalah **"PLEASE IMPLEMENT THIS PLAN"** untuk Revis
 
 Identitas penerbit upstream telah ditelusuri melalui dokumentasi resmi: [OpenClaw](https://docs.openclaw.ai/) → [openclaw/openclaw](https://github.com/openclaw/openclaw) (MIT), [Odysseus](https://odysseus-dev.github.io/odysseus/) → [odysseus-dev/odysseus](https://github.com/odysseus-dev/odysseus) (AGPL-3.0-or-later), [Kimi Code](https://moonshotai.github.io/kimi-code/en/) → [MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code) (MIT), [Hermes](https://hermes-agent.nousresearch.com/) → [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) (MIT), [xAI Grok Build](https://x.ai/news/grok-build-open-source) → [xai-org/grok-build](https://github.com/xai-org/grok-build) (Apache-2.0), dan [DeepSeek Harness](https://deepseek.com/en/harness) → [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) (MIT). Ini verifikasi upstream saat penelitian; revisi dan lisensi snapshot lokal serta kompatibilitas runtime tetap bukti terpisah. Tidak ada kode/runtime donor yang dipasang atau disalin. Kesamaan nama paket tidak membuktikan kompatibilitas.
 
-Pemeriksaan lokal 2026-10-24 mencatat HEAD, origin, status tracked worktree, serta header dan SHA-256 LICENSE keenam snapshot pada [bukti snapshot R4](../history-agent-core/Native-Architecture-Integration-Revision-4-Execution.md#local-donor-snapshot-evidence). Grok mempunyai HEAD `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8` dan `SOURCE_REV` terpisah sebagaimana tabel di atas. Tidak ada klaim kompatibilitas runtime donor dari pemeriksaan metadata ini.
+Pemeriksaan lokal 2026-10-24 mencatat HEAD, origin, status tracked worktree, serta header dan SHA-256 LICENSE keenam snapshot pada [bukti snapshot R4](Native-Architecture-Integration-Revision-4-Execution.md#local-donor-snapshot-evidence). Grok mempunyai HEAD `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8` dan `SOURCE_REV` terpisah sebagaimana tabel di atas. Tidak ada klaim kompatibilitas runtime donor dari pemeriksaan metadata ini.
 
 ### Keadaan awal Agent Core yang diperiksa
 
@@ -227,9 +237,9 @@ Fixture/offline test dapat memverifikasi kontrak recovery dan persistensi. Bukti
 
 ## Bukti pelaksanaan
 
-Status source dan hasil yang sudah dibuktikan di bawah tidak menggantikan bukti resident. Catatan rinci, kegagalan historis dan hash tetap pada [execution evidence](../history-agent-core/Native-Architecture-Integration-Execution-20261023.md).
+Status source dan hasil yang sudah dibuktikan di bawah tidak menggantikan bukti resident. Catatan rinci, kegagalan historis dan hash tetap pada [execution evidence](Native-Architecture-Integration-Execution-20261023.md).
 
-Pelaksanaan Revisi 4 dicatat terpisah pada [Revision 4 execution](../history-agent-core/Native-Architecture-Integration-Revision-4-Execution.md). Hasil di tabel berikut adalah checkpoint revisi sebelumnya; tidak otomatis memverifikasi provider/readiness/reuse/keep-alive baru.
+Pelaksanaan Revisi 4 dicatat terpisah pada [Revision 4 execution](Native-Architecture-Integration-Revision-4-Execution.md). Hasil di tabel berikut adalah checkpoint revisi sebelumnya; tidak otomatis memverifikasi provider/readiness/reuse/keep-alive baru.
 
 | Paket / bukti | Status saat dokumen dibuat | Referensi hasil |
 | --- | --- | --- |
