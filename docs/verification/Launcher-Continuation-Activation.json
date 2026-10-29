@@ -1,0 +1,51 @@
+{
+  "coreArtifacts": 12,
+  "activatedAt": "2026-10-29T08:41:52.0574260+00:00",
+  "uiBundle": "index-_rrOjgUb.js",
+  "nativeSha256": "86db3fcd843a78146c38d84d5752c3996d30c7f56b05e72aec4e36793f577af8",
+  "status": "active",
+  "restartAttempts": 1,
+  "launcherPid": 3772,
+  "corePid": 20264,
+  "coreStatus": "ok",
+  "staleDist": false,
+  "chat": {
+    "status": "available",
+    "conversationCount": 86,
+    "activeConversationCount": 25,
+    "resumableTurnCount": 1,
+    "runningTurnCount": 0
+  },
+  "residentUi": {
+    "method": "background Windows UI Automation through elevated Agent Core owner",
+    "observed": [
+      "New Chat",
+      "AI Workspace",
+      "Chat history",
+      "Message Agent Core",
+      "Goals mode",
+      "Provider dan model"
+    ],
+    "duplicateModelSelector": false
+  },
+  "verification": {
+    "functionalInvocations": 2,
+    "nativeManualContinuation": "passed",
+    "uiRegression": "not executed: root Vitest could not resolve UI-local jsdom",
+    "repeated": false,
+    "providerDemonstration": false,
+    "lateRaceFixture": "extended after review; not rerun"
+  },
+  "evidence": {
+    "restartLog": "runtime/launcher/continuation-activation-20261029.log",
+    "artifactManifest": "runtime/launcher/continuation-activation-manifest-20261029.json",
+    "testLog": "runtime/launcher/continuation-final-attempt-20261029.log"
+  },
+  "installations": [],
+  "configurationChanges": [],
+  "icons": "existing assets retained",
+  "limitations": [
+    "Goal bar with a live provider task was not exercised",
+    "Window-size full-restart acceptance remains inconclusive"
+  ]
+}

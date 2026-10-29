@@ -218,6 +218,10 @@ async function handleRequest(
         sendJson(response, 400, { error: 'invalid_agent_chat_provider' });
         return;
       }
+      if (body.goalMode !== undefined && typeof body.goalMode !== 'boolean') {
+        sendJson(response, 400, { error: 'invalid_agent_chat_goal_mode' });
+        return;
+      }
       const evaluation = body.evaluation === undefined ? undefined : nativeMemoryEvaluationSchema.safeParse(body.evaluation);
       if (evaluation && !evaluation.success) {
         sendJson(response, 400, { error: 'invalid_agent_memory_evaluation' });
@@ -236,6 +240,7 @@ async function handleRequest(
           clientRequestId,
           prompt,
           ...(originHeader === 'external-controller' ? { messageOrigin: 'external-controller' as const } : {}),
+          ...(body.goalMode === true ? { goalMode: true } : {}),
           ...(providerId && providerId !== 'auto' ? { providerRoute: providerId } : {}),
           ...(evaluation?.success ? { evaluation: evaluation.data } : {}),
           eventSink: async event => { writeLine({ type: 'event', event }); },
@@ -282,6 +287,13 @@ async function handleRequest(
       } finally {
         if (!response.writableEnded) response.end();
       }
+      return;
+    }
+
+    const pauseMatch = route.match(/^\/agent\/chat\/turns\/([^/]+)\/pause$/);
+    if (pauseMatch && request.method === 'POST') {
+      const paused = chat.pauseTurn(decodeURIComponent(pauseMatch[1]!));
+      sendJson(response, paused ? 200 : 404, { paused });
       return;
     }
 

@@ -1,13 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { WorkflowsPage } from './WorkflowsPage';
 import { ProposalCards } from './ProposalCards';
 import { ToolExecutionDetail } from './ToolExecutionDetail';
 import { TaskChangesPanel } from './TaskChangesPanel';
+import { Plus, Paperclip, FolderOpen, Target, ListTodo, Wrench, Send, Shield, Pause } from 'lucide-react';
+import { PrototypeDashboard, PrototypeTools, PrototypeRuntime, PrototypeDiagnostics, PrototypeSettings, PrototypeSetup, PrototypeActivity } from './PrototypePages';
+import { ArtifactsPage, GoalsPage, LearningPage, MemoryPage, ModelsPage } from './LauncherPages';
 import type {
   ActivityEntry,
   AgentChatUiState,
   AgentRunState,
   DesktopSnapshot,
+  ReasoningChoice,
+  ReasoningEffort,
 } from './host';
 import { buildSystems, systemCounts } from './systems';
 import { formatBytes, formatDuration, labelForTone, type SystemView, type Tone } from './model';
@@ -34,10 +39,14 @@ type SharedProps = {
   agentChat: AgentChatUiState;
   onChatCreate:(workspace?:string)=>void;
   onChatOpen:(conversationId:string)=>void;
-  onChatSend:(conversationId:string,prompt:string)=>void;
+  onChatSend:(conversationId:string,prompt:string,goalMode?:boolean)=>void;
   onChatCancel:(turnId:string)=>void;
+  onChatResume?:(conversationId:string,turnId:string)=>void;
+  onChatPause?:(conversationId:string,turnId:string)=>void;
   onChatArchive:(conversationId:string)=>void;
   onChatProvider?:(choice:string)=>void;
+  onChatModel?:(choice:string)=>void;
+  onChatReasoning?:(choice:ReasoningChoice)=>void;
 };
 
 const statusTone=(status?:string, issues=0):Tone=>{
@@ -183,8 +192,8 @@ export function SystemsPage(props:SharedProps) {
   const selected=systems.find(s=>s.id===selectedId)??systems.find(s=>s.tone==='degraded'||s.tone==='warning'||s.tone==='error')??systems[0];
   const shown=systems.filter(s=>(filter==='all'||s.tone===filter||(filter==='warning'&&s.tone==='degraded'))&&(`${s.name} ${s.description}`.toLowerCase().includes(search.toLowerCase())));
   return <div className="page systems-page">
-    <Breadcrumb current="Systems"/>
-    <PageHero icon={Boxes} title="Systems" subtitle="Browse subsystem status, dependencies, and issue hotspots.">
+    <Breadcrumb current="Tools Hub & MCP"/>
+    <PageHero icon={Boxes} title="Tools Hub & MCP" subtitle="Inspect connected subsystems, capability status, and issue hotspots.">
       <div className="systems-toolbar"><label><Search size={17}/><input placeholder="Search systems..." value={search} onChange={e=>setSearch(e.target.value)}/></label><FilterChip active={filter==='all'} label="All" count={counts.all} onClick={()=>setFilter('all')}/><FilterChip active={filter==='healthy'} label="Healthy" count={counts.healthy} tone="healthy" onClick={()=>setFilter('healthy')}/><FilterChip active={filter==='warning'} label="Warning" count={counts.degraded+counts.warning} tone="warning" onClick={()=>setFilter('warning')}/><FilterChip active={filter==='error'} label="Error" count={counts.error} tone="error" onClick={()=>setFilter('error')}/><FilterChip active={filter==='offline'} label="Offline" count={counts.offline} tone="offline" onClick={()=>setFilter('offline')}/></div>
     </PageHero>
     <div className="systems-summary">{[
@@ -366,20 +375,78 @@ export function SettingsPage(props:SharedProps) {
   </div>;
 }
 
+function ReasoningMenu({choice,levels,disabled,onChange}:{choice:ReasoningChoice;levels:ReasoningEffort[];disabled:boolean;onChange?:(choice:ReasoningChoice)=>void}) {
+  const [open,setOpen]=useState(false);
+  const root=useRef<HTMLDivElement>(null);
+  const trigger=useRef<HTMLButtonElement>(null);
+  const id=useId();
+  const options:ReasoningChoice[]=['auto',...(['low','medium','high','xhigh','max'] as const).filter(level=>levels.includes(level))];
+  const label=(value:ReasoningChoice)=>value==='xhigh'?'XHigh':value[0].toUpperCase()+value.slice(1);
+  useEffect(()=>{
+    if(disabled){setOpen(false);return;}
+    if(!open)return;
+    root.current?.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
+    const outside=(event:MouseEvent)=>{if(!root.current?.contains(event.target as Node))setOpen(false);};
+    document.addEventListener('mousedown',outside);
+    return()=>document.removeEventListener('mousedown',outside);
+  },[open,disabled]);
+  return <div className="chat-reasoning" ref={root} onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setOpen(false);}}>
+    <button ref={trigger} type="button" className="chat-bar-button" aria-label={'Reasoning: '+label(choice)} title={disabled?'Reasoning requires an explicitly selected Anthropic provider':'Reasoning: '+label(choice)}
+      aria-haspopup="menu" aria-expanded={open} aria-controls={open?id:undefined} disabled={disabled} onClick={()=>setOpen(!open)}
+      onKeyDown={event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();setOpen(true);}}}><BrainCircuit size={14}/><span>Reasoning: {label(choice)}</span><ChevronDown size={12}/></button>
+    {open&&<div id={id} className="chat-reasoning-menu" role="menu" aria-label="Reasoning effort" onKeyDown={event=>{
+      if(event.key==='Escape'){event.preventDefault();setOpen(false);trigger.current?.focus();}
+      if(event.key==='Tab')setOpen(false);
+      const items=Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button'));
+      const index=items.indexOf(document.activeElement as HTMLButtonElement);
+      const next=event.key==='Home'?0:event.key==='End'?items.length-1:event.key==='ArrowDown'?(index+1)%items.length:event.key==='ArrowUp'?(index-1+items.length)%items.length:-1;
+      if(next>=0){event.preventDefault();items[next]?.focus();}
+    }}>
+      {options.map(option=><button type="button" key={option} role="menuitemradio" aria-checked={choice===option} tabIndex={-1}
+        onClick={()=>{onChange?.(option);setOpen(false);trigger.current?.focus();}}>{label(option)}</button>)}
+    </div>}
+  </div>;
+}
+
 export function ChatPage(props:SharedProps) {
-  const [prompt,setPrompt]=useState('');
+  const [actionsOpen,setActionsOpen]=useState(false);
+  const actionsRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    if(!actionsOpen)return;
+    const close=(e:MouseEvent)=>{if(!actionsRef.current?.contains(e.target as Node))setActionsOpen(false);};
+    const key=(e:KeyboardEvent)=>{if(e.key==='Escape')setActionsOpen(false);};
+    document.addEventListener('mousedown',close);document.addEventListener('keydown',key);
+    return()=>{document.removeEventListener('mousedown',close);document.removeEventListener('keydown',key);};
+  },[actionsOpen]);
+  const active=props.agentChat.active;
+  const draftKey=active?.conversation.id??'draft';
+  const [drafts,setDrafts]=useState<Record<string,string>>({});
+  const [goalModes,setGoalModes]=useState<Record<string,boolean>>({});
+  const [goalExpanded,setGoalExpanded]=useState(false);
+  const [hiddenGoal,setHiddenGoal]=useState<string>();
+  const prompt=drafts[draftKey]??'';
+  const setPrompt=(value:string)=>setDrafts(prev=>({...prev,[draftKey]:value}));
   const [workspace,setWorkspace]=useState('agent-core');
   const [historyOpen,setHistoryOpen]=useState(false);
-  const [pending,setPending]=useState<string>();
+  const [pending,setPending]=useState<{prompt:string;goalMode:boolean}>();
+  const pendingDelivered=useRef(false);
   const runtime=props.snapshot?.health.agentRuntime;
+  const anthropicProvider=props.agentChat.providers?.find(item=>item.id==='anthropic');
+  const reasoningLevels=props.agentChat.modelChoice
+    ? anthropicProvider?.models?.find(item=>item.id===props.agentChat.modelChoice)?.reasoningEfforts??[]
+    : anthropicProvider?.reasoningEfforts??[];
   const chatHealth=props.snapshot?.health.agentChat;
   const configured=(runtime?.configuredProviderCount??0)>0;
-  const active=props.agentChat.active;
   const running=Boolean(props.agentChat.runningRequestId)
     || Boolean(active?.turns.some(turn=>turn.status==='running'));
   const runningTurn=active?.turns.find(turn=>turn.status==='running');
   const pausedTurn=active?.turns.find(turn=>turn.status==='resumable');
   const latestTurn=active?.turns.at(-1);
+  const goalTurn=[...(active?.turns??[])].reverse().find(turn=>turn.goalMode);
+  const goalMode=goalModes[draftKey]??Boolean(goalTurn&&['running','resumable'].includes(goalTurn.status));
+  const goalMessage=active?.messages.find(message=>message.turnId===goalTurn?.id&&message.role==='user');
+  const goalLabel=goalTurn?.pauseRequested?'Pausing goal':goalTurn?({running:'Running goal',resumable:'Paused goal',finalized:'Finished goal',failed:'Failed goal',interrupted:'Interrupted goal',stopped:'Stopped goal'}[goalTurn.status]):'';
+  const decisionEvidence=active?.decisionEvidence?.taskId===latestTurn?.runtimeTaskId?active?.decisionEvidence:undefined;
   const event=props.agentChat.lastEvent?.conversationId===active?.conversation.id
     ? props.agentChat.lastEvent
     : undefined;
@@ -403,9 +470,10 @@ export function ChatPage(props:SharedProps) {
     'assistant.final':'Response saved',
     'turn.failed':'Task failed',
     'turn.cancelled':'Task stopped',
+    'turn.paused':'Paused — Continue required',
   };
   const turnLabels:Record<string,string>={
-    finalized:'Response saved',resumable:'Recovery paused',failed:'Task failed',
+    finalized:'Response saved',resumable:'Paused — Continue required',failed:'Task failed',
     interrupted:'Interrupted; no safe checkpoint',stopped:'Task stopped',
   };
   const pendingFinalization=runtime?.pendingFinalizationCount??0;
@@ -417,22 +485,28 @@ export function ChatPage(props:SharedProps) {
     const value=prompt.trim();
     if(!value||running||pausedTurn||!configured||pending)return;
     if(!active){
-      setPending(value);
+      pendingDelivered.current=false;
+      setPending({prompt:value,goalMode});
       setPrompt('');
       props.onChatCreate(workspace.trim()||undefined);
       return;
     }
-    props.onChatSend(active.conversation.id,value);
+    if(goalMode)props.onChatSend(active.conversation.id,value,true);
+    else props.onChatSend(active.conversation.id,value);
     setPrompt('');
   };
 
   useEffect(()=>{
     if(!pending)return;
     if(active){
+      if(pendingDelivered.current)return;
+      pendingDelivered.current=true;
       setPending(undefined);
-      props.onChatSend(active.conversation.id,pending);
+      setGoalModes(prev=>({...prev,[active.conversation.id]:pending.goalMode}));
+      if(pending.goalMode)props.onChatSend(active.conversation.id,pending.prompt,true);
+      else props.onChatSend(active.conversation.id,pending.prompt);
     }else if(props.agentChat.error){
-      setPrompt(pending);
+      setPrompt(pending.prompt);
       setPending(undefined);
     }
   },[pending,active,props.agentChat.error]);
@@ -456,7 +530,7 @@ export function ChatPage(props:SharedProps) {
         key={item.id}
         className={active?.conversation.id===item.id?'active':''}
         onClick={()=>{props.onChatOpen(item.id);setHistoryOpen(false);}}
-        disabled={running&&active?.conversation.id!==item.id}
+        disabled={Boolean(pending)}
       >
         <b>{item.title}</b>
         <small>{item.workspace} · {new Date(item.updatedAtMs).toLocaleString()}</small>
@@ -465,15 +539,40 @@ export function ChatPage(props:SharedProps) {
     </div>}
 
     <div className="chat-response chat-transcript" aria-live="polite">
-      {!active&&!pending&&<div className="chat-empty"><h2>Mau mengerjakan apa?</h2></div>}
+      {decisionEvidence&&<details className="chat-decision-evidence">
+        <summary>Decision evidence</summary>
+        <p>Recorded explanations and findings. Goal verification is separate.</p>
+        {decisionEvidence.status==='unavailable'&&<p>{running?'Investigation in progress; evidence is not yet available.':'No decision evidence is available for this turn.'}</p>}
+        {decisionEvidence.records.map(record=><section key={record.id}>
+          <h3>{record.question}</h3>
+          {record.assumptions.length>0&&<ul aria-label="Assumptions">{record.assumptions.map((row,index)=><li key={index}>{row.statement} <small>({row.basis})</small></li>)}</ul>}
+          {record.alternatives.map(row=><div key={row.id}>
+            <b>{row.claim}</b><span>Declared finding: {row.status}</span>
+            <p>Check: {row.check}</p><p>Would change the conclusion: {row.falsifier}</p>
+          </div>)}
+          <p>{record.summary}</p>
+          {record.evidenceRefs.length>0&&<ul aria-label="Decision sources">{record.evidenceRefs.map(ref=><li key={ref}><code>{ref}</code></li>)}</ul>}
+        </section>)}
+        {decisionEvidence.truncated&&<p>The bounded summary omits some detail; the original decision history is preserved.</p>}
+      </details>}
+      {!active&&!pending&&<div className="chat-empty launcher-welcome"><img src="./agent-core.png" alt=""/><h2>Agent Core Workspace</h2><p>Describe any goal in natural language. Agent Core uses verified capabilities, executes tools within your permissions, and delivers traceable results.</p>
+        <div className="launcher-prompt-grid">{[
+          ['Research Trends','Find Indonesian trends from the last three days and show sources.',Search],
+          ['Presentation Deck','Create an editable PowerPoint presentation for system architecture.',BookOpen],
+          ['Code Inspection','Inspect my workspace code and verify the root cause of the problem.',Code2],
+          ['First-Task Golden Path','Audit workspace storage boundaries and verify a local markdown deliverable.',ShieldCheck],
+        ].map(([title,text,Icon]:any)=><button type="button" key={title} onClick={()=>setPrompt(text)}><Icon size={17}/><span>{title}</span><ArrowRight size={14}/></button>)}</div>
+      </div>}
       {!active&&pending&&<div className="chat-progress" role="status"><RefreshCw className="spin" size={16}/><span>Starting chat…</span></div>}
       {active&&<div className="chat-message-list">
         {active.messages.map(message=>{
           const messageTurn=message.role==='assistant'?active.turns.find(turn=>turn.id===message.turnId):undefined;
           const memoryUse=messageTurn?.memoryUse??[];
-          return <div key={message.id} className={'chat-message '+message.role}>
-            <div className="chat-message-role">{message.role==='user'?'You':'Agent Core'}</div>
+          return <React.Fragment key={message.id}><div className={'chat-message '+message.role}>
+            <div className="chat-message-avatar" aria-label={message.role==='user'?'You':'Agent Core'}>{message.role==='user'?<UserRound size={16}/>:<img src="./agent-core.png" alt=""/>}</div>
+            <div className="chat-message-body">
             <pre>{message.content}</pre>
+            {messageTurn&&<small className="chat-turn-reasoning">Reasoning · {messageTurn.reasoningEffort??'auto'}</small>}
             {memoryUse.length>0&&<details className="chat-memory-use">
               <summary>Memory use · {memoryUse.length} {memoryUse.length===1?'record':'records'}</summary>
               <p>Declared use with checked outcomes. Causal benefit is not established by these records.</p>
@@ -483,8 +582,9 @@ export function ChatPage(props:SharedProps) {
                 {use.evidenceRefs.length>0&&<ul aria-label={'Evidence for '+use.title}>{use.evidenceRefs.map(ref=><li key={ref}><code>{ref}</code></li>)}</ul>}
               </li>)}</ul>
             </details>}
-            {messageTurn?.runtimeTaskId&&<TaskChangesPanel key={messageTurn.runtimeTaskId} taskId={messageTurn.runtimeTaskId}/>}
-          </div>;
+            <time className="chat-message-time">{new Date(message.createdAtMs).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time>
+            </div>
+          </div>{messageTurn?.runtimeTaskId&&<div className="chat-message-changes"><TaskChangesPanel key={messageTurn.runtimeTaskId} taskId={messageTurn.runtimeTaskId} presentation="popover"/></div>}</React.Fragment>;
         })}
         {running&&<div className="chat-message assistant pending">
           <div className="chat-message-role">Agent Core</div>
@@ -496,41 +596,72 @@ export function ChatPage(props:SharedProps) {
         </div>}
         {!running&&pausedTurn&&<p>{pausedTurn.errorCode==='AGENT_RUNTIME_CONTINUATION_PROVIDER_WAIT'
           ? 'The task is safely paused. It resumes when the provider is eligible and the existing attempt budget permits. Stop recovery to end it.'
-          : 'Review the interrupted action before resuming. Stop recovery to start another task.'}</p>}
+          : 'Task paused. Choose Continue to resume it, or Stop recovery to end it.'}</p>}
       </div>}
       {props.agentChat.error&&<div className="chat-error"><AlertTriangle size={20}/><div><b>Agent chat turn failed</b><p>{props.agentChat.error}</p></div></div>}
     </div>
 
+    {goalTurn&&hiddenGoal!==goalTurn.id&&<section className={'launcher-goal-bar'+(goalExpanded?' expanded':'')} aria-label="Current goal">
+      <div className="launcher-goal-row"><Target size={14}/><b>{goalLabel}</b><span className="launcher-goal-title" title={goalMessage?.content}>{goalMessage?.content??'Goal task'}</span>
+        <time title="Elapsed since goal started, including pauses">{formatDuration(Math.max(0,((goalTurn.completedAtMs??Date.now())-goalTurn.startedAtMs)/1000))}</time>
+        {goalTurn.status==='running'&&<button type="button" aria-label="Pause goal" title="Pause after the current operation" disabled={goalTurn.pauseRequested||!props.onChatPause} onClick={()=>props.onChatPause?.(active!.conversation.id,goalTurn.id)}><Pause size={14}/></button>}
+        {goalTurn.status==='resumable'&&<button type="button" aria-label="Continue goal" title="Continue goal" disabled={running||!props.onChatResume} onClick={()=>props.onChatResume?.(active!.conversation.id,goalTurn.id)}><Play size={14}/></button>}
+        <button type="button" aria-label={['running','resumable'].includes(goalTurn.status)?'Stop goal':'Hide finished goal'} title={['running','resumable'].includes(goalTurn.status)?'Stop goal':'Hide finished goal'} onClick={()=>['running','resumable'].includes(goalTurn.status)?props.onChatCancel(goalTurn.id):setHiddenGoal(goalTurn.id)}><Trash2 size={13}/></button>
+        <button type="button" aria-label="Expand goal" title="Expand goal" aria-expanded={goalExpanded} onClick={()=>setGoalExpanded(value=>!value)}><ChevronDown size={14}/></button>
+      </div>{goalExpanded&&<p className="launcher-goal-detail">{goalMessage?.content??'Goal task'}</p>}
+    </section>}
     <div className="chat-composer">
       <textarea
         value={prompt}
         onChange={e=>setPrompt(e.target.value)}
         onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit();}}}
-        placeholder={!configured?'No configured provider.':'Message Agent Core…'}
+        aria-label="Message Agent Core"
+        placeholder={!configured?'No configured provider.':'Ask Agent Core to research, code, analyze data, create presentations, or manage tools…'}
         disabled={!configured||running||Boolean(pausedTurn)||Boolean(pending)}
         rows={2}
       />
       <div className="chat-composer-footer">
-        {!active&&<input className="chat-workspace" aria-label="Workspace" title="Workspace" value={workspace} onChange={e=>setWorkspace(e.target.value)} disabled={running||Boolean(pending)} maxLength={200}/>}
+        <div className="prototype-composer-actions" ref={actionsRef}><button type="button" aria-label="Composer actions" aria-expanded={actionsOpen} className="prototype-plus" onClick={()=>setActionsOpen(v=>!v)}>{actionsOpen?<X size={15}/>:<Plus size={15}/>}</button>{actionsOpen&&<div className="prototype-composer-menu">
+          <button disabled title="Attachment transport is a planned upgrade"><Paperclip size={16}/>Add files or photos <small>Planned</small></button>
+          <button disabled title="Folder import is a planned upgrade"><FolderOpen size={16}/>Add folder / imports <small>Planned</small></button>
+          <button onClick={()=>{props.setPage('goals');setActionsOpen(false);}}><ListTodo size={16}/>Step-by-Step Plan <small>View</small></button>
+          <button onClick={()=>{props.setPage('systems');setActionsOpen(false);}}><Wrench size={16}/>Tools Hub & MCP <ChevronRight size={14}/></button>
+          {!active&&<label>Workspace<input aria-label="Workspace" value={workspace} onChange={e=>setWorkspace(e.target.value)} disabled={running||Boolean(pending)} maxLength={200}/></label>}
+        </div>}</div>
+        <button type="button" className="prototype-goal-toggle" aria-label="Goals mode" aria-pressed={goalMode} title="Run the next instruction as a goal" disabled={running||Boolean(pausedTurn)||Boolean(pending)} onClick={()=>setGoalModes(prev=>({...prev,[draftKey]:!goalMode}))}><Target size={14}/><span>Goals</span></button>
         {props.agentChat.providers&&props.agentChat.providers.length>0&&props.onChatProvider&&<select
           aria-label="Provider dan model"
           title="Provider dan model"
-          value={props.agentChat.providerChoice??'auto'}
-          disabled={running}
-          onChange={e=>props.onChatProvider?.(e.target.value)}
+          value={props.agentChat.providerChoice==='anthropic'&&props.agentChat.modelChoice&&props.agentChat.modelChoice!==anthropicProvider?.model
+            ? `anthropic:${props.agentChat.modelChoice}` : props.agentChat.providerChoice??'auto'}
+          disabled={running||Boolean(pausedTurn)||Boolean(pending)}
+          onChange={e=>{
+            const model=anthropicProvider?.configured&&props.onChatModel
+              ? anthropicProvider.models?.find(item=>`anthropic:${item.id}`===e.target.value) : undefined;
+            props.onChatProvider?.(model?'anthropic':e.target.value);
+            if(model)props.onChatModel?.(model.id);
+          }}
         >
           <option value="auto">Auto (rotasi otomatis)</option>
-          {props.agentChat.providers.map(item=><option key={item.id} value={item.id} disabled={!item.configured}>
+          {props.agentChat.providers.map(item=><React.Fragment key={item.id}><option value={item.id} disabled={!item.configured}>
             {item.configured
               ? item.id+' · '+(item.model??'model belum diatur')+(item.available?'':' (cooldown)')
               : item.id+' (belum dikonfigurasi)'}
-          </option>)}
+          </option>{item.id==='anthropic'&&item.configured&&props.onChatModel&&item.models?.filter(model=>model.id!==item.model).map(model=><option key={model.id} value={`anthropic:${model.id}`}>
+            {item.id+' · '+model.id+(item.available?'':' (cooldown)')}
+          </option>)}</React.Fragment>)}
         </select>}
-        <span className="chat-composer-hint">Enter to send · Shift+Enter for newline</span>
-        {(running||pausedTurn)&&runningTurnId
+        <ReasoningMenu choice={props.agentChat.providerChoice==='anthropic'?(props.agentChat.reasoningChoice??'auto'):'auto'}
+          levels={reasoningLevels}
+          disabled={props.agentChat.providerChoice!=='anthropic'||!props.agentChat.providers?.some(item=>item.id==='anthropic'&&item.configured)||running||Boolean(pausedTurn)||Boolean(pending)||!props.onChatReasoning}
+          onChange={props.onChatReasoning}/>
+        <span className="prototype-permissions" title="Permissions remain controlled by the existing runtime grants"><Shield size={12}/>Runtime permissions</span>
+        {pausedTurn&&goalTurn?.id!==pausedTurn.id&&pausedTurn.errorCode!=='AGENT_RUNTIME_CONTINUATION_PROVIDER_WAIT'&&<TinyButton disabled={running||!props.onChatResume} onClick={()=>props.onChatResume?.(active!.conversation.id,pausedTurn.id)}><Play size={16}/>Continue</TinyButton>}
+        {(running||pausedTurn)&&runningTurnId&&runningTurnId!==goalTurn?.id
           ? <TinyButton onClick={()=>props.onChatCancel(runningTurnId)}><X size={16}/>{pausedTurn?'Stop recovery':'Stop'}</TinyButton>
-          : <TinyButton kind="primary" disabled={!configured||!prompt.trim()||running||Boolean(pending)} onClick={submit}><Play size={16}/>Send</TinyButton>}
+          : <button className="prototype-send" aria-label="Send" title="Send · Enter (Shift+Enter for a new line)" disabled={!configured||!prompt.trim()||running||Boolean(pausedTurn)||Boolean(pending)} onClick={submit}><Send size={16}/></button>}
       </div>
+      {props.agentChat.reasoningNotice&&<small role="status">{props.agentChat.reasoningNotice}</small>}
     </div>
   </div>;
 }
@@ -541,10 +672,10 @@ function SettingToggle({title,text,on,disabled,onChange}:{title:string;text:stri
   return <div className="setting-toggle"><div><b>{title}</b><span>{text}</span></div><Toggle on={on} disabled={disabled} onChange={onChange}/></div>;
 }
 
-export function ReferenceUi({page,setPage,snapshot,logs,onAction,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatArchive,onChatProvider,onChatDraft}:{page:PageId;setPage:(p:PageId)=>void;snapshot?:DesktopSnapshot;logs:ActivityEntry[];onAction:(id:string)=>void;agentRun:AgentRunState;onAgentRun:(prompt:string,workspace?:string)=>void;agentChat:AgentChatUiState;onChatCreate:(workspace?:string)=>void;onChatOpen:(conversationId:string)=>void;onChatSend:(conversationId:string,prompt:string)=>void;onChatCancel:(turnId:string)=>void;onChatArchive:(conversationId:string)=>void;onChatProvider?:(choice:string)=>void;onChatDraft?:()=>void}) {
-  const props={snapshot,logs,onAction,setPage,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatArchive,onChatProvider};
-  const content=page==='workflows'?<WorkflowsPage/>:page==='chat'?<ChatPage {...props}/>:page==='dashboard'?<DashboardPage {...props}/>:page==='core'?<CoreRuntimePage {...props}/>:page==='systems'?<SystemsPage {...props}/>:page==='activity'?<ActivityLogPage {...props}/>:page==='diagnostics'?<DiagnosticsPage {...props}/>:<SettingsPage {...props}/>;
-  return <AppShell page={page} setPage={setPage} snapshot={snapshot} onAction={onAction} onNewChat={onChatDraft}>{content}</AppShell>;
+export function ReferenceUi({page,setPage,snapshot,logs,onAction,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatResume,onChatPause,onChatArchive,onChatProvider,onChatModel,onChatReasoning,onChatDraft}:SharedProps & {page:PageId;onChatDraft?:()=>void}) {
+  const props={snapshot,logs,onAction,setPage,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatResume,onChatPause,onChatArchive,onChatProvider,onChatModel,onChatReasoning};
+  const content=page==='workflows'?<WorkflowsPage/>:page==='chat'?<ChatPage {...props}/>:page==='dashboard'?<PrototypeDashboard {...props}/>:page==='core'?<PrototypeRuntime {...props}/>:page==='systems'?<PrototypeTools {...props}/>:page==='models'?<ModelsPage {...props}/>:page==='memory'?<MemoryPage {...props}/>:page==='learning'?<LearningPage {...props}/>:page==='goals'?<GoalsPage {...props}/>:page==='artifacts'?<ArtifactsPage {...props}/>:page==='activity'?<PrototypeActivity {...props}/>:page==='diagnostics'?<PrototypeDiagnostics {...props}/>:page==='wizard'?<PrototypeSetup {...props}/>:<PrototypeSettings {...props}/>;
+  return <AppShell page={page} setPage={setPage} snapshot={snapshot} onAction={onAction} onNewChat={onChatDraft} agentChat={agentChat} logs={logs}>{content}</AppShell>;
 }
 
 

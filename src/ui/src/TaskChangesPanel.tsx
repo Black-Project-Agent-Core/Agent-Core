@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { FileCode, RefreshCw, X } from 'lucide-react';
 import { postHost, subscribeHost, type TaskChanges, type TaskChangesApplied, type TaskChangesDiff, type TaskChangesExternal } from './host';
 import { formatBytes } from './model';
 
@@ -94,12 +94,15 @@ function Result({ data }: { data: TaskChanges }) {
 }
 
 /** Read-only: never sends anything except a lookup by task id; it cannot stage, commit or restore. */
-export function TaskChangesPanel({ taskId }: { taskId: string }) {
+export function TaskChangesPanel({ taskId, presentation = 'inline' }: { taskId: string; presentation?: 'inline' | 'popover' }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [data, setData] = useState<TaskChanges>();
   const [error, setError] = useState<string>();
+  const [popoverStyle, setPopoverStyle] = useState<CSSProperties>();
   const regionId = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const region = useRef<HTMLDivElement>(null);
   const pending = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | undefined>(undefined);
   const load = useRef(() => {});
 
@@ -125,6 +128,25 @@ export function TaskChangesPanel({ taskId }: { taskId: string }) {
     return () => { finish(); unsubscribe(); };
   }, [taskId]);
 
+  useLayoutEffect(() => {
+    if (!open || presentation !== 'popover') return;
+    const position = () => {
+      const rect = trigger.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(520, window.innerWidth - 32);
+      const above = rect.top - 56, below = window.innerHeight - rect.bottom - 16;
+      const placeAbove = above >= 180 || above >= below;
+      setPopoverStyle({ left: Math.max(width / 2 + 16, Math.min(window.innerWidth - width / 2 - 16, rect.left + rect.width / 2)),
+        ...(placeAbove ? { bottom: window.innerHeight - rect.top + 12 } : { top: rect.bottom + 12 }),
+        maxHeight: Math.max(60, Math.min(380, (placeAbove ? above : below) - 12)) });
+    };
+    position();
+    window.addEventListener('resize', position);
+    window.addEventListener('scroll', position, true);
+    return () => { window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true); };
+  }, [open, presentation]);
+  useEffect(() => { if (open && presentation === 'popover') region.current?.focus({ preventScroll: true }); }, [open, presentation]);
+
   const toggle = () => {
     const next = !open;
     setOpen(next);
@@ -133,16 +155,18 @@ export function TaskChangesPanel({ taskId }: { taskId: string }) {
   const empty = state === 'ready' && data && !data.requests.length && !data.applied.items.length && !data.applied.unchanged
     && data.external.state === 'ok' && !data.external.items.length;
 
-  return <div className="task-changes">
+  const close = () => { setOpen(false); trigger.current?.focus(); };
+  return <div className={'task-changes'+(presentation === 'popover' ? ' task-changes-popover' : '')}>
     <div className="task-changes-bar">
-      <button type="button" className="tiny-button" aria-expanded={open} aria-controls={regionId} onClick={toggle}>
+      <button ref={trigger} type="button" className="tiny-button" aria-expanded={open} aria-controls={regionId} onClick={toggle}>
         {open ? 'Hide actual changes' : 'Show actual changes'}
       </button>
-      {open && <button type="button" className="tiny-button" disabled={state === 'loading'} onClick={() => load.current()}>
+      {open && presentation === 'inline' && <button type="button" className="tiny-button" disabled={state === 'loading'} onClick={() => load.current()}>
         <RefreshCw size={14} aria-hidden="true" />{state === 'loading' ? 'Checking…' : 'Refresh'}
       </button>}
     </div>
-    <div id={regionId} hidden={!open} role="region" aria-label="Actual changes for this task">
+    <div ref={region} id={regionId} hidden={!open} role="region" aria-label="Actual changes for this task" style={presentation === 'popover' ? popoverStyle : undefined} tabIndex={presentation === 'popover' ? -1 : undefined} onKeyDown={event => { if (presentation === 'popover' && event.key === 'Escape') { event.stopPropagation(); close(); } }}>
+      {open && presentation === 'popover' && <div className="task-changes-popover-heading"><FileCode size={15}/><b>Modified files · task evidence</b><button type="button" aria-label="Refresh file changes" disabled={state === 'loading'} onClick={() => load.current()}><RefreshCw size={14}/></button><button type="button" aria-label="Close file changes" onClick={close}><X size={15}/></button></div>}
       {open && <p className="task-changes-note">Read-only comparison of the files on disk with this task's checkpoints and Git. Nothing is staged, committed or restored.</p>}
       {open && state === 'loading' && <p role="status" className="task-changes-status">Reading checkpoints and Git…</p>}
       {open && state === 'error' && <p role="alert" className="task-changes-error">{error ?? 'Actual changes are unavailable.'}</p>}

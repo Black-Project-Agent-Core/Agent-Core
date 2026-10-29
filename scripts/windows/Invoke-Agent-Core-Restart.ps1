@@ -11,8 +11,8 @@ Task mode is an internal fixed action, not a general privileged command runner.
 Results and worker output are saved under runtime/restart. A failed run's receipt
 carries the reason in `error`: the worker log's last GAGAL line, or a note that the
 worker ended without a final line. The receipt's `readiness` is the worker's last
-'Kesiapan:' line (whether Core answered /health after the window opened), or null; it never
-changes the exit code. A timeout is unknown outcome, not permission to retry or terminate a
+'Kesiapan:' line (whether Core answered /health after the window opened), or null. The worker
+fails if Core is not ready. A timeout is unknown outcome, not permission to retry or terminate a
 running task.
 #>
 [CmdletBinding()]
@@ -272,9 +272,9 @@ try {
         $null = $task.RunEx([string[]]@($runKey, $sessionId.ToString(),
             $StopTimeoutSeconds.ToString(), $StartTimeoutSeconds.ToString()), 4, $sessionId, $null)
         $timer = [Diagnostics.Stopwatch]::StartNew()
-        # Stop and start budgets, the worker's readiness poll (its 60 s default plus one 3 s request and
+        # Stop and start budgets, the worker's readiness poll (its 300 s default plus one 3 s request and
         # one 1 s sleep, rounded up), and 90 s for the rest of the worker's own work.
-        $readinessBudgetSeconds = 65
+        $readinessBudgetSeconds = 305
         while (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) {
             if ($timer.Elapsed.TotalSeconds -ge ($StopTimeoutSeconds + $StartTimeoutSeconds + $readinessBudgetSeconds + 90)) {
                 throw "Hasil restart belum diketahui. Tidak mengulang atau menghentikan task. Periksa $resultDirectory; ID $runKey."

@@ -74,7 +74,7 @@ describe('unified Workflows page', () => {
   it('restores the Workflows route and offers one source-analysis canvas for the system and Memory', () => {
     render(<App />);
     expect(screen.getByRole('heading', { name: 'Workflows' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Workflows' })).toHaveClass('active');
+    expect(window.location.hash).toBe('#workflows');
     expect(screen.getByText(/Source analysis, not live execution/i)).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: /memory/i })).not.toBeInTheDocument();
     expect(screen.getByText(/Building the source map/i)).toBeInTheDocument();

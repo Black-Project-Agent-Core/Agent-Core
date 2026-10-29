@@ -100,7 +100,7 @@ describe('Native durable provider wait', () => {
     expect(f.runtime.markTerminal).not.toHaveBeenCalled();
   });
 
-  it('recovers a persisted wait after reconstruction and refuses unknown mutation replay', async () => {
+  it('parks a persisted wait after reconstruction until Continue and refuses unknown mutation replay', async () => {
     const f = await fixture();
     vi.useFakeTimers();
     f.controller.runConversationTurn.mockImplementationOnce(pause);
@@ -110,6 +110,9 @@ describe('Native durable provider wait', () => {
     (f.chat as any).providerWaitTimers.clear();
     const reopened = await AgentChatService.initialize(f.root, f.runtime as any, f.controller as any);
     await vi.advanceTimersByTimeAsync(5_100);
+    expect(reopened.store.getTurn(waiting.turnId)?.status).toBe('resumable');
+    expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(1);
+    await reopened.resumeTurn({turnId:waiting.turnId});
     expect(reopened.store.getTurn(waiting.turnId)?.status).toBe('finalized');
     expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(2);
 

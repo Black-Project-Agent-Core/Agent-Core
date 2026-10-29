@@ -49,6 +49,22 @@ test('stays collapsed and silent until opened, then looks up only by task id', (
   expect(screen.getByRole('status')).toHaveTextContent('Reading checkpoints and Git');
 });
 
+test('opens the workspace file preview and Escape closes it without another lookup', () => {
+  render(<TaskChangesPanel taskId="task-1" presentation="popover" />);
+  const trigger = screen.getByRole('button', { name: 'Show actual changes' });
+  vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({ top: 80, bottom: 100, left: 120, right: 220, width: 100, height: 20, x: 120, y: 80, toJSON: () => ({}) });
+  fireEvent.click(trigger);
+  const region = screen.getByRole('region', { name: 'Actual changes for this task' });
+  expect(region).toHaveFocus();
+  expect(region).toHaveStyle({ top: '112px' });
+  reply({ type: 'task-changes-result', requestId: lookups().at(-1).requestId, result: base() });
+  expect(within(region).getByLabelText('Diff for src/a.ts')).toHaveTextContent('+new line');
+  fireEvent.keyDown(region, { key: 'Escape' });
+  expect(trigger).toHaveFocus();
+  expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  expect(lookups()).toHaveLength(1);
+});
+
 test('shows requests, applied diffs and external changes as three separate groups with explicit states', () => {
   render(<TaskChangesPanel taskId="task-1" />);
   fireEvent.click(screen.getByRole('button', { name: 'Show actual changes' }));

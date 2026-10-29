@@ -4,6 +4,7 @@ import { AgentProviderPoolPausedError, type AgentModelMessage } from './agent-pr
 import { normalizeNativeResultMetadata } from './agent-memory-evaluation.js';
 import {
   parseAgentTurnCheckpoint,
+  AGENT_TURN_USER_PAUSED,
   serializeAgentTurnCheckpoint,
   verifyCheckpointArtifacts,
   type AgentTurnCheckpointState,
@@ -119,6 +120,7 @@ function historyMessages(
 export class AgentChatService {
   readonly store: AgentChatStore;
   private readonly activeTurns = new Map<string, AbortController>();
+  private readonly pauseRequestedTurns = new Set<string>();
   /** One settle per runtime task, shared by every caller that races for it. */
   private readonly settlingTasks = new Map<string, Promise<boolean>>();
   private settleWaitMs = SETTLE_WAIT_MS;
@@ -150,37 +152,29 @@ export class AgentChatService {
       projectRoot,
       artifactAuthorization,
     );
-    const recovered = await service.reconcileInterruptedTurns();
-    if (recovered.length) setImmediate(() => {
-      void service.resumeRecoveredTurns(recovered).catch(error => {
-        console.error('AGENT_CHAT_RECOVERY_FAILED:' + safeErrorCode(error));
-      });
-    });
+    await service.reconcileInterruptedTurns();
     return service;
   }
 
-  private async reconcileInterruptedTurns(): Promise<AgentChatTurn[]> {
-    const recovered = this.store.recoverRunningTurns();
+  private async reconcileInterruptedTurns(): Promise<void> {
+    // Startup parks checkpoints for explicit Continue; it never spends provider quota.
+    this.store.recoverRunningTurns();
     // The turns interrupted just above, and any stopped or failed turn an earlier build left with a running
     // task, can never resume; settle those tasks so their sessions can be closed again.
     await this.settleOrphanedTasks();
-    const waiting = this.store.listConversations(true).flatMap(conversation =>
-      this.store.detail(conversation.id)?.turns.filter(turn => turn.status === 'resumable'
-        && this.store.getCheckpoint(turn.id)?.phase === 'provider-wait') ?? []);
-    return [...new Map([...recovered.resumable, ...waiting].map(turn => [turn.id, turn])).values()];
   }
 
   private scheduleProviderResume(turnId: string, state: AgentTurnCheckpointState): void {
     const prior = this.providerWaitTimers.get(turnId);
     if (prior) clearTimeout(prior);
     this.providerWaitTimers.delete(turnId);
-    if (this.automaticRecoveryPaused || !state.providerWait?.retryAtMs || state.providerAttemptsConsumed >= state.maxProviderAttempts
+    if (this.automaticRecoveryPaused || this.pauseRequestedTurns.has(turnId) || !state.providerWait?.retryAtMs || state.providerAttemptsConsumed >= state.maxProviderAttempts
       || state.expiresAtMs <= Date.now() || (state.pendingTool?.mutating && state.pendingTool.phase === 'dispatching')) return;
     const timer = setTimeout(() => {
       this.providerWaitTimers.delete(turnId);
       void (async () => {
         if (this.automaticRecoveryPaused || this.store.getTurn(turnId)?.status !== 'resumable' || this.activeTurns.has(turnId)) return;
-        await this.resumeTurn({ turnId });
+        await this.resumeTurn({ turnId, automatic: true });
       })().catch(error => {
         console.error('AGENT_CHAT_PROVIDER_RESUME_FAILED:' + safeErrorCode(error));
       });
@@ -189,26 +183,6 @@ export class AgentChatService {
     this.providerWaitTimers.set(turnId, timer);
   }
 
-  private async resumeRecoveredTurns(turns: AgentChatTurn[]): Promise<void> {
-    // One startup pass, one turn at a time; unknown effects remain available for reconciliation.
-    for (const turn of turns) {
-      if (this.automaticRecoveryPaused) return;
-      const revision = this.store.getCheckpoint(turn.id)?.revision;
-      try {
-        const checkpoint = this.store.getCheckpoint(turn.id);
-        if (checkpoint?.phase === 'provider-wait') {
-          const state = parseAgentTurnCheckpoint(checkpoint.payloadJson, checkpoint.payloadDigest);
-          this.scheduleProviderResume(turn.id, state);
-          continue;
-        }
-        await this.resumeTurn({ turnId: turn.id });
-      } catch (error) {
-        if (revision !== undefined) {
-          this.store.noteResumeIssue(turn.id, revision, safeErrorCode(error));
-        }
-      }
-    }
-  }
   pauseAutomaticRecovery(): void {
     this.automaticRecoveryPaused = true;
     for (const timer of this.providerWaitTimers.values()) clearTimeout(timer);
@@ -227,7 +201,9 @@ export class AgentChatService {
   }
 
   getConversation(conversationId: string): AgentChatConversationDetail | null {
-    return this.store.detail(conversationId);
+    const detail = this.store.detail(conversationId);
+    if (detail) detail.turns = detail.turns.map(turn => turn.status === 'running' && this.pauseRequestedTurns.has(turn.id) ? { ...turn, pauseRequested: true } : turn);
+    return detail;
   }
 
   async createConversation(input: {
@@ -303,6 +279,10 @@ export class AgentChatService {
         });
         revision = saved.revision;
         hooks.state = serialized.state;
+        const mutationInFlight = serialized.state.pendingTool?.mutating && serialized.state.pendingTool.phase === 'dispatching';
+        if (this.pauseRequestedTurns.has(input.turnId) && !serialized.state.finalResult && !mutationInFlight) {
+          throw new Error(AGENT_TURN_USER_PAUSED);
+        }
       },
     };
     return hooks;
@@ -361,6 +341,7 @@ export class AgentChatService {
     clientRequestId: string;
     prompt: string;
     messageOrigin?: 'local-operator' | 'external-controller';
+    goalMode?: boolean;
     /** Owner-chosen route id from listProviders(); omitted means automatic rotation. */
     providerRoute?: string;
     eventSink?: AgentChatEventSink;
@@ -368,7 +349,7 @@ export class AgentChatService {
   }): Promise<AgentChatTurnResult> {
     const existing = this.store.getTurnByClientRequestId(input.clientRequestId);
     if (existing) {
-      if (existing.conversationId !== input.conversationId) {
+      if (existing.conversationId !== input.conversationId || Boolean(existing.goalMode) !== Boolean(input.goalMode)) {
         throw new Error('AGENT_CHAT_CLIENT_REQUEST_CONFLICT');
       }
       return this.replayResult(existing);
@@ -407,6 +388,7 @@ export class AgentChatService {
       prompt: input.prompt,
       executorToken,
       messageOrigin: localOperator ? 'local-operator' : 'external-controller',
+      goalMode: input.goalMode,
     });
     if (!begun.created) return this.replayResult(begun.turn);
     if (!begun.claim) throw new Error('AGENT_CHAT_EXECUTION_STATE_MISSING');
@@ -508,9 +490,10 @@ export class AgentChatService {
         || (error instanceof Error && error.message === 'AGENT_RUNTIME_TURN_STOPPED');
       const currentTurn = this.store.getTurn(turnId);
       if (currentTurn?.status !== 'stopped') {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = this.pauseRequestedTurns.has(turnId) && error instanceof AgentProviderPoolPausedError
+          ? AGENT_TURN_USER_PAUSED : error instanceof Error ? error.message : String(error);
         if (message.startsWith('AGENT_RUNTIME_CONTINUATION_')) {
-          this.store.releaseResumeClaim(turnId, claim, safeErrorCode(error));
+          this.store.releaseResumeClaim(turnId, claim, message === AGENT_TURN_USER_PAUSED ? message : safeErrorCode(error));
         } else {
           this.store.failTurn({
             turnId,
@@ -526,6 +509,9 @@ export class AgentChatService {
           }
         }
       }
+      if (!stopped && this.store.getTurn(turnId)?.errorCode === AGENT_TURN_USER_PAUSED) {
+        return { ...this.replayResult(this.store.getTurn(turnId)!), replayed: false };
+      }
       if (!stopped && error instanceof AgentProviderPoolPausedError && continuation.state) {
         this.scheduleProviderResume(turnId, continuation.state);
         return { ...this.replayResult(this.store.getTurn(turnId)!), replayed: false };
@@ -534,6 +520,7 @@ export class AgentChatService {
     } finally {
       // Only drop the registration this executor made; a newer executor of the same turn keeps its own.
       if (this.activeTurns.get(turnId) === controller) this.activeTurns.delete(turnId);
+      if (this.store.getTurn(turnId)?.status !== 'resumable') this.pauseRequestedTurns.delete(turnId);
       await this.settleIfEnded(turnId);
     }
   }
@@ -575,10 +562,13 @@ export class AgentChatService {
   async resumeTurn(input: {
     turnId: string;
     eventSink?: AgentChatEventSink;
+    automatic?: boolean;
   }): Promise<AgentChatTurnResult> {
     const turn = this.store.getTurn(input.turnId);
     if (!turn) throw new Error('AGENT_CHAT_TURN_NOT_FOUND');
     if (turn.status !== 'resumable') throw new Error('AGENT_CHAT_TURN_NOT_RESUMABLE');
+    if (input.automatic && this.pauseRequestedTurns.has(turn.id)) return { ...this.replayResult(turn), replayed: false };
+    if (!input.automatic) this.pauseRequestedTurns.delete(turn.id);
     if (this.automaticRecoveryPaused) return { ...this.replayResult(turn), replayed: false };
     const conversation = this.store.getConversation(turn.conversationId);
     if (!conversation || conversation.status !== 'active') {
@@ -586,6 +576,7 @@ export class AgentChatService {
     }
 
     const loaded = await this.loadResumableCheckpoint(turn);
+    if (this.pauseRequestedTurns.has(turn.id)) return { ...this.replayResult(turn), replayed: false };
     if (this.automaticRecoveryPaused) return { ...this.replayResult(turn), replayed: false };
     if (loaded.state.providerWait && (loaded.state.providerAttemptsConsumed >= loaded.state.maxProviderAttempts
       || (loaded.state.providerWait.retryAtMs !== null && loaded.state.providerWait.retryAtMs > Date.now()))) {
@@ -710,11 +701,12 @@ export class AgentChatService {
         replayed: false,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = this.pauseRequestedTurns.has(turn.id) && error instanceof AgentProviderPoolPausedError
+        ? AGENT_TURN_USER_PAUSED : error instanceof Error ? error.message : String(error);
       const currentTurn = this.store.getTurn(turn.id);
       if (currentTurn?.status !== 'stopped') {
         if (message.startsWith('AGENT_RUNTIME_CONTINUATION_')) {
-          this.store.releaseResumeClaim(turn.id, claim, safeErrorCode(error));
+          this.store.releaseResumeClaim(turn.id, claim, message === AGENT_TURN_USER_PAUSED ? message : safeErrorCode(error));
         } else {
           this.store.failTurn({
             turnId: turn.id,
@@ -732,6 +724,9 @@ export class AgentChatService {
           }
         }
       }
+      if (!controller.signal.aborted && message === AGENT_TURN_USER_PAUSED) {
+        return { ...this.replayResult(this.store.getTurn(turn.id)!), replayed: false };
+      }
       if (!controller.signal.aborted && error instanceof AgentProviderPoolPausedError && continuation.state) {
         this.scheduleProviderResume(turn.id, continuation.state);
         return { ...this.replayResult(this.store.getTurn(turn.id)!), replayed: false };
@@ -740,6 +735,7 @@ export class AgentChatService {
     } finally {
       // Same identity check as above: never remove another executor's registration.
       if (this.activeTurns.get(turn.id) === controller) this.activeTurns.delete(turn.id);
+      if (this.store.getTurn(turn.id)?.status !== 'resumable') this.pauseRequestedTurns.delete(turn.id);
       await this.settleIfEnded(turn.id);
     }
   }
@@ -826,6 +822,7 @@ export class AgentChatService {
   }
 
   stopTurn(turnId: string): boolean {
+    this.pauseRequestedTurns.delete(turnId);
     const timer = this.providerWaitTimers.get(turnId);
     if (timer) clearTimeout(timer);
     this.providerWaitTimers.delete(turnId);
@@ -835,6 +832,20 @@ export class AgentChatService {
     controller?.abort();
     // With a live executor its own catch and finally settle the task; without one nothing else will.
     if (!controller) void this.settleEndedTurnTask(turnId, cancelled.runtimeTaskId);
+    return true;
+  }
+
+  pauseTurn(turnId: string): boolean {
+    const turn = this.store.getTurn(turnId);
+    if (!turn || !['running', 'resumable'].includes(turn.status)) return false;
+    this.pauseRequestedTurns.add(turnId);
+    const timer = this.providerWaitTimers.get(turnId);
+    if (timer) clearTimeout(timer);
+    this.providerWaitTimers.delete(turnId);
+    if (turn.status === 'resumable') {
+      const checkpoint = this.store.getCheckpoint(turnId);
+      if (checkpoint) this.store.noteResumeIssue(turnId, checkpoint.revision, AGENT_TURN_USER_PAUSED);
+    }
     return true;
   }
 

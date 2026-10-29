@@ -69,7 +69,7 @@ for(const name of Object.keys(versions) as FixtureName[]) {
       timestamp:'2026-10-21T11:30:00+07:00',
     };
     const {container}=render(<ActivityLogPage logs={[row]} snapshot={undefined}
-      agentRun={{status:'idle'}} agentChat={{conversations:[]}} onAction={()=>{}} setPage={()=>{}}
+      agentRun={{status:'idle'}} agentChat={{conversations:[],modelChoice:''}} onAction={()=>{}} setPage={()=>{}}
       onAgentRun={()=>{}} onChatCreate={()=>{}} onChatOpen={()=>{}} onChatSend={()=>{}}
       onChatCancel={()=>{}} onChatArchive={()=>{}}/>);
     await waitFor(()=>expect(sent).toHaveBeenCalledWith({type:'activity-detail-get',invocationId:id,phase:'request',offset:0}));

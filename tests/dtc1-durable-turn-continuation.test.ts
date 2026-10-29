@@ -81,6 +81,7 @@ function checkpoint(input: Partial<AgentTurnCheckpointState> = {}): AgentTurnChe
 function seedRunning(
   store: AgentChatStore,
   state: AgentTurnCheckpointState = checkpoint(),
+  goalMode = false,
 ) {
   store.createConversation({
     conversationId: state.conversationId,
@@ -96,6 +97,7 @@ function seedRunning(
     userMessageId: 'message-1',
     prompt: state.prompt,
     executorToken: 'executor-1',
+    goalMode,
   });
   if (!begun.claim) throw new Error('missing claim');
   const serialized = serializeAgentTurnCheckpoint(state);
@@ -540,6 +542,41 @@ describe('DTC-A3 provider key rotation preserves one continuation context', () =
 });
 
 describe('DTC-A6/A11 explicit reconstruction and exactly-once chat commit', () => {
+  it('manual continuation parks startup turns until explicit resume', async () => {
+    const root = await rootFixture('manual-continuation-');
+    const state = checkpoint();
+    const store = new AgentChatStore(path.join(root, 'runtime', 'agent-runtime', 'chat.sqlite'));
+    seedRunning(store, state, true);
+    let service: AgentChatService;
+    let pauseNext=true;
+    const controller = { runConversationTurn: vi.fn(async (input:any) => {
+      if(pauseNext){
+        pauseNext=false;
+        expect(service.pauseTurn(state.turnId)).toBe(true);
+        await input.continuation.save(input.continuation.state,'model-ready');
+      }
+      return {sessionId:state.runtimeSessionId,taskId:state.runtimeTaskId,
+        response:'Explicitly continued',status:'finalized',iterations:1,retrievalAttemptIds:[]};
+    }) };
+    const runtime = { getTask: vi.fn(async () => ({id:state.runtimeTaskId,status:'running'})), setProviderAffinity:vi.fn() };
+    service = await AgentChatService.initialize(root, runtime as any, controller as any);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(controller.runConversationTurn).not.toHaveBeenCalled();
+    expect((service as any).providerWaitTimers.size).toBe(0);
+    expect(service.getConversation(state.conversationId)?.turns[0]?.status).toBe('resumable');
+    expect(service.getConversation(state.conversationId)?.turns[0]?.goalMode).toBe(true);
+    const paused = await service.resumeTurn({turnId:state.turnId});
+    expect(paused.status).toBe('resumable');
+    await new Promise<void>(resolve=>setImmediate(resolve));
+    expect(controller.runConversationTurn).toHaveBeenCalledTimes(1);
+    expect((service as any).providerWaitTimers.size).toBe(0);
+    const result = await service.resumeTurn({turnId:state.turnId});
+    expect(result.taskId).toBe(state.runtimeTaskId);
+    expect(result.status).toBe('finalized');
+    await expect(service.resumeTurn({turnId:state.turnId})).rejects.toThrow('AGENT_CHAT_TURN_NOT_RESUMABLE');
+    expect(controller.runConversationTurn).toHaveBeenCalledTimes(2);
+  });
+
   it('DTC-A6 resumes the same task with a durable read-only tool result already in history', async () => {
     const root = await rootFixture('dtc1-readonly-resume-');
     const state = checkpoint({

@@ -53,6 +53,7 @@ import {
 } from './agent-turn-events.js';
 import {
   AGENT_TURN_CHECKPOINT_SCHEMA_VERSION,
+  AGENT_TURN_USER_PAUSED,
   AGENT_TURN_CHECKPOINT_TTL_MS,
   resultArtifactReference,
   type AgentTurnCheckpointPhase,
@@ -1820,6 +1821,8 @@ export class NativeAgentController {
       const ownedProcesses = stopped ? processLedger.activeForTask(task.id) : [];
       await emitAgentTurnEvent(input.eventSink, error instanceof AgentProviderPoolPausedError
         ? { type: 'provider.waiting', code: error.reason, retryAtMs: providerWait?.retryAtMs ?? null }
+        : code === AGENT_TURN_USER_PAUSED
+        ? { type: 'turn.paused', code }
         : stopped
         ? { type: 'turn.cancelled', code: 'AGENT_RUNTIME_TURN_STOPPED', ...(ownedProcesses.length ? { ownedProcesses } : {}) }
         : { type: 'turn.failed', code: boundedSummary(code, 160),

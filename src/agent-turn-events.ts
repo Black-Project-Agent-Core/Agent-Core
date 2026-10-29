@@ -17,6 +17,7 @@ export type AgentTurnEventType =
   | 'provider.waiting'
   | 'assistant.final'
   | 'turn.failed'
+  | 'turn.paused'
   | 'turn.cancelled';
 
 /**

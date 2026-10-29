@@ -163,9 +163,12 @@ export type AgentChatTurn = {
   conversationId: string;
   clientRequestId: string;
   runtimeTaskId: string;
+  goalMode?: boolean;
+  pauseRequested?: boolean;
   status: 'running' | 'resumable' | 'finalized' | 'failed' | 'interrupted' | 'stopped';
   providerId?: string;
   model?: string;
+  reasoningEffort?: ReasoningEffort;
   iterations?: number;
   retrievalCount?: number;
   memoryUse?: AgentMemoryUse[];
@@ -196,6 +199,13 @@ export type AgentChatDetail = {
   conversation: AgentChatConversation;
   turns: AgentChatTurn[];
   messages: AgentChatMessage[];
+  decisionEvidence?: {
+    status: 'available' | 'unavailable'; taskId: string; truncated: boolean;
+    attribution: 'controller-declared'; goalVerification: 'not-established';
+    records: Array<{ id: string; question: string; assumptions: Array<{ statement: string; basis: string }>;
+      alternatives: Array<{ id: string; claim: string; check: string; falsifier: string; status: string }>;
+      summary: string; evidenceRefs: string[]; assessedAt?: string }>;
+  };
 };
 
 export type AgentChatEvent = {
@@ -221,7 +231,12 @@ export type AgentChatProvider = {
   available: boolean;
   retryAt?: string;
   issue?: string;
+  reasoningEfforts?: ReasoningEffort[];
+  models?: Array<{ id: string; reasoningEfforts?: ReasoningEffort[] }>;
 };
+
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type ReasoningChoice = 'auto' | ReasoningEffort;
 
 export type AgentChatUiState = {
   conversations: AgentChatConversation[];
@@ -229,8 +244,12 @@ export type AgentChatUiState = {
   providers?: AgentChatProvider[];
   /** "auto" keeps automatic rotation; otherwise a route id from providers. */
   providerChoice?: string;
+  modelChoice: string;
+  reasoningChoice?: ReasoningChoice;
+  reasoningNotice?: string;
   active?: AgentChatDetail;
   runningRequestId?: string;
+  creating?: boolean;
   lastEvent?: AgentChatEvent;
   error?: string;
 };
@@ -284,7 +303,11 @@ export type TaskChanges = {
   external: { state: 'ok' | 'unavailable'; reason?: string; items: TaskChangesExternal[]; total: number; truncated: boolean };
 };
 
+export type LauncherWindowSize = { width: number; height: number; defaultWidth: number; defaultHeight: number; minWidth: number; minHeight: number; maxDimension: number };
+
 type HostEnvelope =
+  | { type: 'window-size-state'; requestId: string; size: LauncherWindowSize; warning?: string | null }
+  | { type: 'window-size-error'; requestId: string; error: string; size: LauncherWindowSize }
   | { type: 'task-changes-result'; requestId: string; result: TaskChanges }
   | { type: 'task-changes-error'; requestId: string; error: string }
   | { type: 'proposals-result'; requestId: string; result: ProposalDocumentList }
@@ -301,10 +324,11 @@ type HostEnvelope =
   | { type: 'agent-result'; requestId: string; result?: AgentRunResult; error?: string }
   | { type: 'agent-chat-list-result'; result: { conversations?: AgentChatConversation[] } }
   | { type: 'agent-chat-providers-result'; result: { providers?: AgentChatProvider[] } }
-  | { type: 'agent-chat-state'; result: AgentChatDetail }
-  | { type: 'agent-chat-event'; requestId: string; envelope: { type: string; event?: AgentChatEvent; result?: unknown; error?: string } }
+  | { type: 'agent-chat-state'; requestId?: string; result: AgentChatDetail }
+  | { type: 'agent-chat-event'; requestId: string; conversationId?: string; envelope: { type: string; event?: AgentChatEvent; result?: unknown; error?: string } }
   | { type: 'agent-chat-cancel-result'; turnId: string; stopped: boolean }
-  | { type: 'agent-chat-error'; requestId?: string; error: string }
+  | { type: 'agent-chat-pause-result'; turnId: string; paused: boolean }
+  | { type: 'agent-chat-error'; requestId?: string; conversationId?: string; error: string }
   | { type: 'error'; message: string };
 
 export type HostListener = (message: HostEnvelope) => void;

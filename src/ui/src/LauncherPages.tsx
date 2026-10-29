@@ -1,0 +1,119 @@
+import { useState } from 'react';
+import { ArrowRight, Boxes, BrainCircuit, Code2, Database, FileText, Folder, RefreshCw, Search, Sparkles, Target } from 'lucide-react';
+import { MetricCard, PageHero, Panel, StatusBadge, TinyButton, type PageId } from './components';
+import { TaskChangesPanel } from './TaskChangesPanel';
+import { Plus, Moon, ListTodo, Lock } from 'lucide-react';
+import { PrototypeHeader, PrototypeCard, UpgradeControl } from './PrototypePages';
+import type { AgentChatUiState, DesktopSnapshot } from './host';
+
+type Props = {
+  snapshot?: DesktopSnapshot; agentChat: AgentChatUiState; setPage: (page: PageId) => void;
+  onAction: (action: string) => void; onChatProvider?: (provider: string) => void;
+  onChatModel?: (model: string) => void;
+};
+
+export function ModelsPage(props: Props) {
+  const providers = props.agentChat.providers;
+  const busy = Boolean(props.agentChat.runningRequestId)
+    || props.agentChat.active?.turns.some(turn => turn.status === 'running' || turn.status === 'resumable');
+  return <div className="prototype-page launcher-data-page">
+    <PrototypeHeader title="AI Model & Inference Management" badge="Multi-Provider" description="Choose a session model from providers configured in Agent Core."><UpgradeControl reason="Provider and credential editing has no desktop write contract."><Plus size={14}/>Add Provider</UpgradeControl></PrototypeHeader>
+    {!providers && <Panel><p role="status">Waiting for provider information from the desktop host.</p></Panel>}
+    {providers?.length === 0 && <Panel><p>No providers are configured.</p></Panel>}
+    <div className="launcher-provider-grid">{providers?.flatMap(provider => {
+      const models = provider.models?.length ? provider.models : [{ id: provider.model || 'Model unavailable' }];
+      return models.map(model => <PrototypeCard key={provider.id+model.id} className="launcher-provider-card">
+        <div className="launcher-card-title"><Boxes size={20}/><h2>{model.id}</h2><StatusBadge
+          tone={!provider.configured ? 'offline' : provider.available ? 'healthy' : 'warning'}
+          label={!provider.configured ? 'Not configured' : provider.available ? 'Available' : 'Waiting'}/></div>
+        <p>Provider: {provider.id}</p>
+        {provider.issue && <p>{provider.issue}</p>}
+        {provider.retryAt && <small>Eligible after {new Date(provider.retryAt).toLocaleString()}</small>}
+        <dl className="prototype-model-facts"><dt>Context Window</dt><dd>Not reported</dd><dt>Reasoning Support</dt><dd>{provider.id === 'anthropic' ? (provider.models?.find(item => item.id === model.id)?.reasoningEfforts ?? provider.reasoningEfforts ?? []).join(' · ') || 'Automatic' : 'Provider default'}</dd><dt>Provider Configuration</dt><dd>{provider.configured?'Configured':'Needs setup'}</dd><dt>Estimated Pricing</dt><dd>Not reported</dd></dl>
+        <div className="prototype-model-footer"><span><Lock size={12}/>Credentials stay in the host</span><UpgradeControl reason="No inference-test command is available in the desktop bridge.">Test Inference</UpgradeControl>
+          <TinyButton kind="primary" disabled={busy || !provider.configured || !provider.model || !props.onChatProvider || (provider.id === 'anthropic' && !props.onChatModel)}
+            onClick={() => { props.onChatProvider?.(provider.id); if (provider.id === 'anthropic') props.onChatModel?.(model.id); props.setPage('chat'); }}>Use <ArrowRight size={13}/></TinyButton>
+        </div>
+      </PrototypeCard>);
+    })}</div>
+  </div>;
+}
+
+export function MemoryPage(props: Props) {
+  const [search, setSearch] = useState('');
+  const memory = props.snapshot?.health.memory;
+  const uses = [...new Map((props.agentChat.active?.turns ?? []).flatMap(turn => turn.memoryUse ?? []).map(use => [use.memoryId, use])).values()];
+  const shown = uses.filter(use => `${use.title} ${use.memoryId}`.toLowerCase().includes(search.toLowerCase()));
+  return <div className="prototype-page launcher-data-page">
+    <PrototypeHeader title="Canonical Memory & Vector Explorer" badge="Deterministic Store" description="Canonical Memory health and recorded use in the selected conversation.">
+      <UpgradeControl reason="Index rebuilding has no launcher command."><RefreshCw size={14}/>Rebuild Derived Index</UpgradeControl>
+      <TinyButton disabled={!props.snapshot} onClick={() => props.onAction('open-memory-folder')}><Folder size={15}/>Open Memory Store</TinyButton>
+    </PrototypeHeader>
+    <div className="fidelity-filter-row"><label className="prototype-search"><Search size={16}/><input aria-label="Search conversation memory" placeholder="Search used memory by title or ID…" value={search} onChange={event => setSearch(event.target.value)}/></label>
+      <div className="fidelity-filter-chips"><button aria-pressed="true">Conversation Records</button>{['Project Architecture','User Preference','Technical Fact','Workflow Pattern'].map(category=><button key={category} disabled title="Full-store category browsing is a planned upgrade">{category}</button>)}</div></div>
+    {shown.length ? <div className="fidelity-memory-grid">{shown.map(use => <PrototypeCard key={use.memoryId} className="fidelity-memory-card"><div className="fidelity-memory-head"><div><h2>{use.title}</h2><small>Conversation record</small></div><span className="fidelity-record-status">{use.verification === 'unavailable' ? 'Outcome unavailable' : `Outcome ${use.verification}`}</span></div><p>{use.applicability} · {use.verification === 'unavailable' ? 'Outcome unavailable' : `Outcome ${use.verification}`}</p><div className="fidelity-record-meta"><span>Record ID: {use.memoryId}</span><span>Scope: selected conversation</span><span>Evidence references: {use.evidenceRefs?.length ?? 'Not recorded'}</span></div></PrototypeCard>)}</div>
+      : <div className="fidelity-empty-card" role="status"><Database size={18}/><div><h2>{search ? 'No matching records' : 'No recorded memory use'}</h2><p>{search ? 'Try another title or record ID.' : 'Select a conversation to review the Memory records it used.'}</p></div></div>}
+    <p className="fidelity-scope-note">Conversation memory use · Full-store browsing, categories, editing, and import/export are planned upgrades. Recorded use does not establish causal benefit.<br/>Canonical records: {memory?.noteCount ?? '—'} · Index: {memory?.index ?? 'Unavailable'} · Used in this chat: {uses.length}</p>
+  </div>;
+}
+
+export function GoalsPage(props: Props) {
+  const active = props.agentChat.active;
+  const turn = active?.turns.at(-1);
+  const prompt = active?.messages.find(message => message.turnId === turn?.id && message.role === 'user');
+  const evidence = turn && active?.decisionEvidence?.taskId === turn.runtimeTaskId ? active.decisionEvidence : undefined;
+  return <div className="prototype-page launcher-data-page prototype-goals">
+    <PrototypeHeader title="Goals & Execution Plans" badge="Goal-Oriented Harness" description="Link task objectives to recorded decisions and verifiable deliverables.">
+      <UpgradeControl reason="Strategic goal and milestone management is not connected."><Plus size={14}/>New Goal</UpgradeControl>
+      <TinyButton onClick={() => props.setPage('chat')}>Open AI Workspace <ArrowRight size={15}/></TinyButton>
+    </PrototypeHeader>
+    <div className="fidelity-goal-columns"><section><h2 className="fidelity-column-title"><Target size={16}/>Active Strategic Goals</h2>
+    {turn ? <PrototypeCard><div className="launcher-card-title"><h2>Current task</h2><StatusBadge tone={turn.status === 'failed' ? 'error' : turn.status === 'running' ? 'warning' : 'unknown'} label={turn.status}/></div>
+        {prompt && <p className="launcher-task-prompt">{prompt.content}</p>}
+        <dl className="launcher-definition-list"><dt>Task</dt><dd>{turn.runtimeTaskId}</dd><dt>Workspace</dt><dd>{active?.conversation.workspace}</dd>
+          <dt>Reasoning</dt><dd>{turn.reasoningEffort ?? 'auto'}</dd><dt>Iterations</dt><dd>{turn.iterations ?? 'Not recorded'}</dd></dl>
+        <div className="fidelity-milestones"><b>Milestones &amp; Evidence</b><p>Persistent strategic goals and milestone checklists are a planned upgrade.</p></div>
+      </PrototypeCard> : <div className="fidelity-empty-card"><Target size={18}/><div><h2>No task selected</h2><p>Open a conversation or start a task in the AI Workspace. Persistent strategic goals and milestone checklists are a planned upgrade.</p></div></div>}</section>
+      <section><h2 className="fidelity-column-title"><ListTodo size={16}/>Decomposed Task Plan Steps</h2>
+      <div className="fidelity-empty-card"><ListTodo size={18}/><div><h2>Plan steps are not connected</h2><p>Structured plan steps are a planned upgrade. Available task evidence appears below.</p></div></div>
+      {turn && <PrototypeCard><h2>Recorded decisions</h2><p>Agent-declared checks are separate from verification of the task result.</p>
+        {evidence?.status === 'available' ? evidence.records.map(record => <section className="launcher-decision" key={record.id}><h3>{record.question}</h3><p>{record.summary}</p>
+          {record.alternatives.map(row => <div key={row.id}><b>{row.claim}</b><span>Declared: {row.status}</span><p>Check: {row.check}</p></div>)}</section>)
+          : <p>No decision evidence is available for this task.</p>}
+        {evidence?.truncated && <p>The summary omits some detail; full history is preserved.</p>}
+      </PrototypeCard>}</section></div>
+  </div>;
+}
+
+export function ArtifactsPage(props: Props) {
+  const turn = props.agentChat.active?.turns.at(-1);
+  return <div className="prototype-page launcher-data-page">
+    <PrototypeHeader title="Artifacts & Deliverables Management" badge="Traceable Outputs" description="Inspect file-changing requests and observed changes for the selected task.">
+      <UpgradeControl reason="Attachment transport is not connected."><Plus size={14}/>Import File</UpgradeControl>
+      <TinyButton disabled={!props.snapshot} onClick={() => props.onAction('open-folder')}><Folder size={15}/>Open Workspace</TinyButton>
+    </PrototypeHeader>
+    <div className="fidelity-filter-row"><label className="prototype-search"><Search size={16}/><input aria-label="Search artifacts" placeholder="Search artifacts by name…" disabled title="Artifact catalog search is a planned upgrade"/></label><div className="fidelity-filter-chips"><button aria-pressed="true">Task Changes</button><button disabled title="Typed artifact catalog is a planned upgrade">AI Generated</button><button disabled>Code</button><button disabled>Report</button><button disabled>User Import</button></div></div>
+    <p className="fidelity-scope-note">Artifact catalog and search are planned upgrades. Task changes below use recorded checkpoints and Git evidence.</p>
+    <div className="fidelity-artifact-grid"><PrototypeCard className="fidelity-artifact-card"><div className="fidelity-artifact-top"><FileText size={20}/><span>Task evidence</span></div><h2>Task changes</h2><p>{turn ? 'Inspect recorded file changes for the selected task.' : 'Select a conversation to inspect its file changes.'}</p>{turn ? <TaskChangesPanel key={turn.runtimeTaskId} taskId={turn.runtimeTaskId}/> : <TinyButton onClick={() => props.setPage('chat')}>Open AI Workspace</TinyButton>}</PrototypeCard>
+      <PrototypeCard className="fidelity-artifact-card"><div className="fidelity-artifact-top"><Code2 size={20}/><span>Planned upgrade</span></div><h2>Code artifacts</h2><p>Artifact library and editor are not connected.</p></PrototypeCard>
+      <PrototypeCard className="fidelity-artifact-card"><div className="fidelity-artifact-top"><Folder size={20}/><span>Planned upgrade</span></div><h2>Reports &amp; imports</h2><p>Artifact catalog and file imports are not connected.</p></PrototypeCard></div>
+  </div>;
+}
+
+export function LearningPage(props: Props) {
+  const health = props.snapshot?.health;
+  return <div className="prototype-page launcher-data-page fidelity-dreaming">
+    <PrototypeHeader title="Dreaming: Session Knowledge Consolidation" badge="Offline Reflection" description="Review the shared Learning pipeline while the Dreaming workflow is prepared.">
+      <UpgradeControl reason="No Dreaming job or findings review contract is exposed."><Moon size={14}/>Run Dreaming Now</UpgradeControl>
+      <TinyButton disabled={!props.snapshot} onClick={() => props.onAction('system-snapshot')}><RefreshCw size={15}/>Refresh status</TinyButton>
+    </PrototypeHeader>
+    <div className="launcher-summary-grid">
+      <MetricCard icon={BrainCircuit} value={health?.learning.status ?? 'Unavailable'} label="Learning service"/>
+      <MetricCard icon={Target} value={health?.agentRuntime?.pendingFinalizationCount ?? '—'} label="Native finalization pending"/>
+      <MetricCard icon={FileText} value={health?.externalControllerLearning?.pendingLearningEpisodes ?? '—'} label="External episodes pending"/>
+    </div>
+    <section className="fidelity-dream-section"><h2 className="fidelity-column-title"><Sparkles size={16}/>Proposed Knowledge Additions (Review Required)</h2><div className="fidelity-empty-card"><Moon size={18}/><div><h2>Dreaming review is a planned upgrade</h2><p>Findings, accept/reject actions, and session review counts are not available in this launcher. This does not mean the review queue is empty.</p></div></div></section>
+    <section className="fidelity-dream-section fidelity-audit"><h2 className="fidelity-column-title">Consolidation Audit Trail · Knowledge sinks</h2>{health?.learning.sinkStatus.length ? <ul className="launcher-record-list">{health.learning.sinkStatus.map(sink => <li key={sink.name}><b>{sink.name}</b><StatusBadge tone={sink.available ? 'healthy' : 'error'} label={sink.available ? 'Available' : 'Unavailable'}/></li>)}</ul>
+      : <p>Waiting for Learning status from the desktop host.</p>}<div className="launcher-inline-actions"><TinyButton onClick={() => props.setPage('chat')}>Current conversation</TinyButton><TinyButton onClick={() => props.setPage('activity')}>Activity Log</TinyButton></div></section>
+  </div>;
+}

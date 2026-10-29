@@ -33,7 +33,7 @@ describe('expanded and readable Activity Log candidate',()=>{
   it('offers accessible resize and expand/restore without invoking tools',()=>{
     const {container}=render(<ActivityLogPage
       logs={[entry]} onAction={()=>{}} setPage={()=>{}}
-      agentRun={{status:'idle'}} agentChat={{conversations:[]}}
+      agentRun={{status:'idle'}} agentChat={{conversations:[],modelChoice:''}}
       onAgentRun={()=>{}} onChatCreate={()=>{}} onChatOpen={()=>{}}
       onChatSend={()=>{}} onChatCancel={()=>{}} onChatArchive={()=>{}}
     />);

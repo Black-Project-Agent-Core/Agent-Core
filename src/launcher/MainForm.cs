@@ -22,6 +22,8 @@ public sealed class MainForm : Form
     private bool _exitRequested;
     private bool _trayHintShown;
     private bool _trayReleased;
+    private LauncherWindowSize? _lastSavedWindowSize;
+    private string? _windowSizeWarning;
 
     // A second launch signals the show event so a launcher hidden in the tray shows its window.
     // The official restart signals the exit event because a hidden launcher has no window to close.
@@ -35,11 +37,17 @@ public sealed class MainForm : Form
         _nativeDiagnostics = nativeDiagnostics;
         Text = "Agent Core";
         Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
-        var workingArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1536, 1024);
-        ClientSize = new Size(
-            Math.Min(1536, Math.Max(1120, workingArea.Width - 56)),
-            Math.Min(960, Math.Max(680, workingArea.Height - 72)));
-        MinimumSize = new Size(940, 560);
+        LauncherWindowSize initialSize;
+        try { initialSize = LauncherWindowSizeStore.Load(root); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidDataException)
+        {
+            _runtime.CaptureFailure("LAUNCHER", error, "window-size-load");
+            _windowSizeWarning = "Saved window size could not be read; the default is in use.";
+            initialSize = LauncherWindowSizeStore.Default;
+        }
+        MinimumSize = SystemInformation.MinimumWindowSize;
+        Size = new Size(initialSize.Width, initialSize.Height);
+        _lastSavedWindowSize = initialSize;
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(6, 16, 27);
         HandleCreated += (_, _) => ApplyDarkTitleBar();
@@ -49,6 +57,7 @@ public sealed class MainForm : Form
         ListenForSignal(ExitSignalName, ExitFromTray);
 
         Shown += OnShownAsync;
+        ResizeEnd += (_, _) => SaveManualWindowSize();
         FormClosing += OnFormClosingAsync;
         FormClosed += (_, _) =>
         {
@@ -330,6 +339,36 @@ public sealed class MainForm : Form
             using var document = JsonDocument.Parse(e.WebMessageAsJson);
             var root = document.RootElement;
             var type = root.GetProperty("type").GetString();
+            if (type is "window-size-get" or "window-size-set")
+            {
+                var requestId = root.TryGetProperty("requestId", out var requestNode)
+                    && requestNode.ValueKind == JsonValueKind.String ? requestNode.GetString() : null;
+                if (string.IsNullOrWhiteSpace(requestId) || requestId.Length > 128) return;
+                try
+                {
+                    if (type == "window-size-set")
+                    {
+                        if (!root.TryGetProperty("width", out var widthNode) || widthNode.ValueKind != JsonValueKind.Number || !widthNode.TryGetInt32(out var width)
+                            || !root.TryGetProperty("height", out var heightNode) || heightNode.ValueKind != JsonValueKind.Number || !heightNode.TryGetInt32(out var height)
+                            || !LauncherWindowSizeStore.IsValid(width, height))
+                            throw new ArgumentOutOfRangeException("size", "WINDOW_SIZE_INVALID");
+                        if (WindowState != FormWindowState.Normal) WindowState = FormWindowState.Normal;
+                        Size = new Size(width, height);
+                        var actual = new LauncherWindowSize(Width, Height);
+                        LauncherWindowSizeStore.Save(_root, actual);
+                        _lastSavedWindowSize = actual;
+                        _windowSizeWarning = null;
+                    }
+                    SendWindowSize(requestId);
+                }
+                catch (Exception error)
+                {
+                    _runtime.CaptureFailure("LAUNCHER", error, "window-size-command");
+                    if (error is not ArgumentOutOfRangeException) _windowSizeWarning = "The current window size could not be saved.";
+                    Send(new { type = "window-size-error", requestId, error = error is ArgumentOutOfRangeException ? "Invalid window size." : "Could not save window size.", size = CurrentWindowSize() });
+                }
+                return;
+            }
             if (type == "ui-diagnostic-error")
             {
                 var kind = root.TryGetProperty("kind", out var kindNode) ? kindNode.GetString() ?? "ui-runtime" : "ui-runtime";
@@ -440,6 +479,8 @@ public sealed class MainForm : Form
             }
             if (type == "agent-chat-create")
             {
+                var requestId = root.TryGetProperty("requestId", out var requestNode)
+                    ? requestNode.GetString() : null;
                 var workspace = root.TryGetProperty("workspace", out var workspaceNode)
                     && workspaceNode.ValueKind == JsonValueKind.String
                     ? workspaceNode.GetString()
@@ -447,12 +488,12 @@ public sealed class MainForm : Form
                 try
                 {
                     var result = await _runtime.CreateAgentConversationAsync(workspace);
-                    Send(new { type = "agent-chat-state", result });
+                    Send(new { type = "agent-chat-state", requestId, result });
                     await PushStatusAsync();
                 }
                 catch (Exception error)
                 {
-                    Send(new { type = "agent-chat-error", error = error.Message });
+                    Send(new { type = "agent-chat-error", requestId, error = error.Message });
                 }
                 return;
             }
@@ -468,11 +509,11 @@ public sealed class MainForm : Form
                 }
                 catch (Exception error)
                 {
-                    Send(new { type = "agent-chat-error", error = error.Message });
+                    Send(new { type = "agent-chat-error", conversationId, error = error.Message });
                 }
                 return;
             }
-            if (type == "agent-chat-send")
+            if (type is "agent-chat-send" or "agent-chat-resume")
             {
                 var requestId = root.TryGetProperty("requestId", out var requestNode)
                     ? requestNode.GetString() ?? Guid.NewGuid().ToString("N")
@@ -490,43 +531,73 @@ public sealed class MainForm : Form
                     && providerNode.ValueKind == JsonValueKind.String
                     ? providerNode.GetString()
                     : null;
+                var reasoningEffort = root.TryGetProperty("reasoningEffort", out var effortNode)
+                    && effortNode.ValueKind == JsonValueKind.String ? effortNode.GetString() : null;
+                var model = root.TryGetProperty("model", out var modelNode)
+                    && modelNode.ValueKind == JsonValueKind.String ? modelNode.GetString() : null;
                 try
                 {
-                    await _runtime.RunAgentTurnStreamAsync(
+                    Action<JsonElement> onEnvelope = envelope => Send(new {
+                        type = "agent-chat-event", requestId, conversationId, envelope
+                    });
+                    var goalMode = root.TryGetProperty("goalMode", out var goalNode) && goalNode.GetBoolean();
+                    if (type == "agent-chat-resume")
+                    {
+                        var turnId = root.GetProperty("turnId").GetString() ?? string.Empty;
+                        await _runtime.ResumeAgentTurnStreamAsync(turnId, onEnvelope);
+                    }
+                    else await _runtime.RunAgentTurnStreamAsync(
                         conversationId,
                         clientRequestId,
                         prompt,
-                        envelope => Send(new {
-                            type = "agent-chat-event",
-                            requestId,
-                            envelope
-                        }),
-                        providerId: providerId);
+                        onEnvelope,
+                        providerId: providerId, reasoningEffort: reasoningEffort, model: model, goalMode: goalMode);
                     var result = await _runtime.ReadAgentConversationAsync(conversationId);
-                    Send(new { type = "agent-chat-state", result });
+                    Send(new { type = "agent-chat-state", requestId, result });
                     await PushStatusAsync();
                 }
                 catch (Exception error)
                 {
                     _runtime.CaptureFailure("AGENT_RUNTIME", error, "native-agent-chat-turn");
-                    Send(new { type = "agent-chat-error", requestId, error = error.Message });
+                    Send(new { type = "agent-chat-error", requestId, conversationId, error = error.Message });
                     try
                     {
                         var state = await _runtime.ReadAgentConversationAsync(conversationId);
-                        Send(new { type = "agent-chat-state", result = state });
+                        Send(new { type = "agent-chat-state", requestId, result = state });
                         await PushStatusAsync();
                     }
                     catch { }
                 }
                 return;
             }
-            if (type == "agent-chat-cancel")
+            if (type is "agent-chat-cancel" or "agent-chat-pause")
             {
                 var turnId = root.TryGetProperty("turnId", out var turnNode)
                     ? turnNode.GetString() ?? string.Empty
                     : string.Empty;
-                var stopped = await _runtime.CancelAgentTurnAsync(turnId);
-                Send(new { type = "agent-chat-cancel-result", turnId, stopped });
+                var conversationId = root.TryGetProperty("conversationId", out var conversationNode)
+                    ? conversationNode.GetString() ?? string.Empty : string.Empty;
+                var requestId = root.TryGetProperty("requestId", out var requestNode)
+                    ? requestNode.GetString() : null;
+                try
+                {
+                    if (type == "agent-chat-pause")
+                    {
+                        var paused = await _runtime.PauseAgentTurnAsync(turnId);
+                        Send(new { type = "agent-chat-pause-result", turnId, paused });
+                    }
+                    else
+                    {
+                        var stopped = await _runtime.CancelAgentTurnAsync(turnId);
+                        Send(new { type = "agent-chat-cancel-result", turnId, stopped });
+                    }
+                    if (!string.IsNullOrWhiteSpace(conversationId))
+                    {
+                        var result = await _runtime.ReadAgentConversationAsync(conversationId);
+                        Send(new { type = "agent-chat-state", requestId, result });
+                    }
+                }
+                catch (Exception error) { Send(new { type = "agent-chat-error", requestId, conversationId, error = error.Message }); }
                 return;
             }
             if (type == "agent-chat-archive")
@@ -587,6 +658,29 @@ public sealed class MainForm : Form
         Send(new { type = "status", status = snapshot.Status });
         Send(new { type = "snapshot", snapshot });
         Send(new { type = "logs", entries = _runtime.Logs });
+    }
+
+    private object CurrentWindowSize()
+    {
+        var bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+        return new { width = bounds.Width, height = bounds.Height, defaultWidth = LauncherWindowSizeStore.DefaultWidth,
+            defaultHeight = LauncherWindowSizeStore.DefaultHeight, minWidth = Math.Max(1, MinimumSize.Width),
+            minHeight = Math.Max(1, MinimumSize.Height), maxDimension = LauncherWindowSizeStore.MaximumDimension };
+    }
+
+    private void SendWindowSize(string requestId) => Send(new { type = "window-size-state", requestId, size = CurrentWindowSize(), warning = _windowSizeWarning });
+
+    private void SaveManualWindowSize()
+    {
+        if (_shutdownStarted || WindowState != FormWindowState.Normal) return;
+        var size = new LauncherWindowSize(Width, Height);
+        if (size == _lastSavedWindowSize || !LauncherWindowSizeStore.IsValid(size.Width, size.Height)) return;
+        try { LauncherWindowSizeStore.Save(_root, size); _lastSavedWindowSize = size; _windowSizeWarning = null; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            _runtime.CaptureFailure("LAUNCHER", error, "window-size-save");
+            _windowSizeWarning = "The current window size could not be saved.";
+        }
     }
 
     private void ApplyDarkTitleBar()

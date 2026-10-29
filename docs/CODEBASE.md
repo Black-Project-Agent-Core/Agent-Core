@@ -1,5 +1,7 @@
 # Agent Core — Current Architecture Index
-**Updated 2026-10-27 | current-source map | concise by design**
+**Updated 2026-10-29 | current-source map | concise by design**
+
+**Launcher continuation/composer update (2026-10-29):** AgentChatService startup parks recovered running/provider-wait turns until explicit Continue. AgentChatStore persists goal-mode metadata on the existing turn; Pause waits for a safe durable checkpoint, Continue resumes that same task, and Stop stays terminal. The authenticated HTTP owner and native WebView bridge carry pause/resume and request/conversation identities. App keeps session drafts and pending requests scoped while history remains switchable; uncorrelated reads cannot complete pending sends. ChatPage renders the real goal instruction/status above the composer, whose outer frame owns focus styling. Specification and bounded verification, including the UI runner limitation, are in [Launcher-Migration.md](plans/Launcher-Migration.md) and [Launcher-Restart-Recovery.md](verification/Launcher-Restart-Recovery.md).
 
 > This document describes **currently observed owners and constraints**, not a chronological release log. Exact current code is implementation authority; `AGENTS.md` is the local operating contract. Statuses and external papers are evidence, not execution approval. Deep details are linked below and are read only when needed.
 

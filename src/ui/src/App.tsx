@@ -6,18 +6,25 @@ import {
   type AgentChatUiState,
   type AgentRunState,
   type DesktopSnapshot,
+  type ReasoningChoice,
 } from './host';
 import { ReferenceUi } from './pages';
 import type { PageId } from './components';
 
-const validPages = new Set<PageId>(['chat','dashboard','core','systems','workflows','activity','diagnostics','settings']);
+const validPages = new Set<PageId>(['chat','dashboard','goals','artifacts','models','memory','learning','core','systems','workflows','activity','diagnostics','settings','wizard']);
 
 function pageFromHash(): PageId {
-  const value=window.location.hash.replace(/^#/,'').trim() as PageId;
+  const hash=window.location.hash.replace(/^#/,'').trim();
+  const aliases:Record<string,PageId>={workspace:'chat',runtime:'core',integrations:'systems',dreaming:'learning'};
+  const value=(aliases[hash]??hash) as PageId;
   return validPages.has(value) ? value : 'chat';
 }
 
 const PROVIDER_CHOICE_KEY='agentcore.chat.provider';
+const REASONING_CHOICE_KEY='agentcore.chat.reasoning';
+function readReasoningChoice():ReasoningChoice{
+  try{return (window.localStorage.getItem(REASONING_CHOICE_KEY)||'auto') as ReasoningChoice;}catch{return 'auto';}
+}
 function readProviderChoice():string{
   try{return window.localStorage.getItem(PROVIDER_CHOICE_KEY)||'auto';}catch{return 'auto';}
 }
@@ -27,11 +34,32 @@ export default function App() {
   const [snapshot,setSnapshot]=useState<DesktopSnapshot>();
   const [logs,setLogs]=useState<ActivityEntry[]>([]);
   const [agentRun,setAgentRun]=useState<AgentRunState>({status:'idle'});
-  const [agentChat,setAgentChat]=useState<AgentChatUiState>(()=>({conversations:[],providerChoice:readProviderChoice()}));
+  const [agentChat,setAgentChat]=useState<AgentChatUiState>(()=>({conversations:[],providerChoice:readProviderChoice(),modelChoice:'',reasoningChoice:readReasoningChoice()}));
   const chatListLoadedRef=useRef(false);
   const chatListPendingRef=useRef(false);
   const chatOpenPendingRef=useRef(false);
-  const desiredChatIdRef=useRef<string | undefined>(undefined);
+  const desiredChatIdRef=useRef<string | null | undefined>(undefined);
+  const pendingChatRequestsRef=useRef(new Map<string,string>());
+  const creatingRequestIdRef=useRef<string | undefined>(undefined);
+  const anthropicProvider=agentChat.providers?.find(item=>item.id==='anthropic');
+  const reasoningLevels=agentChat.modelChoice
+    ? anthropicProvider?.models?.find(item=>item.id===agentChat.modelChoice)?.reasoningEfforts??[]
+    : anthropicProvider?.reasoningEfforts??[];
+
+  useEffect(()=>{
+    if(agentChat.modelChoice&&agentChat.providers&&!anthropicProvider?.models?.some(item=>item.id===agentChat.modelChoice)){
+      setAgentChat(prev=>({...prev,modelChoice:''}));
+    }
+  },[agentChat.modelChoice,agentChat.providers]);
+
+  useEffect(()=>{
+    const choice=agentChat.reasoningChoice??'auto';
+    if(choice!=='auto'&&(!['low','medium','high','xhigh','max'].includes(choice)
+      ||(agentChat.providerChoice==='anthropic'&&anthropicProvider&&!reasoningLevels.includes(choice)))){
+      setAgentChat(prev=>({...prev,reasoningChoice:'auto',reasoningNotice:'Reasoning reset to Auto: saved level is not supported by this model.'}));
+      try{window.localStorage.setItem(REASONING_CHOICE_KEY,'auto');}catch{/* storage is optional */}
+    }
+  },[agentChat.reasoningChoice,agentChat.providerChoice,agentChat.modelChoice,agentChat.providers]);
 
   useEffect(()=>{
     const onHash=()=>setPageState(pageFromHash());
@@ -81,14 +109,20 @@ export default function App() {
       }
       if(message.type==='agent-chat-state'){
         const detail=message.result;
+        const id=detail.conversation.id;
+        const created=Boolean(creatingRequestIdRef.current&&message.requestId===creatingRequestIdRef.current);
+        if(message.requestId&&pendingChatRequestsRef.current.get(id)===message.requestId)pendingChatRequestsRef.current.delete(id);
+        const selected=desiredChatIdRef.current!==null&&(!desiredChatIdRef.current||desiredChatIdRef.current===id)
+          &&(!creatingRequestIdRef.current||created);
+        if(created)creatingRequestIdRef.current=undefined;
+        if(selected)desiredChatIdRef.current=id;
         chatListPendingRef.current=false;
         chatListLoadedRef.current=true;
-        chatOpenPendingRef.current=false;
+        if(selected)chatOpenPendingRef.current=false;
         setAgentChat(prev=>({
           ...prev,
-          active:detail,
-          runningRequestId:undefined,
-          error:undefined,
+          ...(selected?{active:detail,runningRequestId:pendingChatRequestsRef.current.get(id),error:undefined}:{}),
+          ...(created?{creating:false}:{}),
           conversations:[
             detail.conversation,
             ...prev.conversations.filter(item=>item.id!==detail.conversation.id),
@@ -98,27 +132,39 @@ export default function App() {
       }
       if(message.type==='agent-chat-event'){
         if(message.envelope.type==='event'&&message.envelope.event){
-          setAgentChat(prev=>({
+          const event=message.envelope.event;
+          if(event.type==='turn.accepted'&&desiredChatIdRef.current===event.conversationId&&!chatOpenPendingRef.current){
+            chatOpenPendingRef.current=true;
+            postHost({type:'agent-chat-open',conversationId:event.conversationId});
+          }
+          setAgentChat(prev=>prev.active?.conversation.id!==message.envelope.event!.conversationId?prev:({
             ...prev,
             lastEvent:message.envelope.event,
             error:undefined,
           }));
         }
         if(message.envelope.type==='error'){
-          setAgentChat(prev=>({
+          const owner=message.conversationId??[...pendingChatRequestsRef.current].find(([,request])=>request===message.requestId)?.[0];
+          if(owner&&pendingChatRequestsRef.current.get(owner)===message.requestId)pendingChatRequestsRef.current.delete(owner);
+          setAgentChat(prev=>owner&&prev.active?.conversation.id!==owner?prev:({
             ...prev,
-            runningRequestId:undefined,
+            runningRequestId:prev.active?pendingChatRequestsRef.current.get(prev.active.conversation.id):undefined,
             error:message.envelope.error??'Agent chat turn failed',
           }));
         }
         return;
       }
       if(message.type==='agent-chat-error'){
+        const createFailed=Boolean(creatingRequestIdRef.current&&message.requestId===creatingRequestIdRef.current);
+        if(createFailed){creatingRequestIdRef.current=undefined;desiredChatIdRef.current=null;}
+        const owner=message.conversationId??[...pendingChatRequestsRef.current].find(([,request])=>request===message.requestId)?.[0];
+        if(owner&&message.requestId&&pendingChatRequestsRef.current.get(owner)===message.requestId)pendingChatRequestsRef.current.delete(owner);
         if(!chatListLoadedRef.current) chatListPendingRef.current=false;
-        chatOpenPendingRef.current=false;
-        setAgentChat(prev=>({
+        if(!owner||desiredChatIdRef.current===owner)chatOpenPendingRef.current=false;
+        setAgentChat(prev=>owner&&prev.active?.conversation.id!==owner?prev:({
           ...prev,
-          runningRequestId:undefined,
+          runningRequestId:prev.active?pendingChatRequestsRef.current.get(prev.active.conversation.id):undefined,
+          ...(createFailed?{creating:false}:{}),
           error:message.error,
         }));
         return;
@@ -168,7 +214,8 @@ export default function App() {
   useEffect(()=>{
     const active=agentChat.active;
     if(!active)return;
-    if(!desiredChatIdRef.current)desiredChatIdRef.current=active.conversation.id;
+    if(desiredChatIdRef.current===null)return;
+    if(desiredChatIdRef.current===undefined)desiredChatIdRef.current=active.conversation.id;
     if(page!=='chat')return;
     const desired=desiredChatIdRef.current;
     if(desired!==active.conversation.id){
@@ -201,23 +248,27 @@ export default function App() {
   };
 
   const onChatCreate=(workspace?:string)=>{
-    setAgentChat(prev=>({...prev,error:undefined}));
-    postHost({type:'agent-chat-create',workspace});
+    const requestId=globalThis.crypto?.randomUUID?.() ?? `create-${Date.now()}`;
+    creatingRequestIdRef.current=requestId;
+    setAgentChat(prev=>({...prev,creating:true,error:undefined}));
+    postHost({type:'agent-chat-create',requestId,workspace});
   };
 
   // The launcher opens on a draft: no conversation is selected or created until the first send.
   const onChatDraft=()=>{
-    desiredChatIdRef.current=undefined;
+    if(agentChat.creating)return;
+    desiredChatIdRef.current=null;
     chatOpenPendingRef.current=false;
-    setAgentChat(prev=>({...prev,active:undefined,error:undefined}));
+    setAgentChat(prev=>({...prev,active:undefined,runningRequestId:undefined,lastEvent:undefined,error:undefined}));
   };
 
   const onChatOpen=(conversationId:string)=>{
     postHost({type:'agent-chat-open',conversationId});
   };
 
-  const onChatSend=(conversationId:string,prompt:string)=>{
+  const onChatSend=(conversationId:string,prompt:string,goalMode=false)=>{
     const requestId=globalThis.crypto?.randomUUID?.() ?? `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    pendingChatRequestsRef.current.set(conversationId,requestId);
     setAgentChat(prev=>({
       ...prev,
       runningRequestId:requestId,
@@ -231,17 +282,45 @@ export default function App() {
       clientRequestId:requestId,
       conversationId,
       prompt,
+      ...(goalMode?{goalMode:true}:{}),
       ...(providerId?{providerId}:{}),
+      ...(providerId==='anthropic'&&agentChat.modelChoice&&anthropicProvider?.models?.some(item=>item.id===agentChat.modelChoice)
+        ?{model:agentChat.modelChoice}:{}),
+      ...(providerId==='anthropic'&&agentChat.reasoningChoice&&agentChat.reasoningChoice!=='auto'
+        &&reasoningLevels.includes(agentChat.reasoningChoice)
+        ?{reasoningEffort:agentChat.reasoningChoice}:{}),
     });
   };
 
   const onChatProvider=(choice:string)=>{
-    setAgentChat(prev=>({...prev,providerChoice:choice}));
+    setAgentChat(prev=>({...prev,providerChoice:choice,modelChoice:''}));
     try{window.localStorage.setItem(PROVIDER_CHOICE_KEY,choice);}catch{/* storage is optional */}
   };
 
+  const onChatModel=(choice:string)=>{
+    setAgentChat(prev=>({...prev,modelChoice:choice}));
+  };
+
+  const onChatReasoning=(choice:ReasoningChoice)=>{
+    setAgentChat(prev=>({...prev,reasoningChoice:choice,reasoningNotice:undefined}));
+    try{window.localStorage.setItem(REASONING_CHOICE_KEY,choice);}catch{/* storage is optional */}
+  };
+
   const onChatCancel=(turnId:string)=>{
-    postHost({type:'agent-chat-cancel',turnId});
+    postHost({type:'agent-chat-cancel',turnId,conversationId:agentChat.active?.conversation.id});
+  };
+
+  const onChatPause=(conversationId:string,turnId:string)=>{
+    const requestId=globalThis.crypto?.randomUUID?.() ?? `pause-${Date.now()}`;
+    postHost({type:'agent-chat-pause',requestId,conversationId,turnId});
+  };
+
+  const onChatResume=(conversationId:string,turnId:string)=>{
+    if(pendingChatRequestsRef.current.has(conversationId))return;
+    const requestId=globalThis.crypto?.randomUUID?.() ?? `resume-${Date.now()}`;
+    pendingChatRequestsRef.current.set(conversationId,requestId);
+    setAgentChat(prev=>({...prev,runningRequestId:requestId,error:undefined}));
+    postHost({type:'agent-chat-resume',requestId,conversationId,turnId});
   };
 
   const onChatArchive=(conversationId:string)=>{
@@ -262,7 +341,7 @@ export default function App() {
     onChatCreate(workspace);
   };
   const archiveTrackedChat=(conversationId:string)=>{
-    desiredChatIdRef.current=undefined;
+    desiredChatIdRef.current=null;
     onChatArchive(conversationId);
   };
 
@@ -281,8 +360,12 @@ export default function App() {
     onChatOpen={openTrackedChat}
     onChatSend={onChatSend}
     onChatCancel={onChatCancel}
+    onChatResume={onChatResume}
+    onChatPause={onChatPause}
     onChatArchive={archiveTrackedChat}
     onChatProvider={onChatProvider}
+    onChatModel={onChatModel}
+    onChatReasoning={onChatReasoning}
     onChatDraft={onChatDraft}
   />;
 }

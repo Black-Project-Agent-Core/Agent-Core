@@ -275,17 +275,35 @@ public sealed class AgentCoreRuntime : IDisposable
         string prompt,
         Action<JsonElement> onEnvelope,
         CancellationToken cancellationToken = default,
-        string? providerId = null)
+        string? providerId = null,
+        string? reasoningEffort = null,
+        string? model = null,
+        bool goalMode = false)
     {
         var id = Uri.EscapeDataString(conversationId);
         using var request = CreateAgentChatRequest(HttpMethod.Post, $"/agent/chat/conversations/{id}/turns");
         // providerId is a route chosen in the UI; omitted or "auto" keeps automatic rotation on the Core side.
         var payload = new Dictionary<string, object?> { ["clientRequestId"] = clientRequestId, ["prompt"] = prompt.Trim() };
         if (!string.IsNullOrWhiteSpace(providerId)) payload["providerId"] = providerId.Trim();
+        if (reasoningEffort is not null) payload["reasoningEffort"] = reasoningEffort;
+        if (!string.IsNullOrWhiteSpace(model)) payload["model"] = model.Trim();
+        if (goalMode) payload["goalMode"] = true;
         request.Content = new StringContent(
             JsonSerializer.Serialize(payload),
             Encoding.UTF8,
             "application/json");
+        await ReadAgentTurnStreamAsync(request, onEnvelope, cancellationToken);
+    }
+
+    public async Task ResumeAgentTurnStreamAsync(string turnId, Action<JsonElement> onEnvelope, CancellationToken cancellationToken = default)
+    {
+        var id = Uri.EscapeDataString(turnId);
+        using var request = CreateAgentChatRequest(HttpMethod.Post, $"/agent/chat/turns/{id}/resume");
+        await ReadAgentTurnStreamAsync(request, onEnvelope, cancellationToken);
+    }
+
+    private async Task ReadAgentTurnStreamAsync(HttpRequestMessage request, Action<JsonElement> onEnvelope, CancellationToken cancellationToken)
+    {
         using var response = await _agentHttp.SendAsync(
             request,
             HttpCompletionOption.ResponseHeadersRead,
@@ -322,6 +340,14 @@ public sealed class AgentCoreRuntime : IDisposable
         using var request = CreateAgentChatRequest(HttpMethod.Post, $"/agent/chat/turns/{id}/cancel");
         var result = await SendAgentChatJsonAsync(request);
         return result.TryGetProperty("stopped", out var stopped) && stopped.ValueKind == JsonValueKind.True;
+    }
+
+    public async Task<bool> PauseAgentTurnAsync(string turnId)
+    {
+        var id = Uri.EscapeDataString(turnId);
+        using var request = CreateAgentChatRequest(HttpMethod.Post, $"/agent/chat/turns/{id}/pause");
+        var result = await SendAgentChatJsonAsync(request);
+        return result.TryGetProperty("paused", out var paused) && paused.ValueKind == JsonValueKind.True;
     }
 
     public async Task ArchiveAgentConversationAsync(string conversationId)

@@ -17,7 +17,7 @@ beforeEach(()=>{
 });
 function show(entry:ActivityEntry) {
   return render(<ActivityLogPage logs={[entry]} onAction={()=>{}} setPage={()=>{}}
-    agentRun={{status:'idle'}} agentChat={{conversations:[]}}
+    agentRun={{status:'idle'}} agentChat={{conversations:[],modelChoice:''}}
     onAgentRun={()=>{}} onChatCreate={()=>{}} onChatOpen={()=>{}}
     onChatSend={()=>{}} onChatCancel={()=>{}} onChatArchive={()=>{}}/>);
 }

@@ -38,6 +38,8 @@ export interface AgentChatTurn extends NativeMemoryResultMetadata {
   status: AgentChatTurnStatus;
   providerId?: string;
   model?: string;
+  goalMode?: boolean;
+  pauseRequested?: boolean;
   iterations?: number;
   retrievalCount?: number;
   memoryUse?: AgentMemoryUse[];
@@ -119,6 +121,7 @@ function mapTurn(row: Record<string, unknown>): AgentChatTurn {
     status: String(row.status) as AgentChatTurnStatus,
     ...(row.provider_id ? { providerId: String(row.provider_id) } : {}),
     ...(row.model ? { model: String(row.model) } : {}),
+    ...(row.goal_mode ? { goalMode: true } : {}),
     ...(row.iterations !== null && row.iterations !== undefined ? { iterations: Number(row.iterations) } : {}),
     ...(row.retrieval_count !== null && row.retrieval_count !== undefined
       ? { retrievalCount: Number(row.retrieval_count) } : {}),
@@ -274,6 +277,9 @@ export class AgentChatStore {
           ON chat_messages(conversation_id, created_at_ms);
       `);
       const turnColumns = db.prepare('PRAGMA table_info(chat_turns)').all() as unknown as Array<{ name: string }>;
+      if (!turnColumns.some(column => column.name === 'goal_mode')) {
+        db.exec('ALTER TABLE chat_turns ADD COLUMN goal_mode INTEGER NOT NULL DEFAULT 0');
+      }
       if (!turnColumns.some(column => column.name === 'memory_use_json')) {
         db.exec('ALTER TABLE chat_turns ADD COLUMN memory_use_json TEXT');
       }
@@ -405,6 +411,7 @@ export class AgentChatStore {
     prompt: string;
     executorToken?: string;
     messageOrigin?: 'local-operator' | 'external-controller';
+    goalMode?: boolean;
     startedAtMs?: number;
   }): { turn: AgentChatTurn; created: boolean; claim?: AgentChatExecutionClaim } {
     const startedAtMs = input.startedAtMs ?? Date.now();
@@ -418,7 +425,11 @@ export class AgentChatStore {
       const existing = db.prepare(
         'SELECT * FROM chat_turns WHERE client_request_id = ?',
       ).get(input.clientRequestId) as Record<string, unknown> | undefined;
-      if (existing) return { turn: mapTurn(existing), created: false };
+      if (existing) {
+        const turn = mapTurn(existing);
+        if (turn.conversationId !== input.conversationId || Boolean(turn.goalMode) !== Boolean(input.goalMode)) throw new Error('AGENT_CHAT_CLIENT_REQUEST_CONFLICT');
+        return { turn, created: false };
+      }
 
       const conversation = this.getConversationWithDb(db, input.conversationId);
       if (!conversation || conversation.status !== 'active') {
@@ -433,8 +444,8 @@ export class AgentChatStore {
       db.prepare(`
         INSERT INTO chat_turns (
           turn_id, conversation_id, client_request_id, runtime_task_id,
-          status, created_at_ms, started_at_ms, turn_origin
-        ) VALUES (?, ?, ?, ?, 'running', ?, ?, ?)
+          status, created_at_ms, started_at_ms, turn_origin, goal_mode
+        ) VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?)
       `).run(
         input.turnId,
         input.conversationId,
@@ -443,6 +454,7 @@ export class AgentChatStore {
         startedAtMs,
         startedAtMs,
         input.messageOrigin ?? null,
+        input.goalMode ? 1 : 0,
       );
       db.prepare(`
         INSERT INTO chat_turn_execution (
@@ -655,7 +667,7 @@ export class AgentChatStore {
   } {
     return this.withDb(db => this.transaction(db, () => {
       const rows = db.prepare(
-        "SELECT * FROM chat_turns WHERE status='running'",
+        "SELECT * FROM chat_turns WHERE status IN ('running','resumable')",
       ).all() as unknown as Record<string, unknown>[];
       const resumable: AgentChatTurn[] = [];
       const interrupted: AgentChatTurn[] = [];
@@ -725,6 +737,8 @@ export class AgentChatStore {
         SET status='resumable', error_code=?, completed_at_ms=NULL
         WHERE turn_id=?
       `).run(cleanText(errorCode, MAX_ERROR_CODE), turnId);
+      db.prepare('UPDATE chat_conversations SET updated_at_ms=MAX(updated_at_ms+1,?) WHERE conversation_id=(SELECT conversation_id FROM chat_turns WHERE turn_id=?)')
+        .run(Date.now(), turnId);
       const row = db.prepare(
         'SELECT * FROM chat_turns WHERE turn_id=?',
       ).get(turnId) as Record<string, unknown> | undefined;
@@ -753,6 +767,8 @@ export class AgentChatStore {
             completed_at_ms=?
         WHERE turn_id=?
       `).run(completedAtMs, turnId);
+      db.prepare(`UPDATE chat_conversations SET updated_at_ms=MAX(updated_at_ms+1,?) WHERE conversation_id=?`)
+        .run(completedAtMs, turn.conversationId);
       return {
         ...turn,
         status: 'stopped',

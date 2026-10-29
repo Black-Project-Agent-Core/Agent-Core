@@ -13,6 +13,7 @@ import {
 } from './security/verified-result-artifact.js';
 
 export const AGENT_TURN_CHECKPOINT_SCHEMA_VERSION = 1 as const;
+export const AGENT_TURN_USER_PAUSED = 'AGENT_RUNTIME_CONTINUATION_USER_PAUSED';
 export const AGENT_TURN_CHECKPOINT_MAX_BYTES = 2 * 1024 * 1024;
 export const AGENT_TURN_CHECKPOINT_TTL_MS = RESULT_ARTIFACT_TTL_MS;
 

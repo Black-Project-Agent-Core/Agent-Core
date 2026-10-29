@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 
 // After the launcher window opens, the restart worker asks GET /health and prints one 'Kesiapan:' line;
-// the wrapper copies it into the receipt. It is a report: it must not change the exit code. The static
+// the wrapper copies it into the receipt. Failed readiness must fail the restart. The static
 // tests run everywhere; the behavioural tests run the real functions in Windows PowerShell 5.1.
 
 const run = promisify(execFile);
@@ -48,16 +48,19 @@ async function powershell(imports: Array<{ file: string; names: string[] }>, lin
 const WORKER_FUNCTIONS = ['Get-HealthReply', 'ConvertTo-UtcDateTime', 'Get-ReadinessVerdict', 'Wait-CoreReadiness'];
 
 describe('worker and wrapper agree on the readiness line', () => {
-  it('the worker reports after the window opens, inside its own try, and never touches the exit code', async () => {
+  it('the worker requires the real window and fails the outer try when Core is not ready', async () => {
     const worker = await readFile(WORKER, 'utf8');
     // From the call to the end of the main try block, whose own catch (at column 0) is what sets the exit code.
     const start = worker.indexOf('Wait-CoreReadiness -Url');
     const section = worker.slice(start, worker.indexOf('\ncatch {', start));
     expect(section.length).toBeGreaterThan(200);
     expect(section).toContain('Write-Host $readiness.Line');
-    expect(section).toMatch(/catch \{ Write-Host "Kesiapan: tidak diketahui/);
+    expect(section).toMatch(/if \(\$readiness.State -cne 'siap'\)\s*\{\s*throw/);
+    expect(section).not.toContain('catch { Write-Host');
     expect(section).not.toMatch(/\$exitCode\s*=/);
     expect(worker.indexOf('Satu jendela Agent Core terbuka')).toBeLessThan(worker.indexOf('Wait-CoreReadiness -Url'));
+    expect(worker).toContain("$started.MainWindowTitle -ceq 'Agent Core'");
+    expect(worker).toContain("$started.MainWindowTitle -ceq 'Agent Core.exe'");
     // The verdict names exactly three states.
     const states = [...worker.matchAll(/& \$verdict '([^']+)'/g)].map(match => match[1]);
     expect(new Set(states)).toEqual(new Set(['belum menjawab', 'menjawab tidak sesuai', 'siap']));
@@ -97,6 +100,8 @@ describe.runIf(process.platform === 'win32')('Get-ReadinessVerdict', () => {
       `  unknown  = Reply 200 ('{"status":"ok","process":{"pid":77,"startedAt":"' + $fresh + '"},"build":{"stale":null,"issue":"DIST_NOT_FOUND"}}')`,
       `  elder    = Reply 200 ('{"status":"ok","process":{"pid":9,"startedAt":"' + $old + '"},"build":{"stale":false}}')`,
       `  badtime  = Reply 200 '{"status":"ok","process":{"pid":9,"startedAt":"yesterday-ish"}}'`,
+      `  nopid    = Reply 200 ('{"status":"ok","process":{"startedAt":"' + $fresh + '"}}')`,
+      `  notime   = Reply 200 '{"status":"ok","process":{"pid":9}}'`,
       `  described = Reply 200 ('{"status":"ok","memory":{"status":"unavailable"},"phone":{"status":"unavailable"},"process":{"pid":5,"startedAt":"' + $fresh + '"},"build":{"stale":false}}')`,
       `}`,
       `$out = [ordered]@{}`,
@@ -109,7 +114,7 @@ describe.runIf(process.platform === 'win32')('Get-ReadinessVerdict', () => {
     expect(verdict.html).toMatchObject({ State: 'menjawab tidak sesuai', Detail: 'isi jawaban tidak terbaca' });
     expect(verdict.nostatus.State).toBe('menjawab tidak sesuai');
     expect(verdict.degraded).toMatchObject({ State: 'menjawab tidak sesuai', Detail: 'status degraded' });
-    expect(verdict.oldbuild).toMatchObject({ State: 'siap', Detail: 'identitas proses tidak tersedia (build lama)' });
+    expect(verdict.oldbuild).toMatchObject({ State: 'menjawab tidak sesuai', Detail: 'identitas proses tidak tersedia' });
     expect(verdict.fresh.State).toBe('siap');
     expect(verdict.fresh.Detail).toMatch(/^PID 77 mulai \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z; dist basi: tidak$/);
     expect(verdict.stale.Detail).toMatch(/dist basi: ya$/);
@@ -117,6 +122,8 @@ describe.runIf(process.platform === 'win32')('Get-ReadinessVerdict', () => {
     expect(verdict.elder.State).toBe('menjawab tidak sesuai');
     expect(verdict.elder.Detail).toMatch(/lebih tua dari peluncuran \(PID 9 mulai /);
     expect(verdict.badtime).toMatchObject({ State: 'menjawab tidak sesuai', Detail: 'waktu mulai proses tidak terbaca' });
+    expect(verdict.nopid.State).toBe('menjawab tidak sesuai');
+    expect(verdict.notime.State).toBe('menjawab tidak sesuai');
     // memory and phone say "unavailable"; a restart cannot be blamed for that, so the verdict is still siap.
     expect(verdict.described.State).toBe('siap');
   });
@@ -143,7 +150,7 @@ describe.runIf(process.platform === 'win32')('Wait-CoreReadiness against a real 
         flaky += 1;
         if (flaky <= 2) { response.statusCode = 503; response.end('starting'); return; }
         response.setHeader('content-type', 'application/json');
-        response.end(JSON.stringify({ status: 'ok' }));
+        response.end(JSON.stringify({ status: 'ok', process: { pid: 4242, startedAt: new Date().toISOString() } }));
       } else { response.statusCode = 404; response.end(); }
     });
     const closed = createServer();

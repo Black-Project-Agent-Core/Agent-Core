@@ -24,7 +24,7 @@ it('renders Activity Log fixture with actual React component for screenshot veri
     removeEventListener:(_name:string,fn:(event:{data:unknown})=>void)=>listeners.delete(fn),
   }};
   const {container}=render(<ActivityLogPage snapshot={undefined} logs={entries}
-    agentRun={{status:'idle'}} agentChat={{conversations:[]}}
+    agentRun={{status:'idle'}} agentChat={{conversations:[],modelChoice:''}}
     onAction={()=>{}} setPage={()=>{}} onAgentRun={()=>{}}
     onChatCreate={()=>{}} onChatOpen={()=>{}} onChatSend={()=>{}}
     onChatCancel={()=>{}} onChatArchive={()=>{}}/>);

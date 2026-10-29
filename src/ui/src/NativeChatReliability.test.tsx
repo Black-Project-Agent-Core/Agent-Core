@@ -10,7 +10,7 @@ function props(status: AgentChatTurn['status'] = 'finalized'): ComponentProps<ty
   return {
     snapshot: { health: { agentRuntime: { status: 'available', configuredProviderCount: 1, providerCount: 1 } } } as DesktopSnapshot,
     logs: [], onAction: vi.fn(), setPage: vi.fn(), agentRun: { status: 'idle' }, onAgentRun: vi.fn(),
-    agentChat: { conversations: [conversation], active: { conversation,
+    agentChat: { conversations: [conversation], modelChoice: '', active: { conversation,
       turns: [{ id: 'turn-1', conversationId: 'chat-1', clientRequestId: 'request-1', runtimeTaskId: 'task-1',
         status, createdAtMs: 1, startedAtMs: 1 }], messages: [] } },
     onChatCreate: vi.fn(), onChatOpen: vi.fn(), onChatSend: vi.fn(), onChatCancel: vi.fn(), onChatArchive: vi.fn(),
@@ -18,6 +18,21 @@ function props(status: AgentChatTurn['status'] = 'finalized'): ComponentProps<ty
 }
 
 describe('Native chat progress and durable states', () => {
+  it.each(['running','resumable'] as const)('locks the Anthropic model picker during %s turns', status => {
+    const input=props(status);
+    input.agentChat.providerChoice='anthropic';
+    input.agentChat.modelChoice='fixture-other';
+    input.agentChat.providers=[{id:'anthropic',model:'fixture-default',configured:true,available:true,
+      models:[{id:'fixture-default'},{id:'fixture-other'}]}];
+    input.onChatProvider=vi.fn();
+    input.onChatModel=vi.fn();
+    render(<ChatPage {...input}/>);
+    expect(screen.getByLabelText('Provider dan model')).toBeDisabled();
+    expect(screen.getByLabelText('Provider dan model')).toHaveValue('anthropic:fixture-other');
+    expect(screen.queryByLabelText('Anthropic model')).not.toBeInTheDocument();
+  });
+
+
   it('shows a saved response without declaring task verification success', () => {
     render(<ChatPage {...props()}/>);
     expect(screen.getByRole('status')).toHaveTextContent('Response saved');
@@ -28,9 +43,9 @@ describe('Native chat progress and durable states', () => {
     const input = props('resumable');
     input.agentChat.active!.turns[0]!.errorCode = 'AGENT_CHAT_RESUME_SIDE_EFFECT_RESULT_UNAVAILABLE';
     render(<ChatPage {...input}/>);
-    expect(screen.getByRole('status')).toHaveTextContent('Recovery paused');
+    expect(screen.getByRole('status')).toHaveTextContent('Paused — Continue required');
     expect(screen.getByRole('status')).toHaveTextContent('AGENT_CHAT_RESUME_SIDE_EFFECT_RESULT_UNAVAILABLE');
-    expect(screen.getByPlaceholderText('Message Agent Core…')).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: 'Message Agent Core' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Stop recovery' }));
     expect(input.onChatCancel).toHaveBeenCalledWith('turn-1');
     expect(input.onChatSend).not.toHaveBeenCalled();
@@ -50,7 +65,7 @@ describe('Native chat progress and durable states', () => {
     input.agentChat.active!.turns[0]!.errorCode = 'AGENT_RUNTIME_CONTINUATION_PROVIDER_WAIT';
     render(<ChatPage {...input}/>);
     expect(screen.getByRole('status')).toHaveTextContent('Waiting for an eligible provider');
-    expect(screen.queryByText('Recovery paused')).not.toBeInTheDocument();
+    expect(screen.queryByText('Paused — Continue required')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Stop recovery' }));
     expect(input.onChatCancel).toHaveBeenCalledWith('turn-1');
   });

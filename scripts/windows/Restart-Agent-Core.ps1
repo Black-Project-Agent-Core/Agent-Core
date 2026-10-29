@@ -9,10 +9,9 @@ Use -WhatIf to inspect the target without closing or launching anything.
 The script requests normal window close. The launcher's existing shutdown code
 owns graceful shutdown and its own bounded forced-cleanup fallback.
 No force-kill, scheduler changes, automatic elevation, or launch retries here.
-Success means one launcher window is open. After that the script asks GET /health once a second
-(up to -ReadinessTimeoutSeconds) and prints one 'Kesiapan: <state> (<detail>)' line, where state is
-'siap', 'belum menjawab' or 'menjawab tidak sesuai'. That line is a report only: it never changes the
-exit code, never retries a launch and never rolls anything back. The tunnel is not tested.
+Success requires the real launcher window and a ready, newly started Core. The script asks GET /health
+within -ReadinessTimeoutSeconds and prints one 'Kesiapan: <state> (<detail>)' line. An unavailable or
+invalid reply fails the restart; the launcher is never launched again automatically. The tunnel is not tested.
 The output always ends with 'Selesai: ok' or 'Selesai: gagal'; a failure also prints 'GAGAL: <reason>'.
 Serialization covers this script. The app mutex covers one Windows session;
 do not manually launch another copy in a different session during the restart.
@@ -24,7 +23,7 @@ param(
     [ValidateRange(10, 600)]
     [int]$StartTimeoutSeconds = 180,
     [ValidateRange(5, 300)]
-    [int]$ReadinessTimeoutSeconds = 60
+    [int]$ReadinessTimeoutSeconds = 300
 )
 
 Set-StrictMode -Version Latest
@@ -281,13 +280,16 @@ function Get-ReadinessVerdict {
     if ([string]$json.status -cne 'ok') { return & $verdict 'menjawab tidak sesuai' "status $($json.status)" }
     $processProperty = $json.PSObject.Properties['process']
     if ($null -eq $processProperty -or $null -eq $processProperty.Value) {
-        return & $verdict 'siap' 'identitas proses tidak tersedia (build lama)'
+        return & $verdict 'menjawab tidak sesuai' 'identitas proses tidak tersedia'
     }
     $identity = $processProperty.Value
     $pidProperty = $identity.PSObject.Properties['pid']
     $startedProperty = $identity.PSObject.Properties['startedAt']
-    $pidText = if ($null -ne $pidProperty) { "PID $($pidProperty.Value)" } else { 'PID ?' }
-    if ($null -eq $startedProperty) { return & $verdict 'siap' "$pidText; waktu mulai tidak dilaporkan" }
+    if ($null -eq $pidProperty -or [string]$pidProperty.Value -notmatch '^[1-9][0-9]*$') {
+        return & $verdict 'menjawab tidak sesuai' 'PID proses tidak valid'
+    }
+    $pidText = "PID $($pidProperty.Value)"
+    if ($null -eq $startedProperty) { return & $verdict 'menjawab tidak sesuai' "$pidText; waktu mulai tidak dilaporkan" }
     try { $startedAt = ConvertTo-UtcDateTime $startedProperty.Value }
     catch { return & $verdict 'menjawab tidak sesuai' 'waktu mulai proses tidak terbaca' }
     $startedText = $startedAt.ToString('yyyy-MM-ddTHH:mm:ssZ')
@@ -304,7 +306,7 @@ function Get-ReadinessVerdict {
     & $verdict 'siap' "$pidText mulai $startedText; dist basi: $stale"
 }
 
-# Polls until the verdict is 'siap' or the time is up; the last verdict stands. Report only.
+# Polls readiness of the single launched instance; it never launches or restarts a process.
 function Wait-CoreReadiness {
     param([string]$Url, [int]$TimeoutSeconds, [DateTime]$LaunchedAtUtc = [DateTime]::MinValue,
         [int]$RequestTimeoutSeconds = 3, [int]$PollMilliseconds = 1000)
@@ -424,6 +426,26 @@ try {
         $appMutex.Dispose()
         throw 'Mutex launcher masih ada. Tidak meluncurkan instance tambahan.'
     }
+    # A forced shutdown can leave proper-lockfile's 120-second lease behind.
+    # Let the Memory owner reclaim it; never delete or touch canonical lock/data files.
+    $memoryLeasePath = Join-Path $root 'runtime\memory\.memory.lock'
+    if (Test-Path -LiteralPath $memoryLeasePath -PathType Container) {
+        $lease = Get-Item -LiteralPath $memoryLeasePath -Force
+        if ($lease.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Memory lock adalah reparse point; tidak melanjutkan restart.' }
+        $leaseWriteUtc = $lease.LastWriteTimeUtc
+        $leaseExpiresUtc = $leaseWriteUtc.AddSeconds(121)
+        if ([DateTime]::UtcNow -lt $leaseExpiresUtc) {
+            Write-Host 'Menunggu lease Memory lama kedaluwarsa; data tidak dihapus...'
+            do {
+                Start-Sleep -Milliseconds 500
+                if (-not (Test-Path -LiteralPath $memoryLeasePath)) { break }
+                $currentLease = Get-Item -LiteralPath $memoryLeasePath -Force
+                if (($currentLease.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $currentLease.LastWriteTimeUtc -ne $leaseWriteUtc) {
+                    throw 'Lease Memory berubah setelah runtime berhenti; kemungkinan masih ada writer. Tidak membuka instance baru.'
+                }
+            } while ([DateTime]::UtcNow -lt $leaseExpiresUtc)
+        }
+    }
     Install-PendingLauncher -ProjectRoot $root
     Write-Host 'Membuka Agent Core satu kali...'
     $launchedAtUtc = [DateTime]::UtcNow
@@ -432,10 +454,13 @@ try {
     do {
         $started.Refresh()
         if ($started.HasExited) { throw 'Proses yang diluncurkan sudah keluar. Tidak mencoba peluncuran ulang otomatis.' }
+        if ($started.MainWindowHandle -ne [IntPtr]::Zero -and $started.MainWindowTitle -ceq 'Agent Core.exe') {
+            throw 'Launcher menampilkan dialog kesalahan runtime .NET. Jendela itu bukan Agent Core yang siap; tidak mencoba peluncuran ulang.'
+        }
         $state = Get-RestartState
         if ($state.Launchers.Count -gt 1) { throw 'Terdeteksi beberapa launcher utama. Periksa manual; tidak ada peluncuran ulang.' }
         if ($state.Unresolved.Count -eq 0 -and $state.Launchers.Count -eq 1 -and [int]$state.Launchers[0].ProcessId -eq $started.Id -and
-            $started.MainWindowHandle -ne [IntPtr]::Zero) {
+            $started.MainWindowHandle -ne [IntPtr]::Zero -and $started.MainWindowTitle -ceq 'Agent Core') {
             Write-Host "Satu jendela Agent Core terbuka (PID $($started.Id))." -ForegroundColor Green
             Write-Host 'Proses native-dump-helper tambahan adalah normal. Tunnel tidak diuji; lihat status aplikasi.'
             break
@@ -447,18 +472,18 @@ try {
         Start-Sleep -Milliseconds 500
     } while ($true)
 
-    # Report only. The window is open, so ask whether Core itself answers; whatever the answer, the exit
-    # code and the launched process are left alone. Reading the port from .env is deliberately not done.
-    try {
-        $port = 8765
-        if ($env:AGENT_CORE_PORT -match '^\d{1,5}$' -and [int]$env:AGENT_CORE_PORT -ge 1 -and [int]$env:AGENT_CORE_PORT -le 65535) {
-            $port = [int]$env:AGENT_CORE_PORT
-        }
-        $readiness = Wait-CoreReadiness -Url "http://127.0.0.1:$port/health" `
-            -TimeoutSeconds $ReadinessTimeoutSeconds -LaunchedAtUtc $launchedAtUtc
-        Write-Host $readiness.Line -ForegroundColor $(if ($readiness.State -eq 'siap') { 'Green' } else { 'Yellow' })
+    # A window alone does not prove Core started. Preserve the one-launch boundary on failure.
+    $port = 8765
+    if ($env:AGENT_CORE_PORT -match '^\d{1,5}$' -and [int]$env:AGENT_CORE_PORT -ge 1 -and [int]$env:AGENT_CORE_PORT -le 65535) {
+        $port = [int]$env:AGENT_CORE_PORT
     }
-    catch { Write-Host "Kesiapan: tidak diketahui ($($_.Exception.Message))" -ForegroundColor Yellow }
+    Write-Host "Menunggu kesiapan Core (maksimal $ReadinessTimeoutSeconds detik; tidak meluncurkan ulang)..."
+    $readiness = Wait-CoreReadiness -Url "http://127.0.0.1:$port/health" `
+        -TimeoutSeconds $ReadinessTimeoutSeconds -LaunchedAtUtc $launchedAtUtc
+    Write-Host $readiness.Line -ForegroundColor $(if ($readiness.State -eq 'siap') { 'Green' } else { 'Yellow' })
+    if ($readiness.State -cne 'siap') {
+        throw "Core belum siap setelah satu peluncuran. $($readiness.Line) Proses dibiarkan untuk diperiksa; tidak meluncurkan ulang."
+    }
 }
 catch {
     $exitCode = 1

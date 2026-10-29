@@ -1,0 +1,20 @@
+{
+  "activatedAt": "2026-10-29T07:29:51.2636420Z",
+  "status": "active",
+  "oldLauncherPid": 17212,
+  "launcherPid": 16088,
+  "corePid": 20200,
+  "composerSelectors": [
+    "Provider dan model"
+  ],
+  "duplicateSelector": false,
+  "composerExists": true,
+  "bundle": "index-Cj7-3VP6.js",
+  "activationMethod": "official-restart-and-workspace-navigation",
+  "restartReceipt": "runtime/restart/aa7afd8863594b43ba42e6090f592434.json",
+  "restartExitCode": 0,
+  "readiness": "siap (PID 20200 mulai 2026-10-29T07:25:43Z; dist basi: tidak; 109 dtk)",
+  "restartAttempts": 1,
+  "testRuns": 0,
+  "evidence": "Resident Windows UI Automation after navigating to AI Workspace; one provider/model combo and composer textbox observed."
+}
