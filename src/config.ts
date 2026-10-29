@@ -157,7 +157,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
     {
       id: 'anthropic',
       baseUrl: env.ANTHROPIC_BASE_URL?.trim() || 'https://api.anthropic.com/v1',
-      model: env.ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5-5',
+      model: env.ANTHROPIC_MODEL?.trim() || 'claude-fable-5-1',
       models: ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'],
       ...(env.ANTHROPIC_WORKSPACE_ID?.trim() ? { workspaceId: env.ANTHROPIC_WORKSPACE_ID.trim() } : {}),
       ...declaredCapacity(env, 'ANTHROPIC'),

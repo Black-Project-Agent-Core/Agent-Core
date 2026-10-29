@@ -8,7 +8,7 @@ Baseline source: `07c07d83ab5175b5fe15f49165a469b8d5b09a05`; initial tracked wor
 - Extend the existing provider/config/readiness owners. Keep scheduler, persisted message contracts, UI route discovery and tool grants unchanged.
 - The named `anthropic` route selects Messages wire conversion; no new SDK, dependencies, service, schema migration or provider abstraction.
 - Append exactly three missing empty numbered Anthropic key slots to `.env`, preserving other bytes and existing values. Readback confirmed one occurrence of each slot and all three empty. No secret values were emitted.
-- Existing `ANTHROPIC_MODEL` and `ANTHROPIC_BASE_URL` overrides are supported; the default model is `claude-sonnet-5-5`. Explicit routing order remains authoritative.
+- Existing `ANTHROPIC_MODEL` and `ANTHROPIC_BASE_URL` overrides are supported; the default model is `claude-fable-5-1` (it was `claude-sonnet-5-5` until 2026-10-29; the runs recorded below used Sonnet 5.5). Explicit routing order remains authoritative.
 
 ## Source inventory and workflow application
 

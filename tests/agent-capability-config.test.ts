@@ -57,6 +57,13 @@ describe('Native Agent capability configuration', () => {
     expect(loadConfig({ ANTHROPIC_PROMPT_CACHING: 'false' }, process.cwd()).agentRuntime.anthropicPromptCaching).toBe(false);
   });
 
+  it('defaults the Anthropic route to Fable 5.1 and lets ANTHROPIC_MODEL override it', () => {
+    const anthropic = (env: Record<string, string>) =>
+      loadConfig({ ANTHROPIC_API_KEY_01: 'fixture', ...env }, process.cwd()).agentRuntime.providers?.find(item => item.id === 'anthropic');
+    expect(anthropic({})?.model).toBe('claude-fable-5-1');
+    expect(anthropic({ ANTHROPIC_MODEL: 'claude-opus-5-5' })?.model).toBe('claude-opus-5-5');
+  });
+
   it('rejects unknown capability families and policy modes', () => {
     expect(() => loadConfig({
       AGENT_CORE_AI_ALLOWED_CAPABILITIES: 'observe.local,unknown.family',

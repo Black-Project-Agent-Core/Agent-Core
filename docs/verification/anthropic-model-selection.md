@@ -13,7 +13,7 @@ An authenticated read-only GET of the original Anthropic `/v1/models` endpoint r
 
 ## Existing owners and behavior
 
-- The existing single `anthropic` route advertises the four configured choices. It retains its credential pool, quota/error scopes and sticky cursor. Omitted model keeps `ANTHROPIC_MODEL` (currently Sonnet 5.5); no fallback silently replaces an explicit choice.
+- The existing single `anthropic` route advertises the four configured choices. It retains its credential pool, quota/error scopes and sticky cursor. Omitted model keeps `ANTHROPIC_MODEL` (default Fable 5.1 since 2026-10-29, previously Sonnet 5.5); no fallback silently replaces an explicit choice.
 - Native UI adds an Anthropic model selector populated from backend IDs. The empty choice means the configured default. Model choice is UI-session state; changing providers or removing a model from the advertised list resets it. Busy/resumable controls remain locked.
 - The launcher forwards optional `model` through the existing authenticated turn HTTP route. HTTP validates the model/provider pair before dispatch; no external MCP tool schema was expanded.
 - Internally, `providerModel` is the requested model; optional `chat_turns.requested_model` and checkpoint `providerModel` preserve immutable intent separately from the resolved response model. Changed-model retries conflict, old rows/checkpoints remain readable, and resume retains the original choice.
