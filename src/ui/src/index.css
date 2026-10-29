@@ -426,3 +426,21 @@ h1,h2,h3,p{margin-top:0}.page h1{font-size:30px;line-height:1.05;margin-bottom:5
 .task-changes-diff{max-height:320px}
 .task-changes-diff:focus-visible{outline:2px solid #2cc6ff;outline-offset:2px}
 .chat-message-list .chat-message>.task-changes{border:0;background:transparent;padding:0;min-width:0}
+
+/* Turn timeline: narration interleaved with grouped tool steps, plus the compact executed-invocations card. */
+.chat-timeline{display:flex;flex-direction:column;gap:8px;margin:8px 0;font-size:12px}
+.chat-timeline .chat-narration{margin:0;color:var(--text-2);line-height:1.5}
+.chat-step-group{border:1px solid #24435a;border-radius:8px;background:#081927}
+.chat-step-group>summary{padding:6px 10px;font-size:11px;color:var(--text-2);cursor:pointer;user-select:none}
+.chat-step-group>summary:hover{color:#e8f2fa}
+.chat-step-group[open]>summary{border-bottom:1px solid #15344d}
+.chat-step-list{margin:0;padding:4px 10px;list-style:none;display:grid;gap:4px}
+.chat-step-group .chat-step-list{padding:6px 10px}
+.chat-invocations{margin-top:10px;padding:8px 10px;border:1px solid #24435a;border-radius:8px;background:#071725;font-size:11px}
+.chat-invocations h5{margin:0 0 6px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.chat-invocations ul{margin:0;padding:0;list-style:none;display:grid;gap:4px}
+.chat-invocations li{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:8px;align-items:baseline;min-width:0}
+.chat-invocations li b{font-weight:500;color:#e5f0f7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-invocations li span{color:var(--text-2);white-space:nowrap;text-align:right}
+.chat-invocations li code{grid-column:1/-1;display:block;font:10px Consolas,monospace;color:#9fd6f2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-invocations .chat-invocations-more{display:block;color:var(--muted)}

@@ -23,19 +23,21 @@ function StepText({ title, text, truncated, action }: { title: string; text?: st
 }
 
 /** One persisted tool step: a single line that opens into the exact Input and Output (fetched on first open). */
-export function AgentStepRow({ step, detail, onOpen }: {
-  step: AgentChatStepMeta; detail?: StepDetailState; onOpen?: (turnId: string, seq: number) => void;
+export function AgentStepRow({ step, detail, onOpen, readOnly }: {
+  step: AgentChatStepMeta; detail?: StepDetailState; onOpen?: (turnId: string, seq: number) => void; readOnly?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [opened, setOpen] = useState(false);
+  // A read-only row never opens and never requests its detail.
+  const open = opened && !readOnly;
   const status = STEP_GLYPH[step.status];
   const settled = step.status !== 'running';
   // Fetch on open, but not while the step still runs: its Output is not final and would stay cached.
   useEffect(() => {
     if (open && settled && (!detail || detail.status === 'error')) onOpen?.(step.turnId, step.seq);
   }, [open, settled]);
-  const toggle = () => setOpen(value => !value);
+  const toggle = () => { if (!readOnly) setOpen(value => !value); };
   return <li className={'chat-step chat-step-' + step.status}>
-    <button type="button" className="chat-step-toggle" aria-expanded={open} onClick={toggle}
+    <button type="button" className="chat-step-toggle" aria-expanded={open} onClick={toggle} disabled={readOnly}
       style={{ display: 'flex', gap: 8, width: '100%', alignItems: 'baseline', textAlign: 'left' }}>
       <b>{step.status === 'running' ? 'Using ' : 'Used '}{step.toolName}</b>
       <span aria-label={status.label} title={status.label}>{status.glyph}</span>

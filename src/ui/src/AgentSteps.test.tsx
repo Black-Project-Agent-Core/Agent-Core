@@ -163,3 +163,18 @@ describe('Inspector Tool Calls card', () => {
     expect(view.container).not.toHaveTextContent('desktop_tool');
   });
 });
+
+describe('AgentStepRow readOnly', () => {
+  it('disables the toggle, never opens and never requests the detail', () => {
+    const onOpen = vi.fn();
+    const view = render(<AgentStepRow step={meta()} onOpen={onOpen} readOnly/>);
+    const toggle = screen.getByRole('button', { name: /Used start_search/ });
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('memuat...')).toBeNull();
+    expect(onOpen).not.toHaveBeenCalled();
+    view.unmount();
+  });
+});
