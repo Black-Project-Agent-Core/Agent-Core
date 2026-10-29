@@ -392,7 +392,7 @@ function ReasoningMenu({choice,levels,disabled,onChange}:{choice:ReasoningChoice
     return()=>document.removeEventListener('mousedown',outside);
   },[open,disabled]);
   return <div className="chat-reasoning" ref={root} onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setOpen(false);}}>
-    <button ref={trigger} type="button" className="chat-bar-button" aria-label={'Reasoning: '+label(choice)} title={disabled?'Reasoning requires an explicitly selected Anthropic provider':'Reasoning: '+label(choice)}
+    <button ref={trigger} type="button" className="chat-bar-button" aria-label={'Reasoning: '+label(choice)} title={disabled?'Reasoning requires an explicitly selected provider with reasoning levels':'Reasoning: '+label(choice)}
       aria-haspopup="menu" aria-expanded={open} aria-controls={open?id:undefined} disabled={disabled} onClick={()=>setOpen(!open)}
       onKeyDown={event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();setOpen(true);}}}><BrainCircuit size={14}/><span>Reasoning: {label(choice)}</span><ChevronDown size={12}/></button>
     {open&&<div id={id} className="chat-reasoning-menu" role="menu" aria-label="Reasoning effort" onKeyDown={event=>{
@@ -411,6 +411,7 @@ function ReasoningMenu({choice,levels,disabled,onChange}:{choice:ReasoningChoice
 
 import { ContextMeter } from './ContextMeter';
 import { selectContextUsage } from './host';
+import { resolveSelection } from './chatSelection';
 
 export function ChatPage(props:SharedProps) {
   const [actionsOpen,setActionsOpen]=useState(false);
@@ -435,10 +436,15 @@ export function ChatPage(props:SharedProps) {
   const [pending,setPending]=useState<{prompt:string;goalMode:boolean}>();
   const pendingDelivered=useRef(false);
   const runtime=props.snapshot?.health.agentRuntime;
-  const anthropicProvider=props.agentChat.providers?.find(item=>item.id==='anthropic');
-  const reasoningLevels=props.agentChat.modelChoice
-    ? anthropicProvider?.models?.find(item=>item.id===props.agentChat.modelChoice)?.reasoningEfforts??[]
-    : anthropicProvider?.reasoningEfforts??[];
+  const providerChoice=props.agentChat.providerChoice??'auto';
+  const modelChoice=props.agentChat.modelChoice;
+  const selectedProvider=props.agentChat.providers?.find(item=>item.id===providerChoice);
+  // Derived for display/send only; the saved choice is never rewritten here.
+  const selection=resolveSelection(props.agentChat.providers,{providerId:providerChoice,model:modelChoice,reasoningEffort:props.agentChat.reasoningChoice??'auto'});
+  const reasoningLevels=selection.levels;
+  const reasoningSupported=Boolean(selectedProvider&&(selectedProvider.reasoningEfforts!==undefined||selectedProvider.models?.some(item=>item.reasoningEfforts!==undefined)));
+  const selectValue=providerChoice!=='auto'&&modelChoice&&modelChoice!==selectedProvider?.model?`${providerChoice}:${modelChoice}`:providerChoice;
+  const lastUsed=(value:string)=>props.agentChat.selectionSaved&&value===selectValue?' · Terakhir dipakai':'';
   const chatHealth=props.snapshot?.health.agentChat;
   const configured=(runtime?.configuredProviderCount??0)>0;
   const running=Boolean(props.agentChat.runningRequestId)
@@ -650,36 +656,40 @@ export function ChatPage(props:SharedProps) {
         {props.agentChat.providers&&props.agentChat.providers.length>0&&props.onChatProvider&&<select
           aria-label="Provider dan model"
           title="Provider dan model"
-          value={props.agentChat.providerChoice==='anthropic'&&props.agentChat.modelChoice&&props.agentChat.modelChoice!==anthropicProvider?.model
-            ? `anthropic:${props.agentChat.modelChoice}` : props.agentChat.providerChoice??'auto'}
+          value={selectValue}
           disabled={running||Boolean(pausedTurn)||Boolean(pending)}
           onChange={e=>{
-            const model=anthropicProvider?.configured&&props.onChatModel
-              ? anthropicProvider.models?.find(item=>`anthropic:${item.id}`===e.target.value) : undefined;
-            props.onChatProvider?.(model?'anthropic':e.target.value);
-            if(model)props.onChatModel?.(model.id);
+            // Models come from the catalog of every configured provider; no model id is hardcoded here.
+            const hit=props.onChatModel
+              ? props.agentChat.providers?.flatMap(provider=>provider.configured?(provider.models??[]).map(model=>({provider,model})):[])
+                .find(({provider,model})=>`${provider.id}:${model.id}`===e.target.value) : undefined;
+            props.onChatProvider?.(hit?hit.provider.id:e.target.value);
+            if(hit)props.onChatModel?.(hit.model.id);
           }}
         >
-          <option value="auto">Auto (rotasi otomatis)</option>
+          <option value="auto">{'Auto (rotasi otomatis)'+lastUsed('auto')}</option>
+          {providerChoice!=='auto'&&!selectedProvider&&<option value={providerChoice} disabled>{providerChoice+' (tidak tersedia)'}</option>}
           {props.agentChat.providers.map(item=><React.Fragment key={item.id}><option value={item.id} disabled={!item.configured}>
-            {item.configured
+            {(item.configured
               ? item.id+' · '+(item.model??'model belum diatur')+(item.available?'':' (cooldown)')
-              : item.id+' (belum dikonfigurasi)'}
-          </option>{item.id==='anthropic'&&item.configured&&props.onChatModel&&item.models?.filter(model=>model.id!==item.model).map(model=><option key={model.id} value={`anthropic:${model.id}`}>
-            {item.id+' · '+model.id+(item.available?'':' (cooldown)')}
+              : item.id+' (belum dikonfigurasi)')+lastUsed(item.id)}
+          </option>{item.id===providerChoice&&selection.modelMissing&&<option value={selectValue}>
+            {item.id+' · '+modelChoice+' (tidak tersedia di katalog)'+lastUsed(selectValue)}
+          </option>}{item.configured&&props.onChatModel&&item.models?.filter(model=>model.id!==item.model).map(model=><option key={model.id} value={`${item.id}:${model.id}`}>
+            {item.id+' · '+model.id+(item.available?'':' (cooldown)')+lastUsed(`${item.id}:${model.id}`)}
           </option>)}</React.Fragment>)}
         </select>}
-        <ReasoningMenu choice={props.agentChat.providerChoice==='anthropic'?(props.agentChat.reasoningChoice??'auto'):'auto'}
+        <ReasoningMenu choice={selection.effectiveReasoning}
           levels={reasoningLevels}
-          disabled={props.agentChat.providerChoice!=='anthropic'||!props.agentChat.providers?.some(item=>item.id==='anthropic'&&item.configured)||running||Boolean(pausedTurn)||Boolean(pending)||!props.onChatReasoning}
+          disabled={providerChoice==='auto'||!selectedProvider?.configured||!reasoningSupported||running||Boolean(pausedTurn)||Boolean(pending)||!props.onChatReasoning}
           onChange={props.onChatReasoning}/>
         <span className="prototype-permissions" title="Permissions remain controlled by the existing runtime grants"><Shield size={12}/>Runtime permissions</span>
         {pausedTurn&&goalTurn?.id!==pausedTurn.id&&pausedTurn.errorCode!=='AGENT_RUNTIME_CONTINUATION_PROVIDER_WAIT'&&<TinyButton disabled={running||!props.onChatResume} onClick={()=>props.onChatResume?.(active!.conversation.id,pausedTurn.id)}><Play size={16}/>Continue</TinyButton>}
         {(running||pausedTurn)&&runningTurnId&&runningTurnId!==goalTurn?.id
           ? <TinyButton onClick={()=>props.onChatCancel(runningTurnId)}><X size={16}/>{pausedTurn?'Stop recovery':'Stop'}</TinyButton>
-          : <button className="prototype-send" aria-label="Send" title="Send · Enter (Shift+Enter for a new line)" disabled={!configured||!prompt.trim()||running||Boolean(pausedTurn)||Boolean(pending)} onClick={submit}><Send size={16}/></button>}
+          : <button className="prototype-send" aria-label="Send" title="Send · Enter (Shift+Enter for a new line)" disabled={!configured||!prompt.trim()||running||Boolean(pausedTurn)||Boolean(pending)||selection.sendBlocked} onClick={submit}><Send size={16}/></button>}
       </div>
-      {props.agentChat.reasoningNotice&&<small role="status">{props.agentChat.reasoningNotice}</small>}
+      {selection.notice&&<small role="status">{selection.notice}</small>}
     </div>
   </div>;
 }

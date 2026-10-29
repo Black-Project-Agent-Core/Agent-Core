@@ -17,6 +17,14 @@ export type AgentChatTurnStatus =
   | 'interrupted'
   | 'stopped';
 export type AgentChatMessageRole = 'user' | 'assistant';
+const SELECTION_EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+/** providerId 'auto' means automatic rotation; model '' means the provider default. */
+export interface AgentChatLastSelection {
+  providerId: string;
+  model: string;
+  reasoningEffort: 'auto' | import('./agent-provider-state.js').AgentReasoningEffort;
+  updatedAtMs: number;
+}
 
 export interface AgentChatConversation {
   id: string;
@@ -324,6 +332,38 @@ export class AgentChatStore {
     } finally {
       db.close();
     }
+  }
+  /** Last provider/model/effort the owner chose; durable so a restart never changes it. Absent or corrupt means none. */
+  getLastSelection(): AgentChatLastSelection | undefined {
+    return this.withDb(db => {
+      const row = db.prepare("SELECT value FROM chat_meta WHERE key='last_selection'").get() as { value?: string } | undefined;
+      if (!row?.value) return undefined;
+      try {
+        const parsed = JSON.parse(row.value) as Partial<AgentChatLastSelection>;
+        const effort = parsed.reasoningEffort;
+        if (typeof parsed.providerId !== 'string' || !parsed.providerId || typeof parsed.model !== 'string'
+          || !(effort === 'auto' || (typeof effort === 'string' && SELECTION_EFFORTS.includes(effort)))
+          || typeof parsed.updatedAtMs !== 'number') return undefined;
+        return { providerId: parsed.providerId, model: parsed.model, reasoningEffort: effort, updatedAtMs: parsed.updatedAtMs };
+      } catch { return undefined; }
+    });
+  }
+
+  /**
+   * A pinned provider records its model/effort (empty/Auto when none was sent). Automatic rotation sends neither,
+   * so it records only the provider and keeps the previous model/effort rather than erasing them.
+   */
+  recordLastSelection(input: { providerId?: string; model?: string; reasoningEffort?: string }, nowMs = Date.now()): AgentChatLastSelection {
+    const providerId = input.providerId && input.providerId !== 'auto' ? input.providerId : undefined;
+    const previous = providerId ? undefined : this.getLastSelection();
+    const effort = (input.reasoningEffort && SELECTION_EFFORTS.includes(input.reasoningEffort) ? input.reasoningEffort : 'auto') as AgentChatLastSelection['reasoningEffort'];
+    const record: AgentChatLastSelection = providerId
+      ? { providerId, model: input.model ?? '', reasoningEffort: effort, updatedAtMs: nowMs }
+      : { providerId: 'auto', model: previous?.model ?? '', reasoningEffort: previous?.reasoningEffort ?? 'auto', updatedAtMs: nowMs };
+    this.withDb(db => {
+      db.prepare("INSERT OR REPLACE INTO chat_meta(key, value) VALUES ('last_selection', ?)").run(JSON.stringify(record));
+    });
+    return record;
   }
   createConversation(input: {
     conversationId: string;

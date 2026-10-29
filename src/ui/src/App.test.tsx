@@ -363,43 +363,22 @@ describe('Agent Core desktop UI host integration', () => {
       ...onlineSnapshot,
       health: {
         ...onlineSnapshot.health,
-        agentRuntime: {
-          ...onlineSnapshot.health.agentRuntime!,
-          status: 'available',
-          issueCount: 0,
-          providerCount: 1,
-          configuredProviderCount: 1,
-        },
-        agentChat: {
-          status: 'available',
-          conversationCount: 0,
-          activeConversationCount: 0,
-          runningTurnCount: 0,
-        },
+        agentRuntime: { ...onlineSnapshot.health.agentRuntime!, status: 'available', issueCount: 0, providerCount: 1, configuredProviderCount: 1 },
+        agentChat: { status: 'available', conversationCount: 0, activeConversationCount: 0, runningTurnCount: 0 },
       },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }));
+    // The launcher opens on a draft; the conversation is created on the first send.
     expect(screen.getByRole('heading', { name: 'Agent Core Workspace' })).toBeInTheDocument();
-
     const conversation = {
-      id: 'conversation-1',
-      runtimeSessionId: 'session-1',
-      workspace: 'agent-core',
-      title: 'New Chat',
-      status: 'active' as const,
-      createdAtMs: 1,
-      updatedAtMs: 1,
+      id: 'conversation-1', runtimeSessionId: 'session-1', workspace: 'agent-core', title: 'New Chat',
+      status: 'active' as const, createdAtMs: 1, updatedAtMs: 1,
     };
-    act(() => messageHandler!({ data: {
-      type: 'agent-chat-state',
-      result: { conversation, turns: [], messages: [] },
-    } }));
-
-    const prompt = screen.getByRole('textbox', { name: 'Message Agent Core' });
-    fireEvent.change(prompt, { target: { value: 'Inspect current runtime' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message Agent Core' }), { target: { value: 'Inspect current runtime' } });
     postMessage.mockClear();
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const createRequest = postMessage.mock.calls.find(([value]) => value?.type === 'agent-chat-create')![0].requestId;
+    act(() => messageHandler!({ data: { type: 'agent-chat-state', requestId: createRequest, result: { conversation, turns: [], messages: [] } } }));
 
     const sent = postMessage.mock.calls.find(([value]) => value?.type === 'agent-chat-send')?.[0];
     expect(sent).toEqual(expect.objectContaining({
@@ -431,152 +410,171 @@ describe('Agent Core desktop UI host integration', () => {
     expect(screen.getAllByText('Inspect current runtime').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('persists global effort across reload, sends two levels, omits Auto and resets unsupported saved levels', () => {
-    window.localStorage.clear();
-    const conversation={id:'effort-chat',runtimeSessionId:'effort-session',workspace:'agent-core',title:'Effort',status:'active' as const,createdAtMs:1,updatedAtMs:1};
-    const state=()=>act(()=>messageHandler!({data:{type:'agent-chat-state',result:{conversation,turns:[],messages:[]}}}));
-    const providers=(levels=['low','medium','high','xhigh','max'])=>act(()=>messageHandler!({data:{type:'agent-chat-providers-result',result:{providers:[
-      {id:'anthropic',model:'fixture',configured:true,available:true,reasoningEfforts:levels},
-      {id:'atria',model:'fixture',configured:true,available:true},
-    ]}}}));
-    let view=render(<App/>);
-    const snapshot={...onlineSnapshot,health:{...onlineSnapshot.health,agentRuntime:{...onlineSnapshot.health.agentRuntime!,configuredProviderCount:2}}};
-    pushSnapshot(snapshot);state();providers();
-    const picker=screen.getByLabelText('Provider dan model');
-    fireEvent.change(picker,{target:{value:'anthropic'}});
-    for(const level of ['Low','High']){
-      fireEvent.click(screen.getByRole('button',{name:/Reasoning:/}));
-      fireEvent.click(screen.getByRole('menuitemradio',{name:level}));
-      fireEvent.change(screen.getByRole('textbox', { name: 'Message Agent Core' }),{target:{value:'Hello '+level}});
-      postMessage.mockClear();
-      fireEvent.click(screen.getByRole('button',{name:'Send'}));
-      expect(postMessage.mock.calls.find(([value])=>value?.type==='agent-chat-send')![0]).toMatchObject({providerId:'anthropic',reasoningEffort:level.toLowerCase()});
-      expect(screen.getByRole('button',{name:/Reasoning:/})).toBeDisabled();
-      state();
-    }
-    expect(window.localStorage.getItem('agentcore.chat.reasoning')).toBe('high');
-    view.unmount();view=render(<App/>);pushSnapshot(snapshot);state();providers();
-    expect(screen.getByRole('button',{name:'Reasoning: High'})).toBeEnabled();
-    fireEvent.change(screen.getByLabelText('Provider dan model'),{target:{value:'atria'}});
-    expect(screen.getByRole('button',{name:'Reasoning: Auto'})).toBeDisabled();
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message Agent Core' }),{target:{value:'Other provider'}});
-    postMessage.mockClear();fireEvent.click(screen.getByRole('button',{name:'Send'}));
-    expect(postMessage.mock.calls.find(([value])=>value?.type==='agent-chat-send')![0]).not.toHaveProperty('reasoningEffort');
-    state();fireEvent.change(screen.getByLabelText('Provider dan model'),{target:{value:'anthropic'}});
-    providers(['low']);
-    expect(screen.getByText(/Reasoning reset to Auto/)).toBeInTheDocument();
-    expect(window.localStorage.getItem('agentcore.chat.reasoning')).toBe('auto');
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message Agent Core' }),{target:{value:'Auto'}});
-    postMessage.mockClear();fireEvent.click(screen.getByRole('button',{name:'Send'}));
-    expect(postMessage.mock.calls.find(([value])=>value?.type==='agent-chat-send')![0]).not.toHaveProperty('reasoningEffort');
-    view.unmount();window.localStorage.clear();
-  });
-
-  it('selects catalog Anthropic models per message and guards reasoning by the selected model', () => {
-    window.localStorage.clear();
-    const conversation={id:'model-chat',runtimeSessionId:'model-session',workspace:'agent-core',title:'Models',status:'active' as const,createdAtMs:1,updatedAtMs:1};
-    const state=()=>act(()=>messageHandler!({data:{type:'agent-chat-state',result:{conversation,turns:[],messages:[]}}}));
-    const providers=(models=[{id:'fixture-default',reasoningEfforts:['high']},{id:'fixture-other',reasoningEfforts:[] as string[]}])=>
-      act(()=>messageHandler!({data:{type:'agent-chat-providers-result',result:{providers:[
-        {id:'anthropic',model:'fixture-default',configured:true,available:true,reasoningEfforts:['high'],models},
-        {id:'atria',model:'fixture-atria',configured:true,available:true},
-      ]}}}));
-    const view=render(<App/>);
-    pushSnapshot({...onlineSnapshot,health:{...onlineSnapshot.health,agentRuntime:{...onlineSnapshot.health.agentRuntime!,configuredProviderCount:2}}});
-    state();providers();
-    fireEvent.change(screen.getByLabelText('Provider dan model'),{target:{value:'anthropic'}});
-    const modelPicker=screen.getByLabelText('Provider dan model') as HTMLSelectElement;
-    expect(screen.queryByLabelText('Anthropic model')).not.toBeInTheDocument();
-    expect([...modelPicker.options].map(option=>[option.value,option.textContent])).toEqual([
-      ['auto','Auto (rotasi otomatis)'],['anthropic','anthropic · fixture-default'],
-      ['anthropic:fixture-other','anthropic · fixture-other'],['atria','atria · fixture-atria'],
-    ]);
-    expect(modelPicker.value).toBe('anthropic');
-    fireEvent.click(screen.getByRole('button',{name:'Reasoning: Auto'}));
-    fireEvent.click(screen.getByRole('menuitemradio',{name:'High'}));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message Agent Core' }),{target:{value:'Use default'}});
-    postMessage.mockClear();fireEvent.click(screen.getByRole('button',{name:'Send'}));
-    const defaultPayload=postMessage.mock.calls.find(([value])=>value?.type==='agent-chat-send')![0];
-    expect(defaultPayload).toMatchObject({providerId:'anthropic',reasoningEffort:'high'});
-    expect(defaultPayload).not.toHaveProperty('model');
-    expect(modelPicker).toBeDisabled();
-
-    state();
-    fireEvent.change(modelPicker,{target:{value:'anthropic:fixture-other'}});
-    expect(screen.getByRole('button',{name:'Reasoning: Auto'})).toBeEnabled();
-    fireEvent.click(screen.getByRole('button',{name:'Reasoning: Auto'}));
-    expect(screen.getAllByRole('menuitemradio').map(item=>item.textContent)).toEqual(['Auto']);
-    fireEvent.keyDown(screen.getByRole('menu'),{key:'Escape'});
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message Agent Core' }),{target:{value:'Use another model'}});
-    postMessage.mockClear();fireEvent.click(screen.getByRole('button',{name:'Send'}));
-    const explicitPayload=postMessage.mock.calls.find(([value])=>value?.type==='agent-chat-send')![0];
-    expect(explicitPayload).toMatchObject({providerId:'anthropic',model:'fixture-other'});
-    expect(explicitPayload).not.toHaveProperty('reasoningEffort');
-
-    state();providers([{id:'fixture-default',reasoningEfforts:['high']},{id:'fixture-other',reasoningEfforts:['low']}]);
-    fireEvent.click(screen.getByRole('button',{name:'Reasoning: Auto'}));
-    fireEvent.click(screen.getByRole('menuitemradio',{name:'Low'}));
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message Agent Core' }),{target:{value:'Qualified model'}});
-    postMessage.mockClear();fireEvent.click(screen.getByRole('button',{name:'Send'}));
-    expect(postMessage.mock.calls.find(([value])=>value?.type==='agent-chat-send')![0])
-      .toMatchObject({providerId:'anthropic',model:'fixture-other',reasoningEffort:'low'});
-
-    state();fireEvent.change(screen.getByLabelText('Provider dan model'),{target:{value:'auto'}});
-    expect(screen.queryByLabelText('Anthropic model')).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message Agent Core' }),{target:{value:'Automatic route'}});
-    postMessage.mockClear();fireEvent.click(screen.getByRole('button',{name:'Send'}));
-    const autoPayload=postMessage.mock.calls.find(([value])=>value?.type==='agent-chat-send')![0];
-    expect(autoPayload).not.toHaveProperty('model');
-    expect(autoPayload).not.toHaveProperty('providerId');
-    expect(autoPayload).not.toHaveProperty('reasoningEffort');
-
-    state();fireEvent.change(screen.getByLabelText('Provider dan model'),{target:{value:'anthropic'}});
-    expect(modelPicker.value).toBe('anthropic');
-    fireEvent.change(modelPicker,{target:{value:'anthropic:fixture-other'}});
-    providers([{id:'fixture-default',reasoningEfforts:['high']}]);
-    expect(modelPicker.value).toBe('anthropic');
-    view.unmount();window.localStorage.clear();
-  });
-
-  it('lets the owner choose a provider and model per message, with automatic rotation as the default', () => {
-    try { window.localStorage.removeItem('agentcore.chat.provider'); } catch { /* storage is optional */ }
-    render(<App />);
-    pushSnapshot({
-      ...onlineSnapshot,
-      health: { ...onlineSnapshot.health,
-        agentRuntime: { ...onlineSnapshot.health.agentRuntime!, status: 'available', issueCount: 0, providerCount: 2, configuredProviderCount: 2 },
-        agentChat: { status: 'available', conversationCount: 0, activeConversationCount: 0, runningTurnCount: 0 } },
-    });
-    expect(postMessage).toHaveBeenCalledWith({ type: 'agent-chat-providers' });
-    fireEvent.click(screen.getByRole('button', { name: 'New Chat' }));
-    const conversation = { id: 'conversation-2', runtimeSessionId: 'session-2', workspace: 'agent-core', title: 'New Chat',
+  describe('model and effort selection survives restart and is never changed silently', () => {
+    const SELECTION_KEY = 'agentcore.chat.selection';
+    const storedSelection = () => JSON.parse(window.localStorage.getItem(SELECTION_KEY) ?? 'null');
+    const conversation = { id: 'sel-chat', runtimeSessionId: 'sel-session', workspace: 'agent-core', title: 'Selection',
       status: 'active' as const, createdAtMs: 1, updatedAtMs: 1 };
-    act(() => messageHandler!({ data: { type: 'agent-chat-state', result: { conversation, turns: [], messages: [] } } }));
-    act(() => messageHandler!({ data: { type: 'agent-chat-providers-result', result: { providers: [
-      { id: 'atria', model: 'Atria-Dawn', configured: true, available: true },
-      { id: 'gonka', model: 'DeepSeek-V4-Flash', configured: true, available: false, retryAt: '2026-10-25T09:00:00.000Z' },
-      { id: 'half', model: null, configured: false, available: false, issue: 'AGENT_RUNTIME_PROVIDER_CONFIGURATION_INCOMPLETE' },
-    ] } } }));
+    const twoProviders = { ...onlineSnapshot, health: { ...onlineSnapshot.health,
+      agentRuntime: { ...onlineSnapshot.health.agentRuntime!, configuredProviderCount: 2 } } };
+    // Ending the running state needs the host to answer with the request id of the pending send.
+    const hostState = () => {
+      const send = [...postMessage.mock.calls].reverse().find(([value]) => value?.type === 'agent-chat-send');
+      act(() => messageHandler!({ data: { type: 'agent-chat-state', requestId: send?.[0].requestId, result: { conversation, turns: [], messages: [] } } }));
+    };
+    const hostProviders = (providers: any[], selection?: any) =>
+      act(() => messageHandler!({ data: { type: 'agent-chat-providers-result', result: { providers, ...(selection ? { selection } : {}) } } }));
+    const sendText = (text: string) => {
+      fireEvent.change(screen.getByRole('textbox', { name: 'Message Agent Core' }), { target: { value: text } });
+      postMessage.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      return postMessage.mock.calls.find(([value]) => value?.type === 'agent-chat-send')?.[0];
+    };
+    const catalog = (models = [{ id: 'fixture-default', reasoningEfforts: ['high'] }, { id: 'fixture-other', reasoningEfforts: [] as string[] }]) => [
+      { id: 'anthropic', model: 'fixture-default', configured: true, available: true, reasoningEfforts: ['high'], models },
+      { id: 'atria', model: 'fixture-atria', configured: true, available: true },
+    ];
+    const boot = () => {
+      const view = render(<App />);
+      pushSnapshot(twoProviders);
+      act(() => messageHandler!({ data: { type: 'agent-chat-state', result: { conversation, turns: [], messages: [] } } }));
+      return view;
+    };
+    beforeEach(() => window.localStorage.clear());
+    afterEach(() => window.localStorage.clear());
 
-    const picker = screen.getByLabelText('Provider dan model') as HTMLSelectElement;
-    expect(picker.value).toBe('auto');
-    expect([...picker.options].map(option => option.textContent)).toEqual([
-      'Auto (rotasi otomatis)', 'atria · Atria-Dawn', 'gonka · DeepSeek-V4-Flash (cooldown)', 'half (belum dikonfigurasi)']);
-    expect(picker.options[3]!.disabled).toBe(true);
+    it('persists global effort across reload, sends two levels, omits Auto and keeps (not resets) unsupported saved levels', () => {
+      const levels = (list = ['low', 'medium', 'high', 'xhigh', 'max']) => hostProviders([
+        { id: 'anthropic', model: 'fixture', configured: true, available: true, reasoningEfforts: list },
+        { id: 'atria', model: 'fixture', configured: true, available: true },
+      ]);
+      let view = boot(); levels();
+      fireEvent.change(screen.getByLabelText('Provider dan model'), { target: { value: 'anthropic' } });
+      for (const level of ['Low', 'High']) {
+        fireEvent.click(screen.getByRole('button', { name: /Reasoning:/ }));
+        fireEvent.click(screen.getByRole('menuitemradio', { name: level }));
+        const sent = sendText('Hello ' + level);
+        expect(sent).toMatchObject({ providerId: 'anthropic', reasoningEffort: level.toLowerCase() });
+        expect(screen.getByRole('button', { name: /Reasoning:/ })).toBeDisabled();
+        hostState();
+      }
+      expect(storedSelection()).toMatchObject({ providerId: 'anthropic', reasoningEffort: 'high' });
+      view.unmount(); view = boot(); levels();
+      expect(screen.getByRole('button', { name: 'Reasoning: High' })).toBeEnabled();
 
-    const prompt = screen.getByRole('textbox', { name: 'Message Agent Core' });
-    fireEvent.change(prompt, { target: { value: 'halo' } });
-    postMessage.mockClear();
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(postMessage.mock.calls.find(([value]) => value?.type === 'agent-chat-send')![0]).not.toHaveProperty('providerId');
-    // The host answers with the saved conversation, which ends the running state.
-    act(() => messageHandler!({ data: { type: 'agent-chat-state', result: { conversation: { ...conversation, updatedAtMs: 2 }, turns: [], messages: [] } } }));
+      fireEvent.change(screen.getByLabelText('Provider dan model'), { target: { value: 'atria' } });
+      expect(screen.getByRole('button', { name: 'Reasoning: Auto' })).toBeDisabled();
+      expect(sendText('Other provider')).not.toHaveProperty('reasoningEffort');
+      hostState();
 
-    fireEvent.change(picker, { target: { value: 'atria' } });
-    fireEvent.change(prompt, { target: { value: 'halo lagi' } });
-    postMessage.mockClear();
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect(postMessage.mock.calls.find(([value]) => value?.type === 'agent-chat-send')![0]).toMatchObject({ providerId: 'atria' });
+      fireEvent.change(screen.getByLabelText('Provider dan model'), { target: { value: 'anthropic' } });
+      levels(['low']);
+      // The saved High is kept; only the displayed/sent level is the nearest supported one.
+      expect(screen.getByRole('button', { name: 'Reasoning: Low' })).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('Effort high tidak didukung fixture; memakai low untuk model ini');
+      expect(storedSelection().reasoningEffort).toBe('high');
+      expect(sendText('Clamped')).toMatchObject({ reasoningEffort: 'low' });
+      hostState();
+      levels();
+      expect(screen.getByRole('button', { name: 'Reasoning: High' })).toBeInTheDocument();
+      expect(screen.queryByText(/tidak didukung/)).not.toBeInTheDocument();
+      view.unmount();
+    });
+
+    it('hydrates provider, model and effort from the server without interaction, then keeps the user pick over later polls', () => {
+      boot();
+      hostProviders(catalog([{ id: 'fixture-default', reasoningEfforts: ['high'] }, { id: 'fixture-other', reasoningEfforts: ['low', 'high'] }]),
+        { providerId: 'anthropic', model: 'fixture-other', reasoningEffort: 'low', updatedAtMs: 5 });
+      const picker = screen.getByLabelText('Provider dan model') as HTMLSelectElement;
+      expect(picker.value).toBe('anthropic:fixture-other');
+      expect(screen.getByRole('button', { name: 'Reasoning: Low' })).toBeEnabled();
+      expect([...picker.options].find(option => option.selected)!.textContent).toContain('Terakhir dipakai');
+      expect(sendText('Restored')).toMatchObject({ providerId: 'anthropic', model: 'fixture-other', reasoningEffort: 'low' });
+      hostState();
+
+      fireEvent.change(picker, { target: { value: 'atria' } });
+      hostProviders(catalog(), { providerId: 'anthropic', model: 'fixture-other', reasoningEffort: 'low', updatedAtMs: 5 });
+      expect(picker.value).toBe('atria');
+      expect(storedSelection()).toMatchObject({ providerId: 'atria' });
+    });
+
+    it('keeps a saved model that left the catalog, says so, and refuses to send with another model', () => {
+      boot();
+      hostProviders(catalog(), { providerId: 'anthropic', model: 'fixture-other', reasoningEffort: 'auto', updatedAtMs: 5 });
+      expect((screen.getByLabelText('Provider dan model') as HTMLSelectElement).value).toBe('anthropic:fixture-other');
+      hostProviders(catalog([{ id: 'fixture-default', reasoningEfforts: ['high'] }]));
+      expect((screen.getByLabelText('Provider dan model') as HTMLSelectElement).value).toBe('anthropic:fixture-other');
+      expect(screen.getByRole('status')).toHaveTextContent('Model tidak tersedia di katalog saat ini; pilih model');
+      fireEvent.change(screen.getByRole('textbox', { name: 'Message Agent Core' }), { target: { value: 'Must not go out' } });
+      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+      expect(storedSelection()).toMatchObject({ providerId: 'anthropic', model: 'fixture-other' });
+      hostProviders(catalog());
+      expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
+      expect(screen.queryByText(/tidak tersedia di katalog/)).not.toBeInTheDocument();
+    });
+
+    it('selects catalog models per message and guards reasoning by the selected model', () => {
+      boot(); hostProviders(catalog());
+      const picker = screen.getByLabelText('Provider dan model') as HTMLSelectElement;
+      expect([...picker.options].map(option => [option.value, option.textContent])).toEqual([
+        ['auto', 'Auto (rotasi otomatis)'], ['anthropic', 'anthropic · fixture-default'],
+        ['anthropic:fixture-other', 'anthropic · fixture-other'], ['atria', 'atria · fixture-atria'],
+      ]);
+      fireEvent.change(picker, { target: { value: 'anthropic' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Reasoning: Auto' }));
+      fireEvent.click(screen.getByRole('menuitemradio', { name: 'High' }));
+      // Every owner pick is pushed to the server immediately, not only on send.
+      expect(postMessage).toHaveBeenCalledWith({ type: 'agent-chat-select', providerId: 'anthropic', model: '', reasoningEffort: 'high' });
+      const defaultPayload = sendText('Use default');
+      expect(defaultPayload).toMatchObject({ providerId: 'anthropic', reasoningEffort: 'high' });
+      expect(defaultPayload).not.toHaveProperty('model');
+      expect(picker).toBeDisabled();
+      hostState();
+
+      fireEvent.change(picker, { target: { value: 'anthropic:fixture-other' } });
+      // Three separate values. SAVED: High stays High although this model offers no level.
+      expect(storedSelection().reasoningEffort).toBe('high');
+      expect(postMessage).toHaveBeenCalledWith({ type: 'agent-chat-select', providerId: 'anthropic', model: 'fixture-other', reasoningEffort: 'high' });
+      // EFFECTIVE (display): Auto, with an explanation.
+      expect(screen.getByRole('button', { name: 'Reasoning: Auto' })).toBeEnabled();
+      expect(screen.getByRole('status')).toHaveTextContent('Effort high tidak didukung fixture-other; memakai auto untuk model ini');
+      // SENT: the effective level (none for Auto), never the unsupported High.
+      const explicitPayload = sendText('Use another model');
+      expect(explicitPayload).toMatchObject({ providerId: 'anthropic', model: 'fixture-other' });
+      expect(explicitPayload).not.toHaveProperty('reasoningEffort');
+      expect(storedSelection().reasoningEffort).toBe('high');
+      hostState();
+
+      // Picking a model that supports High again makes the untouched saved High effective and sent.
+      fireEvent.change(picker, { target: { value: 'anthropic' } });
+      expect(screen.getByRole('button', { name: 'Reasoning: High' })).toBeEnabled();
+      expect(screen.queryByText(/tidak didukung/)).not.toBeInTheDocument();
+      expect(sendText('Back to default')).toMatchObject({ providerId: 'anthropic', reasoningEffort: 'high' });
+      hostState();
+
+      fireEvent.change(picker, { target: { value: 'auto' } });
+      const autoPayload = sendText('Automatic route');
+      for (const key of ['model', 'providerId', 'reasoningEffort']) expect(autoPayload).not.toHaveProperty(key);
+    });
+
+    it('lets the owner choose a provider per message, with automatic rotation as the default', () => {
+      boot();
+      expect(postMessage).toHaveBeenCalledWith({ type: 'agent-chat-providers' });
+      hostProviders([
+        { id: 'atria', model: 'Atria-Dawn', configured: true, available: true },
+        { id: 'gonka', model: 'DeepSeek-V4-Flash', configured: true, available: false, retryAt: '2026-10-25T09:00:00.000Z' },
+        { id: 'half', model: null, configured: false, available: false, issue: 'AGENT_RUNTIME_PROVIDER_CONFIGURATION_INCOMPLETE' },
+      ]);
+      const picker = screen.getByLabelText('Provider dan model') as HTMLSelectElement;
+      expect(picker.value).toBe('auto');
+      expect([...picker.options].map(option => option.textContent)).toEqual([
+        'Auto (rotasi otomatis)', 'atria · Atria-Dawn', 'gonka · DeepSeek-V4-Flash (cooldown)', 'half (belum dikonfigurasi)']);
+      expect(picker.options[3]!.disabled).toBe(true);
+      expect(sendText('halo')).not.toHaveProperty('providerId');
+      hostState();
+      fireEvent.change(picker, { target: { value: 'atria' } });
+      expect(sendText('halo lagi')).toMatchObject({ providerId: 'atria' });
+    });
   });
 });
 
@@ -592,10 +590,9 @@ describe('Native Chat UI refresh',()=>{
         agentChat:{status:'available',conversationCount:1,activeConversationCount:1,runningTurnCount:0},
       },
     });
-    fireEvent.click(screen.getByRole('button',{name:'New Chat'}));
     const current={
       id:'current-thread',runtimeSessionId:'s1',workspace:'agent-core',
-      title:'New Chat',status:'active' as const,createdAtMs:1,updatedAtMs:1,
+      title:'Current Thread',status:'active' as const,createdAtMs:1,updatedAtMs:1,
     };
     act(()=>messageHandler!({data:{type:'agent-chat-list-result',result:{conversations:[current]}}}));
     act(()=>messageHandler!({data:{type:'agent-chat-state',
@@ -611,7 +608,7 @@ describe('Native Chat UI refresh',()=>{
       result:{conversations:[external,current]}}}));
     fireEvent.click(screen.getByRole('button',{name:'Chat history'}));
     expect(screen.getByText('External Bridge Verification 2026-10-23')).toBeInTheDocument();
-    expect(screen.getByRole('heading',{name:'New Chat'})).toBeInTheDocument();
+    expect(screen.getByRole('heading',{name:'Current Thread'})).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Message Agent Core' })).toHaveValue('Draft must stay');
     fireEvent.click(screen.getByText('External Bridge Verification 2026-10-23'));
     expect(postMessage).toHaveBeenCalledWith({type:'agent-chat-open',conversationId:'external-thread'});
@@ -633,7 +630,8 @@ describe('Native Chat UI refresh',()=>{
       }],
     }}}));
     expect(screen.getByText('New external update')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Message Agent Core' })).toHaveValue('Draft must stay');
+    // Drafts are kept per conversation: the externally opened thread starts with an empty composer.
+    expect(screen.getByRole('textbox', { name: 'Message Agent Core' })).toHaveValue('');
     postMessage.mockClear();
     act(()=>vi.advanceTimersByTime(4100));
     act(()=>messageHandler!({data:{type:'agent-chat-list-result',result:{
@@ -650,6 +648,6 @@ describe('Native Chat UI refresh',()=>{
     expect(screen.getByText('Observed report; task remains incomplete.')).toBeInTheDocument();
     expect(screen.getByText('Task failed')).toBeInTheDocument();
     expect(screen.getByText('AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Message Agent Core' })).toHaveValue('Draft must stay');
+    expect(screen.getByRole('textbox', { name: 'Message Agent Core' })).toHaveValue('');
   });
 });

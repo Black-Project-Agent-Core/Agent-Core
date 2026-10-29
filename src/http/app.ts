@@ -179,7 +179,28 @@ async function handleRequest(
         return;
       }
       await chat.refreshProviderCapabilities();
-      sendJson(response, 200, { providers: chat.listProviders() });
+      const selection = chat.getLastSelection();
+      sendJson(response, 200, { providers: chat.listProviders(), ...(selection ? { selection } : {}) });
+      return;
+    }
+
+    if (route === '/agent/chat/selection') {
+      if (request.method !== 'PUT') {
+        sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'PUT' });
+        return;
+      }
+      if (firstHeader(request.headers['x-agent-core-chat-origin']) === 'external-controller') {
+        sendJson(response, 403, { error: 'agent_chat_selection_owner_only' });
+        return;
+      }
+      let body: Record<string, unknown>;
+      try { body = await readJsonBody(request); }
+      catch { sendJson(response, 400, { error: 'invalid_json' }); return; }
+      try {
+        sendJson(response, 200, { selection: chat.recordOwnerSelection(body) });
+      } catch (error) {
+        sendJson(response, 400, { error: error instanceof Error ? error.message : 'agent_chat_selection_invalid' });
+      }
       return;
     }
 

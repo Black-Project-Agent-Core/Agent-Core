@@ -358,6 +358,27 @@ export class AgentChatService {
     }));
   }
 
+  /** The owner's last provider/model/effort, persisted in chat.sqlite so it survives Core restarts. */
+  getLastSelection() { return this.store.getLastSelection(); }
+
+  /**
+   * Records an owner pick (before any send) so a restart keeps it. Rejects what a send would reject,
+   * but keeps an effort the model does not support: the saved choice is never rewritten to the effective one.
+   */
+  recordOwnerSelection(input: { providerId?: unknown; model?: unknown; reasoningEffort?: unknown }) {
+    const providerId = input.providerId === undefined || input.providerId === 'auto' ? undefined : input.providerId;
+    if (providerId !== undefined && (typeof providerId !== 'string' || !this.listProviders().some(route => route.id === providerId))) {
+      throw new Error('AGENT_CHAT_PROVIDER_UNKNOWN');
+    }
+    const model = input.model === undefined || input.model === '' ? undefined : input.model;
+    if (model !== undefined) this.validateProviderModel(model, providerId as string | undefined);
+    const effort = input.reasoningEffort === undefined || input.reasoningEffort === 'auto' ? undefined : input.reasoningEffort;
+    if (effort !== undefined && !['low', 'medium', 'high', 'xhigh', 'max'].includes(effort as string)) {
+      throw new Error('AGENT_CHAT_REASONING_EFFORT_INVALID');
+    }
+    return this.store.recordLastSelection({ providerId: providerId as string | undefined, model: model as string | undefined, reasoningEffort: effort as string | undefined });
+  }
+
   /** Resolves the catalog levels of models that have not run a turn yet; a slow provider delays the list by at most the bound. */
   async refreshProviderCapabilities(): Promise<void> {
     const boundMs = 5_000;
@@ -444,6 +465,12 @@ export class AgentChatService {
       goalMode: input.goalMode,
     });
     if (!begun.created) return this.replayResult(begun.turn);
+    // Only the local owner's pick is the "last used" selection; external controllers must not move it.
+    if (localOperator) {
+      try {
+        this.store.recordLastSelection({ providerId: providerRoute, model: input.providerModel, reasoningEffort: input.reasoningEffort });
+      } catch (error) { console.error('AGENT_CHAT_SELECTION_RECORD_FAILED:' + safeErrorCode(error)); }
+    }
     if (!begun.claim) throw new Error('AGENT_CHAT_EXECUTION_STATE_MISSING');
     const claim = begun.claim;
     const continuation = this.continuationHooks({

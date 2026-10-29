@@ -1,0 +1,5 @@
+---
+"agent-core": minor
+---
+
+Native Chat keeps the owner's last provider, model and effort across Core/app restarts and never changes them silently. The last choice is stored durably in `chat.sqlite` (`chat_meta.last_selection`), returned with the provider catalog and restored on start (localStorage is only a one-time migration copy). The picker lists models from the live catalog with the saved route labelled "Terakhir dipakai" and "Auto (rotasi otomatis)" as an explicit option. The old effects that cleared the saved model and reset an unsupported effort to Auto are removed: an effort the selected model does not support is only clamped for display and sending (with a notice), the saved level returns when a supporting model is chosen, and a saved model missing from the catalog is kept, announced and blocks sending rather than falling back to another model. New owner-only `PUT /agent/chat/selection` records a pick before any send; the launcher bridge still needs a forwarder for the UI's `agent-chat-select` message.

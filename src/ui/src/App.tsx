@@ -9,6 +9,7 @@ import {
   type DesktopSnapshot,
   type ReasoningChoice,
 } from './host';
+import { mergeSelection, parseServerSelection, readLocalSelection, resolveSelection, writeLocalSelection } from './chatSelection';
 import { ReferenceUi } from './pages';
 import type { PageId } from './components';
 
@@ -21,46 +22,36 @@ function pageFromHash(): PageId {
   return validPages.has(value) ? value : 'chat';
 }
 
-const PROVIDER_CHOICE_KEY='agentcore.chat.provider';
-const REASONING_CHOICE_KEY='agentcore.chat.reasoning';
-function readReasoningChoice():ReasoningChoice{
-  try{return (window.localStorage.getItem(REASONING_CHOICE_KEY)||'auto') as ReasoningChoice;}catch{return 'auto';}
-}
-function readProviderChoice():string{
-  try{return window.localStorage.getItem(PROVIDER_CHOICE_KEY)||'auto';}catch{return 'auto';}
-}
+const selectionKey=(providerId:string,model:string,effort:string)=>[providerId,model,effort].join('\u0000');
 
 export default function App() {
   const [page,setPageState]=useState<PageId>(()=>pageFromHash());
   const [snapshot,setSnapshot]=useState<DesktopSnapshot>();
   const [logs,setLogs]=useState<ActivityEntry[]>([]);
   const [agentRun,setAgentRun]=useState<AgentRunState>({status:'idle'});
-  const [agentChat,setAgentChat]=useState<AgentChatUiState>(()=>({conversations:[],providerChoice:readProviderChoice(),modelChoice:'',reasoningChoice:readReasoningChoice()}));
+  const [agentChat,setAgentChat]=useState<AgentChatUiState>(()=>{
+    const saved=readLocalSelection();
+    return {conversations:[],providerChoice:saved?.providerId??'auto',modelChoice:saved?.model??'',reasoningChoice:saved?.reasoningEffort??'auto',selectionSaved:Boolean(saved)};
+  });
+  // The saved choice is only ever changed by an owner action (or the one-time hydrate), never by an effect.
+  const selectionHydratedRef=useRef(false);
+  const persistedKeyRef=useRef<string>('');
+  if(!persistedKeyRef.current)persistedKeyRef.current=selectionKey(agentChat.providerChoice??'auto',agentChat.modelChoice,agentChat.reasoningChoice??'auto');
   const chatListLoadedRef=useRef(false);
   const chatListPendingRef=useRef(false);
   const chatOpenPendingRef=useRef(false);
   const desiredChatIdRef=useRef<string | null | undefined>(undefined);
   const pendingChatRequestsRef=useRef(new Map<string,string>());
   const creatingRequestIdRef=useRef<string | undefined>(undefined);
-  const anthropicProvider=agentChat.providers?.find(item=>item.id==='anthropic');
-  const reasoningLevels=agentChat.modelChoice
-    ? anthropicProvider?.models?.find(item=>item.id===agentChat.modelChoice)?.reasoningEfforts??[]
-    : anthropicProvider?.reasoningEfforts??[];
-
+  // Persist an owner pick locally right away; the server records the values actually sent with each turn.
   useEffect(()=>{
-    if(agentChat.modelChoice&&agentChat.providers&&!anthropicProvider?.models?.some(item=>item.id===agentChat.modelChoice)){
-      setAgentChat(prev=>({...prev,modelChoice:''}));
-    }
-  },[agentChat.modelChoice,agentChat.providers]);
-
-  useEffect(()=>{
-    const choice=agentChat.reasoningChoice??'auto';
-    if(choice!=='auto'&&(!['low','medium','high','xhigh','max'].includes(choice)
-      ||(agentChat.providerChoice==='anthropic'&&anthropicProvider&&!reasoningLevels.includes(choice)))){
-      setAgentChat(prev=>({...prev,reasoningChoice:'auto',reasoningNotice:'Reasoning reset to Auto: saved level is not supported by this model.'}));
-      try{window.localStorage.setItem(REASONING_CHOICE_KEY,'auto');}catch{/* storage is optional */}
-    }
-  },[agentChat.reasoningChoice,agentChat.providerChoice,agentChat.modelChoice,agentChat.providers]);
+    if(!agentChat.selectionSaved)return;
+    const providerId=agentChat.providerChoice??'auto',model=agentChat.modelChoice,reasoningEffort=agentChat.reasoningChoice??'auto';
+    const key=selectionKey(providerId,model,reasoningEffort);
+    if(persistedKeyRef.current===key)return;
+    persistedKeyRef.current=key;
+    writeLocalSelection({providerId,model,reasoningEffort,updatedAtMs:Date.now()});
+  },[agentChat.selectionSaved,agentChat.providerChoice,agentChat.modelChoice,agentChat.reasoningChoice]);
 
   useEffect(()=>{
     const onHash=()=>setPageState(pageFromHash());
@@ -105,7 +96,15 @@ export default function App() {
         return;
       }
       if(message.type==='agent-chat-providers-result'){
-        setAgentChat(prev=>({...prev,providers:message.result.providers??[]}));
+        // First answer only: restore the server's last-used choice (newest of server/local wins).
+        const merged=selectionHydratedRef.current?undefined:mergeSelection(parseServerSelection(message.result.selection),readLocalSelection());
+        selectionHydratedRef.current=true;
+        if(merged){
+          persistedKeyRef.current=selectionKey(merged.providerId,merged.model,merged.reasoningEffort);
+          writeLocalSelection(merged);
+        }
+        setAgentChat(prev=>({...prev,providers:message.result.providers??[],
+          ...(merged?{providerChoice:merged.providerId,modelChoice:merged.model,reasoningChoice:merged.reasoningEffort,selectionSaved:true}:{})}));
         return;
       }
       if(message.type==='agent-chat-state'){
@@ -270,6 +269,12 @@ export default function App() {
   };
 
   const onChatSend=(conversationId:string,prompt:string,goalMode=false)=>{
+    // A pinned route that is unavailable must never fall back to another one silently.
+    const resolved=resolveSelection(agentChat.providers,{providerId:agentChat.providerChoice??'auto',model:agentChat.modelChoice,reasoningEffort:agentChat.reasoningChoice??'auto'});
+    if(resolved.sendBlocked){
+      setAgentChat(prev=>({...prev,error:resolved.notice??'Pilihan model tidak dapat dipakai; pilih model'}));
+      return;
+    }
     const requestId=globalThis.crypto?.randomUUID?.() ?? `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     pendingChatRequestsRef.current.set(conversationId,requestId);
     setAgentChat(prev=>({
@@ -278,7 +283,7 @@ export default function App() {
       error:undefined,
     }));
     const choice=agentChat.providerChoice;
-    const providerId=choice&&choice!=='auto'&&agentChat.providers?.some(item=>item.id===choice&&item.configured)?choice:undefined;
+    const providerId=choice&&choice!=='auto'?choice:undefined;
     postHost({
       type:'agent-chat-send',
       requestId,
@@ -287,27 +292,22 @@ export default function App() {
       prompt,
       ...(goalMode?{goalMode:true}:{}),
       ...(providerId?{providerId}:{}),
-      ...(providerId==='anthropic'&&agentChat.modelChoice&&anthropicProvider?.models?.some(item=>item.id===agentChat.modelChoice)
-        ?{model:agentChat.modelChoice}:{}),
-      ...(providerId==='anthropic'&&agentChat.reasoningChoice&&agentChat.reasoningChoice!=='auto'
-        &&reasoningLevels.includes(agentChat.reasoningChoice)
-        ?{reasoningEffort:agentChat.reasoningChoice}:{}),
+      ...(providerId&&agentChat.modelChoice?{model:agentChat.modelChoice}:{}),
+      ...(providerId&&resolved.effectiveReasoning!=='auto'?{reasoningEffort:resolved.effectiveReasoning}:{}),
     });
   };
 
-  const onChatProvider=(choice:string)=>{
-    setAgentChat(prev=>({...prev,providerChoice:choice,modelChoice:''}));
-    try{window.localStorage.setItem(PROVIDER_CHOICE_KEY,choice);}catch{/* storage is optional */}
+  // Owner actions are the only way the saved choice changes. Auto keeps the model/effort for the next pinned route.
+  const choose=(patch:Partial<Pick<AgentChatUiState,'providerChoice'|'modelChoice'|'reasoningChoice'>>)=>{
+    selectionHydratedRef.current=true;
+    const next={providerChoice:agentChat.providerChoice??'auto',modelChoice:agentChat.modelChoice,reasoningChoice:agentChat.reasoningChoice??'auto',...patch};
+    setAgentChat(prev=>({...prev,...patch,selectionSaved:true}));
+    // Record the pick on the server right away so a restart before the next send keeps it.
+    postHost({type:'agent-chat-select',providerId:next.providerChoice,model:next.modelChoice,reasoningEffort:next.reasoningChoice});
   };
-
-  const onChatModel=(choice:string)=>{
-    setAgentChat(prev=>({...prev,modelChoice:choice}));
-  };
-
-  const onChatReasoning=(choice:ReasoningChoice)=>{
-    setAgentChat(prev=>({...prev,reasoningChoice:choice,reasoningNotice:undefined}));
-    try{window.localStorage.setItem(REASONING_CHOICE_KEY,choice);}catch{/* storage is optional */}
-  };
+  const onChatProvider=(choice:string)=>choose(choice==='auto'?{providerChoice:'auto'}:{providerChoice:choice,modelChoice:''});
+  const onChatModel=(choice:string)=>choose({modelChoice:choice});
+  const onChatReasoning=(choice:ReasoningChoice)=>choose({reasoningChoice:choice});
 
   const onChatCancel=(turnId:string)=>{
     postHost({type:'agent-chat-cancel',turnId,conversationId:agentChat.active?.conversation.id});

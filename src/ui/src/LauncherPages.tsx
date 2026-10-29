@@ -31,8 +31,8 @@ export function ModelsPage(props: Props) {
         {provider.retryAt && <small>Eligible after {new Date(provider.retryAt).toLocaleString()}</small>}
         <dl className="prototype-model-facts"><dt>Context Window</dt><dd>Not reported</dd><dt>Reasoning Support</dt><dd>{provider.id === 'anthropic' ? (provider.models?.find(item => item.id === model.id)?.reasoningEfforts ?? provider.reasoningEfforts ?? []).join(' · ') || 'Automatic' : 'Provider default'}</dd><dt>Provider Configuration</dt><dd>{provider.configured?'Configured':'Needs setup'}</dd><dt>Estimated Pricing</dt><dd>Not reported</dd></dl>
         <div className="prototype-model-footer"><span><Lock size={12}/>Credentials stay in the host</span><UpgradeControl reason="No inference-test command is available in the desktop bridge.">Test Inference</UpgradeControl>
-          <TinyButton kind="primary" disabled={busy || !provider.configured || !provider.model || !props.onChatProvider || (provider.id === 'anthropic' && !props.onChatModel)}
-            onClick={() => { props.onChatProvider?.(provider.id); if (provider.id === 'anthropic') props.onChatModel?.(model.id); props.setPage('chat'); }}>Use <ArrowRight size={13}/></TinyButton>
+          <TinyButton kind="primary" disabled={busy || !provider.configured || !provider.model || !props.onChatProvider || (Boolean(provider.models?.length) && !props.onChatModel)}
+            onClick={() => { props.onChatProvider?.(provider.id); if (provider.models?.some(item => item.id === model.id)) props.onChatModel?.(model.id); props.setPage('chat'); }}>Use <ArrowRight size={13}/></TinyButton>
         </div>
       </PrototypeCard>);
     })}</div>
