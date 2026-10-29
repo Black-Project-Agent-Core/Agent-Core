@@ -1,0 +1,87 @@
+{
+  "generatedAt": "2026-10-29T05:44:43.7262090Z",
+  "files": [
+    {
+      "path": "src/ui/src/PrototypePages.tsx",
+      "bytes": 18667,
+      "sha256": "e2abff4dde782504f5da3635cae96cb137e44d769a6dd5ef3a91f042e02045bd"
+    },
+    {
+      "path": "src/ui/src/LauncherPages.tsx",
+      "bytes": 14045,
+      "sha256": "6525de3fbf3db5de8ac58a666f6e53aecc1a503424203a170842b46529ead960"
+    },
+    {
+      "path": "src/ui/src/TaskChangesPanel.tsx",
+      "bytes": 12731,
+      "sha256": "1228d782b3b166c2087e4fca476ce1034aed501c4f3b6ae55e1f17404e30b146"
+    },
+    {
+      "path": "src/ui/src/TaskChangesPanel.test.tsx",
+      "bytes": 9844,
+      "sha256": "0200b7f35041fcb96682813bfe3f63bb01f16b87a1aa67f0313ed4ce9b52fe76"
+    },
+    {
+      "path": "src/ui/src/pages.tsx",
+      "bytes": 56431,
+      "sha256": "403d93067e7581adbb5d1fd492be3f31549bd3a3bbb174eaab2daf299033494d"
+    },
+    {
+      "path": "src/ui/src/components.tsx",
+      "bytes": 21386,
+      "sha256": "a0e3bd1a50ded5b758ad2e16c1dda79de7579a1096372fb693bb87a18dc5cfd1"
+    },
+    {
+      "path": "src/ui/src/launcher.css",
+      "bytes": 46145,
+      "sha256": "db539712911cf83fa1048998b9ad936b29ce222ee16bbec4f77569bd877aa39c"
+    },
+    {
+      "path": "scripts/verify/launcher-prototype-parity.mjs",
+      "bytes": 13751,
+      "sha256": "be322f15f7092c4755a360794c655a724c02ebb52dd4e568f4d5e9559710dffc"
+    },
+    {
+      "path": "dist/ui/index.html",
+      "bytes": 1179,
+      "sha256": "bfd43acbfd1efff92273108b1eac39ebae935228655c2e839d52e00aaacd32b7"
+    },
+    {
+      "path": "dist/ui/assets/index-4u4Y2qOz.js",
+      "bytes": 361611,
+      "sha256": "5d337a63a0c110fd8f7df618c5fe25f4ce1b25650c259f1f8f47a9212e1b35f4"
+    },
+    {
+      "path": "dist/ui/assets/index-IgE55LQ9.css",
+      "bytes": 101595,
+      "sha256": "0c692ce531c6d3becdd954790e4bff130fff33f9039d0a8c95dce625ec2aa57e"
+    },
+    {
+      "path": "assets/agent-core.ico",
+      "bytes": 15601,
+      "sha256": "4a318b3889b5417400c620bdb286bce2ead96cc9b5fa9427986d8761266b5c02"
+    },
+    {
+      "path": "assets/agent-core.png",
+      "bytes": 9660,
+      "sha256": "72ef4fd5d0890df388de093f588df3f9571172bbe8940f00532b0759d5fb35aa"
+    },
+    {
+      "path": "assets/agent-core (2).png",
+      "bytes": 56867,
+      "sha256": "4e0fe25fd14837b941d5a62ff47e0ec66e8b96910a22544767d620b7ae346806"
+    },
+    {
+      "path": "src/ui/public/agent-core.png",
+      "bytes": 56867,
+      "sha256": "4e0fe25fd14837b941d5a62ff47e0ec66e8b96910a22544767d620b7ae346806"
+    }
+  ],
+  "uiTestsPassed": 96,
+  "uiTestsFailed": 0,
+  "uiTestFiles": 14,
+  "fixtureChecks": 36,
+  "fixtureErrors": 0,
+  "screenshots": 34,
+  "fixtureKind": "synthetic-ui-fixture-not-resident-evidence"
+}

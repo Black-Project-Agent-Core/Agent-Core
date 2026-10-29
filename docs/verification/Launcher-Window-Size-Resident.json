@@ -1,0 +1,23 @@
+{
+  "checkedAt": "2026-10-29T06:38:16.1673212Z",
+  "pid": 9900,
+  "initialWidth": 1202,
+  "initialHeight": 811,
+  "preset": "Compact",
+  "actualWidth": 1024,
+  "actualHeight": 768,
+  "savedWidth": 1024,
+  "savedHeight": 768,
+  "custom": {
+    "width": 1280,
+    "height": 800,
+    "savedWidth": 1280,
+    "savedHeight": 800
+  },
+  "editableAt320x240": {
+    "widthEnabled": true,
+    "heightVisible": true,
+    "widthVisible": true,
+    "heightEnabled": true
+  }
+}

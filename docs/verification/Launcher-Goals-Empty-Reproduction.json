@@ -1,0 +1,18 @@
+{
+  "capturedAt": "2026-10-29T03:28:15.614Z",
+  "state": {
+    "hash": "#goals",
+    "rootChildren": 0
+  },
+  "exceptions": [
+    {
+      "text": "Uncaught",
+      "description": "TypeError: Cannot read properties of undefined (reading 'decisionEvidence')\n    at dj (https://app.agentcore.local/assets/index-DA6mVlyR.js:322:10709)\n    at Ms (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:49715)\n    at Is (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:72752)\n    at yh (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:83749)\n    at tm (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:129436)\n    at Jg (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:128482)\n    at zo (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:128314)\n    at $h (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:124976)\n    at dm (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:137660)\n    at Ni (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:136208)"
+    },
+    {
+      "text": "Uncaught",
+      "description": "TypeError: Cannot read properties of undefined (reading 'decisionEvidence')\n    at dj (https://app.agentcore.local/assets/index-DA6mVlyR.js:322:10709)\n    at Ms (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:49715)\n    at Is (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:72752)\n    at yh (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:83749)\n    at tm (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:129436)\n    at Jg (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:128482)\n    at zo (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:128314)\n    at $h (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:124976)\n    at rm (https://app.agentcore.local/assets/index-DA6mVlyR.js:48:137539)\n    at MessagePort.Ye (https://app.agentcore.local/assets/index-DA6mVlyR.js:25:1608)"
+    }
+  ],
+  "consoleErrors": []
+}

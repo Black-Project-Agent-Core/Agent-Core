@@ -1,0 +1,138 @@
+{
+  "capturedAt": "2026-10-29T03:30:42.223Z",
+  "target": "FADECEE1E6A3F9D2D303E5854ED51305",
+  "source": "actual resident WebView2 through temporary loopback CDP",
+  "navigation": [
+    {
+      "label": "Dashboard",
+      "hash": "#dashboard",
+      "rootChildren": 1,
+      "heading": "System Dashboard",
+      "core": "Core: Ready",
+      "overflow": false,
+      "panels": 5,
+      "noTask": false
+    },
+    {
+      "label": "Goals & Plans",
+      "hash": "#goals",
+      "rootChildren": 1,
+      "heading": "Goals & Plans",
+      "core": "Core: Ready",
+      "overflow": false,
+      "panels": 2,
+      "noTask": true
+    },
+    {
+      "label": "Artifacts",
+      "hash": "#artifacts",
+      "rootChildren": 1,
+      "heading": "Artifacts",
+      "core": "Core: Ready",
+      "overflow": false,
+      "panels": 2,
+      "noTask": false
+    },
+    {
+      "label": "Tools Hub & MCP",
+      "hash": "#systems",
+      "rootChildren": 1,
+      "heading": "Tools Hub & MCP",
+      "core": "Core: Ready",
+      "overflow": false,
+      "panels": 2,
+      "noTask": false
+    },
+    {
+      "label": "AI Models",
+      "hash": "#models",
+      "rootChildren": 1,
+      "heading": "AI Models",
+      "core": "Core: Ready",
+      "overflow": false,
+      "panels": 5,
+      "noTask": false
+    },
+    {
+      "label": "Memory Explorer",
+      "hash": "#memory",
+      "rootChildren": 1,
+      "heading": "Memory Explorer",
+      "core": "Core: Ready",
+      "overflow": false,
+      "panels": 2,
+      "noTask": false
+    },
+    {
+      "label": "Learning Review",
+      "hash": "#learning",
+      "rootChildren": 1,
+      "heading": "Learning Review",
+      "core": "Core: Ready",
+      "overflow": false,
+      "panels": 3,
+      "noTask": false
+    },
+    {
+      "label": "Workflows",
+      "hash": "#workflows",
+      "rootChildren": 1,
+      "heading": "Workflows",
+      "core": "Core: Ready",
+      "overflow": false,
+      "panels": 2,
+      "noTask": false
+    },
+    {
+      "label": "Core Runtime",
+      "hash": "#core",
+      "rootChildren": 1,
+      "heading": "Core Runtime",
+      "core": "Core: Ready",
+      "overflow": false,
+      "panels": 4,
+      "noTask": false
+    },
+    {
+      "label": "Activity Log",
+      "hash": "#activity",
+      "rootChildren": 1,
+      "heading": "Activity Log",
+      "core": "Core: Ready",
+      "overflow": false,
+      "panels": 3,
+      "noTask": false
+    },
+    {
+      "label": "Diagnostics",
+      "hash": "#diagnostics",
+      "rootChildren": 1,
+      "heading": "Diagnostics",
+      "core": "Core: Ready",
+      "overflow": false,
+      "panels": 6,
+      "noTask": false
+    },
+    {
+      "label": "Settings",
+      "hash": "#settings",
+      "rootChildren": 1,
+      "heading": "Settings",
+      "core": "Core: Ready",
+      "overflow": false,
+      "panels": 8,
+      "noTask": false
+    },
+    {
+      "label": "AI Workspace",
+      "hash": "#chat",
+      "rootChildren": 1,
+      "core": "Core: Ready",
+      "overflow": false,
+      "panels": 0,
+      "noTask": false
+    }
+  ],
+  "exceptions": [],
+  "errors": []
+}

@@ -1,0 +1,262 @@
+{
+  "generatedAt": "2026-10-29T04:38:44.420Z",
+  "kind": "synthetic-ui-fixture-not-resident-evidence",
+  "referenceRoot": "E:\\Projects\\Launcher",
+  "viewport": [
+    1202,
+    811
+  ],
+  "screenshots": [
+    "Launcher-Prototype-Reference-Workspace",
+    "Launcher-Prototype-Reference-Dashboard",
+    "Launcher-Prototype-Reference-ToolsHubMCP",
+    "Launcher-Prototype-Reference-AIModels",
+    "Launcher-Prototype-Reference-MemoryExplorer",
+    "Launcher-Prototype-Reference-DreamingReview",
+    "Launcher-Prototype-Reference-GoalsPlans",
+    "Launcher-Prototype-Reference-Artifacts",
+    "Launcher-Prototype-Reference-CoreRuntime",
+    "Launcher-Prototype-Reference-ActivityLog",
+    "Launcher-Prototype-Reference-DiagnosticsRecovery",
+    "Launcher-Prototype-Reference-Settings",
+    "Launcher-Prototype-Target-Empty",
+    "Launcher-Prototype-Target-Workspace",
+    "Launcher-Prototype-Target-Composer",
+    "Launcher-Prototype-Target-WindowSize",
+    "Launcher-Prototype-Target-Dashboard",
+    "Launcher-Prototype-Target-ToolsHubMCP",
+    "Launcher-Prototype-Target-AIModels",
+    "Launcher-Prototype-Target-MemoryExplorer",
+    "Launcher-Prototype-Target-DreamingReview",
+    "Launcher-Prototype-Target-GoalsPlans",
+    "Launcher-Prototype-Target-Artifacts",
+    "Launcher-Prototype-Target-CoreRuntime",
+    "Launcher-Prototype-Target-ActivityLog",
+    "Launcher-Prototype-Target-DiagnosticsRecovery",
+    "Launcher-Prototype-Target-Settings",
+    "Launcher-Prototype-Target-SetupWizard",
+    "Launcher-Prototype-Target-Responsive-320",
+    "Launcher-Prototype-Target-Responsive-768",
+    "Launcher-Prototype-Target-Responsive-1024",
+    "Launcher-Prototype-Target-Responsive-1440"
+  ],
+  "errors": [],
+  "results": [
+    {
+      "page": "dashboard",
+      "heading": "Agent Core Operating Cockpit",
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "systems",
+      "heading": "Integrations & Tools Hub",
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "models",
+      "heading": "AI Model & Inference Management",
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "memory",
+      "heading": "Canonical Memory & Vector Explorer",
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "learning",
+      "heading": "Dreaming: Session Knowledge Consolidation",
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "goals",
+      "heading": "Goals & Execution Plans",
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "artifacts",
+      "heading": "Artifacts & Deliverables Management",
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "core",
+      "heading": "Core Runtime & Process Supervisor",
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "activity",
+      "heading": "Execution Activity Log & Flight Recorder",
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "diagnostics",
+      "heading": "Diagnostics & Independent Recovery",
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "settings",
+      "heading": "Settings & Workspace Configuration",
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "wizard",
+      "heading": "Welcome to Agent Core",
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "chat",
+      "width": 320,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "dashboard",
+      "width": 320,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "systems",
+      "width": 320,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "models",
+      "width": 320,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "goals",
+      "width": 320,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "settings",
+      "width": 320,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "chat",
+      "width": 768,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "dashboard",
+      "width": 768,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "systems",
+      "width": 768,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "models",
+      "width": 768,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "goals",
+      "width": 768,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "settings",
+      "width": 768,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "chat",
+      "width": 1024,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "dashboard",
+      "width": 1024,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "systems",
+      "width": 1024,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "models",
+      "width": 1024,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "goals",
+      "width": 1024,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "settings",
+      "width": 1024,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "chat",
+      "width": 1440,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "dashboard",
+      "width": 1440,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "systems",
+      "width": 1440,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "models",
+      "width": 1440,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "goals",
+      "width": 1440,
+      "overflow": false,
+      "root": 1
+    },
+    {
+      "page": "settings",
+      "width": 1440,
+      "overflow": false,
+      "root": 1
+    }
+  ]
+}

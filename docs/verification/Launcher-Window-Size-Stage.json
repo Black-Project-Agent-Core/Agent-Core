@@ -1,0 +1,10 @@
+{
+  "verifiedAt": "2026-10-29T06:18:36.5129353Z",
+  "marker": "735101eceee34ea37658a3ea1f09c089469b146a95897b2d384906591b81ac61",
+  "candidateHash": "735101eceee34ea37658a3ea1f09c089469b146a95897b2d384906591b81ac61",
+  "matches": true,
+  "baseline": "Launcher-Window-Size-Build-Baseline.json",
+  "priorPending": "runtime/launcher/backups/pending-before-window-size-058f274972a64f46a0c079d395ca1173.exe",
+  "uiBundle": "dist/ui/assets/index-AVYxQ9Fh.js",
+  "uiStyles": "dist/ui/assets/index-InLrWbIw.css"
+}

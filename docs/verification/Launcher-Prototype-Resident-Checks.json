@@ -1,0 +1,137 @@
+{
+  "generatedAt": "2026-10-29T04:37:04.167Z",
+  "kind": "actual-resident-webview",
+  "url": "https://app.agentcore.local/index.html",
+  "scripts": [
+    "https://app.agentcore.local/assets/index-BMA6CNsQ.js"
+  ],
+  "results": [
+    {
+      "route": "#chat",
+      "heading": "Agent Core Workspace",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    },
+    {
+      "route": "#dashboard",
+      "heading": "Agent Core Operating Cockpit",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    },
+    {
+      "route": "#systems",
+      "heading": "Integrations & Tools Hub",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    },
+    {
+      "route": "#models",
+      "heading": "AI Model & Inference Management",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    },
+    {
+      "route": "#memory",
+      "heading": "Canonical Memory & Vector Explorer",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    },
+    {
+      "route": "#learning",
+      "heading": "Dreaming: Session Knowledge Consolidation",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    },
+    {
+      "route": "#goals",
+      "heading": "Goals & Execution Plans",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    },
+    {
+      "route": "#artifacts",
+      "heading": "Artifacts & Deliverables Management",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    },
+    {
+      "route": "#core",
+      "heading": "Core Runtime & Process Supervisor",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    },
+    {
+      "route": "#activity",
+      "heading": "Execution Activity Log & Flight Recorder",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    },
+    {
+      "route": "#diagnostics",
+      "heading": "Diagnostics & Independent Recovery",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    },
+    {
+      "route": "#settings",
+      "heading": "Settings & Workspace Configuration",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    },
+    {
+      "route": "#wizard",
+      "heading": "Welcome to Agent Core",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    },
+    {
+      "route": "#workflows",
+      "heading": "Workflows",
+      "root": 1,
+      "width": 1536,
+      "height": 960,
+      "overflow": false,
+      "core": "Core: Ready"
+    }
+  ],
+  "errors": []
+}

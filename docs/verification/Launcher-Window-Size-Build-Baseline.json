@@ -1,0 +1,36 @@
+{
+  "createdAt": "2026-10-29T06:09:16.2162514Z",
+  "markerAbsent": true,
+  "records": [
+    {
+      "kind": "pending",
+      "source": "E:\\Projects\\Agent-Core\\runtime\\launcher\\pending\\Agent Core.exe",
+      "backup": "E:\\Projects\\Agent-Core\\runtime\\launcher\\backups\\window-size-058f274972a64f46a0c079d395ca1173-pending.exe",
+      "sha256": "b93566b06b54d8c9e379e0377065cbc16d491d58e640e37dccdd067f17c8b78f"
+    },
+    {
+      "kind": "build",
+      "source": "E:\\Projects\\Agent-Core\\runtime\\build\\launcher\\Agent Core.exe",
+      "backup": "E:\\Projects\\Agent-Core\\runtime\\launcher\\backups\\window-size-058f274972a64f46a0c079d395ca1173-build.exe",
+      "sha256": "e2aeda288c49c47fdc71277536da0ccaa03f8482dff090b07b8784ee2c565e69"
+    },
+    {
+      "kind": "pdb",
+      "source": "E:\\Projects\\Agent-Core\\runtime\\build\\launcher\\Agent Core.pdb",
+      "backup": "E:\\Projects\\Agent-Core\\runtime\\launcher\\backups\\window-size-058f274972a64f46a0c079d395ca1173-pdb.pdb",
+      "sha256": "b91988e46c58d09287f77ffccebf0f63fac43d1ee6f31a28277fddff47cfe0f5"
+    },
+    {
+      "kind": "corexml",
+      "source": "E:\\Projects\\Agent-Core\\runtime\\build\\launcher\\Microsoft.Web.WebView2.Core.xml",
+      "backup": "E:\\Projects\\Agent-Core\\runtime\\launcher\\backups\\window-size-058f274972a64f46a0c079d395ca1173-corexml.xml",
+      "sha256": "8684cd74000c77533e563785208308ada63808da85825206856cab11a9eeffce"
+    },
+    {
+      "kind": "formsxml",
+      "source": "E:\\Projects\\Agent-Core\\runtime\\build\\launcher\\Microsoft.Web.WebView2.WinForms.xml",
+      "backup": "E:\\Projects\\Agent-Core\\runtime\\launcher\\backups\\window-size-058f274972a64f46a0c079d395ca1173-formsxml.xml",
+      "sha256": "6a8ec199373824fdebceda7b3d780d0b31c82edceae04d92391027c971dea6c2"
+    }
+  ]
+}

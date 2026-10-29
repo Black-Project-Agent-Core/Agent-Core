@@ -1,0 +1,45 @@
+{
+  "observedAt": "2026-10-29T04:39:46.5324513Z",
+  "restart": {
+    "runId": "305247d78147403395419cc9c561dc76",
+    "userSid": "S-1-5-21-300773718-2811348624-4288687557-1001",
+    "sessionId": 1,
+    "completedAt": "2026-10-29T11:38:53.7655985+07:00",
+    "exitCode": 0,
+    "error": null,
+    "readiness": "siap (PID 11404 mulai 2026-10-29T04:37:57Z; dist basi: tidak; 58 dtk)",
+    "logPath": "E:\\Projects\\Agent-Core\\runtime\\restart\\305247d78147403395419cc9c561dc76.log"
+  },
+  "healthStatus": "ok",
+  "healthVersion": "1.6.0",
+  "coreListener": [
+    {
+      "LocalAddress": "127.0.0.1",
+      "LocalPort": 8765,
+      "OwningProcess": 11404
+    }
+  ],
+  "debugListenerCount": 0,
+  "diagnosticPolicyCleanup": {
+    "cleanedAt": "2026-10-29T04:37:31.1473257Z",
+    "valueAbsent": true,
+    "baselineRestored": [
+      {
+        "existedBefore": false,
+        "path": "HKLM:\\Software\\Policies\\Microsoft\\Edge",
+        "existsNow": false
+      },
+      {
+        "existedBefore": false,
+        "path": "HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2",
+        "existsNow": false
+      },
+      {
+        "existedBefore": false,
+        "path": "HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments",
+        "existsNow": false
+      }
+    ]
+  },
+  "integrityFile": "Launcher-Prototype-Integrity.json"
+}

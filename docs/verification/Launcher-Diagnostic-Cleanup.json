@@ -1,0 +1,13 @@
+{
+    "removedEmptyKeys":  [
+                             "HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2",
+                             "HKLM:\\Software\\Policies\\Microsoft\\Edge",
+                             "HKCU:\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments",
+                             "HKCU:\\Software\\Policies\\Microsoft\\Edge\\WebView2",
+                             "HKCU:\\Software\\Policies\\Microsoft\\Edge"
+                         ],
+    "machineValueAbsent":  true,
+    "listenerClosure":  "requires final ordinary restart",
+    "userValueAbsent":  true,
+    "capturedAt":  "2026-10-29T03:32:45.1207563Z"
+}

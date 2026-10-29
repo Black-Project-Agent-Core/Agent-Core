@@ -1,0 +1,473 @@
+{
+  "generatedAt": "2026-10-29T04:32:03.111Z",
+  "startTime": 1793247807783,
+  "passed": 95,
+  "failed": 0,
+  "success": true,
+  "files": [
+    {
+      "name": "WorkflowsPage.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "expands and restores the diagram while retaining its canvas and polling subscription",
+          "status": "passed"
+        },
+        {
+          "title": "can pause automatic refresh, refresh manually and detect a changed source fingerprint",
+          "status": "passed"
+        },
+        {
+          "title": "restores the Workflows route and offers one source-analysis canvas for the system and Memory",
+          "status": "passed"
+        },
+        {
+          "title": "polls only after a response and prevents repeated refreshes from overlapping",
+          "status": "passed"
+        },
+        {
+          "title": "keeps the last good canvas and its provenance visible during stale snapshots and errors",
+          "status": "passed"
+        },
+        {
+          "title": "times out a missing reply, retries, and rejects an older response",
+          "status": "passed"
+        },
+        {
+          "title": "cleans up subscriptions and timers on navigation and restores Workflows through the hash",
+          "status": "passed"
+        },
+        {
+          "title": "does not forward window messages from the canvas to the native host",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "systems.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "shows the four existing health owners with their observed metadata",
+          "status": "passed"
+        },
+        {
+          "title": "keeps absent owner health unknown instead of reporting zero or healthy",
+          "status": "passed"
+        },
+        {
+          "title": "does not invent missing metrics from an available but partial section",
+          "status": "passed"
+        },
+        {
+          "title": "retains an owner degraded status and its issue",
+          "status": "passed"
+        },
+        {
+          "title": "reports an observed mutation drain separately from availability",
+          "status": "passed"
+        },
+        {
+          "title": "reports disabled web research as offline without claiming provider connectivity",
+          "status": "passed"
+        },
+        {
+          "title": "renders every newly exposed owner with an available system icon",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "Diagram.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "renders visible relationships initially and lets users focus, inspect and restore the full diagram",
+          "status": "passed"
+        },
+        {
+          "title": "opens the controller architecture cycle and switches to the detailed source graph without losing either view",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "ProposalCards.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "dashboard cards show path status and revision, then read literal Markdown before decision guidance",
+          "status": "passed"
+        },
+        {
+          "title": "outdated reads are ignored and unavailable proposals cannot supply decision guidance",
+          "status": "passed"
+        },
+        {
+          "title": "catalog revision changes invalidate an outstanding read before its response arrives",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "ToolExecutionDetail.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "requests only stored details; never invokes or replays a tool",
+          "status": "passed"
+        },
+        {
+          "title": "renders hostile output as text, loads once by offset and copies only displayed safe bytes",
+          "status": "passed"
+        },
+        {
+          "title": "labels legacy unknowns and proposed diffs without assuming successful write",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "ActivityLogScreenshot.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "renders Activity Log fixture with actual React component for screenshot verification",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "ToolExecutionEnhancement.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "offers accessible resize and expand/restore without invoking tools",
+          "status": "passed"
+        },
+        {
+          "title": "renders multiline PowerShell script, highlights keywords and retains optional JSON",
+          "status": "passed"
+        },
+        {
+          "title": "highlights long write_file content that is retained and never claims application",
+          "status": "passed"
+        },
+        {
+          "title": "renders proposed edit_block diff separately from failed response",
+          "status": "passed"
+        },
+        {
+          "title": "paginates only retained truncated content and copies only loaded sanitized bytes",
+          "status": "passed"
+        },
+        {
+          "title": "keeps an over-budget write_file preview visibly truncated instead of reconstructing content",
+          "status": "passed"
+        },
+        {
+          "title": "treats identical PID values across different calls as unverified rather than linked",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "ActivityLogVisualVariants.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "captures safe readable Activity Log fixture: multiline",
+          "status": "passed"
+        },
+        {
+          "title": "captures safe readable Activity Log fixture: diff",
+          "status": "passed"
+        },
+        {
+          "title": "captures safe readable Activity Log fixture: longWrite",
+          "status": "passed"
+        },
+        {
+          "title": "captures safe readable Activity Log fixture: oversized",
+          "status": "passed"
+        },
+        {
+          "title": "captures safe readable Activity Log fixture: incomplete",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "ActivityLifecyclePresentation.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "shows terminal success with incomplete lifecycle and unavailable start on card AND inspector",
+          "status": "passed"
+        },
+        {
+          "title": "retains observed start and terminal separately for complete lifecycle",
+          "status": "passed"
+        },
+        {
+          "title": "a start-only call does not claim present-time execution or terminal success",
+          "status": "passed"
+        },
+        {
+          "title": "legacy rows remain readable with no invented start or lifecycle",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "NativeChatReliability.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "keeps decision evidence collapsed and scoped to the latest task, with source text inert",
+          "status": "passed"
+        },
+        {
+          "title": "reports unavailable evidence for running without invented results",
+          "status": "passed"
+        },
+        {
+          "title": "reports unavailable evidence for resumable without invented results",
+          "status": "passed"
+        },
+        {
+          "title": "reports unavailable evidence for stopped without invented results",
+          "status": "passed"
+        },
+        {
+          "title": "locks the Anthropic model picker during running turns",
+          "status": "passed"
+        },
+        {
+          "title": "locks the Anthropic model picker during resumable turns",
+          "status": "passed"
+        },
+        {
+          "title": "offers only confirmed effort levels, supports keyboard navigation and returns focus",
+          "status": "passed"
+        },
+        {
+          "title": "shows a saved response without declaring task verification success",
+          "status": "passed"
+        },
+        {
+          "title": "keeps uncertain recovery visible and offers the existing cancellation action",
+          "status": "passed"
+        },
+        {
+          "title": "uses a readable progress label and preserves the tool failure distinction",
+          "status": "passed"
+        },
+        {
+          "title": "shows provider waiting separately while preserving the stop action",
+          "status": "passed"
+        },
+        {
+          "title": "shows persisted Memory use with expandable evidence without declaring causal benefit",
+          "status": "passed"
+        },
+        {
+          "title": "keeps unavailable Memory verification distinct and old messages compatible",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "App.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "opens on a new chat draft inside the grouped launcher",
+          "status": "passed"
+        },
+        {
+          "title": "does not reopen the latest conversation by itself",
+          "status": "passed"
+        },
+        {
+          "title": "creates the conversation on the first send from the draft, then sends the turn",
+          "status": "passed"
+        },
+        {
+          "title": "gives the typed prompt back when creating the conversation fails",
+          "status": "passed"
+        },
+        {
+          "title": "returns to a fresh draft from the rail New Chat button",
+          "status": "passed"
+        },
+        {
+          "title": "renders live snapshot truth in the reference dashboard shell",
+          "status": "passed"
+        },
+        {
+          "title": "routes only owned lifecycle and launcher actions to the native host",
+          "status": "passed"
+        },
+        {
+          "title": "navigates the reference pages and keeps unsupported destructive controls disabled",
+          "status": "passed"
+        },
+        {
+          "title": "opens persistent native chat, creates a conversation, and sends one turn",
+          "status": "passed"
+        },
+        {
+          "title": "persists global effort across reload, sends two levels, omits Auto and resets unsupported saved levels",
+          "status": "passed"
+        },
+        {
+          "title": "selects catalog Anthropic models per message and guards reasoning by the selected model",
+          "status": "passed"
+        },
+        {
+          "title": "lets the owner choose a provider and model per message, with automatic rotation as the default",
+          "status": "passed"
+        },
+        {
+          "title": "keeps the selected conversation while listing remote threads",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "TaskChangesPanel.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "stays collapsed and silent until opened, then looks up only by task id",
+          "status": "passed"
+        },
+        {
+          "title": "shows requests, applied diffs and external changes as three separate groups with explicit states",
+          "status": "passed"
+        },
+        {
+          "title": "explains a task with no checkpoints and unavailable Git instead of showing an empty success",
+          "status": "passed"
+        },
+        {
+          "title": "says so when nothing changed and the tree is clean",
+          "status": "passed"
+        },
+        {
+          "title": "reports errors with an alert, ignores stale or foreign replies, and retries through Refresh",
+          "status": "passed"
+        },
+        {
+          "title": "times out with an alert when the host never answers",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "theme-contract.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "declares the opaque tokens the checks below depend on",
+          "status": "passed"
+        },
+        {
+          "title": "--text keeps at least 4.5:1 against every surface",
+          "status": "passed"
+        },
+        {
+          "title": "--text-2 keeps at least 4.5:1 against every surface",
+          "status": "passed"
+        },
+        {
+          "title": "--muted keeps at least 4.5:1 against every surface",
+          "status": "passed"
+        },
+        {
+          "title": "--cyan keeps at least 4.5:1 against every surface",
+          "status": "passed"
+        },
+        {
+          "title": "--green keeps at least 4.5:1 against every surface",
+          "status": "passed"
+        },
+        {
+          "title": "--amber keeps at least 4.5:1 against every surface",
+          "status": "passed"
+        },
+        {
+          "title": "--red keeps at least 4.5:1 against every surface",
+          "status": "passed"
+        },
+        {
+          "title": "--offline keeps at least 4.5:1 against every surface",
+          "status": "passed"
+        },
+        {
+          "title": "keeps the focus ring (--cyan) at 3:1 or more against every surface",
+          "status": "passed"
+        },
+        {
+          "title": "never uses the two tokens that fall below 4.5:1 on some surface as text colour",
+          "status": "passed"
+        },
+        {
+          "title": "loads nothing from an external address through the stylesheet",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "LauncherMigration.test.tsx",
+      "status": "passed",
+      "tests": [
+        {
+          "title": "navigates the grouped launcher and keeps the original icon and real new-chat callback",
+          "status": "passed"
+        },
+        {
+          "title": "uses actual provider/model callbacks and returns to the existing workspace",
+          "status": "passed"
+        },
+        {
+          "title": "does not change the model while a turn is running or recovering",
+          "status": "passed"
+        },
+        {
+          "title": "shows scoped recorded Memory use as escaped text and keeps unknown outcomes",
+          "status": "passed"
+        },
+        {
+          "title": "rejects decision evidence bound to another task",
+          "status": "passed"
+        },
+        {
+          "title": "opens Goals from a new draft without crashing and lets the user return to chat",
+          "status": "passed"
+        },
+        {
+          "title": "does not invent a context budget or attribute global desktop activity to the chat",
+          "status": "passed"
+        },
+        {
+          "title": "keeps prototype upgrade controls visible without dispatching fake backend work",
+          "status": "passed"
+        },
+        {
+          "title": "keeps Workflows reachable through the prototype Tools Hub and distinguishes unconnected discovery",
+          "status": "passed"
+        },
+        {
+          "title": "uses the prototype activity timeline without turning an incomplete lifecycle into success",
+          "status": "passed"
+        },
+        {
+          "title": "reviews setup without writing configuration or inventing a successful first task",
+          "status": "passed"
+        }
+      ]
+    }
+  ]
+}

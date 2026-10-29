@@ -1,0 +1,20 @@
+{
+    "arguments":  "--remote-debugging-port=18767 --remote-debugging-address=127.0.0.1",
+    "parents":  [
+                    {
+                        "existed":  false,
+                        "path":  "HKLM:\\Software\\Policies\\Microsoft\\Edge"
+                    },
+                    {
+                        "existed":  false,
+                        "path":  "HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2"
+                    },
+                    {
+                        "existed":  false,
+                        "path":  "HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments"
+                    }
+                ],
+    "reason":  "WebView2 150 elevated host ignores environment and HKCU, per MicrosoftEdge WebView2Feedback issue5645",
+    "value":  "Agent Core.exe",
+    "temporary":  true
+}

@@ -1,0 +1,21 @@
+{
+  "recordedAt": "2026-10-29T06:35:18.240Z",
+  "status": "verified-package-before-install",
+  "candidateSha256": "c72a25e0e023aa3abed0b0942bb5a1cf45a0d67f43108a3a7fac59047653b8c4",
+  "hashes": {
+    "runtime/build/launcher-window-size-fixed-20261029/Agent Core.exe": "c72a25e0e023aa3abed0b0942bb5a1cf45a0d67f43108a3a7fac59047653b8c4",
+    "src/launcher/MainForm.cs": "0123a84793ac3de65bd6d0cea26c8900123878db00a4ca632d9b86962fbe60c6",
+    "src/launcher/LauncherWindowSize.cs": "e60ab87cfaa0ee817dcda7a3d5baa3781acd97c7288f47f4607336b98fcf5aba",
+    "src/launcher/AgentCore.Launcher.csproj": "c0da91c2c3564361bfbc616ab2341ad899f829d708d5194892b14dee76c3c801",
+    "scripts/verify/launcher-package.mjs": "4fc6d3621d1505007bad6a33e6703c5035a7c05a3ba1c92ec7ff43fdf9d8a392"
+  },
+  "checks": {
+    "managedEntryWithoutSharedRuntime": true,
+    "brokenPackageRejected": true,
+    "missingHostPublishGuardRejected": true,
+    "nativeTestsPassed": 4
+  },
+  "previousExecutable": "runtime/launcher/backups/window-size-broken-735101ec-20261029.exe",
+  "downloads": [],
+  "residentVerification": "pending"
+}

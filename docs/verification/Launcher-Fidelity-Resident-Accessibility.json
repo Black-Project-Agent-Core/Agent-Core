@@ -1,0 +1,9 @@
+﻿{
+    "observedAt":  "2026-10-29T05:50:13.9161543Z",
+    "launcherPid":  14568,
+    "test":  "background UI Automation: artifact cards",
+    "newCardFound":  true,
+    "reportsCardFound":  true,
+    "method":  "InvokePattern without foreground activation or desktop input",
+    "restoredChat":  true
+}

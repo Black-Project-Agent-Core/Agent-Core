@@ -1,0 +1,20 @@
+﻿{
+    "createdAt":  "2026-10-29T04:31:06.7490981Z",
+    "key":  "HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments",
+    "name":  "Agent Core.exe",
+    "value":  "--remote-debugging-port=18767 --remote-debugging-address=127.0.0.1",
+    "baseline":  [
+                     {
+                         "path":  "HKLM:\\Software\\Policies\\Microsoft\\Edge",
+                         "exists":  false
+                     },
+                     {
+                         "path":  "HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2",
+                         "exists":  false
+                     },
+                     {
+                         "path":  "HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments",
+                         "exists":  false
+                     }
+                 ]
+}

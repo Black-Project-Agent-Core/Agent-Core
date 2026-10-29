@@ -1,0 +1,19 @@
+{
+  "value": "Agent Core.exe",
+  "arguments": "--remote-debugging-port=18767 --remote-debugging-address=127.0.0.1",
+  "parents": [
+    {
+      "path": "HKCU:\\Software\\Policies\\Microsoft\\Edge",
+      "existed": false
+    },
+    {
+      "path": "HKCU:\\Software\\Policies\\Microsoft\\Edge\\WebView2",
+      "existed": false
+    },
+    {
+      "path": "HKCU:\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments",
+      "existed": false
+    }
+  ],
+  "temporary": true
+}

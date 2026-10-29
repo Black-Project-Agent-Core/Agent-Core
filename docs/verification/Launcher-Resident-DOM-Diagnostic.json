@@ -1,0 +1,50 @@
+{
+  "capturedAt": "2026-10-29T03:23:41.932Z",
+  "target": "FADECEE1E6A3F9D2D303E5854ED51305",
+  "diagnostic": {
+    "href": "https://app.agentcore.local/index.html#chat",
+    "ready": "complete",
+    "title": "Agent Core",
+    "rootChildren": 1,
+    "rootBytes": 22646,
+    "scriptUrls": [
+      "https://app.agentcore.local/assets/index-DA6mVlyR.js"
+    ],
+    "styles": [
+      {
+        "href": "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
+        "loaded": true
+      },
+      {
+        "href": "https://app.agentcore.local/assets/index-BezOIkXl.css",
+        "loaded": true
+      }
+    ],
+    "resources": [
+      {
+        "name": "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
+        "duration": 69.40000000596046,
+        "type": "link",
+        "transferSize": 0
+      },
+      {
+        "name": "https://app.agentcore.local/assets/index-DA6mVlyR.js",
+        "duration": 28,
+        "type": "script",
+        "transferSize": 0
+      },
+      {
+        "name": "https://app.agentcore.local/assets/index-BezOIkXl.css",
+        "duration": 27.5,
+        "type": "link",
+        "transferSize": 0
+      },
+      {
+        "name": "https://app.agentcore.local/agent-core.png",
+        "duration": 94.40000000596046,
+        "type": "img",
+        "transferSize": 0
+      }
+    ]
+  }
+}

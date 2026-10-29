@@ -1,0 +1,19 @@
+{
+  "observedAt": "2026-10-29T04:43:01.080Z",
+  "conversationId": "3646f490-d273-4f3a-8b8e-72d75ef11e9d",
+  "turn": {
+    "messageOrigin": "external-controller",
+    "id": "f82ddeb2-34fa-41ec-9175-768e4e979f91",
+    "conversationId": "3646f490-d273-4f3a-8b8e-72d75ef11e9d",
+    "clientRequestId": "launcher-prototype-parity-partner-20261029-v1",
+    "runtimeTaskId": "9c0f5adc-4b3f-4156-9574-84472bc94ed7",
+    "status": "resumable",
+    "reasoningEffort": "max",
+    "requestedModel": "claude-opus-5-5",
+    "errorCode": "AGENT_RUNTIME_CONTINUATION_PROVIDER_WAIT",
+    "createdAtMs": 1793246781242,
+    "startedAtMs": 1793246781242
+  },
+  "assistantReportPresent": false,
+  "limitation": "Native review accepted with requested model/effort; provider wait prevents final review. No completed Native findings claimed."
+}

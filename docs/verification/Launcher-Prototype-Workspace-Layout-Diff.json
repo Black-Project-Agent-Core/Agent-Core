@@ -1,0 +1,96 @@
+{
+  "mode": "layout",
+  "original": {
+    "width": 1202,
+    "height": 811
+  },
+  "clone": {
+    "width": 1202,
+    "height": 811
+  },
+  "compared_at": {
+    "width": 480,
+    "height": 324
+  },
+  "height_delta_pct": 0.0,
+  "score": 56.8,
+  "verdict": "partly",
+  "regions": [
+    {
+      "x": 200,
+      "y": 0,
+      "w": 801,
+      "h": 701,
+      "cells": 20,
+      "where": "middle centre"
+    },
+    {
+      "x": 200,
+      "y": 400,
+      "w": 500,
+      "h": 300,
+      "cells": 8,
+      "where": "middle centre"
+    },
+    {
+      "x": 1001,
+      "y": 601,
+      "w": 200,
+      "h": 210,
+      "cells": 4,
+      "where": "bottom right"
+    },
+    {
+      "x": 901,
+      "y": 100,
+      "w": 200,
+      "h": 100,
+      "cells": 2,
+      "where": "top right"
+    },
+    {
+      "x": 601,
+      "y": 400,
+      "w": 100,
+      "h": 100,
+      "cells": 1,
+      "where": "middle centre"
+    },
+    {
+      "x": 1101,
+      "y": 400,
+      "w": 100,
+      "h": 100,
+      "cells": 1,
+      "where": "middle right"
+    },
+    {
+      "x": 701,
+      "y": 701,
+      "w": 100,
+      "h": 100,
+      "cells": 1,
+      "where": "bottom centre"
+    },
+    {
+      "x": 0,
+      "y": 801,
+      "w": 100,
+      "h": 10,
+      "cells": 1,
+      "where": "bottom left"
+    },
+    {
+      "x": 901,
+      "y": 801,
+      "w": 100,
+      "h": 10,
+      "cells": 1,
+      "where": "bottom right"
+    }
+  ],
+  "files": {
+    "original": "docs/verification/Launcher-Prototype-Reference-Workspace.png",
+    "clone": "docs/verification/Launcher-Prototype-Target-Workspace.png"
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "capturedAt": "2026-10-29T02:59:26.017Z",
+  "status": "ok",
+  "process": {
+    "pid": 19964,
+    "startedAt": "2026-10-29T02:55:21.022Z",
+    "uptimeSeconds": 245,
+    "entry": "dist/index.js"
+  },
+  "build": {
+    "distNewestModifiedAt": "2026-10-29T02:51:12.000Z",
+    "stale": false
+  },
+  "memory": {
+    "status": "available",
+    "mode": "file-native",
+    "canonicalStore": "available",
+    "canonicalComplete": true,
+    "noteCount": 257,
+    "issueCount": 0,
+    "index": "available",
+    "embedding": "available",
+    "intelligence": "available",
+    "embeddingProvider": "cloudflare-workers-ai",
+    "embeddingModel": "@cf/google/embeddinggemma-300m",
+    "embeddingDimensions": 768
+  },
+  "learning": {
+    "status": "available",
+    "enabled": true,
+    "issueCount": 0,
+    "reviewInterval": 10,
+    "curatorIntervalHours": 168,
+    "sinkStatus": [
+      {
+        "name": "memory",
+        "available": true
+      },
+      {
+        "name": "grafel-patterns",
+        "available": true
+      }
+    ]
+  },
+  "agentChat": {
+    "status": "available",
+    "conversationCount": 84,
+    "activeConversationCount": 23,
+    "resumableTurnCount": 0,
+    "runningTurnCount": 0
+  },
+  "providers": [
+    {
+      "id": "atria",
+      "configured": true,
+      "available": true,
+      "model": "Atria-Dawn"
+    },
+    {
+      "id": "gonka",
+      "configured": true,
+      "available": true,
+      "model": "deepseek-ai/DeepSeek-V4-Flash-0731"
+    },
+    {
+      "id": "openrouter",
+      "configured": true,
+      "available": true,
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free"
+    },
+    {
+      "id": "anthropic",
+      "configured": true,
+      "available": true,
+      "model": "claude-sonnet-5-5",
+      "models": [
+        "claude-sonnet-5-5",
+        "claude-opus-5-5",
+        "claude-haiku-5-5",
+        "claude-fable-5-1"
+      ]
+    }
+  ],
+  "finalOrdinaryActivation": {
+    "capturedAt": "2026-10-29T03:38:02.103Z",
+    "status": "ok",
+    "process": {
+      "pid": 16272,
+      "startedAt": "2026-10-29T03:35:24.738Z",
+      "uptimeSeconds": 156,
+      "entry": "dist/index.js"
+    },
+    "build": {
+      "distNewestModifiedAt": "2026-10-29T03:29:58.000Z",
+      "stale": false
+    },
+    "agentChat": {
+      "status": "available",
+      "conversationCount": 84,
+      "activeConversationCount": 23,
+      "resumableTurnCount": 0,
+      "runningTurnCount": 0
+    },
+    "all14FinalSourceBuildExeHashesMatch": true,
+    "diagnosticCleanup": "Launcher-Diagnostic-Cleanup-Final.json"
+  }
+}

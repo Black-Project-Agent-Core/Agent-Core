@@ -1,0 +1,204 @@
+{
+  "capturedAt": "2026-10-29T02:52:14.517Z",
+  "root": "E:\\Projects\\Agent-Core",
+  "head": "07c07d83ab5175b5fe15f49165a469b8d5b09a05",
+  "checkpoint": "8cf7bc5f-0b51-4bfb-99a5-ed2470b7b88d",
+  "scope": "UI-only migration; inherited dirty worktree preserved; no current-task launcher C# or backend edits",
+  "icons": [
+    {
+      "path": "assets/agent-core.ico",
+      "before": "4a318b3889b5417400c620bdb286bce2ead96cc9b5fa9427986d8761266b5c02",
+      "after": "4a318b3889b5417400c620bdb286bce2ead96cc9b5fa9427986d8761266b5c02",
+      "unchanged": true
+    },
+    {
+      "path": "assets/agent-core.png",
+      "before": "72ef4fd5d0890df388de093f588df3f9571172bbe8940f00532b0759d5fb35aa",
+      "after": "72ef4fd5d0890df388de093f588df3f9571172bbe8940f00532b0759d5fb35aa",
+      "unchanged": true
+    },
+    {
+      "path": "assets/agent-core (2).png",
+      "before": "4e0fe25fd14837b941d5a62ff47e0ec66e8b96910a22544767d620b7ae346806",
+      "after": "4e0fe25fd14837b941d5a62ff47e0ec66e8b96910a22544767d620b7ae346806",
+      "unchanged": true
+    },
+    {
+      "path": "src/ui/public/agent-core.png",
+      "before": "4e0fe25fd14837b941d5a62ff47e0ec66e8b96910a22544767d620b7ae346806",
+      "after": "4e0fe25fd14837b941d5a62ff47e0ec66e8b96910a22544767d620b7ae346806",
+      "unchanged": true
+    }
+  ],
+  "files": [
+    {
+      "path": "src/ui/src/App.tsx",
+      "sha256": "618532c17cf2fd36e614f203eb4117ee418aa41709895b704816f7370c79477e",
+      "bytes": 12679
+    },
+    {
+      "path": "src/ui/src/components.tsx",
+      "sha256": "b09d2635b073b92383cbf476fa49ae3de973b3b290747cee57da26ffcbdbdb80",
+      "bytes": 18786
+    },
+    {
+      "path": "src/ui/src/pages.tsx",
+      "sha256": "5ea876f23f86819cedf8856982ac57184dce6de4ccb33bcd59bbb946f27e49ca",
+      "bytes": 53719
+    },
+    {
+      "path": "src/ui/src/LauncherPages.tsx",
+      "sha256": "e363466b1b84f6912f954d46695f9bd6221047db3280afb77a16b6b5f6e36130",
+      "bytes": 9298
+    },
+    {
+      "path": "src/ui/src/LauncherInspector.tsx",
+      "sha256": "fd0409eb4fc52ad9facfdb35203ef3ccab95ef9a5c6485ee199f1b4eeca18b38",
+      "bytes": 3392
+    },
+    {
+      "path": "src/ui/src/launcher.css",
+      "sha256": "207e74cc6d8389491fa1a90faca89b1eef6fc8fbec023f966ac34e91bcba3268",
+      "bytes": 18126
+    },
+    {
+      "path": "src/ui/src/main.tsx",
+      "sha256": "8e4a006328b8a56f5e7d650cf057db441d9ebf0b1e570973116d5c510bee84f0",
+      "bytes": 256
+    },
+    {
+      "path": "src/ui/src/LauncherMigration.test.tsx",
+      "sha256": "506bc9baef37bf8fd14f6fb2ccf4158a3fa9808daad6aee5c09b14dafef691f0",
+      "bytes": 5302
+    },
+    {
+      "path": "src/ui/src/App.test.tsx",
+      "sha256": "4e2327ed42a1c567d912d116a0100887d69442ca04e5be3a3eefb55de3c69d10",
+      "bytes": 29684
+    },
+    {
+      "path": "dist/ui/index.html",
+      "sha256": "35737ab48a30385e9de60fdb34d067c4562e72fb7333983e6f62c6556a9e3895",
+      "bytes": 1179
+    },
+    {
+      "path": "dist/ui/agent-core.png",
+      "sha256": "4e0fe25fd14837b941d5a62ff47e0ec66e8b96910a22544767d620b7ae346806",
+      "bytes": 56867
+    },
+    {
+      "path": "dist/ui/assets/index-BezOIkXl.css",
+      "sha256": "3584bb9dc242b7e3fee15c2428ad82cb0661e4d255a5be98aa9b1ce0cca2b34b",
+      "bytes": 74095
+    },
+    {
+      "path": "dist/ui/assets/index-DA6mVlyR.js",
+      "sha256": "460c5e052502fe2af208f71048bfbb24bb7a3828399dbc6a5ac094646b3e8455",
+      "bytes": 363720
+    },
+    {
+      "path": "Agent Core.exe",
+      "sha256": "b93566b06b54d8c9e379e0377065cbc16d491d58e640e37dccdd067f17c8b78f",
+      "bytes": 163000521
+    }
+  ],
+  "pendingExecutable": {
+    "exists": true,
+    "hasDigest": false
+  },
+  "finalCapturedAt": "2026-10-29T03:31:15.032Z",
+  "finalFiles": [
+    {
+      "path": "src/ui/src/App.tsx",
+      "sha256": "618532c17cf2fd36e614f203eb4117ee418aa41709895b704816f7370c79477e",
+      "bytes": 12679
+    },
+    {
+      "path": "src/ui/src/components.tsx",
+      "sha256": "b09d2635b073b92383cbf476fa49ae3de973b3b290747cee57da26ffcbdbdb80",
+      "bytes": 18786
+    },
+    {
+      "path": "src/ui/src/pages.tsx",
+      "sha256": "5ea876f23f86819cedf8856982ac57184dce6de4ccb33bcd59bbb946f27e49ca",
+      "bytes": 53719
+    },
+    {
+      "path": "src/ui/src/LauncherPages.tsx",
+      "sha256": "f9fedbc9a8706371fed40962b34b353653c4a0f92a0da1f86d15a07854babbd4",
+      "bytes": 9305
+    },
+    {
+      "path": "src/ui/src/LauncherInspector.tsx",
+      "sha256": "fd0409eb4fc52ad9facfdb35203ef3ccab95ef9a5c6485ee199f1b4eeca18b38",
+      "bytes": 3392
+    },
+    {
+      "path": "src/ui/src/launcher.css",
+      "sha256": "207e74cc6d8389491fa1a90faca89b1eef6fc8fbec023f966ac34e91bcba3268",
+      "bytes": 18126
+    },
+    {
+      "path": "src/ui/src/main.tsx",
+      "sha256": "8e4a006328b8a56f5e7d650cf057db441d9ebf0b1e570973116d5c510bee84f0",
+      "bytes": 256
+    },
+    {
+      "path": "src/ui/src/LauncherMigration.test.tsx",
+      "sha256": "8a37d44ebc3a66e13a34e191a62226cb7391aefa591442d857060489c19f97bc",
+      "bytes": 5699
+    },
+    {
+      "path": "src/ui/src/App.test.tsx",
+      "sha256": "4e2327ed42a1c567d912d116a0100887d69442ca04e5be3a3eefb55de3c69d10",
+      "bytes": 29684
+    },
+    {
+      "path": "dist/ui/index.html",
+      "sha256": "f6a008466b400027c214a449a02568c66f4c5fe389b1e4bd0d5b9b7a348fcb31",
+      "bytes": 1179
+    },
+    {
+      "path": "dist/ui/agent-core.png",
+      "sha256": "4e0fe25fd14837b941d5a62ff47e0ec66e8b96910a22544767d620b7ae346806",
+      "bytes": 56867
+    },
+    {
+      "path": "Agent Core.exe",
+      "sha256": "b93566b06b54d8c9e379e0377065cbc16d491d58e640e37dccdd067f17c8b78f",
+      "bytes": 163000521
+    },
+    {
+      "path": "dist/ui/assets/index-BezOIkXl.css",
+      "sha256": "3584bb9dc242b7e3fee15c2428ad82cb0661e4d255a5be98aa9b1ce0cca2b34b",
+      "bytes": 74095
+    },
+    {
+      "path": "dist/ui/assets/index-Cx58w4UB.js",
+      "sha256": "0fecc931fe075ff63e483f0cc5576bb4e18832b35234bb354ff6123c329c030f",
+      "bytes": 363706
+    }
+  ],
+  "finalIconChecks": [
+    {
+      "path": "assets/agent-core.ico",
+      "sha256": "4a318b3889b5417400c620bdb286bce2ead96cc9b5fa9427986d8761266b5c02",
+      "unchanged": true
+    },
+    {
+      "path": "assets/agent-core.png",
+      "sha256": "72ef4fd5d0890df388de093f588df3f9571172bbe8940f00532b0759d5fb35aa",
+      "unchanged": true
+    },
+    {
+      "path": "assets/agent-core (2).png",
+      "sha256": "4e0fe25fd14837b941d5a62ff47e0ec66e8b96910a22544767d620b7ae346806",
+      "unchanged": true
+    },
+    {
+      "path": "src/ui/public/agent-core.png",
+      "sha256": "4e0fe25fd14837b941d5a62ff47e0ec66e8b96910a22544767d620b7ae346806",
+      "unchanged": true
+    }
+  ]
+}

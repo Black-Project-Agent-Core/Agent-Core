@@ -1,0 +1,38 @@
+{
+  "browser": "installed chromium headless shell1223",
+  "preview": "static UI without desktop host; not resident data",
+  "results": [
+    {
+      "name": "Desktop",
+      "exit": 0,
+      "width": 1440,
+      "height": 1000,
+      "bytes": 108134,
+      "stderr": "108134 bytes written to file E:\\Projects\\Agent-Core\\docs\\verification\\Launcher-Migration-Desktop.png\r\n"
+    },
+    {
+      "name": "Tablet",
+      "exit": 0,
+      "width": 768,
+      "height": 900,
+      "bytes": 67141,
+      "stderr": "67141 bytes written to file E:\\Projects\\Agent-Core\\docs\\verification\\Launcher-Migration-Tablet.png\r\n"
+    },
+    {
+      "name": "Narrow",
+      "exit": 0,
+      "width": 320,
+      "height": 800,
+      "bytes": 42077,
+      "stderr": "42077 bytes written to file E:\\Projects\\Agent-Core\\docs\\verification\\Launcher-Migration-Narrow.png\r\n"
+    },
+    {
+      "name": "Models",
+      "exit": 0,
+      "width": 1440,
+      "height": 1000,
+      "bytes": 55410,
+      "stderr": "55410 bytes written to file E:\\Projects\\Agent-Core\\docs\\verification\\Launcher-Migration-Models.png\r\n"
+    }
+  ]
+}

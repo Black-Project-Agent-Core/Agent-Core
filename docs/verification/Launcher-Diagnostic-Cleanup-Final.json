@@ -1,0 +1,37 @@
+{
+    "debugListeners":  0,
+    "keys":  [
+                 {
+                     "exists":  false,
+                     "path":  "HKCU:\\Software\\Policies\\Microsoft\\Edge"
+                 },
+                 {
+                     "exists":  false,
+                     "path":  "HKCU:\\Software\\Policies\\Microsoft\\Edge\\WebView2"
+                 },
+                 {
+                     "exists":  false,
+                     "path":  "HKCU:\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments"
+                 },
+                 {
+                     "exists":  false,
+                     "path":  "HKLM:\\Software\\Policies\\Microsoft\\Edge"
+                 },
+                 {
+                     "exists":  false,
+                     "path":  "HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2"
+                 },
+                 {
+                     "exists":  false,
+                     "path":  "HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments"
+                 }
+             ],
+    "webviewProcesses":  [
+                             {
+                                 "debugFlagPresent":  false,
+                                 "parent":  6588,
+                                 "pid":  2460
+                             }
+                         ],
+    "capturedAt":  "2026-10-29T03:37:24.1355546Z"
+}

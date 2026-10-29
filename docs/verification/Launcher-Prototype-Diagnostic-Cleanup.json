@@ -1,0 +1,21 @@
+﻿{
+    "cleanedAt":  "2026-10-29T04:37:31.1473257Z",
+    "valueAbsent":  true,
+    "baselineRestored":  [
+                             {
+                                 "existedBefore":  false,
+                                 "path":  "HKLM:\\Software\\Policies\\Microsoft\\Edge",
+                                 "existsNow":  false
+                             },
+                             {
+                                 "existedBefore":  false,
+                                 "path":  "HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2",
+                                 "existsNow":  false
+                             },
+                             {
+                                 "existedBefore":  false,
+                                 "path":  "HKLM:\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments",
+                                 "existsNow":  false
+                             }
+                         ]
+}
