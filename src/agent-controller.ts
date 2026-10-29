@@ -52,6 +52,7 @@ import {
   emitAgentTurnEvent,
   type AgentTurnEventSink,
   type AgentTurnRoutingEvidence,
+  summarizeToolArgs,
 } from './agent-turn-events.js';
 import {
   AGENT_TURN_CHECKPOINT_SCHEMA_VERSION,
@@ -1656,6 +1657,9 @@ export class NativeAgentController {
           await emitAgentTurnEvent(input.eventSink, {
             type: 'tool.started',
             toolName: call.function.name,
+            iteration,
+            maxIterations,
+            argsSummary: summarizeToolArgs(args),
           });
           let result;
           const toolStarted = Date.now();
@@ -1697,6 +1701,10 @@ export class NativeAgentController {
               type: 'tool.completed',
               toolName: call.function.name,
               success: false,
+              iteration,
+              maxIterations,
+              durationMs: Date.now() - toolStarted,
+              argsSummary: summarizeToolArgs(args),
             });
             failedFingerprints.add(fingerprint);
             needsStrategy = true;
@@ -1758,6 +1766,10 @@ export class NativeAgentController {
             type: 'tool.completed',
             toolName: call.function.name,
             success: true,
+            iteration,
+            maxIterations,
+            durationMs: Date.now() - toolStarted,
+            argsSummary: summarizeToolArgs(args),
           });
           messages.push({
             role: 'tool',

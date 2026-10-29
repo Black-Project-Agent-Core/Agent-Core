@@ -215,6 +215,10 @@ export type AgentChatEvent = {
   turnId: string;
   toolName?: string;
   success?: boolean;
+  iteration?: number;
+  maxIterations?: number;
+  durationMs?: number;
+  argsSummary?: string;
   itemCount?: number;
   providerId?: string;
   model?: string;
@@ -251,8 +255,44 @@ export type AgentChatUiState = {
   runningRequestId?: string;
   creating?: boolean;
   lastEvent?: AgentChatEvent;
+  /** Last tool steps of the current turn, built from the live event stream only (lost on reload). */
+  activity?: AgentChatActivity[];
   error?: string;
 };
+
+export type AgentChatActivity = {
+  id: string;
+  toolName: string;
+  iteration?: number;
+  maxIterations?: number;
+  status: 'running' | 'done' | 'failed';
+  durationMs?: number;
+  argsSummary?: string;
+};
+
+export const AGENT_ACTIVITY_LIMIT = 30;
+let activitySequence = 0;
+
+/** Folds one live turn event into the bounded Activity list; unrelated events return the same list. */
+export function reduceAgentActivity(list: AgentChatActivity[], event: AgentChatEvent): AgentChatActivity[] {
+  if (event.type === 'turn.accepted') return [];
+  if (event.type === 'tool.started' && event.toolName) {
+    return [...list, { id: 'step-' + (activitySequence += 1), toolName: event.toolName, iteration: event.iteration,
+      maxIterations: event.maxIterations, status: 'running' as const, argsSummary: event.argsSummary }]
+      .slice(-AGENT_ACTIVITY_LIMIT);
+  }
+  if (event.type === 'tool.completed' && event.toolName) {
+    let index = -1;
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      if (list[i]!.status === 'running' && list[i]!.toolName === event.toolName) { index = i; break; }
+    }
+    if (index < 0) return list;
+    const next = [...list];
+    next[index] = { ...next[index]!, status: event.success === false ? 'failed' : 'done', durationMs: event.durationMs };
+    return next;
+  }
+  return list;
+}
 
 export type WorkflowsSnapshot = {
   status: 'building' | 'ready' | 'stale' | 'error';

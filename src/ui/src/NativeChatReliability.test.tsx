@@ -115,7 +115,7 @@ describe('Native chat progress and durable states', () => {
     input.agentChat.lastEvent = { type: 'tool.completed', at: new Date().toISOString(),
       conversationId: 'chat-1', turnId: 'turn-1', success: false, toolName: 'read_file' };
     render(<ChatPage {...input}/>);
-    expect(screen.getByText('Tool failed; checking recovery')).toBeInTheDocument();
+    expect(screen.getByText('Tool failed · read_file')).toBeInTheDocument();
     expect(screen.queryByText('tool.completed')).not.toBeInTheDocument();
   });
 

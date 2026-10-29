@@ -3,6 +3,7 @@ import { WorkflowsPage } from './WorkflowsPage';
 import { ProposalCards } from './ProposalCards';
 import { ToolExecutionDetail } from './ToolExecutionDetail';
 import { TaskChangesPanel } from './TaskChangesPanel';
+import { ActivityList, ElapsedSeconds, formatStepDuration } from './AgentActivity';
 import { Plus, Paperclip, FolderOpen, Target, ListTodo, Wrench, Send, Shield, Pause } from 'lucide-react';
 import { PrototypeDashboard, PrototypeTools, PrototypeRuntime, PrototypeDiagnostics, PrototypeSettings, PrototypeSetup, PrototypeActivity } from './PrototypePages';
 import { ArtifactsPage, GoalsPage, LearningPage, MemoryPage, ModelsPage } from './LauncherPages';
@@ -458,8 +459,14 @@ export function ChatPage(props:SharedProps) {
     'memory.recall.started':'Finding relevant context',
     'memory.recall.completed':'Context ready',
     'agent.planning':'Planning the next action',
-    'tool.started':'Using a tool',
-    'tool.completed':event?.success===false?'Tool failed; checking recovery':'Tool finished',
+    'tool.started':event?.toolName
+      ?`Using ${event.toolName}`+(event.iteration&&event.maxIterations?` · langkah ${event.iteration}/${event.maxIterations}`:'')
+      :'Using a tool',
+    'tool.completed':event?.toolName
+      ?(event.success===false
+        ?`Tool failed · ${event.toolName}`
+        :`Tool finished · ${event.toolName}`+(event.durationMs!==undefined?` · ${formatStepDuration(event.durationMs)}`:''))
+      :(event?.success===false?'Tool failed; checking recovery':'Tool finished'),
     'verification.started':'Checking the result',
     'verification.completed':'Result check finished',
     'learning.finalization.started':'Reviewing learning',
@@ -586,9 +593,10 @@ export function ChatPage(props:SharedProps) {
             </div>
           </div>{messageTurn?.runtimeTaskId&&<div className="chat-message-changes"><TaskChangesPanel key={messageTurn.runtimeTaskId} taskId={messageTurn.runtimeTaskId} presentation="popover"/></div>}</React.Fragment>;
         })}
+        {(props.agentChat.activity?.length??0)>0&&<ActivityList items={props.agentChat.activity!}/>}
         {running&&<div className="chat-message assistant pending">
           <div className="chat-message-role">Agent Core</div>
-          <div className="chat-progress"><RefreshCw className="spin" size={17}/><span>{progressLabels[event?.type??'turn.accepted']??'Working'}</span>{event?.toolName&&<b>{event.toolName}</b>}</div>
+          <div className="chat-progress"><RefreshCw className="spin" size={17}/><span>{progressLabels[event?.type??'turn.accepted']??'Working'}</span>{event?.toolName&&!event.type.startsWith('tool.')&&<b>{event.toolName}</b>}{event?.type==='tool.started'&&<ElapsedSeconds since={event.at}/>}</div>
         </div>}
         {!running&&latestTurn&&<div className="chat-progress" role="status">
           <span>{latestTurn.errorCode==='AGENT_RUNTIME_CONTINUATION_PROVIDER_WAIT'?'Waiting for an eligible provider':turnLabels[latestTurn.status]??'Working'}</span>

@@ -35,6 +35,13 @@ export interface AgentTurnEvent {
   at: string;
   toolName?: string;
   success?: boolean;
+  /** tool.started / tool.completed: 1-based loop iteration and its configured limit. */
+  iteration?: number;
+  maxIterations?: number;
+  /** tool.completed only: wall-clock duration of the tool call. */
+  durationMs?: number;
+  /** tool.started / tool.completed: one-line argument summary (<= 80 chars, secret-keyed values masked). */
+  argsSummary?: string;
   itemCount?: number;
   providerId?: string;
   model?: string;
@@ -47,6 +54,27 @@ export interface AgentTurnEvent {
   /** `turn.cancelled` only: processes this task started that the ledger still records as running. Reported, never stopped. */
   ownedProcesses?: Array<{ pid: number; status: 'running' | 'cancelling' }>;
 }
+const SENSITIVE_ARG_KEY = /key|token|secret|password|authorization|cookie/i;
+
+function stringifyArg(value: unknown): string {
+  try {
+    return JSON.stringify(value, (key, inner) => (key && SENSITIVE_ARG_KEY.test(key) ? '***' : inner)) ?? String(value);
+  } catch {
+    return '[unserializable]';
+  }
+}
+
+/** One-line, bounded tool-argument summary for the transcript; values under secret-like keys are masked. */
+export function summarizeToolArgs(args: unknown, maxLength = 80): string {
+  if (args === undefined || args === null) return '';
+  const text = (typeof args === 'object' && !Array.isArray(args)
+    ? Object.entries(args as Record<string, unknown>)
+      .map(([key, value]) => key + '=' + (SENSITIVE_ARG_KEY.test(key) ? '***' : stringifyArg(value)))
+      .join(' ')
+    : stringifyArg(args)).replace(/\s+/g, ' ').trim();
+  return text.length > maxLength ? text.slice(0, maxLength - 1) + '…' : text;
+}
+
 export type AgentTurnEventSink = (event: AgentTurnEvent) => void | Promise<void>;
 
 export async function emitAgentTurnEvent(

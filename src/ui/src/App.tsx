@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   postHost,
+  reduceAgentActivity,
   subscribeHost,
   type ActivityEntry,
   type AgentChatUiState,
@@ -140,6 +141,7 @@ export default function App() {
           setAgentChat(prev=>prev.active?.conversation.id!==message.envelope.event!.conversationId?prev:({
             ...prev,
             lastEvent:message.envelope.event,
+            activity:reduceAgentActivity(prev.activity??[],message.envelope.event!),
             error:undefined,
           }));
         }
@@ -259,7 +261,7 @@ export default function App() {
     if(agentChat.creating)return;
     desiredChatIdRef.current=null;
     chatOpenPendingRef.current=false;
-    setAgentChat(prev=>({...prev,active:undefined,runningRequestId:undefined,lastEvent:undefined,error:undefined}));
+    setAgentChat(prev=>({...prev,active:undefined,runningRequestId:undefined,lastEvent:undefined,activity:undefined,error:undefined}));
   };
 
   const onChatOpen=(conversationId:string)=>{
