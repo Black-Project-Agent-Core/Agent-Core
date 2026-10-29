@@ -204,6 +204,26 @@ async function handleRequest(
       return;
     }
 
+    const stepMatch = route.match(/^\/agent\/chat\/steps\/([^/]+)\/(\d+)$/);
+    if (stepMatch) {
+      if (request.method !== 'GET') {
+        sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'GET' });
+        return;
+      }
+      if (firstHeader(request.headers['x-agent-core-chat-origin']) === 'external-controller') {
+        sendJson(response, 403, { error: 'agent_chat_steps_owner_only' });
+        return;
+      }
+      const seq = Number(stepMatch[2]);
+      const step = Number.isSafeInteger(seq) ? chat.readStepDetail(decodeURIComponent(stepMatch[1]!), seq) : null;
+      if (!step) {
+        sendJson(response, 404, { error: 'agent_chat_step_not_found' });
+        return;
+      }
+      sendJson(response, 200, step);
+      return;
+    }
+
     const detailMatch = route.match(/^\/agent\/chat\/conversations\/([^/]+)$/);
     if (detailMatch && request.method === 'GET') {
       const detail = await chat.readConversation(decodeURIComponent(detailMatch[1]!));

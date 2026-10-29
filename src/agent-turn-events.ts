@@ -50,6 +50,12 @@ export interface AgentTurnEvent {
   argsSummary?: string;
   /** tool.completed only: one-line outcome (<= 80 chars, counts/exit code/error excerpt, never file content or secrets). */
   resultSummary?: string;
+  /** tool.started: exact input (parsed args pretty-printed, else raw string), masked and capped at 16 KB. */
+  inputText?: string;
+  inputTruncated?: boolean;
+  /** tool.completed: exact tool output, masked and capped at 16 KB. */
+  outputText?: string;
+  outputTruncated?: boolean;
   /** assistant.progress only: the assistant's short narration for this iteration (<= 280 chars). */
   text?: string;
   itemCount?: number;
@@ -87,12 +93,55 @@ export function summarizeToolArgs(args: unknown, maxLength = 80): string {
 
 const SECRET_ASSIGNMENT = /\b([\w-]*(?:key|token|secret|password|authorization|cookie)[\w-]*)\s*[:=]\s*(?:Bearer\s+)?\S+/gi;
 
+const QUOTED_SECRET_PAIR = /("[\w-]*(?:key|token|secret|password|authorization|cookie)[\w-]*"\s*:\s*)"(?:[^"\\]|\\.)*"/gi;
+
 /** Masks secret-keyed assignments and well-known token shapes in free text bound for the transcript. */
 function maskSecretLikeText(text: string): string {
   return text
     .replace(SECRET_ASSIGNMENT, '$1=***')
     .replace(/\bBearer\s+[\w.~+/=-]{6,}/gi, 'Bearer ***')
+    .replace(QUOTED_SECRET_PAIR, '$1"***"')
     .replace(/\bsk-[A-Za-z0-9_-]{10,}/g, '***');
+}
+
+/** Per-side cap for the persisted tool step text (decision: 16 KB each for Input and Output). */
+export const TOOL_STEP_TEXT_LIMIT = 16384;
+
+/**
+ * Full (not one-line) tool text for persistence: secrets are masked on the whole text FIRST, then the result is
+ * cut at `max` characters so a secret straddling the cut can never leak. `truncated` marks any cut.
+ */
+export function boundedMaskedText(text: string, max = TOOL_STEP_TEXT_LIMIT): { text: string; truncated: boolean } {
+  if (typeof text !== 'string' || text.length === 0) return { text: '', truncated: false };
+  // Mask at most 4x the limit so a multi-megabyte tool result is not scanned in full.
+  const window = text.length > max * 4 ? text.slice(0, max * 4) : text;
+  const masked = maskSecretLikeText(window);
+  const truncated = masked.length > max || window.length < text.length;
+  return { text: truncated ? masked.slice(0, max) : masked, truncated };
+}
+
+/** Exact tool input for the step log: parsed args pretty-printed (secret-keyed values masked), else the raw argument string. */
+export function toolInputText(args: unknown, rawArguments?: string): { inputText: string; inputTruncated: boolean } {
+  let source = '';
+  const hasArgs = args !== undefined && args !== null
+    && !(typeof args === 'object' && !Array.isArray(args) && Object.keys(args as object).length === 0);
+  if (hasArgs) {
+    try {
+      source = JSON.stringify(args, (key, inner) => (key && SENSITIVE_ARG_KEY.test(key) ? '***' : inner), 2) ?? String(args);
+    } catch {
+      source = '[unserializable]';
+    }
+  } else if (typeof rawArguments === 'string') {
+    source = rawArguments;
+  }
+  const bounded = boundedMaskedText(source);
+  return { inputText: bounded.text, inputTruncated: bounded.truncated };
+}
+
+/** Exact tool output for the step log (masked, capped). */
+export function toolOutputText(text: string | undefined): { outputText: string; outputTruncated: boolean } {
+  const bounded = boundedMaskedText(typeof text === 'string' ? text : '');
+  return { outputText: bounded.text, outputTruncated: bounded.truncated };
 }
 
 function boundedLine(text: string, maxLength: number): string {

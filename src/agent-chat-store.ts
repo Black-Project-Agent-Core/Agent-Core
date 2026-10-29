@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { normalizeMemoryUse, type AgentMemoryUse } from './agent-memory-use.js';
+import type { AgentTurnEvent } from './agent-turn-events.js';
 import { normalizeNativeResultMetadata, type NativeMemoryResultMetadata } from './agent-memory-evaluation.js';
 import {
   compactionEnabled, summarizeConversationPrefix, type AgentCompactionRecord,
@@ -72,10 +73,36 @@ export interface AgentChatMessage {
   createdAtMs: number;
 }
 
+/** Step metadata for the conversation payload; the full Input/Output text is fetched per step on demand. */
+export interface AgentChatStepMeta {
+  turnId: string;
+  seq: number;
+  iteration?: number;
+  toolName: string;
+  status: 'running' | 'ok' | 'error';
+  startedAtMs: number;
+  durationMs?: number;
+  argsSummary?: string;
+  resultSummary?: string;
+}
+
+export interface AgentChatStepDetail {
+  inputText: string;
+  outputText: string;
+  inputTruncated: boolean;
+  outputTruncated: boolean;
+}
+
+/** Tool steps are kept for 30 days; the detail payload carries metadata for the newest turns only. */
+export const STEP_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const DETAIL_STEP_TURNS = 10;
+const DETAIL_STEPS_PER_TURN = 200;
+
 export interface AgentChatConversationDetail {
   conversation: AgentChatConversation;
   turns: AgentChatTurn[];
   messages: AgentChatMessage[];
+  steps?: AgentChatStepMeta[];
   decisionEvidence?: import('./learning/decision-projection.js').DecisionEvidence;
 }
 
@@ -166,6 +193,8 @@ export class AgentChatStore {
   constructor(readonly dbPath: string) {
     mkdirSync(path.dirname(dbPath), { recursive: true });
     this.initialize();
+    // Retention is applied once per open; a failure must never block the store.
+    try { this.pruneStepsOlderThan(STEP_RETENTION_MS); } catch { /* ancillary housekeeping */ }
   }
 
   private open(): DatabaseSync {
@@ -282,6 +311,24 @@ export class AgentChatStore {
           source_digest TEXT NOT NULL,
           created_at_ms INTEGER NOT NULL,
           PRIMARY KEY(turn_id, compaction_id),
+          FOREIGN KEY(turn_id) REFERENCES chat_turns(turn_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_turn_steps (
+          turn_id TEXT NOT NULL,
+          seq INTEGER NOT NULL,
+          iteration INTEGER,
+          tool_name TEXT NOT NULL,
+          status TEXT NOT NULL,
+          started_at_ms INTEGER NOT NULL,
+          duration_ms INTEGER,
+          args_summary TEXT,
+          result_summary TEXT,
+          input_text TEXT,
+          output_text TEXT,
+          input_truncated INTEGER NOT NULL DEFAULT 0,
+          output_truncated INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY(turn_id, seq),
           FOREIGN KEY(turn_id) REFERENCES chat_turns(turn_id) ON DELETE CASCADE
         );
       `);
@@ -1146,8 +1193,76 @@ export class AgentChatStore {
         WHERE conversation_id=?
         ORDER BY created_at_ms ASC, message_id ASC
       `).all(conversationId) as unknown as Record<string, unknown>[]).map(mapMessage);
-      return { conversation, turns, messages };
+      const steps = turns.slice(-DETAIL_STEP_TURNS)
+        .flatMap(turn => this.listStepMetaWithDb(db, turn.id, DETAIL_STEPS_PER_TURN));
+      return { conversation, turns, messages, steps };
     });
+  }
+
+  /** Start of one tool call: appends the next seq of the turn atomically. Callers decide whether a failure matters. */
+  startStep(turnId: string, event: AgentTurnEvent): void {
+    const startedAtMs = Number.isFinite(Date.parse(event.at)) ? Date.parse(event.at) : Date.now();
+    this.withDb(db => {
+      db.prepare(`INSERT INTO chat_turn_steps
+        (turn_id, seq, iteration, tool_name, status, started_at_ms, args_summary, input_text, input_truncated, output_truncated)
+        SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, 'running', ?, ?, ?, ?, 0 FROM chat_turn_steps WHERE turn_id=?`)
+        .run(turnId, event.iteration ?? null, event.toolName ?? 'unknown', startedAtMs, event.argsSummary ?? null,
+          event.inputText ?? '', event.inputTruncated ? 1 : 0, turnId);
+    });
+  }
+
+  /** Completes the latest still-running step of the same tool; false when none matches. */
+  completeStep(turnId: string, event: AgentTurnEvent): boolean {
+    const toolName = event.toolName ?? 'unknown';
+    return this.withDb(db => Number(db.prepare(`UPDATE chat_turn_steps
+      SET status=?, duration_ms=?, result_summary=?, output_text=?, output_truncated=?,
+          args_summary=COALESCE(?, args_summary)
+      WHERE turn_id=? AND tool_name=? AND status='running'
+        AND seq=(SELECT MAX(seq) FROM chat_turn_steps WHERE turn_id=? AND tool_name=? AND status='running')`)
+      .run(event.success === false ? 'error' : 'ok', event.durationMs ?? null, event.resultSummary ?? null,
+        event.outputText ?? '', event.outputTruncated ? 1 : 0, event.argsSummary ?? null,
+        turnId, toolName, turnId, toolName).changes) > 0);
+  }
+
+  listStepMeta(turnId: string, limit = DETAIL_STEPS_PER_TURN): AgentChatStepMeta[] {
+    return this.withDb(db => this.listStepMetaWithDb(db, turnId, limit));
+  }
+
+  private listStepMetaWithDb(db: DatabaseSync, turnId: string, limit: number): AgentChatStepMeta[] {
+    const rows = db.prepare(`SELECT turn_id, seq, iteration, tool_name, status, started_at_ms, duration_ms, args_summary, result_summary
+      FROM chat_turn_steps WHERE turn_id=? ORDER BY seq ASC LIMIT ?`).all(turnId, limit) as unknown as Record<string, unknown>[];
+    return rows.map(row => ({
+      turnId: String(row.turn_id),
+      seq: Number(row.seq),
+      ...(row.iteration !== null ? { iteration: Number(row.iteration) } : {}),
+      toolName: String(row.tool_name),
+      status: row.status === 'ok' || row.status === 'error' ? row.status : 'running',
+      startedAtMs: Number(row.started_at_ms),
+      ...(row.duration_ms !== null ? { durationMs: Number(row.duration_ms) } : {}),
+      ...(typeof row.args_summary === 'string' ? { argsSummary: row.args_summary } : {}),
+      ...(typeof row.result_summary === 'string' ? { resultSummary: row.result_summary } : {}),
+    }));
+  }
+
+  /** Full masked Input/Output of one step (fetched on demand, never part of the polled detail). */
+  getStepDetail(turnId: string, seq: number): AgentChatStepDetail | null {
+    return this.withDb(db => {
+      const row = db.prepare(`SELECT input_text, output_text, input_truncated, output_truncated
+        FROM chat_turn_steps WHERE turn_id=? AND seq=?`).get(turnId, seq) as Record<string, unknown> | undefined;
+      if (!row) return null;
+      return {
+        inputText: typeof row.input_text === 'string' ? row.input_text : '',
+        outputText: typeof row.output_text === 'string' ? row.output_text : '',
+        inputTruncated: Number(row.input_truncated) === 1,
+        outputTruncated: Number(row.output_truncated) === 1,
+      };
+    });
+  }
+
+  /** Deletes steps that started more than `maxAgeMs` before `nowMs`; returns the number removed. */
+  pruneStepsOlderThan(maxAgeMs: number, nowMs = Date.now()): number {
+    return this.withDb(db => Number(db.prepare('DELETE FROM chat_turn_steps WHERE started_at_ms < ?')
+      .run(nowMs - maxAgeMs).changes));
   }
   /** Backward-compatible view for legacy callers. New recovery keeps checkpointed turns resumable. */
   markRunningTurnsInterrupted(completedAtMs = Date.now()): AgentChatTurn[] {

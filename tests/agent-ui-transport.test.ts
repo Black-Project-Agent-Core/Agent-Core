@@ -74,6 +74,10 @@ async function setup() {
     }),
     listProviders: vi.fn(() => [{ id: 'atria', model: 'Atria-Dawn', configured: true, available: true }]),
     refreshProviderCapabilities: vi.fn(async () => undefined),
+    readStepDetail: vi.fn((turnId: string, seq: number) => turnId === 'turn-1' && seq === 2
+      ? { inputText: '{"path":"a.ts"}', outputText: 'ok', inputTruncated: false, outputTruncated: false } : null),
+    getLastSelection: vi.fn((): unknown => undefined),
+    recordOwnerSelection: vi.fn((body: Record<string, unknown>) => ({ providerId: String(body.providerId), model: String(body.model ?? ''), reasoningEffort: body.reasoningEffort ?? 'auto', updatedAtMs: 1 })),
     validateProviderModel: vi.fn((model: unknown, providerId?: string) =>
       validateAgentProviderModel(model, providerId, ['claude-sonnet-5-5', 'claude-opus-5-5'])),
     stopTurn: vi.fn(() => true),
@@ -285,5 +289,39 @@ describe('launcher-only native agent HTTP transport', () => {
     expect(agentChat.runTurn.mock.calls.at(-1)![0]).not.toHaveProperty('providerRoute');
     expect((await turn('bad route!')).status).toBe(400);
     expect((await turn(42)).status).toBe(400);
+  });
+
+  it('reports the last owner selection with the providers and records a new one for the owner only', async () => {
+    const { baseUrl, agentChat } = await setup();
+    const headers = { 'content-type': 'application/json', 'x-agent-core-ui-token': 'fixture-ui-token' };
+    const providers = () => fetch(`${baseUrl}/agent/chat/providers`, { headers }).then(response => response.json() as Promise<Record<string, unknown>>);
+    expect(await providers()).not.toHaveProperty('selection');
+    const saved = { providerId: 'atria', model: '', reasoningEffort: 'high', updatedAtMs: 7 };
+    agentChat.getLastSelection.mockReturnValueOnce(saved);
+    expect((await providers()).selection).toEqual(saved);
+
+    const put = (init: RequestInit) => fetch(`${baseUrl}/agent/chat/selection`, { method: 'PUT', ...init });
+    expect((await fetch(`${baseUrl}/agent/chat/selection`, { headers })).status).toBe(405);
+    expect((await put({ headers: { 'content-type': 'application/json' }, body: '{}' })).status).toBe(401);
+    expect((await put({ headers: { ...headers, 'x-agent-core-chat-origin': 'external-controller' }, body: '{}' })).status).toBe(403);
+    expect((await put({ headers, body: '{bad' })).status).toBe(400);
+    const body = { providerId: 'atria', model: '', reasoningEffort: 'high' };
+    expect((await put({ headers, body: JSON.stringify(body) })).status).toBe(200);
+    expect(agentChat.recordOwnerSelection).toHaveBeenCalledWith(body);
+    agentChat.recordOwnerSelection.mockImplementationOnce(() => { throw new Error('agent_chat_selection_invalid'); });
+    expect((await put({ headers, body: '{}' })).status).toBe(400);
+  });
+
+  it('serves the full Input and Output of one persisted tool step to the owner only', async () => {
+    const { baseUrl } = await setup();
+    const headers = { 'x-agent-core-ui-token': 'fixture-ui-token' };
+    const step = (path: string, init: RequestInit = {}) => fetch(`${baseUrl}/agent/chat/steps/${path}`, { headers, ...init });
+    const found = await step('turn-1/2');
+    expect(found.status).toBe(200);
+    expect(await found.json()).toEqual({ inputText: '{"path":"a.ts"}', outputText: 'ok', inputTruncated: false, outputTruncated: false });
+    expect((await step('turn-1/9')).status).toBe(404);
+    expect((await step('turn-1/2', { method: 'POST' })).status).toBe(405);
+    expect((await step('turn-1/2', { headers: { ...headers, 'x-agent-core-chat-origin': 'external-controller' } })).status).toBe(403);
+    expect((await fetch(`${baseUrl}/agent/chat/steps/turn-1/2`)).status).toBe(401);
   });
 });

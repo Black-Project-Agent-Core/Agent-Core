@@ -271,6 +271,21 @@ export class AgentChatService {
     this.store.recordContextUsage(turnId, event.contextTokens, event.contextWindow,
       { iteration: event.iteration, maxIterations: event.maxIterations });
   }
+  /** Persists tool steps (Input/Output) for any turn; ancillary, so a write failure is logged briefly and never fails the turn. */
+  private recordStep(turnId: string, event: AgentTurnEvent): void {
+    if (event.type !== 'tool.started' && event.type !== 'tool.completed') return;
+    try {
+      if (event.type === 'tool.started') this.store.startStep(turnId, event);
+      else this.store.completeStep(turnId, event);
+    } catch (error) {
+      console.error('[agent-chat] step record failed:', error instanceof Error ? error.message : 'unknown');
+    }
+  }
+
+  /** Full masked Input/Output of one persisted tool step, or null. */
+  readStepDetail(turnId: string, seq: number): import('./agent-chat-store.js').AgentChatStepDetail | null {
+    return this.store.getStepDetail(turnId, seq);
+  }
   private continuationHooks(input: {
     conversationId: string;
     turnId: string;
@@ -533,7 +548,7 @@ export class AgentChatService {
         history: historyMessages(history),
         ...(boundedContext.summary ? { historySummary: boundedContext.summary } : {}),
         memoryQuery: buildMemoryQuery(input.prompt, history),
-        eventSink: event => { this.recordContextUsage(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
+        eventSink: event => { this.recordContextUsage(continuation.turnId, event); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,
         continuation,
         ...(input.evaluation ? { evaluation: input.evaluation } : {}),
@@ -755,7 +770,7 @@ export class AgentChatService {
         taskId: turn.runtimeTaskId,
         prompt: loaded.state.prompt,
         workspace: loaded.state.workspace ?? conversation.workspace,
-        eventSink: event => { this.recordContextUsage(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
+        eventSink: event => { this.recordContextUsage(continuation.turnId, event); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,
         continuation,
         ...(loaded.state.memoryEvaluation ? { evaluation: loaded.state.memoryEvaluation } : {}),

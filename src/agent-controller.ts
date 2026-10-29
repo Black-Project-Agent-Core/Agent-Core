@@ -54,6 +54,8 @@ import {
   type AgentTurnRoutingEvidence,
   summarizeToolArgs,
   summarizeToolResult,
+  toolInputText,
+  toolOutputText,
   summarizeAssistantProgress,
   iterationBudgetThreshold,
 } from './agent-turn-events.js';
@@ -1681,6 +1683,7 @@ export class NativeAgentController {
             iteration,
             maxIterations,
             argsSummary: summarizeToolArgs(args),
+            ...toolInputText(args, call.function.arguments),
           });
           let result;
           const toolStarted = Date.now();
@@ -1727,6 +1730,7 @@ export class NativeAgentController {
               durationMs: Date.now() - toolStarted,
               argsSummary: summarizeToolArgs(args),
               resultSummary: summarizeToolResult(call.function.name, result, args),
+              ...toolOutputText(result.text),
             });
             failedFingerprints.add(fingerprint);
             needsStrategy = true;
@@ -1793,6 +1797,7 @@ export class NativeAgentController {
             durationMs: Date.now() - toolStarted,
             argsSummary: summarizeToolArgs(args),
             resultSummary: summarizeToolResult(call.function.name, result, args),
+            ...toolOutputText(result.text),
           });
           messages.push({
             role: 'tool',
