@@ -38,6 +38,8 @@ const executionMetricsSchema = z.object({ startedAt: z.string().max(40),
   recallMs: measure.optional(), modelMs: measure.optional(), toolMs: measure.optional(), modelCalls: count.optional(),
   providerAttempts: count.optional(),
   usageObservedCalls: count.optional(), costObservedCalls: count.optional(), inputTokens: count.optional(),
+  cacheReadObservedCalls: count.optional(), cacheWriteObservedCalls: count.optional(),
+  cacheReadInputTokens: count.optional(), cacheWriteInputTokens: count.optional(),
   outputTokens: count.optional(), totalTokens: count.optional(), costUsd: measure.optional() });
 const learnedLessonSchema = z.object({ memoryId: z.string().min(1).max(128),
   title: z.string().max(200), contentDigest: digest });

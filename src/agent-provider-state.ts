@@ -47,7 +47,9 @@ export interface ProviderModelReadiness {
   retryAtMs: number;
   reason: string;
   source: 'provider-catalog-and-tool-probe';
+  reasoningEfforts?: AgentReasoningEffort[];
 }
+export type AgentReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 /**
  * Why a configured credential cannot serve right now. Persisted failure classes win over
  * the per-request exclusion so evidence names the real cause (a rate-limited key that was

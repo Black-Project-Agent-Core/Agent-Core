@@ -44,6 +44,10 @@ export interface AgentTaskMetrics {
   providerAttempts?: number;
   usageObservedCalls?: number;
   costObservedCalls?: number;
+  cacheReadObservedCalls?: number;
+  cacheWriteObservedCalls?: number;
+  cacheReadInputTokens?: number;
+  cacheWriteInputTokens?: number;
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;

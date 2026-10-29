@@ -155,6 +155,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
     : path.join(semanticIdeRuntimeDir, 'servers.json');
   const namedAgentProviders = [
     {
+      id: 'anthropic',
+      baseUrl: env.ANTHROPIC_BASE_URL?.trim() || 'https://api.anthropic.com/v1',
+      model: env.ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5-5',
+      models: ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'],
+      ...(env.ANTHROPIC_WORKSPACE_ID?.trim() ? { workspaceId: env.ANTHROPIC_WORKSPACE_ID.trim() } : {}),
+      ...declaredCapacity(env, 'ANTHROPIC'),
+      credentials: numberedCredentials(env, 'ANTHROPIC', 'anthropic'),
+    },
+    {
       id: 'atria',
       baseUrl: env.ATRIA_BASE_URL?.trim() || null,
       model: env.ATRIA_MODEL?.trim() || null,
@@ -175,7 +184,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
       ...declaredCapacity(env, 'OPENROUTER'),
       credentials: numberedCredentials(env, 'OPENROUTER', 'openrouter'),
     },
-  ].filter(provider => provider.baseUrl || provider.model || provider.credentials.length > 0);
+  ].filter(provider => provider.id === 'anthropic'
+    ? provider.credentials.length > 0 || Boolean(env.ANTHROPIC_BASE_URL?.trim() || env.ANTHROPIC_MODEL?.trim())
+    : provider.baseUrl || provider.model || provider.credentials.length > 0);
   const configuredProviderOrder = list(env.AGENT_CORE_AI_PROVIDER_ORDER);
   return {
     projectRoot,
@@ -251,10 +262,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
       baseUrl: env.AGENT_CORE_AI_BASE_URL?.trim() || null,
       model: env.AGENT_CORE_AI_MODEL?.trim() || null,
       apiKey: env.AGENT_CORE_AI_API_KEY?.trim() || null,
+      anthropicPromptCaching: bool(env.ANTHROPIC_PROMPT_CACHING, true),
       providers: namedAgentProviders,
       providerOrder: configuredProviderOrder.length
         ? configuredProviderOrder
-        : ['atria', 'gonka', 'openrouter'],
+        : ['atria', 'gonka', 'openrouter', 'anthropic'],
       maxProviderAttempts: positiveInt(env.AGENT_CORE_AI_MAX_PROVIDER_ATTEMPTS, 6),
       // Patient on purpose: reasoning models answer non-streaming requests slowly and unevenly (3.5-26.5 s for tiny
       // outputs on Duanyan), and a timeout counts as a transport failure that feeds the route breaker.

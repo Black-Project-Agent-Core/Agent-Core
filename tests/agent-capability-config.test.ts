@@ -51,6 +51,10 @@ describe('Native Agent capability configuration', () => {
     expect(defaults.agentRuntime.capabilityPolicy).toBe('explicit');
     expect(defaults.agentRuntime.allowedCapabilities).toEqual([]);
     expect(defaults.agentRuntime.allowedTools).toEqual([]);
+    expect(defaults.agentRuntime.anthropicPromptCaching).toBe(true);
+    expect(loadConfig({ ANTHROPIC_API_KEY_01: 'fixture' }, process.cwd()).agentRuntime.providers?.find(item => item.id === 'anthropic')?.models)
+      .toEqual(['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-fable-5-1']);
+    expect(loadConfig({ ANTHROPIC_PROMPT_CACHING: 'false' }, process.cwd()).agentRuntime.anthropicPromptCaching).toBe(false);
   });
 
   it('rejects unknown capability families and policy modes', () => {

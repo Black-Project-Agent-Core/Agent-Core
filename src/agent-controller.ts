@@ -18,6 +18,8 @@ import type {
 } from './agent-provider.js';
 import { AgentRuntimeService } from './agent-runtime.js';
 import { AgentProviderPoolPausedError } from './agent-provider.js';
+import { validateAgentReasoningEffort, validateAgentProviderModel } from './agent-provider.js';
+import type { AgentReasoningEffort } from './agent-provider-state.js';
 import { processLedger } from './rdc/process-ledger.js';
 import { AgentRuntimeToolSession, toolObservesStop } from './agent-tool-session.js';
 import { accountContext, contextBytesBySource } from './agent-context-accounting.js';
@@ -339,6 +341,8 @@ export interface NativeAgentTaskInput {
   workspace?: string;
   /** Owner-chosen provider route; omitted means automatic rotation. */
   providerRoute?: string;
+  providerModel?: string;
+  reasoningEffort?: AgentReasoningEffort;
   sessionId?: string;
   taskId?: string;
   evaluation?: import('./agent-memory-evaluation.js').NativeMemoryEvaluation;
@@ -470,7 +474,7 @@ function unresolvedToolCalls(messages: AgentModelMessage[]): AgentModelToolCall[
   return [];
 }
 
-function systemPrompt(memoryContext: string, synthesis: string, delegatedTools: boolean): string {
+function systemPrompt(delegatedTools: boolean, guidance: string): string {
   return [
     'You are the native Agent Core controller.',
     'Agent Core identity is the persistent body/runtime; the current model is replaceable reasoning capacity.',
@@ -505,9 +509,7 @@ function systemPrompt(memoryContext: string, synthesis: string, delegatedTools: 
     'You MUST call agent_core_finalize before the turn can complete.',
     'For every meaningful task, include reviewed candidates/procedure or an explicit learningDecision (no-new-knowledge, rejected, awaiting-verification); nothingWorthSaving=true remains a supported alias.',
     '',
-    memoryContext,
-    '',
-    synthesis,
+    guidance,
   ].join('\n');
 }
 
@@ -599,11 +601,17 @@ export class NativeAgentController {
 
     const resumedState = input.continuation?.state;
     const providerRoute = input.providerRoute?.trim() || resumedState?.providerRoute || undefined;
+    const providerModel = resumedState ? resumedState.providerModel : input.providerModel;
+    validateAgentProviderModel(providerModel, providerRoute, provider.routes?.find(route => route.id === providerRoute)?.models?.map(model => model.id) ?? []);
+    const reasoningEffort = resumedState ? resumedState.reasoningEffort : input.reasoningEffort;
+    validateAgentReasoningEffort(reasoningEffort, providerRoute);
     if (resumedState) {
       if (!input.reuseSession
         || resumedState.runtimeSessionId !== input.sessionId
         || resumedState.runtimeTaskId !== input.taskId
-        || resumedState.prompt !== input.prompt) {
+        || resumedState.prompt !== input.prompt
+        || (input.providerModel !== undefined && input.providerModel !== resumedState.providerModel)
+        || (input.reasoningEffort !== undefined && input.reasoningEffort !== resumedState.reasoningEffort)) {
         throw new Error('AGENT_RUNTIME_CONTINUATION_IDENTITY_MISMATCH');
       }
       if (resumedState.pendingTool?.mutating
@@ -954,19 +962,25 @@ export class NativeAgentController {
       role: message.role,
       content: message.content!.slice(0, 200_000),
     } as AgentModelMessage));
+    const guidance = (await taskSkillGuidance(this.mcpRuntime.skillsService, 'native')).text;
     const messages: AgentModelMessage[] = resumedState
       ? structuredClone(resumedState.messages)
       : [
-          { role: 'system', content: systemPrompt(initialMemory.promptText, packet.text, delegatedTools) + (await this.runtime.skillDecisionContext?.(task.id) ?? '') },
+          { role: 'system', content: systemPrompt(delegatedTools, guidance), cacheControl: { type: 'ephemeral' } },
+          { role: 'system', content: [initialMemory.promptText, packet.text].join('\n\n') + (await this.runtime.skillDecisionContext?.(task.id) ?? '') },
           ...(input.historySummary && compactionEnabled() ? [{ role: 'system' as const, content: input.historySummary.text }] : []),
           ...history,
           { role: 'user', content: input.prompt },
         ];
     // This required route is separate from ranked/budgeted knowledge. Refresh it on resume.
-    const guidance = (await taskSkillGuidance(this.mcpRuntime.skillsService, 'native')).text;
-    for(let index=messages.length-1;index>=0;index--)if(messages[index]!.role==='system'
-      && messages[index]!.content?.startsWith('NATIVE SKILL GUIDANCE'))messages.splice(index,1);
-    messages.splice(messages[0]?.role==='system'?1:0,0,{role:'system',content:guidance});
+    if (messages[0]?.role === 'system' && messages[0].cacheControl) {
+      messages[0].content = systemPrompt(delegatedTools, guidance);
+    } else {
+      // Legacy checkpoints keep their original context; only refresh the separate guidance.
+      for(let index=messages.length-1;index>=0;index--)if(messages[index]!.role==='system'
+        && messages[index]!.content?.startsWith('NATIVE SKILL GUIDANCE'))messages.splice(index,1);
+      messages.splice(messages[0]?.role==='system'?1:0,0,{role:'system',content:guidance});
+    }
     let nextIteration = resumedState?.nextIteration ?? 1;
     const checkpointCreatedAtMs = resumedState?.createdAtMs ?? Date.now();
     const checkpointExpiresAtMs = resumedState?.expiresAtMs
@@ -992,6 +1006,8 @@ export class NativeAgentController {
         prompt: input.prompt,
         ...(input.workspace ? { workspace: input.workspace } : {}),
         ...(providerRoute ? { providerRoute } : {}),
+        ...(providerModel ? { providerModel } : {}),
+        ...(reasoningEffort ? { reasoningEffort } : {}),
         ...(evaluation ? { memoryEvaluation: evaluation } : {}),
         ...(providerWait ? { providerWait } : {}),
         ...(routeTrail.length ? { routeTrail: [...routeTrail] } : {}),
@@ -1095,6 +1111,8 @@ export class NativeAgentController {
             {
               ...(continuationRequirement ? { continuation: continuationRequirement } : {}),
               ...(providerRoute ? { routeId: providerRoute } : {}),
+              ...(providerModel ? { model: providerModel } : {}),
+              ...(reasoningEffort ? { reasoningEffort } : {}),
               attemptLimit,
               onRouting: noteRouting,
               onAttempt: async observation => {
@@ -1121,6 +1139,8 @@ export class NativeAgentController {
           await this.runtime.bumpMetrics(task.id, { modelMs: Date.now() - modelStarted, modelCalls: 1,
             modelIdentity: { providerId: reply.providerId, resolvedModel: reply.resolvedModel },
             ...(reply.usage ? { usageObservedCalls: 1, ...reply.usage } : {}),
+            ...(reply.usage?.cacheReadInputTokens !== undefined ? { cacheReadObservedCalls: 1 } : {}),
+            ...(reply.usage?.cacheWriteInputTokens !== undefined ? { cacheWriteObservedCalls: 1 } : {}),
             ...(reply.usage?.costUsd !== undefined ? { costObservedCalls: 1 } : {}) });
           if (reply.providerId && reply.providerId !== lastProviderId) {
             lastProviderId = reply.providerId;
@@ -1137,7 +1157,8 @@ export class NativeAgentController {
           finish = classifyFinishReason(reply.finishReason);
           const finishNote = finishReasonNote(finish);
           if (reply.toolCalls.length === 0) {
-            messages.push({ role: 'assistant', content: reply.content ?? '' });
+            messages.push({ role: 'assistant', content: reply.content ?? '',
+              ...(reply.anthropicContent ? { anthropicContent: reply.anthropicContent } : {}) });
             messages.push({
               role: 'user',
               content: 'The turn is not complete. Declare strategy before tool action when required, or call agent_core_finalize with the verified/failed outcome and Learning disposition.'
@@ -1147,7 +1168,8 @@ export class NativeAgentController {
             await persistCheckpoint('model-ready');
             continue;
           }
-          messages.push({ role: 'assistant', content: reply.content, tool_calls: reply.toolCalls });
+          messages.push({ role: 'assistant', content: reply.content, tool_calls: reply.toolCalls,
+            ...(reply.anthropicContent ? { anthropicContent: reply.anthropicContent } : {}) });
           nextIteration = iteration;
           await persistCheckpoint('model-received');
         }
@@ -1763,7 +1785,7 @@ export class NativeAgentController {
           const reply = await this.runtime.complete([...messages, { role: 'user', content:
             'The tool budget for this turn is exhausted and no tool can be called. In at most 250 words, report what you'
             + ' observed (cite the tool results), what you only infer, and what remains unchecked.' }], [], session.id,
-          input.signal, { ...(providerRoute ? { routeId: providerRoute } : {}), attemptLimit: 1, onRouting: noteRouting,
+          input.signal, { ...(providerRoute ? { routeId: providerRoute } : {}), ...(providerModel ? { model: providerModel } : {}), ...(reasoningEffort ? { reasoningEffort } : {}), attemptLimit: 1, onRouting: noteRouting,
             onAttempt: async observation => {
               iterationLimitReport = { attempted: true };
               providerAttemptsConsumed += 1;
@@ -1775,6 +1797,8 @@ export class NativeAgentController {
           await this.runtime.bumpMetrics(task.id, { modelMs: Date.now() - modelStarted, modelCalls: 1,
             modelIdentity: { providerId: reply.providerId, resolvedModel: reply.resolvedModel },
             ...(reply.usage ? { usageObservedCalls: 1, ...reply.usage } : {}),
+            ...(reply.usage?.cacheReadInputTokens !== undefined ? { cacheReadObservedCalls: 1 } : {}),
+            ...(reply.usage?.cacheWriteInputTokens !== undefined ? { cacheWriteObservedCalls: 1 } : {}),
             ...(reply.usage?.costUsd !== undefined ? { costObservedCalls: 1 } : {}) });
           const text = reply.content?.trim();
           if (text) limitReport = redactSensitiveString(boundedSummary(text, 4_000)

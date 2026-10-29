@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NativeAgentController } from '../src/agent-controller.js';
 import { AgentRuntimeService } from '../src/agent-runtime.js';
-import type { AgentRuntimeConfig } from '../src/agent-provider.js';
+import type { AgentModelResponse, AgentRuntimeConfig } from '../src/agent-provider.js';
 import { parseAgentTurnCheckpoint, serializeAgentTurnCheckpoint } from '../src/agent-turn-checkpoint.js';
 
 const roots: string[] = [];
@@ -50,7 +50,7 @@ async function fixture(
   vi.stubGlobal('fetch', fetchMock);
   const runtime = await AgentRuntimeService.initialize(root, learning as any, config, memory as any);
   const controller = new NativeAgentController(runtime, {}, config);
-  return { runtime, controller, learning, memory, fetchMock };
+  return { root, config, runtime, controller, learning, memory, fetchMock };
 }
 
 function strategyChoice(strategy = 'Inspect the granted configuration surface first') {
@@ -132,6 +132,82 @@ function usageChoice() {
 }
 
 describe('native Agent Core controller lifecycle', () => {
+  it('carries an explicit Anthropic model into completion and durable checkpoint intent', async () => {
+    const { controller, runtime } = await fixture([]);
+    vi.spyOn(runtime, 'providerHealth').mockReturnValue({ provider: 'openai-compatible', enabled: true, configured: true,
+      routes: [{ id: 'anthropic', configured: true, keyCount: 1, model: 'claude-sonnet-5-5',
+        models: [{ id: 'claude-opus-5-5', reasoningEfforts: [] }] }] });
+    const final = finalizeChoice().message.tool_calls[0]!;
+    const complete = vi.spyOn(runtime, 'complete').mockResolvedValue({ content: null, finishReason: 'tool_calls',
+      toolCalls: [{ ...final, type: 'function' }], providerId: 'anthropic', model: 'claude-opus-5-5' });
+    const session = await runtime.startSession({ sessionId: 'explicit-model-session' });
+    let saved: any;
+    await controller.runConversationTurn({ sessionId: session.id, taskId: 'explicit-model-task', prompt: 'Model fixture',
+      providerRoute: 'anthropic', providerModel: 'claude-opus-5-5', continuation: { conversationId: 'model-chat', turnId: 'model-turn',
+        save: async state => { const record = serializeAgentTurnCheckpoint(state); saved = parseAgentTurnCheckpoint(record.json, record.digest); } } });
+    expect(complete.mock.calls[0]![4]).toMatchObject({ routeId: 'anthropic', model: 'claude-opus-5-5' });
+    expect(saved.providerModel).toBe('claude-opus-5-5');
+    await expect(controller.runConversationTurn({ sessionId: session.id, taskId: 'explicit-model-task', prompt: 'Model fixture',
+      providerRoute: 'anthropic', providerModel: 'claude-sonnet-5-5', continuation: { conversationId: 'model-chat', turnId: 'model-turn',
+        state: saved, save: async () => {} } })).rejects.toThrow('AGENT_RUNTIME_CONTINUATION_IDENTITY_MISMATCH');
+  });
+
+  it('keeps instructions and Skill guidance stable ahead of changing task context', async () => {
+    const { controller, runtime } = await fixture([]);
+    vi.spyOn(runtime, 'skillDecisionContext').mockResolvedValueOnce('\nVARIABLE TASK A').mockResolvedValueOnce('\nVARIABLE TASK B');
+    const complete = vi.spyOn(runtime, 'complete').mockImplementation(async messages => {
+      expect(messages[0]).toMatchObject({ role: 'system', cacheControl: { type: 'ephemeral' } });
+      expect(messages[0]!.content).toContain('NATIVE SKILL GUIDANCE');
+      expect(messages[0]!.content).not.toContain('VARIABLE TASK');
+      expect(messages[1]!.content).toContain('VARIABLE TASK');
+      const final = finalizeChoice().message.tool_calls[0]!;
+      return { content: null, finishReason: 'tool_calls', toolCalls: [{ ...final, type: 'function' }] };
+    });
+    await controller.runTask({ prompt: 'First context', workspace: 'fixture' });
+    await controller.runTask({ prompt: 'Second context', workspace: 'fixture' });
+    expect(complete.mock.calls[0]![0][0]).toEqual(complete.mock.calls[1]![0][0]);
+    expect(complete.mock.calls[0]![0][1]!.content).toContain('VARIABLE TASK A');
+    expect(complete.mock.calls[1]![0][1]!.content).toContain('VARIABLE TASK B');
+  });
+
+  it('persists observed cache tokens and coverage without treating missing fields as zero', async () => {
+    const { root, config, controller, runtime, learning, memory } = await fixture([]);
+    const strategy = strategyChoice().message.tool_calls[0]!;
+    const final = finalizeChoice('cache metrics complete').message.tool_calls[0]!;
+    vi.spyOn(runtime, 'complete').mockResolvedValueOnce({ content: null, finishReason: 'tool_calls',
+      toolCalls: [{ ...strategy, type: 'function' }],
+      usage: { inputTokens: 500, outputTokens: 10, totalTokens: 510, cacheReadInputTokens: 0, cacheWriteInputTokens: 400 } })
+      .mockResolvedValueOnce({ content: null, finishReason: 'tool_calls', toolCalls: [{ ...final, type: 'function' }],
+        usage: { inputTokens: 600, outputTokens: 20, totalTokens: 620, cacheReadInputTokens: 400 } });
+    const result = await controller.runTask({ prompt: 'Verify cache accounting', workspace: 'fixture' });
+    const expected = { inputTokens: 1100, outputTokens: 30, totalTokens: 1130,
+      cacheReadInputTokens: 400, cacheWriteInputTokens: 400, cacheReadObservedCalls: 2, cacheWriteObservedCalls: 1 };
+    expect(result).toMatchObject({ metrics: expected });
+    const reopened = await AgentRuntimeService.initialize(root, learning, config, memory as any);
+    expect((await reopened.getTask(result.taskId))?.metrics).toMatchObject(expected);
+  });
+
+  it('returns ordered signed Anthropic content to the next model call after a Native tool', async () => {
+    const { controller, runtime } = await fixture([]);
+    const strategy = strategyChoice().message.tool_calls[0]!;
+    const final = finalizeChoice('signed round trip complete').message.tool_calls[0]!;
+    const content: NonNullable<AgentModelResponse['anthropicContent']> = [
+      { type: 'thinking', thinking: '', signature: 'opaque-signature/+=' },
+      { type: 'text', text: 'Ready.' },
+      { type: 'tool_use', id: strategy.id, name: strategy.function.name, input: JSON.parse(strategy.function.arguments) },
+    ];
+    vi.spyOn(runtime, 'complete').mockResolvedValueOnce({ content: 'Ready.', finishReason: 'tool_use',
+      toolCalls: [{ ...strategy, type: 'function' }], anthropicContent: content })
+      .mockImplementationOnce(async messages => {
+        expect(messages.find(message => message.role === 'assistant')?.anthropicContent).toEqual(content);
+        expect(messages.at(-1)?.role).toBe('tool');
+        return { content: null, finishReason: 'tool_use', toolCalls: [{ ...final, type: 'function' }] };
+      });
+    expect((await controller.runTask({ prompt: 'Inspect signed round trip', workspace: 'fixture', providerRoute: 'anthropic', reasoningEffort: 'low' })).response)
+      .toBe('signed round trip complete');
+    for (const call of vi.mocked(runtime.complete).mock.calls) expect(call[4]).toMatchObject({ routeId: 'anthropic', reasoningEffort: 'low' });
+  });
+
   it.each([
     ['delivers', { finish_reason: 'stop', message: { content: 'Observed: config read. Inferred: nothing else. Not checked: tests.' } }],
     ['keeps the old failure when the report call fails', undefined],
@@ -281,7 +357,7 @@ describe('native Agent Core controller lifecycle', () => {
     expect(system).toContain('MEMORY ACCESS: you do have persistent Memory');
     expect(system).toContain('Never say you have no memory');
     expect(system).toContain('never force them on a simple turn');
-    const guidance = request.messages.find((message: any) => message.content?.startsWith('NATIVE SKILL GUIDANCE'))?.content ?? '';
+    const guidance = request.messages[0].content.split('NATIVE SKILL GUIDANCE')[1] ?? '';
     expect(guidance).toContain('Simple conversation');
     expect(guidance).toContain('Skipping is correct there, never a violation');
     expect(guidance).not.toContain('At each task and material change');

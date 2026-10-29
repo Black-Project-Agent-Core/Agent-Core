@@ -178,6 +178,7 @@ async function handleRequest(
         sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'GET' });
         return;
       }
+      await chat.refreshProviderCapabilities();
       sendJson(response, 200, { providers: chat.listProviders() });
       return;
     }
@@ -218,9 +219,19 @@ async function handleRequest(
         sendJson(response, 400, { error: 'invalid_agent_chat_provider' });
         return;
       }
+      const model = body.model;
       if (body.goalMode !== undefined && typeof body.goalMode !== 'boolean') {
         sendJson(response, 400, { error: 'invalid_agent_chat_goal_mode' });
         return;
+      }
+      if (model !== undefined) {
+        try { chat.validateProviderModel(model, providerId || undefined); }
+        catch (error) { sendJson(response, 400, { error: error instanceof Error ? error.message : 'invalid_agent_chat_model' }); return; }
+      }
+      const reasoningEffort = body.reasoningEffort;
+      if (reasoningEffort !== undefined) {
+        try { chat.validateReasoningEffort(reasoningEffort, providerId || undefined, model as string | undefined); }
+        catch (error) { sendJson(response, 400, { error: error instanceof Error ? error.message : 'invalid_agent_chat_reasoning' }); return; }
       }
       const evaluation = body.evaluation === undefined ? undefined : nativeMemoryEvaluationSchema.safeParse(body.evaluation);
       if (evaluation && !evaluation.success) {
@@ -242,6 +253,8 @@ async function handleRequest(
           ...(originHeader === 'external-controller' ? { messageOrigin: 'external-controller' as const } : {}),
           ...(body.goalMode === true ? { goalMode: true } : {}),
           ...(providerId && providerId !== 'auto' ? { providerRoute: providerId } : {}),
+          ...(model !== undefined ? { providerModel: model as string } : {}),
+          ...(reasoningEffort ? { reasoningEffort: reasoningEffort as import('../agent-provider-state.js').AgentReasoningEffort } : {}),
           ...(evaluation?.success ? { evaluation: evaluation.data } : {}),
           eventSink: async event => { writeLine({ type: 'event', event }); },
         });

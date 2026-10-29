@@ -1,0 +1,50 @@
+# Anthropic Native model selection
+
+Date: 2026-10-29 (Asia/Tomsk)
+Status: implemented and resident active. Focused tests, production builds, all three new-model tool probes and a Native Haiku turn with durable model-intent readback passed. Canonical Memory and Learning finalization are separate from product acceptance.
+
+## User scope and source evidence
+
+The user requested additional Anthropic models in Native Agent Core after approving prompt caching. Caching was completed and independently accepted first; its separate report is [anthropic-prompt-caching.md](anthropic-prompt-caching.md). Existing unrelated local changes and the completed caching implementation are preserved.
+
+An authenticated read-only GET of the original Anthropic `/v1/models` endpoint returned the current general-purpose lineup, including `claude-opus-5-5`, `claude-haiku-5-5`, `claude-fable-5-1` and the existing `claude-sonnet-5-5`. All four advertise adaptive thinking and the five supported effort levels. Bounded metadata evidence: `runtime/tmp/anthropic-model-catalog.json`, publisher `https://api.anthropic.com`, no credential values recorded. [Official model list](https://platform.claude.com/docs/en/api/models/list) and [model overview](https://platform.claude.com/docs/en/models/overview) were checked. Other catalog entries are legacy models and are outside this small addition; they are not advertised as newly supported by this task.
+
+`replica-recon` source/flow mapping is adapted to the verified API integration; `api-and-interface-design` defines the additive optional model field, trust boundaries, default behavior and idempotency contract. `incremental-implementation` separates provider routing checks, durable intent/HTTP integration and UI/launcher acceptance. No third-party source code, new dependency or service was adopted.
+
+## Existing owners and behavior
+
+- The existing single `anthropic` route advertises the four configured choices. It retains its credential pool, quota/error scopes and sticky cursor. Omitted model keeps `ANTHROPIC_MODEL` (currently Sonnet 5.5); no fallback silently replaces an explicit choice.
+- Native UI adds an Anthropic model selector populated from backend IDs. The empty choice means the configured default. Model choice is UI-session state; changing providers or removing a model from the advertised list resets it. Busy/resumable controls remain locked.
+- The launcher forwards optional `model` through the existing authenticated turn HTTP route. HTTP validates the model/provider pair before dispatch; no external MCP tool schema was expanded.
+- Internally, `providerModel` is the requested model; optional `chat_turns.requested_model` and checkpoint `providerModel` preserve immutable intent separately from the resolved response model. Changed-model retries conflict, old rows/checkpoints remain readable, and resume retains the original choice.
+- Only the configured choices can be requested. The normal model lookup/tool-probe owner qualifies the selected model/key before ordinary completion. Readiness probes remain uncached; normal requests retain the completed Anthropic prompt-caching behavior.
+- Reasoning levels shown in UI follow confirmed selected-model metadata. An unqualified model starts with Auto; the existing provider refresh exposes supported levels after qualification. The existing readiness cache retains the current model proof per credential, so switching models may requalify that key. No cache migration or second readiness owner was introduced. A supplied effort is always checked against actual readiness before ordinary completion.
+
+## Verification
+
+- Provider slice: 40/40 tests passed, including explicit Opus/Haiku/Fable selection, default preservation and unknown/provider-mismatched model rejection before dispatch.
+- UI: 22/22 focused tests across App and NativeChatReliability passed. Four other UI fixture literals gained the required empty model state.
+- Launcher: 4/4 focused AgentChatReasoningTransportTests passed using the existing project-local .NET SDK and `--no-restore`.
+- Final backend integration: 141/141 passed across seven files, including requested-model storage/reload/replay, controller completion options and durable model intent, startup recovery, default preservation and credential-pool regressions. JSON: `runtime/tmp/anthropic-model-selection-tests.json`.
+- HTTP boundary: 8/8 passed, including null/non-string/unknown/provider-mismatched model rejection before dispatch and omitted-model compatibility. JSON: `runtime/tmp/anthropic-model-http-tests.json`.
+- UI production typecheck: `npm run typecheck` passed, including updated callers/fixtures.
+- Independent source review found no actionable model-selection/replay/resume defect. Static layout review confirmed the existing shrinking selectors and narrow-window hint behavior; actual WebView rendering has not been inspected.
+- Production Core and UI builds passed, with path/Skill ownership/structure checks. UI output uses `index-C18AOMqh.js` and `index-CPfsyr0g.css`. Launcher Release win-x64 self-contained single-file publish passed using the existing local SDK and `--no-restore`.
+- Staging verified that the unarmed prior pending executable exactly matched the active executable (`df2eff55…`), then copied and verified the new candidate SHA-256 `e2aeda288c49c47fdc71277536da0ccaa03f8482dff090b07b8784ee2c565e69` in the existing pending home and wrote its checksum marker. Evidence: `runtime/tmp/anthropic-model-build.json`. Existing activation owns backup/replacement; no manual active-executable overwrite occurred.
+- Exactly one official restart for this model-selection addition used `restart_agent_core(capabilitiesChanged=false)`. Worker `689d69a1293646ffab68ba7ad1ff54e4` exited 0 and retained the previous executable under the existing launcher backup owner. Its readiness sample timed out; this was not treated as success. Independent subsequent HTTP health returned `ok`, Core PID `12148`, `build.stale=false`, Native available/zero issues and canonical Memory available/zero issues. Active executable SHA-256 equals the staged candidate above, and the pending checksum marker was consumed. Evidence: `runtime/tmp/anthropic-model-resident.json`. The earlier caching task had its own separate official restart.
+- Limited live adapter acceptance made one actual tool call for each new model. Opus 5.5, Haiku 5.5 and Fable 5.1 each returned the exact requested model ID and the required tool nonce. Elapsed request durations were 2,554 ms, 814 ms and 1,623 ms respectively. Evidence: `runtime/tmp/anthropic-model-tools-live.json`. These single samples establish access/tool transport, not comparative speed or quality.
+- Native acceptance used the resident-authenticated HTTP path with an explicit `claude-haiku-5-5` override. Conversation `fdedc97b-62e4-4720-b394-01701ab13ed5`, turn `50322c95-b0db-4bfa-9868-b43e50811fb6`, finalized on Haiku with answer `42`, one model call and zero ordinary tools. Authenticated conversation readback retained both `requestedModel` and resolved `model` as Haiku, plus finalized status and completed Native Learning. The resident also advertised all four model choices while preserving Sonnet as default.
+- The initial Native harness required the entire final response to equal `42`; the host's existing `appendNativeSkillNotices` behavior appended a pending Skill reminder, so this assertion failed. The original failure remains in `runtime/tmp/anthropic-model-native-live.json`. Source inspection and an independent saved-result assertion confirmed the first answer paragraph, notice marker, model identity and persisted intent; `runtime/tmp/anthropic-model-native-recheck.json` passed without another inference or turn replay. Measured Native durations: model 6,321 ms, recall 21,085 ms, overall authenticated turn 63,264 ms. These are separate nonstreaming durations, not TTFT. Cache accounting was also persisted: write 16,465, read 0, with both observation counts equal to one.
+- Workflow-use receipt limitation: the host rejected `api-and-interface-design` receipt attribution with `EXTERNAL_RECEIPT_REVISION_NOT_DELIVERED`, including after a full digest-bound reread returned `nextOffset=null`. The workflow was concretely applied to the contract and tests above, but no successful host receipt or measured benefit is claimed.
+
+## Limits and rollback
+
+Catalog availability is distinct from a completed inference/tool call. Actual model/key access remains subject to runtime qualification and provider availability; report resident acceptance separately. A cache miss on a model change is normal. This task makes no price, speed, quality or cumulative-intelligence improvement claim.
+
+Actual WebView rendering and live Native turns on Opus/Fable were not exercised. Their adapter tool calls, focused UI/HTTP/launcher contracts and provider-routing tests passed. The existing readiness store may perform another qualification when switching models. The preexisting intermittent health timeout was observed during activation; the later bounded resident health sample was fully available.
+
+Use the default model option to return to the configured Sonnet route. The additive database/checkpoint fields preserve old state; do not reset chat, provider or Memory storage. Release version, Git publication, credentials and unrelated settings remain outside scope.
+
+## Action ledger
+
+Changes reach the existing provider/config, Native controller/chat/store/checkpoint/HTTP owners, UI and launcher transport, focused tests/fixtures, `docs/CODEBASE.md` and one pending minor changeset `.changeset/anthropic-model-selection.md`. Build artifacts and bounded verification evidence use existing homes. No dependency installation, credential/configuration edit, product-version bump, release application, Git commit or push was performed. Existing unrelated user work was preserved. Recovery was limited to read-only evidence parsing and correcting the acceptance assertion for existing host-added notices; production behavior was not changed to hide a failed check.

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
 import { createHttpHandler } from '../src/http/app.js';
 import { HttpSecurityPolicy } from '../src/http/security-policy.js';
+import { validateAgentProviderModel } from '../src/agent-provider.js';
 
 const roots: string[] = [];
 const servers: Server[] = [];
@@ -72,6 +73,9 @@ async function setup() {
       };
     }),
     listProviders: vi.fn(() => [{ id: 'atria', model: 'Atria-Dawn', configured: true, available: true }]),
+    refreshProviderCapabilities: vi.fn(async () => undefined),
+    validateProviderModel: vi.fn((model: unknown, providerId?: string) =>
+      validateAgentProviderModel(model, providerId, ['claude-sonnet-5-5', 'claude-opus-5-5'])),
     stopTurn: vi.fn(() => true),
     archiveConversation: vi.fn(async () => undefined),
   };
@@ -93,6 +97,23 @@ async function setup() {
 }
 
 describe('launcher-only native agent HTTP transport', () => {
+  it('validates an explicit model before dispatch and forwards it without changing omitted defaults', async () => {
+    const { baseUrl, agentChat } = await setup();
+    const send = (body: object) => fetch(`${baseUrl}/agent/chat/conversations/conversation-1/turns`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-agent-core-ui-token': 'fixture-ui-token' },
+      body: JSON.stringify({ clientRequestId: 'model-http', prompt: 'Fixture', ...body }),
+    });
+    for (const body of [{ providerId: 'anthropic', model: null }, { providerId: 'anthropic', model: 4 },
+      { providerId: 'anthropic', model: '../model' }, { providerId: 'anthropic', model: 'unknown' },
+      { providerId: 'auto', model: 'claude-opus-5-5' }]) expect((await send(body)).status).toBe(400);
+    expect(agentChat.runTurn).not.toHaveBeenCalled();
+    const selected = await send({ providerId: 'anthropic', model: 'claude-opus-5-5' });
+    expect(selected.status).toBe(200); await selected.text();
+    expect(agentChat.runTurn).toHaveBeenLastCalledWith(expect.objectContaining({ providerRoute: 'anthropic', providerModel: 'claude-opus-5-5' }));
+    await (await send({ providerId: 'anthropic' })).text();
+    expect(agentChat.runTurn.mock.calls.at(-1)![0]).not.toHaveProperty('providerModel');
+  });
+
   it('binds the external origin header and rejects callers claiming local operator origin', async () => {
     const { baseUrl, agentChat } = await setup();
     const send = (origin: string) => fetch(`${baseUrl}/agent/chat/conversations/conversation-1/turns`, {
@@ -242,6 +263,7 @@ describe('launcher-only native agent HTTP transport', () => {
     const listed = await fetch(`${baseUrl}/agent/chat/providers`, { headers: { 'x-agent-core-ui-token': 'fixture-ui-token' } });
     expect(listed.status).toBe(200);
     expect(await listed.json()).toEqual({ providers: [{ id: 'atria', model: 'Atria-Dawn', configured: true, available: true }] });
+    expect(agentChat.refreshProviderCapabilities).toHaveBeenCalledTimes(1);
 
     const turn = (providerId: unknown) => fetch(`${baseUrl}/agent/chat/conversations/conversation-1/turns`, {
       method: 'POST',

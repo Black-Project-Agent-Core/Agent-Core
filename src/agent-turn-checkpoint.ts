@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { AgentCapabilityFamily } from './agent-capability-catalog.js';
-import type { AgentModelMessage, AgentModelToolCall } from './agent-provider.js';
-import { redactSensitiveString } from './security/redaction.js';
+import { validateAgentReasoningEffort, validateAgentProviderModel, validateAnthropicContent, type AgentModelMessage, type AgentModelToolCall } from './agent-provider.js';
+import type { AgentReasoningEffort } from './agent-provider-state.js';
+import { redactSensitiveString, redactSensitiveValue } from './security/redaction.js';
 import { boundedMessages, type AgentCompactionRecord } from './agent-context-compaction.js';
 import { normalizeMemoryUse, type AgentMemoryUse } from './agent-memory-use.js';
 import { nativeMemoryEvaluationSchema, normalizeNativeResultMetadata,
@@ -70,6 +71,8 @@ export interface AgentTurnCheckpointState {
   workspace?: string;
   /** Route the owner chose for this turn; absent means automatic rotation. A resumed turn stays on it. */
   providerRoute?: string;
+  providerModel?: string;
+  reasoningEffort?: AgentReasoningEffort;
   memoryEvaluation?: NativeMemoryEvaluation;
   providerWait?: { reason: 'attempt-budget' | 'unavailable' | 'contention'; retryAtMs: number | null; pausedAtMs: number };
   /** Bounded, secret-free provider routing evidence (JSON lines) that survives attempt windows and restarts. */
@@ -146,15 +149,23 @@ function validateMessage(raw: unknown): AgentModelMessage {
   if (!['system', 'user', 'assistant', 'tool'].includes(value.role)) {
     throw new Error('AGENT_CHAT_CHECKPOINT_MESSAGE_ROLE_INVALID');
   }
+  if (value.anthropicContent !== undefined && value.role !== 'assistant') {
+    throw new Error('AGENT_CHAT_CHECKPOINT_MESSAGE_ROLE_INVALID');
+  }
+  if (value.cacheControl !== undefined && (value.role !== 'system' || value.cacheControl?.type !== 'ephemeral'
+    || Object.keys(value.cacheControl).length !== 1)) throw new Error('AGENT_CHAT_CHECKPOINT_CACHE_CONTROL_INVALID');
   const content = value.content === null ? null : safeString(value.content, 200_000);
   return {
     role: value.role,
     content,
+    ...(value.cacheControl ? { cacheControl: { type: 'ephemeral' as const } } : {}),
     ...(value.tool_call_id ? { tool_call_id: safeString(value.tool_call_id, 200) } : {}),
     ...(value.name ? { name: safeString(value.name, 200) } : {}),
     ...(Array.isArray(value.tool_calls)
       ? { tool_calls: value.tool_calls.slice(0, 32).map(validateToolCall) }
       : {}),
+    ...(value.anthropicContent !== undefined
+      ? { anthropicContent: validateAnthropicContent(value.anthropicContent) } : {}),
   };
 }
 export function serializeAgentTurnCheckpoint(
@@ -169,12 +180,19 @@ export function serializeAgentTurnCheckpoint(
       content: typeof message.content === 'string'
         ? redactSensitiveString(message.content)
         : message.content,
+      // Signed opaque thinking stays exact; unsigned text/tool inputs follow checkpoint redaction.
+      ...(message.anthropicContent ? { anthropicContent: message.anthropicContent.map(block =>
+        block.type === 'text' ? { ...block, text: redactSensitiveString(block.text) }
+          : block.type === 'tool_use' ? { ...block, input: redactSensitiveValue(block.input) as Record<string, unknown> }
+            : block) } : {}),
       ...(message.tool_calls ? {
         tool_calls: message.tool_calls.map(call => ({
           ...call,
           function: {
             ...call.function,
-            arguments: redactSensitiveString(call.function.arguments),
+            arguments: message.anthropicContent
+              ? JSON.stringify(redactSensitiveValue(JSON.parse(call.function.arguments)))
+              : redactSensitiveString(call.function.arguments),
           },
         })),
       } : {}),
@@ -277,11 +295,15 @@ export function normalizeAgentTurnCheckpoint(raw: unknown): AgentTurnCheckpointS
     ...(value.finalResult.memoryUse ? { memoryUse: normalizeMemoryUse(value.finalResult.memoryUse) } : {}),
   } : undefined;
 
+  validateAgentReasoningEffort(value.reasoningEffort, value.providerRoute);
+  validateAgentProviderModel(value.providerModel, value.providerRoute);
   return {
     schemaVersion: AGENT_TURN_CHECKPOINT_SCHEMA_VERSION,
     conversationId, turnId, runtimeTaskId, runtimeSessionId, prompt,
     ...(value.workspace ? { workspace: safeString(value.workspace, 200) } : {}),
     ...(value.providerRoute ? { providerRoute: safeString(value.providerRoute, 100) } : {}),
+    ...(value.providerModel ? { providerModel: value.providerModel } : {}),
+    ...(value.reasoningEffort ? { reasoningEffort: value.reasoningEffort } : {}),
     ...(value.memoryEvaluation ? { memoryEvaluation: nativeMemoryEvaluationSchema.parse(value.memoryEvaluation) } : {}),
     ...(value.providerWait ? { providerWait: {
       reason: ['attempt-budget', 'unavailable', 'contention'].includes(value.providerWait.reason)

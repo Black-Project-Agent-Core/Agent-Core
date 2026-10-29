@@ -50,7 +50,8 @@ function seed(store: AgentChatStore, overrides: Partial<AgentTurnCheckpointState
   };
   const begun = store.beginTurn({ conversationId: state.conversationId, turnId: state.turnId,
     clientRequestId: 'request-' + state.turnId, runtimeTaskId: state.runtimeTaskId,
-    userMessageId: 'user-' + state.turnId, prompt: state.prompt, executorToken: 'old-executor' });
+    userMessageId: 'user-' + state.turnId, prompt: state.prompt, executorToken: 'old-executor', reasoningEffort: state.reasoningEffort,
+    requestedModel: state.providerModel });
   const serialized = serializeAgentTurnCheckpoint(state);
   store.saveCheckpoint({ turnId: state.turnId, claim: begun.claim!, expectedRevision: 0,
     schemaVersion: 1, phase: 'model-ready', payloadJson: serialized.json, payloadDigest: serialized.digest });
@@ -109,6 +110,21 @@ describe('Native chat durable response ownership', () => {
       ]);
     });
 
+    it('refreshes model capabilities before listing but waits no longer than its bound for a slow provider', async () => {
+      const f = await fixture();
+      (f.runtime as any).refreshModelCapabilities = vi.fn(() => new Promise<void>(() => {}));
+      vi.useFakeTimers();
+      try {
+        const settled = vi.fn();
+        const refreshing = f.chat.refreshProviderCapabilities().then(settled);
+        await vi.advanceTimersByTimeAsync(4_000);
+        expect(settled).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1_000);
+        await refreshing;
+        expect((f.runtime as any).refreshModelCapabilities).toHaveBeenCalledTimes(1);
+      } finally { vi.useRealTimers(); }
+    });
+
     it('passes the chosen route to the controller and keeps automatic rotation when none is chosen', async () => {
       const f = await fixture();
       (f.runtime as any).providerHealth = vi.fn(() => ({ configured: true, routes }));
@@ -161,11 +177,13 @@ describe('Native chat durable response ownership', () => {
 describe('Native startup checkpoint recovery', () => {
   it('parks the safe turn at startup, then continues it on explicit Continue with consumed budgets and publishes a single committed result', async () => {
     const f = await fixture();
-    const state = seed(f.store);
+    const state = seed(f.store, { providerRoute: 'anthropic', providerModel: 'claude-opus-5-5', reasoningEffort: 'high' });
     f.controller.runConversationTurn.mockImplementation(async (input: any) => {
       expect(input.continuation.state.runtimeTaskId).toBe(state.runtimeTaskId);
       expect(input.continuation.state.providerAttemptsConsumed).toBe(2);
       expect(input.continuation.state.nextIteration).toBe(2);
+      expect(input.continuation.state.reasoningEffort).toBe('high');
+      expect(input.continuation.state.providerModel).toBe('claude-opus-5-5');
       return f.result;
     });
     const chat = await AgentChatService.initialize(f.root, f.runtime as any, f.controller as any);
@@ -180,7 +198,7 @@ describe('Native startup checkpoint recovery', () => {
     expect(chat.store.getTurn('turn-1')?.status).toBe('finalized');
     expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(1);
     expect(chat.getConversation('chat-1')!.messages.filter(m => m.role === 'assistant')).toHaveLength(1);
-    const replay = await chat.runTurn({ conversationId: 'chat-1', clientRequestId: 'request-turn-1', prompt: 'Duplicate' });
+    const replay = await chat.runTurn({ conversationId: 'chat-1', clientRequestId: 'request-turn-1', prompt: 'Duplicate', providerModel: 'claude-opus-5-5', reasoningEffort: 'high' });
     expect(replay.replayed).toBe(true);
     expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(1);
   });

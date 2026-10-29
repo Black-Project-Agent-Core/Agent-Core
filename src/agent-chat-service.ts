@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { AgentProviderPoolPausedError, type AgentModelMessage } from './agent-provider.js';
+import { AgentProviderPoolPausedError, validateAgentReasoningEffort, validateAgentProviderModel, type AgentModelMessage } from './agent-provider.js';
+import type { AgentReasoningEffort } from './agent-provider-state.js';
 import { normalizeNativeResultMetadata } from './agent-memory-evaluation.js';
 import {
   parseAgentTurnCheckpoint,
@@ -324,16 +325,42 @@ export class AgentChatService {
   }
 
   /** What the owner needs to pick a route: stable id, model and whether it can answer now. Never keys or URLs. */
-  listProviders(): Array<{ id: string; model: string | null; configured: boolean; available: boolean; retryAt?: string; issue?: string }> {
+  listProviders(): Array<{ id: string; model: string | null; configured: boolean; available: boolean; retryAt?: string; issue?: string; reasoningEfforts?: AgentReasoningEffort[]; models?: Array<{ id: string; reasoningEfforts: AgentReasoningEffort[] }> }> {
     const routes = (this.runtime as any).providerHealth?.()?.routes ?? [];
     return routes.map((route: any) => ({
       id: String(route.id),
       model: typeof route.model === 'string' ? route.model : null,
       configured: route.configured === true,
+      ...(route.id === 'anthropic' ? { reasoningEfforts: route.reasoningEfforts ?? [] } : {}),
+      ...(route.id === 'anthropic' ? { models: route.models ?? [] } : {}),
       available: route.configured === true && (route.activeKeyCount ?? route.keyCount ?? 0) > 0 && route.breakerState !== 'OPEN',
       ...(typeof route.nextAvailableAt === 'string' && route.configured === true && route.breakerState === 'OPEN' ? { retryAt: route.nextAvailableAt } : {}),
       ...(typeof route.issue === 'string' && route.configured !== true ? { issue: route.issue } : {}),
     }));
+  }
+
+  /** Resolves the catalog levels of models that have not run a turn yet; a slow provider delays the list by at most the bound. */
+  async refreshProviderCapabilities(): Promise<void> {
+    const boundMs = 5_000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.resolve((this.runtime as any).refreshModelCapabilities?.()).catch(() => undefined),
+        new Promise<void>(resolve => { timer = setTimeout(resolve, boundMs); }),
+      ]);
+    } finally { clearTimeout(timer); }
+  }
+
+  validateProviderModel(value: unknown, providerRoute?: string): void {
+    validateAgentProviderModel(value, providerRoute, this.listProviders().find(route => route.id === providerRoute)?.models?.map(model => model.id) ?? []);
+  }
+
+  validateReasoningEffort(value: unknown, providerRoute?: string, providerModel?: string): void {
+    if (value === undefined) return;
+    const route = this.listProviders().find(route => route.id === providerRoute);
+    const selectedEfforts = providerModel ? route?.models?.find(model => model.id === providerModel)?.reasoningEfforts : undefined;
+    validateAgentReasoningEffort(value, providerRoute, providerModel
+      ? selectedEfforts?.length ? selectedEfforts : undefined : route?.reasoningEfforts ?? []);
   }
 
   async runTurn(input: {
@@ -344,17 +371,22 @@ export class AgentChatService {
     goalMode?: boolean;
     /** Owner-chosen route id from listProviders(); omitted means automatic rotation. */
     providerRoute?: string;
+    providerModel?: string;
+    reasoningEffort?: AgentReasoningEffort;
     eventSink?: AgentChatEventSink;
     evaluation?: NativeAgentTaskResult['evaluation'];
   }): Promise<AgentChatTurnResult> {
     const existing = this.store.getTurnByClientRequestId(input.clientRequestId);
     if (existing) {
-      if (existing.conversationId !== input.conversationId || Boolean(existing.goalMode) !== Boolean(input.goalMode)) {
+      if (existing.conversationId !== input.conversationId || existing.reasoningEffort !== input.reasoningEffort
+        || existing.requestedModel !== input.providerModel || Boolean(existing.goalMode) !== Boolean(input.goalMode)) {
         throw new Error('AGENT_CHAT_CLIENT_REQUEST_CONFLICT');
       }
       return this.replayResult(existing);
     }
     const providerRoute = input.providerRoute?.trim() || undefined;
+    this.validateProviderModel(input.providerModel, providerRoute);
+    this.validateReasoningEffort(input.reasoningEffort, providerRoute, input.providerModel);
     if (providerRoute && !this.listProviders().some(route => route.id === providerRoute && route.configured)) {
       throw new Error('AGENT_CHAT_PROVIDER_ROUTE_UNKNOWN');
     }
@@ -388,6 +420,8 @@ export class AgentChatService {
       prompt: input.prompt,
       executorToken,
       messageOrigin: localOperator ? 'local-operator' : 'external-controller',
+      reasoningEffort: input.reasoningEffort,
+      requestedModel: input.providerModel,
       goalMode: input.goalMode,
     });
     if (!begun.created) return this.replayResult(begun.turn);
@@ -443,6 +477,8 @@ export class AgentChatService {
         prompt: input.prompt,
         workspace: conversation.workspace,
         ...(providerRoute ? { providerRoute } : {}),
+        ...(input.providerModel ? { providerModel: input.providerModel } : {}),
+        ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
         history: historyMessages(history),
         ...(boundedContext.summary ? { historySummary: boundedContext.summary } : {}),
         memoryQuery: buildMemoryQuery(input.prompt, history),
@@ -577,6 +613,7 @@ export class AgentChatService {
 
     const loaded = await this.loadResumableCheckpoint(turn);
     if (this.pauseRequestedTurns.has(turn.id)) return { ...this.replayResult(turn), replayed: false };
+    if (loaded.state.reasoningEffort !== turn.reasoningEffort || loaded.state.providerModel !== turn.requestedModel) throw new Error('AGENT_RUNTIME_CONTINUATION_IDENTITY_MISMATCH');
     if (this.automaticRecoveryPaused) return { ...this.replayResult(turn), replayed: false };
     if (loaded.state.providerWait && (loaded.state.providerAttemptsConsumed >= loaded.state.maxProviderAttempts
       || (loaded.state.providerWait.retryAtMs !== null && loaded.state.providerWait.retryAtMs > Date.now()))) {

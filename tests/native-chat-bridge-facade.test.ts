@@ -4,6 +4,7 @@ import { nativeChatBridgeSchema, registerNativeChatBridgeTool, runNativeChatBrid
 import { createHttpHandler } from '../src/http/app.js';
 import { HttpSecurityPolicy } from '../src/http/security-policy.js';
 import { writeFile } from 'node:fs/promises';
+import { validateAgentReasoningEffort } from '../src/agent-provider.js';
 
 async function backend(handler: Parameters<typeof createServer>[0]) {
   const server = createServer(handler);
@@ -15,6 +16,29 @@ async function backend(handler: Parameters<typeof createServer>[0]) {
 const conversationId = '11111111-1111-4111-8111-111111111111';
 
 describe('external Native chat MCP facade', () => {
+  it('validates HTTP effort before a streaming response or turn and forwards supported values', async () => {
+    const turns:any[]=[];
+    const f=await backend(createHttpHandler({keyStore:{} as any,mcpHandler:async()=>undefined,agentUiToken:'bridge-fixture-secret',
+      security:new HttpSecurityPolicy({publicBaseUrl:null,protectedResourceUrl:null,trustProxy:false,allowedOrigins:[]}),
+      agentChat:{validateReasoningEffort:(value:unknown,route?:string)=>validateAgentReasoningEffort(value,route,['low','high']),
+        runTurn:async(input:any)=>{turns.push(input);return {status:'finalized'};}} as any}));
+    try{
+      const post=(body:any)=>fetch(`http://127.0.0.1:${f.env.AGENT_CORE_PORT}/agent/chat/conversations/${conversationId}/turns`,{
+        method:'POST',headers:{'x-agent-core-ui-token':'bridge-fixture-secret','content-type':'application/json'},
+        body:JSON.stringify({prompt:'Hello',clientRequestId:'effort-http',...body})});
+      for(const body of [{reasoningEffort:'low'},{providerId:'auto',reasoningEffort:'low'},{providerId:'atria',reasoningEffort:'low'},
+        {providerId:'anthropic',reasoningEffort:'max'},{providerId:'anthropic',reasoningEffort:'auto'},
+        {providerId:'anthropic',reasoningEffort:null},{providerId:'anthropic',reasoningEffort:4}]){
+        const response=await post(body);expect(response.status).toBe(400);expect(await response.text()).toContain('AGENT_CHAT_REASONING_');
+      }
+      expect(turns).toHaveLength(0);
+      for(const effort of ['low','high',undefined]){
+        const response=await post({providerId:'anthropic',...(effort?{reasoningEffort:effort}:{})});
+        expect(response.status).toBe(200);await response.text();
+        expect(turns.at(-1)?.reasoningEffort).toBe(effort);
+      }
+    }finally{await f.close();}
+  });
   it('carries external provenance through the HTTP route and refuses an unknown origin header', async () => {
     const turns: any[] = [];
     const f = await backend(createHttpHandler({

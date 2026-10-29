@@ -230,6 +230,7 @@ function normalizeMetrics(raw: unknown, startedAt: string): AgentTaskMetrics {
     artifactUseOutcomes: nonNegative(value.artifactUseOutcomes),
     ...(value.firstHypothesisAt ? { firstHypothesisAt: iso(value.firstHypothesisAt) } : {}),
     ...Object.fromEntries(['recallMs', 'modelMs', 'toolMs', 'modelCalls', 'providerAttempts', 'usageObservedCalls', 'costObservedCalls',
+      'cacheReadObservedCalls', 'cacheWriteObservedCalls', 'cacheReadInputTokens', 'cacheWriteInputTokens',
       'inputTokens', 'outputTokens', 'totalTokens', 'costUsd'].flatMap(key => {
       const number = value[key as keyof AgentTaskMetrics];
       return typeof number === 'number' && Number.isFinite(number) && number >= 0 ? [[key, number]] : [];
@@ -659,6 +660,10 @@ export class AgentRuntimeService {
     return this.provider.health();
   }
 
+  refreshModelCapabilities(): Promise<void> {
+    return this.provider.refreshModelCapabilities();
+  }
+
   async complete(
     messages: AgentModelMessage[],
     tools: AgentModelTool[] = [],
@@ -1017,6 +1022,7 @@ export class AgentRuntimeService {
         task.metrics.firstHypothesisAt = iso(delta.firstHypothesisAt);
       }
       for (const key of ['recallMs', 'modelMs', 'toolMs', 'modelCalls', 'providerAttempts', 'usageObservedCalls', 'costObservedCalls',
+        'cacheReadObservedCalls', 'cacheWriteObservedCalls', 'cacheReadInputTokens', 'cacheWriteInputTokens',
         'inputTokens', 'outputTokens', 'totalTokens', 'costUsd'] as const) {
         const value = delta[key];
         if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {

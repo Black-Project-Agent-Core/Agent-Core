@@ -119,4 +119,45 @@ describe('OpenAI-compatible native agent provider', () => {
     const request = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1].body));
     expect(request.model).toBe('openrouter/free');
   });
+
+  it.each([
+    [undefined, {}],
+    [null, {}],
+    [{}, {}],
+    [{ cached_tokens: 0, cache_write_tokens: 0 }, { cacheReadInputTokens: 0, cacheWriteInputTokens: 0 }],
+    [{ cached_tokens: 5 }, { cacheReadInputTokens: 5 }],
+    [{ cache_write_tokens: 4 }, { cacheWriteInputTokens: 4 }],
+    [{ cached_tokens: 5, cache_write_tokens: 4 }, { cacheReadInputTokens: 5, cacheWriteInputTokens: 4 }],
+    [{ cached_tokens: 5, cache_write_tokens: 7 }, { cacheReadInputTokens: 5, cacheWriteInputTokens: 7 }],
+    [{ cached_tokens: 12 }, { cacheReadInputTokens: 12 }],
+    [{ cache_write_tokens: 12 }, { cacheWriteInputTokens: 12 }],
+  ])('keeps cache counters observational without adding them to prompt totals: %j', async (details, expected) => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ finish_reason: 'stop', message: { content: 'done' } }],
+      usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15, prompt_tokens_details: details },
+    }), { headers: { 'content-type': 'application/json' } })));
+    const result = await new OpenAICompatibleProvider(baseConfig).complete([{ role: 'user', content: 'Hello' }]);
+    expect(result.usage).toEqual({ inputTokens: 12, outputTokens: 3, totalTokens: 15, ...expected });
+  });
+
+  it.each([
+    [{ cached_tokens: -1, cache_write_tokens: 4 }, { cacheWriteInputTokens: 4 }],
+    [{ cached_tokens: 5, cache_write_tokens: -1 }, { cacheReadInputTokens: 5 }],
+    [{ cached_tokens: '5' }, {}],
+    [{ cache_write_tokens: 1.5 }, {}],
+    [{ cached_tokens: true }, {}],
+    [{ cache_write_tokens: null }, {}],
+    [{ cached_tokens: Number.MAX_SAFE_INTEGER + 1 }, {}],
+    [{ cached_tokens: 13 }, {}],
+    [{ cache_write_tokens: 13 }, {}],
+    [{ cached_tokens: 8, cache_write_tokens: 5 }, {}],
+  ])('ignores invalid optional cache counters while completing the request: %j', async (details, expected) => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ finish_reason: 'stop', message: { content: 'done' } }],
+      usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15, prompt_tokens_details: details },
+    }), { headers: { 'content-type': 'application/json' } })));
+    const result = await new OpenAICompatibleProvider(baseConfig).complete([{ role: 'user', content: 'Hello' }]);
+    expect(result.content).toBe('done');
+    expect(result.usage).toEqual({ inputTokens: 12, outputTokens: 3, totalTokens: 15, ...expected });
+  });
 });

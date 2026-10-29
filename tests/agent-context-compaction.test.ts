@@ -130,6 +130,17 @@ describe('turn compaction', () => {
 });
 
 describe('checkpoint message bound', () => {
+  it('keeps the stable cache boundary and dynamic context through compaction and bounding', () => {
+    const prefix: AgentModelMessage[] = [
+      { role: 'system', content: 'Stable instructions', cacheControl: { type: 'ephemeral' } },
+      { role: 'system', content: 'Dynamic memory context' },
+    ];
+    const messages = [...prefix, ...turn(80).slice(1)];
+    const compacted = compactTurnMessages(messages, { prompt: PROMPT, keepRecent: 6 })!;
+    expect(compacted.messages.slice(0, 2)).toEqual(prefix);
+    expect(boundedMessages(messages, 100).slice(0, 2)).toEqual(prefix);
+  });
+
   it('keeps the system block and drops a leading orphan tool result', () => {
     const messages: AgentModelMessage[] = [{ role: 'system', content: 's' }, { role: 'user', content: 'u' },
       ...Array.from({ length: 150 }, (_, index) => group(index)).flat()];

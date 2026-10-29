@@ -1,9 +1,10 @@
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProviderStateStore, secretRevisionDigest } from '../src/agent-provider-state.js';
-import { ProviderModelReadinessService } from '../src/agent-provider-readiness.js';
+import { ProviderModelReadinessService, readinessDigest } from '../src/agent-provider-readiness.js';
 import { AgentProviderRequestError, classifyAgentProviderFailure } from '../src/agent-provider-errors.js';
 import type { AgentModelTool } from '../src/agent-provider.js';
 import { loadConfig } from '../src/config.js';
@@ -41,6 +42,79 @@ function duanyanEntry(id: string, overrides: Record<string, unknown> = {}) {
   };
 }
 describe('automatic per-key model readiness', () => {
+  it('refreshes old Anthropic metadata once and accepts only individually confirmed effort levels', async () => {
+    const { service, store } = await fixture();
+    const selected = { ...route, id: 'anthropic' };
+    store.saveModelReadiness(selected.id, credential.id, readinessDigest(selected, credential), {
+      status: 'ready', model: selected.model, contextWindowTokens: 100_000, maxOutputTokens: 4_096,
+      checkedAtMs: Date.now(), retryAtMs: Date.now()+60_000, reason: 'MODEL_TOOL_PROBE_VERIFIED', source: 'provider-catalog-and-tool-probe',
+    });
+    const fetchMock = vi.fn(async()=>new Response(JSON.stringify({ id: selected.model, max_input_tokens: 100_000, max_tokens: 4_096,
+      capabilities: { effort: { supported: true, low: { supported: true }, high: { supported: false }, max: true } } }), { headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const probe = vi.fn(async (_model, _messages, tools)=>toolResponse(tools));
+    expect((await service.ensure(selected, credential, probe)).reasoningEfforts).toEqual(['low']);
+    expect((await service.ensure(selected, credential, probe)).reasoningEfforts).toEqual(['low']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(probe).toHaveBeenCalledTimes(1);
+    store.saveModelReadiness(selected.id, credential.id, readinessDigest(selected, credential), {
+      status: 'unavailable', model: selected.model, contextWindowTokens: null, maxOutputTokens: null,
+      checkedAtMs: Date.now(), retryAtMs: Date.now()+60_000, reason: 'MODEL_CATALOG_UNAVAILABLE', source: 'provider-catalog-and-tool-probe',
+    });
+    expect((await service.ensure(selected, credential, probe)).status).toBe('unavailable');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it('retains existing readiness cache identity and invalidates only configured workspace changes', () => {
+    const previous = createHash('sha256').update(JSON.stringify([
+      route.baseUrl, route.model, null, secretRevisionDigest(credential.secret),
+    ])).digest('hex');
+    expect(readinessDigest(route, credential)).toBe(previous);
+    expect(readinessDigest({ ...route, workspaceId: 'workspace-a' }, credential)).not.toBe(previous);
+    expect(readinessDigest({ ...route, workspaceId: 'workspace-a' }, credential))
+      .not.toBe(readinessDigest({ ...route, workspaceId: 'workspace-b' }, credential));
+  });
+  it('loads three Anthropic key slots without enabling an empty route or changing explicit routing', () => {
+    expect(loadConfig({ ANTHROPIC_API_KEY_01: '' }).agentRuntime.providers).toEqual([]);
+    const config = loadConfig({ ANTHROPIC_API_KEY_01: 'first', ANTHROPIC_API_KEY_02: 'second',
+      ANTHROPIC_API_KEY_03: 'third', AGENT_CORE_AI_PROVIDER_ORDER: 'anthropic,gonka' }).agentRuntime;
+    expect(config.providers).toEqual([expect.objectContaining({ id: 'anthropic',
+      baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-5-5',
+      credentials: [
+        { id: 'anthropic:01', secret: 'first', ordinal: 1 },
+        { id: 'anthropic:02', secret: 'second', ordinal: 2 },
+        { id: 'anthropic:03', secret: 'third', ordinal: 3 },
+      ] })]);
+    expect(config.providerOrder).toEqual(['anthropic', 'gonka']);
+  });
+
+  it('resolves an Anthropic alias directly and proves tool access using provider-reported capacity', async () => {
+    const { service } = await fixture();
+    const selected = { id: 'anthropic', baseUrl: 'http://127.0.0.1:12345/v1/', model: 'claude-sonnet-5-5', workspaceId: 'workspace-a' };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: 'resolved-model-snapshot',
+      max_input_tokens: 1_000_000, max_tokens: 128_000 }), { headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const probe = vi.fn(async (_model, _messages, tools) => toolResponse(tools));
+    expect(await service.ensure(selected, credential, probe)).toMatchObject({ status: 'ready',
+      model: selected.model, contextWindowTokens: 1_000_000, maxOutputTokens: 128_000 });
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(probe.mock.calls[0]![0]).toBe(selected.model);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(String(url)).toBe('http://127.0.0.1:12345/v1/models/claude-sonnet-5-5');
+    expect(init.headers).toMatchObject({ 'x-api-key': credential.secret, 'anthropic-version': '2023-06-01',
+      'anthropic-workspace-id': 'workspace-a' });
+    expect(init.headers).not.toHaveProperty('authorization');
+  });
+
+  it('does not invent Anthropic capacity when the model catalog omits its limits', async () => {
+    const { service } = await fixture();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ id: 'claude-model' }),
+      { headers: { 'content-type': 'application/json' } })));
+    const probe = vi.fn();
+    expect(await service.ensure({ ...route, id: 'anthropic' }, credential, probe)).toMatchObject({
+      status: 'pending', reason: 'MODEL_CONTEXT_OR_TOOLS_UNPROVEN' });
+    expect(probe).not.toHaveBeenCalled();
+  });
+
   it.each([0, 10])('requalifies cached readiness after a model failure at +%ims without changing the credential or cursor', async delay => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(30_000_000);

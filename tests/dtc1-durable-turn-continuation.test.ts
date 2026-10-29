@@ -204,6 +204,60 @@ describe('DTC-1 durable turn continuation store', () => {
 });
 
 describe('DTC-1 checkpoint integrity and artifacts', () => {
+  it('round trips an explicit Anthropic model without confusing it with the resolved model', () => {
+    const state = checkpoint({ providerRoute: 'anthropic', providerModel: 'claude-opus-5-5', model: 'resolved-opus' });
+    const saved = serializeAgentTurnCheckpoint(state);
+    expect(parseAgentTurnCheckpoint(saved.json, saved.digest)).toMatchObject({ providerModel: 'claude-opus-5-5', model: 'resolved-opus' });
+    expect(() => checkpoint({ providerRoute: 'anthropic', providerModel: '../model' })).toThrow('AGENT_CHAT_MODEL_INVALID');
+    expect(() => checkpoint({ providerRoute: 'openrouter', providerModel: 'claude-opus-5-5' })).toThrow('AGENT_CHAT_MODEL_PROVIDER_UNSUPPORTED');
+  });
+
+  it('round trips the stable system cache boundary and keeps unmarked legacy context unchanged', () => {
+    const messages: AgentModelMessage[] = [
+      { role: 'system', content: 'Stable instructions and guidance', cacheControl: { type: 'ephemeral' } },
+      { role: 'system', content: 'Changing context' }, { role: 'user', content: 'continue fixture' },
+    ];
+    const serialized = serializeAgentTurnCheckpoint(checkpoint({ messages }));
+    expect(parseAgentTurnCheckpoint(serialized.json, serialized.digest).messages).toEqual(messages);
+    const legacy = checkpoint({ messages: [{ role: 'system', content: 'Legacy instructions\nNATIVE SKILL GUIDANCE\nMemory context' }] });
+    expect(legacy.messages[0]).toEqual({ role: 'system', content: 'Legacy instructions\nNATIVE SKILL GUIDANCE\nMemory context' });
+    for (const message of [{ role: 'user', content: 'x', cacheControl: { type: 'ephemeral' } },
+      { role: 'system', content: 'x', cacheControl: { type: 'persistent' } },
+      { role: 'system', content: 'x', cacheControl: { type: 'ephemeral', ttl: '1h' } }]) {
+      expect(() => checkpoint({ messages: [message as any] })).toThrow('AGENT_CHAT_CHECKPOINT_CACHE_CONTROL_INVALID');
+    }
+  });
+
+  it('retains ordered Anthropic signatures through checkpoint recovery while redacting unsigned content', () => {
+    const serialized = serializeAgentTurnCheckpoint(checkpoint({ messages: [{
+      role: 'assistant', content: 'password=fixture-secret',
+      tool_calls: [{ id: 'call-a', type: 'function', function: { name: 'read_file',
+        arguments: JSON.stringify({ password: 'fixture-secret"escaped', nested: { apiKey: 'second-secret' } }) } }],
+      anthropicContent: [
+        { type: 'thinking', thinking: '', signature: 'opaque-signed-bytes/+=' },
+        { type: 'text', text: 'password=fixture-secret' },
+        { type: 'tool_use', id: 'call-a', name: 'read_file', input: {
+          password: 'fixture-secret"escaped', nested: { apiKey: 'second-secret' } } },
+        { type: 'redacted_thinking', data: 'opaque-redacted-bytes/+=' },
+      ],
+    }] }));
+    expect(serialized.json).not.toContain('fixture-secret');
+    expect(serialized.json).not.toContain('second-secret');
+    const restored = parseAgentTurnCheckpoint(serialized.json, serialized.digest);
+    expect(restored.messages[0]!.anthropicContent).toEqual([
+      { type: 'thinking', thinking: '', signature: 'opaque-signed-bytes/+=' },
+      { type: 'text', text: 'password=[REDACTED]' },
+      { type: 'tool_use', id: 'call-a', name: 'read_file', input: {
+        password: '[REDACTED]', nested: { apiKey: '[REDACTED]' } } },
+      { type: 'redacted_thinking', data: 'opaque-redacted-bytes/+=' },
+    ]);
+    expect(JSON.parse(restored.messages[0]!.tool_calls![0]!.function.arguments)).toEqual(
+      (restored.messages[0]!.anthropicContent![2] as { input: unknown }).input);
+    expect(() => checkpoint({ messages: [{ role: 'assistant', content: null,
+      anthropicContent: [{ type: 'thinking', thinking: 'plaintext' as '', signature: 'signature' }] }] }))
+      .toThrow('AGENT_RUNTIME_PROVIDER_RESPONSE_INVALID');
+  });
+
   it('redacts credential-shaped text and rejects tampering or exhausted budgets', () => {
     const serialized = serializeAgentTurnCheckpoint(checkpoint({
       prompt: 'api_key=super-secret-value',
@@ -449,6 +503,7 @@ describe('DTC-A1/A2 persistent schema and canonical checkpoint state', () => {
     const store = new AgentChatStore(dbPath);
     const detail = store.detail('conversation-1');
     expect(detail?.turns[0]?.id).toBe('turn-1');
+    expect(detail?.turns[0]?.reasoningEffort).toBeUndefined();
     expect(detail?.messages[0]?.content).toBe('legacy prompt');
     const reopened = new DatabaseSync(dbPath);
     const version = reopened.prepare(

@@ -19,8 +19,21 @@ import {
 } from './agent-provider-scheduler.js';
 import type { AgentCapabilityFamily } from './agent-capability-catalog.js';
 import type { AgentCapabilityPolicyMode } from './agent-capability-resolver.js';
-import { MODEL_CONTEXT_INSUFFICIENT_FOR_REQUEST, ProviderModelReadinessService } from './agent-provider-readiness.js';
-import type { ProviderModelReadiness } from './agent-provider-state.js';
+import { MODEL_CONTEXT_INSUFFICIENT_FOR_REQUEST, ProviderModelReadinessService, REASONING_EFFORT_LEVELS } from './agent-provider-readiness.js';
+import type { AgentReasoningEffort, ProviderModelReadiness } from './agent-provider-state.js';
+
+export function validateAgentReasoningEffort(value: unknown, routeId?: string, supported?: readonly AgentReasoningEffort[]): asserts value is AgentReasoningEffort | undefined {
+  if (value === undefined) return;
+  if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(value as string)) throw new Error('AGENT_CHAT_REASONING_EFFORT_INVALID');
+  if (routeId !== 'anthropic') throw new Error('AGENT_CHAT_REASONING_PROVIDER_UNSUPPORTED');
+  if (supported && !supported.includes(value as AgentReasoningEffort)) throw new Error('AGENT_CHAT_REASONING_EFFORT_UNSUPPORTED');
+}
+export function validateAgentProviderModel(value: unknown, routeId?: string, supported?: readonly string[]): asserts value is string | undefined {
+  if (value === undefined) return;
+  if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,239}$/.test(value)) throw new Error('AGENT_CHAT_MODEL_INVALID');
+  if (routeId !== 'anthropic') throw new Error('AGENT_CHAT_MODEL_PROVIDER_UNSUPPORTED');
+  if (supported && !supported.includes(value)) throw new Error('AGENT_CHAT_MODEL_UNAVAILABLE');
+}
 import {
   accountContext, completionCap, contextBytes, contextRefusal, type ContextAccounting, type ObservedContextUsage,
 } from './agent-context-accounting.js';
@@ -43,6 +56,8 @@ export interface AgentProviderRouteConfig {
   id: string;
   baseUrl: string | null;
   model: string | null;
+  workspaceId?: string;
+  models?: string[];
   continuation?: AgentProviderContinuationMetadata;
   credentials?: AgentProviderCredentialConfig[];
   /** Backward-compatible input only. Stable IDs are synthesized in order. */
@@ -53,6 +68,8 @@ export interface AgentProviderConfig {
   baseUrl: string | null;
   model: string | null;
   apiKey: string | null;
+  workspaceId?: string;
+  anthropicPromptCaching?: boolean;
   requestTimeoutMs: number;
   maxToolIterations: number;
   providers?: AgentProviderRouteConfig[];
@@ -72,6 +89,40 @@ export interface AgentModelMessage {
   tool_call_id?: string;
   name?: string;
   tool_calls?: AgentModelToolCall[];
+  anthropicContent?: AgentAnthropicContentBlock[];
+  cacheControl?: { type: 'ephemeral' };
+}
+
+export type AgentAnthropicContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  | { type: 'thinking'; thinking: ''; signature: string }
+  | { type: 'redacted_thinking'; data: string };
+
+export function validateAnthropicContent(value: unknown): AgentAnthropicContentBlock[] {
+  if (!Array.isArray(value) || value.length > 128) throw new Error('AGENT_RUNTIME_PROVIDER_RESPONSE_INVALID');
+  try {
+    if (Buffer.byteLength(JSON.stringify(value)) > 2 * 1024 * 1024) throw new Error();
+  } catch { throw new Error('AGENT_RUNTIME_PROVIDER_RESPONSE_INVALID'); }
+  const ids = new Set<string>();
+  return value.map(block => {
+    if (block?.type === 'text' && typeof block.text === 'string') return { type: 'text', text: block.text };
+    if (block?.type === 'thinking' && block.thinking === '' && typeof block.signature === 'string' && block.signature) {
+      return { type: 'thinking', thinking: '', signature: block.signature };
+    }
+    if (block?.type === 'redacted_thinking' && typeof block.data === 'string' && block.data) {
+      return { type: 'redacted_thinking', data: block.data };
+    }
+    if (block?.type === 'tool_use') {
+      if (typeof block.id !== 'string' || !block.id || block.id !== block.id.trim() || block.id.length > 200 || ids.has(block.id)
+        || typeof block.name !== 'string' || !block.name || block.name !== block.name.trim() || block.name.length > 200
+        || !block.input || typeof block.input !== 'object' || Array.isArray(block.input) || ids.size >= 32
+        || JSON.stringify(block.input).length > 200_000) throw new Error('AGENT_RUNTIME_PROVIDER_TOOL_CALL_INVALID');
+      ids.add(block.id);
+      return { type: 'tool_use', id: block.id, name: block.name, input: block.input };
+    }
+    throw new Error('AGENT_RUNTIME_PROVIDER_RESPONSE_INVALID');
+  });
 }
 
 export interface AgentModelTool {
@@ -96,8 +147,10 @@ export interface AgentModelResponse {
   /** Requested model/alias used for continuation; resolvedModel comes from the response. */
   model?: string;
   resolvedModel?: string | null;
-  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number; costUsd?: number };
+  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number; costUsd?: number;
+    cacheReadInputTokens?: number; cacheWriteInputTokens?: number };
   elapsedMs?: number;
+  anthropicContent?: AgentAnthropicContentBlock[];
 }
 
 export interface AgentProviderRouteHealth {
@@ -114,6 +167,8 @@ export interface AgentProviderRouteHealth {
   nextAvailableAt?: string;
   issue?: string;
   modelReadiness?: { ready: number; pending: number; unavailable: number; models: string[] };
+  reasoningEfforts?: AgentReasoningEffort[];
+  models?: Array<{ id: string; reasoningEfforts: AgentReasoningEffort[] }>;
 }
 
 export interface AgentProviderHealth {
@@ -135,6 +190,8 @@ interface NormalizedProviderRoute {
   id: string;
   baseUrl: string | null;
   model: string | null;
+  workspaceId?: string;
+  models?: string[];
   continuation?: AgentProviderContinuationMetadata;
   credentials: ProviderSchedulerCredential[];
   keyCount: number;
@@ -217,6 +274,8 @@ export interface AgentProviderCompletionOptions {
    * unavailable choice pauses the turn instead of silently answering from another model.
    */
   routeId?: string;
+  model?: string;
+  reasoningEffort?: AgentReasoningEffort;
   continuation?: AgentProviderContinuationRequirement;
   attemptLimit?: number;
   onAttempt?: (observation: {
@@ -241,11 +300,10 @@ export class AgentProviderPoolPausedError extends Error {
 const MAX_PROVIDER_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_PROVIDER_POOL_ATTEMPTS = 18;
 
-function endpoint(config: Pick<AgentProviderConfig, 'baseUrl'>): URL {
+function endpoint(config: Pick<AgentProviderConfig, 'baseUrl'>, providerId?: string): URL {
   if (!config.baseUrl) throw new Error('AGENT_RUNTIME_PROVIDER_BASE_URL_MISSING');
   const parsed = assertCredentialBearingUrl(config.baseUrl, 'AGENT_CORE_AI_BASE_URL');
-  const suffix = parsed.pathname.endsWith('/') ? 'chat/completions' : '/chat/completions';
-  parsed.pathname = `${parsed.pathname.replace(/\/$/, '')}${suffix}`;
+  parsed.pathname = `${parsed.pathname.replace(/\/$/, '')}/${providerId === 'anthropic' ? 'messages' : 'chat/completions'}`;
   parsed.search = '';
   parsed.hash = '';
   return parsed;
@@ -275,10 +333,83 @@ function normalizeCredentialId(value: string, fallback: string): string {
     .slice(0, 120);
   return normalized || fallback;
 }
+
+function anthropicMessages(messages: AgentModelMessage[], caching: boolean) {
+  const system: Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> = [];
+  const turns: Array<{ role: 'user' | 'assistant'; content: Array<Record<string, unknown>> }> = [];
+  for (const message of messages) {
+    if (message.role === 'system') {
+      if (message.content) system.push({ type: 'text', text: message.content,
+        ...(caching && message.cacheControl ? { cache_control: message.cacheControl } : {}) });
+      continue;
+    }
+    const role = message.role === 'assistant' ? 'assistant' : 'user';
+    const content: Array<Record<string, unknown>> = [];
+    if (message.role === 'assistant' && message.anthropicContent) {
+      content.push(...validateAnthropicContent(message.anthropicContent));
+    } else if (message.role === 'tool') {
+      if (!message.tool_call_id) throw new Error('AGENT_RUNTIME_PROVIDER_TOOL_CALL_INVALID');
+      content.push({ type: 'tool_result', tool_use_id: message.tool_call_id, content: message.content ?? '' });
+    } else {
+      if (message.content) content.push({ type: 'text', text: message.content });
+      for (const call of message.tool_calls ?? []) {
+        let input: unknown;
+        try { input = JSON.parse(call.function.arguments); } catch {
+          throw new Error('AGENT_RUNTIME_PROVIDER_TOOL_CALL_INVALID');
+        }
+        if (!call.id || !call.function.name || !input || typeof input !== 'object' || Array.isArray(input)) {
+          throw new Error('AGENT_RUNTIME_PROVIDER_TOOL_CALL_INVALID');
+        }
+        content.push({ type: 'tool_use', id: call.id, name: call.function.name, input });
+      }
+    }
+    if (!content.length) continue;
+    const previous = turns.at(-1);
+    if (previous?.role === role) previous.content.push(...content);
+    else turns.push({ role, content });
+  }
+  return { ...(system.length ? { system: caching ? system : system.map(block => block.text).join('\n\n') } : {}), messages: turns };
+}
+
+function anthropicResponse(payload: any) {
+  if (payload?.type !== 'message' || payload.role !== 'assistant' || !Array.isArray(payload.content)
+    || (payload.stop_reason !== null && typeof payload.stop_reason !== 'string')) {
+    throw new Error('AGENT_RUNTIME_PROVIDER_RESPONSE_INVALID');
+  }
+  const text: string[] = [];
+  const toolCalls: AgentModelToolCall[] = [];
+  const content = validateAnthropicContent(payload.content);
+  for (const block of content) {
+    if (block.type === 'text') text.push(block.text);
+    else if (block.type === 'tool_use') toolCalls.push({ id: block.id, type: 'function',
+      function: { name: block.name, arguments: JSON.stringify(block.input) } });
+  }
+  let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number;
+    prompt_tokens_details: { cached_tokens?: number; cache_write_tokens?: number } } | undefined;
+  if (payload.usage !== undefined) {
+    const counts = [payload.usage?.input_tokens, payload.usage?.output_tokens,
+      payload.usage?.cache_creation_input_tokens ?? 0, payload.usage?.cache_read_input_tokens ?? 0];
+    if (counts.some(value => !Number.isSafeInteger(value) || value < 0)) {
+      throw new Error('AGENT_RUNTIME_PROVIDER_RESPONSE_INVALID');
+    }
+    const input = counts[0] + counts[2] + counts[3];
+    const total = input + counts[1];
+    if (!Number.isSafeInteger(total)) throw new Error('AGENT_RUNTIME_PROVIDER_RESPONSE_INVALID');
+    usage = { prompt_tokens: input, completion_tokens: counts[1], total_tokens: total,
+      prompt_tokens_details: {
+        ...(Number.isSafeInteger(payload.usage.cache_read_input_tokens) ? { cached_tokens: counts[3] } : {}),
+        ...(Number.isSafeInteger(payload.usage.cache_creation_input_tokens) ? { cache_write_tokens: counts[2] } : {}),
+      } };
+  }
+  return { model: payload.model, anthropicContent: content, choices: [{ finish_reason: payload.stop_reason,
+    message: { content: text.length ? text.join('') : null, tool_calls: toolCalls } }], ...(usage ? { usage } : {}) };
+}
+
 export class OpenAICompatibleProvider {
   constructor(
     readonly config: AgentProviderConfig,
     private readonly responseObserver?: ProviderResponseObserver,
+    private readonly providerId?: string,
   ) {}
 
   health(): AgentProviderHealth {
@@ -295,7 +426,7 @@ export class OpenAICompatibleProvider {
       };
     }
     try {
-      endpoint(this.config);
+      endpoint(this.config, this.providerId);
     } catch (error) {
       return {
         provider: 'openai-compatible', configured: false, enabled: true,
@@ -314,23 +445,42 @@ export class OpenAICompatibleProvider {
     tools: AgentModelTool[] = [],
     signal?: AbortSignal,
     probeMaxTokens?: number,
+    reasoningEffort?: AgentReasoningEffort,
   ): Promise<AgentModelResponse> {
+    validateAgentReasoningEffort(reasoningEffort, this.providerId);
     const startedAt = performance.now();
     const health = this.health();
     if (!health.configured || !this.config.model) {
       throw new Error(health.issue ?? 'AGENT_RUNTIME_PROVIDER_NOT_CONFIGURED');
     }
+    const anthropic = this.providerId === 'anthropic';
+    const caching = anthropic && this.config.anthropicPromptCaching !== false;
     const headers: Record<string, string> = { 'content-type': 'application/json' };
-    if (this.config.apiKey) headers.authorization = `Bearer ${this.config.apiKey}`;
-    const response = await fetchWithPolicy(endpoint(this.config), {
+    if (anthropic) {
+      headers['anthropic-version'] = '2023-06-01';
+      // Native changes system/tools and compacts locally; stale bound thinking must not block the next turn.
+      headers['anthropic-beta'] = 'thinking-binding-controls-2026-08-01';
+      if (this.config.apiKey) headers['x-api-key'] = this.config.apiKey;
+      if (this.config.workspaceId) headers['anthropic-workspace-id'] = this.config.workspaceId;
+    } else if (this.config.apiKey) headers.authorization = `Bearer ${this.config.apiKey}`;
+    const response = await fetchWithPolicy(endpoint(this.config, this.providerId), {
       method: 'POST',
       headers,
       body: JSON.stringify({
         model: this.config.model,
-        messages,
-        ...(tools.length ? { tools, tool_choice: 'auto' } : {}),
+        ...(reasoningEffort ? { output_config: { effort: reasoningEffort } } : {}),
+        ...(caching ? { cache_control: { type: 'ephemeral' } } : {}),
+        ...(anthropic ? { ...anthropicMessages(messages, caching), thinking: { type: 'adaptive', display: 'omitted',
+          block_binding: { prefix_mismatch_behavior: 'drop_block' } } }
+          : { messages: messages.map(({ anthropicContent: _anthropicContent, cacheControl: _cacheControl, ...message }) => message) }),
+        ...(tools.length ? {
+          tools: anthropic ? tools.map(tool => ({ name: tool.function.name,
+            ...(tool.function.description ? { description: tool.function.description } : {}),
+            input_schema: tool.function.parameters })) : tools,
+          tool_choice: anthropic ? { type: 'auto' } : 'auto',
+        } : {}),
         stream: false,
-        ...(probeMaxTokens ? { max_tokens: probeMaxTokens } : {}),
+        ...(anthropic || probeMaxTokens ? { max_tokens: probeMaxTokens ?? 4_096 } : {}),
       }),
       ...(signal ? { signal } : {}),
     }, {
@@ -339,7 +489,7 @@ export class OpenAICompatibleProvider {
       timeoutMs: this.config.requestTimeoutMs,
       maxTotalDelayMs: 0,
     });
-    const payload = await readResponseJsonBounded<any>(
+    let payload = await readResponseJsonBounded<any>(
       response, MAX_PROVIDER_RESPONSE_BYTES, 'agent provider response',
     );
     const observation = observeProviderResponse(response, payload);
@@ -357,6 +507,7 @@ export class OpenAICompatibleProvider {
         resetAtMs: observation.resetAtMs,
       });
     }
+    if (anthropic) payload = anthropicResponse(payload);
     const choice = payload?.choices?.[0];
     const message = choice?.message;
     if (!message || typeof message !== 'object') {
@@ -379,9 +530,22 @@ export class OpenAICompatibleProvider {
       ? null
       : String(message.content).slice(0, 200_000);
     const reportedModel = typeof payload.model === 'string' ? payload.model.trim() : '';
+    const cacheUsage: { cacheReadInputTokens?: number; cacheWriteInputTokens?: number } = {};
+    for (const [wire, field] of [['cached_tokens', 'cacheReadInputTokens'], ['cache_write_tokens', 'cacheWriteInputTokens']] as const) {
+      const value = payload.usage?.prompt_tokens_details?.[wire];
+      if (Number.isSafeInteger(value) && value >= 0
+        && (payload.usage?.prompt_tokens === undefined || value <= payload.usage.prompt_tokens)) cacheUsage[field] = value;
+    }
+    if (cacheUsage.cacheReadInputTokens !== undefined && cacheUsage.cacheWriteInputTokens !== undefined
+      && (!Number.isSafeInteger(cacheUsage.cacheReadInputTokens + cacheUsage.cacheWriteInputTokens)
+        || cacheUsage.cacheReadInputTokens + cacheUsage.cacheWriteInputTokens > payload.usage.prompt_tokens)) {
+      delete cacheUsage.cacheReadInputTokens;
+      delete cacheUsage.cacheWriteInputTokens;
+    }
     return {
       content,
       toolCalls,
+      ...(anthropic ? { anthropicContent: payload.anthropicContent as AgentAnthropicContentBlock[] } : {}),
       model: this.config.model,
       resolvedModel: reportedModel && reportedModel !== 'openrouter/free'
         && reportedModel.length <= 240 && !/[\u0000-\u001f\u007f]/.test(reportedModel)
@@ -391,6 +555,7 @@ export class OpenAICompatibleProvider {
         : String(choice.finish_reason).slice(0, 100),
       elapsedMs: Math.max(0, performance.now() - startedAt),
       ...(payload.usage && typeof payload.usage === 'object' ? { usage: {
+        ...cacheUsage,
         ...(Number.isFinite(payload.usage.prompt_tokens) && payload.usage.prompt_tokens >= 0 ? { inputTokens: payload.usage.prompt_tokens } : {}),
         ...(Number.isFinite(payload.usage.completion_tokens) && payload.usage.completion_tokens >= 0 ? { outputTokens: payload.usage.completion_tokens } : {}),
         ...(Number.isFinite(payload.usage.total_tokens) && payload.usage.total_tokens >= 0 ? { totalTokens: payload.usage.total_tokens } : {}),
@@ -436,6 +601,8 @@ function normalizeRoute(route: AgentProviderRouteConfig): NormalizedProviderRout
     id,
     baseUrl: route.baseUrl,
     model: route.model,
+    ...(route.workspaceId?.trim() ? { workspaceId: route.workspaceId.trim() } : {}),
+    ...(route.models ? { models: [...new Set(route.models)].slice(0, 32) } : {}),
     ...(route.continuation ? { continuation: { ...route.continuation, modalities: [...route.continuation.modalities] } } : {}),
     credentials: credentials.length
       ? credentials
@@ -538,9 +705,10 @@ export class OpenAICompatibleProviderPool {
 
   private validateModel(route: NormalizedProviderRoute, credential: { id: string; secret: string }, signal?: AbortSignal, minimumContextTokens?: number): Promise<ProviderModelReadiness> {
     return this.readiness.ensure(route, credential, async (model, messages, tools, probeSignal) => {
-      const provider = new OpenAICompatibleProvider({ ...this.config, baseUrl: route.baseUrl, model, apiKey: credential.secret }, observation => {
+      const provider = new OpenAICompatibleProvider({ ...this.config, baseUrl: route.baseUrl, model, apiKey: credential.secret,
+        workspaceId: route.workspaceId, anthropicPromptCaching: false }, observation => {
         this.scheduler.recordObservation({ providerId: route.id, credentialId: credential.id, model, observation });
-      });
+      }, route.id);
       return provider.complete(messages, tools, probeSignal, 1_024);
     }, signal, minimumContextTokens);
   }
@@ -551,6 +719,17 @@ export class OpenAICompatibleProviderPool {
     const work = this.prepareConfiguredModels().finally(() => { this.readinessPreparation = undefined; });
     this.readinessPreparation = work;
     return work;
+  }
+
+  /** Reads each configured Anthropic model's catalog entry so the picker can offer its effort levels before the first turn. */
+  async refreshModelCapabilities(signal?: AbortSignal): Promise<void> {
+    if (!this.config.enabled) return;
+    for (const route of this.routes.filter(item => item.id === 'anthropic' && endpointHealth(item).configured)) {
+      const keyed = route.credentials.filter(credential => credential.secret);
+      await Promise.allSettled([...new Set([route.model, ...(route.models ?? [])])]
+        .filter((model): model is string => Boolean(model))
+        .map(model => this.readiness.refreshCatalogEfforts({ ...route, model }, keyed, signal)));
+    }
   }
 
   private async prepareConfiguredModels(): Promise<void> {
@@ -598,6 +777,20 @@ export class OpenAICompatibleProviderPool {
           unavailable: readiness.filter(item => item?.status === 'unavailable').length,
           models: [...new Set(readiness.filter(item => item?.status === 'ready').map(item => item!.model!))].slice(0, 12),
         },
+        ...(route.id === 'anthropic' ? { reasoningEfforts: REASONING_EFFORT_LEVELS.filter(level => {
+          const ready = readiness.filter(item => item?.status === 'ready');
+          return ready.length > 0 && ready.every(item => item!.reasoningEfforts?.includes(level));
+        }) } : {}),
+        ...(route.id === 'anthropic' ? { models: [...new Set([route.model, ...(route.models ?? [])])]
+          .filter((model): model is string => Boolean(model)).map(id => {
+            const keyed = route.credentials.filter(credential => credential.secret);
+            const ready = id === route.model ? readiness : this.readiness.readForHealth({ ...route, model: id }, keyed);
+            const qualified = ready.filter(item => item?.status === 'ready' && item.retryAtMs > Date.now());
+            // Readiness holds one row per key, so only the model each key last probed has one; the catalog answers for the rest.
+            return { id, reasoningEfforts: qualified.length > 0
+              ? REASONING_EFFORT_LEVELS.filter(level => qualified.every(item => item!.reasoningEfforts?.includes(level)))
+              : this.readiness.catalogEffortsOf({ ...route, model: id }, keyed) ?? [] };
+          }) } : {}),
         ...(isoOrUndefined(operational.nextAvailableAtMs)
           ? { nextAvailableAt: isoOrUndefined(operational.nextAvailableAtMs)! }
           : {}),
@@ -681,8 +874,9 @@ export class OpenAICompatibleProviderPool {
     continuation?: AgentProviderContinuationRequirement,
     activeProviderId?: string,
     pinnedRouteId?: string,
+    requestedModel?: string,
   ): NormalizedProviderRoute[] {
-    const available = this.routes.filter(route =>
+    const available = this.routes.map(route => requestedModel && route.id === pinnedRouteId ? { ...route, model: requestedModel } : route).filter(route =>
       endpointHealth(route).configured
       && (!pinnedRouteId || route.id === pinnedRouteId)
       && (!continuation || route.keyCount > 0 || this.routeCompatibleWithContinuation(route, continuation)));
@@ -709,6 +903,11 @@ export class OpenAICompatibleProviderPool {
     if (!health.enabled || !health.configured) {
       throw new Error(health.issue ?? 'AGENT_RUNTIME_PROVIDER_NOT_CONFIGURED');
     }
+    const selectedRoute = health.routes?.find(route => route.id === options.routeId);
+    validateAgentProviderModel(options.model, options.routeId, selectedRoute?.models?.map(model => model.id) ?? []);
+    const selectedEfforts = options.model ? selectedRoute?.models?.find(model => model.id === options.model)?.reasoningEfforts : undefined;
+    validateAgentReasoningEffort(options.reasoningEffort, options.routeId, options.model
+      ? selectedEfforts?.length ? selectedEfforts : undefined : selectedRoute?.reasoningEfforts ?? []);
     if (health.issue?.startsWith('AGENT_RUNTIME_PROVIDER_STATE_')) {
       throw new Error(health.issue);
     }
@@ -717,7 +916,7 @@ export class OpenAICompatibleProviderPool {
     if (pinned && !this.routes.some(route => route.id === pinned && endpointHealth(route).configured)) {
       throw new Error('AGENT_RUNTIME_PROVIDER_ROUTE_UNAVAILABLE');
     }
-    if (!this.orderedRoutes(affinityKey, options.continuation, undefined, pinned).length) {
+    if (!this.orderedRoutes(affinityKey, options.continuation, undefined, pinned, options.model).length) {
       throw new Error(pinned ? 'AGENT_RUNTIME_CONTINUATION_ROUTE_INCOMPATIBLE' : options.continuation
         ? 'AGENT_RUNTIME_CONTINUATION_ROUTE_INCOMPATIBLE'
         : 'AGENT_RUNTIME_PROVIDER_NOT_CONFIGURED');
@@ -777,7 +976,7 @@ export class OpenAICompatibleProviderPool {
     ): Promise<AgentProviderPoolPausedError> => {
       if (options.onRouting) {
         const routes: AgentProviderRoutingRoute[] = [];
-        for (const route of this.orderedRoutes(affinityKey, options.continuation, undefined, pinned)) {
+         for (const route of this.orderedRoutes(affinityKey, options.continuation, undefined, pinned, options.model)) {
           const diagnostics = diagnoseRoute(route);
           if (!diagnostics) continue;
           routes.push({
@@ -796,7 +995,7 @@ export class OpenAICompatibleProviderPool {
     while (networkAttempts < maxAttempts) {
         signal?.throwIfAborted();
         const cursor = this.scheduler.readPoolCursor(this.routes.map(route => route.id));
-        const route = this.orderedRoutes(affinityKey, options.continuation, cursor?.providerId, pinned)
+        const route = this.orderedRoutes(affinityKey, options.continuation, cursor?.providerId, pinned, options.model)
           .find(candidate => !exhausted.has(candidate.id));
         if (!route) break;
         const skipped = excluded.get(route.id) ?? new Set<string>();
@@ -901,6 +1100,7 @@ export class OpenAICompatibleProviderPool {
               await emitRouting({ type: 'skip', attempt: attemptNumber, key: attemptKey(route.model), reason: tooLarge ? 'context' : 'readiness' });
               continue;
             }
+            validateAgentReasoningEffort(options.reasoningEffort, route.id, ready.reasoningEfforts ?? []);
             // Qualification may replace a model to satisfy this task's context.
             // Re-select so the replacement's own blocks and quota are checked.
             if ((selected.selection.model ?? route.model) !== ready.model) {
@@ -939,6 +1139,8 @@ export class OpenAICompatibleProviderPool {
             baseUrl: route.baseUrl,
             model: effectiveModel,
             apiKey: selected.secret || null,
+            workspaceId: route.workspaceId,
+            anthropicPromptCaching: this.config.anthropicPromptCaching,
             requestTimeoutMs: this.config.requestTimeoutMs,
             maxToolIterations: this.config.maxToolIterations,
           }, observation => {
@@ -948,10 +1150,10 @@ export class OpenAICompatibleProviderPool {
               model: effectiveModel,
               observation,
             });
-          });
+          }, route.id);
           try {
             const response = await provider.complete(messages, tools, attemptSignal,
-              capacity && accounting ? completionCap(accounting, capacity) : undefined);
+              capacity && accounting ? completionCap(accounting, capacity) : undefined, options.reasoningEffort);
             if (response.usage?.inputTokens) {
               this.observedInput.set(observedKey, { inputTokens: response.usage.inputTokens, bytes: wireBytes });
             }

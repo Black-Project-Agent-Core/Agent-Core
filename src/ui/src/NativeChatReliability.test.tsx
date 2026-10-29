@@ -32,7 +32,39 @@ describe('Native chat progress and durable states', () => {
     expect(screen.queryByLabelText('Anthropic model')).not.toBeInTheDocument();
   });
 
-
+  it('offers only confirmed effort levels, supports keyboard navigation and returns focus', () => {
+    const input=props();
+    input.agentChat.providerChoice='anthropic';
+    input.agentChat.reasoningChoice='auto';
+    input.agentChat.providers=[{id:'anthropic',model:'fixture',configured:true,available:true,reasoningEfforts:['low','high']}];
+    input.onChatReasoning=vi.fn();
+    const view=render(<ChatPage {...input}/>);
+    const trigger=screen.getByRole('button',{name:'Reasoning: Auto'});
+    fireEvent.keyDown(trigger,{key:'ArrowDown'});
+    expect(screen.getAllByRole('menuitemradio').map(item=>item.textContent)).toEqual(['Auto','Low','High']);
+    expect(screen.getByRole('menuitemradio',{name:'Auto'})).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!,{key:'ArrowDown'});
+    expect(screen.getByRole('menuitemradio',{name:'Low'})).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!,{key:'End'});
+    expect(screen.getByRole('menuitemradio',{name:'High'})).toHaveFocus();
+    fireEvent.click(document.activeElement!);
+    expect(input.onChatReasoning).toHaveBeenCalledWith('high');
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole('menu'),{key:'Escape'});
+    expect(trigger).toHaveFocus();
+    input.agentChat.active!.turns[0]!.status='resumable';
+    view.rerender(<ChatPage {...input}/>);
+    expect(trigger).toBeDisabled();
+    input.agentChat.active!.turns[0]!.status='running';
+    view.rerender(<ChatPage {...input}/>);
+    expect(trigger).toBeDisabled();
+    input.agentChat.active!.turns[0]!.status='finalized';
+    input.agentChat.providerChoice='auto';
+    view.rerender(<ChatPage {...input}/>);
+    expect(trigger).toBeDisabled();
+  });
   it('shows a saved response without declaring task verification success', () => {
     render(<ChatPage {...props()}/>);
     expect(screen.getByRole('status')).toHaveTextContent('Response saved');
