@@ -491,6 +491,37 @@ public sealed class MainForm : Form
                 }
                 return;
             }
+            if (type == "agent-skills-list")
+            {
+                try
+                {
+                    var skillsResult = await _runtime.ListNativeSkillsAsync();
+                    Send(new { type = "agent-skills-result", result = skillsResult });
+                }
+                catch (Exception error)
+                {
+                    Send(new { type = "agent-skills-error", error = error.Message });
+                }
+                return;
+            }
+            if (type == "agent-skill-set")
+            {
+                var skillName = root.TryGetProperty("name", out var skillNameNode)
+                    ? skillNameNode.GetString() ?? string.Empty
+                    : string.Empty;
+                var skillEnabled = root.TryGetProperty("enabled", out var skillEnabledNode)
+                    && skillEnabledNode.ValueKind == JsonValueKind.True;
+                try
+                {
+                    await _runtime.SetNativeSkillEnabledAsync(skillName, skillEnabled);
+                    Send(new { type = "agent-skill-set-result", name = skillName, enabled = skillEnabled, ok = true });
+                }
+                catch (Exception error)
+                {
+                    Send(new { type = "agent-skill-set-result", name = skillName, enabled = skillEnabled, ok = false, error = error.Message });
+                }
+                return;
+            }
             if (type == "agent-chat-create")
             {
                 var requestId = root.TryGetProperty("requestId", out var requestNode)

@@ -259,6 +259,22 @@ public sealed class AgentCoreRuntime : IDisposable
         return await SendAgentChatJsonAsync(request);
     }
 
+    /// <summary>Installed Skills with their Native on/off state (GET /agent/skills).</summary>
+    public async Task<JsonElement> ListNativeSkillsAsync()
+    {
+        using var request = CreateAgentChatRequest(HttpMethod.Get, "/agent/skills");
+        return await SendAgentChatJsonAsync(request);
+    }
+
+    /// <summary>Switches one Skill on or off for Native (POST /agent/skills/{name}/native-enabled).</summary>
+    public async Task<JsonElement> SetNativeSkillEnabledAsync(string name, bool enabled)
+    {
+        var id = Uri.EscapeDataString(name);
+        using var request = CreateAgentChatRequest(HttpMethod.Post, $"/agent/skills/{id}/native-enabled");
+        request.Content = new StringContent(JsonSerializer.Serialize(new { enabled }), Encoding.UTF8, "application/json");
+        return await SendAgentChatJsonAsync(request);
+    }
+
     public async Task<JsonElement> CreateAgentConversationAsync(string? workspace = null)
     {
         using var request = CreateAgentChatRequest(HttpMethod.Post, "/agent/chat/conversations");
