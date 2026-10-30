@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/server';
-import { installCredentialToolGrant, credentialAllowsTool } from '../auth/tool-grant.js';
+import { installCallerRequired, installCredentialToolGrant, credentialAllowsTool } from '../auth/tool-grant.js';
 import { installCapabilityObservation } from './capability-observation.js';
 import { CAPABILITY_USE_CONTRACT } from '../capability-awareness.js';
 import { AGENT_CORE_VERSION } from '../version.js';
@@ -26,7 +26,7 @@ import { createImageInspector, imageInspectSchema } from '../rdc/tools/image-ins
 import { toolHistory } from '../rdc/utils/toolHistory.js';
 import { usageTracker } from '../rdc/utils/usageTracker.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
-import { beginToolInvocationEvidence, currentExternalInvocationContext, currentToolInvocationRequest, takeBrowserObservationUse } from '../tracker/tool-invocation.js';
+import { beginToolInvocationEvidence, currentExternalInvocationContext, currentToolCaller, currentToolInvocationRequest, takeBrowserObservationUse, type ToolCaller } from '../tracker/tool-invocation.js';
 import { loadAgentProtocol } from './agent-protocol.js';
 import { InProcessToolHost } from './in-process-tool-host.js';
 import { ControllerContractGate, CONTRACT_INSTRUCTIONS, installControllerContract, type ControllerContractBinding } from './controller-contract.js';
@@ -58,6 +58,12 @@ import {
   type EvidenceCaptureDecision,
 } from '../security/evidence-capture-policy.js';
 
+/**
+ * Native tools that exist only for a task with a registered workspace. A per-task registry leaves them out when the task has
+ * none; the shared registry registers them once, so discovery for a workspace-less task has to leave them out instead.
+ */
+export const WORKSPACE_BOUND_NATIVE_TOOLS: ReadonlySet<string> = new Set(['artifact_inspect', 'reconstruction_harness']);
+
 export const SERVER_NAME = 'agent-core';
 export const SERVER_VERSION = AGENT_CORE_VERSION;
 
@@ -74,6 +80,11 @@ export interface AgentCoreMcpRuntime {
   nativeWorkspace?: string;
   /** A plain in-process registry to register the tools into instead of building an MCP server (Native turns). */
   toolTarget?: unknown;
+  /**
+   * The registry is built once for every Native task: no task, workspace, advisor, image store or grant is fixed at
+   * registration. Each call names its own through the host's `ToolCaller` (`ctx.mcpReq.caller`), and a call without one is refused.
+   */
+  sharedNativeRegistry?: boolean;
   controllerContract?: ControllerContractBinding;
   controllerBootstrap?: string;
   semanticIde?: SemanticIdeService;
@@ -140,7 +151,7 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
     const started = Date.now();
     const input = args ?? {};
     const trackCall = input.origin !== 'ui';
-    const advisor = trackCall ? advisorByServer.get(server) : undefined;
+    const advisor = trackCall ? (ctx?.mcpReq?.caller?.failureLoopAdvisor ?? advisorByServer.get(server)) : undefined;
     const externalLearning = trackCall ? externalLearningByServer.get(server) : undefined;
     const externalSessionId = trackCall ? externalSessionByServer.get(server) : undefined;
     const workspace = typeof input.workspace === 'string' ? input.workspace.trim().slice(0, 120) : undefined;
@@ -290,12 +301,15 @@ const tool = (server: McpServer, name: keyof typeof RDC_TOOL_METADATA, _title: s
 
 export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRuntime = {}): McpServer {
   const memoryOwner = memoryCredentialOwner(key);
+  // A Native registry either has its task fixed at registration (one per task) or reads it from each call (shared).
+  const native = Boolean(runtime.nativeTaskId) || runtime.sharedNativeRegistry === true;
   const browserCaller = JSON.stringify(runtime.nativeTaskId
     ? ['native', runtime.nativeTaskId, runtime.nativeWorkspace]
     : ['external', memoryOwner ?? randomUUID(), runtime.controllerSessionId ?? randomUUID()]);
+  const browserCallerOf = (caller?: ToolCaller) => caller ? JSON.stringify(['native', caller.taskId, caller.workspace]) : browserCaller;
   // Every observer and Learning tool uses the same owner-scoped namespace.
   // Keep the transport helper unchanged: only explicit episodes identify tasks.
-  if (runtime.memoryExperience && !runtime.nativeTaskId && runtime.controllerSessionId && memoryOwner) {
+  if (runtime.memoryExperience && !native && runtime.controllerSessionId && memoryOwner) {
     runtime = { ...runtime, controllerSessionId: ownerScopedLearningSession(memoryOwner, runtime.controllerSessionId) };
   }
   const workspaceRegistry = runtime.memoryExperience ?? runtime.memoryService;
@@ -322,6 +336,7 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     (name === 'image_inspect' || name === 'artifact_inspect')
       ? async (args: any, ctx: any) => applyResultBudget(name, await callback(args, ctx)) as any
       : callback);
+  if (runtime.sharedNativeRegistry) installCallerRequired(server);
   installCredentialToolGrant(server, key);
   if (runtime.failureLoopAdvisor) advisorByServer.set(server, runtime.failureLoopAdvisor);
   if (runtime.externalControllerLearning && runtime.controllerSessionId) {
@@ -332,16 +347,21 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     const callerId = typeof key === 'object' && key !== null && typeof (key as { id?: unknown }).id === 'string'
       ? (key as { id: string }).id
       : 'unknown-caller';
-    installMcpMutationSafety(server, runtime.mutationSafety, callerId);
+    installMcpMutationSafety(server, runtime.mutationSafety, runtime.sharedNativeRegistry
+      ? (ctx: any) => (ctx?.mcpReq?.caller as ToolCaller | undefined)?.principalId ?? callerId
+      : callerId);
   }
   installInvocationContext(server, { external: runtime.externalControllerLearning, sessionId: runtime.controllerSessionId,
     ownerId: memoryOwner, nativeTaskId: runtime.nativeTaskId, checkpointGranted: credentialAllowsTool(key, 'file_checkpoint') });
-  if (!runtime.nativeTaskId) installCapabilityObservation(server, key, runtime.externalControllerLearning, runtime.controllerSessionId);
+  if (!native) installCapabilityObservation(server, key, runtime.externalControllerLearning, runtime.controllerSessionId);
   tool(server, 'get_config', 'Get Configuration', schemas.getConfig, async () => getConfig() as any, true);
   tool(server, 'set_config_value', 'Set Configuration Value', schemas.setConfigValue, setConfigValue as any);
   tool(server, 'read_file', 'Read File or URL', schemas.readFile, handlers.handleReadFile as any, true);
   tool(server, 'image_inspect', 'Inspect Local Image', imageInspectSchema,
-    runtime.imageInspector ?? createImageInspector(), true);
+    runtime.sharedNativeRegistry
+      // The caller's own view store, so a view survives across turns; a caller without one gets views that last one call.
+      ? (args => (currentToolCaller()?.imageInspector ?? createImageInspector())(args))
+      : runtime.imageInspector ?? createImageInspector(), true);
   tool(server, 'read_multiple_files', 'Read Multiple Files', schemas.readMultipleFiles, handlers.handleReadMultipleFiles as any, true);
   tool(server, 'write_file', 'Write File', schemas.writeFile, handlers.handleWriteFile as any);
   tool(server, 'write_pdf', 'Write/Modify PDF', schemas.writePdf, handlers.handleWritePdf as any);
@@ -350,11 +370,11 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
   tool(server, 'move_file', 'Move/Rename File', schemas.moveFile, handlers.handleMoveFile as any);
   tool(server, 'file_checkpoint', 'File Checkpoint', schemas.fileCheckpoint, handlers.handleFileCheckpoint as any);
   tool(server, 'browser_control', 'Browser Control',
-    runtime.nativeTaskId ? schemas.browserControl : schemas.externalBrowserControl,
-    async (args, context) => handlers.handleBrowserControl(args, context, !runtime.nativeTaskId,
-      JSON.stringify([browserCaller, context?.taskId, context?.invocationContext?.workspaceIdentityKey,
+    native ? schemas.browserControl : schemas.externalBrowserControl,
+    async (args, context) => handlers.handleBrowserControl(args, context, !native,
+      JSON.stringify([browserCallerOf(currentToolCaller()), context?.taskId, context?.invocationContext?.workspaceIdentityKey,
         context?.invocationContext?.processSessionId])) as any,
-    false, runtime.nativeTaskId ? undefined : EXTERNAL_BROWSER_DESCRIPTION);
+    false, native ? undefined : EXTERNAL_BROWSER_DESCRIPTION);
 
   tool(server, 'start_search', 'Start Search', schemas.startSearch, handlers.handleStartSearch as any, true);
   tool(server, 'get_more_search_results', 'Get Search Results', schemas.getMoreSearchResults, handlers.handleGetMoreSearchResults as any, true);
@@ -378,7 +398,7 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
   if (runtime.externalControllerLearning && runtime.controllerSessionId) {
     const browserAllowedForController = credentialAllowsTool(key,'browser_control');
     registerControllerLearningTools(server, runtime.externalControllerLearning, runtime.controllerSessionId,
-      runtime.memoryExperience && !runtime.nativeTaskId ? {
+      runtime.memoryExperience && !native ? {
         browserAllowed: browserAllowedForController,
         ownerId: memoryOwner ?? '', workspaceIdentity: workspace => {
           if (!workspaceRegistry) throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
@@ -397,16 +417,16 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.memoryExperience ? resolveMemoryScope : undefined,
   );
   if (runtime.memoryExperience) registerMemoryExperienceTools(server, runtime.memoryExperience, resolveMemoryScope,
-    !runtime.nativeTaskId && runtime.externalControllerLearning && runtime.controllerSessionId
+    !native && runtime.externalControllerLearning && runtime.controllerSessionId
       ? async hits => {
         const context=currentExternalInvocationContext();
         if (context?.binding !== 'bound') return;
         await runtime.externalControllerLearning!.recordV2MemoryRecall(runtime.controllerSessionId!, hits, context);
       } : undefined,
-    !runtime.nativeTaskId && runtime.externalControllerLearning && runtime.controllerSessionId
+    !native && runtime.externalControllerLearning && runtime.controllerSessionId
       ? createExternalMemoryRecallAdmission(runtime.externalControllerLearning, runtime.controllerSessionId)
       : undefined,
-    !runtime.nativeTaskId && runtime.externalControllerLearning && runtime.controllerSessionId
+    !native && runtime.externalControllerLearning && runtime.controllerSessionId
       ? createExternalMemoryRecallAdmission(runtime.externalControllerLearning, runtime.controllerSessionId,'memory_v2_write')
       : undefined);
   if (runtime.learningService) registerLearningTools(
@@ -416,8 +436,10 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.externalControllerLearning,
     runtime.controllerSessionId,
     resolveMemoryScope,
-    credentialAllowsTool(key, 'read_file'),
-    Boolean(runtime.externalControllerLearning && runtime.controllerSessionId && !runtime.nativeTaskId),
+    runtime.sharedNativeRegistry
+      ? () => currentToolCaller()?.allowedTools.has('read_file') === true
+      : credentialAllowsTool(key, 'read_file'),
+    Boolean(runtime.externalControllerLearning && runtime.controllerSessionId && !native),
   );
   if (runtime.semanticIde) registerSemanticIdeTools(
     server,
@@ -433,7 +455,7 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.learningService,
     runtime.nativeTaskId,
     runtime.nativeWorkspace,
-    !runtime.nativeTaskId && memoryOwner && runtime.proposalDecisionAuthorizer
+    !native && memoryOwner && runtime.proposalDecisionAuthorizer
       ? { principalId: memoryOwner, authorize: workspace => runtime.proposalDecisionAuthorizer!(memoryOwner, workspace) } : undefined,
     runtime.nativeSkillSettings,
   );
@@ -451,22 +473,26 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.controllerSessionId,
   );
   if (runtime.artifactAuthorization) {
-    if (runtime.nativeTaskId && runtime.nativeWorkspace) {
+    if (runtime.sharedNativeRegistry) {
+      // Native tasks with no workspace never get this tool: discovery leaves it out of their grant (WORKSPACE_BOUND_NATIVE_TOOLS).
+      registerArtifactInspectTool(server, runtime.artifactAuthorization, undefined, 'caller');
+    } else if (runtime.nativeTaskId && runtime.nativeWorkspace) {
       registerArtifactInspectTool(server, runtime.artifactAuthorization, undefined,
         { ownerId: memoryOwner ?? '', taskId: runtime.nativeTaskId, workspace: runtime.nativeWorkspace });
-    } else if (!runtime.nativeTaskId) {
+    } else if (!native) {
       registerArtifactInspectTool(server, runtime.artifactAuthorization,
         context => runtime.externalControllerLearning?.invocationTaskCurrent(context) ?? Promise.resolve(false));
     }
   }
-  if (!runtime.nativeTaskId) registerRestartTool(server);
-  registerNativeChatBridgeTool(server, runtime.nativeTaskId);
-  if (!runtime.nativeTaskId) registerExternalReconstructionHarnessTool(server, {
+  if (!native) registerRestartTool(server);
+  registerNativeChatBridgeTool(server, runtime.nativeTaskId ?? (native ? 'shared-native-registry' : undefined));
+  if (!native) registerExternalReconstructionHarnessTool(server, {
     principal: key, ownerId: memoryOwner, sessionId: runtime.controllerSessionId,
     externalLearning: runtime.externalControllerLearning,
   });
   // Deliberately native-only while the installed external MCP schema is near its byte limit.
-  if (runtime.nativeTaskId && runtime.nativeWorkspace) registerReconstructionHarnessTool(server,
+  if (runtime.sharedNativeRegistry) registerReconstructionHarnessTool(server, 'caller');
+  else if (runtime.nativeTaskId && runtime.nativeWorkspace) registerReconstructionHarnessTool(server,
     { taskId: runtime.nativeTaskId, workspace: runtime.nativeWorkspace });
   if (runtime.webResearch) registerWebResearchTools(server, runtime.webResearch, {
     externalLearning: runtime.externalControllerLearning,

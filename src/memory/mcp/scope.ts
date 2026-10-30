@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ExternalControllerLearningService } from '../../learning/external-controller.js';
-import { currentExternalInvocationContext, currentToolInvocationRequest } from '../../tracker/tool-invocation.js';
+import { currentExternalInvocationContext, currentToolCaller, currentToolInvocationRequest } from '../../tracker/tool-invocation.js';
 import type { ControllerScope } from '../facade.js';
 export interface MemoryTaskSelector { taskId: string }
 export type MemoryScopeResolver = (selector?: MemoryTaskSelector) => Promise<ControllerScope>;
@@ -26,10 +26,14 @@ export function createMemoryScopeResolver(runtime: {
   const {workspaceRegistry,memoryOwner}=runtime;
   return async selector => {
     try {
-      if (runtime.nativeTaskId) {
-        if (!runtime.nativeWorkspace || !workspaceRegistry || (selector && selector.taskId !== runtime.nativeTaskId)) throw new Error('unavailable native task');
-        const identity = workspaceRegistry.registeredWorkspaceIdentity(runtime.nativeWorkspace);
-        return {taskId:runtime.nativeTaskId,workspaceKey:identity.name,controllerId:'agent-core-native',sessionId:runtime.controllerSessionId};
+      // A registry shared by many Native tasks has no task fixed at registration: the host's caller names it on each call.
+      const caller=currentToolCaller();
+      const nativeTaskId=runtime.nativeTaskId??caller?.taskId;
+      if (nativeTaskId) {
+        const nativeWorkspace=runtime.nativeTaskId?runtime.nativeWorkspace:caller?.workspace;
+        if (!nativeWorkspace || !workspaceRegistry || (selector && selector.taskId !== nativeTaskId)) throw new Error('unavailable native task');
+        const identity = workspaceRegistry.registeredWorkspaceIdentity(nativeWorkspace);
+        return {taskId:nativeTaskId,workspaceKey:identity.name,controllerId:'agent-core-native',sessionId:runtime.controllerSessionId};
       }
       if (!memoryOwner || !selector?.taskId || !runtime.externalControllerLearning) throw new Error('unavailable external task');
       const scope=await runtime.externalControllerLearning.resolveMemoryTask(memoryOwner,selector.taskId);

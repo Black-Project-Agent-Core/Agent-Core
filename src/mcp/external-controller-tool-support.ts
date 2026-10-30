@@ -3,7 +3,7 @@ import type { ExternalControllerLearningService, ExternalInvocationContext, Exte
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { beginToolInvocationEvidence, createToolInvocationIdentity, currentToolInvocationRequest,
   currentToolInvocationEvidence, currentExternalInvocationContext, withToolInvocationRequest,
-  type ToolInvocationEvidence } from '../tracker/tool-invocation.js';
+  type ToolCaller, type ToolInvocationEvidence } from '../tracker/tool-invocation.js';
 import { appendAutoCheckpointReceipt, attachAutoCheckpointError,
   type AutoCheckpointReceipt, type MutationExecutionContext } from '../rdc/mutation-coordinator.js';
 import { recordExternalToolDetail } from '../tracker/tool-detail.js';
@@ -33,6 +33,10 @@ export function installInvocationContext(server: McpServer, host: {
   const authority = Object.freeze({ ...host });
   target.registerTool = (name: string, config: any, callback: any) => original(name, config, async (args: any, ctx: any) => {
     const identity = createToolInvocationIdentity();
+    // A shared Native registry has no task fixed at registration: the host names the caller on each call.
+    const caller: ToolCaller | undefined = ctx?.mcpReq?.caller;
+    const nativeTaskId = authority.nativeTaskId ?? caller?.taskId;
+    const checkpointGranted = caller ? caller.allowedTools.has('file_checkpoint') : authority.checkpointGranted;
     const scopedLearning = name === 'learning' && ['checkpoint', 'review', 'receipt'].includes(args?.action);
     const scopedController = name === 'controller_learning' && (args?.action === 'improvement' || args?.action === 'procedure' && args?.payload !== undefined);
     const requiredSkillDelivery = name === 'skills' && ['list','inspect','search','read'].includes(args?.action);
@@ -46,7 +50,7 @@ export function installInvocationContext(server: McpServer, host: {
     }catch{/* Invalid contracts cannot reconnect the Learning task head. */}
     const resumeTask = parsed?.success && (parsed.data.action === 'checkpoint' ? Boolean(parsed.data.idempotencyKey?.trim())
       : parsed.data.action === 'review' ? Boolean(parsed.data.checkpointKeys?.every(key => key.trim()) && (parsed.data.candidates?.length || parsed.data.disposition)) : true);
-    const invocationContext = !authority.nativeTaskId && authority.external && authority.sessionId && args?.origin !== 'ui'
+    const invocationContext = !nativeTaskId && authority.external && authority.sessionId && args?.origin !== 'ui'
       ? await authority.external.captureToolInvocationContext({ invocationId: identity.id, processSessionId: identity.processSessionId,
           sessionId: authority.sessionId, ownerId: authority.ownerId,
           ...(scopedLearning || scopedController || requiredSkillDelivery
@@ -55,15 +59,15 @@ export function installInvocationContext(server: McpServer, host: {
     const requested = args?.autoCheckpoint === true && ['write_file','edit_block','move_file','code_refactor'].includes(name);
     let receipt: AutoCheckpointReceipt | undefined = requested ? Object.freeze({ status: 'not-captured', reason: 'no-change' }) : undefined;
     const mutationContext: MutationExecutionContext = Object.freeze({ invocationId: identity.id,
-      ...(authority.nativeTaskId || invocationContext?.taskId ? { taskId: authority.nativeTaskId ?? invocationContext?.taskId } : {}),
-      invocationContext, checkpointGranted: authority.checkpointGranted,
+      ...(nativeTaskId || invocationContext?.taskId ? { taskId: nativeTaskId ?? invocationContext?.taskId } : {}),
+      invocationContext, checkpointGranted,
       signal: ctx?.mcpReq?.signal,
       reportAutoCheckpoint: (value: AutoCheckpointReceipt) => { receipt = Object.freeze({ ...value }); },
     });
-    const request = Object.freeze({ tool: name, identity, invocationContext, mutationContext, checkpointReceipt: () => receipt });
+    const request = Object.freeze({ tool: name, identity, invocationContext, mutationContext, checkpointReceipt: () => receipt, caller });
     return withToolInvocationRequest(request, async () => {
       // External calls only: never capture Native Agent payloads or UI-origin operations.
-      const capture = !authority.nativeTaskId && args?.origin !== 'ui';
+      const capture = !nativeTaskId && args?.origin !== 'ui';
       const targets = [args?.path, args?.file_path, args?.source, args?.destination,
         ...(Array.isArray(args?.paths) ? args.paths : [])].filter((value): value is string => typeof value === 'string');
       const privateContent = ['controller_contract', 'image_inspect', 'artifact_inspect', 'get_recent_tool_calls'].includes(name)

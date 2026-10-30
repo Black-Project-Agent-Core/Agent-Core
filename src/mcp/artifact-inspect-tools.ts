@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { currentToolInvocationRequest } from '../tracker/tool-invocation.js';
+import { currentToolInvocationRequest, type ToolCaller } from '../tracker/tool-invocation.js';
 import { ArtifactAuthorization, type ArtifactIdentity } from '../auth/artifact-authorization.js';
 import { ArtifactInspectionService } from '../artifact-analysis/service.js';
 import { decideToolEvidenceCapture } from '../security/evidence-capture-policy.js';
@@ -18,13 +18,23 @@ const schema = z.object({
   disclosureAudience: z.string().min(1).max(120).optional(),
 }).strict();
 const deny = () => { throw new Error('ARTIFACT_SCOPE_NOT_AUTHORIZED'); };
-function identity(native?: ArtifactIdentity): {
+/**
+ * A registry shared by many Native tasks names the task from the host's caller on this very call: the handler's own `ctx`,
+ * a different channel from the ambient request it is checked against, so a mix-up between concurrent calls is refused.
+ */
+function callerIdentity(ctx: any): ArtifactIdentity {
+  const caller: ToolCaller | undefined = ctx?.mcpReq?.caller;
+  if (!caller) return deny();
+  return { ownerId: caller.principalId, taskId: caller.taskId, workspace: caller.workspace ?? '' };
+}
+function identity(nativeSource: ArtifactIdentity | 'caller' | undefined, callCtx: any): {
   identity: ArtifactIdentity; invocationId: string; context?: ExternalInvocationContext;
   request: NonNullable<ReturnType<typeof currentToolInvocationRequest>>; signal?: AbortSignal;
 } {
   const request = currentToolInvocationRequest();
   if (!request || request.tool !== 'artifact_inspect') return deny();
-  if (native) {
+  if (nativeSource) {
+    const native = nativeSource === 'caller' ? callerIdentity(callCtx) : nativeSource;
     if (!native.ownerId || !native.taskId || !native.workspace
       || request.mutationContext.taskId !== native.taskId || request.mutationContext.signal?.aborted) return deny();
     return { identity: native, invocationId: request.identity.id, request,
@@ -39,21 +49,21 @@ function identity(native?: ArtifactIdentity): {
 }
 export type ArtifactInvocationValidator = (context: ExternalInvocationContext) => Promise<boolean>;
 export function registerArtifactInspectTool(server: McpServer, auth: ArtifactAuthorization,
-  isInvocationCurrent?: ArtifactInvocationValidator, nativeIdentity?: ArtifactIdentity) {
+  isInvocationCurrent?: ArtifactInvocationValidator, nativeIdentity?: ArtifactIdentity | 'caller') {
   const service = new ArtifactInspectionService(auth);
   server.registerTool('artifact_inspect', {
     title: 'Inspect Authorized Artifact',
     description: 'Static, bounded JS/Electron ASAR or PE/CLI metadata inspection. prepare does not read target; status returns own request; inspect requires exact operator permit via Agent Core local chat. No execution, attach, extraction or rights inferred from tool access.',
     inputSchema: schema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-  }, async (raw) => {
+  }, async (raw, ctx) => {
     const args = schema.parse(raw);
-    const host = identity(nativeIdentity);
+    const host = identity(nativeIdentity, ctx);
     const assertCurrent = async () => {
       assertReadActive(host.signal);
       if (nativeIdentity) {
         if (currentToolInvocationRequest() !== host.request
-          || host.request.mutationContext.taskId !== nativeIdentity.taskId) return deny();
+          || host.request.mutationContext.taskId !== host.identity.taskId) return deny();
       } else if (!host.context || !isInvocationCurrent || !await isInvocationCurrent(host.context)) return deny();
       assertReadActive(host.signal);
     };

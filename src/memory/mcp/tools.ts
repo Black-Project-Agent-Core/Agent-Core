@@ -5,7 +5,7 @@ import type { MemoryScopeResolver } from './scope.js';
 import type { ExternalControllerLearningService } from '../../learning/external-controller.js';
 import { formatDeliveredMemorySearchResult } from '../search-projection.js';
 import { memoryFeedbackContentDigest } from '../feedback-target.js';
-import { currentExternalInvocationContext } from '../../tracker/tool-invocation.js';
+import { currentExternalInvocationContext, currentToolCaller } from '../../tracker/tool-invocation.js';
 import { activityTracker } from '../../tracker/activity-tracker.js';
 import { appendFailureLoopAdvisory, type FailureLoopAdvisor } from '../../mcp/failure-loop-advisor.js';
 import * as schemas from './schemas.js';
@@ -58,6 +58,8 @@ async function run<T>(
   advisor?: FailureLoopAdvisor,
 ) {
   const started = Date.now();
+  // A registry shared by many Native tasks has no advisor fixed at registration: the host's caller carries the task's own.
+  advisor ??= currentToolCaller()?.failureLoopAdvisor;
   try {
     const result = await action();
     advisor?.observeSuccess(name, args);
@@ -172,7 +174,8 @@ export function registerMemoryTools(
     const invocationContext = currentExternalInvocationContext();
     const episode = invocationContext?.binding === 'bound'
       ? { id: invocationContext.taskId, workspace: invocationContext.workspace } : undefined;
-    const taskId = nativeTaskId ?? episode?.id;
+    const nativeTask = nativeTaskId ?? currentToolCaller()?.taskId;
+    const taskId = nativeTask ?? episode?.id;
     let hostContext: MemorySearchHostContext | undefined;
     if (resolveMemoryScope && taskId) {
       try {
@@ -183,7 +186,7 @@ export function registerMemoryTools(
             const fresh = await resolveMemoryScope({ taskId });
             if (JSON.stringify(fresh) !== JSON.stringify(scope)
               || memory.registeredWorkspaceIdentity(fresh.workspaceKey).key !== identity.key
-              || (!nativeTaskId && (!externalController || !await externalController.invocationDisclosureCurrent(invocationContext))))
+              || (!nativeTask && (!externalController || !await externalController.invocationDisclosureCurrent(invocationContext))))
               throw new Error('MEMORY_CONTROLLER_SCOPE_UNAVAILABLE');
           } };
       } catch { /* Missing host authority withholds synthesis; ordinary recall stays available. */ }

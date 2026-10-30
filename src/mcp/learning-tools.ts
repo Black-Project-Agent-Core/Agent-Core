@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import type { LearningService } from '../learning/service.js';
 import type { ExternalControllerLearningService } from '../learning/external-controller.js';
-import { currentExternalInvocationContext, currentToolInvocationRequest } from '../tracker/tool-invocation.js';
+import { currentExternalInvocationContext, currentToolCaller, currentToolInvocationRequest } from '../tracker/tool-invocation.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { appendFailureLoopAdvisory, type FailureLoopAdvisor } from './failure-loop-advisor.js';
 import * as schemas from './learning-schemas.js';
@@ -27,7 +27,8 @@ export function registerLearningTools(
   externalController?: ExternalControllerLearningService,
   externalSessionId?: string,
   resolveTaskScope?: MemoryScopeResolver,
-  evidenceReadAllowed = false,
+  /** A registry shared by many Native tasks decides this per call from the caller's own grant. */
+  evidenceReadAllowed: boolean | (() => boolean) = false,
   externalCaller = false,
 ): void {
   server.registerTool('learning', {
@@ -37,6 +38,8 @@ export function registerLearningTools(
     annotations: { title: 'Agent Core Learning', readOnlyHint: false, destructiveHint: false },
   }, async (args: any, ctx) => {
     const invocationContext = currentExternalInvocationContext();
+    // A registry shared by many Native tasks has no advisor fixed at registration: the host's caller carries the task's own.
+    const taskAdvisor = advisor ?? currentToolCaller()?.failureLoopAdvisor;
     const input = schemas.learning.parse(args);
     try {
       // Caller classification is host-owned; an unbound external invocation must
@@ -80,7 +83,7 @@ export function registerLearningTools(
         if (!resolveTaskScope) throw new Error('LEARNING_DECISION_SCOPE_REQUIRED');
         const scope = await resolveTaskScope(input.taskId ? { taskId: input.taskId } : undefined);
         if (input.workspace && input.workspace !== scope.workspaceKey) throw new Error('LEARNING_DECISION_WORKSPACE_MISMATCH');
-        result = await learning.decisionReview({ taskId: scope.taskId, workspace: scope.workspaceKey }, input.decision!, { readFiles: evidenceReadAllowed });
+        result = await learning.decisionReview({ taskId: scope.taskId, workspace: scope.workspaceKey }, input.decision!, { readFiles: typeof evidenceReadAllowed === 'function' ? evidenceReadAllowed() : evidenceReadAllowed });
       } else if (input.action === 'checkpoint') {
         if (!input.idempotencyKey) throw new Error('idempotencyKey is required for action=checkpoint');
         const bound = await boundExternalTask();
@@ -220,11 +223,11 @@ export function registerLearningTools(
       } else {
         result = await learning.journey(input.workspace);
       }
-      advisor?.observeSuccess('learning', args);
+      taskAdvisor?.observeSuccess('learning', args);
       return appendSkillReminderCapsule(text(result), externalController, externalSessionId, input.workspace, invocationContext);
     } catch (error) {
       const result = failure(error);
-      const advisory = advisor?.observeFailure('learning', args, result);
+      const advisory = taskAdvisor?.observeFailure('learning', args, result);
       if (advisory) {
         activityTracker.record(
           'REFLEXION',

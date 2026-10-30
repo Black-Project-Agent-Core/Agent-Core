@@ -4,9 +4,10 @@ import type { Client } from '@modelcontextprotocol/client';
 import type { VerifiedKey } from './auth/key-types.js';
 import type { AgentModelImage, AgentModelTool } from './agent-provider.js';
 import type { AgentToolRestriction } from './agent-capability-catalog.js';
-import { createAgentCoreMcpServer, createAgentCoreToolHost, type AgentCoreMcpRuntime } from './mcp/server.js';
-import type { InProcessToolHost } from './mcp/in-process-tool-host.js';
+import { createAgentCoreMcpServer, createAgentCoreToolHost, WORKSPACE_BOUND_NATIVE_TOOLS, type AgentCoreMcpRuntime } from './mcp/server.js';
+import { InProcessToolHost } from './mcp/in-process-tool-host.js';
 import { isReadOnlyToolCall } from './mcp/mutation-safety.js';
+import type { ToolCaller } from './tracker/tool-invocation.js';
 
 export interface AgentToolResult {
   name: string;
@@ -101,15 +102,41 @@ function registryShape(runtime: AgentCoreMcpRuntime): string {
   const present = REGISTRY_SHAPE_FIELDS.map(field => (runtime[field] ? '1' : '0')).join('');
   return `${useMcpTransport() ? 'mcp' : 'direct'}:${present}:${runtime.phoneController?.enabled ? '1' : '0'}`;
 }
+
+/**
+ * `per-task`: a registry is built for each session with its task fixed at registration (the earlier path).
+ * `shared`: one registry per process serves every Native task, each call naming its own task through a ToolCaller.
+ */
+const useSharedRegistry = (runtime: AgentCoreMcpRuntime) =>
+  process.env.AGENT_CORE_NATIVE_TOOL_REGISTRY === 'shared' && !useMcpTransport() && Boolean(runtime.nativeTaskId);
+
+/** What belongs to one task or session, not to the process: the shared registry is built without any of it. */
+const PER_TASK_FIELDS: ReadonlySet<string> = new Set(['nativeTaskId', 'nativeWorkspace', 'failureLoopAdvisor', 'imageInspector', 'toolTarget', 'sharedNativeRegistry']);
+const sharedHosts = new Map<string, { services: Record<string, unknown>; host: InProcessToolHost }>();
+/** One registry per registry shape, rebuilt only when the services behind it are not the same objects any more. */
+function sharedHostFor(runtime: AgentCoreMcpRuntime): InProcessToolHost {
+  const services = Object.fromEntries(Object.entries(runtime).filter(([field, value]) => !PER_TASK_FIELDS.has(field) && value !== undefined));
+  const key = REGISTRY_SHAPE_FIELDS.filter(field => !PER_TASK_FIELDS.has(field)).map(field => (runtime[field] ? '1' : '0')).join('')
+    + ':' + (runtime.phoneController?.enabled ? '1' : '0');
+  const known = sharedHosts.get(key);
+  const sameServices = known && Object.keys(known.services).length === Object.keys(services).length
+    && Object.entries(services).every(([field, value]) => known.services[field] === value);
+  if (known && sameServices) return known.host;
+  const host = new InProcessToolHost();
+  createAgentCoreMcpServer(undefined, { ...services, sharedNativeRegistry: true, toolTarget: host });
+  sharedHosts.set(key, { services, host });
+  return host;
+}
 // The MCP client bounded one call at 60 s; the direct path keeps that bound so a hung tool cannot hold a turn forever.
 const DIRECT_CALL_TIMEOUT_MS = 60_000;
 
 class DirectToolPort implements ToolPort {
   readonly kind = 'direct' as const;
-  constructor(private readonly host: InProcessToolHost) {}
+  /** A caller means the host is the registry shared by every Native task: it lists and runs only what this caller is granted. */
+  constructor(private readonly host: InProcessToolHost, private readonly caller?: ToolCaller) {}
 
   async listTools(): Promise<any[]> {
-    return this.host.listTools();
+    return this.host.listTools(this.caller);
   }
 
   async callTool(name: string, args: Record<string, unknown>, options: { signal?: AbortSignal; invocationId?: string }): Promise<any> {
@@ -117,6 +144,7 @@ class DirectToolPort implements ToolPort {
     const running = this.host.callTool(name, args, {
       ...(signal ? { signal } : {}),
       ...(invocationId ? { meta: { 'io.agentcore/invocation-id': invocationId } } : {}),
+      ...(this.caller ? { caller: this.caller } : {}),
     });
     // A result that arrives after Stop or the timeout is discarded, as with the MCP client.
     running.catch(() => undefined);
@@ -194,6 +222,15 @@ export class AgentRuntimeToolSession {
       await server.connect(serverTransport);
       await client.connect(clientTransport);
       port = new McpToolPort(client, server);
+    } else if (useSharedRegistry(runtime)) {
+      // A workspace-less task never had the workspace-bound tools: a per-task registry did not register them for it.
+      const granted = key.toolGrant!.allowedTools.filter(name => runtime.nativeWorkspace || !WORKSPACE_BOUND_NATIVE_TOOLS.has(name));
+      port = new DirectToolPort(sharedHostFor(runtime), {
+        taskId: runtime.nativeTaskId!, sessionId, principalId: key.id, allowedTools: new Set(granted),
+        ...(runtime.nativeWorkspace ? { workspace: runtime.nativeWorkspace } : {}),
+        ...(runtime.failureLoopAdvisor ? { failureLoopAdvisor: runtime.failureLoopAdvisor } : {}),
+        ...(runtime.imageInspector ? { imageInspector: runtime.imageInspector } : {}),
+      });
     } else {
       port = new DirectToolPort(createAgentCoreToolHost(key, runtime));
     }
@@ -211,6 +248,10 @@ export class AgentRuntimeToolSession {
   }
 
   private static async listAvailableToolNames(runtime: AgentCoreMcpRuntime): Promise<string[]> {
+    if (useSharedRegistry(runtime)) {
+      return sharedHostFor(runtime).listTools().map(tool => tool.name)
+        .filter(name => runtime.nativeWorkspace || !WORKSPACE_BOUND_NATIVE_TOOLS.has(name));
+    }
     if (!useMcpTransport()) return createAgentCoreToolHost(undefined, runtime).listTools().map(tool => tool.name);
     const { Client, InMemoryTransport } = await import('@modelcontextprotocol/client');
     const server = createAgentCoreMcpServer(undefined, runtime);

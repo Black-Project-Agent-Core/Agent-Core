@@ -369,7 +369,8 @@ export function isReadOnlyToolCall(name: string, annotations: { readOnlyHint?: u
 export function installMcpMutationSafety(
   server: McpServer,
   safety: McpMutationSafety,
-  callerId: string,
+  /** A fixed credential id, or, for a registry shared by many callers, a way to read it from each call. */
+  callerId: string | ((ctx: unknown) => string),
 ): void {
   const target = server as any;
   const original = target.registerTool.bind(server);
@@ -378,6 +379,6 @@ export function installMcpMutationSafety(
     return original(name, config, async (args: unknown, ctx: unknown) =>
       isReadOnlyToolCall(name, config?.annotations, args)
         ? callback(args, ctx)
-        : safety.runMutation(callerId, name, args, ctx, () => callback(args, ctx)));
+        : safety.runMutation(typeof callerId === 'function' ? callerId(ctx) : callerId, name, args, ctx, () => callback(args, ctx)));
   };
 }

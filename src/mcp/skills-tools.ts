@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import type { SkillService } from '../skills/service.js';
 import type { ExternalControllerLearningService } from '../learning/external-controller.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
+import { currentToolCaller } from '../tracker/tool-invocation.js';
 import { externalControllerToolResult, beginExternalControllerToolCall } from './external-controller-tool-support.js';
 import * as schemas from './skills-schemas.js';
 import type { LearningService } from '../learning/service.js';
@@ -62,9 +63,13 @@ export function registerSkillsTools(
     const input = schemas.skills.parse(args ?? {});
     try {
       let result: unknown;
-      const off = nativeTaskId ? nativeSkillSettings : undefined;
+      // A registry shared by many Native tasks has no task fixed at registration: the host's caller names it on each call.
+      const caller = currentToolCaller();
+      const nativeTask = nativeTaskId ?? caller?.taskId;
+      const nativeWs = nativeWorkspace ?? caller?.workspace;
+      const off = nativeTask ? nativeSkillSettings : undefined;
       if (PROPOSAL_ACTIONS.has(input.action)) {
-        result = await runSkillProposalAction(input, { learning, external: externalController, sessionId: externalSessionId, nativeTaskId, nativeWorkspace, proposalApprover });
+        result = await runSkillProposalAction(input, { learning, external: externalController, sessionId: externalSessionId, nativeTaskId: nativeTask, nativeWorkspace: nativeWs, proposalApprover });
       } else switch (input.action) {
         case 'status': result = await service.status(); break;
         case 'list': result = markNativeSkills(await service.list(), off); break;
