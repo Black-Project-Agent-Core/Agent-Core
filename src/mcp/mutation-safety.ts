@@ -354,6 +354,18 @@ export class McpMutationSafety {
   }
 }
 
+/** Tools that mix reads and writes under one name, with the actions that only read; those calls need no mutation journal. */
+const READ_ONLY_ACTIONS: Readonly<Record<string, ReadonlySet<string>>> = {
+  skills: new Set(['list', 'inspect', 'search', 'read']),
+};
+
+/** One call, not one tool: a read-only tool, or a read-only action of a mixed tool. Anything unclear counts as a mutation. */
+export function isReadOnlyToolCall(name: string, annotations: { readOnlyHint?: unknown } | undefined, args?: unknown): boolean {
+  if (annotations?.readOnlyHint === true) return true;
+  const action = (args as { action?: unknown } | null | undefined)?.action;
+  return typeof action === 'string' && Object.hasOwn(READ_ONLY_ACTIONS, name) && READ_ONLY_ACTIONS[name]!.has(action);
+}
+
 export function installMcpMutationSafety(
   server: McpServer,
   safety: McpMutationSafety,
@@ -362,9 +374,10 @@ export function installMcpMutationSafety(
   const target = server as any;
   const original = target.registerTool.bind(server);
   target.registerTool = (name: string, config: any, callback: any) => {
-    const readOnly = config?.annotations?.readOnlyHint === true;
-    if (readOnly) return original(name, config, callback);
+    if (config?.annotations?.readOnlyHint === true) return original(name, config, callback);
     return original(name, config, async (args: unknown, ctx: unknown) =>
-      safety.runMutation(callerId, name, args, ctx, () => callback(args, ctx)));
+      isReadOnlyToolCall(name, config?.annotations, args)
+        ? callback(args, ctx)
+        : safety.runMutation(callerId, name, args, ctx, () => callback(args, ctx)));
   };
 }

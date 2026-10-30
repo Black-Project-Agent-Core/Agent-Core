@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NativeAgentController } from '../src/agent-controller.js';
 import { AgentRuntimeService } from '../src/agent-runtime.js';
+import { AgentRuntimeToolSession } from '../src/agent-tool-session.js';
 import type { AgentModelResponse, AgentRuntimeConfig } from '../src/agent-provider.js';
 import { parseAgentTurnCheckpoint, serializeAgentTurnCheckpoint } from '../src/agent-turn-checkpoint.js';
 
@@ -168,6 +169,25 @@ describe('native Agent Core controller lifecycle', () => {
     expect(complete.mock.calls[0]![0][0]).toEqual(complete.mock.calls[1]![0][0]);
     expect(complete.mock.calls[0]![0][1]!.content).toContain('VARIABLE TASK A');
     expect(complete.mock.calls[1]![0][1]!.content).toContain('VARIABLE TASK B');
+  });
+
+  it('keeps one image view store per conversation session, so a crop can use an earlier turn\'s overview', async () => {
+    const { controller, runtime } = await fixture([]);
+    const open = vi.spyOn(AgentRuntimeToolSession, 'open');
+    vi.spyOn(runtime, 'complete').mockImplementation(async () => {
+      const final = finalizeChoice().message.tool_calls[0]!;
+      return { content: null, finishReason: 'tool_calls', toolCalls: [{ ...final, type: 'function' }] };
+    });
+    const first = await runtime.startSession({ sessionId: 'image-view-a' });
+    const second = await runtime.startSession({ sessionId: 'image-view-b' });
+    for (const [session, taskId] of [[first, 'view-task-1'], [first, 'view-task-2'], [second, 'view-task-3']] as const) {
+      await controller.runConversationTurn({ sessionId: session.id, taskId, prompt: 'Compare the picture for ' + taskId });
+    }
+    const stores = open.mock.calls.map(call => call[2].imageInspector);
+    expect(stores).toHaveLength(3);
+    expect(stores[0]).toBeTypeOf('function');
+    expect(stores[1]).toBe(stores[0]);
+    expect(stores[2]).not.toBe(stores[0]);
   });
 
   it('persists observed cache tokens and coverage without treating missing fields as zero', async () => {

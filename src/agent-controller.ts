@@ -22,6 +22,7 @@ import { validateAgentReasoningEffort, validateAgentProviderModel } from './agen
 import type { AgentReasoningEffort } from './agent-provider-state.js';
 import { processLedger } from './rdc/process-ledger.js';
 import { AgentRuntimeToolSession, toolObservesStop } from './agent-tool-session.js';
+import { createImageInspectorScopes } from './rdc/tools/image-inspect.js';
 import { accountContext, contextBytesBySource } from './agent-context-accounting.js';
 import {
   classifyFinishReason,
@@ -628,6 +629,8 @@ export class NativeAgentController {
     private readonly mcpRuntime: AgentCoreMcpRuntime,
     private readonly config: AgentRuntimeConfig,
   ) {}
+  /** Image views are cited by later calls, so one store per conversation session outlives a rebuilt registry and the turn. */
+  private readonly imageInspectors = createImageInspectorScopes();
   /** Skills the owner switched off for Native; carried on the shared MCP runtime so every Native tool session sees the same instance. */
   private get nativeSkillSettings(): NativeSkillSettings | undefined { return this.mcpRuntime.nativeSkillSettings; }
   async runTask(input: NativeAgentTaskInput): Promise<NativeAgentTaskResult> {
@@ -879,7 +882,8 @@ export class NativeAgentController {
       });
     };
     const failureLoopAdvisor = new FailureLoopAdvisor();
-    const toolRuntime = { ...this.mcpRuntime, failureLoopAdvisor, nativeTaskId: task.id, nativeWorkspace: task.workspace };
+    const toolRuntime = { ...this.mcpRuntime, failureLoopAdvisor, nativeTaskId: task.id, nativeWorkspace: task.workspace,
+      imageInspector: this.imageInspectors(session.id) };
     const availableTools = (await AgentRuntimeToolSession.discoverAvailableTools(toolRuntime))
       .filter(name => !evaluationToolBlocked(name));
     let packet = await buildPacket();
@@ -1791,7 +1795,7 @@ export class NativeAgentController {
             await persistCheckpoint('tool-result-durable');
             continue;
           }
-          const mutating = await toolSession.isMutating(call.function.name);
+          const mutating = await toolSession.isMutating(call.function.name, args);
           const invocationId = ('dtc:' + task.id + ':' + call.id).slice(0, 200);
           const pendingTool = {
             callId: call.id,

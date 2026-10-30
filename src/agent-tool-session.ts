@@ -6,6 +6,7 @@ import type { AgentModelImage, AgentModelTool } from './agent-provider.js';
 import type { AgentToolRestriction } from './agent-capability-catalog.js';
 import { createAgentCoreMcpServer, createAgentCoreToolHost, type AgentCoreMcpRuntime } from './mcp/server.js';
 import type { InProcessToolHost } from './mcp/in-process-tool-host.js';
+import { isReadOnlyToolCall } from './mcp/mutation-safety.js';
 
 export interface AgentToolResult {
   name: string;
@@ -290,10 +291,11 @@ export class AgentRuntimeToolSession {
       .update(JSON.stringify(definitions), 'utf8').digest('hex');
   }
 
-  async isMutating(name: string): Promise<boolean> {
+  /** Per call: a mixed tool such as `skills` only mutates for its writing actions. Unknown or unclear arguments count as mutation. */
+  async isMutating(name: string, args?: Record<string, unknown>): Promise<boolean> {
     const tool = (await this.listedTools()).find(item => String(item.name) === name);
     if (!tool) throw new Error('AGENT_RUNTIME_TOOL_NOT_GRANTED');
-    return tool?.annotations?.readOnlyHint !== true;
+    return !isReadOnlyToolCall(name, tool.annotations, args);
   }
 
   /** Pure local admission check. Must run before a mutating dispatch is checkpointed. */

@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AgentRuntimeToolSession, toolObservesStop } from '../src/agent-tool-session.js';
 import { ArtifactAuthorization } from '../src/auth/artifact-authorization.js';
+import * as z from 'zod/v4';
 import { InProcessToolHost } from '../src/mcp/in-process-tool-host.js';
+import { installMcpMutationSafety } from '../src/mcp/mutation-safety.js';
 const nativeRuntime = { nativeTaskId: 'fixture-native-task', nativeWorkspace: 'agent-core' };
 afterEach(() => { vi.unstubAllEnvs(); });
 
@@ -74,6 +76,49 @@ describe('native agent MCP tool session', () => {
     } finally {
       await session.close();
     }
+  });
+
+  it('keeps the contract digest of a grant when the phone controller is switched on, so a parked turn can resume', async () => {
+    const phone = { enabled: false };
+    const open = () => AgentRuntimeToolSession.open('fixture-digest', ['get_config', 'read_file'], { ...nativeRuntime, phoneController: phone as any });
+    const before = await open();
+    phone.enabled = true;
+    const after = await open();
+    try {
+      expect(await after.contractDigest()).toBe(await before.contractDigest());
+    } finally {
+      await before.close();
+      await after.close();
+    }
+  });
+
+  it('counts only the writing actions of the skills tool as mutation', async () => {
+    const session = await AgentRuntimeToolSession.open('fixture-skills', ['skills', 'write_file'], { ...nativeRuntime, skillsService: {} as any });
+    try {
+      for (const action of ['list', 'search', 'read', 'inspect']) expect(await session.isMutating('skills', { action })).toBe(false);
+      for (const action of ['propose', 'decide_proposal', 'promote_revision', 'import']) expect(await session.isMutating('skills', { action })).toBe(true);
+      expect(await session.isMutating('skills')).toBe(true);
+      expect(await session.isMutating('skills', { action: ['read'] })).toBe(true);
+      expect(await session.isMutating('write_file', { action: 'read' })).toBe(true);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('journals only the writing actions of skills, and every call of an ordinary write tool', async () => {
+    const host = new InProcessToolHost();
+    const runMutation = vi.fn(async (_caller: string, _name: string, _args: unknown, _ctx: unknown, run: () => unknown) => run());
+    installMcpMutationSafety(host as any, { runMutation } as any, 'caller');
+    const handler = vi.fn(async () => ({ content: [] }));
+    const config = { inputSchema: z.object({ action: z.string() }), annotations: { readOnlyHint: false } };
+    host.registerTool('skills', config, handler);
+    host.registerTool('writer', config, handler);
+    for (const action of ['list', 'search', 'read', 'inspect']) await host.callTool('skills', { action });
+    expect(runMutation).not.toHaveBeenCalled();
+    await host.callTool('skills', { action: 'propose' });
+    await host.callTool('writer', { action: 'list' });
+    expect(runMutation).toHaveBeenCalledTimes(2);
+    expect(handler).toHaveBeenCalledTimes(6);
   });
 
   it('offers native task-bound artifact inspection when its existing owner is installed', async () => {

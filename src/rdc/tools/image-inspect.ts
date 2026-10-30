@@ -159,6 +159,24 @@ function mapRectangle(rectangle: Rectangle, view: View): Rectangle {
   return { x: view.sourceRect.x + left, y: view.sourceRect.y + top, width: right - left, height: bottom - top };
 }
 
+/**
+ * One inspector per scope id, so a view cited by a later call survives a rebuilt tool registry and the next turn.
+ * At most 32 scopes are kept (oldest used first out) and a scope idle for 15 minutes is dropped.
+ */
+export function createImageInspectorScopes() {
+  const scopes = new Map<string, { inspect: ReturnType<typeof createImageInspector>; lastUsed: number }>();
+  return (id: string) => {
+    const now = Date.now();
+    for (const [key, scope] of scopes) if (scope.lastUsed + 15 * 60_000 <= now) scopes.delete(key);
+    const scope = scopes.get(id) ?? { inspect: createImageInspector(), lastUsed: now };
+    scope.lastUsed = now;
+    scopes.delete(id);
+    while (scopes.size >= 32) scopes.delete(scopes.keys().next().value!);
+    scopes.set(id, scope);
+    return scope.inspect;
+  };
+}
+
 /** Create once per authenticated inspector scope; store metadata only, never image bytes. */
 export function createImageInspector() {
   const views = new Map<string, View>();

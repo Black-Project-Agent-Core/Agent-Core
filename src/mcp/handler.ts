@@ -24,7 +24,7 @@ import { activityTracker } from '../tracker/activity-tracker.js';
 import { createAgentCoreMcpServer, type AgentCoreMcpRuntime } from './server.js';
 import { ControllerContractGate } from './controller-contract.js';
 import { memoryCredentialOwner, ownerScopedLearningSession } from '../memory/mcp/scope.js';
-import { createImageInspector } from '../rdc/tools/image-inspect.js';
+import { createImageInspector, createImageInspectorScopes } from '../rdc/tools/image-inspect.js';
 import type { ArtifactAuthorization } from '../auth/artifact-authorization.js';
 
 export interface BridgeMcpHttpOptions {
@@ -146,25 +146,15 @@ export function createMcpHttpHandler(options: BridgeMcpHttpOptions = {}): McpHtt
   const failureLoopAdvisor = new FailureLoopAdvisor();
   const contractGate = new ControllerContractGate();
   // Inspectors retain at most 64 metadata views each, never source/output buffers.
-  const imageSessions = new Map<string, { inspect: ReturnType<typeof createImageInspector>; lastUsed: number }>();
+  const imageInspectorScope = createImageInspectorScopes();
   const imageInspectorFor = (request: Parameters<McpHttpHandler>[0], key: Parameters<McpHttpHandler>[2]) => {
-    const now = Date.now();
-    for (const [id, session] of imageSessions) {
-      if (session.lastUsed + 15 * 60_000 <= now) imageSessions.delete(id);
-    }
     // app.ts authenticates every request. Never share an anonymous fallback.
     if (typeof key?.id !== 'string' || !key.id.trim()) return createImageInspector();
     const rawHeader = request.headers['mcp-session-id'] ?? request.headers['x-agent-core-session-id'];
     const header = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
     // Headerless legacy clients sharing one credential also share one view namespace.
     // Keep this fallback stable across the learning session's hourly bucket boundary.
-    const id = createHash('sha256').update(JSON.stringify([key.id, header?.trim() || null])).digest('hex');
-    const session = imageSessions.get(id) ?? { inspect: createImageInspector(), lastUsed: now };
-    session.lastUsed = now;
-    imageSessions.delete(id);
-    while (imageSessions.size >= 32) imageSessions.delete(imageSessions.keys().next().value!);
-    imageSessions.set(id, session);
-    return session.inspect;
+    return imageInspectorScope(createHash('sha256').update(JSON.stringify([key.id, header?.trim() || null])).digest('hex'));
   };
   return async (request, response, key) => {
     if (request.method !== 'POST') return sendProtocolError(response, 405, 'Method not allowed.');

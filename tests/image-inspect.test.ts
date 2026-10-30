@@ -5,7 +5,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configManager } from '../src/rdc/config-manager.js';
-import { createImageInspector } from '../src/rdc/tools/image-inspect.js';
+import { createImageInspector, createImageInspectorScopes } from '../src/rdc/tools/image-inspect.js';
 import { symlinkOrSkip } from './helpers/optional-symlink.js';
 
 const roots: string[] = [];
@@ -193,4 +193,28 @@ describe('image_inspect original pixel views', () => {
     expect(crop.sourceRect).toEqual({x:40,y:40,width:80,height:80});
   });
 
+});
+
+describe('image_inspect view scopes', () => {
+  it('lets a crop use a view from an earlier call in the same scope and refuses it in another scope', async () => {
+    const { file } = await fixture();
+    const scope = createImageInspectorScopes();
+    const overview = metadata(await scope('conversation-a')({ action: 'overview', path: file }));
+    const rectangle = { x: 5, y: 5, width: 20, height: 20 };
+    expect(metadata(await scope('conversation-a')({ action: 'crop', path: file, viewId: overview.viewId, rectangle })))
+      .toMatchObject({ sourceRect: { x: 5, y: 5, width: 20, height: 20 } });
+    await expect(scope('conversation-b')({ action: 'crop', path: file, viewId: overview.viewId, rectangle }))
+      .rejects.toThrow('IMAGE_INSPECT_VIEW_NOT_FOUND');
+  });
+
+  it('keeps at most 32 scopes and drops one that sat idle for 15 minutes', () => {
+    vi.useFakeTimers();
+    const scope = createImageInspectorScopes();
+    const first = scope('first');
+    for (let index = 0; index < 32; index++) scope('other-' + index);
+    expect(scope('first')).not.toBe(first);
+    const idle = scope('idle');
+    vi.advanceTimersByTime(15 * 60_000 + 1);
+    expect(scope('idle')).not.toBe(idle);
+  });
 });
