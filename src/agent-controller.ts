@@ -412,6 +412,8 @@ export interface NativeAgentConversationTurnInput extends NativeAgentTaskInput {
   memoryQuery?: string;
   /** Per-turn directive for a Skill the user picked from the composer "/" menu; a choice, not a grant. */
   userSelectedSkillDirective?: string;
+  /** USER ATTACHMENTS block of this turn, rebuilt by the chat service from the store on every run and resume; data, never instructions. */
+  attachmentReference?: string;
   /** Goal mode: run in resumable iteration windows until the goal is reached instead of failing at the cap. */
   goalMode?: boolean;
   eventSink?: AgentTurnEventSink;
@@ -423,6 +425,7 @@ interface NativeAgentExecutionInput extends NativeAgentTaskInput {
   history?: AgentModelMessage[];
   historySummary?: { text: string; record: AgentCompactionRecord };
   userSelectedSkillDirective?: string;
+  attachmentReference?: string;
   goalMode?: boolean;
   memoryQuery?: string;
   eventSink?: AgentTurnEventSink;
@@ -1010,7 +1013,8 @@ export class NativeAgentController {
     } as AgentModelMessage));
     const disabledSkillNames = this.nativeSkillSettings ? this.nativeSkillSettings.listDisabled() : [];
     const guidance = (await taskSkillGuidance(this.mcpRuntime.skillsService, 'native', disabledSkillNames)).text
-      + (input.userSelectedSkillDirective ? '\n\n' + input.userSelectedSkillDirective : '');
+      + (input.userSelectedSkillDirective ? '\n\n' + input.userSelectedSkillDirective : '')
+      + (input.attachmentReference ? '\n\n' + input.attachmentReference : '');
     const messages: AgentModelMessage[] = resumedState
       ? structuredClone(resumedState.messages)
       : [

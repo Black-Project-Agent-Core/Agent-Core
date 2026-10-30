@@ -13,6 +13,11 @@ import type { ProposalDocumentReader } from '../learning/proposal-documents.js';
 import { nativeMemoryEvaluationSchema } from '../agent-memory-evaluation.js';
 import { defaultTaskChangesReader, handleTaskChanges, type TaskChangesReader } from './task-changes.js';
 import type { NativeSkillSettings } from '../native-skill-settings.js';
+import {
+  MAX_ATTACHMENT_TOTAL_BYTES,
+  validateAttachmentInputs,
+  type ChatAttachmentInput,
+} from '../agent-chat-attachments.js';
 
 export type McpHttpHandler = (
   request: IncomingMessage,
@@ -98,8 +103,14 @@ function authorizeAgentUi(
   return true;
 }
 
-async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
-  const payload = JSON.parse(await readBody(request));
+/**
+ * A chat turn carries its attachments inline as base64, so that one route reads a larger body: the encoded 25 MiB
+ * total plus room for the prompt and the JSON framing. Every other route keeps the default limit of readBody.
+ */
+const CHAT_TURN_ATTACHMENT_BODY_LIMIT = Math.ceil(MAX_ATTACHMENT_TOTAL_BYTES / 3) * 4 + 2 * 1024 * 1024;
+
+async function readJsonBody(request: IncomingMessage, maxBytes?: number): Promise<Record<string, unknown>> {
+  const payload = JSON.parse(await readBody(request, maxBytes));
   return payload && typeof payload === 'object' && !Array.isArray(payload)
     ? payload as Record<string, unknown>
     : {};
@@ -253,7 +264,8 @@ async function handleRequest(
         sendJson(response, 400, { error: 'invalid_agent_chat_origin' }); return;
       }
       let body: Record<string, unknown>;
-      try { body = await readJsonBody(request); }
+      // Only this route reads the larger attachment body, and never for an external controller (it may not attach files).
+      try { body = await readJsonBody(request, originHeader === 'external-controller' ? undefined : CHAT_TURN_ATTACHMENT_BODY_LIMIT); }
       catch { sendJson(response, 400, { error: 'invalid_json' }); return; }
       const conversationId = decodeURIComponent(turnMatch[1]!);
       const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -275,6 +287,16 @@ async function handleRequest(
       if (body.goalMode !== undefined && typeof body.goalMode !== 'boolean') {
         sendJson(response, 400, { error: 'invalid_agent_chat_goal_mode' });
         return;
+      }
+      // Attachments come from the owner's UI only; the validated, sanitized copy is what the service receives.
+      let attachments: ChatAttachmentInput[] | undefined;
+      if (body.attachments !== undefined) {
+        if (originHeader === 'external-controller') {
+          sendJson(response, 400, { error: 'attachments_not_allowed_for_external_controller' });
+          return;
+        }
+        try { attachments = validateAttachmentInputs(body.attachments); }
+        catch { sendJson(response, 400, { error: 'invalid_agent_chat_attachments' }); return; }
       }
       if (model !== undefined) {
         try { chat.validateProviderModel(model, providerId || undefined); }
@@ -304,6 +326,7 @@ async function handleRequest(
           prompt,
           ...(originHeader === 'external-controller' ? { messageOrigin: 'external-controller' as const } : {}),
           ...(body.goalMode === true ? { goalMode: true } : {}),
+          ...(attachments ? { attachments } : {}),
           ...(providerId && providerId !== 'auto' ? { providerRoute: providerId } : {}),
           ...(model !== undefined ? { providerModel: model as string } : {}),
           ...(reasoningEffort ? { reasoningEffort: reasoningEffort as import('../agent-provider-state.js').AgentReasoningEffort } : {}),

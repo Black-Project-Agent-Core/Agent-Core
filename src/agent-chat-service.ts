@@ -28,6 +28,12 @@ import { emitAgentTurnEvent, type AgentTurnEvent } from './agent-turn-events.js'
 import { redactSensitiveString } from './security/redaction.js';
 import { parseSlashSelection, type SlashSkillSelection } from './agent-slash-commands.js';
 import type { NativeSkillSettings } from './native-skill-settings.js';
+import {
+  buildAttachmentReference,
+  readAttachmentText,
+  storeAttachments,
+  type ChatAttachmentInput,
+} from './agent-chat-attachments.js';
 
 /** The slice of SkillService the composer "/" selection needs: active catalog names only. */
 export interface SlashSkillCatalog {
@@ -305,6 +311,34 @@ export class AgentChatService {
       replayed: true,
     };
   }
+  /** Where attachment files live; derived from the project root this service already uses, never from the cwd. */
+  private attachmentsDir(): string {
+    return path.join(this.projectRoot, 'runtime', 'agent-runtime', 'attachments');
+  }
+
+  /** The USER ATTACHMENTS block of a turn, always rebuilt from the store and the stored files, so a resumed turn gets the same block as its first run. */
+  private async attachmentReference(turnId: string): Promise<string | undefined> {
+    const stored = this.store.listAttachments(turnId);
+    if (stored.length === 0) return undefined;
+    const baseDir = this.attachmentsDir();
+    const items = await Promise.all(stored.map(async item => ({ ...item, text: await readAttachmentText(baseDir, item) })));
+    return buildAttachmentReference(items) || undefined;
+  }
+
+  /**
+   * History lines for later turns: one per stored attachment, with the path of its file, so Native can reopen the
+   * file with a file tool instead of receiving its content again. Built when history is read; never stored.
+   */
+  private attachmentHistoryNotes(conversationId: string): Map<string, string> {
+    const dir = this.attachmentsDir().split(path.sep).join('/');
+    const notes = new Map<string, string>();
+    for (const [turnId, items] of this.store.listConversationAttachments(conversationId)) {
+      notes.set(turnId, items.map(item =>
+        `[lampiran: ${item.name} (${item.kind}, ${item.sizeBytes} bytes) path: ${dir}/${item.relPath}]`).join('\n'));
+    }
+    return notes;
+  }
+
   private recordContextUsage(turnId: string, event: AgentTurnEvent): void {
     if (event.type === 'memory.recall.completed' && typeof event.itemCount === 'number') {
       this.store.recordRecallCount(turnId, event.itemCount);
@@ -475,6 +509,8 @@ export class AgentChatService {
     prompt: string;
     messageOrigin?: 'local-operator' | 'external-controller';
     goalMode?: boolean;
+    /** Validated by the HTTP route (validateAttachmentInputs); only the owner's UI may attach files. */
+    attachments?: ChatAttachmentInput[];
     /** Owner-chosen route id from listProviders(); omitted means automatic rotation. */
     providerRoute?: string;
     providerModel?: string;
@@ -482,6 +518,10 @@ export class AgentChatService {
     eventSink?: AgentChatEventSink;
     evaluation?: NativeAgentTaskResult['evaluation'];
   }): Promise<AgentChatTurnResult> {
+    // The route already refuses this; the owner of the rule refuses it too, before any turn exists.
+    if (input.attachments?.length && input.messageOrigin === 'external-controller') {
+      throw new Error('AGENT_CHAT_ATTACHMENTS_NOT_ALLOWED');
+    }
     const existing = this.store.getTurnByClientRequestId(input.clientRequestId);
     if (existing) {
       if (existing.conversationId !== input.conversationId || existing.reasoningEffort !== input.reasoningEffort
@@ -546,11 +586,13 @@ export class AgentChatService {
       revision: 0,
     });
     this.store.setTitleFromPrompt(conversation.id, titleFromPrompt(input.prompt));
+    const attachmentNotes = this.attachmentHistoryNotes(conversation.id);
     const boundedContext = this.store.boundedContext({
       conversationId: conversation.id,
       excludeTurnId: turnId,
       maxMessages: 24,
       maxChars: 48_000,
+      ...(attachmentNotes.size ? { attachmentNotes } : {}),
     });
     const history = boundedContext.messages;
     const controller = new AbortController();
@@ -570,6 +612,13 @@ export class AgentChatService {
 
     let result: NativeAgentTaskResult;
     try {
+      // Files are persisted before any model call; the reference block is then built from the store, exactly as a resume does.
+      if (input.attachments?.length) {
+        this.store.insertAttachments(turnId, conversation.id, await storeAttachments({
+          baseDir: this.attachmentsDir(), conversationId: conversation.id, turnId, inputs: input.attachments,
+        }));
+      }
+      const attachmentReference = await this.attachmentReference(turnId);
       // Composer "/<skill>" pick: the persisted user message stays exactly as typed; only this turn gets a directive.
       const slashSkill = localOperator ? await this.resolveSlashSelection(input.prompt) : null;
       // The user message was persisted by beginTurn above. Tool output cannot enter this host-only path.
@@ -597,6 +646,7 @@ export class AgentChatService {
         ...(boundedContext.summary ? { historySummary: boundedContext.summary } : {}),
         memoryQuery: buildMemoryQuery(input.prompt, history),
         ...(slashSkill ? { userSelectedSkillDirective: userSelectedSkillDirective(slashSkill.skill) } : {}),
+        ...(attachmentReference ? { attachmentReference } : {}),
         ...(input.goalMode ? { goalMode: true } : {}),
         eventSink: event => { this.recordContextUsage(continuation.turnId, event); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,
@@ -817,11 +867,14 @@ export class AgentChatService {
         };
       }
 
+      // Rebuilt from the store and the stored files, never from the first request: the block the first run saw.
+      const attachmentReference = await this.attachmentReference(turn.id);
       const result = await this.controller.runConversationTurn({
         sessionId: conversation.runtimeSessionId,
         taskId: turn.runtimeTaskId,
         prompt: loaded.state.prompt,
         workspace: loaded.state.workspace ?? conversation.workspace,
+        ...(attachmentReference ? { attachmentReference } : {}),
         ...(turn.goalMode ? { goalMode: true } : {}),
         eventSink: event => { this.recordContextUsage(continuation.turnId, event); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,

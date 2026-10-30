@@ -40,6 +40,10 @@ export interface AgentChatConversation {
   updatedAtMs: number;
   lastTurnId?: string;
 }
+/** What a conversation payload says about an attachment: metadata only, never the file content. */
+export type AgentChatAttachmentMeta = Pick<import('./agent-chat-attachments.js').StoredAttachment,
+  'attachmentId' | 'name' | 'mimeType' | 'kind' | 'sizeBytes' | 'relPath'>;
+
 export interface AgentChatTurn extends NativeMemoryResultMetadata {
   id: string;
   conversationId: string;
@@ -62,6 +66,8 @@ export interface AgentChatTurn extends NativeMemoryResultMetadata {
   memoryUse?: AgentMemoryUse[];
   errorCode?: string;
   messageOrigin?: 'local-operator' | 'external-controller';
+  /** Present only on a turn that carried attachments: metadata only, the files stay on disk. */
+  attachments?: AgentChatAttachmentMeta[];
   createdAtMs: number;
   startedAtMs: number;
   completedAtMs?: number;
@@ -733,6 +739,33 @@ export class AgentChatStore {
     });
   }
 
+  /** Attachment metadata (never file content) of one conversation, grouped by turn in file order. */
+  listConversationAttachments(conversationId: string): Map<string, AgentChatAttachmentMeta[]> {
+    return this.withDb(db => this.listConversationAttachmentsWithDb(db, conversationId));
+  }
+
+  private listConversationAttachmentsWithDb(db: DatabaseSync, conversationId: string): Map<string, AgentChatAttachmentMeta[]> {
+    const rows = db.prepare(`
+      SELECT turn_id, attachment_id, name, mime_type, kind, size_bytes, rel_path
+      FROM chat_attachments WHERE conversation_id=? ORDER BY turn_id, seq
+    `).all(conversationId) as unknown as Record<string, unknown>[];
+    const byTurn = new Map<string, AgentChatAttachmentMeta[]>();
+    for (const row of rows) {
+      const turnId = String(row.turn_id);
+      const items = byTurn.get(turnId) ?? [];
+      items.push({
+        attachmentId: String(row.attachment_id),
+        name: String(row.name),
+        mimeType: String(row.mime_type),
+        kind: String(row.kind) as AgentChatAttachmentMeta['kind'],
+        sizeBytes: Number(row.size_bytes),
+        relPath: String(row.rel_path),
+      });
+      byTurn.set(turnId, items);
+    }
+    return byTurn;
+  }
+
   saveCheckpoint(input: {
     turnId: string;
     claim: AgentChatExecutionClaim;
@@ -1224,14 +1257,21 @@ export class AgentChatStore {
     excludeTurnId?: string;
     maxMessages?: number;
     maxChars?: number;
+    /** Text appended to the user message of a turn (its attachment lines); this history only, the stored message is untouched. */
+    attachmentNotes?: ReadonlyMap<string, string>;
   }): {
     messages: Array<{ role: AgentChatMessageRole; content: string }>;
     summary: { text: string; record: AgentCompactionRecord } | null;
   } {
     const maxMessages = Math.max(1, Math.min(48, input.maxMessages ?? 24));
     const maxChars = Math.max(1_000, Math.min(80_000, input.maxChars ?? 48_000));
+    const notes = input.attachmentNotes;
     const messages = this.messagesForConversation(input.conversationId)
-      .filter(message => !input.excludeTurnId || message.turnId !== input.excludeTurnId);
+      .filter(message => !input.excludeTurnId || message.turnId !== input.excludeTurnId)
+      .map(message => {
+        const note = message.role === 'user' ? notes?.get(message.turnId) : undefined;
+        return note ? { ...message, content: message.content + '\n' + note } : message;
+      });
     const selected: AgentChatMessage[] = [];
     let chars = 0;
     let truncatedHead: string | undefined;
@@ -1261,11 +1301,16 @@ export class AgentChatStore {
     return this.withDb(db => {
       const conversation = this.getConversationWithDb(db, conversationId);
       if (!conversation) return null;
+      const attachmentsByTurn = this.listConversationAttachmentsWithDb(db, conversationId);
       const turns = (db.prepare(`
         SELECT * FROM chat_turns
         WHERE conversation_id=?
         ORDER BY created_at_ms ASC, turn_id ASC
-      `).all(conversationId) as unknown as Record<string, unknown>[]).map(mapTurn);
+      `).all(conversationId) as unknown as Record<string, unknown>[]).map(mapTurn)
+        .map((turn): AgentChatTurn => {
+          const attachments = attachmentsByTurn.get(turn.id);
+          return attachments ? { ...turn, attachments } : turn;
+        });
       const messages = (db.prepare(`
         SELECT * FROM chat_messages
         WHERE conversation_id=?
