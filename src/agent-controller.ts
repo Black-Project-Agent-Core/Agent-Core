@@ -62,6 +62,7 @@ import {
 import { contextTokensFromUsage, estimateContextBreakdown } from './agent-context-usage.js';
 import {
   AGENT_TURN_CHECKPOINT_SCHEMA_VERSION,
+  AGENT_TURN_ITERATION_WINDOW_FULL,
   AGENT_TURN_USER_PAUSED,
   AGENT_TURN_CHECKPOINT_TTL_MS,
   resultArtifactReference,
@@ -410,6 +411,8 @@ export interface NativeAgentConversationTurnInput extends NativeAgentTaskInput {
   memoryQuery?: string;
   /** Per-turn directive for a Skill the user picked from the composer "/" menu; a choice, not a grant. */
   userSelectedSkillDirective?: string;
+  /** Goal mode: run in resumable iteration windows until the goal is reached instead of failing at the cap. */
+  goalMode?: boolean;
   eventSink?: AgentTurnEventSink;
   signal?: AbortSignal;
   continuation?: NativeAgentContinuationHooks;
@@ -419,6 +422,7 @@ interface NativeAgentExecutionInput extends NativeAgentTaskInput {
   history?: AgentModelMessage[];
   historySummary?: { text: string; record: AgentCompactionRecord };
   userSelectedSkillDirective?: string;
+  goalMode?: boolean;
   memoryQuery?: string;
   eventSink?: AgentTurnEventSink;
   signal?: AbortSignal;
@@ -881,16 +885,25 @@ export class NativeAgentController {
     let artifactRefs = [...(resumedState?.artifactRefs ?? [])];
     let providerAttemptsConsumed = resumedState?.providerAttemptsConsumed ?? 0;
     let providerWait = resumedState?.providerWait;
+    // Goal mode runs in windows: a goal turn gets the larger window and, at a window end, parks as resumable
+    // with a fresh window (see the end of the iteration loop) instead of failing at the cap.
+    const goalMode = input.goalMode === true;
+    const iterationWindow = goalMode
+      ? (this.config.goalMaxToolIterations ?? 200) : this.config.maxToolIterations;
     const configuredProviderBudget = Math.max(
       1,
-      (this.config.maxProviderAttempts ?? 6) * this.config.maxToolIterations,
+      (this.config.maxProviderAttempts ?? 6) * iterationWindow,
     );
     const maxProviderAttempts = resumedState
       ? Math.min(resumedState.maxProviderAttempts, configuredProviderBudget)
       : configuredProviderBudget;
-    const maxIterations = resumedState
-      ? Math.min(resumedState.maxIterations, this.config.maxToolIterations)
-      : this.config.maxToolIterations;
+    // A resumed goal turn keeps the window boundary its checkpoint stored (already extended past the configured
+    // size); the non-goal clamp stays. Never below nextIteration: the checkpoint invariant is nextIteration <= max + 1.
+    let maxIterations = resumedState
+      ? goalMode
+        ? Math.max(resumedState.maxIterations, resumedState.nextIteration - 1)
+        : Math.min(resumedState.maxIterations, this.config.maxToolIterations)
+      : iterationWindow;
     if (providerAttemptsConsumed > maxProviderAttempts) {
       throw new Error('AGENT_RUNTIME_PROVIDER_ATTEMPT_BUDGET_EXHAUSTED');
     }
@@ -1082,10 +1095,12 @@ export class NativeAgentController {
       ensureNotStopped();
       if (!resumedState) await persistCheckpoint('model-ready');
       let budgetWarned = false;
+      // Goal windows are relative to where this run started; the 75% warning measures the current window.
+      const windowStart = goalMode ? nextIteration : 1;
       for (let iteration = nextIteration; iteration <= maxIterations; iteration += 1) {
         ensureNotStopped();
         // Warning only: the limit and its failure semantics are unchanged.
-        if (!budgetWarned && iteration >= iterationBudgetThreshold(maxIterations)) {
+        if (!budgetWarned && iteration - windowStart + 1 >= iterationBudgetThreshold(maxIterations - windowStart + 1)) {
           budgetWarned = true;
           await emitAgentTurnEvent(input.eventSink, { type: 'agent.budget', iteration, maxIterations });
         }
@@ -1844,15 +1859,25 @@ export class NativeAgentController {
         nextIteration = iteration + 1;
         await persistCheckpoint('model-ready');
       }
+      ensureNotStopped();
+      // Goal window full: park the durable turn as resumable with a fresh window starting at the next iteration.
+      // The checkpoint is extended before the throw so nextIteration <= maxIterations + 1 still holds on resume;
+      // ChatService releases the resume claim for AGENT_RUNTIME_CONTINUATION_* codes, so Continue picks it up.
+      if (goalMode && input.continuation && maxProviderAttempts - providerAttemptsConsumed >= 1) {
+        maxIterations = nextIteration - 1 + iterationWindow;
+        await persistCheckpoint('model-ready');
+        throw new Error(AGENT_TURN_ITERATION_WINDOW_FULL);
+      }
       // Tool budget spent: ask once, without tools, for what was found so the work is not lost.
       // The turn still fails; ChatService persists the bounded report without finalizing it.
-      ensureNotStopped();
       if (!iterationLimitReport?.attempted && maxProviderAttempts - providerAttemptsConsumed >= 1) {
         try {
           const modelStarted = Date.now();
           const reply = await this.runtime.complete([...messages, { role: 'user', content:
-            'The tool budget for this turn is exhausted and no tool can be called. In at most 250 words, report what you'
-            + ' observed (cite the tool results), what you only infer, and what remains unchecked.' }], [], session.id,
+            'The tool budget for this turn is exhausted and no tool can be called. In at most 250 words write three'
+            + ' headings. DONE: what you verified, citing tool results. OPEN: what is not finished, one line each.'
+            + ' NEXT: the single next action to continue. If your context summary names a compaction id (cmp-...) that'
+            + ' holds details you would need, mention it. Say what you only infer, not observed.' }], [], session.id,
           input.signal, { ...(providerRoute ? { routeId: providerRoute } : {}), ...(providerModel ? { model: providerModel } : {}), ...(reasoningEffort ? { reasoningEffort } : {}), attemptLimit: 1, onRouting: noteRouting,
             onAttempt: async observation => {
               iterationLimitReport = { attempted: true };
@@ -1913,7 +1938,7 @@ export class NativeAgentController {
       const ownedProcesses = stopped ? processLedger.activeForTask(task.id) : [];
       await emitAgentTurnEvent(input.eventSink, error instanceof AgentProviderPoolPausedError
         ? { type: 'provider.waiting', code: error.reason, retryAtMs: providerWait?.retryAtMs ?? null }
-        : code === AGENT_TURN_USER_PAUSED
+        : code === AGENT_TURN_USER_PAUSED || code === AGENT_TURN_ITERATION_WINDOW_FULL
         ? { type: 'turn.paused', code }
         : stopped
         ? { type: 'turn.cancelled', code: 'AGENT_RUNTIME_TURN_STOPPED', ...(ownedProcesses.length ? { ownedProcesses } : {}) }

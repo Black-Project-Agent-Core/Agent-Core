@@ -5,6 +5,7 @@ import type { AgentReasoningEffort } from './agent-provider-state.js';
 import { normalizeNativeResultMetadata } from './agent-memory-evaluation.js';
 import {
   parseAgentTurnCheckpoint,
+  AGENT_TURN_ITERATION_WINDOW_FULL,
   AGENT_TURN_USER_PAUSED,
   serializeAgentTurnCheckpoint,
   verifyCheckpointArtifacts,
@@ -585,6 +586,7 @@ export class AgentChatService {
         ...(boundedContext.summary ? { historySummary: boundedContext.summary } : {}),
         memoryQuery: buildMemoryQuery(input.prompt, history),
         ...(slashSkill ? { userSelectedSkillDirective: userSelectedSkillDirective(slashSkill.skill) } : {}),
+        ...(input.goalMode ? { goalMode: true } : {}),
         eventSink: event => { this.recordContextUsage(continuation.turnId, event); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,
         continuation,
@@ -648,7 +650,8 @@ export class AgentChatService {
           }
         }
       }
-      if (!stopped && this.store.getTurn(turnId)?.errorCode === AGENT_TURN_USER_PAUSED) {
+      const parkedCode = this.store.getTurn(turnId)?.errorCode;
+      if (!stopped && (parkedCode === AGENT_TURN_USER_PAUSED || parkedCode === AGENT_TURN_ITERATION_WINDOW_FULL)) {
         return { ...this.replayResult(this.store.getTurn(turnId)!), replayed: false };
       }
       if (!stopped && error instanceof AgentProviderPoolPausedError && continuation.state) {
@@ -808,6 +811,7 @@ export class AgentChatService {
         taskId: turn.runtimeTaskId,
         prompt: loaded.state.prompt,
         workspace: loaded.state.workspace ?? conversation.workspace,
+        ...(turn.goalMode ? { goalMode: true } : {}),
         eventSink: event => { this.recordContextUsage(continuation.turnId, event); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,
         continuation,
@@ -865,7 +869,7 @@ export class AgentChatService {
           }
         }
       }
-      if (!controller.signal.aborted && message === AGENT_TURN_USER_PAUSED) {
+      if (!controller.signal.aborted && (message === AGENT_TURN_USER_PAUSED || message === AGENT_TURN_ITERATION_WINDOW_FULL)) {
         return { ...this.replayResult(this.store.getTurn(turn.id)!), replayed: false };
       }
       if (!controller.signal.aborted && error instanceof AgentProviderPoolPausedError && continuation.state) {

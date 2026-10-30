@@ -1075,3 +1075,31 @@ describe('AgentChatService manual compaction request', () => {
     expect((fixture.chat as any).compactionRequestedTurns.has(runningTurnId)).toBe(false);
   });
 });
+
+describe('AgentChatService goal iteration window', () => {
+  it('parks a goal turn as resumable at the window end without raising an error to the caller', async () => {
+    const fixture = await settleFixture();
+    const created = await fixture.chat.createConversation({ workspace: 'fixture' });
+    vi.spyOn(fixture.controller, 'runConversationTurn').mockImplementationOnce(async input => {
+      expect(input.goalMode).toBe(true);
+      throw new Error('AGENT_RUNTIME_CONTINUATION_ITERATION_WINDOW_FULL');
+    });
+    const parked = await fixture.chat.runTurn({ conversationId: created.conversation.id,
+      clientRequestId: 'goal-window', prompt: 'Reach the goal.', goalMode: true });
+    expect(parked.status).toBe('resumable');
+    const turn = fixture.chat.store.getTurn(parked.turnId)!;
+    expect(turn.status).toBe('resumable');
+    expect(turn.errorCode).toBe('AGENT_RUNTIME_CONTINUATION_ITERATION_WINDOW_FULL');
+  });
+
+  it('does not pass goalMode for a normal turn', async () => {
+    const fixture = await settleFixture();
+    const created = await fixture.chat.createConversation({ workspace: 'fixture' });
+    vi.spyOn(fixture.controller, 'runConversationTurn').mockImplementationOnce(async input => {
+      expect(input).not.toHaveProperty('goalMode');
+      throw new Error('FIXTURE_NORMAL_TURN_CHECKED');
+    });
+    await expect(fixture.chat.runTurn({ conversationId: created.conversation.id,
+      clientRequestId: 'normal-window', prompt: 'Do a normal task.' })).rejects.toThrow('FIXTURE_NORMAL_TURN_CHECKED');
+  });
+});

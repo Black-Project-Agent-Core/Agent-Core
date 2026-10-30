@@ -222,6 +222,8 @@ describe('native Agent Core controller lifecycle', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     const reportRequest = JSON.parse((fetchMock.mock.calls[2] as any)[1].body);
     expect(reportRequest.tools).toBeUndefined();
+    const reportPrompt = String(reportRequest.messages.at(-1).content);
+    for (const heading of ['DONE', 'OPEN', 'NEXT', '250 words']) expect(reportPrompt).toContain(heading);
     const failed = events.filter(event => event.type === 'turn.failed');
     expect(failed).toHaveLength(1);
     expect(failed[0].code).toBe('AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED');
@@ -247,6 +249,39 @@ describe('native Agent Core controller lifecycle', () => {
       eventSink: event => { events.push(event); } })).rejects.toThrow('AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED');
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(events.find(event => event.type === 'turn.failed')?.response).toContain('Observed: bounded work');
+  });
+
+  it('parks a goal turn at the window end with a fresh window and resumes it without a report call', async () => {
+    const { controller, runtime, fetchMock } = await fixture(
+      [strategyChoice(), toolboxChoice(['get_config']), toolboxChoice(['get_config']), toolboxChoice(['get_config'])],
+      [], undefined, { maxToolIterations: 1, goalMaxToolIterations: 2 });
+    const session = await runtime.startSession({ sessionId: 'goal-window' });
+    let saved: any;
+    const save = async (state: any) => { const record = serializeAgentTurnCheckpoint(state);
+      saved = parseAgentTurnCheckpoint(record.json, record.digest); };
+    const events: any[] = [];
+    const input = { sessionId: session.id, taskId: 'goal-window-task', prompt: 'Reach the goal', goalMode: true,
+      continuation: { conversationId: 'goal-chat', turnId: 'goal-turn', save }, eventSink: (event: any) => { events.push(event); } };
+    // (a) window 1: iterations 1-2, then park with the next window already stored.
+    await expect(controller.runConversationTurn(input)).rejects.toThrow('AGENT_RUNTIME_CONTINUATION_ITERATION_WINDOW_FULL');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(saved.maxIterations).toBe(4);
+    expect(saved.nextIteration).toBe(3);
+    expect(saved.iterationLimitReport).toBeUndefined();
+    expect(events.some(event => event.type === 'turn.failed')).toBe(false);
+    expect((await runtime.getTask('goal-window-task'))?.status).toBe('running');
+    // (b) window 2: resumes at iteration 3, runs 3-4 and parks again with window 5-6.
+    const resumed = events.length;
+    await expect(controller.runConversationTurn({ ...input, continuation: { ...input.continuation, state: saved } }))
+      .rejects.toThrow('AGENT_RUNTIME_CONTINUATION_ITERATION_WINDOW_FULL');
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(saved.maxIterations).toBe(6);
+    expect(saved.nextIteration).toBe(5);
+    expect(resumed).toBeGreaterThan(0);
+    // The 75% warning measures the current window: iteration 2 of window 1 (1-2) and iteration 4 of window 2 (3-4).
+    expect(events.filter(event => event.type === 'agent.budget').map(event => [event.iteration, event.maxIterations]))
+      .toEqual([[2, 2], [4, 4]]);
+    expect(events.some(event => event.type === 'turn.paused' && event.code === 'AGENT_RUNTIME_CONTINUATION_ITERATION_WINDOW_FULL')).toBe(true);
   });
 
   it('returns invalid finalization arguments to the model for bounded correction', async () => {

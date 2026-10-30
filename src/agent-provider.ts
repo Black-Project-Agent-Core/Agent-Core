@@ -74,6 +74,8 @@ export interface AgentProviderConfig {
   anthropicDefaultReasoningEffort?: AgentReasoningEffort;
   requestTimeoutMs: number;
   maxToolIterations: number;
+  /** Window size for goal-mode turns; a window end parks the turn as resumable instead of failing it. */
+  goalMaxToolIterations?: number;
   providers?: AgentProviderRouteConfig[];
   providerOrder?: string[];
   maxProviderAttempts?: number;

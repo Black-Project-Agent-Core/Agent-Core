@@ -281,6 +281,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
       requestTimeoutMs: positiveInt(env.AGENT_CORE_AI_REQUEST_TIMEOUT_MS, 180_000),
       // 60 (was 24): real coding tasks need more rounds, and an over-limit turn loses its tool context (user decision 2026-10-30).
       maxToolIterations: positiveInt(env.AGENT_CORE_AI_MAX_TOOL_ITERATIONS, 60),
+      // Goal mode runs in resumable windows of this size; a window end parks the turn instead of failing it.
+      goalMaxToolIterations: positiveInt(env.AGENT_CORE_AI_GOAL_MAX_TOOL_ITERATIONS, 200),
       allowedTools: [...new Set(list(env.AGENT_CORE_AI_ALLOWED_TOOLS))].slice(0, 128),
       capabilityPolicy: capabilityPolicy(env.AGENT_CORE_AI_CAPABILITY_POLICY),
       allowedCapabilities: capabilityFamilies(env.AGENT_CORE_AI_ALLOWED_CAPABILITIES),

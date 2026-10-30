@@ -7,6 +7,11 @@ describe('Native Agent capability configuration', () => {
     expect(loadConfig({ AGENT_CORE_AI_MAX_TOOL_ITERATIONS: '12' }, process.cwd()).agentRuntime.maxToolIterations).toBe(12);
   });
 
+  it('defaults the Goal mode iteration window to 200 and lets the environment override it', () => {
+    expect(loadConfig({}, process.cwd()).agentRuntime.goalMaxToolIterations).toBe(200);
+    expect(loadConfig({ AGENT_CORE_AI_GOAL_MAX_TOOL_ITERATIONS: '40' }, process.cwd()).agentRuntime.goalMaxToolIterations).toBe(40);
+  });
+
   it('loads dynamic capability policy, family ceiling and web research settings without changing explicit defaults', () => {
     const configured = loadConfig({
       AGENT_CORE_AI_ENABLED: 'true',

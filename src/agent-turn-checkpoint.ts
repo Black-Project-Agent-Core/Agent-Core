@@ -15,6 +15,8 @@ import {
 
 export const AGENT_TURN_CHECKPOINT_SCHEMA_VERSION = 1 as const;
 export const AGENT_TURN_USER_PAUSED = 'AGENT_RUNTIME_CONTINUATION_USER_PAUSED';
+/** A Goal mode turn used its iteration window; it parks as resumable and Continue starts a fresh window. */
+export const AGENT_TURN_ITERATION_WINDOW_FULL = 'AGENT_RUNTIME_CONTINUATION_ITERATION_WINDOW_FULL';
 export const AGENT_TURN_CHECKPOINT_MAX_BYTES = 2 * 1024 * 1024;
 export const AGENT_TURN_CHECKPOINT_TTL_MS = RESULT_ARTIFACT_TTL_MS;
 
