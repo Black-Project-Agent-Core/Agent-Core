@@ -8,7 +8,7 @@ import { InvocationCards, TurnTimeline, activityToSteps, pickTurnSteps } from '.
 import { SlashMenu, filterSlashCommands, slashOptionId, slashQuery } from './SlashMenu';
 import { Plus, Paperclip, FolderOpen, Target, ListTodo, Wrench, Send, Shield, Pause } from 'lucide-react';
 import { PrototypeDashboard, PrototypeTools, PrototypeRuntime, PrototypeDiagnostics, PrototypeSettings, PrototypeSetup, PrototypeActivity } from './PrototypePages';
-import { ArtifactsPage, GoalsPage, LearningPage, MemoryPage, ModelsPage } from './LauncherPages';
+import { ArtifactsPage, GoalsPage, LearningPage, MemoryPage, ModelsPage, SkillsPage } from './LauncherPages';
 import type {
   ActivityEntry,
   AgentChatUiState,
@@ -57,6 +57,9 @@ type SharedProps = {
   onChatProvider?:(choice:string)=>void;
   onChatModel?:(choice:string)=>void;
   onChatReasoning?:(choice:ReasoningChoice)=>void;
+  /** Skills page (state in agentChat.skills): switch one skill on/off for Native, and ask the host for the list again. */
+  onSkillSet?:(name:string,enabled:boolean)=>void;
+  onSkillsReload?:()=>void;
 };
 
 const statusTone=(status?:string, issues=0):Tone=>{
@@ -778,9 +781,9 @@ function SettingToggle({title,text,on,disabled,onChange}:{title:string;text:stri
   return <div className="setting-toggle"><div><b>{title}</b><span>{text}</span></div><Toggle on={on} disabled={disabled} onChange={onChange}/></div>;
 }
 
-export function ReferenceUi({page,setPage,snapshot,logs,onAction,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatCompact,onSlashCommands,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning,onChatDraft}:SharedProps & {page:PageId;onChatDraft?:()=>void}) {
-  const props={snapshot,logs,onAction,setPage,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatCompact,onSlashCommands,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning};
-  const content=page==='workflows'?<WorkflowsPage/>:page==='chat'?<ChatPage {...props}/>:page==='dashboard'?<PrototypeDashboard {...props}/>:page==='core'?<PrototypeRuntime {...props}/>:page==='systems'?<PrototypeTools {...props}/>:page==='models'?<ModelsPage {...props}/>:page==='memory'?<MemoryPage {...props}/>:page==='learning'?<LearningPage {...props}/>:page==='goals'?<GoalsPage {...props}/>:page==='artifacts'?<ArtifactsPage {...props}/>:page==='activity'?<PrototypeActivity {...props}/>:page==='diagnostics'?<PrototypeDiagnostics {...props}/>:page==='wizard'?<PrototypeSetup {...props}/>:<PrototypeSettings {...props}/>;
+export function ReferenceUi({page,setPage,snapshot,logs,onAction,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatCompact,onSlashCommands,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning,onSkillSet,onSkillsReload,onChatDraft}:SharedProps & {page:PageId;onChatDraft?:()=>void}) {
+  const props={snapshot,logs,onAction,setPage,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatCompact,onSlashCommands,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning,onSkillSet,onSkillsReload};
+  const content=page==='workflows'?<WorkflowsPage/>:page==='chat'?<ChatPage {...props}/>:page==='dashboard'?<PrototypeDashboard {...props}/>:page==='core'?<PrototypeRuntime {...props}/>:page==='systems'?<PrototypeTools {...props}/>:page==='models'?<ModelsPage {...props}/>:page==='memory'?<MemoryPage {...props}/>:page==='learning'?<LearningPage {...props}/>:page==='goals'?<GoalsPage {...props}/>:page==='artifacts'?<ArtifactsPage {...props}/>:page==='activity'?<PrototypeActivity {...props}/>:page==='diagnostics'?<PrototypeDiagnostics {...props}/>:page==='wizard'?<PrototypeSetup {...props}/>:page==='skills'?<SkillsPage {...props}/>:<PrototypeSettings {...props}/>;
   return <AppShell page={page} setPage={setPage} snapshot={snapshot} onAction={onAction} onNewChat={onChatDraft} agentChat={agentChat} logs={logs}>{content}</AppShell>;
 }
 

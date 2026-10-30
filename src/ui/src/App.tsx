@@ -13,7 +13,7 @@ import { mergeSelection, parseServerSelection, readLocalSelection, resolveSelect
 import { ReferenceUi } from './pages';
 import type { PageId } from './components';
 
-const validPages = new Set<PageId>(['chat','dashboard','goals','artifacts','models','memory','learning','core','systems','workflows','activity','diagnostics','settings','wizard']);
+const validPages = new Set<PageId>(['chat','dashboard','goals','artifacts','models','memory','learning','core','systems','workflows','activity','diagnostics','settings','wizard','skills']);
 
 function pageFromHash(): PageId {
   const hash=window.location.hash.replace(/^#/,'').trim();
@@ -45,6 +45,8 @@ export default function App() {
   const creatingRequestIdRef=useRef<string | undefined>(undefined);
   // requestId -> `${turnId}:${seq}` of in-flight step Input/Output requests (so their errors never reach the chat error).
   const stepRequestsRef=useRef(new Map<string,string>());
+  // skill name -> switch value before an optimistic change, so a failed change can put it back.
+  const skillPreviousRef=useRef(new Map<string,boolean>());
   // Persist an owner pick locally right away; the server records the values actually sent with each turn.
   useEffect(()=>{
     if(!agentChat.selectionSaved)return;
@@ -81,6 +83,34 @@ export default function App() {
       if(message.type==='log'){setLogs(prev=>[...prev,message.entry].slice(-200));return;}
       if(message.type==='agent-chat-compact-result'){setAgentChat(prev=>({...prev,compactResult:{turnId:message.turnId,status:message.status}}));return;}
       if(message.type==='agent-chat-slash-commands-result'){setAgentChat(prev=>({...prev,slashCommands:message.result?.commands??[]}));return;}
+      if(message.type==='agent-skills-result'){
+        // A switch still waiting for its answer keeps the optimistic value instead of flickering back to the older list.
+        setAgentChat(prev=>{
+          const pending=prev.skills?.pending??{};
+          const shown=new Map((prev.skills?.items??[]).map(item=>[item.name,item.enabled]));
+          return {...prev,skills:{state:'ready',pending,
+            items:(message.result?.skills??[]).map(item=>pending[item.name]&&shown.has(item.name)?{...item,enabled:shown.get(item.name)!}:item)}};
+        });
+        return;
+      }
+      if(message.type==='agent-skills-error'){
+        setAgentChat(prev=>({...prev,skills:{items:prev.skills?.items??[],pending:prev.skills?.pending??{},state:'error',error:message.error||'Daftar skill tidak dapat dimuat.'}}));
+        return;
+      }
+      if(message.type==='agent-skill-set-result'){
+        const previous=skillPreviousRef.current.get(message.name);
+        skillPreviousRef.current.delete(message.name);
+        setAgentChat(prev=>{
+          if(!prev.skills)return prev;
+          // ok: keep the value the host reports; failed: put back the value the switch had before the click.
+          const enabled=message.ok?message.enabled:(previous??!message.enabled);
+          return {...prev,skills:{...prev.skills,pending:{...prev.skills.pending,[message.name]:false},
+            items:prev.skills.items.map(item=>item.name===message.name?{...item,enabled}:item),
+            ...(message.ok?{}:{error:message.error||'Skill '+message.name+' gagal diubah.'})}};
+        });
+        if(message.ok)postHost({type:'agent-skills-list'});
+        return;
+      }
       if(message.type==='agent-result'){
         setAgentRun(prev=>prev.requestId===message.requestId
           ? (message.error
@@ -230,6 +260,16 @@ export default function App() {
     }
   },[agentChat.error]);
 
+  // Skills page: ask the host for the list on every visit and from the page's reload button.
+  // A list that is already shown stays visible while the new answer is on its way.
+  const requestSkills=()=>{
+    setAgentChat(prev=>({...prev,skills:{items:prev.skills?.items??[],pending:prev.skills?.pending??{},state:'loading'}}));
+    postHost({type:'agent-skills-list'});
+  };
+  useEffect(()=>{
+    if(page==='skills')requestSkills();
+  },[page]);
+
   // Fetch only changed active threads, never overwrite an in-flight local send.
   // A manual selection takes priority over a delayed automatic read response.
   useEffect(()=>{
@@ -340,6 +380,17 @@ export default function App() {
     postHost({type:'agent-chat-slash-commands'});
   };
 
+  // Switches one skill on/off for Native: optimistic value and pending until the host answers (agent-skill-set-result).
+  const onSkillSet=(name:string,enabled:boolean)=>{
+    const skills=agentChat.skills;
+    const item=skills?.items.find(entry=>entry.name===name);
+    if(!skills||!item||skills.pending[name])return;
+    skillPreviousRef.current.set(name,item.enabled);
+    setAgentChat(prev=>prev.skills?{...prev,skills:{...prev.skills,pending:{...prev.skills.pending,[name]:true},
+      items:prev.skills.items.map(entry=>entry.name===name?{...entry,enabled}:entry)}}:prev);
+    postHost({type:'agent-skill-set',name,enabled});
+  };
+
   // Asks the host for the exact Input/Output of one persisted step; never re-asks while loading/ready.
   const requestStepDetail=(turnId:string,seq:number)=>{
     const key=stepKey(turnId,seq);
@@ -411,6 +462,8 @@ export default function App() {
     onChatProvider={onChatProvider}
     onChatModel={onChatModel}
     onChatReasoning={onChatReasoning}
+    onSkillSet={onSkillSet}
+    onSkillsReload={requestSkills}
     onChatDraft={onChatDraft}
   />;
 }

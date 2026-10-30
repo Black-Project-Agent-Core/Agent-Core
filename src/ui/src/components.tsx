@@ -6,14 +6,14 @@ import {
   CircleAlert, CircleSlash, Clock3, Code2, Cpu, Database, Download, ExternalLink,
   FileText, Folder, FolderOpen, Gamepad2, Gauge, HardDrive, HeartPulse, Home, Info,
   KeyRound, LayoutDashboard, Link2, ListChecks, MessageSquarePlus, MoreHorizontal, Play, Power, Puzzle,
-  RefreshCw, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Square, Stethoscope,
+  RefreshCw, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Sparkles, Square, Stethoscope,
   Terminal, Trash2, UserRound, Wifi, X, XCircle, Target, FolderArchive, Moon, Wrench, SlidersHorizontal, Minimize2, type LucideIcon,
 } from 'lucide-react';
 import { postHost, subscribeHost, type DesktopSnapshot, type ActivityEntry, type AgentChatUiState, type LauncherWindowSize } from './host';
 import type { SystemId, SystemView, Tone } from './model';
 import { formatDuration } from './model';
 
-export type PageId = 'chat' | 'dashboard' | 'goals' | 'artifacts' | 'models' | 'memory' | 'learning' | 'core' | 'systems' | 'workflows' | 'activity' | 'diagnostics' | 'settings' | 'wizard';
+export type PageId = 'chat' | 'dashboard' | 'goals' | 'artifacts' | 'models' | 'memory' | 'learning' | 'core' | 'systems' | 'workflows' | 'activity' | 'diagnostics' | 'settings' | 'wizard' | 'skills';
 
 export const systemIcons: Record<SystemId, LucideIcon> = {
   core: Cpu,
@@ -40,6 +40,7 @@ export const navItems: Array<{id:PageId; label:string; icon:LucideIcon; group:st
   {id:'goals',label:'Goals & Plans',icon:Target,group:'Workspace'},
   {id:'artifacts',label:'Artifacts',icon:FolderArchive,group:'Workspace'},
   {id:'systems',label:'Tools Hub & MCP',icon:Wrench,group:'AI Capabilities'},
+  {id:'skills',label:'Skill',icon:Sparkles,group:'AI Capabilities'},
   {id:'models',label:'AI Models',icon:Boxes,group:'AI Capabilities'},
   {id:'memory',label:'Memory Explorer',icon:Database,group:'AI Capabilities'},
   {id:'learning',label:'Dreaming Review',icon:Moon,group:'AI Capabilities'},
@@ -98,8 +99,8 @@ export function TinyButton({children,onClick,kind='neutral',disabled=false,title
   return <button type="button" className={`tiny-button ${kind}`} onClick={onClick} disabled={disabled} title={title}>{children}</button>;
 }
 
-export function Toggle({on,disabled,onChange}:{on:boolean;disabled?:boolean;onChange?:()=>void}) {
-  return <button type="button" className={`toggle ${on?'on':''}`} onClick={onChange} disabled={disabled} aria-pressed={on}><span/></button>;
+export function Toggle({on,disabled,onChange,label}:{on:boolean;disabled?:boolean;onChange?:()=>void;label?:string}) {
+  return <button type="button" className={`toggle ${on?'on':''}`} onClick={onChange} disabled={disabled} aria-pressed={on} aria-label={label}><span/></button>;
 }
 
 export function Sparkline({values,tone='healthy'}:{values:number[];tone?:Tone}) {

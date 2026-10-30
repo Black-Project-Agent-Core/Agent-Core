@@ -330,6 +330,8 @@ export type AgentChatUiState = {
   /** Entries of the composer "/" menu; absent until the host answers. */
   slashCommands?: SlashCommand[];
   error?: string;
+  /** Skills page state. */
+  skills?: { items: NativeSkillInfo[]; state: 'idle'|'loading'|'ready'|'error'; error?: string; pending: Record<string,boolean> };
 };
 
 export type AgentChatActivity = {
@@ -460,6 +462,8 @@ export type AgentChatCompactResult = { turnId: string; status: 'scheduled' | 'no
 /** One entry of the composer "/" menu (GET /agent/chat/slash-commands): the /compact command or an active Skill. */
 export type SlashCommand = { name: string; kind: 'command' | 'skill'; description: string };
 
+export type NativeSkillInfo = { name: string; description: string; digest: string; enabled: boolean };
+
 type HostEnvelope =
   | { type: 'window-size-state'; requestId: string; size: LauncherWindowSize; warning?: string | null }
   | { type: 'window-size-error'; requestId: string; error: string; size: LauncherWindowSize }
@@ -487,7 +491,10 @@ type HostEnvelope =
   | { type: 'agent-chat-slash-commands-result'; result: { commands: SlashCommand[] } }
   | { type: 'agent-chat-pause-result'; turnId: string; paused: boolean }
   | { type: 'agent-chat-error'; requestId?: string; conversationId?: string; error: string }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'agent-skills-result'; result: { skills: NativeSkillInfo[] } }
+  | { type: 'agent-skills-error'; error: string }
+  | { type: 'agent-skill-set-result'; name: string; enabled: boolean; ok: boolean; error?: string };
 
 export type HostListener = (message: HostEnvelope) => void;
 

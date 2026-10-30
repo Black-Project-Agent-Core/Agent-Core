@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowRight, Boxes, BrainCircuit, Code2, Database, FileText, Folder, RefreshCw, Search, Sparkles, Target } from 'lucide-react';
-import { MetricCard, PageHero, Panel, StatusBadge, TinyButton, type PageId } from './components';
+import { MetricCard, PageHero, Panel, StatusBadge, TinyButton, Toggle, type PageId } from './components';
 import { TaskChangesPanel } from './TaskChangesPanel';
 import { Plus, Moon, ListTodo, Lock } from 'lucide-react';
 import { PrototypeHeader, PrototypeCard, UpgradeControl } from './PrototypePages';
@@ -10,6 +10,9 @@ type Props = {
   snapshot?: DesktopSnapshot; agentChat: AgentChatUiState; setPage: (page: PageId) => void;
   onAction: (action: string) => void; onChatProvider?: (provider: string) => void;
   onChatModel?: (model: string) => void;
+  /** Skills page: turns one skill on or off for Native / asks the host for the skill list again. */
+  onSkillSet?: (name: string, enabled: boolean) => void;
+  onSkillsReload?: () => void;
 };
 
 export function ModelsPage(props: Props) {
@@ -115,5 +118,36 @@ export function LearningPage(props: Props) {
     <section className="fidelity-dream-section"><h2 className="fidelity-column-title"><Sparkles size={16}/>Proposed Knowledge Additions (Review Required)</h2><div className="fidelity-empty-card"><Moon size={18}/><div><h2>Dreaming review is a planned upgrade</h2><p>Findings, accept/reject actions, and session review counts are not available in this launcher. This does not mean the review queue is empty.</p></div></div></section>
     <section className="fidelity-dream-section fidelity-audit"><h2 className="fidelity-column-title">Consolidation Audit Trail · Knowledge sinks</h2>{health?.learning.sinkStatus.length ? <ul className="launcher-record-list">{health.learning.sinkStatus.map(sink => <li key={sink.name}><b>{sink.name}</b><StatusBadge tone={sink.available ? 'healthy' : 'error'} label={sink.available ? 'Available' : 'Unavailable'}/></li>)}</ul>
       : <p>Waiting for Learning status from the desktop host.</p>}<div className="launcher-inline-actions"><TinyButton onClick={() => props.setPage('chat')}>Current conversation</TinyButton><TinyButton onClick={() => props.setPage('activity')}>Activity Log</TinyButton></div></section>
+  </div>;
+}
+
+/** First 8 hex digits of a skill digest ("sha256:0123abcd…" -> "0123abcd"). */
+const shortDigest = (digest: string) => digest.replace(/^[^:]*:/, '').slice(0, 8);
+
+export function SkillsPage(props: Props) {
+  const [search, setSearch] = useState('');
+  const skills = props.agentChat.skills;
+  const items = skills?.items ?? [];
+  const activeCount = items.filter(skill => skill.enabled).length;
+  const needle = search.trim().toLowerCase();
+  const shown = needle ? items.filter(skill => `${skill.name} ${skill.description}`.toLowerCase().includes(needle)) : items;
+  // Nothing to show yet: no answer from the host so far (a reload over an existing list keeps the list visible).
+  const loading = !skills || skills.state === 'idle' || (skills.state === 'loading' && items.length === 0);
+  const failure = skills && (skills.error || skills.state === 'error') ? skills.error || 'Daftar skill tidak dapat dimuat.' : undefined;
+  return <div className="prototype-page launcher-data-page">
+    <PrototypeHeader title="Skill" badge="Native hard block" description="Daftar skill terpasang. OFF = Native dilarang membaca atau memakainya. Native hanya boleh meminta kamu mengaktifkannya lewat jawabannya."/>
+    {failure && <div className="skill-page-alert" role="alert"><span>{failure}</span><TinyButton onClick={() => props.onSkillsReload?.()}>Muat ulang</TinyButton></div>}
+    {loading && !failure && <Panel><p role="status">Memuat daftar skill…</p></Panel>}
+    {!loading && items.length > 0 && <>
+      <p className="skill-page-summary">{`${activeCount} aktif · ${items.length - activeCount} nonaktif`}</p>
+      <div className="fidelity-filter-row"><label className="prototype-search"><Search size={16}/><input aria-label="Cari skill" placeholder="Cari skill berdasarkan nama atau deskripsi…" value={search} onChange={event => setSearch(event.target.value)}/></label></div>
+      {shown.length > 0
+        ? <ul className="launcher-record-list">{shown.map(skill => <li key={skill.name} className="skill-page-row">
+          <div><b className="skill-page-name">{skill.name}</b><p className="skill-page-desc">{skill.description}</p><small className="skill-page-meta">{shortDigest(skill.digest)}</small></div>
+          <Toggle on={skill.enabled} disabled={Boolean(skills?.pending?.[skill.name]) || !props.onSkillSet} label={`Skill ${skill.name} untuk Native`} onChange={() => props.onSkillSet?.(skill.name, !skill.enabled)}/>
+        </li>)}</ul>
+        : <div className="fidelity-empty-card" role="status"><Sparkles size={18}/><div><h2>Tidak ada skill yang cocok</h2><p>Coba nama atau kata lain dari deskripsi skill.</p></div></div>}
+    </>}
+    {!loading && !failure && items.length === 0 && <div className="fidelity-empty-card" role="status"><Sparkles size={18}/><div><h2>Belum ada skill terpasang</h2><p>Agent Core belum memiliki skill aktif yang bisa diatur dari sini.</p></div></div>}
   </div>;
 }

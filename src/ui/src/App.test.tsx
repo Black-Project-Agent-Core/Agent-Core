@@ -141,6 +141,31 @@ function pushSnapshot(snapshot: DesktopSnapshot = onlineSnapshot) {
 }
 
 describe('Agent Core desktop UI host integration', () => {
+  it('Skill page: asks the host for the list, switches optimistically and rolls a failed switch back', () => {
+    window.location.hash = '#skills';
+    render(<App/>);pushSnapshot();
+    const sent = (type: string) => postMessage.mock.calls.filter(([value]) => value?.type === type);
+    expect(sent('agent-skills-list')).toHaveLength(1);
+    act(() => messageHandler!({ data: { type: 'agent-skills-result', result: { skills: [
+      { name: 'code-review', description: 'Review code', digest: 'sha256:0123456789abcdef', enabled: true },
+      { name: 'deploy-guard', description: 'Block risky deployments', digest: 'sha256:aabbccddeeff0011', enabled: false },
+    ] } } }));
+    const toggle = () => screen.getByRole('button', { name: 'Skill code-review untuk Native' });
+    expect(toggle()).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(toggle());
+    expect(toggle()).toHaveAttribute('aria-pressed', 'false');
+    expect(toggle()).toBeDisabled();
+    expect(sent('agent-skill-set')[0]![0]).toMatchObject({ name: 'code-review', enabled: false });
+    act(() => messageHandler!({ data: { type: 'agent-skill-set-result', name: 'code-review', enabled: false, ok: false, error: 'Core menolak' } }));
+    expect(toggle()).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle()).toBeEnabled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Core menolak');
+    fireEvent.click(toggle());
+    act(() => messageHandler!({ data: { type: 'agent-skill-set-result', name: 'code-review', enabled: false, ok: true } }));
+    expect(toggle()).toHaveAttribute('aria-pressed', 'false');
+    expect(sent('agent-skills-list')).toHaveLength(2);
+  });
+
   it('fills the composer "/" menu from the agent-chat-slash-commands-result message', () => {
     render(<App/>);pushSnapshot(chatReady);
     const textarea=screen.getByRole('textbox',{name:'Message Agent Core'});
@@ -232,7 +257,7 @@ describe('Agent Core desktop UI host integration', () => {
     expect(screen.getByRole('textbox', { name: 'Message Agent Core' })).toBeEnabled();
     expect(screen.queryByPlaceholderText(/Search systems/)).not.toBeInTheDocument();
     expect(within(screen.getByRole('banner')).getByRole('button', { name: 'Agent Core home' })).toBeInTheDocument();
-    for (const name of ['New Chat', 'Dashboard', 'Core Runtime', 'Tools Hub & MCP', 'Dreaming Review', 'Activity Log', 'Diagnostics & Recovery', 'Settings', 'Quick Actions']) {
+    for (const name of ['New Chat', 'Dashboard', 'Core Runtime', 'Tools Hub & MCP', 'Skill', 'Dreaming Review', 'Activity Log', 'Diagnostics & Recovery', 'Settings', 'Quick Actions']) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
     }
     expect(screen.getByRole('button', { name: 'Core: Ready' })).toBeInTheDocument();

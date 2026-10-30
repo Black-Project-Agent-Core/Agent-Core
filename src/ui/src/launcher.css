@@ -512,35 +512,13 @@
 .fidelity-dreaming .metric-copy{display:flex;flex-direction:column}.fidelity-dreaming .metric-copy>span{order:-1;margin-bottom:4px}.prototype-model-facts dd{text-align:right}
 .fidelity-dreaming .launcher-summary-grid>.metric-card{padding:16px}.fidelity-audit{padding-top:16px;border-top:1px solid #ffffff14}.fidelity-audit .launcher-inline-actions{margin-top:4px}
 
-/* Skills page styles */
-.skill-page-loading{padding:24px;color:var(--muted);text-align:center}
-.skill-page-error{padding:24px;background:#361b29;border:1px solid #743043;border-radius:12px;color:#fda4af}
-.skill-page-error .prototype-retry{margin-top:12px;padding:8px 16px;border:1px solid #743043;border-radius:6px;background:#1c2430;color:#fda4af;cursor:pointer}
-.skill-page-error .prototype-retry:hover{background:#2a2d3e}
-.skill-page-summary{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px;margin-bottom:8px}
-.skill-page-search{width:100%;max-width:400px;margin-bottom:16px}
-.skill-page-empty{display:flex;align-items:flex-start;gap:12px;padding:32px 24px;color:var(--muted);background:#131722;border:1px solid #ffffff14;border-radius:12px}
-.skill-page-empty>svg{color:var(--cyan);flex:none}
-.skill-page-empty h2{color:var(--text);font-size:12px;margin:0 0 4px}
-.skill-page-empty p{margin:0;font-size:11px;line-height:1.6}
-.skill-page-list{display:flex;flex-direction:column;gap:8px}
-.skill-page-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;background:#131722;border:1px solid #ffffff14;border-radius:10px;transition:background .15s,border-color .15s}
-.skill-page-row:hover{background:#181e2b;border-color:#0891b244}
-.skill-page-info{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
-.skill-page-name{font-weight:600;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.skill-page-desc{font-size:11px;color:var(--text-2);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.skill-page-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.skill-page-digest{font-size:10px;color:var(--muted);background:#0b0f16;border:1px solid #ffffff0a;padding:2px 6px;border-radius:4px;font-family:Consolas,monospace}
-@media(max-width:800px){.skill-page-search{max-width:none}.skill-page-row{gap:12px}}
-@media(max-width:600px){.skill-page-row{flex-direction:column;align-items:flex-start}.skill-page-meta{margin-top:4px}}
-
-/* Toggle component from components.tsx - ensure it's styled for skill page */
-.launcher-shell .toggle{width:44px;height:24px;border-radius:12px;background:#344155;border:1px solid #475569;position:relative;cursor:pointer;flex:none}
-.launcher-shell .toggle:disabled{opacity:.5;cursor:not-allowed}
-.launcher-shell .toggle.on{background:#0891b2;border-color:#0891b2}
-.launcher-shell .toggle span{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#cbd5e1;transition:transform .15s;box-shadow:0 1px 3px #0006}
-.launcher-shell .toggle.on span{transform:translateX(20px)}
-.launcher-shell .toggle:focus-visible{outline:2px solid #22d3ee;outline-offset:2px}
+/* Skill page: rows reuse .launcher-record-list, only the skill-specific parts are styled here. */
+.skill-page-summary{color:#8d9db3;font-size:11px}
+.skill-page-alert{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border:1px solid #743043;border-radius:10px;background:#361b29;color:#fda4af;font-size:11px}
+.skill-page-row>div{min-width:0;flex:1}
+.skill-page-row .skill-page-name{display:block;font-size:12px;font-weight:700;color:#d8e4f3;overflow-wrap:anywhere}
+.skill-page-row .skill-page-desc{margin:4px 0 6px;font-size:11px;line-height:1.5;color:#8d9db3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.skill-page-row .skill-page-meta{font:10px Consolas,monospace;color:#8d9db3}
 
 @media(max-width:800px){.fidelity-memory-grid,.fidelity-goal-columns{grid-template-columns:minmax(0,1fr)}.fidelity-artifact-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.fidelity-filter-row>.prototype-search{min-width:0;width:100%}.fidelity-filter-chips{width:100%}}
 @media(max-width:600px){.fidelity-artifact-grid{grid-template-columns:minmax(0,1fr)}}
