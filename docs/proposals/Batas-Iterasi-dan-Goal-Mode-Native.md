@@ -1,7 +1,7 @@
 # Batas iterasi dan Goal mode Native
 Tanggal: 2026-10-30
 Revisi: 1
-Status: PROPOSED
+Status: APPROVED (revisi 1, scope A+B+C build; belum diimplementasikan)
 Jenis: Improvement
 Asal dan bukti: `src/config.ts:274`, `src/agent-runtime.ts:468`, `src/agent-controller.ts:886-893` dan `:1862-1887`, `src/agent-chat-store.ts:1152`, `src/agent-chat-service.ts:465-519`, `src/agent-turn-events.ts:205`, pengamatan sesi 2026-10-30, pertanyaan pengguna 2026-10-30.
 
@@ -51,4 +51,4 @@ Harapan, belum terukur: lebih sedikit giliran yang berhenti di tengah pekerjaan,
 
 ## Keputusan pengguna dan scope
 
-Belum ada keputusan; menunggu APPROVE / REVISE / HOLD / REJECT atas revisi 1. Scope yang disarankan: A + B + C.
+APPROVE revisi 1, scope A + B + C (build), diberikan pengguna di chat pada 2026-10-30 dengan pesan "Setujui A+B+C" sebagai jawaban atas pertanyaan keputusan proposal ini. Persetujuan ini tidak mencakup revisi berikutnya atau scope tambahan. Status APPROVED belum berarti selesai: implementasi, validasi dan arsip ke `docs/history-agent-core` menyusul setelah acceptance terpenuhi.
