@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AgentRuntimeToolSession, toolObservesStop } from '../src/agent-tool-session.js';
 import { ArtifactAuthorization } from '../src/auth/artifact-authorization.js';
 const nativeRuntime = { nativeTaskId: 'fixture-native-task', nativeWorkspace: 'agent-core' };
+afterEach(() => { vi.unstubAllEnvs(); });
 
 describe('native agent MCP tool session', () => {
   it('discovers and dispatches only explicitly granted existing Agent Core tools', async () => {
@@ -59,9 +60,16 @@ describe('native agent MCP tool session', () => {
     }
   });
 
-  it('makes no tool call when Stop was already requested', async () => {
+  // Both paths must honor Stop: the default in-process registry and the older in-memory MCP client behind the switch.
+  const paths = [
+    ['direct', undefined, (session: any) => session.port.host, 2],
+    ['mcp', 'mcp', (session: any) => session.port.client, 1],
+  ] as const;
+
+  it.each(paths)('makes no tool call when Stop was already requested (%s)', async (_path, mode, target) => {
+    if (mode) vi.stubEnv('AGENT_CORE_NATIVE_TOOL_TRANSPORT', mode);
     const session = await AgentRuntimeToolSession.open('fixture-stop-before', ['get_config'], nativeRuntime);
-    const dispatch = vi.spyOn((session as any).client, 'callTool');
+    const dispatch = vi.spyOn(target(session), 'callTool');
     try {
       const stop = new AbortController();
       stop.abort();
@@ -73,15 +81,16 @@ describe('native agent MCP tool session', () => {
     }
   });
 
-  it('forwards the turn Stop signal to the in-flight MCP request', async () => {
+  it.each(paths)('forwards the turn Stop signal to the in-flight call (%s)', async (_path, mode, target, optionsAt) => {
+    if (mode) vi.stubEnv('AGENT_CORE_NATIVE_TOOL_TRANSPORT', mode);
     const session = await AgentRuntimeToolSession.open('fixture-stop-during', ['get_config'], nativeRuntime);
-    const dispatch = vi.spyOn((session as any).client, 'callTool');
+    const dispatch = vi.spyOn(target(session), 'callTool');
     try {
       const stop = new AbortController();
       const pending = session.call('get_config', {}, 'dtc:fixture:stop', stop.signal);
       stop.abort();
       await expect(pending).rejects.toBeDefined();
-      expect(dispatch.mock.calls[0]?.[1]).toEqual({ signal: stop.signal });
+      expect(dispatch.mock.calls[0]?.[optionsAt]).toMatchObject({ signal: stop.signal });
       const finished = await session.call('get_config', {});
       expect(finished.isError).toBe(false);
     } finally {

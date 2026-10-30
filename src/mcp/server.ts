@@ -28,6 +28,7 @@ import { usageTracker } from '../rdc/utils/usageTracker.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { beginToolInvocationEvidence, currentExternalInvocationContext, currentToolInvocationRequest, takeBrowserObservationUse } from '../tracker/tool-invocation.js';
 import { loadAgentProtocol } from './agent-protocol.js';
+import { InProcessToolHost } from './in-process-tool-host.js';
 import { ControllerContractGate, CONTRACT_INSTRUCTIONS, installControllerContract, type ControllerContractBinding } from './controller-contract.js';
 import { registerRestartTool } from './restart-tool.js';
 import { registerExternalReconstructionHarnessTool } from './external-reconstruction-harness-tools.js';
@@ -71,6 +72,8 @@ export interface AgentCoreMcpRuntime {
   controllerSessionId?: string;
   nativeTaskId?: string;
   nativeWorkspace?: string;
+  /** A plain in-process registry to register the tools into instead of building an MCP server (Native turns). */
+  toolTarget?: unknown;
   controllerContract?: ControllerContractBinding;
   controllerBootstrap?: string;
   semanticIde?: SemanticIdeService;
@@ -296,18 +299,20 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime = { ...runtime, controllerSessionId: ownerScopedLearningSession(memoryOwner, runtime.controllerSessionId) };
   }
   const workspaceRegistry = runtime.memoryExperience ?? runtime.memoryService;
-  const baseInstructions = loadAgentProtocol();
+  // A registry target is not a protocol endpoint: it has no instructions to send, so the contract is not read for it.
+  const baseInstructions = runtime.toolTarget ? '' : loadAgentProtocol();
   const contextualInstructions = runtime.controllerBootstrap?.trim()
     ? `${baseInstructions}\n\n${runtime.controllerBootstrap.trim()}`
     : baseInstructions;
   const instructions = runtime.phoneController?.enabled
     ? `${contextualInstructions}\n\n${PHONE_SKILL_INSTRUCTIONS}`
     : contextualInstructions;
-  const server = new McpServer(
+  // Only registerTool is used on the target, and the wrappers below hang on that one method, so a registry works unchanged.
+  const server = (runtime.toolTarget ?? new McpServer(
     { name: SERVER_NAME, title: 'Agent Core', version: SERVER_VERSION },
     { instructions: instructions + '\n\n' + CAPABILITY_USE_CONTRACT + (runtime.nativeTaskId ? '' : '\n\n' + CONTRACT_INSTRUCTIONS) },
-  );
-  if (!runtime.nativeTaskId) installControllerContract(server, runtime.controllerContract ?? {
+  )) as McpServer;
+  if (!runtime.nativeTaskId && !runtime.toolTarget) installControllerContract(server, runtime.controllerContract ?? {
     gate: new ControllerContractGate(), binding: 'in-memory-server',
   });
   // The outer transport boundary also counts capability notices appended by
@@ -468,4 +473,11 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     controllerSessionId: runtime.controllerSessionId,
   });
   return server;
+}
+
+/** The same tools, registered into a plain in-process registry: no MCP server, client or transport is built. */
+export function createAgentCoreToolHost(key?: unknown, runtime: AgentCoreMcpRuntime = {}): InProcessToolHost {
+  const host = new InProcessToolHost();
+  createAgentCoreMcpServer(key, { ...runtime, toolTarget: host });
+  return host;
 }

@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
-import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
+// The MCP client is only loaded on the fallback path (AGENT_CORE_NATIVE_TOOL_TRANSPORT=mcp); Native does not need it.
+import type { Client } from '@modelcontextprotocol/client';
 import type { VerifiedKey } from './auth/key-types.js';
 import type { AgentModelImage, AgentModelTool } from './agent-provider.js';
 import type { AgentToolRestriction } from './agent-capability-catalog.js';
-import { createAgentCoreMcpServer, type AgentCoreMcpRuntime } from './mcp/server.js';
+import { createAgentCoreMcpServer, createAgentCoreToolHost, type AgentCoreMcpRuntime } from './mcp/server.js';
+import type { InProcessToolHost } from './mcp/in-process-tool-host.js';
 
 export interface AgentToolResult {
   name: string;
@@ -71,14 +73,95 @@ function toolText(result: any): string {
     .join('\n')
     .slice(0, 200_000);
 }
+/**
+ * How a Native session reaches the tools. The default is a plain in-process registry: the same tool registrations, with no MCP
+ * server, client or transport built. MCP is for third parties; the older in-memory MCP path stays only behind the switch
+ * AGENT_CORE_NATIVE_TOOL_TRANSPORT=mcp.
+ */
+interface ToolPort {
+  readonly kind: 'direct' | 'mcp';
+  listTools(): Promise<any[]>;
+  callTool(name: string, args: Record<string, unknown>, options: { signal?: AbortSignal; invocationId?: string }): Promise<any>;
+  close(): Promise<void>;
+}
+
+const useMcpTransport = () => process.env.AGENT_CORE_NATIVE_TOOL_TRANSPORT === 'mcp';
+// The MCP client bounded one call at 60 s; the direct path keeps that bound so a hung tool cannot hold a turn forever.
+const DIRECT_CALL_TIMEOUT_MS = 60_000;
+
+class DirectToolPort implements ToolPort {
+  readonly kind = 'direct' as const;
+  constructor(private readonly host: InProcessToolHost) {}
+
+  async listTools(): Promise<any[]> {
+    return this.host.listTools();
+  }
+
+  async callTool(name: string, args: Record<string, unknown>, options: { signal?: AbortSignal; invocationId?: string }): Promise<any> {
+    const { signal, invocationId } = options;
+    const running = this.host.callTool(name, args, {
+      ...(signal ? { signal } : {}),
+      ...(invocationId ? { meta: { 'io.agentcore/invocation-id': invocationId } } : {}),
+    });
+    // A result that arrives after Stop or the timeout is discarded, as with the MCP client.
+    running.catch(() => undefined);
+    let release = () => {};
+    const interrupted = new Promise<never>((_resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Request timed out')), DIRECT_CALL_TIMEOUT_MS);
+      const onAbort = () => reject(signal?.reason instanceof Error ? signal.reason : new Error('Request aborted'));
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) onAbort();
+      release = () => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); };
+    });
+    try {
+      return await Promise.race([running, interrupted]);
+    } finally {
+      release();
+    }
+  }
+
+  async close(): Promise<void> {}
+}
+
+class McpToolPort implements ToolPort {
+  readonly kind = 'mcp' as const;
+  constructor(
+    private readonly client: Client,
+    private readonly server: ReturnType<typeof createAgentCoreMcpServer>,
+  ) {}
+
+  async listTools(): Promise<any[]> {
+    return (await this.client.listTools()).tools as any[];
+  }
+
+  async callTool(name: string, args: Record<string, unknown>, options: { signal?: AbortSignal; invocationId?: string }): Promise<any> {
+    const request: any = { name, arguments: args };
+    if (options.invocationId) request._meta = { 'io.agentcore/invocation-id': options.invocationId };
+    return this.client.callTool(request, options.signal ? { signal: options.signal } : undefined);
+  }
+
+  async close(): Promise<void> {
+    const failures: unknown[] = [];
+    try { await this.client.close(); } catch (error) { failures.push(error); }
+    try { await this.server.close(); } catch (error) { failures.push(error); }
+    if (failures.length) {
+      throw failures[0] instanceof Error ? failures[0] : new Error(String(failures[0]));
+    }
+  }
+}
+
 export class AgentRuntimeToolSession {
   private constructor(
     readonly sessionId: string,
-    private readonly client: Client,
-    private readonly server: ReturnType<typeof createAgentCoreMcpServer>,
+    private readonly port: ToolPort,
     readonly allowedTools: readonly string[],
     private readonly restrictions: Readonly<Record<string, AgentToolRestriction>>,
   ) {}
+
+  /** Which path this session uses: 'direct' (in-process registry) or 'mcp' (the older in-memory MCP client and server). */
+  get transport(): 'direct' | 'mcp' {
+    return this.port.kind;
+  }
 
   static async open(
     sessionId: string,
@@ -87,21 +170,24 @@ export class AgentRuntimeToolSession {
     restrictions: Record<string, AgentToolRestriction> = {},
   ): Promise<AgentRuntimeToolSession> {
     const key = principal(sessionId, allowedTools);
-    const server = createAgentCoreMcpServer(key, runtime);
-    const client = new Client({ name: 'agent-core-native-runtime', version: '1.0.0' });
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
-    return new AgentRuntimeToolSession(
-      sessionId,
-      client,
-      server,
-      key.toolGrant!.allowedTools,
-      restrictions,
-    );
+    let port: ToolPort;
+    if (useMcpTransport()) {
+      const { Client, InMemoryTransport } = await import('@modelcontextprotocol/client');
+      const server = createAgentCoreMcpServer(key, runtime);
+      const client = new Client({ name: 'agent-core-native-runtime', version: '1.0.0' });
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      port = new McpToolPort(client, server);
+    } else {
+      port = new DirectToolPort(createAgentCoreToolHost(key, runtime));
+    }
+    return new AgentRuntimeToolSession(sessionId, port, key.toolGrant!.allowedTools, restrictions);
   }
 
   static async discoverAvailableTools(runtime: AgentCoreMcpRuntime): Promise<string[]> {
+    if (!useMcpTransport()) return createAgentCoreToolHost(undefined, runtime).listTools().map(tool => tool.name);
+    const { Client, InMemoryTransport } = await import('@modelcontextprotocol/client');
     const server = createAgentCoreMcpServer(undefined, runtime);
     const client = new Client({ name: 'agent-core-native-discovery', version: '1.0.0' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -122,8 +208,7 @@ export class AgentRuntimeToolSession {
   }
 
   private async listedTools(): Promise<any[]> {
-    const listed = await this.client.listTools();
-    return listed.tools as any[];
+    return this.port.listTools();
   }
 
   async modelTools(): Promise<AgentModelTool[]> {
@@ -200,11 +285,7 @@ export class AgentRuntimeToolSession {
     const admissionIssue = this.admissionIssue(name, args);
     if (admissionIssue) throw new Error(admissionIssue);
     if (signal?.aborted) throw new Error('AGENT_RUNTIME_TURN_STOPPED');
-    const request: any = { name, arguments: args };
-    if (invocationId) {
-      request._meta = { 'io.agentcore/invocation-id': invocationId };
-    }
-    const raw: any = await this.client.callTool(request, signal ? { signal } : undefined);
+    const raw: any = await this.port.callTool(name, args, { ...(signal ? { signal } : {}), ...(invocationId ? { invocationId } : {}) });
     const images = raw?.isError === true ? [] : toolImages(raw);
     return {
       name,
@@ -216,11 +297,6 @@ export class AgentRuntimeToolSession {
   }
 
   async close(): Promise<void> {
-    const failures: unknown[] = [];
-    try { await this.client.close(); } catch (error) { failures.push(error); }
-    try { await this.server.close(); } catch (error) { failures.push(error); }
-    if (failures.length) {
-      throw failures[0] instanceof Error ? failures[0] : new Error(String(failures[0]));
-    }
+    await this.port.close();
   }
 }
