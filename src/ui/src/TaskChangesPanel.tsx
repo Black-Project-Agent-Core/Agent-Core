@@ -1,10 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { FileCode, RefreshCw, X } from 'lucide-react';
-import { postHost, subscribeHost, type TaskChanges, type TaskChangesApplied, type TaskChangesDiff, type TaskChangesExternal } from './host';
+import { useTaskChanges } from './useTaskChanges';
+import type { TaskChanges, TaskChangesApplied, TaskChangesDiff, TaskChangesExternal } from './host';
 import { formatBytes } from './model';
-
-const requestId = () => globalThis.crypto?.randomUUID?.() ?? `task-changes-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const REPLY_TIMEOUT_MS = 25000;
 
 const appliedLabel: Record<TaskChangesApplied['state'], string> = {
   added: 'Added', modified: 'Modified', deleted: 'Deleted', renamed: 'Renamed', unverified: 'Not verified',
@@ -96,37 +94,11 @@ function Result({ data }: { data: TaskChanges }) {
 /** Read-only: never sends anything except a lookup by task id; it cannot stage, commit or restore. */
 export function TaskChangesPanel({ taskId, presentation = 'inline' }: { taskId: string; presentation?: 'inline' | 'popover' }) {
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [data, setData] = useState<TaskChanges>();
-  const [error, setError] = useState<string>();
+  const { data, state, error, reload } = useTaskChanges(taskId);
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties>();
   const regionId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const region = useRef<HTMLDivElement>(null);
-  const pending = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | undefined>(undefined);
-  const load = useRef(() => {});
-
-  useEffect(() => {
-    const finish = () => { if (pending.current) clearTimeout(pending.current.timer); pending.current = undefined; };
-    load.current = () => {
-      finish();
-      const id = requestId();
-      setState('loading'); setError(undefined);
-      pending.current = { id, timer: setTimeout(() => { pending.current = undefined; setState('error'); setError('The request timed out. Use Refresh to retry.'); }, REPLY_TIMEOUT_MS) };
-      postHost({ type: 'task-changes-get', requestId: id, taskId });
-    };
-    const unsubscribe = subscribeHost(message => {
-      if ((message.type !== 'task-changes-result' && message.type !== 'task-changes-error') || message.requestId !== pending.current?.id) return;
-      finish();
-      if (message.type === 'task-changes-error') { setState('error'); setError(message.error); return; }
-      const value = message.result;
-      if (!value || value.taskId !== taskId || !Array.isArray(value.requests) || !value.applied || !Array.isArray(value.applied.items) || !value.external || !Array.isArray(value.external.items)) {
-        setState('error'); setError('The response was not a valid task changes report.'); return;
-      }
-      setData(value); setState('ready');
-    });
-    return () => { finish(); unsubscribe(); };
-  }, [taskId]);
 
   useLayoutEffect(() => {
     if (!open || presentation !== 'popover') return;
@@ -150,7 +122,7 @@ export function TaskChangesPanel({ taskId, presentation = 'inline' }: { taskId: 
   const toggle = () => {
     const next = !open;
     setOpen(next);
-    if (next && state === 'idle') load.current();
+    if (next && state === 'idle') reload();
   };
   const empty = state === 'ready' && data && !data.requests.length && !data.applied.items.length && !data.applied.unchanged
     && data.external.state === 'ok' && !data.external.items.length;
@@ -161,12 +133,12 @@ export function TaskChangesPanel({ taskId, presentation = 'inline' }: { taskId: 
       <button ref={trigger} type="button" className="tiny-button" aria-expanded={open} aria-controls={regionId} onClick={toggle}>
         {open ? 'Hide actual changes' : 'Show actual changes'}
       </button>
-      {open && presentation === 'inline' && <button type="button" className="tiny-button" disabled={state === 'loading'} onClick={() => load.current()}>
+      {open && presentation === 'inline' && <button type="button" className="tiny-button" disabled={state === 'loading'} onClick={() => reload()}>
         <RefreshCw size={14} aria-hidden="true" />{state === 'loading' ? 'Checking…' : 'Refresh'}
       </button>}
     </div>
     <div ref={region} id={regionId} hidden={!open} role="region" aria-label="Actual changes for this task" style={presentation === 'popover' ? popoverStyle : undefined} tabIndex={presentation === 'popover' ? -1 : undefined} onKeyDown={event => { if (presentation === 'popover' && event.key === 'Escape') { event.stopPropagation(); close(); } }}>
-      {open && presentation === 'popover' && <div className="task-changes-popover-heading"><FileCode size={15}/><b>Modified files · task evidence</b><button type="button" aria-label="Refresh file changes" disabled={state === 'loading'} onClick={() => load.current()}><RefreshCw size={14}/></button><button type="button" aria-label="Close file changes" onClick={close}><X size={15}/></button></div>}
+      {open && presentation === 'popover' && <div className="task-changes-popover-heading"><FileCode size={15}/><b>Modified files · task evidence</b><button type="button" aria-label="Refresh file changes" disabled={state === 'loading'} onClick={() => reload()}><RefreshCw size={14}/></button><button type="button" aria-label="Close file changes" onClick={close}><X size={15}/></button></div>}
       {open && <p className="task-changes-note">Read-only comparison of the files on disk with this task's checkpoints and Git. Nothing is staged, committed or restored.</p>}
       {open && state === 'loading' && <p role="status" className="task-changes-status">Reading checkpoints and Git…</p>}
       {open && state === 'error' && <p role="alert" className="task-changes-error">{error ?? 'Actual changes are unavailable.'}</p>}

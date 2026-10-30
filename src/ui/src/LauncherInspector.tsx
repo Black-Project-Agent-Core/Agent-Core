@@ -1,14 +1,52 @@
 import { Activity, BrainCircuit, ChevronRight, FileText, Paperclip, Gauge, Server, ListTodo, Cable } from 'lucide-react';
-import type { ActivityEntry, AgentChatUiState, DesktopSnapshot } from './host';
+import type { ActivityEntry, AgentChatUiState, DesktopSnapshot, TaskChanges } from './host';
 import { postHost, selectContextUsage } from './host';
 import { COMPACT_BUTTON_PERCENT, ContextMeter, SEGMENT_COLORS, contextBreakdownRows, contextMeterModel, formatTokenCount } from './ContextMeter';
 import { STEP_GLYPH, formatStepDuration } from './AgentSteps';
+import { useTaskChanges } from './useTaskChanges';
+
+const MAX_OUTPUT_ROWS = 8;
+
+/** Applied (checkpoint-attributed) changes first, then Git-only ones; a path is listed once. */
+function outputRows(changes: TaskChanges) {
+  const rows = new Map<string, { path: string; state: string; additions: number | null; deletions: number | null }>();
+  for (const item of changes.applied.items) rows.set(item.path, { path: item.path, state: item.state, additions: item.diff.additions ?? null, deletions: item.diff.deletions ?? null });
+  if (changes.external.state === 'ok') for (const item of changes.external.items) if (!rows.has(item.path)) rows.set(item.path, { path: item.path, state: item.state, additions: item.additions, deletions: item.deletions });
+  return [...rows.values()];
+}
+
+function OutputsBody({ turn, changes, state, error, onArtifacts }: {
+  turn?: { memoryUse?: unknown[] }; changes?: TaskChanges; state: string; error?: string; onArtifacts?: () => void;
+}) {
+  if (!turn) return <p>Select a conversation to see its outputs.</p>;
+  if (state === 'error') return <p role="alert">{error ?? 'Task changes are unavailable.'}</p>;
+  const rows = changes ? outputRows(changes) : [];
+  if (!rows.length) return <p role="status">{state === 'loading' || state === 'idle' ? 'Reading task changes…' : 'No file changes recorded for this task.'}</p>;
+  return <>
+    <div className="inspector-out-head"><b>Outputs ({rows.length})</b></div>
+    <ul className="inspector-out-list">
+      {rows.slice(0, MAX_OUTPUT_ROWS).map(row => {
+        const parts = row.path.split(/[\\/]/);
+        const folder = parts.length > 1 ? parts.slice(0, -1).join('/') + '/' : '';
+        return <li key={row.path} className="inspector-out-item">
+          <div className="inspector-out-row"><b className="inspector-out-name">{parts.at(-1)}</b>{folder && <span className="inspector-out-folder">{folder}</span>}</div>
+          <div className="inspector-out-meta"><span className="inspector-out-state">{row.state}</span><span className="inspector-out-diff">{row.additions === null && row.deletions === null ? '—' : <><span className="add">+{row.additions ?? 0}</span> <span className="del">−{row.deletions ?? 0}</span></>}</span></div>
+        </li>;
+      })}
+    </ul>
+    {rows.length > MAX_OUTPUT_ROWS && <p className="inspector-out-more">{rows.length - MAX_OUTPUT_ROWS} more</p>}
+    <button className="prototype-link" disabled={!onArtifacts} onClick={onArtifacts}>Open Artifacts →</button>
+    <dl className="inspector-out-memory"><dt>Memory records used</dt><dd>{turn.memoryUse?.length ?? 'Not recorded'}</dd></dl>
+  </>;
+}
 
 export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArtifacts }: {
   snapshot?: DesktopSnapshot; chat?: AgentChatUiState; logs: ActivityEntry[];
   open: boolean; onToggle: () => void; onArtifacts?: () => void;
 }) {
   const turn = chat?.active?.turns.at(-1);
+  const taskId = turn?.runtimeTaskId;
+  const { data: taskChanges, state: taskChangesState, error: taskChangesError } = useTaskChanges(taskId, turn ? turn.status + ':' + (chat?.active?.steps ?? []).filter(step => step.turnId === turn.id).length : undefined);
   const calls = (chat?.active?.steps ?? []).filter(step => step.turnId === turn?.id && step.kind !== 'note');
   const usage = selectContextUsage(chat);
   const stepText = turn?.status === 'running' && usage?.iteration !== undefined && usage.maxIterations !== undefined
@@ -116,7 +154,7 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
         </dl>
       </details>
       <details open><summary><Paperclip size={15}/>Imported Files</summary><p>File and folder attachments are a planned upgrade. No files are imported by the composer.</p></details>
-      <details open><summary><FileText size={15}/>Workspace Artifacts</summary><p>{turn?'Inspect the actual changes recorded for this task.':'Select a conversation to inspect task changes.'}</p><button className="prototype-link" disabled={!onArtifacts} onClick={onArtifacts}>Open Artifacts →</button><dl><dt>Memory records used</dt><dd>{turn?.memoryUse?.length ?? 'Not recorded'}</dd></dl></details>
+      <details open><summary><FileText size={15}/>Outputs</summary><OutputsBody turn={turn} changes={taskChanges} state={taskChangesState} error={taskChangesError} onArtifacts={onArtifacts}/></details>
     </div>
   </aside>;
 }
