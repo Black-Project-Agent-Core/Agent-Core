@@ -284,6 +284,42 @@ describe('native Agent Core controller lifecycle', () => {
     expect(events.some(event => event.type === 'turn.paused' && event.code === 'AGENT_RUNTIME_CONTINUATION_ITERATION_WINDOW_FULL')).toBe(true);
   });
 
+  it('answers a greeting in one tool-free call, with no Memory recall, no strategy and no tool inventory', async () => {
+    const { controller, runtime, fetchMock } = await fixture([{ finish_reason: 'stop', message: { content: 'Halo! Ada yang bisa saya bantu?' } }]);
+    const session = await runtime.startSession({ sessionId: 'greeting-session' });
+    const events: any[] = [];
+    const result = await controller.runConversationTurn({ sessionId: session.id, prompt: 'halo', eventSink: event => { events.push(event); } });
+    expect(result).toMatchObject({ status: 'finalized', response: 'Halo! Ada yang bisa saya bantu?', iterations: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const request = JSON.parse(String((fetchMock.mock.calls[0] as any)[1]?.body ?? '{}'));
+    expect(request.tools).toBeUndefined();
+    expect(request.messages.map((message: any) => message.role)).toEqual(['system', 'user']);
+    expect(request.messages[1].content).toBe('halo');
+    expect(JSON.stringify(request)).not.toContain('NATIVE SKILL GUIDANCE');
+    expect(events.map(event => event.type)).not.toContain('memory.recall.started');
+    expect(events.at(-1)).toMatchObject({ type: 'assistant.final', response: 'Halo! Ada yang bisa saya bantu?' });
+    const task = await runtime.getTask(result.taskId);
+    expect(task).toMatchObject({ status: 'finalized' });
+    expect(task?.metrics).toMatchObject({ toolCalls: 0, modelCalls: 1 });
+  });
+
+  it('hands a turn that turns out to need work back to the full path', async () => {
+    const { controller, runtime, fetchMock } = await fixture([{ finish_reason: 'stop', message: { content: 'NEEDS_TASK' } }, conversationFinalize({ finalResponse: 'Dikerjakan lewat jalur penuh.' })]);
+    const session = await runtime.startSession({ sessionId: 'greeting-fallback' });
+    const result = await controller.runConversationTurn({ sessionId: session.id, prompt: 'halo' });
+    expect(result.response).toContain('Dikerjakan lewat jalur penuh.');
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps a goal turn, an attachment turn and a non-greeting on the full path', async () => {
+    const { controller, runtime, fetchMock } = await fixture([conversationFinalize()]);
+    const session = await runtime.startSession({ sessionId: 'not-simple' });
+    await controller.runConversationTurn({ sessionId: session.id, prompt: 'halo', goalMode: true });
+    const request = JSON.parse(String((fetchMock.mock.calls[0] as any)[1]?.body ?? '{}'));
+    expect(request.tools?.length ?? 0).toBeGreaterThan(0);
+    expect(JSON.stringify(request)).toContain('NATIVE SKILL GUIDANCE');
+  });
+
   it('answers a mutating call that a restart cut off as interrupted, never dispatches it again and keeps going', async () => {
     const { controller, runtime, fetchMock } = await fixture(
       [strategyChoice(), toolboxChoice(['get_config']), toolboxChoice(['get_config']), toolboxChoice(['get_config'])],

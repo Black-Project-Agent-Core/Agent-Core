@@ -29,6 +29,7 @@ import {
   finishReasonNote,
   toolOutcomeNote,
   visibleToolText,
+  isSimpleConversation,
   type FinishCategory,
 } from './agent-turn-outcomes.js';
 import {
@@ -169,6 +170,13 @@ export const WORKING_RULES_CONTRACT = [
   'Environment: consider the available skills, tools, plugins and connectors, use the relevant ones and report briefly. Honor active hooks and tool gates; do not work around them.',
   'Questions: before refusing or undoing something because it seems wrong or against the rules, ask 1 to 3 short questions, each with 3 recommended answers (one of them a safe allowed variant) plus a fourth open "Other" option; hard platform and safety prohibitions still stand. A question never blocks the rest: keep working on what is clearly allowed and gather the questions in one place with a recommended default.',
 ].join('\n');
+
+/** System prompt of the direct path for a greeting or thanks: short, no tools, and a way back to the full path. */
+const DIRECT_ANSWER_PROMPT = [
+  "You are Agent Core, the creator's machine-side engineering partner.",
+  'Reply to this greeting or small-talk message in the same language as the message, in one or two short sentences. No lists, no preamble, no tools.',
+  'If the message actually needs files, tools, Memory, code or multi-step work, reply with exactly NEEDS_TASK and nothing else.',
+].join(' ');
 
 /** Same filter the runtime applies before it stores terminal evidence. */
 function hasUsableEvidence(value: { verificationRef?: string; evidenceRefs?: string[] }): boolean {
@@ -632,6 +640,61 @@ export class NativeAgentController {
     return this.runTaskInternal({ ...input, reuseSession: true });
   }
 
+  /**
+   * A greeting or thanks: one tool-free provider call at low effort and a host-side finalization, with no Memory recall,
+   * tool inventory, strategy or Learning review. Returns undefined when the reply asks for the full path (NEEDS_TASK),
+   * is empty, or the call failed, so the normal path, with its retries and parking, takes over with the same task.
+   */
+  private async answerSimpleTurn(
+    input: NativeAgentExecutionInput,
+    session: { id: string },
+    task: { id: string },
+    providerRoute: string | undefined,
+    providerModel: string | undefined,
+  ): Promise<NativeAgentTaskResult | undefined> {
+    let effort: AgentReasoningEffort | undefined = 'low';
+    try { validateAgentReasoningEffort(effort, providerRoute); } catch { effort = undefined; }
+    const messages: AgentModelMessage[] = [
+      { role: 'system', content: DIRECT_ANSWER_PROMPT },
+      ...(input.history ?? []).slice(-6),
+      { role: 'user', content: input.prompt },
+    ];
+    const started = Date.now();
+    let reply;
+    try {
+      reply = await this.runtime.complete(messages, [], session.id, input.signal, {
+        ...(providerRoute ? { routeId: providerRoute } : {}),
+        ...(providerModel ? { model: providerModel } : {}),
+        ...(effort ? { reasoningEffort: effort } : {}),
+      });
+    } catch (error) {
+      if (input.signal?.aborted) throw error;
+      return undefined;
+    }
+    const text = (reply.content ?? '').trim();
+    if (!text || reply.toolCalls.length || text.startsWith('NEEDS_TASK')) return undefined;
+    const evidence = 'activity:native-turn:' + task.id;
+    await this.runtime.bumpMetrics(task.id, { modelMs: Date.now() - started, modelCalls: 1, providerAttempts: 1,
+      modelIdentity: { providerId: reply.providerId, resolvedModel: reply.resolvedModel },
+      ...(reply.usage ? { usageObservedCalls: 1, ...reply.usage } : {}) });
+    await this.runtime.recordEpisode(task.id, { kind: 'observation', evidenceRefs: [evidence],
+      summary: 'Conversation-only turn answered directly: no tool, no Memory recall and no verification claim.' });
+    await this.runtime.markTerminal({ taskId: task.id, outcome: 'verified', evidenceRefs: [evidence] });
+    const finalized = await this.runtime.finalizeTask({ taskId: task.id, candidates: [], nothingWorthSaving: true,
+      disposition: 'no-new-knowledge' });
+    const completed = await this.runtime.getTask(task.id);
+    const learningStatus = finalized.task.status === 'finalization-failed' ? 'failed' : 'complete';
+    await emitAgentTurnEvent(input.eventSink, { type: 'assistant.final', response: text, memoryUse: [],
+      modelIdentity: completed?.modelIdentity });
+    return {
+      sessionId: session.id, taskId: task.id, response: text, learningStatus,
+      jobVerification: finalized.task.verificationStatus ?? 'unavailable', status: 'finalized', iterations: 1,
+      retrievalAttemptIds: [], memoryUse: [], metrics: completed?.metrics, modelIdentity: completed?.modelIdentity,
+      ...(reply.providerId ? { providerId: reply.providerId } : {}),
+      ...(reply.model ? { model: reply.model } : {}),
+    };
+  }
+
   private async runTaskInternal(
     input: NativeAgentExecutionInput,
   ): Promise<NativeAgentTaskResult> {
@@ -678,6 +741,12 @@ export class NativeAgentController {
           ...(input.workspace ? { workspace: input.workspace } : {}),
           goal: input.prompt,
         });
+    // A greeting or thanks needs one short reply, not recall, the tool inventory, strategy and Learning review.
+    if (input.reuseSession && !resumedState && !input.goalMode && !input.evaluation && !input.userSelectedSkillDirective
+      && !input.attachmentReference && isSimpleConversation(input.prompt)) {
+      const direct = await this.answerSimpleTurn(input, session, task, providerRoute, providerModel);
+      if (direct) return direct;
+    }
     const evaluationInput = resumedState?.memoryEvaluation ?? input.evaluation;
     if (resumedState?.memoryEvaluation && input.evaluation
       && JSON.stringify(resumedState.memoryEvaluation) !== JSON.stringify(input.evaluation)) {

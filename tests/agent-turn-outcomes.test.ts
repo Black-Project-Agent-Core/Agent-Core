@@ -3,6 +3,7 @@ import {
   classifyFinishReason,
   classifyToolFailure,
   finishReasonNote,
+  isSimpleConversation,
   toolOutcomeNote,
   visibleToolText,
 } from '../src/agent-turn-outcomes.js';
@@ -12,6 +13,17 @@ import { AgentRuntimeToolSession } from '../src/agent-tool-session.js';
 
 const requestError = (status: number, message = '', safeCode: string | null = null) =>
   new AgentProviderRequestError({ status, message: `AGENT_RUNTIME_PROVIDER_REQUEST_FAILED:${status}: ${message}`, safeCode });
+
+describe('simple conversation detection', () => {
+  it.each(['halo', 'Halo!', 'hai, apa kabar?', 'selamat pagi', 'Selamat malam, bro', 'terima kasih', 'makasih ya', 'thanks', 'thank you!', 'hello', 'hi there', 'siapa kamu?', 'kamu siapa', 'who are you', 'tes'])(
+    'treats %j as a simple turn', prompt => { expect(isSimpleConversation(prompt)).toBe(true); });
+
+  it.each([
+    '', 'ok', 'oke', 'ya', 'sip', 'lanjut', 'halo tolong baca file ini', 'halo, cek config', 'selamat pagi, buat laporan hari ini',
+    'terima kasih, sekarang perbaiki bug-nya', 'jelaskan arsitektur Agent Core', 'halo\ndan kerjakan tugas ini', '/compact', '/study halo',
+    'halo https://example.com', 'halo C:\\Users\\x', 'halo `kode`', 'halo ' + 'a'.repeat(100),
+  ])('does not treat %j as a simple turn', prompt => { expect(isSimpleConversation(prompt)).toBe(false); });
+});
 
 describe('finish reason taxonomy', () => {
   it.each([

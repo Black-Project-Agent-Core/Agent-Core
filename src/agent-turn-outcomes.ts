@@ -29,7 +29,26 @@ export function finishReasonNote(category: FinishCategory): string | undefined {
   }
 }
 
-export type ToolOutcome = 'denied-by-policy' | 'no-answer' | 'technical-failure' | 'interrupted';
+const SIMPLE_ANCHORS = 'halo|hai|hi|hello|hey|hei|selamat|assalamualaikum|salam|terima kasih|makasih|thanks|thank you|thx|apa kabar|how are you|siapa kamu|kamu siapa|who are you|tes|test|ping';
+const SIMPLE_FILLERS = 'pagi|siang|sore|malam|morning|afternoon|evening|night|good|ya|yaa|dong|deh|nih|juga|banyak|bro|sob|kak|min|ai|agent|core|there|you|so|much';
+const SIMPLE_WHOLE = new RegExp(`^(?:(?:${SIMPLE_ANCHORS}|${SIMPLE_FILLERS})(?: |$))+$`);
+const SIMPLE_ANCHOR = new RegExp(`(?:^| )(?:${SIMPLE_ANCHORS})(?: |$)`);
+
+/**
+ * A greeting, thanks or "who are you" and nothing else: one short reply is enough, so the host skips Memory recall, the
+ * tool inventory, strategy and Learning review for it. Deliberately narrow: an acknowledgement such as "ok" or "ya" can
+ * answer a question Native just asked, so it is not simple. Anything with a path, link, code, a second line or any word
+ * outside the greeting vocabulary takes the full path.
+ */
+export function isSimpleConversation(prompt: string): boolean {
+  const raw = prompt.trim();
+  if (!raw || raw.length > 60 || /[\n\r`/\\]/.test(raw)) return false;
+  const text = raw.toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, ' ').replace(/ +/g, ' ').trim();
+  if (!text || text.split(' ').length > 8) return false;
+  return SIMPLE_WHOLE.test(text) && SIMPLE_ANCHOR.test(text);
+}
+
+export type ToolOutcome ='denied-by-policy' | 'no-answer' | 'technical-failure' | 'interrupted';
 
 const NO_ANSWER = /timed? ?out|timeout|etimedout|econnreset|socket hang up|no (?:response|answer|result|output)|did not (?:answer|respond|return)|deadline|returned nothing/i;
 
