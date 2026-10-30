@@ -7,6 +7,7 @@ import { authenticateRequest } from './auth.js';
 import { HttpSecurityPolicy } from './security-policy.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import type { AgentChatService } from '../agent-chat-service.js';
+import type { SkillService } from '../skills/service.js';
 import { handleProposalDocuments } from './proposals.js';
 import type { ProposalDocumentReader } from '../learning/proposal-documents.js';
 import { nativeMemoryEvaluationSchema } from '../agent-memory-evaluation.js';
@@ -27,6 +28,8 @@ export interface HttpHandlerOptions {
   agentUiToken?: string | null;
   agentRun?: (input: { prompt: string; workspace?: string }) => Promise<unknown>;
   agentChat?: AgentChatService;
+  /** Active Skill catalog for the composer "/" menu; the same SkillService instance Native holds. */
+  skills?: Pick<SkillService, 'list'>;
   workflows?: () => import('../workflows/service.js').WorkflowSnapshot;
   proposals?: ProposalDocumentReader;
   /** Read-only actual-changes reader; defaults to the checkpoint service plus Git. */
@@ -53,6 +56,11 @@ async function readBody(request: IncomingMessage, maxBytes = 256 * 1024): Promis
     chunks.push(buffer);
   }
   return Buffer.concat(chunks).toString('utf8');
+}
+
+function safeDetail(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return (message.split(':', 1)[0] || 'unknown').replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 120);
 }
 
 function constantTimeEqual(left: string, right: string): boolean {
@@ -348,6 +356,30 @@ async function handleRequest(
     if (pauseMatch && request.method === 'POST') {
       const paused = chat.pauseTurn(decodeURIComponent(pauseMatch[1]!));
       sendJson(response, paused ? 200 : 404, { paused });
+      return;
+    }
+
+    if (route === '/agent/chat/slash-commands') {
+      if (request.method !== 'GET') {
+        sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'GET' });
+        return;
+      }
+      const commands: Array<{ name: string; kind: 'command' | 'skill'; description: string }> = [
+        { name: 'compact', kind: 'command', description: 'Kompak konteks giliran yang sedang berjalan' },
+      ];
+      if (options.skills) {
+        try {
+          // Fresh catalog read on every request: a Skill activated a moment ago must appear.
+          const active = await options.skills.list();
+          commands.push(...active
+            .map(item => ({ name: item.name.slice(0, 160), kind: 'skill' as const, description: item.description.slice(0, 160) }))
+            .sort((a, b) => a.name.localeCompare(b.name)));
+        } catch (error) {
+          sendJson(response, 503, { error: 'agent_chat_slash_commands_unavailable', detail: safeDetail(error) }, { 'cache-control': 'no-store' });
+          return;
+        }
+      }
+      sendJson(response, 200, { commands }, { 'cache-control': 'no-store' });
       return;
     }
 

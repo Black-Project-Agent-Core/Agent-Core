@@ -408,6 +408,8 @@ export interface NativeAgentConversationTurnInput extends NativeAgentTaskInput {
   /** Derived digest of chat messages older than `history`; background only, never an instruction. */
   historySummary?: { text: string; record: AgentCompactionRecord };
   memoryQuery?: string;
+  /** Per-turn directive for a Skill the user picked from the composer "/" menu; a choice, not a grant. */
+  userSelectedSkillDirective?: string;
   eventSink?: AgentTurnEventSink;
   signal?: AbortSignal;
   continuation?: NativeAgentContinuationHooks;
@@ -416,6 +418,7 @@ export interface NativeAgentConversationTurnInput extends NativeAgentTaskInput {
 interface NativeAgentExecutionInput extends NativeAgentTaskInput {
   history?: AgentModelMessage[];
   historySummary?: { text: string; record: AgentCompactionRecord };
+  userSelectedSkillDirective?: string;
   memoryQuery?: string;
   eventSink?: AgentTurnEventSink;
   signal?: AbortSignal;
@@ -988,7 +991,8 @@ export class NativeAgentController {
       role: message.role,
       content: message.content!.slice(0, 200_000),
     } as AgentModelMessage));
-    const guidance = (await taskSkillGuidance(this.mcpRuntime.skillsService, 'native')).text;
+    const guidance = (await taskSkillGuidance(this.mcpRuntime.skillsService, 'native')).text
+      + (input.userSelectedSkillDirective ? '\n\n' + input.userSelectedSkillDirective : '');
     const messages: AgentModelMessage[] = resumedState
       ? structuredClone(resumedState.messages)
       : [

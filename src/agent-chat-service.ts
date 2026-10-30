@@ -25,6 +25,19 @@ import {
 } from './agent-chat-store.js';
 import { emitAgentTurnEvent, type AgentTurnEvent } from './agent-turn-events.js';
 import { redactSensitiveString } from './security/redaction.js';
+import { parseSlashSelection, type SlashSkillSelection } from './agent-slash-commands.js';
+
+/** The slice of SkillService the composer "/" selection needs: active catalog names only. */
+export interface SlashSkillCatalog {
+  list(): Promise<Array<{ name: string }>>;
+}
+
+/** Per-turn directive for a Skill the user picked from the composer "/" menu. A choice, not a grant. */
+export function userSelectedSkillDirective(skillName: string): string {
+  return 'USER-SELECTED SKILL: the user explicitly chose the Skill ' + skillName
+    + ' for this request. Inspect and read it completely with the skills tool (follow every nextOffset),'
+    + ' apply its relevant steps and declare actual use. This is a user choice, not a grant: tool access is unchanged.';
+}
 
 export interface AgentChatEventEnvelope extends AgentTurnEvent {
   conversationId: string;
@@ -136,6 +149,8 @@ export class AgentChatService {
     private readonly controller: NativeAgentController,
     private readonly projectRoot: string,
     private readonly artifactAuthorization?: ArtifactAuthorization,
+    /** Active Skill catalog used only to resolve a composer "/<skill>" selection; never cached. */
+    private readonly skillCatalog?: SlashSkillCatalog,
   ) {
     this.store = store;
   }
@@ -145,6 +160,7 @@ export class AgentChatService {
     runtime: AgentRuntimeService,
     controller: NativeAgentController,
     artifactAuthorization?: ArtifactAuthorization,
+    skillCatalog?: SlashSkillCatalog,
   ): Promise<AgentChatService> {
     const service = new AgentChatService(
       new AgentChatStore(
@@ -154,9 +170,22 @@ export class AgentChatService {
       controller,
       projectRoot,
       artifactAuthorization,
+      skillCatalog,
     );
     await service.reconcileInterruptedTurns();
     return service;
+  }
+
+  /** Resolves "/<name> ..." against the live active catalog; any catalog failure means "no selection", never a failed turn. */
+  private async resolveSlashSelection(prompt: string): Promise<SlashSkillSelection | null> {
+    if (!this.skillCatalog || !prompt.trimStart().startsWith('/')) return null;
+    try {
+      const names = (await this.skillCatalog.list()).map(item => item.name);
+      return parseSlashSelection(prompt, names);
+    } catch (error) {
+      console.error('AGENT_CHAT_SLASH_CATALOG_FAILED:' + safeErrorCode(error));
+      return null;
+    }
   }
 
   private async reconcileInterruptedTurns(): Promise<void> {
@@ -529,6 +558,8 @@ export class AgentChatService {
 
     let result: NativeAgentTaskResult;
     try {
+      // Composer "/<skill>" pick: the persisted user message stays exactly as typed; only this turn gets a directive.
+      const slashSkill = localOperator ? await this.resolveSlashSelection(input.prompt) : null;
       // The user message was persisted by beginTurn above. Tool output cannot enter this host-only path.
       // Only a freshly persisted real user message enters artifact operator commands.
       // No MCP tool, Memory record, or model output may invoke this host authority.
@@ -553,6 +584,7 @@ export class AgentChatService {
         history: historyMessages(history),
         ...(boundedContext.summary ? { historySummary: boundedContext.summary } : {}),
         memoryQuery: buildMemoryQuery(input.prompt, history),
+        ...(slashSkill ? { userSelectedSkillDirective: userSelectedSkillDirective(slashSkill.skill) } : {}),
         eventSink: event => { this.recordContextUsage(continuation.turnId, event); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,
         continuation,

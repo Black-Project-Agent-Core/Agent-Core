@@ -230,6 +230,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
         agentRuntime,
         agentController,
         artifactAuthorization,
+        skillsService,
       );
       activityTracker.record(
         'AGENT_RUNTIME',
@@ -270,6 +271,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     agentUiToken: config.agentUiToken,
     ...(agentController ? { agentRun: (input: { prompt: string; workspace?: string }) => agentController.runTask(input) } : {}),
     ...(agentChat ? { agentChat } : {}),
+    ...(skillsService ? { skills: skillsService } : {}),
     healthProvider: async () => {
       const [liveMemoryHealth, liveRdcHealth, livePhoneHealth, liveCodeIntelligenceHealth, liveSemanticIdeHealth, liveLearningHealth, liveSkillsHealth, liveExternalControllerHealth] = await Promise.all([
         memoryProbe(),

@@ -343,6 +343,17 @@ describe('native Agent Core controller lifecycle', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('adds the user-selected Skill directive to the system prompt of that turn only', async () => {
+    const directive = 'USER-SELECTED SKILL: the user explicitly chose the Skill code-review for this request.';
+    const chosen = await fixture([conversationFinalize()]);
+    await chosen.controller.runTask({ prompt: 'halo', userSelectedSkillDirective: directive } as any);
+    const sent = JSON.parse(String((chosen.fetchMock.mock.calls[0] as any)[1]?.body ?? '{}'));
+    expect(sent.messages[0].content).toContain(directive);
+    const plain = await fixture([conversationFinalize()]);
+    await plain.controller.runTask({ prompt: 'halo' });
+    expect(JSON.parse(String((plain.fetchMock.mock.calls[0] as any)[1]?.body ?? '{}')).messages[0].content).not.toContain('USER-SELECTED SKILL');
+  });
+
   it('carries the user\'s working rules near the top of the system prompt', async () => {
     const { controller, fetchMock } = await fixture([conversationFinalize()]);
     await controller.runTask({ prompt: 'halo' });
