@@ -428,9 +428,8 @@ export class AgentChatService {
       state,
       path.join(this.projectRoot, 'runtime', 'tool-results'),
     );
-    if (state.pendingTool?.mutating && state.pendingTool.phase === 'dispatching') {
-      throw new Error('AGENT_CHAT_RESUME_SIDE_EFFECT_RESULT_UNAVAILABLE');
-    }
+    // A mutating call cut off while dispatching no longer blocks Continue: the controller answers it as interrupted and
+    // never runs it again. Only the owner's Continue gets here; automatic recovery still skips such a turn (see above).
     return { state, revision: record.revision };
   }
 

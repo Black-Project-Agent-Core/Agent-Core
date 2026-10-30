@@ -100,7 +100,7 @@ describe('Native durable provider wait', () => {
     expect(f.runtime.markTerminal).not.toHaveBeenCalled();
   });
 
-  it('parks a persisted wait after reconstruction until Continue and refuses unknown mutation replay', async () => {
+  it('parks a persisted wait after reconstruction until Continue and never retries an unknown mutation by itself', async () => {
     const f = await fixture();
     vi.useFakeTimers();
     f.controller.runConversationTurn.mockImplementationOnce(pause);
@@ -121,7 +121,10 @@ describe('Native durable provider wait', () => {
     } }));
     const unknown = await reopened.runTurn({ conversationId: 'chat', clientRequestId: 'wait-unknown', prompt: 'Unknown mutation remains unknown' });
     await vi.advanceTimersByTimeAsync(10_000);
-    await expect(reopened.resumeTurn({ turnId: unknown.turnId })).rejects.toThrow('AGENT_CHAT_RESUME_SIDE_EFFECT_RESULT_UNAVAILABLE');
+    // An uncertain mutation is never retried automatically; only an explicit Continue runs the turn again.
     expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(3);
+    await reopened.resumeTurn({ turnId: unknown.turnId });
+    expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(4);
+    expect(reopened.store.getTurn(unknown.turnId)?.status).toBe('finalized');
   });
 });

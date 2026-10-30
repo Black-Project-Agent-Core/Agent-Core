@@ -450,7 +450,12 @@ export function ChatPage(props:SharedProps) {
   const attachments=attachmentDrafts[draftKey]??[];
   const setAttachments=(key:string,files:AttachmentDraft[])=>setAttachmentDrafts(prev=>({...prev,[key]:files}));
   const fileInputRef=useRef<HTMLInputElement>(null);
-  const runtime=props.snapshot?.health.agentRuntime;
+  // A status poll that fails or arrives partial has no runtime slice; that is "unknown", not "no provider".
+  // Keep the last slice that arrived so the badge and the composer do not flip with every missed poll.
+  const runtimeNow=props.snapshot?.health.agentRuntime;
+  const lastRuntime=useRef(runtimeNow);
+  if(runtimeNow)lastRuntime.current=runtimeNow;
+  const runtime=runtimeNow??lastRuntime.current;
   const providerChoice=props.agentChat.providerChoice??'auto';
   const modelChoice=props.agentChat.modelChoice;
   const selectedProvider=props.agentChat.providers?.find(item=>item.id===providerChoice);
@@ -519,8 +524,7 @@ export function ChatPage(props:SharedProps) {
   const compactLabels:Record<string,string>={scheduled:'Kompaksi dijadwalkan','not-running':'Tidak ada giliran berjalan',unavailable:'Gagal menjadwalkan'};
   const compactNotice=!composerNotice&&compactTurnId&&props.agentChat.compactResult?.turnId===compactTurnId
     ? compactLabels[props.agentChat.compactResult.status] : undefined;
-  const pendingFinalization=runtime?.pendingFinalizationCount??0;
-  const runtimeTitle=`Runtime ${runtime?.status??'unavailable'} · Providers ${runtime?runtime.configuredProviderCount+'/'+runtime.providerCount:'0/0'} · Chats ${chatHealth?.activeConversationCount??props.agentChat.conversations.length} · Pending finalization ${pendingFinalization}`;
+  const runtimeTitle=`Runtime ${runtime?.status??'unavailable'} · Providers ${runtime?runtime.configuredProviderCount+'/'+runtime.providerCount:'0/0'} · Chats ${chatHealth?.activeConversationCount??props.agentChat.conversations.length}`;
 
   // A new chat is a draft: the conversation is created by the first send, so
   // opening the launcher never leaves an empty thread behind.
@@ -592,8 +596,7 @@ export function ChatPage(props:SharedProps) {
         : <span className="chat-bar-title">New Chat</span>}
       <span className="chat-bar-spacer"/>
       {active&&(active.conversation.preferredProviderId||active.conversation.preferredModel)&&<span className="chat-route-label">{active.conversation.preferredProviderId??'auto'}{active.conversation.preferredModel?' · '+active.conversation.preferredModel:''}</span>}
-      {pendingFinalization>0&&<span className="chat-route-label">Finalizing {pendingFinalization}</span>}
-      <span className={`chat-ready ${toneClass(statusTone(runtime?.status,runtime?.issueCount??0))}`} title={runtimeTitle}><i aria-hidden="true"/>{configured?'Agent Ready':'Provider Not Configured'}</span>
+      <span className={`chat-ready ${toneClass(statusTone(runtime?.status,runtime?.issueCount??0))}`} title={runtimeTitle}><i aria-hidden="true"/>{!runtime?'Connecting…':configured?'Agent Ready':'Provider Not Configured'}</span>
       {active&&<TinyButton disabled={running} onClick={()=>props.onChatArchive(active.conversation.id)}><Trash2 size={14}/>Archive</TinyButton>}
     </div>
 
@@ -713,7 +716,7 @@ export function ChatPage(props:SharedProps) {
         }}
         aria-label="Message Agent Core"
         aria-activedescendant={slashOpen&&slashItems[activeIndex]?slashOptionId(slashItems[activeIndex]!.name):undefined}
-        placeholder={!configured?'No configured provider.':running?'Giliran berjalan. Ketik /compact untuk memadatkan konteks.':'Ask Agent Core to research, code, analyze data, create presentations, or manage tools…'}
+        placeholder={!runtime?'Menghubungkan ke Agent Core…':!configured?'No configured provider.':running?'Giliran berjalan. Ketik /compact untuk memadatkan konteks.':'Ask Agent Core to research, code, analyze data, create presentations, or manage tools…'}
         disabled={composerLocked}
         rows={2}
       />

@@ -29,7 +29,7 @@ export function finishReasonNote(category: FinishCategory): string | undefined {
   }
 }
 
-export type ToolOutcome = 'denied-by-policy' | 'no-answer' | 'technical-failure';
+export type ToolOutcome = 'denied-by-policy' | 'no-answer' | 'technical-failure' | 'interrupted';
 
 const NO_ANSWER = /timed? ?out|timeout|etimedout|econnreset|socket hang up|no (?:response|answer|result|output)|did not (?:answer|respond|return)|deadline|returned nothing/i;
 
@@ -43,6 +43,8 @@ export function toolOutcomeNote(outcome: ToolOutcome): string {
   switch (outcome) {
     case 'denied-by-policy':
       return 'TOOL_OUTCOME: denied-by-policy. The tool was not called. Changing the arguments will not help; request the needed capability first or choose another route.';
+    case 'interrupted':
+      return 'TOOL_OUTCOME: interrupted. Agent Core restarted or the turn was stopped while this tool was running, so its effect is unknown: it may have finished, partly finished, or still be running. It was not run again. Check the current state before doing it again.';
     case 'no-answer':
       return 'TOOL_OUTCOME: no-answer. The tool gave no usable answer in time, so its effect is unknown. Check the current state before repeating anything that changes state.';
     default:

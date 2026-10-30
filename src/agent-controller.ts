@@ -653,10 +653,6 @@ export class NativeAgentController {
         || (input.reasoningEffort !== undefined && input.reasoningEffort !== resumedState.reasoningEffort)) {
         throw new Error('AGENT_RUNTIME_CONTINUATION_IDENTITY_MISMATCH');
       }
-      if (resumedState.pendingTool?.mutating
-        && resumedState.pendingTool.phase === 'dispatching') {
-        throw new Error('AGENT_RUNTIME_CONTINUATION_SIDE_EFFECT_RESULT_UNAVAILABLE');
-      }
     }
     const session = resumedState
       ? await this.runtime.getSession(resumedState.runtimeSessionId)
@@ -1032,6 +1028,18 @@ export class NativeAgentController {
       for(let index=messages.length-1;index>=0;index--)if(messages[index]!.role==='system'
         && messages[index]!.content?.startsWith('NATIVE SKILL GUIDANCE'))messages.splice(index,1);
       messages.splice(messages[0]?.role==='system'?1:0,0,{role:'system',content:guidance});
+    }
+    // A mutating call cut off while dispatching has no result and must never run again. Answer it as interrupted so the
+    // model checks the state itself. Resuming the same checkpoint twice adds the same answer, so this is idempotent.
+    const cutOff = resumedState?.pendingTool;
+    if (cutOff?.mutating && cutOff.phase === 'dispatching'
+      && unresolvedToolCalls(messages).some(call => call.id === cutOff.callId)) {
+      messages.push({ role: 'tool', name: cutOff.name, tool_call_id: cutOff.callId,
+        content: 'TOOL_ERROR\nAGENT_RUNTIME_TOOL_INTERRUPTED: ' + cutOff.name + ' was cut off while it was running.\n' + toolOutcomeNote('interrupted') });
+      await this.runtime.recordEpisode(task.id, {
+        kind: 'observation', evidenceRefs: [], toolName: cutOff.name,
+        summary: 'Resumed past tool ' + cutOff.name + ', cut off while dispatching: result unknown, not run again.',
+      }).catch(() => undefined);
     }
     let nextIteration = resumedState?.nextIteration ?? 1;
     const checkpointCreatedAtMs = resumedState?.createdAtMs ?? Date.now();

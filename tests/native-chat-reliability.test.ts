@@ -253,7 +253,7 @@ describe('Native startup checkpoint recovery', () => {
     expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps an uncertain mutating dispatch paused, refuses an explicit Continue and does not retry it on the next startup', async () => {
+  it('keeps an uncertain mutating dispatch paused at startup, and an explicit Continue hands it on instead of refusing', async () => {
     const f = await fixture();
     seed(f.store, { pendingTool: { callId: 'write-1', name: 'write_file', arguments: '{}',
       invocationId: 'write-1', mutating: true, phase: 'dispatching' } });
@@ -262,15 +262,20 @@ describe('Native startup checkpoint recovery', () => {
     expect(chat.store.getTurn('turn-1')?.status).toBe('resumable');
     expect(chat.store.getTurn('turn-1')?.errorCode).toBe('AGENT_CHAT_TURN_RESUMABLE');
     const revision = chat.store.getCheckpoint('turn-1')!.revision;
-    // Continue must not replay a write whose outcome is unknown, and the refusal leaves the turn parked.
-    await expect(chat.resumeTurn({ turnId: 'turn-1' })).rejects.toThrow('AGENT_CHAT_RESUME_SIDE_EFFECT_RESULT_UNAVAILABLE');
-    expect(chat.store.getTurn('turn-1')?.status).toBe('resumable');
+    // Startup never retries a write whose outcome is unknown, however often it runs.
     await AgentChatService.initialize(f.root, f.runtime as any, f.controller as any);
     await new Promise<void>(resolve => setImmediate(resolve));
     expect(chat.store.getCheckpoint('turn-1')!.revision).toBe(revision);
     expect(f.controller.runConversationTurn).not.toHaveBeenCalled();
     // A resumable turn still owns its task: the startup sweep must leave it running for a later resume.
     expect(f.runtime.markTerminal).not.toHaveBeenCalled();
+    // Only the owner's Continue runs it again. The controller receives the checkpoint with the cut-off call still
+    // marked as dispatching and answers it as interrupted; the call itself is never dispatched a second time.
+    const resumed = await chat.resumeTurn({ turnId: 'turn-1' });
+    expect(resumed.status).toBe('finalized');
+    expect(f.controller.runConversationTurn).toHaveBeenCalledTimes(1);
+    expect((f.controller.runConversationTurn.mock.calls[0] as any)[0].continuation.state.pendingTool)
+      .toMatchObject({ callId: 'write-1', mutating: true, phase: 'dispatching' });
   });
 
   it('leaves cancelled turns stopped and refuses stale recovery annotations', async () => {

@@ -284,6 +284,35 @@ describe('native Agent Core controller lifecycle', () => {
     expect(events.some(event => event.type === 'turn.paused' && event.code === 'AGENT_RUNTIME_CONTINUATION_ITERATION_WINDOW_FULL')).toBe(true);
   });
 
+  it('answers a mutating call that a restart cut off as interrupted, never dispatches it again and keeps going', async () => {
+    const { controller, runtime, fetchMock } = await fixture(
+      [strategyChoice(), toolboxChoice(['get_config']), toolboxChoice(['get_config']), toolboxChoice(['get_config'])],
+      [], undefined, { maxToolIterations: 1, goalMaxToolIterations: 2 });
+    const session = await runtime.startSession({ sessionId: 'interrupted-call' });
+    let saved: any;
+    const save = async (state: any) => { const record = serializeAgentTurnCheckpoint(state);
+      saved = parseAgentTurnCheckpoint(record.json, record.digest); };
+    const input = { sessionId: session.id, taskId: 'interrupted-call-task', prompt: 'Reach the goal', goalMode: true,
+      continuation: { conversationId: 'cut-chat', turnId: 'cut-turn', save } };
+    await expect(controller.runConversationTurn(input)).rejects.toThrow('AGENT_RUNTIME_CONTINUATION_ITERATION_WINDOW_FULL');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Simulate the process ending while a mutating tool was dispatching: only this checkpoint survives.
+    const call = { id: 'call-cut', type: 'function' as const, function: { name: 'start_process', arguments: '{"command":"echo cut"}' } };
+    const cut = { ...saved, messages: [...saved.messages, { role: 'assistant', content: null, tool_calls: [call] }],
+      pendingTool: { callId: 'call-cut', name: 'start_process', arguments: call.function.arguments,
+        invocationId: 'dtc:interrupted-call-task:call-cut', mutating: true, phase: 'dispatching' } };
+    const record = serializeAgentTurnCheckpoint(cut);
+    const state = parseAgentTurnCheckpoint(record.json, record.digest);
+    await expect(controller.runConversationTurn({ ...input, continuation: { ...input.continuation, state } }))
+      .rejects.toThrow('AGENT_RUNTIME_CONTINUATION_ITERATION_WINDOW_FULL');
+    const resumedRequest = JSON.parse((fetchMock.mock.calls[2] as any)[1].body);
+    const answer = resumedRequest.messages.find((message: any) => message.role === 'tool' && message.tool_call_id === 'call-cut');
+    expect(answer?.content).toContain('TOOL_OUTCOME: interrupted');
+    expect(answer?.content).toContain('start_process');
+    expect(answer?.content).not.toContain('echo cut');
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
   it('returns invalid finalization arguments to the model for bounded correction', async () => {
     const invalid = finalizeChoice();
     const call = invalid.message.tool_calls[0].function;

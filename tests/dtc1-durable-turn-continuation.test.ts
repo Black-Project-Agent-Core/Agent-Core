@@ -801,7 +801,7 @@ describe('DTC-A7/A8/A9 mutation replay boundaries', () => {
     await pending;
   });
 
-  it('DTC-A9 refuses to fabricate a result from a dispatching mutation checkpoint', async () => {
+  it('DTC-A9 resumes a dispatching mutation checkpoint without fabricating or replaying its result', async () => {
     const root = await rootFixture('dtc1-side-effect-gap-');
     const state = checkpoint({
       pendingTool: {
@@ -816,15 +816,22 @@ describe('DTC-A7/A8/A9 mutation replay boundaries', () => {
     const store = new AgentChatStore(path.join(root, 'chat.sqlite'));
     seedRunning(store, state);
     store.recoverRunningTurns();
+    const runConversationTurn = vi.fn(async () => ({ sessionId: state.runtimeSessionId, taskId: state.runtimeTaskId,
+      response: 'checked the state first', status: 'finalized', iterations: 2, retrievalAttemptIds: [] }));
     const service = new (AgentChatService as any)(
       store,
-      { getTask: vi.fn(), setProviderAffinity: vi.fn() },
-      { runConversationTurn: vi.fn() },
+      { ensureActiveSession: vi.fn(), getTask: vi.fn(async () => ({ id: state.runtimeTaskId, status: 'running' })),
+        setProviderAffinity: vi.fn(), markTerminal: vi.fn(async () => ({})), finalizeTask: vi.fn(async () => ({})) },
+      { runConversationTurn },
       root,
     ) as AgentChatService;
-    await expect(service.resumeTurn({ turnId: state.turnId }))
-      .rejects.toThrow('AGENT_CHAT_RESUME_SIDE_EFFECT_RESULT_UNAVAILABLE');
-    expect(store.getTurn(state.turnId)?.status).toBe('resumable');
+    // The service no longer refuses. It hands the checkpoint on with the cut-off call still marked dispatching, and the
+    // controller answers that call as interrupted; no result is invented for it and it is not dispatched again.
+    await service.resumeTurn({ turnId: state.turnId });
+    expect(runConversationTurn).toHaveBeenCalledTimes(1);
+    expect((runConversationTurn.mock.calls[0] as any)[0].continuation.state.pendingTool)
+      .toMatchObject({ callId: 'call-9', mutating: true, phase: 'dispatching' });
+    expect(store.getTurn(state.turnId)?.status).toBe('finalized');
   });
 });
 
