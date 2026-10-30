@@ -178,7 +178,7 @@ describe('Inspector Context Window breakdown', () => {
     render(<LauncherInspector chat={chatWithUsage({ system: 3, tools: 6, conversation: 7, memory: 4 })} logs={[]} open onToggle={vi.fn()}/>);
     const list = screen.getByRole('list', LIST);
     expect(within(list).getAllByRole('listitem').map(item => item.textContent)).toEqual([
-      'System Instructions150 (15%)', 'Tools & MCP Manifests300 (30%)', 'Conversation & Files350 (35%)', 'Memory Injections200 (20%)']);
+      'System Instructions1501.5%', 'Tools & MCP Manifests3003.0%', 'Conversation & Files3503.5%', 'Memory Injections2002.0%']);
     expect(screen.getByText('Estimasi dari ukuran isi prompt, diskalakan ke total provider.')).toBeInTheDocument();
   });
 

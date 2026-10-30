@@ -1,7 +1,7 @@
 import { Activity, BrainCircuit, ChevronRight, FileText, Paperclip, Folder, Gauge } from 'lucide-react';
 import type { ActivityEntry, AgentChatUiState, DesktopSnapshot } from './host';
 import { postHost, selectContextUsage } from './host';
-import { COMPACT_BUTTON_PERCENT, ContextMeter, contextBreakdownRows, contextMeterModel, formatTokenCount } from './ContextMeter';
+import { COMPACT_BUTTON_PERCENT, ContextMeter, SEGMENT_COLORS, contextBreakdownRows, contextMeterModel, formatTokenCount } from './ContextMeter';
 import { STEP_GLYPH, formatStepDuration } from './AgentSteps';
 
 export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArtifacts }: {
@@ -15,7 +15,8 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
     ? `${usage.iteration}/${usage.maxIterations}` : undefined;
   const model = turn?.model ?? chat?.active?.conversation.preferredModel ?? chat?.modelChoice;
   const meter = usage ? contextMeterModel(usage.contextTokens, usage.contextWindow) : undefined;
-  const breakdownRows = usage ? contextBreakdownRows(usage.contextBreakdown, usage.contextTokens) : [];
+  const breakdownRows = usage ? contextBreakdownRows(usage.contextBreakdown, usage.contextTokens, usage.contextWindow) : [];
+  const segments = breakdownRows.map(row => ({ key: row.key, tokens: row.tokens }));
   const usedOfCapacity = usage && meter ? (meter.known ? `${formatTokenCount(usage.contextTokens)} / ${formatTokenCount(usage.contextWindow!)}` : meter.label) : undefined;
   const iterationText = turn?.iterations === undefined ? undefined
     : turn.maxIterations === undefined ? String(turn.iterations) : `${turn.iterations} / ${turn.maxIterations}`;
@@ -32,14 +33,22 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
       <button type="button" className="inspector-toggle" aria-label="Collapse context inspector" onClick={onToggle}><ChevronRight size={16}/></button>
     </div>
     <div className="launcher-inspector-content">
-      <details open><summary><BrainCircuit size={15}/>Context Window{meter?.known ? ` (${Math.round(meter.fillPercent)}%)` : ''}</summary>
-        <div className="inspector-context-head" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
-          <span>Model: {model || provider?.model || 'Automatic routing'}</span><span>{usedOfCapacity ?? 'Not recorded'}</span>
+      <details open><summary><BrainCircuit size={15}/>Context</summary>
+        <div className="inspector-context-head">
+          {meter?.known && <b>{Math.round(meter.fillPercent)}% used</b>}
+          <span>{usedOfCapacity ?? 'Not recorded'}</span>
         </div>
-        {usage && <ContextMeter tokens={usage.contextTokens} capacity={usage.contextWindow} hideLabel/>}
+        {usage && <div className="inspector-context-meter">
+          <ContextMeter tokens={usage.contextTokens} capacity={usage.contextWindow} segments={segments} hideLabel/>
+        </div>}
         {breakdownRows.length > 0 && <>
           <ul className="inspector-context-breakdown" aria-label="Rincian context (estimasi)">
-            {breakdownRows.map(row => <li key={row.key}><span>{row.label}</span><span>{formatTokenCount(row.tokens)} ({row.percent}%)</span></li>)}
+            {breakdownRows.map(row => <li key={row.key}>
+              <span className="inspector-swatch" aria-hidden="true" style={{ backgroundColor: SEGMENT_COLORS[row.key] }}/>
+              <span>{row.label}</span>
+              <span>{formatTokenCount(row.tokens)}</span>
+              <span>{row.percentOfWindow !== undefined ? row.percentOfWindow.toFixed(1) : row.percent}%</span>
+            </li>)}
           </ul>
           <small>Estimasi dari ukuran isi prompt, diskalakan ke total provider.</small>
         </>}
@@ -54,6 +63,7 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
             : compactResult.status === 'not-running' ? 'Tidak ada giliran berjalan' : 'Gagal menjadwalkan'}</small>}
         </div>}
         <dl>
+        <dt>Model</dt><dd>{model || provider?.model || 'Automatic routing'}</dd>
         <dt>Reasoning</dt><dd>{turn?.reasoningEffort ?? chat?.reasoningChoice ?? 'auto'}</dd>
         <dt>State</dt><dd>{turn?.status ?? 'New conversation'}</dd>
         <dt>Iterations</dt><dd>{iterationText ?? stepText ?? 'Not recorded'}</dd>

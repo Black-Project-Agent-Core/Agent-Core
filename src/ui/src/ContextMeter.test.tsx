@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { COMPACT_BUTTON_PERCENT, ContextMeter, NEAR_FULL_PERCENT, contextBreakdownRows, contextMeterModel, formatTokenCount } from './ContextMeter';
+import { COMPACT_BUTTON_PERCENT, ContextMeter, NEAR_FULL_PERCENT, SEGMENT_COLORS, contextBreakdownRows, contextMeterModel, contextSegmentWidths, formatTokenCount } from './ContextMeter';
 import { reduceContextUsage, selectContextUsage } from './host';
 import type { AgentChatEvent, AgentChatUiState } from './host';
 
@@ -62,6 +62,31 @@ describe('ContextMeter', () => {
     view.rerender(<ContextMeter/>);
     expect(view.container).toBeEmptyDOMElement();
   });
+  it('renders one coloured segment per category sized by tokens / window, keeping the meter role and the 70% marker', () => {
+    const segments = [{ key: 'system' as const, tokens: 10_000 }, { key: 'tools' as const, tokens: 20_000 },
+      { key: 'conversation' as const, tokens: 30_000 }, { key: 'memory' as const, tokens: 40_000 }];
+    const { container } = render(<ContextMeter tokens={100_000} capacity={1_000_000} segments={segments} hideLabel/>);
+    expect(screen.getByTestId('context-segment-system')).toHaveStyle({ width: '1%', backgroundColor: SEGMENT_COLORS.system });
+    expect(screen.getByTestId('context-segment-tools')).toHaveStyle({ width: '2%' });
+    expect(screen.getByTestId('context-segment-conversation')).toHaveStyle({ width: '3%' });
+    expect(screen.getByTestId('context-segment-memory')).toHaveStyle({ width: '4%', backgroundColor: SEGMENT_COLORS.memory });
+    expect(screen.getByRole('meter')).toHaveAttribute('aria-valuenow', '10');
+    expect(screen.getByTestId('context-meter-mark')).toHaveStyle({ left: '70%' });
+    expect(container.firstElementChild).toHaveAttribute('data-level', 'ok');
+  });
+  it('caps the segments so their sum never exceeds 100%', () => {
+    expect(contextSegmentWidths([{ key: 'system', tokens: 600_000 }, { key: 'tools', tokens: 600_000 }, { key: 'memory', tokens: 5 }], 1_000_000))
+      .toEqual([{ key: 'system', width: 60 }, { key: 'tools', width: 40 }, { key: 'memory', width: 0 }]);
+    render(<ContextMeter tokens={1_200_000} capacity={1_000_000} segments={[{ key: 'system', tokens: 600_000 }, { key: 'tools', tokens: 600_000 }]}/>);
+    expect(screen.getByTestId('context-segment-system')).toHaveStyle({ width: '60%' });
+    expect(screen.getByTestId('context-segment-tools')).toHaveStyle({ width: '40%' });
+  });
+  it('falls back to the single bar when the capacity is unknown, even with segments', () => {
+    render(<ContextMeter tokens={90_000} segments={[{ key: 'system', tokens: 90_000 }]}/>);
+    expect(screen.queryByTestId('context-segment-system')).toBeNull();
+    expect(screen.getByRole('meter')).not.toHaveAttribute('aria-valuenow');
+    expect(screen.getByText('90k · kapasitas tidak diketahui')).toBeInTheDocument();
+  });
 });
 
 describe('contextBreakdownRows', () => {
@@ -81,6 +106,17 @@ describe('contextBreakdownRows', () => {
     expect(rows.reduce((sum, row) => sum + row.tokens, 0)).toBe(100);
     const big = contextBreakdownRows({ system: 1234, tools: 5678, conversation: 91011, memory: 7 }, 123_457);
     expect(big.reduce((sum, row) => sum + row.tokens, 0)).toBe(123_457);
+  });
+  it('adds percentOfWindow rounded to one decimal only when the capacity is known', () => {
+    const rows = contextBreakdownRows({ system: 3, tools: 6, conversation: 7, memory: 4 }, 1000, 3000);
+    expect(rows.map(row => row.percentOfWindow)).toEqual([5, 10, 11.7, 6.7]);
+    expect(rows.map(row => row.percent)).toEqual([15, 30, 35, 20]);
+    expect(contextBreakdownRows({ system: 1, tools: 0, conversation: 0, memory: 0 }, 373_100, 1_000_000)[0].percentOfWindow).toBe(37.3);
+    for (const capacity of [undefined, null, 0, -1, Number.NaN]) {
+      const row = contextBreakdownRows({ system: 1, tools: 0, conversation: 0, memory: 0 }, 1000, capacity)[0];
+      expect(row.percentOfWindow).toBeUndefined();
+      expect(row.percent).toBe(100);
+    }
   });
   it('is empty without a breakdown, with all-zero estimates, or without a provider total', () => {
     expect(contextBreakdownRows(undefined, 1000)).toEqual([]);

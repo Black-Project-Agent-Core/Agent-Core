@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { LauncherInspector } from './LauncherInspector';
+import { SEGMENT_COLORS } from './ContextMeter';
 import { postHost } from './host';
 import type { AgentChatUiState } from './host';
 
@@ -19,25 +20,51 @@ function chatWith(turn: Record<string, unknown>): AgentChatUiState {
 }
 const renderInspector = (chat: AgentChatUiState) => render(<LauncherInspector chat={chat} logs={[]} open onToggle={vi.fn()}/>);
 
-it('shows the Context Window card with percent, numbers, bar and the 70% marker', () => {
+it('shows the Context card with the "% used" header, used / window, bar and the 70% marker; the model moves into the details list', () => {
   const view = renderInspector(chatWith({ contextTokens: 144_000, contextWindow: 1_000_000 }));
-  expect(screen.getByText('Context Window (14%)')).toBeInTheDocument();
-  expect(view.container).toHaveTextContent('Model: claude-opus-5-5');
-  expect(view.container).toHaveTextContent('144k / 1M');
+  expect(screen.getByText('Context')).toBeInTheDocument();
+  expect(screen.queryByText(/Context Window/)).toBeNull();
+  expect(screen.getByText('14% used').tagName).toBe('B');
+  expect(screen.getByText('144k / 1M')).toBeInTheDocument();
+  expect(view.container.querySelector('.inspector-context-head')).toHaveTextContent(/^14% used144k \/ 1M$/);
+  expect(view.container).toHaveTextContent('Modelclaude-opus-5-5');
+  expect(view.container).not.toHaveTextContent('Model:');
   expect(screen.getByRole('meter', { name: 'Context window usage' })).toHaveAttribute('aria-valuenow', '14');
   expect(screen.getByTestId('context-meter-mark')).toHaveAttribute('title', 'otomatis di 100%');
   expect(view.container).toHaveTextContent('otomatis di 100%');
   expect(view.container.querySelector('details[open] > summary')).not.toBeNull();
 });
 
-it('never guesses the capacity and shows a plain heading without data', () => {
-  const unknown = renderInspector(chatWith({ contextTokens: 5_000 }));
-  expect(unknown.container).toHaveTextContent('kapasitas tidak diketahui');
+it('never guesses the capacity: single bar, no "% used", label text in the header, old share percent in the rows', () => {
+  const unknown = renderInspector(chatWith({ contextTokens: 5_000, contextBreakdown: { system: 1, tools: 1, conversation: 1, memory: 1 } }));
+  expect(unknown.container.querySelector('.inspector-context-head')).toHaveTextContent(/^5k · kapasitas tidak diketahui$/);
+  expect(screen.queryByText(/% used/)).toBeNull();
   expect(screen.queryByTestId('context-meter-mark')).toBeNull();
+  expect(screen.queryByTestId('context-segment-system')).toBeNull();
+  expect(screen.getByRole('meter')).not.toHaveAttribute('aria-valuenow');
+  expect(screen.getAllByRole('listitem').map(item => item.textContent)).toEqual([
+    'System Instructions1k25%', 'Tools & MCP Manifests1k25%', 'Conversation & Files1k25%', 'Memory Injections1k25%']);
   unknown.unmount();
   const none = renderInspector(chatWith({}));
-  expect(screen.getByText('Context Window')).toBeInTheDocument();
+  expect(screen.getByText('Context')).toBeInTheDocument();
+  expect(none.container.querySelector('.inspector-context-head')).toHaveTextContent(/^Not recorded$/);
   expect(none.container).not.toHaveTextContent('%');
+});
+
+it('lists the four categories with a coloured swatch, tokens and the percent of the window, feeding the same segments to the bar', () => {
+  const view = renderInspector(chatWith({ contextTokens: 100_000, contextWindow: 1_000_000,
+    contextBreakdown: { system: 1, tools: 2, conversation: 3, memory: 4 } }));
+  const items = screen.getAllByRole('listitem');
+  expect(items.map(item => item.textContent)).toEqual([
+    'System Instructions10k1.0%', 'Tools & MCP Manifests20k2.0%', 'Conversation & Files30k3.0%', 'Memory Injections40k4.0%']);
+  const swatches = view.container.querySelectorAll('.inspector-swatch');
+  expect(swatches).toHaveLength(4);
+  expect(swatches[0]).toHaveAttribute('aria-hidden', 'true');
+  expect(swatches[0]).toHaveStyle({ backgroundColor: SEGMENT_COLORS.system });
+  expect(swatches[3]).toHaveStyle({ backgroundColor: SEGMENT_COLORS.memory });
+  expect(screen.getByTestId('context-segment-system')).toHaveStyle({ width: '1%' });
+  expect(screen.getByTestId('context-segment-memory')).toHaveStyle({ width: '4%' });
+  expect(view.container).not.toHaveTextContent('Free space');
 });
 
 it('reads iterations and context recall from the polled turn row, falling back only when absent', () => {

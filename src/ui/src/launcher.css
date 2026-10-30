@@ -106,12 +106,18 @@
 .inspector-call-list li>div { display:flex; justify-content:space-between; gap:8px; font-size:9px; }
 .inspector-call-list b { overflow-wrap:anywhere; }
 .inspector-call-list span,.inspector-call-list small { color:#94a3b8; font-size:8px; }
-.inspector-context-breakdown { list-style:none; padding:0 8px 2px; margin:0; }
-.inspector-context-breakdown li { display:flex; justify-content:space-between; gap:8px; font-size:9px; padding:2px 0; border-top:1px solid var(--border); }
-.inspector-context-breakdown li:first-child { border-top:0; }
-.inspector-context-breakdown li span:first-child { color:#8d9db3; overflow-wrap:anywhere; }
-.inspector-context-breakdown li span:last-child { color:#d8e4f3; white-space:nowrap; }
-.inspector-context-breakdown+small { display:block; color:#94a3b8; font-size:8px; padding:0 8px 8px; }
+.inspector-context-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:0 10px 6px; font-size:10px; color:#8d9db3; }
+.inspector-context-head b { font-size:12px; font-weight:600; color:#eef3fa; }
+.inspector-context-head span { white-space:nowrap; }
+.inspector-context-meter { padding:0 10px; }
+.inspector-context-meter .context-meter-segment+.context-meter-segment { box-shadow:-1px 0 0 #131923; }
+.inspector-context-breakdown { list-style:none; padding:2px 10px 2px; margin:0; }
+.inspector-context-breakdown li { display:grid; grid-template-columns:9px minmax(0,1fr) auto auto; align-items:center; gap:7px; font-size:9px; padding:3px 0; }
+.inspector-context-breakdown li span:nth-child(2) { color:#c5d3e5; overflow-wrap:anywhere; }
+.inspector-context-breakdown li span:nth-child(3),.inspector-context-breakdown li span:nth-child(4) { color:#d8e4f3; text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.inspector-context-breakdown li span:nth-child(4) { min-width:34px; color:#8d9db3; }
+.inspector-swatch { display:inline-block; width:9px; height:9px; border-radius:2px; flex:none; }
+.inspector-context-breakdown+small { display:block; color:#94a3b8; font-size:8px; padding:0 10px 8px; }
 .inspector-compact { padding:4px 8px 8px; }
 .inspector-compact-row { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:10px; color:#94a3b8; }
 .inspector-compact-row button { border:1px solid var(--border); border-radius:999px; padding:4px 12px; font-size:10px; color:#e6eef9; background:rgba(148,163,184,.14); cursor:pointer; white-space:nowrap; }

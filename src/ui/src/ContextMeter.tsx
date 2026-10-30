@@ -5,6 +5,13 @@ export const COMPACT_BUTTON_PERCENT = 70;
 export const NEAR_FULL_PERCENT = 90;
 const AUTO_COMPACT_CAPTION = 'otomatis di 100%';
 
+/** One colour per breakdown category: the bar segment and the swatch in the category list share it. */
+export const SEGMENT_COLORS: Record<keyof ContextBreakdown, string> =
+  { system: '#9ca3af', tools: '#14b8a6', conversation: '#3b82f6', memory: '#f97316' };
+
+const isKnownCapacity = (capacity?: number | null): capacity is number =>
+  typeof capacity === 'number' && Number.isFinite(capacity) && capacity > 0;
+
 /** 135000 -> "135k", 1000000 -> "1M", 1500000 -> "1.5M". */
 export function formatTokenCount(count: number): string {
   if (count >= 1_000_000) return String(+(count / 1_000_000).toFixed(1)) + 'M';
@@ -32,14 +39,15 @@ export function contextMeterModel(tokens: number, capacity?: number | null): Con
     hint: level === 'critical' ? 'Hampir penuh' : level === 'warn' ? 'Compact tersedia; otomatis di 100%' : '' };
 }
 
-export type ContextBreakdownRow = { key: keyof ContextBreakdown; label: string; tokens: number; percent: number };
+/** percent = share of the used tokens (integer); percentOfWindow = share of the window capacity, one decimal, only when the capacity is known. */
+export type ContextBreakdownRow = { key: keyof ContextBreakdown; label: string; tokens: number; percent: number; percentOfWindow?: number };
 
 const BREAKDOWN_ORDER: ReadonlyArray<[keyof ContextBreakdown, string]> = [
   ['system', 'System Instructions'], ['tools', 'Tools & MCP Manifests'],
   ['conversation', 'Conversation & Files'], ['memory', 'Memory Injections']];
 
 /** Scales the chars/4 estimates to the provider total; largest-remainder rounding keeps the token sum exactly equal to contextTokens. */
-export function contextBreakdownRows(breakdown: ContextBreakdown | undefined, contextTokens: number): ContextBreakdownRow[] {
+export function contextBreakdownRows(breakdown: ContextBreakdown | undefined, contextTokens: number, capacity?: number | null): ContextBreakdownRow[] {
   if (!breakdown || !(contextTokens > 0)) return [];
   const raw = BREAKDOWN_ORDER.map(([key]) => Math.max(0, Number(breakdown[key]) || 0));
   const sum = raw.reduce((acc, value) => acc + value, 0);
@@ -50,22 +58,48 @@ export function contextBreakdownRows(breakdown: ContextBreakdown | undefined, co
   const byRemainder = exact.map((value, index) => ({ index, remainder: value - tokens[index] }))
     .sort((a, b) => b.remainder - a.remainder || a.index - b.index);
   for (const { index } of byRemainder) { if (left <= 0) break; tokens[index] += 1; left -= 1; }
+  const windowKnown = isKnownCapacity(capacity);
   return BREAKDOWN_ORDER.map(([key, label], index) =>
-    ({ key, label, tokens: tokens[index], percent: Math.round(tokens[index] / contextTokens * 100) }));
+    ({ key, label, tokens: tokens[index], percent: Math.round(tokens[index] / contextTokens * 100),
+      ...(windowKnown ? { percentOfWindow: Math.round(tokens[index] * 1000 / capacity) / 10 } : {}) }));
+}
+
+export type ContextMeterSegment = { key: keyof ContextBreakdown; tokens: number };
+
+/** Segment widths in % of the window, in order; the running sum is capped at 100 so the segments never overflow the track. */
+export function contextSegmentWidths(segments: ContextMeterSegment[], capacity: number): Array<{ key: keyof ContextBreakdown; width: number }> {
+  let used = 0;
+  return segments.map(segment => {
+    const width = Math.min(Math.max(0, segment.tokens) * 100 / capacity, Math.max(0, 100 - used));
+    used += width;
+    return { key: segment.key, width };
+  });
 }
 
 const COLORS = { ok: '#3fb68b', warn: '#f5a524', critical: '#ef4444', unknown: '#8a8f98' } as const;
 
-/** hideLabel: the host already shows "used / capacity" (Inspector card), so only the bar and its caption render. */
-export function ContextMeter({ tokens, capacity, hideLabel }: { tokens?: number; capacity?: number | null; hideLabel?: boolean }) {
+/**
+ * hideLabel: the host already shows "used / capacity" (Inspector card), so only the bar and its caption render.
+ * segments: with a known capacity the fill is one coloured segment per category (width = tokens / capacity); otherwise the single fill stays.
+ */
+export function ContextMeter({ tokens, capacity, hideLabel, segments }: {
+  tokens?: number; capacity?: number | null; hideLabel?: boolean; segments?: ContextMeterSegment[];
+}) {
   if (tokens === undefined) return null;
   const model = contextMeterModel(tokens, capacity);
+  const widths = model.known && segments?.length ? contextSegmentWidths(segments, capacity as number) : undefined;
   return <div className={'context-meter context-meter-' + model.level} data-level={model.level}
     style={{ margin: '0 0 6px', fontSize: 12 }}>
     <div role="meter" aria-label="Context window usage" aria-valuemin={0} aria-valuemax={100}
       {...(model.known ? { 'aria-valuenow': Math.round(model.fillPercent) } : {})}
+      className="context-meter-track"
       style={{ position: 'relative', height: 6, borderRadius: 3, background: 'rgba(127,127,127,.25)' }}>
-      <div style={{ width: model.fillPercent + '%', height: '100%', borderRadius: 3, background: COLORS[model.level] }}/>
+      {widths
+        ? <div className="context-meter-segments" style={{ display: 'flex', height: '100%', borderRadius: 3, overflow: 'hidden' }}>
+          {widths.map(segment => <span key={segment.key} className="context-meter-segment" data-testid={'context-segment-' + segment.key}
+            style={{ display: 'block', width: segment.width + '%', height: '100%', backgroundColor: SEGMENT_COLORS[segment.key] }}/>)}
+        </div>
+        : <div style={{ width: model.fillPercent + '%', height: '100%', borderRadius: 3, background: COLORS[model.level] }}/>}
       {model.known && <span data-testid="context-meter-mark" title={AUTO_COMPACT_CAPTION}
         style={{ position: 'absolute', left: COMPACT_BUTTON_PERCENT + '%', top: -2, bottom: -2, width: 2,
           background: 'currentColor', opacity: 0.7 }}/>}
