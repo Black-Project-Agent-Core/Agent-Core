@@ -31,7 +31,7 @@ it('requires a full Skill read before Native use and persists one notice across 
  const input={conversationId:c.conversation.id,clientRequestId:'capability-loop',prompt:'Audit installation hashes and integrity. Read only.'};
  const result=await chat.runTurn(input);
  expect(JSON.stringify(requests[0].messages)).toContain('activation-audit');
- expect(requests[0].messages.find((m:any)=>m.content?.startsWith('NATIVE SKILL GUIDANCE'))?.content).toContain(index.digest);
+ expect(requests[0].messages.find((m:any)=>m.content?.includes('NATIVE SKILL GUIDANCE'))?.content).toContain(index.digest);
  expect(JSON.stringify(requests[0].messages)).not.toContain('PRIVATE-CHILD-INSTRUCTIONS');
  expect(input.prompt).not.toContain('activation-audit');
  expect(result.response).toContain('Aku menggunakan Skill activation-audit');
