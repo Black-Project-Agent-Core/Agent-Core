@@ -40,7 +40,7 @@ Peta tidak memberi izin membuka data terlindungi, mengedit artifact/state owner,
 | `.changeset/`, `.github/` | Metadata intent rilis dan konfigurasi workflow existing. |
 | `dist/`, `node_modules/`, `release/` | Output build, dependency dan arsip rilis; jangan edit sebagai source. |
 | `Backups/` | Rumah backup existing/historis; bukan alasan membuat backup baru atau mengubah arsip. |
-| `.git/`, `.grafel/`, `.superpowers/` | Metadata/state owner terkait; tidak ditelusuri. |
+| `.git/`, `.grafel/`, `.superpowers/`, `.claude/` | Metadata/state owner terkait; tidak ditelusuri. `.claude/` hanya berisi izin lokal Claude Code (`settings.local.json`, diabaikan Git secara global), bukan bagian Agent Core. |
 | `.rdc-standalone/` | Tool operator eksternal, terpisah dari machine-control internal `src/rdc/`. |
 | `secrets/`, `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/` | Terlindungi; hanya nama boundary dicatat, tanpa inspeksi isi. `.env` juga dikecualikan. |
 
@@ -190,6 +190,10 @@ Blok JSON ini adalah deklarasi pada peta yang sama, bukan registry terpisah. `ow
     {
       "purpose": "github-workflows",
       "path": ".github"
+    },
+    {
+      "purpose": "claude-code-local-settings",
+      "path": ".claude"
     },
     {
       "purpose": "compiled-output",
@@ -381,7 +385,7 @@ Contoh intent untuk tujuan baru yang benar-benar diperlukan task: `{"path":"docs
 
 <!-- DIRECTORY-SNAPSHOT:START -->
 
-Daftar otomatis: **471 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
+Daftar otomatis: **472 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
 
 ```text
 <PROJECT_ROOT>/
@@ -417,6 +421,7 @@ Daftar otomatis: **471 direktori/boundary**. Subtree privat, dependency, generat
 |       |-- 1.5.8-1793172297306/
 |       |-- 1.5.9-1793172401547/
 |       `-- 1.6.0-1793176214037/
+|-- .claude/  [izin lokal Claude Code (settings.local.json); tidak ditelusuri]
 |-- .git/  [metadata Git; tidak ditelusuri]
 |-- .github/
 |   `-- ISSUE_TEMPLATE/

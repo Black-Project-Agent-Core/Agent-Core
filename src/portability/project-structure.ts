@@ -15,6 +15,7 @@ export const PARALLEL_SKILL_HOMES = ['bundled-skills', 'skills', 'capability-pac
 const rootBoundaries: Record<string, string> = {
   '.git': 'metadata Git; tidak ditelusuri', '.grafel': 'state/index lokal; tidak ditelusuri',
   '.rdc-standalone': 'tool operator eksternal; tidak ditelusuri', '.superpowers': 'state host lokal; tidak ditelusuri',
+  '.claude': 'izin lokal Claude Code (settings.local.json); tidak ditelusuri',
   node_modules: 'dependency; tidak ditelusuri', dist: 'hasil build; tidak ditelusuri',
   release: 'arsip rilis; tidak ditelusuri', Backups: 'backup existing; tidak ditelusuri',
   secrets: 'terlindungi; tidak ditelusuri', 'DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT': 'terlindungi; tidak ditelusuri',
