@@ -1,7 +1,7 @@
 # Perkuatan recall kompaksi konteks Native
 Tanggal: 2026-10-30
 Revisi: 1
-Status: PROPOSED
+Status: APPROVED (revisi 1, scope P1+P2 build; belum diimplementasikan)
 Jenis: Improvement
 Asal dan bukti: `src/agent-context-compaction.ts` (batas per baris, `TURN_BUDGET_CHARS`, `compactTurnMessages`), `src/agent-chat-store.ts:327` dan `:674` (`chat_compaction_sources`, `getCompactionSource`), pesan pengguna 2026-10-30 (menyetujui alat pencarian riwayat chat).
 
@@ -53,4 +53,4 @@ Manfaat adalah harapan, belum terukur. P1 mengubah ringkasan yang lossy menjadi 
 
 Sudah diputuskan di chat (2026-10-30): pengguna menyetujui penambahan alat pencarian riwayat chat baca-saja. Itu paket terpisah dan tidak bergantung pada dokumen ini.
 
-Belum ada keputusan untuk P1 dan P2; menunggu APPROVE / REVISE / HOLD / REJECT atas revisi 1. P3 tidak diminta.
+APPROVE revisi 1, scope P1 + P2 (build), diberikan pengguna di chat pada 2026-10-30 dengan pesan "Setujui P1+P2" sebagai jawaban atas pertanyaan keputusan proposal ini. P3 tidak disetujui dan tidak diminta. Persetujuan ini tidak mencakup revisi berikutnya atau scope tambahan. Status APPROVED belum berarti selesai: implementasi, validasi, dan arsip ke `docs/history-agent-core` menyusul setelah acceptance terpenuhi.
