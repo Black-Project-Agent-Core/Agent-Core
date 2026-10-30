@@ -104,11 +104,11 @@ function registryShape(runtime: AgentCoreMcpRuntime): string {
 }
 
 /**
- * `per-task`: a registry is built for each session with its task fixed at registration (the earlier path).
- * `shared`: one registry per process serves every Native task, each call naming its own task through a ToolCaller.
+ * Default: one registry per process serves every Native task, each call naming its own task through a ToolCaller.
+ * AGENT_CORE_NATIVE_TOOL_REGISTRY=per-task builds a registry for each session with its task fixed at registration (the earlier path).
  */
 const useSharedRegistry = (runtime: AgentCoreMcpRuntime) =>
-  process.env.AGENT_CORE_NATIVE_TOOL_REGISTRY === 'shared' && !useMcpTransport() && Boolean(runtime.nativeTaskId);
+  process.env.AGENT_CORE_NATIVE_TOOL_REGISTRY !== 'per-task' && !useMcpTransport() && Boolean(runtime.nativeTaskId);
 
 /** What belongs to one task or session, not to the process: the shared registry is built without any of it. */
 const PER_TASK_FIELDS: ReadonlySet<string> = new Set(['nativeTaskId', 'nativeWorkspace', 'failureLoopAdvisor', 'imageInspector', 'toolTarget', 'sharedNativeRegistry']);
