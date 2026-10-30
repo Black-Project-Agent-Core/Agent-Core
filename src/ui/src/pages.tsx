@@ -728,7 +728,7 @@ export function ChatPage(props:SharedProps) {
           <button onClick={()=>{props.setPage('systems');setActionsOpen(false);}}><Wrench size={16}/>Tools Hub & MCP <ChevronRight size={14}/></button>
           {!active&&<label>Workspace<input aria-label="Workspace" value={workspace} onChange={e=>setWorkspace(e.target.value)} disabled={running||Boolean(pending)} maxLength={200}/></label>}
         </div>}</div>
-        <button type="button" className="prototype-goal-toggle" aria-label="Goals mode" aria-pressed={goalMode} title="Run the next instruction as a goal" disabled={running||Boolean(pausedTurn)||Boolean(pending)} onClick={()=>setGoalModes(prev=>({...prev,[draftKey]:!goalMode}))}><Target size={14}/><span>Goals</span></button>
+        <button type="button" className="prototype-goal-toggle" aria-label="Goals mode" aria-pressed={goalMode} title="Run the next instruction as a goal" disabled={running||Boolean(pausedTurn)||Boolean(pending)} onClick={()=>setGoalModes(prev=>({...prev,[draftKey]:!goalMode}))}><Target size={14}/></button>
         {props.agentChat.providers&&props.agentChat.providers.length>0&&props.onChatProvider&&<select
           aria-label="Provider dan model"
           title="Provider dan model"
