@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  boundedMessages, compactionEnabled, compactTurnMessages, presentedToolsFromSummary,
+  boundedMessages, COMPACTION_TRIGGER_RATIO, compactionEnabled, compactTurnMessages, presentedToolsFromSummary,
   summarizeConversationPrefix, TURN_SUMMARY_MARKER,
 } from '../src/agent-context-compaction.js';
 import { AgentChatStore } from '../src/agent-chat-store.js';
@@ -228,5 +228,11 @@ describe('chat store compaction', () => {
     db.prepare('UPDATE chat_compaction_sources SET source_json=? WHERE compaction_id=?').run('tampered', id);
     db.close();
     expect(store.getCompactionSource('t0', id)).toBeNull();
+  });
+});
+
+describe('automatic compaction trigger', () => {
+  it('fires only once the request bound passes the full known window (user decision 2026-10-30)', () => {
+    expect(COMPACTION_TRIGGER_RATIO).toBe(1);
   });
 });

@@ -122,6 +122,8 @@ export class AgentChatService {
   readonly store: AgentChatStore;
   private readonly activeTurns = new Map<string, AbortController>();
   private readonly pauseRequestedTurns = new Set<string>();
+  /** Manual "compact now" requests; consumed once by the controller at its next iteration. */
+  private readonly compactionRequestedTurns = new Set<string>();
   /** One settle per runtime task, shared by every caller that races for it. */
   private readonly settlingTasks = new Map<string, Promise<boolean>>();
   private settleWaitMs = SETTLE_WAIT_MS;
@@ -302,10 +304,12 @@ export class AgentChatService {
       save: (state: AgentTurnCheckpointState, phase: any, extras?: {
         compactionSources?: Array<{ id: string; sourceJson: string; sourceDigest: string }>;
       }) => Promise<void>;
+      consumeCompactionRequest: () => boolean;
     } = {
       conversationId: input.conversationId,
       turnId: input.turnId,
       ...(input.state ? { state: input.state } : {}),
+      consumeCompactionRequest: () => this.compactionRequestedTurns.delete(input.turnId),
       save: async (state, phase, extras) => {
         const serialized = serializeAgentTurnCheckpoint(state);
         const saved = this.store.saveCheckpoint({
@@ -624,6 +628,7 @@ export class AgentChatService {
       // Only drop the registration this executor made; a newer executor of the same turn keeps its own.
       if (this.activeTurns.get(turnId) === controller) this.activeTurns.delete(turnId);
       if (this.store.getTurn(turnId)?.status !== 'resumable') this.pauseRequestedTurns.delete(turnId);
+      this.compactionRequestedTurns.delete(turnId);
       await this.settleIfEnded(turnId);
     }
   }
@@ -840,6 +845,7 @@ export class AgentChatService {
       // Same identity check as above: never remove another executor's registration.
       if (this.activeTurns.get(turn.id) === controller) this.activeTurns.delete(turn.id);
       if (this.store.getTurn(turn.id)?.status !== 'resumable') this.pauseRequestedTurns.delete(turn.id);
+      this.compactionRequestedTurns.delete(turn.id);
       await this.settleIfEnded(turn.id);
     }
   }
@@ -925,8 +931,17 @@ export class AgentChatService {
     }
   }
 
+  /** Manual "compact now": only a running turn grows its context, so the request is valid only then. */
+  requestCompaction(turnId: string): 'scheduled' | 'not-running' {
+    const turn = this.store.getTurn(turnId);
+    if (!turn || turn.status !== 'running') return 'not-running';
+    this.compactionRequestedTurns.add(turnId);
+    return 'scheduled';
+  }
+
   stopTurn(turnId: string): boolean {
     this.pauseRequestedTurns.delete(turnId);
+    this.compactionRequestedTurns.delete(turnId);
     const timer = this.providerWaitTimers.get(turnId);
     if (timer) clearTimeout(timer);
     this.providerWaitTimers.delete(turnId);

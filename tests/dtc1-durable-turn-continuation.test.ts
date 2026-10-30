@@ -1125,7 +1125,7 @@ describe('DTC-1 Stop reaches an in-flight tool call', () => {
 });
 
 describe('DTC-1 context compaction inside a turn', () => {
-  async function compactionFixture(window: number | null) {
+  async function compactionFixture(window: number | null, manual = false) {
     const root = await rootFixture('dtc1-compaction-');
     const config = {
       ...providerConfig([{
@@ -1176,10 +1176,18 @@ describe('DTC-1 context compaction inside a turn', () => {
         turnId: state.turnId,
         state,
         save: vi.fn(async (next, phase, extras) => { saves.push({ state: next, phase, extras }); }),
+        ...(manual ? { consumeCompactionRequest: () => true } : {}),
       },
     });
     return { run, seen, saves };
   }
+
+  it('compacts exactly once on a manual request, without a known window or ratio breach', async () => {
+    const fixture = await compactionFixture(null, true);
+    await expect(fixture.run()).rejects.toThrow('AGENT_RUNTIME_TURN_STOPPED');
+    expect(fixture.seen[0]!.filter(message => message.content?.startsWith('NATIVE CONTEXT SUMMARY'))).toHaveLength(1);
+    expect(fixture.saves.filter(save => save.extras?.compactionSources?.length)).toHaveLength(1);
+  });
 
   it('compacts before the provider call and commits the source with the compacted checkpoint', async () => {
     const fixture = await compactionFixture(10_000);

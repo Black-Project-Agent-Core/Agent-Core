@@ -1050,3 +1050,28 @@ describe('AgentChatService multi-turn lifecycle', () => {
     (fixture.chat as any).activeTurns.delete(turnId);
   });
 });
+
+describe('AgentChatService manual compaction request', () => {
+  it('schedules only for a running turn and hands the flag to the controller exactly once', async () => {
+    const fixture = await settleFixture();
+    const created = await fixture.chat.createConversation({ workspace: 'fixture' });
+    let runningTurnId = '';
+    const observed: Array<'scheduled' | 'not-running' | boolean> = [];
+    vi.spyOn(fixture.controller, 'runConversationTurn').mockImplementationOnce(async input => {
+      runningTurnId = input.continuation!.turnId;
+      expect(fixture.chat.store.getTurn(runningTurnId)?.status).toBe('running');
+      observed.push(fixture.chat.requestCompaction(runningTurnId));
+      observed.push(input.continuation!.consumeCompactionRequest!());
+      observed.push(input.continuation!.consumeCompactionRequest!());
+      observed.push(fixture.chat.requestCompaction(runningTurnId));
+      throw new Error('FIXTURE_COMPACTION_CHECKED');
+    });
+    await expect(fixture.chat.runTurn({ conversationId: created.conversation.id,
+      clientRequestId: 'compact-request', prompt: 'Grow the context.' })).rejects.toThrow('FIXTURE_COMPACTION_CHECKED');
+    expect(observed).toEqual(['scheduled', true, false, 'scheduled']);
+    expect(fixture.chat.store.getTurn(runningTurnId)?.status).toBe('failed');
+    expect(fixture.chat.requestCompaction(runningTurnId)).toBe('not-running');
+    expect(fixture.chat.requestCompaction('no-such-turn')).toBe('not-running');
+    expect((fixture.chat as any).compactionRequestedTurns.has(runningTurnId)).toBe(false);
+  });
+});

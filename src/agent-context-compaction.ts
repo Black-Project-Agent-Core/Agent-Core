@@ -6,8 +6,11 @@ import { redactSensitiveString } from './security/redaction.js';
 export const TURN_SUMMARY_MARKER = 'NATIVE CONTEXT SUMMARY';
 /** Marker of the digest of chat messages that no longer fit the verbatim history window. */
 export const HISTORY_SUMMARY_MARKER = 'NATIVE CONVERSATION SUMMARY';
-/** Compact once the conservative request bound passes this share of the known context window. */
-export const COMPACTION_TRIGGER_RATIO = 0.75;
+/**
+ * Compact once the conservative request bound passes the known context window (user decision 2026-10-30:
+ * automatic compaction fires at 100%). A manual compaction request can force it earlier.
+ */
+export const COMPACTION_TRIGGER_RATIO = 1;
 
 const TURN_BUDGET_CHARS = 12_000;
 const HISTORY_BUDGET_CHARS = 8_000;

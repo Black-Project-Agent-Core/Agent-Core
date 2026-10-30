@@ -343,6 +343,18 @@ describe('native Agent Core controller lifecycle', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('carries the user\'s working rules near the top of the system prompt', async () => {
+    const { controller, fetchMock } = await fixture([conversationFinalize()]);
+    await controller.runTask({ prompt: 'halo' });
+    const request = JSON.parse(String((fetchMock.mock.calls[0] as any)[1]?.body ?? '{}'));
+    const system = request.messages.filter((message: any) => message.role === 'system').map((message: any) => message.content).join('\n');
+    expect(system).toContain('WORKING RULES');
+    expect(system).toContain('run each target at most 2 times');
+    expect(system).toContain('Never push, release or tag unless asked');
+    expect(system).toContain('a simple conversational turn needs none of them');
+    expect(system.indexOf('WORKING RULES')).toBeLessThan(system.indexOf('Use local Memory as historical evidence'));
+  });
+
   it('tells the model to stay concise, to separate depth from plain language, and not to force Skills on a simple turn', async () => {
     const { controller, fetchMock } = await fixture([conversationFinalize()]);
     await controller.runTask({ prompt: 'halo' });

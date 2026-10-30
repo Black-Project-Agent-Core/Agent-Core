@@ -351,6 +351,13 @@ async function handleRequest(
       return;
     }
 
+    const compactMatch = route.match(/^\/agent\/chat\/turns\/([^/]+)\/compact$/);
+    if (compactMatch && request.method === 'POST') {
+      const status = chat.requestCompaction(decodeURIComponent(compactMatch[1]!));
+      sendJson(response, status === 'scheduled' ? 200 : 404, { status });
+      return;
+    }
+
     const stopMatch = route.match(/^\/agent\/chat\/turns\/([^/]+)\/cancel$/);
     if (stopMatch && request.method === 'POST') {
       const stopped = chat.stopTurn(decodeURIComponent(stopMatch[1]!));
