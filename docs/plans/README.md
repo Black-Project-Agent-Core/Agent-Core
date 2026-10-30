@@ -39,6 +39,7 @@ No new public tool names, provider, memory store or automatic evaluation. Histor
 | [Memory 10](../memory/plans/2026-10-09-memory-10-relevance-abstention.md) | Relevance abstention |
 | [Memory 11](../memory/plans/2026-10-09-memory-11-code-identifier-retrieval.md) | Exact/subword code identifier retrieval |
 | [Adaptive parallel tool execution](2026-10-09-adaptive-parallel-tool-execution.md) | Capacity-aware coordination for independent tool work |
+| [Native tool registry](Native-Tool-Registry.md) | Registry tool Native dibangun sekali per proses dengan konteks per panggilan; tahap 0 (host dalam proses, tanpa server MCP) sudah selesai |
 
 
 ## Evidence and execution rules
