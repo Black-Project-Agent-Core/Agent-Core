@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { AgentProviderContinuationMetadata, AgentProviderCredentialConfig, AgentRuntimeConfig } from './agent-provider.js';
+import type { AgentReasoningEffort } from './agent-provider-state.js';
 import { isAgentCapabilityFamily, type AgentCapabilityFamily } from './agent-capability-catalog.js';
 import type { WebResearchConfig } from './web-research/service.js';
 import type { CodeIntelligenceConfig } from './code-intelligence/types.js';
@@ -48,6 +49,12 @@ export interface AppConfig {
 const bool = (value: string | undefined, fallback: boolean) => value === undefined
   ? fallback : ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
 const list = (value: string | undefined) => (value ?? '').split(/[;,]/).map(v => v.trim()).filter(Boolean);
+/** Ceiling of the default reasoning effort: the highest level each model supports up to it is used. 'off', 'auto' or an unknown value means the provider default. */
+const defaultReasoningEffort = (value: string | undefined): AgentReasoningEffort | undefined => {
+  const level = (value ?? '').trim().toLowerCase();
+  if (!level) return 'max';
+  return (['low', 'medium', 'high', 'xhigh', 'max'] as const).find(item => item === level);
+};
 /** Public MCP resource URL for a Cloudflare Tunnel hostname. A pasted scheme or path is tolerated; an invalid value adds nothing, so a typo cannot stop startup. */
 const tunnelResourceUrl = (value: string | undefined) => {
   const host = (value ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/[/?#].*$/, '');
@@ -157,7 +164,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
     {
       id: 'anthropic',
       baseUrl: env.ANTHROPIC_BASE_URL?.trim() || 'https://api.anthropic.com/v1',
-      model: env.ANTHROPIC_MODEL?.trim() || 'claude-fable-5-1',
+      model: env.ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5-5',
       models: ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'],
       ...(env.ANTHROPIC_WORKSPACE_ID?.trim() ? { workspaceId: env.ANTHROPIC_WORKSPACE_ID.trim() } : {}),
       ...declaredCapacity(env, 'ANTHROPIC'),
@@ -263,6 +270,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
       model: env.AGENT_CORE_AI_MODEL?.trim() || null,
       apiKey: env.AGENT_CORE_AI_API_KEY?.trim() || null,
       anthropicPromptCaching: bool(env.ANTHROPIC_PROMPT_CACHING, true),
+      anthropicDefaultReasoningEffort: defaultReasoningEffort(env.ANTHROPIC_REASONING_EFFORT),
       providers: namedAgentProviders,
       providerOrder: configuredProviderOrder.length
         ? configuredProviderOrder

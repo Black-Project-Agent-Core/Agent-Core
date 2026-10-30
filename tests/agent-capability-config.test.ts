@@ -62,11 +62,20 @@ describe('Native Agent capability configuration', () => {
     expect(loadConfig({ ANTHROPIC_PROMPT_CACHING: 'false' }, process.cwd()).agentRuntime.anthropicPromptCaching).toBe(false);
   });
 
-  it('defaults the Anthropic route to Fable 5.1 and lets ANTHROPIC_MODEL override it', () => {
+  it('defaults the Anthropic route to Sonnet 5.5 and lets ANTHROPIC_MODEL override it', () => {
     const anthropic = (env: Record<string, string>) =>
       loadConfig({ ANTHROPIC_API_KEY_01: 'fixture', ...env }, process.cwd()).agentRuntime.providers?.find(item => item.id === 'anthropic');
-    expect(anthropic({})?.model).toBe('claude-fable-5-1');
+    expect(anthropic({})?.model).toBe('claude-sonnet-5-5');
     expect(anthropic({ ANTHROPIC_MODEL: 'claude-opus-5-5' })?.model).toBe('claude-opus-5-5');
+  });
+
+  it('defaults the Anthropic reasoning effort to max and lets ANTHROPIC_REASONING_EFFORT change or switch it off', () => {
+    const effort = (env: Record<string, string>) => loadConfig(env, process.cwd()).agentRuntime.anthropicDefaultReasoningEffort;
+    expect(effort({})).toBe('max');
+    expect(effort({ ANTHROPIC_REASONING_EFFORT: 'High' })).toBe('high');
+    expect(effort({ ANTHROPIC_REASONING_EFFORT: 'off' })).toBeUndefined();
+    expect(effort({ ANTHROPIC_REASONING_EFFORT: 'auto' })).toBeUndefined();
+    expect(effort({ ANTHROPIC_REASONING_EFFORT: 'bogus' })).toBeUndefined();
   });
 
   it('rejects unknown capability families and policy modes', () => {

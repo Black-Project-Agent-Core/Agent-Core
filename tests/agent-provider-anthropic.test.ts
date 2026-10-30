@@ -145,6 +145,38 @@ describe('Anthropic native Messages provider', () => {
     expect(seen).toHaveLength(count);
   });
 
+  it('applies the highest supported effort up to the configured ceiling when the caller gave none', async () => {
+    for (const [maxSupported, expected] of [[true, { effort: 'max' }], [false, { effort: 'high' }]] as const) {
+      const root = await mkdtemp(path.join(os.tmpdir(), 'provider-anthropic-default-effort-'));
+      roots.push(root);
+      const seen: Array<{ method: string; body: any }> = [];
+      vi.stubGlobal('fetch', vi.fn(async (_url: URL, init: RequestInit) => {
+        const method = init.method ?? 'GET';
+        const body = init.body ? JSON.parse(String(init.body)) : null;
+        seen.push({ method, body });
+        if (method === 'GET') {
+          return json({ id: 'claude-fixture-resolved', type: 'model', max_input_tokens: 131_072, max_tokens: 4_096,
+            capabilities: { effort: { supported: true, low: { supported: true }, high: { supported: true }, max: { supported: maxSupported } } } });
+        }
+        if (body.tools?.[0]?.name === 'agent_core_model_probe') {
+          return json(message([{ type: 'tool_use', id: 'probe', name: 'agent_core_model_probe',
+            input: { nonce: body.tools[0].input_schema.properties.nonce.enum[0] } }], { stop_reason: 'tool_use' }));
+        }
+        return json(message());
+      }));
+      const pool = new OpenAICompatibleProviderPool({ ...config, baseUrl: null, model: null, apiKey: null,
+        anthropicDefaultReasoningEffort: 'max',
+        providers: [{ id: 'anthropic', baseUrl: config.baseUrl, model: config.model,
+          credentials: [{ id: 'anthropic:01', ordinal: 1, secret: 'fixture-one' }] }],
+        providerOrder: ['anthropic'] }, path.join(root, 'provider-state.sqlite'));
+      await pool.prepareReadiness();
+      await pool.complete([{ role: 'user', content: 'Hello' }]);
+      expect(seen.filter(item => item.method === 'POST').at(-1)?.body.output_config).toEqual(expected);
+      await pool.complete([{ role: 'user', content: 'Hello' }], [], undefined, undefined, { routeId: 'anthropic', reasoningEffort: 'low' });
+      expect(seen.filter(item => item.method === 'POST').at(-1)?.body.output_config).toEqual({ effort: 'low' });
+    }
+  });
+
   it('sends an explicitly configured workspace header for organization-scoped Anthropic credentials', async () => {
     const fetchMock = vi.fn(async () => json(message()));
     vi.stubGlobal('fetch', fetchMock);

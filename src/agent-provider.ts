@@ -70,6 +70,8 @@ export interface AgentProviderConfig {
   apiKey: string | null;
   workspaceId?: string;
   anthropicPromptCaching?: boolean;
+  /** Ceiling of the default reasoning effort for the anthropic route; each model gets the highest level it supports up to it. */
+  anthropicDefaultReasoningEffort?: AgentReasoningEffort;
   requestTimeoutMs: number;
   maxToolIterations: number;
   providers?: AgentProviderRouteConfig[];
@@ -1085,6 +1087,7 @@ export class OpenAICompatibleProviderPool {
           attemptSignal?.throwIfAborted();
           let effectiveModel = route.model;
           let capacity = route.continuation;
+          let supportedEfforts: readonly AgentReasoningEffort[] = [];
           if (selected.secret) {
             const ready = await this.validateModel(route, selected, attemptSignal,
               Math.max(options.continuation?.minContextTokens ?? 0, accountContext(messages, tools, { bytes: wireBytes }).requiredTokens));
@@ -1101,6 +1104,7 @@ export class OpenAICompatibleProviderPool {
               continue;
             }
             validateAgentReasoningEffort(options.reasoningEffort, route.id, ready.reasoningEfforts ?? []);
+            supportedEfforts = ready.reasoningEfforts ?? [];
             // Qualification may replace a model to satisfy this task's context.
             // Re-select so the replacement's own blocks and quota are checked.
             if ((selected.selection.model ?? route.model) !== ready.model) {
@@ -1152,8 +1156,14 @@ export class OpenAICompatibleProviderPool {
             });
           }, route.id);
           try {
+            // No explicit effort: the anthropic route uses the highest level this model supports up to the configured ceiling.
+            const ceiling = route.id === 'anthropic' ? this.config.anthropicDefaultReasoningEffort : undefined;
+            const defaultEffort = ceiling
+              ? REASONING_EFFORT_LEVELS.slice(0, REASONING_EFFORT_LEVELS.indexOf(ceiling) + 1).reverse()
+                .find(level => supportedEfforts.includes(level))
+              : undefined;
             const response = await provider.complete(messages, tools, attemptSignal,
-              capacity && accounting ? completionCap(accounting, capacity) : undefined, options.reasoningEffort);
+              capacity && accounting ? completionCap(accounting, capacity) : undefined, options.reasoningEffort ?? defaultEffort);
             if (response.usage?.inputTokens) {
               this.observedInput.set(observedKey, { inputTokens: response.usage.inputTokens, bytes: wireBytes });
             }
