@@ -225,7 +225,7 @@ export class AgentCapabilityResolver {
     const requested = unique(input.requestedFamilies.filter(isAgentCapabilityFamily));
     if (this.mode === 'explicit') {
       // Explicit never grows: a request is only denied, and the grant stays the operator's tool ceiling rather than shrinking to get_config.
-      return { ...this.initialGrant(input.availableTools, input.userPrompt),
+      return { ...this.initialGrant(input.availableTools, input.userPrompt), restrictions: Object.create(null),
         requestedFamilies: requested, denied: requested.map(family => ({ family, reason: 'policy-mode' as const })) };
     }
     const available = new Set(input.availableTools);
