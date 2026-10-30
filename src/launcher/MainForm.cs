@@ -477,6 +477,20 @@ public sealed class MainForm : Form
                 }
                 return;
             }
+            if (type == "agent-chat-slash-commands")
+            {
+                try
+                {
+                    var result = await _runtime.ListSlashCommandsAsync();
+                    Send(new { type = "agent-chat-slash-commands-result", result });
+                }
+                catch (Exception)
+                {
+                    // A missing menu must never raise a chat error: answer with an empty list instead.
+                    Send(new { type = "agent-chat-slash-commands-result", result = new { commands = Array.Empty<object>() } });
+                }
+                return;
+            }
             if (type == "agent-chat-create")
             {
                 var requestId = root.TryGetProperty("requestId", out var requestNode)

@@ -161,3 +161,104 @@ describe('Native chat progress and durable states', () => {
     expect(screen.queryByText('Outcome check passed')).not.toBeInTheDocument();
   });
 });
+
+describe('Native chat composer "/" menu and /compact', () => {
+  const commands = [
+    { name: 'compact', kind: 'command' as const, description: 'Padatkan konteks giliran yang berjalan' },
+    { name: 'code-review', kind: 'skill' as const, description: 'Tinjau kode' },
+    { name: 'mind-control', kind: 'skill' as const, description: 'Gerbang penalaran' },
+  ];
+  const slashProps = (status: AgentChatTurn['status'] = 'finalized') => {
+    const input = props(status);
+    input.agentChat.slashCommands = commands;
+    input.onChatCompact = vi.fn();
+    input.onSlashCommands = vi.fn();
+    return input;
+  };
+  const textarea = () => screen.getByRole('textbox', { name: 'Message Agent Core' });
+  const optionNames = () => screen.getAllByRole('option').map(option => option.querySelector('b')!.textContent);
+
+  it('typing "/" requests the list and shows the menu with compact first', () => {
+    const input = slashProps();
+    render(<ChatPage {...input}/>);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    fireEvent.change(textarea(), { target: { value: '/' } });
+    expect(input.onSlashCommands).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('listbox', { name: 'Perintah dan skill' })).toBeInTheDocument();
+    expect(optionNames()).toEqual(['/compact', '/code-review', '/mind-control']);
+    expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true');
+    expect(textarea()).toHaveAttribute('aria-activedescendant', 'slash-option-compact');
+    fireEvent.change(textarea(), { target: { value: '/co' } });
+    // startsWith matches first, then the includes match ("mind-control" contains "co").
+    expect(optionNames()).toEqual(['/compact', '/code-review', '/mind-control']);
+    expect(input.onSlashCommands).toHaveBeenCalledTimes(1);
+  });
+
+  it('ArrowDown then Enter inserts "/<skill> " and closes the menu', () => {
+    const input = slashProps();
+    render(<ChatPage {...input}/>);
+    fireEvent.change(textarea(), { target: { value: '/' } });
+    fireEvent.keyDown(textarea(), { key: 'ArrowDown' });
+    expect(textarea()).toHaveAttribute('aria-activedescendant', 'slash-option-code-review');
+    fireEvent.keyDown(textarea(), { key: 'Enter' });
+    expect(textarea()).toHaveValue('/code-review ');
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(input.onChatSend).not.toHaveBeenCalled();
+  });
+
+  it('Escape closes the menu and typing again reopens and re-requests it', () => {
+    const input = slashProps();
+    render(<ChatPage {...input}/>);
+    fireEvent.change(textarea(), { target: { value: '/' } });
+    fireEvent.keyDown(textarea(), { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(textarea()).toHaveValue('/');
+    fireEvent.change(textarea(), { target: { value: '/mi' } });
+    expect(optionNames()).toEqual(['/mind-control']);
+    expect(input.onSlashCommands).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the textarea enabled while a turn runs but refuses a normal message', () => {
+    const input = slashProps('running');
+    render(<ChatPage {...input}/>);
+    expect(textarea()).toBeEnabled();
+    expect(textarea()).toHaveAttribute('placeholder', 'Giliran berjalan. Ketik /compact untuk memadatkan konteks.');
+    fireEvent.change(textarea(), { target: { value: 'hello' } });
+    fireEvent.keyDown(textarea(), { key: 'Enter' });
+    expect(input.onChatSend).not.toHaveBeenCalled();
+    expect(input.onChatCompact).not.toHaveBeenCalled();
+    expect(textarea()).toHaveValue('hello');
+    expect(screen.getByRole('status')).toHaveTextContent('Giliran sedang berjalan; hanya /compact yang bisa dikirim sekarang');
+  });
+
+  it('"/compact" while running posts the compact request for the running turn and shows its answer', () => {
+    const input = slashProps('running');
+    const view = render(<ChatPage {...input}/>);
+    fireEvent.change(textarea(), { target: { value: '/' } });
+    expect(optionNames()).toEqual(['/compact']);
+    fireEvent.keyDown(textarea(), { key: 'Enter' });
+    expect(textarea()).toHaveValue('/compact');
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    fireEvent.keyDown(textarea(), { key: 'Enter' });
+    expect(input.onChatCompact).toHaveBeenCalledWith('turn-1');
+    expect(input.onChatSend).not.toHaveBeenCalled();
+    expect(textarea()).toHaveValue('');
+    input.agentChat.compactResult = { turnId: 'turn-1', status: 'scheduled' };
+    view.rerender(<ChatPage {...input}/>);
+    expect(screen.getByRole('status')).toHaveTextContent('Kompaksi dijadwalkan');
+    input.agentChat.compactResult = { turnId: 'turn-1', status: 'unavailable' };
+    view.rerender(<ChatPage {...input}/>);
+    expect(screen.getByRole('status')).toHaveTextContent('Gagal menjadwalkan');
+  });
+
+  it('"/compact" while idle sends no chat message and reports that no turn is running', () => {
+    const input = slashProps();
+    render(<ChatPage {...input}/>);
+    fireEvent.change(textarea(), { target: { value: '/compact' } });
+    fireEvent.keyDown(textarea(), { key: 'Enter' });
+    expect(input.onChatSend).not.toHaveBeenCalled();
+    expect(input.onChatCompact).not.toHaveBeenCalled();
+    expect(textarea()).toHaveValue('');
+    expect(screen.getByText('Tidak ada giliran berjalan')).toBeInTheDocument();
+  });
+});

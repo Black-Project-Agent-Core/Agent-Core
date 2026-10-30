@@ -112,6 +112,12 @@
 .inspector-context-breakdown li span:first-child { color:#8d9db3; overflow-wrap:anywhere; }
 .inspector-context-breakdown li span:last-child { color:#d8e4f3; white-space:nowrap; }
 .inspector-context-breakdown+small { display:block; color:#94a3b8; font-size:8px; padding:0 8px 8px; }
+.inspector-compact { padding:4px 8px 8px; }
+.inspector-compact-row { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:10px; color:#94a3b8; }
+.inspector-compact-row button { border:1px solid var(--border); border-radius:999px; padding:4px 12px; font-size:10px; color:#e6eef9; background:rgba(148,163,184,.14); cursor:pointer; white-space:nowrap; }
+.inspector-compact-row button:hover:not(:disabled) { background:rgba(148,163,184,.26); }
+.inspector-compact-row button:disabled { opacity:.5; cursor:not-allowed; }
+.inspector-compact small { display:block; margin-top:4px; font-size:9px; color:#94a3b8; }
 .inspector-workspace { display:flex; align-items:flex-start; gap:8px; color:var(--cyan); padding:4px; }
 .inspector-workspace>div { display:flex; flex-direction:column; min-width:0; gap:5px; }
 .inspector-workspace span { font-size:9px; color:#8397af; }
@@ -338,6 +344,14 @@
 .launcher-shell .chat-page .chat-composer textarea{border:0;border-radius:16px 16px 0 0;background:transparent;box-shadow:none;min-height:60px;max-height:200px;resize:none;padding:12px 10px;color:#e2e8f0;font-size:12px}
 .launcher-shell .chat-page .chat-composer textarea:focus{border:0;box-shadow:none}
 .launcher-shell .chat-page .chat-composer textarea:focus-visible{outline:none;outline-offset:0;box-shadow:none}
+/* "/" popup: anchored above the textarea inside the (position:relative) composer; the textarea keeps focus. */
+.slash-menu{position:absolute;left:8px;right:8px;bottom:calc(100% + 6px);z-index:20;max-height:264px;overflow-y:auto;padding:4px;background:var(--panel-2);border:1px solid var(--border-bright);border-radius:10px;box-shadow:0 12px 32px #0009}
+.slash-menu-item{display:flex;align-items:center;gap:8px;min-width:0;padding:6px 8px;border-radius:7px;color:var(--text-2);font-size:12px;cursor:pointer}
+.slash-menu-item>b{flex:none;color:var(--text);font-weight:600}
+.slash-menu-item.active{background:#0b303b;color:var(--text)}
+.slash-menu-description{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px}
+.slash-menu-badge{flex:none;font-size:9px;line-height:1;letter-spacing:.04em;text-transform:uppercase;padding:3px 5px;border-radius:5px;border:1px solid var(--border-bright);color:var(--cyan);background:#0b2731}
+.launcher-shell .chat-composer-footer small[role=status]{flex-basis:100%;color:var(--muted);font-size:10px}
 .prototype-goal-toggle{height:29px;display:inline-flex;align-items:center;gap:5px;border:1px solid #ffffff1f;background:#1d2532;color:#94a3b8;border-radius:8px;padding:0 8px;font-size:10px;cursor:pointer}
 .prototype-goal-toggle[aria-pressed=true]{border-color:#16869b;background:#0b303b;color:#67e8f9}
 .prototype-goal-toggle:disabled{opacity:.5;cursor:not-allowed}

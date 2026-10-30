@@ -21,6 +21,9 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
     : turn.maxIterations === undefined ? String(turn.iterations) : `${turn.iterations} / ${turn.maxIterations}`;
   const provider = chat?.providers?.find(item => item.id === chat.providerChoice);
   const compactResult = chat?.compactResult?.turnId === turn?.id ? chat?.compactResult : undefined;
+  // Shown only past the Compact threshold, like the reference: remaining room before automatic compaction, then the button.
+  const untilAutoCompact = usage && meter?.known && meter.fillPercent >= COMPACT_BUTTON_PERCENT
+    ? formatTokenCount(Math.max(0, usage.contextWindow! - usage.contextTokens)) : undefined;
   if (!open) return <aside className="launcher-inspector collapsed" aria-label="Context inspector">
     <button type="button" className="inspector-toggle" aria-label="Open context inspector" onClick={onToggle}><Gauge size={17}/></button>
   </aside>;
@@ -34,19 +37,22 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
           <span>Model: {model || provider?.model || 'Automatic routing'}</span><span>{usedOfCapacity ?? 'Not recorded'}</span>
         </div>
         {usage && <ContextMeter tokens={usage.contextTokens} capacity={usage.contextWindow} hideLabel/>}
-        {meter?.known && meter.fillPercent >= COMPACT_BUTTON_PERCENT && <div className="inspector-compact">
-          <button type="button" disabled={turn?.status !== 'running'}
-            title={turn?.status === 'running' ? undefined : 'Hanya untuk giliran yang sedang berjalan'}
-            onClick={() => { if (turn) postHost({ type: 'agent-chat-compact', turnId: turn.id }); }}>Compact</button>
-          {compactResult && <small role="status">{compactResult.status === 'scheduled' ? 'Kompaksi dijadwalkan'
-            : compactResult.status === 'not-running' ? 'Tidak ada giliran berjalan' : 'Gagal menjadwalkan'}</small>}
-        </div>}
         {breakdownRows.length > 0 && <>
           <ul className="inspector-context-breakdown" aria-label="Rincian context (estimasi)">
             {breakdownRows.map(row => <li key={row.key}><span>{row.label}</span><span>{formatTokenCount(row.tokens)} ({row.percent}%)</span></li>)}
           </ul>
           <small>Estimasi dari ukuran isi prompt, diskalakan ke total provider.</small>
         </>}
+        {untilAutoCompact && <div className="inspector-compact">
+          <div className="inspector-compact-row">
+            <span>{untilAutoCompact} until auto-compact</span>
+            <button type="button" disabled={turn?.status !== 'running'}
+              title={turn?.status === 'running' ? undefined : 'Hanya untuk giliran yang sedang berjalan'}
+              onClick={() => { if (turn) postHost({ type: 'agent-chat-compact', turnId: turn.id }); }}>Compact session</button>
+          </div>
+          {compactResult && <small role="status">{compactResult.status === 'scheduled' ? 'Kompaksi dijadwalkan'
+            : compactResult.status === 'not-running' ? 'Tidak ada giliran berjalan' : 'Gagal menjadwalkan'}</small>}
+        </div>}
         <dl>
         <dt>Reasoning</dt><dd>{turn?.reasoningEffort ?? chat?.reasoningChoice ?? 'auto'}</dd>
         <dt>State</dt><dd>{turn?.status ?? 'New conversation'}</dd>

@@ -51,16 +51,18 @@ it('reads iterations and context recall from the polled turn row, falling back o
   expect(empty.container).toHaveTextContent('Context recallNot recorded');
 });
 
-it('offers Compact from 70%: hidden below, disabled when idle, enabled while running, click asks the host', () => {
+it('offers Compact session from 70% with the room left before auto-compact: hidden below, disabled when idle, enabled while running, click asks the host', () => {
   const below = renderInspector(chatWith({ contextTokens: 690_000, contextWindow: 1_000_000 }));
-  expect(screen.queryByRole('button', { name: 'Compact' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Compact session' })).toBeNull();
+  expect(below.container).not.toHaveTextContent('until auto-compact');
   below.unmount();
   const idle = renderInspector(chatWith({ contextTokens: 700_000, contextWindow: 1_000_000, status: 'finalized' }));
-  expect(screen.getByRole('button', { name: 'Compact' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Compact' })).toHaveAttribute('title', 'Hanya untuk giliran yang sedang berjalan');
+  expect(idle.container).toHaveTextContent('300k until auto-compact');
+  expect(screen.getByRole('button', { name: 'Compact session' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Compact session' })).toHaveAttribute('title', 'Hanya untuk giliran yang sedang berjalan');
   idle.unmount();
   renderInspector(chatWith({ contextTokens: 700_000, contextWindow: 1_000_000 }));
-  const button = screen.getByRole('button', { name: 'Compact' });
+  const button = screen.getByRole('button', { name: 'Compact session' });
   expect(button).toBeEnabled();
   fireEvent.click(button);
   expect(postHost).toHaveBeenCalledWith({ type: 'agent-chat-compact', turnId: 't1' });

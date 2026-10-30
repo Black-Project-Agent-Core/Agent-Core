@@ -141,6 +141,21 @@ function pushSnapshot(snapshot: DesktopSnapshot = onlineSnapshot) {
 }
 
 describe('Agent Core desktop UI host integration', () => {
+  it('fills the composer "/" menu from the agent-chat-slash-commands-result message', () => {
+    render(<App/>);pushSnapshot(chatReady);
+    const textarea=screen.getByRole('textbox',{name:'Message Agent Core'});
+    fireEvent.change(textarea,{target:{value:'/'}});
+    expect(postMessage.mock.calls.filter(([value])=>value?.type==='agent-chat-slash-commands')).toHaveLength(1);
+    expect(screen.queryByRole('listbox',{name:'Perintah dan skill'})).not.toBeInTheDocument();
+    act(()=>messageHandler!({data:{type:'agent-chat-slash-commands-result',result:{commands:[
+      {name:'compact',kind:'command',description:'Padatkan konteks'},
+      {name:'code-review',kind:'skill',description:'Tinjau kode'},
+    ]}}}));
+    expect(screen.getByRole('listbox',{name:'Perintah dan skill'})).toBeInTheDocument();
+    expect(screen.getAllByRole('option').map(option=>option.querySelector('b')!.textContent)).toEqual(['/compact','/code-review']);
+    expect(postMessage.mock.calls.filter(([value])=>value?.type==='agent-chat-error')).toHaveLength(0);
+  });
+
   it('manual continuation keeps running conversations switchable and scoped', () => {
     const a={id:'switch-a',runtimeSessionId:'session-a',workspace:'agent-core',title:'Switch A',status:'active' as const,createdAtMs:1,updatedAtMs:1};
     const b={...a,id:'switch-b',runtimeSessionId:'session-b',title:'Switch B'};
@@ -156,7 +171,9 @@ describe('Agent Core desktop UI host integration', () => {
     fireEvent.change(screen.getByRole('textbox',{name:'Message Agent Core'}),{target:{value:'Run A'}});
     fireEvent.click(screen.getByRole('button',{name:'Send'}));
     const requestA=postMessage.mock.calls.find(([value])=>value?.type==='agent-chat-send')![0].requestId;
-    expect(screen.getByRole('textbox',{name:'Message Agent Core'})).toBeDisabled();
+    // The textarea stays enabled while running so /compact can be typed; ordinary sends are refused by submit().
+    expect(screen.getByRole('textbox',{name:'Message Agent Core'})).toBeEnabled();
+    expect(screen.getByRole('textbox',{name:'Message Agent Core'})).toHaveAttribute('placeholder','Giliran berjalan. Ketik /compact untuk memadatkan konteks.');
     openHistory('Switch B');
     host({type:'agent-chat-state',result:{conversation:b,turns:[],messages:[]}});
     fireEvent.change(screen.getByRole('textbox',{name:'Message Agent Core'}),{target:{value:'Draft B'}});

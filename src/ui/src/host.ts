@@ -327,6 +327,8 @@ export type AgentChatUiState = {
   stepDetails?: Record<string, StepDetailState>;
   /** Latest answer to a manual Compact request; the Inspector shows it only for the turn it belongs to. */
   compactResult?: AgentChatCompactResult;
+  /** Entries of the composer "/" menu; absent until the host answers. */
+  slashCommands?: SlashCommand[];
   error?: string;
 };
 
@@ -455,6 +457,9 @@ export type LauncherWindowSize = { width: number; height: number; defaultWidth: 
 /** Answer to {type:'agent-chat-compact', turnId}: the server compacts the running turn once at its next iteration. */
 export type AgentChatCompactResult = { turnId: string; status: 'scheduled' | 'not-running' | 'unavailable' };
 
+/** One entry of the composer "/" menu (GET /agent/chat/slash-commands): the /compact command or an active Skill. */
+export type SlashCommand = { name: string; kind: 'command' | 'skill'; description: string };
+
 type HostEnvelope =
   | { type: 'window-size-state'; requestId: string; size: LauncherWindowSize; warning?: string | null }
   | { type: 'window-size-error'; requestId: string; error: string; size: LauncherWindowSize }
@@ -479,6 +484,7 @@ type HostEnvelope =
   | { type: 'agent-chat-step-result'; requestId: string; turnId: string; seq: number; result: StepDetailResult }
   | { type: 'agent-chat-cancel-result'; turnId: string; stopped: boolean }
   | ({ type: 'agent-chat-compact-result' } & AgentChatCompactResult)
+  | { type: 'agent-chat-slash-commands-result'; result: { commands: SlashCommand[] } }
   | { type: 'agent-chat-pause-result'; turnId: string; paused: boolean }
   | { type: 'agent-chat-error'; requestId?: string; conversationId?: string; error: string }
   | { type: 'error'; message: string };

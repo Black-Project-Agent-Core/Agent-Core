@@ -80,6 +80,7 @@ export default function App() {
       if(message.type==='logs'){setLogs(message.entries);return;}
       if(message.type==='log'){setLogs(prev=>[...prev,message.entry].slice(-200));return;}
       if(message.type==='agent-chat-compact-result'){setAgentChat(prev=>({...prev,compactResult:{turnId:message.turnId,status:message.status}}));return;}
+      if(message.type==='agent-chat-slash-commands-result'){setAgentChat(prev=>({...prev,slashCommands:message.result?.commands??[]}));return;}
       if(message.type==='agent-result'){
         setAgentRun(prev=>prev.requestId===message.requestId
           ? (message.error
@@ -330,6 +331,14 @@ export default function App() {
   const onChatCancel=(turnId:string)=>{
     postHost({type:'agent-chat-cancel',turnId,conversationId:agentChat.active?.conversation.id});
   };
+  // Manual Compact of a running turn; the answer lands in agentChat.compactResult.
+  const onChatCompact=(turnId:string)=>{
+    postHost({type:'agent-chat-compact',turnId});
+  };
+  // Entries of the composer "/" menu; the answer lands in agentChat.slashCommands.
+  const onSlashCommands=()=>{
+    postHost({type:'agent-chat-slash-commands'});
+  };
 
   // Asks the host for the exact Input/Output of one persisted step; never re-asks while loading/ready.
   const requestStepDetail=(turnId:string,seq:number)=>{
@@ -393,6 +402,8 @@ export default function App() {
     onChatOpen={openTrackedChat}
     onChatSend={onChatSend}
     onChatCancel={onChatCancel}
+    onChatCompact={onChatCompact}
+    onSlashCommands={onSlashCommands}
     onChatResume={onChatResume}
     onChatPause={onChatPause}
     onStepDetail={requestStepDetail}

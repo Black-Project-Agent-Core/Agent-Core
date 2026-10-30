@@ -252,6 +252,13 @@ public sealed class AgentCoreRuntime : IDisposable
         return await SendAgentChatJsonAsync(request);
     }
 
+    /// <summary>Slash menu entries of the chat composer: the /compact command first, then the active Skills.</summary>
+    public async Task<JsonElement> ListSlashCommandsAsync()
+    {
+        using var request = CreateAgentChatRequest(HttpMethod.Get, "/agent/chat/slash-commands");
+        return await SendAgentChatJsonAsync(request);
+    }
+
     public async Task<JsonElement> CreateAgentConversationAsync(string? workspace = null)
     {
         using var request = CreateAgentChatRequest(HttpMethod.Post, "/agent/chat/conversations");

@@ -5,6 +5,7 @@ import { ToolExecutionDetail } from './ToolExecutionDetail';
 import { TaskChangesPanel } from './TaskChangesPanel';
 import { ElapsedSeconds, formatStepDuration } from './AgentActivity';
 import { InvocationCards, TurnTimeline, activityToSteps, pickTurnSteps } from './AgentTimeline';
+import { SlashMenu, filterSlashCommands, slashOptionId, slashQuery } from './SlashMenu';
 import { Plus, Paperclip, FolderOpen, Target, ListTodo, Wrench, Send, Shield, Pause } from 'lucide-react';
 import { PrototypeDashboard, PrototypeTools, PrototypeRuntime, PrototypeDiagnostics, PrototypeSettings, PrototypeSetup, PrototypeActivity } from './PrototypePages';
 import { ArtifactsPage, GoalsPage, LearningPage, MemoryPage, ModelsPage } from './LauncherPages';
@@ -15,6 +16,7 @@ import type {
   DesktopSnapshot,
   ReasoningChoice,
   ReasoningEffort,
+  SlashCommand,
 } from './host';
 import { buildSystems, systemCounts } from './systems';
 import { formatBytes, formatDuration, labelForTone, type SystemView, type Tone } from './model';
@@ -43,6 +45,10 @@ type SharedProps = {
   onChatOpen:(conversationId:string)=>void;
   onChatSend:(conversationId:string,prompt:string,goalMode?:boolean)=>void;
   onChatCancel:(turnId:string)=>void;
+  /** Manual Compact of the running turn (answered via agentChat.compactResult). */
+  onChatCompact?:(turnId:string)=>void;
+  /** Loads the entries of the composer "/" menu (answered via agentChat.slashCommands). */
+  onSlashCommands?:()=>void;
   onChatResume?:(conversationId:string,turnId:string)=>void;
   onChatPause?:(conversationId:string,turnId:string)=>void;
   /** Loads the exact Input/Output of one persisted tool step (answered via agentChat.stepDetails). */
@@ -468,6 +474,43 @@ export function ChatPage(props:SharedProps) {
   // While running, stored steps win once they catch up with the live activity; live steps cannot open Input/Output yet.
   const livePicked=running&&latestTurn?pickTurnSteps(stepsOfTurn(latestTurn.id),activityToSteps(latestTurn.id,props.agentChat.activity??[])):undefined;
   const budgetWarning=props.agentChat.activity?.find(item=>item.kind==='budget');
+
+  // "/" menu: the draft is a single slash token, the user has not pressed Escape, and the composer accepts input.
+  const textareaRef=useRef<HTMLTextAreaElement>(null);
+  const [slashDismissed,setSlashDismissed]=useState(false);
+  const [slashIndex,setSlashIndex]=useState(0);
+  const [composerNotice,setComposerNotice]=useState<string>();
+  const [compactTurnId,setCompactTurnId]=useState<string>();
+  const slashRequestedRef=useRef(false);
+  const query=slashQuery(prompt);
+  const slashActive=query!==null;
+  const composerLocked=!configured||Boolean(pausedTurn)||Boolean(pending);
+  const slashItems=slashActive?filterSlashCommands(props.agentChat.slashCommands??[],query,running):[];
+  const slashOpen=slashActive&&!slashDismissed&&!composerLocked&&slashItems.length>0;
+  const activeIndex=slashItems.length?((slashIndex%slashItems.length)+slashItems.length)%slashItems.length:0;
+  useEffect(()=>{
+    // Ask once per opening: when the draft first becomes a slash query, and again after an Escape is undone by typing.
+    if(!slashActive||slashDismissed||composerLocked){slashRequestedRef.current=false;return;}
+    if(slashRequestedRef.current)return;
+    slashRequestedRef.current=true;
+    props.onSlashCommands?.();
+  },[slashActive,slashDismissed,composerLocked]);
+  const changeDraft=(value:string)=>{
+    setPrompt(value);
+    setSlashDismissed(false);
+    setSlashIndex(0);
+    setComposerNotice(undefined);
+    setCompactTurnId(undefined);
+  };
+  const selectSlash=(command:SlashCommand)=>{
+    // A Skill becomes "/name " so the user keeps typing; /compact stays a bare command that Enter then submits.
+    setPrompt(command.kind==='skill'?'/'+command.name+' ':'/'+command.name);
+    setSlashIndex(0);
+    textareaRef.current?.focus();
+  };
+  const compactLabels:Record<string,string>={scheduled:'Kompaksi dijadwalkan','not-running':'Tidak ada giliran berjalan',unavailable:'Gagal menjadwalkan'};
+  const compactNotice=!composerNotice&&compactTurnId&&props.agentChat.compactResult?.turnId===compactTurnId
+    ? compactLabels[props.agentChat.compactResult.status] : undefined;
   const progressLabels:Record<string,string>={
     'turn.accepted':'Task accepted',
     'memory.recall.started':'Finding relevant context',
@@ -506,7 +549,21 @@ export function ChatPage(props:SharedProps) {
   // opening the launcher never leaves an empty thread behind.
   const submit=()=>{
     const value=prompt.trim();
-    if(!value||running||pausedTurn||!configured||pending)return;
+    if(!value||pausedTurn||!configured||pending)return;
+    if(value==='/compact'){
+      // Never a chat message: it schedules a context compaction of the running turn (answer in agentChat.compactResult).
+      if(running&&runningTurnId){
+        setCompactTurnId(runningTurnId);
+        setComposerNotice(undefined);
+        props.onChatCompact?.(runningTurnId);
+      }else{
+        setCompactTurnId(undefined);
+        setComposerNotice('Tidak ada giliran berjalan');
+      }
+      setPrompt('');
+      return;
+    }
+    if(running){setComposerNotice('Giliran sedang berjalan; hanya /compact yang bisa dikirim sekarang');return;}
     if(!active){
       pendingDelivered.current=false;
       setPending({prompt:value,goalMode});
@@ -638,13 +695,29 @@ export function ChatPage(props:SharedProps) {
       </div>{goalExpanded&&<p className="launcher-goal-detail">{goalMessage?.content??'Goal task'}</p>}
     </section>}
     <div className="chat-composer">
+      {slashOpen&&<SlashMenu commands={slashItems} activeIndex={activeIndex} onSelect={selectSlash} onHover={setSlashIndex}/>}
       <textarea
+        ref={textareaRef}
         value={prompt}
-        onChange={e=>setPrompt(e.target.value)}
-        onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit();}}}
+        onChange={e=>changeDraft(e.target.value)}
+        onKeyDown={e=>{
+          if(slashOpen){
+            if(e.key==='ArrowDown'){e.preventDefault();setSlashIndex((activeIndex+1)%slashItems.length);return;}
+            if(e.key==='ArrowUp'){e.preventDefault();setSlashIndex((activeIndex-1+slashItems.length)%slashItems.length);return;}
+            if(e.key==='Escape'){e.preventDefault();setSlashDismissed(true);return;}
+            if(e.key==='Tab'||(e.key==='Enter'&&!e.shiftKey)){
+              const item=slashItems[activeIndex];
+              // Enter on an already complete "/compact" submits the command instead of re-inserting it.
+              const exactCompact=Boolean(item&&item.kind==='command'&&item.name==='compact'&&prompt==='/'+item.name);
+              if(item&&!exactCompact){e.preventDefault();selectSlash(item);return;}
+            }
+          }
+          if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit();}
+        }}
         aria-label="Message Agent Core"
-        placeholder={!configured?'No configured provider.':'Ask Agent Core to research, code, analyze data, create presentations, or manage tools…'}
-        disabled={!configured||running||Boolean(pausedTurn)||Boolean(pending)}
+        aria-activedescendant={slashOpen&&slashItems[activeIndex]?slashOptionId(slashItems[activeIndex]!.name):undefined}
+        placeholder={!configured?'No configured provider.':running?'Giliran berjalan. Ketik /compact untuk memadatkan konteks.':'Ask Agent Core to research, code, analyze data, create presentations, or manage tools…'}
+        disabled={composerLocked}
         rows={2}
       />
       <div className="chat-composer-footer">
@@ -693,6 +766,8 @@ export function ChatPage(props:SharedProps) {
           : <button className="prototype-send" aria-label="Send" title="Send · Enter (Shift+Enter for a new line)" disabled={!configured||!prompt.trim()||running||Boolean(pausedTurn)||Boolean(pending)||selection.sendBlocked} onClick={submit}><Send size={16}/></button>}
       </div>
       {selection.notice&&<small role="status">{selection.notice}</small>}
+      {composerNotice&&<small role="status" className="chat-composer-notice">{composerNotice}</small>}
+      {compactNotice&&<small role="status" className="chat-composer-notice">{compactNotice}</small>}
     </div>
   </div>;
 }
@@ -703,8 +778,8 @@ function SettingToggle({title,text,on,disabled,onChange}:{title:string;text:stri
   return <div className="setting-toggle"><div><b>{title}</b><span>{text}</span></div><Toggle on={on} disabled={disabled} onChange={onChange}/></div>;
 }
 
-export function ReferenceUi({page,setPage,snapshot,logs,onAction,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning,onChatDraft}:SharedProps & {page:PageId;onChatDraft?:()=>void}) {
-  const props={snapshot,logs,onAction,setPage,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning};
+export function ReferenceUi({page,setPage,snapshot,logs,onAction,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatCompact,onSlashCommands,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning,onChatDraft}:SharedProps & {page:PageId;onChatDraft?:()=>void}) {
+  const props={snapshot,logs,onAction,setPage,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatCompact,onSlashCommands,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning};
   const content=page==='workflows'?<WorkflowsPage/>:page==='chat'?<ChatPage {...props}/>:page==='dashboard'?<PrototypeDashboard {...props}/>:page==='core'?<PrototypeRuntime {...props}/>:page==='systems'?<PrototypeTools {...props}/>:page==='models'?<ModelsPage {...props}/>:page==='memory'?<MemoryPage {...props}/>:page==='learning'?<LearningPage {...props}/>:page==='goals'?<GoalsPage {...props}/>:page==='artifacts'?<ArtifactsPage {...props}/>:page==='activity'?<PrototypeActivity {...props}/>:page==='diagnostics'?<PrototypeDiagnostics {...props}/>:page==='wizard'?<PrototypeSetup {...props}/>:<PrototypeSettings {...props}/>;
   return <AppShell page={page} setPage={setPage} snapshot={snapshot} onAction={onAction} onNewChat={onChatDraft} agentChat={agentChat} logs={logs}>{content}</AppShell>;
 }
