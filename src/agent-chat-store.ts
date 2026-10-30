@@ -334,6 +334,21 @@ export class AgentChatStore {
           FOREIGN KEY(turn_id) REFERENCES chat_turns(turn_id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS chat_attachments (
+          attachment_id TEXT PRIMARY KEY,
+          conversation_id TEXT NOT NULL,
+          turn_id TEXT NOT NULL,
+          seq INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          mime_type TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          size_bytes INTEGER NOT NULL,
+          sha256 TEXT NOT NULL,
+          rel_path TEXT NOT NULL,
+          created_at_ms INTEGER NOT NULL,
+          FOREIGN KEY(turn_id) REFERENCES chat_turns(turn_id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS chat_turn_steps (
           turn_id TEXT NOT NULL,
           seq INTEGER NOT NULL,
@@ -679,6 +694,42 @@ export class AgentChatStore {
       const actual = createHash('sha256').update(row.source_json, 'utf8').digest('hex');
       return actual === row.source_digest.replace(/^sha256:/, '')
         ? { sourceJson: row.source_json, sourceDigest: row.source_digest } : null;
+    });
+  }
+
+  insertAttachments(turnId: string, conversationId: string, items: import('./agent-chat-attachments.js').StoredAttachment[]): void {
+    if (items.length === 0) return;
+    const now = Date.now();
+    this.withDb(db => this.transaction(db, () => {
+      const stmt = db.prepare(`
+        INSERT OR IGNORE INTO chat_attachments (attachment_id, conversation_id, turn_id, seq, name, mime_type, kind, size_bytes, sha256, rel_path, created_at_ms)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const item of items) {
+        stmt.run(item.attachmentId, conversationId, turnId, item.seq, item.name, item.mimeType, item.kind, item.sizeBytes, item.sha256, item.relPath, now);
+      }
+    }));
+  }
+
+  listAttachments(turnId: string): import('./agent-chat-attachments.js').StoredAttachment[] {
+    return this.withDb(db => {
+      const rows = db.prepare(`
+        SELECT attachment_id, conversation_id, turn_id, seq, name, mime_type, kind, size_bytes, sha256, rel_path, created_at_ms
+        FROM chat_attachments WHERE turn_id=? ORDER BY seq
+      `).all(turnId) as unknown as Record<string, unknown>[];
+      return rows.map(row => ({
+        attachmentId: String(row.attachment_id),
+        conversationId: String(row.conversation_id),
+        turnId: String(row.turn_id),
+        seq: Number(row.seq),
+        name: String(row.name),
+        mimeType: String(row.mime_type),
+        kind: String(row.kind) as 'text' | 'image' | 'binary',
+        sizeBytes: Number(row.size_bytes),
+        sha256: String(row.sha256),
+        relPath: String(row.rel_path),
+        createdAtMs: Number(row.created_at_ms),
+      }));
     });
   }
 

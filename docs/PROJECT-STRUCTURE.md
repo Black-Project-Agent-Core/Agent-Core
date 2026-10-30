@@ -364,6 +364,11 @@ Blok JSON ini adalah deklarasi pada peta yang sama, bukan registry terpisah. `ow
       "path": "runtime/skills/capability-packs/skill-authoring",
       "purpose": "skill-source-skill-authoring",
       "owner": "runtime/skills/capability-packs"
+    },
+    {
+      "path": "runtime/agent-runtime/attachments",
+      "purpose": "agent-chat-attachments",
+      "owner": "runtime/agent-runtime"
     }
   ]
 }
