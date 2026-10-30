@@ -29,32 +29,34 @@ describe('Native chat tool activity transcript', () => {
     const input = props();
     input.agentChat.lastEvent = ev({ type: 'tool.started', toolName: 'start_search', iteration: 7, maxIterations: 24 });
     render(<ChatPage {...input}/>);
-    expect(screen.getByText('Using start_search · langkah 7/24')).toBeInTheDocument();
+    expect(screen.getByText('Reading files…')).toBeInTheDocument();
   });
 
   it('shows the finished tool with its duration and a failed tool by name', () => {
     const input = props();
     input.agentChat.lastEvent = ev({ type: 'tool.completed', toolName: 'start_search', success: true, durationMs: 1234 });
     const view = render(<ChatPage {...input}/>);
-    expect(screen.getByText('Tool finished · start_search · 1,2 s')).toBeInTheDocument();
+    expect(screen.getByText('start_search finished')).toBeInTheDocument();
     input.agentChat.lastEvent = ev({ type: 'tool.completed', toolName: 'start_search', success: false, durationMs: 50 });
     view.rerender(<ChatPage {...input}/>);
-    expect(screen.getByText('Tool failed · start_search')).toBeInTheDocument();
+    expect(screen.getByText('start_search failed')).toBeInTheDocument();
   });
 
-  it('counts elapsed seconds for the active step only while the turn is running', () => {
+  it('counts the turn duration only while it runs', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-29T10:00:00.000Z'));
     const input = props('running');
     input.agentChat.lastEvent = ev({ type: 'tool.started', toolName: 'read_file', iteration: 1, maxIterations: 24,
       at: '2026-10-29T10:00:00.000Z' });
+    input.agentChat.active!.turns[0]!.startedAtMs = Date.parse('2026-10-29T10:00:00.000Z');
     const view = render(<ChatPage {...input}/>);
     act(() => { vi.advanceTimersByTime(40_000); });
-    expect(screen.getByText('40 s')).toBeInTheDocument();
-    input.agentChat.active!.turns[0]!.status = 'finalized';
+    expect(view.container.querySelector('.details-duration')).toHaveTextContent('00:40');
+    input.agentChat.active!.turns[0]!.status = 'resumable';
     input.agentChat.runningRequestId = undefined;
     view.rerender(<ChatPage {...input}/>);
-    expect(screen.queryByText(/^\d+ s$/)).not.toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(20_000); });
+    expect(view.container.querySelector('.details-duration')).toHaveTextContent('00:40');
   });
 
   it('keeps at most the last 30 steps and resets on a new turn', () => {
@@ -77,11 +79,11 @@ describe('Native chat narration, result summaries and budget warning', () => {
     input.agentChat.lastEvent = ev({ type: 'tool.completed', toolName: 'start_search', success: true, durationMs: 1234,
       resultSummary: '8 matches in 1 file' });
     const view = render(<ChatPage {...input}/>);
-    expect(screen.getByText('Tool finished · start_search · 8 matches in 1 file · 1,2 s')).toBeInTheDocument();
+    expect(screen.getByText('start_search finished: 8 matches in 1 file')).toBeInTheDocument();
     input.agentChat.lastEvent = ev({ type: 'tool.completed', toolName: 'start_search', success: false, durationMs: 50,
       resultSummary: 'error: ENOENT' });
     view.rerender(<ChatPage {...input}/>);
-    expect(screen.getByText('Tool failed · start_search · error: ENOENT')).toBeInTheDocument();
+    expect(screen.getByText('start_search failed: error: ENOENT')).toBeInTheDocument();
   });
 
   it('uses the assistant narration as the main status text', () => {

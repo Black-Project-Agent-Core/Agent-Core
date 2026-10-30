@@ -3,8 +3,8 @@ import { WorkflowsPage } from './WorkflowsPage';
 import { ProposalCards } from './ProposalCards';
 import { ToolExecutionDetail } from './ToolExecutionDetail';
 import { TaskChangesPanel } from './TaskChangesPanel';
-import { ElapsedSeconds, formatStepDuration } from './AgentActivity';
 import { InvocationCards, TurnTimeline, activityToSteps, pickTurnSteps } from './AgentTimeline';
+import { ActivityStatus } from './ActivityStatus';
 import { SlashMenu, filterSlashCommands, slashOptionId, slashQuery } from './SlashMenu';
 import { Plus, Paperclip, FolderOpen, Target, ListTodo, Wrench, Send, Shield, Pause } from 'lucide-react';
 import { PrototypeDashboard, PrototypeTools, PrototypeRuntime, PrototypeDiagnostics, PrototypeSettings, PrototypeSetup, PrototypeActivity } from './PrototypePages';
@@ -514,37 +514,6 @@ export function ChatPage(props:SharedProps) {
   const compactLabels:Record<string,string>={scheduled:'Kompaksi dijadwalkan','not-running':'Tidak ada giliran berjalan',unavailable:'Gagal menjadwalkan'};
   const compactNotice=!composerNotice&&compactTurnId&&props.agentChat.compactResult?.turnId===compactTurnId
     ? compactLabels[props.agentChat.compactResult.status] : undefined;
-  const progressLabels:Record<string,string>={
-    'turn.accepted':'Task accepted',
-    'memory.recall.started':'Finding relevant context',
-    'memory.recall.completed':'Context ready',
-    'agent.planning':'Planning the next action',
-    'agent.budget':'Planning the next action',
-    'assistant.progress':event?.text||'Working',
-    'tool.started':event?.toolName
-      ?`Using ${event.toolName}`+(event.iteration&&event.maxIterations?` · langkah ${event.iteration}/${event.maxIterations}`:'')
-      :'Using a tool',
-    'tool.completed':event?.toolName
-      ?(event.success===false
-        ?`Tool failed · ${event.toolName}`+(event.resultSummary?` · ${event.resultSummary}`:'')
-        :`Tool finished · ${event.toolName}`+(event.resultSummary?` · ${event.resultSummary}`:'')+(event.durationMs!==undefined?` · ${formatStepDuration(event.durationMs)}`:''))
-      :(event?.success===false?'Tool failed; checking recovery':'Tool finished'),
-    'verification.started':'Checking the result',
-    'verification.completed':'Result check finished',
-    'learning.finalization.started':'Reviewing learning',
-    'learning.finalization.completed':'Learning review finished',
-    'provider.route.changed':'Switching provider',
-    'provider.route.decision':'Rotating provider route',
-    'provider.waiting':'Waiting for an eligible provider',
-    'assistant.final':'Response saved',
-    'turn.failed':'Task failed',
-    'turn.cancelled':'Task stopped',
-    'turn.paused':'Paused — Continue required',
-  };
-  const turnLabels:Record<string,string>={
-    finalized:'Response saved',resumable:'Paused — Continue required',failed:'Task failed',
-    interrupted:'Interrupted; no safe checkpoint',stopped:'Task stopped',
-  };
   const pendingFinalization=runtime?.pendingFinalizationCount??0;
   const runtimeTitle=`Runtime ${runtime?.status??'unavailable'} · Providers ${runtime?runtime.configuredProviderCount+'/'+runtime.providerCount:'0/0'} · Chats ${chatHealth?.activeConversationCount??props.agentChat.conversations.length} · Pending finalization ${pendingFinalization}`;
 
@@ -652,7 +621,7 @@ export function ChatPage(props:SharedProps) {
           const messageTurn=message.role==='assistant'?active.turns.find(turn=>turn.id===message.turnId):undefined;
           const memoryUse=messageTurn?.memoryUse??[];
           const turnSteps=messageTurn?stepsOfTurn(messageTurn.id):[];
-          return <React.Fragment key={message.id}>{turnSteps.length>0&&<div className="chat-message-timeline"><TurnTimeline steps={turnSteps} stepDetails={props.agentChat.stepDetails} onStepDetail={props.onStepDetail}/></div>}<div className={'chat-message '+message.role}>
+          return <React.Fragment key={message.id}>{turnSteps.length>0&&messageTurn&&<div className="chat-message-timeline"><ActivityStatus compact turnStatus={messageTurn.status} errorCode={messageTurn.errorCode} steps={turnSteps} startedAtMs={messageTurn.startedAtMs} completedAtMs={messageTurn.completedAtMs}><TurnTimeline steps={turnSteps} stepDetails={props.agentChat.stepDetails} onStepDetail={props.onStepDetail}/></ActivityStatus></div>}<div className={'chat-message '+message.role}>
             <div className="chat-message-avatar" aria-label={message.role==='user'?'You':'Agent Core'}>{message.role==='user'?<UserRound size={16}/>:<img src="./agent-core.png" alt=""/>}</div>
             <div className="chat-message-body">
             <pre>{message.content}</pre>
@@ -673,14 +642,11 @@ export function ChatPage(props:SharedProps) {
         })}
         {running&&<div className="chat-message assistant pending">
           <div className="chat-message-role">Agent Core</div>
-          {livePicked&&<TurnTimeline steps={livePicked.steps} readOnly={livePicked.readOnly} stepDetails={props.agentChat.stepDetails} onStepDetail={props.onStepDetail}/>}
+          <ActivityStatus turnStatus="running" event={event} steps={livePicked?.steps??[]} startedAtMs={latestTurn?.startedAtMs}>{livePicked&&<TurnTimeline steps={livePicked.steps} readOnly={livePicked.readOnly} stepDetails={props.agentChat.stepDetails} onStepDetail={props.onStepDetail}/>}</ActivityStatus>
           {budgetWarning&&<div className="chat-progress chat-budget" role="status"><span>Mendekati batas langkah ({budgetWarning.iteration}/{budgetWarning.maxIterations})</span></div>}
-          <div className="chat-progress"><RefreshCw className="spin" size={17}/><span>{progressLabels[event?.type??'turn.accepted']??'Working'}</span>{event?.toolName&&!event.type.startsWith('tool.')&&<b>{event.toolName}</b>}{event?.type==='tool.started'&&<ElapsedSeconds since={event.at}/>}</div>
+
         </div>}
-        {!running&&latestTurn&&<div className="chat-progress" role="status">
-          <span>{latestTurn.errorCode==='AGENT_RUNTIME_CONTINUATION_PROVIDER_WAIT'?'Waiting for an eligible provider':turnLabels[latestTurn.status]??'Working'}</span>
-          {latestTurn.errorCode&&<span>{latestTurn.errorCode}</span>}
-        </div>}
+        {!running&&latestTurn&&latestTurn.status!=='finalized'&&<ActivityStatus turnStatus={latestTurn.status} errorCode={latestTurn.errorCode} steps={stepsOfTurn(latestTurn.id)} startedAtMs={latestTurn.startedAtMs} completedAtMs={latestTurn.completedAtMs}/>}
         {!running&&pausedTurn&&<p>{pausedTurn.errorCode==='AGENT_RUNTIME_CONTINUATION_PROVIDER_WAIT'
           ? 'The task is safely paused. It resumes when the provider is eligible and the existing attempt budget permits. Stop recovery to end it.'
           : 'Task paused. Choose Continue to resume it, or Stop recovery to end it.'}</p>}

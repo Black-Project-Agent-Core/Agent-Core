@@ -688,7 +688,7 @@ describe('Native Chat UI refresh',()=>{
         role:'assistant',content:'Observed report; task remains incomplete.',createdAtMs:4}],
     }}}));
     expect(screen.getByText('Observed report; task remains incomplete.')).toBeInTheDocument();
-    expect(screen.getByText('Task failed')).toBeInTheDocument();
+    expect(screen.getByText('Encountered an issue')).toBeInTheDocument();
     expect(screen.getByText('AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Message Agent Core' })).toHaveValue('');
   });

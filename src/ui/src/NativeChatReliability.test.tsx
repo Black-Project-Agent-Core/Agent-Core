@@ -93,9 +93,12 @@ describe('Native chat progress and durable states', () => {
     expect(trigger).toBeDisabled();
   });
   it('shows a saved response without declaring task verification success', () => {
-    render(<ChatPage {...props()}/>);
-    expect(screen.getByRole('status')).toHaveTextContent('Response saved');
-    expect(screen.queryByText('Task verified')).not.toBeInTheDocument();
+    const input = props();
+    input.agentChat.active!.messages = [{ id: 'answer-1', conversationId: 'chat-1', turnId: 'turn-1', role: 'assistant', content: 'Observed result', createdAtMs: 2 }];
+    input.agentChat.active!.steps = [{ turnId: 'turn-1', seq: 1, toolName: 'read_file', status: 'ok', startedAtMs: 0 }];
+    render(<ChatPage {...input}/>);
+    expect(screen.getByText('Completed')).toBeInTheDocument();
+    expect(screen.queryByText(/verified/i)).not.toBeInTheDocument();
   });
 
   it('keeps uncertain recovery visible and offers the existing cancellation action', () => {
@@ -115,7 +118,7 @@ describe('Native chat progress and durable states', () => {
     input.agentChat.lastEvent = { type: 'tool.completed', at: new Date().toISOString(),
       conversationId: 'chat-1', turnId: 'turn-1', success: false, toolName: 'read_file' };
     render(<ChatPage {...input}/>);
-    expect(screen.getByText('Tool failed · read_file')).toBeInTheDocument();
+    expect(screen.getByText('read_file failed')).toBeInTheDocument();
     expect(screen.queryByText('tool.completed')).not.toBeInTheDocument();
   });
 
@@ -228,7 +231,7 @@ describe('Native chat composer "/" menu and /compact', () => {
     expect(input.onChatSend).not.toHaveBeenCalled();
     expect(input.onChatCompact).not.toHaveBeenCalled();
     expect(textarea()).toHaveValue('hello');
-    expect(screen.getByRole('status')).toHaveTextContent('Giliran sedang berjalan; hanya /compact yang bisa dikirim sekarang');
+    expect(screen.getByText('Giliran sedang berjalan; hanya /compact yang bisa dikirim sekarang')).toBeInTheDocument();
   });
 
   it('"/compact" while running posts the compact request for the running turn and shows its answer', () => {
@@ -245,10 +248,10 @@ describe('Native chat composer "/" menu and /compact', () => {
     expect(textarea()).toHaveValue('');
     input.agentChat.compactResult = { turnId: 'turn-1', status: 'scheduled' };
     view.rerender(<ChatPage {...input}/>);
-    expect(screen.getByRole('status')).toHaveTextContent('Kompaksi dijadwalkan');
+    expect(screen.getByText('Kompaksi dijadwalkan')).toBeInTheDocument();
     input.agentChat.compactResult = { turnId: 'turn-1', status: 'unavailable' };
     view.rerender(<ChatPage {...input}/>);
-    expect(screen.getByRole('status')).toHaveTextContent('Gagal menjadwalkan');
+    expect(screen.getByText('Gagal menjadwalkan')).toBeInTheDocument();
   });
 
   it('"/compact" while idle sends no chat message and reports that no turn is running', () => {

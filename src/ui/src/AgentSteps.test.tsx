@@ -118,6 +118,8 @@ describe('Turn timeline with stored steps', () => {
     input.onStepDetail = vi.fn();
     input.agentChat.activity = [{ id: 'a1', toolName: 'live_only_tool', status: 'done', durationMs: 5 }];
     render(<ChatPage {...input}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Show recent activity' }));
+    fireEvent.click(screen.getByText('All steps'));
     fireEvent.click(screen.getByText(/2 langkah/));
     expect(screen.getByText('Used start_search')).toBeVisible();
     expect(screen.getByText('Used read_file')).toBeVisible();
@@ -132,6 +134,8 @@ describe('Turn timeline with stored steps', () => {
     input.onStepDetail = vi.fn();
     input.agentChat.stepDetails = { [stepKey('turn-1', 1)]: { status: 'ready', ...result } };
     render(<ChatPage {...input}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Show recent activity' }));
+    fireEvent.click(screen.getByText('All steps'));
     fireEvent.click(screen.getByRole('button', { name: /Used start_search/ }));
     expect(screen.getByText('a.ts:1 x')).toBeInTheDocument();
   });
