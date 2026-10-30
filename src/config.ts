@@ -271,7 +271,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
       // Patient on purpose: reasoning models answer non-streaming requests slowly and unevenly (3.5-26.5 s for tiny
       // outputs on Duanyan), and a timeout counts as a transport failure that feeds the route breaker.
       requestTimeoutMs: positiveInt(env.AGENT_CORE_AI_REQUEST_TIMEOUT_MS, 180_000),
-      maxToolIterations: positiveInt(env.AGENT_CORE_AI_MAX_TOOL_ITERATIONS, 24),
+      // 60 (was 24): real coding tasks need more rounds, and an over-limit turn loses its tool context (user decision 2026-10-30).
+      maxToolIterations: positiveInt(env.AGENT_CORE_AI_MAX_TOOL_ITERATIONS, 60),
       allowedTools: [...new Set(list(env.AGENT_CORE_AI_ALLOWED_TOOLS))].slice(0, 128),
       capabilityPolicy: capabilityPolicy(env.AGENT_CORE_AI_CAPABILITY_POLICY),
       allowedCapabilities: capabilityFamilies(env.AGENT_CORE_AI_ALLOWED_CAPABILITIES),

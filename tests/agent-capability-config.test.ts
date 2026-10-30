@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
 
 describe('Native Agent capability configuration', () => {
+  it('defaults the tool iteration cap to 60 and lets the environment override it', () => {
+    expect(loadConfig({}, process.cwd()).agentRuntime.maxToolIterations).toBe(60);
+    expect(loadConfig({ AGENT_CORE_AI_MAX_TOOL_ITERATIONS: '12' }, process.cwd()).agentRuntime.maxToolIterations).toBe(12);
+  });
+
   it('loads dynamic capability policy, family ceiling and web research settings without changing explicit defaults', () => {
     const configured = loadConfig({
       AGENT_CORE_AI_ENABLED: 'true',

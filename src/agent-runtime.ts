@@ -465,7 +465,7 @@ export class AgentRuntimeService {
     learning: LearningService,
     providerConfig: AgentRuntimeConfig = {
       enabled: false, baseUrl: null, model: null, apiKey: null,
-      requestTimeoutMs: 60_000, maxToolIterations: 24,
+      requestTimeoutMs: 60_000, maxToolIterations: 60,
       allowedTools: [], capabilityPolicy: 'explicit', allowedCapabilities: [],
     },
     memory?: MemoryService,
