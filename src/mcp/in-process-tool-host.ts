@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import type { ToolCaller } from '../tracker/tool-invocation.js';
 
 /**
  * The tool registry a Native turn calls inside its own process. Native does not need an MCP server: the same
@@ -23,6 +24,8 @@ export interface HostCallOptions {
   signal?: AbortSignal;
   /** Request metadata; handlers read it as `ctx.mcpReq._meta` (for example the durable invocation id). */
   meta?: Record<string, unknown>;
+  /** Who the call is for, supplied by the host; handlers read it as `ctx.mcpReq.caller`. A caller can only run its granted tools. */
+  caller?: ToolCaller;
 }
 
 export interface RegisteredHostTool {
@@ -77,10 +80,10 @@ export class InProcessToolHost {
     };
   }
 
-  /** Enabled tools only, in registration order, shaped like an MCP `tools/list` entry. */
-  listTools(): Array<{ name: string; title?: string; description?: string; inputSchema: Record<string, unknown>;
+  /** Enabled tools only, in registration order, shaped like an MCP `tools/list` entry; with a caller, only the ones it is granted. */
+  listTools(caller?: Pick<ToolCaller, 'allowedTools'>): Array<{ name: string; title?: string; description?: string; inputSchema: Record<string, unknown>;
     annotations?: Record<string, unknown>; _meta?: Record<string, unknown> }> {
-    return [...this.tools].filter(([, tool]) => tool.enabled).map(([name, tool]) => {
+    return [...this.tools].filter(([name, tool]) => tool.enabled && (!caller || caller.allowedTools.has(name))).map(([name, tool]) => {
       tool.inputJson ??= tool.inputSchema ? inputJsonSchema(tool.inputSchema) : EMPTY_OBJECT_SCHEMA;
       return { name, title: tool.title, description: tool.description, inputSchema: tool.inputJson,
         annotations: tool.annotations, _meta: tool._meta };
@@ -91,9 +94,9 @@ export class InProcessToolHost {
   async callTool(name: string, args: unknown, options: HostCallOptions = {}): Promise<any> {
     const tool = this.tools.get(name);
     if (!tool) throw new Error(`Tool ${name} not found`);
-    if (!tool.enabled) throw new Error(`Tool ${name} disabled`);
+    if (!tool.enabled || (options.caller && !options.caller.allowedTools.has(name))) throw new Error(`Tool ${name} disabled`);
     try {
-      const ctx = { mcpReq: { signal: options.signal ?? new AbortController().signal, _meta: options.meta } };
+      const ctx = { mcpReq: { signal: options.signal ?? new AbortController().signal, _meta: options.meta, caller: options.caller } };
       if (!tool.inputSchema) return await tool.handler(ctx);
       const checked = await tool.inputSchema['~standard'].validate(args ?? {});
       if (checked.issues?.length) {

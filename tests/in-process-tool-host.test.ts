@@ -79,6 +79,41 @@ describe('InProcessToolHost matches the MCP server for the same registrations', 
   });
 });
 
+describe('InProcessToolHost per-call caller', () => {
+  const caller = (allowedTools: string[], taskId = 'task-a') => ({ taskId, sessionId: 'session-' + taskId, principalId: 'agent-runtime:' + taskId,
+    allowedTools: new Set(allowedTools) });
+
+  it('hands the handler the host-supplied caller and never one claimed in request metadata', async () => {
+    const host = new InProcessToolHost();
+    host.registerTool('who', { inputSchema: z.object({}) }, async (_args: any, ctx: any) => ({ content: [{ type: 'text', text: String(ctx.mcpReq.caller?.taskId) }] }));
+    const claimed = { 'io.agentcore/caller': { taskId: 'forged' }, caller: { taskId: 'forged' } };
+    expect(json(await host.callTool('who', {}, { caller: caller(['who']), meta: claimed })).content[0].text).toBe('task-a');
+    expect(json(await host.callTool('who', {}, { meta: claimed })).content[0].text).toBe('undefined');
+  });
+
+  it('serves two callers one after another from one registry without mixing them up', async () => {
+    const host = new InProcessToolHost();
+    host.registerTool('who', { inputSchema: z.object({}) }, async (_args: any, ctx: any) => {
+      await new Promise(resolve => setTimeout(resolve, 5));
+      return { content: [{ type: 'text', text: ctx.mcpReq.caller.taskId }] };
+    });
+    const answers = await Promise.all([
+      host.callTool('who', {}, { caller: caller(['who'], 'task-a') }),
+      host.callTool('who', {}, { caller: caller(['who'], 'task-b') }),
+    ]);
+    expect(answers.map(answer => json(answer).content[0].text)).toEqual(['task-a', 'task-b']);
+  });
+
+  it('lists and runs only the tools the caller is granted, refusing the rest like a disabled tool', async () => {
+    const host = hostPeer();
+    expect(host.listTools().map(tool => tool.name)).toEqual(['echo', 'boom', 'wait']);
+    expect(host.listTools(caller(['wait', 'echo'])).map(tool => tool.name)).toEqual(['echo', 'wait']);
+    expect(host.listTools(caller([])).map(tool => tool.name)).toEqual([]);
+    expect(json(await host.callTool('echo', { text: 'hi' }, { caller: caller(['echo']) })).content[0].text).toBe('hi:-');
+    await expect(host.callTool('echo', { text: 'hi' }, { caller: caller(['wait']) })).rejects.toThrow('Tool echo disabled');
+  });
+});
+
 describe('Native tool session transport', () => {
   const open = async (mode: string | undefined) => {
     if (mode) vi.stubEnv('AGENT_CORE_NATIVE_TOOL_TRANSPORT', mode);

@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ExternalInvocationContext } from '../learning/external-controller.js';
 import type { AutoCheckpointReceipt, MutationExecutionContext } from '../rdc/mutation-coordinator.js';
 import type { TrackerEvent } from './activity-tracker.js';
+import type { FailureLoopAdvisor } from '../mcp/failure-loop-advisor.js';
 import { validBrowserUse, type BrowserObservationUse } from '../rdc/browser-control/procedure-context.js';
 
 export type ToolInvocationOutcome = 'success' | 'handled-failure';
@@ -37,12 +38,27 @@ export interface ToolInvocationEvidence {
 export const TOOL_INVOCATION_PROCESS_SESSION_ID = randomUUID().replaceAll('-', '');
 // Hash only our random process nonce, never an authentication/session token.
 const PROCESS_INSTANCE_DIGEST = 'sha256:' + createHash('sha256').update(TOOL_INVOCATION_PROCESS_SESSION_ID).digest('hex');
+/**
+ * Who a Native call is for. Only the host that owns the call fills it, per call; it is never read from request
+ * metadata or arguments, so a shared tool registry cannot be pointed at another task by what the model sends.
+ */
+export interface ToolCaller {
+  readonly taskId: string;
+  readonly workspace?: string;
+  readonly sessionId: string;
+  /** The credential id the mutation journal files the call under. */
+  readonly principalId: string;
+  readonly allowedTools: ReadonlySet<string>;
+  readonly failureLoopAdvisor?: FailureLoopAdvisor;
+  readonly imageInspector?: (args: unknown) => Promise<{ content: Array<Record<string, unknown>> }>;
+}
 export interface ToolInvocationRequest {
   readonly tool: string;
   readonly identity: Readonly<{ id: string; processSessionId: string }>;
   readonly invocationContext?: ExternalInvocationContext;
   readonly mutationContext: MutationExecutionContext;
   readonly checkpointReceipt: () => AutoCheckpointReceipt | undefined;
+  readonly caller?: ToolCaller;
 }
 const invocationRequests = new AsyncLocalStorage<ToolInvocationRequest>();
 const requestEvidence = new WeakMap<ToolInvocationRequest, ToolInvocationEvidence>();
@@ -67,6 +83,8 @@ export function createToolInvocationIdentity() {
 }
 export function currentToolInvocationRequest(): ToolInvocationRequest | undefined { return invocationRequests.getStore(); }
 export function currentExternalInvocationContext(): ExternalInvocationContext | undefined { return invocationRequests.getStore()?.invocationContext; }
+/** The host-supplied caller of the running Native tool call, if any. */
+export function currentToolCaller(): ToolCaller | undefined { return invocationRequests.getStore()?.caller; }
 export function withToolInvocationRequest<T>(request: ToolInvocationRequest, action: () => Promise<T>): Promise<T> {
   return invocationRequests.run(request, action);
 }
