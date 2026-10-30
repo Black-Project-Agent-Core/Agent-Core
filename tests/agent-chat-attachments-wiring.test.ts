@@ -189,6 +189,8 @@ describe('AgentChatService attachments', () => {
     expect(input.attachmentReference).toContain('USER ATTACHMENTS');
     expect(input.attachmentReference).toContain(NOTE);
     expect(input.attachmentReference).toContain('blob.bin (binary, 4 bytes');
+    // Every file in the block carries the path of its stored copy, so Native never has to search the disk for it.
+    expect(input.attachmentReference).toContain(`path: ${f.attachmentsDir.split(path.sep).join('/')}/${sent.relBlob}`);
     expect(JSON.stringify(f.store.detail('chat')!.messages)).not.toContain(NOTE);
 
     // The same client request again replays the turn: nothing is stored twice and the model does not run again.

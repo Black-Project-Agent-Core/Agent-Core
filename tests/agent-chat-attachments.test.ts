@@ -268,6 +268,18 @@ describe('agent-chat-attachments', () => {
       expect(ref).toContain('Image content is not visible to you in this build.');
       expect(ref).toContain('[binary content not displayed]');
     });
+
+    it('gives the stored path of an image and a binary file so the model can open it', () => {
+      const hash = createHash('sha256').update('x').digest('hex');
+      const ref = buildAttachmentReference([
+        { attachmentId: 'i1', seq: 0, name: 'img.png', mimeType: 'image/png', kind: 'image', sizeBytes: 3, sha256: hash, relPath: 'c/t/0-img.png', path: 'D:/store/c/t/0-img.png' },
+        { attachmentId: 'b1', seq: 1, name: 'data.bin', mimeType: 'application/octet-stream', kind: 'binary', sizeBytes: 3, sha256: hash, relPath: 'c/t/1-data.bin', path: 'D:/store/c/t/1-data.bin' },
+      ]);
+      expect(ref).toContain('img.png (image, 3 bytes, sha256:' + hash.slice(0, 8) + ') path: D:/store/c/t/0-img.png');
+      expect(ref).toContain('data.bin (binary, 3 bytes, sha256:' + hash.slice(0, 8) + ') path: D:/store/c/t/1-data.bin');
+      expect(ref).toContain('open the file at the path above with image_inspect');
+      expect(ref).not.toContain('not visible to you in this build');
+    });
   });
 
   describe('readAttachmentText', () => {

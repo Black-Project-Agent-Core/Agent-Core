@@ -321,7 +321,11 @@ export class AgentChatService {
     const stored = this.store.listAttachments(turnId);
     if (stored.length === 0) return undefined;
     const baseDir = this.attachmentsDir();
-    const items = await Promise.all(stored.map(async item => ({ ...item, text: await readAttachmentText(baseDir, item) })));
+    // The path lets Native open an image or binary file itself instead of searching the disk for it.
+    const dir = baseDir.split(path.sep).join('/');
+    const items = await Promise.all(stored.map(async item => ({
+      ...item, path: `${dir}/${item.relPath}`, text: await readAttachmentText(baseDir, item),
+    })));
     return buildAttachmentReference(items) || undefined;
   }
 

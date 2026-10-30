@@ -22,27 +22,17 @@
   position: relative;
   border: 1px solid color-mix(in srgb, var(--accent) 60%, #344961);
   border-radius: 22px;
-  background: linear-gradient(115deg, rgba(var(--rgba), .19), rgba(24, 36, 61, .84) 38%, rgba(19, 32, 54, .80));
+  background: transparent;
   min-height: 101px;
   display: flex;
   gap: 18px;
   align-items: center;
   padding: 14px 17px;
-  box-shadow: inset 0 1px 0 rgba(210, 210, 255, .075), 0 9px 30px rgba(0, 0, 0, .10), -10px 0 36px rgba(var(--rgba), .11);
   transition: border-color .4s, background .4s, box-shadow .4s;
   width: 100%;
   isolation: isolate;
 }
 
-.activity-status .status-shell::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(95deg, rgba(var(--rgba), .04), transparent 48%);
-  pointer-events: none;
-  z-index: -1;
-}
 /* One immutable card footprint, regardless of status text. */
 .activity-status .status-shell {
   height: 106px;
