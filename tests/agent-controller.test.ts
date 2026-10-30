@@ -430,6 +430,18 @@ describe('native Agent Core controller lifecycle', () => {
     expect(system.indexOf('WORKING RULES')).toBeLessThan(system.indexOf('Use local Memory as historical evidence'));
   });
 
+  it('tells the model its access is not tied to the workspace and that a refusal it must honor ends the work as OPEN', async () => {
+    const { controller, fetchMock } = await fixture([conversationFinalize()]);
+    await controller.runTask({ prompt: 'halo' });
+    const request = JSON.parse(String((fetchMock.mock.calls[0] as any)[1]?.body ?? '{}'));
+    const system = request.messages.filter((message: any) => message.role === 'system').map((message: any) => message.content).join('\n');
+    expect(system).toContain('ACCESS AND BLOCKERS');
+    expect(system).toContain('workspace is a Memory label, not a folder boundary');
+    expect(system).toContain('only when the creator has set a scope folder');
+    expect(system).toContain('report the rest as OPEN');
+    expect(system.indexOf('ACCESS AND BLOCKERS')).toBeLessThan(system.indexOf('Use local Memory as historical evidence'));
+  });
+
   it('tells the model to stay concise, to separate depth from plain language, and not to force Skills on a simple turn', async () => {
     const { controller, fetchMock } = await fixture([conversationFinalize()]);
     await controller.runTask({ prompt: 'halo' });

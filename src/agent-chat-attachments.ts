@@ -205,7 +205,7 @@ export function buildAttachmentReference(items: Array<StoredAttachment & { text?
       }
     } else if (item.kind === 'image') {
       lines.push(item.path
-        ? 'The pixels are not in this prompt; open the file at the path above with image_inspect.'
+        ? 'To see it, open the file at the path above with image_inspect (action overview) or read_file: the picture is returned to you.'
         : 'Image content is not visible to you in this build.');
     } else {
       lines.push('[binary content not displayed]');

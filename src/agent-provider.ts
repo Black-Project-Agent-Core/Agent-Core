@@ -88,10 +88,37 @@ export interface AgentRuntimeConfig extends AgentProviderConfig {
   allowedCapabilities?: AgentCapabilityFamily[];
 }
 
+/** A picture the model may look at, carried on a tool message; never stored in a checkpoint. */
+export interface AgentModelImage {
+  mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+  dataBase64: string;
+}
+
+/** Only the newest `keep` messages that carry pictures stay attached to later provider calls; older ones keep their text. */
+export function keepRecentImages(messages: AgentModelMessage[], keep = 2): void {
+  let seen = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (!message.images?.length) continue;
+    seen += 1;
+    if (seen <= keep) continue;
+    delete message.images;
+    message.content = (message.content ?? '') + '\n[A picture shown on an earlier call is no longer attached.]';
+  }
+}
+
+/** The copy stored in a checkpoint: pictures are never persisted. */
+export function withoutImages(message: AgentModelMessage): AgentModelMessage {
+  if (!message.images?.length) return message;
+  const { images: _images, ...rest } = message;
+  return { ...rest, content: (rest.content ?? '') + '\n[A picture was shown to the model on that call and is not stored.]' };
+}
+
 export interface AgentModelMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | null;
   tool_call_id?: string;
+  images?: AgentModelImage[];
   name?: string;
   tool_calls?: AgentModelToolCall[];
   anthropicContent?: AgentAnthropicContentBlock[];
@@ -356,7 +383,11 @@ function anthropicMessages(messages: AgentModelMessage[], caching: boolean) {
       content.push(...validateAnthropicContent(message.anthropicContent));
     } else if (message.role === 'tool') {
       if (!message.tool_call_id) throw new Error('AGENT_RUNTIME_PROVIDER_TOOL_CALL_INVALID');
-      content.push({ type: 'tool_result', tool_use_id: message.tool_call_id, content: message.content ?? '' });
+      content.push({ type: 'tool_result', tool_use_id: message.tool_call_id,
+        content: message.images?.length
+          ? [{ type: 'text', text: message.content ?? '' },
+            ...message.images.map(image => ({ type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.dataBase64 } }))]
+          : message.content ?? '' });
     } else {
       if (message.content) content.push({ type: 'text', text: message.content });
       for (const call of message.tool_calls ?? []) {
@@ -482,7 +513,8 @@ export class OpenAICompatibleProvider {
         ...(caching ? { cache_control: { type: 'ephemeral' } } : {}),
         ...(anthropic ? { ...anthropicMessages(messages, caching), thinking: { type: 'adaptive', display: 'omitted',
           block_binding: { prefix_mismatch_behavior: 'drop_block' } } }
-          : { messages: messages.map(({ anthropicContent: _anthropicContent, cacheControl: _cacheControl, ...message }) => message) }),
+          : { messages: messages.map(({ anthropicContent: _anthropicContent, cacheControl: _cacheControl, images, ...message }) =>
+            images?.length ? { ...message, content: (message.content ?? '') + '\n[A picture was returned but this route cannot show it.]' } : message) }),
         ...(tools.length ? {
           tools: anthropic ? tools.map(tool => ({ name: tool.function.name,
             ...(tool.function.description ? { description: tool.function.description } : {}),

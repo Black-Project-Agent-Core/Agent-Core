@@ -1,6 +1,6 @@
-import os from 'node:os';
 import path from 'node:path';
 import { resolveModuleProjectRoot } from '../portability/paths.js';
+import { buildMachineShellEnv, realUserHome } from '../security/environment.js';
 import { canonicalPathKey } from '../semantic-ide/path-safety.js';
 
 /**
@@ -51,13 +51,14 @@ function tokenize(segment: string): string[] {
   return tokens;
 }
 
+/** What a variable means to the shell that would run the command: the machine shell environment, not Core's own. */
 function environmentValue(name: string): string | undefined {
   const lower = name.toLowerCase();
-  return Object.entries(process.env).find(([key]) => key.toLowerCase() === lower)?.[1];
+  return Object.entries(buildMachineShellEnv()).find(([key]) => key.toLowerCase() === lower)?.[1];
 }
 
 function expandVariables(token: string): string {
-  const home = os.homedir();
+  const home = realUserHome();
   return token
     .replace(/%([A-Za-z0-9_]+)%/g, (whole, name: string) => environmentValue(name) ?? whole)
     .replace(/\$env:([A-Za-z0-9_]+)/gi, (whole, name: string) => environmentValue(name) ?? whole)
@@ -67,8 +68,8 @@ function expandVariables(token: string): string {
 
 function protectedRoots(): Array<[string, string]> {
   const candidates: Array<[string | undefined, string]> = [
-    [environmentValue('USERPROFILE') ?? os.homedir(), 'the user profile'],
-    [path.dirname(os.homedir()), 'the Users folder'],
+    [environmentValue('USERPROFILE') ?? realUserHome(), 'the user profile'],
+    [path.dirname(realUserHome()), 'the Users folder'],
     [environmentValue('SystemRoot') ?? environmentValue('windir'), 'the Windows folder'],
     [environmentValue('ProgramFiles'), 'Program Files'],
     [environmentValue('ProgramFiles(x86)'), 'Program Files (x86)'],

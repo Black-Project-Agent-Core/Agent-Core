@@ -9,6 +9,7 @@ import { promisify } from 'util';
 import { capture } from '../utils/capture.js';
 import { withTimeout, runWithAbortableTimeout, runWithCallerAbortableTimeout, assertReadActive, isReadCancelled } from '../utils/withTimeout.js';
 import { configManager } from '../config-manager.js';
+import { realUserHome } from '../../security/environment.js';
 import { getFileHandler, TextFileHandler } from '../utils/files/index.js';
 import { assertRegularFile, readRegularFileBounded } from '../utils/files/safe-regular-file.js';
 import { readVerifiedResultPage } from '../../security/verified-result-artifact.js';
@@ -136,7 +137,7 @@ async function getAllowedDirs(): Promise<string[]> {
     if (Array.isArray(config.allowedDirectories)) {
         allowedDirectories = config.allowedDirectories;
     } else {
-        allowedDirectories = [os.homedir()];
+        allowedDirectories = [realUserHome()];
         await configManager.setValue('allowedDirectories', allowedDirectories);
     }
     return allowedDirectories;
@@ -149,7 +150,7 @@ function normalizePath(p: string): string {
 
 function expandHome(filepath: string): string {
     if (filepath.startsWith('~/') || filepath === '~') {
-        return path.join(os.homedir(), filepath.slice(1));
+        return path.join(realUserHome(), filepath.slice(1));
     }
     return filepath;
 }

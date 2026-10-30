@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import type { VerifiedKey } from './auth/key-types.js';
-import type { AgentModelTool } from './agent-provider.js';
+import type { AgentModelImage, AgentModelTool } from './agent-provider.js';
 import type { AgentToolRestriction } from './agent-capability-catalog.js';
 import { createAgentCoreMcpServer, type AgentCoreMcpRuntime } from './mcp/server.js';
 
@@ -9,7 +9,31 @@ export interface AgentToolResult {
   name: string;
   isError: boolean;
   text: string;
+  /** Pictures the tool returned (read_file on an image, image_inspect, a screenshot), bounded; the model may see them. */
+  images?: AgentModelImage[];
   raw: unknown;
+}
+
+const IMAGE_MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const MAX_TOOL_IMAGES = 3;
+// Anthropic accepts up to 5 MB per image; stay under it and keep one result from filling the context.
+const MAX_TOOL_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_TOOL_IMAGES_TOTAL_BYTES = 8 * 1024 * 1024;
+
+/** The supported pictures in an MCP tool result, bounded in number and size. Anything else is left out. */
+export function toolImages(result: any): AgentModelImage[] {
+  if (!Array.isArray(result?.content)) return [];
+  const images: AgentModelImage[] = [];
+  let total = 0;
+  for (const item of result.content) {
+    if (images.length >= MAX_TOOL_IMAGES) break;
+    if (item?.type !== 'image' || typeof item.data !== 'string' || !IMAGE_MEDIA_TYPES.has(String(item.mimeType))) continue;
+    const bytes = Math.floor(item.data.length * 3 / 4);
+    if (bytes > MAX_TOOL_IMAGE_BYTES || total + bytes > MAX_TOOL_IMAGES_TOTAL_BYTES) continue;
+    total += bytes;
+    images.push({ mediaType: item.mimeType as AgentModelImage['mediaType'], dataBase64: item.data });
+  }
+  return images;
 }
 
 function principal(sessionId: string, allowedTools: string[]): VerifiedKey {
@@ -181,10 +205,12 @@ export class AgentRuntimeToolSession {
       request._meta = { 'io.agentcore/invocation-id': invocationId };
     }
     const raw: any = await this.client.callTool(request, signal ? { signal } : undefined);
+    const images = raw?.isError === true ? [] : toolImages(raw);
     return {
       name,
       isError: raw?.isError === true,
       text: toolText(raw),
+      ...(images.length ? { images } : {}),
       raw,
     };
   }

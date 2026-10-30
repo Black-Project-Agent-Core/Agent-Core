@@ -20,6 +20,7 @@ import { ServerResult } from '../types.js';
 import { withTimeout, runWithCallerAbortableTimeout, assertReadActive, isReadCancelled } from '../utils/withTimeout.js';
 import { createErrorResponse } from '../error-handlers.js';
 import { configManager } from '../config-manager.js';
+import { realUserHome } from '../../security/environment.js';
 
 import {
     ReadFileArgsSchema,
@@ -46,7 +47,7 @@ const MACHINE_CONTROL_PROJECT_ROOT = resolveModuleProjectRoot(import.meta.url);
  */
 function expandHome(filePath: string): string {
     if (filePath === '~' || filePath.startsWith('~/') || filePath.startsWith(`~${path.sep}`)) {
-        return path.join(os.homedir(), filePath.slice(1));
+        return path.join(realUserHome(), filePath.slice(1));
     }
     return filePath;
 }
