@@ -1,7 +1,7 @@
 # Penglihatan Native Agent Core
 Tanggal: 2026-10-30
 Revisi: 1
-Status: PROPOSED
+Status: APPROVED (revisi 1, scope V1+V2+V5 build; belum diimplementasikan)
 Jenis: Improvement
 Asal dan bukti: `src/agent-provider.ts:49` dan `:86`, `src/agent-tool-session.ts:183`, `src/mcp/result-budget.ts:14` dan `:207`, `src/agent-provider-readiness.ts:223`, pesan pengguna 2026-10-30.
 
@@ -60,4 +60,4 @@ Harapan, belum terukur: Native dapat membaca teks pada tangkapan layar, memeriks
 
 ## Keputusan pengguna dan scope
 
-Belum ada keputusan; menunggu APPROVE / REVISE / HOLD / REJECT atas revisi 1. Scope yang diusulkan untuk dibangun lebih dulu: V1 + V2 + V5; V3 menyusul; V4 tidak diminta.
+APPROVE revisi 1, scope V1 + V2 + V5 (build), diberikan pengguna di chat pada 2026-10-30 ("aku setujui sesuai dengan rekomendasi kamu saja") atas pertanyaan keputusan proposal ini; rekomendasinya adalah tepat paket V1 + V2 + V5. V3 belum disetujui dan V4 tidak diminta. Persetujuan ini tidak mencakup revisi berikutnya atau scope tambahan. Status APPROVED belum berarti selesai: implementasi, validasi dan arsip ke `docs/history-agent-core` menyusul setelah acceptance terpenuhi.
