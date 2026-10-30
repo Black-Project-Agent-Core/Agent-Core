@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AgentRuntimeToolSession, toolObservesStop } from '../src/agent-tool-session.js';
 import { ArtifactAuthorization } from '../src/auth/artifact-authorization.js';
+import { InProcessToolHost } from '../src/mcp/in-process-tool-host.js';
 const nativeRuntime = { nativeTaskId: 'fixture-native-task', nativeWorkspace: 'agent-core' };
 afterEach(() => { vi.unstubAllEnvs(); });
 
@@ -29,6 +30,50 @@ describe('native agent MCP tool session', () => {
       'browser_control',
       'start_process',
     ]));
+  });
+
+  it('builds the discovery registry once per registry shape and again when the shape changes', async () => {
+    const registrations = vi.spyOn(InProcessToolHost.prototype, 'registerTool');
+    try {
+      const phone = { enabled: false };
+      const shape = { ...nativeRuntime, phoneController: phone as any };
+      const off = await AgentRuntimeToolSession.discoverAvailableTools(shape);
+      const afterFirst = registrations.mock.calls.length;
+      await AgentRuntimeToolSession.discoverAvailableTools(shape);
+      expect(registrations.mock.calls.length).toBe(afterFirst);
+
+      phone.enabled = true;
+      const on = await AgentRuntimeToolSession.discoverAvailableTools(shape);
+      expect(off).not.toContain('phone_status');
+      expect(on).toContain('phone_status');
+      const afterOn = registrations.mock.calls.length;
+      expect(afterOn).toBeGreaterThan(afterFirst);
+      await AgentRuntimeToolSession.discoverAvailableTools(shape);
+      expect(registrations.mock.calls.length).toBe(afterOn);
+
+      phone.enabled = false;
+      expect(await AgentRuntimeToolSession.discoverAvailableTools(shape)).toEqual(off);
+      expect(registrations.mock.calls.length).toBe(afterOn);
+    } finally {
+      registrations.mockRestore();
+    }
+  });
+
+  it('lists the granted tools once per session however often definitions, digest and mutation are read', async () => {
+    const session = await AgentRuntimeToolSession.open('fixture-memo', ['get_config', 'read_file'], nativeRuntime);
+    const listing = vi.spyOn((session as any).port.host, 'listTools');
+    try {
+      const digest = await session.contractDigest();
+      await session.modelTools();
+      await session.modelTools();
+      expect(await session.contractDigest()).toBe(digest);
+      expect(await session.isMutating('read_file')).toBe(false);
+      expect(await session.isMutating('get_config')).toBe(false);
+      await expect(session.isMutating('write_file')).rejects.toThrow('AGENT_RUNTIME_TOOL_NOT_GRANTED');
+      expect(listing).toHaveBeenCalledTimes(1);
+    } finally {
+      await session.close();
+    }
   });
 
   it('offers native task-bound artifact inspection when its existing owner is installed', async () => {

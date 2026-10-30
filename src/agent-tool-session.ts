@@ -86,6 +86,20 @@ interface ToolPort {
 }
 
 const useMcpTransport = () => process.env.AGENT_CORE_NATIVE_TOOL_TRANSPORT === 'mcp';
+
+/**
+ * The registry only lists a different set of names when one of these runtime fields appears or disappears (see the
+ * conditional registrations in `createAgentCoreMcpServer`), or when the phone controller is switched on or off.
+ */
+const REGISTRY_SHAPE_FIELDS = [
+  'memoryService', 'memoryExperience', 'learningService', 'semanticIde', 'skillsService', 'codeIntelligence',
+  'webResearch', 'artifactAuthorization', 'externalControllerLearning', 'controllerSessionId', 'nativeTaskId', 'nativeWorkspace',
+] as const satisfies ReadonlyArray<keyof AgentCoreMcpRuntime>;
+const toolNamesByShape = new Map<string, readonly string[]>();
+function registryShape(runtime: AgentCoreMcpRuntime): string {
+  const present = REGISTRY_SHAPE_FIELDS.map(field => (runtime[field] ? '1' : '0')).join('');
+  return `${useMcpTransport() ? 'mcp' : 'direct'}:${present}:${runtime.phoneController?.enabled ? '1' : '0'}`;
+}
 // The MCP client bounded one call at 60 s; the direct path keeps that bound so a hung tool cannot hold a turn forever.
 const DIRECT_CALL_TIMEOUT_MS = 60_000;
 
@@ -185,7 +199,17 @@ export class AgentRuntimeToolSession {
     return new AgentRuntimeToolSession(sessionId, port, key.toolGrant!.allowedTools, restrictions);
   }
 
+  /** Names only, so one process builds the throw-away discovery registry once per registry shape instead of once per turn. */
   static async discoverAvailableTools(runtime: AgentCoreMcpRuntime): Promise<string[]> {
+    const shape = registryShape(runtime);
+    const known = toolNamesByShape.get(shape);
+    if (known) return [...known];
+    const names = await AgentRuntimeToolSession.listAvailableToolNames(runtime);
+    toolNamesByShape.set(shape, names);
+    return [...names];
+  }
+
+  private static async listAvailableToolNames(runtime: AgentCoreMcpRuntime): Promise<string[]> {
     if (!useMcpTransport()) return createAgentCoreToolHost(undefined, runtime).listTools().map(tool => tool.name);
     const { Client, InMemoryTransport } = await import('@modelcontextprotocol/client');
     const server = createAgentCoreMcpServer(undefined, runtime);
@@ -207,11 +231,20 @@ export class AgentRuntimeToolSession {
     return Object.hasOwn(this.restrictions, name) ? this.restrictions[name] : undefined;
   }
 
+  // The registry, the grant and the restrictions are fixed when the session opens, so these are read once; a changed grant opens a new session.
+  private listing?: any[];
+  private definitions?: AgentModelTool[];
+  private digest?: string;
+
   private async listedTools(): Promise<any[]> {
-    return this.port.listTools();
+    return this.listing ??= await this.port.listTools();
   }
 
   async modelTools(): Promise<AgentModelTool[]> {
+    return this.definitions ??= await this.buildModelTools();
+  }
+
+  private async buildModelTools(): Promise<AgentModelTool[]> {
     const tools = await this.listedTools();
     return tools.map((tool: any) => {
       const restriction = this.restrictionFor(String(tool.name));
@@ -242,6 +275,10 @@ export class AgentRuntimeToolSession {
   }
 
   async contractDigest(): Promise<string> {
+    return this.digest ??= await this.computeContractDigest();
+  }
+
+  private async computeContractDigest(): Promise<string> {
     const definitions = (await this.modelTools())
       .map(tool => ({
         name: tool.function.name,
