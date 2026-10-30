@@ -523,3 +523,15 @@
 @media(max-width:800px){.fidelity-memory-grid,.fidelity-goal-columns{grid-template-columns:minmax(0,1fr)}.fidelity-artifact-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.fidelity-filter-row>.prototype-search{min-width:0;width:100%}.fidelity-filter-chips{width:100%}}
 @media(max-width:600px){.fidelity-artifact-grid{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:240px){.launcher-brand small,.launcher-topbar-status,.launcher-topbar .launcher-recovery{display:none}.launcher-topbar>.launcher-icon-button[aria-label="Edit Window Size"]{margin-left:auto;flex:none}}
+.composer-attachments,.chat-attachments{list-style:none;display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0}
+.composer-attachments{padding:6px 8px 0}
+.composer-attachments li,.chat-attachments li{display:inline-flex;align-items:center;gap:6px;max-width:260px;border:1px solid #ffffff1f;border-radius:999px;background:#0d1420;color:#d8e4f3;font-size:10px;padding:3px 8px}
+.chat-attachments{margin-top:6px}
+.composer-attachments li>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.composer-attachments small,.chat-attachments small{color:#94a3b8;font:9px Consolas,monospace}
+.composer-attachments button{display:inline-flex;background:none;border:0;color:#94a3b8;cursor:pointer;padding:0}
+.composer-attachments button:hover:not(:disabled){color:#e2e8f0}
+.inspector-file-list{list-style:none;padding:0 8px 4px;margin:0}
+.inspector-file-list li{display:flex;justify-content:space-between;gap:8px;font-size:9px;border:1px solid var(--border);border-radius:4px;background:#0d1420;margin-top:4px;padding:6px 8px}
+.inspector-file-list b{color:#d8e4f3;overflow-wrap:anywhere}
+.inspector-file-list small{color:#8d9db3;white-space:nowrap}

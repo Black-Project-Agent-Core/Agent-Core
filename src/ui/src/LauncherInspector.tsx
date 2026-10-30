@@ -4,6 +4,7 @@ import { postHost, selectContextUsage } from './host';
 import { COMPACT_BUTTON_PERCENT, ContextMeter, SEGMENT_COLORS, contextBreakdownRows, contextMeterModel, formatTokenCount } from './ContextMeter';
 import { STEP_GLYPH, formatStepDuration } from './AgentSteps';
 import { useTaskChanges } from './useTaskChanges';
+import { formatBytes } from './model';
 
 const MAX_OUTPUT_ROWS = 8;
 
@@ -59,6 +60,7 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
   const iterationText = turn?.iterations === undefined ? undefined
     : turn.maxIterations === undefined ? String(turn.iterations) : `${turn.iterations} / ${turn.maxIterations}`;
   const provider = chat?.providers?.find(item => item.id === chat.providerChoice);
+  const importedFiles = (chat?.active?.turns ?? []).flatMap(item => item.attachments ?? []);
   const compactResult = chat?.compactResult?.turnId === turn?.id ? chat?.compactResult : undefined;
   // Shown only past the Compact threshold, like the reference: remaining room before automatic compaction, then the button.
   const untilAutoCompact = usage && meter?.known && meter.fillPercent >= COMPACT_BUTTON_PERCENT
@@ -153,7 +155,11 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
           <dt>Versi</dt><dd>{snapshot?.version ?? '—'}</dd>
         </dl>
       </details>
-      <details open><summary><Paperclip size={15}/>Imported Files</summary><p>File and folder attachments are a planned upgrade. No files are imported by the composer.</p></details>
+      <details open><summary><Paperclip size={15}/>Imported Files ({importedFiles.length})</summary>
+        {importedFiles.length ? <ul className="inspector-file-list">{importedFiles.map(file => <li key={file.attachmentId}>
+          <b title={file.relPath}>{file.name}</b><small>{file.kind} · {formatBytes(file.sizeBytes)}</small>
+        </li>)}</ul> : <p>Belum ada file yang dikirim di percakapan ini</p>}
+      </details>
       <details open><summary><FileText size={15}/>Outputs</summary><OutputsBody turn={turn} changes={taskChanges} state={taskChangesState} error={taskChangesError} onArtifacts={onArtifacts}/></details>
     </div>
   </aside>;

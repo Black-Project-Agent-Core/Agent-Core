@@ -161,12 +161,24 @@ export type AgentChatConversation = {
 /** Estimated tokens (chars/4) per prompt part, written by the server per turn and on context.usage; not the provider total. */
 export type ContextBreakdown = { system: number; tools: number; conversation: number; memory: number };
 
+/** What the host reports about a file sent with a turn: metadata only, the file stays on disk. */
+export type AgentChatAttachment = {
+  attachmentId: string;
+  name: string;
+  mimeType: string;
+  kind: 'text' | 'image' | 'binary';
+  sizeBytes: number;
+  relPath: string;
+};
+
 export type AgentChatTurn = {
   id: string;
   conversationId: string;
   clientRequestId: string;
   runtimeTaskId: string;
   goalMode?: boolean;
+  /** Present only on a turn that carried files. */
+  attachments?: AgentChatAttachment[];
   pauseRequested?: boolean;
   status: 'running' | 'resumable' | 'finalized' | 'failed' | 'interrupted' | 'stopped';
   providerId?: string;

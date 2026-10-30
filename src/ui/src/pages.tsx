@@ -6,6 +6,7 @@ import { TaskChangesPanel } from './TaskChangesPanel';
 import { InvocationCards, TurnTimeline, activityToSteps, pickTurnSteps } from './AgentTimeline';
 import { ActivityStatus } from './ActivityStatus';
 import { SlashMenu, filterSlashCommands, slashOptionId, slashQuery } from './SlashMenu';
+import { MAX_ATTACHMENTS, addAttachmentFiles, type AttachmentDraft } from './attachments';
 import { Plus, Paperclip, FolderOpen, Target, ListTodo, Wrench, Send, Shield, Pause } from 'lucide-react';
 import { PrototypeDashboard, PrototypeTools, PrototypeRuntime, PrototypeDiagnostics, PrototypeSettings, PrototypeSetup, PrototypeActivity } from './PrototypePages';
 import { ArtifactsPage, GoalsPage, LearningPage, MemoryPage, ModelsPage, SkillsPage } from './LauncherPages';
@@ -43,7 +44,7 @@ type SharedProps = {
   agentChat: AgentChatUiState;
   onChatCreate:(workspace?:string)=>void;
   onChatOpen:(conversationId:string)=>void;
-  onChatSend:(conversationId:string,prompt:string,goalMode?:boolean)=>void;
+  onChatSend:(conversationId:string,prompt:string,goalMode?:boolean,attachments?:AttachmentDraft[])=>void;
   onChatCancel:(turnId:string)=>void;
   /** Manual Compact of the running turn (answered via agentChat.compactResult). */
   onChatCompact?:(turnId:string)=>void;
@@ -443,8 +444,12 @@ export function ChatPage(props:SharedProps) {
   const setPrompt=(value:string)=>setDrafts(prev=>({...prev,[draftKey]:value}));
   const [workspace,setWorkspace]=useState('agent-core');
   const [historyOpen,setHistoryOpen]=useState(false);
-  const [pending,setPending]=useState<{prompt:string;goalMode:boolean}>();
+  const [pending,setPending]=useState<{prompt:string;goalMode:boolean;attachments:AttachmentDraft[]}>();
   const pendingDelivered=useRef(false);
+  const [attachmentDrafts,setAttachmentDrafts]=useState<Record<string,AttachmentDraft[]>>({});
+  const attachments=attachmentDrafts[draftKey]??[];
+  const setAttachments=(key:string,files:AttachmentDraft[])=>setAttachmentDrafts(prev=>({...prev,[key]:files}));
+  const fileInputRef=useRef<HTMLInputElement>(null);
   const runtime=props.snapshot?.health.agentRuntime;
   const providerChoice=props.agentChat.providerChoice??'auto';
   const modelChoice=props.agentChat.modelChoice;
@@ -519,6 +524,21 @@ export function ChatPage(props:SharedProps) {
 
   // A new chat is a draft: the conversation is created by the first send, so
   // opening the launcher never leaves an empty thread behind.
+  // Old callers and tests see the same onChatSend arguments when no file is attached.
+  const sendTurn=(conversationId:string,value:string,goal:boolean,files:AttachmentDraft[])=>{
+    if(files.length)props.onChatSend(conversationId,value,goal,files);
+    else if(goal)props.onChatSend(conversationId,value,true);
+    else props.onChatSend(conversationId,value);
+  };
+  const pickFiles=(list:FileList|null)=>{
+    const picked=Array.from(list??[]);
+    if(!picked.length)return;
+    const key=draftKey;
+    void addAttachmentFiles(attachments,picked).then(({next,notice})=>{
+      setAttachments(key,next);
+      if(notice)setComposerNotice(notice);
+    });
+  };
   const submit=()=>{
     const value=prompt.trim();
     if(!value||pausedTurn||!configured||pending)return;
@@ -538,14 +558,15 @@ export function ChatPage(props:SharedProps) {
     if(running){setComposerNotice('Giliran sedang berjalan; hanya /compact yang bisa dikirim sekarang');return;}
     if(!active){
       pendingDelivered.current=false;
-      setPending({prompt:value,goalMode});
+      setPending({prompt:value,goalMode,attachments});
       setPrompt('');
+      setAttachments(draftKey,[]);
       props.onChatCreate(workspace.trim()||undefined);
       return;
     }
-    if(goalMode)props.onChatSend(active.conversation.id,value,true);
-    else props.onChatSend(active.conversation.id,value);
+    sendTurn(active.conversation.id,value,goalMode,attachments);
     setPrompt('');
+    setAttachments(draftKey,[]);
   };
 
   useEffect(()=>{
@@ -555,10 +576,10 @@ export function ChatPage(props:SharedProps) {
       pendingDelivered.current=true;
       setPending(undefined);
       setGoalModes(prev=>({...prev,[active.conversation.id]:pending.goalMode}));
-      if(pending.goalMode)props.onChatSend(active.conversation.id,pending.prompt,true);
-      else props.onChatSend(active.conversation.id,pending.prompt);
+      sendTurn(active.conversation.id,pending.prompt,pending.goalMode,pending.attachments);
     }else if(props.agentChat.error){
       setPrompt(pending.prompt);
+      setAttachments('draft',pending.attachments);
       setPending(undefined);
     }
   },[pending,active,props.agentChat.error]);
@@ -619,12 +640,14 @@ export function ChatPage(props:SharedProps) {
       {active&&<div className="chat-message-list">
         {active.messages.map(message=>{
           const messageTurn=message.role==='assistant'?active.turns.find(turn=>turn.id===message.turnId):undefined;
+          const sentFiles=message.role==='user'?active.turns.find(turn=>turn.id===message.turnId)?.attachments??[]:[];
           const memoryUse=messageTurn?.memoryUse??[];
           const turnSteps=messageTurn?stepsOfTurn(messageTurn.id):[];
           return <React.Fragment key={message.id}>{turnSteps.length>0&&messageTurn&&<div className="chat-message-timeline"><ActivityStatus compact turnStatus={messageTurn.status} errorCode={messageTurn.errorCode} steps={turnSteps} startedAtMs={messageTurn.startedAtMs} completedAtMs={messageTurn.completedAtMs}><TurnTimeline steps={turnSteps} stepDetails={props.agentChat.stepDetails} onStepDetail={props.onStepDetail}/></ActivityStatus></div>}<div className={'chat-message '+message.role}>
             <div className="chat-message-avatar" aria-label={message.role==='user'?'You':'Agent Core'}>{message.role==='user'?<UserRound size={16}/>:<img src="./agent-core.png" alt=""/>}</div>
             <div className="chat-message-body">
             <pre>{message.content}</pre>
+            {sentFiles.length>0&&<ul className="chat-attachments" aria-label="Lampiran">{sentFiles.map(file=><li key={file.attachmentId} title={file.mimeType}><Paperclip size={12}/>{file.name}<small>{formatBytes(file.sizeBytes)}</small></li>)}</ul>}
             {messageTurn&&<InvocationCards steps={turnSteps}/>}
             {messageTurn&&<small className="chat-turn-reasoning">Reasoning · {messageTurn.reasoningEffort??'auto'}</small>}
             {memoryUse.length>0&&<details className="chat-memory-use">
@@ -665,6 +688,11 @@ export function ChatPage(props:SharedProps) {
     </section>}
     <div className="chat-composer">
       {slashOpen&&<SlashMenu commands={slashItems} activeIndex={activeIndex} onSelect={selectSlash} onHover={setSlashIndex}/>}
+      {attachments.length>0&&<ul className="composer-attachments" aria-label="Lampiran yang akan dikirim">{attachments.map((file,index)=><li key={index}>
+        <Paperclip size={12}/><span title={file.name}>{file.name}</span><small>{formatBytes(file.sizeBytes)}</small>
+        <button type="button" aria-label={'Hapus lampiran '+file.name} disabled={Boolean(pending)} onClick={()=>setAttachments(draftKey,attachments.filter((_,at)=>at!==index))}><X size={12}/></button>
+      </li>)}</ul>}
+      <input ref={fileInputRef} type="file" multiple hidden aria-label="Pilih lampiran" onChange={e=>{pickFiles(e.target.files);e.target.value='';}}/>
       <textarea
         ref={textareaRef}
         value={prompt}
@@ -691,7 +719,7 @@ export function ChatPage(props:SharedProps) {
       />
       <div className="chat-composer-footer">
         <div className="prototype-composer-actions" ref={actionsRef}><button type="button" aria-label="Composer actions" aria-expanded={actionsOpen} className="prototype-plus" onClick={()=>setActionsOpen(v=>!v)}>{actionsOpen?<X size={15}/>:<Plus size={15}/>}</button>{actionsOpen&&<div className="prototype-composer-menu">
-          <button disabled title="Attachment transport is a planned upgrade"><Paperclip size={16}/>Add files or photos <small>Planned</small></button>
+          <button disabled={composerLocked||running} title={`Sampai ${MAX_ATTACHMENTS} file per pesan`} onClick={()=>{fileInputRef.current?.click();setActionsOpen(false);}}><Paperclip size={16}/>Add files or photos</button>
           <button disabled title="Folder import is a planned upgrade"><FolderOpen size={16}/>Add folder / imports <small>Planned</small></button>
           <button onClick={()=>{props.setPage('goals');setActionsOpen(false);}}><ListTodo size={16}/>Step-by-Step Plan <small>View</small></button>
           <button onClick={()=>{props.setPage('systems');setActionsOpen(false);}}><Wrench size={16}/>Tools Hub & MCP <ChevronRight size={14}/></button>

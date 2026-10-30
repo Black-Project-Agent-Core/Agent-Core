@@ -318,7 +318,8 @@ public sealed class AgentCoreRuntime : IDisposable
         string? providerId = null,
         string? reasoningEffort = null,
         string? model = null,
-        bool goalMode = false)
+        bool goalMode = false,
+        JsonElement? attachments = null)
     {
         var id = Uri.EscapeDataString(conversationId);
         using var request = CreateAgentChatRequest(HttpMethod.Post, $"/agent/chat/conversations/{id}/turns");
@@ -328,6 +329,7 @@ public sealed class AgentCoreRuntime : IDisposable
         if (reasoningEffort is not null) payload["reasoningEffort"] = reasoningEffort;
         if (!string.IsNullOrWhiteSpace(model)) payload["model"] = model.Trim();
         if (goalMode) payload["goalMode"] = true;
+        if (attachments is { } files) payload["attachments"] = files;
         request.Content = new StringContent(
             JsonSerializer.Serialize(payload),
             Encoding.UTF8,

@@ -10,6 +10,7 @@ import {
   type ReasoningChoice,
 } from './host';
 import { mergeSelection, parseServerSelection, readLocalSelection, resolveSelection, writeLocalSelection } from './chatSelection';
+import { attachmentPayload, type AttachmentDraft } from './attachments';
 import { ReferenceUi } from './pages';
 import type { PageId } from './components';
 
@@ -327,7 +328,7 @@ export default function App() {
     postHost({type:'agent-chat-open',conversationId});
   };
 
-  const onChatSend=(conversationId:string,prompt:string,goalMode=false)=>{
+  const onChatSend=(conversationId:string,prompt:string,goalMode=false,attachments:AttachmentDraft[]=[])=>{
     // A pinned route that is unavailable must never fall back to another one silently.
     const resolved=resolveSelection(agentChat.providers,{providerId:agentChat.providerChoice??'auto',model:agentChat.modelChoice,reasoningEffort:agentChat.reasoningChoice??'auto'});
     if(resolved.sendBlocked){
@@ -350,6 +351,7 @@ export default function App() {
       conversationId,
       prompt,
       ...(goalMode?{goalMode:true}:{}),
+      ...(attachments.length?{attachments:attachmentPayload(attachments)}:{}),
       ...(providerId?{providerId}:{}),
       ...(providerId&&agentChat.modelChoice?{model:agentChat.modelChoice}:{}),
       ...(providerId&&resolved.effectiveReasoning!=='auto'?{reasoningEffort:resolved.effectiveReasoning}:{}),
