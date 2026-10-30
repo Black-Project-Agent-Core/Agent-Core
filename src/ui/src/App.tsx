@@ -79,6 +79,7 @@ export default function App() {
       }
       if(message.type==='logs'){setLogs(message.entries);return;}
       if(message.type==='log'){setLogs(prev=>[...prev,message.entry].slice(-200));return;}
+      if(message.type==='agent-chat-compact-result'){setAgentChat(prev=>({...prev,compactResult:{turnId:message.turnId,status:message.status}}));return;}
       if(message.type==='agent-result'){
         setAgentRun(prev=>prev.requestId===message.requestId
           ? (message.error

@@ -1,9 +1,9 @@
 import type { ContextBreakdown } from './host';
 
-/** Automatic compaction starts at ~75% (COMPACTION_TRIGGER_RATIO); there is no manual compact action. */
-export const AUTO_COMPACT_PERCENT = 75;
+/** The manual Compact button appears from 70% (marker + amber level); automatic compaction fires at 100% of the window. */
+export const COMPACT_BUTTON_PERCENT = 70;
 export const NEAR_FULL_PERCENT = 90;
-const AUTO_COMPACT_CAPTION = 'kompak otomatis ~' + AUTO_COMPACT_PERCENT + '%';
+const AUTO_COMPACT_CAPTION = 'otomatis di 100%';
 
 /** 135000 -> "135k", 1000000 -> "1M", 1500000 -> "1.5M". */
 export function formatTokenCount(count: number): string {
@@ -26,10 +26,10 @@ export function contextMeterModel(tokens: number, capacity?: number | null): Con
   if (!known) return { level: 'unknown', known: false, fillPercent: 0,
     label: formatTokenCount(tokens) + ' · kapasitas tidak diketahui', hint: '' };
   const percent = (tokens / capacity!) * 100;
-  const level = percent >= NEAR_FULL_PERCENT ? 'critical' : percent >= AUTO_COMPACT_PERCENT ? 'warn' : 'ok';
+  const level = percent >= NEAR_FULL_PERCENT ? 'critical' : percent >= COMPACT_BUTTON_PERCENT ? 'warn' : 'ok';
   return { level, known: true, fillPercent: Math.min(100, percent),
     label: formatTokenCount(tokens) + ' / ' + formatTokenCount(capacity!) + ' · ' + Math.round(percent) + '%',
-    hint: level === 'critical' ? 'Hampir penuh' : level === 'warn' ? 'Kompak otomatis dimulai di ~' + AUTO_COMPACT_PERCENT + '%' : '' };
+    hint: level === 'critical' ? 'Hampir penuh' : level === 'warn' ? 'Compact tersedia; otomatis di 100%' : '' };
 }
 
 export type ContextBreakdownRow = { key: keyof ContextBreakdown; label: string; tokens: number; percent: number };
@@ -67,7 +67,7 @@ export function ContextMeter({ tokens, capacity, hideLabel }: { tokens?: number;
       style={{ position: 'relative', height: 6, borderRadius: 3, background: 'rgba(127,127,127,.25)' }}>
       <div style={{ width: model.fillPercent + '%', height: '100%', borderRadius: 3, background: COLORS[model.level] }}/>
       {model.known && <span data-testid="context-meter-mark" title={AUTO_COMPACT_CAPTION}
-        style={{ position: 'absolute', left: AUTO_COMPACT_PERCENT + '%', top: -2, bottom: -2, width: 2,
+        style={{ position: 'absolute', left: COMPACT_BUTTON_PERCENT + '%', top: -2, bottom: -2, width: 2,
           background: 'currentColor', opacity: 0.7 }}/>}
     </div>
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 3 }}>

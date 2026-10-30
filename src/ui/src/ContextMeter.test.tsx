@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { AUTO_COMPACT_PERCENT, ContextMeter, NEAR_FULL_PERCENT, contextBreakdownRows, contextMeterModel, formatTokenCount } from './ContextMeter';
+import { COMPACT_BUTTON_PERCENT, ContextMeter, NEAR_FULL_PERCENT, contextBreakdownRows, contextMeterModel, formatTokenCount } from './ContextMeter';
 import { reduceContextUsage, selectContextUsage } from './host';
 import type { AgentChatEvent, AgentChatUiState } from './host';
 
@@ -17,17 +17,17 @@ describe('formatTokenCount', () => {
 });
 
 describe('contextMeterModel', () => {
-  it('is ok below 75%, warn from the 75% auto-compaction point, critical from 90%', () => {
-    expect(AUTO_COMPACT_PERCENT).toBe(75);
+  it('is ok below 70%, warn from the 70% Compact-button point, critical from 90%', () => {
+    expect(COMPACT_BUTTON_PERCENT).toBe(70);
     expect(NEAR_FULL_PERCENT).toBe(90);
-    expect(contextMeterModel(749_000, 1_000_000).level).toBe('ok');
-    expect(contextMeterModel(750_000, 1_000_000)).toMatchObject({ level: 'warn', hint: 'Kompak otomatis dimulai di ~75%' });
+    expect(contextMeterModel(699_000, 1_000_000).level).toBe('ok');
+    expect(contextMeterModel(700_000, 1_000_000)).toMatchObject({ level: 'warn', hint: 'Compact tersedia; otomatis di 100%' });
     expect(contextMeterModel(899_000, 1_000_000).level).toBe('warn');
     expect(contextMeterModel(900_000, 1_000_000)).toMatchObject({ level: 'critical', hint: 'Hampir penuh' });
   });
-  it('never mentions a manual compact action the product does not have', () => {
+  it('never pressures the user to compact', () => {
     for (const tokens of [100_000, 750_000, 900_000]) {
-      expect(JSON.stringify(contextMeterModel(tokens, 1_000_000))).not.toMatch(/compact manual|Segera compact|Waktu yang pas/);
+      expect(JSON.stringify(contextMeterModel(tokens, 1_000_000))).not.toMatch(/Segera compact|Waktu yang pas/);
     }
   });
   it('never guesses a capacity', () => {
@@ -37,19 +37,19 @@ describe('contextMeterModel', () => {
 });
 
 describe('ContextMeter', () => {
-  it('shows used / window, percent and the 75% auto-compaction marker', () => {
+  it('shows used / window, percent and the 70% Compact-button marker', () => {
     render(<ContextMeter tokens={135_000} capacity={1_000_000}/>);
     expect(screen.getByText('135k / 1M · 14%')).toBeInTheDocument();
-    expect(screen.getByTitle('kompak otomatis ~75%')).toBeInTheDocument();
-    expect(screen.getByTestId('context-meter-mark')).toHaveStyle({ left: '75%' });
-    expect(screen.getByText('kompak otomatis ~75%')).toBeInTheDocument();
+    expect(screen.getByTitle('otomatis di 100%')).toBeInTheDocument();
+    expect(screen.getByTestId('context-meter-mark')).toHaveStyle({ left: '70%' });
+    expect(screen.getByText('otomatis di 100%')).toBeInTheDocument();
     expect(screen.getByRole('meter')).toHaveAttribute('aria-valuenow', '14');
   });
-  it('tells the user that automatic compaction starts, never to compact manually', () => {
+  it('says Compact is available from 70% and that automatic compaction is at 100%, without pressure', () => {
     const { container } = render(<ContextMeter tokens={760_000} capacity={1_000_000}/>);
-    expect(screen.getByText('Kompak otomatis dimulai di ~75%')).toBeInTheDocument();
+    expect(screen.getByText('Compact tersedia; otomatis di 100%')).toBeInTheDocument();
     expect(container.firstElementChild).toHaveAttribute('data-level', 'warn');
-    expect(container.textContent).not.toMatch(/compact manual|Segera compact|Waktu yang pas/);
+    expect(container.textContent).not.toMatch(/Segera compact|Waktu yang pas/);
   });
   it('says "Hampir penuh" from 90%', () => {
     const { container } = render(<ContextMeter tokens={905_000} capacity={1_000_000}/>);

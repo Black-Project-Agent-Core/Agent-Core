@@ -1,7 +1,7 @@
 import { Activity, BrainCircuit, ChevronRight, FileText, Paperclip, Folder, Gauge } from 'lucide-react';
 import type { ActivityEntry, AgentChatUiState, DesktopSnapshot } from './host';
-import { selectContextUsage } from './host';
-import { ContextMeter, contextBreakdownRows, contextMeterModel, formatTokenCount } from './ContextMeter';
+import { postHost, selectContextUsage } from './host';
+import { COMPACT_BUTTON_PERCENT, ContextMeter, contextBreakdownRows, contextMeterModel, formatTokenCount } from './ContextMeter';
 import { STEP_GLYPH, formatStepDuration } from './AgentSteps';
 
 export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArtifacts }: {
@@ -20,6 +20,7 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
   const iterationText = turn?.iterations === undefined ? undefined
     : turn.maxIterations === undefined ? String(turn.iterations) : `${turn.iterations} / ${turn.maxIterations}`;
   const provider = chat?.providers?.find(item => item.id === chat.providerChoice);
+  const compactResult = chat?.compactResult?.turnId === turn?.id ? chat?.compactResult : undefined;
   if (!open) return <aside className="launcher-inspector collapsed" aria-label="Context inspector">
     <button type="button" className="inspector-toggle" aria-label="Open context inspector" onClick={onToggle}><Gauge size={17}/></button>
   </aside>;
@@ -33,6 +34,13 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
           <span>Model: {model || provider?.model || 'Automatic routing'}</span><span>{usedOfCapacity ?? 'Not recorded'}</span>
         </div>
         {usage && <ContextMeter tokens={usage.contextTokens} capacity={usage.contextWindow} hideLabel/>}
+        {meter?.known && meter.fillPercent >= COMPACT_BUTTON_PERCENT && <div className="inspector-compact">
+          <button type="button" disabled={turn?.status !== 'running'}
+            title={turn?.status === 'running' ? undefined : 'Hanya untuk giliran yang sedang berjalan'}
+            onClick={() => { if (turn) postHost({ type: 'agent-chat-compact', turnId: turn.id }); }}>Compact</button>
+          {compactResult && <small role="status">{compactResult.status === 'scheduled' ? 'Kompaksi dijadwalkan'
+            : compactResult.status === 'not-running' ? 'Tidak ada giliran berjalan' : 'Gagal menjadwalkan'}</small>}
+        </div>}
         {breakdownRows.length > 0 && <>
           <ul className="inspector-context-breakdown" aria-label="Rincian context (estimasi)">
             {breakdownRows.map(row => <li key={row.key}><span>{row.label}</span><span>{formatTokenCount(row.tokens)} ({row.percent}%)</span></li>)}

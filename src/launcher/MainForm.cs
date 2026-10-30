@@ -635,6 +635,23 @@ public sealed class MainForm : Form
                 catch (Exception error) { Send(new { type = "agent-chat-error", requestId, conversationId, error = error.Message }); }
                 return;
             }
+            if (type == "agent-chat-compact")
+            {
+                var turnId = root.TryGetProperty("turnId", out var turnNode)
+                    ? turnNode.GetString() ?? string.Empty
+                    : string.Empty;
+                string status;
+                try
+                {
+                    status = await _runtime.CompactAgentTurnAsync(turnId);
+                }
+                catch
+                {
+                    status = "unavailable";
+                }
+                Send(new { type = "agent-chat-compact-result", turnId, status });
+                return;
+            }
             if (type == "agent-chat-archive")
             {
                 var conversationId = root.TryGetProperty("conversationId", out var conversationNode)

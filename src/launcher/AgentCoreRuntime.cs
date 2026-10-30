@@ -369,6 +369,29 @@ public sealed class AgentCoreRuntime : IDisposable
         return result.TryGetProperty("paused", out var paused) && paused.ValueKind == JsonValueKind.True;
     }
 
+    /// <summary>
+    /// Asks the Core to compact the running turn's context window. Returns the Core's status string
+    /// ("scheduled" on 200, "not-running" on 404); 404 is a normal answer here, not an exception.
+    /// </summary>
+    public async Task<string> CompactAgentTurnAsync(string turnId)
+    {
+        var id = Uri.EscapeDataString(turnId);
+        using var request = CreateAgentChatRequest(HttpMethod.Post, $"/agent/chat/turns/{id}/compact");
+        using var response = await _agentHttp.SendAsync(request);
+        if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.NotFound)
+            throw await CreateAgentChatExceptionAsync(response);
+        var body = await response.Content.ReadAsStringAsync();
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            if (document.RootElement.TryGetProperty("status", out var statusNode)
+                && statusNode.ValueKind == JsonValueKind.String)
+                return statusNode.GetString() ?? "unavailable";
+        }
+        catch { }
+        return response.StatusCode == HttpStatusCode.NotFound ? "not-running" : "unavailable";
+    }
+
     public async Task ArchiveAgentConversationAsync(string conversationId)
     {
         var id = Uri.EscapeDataString(conversationId);

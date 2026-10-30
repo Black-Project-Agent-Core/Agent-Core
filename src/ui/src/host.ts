@@ -325,6 +325,8 @@ export type AgentChatUiState = {
   contextUsage?: AgentContextUsage;
   /** On-demand Input/Output of persisted steps, keyed `${turnId}:${seq}`. */
   stepDetails?: Record<string, StepDetailState>;
+  /** Latest answer to a manual Compact request; the Inspector shows it only for the turn it belongs to. */
+  compactResult?: AgentChatCompactResult;
   error?: string;
 };
 
@@ -450,6 +452,9 @@ export type TaskChanges = {
 
 export type LauncherWindowSize = { width: number; height: number; defaultWidth: number; defaultHeight: number; minWidth: number; minHeight: number; maxDimension: number };
 
+/** Answer to {type:'agent-chat-compact', turnId}: the server compacts the running turn once at its next iteration. */
+export type AgentChatCompactResult = { turnId: string; status: 'scheduled' | 'not-running' | 'unavailable' };
+
 type HostEnvelope =
   | { type: 'window-size-state'; requestId: string; size: LauncherWindowSize; warning?: string | null }
   | { type: 'window-size-error'; requestId: string; error: string; size: LauncherWindowSize }
@@ -473,6 +478,7 @@ type HostEnvelope =
   | { type: 'agent-chat-event'; requestId: string; conversationId?: string; envelope: { type: string; event?: AgentChatEvent; result?: unknown; error?: string } }
   | { type: 'agent-chat-step-result'; requestId: string; turnId: string; seq: number; result: StepDetailResult }
   | { type: 'agent-chat-cancel-result'; turnId: string; stopped: boolean }
+  | ({ type: 'agent-chat-compact-result' } & AgentChatCompactResult)
   | { type: 'agent-chat-pause-result'; turnId: string; paused: boolean }
   | { type: 'agent-chat-error'; requestId?: string; conversationId?: string; error: string }
   | { type: 'error'; message: string };
