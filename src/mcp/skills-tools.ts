@@ -7,6 +7,7 @@ import { externalControllerToolResult, beginExternalControllerToolCall } from '.
 import * as schemas from './skills-schemas.js';
 import type { LearningService } from '../learning/service.js';
 import { PROPOSAL_ACTIONS, runSkillProposalAction } from './skill-proposal-actions.js';
+import { skillDisabledMessage, type NativeSkillSettings } from '../native-skill-settings.js';
 
 function text(value: unknown, compact = false) {
   return { content: [{ type: 'text', text: JSON.stringify(value, null, compact ? undefined : 2) }] } as any;
@@ -25,6 +26,18 @@ function readDelivery(fragment: any, prepared: string) {
   };
 }
 
+/** Native only: a Skill the owner switched off is hard-blocked (inspect, read). List and search still name it so Native can ask the owner to switch it on. */
+function blockDisabledSkill(name: string, settings?: NativeSkillSettings): void {
+  if (settings?.isDisabled(name)) throw new Error(skillDisabledMessage(name));
+}
+
+function markNativeSkills<T extends { name: string }>(items: T[], settings?: NativeSkillSettings) {
+  if (!settings) return items;
+  return items.map(item => settings.isDisabled(item.name)
+    ? { name: item.name, nativeEnabled: false, note: 'switched off by the user' }
+    : { ...item, nativeEnabled: true });
+}
+
 const READ_ONLY_ACTIONS =new Set(['status', 'list', 'inspect', 'search', 'read', 'validate', 'list_revisions', 'proposals', 'self_awareness', 'explain_improvement']);
 
 export function registerSkillsTools(
@@ -36,6 +49,7 @@ export function registerSkillsTools(
   nativeTaskId?: string,
   nativeWorkspace?: string,
   proposalApprover?: { principalId: string; authorize: (workspace: string) => Promise<boolean> },
+  nativeSkillSettings?: NativeSkillSettings,
 ): void {
   server.registerTool('skills', {
     title: 'Skill Artifacts',
@@ -48,14 +62,19 @@ export function registerSkillsTools(
     const input = schemas.skills.parse(args ?? {});
     try {
       let result: unknown;
+      const off = nativeTaskId ? nativeSkillSettings : undefined;
       if (PROPOSAL_ACTIONS.has(input.action)) {
         result = await runSkillProposalAction(input, { learning, external: externalController, sessionId: externalSessionId, nativeTaskId, nativeWorkspace, proposalApprover });
       } else switch (input.action) {
         case 'status': result = await service.status(); break;
-        case 'list': result = await service.list(); break;
-        case 'inspect': result = await service.inspect(input.name!); break;
-        case 'search': result = (await service.discover({ query: input.query!, limit: input.limit, mode: input.searchMode, signal: ctx?.mcpReq?.signal })).search; break;
-        case 'read': result = await service.read(input.name!, { expectedActiveDigest: input.expectedActiveDigest!, offset: input.offset, maxBytes: input.maxBytes, resourcePath: input.resourcePath }); break;
+        case 'list': result = markNativeSkills(await service.list(), off); break;
+        case 'inspect': blockDisabledSkill(input.name!, off); result = await service.inspect(input.name!); break;
+        case 'search': {
+          const found = (await service.discover({ query: input.query!, limit: input.limit, mode: input.searchMode, signal: ctx?.mcpReq?.signal })).search;
+          result = off ? { ...found, hits: markNativeSkills(found.hits, off) } : found;
+          break;
+        }
+        case 'read': blockDisabledSkill(input.name!, off); result = await service.read(input.name!, { expectedActiveDigest: input.expectedActiveDigest!, offset: input.offset, maxBytes: input.maxBytes, resourcePath: input.resourcePath }); break;
         case 'validate': result = await service.validateSource(input.sourcePath!); break;
         case 'import': result = await service.import(input.sourcePath!, undefined, input.name); break;
         case 'package': result = await service.package(input.name!); break;

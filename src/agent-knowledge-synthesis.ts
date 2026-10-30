@@ -7,6 +7,7 @@ import type { SkillDiscoverySnapshot } from './skills/discovery.js';
 import type { MergedRetrieval } from './memory/subquestion-retrieval.js';
 import { createHash } from 'node:crypto';
 import { buildCapabilityExposure, type CapabilityExposure, type CapabilityArtifact } from './capability-awareness.js';
+import type { NativeSkillSettings } from './native-skill-settings.js';
 import { readRakaCapability } from './external-partner-capability.js';
 import { oneLineLabel } from './security/untrusted-text.js';
 
@@ -85,6 +86,8 @@ export async function buildKnowledgeSynthesisPacket(input: {
   externalController?: boolean;
   /** null records an attempted discovery failure; do not scan or embed again. */
   skillDiscovery?: SkillDiscoverySnapshot | null;
+  /** Optional NativeSkillSettings to filter out skills switched off by the user (hard block for Native). */
+  nativeSkillSettings?: NativeSkillSettings;
 }): Promise<AgentKnowledgePacket> {
   const truncated = new Set<KnowledgeSection>();
   const detail = (section: KnowledgeSection, value: unknown, max: number) => {
@@ -210,6 +213,8 @@ export async function buildKnowledgeSynthesisPacket(input: {
   const skillLines: string[] = [];
   let skillSearchLine = '';
   let skillStatus: KnowledgeSourceStatus = input.runtime.skillsService || input.skillDiscovery ? 'available' : 'unavailable';
+  const disabledSkillNames = input.nativeSkillSettings ? input.nativeSkillSettings.listDisabled() : [];
+  const disabledSkillSet = new Set(disabledSkillNames);
   if (input.runtime.skillsService || input.skillDiscovery) {
     try {
       if (input.skillDiscovery === null) throw new Error('SKILL_DISCOVERY_UNAVAILABLE');
@@ -217,7 +222,8 @@ export async function buildKnowledgeSynthesisPacket(input: {
         ? await input.runtime.skillsService!.discover({ query: bounded(query, 4000), mode: 'lexical' })
         : undefined);
       const catalog = discovery?.artifacts ?? await input.runtime.skillsService!.list();
-      inventoryArtifacts.push(...catalog.map(s=>({kind:'skill' as const,id:s.name,description:s.description,revision:s.digest})));
+      const filteredCatalog = catalog.filter(s => !disabledSkillSet.has(s.name));
+      inventoryArtifacts.push(...filteredCatalog.map(s=>({kind:'skill' as const,id:s.name,description:s.description,revision:s.digest})));
       if (discovery) {
         const { requestedMode, effectiveMode, catalog, semantic, truncated } = discovery.search;
         skillSearchLine = '- Skill discovery: requested=' + requestedMode + ' | effective=' + effectiveMode
@@ -226,6 +232,7 @@ export async function buildKnowledgeSynthesisPacket(input: {
       }
       if (discovery?.search.truncated || discovery?.search.hits.some(hit => hit.descriptorTruncated)) truncated.add('skills');
       for (const skill of discovery?.search.hits ?? []) {
+        if (disabledSkillSet.has(skill.name)) continue;
         skillNames.push(skill.name);
         artifactRevisions['skill:' + skill.name] = skill.digest;
         const line = '- ' + skill.name + ': ' + detail('skills', skill.description, 400) + ' | revision=' + skill.digest

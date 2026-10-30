@@ -8,27 +8,38 @@ const routes = [
 ] as const;
 
 /** Shared instruction hook only. Never executes scripts, models or a Skill's declared tools. */
-export async function taskSkillGuidance(skills?: Pick<SkillService,'inspect'>, audience: 'external' | 'native' = 'external') {
+export async function taskSkillGuidance(
+  skills?: Pick<SkillService,'inspect'>,
+  audience: 'external' | 'native' = 'external',
+  disabledNames: readonly string[] = [],
+): Promise<{advisory:true;executionAuthority:false;entries:any[];text:string}> {
+  const disabledSet = new Set(disabledNames);
   const entries=await Promise.all(routes.map(async route=>{
+    if (disabledSet.has(route.name)) return null;
     try {
       if(!skills)throw new Error('unavailable');
       const artifact=await skills.inspect(route.name);
       return {...route,status:'available' as const,read:{action:'read' as const,name:route.name,expectedActiveDigest:artifact.digest,maxBytes:8192},instruction:'Read all returned fragments using nextOffset before applying; re-inspect if the revision changes.'};
     } catch { return {...route,status:'unavailable' as const,instruction:'Installation could not be verified; do not claim this Skill was loaded or used.'}; }
   }));
+  const filtered = entries.filter((e): e is NonNullable<typeof e> => e !== null);
   const nativePurpose: Record<string, string> = {
     'agent-core-capability-index': 'Assess the actual goal and material changes; read the compact index, select relevant workflows, fully read and apply them with action/verification evidence. Do not bulk-load child Skills.',
     'performance-oriented-software-engineering': 'Select when scale, latency, throughput, CPU/I/O or memory affects design. Characterize the workload before implementation and verify performance claims; skip unrelated or trivial work.',
     'reverse-engineer-anything': 'Select for shipped artifacts or packaged applications; ground format identity in bytes, use bounded probes and only relevant references. Respect permits; distinguish observed, inferred and unknown.',
   };
-  return {advisory:true as const,executionAuthority:false as const,entries,text:[
+  const offLine = disabledNames.length > 0
+    ? 'Skills switched off by the user (hard block, do not read or apply; if one is needed, ask the user in your reply to switch it on and say why; a refusal is not permanent): ' + disabledNames.join(', ')
+    : undefined;
+  return {advisory:true as const,executionAuthority:false as const,entries:filtered,text:[
     (audience === 'native' ? 'NATIVE' : 'EXTERNAL') + ' SKILL GUIDANCE — mandatory capability consideration workflow for tasks that need tools, code, evidence or multi-step judgment; this hook does not grant execution authority or prove compliance.',
     'Simple conversation or a simple question (a greeting, thanks, small talk, or a short factual answer that needs no tool, file, code or multi-step judgment) needs none of this: answer directly without reading the index or any Skill. Skipping is correct there, never a violation.',
     'Follow every nextOffset from zero through the final fragment for the same active digest before declaring applied/adapted Skill use. Search, inspect, partial reading and index exposure are not application. Reading alone never earns a use receipt. Request only existing scoped capabilities when needed; unavailable instructions remain explicitly unavailable.',
-    ...entries.map(entry=>entry.name+': '+entry.status+'. '
+    ...filtered.map(entry=>entry.name+': '+entry.status+'. '
       +(audience==='native'?(nativePurpose[entry.name]??entry.when):entry.when)
       +(audience==='native'?(entry.status==='unavailable'?' '+entry.instruction:''):' '+entry.instruction)
       +('read' in entry?' skills('+JSON.stringify(entry.read)+')':'')),
+    ...(offLine ? [offLine] : []),
   ].join('\n')};
 }
 export const externalSkillGuidance = (skills?: Pick<SkillService,'inspect'>) => taskSkillGuidance(skills, 'external');

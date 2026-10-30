@@ -42,6 +42,7 @@ import { redactSensitiveString } from './security/redaction.js';
 import { buildKnowledgeSynthesisPacket } from './agent-knowledge-synthesis.js';
 import { CAPABILITY_USE_CONTRACT, toolCapabilityUse, artifactCapabilityUse, inspectedSkillArtifacts, observeSkillRead, skillInstructionsRead, skillReadCoverageFromMessages } from './capability-awareness.js';
 import { taskSkillGuidance } from './skills/external-guidance.js';
+import type { NativeSkillSettings } from './native-skill-settings.js';
 import {
   agentStrategyFingerprint,
   buildAdaptiveRecallQuery,
@@ -615,6 +616,8 @@ export class NativeAgentController {
     private readonly mcpRuntime: AgentCoreMcpRuntime,
     private readonly config: AgentRuntimeConfig,
   ) {}
+  /** Skills the owner switched off for Native; carried on the shared MCP runtime so every Native tool session sees the same instance. */
+  private get nativeSkillSettings(): NativeSkillSettings | undefined { return this.mcpRuntime.nativeSkillSettings; }
   async runTask(input: NativeAgentTaskInput): Promise<NativeAgentTaskResult> {
     return this.runTaskInternal({ ...input, reuseSession: false });
   }
@@ -803,6 +806,7 @@ export class NativeAgentController {
         procedures: await this.runtime.proceduresForContext(100, input.workspace),
         ...(currentTask ? { task: { goal: currentTask.goal, episodes: currentTask.episodes } } : {}),
         ...(input.workspace ? { workspace: input.workspace } : {}),
+        ...(this.nativeSkillSettings ? { nativeSkillSettings: this.nativeSkillSettings } : {}),
       });
     };
     const failureLoopAdvisor = new FailureLoopAdvisor();
@@ -1004,7 +1008,8 @@ export class NativeAgentController {
       role: message.role,
       content: message.content!.slice(0, 200_000),
     } as AgentModelMessage));
-    const guidance = (await taskSkillGuidance(this.mcpRuntime.skillsService, 'native')).text
+    const disabledSkillNames = this.nativeSkillSettings ? this.nativeSkillSettings.listDisabled() : [];
+    const guidance = (await taskSkillGuidance(this.mcpRuntime.skillsService, 'native', disabledSkillNames)).text
       + (input.userSelectedSkillDirective ? '\n\n' + input.userSelectedSkillDirective : '');
     const messages: AgentModelMessage[] = resumedState
       ? structuredClone(resumedState.messages)
@@ -1421,9 +1426,11 @@ export class NativeAgentController {
               acceptedUses += 1;
             }
 
+            const disabledSkillNames = this.nativeSkillSettings ? this.nativeSkillSettings.listDisabled() : [];
+            const disabledSkillSet = new Set(disabledSkillNames);
             const allowedArtifactIds = {
               procedure: new Set(packet.procedureFingerprints),
-              skill: new Set([...packet.skillNames,...inspectedSkills.keys()]),
+              skill: new Set([...packet.skillNames.filter(n => !disabledSkillSet.has(n)), ...[...inspectedSkills.keys()].filter(n => !disabledSkillSet.has(n))]),
               pattern: new Set(packet.patternIds),
             };
             let acceptedArtifacts = 0;
@@ -1431,6 +1438,10 @@ export class NativeAgentController {
             for (const declared of parsed.artifactUse) {
               if (!allowedArtifactIds[declared.kind].has(declared.artifactId)) {
                 ignoredArtifacts.push(declared.kind + ':' + declared.artifactId);
+                continue;
+              }
+              if (declared.kind === 'skill' && disabledSkillSet.has(declared.artifactId)) {
+                ignoredArtifacts.push('skill:' + declared.artifactId + ':disabled-by-user');
                 continue;
               }
               const digest = (declared.kind==='skill' ? inspectedSkills.get(declared.artifactId) : undefined) ?? packet.artifactRevisions[declared.kind + ':' + declared.artifactId];

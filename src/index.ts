@@ -6,6 +6,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { NativeAgentController } from './agent-controller.js';
 import { AgentChatService } from './agent-chat-service.js';
+import { NativeSkillSettings } from './native-skill-settings.js';
 import { AgentRuntimeService } from './agent-runtime.js';
 import { FileKeyStore } from './auth/key-store.js';
 import { ArtifactAuthorization } from './auth/artifact-authorization.js';
@@ -205,7 +206,10 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     'web-research-start',
     { ...webResearch.health() },
   );
+  // Skills the owner switched off for Native; one instance for the controller, its tool sessions, the chat service and the UI routes.
+  const nativeSkillSettings = new NativeSkillSettings(path.join(config.projectRoot, 'runtime', 'agent-runtime'));
   const controllerMcpRuntime = {
+    nativeSkillSettings,
     proposalDecisionAuthorizer: (principalId: string, workspace: string) => keyStore.canApproveSkillProposal(principalId, workspace),
     memoryService,
     memoryExperience: memoryRuntime.experience,
@@ -231,6 +235,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
         agentController,
         artifactAuthorization,
         skillsService,
+        nativeSkillSettings,
       );
       activityTracker.record(
         'AGENT_RUNTIME',
@@ -272,6 +277,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     ...(agentController ? { agentRun: (input: { prompt: string; workspace?: string }) => agentController.runTask(input) } : {}),
     ...(agentChat ? { agentChat } : {}),
     ...(skillsService ? { skills: skillsService } : {}),
+    nativeSkillSettings,
     healthProvider: async () => {
       const [liveMemoryHealth, liveRdcHealth, livePhoneHealth, liveCodeIntelligenceHealth, liveSemanticIdeHealth, liveLearningHealth, liveSkillsHealth, liveExternalControllerHealth] = await Promise.all([
         memoryProbe(),

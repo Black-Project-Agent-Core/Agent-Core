@@ -12,6 +12,7 @@ import { handleProposalDocuments } from './proposals.js';
 import type { ProposalDocumentReader } from '../learning/proposal-documents.js';
 import { nativeMemoryEvaluationSchema } from '../agent-memory-evaluation.js';
 import { defaultTaskChangesReader, handleTaskChanges, type TaskChangesReader } from './task-changes.js';
+import type { NativeSkillSettings } from '../native-skill-settings.js';
 
 export type McpHttpHandler = (
   request: IncomingMessage,
@@ -30,6 +31,8 @@ export interface HttpHandlerOptions {
   agentChat?: AgentChatService;
   /** Active Skill catalog for the composer "/" menu; the same SkillService instance Native holds. */
   skills?: Pick<SkillService, 'list'>;
+  /** Native skill on/off settings for filtering and control routes. */
+  nativeSkillSettings?: NativeSkillSettings;
   workflows?: () => import('../workflows/service.js').WorkflowSnapshot;
   proposals?: ProposalDocumentReader;
   /** Read-only actual-changes reader; defaults to the checkpoint service plus Git. */
@@ -369,9 +372,10 @@ async function handleRequest(
       ];
       if (options.skills) {
         try {
-          // Fresh catalog read on every request: a Skill activated a moment ago must appear.
+          // Fresh catalog read on every request: a Skill activated a moment ago must appear; a Skill switched off for Native must not.
           const active = await options.skills.list();
           commands.push(...active
+            .filter(item => !options.nativeSkillSettings?.isDisabled(item.name))
             .map(item => ({ name: item.name.slice(0, 160), kind: 'skill' as const, description: item.description.slice(0, 160) }))
             .sort((a, b) => a.name.localeCompare(b.name)));
         } catch (error) {
@@ -380,6 +384,66 @@ async function handleRequest(
         }
       }
       sendJson(response, 200, { commands }, { 'cache-control': 'no-store' });
+      return;
+    }
+
+    if (route === '/agent/skills') {
+      if (!authorizeAgentUi(request, response, options, security)) return;
+      if (!options.skills || !options.nativeSkillSettings) {
+        sendJson(response, 503, { error: 'agent_skills_unavailable' });
+        return;
+      }
+      if (request.method === 'GET') {
+        try {
+          const active = await options.skills.list();
+          const disabledSet = new Set(options.nativeSkillSettings.listDisabled());
+          const skills = active
+            .map(item => ({
+              name: item.name,
+              description: item.description,
+              digest: item.digest.slice(0, 8),
+              enabled: !disabledSet.has(item.name),
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+          sendJson(response, 200, { skills }, { 'cache-control': 'no-store' });
+          return;
+        } catch (error) {
+          sendJson(response, 503, { error: 'agent_skills_unavailable', detail: safeDetail(error) }, { 'cache-control': 'no-store' });
+          return;
+        }
+      }
+      sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'GET' });
+      return;
+    }
+
+    const skillsMatch = route.match(/^\/agent\/skills\/([^/]+)\/native-enabled$/);
+    if (skillsMatch) {
+      if (!authorizeAgentUi(request, response, options, security)) return;
+      if (!options.skills || !options.nativeSkillSettings) {
+        sendJson(response, 503, { error: 'agent_skills_unavailable' });
+        return;
+      }
+      const name = decodeURIComponent(skillsMatch[1]!);
+      const catalog = await options.skills.list();
+      const exists = catalog.some(item => item.name === name);
+      if (!exists) {
+        sendJson(response, 404, { error: 'skill_not_found' });
+        return;
+      }
+      if (request.method === 'POST') {
+        let body: Record<string, unknown>;
+        try { body = await readJsonBody(request); }
+        catch { sendJson(response, 400, { error: 'invalid_json' }); return; }
+        const enabled = body.enabled;
+        if (typeof enabled !== 'boolean') {
+          sendJson(response, 400, { error: 'invalid_body' });
+          return;
+        }
+        await options.nativeSkillSettings.setEnabled(name, enabled);
+        sendJson(response, 200, { name, enabled });
+        return;
+      }
+      sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'POST' });
       return;
     }
 

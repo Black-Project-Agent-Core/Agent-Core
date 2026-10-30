@@ -27,6 +27,7 @@ import {
 import { emitAgentTurnEvent, type AgentTurnEvent } from './agent-turn-events.js';
 import { redactSensitiveString } from './security/redaction.js';
 import { parseSlashSelection, type SlashSkillSelection } from './agent-slash-commands.js';
+import type { NativeSkillSettings } from './native-skill-settings.js';
 
 /** The slice of SkillService the composer "/" selection needs: active catalog names only. */
 export interface SlashSkillCatalog {
@@ -38,6 +39,12 @@ export function userSelectedSkillDirective(skillName: string): string {
   return 'USER-SELECTED SKILL: the user explicitly chose the Skill ' + skillName
     + ' for this request. Inspect and read it completely with the skills tool (follow every nextOffset),'
     + ' apply its relevant steps and declare actual use. This is a user choice, not a grant: tool access is unchanged.';
+}
+
+function filterDisabled(names: readonly string[], settings?: NativeSkillSettings): string[] {
+  if (!settings) return [...names];
+  const disabled = new Set(settings.listDisabled());
+  return names.filter(n => !disabled.has(n));
 }
 
 export interface AgentChatEventEnvelope extends AgentTurnEvent {
@@ -152,6 +159,7 @@ export class AgentChatService {
     private readonly artifactAuthorization?: ArtifactAuthorization,
     /** Active Skill catalog used only to resolve a composer "/<skill>" selection; never cached. */
     private readonly skillCatalog?: SlashSkillCatalog,
+    private readonly nativeSkillSettings?: NativeSkillSettings,
   ) {
     this.store = store;
   }
@@ -162,6 +170,7 @@ export class AgentChatService {
     controller: NativeAgentController,
     artifactAuthorization?: ArtifactAuthorization,
     skillCatalog?: SlashSkillCatalog,
+    nativeSkillSettings?: NativeSkillSettings,
   ): Promise<AgentChatService> {
     const service = new AgentChatService(
       new AgentChatStore(
@@ -172,6 +181,7 @@ export class AgentChatService {
       projectRoot,
       artifactAuthorization,
       skillCatalog,
+      nativeSkillSettings,
     );
     await service.reconcileInterruptedTurns();
     return service;
@@ -182,7 +192,8 @@ export class AgentChatService {
     if (!this.skillCatalog || !prompt.trimStart().startsWith('/')) return null;
     try {
       const names = (await this.skillCatalog.list()).map(item => item.name);
-      return parseSlashSelection(prompt, names);
+      const filtered = filterDisabled(names, this.nativeSkillSettings);
+      return parseSlashSelection(prompt, filtered);
     } catch (error) {
       console.error('AGENT_CHAT_SLASH_CATALOG_FAILED:' + safeErrorCode(error));
       return null;

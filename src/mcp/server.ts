@@ -51,6 +51,7 @@ import { registerReconstructionHarnessTool } from './reconstruction-harness-tool
 import type { MutationExecutionContext } from '../rdc/mutation-coordinator.js';
 import type { ExternalAttributionStatus } from '../learning/external-controller.js';
 import { applyResultBudget } from './result-budget.js';
+import type { NativeSkillSettings } from '../native-skill-settings.js';
 import {
   decideToolEvidenceCapture,
   type EvidenceCaptureDecision,
@@ -74,6 +75,8 @@ export interface AgentCoreMcpRuntime {
   controllerBootstrap?: string;
   semanticIde?: SemanticIdeService;
   skillsService?: SkillService;
+  /** Skills the owner switched off for Native; read only on the Native instance (nativeTaskId set). */
+  nativeSkillSettings?: NativeSkillSettings;
   webResearch?: WebResearchService;
   failureLoopAdvisor?: FailureLoopAdvisor;
   mutationSafety?: McpMutationSafety;
@@ -427,6 +430,7 @@ export function createAgentCoreMcpServer(key?: unknown, runtime: AgentCoreMcpRun
     runtime.nativeWorkspace,
     !runtime.nativeTaskId && memoryOwner && runtime.proposalDecisionAuthorizer
       ? { principalId: memoryOwner, authorize: workspace => runtime.proposalDecisionAuthorizer!(memoryOwner, workspace) } : undefined,
+    runtime.nativeSkillSettings,
   );
   if (runtime.phoneController) registerPhoneTools(
     server,
