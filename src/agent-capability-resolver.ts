@@ -222,15 +222,20 @@ export class AgentCapabilityResolver {
       return { ...this.initialGrant(input.availableTools, input.userPrompt),
         requestedFamilies: unique(input.requestedFamilies.filter(isAgentCapabilityFamily)) };
     }
+    const requested = unique(input.requestedFamilies.filter(isAgentCapabilityFamily));
+    if (this.mode === 'explicit') {
+      // Explicit never grows: a request is only denied, and the grant stays the operator's tool ceiling rather than shrinking to get_config.
+      return { ...this.initialGrant(input.availableTools, input.userPrompt),
+        requestedFamilies: requested, denied: requested.map(family => ({ family, reason: 'policy-mode' as const })) };
+    }
     const available = new Set(input.availableTools);
     const current = unique((input.currentFamilies ?? []).filter(isAgentCapabilityFamily));
-    const requested = unique(input.requestedFamilies.filter(isAgentCapabilityFamily));
     const riskCeiling = inferUserRiskCeiling(input.userPrompt);
     const approved = new Set<AgentCapabilityFamily>(current);
     const denied: AgentCapabilityDenied[] = [];
 
     for (const family of requested) {
-      if (this.mode === 'explicit' || this.mode === 'minimal') {
+      if (this.mode === 'minimal') {
         denied.push({ family, reason: 'policy-mode' });
         continue;
       }

@@ -51,6 +51,26 @@ describe('AgentCapabilityResolver', () => {
       reason: 'policy-mode',
     });
   });
+  it('keeps the operator tool ceiling when a capability request is denied in explicit mode', () => {
+    const resolver = new AgentCapabilityResolver({
+      mode: 'explicit',
+      allowedTools: ['read_file', 'list_directory'],
+      allowedCapabilities: [],
+    });
+    const initial = resolver.initialGrant(available);
+    expect(initial.tools).toEqual(['read_file', 'list_directory']);
+    const result = resolver.resolve({
+      requestedFamilies: ['files.mutate'],
+      userPrompt: 'fix the bug by editing the file',
+      availableTools: available,
+      currentFamilies: initial.approvedFamilies,
+    });
+    expect(result.denied).toEqual([{ family: 'files.mutate', reason: 'policy-mode' }]);
+    expect(result.approvedFamilies).toEqual([]);
+    expect(result.tools).toEqual(initial.tools);
+    expect(result.restrictions).toEqual(initial.restrictions);
+  });
+
   it('exposes the registered surface in dynamic mode while leaving action admission to each tool', () => {
     const resolver = new AgentCapabilityResolver({
       mode: 'dynamic',
