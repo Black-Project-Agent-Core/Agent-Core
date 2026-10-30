@@ -15,6 +15,15 @@
   width: 100%;
 }
 
+/* index.css frames the last div of every .chat-message (border, fill, padding); the card is that div while a turn runs. */
+.launcher-shell .chat-message > .activity-status {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  padding: 0;
+}
+.launcher-shell .chat-message-list .chat-message.pending { opacity: 1; }
+
 .activity-status .status-shell {
   --accent: #9866ff;
   --accent2: #4d7bff;
@@ -145,9 +154,11 @@
 .activity-status .status-details {
   position: absolute;
   top: calc(100% + 10px);
+  /* Same left and right edges as the card above it. */
+  left: 0;
   right: 0;
   z-index: 20;
-  width: min(420px, 100%);
+  width: auto;
   background: #0d192c;
   border: 1px solid rgba(113, 157, 221, .39);
   border-radius: 15px;
