@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { LauncherInspector } from './LauncherInspector';
 import { SEGMENT_COLORS } from './ContextMeter';
@@ -97,14 +97,16 @@ it('offers Compact session from 70% with the room left before auto-compact: hidd
 
 it('shows the answer to a Compact request only for its own turn', () => {
   const chat = chatWith({ contextTokens: 700_000, contextWindow: 1_000_000 });
+  // The Outputs card also announces its own status messages, so the notice is read inside the Context card.
+  const contextCard = () => within(screen.getByText('Context').closest('details') as HTMLElement);
   const own = renderInspector({ ...chat, compactResult: { turnId: 't1', status: 'scheduled' } });
-  expect(screen.getByRole('status')).toHaveTextContent('Kompaksi dijadwalkan');
+  expect(contextCard().getByRole('status')).toHaveTextContent('Kompaksi dijadwalkan');
   own.unmount();
   const other = renderInspector({ ...chat, compactResult: { turnId: 'other', status: 'scheduled' } });
-  expect(screen.queryByRole('status')).toBeNull();
+  expect(contextCard().queryByRole('status')).toBeNull();
   other.unmount();
   renderInspector({ ...chat, compactResult: { turnId: 't1', status: 'not-running' } });
-  expect(screen.getByRole('status')).toHaveTextContent('Tidak ada giliran berjalan');
+  expect(contextCard().getByRole('status')).toHaveTextContent('Tidak ada giliran berjalan');
 });
 
 it('no longer renders the context meter above the composer', () => {
