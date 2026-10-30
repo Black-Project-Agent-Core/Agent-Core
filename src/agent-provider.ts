@@ -1,6 +1,7 @@
 import { assertCredentialBearingUrl } from './net/endpoint-policy.js';
 import { fetchWithPolicy } from './net/outbound-request.js';
 import { readResponseJsonBounded } from './net/bounded-response.js';
+import { AnthropicStreamError, readAnthropicMessageStream, statusForStreamError } from './anthropic-stream.js';
 import { redactSensitiveString } from './security/redaction.js';
 import {
   AgentProviderRequestError,
@@ -302,6 +303,8 @@ export class AgentProviderPoolPausedError extends Error {
   }
 }
 const MAX_PROVIDER_RESPONSE_BYTES = 2 * 1024 * 1024;
+// Event framing and many small deltas make a stream larger than the JSON message it rebuilds.
+const MAX_PROVIDER_STREAM_BYTES = 8 * 1024 * 1024;
 const MAX_PROVIDER_POOL_ATTEMPTS = 18;
 
 function endpoint(config: Pick<AgentProviderConfig, 'baseUrl'>, providerId?: string): URL {
@@ -467,6 +470,9 @@ export class OpenAICompatibleProvider {
       if (this.config.apiKey) headers['x-api-key'] = this.config.apiKey;
       if (this.config.workspaceId) headers['anthropic-workspace-id'] = this.config.workspaceId;
     } else if (this.config.apiKey) headers.authorization = `Bearer ${this.config.apiKey}`;
+    // Real Anthropic turns stream: one silent non-streaming wait ends at Node's ~5 minute header timeout, long
+    // before a max-effort call on a large context is done. Readiness probes are short and stay non-streaming.
+    const streaming = anthropic && probeMaxTokens === undefined;
     const response = await fetchWithPolicy(endpoint(this.config, this.providerId), {
       method: 'POST',
       headers,
@@ -483,7 +489,7 @@ export class OpenAICompatibleProvider {
             input_schema: tool.function.parameters })) : tools,
           tool_choice: anthropic ? { type: 'auto' } : 'auto',
         } : {}),
-        stream: false,
+        stream: streaming,
         ...(anthropic || probeMaxTokens ? { max_tokens: probeMaxTokens ?? 4_096 } : {}),
       }),
       ...(signal ? { signal } : {}),
@@ -493,9 +499,30 @@ export class OpenAICompatibleProvider {
       timeoutMs: this.config.requestTimeoutMs,
       maxTotalDelayMs: 0,
     });
-    let payload = await readResponseJsonBounded<any>(
-      response, MAX_PROVIDER_RESPONSE_BYTES, 'agent provider response',
-    );
+    // A gateway that ignored `stream` answers with plain JSON; only a real event stream is reassembled.
+    const eventStream = streaming && response.ok && /text\/event-stream/i.test(response.headers.get('content-type') ?? '');
+    let payload: any;
+    if (eventStream) {
+      try {
+        payload = await readAnthropicMessageStream(response, { maxBytes: MAX_PROVIDER_STREAM_BYTES, label: 'agent provider stream' });
+      } catch (error) {
+        if (!(error instanceof AnthropicStreamError)) throw error;
+        const status = statusForStreamError(error.errorType);
+        const observed = observeProviderResponse(new Response(null, { status, headers: response.headers }),
+          { error: { type: error.errorType, message: error.message } });
+        try { this.responseObserver?.(observed); } catch {}
+        throw new AgentProviderRequestError({
+          status,
+          message: `AGENT_RUNTIME_PROVIDER_REQUEST_FAILED:${status}: ${redactSensitiveString(error.message).slice(0, 500)}`,
+          safeCode: observed.errorCode,
+          safeType: observed.errorType,
+          retryAfterMs: observed.retryAfterMs,
+          resetAtMs: observed.resetAtMs,
+        });
+      }
+    } else {
+      payload = await readResponseJsonBounded<any>(response, MAX_PROVIDER_RESPONSE_BYTES, 'agent provider response');
+    }
     const observation = observeProviderResponse(response, payload);
     try { this.responseObserver?.(observation); } catch {}
     if (!response.ok) {
