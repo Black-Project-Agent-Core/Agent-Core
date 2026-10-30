@@ -249,7 +249,6 @@ export function AppShell({page,setPage,snapshot,onAction,onNewChat,agentChat,log
         <button type="button" className={'launcher-core-state '+(running?'ready':'waiting')} onClick={()=>setPage('core')}><i/>{`Core: ${state}`}</button>
         <button type="button" className="launcher-icon-button" aria-label={running?'Restart Core':'Start Core'} disabled={!snapshot} onClick={()=>onAction(running?'restart-core':'start-core')}>{running?<RefreshCw size={14}/>:<Power size={14}/>}</button>
         <button type="button" className="launcher-icon-button stop" aria-label="Stop Core" disabled={!running} onClick={()=>onAction('stop-core')}><Square size={13}/></button>
-        <span className="launcher-controller" title="Native AI workspace. External controller switching is a planned upgrade."><Terminal size={13}/>Controller: Native AI<ChevronDown size={10}/></span>
         {agentChat?.active?.turns.some(turn=>turn.status==='resumable')&&<button className="prototype-attention" onClick={()=>setPage('chat')}><ShieldCheck size={13}/>Action Required (1)</button>}
       </div>
       <button type="button" className="launcher-recovery" onClick={()=>setPage('diagnostics')}><Stethoscope size={14}/><span>Recovery</span></button>

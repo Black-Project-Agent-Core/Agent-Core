@@ -179,7 +179,7 @@ describe('Inspector Context Window breakdown', () => {
     const list = screen.getByRole('list', LIST);
     expect(within(list).getAllByRole('listitem').map(item => item.textContent)).toEqual([
       'System Instructions1501.5%', 'Tools & MCP Manifests3003.0%', 'Conversation & Files3503.5%', 'Memory Injections2002.0%']);
-    expect(screen.getByText('Estimasi dari ukuran isi prompt, diskalakan ke total provider.')).toBeInTheDocument();
+    expect(screen.queryByText(/Estimasi dari ukuran isi prompt/)).toBeNull();
   });
 
   it('renders no list and no caption when the usage has no breakdown', () => {

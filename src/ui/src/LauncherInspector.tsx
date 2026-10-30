@@ -41,17 +41,14 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
         {usage && <div className="inspector-context-meter">
           <ContextMeter tokens={usage.contextTokens} capacity={usage.contextWindow} segments={segments} hideLabel/>
         </div>}
-        {breakdownRows.length > 0 && <>
-          <ul className="inspector-context-breakdown" aria-label="Rincian context (estimasi)">
-            {breakdownRows.map(row => <li key={row.key}>
-              <span className="inspector-swatch" aria-hidden="true" style={{ backgroundColor: SEGMENT_COLORS[row.key] }}/>
-              <span>{row.label}</span>
-              <span>{formatTokenCount(row.tokens)}</span>
-              <span>{row.percentOfWindow !== undefined ? row.percentOfWindow.toFixed(1) : row.percent}%</span>
-            </li>)}
-          </ul>
-          <small>Estimasi dari ukuran isi prompt, diskalakan ke total provider.</small>
-        </>}
+        {breakdownRows.length > 0 && <ul className="inspector-context-breakdown" aria-label="Rincian context (estimasi)">
+          {breakdownRows.map(row => <li key={row.key}>
+            <span className="inspector-swatch" aria-hidden="true" style={{ backgroundColor: SEGMENT_COLORS[row.key] }}/>
+            <span>{row.label}</span>
+            <span>{formatTokenCount(row.tokens)}</span>
+            <span>{row.percentOfWindow !== undefined ? row.percentOfWindow.toFixed(1) : row.percent}%</span>
+          </li>)}
+        </ul>}
         {untilAutoCompact && <div className="inspector-compact">
           <div className="inspector-compact-row">
             <span>{untilAutoCompact} until auto-compact</span>
