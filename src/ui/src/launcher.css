@@ -106,6 +106,12 @@
 .inspector-call-list li>div { display:flex; justify-content:space-between; gap:8px; font-size:9px; }
 .inspector-call-list b { overflow-wrap:anywhere; }
 .inspector-call-list span,.inspector-call-list small { color:#94a3b8; font-size:8px; }
+.inspector-context-breakdown { list-style:none; padding:0 8px 2px; margin:0; }
+.inspector-context-breakdown li { display:flex; justify-content:space-between; gap:8px; font-size:9px; padding:2px 0; border-top:1px solid var(--border); }
+.inspector-context-breakdown li:first-child { border-top:0; }
+.inspector-context-breakdown li span:first-child { color:#8d9db3; overflow-wrap:anywhere; }
+.inspector-context-breakdown li span:last-child { color:#d8e4f3; white-space:nowrap; }
+.inspector-context-breakdown+small { display:block; color:#94a3b8; font-size:8px; padding:0 8px 8px; }
 .inspector-workspace { display:flex; align-items:flex-start; gap:8px; color:var(--cyan); padding:4px; }
 .inspector-workspace>div { display:flex; flex-direction:column; min-width:0; gap:5px; }
 .inspector-workspace span { font-size:9px; color:#8397af; }

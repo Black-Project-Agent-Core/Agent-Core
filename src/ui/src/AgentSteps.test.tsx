@@ -5,7 +5,7 @@ import { ChatPage } from './pages';
 import { AgentStepRow } from './AgentSteps';
 import { LauncherInspector } from './LauncherInspector';
 import { reduceStepDetail, stepKey } from './host';
-import type { AgentChatStepMeta, AgentChatUiState, DesktopSnapshot, StepDetailState } from './host';
+import type { AgentChatStepMeta, AgentChatUiState, ContextBreakdown, DesktopSnapshot, StepDetailState } from './host';
 
 const meta = (over: Partial<AgentChatStepMeta> = {}): AgentChatStepMeta => ({
   turnId: 'turn-1', seq: 1, iteration: 1, toolName: 'start_search', status: 'ok', startedAtMs: 10,
@@ -162,6 +162,30 @@ describe('Inspector Tool Calls card', () => {
     expect(screen.getByText('Tool Calls (0)')).toBeInTheDocument();
     expect(view.container).toHaveTextContent('Belum ada tool call di percakapan ini');
     expect(view.container).not.toHaveTextContent('desktop_tool');
+  });
+});
+
+describe('Inspector Context Window breakdown', () => {
+  const chatWithUsage = (contextBreakdown?: ContextBreakdown): AgentChatUiState => {
+    const chat: AgentChatUiState = { ...chatProps(undefined).agentChat, modelChoice: '' };
+    chat.contextUsage = { conversationId: chat.active!.conversation.id, contextTokens: 1000, contextWindow: 10_000,
+      ...(contextBreakdown ? { contextBreakdown } : {}) };
+    return chat;
+  };
+  const LIST = { name: 'Rincian context (estimasi)' };
+
+  it('lists the four estimated parts in a fixed order, scaled to the provider total', () => {
+    render(<LauncherInspector chat={chatWithUsage({ system: 3, tools: 6, conversation: 7, memory: 4 })} logs={[]} open onToggle={vi.fn()}/>);
+    const list = screen.getByRole('list', LIST);
+    expect(within(list).getAllByRole('listitem').map(item => item.textContent)).toEqual([
+      'System Instructions150 (15%)', 'Tools & MCP Manifests300 (30%)', 'Conversation & Files350 (35%)', 'Memory Injections200 (20%)']);
+    expect(screen.getByText('Estimasi dari ukuran isi prompt, diskalakan ke total provider.')).toBeInTheDocument();
+  });
+
+  it('renders no list and no caption when the usage has no breakdown', () => {
+    render(<LauncherInspector chat={chatWithUsage()} logs={[]} open onToggle={vi.fn()}/>);
+    expect(screen.queryByRole('list', LIST)).toBeNull();
+    expect(screen.queryByText(/Estimasi dari ukuran isi prompt/)).toBeNull();
   });
 });
 

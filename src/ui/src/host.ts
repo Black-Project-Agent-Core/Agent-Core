@@ -158,6 +158,9 @@ export type AgentChatConversation = {
   lastTurnId?: string;
 };
 
+/** Estimated tokens (chars/4) per prompt part, written by the server per turn and on context.usage; not the provider total. */
+export type ContextBreakdown = { system: number; tools: number; conversation: number; memory: number };
+
 export type AgentChatTurn = {
   id: string;
   conversationId: string;
@@ -176,6 +179,7 @@ export type AgentChatTurn = {
   /** Last observed prompt size and known window for this turn; absent when the provider reported none. */
   contextTokens?: number;
   contextWindow?: number;
+  contextBreakdown?: ContextBreakdown;
   memoryUse?: AgentMemoryUse[];
   errorCode?: string;
   createdAtMs: number;
@@ -281,9 +285,10 @@ export type AgentChatEvent = {
   memoryUse?: AgentMemoryUse[];
   code?: string;
   retryAtMs?: number | null;
-  /** context.usage: full prompt size of the last provider call and the known window. */
+  /** context.usage: full prompt size of the last provider call, the known window and the estimated per-part breakdown. */
   contextTokens?: number;
   contextWindow?: number;
+  contextBreakdown?: ContextBreakdown;
 };
 
 export type AgentChatProvider = {
@@ -371,22 +376,25 @@ export function reduceAgentActivity(list: AgentChatActivity[], event: AgentChatE
   return list;
 }
 
-export type AgentContextUsage = { conversationId: string; contextTokens: number; contextWindow?: number; iteration?: number; maxIterations?: number };
+export type AgentContextUsage = { conversationId: string; contextTokens: number; contextWindow?: number; contextBreakdown?: ContextBreakdown; iteration?: number; maxIterations?: number };
 
 /** Context size to show for the active conversation: the live event if it belongs to it, else the last persisted turn value. */
-export function selectContextUsage(chat?: AgentChatUiState): { contextTokens: number; contextWindow?: number; iteration?: number; maxIterations?: number } | undefined {
+export function selectContextUsage(chat?: AgentChatUiState): { contextTokens: number; contextWindow?: number; contextBreakdown?: ContextBreakdown; iteration?: number; maxIterations?: number } | undefined {
   const active = chat?.active;
   if (!chat || !active) return undefined;
   if (chat.contextUsage && chat.contextUsage.conversationId === active.conversation.id) return chat.contextUsage;
   const last = [...active.turns].reverse().find(turn => turn.contextTokens !== undefined);
-  return last ? { contextTokens: last.contextTokens!, ...(last.contextWindow !== undefined ? { contextWindow: last.contextWindow } : {}) } : undefined;
+  return last ? { contextTokens: last.contextTokens!, ...(last.contextWindow !== undefined ? { contextWindow: last.contextWindow } : {}),
+    ...(last.contextBreakdown ? { contextBreakdown: last.contextBreakdown } : {}) } : undefined;
 }
 
-/** Keeps the last context.usage (a snapshot of the latest prompt, not an accumulation); other events leave it unchanged. */
+/** Keeps the last context.usage (a snapshot of the latest prompt, not an accumulation); other events leave it unchanged.
+ *  The breakdown belongs to that one call: an event without it never inherits the previous one. */
 export function reduceContextUsage(prev: AgentContextUsage | undefined, event: AgentChatEvent): AgentContextUsage | undefined {
   if (event.type !== 'context.usage' || typeof event.contextTokens !== 'number') return prev;
   return { conversationId: event.conversationId, contextTokens: event.contextTokens,
     ...(typeof event.contextWindow === 'number' ? { contextWindow: event.contextWindow } : {}),
+    ...(event.contextBreakdown ? { contextBreakdown: event.contextBreakdown } : {}),
     ...(event.iteration !== undefined ? { iteration: event.iteration } : {}),
     ...(event.maxIterations !== undefined ? { maxIterations: event.maxIterations } : {}) };
 }

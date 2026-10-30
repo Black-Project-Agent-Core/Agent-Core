@@ -22,8 +22,8 @@ it('shows the Context Window card with percent, numbers, bar and the 70% marker'
   expect(view.container).toHaveTextContent('Model: claude-opus-5-5');
   expect(view.container).toHaveTextContent('144k / 1M');
   expect(screen.getByRole('meter', { name: 'Context window usage' })).toHaveAttribute('aria-valuenow', '14');
-  expect(screen.getByTestId('context-meter-mark')).toHaveAttribute('title', 'compact manual paling pas ~70%');
-  expect(view.container).toHaveTextContent('compact manual paling pas ~70%');
+  expect(screen.getByTestId('context-meter-mark')).toHaveAttribute('title', 'kompak otomatis ~75%');
+  expect(view.container).toHaveTextContent('kompak otomatis ~75%');
   expect(view.container.querySelector('details[open] > summary')).not.toBeNull();
 });
 
