@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [minor] Native builds its tool registry once per process and names the task on each call, instead of rebuilding a registry for every turn. Each call carries a host-supplied caller (task, workspace, session, granted tools, failure-loop advisor, image view store); the registry lists and runs only that caller's grant and refuses a call without one, and the model sees the same tools and the same contract digest as before. `AGENT_CORE_NATIVE_TOOL_REGISTRY=per-task` keeps the earlier registry per session. Also: discovery names are cached per registry shape and a session reads its tool listing, definitions and digest once; `image_inspect` views survive across the turns of a conversation; the `skills` actions `list`, `inspect`, `search` and `read` no longer get a dispatch checkpoint or mutation-journal entry (external controllers included); explicit capability policy keeps the operator's tool ceiling when a capability request is denied; and `.claude/` is declared in the project structure map as local Claude Code state.
+
 - [patch] Recover Native providers left in HALF_OPEN after cancellation, checkpoint/preflight failure or process interruption. Persist bounded probe deadlines, release abandoned claims, fence stale outcomes, and preserve real provider backoff, quota/auth state, model choice and manual Continue after restart. Targeted TDD verification: 208 tests passed in six files; two test invocations total. Pending patch intent: `.changeset/provider-probe-recovery.md`.
 
 ## 1.6.0 - 2026-10-28
