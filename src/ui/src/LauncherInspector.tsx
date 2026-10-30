@@ -1,4 +1,4 @@
-import { Activity, BrainCircuit, ChevronRight, FileText, Paperclip, Folder, Gauge } from 'lucide-react';
+import { Activity, BrainCircuit, ChevronRight, FileText, Paperclip, Gauge, Server, ListTodo, Cable } from 'lucide-react';
 import type { ActivityEntry, AgentChatUiState, DesktopSnapshot } from './host';
 import { postHost, selectContextUsage } from './host';
 import { COMPACT_BUTTON_PERCENT, ContextMeter, SEGMENT_COLORS, contextBreakdownRows, contextMeterModel, formatTokenCount } from './ContextMeter';
@@ -73,10 +73,50 @@ export function LauncherInspector({ snapshot, chat, logs, open, onToggle, onArti
           {step.argsSummary && <small style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.argsSummary}</small>}
         </li>)}</ul> : <p>Belum ada tool call di percakapan ini</p>}
       </details>
+      <details open><summary><ListTodo size={15}/>Background tasks ({calls.filter(s => s.status === 'running').length} running)</summary>
+        {(() => {
+          const running = calls.filter(s => s.status === 'running');
+          const finished = calls.filter(s => s.status !== 'running').length;
+          if (running.length === 0) return <><p>Tidak ada tugas berjalan</p>{finished > 0 && <small className="inspector-bg-finished">{finished} finished</small>}</>;
+          return <>
+            <ul className="inspector-bg-list">
+              {running.map(step => <li key={step.turnId + ':' + step.seq}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><b>{step.toolName}</b>
+                  <span aria-label={STEP_GLYPH[step.status].label}>{STEP_GLYPH[step.status].glyph}{step.durationMs !== undefined && ' ' + formatStepDuration(step.durationMs)}</span></div>
+                {step.argsSummary && <small style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.argsSummary}</small>}
+              </li>)}
+            </ul>
+            <small className="inspector-bg-finished">{finished} finished</small>
+          </>;
+        })()}
+      </details>
+      <details open><summary><Server size={15}/>Connectors <span className="inspector-conn-sub">Subsistem Agent Core</span></summary>
+        {snapshot?.health ? <>
+          <ul className="inspector-conn-list">
+            {(() => {
+              const rows = [];
+              const h = snapshot.health;
+              if (h.memory) rows.push({ name: 'Memory', status: h.memory.status });
+              if (h.skills) rows.push({ name: 'Skills', status: h.skills.status });
+              if (h.codeIntelligence) rows.push({ name: 'Code Intelligence', status: h.codeIntelligence.status });
+              if (h.phone) rows.push({ name: 'Phone', status: h.phone.status });
+              if (h.webResearch) rows.push({ name: 'Web research', status: h.webResearch.status });
+              if (h.execution) rows.push({ name: 'Execution', status: h.execution.status });
+              return rows.map((r, i) => <li key={i}><span className={'inspector-dot ' + (['available','ok','ready','healthy'].includes(r.status.toLowerCase()) ? 'ok' : ['degraded','warn'].includes(r.status.toLowerCase()) ? 'warn' : ['error','unavailable','failed'].includes(r.status.toLowerCase()) ? 'bad' : 'idle')}/>{r.name}<span>{r.status}</span></li>);
+            })()}
+          </ul>
+        </> : <p>Menunggu host desktop</p>}
+      </details>
+      <details open><summary><Cable size={15}/>Environment</summary>
+        <dl className="inspector-env-list">
+          <dt>Workspace</dt><dd>{chat?.active?.conversation.workspace ?? 'agent-core'}</dd>
+          <dt>Root</dt><dd>{snapshot?.paths.root ?? 'Waiting for the desktop host'}</dd>
+          <dt>Core</dt><dd>{snapshot ? `${snapshot.core.port} · ${snapshot.core.httpHealthy ? 'healthy' : 'tidak sehat'}` : '—'}</dd>
+          <dt>Versi</dt><dd>{snapshot?.version ?? '—'}</dd>
+        </dl>
+      </details>
       <details open><summary><Paperclip size={15}/>Imported Files</summary><p>File and folder attachments are a planned upgrade. No files are imported by the composer.</p></details>
       <details open><summary><FileText size={15}/>Workspace Artifacts</summary><p>{turn?'Inspect the actual changes recorded for this task.':'Select a conversation to inspect task changes.'}</p><button className="prototype-link" disabled={!onArtifacts} onClick={onArtifacts}>Open Artifacts →</button><dl><dt>Memory records used</dt><dd>{turn?.memoryUse?.length ?? 'Not recorded'}</dd></dl></details>
-      <div className="inspector-workspace"><Folder size={15}/><div><span>Workspace</span><code>{chat?.active?.conversation.workspace ?? 'agent-core'}</code>
-        <small>{snapshot?.paths.root ?? 'Waiting for the desktop host'}</small></div></div>
     </div>
   </aside>;
 }

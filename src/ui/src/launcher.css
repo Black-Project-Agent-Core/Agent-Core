@@ -122,11 +122,26 @@
 .inspector-compact-row button:hover:not(:disabled) { background:rgba(148,163,184,.26); }
 .inspector-compact-row button:disabled { opacity:.5; cursor:not-allowed; }
 .inspector-compact small { display:block; margin-top:4px; font-size:9px; color:#94a3b8; }
-.inspector-workspace { display:flex; align-items:flex-start; gap:8px; color:var(--cyan); padding:4px; }
-.inspector-workspace>div { display:flex; flex-direction:column; min-width:0; gap:5px; }
-.inspector-workspace span { font-size:9px; color:#8397af; }
-.inspector-workspace code { font-size:10px; color:#d9e5f5; }
-.inspector-workspace small { font-size:9px; overflow-wrap:anywhere; color:#8b9db3; }
+.inspector-bg-list { list-style:none; padding:0 8px 8px; margin:0; }
+.inspector-bg-list li { border:1px solid var(--border); border-radius:4px; background:#0d1420; margin-top:5px; padding:7px; }
+.inspector-bg-list li>div { display:flex; justify-content:space-between; gap:8px; font-size:9px; }
+.inspector-bg-list b { overflow-wrap:anywhere; }
+.inspector-bg-list span,.inspector-bg-list small { color:#94a3b8; font-size:8px; }
+.inspector-bg-list small { display:block; margin-top:4px; color:#8d9db3; }
+.inspector-bg-finished { display:block; padding:0 10px 8px; font-size:8px; color:#8d9db3; }
+.inspector-conn-sub { margin-left:auto; font-size:9px; color:#8d9db3; }
+.inspector-conn-list { list-style:none; padding:4px 10px 8px; margin:0; }
+.inspector-conn-list li { display:flex; align-items:center; gap:8px; font-size:9px; padding:3px 0; color:#c5d3e5; }
+.inspector-conn-list li span { color:#d8e4f3; }
+.inspector-dot { display:inline-block; width:8px; height:8px; border-radius:50%; flex:none; }
+.inspector-dot.ok { background:var(--green); }
+.inspector-dot.warn { background:var(--amber); }
+.inspector-dot.bad { background:var(--red); }
+.inspector-dot.idle { background:var(--muted); }
+.inspector-env-list { display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px; padding:4px 10px 12px; margin:0; font-size:9px; }
+.inspector-env-list dt { color:#8d9db3; }
+.inspector-env-list dd { color:#d8e4f3; margin:0; text-align:right; overflow-wrap:anywhere; }
+
 .launcher-data-page { max-width:1400px; margin:0 auto; }
 .launcher-provider-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
 .launcher-provider-card { padding:18px; min-width:0; }
