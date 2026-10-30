@@ -938,6 +938,7 @@ export class AgentChatStore {
           iterations=CASE WHEN ? IS NULL THEN iterations ELSE MAX(COALESCE(iterations, 0), ?) END,
           max_iterations=COALESCE(?, max_iterations) WHERE turn_id=?`)
           .run(contextTokens, window, breakdownJson, iteration, iteration, maxIterations, turnId);
+        this.touchTurnConversation(db, turnId);
       });
     } catch { /* observability must not become execution authority */ }
   }
@@ -1234,7 +1235,14 @@ export class AgentChatStore {
         SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, 'running', ?, ?, ?, ?, 0 FROM chat_turn_steps WHERE turn_id=?`)
         .run(turnId, event.iteration ?? null, event.toolName ?? 'unknown', startedAtMs, event.argsSummary ?? null,
           event.inputText ?? '', event.inputTruncated ? 1 : 0, turnId);
+      this.touchTurnConversation(db, turnId);
     });
+  }
+
+  /** Step and progress writes change what the UI shows; moving the updated time is how a poll notices them. */
+  private touchTurnConversation(db: DatabaseSync, turnId: string): void {
+    db.prepare('UPDATE chat_conversations SET updated_at_ms=MAX(updated_at_ms+1,?) WHERE conversation_id=(SELECT conversation_id FROM chat_turns WHERE turn_id=?)')
+      .run(Date.now(), turnId);
   }
 
   /** Assistant narration (`assistant.progress`) as the next ordered row of the turn; empty/non-string text writes nothing. */
@@ -1247,20 +1255,25 @@ export class AgentChatStore {
         (turn_id, seq, iteration, tool_name, status, started_at_ms, result_summary, input_text, output_text, input_truncated, output_truncated)
         SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, 'ok', ?, ?, '', '', 0, 0 FROM chat_turn_steps WHERE turn_id=?`)
         .run(turnId, event.iteration ?? null, NARRATION_STEP_TOOL, startedAtMs, text, turnId);
+      this.touchTurnConversation(db, turnId);
     });
   }
 
   /** Completes the latest still-running step of the same tool; false when none matches. */
   completeStep(turnId: string, event: AgentTurnEvent): boolean {
     const toolName = event.toolName ?? 'unknown';
-    return this.withDb(db => Number(db.prepare(`UPDATE chat_turn_steps
+    return this.withDb(db => {
+      const changed = Number(db.prepare(`UPDATE chat_turn_steps
       SET status=?, duration_ms=?, result_summary=?, output_text=?, output_truncated=?,
           args_summary=COALESCE(?, args_summary)
       WHERE turn_id=? AND tool_name=? AND status='running'
         AND seq=(SELECT MAX(seq) FROM chat_turn_steps WHERE turn_id=? AND tool_name=? AND status='running')`)
-      .run(event.success === false ? 'error' : 'ok', event.durationMs ?? null, event.resultSummary ?? null,
-        event.outputText ?? '', event.outputTruncated ? 1 : 0, event.argsSummary ?? null,
-        turnId, toolName, turnId, toolName).changes) > 0);
+        .run(event.success === false ? 'error' : 'ok', event.durationMs ?? null, event.resultSummary ?? null,
+          event.outputText ?? '', event.outputTruncated ? 1 : 0, event.argsSummary ?? null,
+          turnId, toolName, turnId, toolName).changes) > 0;
+      if (changed) this.touchTurnConversation(db, turnId);
+      return changed;
+    });
   }
 
   listStepMeta(turnId: string, limit = DETAIL_STEPS_PER_TURN): AgentChatStepMeta[] {

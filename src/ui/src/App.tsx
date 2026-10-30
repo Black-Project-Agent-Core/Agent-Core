@@ -201,6 +201,9 @@ export default function App() {
 
   // External chat turns do not notify WebView2. Refresh the existing host-owned list
   // while Chat is visible; a list update never changes the selected conversation.
+  // Step writes move the conversation's updated time, so while the open conversation has a
+  // running turn the list is polled every 1.5 s (4 s otherwise) and the thread is re-read when it changes.
+  const activeRunning=agentChat.active?.turns.at(-1)?.status==='running';
   useEffect(()=>{
     if(page!=='chat'||!snapshot?.core.httpHealthy
       ||(snapshot.health.agentChat&&snapshot.health.agentChat.status!=='available'))return;
@@ -208,16 +211,16 @@ export default function App() {
       if(document.visibilityState==='hidden'||chatListPendingRef.current)return;
       chatListPendingRef.current=true;
       postHost({type:'agent-chat-list'});
-      postHost({type:'agent-chat-providers'});
+      if(!activeRunning)postHost({type:'agent-chat-providers'});
     };
     poll();
-    const timer=window.setInterval(poll,4000);
+    const timer=window.setInterval(poll,activeRunning?1500:4000);
     document.addEventListener('visibilitychange',poll);
     return()=>{
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange',poll);
     };
-  },[page,snapshot?.core.httpHealthy,snapshot?.health.agentChat?.status]);
+  },[page,snapshot?.core.httpHealthy,snapshot?.health.agentChat?.status,activeRunning]);
 
   useEffect(()=>{
     if(agentChat.error){

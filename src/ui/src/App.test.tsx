@@ -650,4 +650,33 @@ describe('Native Chat UI refresh',()=>{
     expect(screen.getByText('AGENT_RUNTIME_MAX_TOOL_ITERATIONS_EXCEEDED')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Message Agent Core' })).toHaveValue('');
   });
+
+  it('polls every 1.5 s only while the active conversation has a running turn',()=>{
+    vi.useFakeTimers();
+    render(<App/>);
+    pushSnapshot({
+      ...onlineSnapshot,
+      health:{
+        ...onlineSnapshot.health,
+        agentRuntime:{...onlineSnapshot.health.agentRuntime!,status:'available',configuredProviderCount:1},
+        agentChat:{status:'available',conversationCount:1,activeConversationCount:1,runningTurnCount:0},
+      },
+    });
+    const current={id:'current-thread',runtimeSessionId:'s1',workspace:'agent-core',
+      title:'Current Thread',status:'active' as const,createdAtMs:1,updatedAtMs:1};
+    const listResult=()=>act(()=>messageHandler!({data:{type:'agent-chat-list-result',result:{conversations:[current]}}}));
+    act(()=>messageHandler!({data:{type:'agent-chat-state',result:{conversation:current,turns:[],messages:[]}}}));
+    listResult();
+    postMessage.mockClear();
+    act(()=>vi.advanceTimersByTime(1600));
+    expect(postMessage).not.toHaveBeenCalledWith({type:'agent-chat-list'});
+    act(()=>messageHandler!({data:{type:'agent-chat-state',result:{conversation:current,turns:[{
+      id:'t1',conversationId:'current-thread',clientRequestId:'r1',runtimeTaskId:'k1',status:'running',createdAtMs:1,startedAtMs:1,
+    }],messages:[]}}}));
+    listResult();
+    postMessage.mockClear();
+    act(()=>vi.advanceTimersByTime(1600));
+    expect(postMessage).toHaveBeenCalledWith({type:'agent-chat-list'});
+    expect(postMessage).not.toHaveBeenCalledWith({type:'agent-chat-providers'});
+  });
 });

@@ -34,6 +34,30 @@ const completed = (toolName: string, atMs: number, extra: Partial<AgentTurnEvent
   durationMs: 42, argsSummary: 'a=1', resultSummary: '3 matches', outputText: 'full output', outputTruncated: false, ...extra,
 });
 
+describe('conversation change detection for running turns', () => {
+  it('bumps the conversation updated time on every step and progress write so the UI notices them', () => {
+    const { store, dbPath } = fixture();
+    const updated = () => {
+      const db = new DatabaseSync(dbPath, { readOnly: true });
+      try { return Number((db.prepare("SELECT updated_at_ms u FROM chat_conversations WHERE conversation_id='c1'").get() as { u: number }).u); }
+      finally { db.close(); }
+    };
+    const now = Date.now();
+    const initial = updated();
+    store.startStep('t1', started('read_file', now));
+    const afterStart = updated();
+    expect(afterStart).toBeGreaterThan(initial);
+    store.recordNarration('t1', { type: 'assistant.progress', at: new Date(now + 1).toISOString(), text: 'checking', iteration: 1 } as AgentTurnEvent);
+    const afterNarration = updated();
+    expect(afterNarration).toBeGreaterThan(afterStart);
+    expect(store.completeStep('t1', completed('read_file', now + 2))).toBe(true);
+    const afterComplete = updated();
+    expect(afterComplete).toBeGreaterThan(afterNarration);
+    store.recordContextUsage('t1', 1_000, 1_000_000, { iteration: 2, maxIterations: 24 });
+    expect(updated()).toBeGreaterThan(afterComplete);
+  });
+});
+
 describe('chat_turn_steps persistence', () => {
   it('records start then completion with ordered metadata and full text on demand', () => {
     const { store } = fixture();
