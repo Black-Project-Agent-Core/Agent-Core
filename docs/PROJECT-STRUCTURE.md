@@ -44,6 +44,10 @@ Peta tidak memberi izin membuka data terlindungi, mengedit artifact/state owner,
 | `.rdc-standalone/` | Tool operator eksternal, terpisah dari machine-control internal `src/rdc/`. |
 | `secrets/`, `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/` | Terlindungi; hanya nama boundary dicatat, tanpa inspeksi isi. `.env` juga dikecualikan. |
 
+## Profil operator lokal di luar repository
+
+`<REAL_USER_HOME>/.config/agent-core-profile/` adalah root tunggal yang dipilih eksplisit melalui AGENT_CORE_AI_PROFILE_ROOT pada aktivasi 2026-10-31. Owner pembaca: src/agent-profile.ts; penulis: operator melalui authoring manual, dengan setup awal dari tiga contoh publik setelah instruksi aktivasi pengguna. Berisi SOUL.md, IDENTITY.md, USER.md opsional; tidak ada Memory/Skill/job store, tidak dipindai dari cwd, dan tidak masuk Git. Startup hanya membaca; file dipertahankan sampai operator mengubah/menghapusnya. Matikan flag profil untuk rollback tanpa menghapus file operator.
+
 ## Skill: satu induk, role berbeda
 
 ```text

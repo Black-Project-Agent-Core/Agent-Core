@@ -1,7 +1,7 @@
 # Profil agen dan otomasi terarah
 Tanggal: 2026-10-31
 Revisi: 1
-Status: IMPLEMENTED / VERIFIED SOURCE — P1/P2; flag off; P3 HOLD
+Status: PROPOSED — P1/P2 COMPLETED / ACTIVE RESIDENT; P3 HOLD
 Jenis: Improvement
 Asal dan bukti:
 
@@ -114,7 +114,7 @@ Acceptance studi awal hanya dokumen. Bukti implementasi P1/P2 berikutnya tercata
 
 Rencana awal maksimal dua invokasi tes per target (merah → hijau); satu tambahan resolver diotorisasi pengguna dan dijalankan setelah permintaan always-allow. Correctness checks tetap sempit; tidak ada benchmark atau suite luas demi warna hijau. Jadwal/timezone, output/delivery dan izin side effect harus menjadi keputusan konkret P3 sebelum aktivasi. Jika satu prasyarat gagal, catat OPEN dan pertahankan default off.
 
-## Implementasi P1/P2 — 2026-10-31
+## Implementasi P1/P2 — 2026-10-31 (batas source/build sebelum aktivasi)
 
 Owner baru terbatas: src/agent-profile.ts membaca tiga file operator, bukan store atau writer. AGENT_CORE_AI_PROFILE_ENABLED default false; AGENT_CORE_AI_PROFILE_ROOT harus root absolut pilihan operator. cwd, repository, attachment, isi Markdown dan nama workspace tidak memilih profil. Contoh publik ada di docs/agent-profile-{SOUL,IDENTITY,USER}.example.md; salin secara sadar ke direktori privat dengan nama SOUL.md, IDENTITY.md, USER.md. Tidak ada file privat yang dibuat otomatis atau profil yang diaktifkan.
 
@@ -140,6 +140,35 @@ P1/P2 selesai pada batas source/build yang disetujui: 35 controller + 14 resolve
 
 ## Keputusan pengguna dan scope
 
-2026-10-31 — pengguna meminta "buat goals untuk mengerjakan 2 proposal dengan bantuan dari Native Agent Core" dan menyebut kedua path proposal. Scope rekomendasi Revisi 1 dipakai: P1 + P2 profil setelah P1 + P2 REM; P3 tetap HOLD sampai monitor/cadence/output konkret diotorisasi. Relay external-controller tidak dipalsukan sebagai approval operator Native. Pada saat keputusan dicatat, implementasi belum dimulai; hasil berikutnya ada pada bagian Implementasi P1/P2. Aktivasi tetap off.
+2026-10-31 — pengguna meminta "buat goals untuk mengerjakan 2 proposal dengan bantuan dari Native Agent Core" dan menyebut kedua path proposal. Scope rekomendasi Revisi 1 dipakai: P1 + P2 profil setelah P1 + P2 REM; P3 tetap HOLD sampai monitor/cadence/output konkret diotorisasi. Relay external-controller tidak dipalsukan sebagai approval operator Native. Pada batas keputusan implementasi itu, aktivasi masih off; keputusan aktivasi berikut menggantikan status deployment tersebut.
 
 Scope implementasi: **P1 + P2, HOLD P3**, Revisi 1. Tugas studi sebelumnya tidak mengintegrasikan apa pun; goal pengguna berikutnya mengerjakan scope ini. Tidak ada periodic job atau profil pribadi yang diaktifkan oleh pencatatan keputusan ini.
+
+## Aktivasi live P1/P2 — 2026-10-31
+
+**Keputusan pengguna:** "aktivasi dulu kalau gitu, biar perubahan nya di gunakan bukan di gantung begitu". Aktivasi profil dan build REM diselesaikan sebagai task `activate-rem-and-native-operator-profiles`; instruksi ini tidak membuat job P3. Bagian implementasi di atas mempertahankan bukti pada batas source/build sebelum keputusan aktivasi ini. Dokumen induk tetap aktif karena P3 HOLD; kata pertama status PROPOSED menjaga paket terbuka tetap terlihat pada reader proposal.
+
+Konfigurasi lokal kini `AGENT_CORE_AI_PROFILE_ENABLED=true` dan `AGENT_CORE_AI_PROFILE_ROOT=<REAL_USER_HOME>/.config/agent-core-profile`. Root tunggal di luar repo telah dideklarasikan pada PROJECT-STRUCTURE sebelum dibuat. Tiga file SOUL.md, IDENTITY.md dan USER.md diisi persis dari contoh publik dalam docs; tidak mengarang data pribadi. Startup hanya membaca, authoring selanjutnya tetap manual. `.env` diperiksa dengan compare-and-swap hash sebelum menambahkan dua key itu; kredensial dan nilai cognitive `all` yang sudah ada dipertahankan. File operator dan `.env` tidak masuk Git. Default produk tetap off pada instalasi yang belum memilih root/flag.
+
+Build resmi backend dan UI exit 0 sebelum restart: path policy 533 authored files/0 exceptions, Skill ownership 42 sources/47 artifacts dan structure 472 directories PASS. Delapan artifact terpilih dicatat melalui checkpoint existing `7952d5cd-5671-4135-a495-f629a72d2ef0` dan dibaca kembali; snapshot owner juga mewarisi entri lama, sehingga bukan backup delapan file saja dan tidak boleh dipulihkan seluruhnya sebagai rollback tugas ini. Hash sebelum/sesudah build dan setelah restart sama:
+
+| Artifact | SHA-256 |
+|---|---|
+| dist/agent-controller.js | 626431a2c83ce0640fa20e4adc83b6a86a623a68725bcea3340e37543b07e5de |
+| dist/agent-profile.js | 06e6be73fe24234c44e7bc3569ef66b93b0603141100db5c7fb16afa7f46198c |
+| dist/memory/rem-consolidation.js | 47e54a674a466cd0470b9c9204811a22242ed52dc93d5b92237920fdb721eaed |
+| dist/memory/service.js | e84000fa24f4dff916c7e9a1a400d1646e2948d2ced12cff936ef4eacf7b40b8 |
+| dist/memory/cognitive-maintenance.js | 9f33f8272f0e0956887d327a2c683ab397de32c9ce7b78ba449750a9a4780744 |
+| dist/ui/index.html | 78c3fb8b3c86458db4e9bb0d1b1f3ada2f44c6109b3e0891ce67c851d2626c9d |
+| dist/ui/assets/index-uobluHM0.js | 41fae1ae5342d351bb7bf788f7ad42a2a7fe78e84bd8bf5c797924f922e0130a |
+| dist/ui/assets/index-B11KbJFH.css | ad4a3ed9cc9792900f19e4c38c1a3b7e39b90d626321a35927f14b83ef57875a |
+
+Satu `restart_agent_core(capabilitiesChanged=false)` memakai lifecycle existing. Receipt `runtime/restart/7850af8f7bef4c48b948b384fe98bde5.json` selesai exit 0 pada **17:43:06 WIB**. Core berubah dari PID 16484 ke **9316**, mulai **17:42:10 WIB**, entry dist/index.js. Health setelah chat verifikasi: HTTP 200/status ok, build stale false, canonical Memory complete/available dengan 0 issue, dan 0 running/resumable chat turn. Kontrak eksternal dibaca/diakui ulang setelah restart; tidak ada schema atau discovery baru yang memerlukan refresh tools.
+
+**Bukti resident profil:** conversation `5fc4d31f-7ddc-4cf8-a898-e4add3d3d702`, turn `12ab8b65-925a-4640-9abc-0bac9fdb2bd4`, clientRequestId `activate-profiles-resident-greeting-r1-20261031`, prompt "halo", finalized pada **17:45:25 WIB**. Respons send sempat terputus; readback menemukan turn yang sama sudah selesai, tanpa resend. Metadata host mencatat enabled true, audience external, principal non-owner, origin external-controller dan identity Agent Core / Asisten lokal / 🦉. SOUL/IDENTITY terbaca tanpa truncation; USER ineligible tanpa digest. Revisi snapshot eksternal `sha256:8c99b7281972ec49ab84ee66f3a2ae73e0d000717ea4faddd992c03788095a89`. Satu provider call, 0 tool calls dan 0 retrieval; jawaban "Halo! 🦉 Ada yang bisa saya bantu hari ini?" sendiri bukan satu-satunya bukti.
+
+Preflight loader produksi dengan konteks owner-private membaca ketiga file, revisi `sha256:8fc7730845c0863ae40c9d7cb16921ebf23e665fba488d336613888f4a2f1903`; ini pemeriksaan loader, bukan pesan operator Native nyata. Tidak menyamar sebagai local-operator lewat token UI. Tampilan launcher dan turn owner-private langsung belum diperiksa secara interaktif; pemeriksaan source/UI sebelumnya tetap batas buktinya.
+
+**REM pada resident baru:** konfigurasi cognitive `all` sudah aktif sebelum tugas ini dan tidak diubah; implementasi guarded REM sekarang berada pada build/PID baru yang hash-nya cocok. Initializer Memory existing memulai loop yang diaktifkan saat canonical store sehat, dengan interval REM 1.800.000 ms (30 menit). Health publik tidak menampilkan status siklus cognitive; tidak mengklaim siklus/digest baru telah diamati. Tidak memaksa maintenance live, membuat writer/loop kedua atau mengubah interval untuk mendapatkan bukti. [Penerimaan REM](Konsolidasi-REM-Berbasis-Revisi-Sumber.md) memisahkan correctness source dari hasil siklus live.
+
+**Rollback dan versi:** matikan flag profil atau hapus hanya dua key profil yang ditambahkan; pertahankan file operator dan konfigurasi cognitive sebelumnya. Untuk rollback artifact gunakan hanya subset checkpoint yang telah diverifikasi, melalui lifecycle restart existing, tanpa reset Memory. Versi produk tetap 1.6.0; intent minor profil dan patch REM existing tetap berlaku. Aktivasi konfigurasi dan dokumentasi ini tidak menerapkan release, tag atau push dan tidak memerlukan intent duplikat. Tidak ada source/test/dependency baru, benchmark atau klaim manfaat kausal; perubahan bersama membatasi atribusi. Warning CSS existing yang dicatat di atas tetap tindak lanjut di luar scope. P1/P2 aktif; **P3 HOLD**.

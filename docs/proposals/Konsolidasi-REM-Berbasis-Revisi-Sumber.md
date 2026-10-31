@@ -1,7 +1,7 @@
 # Konsolidasi REM berbasis revisi sumber
 Tanggal: 2026-10-31
 Revisi: 1
-Status: IMPLEMENTED / VERIFIED SOURCE — P1/P2, 33 tes terarah dan build resmi lulus; tanpa aktivasi live
+Status: COMPLETED — P1/P2 source/build terverifikasi dan build aktif pada resident 2026-10-31; hasil siklus live belum diamati
 Jenis: Improvement
 Asal dan bukti:
 
@@ -132,6 +132,14 @@ Hash output semantik penuh sengaja memperlakukan perubahan metadata oleh owner l
 
 ## Keputusan pengguna dan scope
 
-2026-10-31 — pengguna meminta "buat goals untuk mengerjakan 2 proposal dengan bantuan dari Native Agent Core" dan menyebut kedua path proposal. Scope rekomendasi Revisi 1 dipakai: P1 → P2 REM, lalu P1 → P2 profil; P3 otomasi tetap HOLD sesuai prasyaratnya. Ini instruksi pengguna di chat Codex yang direlay sebagai external-controller, bukan pesan operator Native atau userEvidenceRef buatan. Pada saat keputusan dicatat implementasi belum dimulai; hasil source/tes/build berikutnya dicatat di bagian implementasi. Aktivasi live tetap tidak dilakukan.
+2026-10-31 — pengguna meminta "buat goals untuk mengerjakan 2 proposal dengan bantuan dari Native Agent Core" dan menyebut kedua path proposal. Scope rekomendasi Revisi 1 dipakai: P1 → P2 REM, lalu P1 → P2 profil; P3 otomasi tetap HOLD sesuai prasyaratnya. Ini instruksi pengguna di chat Codex yang direlay sebagai external-controller, bukan pesan operator Native atau userEvidenceRef buatan. Pada batas keputusan implementasi itu, aktivasi live belum diminta; hasil source/tes/build di atas mempertahankan batas historis tersebut. Keputusan aktivasi berikut menggantikan status deployment itu.
 
 Scope implementasi: **P1 + P2, berurutan**, Revisi 1. Model synthesis/diary, scheduler baru, backfill dan promosi otomatis tambahan tetap di luar scope. Pilihan internal: pisahkan family ID stabil dari generation sumber; final guard dan perubahan digest lewat transaksi canonical. Sumber/revisi yang tidak dapat diperiksa atau digest yang diedit manusia tidak boleh ditimpa; report menyatakan skip/review.
+
+## Aktivasi dan penyelesaian — 2026-10-31
+
+Pengguna kemudian meminta "aktivasi dulu kalau gitu, biar perubahan nya di gunakan bukan di gantung begitu". Build backend/UI resmi berhasil dan satu restart existing selesai exit 0 (receipt `7850af8f7bef4c48b948b384fe98bde5`), Core PID 16484 → 9316, mulai 17:42:10 WIB. Health setelah verifikasi Native: HTTP 200, status ok, stale false, canonical Memory complete/available dan 0 issue. Hash artifact REM/controller/UI cocok sebelum/sesudah build serta setelah restart. [Catatan aktivasi bersama](Profil-Agen-dan-Otomasi-Terarah.md#aktivasi-live-p1p2--2026-10-31) memuat delapan hash, checkpoint, readback Native dan rollback; ini satu deployment, bukan dukungan independen berulang.
+
+Konfigurasi cognitive `all` sudah aktif dan dipertahankan. Initializer Memory existing menggunakan loop REM 30 menit pada canonical store sehat; tidak menambah job P3, model, writer atau scheduler. Status siklus cognitive tidak diekspos health publik dan belum diamati pada tugas ini. Tidak memaksa siklus/digest live atau memakai Memory pengguna sebagai eksperimen; status selesai menyatakan kode guarded REM sudah dimuat resident, bukan bahwa digest baru atau manfaat retrieval telah terbukti. Correctness tetap 33 pemeriksaan source terarah yang sudah lulus. Intent patch existing dipertahankan; produk tetap 1.6.0, tanpa release/tag/push atau intent duplikat.
+
+P1/P2 diselesaikan pada 2026-10-31. Path asal: docs/proposals/Konsolidasi-REM-Berbasis-Revisi-Sumber.md. Path arsip setelah finalisasi publikasi/Learning: docs/history-agent-core/Konsolidasi-REM-Berbasis-Revisi-Sumber.md. Keputusan, kegagalan awal, batas source dan keterbatasan live di atas dipertahankan; tidak ada paket OPEN/HOLD dalam dokumen REM ini. P3 HOLD tetap milik dokumen profil/otomasi yang aktif.
