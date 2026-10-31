@@ -30,6 +30,8 @@ export interface CognitiveHost {
   repairSummary(): Promise<{ pending: number; failed: number; issue?: string }>;
   commitDigest(plan: DigestPlan): Promise<DigestCommitResult>;
   feedbackSalience(): Promise<Map<string, number>>;
+  /** Forgotten record ids; a failed read fails the digest step instead of planning without it. */
+  forgottenIds?(): Promise<ReadonlySet<string>>;
 }
 
 export interface ContradictionReport {
@@ -272,9 +274,11 @@ export class MemoryCognitiveEngine {
   private async consolidate(apply: boolean): Promise<NonNullable<CognitiveCycleReport['digests']>> {
     const records = await this.host.snapshot();
     if (!this.host.canonicalComplete()) throw new Error('MEMORY_CANONICAL_INCOMPLETE');
+    const excludeIds = await this.host.forgottenIds?.();
     const { plans, ...counts } = planEpisodicDigests(records, {
       now: Date.now(), windowMs: this.config.rem.windowMs,
       minClusterSize: this.config.rem.minClusterSize, maxClusterSize: this.config.rem.maxClusterSize,
+      ...(excludeIds ? { excludeIds } : {}),
     });
     const created: string[] = [];
     const updated: string[] = [];

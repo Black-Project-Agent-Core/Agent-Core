@@ -209,4 +209,32 @@ describe('REM model assist: MemoryService', () => {
     expect(digest.tags).not.toContain('model-assisted');
     expect(fallback.digests?.assist).toMatchObject({ called: 1, fallback: 1 });
   });
+
+  it('never digests a forgotten source or sends its text to the model, and refuses one forgotten while the model runs', async () => {
+    const { service } = await fixtures.service(options);
+    const canary = 'forgotten_canary_aurora';
+    const members = await Promise.all(['first', 'second', 'third', 'fourth'].map((name) => service.remember({
+      content: name === 'first' ? `${canary} records an operator observation.` : `Episode ${name} observed the old configuration.`,
+      keywords: ['alpha', 'beta'], tags: ['ops', 'daily'], category: 'episodic', context: 'x', provenance: { workspace: 'ops', files: [] },
+    })));
+    await service.lifecycle(members[0]!.id, 'forget-canary-source', 'forget');
+    const prompts: string[] = [];
+    service.setDreamingCompletion(async ({ prompt }) => { prompts.push(prompt); return `Ringkasan model [${firstPrefix(prompt)}].`; });
+    const first = await service.runCognitiveMaintenance({ apply: true, remOnly: true });
+    const id = first.digests!.created[0]!;
+    const digest = (await service.read(id, false))!;
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).not.toContain(canary);
+    expect(digest.content).not.toContain(canary);
+    expect(digest.links.map((l) => l.targetId).sort()).toEqual(members.slice(1).map((m) => m.id).sort());
+
+    await service.update(members[3]!.id, { content: 'A corrected observation replaces the old configuration.' });
+    service.setDreamingCompletion(async ({ prompt }) => {
+      await service.lifecycle(members[2]!.id, 'forget-while-model-runs', 'forget');
+      return `Ringkasan baru [${firstPrefix(prompt)}].`;
+    });
+    const raced = await service.runCognitiveMaintenance({ apply: true, remOnly: true });
+    expect(raced.digests).toMatchObject({ created: [], updated: [], failed: [] });
+    expect((await service.read(id, false))!.content).toBe(digest.content);
+  });
 });

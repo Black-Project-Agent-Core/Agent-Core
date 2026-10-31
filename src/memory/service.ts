@@ -263,6 +263,7 @@ export class MemoryService {
       repairSummary: () => this.index.repairSummary(),
       commitDigest: plan => this.commitCognitiveDigest(plan),
       feedbackSalience: () => this.feedbackSalienceMap(),
+      forgottenIds: () => this.feedbackStore.forgottenIds(new Set(this.records.keys())),
     };
   }
 
@@ -1078,6 +1079,9 @@ export class MemoryService {
   /** Final source/admission CAS and digest mutation share the existing canonical lock. */
   private async commitCognitiveDigest(plan: DigestPlan): Promise<DigestCommitResult> {
     this.assertOperational();
+    // A source forgotten after planning (for example while a model rewrote the text) must not be digested.
+    // The transaction below cannot read the feedback store, so this is the last check before it.
+    if ((await this.feedbackStore.forgottenIds(new Set(plan.memberIds))).size) return { status: 'skipped', reason: 'ineligible' };
     const { value: input, redactions } = this.maskInput<RememberInput>({
       title: plan.title, content: plan.content, keywords: plan.keywords, tags: plan.tags, context: plan.context,
       category: 'consolidated-knowledge', source: { type: REM_SOURCE_TYPE },

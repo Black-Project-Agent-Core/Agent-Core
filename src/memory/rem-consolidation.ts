@@ -96,6 +96,7 @@ function supersededIds(records: readonly MemoryRecord[], now: number): Set<strin
 function eligible(record: MemoryRecord, superseded: Set<string>, options: DigestOptions): boolean {
   const updated = Date.parse(record.updatedAt);
   return Boolean(workspaceOf(record)) && !record.pinned && !isMemoryExpired(record, options.now)
+    && !options.excludeIds?.has(record.id)
     && !superseded.has(record.id) && record.source?.type !== REM_SOURCE_TYPE && !record.tags.includes(REM_TAG)
     && !record.links.some(link => link.type === 'derived-from' && isMemoryLinkActive(link, options.now))
     && !(record.version === 2 && (record.experience.retention === 'archive'
@@ -133,6 +134,8 @@ export interface DigestOptions {
   windowMs: number;
   minClusterSize: number;
   maxClusterSize: number;
+  /** Records the operator forgot: never a digest source, so their text cannot resurface or reach a model. */
+  excludeIds?: ReadonlySet<string>;
 }
 
 function workspaceOf(record: MemoryRecord): string {
