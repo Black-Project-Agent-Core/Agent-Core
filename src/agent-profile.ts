@@ -20,12 +20,12 @@ export const agentProfileMetadataSchema = z.object({
   principal: z.enum(['local-operator', 'non-owner']), workspace: z.string().max(200).optional(),
   identity: z.object({ name: z.string().min(1).max(80), role: z.string().max(160).optional(), emoji: z.string().max(16).optional(),
     avatar: z.string().max(90_000).regex(/^data:image\/png;base64,[A-Za-z0-9+/=]+$/).optional() }),
-  files: z.object({ SOUL: fileState, IDENTITY: fileState, USER: fileState }),
+  files: z.object({ SOUL: fileState, IDENTITY: fileState, USER: fileState, AGENTS: fileState.default({ status: 'absent', truncated: false }) }),
 });
 export type AgentProfileMetadata = z.infer<typeof agentProfileMetadataSchema>;
 export interface AgentProfileSnapshot { readonly prompt: string; readonly metadata: AgentProfileMetadata }
-const names = ['SOUL', 'IDENTITY', 'USER'] as const;
-const caps = { SOUL: 4096, IDENTITY: 1024, USER: 4096 };
+const names = ['SOUL', 'IDENTITY', 'USER', 'AGENTS'] as const;
+const caps = { SOUL: 4096, IDENTITY: 1024, USER: 4096, AGENTS: 4096 };
 const hash = (value: string | Buffer) => 'sha256:' + createHash('sha256').update(value).digest('hex');
 const builtin = { name: 'Agent Core' };
 const samePath = (left: string, right: string) => path.relative(left, right) === '';
@@ -92,7 +92,7 @@ function identityFields(text: string) {
   return fields;
 }
 
-/** Three bounded files, one immutable run snapshot; no global cache, discovery, or model call. */
+/** Four bounded files, one immutable run snapshot; no global cache, discovery, or model call. */
 export async function loadAgentProfile(config: AgentProfileConfig | undefined,
   scope: { audience?: AgentProfileAudience; workspace?: string } = {}): Promise<AgentProfileSnapshot> {
   const audience = scope.audience ?? 'unknown', enabled = config?.enabled === true;
@@ -159,6 +159,7 @@ export async function loadAgentProfile(config: AgentProfileConfig | undefined,
     'Audience: ' + audience + '; revision: ' + revision,
     'Display identity (not provider identity or permissions): ' + JSON.stringify({ name: identity.name, role: identity.role, emoji: identity.emoji }),
     ...(texts.SOUL ? ['SOUL (tone and values):\n' + texts.SOUL] : []),
+    ...(texts.AGENTS ? ['AGENTS (operator notes; fixed policy, the AGENTS.md contract and the current request win):\n' + texts.AGENTS] : []),
     ...(texts.USER ? ['USER (owner preferences; current request wins):\n' + texts.USER] : []),
   ].join('\n\n') : '';
   for (const name of names) Object.freeze(files[name]);

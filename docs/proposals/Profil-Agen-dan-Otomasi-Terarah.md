@@ -233,3 +233,22 @@ Hasil akhir invokasi 19:52:52 WIB: **103/103 backend PASS** pada lima target (co
 Build gabungan dengan pekerjaan responsiveness concurrent memakai versi development canonical **1.7.0-dev.1**. Backend/UI/launcher build berhasil; SHA-256 launcher terpasang dan kandidat sama `e9f90d83e1f30da83b16b27e9807828cb29ed54124b482432c765b9ec0a31363`. Checkpoint terkelola sebelum rebuild `a4d75e84-f084-4ad6-9517-bdaa015a543c` mewarisi 294 entri; hanya subset artifact tugas yang relevan, bukan whole-system rollback. Satu restart resmi koreksi ini: receipt `54225fad4f324338b143029ac2812e4d`, exit 0, selesai **19:55:15 WIB**. Core **PID 14604**, mulai **19:54:29 WIB**, status healthy, stale=false, tidak ada chat running saat pemeriksaan. Tidak ada MCP schema/Skill baru pada koreksi ini, sehingga capabilitiesChanged=false.
 
 Screenshot Native sebelum restart terakhir memperlihatkan build 1.7.0-dev.1 dan workspace baru. Saat hendak memeriksa jendela setelah restart, Computer Use melaporkan penghentian oleh tombol Escape fisik; input UI dihentikan. Tidak ada canary profil ditulis dan tidak ada pesan uji operator dikirim pada sesi itu. **OPEN:** buktikan `/perkenalan` tanpa/dengan argumen pada jendela Native; buktikan IDENTITY/SOUL/USER pada giliran berikut melalui input audit sementara dan readback; jalankan satu REM manual melalui UI dan catat hasil; pulihkan konten audit, kemudian bersihkan tiga file asal C yang tidak berubah. Tidak mengklaim live cycle atau owner-private UI sudah terbukti. Status goal tetap aktif sampai penerimaan ini selesai. Tidak ada benchmark, push, tag atau release:apply. Existing minor/patch release intents diperluas tanpa duplikasi.
+
+## Penerapan sembilan berkas ala OpenClaw — 2026-10-31 (Revisi 3)
+
+**Permintaan pengguna:** menerapkan AGENTS, SOUL, IDENTITY, USER, memory harian, MEMORY, SKILL, DREAMS dan BOOTSTRAP ala OpenClaw ke Agent Core, dengan membedah salinan `F:\AI Skill\openclaw`.
+
+**Batas bukti:** salinan F: korup pada pemeriksaan ini. Direktori `docs/concepts`, `docs/reference`, `docs/start` dan `src/agents` gagal dibaca (Windows error 1392), 59 dari 60 berkas di `skills/` dan seluruh `docs/reference/templates/*.md` berisi byte non-teks dengan awalan identik, dan indeks Git korup. Yang terbaca hanya `AGENTS.md` akar (panduan kontributor repo) dan `CHANGELOG.md`. Isi template tidak direkonstruksi dari ingatan; dasar pemetaan tetap audit R1 di atas. Tidak ada tulisan atau perbaikan ke drive F:.
+
+| Berkas | Keadaan di Agent Core | Status |
+| --- | --- | --- |
+| AGENTS.md | Kontrak root untuk eksternal dan kebijakan tetap Native di kode sudah menutup aturan data, scope, gaya dan Memory. Baru: `AGENTS.md` profil opsional 4 KiB untuk catatan operator, tunduk pada keduanya. Baris AGENTS pada tabel owner di atas dibuka kembali oleh permintaan pengguna ini; kontrak root tidak diganti. | Source dan tes selesai; pemakaian resident OPEN sampai build dan restart |
+| SOUL.md | Profil existing; isi diperkaya (nilai, nada, batas) dalam batas 4 KiB. | Dibaca pada giliran berikutnya bila profil aktif |
+| IDENTITY.md | Profil existing; tidak diubah. | Tidak berubah |
+| USER.md | Tidak diisi dari Memory atau recall (baris USER/MEMORY di atas); writer resmi tetap `/perkenalan`. | Menunggu operator |
+| `memory/YYYY-MM-DD.md`, `MEMORY.md` | Memory kanonik `runtime/memory` adalah satu-satunya store; berkas tulis menjadi store kedua. | HOLD, menunggu keputusan pengguna |
+| SKILL.md | `runtime/skills/capability-packs/<skill>/SKILL.md` dengan lifecycle SkillService. | Sudah ada |
+| DREAMS.md | Dreaming Review `/agent/dreaming` di atas REM existing; tidak ada berkas. | Sudah ada, tanpa berkas |
+| BOOTSTRAP.md | `/perkenalan` adalah ritual perkenalan; loader hanya membaca, sehingga berkas sekali-pakai tidak dapat menghapus dirinya. | HOLD, menunggu keputusan pengguna |
+
+**Verifikasi:** `tests/agent-profile.test.ts` 21/21 PASS, consumer `agent-chat-store` dan `agent-chat-service` 50/50 PASS, `tsc --noEmit` exit 0. Run pertama gagal pada tes lama maupun baru karena TEMP Windows berbentuk 8.3 (probe: loader menolak root yang `realpath`-nya berbeda dari path); run kedua memakai TEMP panjang. Jadi tidak ada run merah murni yang memisahkan tes AGENTS baru. Bukan suite penuh; tidak ada benchmark, push, tag, release:apply maupun restart.
