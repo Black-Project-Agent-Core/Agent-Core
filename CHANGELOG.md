@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [docs] Add revision 1 of `docs/proposals/Konsolidasi-REM-Berbasis-Revisi-Sumber.md`: static OpenClaw dreaming study proposing source-revision binding, guarded publication and reason reporting in existing REM maintenance. Proposed only; no implementation, configuration, activation or product-version change.
+
 - [docs] Add revision 1 of `docs/proposals/Profil-Agen-dan-Otomasi-Terarah.md`: OpenClaw workspace-role study and integration plan, including TOOLS/HEARTBEAT retirement, private context boundaries and separate automation approval. Proposed only; no implementation, activation or product-version change.
 
 - [patch] Strengthen `reverse-engineer-anything` with case/source attribution, finite independent reconstruction acceptance, artifact-instruction and model-provider disclosure boundaries, and separate code/asset reuse provenance. Adapter revision 2 adds selective methods from the 38-case `awesome-rea` study: analyzer controls, numeric and constraint recovery, interpreter/script state, packed-data fallbacks, compatibility seams and schema context budgets. Revision 3 extends the five-repository study with reuse/output selection, stripped enum value-flow reasoning, matched per-identifier negative controls, traceable fixed acceptance and run integrity, and aggregate archive/VM budgets. The adapter retains REA 6.5.0, upstream skill revision 42, its launcher/lock and eight operational guides. Pending patch intent: `.changeset/rea-case-evidence.md`.
