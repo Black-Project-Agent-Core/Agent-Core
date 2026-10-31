@@ -76,7 +76,7 @@ public sealed class AgentCoreRuntime : IDisposable
             // Keep the cold-start allowance, but start discovery only after Core is ready.
             await EnsureCoreAsync();
             await EnsurePublicGatewayAsync();
-            await EnsureTunnelAsync();
+            // Before the OpenAI tunnel: a slow or failing tunnel-client start-up must not keep this one offline.
             try
             {
                 if (!await EnsureCloudflaredAsync())
@@ -84,9 +84,10 @@ public sealed class AgentCoreRuntime : IDisposable
             }
             catch (Exception error) when (error is not OperationCanceledException)
             {
-                // Optional tunnel: its failure must not fail the start-up of Core, gateway and OpenAI tunnel above.
+                // Optional tunnel: its failure must not fail the start-up of the services around it.
                 CaptureFailure("CLOUDFLARE", error, "cloudflared-start-failed");
             }
+            await EnsureTunnelAsync();
 
             AddLog(
                 "CONNECTION",
