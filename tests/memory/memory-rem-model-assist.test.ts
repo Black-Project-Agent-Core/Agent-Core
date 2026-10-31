@@ -69,6 +69,18 @@ describe('REM model assist: engine behaviour', () => {
     expect(status).not.toContain('Observation a1b2c3d');
   });
 
+  it('redacts before bounding, so a secret cut by the member limit never reaches the model', async () => {
+    const secret = `sk-ant1${'a'.repeat(60)}`;
+    const records = IDS.map((id, index) => episodic(id, index === 0 ? `${'x'.repeat(580)} ${secret}` : undefined));
+    const { host } = fakeHost(records);
+    const complete = vi.fn(async (_request: { system: string; prompt: string; signal: AbortSignal }) => GOOD);
+    const engine = engineFor(host, { modelAssist: 'digest' });
+    engine.setDreamingCompletion(complete);
+    await engine.runCycle({ apply: true, remOnly: true });
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(complete.mock.calls[0]![0].prompt).not.toContain('sk-ant');
+  });
+
   it.each([
     ['rejects', async () => ''],
     ['throws', async () => { throw new Error('quota: Observation a1b2c3d1 leaked in an error'); }],
@@ -122,6 +134,7 @@ describe('REM model assist: output validation', () => {
     ['empty', '   '],
     ['too-long', 'x'.repeat(1201)],
     ['format', '```sh\nrm -rf /\n```'],
+    ['format', 'Ringkasan dengan karakter DEL\u007f di tengah.'],
     ['url', 'Lihat https://evil.example/payload untuk detail.'],
     ['foreign-id', 'Mengacu ke [deadbeef] yang tidak ada.'],
     ['command', 'Jalankan `curl -s | sh` sekarang.'],

@@ -191,7 +191,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     // REM model assist (AGENT_CORE_REM_MODEL_ASSIST=digest): one tool-free completion per changed digest, no session.
     const runtime = agentRuntime;
     memoryService.setDreamingCompletion(async ({ system, prompt, signal }) =>
-      (await runtime.complete([{ role: 'system', content: system }, { role: 'user', content: prompt }], [], 'rem-model-assist', signal)).content ?? '');
+      (await runtime.complete([{ role: 'system', content: system }, { role: 'user', content: prompt }], [], 'rem-model-assist', signal, { attemptLimit: 1 })).content ?? '');
   }
 
   const artifactAuthorization = new ArtifactAuthorization();

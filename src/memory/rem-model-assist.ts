@@ -1,4 +1,5 @@
 import { redactSensitiveString } from '../security/redaction.js';
+import { maskSecrets } from './privacy-masking.js';
 import { scanMemorySafety } from './safety.js';
 import type { MemoryRecord } from './types.js';
 
@@ -37,11 +38,11 @@ export const ASSIST_SYSTEM_PROMPT = [
 
 const idPrefix = (record: Pick<MemoryRecord, 'id'>) => record.id.slice(0, 8);
 
-/** Redacted, bounded member text; the model sees nothing the canonical masking would not also redact. */
+/** Masked first, bounded second: a secret straddling the limit must not survive as an unrecognisable prefix. */
 export function buildAssistPrompt(members: readonly MemoryRecord[]): string {
   return members.map((record) => {
-    const body = `${record.title?.trim() ?? ''}\n${record.content.trim()}`.trim().slice(0, MEMBER_CHARS);
-    return `[${idPrefix(record)}]\n${redactSensitiveString(body)}`;
+    const body = `${record.title?.trim() ?? ''}\n${record.content.trim()}`.trim();
+    return `[${idPrefix(record)}]\n${redactSensitiveString(maskSecrets(body).text).slice(0, MEMBER_CHARS)}`;
   }).join('\n\n');
 }
 
@@ -52,7 +53,7 @@ export function checkAbstractiveDigest(raw: string, title: string, members: read
   const text = raw.replace(/\r\n?/g, '\n').trim();
   if (!text) return reject('empty');
   if (text.length > MAX_ABSTRACT_CHARS) return reject('too-long');
-  if (text.includes('```') || /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(text)) return reject('format');
+  if (text.includes('```') || /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(text)) return reject('format');
   const source = members.map((record) => `${record.title ?? ''}\n${record.content}`).join('\n');
   const urls = text.match(/(?:https?:\/\/|www\.)[^\s)>\]]+/gi) ?? [];
   if (urls.some((url) => !source.includes(url))) return reject('url');
