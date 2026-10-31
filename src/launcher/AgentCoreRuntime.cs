@@ -17,6 +17,7 @@ public sealed class AgentCoreRuntime : IDisposable
     private static readonly TimeSpan CoreColdStartTimeout = TimeSpan.FromSeconds(180);
     private static readonly TimeSpan TunnelStartTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PublicGatewayStartTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan CloudflaredStartTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan WatchdogInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan StatusProbeGrace = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ProcessSnapshotProbeTimeout = TimeSpan.FromSeconds(2);
@@ -76,6 +77,16 @@ public sealed class AgentCoreRuntime : IDisposable
             await EnsureCoreAsync();
             await EnsurePublicGatewayAsync();
             await EnsureTunnelAsync();
+            try
+            {
+                if (!await EnsureCloudflaredAsync())
+                    AddLog("CLOUDFLARE", "info", "Cloudflare tunnel skipped: cloudflared or its tunnel token is not configured");
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                // Optional tunnel: its failure must not fail the start-up of Core, gateway and OpenAI tunnel above.
+                CaptureFailure("CLOUDFLARE", error, "cloudflared-start-failed");
+            }
 
             AddLog(
                 "CONNECTION",
@@ -625,6 +636,16 @@ public sealed class AgentCoreRuntime : IDisposable
                 CaptureFailure("GATEWAY", error, "launcher-close-gateway-stop");
             }
 
+            try
+            {
+                await StopCloudflaredAsync();
+            }
+            catch (Exception error)
+            {
+                issues.Add("cloudflared-stop");
+                CaptureFailure("CLOUDFLARE", error, "launcher-close-cloudflared-stop");
+            }
+
             IReadOnlyList<OwnedProcessInfo> residual = [];
             for (var attempt = 0; attempt < 3; attempt += 1)
             {
@@ -678,7 +699,7 @@ public sealed class AgentCoreRuntime : IDisposable
         }
     }
 
-    // Detects a dead Core or public gateway and starts it again, under the same lifecycle lock as user actions.
+    // Detects a dead Core, public gateway or cloudflared and starts it again, under the same lifecycle lock as user actions.
     private async Task WatchdogLoopAsync(CancellationToken token)
     {
         while (!_shutdownRequested)
@@ -699,6 +720,8 @@ public sealed class AgentCoreRuntime : IDisposable
                         AddLog("WATCHDOG", "warn", $"Public MCP gateway is not listening on {PublicGatewayPort}; starting it again", "watchdog-gateway-restart");
                         await EnsurePublicGatewayAsync();
                     }
+                    // Only a dead process is restarted: cloudflared reconnects to the edge by itself.
+                    await EnsureCloudflaredAsync();
                 });
             }
             catch (OperationCanceledException) when (_shutdownRequested) { return; }
@@ -786,6 +809,58 @@ public sealed class AgentCoreRuntime : IDisposable
         AddLog("GATEWAY", "success", $"Public MCP gateway is listening on internal port {PublicGatewayPort}");
     }
 
+    // Optional Cloudflare named tunnel (docs/Cloudflare-Tunnel.md). False means cloudflared or its token is not configured.
+    // A cloudflared that is running, including one started by Start-Cloudflare-Tunnel.ps1, is reused, never doubled.
+    private async Task<bool> EnsureCloudflaredAsync()
+    {
+        ThrowIfShutdownRequested();
+        var executable = CloudflaredLaunch.ExecutablePath(Root);
+        if (!File.Exists(executable)) return false;
+        if (GetCloudflaredProcessIds(executable).Count > 0) return true;
+        var plan = CloudflaredLaunch.Resolve(Root);
+        if (plan is null) return false;
+
+        var log = CloudflaredLaunch.LogPath(Root);
+        var logOffset = File.Exists(log) ? new FileInfo(log).Length : 0;
+        StartHidden(executable, plan.Arguments, Root, "CLOUDFLARE", plan.Environment);
+        await WaitForStartupAsync(
+            () => Task.FromResult(CloudflaredLaunch.HasRegisteredConnection(log, logOffset) || GetCloudflaredProcessIds(executable).Count == 0),
+            CloudflaredStartTimeout);
+        if (CloudflaredLaunch.HasRegisteredConnection(log, logOffset))
+            AddLog("CLOUDFLARE", "success", "Cloudflare tunnel is connected");
+        else if (GetCloudflaredProcessIds(executable).Count == 0)
+            AddLog("CLOUDFLARE", "error", $"cloudflared exited before it connected; check the tunnel token and the log ({log})");
+        else
+            // Not an error: cloudflared keeps retrying the edge connection (for example while the network is still coming up).
+            AddLog("CLOUDFLARE", "warn", $"Cloudflare tunnel has not connected within {CloudflaredStartTimeout.TotalSeconds:0} seconds; cloudflared keeps retrying (log: {log})");
+        return true;
+    }
+
+    private async Task StopCloudflaredAsync()
+    {
+        foreach (var pid in GetCloudflaredProcessIds(CloudflaredLaunch.ExecutablePath(Root)))
+            await KillProcessTreeBoundedAsync(pid);
+    }
+
+    // Exact project-local executable only: another cloudflared on this PC is never touched.
+    private static IReadOnlyList<int> GetCloudflaredProcessIds(string executable)
+    {
+        var ids = new List<int>();
+        foreach (var process in Process.GetProcessesByName("cloudflared"))
+        {
+            using (process)
+            {
+                try
+                {
+                    if (string.Equals(process.MainModule?.FileName, executable, StringComparison.OrdinalIgnoreCase))
+                        ids.Add(process.Id);
+                }
+                catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException) { }
+            }
+        }
+        return ids;
+    }
+
     private async Task RestartCoreAsync()
     {
         await StopCoreProcessesAsync();
@@ -796,7 +871,14 @@ public sealed class AgentCoreRuntime : IDisposable
     {
         await StopTunnelProcessesAsync();
         await EnsureTunnelAsync();
+        await RestartCloudflaredAsync();
         AddLog("TUNNEL", "success", "Tunnel restarted");
+    }
+
+    private async Task RestartCloudflaredAsync()
+    {
+        await StopCloudflaredAsync();
+        await EnsureCloudflaredAsync();
     }
 
     private async Task RestartAllAsync()
@@ -805,6 +887,7 @@ public sealed class AgentCoreRuntime : IDisposable
         await StopCoreProcessesAsync();
         await EnsureCoreAsync();
         await EnsureTunnelAsync();
+        await RestartCloudflaredAsync();
         AddLog("SYSTEM", "success", "Agent Core and tunnel restarted");
     }
 
@@ -1290,7 +1373,8 @@ public sealed class AgentCoreRuntime : IDisposable
         info.Environment["PATH"] = Path.Combine(paths.Runtime, "node") + Path.PathSeparator + inheritedPath;
     }
 
-    private void StartHidden(string executable, IReadOnlyList<string> arguments, string workingDirectory, string module)
+    private void StartHidden(string executable, IReadOnlyList<string> arguments, string workingDirectory, string module,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         ThrowIfShutdownRequested();
         var info = new ProcessStartInfo(executable) {
@@ -1301,6 +1385,9 @@ public sealed class AgentCoreRuntime : IDisposable
         };
         foreach (var argument in arguments) info.ArgumentList.Add(argument);
         ApplyOwnedChildEnvironment(info, PrepareOwnedChildRuntime());
+        // Set on this child's start info only, never on the launcher's own environment.
+        if (environment is not null)
+            foreach (var (name, value) in environment) info.Environment[name] = value;
 
         var process = Process.Start(info) ?? throw new InvalidOperationException($"Failed to start {executable}");
         process.EnableRaisingEvents = true;
@@ -1416,6 +1503,7 @@ public sealed class AgentCoreRuntime : IDisposable
             @"$coreEntry=Join-Path $root 'dist\index.js'",
             @"$gatewayEntry=Join-Path $root 'scripts\tunnel\public-mcp-gateway.mjs'",
             @"$tunnel=Join-Path $root 'tunnel-client\tunnel-client.exe'",
+            @"$cloudflared=Join-Path $root 'runtime\tools\cloudflared\cloudflared.exe'",
             @"$grafelRoot=(Join-Path $root 'runtime\grafel')+'\'",
             @"$semanticRoot=(Join-Path $root 'runtime\semantic-ide')+'\'",
             @"$browserRoot=Join-Path $root 'runtime\rdc\browser-control'",
@@ -1424,6 +1512,7 @@ public sealed class AgentCoreRuntime : IDisposable
                 "$ep=[string]$_.ExecutablePath; $cl=[string]$_.CommandLine; " +
                 "[int]$_.ProcessId -ne $current -and (" +
                     "($ep -and $ep.Equals($tunnel,[StringComparison]::OrdinalIgnoreCase)) -or " +
+                    "($ep -and $ep.Equals($cloudflared,[StringComparison]::OrdinalIgnoreCase)) -or " +
                     "($ep -and $ep.StartsWith($grafelRoot,[StringComparison]::OrdinalIgnoreCase)) -or " +
                     "($ep -and $ep.StartsWith($semanticRoot,[StringComparison]::OrdinalIgnoreCase)) -or " +
                     "($ep -and $ep.Equals($node,[StringComparison]::OrdinalIgnoreCase) -and $cl.IndexOf($coreEntry,[StringComparison]::OrdinalIgnoreCase) -ge 0) -or " +

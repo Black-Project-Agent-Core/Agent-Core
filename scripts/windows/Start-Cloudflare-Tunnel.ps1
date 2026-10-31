@@ -32,11 +32,9 @@ function Get-EnvValue([string]$Name) {
     return ($line -replace "^\s*$Name\s*=\s*", '').Trim().Trim('"', "'")
 }
 
+# Found by exact executable path, so a tunnel started by Agent Core.exe (which writes no PID file) counts too.
 function Get-RunningTunnel {
-    if (-not (Test-Path $Pid_)) { return $null }
-    $p = Get-Process -Id ([int](Get-Content $Pid_ -Raw)) -ErrorAction SilentlyContinue
-    if ($p -and $p.Path -eq $Exe) { return $p }
-    return $null
+    Get-Process -Name cloudflared -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $Exe } | Select-Object -First 1
 }
 
 switch ($Action) {
@@ -81,7 +79,7 @@ switch ($Action) {
         $p = Get-RunningTunnel
         if (-not $p) { Write-Output 'No project tunnel is running.'; break }
         Stop-Process -Id $p.Id
-        Remove-Item $Pid_ -Force
+        Remove-Item $Pid_ -Force -ErrorAction SilentlyContinue
         Write-Output "Stopped tunnel PID $($p.Id)."
     }
     'Status' {

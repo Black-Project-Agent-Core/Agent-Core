@@ -33,7 +33,7 @@ public static class AgentCoreDataDirectory
         return candidate;
     }
 
-    private static string? ReadDotEnv(string root, string name)
+    internal static string? ReadDotEnv(string root, string name)
     {
         var file = Path.Combine(root, ".env");
         if (!File.Exists(file)) return null;

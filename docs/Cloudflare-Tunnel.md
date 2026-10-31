@@ -60,7 +60,9 @@ OAuth tokens are bound to one resource URL. `AGENT_CORE_OAUTH_PROTECTED_RESOURCE
 ## Operations
 
 - `-Action Status` shows the process and the last log lines; `-Action Stop` stops only the project-local `cloudflared.exe`.
-- The script does not start at login. For an always-on tunnel use Task Scheduler on `-Action Run -Background`, or `cloudflared service install` (needs administrator rights and installs a system service outside the project).
+- **Starts with `Agent Core.exe`.** When `runtime\tools\cloudflared\cloudflared.exe` exists and a token is configured (`CLOUDFLARE_TUNNEL_TOKEN` in `.env`, or `secrets\cloudflare-tunnel-token.txt`), the desktop launcher starts the tunnel after Core, the public gateway and the OpenAI tunnel, and stops it when the launcher closes. The token reaches cloudflared only through its environment (or `--token-file`). A project-local cloudflared that already runs, for example one started by this script, is reused. Without the exe or a token the step is skipped; a failure never blocks Core start-up. Launcher log lines use the module `CLOUDFLARE`. With the launcher's Windows autostart on, the tunnel therefore comes online at login too.
+- The launcher's 30 second watchdog starts cloudflared again only when its process is gone; cloudflared reconnects to the Cloudflare edge by itself, so a network drop does not restart it. `-Action Stop` is therefore undone within 30 seconds while the launcher runs; close Agent Core to stop the tunnel for good. `restart-tunnel` and `restart-all` in the launcher restart it as well.
+- Without the launcher, use Task Scheduler on `-Action Run -Background`, or `cloudflared service install` (needs administrator rights and installs a system service outside the project).
 - Log: `runtime\tools\cloudflared\cloudflared.log`. Do not raise the log level to `debug`: it records request headers, including credentials.
 - Optional hardening in Cloudflare: a rate-limiting rule on `/oauth/*` and `/mcp`; an Access policy with a service token for non-OAuth clients (an Access login in front of the OAuth paths breaks OAuth connectors).
 
