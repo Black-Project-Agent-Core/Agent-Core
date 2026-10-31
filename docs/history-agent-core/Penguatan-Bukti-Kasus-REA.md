@@ -1,7 +1,7 @@
 # Penguatan Bukti Kasus dan Atribusi REA
 
 Tanggal: 2026-10-31
-Revisi: 4
+Revisi: 5
 Status: COMPLETED
 Selesai: 2026-10-31
 Jenis: Improvement — revisi Skill existing yang diminta langsung
@@ -9,13 +9,70 @@ Asal dan bukti: R1 `E:\Projects\Learning\awesome-reverse-engineer-anything`, com
 
 Tambahan Revisi 4: R3 `E:\Projects\Learning\awesome-rea`, katalog MIT oleh Sanbu, commit `9aac7d1121f4f2685109b899d92dde8b297871c5`; R4 [DX-Ball evidence](https://github.com/morluto/rea/blob/42fc6c53ae188978deb3bedfe88287b6b316ba22/website/evidence/dx-ball-sound-pan.md); R5 [known-source controls](https://github.com/UnknownHacker1/rea-groundtruth/blob/5b48f366368c9fbe2abaaab810aba6814c27190b/README.md); R6 [Open Scrantic ENGINE](https://github.com/glauberlima/open-scrantic/blob/8c049614158f2adb09e517ce9e29da89e8a3ac38/docs/ENGINE.md). R4–R6 dibaca sebagai teks publik secara read-only, bukan dieksekusi. Kredibilitas R3 moderat sebagai kurator dengan pin/tanggal dan batas reproduksi; R4–R6 primer tetapi hasil runtime tetap laporan penulis.
 
+**Asal Revisi 5 (ID R1–R5 di bagian Revisi 5 bersifat lokal, tidak mengganti ID historis):** lima checkout yang diminta pengguna di `E:\Projects\Learning`. Seluruhnya bersih saat inventaris; total **281 berkas tracked / 8.702.891 byte**. Urutan baca: README/arsitektur, seluruh mekanisme yang memetakan target, lalu implementasi/kontrak/kasus gagal dan metadata; terjemahan, gambar dekoratif dan respons generate tidak diperlakukan sebagai sumber independen.
+
+| ID / repo / commit | Tipe, kredibilitas dan profil nilai | Cakupan gabungan Main/Raka |
+| --- | --- | --- |
+| R1 `open-scrantic`, `d90f1692927e7955e7c0745d3770af58e8d1f3e2` | Implementasi Rust, MIT; moderat: source/tes tersedia, runtime tidak direproduksi. Donor + method, dominan Procedural/Negative. | **dibaca penuh 52 / dilihat sekilas 1 / tidak dibuka 5 dari 58 file**; semua 20 `src/*`, build, dokumentasi dan snapshot dibaca; Cargo.lock sekilas; lima aset logo/demo/icon dilewati. Satu PNG desain internal diperiksa Raka, bukan validasi fidelity. |
+| R2 `ReaFuse`, `c64502a2827832c042d894ba90dc678a95772cb1` | Implementasi Node, MIT; moderat untuk mekanisme, lemah untuk sertifikasi hasil. Method + cautionary, dominan Negative/Transfer. | **dibaca penuh 76 / dilihat sekilas 12 / tidak dibuka 1 dari 89 file**; seluruh 17 `src/*`, empat tes, fixture, server/zip dan showcase code/spec/contract/report. Sekilas: lock, lima UI/style, dua LINEAGE berulang, empat respons generate; `.env.example` tidak dibuka. |
+| R3 `REA-Github`, `b41f030f2e2a744bb06a1c72f032784cada4ae87` | README, stub C++/header dan gambar, MIT; lemah: paket yang diiklankan tidak ada pada tracked tree. Cautionary, dominan Credibility/Absence. | **dibaca penuh 31 / dilihat sekilas 0 / tidak dibuka 0 dari 31 file**; 26 teks (3.503 byte/134 baris) dan lima PNG dilihat Raka. Gambar bukan bukti executable/provider berjalan. |
+| R4 `stealth_enum_workspace`, `57ab57524c7013dc664e2c1d03d70d4f6b92df0a` | Generator Dart 2.2.6, MIT; moderat untuk source, klaim AOT/performa/security belum diuji. Donor + cautionary, dominan Negative/Procedural. | **dibaca penuh 40 / dilihat sekilas 3 / tidak dibuka 8 dari 51 file**; seluruh kode, tes, generated examples, README/changelog/config unik; tiga lock head/tail. Enam gambar dan dua salinan llms tidak dibaca; hash dua salinan sama dengan root llms yang dibaca penuh. |
+| R5 `rea-atlas`, `877b34ecab0043bc56aa0773d2333161039731f1` | Katalog CC0-1.0; moderat sebagai peta, bukan oracle linked projects. Vocabulary + method + cautionary, dominan Strategy/Medium. | **dibaca penuh 11 / dilihat sekilas 4 / tidak dibuka 37 dari 52 file**; semua field 224 tuple `data.json` dibaca lewat proyeksi lossless, `render.py` dan aturan/editorial penuh; semua deskripsi EN diproyeksikan, file multilingual tetap sekilas, begitu pula README awal, images/stars metadata. Empat README terjemahan dan 33 gambar tidak dibuka. |
+
+Cakupan total: **dibaca penuh 210 / dilihat sekilas 20 / tidak dibuka 51 dari 281 file**. Respons generate R2 diperiksa data-only: kode/tes yang diproyeksikan sama dengan creature yang dibaca; ini tidak dihitung ulang sebagai sumber independen atau pembacaan penuh respons. Main membuka sendiri setiap lokasi yang menopang perubahan. Tidak ada skrip donor, instalasi, target execution, benchmark atau lookup publik yang dilakukan. Recall Agent Core kontekstual mengembalikan foundation; BM25 mengembalikan catatan harness lama; pencarian Cortex tidak mengembalikan studi lima donor ini pada hasil yang ditampilkan. Batas hasil tersebut bukan klaim tidak ada Memory lain.
+
 ## Masalah dan tujuan
+
+**Perluasan Revisi 5:** pengguna menunjuk lima checkout di atas dan meminta **studi sekaligus upgrade langsung** pada rumah source yang sama. Instruksi langsung tersebut mengadaptasi batas proposal-only `study`; tidak ada approval Native atau state proposal yang direkayasa. Extend record existing, bukan membuat proposal/Skill tandingan. Baseline aktif diverifikasi melalui `skills(inspect)`: adapter 2, payload `8849f319…`, 17 berkas/185.283 byte. Status git awal bersih, HEAD `c394e41`; lima commit terbaru dan proposal/history/CODEBASE/pack serta Memory diperiksa. Studi sebelumnya selesai, bukan pekerjaan tertunda yang dihidupkan kembali.
 
 **Perluasan Revisi 4:** instruksi pengguna kali ini menunjuk `Learning/awesome-rea`, bukan `Learning/awesome-reverse-engineer-anything` pada Revisi 1–3. Lanjutkan catatan yang sama dan rumah Skill existing; hasil dan digest lama di bawah tetap riwayat, bukan bukti untuk donor baru. Pengguna meminta implementasi langsung, sehingga batas proposal-only skill study diadaptasi sesuai instruksi tersebut.
 
 User meminta studi mendalam R1 dan langsung meng-upgrade R2 sampai seluruh bahan berguna pada snapshot referensi ditangani. R1 adalah katalog klaim komunitas, bukan implementasi REA. Nilai utamanya ialah disiplin atribusi, batas klaim dan pelajaran kegagalan; keberadaan tautan tidak membuktikan hasil proyek yang ditautkan. Upgrade memakai rumah Skill pertama dan alur revisi owner existing.
 
 ## Bukti dan ketidakpastian
+
+### Perluasan Revisi 5 — delta, lensa dan keputusan
+
+**Observed:** R1 `src/assets/resource.rs:16–52` memakai satu volume+ranges untuk entry overlap; `exe.rs:245–268,386–390`, `engine/ads.rs:20–25,65–82,752–760` dan `engine/ttm.rs:10–12,276–309` membedakan per-resource, agregat dan kerja per-frame. R2 `schemas.mjs:60–69`, `prompts.mjs:61–80`, `pipeline.mjs:179–228` membangun kontrak dahulu dan memetakan asal. Tetapi guard `pipeline.mjs:368–375` memeriksa prefix sebelum `util.mjs:58–67` menyelesaikan path; source menunjukkan normalisasi dot-segment dapat melewati sub-ownership meskipun tetap di root. Ini temuan statis donor, tidak dieksploitasi/diperbaiki karena donor read-only.
+
+R2 `verify.mjs:11–47,67–88` memeriksa missing denominator tetapi membuang exit/overflow dan menerima ringkasan TAP dari teks; hash `report.mjs:69` bukan verifier. Klaim lineage juga tidak otomatis benar: `showcase/ratewise/lab/spec-B.response.json:33–41,64–66` menyatakan input bits sudah berupa bit count dan formatter tidak punya parser, sedangkan `creature/src/index.mjs:6–12,39–57`, contract `:7–49` dan `REPORT.md:48–57` menambah parsing/konversi dengan label B. Perilaku baru/adaptasi itu harus dibedakan dari inheritance. Tidak mengklaim runtime bug telah direproduksi.
+
+R3 `README.md:3,17–20,27–28` mengiklankan 6.3.0, tetapi `agent/Skill.cpp`, `cli/Json.cpp`, `native/Ghidra.cpp` hanya stub; nama provider, gambar GUI dan `notes/VERSION.json` tidak membenarkan mengganti pin. R4 generator `packages/stealth_enum_generator/lib/src/stealth_enum_generator.dart:263–375,398–560` menunjukkan konstanta int, collision probing, branches dan label opsional; string hilang tidak menghilangkan flow. Verifier `scripts/verify_aot_strings.sh:109–130,193–220,240–302` hanya mensyaratkan sebagian string kontrol positif; mode Flutter dengan path invalid jatuh ke keterangan desktop. Klaim per-string/platform lebih kuat daripada pemeriksa aktualnya. Tes generation/representasi tidak membuktikan biaya nol atau ketahanan global.
+
+R5 semua 224 tuple (156 No, 56 Yes, 12 Unverified) dan `render.py:5–15,73–111` menempatkan tag REA sebagai filter opsional, memisahkan kategori hasil dan mengurutkan subset memakai popularitas. Cari hasil existing menurut target/versi/format sebelum mengulang analisis, tetapi tag/star/license dalam katalog tetap lead yang harus diperiksa primer. Seluruh isi repo yang hanya ditautkan tidak termasuk studi.
+
+**Angka data-only:** 4 × floor(1000/(13×18)) = **16 ms**, `reproduced` untuk aritmetika R1 `docs/ENGINE.md:95–98`; snapshot ini sudah menyebut integer division sehingga koreksi angka Revisi 4 di bawah tetap sejarah snapshot lama, bukan cacat pada donor sekarang. 80×256 KiB = **20 MiB**, lebih dari batas 16 MiB yang dicontohkan source, reproduced sebagai hitungan; bukan pengukuran memori runtime. Rentang hasil normalisasi R4 0x10000000..0x7FFFFFFF mempunyai **1.879.048.192** kemungkinan: finite dan bukan bukti bebas collision lintas enum. Hasil tes/AOT, klaim waktu brute-force, biaya nol, jumlah popularitas dan hasil linked projects = **klaim referensi / not checked**, tidak dijadikan manfaat lokal.
+
+| Lensa | R1 | R2 | R3 | R4 | R5 |
+| --- | --- | --- | --- | --- | --- |
+| Semantic | Parser/VM dan resource budget. | Spec→contract→grow→verify. | Release/provider hanya klaim. | Enum menjadi konstanta/flow int. | 224 lead menurut target/output. |
+| Procedural | Per-item vs total vs per-step. | Case→asal→oracle sebelum repair. | Isi aktual diperiksa dahulu. | Kontrol setiap canary dan build. | Cari reuse, buka primer. |
+| Negative | Alias/ref bisa mengamplifikasi. | Guard path/runner/lineage tidak sekuat banner. | Stub, arsip tidak tersedia. | Label/pragma bukan semantic/security proof. | Tag/star tidak memverifikasi proyek. |
+| Strategy | Pisah engine/data/adapters. | Acceptance tetap, implementasi berubah. | Jangan percaya packaging semu. | Ganti anchor dari nama ke efek. | Tag REA opsional, bukan gate. |
+| Credibility | Source+tes; tanpa eksekusi. | Source membantah sebagian klaim. | Lemah untuk kemampuan operasional. | Source kuat relatif klaim marketing. | Kurator sekunder, CC0. |
+| Freshness | Pin d90; timing doc kini lebih tepat. | Alpha, schema/model dapat drift. | 6.3.0 bukan runtime 6.5.0. | 2.2.6/config dan generated files berbeda umur. | Snapshot katalog; tag bukan recheck otomatis. |
+| Absence | Fidelity seluruh game belum dibuktikan. | Kontrak bukan oracle independen. | Source operasional/build tak ada. | Tidak ada bukti recovery mustahil/overhead nol. | Linked repos tidak diperiksa. |
+| Medium | Sisa lima aset tidak dinilai. | UI/respons berulang hanya sekilas. | PNG bukan run lokal. | Enam gambar tidak dipakai sebagai bukti. | EN/canonical tuples, terjemahan/gambar dilewati. |
+| Environment fit | Rust tidak ditambahkan; metode saja. | Node owner dipakai, pipeline donor tidak. | Pin existing dipertahankan. | Windows native image route, decoder tidak diasumsikan. | Lookup selektif tanpa download/install. |
+| Cost/reversibility | Guide selektif, tiada parser baru. | Tiada contract engine/registry baru. | Tidak diintegrasikan. | Tiada SDK/analyzer baru. | Tidak menyalin katalog. |
+| Triangulation | Guide target sudah punya RNG/state. | Guide target sudah punya finite oracle. | Source melawan README. | Generator/examples/verifier saling membatasi. | Bukan penguat independen katalog lama. |
+| Transfer | Guard agregat saat rebuild parser/VM. | Traceable fixed acceptance+run integrity. | Peringatan capability by name. | Flow tanpa label+negative proof. | Pilih reuse/output yang sesuai. |
+| Intent | Preserve quirks+safe port. | Compose dua donor, bukan full binary RE. | Packaging notes. | Menjual resistance enum. | Membantu menemukan pekerjaan yang sudah ada. |
+| Bebas: bukti yang hilang | Biaya alias berbeda dari ukuran input. | Label asal dapat salah meski tes hijau. | Gambar/filename dapat menyamar sebagai kemampuan. | Tidak punya nama berbeda dari tidak punya perilaku. | Hasil matching/port/recomp berbeda. |
+
+**Support map dan T1:** seluruh kandidat didukung ≥2 lensa, tanpa single-lens. Manfaat masih inferred; attribution beberapa tambahan sekaligus **confounded**. Kelima pertanyaan mind-control dijawab melalui observed/counterevidence, saingan, pembeda dan flip berikut; confidence moderat untuk kelayakan metode, unknown untuk peningkatan hasil investigasi.
+
+| Claim / perubahan terkecil | Observed + dukungan | Inferred / rival terkuat | Test pembeda / flip condition |
+| --- | --- | --- | --- |
+| C1 cari reuse dan tetapkan jenis hasil | R5 tuple/render, R3 stub; Strategy+Negative+Transfer. | Menghindari derivasi ulang; rival: identitas target existing sudah cukup. | Review route against current guide; bila tidak memperjelas keputusan, hapus paragraf. Popularitas/kurasi tidak menjadi oracle. |
+| C2 pulihkan flow saat label enum hilang | R4 generator/examples; Semantic+Negative+Transfer. | Branch effect bisa diketahui tanpa nama; rival: analyzer yang tersedia tidak mendukung image. | Pastikan tidak mengklaim decoder/perintah baru; bila prerequisite tidak tersedia, unknown, jangan menyimpulkan tidak ada logic. |
+| C3 negatif per-canary pada image yang sama | R4 verifier/control; Procedural+Negative+Environment. | Menghindari pass vacuous; rival: kontrol umum analyzer lama cukup. | Per-identifier control dan mode scope dibedakan; bila positifnya tak terbukti, simpulan removal ditahan. |
+| C4 kontrak berjejak dan integritas run | R2 schema/pipeline/showcase/verify; Procedural+Negative+Triangulation. | Mengurangi salah inheritance dan pass palsu; rival: finite acceptance target sudah memadai. | Source→units/case→oracle dan runner outcome tetap terikat; jika tidak ada bukti independen, hasil behavioral unknown. |
+| C5 batas agregat parser/VM | R1 resource/exe/ads/ttm; Procedural+Negative+Cost. | Batas per-item tidak cukup; rival: hardening umum di luar REA. | Dipakai hanya saat rekonstruksi parser/VM; kalau hanya inspeksi statis, route dilewati. Jangan salin angka donor. |
+
+**T2 untuk batas security/trust C2–C4:** (1) source memperlihatkan string/label, konstanta, guard dan runner yang benar-benar ada; (2) `#aux` image/build yang dibandingkan harus cocok, source donor bukan eksekusi/oracle independen; (3) karena itu absennya nama, hash report dan label A/B tidak dapat membuktikan enforcement, clean-room atau fidelity; (4) keberatan terkuat ialah guard/kontrak sudah memadai, dibedakan oleh canonical path ownership, per-case evidence dan matching control; bukti runtime/primer yang cocok dapat mengubah verdict. Tidak ada bypass target/kredensial atau perubahan izin yang diterapkan.
+
+**Disposisi sisa:** interpreter/script/resource, seed/warm-up/urutan RNG, timing, opcode state, numeric fidelity, packing, kompatibilitas platform, schema/context budget, provenance dan oracle finite sudah ada di sepuluh reference target: tidak digandakan. R1 batas aman dicatat sebagai deliberate differences; snapshot/image saja bukan semua event. R2 original-scanner thresholds/certificate, auto-repair count, cache/provider/server/UI/generation stack tidak ditransplantasikan. R3 tidak menyumbang provider/runtime. R4 generator, kunci, hash, benchmark dan angka limit tidak diimpor. R5 224 proyek/tools, star-ranking dan terjemahan tidak disalin ke Skill. Semua tema material yang ditemukan pada bacaan memiliki nasib; 51 berkas tidak dibuka dan linked projects tetap di luar klaim, sehingga tidak dinyatakan bahwa seluruh informasi potensial donor habis selamanya. Untuk menaikkan bukti selanjutnya dibutuhkan artifact/oracle tugas nyata dan hasil yang independen, bukan katalog atau benchmark tambahan.
 
 ### Perluasan Revisi 4 — cakupan dan keputusan
 
@@ -119,6 +176,8 @@ Inventaris: `README.md`, `README.zh-CN.md`, `AGENTS.md`, `CONTRIBUTING.md`, `LIC
 
 ## Mekanisme dan owner existing yang dipakai
 
+**Revisi 5:** adapter 3 menambah satu `references/recovery-contracts.md` dan route selektif di `SKILL.md`. SkillService existing tetap pemilik validate/stage/promote/rollback; semua reference lama dan launcher/lock/pin dipertahankan. Polyglot dipertimbangkan: Markdown + lifecycle Node existing cukup; Rust/Dart donor hanya bukti metode. Parser/decompiler/FFI baru tidak memberi manfaat yang diperlukan scope ini.
+
 **Tambahan Revisi 4:** `references/investigation-methods.md` menjadi satu rumah prosedur baru di pack existing; `SKILL.md` hanya menambah routing selektif dan metadata `adapter-revision: 2`. Seluruh sembilan reference lama tetap identik. Native dan external membaca artifact yang sama melalui SkillService; perubahan ini tidak menambah parser/decompiler/API. Polyglot dipertimbangkan: prosedur Markdown dan lifecycle Node existing memadai, sehingga bahasa/runtime/FFI tambahan tidak memberi manfaat terjustifikasi. Panduan seam tetap meminta pemilihan bahasa menurut komponen bila kelak implementasi nyata memerlukannya.
 
 Sumber hanya di `runtime/skills/capability-packs/reverse-engineer-anything/`. Tambah `references/case-evidence.md` dan pointer/aturan data pada `SKILL.md`; rapikan kalimat ekuivalen agar entrypoint tetap satu halaman. Pertahankan delapan rujukan operasional, launcher, manifest/lock, lisensi dan pin 6.5.0/revisi upstream 42. Catalog/history dikelola SkillService melalui validate → stage_revision → promote_revision → readback; tidak ditulis langsung.
@@ -126,6 +185,8 @@ Sumber hanya di `runtime/skills/capability-packs/reverse-engineer-anything/`. Ta
 Alur `decide_proposal` yang diamati di `src/skills/service.ts:598–680` merender ulang SKILL.md dari template proposal dan mempertahankan hanya ancillary files baseline; tidak mewakili penambahan reference ini secara utuh. Karena user meminta implementasi langsung, gunakan jalur revisi source existing, bukan membuat approval Native palsu atau mengganti adapter dengan template. Dokumen ini catatan studi/implementasi, bukan state approval Skill tandingan.
 
 ## Scope, batas Native, risiko dan otorisasi
+
+**Revisi 5, scope yang diminta langsung:** satu paket coherent C1–C5, source→review→validasi→promosi owner→build/publish/restart resmi→readback client→Learning→commit lokal. Risiko utama teks tambahan membebani konteks atau dianggap kemampuan runtime; guide selektif dan kalimat batas/prerequisite menguranginya. Tidak ada source engine, konfigurasi, dependency/toolchain, provider baru, target live, push/tag/release, atau perubahan donor. Source, artifact aktif dan history tetap role owner existing.
 
 | Paket | Nasib seluruh tema berguna R1 |
 | --- | --- |
@@ -140,9 +201,32 @@ Scope yang diminta: V1+V2+V3 dan konsekuensi langsung dokumentasi, validasi, akt
 
 ## Manfaat yang diharapkan dan keterbatasan
 
+Revisi 5 **diharapkan** memperjelas pilihan reuse, pertanyaan tanpa nama, kriteria negatif, asal acceptance dan batas resource rekonstruksi. Lint/build/readback hanya membuktikan paket dan delivery; belum ada bukti causal benefit, zero overhead atau peningkatan kemampuan decompiler/model. Batas coverage dan sumber sekunder di atas tetap berlaku.
+
 Harapan: laporan membedakan siapa membuktikan apa, scope rekonstruksi dan batas lingkungan/reuse. Verifikasi artifact/lifecycle tidak membuktikan hasil reverse engineering lebih akurat. Atribusi beberapa perubahan sekaligus `confounded`; tidak ada klaim causal benefit. Profil nilai R1: method, cautionary, vocabulary; yang paling bernilai ialah prosedural/negatif. Bukti berikutnya untuk outcome empiris memerlukan primary project/artifact/oracle dan eksperimen yang diizinkan; itu bukan pekerjaan terbuka pada snapshot studi ini.
 
 ## Acceptance, evaluasi dan rollback
+
+### Spesifikasi Revisi 5
+
+- C1–C5 tercakup selektif, source ≤8.192 byte per resource yang diubah/ditambah, tautan relatif dan parser valid; semua 16 berkas baseline selain SKILL identik.
+- Main memeriksa anchors; Raka review source final dengan hasil/ketidakpastian. Verifikasi correctness-only: lint/validate, baseline-fenced stage/promote, build launcher/runtime dan readback client sampai offset terakhir; tidak menjalankan donor/suite/benchmark.
+- CODEBASE/changelog/patch intent mencatat keadaan aktual; adapter revision naik, produk tetap 1.6.0 hingga rilis terpisah. Learning dan commit task-owned ditutup menurut hasil nyata.
+- Rollback owner `rollback_revision` ke `sha256:8849f3190b0a226ebe91601152cb7cf4ca20d927d2bba6c77ab8699d1572a2bf` dengan fencing current digest; revert source commit bila perlu. Jangan edit/delete catalog/history atau membuang perubahan orang lain.
+
+### Hasil implementasi Revisi 5
+
+- Adapter 3 aktif, payload **`sha256:5f2338f50e9473a3d5e4e7ae0f73cf4de5b0f82d45cb84598ce4d6b9646a671c`**, 18 berkas / 193.090 byte. `SKILL.md` 8.054 byte, `recovery-contracts.md` 7.917 byte. Perbandingan hash source terhadap baseline aktif sebelum promosi: **16/17 berkas identik**, hanya entrypoint berubah; satu reference ditambah. Sepuluh reference lama, launcher, manifest/lock, lisensi dan pin tetap sama.
+- Review independen Raka **APPROVE** untuk kedua resource: lima grup didukung bukti dan tidak menambah decoder/grant/engine. Satu locator generator di laporan dikoreksi ke path `packages/stealth_enum_generator/lib/src/stealth_enum_generator.dart`. Main memeriksa sendiri anchors material dan membaca kembali source baru. Tidak ditemukan kandidat material tambahan pada materi yang dibaca setelah disposition dan review; batas 51 berkas serta linked projects tetap berlaku.
+- Lint strict lulus, 42 pack / **0 parser errors, 0 dangling links**; target tanpa page warning. Advisory inherited tentang UPSTREAM.json dan sumber executable di luar `references/` tetap diketahui; provenance/pin tersedia di source-and-runtime dan record owner. `skills(validate)` → `stage_revision` → baseline-fenced `promote_revision` lulus, `sourceLineageChanged=false`. Digest `8849f319…` dipertahankan owner untuk rollback. Tidak ada penulisan langsung ke catalog/history managed.
+- `npm.cmd run build` lulus: 532 authored files, 42 source/47 managed Skill, 472 direktori sesuai peta, browser transport current dan TypeScript. Publish launcher memakai `dotnet` + **MSBuild SDK 8.0.425 existing** (`/t:Publish`, Release, win-x64, self-contained/single-file) tanpa restore/download/install; output `runtime/build/launcher/Agent Core.exe`, SHA256 **`90a3e568d6b89772135edfc202deb6f9621a071d477dc5c7996680d3519221d6`**. Root executable yang sedang dipakai tidak ditimpa; perubahan Skill dilayani catalog-data external existing.
+- Satu restart resmi `restart_agent_core(capabilitiesChanged=true)` selesai lewat receipt **`runtime/restart/65e5808424a74893b2400f4cc015be83.json`**, 2026-10-31 **15:06:14 WIB**, exit 0; Core PID **16484**, mulai 15:05:31 WIB, dist tidak basi/readiness siap. Log request awal kosong bukan alasan mengulang restart. Kontrak dibaca ulang, seluruh body identik, digest `6cd3db27…` diakui ulang, canonical Memory diinspeksi dan episode **`ext-d0e913f0bc3149f887f34423ef9626e5`** dilanjutkan memakai taskKey yang sama.
+- Fresh bootstrap menampilkan digest adapter 3. Client Codex membaca body **0 → 7.759 → akhir** dan reference **0 → 7.761 → akhir**; gabungan konten kedua resource **persis sama dengan source**, bukan hanya metadata/hash. Receipt aktual: `tool:b9ca543dd97e4443822eae90a877cfa5`, `tool:4066961e521848118738f86bee669607`, `tool:b9748e4859c34bdaba973c3f3ef4e997`, `tool:bbb530b50402476e99ce9fb64a66b5cc`. Ini fresh discovery/readback di Codex; schema tool tidak berubah, tidak mengklaim klik Refresh tools ChatGPT/Claude.
+- Empat receipt penggunaan index/skill-authoring (`applied`) dan mind-control/performance (`adapted`) tercatat, **`result=unavailable`, `trustChanged=false`**: tindakan nyata ada, causal benefit tidak diukur. Percobaan receipt awal menolak `EXTERNAL_RECEIPT_REVISION_NOT_DELIVERED`; status membuktikan episode/complete reads tersimpan tetapi current head tidak terikat. Setelah rebind stable taskKey/workspace dan verifikasi current episode, keempat receipt berhasil. Tidak mengarang receipt atau mengubah guard. `git diff --check` juga menemukan CR pada dua baris CODEBASE baru; hanya EOL baris itu dikoreksi, riwayat mixed-EOL existing dipertahankan; pemeriksaan berikutnya lulus.
+- Canonical task Memory mendapat observation/advisory state dan checkpoint **`56d42fc1-e29a-4b48-8116-5da44b645058`**, episode `14f35641-318f-41a4-82b3-ffa695ae56bb` revision 2. State tersebut berlabel unverified/controller observation, bukan durable behavioral truth. Tidak menduplikasi metode Skill menjadi Memory permanen. Learning checkpoint/review dan commit lokal dicatat pada penutupan di bawah.
+- Tidak ada donor/test suite/benchmark/target REA yang dijalankan, dependency/config/provider/tool grant diubah, push/tag/release diterbitkan, atau pembersihan data pengguna. Tidak ada file sementara task yang dibuat. Perubahan tracked hanya dua source instruction resources dan empat dokumen/metadata existing.
+
+**Penutupan Revisi 5:** Learning checkpoint **`study-rea-five-reference-delta-complete`** memakai `verified-recovery` karena scope receipt dipulihkan setelah penolakan nyata; explicit review selesai **15:12:37 WIB**, **`complete=true`, `no-new-knowledge`**, nol capture/proposal, dua review lama tidak diubah. Transfer sudah berada di Skill existing; tidak dipromosikan menjadi klaim manfaat. Episode melaporkan outcome controller `verified`, sedangkan independent workflow verifier tetap `unavailable`; keduanya tidak disamakan. Input verifikasi awal tanpa `verificationRef` ditolak, lalu diperbaiki dengan receipt delivery yang nyata. Kontrak, inspeksi canonical Memory, episode, checkpoint Memory dan lifecycle Learning tidak dilewati. Tidak ada pekerjaan implementasi tersisa dalam scope C1–C5. Commit lokal memakai pathspec enam file milik tugas; hash akhir dilaporkan pada jawaban pengguna, tanpa push/tag/release.
 
 ### Spesifikasi perluasan Revisi 4 — sebelum perubahan Skill
 
@@ -198,7 +282,10 @@ Rollback: owner `rollback_revision` ke baseline digest di atas dengan current-ac
 - Revisi 2: isi final, lint/validate, promotion, build/publish, restart resmi dan readback client selesai. Recall yang tidak tersedia tidak dicoba ulang atau dinyatakan pulih. Learning, commit dan pemindahan arsip dicatat saat penutupan.
 - Revisi 3: acceptance ditutup; commit implementasi dan hasil Learning aktual dicatat, termasuk batas verifier/candidate. Status COMPLETED dan pemindahan ke arsip tanpa perubahan catalog/runtime lebih lanjut.
 - Revisi 4: pengguna menunjuk donor berbeda `awesome-rea`; studi diperluas ke 38 kasus, tujuh metode tambahan diterapkan dan diaktifkan melalui owner existing, seluruh resource final dibaca kembali. Catatan Revisi 1–3 dipertahankan sebagai sejarah, bukan cakupan donor baru. Audit source tambahan mengonfirmasi default Native tool discovery internal tanpa MCP server.
+- Revisi 5: pengguna menunjuk lima checkout secara eksplisit; audit delta terhadap adapter 2 memperluas lima metode tanpa menduplikasi reference lama. Coverage, disposition, counterevidence dan acceptance dicatat sebelum promosi; adapter 3 aktif, review/lint/build/restart/readback dan Learning selesai dengan batas manfaat yang jelas. Catatan diteruskan di arsip existing, tidak membuat proposal/state approval tandingan.
 
 ## Keputusan pengguna dan scope
+
+Revisi 5 diminta langsung pada 2026-10-31: `study` lima donor dan **upgrade** target canonical. Scope upgrade mengikuti permintaan ini; tidak menunggu approval tambahan atau membuat dokumen proposal/state paralel. Tidak ada keputusan Native, izin benchmark/publikasi atau manfaat behavioral yang direkayasa. Riwayat Revisi 1–4 tetap dipertahankan.
 
 User meminta `/study ... dan upgrade ...` secara langsung pada 2026-10-31; Revisi 4 melaksanakan donor `awesome-rea` yang disebut dalam permintaan saat ini. Scope tambahan audit MCP/internal tool diminta langsung pada sesi yang sama dan selesai sebagai pemeriksaan source. Standing task-scoped auto-trust Agent Core berlaku; tidak ada persetujuan Native, benchmark, rilis/tag/push atau grant baru yang direkayasa. Lokasi asal historis: `docs/proposals/Penguatan-Bukti-Kasus-REA.md`. Catatan lengkap diteruskan pada arsip existing `docs/history-agent-core/Penguatan-Bukti-Kasus-REA.md`, tanpa proposal/state approval baru.

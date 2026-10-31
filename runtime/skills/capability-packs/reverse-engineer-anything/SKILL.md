@@ -2,7 +2,7 @@
 name: reverse-engineer-anything
 description: Investigate shipped applications, Electron/JavaScript bundles, executables, managed assemblies, archives, and recorded behavior with REA. Use for reverse engineering, decompilation, tracing packaged features, comparing app versions, or evidence-based reconstruction. Skip ordinary source-repository analysis and unrelated coding tasks.
 metadata:
-  adapter-revision: "2"
+  adapter-revision: "3"
   upstream_skill_version: "42"
   runtime_version: "6.5.0"
 ---
@@ -35,17 +35,14 @@ the project workspace. It forwards arguments, stdin, output and cwd using
 the current Node. Replace bare `rea` examples with this prefix; prefer the
 pin over repeated `npx` downloads.
 
-When this skill is imported into Agent Core's catalog, `node_modules` is
-intentionally excluded. Its launcher reuses the original pinned runtime in
-the current user's `.codex/skills` or `.agents/skills` location. For a custom
-location, set `AGENT_CORE_REA_SKILL_ROOT` to the owning skill folder. An explicit
-missing or mismatched runtime fails closed; importing instructions is not
-runtime installation. Use `--version` once to verify the selected runtime
-when establishing or repairing this integration. No automatic download,
-provider installation or MCP registration occurs.
+Catalog imports exclude `node_modules`. The launcher reuses the original pin in
+the user's `.codex/skills` or `.agents/skills`; `AGENT_CORE_REA_SKILL_ROOT` selects
+a custom owning folder. A missing or mismatched explicit runtime fails closed.
+Use `--version` once when establishing or repairing the integration. Importing
+instructions does not install a runtime/provider, download or register MCP.
 
-Agent Core deliberately gives execution processes an isolated HOME. Its local
-installation may therefore record an explicit runtime link at
+Agent Core gives execution processes an isolated HOME. Its local installation
+may record an explicit runtime link at
 `runtime/skills/tooling/reverse-engineer-anything.json`, outside the catalog.
 The catalog launcher honors that validated, host-local link; it is not shipped
 in release packages or copied into Skill artifacts. No user-profile scan or
@@ -96,12 +93,16 @@ Read only the guide relevant to the question:
 ## Case evidence and acceptance
 
 Read [case-evidence.md](references/case-evidence.md) before borrowing a case,
-disclosing artifact material to a provider, or judging a rebuild. Separate
-local observations from author/curator reports.
+disclosing artifact material to a provider, or judging a rebuild. Separate local
+observations from author/curator reports.
 
 For analyzer gaps, numeric/constraint recovery, embedded scripts, packed targets,
 compatibility seams or schema/context limits, read
 [investigation-methods.md](references/investigation-methods.md).
+
+For reuse selection, stripped enum labels, negative controls, acceptance lineage
+or parser/VM resource amplification, read
+[recovery-contracts.md](references/recovery-contracts.md).
 
 ## Investigate with bounded evidence
 
@@ -134,12 +135,11 @@ for the task without closing an attached user's GUI database.
 
 ## Keep ownership and tooling clear
 
-Reuse compatible runtimes/providers. Reusable skill requirements and setup
-helpers belong in this skill's `tooling` and `scripts` folders. Targets,
-recovered source, extracted assets, evidence, comparisons, generated code and
-task-specific scripts belong in the designated project workspace. Never nest
-a workspace in this skill folder or relocate existing project files into it.
-Avoid redundant environments and duplicate setup scripts.
+Reuse compatible runtimes/providers. Skill requirements/setup helpers belong in
+its `tooling`/`scripts`; targets, recovered code/assets, evidence, comparisons,
+generated code and task scripts belong in the designated project workspace.
+Never nest that workspace in the skill, relocate project files into it or
+duplicate environments/setup scripts.
 
 Prefer local isolated installation when requirements are missing. REA setup
 does not install unrelated runtimes/providers. If a system-wide change is
