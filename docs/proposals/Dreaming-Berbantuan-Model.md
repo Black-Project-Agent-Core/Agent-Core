@@ -1,9 +1,9 @@
 # Dreaming berbantuan model
 Tanggal: 2026-10-31
-Revisi: 1
+Revisi: 2
 Status: PROPOSED
 Jenis: Improvement
-Asal dan bukti: telaah kode OpenClaw dari klon `G:\Projects\Learning\openclaw` (commit `f1c93577085244aa96aa87b53a2df9b59d293bd7`) dan source Agent Core `src/memory/{rem-consolidation,cognitive-maintenance,cognitive-config,service,intelligence,types}.ts`, `src/http/app.ts`, `src/agent-runtime.ts`; tangkapan layar Dreaming Review dari pengguna (2026-10-31). Ringkasan telaah OpenClaw ada di [Profil-Agen-dan-Otomasi-Terarah.md](Profil-Agen-dan-Otomasi-Terarah.md#telaah-kode-openclaw-dari-klon-baru--2026-10-31).
+Asal dan bukti: telaah kode OpenClaw dari klon `G:\Projects\Learning\openclaw` (commit `f1c93577085244aa96aa87b53a2df9b59d293bd7`) dan source Agent Core `src/memory/{rem-consolidation,cognitive-maintenance,cognitive-config,service,intelligence,types}.ts`, `src/http/app.ts`, `src/agent-runtime.ts`; tangkapan layar Dreaming Review dari pengguna (2026-10-31). Bukti kode OpenClaw lengkap (dengan `file:baris`, penanda kepastian dan daftar yang belum dibaca) ada di satu tempat: [OpenClaw workspace files dan dreaming, telaah kode](../research/OpenClaw-Workspace-Files-dan-Dreaming-Telaah-Kode-20261031.md).
 
 ## Masalah dan tujuan
 
@@ -51,7 +51,12 @@ Tujuan: menambah dua langkah opsional berbantuan model di atas owner REM yang ad
 
 **P1 — digest abstraktif.** Setelah rencana deterministik dibuat, untuk rencana yang akan dibuat atau diperbarui (bukan yang fingerprint-nya tidak berubah), engine meminta model menulis ulang `content` dari cuplikan anggota yang sama, per workspace, di luar kunci kanonik. Validasi deterministik: panjang maksimum, hanya merujuk id anggota yang ada, lolos `scanMemorySafety`, tidak memuat URL atau perintah baru. Gagal, kosong, timeout, atau ditolak berarti commit teks ekstraktif seperti hari ini. Catatan tetap `hypothesis`/`unverified`, tag `inferred`; peristiwa evolusi diberi detail `assist: model` (usulan: `source: 'system'` bukan nilai enum baru, supaya build lama tetap membaca catatan).
 
-**P2 — diari (bersyarat).** Satu entri prosa singkat per siklus yang menghasilkan digest baru atau berubah; fallback generik tanpa isi memori bila model gagal. Bentuk penyimpanan yang diusulkan: catatan Memory kanonik dengan `retention: archive` (sudah dikecualikan dari kandidat REM, `rem-consolidation.ts:99-100`) dan tag `dream-diary`, ditampilkan di Dreaming Review. **Tidak ada berkas `DREAMS.md`** (konsisten dengan keputusan 2026-10-31: Memory kanonik satu-satunya store). Syarat sebelum implementasi: buktikan bahwa recall otomatis Native dapat mengecualikan catatan ini; bila tidak terbukti, P2 tetap HOLD.
+**P2 — diari (bersyarat).** Satu entri prosa singkat per siklus yang menghasilkan digest baru atau berubah; fallback generik tanpa isi memori bila model gagal. Bentuk penyimpanan yang diusulkan: catatan Memory kanonik dengan `retention: archive` (sudah dikecualikan dari kandidat REM, `rem-consolidation.ts:99-100`) dan tag `dream-diary`, ditampilkan di Dreaming Review. Syarat sebelum implementasi: buktikan bahwa recall otomatis Native dapat mengecualikan catatan ini; bila tidak terbukti, P2 tetap HOLD.
+
+**Berkas `DREAMS.md` — belum diputuskan (koreksi Revisi 2).** Revisi 1 menulis bahwa tidak ada `DREAMS.md` "konsisten dengan keputusan 2026-10-31". Itu keliru: keputusan pengguna "Pakai Memory kanonik" (2026-10-31) dijawab untuk `MEMORY.md` dan catatan harian `memory/YYYY-MM-DD.md`, bukan untuk `DREAMS.md`. Fakta kode OpenClaw yang relevan (`extensions/memory-core/src/dreaming-dreams-file.ts`, `dreaming-narrative.ts`, `dreaming.ts`): `DREAMS.md` ditulis oleh kode host (entri diari di antara penanda `<!-- openclaw:dreaming:diary:start/end -->` dan blok terkelola `## Deep Sleep`), bukan oleh model; model hanya mengembalikan prosa lewat `subagent.complete` yang prompt-saja tanpa tool, tanpa transkrip, dengan `systemPrompt` persis `extraSystemPrompt` dari kode. Berkas itu bukan instruksi atau system prompt untuk AI dreaming, tetapi juga bukan keluaran mati: kode membacanya kembali sebagai data kontinuitas. Empat entri diari terakhir dipakai fase Light untuk memprioritaskan kandidat yang belum tercakup diari (`dreaming-phases.ts:82,1078-1082`), dan tiga entri terakhir, dijepit panjangnya, masuk prompt narasi sebagai "Diary continuity context" agar model memilih sudut baru (`dreaming-narrative.ts:64,161-179`; pembaca `dreaming-dreams-file.ts:271-292`). Artinya DREAMS.md berperan sebagai memori kerja diari bagi proses dreaming latar belakang, yang sebagian membenarkan gambaran pengguna. Pada Agent Core fungsi yang sama dapat dipenuhi dengan membaca catatan diari dari Memory. Tiga opsi untuk Agent Core, keputusan di pengguna:
+1. **Hanya Memory (bawaan usulan ini):** diari = catatan Memory `archive` + tampilan Dreaming Review; tidak ada berkas baru, tidak ada store kedua.
+2. **`DREAMS.md` proyeksi baca-saja:** Core menghasilkan ulang berkas dari catatan diari Memory agar dapat dibaca/diedit di editor teks; berkas itu turunan, bukan sumber kebenaran, tidak pernah disuntik ke prompt, dan suntingan manusia tidak mengalir balik (atau aliran balik dibuat eksplisit di revisi lain).
+3. **`DREAMS.md` sebagai store tulis sendiri seperti OpenClaw:** berkas menjadi tempat penyimpanan diari, paralel dengan Memory; melanggar prinsip satu home dan memerlukan keputusan arsitektur terpisah.
 
 **Tidak diusulkan sekarang (P3):** keputusan merge/supersede oleh model seperti di OpenClaw. Agent Core sudah punya `decideContradictions` berbasis aturan; perubahan itu perlu keputusan terpisah.
 
@@ -85,6 +90,7 @@ Verifikasi hidup (OPEN): satu siklus REM manual terkendali lewat halaman Dreamin
 ## Riwayat revisi
 
 - Revisi 1 — 2026-10-31: proposal awal dari telaah kode OpenClaw dan source REM Agent Core.
+- Revisi 2 — 2026-10-31: koreksi klaim keliru bahwa pengguna telah memutuskan "tidak ada DREAMS.md"; bagian P2 kini memuat tiga opsi `DREAMS.md` yang belum diputuskan beserta fakta kode OpenClaw tentang siapa yang menulis berkas itu. Status tetap PROPOSED.
 
 ## Keputusan pengguna dan scope
 
