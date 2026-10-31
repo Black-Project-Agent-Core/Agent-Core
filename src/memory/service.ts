@@ -36,6 +36,7 @@ import {MemoryDerivations} from './derivations.js';
 import { isMemoryExpired, normalizeMemoryExpiresAt } from './visibility.js';
 import { resolveMemoryCognitiveConfig, type MemoryCognitiveConfig, type MemoryCognitiveOptions } from './cognitive-config.js';
 import { MemoryCognitiveEngine, type CognitiveHost } from './cognitive-maintenance.js';
+import type { DreamingCompletion } from './rem-model-assist.js';
 import { digestSourceRef, validateDigestPlan, REM_SOURCE_TYPE, type DigestPlan, type DigestCommitResult } from './rem-consolidation.js';
 import { legacyExperience } from './experience-types.js';
 import { assessEpistemicConfidence, buildEpistemicLinkIndex } from './epistemic-confidence.js';
@@ -1095,8 +1096,9 @@ export class MemoryService {
         epistemic: 'hypothesis', verification: { status: 'unverified', evidence: [] }, sourceRefs: plan.sources,
       } };
       next.evolutionHistory = boundedHistory(previous?.evolutionHistory ?? [], event(previous ? 'updated' : 'created',
-        'deterministic', ['content', 'metadata', 'source', 'links'], {
+        plan.assist ? 'system' : 'deterministic', ['content', 'metadata', 'source', 'links'], {
           remFamily: plan.key, generation: plan.fingerprint,
+          ...(plan.assist ? { assist: plan.assist } : {}),
           ...(previous?.source?.ref ? { previousSource: previous.source.ref } : {}),
           ...(redactions.length ? { redactions: summarizeRedactions(redactions) } : {}),
         }));
@@ -1834,6 +1836,11 @@ export class MemoryService {
 
   dreamingStatus() {
     return this.cognitive.dreamingStatus();
+  }
+
+  /** Host-injected model call for REM model assist (P1); undefined removes it. Has no effect while the option is `off`. */
+  setDreamingCompletion(completion: DreamingCompletion | undefined): void {
+    this.cognitive.setDreamingCompletion(completion);
   }
 
   async epistemicAssessment(id: string) {

@@ -23,12 +23,22 @@ export type CognitiveFeature = (typeof COGNITIVE_FEATURES)[number];
 /** Host environment variable: `all`, `none` or a comma separated feature list. */
 export const COGNITIVE_ENV_FLAG = 'AGENT_CORE_MEMORY_COGNITIVE';
 
+/**
+ * Separate opt-in for model-written REM digests: `off` (default) or `digest`. It is deliberately not a
+ * `COGNITIVE_FEATURES` name, so `AGENT_CORE_MEMORY_COGNITIVE=all` can never send Memory text to a provider.
+ */
+export const REM_MODEL_ASSIST_ENV_FLAG = 'AGENT_CORE_REM_MODEL_ASSIST';
+export type RemModelAssist = 'off' | 'digest';
+
 export interface MemoryCognitiveOptions {
   features?: Partial<Record<CognitiveFeature, boolean>>;
   /** Graph traversal depth when `multiHop` is enabled; clamped to 1..3. */
   maxHops?: number;
   tier?: { l1WindowMs?: number; l2WindowMs?: number };
-  rem?: { intervalMs?: number; windowMs?: number; minClusterSize?: number; maxClusterSize?: number };
+  rem?: {
+    intervalMs?: number; windowMs?: number; minClusterSize?: number; maxClusterSize?: number;
+    modelAssist?: RemModelAssist; modelCallsPerDay?: number; modelTimeoutMs?: number;
+  };
   contradiction?: { confidenceMargin?: number; recencyGapMs?: number };
 }
 
@@ -36,7 +46,10 @@ export interface MemoryCognitiveConfig {
   readonly features: Readonly<Record<CognitiveFeature, boolean>>;
   readonly maxHops: number;
   readonly tier: Readonly<{ l1WindowMs: number; l2WindowMs: number }>;
-  readonly rem: Readonly<{ intervalMs: number; windowMs: number; minClusterSize: number; maxClusterSize: number }>;
+  readonly rem: Readonly<{
+    intervalMs: number; windowMs: number; minClusterSize: number; maxClusterSize: number;
+    modelAssist: RemModelAssist; modelCallsPerDay: number; modelTimeoutMs: number;
+  }>;
   readonly contradiction: Readonly<{ confidenceMargin: number; recencyGapMs: number }>;
 }
 
@@ -68,6 +81,9 @@ export function resolveMemoryCognitiveConfig(options: MemoryCognitiveOptions = {
       windowMs: bounded(options.rem?.windowMs, 14 * DAY_MS, DAY_MS, 365 * DAY_MS),
       minClusterSize,
       maxClusterSize: boundedInt(options.rem?.maxClusterSize, 12, minClusterSize, 24),
+      modelAssist: options.rem?.modelAssist === 'digest' ? 'digest' : 'off',
+      modelCallsPerDay: boundedInt(options.rem?.modelCallsPerDay, 20, 1, 200),
+      modelTimeoutMs: bounded(options.rem?.modelTimeoutMs, 30_000, 5_000, 120_000),
     }),
     contradiction: Object.freeze({
       confidenceMargin: bounded(options.contradiction?.confidenceMargin, 0.15, 0.05, 0.9),
@@ -95,7 +111,9 @@ export function cognitiveOptionsFromEnv(
       else unknown.push(name);
     }
   }
-  return { options: { features }, unknown };
+  const assist = (env[REM_MODEL_ASSIST_ENV_FLAG] ?? '').trim().toLowerCase();
+  if (assist && assist !== 'off' && assist !== 'digest') unknown.push(`${REM_MODEL_ASSIST_ENV_FLAG}=${assist}`);
+  return { options: { features, ...(assist === 'digest' ? { rem: { modelAssist: 'digest' as const } } : {}) }, unknown };
 }
 
 export function enabledCognitiveFeatures(config: MemoryCognitiveConfig): CognitiveFeature[] {

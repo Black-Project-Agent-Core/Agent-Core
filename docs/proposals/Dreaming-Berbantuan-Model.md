@@ -1,7 +1,7 @@
 # Dreaming berbantuan model
 Tanggal: 2026-10-31
-Revisi: 3
-Status: PROPOSED
+Revisi: 4
+Status: P1 IMPLEMENTED IN SOURCE (disetujui 2026-11-01; belum di-build, belum diaktifkan, default mati); P2 PROPOSED, belum disetujui
 Jenis: Improvement
 Asal dan bukti: telaah kode OpenClaw dari klon `G:\Projects\Learning\openclaw` (commit `f1c93577085244aa96aa87b53a2df9b59d293bd7`) dan source Agent Core `src/memory/{rem-consolidation,cognitive-maintenance,cognitive-config,service,intelligence,types}.ts`, `src/http/app.ts`, `src/agent-runtime.ts`; tangkapan layar Dreaming Review dari pengguna (2026-10-31). Bukti kode OpenClaw lengkap (dengan `file:baris`, penanda kepastian dan daftar yang belum dibaca) ada di satu tempat: [OpenClaw workspace files dan dreaming, telaah kode](../research/OpenClaw-Workspace-Files-dan-Dreaming-Telaah-Kode-20261031.md).
 
@@ -93,6 +93,16 @@ Verifikasi hidup (OPEN): satu siklus REM manual terkendali lewat halaman Dreamin
 - Revisi 2 — 2026-10-31: koreksi klaim keliru bahwa pengguna telah memutuskan "tidak ada DREAMS.md"; bagian P2 kini memuat tiga opsi `DREAMS.md` yang belum diputuskan beserta fakta kode OpenClaw tentang siapa yang menulis berkas itu. Status tetap PROPOSED.
 - Revisi 3 — 2026-10-31: mencatat keputusan pengguna "DREAMS.md = Hanya Memory" (opsi 1). Scope P1/P2 tidak berubah dan belum disetujui; status tetap PROPOSED.
 
+- Revisi 4 — 2026-11-01: pengguna memilih "Setujui P1 saja" di chat; P1 diimplementasikan di source (lihat bagian terakhir). P2 tidak disetujui dan tidak diimplementasikan.
+
 ## Keputusan pengguna dan scope
+
+**Keputusan 2026-11-01 (pengguna, di chat, atas pertanyaan dengan tiga pilihan): APPROVE P1 saja.** P2 (diari) tetap menunggu keputusan terpisah dan syarat recall di atas. Persetujuan ini mencakup perubahan source, tes, dan dokumentasi untuk P1; tidak mencakup build, restart, menyalakan `AGENT_CORE_REM_MODEL_ASSIST`, rilis, atau mengirim data Memory ke provider.
+
+**Realisasi P1 di source (observed; tes tersempit lolos, lihat `CHANGELOG.md` dan `docs/CODEBASE.md`):** saklar terpisah `AGENT_CORE_REM_MODEL_ASSIST=off|digest` (bukan bagian `all`); `src/memory/rem-model-assist.ts` memuat prompt dan validasi; `MemoryCognitiveEngine.setDreamingCompletion` menerima fungsi dari host (`src/index.ts` menyuntikkan `AgentRuntimeService.complete` tanpa tool dan tanpa sesi); batas 20 panggilan per hari UTC dan timeout 30 detik dapat diatur; status hanya agregat. Penyimpangan dari rancangan awal, semuanya lebih ketat atau lebih sederhana: (1) batas output ditegakkan oleh validasi (maks 1.200 karakter), bukan parameter token provider, karena `AgentProviderCompletionOptions` tidak punya parameter itu; (2) anggaran harian ada di memori proses dan reset saat restart; (3) kegagalan model menghasilkan digest ekstraktif untuk generasi sumber itu dan tidak dicoba ulang sampai sumber berubah, sesuai rancangan; (4) rencana yang ekstraknya gagal `scanMemorySafety` (mis. memuat kredensial) tidak pernah dibuat, jadi isinya tidak sampai ke model.
+
+**Terbuka (OPEN):** (a) bug yang sudah ada dan terlihat dari tes merah yang belum di-commit: sumber yang di-*forget* masih masuk digest REM baru; perbaiki sebelum `AGENT_CORE_REM_MODEL_ASSIST` dinyalakan karena teks itu juga akan dikirim ke provider; (b) verifikasi hidup satu siklus REM manual setelah build resident; (c) belum diuji apakah `AgentRuntime.complete` berjalan tanpa tugas aktif di Core yang sedang berjalan, selain lewat fake di tes; (d) manfaat dan biaya belum terukur dan tidak diklaim.
+
+## Keputusan sebelumnya
 
 Keputusan sebagian (2026-10-31, dari pengguna di chat): **DREAMS.md = Hanya Memory**. Tidak ada berkas `DREAMS.md`, proyeksi baca-saja, atau store tulis kedua; diari, bila kelak disetujui, hidup sebagai catatan Memory `archive` dan tampilan Dreaming Review. Keputusan ini tidak menyetujui P1 atau P2: scope P1/P2 masih menunggu APPROVE / REVISE / HOLD / REJECT.

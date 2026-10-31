@@ -32,6 +32,8 @@ export interface DigestPlan {
   keywords: string[];
   tags: string[];
   context: string;
+  /** Set only when `content` is a validated model rewrite of the extractive text (P1 model assist). */
+  assist?: 'model';
 }
 
 export interface DigestPlanResult {

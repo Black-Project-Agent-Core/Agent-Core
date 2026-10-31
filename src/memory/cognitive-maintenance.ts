@@ -8,6 +8,10 @@ import { FORGETTING_PARAMS, scoreMemoryForgetting } from './forgetting-curve.js'
 import type { MemoryIndexResult } from './index.js';
 import { boundedHistory } from './note-format.js';
 import { IntervalLoop, planEpisodicDigests, type DigestPlanResult, type DigestPlan, type DigestCommitResult } from './rem-consolidation.js';
+import {
+  ASSIST_SYSTEM_PROMPT, ASSIST_TAG, buildAssistPrompt, checkAbstractiveDigest, emptyAssistCounts,
+  type AssistCounts, type DreamingCompletion,
+} from './rem-model-assist.js';
 import { normalizeLinks } from './relations.js';
 import {
   classifyEmbeddingDrift, findOrphanReferences, stripOrphanReferences, type IntegrityScan,
@@ -49,7 +53,9 @@ export interface CognitiveCycleReport {
   mode: 'preview' | 'applied';
   enabled: string[];
   contradictions?: ContradictionReport;
-  digests?: Omit<DigestPlanResult, 'plans'> & { planned: number; created: string[]; updated: string[]; failed: string[]; indexIssues: number };
+  digests?: Omit<DigestPlanResult, 'plans'> & {
+    planned: number; created: string[]; updated: string[]; failed: string[]; indexIssues: number; assist?: AssistCounts;
+  };
   forgetting?: { threshold: number; reviewCandidates: number; sampleIds: string[] };
   integrity?: IntegrityReport;
   errors: string[];
@@ -67,8 +73,63 @@ export class MemoryCognitiveEngine {
   private loop: IntervalLoop | undefined;
   private lastCycle: CognitiveCycleReport | undefined;
   private lastLoopError: string | undefined;
+  private completion: DreamingCompletion | undefined;
+  // shortcut: the daily model-call budget lives in process memory and resets on restart; persist it if restarts become frequent.
+  private assistBudget = { day: '', used: 0 };
 
   constructor(private readonly host: CognitiveHost, readonly config: MemoryCognitiveConfig) {}
+
+  /** The host injects the model call after the Native runtime exists; `src/memory` never imports provider modules. */
+  setDreamingCompletion(completion: DreamingCompletion | undefined): void {
+    this.completion = completion;
+  }
+
+  private takeAssistBudget(now = Date.now()): boolean {
+    const day = new Date(now).toISOString().slice(0, 10);
+    if (this.assistBudget.day !== day) this.assistBudget = { day, used: 0 };
+    if (this.assistBudget.used >= this.config.rem.modelCallsPerDay) return false;
+    this.assistBudget.used += 1;
+    return true;
+  }
+
+  /**
+   * Runs outside the canonical lock. Any failure, timeout or rejected output returns the unchanged extractive
+   * plan; `validateDigestPlan` still re-checks the sources inside the transaction at commit time.
+   */
+  private async assistPlan(plan: DigestPlan, byId: Map<string, MemoryRecord>, counts: AssistCounts): Promise<DigestPlan> {
+    const complete = this.completion;
+    if (!complete) return plan;
+    const members = plan.memberIds.flatMap((id) => byId.get(id) ?? []);
+    if (members.length !== plan.memberIds.length) { counts.fallback += 1; return plan; }
+    if (!this.takeAssistBudget()) { counts.deferred += 1; return plan; }
+    counts.called += 1;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.config.rem.modelTimeoutMs);
+    try {
+      // A completion that ignores the signal must still not stall the cycle.
+      const timedOut = new Promise<never>((_, reject) => {
+        controller.signal.addEventListener('abort', () => reject(new Error('REM_MODEL_ASSIST_TIMEOUT')), { once: true });
+      });
+      const text = await Promise.race([
+        complete({ system: ASSIST_SYSTEM_PROMPT, prompt: buildAssistPrompt(members), signal: controller.signal }),
+        timedOut,
+      ]);
+      const checked = checkAbstractiveDigest(text, plan.title, members);
+      if (!checked.ok) {
+        counts.rejected += 1;
+        counts.reasons[checked.reason] = (counts.reasons[checked.reason] ?? 0) + 1;
+        return plan;
+      }
+      counts.accepted += 1;
+      return { ...plan, content: checked.content, tags: [...plan.tags, ASSIST_TAG], assist: 'model' };
+    } catch {
+      // The error text may quote source material; only the count survives.
+      counts.fallback += 1;
+      return plan;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   /** Bounded additive ranking influence per record id, derived from the eligible set's links. */
   epistemicInfluence(records: MemoryRecord[], now = Date.now()): Map<string, number> {
@@ -219,9 +280,14 @@ export class MemoryCognitiveEngine {
     const updated: string[] = [];
     const failed: string[] = [];
     let indexIssues = 0;
+    const assist = apply && this.config.rem.modelAssist === 'digest' && this.completion ? emptyAssistCounts() : undefined;
     if (apply) {
       counts.reasons.budgetDeferred += Math.max(0, plans.length - MAX_DIGESTS_PER_CYCLE);
-      for (const plan of plans.slice(0, MAX_DIGESTS_PER_CYCLE)) {
+      const batch = plans.slice(0, MAX_DIGESTS_PER_CYCLE);
+      // Independent provider waits overlap; the five-digest cycle cap already bounds the fan-out.
+      const byId = new Map(records.map((record) => [record.id, record]));
+      const ready = assist ? await Promise.all(batch.map((plan) => this.assistPlan(plan, byId, assist))) : batch;
+      for (const plan of ready) {
         try {
           const result = await this.host.commitDigest(plan);
           if (result.status === 'skipped') counts.reasons[result.reason] += 1;
@@ -236,7 +302,7 @@ export class MemoryCognitiveEngine {
         }
       }
     }
-    return { ...counts, planned: plans.length, created, updated, failed, indexIssues };
+    return { ...counts, planned: plans.length, created, updated, failed, indexIssues, ...(assist ? { assist } : {}) };
   }
 
   /** Review-only: reports records whose retrievability fell under the threshold, never deletes. */
@@ -295,12 +361,14 @@ export class MemoryCognitiveEngine {
     return {
       enabled: this.config.features.remConsolidation, loopRunning: this.loop?.running ?? false,
       busy: this.busy, intervalMs: this.config.rem.intervalMs,
+      modelAssist: this.config.rem.modelAssist, modelAssistReady: Boolean(this.completion),
       ...(cycle ? { lastCycle: {
         startedAt: cycle.startedAt, completedAt: cycle.completedAt, mode: cycle.mode,
         planned: digest?.planned ?? null, clusters: digest?.clusters ?? null,
         created: digest?.created.length ?? null, updated: digest?.updated.length ?? null,
         failed: digest?.failed.length ?? null, indexIssues: digest?.indexIssues ?? null,
         reasons: digest?.reasons ?? {}, errors: cycle.errors.length,
+        ...(digest?.assist ? { assist: { ...digest.assist, reasons: { ...digest.assist.reasons } } } : {}),
       } } : {}),
       ...(this.lastLoopError ? { loopError: true } : {}),
     };

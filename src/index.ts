@@ -187,6 +187,12 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
       activityTracker.captureFailure('AGENT_RUNTIME', error, 'agent-runtime-start-failure');
     }
   }
+  if (agentRuntime) {
+    // REM model assist (AGENT_CORE_REM_MODEL_ASSIST=digest): one tool-free completion per changed digest, no session.
+    const runtime = agentRuntime;
+    memoryService.setDreamingCompletion(async ({ system, prompt, signal }) =>
+      (await runtime.complete([{ role: 'system', content: system }, { role: 'user', content: prompt }], [], 'rem-model-assist', signal)).content ?? '');
+  }
 
   const artifactAuthorization = new ArtifactAuthorization();
   const mutationSafety = McpMutationSafety.initialize(path.join(config.projectRoot, 'runtime', 'mcp'));
