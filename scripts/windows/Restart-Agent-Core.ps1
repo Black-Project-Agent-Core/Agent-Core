@@ -6,6 +6,9 @@ Restarts this checkout's desktop launcher once, after its old runtime has exited
 Run manually from Windows Explorer or an independent PowerShell window, never
 from an Agent Core-owned terminal: launcher shutdown can terminate its children.
 Use -WhatIf to inspect the target without closing or launching anything.
+A controller or tool shell must start Restart-Agent-Core.cmd instead: it runs this worker elevated through the
+on-demand Scheduled Task. Run directly from an unelevated shell, this worker refuses ('Identitas proses belum
+dapat dipastikan') because the elevated Agent Core processes expose no path or command line; nothing is closed.
 The script requests normal window close. The launcher's existing shutdown code
 owns graceful shutdown and its own bounded forced-cleanup fallback.
 No force-kill, scheduler changes, automatic elevation, or launch retries here.
