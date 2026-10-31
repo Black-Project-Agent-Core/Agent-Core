@@ -5,6 +5,7 @@ import type { AgentReasoningEffort } from './agent-provider-state.js';
 import { redactSensitiveString, redactSensitiveValue } from './security/redaction.js';
 import { boundedMessages, type AgentCompactionRecord } from './agent-context-compaction.js';
 import { normalizeMemoryUse, type AgentMemoryUse } from './agent-memory-use.js';
+import { normalizeProposalPromotionBinding, type ProposalPromotionBinding } from './learning/proposal-promotion.js';
 import { nativeMemoryEvaluationSchema, normalizeNativeResultMetadata,
   type NativeMemoryEvaluation, type NativeMemoryResultMetadata } from './agent-memory-evaluation.js';
 import {
@@ -71,6 +72,7 @@ export interface AgentTurnCheckpointState {
   runtimeSessionId: string;
   prompt: string;
   workspace?: string;
+  proposalPromotionBinding?: ProposalPromotionBinding;
   /** Route the owner chose for this turn; absent means automatic rotation. A resumed turn stays on it. */
   providerRoute?: string;
   providerModel?: string;
@@ -303,6 +305,8 @@ export function normalizeAgentTurnCheckpoint(raw: unknown): AgentTurnCheckpointS
     schemaVersion: AGENT_TURN_CHECKPOINT_SCHEMA_VERSION,
     conversationId, turnId, runtimeTaskId, runtimeSessionId, prompt,
     ...(value.workspace ? { workspace: safeString(value.workspace, 200) } : {}),
+    ...(value.proposalPromotionBinding !== undefined
+      ? { proposalPromotionBinding: normalizeProposalPromotionBinding(value.proposalPromotionBinding) } : {}),
     ...(value.providerRoute ? { providerRoute: safeString(value.providerRoute, 100) } : {}),
     ...(value.providerModel ? { providerModel: value.providerModel } : {}),
     ...(value.reasoningEffort ? { reasoningEffort: value.reasoningEffort } : {}),

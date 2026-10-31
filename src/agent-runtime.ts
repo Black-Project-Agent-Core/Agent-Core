@@ -12,6 +12,9 @@ import { normalizeMemoryUse, type AgentMemoryUse } from './agent-memory-use.js';
 export type { AgentMemoryUse } from './agent-memory-use.js';
 import type { MemoryService } from './memory/service.js';
 import type { LearningService } from './learning/service.js';
+import type { UserSkillCommandInput } from './learning/skill-proposal-decisions.js';
+import { isProposalPromotionRequest, resolveProposalPromotion,
+  type NativeProposalPromotionContext, type ProposalPromotionBinding } from './learning/proposal-promotion.js';
 import type { LearningCandidate, LearningTriggerReason } from './learning/types.js';
 import { safeEvidenceRefSchema } from './learning/evaluation.js';
 import { assertLearningTextSafe } from './memory/safety.js';
@@ -1269,7 +1272,42 @@ export class AgentRuntimeService {
 
   async materializeProcedure(candidate: AgentProcedureCandidate): Promise<void> { await this.learning.materializeProcedure(candidate); }
 
-  async applyUserSkillCommand(input: { workspace: string; sessionId: string; taskId: string; userEvidenceRef: string; prompt: string }) {
+  /** Native host intake only. Discovery is read-only; the caller separately supplies persisted user evidence. */
+  async prepareNativeProposalPromotion(input: {
+    prompt: string; workspace: string; sessionId: string;
+    history?: readonly { role: string; content: string }[];
+    expectedBinding?: ProposalPromotionBinding;
+  }): Promise<NativeProposalPromotionContext | undefined> {
+    if (!input.expectedBinding && !isProposalPromotionRequest(input.prompt)) return undefined;
+    try {
+      if (!this.learning.hasSkillProposals?.()) throw new Error('PROPOSAL_OWNER_UNAVAILABLE');
+      const records = await this.learning.skillProposals(input.workspace);
+      const context = await resolveProposalPromotion({ ...input, reader: this.learning.proposalDocuments(),
+        allowedSkillProposalIds: records.map(record => record.id) });
+      if (!context || context.status !== 'selected' || context.binding?.kind === 'improvement') return context;
+      const record = records.find(item => item.id === context.binding?.id && item.revisionDigest === context.binding.revisionDigest);
+      if (!record) return { ...context, status: 'stale' };
+      // The immutable registered artifact must match the user's requested scope before its whole revision is built.
+      const buildOnlyScope = /\b(?:tanpa\s+aktivasi|without\s+activation|jangan\s+(?:di)?aktifkan|do\s+not\s+activate|build\s+only|(?:hanya|only)\s+(?:build|buat)(?:\s+(?:saja|only))?)\b/gi;
+      const scope = input.prompt.replace(buildOnlyScope, '');
+      if (/\b(?:hanya|only|kecuali|except|tanpa|without|jangan|skip|exclude|omit|do\s+not)\b/i.test(scope))
+        return { ...context, scopeRevisionRequired: true };
+      const explicitDigests = [...new Set(input.prompt.match(/sha256:[a-f0-9]{64}/gi)?.map(value => value.toLowerCase()) ?? [])];
+      const hasNotice = record.notices.some(notice => notice.sessionId === input.sessionId && notice.revisionDigest === record.revisionDigest);
+      if ((explicitDigests.length && (explicitDigests.length !== 1 || explicitDigests[0] !== record.revisionDigest))
+        || (!explicitDigests.length && !hasNotice)) return { ...context, exactDecisionRequired: true };
+      // Resume never records/replays a host decision from checkpoint or history.
+      if (input.expectedBinding) return { ...context, exactDecisionRequired: true };
+      const buildOnly = /\b(?:tanpa\s+aktivasi|without\s+activation|jangan\s+(?:di)?aktifkan|do\s+not\s+activate|build\s+only|(?:hanya|only)\s+(?:build|buat))\b/i.test(input.prompt);
+      return { ...context, skillCommand: '/skill approve ' + (buildOnly ? '' : 'and activate ') + record.name
+        + (explicitDigests.length ? ' ' + explicitDigests[0] : '') };
+    } catch {
+      return { status: input.expectedBinding ? 'stale' : 'unavailable', userScope: input.prompt, candidates: [],
+        ...(input.expectedBinding ? { binding: input.expectedBinding } : {}), warnings: ['proposal-owner-unavailable'] };
+    }
+  }
+
+  async applyUserSkillCommand(input: UserSkillCommandInput) {
     return this.learning.applyUserSkillCommand?.(input) ?? null;
   }
   async completeUserSkillDecision(input: { sessionId: string; taskId: string; workspace: string; prompt: string }, decision: import('./learning/skill-proposal-types.js').SkillProposalRecord) {

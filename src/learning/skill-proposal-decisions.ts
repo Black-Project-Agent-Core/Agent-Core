@@ -60,9 +60,12 @@ export async function decideSkillProposal(coordinator: SkillProposalCoordinator,
   }
 }
 export function isUserSkillCommand(prompt: string): boolean { return /^(?:\/skill\s+)?(?:approve|setujui|build|buat|revise|revisi|reject|tolak|defer|nanti)\s/i.test(prompt.trim()); }
-export async function applyUserSkillCommand(coordinator: SkillProposalCoordinator, input: {
+export interface UserSkillCommandInput {
   workspace: string; sessionId: string; taskId: string; userEvidenceRef: string; prompt: string;
-}): Promise<SkillProposalRecord | null> {
+  /** Native host binding, not approval evidence. Refuse a concurrent revision before recording any decision. */
+  expectedProposal?: { id: string; revisionDigest: string };
+}
+export async function applyUserSkillCommand(coordinator: SkillProposalCoordinator, input: UserSkillCommandInput): Promise<SkillProposalRecord | null> {
   const match = /^(?:\/skill\s+)?(approve|setujui|build|buat|revise|revisi|reject|tolak|defer|nanti)(?:\s+(?:and|dan)\s+(activate|aktifkan))?\s+([a-z][a-z0-9-]*)(?:\s+(sha256:[a-f0-9]{64}))?\s*$/i.exec(input.prompt.trim());
   if (!match) return null;
   if (match[2] && !['approve', 'setujui', 'build', 'buat'].includes(match[1].toLowerCase())) throw new Error('SKILL_PROPOSAL_AMBIGUOUS_DECISION');
@@ -72,6 +75,8 @@ export async function applyUserSkillCommand(coordinator: SkillProposalCoordinato
     if (!/^\/skill\s/i.test(input.prompt.trim()) && !match[4]) return null;
     throw new Error('SKILL_PROPOSAL_NOT_FOUND');
   }
+  if (input.expectedProposal && (item.id !== input.expectedProposal.id || item.revisionDigest !== input.expectedProposal.revisionDigest))
+    throw new Error('SKILL_PROPOSAL_BOUND_REVISION_CHANGED');
   const digest = match[4] ?? item.notices.filter(n => n.sessionId === input.sessionId && n.revisionDigest === item.revisionDigest).at(-1)?.revisionDigest;
   if (!digest) throw new Error('SKILL_PROPOSAL_EXACT_REVISION_REQUIRED');
   const decision = ({ approve: 'approve', setujui: 'approve', build: 'approve', buat: 'approve', revise: 'revise', revisi: 'revise', reject: 'reject', tolak: 'reject', defer: 'defer', nanti: 'defer' } as const)[match[1].toLowerCase() as 'approve'];

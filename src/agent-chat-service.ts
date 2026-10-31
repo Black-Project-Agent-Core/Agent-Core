@@ -631,8 +631,16 @@ export class AgentChatService {
         workspace: conversation.workspace ?? 'agent-core', conversationId: conversation.id,
         userMessageId, persistedUserMessage: true,
       }) : undefined;
+      const proposalPromotion = localOperator && artifactReply === undefined ? await this.runtime.prepareNativeProposalPromotion?.({
+        prompt: input.prompt, workspace: conversation.workspace ?? 'agent-core', sessionId: conversation.runtimeSessionId,
+        history: history.map(message => ({ role: message.role, content: message.content ?? '' })),
+      }) : undefined;
       const skillDecision = localOperator && artifactReply === undefined ? await this.runtime.applyUserSkillCommand?.({ workspace: conversation.workspace ?? 'agent-core',
-        sessionId: conversation.runtimeSessionId, taskId, userEvidenceRef: 'user-message:' + userMessageId, prompt: input.prompt }) : undefined;
+        sessionId: conversation.runtimeSessionId, taskId, userEvidenceRef: 'user-message:' + userMessageId,
+        ...(proposalPromotion?.skillCommand && proposalPromotion.binding ? { expectedProposal: {
+          id: proposalPromotion.binding.id, revisionDigest: proposalPromotion.binding.revisionDigest,
+        } } : {}),
+        prompt: proposalPromotion?.skillCommand ?? input.prompt }) : undefined;
       result = artifactReply !== undefined ? {
         sessionId: conversation.runtimeSessionId, taskId, response: artifactReply,
         status: 'finalized', iterations: 0, retrievalAttemptIds: [],
@@ -650,6 +658,7 @@ export class AgentChatService {
         memoryQuery: buildMemoryQuery(input.prompt, history),
         ...(slashSkill ? { userSelectedSkillDirective: userSelectedSkillDirective(slashSkill.skill) } : {}),
         ...(attachmentReference ? { attachmentReference } : {}),
+        ...(proposalPromotion ? { proposalPromotion } : {}),
         ...(input.goalMode ? { goalMode: true } : {}),
         eventSink: event => { this.recordContextUsage(continuation.turnId, event); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,
@@ -872,12 +881,20 @@ export class AgentChatService {
 
       // Rebuilt from the store and the stored files, never from the first request: the block the first run saw.
       const attachmentReference = await this.attachmentReference(turn.id);
+      const proposalPromotion = loaded.state.proposalPromotionBinding ? await this.runtime.prepareNativeProposalPromotion?.({
+        prompt: loaded.state.prompt, workspace: loaded.state.workspace ?? conversation.workspace ?? 'agent-core',
+        sessionId: conversation.runtimeSessionId, expectedBinding: loaded.state.proposalPromotionBinding,
+      }) : undefined;
+      // No model/tool execution against a silently changed source. Commit-only terminal recovery above remains valid.
+      if (loaded.state.proposalPromotionBinding && proposalPromotion?.status !== 'selected')
+        throw new Error('AGENT_RUNTIME_PROPOSAL_BINDING_STALE');
       const result = await this.controller.runConversationTurn({
         sessionId: conversation.runtimeSessionId,
         taskId: turn.runtimeTaskId,
         prompt: loaded.state.prompt,
         workspace: loaded.state.workspace ?? conversation.workspace,
         ...(attachmentReference ? { attachmentReference } : {}),
+        ...(proposalPromotion ? { proposalPromotion } : {}),
         ...(turn.goalMode ? { goalMode: true } : {}),
         eventSink: event => { this.recordContextUsage(continuation.turnId, event); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,

@@ -1,5 +1,7 @@
 import { failureContext } from './learning/workflow-evidence.js';
 import { IMPROVEMENT_HANDOFF_CONTRACT } from './learning/improvement-handoff.js';
+import { NATIVE_PROPOSAL_PROMOTION_CONTRACT, proposalPromotionReference,
+  type NativeProposalPromotionContext } from './learning/proposal-promotion.js';
 import { decisionRequestSchema } from './learning/decision-review.js';
 import { safeEvidenceRefSchema } from './learning/evaluation.js';
 import { lstat, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
@@ -423,6 +425,7 @@ export interface NativeAgentConversationTurnInput extends NativeAgentTaskInput {
   userSelectedSkillDirective?: string;
   /** USER ATTACHMENTS block of this turn, rebuilt by the chat service from the store on every run and resume; data, never instructions. */
   attachmentReference?: string;
+  proposalPromotion?: NativeProposalPromotionContext;
   /** Goal mode: run in resumable iteration windows until the goal is reached instead of failing at the cap. */
   goalMode?: boolean;
   eventSink?: AgentTurnEventSink;
@@ -435,6 +438,7 @@ interface NativeAgentExecutionInput extends NativeAgentTaskInput {
   historySummary?: { text: string; record: AgentCompactionRecord };
   userSelectedSkillDirective?: string;
   attachmentReference?: string;
+  proposalPromotion?: NativeProposalPromotionContext;
   goalMode?: boolean;
   memoryQuery?: string;
   eventSink?: AgentTurnEventSink;
@@ -551,6 +555,7 @@ function systemPrompt(delegatedTools: boolean, guidance: string): string {
     'Reusable procedures produce proposals, not automatic active Skills. Use a short capability-based name such as code-review, never an opaque ID.',
     'Explain expected usefulness without claiming measured improvement. The host appends pending proposal reminders to this task response; only an actual user decision can authorize building or activation.',
     IMPROVEMENT_HANDOFF_CONTRACT,
+    NATIVE_PROPOSAL_PROMOTION_CONTRACT,
     'When reusing experience or testing uncertain effects, include decisionReview={operation:declare,declaration:...} in agent_core_strategy before acting; later use operation assess or inspect with separate prediction and goal evidence. The same Learning owner serves external learning(action=decision). Retrieval relevance is not applicability or authority. Inspect uncertain contracts; report unknown effects. Never rewrite forecasts after observations. For optional verification stopping use inspect.salience with stoppingContext and observation requirement/resolution/marginalValue; unresolved mandatory or serious risk remains visible, and deferral needs a reason. These reviews grant no execution permission.',
     RESPONSE_STYLE_CONTRACT,
     'You MUST call agent_core_finalize before the turn can complete.',
@@ -746,7 +751,7 @@ export class NativeAgentController {
         });
     // A greeting or thanks needs one short reply, not recall, the tool inventory, strategy and Learning review.
     if (input.reuseSession && !resumedState && !input.goalMode && !input.evaluation && !input.userSelectedSkillDirective
-      && !input.attachmentReference && isSimpleConversation(input.prompt)) {
+      && !input.attachmentReference && !input.proposalPromotion && isSimpleConversation(input.prompt)) {
       const direct = await this.answerSimpleTurn(input, session, task, providerRoute, providerModel);
       if (direct) return direct;
     }
@@ -1092,6 +1097,7 @@ export class NativeAgentController {
           { role: 'system', content: [initialMemory.promptText, packet.text].join('\n\n') + (await this.runtime.skillDecisionContext?.(task.id) ?? '') },
           ...(input.historySummary && compactionEnabled() ? [{ role: 'system' as const, content: input.historySummary.text }] : []),
           ...history,
+          ...(input.proposalPromotion ? [{ role: 'user' as const, content: proposalPromotionReference(input.proposalPromotion) }] : []),
           { role: 'user', content: input.prompt },
         ];
     // This required route is separate from ranked/budgeted knowledge. Refresh it on resume.
@@ -1139,6 +1145,8 @@ export class NativeAgentController {
         runtimeSessionId: session.id,
         prompt: input.prompt,
         ...(input.workspace ? { workspace: input.workspace } : {}),
+        ...(input.proposalPromotion?.binding ? { proposalPromotionBinding: input.proposalPromotion.binding }
+          : resumedState?.proposalPromotionBinding ? { proposalPromotionBinding: resumedState.proposalPromotionBinding } : {}),
         ...(providerRoute ? { providerRoute } : {}),
         ...(providerModel ? { providerModel } : {}),
         ...(reasoningEffort ? { reasoningEffort } : {}),
