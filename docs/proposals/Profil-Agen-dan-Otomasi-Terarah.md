@@ -242,7 +242,7 @@ Screenshot Native sebelum restart terakhir memperlihatkan build 1.7.0-dev.1 dan 
 
 | Berkas | Keadaan di Agent Core | Status |
 | --- | --- | --- |
-| AGENTS.md | Kontrak root untuk eksternal dan kebijakan tetap Native di kode sudah menutup aturan data, scope, gaya dan Memory. Baru: `AGENTS.md` profil opsional 4 KiB untuk catatan operator, tunduk pada keduanya. Baris AGENTS pada tabel owner di atas dibuka kembali oleh permintaan pengguna ini; kontrak root tidak diganti. | Source dan tes selesai; pemakaian resident OPEN sampai build dan restart |
+| AGENTS.md | Kontrak root untuk eksternal dan kebijakan tetap Native di kode sudah menutup aturan data, scope, gaya dan Memory. Baru: `AGENTS.md` profil opsional 4 KiB untuk catatan operator, tunduk pada keduanya. Baris AGENTS pada tabel owner di atas dibuka kembali oleh permintaan pengguna ini; kontrak root tidak diganti. | Source, tes dan build resident selesai (restart receipt `c56d6a258c344d5cafa37e0d8fa7f1bb`, exit 0, health ok); bukti giliran Native yang memuat blok AGENTS masih OPEN |
 | SOUL.md | Profil existing; isi diperkaya (nilai, nada, batas) dalam batas 4 KiB. | Dibaca pada giliran berikutnya bila profil aktif |
 | IDENTITY.md | Profil existing; tidak diubah. | Tidak berubah |
 | USER.md | Tidak diisi dari Memory atau recall (baris USER/MEMORY di atas); writer resmi tetap `/perkenalan`. | Menunggu operator |
