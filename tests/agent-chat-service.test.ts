@@ -63,16 +63,14 @@ function finalChoice(finalResponse: string, verificationRef: string) {
   };
 }
 
-async function startProvider(requests: any[]) {
+async function startProvider(requests: any[], replies = ['Alpha context established.', 'Follow-up understood.']) {
   let turn = 0;
   const server = createServer(async (request, response) => {
     const body: Buffer[] = [];
     for await (const chunk of request) body.push(Buffer.from(chunk));
     requests.push(JSON.parse(Buffer.concat(body).toString('utf8')));
     turn += 1;
-    const payload = turn === 1
-      ? finalChoice('Alpha context established.', 'verification:chat-turn-1')
-      : finalChoice('Follow-up understood.', 'verification:chat-turn-2');
+    const payload = finalChoice(replies[Math.min(turn, replies.length) - 1]!, 'verification:chat-turn-' + turn);
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify(payload));
   });
@@ -282,6 +280,62 @@ describe('local /perkenalan host command', () => {
       prompt: 'Periksa konteks publik.', messageOrigin: 'external-controller' });
     expect(JSON.stringify(requests.at(-1)?.messages)).not.toContain('PRIVATE_NEXT_TURN');
     expect(JSON.stringify(requests.at(-1)?.messages)).not.toContain('PRIVATE_MANUAL');
+  });
+
+  describe('Native interview', () => {
+    const draft = 'Draf SOUL:\n```SOUL.md\nJawab hangat, ringkas, dan jujur.\n```\nKetik /perkenalan simpan soul.';
+    const interviewFixture = async (replies = [draft, 'Lanjut.', 'Publik.']) => {
+      const requests: any[] = [];
+      const f = await introductionFixture(await startProvider(requests, replies));
+      const soul = path.join(f.selected, 'SOUL.md');
+      const operator = (clientRequestId: string, prompt: string) => f.chat.runTurn({ conversationId: f.conversation.id,
+        clientRequestId, prompt, messageOrigin: 'local-operator' });
+      return { ...f, requests, soul, operator };
+    };
+
+    it('turns a bare /perkenalan into a model interview, and only the operator command writes the drafted file', async () => {
+      const f = await interviewFixture();
+      const before = await readFile(path.join(f.selected, 'USER.md'), 'utf8');
+      const interview = await f.operator('interview-start', '/perkenalan');
+      expect(f.requests).toHaveLength(1);
+      expect(JSON.stringify(f.requests[0].messages)).toContain('MODE WAWANCARA PROFIL');
+      expect(JSON.stringify(f.requests[0].messages)).toContain('PUBLIC_SOUL');
+      expect(interview.response).toContain('```SOUL.md');
+      expect(await readFile(f.soul, 'utf8')).toBe('PUBLIC_SOUL: Jawab hangat dan singkat.');
+      const saved = await f.operator('interview-save', '/perkenalan simpan soul');
+      expect(f.requests).toHaveLength(1);
+      expect(saved.response).toContain('SOUL.md tersimpan dan sudah dibaca kembali');
+      expect(await readFile(f.soul, 'utf8')).toBe('Jawab hangat, ringkas, dan jujur.\n');
+      expect(await readFile(path.join(f.selected, 'USER.md'), 'utf8')).toBe(before);
+      expect(saved.agentProfile?.files.SOUL.digest).not.toBe(interview.agentProfile?.files.SOUL.digest);
+    });
+
+    it('refuses to save over a file edited after the draft was made', async () => {
+      const f = await interviewFixture();
+      await f.operator('stale-start', '/perkenalan');
+      await writeFile(f.soul, 'SUNTINGAN_MANUAL');
+      const refused = await f.operator('stale-save', '/perkenalan simpan soul');
+      expect(refused.response).toContain('berkas berubah sejak draf dibuat');
+      expect(await readFile(f.soul, 'utf8')).toBe('SUNTINGAN_MANUAL');
+    });
+
+    it('has nothing to save before an interview, without calling a model', async () => {
+      const f = await interviewFixture();
+      const result = await f.operator('no-interview', '/perkenalan simpan semua');
+      expect(result.response).toContain('Belum ada draf');
+      expect(f.requests).toHaveLength(0);
+      expect(await readFile(f.soul, 'utf8')).toBe('PUBLIC_SOUL: Jawab hangat dan singkat.');
+    });
+
+    it('keeps the interview directive for the operator follow-ups only', async () => {
+      const f = await interviewFixture();
+      await f.operator('follow-start', '/perkenalan');
+      await f.operator('follow-up', 'Panggil saya Nara.');
+      expect(JSON.stringify(f.requests[1].messages)).toContain('MODE WAWANCARA PROFIL');
+      await f.chat.runTurn({ conversationId: f.conversation.id, clientRequestId: 'follow-external',
+        prompt: 'Periksa konteks publik.', messageOrigin: 'external-controller' });
+      expect(JSON.stringify(f.requests[2].messages)).not.toContain('MODE WAWANCARA PROFIL');
+    });
   });
 });
 /** The state a stop used to leave behind: the turn is over but its runtime task is still running. */

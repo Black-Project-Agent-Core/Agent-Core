@@ -413,7 +413,7 @@ async function handleRequest(
       }
       const commands: Array<{ name: string; kind: 'command' | 'skill'; description: string }> = [
         { name: 'compact', kind: 'command', description: 'Kompak konteks giliran yang sedang berjalan' },
-        { name: 'perkenalan', kind: 'command', description: 'Berkenalan dan simpan preferensi profil pribadi' },
+        { name: 'perkenalan', kind: 'command', description: 'Wawancara Native untuk mengisi profil; "/perkenalan simpan semua" menyimpan draf' },
       ];
       if (options.skills) {
         try {

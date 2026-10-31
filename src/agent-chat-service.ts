@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { parseOperatorIntroduction } from './agent-profile.js';
+import { extractProfileDraft, isInterviewStart, parseOperatorIntroduction, type ProfileDraft, type ProfileFileName } from './agent-profile.js';
 import { AgentProviderPoolPausedError, validateAgentReasoningEffort, validateAgentProviderModel, type AgentModelMessage } from './agent-provider.js';
 import type { AgentReasoningEffort } from './agent-provider-state.js';
 import { normalizeNativeResultMetadata } from './agent-memory-evaluation.js';
@@ -504,6 +504,42 @@ export class AgentChatService {
     validateAgentProviderModel(value, providerRoute, this.listProviders().find(route => route.id === providerRoute)?.models?.map(model => model.id) ?? []);
   }
 
+  /** The interview directive stays on while a bare `/perkenalan` is among the 12 messages up to this turn's own prompt. */
+  private profileInterviewActive(conversationId: string, turnId: string): boolean {
+    const messages = this.store.messagesForConversation(conversationId);
+    const at = messages.findIndex(message => message.turnId === turnId && message.role === 'user');
+    return messages.slice(Math.max(0, at - 11), at + 1).some(message => message.role === 'user' && isInterviewStart(message.content));
+  }
+
+  /**
+   * `/perkenalan simpan`: drafts come only from finalized assistant messages after the latest bare `/perkenalan`, and each is
+   * bound to the profile revision its own turn saw, so a file edited since the draft is refused instead of overwritten.
+   */
+  private async saveInterviewDrafts(conversation: { id: string; workspace?: string | undefined }, files: readonly ProfileFileName[]) {
+    const messages = this.store.messagesForConversation(conversation.id);
+    let start = -1;
+    messages.forEach((message, index) => { if (message.role === 'user' && isInterviewStart(message.content)) start = index; });
+    const drafts: ProfileDraft[] = [];
+    const notes: string[] = [];
+    for (const name of files) {
+      let message: (typeof messages)[number] | undefined;
+      for (let index = messages.length - 1; index > start && start >= 0 && !message; index--) {
+        const candidate = messages[index]!;
+        if (candidate.role === 'assistant' && extractProfileDraft(candidate.content, name) !== undefined) message = candidate;
+      }
+      if (!message) { if (files.length === 1) notes.push(name + '.md: belum ada draf berlabel ' + name + '.md setelah /perkenalan terakhir di percakapan ini.'); continue; }
+      const seen = this.store.getTurn(message.turnId)?.agentProfile?.files[name];
+      if (!seen || (seen.status !== 'read' && seen.status !== 'absent')) {
+        notes.push(name + '.md tidak disimpan: revisi berkas saat draf dibuat tidak dapat dipastikan; minta draf baru.');
+        continue;
+      }
+      drafts.push({ name, content: extractProfileDraft(message.content, name)!, expectedDigest: seen.status === 'read' ? seen.digest : undefined });
+    }
+    if (!drafts.length && !notes.length) notes.push('Belum ada draf berlabel setelah /perkenalan terakhir di percakapan ini. Ketik /perkenalan dulu.');
+    const saved = await this.controller.saveProfileDrafts(drafts, conversation.workspace);
+    return { ...saved, response: [...notes, saved.response].filter(Boolean).join('\n') };
+  }
+
   validateReasoningEffort(value: unknown, providerRoute?: string, providerModel?: string): void {
     if (value === undefined) return;
     const route = this.listProviders().find(route => route.id === providerRoute);
@@ -531,7 +567,8 @@ export class AgentChatService {
     // Unknown origins are not an operator. Refuse before replay, profile access, or persistence.
     if (introduction && input.messageOrigin !== 'local-operator') throw new Error('AGENT_PROFILE_OWNER_REQUIRED');
     if (introduction && input.attachments?.length) throw new Error('AGENT_PROFILE_TEXT_ONLY');
-    const persistedPrompt = introduction ? '/perkenalan' + (introduction.preferences ? ' [preferensi operator]' : '') : input.prompt;
+    const persistedPrompt = introduction ? '/perkenalan' + (introduction.preferences ? ' [preferensi operator]' : '')
+      + (introduction.save ? ' simpan ' + (introduction.save.length > 1 ? 'semua' : introduction.save[0]!.toLowerCase()) : '') : input.prompt;
     const replay = (turn: AgentChatTurn) => {
       if (input.messageOrigin !== 'local-operator' && this.store.messagesForConversation(turn.conversationId)
         .some(message => message.turnId === turn.id && message.role === 'user' && parseOperatorIntroduction(message.content)))
@@ -550,10 +587,14 @@ export class AgentChatService {
       }
       return replay(existing);
     }
+    // A bare `/perkenalan` is a model interview when a provider can answer and the profile is readable; otherwise the static host reply.
+    const interview = introduction !== undefined && introduction.preferences === undefined && introduction.save === undefined
+      && await this.controller.profileInterviewReady(this.store.getConversation(input.conversationId)?.workspace);
+    const hostCommand = introduction !== undefined && !interview;
     const providerRoute = input.providerRoute?.trim() || undefined;
-    if (!introduction) this.validateProviderModel(input.providerModel, providerRoute);
-    if (!introduction) this.validateReasoningEffort(input.reasoningEffort, providerRoute, input.providerModel);
-    if (!introduction && providerRoute && !this.listProviders().some(route => route.id === providerRoute && route.configured)) {
+    if (!hostCommand) this.validateProviderModel(input.providerModel, providerRoute);
+    if (!hostCommand) this.validateReasoningEffort(input.reasoningEffort, providerRoute, input.providerModel);
+    if (!hostCommand && providerRoute && !this.listProviders().some(route => route.id === providerRoute && route.configured)) {
       throw new Error('AGENT_CHAT_PROVIDER_ROUTE_UNKNOWN');
     }
 
@@ -565,8 +606,8 @@ export class AgentChatService {
     // Do not make a Native model/provider session a prerequisite to operator approval.
     const localOperator = (input.messageOrigin ?? 'local-operator') === 'local-operator';
     const artifactOperatorCommand = localOperator && this.artifactAuthorization?.isOperatorCommand(input.prompt) === true;
-    if (!introduction && !artifactOperatorCommand) await this.ensureConversationSession(conversation.id, conversation.runtimeSessionId);
-    if (!introduction && !artifactOperatorCommand && conversation.preferredProviderId) {
+    if (!hostCommand && !artifactOperatorCommand) await this.ensureConversationSession(conversation.id, conversation.runtimeSessionId);
+    if (!hostCommand && !artifactOperatorCommand && conversation.preferredProviderId) {
       this.runtime.setProviderAffinity(
         conversation.runtimeSessionId,
         conversation.preferredProviderId,
@@ -644,7 +685,10 @@ export class AgentChatService {
       // The user message was persisted by beginTurn above. Tool output cannot enter this host-only path.
       // Only a freshly persisted real user message enters artifact operator commands.
       // No MCP tool, Memory record, or model output may invoke this host authority.
-      const introductionReply = introduction ? await this.controller.operatorIntroduction(introduction.preferences, conversation.workspace) : undefined;
+      const introductionReply = introduction && !interview
+        ? introduction.save ? await this.saveInterviewDrafts(conversation, introduction.save)
+          : await this.controller.operatorIntroduction(introduction.preferences, conversation.workspace)
+        : undefined;
       const artifactReply = introductionReply ? introductionReply.response
         : localOperator ? await this.artifactAuthorization?.operatorCommand(input.prompt, {
         workspace: conversation.workspace ?? 'agent-core', conversationId: conversation.id,
@@ -678,6 +722,7 @@ export class AgentChatService {
         history: historyMessages(history),
         ...(boundedContext.summary ? { historySummary: boundedContext.summary } : {}),
         memoryQuery: buildMemoryQuery(input.prompt, history),
+        ...(localOperator && this.profileInterviewActive(conversation.id, turnId) ? { profileInterview: true } : {}),
         ...(slashSkill ? { userSelectedSkillDirective: userSelectedSkillDirective(slashSkill.skill) } : {}),
         ...(attachmentReference ? { attachmentReference } : {}),
         ...(proposalPromotion ? { proposalPromotion } : {}),
@@ -918,6 +963,7 @@ export class AgentChatService {
         workspace: loaded.state.workspace ?? conversation.workspace,
         profileAudience: turn.messageOrigin === 'local-operator' ? 'owner-private'
           : turn.messageOrigin === 'external-controller' ? 'external' : 'unknown',
+        ...(turn.messageOrigin === 'local-operator' && this.profileInterviewActive(conversation.id, turn.id) ? { profileInterview: true } : {}),
         ...(attachmentReference ? { attachmentReference } : {}),
         ...(proposalPromotion ? { proposalPromotion } : {}),
         ...(turn.goalMode ? { goalMode: true } : {}),
