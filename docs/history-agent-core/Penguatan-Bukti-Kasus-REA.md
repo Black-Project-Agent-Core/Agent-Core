@@ -1,8 +1,9 @@
 # Penguatan Bukti Kasus dan Atribusi REA
 
 Tanggal: 2026-10-31
-Revisi: 2
-Status: IMPLEMENTED — aktivasi selesai; finalisasi Learning dan arsip sedang ditutup
+Revisi: 3
+Status: COMPLETED
+Selesai: 2026-10-31
 Jenis: Improvement — revisi Skill existing yang diminta langsung
 Asal dan bukti: R1 `E:\Projects\Learning\awesome-reverse-engineer-anything`, commit `641331f4bdbe1a6cd7199d5d0215397bc6ae246d`, CC0-1.0; R2 `runtime/skills/capability-packs/reverse-engineer-anything/`, baseline payload `sha256:df33d0ad9abe476ab2d161c860b1bffa866737bb1f7ce2180abb97a3f56dff3c`.
 
@@ -77,7 +78,7 @@ Harapan: laporan membedakan siapa membuktikan apa, scope rekonstruksi dan batas 
 - [x] Review Raka atas isi final; kasus helper/showcase/JAR/test-target/containment/hardware tidak dinaikkan menjadi klaim global.
 - [x] Stage/promote owner existing dengan expected active digest dan konfirmasi source-lineage; body serta reference aktif dibaca sampai akhir dan digest sama kandidat.
 - [x] Aktivasi/build/restart sesuai jalur resmi, tanpa benchmark; hasil aktual dicatat tanpa mengarang refresh client.
-- [ ] CODEBASE/changelog/patch intent, Learning dan commit lokal task-owned selesai; dokumen diarsipkan setelah acceptance.
+- [x] CODEBASE/changelog/patch intent, Learning dan commit lokal task-owned selesai; dokumen diarsipkan setelah acceptance.
 
 ### Hasil implementasi dan bukti aktual
 
@@ -90,6 +91,8 @@ Harapan: laporan membedakan siapa membuktikan apa, scope rekonstruksi dan batas 
 - Client Codex menerima digest baru lewat bootstrap dan `skills(inspect)`. `skills(read)` body offset 0 → 7.763 → akhir serta reference offset 0 → akhir menghasilkan konten yang dicocokkan persis terhadap source. Bukti pemanggilan: `tool:ba7618f13b5343f19adf625afd829550`, `tool:e95ca0e8d99e43cfac797e819cb2ccfe`, `tool:51d0785862344ee4845de3f5f0886abc`, `tool:3fbc66f6857a449cbd8059010a13c74f`. Ini bukti discovery/readback client aktual; tidak ada klik Refresh tools pada ChatGPT/Claude yang diklaim. Schema Tool API tidak berubah.
 - `.changeset/rea-case-evidence.md` mencatat intent patch, changelog dan CODEBASE diperbarui. Versi produk 1.6.0 tidak dirilis ulang; tidak ada tag/push/release. Tidak ada skrip donor, runtime REA, benchmark atau proyek eksternal yang dijalankan. Manfaat pada investigasi berikutnya belum diuji.
 - Receipt penggunaan capability-index/skill-authoring (`applied`) dan mind-control (`adapted`) tercatat untuk keputusan/perubahan aktual, dengan `result=unavailable` dan `trustChanged=false`: tidak ada report workflow independen yang membuktikan efek tiap Skill. Format ID/parameter receipt awal ditolak, lalu diperbaiki berdasarkan schema/owner; tidak disamakan dengan kegagalan artifact atau bukti manfaat. Recall BM25 terpisah untuk recovery SDK tersedia tetapi hanya menghasilkan catatan path-governance yang tidak menjawab masalah SDK; ini bukan bukti recall kontekstual studi telah pulih.
+- Commit implementasi: `c1fd61d606b11cc5dbae84d9ca2996e97b569d97`. Episode `ext-569fd0669dc344eba89bb8e3e92fdac4` mencatat outcome controller `verified`; verifier workflow independen tetap `unavailable`, terpisah dari hasil lint/build/readback aktual di atas. Learning checkpoint `study-awesome-rea-skill-upgrade-2026-10-31` (`verified-recovery`) dan explicit review `2dfadd4d-039a-48ed-84ca-a105bd1e8aac` selesai (`complete=true`). Satu kandidat recovery SDK ditahan sebagai proposal `awaiting-verification`, nol durable capture: owner memerlukan resolusi bukti/evaluasi efek lebih lanjut. Tidak ada klaim manfaat baru yang dipaksa masuk Memory, eksperimen tambahan atau pekerjaan implementasi tersisa untuk scope upgrade ini. Transfer studi sudah berada di rumah Skill existing, tidak diduplikasi ke Memory.
+- Seluruh tema berguna dalam 24 berkas snapshot telah diterapkan, dinyatakan sudah tercakup, atau dikecualikan dengan alasan pada tabel scope. Batas penyelesaian ini tidak meliputi isi halaman/repo eksternal yang hanya ditautkan donor. Dokumen manusia-baca dipindahkan ke path arsip di bawah setelah Learning selesai; canonical Skill tetap milik SkillService.
 
 Rollback: owner `rollback_revision` ke baseline digest di atas dengan current-active fencing; jangan menyalin/mengedit catalog/history langsung. Source dapat dikembalikan lewat revert commit task ini; jangan membuang perubahan orang lain.
 
@@ -97,6 +100,7 @@ Rollback: owner `rollback_revision` ke baseline digest di atas dengan current-ac
 
 - Revisi 1: studi 24 berkas, pemeriksaan silang Main/Raka dan review desain; implementasi/aktivasi sedang dituntaskan. Recall kontekstual Memory melaporkan `memory-source-unavailable`; list/read foundation, kontrak dan episode berhasil. Health satu kali `ok` v1.6.0; tidak dipakai untuk mengklaim retrieval pulih.
 - Revisi 2: isi final, lint/validate, promotion, build/publish, restart resmi dan readback client selesai. Recall yang tidak tersedia tidak dicoba ulang atau dinyatakan pulih. Learning, commit dan pemindahan arsip dicatat saat penutupan.
+- Revisi 3: acceptance ditutup; commit implementasi dan hasil Learning aktual dicatat, termasuk batas verifier/candidate. Status COMPLETED dan pemindahan ke arsip tanpa perubahan catalog/runtime lebih lanjut.
 
 ## Keputusan pengguna dan scope
 
