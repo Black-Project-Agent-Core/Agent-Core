@@ -249,7 +249,7 @@ Screenshot Native sebelum restart terakhir memperlihatkan build 1.7.0-dev.1 dan 
 | `memory/YYYY-MM-DD.md`, `MEMORY.md` | Memory kanonik `runtime/memory` adalah satu-satunya store; berkas tulis menjadi store kedua. | CLOSED 2026-10-31: pengguna memilih Memory kanonik saja |
 | SKILL.md | `runtime/skills/capability-packs/<skill>/SKILL.md` dengan lifecycle SkillService. | Sudah ada |
 | DREAMS.md | Dreaming Review `/agent/dreaming` di atas REM existing; tidak ada berkas. | Sudah ada, tanpa berkas |
-| BOOTSTRAP.md | `/perkenalan` adalah ritual perkenalan; loader hanya membaca, sehingga berkas sekali-pakai tidak dapat menghapus dirinya. | HOLD; `/perkenalan` dipakai sebagai default sampai pengguna memutuskan lain |
+| BOOTSTRAP.md | Celah nyata (koreksi atas pemetaan sebelumnya yang menyamakannya dengan `/perkenalan`). `/perkenalan` hanya perintah host statis: tanpa argumen menampilkan identitas dan template, dengan argumen menambahkan teks ke USER.md. Tidak memanggil model, tidak bertanya balik, dan tidak mengisi SOUL, IDENTITY atau AGENTS. Loader hanya membaca, sehingga berkas sekali-pakai tidak dapat menghapus dirinya. | HOLD; menunggu keputusan pengguna tentang alur perkenalan interaktif |
 
 **Keputusan pengguna (2026-10-31):** `MEMORY.md` dan catatan harian memakai Memory kanonik saja. Tidak ada berkas, tampilan baca-saja, atau penulis kedua yang dibuat; pinned foundation dan task capsule existing tetap menjalankan peran itu.
 
