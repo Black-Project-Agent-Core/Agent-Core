@@ -2,6 +2,7 @@
 name: reverse-engineer-anything
 description: Investigate shipped applications, Electron/JavaScript bundles, executables, managed assemblies, archives, and recorded behavior with REA. Use for reverse engineering, decompilation, tracing packaged features, comparing app versions, or evidence-based reconstruction. Skip ordinary source-repository analysis and unrelated coding tasks.
 metadata:
+  adapter-revision: "2"
   upstream_skill_version: "42"
   runtime_version: "6.5.0"
 ---
@@ -92,19 +93,19 @@ Read only the guide relevant to the question:
 - Observed registration, approval or provider failures:
   [connection-and-recovery.md](references/connection-and-recovery.md).
 
-The guides match the installed release. Plan MCP setup only when needed and
-authorized; it may replace this adapted skill.
-
 ## Case evidence and acceptance
 
 Read [case-evidence.md](references/case-evidence.md) before borrowing a case,
 disclosing artifact material to a provider, or judging a rebuild. Separate
 local observations from author/curator reports.
 
+For analyzer gaps, numeric/constraint recovery, embedded scripts, packed targets,
+compatibility seams or schema/context limits, read
+[investigation-methods.md](references/investigation-methods.md).
+
 ## Investigate with bounded evidence
 
-Break broad requests into specific questions and track their sources and gaps.
-Start with the smallest sufficient inventory/source selection. Preserve target
+Track questions, sources and gaps; select relevant inputs. Preserve target
 identity, digests, locations, Evidence IDs, limitations and coverage. Trace a
 feature from its entry point through relevant code, IPC or state to its result.
 Filenames and matching strings alone do not prove behavior.
@@ -124,7 +125,7 @@ access boundaries. Offline recordings do not authorize live capture or fetching
 recorded URLs. Inspection does not authorize patching, injection, or closing a
 user's running app or attached analysis database.
 
-Explain findings with Evidence IDs and concise supporting facts. Mark original
+Explain findings with Evidence IDs. Mark original
 questions answered, partial or unresolved; keep negative searches bounded.
 When building a similar feature, separate observed behavior from design choices,
 use normal coding tools in the project, and test the implementation. Export
