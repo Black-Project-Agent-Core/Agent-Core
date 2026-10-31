@@ -1,7 +1,7 @@
 # Profil agen dan otomasi terarah
 Tanggal: 2026-10-31
 Revisi: 1
-Status: PROPOSED
+Status: PROPOSED — P1/P2 disetujui dalam goal implementasi 2026-10-31; P3 HOLD
 Jenis: Improvement
 Asal dan bukti:
 
@@ -120,6 +120,6 @@ Maksimal dua invokasi tes per target (merah → hijau), correctness checks sempi
 
 ## Keputusan pengguna dan scope
 
-Belum ada keputusan; menunggu APPROVE / REVISE / HOLD / REJECT.
+2026-10-31 — pengguna meminta "buat goals untuk mengerjakan 2 proposal dengan bantuan dari Native Agent Core" dan menyebut kedua path proposal. Scope rekomendasi Revisi 1 dipakai: P1 + P2 profil setelah P1 + P2 REM; P3 tetap HOLD sampai monitor/cadence/output konkret diotorisasi. Relay external-controller tidak dipalsukan sebagai approval operator Native. Implementasi/validasi/aktivasi belum dinyatakan selesai.
 
-Scope rekomendasi: **APPROVE P1 + P2, HOLD P3**, revisi 1 dokumen ini. Keputusan tersebut belum diberikan. Integrasi, migrasi, penjadwalan dan aktivasi tidak dilakukan oleh tugas studi ini.
+Scope implementasi: **P1 + P2, HOLD P3**, Revisi 1. Tugas studi sebelumnya tidak mengintegrasikan apa pun; goal pengguna berikutnya mengerjakan scope ini. Tidak ada periodic job atau profil pribadi yang diaktifkan oleh pencatatan keputusan ini.

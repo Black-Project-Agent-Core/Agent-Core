@@ -7,12 +7,11 @@ import {
 import { FORGETTING_PARAMS, scoreMemoryForgetting } from './forgetting-curve.js';
 import type { MemoryIndexResult } from './index.js';
 import { boundedHistory } from './note-format.js';
-import { IntervalLoop, planEpisodicDigests, REM_SOURCE_TYPE, type DigestPlanResult } from './rem-consolidation.js';
+import { IntervalLoop, planEpisodicDigests, type DigestPlanResult, type DigestPlan, type DigestCommitResult } from './rem-consolidation.js';
 import { normalizeLinks } from './relations.js';
 import {
   classifyEmbeddingDrift, findOrphanReferences, stripOrphanReferences, type IntegrityScan,
 } from './self-repair.js';
-import type { RememberInput } from './service.js';
 import type { MemoryRecord } from './types.js';
 
 /** Narrow capability surface the service hands to the engine; keeps service internals private. */
@@ -25,7 +24,7 @@ export interface CognitiveHost {
   refreshIndex(): Promise<void>;
   inspectIndex(records: MemoryRecord[]): Promise<MemoryIndexResult>;
   repairSummary(): Promise<{ pending: number; failed: number; issue?: string }>;
-  remember(input: RememberInput): Promise<MemoryRecord>;
+  commitDigest(plan: DigestPlan): Promise<DigestCommitResult>;
   feedbackSalience(): Promise<Map<string, number>>;
 }
 
@@ -50,7 +49,7 @@ export interface CognitiveCycleReport {
   mode: 'preview' | 'applied';
   enabled: string[];
   contradictions?: ContradictionReport;
-  digests?: Omit<DigestPlanResult, 'plans'> & { planned: number; created: string[]; failed: string[] };
+  digests?: Omit<DigestPlanResult, 'plans'> & { planned: number; created: string[]; updated: string[]; failed: string[]; indexIssues: number };
   forgetting?: { threshold: number; reviewCandidates: number; sampleIds: string[] };
   integrity?: IntegrityReport;
   errors: string[];
@@ -216,26 +215,27 @@ export class MemoryCognitiveEngine {
       minClusterSize: this.config.rem.minClusterSize, maxClusterSize: this.config.rem.maxClusterSize,
     });
     const created: string[] = [];
+    const updated: string[] = [];
     const failed: string[] = [];
+    let indexIssues = 0;
     if (apply) {
+      counts.reasons.budgetDeferred += Math.max(0, plans.length - MAX_DIGESTS_PER_CYCLE);
       for (const plan of plans.slice(0, MAX_DIGESTS_PER_CYCLE)) {
         try {
-          const record = await this.host.remember({
-            title: plan.title, content: plan.content, keywords: plan.keywords, tags: plan.tags,
-            context: plan.context, category: 'consolidated-knowledge',
-            links: plan.memberIds.map((targetId) => ({
-              targetId, type: 'derived-from' as const, strength: 0.7, reason: 'rem-consolidation source',
-            })),
-            source: { type: REM_SOURCE_TYPE, ref: plan.key },
-            ...(plan.workspace ? { provenance: { workspace: plan.workspace, files: [] } } : {}),
-          });
-          created.push(record.id);
+          const result = await this.host.commitDigest(plan);
+          if (result.status === 'skipped') counts.reasons[result.reason] += 1;
+          else {
+            (result.status === 'created' ? created : updated).push(result.id);
+            if (result.indexIssue) indexIssues += 1;
+          }
         } catch (error) {
-          failed.push(`${plan.key}: ${message(error)}`);
+          counts.reasons.commitFailed += 1;
+          // Do not expose raw source/error text through the maintenance report.
+          failed.push(plan.key);
         }
       }
     }
-    return { ...counts, planned: plans.length, created, failed };
+    return { ...counts, planned: plans.length, created, updated, failed, indexIssues };
   }
 
   /** Review-only: reports records whose retrievability fell under the threshold, never deletes. */

@@ -6,6 +6,8 @@ import { resolveMemoryCognitiveConfig } from '../../src/memory/cognitive-config.
 import { MemoryCognitiveEngine, type CognitiveHost } from '../../src/memory/cognitive-maintenance.js';
 import { decideContradictions } from '../../src/memory/contradiction.js';
 import { initializeMemoryRoot } from '../../src/memory/initialize.js';
+import { memorySemanticRevision } from '../../src/memory/disclosure.js';
+import { MemoryService } from '../../src/memory/service.js';
 import { parseCanonicalNote, serializeCanonicalNote } from '../../src/memory/note-format.js';
 import { IntervalLoop, planEpisodicDigests, REM_SOURCE_TYPE } from '../../src/memory/rem-consolidation.js';
 import { classifyEmbeddingDrift, findOrphanReferences, stripOrphanReferences } from '../../src/memory/self-repair.js';
@@ -201,7 +203,7 @@ describe('episodic digest planning', () => {
   const options = { now: NOW, windowMs: 14 * DAY, minClusterSize: 3, maxClusterSize: 12 };
   const episodic = (id: string, extra: Partial<MemoryRecord> = {}) => record(id, {
     keywords: ['alpha', 'beta'], tags: ['ops', 'daily'], category: 'episodic', updatedAt: ago(DAY),
-    content: `Observation ${id}. More detail follows here.`, ...extra,
+    content: `Observation ${id}. More detail follows here.`, provenance: { workspace: 'ops', files: [] }, ...extra,
   });
 
   it('distills a recent related cluster into one idempotent extractive digest', () => {
@@ -218,7 +220,29 @@ describe('episodic digest planning', () => {
 
     const digest = record('digest', { source: { type: REM_SOURCE_TYPE, ref: plan!.key }, tags: ['rem-consolidated'] });
     const second = planEpisodicDigests([...records, digest], options);
-    expect(second).toMatchObject({ plans: [], alreadyConsolidated: 1 });
+    expect(second).toMatchObject({ plans: [], alreadyConsolidated: 0, reasons: { legacyUnknown: 1 } });
+  });
+
+  it('binds a generation to meaning revisions and policy without treating access counts as a new generation', () => {
+    const records = ['e1', 'e2', 'e3'].map((id) => episodic(id));
+    const first = planEpisodicDigests(records, options).plans[0]!;
+    expect(first.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(first.sources).toEqual(records.map((item) => ({ kind: 'memory', id: item.id, revision: memorySemanticRevision(item) })));
+    const accessed = records.map((item) => ({ ...item, retrievalCount: 91, lastAccessedAt: new Date(NOW).toISOString() }));
+    expect(planEpisodicDigests(accessed, options).plans[0]!.fingerprint).toBe(first.fingerprint);
+    const changed = records.map((item, index) => index ? item : { ...item, content: 'The corrected observation.' });
+    const corrected = planEpisodicDigests(changed, options).plans[0]!;
+    expect(corrected.key).toBe(first.key);
+    expect(corrected.fingerprint).not.toBe(first.fingerprint);
+    expect(planEpisodicDigests(records, { ...options, maxClusterSize: 4 }).plans[0]!.fingerprint).not.toBe(first.fingerprint);
+  });
+
+  it('does not turn unknown scope or derivative material into fresh episodic support', () => {
+    const unknown = ['u1', 'u2', 'u3'].map((id) => episodic(id, { provenance: undefined }));
+    const derived = ['d1', 'd2', 'd3'].map((id) => episodic(id, { links: [link('upstream', 'derived-from')] }));
+    const result = planEpisodicDigests([...unknown, ...derived], options);
+    expect(result.plans).toEqual([]);
+    expect(result.reasons.ineligible).toBe(6);
   });
 
   it('ignores records that are old, pinned, expired, superseded, already digests or unrelated', () => {
@@ -263,6 +287,7 @@ describe('maintenance cycle', () => {
     for (const name of ['first', 'second', 'third']) {
       members.push(await service.remember({
         content: `Episode ${name} recorded a deployment observation.`, keywords: ['alpha', 'beta'], tags: ['ops', 'daily'], category: 'episodic', context: 'x',
+        provenance: { workspace: 'ops', files: [] },
       }));
     }
     const preview = await service.runCognitiveMaintenance();
@@ -285,6 +310,110 @@ describe('maintenance cycle', () => {
     expect(rerun.digests).toMatchObject({ planned: 0, created: [], alreadyConsolidated: 1 });
     expect(service.cognitiveStatus().lastCycle).toBe(rerun);
   });
+
+  async function episodes(service: MemoryService) {
+    return Promise.all(['first', 'second', 'third'].map((name) => service.remember({
+      content: `Episode ${name} observed the old configuration.`, keywords: ['alpha', 'beta'], tags: ['ops', 'daily'],
+      category: 'episodic', context: 'x', provenance: { workspace: 'ops', files: [] },
+    })));
+  }
+
+  it('refreshes a changed source into the same digest identity and preserves both source and previous digest revision', async () => {
+    const { service } = await fixtures.service({ features: { remConsolidation: true } });
+    const members = await episodes(service);
+    const initial = await service.runCognitiveMaintenance({ apply: true });
+    const id = initial.digests!.created[0]!;
+    const before = (await service.read(id, false))!;
+    await service.update(members[0]!.id, { content: 'A corrected observation supersedes the old configuration.' });
+    const refreshed = await service.runCognitiveMaintenance({ apply: true });
+    expect(refreshed.digests).toMatchObject({ created: [], updated: [id], failed: [] });
+    expect((await service.read(id, false))!.content).toContain('A corrected observation');
+    expect((await service.read(members[1]!.id, false))!.content).toBe(members[1]!.content);
+    expect((await service.list()).filter((item) => item.source?.type === REM_SOURCE_TYPE)).toHaveLength(1);
+    expect((await service.runCognitiveMaintenance({ apply: true })).digests).toMatchObject({ planned: 0, reasons: { unchanged: 1 } });
+    expect(before.content).toContain('old configuration');
+  });
+
+  it('does not overwrite an operator-edited digest when its source later changes', async () => {
+    const { service } = await fixtures.service({ features: { remConsolidation: true } });
+    const members = await episodes(service);
+    const id = (await service.runCognitiveMaintenance({ apply: true })).digests!.created[0]!;
+    await service.update(id, { content: 'Operator-owned correction to the digest.' });
+    await service.update(members[0]!.id, { content: 'A source revision after the operator correction.' });
+    const result = await service.runCognitiveMaintenance({ apply: true });
+    expect(result.digests).toMatchObject({ planned: 0, created: [], updated: [], reasons: { ineligible: expect.any(Number) } });
+    expect(result.digests!.reasons.ineligible).toBeGreaterThan(0);
+    expect((await service.read(id, false))!.content).toBe('Operator-owned correction to the digest.');
+  });
+
+  it('binds a matching legacy extract to current revisions without inventing its historical revision', async () => {
+    const { service } = await fixtures.service({ features: { remConsolidation: true } });
+    await episodes(service);
+    const id = (await service.runCognitiveMaintenance({ apply: true })).digests!.created[0]!;
+    const before = (await service.read(id, false))!;
+    const family = before.source!.ref!.split(':')[2]!;
+    await (service as any).store.mutate(id, (current: MemoryRecord) => ({ ...current, source: { type: REM_SOURCE_TYPE, ref: family } }));
+    expect((await service.runCognitiveMaintenance({ apply: true })).digests).toMatchObject({ created: [], updated: [id], failed: [] });
+    const rebound = (await service.read(id, false))!;
+    expect(rebound.content).toBe(before.content);
+    expect(rebound.source!.ref).toMatch(/^rem:v2:/);
+    expect(rebound.evolutionHistory.at(-1)!.details).toMatchObject({ previousSource: family });
+  });
+
+  it.each(['changed', 'deleted', 'expired'] as const)('rechecks a source %s between planning and the final transaction', async (change) => {
+    const { service } = await fixtures.service({ features: { remConsolidation: true } });
+    const members = await episodes(service);
+    const store = (service as any).store;
+    const transact = store.transact.bind(store);
+    const intercept = vi.spyOn(store, 'transact').mockImplementationOnce(async (keys: any, planner: any) => {
+      intercept.mockRestore();
+      if (change === 'deleted') await service.delete(members[0]!.id);
+      else await service.update(members[0]!.id, change === 'expired'
+        ? { expiresAt: new Date(Date.now() - DAY).toISOString() }
+        : { content: 'Changed after the snapshot.' });
+      return transact(keys, planner);
+    });
+    const result = await service.runCognitiveMaintenance({ apply: true });
+    intercept.mockRestore();
+    expect(result.digests!.created).toEqual([]);
+    expect(result.digests!.failed).toEqual([]);
+    expect(result.digests!.reasons.sourceChanged + result.digests!.reasons.sourceUnavailable + result.digests!.reasons.ineligible).toBeGreaterThan(0);
+    expect((await service.list()).some((item) => item.source?.type === REM_SOURCE_TYPE)).toBe(false);
+  });
+
+  it('serializes two engines through the canonical transaction without duplicate generations', async () => {
+    const config = { features: { remConsolidation: true } } as const;
+    const { root, service } = await fixtures.service(config);
+    await episodes(service);
+    const other = await MemoryService.initialize(root, root, undefined, { cognitive: config });
+    try {
+      const results = await Promise.all([service.runCognitiveMaintenance({ apply: true }), other.runCognitiveMaintenance({ apply: true })]);
+      expect(results.flatMap((result) => result.digests!.created)).toHaveLength(1);
+      expect((await service.list()).filter((item) => item.source?.type === REM_SOURCE_TYPE)).toHaveLength(1);
+    } finally { other.dispose(); }
+  });
+
+  it('reports post-commit index degradation without retrying the committed digest', async () => {
+    const { service } = await fixtures.service({ features: { remConsolidation: true } });
+    await episodes(service);
+    vi.spyOn(service as any, 'refreshIndex').mockRejectedValueOnce(new Error('index offline'));
+    const applied = await service.runCognitiveMaintenance({ apply: true });
+    expect(applied.digests).toMatchObject({ created: [expect.any(String)], failed: [], indexIssues: 1 });
+    expect((await service.list()).filter(item => item.source?.type === REM_SOURCE_TYPE)).toHaveLength(1);
+    expect((await service.runCognitiveMaintenance({ apply: true })).digests).toMatchObject({ created: [], reasons: { unchanged: 1 } });
+  });
+
+  it('keeps the five-digest cap and reports deferred plans without model calls', async () => {
+    const { service } = await fixtures.service({ features: { remConsolidation: true } });
+    for (let group = 0; group < 6; group += 1) for (let item = 0; item < 3; item += 1) {
+      const label = `group-${group}`;
+      await service.remember({ content: `${label} observation ${item}.`, keywords: [label], tags: [label],
+        context: label, category: label, provenance: { workspace: 'ops', files: [] } });
+    }
+    const report = await service.runCognitiveMaintenance({ apply: true });
+    expect(report.digests).toMatchObject({ planned: 6, failed: [], reasons: { budgetDeferred: 1 } });
+    expect(report.digests!.created).toHaveLength(5);
+  }, 30_000);
 
   it('runs only the enabled steps and refuses a concurrent cycle', async () => {
     const { service: idle } = await fixtures.service();
@@ -312,7 +441,7 @@ describe('maintenance cycle', () => {
       refreshIndex: async () => undefined,
       inspectIndex: async () => ({ index: 'available', embedding: 'not-configured' }),
       repairSummary: async () => ({ pending: 0, failed: 0 }),
-      remember: async () => aged,
+      commitDigest: async () => ({ status: 'created', id: aged.id }),
       feedbackSalience: async () => new Map(),
     });
     const config = resolveMemoryCognitiveConfig({ features: { contradictionResolution: true, forgettingCurve: true, selfRepair: true } });
@@ -346,7 +475,7 @@ describe('maintenance cycle', () => {
       refreshIndex: async () => undefined,
       inspectIndex: async () => ({ index: 'available', embedding: 'not-configured' }),
       repairSummary: async () => ({ pending: 0, failed: 0 }),
-      remember: async () => records.get('w-00')!,
+      commitDigest: async () => ({ status: 'created', id: 'w-00' }),
       feedbackSalience: async () => new Map(),
     };
     const engine = new MemoryCognitiveEngine(host, resolveMemoryCognitiveConfig({ features: { contradictionResolution: true } }));
@@ -416,6 +545,36 @@ describe('interval loop', () => {
 describe('experience-v2 host mode', () => {
   const roots: string[] = [];
   afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
+
+  it('archives previous REM generations and binds exact source revisions without promoting verification', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-rem-v2-'));
+    roots.push(root);
+    const memory = await initializeMemoryRoot({ baseDir: root, experience: { enabled: true },
+      cognitive: { features: { remConsolidation: true, secretMasking: true } } });
+    try {
+      const members = [];
+      for (const item of ['one', 'two', 'three']) members.push(await memory.remember({
+        content: `Observation ${item} uses password: s3cretvalue99 today.`, keywords: ['ops'], tags: ['daily'],
+        category: 'episodic', context: 'ops', provenance: { workspace: 'agent-core', files: [] },
+      }));
+      const first = await memory.runCognitiveMaintenance({ apply: true });
+      const id = first.digests!.created[0]!;
+      const before = (await memory.read(id, false))!;
+      expect(before.version).toBe(2);
+      if (before.version !== 2) throw new Error('expected v2');
+      expect(before.experience.sourceRefs).toEqual(members.sort((a, b) => a.id.localeCompare(b.id))
+        .map(item => ({ kind: 'memory', id: item.id, revision: memorySemanticRevision(item) })));
+      expect(before.experience.verification.status).toBe('unverified');
+      expect(before.content).not.toContain('s3cretvalue99');
+      const priorRef = { kind: 'memory', id, revision: memorySemanticRevision(before) };
+      await memory.update(members[0]!.id, { content: 'The corrected observation uses the new configuration.' });
+      expect((await memory.runCognitiveMaintenance({ apply: true })).digests).toMatchObject({ updated: [id], failed: [] });
+      const historical = await (memory as any).store.archivedRevision(priorRef);
+      expect(historical?.content).toBe(before.content);
+      expect((await memory.read(id, false))!.content).toContain('corrected observation');
+      expect((await memory.epistemicAssessment(id)).status).toBe('inferred');
+    } finally { memory.dispose(); }
+  }, 30_000);
 
   it('applies masking, contradiction pruning and integrity scanning on the production write path', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-cognitive-v2-'));

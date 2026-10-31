@@ -36,6 +36,8 @@ import {MemoryDerivations} from './derivations.js';
 import { isMemoryExpired, normalizeMemoryExpiresAt } from './visibility.js';
 import { resolveMemoryCognitiveConfig, type MemoryCognitiveConfig, type MemoryCognitiveOptions } from './cognitive-config.js';
 import { MemoryCognitiveEngine, type CognitiveHost } from './cognitive-maintenance.js';
+import { digestSourceRef, validateDigestPlan, REM_SOURCE_TYPE, type DigestPlan, type DigestCommitResult } from './rem-consolidation.js';
+import { legacyExperience } from './experience-types.js';
 import { assessEpistemicConfidence, buildEpistemicLinkIndex } from './epistemic-confidence.js';
 import { FORGETTING_PARAMS, scoreMemoryForgetting } from './forgetting-curve.js';
 import { searchByTier } from './memory-tiers.js';
@@ -258,7 +260,7 @@ export class MemoryService {
       refreshIndex: () => this.refreshIndex(),
       inspectIndex: records => this.index.inspect(records),
       repairSummary: () => this.index.repairSummary(),
-      remember: input => this.remember(input),
+      commitDigest: plan => this.commitCognitiveDigest(plan),
       feedbackSalience: () => this.feedbackSalienceMap(),
     };
   }
@@ -1049,46 +1051,85 @@ export class MemoryService {
     return this.cognitiveConfig.features.secretMasking ? maskMemoryInput(input) : { value: input, redactions: [] };
   }
 
+  private newRecord(input: RememberInput, provenance: MemoryProvenance | undefined, id: string,
+    redactionDetails?: Record<string, unknown>): MemoryRecord {
+    const content = input.content.trim();
+    if (!content) throw new Error('Memory content is required');
+    const needsMetadata = input.keywords === undefined || input.context === undefined
+      || input.tags === undefined || input.category === undefined;
+    const enriched = needsMetadata ? enrichMemoryMetadata(content) : undefined;
+    const now = new Date().toISOString();
+    const expiresAt = normalizeMemoryExpiresAt(input.expiresAt);
+    return {
+      version: MEMORY_SCHEMA_VERSION, id,
+      ...(input.title?.trim() ? { title: input.title.trim() } : {}), content,
+      keywords: input.keywords !== undefined ? uniqueStrings(input.keywords) : uniqueStrings(enriched?.keywords),
+      context: input.context?.trim() || enriched?.context || 'General',
+      tags: input.tags !== undefined ? uniqueStrings(input.tags) : uniqueStrings(enriched?.tags),
+      category: input.category?.trim() || enriched?.category || 'Uncategorized',
+      links: materializeLinks(input.links, this.experienceEnabled), createdAt: now, updatedAt: now,
+      ...(expiresAt ? { expiresAt } : {}), lastAccessedAt: null, retrievalCount: 0,
+      evolutionHistory: [event('created', 'controller', ['content', 'metadata'], redactionDetails)], pinned: false,
+      ...(input.source ? { source: input.source } : {}), ...(provenance ? { provenance } : {}),
+    };
+  }
+
+  /** Final source/admission CAS and digest mutation share the existing canonical lock. */
+  private async commitCognitiveDigest(plan: DigestPlan): Promise<DigestCommitResult> {
+    this.assertOperational();
+    const { value: input, redactions } = this.maskInput<RememberInput>({
+      title: plan.title, content: plan.content, keywords: plan.keywords, tags: plan.tags, context: plan.context,
+      category: 'consolidated-knowledge', source: { type: REM_SOURCE_TYPE },
+      links: plan.memberIds.map(targetId => ({ targetId, type: 'derived-from', strength: 0.7, reason: 'rem-consolidation source' })),
+    });
+    const provenance = await captureMemoryProvenance(this.projectRoot, { workspace: plan.workspace, files: [] });
+    const committed = await this.store.transact<DigestCommitResult>([], ({ records, experience }) => {
+      const reason = validateDigestPlan(plan, records, Date.now());
+      if (reason) return { records, touchedIds: [], stateWrites: [], result: { status: 'skipped', reason } };
+      const previous = plan.previous ? records.find(record => record.id === plan.previous!.id) : undefined;
+      const id = previous?.id ?? randomUUID();
+      let next = this.newRecord({ ...input, ...(previous?.expiresAt ? { expiresAt: previous.expiresAt } : {}) }, provenance, id);
+      next.links = normalizeLinks(id, next.links, new Set([...records.map(record => record.id), id]), Boolean(experience));
+      if (experience || previous?.version === 2) next = { ...next, version: 2, experience: {
+        ...(previous?.version === 2 ? previous.experience : legacyExperience()),
+        epistemic: 'hypothesis', verification: { status: 'unverified', evidence: [] }, sourceRefs: plan.sources,
+      } };
+      next.evolutionHistory = boundedHistory(previous?.evolutionHistory ?? [], event(previous ? 'updated' : 'created',
+        'deterministic', ['content', 'metadata', 'source', 'links'], {
+          remFamily: plan.key, generation: plan.fingerprint,
+          ...(previous?.source?.ref ? { previousSource: previous.source.ref } : {}),
+          ...(redactions.length ? { redactions: summarizeRedactions(redactions) } : {}),
+        }));
+      if (previous) {
+        next.createdAt = previous.createdAt;
+        next.lastAccessedAt = previous.lastAccessedAt;
+        next.retrievalCount = previous.retrievalCount;
+      }
+      next.source = { type: REM_SOURCE_TYPE, ref: digestSourceRef(plan, next) };
+      return { records: previous ? records.map(record => record.id === id ? next : record) : [...records, next],
+        touchedIds: [id], stateWrites: [], result: { status: previous ? 'updated' : 'created', id } };
+    });
+    this.records = new Map(committed.records.map(record => [record.id, record]));
+    if (committed.result.status === 'skipped') return committed.result;
+    if (committed.result.status === 'created') await this.feedbackStore.reset(committed.result.id).catch(() => undefined);
+    try { await this.refreshIndex(); }
+    catch (error) { this.setIndexFailure('REM index refresh failed', error); }
+    return { ...committed.result, indexIssue: Boolean(this.indexIssue) };
+  }
+
   async remember(rawInput: RememberInput): Promise<MemoryRecord> {
     this.assertOperational();
     await this.reload();
     this.assertOperational();
     const { value: input, redactions } = this.maskInput(rawInput);
-    const content = input.content.trim();
-    if (!content) throw new Error('Memory content is required');
-
-    const needsMetadata = input.keywords === undefined || input.context === undefined
-      || input.tags === undefined || input.category === undefined;
-    const enriched = needsMetadata ? enrichMemoryMetadata(content) : undefined;
+    if (!input.content.trim()) throw new Error('Memory content is required');
     const provenance = input.provenance
       ? await captureMemoryProvenance(this.projectRoot, { ...input.provenance, ...(input.provenance.workspace ? { workspace: this.resolveWorkspace(input.provenance.workspace) } : {}) })
       : undefined;
-    const expiresAt = normalizeMemoryExpiresAt(input.expiresAt);
-
-    const now = new Date().toISOString();
     const id = randomUUID();
     const validIds = new Set([...this.records.keys(), id]);
-    const record: MemoryRecord = {
-      version: MEMORY_SCHEMA_VERSION,
-      id,
-      ...(input.title?.trim() ? { title: input.title.trim() } : {}),
-      content,
-      keywords: input.keywords !== undefined ? uniqueStrings(input.keywords) : uniqueStrings(enriched?.keywords),
-      context: input.context?.trim() || enriched?.context || 'General',
-      tags: input.tags !== undefined ? uniqueStrings(input.tags) : uniqueStrings(enriched?.tags),
-      category: input.category?.trim() || enriched?.category || 'Uncategorized',
-      links: normalizeLinks(id, materializeLinks(input.links,this.experienceEnabled), validIds,this.experienceEnabled),
-      createdAt: now,
-      updatedAt: now,
-      ...(expiresAt ? { expiresAt } : {}),
-      lastAccessedAt: null,
-      retrievalCount: 0,
-      evolutionHistory: [event('created', 'controller', ['content', 'metadata'],
-        redactions.length ? { redactions: summarizeRedactions(redactions) } : undefined)],
-      pinned: false,
-      ...(input.source ? { source: input.source } : {}),
-      ...(provenance ? { provenance } : {}),
-    };
+    const record = this.newRecord(input, provenance, id, redactions.length ? { redactions: summarizeRedactions(redactions) } : undefined);
+    record.links = normalizeLinks(id, record.links, validIds, this.experienceEnabled);
 
     await this.store.create(record);
     this.records.set(record.id, record);
@@ -1263,36 +1304,9 @@ export class MemoryService {
         const operation = operations[operationIndex]!;
         const operationProvenance = preparedProvenance[operationIndex];
         if (operation.op === 'remember') {
-          const input = operation.value;
-          const content = input.content.trim();
-          if (!content) throw new Error('Memory content is required');
           const id = operation.id ? validateMemoryId(operation.id) : randomUUID();
           if (byId.has(id)) throw new Error(`Memory already exists: ${id}`);
-
-          const needsMetadata = input.keywords === undefined || input.context === undefined
-            || input.tags === undefined || input.category === undefined;
-          const enriched = needsMetadata ? enrichMemoryMetadata(content) : undefined;
-          const now = new Date().toISOString();
-          const record: MemoryRecord = {
-            version: MEMORY_SCHEMA_VERSION,
-            id,
-            ...(input.title?.trim() ? { title: input.title.trim() } : {}),
-            content,
-            keywords: input.keywords !== undefined ? uniqueStrings(input.keywords) : uniqueStrings(enriched?.keywords),
-            context: input.context?.trim() || enriched?.context || 'General',
-            tags: input.tags !== undefined ? uniqueStrings(input.tags) : uniqueStrings(enriched?.tags),
-            category: input.category?.trim() || enriched?.category || 'Uncategorized',
-            links: materializeLinks(input.links,this.experienceEnabled),
-            createdAt: now,
-            updatedAt: now,
-            ...(normalizeMemoryExpiresAt(input.expiresAt) ? { expiresAt: normalizeMemoryExpiresAt(input.expiresAt) } : {}),
-            lastAccessedAt: null,
-            retrievalCount: 0,
-            evolutionHistory: [event('created', 'controller', ['content', 'metadata'], redactionDetails(operationIndex))],
-            pinned: false,
-            ...(input.source ? { source: input.source } : {}),
-            ...(operationProvenance ? { provenance: operationProvenance } : {}),
-          };
+          const record = this.newRecord(operation.value, operationProvenance, id, redactionDetails(operationIndex));
           byId.set(id, record);
           touched.add(id);
           results.push({ op: 'remember', id });

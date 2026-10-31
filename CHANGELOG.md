@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [patch] REM maintenance binds generations to semantic source revisions and revalidates them in the canonical transaction. Concurrent engines share one digest identity; source corrections update that identity with history, while ambiguous legacy and operator-edited digests remain for review. Reports distinguish created/updated/skipped/failed/deferred plans and post-commit index degradation without exposing snippets. The existing loop and 400-source/five-digest caps remain; no model or store is added. Source tests: 33 targeted checks passed after the failing baseline; build/resident status is recorded in the proposal. Pending patch intent: `.changeset/rem-source-revision.md`.
+
 - [docs] Add revision 1 of `docs/proposals/Konsolidasi-REM-Berbasis-Revisi-Sumber.md`: static OpenClaw dreaming study proposing source-revision binding, guarded publication and reason reporting in existing REM maintenance. Proposed only; no implementation, configuration, activation or product-version change.
 
 - [docs] Add revision 1 of `docs/proposals/Profil-Agen-dan-Otomasi-Terarah.md`: OpenClaw workspace-role study and integration plan, including TOOLS/HEARTBEAT retirement, private context boundaries and separate automation approval. Proposed only; no implementation, activation or product-version change.

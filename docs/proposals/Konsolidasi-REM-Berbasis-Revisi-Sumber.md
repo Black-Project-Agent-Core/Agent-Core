@@ -1,7 +1,7 @@
 # Konsolidasi REM berbasis revisi sumber
 Tanggal: 2026-10-31
 Revisi: 1
-Status: PROPOSED
+Status: IMPLEMENTED — P1/P2 source, 33 tes terarah dan build resmi lulus; resident belum diperbarui
 Jenis: Improvement
 Asal dan bukti:
 
@@ -120,8 +120,12 @@ Gunakan target planner dan maintenance integration existing (`tests/memory/memor
 
 - Revisi 1 — studi dreaming terarah pada snapshot 2026.10.9; mengakui REM Agent Core yang sudah diimplementasikan. Delta yang diusulkan hanya revision binding/final guard dan reason report existing. Bukan revisi proposal profil/otomasi atau pembukaan ulang cognitive upgrade yang selesai. CODEBASE/changelog mencatat proposal saja.
 
+Penerapan Revisi 1, 2026-10-31: `rem-consolidation.ts` memisahkan family key dari generation fingerprint yang mengikat semantic source revisions/workspace/bounds. Ref internal `rem:v2` juga mengikat output untuk menolak overwrite digest yang diedit operator; itu integrity check, bukan grant. Legacy tanpa revisi hanya dapat diikat ulang bila seluruh current extract/metadata/parents masih cocok; lainnya `legacyUnknown`, tidak ditebak/dihapus. `MemoryService.commitCognitiveDigest` memakai `store.transact` existing untuk final guard, create/update satu ID, exact source refs v2 dan archive/history. Konstruksi record dipakai bersama remember/batch; write REM tidak memanggil intelligence/model. `CognitiveCycleReport` memuat reason counts, updated IDs dan index issues; commit yang berhasil tidak diulang hanya karena refresh indeks gagal. Source exclusions menghitung record; hasil commit menghitung plan, sehingga reason counts bukan denominator dukungan independen.
+
+Verifikasi source: tes merah pertama pada target maintenance menunjukkan 9 kegagalan, termasuk double create lintas engine dan publikasi sumber yang berubah setelah snapshot. Invokasi kedua: **33/33 PASS**, mencakup same-ID corrections, access-only idempotence, concurrent engines, source change/delete/expiry antara plan dan commit, operator edits, safe legacy adoption, cap lima digest, post-commit index failure, masking serta archive/exact refs v2. Type check source lulus; total test target tepat dua invokasi. Pemeriksaan service berinput diketahui dilakukan pada fixture terisolasi dalam invokasi hijau tersebut, tanpa pengulangan manual yang redundan. **Build resmi `npm run build` exit 0**, path policy 532 authored files/0 exceptions, Skill ownership 42 sources/47 artifacts dan structure 472 directories PASS. Tidak ada benchmark atau percobaan pada live Memory pengguna. Resident belum direstart saat review Native pendamping masih berjalan; goal gabungan tetap aktif untuk profil P1/P2 dan verifikasi akhir. Version intent patch: `.changeset/rem-source-revision.md`.
+
 ## Keputusan pengguna dan scope
 
-Belum ada keputusan; menunggu APPROVE / REVISE / HOLD / REJECT.
+2026-10-31 — pengguna meminta "buat goals untuk mengerjakan 2 proposal dengan bantuan dari Native Agent Core" dan menyebut kedua path proposal. Scope rekomendasi Revisi 1 dipakai: P1 → P2 REM, lalu P1 → P2 profil; P3 otomasi tetap HOLD sesuai prasyaratnya. Ini instruksi pengguna di chat Codex yang direlay sebagai external-controller, bukan pesan operator Native atau userEvidenceRef buatan. Implementasi/validasi/aktivasi belum dinyatakan selesai.
 
-Rekomendasi: **APPROVE P1 + P2, berurutan**, pada Revisi 1 dokumen ini. Persetujuan tersebut belum diberikan. Model synthesis/diary, scheduler baru, backfill dan promosi otomatis tambahan berada di luar scope.
+Scope implementasi: **P1 + P2, berurutan**, Revisi 1. Model synthesis/diary, scheduler baru, backfill dan promosi otomatis tambahan tetap di luar scope. Pilihan internal: pisahkan family ID stabil dari generation sumber; final guard dan perubahan digest lewat transaksi canonical. Sumber/revisi yang tidak dapat diperiksa atau digest yang diedit manusia tidak boleh ditimpa; report menyatakan skip/review.
