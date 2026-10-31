@@ -254,3 +254,16 @@ Screenshot Native sebelum restart terakhir memperlihatkan build 1.7.0-dev.1 dan 
 **Keputusan pengguna (2026-10-31):** `MEMORY.md` dan catatan harian memakai Memory kanonik saja. Tidak ada berkas, tampilan baca-saja, atau penulis kedua yang dibuat; pinned foundation dan task capsule existing tetap menjalankan peran itu.
 
 **Verifikasi:** `tests/agent-profile.test.ts` 21/21 PASS, consumer `agent-chat-store` dan `agent-chat-service` 50/50 PASS, `tsc --noEmit` exit 0. Run pertama gagal pada tes lama maupun baru karena TEMP Windows berbentuk 8.3 (probe: loader menolak root yang `realpath`-nya berbeda dari path); run kedua memakai TEMP panjang. Jadi tidak ada run merah murni yang memisahkan tes AGENTS baru. Bukan suite penuh; tidak ada benchmark, push, tag, release:apply maupun restart.
+
+### Telaah kode OpenClaw dari klon baru — 2026-10-31
+
+**Sumber:** klon sparse dangkal `G:\Projects\Learning\openclaw`, commit `f1c93577085244aa96aa87b53a2df9b59d293bd7`, 17.429 file / 215,8 MB; hanya dibaca, tidak ada kode donor yang dijalankan. Folder lama di F: tidak dihapus atau diubah: Windows melaporkan volume F: dan G: `Full Repair Needed` dan dirty.
+
+**Observasi dari kode:**
+- Berkas workspace disuntikkan host ke system prompt sebagai "Project Context" (`src/agents/system-prompt.ts:637-646`, `system-prompt-context-files.ts:72-97`). Urutan AGENTS, SOUL, IDENTITY, USER, TOOLS, BOOTSTRAP, MEMORY. Hanya SOUL, USER dan MEMORY memiliki satu baris panduan ("follow unless higher-priority instructions override"). Tidak ada kode yang memeriksa kepatuhan model.
+- Hal yang dipaksa host: berkas apa yang masuk per sesi (`workspace.ts:957-978`: MEMORY dibuang untuk subagent, cron, group, channel), mode bootstrap (`bootstrap-mode.ts`), dan penghapusan BOOTSTRAP.md dengan `fs.rm` setelah status setup selesai (`workspace.ts:359,441-451`).
+- IDENTITY.md diparse host (`identity-file.ts:124-140`), nilai placeholder diabaikan. SKILL.md: katalog di prompt dibatasi 150 skill dan 18.000 karakter (`skill-prompt-limits.ts:10-11`).
+- Dreaming: cron `agentTurn` terisolasi membawa token system-event; hook `before_agent_reply` untuk trigger heartbeat/cron menjawab `handled` sehingga model chat tidak dipanggil (`dreaming-cron.ts:105-130`, `dreaming.ts:613-656`). Fase Light dan REM deterministik (statistik tag, ambang kepercayaan; `dreaming-phases.ts:884-944`). Kandidat Deep dipilih oleh skor berbobot tanpa model (`rankShortTermPromotionCandidates`). Model dipakai di dua tempat melalui `subagent.complete`: rencana konsolidasi MEMORY.md berupa JSON merge/supersede yang divalidasi host dengan fallback append-only (`dreaming-consolidation.ts:23-32,387-459`), dan prosa diari DREAMS.md (`dreaming-narrative.ts:38-62,205-280`).
+- Memory harian ditulis agent pada giliran flush pra-kompaksi (`flush-plan.ts:16-38`). DREAMS.md tidak ada di daftar bootstrap (`workspace-bootstrap-policy.ts:30-37`) tetapi dikenali sebagai path memori (`memory-host-sdk/src/host/internal.ts:167-178`).
+
+**Batas:** implementasi `subagent.complete` (`src/plugins`) tidak termasuk set sparse; sifat satu panggilan tanpa loop agent disimpulkan dari bentuk pemanggilan. Tes donor tidak dijalankan.
