@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import type { MemoryCognitiveOptions } from '../../src/memory/cognitive-config.js';
 import { MemoryService } from '../../src/memory/service.js';
@@ -8,6 +8,8 @@ import type { MemoryRecord } from '../../src/memory/types.js';
 export const STAMP = '2026-10-20T00:00:00.000Z';
 export const NOW = Date.parse('2026-10-27T00:00:00.000Z');
 const FOUNDATION = '# Agent Core Foundational Memory\n\nCanonical operating context.\n';
+const fixtureDir = fileURLToPath(new URL('../../runtime/tmp/', import.meta.url));
+await mkdir(fixtureDir, { recursive: true });
 
 /** Plain in-memory record for pure-function tests. */
 export function record(id: string, extra: Partial<MemoryRecord> = {}): MemoryRecord {
@@ -40,7 +42,7 @@ export function createCognitiveFixtures() {
   const services: MemoryService[] = [];
   return {
     async service(cognitive?: MemoryCognitiveOptions) {
-      const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-cognitive-'));
+      const root = await mkdtemp(path.join(fixtureDir, 'agent-core-cognitive-'));
       roots.push(root);
       await mkdir(path.join(root, 'notes'));
       await writeFile(path.join(root, '00-agent-core-memory.md'), FOUNDATION);

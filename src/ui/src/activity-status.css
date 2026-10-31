@@ -343,7 +343,7 @@
 @keyframes actPencilMove { 0% { transform: translate(-2px, 2px) rotate(-3deg); } 100% { transform: translate(2px, -1px) rotate(3deg); } }
 @keyframes actDrawLine { 0%, 12% { stroke-dashoffset: 30; } 55%, 80% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 30; } }
 @keyframes actDrawCheck { 0%, 15% { stroke-dashoffset: 30; } 52%, 84% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 30; } }
-@keyframes actMemoryBlink { 0%,  status: 100% { opacity: .5; } 40% { opacity: 1; filter: drop-shadow(0 0 10px #ffd18a); } }
+@keyframes actMemoryBlink { 0%, 100% { opacity: .5; } 40% { opacity: 1; filter: drop-shadow(0 0 10px #ffd18a); } }
 @keyframes actCompleteGlow { 50% { filter: drop-shadow(0 0 9px var(--accent)); } }
 @keyframes actErrorGentle { 50% { stroke-opacity: .7; } }
 @keyframes actDotWave { 0%, 100% { opacity: .3; transform: scale(.75); } 40% { opacity: 1; transform: scale(1.16); } }

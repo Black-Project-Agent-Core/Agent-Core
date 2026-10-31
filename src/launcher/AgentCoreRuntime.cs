@@ -259,6 +259,12 @@ public sealed class AgentCoreRuntime : IDisposable
         return await SendAgentChatJsonAsync(request);
     }
 
+    public async Task<JsonElement> ReadDreamingAsync(bool run = false)
+    {
+        using var request = CreateAgentChatRequest(run ? HttpMethod.Post : HttpMethod.Get, "/agent/dreaming");
+        return await SendAgentChatJsonAsync(request);
+    }
+
     /// <summary>Installed Skills with their Native on/off state (GET /agent/skills).</summary>
     public async Task<JsonElement> ListNativeSkillsAsync()
     {

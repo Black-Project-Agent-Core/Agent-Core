@@ -28,6 +28,8 @@ const selectionKey=(providerId:string,model:string,effort:string)=>[providerId,m
 export default function App() {
   const [page,setPageState]=useState<PageId>(()=>pageFromHash());
   const [snapshot,setSnapshot]=useState<DesktopSnapshot>();
+  const [dreaming,setDreaming]=useState<import('./host').DreamingUiState>({state:'idle'});
+  const dreamingPendingRef=useRef(false);
   const [logs,setLogs]=useState<ActivityEntry[]>([]);
   const [agentRun,setAgentRun]=useState<AgentRunState>({status:'idle'});
   const [agentChat,setAgentChat]=useState<AgentChatUiState>(()=>{
@@ -81,6 +83,8 @@ export default function App() {
         return;
       }
       if(message.type==='logs'){setLogs(message.entries);return;}
+      if(message.type==='agent-dreaming-state'){dreamingPendingRef.current=false;setDreaming({state:'ready',data:message.result});return;}
+      if(message.type==='agent-dreaming-error'){dreamingPendingRef.current=false;setDreaming(prev=>({...prev,state:'error',error:message.error}));return;}
       if(message.type==='log'){setLogs(prev=>[...prev,message.entry].slice(-200));return;}
       if(message.type==='agent-chat-compact-result'){setAgentChat(prev=>({...prev,compactResult:{turnId:message.turnId,status:message.status}}));return;}
       if(message.type==='agent-chat-slash-commands-result'){setAgentChat(prev=>({...prev,slashCommands:message.result?.commands??[]}));return;}
@@ -334,9 +338,10 @@ export default function App() {
   };
 
   const onChatSend=(conversationId:string,prompt:string,goalMode=false,attachments:AttachmentDraft[]=[])=>{
+    const introduction=/^\/perkenalan(?:\s|$)/i.test(prompt.trim());
     // A pinned route that is unavailable must never fall back to another one silently.
     const resolved=resolveSelection(agentChat.providers,{providerId:agentChat.providerChoice??'auto',model:agentChat.modelChoice,reasoningEffort:agentChat.reasoningChoice??'auto'});
-    if(resolved.sendBlocked){
+    if(!introduction&&resolved.sendBlocked){
       setAgentChat(prev=>({...prev,error:resolved.notice??'Pilihan model tidak dapat dipakai; pilih model'}));
       return;
     }
@@ -349,15 +354,15 @@ export default function App() {
       error:undefined,
     }));
     const choice=agentChat.providerChoice;
-    const providerId=choice&&choice!=='auto'?choice:undefined;
+    const providerId=!introduction&&choice&&choice!=='auto'?choice:undefined;
     postHost({
       type:'agent-chat-send',
       requestId,
       clientRequestId:requestId,
       conversationId,
       prompt,
-      ...(goalMode?{goalMode:true}:{}),
-      ...(attachments.length?{attachments:attachmentPayload(attachments)}:{}),
+      ...(!introduction&&goalMode?{goalMode:true}:{}),
+      ...(!introduction&&attachments.length?{attachments:attachmentPayload(attachments)}:{}),
       ...(providerId?{providerId}:{}),
       ...(providerId&&agentChat.modelChoice?{model:agentChat.modelChoice}:{}),
       ...(providerId&&resolved.effectiveReasoning!=='auto'?{reasoningEffort:resolved.effectiveReasoning}:{}),
@@ -386,6 +391,12 @@ export default function App() {
   // Entries of the composer "/" menu; the answer lands in agentChat.slashCommands.
   const onSlashCommands=()=>{
     postHost({type:'agent-chat-slash-commands'});
+  };
+  const onDreaming=(run=false)=>{
+    if(dreamingPendingRef.current)return;
+    dreamingPendingRef.current=true;
+    setDreaming(prev=>({...prev,state:run?'running':'loading',error:undefined}));
+    postHost({type:run?'agent-dreaming-run':'agent-dreaming-status'});
   };
 
   // Switches one skill on/off for Native: optimistic value and pending until the host answers (agent-skill-set-result).
@@ -463,6 +474,8 @@ export default function App() {
     onChatCancel={onChatCancel}
     onChatCompact={onChatCompact}
     onSlashCommands={onSlashCommands}
+    dreaming={dreaming}
+    onDreaming={onDreaming}
     onChatResume={onChatResume}
     onChatPause={onChatPause}
     onStepDetail={requestStepDetail}

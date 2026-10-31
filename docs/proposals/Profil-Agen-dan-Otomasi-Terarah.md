@@ -1,7 +1,7 @@
 # Profil agen dan otomasi terarah
 Tanggal: 2026-10-31
-Revisi: 1
-Status: PROPOSED — P1/P2 COMPLETED / ACTIVE RESIDENT; P3 HOLD
+Revisi: 2
+Status: PROPOSED — P1/P2 SOURCE COMPLETE / BUILD ACTIVE; VERIFIKASI UI RESIDENT OPEN; P3 HOLD
 Jenis: Improvement
 Asal dan bukti:
 
@@ -137,6 +137,7 @@ P1/P2 selesai pada batas source/build yang disetujui: 35 controller + 14 resolve
 ## Riwayat revisi
 
 - Revisi 1 — studi snapshot 2026.10.9; memasukkan klarifikasi retirement/biaya pengguna. Rencana saja; tidak ada source/config/Skill/AGENTS/profil/job yang diubah atau diaktifkan. CODEBASE/changelog hanya mencatat keberadaan proposal. Revisi dokumen menjadi versi perubahan ini; versi produk tidak dinaikkan untuk proposal dokumentasi.
+- Revisi 2 — studi ulang terarah dan koreksi yang diminta pengguna: command perkenalan lokal, pengikatan profil portabel dan jalur UI Dreaming nyata. Bukti source/build dipisahkan dari verifikasi UI yang belum selesai; P3 tetap HOLD. Lihat bagian terakhir untuk keadaan terkini yang menggantikan batas deployment historis.
 
 ## Keputusan pengguna dan scope
 
@@ -144,7 +145,7 @@ P1/P2 selesai pada batas source/build yang disetujui: 35 controller + 14 resolve
 
 Scope implementasi: **P1 + P2, HOLD P3**, Revisi 1. Tugas studi sebelumnya tidak mengintegrasikan apa pun; goal pengguna berikutnya mengerjakan scope ini. Tidak ada periodic job atau profil pribadi yang diaktifkan oleh pencatatan keputusan ini.
 
-## Aktivasi live P1/P2 — 2026-10-31
+## Aktivasi live P1/P2 pertama — 2026-10-31 (historical; penempatan dikoreksi Revisi 2)
 
 **Keputusan pengguna:** "aktivasi dulu kalau gitu, biar perubahan nya di gunakan bukan di gantung begitu". Aktivasi profil dan build REM diselesaikan sebagai task `activate-rem-and-native-operator-profiles`; instruksi ini tidak membuat job P3. Bagian implementasi di atas mempertahankan bukti pada batas source/build sebelum keputusan aktivasi ini. Dokumen induk tetap aktif karena P3 HOLD; kata pertama status PROPOSED menjaga paket terbuka tetap terlihat pada reader proposal.
 
@@ -172,3 +173,62 @@ Preflight loader produksi dengan konteks owner-private membaca ketiga file, revi
 **REM pada resident baru:** konfigurasi cognitive `all` sudah aktif sebelum tugas ini dan tidak diubah; implementasi guarded REM sekarang berada pada build/PID baru yang hash-nya cocok. Initializer Memory existing memulai loop yang diaktifkan saat canonical store sehat, dengan interval REM 1.800.000 ms (30 menit). Health publik tidak menampilkan status siklus cognitive; tidak mengklaim siklus/digest baru telah diamati. Tidak memaksa maintenance live, membuat writer/loop kedua atau mengubah interval untuk mendapatkan bukti. [Penerimaan REM](../history-agent-core/Konsolidasi-REM-Berbasis-Revisi-Sumber.md) memisahkan correctness source dari hasil siklus live.
 
 **Rollback dan versi:** matikan flag profil atau hapus hanya dua key profil yang ditambahkan; pertahankan file operator dan konfigurasi cognitive sebelumnya. Untuk rollback artifact gunakan hanya subset checkpoint yang telah diverifikasi, melalui lifecycle restart existing, tanpa reset Memory. Versi produk tetap 1.6.0; intent minor profil dan patch REM existing tetap berlaku. Aktivasi konfigurasi dan dokumentasi ini tidak menerapkan release, tag atau push dan tidak memerlukan intent duplikat. Tidak ada source/test/dependency baru, benchmark atau klaim manfaat kausal; perubahan bersama membatasi atribusi. Warning CSS existing yang dicatat di atas tetap tindak lanjut di luar scope. P1/P2 aktif; **P3 HOLD**.
+
+## Studi ulang dan koreksi Revisi 2 — 2026-10-31
+
+### Asal, cakupan dan batas bukti
+
+**R6 — studi ulang repo primer lokal** `F:\AI Skill\openclaw`, commit `8d83344835ca6f1a1828126ea0a6b3b458836154`, MIT/OpenClaw Foundation. Inventaris tetap 61.683 file / 705.258.972 byte blob. Cakupan sesi ulang: **dibaca penuh 10 / dilihat sekilas 4 / tidak dibuka 61.669 dari 61.683 file**; 10 + 4 + 61.669 = 61.683. Angka sesi ini tidak dijumlahkan dengan sesi lama karena overlap belum dihitung. Urutan: lisensi/dokumen konsep, kontrak status/command/scheduler, lalu bootstrap dan template yang menjawab koreksi pengguna. Donor tidak dijalankan atau diperbaiki.
+
+Main membaca penuh LICENSE, docs/concepts/dreaming.md, extensions/memory-core/dreaming-status-api.ts, extensions/memory-core/src/dreaming-command.ts, src/gateway/server-cron-memory-dreaming-jobs.ts dan BOOTSTRAP.md dari blob commit. Raka membaca BOOTSTRAP yang sama, tiga template IDENTITY/USER/SOUL, serta src/agents/bootstrap-prompt.ts; empat tambahan unik memberi total 10. README/package, potongan bootstrap-files.ts dan workspace.ts hanya skim. Anchor rekomendasi di bawah dibaca main; pembacaan Raka bukan pengganti pemeriksaan anchor main.
+
+README/package working tree berbeda dari blob yang dipin. BOOTSTRAP working tree tidak lolos UTF-8 ketat walaupun ukuran sama dan status Git tidak menandainya berubah. Main berhasil membaca seluruh blob BOOTSTRAP `df3bc1be2d536989ffd81a8a1dfafe953a44b27d`, memvalidasi UTF-8 dan menghitung ulang identitas Git blob yang cocok; isi working tree tidak dijadikan oracle. Probe Raka kemudian menemui error filesystem/index donor dan dihentikan. Ini batas kesehatan salinan lokal, bukan bukti perilaku upstream. Lisensi, dreaming.md dan tiga kontrak Dreaming di atas cocok dengan blob commit saat pemeriksaan. Tidak ada klaim seluruh repositori sudah dipahami atau tidak ada lagi metode yang mungkin berguna.
+
+**R7 — bukti target:** src/agent-profile.ts, src/agent-controller.ts, src/agent-chat-service.ts, src/config.ts; src/memory/{cognitive-maintenance,service}.ts; src/http/app.ts, src/index.ts; launcher AgentCoreRuntime/MainForm dan jalur App → ReferenceUi → LearningPage. Screenshot pengguna membuktikan UI lama masih planned upgrade; source memang belum memiliki command lokal dan jembatan Dreaming tersebut. Owner algoritme REM serta loader profil sudah ada. Kesimpulan yang dikoreksi adalah klaim integrasi menyeluruh, bukan ketiadaan semua kode.
+
+### Temuan donor dan ledger lensa
+
+| Lensa | Bukti dan akibat keputusan |
+|---|---|
+| Semantic | R6 dreaming.md membedakan Light, REM, Deep dan diary; hanya Deep mempromosikan durable MEMORY. Target ini menghubungkan REM existing, tidak menyebutnya salinan ketiga fase donor. |
+| Procedural | BOOTSTRAP meminta pilihan operator, menyimpan hasil ke profil dan memperbarui tampilan; file template saja tidak menutup alur. Status API, command dan scheduler donor juga merupakan sambungan terpisah dari algoritme. |
+| Negative | R7 menunjukkan router pernah membuang prop Dreaming. Snapshot canonical tidak lengkap juga tidak boleh menghasilkan sukses nol. Kedua kasus direproduksi merah lalu diperbaiki hijau. |
+| Strategy | Reuse satu owner eksekusi/status; jangan membuat engine atau approval queue kedua untuk mempercantik halaman. |
+| Credibility | R6 sumber primer berlisensi dengan commit pin: kuat untuk kontrak yang berhasil diverifikasi; gangguan working tree membatasi klaim terhadap salinan itu. Dokumen bukan bukti aplikasi target berjalan. |
+| Freshness | Paket snapshot 2026.10.9; README/package working tree drift. Tidak menganggap snapshot sebagai spesifikasi upstream terbaru. |
+| Absence | Manfaat lintas model, biaya, kualitas digest dan perilaku seluruh repo belum diketahui. Tidak ada angka penghematan atau benchmark. |
+| Medium | Sepuluh file penuh, empat skim; blob tervalidasi dipakai untuk BOOTSTRAP yang rusak. Nama file dalam inventory tidak dihitung terbaca. |
+| Environment fit | Windows, satu operator, TS runtime dan C# launcher; profil privat tetap di rumah project-owned, bukan mengikuti default home donor. |
+| Cost and reversibility | Command lokal tanpa model, status agregat tanpa isi Memory; rollback memakai flag/root dan lifecycle build existing. Tidak menambah dependency atau proses tetap. |
+| Triangulation | Cocokkan kontrak donor dengan screenshot, source, tes dan build target; lanjutkan proposal existing alih-alih membuat duplikat studi. |
+| Transfer | Ambil sambungan authoring → file → snapshot → UI serta status → run → outcome. Tidak menyalin onboarding avatar/plugin install, diary atau scheduler donor. |
+| Intent | Koreksi pengguna meminta fungsi terlihat, profil benar-benar dipakai dan semua data portabel tetap di Agent Core. Keberadaan file/tes saja tidak memenuhi itu. |
+| Free lens: kejujuran status | Loop enabled, terakhir run, hasil gagal dan belum ada hasil harus berbeda. UI tidak boleh menyatakan queue kosong atau integrasi selesai dari status service available saja. |
+
+R6 berperan sebagai donor metode dan kontrak, juga cautionary untuk privasi transcript; nilai utamanya Procedural/Negative. Pemeriksaan berikut yang menaikkan kekuatan bukti ialah interaksi Native owner yang terkontrol, bukan menambah pembacaan repo atau benchmark.
+
+### Keputusan T1, rival dan support map
+
+Claim: selesaikan sambungan operator dan observabilitas pada owner existing, dalam koreksi yang sudah diminta pengguna. Observed: loader/REM ada, command dan UI nyata belum tersambung pada batas screenshot; router dan incomplete snapshot kemudian terbukti cacat. Inferred: kekurangan utama adalah alur ujung ke ujung, bukan kebutuhan engine baru. Rival terkuat: cukup memperbarui file profil atau mengganti label UI; rival dibantah oleh kebutuhan writer lokal, origin gate, forwarding dan run outcome yang diperiksa source/tes. Test: 103 tes backend dan 23 UI lulus pada hasil terakhir; tes provider fixture menangkap SOUL dan USER pada system request giliran berikutnya, serta IDENTITY pada metadata. Flip condition: runtime tidak membaca root yang dipilih atau alur owner gagal; saat itu status integrasi tetap OPEN. Keyakinan kuat untuk source/tes, belum cukup untuk acceptance UI resident.
+
+Lima pertanyaan: yang diketahui dipisahkan dari tafsir di atas; bukti pendukung dan gangguan donor dicatat; rival UI kosmetik dan engine baru dibandingkan; input known canary → request/metadata/output adalah pembeda; kegagalan live membalik status selesai. Support map command/profil: Procedural, Intent, Environment fit mendukung, Negative/Cost membatasi authoring dan privasi. Support map Dreaming: Semantic, Procedural, Free lens mendukung, Medium/Absence melarang klaim full donor dan manfaat digest. Tidak ada kandidat recommended yang hanya bertumpu satu lensa.
+
+Batas keamanan (T2): (1) origin host harus tepat local-operator sebelum replay, pembacaan atau penulisan; label command sendiri bukan izin; (2) root dan sumber diperiksa ulang sebelum replace di bawah lock, cap total 4096 byte, tanpa truncation; (3) teks preferensi tidak dipersist mentah pada history/title; (4) endpoint Dreaming memakai auth UI existing dan menolak origin controller eksternal. #aux: host authentication/origin dan filesystem guarantees existing tetap berlaku; file Markdown tidak menambah grant. Kesimpulan dibatasi penulis yang mengikuti lock dan pemeriksaan sumber; editor luar masih dapat berlomba di sela pemeriksaan dan rename. Tidak mengklaim serialisasi global.
+
+### Implementasi, owner, otorisasi dan rollback
+
+Pengguna telah meminta command, bukti integrasi, aktivasi dan koreksi lokasi. Revisi ini mencatat koreksi scope tersebut, bukan meminta persetujuan ulang untuk tindakan rutin. P3 tetap HOLD; tidak ada job berkala baru. SOUL merupakan sumber personality; tidak membuat PERSONALITY.md paralel. IDENTITY/SOUL tetap file operator manual. `/perkenalan` tanpa argumen memperkenalkan identitas publik dan memberi format; `/perkenalan <teks operator>` hanya menambahkan fakta yang operator sendiri kirim ke USER.md. Nama/emoji dari snapshot dipertahankan pada hasil, reopen dan replay. Command tersedia sebelum syarat provider/session, dan tetap menolak external/unknown origin. USER/SOUL hanya diproyeksikan ke provider sesuai audience, bukan disalin ke checkpoint.
+
+Konfigurasi lokal dipindahkan dengan compare-and-swap hash ke `AGENT_CORE_AI_PROFILE_ROOT=@project/runtime/agent-runtime/profile`; tiga file di root itu byte-identik dengan contoh publik sebelum perpindahan. Flag aktif dan cognitive=all sebelumnya dipertahankan, nilai rahasia tidak dibaca keluar/dicatat. Root/fixture/cache/build baru berada di project. Restart launcher menetapkan TEMP/TMP dan DOTNET_BUNDLE_EXTRACT_BASE_DIR proses-anak ke runtime project. Respect host diperbarui pada path yang diminta pengguna: `C:/Users/ADMIN/.codex/skills/respect/SKILL.md`, 20 aturan, selalu-allow dan larangan keras file/folder portabel Agent Core di luar proyek. Itu konfigurasi host Codex existing, bukan rumah data Agent Core baru.
+
+GET/POST `/agent/dreaming` → service cognitive existing → renderer memakai status agregat nyata. Manual run hanya REM, tidak ikut contradiction/forgetting/repair; loop otomatis existing tetap. Tidak ada UI accept/reject palsu. Counter null bila belum ada hasil/hasil tidak tersedia. Snapshot canonical tidak lengkap menghasilkan error, bukan zero-success. Polyglot dipertimbangkan: TS tepat untuk shared engine/auth, C# untuk forwarding launcher; menambah Go/Rust dan IPC tidak memberi manfaat yang terbukti untuk sambungan ini. Manfaat usability diharapkan, bukan klaim kausal; perubahan concurrent responsiveness membuat atribusi confounded.
+
+Rollback: matikan profil atau kembalikan root pilihan operator dengan CAS; pertahankan konten profil. Jangan memulihkan seluruh checkpoint inherited. Rollback artifact terpilih melalui lifecycle existing dan backup launcher terkelola, tanpa mereset Memory. File asal C sementara dipertahankan sebagai rollback sampai pemakaian root E dibuktikan pada UI; hanya tiga file buatan tugas yang hash-nya belum berubah boleh dibersihkan kemudian. Lokasi C bukan pengecualian permanen yang disetujui.
+
+### Verifikasi dan sisa OPEN
+
+Hasil akhir invokasi 19:52:52 WIB: **103/103 backend PASS** pada lima target (config, chat command, atomic file, UI HTTP transport, cognitive maintenance); **23/23 UI PASS** pada router/halaman Dreaming, status composer dan slash menu. C# transport **4/4 PASS**, self-contained publish dan package verifier PASS pada pemeriksaan sebelumnya. Regresi router dan incomplete canonical snapshot masing-masing memiliki baseline merah sebelum hijau. Ini bukan jumlah suite penuh dan bukan bukti kepatuhan model nyata.
+
+Build gabungan dengan pekerjaan responsiveness concurrent memakai versi development canonical **1.7.0-dev.1**. Backend/UI/launcher build berhasil; SHA-256 launcher terpasang dan kandidat sama `e9f90d83e1f30da83b16b27e9807828cb29ed54124b482432c765b9ec0a31363`. Checkpoint terkelola sebelum rebuild `a4d75e84-f084-4ad6-9517-bdaa015a543c` mewarisi 294 entri; hanya subset artifact tugas yang relevan, bukan whole-system rollback. Satu restart resmi koreksi ini: receipt `54225fad4f324338b143029ac2812e4d`, exit 0, selesai **19:55:15 WIB**. Core **PID 14604**, mulai **19:54:29 WIB**, status healthy, stale=false, tidak ada chat running saat pemeriksaan. Tidak ada MCP schema/Skill baru pada koreksi ini, sehingga capabilitiesChanged=false.
+
+Screenshot Native sebelum restart terakhir memperlihatkan build 1.7.0-dev.1 dan workspace baru. Saat hendak memeriksa jendela setelah restart, Computer Use melaporkan penghentian oleh tombol Escape fisik; input UI dihentikan. Tidak ada canary profil ditulis dan tidak ada pesan uji operator dikirim pada sesi itu. **OPEN:** buktikan `/perkenalan` tanpa/dengan argumen pada jendela Native; buktikan IDENTITY/SOUL/USER pada giliran berikut melalui input audit sementara dan readback; jalankan satu REM manual melalui UI dan catat hasil; pulihkan konten audit, kemudian bersihkan tiga file asal C yang tidak berubah. Tidak mengklaim live cycle atau owner-private UI sudah terbukti. Status goal tetap aktif sampai penerimaan ini selesai. Tidak ada benchmark, push, tag atau release:apply. Existing minor/patch release intents diperluas tanpa duplikasi.

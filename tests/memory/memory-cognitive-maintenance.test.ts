@@ -1,5 +1,5 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveMemoryCognitiveConfig } from '../../src/memory/cognitive-config.js';
@@ -18,6 +18,30 @@ const DAY = 24 * 60 * 60 * 1000;
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
 const policy = { confidenceMargin: 0.15, recencyGapMs: 7 * DAY };
 const GHOST = '11111111-1111-4111-8111-111111111111';
+
+it('runs manual Dreaming as REM only and exposes aggregate evidence without source IDs', async () => {
+  const snapshot = vi.fn(async () => []);
+  const host: CognitiveHost = {
+    snapshot, canonicalComplete: () => true, mutate: vi.fn(), refreshIndex: vi.fn(),
+    inspectIndex: async () => ({ index: 'available', embedding: 'not-configured' }),
+    repairSummary: async () => ({ pending: 0, failed: 0 }), commitDigest: vi.fn(), feedbackSalience: vi.fn(),
+  };
+  const engine = new MemoryCognitiveEngine(host, resolveMemoryCognitiveConfig({ features: {
+    remConsolidation: true, contradictionResolution: true, forgettingCurve: true, selfRepair: true,
+  } }));
+  const report = await engine.runCycle({ apply: true, remOnly: true });
+  expect(report.enabled).toEqual(['remConsolidation']);
+  expect(report.contradictions).toBeUndefined();
+  expect(report.forgetting).toBeUndefined();
+  expect(report.integrity).toBeUndefined();
+  expect(snapshot).toHaveBeenCalledTimes(1);
+  expect(engine.dreamingStatus()).toMatchObject({ enabled: true, busy: false, intervalMs: 1800000,
+    lastCycle: { mode: 'applied', planned: 0, created: 0, updated: 0, failed: 0, errors: 0 } });
+  const partial = new MemoryCognitiveEngine({ ...host, canonicalComplete: () => false },
+    resolveMemoryCognitiveConfig({ features: { remConsolidation: true } }));
+  await partial.runCycle({ apply: true, remOnly: true });
+  expect(partial.dreamingStatus()).toMatchObject({ lastCycle: { planned: null, created: null, errors: 1 } });
+});
 
 describe('contradiction decisions', () => {
   const contradicting = (left: Partial<MemoryRecord>, right: Partial<MemoryRecord>) => [
@@ -547,7 +571,7 @@ describe('experience-v2 host mode', () => {
   afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 
   it('archives previous REM generations and binds exact source revisions without promoting verification', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-rem-v2-'));
+    const root = await mkdtemp(fileURLToPath(new URL('../../runtime/tmp/agent-core-rem-v2-', import.meta.url)));
     roots.push(root);
     const memory = await initializeMemoryRoot({ baseDir: root, experience: { enabled: true },
       cognitive: { features: { remConsolidation: true, secretMasking: true } } });
@@ -577,7 +601,7 @@ describe('experience-v2 host mode', () => {
   }, 30_000);
 
   it('applies masking, contradiction pruning and integrity scanning on the production write path', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-cognitive-v2-'));
+    const root = await mkdtemp(fileURLToPath(new URL('../../runtime/tmp/agent-core-cognitive-v2-', import.meta.url)));
     roots.push(root);
     const memory = await initializeMemoryRoot({
       baseDir: root, experience: { enabled: true },

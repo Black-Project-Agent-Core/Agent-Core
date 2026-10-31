@@ -701,6 +701,16 @@ public sealed class MainForm : Form
                 Send(new { type = "agent-chat-compact-result", turnId, status });
                 return;
             }
+            if (type is "agent-dreaming-status" or "agent-dreaming-run")
+            {
+                try
+                {
+                    var result = await _runtime.ReadDreamingAsync(type == "agent-dreaming-run");
+                    Send(new { type = "agent-dreaming-state", result });
+                }
+                catch (Exception error) { Send(new { type = "agent-dreaming-error", error = error.Message }); }
+                return;
+            }
             if (type == "agent-chat-archive")
             {
                 var conversationId = root.TryGetProperty("conversationId", out var conversationNode)

@@ -2,7 +2,9 @@ import { createHash } from 'node:crypto';
 import type { BigIntStats } from 'node:fs';
 import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
+import lockfile from 'proper-lockfile';
 import { z } from 'zod';
+import { writeOwnedFileAtomic } from './persistence/atomic-file.js';
 import { openRegularFile } from './rdc/utils/files/safe-regular-file.js';
 import { assertSameFileIdentity } from './security/file-identity.js';
 import type { AgentModelMessage } from './agent-provider.js';
@@ -90,7 +92,7 @@ function identityFields(text: string) {
   return fields;
 }
 
-/** Three bounded files, one immutable run snapshot; no global cache, writer, discovery, or model call. */
+/** Three bounded files, one immutable run snapshot; no global cache, discovery, or model call. */
 export async function loadAgentProfile(config: AgentProfileConfig | undefined,
   scope: { audience?: AgentProfileAudience; workspace?: string } = {}): Promise<AgentProfileSnapshot> {
   const audience = scope.audience ?? 'unknown', enabled = config?.enabled === true;
@@ -171,4 +173,78 @@ export function withAgentProfile(messages: AgentModelMessage[], snapshot: AgentP
   return first?.role === 'system'
     ? [{ ...first, content: (first.content ?? '') + '\n\n' + snapshot.prompt }, ...messages.slice(1)]
     : [{ role: 'system', content: snapshot.prompt }, ...messages];
+}
+
+/** Host-command syntax only; recognition conveys no authority. */
+export function parseOperatorIntroduction(prompt: string): { preferences?: string } | undefined {
+  const match = /^\/perkenalan(?:\s+([\s\S]*))?$/i.exec(prompt.trim());
+  return match ? { ...(match[1]?.trim() ? { preferences: match[1].trim() } : {}) } : undefined;
+}
+
+/** Called only after the chat owner authenticates the local operator. Never returns USER text. */
+export async function operatorIntroduction(config: AgentProfileConfig | undefined, preferences?: string,
+  profile?: AgentProfileSnapshot): Promise<string> {
+  const template = 'Kirim preferensi Anda dengan format berikut (isi hanya fakta yang ingin disimpan):\n\n'
+    + '/perkenalan Panggilan: ...\nPreferensi jawaban: ...\nKonteks penting: ...';
+  if (!config?.enabled) return 'Profil belum diaktifkan. Aktifkan profil dan pilih root profil terlebih dahulu.\n\n' + template;
+  if (!config.root || !path.isAbsolute(config.root))
+    return 'Root profil belum dipilih secara aman. Pilih root profil absolut di konfigurasi Agent Core.\n\n' + template;
+  const root = path.resolve(config.root);
+  if (preferences === undefined) {
+    const snapshot = profile ?? await loadAgentProfile(config, { audience: 'external' });
+    const { identity, files } = snapshot.metadata;
+    const unavailable = [files.SOUL, files.IDENTITY].some(file => !['read', 'absent'].includes(file.status));
+    if (unavailable) return 'Profil tidak dapat dibaca secara aman. Periksa root dan berkas profil sebelum menyimpan.\n\n' + template;
+    return 'Saya ' + identity.name + (identity.emoji ? ' ' + identity.emoji : '')
+      + (identity.role ? ', ' + identity.role : '') + '.\n\n' + template
+      + '\n\nTeks Anda akan ditambahkan ke USER.md tanpa menghapus catatan yang sudah ada (batas total 4096 byte UTF-8).';
+  }
+  // Do not truncate or extract new facts. Preserve manual bytes and append only the operator's text.
+  if (!preferences.trim() || /\u0000/.test(preferences)) return 'Preferensi tidak valid; gunakan teks biasa tanpa karakter NUL.';
+  let release: (() => Promise<void>) | undefined;
+  try {
+    const rootIdentity = await checkedRoot(root);
+    let compromised = false;
+    release = await lockfile.lock(root, { realpath: false, lockfilePath: path.join(root, '.profile-user.lock'),
+      retries: { retries: 20, minTimeout: 25, maxTimeout: 100 },
+      onCompromised: () => { compromised = true; } });
+    await checkedRoot(root, rootIdentity);
+    const destination = path.join(root, 'USER.md');
+    let previous: Awaited<ReturnType<typeof readBounded>> | undefined;
+    try { previous = await readBounded(root, 'USER.md', caps.USER, rootIdentity); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    const original = previous?.bytes ?? Buffer.alloc(0);
+    new TextDecoder('utf-8', { fatal: true }).decode(original);
+    const separator = original.length ? (original.at(-1) === 10 ? '\n' : '\n\n') : '';
+    const entry = separator + '## Perkenalan operator — ' + new Date().toISOString().slice(0, 10) + '\n\n' + preferences.trim() + '\n';
+    const next = Buffer.concat([original, Buffer.from(entry, 'utf8')]);
+    if (next.length > caps.USER) throw new Error('PROFILE_OVERSIZED');
+    await writeOwnedFileAtomic(destination, next, { beforeReplace: async () => {
+      if (compromised) throw new Error('PROFILE_CHANGED');
+      await checkedRoot(root, rootIdentity);
+      if (previous) {
+        await previous.assertCurrent();
+        const current = await readBounded(root, 'USER.md', caps.USER, rootIdentity);
+        if (!current.bytes.equals(original)) throw new Error('PROFILE_CHANGED');
+        await current.assertCurrent();
+      }
+      else {
+        try { await lstat(destination); } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+          throw error;
+        }
+        throw new Error('PROFILE_CHANGED');
+      }
+    } });
+    const written = await readBounded(root, 'USER.md', caps.USER, rootIdentity);
+    if (compromised || !written.bytes.equals(next)) throw new Error('PROFILE_CHANGED');
+    await written.assertCurrent();
+    await checkedRoot(root, rootIdentity);
+    return 'Preferensi tersimpan dan sudah dibaca kembali: ' + destination
+      + '\nCatatan lama tetap tersimpan. Profil ini dimuat kembali pada giliran Native berikutnya.';
+  } catch (error) {
+    return (error as Error).message === 'PROFILE_OVERSIZED'
+      ? 'Preferensi tidak disimpan: USER.md akan melampaui batas 4096 byte UTF-8. Ringkas catatan di root profil yang dipilih lalu coba lagi.'
+      : 'Penyimpanan profil gagal atau belum dapat dikonfirmasi secara aman. Periksa root, USER.md, dan perubahan dari editor lain; tidak ada klaim bahwa preferensi berhasil tersimpan.';
+  } finally { await release?.().catch(() => undefined); }
 }

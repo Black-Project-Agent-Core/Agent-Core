@@ -35,6 +35,8 @@ const {
 }=uiIcons;
 
 type SharedProps = {
+  dreaming?: import('./host').DreamingUiState;
+  onDreaming?:(run?:boolean)=>void;
   snapshot?: DesktopSnapshot;
   logs: ActivityEntry[];
   onAction:(id:string)=>void;
@@ -497,7 +499,8 @@ export function ChatPage(props:SharedProps) {
   const slashRequestedRef=useRef(false);
   const query=slashQuery(prompt);
   const slashActive=query!==null;
-  const composerLocked=!configured||Boolean(pausedTurn)||Boolean(pending);
+  const introduction=/^\/perkenalan(?:\s|$)/i.test(prompt.trim());
+  const composerLocked=!runtime||Boolean(pausedTurn)||Boolean(pending);
   const slashItems=slashActive?filterSlashCommands(props.agentChat.slashCommands??[],query,running):[];
   const slashOpen=slashActive&&!slashDismissed&&!composerLocked&&slashItems.length>0;
   const activeIndex=slashItems.length?((slashIndex%slashItems.length)+slashItems.length)%slashItems.length:0;
@@ -545,7 +548,7 @@ export function ChatPage(props:SharedProps) {
   };
   const submit=()=>{
     const value=prompt.trim();
-    if(!value||pausedTurn||!configured||pending)return;
+    if(!value||pausedTurn||(!configured&&!introduction)||pending)return;
     if(value==='/compact'){
       // Never a chat message: it schedules a context compaction of the running turn (answer in agentChat.compactResult).
       if(running&&runningTurnId){
@@ -714,15 +717,15 @@ export function ChatPage(props:SharedProps) {
             if(e.key==='Tab'||(e.key==='Enter'&&!e.shiftKey)){
               const item=slashItems[activeIndex];
               // Enter on an already complete "/compact" submits the command instead of re-inserting it.
-              const exactCompact=Boolean(item&&item.kind==='command'&&item.name==='compact'&&prompt==='/'+item.name);
-              if(item&&!exactCompact){e.preventDefault();selectSlash(item);return;}
+              const exactCommand=Boolean(item&&item.kind==='command'&&prompt==='/'+item.name);
+              if(item&&!exactCommand){e.preventDefault();selectSlash(item);return;}
             }
           }
           if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit();}
         }}
         aria-label="Message Agent Core"
         aria-activedescendant={slashOpen&&slashItems[activeIndex]?slashOptionId(slashItems[activeIndex]!.name):undefined}
-        placeholder={!runtime?'Menghubungkan ke Agent Core…':!configured?'No configured provider.':running?'Giliran berjalan. Ketik /compact untuk memadatkan konteks.':'Ask Agent Core to research, code, analyze data, create presentations, or manage tools…'}
+        placeholder={!runtime?'Menghubungkan ke Agent Core…':!configured?'Ketik /perkenalan untuk mengatur profil; percakapan AI memerlukan provider.':running?'Giliran berjalan. Ketik /compact untuk memadatkan konteks.':'Ask Agent Core to research, code, analyze data, create presentations, or manage tools…'}
         disabled={composerLocked}
         rows={2}
       />
@@ -769,7 +772,7 @@ export function ChatPage(props:SharedProps) {
         {pausedTurn&&goalTurn?.id!==pausedTurn.id&&pausedTurn.errorCode!=='AGENT_RUNTIME_CONTINUATION_PROVIDER_WAIT'&&<TinyButton disabled={running||!props.onChatResume} onClick={()=>props.onChatResume?.(active!.conversation.id,pausedTurn.id)}><Play size={16}/>Continue</TinyButton>}
         {(running||pausedTurn)&&runningTurnId&&runningTurnId!==goalTurn?.id
           ? <TinyButton onClick={()=>props.onChatCancel(runningTurnId)}><X size={16}/>{pausedTurn?'Stop recovery':'Stop'}</TinyButton>
-          : <button className="prototype-send" aria-label="Send" title="Send · Enter (Shift+Enter for a new line)" disabled={!configured||!prompt.trim()||running||Boolean(pausedTurn)||Boolean(pending)||selection.sendBlocked} onClick={submit}><Send size={16}/></button>}
+          : <button className="prototype-send" aria-label="Send" title="Send · Enter (Shift+Enter for a new line)" disabled={(!configured&&!introduction)||!prompt.trim()||running||Boolean(pausedTurn)||Boolean(pending)||(!introduction&&selection.sendBlocked)} onClick={submit}><Send size={16}/></button>}
       </div>
       {selection.notice&&<small role="status">{selection.notice}</small>}
       {composerNotice&&<small role="status" className="chat-composer-notice">{composerNotice}</small>}
@@ -784,8 +787,8 @@ function SettingToggle({title,text,on,disabled,onChange}:{title:string;text:stri
   return <div className="setting-toggle"><div><b>{title}</b><span>{text}</span></div><Toggle on={on} disabled={disabled} onChange={onChange}/></div>;
 }
 
-export function ReferenceUi({page,setPage,snapshot,logs,onAction,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatCompact,onSlashCommands,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning,onSkillSet,onSkillsReload,onChatDraft}:SharedProps & {page:PageId;onChatDraft?:()=>void}) {
-  const props={snapshot,logs,onAction,setPage,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatCompact,onSlashCommands,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning,onSkillSet,onSkillsReload};
+export function ReferenceUi({page,setPage,snapshot,logs,onAction,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatCompact,onSlashCommands,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning,onSkillSet,onSkillsReload,onChatDraft,dreaming,onDreaming}:SharedProps & {page:PageId;onChatDraft?:()=>void}) {
+  const props={snapshot,logs,onAction,setPage,agentRun,onAgentRun,agentChat,onChatCreate,onChatOpen,onChatSend,onChatCancel,onChatCompact,onSlashCommands,onChatResume,onChatPause,onStepDetail,onChatArchive,onChatProvider,onChatModel,onChatReasoning,onSkillSet,onSkillsReload,dreaming,onDreaming};
   const content=page==='workflows'?<WorkflowsPage/>:page==='chat'?<ChatPage {...props}/>:page==='dashboard'?<PrototypeDashboard {...props}/>:page==='core'?<PrototypeRuntime {...props}/>:page==='systems'?<PrototypeTools {...props}/>:page==='models'?<ModelsPage {...props}/>:page==='memory'?<MemoryPage {...props}/>:page==='learning'?<LearningPage {...props}/>:page==='goals'?<GoalsPage {...props}/>:page==='artifacts'?<ArtifactsPage {...props}/>:page==='activity'?<PrototypeActivity {...props}/>:page==='diagnostics'?<PrototypeDiagnostics {...props}/>:page==='wizard'?<PrototypeSetup {...props}/>:page==='skills'?<SkillsPage {...props}/>:<PrototypeSettings {...props}/>;
   return <AppShell page={page} setPage={setPage} snapshot={snapshot} onAction={onAction} onNewChat={onChatDraft} agentChat={agentChat} logs={logs}>{content}</AppShell>;
 }

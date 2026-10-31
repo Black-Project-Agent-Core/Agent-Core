@@ -274,6 +274,7 @@ export async function startAgentCoreService(config: AppConfig = loadConfig()): P
     oauthService,
     security,
     agentUiToken: config.agentUiToken,
+    dreaming: memoryService,
     ...(agentController ? { agentRun: (input: { prompt: string; workspace?: string }) => agentController.runTask(input) } : {}),
     ...(agentChat ? { agentChat } : {}),
     ...(skillsService ? { skills: skillsService } : {}),

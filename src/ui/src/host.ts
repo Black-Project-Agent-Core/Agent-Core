@@ -497,12 +497,21 @@ export type LauncherWindowSize = { width: number; height: number; defaultWidth: 
 /** Answer to {type:'agent-chat-compact', turnId}: the server compacts the running turn once at its next iteration. */
 export type AgentChatCompactResult = { turnId: string; status: 'scheduled' | 'not-running' | 'unavailable' };
 
-/** One entry of the composer "/" menu (GET /agent/chat/slash-commands): the /compact command or an active Skill. */
+/** One entry of the composer "/" menu: an owner command or an active Skill. */
 export type SlashCommand = { name: string; kind: 'command' | 'skill'; description: string };
+
+export type DreamingStatus = {
+  enabled: boolean; loopRunning: boolean; busy: boolean; intervalMs: number; loopError?: boolean;
+  lastCycle?: { startedAt: string; completedAt: string; mode: 'preview' | 'applied'; planned: number | null;
+    created: number | null; updated: number | null; failed: number | null; indexIssues: number | null; errors: number; reasons: Record<string, number> };
+};
+export type DreamingUiState = { state: 'idle' | 'loading' | 'running' | 'ready' | 'error'; data?: DreamingStatus; error?: string };
 
 export type NativeSkillInfo = { name: string; description: string; digest: string; enabled: boolean };
 
 type HostEnvelope =
+  | { type: 'agent-dreaming-state'; result: DreamingStatus }
+  | { type: 'agent-dreaming-error'; error: string }
   | { type: 'window-size-state'; requestId: string; size: LauncherWindowSize; warning?: string | null }
   | { type: 'window-size-error'; requestId: string; error: string; size: LauncherWindowSize }
   | { type: 'task-changes-result'; requestId: string; result: TaskChanges }

@@ -1,11 +1,10 @@
 import { createServer, type Server } from 'node:http';
-import { mkdtemp, rm } from 'node:fs/promises';
-import os from 'node:os';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileKeyStore } from '../src/auth/key-store.js';
-import { createHttpHandler } from '../src/http/app.js';
+import { createHttpHandler, type HttpHandlerOptions } from '../src/http/app.js';
 import { HttpSecurityPolicy } from '../src/http/security-policy.js';
 import { validateAgentProviderModel } from '../src/agent-provider.js';
 
@@ -19,8 +18,10 @@ afterEach(async () => {
     rm(root, { recursive: true, force: true })));
 });
 
-async function setup() {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'agent-core-ui-transport-'));
+async function setup(dreaming?: HttpHandlerOptions['dreaming']) {
+  const fixtureDir = new URL('../runtime/tmp/', import.meta.url);
+  await mkdir(fixtureDir, { recursive: true });
+  const root = await mkdtemp(new URL('agent-core-ui-transport-', fixtureDir));
   roots.push(root);
   const keyStore = new FileKeyStore(path.join(root, 'auth'));
   const security = new HttpSecurityPolicy({
@@ -89,6 +90,7 @@ async function setup() {
     agentUiToken: 'fixture-ui-token',
     agentRun,
     agentChat: agentChat as any,
+    dreaming,
     mcpHandler: async (_request, response) => {
       response.writeHead(200);
       response.end('{}');
@@ -101,6 +103,32 @@ async function setup() {
 }
 
 describe('launcher-only native agent HTTP transport', () => {
+  it('connects Dreaming status and one REM-only run to the canonical owner', async () => {
+    const status = { enabled: true, loopRunning: true, busy: false, intervalMs: 1800000 };
+    const dreaming = { dreamingStatus: vi.fn(() => status), runCognitiveMaintenance: vi.fn(async () => undefined) } as any;
+    const { baseUrl } = await setup(dreaming);
+    const headers = { 'x-agent-core-ui-token': 'fixture-ui-token' };
+    const read = await fetch(`${baseUrl}/agent/dreaming`, { headers });
+    expect(read.status).toBe(200);
+    expect(await read.json()).toEqual(status);
+    const run = await fetch(`${baseUrl}/agent/dreaming`, { method: 'POST', headers });
+    expect(run.status).toBe(200);
+    expect(dreaming.runCognitiveMaintenance).toHaveBeenCalledExactlyOnceWith({ apply: true, remOnly: true });
+  });
+
+  it('refuses unauthenticated/external Dreaming mutation and disabled or busy engines', async () => {
+    const status = { enabled: false, loopRunning: false, busy: false, intervalMs: 1800000 };
+    const dreaming = { dreamingStatus: vi.fn(() => status), runCognitiveMaintenance: vi.fn() } as any;
+    const { baseUrl } = await setup(dreaming);
+    expect((await fetch(`${baseUrl}/agent/dreaming`, { method: 'POST' })).status).toBe(401);
+    const headers = { 'x-agent-core-ui-token': 'fixture-ui-token' };
+    expect((await fetch(`${baseUrl}/agent/dreaming`, { method: 'POST', headers: { ...headers, 'x-agent-core-chat-origin': 'external-controller' } })).status).toBe(403);
+    expect((await fetch(`${baseUrl}/agent/dreaming`, { method: 'POST', headers })).status).toBe(409);
+    status.enabled = true; status.busy = true;
+    expect((await fetch(`${baseUrl}/agent/dreaming`, { method: 'POST', headers })).status).toBe(409);
+    expect(dreaming.runCognitiveMaintenance).not.toHaveBeenCalled();
+  });
+
   it('validates an explicit model before dispatch and forwards it without changing omitted defaults', async () => {
     const { baseUrl, agentChat } = await setup();
     const send = (body: object) => fetch(`${baseUrl}/agent/chat/conversations/conversation-1/turns`, {

@@ -45,9 +45,9 @@ Peta tidak memberi izin membuka data terlindungi, mengedit artifact/state owner,
 | `.rdc-standalone/` | Tool operator eksternal, terpisah dari machine-control internal `src/rdc/`. |
 | `secrets/`, `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/` | Terlindungi; hanya nama boundary dicatat, tanpa inspeksi isi. `.env` juga dikecualikan. |
 
-## Profil operator lokal di luar repository
+## Profil operator Native lokal
 
-`<REAL_USER_HOME>/.config/agent-core-profile/` adalah root tunggal yang dipilih eksplisit melalui AGENT_CORE_AI_PROFILE_ROOT pada aktivasi 2026-10-31. Owner pembaca: src/agent-profile.ts; penulis: operator melalui authoring manual, dengan setup awal dari tiga contoh publik setelah instruksi aktivasi pengguna. Berisi SOUL.md, IDENTITY.md, USER.md opsional; tidak ada Memory/Skill/job store, tidak dipindai dari cwd, dan tidak masuk Git. Startup hanya membaca; file dipertahankan sampai operator mengubah/menghapusnya. Matikan flag profil untuk rollback tanpa menghapus file operator.
+`<PROJECT_ROOT>/runtime/agent-runtime/profile/` adalah satu rumah profil operator Native, di bawah owner runtime Native existing. Owner pembaca: src/agent-profile.ts; penulis: operator melalui authoring manual. Berisi SOUL.md, IDENTITY.md, USER.md dan avatar opsional; data privat diabaikan Git, tidak dipindai dari cwd, dan tidak menambah Memory/Skill/job store. Ini data operator Native, berbeda dari panduan partner yang dipublikasikan di subagents/. Pilihan konfigurasi portabel: AGENT_CORE_AI_PROFILE_ROOT=@project/runtime/agent-runtime/profile. Startup hanya membaca; file dipertahankan sampai operator mengubah/menghapusnya. Matikan flag untuk rollback perilaku tanpa menghapus file. Lokasi home pengguna yang sempat dipilih pada aktivasi pertama 2026-10-31 adalah kesalahan penempatan dan digantikan koreksi ini; deklarasi lama bukan izin pengecualian. Respect mewajibkan file/folder portabel tetap di dalam Agent Core tanpa bertanya ulang; satu-satunya toleransi drive C adalah kebutuhan teknis yang terbukti tidak portabel dan memang wajib di sana.
 
 ## Skill: satu induk, role berbeda
 
@@ -382,6 +382,11 @@ Blok JSON ini adalah deklarasi pada peta yang sama, bukan registry terpisah. `ow
     {
       "path": "runtime/agent-runtime/attachments",
       "purpose": "agent-chat-attachments",
+      "owner": "runtime/agent-runtime"
+    },
+    {
+      "path": "runtime/agent-runtime/profile",
+      "purpose": "native-operator-profile-data",
       "owner": "runtime/agent-runtime"
     }
   ]

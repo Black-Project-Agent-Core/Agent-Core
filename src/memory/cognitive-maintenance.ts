@@ -179,27 +179,27 @@ export class MemoryCognitiveEngine {
     return report;
   }
 
-  async runCycle(options: { apply?: boolean } = {}): Promise<CognitiveCycleReport> {
+  async runCycle(options: { apply?: boolean; remOnly?: boolean } = {}): Promise<CognitiveCycleReport> {
     if (this.busy) throw new Error('MEMORY_COGNITIVE_CYCLE_BUSY');
     this.busy = true;
     const apply = options.apply === true;
     const features = this.config.features;
     const report: CognitiveCycleReport = {
       startedAt: new Date().toISOString(), completedAt: '', mode: apply ? 'applied' : 'preview',
-      enabled: enabledCognitiveFeatures(this.config), errors: [],
+      enabled: enabledCognitiveFeatures(this.config).filter(name => !options.remOnly || name === 'remConsolidation'), errors: [],
     };
     const step = async (name: string, run: () => Promise<void>): Promise<void> => {
       try { await run(); } catch (error) { report.errors.push(`${name}: ${message(error)}`); }
     };
     try {
-      if (features.contradictionResolution) {
+      if (!options.remOnly && features.contradictionResolution) {
         await step('contradictions', async () => {
           report.contradictions = await this.resolveContradictions({ apply, limit: MAX_PRUNES_PER_CYCLE });
         });
       }
       if (features.remConsolidation) await step('digests', async () => { report.digests = await this.consolidate(apply); });
-      if (features.forgettingCurve) await step('forgetting', async () => { report.forgetting = await this.reviewForgetting(); });
-      if (features.selfRepair) await step('integrity', async () => { report.integrity = await this.repairIntegrity({ apply }); });
+      if (!options.remOnly && features.forgettingCurve) await step('forgetting', async () => { report.forgetting = await this.reviewForgetting(); });
+      if (!options.remOnly && features.selfRepair) await step('integrity', async () => { report.integrity = await this.repairIntegrity({ apply }); });
     } finally {
       report.completedAt = new Date().toISOString();
       this.lastCycle = report;
@@ -210,6 +210,7 @@ export class MemoryCognitiveEngine {
 
   private async consolidate(apply: boolean): Promise<NonNullable<CognitiveCycleReport['digests']>> {
     const records = await this.host.snapshot();
+    if (!this.host.canonicalComplete()) throw new Error('MEMORY_CANONICAL_INCOMPLETE');
     const { plans, ...counts } = planEpisodicDigests(records, {
       now: Date.now(), windowMs: this.config.rem.windowMs,
       minClusterSize: this.config.rem.minClusterSize, maxClusterSize: this.config.rem.maxClusterSize,
@@ -284,6 +285,24 @@ export class MemoryCognitiveEngine {
       loopRunning: this.loop?.running ?? false,
       ...(this.lastCycle ? { lastCycle: this.lastCycle } : {}),
       ...(this.lastLoopError ? { lastLoopError: this.lastLoopError } : {}),
+    };
+  }
+
+  /** Desktop evidence: aggregate counts only, never source/digest identifiers or snippets. */
+  dreamingStatus() {
+    const cycle = this.lastCycle?.enabled.includes('remConsolidation') ? this.lastCycle : undefined;
+    const digest = cycle?.digests;
+    return {
+      enabled: this.config.features.remConsolidation, loopRunning: this.loop?.running ?? false,
+      busy: this.busy, intervalMs: this.config.rem.intervalMs,
+      ...(cycle ? { lastCycle: {
+        startedAt: cycle.startedAt, completedAt: cycle.completedAt, mode: cycle.mode,
+        planned: digest?.planned ?? null, clusters: digest?.clusters ?? null,
+        created: digest?.created.length ?? null, updated: digest?.updated.length ?? null,
+        failed: digest?.failed.length ?? null, indexIssues: digest?.indexIssues ?? null,
+        reasons: digest?.reasons ?? {}, errors: cycle.errors.length,
+      } } : {}),
+      ...(this.lastLoopError ? { loopError: true } : {}),
     };
   }
 }

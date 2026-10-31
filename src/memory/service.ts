@@ -1832,6 +1832,10 @@ export class MemoryService {
     return this.cognitive.status();
   }
 
+  dreamingStatus() {
+    return this.cognitive.dreamingStatus();
+  }
+
   async epistemicAssessment(id: string) {
     this.assertOperational();
     await this.reload();
@@ -1858,7 +1862,7 @@ export class MemoryService {
   }
 
   /** One cycle over the enabled features; `apply` is required for any mutation. */
-  async runCognitiveMaintenance(options: { apply?: boolean } = {}) {
+  async runCognitiveMaintenance(options: { apply?: boolean; remOnly?: boolean } = {}) {
     this.assertOperational();
     return this.cognitive.runCycle(options);
   }

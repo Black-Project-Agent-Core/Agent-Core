@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ChatPage } from './pages';
 import type { DesktopSnapshot } from './host';
@@ -43,7 +43,11 @@ describe('chat bar runtime status', () => {
   it('still reports Provider Not Configured when the runtime really has no configured provider', () => {
     const view = render(<ChatPage {...props(runtime({ configuredProviderCount: 0 }))}/>);
     expect(screen.getByText('Provider Not Configured')).toBeInTheDocument();
-    expect(screen.getByLabelText('Message Agent Core')).toBeDisabled();
+    expect(screen.getByLabelText('Message Agent Core')).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Message Agent Core'),{target:{value:'hello'}});
+    expect(screen.getByRole('button',{name:'Send'})).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Message Agent Core'),{target:{value:'/perkenalan'}});
+    expect(screen.getByRole('button',{name:'Send'})).toBeEnabled();
     view.rerender(<ChatPage {...props(runtime())}/>);
     expect(screen.getByText('Agent Ready')).toBeInTheDocument();
   });

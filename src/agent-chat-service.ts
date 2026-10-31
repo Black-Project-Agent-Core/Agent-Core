@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { parseOperatorIntroduction } from './agent-profile.js';
 import { AgentProviderPoolPausedError, validateAgentReasoningEffort, validateAgentProviderModel, type AgentModelMessage } from './agent-provider.js';
 import type { AgentReasoningEffort } from './agent-provider-state.js';
 import { normalizeNativeResultMetadata } from './agent-memory-evaluation.js';
@@ -526,6 +527,17 @@ export class AgentChatService {
     eventSink?: AgentChatEventSink;
     evaluation?: NativeAgentTaskResult['evaluation'];
   }): Promise<AgentChatTurnResult> {
+    const introduction = parseOperatorIntroduction(input.prompt);
+    // Unknown origins are not an operator. Refuse before replay, profile access, or persistence.
+    if (introduction && input.messageOrigin !== 'local-operator') throw new Error('AGENT_PROFILE_OWNER_REQUIRED');
+    if (introduction && input.attachments?.length) throw new Error('AGENT_PROFILE_TEXT_ONLY');
+    const persistedPrompt = introduction ? '/perkenalan' + (introduction.preferences ? ' [preferensi operator]' : '') : input.prompt;
+    const replay = (turn: AgentChatTurn) => {
+      if (input.messageOrigin !== 'local-operator' && this.store.messagesForConversation(turn.conversationId)
+        .some(message => message.turnId === turn.id && message.role === 'user' && parseOperatorIntroduction(message.content)))
+        throw new Error('AGENT_PROFILE_OWNER_REQUIRED');
+      return this.replayResult(turn);
+    };
     // The route already refuses this; the owner of the rule refuses it too, before any turn exists.
     if (input.attachments?.length && input.messageOrigin === 'external-controller') {
       throw new Error('AGENT_CHAT_ATTACHMENTS_NOT_ALLOWED');
@@ -536,12 +548,12 @@ export class AgentChatService {
         || existing.requestedModel !== input.providerModel || Boolean(existing.goalMode) !== Boolean(input.goalMode)) {
         throw new Error('AGENT_CHAT_CLIENT_REQUEST_CONFLICT');
       }
-      return this.replayResult(existing);
+      return replay(existing);
     }
     const providerRoute = input.providerRoute?.trim() || undefined;
-    this.validateProviderModel(input.providerModel, providerRoute);
-    this.validateReasoningEffort(input.reasoningEffort, providerRoute, input.providerModel);
-    if (providerRoute && !this.listProviders().some(route => route.id === providerRoute && route.configured)) {
+    if (!introduction) this.validateProviderModel(input.providerModel, providerRoute);
+    if (!introduction) this.validateReasoningEffort(input.reasoningEffort, providerRoute, input.providerModel);
+    if (!introduction && providerRoute && !this.listProviders().some(route => route.id === providerRoute && route.configured)) {
       throw new Error('AGENT_CHAT_PROVIDER_ROUTE_UNKNOWN');
     }
 
@@ -553,8 +565,8 @@ export class AgentChatService {
     // Do not make a Native model/provider session a prerequisite to operator approval.
     const localOperator = (input.messageOrigin ?? 'local-operator') === 'local-operator';
     const artifactOperatorCommand = localOperator && this.artifactAuthorization?.isOperatorCommand(input.prompt) === true;
-    if (!artifactOperatorCommand) await this.ensureConversationSession(conversation.id, conversation.runtimeSessionId);
-    if (!artifactOperatorCommand && conversation.preferredProviderId) {
+    if (!introduction && !artifactOperatorCommand) await this.ensureConversationSession(conversation.id, conversation.runtimeSessionId);
+    if (!introduction && !artifactOperatorCommand && conversation.preferredProviderId) {
       this.runtime.setProviderAffinity(
         conversation.runtimeSessionId,
         conversation.preferredProviderId,
@@ -571,16 +583,16 @@ export class AgentChatService {
       clientRequestId: input.clientRequestId,
       runtimeTaskId: taskId,
       userMessageId,
-      prompt: input.prompt,
+      prompt: persistedPrompt,
       executorToken,
       messageOrigin: localOperator ? 'local-operator' : 'external-controller',
       reasoningEffort: input.reasoningEffort,
       requestedModel: input.providerModel,
       goalMode: input.goalMode,
     });
-    if (!begun.created) return this.replayResult(begun.turn);
+    if (!begun.created) return replay(begun.turn);
     // Only the local owner's pick is the "last used" selection; external controllers must not move it.
-    if (localOperator) {
+    if (localOperator && !introduction) {
       try {
         this.store.recordLastSelection({ providerId: providerRoute, model: input.providerModel, reasoningEffort: input.reasoningEffort });
       } catch (error) { console.error('AGENT_CHAT_SELECTION_RECORD_FAILED:' + safeErrorCode(error)); }
@@ -593,7 +605,7 @@ export class AgentChatService {
       claim,
       revision: 0,
     });
-    this.store.setTitleFromPrompt(conversation.id, titleFromPrompt(input.prompt));
+    this.store.setTitleFromPrompt(conversation.id, titleFromPrompt(persistedPrompt));
     const attachmentNotes = this.attachmentHistoryNotes(conversation.id);
     const boundedContext = this.store.boundedContext({
       conversationId: conversation.id,
@@ -628,11 +640,13 @@ export class AgentChatService {
       }
       const attachmentReference = await this.attachmentReference(turnId);
       // Composer "/<skill>" pick: the persisted user message stays exactly as typed; only this turn gets a directive.
-      const slashSkill = localOperator ? await this.resolveSlashSelection(input.prompt) : null;
+      const slashSkill = localOperator && !introduction ? await this.resolveSlashSelection(input.prompt) : null;
       // The user message was persisted by beginTurn above. Tool output cannot enter this host-only path.
       // Only a freshly persisted real user message enters artifact operator commands.
       // No MCP tool, Memory record, or model output may invoke this host authority.
-      const artifactReply = localOperator ? await this.artifactAuthorization?.operatorCommand(input.prompt, {
+      const introductionReply = introduction ? await this.controller.operatorIntroduction(introduction.preferences, conversation.workspace) : undefined;
+      const artifactReply = introductionReply ? introductionReply.response
+        : localOperator ? await this.artifactAuthorization?.operatorCommand(input.prompt, {
         workspace: conversation.workspace ?? 'agent-core', conversationId: conversation.id,
         userMessageId, persistedUserMessage: true,
       }) : undefined;
@@ -648,6 +662,7 @@ export class AgentChatService {
         prompt: proposalPromotion?.skillCommand ?? input.prompt }) : undefined;
       result = artifactReply !== undefined ? {
         sessionId: conversation.runtimeSessionId, taskId, response: artifactReply,
+        ...(introductionReply?.agentProfile ? { agentProfile: introductionReply.agentProfile } : {}),
         status: 'finalized', iterations: 0, retrievalAttemptIds: [],
       } : skillDecision ? await this.runtime.completeUserSkillDecision({ workspace: conversation.workspace ?? 'agent-core',
         sessionId: conversation.runtimeSessionId, taskId, prompt: input.prompt }, skillDecision) : await this.controller.runConversationTurn({
@@ -680,6 +695,7 @@ export class AgentChatService {
         this.store.finalizeTurn({
           turnId, assistantMessageId: randomUUID(), response: result.response,
           iterations: 0, retrievalCount: 0, claim,
+          ...(result.agentProfile ? { metadata: { agentProfile: result.agentProfile } } : {}),
         });
       } else await this.finalizeTurnWithSkillReceipt({
         turnId,

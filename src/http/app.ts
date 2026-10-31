@@ -13,6 +13,7 @@ import type { ProposalDocumentReader } from '../learning/proposal-documents.js';
 import { nativeMemoryEvaluationSchema } from '../agent-memory-evaluation.js';
 import { defaultTaskChangesReader, handleTaskChanges, type TaskChangesReader } from './task-changes.js';
 import type { NativeSkillSettings } from '../native-skill-settings.js';
+import type { MemoryService } from '../memory/service.js';
 import {
   MAX_ATTACHMENT_TOTAL_BYTES,
   validateAttachmentInputs,
@@ -34,6 +35,7 @@ export interface HttpHandlerOptions {
   agentUiToken?: string | null;
   agentRun?: (input: { prompt: string; workspace?: string }) => Promise<unknown>;
   agentChat?: AgentChatService;
+  dreaming?: Pick<MemoryService, 'dreamingStatus' | 'runCognitiveMaintenance'>;
   /** Active Skill catalog for the composer "/" menu; the same SkillService instance Native holds. */
   skills?: Pick<SkillService, 'list'>;
   /** Native skill on/off settings for filtering and control routes. */
@@ -155,6 +157,25 @@ async function handleRequest(
   if (route === '/agent/task-changes') {
     if (!authorizeAgentUi(request, response, options, security)) return;
     await handleTaskChanges(request, response, options.taskChanges ?? defaultTaskChangesReader, requestUrl);
+    return;
+  }
+
+  if (route === '/agent/dreaming') {
+    if (!authorizeAgentUi(request, response, options, security)) return;
+    if (firstHeader(request.headers['x-agent-core-chat-origin'])) {
+      sendJson(response, 403, { error: 'dreaming_owner_only' }); return;
+    }
+    if (!options.dreaming) { sendJson(response, 503, { error: 'dreaming_unavailable' }); return; }
+    if (request.method === 'GET') {
+      sendJson(response, 200, options.dreaming.dreamingStatus(), { 'cache-control': 'no-store' }); return;
+    }
+    if (request.method !== 'POST') { sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'GET, POST' }); return; }
+    const status = options.dreaming.dreamingStatus();
+    if (!status.enabled || status.busy) { sendJson(response, 409, { error: status.busy ? 'dreaming_busy' : 'dreaming_disabled' }); return; }
+    try {
+      await options.dreaming.runCognitiveMaintenance({ apply: true, remOnly: true });
+      sendJson(response, 200, options.dreaming.dreamingStatus(), { 'cache-control': 'no-store' });
+    } catch (error) { sendJson(response, 503, { error: safeDetail(error) }); }
     return;
   }
 
@@ -392,6 +413,7 @@ async function handleRequest(
       }
       const commands: Array<{ name: string; kind: 'command' | 'skill'; description: string }> = [
         { name: 'compact', kind: 'command', description: 'Kompak konteks giliran yang sedang berjalan' },
+        { name: 'perkenalan', kind: 'command', description: 'Berkenalan dan simpan preferensi profil pribadi' },
       ];
       if (options.skills) {
         try {

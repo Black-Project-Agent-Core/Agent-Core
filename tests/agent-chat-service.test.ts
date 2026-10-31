@@ -1,6 +1,5 @@
 import { createServer, type Server } from 'node:http';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -11,11 +10,13 @@ import { NativeAgentController } from '../src/agent-controller.js';
 import { AgentRuntimeService } from '../src/agent-runtime.js';
 import { LearningService } from '../src/learning/service.js';
 import { MemoryService } from '../src/memory/service.js';
+import * as atomicFile from '../src/persistence/atomic-file.js';
 
 const roots: string[] = [];
 const servers: Server[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   await Promise.all(servers.splice(0).map(server =>
     new Promise<void>(resolve => server.close(() => resolve()))));
@@ -25,7 +26,9 @@ afterEach(async () => {
 });
 
 async function fixtureRoot() {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'agent-chat-service-'));
+  const temporary = path.resolve(import.meta.dirname, '..', 'runtime', 'tmp');
+  await mkdir(temporary, { recursive: true });
+  const root = await mkdtemp(path.join(temporary, 'agent-chat-service-'));
   roots.push(root);
   const memoryDir = path.join(root, 'runtime', 'memory');
   await mkdir(path.join(memoryDir, 'notes'), { recursive: true });
@@ -117,8 +120,170 @@ async function settleFixture(baseUrl = 'http://127.0.0.1:9999/v1') {
     runtime, { memoryService: memory, learningService: learning }, config,
   );
   const chat = await AgentChatService.initialize(root, runtime, controller);
-  return { root, runtime, controller, chat };
+  return { root, runtime, controller, chat, config };
 }
+
+async function introductionFixture(baseUrl = '') {
+  const fixture = await settleFixture(baseUrl);
+  const selected = path.join(fixture.root, 'runtime', 'agent-runtime', 'profile');
+  await mkdir(selected, { recursive: true });
+  Object.assign(fixture.config, { profile: { enabled: true, root: selected } });
+  await writeFile(path.join(selected, 'SOUL.md'), 'PUBLIC_SOUL: Jawab hangat dan singkat.');
+  await writeFile(path.join(selected, 'IDENTITY.md'), '- Name: Atlas\n- Role: Rekan lokal\n- Emoji: 🦉\n');
+  await writeFile(path.join(selected, 'USER.md'), '# Catatan manual\n\nPRIVATE_MANUAL: Jangan hapus ini.\n');
+  const { conversation } = await fixture.chat.createConversation({ workspace: 'fixture' });
+  return { ...fixture, selected, conversation };
+}
+
+describe('local /perkenalan host command', () => {
+  it.each(['/perkenalan', '/perkenalan PRIVATE_METADATA_ENTRY'])('persists the actual custom identity metadata for host command %s without a provider', async prompt => {
+    const f = await introductionFixture();
+    await writeFile(path.join(f.selected, 'IDENTITY.md'), '- Name: Lentera\n- Role: Rekan riset\n- Emoji: 🪶\n');
+    const session = vi.spyOn(f.runtime, 'ensureActiveSession').mockRejectedValue(new Error('NO_PROVIDER_SESSION'));
+    const complete = vi.spyOn(f.runtime, 'complete');
+    const input = { conversationId: f.conversation.id, clientRequestId: 'custom-host-identity',
+      prompt, messageOrigin: 'local-operator' as const };
+    const result = await f.chat.runTurn(input);
+    expect(result.agentProfile).toMatchObject({ enabled: true, audience: 'owner-private', principal: 'local-operator', workspace: 'fixture',
+      identity: { name: 'Lentera', role: 'Rekan riset', emoji: '🪶' }, files: { IDENTITY: { status: 'read' } } });
+    expect(f.chat.getConversation(f.conversation.id)?.turns[0]?.agentProfile).toEqual(result.agentProfile);
+    const saved = await readFile(path.join(f.selected, 'USER.md'));
+    const replay = await f.chat.runTurn(input);
+    expect(replay.agentProfile).toEqual(result.agentProfile);
+    expect(replay.replayed).toBe(true);
+    expect(await readFile(path.join(f.selected, 'USER.md'))).toEqual(saved);
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_MANUAL');
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_METADATA_ENTRY');
+    expect(JSON.stringify(result)).not.toContain('CURRENT OPERATOR PROFILE');
+    expect(session).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it('introduces public identity without a provider/session and gives an immediate entry template', async () => {
+    const f = await introductionFixture();
+    const session = vi.spyOn(f.runtime, 'ensureActiveSession').mockRejectedValue(new Error('NO_PROVIDER_SESSION'));
+    const complete = vi.spyOn(f.runtime, 'complete');
+    const before = await readFile(path.join(f.selected, 'USER.md'), 'utf8');
+    const result = await f.chat.runTurn({ conversationId: f.conversation.id, clientRequestId: 'introduce',
+      prompt: '/perkenalan', messageOrigin: 'local-operator', providerRoute: 'unavailable-route', providerModel: 'unavailable-model' });
+    expect(result).toMatchObject({ status: 'finalized', iterations: 0, response: expect.stringContaining('Atlas') });
+    expect(result.response).toContain('/perkenalan');
+    expect(result.response).toContain('Panggilan:');
+    expect(result.response).not.toContain('PRIVATE_MANUAL');
+    expect(await readFile(path.join(f.selected, 'USER.md'), 'utf8')).toBe(before);
+    expect(session).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it('saves exactly operator text, preserves manual content, reads back and replays without another write', async () => {
+    const f = await introductionFixture();
+    const userFile = path.join(f.selected, 'USER.md');
+    const preferences = 'Panggilan: Nara\nPreferensi: PRIVATE_ENTRY jawaban ringkas.';
+    const input = { conversationId: f.conversation.id, clientRequestId: 'save-introduction',
+      prompt: '/perkenalan ' + preferences, messageOrigin: 'local-operator' as const };
+    const result = await f.chat.runTurn(input);
+    const saved = await readFile(userFile, 'utf8');
+    expect(saved).toContain('# Catatan manual\n\nPRIVATE_MANUAL: Jangan hapus ini.\n');
+    expect(saved).toContain(preferences);
+    expect(result.response).toContain(userFile);
+    expect(result.response).not.toContain('PRIVATE_ENTRY');
+    expect(result.response).not.toContain('PRIVATE_MANUAL');
+    expect((await f.chat.runTurn(input)).replayed).toBe(true);
+    expect(await readFile(userFile, 'utf8')).toBe(saved);
+    expect(JSON.stringify(f.chat.getConversation(f.conversation.id))).not.toContain('PRIVATE_ENTRY');
+  });
+
+  it.each(['external-controller', undefined] as const)('rejects %s before a profile read/write or replay', async messageOrigin => {
+    const f = await introductionFixture();
+    const userFile = path.join(f.selected, 'USER.md');
+    const before = await readFile(userFile, 'utf8');
+    for (const prompt of ['/perkenalan', '/perkenalan PRIVATE_ATTACK']) {
+      await expect(f.chat.runTurn({ conversationId: f.conversation.id, clientRequestId: 'denied-' + prompt,
+        prompt, messageOrigin })).rejects.toThrow('AGENT_PROFILE_OWNER_REQUIRED');
+    }
+    expect(await readFile(userFile, 'utf8')).toBe(before);
+    expect(f.chat.getConversation(f.conversation.id)?.messages).toHaveLength(0);
+  });
+
+  it.each(['external-controller', undefined] as const)('withholds an existing operator-command replay from %s even under different prompt syntax', async messageOrigin => {
+    const f = await introductionFixture();
+    await f.chat.runTurn({ conversationId: f.conversation.id, clientRequestId: 'owner-save',
+      prompt: '/perkenalan PRIVATE_OWNER', messageOrigin: 'local-operator' });
+    await expect(f.chat.runTurn({ conversationId: f.conversation.id, clientRequestId: 'owner-save',
+      prompt: 'ordinary prompt', messageOrigin })).rejects.toThrow('AGENT_PROFILE_OWNER_REQUIRED');
+  });
+
+  it('keeps the operator replay gate when another request wins beginTurn during a session await', async () => {
+    const f = await introductionFixture('http://127.0.0.1:9999/v1');
+    let release!: () => void, entered!: () => void;
+    const waiting = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const original = f.runtime.ensureActiveSession.bind(f.runtime);
+    vi.spyOn(f.runtime, 'ensureActiveSession').mockImplementationOnce(async (...args) => {
+      entered(); await waiting; return original(...args);
+    });
+    const external = f.chat.runTurn({ conversationId: f.conversation.id, clientRequestId: 'racing-request-id',
+      prompt: 'ordinary prompt', messageOrigin: 'external-controller' });
+    const rejected = expect(external).rejects.toThrow('AGENT_PROFILE_OWNER_REQUIRED');
+    await started;
+    await f.chat.runTurn({ conversationId: f.conversation.id, clientRequestId: 'racing-request-id',
+      prompt: '/perkenalan PRIVATE_CONCURRENT_OWNER', messageOrigin: 'local-operator' });
+    release();
+    await rejected;
+  });
+
+  it('preserves an intervening editor revision and reports no successful save', async () => {
+    const f = await introductionFixture();
+    const userFile = path.join(f.selected, 'USER.md');
+    const original = atomicFile.writeOwnedFileAtomic;
+    vi.spyOn(atomicFile, 'writeOwnedFileAtomic').mockImplementationOnce(async (destination, data, options) => {
+      await writeFile(userFile, 'MANUAL_EDIT_FROM_ANOTHER_WRITER');
+      return original(destination, data, options);
+    });
+    const result = await f.chat.runTurn({ conversationId: f.conversation.id, clientRequestId: 'race-save',
+      prompt: '/perkenalan PRIVATE_RACING_ENTRY', messageOrigin: 'local-operator' });
+    expect(result.response).toMatch(/gagal|belum dapat dikonfirmasi/i);
+    expect(await readFile(userFile, 'utf8')).toBe('MANUAL_EDIT_FROM_ANOTHER_WRITER');
+  });
+
+  it.each(['disabled', 'unselected', 'relative', 'oversized', 'invalid', 'nonregular'] as const)(
+    'preserves operator data and reports %s without starting a provider', async mode => {
+      const f = await introductionFixture();
+      const userFile = path.join(f.selected, 'USER.md');
+      if (mode === 'disabled') Object.assign(f.config, { profile: { enabled: false, root: f.selected } });
+      if (mode === 'unselected') Object.assign(f.config, { profile: { enabled: true } });
+      if (mode === 'relative') Object.assign(f.config, { profile: { enabled: true, root: '.' } });
+      if (mode === 'oversized') await writeFile(userFile, 'é'.repeat(2048));
+      if (mode === 'invalid') await writeFile(userFile, Buffer.from([0xc3, 0x28]));
+      const before = await readFile(userFile);
+      if (mode === 'nonregular') { await rm(userFile); await mkdir(userFile); }
+      const result = await f.chat.runTurn({ conversationId: f.conversation.id, clientRequestId: 'guard-' + mode,
+        prompt: '/perkenalan PRIVATE_SHOULD_NOT_SAVE', messageOrigin: 'local-operator' });
+      expect(result).toMatchObject({ status: 'finalized', iterations: 0 });
+      expect(result.response).toMatch(/tidak|belum|gagal|batas/i);
+      expect(result.response).not.toContain('PRIVATE_SHOULD_NOT_SAVE');
+      if (mode !== 'nonregular') expect(await readFile(userFile)).toEqual(before);
+    });
+
+  it('binds the saved USER and SOUL to the next actual Native provider request and public IDENTITY to metadata', async () => {
+    const requests: any[] = [];
+    const baseUrl = await startProvider(requests);
+    const f = await introductionFixture(baseUrl);
+    await f.chat.runTurn({ conversationId: f.conversation.id, clientRequestId: 'binding-save',
+      prompt: '/perkenalan PRIVATE_NEXT_TURN: Preferensi operator yang baru.', messageOrigin: 'local-operator' });
+    expect(requests).toHaveLength(0);
+    const result = await f.chat.runTurn({ conversationId: f.conversation.id, clientRequestId: 'binding-turn',
+      prompt: 'Periksa konteks tugas ini.', messageOrigin: 'local-operator' });
+    expect(JSON.stringify(requests[0]?.messages)).toContain('PRIVATE_NEXT_TURN');
+    expect(requests[0]?.messages[0]?.content).toContain('PUBLIC_SOUL');
+    expect(result.agentProfile?.identity).toMatchObject({ name: 'Atlas', role: 'Rekan lokal', emoji: '🦉' });
+    expect(JSON.stringify(f.chat.getConversation(f.conversation.id))).not.toContain('PRIVATE_NEXT_TURN');
+    await f.chat.runTurn({ conversationId: f.conversation.id, clientRequestId: 'binding-external',
+      prompt: 'Periksa konteks publik.', messageOrigin: 'external-controller' });
+    expect(JSON.stringify(requests.at(-1)?.messages)).not.toContain('PRIVATE_NEXT_TURN');
+    expect(JSON.stringify(requests.at(-1)?.messages)).not.toContain('PRIVATE_MANUAL');
+  });
+});
 /** The state a stop used to leave behind: the turn is over but its runtime task is still running. */
 async function orphanTask(
   fixture: Awaited<ReturnType<typeof settleFixture>>,

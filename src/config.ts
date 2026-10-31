@@ -195,6 +195,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
     ? provider.credentials.length > 0 || Boolean(env.ANTHROPIC_BASE_URL?.trim() || env.ANTHROPIC_MODEL?.trim())
     : provider.baseUrl || provider.model || provider.credentials.length > 0);
   const configuredProviderOrder = list(env.AGENT_CORE_AI_PROVIDER_ORDER);
+  const profileRoot = env.AGENT_CORE_AI_PROFILE_ROOT?.trim() || undefined;
   return {
     projectRoot,
     host: env.AGENT_CORE_HOST?.trim() || '127.0.0.1',
@@ -265,7 +266,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
       curatorIntervalHours: positiveInt(env.AGENT_CORE_LEARNING_CURATOR_INTERVAL_HOURS, 168),
     },
     agentRuntime: {
-      profile: { enabled: bool(env.AGENT_CORE_AI_PROFILE_ENABLED, false), root: env.AGENT_CORE_AI_PROFILE_ROOT?.trim() || undefined },
+      profile: {
+        enabled: bool(env.AGENT_CORE_AI_PROFILE_ENABLED, false),
+        root: profileRoot && (path.isAbsolute(profileRoot) ? profileRoot
+          : resolvePortableProjectPath(projectRoot, profileRoot, path.join('runtime', 'agent-runtime', 'profile'))),
+      },
       enabled: bool(env.AGENT_CORE_AI_ENABLED, false),
       baseUrl: env.AGENT_CORE_AI_BASE_URL?.trim() || null,
       model: env.AGENT_CORE_AI_MODEL?.trim() || null,

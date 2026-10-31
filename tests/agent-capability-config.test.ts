@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest';
+import path from 'node:path';
+import os from 'node:os';
 import { loadConfig } from '../src/config.js';
 
 describe('Native Agent capability configuration', () => {
+  it.each(['@project/runtime/agent-runtime/profile', '<PROJECT_ROOT>/runtime/agent-runtime/profile', 'runtime/agent-runtime/profile'])('resolves selected profile %s from the current project root', selected => {
+    for (const name of ['profile-project-a', 'profile-project-b']) {
+      const root = path.join(os.tmpdir(), name);
+      expect(loadConfig({ AGENT_CORE_AI_PROFILE_ROOT: selected }, root).agentRuntime.profile?.root)
+        .toBe(path.join(root, 'runtime', 'agent-runtime', 'profile'));
+    }
+  });
+
+  it('keeps an unselected profile absent and preserves an explicit absolute external root', () => {
+    const root = path.join(os.tmpdir(), 'profile-project');
+    const external = path.join(os.tmpdir(), 'operator-selected-profile', 'runtime', 'custom-profile');
+    expect(loadConfig({}, root).agentRuntime.profile).toEqual({ enabled: false, root: undefined });
+    expect(loadConfig({ AGENT_CORE_AI_PROFILE_ROOT: external }, root).agentRuntime.profile?.root).toBe(external);
+  });
+
   it('defaults the tool iteration cap to 60 and lets the environment override it', () => {
     expect(loadConfig({}, process.cwd()).agentRuntime.maxToolIterations).toBe(60);
     expect(loadConfig({ AGENT_CORE_AI_MAX_TOOL_ITERATIONS: '12' }, process.cwd()).agentRuntime.maxToolIterations).toBe(12);

@@ -10,6 +10,8 @@ export interface OwnedAtomicWriteOptions {
   mode?: number;
   replaceAttempts?: number;
   retryDelayMs?: number;
+  /** Revalidate the caller's source and destination immediately before every replace attempt. */
+  beforeReplace?: () => Promise<void> | void;
 }
 
 async function assertOwnedDestination(destination: string): Promise<void> {
@@ -29,8 +31,10 @@ async function replaceWithRetry(
   destination: string,
   attempts: number,
   delayMs: number,
+  beforeReplace?: () => Promise<void> | void,
 ): Promise<void> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    await beforeReplace?.();
     try {
       await rename(temporary, destination);
       return;
@@ -72,7 +76,7 @@ export async function writeOwnedFileAtomic(
     if (process.platform !== 'win32') {
       await chmod(temporary, mode);
     }
-    await replaceWithRetry(temporary, resolved, attempts, delayMs);
+    await replaceWithRetry(temporary, resolved, attempts, delayMs, options.beforeReplace);
     try {
       const directoryHandle = await open(directory, 'r');
       try { await directoryHandle.sync(); } finally { await directoryHandle.close(); }

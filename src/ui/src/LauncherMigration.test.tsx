@@ -5,6 +5,7 @@ import { GoalsPage, MemoryPage, ModelsPage } from './LauncherPages';
 import { LauncherInspector } from './LauncherInspector';
 import { PrototypeTools, PrototypeActivity, PrototypeSetup } from './PrototypePages';
 import { LearningPage } from './LauncherPages';
+import { ReferenceUi } from './pages';
 import type { AgentChatUiState } from './host';
 
 const chat: AgentChatUiState = {
@@ -17,6 +18,16 @@ const chat: AgentChatUiState = {
 };
 const props = { agentChat: chat, setPage: vi.fn(), onAction: vi.fn() };
 beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
+
+it('forwards Dreaming status and run callbacks through the real page router', () => {
+  const onDreaming=vi.fn();
+  render(<ReferenceUi {...props} page="learning" logs={[]} agentRun={{status:'idle'}} onAgentRun={vi.fn()}
+    onChatCreate={vi.fn()} onChatOpen={vi.fn()} onChatSend={vi.fn()} onChatCancel={vi.fn()} onChatArchive={vi.fn()}
+    onDreaming={onDreaming} dreaming={{state:'ready',data:{enabled:true,loopRunning:true,busy:false,intervalMs:1800000}}}/>);
+  expect(onDreaming).toHaveBeenCalledWith(false);
+  fireEvent.click(screen.getByRole('button',{name:'Run Dreaming Now'}));
+  expect(onDreaming).toHaveBeenCalledWith(true);
+});
 
 it('navigates the grouped launcher and keeps the original icon and real new-chat callback', () => {
   const onNewChat = vi.fn();
@@ -95,12 +106,15 @@ it('counts only tool steps of the latest turn as tool calls, not narration notes
   expect(view.container).not.toHaveTextContent('Saya cek dulu.');
 });
 
-it('keeps prototype upgrade controls visible without dispatching fake backend work', () => {
-  render(<LearningPage {...props}/>);
-  expect(screen.getByRole('button', { name: 'Run Dreaming Now' })).toBeDisabled();
+it('runs the connected REM action and renders observed cycle evidence', () => {
+  const onDreaming = vi.fn();
+  render(<LearningPage {...props} onDreaming={onDreaming} dreaming={{state:'ready',data:{enabled:true,loopRunning:true,busy:false,intervalMs:1800000,
+    lastCycle:{startedAt:'2026-10-31T11:00:00Z',completedAt:'2026-10-31T11:00:01Z',mode:'applied',planned:2,created:1,updated:1,failed:0,indexIssues:0,errors:0,reasons:{unchanged:3}}}}}/>);
+  expect(screen.getByRole('button', { name: 'Run Dreaming Now' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: 'Run Dreaming Now' }));
-  expect(props.onAction).not.toHaveBeenCalled();
-  expect(screen.getByText(/does not mean the review queue is empty/)).toBeInTheDocument();
+  expect(onDreaming).toHaveBeenCalledWith(true);
+  expect(screen.getByText('Last REM cycle')).toBeInTheDocument();
+  expect(screen.queryByText(/Dreaming review is a planned upgrade/)).not.toBeInTheDocument();
 });
 
 it('keeps Workflows reachable through the prototype Tools Hub and distinguishes unconnected discovery', () => {

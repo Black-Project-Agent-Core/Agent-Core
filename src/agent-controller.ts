@@ -19,7 +19,7 @@ import type {
   AgentProviderRoutingEvent,
 } from './agent-provider.js';
 import { AgentRuntimeService } from './agent-runtime.js';
-import { loadAgentProfile, withAgentProfile, type AgentProfileAudience, type AgentProfileSnapshot, type AgentProfileMetadata } from './agent-profile.js';
+import { loadAgentProfile, operatorIntroduction, withAgentProfile, type AgentProfileAudience, type AgentProfileSnapshot, type AgentProfileMetadata } from './agent-profile.js';
 import { AgentProviderPoolPausedError, keepRecentImages, withoutImages } from './agent-provider.js';
 import { validateAgentReasoningEffort, validateAgentProviderModel } from './agent-provider.js';
 import type { AgentReasoningEffort } from './agent-provider-state.js';
@@ -645,6 +645,12 @@ export class NativeAgentController {
   private readonly imageInspectors = createImageInspectorScopes();
   /** Skills the owner switched off for Native; carried on the shared MCP runtime so every Native tool session sees the same instance. */
   private get nativeSkillSettings(): NativeSkillSettings | undefined { return this.mcpRuntime.nativeSkillSettings; }
+  /** Host command, after AgentChatService's exact local-operator gate; no model/session prerequisite. */
+  async operatorIntroduction(preferences?: string, workspace?: string): Promise<{ response: string; agentProfile?: AgentProfileMetadata }> {
+    const profile = await loadAgentProfile(this.config.profile, { audience: 'owner-private', workspace });
+    return { response: await operatorIntroduction(this.config.profile, preferences, profile),
+      ...(profile.metadata.enabled ? { agentProfile: profile.metadata } : {}) };
+  }
   async runTask(input: NativeAgentTaskInput): Promise<NativeAgentTaskResult> {
     return this.runTaskInternal({ ...input, profileAudience: 'unknown', reuseSession: false });
   }

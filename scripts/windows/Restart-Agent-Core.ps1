@@ -453,6 +453,9 @@ try {
     Install-PendingLauncher -ProjectRoot $root
     Write-Host 'Membuka Agent Core satu kali...'
     $launchedAtUtc = [DateTime]::UtcNow
+    $env:DOTNET_BUNDLE_EXTRACT_BASE_DIR = Join-Path $root 'runtime\launcher'
+    $env:TEMP = Join-Path $root 'runtime\tmp'
+    $env:TMP = $env:TEMP
     $started = Start-Process -FilePath $exePath -WorkingDirectory $root -PassThru
     $timer = [Diagnostics.Stopwatch]::StartNew()
     do {

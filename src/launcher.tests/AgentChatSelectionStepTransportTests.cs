@@ -14,6 +14,20 @@ namespace AgentCore.Launcher.Tests;
 
 public sealed class AgentChatSelectionStepTransportTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DreamingUsesOwnerTransportAndExactMethod(bool run)
+    {
+        var capture = new Capture("{\"enabled\":true,\"loopRunning\":true}");
+        var result = await WithRuntime(capture, runtime => runtime.ReadDreamingAsync(run));
+        Assert.Equal(run ? HttpMethod.Post : HttpMethod.Get, capture.Method);
+        Assert.Equal("/agent/dreaming", capture.PathAndQuery);
+        Assert.True(capture.HasUiToken);
+        Assert.False(capture.HasExternalControllerOrigin);
+        Assert.True(result.GetProperty("enabled").GetBoolean());
+    }
+
     [Fact]
     public async Task SelectAgentChatSendsPutWithJsonBodyAndUiToken()
     {
@@ -44,7 +58,7 @@ public sealed class AgentChatSelectionStepTransportTests
 
     private static async Task<JsonElement> WithRuntime(Capture capture, Func<AgentCoreRuntime, Task<JsonElement>> action)
     {
-        var root = Path.Combine(Path.GetTempPath(), "agent-core-selstep-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(AppContext.BaseDirectory, "agent-core-selstep-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try
         {

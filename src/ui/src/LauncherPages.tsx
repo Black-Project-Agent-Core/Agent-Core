@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowRight, Boxes, BrainCircuit, Code2, Database, FileText, Folder, RefreshCw, Search, Sparkles, Target } from 'lucide-react';
 import { MetricCard, PageHero, Panel, StatusBadge, TinyButton, Toggle, type PageId } from './components';
 import { TaskChangesPanel } from './TaskChangesPanel';
@@ -7,6 +7,8 @@ import { PrototypeHeader, PrototypeCard, UpgradeControl } from './PrototypePages
 import type { AgentChatUiState, DesktopSnapshot } from './host';
 
 type Props = {
+  dreaming?: import('./host').DreamingUiState;
+  onDreaming?: (run?: boolean) => void;
   snapshot?: DesktopSnapshot; agentChat: AgentChatUiState; setPage: (page: PageId) => void;
   onAction: (action: string) => void; onChatProvider?: (provider: string) => void;
   onChatModel?: (model: string) => void;
@@ -105,17 +107,32 @@ export function ArtifactsPage(props: Props) {
 
 export function LearningPage(props: Props) {
   const health = props.snapshot?.health;
+  const state = props.dreaming;
+  const data = state?.data;
+  const cycle = data?.lastCycle;
+  const waiting = state?.state === 'loading' || state?.state === 'running';
+  useEffect(() => { props.onDreaming?.(false); }, []);
+  const reasonNames: Record<string, string> = { unchanged: 'Unchanged plans', sourceChanged: 'Source changed', sourceUnavailable: 'Source unavailable',
+    ineligible: 'Ineligible sources/plans', unsafe: 'Unsafe sources', budgetDeferred: 'Deferred by cycle limit', commitFailed: 'Commit failed', legacyUnknown: 'Legacy needs review' };
   return <div className="prototype-page launcher-data-page fidelity-dreaming">
-    <PrototypeHeader title="Dreaming: Session Knowledge Consolidation" badge="Offline Reflection" description="Review the shared Learning pipeline while the Dreaming workflow is prepared.">
-      <UpgradeControl reason="No Dreaming job or findings review contract is exposed."><Moon size={14}/>Run Dreaming Now</UpgradeControl>
-      <TinyButton disabled={!props.snapshot} onClick={() => props.onAction('system-snapshot')}><RefreshCw size={15}/>Refresh status</TinyButton>
+    <PrototypeHeader title="Dreaming: REM Memory Consolidation" badge="REM" description="Consolidate eligible episodic memories from current sources. Status and results come from the active Memory engine.">
+      <TinyButton disabled={!props.onDreaming || !data?.enabled || data.busy || waiting} onClick={() => props.onDreaming?.(true)}><Moon size={14}/>{state?.state === 'running' ? 'Running REM…' : 'Run Dreaming Now'}</TinyButton>
+      <TinyButton disabled={!props.onDreaming || waiting} onClick={() => props.onDreaming?.(false)}><RefreshCw size={15}/>Refresh status</TinyButton>
     </PrototypeHeader>
+    {state?.error && <p role="alert">Dreaming failed: {state.error}</p>}
+    {data?.loopError && <p role="alert">The automatic cycle reported an error. Check Activity Log.</p>}
     <div className="launcher-summary-grid">
-      <MetricCard icon={BrainCircuit} value={health?.learning.status ?? 'Unavailable'} label="Learning service"/>
-      <MetricCard icon={Target} value={health?.agentRuntime?.pendingFinalizationCount ?? '—'} label="Native finalization pending"/>
-      <MetricCard icon={FileText} value={health?.externalControllerLearning?.pendingLearningEpisodes ?? '—'} label="External episodes pending"/>
+      <MetricCard icon={BrainCircuit} value={data ? data.enabled ? 'Enabled' : 'Disabled' : '—'} label="REM consolidation"/>
+      <MetricCard icon={Target} value={data ? data.busy ? 'Running' : data.loopRunning ? 'On' : 'Off' : '—'} label="Automatic loop"/>
+      <MetricCard icon={FileText} value={data ? `${data.intervalMs / 60000} min` : '—'} label="Cycle interval"/>
     </div>
-    <section className="fidelity-dream-section"><h2 className="fidelity-column-title"><Sparkles size={16}/>Proposed Knowledge Additions (Review Required)</h2><div className="fidelity-empty-card"><Moon size={18}/><div><h2>Dreaming review is a planned upgrade</h2><p>Findings, accept/reject actions, and session review counts are not available in this launcher. This does not mean the review queue is empty.</p></div></div></section>
+    <section className="fidelity-dream-section"><h2 className="fidelity-column-title"><Sparkles size={16}/>Last REM cycle</h2>{cycle ? <>
+      <p>Started: <time dateTime={cycle.startedAt}>{new Date(cycle.startedAt).toLocaleString()}</time> · Completed: <time dateTime={cycle.completedAt}>{new Date(cycle.completedAt).toLocaleString()}</time> · {cycle.mode === 'applied' ? 'Applied' : 'Preview'}</p>
+      <div className="launcher-summary-grid"><MetricCard icon={FileText} value={cycle.planned ?? '—'} label="Planned digests"/><MetricCard icon={Database} value={cycle.created ?? '—'} label="Created"/><MetricCard icon={RefreshCw} value={cycle.updated ?? '—'} label="Updated"/></div>
+      <p role={cycle.failed || cycle.errors || cycle.indexIssues ? 'alert' : 'status'}>Failed: {cycle.failed ?? '—'} · Cycle errors: {cycle.errors} · Index issues: {cycle.indexIssues ?? '—'}</p>
+      <ul className="launcher-record-list">{Object.entries(cycle.reasons).map(([reason,count])=><li key={reason}><span>{reasonNames[reason] ?? reason}</span><b>{count}</b></li>)}</ul>
+      <p>Unchanged or excluded sources do not create a new digest. Source exclusions and plan decisions have separate counts.</p>
+    </> : <p>{waiting ? 'Reading the active REM engine…' : data ? 'No REM cycle recorded since this Core started.' : 'REM status has not been read.'}</p>}</section>
     <section className="fidelity-dream-section fidelity-audit"><h2 className="fidelity-column-title">Consolidation Audit Trail · Knowledge sinks</h2>{health?.learning.sinkStatus.length ? <ul className="launcher-record-list">{health.learning.sinkStatus.map(sink => <li key={sink.name}><b>{sink.name}</b><StatusBadge tone={sink.available ? 'healthy' : 'error'} label={sink.available ? 'Available' : 'Unavailable'}/></li>)}</ul>
       : <p>Waiting for Learning status from the desktop host.</p>}<div className="launcher-inline-actions"><TinyButton onClick={() => props.setPage('chat')}>Current conversation</TinyButton><TinyButton onClick={() => props.setPage('activity')}>Activity Log</TinyButton></div></section>
   </div>;
