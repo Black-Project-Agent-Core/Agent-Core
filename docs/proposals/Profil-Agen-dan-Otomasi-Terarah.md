@@ -246,9 +246,11 @@ Screenshot Native sebelum restart terakhir memperlihatkan build 1.7.0-dev.1 dan 
 | SOUL.md | Profil existing; isi diperkaya (nilai, nada, batas) dalam batas 4 KiB. | Dibaca pada giliran berikutnya bila profil aktif |
 | IDENTITY.md | Profil existing; tidak diubah. | Tidak berubah |
 | USER.md | Tidak diisi dari Memory atau recall (baris USER/MEMORY di atas); writer resmi tetap `/perkenalan`. | Menunggu operator |
-| `memory/YYYY-MM-DD.md`, `MEMORY.md` | Memory kanonik `runtime/memory` adalah satu-satunya store; berkas tulis menjadi store kedua. | HOLD, menunggu keputusan pengguna |
+| `memory/YYYY-MM-DD.md`, `MEMORY.md` | Memory kanonik `runtime/memory` adalah satu-satunya store; berkas tulis menjadi store kedua. | CLOSED 2026-10-31: pengguna memilih Memory kanonik saja |
 | SKILL.md | `runtime/skills/capability-packs/<skill>/SKILL.md` dengan lifecycle SkillService. | Sudah ada |
 | DREAMS.md | Dreaming Review `/agent/dreaming` di atas REM existing; tidak ada berkas. | Sudah ada, tanpa berkas |
-| BOOTSTRAP.md | `/perkenalan` adalah ritual perkenalan; loader hanya membaca, sehingga berkas sekali-pakai tidak dapat menghapus dirinya. | HOLD, menunggu keputusan pengguna |
+| BOOTSTRAP.md | `/perkenalan` adalah ritual perkenalan; loader hanya membaca, sehingga berkas sekali-pakai tidak dapat menghapus dirinya. | HOLD; `/perkenalan` dipakai sebagai default sampai pengguna memutuskan lain |
+
+**Keputusan pengguna (2026-10-31):** `MEMORY.md` dan catatan harian memakai Memory kanonik saja. Tidak ada berkas, tampilan baca-saja, atau penulis kedua yang dibuat; pinned foundation dan task capsule existing tetap menjalankan peran itu.
 
 **Verifikasi:** `tests/agent-profile.test.ts` 21/21 PASS, consumer `agent-chat-store` dan `agent-chat-service` 50/50 PASS, `tsc --noEmit` exit 0. Run pertama gagal pada tes lama maupun baru karena TEMP Windows berbentuk 8.3 (probe: loader menolak root yang `realpath`-nya berbeda dari path); run kedua memakai TEMP panjang. Jadi tidak ada run merah murni yang memisahkan tes AGENTS baru. Bukan suite penuh; tidak ada benchmark, push, tag, release:apply maupun restart.
