@@ -80,6 +80,7 @@ describe('saving interview drafts', () => {
     const expectedDigest = digest(original);
     expect(await saveProfileDrafts(config, [{ name: 'IDENTITY', content: '- Role: Rekan\n', expectedDigest }])).toContain('tidak valid');
     expect(await saveProfileDrafts(config, [{ name: 'IDENTITY', content: '- Name: Lentera\n- Avatar: lain.png\n', expectedDigest }])).toContain('tidak valid');
+    expect(await saveProfileDrafts(config, [{ name: 'IDENTITY', content: '- Name: Lentera\n- Name: Ganda\n', expectedDigest }])).toContain('tidak valid');
     expect(await readFile(path.join(selected, 'IDENTITY.md'), 'utf8')).toBe(original);
     expect(await saveProfileDrafts(config, [{ name: 'IDENTITY', content: '- Name: Lentera\n- Role: Rekan riset\n', expectedDigest }])).toContain('IDENTITY.md tersimpan');
     expect(await readFile(path.join(selected, 'IDENTITY.md'), 'utf8')).toBe('- Name: Lentera\n- Role: Rekan riset\n- Avatar: atlas.png\n');

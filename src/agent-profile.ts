@@ -339,7 +339,7 @@ export async function saveProfileDrafts(config: AgentProfileConfig | undefined, 
       lines.push(draft.name + '.md tidak disimpan: ' + (reason === 'PROFILE_CHANGED'
         ? 'berkas berubah sejak draf dibuat atau tidak dapat dikonfirmasi; minta draf baru.'
         : reason === 'PROFILE_OVERSIZED' ? 'draf melewati batas ' + caps[draft.name] + ' byte UTF-8.'
-        : reason === 'PROFILE_DRAFT_INVALID' ? 'isi draf tidak valid (kosong, karakter kontrol, atau IDENTITY tanpa Name atau dengan Avatar baru).'
+        : reason === 'PROFILE_DRAFT_INVALID' || reason === 'PROFILE_INVALID' ? 'isi draf tidak valid (kosong, karakter kontrol, atau IDENTITY tanpa Name atau dengan Avatar baru).'
         : 'penyimpanan gagal atau belum dapat dikonfirmasi secara aman.'));
     }
   }
