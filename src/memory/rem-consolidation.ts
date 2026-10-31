@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { ASSIST_TAG } from './rem-model-assist.js';
 import { isMemoryLinkActive, relatedByMetadata } from './relations.js';
 import { scanMemorySafety } from './safety.js';
 import { isMemoryExpired } from './visibility.js';
@@ -34,6 +35,10 @@ export interface DigestPlan {
   context: string;
   /** Set only when `content` is a validated model rewrite of the extractive text (P1 model assist). */
   assist?: 'model';
+  /** Same source generation as an existing extractive digest: only a model rewrite may replace it. */
+  upgrade?: true;
+  /** The family's digest predates generation fingerprints and binds only to the exact extractive text. */
+  legacy?: true;
 }
 
 export interface DigestPlanResult {
@@ -123,7 +128,8 @@ export function validateDigestPlan(plan: DigestPlan, records: readonly MemoryRec
   const previous = existing[0];
   if (previous && (!editableDigest(previous, plan) || previous.pinned || superseded.has(previous.id)
     || isMemoryExpired(previous, now) || (previous.version === 2 && previous.experience.retention === 'archive'))) return 'ineligible';
-  if (previous && intact(previous) && generation(previous)?.fingerprint === plan.fingerprint) return 'unchanged';
+  const upgrade = Boolean(plan.upgrade && plan.assist && previous && !previous.tags.includes(ASSIST_TAG));
+  if (previous && intact(previous) && generation(previous)?.fingerprint === plan.fingerprint && !upgrade) return 'unchanged';
   if (previous?.id !== plan.previous?.id) return 'sourceChanged';
   if (previous && memorySemanticRevision(previous) !== plan.previous?.revision) return 'sourceChanged';
   return undefined;
@@ -136,6 +142,8 @@ export interface DigestOptions {
   maxClusterSize: number;
   /** Records the operator forgot: never a digest source, so their text cannot resurface or reach a model. */
   excludeIds?: ReadonlySet<string>;
+  /** Also plan families whose current digest is still extractive, so a working model can rewrite them. */
+  upgradeExtractive?: boolean;
 }
 
 function workspaceOf(record: MemoryRecord): string {
@@ -225,7 +233,9 @@ export function planEpisodicDigests(records: MemoryRecord[], options: DigestOpti
       else reasons.ineligible += 1;
       continue;
     }
-    if (previous && generation(previous)?.fingerprint === fingerprint) {
+    const sameGeneration = Boolean(previous && generation(previous)?.fingerprint === fingerprint);
+    const upgrade = sameGeneration && options.upgradeExtractive && !previous!.tags.includes(ASSIST_TAG);
+    if (sameGeneration && !upgrade) {
       result.alreadyConsolidated += 1; reasons.unchanged += 1; continue;
     }
 
@@ -234,6 +244,8 @@ export function planEpisodicDigests(records: MemoryRecord[], options: DigestOpti
       key,
       fingerprint, sources, policy,
       ...(previous ? { previous: { id: previous.id, revision: memorySemanticRevision(previous) } } : {}),
+      ...(upgrade ? { upgrade: true as const } : {}),
+      ...(previous && !generation(previous)?.fingerprint ? { legacy: true as const } : {}),
       memberIds,
       ...(workspace ? { workspace } : {}),
       title,

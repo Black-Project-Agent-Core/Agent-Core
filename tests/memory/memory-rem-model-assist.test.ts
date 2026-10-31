@@ -4,7 +4,7 @@ import { MemoryCognitiveEngine, type CognitiveHost } from '../../src/memory/cogn
 import type { DigestPlan } from '../../src/memory/rem-consolidation.js';
 import { checkAbstractiveDigest } from '../../src/memory/rem-model-assist.js';
 import type { MemoryRecord } from '../../src/memory/types.js';
-import { createCognitiveFixtures, record } from './memory-cognitive-test-utils.js';
+import { createCognitiveFixtures, link, record } from './memory-cognitive-test-utils.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 const IDS = ['a1b2c3d1', 'a1b2c3d2', 'a1b2c3d3'];
@@ -67,6 +67,28 @@ describe('REM model assist: engine behaviour', () => {
     expect(status).toContain('"modelAssistReady":true');
     expect(status).not.toContain('Tiga observasi');
     expect(status).not.toContain('Observation a1b2c3d');
+  });
+
+  it('does not call the model for a legacy digest, which a rewritten text could never bind to', async () => {
+    const episodes3 = IDS.map((id) => episodic(id));
+    const seed = fakeHost(episodes3);
+    await engineFor(seed.host).runCycle({ apply: true, remOnly: true });
+    const plan = seed.committed[0]!;
+    const legacy = record('feedface-legacy', {
+      category: 'consolidated-knowledge', title: plan.title, content: plan.content, context: plan.context,
+      keywords: plan.keywords, tags: plan.tags, links: plan.memberIds.map((id) => link(id, 'derived-from')),
+      source: { type: 'rem-consolidation', ref: plan.key }, provenance: { workspace: 'ops', files: [] },
+    });
+    const { host, committed } = fakeHost([...episodes3, legacy]);
+    const complete = vi.fn(async () => GOOD);
+    const engine = engineFor(host, { modelAssist: 'digest' });
+    engine.setDreamingCompletion(complete);
+    const report = await engine.runCycle({ apply: true, remOnly: true });
+    expect(committed).toHaveLength(1);
+    expect(committed[0]!.previous?.id).toBe('feedface-legacy');
+    expect(committed[0]!.assist).toBeUndefined();
+    expect(complete).not.toHaveBeenCalled();
+    expect(report.digests?.assist).toMatchObject({ called: 0 });
   });
 
   it('redacts before bounding, so a secret cut by the member limit never reaches the model', async () => {
@@ -143,9 +165,15 @@ describe('REM model assist: output validation', () => {
     expect(checkAbstractiveDigest(text, 'Konsolidasi REM: alpha', members)).toEqual({ ok: false, reason });
   });
 
-  it('accepts a URL, a command and member ids that all come from the sources', () => {
-    const result = checkAbstractiveDigest(
-      `Lihat https://example.test/doc dan jalankan \`npm test\` [${IDS[2]}].`, 'Konsolidasi REM: alpha', members);
+  it.each([
+    ['url', 'Lihat https://example.test/doc untuk detail.'],
+    ['command', 'Jalankan `npm test` untuk memeriksa.'],
+  ])('rejects a %s even when a source note contains it, because notes are untrusted', (reason, text) => {
+    expect(checkAbstractiveDigest(text, 'Konsolidasi REM: alpha', members)).toEqual({ ok: false, reason });
+  });
+
+  it('accepts plain prose that cites member ids', () => {
+    const result = checkAbstractiveDigest(`Ketiga catatan membahas pengujian [${IDS[2]}] dan [${IDS[0]}].`, 'Konsolidasi REM: alpha', members);
     expect(result).toMatchObject({ ok: true });
   });
 });
@@ -221,6 +249,32 @@ describe('REM model assist: MemoryService', () => {
     expect(digest.content).toContain('Ringkasan ekstraktif');
     expect(digest.tags).not.toContain('model-assisted');
     expect(fallback.digests?.assist).toMatchObject({ called: 1, fallback: 1 });
+  });
+
+  it('upgrades an extractive digest once the model works again, and leaves it untouched while the model keeps failing', async () => {
+    const { service } = await fixtures.service(options);
+    await episodes(service);
+    service.setDreamingCompletion(async () => { throw new Error('provider down'); });
+    const first = await service.runCognitiveMaintenance({ apply: true, remOnly: true });
+    const id = first.digests!.created[0]!;
+    const extractive = (await service.read(id, false))!;
+    expect(extractive.content).toContain('Ringkasan ekstraktif');
+
+    const stillDown = await service.runCognitiveMaintenance({ apply: true, remOnly: true });
+    expect(stillDown.digests).toMatchObject({ created: [], updated: [], failed: [], assist: { called: 1, fallback: 1 } });
+    expect((await service.read(id, false))!.updatedAt).toBe(extractive.updatedAt);
+
+    const complete = vi.fn(async ({ prompt }: { prompt: string }) => `Ringkasan model untuk [${firstPrefix(prompt)}].`);
+    service.setDreamingCompletion(complete);
+    const upgraded = await service.runCognitiveMaintenance({ apply: true, remOnly: true });
+    expect(upgraded.digests).toMatchObject({ created: [], updated: [id], failed: [] });
+    const digest = (await service.read(id, false))!;
+    expect(digest.content).toContain('Ringkasan model untuk');
+    expect(digest.tags).toContain('model-assisted');
+
+    const settled = await service.runCognitiveMaintenance({ apply: true, remOnly: true });
+    expect(settled.digests).toMatchObject({ planned: 0, reasons: { unchanged: 1 } });
+    expect(complete).toHaveBeenCalledTimes(1);
   });
 
   it('never digests a forgotten source or sends its text to the model, and refuses one forgotten while the model runs', async () => {

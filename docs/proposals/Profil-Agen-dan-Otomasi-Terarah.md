@@ -253,6 +253,8 @@ Screenshot Native sebelum restart terakhir memperlihatkan build 1.7.0-dev.1 dan 
 
 **Keputusan pengguna (2026-10-31):** `MEMORY.md` dan catatan harian memakai Memory kanonik saja. Tidak ada berkas, tampilan baca-saja, atau penulis kedua yang dibuat; pinned foundation dan task capsule existing tetap menjalankan peran itu.
 
+**Bukti giliran Native (observed 2026-11-01):** satu giliran Native dari controller eksternal (percakapan `f8e3b81f`, giliran `b550e8ac`, principal non-owner, audiens eksternal) mencatat `agentProfile` dengan SOUL, IDENTITY dan AGENTS berstatus `read` beserta digest, dan USER `ineligible`. Ini bukti bahwa loader memuat tiga berkas itu, bukan bukti model mematuhinya. Verifikasi `/perkenalan` di jendela Native dan satu REM manual lewat UI tetap OPEN.
+
 **Verifikasi:** `tests/agent-profile.test.ts` 21/21 PASS, consumer `agent-chat-store` dan `agent-chat-service` 50/50 PASS, `tsc --noEmit` exit 0. Run pertama gagal pada tes lama maupun baru karena TEMP Windows berbentuk 8.3 (probe: loader menolak root yang `realpath`-nya berbeda dari path); run kedua memakai TEMP panjang. Jadi tidak ada run merah murni yang memisahkan tes AGENTS baru. Bukan suite penuh; tidak ada benchmark, push, tag, release:apply maupun restart.
 
 ### Telaah kode OpenClaw dari klon baru — 2026-10-31

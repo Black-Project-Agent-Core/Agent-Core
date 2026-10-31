@@ -100,7 +100,8 @@ export class MemoryCognitiveEngine {
    */
   private async assistPlan(plan: DigestPlan, byId: Map<string, MemoryRecord>, counts: AssistCounts): Promise<DigestPlan> {
     const complete = this.completion;
-    if (!complete) return plan;
+    // A legacy digest binds only to the exact extractive text, so a rewrite could never be committed over it.
+    if (!complete || plan.legacy) return plan;
     const members = plan.memberIds.flatMap((id) => byId.get(id) ?? []);
     if (members.length !== plan.memberIds.length) { counts.fallback += 1; return plan; }
     if (!this.takeAssistBudget()) { counts.deferred += 1; return plan; }
@@ -275,16 +276,20 @@ export class MemoryCognitiveEngine {
     const records = await this.host.snapshot();
     if (!this.host.canonicalComplete()) throw new Error('MEMORY_CANONICAL_INCOMPLETE');
     const excludeIds = await this.host.forgottenIds?.();
-    const { plans, ...counts } = planEpisodicDigests(records, {
+    const assist = apply && this.config.rem.modelAssist === 'digest' && this.completion ? emptyAssistCounts() : undefined;
+    const { plans: planned, ...counts } = planEpisodicDigests(records, {
       now: Date.now(), windowMs: this.config.rem.windowMs,
       minClusterSize: this.config.rem.minClusterSize, maxClusterSize: this.config.rem.maxClusterSize,
       ...(excludeIds ? { excludeIds } : {}),
+      ...(assist ? { upgradeExtractive: true } : {}),
     });
+    // shortcut: no per-family backoff for upgrades the model keeps failing; the daily call budget bounds the waste.
+    // Upgrades go last so they never take a cycle slot from a new or changed family.
+    const plans = [...planned].sort((a, b) => Number(Boolean(a.upgrade)) - Number(Boolean(b.upgrade)));
     const created: string[] = [];
     const updated: string[] = [];
     const failed: string[] = [];
     let indexIssues = 0;
-    const assist = apply && this.config.rem.modelAssist === 'digest' && this.completion ? emptyAssistCounts() : undefined;
     if (apply) {
       counts.reasons.budgetDeferred += Math.max(0, plans.length - MAX_DIGESTS_PER_CYCLE);
       const batch = plans.slice(0, MAX_DIGESTS_PER_CYCLE);
@@ -292,6 +297,8 @@ export class MemoryCognitiveEngine {
       const byId = new Map(records.map((record) => [record.id, record]));
       const ready = assist ? await Promise.all(batch.map((plan) => this.assistPlan(plan, byId, assist))) : batch;
       for (const plan of ready) {
+        // A failed upgrade leaves the existing extractive digest as it is instead of rewriting it with the same text.
+        if (plan.upgrade && !plan.assist) { counts.reasons.unchanged += 1; continue; }
         try {
           const result = await this.host.commitDigest(plan);
           if (result.status === 'skipped') counts.reasons[result.reason] += 1;
