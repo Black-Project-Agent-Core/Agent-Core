@@ -48,6 +48,20 @@ export function isSimpleConversation(prompt: string): boolean {
   return SIMPLE_WHOLE.test(text) && SIMPLE_ANCHOR.test(text);
 }
 
+/** Only explicit answer-only intent may bypass a model-authored task finalization. Ambiguity keeps the full loop. */
+export function isAnswerOnlyConversation(prompt: string): boolean {
+  if (/[`\\/]/.test(prompt)) return false;
+  const text = prompt.trim().replace(/\s+/g, ' ');
+  if (text.length > 1_000) return false;
+  if (/\b[\w-]+\.[a-z0-9]{1,8}\b/i.test(text)
+    || /^(?:(?:tolong|please)\s+)?(?:ubah|edit|hapus|buat|jalankan|baca|cari|delete|create|run|write|read|search)\b/i.test(text)
+    || /\b(?:lalu|kemudian|then|and|but)\b.*\b(?:ubah|edit|hapus|buat|jalankan|delete|create|run|write)\b/i.test(text)) return false;
+  if (/(?:jawab(?:an)?|answer).{0,80}(?:konseptual|conceptual|tanpa tindakan|without taking action|no actions)/i.test(text)) return true;
+  return (/^(?:apakah|bisakah|bisa)\b/i.test(text)
+    && /(?:ketika|jika) (?:aku|saya) (?:memberi|memberikan|menugaskan).*\b(?:task|tugas)/i.test(text))
+    || /^(?:can|could) you\b.*\b(?:when|if) I (?:give|assign) you (?:a )?task/i.test(text);
+}
+
 export type ToolOutcome ='denied-by-policy' | 'no-answer' | 'technical-failure' | 'interrupted';
 
 const NO_ANSWER = /timed? ?out|timeout|etimedout|econnreset|socket hang up|no (?:response|answer|result|output)|did not (?:answer|respond|return)|deadline|returned nothing/i;

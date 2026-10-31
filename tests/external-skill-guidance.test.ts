@@ -5,6 +5,13 @@ import { fixture } from './skill-proposal-fixture.js';
 import { ExternalControllerLearningService } from '../src/learning/external-controller.js';
 import { taskSkillGuidance } from '../src/skills/external-guidance.js';
 
+it('reuses the current task catalog without rescanning mandatory Skill packages', async () => {
+  const known = { 'mind-control': 'sha256:' + 'a'.repeat(64) };
+  const result = await taskSkillGuidance({ inspect: async () => { throw Error('unexpected rescan'); } } as any, 'native', [], known);
+  expect(result.entries.find(entry => entry.name === 'mind-control')).toMatchObject({ status: 'available', read: { expectedActiveDigest: known['mind-control'] } });
+  expect(result.entries.find(entry => entry.name === 'agent-core-capability-index')).toMatchObject({ status: 'unavailable' });
+});
+
 it('compresses Native guidance while preserving descriptors, exact read requests and the reasoning gate', async () => {
  const skills = { inspect: async () => ({ digest: 'sha256:' + 'a'.repeat(64) }) } as any;
  const native = await taskSkillGuidance(skills, 'native');

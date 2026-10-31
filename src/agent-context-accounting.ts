@@ -4,6 +4,32 @@ import type { AgentModelMessage, AgentModelTool } from './agent-provider.js';
 export const OUTPUT_RESERVE_TOKENS = 1_024;
 /** Typical English/code ratio, used only for estimates and triggers, never to admit a request. */
 const TYPICAL_BYTES_PER_TOKEN = 4;
+export const AUTOMATIC_CONTEXT_MAX_BYTES = 48 * 1024;
+export const AUTOMATIC_CONTEXT_PART_BYTES = 8 * 1024;
+
+/** Budget automatic background only. User/history, tool results and mandatory rules are never clipped here. */
+export function automaticContext(required: string, sections: Array<{ source: string; text: string; expand: string }>,
+  limit = AUTOMATIC_CONTEXT_MAX_BYTES): string {
+  let remaining = limit - Buffer.byteLength(required, 'utf8') - 2;
+  if (remaining < 0) throw new Error('AUTOMATIC_CONTEXT_REQUIRED_RULES_EXCEED_BUDGET');
+  const result: string[] = [];
+  for (const section of sections.filter(item => item.text.trim())) {
+    const header = '\n\nBACKGROUND EXCERPT ' + section.source + '\n';
+    const footer = '\n[Expand through ' + section.expand + '; this excerpt is not a complete source read.]';
+    const reserve = Buffer.byteLength(header + footer, 'utf8');
+    const budget = Math.min(AUTOMATIC_CONTEXT_PART_BYTES, remaining) - reserve;
+    if (budget < 0) continue;
+    let text = '', bytes = 0;
+    for (const character of section.text) {
+      const size = Buffer.byteLength(character, 'utf8');
+      if (bytes + size > budget) break;
+      text += character; bytes += size;
+    }
+    const fragment = header + text + footer;
+    result.push(fragment); remaining -= Buffer.byteLength(fragment, 'utf8');
+  }
+  return result.join('');
+}
 
 export interface ObservedContextUsage {
   /** Provider-reported input tokens for a request whose wire size was `bytes`. */

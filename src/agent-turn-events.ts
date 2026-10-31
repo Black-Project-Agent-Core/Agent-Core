@@ -1,6 +1,6 @@
 import type { ContextBreakdown } from './agent-context-usage.js';
 import type { AgentMemoryUse } from './agent-memory-use.js';
-import type { AgentProviderRoutingEvent } from './agent-provider.js';
+import type { AgentModelStreamEvent, AgentProviderRoutingEvent } from './agent-provider.js';
 
 export type AgentTurnEventType =
   | 'agent.profile'
@@ -11,6 +11,7 @@ export type AgentTurnEventType =
   | 'tool.started'
   | 'tool.completed'
   | 'assistant.progress'
+  | 'assistant.stream'
   | 'agent.budget'
   | 'context.usage'
   | 'verification.started'
@@ -63,6 +64,8 @@ export interface AgentTurnEvent {
   outputTruncated?: boolean;
   /** assistant.progress only: the assistant's short narration for this iteration (<= 280 chars). */
   text?: string;
+  /** Ephemeral public text; thinking and partial tool arguments never enter this channel. */
+  stream?: AgentModelStreamEvent;
   itemCount?: number;
   providerId?: string;
   model?: string;

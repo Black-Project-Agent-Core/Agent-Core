@@ -29,6 +29,7 @@ export interface AgentKnowledgePacket {
   skillNames: string[];
   procedureFingerprints: string[];
   artifactRevisions: Record<string, string>;
+  skillCatalogDigests?: Record<string, string>;
 }
 
 export type KnowledgeSourceStatus = 'available' | 'unavailable' | 'not-requested' | 'unknown';
@@ -54,8 +55,8 @@ type KnowledgeSection = 'capabilities' | 'task-evidence' | 'memory-neighborhood'
 export interface KnowledgePacketCoverage {
   version: 1;
   scope: 'packet-composition';
-  unit: 'utf16-code-units';
-  limit: 16000;
+  unit: 'utf16-code-units' | 'utf8-bytes';
+  limit: number;
   used: number;
   sections: Record<KnowledgeSection, {
     sourceStatus: KnowledgeSourceStatus;
@@ -88,6 +89,7 @@ export async function buildKnowledgeSynthesisPacket(input: {
   skillDiscovery?: SkillDiscoverySnapshot | null;
   /** Optional NativeSkillSettings to filter out skills switched off by the user (hard block for Native). */
   nativeSkillSettings?: NativeSkillSettings;
+  maxTextBytes?: number;
 }): Promise<AgentKnowledgePacket> {
   const truncated = new Set<KnowledgeSection>();
   const detail = (section: KnowledgeSection, value: unknown, max: number) => {
@@ -103,6 +105,7 @@ export async function buildKnowledgeSynthesisPacket(input: {
   const inventoryArtifacts: CapabilityArtifact[] = [];
   const owners: Record<string,string> = { skills: input.runtime.skillsService ? 'available' : 'unknown', learning: input.runtime.learningService ? 'available' : 'unknown' };
   const artifactRevisions: Record<string, string> = {};
+  let skillCatalogDigests: Record<string, string> | undefined;
   const artifactLines = new Map<string, string>();
   const selectedProcedures = rankKnowledge(input.procedures, query, item => [item.name, item.description, item.reuseCondition, ...item.steps].join(' '));
   const memoryLines: string[] = [];
@@ -222,6 +225,7 @@ export async function buildKnowledgeSynthesisPacket(input: {
         ? await input.runtime.skillsService!.discover({ query: bounded(query, 4000), mode: 'lexical' })
         : undefined);
       const catalog = discovery?.artifacts ?? await input.runtime.skillsService!.list();
+      skillCatalogDigests = Object.fromEntries(catalog.map(skill => [skill.name, skill.digest]));
       const filteredCatalog = catalog.filter(s => !disabledSkillSet.has(s.name));
       inventoryArtifacts.push(...filteredCatalog.map(s=>({kind:'skill' as const,id:s.name,description:s.description,revision:s.digest})));
       if (discovery) {
@@ -319,27 +323,30 @@ export async function buildKnowledgeSynthesisPacket(input: {
   ];
   // The fixed nine-heading skeleton and bounded scalar summaries reserve at most
   // 2,048 UTF-16 units inside the existing text cap. Detail never displaces them.
-  let budget = 16_000 - 2_048;
+  const measure = (text: string) => input.maxTextBytes ? Buffer.byteLength(text, 'utf8') : text.length;
+  const textLimit = input.maxTextBytes ?? 16_000;
+  if (!Number.isSafeInteger(textLimit) || textLimit < 4_096 || textLimit > 16_000) throw new Error('KNOWLEDGE_PACKET_BUDGET_INVALID');
+  let budget = textLimit - (input.maxTextBytes ? 3_072 : 2_048);
   for (const section of [...sections.slice(7), ...sections.slice(0, 7)]) {
     const priority = section.id === 'contradictions' || section.id === 'evidence-gaps';
     for (const [index, row] of section.rows.entries()) {
       if (priority && (index >= 4 || row.length > 400)) continue;
-      if (row.length + 1 > budget) continue;
+      if (measure(row) + 1 > budget) continue;
       section.delivered.push(row);
-      budget -= row.length + 1;
+      budget -= measure(row) + 1;
     }
   }
   if (projected) {
     const current = sections.find(section => section.id === 'task-evidence')!;
     const count = taskEvidenceLines.filter(row => current.delivered.includes(row)).length;
     const status = '- event-details-delivered=' + count + ' | events are not row-coverage counts';
-    if (status.length + 1 <= budget) {
-      current.rows.push(status); current.delivered.push(status); budget -= status.length + 1;
+    if (measure(status) + 1 <= budget) {
+      current.rows.push(status); current.delivered.push(status); budget -= measure(status) + 1;
     } else truncated.add('task-evidence');
     if (count < (projected.selectedCount ?? 0)) truncated.add('task-evidence');
   }
   const coverage: KnowledgePacketCoverage = { version: 1, scope: 'packet-composition',
-    unit: 'utf16-code-units', limit: 16000, used: 0, sections: {} as KnowledgePacketCoverage['sections'] };
+    unit: input.maxTextBytes ? 'utf8-bytes' : 'utf16-code-units', limit: textLimit, used: 0, sections: {} as KnowledgePacketCoverage['sections'] };
   for (const section of sections) {
     const known = section.status === 'available' || section.status === 'not-requested';
     const omitted = section.rows.length - section.delivered.length;
@@ -365,7 +372,7 @@ export async function buildKnowledgeSynthesisPacket(input: {
     '',
     'Distinguish facts, contradictions, evidence gaps and expected observations before choosing the next step.',
   ].join('\n');
-  coverage.used = text.length;
+  coverage.used = measure(text);
   const delivered = new Set(sections.flatMap(section => section.delivered));
   for (const key of Object.keys(artifactRevisions)) {
     // Inventory identity alone is not delivery of the selected artifact detail.
@@ -373,6 +380,7 @@ export async function buildKnowledgeSynthesisPacket(input: {
   }
 
   return {
+    ...(skillCatalogDigests ? { skillCatalogDigests } : {}),
     artifactRevisions,
     capabilityExposure,
     text,

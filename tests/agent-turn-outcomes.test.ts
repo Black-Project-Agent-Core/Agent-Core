@@ -4,6 +4,7 @@ import {
   classifyToolFailure,
   finishReasonNote,
   isSimpleConversation,
+  isAnswerOnlyConversation,
   toolOutcomeNote,
   visibleToolText,
 } from '../src/agent-turn-outcomes.js';
@@ -13,6 +14,19 @@ import { AgentRuntimeToolSession } from '../src/agent-tool-session.js';
 
 const requestError = (status: number, message = '', safeCode: string | null = null) =>
   new AgentProviderRequestError({ status, message: `AGENT_RUNTIME_PROVIDER_REQUEST_FAILED:${status}: ${message}`, safeCode });
+
+it.each([
+  ['Bisakah kamu akses internet ketika aku memberikan tasknya?', true],
+  ['Can you access the internet when I give you a task?', true],
+  ['Jawab konseptual saja tanpa tindakan implementasi.', true],
+  ['Edit file contoh.ts dan perbaiki errornya.', false],
+  ['Bisakah kamu menghapus file contoh.ts?', false],
+  ['Jawab konseptual, lalu edit file tersebut.', false],
+  ['Jelaskan lalu jalankan perintah ini.', false],
+  ['Please inspect the current state.', false],
+])('keeps answer-only finalization conservative for %j', (prompt, expected) => {
+  expect(isAnswerOnlyConversation(String(prompt))).toBe(expected);
+});
 
 describe('simple conversation detection', () => {
   it.each(['halo', 'Halo!', 'hai, apa kabar?', 'selamat pagi', 'Selamat malam, bro', 'terima kasih', 'makasih ya', 'thanks', 'thank you!', 'hello', 'hi there', 'siapa kamu?', 'kamu siapa', 'who are you', 'tes'])(

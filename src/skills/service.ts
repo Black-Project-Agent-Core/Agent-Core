@@ -12,6 +12,7 @@ import type { SkillProposalRecord, SkillProposalDecision } from '../learning/ski
 import { cosineSimilarity, type MemoryEmbedder } from '../memory/embedder.js';
 import { redactSensitiveString } from '../security/redaction.js';
 import { normalizeSkillReadResource } from './resource-path.js';
+import { stableFileRevision } from '../security/file-identity.js';
 import { adaptClaudeSkill, inventoryClaudePlugin, isClaudePluginRoot, reasonCode, reportLabel,
   type ClaudePluginPreview, type ClaudePluginSkillComponent, type SkillAdaptationReport } from './claude-plugin.js';
 import { boundSkillSearchResult, describeSkill, positiveSkillDescriptor, rankSkillDescriptors,
@@ -78,6 +79,7 @@ interface ScannedFile {
   absolute?: string;
   content?: Buffer;
   size: number;
+  revision?: string | null;
 }
 interface ScannedSkill {
   metadata: SkillMetadata;
@@ -223,12 +225,12 @@ async function walkSkillFiles(sourceRoot: string): Promise<ScannedFile[]> {
       if (entry.isSymbolicLink()) throw new Error('SKILL_SYMLINK_REFUSED');
       if (entry.isDirectory()) { await walk(absolute, relative); continue; }
       if (!entry.isFile()) throw new Error('SKILL_NON_REGULAR_ENTRY_REFUSED');
-      const info = await lstat(absolute);
+      const info = await lstat(absolute, { bigint: true });
       if (info.isSymbolicLink() || !info.isFile()) throw new Error('SKILL_NON_REGULAR_ENTRY_REFUSED');
       if (info.size > MAX_FILE_BYTES) throw new Error('SKILL_FILE_TOO_LARGE');
-      totalBytes += info.size;
+      totalBytes += Number(info.size);
       if (totalBytes > MAX_TOTAL_BYTES) throw new Error('SKILL_TOTAL_BYTES_LIMIT');
-      files.push({ relative, absolute, size: info.size });
+      files.push({ relative, absolute, size: Number(info.size), revision: stableFileRevision(info) });
       if (files.length > MAX_FILES) throw new Error('SKILL_FILE_COUNT_LIMIT');
     }
   };
@@ -255,12 +257,12 @@ function digestFiles(files: ScannedFile[]): string {
 function fileRecords(files: ScannedFile[]): SkillAdaptationReport['filesBefore'] {
   return files.map(file => ({ path: file.relative, sha256: 'sha256:' + createHash('sha256').update(file.content!).digest('hex'), size: file.size }));
 }
-async function scanDirectory(sourceRoot: string): Promise<ScannedSkill> {
-  const files = await walkSkillFiles(sourceRoot);
+async function scanDirectory(sourceRoot: string, selectedFiles?: ScannedFile[]): Promise<ScannedSkill> {
+  const files = selectedFiles ?? await walkSkillFiles(sourceRoot);
   const skillFile = files.find(file => file.relative === 'SKILL.md');
   if (!skillFile?.absolute) throw new Error('SKILL_MD_NOT_FOUND');
   // The exact scan bytes anchor both metadata and every selected reference read.
-  skillFile.content = await readFile(skillFile.absolute);
+  skillFile.content ??= await readFile(skillFile.absolute);
   const metadata = parseSkillMarkdown(skillFile.content.toString('utf8'));
   const totalBytes = await loadSkillContents(files);
   return { metadata, files, digest: digestFiles(files), totalBytes };
@@ -455,7 +457,7 @@ function summary(scanned: ScannedSkill, sourceProvenance?: SkillSourceProvenance
     totalBytes: scanned.totalBytes,
     ...(scanned.metadata.license ? { license: scanned.metadata.license } : {}),
     ...(scanned.metadata.compatibility ? { compatibility: scanned.metadata.compatibility } : {}),
-    allowedTools: scanned.metadata.allowedTools,
+    allowedTools: [...scanned.metadata.allowedTools],
     ...(sourceProvenance ? { sourceProvenance } : {}),
     ...(warnings.length ? { warnings } : {}),
   };
@@ -554,6 +556,7 @@ export class SkillService {
   private readonly descriptorVectors = new Map<string, number[]>();
   private activeDescriptorKeys = new Set<string>();
   private semanticBusy = false;
+  private readonly activeScans = new Map<string, ScannedSkill>();
   private constructor(
     projectRoot: string,
     private readonly sourceValidator: (sourcePath: string) => Promise<string>,
@@ -714,8 +717,29 @@ export class SkillService {
     const directory = path.join(this.catalogRoot, normalized);
     const info = await lstat(directory);
     if (info.isSymbolicLink() || !info.isDirectory()) throw new Error('SKILL_SYMLINK_REFUSED');
-    const scanned = await scanDirectory(directory);
+    const files = await walkSkillFiles(directory);
+    const cached = this.activeScans.get(normalized);
+    if (cached && files.length === cached.files.length && files.every((file, index) =>
+      file.revision && file.relative === cached.files[index].relative && file.revision === cached.files[index].revision)) return cached;
+    this.activeScans.delete(normalized);
+    // Coarse filesystems still hash fresh bytes; only parsing/descriptor work is reused there.
+    if (cached && files.some(file => !file.revision)) {
+      await loadSkillContents(files);
+      if (digestFiles(files) === cached.digest) { this.activeScans.set(normalized, cached); return cached; }
+    }
+    const scanned = await scanDirectory(directory, files);
     if (scanned.metadata.name !== normalized) throw new Error('SKILL_CATALOG_NAME_MISMATCH');
+    const unchanged = await Promise.all(files.map(async file =>
+      !file.revision || file.revision === stableFileRevision(await lstat(file.absolute!, { bigint: true }))));
+    if (unchanged.every(Boolean)) {
+      this.activeScans.set(normalized, scanned);
+      let bytes = [...this.activeScans.values()].reduce((sum, item) => sum + item.totalBytes, 0);
+      while (bytes > MAX_TOTAL_BYTES * 2) {
+        const first = this.activeScans.keys().next().value!;
+        bytes -= this.activeScans.get(first)!.totalBytes;
+        this.activeScans.delete(first);
+      }
+    }
     return scanned;
   }
   private async catalogSnapshot(): Promise<{
@@ -746,7 +770,7 @@ export class SkillService {
   async inspect(name: string): Promise<SkillArtifactSummary & { metadata: SkillMetadata }> {
     await this.checkActiveCatalog();
     const scanned = await this.scanActive(name);
-    return { ...summary(scanned, await readSkillSourceProvenance(path.join(this.catalogRoot, scanned.metadata.name))), metadata: scanned.metadata };
+    return { ...summary(scanned, await readSkillSourceProvenance(path.join(this.catalogRoot, scanned.metadata.name))), metadata: structuredClone(scanned.metadata) };
   }
   private descriptorKey(descriptor: SkillDiscoveryDescriptor): string {
     const identity = this.embedder?.identity;

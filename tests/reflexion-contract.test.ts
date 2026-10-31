@@ -30,12 +30,14 @@ describe('Reflexion controller contract regression', () => {
     const loaded = loadAgentProtocol();
     const onDisk = (await readFile(path.join(repoRoot, 'AGENTS.md'), 'utf8')).trim();
 
-    expect(loaded).toBe(onDisk);
-    expect(() => assertReflexionContract(loaded)).not.toThrow();
+    expect(loaded).toContain(onDisk);
+    expect(Buffer.byteLength(onDisk)).toBeLessThanOrEqual(8192);
+    const topic = await readFile(path.join(repoRoot, 'docs/instructions/reflexion.md'), 'utf8');
+    expect(() => assertReflexionContract(topic)).not.toThrow();
   });
 
-  it('negative-controls the regression: removing a protected invariant is detected', () => {
-    const contract = loadAgentProtocol();
+  it('negative-controls the regression: removing a protected invariant is detected', async () => {
+    const contract = await readFile(path.join(repoRoot, 'docs/instructions/reflexion.md'), 'utf8');
     const weakened = contract.replace(
       /Never repeat an equivalent failed tool\/action with equivalent arguments blindly\.[^\n]*/i,
       'Retries are allowed.',

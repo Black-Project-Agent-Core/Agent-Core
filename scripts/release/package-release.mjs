@@ -175,6 +175,7 @@ await copyIfExists("runtime/grafel/bin", packageRoot);
 await copyIfExists("runtime/grafel/provider.json", packageRoot);
 // Memory is compiled in the same dist tree; source/license history is domain-owned.
 await copyIfExists("docs/memory", packageRoot);
+await copyIfExists("docs/instructions", packageRoot);
 await copyIfExists("scripts/memory", packageRoot);
 await writePackagedSetup(packageRoot);
 await copyIfExists("runtime/skills/capability-packs", packageRoot, { filter: sourceFilter });
@@ -215,6 +216,7 @@ await fs.cp(path.join(ROOT, "src"), path.join(sourceRoot, "src"), {
   filter: async source => sourceFilter(source) && await packageCopyAllowed(ROOT, source),
 });
 await copyIfExists("docs/memory", sourceRoot);
+await copyIfExists("docs/instructions", sourceRoot);
 await copyIfExists("scripts/memory", sourceRoot);
 await copyIfExists("scripts/governance", sourceRoot);
 await copyIfExists("scripts/browser-control", sourceRoot);

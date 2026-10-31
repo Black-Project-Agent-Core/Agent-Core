@@ -126,11 +126,13 @@ describe('Anthropic native Messages provider', () => {
     await pool.prepareReadiness();
     expect(seen.filter(item => item.method === 'GET').map(item => item.key).sort()).toEqual(['fixture-one', 'fixture-two']);
     expect(seen.filter(item => item.method === 'POST')).toHaveLength(2);
+    expect(seen.filter(item => item.method === 'POST').every(item => item.body.stream === false)).toBe(true);
     expect(seen.filter(item => item.method === 'POST').every(item => item.body.cache_control === undefined)).toBe(true);
     expect(pool.health().routes?.[0]?.modelReadiness).toMatchObject({ ready: 2, pending: 0 });
     expect(await pool.complete([{ role: 'user', content: 'Hello' }])).toMatchObject({ content: 'Done', providerId: 'anthropic' });
     expect(seen).toHaveLength(5);
     expect(seen.at(-1)).toMatchObject({ method: 'POST', path: '/v1/messages', key: 'fixture-one' });
+    expect(seen.at(-1)?.body).toMatchObject({ stream: true, max_tokens: 4_096 });
     expect(seen.filter(item=>item.method==='POST').every(item=>item.body.output_config===undefined)).toBe(true);
     expect(pool.health().routes?.[0]?.reasoningEfforts).toEqual(['low', 'high']);
     for (const reasoningEffort of ['low', 'high'] as const) {
@@ -267,7 +269,7 @@ describe('Anthropic native Messages provider', () => {
       system: [{ type: 'text', text: 'System one' }, { type: 'text', text: 'System two' }],
       messages: [{ role: 'user', content: [{ type: 'text', text: 'Inspect files' }] }],
       tools: [{ name: 'read_file', description: 'Read a file', input_schema: tool.function.parameters }],
-      tool_choice: { type: 'auto' }, stream: false, max_tokens: 1_024,
+      tool_choice: { type: 'auto' }, stream: true, max_tokens: 1_024,
       cache_control: { type: 'ephemeral' },
       thinking: { type: 'adaptive', display: 'omitted', block_binding: { prefix_mismatch_behavior: 'drop_block' } } });
     const secondBody = JSON.parse(fetchMock.mock.calls[1]![1].body);
@@ -408,6 +410,55 @@ describe('Anthropic native Messages provider', () => {
   const sse = (events: Array<[string, Record<string, unknown>]>) => new Response(
     events.map(([name, data]) => `event: ${name}\ndata: ${JSON.stringify({ type: name, ...data })}\n\n`).join(''),
     { headers: { 'content-type': 'text/event-stream' } });
+
+  it.each(['retry', 'cancel'] as const)('discards partial stream text on %s and keeps the final response canonical', async mode => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'provider-anthropic-stream-'));
+    roots.push(root);
+    const events: any[] = [], cancel = new AbortController();
+    const finalText = 'Final'.repeat(4_000);
+    let calls = 0;
+    vi.stubGlobal('fetch', vi.fn(async (_url: URL, init: RequestInit) => {
+      const body = init.body ? JSON.parse(String(init.body)) : null;
+      if (!body) return json({ id: config.model, max_input_tokens: 131_072, max_tokens: 32_768,
+        capabilities: { effort: { supported: true, low: { supported: true } } } });
+      if (body.tools?.[0]?.name === 'agent_core_model_probe') {
+        expect(body.stream).toBe(false);
+        return json(message([{ type: 'tool_use', id: 'probe', name: 'agent_core_model_probe',
+          input: { nonce: body.tools[0].input_schema.properties.nonce.enum[0] } }], { model: config.model, stop_reason: 'tool_use' }));
+      }
+      expect(body.stream).toBe(true);
+      const text = ++calls === 1 ? 'Partial' : finalText;
+      return sse([
+        ['message_start', { message: message([], { model: config.model, stop_reason: null }) }],
+        ['content_block_start', { index: 0, content_block: { type: 'thinking', thinking: '', signature: 'private reasoning' } }],
+        ['content_block_stop', { index: 0 }],
+        ['content_block_start', { index: 1, content_block: { type: 'text', text: '' } }],
+        ['content_block_delta', { index: 1, delta: { type: 'text_delta', text } }],
+        ...(calls === 1 ? [['error', { error: { type: 'rate_limit_error', message: 'retry this request' } }]] as Array<[string, Record<string, unknown>]>
+          : [['content_block_stop', { index: 1 }], ['message_delta', { delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 3 } }], ['message_stop', {}]] as Array<[string, Record<string, unknown>]>),
+      ]);
+    }));
+    const pool = new OpenAICompatibleProviderPool({ ...config, baseUrl: null, model: null, apiKey: null,
+      providers: [{ id: 'anthropic', baseUrl: config.baseUrl, model: config.model, credentials: [
+        { id: 'anthropic:01', ordinal: 1, secret: 'fixture-one' }, { id: 'anthropic:02', ordinal: 2, secret: 'fixture-two' },
+      ] }] }, path.join(root, 'provider-state.sqlite'));
+    const result = pool.complete([{ role: 'user', content: 'Hello' }], [], undefined, cancel.signal, { onStream: event => {
+      events.push(event);
+      if (mode === 'cancel' && event.type === 'delta') cancel.abort(new Error('fixture-cancel'));
+    } });
+    if (mode === 'cancel') {
+      await expect(result).rejects.toThrow('fixture-cancel');
+      expect(events.map(event => event.type)).toEqual(['start', 'delta', 'reset']);
+      expect(calls).toBe(1);
+    } else {
+      expect((await result).content).toBe(finalText);
+      expect(events.map(event => event.type)).toEqual(['start', 'delta', 'reset', 'start', 'delta', 'end']);
+      expect(events[0].id).not.toBe(events[3].id);
+      expect(events[4].text).toHaveLength(16_384);
+      expect(calls).toBe(2);
+    }
+    expect(JSON.stringify(events)).not.toContain('private reasoning');
+  });
 
   it('streams real turns and rebuilds tool calls, usage and cache counts from the events', async () => {
     const fetchMock = vi.fn(async () => sse([

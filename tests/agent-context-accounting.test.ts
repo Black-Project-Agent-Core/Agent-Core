@@ -3,13 +3,34 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  accountContext, completionCap, contextRefusal, OUTPUT_RESERVE_TOKENS,
+  accountContext, completionCap, contextRefusal, OUTPUT_RESERVE_TOKENS, automaticContext, AUTOMATIC_CONTEXT_MAX_BYTES,
 } from '../src/agent-context-accounting.js';
 import {
   OpenAICompatibleProviderPool, type AgentModelMessage, type AgentModelTool, type AgentProviderConfig,
 } from '../src/agent-provider.js';
+import { buildKnowledgeSynthesisPacket } from '../src/agent-knowledge-synthesis.js';
 
 const roots: string[] = [];
+it('bounds the Native knowledge projection by UTF8 bytes and reports omitted source detail', async () => {
+  const packet = await buildKnowledgeSynthesisPacket({ runtime: {}, memoryItems: [], availableTools: [], maxTextBytes: 8192,
+    procedures: [], task: { goal: 'Inspect data ' + '漢😀'.repeat(700), episodes: Array.from({ length: 16 }, (_, index) => ({
+      id: String(index), at: '2026-10-31T00:00:00Z', kind: 'observation', summary: '漢😀'.repeat(700), evidenceRefs: [],
+    })) as any } });
+  expect(Buffer.byteLength(packet.text)).toBeLessThanOrEqual(8192);
+  expect(packet.coverage).toMatchObject({ unit: 'utf8-bytes', limit: 8192, used: Buffer.byteLength(packet.text) });
+  expect(packet.coverage.sections['task-evidence'].detailTruncated).toBe(true);
+});
+it('bounds total automatic context in UTF8 bytes, keeps expansion pointers and never clips required rules', () => {
+  const required = 'MANDATORY_RULES'.repeat(1_000);
+  const result = automaticContext(required, Array.from({ length: 12 }, (_, index) => ({
+    source: 'memory:' + index, text: '😀漢'.repeat(4_000), expand: 'memory_read id=' + index,
+  })));
+  expect(Buffer.byteLength(required + '\n\n' + result)).toBeLessThanOrEqual(AUTOMATIC_CONTEXT_MAX_BYTES);
+  expect(result).not.toContain('�');
+  expect(result).toContain('memory_read id=0');
+  expect(result).toContain('not a complete source read');
+  expect(() => automaticContext('x'.repeat(AUTOMATIC_CONTEXT_MAX_BYTES), [])).toThrow('REQUIRED_RULES');
+});
 afterEach(async () => {
   vi.unstubAllGlobals();
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });

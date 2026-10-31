@@ -141,6 +141,30 @@ function pushSnapshot(snapshot: DesktopSnapshot = onlineSnapshot) {
 }
 
 describe('Agent Core desktop UI host integration', () => {
+  it('renders live host fragments before the final chat state and discards failed-attempt text', () => {
+    const conversation = { id: 'stream-chat', runtimeSessionId: 's1', title: 'Streaming task', status: 'active', createdAtMs: 1, updatedAtMs: 1 };
+    const turn = { id: 'stream-turn', conversationId: conversation.id, clientRequestId: 'r1', runtimeTaskId: 'task1', status: 'running', createdAtMs: 1 };
+    const host = (data: any) => act(() => messageHandler!({ data }));
+    render(<App/>); pushSnapshot(chatReady);
+    host({ type: 'agent-chat-state', result: { conversation, turns: [turn], messages: [] } });
+    const stream = (value: unknown) => host({ type: 'agent-chat-event', requestId: 'r1', envelope: { type: 'event', event: {
+      type: 'assistant.stream', at: 'now', conversationId: conversation.id, turnId: turn.id, stream: value,
+    } } });
+    stream({ type: 'start', id: 'failed' });
+    stream({ type: 'delta', id: 'failed', text: 'Unfinished text' });
+    expect(screen.getByLabelText('Respons sementara')).toHaveTextContent('Unfinished text');
+    stream({ type: 'reset', id: 'failed' });
+    expect(screen.queryByLabelText('Respons sementara')).toBeNull();
+    stream({ type: 'start', id: 'success' });
+    stream({ type: 'delta', id: 'success', text: 'Live answer' });
+    expect(screen.getByLabelText('Respons sementara')).toHaveTextContent('Live answer');
+    host({ type: 'agent-chat-state', result: { conversation, turns: [{ ...turn, status: 'finalized' }], messages: [
+      { id: 'final', conversationId: conversation.id, turnId: turn.id, role: 'assistant', content: 'Persisted answer', createdAtMs: 2 },
+    ] } });
+    expect(screen.queryByLabelText('Respons sementara')).toBeNull();
+    expect(screen.getByText('Persisted answer')).toBeInTheDocument();
+  });
+
   it('Skill page: asks the host for the list, switches optimistically and rolls a failed switch back', () => {
     window.location.hash = '#skills';
     render(<App/>);pushSnapshot();

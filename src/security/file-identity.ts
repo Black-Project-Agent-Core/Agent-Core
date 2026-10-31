@@ -7,6 +7,13 @@ export function stableFileIdentity(stats: { dev: number | bigint; ino: number | 
         return null;
     return `${dev}:${ino}`;
 }
+/** Cache identity includes change time: restoring mtime must not hide an edit or replacement. */
+export function stableFileRevision(stats: import('node:fs').BigIntStats): string | null {
+    const identity = stableFileIdentity(stats);
+    // FAT-like timestamps cannot detect a same-size edit in the same second.
+    return identity && stats.ctimeNs >= stats.birthtimeNs && stats.ctimeNs % 1_000_000_000n !== 0n
+        ? `${identity}:${stats.size}:${stats.mtimeNs}:${stats.ctimeNs}` : null;
+}
 export function assertSameFileIdentity(expected: { dev: number | bigint; ino: number | bigint }, actual: { dev: number | bigint; ino: number | bigint }, label: string) {
     const left = stableFileIdentity(expected);
     const right = stableFileIdentity(actual);

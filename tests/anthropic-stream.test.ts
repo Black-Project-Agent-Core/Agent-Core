@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AnthropicStreamError, readAnthropicMessageStream, statusForStreamError } from '../src/anthropic-stream.js';
 
 type Event = [string, Record<string, unknown>];
@@ -45,6 +45,46 @@ const expected = {
 };
 
 describe('Anthropic stream reassembly', () => {
+  it('delivers only text blocks before message completion, keeping thinking and tool inputs private', async () => {
+    let source!: ReadableStreamDefaultController<Uint8Array>;
+    const response = new Response(new ReadableStream<Uint8Array>({ start(controller) { source = controller; } }));
+    const text: string[] = [];
+    let finished = false;
+    const result = readAnthropicMessageStream(response, { ...OPTIONS, onTextDelta: (delta: string) => { text.push(delta); } })
+      .then(value => { finished = true; return value; });
+    source.enqueue(new TextEncoder().encode(frame([...complete.slice(0, 3),
+      ['content_block_delta', { index: 0, delta: { type: 'thinking_delta', thinking: 'private reasoning' } }],
+      ...complete.slice(3, 8)])));
+    await vi.waitFor(() => expect(text).toEqual(['Halo, ', 'dünya']));
+    expect(finished).toBe(false);
+    source.enqueue(new TextEncoder().encode(frame(complete.slice(8))));
+    source.close();
+    expect(await result).toEqual({ ...expected, content: [{ ...expected.content[0], thinking: 'private reasoning' }, ...expected.content.slice(1)] });
+    expect(text.join('')).toBe('Halo, dünya');
+  });
+
+  it('cancels an idle body after partial text without delivering more fragments', async () => {
+    let source!: ReadableStreamDefaultController<Uint8Array>;
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream<Uint8Array>({ start(controller) { source = controller; }, cancel }));
+    const abort = new AbortController(), onTextDelta = vi.fn();
+    const outcome = readAnthropicMessageStream(response, { ...OPTIONS, signal: abort.signal, onTextDelta }).catch(error => error);
+    source.enqueue(new TextEncoder().encode(frame(complete.slice(0, 7))));
+    await vi.waitFor(() => expect(onTextDelta).toHaveBeenCalledWith('Halo, '));
+    abort.abort(new Error('fixture-cancel'));
+    expect((await outcome).message).toBe('fixture-cancel');
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(onTextDelta).toHaveBeenCalledTimes(1);
+  });
+
+  it('never treats a text delta in a thinking block as public text', async () => {
+    const onTextDelta = vi.fn();
+    await expect(readAnthropicMessageStream(responseOf(frame([...complete.slice(0, 3),
+      ['content_block_delta', { index: 0, delta: { type: 'text_delta', text: 'private reasoning' } }],
+    ])), { ...OPTIONS, onTextDelta })).rejects.toThrow('AGENT_RUNTIME_PROVIDER_RESPONSE_INVALID');
+    expect(onTextDelta).not.toHaveBeenCalled();
+  });
+
   it('rebuilds the non-streaming message, also when events are cut at arbitrary bytes or use CRLF', async () => {
     expect(await readAnthropicMessageStream(responseOf(frame(complete)), OPTIONS)).toEqual(expected);
     expect(await readAnthropicMessageStream(responseOf(frame(complete), 7), OPTIONS)).toEqual(expected);

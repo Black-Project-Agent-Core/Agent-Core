@@ -134,6 +134,28 @@ function usageChoice() {
 }
 
 describe('native Agent Core controller lifecycle', () => {
+  it('forwards temporary text before the provider resolves and keeps the finalized response canonical', async () => {
+    const f = await fixture([]);
+    const events: any[] = [];
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    vi.spyOn(f.runtime, 'complete').mockImplementationOnce(async (_messages, _tools, _affinity, _signal, options) => {
+      await options?.onStream?.({ type: 'start', id: 'stream-fixture' });
+      await options?.onStream?.({ type: 'delta', id: 'stream-fixture', text: 'Temporary text' });
+      await pending;
+      await options?.onStream?.({ type: 'end', id: 'stream-fixture' });
+      return { content: null, toolCalls: finalizeChoice('Canonical response').message.tool_calls, finishReason: 'tool_calls' };
+    });
+    const session = await f.runtime.startSession({ sessionId: 'stream-session' });
+    const result = f.controller.runConversationTurn({ sessionId: session.id, prompt: 'Investigate this task',
+      eventSink: event => { events.push(event); } });
+    await vi.waitFor(() => expect(events.some(event => event.stream?.text === 'Temporary text')).toBe(true));
+    expect(events.some(event => event.type === 'assistant.final')).toBe(false);
+    release();
+    expect((await result).response).toBe('Canonical response');
+    expect(events.at(-1)).toMatchObject({ type: 'assistant.final', response: 'Canonical response' });
+  });
+
   it('uses the selected public identity and owner USER in a real chat turn, persists metadata and keeps USER out of events/checkpoints', async () => {
     const f = await fixture([{ finish_reason: 'stop', message: { content: 'Halo dari Atlas.' } }]);
     f.config.profile = { enabled: true, root: f.root };
@@ -508,6 +530,19 @@ describe('native Agent Core controller lifecycle', () => {
         outcome: 'verified', finalResponse: 'Halo!', learningDecision: 'no-new-knowledge', ...extra }) } }] } };
   }
 
+  it('finalizes a completed tool-free answer without a second model call, preserving Learning and unavailable job verification', async () => {
+    const { controller, runtime, learning, fetchMock } = await fixture([
+      { finish_reason: 'stop', message: { content: 'Saya dapat mencari informasi saat task memerlukannya.' } },
+    ]);
+    const result = await controller.runTask({ prompt: 'Bisakah kamu akses internet untuk mencari info ketika aku memberikan tasknya?' });
+    expect(result.response).toBe('Saya dapat mencari informasi saat task memerlukannya.');
+    expect(result).toMatchObject({ status: 'finalized', iterations: 1, jobVerification: 'unavailable' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(learning.checkpoint).toHaveBeenCalledTimes(1);
+    expect(learning.review).toHaveBeenCalledTimes(1);
+    expect((await runtime.getTask(result.taskId))?.metrics.toolCalls).toBe(0);
+  });
+
   it.each([
     ['no evidence reference', {}],
     ['an evidence reference the runtime rejects', { evidenceRefs: ['conversation:halo'] }],
@@ -615,19 +650,29 @@ describe('native Agent Core controller lifecycle', () => {
     expect(system).toContain('in an unattended task, record it as an observation instead of acting');
   });
 
-  it('rejects a plain assistant answer as terminal and forces the synthetic finalization tool', async () => {
+  it('keeps a goal open after a plain answer and requires explicit finalization', async () => {
     const first = {
       finish_reason: 'stop',
       message: { content: 'I think this is done.' },
     };
-    const { controller, fetchMock } = await fixture([first, finalizeChoice('final answer')]);
-    const result = await controller.runTask({ prompt: 'ordinary task' });
+    const { controller, runtime, fetchMock } = await fixture([first, finalizeChoice('final answer')]);
+    const result = await controller.runConversationTurn({ sessionId: (await runtime.startSession({})).id, prompt: 'ordinary task', goalMode: true });
     expect(result.status).toBe('finalized');
     expect(result.response).toBe('final answer');
     expect(result.iterations).toBe(2);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const secondRequest = JSON.parse(String((fetchMock.mock.calls[1] as any)[1]?.body ?? '{}'));
     expect(JSON.stringify(secondRequest.messages)).toContain('The turn is not complete');
+  });
+
+  it('does not mistake a plain planning reply to an action request for completed conversation', async () => {
+    const { controller, fetchMock } = await fixture([
+      { finish_reason: 'stop', message: { content: 'Saya akan memeriksa file tersebut.' } },
+      finalizeChoice('Tidak ada perubahan yang telah diverifikasi.'),
+    ]);
+    const result = await controller.runTask({ prompt: 'Edit file contoh.ts dan perbaiki errornya.' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.response).toBe('Tidak ada perubahan yang telah diverifikasi.');
   });
 
   it('executes an explicitly granted existing MCP tool before mandatory finalization', async () => {

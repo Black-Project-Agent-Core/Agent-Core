@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { assertCredentialBearingUrl } from './net/endpoint-policy.js';
 import { fetchWithPolicy } from './net/outbound-request.js';
 import { readResponseJsonBounded } from './net/bounded-response.js';
@@ -301,7 +302,12 @@ export type AgentProviderRoutingEvent =
       routes: AgentProviderRoutingRoute[];
     };
 
+export type AgentModelStreamEvent = { id: string; type: 'start' | 'end' | 'reset' }
+  | { id: string; type: 'delta'; text: string };
+
 export interface AgentProviderCompletionOptions {
+  /** Temporary text only; not a completed response or persisted conversation message. */
+  onStream?: (event: AgentModelStreamEvent) => void | Promise<void>;
   /**
    * User-chosen route. Only this route is used: it is never rotated away from on failure, so an
    * unavailable choice pauses the turn instead of silently answering from another model.
@@ -483,8 +489,9 @@ export class OpenAICompatibleProvider {
     messages: AgentModelMessage[],
     tools: AgentModelTool[] = [],
     signal?: AbortSignal,
-    probeMaxTokens?: number,
+    maxOutputTokens?: number,
     reasoningEffort?: AgentReasoningEffort,
+    options: { probe?: boolean; onTextDelta?: (text: string) => void | Promise<void> } = {},
   ): Promise<AgentModelResponse> {
     validateAgentReasoningEffort(reasoningEffort, this.providerId);
     const startedAt = performance.now();
@@ -504,7 +511,7 @@ export class OpenAICompatibleProvider {
     } else if (this.config.apiKey) headers.authorization = `Bearer ${this.config.apiKey}`;
     // Real Anthropic turns stream: one silent non-streaming wait ends at Node's ~5 minute header timeout, long
     // before a max-effort call on a large context is done. Readiness probes are short and stay non-streaming.
-    const streaming = anthropic && probeMaxTokens === undefined;
+    const streaming = anthropic && options.probe !== true;
     const response = await fetchWithPolicy(endpoint(this.config, this.providerId), {
       method: 'POST',
       headers,
@@ -523,7 +530,7 @@ export class OpenAICompatibleProvider {
           tool_choice: anthropic ? { type: 'auto' } : 'auto',
         } : {}),
         stream: streaming,
-        ...(anthropic || probeMaxTokens ? { max_tokens: probeMaxTokens ?? 4_096 } : {}),
+        ...(anthropic || maxOutputTokens ? { max_tokens: maxOutputTokens ?? 4_096 } : {}),
       }),
       ...(signal ? { signal } : {}),
     }, {
@@ -537,7 +544,8 @@ export class OpenAICompatibleProvider {
     let payload: any;
     if (eventStream) {
       try {
-        payload = await readAnthropicMessageStream(response, { maxBytes: MAX_PROVIDER_STREAM_BYTES, label: 'agent provider stream' });
+        payload = await readAnthropicMessageStream(response, { maxBytes: MAX_PROVIDER_STREAM_BYTES, label: 'agent provider stream',
+          signal, onTextDelta: options.onTextDelta });
       } catch (error) {
         if (!(error instanceof AnthropicStreamError)) throw error;
         const status = statusForStreamError(error.errorType);
@@ -773,7 +781,7 @@ export class OpenAICompatibleProviderPool {
         workspaceId: route.workspaceId, anthropicPromptCaching: false }, observation => {
         this.scheduler.recordObservation({ providerId: route.id, credentialId: credential.id, model, observation });
       }, route.id);
-      return provider.complete(messages, tools, probeSignal, 1_024);
+      return provider.complete(messages, tools, probeSignal, 1_024, undefined, { probe: true });
     }, signal, minimumContextTokens);
   }
 
@@ -1011,6 +1019,9 @@ export class OpenAICompatibleProviderPool {
       if (!options.onRouting) return;
       try { await options.onRouting(event); } catch { /* observability must never become routing authority */ }
     };
+    const emitStream = async (event: AgentModelStreamEvent): Promise<void> => {
+      try { await options.onStream?.(event); } catch { /* Presentation cannot change routing. */ }
+    };
     const markWhy = (routeId: string, credentialId: string, reason: ProviderSkipReason): void => {
       const reasons = excludedWhy.get(routeId) ?? new Map<string, ProviderSkipReason>();
       reasons.set(credentialId, reason);
@@ -1217,6 +1228,9 @@ export class OpenAICompatibleProviderPool {
               observation,
             });
           }, route.id);
+          const streamId = randomUUID();
+          let previewChars = 0;
+          await emitStream({ type: 'start', id: streamId });
           try {
             // No explicit effort: the anthropic route uses the highest level this model supports up to the configured ceiling.
             const ceiling = route.id === 'anthropic' ? this.config.anthropicDefaultReasoningEffort : undefined;
@@ -1225,7 +1239,14 @@ export class OpenAICompatibleProviderPool {
                 .find(level => supportedEfforts.includes(level))
               : undefined;
             const response = await provider.complete(messages, tools, attemptSignal,
-              capacity && accounting ? completionCap(accounting, capacity) : undefined, options.reasoningEffort ?? defaultEffort);
+              capacity && accounting ? completionCap(accounting, capacity) : undefined, options.reasoningEffort ?? defaultEffort,
+              { onTextDelta: async text => {
+                const fragment = text.slice(0, Math.max(0, 16_384 - previewChars));
+                if (!fragment) return;
+                previewChars += fragment.length;
+                await emitStream({ type: 'delta', id: streamId, text: fragment });
+              } });
+            await emitStream({ type: 'end', id: streamId });
             if (response.usage?.inputTokens) {
               this.observedInput.set(observedKey, { inputTokens: response.usage.inputTokens, bytes: wireBytes });
             }
@@ -1239,6 +1260,7 @@ export class OpenAICompatibleProviderPool {
               ...(effectiveModel ? { model: effectiveModel } : {}),
             };
           } catch (error) {
+            await emitStream({ type: 'reset', id: streamId });
             attemptSignal?.throwIfAborted();
             const decision = classifyAgentProviderFailure(error);
             const status = error instanceof AgentProviderRequestError ? error.status : null;

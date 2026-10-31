@@ -77,7 +77,7 @@ it('surfaces a reminder to an external controller without inventing delivery', a
 
 it('controller contracts require same-session semantic proposals without granting activation', async () => {
   const { readFile } = await import('node:fs/promises');
-  const contract = await readFile(new URL('../AGENTS.md', import.meta.url), 'utf8');
+  const contract = await readFile(new URL('../docs/instructions/skill-proposals.md', import.meta.url), 'utf8');
   expect(contract).toContain('Skill proposal and reminder protocol');
   expect(contract).toContain('code-review.md');
   expect(contract).toContain('same active session');

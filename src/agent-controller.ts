@@ -26,7 +26,7 @@ import type { AgentReasoningEffort } from './agent-provider-state.js';
 import { processLedger } from './rdc/process-ledger.js';
 import { AgentRuntimeToolSession, toolObservesStop } from './agent-tool-session.js';
 import { createImageInspectorScopes } from './rdc/tools/image-inspect.js';
-import { accountContext, contextBytesBySource } from './agent-context-accounting.js';
+import { accountContext, contextBytesBySource, automaticContext, AUTOMATIC_CONTEXT_PART_BYTES } from './agent-context-accounting.js';
 import {
   classifyFinishReason,
   classifyToolFailure,
@@ -34,6 +34,7 @@ import {
   toolOutcomeNote,
   visibleToolText,
   isSimpleConversation,
+  isAnswerOnlyConversation,
   type FinishCategory,
 } from './agent-turn-outcomes.js';
 import {
@@ -365,7 +366,8 @@ const COMPACT_FINALIZE_TOOL: AgentModelTool = {
         finalResponse: { type: 'string' },
         learningDecision: { type: 'string', enum: ['no-new-knowledge', 'rejected', 'awaiting-verification'] },
         verificationRef: { type: 'string' },
-        extensionsJson: { type: 'string', description: 'Optional JSON object with evidenceRefs, candidates, procedure, reason or nothingWorthSaving.' },
+        reason: { type: 'string', enum: ['task-complete', 'user-correction', 'verified-recovery', 'explicit-learn'], description: 'Optional; defaults to task-complete.' },
+        extensionsJson: { type: 'string', description: 'Optional JSON object with evidenceRefs, candidates, procedure or nothingWorthSaving.' },
       },
       additionalProperties: false,
     },
@@ -563,7 +565,7 @@ function systemPrompt(delegatedTools: boolean, guidance: string): string {
     NATIVE_PROPOSAL_PROMOTION_CONTRACT,
     'When reusing experience or testing uncertain effects, include decisionReview={operation:declare,declaration:...} in agent_core_strategy before acting; later use operation assess or inspect with separate prediction and goal evidence. The same Learning owner serves external learning(action=decision). Retrieval relevance is not applicability or authority. Inspect uncertain contracts; report unknown effects. Never rewrite forecasts after observations. For optional verification stopping use inspect.salience with stoppingContext and observation requirement/resolution/marginalValue; unresolved mandatory or serious risk remains visible, and deferral needs a reason. These reviews grant no execution permission.',
     RESPONSE_STYLE_CONTRACT,
-    'You MUST call agent_core_finalize before the turn can complete.',
+    'Call agent_core_finalize for tool work, verification or reviewed learning. A completed conversation-only answer with no action or pending strategy is finalized by the host without another model call.',
     'For every meaningful task, include reviewed candidates/procedure or an explicit learningDecision (no-new-knowledge, rejected, awaiting-verification); nothingWorthSaving=true remains a supported alias.',
     '',
     guidance,
@@ -677,6 +679,7 @@ export class NativeAgentController {
     let reply;
     try {
       reply = await this.runtime.complete(withAgentProfile(messages, profile), [], session.id, input.signal, {
+        onStream: stream => emitAgentTurnEvent(input.eventSink, { type: 'assistant.stream', stream }),
         ...(providerRoute ? { routeId: providerRoute } : {}),
         ...(providerModel ? { model: providerModel } : {}),
         ...(effort ? { reasoningEffort: effort } : {}),
@@ -900,6 +903,7 @@ export class NativeAgentController {
     const buildPacket = async () => {
       const currentTask = await this.runtime.getTask(task.id);
       return buildKnowledgeSynthesisPacket({
+        maxTextBytes: AUTOMATIC_CONTEXT_PART_BYTES,
         runtime: contextRuntime,
         availableTools,
         memoryItems: [...memoryItems.values()],
@@ -1067,7 +1071,15 @@ export class NativeAgentController {
         knowledgeIds: context.items.map((item: any) => String(item.id ?? '')).filter(Boolean),
       });
       packet = await buildPacket();
-      return context.promptText + '\n\n' + packet.text;
+      const updated = packet.text + automaticContext(automaticRules + '\n\n' + profile.prompt + '\n\n' + packet.text, [
+        { source: 'host-recorded Skill decisions', text: decisionContext, expand: 'the existing Skills proposal/decision tools' },
+        { source: 'canonical Memory', text: context.promptText, expand: 'memory_search/memory_read with the memory ids above' },
+      ]);
+      const existing = messages.find(message => message.role === 'system' &&
+        (message.content?.startsWith('KNOWLEDGE SYNTHESIS PACKET') || message.content?.startsWith('LOCAL MEMORY CONTEXT')));
+      if (existing) existing.content = updated;
+      else messages.splice(1, 0, { role: 'system', content: updated });
+      return 'The latest bounded Memory and knowledge background replaced the previous automatic context. Expand complete sources with the existing read tools.';
     };
 
     const delegatedTools = (this.config.capabilityPolicy ?? 'explicit') === 'dynamic';
@@ -1111,14 +1123,22 @@ export class NativeAgentController {
       content: message.content!.slice(0, 200_000),
     } as AgentModelMessage));
     const disabledSkillNames = this.nativeSkillSettings ? this.nativeSkillSettings.listDisabled() : [];
-    const guidance = (await taskSkillGuidance(this.mcpRuntime.skillsService, 'native', disabledSkillNames)).text
+    const nativeGuidance = (await taskSkillGuidance(this.mcpRuntime.skillsService, 'native', disabledSkillNames, packet.skillCatalogDigests)).text;
+    const guidance = nativeGuidance
       + (input.userSelectedSkillDirective ? '\n\n' + input.userSelectedSkillDirective : '')
       + (input.attachmentReference ? '\n\n' + input.attachmentReference : '');
+    const corePrompt = systemPrompt(delegatedTools, guidance);
+    const automaticRules = systemPrompt(delegatedTools, nativeGuidance);
+    const decisionContext = privateContextAllowed ? await this.runtime.skillDecisionContext?.(task.id) ?? '' : '';
+    const background = automaticContext(automaticRules + '\n\n' + profile.prompt + '\n\n' + packet.text, [
+      { source: 'host-recorded Skill decisions', text: decisionContext, expand: 'the existing Skills proposal/decision tools' },
+      { source: 'canonical Memory', text: initialMemory.promptText, expand: 'memory_search/memory_read with the memory ids above' },
+    ]);
     const messages: AgentModelMessage[] = resumedState
       ? structuredClone(resumedState.messages)
       : [
-          { role: 'system', content: systemPrompt(delegatedTools, guidance), cacheControl: { type: 'ephemeral' } },
-          { role: 'system', content: [initialMemory.promptText, packet.text].join('\n\n') + (privateContextAllowed ? await this.runtime.skillDecisionContext?.(task.id) ?? '' : '') },
+          { role: 'system', content: corePrompt, cacheControl: { type: 'ephemeral' } },
+          { role: 'system', content: packet.text + background },
           ...(input.historySummary && compactionEnabled() ? [{ role: 'system' as const, content: input.historySummary.text }] : []),
           ...history,
           ...(input.proposalPromotion ? [{ role: 'user' as const, content: proposalPromotionReference(input.proposalPromotion) }] : []),
@@ -1291,6 +1311,7 @@ export class NativeAgentController {
             session.id,
             input.signal,
             {
+              onStream: stream => emitAgentTurnEvent(input.eventSink, { type: 'assistant.stream', stream, iteration, maxIterations }),
               ...(continuationRequirement ? { continuation: continuationRequirement } : {}),
               ...(providerRoute ? { routeId: providerRoute } : {}),
               ...(providerModel ? { model: providerModel } : {}),
@@ -1346,6 +1367,13 @@ export class NativeAgentController {
           }
           finish = classifyFinishReason(reply.finishReason);
           const finishNote = finishReasonNote(finish);
+          if (reply.toolCalls.length === 0 && finish === 'completed' && reply.content?.trim()
+            && isAnswerOnlyConversation(input.prompt) && !hasStrategy && !needsStrategy && !goalMode && !evaluation && (task.metrics.toolCalls ?? 0) === 0) {
+            // Host lifecycle only: the observed answer is not proof of a verified external effect.
+            reply = { ...reply, toolCalls: [{ id: 'host-conversation-finalize-' + iteration, type: 'function',
+              function: { name: 'agent_core_finalize', arguments: JSON.stringify({ outcome: 'verified',
+                finalResponse: reply.content.trim(), reason: 'task-complete', learningDecision: 'no-new-knowledge' }) } }] };
+          }
           if (reply.toolCalls.length === 0) {
             messages.push({ role: 'assistant', content: reply.content ?? '',
               ...(reply.anthropicContent ? { anthropicContent: reply.anthropicContent } : {}) });
@@ -2014,6 +2042,7 @@ export class NativeAgentController {
             + ' NEXT: the single next action to continue. If your context summary names a compaction id (cmp-...) that'
             + ' holds details you would need, mention it. Say what you only infer, not observed.' }]), [], session.id,
           input.signal, { ...(providerRoute ? { routeId: providerRoute } : {}), ...(providerModel ? { model: providerModel } : {}), ...(reasoningEffort ? { reasoningEffort } : {}), attemptLimit: 1, onRouting: noteRouting,
+            onStream: stream => emitAgentTurnEvent(input.eventSink, { type: 'assistant.stream', stream }),
             onAttempt: async observation => {
               iterationLimitReport = { attempted: true };
               providerAttemptsConsumed += 1;

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   postHost,
-  reduceAgentActivity,reduceContextUsage,reduceStepDetail,stepKey,
+  reduceAgentActivity,reduceAgentStream,reduceContextUsage,reduceStepDetail,stepKey,
   subscribeHost,
   type ActivityEntry,
   type AgentChatUiState,
@@ -156,7 +156,8 @@ export default function App() {
         if(selected)chatOpenPendingRef.current=false;
         setAgentChat(prev=>({
           ...prev,
-          ...(selected?{active:detail,runningRequestId:pendingChatRequestsRef.current.get(id),error:undefined}:{}),
+          ...(selected?{active:detail,runningRequestId:pendingChatRequestsRef.current.get(id),error:undefined,
+            streaming:prev.streaming?.conversationId===id&&!detail.turns.some(turn=>turn.id===prev.streaming?.turnId&&turn.status!=='running')?prev.streaming:undefined}:{}),
           ...(created?{creating:false}:{}),
           conversations:[
             detail.conversation,
@@ -178,6 +179,7 @@ export default function App() {
             ...(event.type==='agent.profile'&&event.agentProfile&&prev.active?{active:{...prev.active,
               turns:prev.active.turns.map(turn=>turn.id===event.turnId?{...turn,agentProfile:event.agentProfile}:turn)}}:{}),
             activity:reduceAgentActivity(prev.activity??[],message.envelope.event!),
+            streaming:reduceAgentStream(prev.streaming,event),
             contextUsage:reduceContextUsage(prev.contextUsage,message.envelope.event!),
             error:undefined,
           }));
@@ -189,6 +191,7 @@ export default function App() {
             ...prev,
             runningRequestId:prev.active?pendingChatRequestsRef.current.get(prev.active.conversation.id):undefined,
             error:message.envelope.error??'Agent chat turn failed',
+            streaming:undefined,
           }));
         }
         return;
@@ -323,7 +326,7 @@ export default function App() {
     if(agentChat.creating)return;
     desiredChatIdRef.current=null;
     chatOpenPendingRef.current=false;
-    setAgentChat(prev=>({...prev,active:undefined,runningRequestId:undefined,lastEvent:undefined,activity:undefined,error:undefined}));
+    setAgentChat(prev=>({...prev,active:undefined,runningRequestId:undefined,lastEvent:undefined,activity:undefined,streaming:undefined,error:undefined}));
   };
 
   const onChatOpen=(conversationId:string)=>{
@@ -342,6 +345,7 @@ export default function App() {
     setAgentChat(prev=>({
       ...prev,
       runningRequestId:requestId,
+      streaming:undefined,
       error:undefined,
     }));
     const choice=agentChat.providerChoice;
@@ -416,7 +420,7 @@ export default function App() {
     if(pendingChatRequestsRef.current.has(conversationId))return;
     const requestId=globalThis.crypto?.randomUUID?.() ?? `resume-${Date.now()}`;
     pendingChatRequestsRef.current.set(conversationId,requestId);
-    setAgentChat(prev=>({...prev,runningRequestId:requestId,error:undefined}));
+    setAgentChat(prev=>({...prev,runningRequestId:requestId,streaming:undefined,error:undefined}));
     postHost({type:'agent-chat-resume',requestId,conversationId,turnId});
   };
 

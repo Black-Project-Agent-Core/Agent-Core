@@ -278,6 +278,7 @@ export type AgentChatDetail = {
 };
 
 export type AgentChatEvent = {
+  stream?: { id: string; type: 'start' | 'end' | 'reset' } | { id: string; type: 'delta'; text: string };
   agentProfile?: AgentProfileMetadata;
   type: string;
   at: string;
@@ -340,6 +341,8 @@ export type AgentChatUiState = {
   runningRequestId?: string;
   creating?: boolean;
   lastEvent?: AgentChatEvent;
+  /** Bounded live preview only; canonical messages still come from the conversation store. */
+  streaming?: AgentChatStreamPreview;
   /** Last tool steps of the current turn, built from the live event stream only (lost on reload). */
   activity?: AgentChatActivity[];
   /** Latest live context.usage of the active conversation (replaced by the persisted turn value after reload). */
@@ -371,6 +374,20 @@ export type AgentChatActivity = {
 
 export const AGENT_ACTIVITY_LIMIT = 30;
 let activitySequence = 0;
+
+export type AgentChatStreamPreview = { conversationId: string; turnId: string; id: string; text: string };
+
+export function reduceAgentStream(previous: AgentChatStreamPreview | undefined, event: AgentChatEvent): AgentChatStreamPreview | undefined {
+  if (['assistant.final', 'turn.failed', 'turn.cancelled', 'turn.paused', 'turn.accepted'].includes(event.type)) {
+    return previous?.conversationId === event.conversationId && previous.turnId === event.turnId ? undefined : previous;
+  }
+  if (event.type !== 'assistant.stream' || !event.stream) return previous;
+  const stream = event.stream;
+  if (stream.type === 'start') return { conversationId: event.conversationId, turnId: event.turnId, id: stream.id, text: '' };
+  if (!previous || previous.id !== stream.id || previous.conversationId !== event.conversationId || previous.turnId !== event.turnId) return previous;
+  if (stream.type === 'reset') return undefined;
+  return stream.type === 'delta' ? { ...previous, text: (previous.text + stream.text).slice(0, 16_384) } : previous;
+}
 
 /** Folds one live turn event into the bounded Activity list; unrelated events return the same list. */
 export function reduceAgentActivity(list: AgentChatActivity[], event: AgentChatEvent): AgentChatActivity[] {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, readdir } from 'node:fs/promises';
+import { access, lstat, mkdir, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { bootstrapRecord, normalizeRecord, parseCanonicalNote, serializeCanonicalNote, validateMemoryId } from './note-format.js';
 import { notePath, type MemoryPaths } from './paths.js';
@@ -12,6 +12,7 @@ import { MEMORY_LOCK_STALE_MS, withMemoryProcessLock } from './lock.js';
 import { buildArchiveMutations, buildRecordAuditMutations, readArchivedMemory, isMemoryArchiveManifestKey } from './archive.js';
 import { experienceManifestSchema, isoInstantSchema, legacyExperience, type ExperienceManifest, type SourceRef } from './experience-types.js';
 import { memorySemanticRevision } from './disclosure.js';
+import { stableFileRevision } from '../security/file-identity.js';
 
 export interface LoadedMemories {
   records: MemoryRecord[];
@@ -27,7 +28,7 @@ export interface MemoryBatchPlan<T> {
 }
 
 async function exists(filePath: string): Promise<boolean> {
-  try { await readFile(filePath); return true; }
+  try { await access(filePath); return true; }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;
@@ -42,6 +43,27 @@ export type StorePlan<T> = MemoryBatchPlan<T> & {stateWrites:Array<{key:string;c
 
 export class FileMemoryStore {
   private readonly transactions: MemoryTransactionCoordinator;
+  private readonly noteCache = new Map<string, { revision: string | null; record: MemoryRecord; fingerprint: string; bytes: number }>();
+
+  private async readCanonical(file: string): Promise<{ record: MemoryRecord; fingerprint: string }> {
+    const revision = stableFileRevision(await lstat(file, { bigint: true }));
+    const cached = this.noteCache.get(file);
+    if (revision && cached?.revision === revision) return { record: structuredClone(cached.record), fingerprint: cached.fingerprint };
+    const bytes = await readFile(file, 'utf8');
+    const fingerprint = fingerprintText(bytes);
+    if (cached?.fingerprint === fingerprint) return { record: structuredClone(cached.record), fingerprint };
+    this.noteCache.delete(file);
+    const record = file === this.paths.bootstrap ? bootstrapRecord(bytes, file) : parseCanonicalNote(bytes);
+    if (!revision || revision === stableFileRevision(await lstat(file, { bigint: true }))) {
+      this.noteCache.set(file, { revision, record: structuredClone(record), fingerprint, bytes: Buffer.byteLength(bytes) });
+      let size = [...this.noteCache.values()].reduce((sum, item) => sum + item.bytes, 0);
+      while (size > 32 * 1024 * 1024) {
+        const first = this.noteCache.keys().next().value!;
+        size -= this.noteCache.get(first)!.bytes; this.noteCache.delete(first);
+      }
+    }
+    return { record, fingerprint };
+  }
 
   constructor(readonly paths: MemoryPaths, private readonly options: {experience?:{enabled:true};hostActivation?:boolean} = {}) {
     this.transactions = new MemoryTransactionCoordinator(paths.state);
@@ -178,9 +200,9 @@ export class FileMemoryStore {
       issues.push({ path: this.paths.bootstrap, message: 'Pinned bootstrap memory is missing', severity: 'error' });
     } else {
       try {
-        const bytes = await readFile(this.paths.bootstrap,'utf8');
-        fingerprints.set(this.paths.bootstrap,fingerprintText(bytes));
-        records.push(bootstrapRecord(bytes,this.paths.bootstrap));
+        const loaded = await this.readCanonical(this.paths.bootstrap);
+        fingerprints.set(this.paths.bootstrap,loaded.fingerprint);
+        records.push(loaded.record);
       } catch (error) {
         complete = false;
         issues.push({ path: this.paths.bootstrap, message: error instanceof Error ? error.message : String(error), severity: 'error' });
@@ -197,9 +219,9 @@ export class FileMemoryStore {
       const filePath = path.join(this.paths.notes, name);
       try {
         await assertContainedPath(this.paths.root,filePath);
-        const bytes = await readFile(filePath,'utf8');
-        fingerprints.set(filePath,fingerprintText(bytes));
-        const record = parseCanonicalNote(bytes);
+        const loaded = await this.readCanonical(filePath);
+        fingerprints.set(filePath,loaded.fingerprint);
+        const record = loaded.record;
         if (`${record.id}.md` !== name) throw new Error(`Memory id/file mismatch: ${record.id}`);
         records.push(record);
       } catch (error) {
@@ -208,6 +230,8 @@ export class FileMemoryStore {
       }
     }
 
+    const live = new Set([this.paths.bootstrap, ...entries.map(name => path.join(this.paths.notes, name))]);
+    for (const file of this.noteCache.keys()) if (!live.has(file)) this.noteCache.delete(file);
     const duplicates = new Map<string, number>();
     for (const record of records) duplicates.set(record.id, (duplicates.get(record.id) ?? 0) + 1);
     for (const [id, count] of duplicates) if (count > 1) {

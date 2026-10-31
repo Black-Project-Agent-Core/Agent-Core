@@ -37,7 +37,8 @@ function incomplete(): Error {
 }
 
 export async function readAnthropicMessageStream(
-  response: Response, options: { maxBytes: number; label: string },
+  response: Response, options: { maxBytes: number; label: string; signal?: AbortSignal;
+    onTextDelta?: (text: string) => void | Promise<void> },
 ): Promise<any> {
   const body = response.body;
   if (!body) throw invalid();
@@ -50,7 +51,12 @@ export async function readAnthropicMessageStream(
   let received = 0;
   let buffer = '';
 
-  const apply = (type: string, data: any) => {
+  const emitText = async (text: unknown) => {
+    options.signal?.throwIfAborted();
+    if (typeof text !== 'string' || !text) return;
+    try { await options.onTextDelta?.(text); } catch { /* Presentation cannot fail a model call. */ }
+  };
+  const apply = async (type: string, data: any) => {
     switch (type) {
       case 'message_start':
         if (!data?.message || typeof data.message !== 'object') throw invalid();
@@ -60,12 +66,17 @@ export async function readAnthropicMessageStream(
         if (!message || !Number.isInteger(data?.index) || data.index < 0 || typeof data.content_block !== 'object') throw invalid();
         blocks[data.index] = { ...data.content_block };
         if (blocks[data.index]!.input !== undefined) partialJson.set(data.index, '');
+        if (blocks[data.index]!.type === 'text') await emitText(blocks[data.index]!.text);
         return;
       case 'content_block_delta': {
         const block = blocks[data?.index];
         const delta = data?.delta;
         if (!block || !delta || typeof delta !== 'object') throw invalid();
-        if (delta.type === 'text_delta') block.text = (block.text ?? '') + String(delta.text ?? '');
+        if (delta.type === 'text_delta') {
+          if (block.type !== 'text' || typeof delta.text !== 'string') throw invalid();
+          block.text = (block.text ?? '') + delta.text;
+          await emitText(delta.text);
+        }
         else if (delta.type === 'thinking_delta') block.thinking = (block.thinking ?? '') + String(delta.thinking ?? '');
         else if (delta.type === 'signature_delta') block.signature = String(delta.signature ?? '');
         else if (delta.type === 'input_json_delta') partialJson.set(data.index, (partialJson.get(data.index) ?? '') + String(delta.partial_json ?? ''));
@@ -95,7 +106,7 @@ export async function readAnthropicMessageStream(
     }
   };
 
-  const handleEvent = (raw: string) => {
+  const handleEvent = async (raw: string) => {
     let eventName = '';
     const data: string[] = [];
     for (const line of raw.split('\n')) {
@@ -105,34 +116,39 @@ export async function readAnthropicMessageStream(
     if (!data.length) return;
     let parsed: any;
     try { parsed = JSON.parse(data.join('\n')); } catch { throw invalid(); }
-    apply(typeof parsed?.type === 'string' ? parsed.type : eventName, parsed);
+    await apply(typeof parsed?.type === 'string' ? parsed.type : eventName, parsed);
   };
 
-  const drain = () => {
+  const drain = async () => {
     buffer = buffer.replace(/\r\n/g, '\n');
     for (let end = buffer.indexOf('\n\n'); end >= 0; end = buffer.indexOf('\n\n')) {
       const raw = buffer.slice(0, end);
       buffer = buffer.slice(end + 2);
-      handleEvent(raw);
+      await handleEvent(raw);
     }
   };
 
+  const abort = () => { void reader.cancel(options.signal?.reason).catch(() => {}); };
+  options.signal?.addEventListener('abort', abort, { once: true });
   try {
     for (;;) {
+      options.signal?.throwIfAborted();
       const item = await reader.read();
+      options.signal?.throwIfAborted();
       if (item.done) break;
       received += item.value.byteLength;
       if (received > options.maxBytes) throw new Error(`${options.label} exceeded ${options.maxBytes} bytes`);
       buffer += decoder.decode(item.value, { stream: true });
-      drain();
+      await drain();
     }
     buffer += decoder.decode();
-    drain();
-    if (buffer.trim()) handleEvent(buffer.replace(/\r\n/g, '\n'));
+    await drain();
+    if (buffer.trim()) await handleEvent(buffer.replace(/\r\n/g, '\n'));
   } catch (error) {
     try { await reader.cancel(); } catch { /* keep the original failure */ }
     throw error;
   } finally {
+    options.signal?.removeEventListener('abort', abort);
     try { reader.releaseLock(); } catch { /* best effort */ }
   }
   if (!message || !stopped) throw incomplete();

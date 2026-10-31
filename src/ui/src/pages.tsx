@@ -671,6 +671,9 @@ export function ChatPage(props:SharedProps) {
         })}
         {running&&<div className="chat-message assistant pending">
           <div className="chat-message-role">{latestTurn?.agentProfile?.identity.name||'Agent Core'}</div>
+          {props.agentChat.streaming?.conversationId===active.conversation.id&&props.agentChat.streaming.turnId===runningTurnId&&props.agentChat.streaming.text&&<div className="chat-message-body" aria-label="Respons sementara">
+            <small>Respons sementara</small><pre>{props.agentChat.streaming.text}</pre>
+          </div>}
           <ActivityStatus turnStatus="running" event={event} steps={livePicked?.steps??[]} startedAtMs={latestTurn?.startedAtMs}>{livePicked&&<TurnTimeline steps={livePicked.steps} readOnly={livePicked.readOnly} stepDetails={props.agentChat.stepDetails} onStepDetail={props.onStepDetail}/>}</ActivityStatus>
           {budgetWarning&&<div className="chat-progress chat-budget" role="status"><span>Mendekati batas langkah ({budgetWarning.iteration}/{budgetWarning.maxIterations})</span></div>}
 

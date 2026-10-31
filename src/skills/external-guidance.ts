@@ -12,13 +12,15 @@ export async function taskSkillGuidance(
   skills?: Pick<SkillService,'inspect'>,
   audience: 'external' | 'native' = 'external',
   disabledNames: readonly string[] = [],
+  knownDigests?: Readonly<Record<string, string>>,
 ): Promise<{advisory:true;executionAuthority:false;entries:any[];text:string}> {
   const disabledSet = new Set(disabledNames);
   const entries=await Promise.all(routes.map(async route=>{
     if (disabledSet.has(route.name)) return null;
     try {
-      if(!skills)throw new Error('unavailable');
-      const artifact=await skills.inspect(route.name);
+      if(!skills && !knownDigests)throw new Error('unavailable');
+      const artifact = knownDigests ? { digest: knownDigests[route.name] } : await skills!.inspect(route.name);
+      if (!artifact.digest) throw new Error('unavailable');
       return {...route,status:'available' as const,read:{action:'read' as const,name:route.name,expectedActiveDigest:artifact.digest,maxBytes:8192},instruction:'Read all returned fragments using nextOffset before applying; re-inspect if the revision changes.'};
     } catch { return {...route,status:'unavailable' as const,instruction:'Installation could not be verified; do not claim this Skill was loaded or used.'}; }
   }));

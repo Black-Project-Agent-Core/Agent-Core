@@ -22,6 +22,7 @@ Peta tidak memberi izin membuka data terlindungi, mengedit artifact/state owner,
 | `scripts/` | Otomasi proyek; gunakan subfolder existing sesuai domain, bukan script-root tandingan. |
 | `tests/` | Tes/fixture proyek; tes lokal owner juga dapat berada di modulnya, sesuai pola existing. |
 | `docs/` | Dokumentasi; `CODEBASE.md` arsitektur, `PROJECT-STRUCTURE.md` peta folder tunggal. |
+| `docs/instructions/` | Referensi topik kontrak `AGENTS.md`; owner dokumentasi Agent Core, dibaca selektif sesuai task dengan batas konteks host. Teks aturan aktif dipelihara di sini, riwayat ditandai eksplisit; bukan Memory/Skill/store runtime baru. |
 | `docs/proposals/` | Proposal untuk review; proyeksi Skill di `skills/<workspace>/` melalui owner existing. |
 | `docs/history-agent-core/` | Dokumen penyelesaian/keputusan historis; bukan antrean kerja aktif. |
 | `docs/research/`, `docs/plans/`, `docs/verification/`, `docs/releases/` | Riset, rencana, bukti verifikasi, dokumentasi rilis menurut folder existing. |
@@ -354,6 +355,11 @@ Blok JSON ini adalah deklarasi pada peta yang sama, bukan registry terpisah. `ow
   ],
   "directoryIntents": [
     {
+      "path": "docs/instructions",
+      "purpose": "agent-operating-instructions",
+      "owner": "docs"
+    },
+    {
       "path": "docs/research/claude-ecosystem-donor",
       "purpose": "claude-ecosystem-donor-evidence",
       "owner": "docs"
@@ -389,7 +395,7 @@ Contoh intent untuk tujuan baru yang benar-benar diperlukan task: `{"path":"docs
 
 <!-- DIRECTORY-SNAPSHOT:START -->
 
-Daftar otomatis: **472 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
+Daftar otomatis: **473 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
 
 ```text
 <PROJECT_ROOT>/
@@ -441,6 +447,7 @@ Daftar otomatis: **472 direktori/boundary**. Subtree privat, dependency, generat
 |   |-- diagrams/
 |   |   `-- Agent-Core-Full-Anatomy/
 |   |-- history-agent-core/
+|   |-- instructions/
 |   |-- memory/
 |   |   |-- diagrams/
 |   |   |-- engine-history/
