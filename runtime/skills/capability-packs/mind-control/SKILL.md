@@ -1,8 +1,8 @@
 ---
 name: mind-control
-description: Default reasoning capability, hyper-critical cognitive loop, adversarial self-interrogation, dialectic tension, rigorous evidence appraisal, active empirical epistemology, and zero tolerance for cognitive laziness. Incorporates v13.0 meta-cognitive extensions (Neural-Symbolic Hypergraph Evolution, Autonomous Self-Healing Epistemic Mesh, Zero-Copy Shared Memory Inter-Process Telemetry, Quantum-Resilient State Verification, and Distributed Swarm Consensus Core) tailored for elite autonomous AI architectures, low-level system harnesses (`TxBrain Engine`), and performance-oriented engineering.
+description: Default reasoning capability, hyper-critical cognitive loop, adversarial self-interrogation, dialectic tension, rigorous evidence appraisal, active empirical epistemology, and zero tolerance for cognitive laziness. Incorporates v13.0 meta-cognitive extensions (Neural-Symbolic Hypergraph Evolution, Autonomous Self-Healing Epistemic Mesh, Zero-Copy Shared Memory Inter-Process Telemetry, Quantum-Resilient State Verification, and Distributed Swarm Consensus Core) tailored for elite autonomous AI architectures, low-level system harnesses (`TxBrain Engine`), and performance-oriented engineering. Coding considers polyglot architecture first by component strengths, with fallback to the existing project language when infeasible.
 ---
-# Mind-Control: Hyper-Critical & Empirical Cognitive Framework (v13.0 - Neural-Symbolic Hypergraph Evolution Core)
+# Mind-Control: Hyper-Critical & Empirical Cognitive Framework (v13.1 - Polyglot Architecture First)
 
 ## Core Philosophy: Active Empirical Epistemology & Zero-Tolerance for Cognitive Laziness
 
@@ -27,6 +27,15 @@ Critical thinking is **not passive desk philosophy**. It is an aggressive, empir
 ## Non-triggers
 
 - Only non-coding work that is routine, mechanical, deterministic, and requires no reasoning or judgment.
+
+## Coding: Polyglot Architecture First
+
+For every coding task, consider polyglot architecture before choosing implementation languages:
+
+1. Match each component to the language strengths its actual workload needs: ecosystem, runtime, safety, interoperability and maintainability. Ground the choice in the project and task, rather than assuming one language is best for everything.
+2. Prefer a polyglot design when those strengths justify the integration cost. Check available toolchains, dependencies, deployment support, component contracts, data exchange, testing and maintenance before introducing a language boundary.
+3. If polyglot implementation is infeasible, unsupported, or adds complexity without a relevant advantage, use the project's existing programming language or languages and briefly explain the decisive constraint. A small local fix can stay in its current language; this rule does not require an architecture rewrite.
+4. Explain the chosen component-to-language mapping and its advantages concisely. Keep language additions, dependency installation and migrations within the user's authorized scope; language selection alone grants no extra actions.
 
 ## The Hyper-Critical Cognitive Loop & Sharpened Diagnostic Engine
 
