@@ -65,6 +65,7 @@ export type AgentChatEventSink = (
 ) => void | Promise<void>;
 
 export interface AgentChatTurnResult {
+  agentProfile?: import('./agent-profile.js').AgentProfileMetadata;
   conversationId: string;
   turnId: string;
   taskId: string;
@@ -343,7 +344,11 @@ export class AgentChatService {
     return notes;
   }
 
-  private recordContextUsage(turnId: string, event: AgentTurnEvent): void {
+  private recordContextUsage(turnId: string, event: AgentTurnEvent, claim?: AgentChatExecutionClaim): void {
+    if (event.type === 'agent.profile' && event.agentProfile) {
+      this.store.recordAgentProfile(turnId, event.agentProfile, claim);
+      return;
+    }
     if (event.type === 'memory.recall.completed' && typeof event.itemCount === 'number') {
       this.store.recordRecallCount(turnId, event.itemCount);
       return;
@@ -650,6 +655,8 @@ export class AgentChatService {
         taskId,
         prompt: input.prompt,
         workspace: conversation.workspace,
+        profileAudience: input.messageOrigin === 'local-operator' ? 'owner-private'
+          : input.messageOrigin === 'external-controller' ? 'external' : 'unknown',
         ...(providerRoute ? { providerRoute } : {}),
         ...(input.providerModel ? { providerModel: input.providerModel } : {}),
         ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
@@ -660,7 +667,7 @@ export class AgentChatService {
         ...(attachmentReference ? { attachmentReference } : {}),
         ...(proposalPromotion ? { proposalPromotion } : {}),
         ...(input.goalMode ? { goalMode: true } : {}),
-        eventSink: event => { this.recordContextUsage(continuation.turnId, event); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
+        eventSink: event => { this.recordContextUsage(continuation.turnId, event, claim); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,
         continuation,
         ...(input.evaluation ? { evaluation: input.evaluation } : {}),
@@ -893,10 +900,12 @@ export class AgentChatService {
         taskId: turn.runtimeTaskId,
         prompt: loaded.state.prompt,
         workspace: loaded.state.workspace ?? conversation.workspace,
+        profileAudience: turn.messageOrigin === 'local-operator' ? 'owner-private'
+          : turn.messageOrigin === 'external-controller' ? 'external' : 'unknown',
         ...(attachmentReference ? { attachmentReference } : {}),
         ...(proposalPromotion ? { proposalPromotion } : {}),
         ...(turn.goalMode ? { goalMode: true } : {}),
-        eventSink: event => { this.recordContextUsage(continuation.turnId, event); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
+        eventSink: event => { this.recordContextUsage(continuation.turnId, event, claim); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,
         continuation,
         ...(loaded.state.memoryEvaluation ? { evaluation: loaded.state.memoryEvaluation } : {}),

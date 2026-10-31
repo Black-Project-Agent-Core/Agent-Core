@@ -18,6 +18,17 @@ function props(status: AgentChatTurn['status'] = 'finalized'): ComponentProps<ty
 }
 
 describe('Native chat progress and durable states', () => {
+  it('uses each turn identity metadata for the assistant label and avatar with the built-in fallback', () => {
+    const input = props();
+    (input.agentChat.active!.turns[0] as any).agentProfile = { identity: { name: 'Atlas', emoji: '🦉', role: 'Asisten lokal' } };
+    input.agentChat.active!.messages.push({ id: 'assistant-1', conversationId: 'chat-1', turnId: 'turn-1', role: 'assistant', content: 'Halo.', createdAtMs: 2 });
+    const view = render(<ChatPage {...input}/>);
+    expect(screen.getByLabelText('Atlas')).toHaveTextContent('🦉');
+    expect(screen.getByText('Atlas · Asisten lokal')).toBeInTheDocument();
+    delete (input.agentChat.active!.turns[0] as any).agentProfile;
+    view.rerender(<ChatPage {...input}/>);
+    expect(screen.getByLabelText('Agent Core')).toBeInTheDocument();
+  });
   it('keeps decision evidence collapsed and scoped to the latest task, with source text inert', () => {
     const input = props();
     input.agentChat.active!.decisionEvidence = { status: 'available', taskId: 'task-1', truncated: true,

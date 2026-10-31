@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [minor] Add opt-in operator-selected SOUL/IDENTITY/USER profiles, bounded safe reads, immutable run snapshots and public per-turn Native chat identity through the existing launcher JSON transport. Private guidance is injected only into provider requests; with projection enabled, non-owner audiences receive no USER or automatic private Memory/Learning context. Default off, no writer or automation job. Controller 35 checks, chat store 7 checks (including terminal-recovery identity retention) and UI 20 checks pass; resolver fixture correction awaits the one additional test invocation required by Respect. Backend/UI builds pass; existing Memory-animation CSS warning is recorded in the proposal. Pending minor intent: .changeset/operator-profiles.md.
+
 - [patch] REM maintenance binds generations to semantic source revisions and revalidates them in the canonical transaction. Concurrent engines share one digest identity; source corrections update that identity with history, while ambiguous legacy and operator-edited digests remain for review. Reports distinguish created/updated/skipped/failed/deferred plans and post-commit index degradation without exposing snippets. The existing loop and 400-source/five-digest caps remain; no model or store is added. Source tests: 33 targeted checks passed after the failing baseline; build/resident status is recorded in the proposal. Pending patch intent: `.changeset/rem-source-revision.md`.
 
 - [docs] Add revision 1 of `docs/proposals/Konsolidasi-REM-Berbasis-Revisi-Sumber.md`: static OpenClaw dreaming study proposing source-revision binding, guarded publication and reason reporting in existing REM maintenance. Proposed only; no implementation, configuration, activation or product-version change.

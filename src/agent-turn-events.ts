@@ -3,6 +3,7 @@ import type { AgentMemoryUse } from './agent-memory-use.js';
 import type { AgentProviderRoutingEvent } from './agent-provider.js';
 
 export type AgentTurnEventType =
+  | 'agent.profile'
   | 'turn.accepted'
   | 'memory.recall.started'
   | 'memory.recall.completed'
@@ -35,6 +36,7 @@ export type AgentTurnRoutingEvidence = AgentProviderRoutingEvent & {
 };
 
 export interface AgentTurnEvent {
+  agentProfile?: import('./agent-profile.js').AgentProfileMetadata;
   type: AgentTurnEventType;
   at: string;
   toolName?: string;

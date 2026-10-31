@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { agentProfileMetadataSchema } from './agent-profile.js';
 
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 export const nativeMemoryEvaluationSchema = z.object({
@@ -46,6 +47,7 @@ const learnedLessonSchema = z.object({ memoryId: z.string().min(1).max(128),
 const modelIdentitySchema = z.object({ observedCalls: count,
   identities: z.array(z.object({ providerId: z.string().min(1).max(120), model: z.string().min(1).max(240) })).max(32) });
 const resultMetadataSchema = z.object({ learningStatus: z.enum(['complete', 'failed']).optional(),
+  agentProfile: agentProfileMetadataSchema.optional(),
   jobVerification: z.enum(['pass', 'fail', 'unavailable']).optional(),
   evaluation: nativeMemoryEvaluationSchema.optional(), metrics: executionMetricsSchema.optional(),
   learnedLesson: learnedLessonSchema.optional(), modelIdentity: modelIdentitySchema.optional(),

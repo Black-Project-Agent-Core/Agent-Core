@@ -72,6 +72,7 @@ export interface AgentTurnCheckpointState {
   runtimeSessionId: string;
   prompt: string;
   workspace?: string;
+  profileAudience?: import('./agent-profile.js').AgentProfileAudience;
   proposalPromotionBinding?: ProposalPromotionBinding;
   /** Route the owner chose for this turn; absent means automatic rotation. A resumed turn stays on it. */
   providerRoute?: string;
@@ -305,6 +306,8 @@ export function normalizeAgentTurnCheckpoint(raw: unknown): AgentTurnCheckpointS
     schemaVersion: AGENT_TURN_CHECKPOINT_SCHEMA_VERSION,
     conversationId, turnId, runtimeTaskId, runtimeSessionId, prompt,
     ...(value.workspace ? { workspace: safeString(value.workspace, 200) } : {}),
+    ...(['owner-private', 'external', 'unknown', 'shared', 'subagent', 'background'].includes(value.profileAudience ?? '')
+      ? { profileAudience: value.profileAudience } : {}),
     ...(value.proposalPromotionBinding !== undefined
       ? { proposalPromotionBinding: normalizeProposalPromotionBinding(value.proposalPromotionBinding) } : {}),
     ...(value.providerRoute ? { providerRoute: safeString(value.providerRoute, 100) } : {}),

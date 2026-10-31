@@ -29,6 +29,19 @@ function createConversation(store: AgentChatStore, id = 'conversation-1') {
   });
 }
 describe('AgentChatStore', () => {
+  it('keeps the captured identity when terminal recovery has no new profile metadata', async () => {
+    const dbPath = await fixture(); const store = new AgentChatStore(dbPath); createConversation(store);
+    const begun = store.beginTurn({ conversationId: 'conversation-1', turnId: 'profile-turn', clientRequestId: 'profile-request',
+      runtimeTaskId: 'profile-task', userMessageId: 'profile-user', prompt: 'Hello', executorToken: 'profile-executor' });
+    const absent = { status: 'absent' as const, truncated: false as const };
+    const agentProfile = { enabled: true, revision: 'sha256:' + 'c'.repeat(64), audience: 'owner-private' as const,
+      principal: 'local-operator' as const, identity: { name: 'Atlas' }, files: { SOUL: absent, IDENTITY: absent, USER: absent } };
+    store.recordAgentProfile('profile-turn', agentProfile, begun.claim);
+    store.finalizeTurn({ turnId: 'profile-turn', assistantMessageId: 'profile-answer', response: 'Hello', iterations: 1,
+      retrievalCount: 0, metadata: { learningStatus: 'complete' }, claim: begun.claim });
+    const reopened = new AgentChatStore(dbPath);
+    expect(reopened.getTurn('profile-turn')).toMatchObject({ agentProfile, learningStatus: 'complete', status: 'finalized' });
+  });
   it('aggregates health across all conversations without reading transcripts or turn metadata', async () => {
     const store = new AgentChatStore(await fixture());
     const db = new DatabaseSync(store.dbPath);

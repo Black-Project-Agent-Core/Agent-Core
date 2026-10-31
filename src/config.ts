@@ -265,6 +265,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, baseDir = MODUL
       curatorIntervalHours: positiveInt(env.AGENT_CORE_LEARNING_CURATOR_INTERVAL_HOURS, 168),
     },
     agentRuntime: {
+      profile: { enabled: bool(env.AGENT_CORE_AI_PROFILE_ENABLED, false), root: env.AGENT_CORE_AI_PROFILE_ROOT?.trim() || undefined },
       enabled: bool(env.AGENT_CORE_AI_ENABLED, false),
       baseUrl: env.AGENT_CORE_AI_BASE_URL?.trim() || null,
       model: env.AGENT_CORE_AI_MODEL?.trim() || null,

@@ -324,7 +324,7 @@ async function handleRequest(
           conversationId,
           clientRequestId,
           prompt,
-          ...(originHeader === 'external-controller' ? { messageOrigin: 'external-controller' as const } : {}),
+          messageOrigin: originHeader === 'external-controller' ? 'external-controller' : 'local-operator',
           ...(body.goalMode === true ? { goalMode: true } : {}),
           ...(attachments ? { attachments } : {}),
           ...(providerId && providerId !== 'auto' ? { providerRoute: providerId } : {}),

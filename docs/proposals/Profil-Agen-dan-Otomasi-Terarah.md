@@ -1,7 +1,7 @@
 # Profil agen dan otomasi terarah
 Tanggal: 2026-10-31
 Revisi: 1
-Status: PROPOSED — P1/P2 disetujui dalam goal implementasi 2026-10-31; P3 HOLD
+Status: IMPLEMENTED SOURCE — P1/P2; verifikasi fixture reparse OPEN; flag off; P3 HOLD
 Jenis: Improvement
 Asal dan bukti:
 
@@ -12,7 +12,7 @@ Asal dan bukti:
 
 ## Masalah dan tujuan
 
-Ambil pemisahan kepribadian, identitas, kebijakan, profil pengguna, memori, panduan tool dan pekerjaan berkala tanpa mewajibkan tujuh file bootstrap. Fokus revisi maksud pengguna: pahami retirement TOOLS/HEARTBEAT dan buat rencana transplantasi yang tidak menghidupkan kembali mekanisme usang. Hasil tugas ini hanya dokumen; integrasi membutuhkan keputusan pengguna atas paket/revisi ini.
+Ambil pemisahan kepribadian, identitas, kebijakan, profil pengguna, memori, panduan tool dan pekerjaan berkala tanpa mewajibkan tujuh file bootstrap. Fokus revisi maksud pengguna: pahami retirement TOOLS/HEARTBEAT dan buat rencana transplantasi yang tidak menghidupkan kembali mekanisme usang. Hasil studi awal hanya dokumen; instruksi goal pengguna berikutnya mengotorisasi P1/P2. Status implementasi terkini dicatat di bawah; P3 tetap HOLD.
 
 ## Bukti dan ketidakpastian
 
@@ -104,7 +104,7 @@ Harapan: identitas/tone konsisten lintas model, policy tidak tercampur profil, k
 
 ## Acceptance, evaluasi dan rollback
 
-Tugas sekarang: pemeriksaan dokumen, anchor, delapan bagian, revisi/status dan diff; nol tes runtime, build, restart, migrasi atau job. Belum ada acceptance implementasi yang diklaim lulus.
+Acceptance studi awal hanya dokumen. Bukti implementasi P1/P2 berikutnya tercatat di bawah; acceptance P3 belum dijalankan dan tetap HOLD.
 
 | Paket | Correctness setelah approval | Rollback |
 |---|---|---|
@@ -114,12 +114,30 @@ Tugas sekarang: pemeriksaan dokumen, anchor, delapan bagian, revisi/status dan d
 
 Maksimal dua invokasi tes per target (merah → hijau), correctness checks sempit sesuai Respect; tidak ada benchmark atau suite luas demi warna hijau. Jadwal/timezone, output/delivery dan izin side effect harus menjadi keputusan konkret P3 sebelum aktivasi. Jika satu prasyarat gagal, catat OPEN dan pertahankan default off.
 
+## Implementasi P1/P2 — 2026-10-31
+
+Owner baru terbatas: src/agent-profile.ts membaca tiga file operator, bukan store atau writer. AGENT_CORE_AI_PROFILE_ENABLED default false; AGENT_CORE_AI_PROFILE_ROOT harus root absolut pilihan operator. cwd, repository, attachment, isi Markdown dan nama workspace tidak memilih profil. Contoh publik ada di docs/agent-profile-{SOUL,IDENTITY,USER}.example.md; salin secara sadar ke direktori privat dengan nama SOUL.md, IDENTITY.md, USER.md. Tidak ada file privat yang dibuat otomatis atau profil yang diaktifkan.
+
+Resolver membatasi byte UTF-8 4096/1024/4096, menolak invalid UTF-8, file nonregular, root/ancestor junction atau symlink, perubahan identitas/mtime/ctime saat baca dan escape realpath. File opsional absent memakai default; invalid/oversized/unavailable membuat seluruh guidance fallback ke bawaan tanpa truncation diam-diam. IDENTITY memakai baris - Name:, - Emoji:, - Role:, - Avatar:. Avatar opsional hanya satu nama PNG/JPEG/WebP dalam root yang sama, input 64 KiB/1 megapiksel, di-decode dan di-encode ulang menjadi PNG maksimal 64 piksel; tidak mengikuti URL atau Markdown path lain. Metadata identity bersifat publik.
+
+Satu snapshot immutable per run diambil sebelum fork salam/normal. Snapshot yang sama dipasang pada setiap panggilan provider, termasuk rotasi, laporan batas iterasi dan setelah compaction. Snapshot baru dibaca saat turn baru/resume. **Penyesuaian bentuk internal dari rencana:** blok current digabung hanya pada salinan system message saat dispatch provider; messages/checkpoint/compactionSources historis tetap utuh. Dengan itu USER/SOUL tidak tersalin mentah ke checkpoint, event atau log baru. Digest/status/audience dan public identity cukup untuk metadata; ini bukan jaminan model tidak akan menyebut preferensi dalam jawabannya. Provider menerima konteks yang eligible sebagaimana percakapan biasa.
+
+Audience berasal dari host chat yang sudah memeriksa loopback + token UI: route menetapkan local-operator atau external-controller, tidak menerima override audience/root dari body/model. runTask selalu unknown; caller chat internal yang tidak menyebut origin juga unknown. Resume memakai origin tersimpan; perubahan audience checkpoint atau legacy non-owner yang tak dapat dibuktikan ditolak sebelum provider. Legacy owner mempertahankan policy/history, mendapat blok current terpisah pada salinan dispatch. Tidak ada origin unattended/job baru; background/subagent/shared/unknown tidak memperoleh USER.
+
+P2 **hanya saat projection flag aktif**: owner-private memakai recall workspace/canonical Memory existing. Audience lain tidak mendapat automatic Memory, adaptive recall, prosedur Learning atau registry Memory/Learning privat. Ini pilihan konservatif karena Memory existing belum memiliki klasifikasi private/public per record; label workspace saja tidak membuktikan aman untuk dibagikan. Matikan flag untuk perilaku existing. Tool lain tetap mengikuti registry live dan grant aktual; profil/fake grant tidak menambah authority. Pembatasan projection ini bukan sandbox filesystem atau perubahan grant eksternal global. Tidak membaca root MEMORY, TOOLS atau HEARTBEAT. Pencarian nama bootstrap pada source-owned scope tidak menemukan catatan Tools paralel untuk dimigrasi; AGENTS.md tidak diubah, sehingga kontrak eksternal tidak berubah oleh edit persona. Catatan environment berikutnya tetap satu lokasi di AGENTS Tools; prosedur di Skills.
+
+Metadata agent.profile disimpan pada result_metadata_json turn existing, diteruskan melalui transport JSON C# existing (AgentCoreRuntime.cs ReadAgentConversationAsync / SendAgentChatJsonAsync / ReadAgentTurnStreamAsync), lalu dipakai App.tsx/pages.tsx untuk label/emoji/avatar per turn dan pending state. Provider/model identity dan nama aplikasi tetap terpisah. Tidak menambah tabel, endpoint profil, editor, dependency, runtime bahasa lain atau scheduler. TS existing tepat untuk validasi/prompt; C# tetap forwarding/UI. Native service Rust/Go baru menambah IPC/state tanpa kebutuhan yang terbukti.
+
+Bukti saat ini: tes controller **35/35 PASS**, termasuk turn Native terisolasi melalui AgentChatService/provider fixture, metadata setelah reopen, prompt normal/salam/resume, compaction, satu snapshot saat file diedit di tengah run, audience mismatch dan fake grant. Ini pemeriksaan request faktual, bukan klaim kepatuhan model atau aktivasi resident. Tes resolver **13/14 PASS**: satu fixture symlink file gagal EPERM Windows sebelum assertion; fixture telah diperbaiki menjadi endpoint junction, **belum diulang** karena batas dua invokasi Respect. Pengguna mengizinkan satu invokasi khusus tests/agent-profile.test.ts melalui pilihan chat. PreToolUse hook masih menahan exact command karena adapter mensyaratkan pesan tersendiri respect allow; invokasi yang ditolak tidak dijalankan. Goal tetap aktif sampai bukti ini selesai. UI **20/20 PASS** pada invokasi kedua. Jalur terminal recovery sempat menghapus identity ketika final metadata tidak membawa profile; perbaikan pada finalisasi store mempertahankan snapshot publik yang sudah tersimpan. Target store **7/7 PASS** setelah merah lalu hijau, tepat dua invokasi. Source typecheck serta build resmi backend/UI PASS. C# forwarding diperiksa statis; tidak ada perubahan atau build C# baru. UI build mengeluarkan warning CSS existing di src/ui/src/activity-status.css:346 (actMemoryBlink, juga ada di HEAD sebelum diff); dicatat sebagai tindak lanjut terpisah, tidak diperbaiki diam-diam dalam profil.
+
+Pendamping Native: conversation 40559196-3ae3-43b7-95e5-fcff67d9b31d, turn b579b9bb-e6c4-4692-8b48-99d628b41bf5 selesai read-only pada resident lama, jobVerification unavailable. Review menegaskan fork salam/normal, origin host, batas leading-system dan USER at-rest. Snapshot dispatch di atas menyelesaikan risiko itu tanpa menulis ulang history. P1b tampilan dan P2 sudah termasuk scope goal pengguna, sehingga tidak diperlakukan sebagai kebutuhan approval baru dari teks Native. P3 tetap HOLD. Tidak ada benchmark, klaim penghematan, live profile activation, restart, push atau release. Minor version intent: .changeset/operator-profiles.md.
+
 ## Riwayat revisi
 
 - Revisi 1 — studi snapshot 2026.10.9; memasukkan klarifikasi retirement/biaya pengguna. Rencana saja; tidak ada source/config/Skill/AGENTS/profil/job yang diubah atau diaktifkan. CODEBASE/changelog hanya mencatat keberadaan proposal. Revisi dokumen menjadi versi perubahan ini; versi produk tidak dinaikkan untuk proposal dokumentasi.
 
 ## Keputusan pengguna dan scope
 
-2026-10-31 — pengguna meminta "buat goals untuk mengerjakan 2 proposal dengan bantuan dari Native Agent Core" dan menyebut kedua path proposal. Scope rekomendasi Revisi 1 dipakai: P1 + P2 profil setelah P1 + P2 REM; P3 tetap HOLD sampai monitor/cadence/output konkret diotorisasi. Relay external-controller tidak dipalsukan sebagai approval operator Native. Implementasi/validasi/aktivasi belum dinyatakan selesai.
+2026-10-31 — pengguna meminta "buat goals untuk mengerjakan 2 proposal dengan bantuan dari Native Agent Core" dan menyebut kedua path proposal. Scope rekomendasi Revisi 1 dipakai: P1 + P2 profil setelah P1 + P2 REM; P3 tetap HOLD sampai monitor/cadence/output konkret diotorisasi. Relay external-controller tidak dipalsukan sebagai approval operator Native. Pada saat keputusan dicatat, implementasi belum dimulai; hasil berikutnya ada pada bagian Implementasi P1/P2. Aktivasi tetap off.
 
 Scope implementasi: **P1 + P2, HOLD P3**, Revisi 1. Tugas studi sebelumnya tidak mengintegrasikan apa pun; goal pengguna berikutnya mengerjakan scope ini. Tidak ada periodic job atau profil pribadi yang diaktifkan oleh pencatatan keputusan ini.

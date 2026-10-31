@@ -83,6 +83,7 @@ export interface AgentProviderConfig {
 }
 
 export interface AgentRuntimeConfig extends AgentProviderConfig {
+  profile?: import('./agent-profile.js').AgentProfileConfig;
   allowedTools: string[];
   capabilityPolicy?: AgentCapabilityPolicyMode;
   allowedCapabilities?: AgentCapabilityFamily[];

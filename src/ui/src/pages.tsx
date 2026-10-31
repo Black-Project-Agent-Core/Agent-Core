@@ -643,12 +643,15 @@ export function ChatPage(props:SharedProps) {
       {active&&<div className="chat-message-list">
         {active.messages.map(message=>{
           const messageTurn=message.role==='assistant'?active.turns.find(turn=>turn.id===message.turnId):undefined;
+          const identity=messageTurn?.agentProfile?.identity;
+          const agentName=identity?.name||'Agent Core';
           const sentFiles=message.role==='user'?active.turns.find(turn=>turn.id===message.turnId)?.attachments??[]:[];
           const memoryUse=messageTurn?.memoryUse??[];
           const turnSteps=messageTurn?stepsOfTurn(messageTurn.id):[];
           return <React.Fragment key={message.id}>{turnSteps.length>0&&messageTurn&&<div className="chat-message-timeline"><ActivityStatus compact turnStatus={messageTurn.status} errorCode={messageTurn.errorCode} steps={turnSteps} startedAtMs={messageTurn.startedAtMs} completedAtMs={messageTurn.completedAtMs}><TurnTimeline steps={turnSteps} stepDetails={props.agentChat.stepDetails} onStepDetail={props.onStepDetail}/></ActivityStatus></div>}<div className={'chat-message '+message.role}>
-            <div className="chat-message-avatar" aria-label={message.role==='user'?'You':'Agent Core'}>{message.role==='user'?<UserRound size={16}/>:<img src="./agent-core.png" alt=""/>}</div>
+            <div className="chat-message-avatar" aria-label={message.role==='user'?'You':agentName}>{message.role==='user'?<UserRound size={16}/>:identity?.avatar?.startsWith('data:image/png;base64,')?<img src={identity.avatar} alt=""/>:identity?.emoji||<img src="./agent-core.png" alt=""/>}</div>
             <div className="chat-message-body">
+            {identity&&<small className="chat-message-role">{agentName}{identity.role?' · '+identity.role:''}</small>}
             <pre>{message.content}</pre>
             {sentFiles.length>0&&<ul className="chat-attachments" aria-label="Lampiran">{sentFiles.map(file=><li key={file.attachmentId} title={file.mimeType}><Paperclip size={12}/>{file.name}<small>{formatBytes(file.sizeBytes)}</small></li>)}</ul>}
             {messageTurn&&<InvocationCards steps={turnSteps}/>}
@@ -667,7 +670,7 @@ export function ChatPage(props:SharedProps) {
           </div>{messageTurn?.runtimeTaskId&&<div className="chat-message-changes"><TaskChangesPanel key={messageTurn.runtimeTaskId} taskId={messageTurn.runtimeTaskId} presentation="popover"/></div>}</React.Fragment>;
         })}
         {running&&<div className="chat-message assistant pending">
-          <div className="chat-message-role">Agent Core</div>
+          <div className="chat-message-role">{latestTurn?.agentProfile?.identity.name||'Agent Core'}</div>
           <ActivityStatus turnStatus="running" event={event} steps={livePicked?.steps??[]} startedAtMs={latestTurn?.startedAtMs}>{livePicked&&<TurnTimeline steps={livePicked.steps} readOnly={livePicked.readOnly} stepDetails={props.agentChat.stepDetails} onStepDetail={props.onStepDetail}/>}</ActivityStatus>
           {budgetWarning&&<div className="chat-progress chat-budget" role="status"><span>Mendekati batas langkah ({budgetWarning.iteration}/{budgetWarning.maxIterations})</span></div>}
 

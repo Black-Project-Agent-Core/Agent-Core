@@ -1035,6 +1035,19 @@ export class AgentChatStore {
     } catch { /* observability must not become execution authority */ }
   }
 
+  /** Public identity/status only, captured from the controller's same per-run snapshot. */
+  recordAgentProfile(turnId: string, profile: import('./agent-profile.js').AgentProfileMetadata, claim?: AgentChatExecutionClaim): void {
+    this.withDb(db => this.transaction(db, () => {
+      this.assertExecutionWithDb(db, turnId, claim);
+      const row = db.prepare('SELECT result_metadata_json FROM chat_turns WHERE turn_id=?').get(turnId) as Record<string, unknown> | undefined;
+      if (!row) throw new Error('AGENT_CHAT_TURN_NOT_FOUND');
+      let previous: NativeMemoryResultMetadata = {};
+      try { previous = normalizeNativeResultMetadata(JSON.parse(String(row.result_metadata_json ?? '{}'))); } catch {}
+      db.prepare('UPDATE chat_turns SET result_metadata_json=? WHERE turn_id=?')
+        .run(JSON.stringify(normalizeNativeResultMetadata({ ...previous, agentProfile: profile })), turnId);
+    }));
+  }
+
   finalizeTurn(input: {
     turnId: string;
     assistantMessageId: string;
@@ -1071,7 +1084,7 @@ export class AgentChatStore {
         input.retrievalCount,
         completedAtMs,
         JSON.stringify(normalizeMemoryUse(input.memoryUse)),
-        JSON.stringify(normalizeNativeResultMetadata(input.metadata ?? {})),
+        JSON.stringify(normalizeNativeResultMetadata({ ...input.metadata, agentProfile: input.metadata?.agentProfile ?? turn.agentProfile })),
         input.turnId,
       );
       db.prepare(`

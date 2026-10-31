@@ -175,6 +175,8 @@ export default function App() {
           setAgentChat(prev=>prev.active?.conversation.id!==message.envelope.event!.conversationId?prev:({
             ...prev,
             lastEvent:message.envelope.event,
+            ...(event.type==='agent.profile'&&event.agentProfile&&prev.active?{active:{...prev.active,
+              turns:prev.active.turns.map(turn=>turn.id===event.turnId?{...turn,agentProfile:event.agentProfile}:turn)}}:{}),
             activity:reduceAgentActivity(prev.activity??[],message.envelope.event!),
             contextUsage:reduceContextUsage(prev.contextUsage,message.envelope.event!),
             error:undefined,

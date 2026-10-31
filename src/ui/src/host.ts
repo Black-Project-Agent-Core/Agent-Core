@@ -172,6 +172,7 @@ export type AgentChatAttachment = {
 };
 
 export type AgentChatTurn = {
+  agentProfile?: AgentProfileMetadata;
   id: string;
   conversationId: string;
   clientRequestId: string;
@@ -277,6 +278,7 @@ export type AgentChatDetail = {
 };
 
 export type AgentChatEvent = {
+  agentProfile?: AgentProfileMetadata;
   type: string;
   at: string;
   conversationId: string;
@@ -301,6 +303,13 @@ export type AgentChatEvent = {
   contextTokens?: number;
   contextWindow?: number;
   contextBreakdown?: ContextBreakdown;
+};
+
+/** Public projection only; USER/SOUL text and filesystem paths never travel to the launcher. */
+export type AgentProfileMetadata = {
+  enabled: boolean; revision: string; audience: string; principal: string; workspace?: string;
+  identity: { name: string; role?: string; emoji?: string; avatar?: string };
+  files: Record<'SOUL' | 'IDENTITY' | 'USER', { status: string; truncated: false; digest?: string }>;
 };
 
 export type AgentChatProvider = {
