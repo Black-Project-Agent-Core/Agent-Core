@@ -621,6 +621,7 @@ public sealed class MainForm : Form
                         type = "agent-chat-event", requestId, conversationId, envelope
                     });
                     var goalMode = root.TryGetProperty("goalMode", out var goalNode) && goalNode.GetBoolean();
+                    var planMode = root.TryGetProperty("planMode", out var planNode) && planNode.GetBoolean();
                     // Files picked in the composer travel inline as base64; Core validates them, the launcher only forwards.
                     JsonElement? attachments = root.TryGetProperty("attachments", out var attachmentsNode)
                         && attachmentsNode.ValueKind == JsonValueKind.Array ? attachmentsNode : null;
@@ -635,7 +636,7 @@ public sealed class MainForm : Form
                         prompt,
                         onEnvelope,
                         providerId: providerId, reasoningEffort: reasoningEffort, model: model, goalMode: goalMode,
-                        attachments: attachments);
+                        planMode: planMode, attachments: attachments);
                     var result = await _runtime.ReadAgentConversationAsync(conversationId);
                     Send(new { type = "agent-chat-state", requestId, result });
                     await PushStatusAsync();

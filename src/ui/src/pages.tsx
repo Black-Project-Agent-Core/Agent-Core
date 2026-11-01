@@ -7,7 +7,7 @@ import { InvocationCards, TurnTimeline, activityToSteps, pickTurnSteps } from '.
 import { ActivityStatus } from './ActivityStatus';
 import { SlashMenu, filterSlashCommands, slashOptionId, slashQuery } from './SlashMenu';
 import { MAX_ATTACHMENTS, addAttachmentFiles, type AttachmentDraft } from './attachments';
-import { Plus, Paperclip, FolderOpen, Target, ListTodo, Wrench, Send, Shield, Pause } from 'lucide-react';
+import { Plus, Paperclip, FolderOpen, Target, ClipboardList, ListTodo, Wrench, Send, Shield, Pause } from 'lucide-react';
 import { PrototypeDashboard, PrototypeTools, PrototypeRuntime, PrototypeDiagnostics, PrototypeSettings, PrototypeSetup, PrototypeActivity } from './PrototypePages';
 import { ArtifactsPage, GoalsPage, LearningPage, MemoryPage, ModelsPage, SkillsPage } from './LauncherPages';
 import type {
@@ -46,7 +46,7 @@ type SharedProps = {
   agentChat: AgentChatUiState;
   onChatCreate:(workspace?:string)=>void;
   onChatOpen:(conversationId:string)=>void;
-  onChatSend:(conversationId:string,prompt:string,goalMode?:boolean,attachments?:AttachmentDraft[])=>void;
+  onChatSend:(conversationId:string,prompt:string,goalMode?:boolean,attachments?:AttachmentDraft[],planMode?:boolean)=>void;
   onChatCancel:(turnId:string)=>void;
   /** Manual Compact of the running turn (answered via agentChat.compactResult). */
   onChatCompact?:(turnId:string)=>void;
@@ -440,13 +440,14 @@ export function ChatPage(props:SharedProps) {
   const draftKey=active?.conversation.id??'draft';
   const [drafts,setDrafts]=useState<Record<string,string>>({});
   const [goalModes,setGoalModes]=useState<Record<string,boolean>>({});
+  const [planModes,setPlanModes]=useState<Record<string,boolean>>({});
   const [goalExpanded,setGoalExpanded]=useState(false);
   const [hiddenGoal,setHiddenGoal]=useState<string>();
   const prompt=drafts[draftKey]??'';
   const setPrompt=(value:string)=>setDrafts(prev=>({...prev,[draftKey]:value}));
   const [workspace,setWorkspace]=useState('agent-core');
   const [historyOpen,setHistoryOpen]=useState(false);
-  const [pending,setPending]=useState<{prompt:string;goalMode:boolean;attachments:AttachmentDraft[]}>();
+  const [pending,setPending]=useState<{prompt:string;goalMode:boolean;planMode:boolean;attachments:AttachmentDraft[]}>();
   const pendingDelivered=useRef(false);
   const [attachmentDrafts,setAttachmentDrafts]=useState<Record<string,AttachmentDraft[]>>({});
   const attachments=attachmentDrafts[draftKey]??[];
@@ -476,6 +477,8 @@ export function ChatPage(props:SharedProps) {
   const latestTurn=active?.turns.at(-1);
   const goalTurn=[...(active?.turns??[])].reverse().find(turn=>turn.goalMode);
   const goalMode=goalModes[draftKey]??Boolean(goalTurn&&['running','resumable'].includes(goalTurn.status));
+  const planTurn=[...(active?.turns??[])].reverse().find(turn=>turn.planMode);
+  const planMode=planModes[draftKey]??Boolean(planTurn&&['running','resumable'].includes(planTurn.status));
   const goalMessage=active?.messages.find(message=>message.turnId===goalTurn?.id&&message.role==='user');
   const goalLabel=goalTurn?.pauseRequested?'Pausing goal':goalTurn?({running:'Running goal',resumable:'Paused goal',finalized:'Finished goal',failed:'Failed goal',interrupted:'Interrupted goal',stopped:'Stopped goal'}[goalTurn.status]):'';
   const decisionEvidence=active?.decisionEvidence?.taskId===latestTurn?.runtimeTaskId?active?.decisionEvidence:undefined;
@@ -532,8 +535,12 @@ export function ChatPage(props:SharedProps) {
   // A new chat is a draft: the conversation is created by the first send, so
   // opening the launcher never leaves an empty thread behind.
   // Old callers and tests see the same onChatSend arguments when no file is attached.
-  const sendTurn=(conversationId:string,value:string,goal:boolean,files:AttachmentDraft[])=>{
-    if(files.length)props.onChatSend(conversationId,value,goal,files);
+  const sendTurn=(conversationId:string,value:string,goal:boolean,files:AttachmentDraft[],plan:boolean)=>{
+    if(files.length){
+      if(plan)props.onChatSend(conversationId,value,goal,files,true);
+      else props.onChatSend(conversationId,value,goal,files);
+    }
+    else if(plan)props.onChatSend(conversationId,value,false,undefined,true);
     else if(goal)props.onChatSend(conversationId,value,true);
     else props.onChatSend(conversationId,value);
   };
@@ -565,13 +572,13 @@ export function ChatPage(props:SharedProps) {
     if(running){setComposerNotice('Giliran sedang berjalan; hanya /compact yang bisa dikirim sekarang');return;}
     if(!active){
       pendingDelivered.current=false;
-      setPending({prompt:value,goalMode,attachments});
+      setPending({prompt:value,goalMode,planMode,attachments});
       setPrompt('');
       setAttachments(draftKey,[]);
       props.onChatCreate(workspace.trim()||undefined);
       return;
     }
-    sendTurn(active.conversation.id,value,goalMode,attachments);
+    sendTurn(active.conversation.id,value,goalMode,attachments,planMode);
     setPrompt('');
     setAttachments(draftKey,[]);
   };
@@ -583,7 +590,8 @@ export function ChatPage(props:SharedProps) {
       pendingDelivered.current=true;
       setPending(undefined);
       setGoalModes(prev=>({...prev,[active.conversation.id]:pending.goalMode}));
-      sendTurn(active.conversation.id,pending.prompt,pending.goalMode,pending.attachments);
+      setPlanModes(prev=>({...prev,[active.conversation.id]:pending.planMode}));
+      sendTurn(active.conversation.id,pending.prompt,pending.goalMode,pending.attachments,pending.planMode);
     }else if(props.agentChat.error){
       setPrompt(pending.prompt);
       setAttachments('draft',pending.attachments);
@@ -737,7 +745,14 @@ export function ChatPage(props:SharedProps) {
           <button onClick={()=>{props.setPage('systems');setActionsOpen(false);}}><Wrench size={16}/>Tools Hub & MCP <ChevronRight size={14}/></button>
           {!active&&<label>Workspace<input aria-label="Workspace" value={workspace} onChange={e=>setWorkspace(e.target.value)} disabled={running||Boolean(pending)} maxLength={200}/></label>}
         </div>}</div>
-        <button type="button" className="prototype-goal-toggle" aria-label="Goals mode" aria-pressed={goalMode} title="Run the next instruction as a goal" disabled={running||Boolean(pausedTurn)||Boolean(pending)} onClick={()=>setGoalModes(prev=>({...prev,[draftKey]:!goalMode}))}><Target size={14}/></button>
+        <button type="button" className="prototype-goal-toggle" aria-label="Goals mode" aria-pressed={goalMode} title="Run the next instruction as a goal" disabled={running||Boolean(pausedTurn)||Boolean(pending)} onClick={()=>{
+          setGoalModes(prev=>({...prev,[draftKey]:!goalMode}));
+          if(!goalMode)setPlanModes(prev=>({...prev,[draftKey]:false}));
+        }}><Target size={14}/></button>
+        <button type="button" className="prototype-goal-toggle" aria-label="Plan mode" aria-pressed={planMode} title="Plan first: investigate read-only and propose a plan before any change" disabled={running||Boolean(pausedTurn)||Boolean(pending)} onClick={()=>{
+          setPlanModes(prev=>({...prev,[draftKey]:!planMode}));
+          if(!planMode)setGoalModes(prev=>({...prev,[draftKey]:false}));
+        }}><ClipboardList size={14}/></button>
         {props.agentChat.providers&&props.agentChat.providers.length>0&&props.onChatProvider&&<select
           aria-label="Provider dan model"
           title="Provider dan model"

@@ -337,7 +337,7 @@ export default function App() {
     postHost({type:'agent-chat-open',conversationId});
   };
 
-  const onChatSend=(conversationId:string,prompt:string,goalMode=false,attachments:AttachmentDraft[]=[])=>{
+  const onChatSend=(conversationId:string,prompt:string,goalMode=false,attachments:AttachmentDraft[]=[],planMode=false)=>{
     const introduction=/^\/perkenalan(?:\s|$)/i.test(prompt.trim());
     // A pinned route that is unavailable must never fall back to another one silently.
     const resolved=resolveSelection(agentChat.providers,{providerId:agentChat.providerChoice??'auto',model:agentChat.modelChoice,reasoningEffort:agentChat.reasoningChoice??'auto'});
@@ -362,6 +362,7 @@ export default function App() {
       conversationId,
       prompt,
       ...(!introduction&&goalMode?{goalMode:true}:{}),
+      ...(!introduction&&planMode?{planMode:true}:{}),
       ...(!introduction&&attachments.length?{attachments:attachmentPayload(attachments)}:{}),
       ...(providerId?{providerId}:{}),
       ...(providerId&&agentChat.modelChoice?{model:agentChat.modelChoice}:{}),

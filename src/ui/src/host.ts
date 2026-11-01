@@ -178,6 +178,7 @@ export type AgentChatTurn = {
   clientRequestId: string;
   runtimeTaskId: string;
   goalMode?: boolean;
+  planMode?: boolean;
   /** Present only on a turn that carried files. */
   attachments?: AgentChatAttachment[];
   pauseRequested?: boolean;

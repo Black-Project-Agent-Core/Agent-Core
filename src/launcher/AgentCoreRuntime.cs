@@ -339,6 +339,7 @@ public sealed class AgentCoreRuntime : IDisposable
         string? reasoningEffort = null,
         string? model = null,
         bool goalMode = false,
+        bool planMode = false,
         JsonElement? attachments = null)
     {
         var id = Uri.EscapeDataString(conversationId);
@@ -349,6 +350,7 @@ public sealed class AgentCoreRuntime : IDisposable
         if (reasoningEffort is not null) payload["reasoningEffort"] = reasoningEffort;
         if (!string.IsNullOrWhiteSpace(model)) payload["model"] = model.Trim();
         if (goalMode) payload["goalMode"] = true;
+        if (planMode) payload["planMode"] = true;
         if (attachments is { } files) payload["attachments"] = files;
         request.Content = new StringContent(
             JsonSerializer.Serialize(payload),

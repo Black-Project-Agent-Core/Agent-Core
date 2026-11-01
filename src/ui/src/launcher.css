@@ -395,7 +395,7 @@
 .launcher-goal-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#b6a27c}.launcher-goal-row>time{white-space:nowrap;color:#94a3b8;font-size:10px}
 .launcher-goal-row>button{width:22px;height:22px;flex:none;display:grid;place-items:center;border:0;background:transparent;color:#94a3b8;border-radius:4px;cursor:pointer}.launcher-goal-row>button:hover{background:#ffffff0a;color:#e2e8f0}.launcher-goal-row>button:disabled{opacity:.4;cursor:not-allowed}
 .launcher-goal-detail{max-height:160px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:9px 0 3px;line-height:1.5;color:#b8c6d8}
-@media(max-width:480px){.launcher-goal-bar{margin-left:22px;margin-right:22px}.launcher-goal-row>time{display:none}.launcher-goal-row{gap:4px}.prototype-goal-toggle>span{display:none}}
+@media(max-width:480px){.launcher-goal-bar{margin-left:22px;margin-right:22px}.launcher-goal-row>time{display:none}.launcher-goal-row{gap:4px}}
 .launcher-shell .chat-composer-footer{padding:6px 8px 8px;margin:0;gap:6px;justify-content:flex-start;flex-wrap:wrap;border-top:1px solid #ffffff08}
 .launcher-shell .chat-composer-footer select{font-size:11px;height:29px;max-width:200px;background:#1d2532;border:1px solid #ffffff1f;padding:0 7px;border-radius:8px}
 .prototype-composer-actions{position:relative}

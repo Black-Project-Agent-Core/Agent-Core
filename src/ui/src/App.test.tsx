@@ -325,6 +325,42 @@ describe('Agent Core desktop UI host integration', () => {
     expect(sent).toEqual(expect.objectContaining({ conversationId: 'draft-1', prompt: 'Cek runtime' }));
   });
 
+  it('Plan mode and Goals mode are mutually exclusive, and planMode travels on the sent request', () => {
+    render(<App />);
+    pushSnapshot(chatReady);
+
+    const planButton = screen.getByRole('button', { name: 'Plan mode' });
+    const goalsButton = screen.getByRole('button', { name: 'Goals mode' });
+    expect(planButton).toHaveAttribute('aria-pressed', 'false');
+    expect(goalsButton).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(goalsButton);
+    expect(goalsButton).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(planButton);
+    expect(planButton).toHaveAttribute('aria-pressed', 'true');
+    expect(goalsButton).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(goalsButton);
+    expect(goalsButton).toHaveAttribute('aria-pressed', 'true');
+    expect(planButton).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(goalsButton);
+    fireEvent.click(planButton);
+    expect(planButton).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message Agent Core' }), { target: { value: 'Plan the change' } });
+    postMessage.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const conversation = { id: 'draft-plan', runtimeSessionId: 's-draft-plan', workspace: 'agent-core', title: 'New Chat',
+      status: 'active' as const, createdAtMs: 1, updatedAtMs: 1 };
+    const createRequest = postMessage.mock.calls.find(([value]) => value?.type === 'agent-chat-create')![0].requestId;
+    postMessage.mockClear();
+    act(() => messageHandler!({ data: { type: 'agent-chat-state', requestId: createRequest, result: { conversation, turns: [], messages: [] } } }));
+
+    const sent = postMessage.mock.calls.find(([value]) => value?.type === 'agent-chat-send')?.[0];
+    expect(sent).toMatchObject({ conversationId: 'draft-plan', prompt: 'Plan the change', planMode: true });
+    expect(sent).not.toHaveProperty('goalMode');
+  });
+
   it('gives the typed prompt back when creating the conversation fails', () => {
     render(<App />);
     pushSnapshot(chatReady);
