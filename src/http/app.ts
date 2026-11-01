@@ -179,6 +179,68 @@ async function handleRequest(
     return;
   }
 
+  // Skill panel routes. They only need the catalog and the Native switches, so they sit outside the chat branch:
+  // inside it they were never reached (the branch is entered only for /agent/chat paths).
+  if (route === '/agent/skills') {
+    if (!authorizeAgentUi(request, response, options, security)) return;
+    if (!options.skills || !options.nativeSkillSettings) {
+      sendJson(response, 503, { error: 'agent_skills_unavailable' });
+      return;
+    }
+    if (request.method === 'GET') {
+      try {
+        const active = await options.skills.list();
+        const disabledSet = new Set(options.nativeSkillSettings.listDisabled());
+        const skills = active
+          .map(item => ({
+            name: item.name,
+            description: item.description,
+            digest: item.digest.replace(/^sha256:/, '').slice(0, 8),
+            enabled: !disabledSet.has(item.name),
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        sendJson(response, 200, { skills }, { 'cache-control': 'no-store' });
+        return;
+      } catch (error) {
+        sendJson(response, 503, { error: 'agent_skills_unavailable', detail: safeDetail(error) }, { 'cache-control': 'no-store' });
+        return;
+      }
+    }
+    sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'GET' });
+    return;
+  }
+
+  const skillsMatch = route.match(/^\/agent\/skills\/([^/]+)\/native-enabled$/);
+  if (skillsMatch) {
+    if (!authorizeAgentUi(request, response, options, security)) return;
+    if (!options.skills || !options.nativeSkillSettings) {
+      sendJson(response, 503, { error: 'agent_skills_unavailable' });
+      return;
+    }
+    const name = decodeURIComponent(skillsMatch[1]!);
+    const catalog = await options.skills.list();
+    const exists = catalog.some(item => item.name === name);
+    if (!exists) {
+      sendJson(response, 404, { error: 'skill_not_found' });
+      return;
+    }
+    if (request.method === 'POST') {
+      let body: Record<string, unknown>;
+      try { body = await readJsonBody(request); }
+      catch { sendJson(response, 400, { error: 'invalid_json' }); return; }
+      const enabled = body.enabled;
+      if (typeof enabled !== 'boolean') {
+        sendJson(response, 400, { error: 'invalid_body' });
+        return;
+      }
+      await options.nativeSkillSettings.setEnabled(name, enabled);
+      sendJson(response, 200, { name, enabled });
+      return;
+    }
+    sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'POST' });
+    return;
+  }
+
   if (route === '/agent/chat/conversations' || route.startsWith('/agent/chat/')) {
     if (!authorizeAgentUi(request, response, options, security)) return;
     const chat = options.agentChat;
@@ -429,66 +491,6 @@ async function handleRequest(
         }
       }
       sendJson(response, 200, { commands }, { 'cache-control': 'no-store' });
-      return;
-    }
-
-    if (route === '/agent/skills') {
-      if (!authorizeAgentUi(request, response, options, security)) return;
-      if (!options.skills || !options.nativeSkillSettings) {
-        sendJson(response, 503, { error: 'agent_skills_unavailable' });
-        return;
-      }
-      if (request.method === 'GET') {
-        try {
-          const active = await options.skills.list();
-          const disabledSet = new Set(options.nativeSkillSettings.listDisabled());
-          const skills = active
-            .map(item => ({
-              name: item.name,
-              description: item.description,
-              digest: item.digest.slice(0, 8),
-              enabled: !disabledSet.has(item.name),
-            }))
-            .sort((a, b) => a.name.localeCompare(b.name));
-          sendJson(response, 200, { skills }, { 'cache-control': 'no-store' });
-          return;
-        } catch (error) {
-          sendJson(response, 503, { error: 'agent_skills_unavailable', detail: safeDetail(error) }, { 'cache-control': 'no-store' });
-          return;
-        }
-      }
-      sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'GET' });
-      return;
-    }
-
-    const skillsMatch = route.match(/^\/agent\/skills\/([^/]+)\/native-enabled$/);
-    if (skillsMatch) {
-      if (!authorizeAgentUi(request, response, options, security)) return;
-      if (!options.skills || !options.nativeSkillSettings) {
-        sendJson(response, 503, { error: 'agent_skills_unavailable' });
-        return;
-      }
-      const name = decodeURIComponent(skillsMatch[1]!);
-      const catalog = await options.skills.list();
-      const exists = catalog.some(item => item.name === name);
-      if (!exists) {
-        sendJson(response, 404, { error: 'skill_not_found' });
-        return;
-      }
-      if (request.method === 'POST') {
-        let body: Record<string, unknown>;
-        try { body = await readJsonBody(request); }
-        catch { sendJson(response, 400, { error: 'invalid_json' }); return; }
-        const enabled = body.enabled;
-        if (typeof enabled !== 'boolean') {
-          sendJson(response, 400, { error: 'invalid_body' });
-          return;
-        }
-        await options.nativeSkillSettings.setEnabled(name, enabled);
-        sendJson(response, 200, { name, enabled });
-        return;
-      }
-      sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'POST' });
       return;
     }
 

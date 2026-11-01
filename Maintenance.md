@@ -99,5 +99,5 @@
 
 - Explicit `/maintenance` pass over `src`, `tests` and `scripts`: seven groups of identical helper functions were merged into one owner each (22 files edited, 3 modules added). No unused candidate was deleted: 839 exports and 5 files are retained as `UNREFERENCED`, `TEST-ONLY` or `UNCERTAIN`.
 - **OPEN, pre-existing:** three targeted tests fail identically at `HEAD 055a856` without the consolidation (`mcp-manifest-contract` manifest 132,791 bytes against a 131,072 budget; `semantic-ide-provisioning` and `game-mode-advanced` exceed the 15 s test timeout during dynamic imports). They need their own task.
-- **OPEN, separate task:** `GET /agent/skills` and `POST /agent/skills/:name/native-enabled` are declared inside the `/agent/chat/` branch of `src/http/app.ts` and answer 404.
+- **CLOSED 2026-11-01:** `GET /agent/skills` and `POST /agent/skills/:name/native-enabled` were declared inside the `/agent/chat/` branch of `src/http/app.ts` and always answered 404. They now sit before that branch, return an 8-character digest without the `sha256:` prefix, and are covered by `tests/agent-skills-http.test.ts`.
 - Full evidence, candidate tables, the `OPEN` duplicate groups and the route/page/tool inventory: [docs/verification/Maintenance-Pass-20261101.md](docs/verification/Maintenance-Pass-20261101.md).
