@@ -26,7 +26,8 @@ function StepText({ title, text, truncated, action }: { title: string; text?: st
 export function AgentStepRow({ step, detail, onOpen, readOnly }: {
   step: AgentChatStepMeta; detail?: StepDetailState; onOpen?: (turnId: string, seq: number) => void; readOnly?: boolean;
 }) {
-  const [opened, setOpen] = useState(false);
+  // Cards render expanded by default; detail still fetches lazily via the existing effect below.
+  const [opened, setOpen] = useState(true);
   // A read-only row never opens and never requests its detail.
   const open = opened && !readOnly;
   const status = STEP_GLYPH[step.status];

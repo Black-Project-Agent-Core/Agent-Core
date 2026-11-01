@@ -42,13 +42,10 @@ describe('AgentStepRow', () => {
     expect(failed.container).toHaveTextContent('✗');
   });
 
-  it('requests the detail once on first open and shows exact Input and Output', () => {
+  it('requests the detail automatically (expanded by default) and shows exact Input and Output', () => {
     const onOpen = vi.fn();
     const step = meta();
     const view = render(<AgentStepRow step={step} onOpen={onOpen}/>);
-    const toggle = screen.getByRole('button', { name: /Used start_search/ });
-    expect(screen.queryByText('Input')).toBeNull();
-    fireEvent.click(toggle);
     expect(onOpen).toHaveBeenCalledTimes(1);
     expect(onOpen).toHaveBeenCalledWith('turn-1', 1);
     expect(screen.getByText('memuat...')).toBeInTheDocument();
@@ -58,6 +55,7 @@ describe('AgentStepRow', () => {
     expect(screen.getByText('Output')).toBeInTheDocument();
     expect(screen.getByText('{"pattern":"x"}').tagName).toBe('PRE');
     expect(screen.getByText('a.ts:1 x').tagName).toBe('PRE');
+    const toggle = screen.getByRole('button', { name: /Used start_search/ });
     fireEvent.click(toggle);
     fireEvent.click(toggle);
     expect(onOpen).toHaveBeenCalledTimes(1);
@@ -66,7 +64,6 @@ describe('AgentStepRow', () => {
   it('waits for a running step to finish before requesting its detail, so a half-written Output is never cached', () => {
     const onOpen = vi.fn();
     const view = render(<AgentStepRow step={meta({ status: 'running', durationMs: undefined })} onOpen={onOpen}/>);
-    fireEvent.click(screen.getByRole('button', { name: /Using start_search/ }));
     expect(onOpen).not.toHaveBeenCalled();
     expect(screen.getByText('langkah masih berjalan...')).toBeInTheDocument();
     view.rerender(<AgentStepRow step={meta()} onOpen={onOpen}/>);
@@ -80,7 +77,6 @@ describe('AgentStepRow', () => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     const step = meta();
     const view = render(<AgentStepRow step={step} detail={{ status: 'ready', ...result, inputTruncated: true, outputTruncated: true }} onOpen={vi.fn()}/>);
-    fireEvent.click(screen.getByRole('button', { name: /Used start_search/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Copy input' }));
     expect(writeText).toHaveBeenCalledWith('{"pattern":"x"}');
     expect(screen.getAllByText(/dipotong 16 KB/)).toHaveLength(2);
@@ -113,7 +109,7 @@ function finishedTurn(steps: AgentChatStepMeta[]): ReturnType<typeof chatProps> 
 }
 
 describe('Turn timeline with stored steps', () => {
-  it('groups persisted steps, opens one to request its detail and shows no live-only tools', () => {
+  it('groups persisted steps, auto-requests each detail and shows no live-only tools', () => {
     const input = finishedTurn([meta(), meta({ seq: 2, toolName: 'read_file', status: 'error', argsSummary: 'path="a.ts"', durationMs: 30 })]);
     input.onStepDetail = vi.fn();
     input.agentChat.activity = [{ id: 'a1', toolName: 'live_only_tool', status: 'done', durationMs: 5 }];
@@ -124,19 +120,17 @@ describe('Turn timeline with stored steps', () => {
     expect(screen.getByText('Used start_search')).toBeVisible();
     expect(screen.getByText('Used read_file')).toBeVisible();
     expect(screen.queryByText('live_only_tool')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /Used read_file/ }));
-    expect(input.onStepDetail).toHaveBeenCalledTimes(1);
+    expect(input.onStepDetail).toHaveBeenCalledWith('turn-1', 1);
     expect(input.onStepDetail).toHaveBeenCalledWith('turn-1', 2);
   });
 
-  it('passes the stored detail of the opened step to the row', () => {
+  it('passes the stored detail of an expanded-by-default step to the row', () => {
     const input = finishedTurn([meta()]);
     input.onStepDetail = vi.fn();
     input.agentChat.stepDetails = { [stepKey('turn-1', 1)]: { status: 'ready', ...result } };
     render(<ChatPage {...input}/>);
     fireEvent.click(screen.getByRole('button', { name: 'Show recent activity' }));
     fireEvent.click(screen.getByText('All steps'));
-    fireEvent.click(screen.getByRole('button', { name: /Used start_search/ }));
     expect(screen.getByText('a.ts:1 x')).toBeInTheDocument();
   });
 });
