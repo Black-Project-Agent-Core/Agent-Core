@@ -13,6 +13,12 @@ function hasProjectMarker(candidate: string): boolean {
   return existsSync(path.join(candidate, 'package.json'));
 }
 
+/** Absolute path folded for comparison: Windows paths are case-insensitive. */
+export function comparablePath(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
 export function discoverProjectRoot(startPath: string): string | null {
   let current = path.resolve(startPath);
   while (true) {

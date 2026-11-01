@@ -1,9 +1,8 @@
-import { createHash } from 'node:crypto';
 import { sourceDiagram, layoutDiagram } from './diagram.js';
+import { escapeHtml as escape } from './text.js';
 import type { WorkflowGraph } from './types.js';
 
-export const diagramId=(value:string)=>/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(value)?value:`n-${createHash('sha256').update(value).digest('hex').slice(0,24)}`;
-const escape=(value:string)=>value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+export { diagramId } from './text.js';
 export const architectureFromGraph=layoutDiagram;
 
 export function secureWorkflowHtml(html:string,graph:WorkflowGraph):string {

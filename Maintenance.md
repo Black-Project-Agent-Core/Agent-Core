@@ -94,3 +94,10 @@
 - Historical closed findings are retained only as evidence and must not be interpreted as queued work.
 - No speed/performance benchmark was used for closure.
 - Embedding model remains `@cf/google/embeddinggemma-300m`; no model replacement is planned or implied.
+
+## 2026-11-01 - Helper consolidation and entry-point inventory
+
+- Explicit `/maintenance` pass over `src`, `tests` and `scripts`: seven groups of identical helper functions were merged into one owner each (22 files edited, 3 modules added). No unused candidate was deleted: 839 exports and 5 files are retained as `UNREFERENCED`, `TEST-ONLY` or `UNCERTAIN`.
+- **OPEN, pre-existing:** three targeted tests fail identically at `HEAD 055a856` without the consolidation (`mcp-manifest-contract` manifest 132,791 bytes against a 131,072 budget; `semantic-ide-provisioning` and `game-mode-advanced` exceed the 15 s test timeout during dynamic imports). They need their own task.
+- **OPEN, separate task:** `GET /agent/skills` and `POST /agent/skills/:name/native-enabled` are declared inside the `/agent/chat/` branch of `src/http/app.ts` and answer 404.
+- Full evidence, candidate tables, the `OPEN` duplicate groups and the route/page/tool inventory: [docs/verification/Maintenance-Pass-20261101.md](docs/verification/Maintenance-Pass-20261101.md).

@@ -1,11 +1,14 @@
-import { realpath } from 'node:fs/promises';
+import { access, realpath } from 'node:fs/promises';
 import path from 'node:path';
+import { comparablePath as comparable } from '../portability/paths.js';
 
 const PROTECTED_SEGMENT = 'do not touch without instruction explicit';
 
-export function comparable(value: string): string {
-  const resolved = path.resolve(value);
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+export { comparable };
+
+/** True when the path can be reached (exists and is accessible); never throws. */
+export async function pathExists(value: string): Promise<boolean> {
+  try { await access(value); return true; } catch { return false; }
 }
 
 export function inside(candidate: string, root: string): boolean {

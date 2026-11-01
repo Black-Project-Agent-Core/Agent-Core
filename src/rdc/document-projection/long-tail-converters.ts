@@ -14,15 +14,8 @@ import {
   parseXml,
   sanitizeArchivePath,
   textContent,
+  zipText,
 } from './helpers.js';
-
-function zipText(zip: PizZip, name: string): string | undefined {
-  try {
-    return zip.file(name)?.asText();
-  } catch {
-    return undefined;
-  }
-}
 
 function directChildrenByName(element: Element, name: string): Element[] {
   const wanted = name.toLowerCase();

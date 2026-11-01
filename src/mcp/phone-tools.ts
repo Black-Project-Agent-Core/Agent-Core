@@ -7,10 +7,7 @@ import type { ExternalControllerLearningService } from '../learning/external-con
 import { activityTracker } from '../tracker/activity-tracker.js';
 import { externalControllerToolResult, beginExternalControllerToolCall } from './external-controller-tool-support.js';
 import * as schemas from './phone-schemas.js';
-
-function text(value: unknown): any {
-  return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
-}
+import { jsonTextResult as text } from './text-result.js';
 
 function failure(name: string, error: unknown): any {
   const message = error instanceof Error ? error.message : String(error);

@@ -1,10 +1,10 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { offsetForPosition, preferredLineEnding } from './text-position.js';
-import { access, readFile, rename, rm } from 'node:fs/promises';
+import { readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { authorizedDestinationPath, authorizedExistingPath, isProtectedPath } from './path-safety.js';
-import { readSemanticSource, writeSemanticSourceAtomic, type SemanticSourceDocument } from './source-io.js';
+import { authorizedDestinationPath, authorizedExistingPath, isProtectedPath, pathExists } from './path-safety.js';
+import { fingerprintBytes, readSemanticSource, writeSemanticSourceAtomic, type SemanticSourceDocument } from './source-io.js';
 import type {
   LspPosition,
   RefactorSummary,
@@ -44,10 +44,6 @@ export interface RenamePlan {
 }
 
 export type WorkspacePlan = TextFilePlan | RenamePlan;
-
-function fingerprintBytes(value: Buffer): string {
-  return createHash('sha256').update(value).digest('hex');
-}
 
 function normalizeLineEndings(value: string, source: string): string {
   const eol = preferredLineEnding(source);
@@ -145,10 +141,6 @@ async function planText(root: string, uri: string, edits: TextEdit[]): Promise<T
     ranges: edits.map(item => item.range),
     source,
   };
-}
-
-async function pathExists(value: string): Promise<boolean> {
-  try { await access(value); return true; } catch { return false; }
 }
 
 async function planRename(root: string, operation: RenameFileOperation): Promise<RenamePlan> {

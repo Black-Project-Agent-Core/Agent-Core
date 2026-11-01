@@ -17,7 +17,7 @@ export interface SemanticSourceDocument {
   mode?: number;
 }
 
-function fingerprintBytes(value: Buffer): string {
+export function fingerprintBytes(value: Buffer): string {
   return createHash('sha256').update(value).digest('hex');
 }
 

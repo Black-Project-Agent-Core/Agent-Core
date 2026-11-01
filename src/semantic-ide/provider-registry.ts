@@ -1,4 +1,4 @@
-import { access, mkdir } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -11,6 +11,7 @@ import type {
 import { computeLanguageComposition } from './workspace-policy.js';
 import { buildOwnedChildEnv } from '../security/environment.js';
 import { resolveModuleProjectRoot } from '../portability/paths.js';
+import { pathExists as exists } from './path-safety.js';
 
 const MODULE_PROJECT_ROOT = resolveModuleProjectRoot(import.meta.url);
 
@@ -405,10 +406,6 @@ export function createProviderAdapter(definition: SemanticLanguageServerDefiniti
   }
 
   return baseAdapter('generic');
-}
-
-async function exists(filePath: string): Promise<boolean> {
-  try { await access(filePath); return true; } catch { return false; }
 }
 
 function executableNames(name: string): string[] {

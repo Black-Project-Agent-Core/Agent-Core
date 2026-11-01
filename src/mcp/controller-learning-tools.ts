@@ -3,15 +3,10 @@ import type { ExternalControllerLearningService } from '../learning/external-con
 import { currentExternalInvocationContext, currentToolInvocationRequest } from '../tracker/tool-invocation.js';
 import { activityTracker } from '../tracker/activity-tracker.js';
 import * as schemas from './controller-learning-schemas.js';
+import { jsonTextResult as text } from './text-result.js';
 import { appendSkillReminderCapsule } from './external-controller-tool-support.js';
 import { browserControlService } from '../rdc/browser-control/service.js';
 import type { BrowserShapeSelection } from '../rdc/browser-control/procedure-context.js';
-
-function text(value: unknown) {
-  return {
-    content: [{ type: 'text', text: JSON.stringify(value, null, 2) }],
-  } as any;
-}
 
 export function registerControllerLearningTools(
   server: McpServer,

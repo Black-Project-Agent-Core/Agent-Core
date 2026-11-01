@@ -1,14 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { fileCheckpointService } from '../rdc/checkpoints/service.js';
 import { computeTaskChanges, type TaskChanges } from '../rdc/checkpoints/task-changes.js';
+import { sendNoStoreJson as send } from './json-response.js';
 
 export type TaskChangesReader = (taskId: string) => Promise<TaskChanges>;
 export const defaultTaskChangesReader: TaskChangesReader = taskId => computeTaskChanges(fileCheckpointService, taskId);
 
-function send(response: ServerResponse, status: number, value: unknown, headers: Record<string, string> = {}) {
-  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers });
-  response.end(JSON.stringify(value));
-}
 
 /**
  * Called only after the existing loopback/UI-token authorization. Read-only: the single input is a

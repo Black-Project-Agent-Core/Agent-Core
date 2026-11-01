@@ -1,9 +1,6 @@
-import { createHash } from 'node:crypto';
 import type { WorkflowGraph, WorkflowNode } from './types.js';
 import { buildControllerCycle, cycleStyles, renderControllerCycle } from './controller-cycle.js';
-
-const id=(value:string)=>/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(value)?value:`n-${createHash('sha256').update(value).digest('hex').slice(0,24)}`;
-const esc=(value:string)=>value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+import { diagramId as id, escapeHtml as esc } from './text.js';
 const lanes=[
   {label:'Interfaces',hint:'Entry points & connections',color:'#43baff'},
   {label:'Coordination',hint:'Runtime & task lifecycle',color:'#48deb1'},

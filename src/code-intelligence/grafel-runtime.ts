@@ -15,6 +15,7 @@ import type {
 } from './types.js';
 import type { GrafelCliCapabilityProbe } from './provider-capabilities.js';
 import { buildOwnedChildEnv } from '../security/environment.js';
+import { comparablePath } from '../portability/paths.js';
 
 function parseJsonValue(text: string): unknown {
   const trimmed = text.trim();
@@ -34,11 +35,6 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
   return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
     ? parsed as Record<string, unknown>
     : null;
-}
-
-function comparablePath(value: string): string {
-  const resolved = path.resolve(value);
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
 function pathInside(candidate: string, root: string): boolean {

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import {
-  access, lstat, mkdir, open, readFile, readdir, rename, rm,
+  lstat, mkdir, open, readFile, readdir, rename, rm,
 } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -10,6 +10,7 @@ import { unpackTar } from 'modern-tar';
 import yauzl from 'yauzl';
 import { fetchWithPolicy } from '../net/outbound-request.js';
 import { writeOwnedFileAtomic } from '../persistence/atomic-file.js';
+import { comparable, pathExists as exists } from './path-safety.js';
 
 export type ProvisionProviderId = 'python' | 'csharp' | 'powershell';
 
@@ -171,11 +172,6 @@ const BOUNDED_ZIP_COMPRESSION_METHODS = new Set([0, 8]);
 const WINDOWS_RESERVED_COMPONENT = /^(?:con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i;
 const WINDOWS_INVALID_COMPONENT = /[<>:"|?*\u0000-\u001f\u007f-\u009f]/;
 
-function comparable(value: string): string {
-  const resolved = path.resolve(value);
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
-}
-
 function inside(candidate: string, root: string): boolean {
   const child = comparable(candidate);
   const parent = comparable(root);
@@ -275,10 +271,6 @@ function registerArchiveDestination(
     }
   }
   seen.set(key, type);
-}
-
-async function exists(filePath: string): Promise<boolean> {
-  try { await access(filePath); return true; } catch { return false; }
 }
 
 async function safeRm(value: string): Promise<void> {

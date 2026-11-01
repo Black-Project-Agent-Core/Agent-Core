@@ -1,9 +1,9 @@
+import { escapeHtml as esc } from './text.js';
 import type { WorkflowGraph } from './types.js';
 
 type Point=[number,number];
 interface CycleNode {id:string;label:string;detail:string;owner:'host'|'core'|'resource';pos:Point;size:Point;color:string;paths:string[];}
 interface CycleEdge {id:string;from:string;to:string;label:string;detail:string;points:Point[];labelAt?:Point;kind:'request'|'response'|'optional';paths:string[];}
-const esc=(value:string)=>value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 
 /** A source-backed interaction reference. This is neither an import graph nor
  * a runtime trace. The external controller, not this dispatcher, plans work. */

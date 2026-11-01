@@ -9,12 +9,9 @@ import {
   localName,
   markdownTable,
   parseXml,
+  semanticRequested,
   textContent,
 } from './helpers.js';
-
-function semanticRequested(input: ProjectionInput): boolean {
-  return input.profile === 'markdown' || input.depth > 0;
-}
 
 function sourceBase(input: ProjectionInput): string | undefined {
   return input.url;

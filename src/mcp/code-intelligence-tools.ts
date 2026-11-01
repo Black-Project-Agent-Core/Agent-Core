@@ -10,14 +10,7 @@ import { redactSensitiveString } from '../security/redaction.js';
 import { parseCallToolResultJson } from './call-tool-result.js';
 import { externalControllerToolResult, beginExternalControllerToolCall } from './external-controller-tool-support.js';
 import * as schemas from './code-intelligence-schemas.js';
-
-function textResult(value: unknown): any {
-  return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
-}
-
-function errorResult(message: string): any {
-  return { content: [{ type: 'text', text: `Error: ${message}` }], isError: true };
-}
+import { errorTextResult as errorResult, jsonTextResult as textResult } from './text-result.js';
 
 function compactErrorFamily(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);

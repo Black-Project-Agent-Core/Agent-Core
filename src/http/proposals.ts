@@ -1,10 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProposalDocumentReader } from '../learning/proposal-documents.js';
+import { sendNoStoreJson as send } from './json-response.js';
 
-function send(response: ServerResponse, status: number, value: unknown, headers: Record<string, string> = {}) {
-  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers });
-  response.end(JSON.stringify(value));
-}
 /** Called only after the existing loopback/UI-token authorization. Markdown remains JSON text. */
 export async function handleProposalDocuments(request: IncomingMessage, response: ServerResponse,
   documents: ProposalDocumentReader | undefined, url: URL): Promise<void> {

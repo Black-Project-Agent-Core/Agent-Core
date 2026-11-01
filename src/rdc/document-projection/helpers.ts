@@ -2,7 +2,22 @@ import path from 'node:path';
 import { DOMParser, type Document, type Element, type Node } from '@xmldom/xmldom';
 import { NodeHtmlMarkdown } from 'node-html-markdown';
 import { analyse, detect } from 'chardet';
-import { DocumentProjectionSecurityError } from './types.js';
+import type PizZip from 'pizzip';
+import { DocumentProjectionSecurityError, type ProjectionInput } from './types.js';
+
+/** The semantic (Markdown) projection is wanted for the markdown profile or any depth above zero. */
+export function semanticRequested(input: ProjectionInput): boolean {
+  return input.profile === 'markdown' || input.depth > 0;
+}
+
+/** Text of one archive member, or undefined when the member is missing or unreadable. */
+export function zipText(zip: PizZip, name: string): string | undefined {
+  try {
+    return zip.file(name)?.asText();
+  } catch {
+    return undefined;
+  }
+}
 
 export const DOCUMENT_INPUT_MAX_BYTES = 128 * 1024 * 1024;
 export const DOCUMENT_OUTPUT_MAX_BYTES = 4 * 1024 * 1024;

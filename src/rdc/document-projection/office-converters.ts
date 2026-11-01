@@ -17,7 +17,9 @@ import {
   DOCUMENT_OUTPUT_MAX_BYTES,
   parseXml,
   resolveArchiveTarget,
+  semanticRequested,
   textContent,
+  zipText,
 } from './helpers.js';
 import { parsePdfBytesToMarkdown } from '../tools/pdf/index.js';
 import {
@@ -25,18 +27,6 @@ import {
   XLSX_MAX_CELL_CODEPOINTS, XLSX_EVIDENCE_MAX_CELLS, XLSX_EVIDENCE_MAX_EXCERPT_CODEPOINTS,
   finalizeXlsxEvidence, xlsxTextPrefix, xlsxTextDigest, type XlsxCellEvidence, type XlsxEvidence,
 } from './xlsx-evidence.js';
-
-function semanticRequested(input: ProjectionInput): boolean {
-  return input.profile === 'markdown' || input.depth > 0;
-}
-
-function zipText(zip: PizZip, name: string): string | undefined {
-  try {
-    return zip.file(name)?.asText();
-  } catch {
-    return undefined;
-  }
-}
 
 function relsPathFor(ownerPath: string): string {
   const dir = path.posix.dirname(ownerPath);

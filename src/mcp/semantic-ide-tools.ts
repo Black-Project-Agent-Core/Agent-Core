@@ -5,14 +5,7 @@ import { activityTracker } from '../tracker/activity-tracker.js';
 import { externalControllerToolResult, beginExternalControllerToolCall } from './external-controller-tool-support.js';
 import { currentToolInvocationRequest } from '../tracker/tool-invocation.js';
 import * as schemas from './semantic-ide-schemas.js';
-
-function textResult(value: unknown): any {
-  return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
-}
-
-function errorResult(message: string): any {
-  return { content: [{ type: 'text', text: `Error: ${message}` }], isError: true };
-}
+import { errorTextResult as errorResult, jsonTextResult as textResult } from './text-result.js';
 
 function publicSymbolAction(action: string): string {
   if (action === schemas.SYMBOL_REFS) return 'refs';

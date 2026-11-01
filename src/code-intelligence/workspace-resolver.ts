@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { readOnlyGitArgs, readOnlyGitEnv } from '../process/readonly-git.js';
+import { comparablePath as comparable } from '../portability/paths.js';
 import { createHash } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -30,11 +31,6 @@ export interface WorkspaceHygieneRecord {
     path: string;
     state: 'present' | 'missing' | 'unreadable';
   }>;
-}
-
-function comparable(value: string): string {
-  const resolved = path.resolve(value);
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
 function within(candidate: string, parent: string): boolean {

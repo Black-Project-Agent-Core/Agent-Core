@@ -8,6 +8,7 @@ import { assessGameFrameProgress, cropNormalizedRegion } from '../phone/game-per
 import type { GameProfile, GameSessionState } from '../phone/game-mode-types.js';
 import type { PhoneSequenceStep, PhoneObservation } from '../phone/types.js';
 import * as schemas from './phone-game-schemas.js';
+import { jsonTextResult as compactText } from './text-result.js';
 
 type RunText = (name: string, action: () => Promise<unknown>) => Promise<any>;
 type RunResult = (name: string, action: () => Promise<any>) => Promise<any>;
@@ -19,9 +20,6 @@ function required<T>(value: T | null | undefined, name: string): T {
 }
 function sha(bytes: Buffer): string {
   return 'sha256:' + createHash('sha256').update(bytes).digest('hex');
-}
-function compactText(value: unknown): any {
-  return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
 }
 
 export function registerPhoneGameTools(
