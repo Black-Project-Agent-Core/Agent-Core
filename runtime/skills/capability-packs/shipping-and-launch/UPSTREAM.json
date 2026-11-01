@@ -1,8 +1,0 @@
-{
-  "repository": "https://github.com/addyosmani/agent-skills",
-  "commit": "aeac41d4d005999432bb7312f7ff06383a91d59d",
-  "path": "skills/shipping-and-launch",
-  "skillSha256": "726f3e546369db289160b8d42195590f00b6432887e17bf19070dcc9a347fe39",
-  "license": "MIT",
-  "adapter": "frontmatter, applicability, tool mapping, local reference paths; upstream workflow retained"
-}

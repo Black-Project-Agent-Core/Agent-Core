@@ -1,8 +1,0 @@
-{
-  "repository": "https://github.com/addyosmani/agent-skills",
-  "commit": "aeac41d4d005999432bb7312f7ff06383a91d59d",
-  "path": "skills/performance-optimization",
-  "skillSha256": "bd36a30e55a5f84329a6977eba5e1ab7654146e71eaba88e34337d4ee020460f",
-  "license": "MIT",
-  "adapter": "frontmatter, applicability, tool mapping, local reference paths; upstream workflow retained"
-}

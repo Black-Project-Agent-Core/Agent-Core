@@ -1,8 +1,0 @@
-{
-  "repository": "https://github.com/addyosmani/agent-skills",
-  "commit": "aeac41d4d005999432bb7312f7ff06383a91d59d",
-  "path": "skills/debugging-and-error-recovery",
-  "skillSha256": "21f3960f5d7ae2cc95c40896545004dbbcbbd752ea65fc2d53962554d4174220",
-  "license": "MIT",
-  "adapter": "frontmatter, applicability, tool mapping, local reference paths; upstream workflow retained"
-}

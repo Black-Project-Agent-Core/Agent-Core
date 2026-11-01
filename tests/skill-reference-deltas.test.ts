@@ -11,8 +11,8 @@ const deltas: Record<string, string[]> = {
   'deprecation-and-migration': ['verified-code-migration', 'characterization-and-equivalence'],
   'git-workflow-and-versioning': ['branch-cleanup'],
   'doubt-driven-development': ['attack-patterns'],
-  'ci-cd-and-automation': ['workflow-hardening'],
-  'debugging-and-error-recovery': ['environment-differences', 'incident-handling'],
+  'delivery-and-release': ['workflow-hardening'],
+  'debugging-and-observability': ['environment-differences', 'incident-handling'],
   'test-driven-development': ['component-strategies'],
   'documentation-and-adrs': ['runbooks-and-onboarding'],
   'mind-control': ['tool_output_trust'],
@@ -34,8 +34,10 @@ describe('Skill reference deltas (UP-09)', () => {
   it.each(Object.entries(deltas).filter(([pack]) => pack !== 'mind-control'))('%s SKILL.md points to every new reference and keeps the upstream pin', (pack, names) => {
     const skill = readFileSync(`${packs}${pack}/SKILL.md`, 'utf8');
     for (const name of names) expect(skill).toContain(`](references/${name}.md)`);
-    expect(skill).toContain('adapter-revision: "2"');
-    expect(skill.indexOf('## Upstream workflow')).toBeGreaterThan(skill.indexOf('](references/'));
+    const revision = { 'code-review-and-quality': '3', 'delivery-and-release': '1', 'debugging-and-observability': '1' }[pack] ?? '2';
+    expect(skill).toContain(`adapter-revision: "${revision}"`);
+    expect(skill).toContain('upstream-commit:');
+    if (skill.includes('## Upstream workflow')) expect(skill.indexOf('## Upstream workflow')).toBeGreaterThan(skill.indexOf('](references/'));
   });
 
   it('the new references name no command that prints a secret value', () => {

@@ -1,0 +1,20 @@
+{
+  "repository": "https://github.com/addyosmani/agent-skills",
+  "commit": "aeac41d4d005999432bb7312f7ff06383a91d59d",
+  "path": "merged: skills/ci-cd-and-automation, skills/shipping-and-launch",
+  "skillSha256": "1cf1e5ccffa6e1b800516b730e933cfa8de1be7a8a9e23f19110f6e2cc66f9fd",
+  "license": "MIT",
+  "adapter": "merged pack; skillSha256 is the sha256 of the member upstream SKILL.md hashes sorted and newline-joined; member text retained as stage references",
+  "members": [
+    {
+      "name": "ci-cd-and-automation",
+      "path": "skills/ci-cd-and-automation",
+      "skillSha256": "a6ed8ed56456b01ff8314c44eefc69897d9905ae4e06bb2b7036286efb79b5f0"
+    },
+    {
+      "name": "shipping-and-launch",
+      "path": "skills/shipping-and-launch",
+      "skillSha256": "726f3e546369db289160b8d42195590f00b6432887e17bf19070dcc9a347fe39"
+    }
+  ]
+}

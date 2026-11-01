@@ -1,0 +1,20 @@
+{
+  "repository": "https://github.com/addyosmani/agent-skills",
+  "commit": "aeac41d4d005999432bb7312f7ff06383a91d59d",
+  "path": "merged: skills/frontend-ui-engineering, skills/browser-testing-with-devtools",
+  "skillSha256": "9cb635a7394b6ecacaed981e70d95ba70c016656713d54153f4ab6b0677207a1",
+  "license": "MIT",
+  "adapter": "merged pack; skillSha256 is the sha256 of the member upstream SKILL.md hashes sorted and newline-joined; member text retained as stage references",
+  "members": [
+    {
+      "name": "frontend-ui-engineering",
+      "path": "skills/frontend-ui-engineering",
+      "skillSha256": "29a3e53d57c0a128831a20730ae874a8c4fda40c001fcdc15f8e9ad4b5f72f1b"
+    },
+    {
+      "name": "browser-testing-with-devtools",
+      "path": "skills/browser-testing-with-devtools",
+      "skillSha256": "4e3aacd6a380cd25bc6c2d67fdd1c926a9b22535b8a62109ecd33cefd909e3d9"
+    }
+  ]
+}

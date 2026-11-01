@@ -388,6 +388,41 @@ Blok JSON ini adalah deklarasi pada peta yang sama, bukan registry terpisah. `ow
       "path": "runtime/agent-runtime/profile",
       "purpose": "native-operator-profile-data",
       "owner": "runtime/agent-runtime"
+    },
+    {
+      "path": "runtime/skills/capability-packs/app-replica",
+      "purpose": "skill-pack-app-replica",
+      "owner": "runtime/skills/capability-packs"
+    },
+    {
+      "path": "runtime/skills/capability-packs/requirements-and-planning",
+      "purpose": "skill-pack-requirements-and-planning",
+      "owner": "runtime/skills/capability-packs"
+    },
+    {
+      "path": "runtime/skills/capability-packs/delivery-and-release",
+      "purpose": "skill-pack-delivery-and-release",
+      "owner": "runtime/skills/capability-packs"
+    },
+    {
+      "path": "runtime/skills/capability-packs/debugging-and-observability",
+      "purpose": "skill-pack-debugging-and-observability",
+      "owner": "runtime/skills/capability-packs"
+    },
+    {
+      "path": "runtime/skills/capability-packs/frontend-and-browser-testing",
+      "purpose": "skill-pack-frontend-and-browser-testing",
+      "owner": "runtime/skills/capability-packs"
+    },
+    {
+      "path": "runtime/skills/capability-packs/agent-core-capability-index/references",
+      "purpose": "skill-pack-capability-index-references",
+      "owner": "runtime/skills/capability-packs"
+    },
+    {
+      "path": "runtime/skills/capability-packs/performance-oriented-software-engineering/references/upstream-shared",
+      "purpose": "skill-pack-performance-shared-references",
+      "owner": "runtime/skills/capability-packs"
     }
   ]
 }
@@ -400,7 +435,7 @@ Contoh intent untuk tujuan baru yang benar-benar diperlukan task: `{"path":"docs
 
 <!-- DIRECTORY-SNAPSHOT:START -->
 
-Daftar otomatis: **473 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
+Daftar otomatis: **441 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
 
 ```text
 <PROJECT_ROOT>/
@@ -528,19 +563,15 @@ Daftar otomatis: **473 direktori/boundary**. Subtree privat, dependency, generat
 |   |   |-- .staging/  [artifact/state SkillService; lihat pola role]
 |   |   |-- capability-packs/
 |   |   |   |-- agent-core-capability-index/
+|   |   |   |   `-- references/
+|   |   |   |       `-- upstream-shared/
 |   |   |   |-- api-and-interface-design/
 |   |   |   |   `-- references/
 |   |   |   |       `-- upstream-shared/
-|   |   |   |-- browser-testing-with-devtools/
+|   |   |   |-- app-replica/
 |   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- ci-cd-and-automation/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
+|   |   |   |       `-- kit/
 |   |   |   |-- code-review-and-quality/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- code-simplification/
 |   |   |   |   `-- references/
 |   |   |   |       `-- upstream-shared/
 |   |   |   |-- constraint-driven-development/
@@ -549,7 +580,10 @@ Daftar otomatis: **473 direktori/boundary**. Subtree privat, dependency, generat
 |   |   |   |-- context-engineering/
 |   |   |   |   `-- references/
 |   |   |   |       `-- upstream-shared/
-|   |   |   |-- debugging-and-error-recovery/
+|   |   |   |-- debugging-and-observability/
+|   |   |   |   `-- references/
+|   |   |   |       `-- upstream-shared/
+|   |   |   |-- delivery-and-release/
 |   |   |   |   `-- references/
 |   |   |   |       `-- upstream-shared/
 |   |   |   |-- deprecation-and-migration/
@@ -562,49 +596,27 @@ Daftar otomatis: **473 direktori/boundary**. Subtree privat, dependency, generat
 |   |   |   |   `-- references/
 |   |   |   |       |-- upstream-agents/
 |   |   |   |       `-- upstream-shared/
-|   |   |   |-- frontend-ui-engineering/
+|   |   |   |-- frontend-and-browser-testing/
 |   |   |   |   `-- references/
 |   |   |   |       `-- upstream-shared/
 |   |   |   |-- git-workflow-and-versioning/
 |   |   |   |   `-- references/
 |   |   |   |       `-- upstream-shared/
-|   |   |   |-- idea-refine/
-|   |   |   |   |-- references/
-|   |   |   |   |   `-- upstream-shared/
-|   |   |   |   `-- scripts/
 |   |   |   |-- incremental-implementation/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- interview-me/
 |   |   |   |   `-- references/
 |   |   |   |       `-- upstream-shared/
 |   |   |   |-- mind-control/
 |   |   |   |   |-- evals/
 |   |   |   |   `-- references/
-|   |   |   |-- observability-and-instrumentation/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- performance-optimization/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
 |   |   |   |-- performance-oriented-software-engineering/
 |   |   |   |   |-- agents/
 |   |   |   |   |-- references/
+|   |   |   |   |   `-- upstream-shared/
 |   |   |   |   `-- scripts/
-|   |   |   |-- planning-and-task-breakdown/
+|   |   |   |-- requirements-and-planning/
 |   |   |   |   `-- references/
+|   |   |   |       |-- kit/
 |   |   |   |       `-- upstream-shared/
-|   |   |   |-- replica-architect/
-|   |   |   |-- replica-backend/
-|   |   |   |-- replica-brand/
-|   |   |   |-- replica-build/
-|   |   |   |-- replica-deploy/
-|   |   |   |-- replica-design/
-|   |   |   |-- replica-diff/
-|   |   |   |-- replica-entrepreneur/
-|   |   |   |-- replica-launch/
-|   |   |   |-- replica-recon/
-|   |   |   |-- replica-test/
 |   |   |   |-- reverse-engineer-anything/
 |   |   |   |   |-- agents/
 |   |   |   |   |-- references/
@@ -614,21 +626,12 @@ Daftar otomatis: **473 direktori/boundary**. Subtree privat, dependency, generat
 |   |   |   |-- security-and-hardening/
 |   |   |   |   `-- references/
 |   |   |   |       `-- upstream-shared/
-|   |   |   |-- shipping-and-launch/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
 |   |   |   |-- skill-authoring/
 |   |   |   |   `-- references/
 |   |   |   |-- source-driven-development/
 |   |   |   |   `-- references/
 |   |   |   |       `-- upstream-shared/
-|   |   |   |-- spec-driven-development/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
 |   |   |   |-- test-driven-development/
-|   |   |   |   `-- references/
-|   |   |   |       `-- upstream-shared/
-|   |   |   |-- using-agent-skills/
 |   |   |   |   `-- references/
 |   |   |   |       `-- upstream-shared/
 |   |   |   `-- windows-powershell-host/

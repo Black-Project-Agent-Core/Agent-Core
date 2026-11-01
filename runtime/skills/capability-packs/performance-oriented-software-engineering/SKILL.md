@@ -69,6 +69,10 @@ Trace the user-relevant critical path and its dominant cost. A system-wide avera
 
 For SIMD/GPU guidance when the measured critical path is data-parallel, read [hardware acceleration](references/hardware-acceleration.md).
 
+### Measured optimization patterns
+
+After a measured bottleneck exists, read [performance optimization](references/performance-optimization.md) (frontend, backend and query patterns; merged from the retired `performance-optimization`, see [merged-from](references/merged-from.md)).
+
 Prefer removing unnecessary work before adding execution machinery. Combine techniques only where their benefits survive coordination and memory costs. Preserve the user's chosen stack and scope; this skill does not authorize unrelated infrastructure or toolchain changes.
 
 ## Tooling boundary

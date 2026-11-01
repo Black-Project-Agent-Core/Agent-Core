@@ -1,0 +1,65 @@
+{
+  "repository": "https://github.com/Jakeschincariol/replica-skill",
+  "commit": "77c9436fb3d18c3d58169efb8caf4fe906b0dc51",
+  "path": "merged: replica-recon, replica-entrepreneur, replica-design, replica-architect, replica-backend, replica-build, replica-test, replica-diff, replica-brand, replica-launch, replica-deploy",
+  "skillSha256": "d698805ef307febe56c895db75849065e035090cec52ee0dd176599af9cceacb",
+  "license": "MIT",
+  "adapter": "merged pack; skillSha256 is the sha256 of the member upstream SKILL.md hashes sorted and newline-joined; member text retained as stage references",
+  "members": [
+    {
+      "name": "replica-recon",
+      "path": "replica-recon",
+      "skillSha256": "b1fd6a60cf0bcd481f6828453da24b9d9f0935ec6e883741e5f620259f13ff40"
+    },
+    {
+      "name": "replica-entrepreneur",
+      "path": "replica-entrepreneur",
+      "skillSha256": "041724878b4c40b1a92e9d077cb31c5f551b85ca7beb3db99b03fe8c772a7d9b"
+    },
+    {
+      "name": "replica-design",
+      "path": "replica-design",
+      "skillSha256": "34f0375bef33a713267e8543b4c4ffd669c59cf0a0b9999c7fb70451b2a5f4d4"
+    },
+    {
+      "name": "replica-architect",
+      "path": "replica-architect",
+      "skillSha256": "411c429c9b3e6858d85e0c57b1378b235dd622fd565e9cc0af677ab7ccc2992f"
+    },
+    {
+      "name": "replica-backend",
+      "path": "replica-backend",
+      "skillSha256": "8dda218e858f88d389cde097dc4f8ec0ebd82b1273d72df01598f630ed8923bb"
+    },
+    {
+      "name": "replica-build",
+      "path": "replica-build",
+      "skillSha256": "e50e00ec3ea1cb232fe5bb6e332e05c8640a3f5e887c20912d4195f5d0e0fa02"
+    },
+    {
+      "name": "replica-test",
+      "path": "replica-test",
+      "skillSha256": "dd27a6fe4d95ea1267c80dbecd05848f13ea837fe15277dcd7ac44e88bede81f"
+    },
+    {
+      "name": "replica-diff",
+      "path": "replica-diff",
+      "skillSha256": "bd9fc956c347233fb17698fd5ed22caabfc0a35a210b90b9eea874f033ef1c30"
+    },
+    {
+      "name": "replica-brand",
+      "path": "replica-brand",
+      "skillSha256": "3838f17043dc395f75cf3c4f615f2a64455f15e1e9693f499b8b5b0d28711ead"
+    },
+    {
+      "name": "replica-launch",
+      "path": "replica-launch",
+      "skillSha256": "082aeac878f9638e4e8be489f4e17bc596d567ccdd52ad5339e337919d2d75fa"
+    },
+    {
+      "name": "replica-deploy",
+      "path": "replica-deploy",
+      "skillSha256": "3f91a04a0f38162a4090a25bc28aca72fceed5b6e0ded49c6c11682366733b3d"
+    }
+  ]
+}

@@ -1,13 +1,13 @@
 ---
 name: code-review-and-quality
-description: "Conducts multi-axis code review. Use before merging any change. Use when reviewing code written by yourself, another agent, or a human. Use when you need to assess code quality across multiple dimensions before it enters the main branch. Use when asked to review a diff or a pull request, even when the diff is pasted inline."
+description: "Conducts multi-axis code review and simplifies code for clarity without changing behavior. Use before merging any change. Use when reviewing code written by yourself, another agent, or a human. Use when you need to assess code quality across multiple dimensions before it enters the main branch. Use when asked to review a diff or a pull request, even when the diff is pasted inline. Use when code works but is harder to read, maintain or extend than it should be."
 license: MIT
 compatibility: "Agent Core adapter: existing grants and available tools; Windows-safe equivalent commands; load references only when relevant."
 metadata:
   upstream-repository: "https://github.com/addyosmani/agent-skills"
   upstream-commit: aeac41d4d005999432bb7312f7ff06383a91d59d
   upstream-path: skills/code-review-and-quality
-  adapter-revision: "2"
+  adapter-revision: "3"
 ---
 ## Triggers
 - Review diff untuk correctness, maintainability dan risiko regresi.
@@ -21,7 +21,7 @@ metadata:
 Read the compact `agent-core-capability-index` first, then this selected Skill through every returned fragment. Apply relevant steps and record actual use/evidence; reading or availability alone is not use. Current user instructions, host rules and task scope take precedence over upstream defaults. Do not repeat approval already given. Reassess applicability when the task changes.
 Use the existing Agent Core owners and granted tools. Map Claude-specific tool names to available equivalents, use background `browser_control`/OBU for browser work, and adapt shell examples to Windows PowerShell safely. If a required operation is unavailable, report that exact gap; never claim an unperformed operation. A Skill is a workflow, not permission to install dependencies, publish, send messages, change credentials, or execute every example.
 Sibling Skills are separate catalog entries: inspect their current digest and read only if selected. References below are artifact-local. Use relevant sections only; do not pre-load the whole pack. Agent/persona examples use the current approved subagent profile and ownership rules.
-Agent Core references (open the one you need): [review-calibration](references/review-calibration.md) at Categorize Findings (certainty score, reporting threshold, false-positive catalogue); [review-lenses](references/review-lenses.md) for silent failures, comment accuracy, test quality and type invariants; [verification-verdict](references/verification-verdict.md) at Verify the Verification. The security axis also covers SSRF, unsafe deserialization and path traversal; use the `security-and-hardening` Skill for them.
+Agent Core references (open the one you need): [review-calibration](references/review-calibration.md) at Categorize Findings (certainty score, reporting threshold, false-positive catalogue); [review-lenses](references/review-lenses.md) for silent failures, comment accuracy, test quality and type invariants; [verification-verdict](references/verification-verdict.md) at Verify the Verification; [code-simplification](references/code-simplification.md) when a review finds complexity that can go without changing behavior, or when refactoring for clarity (merged from the retired `code-simplification`, see [merged-from](references/merged-from.md)). The security axis also covers SSRF, unsafe deserialization and path traversal; use the `security-and-hardening` Skill for them.
 
 
 ## Upstream workflow

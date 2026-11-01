@@ -1,0 +1,30 @@
+{
+  "repository": "https://github.com/addyosmani/agent-skills",
+  "commit": "aeac41d4d005999432bb7312f7ff06383a91d59d",
+  "path": "merged: skills/interview-me, skills/idea-refine, skills/spec-driven-development, skills/planning-and-task-breakdown",
+  "skillSha256": "9044f9a50b35dda84668b548b91683ff235be77fc76389dfb72578098bc3d354",
+  "license": "MIT",
+  "adapter": "merged pack; skillSha256 is the sha256 of the member upstream SKILL.md hashes sorted and newline-joined; member text retained as stage references",
+  "members": [
+    {
+      "name": "interview-me",
+      "path": "skills/interview-me",
+      "skillSha256": "ace4b675999bb504593d572e0f73f3d7e803ad6fddf318445598c82c11939db2"
+    },
+    {
+      "name": "idea-refine",
+      "path": "skills/idea-refine",
+      "skillSha256": "21ef828e3a2144245b67f840cc3805f761e98c9acce9a96670b7cd7441353463"
+    },
+    {
+      "name": "spec-driven-development",
+      "path": "skills/spec-driven-development",
+      "skillSha256": "c4b97ce3d7f24be0e67fd612c7595f65504872e3a9f8d338d098b2363fdb66ef"
+    },
+    {
+      "name": "planning-and-task-breakdown",
+      "path": "skills/planning-and-task-breakdown",
+      "skillSha256": "ed0f90cc5951ddd4bcab7f871f64efec93a49af9279ef93bc470da77ad8da3f7"
+    }
+  ]
+}

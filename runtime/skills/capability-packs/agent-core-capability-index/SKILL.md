@@ -1,9 +1,9 @@
 ---
 name: agent-core-capability-index
-description: Compact router for 39 task-specialized capabilities. Always evaluate mind-control for coding and any other reasoning task; load the remaining workflows only when selected.
+description: Compact router for 20 task-specialized capabilities. Always evaluate mind-control for coding and any other reasoning task; load the remaining workflows only when selected.
 license: MIT
 metadata:
-  adapter-revision: "3"
+  adapter-revision: "4"
 ---
 
 # Capability index
@@ -21,49 +21,41 @@ metadata:
 4. Reassess after a material task change or failed approach. Keep existing task grants, user authorization, safety and cancellation. Upstream tool names are adapted by each Skill; use existing owners and do not run all examples automatically.
 5. Preserve one concise usage notice for actual meaningful use. The host can enforce read coverage before accepting use, but semantic relevance and claimed benefits still require evidence.
 
-## Replica: app reconstruction only
+## App replica: app reconstruction only
 | Capability | Purpose |
 |---|---|
-| replica-architect | Rancang stack, data dan API clone dari hasil recon. |
-| replica-backend | Tambahkan auth, database, pembayaran dan integrasi backend clone. |
-| replica-brand | Buat nama, warna, suara dan identitas asli bagi clone. |
-| replica-build | Bangun ulang layar dan flow clone sebagai potongan fungsional. |
-| replica-deploy | Siapkan deployment clone, domain dan pemeriksaan produksi. |
-| replica-design | Turunkan token desain dan spesifikasi komponen clone. |
-| replica-diff | Bandingkan kelengkapan fitur dan layout clone dengan acuan. |
-| replica-entrepreneur | Riset ulasan publik untuk gap produk dan positioning clone. |
-| replica-launch | Siapkan landing page, harga dan listing peluncuran clone. |
-| replica-recon | Petakan layar, flow dan fitur aplikasi acuan; app reconstruction/recon. |
-| replica-test | Uji flow, edge case dan bug clone dengan bukti e2e. |
+| app-replica | Bangun ulang aplikasi acuan sebagai clone milik sendiri: recon, riset ulasan, desain, arsitektur, backend, build, tes, parity, rebrand, peluncuran dan deploy. |
 
 ## Engineering: choose the current phase
 | Capability | Purpose |
 |---|---|
 | api-and-interface-design | Rancang kontrak API, tipe dan batas modul yang stabil. |
-| browser-testing-with-devtools | Verifikasi UI di browser nyata: DOM, console, network dan profil. |
-| ci-cd-and-automation | Rancang pipeline build, tes dan deployment otomatis. |
-| code-review-and-quality | Review diff untuk correctness, maintainability dan risiko regresi. |
-| code-simplification | Kurangi kompleksitas kode sambil mempertahankan perilaku. |
+| code-review-and-quality | Review diff untuk correctness, maintainability dan risiko regresi; termasuk menyederhanakan kode tanpa mengubah perilaku. |
 | constraint-driven-development | Tetapkan standar mutu dan jaga agar pemeriksaan tidak dilemahkan. |
 | context-engineering | Susun aturan, indeks dan konteks relevan secara bertingkat. |
-| debugging-and-error-recovery | Reproduksi masalah, cari akar penyebab, perbaiki dan verifikasi. |
+| debugging-and-observability | Reproduksi masalah, cari akar penyebab, perbaiki dan verifikasi; tambahkan log, metrik, tracing dan sinyal kegagalan. |
+| delivery-and-release | Rancang pipeline build, tes dan deployment otomatis; periksa kesiapan rilis, rollout, monitoring dan rollback. |
 | deprecation-and-migration | Rencanakan penggantian API, sistem atau skema dengan transisi aman. |
 | documentation-and-adrs | Catat perilaku, keputusan arsitektur dan bukti verifikasi. |
 | doubt-driven-development | Uji asumsi keputusan penting dengan review independen terarah. |
-| frontend-ui-engineering | Bangun UI responsif, aksesibel dan lengkap state-nya. |
+| frontend-and-browser-testing | Bangun UI responsif, aksesibel dan lengkap state-nya; verifikasi di browser nyata: DOM, console, network dan profil. |
 | git-workflow-and-versioning | Kelola branch, konflik, commit dan versi saat operasi Git diperlukan. |
-| idea-refine | Kembangkan dan seleksi alternatif dari ide yang masih kasar. |
 | incremental-implementation | Implementasikan perubahan bertahap dalam potongan kecil. |
-| interview-me | Gali kebutuhan ketika tujuan/pengguna belum jelas. |
-| observability-and-instrumentation | Tambahkan log, metrik, tracing dan sinyal kegagalan yang berguna. |
-| performance-optimization | Ukur bottleneck lalu optimalkan frontend, backend atau query. |
-| planning-and-task-breakdown | Pecah kebutuhan jelas menjadi langkah yang dapat diverifikasi. |
+| requirements-and-planning | Gali kebutuhan, kembangkan ide kasar, tulis spesifikasi dan acceptance, lalu pecah menjadi tugas yang dapat diverifikasi. |
 | security-and-hardening | Audit input, auth, dependency dan batas kepercayaan; perkuat kontrol. |
-| shipping-and-launch | Periksa kesiapan rilis, rollout, monitoring dan rollback. |
 | source-driven-development | Verifikasi keputusan API/library melalui dokumentasi resmi. |
-| spec-driven-development | Tulis spesifikasi dan acceptance sebelum perubahan besar. |
 | test-driven-development | Buktikan bug/perilaku dengan tes gagal, lalu perbaikan terfokus. |
-| using-agent-skills | Pilih workflow engineering dan urutan skill yang relevan. |
+
+Memilih workflow dan urutan skill yang relevan: bila langkah routing di atas belum cukup, baca [using-agent-skills](references/using-agent-skills.md) (digabung dari Skill `using-agent-skills` yang dipensiunkan; asal dan jalur pemulihan di [merged-from](references/merged-from.md)).
+
+## Nama lama dan rumah barunya
+Skill berikut sudah digabung; teks lengkapnya menjadi stage/referensi di Skill tujuan. Sebutan nama lama di teks upstream dibaca sebagai Skill tujuan.
+- `replica-recon`, `replica-entrepreneur`, `replica-design`, `replica-architect`, `replica-backend`, `replica-build`, `replica-test`, `replica-diff`, `replica-brand`, `replica-launch`, `replica-deploy` -> `app-replica`
+- `interview-me`, `idea-refine`, `spec-driven-development`, `planning-and-task-breakdown` -> `requirements-and-planning`
+- `ci-cd-and-automation`, `shipping-and-launch` -> `delivery-and-release`
+- `debugging-and-error-recovery`, `observability-and-instrumentation` -> `debugging-and-observability`
+- `frontend-ui-engineering`, `browser-testing-with-devtools` -> `frontend-and-browser-testing`
+- `code-simplification` -> `code-review-and-quality`; `performance-optimization` -> `performance-oriented-software-engineering`
 
 ## Evidence and specialized engineering: scientific gate first, others by relevance
 | Capability | Select when | Do not use for |

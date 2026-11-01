@@ -1,8 +1,0 @@
-{
-  "repository": "https://github.com/addyosmani/agent-skills",
-  "commit": "aeac41d4d005999432bb7312f7ff06383a91d59d",
-  "path": "skills/ci-cd-and-automation",
-  "skillSha256": "a6ed8ed56456b01ff8314c44eefc69897d9905ae4e06bb2b7036286efb79b5f0",
-  "license": "MIT",
-  "adapter": "frontmatter, applicability, tool mapping, local reference paths; upstream workflow retained"
-}

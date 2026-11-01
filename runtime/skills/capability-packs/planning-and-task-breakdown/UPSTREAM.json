@@ -1,8 +1,0 @@
-{
-  "repository": "https://github.com/addyosmani/agent-skills",
-  "commit": "aeac41d4d005999432bb7312f7ff06383a91d59d",
-  "path": "skills/planning-and-task-breakdown",
-  "skillSha256": "ed0f90cc5951ddd4bcab7f871f64efec93a49af9279ef93bc470da77ad8da3f7",
-  "license": "MIT",
-  "adapter": "frontmatter, applicability, tool mapping, local reference paths; upstream workflow retained"
-}

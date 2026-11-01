@@ -1,0 +1,20 @@
+{
+  "repository": "https://github.com/addyosmani/agent-skills",
+  "commit": "aeac41d4d005999432bb7312f7ff06383a91d59d",
+  "path": "merged: skills/debugging-and-error-recovery, skills/observability-and-instrumentation",
+  "skillSha256": "cb2e1a6530e1210884ccb6c2f61e8fd7814fc68c7400a3f1daea286a62879267",
+  "license": "MIT",
+  "adapter": "merged pack; skillSha256 is the sha256 of the member upstream SKILL.md hashes sorted and newline-joined; member text retained as stage references",
+  "members": [
+    {
+      "name": "debugging-and-error-recovery",
+      "path": "skills/debugging-and-error-recovery",
+      "skillSha256": "21f3960f5d7ae2cc95c40896545004dbbcbbd752ea65fc2d53962554d4174220"
+    },
+    {
+      "name": "observability-and-instrumentation",
+      "path": "skills/observability-and-instrumentation",
+      "skillSha256": "e7fcb0820306d46268de9594d676ad98e35040858926c412b7000faa52a61f87"
+    }
+  ]
+}

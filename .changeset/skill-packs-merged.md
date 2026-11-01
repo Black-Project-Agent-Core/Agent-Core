@@ -1,0 +1,5 @@
+---
+"agent-core": patch
+---
+
+Merge overlapping Skill packs so each purpose has one home. The 11 `replica-*` Skills become `app-replica`; `interview-me`, `idea-refine`, `spec-driven-development` and `planning-and-task-breakdown` become `requirements-and-planning`; `ci-cd-and-automation` and `shipping-and-launch` become `delivery-and-release`; `debugging-and-error-recovery` and `observability-and-instrumentation` become `debugging-and-observability`; `frontend-ui-engineering` and `browser-testing-with-devtools` become `frontend-and-browser-testing`; `code-simplification`, `performance-optimization` and `using-agent-skills` move into `code-review-and-quality`, `performance-oriented-software-engineering` and `agent-core-capability-index`. The full text of every former Skill is kept as a stage reference, with upstream pins in `references/merged-from.md`; the replica templates and Python tools are now readable through `skills(read)` under `references/kit/`. The capability index lists 20 capabilities and maps old names to new ones. The 24 originals were retired (restorable with `list_retired` and `rollback_revision`) and their source folders removed.

@@ -1,0 +1,12 @@
+# Merged from
+
+This pack (debugging-and-observability) absorbed the former Skills below. Their full text is kept as stage references; nothing was summarized away.
+
+| Former Skill | Upstream repository | Commit | Upstream path | Upstream SKILL.md sha256 (first 16) |
+|---|---|---|---|---|
+| debugging-and-error-recovery | https://github.com/addyosmani/agent-skills | aeac41d4d005 | skills/debugging-and-error-recovery | 21f3960f5d7ae2cc |
+| observability-and-instrumentation | https://github.com/addyosmani/agent-skills | aeac41d4d005 | skills/observability-and-instrumentation | e7fcb0820306d462 |
+
+Adapter changes in the moved text: only statements that pointed to files "in this folder" or to sibling folders now point to `references/kit/`. The Agent Core integration paragraph of each former Skill is replaced by the single paragraph in SKILL.md.
+
+Restore: `skills(action=list_retired)` shows each retired original with its digest; `skills(action=rollback_revision, targetDigest=<retired digest>)` brings it back.

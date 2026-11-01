@@ -42,51 +42,49 @@ Indeks aktif di bawah menunjuk **39 capability** (36 Replica/Addy + 3 khusus), b
 
 Pemeriksaan relevansi semantik adalah kewajiban instruksi. Runtime memeriksa kelengkapan pembacaan dan revisi sebelum menerima klaim applied/adapted; ini tidak membuktikan manfaat atau menjamin kepatuhan host eksternal di luar Agent Core.
 
-## Replica — konteks rekonstruksi aplikasi
+## App replica — konteks rekonstruksi aplikasi
 
 | Capability | Tujuan |
 |---|---|
-| [replica-architect](../runtime/skills/catalog/replica-architect/SKILL.md) | Rancang stack, data dan API clone dari hasil recon. |
-| [replica-backend](../runtime/skills/catalog/replica-backend/SKILL.md) | Tambahkan auth, database, pembayaran dan integrasi backend clone. |
-| [replica-brand](../runtime/skills/catalog/replica-brand/SKILL.md) | Buat nama, warna, suara dan identitas asli bagi clone. |
-| [replica-build](../runtime/skills/catalog/replica-build/SKILL.md) | Bangun ulang layar dan flow clone sebagai potongan fungsional. |
-| [replica-deploy](../runtime/skills/catalog/replica-deploy/SKILL.md) | Siapkan deployment clone, domain dan pemeriksaan produksi. |
-| [replica-design](../runtime/skills/catalog/replica-design/SKILL.md) | Turunkan token desain dan spesifikasi komponen clone. |
-| [replica-diff](../runtime/skills/catalog/replica-diff/SKILL.md) | Bandingkan kelengkapan fitur dan layout clone dengan acuan. |
-| [replica-entrepreneur](../runtime/skills/catalog/replica-entrepreneur/SKILL.md) | Riset ulasan publik untuk gap produk dan positioning clone. |
-| [replica-launch](../runtime/skills/catalog/replica-launch/SKILL.md) | Siapkan landing page, harga dan listing peluncuran clone. |
-| [replica-recon](../runtime/skills/catalog/replica-recon/SKILL.md) | Petakan layar, flow dan fitur aplikasi acuan; app reconstruction/recon. |
-| [replica-test](../runtime/skills/catalog/replica-test/SKILL.md) | Uji flow, edge case dan bug clone dengan bukti e2e. |
+| [app-replica](../runtime/skills/catalog/app-replica/SKILL.md) | Bangun ulang aplikasi acuan sebagai clone milik sendiri: recon, riset ulasan, desain, arsitektur, backend, build, tes, parity, rebrand, peluncuran dan deploy (sebelas stage). |
 
 ## Engineering — pilih fase pekerjaan
 
 | Capability | Tujuan |
 |---|---|
 | [api-and-interface-design](../runtime/skills/catalog/api-and-interface-design/SKILL.md) | Rancang kontrak API, tipe dan batas modul yang stabil. |
-| [browser-testing-with-devtools](../runtime/skills/catalog/browser-testing-with-devtools/SKILL.md) | Verifikasi UI di browser nyata: DOM, console, network dan profil. |
-| [ci-cd-and-automation](../runtime/skills/catalog/ci-cd-and-automation/SKILL.md) | Rancang pipeline build, tes dan deployment otomatis. |
-| [code-review-and-quality](../runtime/skills/catalog/code-review-and-quality/SKILL.md) | Review diff untuk correctness, maintainability dan risiko regresi. |
-| [code-simplification](../runtime/skills/catalog/code-simplification/SKILL.md) | Kurangi kompleksitas kode sambil mempertahankan perilaku. |
+| [code-review-and-quality](../runtime/skills/catalog/code-review-and-quality/SKILL.md) | Review diff untuk correctness, maintainability dan risiko regresi; termasuk menyederhanakan kode tanpa mengubah perilaku. |
 | [constraint-driven-development](../runtime/skills/catalog/constraint-driven-development/SKILL.md) | Tetapkan standar mutu dan jaga agar pemeriksaan tidak dilemahkan. |
 | [context-engineering](../runtime/skills/catalog/context-engineering/SKILL.md) | Susun aturan, indeks dan konteks relevan secara bertingkat. |
-| [debugging-and-error-recovery](../runtime/skills/catalog/debugging-and-error-recovery/SKILL.md) | Reproduksi masalah, cari akar penyebab, perbaiki dan verifikasi. |
+| [debugging-and-observability](../runtime/skills/catalog/debugging-and-observability/SKILL.md) | Reproduksi masalah, cari akar penyebab, perbaiki dan verifikasi; tambahkan log, metrik, tracing dan sinyal kegagalan. |
+| [delivery-and-release](../runtime/skills/catalog/delivery-and-release/SKILL.md) | Rancang pipeline build, tes dan deployment otomatis; periksa kesiapan rilis, rollout, monitoring dan rollback. |
 | [deprecation-and-migration](../runtime/skills/catalog/deprecation-and-migration/SKILL.md) | Rencanakan penggantian API, sistem atau skema dengan transisi aman. |
 | [documentation-and-adrs](../runtime/skills/catalog/documentation-and-adrs/SKILL.md) | Catat perilaku, keputusan arsitektur dan bukti verifikasi. |
 | [doubt-driven-development](../runtime/skills/catalog/doubt-driven-development/SKILL.md) | Uji asumsi keputusan penting dengan review independen terarah. |
-| [frontend-ui-engineering](../runtime/skills/catalog/frontend-ui-engineering/SKILL.md) | Bangun UI responsif, aksesibel dan lengkap state-nya. |
+| [frontend-and-browser-testing](../runtime/skills/catalog/frontend-and-browser-testing/SKILL.md) | Bangun UI responsif, aksesibel dan lengkap state-nya; verifikasi di browser nyata: DOM, console, network dan profil. |
 | [git-workflow-and-versioning](../runtime/skills/catalog/git-workflow-and-versioning/SKILL.md) | Kelola branch, konflik, commit dan versi saat operasi Git diperlukan. |
-| [idea-refine](../runtime/skills/catalog/idea-refine/SKILL.md) | Kembangkan dan seleksi alternatif dari ide yang masih kasar. |
 | [incremental-implementation](../runtime/skills/catalog/incremental-implementation/SKILL.md) | Implementasikan perubahan bertahap dalam potongan kecil. |
-| [interview-me](../runtime/skills/catalog/interview-me/SKILL.md) | Gali kebutuhan ketika tujuan/pengguna belum jelas. |
-| [observability-and-instrumentation](../runtime/skills/catalog/observability-and-instrumentation/SKILL.md) | Tambahkan log, metrik, tracing dan sinyal kegagalan yang berguna. |
-| [performance-optimization](../runtime/skills/catalog/performance-optimization/SKILL.md) | Ukur bottleneck lalu optimalkan frontend, backend atau query. |
-| [planning-and-task-breakdown](../runtime/skills/catalog/planning-and-task-breakdown/SKILL.md) | Pecah kebutuhan jelas menjadi langkah yang dapat diverifikasi. |
+| [requirements-and-planning](../runtime/skills/catalog/requirements-and-planning/SKILL.md) | Gali kebutuhan, kembangkan ide kasar, tulis spesifikasi dan acceptance, lalu pecah menjadi tugas yang dapat diverifikasi. |
 | [security-and-hardening](../runtime/skills/catalog/security-and-hardening/SKILL.md) | Audit input, auth, dependency dan batas kepercayaan; perkuat kontrol. |
-| [shipping-and-launch](../runtime/skills/catalog/shipping-and-launch/SKILL.md) | Periksa kesiapan rilis, rollout, monitoring dan rollback. |
 | [source-driven-development](../runtime/skills/catalog/source-driven-development/SKILL.md) | Verifikasi keputusan API/library melalui dokumentasi resmi. |
-| [spec-driven-development](../runtime/skills/catalog/spec-driven-development/SKILL.md) | Tulis spesifikasi dan acceptance sebelum perubahan besar. |
 | [test-driven-development](../runtime/skills/catalog/test-driven-development/SKILL.md) | Buktikan bug/perilaku dengan tes gagal, lalu perbaikan terfokus. |
-| [using-agent-skills](../runtime/skills/catalog/using-agent-skills/SKILL.md) | Pilih workflow engineering dan urutan skill yang relevan. |
+
+### Penggabungan 2026-11-01
+
+Sejak 2026-11-01 indeks aktif menunjuk **20 capability** (1 app-replica, 16 engineering, 3 khusus); tabel 2026-10-25 di atas tentang 39 capability adalah riwayat. Dua puluh empat Skill yang isinya bersambung atau sama digabung menjadi lima Skill baru (`app-replica`, `requirements-and-planning`, `delivery-and-release`, `debugging-and-observability`, `frontend-and-browser-testing`) dan tiga Skill yang sudah ada menyerap satu referensi (`code-review-and-quality`, `performance-oriented-software-engineering`, `agent-core-capability-index`). Teks lengkap setiap Skill lama dipertahankan sebagai referensi stage; asal dan pin upstream ada di `references/merged-from.md` tiap pack. Skill lama dipensiunkan lewat `retire` (bukan dihapus) dan dapat dipulihkan dengan `list_retired` lalu `rollback_revision`.
+
+| Skill lama | Rumah baru |
+|---|---|
+| replica-recon, replica-entrepreneur, replica-design, replica-architect, replica-backend, replica-build, replica-test, replica-diff, replica-brand, replica-launch, replica-deploy | app-replica |
+| interview-me, idea-refine, spec-driven-development, planning-and-task-breakdown | requirements-and-planning |
+| ci-cd-and-automation, shipping-and-launch | delivery-and-release |
+| debugging-and-error-recovery, observability-and-instrumentation | debugging-and-observability |
+| frontend-ui-engineering, browser-testing-with-devtools | frontend-and-browser-testing |
+| code-simplification | code-review-and-quality |
+| performance-optimization | performance-oriented-software-engineering |
+| using-agent-skills | agent-core-capability-index |
+
+Nama lama yang masih muncul di teks upstream (checklist bersama, tautan antar-skill) dibaca sebagai Skill tujuan; peta yang sama ada di indeks ringkas.
 
 ## Satu produk, dua registrasi
 
@@ -101,8 +99,8 @@ Aturan ini disimpan di sini, bukan di `AGENTS.md`, supaya teks yang selalu dimua
 
 ## Sumber dan kompatibilitas
 
-- [Replica](https://github.com/Jakeschincariol/replica-skill), commit `77c9436fb3d18c3d58169efb8caf4fe906b0dc51`, MIT; 11 capability.
-- [Addy Agent Skills](https://github.com/addyosmani/agent-skills), commit `aeac41d4d005999432bb7312f7ff06383a91d59d`, MIT; 25 capability.
+- [Replica](https://github.com/Jakeschincariol/replica-skill), commit `77c9436fb3d18c3d58169efb8caf4fe906b0dc51`, MIT; 11 capability, kini stage dalam `app-replica`.
+- [Addy Agent Skills](https://github.com/addyosmani/agent-skills), commit `aeac41d4d005999432bb7312f7ff06383a91d59d`, MIT; 25 capability asal, kini 16 pack (dua lainnya masuk sebagai referensi `performance-oriented-software-engineering` dan `agent-core-capability-index`).
 - Sumber adapter: `runtime/skills/capability-packs`. Setiap paket menyimpan `UPSTREAM.json` dan lisensi; template, helper dan referensi tetap artifact-local.
 - Tool khusus Claude/Chrome DevTools dipetakan ke owner Agent Core yang tersedia. Browser memakai OBU latar belakang; profiling/network yang tidak didukung tetap dilaporkan unavailable. Contoh Bash disesuaikan ke PowerShell saat diperlukan.
 - Script tidak berjalan karena pemasangan atau routing semata; eksekusi mengikuti task relevan dan otorisasi yang ada. Tidak ada layanan, provider atau memory store kedua.
