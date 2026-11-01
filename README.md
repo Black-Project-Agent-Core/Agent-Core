@@ -185,6 +185,7 @@ Read the [security policy](SECURITY.md) for reporting and credential-handling gu
 - [External Memory and Learning guide](docs/memory/EXTERNAL-LEARNING-PRIORITIES.md) — task continuity, claim review and finalization.
 - [Capability index](docs/Capability-Index.md) — which Skill to read for which task, and how one product can be registered twice.
 - [Cloudflare Tunnel](docs/Cloudflare-Tunnel.md) and [Semantic IDE `servers.json`](docs/Semantic-IDE-Servers-File.md) — public access and extra language servers on Windows.
+- [Node.js and npm: one owner](docs/Node-Npm-Single-Owner.md) — `runtime/node` is the only Node/npm on the machine; register, verify and the install guard.
 - [Release notes](docs/releases/README.md) ([1.6.0](docs/releases/1.6.0.md)), [changelog](CHANGELOG.md), and [downloads](https://github.com/Black-Project-Agent-Core/Agent-Core/releases).
 - [Contributing](CONTRIBUTING.md) and [support](SUPPORT.md).
 
