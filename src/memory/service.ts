@@ -1503,9 +1503,9 @@ export class MemoryService {
       lap('rankAndValidate1');
       for (const result of rankedResults) {
         if (result.record.pinned||synthesisEligibility.summary().reasons.includes('deadline')) continue;
-        try {
-          result.record = await this.touch(result.record,result.record.category==='project-synthesis');
-        } catch (error) {
+        // Recency bookkeeping only (lastAccessedAt/retrievalCount); runs after the
+        // response so one slow full-store mutate() never blocks search latency.
+        void this.touch(result.record,result.record.category==='project-synthesis').catch((error) => {
           if(result.record.category==='project-synthesis')synthesisEligibility.omit(result.record,'unknown');
           const issue: MemoryIssue = {
             path: this.store.paths.root,
@@ -1513,7 +1513,7 @@ export class MemoryService {
             severity: 'degraded',
           };
           this.syncCanonicalIssues([...this.canonicalIssues, issue]);
-        }
+        });
       }
       lap('touchLoop');
       deliveryIds=new Set((await synthesisEligibility.validateDelivery(rankedResults.map(result=>result.record))).map(record=>record.id));
