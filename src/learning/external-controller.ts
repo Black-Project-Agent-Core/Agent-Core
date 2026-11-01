@@ -5,7 +5,7 @@ import {EXTERNAL_PROCEDURE_GUIDE,normalizeExternalProcedure} from './external-pr
 import { externalSkillGuidance } from '../skills/external-guidance.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { writeOwnedFileAtomic } from '../persistence/atomic-file.js';
 import { isNewState, writeStateFile } from '../persistence/state-file.js';
@@ -543,6 +543,9 @@ export class ExternalControllerLearningService {
   private readonly stagingRoot: string;
   private mutationTail = Promise.resolve();
   private bootstrapCache = new Map<string, { at: number; text: string }>();
+  /** Keyed by file mtimeMs: a load() hit returns a clone, never the live cached object,
+   * so no caller can leak an in-place mutation back into the cache without save(). */
+  private stateCache: { mtimeMs: number; state: ExternalControllerState } | null = null;
   /** Only planned Memory context holds this permit; unrelated tools remain independent. */
   private readonly plannedMemoryBusy = new Set<string>();
   private readonly plannedMemoryPending = new Map<string, Promise<unknown>>();
@@ -582,17 +585,26 @@ export class ExternalControllerLearningService {
 
   private async load(readOnly = false): Promise<ExternalControllerState> {
     try {
+      // The file only ever changes through save() in this process, so an unchanged
+      // mtime guarantees the cached (already parsed+normalized) state is still exact.
+      const fileStat = await stat(this.statePath).catch(() => null);
+      if (fileStat && this.stateCache && this.stateCache.mtimeMs === fileStat.mtimeMs) {
+        this.issue = null;
+        return structuredClone(this.stateCache.state);
+      }
       const parsed = JSON.parse(await readFile(this.statePath, 'utf8')) as ExternalControllerState;
       if (parsed.version !== STATE_VERSION) throw new Error('EXTERNAL_CONTROLLER_STATE_VERSION_UNSUPPORTED');
       if (parsed.workflowVersion !== undefined && parsed.workflowVersion !== 2) throw new Error('EXTERNAL_CONTROLLER_WORKFLOW_VERSION_UNSUPPORTED');
       if (!Array.isArray(parsed.episodes) || !Array.isArray(parsed.procedures)) throw new Error('EXTERNAL_CONTROLLER_STATE_SHAPE_INVALID');
       this.issue = null;
-      return {
+      const state: ExternalControllerState = {
         version: STATE_VERSION,
         episodes: Array.isArray(parsed.episodes) ? parsed.episodes.map(normalizeEpisode) : [],
         procedures: Array.isArray(parsed.procedures) ? parsed.procedures.map(normalizeProcedure) : [],
         sessionHeads: normalizeSessionHeads(parsed.sessionHeads),
       };
+      if (fileStat) this.stateCache = { mtimeMs: fileStat.mtimeMs, state: structuredClone(state) };
+      return state;
     } catch (error) {
       if (await isNewState(this.statePath, error)) { this.issue = null; return defaultState(); }
       this.issue = 'EXTERNAL_CONTROLLER_STATE_DEGRADED';
