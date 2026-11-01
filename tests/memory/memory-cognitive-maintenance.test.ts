@@ -335,6 +335,33 @@ describe('maintenance cycle', () => {
     expect(service.cognitiveStatus().lastCycle).toBe(rerun);
   });
 
+  it('does not resurrect a forgotten source canary through a newly created REM digest', async () => {
+    const { service } = await fixtures.service({ features: { remConsolidation: true } });
+    const canary = 'forgotten_rem_canary_aurora';
+    const members = [];
+    for (const name of ['first', 'second', 'third']) {
+      members.push(await service.remember({
+        content: name === 'first' ? `${canary} records an operator observation.` : `Episode ${name} records a related observation.`,
+        keywords: ['alpha', 'beta'], tags: ['ops', 'daily'], category: 'episodic', context: 'x',
+        provenance: { workspace: 'ops', files: [] },
+      }));
+    }
+    const forgotten = members[0]!;
+    await service.lifecycle(forgotten.id, 'forget-rem-canary-source', 'forget');
+    expect((await service.search(canary, { workspace: 'ops', limit: 20 }))
+      .some(result => result.record.id === forgotten.id)).toBe(false);
+
+    await service.runCognitiveMaintenance({ apply: true, remOnly: true });
+    const digests = (await service.list('ops')).filter(record => record.source?.type === REM_SOURCE_TYPE);
+    const stored = await Promise.all(digests.map(record => service.read(record.id, false)));
+    const recalled = await service.search(canary, { workspace: 'ops', limit: 20 });
+    expect({
+      storedCanaryDigests: stored.filter(record => record?.content.includes(canary)).length,
+      forgottenSourceLinks: stored.filter(record => record?.links.some(link => link.type === 'derived-from' && link.targetId === forgotten.id)).length,
+      recalledCanaryDigests: recalled.filter(result => result.record.source?.type === REM_SOURCE_TYPE && result.record.content.includes(canary)).length,
+    }).toEqual({ storedCanaryDigests: 0, forgottenSourceLinks: 0, recalledCanaryDigests: 0 });
+  });
+
   async function episodes(service: MemoryService) {
     return Promise.all(['first', 'second', 'third'].map((name) => service.remember({
       content: `Episode ${name} observed the old configuration.`, keywords: ['alpha', 'beta'], tags: ['ops', 'daily'],

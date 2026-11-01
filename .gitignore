@@ -57,3 +57,7 @@ SubProject/Agent-Code/*.WebView2/
 
 # Third-party Claude executable cache (see docs/PROJECT-STRUCTURE.md); a 216 MB binary is not source and exceeds the GitHub file limit.
 /claude.exe
+
+# Local Claude Code state (see docs/PROJECT-STRUCTURE.md): host settings and plugin hook cache, not Agent Core source.
+/.claude/
+/.impeccable/
