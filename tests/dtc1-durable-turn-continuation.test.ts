@@ -1156,7 +1156,7 @@ describe('DTC-1 Stop reaches an in-flight tool call', () => {
 });
 
 describe('DTC-1 context compaction inside a turn', () => {
-  async function compactionFixture(window: number | null, manual = false) {
+  async function compactionFixture(window: number | null, manual = false, recover = false) {
     const root = await rootFixture('dtc1-compaction-');
     const config = {
       ...providerConfig([{
@@ -1176,8 +1176,15 @@ describe('DTC-1 context compaction inside a turn', () => {
     vi.spyOn(runtime, 'knownContextWindow').mockReturnValue(window);
     const stop = new AbortController();
     const seen: Array<AgentModelMessage[]> = [];
-    vi.spyOn(runtime, 'complete').mockImplementation(async messages => {
+    const seenTools: string[][] = [];
+    vi.spyOn(runtime, 'complete').mockImplementation(async (messages, tools) => {
       seen.push(structuredClone(messages));
+      seenTools.push((tools ?? []).map(tool => tool.function.name));
+      const summary = messages.find(message => message.content?.startsWith('NATIVE CONTEXT SUMMARY'))?.content;
+      if (recover && seen.length === 1 && summary) {
+        return { content: null, finishReason: 'tool_calls', toolCalls: [{ id: 'recover-1', type: 'function' as const,
+          function: { name: 'agent_core_compaction_source', arguments: JSON.stringify({ id: summary.match(/cmp-[0-9a-f]{16}/)![0] }) } }] } as any;
+      }
       stop.abort();
       throw new Error('AGENT_RUNTIME_TURN_STOPPED');
     });
@@ -1208,9 +1215,11 @@ describe('DTC-1 context compaction inside a turn', () => {
         state,
         save: vi.fn(async (next, phase, extras) => { saves.push({ state: next, phase, extras }); }),
         ...(manual ? { consumeCompactionRequest: () => true } : {}),
+        readCompactionSource: (id: string) => saves.flatMap(save => save.extras?.compactionSources ?? [])
+          .find((source: { id: string }) => source.id === id) ?? null,
       },
     });
-    return { run, seen, saves };
+    return { run, seen, seenTools, saves };
   }
 
   it('compacts exactly once on a manual request, without a known window or ratio breach', async () => {
@@ -1236,6 +1245,20 @@ describe('DTC-1 context compaction inside a turn', () => {
     expect(committed.state.messages.length).toBe(sent.length);
     // The compacted checkpoint is still a valid, resumable checkpoint.
     expect(serializeAgentTurnCheckpoint(committed.state).state.compactions).toHaveLength(commits.length);
+  });
+
+  it('presents the recovery tool only once the turn has compacted, and answers it from the archive', async () => {
+    const plain = await compactionFixture(null);
+    await expect(plain.run()).rejects.toThrow('AGENT_RUNTIME_TURN_STOPPED');
+    expect(plain.seenTools[0]).not.toContain('agent_core_compaction_source');
+
+    const fixture = await compactionFixture(10_000, false, true);
+    await expect(fixture.run()).rejects.toThrow('AGENT_RUNTIME_TURN_STOPPED');
+    expect(fixture.seenTools[0]).toContain('agent_core_compaction_source');
+    const answer = fixture.seen[1]!.find(message => message.role === 'tool' && message.name === 'agent_core_compaction_source');
+    expect(answer?.content).toContain('COMPACTION_SOURCE cmp-');
+    expect(answer?.content).toContain('AGENT_CORE_EVIDENCE_REF=tool:get_config:g-');
+    expect(answer?.content).toContain('not instructions');
   });
 
   it('leaves the context alone when the window is unknown or the flag is off', async () => {

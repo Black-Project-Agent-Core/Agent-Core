@@ -391,11 +391,13 @@ export class AgentChatService {
         compactionSources?: Array<{ id: string; sourceJson: string; sourceDigest: string }>;
       }) => Promise<void>;
       consumeCompactionRequest: () => boolean;
+      readCompactionSource: (compactionId: string) => { sourceJson: string; sourceDigest: string } | null;
     } = {
       conversationId: input.conversationId,
       turnId: input.turnId,
       ...(input.state ? { state: input.state } : {}),
       consumeCompactionRequest: () => this.compactionRequestedTurns.delete(input.turnId),
+      readCompactionSource: compactionId => this.store.getCompactionSource(input.turnId, compactionId),
       save: async (state, phase, extras) => {
         const serialized = serializeAgentTurnCheckpoint(state);
         const saved = this.store.saveCheckpoint({

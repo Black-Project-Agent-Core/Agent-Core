@@ -12,6 +12,13 @@ export const HISTORY_SUMMARY_MARKER = 'NATIVE CONVERSATION SUMMARY';
  */
 export const COMPACTION_TRIGGER_RATIO = 1;
 
+/** Read-only control tool that returns the exact messages a turn compaction replaced; presented only once one exists. */
+export const COMPACTION_SOURCE_TOOL = 'agent_core_compaction_source';
+const DEFAULT_RECOVERY_CHARS = 6_000;
+const MAX_RECOVERY_CHARS = 12_000;
+/** Largest per-line cap multiplier tried while the digest still fits its budget (400/300/160/240 at 1). */
+const LINE_SCALES = [4, 3, 2] as const;
+
 const TURN_BUDGET_CHARS = 12_000;
 const HISTORY_BUDGET_CHARS = 8_000;
 const MIN_REPLACED_MESSAGES = 4;
@@ -67,35 +74,89 @@ export function presentedToolsFromSummary(content: string): string[] {
   return content.startsWith(TURN_SUMMARY_MARKER) ? listAfter(content, 'PRESENTED_TOOLS') : [];
 }
 
-function messageLines(message: AgentModelMessage): string[] {
+/** `scale` multiplies every per-line cap; 1 is the floor used when the digest is crowded. */
+function messageLines(message: AgentModelMessage, scale = 1): string[] {
   if (message.role === 'assistant') {
     return [
-      ...(message.content ? ['assistant: ' + flat(message.content, 300)] : []),
-      ...(message.tool_calls ?? []).map(call => 'call ' + call.function.name + '(' + flat(call.function.arguments, 160) + ')'),
+      ...(message.content ? ['assistant: ' + flat(message.content, 300 * scale)] : []),
+      ...(message.tool_calls ?? []).map(call => 'call ' + call.function.name + '(' + flat(call.function.arguments, 160 * scale) + ')'),
     ];
   }
   if (message.role === 'tool') {
     const body = (message.content ?? '').replace(/AGENT_CORE_EVIDENCE_REF=\S+/g, '')
       .replace(/\nFor verified finalization[\s\S]*$/, '');
-    return [(body.startsWith('TOOL_ERROR') ? 'result ERROR ' : 'result ') + (message.name ?? 'tool') + ': ' + flat(body, 240)];
+    return [(body.startsWith('TOOL_ERROR') ? 'result ERROR ' : 'result ') + (message.name ?? 'tool') + ': ' + flat(body, 240 * scale)];
   }
-  return message.role === 'user' ? ['user note: ' + flat(message.content, 400)] : [];
+  return message.role === 'user' ? ['user note: ' + flat(message.content, 400 * scale)] : [];
 }
 
-/** Keep the first lines (the goal) and as many of the newest lines as fit; say how many were dropped. */
+const sizeOf = (lines: string[]): number => lines.reduce((sum, line) => sum + line.length + 1, 0);
+const isPriorityLine = (line: string): boolean => line.startsWith('user note: ') || line.startsWith('result ERROR ');
+
+/**
+ * Keep the first lines (the goal), then user notes and ERROR results (at most half of what is left), then as many of
+ * the newest remaining lines as fit; say how many were dropped. Kept lines stay in their original order.
+ */
 function fitLines(lines: string[], budget: number): string[] {
-  let total = lines.reduce((sum, line) => sum + line.length + 1, 0);
-  if (total <= budget) return lines;
+  if (sizeOf(lines) <= budget) return lines;
   const head = lines.slice(0, KEEP_HEAD_LINES);
   const rest = lines.slice(KEEP_HEAD_LINES);
-  let used = head.reduce((sum, line) => sum + line.length + 1, 0) + 40;
-  const kept: string[] = [];
-  for (let index = rest.length - 1; index >= 0 && used + rest[index]!.length + 1 <= budget; index -= 1) {
-    kept.unshift(rest[index]!);
+  let used = sizeOf(head) + 40;
+  const priorityCap = used + Math.floor((budget - used) / 2);
+  const kept = new Set<number>();
+  for (let index = rest.length - 1; index >= 0; index -= 1) {
+    if (!isPriorityLine(rest[index]!) || used + rest[index]!.length + 1 > priorityCap) continue;
+    kept.add(index);
     used += rest[index]!.length + 1;
   }
-  total = rest.length - kept.length;
-  return [...head, '[... ' + total + ' earlier lines omitted ...]', ...kept];
+  for (let index = rest.length - 1; index >= 0; index -= 1) {
+    if (kept.has(index)) continue;
+    if (used + rest[index]!.length + 1 > budget) break;
+    kept.add(index);
+    used += rest[index]!.length + 1;
+  }
+  return [...head, '[... ' + (rest.length - kept.size) + ' earlier lines omitted ...]', ...rest.filter((_, index) => kept.has(index))];
+}
+
+/**
+ * One page of the exact messages a compaction replaced (the caller has already verified the archive digest).
+ * `offset` is a message index inside the replaced segment; text is redacted and bounded by `maxChars`.
+ */
+export function readCompactionSource(
+  sourceJson: string,
+  options: { offset?: number; maxChars?: number } = {},
+): { text: string; offset: number; nextOffset: number | null; total: number } | null {
+  let parsed: unknown;
+  try { parsed = JSON.parse(sourceJson); } catch { return null; }
+  if (!Array.isArray(parsed)) return null;
+  const offset = Math.max(0, Math.trunc(options.offset ?? 0));
+  if (offset >= parsed.length) return null;
+  const maxChars = Math.min(MAX_RECOVERY_CHARS, Math.max(500, Math.trunc(options.maxChars ?? DEFAULT_RECOVERY_CHARS)));
+  const pages: string[] = [];
+  let used = 0;
+  let index = offset;
+  for (; index < parsed.length; index += 1) {
+    let text = sourceMessageText(parsed[index] as AgentModelMessage, index);
+    const separator = pages.length ? 2 : 0;
+    if (pages.length && used + separator + text.length > maxChars) break;
+    if (text.length > maxChars) {
+      const suffix = '...[+' + (text.length - maxChars) + ' chars]';
+      text = text.slice(0, maxChars - suffix.length) + suffix;
+    }
+    pages.push(text);
+    used += separator + text.length;
+  }
+  return { text: pages.join('\n\n'), offset, nextOffset: index < parsed.length ? index : null, total: parsed.length };
+}
+
+function sourceMessageText(message: AgentModelMessage, index: number): string {
+  const parts: string[] = [];
+  if (typeof message?.content === 'string' && message.content) {
+    parts.push(message.role === 'tool' ? message.content.replace(/\nFor verified finalization[\s\S]*$/, '') : message.content);
+  }
+  for (const call of message?.tool_calls ?? []) parts.push('call ' + call.function.name + '(' + call.function.arguments + ')');
+  const body = redactSensitiveString(parts.join('\n')).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, ' ');
+  return '[' + index + '] ' + (message?.role ?? 'unknown') + (message?.name ? ' ' + message.name : '') + ': ' + body;
 }
 
 /**
@@ -132,10 +193,9 @@ export function compactTurnMessages(
   const previous = messages.slice(0, turnStart).filter(isTurnSummary);
   const refs = new Set<string>(previous.flatMap(item => listAfter(item.content ?? '', 'EVIDENCE')));
   const tools = new Set<string>(previous.flatMap(item => presentedToolsFromSummary(item.content ?? '')));
-  const lines: string[] = previous.map(item => 'earlier digest: ' + flat((item.content ?? '').split('\n')
+  const earlier: string[] = previous.map(item => 'earlier digest: ' + flat((item.content ?? '').split('\n')
     .filter(line => !/^(EVIDENCE|PRESENTED_TOOLS): /.test(line)).slice(1).join(' '), 3_000));
   for (const message of segment) {
-    lines.push(...messageLines(message));
     if (message.role !== 'tool') continue;
     for (const match of (message.content ?? '').matchAll(/AGENT_CORE_EVIDENCE_REF=(\S+)/g)) refs.add(match[1]!);
     const content = message.content ?? '';
@@ -143,11 +203,15 @@ export function compactTurnMessages(
       for (const name of content.slice('TOOLBOX_LOADED: '.length).split('\n', 1)[0]!.split(',')) if (name.trim()) tools.add(name.trim());
     } else if (message.name && message.name !== 'agent_core_toolbox') tools.add(message.name);
   }
+  const budget = options.budgetChars ?? TURN_BUDGET_CHARS;
+  const linesAt = (scale: number): string[] => [...earlier, ...segment.flatMap(message => messageLines(message, scale))];
+  const lines = LINE_SCALES.map(linesAt).find(candidate => sizeOf(candidate) <= budget) ?? linesAt(1);
   const body = [
     TURN_SUMMARY_MARKER + ' ' + id + ' - derived from ' + segment.length + ' earlier messages of this turn (indexes '
-      + turnStart + '..' + (tailStart - 1) + '). It can omit or distort facts; the exact source is archived with the turn checkpoint.'
+      + turnStart + '..' + (tailStart - 1) + '). It can omit or distort facts; the exact source is archived with the turn checkpoint'
+      + ' (recover it with ' + COMPACTION_SOURCE_TOOL + ' id=' + id + ').'
       + ' Evidence refs are exact and may be cited.',
-    ...fitLines(lines, options.budgetChars ?? TURN_BUDGET_CHARS),
+    ...fitLines(lines, budget),
     ...(refs.size ? ['EVIDENCE: ' + [...refs].slice(-MAX_LIST).join(' ')] : []),
     ...(tools.size ? ['PRESENTED_TOOLS: ' + [...tools].slice(-MAX_LIST).join(',')] : []),
   ].join('\n');

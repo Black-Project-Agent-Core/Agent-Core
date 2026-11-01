@@ -1,7 +1,7 @@
 # Perkuatan recall kompaksi konteks Native
 Tanggal: 2026-10-30
 Revisi: 1
-Status: APPROVED (revisi 1, scope P1+P2 build; belum diimplementasikan)
+Status: APPROVED (revisi 1, scope P1+P2 build); P1+P2 IMPLEMENTED IN SOURCE 2026-11-02, tes sempit lolos; belum di-build, belum aktif, verifikasi hidup OPEN
 Jenis: Improvement
 Asal dan bukti: `src/agent-context-compaction.ts` (batas per baris, `TURN_BUDGET_CHARS`, `compactTurnMessages`), `src/agent-chat-store.ts:327` dan `:674` (`chat_compaction_sources`, `getCompactionSource`), pesan pengguna 2026-10-30 (menyetujui alat pencarian riwayat chat).
 
@@ -45,9 +45,19 @@ Manfaat adalah harapan, belum terukur. P1 mengubah ringkasan yang lossy menjadi 
 - Verifikasi hidup: satu giliran panjang dengan `/compact`, lalu memanggil `compaction_source` dan memeriksa potongan yang kembali.
 - Rollback: kembalikan konstanta batas, hapus aksi `compaction_source`; tidak ada migrasi data.
 
+## Realisasi di source (2026-11-02)
+
+Observed: tes sempit lolos (`tests/agent-context-compaction.test.ts`, 3 tes digest dan 3 tes pemulihan baru; `tests/dtc1-durable-turn-continuation.test.ts`, satu tes integrasi baru; 20 tes bertema kompaksi lolos di tiga berkas). Tipe bersih (`tsc --noEmit`).
+
+- P1: alat kontrol baca-saja `agent_core_compaction_source` (id `cmp-…`, `offset` indeks pesan, `maxChars` 500 sampai 12.000). Penyimpangan dari teks revisi 1: "alat riwayat chat baca-saja" yang disebut di atas tidak ada di source, jadi aksinya hidup di alat kontrol tersendiri, ditangani inline di controller di samping `agent_core_toolbox` dan dipresentasikan hanya setelah turn punya digest kompaksi, sehingga risiko token schema di atas tidak berlaku sebelum kompaksi terjadi. Berlaku di mode `explicit` maupun `dynamic`. `getCompactionSource` memverifikasi digest dan terikat pada turn yang sama.
+- P2: batas per baris naik 4x, 3x, 2x selama digest muat anggaran 12.000 karakter; catatan pengguna dan hasil ERROR dipertahankan lebih dulu saat baris dibuang (paling banyak setengah sisa anggaran).
+- Tidak diubah: digest tingkat percakapan (`summarizeConversationPrefix`) tidak punya arsip untuk dipulihkan; P3 tetap ditunda.
+- OPEN: build resident dan verifikasi hidup (giliran panjang dengan `/compact`, lalu panggil alat); apakah model memanggil alat saat nuansa hilang belum diamati; manfaat belum terukur dan tidak diklaim.
+
 ## Riwayat revisi
 
 - Revisi 1 (2026-10-30): dokumen pertama.
+- Revisi 1 tetap berlaku (2026-11-02): P1+P2 diimplementasikan di source tanpa mengubah scope; penyimpangan lokasi alat dicatat di bagian Realisasi.
 
 ## Keputusan pengguna dan scope
 

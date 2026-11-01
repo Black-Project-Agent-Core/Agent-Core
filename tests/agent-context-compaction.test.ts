@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  boundedMessages, COMPACTION_TRIGGER_RATIO, compactionEnabled, compactTurnMessages, presentedToolsFromSummary,
-  summarizeConversationPrefix, TURN_SUMMARY_MARKER,
+  boundedMessages, COMPACTION_SOURCE_TOOL, COMPACTION_TRIGGER_RATIO, compactionEnabled, compactTurnMessages,
+  presentedToolsFromSummary, readCompactionSource, summarizeConversationPrefix, TURN_SUMMARY_MARKER,
 } from '../src/agent-context-compaction.js';
 import { AgentChatStore } from '../src/agent-chat-store.js';
 import { normalizeAgentTurnCheckpoint, serializeAgentTurnCheckpoint } from '../src/agent-turn-checkpoint.js';
@@ -126,6 +126,76 @@ describe('turn compaction', () => {
     const summary = result.messages[2]!.content!;
     expect(summary).toMatch(/\[\.\.\. \d+ earlier lines omitted \.\.\.\]/);
     expect(summary.length).toBeLessThan(3_000 + 3_000);
+  });
+});
+
+describe('digest fidelity', () => {
+  it('raises the per-line caps while the digest still fits its budget, and never exceeds the budget', () => {
+    const long = 'a'.repeat(1_000);
+    const messages = turn(6);
+    messages[3] = { role: 'assistant', content: long, tool_calls: messages[3]!.tool_calls! };
+    const roomy = compactTurnMessages(messages, { prompt: PROMPT, keepRecent: 2 })!.messages[2]!.content!;
+    expect(roomy).toContain('a'.repeat(900));
+    const tight = compactTurnMessages(messages, { prompt: PROMPT, keepRecent: 2, budgetChars: 700 })!.messages[2]!.content!;
+    expect(tight).not.toContain('a'.repeat(400));
+    const crowded = compactTurnMessages(turn(80), { prompt: PROMPT, keepRecent: 4, budgetChars: 3_000 })!.messages[2]!.content!;
+    expect(crowded.split('\n').slice(1, -2).join('\n').length).toBeLessThanOrEqual(3_000);
+  });
+
+  it('keeps user notes and ERROR results when ordinary lines are dropped', () => {
+    const messages = turn(60);
+    messages.splice(10, 0, { role: 'user', content: 'IMPORTANT-NOTE: keep the schema frozen.' });
+    messages[21] = { role: 'tool', name: 'read_file', tool_call_id: messages[21]!.tool_call_id!, content: 'TOOL_ERROR ENOENT-MARKER missing file' };
+    const summary = compactTurnMessages(messages, { prompt: PROMPT, keepRecent: 4, budgetChars: 3_000 })!.messages[2]!.content!;
+    expect(summary).toMatch(/\[\.\.\. \d+ earlier lines omitted \.\.\.\]/);
+    expect(summary).toContain('IMPORTANT-NOTE');
+    expect(summary).toContain('ENOENT-MARKER');
+  });
+
+  it('names the recovery tool and the compaction id in the turn digest header', () => {
+    const result = compactTurnMessages(turn(15), { prompt: PROMPT, keepRecent: 4 })!;
+    expect(result.messages[2]!.content).toContain(COMPACTION_SOURCE_TOOL + ' id=' + result.record.id);
+  });
+});
+
+describe('compaction source recovery', () => {
+  it('pages through the replaced messages with a next offset and stays inside the character cap', () => {
+    const result = compactTurnMessages(turn(30), { prompt: PROMPT, keepRecent: 4 })!;
+    const total = (JSON.parse(result.sourceJson) as unknown[]).length;
+    const first = readCompactionSource(result.sourceJson, { offset: 0, maxChars: 2_000 })!;
+    expect(first.total).toBe(total);
+    expect(first.text).toContain('[0] assistant');
+    expect(first.text.length).toBeLessThanOrEqual(2_000);
+    expect(first.nextOffset).toBeGreaterThan(0);
+    let page = first;
+    let guard = 0;
+    while (page.nextOffset !== null && guard++ < 200) {
+      page = readCompactionSource(result.sourceJson, { offset: page.nextOffset, maxChars: 2_000 })!;
+    }
+    expect(page.nextOffset).toBeNull();
+    expect(page.text).toContain(`[${total - 1}]`);
+  });
+
+  it('redacts credentials, drops finalization boilerplate and bounds a single oversized message', () => {
+    const secret = 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789';
+    const source = JSON.stringify([
+      { role: 'tool', name: 'read_file', tool_call_id: 'c1', content: 'key ' + secret + '\n\nAGENT_CORE_EVIDENCE_REF=tool:read_file:c1\nFor verified finalization, copy this exact ref.' },
+      { role: 'assistant', content: 'b'.repeat(50_000) },
+    ]);
+    const page = readCompactionSource(source, { offset: 0, maxChars: 3_000 })!;
+    expect(page.text).not.toContain(secret);
+    expect(page.text).toContain('AGENT_CORE_EVIDENCE_REF=tool:read_file:c1');
+    expect(page.text).not.toContain('For verified finalization');
+    expect(page.text.length).toBeLessThanOrEqual(3_000);
+    const second = readCompactionSource(source, { offset: 1, maxChars: 3_000 })!;
+    expect(second.text.length).toBeLessThanOrEqual(3_000);
+    expect(second.nextOffset).toBeNull();
+  });
+
+  it('returns null for an unreadable source or an offset past the end', () => {
+    expect(readCompactionSource('not json', { offset: 0 })).toBeNull();
+    expect(readCompactionSource('{}', { offset: 0 })).toBeNull();
+    expect(readCompactionSource(JSON.stringify([{ role: 'user', content: 'x' }]), { offset: 5 })).toBeNull();
   });
 });
 

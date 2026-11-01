@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [minor] Native turn compaction is recoverable and more faithful: new read-only control tool `agent_core_compaction_source` (presented only after the turn compacted; returns the digest-verified, redacted replaced messages in pages) and a digest that raises its per-line caps while it fits the budget and keeps user notes and ERROR results first when lines are dropped. Proposal `Perkuatan-Recall-Kompaksi-Native.md` P1+P2; P3 stays deferred.
+
 - [minor] Added the Plan mode toggle (C# + UI): a second composer button next to Goals (ClipboardList icon, "Plan mode" aria-label, same disabled rule as Goals) that turns on `planMode` for the next turn and turns Goals off, and vice versa. The launcher forwards `planMode` to Core exactly like `goalMode`. Tests: `src/ui/src/App.test.tsx` (mutual exclusion both directions, request shape); 239/239 UI tests and 64/64 C# launcher tests pass.
 
 - [minor] Added Plan mode (server): a per-turn `planMode` boolean (mutually exclusive with `goalMode`) that makes Native investigate read-only and close with a numbered plan instead of changing anything. Every tool call that would mutate is refused with `PLAN_MODE_READ_ONLY` before dispatch, regardless of grant; a fully-mutating tool's schema is left out of what the model is shown, while a mixed tool like `skills` stays visible for its read actions. The mode survives a turn resume. `POST /agent/chat/conversations/:id/turns` accepts `planMode` (400 if not boolean, 400 if sent with `goalMode`). Tests: `tests/agent-tool-session.test.ts`, `tests/agent-controller.test.ts`, `tests/dtc1-durable-turn-continuation.test.ts`, `tests/agent-chat-plan-mode-route.test.ts`.
