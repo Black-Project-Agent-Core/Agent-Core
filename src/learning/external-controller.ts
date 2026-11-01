@@ -629,6 +629,11 @@ export class ExternalControllerLearningService {
       sessionHeads: normalizeSessionHeads(state.sessionHeads),
     };
     await writeStateFile(this.statePath, normalized, { compact: true });
+    // Push the just-written state straight into the cache instead of relying on a later
+    // load() to notice via mtime: two saves close enough together can share the same
+    // filesystem timestamp, which would otherwise serve the pre-write state as "current".
+    const postStat = await stat(this.statePath).catch(() => null);
+    if (postStat) this.stateCache = { mtimeMs: postStat.mtimeMs, state: structuredClone(normalized) };
   }
 
   private async mutate<T>(fn: (state: ExternalControllerState) => T | Promise<T>, observerExpiresAt?: number): Promise<T> {
