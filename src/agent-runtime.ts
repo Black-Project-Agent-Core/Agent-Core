@@ -186,6 +186,37 @@ const MAX_TEXT = 200;
 const MAX_SUMMARY = 2_000;
 const MUTATION_TAILS = new Map<string, Promise<void>>();
 
+/**
+ * Normalizing a task with a long episode history takes several milliseconds, and every mutate normalized every task twice
+ * (load and save), so one small update cost seconds once the state held a few hundred tasks. Task normalization is pure for
+ * a given input, so a task whose serialized input is unchanged reuses its earlier result. The result is kept as text and
+ * parsed afresh on each reuse: a caller that edits a returned task in place can never change what a later call sees.
+ * Validation of ids, session membership and status still runs on every call. AGENT_CORE_RUNTIME_NORMALIZE_CACHE=off disables this.
+ */
+const TASK_NORMALIZATION_CACHE = new Map<string, { input: string; output: string }>();
+const taskNormalizationCounts = { computed: 0, reused: 0 };
+const taskNormalizationCacheEnabled = () => (process.env.AGENT_CORE_RUNTIME_NORMALIZE_CACHE ?? '').trim().toLowerCase() !== 'off';
+export function taskNormalizationStats(): { computed: number; reused: number; cached: number } {
+  return { ...taskNormalizationCounts, cached: TASK_NORMALIZATION_CACHE.size };
+}
+function taskCacheKey(record: unknown): string | undefined {
+  if (!taskNormalizationCacheEnabled()) return undefined;
+  try { return JSON.stringify(record); } catch { return undefined; }
+}
+function reuseNormalizedTask<T>(id: string, input: string | undefined): T | undefined {
+  const known = input === undefined ? undefined : TASK_NORMALIZATION_CACHE.get(id);
+  if (!known || known.input !== input) return undefined;
+  taskNormalizationCounts.reused += 1;
+  return JSON.parse(known.output) as T;
+}
+function rememberNormalizedTask<T>(id: string, input: string | undefined, output: T): T {
+  taskNormalizationCounts.computed += 1;
+  if (input === undefined) return output;
+  try { TASK_NORMALIZATION_CACHE.set(id, { input, output: JSON.stringify(output) }); }
+  catch { TASK_NORMALIZATION_CACHE.delete(id); }
+  return output;
+}
+
 function iso(value: unknown): string {
   if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) throw new Error('AGENT_RUNTIME_TIMESTAMP_INVALID');
   return new Date(value).toISOString();
@@ -355,7 +386,7 @@ function normalizePendingProcedure(raw: unknown): NonNullable<FinalizeTaskInput[
     ...(value?.reuseCondition ? { reuseCondition: cleanSummary(value.reuseCondition, 2_000) } : {}) };
 }
 
-function normalizeState(value: unknown): AgentRuntimeState {
+export function normalizeState(value: unknown): AgentRuntimeState {
   if (!value || typeof value !== 'object') throw new Error('AGENT_RUNTIME_STATE_INVALID');
   const raw = value as Partial<AgentRuntimeState>;
   if (raw.version !== 1) throw new Error('AGENT_RUNTIME_STATE_VERSION_UNSUPPORTED');
@@ -395,7 +426,10 @@ function normalizeState(value: unknown): AgentRuntimeState {
     if (reason && !['task-complete','user-correction','verified-recovery','explicit-learn'].includes(reason)) {
       throw new Error('AGENT_RUNTIME_FINALIZATION_REASON_INVALID');
     }
-    return {
+    const cacheInput = taskCacheKey(record);
+    const reused = reuseNormalizedTask<AgentRuntimeTask>(id, cacheInput);
+    if (reused) return reused;
+    const normalizedTask = {
       id,
       sessionId,
       ...(cleanOptional(record.workspace) ? { workspace: cleanOptional(record.workspace) } : {}),
@@ -438,7 +472,13 @@ function normalizeState(value: unknown): AgentRuntimeState {
         ...(cleanOptional(finalization.issue) ? { issue: cleanOptional(finalization.issue) } : {}),
       },
     };
+    return rememberNormalizedTask(id, cacheInput, normalizedTask);
   }) : [];
+  // Bound the cache to tasks that still exist (the state itself is bounded by MAX_TASKS).
+  if (TASK_NORMALIZATION_CACHE.size > tasks.length + 256) {
+    const live = new Set(tasks.map(task => task.id));
+    for (const cachedId of TASK_NORMALIZATION_CACHE.keys()) if (!live.has(cachedId)) TASK_NORMALIZATION_CACHE.delete(cachedId);
+  }
   const procedures = (Array.isArray(raw.procedures) ? raw.procedures : []).map(item => {
     const normalized = normalizeProcedure(item);
     if (!normalized) throw new Error('AGENT_RUNTIME_PROCEDURE_INVALID');
