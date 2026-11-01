@@ -11,6 +11,29 @@ public static class CloudflaredLaunch
     public static string LogPath(string root) =>
         Path.Combine(root, "runtime", "tools", "cloudflared", "cloudflared.log");
 
+    // Service command lines may contain a token; match ownership inside PowerShell and return metadata only.
+    public static string ServiceQueryScript(string root, bool startIfStopped = false)
+    {
+        var executable = ExecutablePath(root).Replace("'", "''");
+        var start = startIfStopped
+            ? "if($service.State -eq 'Stopped') { $null=Start-Service -Name $service.Name -ErrorAction Stop; " +
+              "$service=Get-CimInstance Win32_Service -Filter \"Name='Cloudflared'\" -ErrorAction Stop; " +
+              "if($null -eq $service) { throw 'Service disappeared' } };"
+            : string.Empty;
+        return "$ErrorActionPreference='Stop';try { " +
+            $"$expected='{executable}';" +
+            "$service=Get-CimInstance Win32_Service -Filter \"Name='Cloudflared'\" -ErrorAction Stop;" +
+            "if($null -eq $service) { 'null';exit 0 };" +
+            "if([string]::IsNullOrWhiteSpace([string]$service.PathName)) { throw 'Service identity unavailable' };" +
+            "$command=([string]$service.PathName).TrimStart();" +
+            "$prefix=if($command.StartsWith('\"')) { '\"'+$expected+'\"' } else { $expected };" +
+            "$owned=$command.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase) -and " +
+            "($command.Length -eq $prefix.Length -or [char]::IsWhiteSpace($command[$prefix.Length]));" +
+            "if(-not $owned) { 'null';exit 0 };" + start +
+            "$service | Select-Object Name,State,ProcessId | ConvertTo-Json -Compress" +
+            " } catch { [Console]::Error.WriteLine('Cloudflared service query failed.');exit 1 }";
+    }
+
     // The token reaches cloudflared through TUNNEL_TOKEN or --token-file, never the command line,
     // because the command line of any process is readable by other processes.
     // Null when no token is configured: the Cloudflare tunnel is optional.

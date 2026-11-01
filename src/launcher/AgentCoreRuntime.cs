@@ -43,6 +43,7 @@ public sealed class AgentCoreRuntime : IDisposable
     private bool _shutdownRequested;
     private bool _coreStoppedByUser;
     private readonly CancellationTokenSource _watchdogCancellation = new();
+    private Task? _watchdogTask;
     private bool _disposed;
 
     public AgentCoreRuntime(string root)
@@ -67,6 +68,9 @@ public sealed class AgentCoreRuntime : IDisposable
 
     public async Task InitializeAsync()
     {
+        // Recovery must survive a cold-start timeout; the same lifecycle lock keeps it from racing startup.
+        var recoveryToken = _watchdogCancellation.Token;
+        _watchdogTask ??= Task.Run(() => WatchdogLoopAsync(recoveryToken));
         await RunLifecycleAsync(async () =>
         {
             AddLog("SYSTEM", "sys", "Agent Core desktop initialized");
@@ -94,8 +98,6 @@ public sealed class AgentCoreRuntime : IDisposable
                 "success",
                 "Agent Core HTTP endpoint, public MCP gateway and tunnel are reachable; Execution readiness is reported by /health");
         });
-        // Started only after a successful bring-up, so a failed startup is reported instead of retried silently.
-        _ = Task.Run(() => WatchdogLoopAsync(_watchdogCancellation.Token));
         // Fixed fixture setup is fail-soft and runs after ordinary services start.
         await SymlinkFixtureSetup.EnsureAsync(Root, (level, message) => AddLog("FIXTURE", level, message));
     }
@@ -713,7 +715,7 @@ public sealed class AgentCoreRuntime : IDisposable
                 {
                     if (!_coreStoppedByUser && !await IsCoreReadyAsync())
                     {
-                        AddLog("WATCHDOG", "warn", "Agent Core is not responding; starting it again", "watchdog-core-restart");
+                        AddLog("WATCHDOG", "warn", "Agent Core is not ready; recovering the owned runtime", "watchdog-core-restart");
                         await EnsureCoreAsync();
                     }
                     if (!await IsPublicGatewayReadyAsync())
@@ -722,7 +724,12 @@ public sealed class AgentCoreRuntime : IDisposable
                         await EnsurePublicGatewayAsync();
                     }
                     // Only a dead process is restarted: cloudflared reconnects to the edge by itself.
-                    await EnsureCloudflaredAsync();
+                    try { await EnsureCloudflaredAsync(); }
+                    catch (Exception error) when (error is not OperationCanceledException)
+                    {
+                        CaptureFailure("CLOUDFLARE", error, "watchdog-cloudflared-recovery-failed");
+                    }
+                    if (!_coreStoppedByUser && !await IsTunnelReadyAsync()) await EnsureTunnelAsync();
                 });
             }
             catch (OperationCanceledException) when (_shutdownRequested) { return; }
@@ -815,6 +822,12 @@ public sealed class AgentCoreRuntime : IDisposable
     private async Task<bool> EnsureCloudflaredAsync()
     {
         ThrowIfShutdownRequested();
+        var service = await GetCloudflaredServiceAsync(startIfStopped: true);
+        if (service is not null)
+        {
+            if (service.State is "Running" or "Start Pending") return true;
+            throw new InvalidOperationException($"Project Cloudflared Windows service is {service.State}; no duplicate connector was started.");
+        }
         var executable = CloudflaredLaunch.ExecutablePath(Root);
         if (!File.Exists(executable)) return false;
         if (GetCloudflaredProcessIds(executable).Count > 0) return true;
@@ -839,8 +852,17 @@ public sealed class AgentCoreRuntime : IDisposable
 
     private async Task StopCloudflaredAsync()
     {
+        // SCM can replace its PID during enumeration; leave a service-managed executable to SCM.
+        if (await GetCloudflaredServiceAsync() is not null) return;
         foreach (var pid in GetCloudflaredProcessIds(CloudflaredLaunch.ExecutablePath(Root)))
             await KillProcessTreeBoundedAsync(pid);
+    }
+
+    private async Task<CloudflaredServiceInfo?> GetCloudflaredServiceAsync(bool startIfStopped = false)
+    {
+        var json = await RunPowerShellAsync(CloudflaredLaunch.ServiceQueryScript(Root, startIfStopped));
+        if (string.IsNullOrWhiteSpace(json)) throw new InvalidOperationException("Cloudflared service identity is unavailable.");
+        return JsonSerializer.Deserialize<CloudflaredServiceInfo>(json);
     }
 
     // Exact project-local executable only: another cloudflared on this PC is never touched.
@@ -1495,10 +1517,12 @@ public sealed class AgentCoreRuntime : IDisposable
 
     private async Task<IReadOnlyList<OwnedProcessInfo>> GetOwnedResidualProcessesAsync()
     {
+        var managedCloudflared = await GetCloudflaredServiceAsync();
         var script = string.Join(
             ";",
             $"$root={PowerShellQuote(Root)}",
             $"$current={Environment.ProcessId}",
+            $"$manageCloudflaredChild={(managedCloudflared is null ? "$true" : "$false")}",
             @"$launcher=Join-Path $root 'Agent Core.exe'",
             @"$node=Join-Path $root 'runtime\node\node.exe'",
             @"$coreEntry=Join-Path $root 'dist\index.js'",
@@ -1513,7 +1537,7 @@ public sealed class AgentCoreRuntime : IDisposable
                 "$ep=[string]$_.ExecutablePath; $cl=[string]$_.CommandLine; " +
                 "[int]$_.ProcessId -ne $current -and (" +
                     "($ep -and $ep.Equals($tunnel,[StringComparison]::OrdinalIgnoreCase)) -or " +
-                    "($ep -and $ep.Equals($cloudflared,[StringComparison]::OrdinalIgnoreCase)) -or " +
+                    "($manageCloudflaredChild -and $ep -and $ep.Equals($cloudflared,[StringComparison]::OrdinalIgnoreCase)) -or " +
                     "($ep -and $ep.StartsWith($grafelRoot,[StringComparison]::OrdinalIgnoreCase)) -or " +
                     "($ep -and $ep.StartsWith($semanticRoot,[StringComparison]::OrdinalIgnoreCase)) -or " +
                     "($ep -and $ep.Equals($node,[StringComparison]::OrdinalIgnoreCase) -and $cl.IndexOf($coreEntry,[StringComparison]::OrdinalIgnoreCase) -ge 0) -or " +
@@ -1615,6 +1639,7 @@ public sealed class AgentCoreRuntime : IDisposable
         string Puppeteer);
     private sealed record PortProcessInfo(int ProcessId, string? ExecutablePath, string? CommandLine);
     private sealed record OwnedProcessInfo(int ProcessId, string? ExecutablePath, string? CommandLine);
+    private sealed record CloudflaredServiceInfo(string Name, string State, int ProcessId);
 
     private async Task<string> ResolveNodeAsync()
     {
