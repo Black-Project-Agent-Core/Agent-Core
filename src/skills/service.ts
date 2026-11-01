@@ -27,6 +27,7 @@ const MAX_ARCHIVE_BYTES = 32 * 1024 * 1024;
 const MAX_FRONTMATTER_BYTES = 64 * 1024;
 const INTERNAL_META = '.agent-core-skill.json';
 const REVISION_META = '.agent-core-revision.json';
+const RETIREMENT_META = 'retired.json';
 const EXPORT_MANIFEST = 'manifest.json';
 const MAX_SKILL_REVISIONS = 8;
 const SKILL_EXPORT_PROFILES = {
@@ -472,6 +473,18 @@ interface SkillRevisionMetadata {
   evidenceRefs: string[];
   previousDigest?: string;
 }
+/** Why an active Skill left the catalog; written next to its revisions so that rollback can bring it back. */
+export interface SkillRetirementRecord {
+  version: 1;
+  name: string;
+  digest: string;
+  retiredAt: string;
+  evidenceRefs: string[];
+  supersededBy?: string;
+}
+export interface SkillRetirementListing extends SkillRetirementRecord {
+  history: Array<{ digest: string; createdAt?: string }>;
+}
 function normalizeSkillDigest(raw: string): string {
   const value = raw.trim().toLowerCase();
   if (!/^sha256:[0-9a-f]{64}$/.test(value)) throw new Error('SKILL_REVISION_DIGEST_INVALID');
@@ -520,6 +533,23 @@ async function writeScannedSkillTree(
       JSON.stringify(revision, null, 2) + '\n',
       { mode: 0o600 },
     );
+  }
+}
+async function readRetirementRecord(file: string): Promise<SkillRetirementRecord | null> {
+  try {
+    const raw = JSON.parse(await readFile(file, 'utf8')) as Partial<SkillRetirementRecord>;
+    if (raw.version !== 1 || typeof raw.name !== 'string' || typeof raw.digest !== 'string'
+      || typeof raw.retiredAt !== 'string' || !Number.isFinite(Date.parse(raw.retiredAt)) || !Array.isArray(raw.evidenceRefs)) return null;
+    return {
+      version: 1,
+      name: validateName(raw.name),
+      digest: normalizeSkillDigest(raw.digest),
+      retiredAt: new Date(raw.retiredAt).toISOString(),
+      evidenceRefs: raw.evidenceRefs.map(String).slice(0, 32),
+      ...(typeof raw.supersededBy === 'string' ? { supersededBy: validateName(raw.supersededBy) } : {}),
+    };
+  } catch {
+    return null;
   }
 }
 async function readRevisionMetadata(directory: string): Promise<SkillRevisionMetadata | null> {
@@ -1052,6 +1082,8 @@ export class SkillService {
       } finally {
         await rm(staging, { recursive: true, force: true }).catch(() => undefined);
       }
+      // A name that is active again is no longer retired.
+      await rm(path.join(this.revisionRoot, scanned.metadata.name, RETIREMENT_META), { force: true }).catch(() => undefined);
       return { ...summary(scanned, sourceProvenance), status: 'imported' as const, ...(plugin ? { adaptation: plugin.report } : {}) };
     });
   }
@@ -1353,6 +1385,8 @@ export class SkillService {
     return this.withRevisionLock(name, async () => {
       if (confirmation !== 'ROLLBACK_SKILL_REVISION') throw new Error('SKILL_REVISION_ROLLBACK_CONFIRMATION_REQUIRED');
       const paths = this.revisionPaths(name);
+      const retired = await readRetirementRecord(path.join(paths.root, RETIREMENT_META));
+      if (retired && !await this.directoryExists(paths.active)) return this.restoreRetired(paths, retired, targetDigest, expectedActiveDigest);
       const target = normalizeSkillDigest(targetDigest);
       const sourceDirectory = path.join(paths.history, digestSegment(target));
       const metadata = await readRevisionMetadata(sourceDirectory);
@@ -1372,6 +1406,119 @@ export class SkillService {
         )),
       };
     });
+  }
+
+  /**
+   * Takes an active Skill out of the catalog without deleting anything: the exact active tree is archived in the
+   * revision history first, and a retirement record keeps the reason. Rollback with the retired digest restores it.
+   */
+  async retireSkill(
+    name: string,
+    expectedActiveDigest: string,
+    confirmation: string,
+    evidenceRefs: string[],
+    supersededBy?: string,
+  ) {
+    return this.withRevisionLock(name, async () => {
+      if (confirmation !== 'RETIRE_SKILL') throw new Error('SKILL_RETIREMENT_CONFIRMATION_REQUIRED');
+      const evidence = normalizeEvidenceRefs(evidenceRefs);
+      const paths = this.revisionPaths(name);
+      const successor = supersededBy === undefined ? undefined : validateName(supersededBy);
+      if (successor === paths.normalized) throw new Error('SKILL_RETIREMENT_SUCCESSOR_INVALID');
+      const active = await scanDirectory(paths.active);
+      if (active.digest !== normalizeSkillDigest(expectedActiveDigest)) throw new Error('SKILL_REVISION_ACTIVE_DIGEST_MISMATCH');
+      if (successor) {
+        try { await this.scanActive(successor); }
+        catch { throw new Error('SKILL_RETIREMENT_SUCCESSOR_NOT_ACTIVE'); }
+      }
+      await this.archiveActive(paths.normalized, evidence);
+      const record: SkillRetirementRecord = {
+        version: 1,
+        name: paths.normalized,
+        digest: active.digest,
+        retiredAt: new Date().toISOString(),
+        evidenceRefs: evidence,
+        ...(successor ? { supersededBy: successor } : {}),
+      };
+      const backup = path.join(this.stagingRoot, `retire-${paths.normalized}-${randomUUID()}`);
+      await rename(paths.active, backup);
+      try {
+        await writeOwnedFileAtomic(path.join(paths.root, RETIREMENT_META), JSON.stringify(record, null, 2) + '\n', { mode: 0o600 });
+      } catch (error) {
+        // The record is the only trace of the retirement: without it the Skill must stay active.
+        await rename(backup, paths.active);
+        throw error;
+      }
+      this.activeScans.delete(paths.normalized);
+      await rm(backup, { recursive: true, force: true }).catch(() => undefined);
+      return {
+        status: 'retired' as const,
+        name: paths.normalized,
+        digest: active.digest,
+        retiredAt: record.retiredAt,
+        evidenceRefs: evidence,
+        ...(successor ? { supersededBy: successor } : {}),
+      };
+    });
+  }
+
+  async listRetired(): Promise<SkillRetirementListing[]> {
+    if (!await this.directoryExists(this.revisionRoot)) return [];
+    const output: SkillRetirementListing[] = [];
+    for (const entry of await readdir(this.revisionRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      let name: string;
+      try { name = validateName(entry.name); } catch { continue; }
+      const record = await readRetirementRecord(path.join(this.revisionRoot, name, RETIREMENT_META));
+      if (!record || await this.directoryExists(path.join(this.catalogRoot, name))) continue;
+      const history: SkillRetirementListing['history'] = [];
+      const historyRoot = path.join(this.revisionRoot, name, 'history');
+      if (await this.directoryExists(historyRoot)) {
+        for (const item of await readdir(historyRoot, { withFileTypes: true })) {
+          if (!item.isDirectory()) continue;
+          const metadata = await readRevisionMetadata(path.join(historyRoot, item.name));
+          if (metadata) history.push({ digest: metadata.digest, createdAt: metadata.createdAt });
+        }
+      }
+      history.sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')) || a.digest.localeCompare(b.digest));
+      output.push({ ...record, history });
+    }
+    return output.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private async restoreRetired(
+    paths: ReturnType<SkillService['revisionPaths']>,
+    retired: SkillRetirementRecord,
+    targetDigest: string,
+    expectedActiveDigest: string,
+  ) {
+    // There is no active tree: the retired digest stands in for it as the state the caller must have seen.
+    if (normalizeSkillDigest(expectedActiveDigest) !== retired.digest) throw new Error('SKILL_REVISION_ACTIVE_DIGEST_MISMATCH');
+    const target = normalizeSkillDigest(targetDigest);
+    const sourceDirectory = path.join(paths.history, digestSegment(target));
+    const metadata = await readRevisionMetadata(sourceDirectory);
+    if (!metadata || metadata.kind !== 'history' || metadata.digest !== target) throw new Error('SKILL_REVISION_HISTORY_NOT_FOUND');
+    const candidate = await scanDirectory(sourceDirectory);
+    if (candidate.metadata.name !== paths.normalized || candidate.digest !== target) throw new Error('SKILL_REVISION_CANDIDATE_MISMATCH');
+    const provenance = await readSkillSourceProvenance(sourceDirectory);
+    const activation = path.join(this.stagingRoot, `restore-${paths.normalized}-${randomUUID()}`);
+    try {
+      await writeScannedSkillTree(candidate, activation, undefined, provenance);
+      await rename(activation, paths.active);
+    } finally {
+      await rm(activation, { recursive: true, force: true }).catch(() => undefined);
+    }
+    await rm(path.join(paths.root, RETIREMENT_META), { force: true });
+    this.activeScans.delete(paths.normalized);
+    return {
+      status: 'rolled-back' as const,
+      targetDigest: target,
+      active: summary(candidate, provenance),
+      previousDigest: retired.digest,
+      evidenceRefs: metadata.evidenceRefs.length ? metadata.evidenceRefs : ['rollback-history'],
+      sourceLineageChanged: false,
+      restoredFromRetirement: true as const,
+    };
   }
 
   async renderExport(name: string, profile: SkillExportProfile): Promise<SkillExportResult> {

@@ -39,7 +39,7 @@ function markNativeSkills<T extends { name: string }>(items: T[], settings?: Nat
     : { ...item, nativeEnabled: true });
 }
 
-const READ_ONLY_ACTIONS =new Set(['status', 'list', 'inspect', 'search', 'read', 'validate', 'list_revisions', 'proposals', 'self_awareness', 'explain_improvement']);
+const READ_ONLY_ACTIONS =new Set(['status', 'list', 'inspect', 'search', 'read', 'validate', 'list_revisions', 'list_retired', 'proposals', 'self_awareness', 'explain_improvement']);
 
 export function registerSkillsTools(
   server: McpServer,
@@ -88,6 +88,8 @@ export function registerSkillsTools(
         case 'list_revisions': result = await service.listRevisions(input.name!); break;
         case 'promote_revision': result = await service.promoteRevision(input.name!, input.candidateDigest!, input.expectedActiveDigest!, input.confirmation!, input.sourceChangeConfirmation); break;
         case 'rollback_revision': result = await service.rollbackRevision(input.name!, input.targetDigest!, input.expectedActiveDigest!, input.confirmation!); break;
+        case 'retire': result = await service.retireSkill(input.name!, input.expectedActiveDigest!, input.confirmation!, input.evidenceRefs!, input.supersededBy); break;
+        case 'list_retired': result = await service.listRetired(); break;
       }
       const prepared = text(result, input.action === 'search' || input.action === 'read');
       activityTracker.record('SKILLS', 'success', 'skills operation completed', 'skills-tool', {

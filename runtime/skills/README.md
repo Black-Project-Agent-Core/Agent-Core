@@ -8,6 +8,7 @@ Folder ini adalah rumah Skill yang pertama dipakai dan harus dihormati. Setelah 
 | `catalog/<skill-name>/` | Artifact aktif immutable; import/promote/rollback oleh SkillService. |
 | `revisions/<skill-name>/staged/<digest>/` | Kandidat revisi tervalidasi; staging oleh SkillService. |
 | `revisions/<skill-name>/history/<digest>/` | Snapshot revisi terdahulu untuk rollback; dikelola SkillService. |
+| `revisions/<skill-name>/retired.json` | Catatan pensiun (alasan, bukti, pengganti); ditulis `retire`, dihapus saat dipulihkan atau diimpor ulang. |
 | `.staging/` | Transaksi tulis/aktivasi dan build proposal sementara; bukan sumber permanen. |
 | `packages/` | Artifact `.skill` keluaran packaging SkillService. |
 | `exports/claude/`, `exports/codex/` | Ekspor profil host; dibuat melalui `render_export`. |
@@ -18,7 +19,7 @@ Folder ini adalah rumah Skill yang pertama dipakai dan harus dihormati. Setelah 
 
 Katalog tidak harus mempunyai jumlah entri yang sama dengan bundled source: proposal dan Learning dapat menghasilkan artifact sendiri. Source/catalog yang identik, kandidat yang berbeda dari active, dan riwayat rollback adalah keadaan yang sah. Jangan menghapusnya hanya berdasarkan kesamaan nama, umur, atau perbedaan digest.
 
-Audit 2026-10-27: 40 sumber cocok dengan 40 artifact katalog, ditambah 2 Skill hasil Learning/proposal dan 1 artifact historis `scientific-critical-thinking`. Sebanyak 17 history dan 1 kandidat staged menyimpan revisi unik. Artifact historis tidak dipindah/dihapus manual; lifecycle retirement belum tersedia pada facade SkillService.
+Audit 2026-10-27: 40 sumber cocok dengan 40 artifact katalog, ditambah 2 Skill hasil Learning/proposal dan 1 artifact historis `scientific-critical-thinking`. Sebanyak 17 history dan 1 kandidat staged menyimpan revisi unik. Artifact historis tidak dipindah/dihapus manual. Pembaruan 2026-11-01: aksi `retire` (konfirmasi `RETIRE_SKILL`, digest aktif yang tepat, bukti) memindahkan Skill aktif ke riwayat revisi dan menulis `revisions/<skill-name>/retired.json`; `list_retired` menampilkannya dan `rollback_revision` dengan digest yang dipensiunkan mengembalikannya. Tidak ada penghapusan langsung.
 
 Hanya subtree sumber dan README ini yang dibuka untuk source control dan packaging; katalog, Memory, history, tooling dan state lokal tetap dikecualikan. Provenance historis boleh menyebut path sebelum migrasi; itu bukti asal, bukan instruksi membuat ulang rumah luar.
 

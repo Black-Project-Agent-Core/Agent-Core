@@ -15,7 +15,7 @@ export const skillProposalDraft = z.object({
 export const skills = z.object({
   action: z.enum([
     'status', 'list', 'inspect', 'search', 'read', 'validate', 'import', 'package', 'render_export',
-    'stage_revision', 'list_revisions', 'promote_revision', 'rollback_revision',
+    'stage_revision', 'list_revisions', 'promote_revision', 'rollback_revision', 'retire', 'list_retired',
     'proposals', 'propose', 'decide_proposal', 'self_awareness', 'explain_improvement', 'review_outcomes',
   ]),
   workspace: z.string().min(1).max(120).optional(),
@@ -32,6 +32,7 @@ export const skills = z.object({
   userEvidenceRef: z.string().regex(/^user-message:[a-zA-Z0-9._:-]{1,200}$/).optional(),
   questionType: z.enum(['capabilities', 'skills', 'memory', 'learning', 'connections', 'identity', 'rules', 'built-items', 'user-knowledge']).optional(),
   name: z.string().min(1).max(64).optional(),
+  supersededBy: z.string().min(1).max(64).optional(),
   profile: z.enum(['claude', 'codex']).optional(),
   sourcePath: z.string().min(1).max(4000).optional(),
   resourcePath: z.string().min(1).max(400).optional(), // read-only packaged references/ path
@@ -72,7 +73,7 @@ export const skills = z.object({
       ctx.addIssue({ code: 'custom', message: 'Exact revision/scope and Native user proof or APPROVE_SKILL_PROPOSAL from an allowlisted controller required.' });
   }
   if (value.action === 'explain_improvement' && !value.proposalId && !value.name) ctx.addIssue({ code: 'custom', message: 'proposalId or name required' });
-  if (['inspect', 'read', 'package', 'render_export', 'list_revisions', 'promote_revision', 'rollback_revision'].includes(value.action) && !value.name) {
+  if (['inspect', 'read', 'package', 'render_export', 'list_revisions', 'promote_revision', 'rollback_revision', 'retire'].includes(value.action) && !value.name) {
     ctx.addIssue({ code: 'custom', message: 'name required for this action' });
   }
   if (value.action === 'render_export' && !value.profile) {
@@ -90,6 +91,14 @@ export const skills = z.object({
   if (value.action === 'promote_revision') {
     if (!value.candidateDigest || !value.expectedActiveDigest || value.confirmation !== 'PROMOTE_SKILL_REVISION') {
       ctx.addIssue({ code: 'custom', message: 'candidateDigest, expectedActiveDigest, and PROMOTE_SKILL_REVISION confirmation required' });
+    }
+  }
+  if (value.action !== 'retire' && value.supersededBy !== undefined) {
+    ctx.addIssue({ code: 'custom', path: ['supersededBy'], message: 'supersededBy is only valid for retire' });
+  }
+  if (value.action === 'retire') {
+    if (!value.expectedActiveDigest || !value.evidenceRefs?.length || value.confirmation !== 'RETIRE_SKILL') {
+      ctx.addIssue({ code: 'custom', message: 'expectedActiveDigest, evidenceRefs, and RETIRE_SKILL confirmation required' });
     }
   }
   if (value.action === 'rollback_revision') {
