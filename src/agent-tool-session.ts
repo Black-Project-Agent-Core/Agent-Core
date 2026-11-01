@@ -4,7 +4,7 @@ import type { AgentModelImage, AgentModelTool } from './agent-provider.js';
 import type { AgentToolRestriction } from './agent-capability-catalog.js';
 import { createAgentCoreMcpServer, createAgentCoreToolHost, WORKSPACE_BOUND_NATIVE_TOOLS, type AgentCoreMcpRuntime } from './mcp/server.js';
 import { InProcessToolHost } from './mcp/in-process-tool-host.js';
-import { isReadOnlyToolCall } from './mcp/mutation-safety.js';
+import { hasReadOnlyAction, isReadOnlyToolCall } from './mcp/mutation-safety.js';
 import type { ToolCaller } from './tracker/tool-invocation.js';
 
 export interface AgentToolResult {
@@ -284,6 +284,18 @@ export class AgentRuntimeToolSession {
     const tool = (await this.listedTools()).find(item => String(item.name) === name);
     if (!tool) throw new Error('AGENT_RUNTIME_TOOL_NOT_GRANTED');
     return !isReadOnlyToolCall(name, tool.annotations, args);
+  }
+
+  /**
+   * Schema-level, not per-call: true when SOME call to this tool can be read-only, independent of any particular
+   * arguments (a fully read-only tool, or a mixed tool like `skills` with at least one read-only action). False
+   * means every call to it mutates, so Plan mode's dispatch gate (isMutating/admissionIssue above) would refuse
+   * all of them anyway; used only to leave such tools out of the presented schema, never as the actual gate.
+   */
+  async hasReadOnlyPath(name: string): Promise<boolean> {
+    const tool = (await this.listedTools()).find(item => String(item.name) === name);
+    if (!tool) return false;
+    return tool.annotations?.readOnlyHint === true || hasReadOnlyAction(name);
   }
 
   /** Pure local admission check. Must run before a mutating dispatch is checkpointed. */

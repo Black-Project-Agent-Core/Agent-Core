@@ -555,6 +555,7 @@ export class AgentChatService {
     prompt: string;
     messageOrigin?: 'local-operator' | 'external-controller';
     goalMode?: boolean;
+    planMode?: boolean;
     /** Validated by the HTTP route (validateAttachmentInputs); only the owner's UI may attach files. */
     attachments?: ChatAttachmentInput[];
     /** Owner-chosen route id from listProviders(); omitted means automatic rotation. */
@@ -583,7 +584,8 @@ export class AgentChatService {
     const existing = this.store.getTurnByClientRequestId(input.clientRequestId);
     if (existing) {
       if (existing.conversationId !== input.conversationId || existing.reasoningEffort !== input.reasoningEffort
-        || existing.requestedModel !== input.providerModel || Boolean(existing.goalMode) !== Boolean(input.goalMode)) {
+        || existing.requestedModel !== input.providerModel || Boolean(existing.goalMode) !== Boolean(input.goalMode)
+        || Boolean(existing.planMode) !== Boolean(input.planMode)) {
         throw new Error('AGENT_CHAT_CLIENT_REQUEST_CONFLICT');
       }
       return replay(existing);
@@ -631,6 +633,7 @@ export class AgentChatService {
       reasoningEffort: input.reasoningEffort,
       requestedModel: input.providerModel,
       goalMode: input.goalMode,
+      planMode: input.planMode,
     });
     if (!begun.created) return replay(begun.turn);
     // Only the local owner's pick is the "last used" selection; external controllers must not move it.
@@ -728,6 +731,7 @@ export class AgentChatService {
         ...(attachmentReference ? { attachmentReference } : {}),
         ...(proposalPromotion ? { proposalPromotion } : {}),
         ...(input.goalMode ? { goalMode: true } : {}),
+        ...(input.planMode ? { planMode: true } : {}),
         eventSink: event => { this.recordContextUsage(continuation.turnId, event, claim); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,
         continuation,
@@ -968,6 +972,7 @@ export class AgentChatService {
         ...(attachmentReference ? { attachmentReference } : {}),
         ...(proposalPromotion ? { proposalPromotion } : {}),
         ...(turn.goalMode ? { goalMode: true } : {}),
+        ...(turn.planMode ? { planMode: true } : {}),
         eventSink: event => { this.recordContextUsage(continuation.turnId, event, claim); this.recordStep(continuation.turnId, event); return event.type === 'assistant.final' ? undefined : emit(event); },
         signal: controller.signal,
         continuation,

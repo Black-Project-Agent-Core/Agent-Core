@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { NativeAgentController } from '../src/agent-controller.js';
 import { AgentRuntimeService } from '../src/agent-runtime.js';
 import { AgentRuntimeToolSession } from '../src/agent-tool-session.js';
-import type { AgentModelResponse, AgentRuntimeConfig } from '../src/agent-provider.js';
+import type { AgentModelResponse, AgentModelTool, AgentRuntimeConfig } from '../src/agent-provider.js';
 import { parseAgentTurnCheckpoint, serializeAgentTurnCheckpoint } from '../src/agent-turn-checkpoint.js';
 import { AgentChatService } from '../src/agent-chat-service.js';
 
@@ -826,5 +826,64 @@ describe('native Agent Core controller lifecycle', () => {
     expect((await runtime.getTask(result.taskId))?.terminalOutcome).toBe('verified');
     expect(learning.checkpoint).toHaveBeenCalledTimes(1);
     expect(learning.review).not.toHaveBeenCalled();
+  });
+});
+
+describe('PLAN-1 Plan mode: hard read-only enforcement', () => {
+  it('refuses a mutating tool call with PLAN_MODE_READ_ONLY and never dispatches it, then still finalizes with the plan', async () => {
+    const { controller, runtime } = await fixture([], ['get_config', 'write_file']);
+    const strategy = strategyChoice().message.tool_calls[0]!;
+    // A denial counts as a failure: the host demands a materially different strategy before it will accept a 'verified' finalize.
+    const retryStrategy = strategyChoice('Investigate read-only instead of writing the file').message.tool_calls[0]!;
+    const write = { id: 'write-1', type: 'function' as const,
+      function: { name: 'write_file', arguments: JSON.stringify({ path: 'plan-mode-should-not-write.txt', content: 'should not exist' }) } };
+    const final = finalizeChoice('Here is the plan.').message.tool_calls[0]!;
+    const complete = vi.spyOn(runtime, 'complete')
+      .mockResolvedValueOnce({ content: null, finishReason: 'tool_calls', toolCalls: [{ ...strategy, type: 'function' }] })
+      .mockResolvedValueOnce({ content: null, finishReason: 'tool_calls', toolCalls: [write] })
+      .mockResolvedValueOnce({ content: null, finishReason: 'tool_calls', toolCalls: [{ ...retryStrategy, type: 'function' }] })
+      .mockResolvedValueOnce({ content: null, finishReason: 'tool_calls', toolCalls: [{ ...final, type: 'function' }] });
+    const result = await controller.runTask({ prompt: 'Plan the change', workspace: 'fixture', planMode: true });
+    expect(result.response).toBe('Here is the plan.');
+    expect(complete).toHaveBeenCalledTimes(4);
+    const thirdCallMessages = complete.mock.calls[2]![0] as any[];
+    const toolResult = thirdCallMessages.find(message => message.role === 'tool' && message.name === 'write_file');
+    expect(toolResult?.content).toContain('PLAN_MODE_READ_ONLY');
+    expect(toolResult?.content).toContain('No tool was dispatched');
+  });
+
+  it('still dispatches a read-only tool call normally in Plan mode', async () => {
+    const { controller, runtime } = await fixture([], ['get_config', 'write_file']);
+    const strategy = strategyChoice().message.tool_calls[0]!;
+    const read = { id: 'read-1', type: 'function' as const, function: { name: 'get_config', arguments: '{}' } };
+    const final = finalizeChoice('Read the config; here is the plan.').message.tool_calls[0]!;
+    const complete = vi.spyOn(runtime, 'complete')
+      .mockResolvedValueOnce({ content: null, finishReason: 'tool_calls', toolCalls: [{ ...strategy, type: 'function' }] })
+      .mockResolvedValueOnce({ content: null, finishReason: 'tool_calls', toolCalls: [read] })
+      .mockResolvedValueOnce({ content: null, finishReason: 'tool_calls', toolCalls: [{ ...final, type: 'function' }] });
+    const result = await controller.runTask({ prompt: 'Plan the change', workspace: 'fixture', planMode: true });
+    expect(result.response).toBe('Read the config; here is the plan.');
+    const thirdCallMessages = complete.mock.calls[2]![0] as any[];
+    const toolResult = thirdCallMessages.find(message => message.role === 'tool' && message.name === 'get_config');
+    expect(toolResult?.content).not.toContain('PLAN_MODE_READ_ONLY');
+    expect(toolResult?.content).toContain('allowedDirectories');
+  });
+
+  it('never presents a fully-mutating tool\'s schema in Plan mode, keeping it off the model call entirely', async () => {
+    // Same grant, planMode on: write_file (no read path at all) is excluded, get_config (fully read-only) stays.
+    const planned = await fixture([], ['get_config', 'write_file']);
+    const plannedComplete = vi.spyOn(planned.runtime, 'complete').mockResolvedValue(
+      { content: null, finishReason: 'tool_calls', toolCalls: finalizeChoice('ok').message.tool_calls });
+    await planned.controller.runTask({ prompt: 'Plan it', workspace: 'fixture', planMode: true });
+    const plannedTools = plannedComplete.mock.calls[0]![1] as AgentModelTool[];
+    expect(plannedTools.some(tool => tool.function.name === 'write_file')).toBe(false);
+    expect(plannedTools.some(tool => tool.function.name === 'get_config')).toBe(true);
+    // Contrast: the same grant without planMode offers write_file too, proving the exclusion is caused by planMode.
+    const normal = await fixture([], ['get_config', 'write_file']);
+    const normalComplete = vi.spyOn(normal.runtime, 'complete').mockResolvedValue(
+      { content: null, finishReason: 'tool_calls', toolCalls: finalizeChoice('ok').message.tool_calls });
+    await normal.controller.runTask({ prompt: 'Do it', workspace: 'fixture' });
+    const normalTools = normalComplete.mock.calls[0]![1] as AgentModelTool[];
+    expect(normalTools.some(tool => tool.function.name === 'write_file')).toBe(true);
   });
 });

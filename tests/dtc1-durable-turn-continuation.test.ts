@@ -82,6 +82,7 @@ function seedRunning(
   store: AgentChatStore,
   state: AgentTurnCheckpointState = checkpoint(),
   goalMode = false,
+  planMode = false,
 ) {
   store.createConversation({
     conversationId: state.conversationId,
@@ -98,6 +99,7 @@ function seedRunning(
     prompt: state.prompt,
     executorToken: 'executor-1',
     goalMode,
+    planMode,
   });
   if (!begun.claim) throw new Error('missing claim');
   const serialized = serializeAgentTurnCheckpoint(state);
@@ -730,6 +732,28 @@ describe('DTC-A6/A11 explicit reconstruction and exactly-once chat commit', () =
     const detail = store.detail(state.conversationId)!;
     expect(detail.messages.filter(message => message.role === 'assistant'))
       .toHaveLength(1);
+  });
+});
+
+describe('PLAN-1 Plan mode survives a resume', () => {
+  it('re-threads planMode into runConversationTurn on resume, exactly like goalMode', async () => {
+    const root = await rootFixture('plan-mode-resume-');
+    const state = checkpoint();
+    const store = new AgentChatStore(path.join(root, 'chat.sqlite'));
+    seedRunning(store, state, false, true);
+    store.recoverRunningTurns();
+    expect(store.getTurn(state.turnId)?.planMode).toBe(true);
+    const controller = { runConversationTurn: vi.fn(async (input: any) => {
+      expect(input.planMode).toBe(true);
+      expect(input).not.toHaveProperty('goalMode');
+      return { sessionId: state.runtimeSessionId, taskId: state.runtimeTaskId,
+        response: 'Investigated read-only; here is the plan.', status: 'finalized', iterations: 1, retrievalAttemptIds: [] };
+    }) };
+    const runtime = { getTask: vi.fn(async () => ({ id: state.runtimeTaskId, status: 'running' })), setProviderAffinity: vi.fn() };
+    const service = new (AgentChatService as any)(store, runtime, controller, root) as AgentChatService;
+    const result = await service.resumeTurn({ turnId: state.turnId });
+    expect(result.response).toBe('Investigated read-only; here is the plan.');
+    expect(controller.runConversationTurn).toHaveBeenCalledTimes(1);
   });
 });
 

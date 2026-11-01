@@ -176,6 +176,14 @@ export const WORKING_RULES_CONTRACT = [
   'Questions: before refusing or undoing something because it seems wrong or against the rules, ask 1 to 3 short questions, each with 3 recommended answers (one of them a safe allowed variant) plus a fourth open "Other" option; hard platform and safety prohibitions still stand. A question never blocks the rest: keep working on what is clearly allowed and gather the questions in one place with a recommended default.',
 ].join('\n');
 
+/** Appended to guidance in Plan mode. The host also refuses every mutating tool call with PLAN_MODE_READ_ONLY, so this never depends on the model's compliance alone. */
+const PLAN_MODE_DIRECTIVE = [
+  'PLAN MODE is active. Investigate read-only: inspect, search and read as needed, but no mutating tool call will be dispatched',
+  '(the host refuses it with PLAN_MODE_READ_ONLY) regardless of this directive. Close the turn with a numbered plan: the files',
+  'and symbols involved, the ordered steps, the risks, and how each step will be verified. Do not change anything; the user',
+  'approves by sending a later message without Plan mode.',
+].join(' ');
+
 /** System prompt of the direct path for a greeting or thanks: short, no tools, and a way back to the full path. */
 const DIRECT_ANSWER_PROMPT = [
   "You are Agent Core, the creator's machine-side engineering partner.",
@@ -436,6 +444,8 @@ export interface NativeAgentConversationTurnInput extends NativeAgentTaskInput {
   proposalPromotion?: NativeProposalPromotionContext;
   /** Goal mode: run in resumable iteration windows until the goal is reached instead of failing at the cap. */
   goalMode?: boolean;
+  /** Plan mode: read-only investigation that closes with a numbered plan; mutating tool calls are refused, not just ungranted. Mutually exclusive with goalMode. */
+  planMode?: boolean;
   eventSink?: AgentTurnEventSink;
   signal?: AbortSignal;
   continuation?: NativeAgentContinuationHooks;
@@ -450,6 +460,7 @@ interface NativeAgentExecutionInput extends NativeAgentTaskInput {
   attachmentReference?: string;
   proposalPromotion?: NativeProposalPromotionContext;
   goalMode?: boolean;
+  planMode?: boolean;
   memoryQuery?: string;
   eventSink?: AgentTurnEventSink;
   signal?: AbortSignal;
@@ -1022,6 +1033,8 @@ export class NativeAgentController {
     // Goal mode runs in windows: a goal turn gets the larger window and, at a window end, parks as resumable
     // with a fresh window (see the end of the iteration loop) instead of failing at the cap.
     const goalMode = input.goalMode === true;
+    // Plan mode: investigate read-only and close with a numbered plan; no mutating tool call is ever dispatched.
+    const planMode = input.planMode === true;
     const iterationWindow = goalMode
       ? (this.config.goalMaxToolIterations ?? 200) : this.config.maxToolIterations;
     const configuredProviderBudget = Math.max(
@@ -1108,7 +1121,15 @@ export class NativeAgentController {
     };
 
     const delegatedTools = (this.config.capabilityPolicy ?? 'explicit') === 'dynamic';
-    let grantedModelDefinitions = await toolSession.modelTools();
+    // Plan mode never presents a tool whose every call would mutate; a mixed tool (e.g. `skills`) stays visible for
+    // its read actions, and every actual call is still checked by the hard gate at dispatch time regardless.
+    const filterForPlanMode = async (tools: AgentModelTool[]): Promise<AgentModelTool[]> => {
+      if (!planMode) return tools;
+      const kept: AgentModelTool[] = [];
+      for (const tool of tools) if (await toolSession.hasReadOnlyPath(tool.function.name)) kept.push(tool);
+      return kept;
+    };
+    let grantedModelDefinitions = await filterForPlanMode(await toolSession.modelTools());
     const presentedNativeNames = initiallyPresentedNativeTools(input.prompt, grantedModelDefinitions);
     const presentNativeName = (name: string) => {
       if (!grantedModelDefinitions.some(tool => tool.function.name === name)) return;
@@ -1152,7 +1173,8 @@ export class NativeAgentController {
     const guidance = nativeGuidance
       + (input.profileInterview && audience === 'owner-private' && profile.metadata.enabled ? '\n\n' + PROFILE_INTERVIEW_DIRECTIVE : '')
       + (input.userSelectedSkillDirective ? '\n\n' + input.userSelectedSkillDirective : '')
-      + (input.attachmentReference ? '\n\n' + input.attachmentReference : '');
+      + (input.attachmentReference ? '\n\n' + input.attachmentReference : '')
+      + (planMode ? '\n\n' + PLAN_MODE_DIRECTIVE : '');
     const corePrompt = systemPrompt(delegatedTools, guidance);
     // How much of message 0 (corePrompt) the context breakdown should move from 'system' into its own 'skills' category.
     const skillGuidanceChars = guidance.length;
@@ -1534,7 +1556,7 @@ export class NativeAgentController {
                 toolRuntime,
                 next.restrictions,
               );
-              grantedModelDefinitions = await toolSession.modelTools();
+              grantedModelDefinitions = await filterForPlanMode(await toolSession.modelTools());
               modelTools = presentModelTools();
               toolContractDigest = await toolSession.contractDigest();
             }
@@ -1884,9 +1906,17 @@ export class NativeAgentController {
           // Do not mark a known pre-dispatch denial as an unknown mutating side effect.
           const localAdmissionIssue = granted && !evaluationDenied
             ? toolSession.admissionIssue(call.function.name, args) : null;
-          if (!granted || evaluationDenied || localAdmissionIssue) {
+          // Computed once: also decides Plan mode's hard read-only gate below, so a denied call is never dispatched.
+          const mutating = granted && !evaluationDenied && !localAdmissionIssue
+            ? await toolSession.isMutating(call.function.name, args) : false;
+          const planModeDenied = planMode && mutating;
+          if (!granted || evaluationDenied || localAdmissionIssue || planModeDenied) {
             needsStrategy = true;
-            const summary = localAdmissionIssue
+            const summary = planModeDenied
+              ? 'PLAN_MODE_READ_ONLY: ' + call.function.name + ' would mutate. Plan mode investigates read-only and closes with a '
+                + 'numbered plan (files, steps, risks, verification); no change runs until the user approves it in a later '
+                + 'message sent without Plan mode. No tool was dispatched.'
+              : localAdmissionIssue
               ? localAdmissionIssue + ': The current tool grant does not admit these arguments. No tool was dispatched.'
               : evaluationDenied
               ? 'AGENT_RUNTIME_EVALUATION_SCOPE_DENIED: ' + call.function.name + '. '
@@ -1905,7 +1935,6 @@ export class NativeAgentController {
             await persistCheckpoint('tool-result-durable');
             continue;
           }
-          const mutating = await toolSession.isMutating(call.function.name, args);
           const invocationId = ('dtc:' + task.id + ':' + call.id).slice(0, 200);
           const pendingTool = {
             callId: call.id,

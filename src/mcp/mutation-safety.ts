@@ -366,6 +366,11 @@ export function isReadOnlyToolCall(name: string, annotations: { readOnlyHint?: u
   return typeof action === 'string' && Object.hasOwn(READ_ONLY_ACTIONS, name) && READ_ONLY_ACTIONS[name]!.has(action);
 }
 
+/** True for a mixed tool (like `skills`) that has at least one read-only action, independent of any particular call's arguments. */
+export function hasReadOnlyAction(name: string): boolean {
+  return Object.hasOwn(READ_ONLY_ACTIONS, name);
+}
+
 export function installMcpMutationSafety(
   server: McpServer,
   safety: McpMutationSafety,

@@ -371,6 +371,14 @@ async function handleRequest(
         sendJson(response, 400, { error: 'invalid_agent_chat_goal_mode' });
         return;
       }
+      if (body.planMode !== undefined && typeof body.planMode !== 'boolean') {
+        sendJson(response, 400, { error: 'invalid_agent_chat_plan_mode' });
+        return;
+      }
+      if (body.goalMode === true && body.planMode === true) {
+        sendJson(response, 400, { error: 'agent_chat_goal_and_plan_mode_exclusive' });
+        return;
+      }
       // Attachments come from the owner's UI only; the validated, sanitized copy is what the service receives.
       let attachments: ChatAttachmentInput[] | undefined;
       if (body.attachments !== undefined) {
@@ -409,6 +417,7 @@ async function handleRequest(
           prompt,
           messageOrigin: originHeader === 'external-controller' ? 'external-controller' : 'local-operator',
           ...(body.goalMode === true ? { goalMode: true } : {}),
+          ...(body.planMode === true ? { planMode: true } : {}),
           ...(attachments ? { attachments } : {}),
           ...(providerId && providerId !== 'auto' ? { providerRoute: providerId } : {}),
           ...(model !== undefined ? { providerModel: model as string } : {}),

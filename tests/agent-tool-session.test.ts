@@ -104,6 +104,18 @@ describe('native agent tool session', () => {
     }
   });
 
+  it('hasReadOnlyPath: true for a fully read-only tool or a mixed tool with a read action, false for a tool with none (PLAN-1 schema filter)', async () => {
+    const session = await AgentRuntimeToolSession.open('fixture-plan-schema', ['skills', 'write_file', 'get_config'], { ...nativeRuntime, skillsService: {} as any });
+    try {
+      expect(await session.hasReadOnlyPath('get_config')).toBe(true);
+      expect(await session.hasReadOnlyPath('skills')).toBe(true);
+      expect(await session.hasReadOnlyPath('write_file')).toBe(false);
+      expect(await session.hasReadOnlyPath('not_a_granted_tool')).toBe(false);
+    } finally {
+      await session.close();
+    }
+  });
+
   it('journals only the writing actions of skills, and every call of an ordinary write tool', async () => {
     const host = new InProcessToolHost();
     const runMutation = vi.fn(async (_caller: string, _name: string, _args: unknown, _ctx: unknown, run: () => unknown) => run());

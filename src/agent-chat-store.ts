@@ -55,6 +55,7 @@ export interface AgentChatTurn extends NativeMemoryResultMetadata {
   reasoningEffort?: import('./agent-provider-state.js').AgentReasoningEffort;
   requestedModel?: string;
   goalMode?: boolean;
+  planMode?: boolean;
   pauseRequested?: boolean;
   iterations?: number; maxIterations?: number;
   retrievalCount?: number;
@@ -200,6 +201,7 @@ function mapTurn(row: Record<string, unknown>): AgentChatTurn {
     ...(row.reasoning_effort ? { reasoningEffort: row.reasoning_effort as AgentChatTurn['reasoningEffort'] } : {}),
     ...(row.requested_model ? { requestedModel: String(row.requested_model) } : {}),
     ...(row.goal_mode ? { goalMode: true } : {}),
+    ...(row.plan_mode ? { planMode: true } : {}),
     ...(row.iterations !== null && row.iterations !== undefined ? { iterations: Number(row.iterations) } : {}),
     ...(row.max_iterations !== null && row.max_iterations !== undefined ? { maxIterations: Number(row.max_iterations) } : {}),
     ...(row.retrieval_count !== null && row.retrieval_count !== undefined
@@ -400,6 +402,9 @@ export class AgentChatStore {
       if (!turnColumns.some(column => column.name === 'goal_mode')) {
         db.exec('ALTER TABLE chat_turns ADD COLUMN goal_mode INTEGER NOT NULL DEFAULT 0');
       }
+      if (!turnColumns.some(column => column.name === 'plan_mode')) {
+        db.exec('ALTER TABLE chat_turns ADD COLUMN plan_mode INTEGER NOT NULL DEFAULT 0');
+      }
       if (!turnColumns.some(column => column.name === 'requested_model')) {
         db.exec('ALTER TABLE chat_turns ADD COLUMN requested_model TEXT');
       }
@@ -596,6 +601,7 @@ export class AgentChatStore {
     reasoningEffort?: AgentChatTurn['reasoningEffort'];
     requestedModel?: string;
     goalMode?: boolean;
+    planMode?: boolean;
     startedAtMs?: number;
   }): { turn: AgentChatTurn; created: boolean; claim?: AgentChatExecutionClaim } {
     const startedAtMs = input.startedAtMs ?? Date.now();
@@ -612,7 +618,8 @@ export class AgentChatStore {
       if (existing) {
         const turn = mapTurn(existing);
         if (turn.conversationId !== input.conversationId || turn.reasoningEffort !== input.reasoningEffort
-          || turn.requestedModel !== input.requestedModel || Boolean(turn.goalMode) !== Boolean(input.goalMode)) throw new Error('AGENT_CHAT_CLIENT_REQUEST_CONFLICT');
+          || turn.requestedModel !== input.requestedModel || Boolean(turn.goalMode) !== Boolean(input.goalMode)
+          || Boolean(turn.planMode) !== Boolean(input.planMode)) throw new Error('AGENT_CHAT_CLIENT_REQUEST_CONFLICT');
         return { turn, created: false };
       }
 
@@ -629,8 +636,8 @@ export class AgentChatStore {
       db.prepare(`
         INSERT INTO chat_turns (
           turn_id, conversation_id, client_request_id, runtime_task_id,
-          status, created_at_ms, started_at_ms, turn_origin, reasoning_effort, requested_model, goal_mode
-        ) VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?)
+          status, created_at_ms, started_at_ms, turn_origin, reasoning_effort, requested_model, goal_mode, plan_mode
+        ) VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?)
       `).run(
         input.turnId,
         input.conversationId,
@@ -642,6 +649,7 @@ export class AgentChatStore {
         input.reasoningEffort ?? null,
         input.requestedModel ?? null,
         input.goalMode ? 1 : 0,
+        input.planMode ? 1 : 0,
       );
       db.prepare(`
         INSERT INTO chat_turn_execution (
