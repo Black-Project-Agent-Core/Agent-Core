@@ -33,8 +33,10 @@ export function registerControllerLearningTools(
         return {status:'unknown',reason:'browser-grant-or-host-binding-unavailable'};
       return browserControlService.selectProcedureObservation(input.browserObservation!,invocationContext);
     } : undefined;
+    let episodeOperationLabel: string | undefined;
     try {
       let result: unknown;
+      const dispatchStart = Date.now();
       if (input.action === 'status') {
         result = await service.status();
       } else if (input.action === 'context') {
@@ -50,6 +52,7 @@ export function registerControllerLearningTools(
         }, host?.ownerId, invocationContext);
       } else if (input.action === 'episode') {
         const operation = input.episodeOperation ?? 'status';
+        episodeOperationLabel = operation;
         if (operation === 'recover') {
           if (!input.recoverySource) throw new Error('recoverySource required');
           result = await service.recoverHistory(input.recoverySource, input.applyRecovery === true);
@@ -148,6 +151,7 @@ export function registerControllerLearningTools(
           ...(input.limit ? { limit: input.limit } : {}),
         });
       }
+      const dispatchMs = Date.now() - dispatchStart;
       if (input.action === 'episode' && input.episodeOperation === 'start'
         && result && typeof result === 'object' && 'memoryBinding' in result
         && 'id' in result && typeof result.id === 'string') {
@@ -158,6 +162,7 @@ export function registerControllerLearningTools(
         if (Buffer.byteLength(JSON.stringify({ ...result, workflowNext: next }), 'utf8') <= 64 * 1024)
           result = { ...result, workflowNext: next };
       }
+      const workflowNextStart = Date.now();
       if ((input.action === 'status' || input.action === 'context'
         || input.action === 'episode' && ['status', 'verify'].includes(input.episodeOperation ?? 'status'))
         && result && typeof result === 'object' && !Array.isArray(result)) {
@@ -166,6 +171,10 @@ export function registerControllerLearningTools(
         if (Buffer.byteLength(JSON.stringify({ ...result, workflowNext: next }), 'utf8') <= 64 * 1024)
           result = { ...result, workflowNext: next };
       }
+      const workflowNextMs = Date.now() - workflowNextStart;
+      const tailStart = Date.now();
+      const finalResult = appendSkillReminderCapsule(text(result), service, sessionId, input.workspace, invocationContext);
+      const tailMs = Date.now() - tailStart;
       activityTracker.record(
         'LEARNING',
         'success',
@@ -173,11 +182,13 @@ export function registerControllerLearningTools(
         'controller-learning-tool',
         {
           action: input.action,
+          ...(episodeOperationLabel ? { episodeOperation: episodeOperationLabel } : {}),
           externalSessionId: sessionId,
           durationMs: Date.now() - started,
+          dispatchMs, workflowNextMs, tailMs,
         },
       );
-      return appendSkillReminderCapsule(text(result), service, sessionId, input.workspace, invocationContext);
+      return finalResult;
     } catch (error) {
       activityTracker.captureFailure(
         'LEARNING',
@@ -185,6 +196,7 @@ export function registerControllerLearningTools(
         'controller-learning-tool-failure',
         {
           action: input.action,
+          ...(episodeOperationLabel ? { episodeOperation: episodeOperationLabel } : {}),
           externalSessionId: sessionId,
           durationMs: Date.now() - started,
         },
