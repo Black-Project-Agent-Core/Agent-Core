@@ -1444,16 +1444,22 @@ export class MemoryService {
     const synthesisEligibility=this.synthesisEligibility(hostContext?.scope,hostContext,options.workspace);
     const reportSynthesisEligibility=()=>{try{hostContext?.onSynthesisEligibility?.(synthesisEligibility.summary());}catch{/* Advisory diagnostics must remain fail-soft. */}};
 
+    const stageMs: Record<string, number> = {};
+    let stageMark = performance.now();
+    const lap = (name: string) => { const now = performance.now(); stageMs[name] = Math.round(now - stageMark); stageMark = now; };
     try {
       await this.reload();
+      lap('reload');
       this.assertOperational();
       await this.ensureCurrentIndex();
+      lap('ensureCurrentIndex');
 
       const canonicalRecords = [...this.records.values()];
       const currentRecords = canonicalRecords.map(record => record.provenance?.workspace ? { ...record, provenance: { ...record.provenance, workspace: this.resolveWorkspace(record.provenance.workspace) } } : record);
       const forgottenIds = await this.feedbackStore
         .forgottenIds(new Set(currentRecords.map(record => record.id)))
         .catch(() => new Set<string>());
+      lap('forgottenIds');
       const scopeRecords = canonicalRecords.filter(record => !options.workspace || record.pinned
         || (record.provenance?.workspace && this.resolveWorkspace(record.provenance.workspace) === options.workspace)
         || (options.includeGeneral && record.category === 'general'
@@ -1467,6 +1473,7 @@ export class MemoryService {
       const semanticEligible = eligibleScopeRecords.filter(record =>
         !excludedIds.has(record.id) && !supersededIds.has(record.id) && (record.pinned || (!isMemoryExpired(record) && !forgottenIds.has(record.id) && (record.version!==2||record.experience.retention!=='archive'))));
       candidateCount=semanticEligible.length;
+      lap('eligibility');
       let semanticContext: SemanticSearchContext | undefined;
       if (this.embedder && this.indexStatus === 'available' && this.embeddingStatus !== 'not-configured') {
         try {
@@ -1476,6 +1483,7 @@ export class MemoryService {
           this.setEmbeddingIssue(error);
         }
       }
+      lap('semanticContext');
 
       const searchOptions: MemorySearchOptions = {
         ...(options.rankingProfile === 'fusion'
@@ -1492,6 +1500,7 @@ export class MemoryService {
         : runSearch(semanticEligible);
       let deliveryIds=new Set((await synthesisEligibility.validateDelivery(rankedResults.map(result=>result.record))).map(record=>record.id));
       rankedResults=rankedResults.filter(result=>deliveryIds.has(result.record.id));
+      lap('rankAndValidate1');
       for (const result of rankedResults) {
         if (result.record.pinned||synthesisEligibility.summary().reasons.includes('deadline')) continue;
         try {
@@ -1506,8 +1515,10 @@ export class MemoryService {
           this.syncCanonicalIssues([...this.canonicalIssues, issue]);
         }
       }
+      lap('touchLoop');
       deliveryIds=new Set((await synthesisEligibility.validateDelivery(rankedResults.map(result=>result.record))).map(record=>record.id));
       rankedResults=rankedResults.filter(result=>deliveryIds.has(result.record.id));
+      lap('validateDelivery2');
       const projection = projectMemorySearchResults(
         rankedResults,
         Math.max(500, Math.min(100_000, options.budgetChars ?? 20_000)),
@@ -1608,6 +1619,11 @@ export class MemoryService {
       };
       reportSynthesisEligibility();
       await this.retrievalLedger.record(attempt).catch(() => undefined);
+      lap('projectionAndLedger');
+      try {
+        activityTracker.record('MEMORY', 'info', 'memory_search stage timing', 'search-stage-timing',
+          { ...stageMs, candidateCount, hasSemanticContext: Boolean(semanticContext), totalMs: Date.now() - startedMs });
+      } catch { /* diagnostics must never affect the search result */ }
       try {
         activityTracker.recordOutcome(
           'MEMORY',
