@@ -1,6 +1,4 @@
 import { createHash } from 'node:crypto';
-// The MCP client is only loaded on the fallback path (AGENT_CORE_NATIVE_TOOL_TRANSPORT=mcp); Native does not need it.
-import type { Client } from '@modelcontextprotocol/client';
 import type { VerifiedKey } from './auth/key-types.js';
 import type { AgentModelImage, AgentModelTool } from './agent-provider.js';
 import type { AgentToolRestriction } from './agent-capability-catalog.js';
@@ -76,18 +74,15 @@ function toolText(result: any): string {
     .slice(0, 200_000);
 }
 /**
- * How a Native session reaches the tools. The default is a plain in-process registry: the same tool registrations, with no MCP
- * server, client or transport built. MCP is for third parties; the older in-memory MCP path stays only behind the switch
- * AGENT_CORE_NATIVE_TOOL_TRANSPORT=mcp.
+ * How a Native session reaches the tools: a plain in-process registry, the same tool registrations, with no MCP server,
+ * client or transport built. MCP is for third parties (the external HTTP surface); Native dispatches its own tools directly.
  */
 interface ToolPort {
-  readonly kind: 'direct' | 'mcp';
+  readonly kind: 'direct';
   listTools(): Promise<any[]>;
   callTool(name: string, args: Record<string, unknown>, options: { signal?: AbortSignal; invocationId?: string }): Promise<any>;
   close(): Promise<void>;
 }
-
-const useMcpTransport = () => process.env.AGENT_CORE_NATIVE_TOOL_TRANSPORT === 'mcp';
 
 /**
  * The registry only lists a different set of names when one of these runtime fields appears or disappears (see the
@@ -100,7 +95,7 @@ const REGISTRY_SHAPE_FIELDS = [
 const toolNamesByShape = new Map<string, readonly string[]>();
 function registryShape(runtime: AgentCoreMcpRuntime): string {
   const present = REGISTRY_SHAPE_FIELDS.map(field => (runtime[field] ? '1' : '0')).join('');
-  return `${useMcpTransport() ? 'mcp' : 'direct'}:${present}:${runtime.phoneController?.enabled ? '1' : '0'}`;
+  return `${present}:${runtime.phoneController?.enabled ? '1' : '0'}`;
 }
 
 /**
@@ -108,7 +103,7 @@ function registryShape(runtime: AgentCoreMcpRuntime): string {
  * AGENT_CORE_NATIVE_TOOL_REGISTRY=per-task builds a registry for each session with its task fixed at registration (the earlier path).
  */
 const useSharedRegistry = (runtime: AgentCoreMcpRuntime) =>
-  process.env.AGENT_CORE_NATIVE_TOOL_REGISTRY !== 'per-task' && !useMcpTransport() && Boolean(runtime.nativeTaskId);
+  process.env.AGENT_CORE_NATIVE_TOOL_REGISTRY !== 'per-task' && Boolean(runtime.nativeTaskId);
 
 /** What belongs to one task or session, not to the process: the shared registry is built without any of it. */
 const PER_TASK_FIELDS: ReadonlySet<string> = new Set(['nativeTaskId', 'nativeWorkspace', 'failureLoopAdvisor', 'imageInspector', 'toolTarget', 'sharedNativeRegistry']);
@@ -127,7 +122,7 @@ function sharedHostFor(runtime: AgentCoreMcpRuntime): InProcessToolHost {
   sharedHosts.set(key, { services, host });
   return host;
 }
-// The MCP client bounded one call at 60 s; the direct path keeps that bound so a hung tool cannot hold a turn forever.
+// A hung tool must not hold a turn forever; bound one call at 60 s.
 const DIRECT_CALL_TIMEOUT_MS = 60_000;
 
 class DirectToolPort implements ToolPort {
@@ -146,7 +141,7 @@ class DirectToolPort implements ToolPort {
       ...(invocationId ? { meta: { 'io.agentcore/invocation-id': invocationId } } : {}),
       ...(this.caller ? { caller: this.caller } : {}),
     });
-    // A result that arrives after Stop or the timeout is discarded, as with the MCP client.
+    // A result that arrives after Stop or the timeout is discarded.
     running.catch(() => undefined);
     let release = () => {};
     const interrupted = new Promise<never>((_resolve, reject) => {
@@ -166,33 +161,6 @@ class DirectToolPort implements ToolPort {
   async close(): Promise<void> {}
 }
 
-class McpToolPort implements ToolPort {
-  readonly kind = 'mcp' as const;
-  constructor(
-    private readonly client: Client,
-    private readonly server: ReturnType<typeof createAgentCoreMcpServer>,
-  ) {}
-
-  async listTools(): Promise<any[]> {
-    return (await this.client.listTools()).tools as any[];
-  }
-
-  async callTool(name: string, args: Record<string, unknown>, options: { signal?: AbortSignal; invocationId?: string }): Promise<any> {
-    const request: any = { name, arguments: args };
-    if (options.invocationId) request._meta = { 'io.agentcore/invocation-id': options.invocationId };
-    return this.client.callTool(request, options.signal ? { signal: options.signal } : undefined);
-  }
-
-  async close(): Promise<void> {
-    const failures: unknown[] = [];
-    try { await this.client.close(); } catch (error) { failures.push(error); }
-    try { await this.server.close(); } catch (error) { failures.push(error); }
-    if (failures.length) {
-      throw failures[0] instanceof Error ? failures[0] : new Error(String(failures[0]));
-    }
-  }
-}
-
 export class AgentRuntimeToolSession {
   private constructor(
     readonly sessionId: string,
@@ -201,8 +169,8 @@ export class AgentRuntimeToolSession {
     private readonly restrictions: Readonly<Record<string, AgentToolRestriction>>,
   ) {}
 
-  /** Which path this session uses: 'direct' (in-process registry) or 'mcp' (the older in-memory MCP client and server). */
-  get transport(): 'direct' | 'mcp' {
+  /** Native dispatches every tool through the in-process registry; this is not a transport choice. */
+  get transport(): 'direct' {
     return this.port.kind;
   }
 
@@ -214,15 +182,7 @@ export class AgentRuntimeToolSession {
   ): Promise<AgentRuntimeToolSession> {
     const key = principal(sessionId, allowedTools);
     let port: ToolPort;
-    if (useMcpTransport()) {
-      const { Client, InMemoryTransport } = await import('@modelcontextprotocol/client');
-      const server = createAgentCoreMcpServer(key, runtime);
-      const client = new Client({ name: 'agent-core-native-runtime', version: '1.0.0' });
-      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-      await server.connect(serverTransport);
-      await client.connect(clientTransport);
-      port = new McpToolPort(client, server);
-    } else if (useSharedRegistry(runtime)) {
+    if (useSharedRegistry(runtime)) {
       // A workspace-less task never had the workspace-bound tools: a per-task registry did not register them for it.
       const granted = key.toolGrant!.allowedTools.filter(name => runtime.nativeWorkspace || !WORKSPACE_BOUND_NATIVE_TOOLS.has(name));
       port = new DirectToolPort(sharedHostFor(runtime), {
@@ -252,20 +212,7 @@ export class AgentRuntimeToolSession {
       return sharedHostFor(runtime).listTools().map(tool => tool.name)
         .filter(name => runtime.nativeWorkspace || !WORKSPACE_BOUND_NATIVE_TOOLS.has(name));
     }
-    if (!useMcpTransport()) return createAgentCoreToolHost(undefined, runtime).listTools().map(tool => tool.name);
-    const { Client, InMemoryTransport } = await import('@modelcontextprotocol/client');
-    const server = createAgentCoreMcpServer(undefined, runtime);
-    const client = new Client({ name: 'agent-core-native-discovery', version: '1.0.0' });
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    try {
-      await server.connect(serverTransport);
-      await client.connect(clientTransport);
-      const listed = await client.listTools();
-      return listed.tools.map((tool: any) => String(tool.name)).filter(Boolean);
-    } finally {
-      await client.close().catch(() => undefined);
-      await server.close().catch(() => undefined);
-    }
+    return createAgentCoreToolHost(undefined, runtime).listTools().map(tool => tool.name);
   }
 
   /** Own keys only: restrictions can arrive as a plain object, whose prototype members are not tool names. */
@@ -353,8 +300,8 @@ export class AgentRuntimeToolSession {
 
   /**
    * `signal` is the turn's Stop signal. Aborting it before dispatch makes no tool call; aborting it
-   * mid-call makes the MCP client send `notifications/cancelled`, so only handlers that consume
-   * `ctx.mcpReq.signal` actually stop. A late result of a handler that ignores it is discarded.
+   * mid-call forwards the abort to the handler's `ctx.mcpReq.signal`, so only handlers that consume
+   * it actually stop. A late result of a handler that ignores it is discarded.
    */
   async call(
     name: string,

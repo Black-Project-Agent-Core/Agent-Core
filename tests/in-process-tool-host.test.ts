@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import * as z from 'zod/v4';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { McpServer } from '@modelcontextprotocol/server';
@@ -10,7 +10,6 @@ import { AgentRuntimeToolSession } from '../src/agent-tool-session.js';
 const nativeRuntime = { nativeTaskId: 'fixture-native-task', nativeWorkspace: 'agent-core' };
 const closers: Array<() => Promise<void>> = [];
 afterEach(async () => {
-  vi.unstubAllEnvs();
   for (const close of closers.splice(0)) await close();
 });
 
@@ -115,38 +114,21 @@ describe('InProcessToolHost per-call caller', () => {
 });
 
 describe('Native tool session transport', () => {
-  const open = async (mode: string | undefined) => {
-    if (mode) vi.stubEnv('AGENT_CORE_NATIVE_TOOL_TRANSPORT', mode);
+  const open = async () => {
     const session = await AgentRuntimeToolSession.open('transport-fixture', ['get_config', 'read_file', 'image_inspect', 'start_process'], nativeRuntime);
     closers.push(() => session.close());
     return session;
   };
 
-  it('uses no MCP server by default, and the old path stays available behind a switch', async () => {
-    expect((await open(undefined)).transport).toBe('direct');
-    expect((await open('mcp')).transport).toBe('mcp');
-  });
-
-  it('gives the model the same tool contract through both paths, so a stored checkpoint digest still matches', async () => {
-    const direct = await open('direct');
-    const viaMcp = await open('mcp');
-    expect(await direct.contractDigest()).toBe(await viaMcp.contractDigest());
-    expect(json(await direct.modelTools())).toEqual(json(await viaMcp.modelTools()));
-    expect(await direct.isMutating('start_process')).toBe(await viaMcp.isMutating('start_process'));
-    expect(await direct.isMutating('read_file')).toBe(await viaMcp.isMutating('read_file'));
+  it('uses no MCP server; dispatch is the in-process registry', async () => {
+    expect((await open()).transport).toBe('direct');
   });
 
   it('runs a granted tool and refuses an ungranted one the same way', async () => {
-    const direct = await open('direct');
+    const direct = await open();
     const result = await direct.call('get_config', {});
     expect(result).toMatchObject({ name: 'get_config', isError: false });
     expect(result.text).toContain('allowedDirectories');
     await expect(direct.call('write_file', { path: 'never', content: 'x' })).rejects.toThrow('AGENT_RUNTIME_TOOL_NOT_GRANTED');
-  });
-
-  it('discovers the same tool names without building an MCP server', async () => {
-    const names = await AgentRuntimeToolSession.discoverAvailableTools(nativeRuntime);
-    vi.stubEnv('AGENT_CORE_NATIVE_TOOL_TRANSPORT', 'mcp');
-    expect([...names].sort()).toEqual([...await AgentRuntimeToolSession.discoverAvailableTools(nativeRuntime)].sort());
   });
 });

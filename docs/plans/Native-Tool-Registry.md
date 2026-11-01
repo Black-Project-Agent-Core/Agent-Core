@@ -3,6 +3,8 @@
 Tanggal: 2026-10-31
 Status: **S1 sampai S4 SELESAI diimplementasikan (2026-10-31)**, bukti dan rincian di bagian 10. Tahap 0 commit `a29ddf7`; S1 `051e2b0`; S2 `cddf5de` dan `6e8ef6e`; S3 `0f0205e`, `466dfb3`, `6f7081f`, `a4557c9`; S4 audit dan dokumen. Bagian 1 sampai 9 tetap rencana asli (historis); keputusan bagian 6 diambil pada rekomendasinya.
 
+**Superseded (2026-11-02):** keputusan "kode MCP untuk Native tidak dihapus, hanya dimatikan" di bagian 1 dicabut oleh keputusan pengguna baru pada 2026-11-02. `McpToolPort` dan switch `AGENT_CORE_NATIVE_TOOL_TRANSPORT=mcp` di bagian 2 sudah dihapus total dari `src/agent-tool-session.ts`; lihat entri CODEBASE.md 2026-11-02 dan [`.changeset/native-remove-mcp-transport-fallback.md`](../../.changeset/native-remove-mcp-transport-fallback.md). Bagian di bawah ini tetap sebagai rekaman historis dari rencana dan keputusan aslinya, tidak diedit lagi.
+
 [Dokumentasi](../README.md) · [Codebase](../CODEBASE.md) · [Indeks rencana](README.md)
 
 ## 1. Tujuan dan batas

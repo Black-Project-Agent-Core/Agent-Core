@@ -1,13 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AgentRuntimeToolSession, toolObservesStop } from '../src/agent-tool-session.js';
 import { ArtifactAuthorization } from '../src/auth/artifact-authorization.js';
 import * as z from 'zod/v4';
 import { InProcessToolHost } from '../src/mcp/in-process-tool-host.js';
 import { installMcpMutationSafety } from '../src/mcp/mutation-safety.js';
 const nativeRuntime = { nativeTaskId: 'fixture-native-task', nativeWorkspace: 'agent-core' };
-afterEach(() => { vi.unstubAllEnvs(); });
 
-describe('native agent MCP tool session', () => {
+describe('native agent tool session', () => {
   it('discovers and dispatches only explicitly granted existing Agent Core tools', async () => {
     const session = await AgentRuntimeToolSession.open('fixture', ['get_config'], nativeRuntime);
     try {
@@ -150,16 +149,9 @@ describe('native agent MCP tool session', () => {
     }
   });
 
-  // Both paths must honor Stop: the default in-process registry and the older in-memory MCP client behind the switch.
-  const paths = [
-    ['direct', undefined, (session: any) => session.port.host, 2],
-    ['mcp', 'mcp', (session: any) => session.port.client, 1],
-  ] as const;
-
-  it.each(paths)('makes no tool call when Stop was already requested (%s)', async (_path, mode, target) => {
-    if (mode) vi.stubEnv('AGENT_CORE_NATIVE_TOOL_TRANSPORT', mode);
+  it('makes no tool call when Stop was already requested', async () => {
     const session = await AgentRuntimeToolSession.open('fixture-stop-before', ['get_config'], nativeRuntime);
-    const dispatch = vi.spyOn(target(session), 'callTool');
+    const dispatch = vi.spyOn((session as any).port.host, 'callTool');
     try {
       const stop = new AbortController();
       stop.abort();
@@ -171,16 +163,15 @@ describe('native agent MCP tool session', () => {
     }
   });
 
-  it.each(paths)('forwards the turn Stop signal to the in-flight call (%s)', async (_path, mode, target, optionsAt) => {
-    if (mode) vi.stubEnv('AGENT_CORE_NATIVE_TOOL_TRANSPORT', mode);
+  it('forwards the turn Stop signal to the in-flight call', async () => {
     const session = await AgentRuntimeToolSession.open('fixture-stop-during', ['get_config'], nativeRuntime);
-    const dispatch = vi.spyOn(target(session), 'callTool');
+    const dispatch = vi.spyOn((session as any).port.host, 'callTool');
     try {
       const stop = new AbortController();
       const pending = session.call('get_config', {}, 'dtc:fixture:stop', stop.signal);
       stop.abort();
       await expect(pending).rejects.toBeDefined();
-      expect(dispatch.mock.calls[0]?.[optionsAt]).toMatchObject({ signal: stop.signal });
+      expect(dispatch.mock.calls[0]?.[2]).toMatchObject({ signal: stop.signal });
       const finished = await session.call('get_config', {});
       expect(finished.isError).toBe(false);
     } finally {
