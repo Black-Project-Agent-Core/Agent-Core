@@ -42,7 +42,7 @@ Peta tidak memberi izin membuka data terlindungi, mengedit artifact/state owner,
 | `.handoff/` | Status kerja skill `/agent-handoff` (setup, plan, execute, verify): `config.md`, dan selama satu siklus terbuka `plan.md`, `review.md`, `backlog.md`. Hanya ditulis oleh skill itu atas permintaan operator; tidak dibaca Core, Native, atau tooling rilis. Bukan Memory, Skill, atau store runtime. |
 | `dist/`, `node_modules/`, `release/` | Output build, dependency dan arsip rilis; jangan edit sebagai source. |
 | `Backups/` | Rumah backup existing/historis; bukan alasan membuat backup baru atau mengubah arsip. |
-| `.git/`, `.grafel/`, `.superpowers/`, `.claude/`, `.impeccable/` | Metadata/state owner terkait; tidak ditelusuri. `.claude/` hanya berisi pengaturan lokal Claude Code (`settings.local.json`: izin dan hook PostToolUse yang memanggil `scripts/verify/claude-code-post-edit-check.mjs`; `settings.json`: plugin lokal). `.impeccable/` adalah cache hook plugin Claude Code `impeccable`. Keduanya diabaikan Git lewat `.gitignore` dan bukan bagian Agent Core. |
+| `.git/`, `.grafel/`, `.superpowers/`, `.claude/`, `.impeccable/`, `.remember/` | Metadata/state owner terkait; tidak ditelusuri. `.claude/` hanya berisi pengaturan lokal Claude Code (`settings.local.json`: izin dan hook PostToolUse yang memanggil `scripts/verify/claude-code-post-edit-check.mjs`; `settings.json`: plugin lokal). `.impeccable/` adalah cache hook plugin Claude Code `impeccable`. `.remember/` adalah state dan log plugin Claude Code `remember`, ditulis oleh sesi Claude Code yang aktif di folder ini dan diabaikan Git oleh `.remember/.gitignore`. Keduanya diabaikan Git lewat `.gitignore` dan bukan bagian Agent Core. |
 | `.rdc-standalone/` | Tool operator eksternal, terpisah dari machine-control internal `src/rdc/`. |
 | `secrets/`, `DO NOT TOUCH WITHOUT INSTRUCTION EXPLICIT/` | Terlindungi; hanya nama boundary dicatat, tanpa inspeksi isi. `.env` juga dikecualikan. |
 
@@ -210,6 +210,10 @@ Blok JSON ini adalah deklarasi pada peta yang sama, bukan registry terpisah. `ow
       "path": ".impeccable"
     },
     {
+      "purpose": "remember-plugin-local-state",
+      "path": ".remember"
+    },
+    {
       "purpose": "compiled-output",
       "path": "dist"
     },
@@ -364,6 +368,16 @@ Blok JSON ini adalah deklarasi pada peta yang sama, bukan registry terpisah. `ow
   ],
   "directoryIntents": [
     {
+      "path": ".remember/logs",
+      "purpose": "remember-plugin-logs",
+      "owner": ".remember"
+    },
+    {
+      "path": ".remember/tmp",
+      "purpose": "remember-plugin-scratch",
+      "owner": ".remember"
+    },
+    {
       "path": "docs/instructions",
       "purpose": "agent-operating-instructions",
       "owner": "docs"
@@ -444,7 +458,7 @@ Contoh intent untuk tujuan baru yang benar-benar diperlukan task: `{"path":"docs
 
 <!-- DIRECTORY-SNAPSHOT:START -->
 
-Daftar otomatis: **443 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
+Daftar otomatis: **448 direktori/boundary**. Subtree privat, dependency, generated output, arsip dan link diberi label tanpa ditelusuri. Jangan edit blok ini; gunakan `npm run structure:sync`.
 
 ```text
 <PROJECT_ROOT>/
@@ -488,6 +502,11 @@ Daftar otomatis: **443 direktori/boundary**. Subtree privat, dependency, generat
 |-- .handoff/
 |-- .impeccable/
 |-- .rdc-standalone/  [tool operator eksternal; tidak ditelusuri]
+|-- .remember/
+|   |-- logs/
+|   |   `-- autonomous/
+|   `-- tmp/
+|       `-- capture-alive.d/
 |-- .superpowers/  [state host lokal; tidak ditelusuri]
 |-- assets/
 |-- Backups/  [backup existing; tidak ditelusuri]
